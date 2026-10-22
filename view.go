@@ -100,7 +100,8 @@ func (a *App) windowControls(c *ui.Context, k *colors) {
 		if maximized {
 			glyph, label = "copy", "Restore"
 		}
-		if iconButton(c, k, glyph, label, 30, 13).Tooltip(label).Clicked() {
+		// MaximizeButton shows Windows 11's snap layouts over the button.
+		if iconButton(c, k, glyph, label, 30, 13).Tooltip(label).MaximizeButton().Clicked() {
 			if maximized {
 				win.Unmaximize()
 			} else {

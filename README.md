@@ -61,7 +61,7 @@ which type characters (AltGr) on many keyboards.
 
 ## Develop and build
 
-GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.3.0, whose CLI
+GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.6.2, whose CLI
 `go.mod` pins as a tool:
 
 ```sh
@@ -91,9 +91,10 @@ Windows program (`nu`, `C:\Program Files\Git\bin\bash.exe`), else
 PowerShell (`pwsh`, then `powershell`), else `cmd`. PowerShell's `cd`
 leaves its process's directory where it was, so GoRex starts it with a
 prompt that sets it, wrapping the profile's own prompt: the header then
-follows it, and new panes open there. The window is frameless and its
-title bar draws minimize, maximize and close with the other buttons; it
-resizes from its sides and bottom, not its top.
+follows it, and new panes open there. The window's title bar is hidden
+and the system's buttons with it: the title bar draws minimize, maximize and
+close with the other buttons, and the window still resizes from every edge,
+its top included.
 
 ## Layout
 

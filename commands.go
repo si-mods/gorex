@@ -123,10 +123,23 @@ func (s shortcut) String() string {
 	return strings.Join(append(parts, key), "+")
 }
 
+// menuAccel is the shortcut of a command's menu item: its own on macOS,
+// and elsewhere the one with Shift, or none, as the menus' shortcuts come
+// before the terminal's keys, whose are Control and a letter.
+func (cmd *command) menuAccel() string {
+	if runtime.GOOS == "darwin" {
+		return cmd.Accel
+	}
+	if cmd.Other == (shortcut{}) {
+		return ""
+	}
+	return cmd.Other.String()
+}
+
 // menu builds the menu bar, whose items run commands in the window.
 func (a *App) menu() *mygo.Menu {
 	item := func(cmd *command) *mygo.MenuItem {
-		return &mygo.MenuItem{Label: cmd.Title, Accelerator: cmd.Accel, Click: func(*mygo.MenuItem, *mygo.Window) {
+		return &mygo.MenuItem{Label: cmd.Title, Accelerator: cmd.menuAccel(), Click: func(*mygo.MenuItem, *mygo.Window) {
 			a.run(cmd)
 		}}
 	}
@@ -319,8 +332,9 @@ func (a *App) openPalette() {
 }
 
 // shortcuts handles the keys the menus do not: Control-Tab between tabs,
-// and on Windows, where windows of native UI run no menu shortcuts, those
-// of the commands. The window's shortcuts come before the terminal's keys.
+// and on Windows those of the commands that have no menu item. The keys of
+// menu items run there before the view sees them. The window's shortcuts
+// come before the terminal's keys.
 func (a *App) shortcuts(c *ui.Context) {
 	if c.Shortcut(ui.Ctrl, ui.KeyTab) {
 		a.cycleTab(1)
