@@ -73,8 +73,11 @@ Supported: `font-family`, `font-size`, `font-feature`, `font-thicken`,
 `cursor-style`, `cursor-style-blink`, `scrollback-limit`,
 `macos-option-as-alt`. A text size set with ⌘+ ⌘− wins over `font-size`;
 ⌘0 goes back to it. With a theme or background, panes draw its
-background. "Reload Ghostty Config" (command palette, View menu) applies
-fonts and themes to open panes; the other options apply to new panes.
+background, and unless View ▸ Appearance names one, the window turns
+dark or light by it, as Ghostty's `window-theme = auto` does (not with
+`light:…,dark:…`, which follows the system). "Reload Ghostty Config"
+(command palette, View menu) applies fonts and themes to open panes; the
+other options apply to new panes.
 
 ## Develop and build
 

@@ -229,6 +229,15 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 	if focused {
 		bg, border, shadow = k.cardFocused, k.cardBorderFocused, k.shadowFocused
 	}
+	// With the configuration's colors, the card takes the theme's
+	// background, under its header too.
+	if termOpaque {
+		th := termLight
+		if c.Theme().Dark {
+			th = termDark
+		}
+		bg = th.Background
+	}
 	card.Background(bg).Border(1, border).
 		Shadow(0, 1, 2, 0, shadow).
 		Shadow(0, 6, 22, -2, shadow)
@@ -237,13 +246,6 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 	card.Children(func() {
 		a.paneHeader(c, k, t, p, focused, hovered)
 		body := ui.Box(c).Grow(1).MinHeight(0).Padding(0, 5, 6, 5)
-		if termOpaque {
-			th := termLight
-			if c.Theme().Dark {
-				th = termDark
-			}
-			body.Background(th.Background)
-		}
 		body.Children(func() {
 			if p.term == nil {
 				return

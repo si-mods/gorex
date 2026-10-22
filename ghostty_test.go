@@ -152,3 +152,21 @@ func TestGhosttyFontSize(t *testing.T) {
 		t.Errorf("pixel adjust gave %v", l)
 	}
 }
+
+func TestGhosttyAppearance(t *testing.T) {
+	defer func() { ghostty = ghosttyConfig{}; applyGhostty() }()
+	for _, tc := range []struct{ conf, want string }{
+		{"", ""},
+		{"theme = Gruvbox Dark\n", "dark"},
+		{"theme = Gruvbox Light\n", "light"},
+		{"background = #101010\n", "dark"},
+		{"theme = light:Gruvbox Light,dark:Gruvbox Dark\n", ""},
+		{"theme = No Such Theme\n", ""},
+	} {
+		ghostty = *parseGhostty(writeConf(t, t.TempDir(), "c", tc.conf))
+		applyGhostty()
+		if termAppearance != tc.want {
+			t.Errorf("%q: appearance %q, want %q", tc.conf, termAppearance, tc.want)
+		}
+	}
+}

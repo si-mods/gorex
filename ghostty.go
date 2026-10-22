@@ -261,7 +261,7 @@ func (c *ghosttyConfig) font(size float32) terminal.Font {
 // themes returns the colors of terminals in light and dark windows: GoRex's
 // own, or the configured theme's, with the configured colors over them.
 // Opaque tells whether the panes must draw the theme's background, as they
-// must when the configuration sets a theme or a background.
+// must when the configuration sets a theme that loads or a background.
 func (c *ghosttyConfig) themes() (light, dark *terminal.Theme, opaque bool) {
 	l, d := *lightTerm, *darkTerm
 	if c.Theme != "" {
@@ -279,15 +279,14 @@ func (c *ghosttyConfig) themes() (light, dark *terminal.Theme, opaque bool) {
 		}
 		if lname != "" {
 			if t, err := terminal.GhosttyTheme(lname); err == nil {
-				l = *t
+				l, opaque = *t, true
 			}
 		}
 		if dname != "" {
 			if t, err := terminal.GhosttyTheme(dname); err == nil {
-				d = *t
+				d, opaque = *t, true
 			}
 		}
-		opaque = true
 	}
 	for _, t := range []*terminal.Theme{&l, &d} {
 		if c.Background != nil {
@@ -320,6 +319,10 @@ var (
 	termFont            = ghostty.font(defaultFontSize)
 	termLight, termDark = lightTerm, darkTerm
 	termOpaque          bool
+	// termAppearance is the windows' appearance the colors call for, as
+	// Ghostty's window-theme = auto picks it: "dark" or "light" by the
+	// background of one theme for both, or "" to follow the system.
+	termAppearance string
 )
 
 // applyGhostty computes the terminals' font and colors from the
@@ -327,6 +330,13 @@ var (
 func applyGhostty() {
 	termFont = ghostty.font(ghostty.fontSize(prefs.FontSize))
 	termLight, termDark, termOpaque = ghostty.themes()
+	termAppearance = ""
+	if termOpaque && !strings.Contains(ghostty.Theme, "light:") && !strings.Contains(ghostty.Theme, "dark:") {
+		termAppearance = "light"
+		if b := termDark.Background; int(b.R)*299+int(b.G)*587+int(b.B)*114 < 128*1000 {
+			termAppearance = "dark"
+		}
+	}
 }
 
 // termOptions are the options of every terminal. The cursor, scrollback,
@@ -350,6 +360,7 @@ func termOptions() terminal.Options {
 func (a *App) reloadGhostty() {
 	loadGhostty()
 	applyGhostty()
+	applyAppearance()
 	for _, t := range a.tabs {
 		for _, p := range t.panes() {
 			if p.term != nil {

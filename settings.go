@@ -43,8 +43,14 @@ func saveSettings() {
 	os.WriteFile(settingsPath(), b, 0o600)
 }
 
+// applyAppearance sets the windows' appearance: the user's choice, else the
+// one the terminals' colors call for, else the system's.
 func applyAppearance() {
-	switch prefs.Appearance {
+	v := prefs.Appearance
+	if v == "" {
+		v = termAppearance
+	}
+	switch v {
 	case "light":
 		mygo.Theme.SetSource(mygo.ThemeLight)
 	case "dark":
