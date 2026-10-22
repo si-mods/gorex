@@ -28,10 +28,12 @@ func loadSettings() {
 	if b, err := os.ReadFile(settingsPath()); err == nil {
 		json.Unmarshal(b, &prefs)
 	}
+	// A size out of range counts as none: Ghostty's font-size, or the default.
 	if prefs.FontSize < 6 || prefs.FontSize > 40 {
-		prefs.FontSize = defaultFontSize
+		prefs.FontSize = 0
 	}
-	termFont.Size = prefs.FontSize
+	loadGhostty()
+	applyGhostty()
 	applyAppearance()
 }
 
@@ -41,8 +43,14 @@ func saveSettings() {
 	os.WriteFile(settingsPath(), b, 0o600)
 }
 
+// applyAppearance sets the windows' appearance: the user's choice, else the
+// one the terminals' colors call for, else the system's.
 func applyAppearance() {
-	switch prefs.Appearance {
+	v := prefs.Appearance
+	if v == "" {
+		v = termAppearance
+	}
+	switch v {
 	case "light":
 		mygo.Theme.SetSource(mygo.ThemeLight)
 	case "dark":
@@ -58,11 +66,14 @@ func (a *App) setAppearance(v string) {
 	saveSettings()
 }
 
-// setFontSize changes the size of the terminals' text, in every pane.
+// setFontSize changes the size of the terminals' text, in every pane. Zero
+// goes back to the default size, which Ghostty's font-size sets.
 func (a *App) setFontSize(size float32) {
-	size = min(max(size, 8), 32)
+	if size > 0 {
+		size = min(max(size, 8), 32)
+	}
 	prefs.FontSize = size
-	termFont.Size = size
+	termFont.Size = ghostty.fontSize(size)
 	for _, t := range a.tabs {
 		for _, p := range t.panes() {
 			if p.term != nil {

@@ -59,6 +59,35 @@ Ctrl+D, Ctrl+W…), so GoRex's shortcuts take Shift too, as copying and
 pasting do (Ctrl+Shift+C, Ctrl+Shift+V), and none take Control and Alt,
 which type characters (AltGr) on many keyboards.
 
+### Ghostty configuration
+
+GoRex reads Ghostty's config: `$XDG_CONFIG_HOME/ghostty/config.ghostty`
+(`config`), else `%LOCALAPPDATA%` on Windows or `~/.config`; on macOS also
+`~/Library/Application Support/com.mitchellh.ghostty/`. `config-file`
+includes work. `GOREX_GHOSTTY_CONFIG` names one file instead.
+
+Supported: `font-family`, `font-size`, `font-feature`, `font-thicken`,
+`adjust-cell-height` (percent), `theme` (also `light:…,dark:…`),
+`background`, `foreground`, `cursor-color`, `cursor-text`,
+`selection-background`, `selection-foreground`, `palette` (0–15),
+`cursor-style`, `cursor-style-blink`, `scrollback-limit`,
+`macos-option-as-alt`, `copy-on-select` (`clipboard`; `true` is
+Linux's selection clipboard, so it copies nothing), `right-click-action`,
+`minimum-contrast`, `keybind`. `keybind` takes `clear`, `performable:`,
+and the actions unbind, ignore, copy_to_clipboard, paste_from_clipboard,
+select_all, clear_screen, increase_font_size, decrease_font_size,
+reset_font_size, and scroll_page_up, scroll_page_down, scroll_to_top,
+scroll_to_bottom; `global:`, `all:`, and `unconsumed:` binds, sequences
+(`a>b`), and other actions are skipped. GoRex's own shortcuts come
+before keybinds. A text size set with ⌘+ ⌘− wins over `font-size`;
+⌘0 goes back to it. With a theme or background, panes draw its
+background, and unless View ▸ Appearance names one, the window turns
+dark or light by it, as Ghostty's `window-theme = auto` does (not with
+`light:…,dark:…`, which follows the system). "Reload Ghostty Config"
+(command palette, View menu) applies fonts, themes, `copy-on-select`,
+and `minimum-contrast` to open panes; the other options apply to new
+panes.
+
 ## Develop and build
 
 GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.6.2, whose CLI

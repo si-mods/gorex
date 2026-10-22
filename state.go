@@ -193,7 +193,9 @@ func (a *App) newPane(dir string, cols, rows int) *Pane {
 // attach makes the pane's terminal, attached to its session.
 func (a *App) attach(p *Pane, cols, rows int) {
 	if p.SID == "" {
-		term, err := terminal.New(terminal.Options{Conn: nopConn{}, Transparent: true, Font: termFont, Theme: lightTerm, DarkTheme: darkTerm})
+		opts := termOptions()
+		opts.Conn = nopConn{}
+		term, err := terminal.New(opts)
 		if err == nil {
 			term.Feed([]byte("\x1b[31mCould not start a session: " + a.err + "\x1b[0m\r\n"))
 			p.term = term
@@ -212,32 +214,28 @@ func (a *App) attach(p *Pane, cols, rows int) {
 			a.post(fn)
 		}
 	}
-	term, err := terminal.New(terminal.Options{
-		Conn:        p.stream,
-		Font:        termFont,
-		Theme:       lightTerm,
-		DarkTheme:   darkTerm,
-		Transparent: true,
-		OnTitle: func(title string) {
-			update(func() { p.title = title })
-		},
-		OnBell: func() {
-			update(func() { a.ring(p) })
-		},
-		OnNotify: func(title, body string) {
-			if title == "" {
-				title = "GoRex"
+	opts := termOptions()
+	opts.Conn = p.stream
+	opts.OnTitle = func(title string) {
+		update(func() { p.title = title })
+	}
+	opts.OnBell = func() {
+		update(func() { a.ring(p) })
+	}
+	opts.OnNotify = func(title, body string) {
+		if title == "" {
+			title = "GoRex"
+		}
+		mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
+	}
+	opts.OnExit = func(int) {
+		update(func() {
+			if !p.closed && !a.quitting {
+				a.closePane(p)
 			}
-			mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
-		},
-		OnExit: func(int) {
-			update(func() {
-				if !p.closed && !a.quitting {
-					a.closePane(p)
-				}
-			})
-		},
-	})
+		})
+	}
+	term, err := terminal.New(opts)
 	if err != nil {
 		log.Printf("terminal: %v", err)
 		a.err = err.Error()
