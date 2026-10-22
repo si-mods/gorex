@@ -102,8 +102,9 @@ func (a *App) open() {
 		Content:              ui.View(a.view),
 	}
 	if ownControls {
-		// The title bar draws the window's controls (windowControls).
-		opts.TitleBarStyle, opts.Frameless = mygo.TitleBarDefault, true
+		// The title bar draws the window's controls (windowControls); the
+		// hidden title bar keeps the window's top edge, which resizes it.
+		opts.HideWindowButtons = true
 	}
 	win := mygo.NewWindow(opts)
 	a.win = win
