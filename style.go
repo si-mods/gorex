@@ -137,7 +137,8 @@ func registerFonts() {
 	}
 }
 
-var termFont = terminal.Font{Family: "JetBrains Mono, SF Mono, Menlo, monospace", Size: 11.6, LineHeight: 1.0}
+// defaultFontFamily is the terminals' font family, after the user's own.
+const defaultFontFamily = "JetBrains Mono, SF Mono, Menlo, monospace"
 
 // The terminals' colors: soft ink on the panes' paper, and the dark kind.
 var lightTerm = &terminal.Theme{

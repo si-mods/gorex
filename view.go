@@ -237,6 +237,13 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 	card.Children(func() {
 		a.paneHeader(c, k, t, p, focused, hovered)
 		body := ui.Box(c).Grow(1).MinHeight(0).Padding(0, 5, 6, 5)
+		if termOpaque {
+			th := termLight
+			if c.Theme().Dark {
+				th = termDark
+			}
+			body.Background(th.Background)
+		}
 		body.Children(func() {
 			if p.term == nil {
 				return

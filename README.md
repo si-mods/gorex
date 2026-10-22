@@ -59,6 +59,23 @@ Ctrl+D, Ctrl+W…), so GoRex's shortcuts take Shift too, as copying and
 pasting do (Ctrl+Shift+C, Ctrl+Shift+V), and none take Control and Alt,
 which type characters (AltGr) on many keyboards.
 
+### Ghostty configuration
+
+GoRex reads Ghostty's config: `$XDG_CONFIG_HOME/ghostty/config.ghostty`
+(`config`), else `%LOCALAPPDATA%` on Windows or `~/.config`; on macOS also
+`~/Library/Application Support/com.mitchellh.ghostty/`. `config-file`
+includes work. `GOREX_GHOSTTY_CONFIG` names one file instead.
+
+Supported: `font-family`, `font-size`, `font-feature`, `font-thicken`,
+`adjust-cell-height` (percent), `theme` (also `light:…,dark:…`),
+`background`, `foreground`, `cursor-color`, `cursor-text`,
+`selection-background`, `selection-foreground`, `palette` (0–15),
+`cursor-style`, `cursor-style-blink`, `scrollback-limit`,
+`macos-option-as-alt`. A text size set with ⌘+ ⌘− wins over `font-size`;
+⌘0 goes back to it. With a theme or background, panes draw its
+background. "Reload Ghostty Config" (command palette, View menu) applies
+fonts and themes to open panes; the other options apply to new panes.
+
 ## Develop and build
 
 GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.6.2, whose CLI
