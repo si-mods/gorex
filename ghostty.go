@@ -31,6 +31,12 @@ type ghosttyConfig struct {
 	NoBlink     bool
 	Scrollback  int
 	OptionAsAlt bool
+
+	CopyOnSelect      terminal.CopyOnSelect
+	RightClick        terminal.RightClickAction
+	MinimumContrast   float32
+	Keybinds          []terminal.Keybind
+	NoDefaultKeybinds bool
 }
 
 // ghostty is the configuration GoRex has read.
@@ -228,7 +234,142 @@ func (c *ghosttyConfig) set(key, val string) {
 		}
 	case "macos-option-as-alt":
 		c.OptionAsAlt = val == "left" || val == "right" || parseBool(val)
+	case "copy-on-select":
+		// Ghostty's true copies to the selection clipboard of Linux, which the
+		// terminal lacks, so only "clipboard" copies.
+		c.CopyOnSelect = terminal.CopyOnSelectNone
+		if strings.ToLower(val) == "clipboard" {
+			c.CopyOnSelect = terminal.CopyOnSelectClipboard
+		}
+	case "right-click-action":
+		if a, ok := rightClickActions[strings.ToLower(val)]; ok {
+			c.RightClick = a
+		}
+	case "minimum-contrast":
+		if f, err := strconv.ParseFloat(val, 32); err == nil && f == f {
+			c.MinimumContrast = float32(min(max(f, 1), 21))
+		}
+	case "keybind":
+		c.setKeybind(val)
 	}
+}
+
+var rightClickActions = map[string]terminal.RightClickAction{
+	"context-menu":  terminal.RightClickContextMenu,
+	"paste":         terminal.RightClickPaste,
+	"copy":          terminal.RightClickCopy,
+	"copy-or-paste": terminal.RightClickCopyOrPaste,
+	"ignore":        terminal.RightClickIgnore,
+}
+
+var keybindMods = map[string]ui.Modifiers{
+	"ctrl": ui.Ctrl, "control": ui.Ctrl,
+	"shift": ui.Shift,
+	"alt":   ui.Alt, "opt": ui.Alt, "option": ui.Alt,
+	"super": ui.Super, "cmd": ui.Super, "command": ui.Super,
+}
+
+// keybindKeys maps Ghostty's key names, besides a to z and 0 to 9, to keys.
+var keybindKeys = map[string]ui.Key{
+	"equal": ui.KeyEqual, "minus": ui.KeyMinus,
+	"page_up": ui.KeyPageUp, "page_down": ui.KeyPageDown,
+	"home": ui.KeyHome, "end": ui.KeyEnd,
+	"insert": ui.KeyInsert, "delete": ui.KeyDelete,
+	"enter": ui.KeyEnter, "tab": ui.KeyTab, "escape": ui.KeyEscape,
+	"space": ui.KeySpace, "backspace": ui.KeyBackspace,
+	"arrow_up": ui.KeyUp, "arrow_down": ui.KeyDown,
+	"arrow_left": ui.KeyLeft, "arrow_right": ui.KeyRight,
+	"grave_accent": ui.KeyBackquote, "bracket_left": ui.KeyBracketLeft,
+	"bracket_right": ui.KeyBracketRight, "comma": ui.KeyComma,
+	"period": ui.KeyPeriod, "slash": ui.KeySlash,
+	"semicolon": ui.KeySemicolon, "quote": ui.KeyQuote,
+	"backslash": ui.KeyBackslash,
+}
+
+var keybindActions = map[string]terminal.Action{
+	"unbind":               terminal.ActionNone,
+	"ignore":               terminal.ActionIgnore,
+	"copy_to_clipboard":    terminal.ActionCopy,
+	"paste_from_clipboard": terminal.ActionPaste,
+	"select_all":           terminal.ActionSelectAll,
+	"clear_screen":         terminal.ActionClearScreen,
+	"increase_font_size":   terminal.ActionIncreaseFontSize,
+	"decrease_font_size":   terminal.ActionDecreaseFontSize,
+	"reset_font_size":      terminal.ActionResetFontSize,
+	"scroll_page_up":       terminal.ActionScrollPageUp,
+	"scroll_page_down":     terminal.ActionScrollPageDown,
+	"scroll_to_top":        terminal.ActionScrollToTop,
+	"scroll_to_bottom":     terminal.ActionScrollToBottom,
+}
+
+func init() {
+	for i := range 26 {
+		keybindKeys[string(rune('a'+i))] = ui.KeyA + ui.Key(i)
+	}
+	for i := range 10 {
+		keybindKeys[string(rune('0'+i))] = ui.Key0 + ui.Key(i)
+	}
+	for i := range 12 {
+		keybindKeys["f"+strconv.Itoa(i+1)] = ui.KeyF1 + ui.Key(i)
+	}
+}
+
+// setKeybind applies a keybind line. "clear" drops the bindings so far and
+// the defaults. Lines GoRex cannot do are skipped: global, all and
+// unconsumed ones (they act outside a pane), sequences, and actions or keys
+// the terminal has none for. A later binding of a trigger replaces an
+// earlier one.
+func (c *ghosttyConfig) setKeybind(val string) {
+	if strings.ToLower(val) == "clear" {
+		c.Keybinds, c.NoDefaultKeybinds = nil, true
+		return
+	}
+	var b terminal.Keybind
+	for {
+		prefix, rest, ok := strings.Cut(val, ":")
+		if !ok || strings.ContainsAny(prefix, "=+>") {
+			break
+		}
+		switch strings.ToLower(strings.TrimSpace(prefix)) {
+		case "performable":
+			b.Performable = true
+		default:
+			// Including global, all, and unconsumed.
+			return
+		}
+		val = rest
+	}
+	trigger, action, ok := strings.Cut(val, "=")
+	if !ok || strings.Contains(trigger, ">") {
+		return
+	}
+	action, _, _ = strings.Cut(action, ":")
+	a, ok := keybindActions[strings.ToLower(strings.TrimSpace(action))]
+	if !ok {
+		return
+	}
+	b.Action = a
+	found := false
+	for _, part := range strings.Split(strings.ToLower(strings.TrimSpace(trigger)), "+") {
+		part = strings.TrimSpace(part)
+		if m, ok := keybindMods[part]; ok {
+			b.Mods |= m
+		} else if part == "plus" && !found {
+			// The defaults take plus as Shift and the equal key.
+			b.Key, b.Mods, found = ui.KeyEqual, b.Mods|ui.Shift, true
+		} else if k, ok := keybindKeys[part]; ok && !found {
+			b.Key, found = k, true
+		} else {
+			return
+		}
+	}
+	if !found {
+		return
+	}
+	c.Keybinds = slices.DeleteFunc(c.Keybinds, func(o terminal.Keybind) bool {
+		return o.Mods == b.Mods && o.Key == b.Key
+	})
+	c.Keybinds = append(c.Keybinds, b)
 }
 
 // fontSize is the size of the terminals' text: the user's own, from
@@ -340,8 +481,9 @@ func applyGhostty() {
 }
 
 // termOptions are the options of every terminal. The cursor, scrollback,
-// and option-as-alt are set only when a terminal is made, so a
-// reload applies them to new panes; fonts and themes it applies to all.
+// option-as-alt, right click, and keybinds are set only when a terminal is
+// made, so a reload applies them to new panes; fonts, themes, copy on
+// select, and minimum contrast it applies to all.
 func termOptions() terminal.Options {
 	return terminal.Options{
 		Font:        termFont,
@@ -352,11 +494,17 @@ func termOptions() terminal.Options {
 		NoBlink:     ghostty.NoBlink,
 		Scrollback:  ghostty.Scrollback,
 		OptionAsAlt: ghostty.OptionAsAlt,
+
+		CopyOnSelect:      ghostty.CopyOnSelect,
+		RightClick:        ghostty.RightClick,
+		MinimumContrast:   ghostty.MinimumContrast,
+		Keybinds:          ghostty.Keybinds,
+		NoDefaultKeybinds: ghostty.NoDefaultKeybinds,
 	}
 }
 
-// reloadGhostty reads the configuration again and applies the font and
-// colors to every pane.
+// reloadGhostty reads the configuration again and applies the font, colors,
+// copy on select, and minimum contrast to every pane.
 func (a *App) reloadGhostty() {
 	loadGhostty()
 	applyGhostty()
@@ -366,6 +514,8 @@ func (a *App) reloadGhostty() {
 			if p.term != nil {
 				p.term.SetFont(termFont)
 				p.term.SetTheme(termLight, termDark)
+				p.term.SetCopyOnSelect(ghostty.CopyOnSelect)
+				p.term.SetMinimumContrast(ghostty.MinimumContrast)
 			}
 		}
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/plugins/terminal"
@@ -168,5 +169,115 @@ func TestGhosttyAppearance(t *testing.T) {
 		if termAppearance != tc.want {
 			t.Errorf("%q: appearance %q, want %q", tc.conf, termAppearance, tc.want)
 		}
+	}
+}
+
+func TestGhosttyInputOptions(t *testing.T) {
+	for val, want := range map[string]terminal.CopyOnSelect{
+		"clipboard": terminal.CopyOnSelectClipboard, "Clipboard": terminal.CopyOnSelectClipboard,
+		"true": terminal.CopyOnSelectNone, "false": terminal.CopyOnSelectNone, "": terminal.CopyOnSelectNone,
+	} {
+		if c := parseGhostty(writeConf(t, t.TempDir(), "c", "copy-on-select = "+val+"\n")); c.CopyOnSelect != want {
+			t.Errorf("copy-on-select %q = %v", val, c.CopyOnSelect)
+		}
+	}
+	for val, want := range map[string]terminal.RightClickAction{
+		"context-menu": terminal.RightClickContextMenu, "paste": terminal.RightClickPaste,
+		"copy": terminal.RightClickCopy, "copy-or-paste": terminal.RightClickCopyOrPaste,
+		"ignore": terminal.RightClickIgnore, "bogus": terminal.RightClickPaste,
+	} {
+		// An unknown value keeps the earlier one.
+		c := parseGhostty(writeConf(t, t.TempDir(), "c", "right-click-action = paste\nright-click-action = "+val+"\n"))
+		if c.RightClick != want {
+			t.Errorf("right-click-action %q = %v", val, c.RightClick)
+		}
+	}
+	for val, want := range map[string]float32{"4.5": 4.5, "1": 1, "21": 21, "30": 21, "0.5": 1, "abc": 7, "NaN": 7, "": 7} {
+		c := parseGhostty(writeConf(t, t.TempDir(), "c", "minimum-contrast = 7\nminimum-contrast = "+val+"\n"))
+		if c.MinimumContrast != want {
+			t.Errorf("minimum-contrast %q = %v, want %v", val, c.MinimumContrast, want)
+		}
+	}
+}
+
+func TestGhosttyKeybind(t *testing.T) {
+	parse := func(lines ...string) *ghosttyConfig {
+		text := ""
+		for _, l := range lines {
+			text += "keybind = " + l + "\n"
+		}
+		return parseGhostty(writeConf(t, t.TempDir(), "c", text))
+	}
+	k := func(mods ui.Modifiers, key ui.Key, a terminal.Action) terminal.Keybind {
+		return terminal.Keybind{Mods: mods, Key: key, Action: a}
+	}
+
+	c := parse(
+		"ctrl+shift+c=copy_to_clipboard",
+		"Cmd+Option+Control+Shift+F12=ignore",
+		"performable:ctrl+c=copy_to_clipboard",
+		"alt+arrow_left=unbind",
+		"ctrl+z=increase_font_size:2",
+		"ctrl+plus=increase_font_size:1",
+		"super+grave_accent=scroll_to_top",
+		"ctrl+9=scroll_to_bottom",
+	)
+	want := []terminal.Keybind{
+		k(ui.Ctrl|ui.Shift, ui.KeyC, terminal.ActionCopy),
+		k(ui.Super|ui.Alt|ui.Ctrl|ui.Shift, ui.KeyF12, terminal.ActionIgnore),
+		{Mods: ui.Ctrl, Key: ui.KeyC, Action: terminal.ActionCopy, Performable: true},
+		k(ui.Alt, ui.KeyLeft, terminal.ActionNone),
+		k(ui.Ctrl, ui.KeyZ, terminal.ActionIncreaseFontSize),
+		k(ui.Ctrl|ui.Shift, ui.KeyEqual, terminal.ActionIncreaseFontSize),
+		k(ui.Super, ui.KeyBackquote, terminal.ActionScrollToTop),
+		k(ui.Ctrl, ui.Key9, terminal.ActionScrollToBottom),
+	}
+	if !slices.Equal(c.Keybinds, want) || c.NoDefaultKeybinds {
+		t.Errorf("keybinds = %+v", c.Keybinds)
+	}
+
+	// Lines GoRex cannot do are skipped.
+	c = parse(
+		"global:cmd+grave_accent=toggle_quick_terminal",
+		"all:ctrl+a=copy_to_clipboard",
+		"unconsumed:ctrl+b=copy_to_clipboard",
+		"ctrl+a>c=copy_to_clipboard",
+		"ctrl+n=new_window",
+		"ctrl+kana=copy_to_clipboard",
+		"ctrl+x+y=copy_to_clipboard",
+		"ctrl+=copy_to_clipboard",
+		"ctrl+c",
+		"=copy_to_clipboard",
+	)
+	if len(c.Keybinds) != 0 {
+		t.Errorf("skipped lines gave %+v", c.Keybinds)
+	}
+
+	// The last binding of a trigger wins, and clear drops the earlier ones.
+	c = parse("ctrl+a=select_all", "ctrl+b=paste_from_clipboard", "CTRL+A=unbind")
+	if want := []terminal.Keybind{k(ui.Ctrl, ui.KeyB, terminal.ActionPaste), k(ui.Ctrl, ui.KeyA, terminal.ActionNone)}; !slices.Equal(c.Keybinds, want) {
+		t.Errorf("duplicates: %+v", c.Keybinds)
+	}
+	c = parse("ctrl+a=select_all", "clear", "ctrl+b=select_all")
+	if !c.NoDefaultKeybinds || len(c.Keybinds) != 1 || c.Keybinds[0].Key != ui.KeyB {
+		t.Errorf("clear: %+v", c)
+	}
+}
+
+func TestGhosttyTermOptions(t *testing.T) {
+	old := ghostty
+	defer func() { ghostty = old }()
+	ghostty = *parseGhostty(writeConf(t, t.TempDir(), "c",
+		"copy-on-select = clipboard\nright-click-action = copy-or-paste\nminimum-contrast = 3\nkeybind = clear\nkeybind = ctrl+a=select_all\n"))
+	o := termOptions()
+	if o.CopyOnSelect != terminal.CopyOnSelectClipboard || o.RightClick != terminal.RightClickCopyOrPaste ||
+		o.MinimumContrast != 3 || !o.NoDefaultKeybinds || len(o.Keybinds) != 1 {
+		t.Errorf("options = %+v", o)
+	}
+	// A reload starts from a fresh configuration: nothing is kept.
+	ghostty = *parseGhostty(writeConf(t, t.TempDir(), "c2", "font-size = 12\n"))
+	o = termOptions()
+	if o.CopyOnSelect != 0 || o.RightClick != 0 || o.MinimumContrast != 0 || o.NoDefaultKeybinds || o.Keybinds != nil {
+		t.Errorf("options leaked: %+v", o)
 	}
 }
