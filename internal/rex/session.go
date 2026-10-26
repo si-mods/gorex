@@ -74,6 +74,12 @@ func (a *attached) writer() {
 	}
 }
 
+// maxSize is the most columns or rows a terminal may have: the sizes a
+// client sends, remote ones included, are clamped to 1..maxSize.
+const maxSize = 1000
+
+func clampSize(n int) int { return min(max(n, 1), maxSize) }
+
 func newSession(id string, o CreateOptions) (*session, error) {
 	path, argv, name, err := shellCommand(o.Command)
 	if err != nil {
@@ -83,6 +89,7 @@ func newSession(id string, o CreateOptions) (*session, error) {
 	if cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
+	cols, rows = clampSize(cols), clampSize(rows)
 	dir := o.Dir
 	if dir == "" {
 		dir, _ = os.UserHomeDir()
@@ -200,6 +207,7 @@ func (s *session) attach(conn net.Conn, cols, rows int) {
 	a := &attached{conn: conn, out: make(chan []byte, 2048)}
 	s.mu.Lock()
 	if cols > 0 && rows > 0 {
+		cols, rows = clampSize(cols), clampSize(rows)
 		// The screen reflows to the window's size, which the program
 		// learns next.
 		s.vt.Resize(cols, rows)
@@ -253,6 +261,7 @@ func (s *session) input(p []byte) {
 
 // resize sets the size of the terminal and reports whether it changed.
 func (s *session) resize(cols, rows int) bool {
+	cols, rows = clampSize(cols), clampSize(rows)
 	s.mu.Lock()
 	changed := cols != s.cols || rows != s.rows
 	s.cols, s.rows = cols, rows

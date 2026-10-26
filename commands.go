@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -56,6 +57,8 @@ var (
 	cmdLight       = command{Title: "Appearance: Light", Run: func(a *App) { a.setAppearance("light") }}
 	cmdDark        = command{Title: "Appearance: Dark", Run: func(a *App) { a.setAppearance("dark") }}
 	cmdSystem      = command{Title: "Appearance: System", Run: func(a *App) { a.setAppearance("") }}
+	cmdSettings    = command{Title: "Settings…", Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
+	cmdUpdates     = command{Title: "Check for Updates…", Run: func(a *App) { updater.CheckForUpdates() }}
 	cmdEndAll      = command{Title: "Quit and End All Sessions", Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
 )
 
@@ -66,7 +69,7 @@ var paletteCommands = []*command{
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
-	&cmdGhostty, &cmdClearScroll, &cmdRestart, &cmdEndAll,
+	&cmdGhostty, &cmdClearScroll, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdEndAll,
 }
 
 // commands are all of them.
@@ -118,7 +121,7 @@ func (s shortcut) String() string {
 		key = map[ui.Key]string{
 			ui.KeyEnter: "Enter", ui.KeyPageUp: "PageUp", ui.KeyPageDown: "PageDown",
 			ui.KeyLeft: "Left", ui.KeyRight: "Right", ui.KeyUp: "Up", ui.KeyDown: "Down",
-			ui.KeyEqual: "=", ui.KeyMinus: "-",
+			ui.KeyEqual: "=", ui.KeyMinus: "-", ui.KeyComma: ",",
 		}[k]
 	}
 	return strings.Join(append(parts, key), "+")
@@ -175,6 +178,9 @@ func (a *App) menu() *mygo.Menu {
 			item(&cmdCloseTab),
 			mygo.Separator(),
 			item(&cmdRestart),
+			mygo.Separator(),
+			item(&cmdSettings),
+			item(&cmdUpdates),
 			item(&cmdEndAll),
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
@@ -390,7 +396,7 @@ func (a *App) paletteItems() []paletteItem {
 		}
 	}
 	for _, cmd := range paletteCommands {
-		if cmd.Hidden || !match(cmd.Title) {
+		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || !match(cmd.Title) {
 			continue
 		}
 		cmd := cmd

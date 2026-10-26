@@ -59,6 +59,32 @@ Ctrl+D, Ctrl+W…), so GoRex's shortcuts take Shift too, as copying and
 pasting do (Ctrl+Shift+C, Ctrl+Shift+V), and none take Control and Alt,
 which type characters (AltGr) on many keyboards.
 
+### Settings
+
+Settings… (⌘, on macOS, Ctrl+, elsewhere; Shell menu and command palette)
+opens a window of its own with a sidebar of sections: Appearance (light,
+dark or system; text size), Terminal (font, cursor style and blink, copy on
+selection), Theme (any of Ghostty's themes, or follow the config),
+Keyboard (GoRex's shortcuts, read only), Remote (see
+[Remote access](#remote-access)) and About (version, Check for Updates…).
+The choices go to `settings.json`.
+
+Remote turns the server's remote access on and off, and manages it: the
+list of allowed clients (add one by name and public key, revoke one), this
+machine's own key to copy, and, while listening, the address, hidden until
+you show it, with Copy and Regenerate (which asks first). The switch stays
+off until a client is allowed. The page asks the server every two seconds
+while it shows. It does not connect to other hosts yet.
+
+Precedence: what you set in Settings, over Ghostty's config, over GoRex's
+defaults. "Reload Ghostty Config" reads the config again but never
+replaces a choice made in Settings; "Use Ghostty config" (Terminal)
+forgets the font, cursor, and copy-on-selection choices, and Theme's
+"Follow Ghostty config" the theme's. A theme chosen in Settings also
+replaces the config's `background`, `foreground`, `palette`, and the other
+colors, which belonged to its own theme. Font, theme, copy on selection,
+and the cursor apply to open panes at once.
+
 ### Ghostty configuration
 
 GoRex reads Ghostty's config: `$XDG_CONFIG_HOME/ghostty/config.ghostty`
@@ -88,6 +114,37 @@ dark or light by it, as Ghostty's `window-theme = auto` does (not with
 and `minimum-contrast` to open panes; the other options apply to new
 panes.
 
+## Remote access
+
+The session server can also listen on a
+[tailcat](https://github.com/tailscale/tailcat) address: Tailscale's data
+plane without its control plane, so WireGuard end to end, through a DERP
+relay or directly, with no Tailscale account. Remote access is off by
+default and turns on only once at least one client is allowed: each
+machine has a client key (`remote-client.json`), and the server lets in
+the keys of its allowlist only. Removing the last client turns remote
+access off. The server keeps its keys (`remote.json`, mode 0600), so its
+address stays the same; regenerating them makes a new one, and the old
+address stops working.
+
+What to know before turning it on:
+
+- The address is a secret: it holds the server's key and the WireGuard
+  pre-shared key. Do not paste it where others read it. GoRex never logs
+  it, nor any key.
+- The allowlist is what keeps others out. A leaked address alone gets
+  nobody in, but regenerate it anyway.
+- An allowed key means running commands as this user: a client may
+  start any program with any environment and attach to every session.
+  From a shell there it can reach the local socket, and so change the
+  layout and remote access itself. Trust it as you would an SSH key.
+- Over the connection itself, a remote client may list, create, kill,
+  resize and attach to sessions only. It may not shut the server down,
+  read or set the window layout, or see or change remote access
+  (`remote.*`): those are for the local socket only.
+- Every connection is limited: a line of requests of at most 1 MiB, a
+  terminal of 1 to 1000 columns and rows, and 8 kills at once.
+
 ## Develop and build
 
 GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.6.2, whose CLI
@@ -102,6 +159,24 @@ go run ./tools/mkicon  # redraw resources/icon.png
 
 `go get -tool github.com/egoist/mygo/cmd/mygo@latest` updates MyGo and its
 CLI together.
+
+### Release
+
+Releases update installed apps, signed with a key that only the
+maintainer holds. Once, run `go tool mygo keygen` and put the contents of
+`mygo-update.pub` in `updates.publicKey` of `mygo.json`; keep
+`mygo-update.key` out of the repository. For each release, add a
+`## 0.1.0` section (the version of `mygo.json`) to `CHANGELOG.md`, which
+becomes the release notes, then build and upload to a draft GitHub release
+(it needs `gh` or `GH_TOKEN`), and publish the draft:
+
+```sh
+MYGO_UPDATER_PRIVATE_KEY="$(cat path/to/mygo-update.key)" go tool mygo build -upload
+```
+
+Development builds and apps that cannot write where they are installed
+do not update; "Check for Updates…" is in the Shell menu and the command
+palette.
 
 The app keeps its state in its data directory: the server's socket and
 log, `layout.json` and `settings.json`, in `~/Library/Application
@@ -133,11 +208,15 @@ its top included.
 | `state.go` | tabs, the tree of splits, panes, saving and restoring the layout |
 | `view.go`, `tabs.go`, `host.go`, `commands.go` | the interface: title bar, tabs, panes, host popover, menus and palette |
 | `programs.go` | how programs show: names, glyphs, tile colors |
-| `style.go`, `settings.go` | colors, fonts, terminal themes; appearance and text size |
+| `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
+| `settingsview.go`, `remoteview.go` | the Settings window, and its Remote page |
+| `tools/remotectl` | runs and probes the session server without the app: allow, enable, probe over tailcat |
+| `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 
-Not replicated: Rex's connections to servers on other machines; GoRex's
-server listens on a local socket only.
+Rex's connections to servers on other machines are only half there: the
+server side exists (remote access, above), but the window cannot open
+remote hosts yet.
 
 Icons: [Lucide](https://lucide.dev) (ISC) and [Simple Icons](https://simpleicons.org)
 (CC0). Font: [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (OFL).

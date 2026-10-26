@@ -39,8 +39,9 @@ type ghosttyConfig struct {
 	NoDefaultKeybinds bool
 }
 
-// ghostty is the configuration GoRex has read.
-var ghostty ghosttyConfig
+// ghosttyRaw is the configuration GoRex has read, and ghostty the one it
+// uses: the user's choices from settings.json over it (see withPrefs).
+var ghosttyRaw, ghostty ghosttyConfig
 
 // ghosttyConfigPaths returns the files Ghostty reads, as it finds them, the
 // later over the earlier. GOREX_GHOSTTY_CONFIG names the only one when set.
@@ -74,7 +75,8 @@ func ghosttyConfigPaths() []string {
 
 // loadGhostty reads the configuration anew.
 func loadGhostty() {
-	ghostty = *parseGhostty(ghosttyConfigPaths()...)
+	ghosttyRaw = *parseGhostty(ghosttyConfigPaths()...)
+	ghostty = ghosttyRaw.withPrefs(prefs)
 }
 
 // parseGhostty reads configuration files in order, each over the last.
@@ -507,16 +509,5 @@ func termOptions() terminal.Options {
 // copy on select, and minimum contrast to every pane.
 func (a *App) reloadGhostty() {
 	loadGhostty()
-	applyGhostty()
-	applyAppearance()
-	for _, t := range a.tabs {
-		for _, p := range t.panes() {
-			if p.term != nil {
-				p.term.SetFont(termFont)
-				p.term.SetTheme(termLight, termDark)
-				p.term.SetCopyOnSelect(ghostty.CopyOnSelect)
-				p.term.SetMinimumContrast(ghostty.MinimumContrast)
-			}
-		}
-	}
+	a.applyPrefs()
 }

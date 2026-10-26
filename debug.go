@@ -12,6 +12,9 @@ import (
 // directory: each line of its file "do" is run, and "shot" captures the
 // window into shot.png.
 func (a *App) debugHook() {
+	if os.Getenv("GOREX_OPEN_SETTINGS") == "1" {
+		a.openSettings()
+	}
 	dir := os.Getenv("GOREX_DEBUG")
 	if dir == "" {
 		return
@@ -39,6 +42,40 @@ func (a *App) debug(dir, line string) {
 		return
 	}
 	switch verb {
+	case "section": // a section of the settings window
+		if w := settingsUI.win; w != nil {
+			w.Update(func() { a.showSection(arg) })
+		}
+	case "remote": // allow NAME KEY, enable, disable, regenerate, reveal, confirm: the Remote page's calls
+		op, rest, _ := strings.Cut(arg, " ")
+		switch op {
+		case "allow":
+			name, key, _ := strings.Cut(rest, " ")
+			a.client.AllowRemote(name, key)
+		case "enable":
+			a.client.EnableRemote()
+		case "disable":
+			a.client.DisableRemote()
+		case "regenerate":
+			a.client.RegenerateRemote()
+		case "reveal", "confirm":
+			if w := settingsUI.win; w != nil {
+				w.Update(func() {
+					remoteUI.reveal, remoteUI.confirm = op == "reveal", op == "confirm"
+					remoteUI.st.Address = ""
+					a.fetchRemote()
+				})
+			}
+		}
+	case "appearance": // system, light or dark
+		a.setAppearance(map[string]string{"light": "light", "dark": "dark"}[arg])
+	case "sshot": // the settings window, into the file named by arg
+		time.Sleep(300 * time.Millisecond)
+		if w := settingsUI.win; w != nil {
+			if png, err := w.CapturePage(); err == nil {
+				os.WriteFile(filepath.Join(dir, arg), png, 0o644)
+			}
+		}
 	case "shot":
 		time.Sleep(100 * time.Millisecond)
 		if png, err := win.CapturePage(); err == nil {

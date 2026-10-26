@@ -22,9 +22,14 @@ type colors struct {
 	track, trackBorder, tabActive, tabSep ui.Color
 	tileRim                               ui.Color
 
-	busy, attention, exited ui.Color
+	busy, attention, exited, danger ui.Color
 
 	panel, panelBorder, panelSel, backdrop ui.Color
+
+	// accent is the color of what is chosen or on; panelSel is its wash.
+	accent, accentHover, accentPressed ui.Color
+	// surface is the face of controls, opaque as the popovers' panel.
+	surface, surfaceHover, surfacePressed ui.Color
 }
 
 var lightColors = colors{
@@ -55,6 +60,7 @@ var lightColors = colors{
 	tileRim:     ui.RGBA(255, 255, 255, 0.95),
 
 	busy:      ui.Hex("#34a853"),
+	danger:    ui.Hex("#ef4444"),
 	attention: ui.Hex("#f59e0b"),
 	exited:    ui.Hex("#a1a1a6"),
 
@@ -62,6 +68,9 @@ var lightColors = colors{
 	panelBorder: ui.RGBA(0, 0, 0, 0.08),
 	panelSel:    ui.RGBA(46, 111, 208, 0.12),
 	backdrop:    ui.RGBA(40, 20, 40, 0.06),
+
+	accent: ui.Hex("#2e6fd0"), accentHover: ui.Hex("#2a64bd"), accentPressed: ui.Hex("#2459a8"),
+	surface: ui.Hex("#fcfcfd"), surfaceHover: ui.Hex("#efeff2"), surfacePressed: ui.Hex("#e3e3e8"),
 }
 
 var darkColors = colors{
@@ -92,6 +101,7 @@ var darkColors = colors{
 	tileRim:     ui.RGBA(255, 255, 255, 0.22),
 
 	busy:      ui.Hex("#4ade80"),
+	danger:    ui.Hex("#ef4444"),
 	attention: ui.Hex("#fbbf24"),
 	exited:    ui.Hex("#636366"),
 
@@ -99,6 +109,9 @@ var darkColors = colors{
 	panelBorder: ui.RGBA(255, 255, 255, 0.1),
 	panelSel:    ui.RGBA(108, 178, 255, 0.18),
 	backdrop:    ui.RGBA(0, 0, 0, 0.2),
+
+	accent: ui.Hex("#6cb2ff"), accentHover: ui.Hex("#82bfff"), accentPressed: ui.Hex("#5aa2f0"),
+	surface: ui.Hex("#262629"), surfaceHover: ui.Hex("#303035"), surfacePressed: ui.Hex("#3a3a40"),
 }
 
 func colorsOf(c *ui.Context) *colors {
@@ -165,4 +178,21 @@ var darkTerm = &terminal.Theme{
 		ui.Hex("#6e6e78"), ui.Hex("#ff8c9c"), ui.Hex("#9be8a8"), ui.Hex("#f2d28a"),
 		ui.Hex("#8ec5ff"), ui.Hex("#d7a8f2"), ui.Hex("#7fe3ea"), ui.Hex("#ffffff"),
 	},
+}
+
+// widgetTheme is the stock widgets' theme in GoRex's colors, so that the
+// segmented controls, switches, steppers and selects of a window look as
+// the rest of the app. Its Background is the face of a segmented control's
+// chosen part, not the window's.
+func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
+	t := *base
+	t.Background, t.Surface, t.SurfaceHover, t.SurfacePressed = k.surface, k.surface, k.surfaceHover, k.surfacePressed
+	t.Border, t.Text, t.TextMuted = k.panelBorder, k.text, k.textMuted
+	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = k.accent, k.accentHover, k.accentPressed, ui.Hex("#ffffff")
+	if t.Dark {
+		t.AccentText = ui.Hex("#10151c")
+	}
+	t.Selection, t.Focus = k.accent.Alpha(0.3), k.accent.Alpha(0.55)
+	t.Radius = 9
+	return &t
 }

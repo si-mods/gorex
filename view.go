@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 )
@@ -85,8 +86,10 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 // windowControls draws the buttons that minimize, maximize and close the
 // window, when it has none of its own: they are the title bar's other
 // buttons, and close's face turns red, as Windows has it.
-func (a *App) windowControls(c *ui.Context, k *colors) {
-	win := a.win
+func (a *App) windowControls(c *ui.Context, k *colors) { windowControls(c, k, a.win) }
+
+// windowControls draws the controls of win.
+func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 	if !ownControls || win == nil || win.IsFullScreen() {
 		return
 	}
@@ -382,7 +385,7 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 		ui.Row(c).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
 			ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(12).Background(k.panel).Border(1, k.panelBorder).
 				Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(8, 8).Radius(4).Background(ui.Hex("#ef4444"))
+				ui.Box(c).Size(8, 8).Radius(4).Background(k.danger)
 				ui.Text(c, a.err).FontSize(12.5).TextColor(k.text).MaxWidth(520)
 				if iconButton(c, k, "x", "Dismiss", 22, 14).Clicked() {
 					a.err = ""
