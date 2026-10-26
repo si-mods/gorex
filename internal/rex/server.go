@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -36,6 +37,7 @@ type Server struct {
 	idleFrom time.Time
 	quit     chan struct{}
 	quitOnce sync.Once
+	rem      remote
 }
 
 // idleTimeout is how long a server with no sessions and no app waits
@@ -77,6 +79,7 @@ func Serve() error {
 		close(s.hostDone)
 	}()
 	go s.watchIdle()
+	s.remoteLoad()
 	go func() {
 		<-s.quit
 		ln.Close()
@@ -93,6 +96,7 @@ func Serve() error {
 					all = append(all, ss)
 				}
 				s.mu.Unlock()
+				s.remoteClose()
 				for _, ss := range all {
 					ss.kill()
 				}
@@ -105,7 +109,7 @@ func Serve() error {
 			}
 			return err
 		}
-		go s.handle(conn)
+		go s.handle(conn, false)
 	}
 }
 
@@ -121,7 +125,7 @@ func (s *Server) watchIdle() {
 		s.mu.Lock()
 		idle := len(s.sessions) == 0 && s.controls == 0 && time.Since(s.idleFrom) > idleTimeout
 		s.mu.Unlock()
-		if idle {
+		if idle && !s.remoteEnabled() {
 			log.Print("rex: idle, exiting")
 			s.shutdown()
 			return
@@ -131,7 +135,9 @@ func (s *Server) watchIdle() {
 
 func (s *Server) shutdown() { s.quitOnce.Do(func() { close(s.quit) }) }
 
-func (s *Server) handle(conn net.Conn) {
+// handle serves a connection; a remote one may make the ops of
+// remoteAllowed only.
+func (s *Server) handle(conn net.Conn, remote bool) {
 	r := bufio.NewReaderSize(conn, 64<<10)
 	first, err := r.ReadBytes('\n')
 	if err != nil {
@@ -157,11 +163,11 @@ func (s *Server) handle(conn net.Conn) {
 		ss.attach(conn, a.Cols, a.Rows)
 		return
 	}
-	s.control(conn, r, first)
+	s.control(conn, r, first, remote)
 }
 
 // control serves a control connection: a request per line.
-func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte) {
+func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, remote bool) {
 	s.mu.Lock()
 	s.controls++
 	s.mu.Unlock()
@@ -185,9 +191,9 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte) {
 		if err := json.Unmarshal(line, &req); err == nil {
 			// Kills wait for the session to end: answer them aside.
 			if req.Op == "kill" {
-				go func() { reply(s.request(req)) }()
+				go func() { reply(s.request(req, remote)) }()
 			} else {
-				reply(s.request(req))
+				reply(s.request(req, remote))
 			}
 		}
 		var err error
@@ -198,8 +204,15 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte) {
 	}
 }
 
-func (s *Server) request(req Request) Response {
-	data, err := s.do(req)
+func (s *Server) request(req Request, remote bool) Response {
+	var data any
+	var err error
+	if remote && !remoteAllowed(req.Op) {
+		log.Printf("rex: denied %q to a remote connection", req.Op)
+		err = fmt.Errorf("%s is not allowed remotely", req.Op)
+	} else {
+		data, err = s.do(req)
+	}
 	res := Response{ID: req.ID}
 	if err != nil {
 		res.Error = err.Error()
@@ -219,6 +232,9 @@ func (s *Server) session(id string) (*session, error) {
 }
 
 func (s *Server) do(req Request) (any, error) {
+	if strings.HasPrefix(req.Op, "remote.") {
+		return s.remoteDo(req)
+	}
 	switch req.Op {
 	case "hello":
 		select {

@@ -106,6 +106,33 @@ dark or light by it, as Ghostty's `window-theme = auto` does (not with
 and `minimum-contrast` to open panes; the other options apply to new
 panes.
 
+## Remote access
+
+The session server can also listen on a
+[tailcat](https://github.com/tailscale/tailcat) address: Tailscale's data
+plane without its control plane, so WireGuard end to end, through a DERP
+relay or directly, with no Tailscale account. Remote access is off by
+default and turns on only once at least one client is allowed: each
+machine has a client key (`remote-client.json`), and the server lets in
+the keys of its allowlist only. Removing the last client turns remote
+access off. The server keeps its keys (`remote.json`, mode 0600), so its
+address stays the same; regenerating them makes a new one, and the old
+address stops working.
+
+What to know before turning it on:
+
+- The address is a secret: it holds the server's key and the WireGuard
+  pre-shared key. Do not paste it where others read it. GoRex never logs
+  it, nor any key.
+- The allowlist is what keeps others out. A leaked address alone gets
+  nobody in, but regenerate it anyway.
+- An allowed client can open shells and type into every session: trust
+  it as you would an SSH key.
+- A remote client may list, create, kill, resize and attach to sessions
+  only. It may not shut the server down, read or set the window layout,
+  or see or change remote access (`remote.*`): those are for the local
+  socket only.
+
 ## Develop and build
 
 GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.6.2, whose CLI

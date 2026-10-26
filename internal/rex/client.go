@@ -16,6 +16,10 @@ import (
 // Client is a control connection to the server.
 type Client struct {
 	conn net.Conn
+	// dial connects again to the server, for a stream; closer, if any,
+	// closes what dial dials through.
+	dial   func() (net.Conn, error)
+	closer io.Closer
 
 	wmu     sync.Mutex
 	mu      sync.Mutex
@@ -45,9 +49,13 @@ func Connect() (*Client, error) {
 			}
 		}
 	}
-	c := &Client{conn: conn, pending: map[int64]chan Response{}, closed: make(chan struct{})}
+	return newClient(conn, func() (net.Conn, error) { return net.Dial("unix", SocketPath()) }), nil
+}
+
+func newClient(conn net.Conn, dial func() (net.Conn, error)) *Client {
+	c := &Client{conn: conn, dial: dial, pending: map[int64]chan Response{}, closed: make(chan struct{})}
 	go c.read()
-	return c, nil
+	return c
 }
 
 // Executable returns the path of the running executable and when it was
@@ -181,7 +189,42 @@ func (c *Client) SetLayout(l json.RawMessage) error {
 
 func (c *Client) Shutdown() error { return c.call(Request{Op: "shutdown"}, nil) }
 
-func (c *Client) Close() error { return c.conn.Close() }
+// RemoteStatus tells the server's remote access; the address it gives
+// is a secret.
+func (c *Client) RemoteStatus() (s RemoteStatus, err error) {
+	err = c.call(Request{Op: "remote.status"}, &s)
+	return
+}
+
+// EnableRemote turns remote access on; it fails while no client is
+// allowed. The server listens in the background: see RemoteStatus.
+func (c *Client) EnableRemote() error { return c.call(Request{Op: "remote.enable"}, nil) }
+
+func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }
+
+// AllowRemote allows a client by its public key (ClientPublicKey on its
+// machine).
+func (c *Client) AllowRemote(name, publicKey string) error {
+	return c.call(Request{Op: "remote.allow", Remote: &RemoteClient{Name: name, PublicKey: publicKey}}, nil)
+}
+
+// RevokeRemote removes a client and drops its connections; removing the
+// last turns remote access off.
+func (c *Client) RevokeRemote(publicKey string) error {
+	return c.call(Request{Op: "remote.revoke", Remote: &RemoteClient{PublicKey: publicKey}}, nil)
+}
+
+// RegenerateRemote makes new keys: the address changes, the old one is
+// dead.
+func (c *Client) RegenerateRemote() error { return c.call(Request{Op: "remote.regenerate"}, nil) }
+
+func (c *Client) Close() error {
+	err := c.conn.Close()
+	if c.closer != nil {
+		c.closer.Close()
+	}
+	return err
+}
 
 // Stream is a session attached to, for a terminal's Conn: it attaches
 // once it knows the size of the screen, from the first Resize, or after
@@ -227,7 +270,7 @@ func (s *Stream) attach() {
 	}
 	cols, rows := s.cols, s.rows
 	s.mu.Unlock()
-	conn, err := net.Dial("unix", SocketPath())
+	conn, err := s.c.dial()
 	if err == nil {
 		b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows})
 		if _, err = conn.Write(append(b, '\n')); err == nil {

@@ -28,6 +28,25 @@ type Request struct {
 	Rows   int             `json:"rows,omitempty"`
 	Create *CreateOptions  `json:"create,omitempty"`
 	Layout json.RawMessage `json:"layout,omitempty"`
+	// Remote is the client of remote.allow and remote.revoke.
+	Remote *RemoteClient `json:"remote,omitempty"`
+}
+
+// RemoteClient is a client allowed to connect remotely: PublicKey is its
+// tailcat node key, "nodekey:" and 64 hex digits.
+type RemoteClient struct {
+	Name      string `json:"name"`
+	PublicKey string `json:"publicKey"`
+}
+
+// RemoteStatus answers remote.status. Address, the tailcat address
+// clients connect to while running, is a secret.
+type RemoteStatus struct {
+	Enabled   bool           `json:"enabled"`
+	Running   bool           `json:"running"`
+	Address   string         `json:"address,omitempty"`
+	Allowed   []RemoteClient `json:"allowed"`
+	LastError string         `json:"lastError,omitempty"`
 }
 
 // Response answers the Request with the same ID.
