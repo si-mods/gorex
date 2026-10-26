@@ -159,8 +159,8 @@ func (a *App) sidebarButton(c *ui.Context, k *colors, right bool) {
 	}
 }
 
-// sidebar draws the sidebar: under the window's controls its buttons, the
-// host, and the tabs, one a row; the settings' button at its foot.
+// sidebar draws the sidebar: under the window's controls its buttons and
+// the tabs, one a row; the settings' button and the host's at its foot.
 func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 	bar := c.TitleBar()
 	winW, _ := c.Size()
@@ -186,7 +186,6 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			}
 		})
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6, 6, 6).Children(func() {
-			ui.Row(c).Padding(0, 0, 4, 0).Children(func() { a.hostChip(c, k) })
 			tabs := slices.Clone(a.tabs)
 			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label(locales.TabListLabel()).Children(func() {
 				if len(a.hosts) == 0 {
@@ -209,6 +208,8 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			if iconButton(c, k, "settings-2", locales.SidebarSettings(), 30, 16).Tooltip(tip(locales.SidebarSettings(), &cmdSettings)).Clicked() {
 				a.openSettings()
 			}
+			ui.Spacer(c)
+			a.hostButton(c, k)
 		})
 	})
 }

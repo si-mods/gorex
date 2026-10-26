@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // testShell is the shell of the tests: its prompt ends with prompt, and
@@ -480,5 +481,40 @@ func TestSidebarReveals(t *testing.T) {
 	tt.Frame()
 	if r, _ := tt.Find("Last "); r.Y < 620 {
 		t.Errorf("the list scrolled back to the chosen tab, at %v", r)
+	}
+}
+
+// TestSidebarHostButton: the left sidebar has no host chip at its top; an
+// icon at its foot opens the host's panel.
+func TestSidebarHostButton(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left"}
+	tt.Frame()
+	list, ok := tt.Find("Tabs")
+	if !ok {
+		t.Fatalf("no sidebar; texts %q", tt.Texts())
+	}
+	_, model, _ := a.hostIdentity()
+	if model != "" && tt.HasText(model) {
+		t.Errorf("the sidebar shows the host chip (%q)", model)
+	}
+	name, _, _ := a.hostIdentity()
+	label := locales.HostLabel(name)
+	btn, ok := tt.Find(label)
+	if !ok {
+		t.Fatalf("no host button; texts %q", tt.Texts())
+	}
+	if btn.Y < list.Y+list.H-1 || btn.X < list.X+list.W/2 {
+		t.Errorf("the host button is at %v, not at the foot's right; the tabs at %v", btn, list)
+	}
+	if tt.HasText(locales.HostServer()) {
+		t.Error("the host panel is open before a click")
+	}
+	tt.Click(label)
+	tt.Frame()
+	if !a.hostOpen || !tt.HasText(locales.HostServer()) {
+		t.Errorf("a click did not open the host panel; texts %q", tt.Texts())
 	}
 }
