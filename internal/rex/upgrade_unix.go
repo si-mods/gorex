@@ -133,7 +133,7 @@ func (s *Server) upgrade(exe string) error {
 	for _, fd := range fds {
 		unix.FcntlInt(uintptr(fd), unix.F_SETFD, 0)
 	}
-	err = syscall.Exec(exe, []string{exe, "-server", "-resume", path}, os.Environ())
+	err = syscall.Exec(exe, []string{exe, "-server", "-resume", path}, serverEnv())
 	for _, fd := range fds {
 		unix.CloseOnExec(fd)
 	}
