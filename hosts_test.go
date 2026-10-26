@@ -157,6 +157,16 @@ func (p *hostProxy) setDown(down bool) {
 	}
 }
 
+// sessionInfos lists the sessions of a server.
+func sessionInfos(t *testing.T, c *rex.Client) []rex.SessionInfo {
+	t.Helper()
+	infos, err := c.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return infos
+}
+
 // sessionIDs lists the sessions a server runs.
 func sessionIDs(t *testing.T, c *rex.Client) []string {
 	t.Helper()
@@ -414,52 +424,43 @@ func TestHostStreamResizeWhileAttaching(t *testing.T) {
 	h := newHostConn(savedHost{ID: "h1", Name: "office-pc"})
 	h.client = c
 	gate := make(chan struct{})
+	var once sync.Once
+	open := func() { once.Do(func() { close(gate) }) }
+	t.Cleanup(open)
 	proxy.mu.Lock()
 	proxy.gate = gate
 	proxy.mu.Unlock()
 
 	s := newHostStream(h, info.ID, 80, 24)
 	t.Cleanup(func() { s.Close() })
+	// The stream returns what the session prints once it attached and
+	// told the session its size.
+	printed := make(chan struct{})
 	go func() {
 		buf := make([]byte, 32<<10)
-		for {
+		for first := true; ; first = false {
 			if _, err := s.Read(buf); err != nil {
 				return
 			}
-		}
-	}()
-	for i := 0; proxy.held.Load() == 0; i++ {
-		if i == 200 {
-			t.Fatal("the stream does not attach")
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	s.Resize(121, 41)
-	close(gate)
-
-	size := func() (int, int) {
-		infos, err := remote.List()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, in := range infos {
-			if in.ID == info.ID {
-				return in.Cols, in.Rows
+			if first {
+				close(printed)
 			}
 		}
-		t.Fatal("the session is gone")
-		return 0, 0
+	}()
+	for proxy.held.Load() == 0 {
+		time.Sleep(time.Millisecond)
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		cols, rows := size()
-		if cols == 121 && rows == 41 {
-			break
+	s.Resize(121, 41)
+	open()
+	select {
+	case <-printed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the stream does not attach")
+	}
+	for _, in := range sessionInfos(t, remote) {
+		if in.ID == info.ID && (in.Cols != 121 || in.Rows != 41) {
+			t.Fatalf("the session is %dx%d, the window 121x41", in.Cols, in.Rows)
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the session is %dx%d, the window 121x41", cols, rows)
-		}
-		time.Sleep(20 * time.Millisecond)
 	}
 }
 

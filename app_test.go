@@ -540,14 +540,28 @@ func TestSidebarHostButton(t *testing.T) {
 		t.Errorf("no host button labeled %q; texts %q", want, tt.Texts())
 	}
 
+	// A host on its first attempt, as at every launch, is no issue.
+	a.hosts = []*hostConn{{savedHost: savedHost{ID: "1", Name: "PC024"}, state: hostConnecting}}
+	tt.Frame()
+	if _, ok := tt.Find(locales.HostLabel("Testbook")); !ok {
+		t.Errorf("a host connecting the first time flags the button; texts %q", tt.Texts())
+	}
+	a.hosts = []*hostConn{{savedHost: savedHost{ID: "2", Name: "office"}, state: hostFailed}}
+	tt.Frame()
+
 	// In a short window the panel keeps inside it.
-	tt.SetSize(900, 420)
+	tt.SetSize(900, 300)
 	a.hostOpen = true
 	tt.Frame()
 	tt.Frame()
-	btn, _ = tt.Find(want)
+	btn, _ = tt.Find(locales.HostLabelIssue("Testbook", "office", status, 0))
 	if h, ok := tt.Find(locales.HostServer()); ok && (h.Y < 0 || h.Y+h.H > btn.Y) {
 		t.Errorf("in a short window the panel's row is at %v, over the button at %v or out of the window", h, btn)
+	}
+	// Its first row too, under the panel's padding (14): the panel is no
+	// higher than the room above the button.
+	if h, ok := tt.Find("Testbook"); !ok || h.Y < 14 {
+		t.Errorf("in a short window the panel's top row is at %v: the panel goes past the window's top", h)
 	}
 	if !tt.HasText(locales.SettingsHosts()) {
 		t.Errorf("the hosts' list is out of reach; texts %q", tt.Texts())

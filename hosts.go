@@ -579,6 +579,7 @@ type hostStream struct {
 	OnData   func(n int)
 	onChange func()
 
+	sizeMu     sync.Mutex // sendSize, one at a time
 	mu         sync.Mutex
 	cur        *rex.Stream
 	fresh      bool // cur printed nothing yet
@@ -639,13 +640,12 @@ func (s *hostStream) stream() (*rex.Stream, error) {
 			return nil, io.EOF
 		}
 		s.cur, s.fresh = st, true
+		s.mu.Unlock()
 		// A Resize while it attached, over a slow network as the view
 		// first lays out, only noted the size: the session takes it now.
 		// Left at the old size, its console draws for a screen of other
 		// rows than the window's, and lines land on each other.
-		cols, rows = s.cols, s.rows
-		s.mu.Unlock()
-		st.Resize(cols, rows)
+		s.sendSize()
 		return st, nil
 	}
 }
@@ -751,12 +751,22 @@ func (s *hostStream) Write(p []byte) (int, error) {
 func (s *hostStream) Resize(cols, rows int) error {
 	s.mu.Lock()
 	s.cols, s.rows = cols, rows
-	st := s.cur
+	s.mu.Unlock()
+	s.sendSize()
+	return nil
+}
+
+// sendSize tells the stream of the moment the latest size, one at a time,
+// so that an older size never comes last.
+func (s *hostStream) sendSize() {
+	s.sizeMu.Lock()
+	defer s.sizeMu.Unlock()
+	s.mu.Lock()
+	st, cols, rows := s.cur, s.cols, s.rows
 	s.mu.Unlock()
 	if st != nil {
 		st.Resize(cols, rows)
 	}
-	return nil
 }
 
 // Close detaches; the session goes on.

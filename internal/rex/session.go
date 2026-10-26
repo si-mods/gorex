@@ -280,17 +280,11 @@ func (s *session) read() {
 }
 
 // attach attaches a connection: it gets a snapshot of the session's
-// screen and scrollback at its size, then what the session prints, and
-// what it sends is typed.
-func (s *session) attach(conn net.Conn, cols, rows int) {
+// screen and scrollback, at the size the server gave the session for it
+// (resize), then what the session prints, and what it sends is typed.
+func (s *session) attach(conn net.Conn) {
 	a := &attached{conn: conn, out: make(chan []byte, 2048)}
 	s.mu.Lock()
-	if cols > 0 && rows > 0 {
-		cols, rows = clampSize(cols), clampSize(rows)
-		// The screen reflows to the window's size, which the program
-		// learns next.
-		s.vt.Resize(cols, rows)
-	}
 	snap, title := s.view()
 	if title != "" {
 		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
@@ -306,9 +300,6 @@ func (s *session) attach(conn net.Conn, cols, rows int) {
 	go a.writer()
 	if exited {
 		return
-	}
-	if cols > 0 && rows > 0 {
-		s.resize(cols, rows)
 	}
 	buf := make([]byte, 32<<10)
 	for {
