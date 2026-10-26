@@ -67,6 +67,49 @@ func (a *App) debug(dir, line string) {
 				})
 			}
 		}
+	case "hosts": // add NAME ADDRESS [PAIR-AS], retry NAME, remove NAME: the Remote Hosts page's
+		op, rest, _ := strings.Cut(arg, " ")
+		win.Update(func() {
+			if op == "add" {
+				a.openSettingsAt("hosts")
+				a.openAddHost()
+				f := strings.Fields(rest)
+				if len(f) > 0 {
+					hostsUI.name = f[0]
+				}
+				if len(f) > 1 {
+					hostsUI.address = f[1]
+				}
+				if len(f) > 2 {
+					hostsUI.pairAs = strings.Join(f[2:], " ")
+				}
+				a.submitHost()
+				return
+			}
+			for _, h := range a.hosts {
+				if h.Name != rest {
+					continue
+				}
+				if op == "retry" {
+					h.poke()
+				} else if op == "remove" {
+					a.removeHost(h)
+				}
+				break
+			}
+		})
+	case "newtab-on": // NAME, or "local": a new tab on that host
+		win.Update(func() {
+			var on *hostConn
+			for _, h := range a.hosts {
+				if h.Name == arg {
+					on = h
+				}
+			}
+			if on != nil || arg == "local" {
+				a.newTabOn(on, a.dirOn(on))
+			}
+		})
 	case "host": // opens or closes the host chip's panel
 		win.Update(func() { a.hostOpen = !a.hostOpen })
 	case "tabs": // above, left or right: where the tabs go

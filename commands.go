@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"slices"
 	"strings"
@@ -319,18 +320,21 @@ func (a *App) restartFocused() {
 		return
 	}
 	old := t.Focus
+	if a.offline(old.host) {
+		return
+	}
 	cols, rows := 80, 24
 	if old.term != nil {
 		cols, rows = old.term.Size()
 	}
-	p := a.newPane(a.currentDir(), cols, rows)
+	p := a.newPane(old.host, a.currentDir(), cols, rows)
 	p.Tab, p.Node = t, old.Node
 	old.Node.Pane = p
 	old.closed = true
 	if old.term != nil {
 		old.term.Close()
 	}
-	go a.client.Kill(old.SID)
+	a.killOn(old.host, old.SID)
 	if t.Zoom == old {
 		t.Zoom = p
 	}
@@ -421,8 +425,42 @@ func (a *App) paletteItems() []paletteItem {
 		}
 		cmd := cmd
 		items = append(items, paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { cmd.Run(a) }})
+		if cmd == &cmdNewTab {
+			items = append(items, a.newTabOnItems(match)...)
+		}
 	}
 	return items
+}
+
+// newTabOnItems are the palette's New Tab on a host, for this machine and
+// each host, when there are hosts.
+func (a *App) newTabOnItems(match func(string) bool) []paletteItem {
+	if len(a.hosts) == 0 {
+		return nil
+	}
+	var items []paletteItem
+	for _, h := range a.allHosts() {
+		name := a.hostName(h)
+		title := locales.CmdNewTabOn(name)
+		if !match(title) && !match(locales.In("en").CmdNewTabOn(name)) {
+			continue
+		}
+		items = append(items, paletteItem{title: title, glyph: "plus", run: func() { a.newTabOn(h, a.dirOn(h)) }})
+	}
+	return items
+}
+
+// dirOn is the directory a new tab on host h opens in: the focused pane's
+// when it is on h, else the home directory there.
+func (a *App) dirOn(h *hostConn) string {
+	if a.currentHost() == h {
+		return a.currentDir()
+	}
+	if h != nil {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	return home
 }
 
 // fuzzy reports whether the letters of q appear in s, in order.

@@ -27,6 +27,9 @@ type Client struct {
 	nextID  int64
 	pending map[int64]chan Response
 	err     error
+	// refused is what a server that does not allow this machine said, as
+	// it closed the connection.
+	refused string
 	closed  chan struct{}
 }
 
@@ -46,6 +49,17 @@ func Connect() (*Client, error) {
 }
 
 func dialSocket() (net.Conn, error) { return net.Dial("unix", SocketPath()) }
+
+// ConnectSocket connects to the server listening on the Unix socket at
+// path, starting none.
+func ConnectSocket(path string) (*Client, error) {
+	dial := func() (net.Conn, error) { return net.Dial("unix", path) }
+	conn, err := dial()
+	if err != nil {
+		return nil, err
+	}
+	return newClient(conn, dial), nil
+}
 
 // dialUntil connects to the server, trying again until deadline.
 func dialUntil(deadline time.Time) (net.Conn, error) {
@@ -149,8 +163,12 @@ func (c *Client) read() {
 		if err != nil {
 			c.mu.Lock()
 			c.err = err
+			msg := "connection to the server lost"
+			if c.refused != "" {
+				msg = c.refused
+			}
 			for id, ch := range c.pending {
-				ch <- Response{ID: id, Error: "connection to the server lost"}
+				ch <- Response{ID: id, Error: msg}
 				delete(c.pending, id)
 			}
 			c.mu.Unlock()
@@ -162,6 +180,9 @@ func (c *Client) read() {
 			continue
 		}
 		c.mu.Lock()
+		if res.ID == 0 && res.Error != "" {
+			c.refused = res.Error // unprompted: the server refuses
+		}
 		ch := c.pending[res.ID]
 		delete(c.pending, res.ID)
 		c.mu.Unlock()
@@ -176,7 +197,11 @@ func (c *Client) call(req Request, out any) error {
 	ch := make(chan Response, 1)
 	c.mu.Lock()
 	if c.err != nil {
+		refused := c.refused
 		c.mu.Unlock()
+		if refused != "" {
+			return errors.New(refused)
+		}
 		return errors.New("rex: connection to the server lost")
 	}
 	c.nextID++
@@ -278,11 +303,33 @@ func (c *Client) RejectPairing(publicKey string) error {
 func (c *Client) RequestPairing(name string) (string, error) {
 	var res PairResult
 	err := c.call(Request{Op: "remote.pair", Remote: &RemoteClient{Name: name}}, &res)
-	if err != nil && strings.Contains(err.Error(), "connection to the server lost") {
-		// A server not pairing closes the connection, saying nothing.
+	if err != nil && strings.Contains(err.Error(), refusedMessage) {
+		// A server not pairing refuses the connection.
 		return "", errors.New("rex: the server is not pairing now: start pairing there first")
 	}
 	return res.Fingerprint, err
+}
+
+// refusedMessage is what a server says to a client it does not allow,
+// while it is not pairing, before it closes the connection.
+const refusedMessage = "rex: this machine is not allowed here"
+
+// pendingMessage ends what a pairing server answers a client whose
+// request to pair waits for its user.
+const pendingMessage = "the request waits for approval"
+
+// IsRefused tells an error of a server that does not allow this machine:
+// it refused the connection, or it is pairing and serves requests to pair
+// only. A connection lost otherwise is not a refusal.
+func IsRefused(err error) bool {
+	s := err.Error()
+	return strings.Contains(s, refusedMessage) || strings.Contains(s, "not allowed before pairing")
+}
+
+// IsPairingPending tells the refusal of a server pairing whose user has
+// not answered this machine's request yet.
+func IsPairingPending(err error) bool {
+	return IsRefused(err) && strings.Contains(err.Error(), pendingMessage)
 }
 
 // AllowRemote allows a client by its public key (ClientPublicKey on its

@@ -291,6 +291,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 			if tv.Focused() {
 				p.attention = false
 			}
+			a.reconnecting(c, k, p)
 		})
 	})
 	p.bounds = card.Bounds()
@@ -351,6 +352,36 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 			if iconButton(c, k, "x", locales.CmdClosePane(), 26, 17).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
 				a.later(c, func() { a.closePane(p) })
 			}
+		})
+	})
+}
+
+// reconnecting shows over the screen of a pane whose host or stream is
+// away, without hiding it, what is going on.
+func (a *App) reconnecting(c *ui.Context, k *colors, p *Pane) {
+	h := p.host
+	if h == nil {
+		return
+	}
+	var title, detail string
+	switch {
+	case h.state != hostConnected:
+		title, detail = locales.PaneReconnecting(h.Name), locales.PaneConnectionDropped()
+	case p.remote != nil && p.remote.Detached():
+		title = locales.PaneStreamInterrupted()
+	default:
+		return
+	}
+	ui.Row(c).Absolute().Top(10).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
+		ui.Row(c).Gap(10).Padding(8, 14, 8, 12).Radius(12).Background(k.panel).Border(1, k.panelBorder).
+			Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).MaxWidth(460).Label(title).Children(func() {
+			ui.Box(c).Size(8, 8).Radius(4).Background(k.attention).Shrink(0)
+			ui.Column(c).Gap(2).MinWidth(0).Children(func() {
+				ui.Text(c, title).FontSize(12.5).FontWeight(600).TextColor(k.text)
+				if detail != "" {
+					ui.Text(c, detail).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+				}
+			})
 		})
 	})
 }

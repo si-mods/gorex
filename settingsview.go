@@ -69,7 +69,7 @@ func (a *App) openSettings() {
 	win := mygo.NewWindow(opts)
 	settingsUI.win = win
 	win.SetMenu(mygo.NewMenu(nil)) // not the terminal window's menus
-	win.OnClosed(func() { stopRemotePoll(); settingsUI.win = nil })
+	win.OnClosed(func() { stopRemotePoll(); closeAddHost(); settingsUI.win = nil })
 }
 
 // sections are the sidebar's items.
@@ -82,6 +82,7 @@ var sections = []struct {
 	{"theme", "sparkles", locales.Messages.SettingsTheme},
 	{"keyboard", "keyboard", locales.Messages.SettingsKeyboard},
 	{"remote", "globe", locales.Messages.SettingsRemote},
+	{"hosts", "server", locales.Messages.SettingsHosts},
 	{"about", "hexagon", locales.Messages.SettingsAbout},
 }
 
@@ -92,6 +93,7 @@ func card(e ui.Element, k *colors) ui.Element {
 }
 
 func (a *App) settingsView(c *ui.Context) {
+	a.runPosted() // the hosts' changes, without a terminal window
 	k := colorsOf(c)
 	c.SetTheme(widgetTheme(c.Theme(), k))
 	c.Root().Background(k.bgBottom)
@@ -114,6 +116,8 @@ func (a *App) settingsView(c *ui.Context) {
 						a.keyboardSettings(c, k)
 					case "remote":
 						a.remoteSettings(c, k)
+					case "hosts":
+						a.hostsSettings(c, k)
 					case "about":
 						a.aboutSettings(c, k)
 					default:

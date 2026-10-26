@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -46,7 +47,8 @@ type Node struct {
 	A, B     *Node
 }
 
-// Pane is a terminal attached to a session of the server.
+// Pane is a terminal attached to a session of the server, or of a remote
+// host's.
 type Pane struct {
 	ID     int
 	SID    string
@@ -54,6 +56,10 @@ type Pane struct {
 	Node   *Node
 	term   *terminal.Terminal
 	stream *rex.Stream
+	// host is the remote host the session lives on, nil for this machine;
+	// remote is then the terminal's Conn.
+	host   *hostConn
+	remote *hostStream
 
 	// info is what the server last said of the session.
 	info rex.SessionInfo
@@ -86,6 +92,8 @@ type App struct {
 	tabs   []*Tab
 	active int
 	nextID int
+	// hosts are the remote hosts saved, in their order.
+	hosts []*hostConn
 
 	// focusReq asks the view to give the keyboard focus to a pane's
 	// terminal.
@@ -183,18 +191,54 @@ func (t *Tab) setFocus(p *Pane) {
 	t.recent = append(t.recent, p)
 }
 
-// newPane makes a pane with a new session in dir.
-func (a *App) newPane(dir string, cols, rows int) *Pane {
+// clientOf returns the client of a host's server, this machine's for
+// nil; nil while the host is not connected.
+func (a *App) clientOf(h *hostConn) *rex.Client {
+	if h == nil {
+		return a.client
+	}
+	return h.current()
+}
+
+// killOn ends a session of a host, or of this machine for nil.
+func (a *App) killOn(h *hostConn, sid string) {
+	switch {
+	case sid == "":
+	case h != nil:
+		h.kill(sid)
+	case a.client != nil:
+		c := a.client
+		go c.Kill(sid)
+	}
+}
+
+// offline tells, on the error banner, that a host is not connected, and
+// reports whether it is not.
+func (a *App) offline(h *hostConn) bool {
+	if h == nil || h.current() != nil {
+		return false
+	}
+	name := h.Name
+	a.err, a.errMsg = "", func(m locales.Messages) string { return m.HostsNotConnectedTo(name) }
+	return true
+}
+
+// newPane makes a pane with a new session in dir, on host h.
+func (a *App) newPane(h *hostConn, dir string, cols, rows int) *Pane {
 	if cols <= 0 {
 		cols, rows = 80, 24
 	}
-	info, err := a.client.Create(rex.CreateOptions{Dir: dir, Cols: cols, Rows: rows})
+	var info rex.SessionInfo
+	err := errors.New("rex: connection to the server lost")
+	if c := a.clientOf(h); c != nil {
+		info, err = c.Create(rex.CreateOptions{Dir: dir, Cols: cols, Rows: rows})
+	}
 	if err != nil {
 		log.Printf("creating a session: %v", err)
 		a.err, a.errMsg = err.Error(), nil
 		info = rex.SessionInfo{ID: "", Exited: true}
 	}
-	p := &Pane{ID: a.id(), SID: info.ID, info: info, startDir: dir}
+	p := &Pane{ID: a.id(), SID: info.ID, info: info, startDir: dir, host: h}
 	if p.info.Dir == "" {
 		p.info.Dir = dir
 	}
@@ -214,8 +258,6 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		}
 		return
 	}
-	p.stream = a.client.Stream(p.SID, cols, rows)
-	p.stream.OnData = func(int) { p.lastData.Store(time.Now().UnixNano()) }
 	// The terminal's callbacks change the state on the main thread, in
 	// the window that made the pane, as long as it is open.
 	win := a.win
@@ -226,8 +268,18 @@ func (a *App) attach(p *Pane, cols, rows int) {
 			a.post(fn)
 		}
 	}
+	onData := func(int) { p.lastData.Store(time.Now().UnixNano()) }
 	opts := termOptions()
-	opts.Conn = p.stream
+	if p.host != nil {
+		p.remote = newHostStream(p.host, p.SID, cols, rows)
+		p.remote.OnData = onData
+		p.remote.onChange = func() { update(func() {}) }
+		opts.Conn = p.remote
+	} else {
+		p.stream = a.client.Stream(p.SID, cols, rows)
+		p.stream.OnData = onData
+		opts.Conn = p.stream
+	}
 	opts.OnTitle = func(title string) {
 		update(func() { p.title = title })
 	}
@@ -242,9 +294,16 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	}
 	opts.OnExit = func(int) {
 		update(func() {
-			if !p.closed && !a.quitting {
-				a.closePane(p)
+			if p.closed || a.quitting {
+				return
 			}
+			// The session of a host ended, or is gone: the window keeps a
+			// tab of this machine's rather than closing with its last.
+			if p.host != nil && len(a.tabs) == 1 && len(a.tabs[0].panes()) == 1 {
+				home, _ := os.UserHomeDir()
+				a.newTabOn(nil, home)
+			}
+			a.closePane(p)
 		})
 	}
 	term, err := terminal.New(opts)
@@ -272,26 +331,51 @@ func (a *App) ring(p *Pane) {
 	}
 }
 
-// newTab opens a tab with a shell in dir, after the active tab.
-func (a *App) newTab(dir string) *Tab {
+// newTab opens a tab with a shell in dir, after the active tab, on the
+// active tab's host.
+func (a *App) newTab(dir string) *Tab { return a.newTabOn(a.currentHost(), dir) }
+
+// newTabOn opens a tab with a shell in dir on host h, nil for this
+// machine: after the active tab, or last of the host's tabs. It opens none
+// while the host is not connected.
+func (a *App) newTabOn(h *hostConn, dir string) *Tab {
+	if a.offline(h) {
+		return nil
+	}
 	t := &Tab{ID: a.id()}
-	p := a.newPane(dir, 0, 0)
+	p := a.newPane(h, dir, 0, 0)
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
 	t.setFocus(p)
 	at := min(a.active+1, len(a.tabs))
+	if cur := a.tab(); cur != nil && cur.host() != h {
+		at = len(a.tabs)
+	}
 	a.tabs = slices.Insert(a.tabs, at, t)
 	a.active = at
+	a.groupTabs()
 	a.focusReq = p
 	a.changed()
 	return t
 }
 
-// currentDir returns the directory new panes open in: the focused pane's.
+// currentHost is the host of the focused pane, nil for this machine.
+func (a *App) currentHost() *hostConn {
+	if t := a.tab(); t != nil && t.Focus != nil {
+		return t.Focus.host
+	}
+	return nil
+}
+
+// currentDir returns the directory new panes open in: the focused pane's,
+// else the home directory, which a host's server picks itself for "".
 func (a *App) currentDir() string {
 	if t := a.tab(); t != nil && t.Focus != nil {
 		if d := t.Focus.info.Dir; d != "" {
 			return d
+		}
+		if t.Focus.host != nil {
+			return ""
 		}
 	}
 	home, _ := os.UserHomeDir()
@@ -305,6 +389,9 @@ func (a *App) split(vertical bool) {
 		return
 	}
 	old := t.Focus
+	if a.offline(old.host) {
+		return
+	}
 	t.Zoom = nil
 	n := old.Node
 	cols, rows := 80, 24
@@ -316,7 +403,7 @@ func (a *App) split(vertical bool) {
 			cols = max(cols/2, 10)
 		}
 	}
-	p := a.newPane(a.currentDir(), cols, rows)
+	p := a.newPane(old.host, a.currentDir(), cols, rows)
 	p.Tab = t
 	left := &Node{ID: a.id(), Pane: old, Parent: n}
 	right := &Node{ID: a.id(), Pane: p, Parent: n}
@@ -328,7 +415,10 @@ func (a *App) split(vertical bool) {
 }
 
 // closePane closes a pane and ends its session.
-func (a *App) closePane(p *Pane) {
+func (a *App) closePane(p *Pane) { a.dropPane(p, true) }
+
+// dropPane closes a pane, and ends its session when kill is set.
+func (a *App) dropPane(p *Pane, kill bool) {
 	if p.closed {
 		return
 	}
@@ -336,9 +426,8 @@ func (a *App) closePane(p *Pane) {
 	if p.term != nil {
 		p.term.Close()
 	}
-	if sid := p.SID; sid != "" {
-		c := a.client
-		go c.Kill(sid)
+	if kill {
+		a.killOn(p.host, p.SID)
 	}
 	t := p.Tab
 	if t.Zoom == p {
@@ -411,9 +500,7 @@ func (a *App) closeTab(t *Tab) {
 		if p.term != nil {
 			p.term.Close()
 		}
-		if p.SID != "" {
-			go a.client.Kill(p.SID)
-		}
+		a.killOn(p.host, p.SID)
 	}
 	a.removeTab(t)
 }
@@ -559,6 +646,9 @@ func (p *Pane) label() (name, detail string) {
 	prog := programOf(in.Program)
 	dir := shortDir(in.Dir)
 	if in.Program == "" {
+		if in.Shell == "" {
+			return "Shell", shortDir(p.startDir)
+		}
 		return in.Shell, shortDir(p.startDir)
 	}
 	if in.Idle || prog.Shell {
@@ -668,7 +758,10 @@ type savedTab struct {
 }
 
 type savedNode struct {
-	SID      string     `json:"sid,omitempty"`
+	SID string `json:"sid,omitempty"`
+	// Host is the id of the remote host of the session, "" for this
+	// machine's.
+	Host     string     `json:"host,omitempty"`
 	Dir      string     `json:"dir,omitempty"`
 	Cols     int        `json:"cols,omitempty"`
 	Rows     int        `json:"rows,omitempty"`
@@ -684,6 +777,9 @@ func (a *App) snapshot() savedLayout {
 	save = func(n *Node) *savedNode {
 		if p := n.Pane; p != nil {
 			s := &savedNode{SID: p.SID, Dir: p.info.Dir}
+			if p.host != nil {
+				s.Host = p.host.ID
+			}
 			if s.Dir == "" {
 				s.Dir = p.startDir
 			}
@@ -741,12 +837,21 @@ func (a *App) restore() bool {
 		}
 	}
 	used := map[string]bool{}
+	// A pane of a host attaches once the host connects, and closes then
+	// if its session is gone; one of a host no longer saved goes now.
 	var load func(s *savedNode, t *Tab, parent *Node) *Node
 	load = func(s *savedNode, t *Tab, parent *Node) *Node {
 		n := &Node{ID: a.id(), Parent: parent}
 		if s.A == nil || s.B == nil {
 			var p *Pane
-			if in, ok := live[s.SID]; ok && !used[s.SID] {
+			if s.Host != "" {
+				h := a.hostByID(s.Host)
+				if h == nil || s.SID == "" {
+					return nil
+				}
+				p = &Pane{ID: a.id(), SID: s.SID, host: h, info: rex.SessionInfo{ID: s.SID, Dir: s.Dir}, startDir: s.Dir}
+				a.attach(p, s.Cols, s.Rows)
+			} else if in, ok := live[s.SID]; ok && !used[s.SID] {
 				used[s.SID] = true
 				p = &Pane{ID: a.id(), SID: s.SID, info: in, startDir: s.Dir}
 				a.attach(p, in.Cols, in.Rows)
@@ -755,7 +860,7 @@ func (a *App) restore() bool {
 				if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 					dir, _ = os.UserHomeDir()
 				}
-				p = a.newPane(dir, s.Cols, s.Rows)
+				p = a.newPane(nil, dir, s.Cols, s.Rows)
 				p.restored = true
 			}
 			p.Tab, p.Node = t, n
@@ -764,6 +869,17 @@ func (a *App) restore() bool {
 		}
 		n.Vertical, n.Ratio = s.Vertical, min(max(s.Ratio, 0.05), 0.95)
 		n.A, n.B = load(s.A, t, n), load(s.B, t, n)
+		// The side left takes the place of a split whose other side went.
+		switch {
+		case n.A == nil && n.B == nil:
+			return nil
+		case n.A == nil:
+			n.B.Parent = parent
+			return n.B
+		case n.B == nil:
+			n.A.Parent = parent
+			return n.A
+		}
 		return n
 	}
 	for _, st := range l.Tabs {
@@ -771,7 +887,9 @@ func (a *App) restore() bool {
 			continue
 		}
 		t := &Tab{ID: a.id(), Name: st.Name}
-		t.Root = load(st.Root, t, nil)
+		if t.Root = load(st.Root, t, nil); t.Root == nil {
+			continue
+		}
 		ps := t.panes()
 		for _, p := range ps {
 			t.setFocus(p)
@@ -800,6 +918,7 @@ func (a *App) restore() bool {
 		return false
 	}
 	a.active = min(max(l.Active, 0), len(a.tabs)-1)
+	a.groupTabs()
 	a.focusReq = a.tab().Focus
 	return true
 }
@@ -839,18 +958,19 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 		}
 		win.Update(func() {
 			if a.win == win {
-				a.apply(byID)
+				a.apply(nil, byID)
 			}
 		})
 	}
 }
 
-// apply takes what the server said of the sessions.
-func (a *App) apply(byID map[string]rex.SessionInfo) {
+// apply takes what the server of host h, nil for this machine's, said of
+// its sessions.
+func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 	for ti, t := range a.tabs {
 		for _, p := range t.panes() {
 			in, ok := byID[p.SID]
-			if !ok {
+			if !ok || p.host != h {
 				continue
 			}
 			was := p.info
