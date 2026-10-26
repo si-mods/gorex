@@ -350,7 +350,7 @@
   "@hostSessions": {
     "description": "Host panel row: the sessions."
   },
-  "hostServerUp": "pid {pid} · up {uptime}",
+  "hostServerUp": "pid {pid, number, ::group-off} · up {uptime}",
   "@hostServerUp": {
     "description": "Host panel: the server's process id and how long it has run. uptime is a duration written by the hostDur messages.",
     "placeholders": {

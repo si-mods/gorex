@@ -45,7 +45,12 @@ func main() {
 	a := &App{}
 	mygo.App.SetMenu(a.menu())
 	mygo.App.OnLocaleChanged(a.localeChanged)
-	mygo.App.WhenReady(a.open)
+	// The menu is made again once the app knows its language, which the
+	// start of the app may settle after the menu above was made.
+	mygo.App.WhenReady(func() {
+		mygo.App.SetMenu(a.menu())
+		a.open()
+	})
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
 		if !hasVisibleWindows && a.win == nil {
 			a.open()
@@ -107,7 +112,7 @@ func (a *App) open() {
 		}
 	}
 	if err == nil && a.hello.Version != rex.ProtocolVersion {
-		a.err = locales.ErrorServerVersion()
+		a.errMsg = locales.Messages.ErrorServerVersion
 	}
 	a.reset()
 	opts := mygo.WindowOptions{
@@ -185,7 +190,7 @@ func (a *App) saveNow() {
 // reset forgets the state of a window that closed, keeping the server's
 // connection, for the next window.
 func (a *App) reset() {
-	a.tabs, a.active, a.focusReq = nil, 0, nil
+	a.tabs, a.active, a.focusReq, a.errMsg = nil, 0, nil, nil
 	a.paletteOpen, a.hostOpen, a.renaming = false, false, nil
 	a.saveDue, a.quitting, a.lastSnapshot, a.title = false, false, "", ""
 }

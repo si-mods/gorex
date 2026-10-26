@@ -1166,14 +1166,14 @@ func (msgs Messages) HostSessions() string {
 	return Catalog.Format(msgs.locale, "hostSessions", nil)
 }
 
-// HostServerUp says "pid {pid} · up {uptime}"
+// HostServerUp says "pid {pid, number, ::group-off} · up {uptime}"
 // in the language the app shows.
 //
 // Host panel: the server's process id and how long it has run. uptime is a
 // duration written by the hostDur messages.
 func HostServerUp(pid int, uptime string) string { return In(i18n.Locale()).HostServerUp(pid, uptime) }
 
-// HostServerUp says "pid {pid} · up {uptime}"
+// HostServerUp says "pid {pid, number, ::group-off} · up {uptime}"
 // in the language of msgs.
 //
 // Host panel: the server's process id and how long it has run. uptime is a

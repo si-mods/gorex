@@ -20,11 +20,11 @@ import (
 var remoteUI struct {
 	stop        chan struct{} // closed to stop the refresh; non-nil while it runs
 	st          rex.RemoteStatus
-	loaded      bool   // st is what the server said
-	unreachable bool   // the last ask failed
-	myKey       string // this machine's public key
-	busy        bool   // a change is on its way
-	err         string // what went wrong with the last change
+	loaded      bool          // st is what the server said
+	unreachable bool          // the last ask failed
+	myKey       string        // this machine's public key
+	busy        bool          // a change is on its way
+	err         func() string // what went wrong with the last change, said when drawn
 	// reveal is that the address is shown. The address is a secret: st
 	// holds it only while reveal is on, and the page asks for it again
 	// to copy it.
@@ -32,7 +32,7 @@ var remoteUI struct {
 	confirm   bool   // regenerate asks to be sure
 	copied    string // what was copied just now
 	name, key string // the client to add
-	addErr    string
+	addErr    bool   // the client to add is not valid: its reason shows
 }
 
 // showSection chooses a settings section. The Remote page asks the server
@@ -52,7 +52,7 @@ func stopRemotePoll() {
 	}
 	page := &remoteUI
 	page.stop, page.st, page.loaded, page.busy = nil, rex.RemoteStatus{}, false, false
-	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, "", "", "", ""
+	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, nil, false, "", ""
 }
 
 // remoteAsk runs work off the UI thread, with the app's client of the
@@ -130,13 +130,14 @@ func (a *App) remoteDo(change func(srv *rex.Client) error, ok func()) {
 	if remoteUI.busy {
 		return
 	}
-	remoteUI.busy, remoteUI.err = true, ""
+	remoteUI.busy, remoteUI.err = true, nil
 	started := a.remoteAsk(func(srv *rex.Client) func() {
 		err := change(srv)
 		return func() {
 			remoteUI.busy = false
 			if err != nil {
-				remoteUI.err = serverMessage(err)
+				msg := serverMessage(err)
+				remoteUI.err = func() string { return msg }
 			} else if ok != nil {
 				ok()
 			}
@@ -144,7 +145,7 @@ func (a *App) remoteDo(change func(srv *rex.Client) error, ok func()) {
 		}
 	})
 	if !started {
-		remoteUI.busy, remoteUI.err = false, locales.RemoteNotConnected()
+		remoteUI.busy, remoteUI.err = false, locales.RemoteNotConnected
 	}
 }
 
@@ -238,7 +239,8 @@ func monoFamily() string {
 // It does not clear the clipboard afterwards.
 func copyText(what, s string) {
 	if err := mygo.Clipboard.Write(transfer.TextData(s)); err != nil {
-		remoteUI.err = locales.RemoteCopyFailed(err.Error())
+		msg := err.Error()
+		remoteUI.err = func() string { return locales.RemoteCopyFailed(msg) }
 		return
 	}
 	remoteUI.copied = what
@@ -268,7 +270,7 @@ func (a *App) copyAddress() {
 		st, err := srv.RemoteStatus()
 		return func() {
 			if err != nil || st.Address == "" {
-				remoteUI.err = locales.RemoteNoAddress()
+				remoteUI.err = locales.RemoteNoAddress
 				return
 			}
 			copyText("addr", st.Address)
@@ -318,8 +320,8 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 			if detail != "" {
 				ui.Text(c, detail).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
 			}
-			if page.err != "" {
-				ui.Text(c, page.err).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+			if page.err != nil {
+				ui.Text(c, page.err()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
 			}
 		})
 		sw := ui.Switch(c, &on).Label(locales.RemoteAllow()).Disabled(page.unreachable || page.busy)
@@ -467,21 +469,21 @@ func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		ui.Text(c, locales.RemoteAddByKey()).FontSize(12.5).FontWeight(600).TextColor(k.textMuted)
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if ui.TextInput(c.Key("name"), &page.name).Placeholder(locales.RemoteNamePlaceholder()).Label(locales.RemoteNameLabel()).Width(150).Shrink(0).Changed() {
-				page.addErr = ""
+				page.addErr = false
 			}
 			if ui.TextInput(c.Key("key"), &page.key).Placeholder("nodekey:…").Label(locales.RemoteKeyLabel()).Grow(1).MinWidth(0).Changed() {
-				page.addErr = ""
+				page.addErr = false
 			}
 			if ui.Button(c, locales.RemoteAdd()).Disabled(page.busy).Clicked() {
-				if page.addErr = validateNewClient(page.name, page.key, st.Allowed); page.addErr == "" {
+				if page.addErr = validateNewClient(page.name, page.key, st.Allowed) != ""; !page.addErr {
 					name, pub := strings.TrimSpace(page.name), strings.TrimSpace(page.key)
 					a.remoteDo(func(srv *rex.Client) error { return srv.AllowRemote(name, pub) },
 						func() { page.name, page.key = "", "" })
 				}
 			}
 		})
-		if page.addErr != "" {
-			ui.Text(c, page.addErr).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+		if page.addErr {
+			ui.Text(c, validateNewClient(page.name, page.key, st.Allowed)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
 		}
 	})
 }

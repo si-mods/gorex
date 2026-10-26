@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/plugins/terminal"
 
 	"gorex/internal/rex"
@@ -61,15 +62,17 @@ func loadSettings() {
 	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
 		prefs.SidebarWidth = 0
 	}
-	if prefs.Language != "" && !slices.Contains(mygo.App.Languages(), prefs.Language) {
-		prefs.Language = ""
+	// A language of the file may be spelled otherwise (zh-hans, zh-CN): keep
+	// the app's own spelling of the one it matches, or none.
+	if prefs.Language != "" {
+		prefs.Language = i18n.Match([]string{prefs.Language}, mygo.App.Languages())
 	}
 	loadGhostty()
 	applyGhostty()
 	applyAppearance()
-	if prefs.Language != "" {
-		setLocale(prefs.Language)
-	}
+	// The file is the one place that says the language: "" follows the
+	// system's, whatever the app kept before.
+	setLocale(prefs.Language)
 }
 
 func saveSettings() {

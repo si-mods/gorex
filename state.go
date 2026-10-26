@@ -79,6 +79,9 @@ type App struct {
 	client *rex.Client
 	hello  rex.Hello
 	err    string
+	// errMsg is a message of the catalog, said when drawn, which wins
+	// over err, a message of the server.
+	errMsg func(locales.Messages) string
 
 	tabs   []*Tab
 	active int
@@ -188,7 +191,7 @@ func (a *App) newPane(dir string, cols, rows int) *Pane {
 	info, err := a.client.Create(rex.CreateOptions{Dir: dir, Cols: cols, Rows: rows})
 	if err != nil {
 		log.Printf("creating a session: %v", err)
-		a.err = err.Error()
+		a.err, a.errMsg = err.Error(), nil
 		info = rex.SessionInfo{ID: "", Exited: true}
 	}
 	p := &Pane{ID: a.id(), SID: info.ID, info: info, startDir: dir}
@@ -247,7 +250,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	term, err := terminal.New(opts)
 	if err != nil {
 		log.Printf("terminal: %v", err)
-		a.err = err.Error()
+		a.err, a.errMsg = err.Error(), nil
 		return
 	}
 	// Until a view shows it, the terminal has the session's size, so that
@@ -820,7 +823,7 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 		case <-client.Closed():
 			win.Update(func() {
 				if !a.quitting {
-					a.err = locales.ErrorConnectionLost()
+					a.errMsg = locales.Messages.ErrorConnectionLost
 				}
 			})
 			return

@@ -71,7 +71,8 @@ var (
 // Title is the command's title in the language the app shows.
 func (cmd *command) Title() string { return say(cmd.Name) }
 
-// say writes a message in the language the app shows.
+// say writes a message in the language the app shows: the generated
+// accessors read it as i18n.Locale() and offer no handle on it besides In.
 func say(name func(locales.Messages) string) string { return name(locales.In(i18n.Locale())) }
 
 // English is its title in English, which the palette and the debug verbs

@@ -80,7 +80,7 @@
   "hostUser": "用户",
   "hostServer": "服务器",
   "hostSessions": "会话",
-  "hostServerUp": "pid {pid} · 已运行 {uptime}",
+  "hostServerUp": "pid {pid, number, ::group-off} · 已运行 {uptime}",
   "hostSessionCount": "{open} 个打开，{running} 个运行中",
   "hostNote": "会话运行在服务器中：退出 GoRex 后它们会继续运行，再次打开时恢复原样。",
   "hostDurSeconds": "{n} 秒",

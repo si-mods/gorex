@@ -25,6 +25,11 @@ var settingsUI struct {
 	themeQuery string
 	fonts      []string
 	themes     map[string]*terminal.Theme
+	// fontOptions are the font picker's options, the first being the
+	// choice that sets nothing, whose label follows the language; langTags
+	// and langNames are the language control's, "" and its label first.
+	// All are made once the window opens.
+	fontOptions, langTags, langNames []string
 }
 
 // Run is set here: the window's view lists the commands, which list this one.
@@ -40,7 +45,7 @@ func (a *App) openSettings() {
 	}
 	settingsUI.section, settingsUI.themeQuery = "appearance", ""
 	settingsUI.themes = map[string]*terminal.Theme{}
-	settingsUI.fonts = nil
+	settingsUI.fonts, settingsUI.fontOptions, settingsUI.langTags = nil, nil, nil
 	for _, f := range ui.FontFamilies() {
 		if f.Monospaced {
 			settingsUI.fonts = append(settingsUI.fonts, f.Name)
@@ -207,11 +212,15 @@ func (a *App) appearanceSettings(c *ui.Context, k *colors) {
 			a.setFontSize(0)
 		}
 	})
-	tags := append([]string{""}, mygo.App.Languages()...)
-	names := []string{locales.SettingsLanguageSystem()}
-	for _, tag := range tags[1:] {
-		names = append(names, i18n.Autonym(tag))
+	if settingsUI.langTags == nil {
+		settingsUI.langTags = append([]string{""}, mygo.App.Languages()...)
+		settingsUI.langNames = []string{""}
+		for _, tag := range settingsUI.langTags[1:] {
+			settingsUI.langNames = append(settingsUI.langNames, i18n.Autonym(tag))
+		}
 	}
+	tags, names := settingsUI.langTags, settingsUI.langNames
+	names[0] = locales.SettingsLanguageSystem()
 	lang := names[max(slices.Index(tags, prefs.Language), 0)]
 	settingRow(c, k, locales.SettingsLanguage(), locales.SettingsLanguageHint(), func() {
 		if ui.Select(c, &lang, names).Label(locales.SettingsLanguage()).Width(160).Changed() {
@@ -223,18 +232,22 @@ func (a *App) appearanceSettings(c *ui.Context, k *colors) {
 func (a *App) terminalSettings(c *ui.Context, k *colors) {
 	settingsTitle(c, k, locales.SettingsTerminal())
 	family := prefs.Font
-	follow := locales.SettingsFollowGhostty()
-	fonts := append([]string{follow}, settingsUI.fonts...)
+	if settingsUI.fontOptions == nil {
+		settingsUI.fontOptions = append([]string{""}, settingsUI.fonts...)
+	}
+	// The first option sets nothing: it is told by its place, not its label.
+	fonts := settingsUI.fontOptions
+	fonts[0] = locales.SettingsFollowGhostty()
 	if family == "" {
-		family = follow
+		family = fonts[0]
 	} else if !slices.Contains(fonts, family) {
-		fonts = append(fonts, family)
+		fonts = append(slices.Clone(fonts), family)
 	}
 	settingRow(c, k, locales.SettingsFont(), locales.SettingsFontHint(), func() {
 		if ui.Select(c, &family, fonts).Label(locales.SettingsFont()).Width(220).Changed() {
 			a.setPref(func(s *settings) {
 				s.Font = family
-				if family == follow {
+				if slices.Index(fonts, family) == 0 {
 					s.Font = ""
 				}
 			})

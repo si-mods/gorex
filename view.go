@@ -34,7 +34,7 @@ func (a *App) view(c *ui.Context) {
 		a.titleBar(c, k)
 		a.panes(c, k, gap, gap)
 	})
-	if a.err != "" {
+	if a.err != "" || a.errMsg != nil {
 		a.errorBanner(c, k)
 	}
 	a.shortcuts(c)
@@ -405,6 +405,14 @@ func activityDot(c *ui.Context, col ui.Color, size float32) ui.Element {
 	return e
 }
 
+// errText is what the error banner says.
+func (a *App) errText() string {
+	if a.errMsg != nil {
+		return say(a.errMsg)
+	}
+	return a.err
+}
+
 // errorBanner shows what went wrong with the server.
 func (a *App) errorBanner(c *ui.Context, k *colors) {
 	ui.Overlay(c, func() {
@@ -412,9 +420,9 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 			ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(12).Background(k.panel).Border(1, k.panelBorder).
 				Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(8, 8).Radius(4).Background(k.danger)
-				ui.Text(c, a.err).FontSize(12.5).TextColor(k.text).MaxWidth(520)
+				ui.Text(c, a.errText()).FontSize(12.5).TextColor(k.text).MaxWidth(520)
 				if iconButton(c, k, "x", locales.ErrorDismiss(), 22, 14).Clicked() {
-					a.err = ""
+					a.err, a.errMsg = "", nil
 				}
 			})
 		})

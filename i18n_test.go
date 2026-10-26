@@ -9,6 +9,8 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 // catalogKeys returns the message keys of a catalog of locales, without
@@ -31,6 +33,50 @@ func catalogKeys(t *testing.T, file string) []string {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// TestNoThreeDots checks that the catalogs write the ellipsis as …, never as
+// three dots.
+func TestNoThreeDots(t *testing.T) {
+	for _, file := range []string{"en.json", "zh-Hans.json"} {
+		b, err := os.ReadFile("locales/" + file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		for k, v := range m {
+			if strings.Contains(string(v), "...") {
+				t.Errorf("%s: %s has three dots: %s", file, k, v)
+			}
+		}
+	}
+}
+
+// TestServerPIDHasNoSeparator checks that a process id is not grouped.
+func TestServerPIDHasNoSeparator(t *testing.T) {
+	for _, lang := range []string{"en", "zh-Hans"} {
+		if got := locales.In(lang).HostServerUp(12345, "3h"); !strings.Contains(got, "pid 12345") {
+			t.Errorf("%s: %q groups the pid", lang, got)
+		}
+	}
+}
+
+// TestLanguageFromFile checks that a language of the settings file is the
+// app's own spelling of the one it matches, and that "" is applied too.
+func TestLanguageFromFile(t *testing.T) {
+	for _, c := range []struct{ file, want string }{{"zh-hans", "zh-Hans"}, {"zh-CN", "zh-Hans"}, {"zh", "zh-Hans"}, {"en-GB", "en"}, {"de", ""}, {"", ""}} {
+		isolateSettings(t, "")
+		var applied []string
+		setLocale = func(tag string) { applied = append(applied, tag) }
+		os.WriteFile(settingsPath(), []byte(`{"language": "`+c.file+`"}`), 0o600)
+		loadSettings()
+		if prefs.Language != c.want || !slices.Equal(applied, []string{c.want}) {
+			t.Errorf("file %q: language %q, applied %q, want %q", c.file, prefs.Language, applied, c.want)
+		}
+	}
 }
 
 // TestCatalogsAgree checks that Chinese says every message English does.
@@ -172,5 +218,18 @@ func TestLanguageSetting(t *testing.T) {
 	a.setLanguage("")
 	if prefs.Language != "" || !slices.Equal(chosen, []string{"zh-Hans", ""}) {
 		t.Errorf("language %q, SetLocale calls %q", prefs.Language, chosen)
+	}
+}
+
+// TestErrorFollowsLanguage checks that a message of the catalog on the error
+// banner is said in the language of the moment, not of when it was set.
+func TestErrorFollowsLanguage(t *testing.T) {
+	a := &App{errMsg: locales.Messages.ErrorConnectionLost}
+	if got := a.errText(); got != "Lost the connection to the session server." {
+		t.Errorf("in English: %q", got)
+	}
+	t.Setenv("MYGO_LOCALE", "zh-Hans")
+	if got := a.errText(); got != "与会话服务器的连接已断开。" {
+		t.Errorf("in Chinese: %q", got)
 	}
 }
