@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
@@ -18,6 +19,15 @@ type settings struct {
 	// Appearance is "light", "dark", or "" to follow the system.
 	Appearance string  `json:"appearance,omitempty"`
 	FontSize   float32 `json:"fontSize,omitempty"`
+
+	// TabPlacement is "left" or "right" for tabs in a sidebar, or "" for
+	// tabs above the panes. The sidebar's width is SidebarWidth, 0 for
+	// sidebarDefaultW, and SidebarHidden collapses it. HidePaneHeaders
+	// hides the panes' headers while a left sidebar shows.
+	TabPlacement    string  `json:"tabPlacement,omitempty"`
+	SidebarWidth    float32 `json:"sidebarWidth,omitempty"`
+	SidebarHidden   bool    `json:"sidebarHidden,omitempty"`
+	HidePaneHeaders bool    `json:"hidePaneHeaders,omitempty"`
 
 	// The rest, when set, win over Ghostty's configuration, which wins over
 	// GoRex's defaults. Empty and nil follow Ghostty.
@@ -41,6 +51,12 @@ func loadSettings() {
 	// A size out of range counts as none: Ghostty's font-size, or the default.
 	if prefs.FontSize < 6 || prefs.FontSize > 40 {
 		prefs.FontSize = 0
+	}
+	if !slices.Contains(placements, prefs.TabPlacement) {
+		prefs.TabPlacement = ""
+	}
+	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
+		prefs.SidebarWidth = 0
 	}
 	loadGhostty()
 	applyGhostty()
@@ -160,6 +176,14 @@ func (a *App) setAppearance(v string) {
 	prefs.Appearance = v
 	applyAppearance()
 	saveSettings()
+}
+
+// setWindowPref changes a choice of how the window lays out, keeps it, and
+// draws the window again.
+func (a *App) setWindowPref(change func(*settings)) {
+	change(&prefs)
+	saveSettings()
+	a.do(func() {})
 }
 
 // setFontSize changes the size of the terminals' text, in every pane. Zero

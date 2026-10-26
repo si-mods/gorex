@@ -67,6 +67,10 @@ func (a *App) debug(dir, line string) {
 				})
 			}
 		}
+	case "tabs": // above, left or right: where the tabs go
+		win.Update(func() { prefs.TabPlacement = map[string]string{"left": "left", "right": "right"}[arg] })
+	case "headers": // show or hide: the pane headers beside a left sidebar
+		win.Update(func() { prefs.HidePaneHeaders = arg == "hide" })
 	case "appearance": // system, light or dark
 		a.setAppearance(map[string]string{"light": "light", "dark": "dark"}[arg])
 	case "sshot": // the settings window, into the file named by arg

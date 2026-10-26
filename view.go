@@ -25,12 +25,12 @@ func (a *App) view(c *ui.Context) {
 	a.focusedWin = a.win == nil || a.win.IsFocused()
 	c.Root().Background(k.bgBottom)
 	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k) }).Children(func() {
+		if prefs.TabPlacement != "" {
+			a.sidebarLayout(c, k, prefs.TabPlacement == "right")
+			return
+		}
 		a.titleBar(c, k)
-		ui.Column(c).Grow(1).MinHeight(0).Padding(0, gap, gap, gap).Children(func() {
-			if t := a.tab(); t != nil {
-				a.tabContent(c, k, t)
-			}
-		})
+		a.panes(c, k, gap, gap)
 	})
 	if a.err != "" {
 		a.errorBanner(c, k)
@@ -71,15 +71,34 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 		// The title bar between the tabs and the buttons, which drags the
 		// window, and a double click on which zooms it.
 		ui.Spacer(c).MinWidth(titleFree - 14)
-		ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
-			if iconButton(c, k, "command", "Command Palette", 30, 17).Tooltip(tip("Command Palette", &cmdPalette)).Clicked() {
-				a.openPalette()
-			}
-			if iconButton(c, k, "plus", "New Tab", 30, 19).Tooltip(tip("New Tab", &cmdNewTab)).Clicked() {
-				a.newTab(a.currentDir())
-			}
-		})
+		a.titleButtons(c, k, nil)
 		a.windowControls(c, k)
+	})
+}
+
+// titleButtons draws the buttons of the command palette and a new tab,
+// then more's.
+func (a *App) titleButtons(c *ui.Context, k *colors, more func()) {
+	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
+		if iconButton(c, k, "command", "Command Palette", 30, 17).Tooltip(tip("Command Palette", &cmdPalette)).Clicked() {
+			a.openPalette()
+		}
+		if iconButton(c, k, "plus", "New Tab", 30, 19).Tooltip(tip("New Tab", &cmdNewTab)).Clicked() {
+			a.newTab(a.currentDir())
+		}
+		if more != nil {
+			more()
+		}
+	})
+}
+
+// panes lays out the active tab's panes, left and right of them the room
+// given.
+func (a *App) panes(c *ui.Context, k *colors, left, right float32) {
+	ui.Column(c).Grow(1).MinHeight(0).MinWidth(0).Padding(0, right, gap, left).Children(func() {
+		if t := a.tab(); t != nil {
+			a.tabContent(c, k, t)
+		}
 	})
 }
 
@@ -247,8 +266,13 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 	card.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
 	hovered := card.Hovered()
 	card.Children(func() {
-		a.paneHeader(c, k, t, p, focused, hovered)
-		body := ui.Box(c).Grow(1).MinHeight(0).Padding(0, 5, 6, 5)
+		top := float32(0)
+		if paneHeaders() {
+			a.paneHeader(c, k, t, p, focused, hovered)
+		} else {
+			top = 6
+		}
+		body := ui.Box(c).Grow(1).MinHeight(0).Padding(top, 5, 6, 5)
 		body.Children(func() {
 			if p.term == nil {
 				return

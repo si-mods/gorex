@@ -32,3 +32,18 @@ func TestMenuAccelsLeaveTerminalKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestAccelsUnique checks that no two commands take the same shortcut.
+func TestAccelsUnique(t *testing.T) {
+	seen := map[string]string{}
+	for _, cmd := range commands {
+		a := cmd.menuAccel()
+		if a == "" {
+			continue
+		}
+		if o, ok := seen[a]; ok {
+			t.Errorf("%s and %s both take %q", o, cmd.Title, a)
+		}
+		seen[a] = cmd.Title
+	}
+}

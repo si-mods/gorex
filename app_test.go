@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -333,5 +334,90 @@ func TestPaletteScrolls(t *testing.T) {
 	tt.Frame()
 	if r, _ := tt.Find("shell01"); r.H == 0 {
 		t.Error("the keys chose a row out of sight")
+	}
+}
+
+// TestSidebar checks the tabs in a sidebar: a tab drags to another's place,
+// the edge drags the width within its bounds and keeps it, the button hides
+// the sidebar, and hidden pane headers come back with it hidden.
+func TestSidebar(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left", HidePaneHeaders: true}
+	first := a.tabs[0]
+	a.newTab(os.TempDir())
+	tt.Frame()
+	list, ok := tt.Find("Tabs")
+	if !ok {
+		t.Fatalf("no sidebar; texts %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Split Right"); ok {
+		t.Error("the pane's header shows beside the left sidebar")
+	}
+
+	// The second tab, dragged over the first, takes its place.
+	x, y := list.X+60, list.Y+sideRowH*1.5+2
+	tt.Press(x, y)
+	tt.Frame()
+	for _, dy := range []float32{4, 10, 20, sideRowH + 2} {
+		tt.Move(x, y-dy)
+		tt.Frame()
+	}
+	tt.Release(x, y-sideRowH-2)
+	tt.Frame()
+	if a.tabs[1] != first {
+		t.Error("dragging the second tab over the first did not reorder them")
+	}
+
+	// The edge drags the width, between its bounds, and keeps it.
+	edge, ok := tt.Find("Sidebar Edge")
+	if !ok {
+		t.Fatal("no sidebar edge")
+	}
+	drag := func(dx float32) {
+		ex, ey := edge.X+edge.W/2, edge.Y+edge.H/2
+		tt.Press(ex, ey)
+		tt.Frame()
+		tt.Move(ex+dx/2, ey)
+		tt.Frame()
+		tt.Move(ex+dx, ey)
+		tt.Frame()
+		tt.Release(ex+dx, ey)
+		tt.Frame()
+		edge, _ = tt.Find("Sidebar Edge")
+	}
+	drag(40)
+	if w := sidebarWidth(); w != sidebarDefaultW+40 {
+		t.Errorf("width %v after dragging 40 from %v", w, sidebarDefaultW)
+	}
+	drag(1000)
+	if w := sidebarWidth(); w != sidebarMaxW {
+		t.Errorf("width %v past the maximum", w)
+	}
+	var kept settings
+	if b, err := os.ReadFile(settingsPath()); err != nil || json.Unmarshal(b, &kept) != nil || kept.SidebarWidth != sidebarMaxW {
+		t.Errorf("the width kept is %v (%v)", kept.SidebarWidth, err)
+	}
+
+	// Hiding the sidebar shows the pane headers.
+	if err := tt.Click("Hide Sidebar"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !prefs.SidebarHidden {
+		t.Fatal("the sidebar did not hide")
+	}
+	if _, ok := tt.Find("Tabs"); ok {
+		t.Error("the hidden sidebar lists the tabs")
+	}
+	if _, ok := tt.Find("Split Right"); !ok {
+		t.Error("no pane header with the sidebar hidden")
+	}
+	if err := tt.Click("Show Sidebar"); err != nil {
+		t.Fatal(err)
+	}
+	if prefs.SidebarHidden {
+		t.Error("the sidebar did not show again")
 	}
 }
