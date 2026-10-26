@@ -77,13 +77,16 @@ func startHostServer(t *testing.T) (string, *rex.Client) {
 
 // hostProxy forwards the connections of a socket of its own to a host's,
 // as a network between them that drops: down closes them all and refuses
-// new ones until up.
+// new ones until up. While gate is set, new connections wait for it to
+// close, as over a slow network; held counts those waiting.
 type hostProxy struct {
 	path, to string
 	ln       net.Listener
 	mu       sync.Mutex
 	conns    []net.Conn
 	down     bool
+	gate     chan struct{}
+	held     atomic.Int32
 }
 
 func newHostProxy(t *testing.T, to string) *hostProxy {
@@ -104,22 +107,36 @@ func newHostProxy(t *testing.T, to string) *hostProxy {
 				return
 			}
 			p.mu.Lock()
-			down := p.down
+			down, gate := p.down, p.gate
 			p.mu.Unlock()
 			if down {
 				c.Close()
 				continue
 			}
-			s, err := net.Dial("unix", to)
-			if err != nil {
+			go func() {
+				if gate != nil {
+					p.held.Add(1)
+					<-gate
+					p.held.Add(-1)
+				}
+				s, err := net.Dial("unix", to)
+				if err != nil {
+					c.Close()
+					return
+				}
+				p.mu.Lock()
+				if p.down { // went down while it waited
+					p.mu.Unlock()
+					c.Close()
+					s.Close()
+					return
+				}
+				p.conns = append(p.conns, c, s)
+				p.mu.Unlock()
+				go func() { io.Copy(s, c); s.Close() }()
+				io.Copy(c, s)
 				c.Close()
-				continue
-			}
-			p.mu.Lock()
-			p.conns = append(p.conns, c, s)
-			p.mu.Unlock()
-			go func() { io.Copy(s, c); s.Close() }()
-			go func() { io.Copy(c, s); c.Close() }()
+			}()
 		}
 	}()
 	return p
@@ -374,6 +391,75 @@ func TestRemoteHost(t *testing.T) {
 	}
 	if hs, _ := loadHosts(); len(hs) != 0 {
 		t.Errorf("hosts.json keeps %v", hs)
+	}
+}
+
+// TestHostStreamResizeWhileAttaching resizes a remote pane while its
+// stream attaches, as the view does as it first lays out a new tab, made
+// at 80x24, over a slow network: the session takes the window's size. At
+// the old one, a Windows host's console draws its scrolling rows for a
+// screen other than the window's, and the lines of ls land on each other.
+func TestHostStreamResizeWhileAttaching(t *testing.T) {
+	sock, remote := startHostServer(t)
+	info, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := newHostProxy(t, sock)
+	c, err := rex.ConnectSocket(proxy.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	h := newHostConn(savedHost{ID: "h1", Name: "office-pc"})
+	h.client = c
+	gate := make(chan struct{})
+	proxy.mu.Lock()
+	proxy.gate = gate
+	proxy.mu.Unlock()
+
+	s := newHostStream(h, info.ID, 80, 24)
+	t.Cleanup(func() { s.Close() })
+	go func() {
+		buf := make([]byte, 32<<10)
+		for {
+			if _, err := s.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	for i := 0; proxy.held.Load() == 0; i++ {
+		if i == 200 {
+			t.Fatal("the stream does not attach")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	s.Resize(121, 41)
+	close(gate)
+
+	size := func() (int, int) {
+		infos, err := remote.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, in := range infos {
+			if in.ID == info.ID {
+				return in.Cols, in.Rows
+			}
+		}
+		t.Fatal("the session is gone")
+		return 0, 0
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		cols, rows := size()
+		if cols == 121 && rows == 41 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the session is %dx%d, the window 121x41", cols, rows)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

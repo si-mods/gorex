@@ -639,7 +639,13 @@ func (s *hostStream) stream() (*rex.Stream, error) {
 			return nil, io.EOF
 		}
 		s.cur, s.fresh = st, true
+		// A Resize while it attached, over a slow network as the view
+		// first lays out, only noted the size: the session takes it now.
+		// Left at the old size, its console draws for a screen of other
+		// rows than the window's, and lines land on each other.
+		cols, rows = s.cols, s.rows
 		s.mu.Unlock()
+		st.Resize(cols, rows)
 		return st, nil
 	}
 }
