@@ -18,13 +18,8 @@ import (
 // TestMain runs the test binary as a server when Spawn or an upgrade
 // starts it so, as main does the app's.
 func TestMain(m *testing.M) {
-	if len(os.Args) > 1 && os.Args[1] == "-server" {
-		log.SetPrefix("[server] ")
-		serve := Serve
-		if len(os.Args) > 3 && os.Args[2] == "-resume" {
-			serve = func() error { return Resume(os.Args[3]) }
-		}
-		if err := serve(); err != nil {
+	if server, err := ServerMain(os.Args[1:]); server {
+		if err != nil {
 			log.Fatal(err)
 		}
 		os.Exit(0)
@@ -100,12 +95,27 @@ func TestUpgrade(t *testing.T) {
 	sleeper, _ := strconv.Atoi(regexp.MustCompile(`sleeper=(\d+)`).FindStringSubmatch(out)[1])
 	defer syscall.Kill(sleeper, syscall.SIGKILL)
 	s.Close()
+	// A session that exited keeps what it showed last.
+	done, err := c.Create(CreateOptions{Command: []string{"/bin/sh", "-c", "printf '\\033]2;last-title\\007'; echo last-words; exit 5"}, Dir: "/tmp", Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if l, _ := c.List(); len(l) == 2 && l[1].Exited {
+			break
+		}
+	}
 
-	// An executable that does not run leaves the server as it was.
+	// An executable that does not run, or does not read this server's
+	// handoffs, as an older build, leaves the server as it was.
 	bad := filepath.Join(dir, "not-executable")
 	os.WriteFile(bad, []byte("nothing"), 0o600)
-	if _, err := c.Upgrade(bad); err == nil {
-		t.Fatal("upgraded to a file that does not run")
+	older := filepath.Join(dir, "older")
+	os.WriteFile(older, []byte("#!/bin/sh\necho 0\n"), 0o700)
+	for _, exe := range []string{bad, older} {
+		if _, err := c.Upgrade(exe); err == nil {
+			t.Fatalf("upgraded to %s", exe)
+		}
 	}
 	s = c.Stream(info.ID, 80, 24)
 	s.Resize(80, 24)
@@ -133,9 +143,16 @@ func TestUpgrade(t *testing.T) {
 		t.Fatalf("hello after upgrade %+v %v, before %+v", h2, err, h)
 	}
 	list, err := c.List()
-	if err != nil || len(list) != 1 || list[0].ID != info.ID || list[0].PID != info.PID || list[0].Exited {
+	if err != nil || len(list) != 2 || list[0].ID != info.ID || list[0].PID != info.PID || list[0].Exited {
 		t.Fatalf("list %+v %v, created %+v", list, err, info)
 	}
+	if in := list[1]; in.ID != done.ID || !in.Exited || in.ExitCode != 5 || in.Title != "last-title" {
+		t.Fatalf("exited session %+v", in)
+	}
+	s = c.Stream(done.ID, 80, 24)
+	s.Resize(80, 24)
+	readUntil(t, s, `last-words`)
+	s.Close()
 	if !processAlive(info.PID) || !processAlive(sleeper) {
 		t.Fatal("the shell or its job is gone")
 	}
@@ -147,7 +164,7 @@ func TestUpgrade(t *testing.T) {
 	s.Write([]byte("exit 3\n"))
 	var in SessionInfo
 	for deadline := time.Now().Add(5 * time.Second); !in.Exited && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if list, err := c.List(); err == nil && len(list) == 1 {
+		if list, err := c.List(); err == nil && len(list) == 2 {
 			in = list[0]
 		}
 	}

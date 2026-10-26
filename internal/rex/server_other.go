@@ -9,6 +9,8 @@ var errUnsupported = errors.New("rex: the session server runs on macOS, Linux an
 // Serve runs the server; not on this platform.
 func Serve() error { return errUnsupported }
 
+const handoffVersion = 0
+
 // Resume serves the sessions of an upgrading server; not on this
 // platform.
 func Resume(string) error { return errUnsupported }

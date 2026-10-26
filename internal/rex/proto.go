@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -154,6 +155,26 @@ type Attach struct {
 	SID  string `json:"sid"`
 	Cols int    `json:"cols"`
 	Rows int    `json:"rows"`
+}
+
+// ServerMain runs the server when args, the program's arguments, ask
+// for it, and tells whether they did: -server serves, -server -resume
+// PATH serves the sessions a server upgrading to this executable handed
+// it (Resume), and -server -handoff-version prints the version of the
+// handoffs it reads, which an upgrading server asks first.
+func ServerMain(args []string) (bool, error) {
+	if len(args) == 0 || args[0] != "-server" {
+		return false, nil
+	}
+	log.SetPrefix("[server] ")
+	switch {
+	case len(args) > 1 && args[1] == "-handoff-version":
+		fmt.Println(handoffVersion)
+		return true, nil
+	case len(args) > 2 && args[1] == "-resume":
+		return true, Resume(args[2])
+	}
+	return true, Serve()
 }
 
 // Dir returns the directory of the server's socket, log and state.

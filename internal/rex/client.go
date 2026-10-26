@@ -33,24 +33,29 @@ type Client struct {
 // Connect connects to the server, starting one in the background when
 // none runs.
 func Connect() (*Client, error) {
-	conn, err := net.Dial("unix", SocketPath())
+	conn, err := dialSocket()
 	if err != nil {
 		if err := Spawn(); err != nil {
 			return nil, fmt.Errorf("rex: starting the server: %w", err)
 		}
-		deadline := time.Now().Add(5 * time.Second)
-		for {
-			time.Sleep(30 * time.Millisecond)
-			conn, err = net.Dial("unix", SocketPath())
-			if err == nil {
-				break
-			}
-			if time.Now().After(deadline) {
-				return nil, fmt.Errorf("rex: connecting to the server: %w", err)
-			}
+		if conn, err = dialUntil(time.Now().Add(5 * time.Second)); err != nil {
+			return nil, fmt.Errorf("rex: connecting to the server: %w", err)
 		}
 	}
-	return newClient(conn, func() (net.Conn, error) { return net.Dial("unix", SocketPath()) }), nil
+	return newClient(conn, dialSocket), nil
+}
+
+func dialSocket() (net.Conn, error) { return net.Dial("unix", SocketPath()) }
+
+// dialUntil connects to the server, trying again until deadline.
+func dialUntil(deadline time.Time) (net.Conn, error) {
+	for {
+		conn, err := dialSocket()
+		if err == nil || time.Now().After(deadline) {
+			return conn, err
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
 }
 
 func newClient(conn net.Conn, dial func() (net.Conn, error)) *Client {
@@ -113,21 +118,25 @@ func (c *Client) Upgrade(exe string) (*Client, error) {
 	// Not Connect, which would start a server: the listener is the old
 	// server's, and the new executable answers what it queued.
 	deadline := time.Now().Add(10 * time.Second)
-	for {
-		conn, err := net.Dial("unix", SocketPath())
-		if err == nil {
-			nc := newClient(conn, func() (net.Conn, error) { return net.Dial("unix", SocketPath()) })
+	for time.Now().Before(deadline) {
+		conn, err := dialUntil(deadline)
+		if err != nil {
+			break
+		}
+		nc := newClient(conn, dialSocket)
+		for time.Now().Before(deadline) {
 			h, err := nc.Hello()
-			if err == nil && h.Exe == want && h.ExeTime.Equal(at) {
+			if err != nil {
+				break // lost: dial again
+			}
+			if h.Exe == want && h.ExeTime.Equal(at) {
 				return nc, nil
 			}
-			nc.Close()
+			time.Sleep(30 * time.Millisecond)
 		}
-		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("rex: the server did not come back as %s", exe)
-		}
-		time.Sleep(30 * time.Millisecond)
+		nc.Close()
 	}
+	return nil, fmt.Errorf("rex: the server did not come back as %s", exe)
 }
 
 // Closed is closed once the connection to the server is lost.

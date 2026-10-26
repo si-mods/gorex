@@ -3,13 +3,17 @@
 package rex
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -78,6 +82,9 @@ func (s *Server) upgrade(exe string) error {
 	if !ok || s.lock == nil {
 		return errors.New("rex: this server cannot upgrade")
 	}
+	if err := probe(exe); err != nil {
+		return err
+	}
 	s.ops.Lock()
 	defer s.ops.Unlock()
 	// A connection accepted now would close as exe runs: leave them to
@@ -134,6 +141,22 @@ func (s *Server) upgrade(exe string) error {
 	return fmt.Errorf("rex: running %s: %w", exe, err)
 }
 
+// probe checks that exe reads this server's handoffs before it runs in
+// its place: one that failed to, an older build's or another program,
+// would end the sessions.
+func probe(exe string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, exe, "-server", "-handoff-version").Output()
+	if err != nil {
+		return fmt.Errorf("rex: %s does not take over a server: %w", exe, err)
+	}
+	if v, err := strconv.Atoi(strings.TrimSpace(string(out))); err != nil || v < handoffVersion {
+		return fmt.Errorf("rex: %s does not read this server's sessions", exe)
+	}
+	return nil
+}
+
 // descriptor returns the descriptor of f, leaving it non-blocking, or -1.
 func descriptor(f *os.File) int {
 	n := -1
@@ -181,10 +204,11 @@ func (s *session) state() sessionState {
 	defer s.mu.Unlock()
 	st := sessionState{
 		ID: s.id, Shell: s.shell, Created: s.created, PID: s.p.pid(), Master: -1,
-		Cols: s.cols, Rows: s.rows, Screen: s.vt.Snapshot(), Title: s.vt.Title(),
+		Cols: s.cols, Rows: s.rows,
 		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
 	}
+	st.Screen, st.Title = s.view()
 	select {
 	case <-s.readEnd:
 		// Its output ended: once its process did too, it exited.
@@ -211,7 +235,7 @@ func Resume(path string) error {
 	if err := json.Unmarshal(b, &h); err != nil {
 		return fmt.Errorf("rex: reading the handoff: %w", err)
 	}
-	if h.Version < 1 {
+	if h.Version < 1 || h.Version > handoffVersion {
 		return fmt.Errorf("rex: a handoff of version %d", h.Version)
 	}
 	unix.CloseOnExec(h.Lock)
@@ -255,6 +279,7 @@ func resumeSession(st sessionState) (*session, error) {
 	if st.Exited || st.Master < 0 {
 		s.p = &pty{proc: st.PID}
 		s.reaped, s.exited, s.code = true, true, st.Code
+		s.screen, s.title = st.Screen, st.Title
 		s.reading, s.readEnd = make(chan struct{}), make(chan struct{})
 		close(s.reading)
 		close(s.readEnd)

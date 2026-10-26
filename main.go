@@ -22,16 +22,10 @@ import (
 )
 
 func main() {
-	// -server runs the session server, and -server -resume the one a
-	// server of another build upgraded to this one; other arguments are
-	// AppKit's, as -NSWindowResizeTime, which it reads itself.
-	if len(os.Args) > 1 && os.Args[1] == "-server" {
-		log.SetPrefix("[server] ")
-		serve := rex.Serve
-		if len(os.Args) > 3 && os.Args[2] == "-resume" {
-			serve = func() error { return rex.Resume(os.Args[3]) }
-		}
-		if err := serve(); err != nil {
+	// -server runs the session server (rex.ServerMain); other arguments
+	// are AppKit's, as -NSWindowResizeTime, which it reads itself.
+	if server, err := rex.ServerMain(os.Args[1:]); server {
+		if err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -82,15 +76,19 @@ func (a *App) open() {
 	if err == nil && staleServer(a.hello) {
 		// A server a build before this one started runs that build's
 		// code: it runs this build's in its place, keeping its sessions.
-		// One that cannot is replaced under mygo dev, ending its sessions,
-		// and kept otherwise.
+		// Only for a newer build: two copies of the app would take the
+		// server from each other at every launch. One that cannot upgrade
+		// is replaced under mygo dev, ending its sessions, and kept
+		// otherwise.
 		var next *rex.Client
 		if a.hello.Upgrade {
-			exe, _ := rex.Executable()
-			if next, err = client.Upgrade(exe); err != nil {
-				log.Print(err)
-				client.Close()
-				next, err = rex.Connect()
+			exe, at := rex.Executable()
+			if at.After(a.hello.ExeTime) {
+				if next, err = client.Upgrade(exe); err != nil {
+					log.Print(err)
+					client.Close()
+					next, err = rex.Connect()
+				}
 			}
 		} else if mygo.IsDev() {
 			next, err = client.Restart(a.hello.PID)

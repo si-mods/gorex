@@ -6,6 +6,9 @@ import "errors"
 // Windows does not upgrade.
 const canUpgrade = false
 
+// handoffVersion is the version of the handoffs a server reads: none.
+const handoffVersion = 0
+
 var errNoUpgrade = errors.New("rex: the server does not upgrade on Windows")
 
 func (s *Server) upgrade(string) error { return errNoUpgrade }

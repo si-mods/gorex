@@ -41,9 +41,13 @@ type session struct {
 	resync     *time.Timer
 	// reaped tells that the process ended, with code; exited, that what
 	// it printed was read too.
-	reaped     bool
-	exited     bool
-	code       int
+	reaped bool
+	exited bool
+	code   int
+	// screen and title are what the session showed as it exited, its
+	// emulator closed.
+	screen     []byte
+	title      string
 	cols, rows int
 	done       chan struct{}
 	// reading is closed when the goroutine reading the terminal returns,
@@ -159,6 +163,7 @@ func (s *session) run(wait func() int) {
 		s.hold.RLock()
 		defer s.hold.RUnlock()
 		s.mu.Lock()
+		s.screen, s.title = s.vt.Snapshot(), s.vt.Title()
 		s.exited = true
 		for a := range s.clients {
 			a.finish()
@@ -256,8 +261,8 @@ func (s *session) attach(conn net.Conn, cols, rows int) {
 		// learns next.
 		s.vt.Resize(cols, rows)
 	}
-	snap := s.vt.Snapshot()
-	if title := s.vt.Title(); title != "" {
+	snap, title := s.view()
+	if title != "" {
 		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
 	}
 	a.out <- snap
@@ -372,12 +377,25 @@ func (s *session) kill() {
 	}
 }
 
+// view returns the session's screen, as escape sequences, and its
+// title; s.mu is held.
+func (s *session) view() ([]byte, string) {
+	if s.exited {
+		return s.screen, s.title
+	}
+	return s.vt.Snapshot(), s.vt.Title()
+}
+
 // info describes the session and what runs in its foreground.
 func (s *session) info() SessionInfo {
 	s.mu.Lock()
+	title := s.title
+	if !s.exited {
+		title = s.vt.Title()
+	}
 	in := SessionInfo{
 		ID: s.id, Shell: s.shell, Created: s.created,
-		Title: s.vt.Title(), LastOutput: s.lastOutput, LastInput: s.lastInput,
+		Title: title, LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,
 	}
