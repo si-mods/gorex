@@ -19,6 +19,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 func main() {
@@ -43,6 +44,7 @@ func main() {
 	loadSettings()
 	a := &App{}
 	mygo.App.SetMenu(a.menu())
+	mygo.App.OnLocaleChanged(a.localeChanged)
 	mygo.App.WhenReady(a.open)
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
 		if !hasVisibleWindows && a.win == nil {
@@ -67,7 +69,7 @@ func (a *App) open() {
 	client, err := rex.Connect()
 	if err != nil {
 		log.Print(err)
-		mygo.Dialog.Error("GoRex could not start its session server", err.Error())
+		mygo.Dialog.Error(locales.ErrorServerStart(), err.Error())
 		mygo.App.Quit()
 		return
 	}
@@ -95,7 +97,7 @@ func (a *App) open() {
 		}
 		if err != nil {
 			log.Print(err)
-			mygo.Dialog.Error("GoRex could not restart its session server", err.Error())
+			mygo.Dialog.Error(locales.ErrorServerRestart(), err.Error())
 			mygo.App.Quit()
 			return
 		}
@@ -105,7 +107,7 @@ func (a *App) open() {
 		}
 	}
 	if err == nil && a.hello.Version != rex.ProtocolVersion {
-		a.err = "The session server is of another version of GoRex: quit and end all sessions to restart it."
+		a.err = locales.ErrorServerVersion()
 	}
 	a.reset()
 	opts := mygo.WindowOptions{
@@ -148,6 +150,16 @@ func (a *App) open() {
 		a.client.Close()
 		a.win = nil
 	})
+}
+
+// localeChanged says again what was set once: the menus, and the
+// settings window's title. What the views say follows the language as they
+// draw.
+func (a *App) localeChanged(string) {
+	mygo.App.SetMenu(a.menu())
+	if w := settingsUI.win; w != nil {
+		w.SetTitle(locales.SettingsTitle())
+	}
 }
 
 // saveNow sends the layout to the server and waits for it to be kept.

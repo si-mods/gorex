@@ -67,6 +67,8 @@ func (a *App) debug(dir, line string) {
 				})
 			}
 		}
+	case "host": // opens or closes the host chip's panel
+		win.Update(func() { a.hostOpen = !a.hostOpen })
 	case "tabs": // above, left or right: where the tabs go
 		win.Update(func() {
 			setTabPlacement(&prefs, map[string]string{"left": "left", "right": "right"}[arg])
@@ -110,7 +112,7 @@ func (a *App) debug(dir, line string) {
 		}
 	default:
 		for _, cmd := range commands {
-			if strings.EqualFold(strings.ReplaceAll(cmd.Title, " ", "-"), verb) {
+			if strings.EqualFold(strings.ReplaceAll(cmd.English(), " ", "-"), verb) {
 				a.run(cmd)
 			}
 		}

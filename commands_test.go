@@ -22,13 +22,13 @@ func TestMenuAccelsLeaveTerminalKeys(t *testing.T) {
 		parts := strings.Split(a, "+")
 		key := parts[len(parts)-1]
 		if strings.Contains(a, "Ctrl") && strings.Contains(a, "Alt") {
-			t.Errorf("%s: %q takes Control and Alt", cmd.Title, a)
+			t.Errorf("%s: %q takes Control and Alt", cmd.English(), a)
 		}
 		if a == "Ctrl+"+key && len(key) == 1 && key >= "A" && key <= "Z" {
-			t.Errorf("%s: %q takes Control and a letter", cmd.Title, a)
+			t.Errorf("%s: %q takes Control and a letter", cmd.English(), a)
 		}
 		if strings.Contains(a, "CmdOrCtrl") {
-			t.Errorf("%s: %q is macOS's shortcut", cmd.Title, a)
+			t.Errorf("%s: %q is macOS's shortcut", cmd.English(), a)
 		}
 	}
 }
@@ -42,8 +42,8 @@ func TestAccelsUnique(t *testing.T) {
 			continue
 		}
 		if o, ok := seen[a]; ok {
-			t.Errorf("%s and %s both take %q", o, cmd.Title, a)
+			t.Errorf("%s and %s both take %q", o, cmd.English(), a)
 		}
-		seen[a] = cmd.Title
+		seen[a] = cmd.English()
 	}
 }

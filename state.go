@@ -17,6 +17,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // Tab is a tab of the window: panes in a tree of splits.
@@ -205,7 +206,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		opts.Conn = nopConn{}
 		term, err := terminal.New(opts)
 		if err == nil {
-			term.Feed([]byte("\x1b[31mCould not start a session: " + a.err + "\x1b[0m\r\n"))
+			term.Feed([]byte("\x1b[31m" + locales.ErrorSessionStart(a.err) + "\x1b[0m\r\n"))
 			p.term = term
 		}
 		return
@@ -819,7 +820,7 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 		case <-client.Closed():
 			win.Update(func() {
 				if !a.quitting {
-					a.err = "Lost the connection to the session server."
+					a.err = locales.ErrorConnectionLost()
 				}
 			})
 			return
@@ -861,8 +862,8 @@ func (a *App) apply(byID map[string]rex.SessionInfo) {
 				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second {
 					prog := programOf(was.Program)
 					n := mygo.NewNotification(mygo.NotificationOptions{
-						Title: prog.Name + " finished",
-						Body:  "in " + shortDir(in.Dir),
+						Title: locales.NotifyFinished(prog.Name),
+						Body:  locales.NotifyIn(shortDir(in.Dir)),
 					})
 					n.Show()
 				}

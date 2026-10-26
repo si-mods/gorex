@@ -7,13 +7,18 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 // command is an action of the menus and the command palette.
 type command struct {
-	Title string
+	// Name says the title in a language: a method of the catalog's
+	// messages, as locales.Messages.CmdNewTab.
+	Name func(locales.Messages) string
 	// Accel is the menu item's shortcut, and Keys how the palette shows it.
 	Accel, Keys string
 	// Other is the shortcut elsewhere than on macOS, which gives Accel and
@@ -27,41 +32,51 @@ type command struct {
 }
 
 var (
-	cmdNewTab      = command{Title: "New Tab", Accel: "CmdOrCtrl+T", Keys: "⌘T", Other: ctrlShift(ui.KeyT), Run: func(a *App) { a.newTab(a.currentDir()) }}
-	cmdSplitRight  = command{Title: "Split Right", Accel: "CmdOrCtrl+D", Keys: "⌘D", Other: ctrlShift(ui.KeyD), Run: func(a *App) { a.split(false) }}
-	cmdSplitDown   = command{Title: "Split Down", Accel: "CmdOrCtrl+Shift+D", Keys: "⇧⌘D", Other: ctrlShift(ui.KeyE), Run: func(a *App) { a.split(true) }}
-	cmdClosePane   = command{Title: "Close Pane", Accel: "CmdOrCtrl+W", Keys: "⌘W", Other: ctrlShift(ui.KeyW), Run: func(a *App) { a.closeFocused() }}
-	cmdCloseTab    = command{Title: "Close Tab", Accel: "CmdOrCtrl+Shift+W", Keys: "⇧⌘W", Run: func(a *App) { a.closeActiveTab() }}
-	cmdZoom        = command{Title: "Zoom Pane", Accel: "CmdOrCtrl+Shift+Enter", Keys: "⇧⌘↩", Other: ctrlShift(ui.KeyEnter), Run: func(a *App) { a.toggleZoom() }}
-	cmdEqualize    = command{Title: "Equalize Panes", Accel: "CmdOrCtrl+Ctrl+=", Keys: "⌃⌘=", Run: func(a *App) { a.equalize() }}
-	cmdNextTab     = command{Title: "Next Tab", Accel: "CmdOrCtrl+Shift+]", Keys: "⇧⌘]", Other: shortcut{ui.Ctrl, ui.KeyPageDown}, Run: func(a *App) { a.cycleTab(1) }}
-	cmdPrevTab     = command{Title: "Previous Tab", Accel: "CmdOrCtrl+Shift+[", Keys: "⇧⌘[", Other: shortcut{ui.Ctrl, ui.KeyPageUp}, Run: func(a *App) { a.cycleTab(-1) }}
-	cmdSidebar     = command{Title: "Toggle Sidebar", Accel: "CmdOrCtrl+Ctrl+S", Keys: "⌃⌘S", Other: ctrlShift(ui.KeyS), Run: func(a *App) { a.toggleSidebar() }}
-	cmdRenameTab   = command{Title: "Rename Tab…", Accel: "CmdOrCtrl+Shift+R", Keys: "⇧⌘R", Other: ctrlShift(ui.KeyR), Run: func(a *App) { a.startRename() }}
-	cmdPalette     = command{Title: "Command Palette…", Accel: "CmdOrCtrl+Shift+P", Keys: "⇧⌘P", Other: ctrlShift(ui.KeyP), Run: func(a *App) { a.openPalette() }, Hidden: true}
-	cmdPalette2    = command{Title: "Go to Pane…", Accel: "CmdOrCtrl+P", Keys: "⌘P", Run: func(a *App) { a.openPalette() }, Hidden: true}
-	cmdFocusLeft   = command{Title: "Focus Pane Left", Accel: "CmdOrCtrl+Alt+Left", Keys: "⌥⌘←", Other: shortcut{ui.Alt, ui.KeyLeft}, Run: func(a *App) { a.moveFocus(-1, 0) }}
-	cmdFocusRight  = command{Title: "Focus Pane Right", Accel: "CmdOrCtrl+Alt+Right", Keys: "⌥⌘→", Other: shortcut{ui.Alt, ui.KeyRight}, Run: func(a *App) { a.moveFocus(1, 0) }}
-	cmdFocusUp     = command{Title: "Focus Pane Above", Accel: "CmdOrCtrl+Alt+Up", Keys: "⌥⌘↑", Other: shortcut{ui.Alt, ui.KeyUp}, Run: func(a *App) { a.moveFocus(0, -1) }}
-	cmdFocusDown   = command{Title: "Focus Pane Below", Accel: "CmdOrCtrl+Alt+Down", Keys: "⌥⌘↓", Other: shortcut{ui.Alt, ui.KeyDown}, Run: func(a *App) { a.moveFocus(0, 1) }}
-	cmdGrowLeft    = command{Title: "Move Divider Left", Accel: "CmdOrCtrl+Ctrl+Left", Keys: "⌃⌘←", Other: shortcut{ui.Alt | ui.Shift, ui.KeyLeft}, Run: func(a *App) { a.resizeFocused(-1, 0) }}
-	cmdGrowRight   = command{Title: "Move Divider Right", Accel: "CmdOrCtrl+Ctrl+Right", Keys: "⌃⌘→", Other: shortcut{ui.Alt | ui.Shift, ui.KeyRight}, Run: func(a *App) { a.resizeFocused(1, 0) }}
-	cmdGrowUp      = command{Title: "Move Divider Up", Accel: "CmdOrCtrl+Ctrl+Up", Keys: "⌃⌘↑", Other: shortcut{ui.Alt | ui.Shift, ui.KeyUp}, Run: func(a *App) { a.resizeFocused(0, -1) }}
-	cmdGrowDown    = command{Title: "Move Divider Down", Accel: "CmdOrCtrl+Ctrl+Down", Keys: "⌃⌘↓", Other: shortcut{ui.Alt | ui.Shift, ui.KeyDown}, Run: func(a *App) { a.resizeFocused(0, 1) }}
-	cmdClear       = command{Title: "Clear Screen and Scrollback", Accel: "CmdOrCtrl+K", Keys: "⌘K", Other: ctrlShift(ui.KeyK), Run: func(a *App) { a.clearFocused() }, Hidden: true}
-	cmdClearScroll = command{Title: "Clear Scrollback", Run: func(a *App) { a.clearFocused() }}
-	cmdRestart     = command{Title: "Restart Shell in Pane", Run: func(a *App) { a.restartFocused() }}
-	cmdBigger      = command{Title: "Bigger Text", Accel: "CmdOrCtrl+=", Keys: "⌘+", Other: shortcut{ui.Ctrl, ui.KeyEqual}, Run: func(a *App) { a.setFontSize(termFont.Size + 1) }}
-	cmdSmaller     = command{Title: "Smaller Text", Accel: "CmdOrCtrl+-", Keys: "⌘−", Other: shortcut{ui.Ctrl, ui.KeyMinus}, Run: func(a *App) { a.setFontSize(termFont.Size - 1) }}
-	cmdActualSize  = command{Title: "Actual Size", Accel: "CmdOrCtrl+0", Keys: "⌘0", Other: shortcut{ui.Ctrl, ui.Key0}, Run: func(a *App) { a.setFontSize(0) }}
-	cmdGhostty     = command{Title: "Reload Ghostty Config", Run: func(a *App) { a.reloadGhostty() }}
-	cmdLight       = command{Title: "Appearance: Light", Run: func(a *App) { a.setAppearance("light") }}
-	cmdDark        = command{Title: "Appearance: Dark", Run: func(a *App) { a.setAppearance("dark") }}
-	cmdSystem      = command{Title: "Appearance: System", Run: func(a *App) { a.setAppearance("") }}
-	cmdSettings    = command{Title: "Settings…", Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
-	cmdUpdates     = command{Title: "Check for Updates…", Run: func(a *App) { updater.CheckForUpdates() }}
-	cmdEndAll      = command{Title: "Quit and End All Sessions", Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
+	cmdNewTab      = command{Name: locales.Messages.CmdNewTab, Accel: "CmdOrCtrl+T", Keys: "⌘T", Other: ctrlShift(ui.KeyT), Run: func(a *App) { a.newTab(a.currentDir()) }}
+	cmdSplitRight  = command{Name: locales.Messages.CmdSplitRight, Accel: "CmdOrCtrl+D", Keys: "⌘D", Other: ctrlShift(ui.KeyD), Run: func(a *App) { a.split(false) }}
+	cmdSplitDown   = command{Name: locales.Messages.CmdSplitDown, Accel: "CmdOrCtrl+Shift+D", Keys: "⇧⌘D", Other: ctrlShift(ui.KeyE), Run: func(a *App) { a.split(true) }}
+	cmdClosePane   = command{Name: locales.Messages.CmdClosePane, Accel: "CmdOrCtrl+W", Keys: "⌘W", Other: ctrlShift(ui.KeyW), Run: func(a *App) { a.closeFocused() }}
+	cmdCloseTab    = command{Name: locales.Messages.CmdCloseTab, Accel: "CmdOrCtrl+Shift+W", Keys: "⇧⌘W", Run: func(a *App) { a.closeActiveTab() }}
+	cmdZoom        = command{Name: locales.Messages.CmdZoomPane, Accel: "CmdOrCtrl+Shift+Enter", Keys: "⇧⌘↩", Other: ctrlShift(ui.KeyEnter), Run: func(a *App) { a.toggleZoom() }}
+	cmdEqualize    = command{Name: locales.Messages.CmdEqualizePanes, Accel: "CmdOrCtrl+Ctrl+=", Keys: "⌃⌘=", Run: func(a *App) { a.equalize() }}
+	cmdNextTab     = command{Name: locales.Messages.CmdNextTab, Accel: "CmdOrCtrl+Shift+]", Keys: "⇧⌘]", Other: shortcut{ui.Ctrl, ui.KeyPageDown}, Run: func(a *App) { a.cycleTab(1) }}
+	cmdPrevTab     = command{Name: locales.Messages.CmdPreviousTab, Accel: "CmdOrCtrl+Shift+[", Keys: "⇧⌘[", Other: shortcut{ui.Ctrl, ui.KeyPageUp}, Run: func(a *App) { a.cycleTab(-1) }}
+	cmdSidebar     = command{Name: locales.Messages.CmdToggleSidebar, Accel: "CmdOrCtrl+Ctrl+S", Keys: "⌃⌘S", Other: ctrlShift(ui.KeyS), Run: func(a *App) { a.toggleSidebar() }}
+	cmdRenameTab   = command{Name: locales.Messages.CmdRenameTab, Accel: "CmdOrCtrl+Shift+R", Keys: "⇧⌘R", Other: ctrlShift(ui.KeyR), Run: func(a *App) { a.startRename() }}
+	cmdPalette     = command{Name: locales.Messages.CmdCommandPalette, Accel: "CmdOrCtrl+Shift+P", Keys: "⇧⌘P", Other: ctrlShift(ui.KeyP), Run: func(a *App) { a.openPalette() }, Hidden: true}
+	cmdPalette2    = command{Name: locales.Messages.CmdGoToPane, Accel: "CmdOrCtrl+P", Keys: "⌘P", Run: func(a *App) { a.openPalette() }, Hidden: true}
+	cmdFocusLeft   = command{Name: locales.Messages.CmdFocusPaneLeft, Accel: "CmdOrCtrl+Alt+Left", Keys: "⌥⌘←", Other: shortcut{ui.Alt, ui.KeyLeft}, Run: func(a *App) { a.moveFocus(-1, 0) }}
+	cmdFocusRight  = command{Name: locales.Messages.CmdFocusPaneRight, Accel: "CmdOrCtrl+Alt+Right", Keys: "⌥⌘→", Other: shortcut{ui.Alt, ui.KeyRight}, Run: func(a *App) { a.moveFocus(1, 0) }}
+	cmdFocusUp     = command{Name: locales.Messages.CmdFocusPaneAbove, Accel: "CmdOrCtrl+Alt+Up", Keys: "⌥⌘↑", Other: shortcut{ui.Alt, ui.KeyUp}, Run: func(a *App) { a.moveFocus(0, -1) }}
+	cmdFocusDown   = command{Name: locales.Messages.CmdFocusPaneBelow, Accel: "CmdOrCtrl+Alt+Down", Keys: "⌥⌘↓", Other: shortcut{ui.Alt, ui.KeyDown}, Run: func(a *App) { a.moveFocus(0, 1) }}
+	cmdGrowLeft    = command{Name: locales.Messages.CmdMoveDividerLeft, Accel: "CmdOrCtrl+Ctrl+Left", Keys: "⌃⌘←", Other: shortcut{ui.Alt | ui.Shift, ui.KeyLeft}, Run: func(a *App) { a.resizeFocused(-1, 0) }}
+	cmdGrowRight   = command{Name: locales.Messages.CmdMoveDividerRight, Accel: "CmdOrCtrl+Ctrl+Right", Keys: "⌃⌘→", Other: shortcut{ui.Alt | ui.Shift, ui.KeyRight}, Run: func(a *App) { a.resizeFocused(1, 0) }}
+	cmdGrowUp      = command{Name: locales.Messages.CmdMoveDividerUp, Accel: "CmdOrCtrl+Ctrl+Up", Keys: "⌃⌘↑", Other: shortcut{ui.Alt | ui.Shift, ui.KeyUp}, Run: func(a *App) { a.resizeFocused(0, -1) }}
+	cmdGrowDown    = command{Name: locales.Messages.CmdMoveDividerDown, Accel: "CmdOrCtrl+Ctrl+Down", Keys: "⌃⌘↓", Other: shortcut{ui.Alt | ui.Shift, ui.KeyDown}, Run: func(a *App) { a.resizeFocused(0, 1) }}
+	cmdClear       = command{Name: locales.Messages.CmdClearScreen, Accel: "CmdOrCtrl+K", Keys: "⌘K", Other: ctrlShift(ui.KeyK), Run: func(a *App) { a.clearFocused() }, Hidden: true}
+	cmdClearScroll = command{Name: locales.Messages.CmdClearScrollback, Run: func(a *App) { a.clearFocused() }}
+	cmdRestart     = command{Name: locales.Messages.CmdRestartShell, Run: func(a *App) { a.restartFocused() }}
+	cmdBigger      = command{Name: locales.Messages.CmdBiggerText, Accel: "CmdOrCtrl+=", Keys: "⌘+", Other: shortcut{ui.Ctrl, ui.KeyEqual}, Run: func(a *App) { a.setFontSize(termFont.Size + 1) }}
+	cmdSmaller     = command{Name: locales.Messages.CmdSmallerText, Accel: "CmdOrCtrl+-", Keys: "⌘−", Other: shortcut{ui.Ctrl, ui.KeyMinus}, Run: func(a *App) { a.setFontSize(termFont.Size - 1) }}
+	cmdActualSize  = command{Name: locales.Messages.CmdActualSize, Accel: "CmdOrCtrl+0", Keys: "⌘0", Other: shortcut{ui.Ctrl, ui.Key0}, Run: func(a *App) { a.setFontSize(0) }}
+	cmdGhostty     = command{Name: locales.Messages.CmdReloadGhostty, Run: func(a *App) { a.reloadGhostty() }}
+	cmdLight       = command{Name: locales.Messages.CmdAppearanceLight, Run: func(a *App) { a.setAppearance("light") }}
+	cmdDark        = command{Name: locales.Messages.CmdAppearanceDark, Run: func(a *App) { a.setAppearance("dark") }}
+	cmdSystem      = command{Name: locales.Messages.CmdAppearanceSystem, Run: func(a *App) { a.setAppearance("") }}
+	cmdSettings    = command{Name: locales.Messages.CmdSettings, Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
+	cmdUpdates     = command{Name: locales.Messages.CmdCheckForUpdates, Run: func(a *App) { updater.CheckForUpdates() }}
+	cmdEndAll      = command{Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
 )
+
+// Title is the command's title in the language the app shows.
+func (cmd *command) Title() string { return say(cmd.Name) }
+
+// say writes a message in the language the app shows.
+func say(name func(locales.Messages) string) string { return name(locales.In(i18n.Locale())) }
+
+// English is its title in English, which the palette and the debug verbs
+// match besides.
+func (cmd *command) English() string { return cmd.Name(locales.In("en")) }
 
 // paletteCommands are those the command palette lists, before the tabs.
 var paletteCommands = []*command{
@@ -144,7 +159,7 @@ func (cmd *command) menuAccel() string {
 // menu builds the menu bar, whose items run commands in the window.
 func (a *App) menu() *mygo.Menu {
 	item := func(cmd *command) *mygo.MenuItem {
-		return &mygo.MenuItem{Label: cmd.Title, Accelerator: cmd.menuAccel(), Click: func(*mygo.MenuItem, *mygo.Window) {
+		return &mygo.MenuItem{Label: cmd.Title(), Accelerator: cmd.menuAccel(), Click: func(*mygo.MenuItem, *mygo.Window) {
 			a.run(cmd)
 		}}
 	}
@@ -156,7 +171,7 @@ func (a *App) menu() *mygo.Menu {
 			accel = showTabKey(i).String()
 		}
 		tabItems = append(tabItems, &mygo.MenuItem{
-			Label: fmt.Sprintf("Show Tab %d", i), Accelerator: accel,
+			Label: locales.MenuShowTab(i), Accelerator: accel,
 			Click: func(*mygo.MenuItem, *mygo.Window) {
 				a.do(func() { a.showTab(i) })
 			},
@@ -171,7 +186,7 @@ func (a *App) menu() *mygo.Menu {
 	a.sidebarMenuItem.Disabled = prefs.TabPlacement == ""
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
-		{Label: "Shell", Submenu: []*mygo.MenuItem{
+		{Label: locales.MenuShell(), Submenu: []*mygo.MenuItem{
 			item(&cmdNewTab),
 			mygo.Separator(),
 			item(&cmdSplitRight),
@@ -186,7 +201,7 @@ func (a *App) menu() *mygo.Menu {
 			item(&cmdUpdates),
 			item(&cmdEndAll),
 		}},
-		{Label: "Edit", Submenu: []*mygo.MenuItem{
+		{Label: locales.MenuEdit(), Submenu: []*mygo.MenuItem{
 			{Role: mygo.RoleUndo},
 			{Role: mygo.RoleRedo},
 			mygo.Separator(),
@@ -197,7 +212,7 @@ func (a *App) menu() *mygo.Menu {
 			mygo.Separator(),
 			item(&cmdClear),
 		}},
-		{Label: "View", Submenu: []*mygo.MenuItem{
+		{Label: locales.MenuView(), Submenu: []*mygo.MenuItem{
 			item(&cmdPalette),
 			item(&cmdPalette2),
 			mygo.Separator(),
@@ -205,23 +220,23 @@ func (a *App) menu() *mygo.Menu {
 			item(&cmdEqualize),
 			a.sidebarMenuItem,
 			mygo.Separator(),
-			{Label: "Focus", Submenu: []*mygo.MenuItem{item(&cmdFocusLeft), item(&cmdFocusRight), item(&cmdFocusUp), item(&cmdFocusDown)}},
-			{Label: "Resize", Submenu: []*mygo.MenuItem{item(&cmdGrowLeft), item(&cmdGrowRight), item(&cmdGrowUp), item(&cmdGrowDown)}},
+			{Label: locales.MenuFocus(), Submenu: []*mygo.MenuItem{item(&cmdFocusLeft), item(&cmdFocusRight), item(&cmdFocusUp), item(&cmdFocusDown)}},
+			{Label: locales.MenuResize(), Submenu: []*mygo.MenuItem{item(&cmdGrowLeft), item(&cmdGrowRight), item(&cmdGrowUp), item(&cmdGrowDown)}},
 			mygo.Separator(),
 			item(&cmdBigger),
 			item(&cmdSmaller),
 			item(&cmdActualSize),
-			{Label: "Appearance", Submenu: []*mygo.MenuItem{
-				appearance("System", ""),
-				appearance("Light", "light"),
-				appearance("Dark", "dark"),
+			{Label: locales.MenuAppearance(), Submenu: []*mygo.MenuItem{
+				appearance(locales.AppearanceSystem(), ""),
+				appearance(locales.AppearanceLight(), "light"),
+				appearance(locales.AppearanceDark(), "dark"),
 			}},
 			item(&cmdGhostty),
 			mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen},
-			{Role: mygo.RoleToggleDevTools, Label: "Inspector", Hidden: !mygo.IsDev()},
+			{Role: mygo.RoleToggleDevTools, Label: locales.MenuInspector(), Hidden: !mygo.IsDev()},
 		}},
-		{Label: "Tabs", Submenu: append(tabItems, mygo.Separator(), item(&cmdRenameTab))},
+		{Label: locales.MenuTabs(), Submenu: append(tabItems, mygo.Separator(), item(&cmdRenameTab))},
 		{Role: mygo.RoleWindowMenu},
 	})
 }
@@ -384,13 +399,13 @@ func (a *App) paletteItems() []paletteItem {
 	for ti, t := range a.tabs {
 		for _, p := range t.panes() {
 			name, detail := p.label()
-			if !match(fmt.Sprintf("%s %s tab %d", name, detail, ti+1)) {
+			if !match(fmt.Sprintf("%s %s tab %d", name, detail, ti+1)) && !match(fmt.Sprintf("%s %s %s", name, detail, locales.PaletteTabKeys(ti+1))) {
 				continue
 			}
 			ti, t, p := ti, t, p
 			items = append(items, paletteItem{
 				title: name, detail: detail, glyph: paneProgram(p).Glyph,
-				keys: fmt.Sprintf("Tab %d", ti+1),
+				keys: locales.PaletteTabKeys(ti + 1),
 				run: func() {
 					a.selectTab(ti)
 					t.setFocus(p)
@@ -400,11 +415,11 @@ func (a *App) paletteItems() []paletteItem {
 		}
 	}
 	for _, cmd := range paletteCommands {
-		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" || !match(cmd.Title) {
+		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" || !match(cmd.Title()) && !match(cmd.English()) {
 			continue
 		}
 		cmd := cmd
-		items = append(items, paletteItem{title: cmd.Title, keys: cmd.Keys, glyph: "command", run: func() { cmd.Run(a) }})
+		items = append(items, paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { cmd.Run(a) }})
 	}
 	return items
 }
@@ -414,13 +429,13 @@ func fuzzy(s, q string) bool {
 	if strings.Contains(s, q) {
 		return true
 	}
-	i := 0
+	i, want := 0, []rune(q)
 	for _, r := range s {
-		if i < len(q) && byte(r) == q[i] {
+		if i < len(want) && r == want[i] {
 			i++
 		}
 	}
-	return i == len(q)
+	return i == len(want)
 }
 
 // palette draws the command palette, over the window.
@@ -440,7 +455,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
 		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(k.panelBorder).Children(func() {
 			ui.Icon(c, icon("search")).Size(17, 17).TextColor(k.textFaint)
-			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(15).Placeholder("Type a command, or the name of a pane…").AutoFocus()
+			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(15).Placeholder(locales.PalettePlaceholder()).AutoFocus()
 			if in.Changed() {
 				a.paletteSel, reveal = 0, true
 			}
@@ -458,7 +473,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		listH := float32(min(max(len(items), 1)*34+12, 384))
 		ui.Scroll(c).Height(listH).Padding(6).Children(func() {
 			if len(items) == 0 {
-				ui.Text(c, "No matches").FontSize(13).TextColor(k.textFaint).Padding(14)
+				ui.Text(c, locales.PaletteNoMatches()).FontSize(13).TextColor(k.textFaint).Padding(14)
 			}
 			for i, it := range items {
 				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer)

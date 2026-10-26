@@ -9,6 +9,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 const (
@@ -32,7 +34,7 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 	}
 	track := ui.Row(c).Basis(total).Shrink(1).MinWidth(0).Height(tabH+4).Padding(2).Radius((tabH+4)/2).
 		Background(k.track).Border(0.5, k.trackBorder).AlignItems(ui.Center).ClipX().
-		DragWindow().Role(ui.RoleTabList).Label("Tabs")
+		DragWindow().Role(ui.RoleTabList).Label(locales.TabListLabel())
 	tabs := slices.Clone(a.tabs)
 	track.Children(func() {
 		for i, t := range tabs {
@@ -139,7 +141,7 @@ func (a *App) tabEvents(e ui.Element, k *colors, i int, t *Tab) {
 // dot of its activity.
 func (a *App) tabEnd(c *ui.Context, k *colors, t *Tab, hovered bool) {
 	if hovered && len(a.tabs) > 1 {
-		x := iconButton(c, k, "x", "Close Tab", 18, 12).Tooltip("Close Tab")
+		x := iconButton(c, k, "x", locales.CmdCloseTab(), 18, 12).Tooltip(locales.CmdCloseTab())
 		if x.Clicked() {
 			a.later(c, func() { a.closeTab(t) })
 		}
@@ -206,19 +208,19 @@ func (a *App) moveTab(t *Tab, to int) {
 }
 
 func (a *App) tabMenu(m *ui.Menu, t *Tab) {
-	if m.Item("Rename Tab…").Chosen() {
+	if m.Item(locales.CmdRenameTab()).Chosen() {
 		a.selectTab(slices.Index(a.tabs, t))
 		a.startRename()
 	}
-	if t.Name != "" && m.Item("Reset Name").Chosen() {
+	if t.Name != "" && m.Item(locales.TabResetName()).Chosen() {
 		t.Name = ""
 		a.changed()
 	}
 	m.Separator()
 	i := slices.Index(a.tabs, t)
-	back, forth := "Move Left", "Move Right"
+	back, forth := locales.TabMoveLeft(), locales.TabMoveRight()
 	if prefs.TabPlacement != "" {
-		back, forth = "Move Up", "Move Down"
+		back, forth = locales.TabMoveUp(), locales.TabMoveDown()
 	}
 	if m.Item(back).Disabled(i <= 0).Chosen() {
 		a.moveTab(t, i-1)
@@ -231,13 +233,13 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 	if runtime.GOOS != "darwin" {
 		mods, key = cmdNewTab.Other.Mods, cmdNewTab.Other.Key
 	}
-	if m.Item("New Tab").Shortcut(mods, key).Chosen() {
+	if m.Item(locales.CmdNewTab()).Shortcut(mods, key).Chosen() {
 		a.newTab(a.currentDir())
 	}
-	if m.Item("Close Tab").Chosen() {
+	if m.Item(locales.CmdCloseTab()).Chosen() {
 		a.laterService(func() { a.closeTab(t) })
 	}
-	if m.Item("Close Other Tabs").Disabled(len(a.tabs) < 2).Chosen() {
+	if m.Item(locales.TabCloseOthers()).Disabled(len(a.tabs) < 2).Chosen() {
 		a.laterService(func() {
 			for _, o := range slices.Clone(a.tabs) {
 				if o != t {

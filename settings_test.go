@@ -27,6 +27,9 @@ func isolateSettings(t *testing.T, config string) (write func(string)) {
 	oldSource := setThemeSource
 	setThemeSource = func(mygo.ThemeSource) {}
 	t.Cleanup(func() { setThemeSource = oldSource })
+	oldLocale := setLocale
+	setLocale = func(string) {}
+	t.Cleanup(func() { setLocale = oldLocale })
 	write = func(s string) {
 		if err := os.WriteFile(path, []byte(s), 0o600); err != nil {
 			t.Fatal(err)
