@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -80,6 +81,31 @@ func readJSON(path string, v any) error {
 		return fmt.Errorf("rex: reading %s: %w", filepath.Base(path), err)
 	}
 	return nil
+}
+
+// NormalizePublicKey checks a client's public key, "nodekey:" and 64 hex
+// digits, and returns it in its canonical form.
+func NormalizePublicKey(s string) (string, error) {
+	k, err := parsePublicKey(s)
+	if err != nil {
+		return "", err
+	}
+	return k.String(), nil
+}
+
+// secretRun finds what could be a piece of the tailcat address or of a
+// key: a long run of base64 characters.
+var secretRun = regexp.MustCompile(`[A-Za-z0-9_+/=-]{32,}`)
+
+// scrub removes from s the tailcat address, and anything that looks like
+// a part of one, so that an error or a log line never holds it.
+func scrub(s string, addrs ...string) string {
+	for _, a := range addrs {
+		if a != "" {
+			s = strings.ReplaceAll(s, a, "<address>")
+		}
+	}
+	return secretRun.ReplaceAllString(s, "<redacted>")
 }
 
 func parsePublicKey(s string) (key.NodePublic, error) {
@@ -223,7 +249,7 @@ func (s *Server) remoteStartLocked() {
 				return
 			}
 			if err == nil {
-				r.ts, r.ln, r.addr, r.conns = ts, ln, addr, map[net.Conn]struct{}{}
+				r.ts, r.ln, r.addr, r.conns, r.lastErr = ts, ln, addr, map[net.Conn]struct{}{}, ""
 				if r.cfg.Region == 0 {
 					r.cfg.Region = region
 					if err := writeJSON(remotePath(), r.cfg); err != nil {
@@ -232,35 +258,72 @@ func (s *Server) remoteStartLocked() {
 				}
 				r.mu.Unlock()
 				log.Printf("rex: remote access on, for %d clients", len(keys))
-				s.remoteAccept(ln)
-				return
+				aerr := s.remoteAccept(ln)
+				// Accepting failed, not stopped: say so, and start again as
+				// after any failure, so that nothing claims to listen
+				// while nothing accepts.
+				r.mu.Lock()
+				if r.gen != gen {
+					r.mu.Unlock()
+					return
+				}
+				msg := scrub(aerr.Error())
+				r.lastErr = msg
+				done := func() {}
+				if r.ln == ln {
+					ts, ln, conns := r.ts, r.ln, r.conns
+					r.ts, r.ln, r.addr, r.conns = nil, nil, "", nil
+					done = func() {
+						ln.Close()
+						for c := range conns {
+							c.Close()
+						}
+						ts.Close()
+					}
+				}
+				r.mu.Unlock()
+				done()
+				log.Printf("rex: remote access stopped accepting: %s", msg)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(remoteRetry):
+				}
+				continue
 			}
-			r.lastErr = err.Error()
+			r.lastErr = scrub(err.Error())
 			r.mu.Unlock()
 			ts.Close()
-			log.Printf("rex: starting remote access: %v", err)
+			log.Printf("rex: starting remote access: %s", scrub(err.Error()))
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(30 * time.Second):
+			case <-time.After(remoteRetry):
 			}
 		}
 	}()
 }
 
-// remoteAccept serves the remote connections, marked remote.
-func (s *Server) remoteAccept(ln net.Listener) {
+// remoteRetry is how long a failed listener waits before it starts again.
+var remoteRetry = 30 * time.Second
+
+var errRemoteStopped = errors.New("rex: remote access stopped")
+
+// remoteAccept serves the remote connections, marked remote, until
+// accepting fails: it returns that error, or errRemoteStopped when the
+// listener was replaced.
+func (s *Server) remoteAccept(ln net.Listener) error {
 	r := &s.rem
 	for {
 		c, err := ln.Accept()
 		if err != nil {
-			return
+			return err
 		}
 		r.mu.Lock()
 		if r.ln != ln {
 			r.mu.Unlock()
 			c.Close()
-			return
+			return errRemoteStopped
 		}
 		r.conns[c] = struct{}{}
 		r.mu.Unlock()
@@ -368,21 +431,43 @@ func (s *Server) remoteDo(req Request) (any, error) {
 // remoteClientKey returns this machine's identity as a remote client,
 // made the first time, kept in Dir()/remote-client.json.
 func remoteClientKey() (key.NodePrivate, error) {
-	var id struct {
+	// Two creators end with the same key: one at a time in this process,
+	// and the file is linked in place, which fails when another process
+	// made it first; then that one is read.
+	clientKeyMu.Lock()
+	defer clientKeyMu.Unlock()
+	type identity struct {
 		NodeKey key.NodePrivate `json:"nodeKey,omitzero"`
 	}
+	var id identity
 	path := filepath.Join(Dir(), "remote-client.json")
 	if err := readJSON(path, &id); err != nil {
 		return key.NodePrivate{}, err
 	}
-	if id.NodeKey.IsZero() {
-		id.NodeKey = key.NewNode()
-		if err := writeJSON(path, id); err != nil {
-			return key.NodePrivate{}, err
+	if !id.NodeKey.IsZero() {
+		return id.NodeKey, nil
+	}
+	id.NodeKey = key.NewNode()
+	tmp := fmt.Sprintf("%s.%d.tmp", path, os.Getpid())
+	if err := writeJSON(tmp, id); err != nil {
+		return key.NodePrivate{}, err
+	}
+	defer os.Remove(tmp)
+	if err := os.Link(tmp, path); err != nil {
+		if _, serr := os.Stat(path); serr != nil {
+			// No hard links here: write the file as it is.
+			return id.NodeKey, writeJSON(path, id)
 		}
+		var other identity
+		if err := readJSON(path, &other); err != nil || other.NodeKey.IsZero() {
+			return key.NodePrivate{}, errors.New("rex: reading the remote client key")
+		}
+		return other.NodeKey, nil
 	}
 	return id.NodeKey, nil
 }
+
+var clientKeyMu sync.Mutex
 
 // ClientPublicKey returns this machine's public key as a remote client,
 // for the allowlist of a server; "" when it cannot be read nor made.
@@ -403,7 +488,8 @@ func ConnectRemote(ctx context.Context, addr string) (*Client, error) {
 		return nil, errors.New("rex: no remote address")
 	}
 	if _, err := tailcat.ParseAddr(a); err != nil {
-		return nil, fmt.Errorf("rex: not a tailcat address: %w", err)
+		// Not the parser's error: it could quote the address.
+		return nil, errors.New("rex: not a tailcat address")
 	}
 	k, err := remoteClientKey()
 	if err != nil {
@@ -413,7 +499,7 @@ func ConnectRemote(ctx context.Context, addr string) (*Client, error) {
 	conn, err := tc.DialTCPPort(ctx, RemotePort)
 	if err != nil {
 		tc.Close()
-		return nil, fmt.Errorf("rex: connecting to the remote server (is this machine's key allowed there?): %w", err)
+		return nil, fmt.Errorf("rex: connecting to the remote server (is this machine's key allowed there?): %s", scrub(err.Error(), string(a)))
 	}
 	c := newClient(conn, func() (net.Conn, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

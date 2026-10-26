@@ -139,8 +139,9 @@ func (s *Server) shutdown() { s.quitOnce.Do(func() { close(s.quit) }) }
 // remoteAllowed only.
 func (s *Server) handle(conn net.Conn, remote bool) {
 	r := bufio.NewReaderSize(conn, 64<<10)
-	first, err := r.ReadBytes('\n')
+	first, err := readLine(r)
 	if err != nil {
+		refuseLine(conn, err)
 		conn.Close()
 		return
 	}
@@ -185,22 +186,72 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, remote bo
 		conn.Write(append(b, '\n'))
 		wmu.Unlock()
 	}
+	kills := make(chan struct{}, maxKills)
 	line := first
 	for {
 		var req Request
 		if err := json.Unmarshal(line, &req); err == nil {
-			// Kills wait for the session to end: answer them aside.
+			// Kills wait for the session to end: answer them aside, a
+			// few at a time; the others wait their turn.
 			if req.Op == "kill" {
-				go func() { reply(s.request(req, remote)) }()
+				kills <- struct{}{}
+				go func() {
+					defer func() { <-kills }()
+					if killHook != nil {
+						killHook()
+					}
+					reply(s.request(req, remote))
+				}()
 			} else {
 				reply(s.request(req, remote))
 			}
 		}
 		var err error
-		line, err = r.ReadBytes('\n')
+		line, err = readLine(r)
 		if err != nil {
+			if errors.Is(err, errLineTooLong) {
+				reply(Response{Error: err.Error()})
+			}
 			return
 		}
+	}
+}
+
+// maxLine is the longest line of control a connection may send, and
+// maxKills how many kills of a connection run at once.
+const (
+	maxLine  = 1 << 20
+	maxKills = 8
+)
+
+var errLineTooLong = errors.New("rex: the request is too long")
+
+// killHook, when set, runs in each kill before it starts: for tests.
+var killHook func()
+
+// readLine reads a line of at most maxLine bytes, the newline included.
+func readLine(r *bufio.Reader) ([]byte, error) {
+	var line []byte
+	for {
+		part, err := r.ReadSlice('\n')
+		line = append(line, part...)
+		if len(line) > maxLine {
+			return nil, errLineTooLong
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return line, nil
+	}
+}
+
+// refuseLine tells a connection its first line was too long.
+func refuseLine(conn net.Conn, err error) {
+	if errors.Is(err, errLineTooLong) {
+		conn.Write([]byte(`{"error":"` + err.Error() + `"}` + "\n"))
 	}
 }
 
