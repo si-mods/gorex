@@ -183,6 +183,7 @@ func (a *App) setAppearance(v string) {
 func (a *App) setWindowPref(change func(*settings)) {
 	change(&prefs)
 	saveSettings()
+	a.syncSidebarItem()
 	a.do(func() {})
 }
 

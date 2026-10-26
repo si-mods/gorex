@@ -87,20 +87,27 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32) {
 	hovered := e.Hovered()
 	e.Children(func() {
 		a.tiles(c, k, t)
-		if a.renaming == t {
-			a.renameField(c, t, name)
-			return
-		}
-		nameColor, detailColor := k.text, k.textFaint
-		if !active {
-			nameColor = k.textMuted
-		}
-		label := ui.Box(c).Grow(1).MinWidth(0).Height(18)
-		label.Draw(func(p *ui.Painter, r ui.Rect) {
-			fadeText(p, r, tabLabel(name, detail, nameColor, detailColor))
-		})
-		a.tabEnd(c, k, t, hovered)
+		a.tabRest(c, k, t, active, hovered)
 	})
+}
+
+// tabRest draws a tab after its tiles: its label and its end, or the field
+// that renames it.
+func (a *App) tabRest(c *ui.Context, k *colors, t *Tab, active, hovered bool) {
+	name, detail := t.label()
+	if a.renaming == t {
+		a.renameField(c, t, name)
+		return
+	}
+	nameColor, detailColor := k.text, k.textFaint
+	if !active {
+		nameColor = k.textMuted
+	}
+	label := ui.Box(c).Grow(1).MinWidth(0).Height(18)
+	label.Draw(func(p *ui.Painter, r ui.Rect) {
+		fadeText(p, r, tabLabel(name, detail, nameColor, detailColor))
+	})
+	a.tabEnd(c, k, t, hovered)
 }
 
 // tabEvents makes a tab's element do what tabs do: a click selects it, a

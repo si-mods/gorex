@@ -167,6 +167,8 @@ func (a *App) menu() *mygo.Menu {
 			a.setAppearance(v)
 		}}
 	}
+	a.sidebarMenuItem = item(&cmdSidebar)
+	a.sidebarMenuItem.Disabled = prefs.TabPlacement == ""
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Label: "Shell", Submenu: []*mygo.MenuItem{
@@ -201,7 +203,7 @@ func (a *App) menu() *mygo.Menu {
 			mygo.Separator(),
 			item(&cmdZoom),
 			item(&cmdEqualize),
-			item(&cmdSidebar),
+			a.sidebarMenuItem,
 			mygo.Separator(),
 			{Label: "Focus", Submenu: []*mygo.MenuItem{item(&cmdFocusLeft), item(&cmdFocusRight), item(&cmdFocusUp), item(&cmdFocusDown)}},
 			{Label: "Resize", Submenu: []*mygo.MenuItem{item(&cmdGrowLeft), item(&cmdGrowRight), item(&cmdGrowUp), item(&cmdGrowDown)}},

@@ -13,6 +13,8 @@ const (
 	sidebarMaxW     = 400
 	sidebarDefaultW = 236
 	sideRowH        = 32
+	// panesMinW is the room the panes keep beside the sidebar.
+	panesMinW = 320
 )
 
 // placements are the values of TabPlacement, in the order of the settings'
@@ -24,6 +26,26 @@ func sidebarWidth() float32 {
 		return w
 	}
 	return sidebarDefaultW
+}
+
+// sidebarMax is how wide the sidebar may be in a window winW wide.
+func sidebarMax(winW float32) float32 {
+	return max(min(sidebarMaxW, winW-panesMinW), sidebarMinW)
+}
+
+// sidebarWidthIn is the sidebar's width in a window winW wide: the user's,
+// unless the panes would lack room.
+func sidebarWidthIn(winW float32) float32 {
+	return min(sidebarWidth(), sidebarMax(winW))
+}
+
+// setTabPlacement places the tabs. A sidebar the user hid shows again when
+// the tabs come back to it from above, lest the choice seem to do nothing.
+func setTabPlacement(s *settings, place string) {
+	if s.TabPlacement == "" && place != "" {
+		s.SidebarHidden = false
+	}
+	s.TabPlacement = place
 }
 
 // paneHeaders tells whether the panes show their headers: always, but
@@ -38,6 +60,14 @@ func (a *App) toggleSidebar() {
 	}
 	prefs.SidebarHidden = !prefs.SidebarHidden
 	saveSettings()
+}
+
+// syncSidebarItem enables the menu's Toggle Sidebar while the tabs are in
+// a sidebar.
+func (a *App) syncSidebarItem() {
+	if a.sidebarMenuItem != nil {
+		a.sidebarMenuItem.SetEnabled(prefs.TabPlacement != "")
+	}
 }
 
 // sidebarLayout lays out the window with its tabs in a sidebar: the
@@ -131,7 +161,8 @@ func (a *App) sidebarButton(c *ui.Context, k *colors, right bool) {
 // host, and the tabs, one a row; the settings' button at its foot.
 func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 	bar := c.TitleBar()
-	ui.Column(c).Width(sidebarWidth()).Shrink(0).MinHeight(0).Children(func() {
+	winW, _ := c.Size()
+	ui.Column(c).Width(sidebarWidthIn(winW)).Shrink(0).MinHeight(0).Children(func() {
 		head := ui.Row(c).Height(titleH).Shrink(0).Gap(2).AlignItems(ui.Center).DragWindow()
 		if right {
 			head.Padding(0, max(bar.Right, 6), 0, 6)
@@ -173,11 +204,22 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 // click gives it its default width back.
 func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
 	e := ui.Box(c.Key("sidebar-edge")).Width(gap).Shrink(0).Cursor(ui.CursorResizeColumn).Role(ui.RoleSplitter).Label("Sidebar Edge")
-	if dx, _, ok := e.Dragged(); ok && dx != 0 {
+	// The width follows the pointer from where the drag began, so that the
+	// edge comes back under it after a bound stopped it.
+	winW, _ := c.Size()
+	if dx, _, ok := e.Dragged(); ok {
+		if !a.edgeDrag {
+			a.edgeDrag, a.edgeFrom, a.edgeMoved = true, sidebarWidthIn(winW), 0
+		}
 		if right {
 			dx = -dx
 		}
-		prefs.SidebarWidth = min(max(sidebarWidth()+dx, sidebarMinW), sidebarMaxW)
+		a.edgeMoved += dx
+		if a.edgeMoved != 0 {
+			prefs.SidebarWidth = min(max(a.edgeFrom+a.edgeMoved, sidebarMinW), sidebarMax(winW))
+		}
+	} else {
+		a.edgeDrag = false
 	}
 	if _, _, ok := e.DragEnded(); ok {
 		saveSettings()
@@ -203,6 +245,12 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab) {
 	e.Label(name + " " + detail)
 	if active {
 		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 8, 0, k.shadow)
+		// A tab chosen otherwise than in the list, as by its keys, scrolls
+		// into view, once: the list scrolls freely after.
+		if a.revealed != t {
+			a.revealed = t
+			e.ScrollIntoView()
+		}
 	} else if e.Hovered() {
 		e.Background(k.hover)
 	}
@@ -211,18 +259,6 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab) {
 	e.Children(func() {
 		// The tiles take the room of three, so that the names line up.
 		ui.Box(c).Width(tileW + tileStep*2 + 2).Shrink(0).Children(func() { a.tiles(c, k, t) })
-		if a.renaming == t {
-			a.renameField(c, t, name)
-			return
-		}
-		nameColor, detailColor := k.text, k.textFaint
-		if !active {
-			nameColor = k.textMuted
-		}
-		label := ui.Box(c).Grow(1).MinWidth(0).Height(18)
-		label.Draw(func(p *ui.Painter, r ui.Rect) {
-			fadeText(p, r, tabLabel(name, detail, nameColor, detailColor))
-		})
-		a.tabEnd(c, k, t, hovered)
+		a.tabRest(c, k, t, active, hovered)
 	})
 }

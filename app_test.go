@@ -400,6 +400,35 @@ func TestSidebar(t *testing.T) {
 		t.Errorf("the width kept is %v (%v)", kept.SidebarWidth, err)
 	}
 
+	// Past a bound and back, the edge follows the pointer from where the
+	// drag began, not from the bound.
+	prefs.SidebarWidth = 0
+	tt.Frame()
+	edge, _ = tt.Find("Sidebar Edge")
+	ex, ey := edge.X+edge.W/2, edge.Y+edge.H/2
+	tt.Press(ex, ey)
+	tt.Frame()
+	for _, dx := range []float32{150, 300, 100, -20} {
+		tt.Move(ex+dx, ey)
+		tt.Frame()
+	}
+	tt.Release(ex-20, ey)
+	tt.Frame()
+	if w := sidebarWidth(); w != sidebarDefaultW-20 {
+		t.Errorf("width %v after dragging past the maximum and back to -20, want %v", w, sidebarDefaultW-20)
+	}
+
+	// A narrow window keeps room for the panes, without forgetting the width.
+	prefs.SidebarWidth = sidebarMaxW
+	tt.SetSize(560, 620)
+	tt.Frame()
+	edge, _ = tt.Find("Sidebar Edge")
+	if want := float32(560 - panesMinW); edge.X != want || prefs.SidebarWidth != sidebarMaxW {
+		t.Errorf("in a narrow window the sidebar is %v wide (want %v), the width kept %v", edge.X, want, prefs.SidebarWidth)
+	}
+	tt.SetSize(1000, 620)
+	tt.Frame()
+
 	// Hiding the sidebar shows the pane headers.
 	if err := tt.Click("Hide Sidebar"); err != nil {
 		t.Fatal(err)
@@ -419,5 +448,37 @@ func TestSidebar(t *testing.T) {
 	}
 	if prefs.SidebarHidden {
 		t.Error("the sidebar did not show again")
+	}
+}
+
+// TestSidebarReveals checks that a tab chosen by its keys scrolls into the
+// sidebar's view, and that the list then scrolls freely.
+func TestSidebarReveals(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left"}
+	for range 24 {
+		a.newTab(os.TempDir())
+	}
+	a.tabs[len(a.tabs)-1].Name = "Last"
+	a.showTab(1)
+	tt.Frame()
+	tt.Frame()
+	if r, ok := tt.Find("Last "); !ok || r.Y < 620 {
+		t.Fatalf("the last tab shows at %v (%v) before it is chosen; the list should overflow", r, ok)
+	}
+	a.showTab(9)
+	tt.Frame()
+	tt.Frame()
+	r, ok := tt.Find("Last ")
+	if !ok || r.Y < 0 || r.Y+r.H > 620 {
+		t.Fatalf("the chosen tab is at %v, out of view", r)
+	}
+	tt.Scroll(r.X, r.Y, 0, -2000)
+	tt.Frame()
+	tt.Frame()
+	if r, _ := tt.Find("Last "); r.Y < 620 {
+		t.Errorf("the list scrolled back to the chosen tab, at %v", r)
 	}
 }

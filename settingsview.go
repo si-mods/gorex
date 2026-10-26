@@ -184,7 +184,7 @@ func (a *App) appearanceSettings(c *ui.Context, k *colors) {
 	place := max(slices.Index(placements, prefs.TabPlacement), 0)
 	settingRow(c, k, "Tab placement", "Place tabs Above, on the Left Side, or on the Right Side of the window.", func() {
 		if ui.Segmented(c, &place, "Above", "Left Side", "Right Side").Label("Tab placement").Changed() {
-			a.setWindowPref(func(s *settings) { s.TabPlacement = placements[place] })
+			a.setWindowPref(func(s *settings) { setTabPlacement(s, placements[place]) })
 		}
 	})
 	headers := !prefs.HidePaneHeaders

@@ -150,6 +150,21 @@ func TestTabPlacementSettings(t *testing.T) {
 	if prefs.TabPlacement != "" || prefs.SidebarWidth != 0 {
 		t.Errorf("kept placement %q, width %v", prefs.TabPlacement, prefs.SidebarWidth)
 	}
+	// Coming back to a sidebar from above shows it; moving it does not.
+	prefs = settings{SidebarHidden: true}
+	setTabPlacement(&prefs, "left")
+	if prefs.TabPlacement != "left" || prefs.SidebarHidden {
+		t.Errorf("from above to the left: %+v", prefs)
+	}
+	prefs.SidebarHidden = true
+	setTabPlacement(&prefs, "right")
+	if !prefs.SidebarHidden {
+		t.Error("moving the hidden sidebar to the right showed it")
+	}
+	if w := float32(560); sidebarMax(w) != w-panesMinW || sidebarMax(300) != sidebarMinW || sidebarMax(2000) != sidebarMaxW {
+		t.Errorf("sidebar maxima %v %v %v", sidebarMax(560), sidebarMax(300), sidebarMax(2000))
+	}
+
 	// Pane headers hide only beside a left sidebar that shows.
 	for _, c := range []struct {
 		place  string
