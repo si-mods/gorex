@@ -22,7 +22,7 @@ type colors struct {
 	track, trackBorder, tabActive, tabSep ui.Color
 	tileRim                               ui.Color
 
-	busy, attention, exited ui.Color
+	busy, attention, exited, danger ui.Color
 
 	panel, panelBorder, panelSel, backdrop ui.Color
 
@@ -60,6 +60,7 @@ var lightColors = colors{
 	tileRim:     ui.RGBA(255, 255, 255, 0.95),
 
 	busy:      ui.Hex("#34a853"),
+	danger:    ui.Hex("#ef4444"),
 	attention: ui.Hex("#f59e0b"),
 	exited:    ui.Hex("#a1a1a6"),
 
@@ -100,6 +101,7 @@ var darkColors = colors{
 	tileRim:     ui.RGBA(255, 255, 255, 0.22),
 
 	busy:      ui.Hex("#4ade80"),
+	danger:    ui.Hex("#ef4444"),
 	attention: ui.Hex("#fbbf24"),
 	exited:    ui.Hex("#636366"),
 

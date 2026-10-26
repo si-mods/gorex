@@ -385,7 +385,7 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 		ui.Row(c).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
 			ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(12).Background(k.panel).Border(1, k.panelBorder).
 				Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(8, 8).Radius(4).Background(ui.Hex("#ef4444"))
+				ui.Box(c).Size(8, 8).Radius(4).Background(k.danger)
 				ui.Text(c, a.err).FontSize(12.5).TextColor(k.text).MaxWidth(520)
 				if iconButton(c, k, "x", "Dismiss", 22, 14).Clicked() {
 					a.err = ""

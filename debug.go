@@ -43,9 +43,29 @@ func (a *App) debug(dir, line string) {
 	}
 	switch verb {
 	case "section": // a section of the settings window
-		settingsUI.section = arg
 		if w := settingsUI.win; w != nil {
-			w.Update(func() {})
+			w.Update(func() { a.showSection(arg) })
+		}
+	case "remote": // allow NAME KEY, enable, disable, regenerate, reveal, confirm: the Remote page's calls
+		op, rest, _ := strings.Cut(arg, " ")
+		switch op {
+		case "allow":
+			name, key, _ := strings.Cut(rest, " ")
+			a.client.AllowRemote(name, key)
+		case "enable":
+			a.client.EnableRemote()
+		case "disable":
+			a.client.DisableRemote()
+		case "regenerate":
+			a.client.RegenerateRemote()
+		case "reveal", "confirm":
+			if w := settingsUI.win; w != nil {
+				w.Update(func() {
+					remoteUI.reveal, remoteUI.confirm = op == "reveal", op == "confirm"
+					remoteUI.st.Address = ""
+					a.fetchRemote()
+				})
+			}
 		}
 	case "appearance": // system, light or dark
 		a.setAppearance(map[string]string{"light": "light", "dark": "dark"}[arg])

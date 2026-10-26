@@ -64,7 +64,7 @@ func (a *App) openSettings() {
 	win := mygo.NewWindow(opts)
 	settingsUI.win = win
 	win.SetMenu(mygo.NewMenu(nil)) // not the terminal window's menus
-	win.OnClosed(func() { settingsUI.win = nil })
+	win.OnClosed(func() { stopRemotePoll(); settingsUI.win = nil })
 }
 
 // sections are the sidebar's items.
@@ -73,6 +73,7 @@ var sections = []struct{ id, glyph, label string }{
 	{"terminal", "square-terminal", "Terminal"},
 	{"theme", "sparkles", "Theme"},
 	{"keyboard", "keyboard", "Keyboard"},
+	{"remote", "globe", "Remote"},
 	{"about", "hexagon", "About"},
 }
 
@@ -91,7 +92,7 @@ func (a *App) settingsView(c *ui.Context) {
 		ui.Row(c).Grow(1).MinHeight(0).Gap(gap).Padding(0, gap, gap, gap).AlignItems(ui.Stretch).Children(func() {
 			card(ui.Column(c).Width(196).Shrink(0).Padding(8).Gap(2), k).Children(func() {
 				for _, s := range sections {
-					sidebarItem(c, k, s.id, s.glyph, s.label)
+					a.sidebarItem(c, k, s.id, s.glyph, s.label)
 				}
 			})
 			ui.Scroll(c).Grow(1).MinWidth(0).Padding(14, 18, 18, 18).Children(func() {
@@ -103,6 +104,8 @@ func (a *App) settingsView(c *ui.Context) {
 						a.themeSettings(c, k)
 					case "keyboard":
 						a.keyboardSettings(c, k)
+					case "remote":
+						a.remoteSettings(c, k)
 					case "about":
 						a.aboutSettings(c, k)
 					default:
@@ -131,7 +134,7 @@ func (a *App) settingsTitleBar(c *ui.Context, k *colors) {
 
 // sidebarItem is a section's chip, as a tab's: the chosen one has the
 // active tab's face.
-func sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
+func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
 	active := settingsUI.section == id
 	e := ui.Row(c.Key(id)).Height(tabH+4).Padding(0, 12, 0, 10).Gap(9).AlignItems(ui.Center).Radius((tabH+4)/2).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(label)
@@ -142,7 +145,7 @@ func sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
 	}
 	e.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
 	if e.Clicked() {
-		settingsUI.section = id
+		a.showSection(id)
 	}
 	e.Children(func() {
 		ui.Icon(c, icon(glyph)).Size(16, 16).TextColor(map[bool]ui.Color{true: k.text, false: k.iconMuted}[active])

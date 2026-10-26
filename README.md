@@ -65,8 +65,16 @@ Settings… (⌘, on macOS, Ctrl+, elsewhere; Shell menu and command palette)
 opens a window of its own with a sidebar of sections: Appearance (light,
 dark or system; text size), Terminal (font, cursor style and blink, copy on
 selection), Theme (any of Ghostty's themes, or follow the config),
-Keyboard (GoRex's shortcuts, read only) and About (version, Check for
-Updates…). The choices go to `settings.json`.
+Keyboard (GoRex's shortcuts, read only), Remote (see
+[Remote access](#remote-access)) and About (version, Check for Updates…).
+The choices go to `settings.json`.
+
+Remote turns the server's remote access on and off, and manages it: the
+list of allowed clients (add one by name and public key, revoke one), this
+machine's own key to copy, and, while listening, the address, hidden until
+you show it, with Copy and Regenerate (which asks first). The switch stays
+off until a client is allowed. The page asks the server every two seconds
+while it shows. It does not connect to other hosts yet.
 
 Precedence: what you set in Settings, over Ghostty's config, over GoRex's
 defaults. "Reload Ghostty Config" reads the config again but never
@@ -126,12 +134,16 @@ What to know before turning it on:
   it, nor any key.
 - The allowlist is what keeps others out. A leaked address alone gets
   nobody in, but regenerate it anyway.
-- An allowed client can open shells and type into every session: trust
-  it as you would an SSH key.
-- A remote client may list, create, kill, resize and attach to sessions
-  only. It may not shut the server down, read or set the window layout,
-  or see or change remote access (`remote.*`): those are for the local
-  socket only.
+- An allowed key means running commands as this user: a client may
+  start any program with any environment and attach to every session.
+  From a shell there it can reach the local socket, and so change the
+  layout and remote access itself. Trust it as you would an SSH key.
+- Over the connection itself, a remote client may list, create, kill,
+  resize and attach to sessions only. It may not shut the server down,
+  read or set the window layout, or see or change remote access
+  (`remote.*`): those are for the local socket only.
+- Every connection is limited: a line of requests of at most 1 MiB, a
+  terminal of 1 to 1000 columns and rows, and 8 kills at once.
 
 ## Develop and build
 
@@ -197,11 +209,14 @@ its top included.
 | `view.go`, `tabs.go`, `host.go`, `commands.go` | the interface: title bar, tabs, panes, host popover, menus and palette |
 | `programs.go` | how programs show: names, glyphs, tile colors |
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
-| `settingsview.go` | the Settings window |
+| `settingsview.go`, `remoteview.go` | the Settings window, and its Remote page |
+| `tools/remotectl` | runs and probes the session server without the app: allow, enable, probe over tailcat |
+| `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 
-Not replicated: Rex's connections to servers on other machines; GoRex's
-server listens on a local socket only.
+Rex's connections to servers on other machines are only half there: the
+server side exists (remote access, above), but the window cannot open
+remote hosts yet.
 
 Icons: [Lucide](https://lucide.dev) (ISC) and [Simple Icons](https://simpleicons.org)
 (CC0). Font: [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (OFL).
