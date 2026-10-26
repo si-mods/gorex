@@ -15,21 +15,7 @@ import (
 // hostChip shows the machine the sessions run on; a click shows more of
 // it, and of the session server.
 func (a *App) hostChip(c *ui.Context, k *colors) {
-	h := a.hello.Host
-	name, model := h.Name, h.Model
-	if name == "" {
-		name, _ = os.Hostname()
-		name = strings.TrimSuffix(name, ".local")
-	}
-	glyph := "mac-studio"
-	switch {
-	case strings.Contains(model, "MacBook"), h.Portable:
-		glyph = "laptop"
-	case strings.Contains(model, "iMac"), runtime.GOOS == "windows":
-		glyph = "monitor"
-	case model == "Linux":
-		glyph = "server"
-	}
+	name, model, glyph := a.hostIdentity()
 	chip := ui.Row(c).Gap(9).Padding(3, 8, 3, 6).Radius(9).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 		Role(ui.RoleButton).Label(locales.HostLabel(name)).MaxWidth(190).Shrink(0)
 	if chip.Hovered() || a.hostOpen {
@@ -45,10 +31,73 @@ func (a *App) hostChip(c *ui.Context, k *colors) {
 			ui.Text(c, model).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
 		})
 	})
-	ui.PopoverBase(c, chip, &a.hostOpen, func(panel ui.Element) {
-		panel.Margin(8, 0, 0, 0).Width(300).Padding(14).Radius(14).Background(k.panel).Border(1, k.panelBorder).
+	a.hostPopover(c, k, chip, name, glyph, 8, 0)
+}
+
+// hostButton is the host chip as an icon, for the sidebar's foot: the
+// same panel opens from it. A remote host that is not connected shows as
+// a dot on the icon and in the button's label and tooltip.
+func (a *App) hostButton(c *ui.Context, k *colors) {
+	name, _, glyph := a.hostIdentity()
+	label := locales.HostLabel(name)
+	var bad *hostConn
+	n := 0
+	for _, h := range a.hosts {
+		if h.state == hostConnected {
+			continue
+		}
+		n++
+		if bad == nil || (h.state == hostFailed && bad.state != hostFailed) {
+			bad = h
+		}
+	}
+	if bad != nil {
+		status, _, _ := hostStatus(bad)
+		label = locales.HostLabelIssue(name, a.hostName(bad), status, n-1)
+	}
+	b := iconButtonWith(c, k, glyph, label, 30, 16, a.hostOpen, func() {
+		if bad != nil {
+			ui.Box(c).Absolute().Top(5).Right(5).Size(7, 7).Radius(4).Background(hostDot(k, bad))
+		}
+	}).Tooltip(label)
+	if b.Clicked() {
+		a.hostOpen = !a.hostOpen
+	}
+	a.hostPopover(c, k, b, name, glyph, 8, 0)
+}
+
+// hostIdentity is this machine's name, model, and the icon that stands
+// for it.
+func (a *App) hostIdentity() (name, model, glyph string) {
+	h := a.hello.Host
+	name, model = h.Name, h.Model
+	if name == "" {
+		name, _ = os.Hostname()
+		name = strings.TrimSuffix(name, ".local")
+	}
+	glyph = "mac-studio"
+	switch {
+	case strings.Contains(model, "MacBook"), h.Portable:
+		glyph = "laptop"
+	case strings.Contains(model, "iMac"), runtime.GOOS == "windows":
+		glyph = "monitor"
+	case model == "Linux":
+		glyph = "server"
+	}
+	return
+}
+
+// hostPopover opens the host's panel from its anchor, a margin above or
+// below it.
+func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, glyph string, top, bottom float32) {
+	ui.PopoverBase(c, anchor, &a.hostOpen, func(panel ui.Element) {
+		_, winH := c.Size()
+		panel.Margin(top, 0, bottom, 0).MaxHeight(winH-24).Width(300).Padding(14).Radius(14).Background(k.panel).Border(1, k.panelBorder).
 			Shadow(0, 12, 32, 0, k.shadowFocused).Gap(12)
-		a.hostPanel(c, k, name, glyph)
+		// A short window or many hosts scroll the panel's body.
+		ui.Scroll(c).MinHeight(0).Children(func() {
+			ui.Column(c).Gap(12).Children(func() { a.hostPanel(c, k, name, glyph) })
+		})
 	})
 }
 

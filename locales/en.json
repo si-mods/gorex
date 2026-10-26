@@ -302,6 +302,16 @@
       }
     }
   },
+  "hostLabelIssue": "Host {name} — {host}: {status}{more, plural, =0 {} one { (+{more})} other { (+{more})}}",
+  "@hostLabelIssue": {
+    "description": "Label and tooltip of the sidebar's host button when a remote host is not connected: this machine's name, the worst host, its state, and how many more are not connected.",
+    "placeholders": {
+      "name": {"type": "String", "example": "studio"},
+      "host": {"type": "String", "example": "PC024"},
+      "status": {"type": "String", "example": "Not connected"},
+      "more": {"type": "int", "example": "1"}
+    }
+  },
   "hostThisMachine": "{os, select, darwin {This Mac} windows {This PC} other {This computer}}",
   "@hostThisMachine": {
     "description": "The machine the app runs on, as its system calls it. os is the operating system: darwin, windows or another.",

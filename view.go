@@ -166,19 +166,28 @@ func tip(label string, cmd *command) string {
 // iconButton is a borderless button of an icon, with a face on hover;
 // label names it for screen readers and its tooltip.
 func iconButton(c *ui.Context, k *colors, name, label string, size, iconSize float32) ui.Element {
+	return iconButtonWith(c, k, name, label, size, iconSize, false, nil)
+}
+
+// iconButtonWith is iconButton drawn as pressed in while active, with more
+// drawn over its icon.
+func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize float32, active bool, more func()) ui.Element {
 	b := ui.Box(c).Size(size, size).Center().Radius(size / 2.6).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
 	if b.Pressed() {
 		b.Background(k.pressed)
-	} else if b.Hovered() {
+	} else if b.Hovered() || active {
 		b.Background(k.hover)
 	}
 	b.Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
 	col := k.iconMuted
-	if b.Hovered() {
+	if b.Hovered() || active {
 		col = k.text
 	}
 	b.Children(func() {
 		ui.Icon(c, icon(name)).Size(iconSize, iconSize).TextColor(col)
+		if more != nil {
+			more()
+		}
 	})
 	return b
 }
