@@ -174,13 +174,19 @@ func (s *Server) handle(conn net.Conn, remote bool) {
 			conn.Close()
 			return
 		}
+		// The session takes the window's size before the answer, after
+		// which the client may resize it on its control connection: that
+		// size must not be overwritten by this older one.
+		if a.Cols > 0 && a.Rows > 0 {
+			ss.resize(a.Cols, a.Rows)
+		}
 		conn.Write([]byte(`{"ok":true}` + "\n"))
 		// What the reader buffered past the first line is input.
 		if n := r.Buffered(); n > 0 {
 			b, _ := r.Peek(n)
 			ss.input(b)
 		}
-		ss.attach(conn, a.Cols, a.Rows)
+		ss.attach(conn)
 		return
 	}
 	s.control(conn, r, first, remote)

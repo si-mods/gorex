@@ -362,6 +362,7 @@ type Stream struct {
 	c        *Client
 	sid      string
 	attachMu sync.Mutex // one attach at a time
+	sizeMu   sync.Mutex // the sizes the server is told, in order: the last is the latest
 	mu       sync.Mutex
 	cond     *sync.Cond
 	conn     net.Conn
@@ -381,15 +382,19 @@ type Stream struct {
 func (c *Client) Stream(sid string, cols, rows int) *Stream {
 	s := &Stream{c: c, sid: sid, cols: cols, rows: rows}
 	s.cond = sync.NewCond(&s.mu)
-	time.AfterFunc(400*time.Millisecond, func() {
-		s.attach()
-		s.sync()
-	})
+	time.AfterFunc(400*time.Millisecond, s.attach)
 	return s
 }
 
-// attach attaches to the session at the terminal's size, once.
+// attach attaches to the session at the terminal's size, once, then
+// tells it a size the terminal took meanwhile.
 func (s *Stream) attach() {
+	s.attachOnce()
+	s.sync()
+}
+
+// attachOnce attaches, once; a stream that attached or failed stays so.
+func (s *Stream) attachOnce() {
 	s.attachMu.Lock()
 	defer s.attachMu.Unlock()
 	s.mu.Lock()
@@ -397,10 +402,17 @@ func (s *Stream) attach() {
 		s.mu.Unlock()
 		return
 	}
-	cols, rows := s.cols, s.rows
 	s.mu.Unlock()
 	conn, err := s.c.dial()
+	var cols, rows int
 	if err == nil {
+		// The size of now, not of before the dial, which may be slow: the
+		// server gives it to the session before it answers.
+		s.sizeMu.Lock()
+		defer s.sizeMu.Unlock()
+		s.mu.Lock()
+		cols, rows = s.cols, s.rows
+		s.mu.Unlock()
 		b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows})
 		if _, err = conn.Write(append(b, '\n')); err == nil {
 			err = readOK(conn)
@@ -426,8 +438,11 @@ func (s *Stream) attach() {
 }
 
 // sync tells the server the terminal's size, once attached, when it was
-// told another.
+// told another. One at a time, each reading the size as it goes: the last
+// one tells the latest size.
 func (s *Stream) sync() error {
+	s.sizeMu.Lock()
+	defer s.sizeMu.Unlock()
 	s.mu.Lock()
 	if s.conn == nil || s.cols == s.sentCols && s.rows == s.sentRows {
 		s.mu.Unlock()
@@ -506,7 +521,7 @@ func (s *Stream) Resize(cols, rows int) error {
 	s.mu.Lock()
 	s.cols, s.rows = cols, rows
 	s.mu.Unlock()
-	s.attach()
+	s.attachOnce()
 	return s.sync()
 }
 

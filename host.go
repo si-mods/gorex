@@ -31,19 +31,21 @@ func (a *App) hostChip(c *ui.Context, k *colors) {
 			ui.Text(c, model).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
 		})
 	})
-	a.hostPopover(c, k, chip, name, glyph, 8, 0)
+	a.hostPopover(c, k, chip, name, glyph)
 }
 
 // hostButton is the host chip as an icon, for the sidebar's foot: the
 // same panel opens from it. A remote host that is not connected shows as
-// a dot on the icon and in the button's label and tooltip.
+// a dot on the icon and in the button's label and tooltip; one making
+// its first attempt, as every launch does, is not flagged: it shows
+// once that attempt failed.
 func (a *App) hostButton(c *ui.Context, k *colors) {
 	name, _, glyph := a.hostIdentity()
 	label := locales.HostLabel(name)
 	var bad *hostConn
 	n := 0
 	for _, h := range a.hosts {
-		if h.state == hostConnected {
+		if h.state == hostConnected || h.state == hostConnecting {
 			continue
 		}
 		n++
@@ -63,7 +65,7 @@ func (a *App) hostButton(c *ui.Context, k *colors) {
 	if b.Clicked() {
 		a.hostOpen = !a.hostOpen
 	}
-	a.hostPopover(c, k, b, name, glyph, 8, 0)
+	a.hostPopover(c, k, b, name, glyph)
 }
 
 // hostIdentity is this machine's name, model, and the icon that stands
@@ -87,13 +89,20 @@ func (a *App) hostIdentity() (name, model, glyph string) {
 	return
 }
 
-// hostPopover opens the host's panel from its anchor, a margin above or
-// below it.
-func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, glyph string, top, bottom float32) {
+// hostPopover opens the host's panel from its anchor, a margin below it,
+// or above where there is no room below.
+func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, glyph string) {
 	ui.PopoverBase(c, anchor, &a.hostOpen, func(panel ui.Element) {
 		_, winH := c.Size()
-		panel.Margin(top, 0, bottom, 0).MaxHeight(winH-24).Width(300).Padding(14).Radius(14).Background(k.panel).Border(1, k.panelBorder).
-			Shadow(0, 12, 32, 0, k.shadowFocused).Gap(12)
+		// No higher than the room on the side it opens on, the larger:
+		// above the button at the sidebar's foot, it would otherwise cover
+		// the button or go past the window's top.
+		room := winH - 24
+		if r := anchor.Bounds(); r.H > 0 {
+			room = min(room, max(r.Y, winH-r.Y-r.H)-16)
+		}
+		panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(14).Background(k.panel).Border(1, k.panelBorder).
+			Shadow(0, 12, 32, 0, k.shadowFocused)
 		// A short window or many hosts scroll the panel's body.
 		ui.Scroll(c).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(12).Children(func() { a.hostPanel(c, k, name, glyph) })
