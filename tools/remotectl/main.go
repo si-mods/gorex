@@ -6,6 +6,10 @@
 //	remotectl pubkey                  print this machine's key as a remote client
 //	remotectl allow NAME PUBLICKEY    allow a client of the running server
 //	remotectl enable | disable | status | regenerate
+//	remotectl pairstart | pairstop    open or close the pairing window
+//	remotectl pending                 list the pairing requests, with fingerprints
+//	remotectl approve | reject PUBLICKEY
+//	remotectl pair ADDRESS NAME       ask a remote server to allow this machine
 //	remotectl probe ADDRESS           connect remotely, run a command, check what is denied
 package main
 
@@ -22,7 +26,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: remotectl serve|pubkey|allow|enable|disable|status|regenerate|probe")
+		fmt.Fprintln(os.Stderr, "usage: remotectl serve|pubkey|allow|enable|disable|status|regenerate|pairstart|pairstop|pending|approve|reject|pair|probe")
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
@@ -38,6 +42,18 @@ func main() {
 			fail(fmt.Errorf("probe ADDRESS"))
 		}
 		fail(probe(args[0]))
+	case "pair":
+		if len(args) != 2 {
+			fail(fmt.Errorf("pair ADDRESS NAME"))
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		c, err := rex.ConnectRemote(ctx, args[0])
+		fail(err)
+		defer c.Close()
+		fp, err := c.RequestPairing(args[1])
+		fail(err)
+		fmt.Println("requested; approve it on the server if it shows this fingerprint:", fp)
 	default:
 		c, err := rex.Connect()
 		fail(err)
@@ -54,6 +70,28 @@ func main() {
 			fail(c.DisableRemote())
 		case "regenerate":
 			fail(c.RegenerateRemote())
+		case "pairstart":
+			fail(c.StartPairing())
+		case "pairstop":
+			fail(c.StopPairing())
+		case "pending":
+			st, err := c.RemoteStatus()
+			fail(err)
+			if !st.Pairing.Open {
+				fmt.Println("not pairing")
+			}
+			for _, p := range st.Pending {
+				fmt.Printf("%s\t%s\t%s\n", rex.Fingerprint(p.PublicKey), p.Name, p.PublicKey)
+			}
+		case "approve", "reject":
+			if len(args) != 1 {
+				fail(fmt.Errorf("%s PUBLICKEY", cmd))
+			}
+			if cmd == "approve" {
+				fail(c.ApprovePairing(args[0]))
+			} else {
+				fail(c.RejectPairing(args[0]))
+			}
 		case "status":
 			st, err := c.RemoteStatus()
 			fail(err)

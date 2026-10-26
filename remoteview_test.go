@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"gorex/internal/rex"
 )
@@ -77,6 +78,17 @@ func TestRemoteState(t *testing.T) {
 		}
 		if !strings.Contains(detail, tc.st.LastError) {
 			t.Errorf("%s: detail %q lacks the server's error", tc.name, detail)
+		}
+	}
+}
+
+func TestPairingLeft(t *testing.T) {
+	now := time.Now()
+	for d, want := range map[time.Duration]string{
+		5 * time.Minute: "5:00", 61*time.Second + 400*time.Millisecond: "1:01", 9 * time.Second: "0:09", -time.Second: "0:00",
+	} {
+		if got := pairingLeft(now.Add(d), now); got != want {
+			t.Errorf("pairingLeft(%v) = %q, want %q", d, got, want)
 		}
 	}
 }

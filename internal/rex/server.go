@@ -258,7 +258,9 @@ func refuseLine(conn net.Conn, err error) {
 func (s *Server) request(req Request, remote bool) Response {
 	var data any
 	var err error
-	if remote && !remoteAllowed(req.Op) {
+	if remote && req.Op == "remote.pair" {
+		err = errors.New("rex: this machine is allowed there already")
+	} else if remote && !remoteAllowed(req.Op) {
 		log.Printf("rex: denied %q to a remote connection", req.Op)
 		err = fmt.Errorf("%s is not allowed remotely", req.Op)
 	} else {

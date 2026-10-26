@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -196,11 +197,42 @@ func (c *Client) RemoteStatus() (s RemoteStatus, err error) {
 	return
 }
 
-// EnableRemote turns remote access on; it fails while no client is
-// allowed. The server listens in the background: see RemoteStatus.
+// EnableRemote turns remote access on. The server listens in the
+// background: see RemoteStatus.
 func (c *Client) EnableRemote() error { return c.call(Request{Op: "remote.enable"}, nil) }
 
 func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }
+
+// StartPairing opens the pairing window for five minutes, or opens it
+// five minutes more, while remote access is on.
+func (c *Client) StartPairing() error { return c.call(Request{Op: "remote.pairStart"}, nil) }
+
+// StopPairing closes the pairing window and forgets its requests.
+func (c *Client) StopPairing() error { return c.call(Request{Op: "remote.pairStop"}, nil) }
+
+// ApprovePairing allows the client of a pairing request, by the name it
+// asked with.
+func (c *Client) ApprovePairing(publicKey string) error {
+	return c.call(Request{Op: "remote.approve", Remote: &RemoteClient{PublicKey: publicKey}}, nil)
+}
+
+// RejectPairing drops a pairing request.
+func (c *Client) RejectPairing(publicKey string) error {
+	return c.call(Request{Op: "remote.reject", Remote: &RemoteClient{PublicKey: publicKey}}, nil)
+}
+
+// RequestPairing asks the server, connected to with ConnectRemote, to
+// allow this machine by name; it returns the fingerprint of this
+// machine's key, which the server shows next to the request.
+func (c *Client) RequestPairing(name string) (string, error) {
+	var res PairResult
+	err := c.call(Request{Op: "remote.pair", Remote: &RemoteClient{Name: name}}, &res)
+	if err != nil && strings.Contains(err.Error(), "connection to the server lost") {
+		// A server not pairing closes the connection, saying nothing.
+		return "", errors.New("rex: the server is not pairing now: start pairing there first")
+	}
+	return res.Fingerprint, err
+}
 
 // AllowRemote allows a client by its public key (ClientPublicKey on its
 // machine).
@@ -208,8 +240,7 @@ func (c *Client) AllowRemote(name, publicKey string) error {
 	return c.call(Request{Op: "remote.allow", Remote: &RemoteClient{Name: name, PublicKey: publicKey}}, nil)
 }
 
-// RevokeRemote removes a client and drops its connections; removing the
-// last turns remote access off.
+// RevokeRemote removes a client and drops its connections.
 func (c *Client) RevokeRemote(publicKey string) error {
 	return c.call(Request{Op: "remote.revoke", Remote: &RemoteClient{PublicKey: publicKey}}, nil)
 }

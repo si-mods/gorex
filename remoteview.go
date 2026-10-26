@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -306,7 +307,6 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 
 	// The switch and the state.
 	on := st.Enabled && !page.unreachable
-	noClients := len(st.Allowed) == 0
 	card(ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(11, 14), k).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
 			ui.Text(c, "Allow remote clients").FontSize(13.5).FontWeight(600).TextColor(k.text)
@@ -314,17 +314,14 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 				ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
 				ui.Text(c, label).FontSize(12.5).FontWeight(500).TextColor(k.textMuted)
 			})
-			switch {
-			case detail != "":
+			if detail != "" {
 				ui.Text(c, detail).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
-			case noClients && !st.Enabled:
-				ui.Text(c, "Allow a client below first: remote access needs at least one.").FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
 			}
 			if page.err != "" {
 				ui.Text(c, page.err).FontSize(12).TextColor(k.danger).LineHeight(1.3)
 			}
 		})
-		sw := ui.Switch(c, &on).Label("Allow remote clients").Disabled(page.unreachable || page.busy || noClients && !st.Enabled)
+		sw := ui.Switch(c, &on).Label("Allow remote clients").Disabled(page.unreachable || page.busy)
 		if sw.Changed() {
 			if on {
 				a.remoteDo((*rex.Client).EnableRemote, nil)
@@ -337,8 +334,10 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 	if st.Running {
 		a.remoteAddress(c, k)
 	}
+	a.remotePairing(c, k, st)
+	a.remoteClients(c, k, st)
 
-	remoteCard(c, k, "This machine's key", "Give it to the machine you want to connect to, to allow this one there.", func() {
+	remoteCard(c, k, "This machine's key", "Its fingerprint is what a machine you pair with shows for this one.", func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			shown := page.myKey
 			if shown == "" {
@@ -349,9 +348,58 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 				copyText("mine", page.myKey)
 			}
 		})
+		if fp := rex.Fingerprint(page.myKey); fp != "" {
+			ui.Text(c, "Fingerprint "+fp).Font(monoFamily()).FontSize(12).TextColor(k.textFaint)
+		}
 	})
+}
 
-	a.remoteClients(c, k, st)
+// pairingLeft is the time left in the pairing window, as m:ss.
+func pairingLeft(until, now time.Time) string {
+	d := max(until.Sub(now).Round(time.Second), 0)
+	return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
+}
+
+// remotePairing is the card to pair a new device: the window, and the
+// requests made in it to approve or reject.
+func (a *App) remotePairing(c *ui.Context, k *colors, st rex.RemoteStatus) {
+	page := &remoteUI
+	note := "On the other machine, ask to pair with this server's address. Approve a request only if its fingerprint is the one that machine shows: an approved device runs commands here as your user."
+	remoteCard(c, k, "Pair a new device", note, func() {
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			switch {
+			case !st.Enabled:
+				ui.Text(c, "Turn remote access on to pair.").FontSize(12.5).TextColor(k.textFaint).Grow(1)
+			case st.Pairing.Open:
+				ui.Text(c, "Waiting for requests, "+pairingLeft(st.Pairing.ExpiresAt, time.Now())+" left").
+					FontSize(12.5).FontWeight(500).TextColor(k.textMuted).Grow(1)
+				if ui.Button(c.Key("pair-stop"), "Stop").Disabled(page.busy).Clicked() {
+					a.remoteDo((*rex.Client).StopPairing, nil)
+				}
+			default:
+				ui.Text(c, "Open for five minutes at a time.").FontSize(12.5).TextColor(k.textFaint).Grow(1)
+				if ui.Button(c.Key("pair-start"), "Start pairing").Disabled(page.busy).Clicked() {
+					a.remoteDo((*rex.Client).StartPairing, nil)
+				}
+			}
+		})
+		if st.Pairing.Open && len(st.Pending) == 0 {
+			ui.Text(c, "No request yet.").FontSize(12.5).TextColor(k.textFaint)
+		}
+		for _, p := range st.Pending {
+			ui.Row(c.Key(p.PublicKey)).Gap(10).Padding(4, 0).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, p.Name).FontSize(13.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+				ui.Text(c, rex.Fingerprint(p.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).SingleLine().
+					Tooltip(p.PublicKey).Grow(1).Shrink(0)
+				if ui.Button(c.Key("a"), "Approve").Disabled(page.busy).Clicked() {
+					a.remoteDo(func(srv *rex.Client) error { return srv.ApprovePairing(p.PublicKey) }, nil)
+				}
+				if ui.Button(c.Key("r"), "Reject").Disabled(page.busy).Clicked() {
+					a.remoteDo(func(srv *rex.Client) error { return srv.RejectPairing(p.PublicKey) }, nil)
+				}
+			})
+		}
+	})
 }
 
 func (a *App) remoteAddress(c *ui.Context, k *colors) {
@@ -398,7 +446,7 @@ func (a *App) remoteAddress(c *ui.Context, k *colors) {
 
 func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
-	remoteCard(c, k, "Allowed clients", "Revoking the last client turns remote access off.", func() {
+	remoteCard(c, k, "Allowed clients", "Each runs commands here as your user. Revoking one drops its connections.", func() {
 		if len(st.Allowed) == 0 {
 			ui.Text(c, "No client is allowed yet.").FontSize(12.5).TextColor(k.textFaint)
 		}
@@ -416,7 +464,7 @@ func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
 			})
 		}
 		ui.Box(c).Height(1).Background(k.tabSep.Alpha(0.5))
-		ui.Text(c, "Add a client").FontSize(12.5).FontWeight(600).TextColor(k.textMuted)
+		ui.Text(c, "Or add a client by its key").FontSize(12.5).FontWeight(600).TextColor(k.textMuted)
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if ui.TextInput(c.Key("name"), &page.name).Placeholder("Name, as alice-laptop").Label("Client name").Width(150).Shrink(0).Changed() {
 				page.addErr = ""
