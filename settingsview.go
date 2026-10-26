@@ -181,6 +181,18 @@ func (a *App) appearanceSettings(c *ui.Context, k *colors) {
 			a.setAppearance(appearances[i])
 		}
 	})
+	place := max(slices.Index(placements, prefs.TabPlacement), 0)
+	settingRow(c, k, "Tab placement", "Place tabs Above, on the Left Side, or on the Right Side of the window.", func() {
+		if ui.Segmented(c, &place, "Above", "Left Side", "Right Side").Label("Tab placement").Changed() {
+			a.setWindowPref(func(s *settings) { setTabPlacement(s, placements[place]) })
+		}
+	})
+	headers := !prefs.HidePaneHeaders
+	settingRow(c, k, "Show pane headers", "Pane headers are always shown when the vertical sidebar is hidden or positioned on the right.", func() {
+		if ui.Switch(c, &headers).Label("Show pane headers").Changed() {
+			a.setWindowPref(func(s *settings) { s.HidePaneHeaders = !headers })
+		}
+	})
 	size := float64(termFont.Size)
 	hint := fmt.Sprintf("Follows Ghostty's font-size (%.1f), or %.1f, until set.", ghosttyRaw.fontSize(0), float32(defaultFontSize))
 	settingRow(c, k, "Text size", hint, func() {

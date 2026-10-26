@@ -110,7 +110,8 @@ func TestSettingsPersist(t *testing.T) {
 		t.Errorf("zero settings wrote %s, not {}", b)
 	}
 	yes := true
-	want := settings{Appearance: "dark", FontSize: 14, Font: "Hack", Theme: "Nord", Cursor: "bar", CursorBlink: &yes}
+	want := settings{Appearance: "dark", FontSize: 14, Font: "Hack", Theme: "Nord", Cursor: "bar", CursorBlink: &yes,
+		TabPlacement: "left", SidebarWidth: 280, SidebarHidden: true, HidePaneHeaders: true}
 	prefs = want
 	saveSettings()
 	prefs = settings{}
@@ -127,6 +128,53 @@ func TestSettingsPersist(t *testing.T) {
 	loadSettings()
 	if prefs.FontSize != 0 {
 		t.Errorf("size %v out of range was kept", prefs.FontSize)
+	}
+}
+
+// TestTabPlacementSettings checks that settings from before the sidebar
+// put the tabs above, and that unknown placements and widths out of range
+// count as none.
+func TestTabPlacementSettings(t *testing.T) {
+	isolateSettings(t, "")
+	os.WriteFile(settingsPath(), []byte(`{"appearance": "dark", "fontSize": 14}`), 0o600)
+	loadSettings()
+	if prefs.TabPlacement != "" || prefs.SidebarHidden || prefs.HidePaneHeaders || sidebarWidth() != sidebarDefaultW {
+		t.Errorf("an old settings file loaded %+v, not tabs above", prefs)
+	}
+	if !paneHeaders() {
+		t.Error("pane headers hidden by default")
+	}
+	os.WriteFile(settingsPath(), []byte(`{"tabPlacement": "bottom", "sidebarWidth": 9999}`), 0o600)
+	prefs = settings{}
+	loadSettings()
+	if prefs.TabPlacement != "" || prefs.SidebarWidth != 0 {
+		t.Errorf("kept placement %q, width %v", prefs.TabPlacement, prefs.SidebarWidth)
+	}
+	// Coming back to a sidebar from above shows it; moving it does not.
+	prefs = settings{SidebarHidden: true}
+	setTabPlacement(&prefs, "left")
+	if prefs.TabPlacement != "left" || prefs.SidebarHidden {
+		t.Errorf("from above to the left: %+v", prefs)
+	}
+	prefs.SidebarHidden = true
+	setTabPlacement(&prefs, "right")
+	if !prefs.SidebarHidden {
+		t.Error("moving the hidden sidebar to the right showed it")
+	}
+	if w := float32(560); sidebarMax(w) != w-panesMinW || sidebarMax(300) != sidebarMinW || sidebarMax(2000) != sidebarMaxW {
+		t.Errorf("sidebar maxima %v %v %v", sidebarMax(560), sidebarMax(300), sidebarMax(2000))
+	}
+
+	// Pane headers hide only beside a left sidebar that shows.
+	for _, c := range []struct {
+		place  string
+		hidden bool
+		want   bool
+	}{{"", false, true}, {"left", false, false}, {"left", true, true}, {"right", false, true}} {
+		prefs = settings{TabPlacement: c.place, SidebarHidden: c.hidden, HidePaneHeaders: true}
+		if got := paneHeaders(); got != c.want {
+			t.Errorf("placement %q, sidebar hidden %v: headers %v, want %v", c.place, c.hidden, got, c.want)
+		}
 	}
 }
 

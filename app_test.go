@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -333,5 +334,151 @@ func TestPaletteScrolls(t *testing.T) {
 	tt.Frame()
 	if r, _ := tt.Find("shell01"); r.H == 0 {
 		t.Error("the keys chose a row out of sight")
+	}
+}
+
+// TestSidebar checks the tabs in a sidebar: a tab drags to another's place,
+// the edge drags the width within its bounds and keeps it, the button hides
+// the sidebar, and hidden pane headers come back with it hidden.
+func TestSidebar(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left", HidePaneHeaders: true}
+	first := a.tabs[0]
+	a.newTab(os.TempDir())
+	tt.Frame()
+	list, ok := tt.Find("Tabs")
+	if !ok {
+		t.Fatalf("no sidebar; texts %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Split Right"); ok {
+		t.Error("the pane's header shows beside the left sidebar")
+	}
+
+	// The second tab, dragged over the first, takes its place.
+	x, y := list.X+60, list.Y+sideRowH*1.5+2
+	tt.Press(x, y)
+	tt.Frame()
+	for _, dy := range []float32{4, 10, 20, sideRowH + 2} {
+		tt.Move(x, y-dy)
+		tt.Frame()
+	}
+	tt.Release(x, y-sideRowH-2)
+	tt.Frame()
+	if a.tabs[1] != first {
+		t.Error("dragging the second tab over the first did not reorder them")
+	}
+
+	// The edge drags the width, between its bounds, and keeps it.
+	edge, ok := tt.Find("Sidebar Edge")
+	if !ok {
+		t.Fatal("no sidebar edge")
+	}
+	drag := func(dx float32) {
+		ex, ey := edge.X+edge.W/2, edge.Y+edge.H/2
+		tt.Press(ex, ey)
+		tt.Frame()
+		tt.Move(ex+dx/2, ey)
+		tt.Frame()
+		tt.Move(ex+dx, ey)
+		tt.Frame()
+		tt.Release(ex+dx, ey)
+		tt.Frame()
+		edge, _ = tt.Find("Sidebar Edge")
+	}
+	drag(40)
+	if w := sidebarWidth(); w != sidebarDefaultW+40 {
+		t.Errorf("width %v after dragging 40 from %v", w, sidebarDefaultW)
+	}
+	drag(1000)
+	if w := sidebarWidth(); w != sidebarMaxW {
+		t.Errorf("width %v past the maximum", w)
+	}
+	var kept settings
+	if b, err := os.ReadFile(settingsPath()); err != nil || json.Unmarshal(b, &kept) != nil || kept.SidebarWidth != sidebarMaxW {
+		t.Errorf("the width kept is %v (%v)", kept.SidebarWidth, err)
+	}
+
+	// Past a bound and back, the edge follows the pointer from where the
+	// drag began, not from the bound.
+	prefs.SidebarWidth = 0
+	tt.Frame()
+	edge, _ = tt.Find("Sidebar Edge")
+	ex, ey := edge.X+edge.W/2, edge.Y+edge.H/2
+	tt.Press(ex, ey)
+	tt.Frame()
+	for _, dx := range []float32{150, 300, 100, -20} {
+		tt.Move(ex+dx, ey)
+		tt.Frame()
+	}
+	tt.Release(ex-20, ey)
+	tt.Frame()
+	if w := sidebarWidth(); w != sidebarDefaultW-20 {
+		t.Errorf("width %v after dragging past the maximum and back to -20, want %v", w, sidebarDefaultW-20)
+	}
+
+	// A narrow window keeps room for the panes, without forgetting the width.
+	prefs.SidebarWidth = sidebarMaxW
+	tt.SetSize(560, 620)
+	tt.Frame()
+	edge, _ = tt.Find("Sidebar Edge")
+	if want := float32(560 - panesMinW); edge.X != want || prefs.SidebarWidth != sidebarMaxW {
+		t.Errorf("in a narrow window the sidebar is %v wide (want %v), the width kept %v", edge.X, want, prefs.SidebarWidth)
+	}
+	tt.SetSize(1000, 620)
+	tt.Frame()
+
+	// Hiding the sidebar shows the pane headers.
+	if err := tt.Click("Hide Sidebar"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !prefs.SidebarHidden {
+		t.Fatal("the sidebar did not hide")
+	}
+	if _, ok := tt.Find("Tabs"); ok {
+		t.Error("the hidden sidebar lists the tabs")
+	}
+	if _, ok := tt.Find("Split Right"); !ok {
+		t.Error("no pane header with the sidebar hidden")
+	}
+	if err := tt.Click("Show Sidebar"); err != nil {
+		t.Fatal(err)
+	}
+	if prefs.SidebarHidden {
+		t.Error("the sidebar did not show again")
+	}
+}
+
+// TestSidebarReveals checks that a tab chosen by its keys scrolls into the
+// sidebar's view, and that the list then scrolls freely.
+func TestSidebarReveals(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left"}
+	for range 24 {
+		a.newTab(os.TempDir())
+	}
+	a.tabs[len(a.tabs)-1].Name = "Last"
+	a.showTab(1)
+	tt.Frame()
+	tt.Frame()
+	if r, ok := tt.Find("Last "); !ok || r.Y < 620 {
+		t.Fatalf("the last tab shows at %v (%v) before it is chosen; the list should overflow", r, ok)
+	}
+	a.showTab(9)
+	tt.Frame()
+	tt.Frame()
+	r, ok := tt.Find("Last ")
+	if !ok || r.Y < 0 || r.Y+r.H > 620 {
+		t.Fatalf("the chosen tab is at %v, out of view", r)
+	}
+	tt.Scroll(r.X, r.Y, 0, -2000)
+	tt.Frame()
+	tt.Frame()
+	if r, _ := tt.Find("Last "); r.Y < 620 {
+		t.Errorf("the list scrolled back to the chosen tab, at %v", r)
 	}
 }

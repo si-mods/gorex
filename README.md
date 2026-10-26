@@ -29,6 +29,12 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
 - **Tab icons** stack the tiles of a tab's programs, the focused pane's in
   front, as Rex does. Tabs reorder by dragging, rename by double-click, and
   have a context menu.
+- **Vertical tabs.** Settings ▸ Appearance places the tabs above the panes,
+  or in a sidebar on the left or the right side of the window. Drag the
+  sidebar's inner edge to resize it (double-click resets it), and Toggle
+  Sidebar (⌃⌘S) hides and shows it. "Show pane headers" off hides the
+  panes' headers while the sidebar shows on the left; they always show
+  when it is hidden or on the right, as in Rex.
 - **Host chip** with the machine's name and model; its popover shows the
   chip, memory, OS and the session server.
 - **Command palette** (⇧⌘P, Ctrl+Shift+P, or the ⌘ button): every command, and every pane
@@ -49,6 +55,7 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
 | ⌃⌘= | | Equalize panes |
 | ⌘1…⌘9, ⇧⌘[ ⇧⌘], ⌃Tab | Ctrl+Shift+1…9, Ctrl+PageUp/PageDown, Ctrl+Tab | Switch tabs |
 | ⇧⌘R | Ctrl+Shift+R | Rename tab |
+| ⌃⌘S | Ctrl+Shift+S | Hide or show the tabs' sidebar |
 | ⇧⌘P, ⌘P | Ctrl+Shift+P | Command palette |
 | ⌘K | Ctrl+Shift+K | Clear |
 | ⌘+ ⌘− ⌘0 | Ctrl+= Ctrl+- Ctrl+0 | Text size |
@@ -63,11 +70,12 @@ which type characters (AltGr) on many keyboards.
 
 Settings… (⌘, on macOS, Ctrl+, elsewhere; Shell menu and command palette)
 opens a window of its own with a sidebar of sections: Appearance (light,
-dark or system; text size), Terminal (font, cursor style and blink, copy on
+dark or system; tab placement; pane headers; text size), Terminal (font, cursor style and blink, copy on
 selection), Theme (any of Ghostty's themes, or follow the config),
 Keyboard (GoRex's shortcuts, read only), Remote (see
 [Remote access](#remote-access)) and About (version, Check for Updates…).
-The choices go to `settings.json`.
+The choices go to `settings.json`, as do the sidebar's width and whether
+it is hidden.
 
 Remote turns the server's remote access on and off, and manages it:
 pairing a new device (Start pairing opens a five-minute window; each
@@ -225,7 +233,7 @@ its top included.
 |---|---|
 | `main.go` | the app, its window, and `-server` |
 | `state.go` | tabs, the tree of splits, panes, saving and restoring the layout |
-| `view.go`, `tabs.go`, `host.go`, `commands.go` | the interface: title bar, tabs, panes, host popover, menus and palette |
+| `view.go`, `tabs.go`, `sidebar.go`, `host.go`, `commands.go` | the interface: title bar, tabs and their sidebar, panes, host popover, menus and palette |
 | `programs.go` | how programs show: names, glyphs, tile colors |
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
 | `settingsview.go`, `remoteview.go` | the Settings window, and its Remote page |

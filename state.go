@@ -102,6 +102,14 @@ type App struct {
 	lastSnapshot string
 	title        string
 
+	// The sidebar: the menu's Toggle Sidebar, the tab last scrolled into
+	// view, and a drag of its edge, from the width it began at.
+	sidebarMenuItem *mygo.MenuItem
+	revealed        *Tab
+	edgeDrag        bool
+	edgeFrom        float32
+	edgeMoved       float32
+
 	// posted are changes to make in the next frame, from terminals of a
 	// view without a window, as in tests.
 	postMu sync.Mutex

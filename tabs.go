@@ -81,6 +81,39 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32) {
 	} else if e.Hovered() {
 		e.Background(k.hover)
 	}
+	a.tabEvents(e, k, i, t)
+	// The tab stays hovered while its close button is pressed, which it
+	// shows then.
+	hovered := e.Hovered()
+	e.Children(func() {
+		a.tiles(c, k, t)
+		a.tabRest(c, k, t, active, hovered)
+	})
+}
+
+// tabRest draws a tab after its tiles: its label and its end, or the field
+// that renames it.
+func (a *App) tabRest(c *ui.Context, k *colors, t *Tab, active, hovered bool) {
+	name, detail := t.label()
+	if a.renaming == t {
+		a.renameField(c, t, name)
+		return
+	}
+	nameColor, detailColor := k.text, k.textFaint
+	if !active {
+		nameColor = k.textMuted
+	}
+	label := ui.Box(c).Grow(1).MinWidth(0).Height(18)
+	label.Draw(func(p *ui.Painter, r ui.Rect) {
+		fadeText(p, r, tabLabel(name, detail, nameColor, detailColor))
+	})
+	a.tabEnd(c, k, t, hovered)
+}
+
+// tabEvents makes a tab's element do what tabs do: a click selects it, a
+// double click renames it, it drags to another tab's place, and it has the
+// tab's menu.
+func (a *App) tabEvents(e ui.Element, k *colors, i int, t *Tab) {
 	e.Transition(ui.ElementTransition{Colors: true, Position: true, Duration: 160 * time.Millisecond})
 	e.Drag(t)
 	if dragged, ok := ui.Drop[*Tab](e); ok && dragged != t {
@@ -92,7 +125,7 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32) {
 	if e.Dragging() {
 		e.Opacity(0.4)
 	}
-	if e.Clicked() && !active {
+	if e.Clicked() && i != a.active {
 		a.selectTab(i)
 	}
 	if e.DoubleClicked() {
@@ -100,34 +133,21 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32) {
 		a.startRename()
 	}
 	e.ContextMenu(func(m *ui.Menu) { a.tabMenu(m, t) })
-	// The tab stays hovered while its close button is pressed, which it
-	// shows then.
-	hovered := e.Hovered()
-	e.Children(func() {
-		a.tiles(c, k, t)
-		if a.renaming == t {
-			a.renameField(c, t, name)
-			return
+}
+
+// tabEnd draws the end of a tab: its close button while hovered, else the
+// dot of its activity.
+func (a *App) tabEnd(c *ui.Context, k *colors, t *Tab, hovered bool) {
+	if hovered && len(a.tabs) > 1 {
+		x := iconButton(c, k, "x", "Close Tab", 18, 12).Tooltip("Close Tab")
+		if x.Clicked() {
+			a.later(c, func() { a.closeTab(t) })
 		}
-		nameColor, detailColor := k.text, k.textFaint
-		if !active {
-			nameColor = k.textMuted
-		}
-		label := ui.Box(c).Grow(1).MinWidth(0).Height(18)
-		label.Draw(func(p *ui.Painter, r ui.Rect) {
-			fadeText(p, r, tabLabel(name, detail, nameColor, detailColor))
-		})
-		if hovered && len(a.tabs) > 1 {
-			x := iconButton(c, k, "x", "Close Tab", 18, 12).Tooltip("Close Tab")
-			if x.Clicked() {
-				a.later(c, func() { a.closeTab(t) })
-			}
-		} else if t.attention() {
-			ui.Box(c).Size(7, 7).Radius(4).Background(k.attention).Margin(0, 5, 0, 0)
-		} else if a.tabBusy(c, t) {
-			activityDot(c, k.busy, 5.5)
-		}
-	})
+	} else if t.attention() {
+		ui.Box(c).Size(7, 7).Radius(4).Background(k.attention).Margin(0, 5, 0, 0)
+	} else if a.tabBusy(c, t) {
+		activityDot(c, k.busy, 5.5)
+	}
 }
 
 // renameField edits the name of a tab in place: Enter or moving the focus
@@ -196,10 +216,14 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 	}
 	m.Separator()
 	i := slices.Index(a.tabs, t)
-	if m.Item("Move Left").Disabled(i <= 0).Chosen() {
+	back, forth := "Move Left", "Move Right"
+	if prefs.TabPlacement != "" {
+		back, forth = "Move Up", "Move Down"
+	}
+	if m.Item(back).Disabled(i <= 0).Chosen() {
 		a.moveTab(t, i-1)
 	}
-	if m.Item("Move Right").Disabled(i >= len(a.tabs)-1).Chosen() {
+	if m.Item(forth).Disabled(i >= len(a.tabs)-1).Chosen() {
 		a.moveTab(t, i+1)
 	}
 	m.Separator()
