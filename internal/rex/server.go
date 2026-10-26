@@ -428,6 +428,7 @@ func Spawn() error {
 	}
 	defer devnull.Close()
 	cmd := exec.Command(exe, "-server")
+	cmd.Env = serverEnv()
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = devnull, logf, logf
 	cmd.SysProcAttr = detached()
 	if err := cmd.Start(); err != nil {

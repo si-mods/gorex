@@ -176,6 +176,35 @@ func (s *session) run(wait func() int) {
 	}()
 }
 
+// starterMarkers are the variables that belong to the process that started
+// the server (an agent session, another Rex), not to a fresh terminal. Only
+// runtime and session markers are listed; user configuration such as
+// CLAUDE_CONFIG_DIR or CLAUDE_CODE_USE_BEDROCK stays.
+var starterMarkers = map[string]bool{
+	"CLAUDECODE": true, "CLAUDE_PID": true, "CLAUDE_EFFORT": true,
+	"CLAUDE_CODE_ENTRYPOINT": true, "CLAUDE_CODE_CHILD_SESSION": true,
+	"CLAUDE_CODE_SESSION_ID": true, "CLAUDE_CODE_SESSION_ATTENDED": true,
+	"CLAUDE_CODE_BRIDGE_SESSION_ID": true, "CLAUDE_CODE_MESSAGING_TOKEN": true,
+	"CLAUDE_CODE_MESSAGING_SOCKET": true, "CLAUDE_CODE_EXECPATH": true,
+	"CLAUDE_PROJECT_DIR": true, "CLAUDE_ENV_FILE": true, "AI_AGENT": true,
+	"CODEX_SANDBOX": true, "CODEX_SANDBOX_NETWORK_DISABLED": true, "CODEX_THREAD_ID": true,
+	"REX_SESSION": true, "REX_BLOCK": true, "REX_SERVER": true, "REX_BIN_DIR": true,
+}
+
+func starterMarker(k string) bool { return starterMarkers[k] }
+
+// serverEnv returns the environment for a server process: the current one
+// without starter markers, so a secret never lives in the server.
+func serverEnv() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if k, _, _ := strings.Cut(kv, "="); !starterMarker(k) {
+			env = append(env, kv)
+		}
+	}
+	return env
+}
+
 // sessionEnv returns the environment of a session's shell: the server's,
 // without what other terminals set, and what terminal apps set.
 func sessionEnv(id string, extra []string) []string {
@@ -190,11 +219,7 @@ func sessionEnv(id string, extra []string) []string {
 			strings.HasPrefix(k, "ITERM_"), strings.HasPrefix(k, "GHOSTTY_"), strings.HasPrefix(k, "KITTY_"),
 			strings.HasPrefix(k, "VSCODE_"), strings.HasPrefix(k, "WEZTERM_"), strings.HasPrefix(k, "ALACRITTY_"),
 			strings.HasPrefix(k, "GOREX_"), strings.HasPrefix(k, "MYGO_"),
-			// Markers of the process that started the server (an agent session,
-			// another Rex), not of a fresh terminal. Other CLAUDE_* variables are
-			// user configuration and stay.
-			k == "CLAUDECODE", k == "CLAUDE_PID", k == "CLAUDE_EFFORT", k == "AI_AGENT",
-			strings.HasPrefix(k, "CLAUDE_CODE_"), strings.HasPrefix(k, "REX_"):
+			starterMarker(k):
 			continue
 		case k == "LANG" || k == "LC_ALL" || k == "LC_CTYPE":
 			hasLang = true
