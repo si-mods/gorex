@@ -4,6 +4,7 @@ package rex
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net"
 	"os"
@@ -38,10 +39,23 @@ type session struct {
 	lastOutput time.Time
 	lastInput  time.Time
 	resync     *time.Timer
-	exited     bool
-	code       int
+	// reaped tells that the process ended, with code; exited, that what
+	// it printed was read too.
+	reaped bool
+	exited bool
+	code   int
+	// screen and title are what the session showed as it exited, its
+	// emulator closed.
+	screen     []byte
+	title      string
 	cols, rows int
 	done       chan struct{}
+	// reading is closed when the goroutine reading the terminal returns,
+	// and readEnd when the terminal's output ends: a pause returns before.
+	reading, readEnd chan struct{}
+	// hold keeps the terminal open while the server hands it to another
+	// executable (upgrade).
+	hold sync.RWMutex
 }
 
 // attached is a connection attached to a session, whose output a
@@ -104,33 +118,53 @@ func newSession(id string, o CreateOptions) (*session, error) {
 		clients: map[*attached]struct{}{},
 		cols:    cols, rows: rows, done: make(chan struct{}),
 	}
+	if err := s.newVT(); err != nil {
+		p.hangup()
+		return nil, err
+	}
+	s.run(p.wait)
+	return s, nil
+}
+
+// newVT gives the session its emulator, at the session's size.
+func (s *session) newVT() error {
 	// The emulator's Conn reads nothing, and what it would answer programs
 	// is dropped: the windows' terminals answer them.
 	pr, pw := io.Pipe()
 	vt, err := terminal.New(terminal.Options{Conn: discard{pr}, Scrollback: scrollback, OnBell: func() { s.bells.Add(1) }})
 	if err != nil {
-		p.hangup()
-		return nil, err
+		return err
 	}
-	vt.Resize(cols, rows)
+	vt.Resize(s.cols, s.rows)
 	s.vt, s.vtIn = vt, pw
-	read := make(chan struct{})
+	return nil
+}
+
+// run reads the terminal, and waits for its process to end: wait waits
+// for it and returns its exit code.
+func (s *session) run(wait func() int) {
+	s.readEnd = make(chan struct{})
+	s.startRead()
 	go func() {
-		s.read()
-		close(read)
-	}()
-	go func() {
-		code := p.wait()
+		code := wait()
+		s.mu.Lock()
+		s.reaped, s.code = true, code
+		s.mu.Unlock()
 		// What it printed last is still to read; then hang up whatever
 		// else holds the terminal, as terminal apps do.
 		select {
-		case <-read:
+		case <-s.readEnd:
 		case <-time.After(150 * time.Millisecond):
-			p.close()
-			<-read
+			s.hold.RLock()
+			s.p.close()
+			s.hold.RUnlock()
+			<-s.readEnd
 		}
+		s.hold.RLock()
+		defer s.hold.RUnlock()
 		s.mu.Lock()
-		s.exited, s.code = true, code
+		s.screen, s.title = s.vt.Snapshot(), s.vt.Title()
+		s.exited = true
 		for a := range s.clients {
 			a.finish()
 		}
@@ -140,7 +174,6 @@ func newSession(id string, o CreateOptions) (*session, error) {
 		s.vtIn.Close()
 		s.vt.Close()
 	}()
-	return s, nil
 }
 
 // sessionEnv returns the environment of a session's shell: the server's,
@@ -176,6 +209,18 @@ func sessionEnv(id string, extra []string) []string {
 	return append(env, extra...)
 }
 
+// startRead starts reading the terminal, until its output ends or a pause.
+func (s *session) startRead() {
+	reading := make(chan struct{})
+	s.mu.Lock()
+	s.reading = reading
+	s.mu.Unlock()
+	go func() {
+		defer close(reading)
+		s.read()
+	}()
+}
+
 func (s *session) read() {
 	buf := make([]byte, 64<<10)
 	for {
@@ -195,6 +240,10 @@ func (s *session) read() {
 			s.mu.Unlock()
 		}
 		if err != nil {
+			// A deadline is a pause: what the terminal has stays unread.
+			if !errors.Is(err, os.ErrDeadlineExceeded) {
+				close(s.readEnd)
+			}
 			return
 		}
 	}
@@ -212,8 +261,8 @@ func (s *session) attach(conn net.Conn, cols, rows int) {
 		// learns next.
 		s.vt.Resize(cols, rows)
 	}
-	snap := s.vt.Snapshot()
-	if title := s.vt.Title(); title != "" {
+	snap, title := s.view()
+	if title != "" {
 		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
 	}
 	a.out <- snap
@@ -328,12 +377,25 @@ func (s *session) kill() {
 	}
 }
 
+// view returns the session's screen, as escape sequences, and its
+// title; s.mu is held.
+func (s *session) view() ([]byte, string) {
+	if s.exited {
+		return s.screen, s.title
+	}
+	return s.vt.Snapshot(), s.vt.Title()
+}
+
 // info describes the session and what runs in its foreground.
 func (s *session) info() SessionInfo {
 	s.mu.Lock()
+	title := s.title
+	if !s.exited {
+		title = s.vt.Title()
+	}
 	in := SessionInfo{
 		ID: s.id, Shell: s.shell, Created: s.created,
-		Title: s.vt.Title(), LastOutput: s.lastOutput, LastInput: s.lastInput,
+		Title: title, LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,
 	}

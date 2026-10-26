@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -31,6 +32,8 @@ type Request struct {
 	// Remote is the client of remote.allow, remote.revoke,
 	// remote.approve and remote.reject, and the name of remote.pair.
 	Remote *RemoteClient `json:"remote,omitempty"`
+	// Exe is the executable the server runs in its place on "upgrade".
+	Exe string `json:"exe,omitempty"`
 }
 
 // RemoteClient is a client allowed to connect remotely: PublicKey is its
@@ -123,10 +126,13 @@ type Hello struct {
 	Started time.Time `json:"started"`
 	Host    HostInfo  `json:"host"`
 	// Exe is the server's executable, and ExeTime when it was modified
-	// last as the server started: a development build compares them with
-	// its own, to replace a server of an older build.
+	// last as the server started: the app compares them with its own, to
+	// upgrade a server of an older build.
 	Exe     string    `json:"exe,omitempty"`
 	ExeTime time.Time `json:"exeTime,omitzero"`
+	// Upgrade tells that the server can run another executable in its
+	// place, keeping its sessions (Client.Upgrade).
+	Upgrade bool `json:"upgrade,omitempty"`
 }
 
 // HostInfo describes the machine the server runs on.
@@ -149,6 +155,26 @@ type Attach struct {
 	SID  string `json:"sid"`
 	Cols int    `json:"cols"`
 	Rows int    `json:"rows"`
+}
+
+// ServerMain runs the server when args, the program's arguments, ask
+// for it, and tells whether they did: -server serves, -server -resume
+// PATH serves the sessions a server upgrading to this executable handed
+// it (Resume), and -server -handoff-version prints the version of the
+// handoffs it reads, which an upgrading server asks first.
+func ServerMain(args []string) (bool, error) {
+	if len(args) == 0 || args[0] != "-server" {
+		return false, nil
+	}
+	log.SetPrefix("[server] ")
+	switch {
+	case len(args) > 1 && args[1] == "-handoff-version":
+		fmt.Println(handoffVersion)
+		return true, nil
+	case len(args) > 2 && args[1] == "-resume":
+		return true, Resume(args[2])
+	}
+	return true, Serve()
 }
 
 // Dir returns the directory of the server's socket, log and state.

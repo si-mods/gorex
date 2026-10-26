@@ -33,24 +33,29 @@ type Client struct {
 // Connect connects to the server, starting one in the background when
 // none runs.
 func Connect() (*Client, error) {
-	conn, err := net.Dial("unix", SocketPath())
+	conn, err := dialSocket()
 	if err != nil {
 		if err := Spawn(); err != nil {
 			return nil, fmt.Errorf("rex: starting the server: %w", err)
 		}
-		deadline := time.Now().Add(5 * time.Second)
-		for {
-			time.Sleep(30 * time.Millisecond)
-			conn, err = net.Dial("unix", SocketPath())
-			if err == nil {
-				break
-			}
-			if time.Now().After(deadline) {
-				return nil, fmt.Errorf("rex: connecting to the server: %w", err)
-			}
+		if conn, err = dialUntil(time.Now().Add(5 * time.Second)); err != nil {
+			return nil, fmt.Errorf("rex: connecting to the server: %w", err)
 		}
 	}
-	return newClient(conn, func() (net.Conn, error) { return net.Dial("unix", SocketPath()) }), nil
+	return newClient(conn, dialSocket), nil
+}
+
+func dialSocket() (net.Conn, error) { return net.Dial("unix", SocketPath()) }
+
+// dialUntil connects to the server, trying again until deadline.
+func dialUntil(deadline time.Time) (net.Conn, error) {
+	for {
+		conn, err := dialSocket()
+		if err == nil || time.Now().After(deadline) {
+			return conn, err
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
 }
 
 func newClient(conn net.Conn, dial func() (net.Conn, error)) *Client {
@@ -66,6 +71,12 @@ func Executable() (string, time.Time) {
 	if err != nil {
 		return "", time.Time{}
 	}
+	return executable(exe)
+}
+
+// executable returns the path of the executable exe, its links
+// followed, and when it was modified last.
+func executable(exe string) (string, time.Time) {
 	if p, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = p
 	}
@@ -86,6 +97,46 @@ func (c *Client) Restart(pid int) (*Client, error) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	return Connect()
+}
+
+// Upgrade has the server run exe in its place, keeping its sessions,
+// and connects to it again once it runs it (Hello.Upgrade tells a server
+// that can). On an error from the server, c stays connected to it.
+func (c *Client) Upgrade(exe string) (*Client, error) {
+	want, at := executable(exe)
+	err := c.call(Request{Op: "upgrade", Exe: exe}, nil)
+	c.mu.Lock()
+	lost := c.err != nil // the connection closed as the server ran exe
+	c.mu.Unlock()
+	if !lost {
+		if err == nil {
+			err = errors.New("rex: the server did not upgrade")
+		}
+		return nil, err
+	}
+	c.Close()
+	// Not Connect, which would start a server: the listener is the old
+	// server's, and the new executable answers what it queued.
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, err := dialUntil(deadline)
+		if err != nil {
+			break
+		}
+		nc := newClient(conn, dialSocket)
+		for time.Now().Before(deadline) {
+			h, err := nc.Hello()
+			if err != nil {
+				break // lost: dial again
+			}
+			if h.Exe == want && h.ExeTime.Equal(at) {
+				return nc, nil
+			}
+			time.Sleep(30 * time.Millisecond)
+		}
+		nc.Close()
+	}
+	return nil, fmt.Errorf("rex: the server did not come back as %s", exe)
 }
 
 // Closed is closed once the connection to the server is lost.
