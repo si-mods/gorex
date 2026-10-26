@@ -28,7 +28,8 @@ type Request struct {
 	Rows   int             `json:"rows,omitempty"`
 	Create *CreateOptions  `json:"create,omitempty"`
 	Layout json.RawMessage `json:"layout,omitempty"`
-	// Remote is the client of remote.allow and remote.revoke.
+	// Remote is the client of remote.allow, remote.revoke,
+	// remote.approve and remote.reject, and the name of remote.pair.
 	Remote *RemoteClient `json:"remote,omitempty"`
 }
 
@@ -47,6 +48,29 @@ type RemoteStatus struct {
 	Address   string         `json:"address,omitempty"`
 	Allowed   []RemoteClient `json:"allowed"`
 	LastError string         `json:"lastError,omitempty"`
+	// Pairing is the pairing window, Pending the requests made in it.
+	Pairing RemotePairing   `json:"pairing"`
+	Pending []RemotePending `json:"pending,omitempty"`
+}
+
+// RemotePairing is the pairing window: while open, a client not allowed
+// may ask to be, with remote.pair.
+type RemotePairing struct {
+	Open      bool      `json:"open"`
+	ExpiresAt time.Time `json:"expiresAt,omitzero"`
+}
+
+// RemotePending is a client that asked to pair, waiting for approval.
+type RemotePending struct {
+	Name        string    `json:"name"`
+	PublicKey   string    `json:"publicKey"`
+	RequestedAt time.Time `json:"requestedAt"`
+}
+
+// PairResult answers remote.pair: the fingerprint of the key the server
+// saw, to compare with the one the server shows.
+type PairResult struct {
+	Fingerprint string `json:"fingerprint"`
 }
 
 // Response answers the Request with the same ID.

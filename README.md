@@ -69,12 +69,15 @@ Keyboard (GoRex's shortcuts, read only), Remote (see
 [Remote access](#remote-access)) and About (version, Check for Updates…).
 The choices go to `settings.json`.
 
-Remote turns the server's remote access on and off, and manages it: the
-list of allowed clients (add one by name and public key, revoke one), this
-machine's own key to copy, and, while listening, the address, hidden until
-you show it, with Copy and Regenerate (which asks first). The switch stays
-off until a client is allowed. The page asks the server every two seconds
-while it shows. It does not connect to other hosts yet.
+Remote turns the server's remote access on and off, and manages it:
+pairing a new device (Start pairing opens a five-minute window; each
+request shows its name and fingerprint, to Approve or Reject), the list
+of allowed clients (revoke one, or add one by name and public key), this
+machine's own key and its fingerprint, and, while listening, the address,
+hidden until you show it, with Copy and Regenerate (which asks first). The
+page asks the server every two seconds while it shows. It does not connect
+to other hosts yet: `go run ./tools/remotectl pair ADDRESS NAME` asks to
+pair from another machine.
 
 Precedence: what you set in Settings, over Ghostty's config, over GoRex's
 defaults. "Reload Ghostty Config" reads the config again but never
@@ -120,12 +123,27 @@ The session server can also listen on a
 [tailcat](https://github.com/tailscale/tailcat) address: Tailscale's data
 plane without its control plane, so WireGuard end to end, through a DERP
 relay or directly, with no Tailscale account. Remote access is off by
-default and turns on only once at least one client is allowed: each
-machine has a client key (`remote-client.json`), and the server lets in
-the keys of its allowlist only. Removing the last client turns remote
-access off. The server keeps its keys (`remote.json`, mode 0600), so its
-address stays the same; regenerating them makes a new one, and the old
-address stops working.
+default. Each machine has a client key (`remote-client.json`), and the
+server serves the keys of its allowlist only: it reads the key of every
+connection, and closes those of other keys at once. With an empty
+allowlist nobody gets in. The server keeps its keys (`remote.json`, mode
+0600), so its address stays the same; regenerating them makes a new one,
+and the old address stops working.
+
+Pairing adds a client without copying its key by hand:
+
+1. On the server, turn remote access on and Start pairing: a window
+   opens for five minutes.
+2. On the client, ask to pair with the server's address and a name
+   (`remotectl pair ADDRESS alice-laptop`). It prints a fingerprint, as
+   `01234567-cdef`.
+3. The request shows on the server with its name and fingerprint.
+   Approve it only if the fingerprint is the one the client printed:
+   anyone with the address can ask too.
+
+While the window is open, a client not allowed may ask to pair and
+nothing else; at most 8 requests wait, one per key, and they are
+forgotten when the window closes. They are never saved.
 
 What to know before turning it on:
 
@@ -133,7 +151,8 @@ What to know before turning it on:
   pre-shared key. Do not paste it where others read it. GoRex never logs
   it, nor any key.
 - The allowlist is what keeps others out. A leaked address alone gets
-  nobody in, but regenerate it anyway.
+  nobody in, but it lets anyone ask to pair while a window is open:
+  compare fingerprints, and regenerate a leaked address anyway.
 - An allowed key means running commands as this user: a client may
   start any program with any environment and attach to every session.
   From a shell there it can reach the local socket, and so change the
@@ -141,7 +160,7 @@ What to know before turning it on:
 - Over the connection itself, a remote client may list, create, kill,
   resize and attach to sessions only. It may not shut the server down,
   read or set the window layout, or see or change remote access
-  (`remote.*`): those are for the local socket only.
+  (`remote.*`, pairing included): those are for the local socket only.
 - Every connection is limited: a line of requests of at most 1 MiB, a
   terminal of 1 to 1000 columns and rows, and 8 kills at once.
 

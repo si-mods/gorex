@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,7 +25,16 @@ import (
 func testServer(t *testing.T) (*Server, *atomic.Int32) {
 	t.Setenv("GOREX_DIR", t.TempDir())
 	var listens atomic.Int32
-	old := remoteListen
+	old, oldKey := remoteListen, remotePeerKey
+	remotePeerKey = func(_ *tailcat.Server, c net.Conn) string {
+		for range 200 {
+			if k, ok := testPeers.Load(c.RemoteAddr().String()); ok {
+				return k.(string)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		return ""
+	}
 	remoteListen = func(ctx context.Context, ts *tailcat.Server, region int) (net.Listener, tailcat.Addr, int, error) {
 		listens.Add(1)
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -35,9 +45,42 @@ func testServer(t *testing.T) (*Server, *atomic.Int32) {
 	s := &Server{sessions: map[string]*session{}, started: time.Now(), hostDone: hostDone, quit: make(chan struct{})}
 	t.Cleanup(func() {
 		s.remoteClose()
-		remoteListen = old
+		remoteListen, remotePeerKey = old, oldKey
 	})
 	return s, &listens
+}
+
+// testPeers holds the peer key of each loopback connection to a test
+// server, by the client's address, as tailcat would tell it.
+var testPeers sync.Map
+
+// dialAs connects to s's remote listener as the client of key k, "" for
+// a peer tailcat does not know.
+func dialAs(t *testing.T, s *Server, k string) *Client {
+	t.Helper()
+	s.rem.mu.Lock()
+	addr := s.rem.ln.Addr().String()
+	s.rem.mu.Unlock()
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k != "" {
+		testPeers.Store(conn.LocalAddr().String(), k)
+	}
+	c := newClient(conn, nil)
+	t.Cleanup(func() { c.Close() })
+	return c
+}
+
+// wantClosed checks that the server drops c.
+func wantClosed(t *testing.T, c *Client, what string) {
+	t.Helper()
+	select {
+	case <-c.Closed():
+	case <-time.After(3 * time.Second):
+		t.Errorf("%s: connection kept", what)
+	}
 }
 
 // pipe connects to s's handler, as a local or remote connection.
@@ -85,21 +128,32 @@ func testShell() (cmd []string, dir string) {
 	return []string{"/bin/sh"}, "/tmp"
 }
 
-func TestRemoteNeedsAllowlist(t *testing.T) {
+func TestRemoteWithoutClients(t *testing.T) {
 	s, listens := testServer(t)
 	c := pipe(s, false)
 	defer c.Close()
-	if err := c.EnableRemote(); err == nil || !strings.Contains(err.Error(), "allow a client") {
+	if err := c.EnableRemote(); err != nil {
 		t.Fatalf("enable without clients: %v", err)
 	}
-	if st, _ := c.RemoteStatus(); st.Enabled || st.Running {
+	if st := waitRunning(t, c, true); !st.Enabled || len(st.Allowed) != 0 {
 		t.Errorf("status %+v", st)
 	}
-	if _, err := os.Stat(remotePath()); !os.IsNotExist(err) {
-		t.Errorf("config written: %v", err)
+	if cfg := readConfig(t); !cfg.Enabled {
+		t.Error("not saved enabled")
 	}
-	if listens.Load() != 0 {
-		t.Error("listened")
+	if listens.Load() != 1 {
+		t.Error("not listening")
+	}
+	// Nobody gets in: not a stranger, nor a peer of no key.
+	for _, k := range []string{key.NewNode().Public().String(), ""} {
+		rc := dialAs(t, s, k)
+		if _, err := rc.List(); err == nil {
+			t.Errorf("%q listed", k)
+		}
+		wantClosed(t, rc, "stranger")
+	}
+	if st, _ := c.RemoteStatus(); len(st.Pending) != 0 || st.Pairing.Open {
+		t.Errorf("status %+v", st)
 	}
 	if err := c.AllowRemote("phone", "nodekey:nope"); err == nil {
 		t.Error("allowed a bad key")
@@ -149,15 +203,7 @@ func TestRemoteLifecycle(t *testing.T) {
 	}
 
 	// A remote connection, through the listener.
-	s.rem.mu.Lock()
-	addr := s.rem.ln.Addr().String()
-	s.rem.mu.Unlock()
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	rc := newClient(conn, nil)
-	defer rc.Close()
+	rc := dialAs(t, s, phone)
 	if _, err := rc.List(); err != nil {
 		t.Fatal(err)
 	}
@@ -179,18 +225,28 @@ func TestRemoteLifecycle(t *testing.T) {
 	if n := listens.Load(); n != 2 {
 		t.Errorf("listened %d times", n)
 	}
-	select {
-	case <-rc.Closed():
-	case <-time.After(2 * time.Second):
-		t.Error("remote connection kept after regenerate")
-	}
+	wantClosed(t, rc, "regenerate")
 
-	// Revoking one keeps it on; revoking the last turns it off.
+	// Revoking one drops its connections only, and keeps listening;
+	// revoking the last too.
+	rp, rl := dialAs(t, s, phone), dialAs(t, s, laptop)
+	for _, x := range []*Client{rp, rl} {
+		if _, err := x.List(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := c.RevokeRemote(phone); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.RevokeRemote(phone); err == nil {
 		t.Error("revoked twice")
+	}
+	wantClosed(t, rp, "revoke")
+	if _, err := rl.List(); err != nil {
+		t.Errorf("the other client dropped: %v", err)
+	}
+	if _, err := dialAs(t, s, phone).List(); err == nil {
+		t.Error("a revoked client listed")
 	}
 	if st := waitRunning(t, c, true); len(st.Allowed) != 1 || st.Allowed[0].PublicKey != laptop {
 		t.Errorf("status %+v", st)
@@ -198,11 +254,190 @@ func TestRemoteLifecycle(t *testing.T) {
 	if err := c.RevokeRemote(laptop); err != nil {
 		t.Fatal(err)
 	}
-	if st := waitRunning(t, c, false); st.Enabled || st.Address != "" {
+	wantClosed(t, rl, "revoke last")
+	if st := waitRunning(t, c, true); !st.Enabled || len(st.Allowed) != 0 {
 		t.Errorf("status %+v", st)
 	}
-	if cfg := readConfig(t); cfg.Enabled || len(cfg.Allowed) != 0 {
+	if n := listens.Load(); n != 2 {
+		t.Errorf("listened %d times", n)
+	}
+}
+
+func TestRemotePairing(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, false)
+	defer c.Close()
+	if err := c.StartPairing(); err == nil {
+		t.Error("paired while off")
+	}
+	if err := c.EnableRemote(); err != nil {
+		t.Fatal(err)
+	}
+	waitRunning(t, c, true)
+	phone := key.NewNode().Public().String()
+
+	// No window: nothing, not even a request.
+	rc := dialAs(t, s, phone)
+	if _, err := rc.RequestPairing("phone"); err == nil || !strings.Contains(err.Error(), "not pairing") {
+		t.Errorf("paired without a window: %v", err)
+	}
+	wantClosed(t, rc, "no window")
+	if st, _ := c.RemoteStatus(); st.Pairing.Open || len(st.Pending) != 0 {
+		t.Errorf("status %+v", st)
+	}
+
+	// A window: a request, and nothing else.
+	if err := c.StartPairing(); err != nil {
+		t.Fatal(err)
+	}
+	for _, op := range []string{"hello", "list", "create", "kill", "resize", "remote.status", "remote.approve"} {
+		rc := dialAs(t, s, phone)
+		req := Request{Op: op, Create: &CreateOptions{}, Remote: &RemoteClient{PublicKey: phone}}
+		if err := rc.call(req, nil); err == nil || !strings.Contains(err.Error(), "before pairing") {
+			t.Errorf("%s before pairing: %v", op, err)
+		}
+		wantClosed(t, rc, op)
+	}
+	ac := dialAs(t, s, phone)
+	b, _ := json.Marshal(Attach{Op: "attach", SID: "x", Cols: 80, Rows: 24})
+	ac.conn.Write(append(b, '\n'))
+	wantClosed(t, ac, "attach")
+	if _, err := dialAs(t, s, phone).RequestPairing(" \x1b\n "); err == nil {
+		t.Error("paired without a name")
+	}
+	name := "\x1b[31mphone" + strings.Repeat("x", 60)
+	fp, err := dialAs(t, s, phone).RequestPairing(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fp != Fingerprint(phone) || len(fp) != 13 {
+		t.Errorf("fingerprint %q, want %q", fp, Fingerprint(phone))
+	}
+	if _, err := dialAs(t, s, phone).RequestPairing("again"); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := c.RemoteStatus()
+	if !st.Pairing.Open || time.Until(st.Pairing.ExpiresAt) < 4*time.Minute || len(st.Pending) != 1 {
+		t.Fatalf("status %+v", st)
+	}
+	if p := st.Pending[0]; p.PublicKey != phone || p.Name != "[31mphone"+strings.Repeat("x", 31) || len(st.Allowed) != 0 {
+		t.Errorf("pending %+v", p)
+	}
+	if b, _ := os.ReadFile(remotePath()); strings.Contains(string(b), phone) {
+		t.Error("a request saved")
+	}
+
+	// Approving allows it, by the name it asked with.
+	if err := c.ApprovePairing(key.NewNode().Public().String()); err == nil {
+		t.Error("approved a stranger")
+	}
+	if err := c.ApprovePairing(phone); err != nil {
+		t.Fatal(err)
+	}
+	asked := st.Pending[0].Name
+	if st, _ := c.RemoteStatus(); len(st.Pending) != 0 || len(st.Allowed) != 1 || st.Allowed[0].Name != asked || st.Allowed[0].PublicKey != phone {
+		t.Errorf("status %+v", st)
+	}
+	if cfg := readConfig(t); len(cfg.Allowed) != 1 || cfg.Allowed[0].PublicKey != phone {
 		t.Errorf("config %+v", cfg)
+	}
+	rc = dialAs(t, s, phone)
+	if _, err := rc.RequestPairing("phone"); err == nil || !strings.Contains(err.Error(), "allowed") {
+		t.Errorf("paired twice: %v", err)
+	}
+	cmd, dir := testShell()
+	info, err := rc.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list, err := rc.List(); err != nil || len(list) != 1 {
+		t.Errorf("list %v %v", list, err)
+	}
+	if err := rc.Kill(info.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// The requests: deduped, at most maxPending, rejected one by one.
+	var keys []string
+	for i := range maxPending + 1 {
+		k := key.NewNode().Public().String()
+		keys = append(keys, k)
+		_, err := dialAs(t, s, k).RequestPairing("laptop")
+		if i < maxPending && err != nil || i == maxPending && err == nil {
+			t.Errorf("request %d: %v", i, err)
+		}
+	}
+	if st, _ := c.RemoteStatus(); len(st.Pending) != maxPending {
+		t.Errorf("%d pending", len(st.Pending))
+	}
+	if err := c.RejectPairing(keys[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.RejectPairing(keys[0]); err == nil {
+		t.Error("rejected twice")
+	}
+	if err := c.ApprovePairing(keys[0]); err == nil {
+		t.Error("approved a rejected one")
+	}
+	if st, _ := c.RemoteStatus(); len(st.Pending) != maxPending-1 {
+		t.Errorf("%d pending", len(st.Pending))
+	}
+
+	// Stopping forgets them; so does the window's end.
+	if err := c.StopPairing(); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := c.RemoteStatus(); st.Pairing.Open || len(st.Pending) != 0 {
+		t.Errorf("status %+v", st)
+	}
+	if err := c.StartPairing(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dialAs(t, s, keys[1]).RequestPairing("laptop"); err != nil {
+		t.Fatal(err)
+	}
+	s.rem.mu.Lock()
+	s.rem.pairUntil = time.Now().Add(-time.Second)
+	s.rem.mu.Unlock()
+	if st, _ := c.RemoteStatus(); st.Pairing.Open || len(st.Pending) != 0 {
+		t.Errorf("status after expiry %+v", st)
+	}
+	rc = dialAs(t, s, keys[1])
+	if _, err := rc.RequestPairing("laptop"); err == nil {
+		t.Error("paired after expiry")
+	}
+	if err := c.ApprovePairing(keys[1]); err == nil {
+		t.Error("approved after expiry")
+	}
+
+	// Turning it off closes the window.
+	if err := c.StartPairing(); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.DisableRemote(); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := c.RemoteStatus(); st.Pairing.Open {
+		t.Errorf("status %+v", st)
+	}
+}
+
+func TestPairName(t *testing.T) {
+	for in, want := range map[string]string{
+		"alice-laptop":          "alice-laptop",
+		"  a\tb\x00c\u200bd  ":  "abcd",
+		strings.Repeat("é", 50): strings.Repeat("é", 40),
+		"\n":                    "",
+	} {
+		if got := pairName(in); got != want {
+			t.Errorf("pairName(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := Fingerprint("nodekey:" + strings.Repeat("0123456789abcdef", 4)); got != "01234567-cdef" {
+		t.Errorf("Fingerprint = %q", got)
+	}
+	if Fingerprint("nope") != "" {
+		t.Error("fingerprint of no key")
 	}
 }
 
@@ -214,7 +449,8 @@ func TestRemoteDenied(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, op := range []string{"shutdown", "setLayout", "getLayout", "remote.status", "remote.enable",
-		"remote.disable", "remote.allow", "remote.revoke", "remote.regenerate", "nope"} {
+		"remote.disable", "remote.allow", "remote.revoke", "remote.regenerate", "remote.pairStart",
+		"remote.pairStop", "remote.approve", "remote.reject", "nope"} {
 		req := Request{Op: op, Layout: json.RawMessage(`{}`), Remote: &RemoteClient{Name: "x", PublicKey: key.NewNode().Public().String()}}
 		if err := c.call(req, nil); err == nil || !strings.Contains(err.Error(), "not allowed remotely") {
 			t.Errorf("%s: %v", op, err)
@@ -319,9 +555,7 @@ func TestRemoteTailcat(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Shutdown()
-	if err := c.AllowRemote("self", ClientPublicKey()); err != nil {
-		t.Fatal(err)
-	}
+	// On with no client: pairing is how one gets in.
 	if err := c.EnableRemote(); err != nil {
 		t.Fatal(err)
 	}
@@ -334,13 +568,46 @@ func TestRemoteTailcat(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// A client not allowed gets nothing.
-	stranger := &tailcat.Client{Server: tailcat.Addr(st.Address), Logf: func(string, ...any) {}}
+	// A client not allowed gets nothing, not even a request.
+	stranger := &tailcat.Client{Server: tailcat.Addr(st.Address), Key: key.NewNode(), Logf: func(string, ...any) {}}
 	if conn, err := stranger.DialTCPPort(ctx, RemotePort); err == nil {
+		conn.Write([]byte(`{"id":1,"op":"list"}` + "\n"))
+		conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+		if n, _ := conn.Read(make([]byte, 64)); n != 0 {
+			t.Error("a stranger got an answer")
+		}
 		conn.Close()
-		t.Error("a stranger connected")
 	}
 	stranger.Close()
+	pair := func() (string, error) {
+		rc, err := ConnectRemote(ctx, st.Address)
+		if err != nil {
+			return "", err
+		}
+		defer rc.Close()
+		return rc.RequestPairing("self")
+	}
+	if _, err := pair(); err == nil || !strings.Contains(err.Error(), "not pairing") {
+		t.Errorf("paired without a window: %v", err)
+	}
+
+	// Pairing: the server reads the peer's key from tailcat.
+	if err := c.StartPairing(); err != nil {
+		t.Fatal(err)
+	}
+	fp, err := pair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fp != Fingerprint(ClientPublicKey()) {
+		t.Errorf("fingerprint %q, want %q", fp, Fingerprint(ClientPublicKey()))
+	}
+	if st, err := c.RemoteStatus(); err != nil || len(st.Pending) != 1 || st.Pending[0].PublicKey != ClientPublicKey() {
+		t.Fatalf("pending %+v %v", st.Pending, err)
+	}
+	if err := c.ApprovePairing(ClientPublicKey()); err != nil {
+		t.Fatal(err)
+	}
 
 	rc, err := ConnectRemote(ctx, st.Address)
 	if err != nil {
