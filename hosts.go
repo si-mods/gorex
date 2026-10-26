@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -30,16 +31,24 @@ type savedHost struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Address string `json:"address"`
+	// Kills are the sessions closed here while the host was away, to end
+	// there once connected again, though GoRex quit meanwhile.
+	Kills []string `json:"kills,omitempty"`
 }
 
 func hostsPath() string { return filepath.Join(rex.Dir(), "hosts.json") }
 
-// loadHosts reads the saved hosts; none when the file does not exist.
+type hostsFile struct {
+	Hosts []savedHost `json:"hosts"`
+}
+
+// loadHosts reads the saved hosts; none when the file does not exist. A
+// file that does not parse is moved aside, not lost: its addresses are
+// secrets that cannot be had again but from each host.
 func loadHosts() ([]savedHost, error) {
-	var f struct {
-		Hosts []savedHost `json:"hosts"`
-	}
-	b, err := os.ReadFile(hostsPath())
+	var f hostsFile
+	path := hostsPath()
+	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
@@ -47,20 +56,31 @@ func loadHosts() ([]savedHost, error) {
 		return nil, err
 	}
 	if err := json.Unmarshal(b, &f); err != nil {
-		return nil, errors.New("gorex: hosts.json is not valid")
+		bad := path + ".bad-" + time.Now().Format("20060102-150405")
+		if err := os.Rename(path, bad); err != nil {
+			return nil, errors.New("gorex: hosts.json is not valid, and stays as it is")
+		}
+		os.Chmod(bad, 0o600)
+		return nil, fmt.Errorf("gorex: hosts.json is not valid: moved aside to %s", filepath.Base(bad))
 	}
 	return slices.DeleteFunc(f.Hosts, func(h savedHost) bool { return h.ID == "" || h.Address == "" }), nil
 }
 
-// saveHosts writes the hosts, readable by the user only, atomically.
+// saveHosts writes the hosts, readable by the user only, atomically. It
+// does not write over a file it cannot read, nor one that does not parse.
 func saveHosts(hosts []savedHost) error {
-	b, err := json.MarshalIndent(struct {
-		Hosts []savedHost `json:"hosts"`
-	}{hosts}, "", "  ")
+	b, err := json.MarshalIndent(hostsFile{hosts}, "", "  ")
 	if err != nil {
 		return err
 	}
 	path := hostsPath()
+	if old, err := os.ReadFile(path); err == nil {
+		if json.Unmarshal(old, &hostsFile{}) != nil {
+			return errors.New("gorex: hosts.json is not valid: not writing over it")
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -110,12 +130,16 @@ type hostConn struct {
 	reason  func() string // why it is not connected, said when drawn
 	hello   rex.Hello
 
+	// mu guards client, and Kills of savedHost.
 	mu     sync.Mutex
 	client *rex.Client // nil while not connected
-	kills  []string    // sessions to end once connected again
 	retry  chan struct{}
 	stop   chan struct{}
 	once   sync.Once
+	// update runs a change on the main thread, and persist saves the
+	// hosts there; startHost sets them.
+	update  func(func())
+	persist func()
 }
 
 func newHostConn(h savedHost) *hostConn {
@@ -149,17 +173,56 @@ func (h *hostConn) close() {
 	}
 }
 
-// kill ends a session of the host, at once or when connected again.
+// saved returns the host as hosts.json keeps it.
+func (h *hostConn) saved() savedHost {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	s := h.savedHost
+	s.Kills = slices.Clone(s.Kills)
+	return s
+}
+
+// kill ends a session of the host: it is kept to end until the host says
+// it did, through the client of the moment, or the next one. Call it on the
+// main thread.
 func (h *hostConn) kill(sid string) {
 	h.mu.Lock()
+	if !slices.Contains(h.Kills, sid) {
+		h.Kills = append(h.Kills, sid)
+	}
 	c := h.client
-	if c == nil {
-		h.kills = append(h.kills, sid)
-	}
 	h.mu.Unlock()
-	if c != nil {
-		go c.Kill(sid)
+	if h.persist != nil {
+		h.persist()
 	}
+	if c != nil {
+		go h.runKills(c)
+	}
+}
+
+// runKills ends the sessions kept to end, through c, and forgets those the
+// host ended; those it could not stay for the next connection.
+func (h *hostConn) runKills(c *rex.Client) {
+	h.mu.Lock()
+	kills := slices.Clone(h.Kills)
+	h.mu.Unlock()
+	var done []string
+	for _, sid := range kills {
+		if c.Kill(sid) == nil {
+			done = append(done, sid)
+		}
+	}
+	if len(done) == 0 || h.update == nil {
+		return
+	}
+	h.update(func() {
+		h.mu.Lock()
+		h.Kills = slices.DeleteFunc(h.Kills, func(sid string) bool { return slices.Contains(done, sid) })
+		h.mu.Unlock()
+		if h.persist != nil {
+			h.persist()
+		}
+	})
 }
 
 // hostBackoff is how long a host waits after its nth failed attempt.
@@ -167,33 +230,59 @@ func hostBackoff(n int) time.Duration {
 	return min(time.Second<<min(max(n-1, 0), 5), 30*time.Second)
 }
 
-// notAllowed tells an error of a server that refuses this machine: one
-// not pairing closes the connection at once, one pairing answers only
-// remote.pair.
-func notAllowed(err error) bool {
-	s := err.Error()
-	return strings.Contains(s, "not allowed before pairing") || strings.Contains(s, "connection to the server lost")
-}
+// hostHealthy is how long a connection stays up for a drop to try again
+// at once, the failures before forgotten; tests shorten it.
+var hostHealthy = 10 * time.Second
 
-// connectHost connects to a host and greets it; why says what failed, and
-// refused that the host does not allow this machine.
-func connectHost(ctx context.Context, name, address string) (c *rex.Client, hello rex.Hello, why func() string, refused bool) {
+// hostFailure is why connecting to a host failed.
+type hostFailure int
+
+const (
+	failUnreachable hostFailure = iota + 1 // not reached, or the connection lost on the way
+	failRefused                            // the host does not allow this machine
+	failPending                            // nor yet: its user has a request to answer
+	failOther                              // the host said something else
+)
+
+// connectHost connects to a host and greets it; else why says what
+// failed, and fail what kind of failure it is. It logs nothing: its
+// callers log what changes.
+func connectHost(ctx context.Context, address string) (c *rex.Client, hello rex.Hello, why func() string, fail hostFailure) {
 	c, err := dialHost(ctx, address)
 	if err != nil {
-		log.Printf("gorex: connecting to host %s: %s", name, rex.Scrub(err.Error(), address))
-		return nil, hello, locales.HostsUnreachable, false
+		return nil, hello, locales.HostsUnreachable, failUnreachable
 	}
 	if hello, err = c.Hello(); err != nil {
 		c.Close()
-		if notAllowed(err) {
-			log.Printf("gorex: host %s does not allow this machine", name)
-			return nil, hello, locales.HostsNotAllowed, true
+		switch {
+		case rex.IsPairingPending(err):
+			return nil, hello, locales.HostsNotAllowed, failPending
+		case rex.IsRefused(err):
+			return nil, hello, locales.HostsNotAllowed, failRefused
+		case strings.Contains(err.Error(), "connection to the server lost"), strings.Contains(err.Error(), "timed out"):
+			// Lost on the way: nothing tells that the host refused.
+			return nil, hello, locales.HostsUnreachable, failUnreachable
 		}
 		msg := serverMessage(errors.New(rex.Scrub(err.Error(), address)))
-		log.Printf("gorex: greeting host %s: %s", name, msg)
-		return nil, hello, func() string { return msg }, false
+		return nil, hello, func() string { return msg }, failOther
 	}
-	return c, hello, nil, false
+	return c, hello, nil, 0
+}
+
+// failureLog logs why connecting to a host failed, once until it changes.
+type failureLog struct {
+	last string
+}
+
+func (l *failureLog) log(name string, why func() string) {
+	msg := ""
+	if why != nil {
+		msg = why()
+	}
+	if msg != l.last && msg != "" {
+		log.Printf("gorex: host %s: %s", name, msg)
+	}
+	l.last = msg
 }
 
 // hostUpdate returns how the hosts' goroutines change the state: on the
@@ -220,12 +309,17 @@ func (a *App) hostUpdate() func(func()) {
 // startHost connects to a host in the background, and again whenever the
 // connection drops, until the host is closed.
 func (a *App) startHost(h *hostConn) {
-	go a.runHost(h, a.hostUpdate())
+	h.update, h.persist = a.hostUpdate(), func() { a.saveHosts() }
+	go a.runHost(h, h.update)
 }
 
+// runHost connects to a host until it is closed. A connection that drops
+// after it stayed up a while is tried again at once; one that drops sooner
+// counts as a failure, which waits longer each time, so that a host that
+// greets and drops is not dialed in a loop.
 func (a *App) runHost(h *hostConn, update func(func())) {
 	attempt := 0
-	var why func() string
+	var logged failureLog
 	for {
 		n := attempt
 		update(func() {
@@ -242,7 +336,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			case <-ctx.Done():
 			}
 		}()
-		c, hello, failed, _ := connectHost(ctx, h.Name, h.Address)
+		c, hello, why, _ := connectHost(ctx, h.Address)
 		cancel()
 		if c != nil {
 			h.mu.Lock()
@@ -254,13 +348,11 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			default:
 			}
 			h.client = c
-			kills := h.kills
-			h.kills = nil
 			h.mu.Unlock()
-			update(func() { h.state, h.attempt, h.reason, h.hello = hostConnected, 0, nil, hello })
-			for _, sid := range kills {
-				c.Kill(sid)
-			}
+			logged.log(h.Name, nil)
+			update(func() { h.state, h.reason, h.hello = hostConnected, nil, hello })
+			since := time.Now()
+			h.runKills(c)
 			a.watchHost(h, c, update)
 			h.mu.Lock()
 			if h.client == c {
@@ -273,18 +365,20 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 				return
 			default:
 			}
-			// Dropped: try again at once, and say why meanwhile.
-			attempt, why = 1, locales.PaneConnectionDropped
-			update(func() { h.reason = why })
-			continue
+			why = locales.PaneConnectionDropped
+			if time.Since(since) >= hostHealthy {
+				attempt = 1
+				update(func() { h.reason = why })
+				continue
+			}
 		}
 		select {
 		case <-h.stop:
 			return
 		default:
 		}
+		logged.log(h.Name, why)
 		attempt++
-		why = failed
 		n = attempt
 		update(func() { h.state, h.attempt, h.reason = hostFailed, n, why })
 		select {
@@ -334,6 +428,20 @@ func (a *App) hostByID(id string) *hostConn {
 	return nil
 }
 
+// allHosts are this machine, as nil, then the saved hosts, in their order.
+func (a *App) allHosts() []*hostConn { return append([]*hostConn{nil}, a.hosts...) }
+
+// tabsOn returns the tabs of host h, nil for this machine, in their order.
+func (a *App) tabsOn(h *hostConn) []*Tab {
+	var out []*Tab
+	for _, t := range a.tabs {
+		if t.host() == h {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // loadHosts reads the saved hosts and connects to them, closing the
 // connections of any before.
 func (a *App) loadHosts() {
@@ -359,7 +467,7 @@ func (a *App) stopHosts() {
 func (a *App) saveHosts() error {
 	saved := make([]savedHost, len(a.hosts))
 	for i, h := range a.hosts {
-		saved[i] = h.savedHost
+		saved[i] = h.saved()
 	}
 	err := saveHosts(saved)
 	if err != nil {
@@ -384,7 +492,7 @@ func (a *App) removeHost(h *hostConn) {
 		return
 	}
 	// The window keeps a tab, as it would close with its last.
-	if !slices.ContainsFunc(a.tabs, func(t *Tab) bool { return t.host() != h }) {
+	if len(a.tabsOn(h)) == len(a.tabs) {
 		home, _ := os.UserHomeDir()
 		a.newTabOn(nil, home)
 	}

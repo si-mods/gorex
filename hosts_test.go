@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -193,16 +194,42 @@ func TestHostsFile(t *testing.T) {
 		t.Errorf("hosts.json has mode %v", st.Mode().Perm())
 	}
 	got, err := loadHosts()
-	if err != nil || !slices.Equal(got, want) {
+	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("read back %v, %v", got, err)
 	}
 	// The address is not in the settings.
 	if b, _ := os.ReadFile(settingsPath()); strings.Contains(string(b), "tcSECRET") {
 		t.Error("the settings hold an address")
 	}
-	os.WriteFile(hostsPath(), []byte("{"), 0o600)
-	if _, err := loadHosts(); err == nil || strings.Contains(err.Error(), "{") {
-		t.Errorf("a bad file: %v", err)
+
+	// A file that does not parse is not written over: reading it moves it
+	// aside, readable by the user only, and the next save starts anew.
+	bad := `{"hosts": [{"id": "a1", "address": "tcSECRET"`
+	os.WriteFile(hostsPath(), []byte(bad), 0o644)
+	if err := saveHosts(want); err == nil {
+		t.Error("saved over a file that does not parse")
+	}
+	if b, _ := os.ReadFile(hostsPath()); string(b) != bad {
+		t.Errorf("the file became %q", b)
+	}
+	if hs, err := loadHosts(); err == nil || len(hs) != 0 || !strings.Contains(err.Error(), "moved aside") || strings.Contains(err.Error(), "tcSECRET") {
+		t.Errorf("a bad file: %v, %v", hs, err)
+	}
+	aside, _ := filepath.Glob(hostsPath() + ".bad-*")
+	if len(aside) != 1 {
+		t.Fatalf("set aside: %v", aside)
+	}
+	if b, _ := os.ReadFile(aside[0]); string(b) != bad {
+		t.Errorf("the file set aside holds %q", b)
+	}
+	if st, _ := os.Stat(aside[0]); runtime.GOOS != "windows" && st.Mode().Perm() != 0o600 {
+		t.Errorf("the file set aside has mode %v", st.Mode().Perm())
+	}
+	if _, err := os.Stat(hostsPath()); err == nil {
+		t.Error("hosts.json stays")
+	}
+	if err := saveHosts(want); err != nil {
+		t.Errorf("saving after: %v", err)
 	}
 }
 
@@ -411,14 +438,30 @@ func TestRestoreRemote(t *testing.T) {
 	}
 }
 
-// fakePairServer answers as a server that does not allow this machine
-// until approved: before, it answers remote.pair with a fingerprint, when
-// pairing, and refuses all else.
-func fakePairServer(t *testing.T, pairing bool, approved *atomic.Bool) string {
+// What a fake host does with a connection.
+const (
+	fakeRefuse   int32 = iota // not pairing: says it refuses, and closes
+	fakePairing               // serves remote.pair only
+	fakeApproved              // serves hello and list
+	fakeSilent                // closes, saying nothing, as a connection lost
+	fakeFlaky                 // greets, then drops
+)
+
+// fakeHost is a server that does not allow this machine until approved,
+// on a Unix socket, which counts the connections made to it.
+type fakeHost struct {
+	path      string
+	mode      atomic.Int32
+	requested atomic.Bool // a request to pair waits
+	conns     atomic.Int32
+}
+
+func newFakeHost(t *testing.T, mode int32) *fakeHost {
 	t.Helper()
 	dir := testDir(t)
-	path := filepath.Join(dir, "s.sock")
-	ln, err := net.Listen("unix", path)
+	f := &fakeHost{path: filepath.Join(dir, "s.sock")}
+	f.mode.Store(mode)
+	ln, err := net.Listen("unix", f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,56 +472,83 @@ func fakePairServer(t *testing.T, pairing bool, approved *atomic.Bool) string {
 			if err != nil {
 				return
 			}
-			go func() {
-				defer c.Close()
-				r := bufio.NewReader(c)
-				for {
-					line, err := r.ReadBytes('\n')
-					if err != nil {
-						return
-					}
-					var req rex.Request
-					json.Unmarshal(line, &req)
-					res := rex.Response{ID: req.ID}
-					switch {
-					case approved.Load() && req.Op == "list":
-						res.Data = json.RawMessage("[]")
-					case approved.Load():
-						res.Data, _ = json.Marshal(rex.Hello{PID: 7, Version: rex.ProtocolVersion})
-					case !pairing:
-						return // closes, saying nothing
-					case req.Op == "remote.pair":
-						res.Data, _ = json.Marshal(rex.PairResult{Fingerprint: "01234567-cdef"})
-					default:
-						res.Error = req.Op + " is not allowed before pairing"
-					}
-					b, _ := json.Marshal(res)
-					c.Write(append(b, '\n'))
-					if !approved.Load() {
-						return
-					}
-				}
-			}()
+			f.conns.Add(1)
+			go f.serve(c)
 		}
 	}()
-	return path
+	return f
 }
 
-// TestAddHostPairs adds a host through the sheet: the fields are checked,
-// the fingerprint shows while the host's user is asked, and the host is
-// saved once approved.
-func TestAddHostPairs(t *testing.T) {
+func (f *fakeHost) serve(c net.Conn) {
+	defer c.Close()
+	reply := func(res rex.Response) {
+		b, _ := json.Marshal(res)
+		c.Write(append(b, '\n'))
+	}
+	r := bufio.NewReader(c)
+	for {
+		line, err := r.ReadBytes('\n')
+		if err != nil {
+			return
+		}
+		var req rex.Request
+		json.Unmarshal(line, &req)
+		res := rex.Response{ID: req.ID}
+		switch f.mode.Load() {
+		case fakeSilent:
+			return
+		case fakeRefuse:
+			reply(rex.Response{Error: "rex: this machine is not allowed here"})
+			return
+		case fakePairing:
+			if req.Op == "remote.pair" {
+				f.requested.Store(true)
+				res.Data, _ = json.Marshal(rex.PairResult{Fingerprint: "01234567-cdef"})
+			} else {
+				res.Error = req.Op + " is not allowed before pairing"
+				if f.requested.Load() {
+					res.Error += ": the request waits for approval"
+				}
+			}
+			reply(res)
+			return
+		case fakeFlaky:
+			if req.Op != "hello" {
+				return
+			}
+			res.Data, _ = json.Marshal(rex.Hello{PID: 7, Version: rex.ProtocolVersion})
+		default:
+			if req.Op == "list" {
+				res.Data = json.RawMessage("[]")
+			} else {
+				res.Data, _ = json.Marshal(rex.Hello{PID: 7, Version: rex.ProtocolVersion})
+			}
+		}
+		reply(res)
+	}
+}
+
+// hostsPage is the Remote Hosts page of an app with no terminal window.
+func hostsPage(t *testing.T) (*App, *ui.Tester) {
 	isolateSettings(t, "")
 	t.Setenv("GOREX_DIR", t.TempDir())
 	fakeHosts(t)
-	var approved atomic.Bool
-	addr := fakePairServer(t, true, &approved)
 	a := &App{}
 	t.Cleanup(a.stopHosts)
 	t.Cleanup(closeAddHost)
 	settingsUI.section = "hosts"
 	tt := ui.NewTester(a.settingsView, 780, 540)
 	tt.Frame()
+	return a, tt
+}
+
+// TestAddHostPairs adds a host through the sheet: the fields are checked,
+// the fingerprint shows while the host's user is asked, a host not reached
+// meanwhile is waited for, a rejection ends it, and the host is saved once
+// approved.
+func TestAddHostPairs(t *testing.T) {
+	a, tt := hostsPage(t)
+	f := newFakeHost(t, fakePairing)
 	if !tt.HasText("No remote hosts yet.") {
 		t.Fatalf("texts %q", tt.Texts())
 	}
@@ -493,10 +563,10 @@ func TestAddHostPairs(t *testing.T) {
 	if !tt.HasText("Enter a host name.") {
 		t.Errorf("no error for an empty form; texts %q", tt.Texts())
 	}
-	tt.Type(addr) // the address field has the focus
+	tt.Type(f.path) // the address field has the focus
 	hostsUI.name, hostsUI.pairAs = "office-mac", "alice-laptop"
 	tt.Frame()
-	if tt.HasText(addr) {
+	if tt.HasText(f.path) {
 		t.Error("the address shows")
 	}
 	if err := tt.Click("Add"); err != nil {
@@ -506,30 +576,174 @@ func TestAddHostPairs(t *testing.T) {
 	if !tt.HasText("01234567-cdef") || !tt.HasText("On office-mac, approve the request showing this fingerprint.") {
 		t.Errorf("texts %q", tt.Texts())
 	}
-	if len(a.hosts) != 0 {
-		t.Fatal("saved before approval")
+
+	// The host lost on the way is no rejection: the sheet waits, and says.
+	f.mode.Store(fakeSilent)
+	waitFor(t, tt, "the note", func() bool { return hostsUI.note != nil })
+	if hostsUI.stage != addWaiting || !tt.HasText(locales.HostsUnreachable()) {
+		t.Errorf("stage %v; texts %q", hostsUI.stage, tt.Texts())
 	}
-	approved.Store(true)
+	f.mode.Store(fakePairing)
+	waitFor(t, tt, "the note to go", func() bool { return hostsUI.note == nil })
+
+	// Rejected: the sheet says so, and stops asking.
+	f.requested.Store(false)
+	waitFor(t, tt, "the rejection", func() bool { return hostsUI.stage == addForm && hostsUI.formErr != nil })
+	if msg := hostsUI.formErr(); !strings.Contains(msg, "office-mac did not approve this machine") {
+		t.Errorf("error %q", msg)
+	}
+	n := f.conns.Load()
+	time.Sleep(10 * pairPoll)
+	if m := f.conns.Load(); m != n {
+		t.Errorf("%d connections after the rejection", m-n)
+	}
+	if len(a.hosts) != 0 {
+		t.Fatal("saved a host rejected")
+	}
+
+	// Asked again, and approved.
+	a.submitHost()
+	waitFor(t, tt, "the fingerprint again", func() bool { return hostsUI.stage == addWaiting })
+	f.mode.Store(fakeApproved)
 	waitFor(t, tt, "the host to be saved", func() bool { return len(a.hosts) == 1 && !hostsUI.adding })
 	if hostsUI.address != "" {
 		t.Error("the sheet keeps the address")
 	}
-	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Address != addr || hs[0].Name != "office-mac" {
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Address != f.path || hs[0].Name != "office-mac" {
 		t.Errorf("hosts.json has %v", hs)
 	}
 	waitFor(t, tt, "the host to connect", func() bool { return a.hosts[0].state == hostConnected && tt.HasText("Connected") })
 
-	// A host not pairing says how to start.
-	other := fakePairServer(t, false, new(atomic.Bool))
-	a.openAddHost()
-	hostsUI.address, hostsUI.name = other, "studio"
-	a.submitHost()
-	waitFor(t, tt, "the error", func() bool { return hostsUI.stage == addForm && hostsUI.formErr != nil })
-	if msg := hostsUI.formErr(); !strings.Contains(msg, "studio is not pairing") {
-		t.Errorf("error %q", msg)
+	// A host not pairing says how to start; one lost on the way is not
+	// asked to pair.
+	for _, tc := range []struct {
+		mode int32
+		want string
+	}{{fakeRefuse, "studio is not pairing"}, {fakeSilent, "Could not reach the host"}} {
+		other := newFakeHost(t, tc.mode)
+		a.openAddHost()
+		hostsUI.address, hostsUI.name = other.path, "studio"
+		a.submitHost()
+		waitFor(t, tt, "the error", func() bool { return hostsUI.stage == addForm && hostsUI.formErr != nil })
+		if msg := hostsUI.formErr(); !strings.Contains(msg, tc.want) {
+			t.Errorf("error %q, want %q", msg, tc.want)
+		}
+		if other.requested.Load() || len(a.hosts) != 1 {
+			t.Error("a host not paired was saved, or asked")
+		}
 	}
-	if len(a.hosts) != 1 {
-		t.Error("a host not paired was saved")
+}
+
+// TestHostFailures checks what a saved host says when it is not reached,
+// and when it refuses this machine: a connection lost is not a refusal.
+func TestHostFailures(t *testing.T) {
+	a, tt := hostsPage(t)
+	f := newFakeHost(t, fakeSilent)
+	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: f.path})
+	waitFor(t, tt, "the failure", func() bool { return h.state == hostFailed })
+	if _, detail, _ := hostStatus(h); detail != locales.HostsUnreachable() {
+		t.Errorf("lost on the way: %q", detail)
+	}
+	f.mode.Store(fakeRefuse)
+	h.poke()
+	waitFor(t, tt, "the refusal", func() bool {
+		_, detail, _ := hostStatus(h)
+		return detail == locales.HostsNotAllowed()
+	})
+}
+
+// TestHostDropsBackOff checks that a host that greets and drops at once is
+// not dialed in a loop: the failures wait longer each time.
+func TestHostDropsBackOff(t *testing.T) {
+	a, tt := hostsPage(t)
+	f := newFakeHost(t, fakeFlaky)
+	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: f.path})
+	deadline := time.Now().Add(3500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		tt.Frame()
+		time.Sleep(50 * time.Millisecond)
+	}
+	// Dialed at 0, then after 1 s and 2 s more.
+	if n := f.conns.Load(); n < 2 || n > 4 {
+		t.Errorf("%d connections in 3.5 s", n)
+	}
+	if h.attempt < 2 {
+		t.Errorf("attempt %d", h.attempt)
+	}
+
+	// Up a while, a drop tries again at once.
+	old := hostHealthy
+	hostHealthy = 0
+	t.Cleanup(func() { hostHealthy = old })
+	f.mode.Store(fakeApproved)
+	h.poke()
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	n := f.conns.Load()
+	f.mode.Store(fakeSilent) // the next list drops it
+	waitFor(t, tt, "the host to drop", func() bool { return h.state != hostConnected })
+	f.mode.Store(fakeApproved)
+	waitFor(t, tt, "the host to connect again", func() bool { return h.state == hostConnected })
+	if f.conns.Load() == n {
+		t.Error("no new connection")
+	}
+}
+
+// TestPendingKills checks that closing a host's tab while it is away ends
+// its session once the host is back, though the app quit meanwhile.
+func TestPendingKills(t *testing.T) {
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, remote := startHostServer(t)
+	proxy := newHostProxy(t, sock)
+	t.Cleanup(a.stopHosts)
+	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: proxy.path})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	rt := a.newTabOn(h, "")
+	sid := rt.Focus.SID
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to drop", func() bool { return h.state != hostConnected && h.current() == nil })
+	a.closeTab(rt)
+	if hs, _ := loadHosts(); len(hs) != 1 || !slices.Contains(hs[0].Kills, sid) {
+		t.Fatalf("hosts.json has %+v", hs)
+	}
+	if !slices.Contains(sessionIDs(t, remote), sid) {
+		t.Fatal("the session ended while the host was away")
+	}
+	// The app quits, and opens again with the host back.
+	a.stopHosts()
+	proxy.setDown(false)
+	b := &App{client: a.client}
+	b.loadHosts()
+	t.Cleanup(b.stopHosts)
+	tb := ui.NewTester(b.view, 1000, 620)
+	waitFor(t, tb, "the session to end on the host", func() bool { return !slices.Contains(sessionIDs(t, remote), sid) })
+	waitFor(t, tb, "the kill to be forgotten", func() bool {
+		hs, _ := loadHosts()
+		return len(hs) == 1 && len(hs[0].Kills) == 0
+	})
+}
+
+// TestTabWidthBadge checks that only a tab with a host's badge grows past
+// the widest of tabs.
+func TestTabWidthBadge(t *testing.T) {
+	registerFonts()
+	h := newHostConn(savedHost{ID: "h1", Name: "office-mac"})
+	tab := func(host *hostConn) *Tab {
+		t := &Tab{Name: strings.Repeat("a very long name ", 4)}
+		p := &Pane{host: host, Tab: t}
+		t.Root = &Node{Pane: p}
+		p.Node = t.Root
+		return t
+	}
+	local, remote := tab(nil), tab(h)
+	var lw, rw float32
+	tt := ui.NewTester(func(c *ui.Context) { lw, rw = tabWidth(c, local), tabWidth(c, remote) }, 400, 100)
+	tt.Frame()
+	if lw != tabMaxW {
+		t.Errorf("a long local tab is %v wide, not %v", lw, tabMaxW)
+	}
+	if rw <= tabMaxW || rw > tabMaxW+badgeMaxW+21 {
+		t.Errorf("a long remote tab is %v wide", rw)
 	}
 }
 
@@ -537,9 +751,9 @@ func TestHostMessagesInChinese(t *testing.T) {
 	zh, en := locales.In("zh-Hans"), locales.In("en")
 	for got, want := range map[string]string{
 		zh.HostsReconnecting(3):  "正在重新连接（第 3 次）…",
-		zh.HostsSessions(2):      "2 个标签页",
-		en.HostsSessions(1):      "1 tab",
-		en.HostsSessions(0):      "No tabs",
+		zh.HostsSessions(2):      "2 个会话",
+		en.HostsSessions(1):      "1 session",
+		en.HostsSessions(0):      "No sessions",
 		zh.CmdNewTabOn("studio"): "在 studio 上新建标签页",
 	} {
 		if got != want {

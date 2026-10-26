@@ -124,17 +124,15 @@ func (a *App) hostsInPanel(c *ui.Context, k *colors) {
 	if len(a.hosts) > 0 {
 		ui.Text(c, locales.SettingsHosts()).FontSize(12).FontWeight(600).TextColor(k.textFaint)
 		ui.Column(c).Gap(2).Children(func() {
-			for _, h := range append([]*hostConn{nil}, a.hosts...) {
+			for _, h := range a.allHosts() {
 				name, label, dot := a.hostName(h), locales.HostsConnected(), k.busy
 				if h != nil {
 					label, _, _ = hostStatus(h)
 					dot = hostDot(k, h)
 				}
-				tabs := 0
-				for _, t := range a.tabs {
-					if t.host() == h {
-						tabs++
-					}
+				sessions := 0
+				for _, t := range a.tabsOn(h) {
+					sessions += len(t.panes())
 				}
 				key := "local"
 				if h != nil {
@@ -144,7 +142,7 @@ func (a *App) hostsInPanel(c *ui.Context, k *colors) {
 					ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
 					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 						ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
-						ui.Text(c, label+" · "+locales.HostsSessions(tabs)).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
+						ui.Text(c, label+" · "+locales.HostsSessions(sessions)).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
 					})
 					newTab := locales.CmdNewTabOn(name)
 					if iconButton(c, k, "plus", newTab, 26, 15).Tooltip(newTab).Clicked() {

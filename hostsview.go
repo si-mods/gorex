@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -25,6 +24,7 @@ var hostsUI struct {
 	// and it is forgotten once the host is saved or the sheet closes.
 	address, name, pairAs string
 	formErr               func() string // what is wrong, said when drawn
+	note                  func() string // why the host is not reached while it is asked to approve
 	stage                 addStage
 	fingerprint           string             // this machine's, while the host is asked to approve it
 	cancel                context.CancelFunc // stops the attempt under way
@@ -77,7 +77,7 @@ func cancelAddHost() {
 		page.cancel()
 		page.cancel = nil
 	}
-	page.stage, page.fingerprint = addForm, ""
+	page.stage, page.fingerprint, page.note = addForm, "", nil
 }
 
 // closeAddHost closes the sheet, forgetting the address.
@@ -127,9 +127,11 @@ func (a *App) submitHost() {
 	}
 	s := savedHost{ID: newHostID(), Name: strings.TrimSpace(name), Address: strings.TrimSpace(address)}
 	ctx, cancel := context.WithCancel(context.Background())
-	page.stage, page.cancel, page.formErr = addConnecting, cancel, nil
-	update := a.hostUpdate()
-	// The attempt's reports apply while it is the one under way.
+	page.stage, page.cancel, page.formErr, page.note = addConnecting, cancel, nil, nil
+	// The pairing is the settings window's: it goes on, and saves the host,
+	// though the terminal window closes. Its reports apply while it is the
+	// attempt under way.
+	update := a.settingsUpdate()
 	report := func(fn func()) {
 		update(func() {
 			if ctx.Err() == nil {
@@ -145,33 +147,49 @@ func (a *App) submitHost() {
 	})
 }
 
-// pairHost connects to a host to add: when it allows this machine, done
-// runs; else it asks to pair, shows the fingerprint, and tries again until
-// the host's user approves or the attempt is canceled. report runs a
-// change on the main thread.
-func pairHost(ctx context.Context, s savedHost, pairAs string, report func(func()), done func()) {
-	fail := func(msg func() string) {
-		report(func() {
-			hostsUI.stage, hostsUI.formErr, hostsUI.cancel = addForm, msg, nil
+// settingsUpdate returns how the settings window's work changes the state:
+// on the main thread, through the settings window, drawing the terminal
+// window too when it is open. Call it on the main thread.
+func (a *App) settingsUpdate() func(func()) {
+	set := settingsUI.win
+	return func(fn func()) {
+		if set == nil {
+			a.post(fn) // tests: no window
+			return
+		}
+		set.Update(func() {
+			fn()
+			if w := a.win; w != nil {
+				w.Update(func() {})
+			}
 		})
 	}
-	try := func() (ok bool, why func() string, refused bool) {
-		c, _, why, refused := connectHost(ctx, s.Name, s.Address)
-		if c == nil {
-			return false, why, refused
-		}
-		c.Close()
-		return true, nil, false
+}
+
+// pairHost connects to a host to add: when it allows this machine, done
+// runs; else it asks to pair, shows the fingerprint, and tries again while
+// the request waits, until the host's user approves (done runs), rejects
+// it or lets the window close (the sheet says so), or the attempt is
+// canceled. A host not reached meanwhile is tried less often, and the
+// sheet says why. report runs a change on the main thread.
+func pairHost(ctx context.Context, s savedHost, pairAs string, report func(func()), done func()) {
+	var logged failureLog
+	fail := func(msg func() string) {
+		logged.log(s.Name, msg)
+		report(func() {
+			hostsUI.stage, hostsUI.formErr, hostsUI.cancel, hostsUI.note = addForm, msg, nil, nil
+		})
 	}
-	ok, why, refused := try()
-	if ok {
+	c, _, why, failed := connectHost(ctx, s.Address)
+	switch {
+	case c != nil:
+		c.Close()
 		report(done)
 		return
-	}
-	if ctx.Err() != nil {
+	case ctx.Err() != nil:
 		return
-	}
-	if !refused {
+	case failed != failRefused && failed != failPending:
+		// Only a host that refuses this machine is asked to pair.
 		fail(why)
 		return
 	}
@@ -189,20 +207,39 @@ func pairHost(ctx context.Context, s savedHost, pairAs string, report func(func(
 			return
 		}
 		msg := serverMessage(errors.New(rex.Scrub(err.Error(), s.Address)))
-		log.Printf("gorex: pairing with host %s: %s", s.Name, msg)
 		fail(func() string { return msg })
 		return
 	}
 	report(func() { hostsUI.stage, hostsUI.fingerprint = addWaiting, fp })
+	wait := pairPoll
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(pairPoll):
+		case <-time.After(wait):
 		}
-		if ok, _, _ := try(); ok {
+		c, _, why, failed := connectHost(ctx, s.Address)
+		switch {
+		case c != nil:
+			c.Close()
 			report(done)
 			return
+		case ctx.Err() != nil:
+			return
+		case failed == failPending:
+			wait = pairPoll
+			logged.log(s.Name, nil)
+			report(func() { hostsUI.note = nil })
+		case failed == failRefused:
+			// Rejected, or the window closed: a new request is the user's
+			// to make.
+			name := s.Name
+			fail(func() string { return locales.HostsPairRejected(name) })
+			return
+		default:
+			wait = min(wait*2, 30*time.Second)
+			logged.log(s.Name, why)
+			report(func() { hostsUI.note = why })
 		}
 	}
 }
@@ -317,6 +354,9 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 				ui.Text(c, locales.HostsWaiting()).FontSize(12.5).FontWeight(500).TextColor(k.textMuted)
 			})
 			ui.Text(c, locales.HostsApproveWhere()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+			if page.note != nil {
+				ui.Text(c, page.note()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+			}
 		default:
 			ui.Text(c, locales.HostsAddNote()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
 			field := func(label string, input func() ui.Element) {

@@ -3294,16 +3294,16 @@ func (msgs Messages) HostsManage() string {
 	return Catalog.Format(msgs.locale, "hostsManage", nil)
 }
 
-// HostsSessions says "{n, plural, =0 {No tabs} one {# tab} other {# tabs}}"
+// HostsSessions says "{n, plural, =0 {No sessions} one {# session} other {# sessions}}"
 // in the language the app shows.
 //
-// Host panel: how many tabs a host has in the window.
+// Host panel: how many sessions (panes) a host has in the window.
 func HostsSessions(n int) string { return In(i18n.Locale()).HostsSessions(n) }
 
-// HostsSessions says "{n, plural, =0 {No tabs} one {# tab} other {# tabs}}"
+// HostsSessions says "{n, plural, =0 {No sessions} one {# session} other {# sessions}}"
 // in the language of msgs.
 //
-// Host panel: how many tabs a host has in the window.
+// Host panel: how many sessions (panes) a host has in the window.
 func (msgs Messages) HostsSessions(n int) string {
 	return Catalog.Format(msgs.locale, "hostsSessions", map[string]any{"n": n})
 }
@@ -3364,4 +3364,20 @@ func PaneStreamInterrupted() string { return In(i18n.Locale()).PaneStreamInterru
 // Banner over a pane whose stream dropped while its host is connected.
 func (msgs Messages) PaneStreamInterrupted() string {
 	return Catalog.Format(msgs.locale, "paneStreamInterrupted", nil)
+}
+
+// HostsPairRejected says "{host} did not approve this machine: the request was rejected, or its pairing window closed. Try again."
+// in the language the app shows.
+//
+// Error of the add sheet: the host's user rejected the request, or the
+// pairing window closed before approving it.
+func HostsPairRejected(host string) string { return In(i18n.Locale()).HostsPairRejected(host) }
+
+// HostsPairRejected says "{host} did not approve this machine: the request was rejected, or its pairing window closed. Try again."
+// in the language of msgs.
+//
+// Error of the add sheet: the host's user rejected the request, or the
+// pairing window closed before approving it.
+func (msgs Messages) HostsPairRejected(host string) string {
+	return Catalog.Format(msgs.locale, "hostsPairRejected", map[string]any{"host": host})
 }

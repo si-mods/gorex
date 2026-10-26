@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -657,5 +658,46 @@ func TestRemoteTailcat(t *testing.T) {
 	case <-rc.Closed():
 	case <-time.After(10 * time.Second):
 		t.Error("connection kept after revoke")
+	}
+}
+
+// TestRemoteRefusal checks that a client not allowed is told so, rather
+// than finding its connection lost, and whether its request waits.
+func TestRemoteRefusal(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, false)
+	defer c.Close()
+	if err := c.EnableRemote(); err != nil {
+		t.Fatal(err)
+	}
+	waitRunning(t, c, true)
+	phone := key.NewNode().Public().String()
+	hello := func() error {
+		_, err := dialAs(t, s, phone).Hello()
+		return err
+	}
+	if err := hello(); err == nil || !IsRefused(err) || IsPairingPending(err) {
+		t.Errorf("no window: %v", err)
+	}
+	if err := c.StartPairing(); err != nil {
+		t.Fatal(err)
+	}
+	if err := hello(); err == nil || !IsRefused(err) || IsPairingPending(err) {
+		t.Errorf("no request: %v", err)
+	}
+	if _, err := dialAs(t, s, phone).RequestPairing("phone"); err != nil {
+		t.Fatal(err)
+	}
+	if err := hello(); err == nil || !IsPairingPending(err) {
+		t.Errorf("a request waiting: %v", err)
+	}
+	if err := c.RejectPairing(phone); err != nil {
+		t.Fatal(err)
+	}
+	if err := hello(); err == nil || !IsRefused(err) || IsPairingPending(err) {
+		t.Errorf("rejected: %v", err)
+	}
+	if IsRefused(errors.New("rex: connection to the server lost")) {
+		t.Error("a connection lost counts as a refusal")
 	}
 }

@@ -197,12 +197,10 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 				}
 				// With remote hosts, the tabs go under their host's name,
 				// this machine's first.
-				for _, h := range append([]*hostConn{nil}, a.hosts...) {
+				for _, h := range a.allHosts() {
 					a.hostSection(c, k, h)
-					for i, t := range tabs {
-						if t.host() == h {
-							a.sidebarTab(c, k, i, t)
-						}
+					for _, t := range a.tabsOn(h) {
+						a.sidebarTab(c, k, slices.Index(tabs, t), t)
 					}
 				}
 			})

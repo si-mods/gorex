@@ -1106,9 +1106,9 @@
   "@hostsManage": {
     "description": "Host panel button: open the Remote Hosts settings."
   },
-  "hostsSessions": "{n, plural, =0 {No tabs} one {# tab} other {# tabs}}",
+  "hostsSessions": "{n, plural, =0 {No sessions} one {# session} other {# sessions}}",
   "@hostsSessions": {
-    "description": "Host panel: how many tabs a host has in the window.",
+    "description": "Host panel: how many sessions (panes) a host has in the window.",
     "placeholders": {
       "n": {
         "type": "int",
@@ -1143,5 +1143,15 @@
   "paneStreamInterrupted": "The terminal stream was interrupted. Reconnecting automatically.",
   "@paneStreamInterrupted": {
     "description": "Banner over a pane whose stream dropped while its host is connected."
+  },
+  "hostsPairRejected": "{host} did not approve this machine: the request was rejected, or its pairing window closed. Try again.",
+  "@hostsPairRejected": {
+    "description": "Error of the add sheet: the host's user rejected the request, or the pairing window closed before approving it.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
   }
 }

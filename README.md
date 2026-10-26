@@ -137,7 +137,9 @@ plane without its control plane, so WireGuard end to end, through a DERP
 relay or directly, with no Tailscale account. Remote access is off by
 default. Each machine has a client key (`remote-client.json`), and the
 server serves the keys of its allowlist only: it reads the key of every
-connection, and closes those of other keys at once. With an empty
+connection, and closes those of other keys at once, saying first that
+they are not allowed (so that a client tells a refusal from a network
+that dropped). With an empty
 allowlist nobody gets in. The server keeps its keys (`remote.json`, mode
 0600), so its address stays the same; regenerating them makes a new one,
 and the old address stops working.

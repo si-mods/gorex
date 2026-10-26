@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net"
@@ -403,9 +404,14 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			// Checked and kept under the lock, so that a revoke drops it.
 			r.mu.Lock()
 			allowed := r.allowedLocked(k)
-			if r.ln != ln || k == "" || !allowed && !r.pairOpenLocked() {
+			if r.ln != ln {
 				r.mu.Unlock()
 				c.Close()
+				return
+			}
+			if k == "" || !allowed && !r.pairOpenLocked() {
+				r.mu.Unlock()
+				refuseRemote(c)
 				return
 			}
 			r.conns[c] = k
@@ -421,6 +427,24 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			r.mu.Unlock()
 		}()
 	}
+}
+
+// refuseRemote tells a client it does not allow so, unprompted, and closes
+// the connection once the client has read it: the client tells a refusal
+// from a connection lost on the way.
+func refuseRemote(c net.Conn) {
+	defer c.Close()
+	c.SetDeadline(time.Now().Add(5 * time.Second))
+	b, _ := json.Marshal(Response{Error: refusedMessage})
+	if _, err := c.Write(append(b, '\n')); err != nil {
+		return
+	}
+	// Closing with what the client sent unread could reset the connection
+	// before the answer reaches it: half close, and read until it closes.
+	if cw, ok := c.(interface{ CloseWrite() error }); ok {
+		cw.CloseWrite()
+	}
+	io.Copy(io.Discard, io.LimitReader(c, 64<<10))
 }
 
 // pairConn serves the connection of a client not allowed: one
@@ -439,6 +463,14 @@ func (s *Server) pairConn(c net.Conn, k string) {
 		res.Error = "rex: not a request"
 	case req.Op != "remote.pair":
 		res.ID, res.Error = req.ID, fmt.Sprintf("%s is not allowed before pairing", req.Op)
+		// A client whose request waits is told so: one that hears not, made
+		// none, or was rejected.
+		r := &s.rem
+		r.mu.Lock()
+		if r.pairOpenLocked() && slices.ContainsFunc(r.pending, func(p RemotePending) bool { return p.PublicKey == k }) {
+			res.Error += ": " + pendingMessage
+		}
+		r.mu.Unlock()
 	default:
 		res.ID = req.ID
 		name := ""

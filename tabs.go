@@ -56,11 +56,13 @@ func tabWidth(c *ui.Context, t *Tab) float32 {
 	name, detail := t.label()
 	w, _ := c.MeasureText(0, tabLabel(name, detail, ui.Color{}, ui.Color{})...)
 	tiles := float32(tileW + tileStep*min(len(t.panes())-1, 2) + 2)
+	// A host's badge takes room of its own, past the label's widest.
+	badge := float32(0)
 	if h := t.host(); h != nil {
 		bw, _ := c.MeasureText(0, ui.Span{Text: h.Name, Size: badgeSize, Weight: 600})
-		tiles += min(bw, badgeMaxW) + 12 + 9
+		badge = min(bw, badgeMaxW) + 12 + 9
 	}
-	return min(max(6+tiles+9+w+9+18+10, tabMinW), tabMaxW+badgeMaxW)
+	return min(max(6+tiles+9+w+9+18+10, tabMinW), tabMaxW) + badge
 }
 
 // The badge of a remote host's tab: its text's size, and its widest.
