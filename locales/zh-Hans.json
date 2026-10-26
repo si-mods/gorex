@@ -71,6 +71,7 @@
   "windowRestore": "还原",
   "windowClose": "关闭",
   "hostLabel": "主机 {name}",
+  "hostLabelIssue": "主机 {name} — {host}：{status}{more, plural, =0 {} other {（另有 {more} 台）}}",
   "hostThisMachine": "{os, select, darwin {这台 Mac} windows {这台电脑} other {这台电脑}}",
   "hostConnected": "{machine} · 已连接",
   "hostModel": "型号",

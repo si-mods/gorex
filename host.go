@@ -35,43 +35,35 @@ func (a *App) hostChip(c *ui.Context, k *colors) {
 }
 
 // hostButton is the host chip as an icon, for the sidebar's foot: the
-// same panel opens from it, and a dot on the icon shows a remote host
-// that is not connected.
+// same panel opens from it. A remote host that is not connected shows as
+// a dot on the icon and in the button's label and tooltip.
 func (a *App) hostButton(c *ui.Context, k *colors) {
 	name, _, glyph := a.hostIdentity()
 	label := locales.HostLabel(name)
-	b := ui.Box(c).Size(30, 30).Center().Radius(30 / 2.6).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).
-		Tooltip(label)
-	switch {
-	case b.Pressed():
-		b.Background(k.pressed)
-	case b.Hovered() || a.hostOpen:
-		b.Background(k.hover)
-	}
-	b.Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
-	if b.Clicked() {
-		a.hostOpen = !a.hostOpen
-	}
-	col := k.iconMuted
-	if b.Hovered() || a.hostOpen {
-		col = k.text
-	}
 	var bad *hostConn
+	n := 0
 	for _, h := range a.hosts {
-		if h.state != hostConnected {
+		if h.state == hostConnected {
+			continue
+		}
+		n++
+		if bad == nil || (h.state == hostFailed && bad.state != hostFailed) {
 			bad = h
-			if h.state == hostFailed {
-				break
-			}
 		}
 	}
-	b.Children(func() {
-		ui.Icon(c, icon(glyph)).Size(16, 16).TextColor(col)
+	if bad != nil {
+		status, _, _ := hostStatus(bad)
+		label = locales.HostLabelIssue(name, a.hostName(bad), status, n-1)
+	}
+	b := iconButtonWith(c, k, glyph, label, 30, 16, a.hostOpen, func() {
 		if bad != nil {
 			ui.Box(c).Absolute().Top(5).Right(5).Size(7, 7).Radius(4).Background(hostDot(k, bad))
 		}
-	})
-	a.hostPopover(c, k, b, name, glyph, 0, 8)
+	}).Tooltip(label)
+	if b.Clicked() {
+		a.hostOpen = !a.hostOpen
+	}
+	a.hostPopover(c, k, b, name, glyph, 8, 0)
 }
 
 // hostIdentity is this machine's name, model, and the icon that stands
@@ -95,12 +87,17 @@ func (a *App) hostIdentity() (name, model, glyph string) {
 	return
 }
 
-// hostPopover opens the host's panel from its anchor, a margin away.
+// hostPopover opens the host's panel from its anchor, a margin above or
+// below it.
 func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, glyph string, top, bottom float32) {
 	ui.PopoverBase(c, anchor, &a.hostOpen, func(panel ui.Element) {
-		panel.Margin(top, 0, bottom, 0).Width(300).Padding(14).Radius(14).Background(k.panel).Border(1, k.panelBorder).
+		_, winH := c.Size()
+		panel.Margin(top, 0, bottom, 0).MaxHeight(winH-24).Width(300).Padding(14).Radius(14).Background(k.panel).Border(1, k.panelBorder).
 			Shadow(0, 12, 32, 0, k.shadowFocused).Gap(12)
-		a.hostPanel(c, k, name, glyph)
+		// A short window or many hosts scroll the panel's body.
+		ui.Scroll(c).MinHeight(0).Children(func() {
+			ui.Column(c).Gap(12).Children(func() { a.hostPanel(c, k, name, glyph) })
+		})
 	})
 }
 

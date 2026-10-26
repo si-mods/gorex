@@ -1036,6 +1036,26 @@ func (msgs Messages) HostLabel(name string) string {
 	return Catalog.Format(msgs.locale, "hostLabel", map[string]any{"name": name})
 }
 
+// HostLabelIssue says "Host {name} — {host}: {status}{more, plural, =0 {} one { (+{more})} other { (+{more})}}"
+// in the language the app shows.
+//
+// Label and tooltip of the sidebar's host button when a remote host is not
+// connected: this machine's name, the worst host, its state, and how many
+// more are not connected.
+func HostLabelIssue(name string, host string, status string, more int) string {
+	return In(i18n.Locale()).HostLabelIssue(name, host, status, more)
+}
+
+// HostLabelIssue says "Host {name} — {host}: {status}{more, plural, =0 {} one { (+{more})} other { (+{more})}}"
+// in the language of msgs.
+//
+// Label and tooltip of the sidebar's host button when a remote host is not
+// connected: this machine's name, the worst host, its state, and how many
+// more are not connected.
+func (msgs Messages) HostLabelIssue(name string, host string, status string, more int) string {
+	return Catalog.Format(msgs.locale, "hostLabelIssue", map[string]any{"name": name, "host": host, "status": status, "more": more})
+}
+
 // HostThisMachine says "{os, select, darwin {This Mac} windows {This PC} other {This computer}}"
 // in the language the app shows.
 //

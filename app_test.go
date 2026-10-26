@@ -485,23 +485,23 @@ func TestSidebarReveals(t *testing.T) {
 }
 
 // TestSidebarHostButton: the left sidebar has no host chip at its top; an
-// icon at its foot opens the host's panel.
+// icon at its foot opens the host's panel, beside it and inside the window,
+// and says in its label which remote host is not connected.
 func TestSidebarHostButton(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
 	a, tt := newTestApp(t)
 	prefs = settings{TabPlacement: "left"}
+	a.hello.Host.Name, a.hello.Host.Model = "Testbook", "TestModel 9"
 	tt.Frame()
 	list, ok := tt.Find("Tabs")
 	if !ok {
 		t.Fatalf("no sidebar; texts %q", tt.Texts())
 	}
-	_, model, _ := a.hostIdentity()
-	if model != "" && tt.HasText(model) {
-		t.Errorf("the sidebar shows the host chip (%q)", model)
+	if slices.Contains(tt.Texts(), "Testbook") || slices.Contains(tt.Texts(), "TestModel 9") {
+		t.Errorf("the sidebar shows the host chip; texts %q", tt.Texts())
 	}
-	name, _, _ := a.hostIdentity()
-	label := locales.HostLabel(name)
+	label := locales.HostLabel("Testbook")
 	btn, ok := tt.Find(label)
 	if !ok {
 		t.Fatalf("no host button; texts %q", tt.Texts())
@@ -515,6 +515,41 @@ func TestSidebarHostButton(t *testing.T) {
 	tt.Click(label)
 	tt.Frame()
 	if !a.hostOpen || !tt.HasText(locales.HostServer()) {
-		t.Errorf("a click did not open the host panel; texts %q", tt.Texts())
+		t.Fatalf("a click did not open the host panel; texts %q", tt.Texts())
+	}
+	panel, ok := tt.Find(locales.HostServer())
+	if !ok {
+		t.Fatal("no panel")
+	}
+	// The panel's rows are inside the window and clear of the button.
+	if panel.Y < 0 || panel.Y+panel.H > btn.Y {
+		t.Errorf("the panel's row is at %v, over the button at %v or out of the window", panel, btn)
+	}
+
+	// A host that is not connected shows in the label, in the worst's name.
+	a.hostOpen = false
+	a.hosts = []*hostConn{
+		{savedHost: savedHost{ID: "1", Name: "PC024"}, state: hostReconnecting, attempt: 2},
+		{savedHost: savedHost{ID: "2", Name: "office"}, state: hostFailed},
+		{savedHost: savedHost{ID: "3", Name: "fine"}, state: hostConnected},
+	}
+	tt.Frame()
+	status, _, _ := hostStatus(a.hosts[1])
+	want := locales.HostLabelIssue("Testbook", "office", status, 1)
+	if _, ok := tt.Find(want); !ok {
+		t.Errorf("no host button labeled %q; texts %q", want, tt.Texts())
+	}
+
+	// In a short window the panel keeps inside it.
+	tt.SetSize(900, 420)
+	a.hostOpen = true
+	tt.Frame()
+	tt.Frame()
+	btn, _ = tt.Find(want)
+	if h, ok := tt.Find(locales.HostServer()); ok && (h.Y < 0 || h.Y+h.H > btn.Y) {
+		t.Errorf("in a short window the panel's row is at %v, over the button at %v or out of the window", h, btn)
+	}
+	if !tt.HasText(locales.SettingsHosts()) {
+		t.Errorf("the hosts' list is out of reach; texts %q", tt.Texts())
 	}
 }
