@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
@@ -38,6 +39,7 @@ func main() {
 			os.Setenv("GOREX_DIR", dir)
 		}
 	}
+	mygo.Use(native.Plugin)
 	registerFonts()
 	loadSettings()
 	a := &App{}

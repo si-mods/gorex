@@ -59,6 +59,24 @@ Ctrl+D, Ctrl+W…), so GoRex's shortcuts take Shift too, as copying and
 pasting do (Ctrl+Shift+C, Ctrl+Shift+V), and none take Control and Alt,
 which type characters (AltGr) on many keyboards.
 
+### Settings
+
+Settings… (⌘, on macOS, Ctrl+, elsewhere; Shell menu and command palette)
+opens a window of its own with a sidebar of sections: Appearance (light,
+dark or system; text size), Terminal (font, cursor style and blink, copy on
+selection), Theme (any of Ghostty's themes, or follow the config),
+Keyboard (GoRex's shortcuts, read only) and About (version, Check for
+Updates…). The choices go to `settings.json`.
+
+Precedence: what you set in Settings, over Ghostty's config, over GoRex's
+defaults. "Reload Ghostty Config" reads the config again but never
+replaces a choice made in Settings; "Use Ghostty config" (Terminal)
+forgets the font, cursor, and copy-on-selection choices, and Theme's
+"Follow Ghostty config" the theme's. A theme chosen in Settings also
+replaces the config's `background`, `foreground`, `palette`, and the other
+colors, which belonged to its own theme. Font, theme, copy on selection,
+and the cursor apply to open panes at once.
+
 ### Ghostty configuration
 
 GoRex reads Ghostty's config: `$XDG_CONFIG_HOME/ghostty/config.ghostty`
@@ -103,6 +121,24 @@ go run ./tools/mkicon  # redraw resources/icon.png
 `go get -tool github.com/egoist/mygo/cmd/mygo@latest` updates MyGo and its
 CLI together.
 
+### Release
+
+Releases update installed apps, signed with a key that only the
+maintainer holds. Once, run `go tool mygo keygen` and put the contents of
+`mygo-update.pub` in `updates.publicKey` of `mygo.json`; keep
+`mygo-update.key` out of the repository. For each release, add a
+`## 0.1.0` section (the version of `mygo.json`) to `CHANGELOG.md`, which
+becomes the release notes, then build and upload to a draft GitHub release
+(it needs `gh` or `GH_TOKEN`), and publish the draft:
+
+```sh
+MYGO_UPDATER_PRIVATE_KEY="$(cat path/to/mygo-update.key)" go tool mygo build -upload
+```
+
+Development builds and apps that cannot write where they are installed
+do not update; "Check for Updates…" is in the Shell menu and the command
+palette.
+
 The app keeps its state in its data directory: the server's socket and
 log, `layout.json` and `settings.json`, in `~/Library/Application
 Support/GoRex` for the built app and `GoRex Dev` for `mygo dev`'s, so
@@ -133,7 +169,8 @@ its top included.
 | `state.go` | tabs, the tree of splits, panes, saving and restoring the layout |
 | `view.go`, `tabs.go`, `host.go`, `commands.go` | the interface: title bar, tabs, panes, host popover, menus and palette |
 | `programs.go` | how programs show: names, glyphs, tile colors |
-| `style.go`, `settings.go` | colors, fonts, terminal themes; appearance and text size |
+| `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
+| `settingsview.go` | the Settings window |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 
 Not replicated: Rex's connections to servers on other machines; GoRex's

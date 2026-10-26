@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 )
@@ -85,8 +86,10 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 // windowControls draws the buttons that minimize, maximize and close the
 // window, when it has none of its own: they are the title bar's other
 // buttons, and close's face turns red, as Windows has it.
-func (a *App) windowControls(c *ui.Context, k *colors) {
-	win := a.win
+func (a *App) windowControls(c *ui.Context, k *colors) { windowControls(c, k, a.win) }
+
+// windowControls draws the controls of win.
+func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 	if !ownControls || win == nil || win.IsFullScreen() {
 		return
 	}
