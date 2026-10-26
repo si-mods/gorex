@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/plugins/terminal"
 
 	"gorex/internal/rex"
@@ -19,6 +20,9 @@ type settings struct {
 	// Appearance is "light", "dark", or "" to follow the system.
 	Appearance string  `json:"appearance,omitempty"`
 	FontSize   float32 `json:"fontSize,omitempty"`
+	// Language is a tag of the app's languages, or "" to follow the
+	// system's.
+	Language string `json:"language,omitempty"`
 
 	// TabPlacement is "left" or "right" for tabs in a sidebar, or "" for
 	// tabs above the panes. The sidebar's width is SidebarWidth, 0 for
@@ -58,9 +62,17 @@ func loadSettings() {
 	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
 		prefs.SidebarWidth = 0
 	}
+	// A language of the file may be spelled otherwise (zh-hans, zh-CN): keep
+	// the app's own spelling of the one it matches, or none.
+	if prefs.Language != "" {
+		prefs.Language = i18n.Match([]string{prefs.Language}, mygo.App.Languages())
+	}
 	loadGhostty()
 	applyGhostty()
 	applyAppearance()
+	// The file is the one place that says the language: "" follows the
+	// system's, whatever the app kept before.
+	setLocale(prefs.Language)
 }
 
 func saveSettings() {
@@ -72,6 +84,9 @@ func saveSettings() {
 // setThemeSource sets the windows' theme; tests, which run no windows, take
 // its place.
 var setThemeSource = mygo.Theme.SetSource
+
+// setLocale shows another language; tests, which run no app, take its place.
+var setLocale = mygo.App.SetLocale
 
 // applyAppearance sets the windows' appearance: the user's choice, else the
 // one the terminals' colors call for, else the system's.
@@ -176,6 +191,14 @@ func (a *App) setAppearance(v string) {
 	prefs.Appearance = v
 	applyAppearance()
 	saveSettings()
+}
+
+// setLanguage shows the language of tag, "" for the system's. The app keeps
+// it too (SetLocale), and says the menus again as it hears the change.
+func (a *App) setLanguage(tag string) {
+	prefs.Language = tag
+	saveSettings()
+	setLocale(tag)
 }
 
 // setWindowPref changes a choice of how the window lays out, keeps it, and

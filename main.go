@@ -19,6 +19,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 func main() {
@@ -43,7 +44,13 @@ func main() {
 	loadSettings()
 	a := &App{}
 	mygo.App.SetMenu(a.menu())
-	mygo.App.WhenReady(a.open)
+	mygo.App.OnLocaleChanged(a.localeChanged)
+	// The menu is made again once the app knows its language, which the
+	// start of the app may settle after the menu above was made.
+	mygo.App.WhenReady(func() {
+		mygo.App.SetMenu(a.menu())
+		a.open()
+	})
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
 		if !hasVisibleWindows && a.win == nil {
 			a.open()
@@ -67,7 +74,7 @@ func (a *App) open() {
 	client, err := rex.Connect()
 	if err != nil {
 		log.Print(err)
-		mygo.Dialog.Error("GoRex could not start its session server", err.Error())
+		mygo.Dialog.Error(locales.ErrorServerStart(), err.Error())
 		mygo.App.Quit()
 		return
 	}
@@ -95,7 +102,7 @@ func (a *App) open() {
 		}
 		if err != nil {
 			log.Print(err)
-			mygo.Dialog.Error("GoRex could not restart its session server", err.Error())
+			mygo.Dialog.Error(locales.ErrorServerRestart(), err.Error())
 			mygo.App.Quit()
 			return
 		}
@@ -105,7 +112,7 @@ func (a *App) open() {
 		}
 	}
 	if err == nil && a.hello.Version != rex.ProtocolVersion {
-		a.err = "The session server is of another version of GoRex: quit and end all sessions to restart it."
+		a.errMsg = locales.Messages.ErrorServerVersion
 	}
 	a.reset()
 	opts := mygo.WindowOptions{
@@ -150,6 +157,16 @@ func (a *App) open() {
 	})
 }
 
+// localeChanged says again what was set once: the menus, and the
+// settings window's title. What the views say follows the language as they
+// draw.
+func (a *App) localeChanged(string) {
+	mygo.App.SetMenu(a.menu())
+	if w := settingsUI.win; w != nil {
+		w.SetTitle(locales.SettingsTitle())
+	}
+}
+
 // saveNow sends the layout to the server and waits for it to be kept.
 func (a *App) saveNow() {
 	if a.client == nil || len(a.tabs) == 0 && !a.quitting {
@@ -173,7 +190,7 @@ func (a *App) saveNow() {
 // reset forgets the state of a window that closed, keeping the server's
 // connection, for the next window.
 func (a *App) reset() {
-	a.tabs, a.active, a.focusReq = nil, 0, nil
+	a.tabs, a.active, a.focusReq, a.errMsg = nil, 0, nil, nil
 	a.paletteOpen, a.hostOpen, a.renaming = false, false, nil
 	a.saveDue, a.quitting, a.lastSnapshot, a.title = false, false, "", ""
 }

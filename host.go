@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 // hostChip shows the machine the sessions run on; a click shows more of
@@ -29,7 +31,7 @@ func (a *App) hostChip(c *ui.Context, k *colors) {
 		glyph = "server"
 	}
 	chip := ui.Row(c).Gap(9).Padding(3, 8, 3, 6).Radius(9).AlignItems(ui.Center).Cursor(ui.CursorPointer).
-		Role(ui.RoleButton).Label("Host " + name).MaxWidth(190).Shrink(0)
+		Role(ui.RoleButton).Label(locales.HostLabel(name)).MaxWidth(190).Shrink(0)
 	if chip.Hovered() || a.hostOpen {
 		chip.Background(k.hover)
 	}
@@ -60,7 +62,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 			ui.Text(c, name).FontSize(14).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(7, 7).Radius(4).Background(k.busy)
-				ui.Text(c, thisMachine()+" · connected").FontSize(12).TextColor(k.textFaint)
+				ui.Text(c, locales.HostConnected(thisMachine())).FontSize(12).TextColor(k.textFaint)
 			})
 		})
 	})
@@ -75,13 +77,13 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 		})
 	}
 	ui.Column(c).Gap(7).Children(func() {
-		row("Model", h.Model)
-		row("Chip", h.Chip)
+		row(locales.HostModel(), h.Model)
+		row(locales.HostChip(), h.Chip)
 		if h.Memory > 0 {
-			row("Memory", fmt.Sprintf("%d GB", h.Memory>>30))
+			row(locales.HostMemory(), fmt.Sprintf("%d GB", h.Memory>>30))
 		}
-		row("System", h.OS)
-		row("User", h.User)
+		row(locales.HostSystem(), h.OS)
+		row(locales.HostUser(), h.User)
 	})
 	ui.Divider(c)
 	sessions, running := 0, 0
@@ -94,32 +96,24 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 		}
 	}
 	ui.Column(c).Gap(7).Children(func() {
-		row("Server", fmt.Sprintf("pid %d · up %s", a.hello.PID, roundDur(time.Since(a.hello.Started))))
-		row("Sessions", fmt.Sprintf("%d open, %d running a program", sessions, running))
+		row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
+		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
 	})
-	ui.Text(c, "Sessions live in the server: quit GoRex and they keep running, and come back as they were when it opens again.").
+	ui.Text(c, locales.HostNote()).
 		FontSize(11.5).TextColor(k.textFaint).LineHeight(1.35)
 }
 
 func roundDur(d time.Duration) string {
 	switch {
 	case d < time.Minute:
-		return fmt.Sprintf("%ds", int(d.Seconds()))
+		return locales.HostDurSeconds(int(d.Seconds()))
 	case d < time.Hour:
-		return fmt.Sprintf("%dm", int(d.Minutes()))
+		return locales.HostDurMinutes(int(d.Minutes()))
 	case d < 48*time.Hour:
-		return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
+		return locales.HostDurHoursMinutes(int(d.Hours()), int(d.Minutes())%60)
 	}
-	return fmt.Sprintf("%dd", int(d.Hours()/24))
+	return locales.HostDurDays(int(d.Hours() / 24))
 }
 
 // thisMachine names the machine the app runs on, as its system does.
-func thisMachine() string {
-	switch runtime.GOOS {
-	case "darwin":
-		return "This Mac"
-	case "windows":
-		return "This PC"
-	}
-	return "This computer"
-}
+func thisMachine() string { return locales.HostThisMachine(runtime.GOOS) }

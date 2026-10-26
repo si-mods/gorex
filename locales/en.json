@@ -1,0 +1,929 @@
+{
+  "@@locale": "en",
+  "cmdNewTab": "New Tab",
+  "@cmdNewTab": {
+    "description": "Command: open a new tab. Menu item, palette row, tooltip."
+  },
+  "cmdSplitRight": "Split Right",
+  "@cmdSplitRight": {
+    "description": "Command: split the focused pane into two side by side."
+  },
+  "cmdSplitDown": "Split Down",
+  "@cmdSplitDown": {
+    "description": "Command: split the focused pane into two, one above the other."
+  },
+  "cmdClosePane": "Close Pane",
+  "@cmdClosePane": {
+    "description": "Command: close the focused pane."
+  },
+  "cmdCloseTab": "Close Tab",
+  "@cmdCloseTab": {
+    "description": "Command: close the active tab. Also the tooltip of a tab's close button."
+  },
+  "cmdZoomPane": "Zoom Pane",
+  "@cmdZoomPane": {
+    "description": "Command: make the focused pane fill the tab, or undo it."
+  },
+  "cmdEqualizePanes": "Equalize Panes",
+  "@cmdEqualizePanes": {
+    "description": "Command: give all panes of the tab the same size."
+  },
+  "cmdNextTab": "Next Tab",
+  "@cmdNextTab": {
+    "description": "Command: show the next tab."
+  },
+  "cmdPreviousTab": "Previous Tab",
+  "@cmdPreviousTab": {
+    "description": "Command: show the previous tab."
+  },
+  "cmdToggleSidebar": "Toggle Sidebar",
+  "@cmdToggleSidebar": {
+    "description": "Command: show or hide the sidebar of vertical tabs."
+  },
+  "cmdRenameTab": "Rename Tab…",
+  "@cmdRenameTab": {
+    "description": "Command: rename the active tab. Also in a tab's context menu."
+  },
+  "cmdCommandPalette": "Command Palette…",
+  "@cmdCommandPalette": {
+    "description": "Command: open the command palette (menu item only)."
+  },
+  "cmdGoToPane": "Go to Pane…",
+  "@cmdGoToPane": {
+    "description": "Command: open the palette to go to a pane (menu item only)."
+  },
+  "cmdFocusPaneLeft": "Focus Pane Left",
+  "@cmdFocusPaneLeft": {
+    "description": "Command: move the focus to the pane on the left."
+  },
+  "cmdFocusPaneRight": "Focus Pane Right",
+  "@cmdFocusPaneRight": {
+    "description": "Command: move the focus to the pane on the right."
+  },
+  "cmdFocusPaneAbove": "Focus Pane Above",
+  "@cmdFocusPaneAbove": {
+    "description": "Command: move the focus to the pane above."
+  },
+  "cmdFocusPaneBelow": "Focus Pane Below",
+  "@cmdFocusPaneBelow": {
+    "description": "Command: move the focus to the pane below."
+  },
+  "cmdMoveDividerLeft": "Move Divider Left",
+  "@cmdMoveDividerLeft": {
+    "description": "Command: move the focused pane's divider to the left."
+  },
+  "cmdMoveDividerRight": "Move Divider Right",
+  "@cmdMoveDividerRight": {
+    "description": "Command: move the focused pane's divider to the right."
+  },
+  "cmdMoveDividerUp": "Move Divider Up",
+  "@cmdMoveDividerUp": {
+    "description": "Command: move the focused pane's divider up."
+  },
+  "cmdMoveDividerDown": "Move Divider Down",
+  "@cmdMoveDividerDown": {
+    "description": "Command: move the focused pane's divider down."
+  },
+  "cmdClearScreen": "Clear Screen and Scrollback",
+  "@cmdClearScreen": {
+    "description": "Command: clear the focused terminal's screen and its scrollback."
+  },
+  "cmdClearScrollback": "Clear Scrollback",
+  "@cmdClearScrollback": {
+    "description": "Command: clear the focused terminal's scrollback (palette row)."
+  },
+  "cmdRestartShell": "Restart Shell in Pane",
+  "@cmdRestartShell": {
+    "description": "Command: end the pane's session and start a new shell in it."
+  },
+  "cmdBiggerText": "Bigger Text",
+  "@cmdBiggerText": {
+    "description": "Command: make the terminal text bigger."
+  },
+  "cmdSmallerText": "Smaller Text",
+  "@cmdSmallerText": {
+    "description": "Command: make the terminal text smaller."
+  },
+  "cmdActualSize": "Actual Size",
+  "@cmdActualSize": {
+    "description": "Command: go back to the default text size."
+  },
+  "cmdReloadGhostty": "Reload Ghostty Config",
+  "@cmdReloadGhostty": {
+    "description": "Command: read Ghostty's configuration again. Ghostty is a product name."
+  },
+  "cmdAppearanceLight": "Appearance: Light",
+  "@cmdAppearanceLight": {
+    "description": "Command: use the light appearance."
+  },
+  "cmdAppearanceDark": "Appearance: Dark",
+  "@cmdAppearanceDark": {
+    "description": "Command: use the dark appearance."
+  },
+  "cmdAppearanceSystem": "Appearance: System",
+  "@cmdAppearanceSystem": {
+    "description": "Command: follow the system's appearance."
+  },
+  "cmdSettings": "Settings…",
+  "@cmdSettings": {
+    "description": "Command: open the settings window."
+  },
+  "cmdCheckForUpdates": "Check for Updates…",
+  "@cmdCheckForUpdates": {
+    "description": "Command: look for a newer version of the app."
+  },
+  "cmdQuitAndEndAll": "Quit and End All Sessions",
+  "@cmdQuitAndEndAll": {
+    "description": "Command: quit the app and end every session running in the server."
+  },
+  "menuShell": "Shell",
+  "@menuShell": {
+    "description": "Title of the menu bar's first menu, of commands for tabs and panes. Terminal.app keeps the word in Chinese."
+  },
+  "menuEdit": "Edit",
+  "@menuEdit": {
+    "description": "Title of the Edit menu."
+  },
+  "menuView": "View",
+  "@menuView": {
+    "description": "Title of the View menu."
+  },
+  "menuFocus": "Focus",
+  "@menuFocus": {
+    "description": "Title of the submenu that moves the focus between panes."
+  },
+  "menuResize": "Resize",
+  "@menuResize": {
+    "description": "Title of the submenu that moves the dividers between panes."
+  },
+  "menuAppearance": "Appearance",
+  "@menuAppearance": {
+    "description": "Title of the submenu that chooses light, dark or the system's appearance. Also a label of the settings control."
+  },
+  "menuTabs": "Tabs",
+  "@menuTabs": {
+    "description": "Title of the Tabs menu."
+  },
+  "menuInspector": "Inspector",
+  "@menuInspector": {
+    "description": "Menu item that opens the developer tools (development builds only)."
+  },
+  "menuShowTab": "Show Tab {n}",
+  "@menuShowTab": {
+    "description": "Menu item that shows the nth tab, from 1 to 9.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "appearanceSystem": "System",
+  "@appearanceSystem": {
+    "description": "Option: follow the system's appearance."
+  },
+  "appearanceLight": "Light",
+  "@appearanceLight": {
+    "description": "Option: light appearance."
+  },
+  "appearanceDark": "Dark",
+  "@appearanceDark": {
+    "description": "Option: dark appearance."
+  },
+  "paletteTitle": "Command Palette",
+  "@paletteTitle": {
+    "description": "Label and tooltip of the title bar's button that opens the command palette."
+  },
+  "palettePlaceholder": "Type a command, or the name of a pane…",
+  "@palettePlaceholder": {
+    "description": "Placeholder of the command palette's search field."
+  },
+  "paletteNoMatches": "No matches",
+  "@paletteNoMatches": {
+    "description": "Shown in the command palette when nothing matches the query."
+  },
+  "paletteTabKeys": "Tab {n}",
+  "@paletteTabKeys": {
+    "description": "Badge of a pane's row in the palette: the number of its tab.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "tabListLabel": "Tabs",
+  "@tabListLabel": {
+    "description": "Accessibility label of the list of tabs."
+  },
+  "tabResetName": "Reset Name",
+  "@tabResetName": {
+    "description": "Tab context menu: go back to the name the panes give the tab."
+  },
+  "tabMoveLeft": "Move Left",
+  "@tabMoveLeft": {
+    "description": "Tab context menu: move the tab to the left (tabs above the panes)."
+  },
+  "tabMoveRight": "Move Right",
+  "@tabMoveRight": {
+    "description": "Tab context menu: move the tab to the right (tabs above the panes)."
+  },
+  "tabMoveUp": "Move Up",
+  "@tabMoveUp": {
+    "description": "Tab context menu: move the tab up (tabs in a sidebar)."
+  },
+  "tabMoveDown": "Move Down",
+  "@tabMoveDown": {
+    "description": "Tab context menu: move the tab down (tabs in a sidebar)."
+  },
+  "tabCloseOthers": "Close Other Tabs",
+  "@tabCloseOthers": {
+    "description": "Tab context menu: close every tab but this one."
+  },
+  "sidebarHide": "Hide Sidebar",
+  "@sidebarHide": {
+    "description": "Label and tooltip of the button that hides the sidebar."
+  },
+  "sidebarShow": "Show Sidebar",
+  "@sidebarShow": {
+    "description": "Label and tooltip of the button that shows the sidebar."
+  },
+  "sidebarEdge": "Sidebar Edge",
+  "@sidebarEdge": {
+    "description": "Accessibility label of the edge that drags the sidebar's width."
+  },
+  "sidebarSettings": "Settings",
+  "@sidebarSettings": {
+    "description": "Label and tooltip of the sidebar's button that opens the settings."
+  },
+  "paneZoom": "Zoom",
+  "@paneZoom": {
+    "description": "Tooltip of a pane header's button that makes the pane fill the tab."
+  },
+  "paneUnzoom": "Unzoom",
+  "@paneUnzoom": {
+    "description": "Tooltip of a pane header's button that gives the pane its size back."
+  },
+  "paneDivider": "Divider",
+  "@paneDivider": {
+    "description": "Accessibility label of the divider between two panes."
+  },
+  "paneNeedsAttention": "Needs attention",
+  "@paneNeedsAttention": {
+    "description": "Tooltip of the dot of a pane whose program finished or rang out of sight."
+  },
+  "panePrinting": "Printing",
+  "@panePrinting": {
+    "description": "Tooltip of the dot of a pane whose program is printing output."
+  },
+  "windowMinimize": "Minimize",
+  "@windowMinimize": {
+    "description": "Window button that minimizes the window (Windows)."
+  },
+  "windowMaximize": "Maximize",
+  "@windowMaximize": {
+    "description": "Window button that maximizes the window (Windows)."
+  },
+  "windowRestore": "Restore",
+  "@windowRestore": {
+    "description": "Window button that restores a maximized window (Windows)."
+  },
+  "windowClose": "Close",
+  "@windowClose": {
+    "description": "Window button that closes the window (Windows)."
+  },
+  "hostLabel": "Host {name}",
+  "@hostLabel": {
+    "description": "Accessibility label of the host chip in the title bar: the machine the sessions run on.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "studio"
+      }
+    }
+  },
+  "hostThisMachine": "{os, select, darwin {This Mac} windows {This PC} other {This computer}}",
+  "@hostThisMachine": {
+    "description": "The machine the app runs on, as its system calls it. os is the operating system: darwin, windows or another.",
+    "placeholders": {
+      "os": {
+        "type": "String",
+        "example": "darwin"
+      }
+    }
+  },
+  "hostConnected": "{machine} · connected",
+  "@hostConnected": {
+    "description": "Status line of the host panel under the host's name. machine is This Mac, This PC or This computer.",
+    "placeholders": {
+      "machine": {
+        "type": "String",
+        "example": "This Mac"
+      }
+    }
+  },
+  "hostModel": "Model",
+  "@hostModel": {
+    "description": "Host panel row: the machine's model."
+  },
+  "hostChip": "Chip",
+  "@hostChip": {
+    "description": "Host panel row: the machine's processor."
+  },
+  "hostMemory": "Memory",
+  "@hostMemory": {
+    "description": "Host panel row: the machine's memory."
+  },
+  "hostSystem": "System",
+  "@hostSystem": {
+    "description": "Host panel row: the machine's operating system."
+  },
+  "hostUser": "User",
+  "@hostUser": {
+    "description": "Host panel row: the user the sessions run as."
+  },
+  "hostServer": "Server",
+  "@hostServer": {
+    "description": "Host panel row: the session server."
+  },
+  "hostSessions": "Sessions",
+  "@hostSessions": {
+    "description": "Host panel row: the sessions."
+  },
+  "hostServerUp": "pid {pid, number, ::group-off} · up {uptime}",
+  "@hostServerUp": {
+    "description": "Host panel: the server's process id and how long it has run. uptime is a duration written by the hostDur messages.",
+    "placeholders": {
+      "pid": {
+        "type": "int",
+        "example": "4242"
+      },
+      "uptime": {
+        "type": "String",
+        "example": "3h 20m"
+      }
+    }
+  },
+  "hostSessionCount": "{open} open, {running} running a program",
+  "@hostSessionCount": {
+    "description": "Host panel: how many sessions are open and how many run a program.",
+    "placeholders": {
+      "open": {
+        "type": "int",
+        "example": "4"
+      },
+      "running": {
+        "type": "int",
+        "example": "1"
+      }
+    }
+  },
+  "hostNote": "Sessions live in the server: quit GoRex and they keep running, and come back as they were when it opens again.",
+  "@hostNote": {
+    "description": "Note at the foot of the host panel."
+  },
+  "hostDurSeconds": "{n}s",
+  "@hostDurSeconds": {
+    "description": "A duration under a minute.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "42"
+      }
+    }
+  },
+  "hostDurMinutes": "{n}m",
+  "@hostDurMinutes": {
+    "description": "A duration under an hour.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "42"
+      }
+    }
+  },
+  "hostDurHoursMinutes": "{hours}h {minutes}m",
+  "@hostDurHoursMinutes": {
+    "description": "A duration under two days.",
+    "placeholders": {
+      "hours": {
+        "type": "int",
+        "example": "3"
+      },
+      "minutes": {
+        "type": "int",
+        "example": "20"
+      }
+    }
+  },
+  "hostDurDays": "{days}d",
+  "@hostDurDays": {
+    "description": "A duration of days.",
+    "placeholders": {
+      "days": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
+  "errorServerStart": "GoRex could not start its session server",
+  "@errorServerStart": {
+    "description": "Title of the dialog shown when the session server cannot start. The dialog's message is the error."
+  },
+  "errorServerRestart": "GoRex could not restart its session server",
+  "@errorServerRestart": {
+    "description": "Title of the dialog shown when the stale session server cannot be restarted."
+  },
+  "errorServerVersion": "The session server is of another version of GoRex: quit and end all sessions to restart it.",
+  "@errorServerVersion": {
+    "description": "Banner shown when the running session server is of another version."
+  },
+  "errorConnectionLost": "Lost the connection to the session server.",
+  "@errorConnectionLost": {
+    "description": "Banner shown when the session server went away."
+  },
+  "errorSessionStart": "Could not start a session: {message}",
+  "@errorSessionStart": {
+    "description": "Written in red in a pane whose session could not start. message is the error.",
+    "placeholders": {
+      "message": {
+        "type": "String",
+        "example": "no such file"
+      }
+    }
+  },
+  "errorDismiss": "Dismiss",
+  "@errorDismiss": {
+    "description": "Label of the button that closes the error banner."
+  },
+  "notifyFinished": "{program} finished",
+  "@notifyFinished": {
+    "description": "Title of the notification of a program that finished while the window was in the background.",
+    "placeholders": {
+      "program": {
+        "type": "String",
+        "example": "Codex"
+      }
+    }
+  },
+  "notifyIn": "in {dir}",
+  "@notifyIn": {
+    "description": "Body of that notification: the directory the program ran in.",
+    "placeholders": {
+      "dir": {
+        "type": "String",
+        "example": "~/repos/gorex"
+      }
+    }
+  },
+  "settingsTitle": "Settings",
+  "@settingsTitle": {
+    "description": "Title of the settings window."
+  },
+  "settingsAppearance": "Appearance",
+  "@settingsAppearance": {
+    "description": "Settings section: how the window looks. Its title and its sidebar item."
+  },
+  "settingsTerminal": "Terminal",
+  "@settingsTerminal": {
+    "description": "Settings section: the terminal's font and cursor."
+  },
+  "settingsTheme": "Theme",
+  "@settingsTheme": {
+    "description": "Settings section: the terminal's color theme."
+  },
+  "settingsKeyboard": "Keyboard",
+  "@settingsKeyboard": {
+    "description": "Settings section: the keyboard shortcuts."
+  },
+  "settingsRemote": "Remote",
+  "@settingsRemote": {
+    "description": "Settings section: remote access. The sidebar item."
+  },
+  "settingsAbout": "About",
+  "@settingsAbout": {
+    "description": "Settings section: version and files."
+  },
+  "settingsWindow": "Window",
+  "@settingsWindow": {
+    "description": "Setting: the window's appearance."
+  },
+  "settingsWindowHint": "System follows the system, or the theme's colors.",
+  "@settingsWindowHint": {
+    "description": "Hint under the Window setting."
+  },
+  "settingsTabPlacement": "Tab placement",
+  "@settingsTabPlacement": {
+    "description": "Setting: where the tabs go."
+  },
+  "settingsTabPlacementHint": "Place tabs Above, on the Left Side, or on the Right Side of the window.",
+  "@settingsTabPlacementHint": {
+    "description": "Hint under the Tab placement setting. Its options are the next three messages."
+  },
+  "settingsPlacementAbove": "Above",
+  "@settingsPlacementAbove": {
+    "description": "Tab placement option: tabs above the panes."
+  },
+  "settingsPlacementLeft": "Left Side",
+  "@settingsPlacementLeft": {
+    "description": "Tab placement option: tabs in a sidebar on the left."
+  },
+  "settingsPlacementRight": "Right Side",
+  "@settingsPlacementRight": {
+    "description": "Tab placement option: tabs in a sidebar on the right."
+  },
+  "settingsPaneHeaders": "Show pane headers",
+  "@settingsPaneHeaders": {
+    "description": "Setting: whether panes show their header."
+  },
+  "settingsPaneHeadersHint": "Pane headers are always shown when the vertical sidebar is hidden or positioned on the right.",
+  "@settingsPaneHeadersHint": {
+    "description": "Hint under the Show pane headers setting."
+  },
+  "settingsTextSize": "Text size",
+  "@settingsTextSize": {
+    "description": "Setting: the terminal's text size."
+  },
+  "settingsTextSizeHint": "Follows Ghostty's font-size ({ghostty, number, ::.0}), or {default, number, ::.0}, until set.",
+  "@settingsTextSizeHint": {
+    "description": "Hint under the Text size setting. font-size is Ghostty's option name; both values are sizes in points.",
+    "placeholders": {
+      "ghostty": {
+        "type": "double",
+        "example": "12.0"
+      },
+      "default": {
+        "type": "double",
+        "example": "11.6"
+      }
+    }
+  },
+  "settingsTextSizeValue": "{size, number, ::.0} pt",
+  "@settingsTextSizeValue": {
+    "description": "The current text size in points, next to the stepper.",
+    "placeholders": {
+      "size": {
+        "type": "double",
+        "example": "11.6"
+      }
+    }
+  },
+  "settingsReset": "Reset",
+  "@settingsReset": {
+    "description": "Button: go back to the default."
+  },
+  "settingsLanguage": "Language",
+  "@settingsLanguage": {
+    "description": "Setting: the language of the app."
+  },
+  "settingsLanguageHint": "The language of GoRex's menus and windows. System follows the system's language.",
+  "@settingsLanguageHint": {
+    "description": "Hint under the Language setting."
+  },
+  "settingsLanguageSystem": "System",
+  "@settingsLanguageSystem": {
+    "description": "Language option: use the system's language. The other options are languages named in themselves."
+  },
+  "settingsFont": "Font",
+  "@settingsFont": {
+    "description": "Setting: the terminal's font."
+  },
+  "settingsFontHint": "Monospaced families installed.",
+  "@settingsFontHint": {
+    "description": "Hint under the Font setting."
+  },
+  "settingsFollowGhostty": "Follow Ghostty config",
+  "@settingsFollowGhostty": {
+    "description": "Option: set nothing, so that Ghostty's configuration applies (font and theme pickers)."
+  },
+  "settingsCursorStyle": "Cursor Style",
+  "@settingsCursorStyle": {
+    "description": "Setting: the shape of the cursor."
+  },
+  "settingsCursorBlock": "Block",
+  "@settingsCursorBlock": {
+    "description": "Cursor style option: a filled block."
+  },
+  "settingsCursorBar": "Bar",
+  "@settingsCursorBar": {
+    "description": "Cursor style option: a vertical bar."
+  },
+  "settingsCursorUnderline": "Underline",
+  "@settingsCursorUnderline": {
+    "description": "Cursor style option: an underline."
+  },
+  "settingsCursorBlink": "Cursor Blink",
+  "@settingsCursorBlink": {
+    "description": "Setting: whether the cursor blinks."
+  },
+  "settingsCopyOnSelect": "Copy on selection",
+  "@settingsCopyOnSelect": {
+    "description": "Setting: copy selected text to the clipboard."
+  },
+  "settingsCopyOnSelectHint": "Copies the text you select to the clipboard.",
+  "@settingsCopyOnSelectHint": {
+    "description": "Hint under the Copy on selection setting."
+  },
+  "settingsUseGhostty": "Use Ghostty config",
+  "@settingsUseGhostty": {
+    "description": "Button: forget the choices made in the Terminal section."
+  },
+  "settingsUseGhosttyHint": "Forgets these choices, so Ghostty's config (else GoRex's defaults) applies.",
+  "@settingsUseGhosttyHint": {
+    "description": "Note beside that button."
+  },
+  "settingsSearchThemes": "Search themes",
+  "@settingsSearchThemes": {
+    "description": "Placeholder and label of the theme search field."
+  },
+  "settingsGorexColors": "GoRex's colors",
+  "@settingsGorexColors": {
+    "description": "Caption of the Follow Ghostty config theme when Ghostty sets no theme."
+  },
+  "settingsMoreThemes": "{count} more: type to narrow the list.",
+  "@settingsMoreThemes": {
+    "description": "Under the theme list when it is cut. count is how many themes are not shown.",
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "120"
+      }
+    }
+  },
+  "settingsKeyboardNote": "GoRex's shortcuts, which come before the terminal's keys. Ghostty keybinds are set in its config.",
+  "@settingsKeyboardNote": {
+    "description": "Note at the top of the Keyboard section."
+  },
+  "settingsShowTabRange": "Show Tab 1…9",
+  "@settingsShowTabRange": {
+    "description": "Keyboard section row: the keys that show the 1st to the 9th tab."
+  },
+  "settingsNextPrevTab": "Next Tab, Previous Tab",
+  "@settingsNextPrevTab": {
+    "description": "Keyboard section row: the keys that cycle through the tabs."
+  },
+  "settingsDevBuild": "development build",
+  "@settingsDevBuild": {
+    "description": "Version shown by a build that has none."
+  },
+  "settingsVersion": "Version {version}",
+  "@settingsVersion": {
+    "description": "About section: the app's version.",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "0.1.0"
+      }
+    }
+  },
+  "settingsUpdatesOff": "Updates are off in development builds.",
+  "@settingsUpdatesOff": {
+    "description": "About section: why there is no update button."
+  },
+  "settingsFile": "Settings file",
+  "@settingsFile": {
+    "description": "About section row: where the settings are kept."
+  },
+  "remoteTitle": "Remote access",
+  "@remoteTitle": {
+    "description": "Title of the Remote page of the settings."
+  },
+  "remoteAsking": "Asking the session server…",
+  "@remoteAsking": {
+    "description": "Shown while the page waits for the server's first answer."
+  },
+  "remoteAllow": "Allow remote clients",
+  "@remoteAllow": {
+    "description": "Setting: whether other machines may connect."
+  },
+  "remoteUnreachable": "Server not reachable",
+  "@remoteUnreachable": {
+    "description": "State: the session server does not answer."
+  },
+  "remoteUnreachableHint": "GoRex asks again every two seconds.",
+  "@remoteUnreachableHint": {
+    "description": "Detail of that state."
+  },
+  "remoteListening": "Listening",
+  "@remoteListening": {
+    "description": "State: the server accepts remote clients."
+  },
+  "remoteError": "Error",
+  "@remoteError": {
+    "description": "State: the remote listener failed."
+  },
+  "remoteErrorRetry": "{error} The server tries again.",
+  "@remoteErrorRetry": {
+    "description": "Detail of the error state while remote access is on. error is the server's message.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "address in use."
+      }
+    }
+  },
+  "remoteStarting": "Starting…",
+  "@remoteStarting": {
+    "description": "State: the listener is starting."
+  },
+  "remoteOff": "Off",
+  "@remoteOff": {
+    "description": "State: remote access is off."
+  },
+  "remoteNotConnected": "Not connected to the session server.",
+  "@remoteNotConnected": {
+    "description": "Error of a change attempted without a server."
+  },
+  "remoteSomethingWrong": "Something went wrong.",
+  "@remoteSomethingWrong": {
+    "description": "Error when the server gave no message."
+  },
+  "remotePasteKey": "Paste the public key of the client.",
+  "@remotePasteKey": {
+    "description": "Error: the public key field is empty."
+  },
+  "remoteBadKey": "That is not a public key: it reads \"nodekey:\" and 64 hex digits. Copy it from \"This machine's key\" on the client.",
+  "@remoteBadKey": {
+    "description": "Error: the text is not a public key. nodekey: is literal; the quoted name is remoteMyKey."
+  },
+  "remoteNameClient": "Name the client, to know it in the list.",
+  "@remoteNameClient": {
+    "description": "Error: the client's name field is empty."
+  },
+  "remoteAlreadyAllowed": "That client is allowed already, as {name}.",
+  "@remoteAlreadyAllowed": {
+    "description": "Error: the key is in the list already.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "alice-laptop"
+      }
+    }
+  },
+  "remoteCopyFailed": "Could not copy: {error}",
+  "@remoteCopyFailed": {
+    "description": "Error: the clipboard refused the text.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "denied"
+      }
+    }
+  },
+  "remoteNoAddress": "The server has no address to copy.",
+  "@remoteNoAddress": {
+    "description": "Error: no address to copy."
+  },
+  "remoteCopy": "Copy",
+  "@remoteCopy": {
+    "description": "Button: copy to the clipboard."
+  },
+  "remoteCopied": "Copied",
+  "@remoteCopied": {
+    "description": "Button, for a moment after it copied."
+  },
+  "remoteMyKey": "This machine's key",
+  "@remoteMyKey": {
+    "description": "Card: this machine's public key."
+  },
+  "remoteMyKeyNote": "Its fingerprint is what a machine you pair with shows for this one.",
+  "@remoteMyKeyNote": {
+    "description": "Note of that card."
+  },
+  "remoteNoKey": "No key yet.",
+  "@remoteNoKey": {
+    "description": "Shown when this machine has no key."
+  },
+  "remoteFingerprint": "Fingerprint {fingerprint}",
+  "@remoteFingerprint": {
+    "description": "The fingerprint of this machine's key.",
+    "placeholders": {
+      "fingerprint": {
+        "type": "String",
+        "example": "ab12-cd34"
+      }
+    }
+  },
+  "remotePairTitle": "Pair a new device",
+  "@remotePairTitle": {
+    "description": "Card: pair another machine."
+  },
+  "remotePairNote": "On the other machine, ask to pair with this server's address. Approve a request only if its fingerprint is the one that machine shows: an approved device runs commands here as your user.",
+  "@remotePairNote": {
+    "description": "Note of that card."
+  },
+  "remotePairTurnOn": "Turn remote access on to pair.",
+  "@remotePairTurnOn": {
+    "description": "Shown in the pairing card while remote access is off."
+  },
+  "remotePairWaiting": "Waiting for requests, {left} left",
+  "@remotePairWaiting": {
+    "description": "Pairing is open. left is the time left, as m:ss.",
+    "placeholders": {
+      "left": {
+        "type": "String",
+        "example": "4:59"
+      }
+    }
+  },
+  "remotePairStop": "Stop",
+  "@remotePairStop": {
+    "description": "Button: close the pairing window."
+  },
+  "remotePairOpenFor": "Open for five minutes at a time.",
+  "@remotePairOpenFor": {
+    "description": "Shown while pairing is closed."
+  },
+  "remotePairStart": "Start pairing",
+  "@remotePairStart": {
+    "description": "Button: open the pairing window."
+  },
+  "remotePairNoRequest": "No request yet.",
+  "@remotePairNoRequest": {
+    "description": "Shown while pairing is open and nothing was asked."
+  },
+  "remoteApprove": "Approve",
+  "@remoteApprove": {
+    "description": "Button: approve a pairing request."
+  },
+  "remoteReject": "Reject",
+  "@remoteReject": {
+    "description": "Button: reject a pairing request."
+  },
+  "remoteAddress": "Address",
+  "@remoteAddress": {
+    "description": "Card: the server's remote address."
+  },
+  "remoteAddressNote": "Anyone with this address and an allowed key can run commands here as your user, like SSH.",
+  "@remoteAddressNote": {
+    "description": "Note of that card."
+  },
+  "remoteRegenerateNote": "Regenerate makes a new address: the old one stops working, and the remote clients connected now are dropped.",
+  "@remoteRegenerateNote": {
+    "description": "Confirmation text before a new address is made."
+  },
+  "remoteRegenerate": "Regenerate",
+  "@remoteRegenerate": {
+    "description": "Button: make a new address (confirmation)."
+  },
+  "remoteRegenerateAsk": "Regenerate…",
+  "@remoteRegenerateAsk": {
+    "description": "Button: ask to make a new address."
+  },
+  "remoteCancel": "Cancel",
+  "@remoteCancel": {
+    "description": "Button: cancel."
+  },
+  "remoteHide": "Hide",
+  "@remoteHide": {
+    "description": "Button: hide the address."
+  },
+  "remoteShow": "Show",
+  "@remoteShow": {
+    "description": "Button: show the address."
+  },
+  "remoteClients": "Allowed clients",
+  "@remoteClients": {
+    "description": "Card: the clients allowed to connect."
+  },
+  "remoteClientsNote": "Each runs commands here as your user. Revoking one drops its connections.",
+  "@remoteClientsNote": {
+    "description": "Note of that card."
+  },
+  "remoteNoClients": "No client is allowed yet.",
+  "@remoteNoClients": {
+    "description": "Shown when the list is empty."
+  },
+  "remoteCopyKey": "Copy key",
+  "@remoteCopyKey": {
+    "description": "Accessibility label of a client's copy button."
+  },
+  "remoteCopyKeyTip": "Copy the key",
+  "@remoteCopyKeyTip": {
+    "description": "Tooltip of a client's copy button."
+  },
+  "remoteRevoke": "Revoke",
+  "@remoteRevoke": {
+    "description": "Button: stop allowing a client."
+  },
+  "remoteAddByKey": "Or add a client by its key",
+  "@remoteAddByKey": {
+    "description": "Heading of the form that adds a client."
+  },
+  "remoteNamePlaceholder": "Name, as alice-laptop",
+  "@remoteNamePlaceholder": {
+    "description": "Placeholder of the client name field."
+  },
+  "remoteNameLabel": "Client name",
+  "@remoteNameLabel": {
+    "description": "Accessibility label of the client name field."
+  },
+  "remoteKeyLabel": "Client public key",
+  "@remoteKeyLabel": {
+    "description": "Accessibility label of the client key field."
+  },
+  "remoteAdd": "Add",
+  "@remoteAdd": {
+    "description": "Button: allow the client."
+  }
+}

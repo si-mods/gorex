@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // The Remote page of the settings window: the server's remote access, as
@@ -19,11 +20,11 @@ import (
 var remoteUI struct {
 	stop        chan struct{} // closed to stop the refresh; non-nil while it runs
 	st          rex.RemoteStatus
-	loaded      bool   // st is what the server said
-	unreachable bool   // the last ask failed
-	myKey       string // this machine's public key
-	busy        bool   // a change is on its way
-	err         string // what went wrong with the last change
+	loaded      bool          // st is what the server said
+	unreachable bool          // the last ask failed
+	myKey       string        // this machine's public key
+	busy        bool          // a change is on its way
+	err         func() string // what went wrong with the last change, said when drawn
 	// reveal is that the address is shown. The address is a secret: st
 	// holds it only while reveal is on, and the page asks for it again
 	// to copy it.
@@ -31,7 +32,7 @@ var remoteUI struct {
 	confirm   bool   // regenerate asks to be sure
 	copied    string // what was copied just now
 	name, key string // the client to add
-	addErr    string
+	addErr    bool   // the client to add is not valid: its reason shows
 }
 
 // showSection chooses a settings section. The Remote page asks the server
@@ -51,7 +52,7 @@ func stopRemotePoll() {
 	}
 	page := &remoteUI
 	page.stop, page.st, page.loaded, page.busy = nil, rex.RemoteStatus{}, false, false
-	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, "", "", "", ""
+	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, nil, false, "", ""
 }
 
 // remoteAsk runs work off the UI thread, with the app's client of the
@@ -129,13 +130,14 @@ func (a *App) remoteDo(change func(srv *rex.Client) error, ok func()) {
 	if remoteUI.busy {
 		return
 	}
-	remoteUI.busy, remoteUI.err = true, ""
+	remoteUI.busy, remoteUI.err = true, nil
 	started := a.remoteAsk(func(srv *rex.Client) func() {
 		err := change(srv)
 		return func() {
 			remoteUI.busy = false
 			if err != nil {
-				remoteUI.err = serverMessage(err)
+				msg := serverMessage(err)
+				remoteUI.err = func() string { return msg }
 			} else if ok != nil {
 				ok()
 			}
@@ -143,7 +145,7 @@ func (a *App) remoteDo(change func(srv *rex.Client) error, ok func()) {
 		}
 	})
 	if !started {
-		remoteUI.busy, remoteUI.err = false, "Not connected to the session server."
+		remoteUI.busy, remoteUI.err = false, locales.RemoteNotConnected
 	}
 }
 
@@ -151,7 +153,7 @@ func (a *App) remoteDo(change func(srv *rex.Client) error, ok func()) {
 func serverMessage(err error) string {
 	s := strings.TrimPrefix(err.Error(), "rex: ")
 	if s == "" {
-		return "Something went wrong."
+		return locales.RemoteSomethingWrong()
 	}
 	return strings.ToUpper(s[:1]) + s[1:]
 }
@@ -171,27 +173,27 @@ const (
 func remoteState(st rex.RemoteStatus, unreachable bool) (label, detail string, kind remoteKind) {
 	switch {
 	case unreachable:
-		return "Server not reachable", "GoRex asks again every two seconds.", remoteDown
+		return locales.RemoteUnreachable(), locales.RemoteUnreachableHint(), remoteDown
 	case st.Running:
-		return "Listening", "", remoteListening
+		return locales.RemoteListening(), "", remoteListening
 	case st.LastError != "" && st.Enabled:
-		return "Error", st.LastError + " The server tries again.", remoteError
+		return locales.RemoteError(), locales.RemoteErrorRetry(st.LastError), remoteError
 	case st.LastError != "":
-		return "Error", st.LastError, remoteError
+		return locales.RemoteError(), st.LastError, remoteError
 	case st.Enabled:
-		return "Starting…", "", remoteStarting
+		return locales.RemoteStarting(), "", remoteStarting
 	}
-	return "Off", "", remoteOff
+	return locales.RemoteOff(), "", remoteOff
 }
 
 // validateClientKey returns what is wrong with a public key, "" when the
 // server takes it.
 func validateClientKey(s string) string {
 	if strings.TrimSpace(s) == "" {
-		return "Paste the public key of the client."
+		return locales.RemotePasteKey()
 	}
 	if _, err := rex.NormalizePublicKey(s); err != nil {
-		return `That is not a public key: it reads "nodekey:" and 64 hex digits. Copy it from "This machine's key" on the client.`
+		return locales.RemoteBadKey()
 	}
 	return ""
 }
@@ -199,7 +201,7 @@ func validateClientKey(s string) string {
 // validateNewClient returns what is wrong with a client to add, "" if none.
 func validateNewClient(name, pub string, allowed []rex.RemoteClient) string {
 	if strings.TrimSpace(name) == "" {
-		return "Name the client, to know it in the list."
+		return locales.RemoteNameClient()
 	}
 	if m := validateClientKey(pub); m != "" {
 		return m
@@ -207,7 +209,7 @@ func validateNewClient(name, pub string, allowed []rex.RemoteClient) string {
 	want, _ := rex.NormalizePublicKey(pub)
 	for _, c := range allowed {
 		if have, _ := rex.NormalizePublicKey(c.PublicKey); have == want {
-			return "That client is allowed already, as " + c.Name + "."
+			return locales.RemoteAlreadyAllowed(c.Name)
 		}
 	}
 	return ""
@@ -237,7 +239,8 @@ func monoFamily() string {
 // It does not clear the clipboard afterwards.
 func copyText(what, s string) {
 	if err := mygo.Clipboard.Write(transfer.TextData(s)); err != nil {
-		remoteUI.err = "Could not copy: " + err.Error()
+		msg := err.Error()
+		remoteUI.err = func() string { return locales.RemoteCopyFailed(msg) }
 		return
 	}
 	remoteUI.copied = what
@@ -255,9 +258,9 @@ func copyText(what, s string) {
 // copyLabel is a copy button's label.
 func copyLabel(what string) string {
 	if remoteUI.copied == what {
-		return "Copied"
+		return locales.RemoteCopied()
 	}
-	return "Copy"
+	return locales.RemoteCopy()
 }
 
 // copyAddress asks the server for the address and copies it, keeping it
@@ -267,7 +270,7 @@ func (a *App) copyAddress() {
 		st, err := srv.RemoteStatus()
 		return func() {
 			if err != nil || st.Address == "" {
-				remoteUI.err = "The server has no address to copy."
+				remoteUI.err = locales.RemoteNoAddress
 				return
 			}
 			copyText("addr", st.Address)
@@ -289,10 +292,10 @@ func remoteCard(c *ui.Context, k *colors, title, note string, body func()) {
 }
 
 func (a *App) remoteSettings(c *ui.Context, k *colors) {
-	settingsTitle(c, k, "Remote access")
+	settingsTitle(c, k, locales.RemoteTitle())
 	page := &remoteUI
 	if !page.loaded {
-		label := "Asking the session server…"
+		label := locales.RemoteAsking()
 		if page.unreachable {
 			label, _, _ = remoteState(rex.RemoteStatus{}, true)
 		}
@@ -309,7 +312,7 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 	on := st.Enabled && !page.unreachable
 	card(ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(11, 14), k).Children(func() {
 		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-			ui.Text(c, "Allow remote clients").FontSize(13.5).FontWeight(600).TextColor(k.text)
+			ui.Text(c, locales.RemoteAllow()).FontSize(13.5).FontWeight(600).TextColor(k.text)
 			ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
 				ui.Text(c, label).FontSize(12.5).FontWeight(500).TextColor(k.textMuted)
@@ -317,11 +320,11 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 			if detail != "" {
 				ui.Text(c, detail).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
 			}
-			if page.err != "" {
-				ui.Text(c, page.err).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+			if page.err != nil {
+				ui.Text(c, page.err()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
 			}
 		})
-		sw := ui.Switch(c, &on).Label("Allow remote clients").Disabled(page.unreachable || page.busy)
+		sw := ui.Switch(c, &on).Label(locales.RemoteAllow()).Disabled(page.unreachable || page.busy)
 		if sw.Changed() {
 			if on {
 				a.remoteDo((*rex.Client).EnableRemote, nil)
@@ -337,11 +340,11 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 	a.remotePairing(c, k, st)
 	a.remoteClients(c, k, st)
 
-	remoteCard(c, k, "This machine's key", "Its fingerprint is what a machine you pair with shows for this one.", func() {
+	remoteCard(c, k, locales.RemoteMyKey(), locales.RemoteMyKeyNote(), func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			shown := page.myKey
 			if shown == "" {
-				shown = "No key yet."
+				shown = locales.RemoteNoKey()
 			}
 			ui.Text(c, shown).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).Grow(1).MinWidth(0).LineHeight(1.35)
 			if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
@@ -349,7 +352,7 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 			}
 		})
 		if fp := rex.Fingerprint(page.myKey); fp != "" {
-			ui.Text(c, "Fingerprint "+fp).Font(monoFamily()).FontSize(12).TextColor(k.textFaint)
+			ui.Text(c, locales.RemoteFingerprint(fp)).Font(monoFamily()).FontSize(12).TextColor(k.textFaint)
 		}
 	})
 }
@@ -364,37 +367,36 @@ func pairingLeft(until, now time.Time) string {
 // requests made in it to approve or reject.
 func (a *App) remotePairing(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
-	note := "On the other machine, ask to pair with this server's address. Approve a request only if its fingerprint is the one that machine shows: an approved device runs commands here as your user."
-	remoteCard(c, k, "Pair a new device", note, func() {
+	remoteCard(c, k, locales.RemotePairTitle(), locales.RemotePairNote(), func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			switch {
 			case !st.Enabled:
-				ui.Text(c, "Turn remote access on to pair.").FontSize(12.5).TextColor(k.textFaint).Grow(1)
+				ui.Text(c, locales.RemotePairTurnOn()).FontSize(12.5).TextColor(k.textFaint).Grow(1)
 			case st.Pairing.Open:
-				ui.Text(c, "Waiting for requests, "+pairingLeft(st.Pairing.ExpiresAt, time.Now())+" left").
+				ui.Text(c, locales.RemotePairWaiting(pairingLeft(st.Pairing.ExpiresAt, time.Now()))).
 					FontSize(12.5).FontWeight(500).TextColor(k.textMuted).Grow(1)
-				if ui.Button(c.Key("pair-stop"), "Stop").Disabled(page.busy).Clicked() {
+				if ui.Button(c.Key("pair-stop"), locales.RemotePairStop()).Disabled(page.busy).Clicked() {
 					a.remoteDo((*rex.Client).StopPairing, nil)
 				}
 			default:
-				ui.Text(c, "Open for five minutes at a time.").FontSize(12.5).TextColor(k.textFaint).Grow(1)
-				if ui.Button(c.Key("pair-start"), "Start pairing").Disabled(page.busy).Clicked() {
+				ui.Text(c, locales.RemotePairOpenFor()).FontSize(12.5).TextColor(k.textFaint).Grow(1)
+				if ui.Button(c.Key("pair-start"), locales.RemotePairStart()).Disabled(page.busy).Clicked() {
 					a.remoteDo((*rex.Client).StartPairing, nil)
 				}
 			}
 		})
 		if st.Pairing.Open && len(st.Pending) == 0 {
-			ui.Text(c, "No request yet.").FontSize(12.5).TextColor(k.textFaint)
+			ui.Text(c, locales.RemotePairNoRequest()).FontSize(12.5).TextColor(k.textFaint)
 		}
 		for _, p := range st.Pending {
 			ui.Row(c.Key(p.PublicKey)).Gap(10).Padding(4, 0).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, p.Name).FontSize(13.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 				ui.Text(c, rex.Fingerprint(p.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).SingleLine().
 					Tooltip(p.PublicKey).Grow(1).Shrink(0)
-				if ui.Button(c.Key("a"), "Approve").Disabled(page.busy).Clicked() {
+				if ui.Button(c.Key("a"), locales.RemoteApprove()).Disabled(page.busy).Clicked() {
 					a.remoteDo(func(srv *rex.Client) error { return srv.ApprovePairing(p.PublicKey) }, nil)
 				}
-				if ui.Button(c.Key("r"), "Reject").Disabled(page.busy).Clicked() {
+				if ui.Button(c.Key("r"), locales.RemoteReject()).Disabled(page.busy).Clicked() {
 					a.remoteDo(func(srv *rex.Client) error { return srv.RejectPairing(p.PublicKey) }, nil)
 				}
 			})
@@ -404,7 +406,7 @@ func (a *App) remotePairing(c *ui.Context, k *colors, st rex.RemoteStatus) {
 
 func (a *App) remoteAddress(c *ui.Context, k *colors) {
 	page := &remoteUI
-	remoteCard(c, k, "Address", "Anyone with this address and an allowed key can run commands here as your user, like SSH.", func() {
+	remoteCard(c, k, locales.RemoteAddress(), locales.RemoteAddressNote(), func() {
 		shown := maskedAddress
 		if page.reveal && page.st.Address != "" {
 			shown = page.st.Address
@@ -412,14 +414,14 @@ func (a *App) remoteAddress(c *ui.Context, k *colors) {
 		ui.Text(c, shown).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).LineHeight(1.35).
 			Padding(8, 10).Radius(9).Background(k.hover)
 		if page.confirm {
-			ui.Text(c, "Regenerate makes a new address: the old one stops working, and the remote clients connected now are dropped.").
+			ui.Text(c, locales.RemoteRegenerateNote()).
 				FontSize(12).TextColor(k.text).LineHeight(1.3)
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				if ui.Button(c, "Regenerate").Disabled(page.busy).Clicked() {
+				if ui.Button(c, locales.RemoteRegenerate()).Disabled(page.busy).Clicked() {
 					page.confirm, page.reveal, page.st.Address = false, false, ""
 					a.remoteDo((*rex.Client).RegenerateRemote, nil)
 				}
-				if ui.Button(c, "Cancel").Clicked() {
+				if ui.Button(c, locales.RemoteCancel()).Clicked() {
 					page.confirm = false
 				}
 			})
@@ -427,17 +429,17 @@ func (a *App) remoteAddress(c *ui.Context, k *colors) {
 		}
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if page.reveal {
-				if ui.Button(c, "Hide").Clicked() {
+				if ui.Button(c, locales.RemoteHide()).Clicked() {
 					page.reveal, page.st.Address = false, ""
 				}
-			} else if ui.Button(c, "Show").Clicked() {
+			} else if ui.Button(c, locales.RemoteShow()).Clicked() {
 				page.reveal = true
 				a.fetchRemote()
 			}
 			if ui.Button(c.Key("copy-addr"), copyLabel("addr")).Clicked() {
 				a.copyAddress()
 			}
-			if ui.Button(c, "Regenerate…").Clicked() {
+			if ui.Button(c, locales.RemoteRegenerateAsk()).Clicked() {
 				page.confirm = true
 			}
 		})
@@ -446,42 +448,42 @@ func (a *App) remoteAddress(c *ui.Context, k *colors) {
 
 func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
-	remoteCard(c, k, "Allowed clients", "Each runs commands here as your user. Revoking one drops its connections.", func() {
+	remoteCard(c, k, locales.RemoteClients(), locales.RemoteClientsNote(), func() {
 		if len(st.Allowed) == 0 {
-			ui.Text(c, "No client is allowed yet.").FontSize(12.5).TextColor(k.textFaint)
+			ui.Text(c, locales.RemoteNoClients()).FontSize(12.5).TextColor(k.textFaint)
 		}
 		for _, client := range st.Allowed {
 			ui.Row(c.Key(client.PublicKey)).Gap(10).Padding(4, 0).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, client.Name).FontSize(13.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
 				ui.Text(c, shortKey(client.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textFaint).SingleLine().
 					Tooltip(client.PublicKey).Grow(1).Shrink(0)
-				if iconButton(c.Key("c"), k, "copy", "Copy key", 26, 15).Tooltip("Copy the key").Clicked() {
+				if iconButton(c.Key("c"), k, "copy", locales.RemoteCopyKey(), 26, 15).Tooltip(locales.RemoteCopyKeyTip()).Clicked() {
 					copyText(client.PublicKey, client.PublicKey)
 				}
-				if ui.Button(c.Key("r"), "Revoke").Disabled(page.busy).Clicked() {
+				if ui.Button(c.Key("r"), locales.RemoteRevoke()).Disabled(page.busy).Clicked() {
 					a.remoteDo(func(srv *rex.Client) error { return srv.RevokeRemote(client.PublicKey) }, nil)
 				}
 			})
 		}
 		ui.Box(c).Height(1).Background(k.tabSep.Alpha(0.5))
-		ui.Text(c, "Or add a client by its key").FontSize(12.5).FontWeight(600).TextColor(k.textMuted)
+		ui.Text(c, locales.RemoteAddByKey()).FontSize(12.5).FontWeight(600).TextColor(k.textMuted)
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if ui.TextInput(c.Key("name"), &page.name).Placeholder("Name, as alice-laptop").Label("Client name").Width(150).Shrink(0).Changed() {
-				page.addErr = ""
+			if ui.TextInput(c.Key("name"), &page.name).Placeholder(locales.RemoteNamePlaceholder()).Label(locales.RemoteNameLabel()).Width(150).Shrink(0).Changed() {
+				page.addErr = false
 			}
-			if ui.TextInput(c.Key("key"), &page.key).Placeholder("nodekey:…").Label("Client public key").Grow(1).MinWidth(0).Changed() {
-				page.addErr = ""
+			if ui.TextInput(c.Key("key"), &page.key).Placeholder("nodekey:…").Label(locales.RemoteKeyLabel()).Grow(1).MinWidth(0).Changed() {
+				page.addErr = false
 			}
-			if ui.Button(c, "Add").Disabled(page.busy).Clicked() {
-				if page.addErr = validateNewClient(page.name, page.key, st.Allowed); page.addErr == "" {
+			if ui.Button(c, locales.RemoteAdd()).Disabled(page.busy).Clicked() {
+				if page.addErr = validateNewClient(page.name, page.key, st.Allowed) != ""; !page.addErr {
 					name, pub := strings.TrimSpace(page.name), strings.TrimSpace(page.key)
 					a.remoteDo(func(srv *rex.Client) error { return srv.AllowRemote(name, pub) },
 						func() { page.name, page.key = "", "" })
 				}
 			}
 		})
-		if page.addErr != "" {
-			ui.Text(c, page.addErr).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+		if page.addErr {
+			ui.Text(c, validateNewClient(page.name, page.key, st.Allowed)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
 		}
 	})
 }

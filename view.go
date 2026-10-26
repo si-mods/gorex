@@ -8,6 +8,8 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 const (
@@ -32,7 +34,7 @@ func (a *App) view(c *ui.Context) {
 		a.titleBar(c, k)
 		a.panes(c, k, gap, gap)
 	})
-	if a.err != "" {
+	if a.err != "" || a.errMsg != nil {
 		a.errorBanner(c, k)
 	}
 	a.shortcuts(c)
@@ -80,10 +82,10 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 // then more's.
 func (a *App) titleButtons(c *ui.Context, k *colors, more func()) {
 	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
-		if iconButton(c, k, "command", "Command Palette", 30, 17).Tooltip(tip("Command Palette", &cmdPalette)).Clicked() {
+		if iconButton(c, k, "command", locales.PaletteTitle(), 30, 17).Tooltip(tip(locales.PaletteTitle(), &cmdPalette)).Clicked() {
 			a.openPalette()
 		}
-		if iconButton(c, k, "plus", "New Tab", 30, 19).Tooltip(tip("New Tab", &cmdNewTab)).Clicked() {
+		if iconButton(c, k, "plus", locales.CmdNewTab(), 30, 19).Tooltip(tip(locales.CmdNewTab(), &cmdNewTab)).Clicked() {
 			a.newTab(a.currentDir())
 		}
 		if more != nil {
@@ -115,12 +117,12 @@ func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 	maximized := win.IsMaximized()
 	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
 		ui.Box(c).Size(1, 16).Margin(0, 6).Background(k.tabSep)
-		if iconButton(c, k, "minus", "Minimize", 30, 16).Tooltip("Minimize").Clicked() {
+		if iconButton(c, k, "minus", locales.WindowMinimize(), 30, 16).Tooltip(locales.WindowMinimize()).Clicked() {
 			win.Minimize()
 		}
-		glyph, label := "square", "Maximize"
+		glyph, label := "square", locales.WindowMaximize()
 		if maximized {
-			glyph, label = "copy", "Restore"
+			glyph, label = "copy", locales.WindowRestore()
 		}
 		// MaximizeButton shows Windows 11's snap layouts over the button.
 		if iconButton(c, k, glyph, label, 30, 13).Tooltip(label).MaximizeButton().Clicked() {
@@ -130,7 +132,7 @@ func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 				win.Maximize()
 			}
 		}
-		b := ui.Box(c).Size(30, 30).Center().Radius(30 / 2.6).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label("Close").Tooltip("Close")
+		b := ui.Box(c).Size(30, 30).Center().Radius(30 / 2.6).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(locales.WindowClose()).Tooltip(locales.WindowClose())
 		col := k.iconMuted
 		if b.Pressed() {
 			b.Background(closeRed.Alpha(0.8))
@@ -208,7 +210,7 @@ func (a *App) node(c *ui.Context, k *colors, t *Tab, n *Node) ui.Element {
 	first, second, ratio := n.A, n.B, n.Ratio
 	box.Children(func() {
 		a.node(c, k, t, first).Grow(ratio).Basis(0).MinWidth(0).MinHeight(0)
-		div := ui.Box(c.Key("divider")).Role(ui.RoleSplitter).Label("Divider")
+		div := ui.Box(c.Key("divider")).Role(ui.RoleSplitter).Label(locales.PaneDivider())
 		if n.Vertical {
 			div.Height(gap).Cursor(ui.CursorResizeRow)
 		} else {
@@ -330,23 +332,23 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 			if !show {
 				return
 			}
-			if iconButton(c, k, "columns-2", "Split Right", 26, 16).Tooltip(tip("Split Right", &cmdSplitRight)).Clicked() {
+			if iconButton(c, k, "columns-2", locales.CmdSplitRight(), 26, 16).Tooltip(tip(locales.CmdSplitRight(), &cmdSplitRight)).Clicked() {
 				t.setFocus(p)
 				a.split(false)
 			}
-			if iconButton(c, k, "rows-2", "Split Down", 26, 16).Tooltip(tip("Split Down", &cmdSplitDown)).Clicked() {
+			if iconButton(c, k, "rows-2", locales.CmdSplitDown(), 26, 16).Tooltip(tip(locales.CmdSplitDown(), &cmdSplitDown)).Clicked() {
 				t.setFocus(p)
 				a.split(true)
 			}
-			zoom, label := "maximize-2", "Zoom"
+			zoom, label := "maximize-2", locales.PaneZoom()
 			if t.Zoom == p {
-				zoom, label = "minimize-2", "Unzoom"
+				zoom, label = "minimize-2", locales.PaneUnzoom()
 			}
-			if iconButton(c, k, zoom, "Zoom", 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
+			if iconButton(c, k, zoom, locales.PaneZoom(), 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
 				t.setFocus(p)
 				a.toggleZoom()
 			}
-			if iconButton(c, k, "x", "Close Pane", 26, 17).Tooltip(tip("Close Pane", &cmdClosePane)).Clicked() {
+			if iconButton(c, k, "x", locales.CmdClosePane(), 26, 17).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
 				a.later(c, func() { a.closePane(p) })
 			}
 		})
@@ -385,7 +387,7 @@ func (a *App) activityBadge(c *ui.Context, k *colors, p *Pane) {
 	case statusRunning:
 		activityDot(c, k.busy, 6)
 	case statusAttention:
-		ui.Box(c).Size(7, 7).Radius(4).Background(k.attention).Margin(0, 0, 0, 2).Tooltip("Needs attention")
+		ui.Box(c).Size(7, 7).Radius(4).Background(k.attention).Margin(0, 0, 0, 2).Tooltip(locales.PaneNeedsAttention())
 	}
 }
 
@@ -393,7 +395,7 @@ func (a *App) activityBadge(c *ui.Context, k *colors, p *Pane) {
 // halo. It does not animate, as drawing frames all along would cost more
 // than it tells.
 func activityDot(c *ui.Context, col ui.Color, size float32) ui.Element {
-	e := ui.Box(c).Size(size+6, size+6).Margin(0, 0, 0, 1).Tooltip("Printing")
+	e := ui.Box(c).Size(size+6, size+6).Margin(0, 0, 0, 1).Tooltip(locales.PanePrinting())
 	e.Draw(func(p *ui.Painter, r ui.Rect) {
 		cx, cy := r.X+r.W/2, r.Y+r.H/2
 		halo := size/2 + 2.5
@@ -403,6 +405,14 @@ func activityDot(c *ui.Context, col ui.Color, size float32) ui.Element {
 	return e
 }
 
+// errText is what the error banner says.
+func (a *App) errText() string {
+	if a.errMsg != nil {
+		return say(a.errMsg)
+	}
+	return a.err
+}
+
 // errorBanner shows what went wrong with the server.
 func (a *App) errorBanner(c *ui.Context, k *colors) {
 	ui.Overlay(c, func() {
@@ -410,9 +420,9 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 			ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(12).Background(k.panel).Border(1, k.panelBorder).
 				Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(8, 8).Radius(4).Background(k.danger)
-				ui.Text(c, a.err).FontSize(12.5).TextColor(k.text).MaxWidth(520)
-				if iconButton(c, k, "x", "Dismiss", 22, 14).Clicked() {
-					a.err = ""
+				ui.Text(c, a.errText()).FontSize(12.5).TextColor(k.text).MaxWidth(520)
+				if iconButton(c, k, "x", locales.ErrorDismiss(), 22, 14).Clicked() {
+					a.err, a.errMsg = "", nil
 				}
 			})
 		})

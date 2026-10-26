@@ -1,15 +1,17 @@
 package main
 
 import (
-	"fmt"
 	"runtime"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 // The settings window: a sidebar of sections and the one chosen beside it,
@@ -17,18 +19,21 @@ import (
 var settingsUI struct {
 	win     *mygo.Window
 	section string
-	// themeQuery narrows the list of themes; fonts are the families of the
-	// font picker, listed once, and themes the themes read so far.
+	// themeQuery narrows the list of themes; fonts are the monospaced
+	// families of the font picker, listed once, and themes the themes read
+	// so far.
 	themeQuery string
 	fonts      []string
 	themes     map[string]*terminal.Theme
+	// fontOptions are the font picker's options, the first being the
+	// choice that sets nothing, whose label follows the language; langTags
+	// and langNames are the language control's, "" and its label first.
+	// All are made once the window opens.
+	fontOptions, langTags, langNames []string
 }
 
 // Run is set here: the window's view lists the commands, which list this one.
 func init() { cmdSettings.Run = func(a *App) { a.openSettings() } }
-
-// followGhostty is the picker's choice that sets nothing.
-const followGhostty = "Follow Ghostty config"
 
 // openSettings opens the settings window, or shows it when open. It is a
 // window of its own, which MyGo allows.
@@ -40,14 +45,14 @@ func (a *App) openSettings() {
 	}
 	settingsUI.section, settingsUI.themeQuery = "appearance", ""
 	settingsUI.themes = map[string]*terminal.Theme{}
-	settingsUI.fonts = []string{followGhostty}
+	settingsUI.fonts, settingsUI.fontOptions, settingsUI.langTags = nil, nil, nil
 	for _, f := range ui.FontFamilies() {
 		if f.Monospaced {
 			settingsUI.fonts = append(settingsUI.fonts, f.Name)
 		}
 	}
 	opts := mygo.WindowOptions{
-		Title:                "Settings",
+		Title:                locales.SettingsTitle(),
 		Width:                780,
 		Height:               540,
 		MinWidth:             620,
@@ -68,13 +73,16 @@ func (a *App) openSettings() {
 }
 
 // sections are the sidebar's items.
-var sections = []struct{ id, glyph, label string }{
-	{"appearance", "settings-2", "Appearance"},
-	{"terminal", "square-terminal", "Terminal"},
-	{"theme", "sparkles", "Theme"},
-	{"keyboard", "keyboard", "Keyboard"},
-	{"remote", "globe", "Remote"},
-	{"about", "hexagon", "About"},
+var sections = []struct {
+	id, glyph string
+	label     func(locales.Messages) string
+}{
+	{"appearance", "settings-2", locales.Messages.SettingsAppearance},
+	{"terminal", "square-terminal", locales.Messages.SettingsTerminal},
+	{"theme", "sparkles", locales.Messages.SettingsTheme},
+	{"keyboard", "keyboard", locales.Messages.SettingsKeyboard},
+	{"remote", "globe", locales.Messages.SettingsRemote},
+	{"about", "hexagon", locales.Messages.SettingsAbout},
 }
 
 // card gives e the look of a pane's card.
@@ -92,7 +100,7 @@ func (a *App) settingsView(c *ui.Context) {
 		ui.Row(c).Grow(1).MinHeight(0).Gap(gap).Padding(0, gap, gap, gap).AlignItems(ui.Stretch).Children(func() {
 			card(ui.Column(c).Width(196).Shrink(0).Padding(8).Gap(2), k).Children(func() {
 				for _, s := range sections {
-					a.sidebarItem(c, k, s.id, s.glyph, s.label)
+					a.sidebarItem(c, k, s.id, s.glyph, say(s.label))
 				}
 			})
 			ui.Scroll(c).Grow(1).MinWidth(0).Padding(14, 18, 18, 18).Children(func() {
@@ -127,7 +135,7 @@ func (a *App) settingsTitleBar(c *ui.Context, k *colors) {
 		left += 14
 	}
 	ui.Row(c).Height(titleH).Padding(0, max(bar.Right, 10), 0, left).Gap(14).AlignItems(ui.Center).DragWindow().Children(func() {
-		ui.Text(c, "Settings").FontSize(13.5).FontWeight(700).TextColor(k.text.Alpha(0.85)).Grow(1).SingleLine()
+		ui.Text(c, locales.SettingsTitle()).FontSize(13.5).FontWeight(700).TextColor(k.text.Alpha(0.85)).Grow(1).SingleLine()
 		windowControls(c, k, settingsUI.win)
 	})
 }
@@ -174,52 +182,72 @@ func settingRow(c *ui.Context, k *colors, label, hint string, control func()) {
 var appearances = []string{"", "light", "dark"}
 
 func (a *App) appearanceSettings(c *ui.Context, k *colors) {
-	settingsTitle(c, k, "Appearance")
+	settingsTitle(c, k, locales.SettingsAppearance())
 	i := max(slices.Index(appearances, prefs.Appearance), 0)
-	settingRow(c, k, "Window", "System follows the system, or the theme's colors.", func() {
-		if ui.Segmented(c, &i, "System", "Light", "Dark").Label("Appearance").Changed() {
+	settingRow(c, k, locales.SettingsWindow(), locales.SettingsWindowHint(), func() {
+		if ui.Segmented(c, &i, locales.AppearanceSystem(), locales.AppearanceLight(), locales.AppearanceDark()).Label(locales.MenuAppearance()).Changed() {
 			a.setAppearance(appearances[i])
 		}
 	})
 	place := max(slices.Index(placements, prefs.TabPlacement), 0)
-	settingRow(c, k, "Tab placement", "Place tabs Above, on the Left Side, or on the Right Side of the window.", func() {
-		if ui.Segmented(c, &place, "Above", "Left Side", "Right Side").Label("Tab placement").Changed() {
+	settingRow(c, k, locales.SettingsTabPlacement(), locales.SettingsTabPlacementHint(), func() {
+		if ui.Segmented(c, &place, locales.SettingsPlacementAbove(), locales.SettingsPlacementLeft(), locales.SettingsPlacementRight()).Label(locales.SettingsTabPlacement()).Changed() {
 			a.setWindowPref(func(s *settings) { setTabPlacement(s, placements[place]) })
 		}
 	})
 	headers := !prefs.HidePaneHeaders
-	settingRow(c, k, "Show pane headers", "Pane headers are always shown when the vertical sidebar is hidden or positioned on the right.", func() {
-		if ui.Switch(c, &headers).Label("Show pane headers").Changed() {
+	settingRow(c, k, locales.SettingsPaneHeaders(), locales.SettingsPaneHeadersHint(), func() {
+		if ui.Switch(c, &headers).Label(locales.SettingsPaneHeaders()).Changed() {
 			a.setWindowPref(func(s *settings) { s.HidePaneHeaders = !headers })
 		}
 	})
 	size := float64(termFont.Size)
-	hint := fmt.Sprintf("Follows Ghostty's font-size (%.1f), or %.1f, until set.", ghosttyRaw.fontSize(0), float32(defaultFontSize))
-	settingRow(c, k, "Text size", hint, func() {
-		ui.Textf(c, "%.1f pt", size).FontSize(13).TextColor(k.textMuted)
-		if ui.Stepper(c, &size, 8, 32, 1).Label("Text size").Changed() {
+	hint := locales.SettingsTextSizeHint(float64(ghosttyRaw.fontSize(0)), float64(defaultFontSize))
+	settingRow(c, k, locales.SettingsTextSize(), hint, func() {
+		ui.Text(c, locales.SettingsTextSizeValue(size)).FontSize(13).TextColor(k.textMuted)
+		if ui.Stepper(c, &size, 8, 32, 1).Label(locales.SettingsTextSize()).Changed() {
 			a.setFontSize(float32(size))
 		}
-		if ui.Button(c, "Reset").Disabled(prefs.FontSize == 0).Clicked() {
+		if ui.Button(c, locales.SettingsReset()).Disabled(prefs.FontSize == 0).Clicked() {
 			a.setFontSize(0)
+		}
+	})
+	if settingsUI.langTags == nil {
+		settingsUI.langTags = append([]string{""}, mygo.App.Languages()...)
+		settingsUI.langNames = []string{""}
+		for _, tag := range settingsUI.langTags[1:] {
+			settingsUI.langNames = append(settingsUI.langNames, i18n.Autonym(tag))
+		}
+	}
+	tags, names := settingsUI.langTags, settingsUI.langNames
+	names[0] = locales.SettingsLanguageSystem()
+	lang := names[max(slices.Index(tags, prefs.Language), 0)]
+	settingRow(c, k, locales.SettingsLanguage(), locales.SettingsLanguageHint(), func() {
+		if ui.Select(c, &lang, names).Label(locales.SettingsLanguage()).Width(160).Changed() {
+			a.setLanguage(tags[slices.Index(names, lang)])
 		}
 	})
 }
 
 func (a *App) terminalSettings(c *ui.Context, k *colors) {
-	settingsTitle(c, k, "Terminal")
+	settingsTitle(c, k, locales.SettingsTerminal())
 	family := prefs.Font
-	fonts := settingsUI.fonts
+	if settingsUI.fontOptions == nil {
+		settingsUI.fontOptions = append([]string{""}, settingsUI.fonts...)
+	}
+	// The first option sets nothing: it is told by its place, not its label.
+	fonts := settingsUI.fontOptions
+	fonts[0] = locales.SettingsFollowGhostty()
 	if family == "" {
-		family = followGhostty
+		family = fonts[0]
 	} else if !slices.Contains(fonts, family) {
 		fonts = append(slices.Clone(fonts), family)
 	}
-	settingRow(c, k, "Font", "Monospaced families installed.", func() {
-		if ui.Select(c, &family, fonts).Label("Font").Width(220).Changed() {
+	settingRow(c, k, locales.SettingsFont(), locales.SettingsFontHint(), func() {
+		if ui.Select(c, &family, fonts).Label(locales.SettingsFont()).Width(220).Changed() {
 			a.setPref(func(s *settings) {
 				s.Font = family
-				if family == followGhostty {
+				if slices.Index(fonts, family) == 0 {
 					s.Font = ""
 				}
 			})
@@ -228,28 +256,28 @@ func (a *App) terminalSettings(c *ui.Context, k *colors) {
 	a.fontPreview(c, k)
 
 	style := int(ghostty.Cursor)
-	settingRow(c, k, "Cursor Style", "", func() {
-		if ui.Segmented(c, &style, "Block", "Bar", "Underline").Label("Cursor Style").Changed() {
+	settingRow(c, k, locales.SettingsCursorStyle(), "", func() {
+		if ui.Segmented(c, &style, locales.SettingsCursorBlock(), locales.SettingsCursorBar(), locales.SettingsCursorUnderline()).Label(locales.SettingsCursorStyle()).Changed() {
 			a.setCursor(func(s *settings) { s.Cursor = cursorNames[style] })
 		}
 	})
 	blink := !ghostty.NoBlink
-	settingRow(c, k, "Cursor Blink", "", func() {
-		if ui.Switch(c, &blink).Label("Cursor Blink").Changed() {
+	settingRow(c, k, locales.SettingsCursorBlink(), "", func() {
+		if ui.Switch(c, &blink).Label(locales.SettingsCursorBlink()).Changed() {
 			a.setCursor(func(s *settings) { s.CursorBlink = &blink })
 		}
 	})
 	copyOn := ghostty.CopyOnSelect == terminal.CopyOnSelectClipboard
-	settingRow(c, k, "Copy on selection", "Copies the text you select to the clipboard.", func() {
-		if ui.Switch(c, &copyOn).Label("Copy on selection").Changed() {
+	settingRow(c, k, locales.SettingsCopyOnSelect(), locales.SettingsCopyOnSelectHint(), func() {
+		if ui.Switch(c, &copyOn).Label(locales.SettingsCopyOnSelect()).Changed() {
 			a.setPref(func(s *settings) { s.CopyOnSelect = &copyOn })
 		}
 	})
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-		if ui.Button(c, "Use Ghostty config").Clicked() {
+		if ui.Button(c, locales.SettingsUseGhostty()).Clicked() {
 			a.setCursor(func(s *settings) { s.Font, s.Cursor, s.CursorBlink, s.CopyOnSelect = "", "", nil, nil })
 		}
-		ui.Text(c, "Forgets these choices, so Ghostty's config (else GoRex's defaults) applies.").FontSize(12).TextColor(k.textFaint)
+		ui.Text(c, locales.SettingsUseGhosttyHint()).FontSize(12).TextColor(k.textFaint)
 	})
 }
 
@@ -289,8 +317,8 @@ func themeNames(all []string, query string) []string {
 const maxThemes = 60
 
 func (a *App) themeSettings(c *ui.Context, k *colors) {
-	settingsTitle(c, k, "Theme")
-	ui.TextInput(c, &settingsUI.themeQuery).Placeholder("Search themes").Label("Search themes")
+	settingsTitle(c, k, locales.SettingsTheme())
+	ui.TextInput(c, &settingsUI.themeQuery).Placeholder(locales.SettingsSearchThemes()).Label(locales.SettingsSearchThemes())
 	pick := func(id, name, sub string, th *terminal.Theme, chosen bool, set string) {
 		row := ui.Row(c.Key(id)).Gap(10).Padding(6, 10).Radius(10).AlignItems(ui.Center).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(name)
 		if chosen {
@@ -324,19 +352,19 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 		}
 		return th
 	}
-	sub := "GoRex's colors"
+	sub := locales.SettingsGorexColors()
 	if ghosttyRaw.Theme != "" {
 		sub = ghosttyRaw.Theme
 	}
 	names := themeNames(terminal.GhosttyThemes(), settingsUI.themeQuery)
 	card(ui.Column(c).Padding(6).Gap(2), k).Children(func() {
-		pick("follow", followGhostty, sub, termLight, prefs.Theme == "", "")
+		pick("follow", locales.SettingsFollowGhostty(), sub, termLight, prefs.Theme == "", "")
 		for _, n := range names[:min(len(names), maxThemes)] {
 			pick(n, n, "", themeOf(n), prefs.Theme == n, n)
 		}
 	})
 	if len(names) > maxThemes {
-		ui.Text(c, fmt.Sprintf("%d more: type to narrow the list.", len(names)-maxThemes)).FontSize(12).TextColor(k.textFaint)
+		ui.Text(c, locales.SettingsMoreThemes(len(names)-maxThemes)).FontSize(12).TextColor(k.textFaint)
 	}
 }
 
@@ -349,19 +377,19 @@ func shortcutRows() []shortcutRow {
 	var rows []shortcutRow
 	for _, cmd := range commands {
 		if cmd.Keys != "" {
-			rows = append(rows, shortcutRow{cmd.Title, cmd.Keys})
+			rows = append(rows, shortcutRow{cmd.Title(), cmd.Keys})
 		}
 	}
 	first, last, cycle := showTabKey(1).String(), showTabKey(9).String(), "Ctrl+Tab, Ctrl+Shift+Tab"
 	if runtime.GOOS == "darwin" {
 		first, last, cycle = "⌘1", "⌘9", "⌃Tab, ⇧⌃Tab"
 	}
-	return append(rows, shortcutRow{"Show Tab 1…9", first + " … " + last}, shortcutRow{"Next Tab, Previous Tab", cycle})
+	return append(rows, shortcutRow{locales.SettingsShowTabRange(), first + " … " + last}, shortcutRow{locales.SettingsNextPrevTab(), cycle})
 }
 
 func (a *App) keyboardSettings(c *ui.Context, k *colors) {
-	settingsTitle(c, k, "Keyboard")
-	ui.Text(c, "GoRex's shortcuts, which come before the terminal's keys. Ghostty keybinds are set in its config.").FontSize(12).TextColor(k.textFaint)
+	settingsTitle(c, k, locales.SettingsKeyboard())
+	ui.Text(c, locales.SettingsKeyboardNote()).FontSize(12).TextColor(k.textFaint)
 	card(ui.Column(c).Padding(6), k).Children(func() {
 		for i, r := range shortcutRows() {
 			ui.Row(c.Key(i)).Gap(12).Padding(7, 10).AlignItems(ui.Center).Children(func() {
@@ -373,19 +401,19 @@ func (a *App) keyboardSettings(c *ui.Context, k *colors) {
 }
 
 func (a *App) aboutSettings(c *ui.Context, k *colors) {
-	settingsTitle(c, k, "About")
+	settingsTitle(c, k, locales.SettingsAbout())
 	version := mygo.App.Version()
 	if version == "" {
-		version = "development build"
+		version = locales.SettingsDevBuild()
 	}
-	settingRow(c, k, "GoRex", "Version "+version, func() {
+	settingRow(c, k, "GoRex", locales.SettingsVersion(version), func() {
 		if mygo.Updater.Enabled() {
-			if ui.Button(c, "Check for Updates…").Clicked() {
+			if ui.Button(c, locales.CmdCheckForUpdates()).Clicked() {
 				cmdUpdates.Run(a)
 			}
 		} else {
-			ui.Text(c, "Updates are off in development builds.").FontSize(12).TextColor(k.textFaint)
+			ui.Text(c, locales.SettingsUpdatesOff()).FontSize(12).TextColor(k.textFaint)
 		}
 	})
-	settingRow(c, k, "Settings file", settingsPath(), func() {})
+	settingRow(c, k, locales.SettingsFile(), settingsPath(), func() {})
 }

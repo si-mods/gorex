@@ -41,6 +41,9 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
   to jump to, fuzzy-matched.
 - Light and dark appearances (View ▸ Appearance), text size (⌘+ ⌘− ⌘0),
   JetBrains Mono embedded.
+- English and Simplified Chinese (简体中文): Settings ▸ Appearance ▸ Language
+  follows the system's language or chooses one. The command palette finds a
+  command by its English title in either.
 
 ## Shortcuts
 
@@ -70,7 +73,7 @@ which type characters (AltGr) on many keyboards.
 
 Settings… (⌘, on macOS, Ctrl+, elsewhere; Shell menu and command palette)
 opens a window of its own with a sidebar of sections: Appearance (light,
-dark or system; tab placement; pane headers; text size), Terminal (font, cursor style and blink, copy on
+dark or system; tab placement; pane headers; text size; language), Terminal (font, cursor style and blink, copy on
 selection), Theme (any of Ghostty's themes, or follow the config),
 Keyboard (GoRex's shortcuts, read only), Remote (see
 [Remote access](#remote-access)) and About (version, Check for Updates…).
@@ -239,6 +242,7 @@ its top included.
 | `programs.go` | how programs show: names, glyphs, tile colors |
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
 | `settingsview.go`, `remoteview.go` | the Settings window, and its Remote page |
+| `locales` | the messages of the interface, `en.json` and `zh-Hans.json`, and `catalog_gen.go` (written by `go tool mygo generate`; commit it with the catalogs) |
 | `tools/remotectl` | runs and probes the session server without the app: allow, enable, probe over tailcat |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |

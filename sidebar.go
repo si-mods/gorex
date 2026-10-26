@@ -4,6 +4,8 @@ import (
 	"slices"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 // The sidebar of vertical tabs, as Rex's: at the left or the right of the
@@ -148,9 +150,9 @@ func (a *App) sidebarButton(c *ui.Context, k *colors, right bool) {
 	if right {
 		glyph = "panel-right"
 	}
-	label := "Hide Sidebar"
+	label := locales.SidebarHide()
 	if prefs.SidebarHidden {
-		label = "Show Sidebar"
+		label = locales.SidebarShow()
 	}
 	if iconButton(c, k, glyph, label, 30, 17).Tooltip(tip(label, &cmdSidebar)).Clicked() {
 		a.toggleSidebar()
@@ -186,14 +188,14 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6, 6, 6).Children(func() {
 			ui.Row(c).Padding(0, 0, 4, 0).Children(func() { a.hostChip(c, k) })
 			tabs := slices.Clone(a.tabs)
-			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label("Tabs").Children(func() {
+			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label(locales.TabListLabel()).Children(func() {
 				for i, t := range tabs {
 					a.sidebarTab(c, k, i, t)
 				}
 			})
 		})
 		ui.Row(c).Shrink(0).Padding(4, 6, 8, 6).AlignItems(ui.Center).Children(func() {
-			if iconButton(c, k, "settings-2", "Settings", 30, 16).Tooltip(tip("Settings", &cmdSettings)).Clicked() {
+			if iconButton(c, k, "settings-2", locales.SidebarSettings(), 30, 16).Tooltip(tip(locales.SidebarSettings(), &cmdSettings)).Clicked() {
 				a.openSettings()
 			}
 		})
@@ -203,7 +205,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 // sidebarEdge is the sidebar's inner edge, which drags its width; a double
 // click gives it its default width back.
 func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
-	e := ui.Box(c.Key("sidebar-edge")).Width(gap).Shrink(0).Cursor(ui.CursorResizeColumn).Role(ui.RoleSplitter).Label("Sidebar Edge")
+	e := ui.Box(c.Key("sidebar-edge")).Width(gap).Shrink(0).Cursor(ui.CursorResizeColumn).Role(ui.RoleSplitter).Label(locales.SidebarEdge())
 	// The width follows the pointer from where the drag began, so that the
 	// edge comes back under it after a bound stopped it.
 	winW, _ := c.Size()
