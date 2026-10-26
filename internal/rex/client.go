@@ -47,6 +47,17 @@ func Connect() (*Client, error) {
 
 func dialSocket() (net.Conn, error) { return net.Dial("unix", SocketPath()) }
 
+// ConnectSocket connects to the server listening on the Unix socket at
+// path, starting none.
+func ConnectSocket(path string) (*Client, error) {
+	dial := func() (net.Conn, error) { return net.Dial("unix", path) }
+	conn, err := dial()
+	if err != nil {
+		return nil, err
+	}
+	return newClient(conn, dial), nil
+}
+
 // dialUntil connects to the server, trying again until deadline.
 func dialUntil(deadline time.Time) (net.Conn, error) {
 	for {

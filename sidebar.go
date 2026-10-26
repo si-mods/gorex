@@ -189,8 +189,21 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			ui.Row(c).Padding(0, 0, 4, 0).Children(func() { a.hostChip(c, k) })
 			tabs := slices.Clone(a.tabs)
 			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label(locales.TabListLabel()).Children(func() {
-				for i, t := range tabs {
-					a.sidebarTab(c, k, i, t)
+				if len(a.hosts) == 0 {
+					for i, t := range tabs {
+						a.sidebarTab(c, k, i, t)
+					}
+					return
+				}
+				// With remote hosts, the tabs go under their host's name,
+				// this machine's first.
+				for _, h := range append([]*hostConn{nil}, a.hosts...) {
+					a.hostSection(c, k, h)
+					for i, t := range tabs {
+						if t.host() == h {
+							a.sidebarTab(c, k, i, t)
+						}
+					}
 				}
 			})
 		})
@@ -262,5 +275,29 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab) {
 		// The tiles take the room of three, so that the names line up.
 		ui.Box(c).Width(tileW + tileStep*2 + 2).Shrink(0).Children(func() { a.tiles(c, k, t) })
 		a.tabRest(c, k, t, active, hovered)
+	})
+}
+
+// hostSection is the label over a host's tabs in the sidebar: its name,
+// its state, and under the pointer a button that opens a tab there.
+func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) {
+	name, key := a.hostName(h), "host"
+	if h != nil {
+		key += "-" + h.ID
+	}
+	row := ui.Row(c.Key(key)).Height(26).Shrink(0).Padding(6, 2, 0, 8).Gap(6).AlignItems(ui.Center)
+	hovered := row.Hovered()
+	row.Children(func() {
+		if h != nil {
+			label, _, _ := hostStatus(h)
+			ui.Box(c).Size(6, 6).Radius(3).Background(hostDot(k, h)).Shrink(0).Tooltip(label)
+		}
+		ui.Text(c, name).FontSize(11.5).FontWeight(600).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		if hovered {
+			label := locales.CmdNewTabOn(name)
+			if iconButton(c, k, "plus", label, 20, 13).Tooltip(label).Clicked() {
+				a.newTabOn(h, a.dirOn(h))
+			}
+		}
 	})
 }

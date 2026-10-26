@@ -134,6 +134,7 @@ func (a *App) open() {
 	}
 	win := mygo.NewWindow(opts)
 	a.win = win
+	a.loadHosts()
 	if !a.restore() {
 		home, _ := os.UserHomeDir()
 		a.newTab(home)
@@ -143,6 +144,7 @@ func (a *App) open() {
 	a.debugHook()
 	win.OnClosed(func() {
 		a.saveNow()
+		a.stopHosts()
 		a.quitting = true
 		for _, t := range a.tabs {
 			for _, p := range t.panes() {

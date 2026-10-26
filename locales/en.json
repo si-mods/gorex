@@ -925,5 +925,223 @@
   "remoteAdd": "Add",
   "@remoteAdd": {
     "description": "Button: allow the client."
+  },
+  "settingsHosts": "Remote Hosts",
+  "@settingsHosts": {
+    "description": "Settings section: the remote hosts this machine connects to. The sidebar item and the page's title."
+  },
+  "hostsNote": "Add and manage remote GoRex hosts, view connection status, and retry connection failures.",
+  "@hostsNote": {
+    "description": "Note under the Remote Hosts title."
+  },
+  "hostsNone": "No remote hosts yet.",
+  "@hostsNone": {
+    "description": "Shown when no remote host is saved."
+  },
+  "hostsAdd": "Add Remote Host…",
+  "@hostsAdd": {
+    "description": "Button: open the sheet that adds a remote host."
+  },
+  "hostsAddTitle": "Add Remote Host",
+  "@hostsAddTitle": {
+    "description": "Title of the sheet that adds a remote host."
+  },
+  "hostsAddNote": "Paste the address that Settings › Remote shows on the other machine, with remote access on there. The address is a secret: anyone with it may ask to pair.",
+  "@hostsAddNote": {
+    "description": "Note of the add sheet. Settings › Remote names the other machine's settings page."
+  },
+  "hostsAddress": "Address",
+  "@hostsAddress": {
+    "description": "Label of the field of the host's address."
+  },
+  "hostsAddressPlaceholder": "The host's address",
+  "@hostsAddressPlaceholder": {
+    "description": "Placeholder of the address field, which hides what it holds."
+  },
+  "hostsName": "Name",
+  "@hostsName": {
+    "description": "Label of the field of the host's name."
+  },
+  "hostsNamePlaceholder": "Name, as office-mac",
+  "@hostsNamePlaceholder": {
+    "description": "Placeholder of the host name field."
+  },
+  "hostsPairAs": "Pair as",
+  "@hostsPairAs": {
+    "description": "Label of the field of the name this machine pairs with."
+  },
+  "hostsPairAsHint": "How the host lists this machine.",
+  "@hostsPairAsHint": {
+    "description": "Hint of the pair-as field."
+  },
+  "hostsEnterName": "Enter a host name.",
+  "@hostsEnterName": {
+    "description": "Error: the host name field is empty."
+  },
+  "hostsEnterAddress": "Paste the host's address.",
+  "@hostsEnterAddress": {
+    "description": "Error: the address field is empty."
+  },
+  "hostsBadAddress": "That is not a GoRex remote address. Copy it from Settings › Remote on the host.",
+  "@hostsBadAddress": {
+    "description": "Error: the address does not parse."
+  },
+  "hostsEnterPairName": "Enter a name for this machine.",
+  "@hostsEnterPairName": {
+    "description": "Error: the pair-as field is empty."
+  },
+  "hostsAlreadySaved": "That remote host is already saved.",
+  "@hostsAlreadySaved": {
+    "description": "Error: a saved host has that address."
+  },
+  "hostsNameTaken": "A remote host has that name already.",
+  "@hostsNameTaken": {
+    "description": "Error: a saved host has that name."
+  },
+  "hostsConnecting": "Connecting…",
+  "@hostsConnecting": {
+    "description": "Host status: the first attempt to connect."
+  },
+  "hostsConnectingTo": "Connecting to {host}…",
+  "@hostsConnectingTo": {
+    "description": "Add sheet: connecting to the host being added.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "hostsConnected": "Connected",
+  "@hostsConnected": {
+    "description": "Host status: connected."
+  },
+  "hostsReconnecting": "Reconnecting (attempt {n})…",
+  "@hostsReconnecting": {
+    "description": "Host status: trying again after a drop or a failure. n counts the attempts.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "hostsFailed": "Not connected",
+  "@hostsFailed": {
+    "description": "Host status: the last attempt failed; another comes."
+  },
+  "hostsRetryNote": "GoRex tries again on its own.",
+  "@hostsRetryNote": {
+    "description": "Detail after a failed attempt."
+  },
+  "hostsUnreachable": "Could not reach the host. Check that GoRex runs there with remote access on.",
+  "@hostsUnreachable": {
+    "description": "Why a host is not connected: the network or the host."
+  },
+  "hostsNotAllowed": "The host does not allow this machine. Remove it and add it again to pair.",
+  "@hostsNotAllowed": {
+    "description": "Why a host is not connected: this machine's key is not allowed there."
+  },
+  "hostsNotPairing": "{host} is not pairing. There, open Settings › Remote and Start pairing, then try again.",
+  "@hostsNotPairing": {
+    "description": "Error of the add sheet: the host's pairing window is closed. Start pairing is remotePairStart.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "hostsWaiting": "Waiting for approval…",
+  "@hostsWaiting": {
+    "description": "Add sheet: the pairing request waits for the host's user."
+  },
+  "hostsApprove": "On {host}, approve the request showing this fingerprint.",
+  "@hostsApprove": {
+    "description": "Add sheet: what to do on the host.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "hostsApproveWhere": "It shows under Settings › Remote › Pair a new device. Approve it only if the fingerprints match.",
+  "@hostsApproveWhere": {
+    "description": "Add sheet: where the request shows on the host. Pair a new device is remotePairTitle."
+  },
+  "hostsFingerprint": "Fingerprint",
+  "@hostsFingerprint": {
+    "description": "Label of this machine's fingerprint on the add sheet."
+  },
+  "hostsRetry": "Retry",
+  "@hostsRetry": {
+    "description": "Button: try to connect to the host now."
+  },
+  "hostsRemove": "Remove",
+  "@hostsRemove": {
+    "description": "Button: forget a remote host."
+  },
+  "hostsRemoveAsk": "Remove {host}? Its sessions keep running on the remote server; this window closes their tabs.",
+  "@hostsRemoveAsk": {
+    "description": "Asks before removing a host.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "hostsNotConnectedTo": "Not connected to {host}.",
+  "@hostsNotConnectedTo": {
+    "description": "Error banner: a tab or pane cannot open on a host that is not connected.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "hostsManage": "Remote Hosts…",
+  "@hostsManage": {
+    "description": "Host panel button: open the Remote Hosts settings."
+  },
+  "hostsSessions": "{n, plural, =0 {No tabs} one {# tab} other {# tabs}}",
+  "@hostsSessions": {
+    "description": "Host panel: how many tabs a host has in the window.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "cmdNewTabOn": "New Tab on {host}",
+  "@cmdNewTabOn": {
+    "description": "Command: open a new tab on a host. host is a remote host's name or This Mac.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "paneReconnecting": "Reconnecting to {host}…",
+  "@paneReconnecting": {
+    "description": "Banner over a pane whose host is not connected.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "paneConnectionDropped": "The connection dropped. Sessions stay open while GoRex reconnects.",
+  "@paneConnectionDropped": {
+    "description": "Detail of that banner, and why a host reconnects."
+  },
+  "paneStreamInterrupted": "The terminal stream was interrupted. Reconnecting automatically.",
+  "@paneStreamInterrupted": {
+    "description": "Banner over a pane whose stream dropped while its host is connected."
   }
 }

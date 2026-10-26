@@ -2779,3 +2779,589 @@ func RemoteAdd() string { return In(i18n.Locale()).RemoteAdd() }
 func (msgs Messages) RemoteAdd() string {
 	return Catalog.Format(msgs.locale, "remoteAdd", nil)
 }
+
+// SettingsHosts says "Remote Hosts"
+// in the language the app shows.
+//
+// Settings section: the remote hosts this machine connects to. The sidebar
+// item and the page's title.
+func SettingsHosts() string { return In(i18n.Locale()).SettingsHosts() }
+
+// SettingsHosts says "Remote Hosts"
+// in the language of msgs.
+//
+// Settings section: the remote hosts this machine connects to. The sidebar
+// item and the page's title.
+func (msgs Messages) SettingsHosts() string {
+	return Catalog.Format(msgs.locale, "settingsHosts", nil)
+}
+
+// HostsNote says "Add and manage remote GoRex hosts, view connection status, and retry connection failures."
+// in the language the app shows.
+//
+// Note under the Remote Hosts title.
+func HostsNote() string { return In(i18n.Locale()).HostsNote() }
+
+// HostsNote says "Add and manage remote GoRex hosts, view connection status, and retry connection failures."
+// in the language of msgs.
+//
+// Note under the Remote Hosts title.
+func (msgs Messages) HostsNote() string {
+	return Catalog.Format(msgs.locale, "hostsNote", nil)
+}
+
+// HostsNone says "No remote hosts yet."
+// in the language the app shows.
+//
+// Shown when no remote host is saved.
+func HostsNone() string { return In(i18n.Locale()).HostsNone() }
+
+// HostsNone says "No remote hosts yet."
+// in the language of msgs.
+//
+// Shown when no remote host is saved.
+func (msgs Messages) HostsNone() string {
+	return Catalog.Format(msgs.locale, "hostsNone", nil)
+}
+
+// HostsAdd says "Add Remote Host…"
+// in the language the app shows.
+//
+// Button: open the sheet that adds a remote host.
+func HostsAdd() string { return In(i18n.Locale()).HostsAdd() }
+
+// HostsAdd says "Add Remote Host…"
+// in the language of msgs.
+//
+// Button: open the sheet that adds a remote host.
+func (msgs Messages) HostsAdd() string {
+	return Catalog.Format(msgs.locale, "hostsAdd", nil)
+}
+
+// HostsAddTitle says "Add Remote Host"
+// in the language the app shows.
+//
+// Title of the sheet that adds a remote host.
+func HostsAddTitle() string { return In(i18n.Locale()).HostsAddTitle() }
+
+// HostsAddTitle says "Add Remote Host"
+// in the language of msgs.
+//
+// Title of the sheet that adds a remote host.
+func (msgs Messages) HostsAddTitle() string {
+	return Catalog.Format(msgs.locale, "hostsAddTitle", nil)
+}
+
+// HostsAddNote says "Paste the address that Settings › Remote shows on the other machine, with remote access on there. The address is a …"
+// in the language the app shows.
+//
+// Note of the add sheet. Settings › Remote names the other machine's
+// settings page.
+func HostsAddNote() string { return In(i18n.Locale()).HostsAddNote() }
+
+// HostsAddNote says "Paste the address that Settings › Remote shows on the other machine, with remote access on there. The address is a …"
+// in the language of msgs.
+//
+// Note of the add sheet. Settings › Remote names the other machine's
+// settings page.
+func (msgs Messages) HostsAddNote() string {
+	return Catalog.Format(msgs.locale, "hostsAddNote", nil)
+}
+
+// HostsAddress says "Address"
+// in the language the app shows.
+//
+// Label of the field of the host's address.
+func HostsAddress() string { return In(i18n.Locale()).HostsAddress() }
+
+// HostsAddress says "Address"
+// in the language of msgs.
+//
+// Label of the field of the host's address.
+func (msgs Messages) HostsAddress() string {
+	return Catalog.Format(msgs.locale, "hostsAddress", nil)
+}
+
+// HostsAddressPlaceholder says "The host's address"
+// in the language the app shows.
+//
+// Placeholder of the address field, which hides what it holds.
+func HostsAddressPlaceholder() string { return In(i18n.Locale()).HostsAddressPlaceholder() }
+
+// HostsAddressPlaceholder says "The host's address"
+// in the language of msgs.
+//
+// Placeholder of the address field, which hides what it holds.
+func (msgs Messages) HostsAddressPlaceholder() string {
+	return Catalog.Format(msgs.locale, "hostsAddressPlaceholder", nil)
+}
+
+// HostsName says "Name"
+// in the language the app shows.
+//
+// Label of the field of the host's name.
+func HostsName() string { return In(i18n.Locale()).HostsName() }
+
+// HostsName says "Name"
+// in the language of msgs.
+//
+// Label of the field of the host's name.
+func (msgs Messages) HostsName() string {
+	return Catalog.Format(msgs.locale, "hostsName", nil)
+}
+
+// HostsNamePlaceholder says "Name, as office-mac"
+// in the language the app shows.
+//
+// Placeholder of the host name field.
+func HostsNamePlaceholder() string { return In(i18n.Locale()).HostsNamePlaceholder() }
+
+// HostsNamePlaceholder says "Name, as office-mac"
+// in the language of msgs.
+//
+// Placeholder of the host name field.
+func (msgs Messages) HostsNamePlaceholder() string {
+	return Catalog.Format(msgs.locale, "hostsNamePlaceholder", nil)
+}
+
+// HostsPairAs says "Pair as"
+// in the language the app shows.
+//
+// Label of the field of the name this machine pairs with.
+func HostsPairAs() string { return In(i18n.Locale()).HostsPairAs() }
+
+// HostsPairAs says "Pair as"
+// in the language of msgs.
+//
+// Label of the field of the name this machine pairs with.
+func (msgs Messages) HostsPairAs() string {
+	return Catalog.Format(msgs.locale, "hostsPairAs", nil)
+}
+
+// HostsPairAsHint says "How the host lists this machine."
+// in the language the app shows.
+//
+// Hint of the pair-as field.
+func HostsPairAsHint() string { return In(i18n.Locale()).HostsPairAsHint() }
+
+// HostsPairAsHint says "How the host lists this machine."
+// in the language of msgs.
+//
+// Hint of the pair-as field.
+func (msgs Messages) HostsPairAsHint() string {
+	return Catalog.Format(msgs.locale, "hostsPairAsHint", nil)
+}
+
+// HostsEnterName says "Enter a host name."
+// in the language the app shows.
+//
+// Error: the host name field is empty.
+func HostsEnterName() string { return In(i18n.Locale()).HostsEnterName() }
+
+// HostsEnterName says "Enter a host name."
+// in the language of msgs.
+//
+// Error: the host name field is empty.
+func (msgs Messages) HostsEnterName() string {
+	return Catalog.Format(msgs.locale, "hostsEnterName", nil)
+}
+
+// HostsEnterAddress says "Paste the host's address."
+// in the language the app shows.
+//
+// Error: the address field is empty.
+func HostsEnterAddress() string { return In(i18n.Locale()).HostsEnterAddress() }
+
+// HostsEnterAddress says "Paste the host's address."
+// in the language of msgs.
+//
+// Error: the address field is empty.
+func (msgs Messages) HostsEnterAddress() string {
+	return Catalog.Format(msgs.locale, "hostsEnterAddress", nil)
+}
+
+// HostsBadAddress says "That is not a GoRex remote address. Copy it from Settings › Remote on the host."
+// in the language the app shows.
+//
+// Error: the address does not parse.
+func HostsBadAddress() string { return In(i18n.Locale()).HostsBadAddress() }
+
+// HostsBadAddress says "That is not a GoRex remote address. Copy it from Settings › Remote on the host."
+// in the language of msgs.
+//
+// Error: the address does not parse.
+func (msgs Messages) HostsBadAddress() string {
+	return Catalog.Format(msgs.locale, "hostsBadAddress", nil)
+}
+
+// HostsEnterPairName says "Enter a name for this machine."
+// in the language the app shows.
+//
+// Error: the pair-as field is empty.
+func HostsEnterPairName() string { return In(i18n.Locale()).HostsEnterPairName() }
+
+// HostsEnterPairName says "Enter a name for this machine."
+// in the language of msgs.
+//
+// Error: the pair-as field is empty.
+func (msgs Messages) HostsEnterPairName() string {
+	return Catalog.Format(msgs.locale, "hostsEnterPairName", nil)
+}
+
+// HostsAlreadySaved says "That remote host is already saved."
+// in the language the app shows.
+//
+// Error: a saved host has that address.
+func HostsAlreadySaved() string { return In(i18n.Locale()).HostsAlreadySaved() }
+
+// HostsAlreadySaved says "That remote host is already saved."
+// in the language of msgs.
+//
+// Error: a saved host has that address.
+func (msgs Messages) HostsAlreadySaved() string {
+	return Catalog.Format(msgs.locale, "hostsAlreadySaved", nil)
+}
+
+// HostsNameTaken says "A remote host has that name already."
+// in the language the app shows.
+//
+// Error: a saved host has that name.
+func HostsNameTaken() string { return In(i18n.Locale()).HostsNameTaken() }
+
+// HostsNameTaken says "A remote host has that name already."
+// in the language of msgs.
+//
+// Error: a saved host has that name.
+func (msgs Messages) HostsNameTaken() string {
+	return Catalog.Format(msgs.locale, "hostsNameTaken", nil)
+}
+
+// HostsConnecting says "Connecting…"
+// in the language the app shows.
+//
+// Host status: the first attempt to connect.
+func HostsConnecting() string { return In(i18n.Locale()).HostsConnecting() }
+
+// HostsConnecting says "Connecting…"
+// in the language of msgs.
+//
+// Host status: the first attempt to connect.
+func (msgs Messages) HostsConnecting() string {
+	return Catalog.Format(msgs.locale, "hostsConnecting", nil)
+}
+
+// HostsConnectingTo says "Connecting to {host}…"
+// in the language the app shows.
+//
+// Add sheet: connecting to the host being added.
+func HostsConnectingTo(host string) string { return In(i18n.Locale()).HostsConnectingTo(host) }
+
+// HostsConnectingTo says "Connecting to {host}…"
+// in the language of msgs.
+//
+// Add sheet: connecting to the host being added.
+func (msgs Messages) HostsConnectingTo(host string) string {
+	return Catalog.Format(msgs.locale, "hostsConnectingTo", map[string]any{"host": host})
+}
+
+// HostsConnected says "Connected"
+// in the language the app shows.
+//
+// Host status: connected.
+func HostsConnected() string { return In(i18n.Locale()).HostsConnected() }
+
+// HostsConnected says "Connected"
+// in the language of msgs.
+//
+// Host status: connected.
+func (msgs Messages) HostsConnected() string {
+	return Catalog.Format(msgs.locale, "hostsConnected", nil)
+}
+
+// HostsReconnecting says "Reconnecting (attempt {n})…"
+// in the language the app shows.
+//
+// Host status: trying again after a drop or a failure. n counts the
+// attempts.
+func HostsReconnecting(n int) string { return In(i18n.Locale()).HostsReconnecting(n) }
+
+// HostsReconnecting says "Reconnecting (attempt {n})…"
+// in the language of msgs.
+//
+// Host status: trying again after a drop or a failure. n counts the
+// attempts.
+func (msgs Messages) HostsReconnecting(n int) string {
+	return Catalog.Format(msgs.locale, "hostsReconnecting", map[string]any{"n": n})
+}
+
+// HostsFailed says "Not connected"
+// in the language the app shows.
+//
+// Host status: the last attempt failed; another comes.
+func HostsFailed() string { return In(i18n.Locale()).HostsFailed() }
+
+// HostsFailed says "Not connected"
+// in the language of msgs.
+//
+// Host status: the last attempt failed; another comes.
+func (msgs Messages) HostsFailed() string {
+	return Catalog.Format(msgs.locale, "hostsFailed", nil)
+}
+
+// HostsRetryNote says "GoRex tries again on its own."
+// in the language the app shows.
+//
+// Detail after a failed attempt.
+func HostsRetryNote() string { return In(i18n.Locale()).HostsRetryNote() }
+
+// HostsRetryNote says "GoRex tries again on its own."
+// in the language of msgs.
+//
+// Detail after a failed attempt.
+func (msgs Messages) HostsRetryNote() string {
+	return Catalog.Format(msgs.locale, "hostsRetryNote", nil)
+}
+
+// HostsUnreachable says "Could not reach the host. Check that GoRex runs there with remote access on."
+// in the language the app shows.
+//
+// Why a host is not connected: the network or the host.
+func HostsUnreachable() string { return In(i18n.Locale()).HostsUnreachable() }
+
+// HostsUnreachable says "Could not reach the host. Check that GoRex runs there with remote access on."
+// in the language of msgs.
+//
+// Why a host is not connected: the network or the host.
+func (msgs Messages) HostsUnreachable() string {
+	return Catalog.Format(msgs.locale, "hostsUnreachable", nil)
+}
+
+// HostsNotAllowed says "The host does not allow this machine. Remove it and add it again to pair."
+// in the language the app shows.
+//
+// Why a host is not connected: this machine's key is not allowed there.
+func HostsNotAllowed() string { return In(i18n.Locale()).HostsNotAllowed() }
+
+// HostsNotAllowed says "The host does not allow this machine. Remove it and add it again to pair."
+// in the language of msgs.
+//
+// Why a host is not connected: this machine's key is not allowed there.
+func (msgs Messages) HostsNotAllowed() string {
+	return Catalog.Format(msgs.locale, "hostsNotAllowed", nil)
+}
+
+// HostsNotPairing says "{host} is not pairing. There, open Settings › Remote and Start pairing, then try again."
+// in the language the app shows.
+//
+// Error of the add sheet: the host's pairing window is closed. Start
+// pairing is remotePairStart.
+func HostsNotPairing(host string) string { return In(i18n.Locale()).HostsNotPairing(host) }
+
+// HostsNotPairing says "{host} is not pairing. There, open Settings › Remote and Start pairing, then try again."
+// in the language of msgs.
+//
+// Error of the add sheet: the host's pairing window is closed. Start
+// pairing is remotePairStart.
+func (msgs Messages) HostsNotPairing(host string) string {
+	return Catalog.Format(msgs.locale, "hostsNotPairing", map[string]any{"host": host})
+}
+
+// HostsWaiting says "Waiting for approval…"
+// in the language the app shows.
+//
+// Add sheet: the pairing request waits for the host's user.
+func HostsWaiting() string { return In(i18n.Locale()).HostsWaiting() }
+
+// HostsWaiting says "Waiting for approval…"
+// in the language of msgs.
+//
+// Add sheet: the pairing request waits for the host's user.
+func (msgs Messages) HostsWaiting() string {
+	return Catalog.Format(msgs.locale, "hostsWaiting", nil)
+}
+
+// HostsApprove says "On {host}, approve the request showing this fingerprint."
+// in the language the app shows.
+//
+// Add sheet: what to do on the host.
+func HostsApprove(host string) string { return In(i18n.Locale()).HostsApprove(host) }
+
+// HostsApprove says "On {host}, approve the request showing this fingerprint."
+// in the language of msgs.
+//
+// Add sheet: what to do on the host.
+func (msgs Messages) HostsApprove(host string) string {
+	return Catalog.Format(msgs.locale, "hostsApprove", map[string]any{"host": host})
+}
+
+// HostsApproveWhere says "It shows under Settings › Remote › Pair a new device. Approve it only if the fingerprints match."
+// in the language the app shows.
+//
+// Add sheet: where the request shows on the host. Pair a new device is
+// remotePairTitle.
+func HostsApproveWhere() string { return In(i18n.Locale()).HostsApproveWhere() }
+
+// HostsApproveWhere says "It shows under Settings › Remote › Pair a new device. Approve it only if the fingerprints match."
+// in the language of msgs.
+//
+// Add sheet: where the request shows on the host. Pair a new device is
+// remotePairTitle.
+func (msgs Messages) HostsApproveWhere() string {
+	return Catalog.Format(msgs.locale, "hostsApproveWhere", nil)
+}
+
+// HostsFingerprint says "Fingerprint"
+// in the language the app shows.
+//
+// Label of this machine's fingerprint on the add sheet.
+func HostsFingerprint() string { return In(i18n.Locale()).HostsFingerprint() }
+
+// HostsFingerprint says "Fingerprint"
+// in the language of msgs.
+//
+// Label of this machine's fingerprint on the add sheet.
+func (msgs Messages) HostsFingerprint() string {
+	return Catalog.Format(msgs.locale, "hostsFingerprint", nil)
+}
+
+// HostsRetry says "Retry"
+// in the language the app shows.
+//
+// Button: try to connect to the host now.
+func HostsRetry() string { return In(i18n.Locale()).HostsRetry() }
+
+// HostsRetry says "Retry"
+// in the language of msgs.
+//
+// Button: try to connect to the host now.
+func (msgs Messages) HostsRetry() string {
+	return Catalog.Format(msgs.locale, "hostsRetry", nil)
+}
+
+// HostsRemove says "Remove"
+// in the language the app shows.
+//
+// Button: forget a remote host.
+func HostsRemove() string { return In(i18n.Locale()).HostsRemove() }
+
+// HostsRemove says "Remove"
+// in the language of msgs.
+//
+// Button: forget a remote host.
+func (msgs Messages) HostsRemove() string {
+	return Catalog.Format(msgs.locale, "hostsRemove", nil)
+}
+
+// HostsRemoveAsk says "Remove {host}? Its sessions keep running on the remote server; this window closes their tabs."
+// in the language the app shows.
+//
+// Asks before removing a host.
+func HostsRemoveAsk(host string) string { return In(i18n.Locale()).HostsRemoveAsk(host) }
+
+// HostsRemoveAsk says "Remove {host}? Its sessions keep running on the remote server; this window closes their tabs."
+// in the language of msgs.
+//
+// Asks before removing a host.
+func (msgs Messages) HostsRemoveAsk(host string) string {
+	return Catalog.Format(msgs.locale, "hostsRemoveAsk", map[string]any{"host": host})
+}
+
+// HostsNotConnectedTo says "Not connected to {host}."
+// in the language the app shows.
+//
+// Error banner: a tab or pane cannot open on a host that is not connected.
+func HostsNotConnectedTo(host string) string { return In(i18n.Locale()).HostsNotConnectedTo(host) }
+
+// HostsNotConnectedTo says "Not connected to {host}."
+// in the language of msgs.
+//
+// Error banner: a tab or pane cannot open on a host that is not connected.
+func (msgs Messages) HostsNotConnectedTo(host string) string {
+	return Catalog.Format(msgs.locale, "hostsNotConnectedTo", map[string]any{"host": host})
+}
+
+// HostsManage says "Remote Hosts…"
+// in the language the app shows.
+//
+// Host panel button: open the Remote Hosts settings.
+func HostsManage() string { return In(i18n.Locale()).HostsManage() }
+
+// HostsManage says "Remote Hosts…"
+// in the language of msgs.
+//
+// Host panel button: open the Remote Hosts settings.
+func (msgs Messages) HostsManage() string {
+	return Catalog.Format(msgs.locale, "hostsManage", nil)
+}
+
+// HostsSessions says "{n, plural, =0 {No tabs} one {# tab} other {# tabs}}"
+// in the language the app shows.
+//
+// Host panel: how many tabs a host has in the window.
+func HostsSessions(n int) string { return In(i18n.Locale()).HostsSessions(n) }
+
+// HostsSessions says "{n, plural, =0 {No tabs} one {# tab} other {# tabs}}"
+// in the language of msgs.
+//
+// Host panel: how many tabs a host has in the window.
+func (msgs Messages) HostsSessions(n int) string {
+	return Catalog.Format(msgs.locale, "hostsSessions", map[string]any{"n": n})
+}
+
+// CmdNewTabOn says "New Tab on {host}"
+// in the language the app shows.
+//
+// Command: open a new tab on a host. host is a remote host's name or This
+// Mac.
+func CmdNewTabOn(host string) string { return In(i18n.Locale()).CmdNewTabOn(host) }
+
+// CmdNewTabOn says "New Tab on {host}"
+// in the language of msgs.
+//
+// Command: open a new tab on a host. host is a remote host's name or This
+// Mac.
+func (msgs Messages) CmdNewTabOn(host string) string {
+	return Catalog.Format(msgs.locale, "cmdNewTabOn", map[string]any{"host": host})
+}
+
+// PaneReconnecting says "Reconnecting to {host}…"
+// in the language the app shows.
+//
+// Banner over a pane whose host is not connected.
+func PaneReconnecting(host string) string { return In(i18n.Locale()).PaneReconnecting(host) }
+
+// PaneReconnecting says "Reconnecting to {host}…"
+// in the language of msgs.
+//
+// Banner over a pane whose host is not connected.
+func (msgs Messages) PaneReconnecting(host string) string {
+	return Catalog.Format(msgs.locale, "paneReconnecting", map[string]any{"host": host})
+}
+
+// PaneConnectionDropped says "The connection dropped. Sessions stay open while GoRex reconnects."
+// in the language the app shows.
+//
+// Detail of that banner, and why a host reconnects.
+func PaneConnectionDropped() string { return In(i18n.Locale()).PaneConnectionDropped() }
+
+// PaneConnectionDropped says "The connection dropped. Sessions stay open while GoRex reconnects."
+// in the language of msgs.
+//
+// Detail of that banner, and why a host reconnects.
+func (msgs Messages) PaneConnectionDropped() string {
+	return Catalog.Format(msgs.locale, "paneConnectionDropped", nil)
+}
+
+// PaneStreamInterrupted says "The terminal stream was interrupted. Reconnecting automatically."
+// in the language the app shows.
+//
+// Banner over a pane whose stream dropped while its host is connected.
+func PaneStreamInterrupted() string { return In(i18n.Locale()).PaneStreamInterrupted() }
+
+// PaneStreamInterrupted says "The terminal stream was interrupted. Reconnecting automatically."
+// in the language of msgs.
+//
+// Banner over a pane whose stream dropped while its host is connected.
+func (msgs Messages) PaneStreamInterrupted() string {
+	return Catalog.Format(msgs.locale, "paneStreamInterrupted", nil)
+}

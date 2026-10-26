@@ -119,6 +119,16 @@ func scrub(s string, addrs ...string) string {
 	return secretRun.ReplaceAllString(s, "<redacted>")
 }
 
+// Scrub removes from s the tailcat addresses addrs, and anything that
+// looks like a part of one or of a key, for an error to show or log.
+func Scrub(s string, addrs ...string) string { return scrub(s, addrs...) }
+
+// ValidRemoteAddress tells whether s reads as a tailcat address.
+func ValidRemoteAddress(s string) bool {
+	_, err := tailcat.ParseAddr(tailcat.Addr(strings.TrimSpace(s)))
+	return strings.TrimSpace(s) != "" && err == nil
+}
+
 // Fingerprint is a short form of a public key, the first 8 and last 4 of
 // its hex digits, that both sides of a pairing show, to tell that the
 // request is the one made; "" for what is not a key.

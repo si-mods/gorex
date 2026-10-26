@@ -76,7 +76,8 @@ opens a window of its own with a sidebar of sections: Appearance (light,
 dark or system; tab placement; pane headers; text size; language), Terminal (font, cursor style and blink, copy on
 selection), Theme (any of Ghostty's themes, or follow the config),
 Keyboard (GoRex's shortcuts, read only), Remote (see
-[Remote access](#remote-access)) and About (version, Check for Updates…).
+[Remote access](#remote-access)), Remote Hosts (see
+[Remote hosts](#remote-hosts)) and About (version, Check for Updates…).
 The choices go to `settings.json`, as do the sidebar's width and whether
 it is hidden.
 
@@ -86,9 +87,9 @@ request shows its name and fingerprint, to Approve or Reject), the list
 of allowed clients (revoke one, or add one by name and public key), this
 machine's own key and its fingerprint, and, while listening, the address,
 hidden until you show it, with Copy and Regenerate (which asks first). The
-page asks the server every two seconds while it shows. It does not connect
-to other hosts yet: `go run ./tools/remotectl pair ADDRESS NAME` asks to
-pair from another machine.
+page asks the server every two seconds while it shows. Remote Hosts is the
+other side: the machines this one connects to (see
+[Remote hosts](#remote-hosts)).
 
 Precedence: what you set in Settings, over Ghostty's config, over GoRex's
 defaults. "Reload Ghostty Config" reads the config again but never
@@ -174,6 +175,44 @@ What to know before turning it on:
   (`remote.*`, pairing included): those are for the local socket only.
 - Every connection is limited: a line of requests of at most 1 MiB, a
   terminal of 1 to 1000 columns and rows, and 8 kills at once.
+
+### Remote hosts
+
+Settings › Remote Hosts connects this machine to other machines' session
+servers, whose sessions then open in tabs of the window beside its own.
+Add Remote Host… asks for the host's address (the one its Settings ›
+Remote shows; the field hides it), a name for it, and the name this
+machine pairs as (the computer's name, at first):
+
+1. On the host, turn remote access on and Start pairing.
+2. On this machine, Add Remote Host… with its address. A host that allows
+   this machine already is saved at once; otherwise GoRex asks to pair
+   and shows this machine's fingerprint.
+3. On the host, approve the request that shows the same fingerprint. The
+   sheet tries again every three seconds and saves the host once it is
+   let in.
+
+The hosts are kept in `hosts.json` beside the settings, readable by the
+user only, and not in `settings.json`: their addresses are secrets, which
+GoRex never logs nor shows. Each host's row shows its state (Connecting,
+Connected, Reconnecting (attempt N), or why it is not connected) with
+Retry, which tries at once, and Remove. Removing a host closes its tabs
+in the window and leaves its sessions running on the remote server.
+
+GoRex keeps a connection to each host and connects again when it drops,
+waiting longer after each failure, up to 30 seconds. New Tab opens on the
+active tab's host, and a split on its pane's; New Tab on a host (the
+command palette, the host panel, or the + of a host's name in the
+sidebar) picks one. Closing a tab or a pane ends its session on its host,
+once connected again if it is not now. With hosts saved, the sidebar lists
+the tabs under their host's name, this machine's first, and tabs above
+show a host's name on its tabs. A pane whose host is away keeps its
+screen under "Reconnecting to …", drops what is typed meanwhile, and
+attaches again by itself; one whose session ended there closes. The
+window's layout keeps the host of each pane, so a host's tabs come back
+when GoRex opens again, attached once the host answers. Sessions another
+machine opened on a host do not show here. `go run ./tools/remotectl pair
+ADDRESS NAME` asks to pair from a machine without the app.
 
 ## Develop and build
 

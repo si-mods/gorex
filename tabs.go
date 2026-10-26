@@ -56,7 +56,23 @@ func tabWidth(c *ui.Context, t *Tab) float32 {
 	name, detail := t.label()
 	w, _ := c.MeasureText(0, tabLabel(name, detail, ui.Color{}, ui.Color{})...)
 	tiles := float32(tileW + tileStep*min(len(t.panes())-1, 2) + 2)
-	return min(max(6+tiles+9+w+9+18+10, tabMinW), tabMaxW)
+	if h := t.host(); h != nil {
+		bw, _ := c.MeasureText(0, ui.Span{Text: h.Name, Size: badgeSize, Weight: 600})
+		tiles += min(bw, badgeMaxW) + 12 + 9
+	}
+	return min(max(6+tiles+9+w+9+18+10, tabMinW), tabMaxW+badgeMaxW)
+}
+
+// The badge of a remote host's tab: its text's size, and its widest.
+const (
+	badgeSize = 11
+	badgeMaxW = 90
+)
+
+// hostBadge names a tab's host, above, where tabs of every host mix.
+func hostBadge(c *ui.Context, k *colors, h *hostConn) {
+	ui.Text(c, h.Name).FontSize(badgeSize).FontWeight(600).TextColor(k.textMuted).Padding(1, 6).Radius(6).
+		Background(k.hover).SingleLine().Ellipsis("…").MaxWidth(badgeMaxW + 12).Shrink(0)
 }
 
 // tabLabel is the label of a tab: the name and, fainter, the detail.
@@ -89,6 +105,9 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32) {
 	hovered := e.Hovered()
 	e.Children(func() {
 		a.tiles(c, k, t)
+		if h := t.host(); h != nil {
+			hostBadge(c, k, h)
+		}
 		a.tabRest(c, k, t, active, hovered)
 	})
 }
@@ -204,6 +223,7 @@ func (a *App) moveTab(t *Tab, to int) {
 	a.tabs = slices.Delete(a.tabs, from, from+1)
 	a.tabs = slices.Insert(a.tabs, min(to, len(a.tabs)), t)
 	a.active = slices.Index(a.tabs, activeTab)
+	a.groupTabs()
 	a.changed()
 }
 
