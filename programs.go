@@ -88,6 +88,8 @@ var (
 		"make":      {Name: "Make", Glyph: "cpu", TileBg: ui.Hex("#6b7280"), TileFg: ui.Hex("#ffffff")},
 		"swift":     {Name: "Swift", Glyph: "brand:swift", TileBg: ui.Hex("#f05138"), TileFg: ui.Hex("#ffffff")},
 		"kotlin":    {Name: "Kotlin", Glyph: "brand:kotlin", TileBg: ui.Hex("#7f52ff"), TileFg: ui.Hex("#ffffff")},
+		// omp's glyph is that of its site's favicon (omp.sh/favicon.svg), as one path.
+		"omp": {Name: "omp", Glyph: "brand:omp", TileBg: ui.Hex("#0f0a14"), TileFg: ui.Hex("#b66cff")},
 		// Windows shells: at their prompt they show as shells (Shell), with their own tile.
 		"pwsh":       {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
 		"powershell": {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
