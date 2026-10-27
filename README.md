@@ -220,8 +220,21 @@ to peer over tailcat, and the coordinator down does not break machines
 that already know each other. Whoever holds the network key may run
 commands on every machine in it, so it is treated like the addresses
 themselves: never logged, never written anywhere wider than the
-member's own state. The coordinator service is ready; the app joining
-and following a network is what comes next.
+member's own state.
+
+Joining is manual, for any coordinator a user runs themselves: in
+Settings › Remote (remote access on), paste the join URL the
+coordinator printed and its network key (`remotectl join URL KEY
+[NAME]` does the same without the app). The server then asks the
+coordinator every half minute: members come and go with its directory,
+their addresses become this machine's remote hosts by themselves
+(Settings › Remote Hosts shows them without Remove, for the directory,
+not a hand, decides), and a member removed there — `gcoord kick` on
+the coordinator, or Remove on the network card — loses its
+connections on every machine within its next ask. Leaving the network
+(Leave, or `remotectl leave`) drops the members and tells the
+coordinator best effort. Pairing stays for those who run no
+coordinator; a machine in a network never needs it.
 
 ### Remote hosts
 
@@ -345,7 +358,7 @@ its top included.
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
 | `settingsview.go`, `remoteview.go` | the Settings window, and its Remote page |
 | `locales` | the messages of the interface, `en.json` and `zh-Hans.json`, and `catalog_gen.go` (written by `go tool mygo generate`; commit it with the catalogs) |
-| `tools/remotectl` | runs and probes the session server without the app: allow, enable, probe over tailcat |
+| `tools/remotectl` | runs and probes the session server without the app: allow, enable, join a coordinator network, probe over tailcat |
 | `internal/coord`, `tools/gcoord` | the network coordinator, a mini control plane members join once instead of pairing machine by machine (docs/coord.md) |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |

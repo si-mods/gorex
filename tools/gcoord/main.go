@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"gorex/internal/coord"
+	"gorex/internal/coordproto"
 )
 
 func main() {
@@ -70,7 +71,7 @@ func initNetwork(dir, hostport string) error {
 	fmt.Println(key)
 	fmt.Println()
 	fmt.Println("join URL (a secret too: it pins the coordinator):")
-	fmt.Println(coord.JoinURL(hostport, fingerprint))
+	fmt.Println(coordproto.JoinURL(hostport, fingerprint))
 	return nil
 }
 

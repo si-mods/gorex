@@ -1,4 +1,9 @@
-package coord
+// Package coordproto is the wire side of GoRex's network coordinator:
+// the member record, the join URL that pins a coordinator's certificate,
+// and the client that speaks the protocol. Both sides import it — the
+// coordinator (internal/coord) and the machines that follow a network
+// (internal/rex) — so it holds no server state. See docs/coord.md.
+package coordproto
 
 import (
 	"bytes"
@@ -13,15 +18,86 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
 	"time"
 )
+
+// MaxName is the longest member name; a longer one is cut.
+const MaxName = 40
+
+// Member is one machine of the network, as the directory keeps it.
+// NodeKey is the machine's key as a remote client (the one allowlists
+// check), Address its tailcat address as a server.
+type Member struct {
+	Name     string    `json:"name"`
+	NodeKey  string    `json:"nodeKey"`
+	Address  string    `json:"address"`
+	Joined   time.Time `json:"joined"`
+	LastSeen time.Time `json:"lastSeen"`
+}
+
+// Fingerprint is the short form of a member's public key, the first 8
+// and last 4 of its hex digits; "" for what is not a key. This package
+// keeps its own copy so it depends on nothing, for rex imports it.
+func (m Member) Fingerprint() string {
+	_, h, ok := strings.Cut(strings.TrimSpace(m.NodeKey), ":")
+	if !ok || len(h) != 64 {
+		return ""
+	}
+	for _, c := range h {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return ""
+		}
+	}
+	return h[:8] + "-" + h[len(h)-4:]
+}
+
+// fingerprintRx reads the fingerprint at the end of a join URL.
+var fingerprintRx = regexp.MustCompile(`^/([0-9a-f]{16})/?$`)
+
+// JoinURL builds the URL a machine joins by: the coordinator's address
+// with its fingerprint, so the URL itself pins the certificate. Port
+// 443, the default, is left out.
+func JoinURL(hostport, fingerprint string) string {
+	host := hostport
+	if u, err := url.Parse("https://" + hostport); err == nil && u.Port() == "443" {
+		host = u.Hostname()
+		if strings.Contains(host, ":") { // an IPv6 address needs its brackets
+			host = "[" + host + "]"
+		}
+	}
+	u := url.URL{Scheme: "https", Host: host, Path: "/" + fingerprint}
+	return u.String()
+}
+
+// SplitJoinURL takes apart a join URL into its address and fingerprint;
+// an address without a port means 443.
+func SplitJoinURL(raw string) (hostport, fingerprint string, err error) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return "", "", errors.New(`coordproto: a join URL reads "https://host/<fingerprint>"`)
+	}
+	m := fingerprintRx.FindStringSubmatch(u.EscapedPath())
+	if m == nil {
+		return "", "", errors.New(`coordproto: a join URL ends with the coordinator's fingerprint`)
+	}
+	return u.Host, m[1], nil
+}
+
+// CertFingerprint returns the first 16 hex digits of the SHA-256 of a
+// certificate, the pin a join URL carries.
+func CertFingerprint(cert *x509.Certificate) string {
+	sum := sha256.Sum256(cert.Raw)
+	return hex.EncodeToString(sum[:])[:16]
+}
 
 // Client speaks the coordinator's protocol, pinning the coordinator by
 // the fingerprint of its join URL instead of trusting an authority.
 // The network key it holds may run commands on every member, so it is
 // never logged.
 type Client struct {
-	host        string // host:port
+	host        string // host[:port]
 	fingerprint string // 16 hex digits pinning the certificate
 	key         string // the network key
 	http        *http.Client
@@ -34,7 +110,7 @@ func NewClient(joinURL, networkKey string) (*Client, error) {
 		return nil, err
 	}
 	if networkKey == "" {
-		return nil, errors.New("coord: the network key is empty")
+		return nil, errors.New("coordproto: the network key is empty")
 	}
 	return &Client{
 		host:        host,
@@ -47,6 +123,9 @@ func NewClient(joinURL, networkKey string) (*Client, error) {
 	}, nil
 }
 
+// Coordinator is the address this client talks to, for showing it.
+func (c *Client) Coordinator() string { return c.host }
+
 // pinTLS verifies exactly one certificate, whose SHA-256 begins with
 // the fingerprint; anything else, including a certificate authority's
 // word, fails.
@@ -56,11 +135,11 @@ func pinTLS(fingerprint string) *tls.Config {
 		InsecureSkipVerify: true, // the pin below is the verification
 		VerifyPeerCertificate: func(raw [][]byte, _ [][]*x509.Certificate) error {
 			if len(raw) != 1 {
-				return errors.New("coord: the coordinator's certificate does not match its fingerprint")
+				return errors.New("coordproto: the coordinator's certificate does not match its fingerprint")
 			}
 			sum := sha256.Sum256(raw[0])
 			if hex.EncodeToString(sum[:])[:len(fingerprint)] != fingerprint {
-				return errors.New("coord: the coordinator's certificate does not match its fingerprint")
+				return errors.New("coordproto: the coordinator's certificate does not match its fingerprint")
 			}
 			return nil
 		},
@@ -113,13 +192,19 @@ func (c *Client) Leave(ctx context.Context, nodeKey string) error {
 // Kick removes another machine, by its public key or its name.
 func (c *Client) Kick(ctx context.Context, nodeKey, name string) error {
 	if nodeKey == "" && name == "" {
-		return errors.New("coord: name the member by its public key or its name")
+		return errors.New("coordproto: name the member by its public key or its name")
 	}
 	return c.call(ctx, "POST", "/v1/kick", nodeBody{NodeKey: nodeKey, Name: name}, nil, nil)
 }
 
+// nodeBody names a member by its public key or its name.
+type nodeBody struct {
+	NodeKey string `json:"nodeKey"`
+	Name    string `json:"name"`
+}
+
 // errNotModified is the 204 of members.
-var errNotModified = errors.New("coord: not modified")
+var errNotModified = errors.New("coordproto: not modified")
 
 // call makes one request: the network key in its header, a JSON body,
 // and a JSON answer into out, which may be nil. Answers carry no
@@ -157,14 +242,14 @@ func (c *Client) call(ctx context.Context, method, path string, body, headers an
 			return nil
 		}
 		if err := json.Unmarshal(b, out); err != nil {
-			return fmt.Errorf("coord: the coordinator's answer does not read: %w", err)
+			return fmt.Errorf("coordproto: the coordinator's answer does not read: %w", err)
 		}
 		return nil
 	default:
 		var e struct{ Error string }
 		if json.Unmarshal(b, &e) == nil && e.Error != "" {
-			return fmt.Errorf("coord: the coordinator answered %d: %s", resp.StatusCode, e.Error)
+			return fmt.Errorf("coordproto: the coordinator answered %d: %s", resp.StatusCode, e.Error)
 		}
-		return fmt.Errorf("coord: the coordinator answered %d", resp.StatusCode)
+		return fmt.Errorf("coordproto: the coordinator answered %d", resp.StatusCode)
 	}
 }

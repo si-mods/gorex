@@ -6,7 +6,8 @@
 //
 // The coordinator holds only the member directory. Sessions and all
 // terminal traffic stay on the tailcat data plane, end to end; this
-// package never sees them.
+// package never sees them. The wire side lives in internal/coordproto,
+// shared with the machines that follow a network.
 package coord
 
 import (
@@ -24,14 +25,12 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
-	"gorex/internal/rex"
+	"gorex/internal/coordproto"
 )
 
 // DefaultPort is the port the coordinator listens on: HTTPS's own, so
@@ -39,20 +38,7 @@ import (
 const DefaultPort = 443
 
 // MaxName is the longest member name; a longer one is cut.
-const MaxName = 40
-
-// Member is one machine of the network, as the directory keeps it.
-type Member struct {
-	Name     string    `json:"name"`
-	NodeKey  string    `json:"nodeKey"`
-	Address  string    `json:"address"`
-	Joined   time.Time `json:"joined"`
-	LastSeen time.Time `json:"lastSeen"`
-}
-
-// Fingerprint is the short form of a member's public key, the same one
-// pairing showed; "" for what is not a key.
-func (m Member) Fingerprint() string { return rex.Fingerprint(m.NodeKey) }
+const MaxName = coordproto.MaxName
 
 // state is the coordinator's whole memory, kept in network.json.
 type state struct {
@@ -60,9 +46,9 @@ type state struct {
 	// key is 32 random bytes, far past brute force, so a slow KDF
 	// would only tax every poll; the label keeps the digest from
 	// being reused elsewhere.
-	KeyMAC   string   `json:"keyMAC"`
-	Revision int      `json:"revision"`
-	Members  []Member `json:"members"`
+	KeyMAC   string              `json:"keyMAC"`
+	Revision int                 `json:"revision"`
+	Members  []coordproto.Member `json:"members"`
 }
 
 // keyMAC is the digest of the network key that state keeps.
@@ -132,45 +118,6 @@ func CleanName(s string) string {
 	return s
 }
 
-// fingerprintRx reads the fingerprint at the end of a join URL.
-var fingerprintRx = regexp.MustCompile(`^/([0-9a-f]{16})/?$`)
-
-// Fingerprint returns the first 16 hex digits of the SHA-256 of a
-// certificate, the pin a join URL carries.
-func Fingerprint(cert *x509.Certificate) string {
-	sum := sha256.Sum256(cert.Raw)
-	return hex.EncodeToString(sum[:])[:16]
-}
-
-// JoinURL builds the URL a machine joins by: the coordinator's address
-// with its fingerprint, so the URL itself pins the certificate. Port
-// 443, the default, is left out.
-func JoinURL(hostport, fingerprint string) string {
-	host := hostport
-	if u, err := url.Parse("https://" + hostport); err == nil && u.Port() == "443" {
-		host = u.Hostname()
-		if strings.Contains(host, ":") { // an IPv6 address needs its brackets
-			host = "[" + host + "]"
-		}
-	}
-	u := url.URL{Scheme: "https", Host: host, Path: "/" + fingerprint}
-	return u.String()
-}
-
-// SplitJoinURL takes apart a join URL into its address and fingerprint;
-// an address without a port means 443.
-func SplitJoinURL(raw string) (hostport, fingerprint string, err error) {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Scheme != "https" || u.Host == "" {
-		return "", "", errors.New(`coord: a join URL reads "https://host/<fingerprint>"`)
-	}
-	m := fingerprintRx.FindStringSubmatch(u.EscapedPath())
-	if m == nil {
-		return "", "", errors.New(`coord: a join URL ends with the coordinator's fingerprint`)
-	}
-	return u.Host, m[1], nil
-}
-
 // Init makes a network in dir: a network key, shown once to the caller
 // and never written in the clear, a certificate to pin, and the state.
 // An existing state is left alone; re-running init on a live directory
@@ -197,12 +144,12 @@ func Init(dir string) (networkKey, fingerprint string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	return networkKey, Fingerprint(cert), nil
+	return networkKey, coordproto.CertFingerprint(cert), nil
 }
 
 // Members reads the directory without serving, for the coordinator's
 // own command line.
-func Members(dir string) ([]Member, error) {
+func Members(dir string) ([]coordproto.Member, error) {
 	st, err := loadState(dir)
 	if err != nil {
 		return nil, err
@@ -261,17 +208,4 @@ func WriteCert(dir string, der, keyDER []byte) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(dir, "tls.key"), key, 0o600)
-}
-
-// ReadCert reads the certificate from dir.
-func ReadCert(dir string) (*x509.Certificate, error) {
-	b, err := os.ReadFile(filepath.Join(dir, "tls.crt"))
-	if err != nil {
-		return nil, fmt.Errorf("coord: reading the certificate: %w", err)
-	}
-	blk, _ := pem.Decode(b)
-	if blk == nil {
-		return nil, errors.New("coord: reading the certificate: no PEM block")
-	}
-	return x509.ParseCertificate(blk.Bytes)
 }
