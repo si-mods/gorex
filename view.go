@@ -455,9 +455,6 @@ func needsUser(s *rex.ProgramStatus) bool {
 // attention, red for an error.
 func statusDot(c *ui.Context, k *colors, s *rex.ProgramStatus, size float32) ui.Element {
 	if s.State == "working" {
-		if s.Progress >= 0 {
-			ui.Text(c, fmt.Sprintf("%d%%", s.Progress)).FontSize(11).TextColor(k.textFaint).Shrink(0)
-		}
 		return activityDot(c, k.busy, size).Tooltip(statusTip(s))
 	}
 	col := k.attention
@@ -481,6 +478,11 @@ func statusTip(s *rex.ProgramStatus) string {
 	}
 	if f := says[s.Kind]; f != nil {
 		state += ", " + f()
+	}
+	// The progress shows here only: beside the dot it squeezes the
+	// tab's title.
+	if s.Progress >= 0 {
+		state += fmt.Sprintf(", %d%%", s.Progress)
 	}
 	var parts []string
 	for _, p := range []string{s.App, state, s.Title, s.Msg} {
