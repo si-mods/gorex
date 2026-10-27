@@ -297,7 +297,7 @@ func sessionEnv(id string, extra []string) []string {
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"TERM_PROGRAM=GoRex",
-		"TERM_PROGRAM_VERSION=0.1.0",
+		"TERM_PROGRAM_VERSION=0.2.0",
 		"GOREX_SESSION="+id,
 	)
 	if !hasLang {
