@@ -257,7 +257,7 @@ shows this machine's tabs over SSH as it shows herdr's in its full control
 mode: GoRex plays herdr. `tools/rootshell/herdr`, installed on the host,
 runs `GoRex control` in herdr's place, a bridge to the server of the GoRex
 already open. The layout stays the desktop's: rootshell shows it, and
-changes to it fail there. Setup on macOS and Windows hosts, the steps in
+changes it through the GoRex window. Setup on macOS and Windows hosts, the steps in
 rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 
 ## Develop and build

@@ -417,6 +417,25 @@ func (c *Client) RenewSize(sid, owner string) error {
 	return c.call(Request{Op: "renewSize", SID: sid, Owner: owner}, nil)
 }
 
+// Command asks the app to change the layout, and returns its answer
+// (LayoutCommand).
+func (c *Client) Command(cmd LayoutCommand) (res LayoutCommand, err error) {
+	err = c.call(Request{Op: "command", Command: &cmd}, &res)
+	return
+}
+
+// TakeCommand returns the next layout command for the app to make, after
+// waiting a while for one: nil when none came.
+func (c *Client) TakeCommand() (cmd *LayoutCommand, err error) {
+	err = c.call(Request{Op: "command.take"}, &cmd)
+	return
+}
+
+// CommandDone answers a command the app took.
+func (c *Client) CommandDone(res LayoutCommand) error {
+	return c.call(Request{Op: "command.done", Command: &res}, nil)
+}
+
 // AttachConn attaches to a session as a, through this connection if kept
 // alive, and returns the connection once the server took it: what
 // follows is the session's output, after a SnapshotHeader with a.Framed.

@@ -2,17 +2,17 @@ package control
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
-// readOnly are herdr's methods that manage the layout, which is the
-// desktop's, or list or scroll what GoRex does not have: rootshell shows
+// readOnly are herdr's methods that GoRex has no part of: dividers,
+// equalizing, moving panes, workspaces and worktrees. rootshell shows
 // their error, or logs it, and goes on.
 var readOnly = map[string]bool{
-	"pane.split": true, "pane.close": true, "pane.resize": true, "pane.zoom": true, "pane.move": true,
-	"pane.swap": true, "pane.rename": true, "pane.scroll": true,
-	"tab.create": true, "tab.close": true, "tab.rename": true, "tab.move": true, "tab.list": true,
+	"pane.resize": true, "pane.move": true, "pane.swap": true, "pane.rename": true, "pane.scroll": true,
 	"workspace.create": true, "workspace.close": true, "workspace.rename": true, "workspace.move": true,
 	"workspace.move_block": true, "workspace.focus": true, "workspace.list": true,
 	"worktree.list": true, "worktree.create": true, "worktree.open": true, "worktree.remove": true,
@@ -33,6 +33,10 @@ type failure struct {
 
 func (f *failure) Error() string { return f.Message }
 
+// later is the error of a request answered later, once the app made the
+// change it asks for (finish).
+var later = errors.New("answered later")
+
 // serve serves a line of rootshell, and reports whether it asked to close.
 func (b *bridge) serve(line []byte) bool {
 	var req request
@@ -41,49 +45,76 @@ func (b *bridge) serve(line []byte) bool {
 	}
 	result, err := b.do(req)
 	// Typing goes unanswered, as rootshell waits for no answer.
-	if err == nil && req.Method == "terminal.input" && strings.HasPrefix(string(req.ID), `"i`) {
+	if err == later || err == nil && req.Method == "terminal.input" && strings.HasPrefix(string(req.ID), `"i`) {
 		return false
 	}
+	b.answer(req, result, err)
+	return req.Method == "control.close"
+}
+
+func (b *bridge) answer(req request, result any, err error) {
 	if err != nil {
 		f, ok := err.(*failure)
 		if !ok {
 			f = &failure{"failed", err.Error()}
 		}
 		b.send(map[string]any{"id": req.ID, "error": f})
-	} else {
-		if result == nil {
-			result = struct{}{}
-		}
-		b.send(map[string]any{"id": req.ID, "result": result})
+		return
 	}
-	return req.Method == "control.close"
+	if result == nil {
+		result = struct{}{}
+	}
+	b.send(map[string]any{"id": req.ID, "result": result})
+}
+
+// params are the parameters of every method.
+type params struct {
+	TabID    string `json:"tab_id"`
+	PaneID   string `json:"pane_id"`
+	Pane     string `json:"target_pane_id"`
+	AttachID string `json:"attach_id"`
+	Target   string `json:"target"`
+	Cols     int    `json:"cols"`
+	Rows     int    `json:"rows"`
+	Claim    bool   `json:"claim"`
+	History  int    `json:"history_limit_bytes"`
+	Bytes    []byte `json:"bytes"`
+	Cwd      string `json:"cwd"`
+	Dir      string `json:"direction"`
+	Label    string `json:"label"`
+	Mode     string `json:"mode"`
+	Index    int    `json:"insert_index"`
 }
 
 func (b *bridge) do(req request) (any, error) {
 	if readOnly[req.Method] {
-		return nil, &failure{"read_only", "GoRex layouts are read-only from rootshell"}
+		return nil, &failure{"read_only", "GoRex does not do this from rootshell"}
 	}
-	var p struct {
-		TabID    string `json:"tab_id"`
-		AttachID string `json:"attach_id"`
-		Target   string `json:"target"`
-		Cols     int    `json:"cols"`
-		Rows     int    `json:"rows"`
-		Claim    bool   `json:"claim"`
-		History  int    `json:"history_limit_bytes"`
-		Bytes    []byte `json:"bytes"`
-	}
+	var p params
 	if len(req.Params) > 0 {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
 			return nil, &failure{"invalid_params", err.Error()}
 		}
 	}
 	switch req.Method {
-	case "ping", "events.subscribe", "pane.focus", "tab.focus", "control.close":
+	case "ping", "events.subscribe", "tab.focus", "control.close":
+		return nil, nil
+	case "pane.focus":
+		// Rootshell's focus, not the desktop's, is what it shows, and the
+		// tab of it the one a new tab goes after.
+		sid := sidOf(p.PaneID)
+		if t := b.tabOf(sid); t != nil {
+			b.picked[t.id], b.anchor = sid, t.id
+			if !t.zoom {
+				t.focus = sid
+			}
+		}
 		return nil, nil
 	case "session.snapshot":
 		b.tellQuietly()
 		return map[string]any{"snapshot": b.snapshot()}, nil
+	case "tab.list":
+		return map[string]any{"tabs": b.tabInfos()}, nil
 	case "layout.export":
 		t := b.tab(p.TabID)
 		if t == nil {
@@ -104,6 +135,7 @@ func (b *bridge) do(req request) (any, error) {
 		b.sizes[t.id] = [2]int{p.Cols, p.Rows}
 		if p.Claim {
 			b.claim(t)
+			b.anchor = t.id
 		}
 		if b.owned[t.id] {
 			b.tell()
@@ -111,6 +143,8 @@ func (b *bridge) do(req request) (any, error) {
 		}
 		b.tell()
 		return nil, nil
+	case "tab.create", "pane.split", "pane.close", "tab.close", "tab.rename", "pane.zoom", "tab.move":
+		return nil, b.ask(req, p)
 	case "terminal.attach":
 		sid := sidOf(p.Target)
 		if _, ok := b.infos[sid]; !ok {
@@ -143,32 +177,47 @@ func (b *bridge) do(req request) (any, error) {
 	return nil, &failure{"unknown_method", "GoRex does not serve " + req.Method}
 }
 
+// tabInfo is t as herdr's TabInfo.
+func (b *bridge) tabInfo(t *tab) map[string]any {
+	return map[string]any{
+		"tab_id": t.id, "workspace_id": workspace, "number": slices.Index(b.tabs, t) + 1, "label": t.name,
+		"focused": t.id == b.active, "pane_count": len(t.root.sids()), "agent_status": "unknown",
+	}
+}
+
+func (b *bridge) tabInfos() []any {
+	tabs := []any{}
+	for _, t := range b.tabs {
+		tabs = append(tabs, b.tabInfo(t))
+	}
+	return tabs
+}
+
+// paneInfo is the pane of session sid, in t, as herdr's PaneInfo.
+func (b *bridge) paneInfo(t *tab, sid string) map[string]any {
+	in := b.infos[sid]
+	pane := map[string]any{
+		"pane_id": paneID(sid), "terminal_id": sid, "workspace_id": workspace, "tab_id": t.id,
+		"focused": t.id == b.active && sid == t.focus, "agent_status": "unknown",
+		"terminal_title": in.Title, "title": in.Title,
+		"foreground_process": map[string]any{"name": in.Program, "argv": in.Args, "is_shell": in.Idle},
+	}
+	if strings.HasPrefix(in.Dir, "/") {
+		pane["cwd"], pane["foreground_cwd"] = in.Dir, in.Dir
+	}
+	return pane
+}
+
 // snapshot is the session as herdr's session.snapshot has it: this
 // machine is its one workspace.
 func (b *bridge) snapshot() map[string]any {
-	tabs, panes, layouts := []any{}, []any{}, []any{}
+	panes, layouts := []any{}, []any{}
 	focusedPane := ""
-	for i, t := range b.tabs {
-		sids := t.root.sids()
-		active := t.id == b.active
-		tabs = append(tabs, map[string]any{
-			"tab_id": t.id, "workspace_id": workspace, "number": i + 1, "label": t.name,
-			"focused": active, "pane_count": len(sids), "agent_status": "unknown",
-		})
-		for _, sid := range sids {
-			in := b.infos[sid]
-			pane := map[string]any{
-				"pane_id": paneID(sid), "terminal_id": sid, "workspace_id": workspace, "tab_id": t.id,
-				"focused": active && sid == t.focus, "agent_status": "unknown",
-				"terminal_title": in.Title, "title": in.Title,
-				"foreground_process": map[string]any{"name": in.Program, "argv": in.Args, "is_shell": in.Idle},
-			}
-			if strings.HasPrefix(in.Dir, "/") {
-				pane["cwd"], pane["foreground_cwd"] = in.Dir, in.Dir
-			}
-			panes = append(panes, pane)
+	for _, t := range b.tabs {
+		for _, sid := range t.root.sids() {
+			panes = append(panes, b.paneInfo(t, sid))
 		}
-		if active {
+		if t.id == b.active {
 			focusedPane = paneID(t.focus)
 		}
 		layouts = append(layouts, b.layoutOf(t))
@@ -180,6 +229,6 @@ func (b *bridge) snapshot() map[string]any {
 			"workspace_id": workspace, "label": b.hello.Host.Name, "number": 1, "focused": true,
 			"active_tab_id": b.active, "agent_status": "unknown", "tab_count": len(b.tabs), "pane_count": len(panes),
 		}},
-		"tabs": tabs, "panes": panes, "layouts": layouts, "agents": []any{},
+		"tabs": b.tabInfos(), "panes": panes, "layouts": layouts, "agents": []any{},
 	}
 }

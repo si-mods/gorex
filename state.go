@@ -387,9 +387,20 @@ func (a *App) ring(p *Pane) {
 func (a *App) newTab(dir string) *Tab { return a.newTabOn(a.currentHost(), dir) }
 
 // newTabOn opens a tab with a shell in dir on host h, nil for this
-// machine: after the active tab, or last of the host's tabs. It opens none
-// while the host is not connected.
+// machine, after the active tab (newTabAfter), and shows it.
 func (a *App) newTabOn(h *hostConn, dir string) *Tab {
+	t := a.newTabAfter(h, dir, a.tab())
+	if t != nil {
+		a.active = slices.Index(a.tabs, t)
+		a.focusReq = t.Focus
+	}
+	return t
+}
+
+// newTabAfter opens a tab with a shell in dir on host h: after tab after,
+// or last of the host's tabs when after is another host's. It opens none
+// while the host is not connected. The active tab stays.
+func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
 	if a.offline(h) {
 		return nil
 	}
@@ -398,14 +409,16 @@ func (a *App) newTabOn(h *hostConn, dir string) *Tab {
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
 	t.setFocus(p)
-	at := min(a.active+1, len(a.tabs))
-	if cur := a.tab(); cur != nil && cur.host() != h {
-		at = len(a.tabs)
+	at := len(a.tabs)
+	if i := slices.Index(a.tabs, after); i >= 0 && after.host() == h {
+		at = i + 1
 	}
+	cur := a.tab()
 	a.tabs = slices.Insert(a.tabs, at, t)
-	a.active = at
+	if cur != nil {
+		a.active = slices.Index(a.tabs, cur)
+	}
 	a.groupTabs()
-	a.focusReq = p
 	a.changed()
 	return t
 }
@@ -439,10 +452,18 @@ func (a *App) split(vertical bool) {
 	if t == nil || t.Focus == nil {
 		return
 	}
-	old := t.Focus
-	if a.offline(old.host) {
-		return
+	if p := a.splitPane(t.Focus, vertical, a.currentDir()); p != nil {
+		a.focusReq = p
 	}
+}
+
+// splitPane splits pane old, the new pane, in dir, right of it or below
+// it, with the focus of its tab; none while its host is not connected.
+func (a *App) splitPane(old *Pane, vertical bool, dir string) *Pane {
+	if a.offline(old.host) {
+		return nil
+	}
+	t := old.Tab
 	t.Zoom = nil
 	n := old.Node
 	cols, rows := 80, 24
@@ -454,15 +475,15 @@ func (a *App) split(vertical bool) {
 			cols = max(cols/2, 10)
 		}
 	}
-	p := a.newPane(old.host, a.currentDir(), cols, rows)
+	p := a.newPane(old.host, dir, cols, rows)
 	p.Tab = t
 	left := &Node{ID: a.id(), Pane: old, Parent: n}
 	right := &Node{ID: a.id(), Pane: p, Parent: n}
 	old.Node, p.Node = left, right
 	n.Pane, n.A, n.B, n.Vertical, n.Ratio = nil, left, right, vertical, 0.5
 	t.setFocus(p)
-	a.focusReq = p
 	a.changed()
+	return p
 }
 
 // closePane closes a pane and ends its session.
@@ -684,12 +705,19 @@ func (a *App) toggleZoom() {
 	if t == nil || t.Focus == nil {
 		return
 	}
-	if t.Zoom != nil {
-		t.Zoom = nil
-	} else if len(t.panes()) > 1 {
-		t.Zoom = t.Focus
-	}
+	a.zoom(t.Focus, t.Zoom == nil)
 	a.focusReq = t.Focus
+}
+
+// zoom makes pane p fill its tab, with its focus, when the tab has
+// another, or gives every pane its room back.
+func (a *App) zoom(p *Pane, on bool) {
+	t := p.Tab
+	t.Zoom = nil
+	if on && len(t.panes()) > 1 {
+		t.setFocus(p)
+		t.Zoom = p
+	}
 	a.changed()
 }
 

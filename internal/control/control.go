@@ -64,6 +64,7 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 		infos: map[string]rex.SessionInfo{}, sizes: map[string][2]int{}, owned: map[string]bool{},
 		locked: map[string]bool{}, attaches: map[string]*attach{},
 		told: map[string]string{}, ctl: map[string]controller{},
+		picked: map[string]string{}, jobs: make(chan *job, 16), done: make(chan *job),
 	}
 	b.id = connectionID(b.owner)
 	go b.write(out)
@@ -94,6 +95,7 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 			}
 		}
 	}()
+	go b.work()
 	poll, renew := time.NewTicker(pollEvery), time.NewTicker(renewEvery)
 	defer poll.Stop()
 	defer renew.Stop()
@@ -111,6 +113,8 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 		case <-renew.C:
 			b.renew()
 			b.tell()
+		case j := <-b.done:
+			b.finish(j)
 		case <-c.Closed():
 			log.Print("control: lost the server")
 			b.close()

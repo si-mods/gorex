@@ -456,6 +456,7 @@ func (st *store) connect() bool {
 	if err == nil && st.hello.Version != rex.ProtocolVersion {
 		st.errMsg = locales.Messages.ErrorServerVersion
 	}
+	go st.takeCommands(st.client, func(fn func()) { go mygo.RunOnMain(fn) })
 	// The windows open take the new connection, attached again to their
 	// sessions, as the old one closed.
 	for _, a := range st.apps {

@@ -23,8 +23,13 @@ Windows a server started from an SSH logon would end with it.
 
 - **Tabs** are the desktop's tabs on this machine, with their splits. Panes
   of remote hosts are left out, and tabs of only those too.
-- **The layout is read only.** The desktop owns it; rootshell follows it
-  as it changes (the bridge looks every half second).
+- **The layout is the desktop's.** rootshell follows it as it changes
+  (the bridge looks every half second), and changes it through the GoRex
+  window: new tab, split, close pane, close tab, rename tab, zoom and
+  moving tabs go to the window, which makes them as its own buttons do,
+  and rootshell shows them within a second. A new tab opens after the tab
+  last used in rootshell, in its directory. Closing a pane or a tab ends
+  its sessions, as on the desktop.
 - **Size.** One terminal has one size. The tab rootshell shows takes it:
   its panes are drawn for the phone, and the desktop shows them at the
   phone's size meanwhile. Typing in one of them on the desktop takes it
@@ -118,11 +123,15 @@ shim for herdr's sessions, which it answers with none anyway.
 
 ## Limits
 
-- Splitting, closing, renaming, new tabs, zoom and equalizing fail with
-  "herdr Action Failed": the layout is the desktop's. Make tabs and splits
-  in GoRex; rootshell shows them within a second.
-- On first connecting, rootshell asks for a new tab by itself when it has
-  none of its own to show, and shows that error once.
+- Changing the layout needs the GoRex window open on the host. Without
+  it, a new tab or a rename fails with "Open the GoRex window on …", and
+  a split, a close or a zoom does nothing, silently.
+- The window's last tab closes only on the desktop: closing it from
+  rootshell fails, as GoRex closes with it.
+- Closing a tab from rootshell ends its panes of remote hosts too, which
+  rootshell does not show, as closing it on the desktop does.
+- Dragging a divider, equalizing, moving or renaming panes, workspaces and
+  worktrees fail with "herdr Action Failed" (read-only).
 - While a full-screen program runs (vim, lazygit, an agent), rootshell has
   no scrollback of that pane: the server keeps the alternate screen only.
 - A snapshot holds at most the history rootshell asks for (1 MiB); older
@@ -145,6 +154,7 @@ shim for herdr's sessions, which it answers with none anyway.
 | rootshell says herdr is not found or too old | The shim is at `~/.local/opt/herdr-rootshell/bin/herdr` and executable; `GOREX` in it names GoRex's executable. |
 | `not_found`: GoRex is not running | Open GoRex on the host; the bridge does not start the server. |
 | Nothing on Windows, or `'…' is not recognized` | OpenSSH's DefaultShell is Git Bash, and `sshd` was restarted after setting it. |
+| A split, close or zoom from rootshell does nothing | The GoRex window is open on the host: it makes the change. |
 | The tabs are empty | GoRex saves its layout a moment after it changes: open a tab on the host, wait a second, connect again. |
 | The bridge finds another server than the app's | Both use the app's data directory, or `GOREX_DIR` if set: set it the same for the SSH logon, or not at all. |
 | A desktop pane stays at the phone's size | Type in it to take the size back; it comes back by itself within 30 seconds after rootshell leaves. |
