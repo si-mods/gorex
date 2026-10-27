@@ -86,7 +86,7 @@ func (r *phone) snapshot() (tabs []string, labels map[string]string, panes map[s
 func TestRootshellLayout(t *testing.T) {
 	a, tt := newTestApp(t)
 	first := a.tab()
-	go a.takeCommands(nil, a.client)
+	go a.st.takeCommands(a.client, a.post)
 	a.saveNow()
 	c, err := rex.ConnectExisting()
 	if err != nil {

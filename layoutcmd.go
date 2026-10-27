@@ -8,29 +8,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo"
-
 	"gorex/internal/rex"
 )
 
 // takeCommands makes the changes of the layout that other clients of this
 // machine's server ask for (rex.LayoutCommand), as rootshell's bridge does,
-// one at a time, on the main thread of win (nil: the app's), until client
-// closes: a take waits on the server for the next, so each comes at once.
-// Each is answered once the server has its layout, the main thread going
-// on meanwhile.
-func (a *App) takeCommands(win *mygo.Window, client *rex.Client) {
-	update := a.post
-	if win != nil {
-		update = win.Update
-	}
-	unavailable := func(id int64) rex.LayoutCommand {
-		return rex.LayoutCommand{ID: id, Code: "desktop_unavailable", Error: "the GoRex window closed"}
-	}
-	type made struct {
-		res    rex.LayoutCommand
-		layout []byte
-		seq    uint64
+// one at a time, on the main thread through update, in the window whose
+// tabs the server's layout shows first (commandApp), until client closes:
+// a take waits on the server for the next, so each comes at once. Each is
+// answered once the server has its layout, the main thread going on
+// meanwhile.
+func (st *store) takeCommands(client *rex.Client, update func(func())) {
+	unavailable := func(id int64, msg string) rex.LayoutCommand {
+		return rex.LayoutCommand{ID: id, Code: "desktop_unavailable", Error: msg}
 	}
 	for {
 		cmd, err := client.TakeCommand()
@@ -51,41 +41,56 @@ func (a *App) takeCommands(win *mygo.Window, client *rex.Client) {
 		if cmd == nil {
 			continue
 		}
-		started, done := make(chan struct{}), make(chan made, 1)
+		started, done := make(chan struct{}), make(chan rex.LayoutCommand, 1)
 		update(func() {
 			close(started)
-			if a.win != win {
-				done <- made{res: unavailable(cmd.ID)}
+			a := st.commandApp()
+			if a == nil {
+				done <- unavailable(cmd.ID, "no GoRex window is open")
 				return
 			}
-			m := made{res: a.command(*cmd)}
-			if m.res.Code == "" {
-				m.layout, m.seq = a.layoutToSave()
+			res := a.command(*cmd)
+			if res.Code == "" {
+				a.saveDue = false
+				st.save()
 			}
-			done <- m
+			done <- res
 		})
-		// The window that went runs nothing; one that runs it takes its
-		// time, as a session may be slow to start.
-		var m made
+		// A main thread that runs nothing has no window; one that runs it
+		// takes its time, as a session may be slow to start.
+		var res rex.LayoutCommand
 		select {
 		case <-started:
-			m = <-done
+			res = <-done
 		case <-time.After(rex.AppCommandTimeout):
-			m.res = unavailable(cmd.ID)
+			res = unavailable(cmd.ID, "the GoRex window does not answer")
 		}
-		if m.layout != nil {
-			a.sendLayout(client, m.layout, m.seq)
+		if res.Code == "" {
+			st.writer.wait(rex.CommandTimeout)
 		}
-		if err := client.CommandDone(m.res); err != nil {
+		if err := client.CommandDone(res); err != nil {
 			log.Printf("answering a layout command: %v", err)
 		}
 	}
 }
 
+// commandApp is the window of the first workspace of the server's layout,
+// whose tabs it keeps for clients of one window, as rootshell's bridge:
+// that of the first place; nil without windows.
+func (st *store) commandApp() *App {
+	var first *App
+	for _, a := range st.apps {
+		if a.ws != nil && (first == nil || a.slot < first.slot) {
+			first = a
+		}
+	}
+	return first
+}
+
 // command makes a change of the layout another client asks for, as the
 // window's buttons do, on this machine's panes; the caller saves the
-// layout at once, for the client to see it. The active tab and the keyboard's focus
-// stay.
+// layout at once, for the client to see it. The active tab and the
+// keyboard's focus stay.
 func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 	res := rex.LayoutCommand{ID: c.ID}
 	fail := func(code, msg string) rex.LayoutCommand {

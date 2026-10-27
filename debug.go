@@ -1,17 +1,22 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
+
+	"github.com/egoist/mygo"
 )
 
 // debugHook lets a script drive the app while GOREX_DEBUG names a
-// directory: each line of its file "do" is run, and "shot" captures the
-// window into shot.png.
-func (a *App) debugHook() {
+// directory: each line of its file "do" is run, against the window the
+// lines name, by default the one focused last; "shot" captures the window
+// into shot.png. It runs once for the app, from its first window, a.
+func (st *store) debugHook(a *App) {
 	if os.Getenv("GOREX_OPEN_SETTINGS") == "1" {
 		a.openSettings()
 	}
@@ -29,10 +34,159 @@ func (a *App) debugHook() {
 			}
 			os.Remove(req)
 			for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
-				a.debug(dir, strings.TrimSpace(line))
+				st.debug(dir, strings.TrimSpace(line))
 			}
 		}
 	}()
+}
+
+// debugMain runs a debug line's change on the main thread, and waits for
+// it; tests, which have no main loop, run it at once.
+var debugMain = mygo.RunOnMain
+
+// debugState is what "state" writes: the windows in the order of their
+// places, every workspace, and the app's process.
+type debugState struct {
+	PID      int            `json:"pid"`
+	Windows  []debugWindow  `json:"windows"`
+	Sessions []debugSession `json:"sessions"`
+}
+
+// debugWindow is a window as "state" describes it.
+type debugWindow struct {
+	Index     int      `json:"index"` // from 1, as "win" takes it
+	StateKey  string   `json:"stateKey"`
+	Session   debugRef `json:"session"`
+	Tabs      []string `json:"tabs"`
+	ActiveTab int      `json:"activeTab"` // from 1
+	Focused   bool     `json:"focused"`   // focused last
+	Minimized bool     `json:"minimized"`
+}
+
+// debugRef names a workspace.
+type debugRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// debugSession is a workspace as "state" describes it.
+type debugSession struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	Tabs   int    `json:"tabs"`
+	Window int    `json:"window"` // the index of the window that shows it, 0 for none
+}
+
+// byPlace returns the windows in the order of their places.
+func (st *store) byPlace() []*App {
+	apps := slices.Clone(st.apps)
+	slices.SortFunc(apps, func(x, y *App) int { return x.slot - y.slot })
+	return apps
+}
+
+// state describes the windows and the workspaces. Call it on the main
+// thread.
+func (st *store) state() debugState {
+	s := debugState{PID: os.Getpid(), Windows: []debugWindow{}, Sessions: []debugSession{}}
+	shown := map[*Workspace]int{}
+	for i, a := range st.byPlace() {
+		w := debugWindow{Index: i + 1, StateKey: stateKey(a.slot), Tabs: []string{}, ActiveTab: a.active + 1, Focused: len(st.apps) > 0 && st.apps[0] == a}
+		if a.ws != nil {
+			w.Session = debugRef{a.ws.ID, a.ws.Name}
+			shown[a.ws] = i + 1
+		}
+		for _, t := range a.tabs {
+			name, detail := t.label()
+			w.Tabs = append(w.Tabs, strings.TrimSpace(name+" "+detail))
+		}
+		if a.win != nil {
+			w.Minimized = a.win.IsMinimized()
+		}
+		s.Windows = append(s.Windows, w)
+	}
+	for _, w := range st.workspaces {
+		s.Sessions = append(s.Sessions, debugSession{ID: w.ID, Name: w.Name, Tabs: w.tabCount(), Window: shown[w]})
+	}
+	return s
+}
+
+// debug runs a line: the verbs of the windows and the workspaces here,
+// the others in the window the lines target.
+func (st *store) debug(dir, line string) {
+	verb, arg, _ := strings.Cut(line, " ")
+	var a *App
+	debugMain(func() {
+		apps := st.byPlace()
+		switch {
+		case st.debugWin == 0 && len(st.apps) > 0:
+			a = st.apps[0]
+		case st.debugWin > 0 && st.debugWin <= len(apps):
+			a = apps[st.debugWin-1]
+		}
+	})
+	switch verb {
+	case "win": // N: the next lines target the Nth window, by place, from 1; 0, the one focused last
+		n := atoi(arg)
+		ok := true
+		debugMain(func() { ok = n <= len(st.apps) })
+		if !ok {
+			log.Printf("gorex: debug: no window %d", n)
+			return
+		}
+		st.debugWin = n
+		return
+	case "focus-win": // N: the Nth window counts as focused last, as if it had the focus
+		debugMain(func() {
+			if apps := st.byPlace(); atoi(arg) >= 1 && atoi(arg) <= len(apps) {
+				st.raise(apps[atoi(arg)-1])
+			} else {
+				log.Printf("gorex: debug: no window %s", arg)
+			}
+		})
+		return
+	case "state": // FILE: the windows and the workspaces, as JSON, into FILE
+		var b []byte
+		debugMain(func() { b, _ = json.MarshalIndent(st.state(), "", "  ") })
+		path := filepath.Join(dir, arg)
+		if os.WriteFile(path+".tmp", b, 0o644) == nil {
+			os.Rename(path+".tmp", path)
+		}
+		return
+	}
+	if a == nil {
+		log.Printf("gorex: debug: no window for %q", line)
+		return
+	}
+	switch verb {
+	case "session": // NAME: the target window shows the workspace of that name
+		debugMain(func() {
+			for _, w := range st.workspaces {
+				if w.Name == arg {
+					a.showWorkspace(w)
+					return
+				}
+			}
+			log.Printf("gorex: debug: no session %s", arg)
+		})
+	case "rename-session": // NAME: names the target window's workspace
+		debugMain(func() { a.renameWorkspace(arg) })
+	case "confirm": // closes the workspace Close Session asks about
+		debugMain(func() {
+			if a.wsConfirm {
+				a.wsConfirm = false
+				a.closeWorkspace()
+			}
+		})
+	case "cancel": // keeps it
+		debugMain(func() { a.wsConfirm = false })
+	default:
+		a.debug(dir, line)
+	}
+	debugMain(func() {
+		if a.win != nil {
+			a.win.Update(func() {})
+		}
+	})
 }
 
 func (a *App) debug(dir, line string) {
