@@ -275,7 +275,7 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		// What the reader buffered past the first line is input.
 		if n := r.Buffered(); n > 0 {
 			b, _ := r.Peek(n)
-			ss.input(b)
+			ss.input(nil, b)
 		}
 		ss.attach(conn, peer, func() bool { return s.mayUse(peer, ss) })
 		return
