@@ -41,6 +41,10 @@ type bridge struct {
 	sizes  map[string][2]int
 	owned  map[string]bool
 	locked map[string]bool
+	// proto is the control protocol, 3 when each pane has a size of its
+	// own: paneSizes are those rootshell gave, by tab id, then pane id.
+	proto     int
+	paneSizes map[string]map[string]paneSize
 	// shape is the topology rootshell was last told, and told and ctl the
 	// layouts and controllers of its tabs.
 	shape string
@@ -176,6 +180,11 @@ func (b *bridge) fetch(sessions, layout bool) bool {
 			delete(b.owned, id)
 		}
 	}
+	for id := range b.paneSizes {
+		if b.tab(id) == nil {
+			delete(b.paneSizes, id)
+		}
+	}
 	return true
 }
 
@@ -299,6 +308,9 @@ func (b *bridge) lockTab(t *tab) {
 	for _, p := range l.Panes {
 		sid := sidOf(p.PaneID)
 		w, h := max(p.Rect.Width, 1), max(p.Rect.Height, 1)
+		if p.Size != nil {
+			w, h = p.Size.Cols, p.Size.Rows
+		}
 		in := b.infos[sid]
 		var err error
 		switch {
@@ -411,10 +423,21 @@ type rect struct {
 	Height int `json:"height"`
 }
 
+// paneRect is a pane: Rect is its place in the tab, and Size, with
+// protocol 3, its grid, which its session has.
 type paneRect struct {
-	PaneID  string `json:"pane_id"`
-	Focused bool   `json:"focused"`
-	Rect    rect   `json:"rect"`
+	PaneID  string    `json:"pane_id"`
+	Focused bool      `json:"focused"`
+	Rect    rect      `json:"rect"`
+	Size    *paneSize `json:"terminal_size,omitempty"`
+}
+
+// paneSize is a pane's grid, as herdr's PaneTerminalSize.
+type paneSize struct {
+	Cols  int `json:"cols"`
+	Rows  int `json:"rows"`
+	CellW int `json:"cell_width_px"`
+	CellH int `json:"cell_height_px"`
 }
 
 type splitRect struct {
@@ -451,7 +474,7 @@ func (b *bridge) layoutOf(t *tab) layoutSnapshot {
 	if t.zoom {
 		in := b.infos[t.focus]
 		l.Zoomed, l.Area = true, rect{0, 0, cell(in.Cols), cell(in.Rows)}
-		l.Panes = append(l.Panes, paneRect{paneID(t.focus), true, l.Area})
+		l.Panes = append(l.Panes, paneRect{PaneID: paneID(t.focus), Focused: true, Rect: l.Area})
 	} else {
 		w, h := b.pack(t.root, 0, 0, "s", t.focus, &l)
 		l.Area = rect{0, 0, cell(w), cell(h)}
@@ -472,8 +495,19 @@ func (b *bridge) layoutOf(t *tab) layoutSnapshot {
 }
 
 // tiled lays t out at cols×rows, its panes tiling it, as rootshell draws
-// the dividers: each pane 4×2 at least, where the tab has the room.
+// the dividers: each pane 4×2 at least, where the tab has the room. A
+// pane rootshell gave a grid of its own has it (protocol 3).
 func (b *bridge) tiled(t *tab, cols, rows int) layoutSnapshot {
+	l := b.tile(t, cols, rows)
+	for i, p := range l.Panes {
+		if size, ok := b.paneSizes[t.id][p.PaneID]; ok {
+			l.Panes[i].Size = &size
+		}
+	}
+	return l
+}
+
+func (b *bridge) tile(t *tab, cols, rows int) layoutSnapshot {
 	cols, rows = cell(cols), cell(rows)
 	l := layoutSnapshot{
 		WorkspaceID: workspace, TabID: t.id, Area: rect{0, 0, cols, rows}, FocusedPaneID: paneID(t.focus),
@@ -483,13 +517,13 @@ func (b *bridge) tiled(t *tab, cols, rows int) layoutSnapshot {
 	// A zoomed pane fills the tab; the others keep their sizes.
 	if t.zoom {
 		l.Zoomed = true
-		l.Panes = append(l.Panes, paneRect{paneID(t.focus), true, l.Area})
+		l.Panes = append(l.Panes, paneRect{PaneID: paneID(t.focus), Focused: true, Rect: l.Area})
 		return l
 	}
 	var tile func(n *node, r rect, id string)
 	tile = func(n *node, r rect, id string) {
 		if n.sid != "" {
-			l.Panes = append(l.Panes, paneRect{paneID(n.sid), n.sid == t.focus, r})
+			l.Panes = append(l.Panes, paneRect{PaneID: paneID(n.sid), Focused: n.sid == t.focus, Rect: r})
 			return
 		}
 		ext := r.Width
@@ -546,7 +580,7 @@ func (b *bridge) pack(n *node, x, y int, id, focus string, l *layoutSnapshot) (w
 	if n.sid != "" {
 		in := b.infos[n.sid]
 		w, h = cell(in.Cols), cell(in.Rows)
-		l.Panes = append(l.Panes, paneRect{paneID(n.sid), n.sid == focus, rect{x, y, w, h}})
+		l.Panes = append(l.Panes, paneRect{PaneID: paneID(n.sid), Focused: n.sid == focus, Rect: rect{x, y, w, h}})
 		return w, h
 	}
 	wa, ha := b.pack(n.a, x, y, id+"0", focus, l)

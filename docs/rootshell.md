@@ -17,7 +17,8 @@ sh -c '… PATH="$HOME/.local/opt/herdr-rootshell/bin:$PATH" … herdr control'
 `tools/rootshell/herdr`, installed in that directory, runs `GoRex control`
 in herdr's place: a bridge from stdin and stdout to the session server of
 the GoRex open on that machine. It speaks the part of herdr's control
-stream (stream protocol 2, one JSON object per line) that rootshell uses,
+stream (stream protocol 2, or 3 when rootshell asks for it, one JSON
+object per line) that rootshell uses,
 and reports itself as herdr `0.9.0-gorex`. The bridge starts no server: on
 Windows a server started from an SSH logon would end with it.
 
@@ -40,6 +41,9 @@ Windows a server started from an SSH logon would end with it.
   it stays connected, renewing it every 5 seconds: going to another GoRex
   tab, or detaching, gives it back at once, and a dropped connection or
   the app put away in the background within 30 seconds.
+- **Per-pane zoom.** Each pane is a session with a size of its own:
+  zooming one pane's font in rootshell resizes only that pane's session,
+  and the tab's other panes keep their sizes (protocol 3).
 - **Terminal queries** (cursor position, colors, device attributes) are
   answered by the device holding the size only, not once per device.
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 )
@@ -84,6 +85,8 @@ type params struct {
 	Label    string `json:"label"`
 	Mode     string `json:"mode"`
 	Index    int    `json:"insert_index"`
+	// Panes are the grids of tab.set_pane_geometry, by pane id.
+	Panes map[string]paneSize `json:"panes"`
 }
 
 func (b *bridge) do(req request) (any, error) {
@@ -121,13 +124,21 @@ func (b *bridge) do(req request) (any, error) {
 			return nil, &failure{"tab_not_found", "no tab " + p.TabID}
 		}
 		return map[string]any{"layout": map[string]any{"workspace_id": workspace, "tab_id": t.id, "root": exportNode(t.root)}}, nil
-	case "tab.set_geometry":
+	case "tab.set_geometry", "tab.set_pane_geometry":
+		if req.Method == "tab.set_pane_geometry" && b.proto < 3 {
+			break
+		}
 		t := b.tab(p.TabID)
 		if t == nil {
 			return nil, &failure{"tab_not_found", "no tab " + p.TabID}
 		}
 		if p.Cols < 1 || p.Rows < 1 {
 			return nil, &failure{"invalid_params", "cols and rows must be positive"}
+		}
+		if req.Method == "tab.set_geometry" {
+			delete(b.paneSizes, t.id)
+		} else if err := b.setPaneSizes(t, p.Panes); err != nil {
+			return nil, err
 		}
 		// Rootshell sizes a tab it holds, claiming it as the user goes to
 		// it; another's sizes it only notes, a viewer. It hears of the new
@@ -175,6 +186,24 @@ func (b *bridge) do(req request) (any, error) {
 		return nil, nil
 	}
 	return nil, &failure{"unknown_method", "GoRex does not serve " + req.Method}
+}
+
+// setPaneSizes keeps the grids rootshell gave the panes of t, each 4×2
+// at least, as herdr's: those of other tabs' panes are left out.
+func (b *bridge) setPaneSizes(t *tab, panes map[string]paneSize) error {
+	sizes := map[string]paneSize{}
+	for id, s := range panes {
+		if !slices.Contains(t.root.sids(), sidOf(id)) || id != paneID(sidOf(id)) {
+			continue
+		}
+		if s.Cols < 1 || s.Rows < 1 || s.CellW < 1 || s.CellH < 1 || s.CellW > math.MaxUint16 || s.CellH > math.MaxUint16 {
+			return &failure{"invalid_params", "pane " + id + ": cols, rows and cell sizes must be positive"}
+		}
+		s.Cols, s.Rows = min(max(s.Cols, 4), math.MaxUint16), min(max(s.Rows, 2), math.MaxUint16)
+		sizes[id] = s
+	}
+	b.paneSizes[t.id] = sizes
+	return nil
 }
 
 // tabInfo is t as herdr's TabInfo.
