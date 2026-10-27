@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"cmp"
 	"errors"
 	"log"
 	"os"
@@ -71,6 +71,10 @@ type Pane struct {
 	// attention marks a pane that rang the bell or whose program finished
 	// while it was out of sight; seen clears it.
 	attention bool
+	// seen is when the program's last record the user saw was updated:
+	// done and error records till then no longer ask for attention.
+	// notified is when the pane's last status notification was shown.
+	seen, notified time.Time
 	// bounds is where the pane's card was in the last frame.
 	bounds ui.Rect
 	closed bool
@@ -80,9 +84,16 @@ type Pane struct {
 	startDir string
 }
 
-// App is the state of GoRex's window.
+// App is the state of a window of GoRex's, which shows a workspace.
 type App struct {
-	win    *mygo.Window
+	win *mygo.Window
+	// st is the app's store of workspaces, ws the one the window shows,
+	// and slot the window's place among the windows. stop closes with the
+	// window.
+	st     *store
+	ws     *Workspace
+	slot   int
+	stop   chan struct{}
 	client *rex.Client
 	hello  rex.Hello
 	err    string
@@ -112,16 +123,23 @@ type App struct {
 	lastSave     time.Time
 	quitting     bool
 	focusedWin   bool
-	lastSnapshot string
 	title        string
 
-	// The sidebar: the menu's Toggle Sidebar, the tab last scrolled into
-	// view, and a drag of its edge, from the width it began at.
-	sidebarMenuItem *mygo.MenuItem
-	revealed        *Tab
-	edgeDrag        bool
-	edgeFrom        float32
-	edgeMoved       float32
+	// The workspace's popover, the field that renames it, Close
+	// Session's question, and the palette listing the workspaces.
+	wsOpen          bool
+	wsRenaming      bool
+	wsRenameText    string
+	wsRenameFocus   bool
+	wsConfirm       bool
+	paletteSessions bool
+
+	// The sidebar: the tab last scrolled into view, and a drag of its
+	// edge, from the width it began at.
+	revealed  *Tab
+	edgeDrag  bool
+	edgeFrom  float32
+	edgeMoved float32
 
 	// posted are changes to make in the next frame, from terminals of a
 	// view without a window, as in tests.
@@ -187,7 +205,7 @@ func (t *Tab) setFocus(p *Pane) {
 		return
 	}
 	t.Focus = p
-	p.attention = false
+	p.see()
 	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
 	t.recent = append(t.recent, p)
 }
@@ -514,6 +532,9 @@ func (a *App) removeTab(t *Tab) {
 	}
 	if len(a.tabs) == 0 {
 		a.changed()
+		if a.emptied() {
+			return
+		}
 		a.save()
 		if a.win != nil {
 			a.win.Close()
@@ -545,7 +566,7 @@ func (a *App) selectTab(i int) {
 	a.active = i
 	t := a.tabs[i]
 	if t.Focus != nil {
-		t.Focus.attention = false
+		t.Focus.see()
 	}
 	a.focusReq = t.Focus
 	a.changed()
@@ -805,7 +826,15 @@ type savedNode struct {
 }
 
 func (a *App) snapshot() savedLayout {
-	l := savedLayout{Active: a.active}
+	l := savedLayout{Active: a.active, Tabs: []savedTab{}}
+	for _, t := range a.tabs {
+		l.Tabs = append(l.Tabs, a.savedTab(t))
+	}
+	return l
+}
+
+// savedTab is a tab as the layout keeps it.
+func (a *App) savedTab(t *Tab) savedTab {
 	var save func(n *Node) *savedNode
 	save = func(n *Node) *savedNode {
 		if p := n.Pane; p != nil {
@@ -823,42 +852,31 @@ func (a *App) snapshot() savedLayout {
 		}
 		return &savedNode{Vertical: n.Vertical, Ratio: n.Ratio, A: save(n.A), B: save(n.B)}
 	}
-	for _, t := range a.tabs {
-		st := savedTab{Name: t.Name, Root: save(t.Root), Zoom: t.Zoom != nil}
-		st.Focus = max(slices.Index(t.panes(), t.Focus), 0)
-		l.Tabs = append(l.Tabs, st)
-	}
-	return l
+	st := savedTab{Name: t.Name, Root: save(t.Root), Zoom: t.Zoom != nil}
+	st.Focus = max(slices.Index(t.panes(), t.Focus), 0)
+	return st
 }
 
 // changed notes that the layout changed, to save it soon.
 func (a *App) changed() { a.saveDue = true }
 
-// save sends the layout to the server, which keeps it on disk.
+// save sends the layout of every workspace to the server, which keeps it
+// on disk.
 func (a *App) save() {
 	a.saveDue = false
-	if a.client == nil {
-		return
-	}
-	b, err := json.Marshal(a.snapshot())
-	if err != nil || string(b) == a.lastSnapshot {
-		return
-	}
-	a.lastSnapshot = string(b)
 	a.lastSave = time.Now()
-	c := a.client
-	go c.SetLayout(b)
+	if a.st != nil {
+		a.st.save()
+	}
 }
 
-// restore opens the tabs of the saved layout, attaching to the sessions
+// restore opens the tabs of a saved layout, attaching to the sessions
 // the server still has and starting new ones in place of those it lost.
-func (a *App) restore() bool {
-	raw, err := a.client.Layout()
-	if err != nil || len(raw) == 0 {
-		return false
-	}
-	var l savedLayout
-	if json.Unmarshal(raw, &l) != nil || len(l.Tabs) == 0 {
+// With others, sessions of this machine that neither the layout nor
+// others name get tabs too, rather than running unseen. It reports
+// whether it opened a tab.
+func (a *App) restore(l savedLayout, others map[string]bool) bool {
+	if a.client == nil || len(l.Tabs) == 0 && others == nil {
 		return false
 	}
 	live := map[string]rex.SessionInfo{}
@@ -933,10 +951,10 @@ func (a *App) restore() bool {
 		}
 		a.tabs = append(a.tabs, t)
 	}
-	// Sessions no tab shows, as those of another window that crashed,
-	// get a tab of their own rather than running unseen.
+	// Sessions no tab shows, as those of an app that crashed, get a tab
+	// of their own.
 	for _, in := range sortedInfos(live) {
-		if !used[in.ID] {
+		if others != nil && !used[in.ID] && !others[in.ID] {
 			a.tabs = append(a.tabs, a.sessionTab(nil, in))
 		}
 	}
@@ -977,9 +995,12 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 	defer tick.Stop()
 	for {
 		select {
+		case <-a.stop:
+			return
 		case <-client.Closed():
 			win.Update(func() {
-				if !a.quitting {
+				// Not once the window took a new connection.
+				if !a.quitting && a.client == client {
 					a.errMsg = locales.Messages.ErrorConnectionLost
 				}
 			})
@@ -1026,14 +1047,22 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 					}
 				}(p.stream)
 			}
+			seen := ti == a.active && t.Focus == p && a.focusedWin
+			if seen {
+				p.see()
+			} else if r := entered(was, in); r != nil && time.Since(p.notified) > 10*time.Second {
+				p.notified = time.Now()
+				a.notifyStatus(h, t, p, r)
+			}
 			// A program that ran a while and finished out of sight
-			// asks for attention.
+			// asks for attention. One that reports its status was
+			// notified of it.
 			if !was.Idle && was.Program != "" && in.Idle && was.Program != in.Program {
-				seen := ti == a.active && t.Focus == p && a.focusedWin
 				if !seen {
 					p.attention = true
 				}
-				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second {
+				statuses := len(was.Statuses) > 0 || len(in.Statuses) > 0
+				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second && !statuses {
 					prog := programOf(was.Program)
 					n := mygo.NewNotification(mygo.NotificationOptions{
 						Title: locales.NotifyFinished(prog.Name),
@@ -1050,6 +1079,70 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 	if a.saveDue && time.Since(a.lastSave) > time.Second {
 		a.save()
 	}
+}
+
+// see marks what the pane shows as seen: its attention, and the done and
+// error records of its program.
+func (p *Pane) see() {
+	p.attention = false
+	for _, r := range p.info.Statuses {
+		if r.Updated.After(p.seen) {
+			p.seen = r.Updated
+		}
+	}
+}
+
+// status is the record of the pane's program that most needs the user,
+// nil for none.
+func (p *Pane) status() *rex.ProgramStatus { return rex.MostUrgent(p.info.Statuses, p.seen) }
+
+// entered returns the most urgent record that went blocked, done or error
+// between two infos of a session, nil for none. An info of a pane not
+// polled yet has no output: its records are not news.
+func entered(was, in rex.SessionInfo) *rex.ProgramStatus {
+	if was.LastOutput.IsZero() {
+		return nil
+	}
+	var news []rex.ProgramStatus
+	for _, r := range in.Statuses {
+		if rex.StatusRank(r.State) < rex.StatusRank("done") {
+			continue
+		}
+		i := slices.IndexFunc(was.Statuses, func(o rex.ProgramStatus) bool { return o.ID == r.ID })
+		if i < 0 || was.Statuses[i].State != r.State {
+			news = append(news, r)
+		}
+	}
+	return rex.MostUrgent(news, time.Time{})
+}
+
+// notifyStatus tells, with a notification, that a program of pane p, on
+// host h, reported r.
+func (a *App) notifyStatus(h *hostConn, t *Tab, p *Pane, r *rex.ProgramStatus) {
+	name, _ := p.label()
+	prog := r.App
+	if prog == "" {
+		prog = name
+	}
+	title := locales.NotifyFinished(prog)
+	switch r.State {
+	case "blocked":
+		title = locales.NotifyBlocked(prog)
+	case "error":
+		title = locales.NotifyFailed(prog)
+	}
+	src := name
+	if tn, _ := t.label(); tn != name {
+		src = tn + " · " + name
+	}
+	if h != nil {
+		src = locales.NotifyOnHost(src, a.hostName(h))
+	}
+	body := src
+	if msg := cmp.Or(r.Msg, r.Title); msg != "" {
+		body = msg + "\n" + src
+	}
+	mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
 }
 
 // laterService queues a menu action without keeping a build context.

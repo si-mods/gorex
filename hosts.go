@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/egoist/mygo"
+
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -297,6 +299,16 @@ func (l *failureLog) log(name string, why func() string) {
 // main thread, drawing the windows again. Call it on the main thread.
 func (a *App) hostUpdate() func(func()) {
 	win, set := a.win, settingsUI.win
+	if st := a.st; st != nil && (win != nil || set != nil) {
+		// Every window may show the host's tabs, and this one may close
+		// before the others.
+		return func(fn func()) {
+			mygo.RunOnMain(func() {
+				fn()
+				st.redraw()
+			})
+		}
+	}
 	return func(fn func()) {
 		switch {
 		case win != nil:
@@ -422,7 +434,11 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 		for _, in := range infos {
 			byID[in.ID] = in
 		}
-		update(func() { a.apply(h, byID) })
+		update(func() {
+			for _, o := range a.peers() {
+				o.apply(h, byID)
+			}
+		})
 	}
 }
 
@@ -430,17 +446,31 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 // shows, as those of the host's own window or of another client while the
 // host shares them; not those closed here, which end. Call it on the main
 // thread.
+//
+// With windows of workspaces, the window focused last opens them, and a
+// session shows already when a tab of any workspace has it, shown in a
+// window or not.
 func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo) {
 	// A list on its way as the host was removed, or the window closed.
 	if a.quitting || !slices.Contains(a.hosts, h) {
 		return
 	}
+	if st := a.st; st != nil && (len(st.apps) == 0 || st.apps[0] != a) {
+		return
+	}
 	shown := map[string]bool{}
-	for _, t := range a.tabs {
-		for _, p := range t.panes() {
-			if p.host == h {
-				shown[p.SID] = true
+	for _, o := range a.peers() {
+		for _, t := range o.tabs {
+			for _, p := range t.panes() {
+				if p.host == h {
+					shown[p.SID] = true
+				}
 			}
+		}
+	}
+	if a.st != nil {
+		for sid := range a.st.hostSIDs(h) {
+			shown[sid] = true
 		}
 	}
 	h.mu.Lock()
@@ -500,6 +530,26 @@ func (a *App) loadHosts() {
 		a.hosts = append(a.hosts, h)
 		a.startHost(h)
 	}
+	a.syncHosts()
+}
+
+// peers are the windows of a's store, a alone without one.
+func (a *App) peers() []*App {
+	if a.st == nil {
+		return []*App{a}
+	}
+	return a.st.apps
+}
+
+// syncHosts gives every window the hosts a has: they share them.
+func (a *App) syncHosts() {
+	if a.st == nil {
+		return
+	}
+	a.st.hosts, a.st.hostsUp = a.hosts, true
+	for _, o := range a.st.apps {
+		o.hosts = a.hosts
+	}
 }
 
 func (a *App) stopHosts() {
@@ -508,9 +558,15 @@ func (a *App) stopHosts() {
 	}
 }
 
+// saveHosts writes the app's hosts: the store's, which every window
+// shares, whichever window saves them, open or closed since.
 func (a *App) saveHosts() error {
-	saved := make([]savedHost, len(a.hosts))
-	for i, h := range a.hosts {
+	hosts := a.hosts
+	if a.st != nil {
+		hosts = a.st.hosts
+	}
+	saved := make([]savedHost, len(hosts))
+	for i, h := range hosts {
 		saved[i] = h.saved()
 	}
 	err := saveHosts(saved)
@@ -523,34 +579,39 @@ func (a *App) saveHosts() error {
 // addHost saves a host and connects to it.
 func (a *App) addHost(s savedHost) *hostConn {
 	h := newHostConn(s)
-	a.hosts = append(a.hosts, h)
+	a.hosts = append(slices.Clone(a.hosts), h)
+	a.syncHosts()
 	a.saveHosts()
 	a.startHost(h)
 	return h
 }
 
-// removeHost forgets a host and closes its panes in the window; its
-// sessions go on, on its server.
+// removeHost forgets a host and closes its panes in the windows; its
+// sessions go on, on its server. The workspaces no window shows drop
+// theirs as they show.
 func (a *App) removeHost(h *hostConn) {
 	if !slices.Contains(a.hosts, h) {
 		return
 	}
-	// The window keeps a tab, as it would close with its last.
-	if len(a.tabsOn(h)) == len(a.tabs) {
-		home, _ := os.UserHomeDir()
-		a.newTabOn(nil, home)
-	}
-	for _, t := range slices.Clone(a.tabs) {
-		for _, p := range t.panes() {
-			if p.host == h {
-				a.dropPane(p, false)
+	for _, o := range a.peers() {
+		// The window keeps a tab, as it would close with its last.
+		if len(o.tabsOn(h)) == len(o.tabs) {
+			home, _ := os.UserHomeDir()
+			o.newTabOn(nil, home)
+		}
+		for _, t := range slices.Clone(o.tabs) {
+			for _, p := range t.panes() {
+				if p.host == h {
+					o.dropPane(p, false)
+				}
 			}
 		}
+		o.changed()
 	}
-	a.hosts = slices.DeleteFunc(a.hosts, func(o *hostConn) bool { return o == h })
+	a.hosts = slices.DeleteFunc(slices.Clone(a.hosts), func(o *hostConn) bool { return o == h })
+	a.syncHosts()
 	h.close()
 	a.saveHosts()
-	a.changed()
 }
 
 // host is the host of a tab's panes, nil for this machine: a tab's panes
