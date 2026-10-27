@@ -31,7 +31,19 @@ type Client struct {
 	// it closed the connection.
 	refused string
 	closed  chan struct{}
+
+	// keepalive asks the server to keep the connection alive (Hello);
+	// connID is its id there once it does, and attached the connections
+	// attached through it, which close with it, as the server closes them.
+	keepalive bool
+	connID    string
+	attached  map[net.Conn]struct{}
+	lost      bool // the attached were closed
+	pinging   sync.Once
 }
+
+// callTimeout is how long a request waits for its answer.
+var callTimeout = newDuration(15 * time.Second)
 
 // Connect connects to the server, starting one in the background when
 // none runs.
@@ -59,6 +71,17 @@ func ConnectSocket(path string) (*Client, error) {
 		return nil, err
 	}
 	return newClient(conn, dial), nil
+}
+
+// ConnectSocketKeepalive is ConnectSocket for a socket that leads to a
+// remote server, as a proxy's: the connection is kept alive as
+// ConnectRemote's is.
+func ConnectSocketKeepalive(path string) (*Client, error) {
+	c, err := ConnectSocket(path)
+	if c != nil {
+		c.keepalive = true
+	}
+	return c, err
 }
 
 // dialUntil connects to the server, trying again until deadline.
@@ -161,6 +184,7 @@ func (c *Client) read() {
 	for {
 		line, err := r.ReadBytes('\n')
 		if err != nil {
+			c.closeAttached()
 			c.mu.Lock()
 			c.err = err
 			msg := "connection to the server lost"
@@ -192,8 +216,69 @@ func (c *Client) read() {
 	}
 }
 
+// closeAttached closes the connections attached through a connection
+// kept alive, as it is lost: the server closes them too.
+func (c *Client) closeAttached() {
+	c.mu.Lock()
+	conns := c.attached
+	c.attached, c.lost = nil, true
+	c.mu.Unlock()
+	for conn := range conns {
+		conn.Close()
+	}
+}
+
+// track keeps conn, to attach through the connection kept alive, if it
+// is, and returns that connection's id; false once it is lost.
+func (c *Client) track(conn net.Conn) (string, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.connID == "" {
+		return "", true
+	}
+	if c.lost || c.err != nil {
+		return "", false
+	}
+	if c.attached == nil {
+		c.attached = map[net.Conn]struct{}{}
+	}
+	c.attached[conn] = struct{}{}
+	return c.connID, true
+}
+
+func (c *Client) untrack(conn net.Conn) {
+	c.mu.Lock()
+	delete(c.attached, conn)
+	c.mu.Unlock()
+}
+
+// ping asks the server every interval, so that it keeps the connection,
+// and drops the connection once it does not answer in time: the server,
+// or the network to it, is gone.
+func (c *Client) ping(every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-c.closed:
+			return
+		case <-t.C:
+		}
+		if err := c.callWithin(Request{Op: "ping"}, nil, every); err != nil {
+			c.conn.Close()
+			c.closeAttached()
+			return
+		}
+	}
+}
+
 // call sends a request and decodes the response's data into out.
 func (c *Client) call(req Request, out any) error {
+	return c.callWithin(req, out, callTimeout.get())
+}
+
+// callWithin is call, waiting at most timeout for the answer.
+func (c *Client) callWithin(req Request, out any, timeout time.Duration) error {
 	ch := make(chan Response, 1)
 	c.mu.Lock()
 	if c.err != nil {
@@ -218,7 +303,7 @@ func (c *Client) call(req Request, out any) error {
 	var res Response
 	select {
 	case res = <-ch:
-	case <-time.After(15 * time.Second):
+	case <-time.After(timeout):
 		c.mu.Lock()
 		delete(c.pending, req.ID)
 		c.mu.Unlock()
@@ -233,8 +318,19 @@ func (c *Client) call(req Request, out any) error {
 	return nil
 }
 
+// Hello greets the server. A client that keeps its connection alive
+// starts pinging once the server says it keeps it so; an older server
+// does not, and it goes on as before.
 func (c *Client) Hello() (h Hello, err error) {
-	err = c.call(Request{Op: "hello"}, &h)
+	err = c.call(Request{Op: "hello", Keepalive: c.keepalive}, &h)
+	if err == nil && c.keepalive && h.Keepalive > 0 && h.Conn != "" {
+		c.pinging.Do(func() {
+			c.mu.Lock()
+			c.connID = h.Conn
+			c.mu.Unlock()
+			go c.ping(max(h.Keepalive/3, 10*time.Millisecond))
+		})
+	}
 	return
 }
 
@@ -349,6 +445,7 @@ func (c *Client) RegenerateRemote() error { return c.call(Request{Op: "remote.re
 
 func (c *Client) Close() error {
 	err := c.conn.Close()
+	c.closeAttached()
 	if c.closer != nil {
 		c.closer.Close()
 	}
@@ -366,6 +463,7 @@ type Stream struct {
 	mu       sync.Mutex
 	cond     *sync.Cond
 	conn     net.Conn
+	dialed   net.Conn // attaching
 	err      error
 	closed   bool
 	// cols and rows are the terminal's size; sentCols and sentRows the
@@ -406,6 +504,18 @@ func (s *Stream) attachOnce() {
 	conn, err := s.c.dial()
 	var cols, rows int
 	if err == nil {
+		// Closed with the client's connection, or the stream, while it
+		// attaches too: a network gone answers nothing.
+		connID, ok := s.c.track(conn)
+		s.mu.Lock()
+		s.dialed = conn
+		closed := s.closed
+		s.mu.Unlock()
+		if !ok {
+			err = errors.New("rex: connection to the server lost")
+		} else if closed {
+			err = io.EOF
+		}
 		// The size of now, not of before the dial, which may be slow: the
 		// server gives it to the session before it answers.
 		s.sizeMu.Lock()
@@ -413,19 +523,26 @@ func (s *Stream) attachOnce() {
 		s.mu.Lock()
 		cols, rows = s.cols, s.rows
 		s.mu.Unlock()
-		b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows})
-		if _, err = conn.Write(append(b, '\n')); err == nil {
-			err = readOK(conn)
+		if err == nil {
+			conn.SetDeadline(time.Now().Add(callTimeout.get()))
+			b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows, Conn: connID})
+			if _, err = conn.Write(append(b, '\n')); err == nil {
+				err = readOK(conn)
+			}
+			conn.SetDeadline(time.Time{})
 		}
 		if err != nil {
 			conn.Close()
+			s.c.untrack(conn)
 		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.dialed = nil
 	if s.closed {
 		if err == nil {
 			conn.Close()
+			s.c.untrack(conn)
 		}
 		return
 	}
@@ -529,10 +646,14 @@ func (s *Stream) Resize(cols, rows int) error {
 func (s *Stream) Close() error {
 	s.mu.Lock()
 	s.closed = true
-	conn := s.conn
+	conn, dialed := s.conn, s.dialed
 	s.cond.Broadcast()
 	s.mu.Unlock()
+	if dialed != nil {
+		dialed.Close()
+	}
 	if conn != nil {
+		s.c.untrack(conn)
 		return conn.Close()
 	}
 	return nil

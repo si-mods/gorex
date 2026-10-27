@@ -23,6 +23,7 @@ import (
 	"unicode"
 
 	"github.com/tailscale/tailcat"
+	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
 )
@@ -232,7 +233,7 @@ var remoteListen = func(ctx context.Context, ts *tailcat.Server, region int) (ne
 // attach to sessions.
 func remoteAllowed(op string) bool {
 	switch op {
-	case "hello", "list", "create", "kill", "resize":
+	case "hello", "ping", "list", "create", "kill", "resize":
 		return true
 	}
 	return false
@@ -295,6 +296,7 @@ func (s *Server) remoteStopLocked() func() {
 // remoteStartLocked starts listening in the background, retrying while
 // it fails.
 func (s *Server) remoteStartLocked() {
+	tuneKeepalive()
 	r := &s.rem
 	ctx, cancel := context.WithCancel(context.Background())
 	r.gen++
@@ -373,6 +375,37 @@ func (s *Server) remoteStartLocked() {
 			}
 		}
 	}()
+}
+
+// The TCP keepalive of the remote connections: probes after
+// netstackIdle of silence, every netstackInterval, nine of them unanswered
+// before the connection drops, in about two minutes. Netstack's defaults,
+// two hours and 75 seconds, kept the connections of a client whose
+// network dropped, and the sessions they attached, for over two hours.
+// It works whatever the client, an older one included, whose own netstack
+// answers the probes while it runs, and resets the connections it forgot.
+const (
+	netstackIdle     = "30s"
+	netstackInterval = "10s"
+)
+
+var tuneOnce sync.Once
+
+// tuneKeepalive sets the TCP keepalive of the connections tailcat
+// accepts, unless the environment set it; out of the environment the
+// sessions get.
+func tuneKeepalive() {
+	tuneOnce.Do(func() {
+		for k, v := range map[string]string{
+			"TS_NETSTACK_KEEPALIVE_IDLE":     netstackIdle,
+			"TS_NETSTACK_KEEPALIVE_INTERVAL": netstackInterval,
+		} {
+			if _, set := os.LookupEnv(k); !set {
+				envknob.Setenv(k, v)
+				os.Unsetenv(k)
+			}
+		}
+	})
 }
 
 // remoteRetry is how long a failed listener waits before it starts again.
@@ -735,5 +768,6 @@ func ConnectRemote(ctx context.Context, addr string) (*Client, error) {
 		return tc.DialTCPPort(ctx, RemotePort)
 	})
 	c.closer = tc
+	c.keepalive = true
 	return c, nil
 }

@@ -43,6 +43,81 @@ type Server struct {
 	// takes it alone; acceptMu holds Accept while an upgrade stops it.
 	ops      sync.RWMutex
 	acceptMu sync.Mutex
+	// kept are the control connections kept alive (Request.Keepalive), by
+	// Hello.Conn, with the connections attached through them.
+	kept map[string]*keptConn
+}
+
+// keptConn is a control connection kept alive, and the connections
+// attached through it, which close with it.
+type keptConn struct {
+	id       string
+	mu       sync.Mutex
+	attached map[net.Conn]struct{}
+	gone     bool
+}
+
+// keepaliveTimeout is how long a control connection kept alive may send
+// nothing before the server drops it, and the sessions attached through
+// it: a peer gone without closing them, over a network that dropped or
+// a NAT that forgot it, leaves them open, and only silence tells.
+var keepaliveTimeout = newDuration(30 * time.Second)
+
+// writeTimeout is how long a remote connection may take to take any of
+// what the server writes it before the server drops it: a peer gone
+// takes nothing.
+var writeTimeout = newDuration(30 * time.Second)
+
+// keep keeps a control connection alive, under a new id.
+func (s *Server) keep() *keptConn {
+	k := &keptConn{id: newID(), attached: map[net.Conn]struct{}{}}
+	s.mu.Lock()
+	if s.kept == nil {
+		s.kept = map[string]*keptConn{}
+	}
+	s.kept[k.id] = k
+	s.mu.Unlock()
+	return k
+}
+
+// unkeep forgets a control connection gone, and closes the connections
+// attached through it.
+func (s *Server) unkeep(k *keptConn) {
+	s.mu.Lock()
+	delete(s.kept, k.id)
+	s.mu.Unlock()
+	k.mu.Lock()
+	k.gone = true
+	conns := k.attached
+	k.attached = nil
+	k.mu.Unlock()
+	for c := range conns {
+		c.Close()
+	}
+}
+
+// bind attaches conn through the control connection id; false when that
+// is gone.
+func (s *Server) bind(id string, conn net.Conn) (*keptConn, bool) {
+	s.mu.Lock()
+	k := s.kept[id]
+	s.mu.Unlock()
+	if k == nil {
+		return nil, false
+	}
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.gone {
+		return nil, false
+	}
+	k.attached[conn] = struct{}{}
+	return k, true
+}
+
+func (k *keptConn) unbind(conn net.Conn) {
+	k.mu.Lock()
+	delete(k.attached, conn)
+	k.mu.Unlock()
 }
 
 // idleTimeout is how long a server with no sessions and no app waits
@@ -174,6 +249,15 @@ func (s *Server) handle(conn net.Conn, remote bool) {
 			conn.Close()
 			return
 		}
+		if a.Conn != "" {
+			k, ok := s.bind(a.Conn, conn)
+			if !ok {
+				conn.Write([]byte(`{"error":"` + errConnGone + `"}` + "\n"))
+				conn.Close()
+				return
+			}
+			defer k.unbind(conn)
+		}
 		// The session takes the window's size before the answer, after
 		// which the client may resize it on its control connection: that
 		// size must not be overwritten by this older one.
@@ -186,7 +270,7 @@ func (s *Server) handle(conn net.Conn, remote bool) {
 			b, _ := r.Peek(n)
 			ss.input(b)
 		}
-		ss.attach(conn)
+		ss.attach(conn, remote)
 		return
 	}
 	s.control(conn, r, first, remote)
@@ -204,11 +288,22 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, remote bo
 		s.mu.Unlock()
 		conn.Close()
 	}()
+	var kept *keptConn
+	defer func() {
+		if kept != nil {
+			s.unkeep(kept)
+		}
+	}()
 	var wmu sync.Mutex
 	reply := func(res Response) {
 		b, _ := json.Marshal(res)
 		wmu.Lock()
-		conn.Write(append(b, '\n'))
+		if remote {
+			conn.SetWriteDeadline(time.Now().Add(writeTimeout.get()))
+		}
+		if _, err := conn.Write(append(b, '\n')); err != nil && remote {
+			conn.Close() // gone, or as good as
+		}
 		wmu.Unlock()
 	}
 	kills := make(chan struct{}, maxKills)
@@ -216,6 +311,9 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, remote bo
 	for {
 		var req Request
 		if err := json.Unmarshal(line, &req); err == nil {
+			if req.Op == "hello" && req.Keepalive && kept == nil {
+				kept = s.keep()
+			}
 			// Kills wait for the session to end: answer them aside, a
 			// few at a time; the others wait their turn.
 			if req.Op == "kill" {
@@ -225,11 +323,14 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, remote bo
 					if killHook != nil {
 						killHook()
 					}
-					reply(s.request(req, remote))
+					reply(s.request(req, remote, kept))
 				}()
 			} else {
-				reply(s.request(req, remote))
+				reply(s.request(req, remote, kept))
 			}
+		}
+		if kept != nil {
+			conn.SetReadDeadline(time.Now().Add(keepaliveTimeout.get()))
 		}
 		var err error
 		line, err = readLine(r)
@@ -250,6 +351,10 @@ const (
 )
 
 var errLineTooLong = errors.New("rex: the request is too long")
+
+// errConnGone answers an attach through a control connection that is
+// gone: the client lost it too, or is about to.
+const errConnGone = "rex: the connection attached through is gone"
 
 // killHook, when set, runs in each kill before it starts: for tests.
 var killHook func()
@@ -280,7 +385,7 @@ func refuseLine(conn net.Conn, err error) {
 	}
 }
 
-func (s *Server) request(req Request, remote bool) Response {
+func (s *Server) request(req Request, remote bool, kept *keptConn) Response {
 	var data any
 	var err error
 	if remote && req.Op == "remote.pair" {
@@ -289,7 +394,7 @@ func (s *Server) request(req Request, remote bool) Response {
 		log.Printf("rex: denied %q to a remote connection", req.Op)
 		err = fmt.Errorf("%s is not allowed remotely", req.Op)
 	} else {
-		data, err = s.do(req)
+		data, err = s.do(req, kept)
 	}
 	res := Response{ID: req.ID}
 	if err != nil {
@@ -309,7 +414,9 @@ func (s *Server) session(id string) (*session, error) {
 	return nil, fmt.Errorf("no session %q", id)
 }
 
-func (s *Server) do(req Request) (any, error) {
+// do serves a request of a control connection, kept alive when kept is
+// not nil.
+func (s *Server) do(req Request, kept *keptConn) (any, error) {
 	if strings.HasPrefix(req.Op, "remote.") {
 		return s.remoteDo(req)
 	}
@@ -319,7 +426,13 @@ func (s *Server) do(req Request) (any, error) {
 		case <-s.hostDone:
 		case <-time.After(3 * time.Second):
 		}
-		return Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade}, nil
+		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade}
+		if kept != nil {
+			h.Keepalive, h.Conn = keepaliveTimeout.get(), kept.id
+		}
+		return h, nil
+	case "ping":
+		return nil, nil
 	case "list":
 		s.mu.Lock()
 		all := make([]*session, 0, len(s.order))

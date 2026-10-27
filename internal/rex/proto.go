@@ -34,6 +34,11 @@ type Request struct {
 	Remote *RemoteClient `json:"remote,omitempty"`
 	// Exe is the executable the server runs in its place on "upgrade".
 	Exe string `json:"exe,omitempty"`
+	// Keepalive, on "hello", asks the server to drop the connection once
+	// it has sent nothing for Hello.Keepalive, with the sessions attached
+	// through it (Attach.Conn): the client pings meanwhile. A server that
+	// does not know it ignores it, and answers no Hello.Keepalive.
+	Keepalive bool `json:"keepalive,omitempty"`
 }
 
 // RemoteClient is a client allowed to connect remotely: PublicKey is its
@@ -133,6 +138,11 @@ type Hello struct {
 	// Upgrade tells that the server can run another executable in its
 	// place, keeping its sessions (Client.Upgrade).
 	Upgrade bool `json:"upgrade,omitempty"`
+	// Keepalive answers a hello that asked for it: how long the server
+	// waits for a request of this connection ("ping" will do) before it
+	// drops it, and Conn names the connection for Attach.Conn.
+	Keepalive time.Duration `json:"keepalive,omitempty"`
+	Conn      string        `json:"conn,omitempty"`
 }
 
 // HostInfo describes the machine the server runs on.
@@ -155,6 +165,10 @@ type Attach struct {
 	SID  string `json:"sid"`
 	Cols int    `json:"cols"`
 	Rows int    `json:"rows"`
+	// Conn, when set, is the control connection (Hello.Conn) whose loss
+	// detaches this one too: a peer that vanished without closing it is
+	// noticed on the control connection, which pings.
+	Conn string `json:"conn,omitempty"`
 }
 
 // ServerMain runs the server when args, the program's arguments, ask
