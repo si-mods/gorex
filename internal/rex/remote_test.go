@@ -551,7 +551,7 @@ func TestShareSessions(t *testing.T) {
 	}
 	notShared := func(what string, err error) {
 		t.Helper()
-		if err == nil || !strings.Contains(err.Error(), "not shared") {
+		if err == nil || !strings.Contains(err.Error(), "not shared") || !NotShared(err) {
 			t.Errorf("%s: %v", what, err)
 		}
 	}

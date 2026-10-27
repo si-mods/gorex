@@ -215,7 +215,8 @@ func (h *hostConn) runKills(c *rex.Client) {
 	h.mu.Unlock()
 	var done []string
 	for _, sid := range kills {
-		if c.Kill(sid) == nil {
+		// A session the host does not share is not this machine's to end: forget it.
+		if err := c.Kill(sid); err == nil || rex.NotShared(err) {
 			done = append(done, sid)
 		}
 	}

@@ -426,6 +426,12 @@ func (s *Server) session(id string) (*session, error) {
 
 var errNotShared = errors.New("rex: that session is not shared with this machine: the host shares only the sessions each client opened")
 
+// NotShared reports whether err is the host refusing a session it does not share
+// with this client (the error arrives as text).
+func NotShared(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "that session is not shared with this machine")
+}
+
 // mayUse tells whether peer, a remote client's key or "" for a local
 // connection, may see and use ss: a local one always, a remote one the
 // sessions it created, and any while the server shares them.
