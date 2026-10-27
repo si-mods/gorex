@@ -65,6 +65,9 @@ Run `go test -count=1 ./...` and `go vet ./...`, plus `GOOS=windows go build ./.
 - Any command title with spaces replaced by `-`, case-insensitive: `new-tab`, `split-right`, `settings`.
 - `section NAME` opens a settings section. `remote …` drives the Remote page.
 - `feat/vertical-tabs` adds `tabs above|left|right` and `headers show|hide`.
+- Windows and sessions: one hook drives every window. `win N` makes the next lines target the Nth window by place (1 is StateKey `main`, 2 `main-2`…), `win 0` the one focused last (the default); an N out of range is logged and skipped. `shot`, `type`, `size`, `tab`, `close` and the command verbs (`new-window`, `new-session`, `next-session`, `move-tab-to-new-window`, `close-session`…) act on the target window.
+- `focus-win N` counts window N as focused last without taking the real focus. `session NAME` shows a session in the target window (or fronts the window showing it), `rename-session NAME` renames its session, `confirm` / `cancel` answer Close Session's question.
+- `state FILE` writes, atomically and from the UI thread, `{"pid", "windows": [{"index", "stateKey", "session": {"id", "name"}, "tabs": [labels], "activeTab" (from 1), "focused", "minimized"}], "sessions": [{"id", "name", "tabs", "window" (index, 0 when hidden)}]}`.
 
 Add a verb to `debug.go` when a state can't be reached otherwise, with a one-line comment in the existing style.
 
@@ -76,6 +79,8 @@ echo '{"tabPlacement":"left"}' > $D/settings.json   # optional starting settings
 GOREX_DIR=$D GOREX_DEBUG=$D go tool mygo dev &       # or the built app's binary
 printf 'appearance dark\nshot left-dark.png\n' > $D/do
 ```
+
+GoRex runs as a single instance, but a process with `GOREX_DIR` set takes no lock, so the run above never meets the user's app. To test the single-instance hand-over itself, leave `GOREX_DIR` unset and isolate the rest instead (on Windows `APPDATA`, `LOCALAPPDATA`, `TEMP` and `TMP`: the lock's socket is in the temp directory).
 
 Wait until the PNG exists, then read it with the Read tool and check it. Look at both light and dark, every placement or state the change touches, and a narrow window (`size 560 400`).
 
