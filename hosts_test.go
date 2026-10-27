@@ -627,12 +627,8 @@ func TestRestoreRemote(t *testing.T) {
 	sids := []string{rt.panes()[0].SID, rt.panes()[1].SID}
 	a.saveNow()
 	// The layout, plus a tab of a host forgotten since.
-	var l savedLayout
-	raw, _ := a.client.Layout()
-	json.Unmarshal(raw, &l)
+	l := savedWorkspaces(t, a.client).Sessions[0].savedLayout
 	l.Tabs = append(l.Tabs, savedTab{Root: &savedNode{SID: "x", Host: "gone"}})
-	raw, _ = json.Marshal(l)
-	a.client.SetLayout(raw)
 	for _, t := range a.tabs {
 		for _, p := range t.panes() {
 			p.term.Close()
@@ -643,7 +639,7 @@ func TestRestoreRemote(t *testing.T) {
 	b := &App{client: a.client}
 	b.loadHosts()
 	t.Cleanup(b.stopHosts)
-	if !b.restore() {
+	if !b.restore(l, nil) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 2 {
@@ -739,7 +735,7 @@ func TestAdoptHostSessions(t *testing.T) {
 	b := &App{client: a.client}
 	b.loadHosts()
 	t.Cleanup(b.stopHosts)
-	if !b.restore() {
+	if !b.restore(savedWorkspaces(t, a.client).Sessions[0].savedLayout, nil) {
 		t.Fatal("nothing restored")
 	}
 	tb := ui.NewTester(b.view, 1000, 620)

@@ -237,5 +237,22 @@
   "paneReconnecting": "正在重新连接 {host}…",
   "paneConnectionDropped": "连接已断开。GoRex 重新连接期间，会话会保持打开。",
   "paneStreamInterrupted": "终端数据流已中断，正在自动重新连接。",
-  "hostsPairRejected": "{host} 未批准本机：请求被拒绝，或配对窗口已关闭。请重试。"
+  "hostsPairRejected": "{host} 未批准本机：请求被拒绝，或配对窗口已关闭。请重试。",
+  "cmdNewWindow": "新建窗口",
+  "cmdNewSession": "新建会话",
+  "cmdChangeSession": "切换会话…",
+  "cmdNextSession": "下一个会话",
+  "cmdPreviousSession": "上一个会话",
+  "cmdRenameSession": "重命名会话…",
+  "cmdCloseSession": "关闭会话",
+  "cmdMoveTabToNewWindow": "将标签页移到新窗口",
+  "menuSession": "会话",
+  "sessionLabel": "会话 {name}",
+  "sessionListTitle": "会话",
+  "sessionTabs": "{n, plural, other {# 个标签页}}",
+  "sessionElsewhere": "在另一个窗口中",
+  "sessionPlaceholder": "切换到会话…",
+  "sessionCloseTitle": "关闭“{name}”？",
+  "sessionCloseBody": "{n, plural, other {它的 # 个终端将结束，其中运行的程序也会停止。}}",
+  "sessionCancel": "取消"
 }

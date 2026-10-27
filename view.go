@@ -2,7 +2,6 @@ package main
 
 import (
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -39,14 +38,14 @@ func (a *App) view(c *ui.Context) {
 	}
 	a.shortcuts(c)
 	a.palette(c, k)
+	a.workspaceConfirm(c, k)
 	if a.saveDue && time.Since(a.lastSave) > time.Second {
 		a.save()
 	}
 	// The window's title, which the Window menu and Mission Control show,
-	// is the active tab's.
-	if t := a.tab(); t != nil && a.win != nil {
-		name, detail := t.label()
-		if title := strings.TrimSpace(name + " " + detail); title != a.title {
+	// is the workspace's and the active tab's.
+	if a.tab() != nil && a.win != nil {
+		if title := a.windowTitle(); title != a.title {
 			a.title = title
 			a.win.SetTitle(title)
 		}
@@ -69,6 +68,7 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 	}
 	ui.Row(c).Height(titleH).Padding(0, max(bar.Right, 10), 0, left).Gap(14).AlignItems(ui.Center).DragWindow().Children(func() {
 		a.hostChip(c, k)
+		a.workspaceChip(c, k, false)
 		a.tabStrip(c, k)
 		// The title bar between the tabs and the buttons, which drags the
 		// window, and a double click on which zooms it.

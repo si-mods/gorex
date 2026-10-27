@@ -3,6 +3,7 @@ package main
 import (
 	"slices"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/locales"
@@ -62,13 +63,19 @@ func (a *App) toggleSidebar() {
 	}
 	prefs.SidebarHidden = !prefs.SidebarHidden
 	saveSettings()
+	for _, o := range a.peers() {
+		o.do(func() {})
+	}
 }
+
+// sidebarMenuItem is the menu's Toggle Sidebar.
+var sidebarMenuItem *mygo.MenuItem
 
 // syncSidebarItem enables the menu's Toggle Sidebar while the tabs are in
 // a sidebar.
 func (a *App) syncSidebarItem() {
-	if a.sidebarMenuItem != nil {
-		a.sidebarMenuItem.SetEnabled(prefs.TabPlacement != "")
+	if sidebarMenuItem != nil {
+		sidebarMenuItem.SetEnabled(prefs.TabPlacement != "")
 	}
 }
 
@@ -129,6 +136,7 @@ func (a *App) paneBar(c *ui.Context, k *colors, right, shown bool) {
 		}
 		if !shown {
 			a.hostChip(c, k)
+			a.workspaceChip(c, k, false)
 		}
 		ui.Spacer(c)
 		if !shown {
@@ -185,6 +193,9 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 				a.windowControls(c, k)
 			}
 		})
+		if a.ws != nil {
+			ui.Row(c).Shrink(0).Padding(0, 6, 4, 6).Children(func() { a.workspaceChip(c, k, true) })
+		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6, 6, 6).Children(func() {
 			tabs := slices.Clone(a.tabs)
 			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label(locales.TabListLabel()).Children(func() {

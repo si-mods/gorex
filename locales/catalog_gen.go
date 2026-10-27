@@ -3431,3 +3431,249 @@ func HostsPairRejected(host string) string { return In(i18n.Locale()).HostsPairR
 func (msgs Messages) HostsPairRejected(host string) string {
 	return Catalog.Format(msgs.locale, "hostsPairRejected", map[string]any{"host": host})
 }
+
+// CmdNewWindow says "New Window"
+// in the language the app shows.
+//
+// Command: open a new window, which shows a new session.
+func CmdNewWindow() string { return In(i18n.Locale()).CmdNewWindow() }
+
+// CmdNewWindow says "New Window"
+// in the language of msgs.
+//
+// Command: open a new window, which shows a new session.
+func (msgs Messages) CmdNewWindow() string {
+	return Catalog.Format(msgs.locale, "cmdNewWindow", nil)
+}
+
+// CmdNewSession says "New Session"
+// in the language the app shows.
+//
+// Command: show a new session, with one tab, in the window. A session is a
+// set of tabs, as in Rex.
+func CmdNewSession() string { return In(i18n.Locale()).CmdNewSession() }
+
+// CmdNewSession says "New Session"
+// in the language of msgs.
+//
+// Command: show a new session, with one tab, in the window. A session is a
+// set of tabs, as in Rex.
+func (msgs Messages) CmdNewSession() string {
+	return Catalog.Format(msgs.locale, "cmdNewSession", nil)
+}
+
+// CmdChangeSession says "Change Session…"
+// in the language the app shows.
+//
+// Command: open a list of the sessions, to show one in the window.
+func CmdChangeSession() string { return In(i18n.Locale()).CmdChangeSession() }
+
+// CmdChangeSession says "Change Session…"
+// in the language of msgs.
+//
+// Command: open a list of the sessions, to show one in the window.
+func (msgs Messages) CmdChangeSession() string {
+	return Catalog.Format(msgs.locale, "cmdChangeSession", nil)
+}
+
+// CmdNextSession says "Next Session"
+// in the language the app shows.
+//
+// Command: show the next session in the window.
+func CmdNextSession() string { return In(i18n.Locale()).CmdNextSession() }
+
+// CmdNextSession says "Next Session"
+// in the language of msgs.
+//
+// Command: show the next session in the window.
+func (msgs Messages) CmdNextSession() string {
+	return Catalog.Format(msgs.locale, "cmdNextSession", nil)
+}
+
+// CmdPreviousSession says "Previous Session"
+// in the language the app shows.
+//
+// Command: show the previous session in the window.
+func CmdPreviousSession() string { return In(i18n.Locale()).CmdPreviousSession() }
+
+// CmdPreviousSession says "Previous Session"
+// in the language of msgs.
+//
+// Command: show the previous session in the window.
+func (msgs Messages) CmdPreviousSession() string {
+	return Catalog.Format(msgs.locale, "cmdPreviousSession", nil)
+}
+
+// CmdRenameSession says "Rename Session…"
+// in the language the app shows.
+//
+// Command: rename the window's session.
+func CmdRenameSession() string { return In(i18n.Locale()).CmdRenameSession() }
+
+// CmdRenameSession says "Rename Session…"
+// in the language of msgs.
+//
+// Command: rename the window's session.
+func (msgs Messages) CmdRenameSession() string {
+	return Catalog.Format(msgs.locale, "cmdRenameSession", nil)
+}
+
+// CmdCloseSession says "Close Session"
+// in the language the app shows.
+//
+// Command: end the terminals of the window's session, after asking, and
+// forget it.
+func CmdCloseSession() string { return In(i18n.Locale()).CmdCloseSession() }
+
+// CmdCloseSession says "Close Session"
+// in the language of msgs.
+//
+// Command: end the terminals of the window's session, after asking, and
+// forget it.
+func (msgs Messages) CmdCloseSession() string {
+	return Catalog.Format(msgs.locale, "cmdCloseSession", nil)
+}
+
+// CmdMoveTabToNewWindow says "Move Tab to New Window"
+// in the language the app shows.
+//
+// Command: move the active tab to a new window, in a new session.
+func CmdMoveTabToNewWindow() string { return In(i18n.Locale()).CmdMoveTabToNewWindow() }
+
+// CmdMoveTabToNewWindow says "Move Tab to New Window"
+// in the language of msgs.
+//
+// Command: move the active tab to a new window, in a new session.
+func (msgs Messages) CmdMoveTabToNewWindow() string {
+	return Catalog.Format(msgs.locale, "cmdMoveTabToNewWindow", nil)
+}
+
+// MenuSession says "Session"
+// in the language the app shows.
+//
+// Title of the Session menu.
+func MenuSession() string { return In(i18n.Locale()).MenuSession() }
+
+// MenuSession says "Session"
+// in the language of msgs.
+//
+// Title of the Session menu.
+func (msgs Messages) MenuSession() string {
+	return Catalog.Format(msgs.locale, "menuSession", nil)
+}
+
+// SessionLabel says "Session {name}"
+// in the language the app shows.
+//
+// Accessibility label and tooltip of the title bar's session button. name
+// is the session's name, as icy-ridge.
+func SessionLabel(name string) string { return In(i18n.Locale()).SessionLabel(name) }
+
+// SessionLabel says "Session {name}"
+// in the language of msgs.
+//
+// Accessibility label and tooltip of the title bar's session button. name
+// is the session's name, as icy-ridge.
+func (msgs Messages) SessionLabel(name string) string {
+	return Catalog.Format(msgs.locale, "sessionLabel", map[string]any{"name": name})
+}
+
+// SessionListTitle says "Sessions"
+// in the language the app shows.
+//
+// Session popover: title over the list of sessions.
+func SessionListTitle() string { return In(i18n.Locale()).SessionListTitle() }
+
+// SessionListTitle says "Sessions"
+// in the language of msgs.
+//
+// Session popover: title over the list of sessions.
+func (msgs Messages) SessionListTitle() string {
+	return Catalog.Format(msgs.locale, "sessionListTitle", nil)
+}
+
+// SessionTabs says "{n, plural, one {# tab} other {# tabs}}"
+// in the language the app shows.
+//
+// Session popover and palette: how many tabs a session has.
+func SessionTabs(n int) string { return In(i18n.Locale()).SessionTabs(n) }
+
+// SessionTabs says "{n, plural, one {# tab} other {# tabs}}"
+// in the language of msgs.
+//
+// Session popover and palette: how many tabs a session has.
+func (msgs Messages) SessionTabs(n int) string {
+	return Catalog.Format(msgs.locale, "sessionTabs", map[string]any{"n": n})
+}
+
+// SessionElsewhere says "In another window"
+// in the language the app shows.
+//
+// Session popover and palette: the session shows in another window, which
+// choosing it focuses.
+func SessionElsewhere() string { return In(i18n.Locale()).SessionElsewhere() }
+
+// SessionElsewhere says "In another window"
+// in the language of msgs.
+//
+// Session popover and palette: the session shows in another window, which
+// choosing it focuses.
+func (msgs Messages) SessionElsewhere() string {
+	return Catalog.Format(msgs.locale, "sessionElsewhere", nil)
+}
+
+// SessionPlaceholder says "Change to a session…"
+// in the language the app shows.
+//
+// Placeholder of the command palette listing the sessions.
+func SessionPlaceholder() string { return In(i18n.Locale()).SessionPlaceholder() }
+
+// SessionPlaceholder says "Change to a session…"
+// in the language of msgs.
+//
+// Placeholder of the command palette listing the sessions.
+func (msgs Messages) SessionPlaceholder() string {
+	return Catalog.Format(msgs.locale, "sessionPlaceholder", nil)
+}
+
+// SessionCloseTitle says "Close “{name}”?"
+// in the language the app shows.
+//
+// Title of the question before closing a session.
+func SessionCloseTitle(name string) string { return In(i18n.Locale()).SessionCloseTitle(name) }
+
+// SessionCloseTitle says "Close “{name}”?"
+// in the language of msgs.
+//
+// Title of the question before closing a session.
+func (msgs Messages) SessionCloseTitle(name string) string {
+	return Catalog.Format(msgs.locale, "sessionCloseTitle", map[string]any{"name": name})
+}
+
+// SessionCloseBody says "{n, plural, one {Its terminal ends, and the program running in it.} other {Its # terminals end, and the programs runn…"
+// in the language the app shows.
+//
+// Body of the question before closing a session: what closing it ends.
+func SessionCloseBody(n int) string { return In(i18n.Locale()).SessionCloseBody(n) }
+
+// SessionCloseBody says "{n, plural, one {Its terminal ends, and the program running in it.} other {Its # terminals end, and the programs runn…"
+// in the language of msgs.
+//
+// Body of the question before closing a session: what closing it ends.
+func (msgs Messages) SessionCloseBody(n int) string {
+	return Catalog.Format(msgs.locale, "sessionCloseBody", map[string]any{"n": n})
+}
+
+// SessionCancel says "Cancel"
+// in the language the app shows.
+//
+// Button of the question before closing a session: keep it.
+func SessionCancel() string { return In(i18n.Locale()).SessionCancel() }
+
+// SessionCancel says "Cancel"
+// in the language of msgs.
+//
+// Button of the question before closing a session: keep it.
+func (msgs Messages) SessionCancel() string {
+	return Catalog.Format(msgs.locale, "sessionCancel", nil)
+}
