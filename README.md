@@ -207,6 +207,22 @@ What to know before turning it on:
 - Every connection is limited: a line of requests of at most 1 MiB, a
   terminal of 1 to 1000 columns and rows, and 8 kills at once.
 
+### The coordinator
+
+Pairing every machine with every other does not scale, so a
+coordinator can turn remote access into a network, the way Tailscale
+does: each machine joins **once** with a network key held by a small
+always-on service (`gcoord`, see docs/coord.md), which keeps the
+directory of members and their addresses. Every member then trusts and
+finds every other member through it, without pairing windows or
+addresses copied by hand; the terminal traffic itself still goes peer
+to peer over tailcat, and the coordinator down does not break machines
+that already know each other. Whoever holds the network key may run
+commands on every machine in it, so it is treated like the addresses
+themselves: never logged, never written anywhere wider than the
+member's own state. The coordinator service is ready; the app joining
+and following a network is what comes next.
+
 ### Remote hosts
 
 Settings › Remote Hosts connects this machine to other machines' session
@@ -330,6 +346,7 @@ its top included.
 | `settingsview.go`, `remoteview.go` | the Settings window, and its Remote page |
 | `locales` | the messages of the interface, `en.json` and `zh-Hans.json`, and `catalog_gen.go` (written by `go tool mygo generate`; commit it with the catalogs) |
 | `tools/remotectl` | runs and probes the session server without the app: allow, enable, probe over tailcat |
+| `internal/coord`, `tools/gcoord` | the network coordinator, a mini control plane members join once instead of pairing machine by machine (docs/coord.md) |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 | `internal/control`, `tools/rootshell` | `GoRex control`, the bridge rootshell drives as herdr, and the `herdr` shim that runs it |
