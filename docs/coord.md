@@ -89,13 +89,21 @@ monitoring; no names, no keys, no addresses.
 
 The revision is a counter that grows on every directory change.
 
-## Client (GoRex side, later PRs)
+## Client (GoRex side)
 
-`internal/coord` also builds the client: a `Client` with the join URL
-and the network key that speaks the protocol above over the pinned TLS
-connection. GoRex keeps the network key beside the rest of the remote
-state (`remote.json`, 0600, never logged), joins once, then polls
-`/v1/members` in the background and mirrors the directory into two
-places: the allowlist (`remote.json`) and the remote hosts
-(`hosts.json`). The pairing window, `remote.pair` and the fingerprint
-flow go away for machines in a network.
+`internal/coordproto` builds the client both sides share: a `Client`
+with the join URL and the network key that speaks the protocol above
+over the pinned TLS connection. The session server (`internal/rex`)
+keeps the network beside the rest of the remote state (`remote.json`,
+0600, never logged), joins once the settings say to (`remote.join`,
+local socket only) or `remotectl join URL KEY [NAME]` does, then polls
+`/v1/members` in the background, about every half minute with jitter,
+and mirrors the directory into two places: the members serve beside
+the allowlist (a member's connections drop when it goes from the
+directory, exactly as a revoke's), and the app opens them as remote
+hosts of their own (`hosts.json` marks them `network`, so they come
+and go with the directory and Remove leaves them alone). A regenerate
+changes the tailcat address, and the next round rejoins with it. The
+join URL and the network key live in `remote.json`; the status shows
+the coordinator as its host, never the URL. Pairing stays for machines
+that run no coordinator; a machine in a network never needs it.

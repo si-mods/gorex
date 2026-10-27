@@ -8,8 +8,11 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"gorex/internal/coordproto"
 
 	"tailscale.com/types/key"
 )
@@ -43,12 +46,12 @@ func testNetwork(t *testing.T) (joinURL, networkKey, dir string) {
 	srv := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go srv.Serve(tlsLn)
 	t.Cleanup(func() { srv.Close() })
-	return JoinURL(tlsLn.Addr().String(), fingerprint), networkKey, dir
+	return coordproto.JoinURL(tlsLn.Addr().String(), fingerprint), networkKey, dir
 }
 
-func testClient(t *testing.T, joinURL, networkKey string) *Client {
+func testClient(t *testing.T, joinURL, networkKey string) *coordproto.Client {
 	t.Helper()
-	c, err := NewClient(joinURL, networkKey)
+	c, err := coordproto.NewClient(joinURL, networkKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,11 +182,11 @@ func TestWrongKey(t *testing.T) {
 
 func TestPin(t *testing.T) {
 	joinURL, networkKey, _ := testNetwork(t)
-	host, _, err := SplitJoinURL(joinURL)
+	host, _, err := coordproto.SplitJoinURL(joinURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := NewClient(JoinURL(host, "0123456789abcdef"), networkKey)
+	c, err := coordproto.NewClient(coordproto.JoinURL(host, "0123456789abcdef"), networkKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,41 +248,9 @@ func TestCleanName(t *testing.T) {
 	}
 }
 
-func TestJoinURL(t *testing.T) {
-	host, fp, err := SplitJoinURL("https://192.168.88.234:7465/0123456789abcdef")
-	if err != nil || host != "192.168.88.234:7465" || fp != "0123456789abcdef" {
-		t.Fatalf("SplitJoinURL: %v %v %v", host, fp, err)
-	}
-	if got := JoinURL(host, fp); got != "https://192.168.88.234:7465/0123456789abcdef" {
-		t.Errorf("JoinURL gave %q", got)
-	}
-	// 443, the default, reads without a port on both ways.
-	host, fp, err = SplitJoinURL("https://coord.yibo.si/0123456789abcdef")
-	if err != nil || host != "coord.yibo.si" || fp != "0123456789abcdef" {
-		t.Fatalf("SplitJoinURL without a port: %v %v %v", host, fp, err)
-	}
-	if got := JoinURL("coord.yibo.si:443", fp); got != "https://coord.yibo.si/0123456789abcdef" {
-		t.Errorf("JoinURL hid 443: %q", got)
-	}
-	if _, _, err := SplitJoinURL("https:///0123456789abcdef"); err == nil {
-		t.Error("a URL without a host split")
-	}
-	if _, _, err := SplitJoinURL("https://coord.yibo.si/"); err == nil {
-		t.Error("a URL without a fingerprint split")
-	}
-}
-
-func TestFingerprintOfKey(t *testing.T) {
-	k := testNodeKey()
-	m := Member{NodeKey: k}
-	if m.Fingerprint() == "" || m.Fingerprint() == k {
-		t.Fatalf("fingerprint of a key: %q", m.Fingerprint())
-	}
-}
-
 func TestHealth(t *testing.T) {
 	joinURL, _, _ := testNetwork(t)
-	host, _, _ := SplitJoinURL(joinURL)
+	host, _, _ := coordproto.SplitJoinURL(joinURL)
 	// health answers without a key and holds no secrets.
 	// The pinned client cannot fetch it (it is not in the protocol), so
 	// ask plainly; the certificate is unknown to the default transport,
@@ -301,5 +272,40 @@ func TestCheckKey(t *testing.T) {
 	s := &state{KeyMAC: fmt.Sprintf("%x", keyMAC("right key"))}
 	if !checkKey(s, "right key") || checkKey(s, "wrong key") || checkKey(s, "") {
 		t.Fatal("checkKey told the keys apart wrongly")
+	}
+}
+
+// TestConcurrentJoins hammers join and members together: the lock keeps
+// the directory whole.
+func TestConcurrentJoins(t *testing.T) {
+	joinURL, networkKey, _ := testNetwork(t)
+	var ok atomic.Int32
+	done := make(chan struct{})
+	for i := range 4 {
+		go func(i int) {
+			c, err := coordproto.NewClient(joinURL, networkKey)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			for range 10 {
+				if _, _, err := c.Join(context.Background(), fmt.Sprintf("m%d", i), testNodeKey(), testAddr()); err != nil {
+					t.Error(err)
+					return
+				}
+				if _, _, _, err := c.Members(context.Background(), "", 0); err != nil {
+					t.Error(err)
+					return
+				}
+				ok.Add(1)
+			}
+			done <- struct{}{}
+		}(i)
+	}
+	for range 4 {
+		<-done
+	}
+	if ok.Load() != 40 {
+		t.Fatalf("only %d of 40 rounds came through", ok.Load())
 	}
 }

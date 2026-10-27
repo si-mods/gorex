@@ -9,6 +9,9 @@
 //	remotectl pairstart | pairstop    open or close the pairing window
 //	remotectl pending                 list the pairing requests, with fingerprints
 //	remotectl approve | reject PUBLICKEY
+//	remotectl join URL KEY [NAME]     join a coordinator's network (once, no
+//	                                  pairing): its members become allowed
+//	remotectl leave                   leave the network
 //	remotectl pair ADDRESS NAME       ask a remote server to allow this machine
 //	remotectl probe ADDRESS           connect remotely, run a command, check what is denied
 package main
@@ -26,7 +29,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: remotectl serve|pubkey|allow|enable|disable|status|regenerate|pairstart|pairstop|pending|approve|reject|pair|probe")
+		fmt.Fprintln(os.Stderr, "usage: remotectl serve|pubkey|allow|enable|disable|status|regenerate|pairstart|pairstop|pending|approve|reject|join|leave|pair|probe")
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
@@ -68,6 +71,24 @@ func main() {
 			fail(c.EnableRemote())
 		case "disable":
 			fail(c.DisableRemote())
+		case "join":
+			if len(args) < 2 || len(args) > 3 {
+				fail(fmt.Errorf("join URL KEY [NAME]"))
+			}
+			name := args[len(args)-1]
+			if len(args) == 2 {
+				if host, err := os.Hostname(); err == nil {
+					name = host
+				}
+			}
+			fail(c.JoinNetwork(args[0], args[1], name))
+			st, err := c.RemoteStatus()
+			fail(err)
+			if st.Network != nil {
+				fmt.Printf("joined as %s; members follow from %s\n", st.Network.Name, st.Network.Coordinator)
+			}
+		case "leave":
+			fail(c.LeaveNetwork())
 		case "regenerate":
 			fail(c.RegenerateRemote())
 		case "pairstart":

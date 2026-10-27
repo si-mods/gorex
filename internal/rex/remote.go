@@ -51,6 +51,9 @@ type RemoteConfig struct {
 	// ShareSessions lets remote clients see and use every session; off,
 	// each sees and uses only the sessions it created.
 	ShareSessions bool `json:"shareSessions,omitempty"`
+	// Network is the coordinator network this machine joined, if any;
+	// its members are served beside Allowed, and kept in memory only.
+	Network *NetworkConfig `json:"network,omitempty"`
 }
 
 // The pairing window: how long it stays open, how many requests it
@@ -185,6 +188,15 @@ type remote struct {
 	// pending holds the requests made in it, never saved.
 	pairUntil time.Time
 	pending   []RemotePending
+	// The network, when this machine joined one: netCancel stops the
+	// loop that follows it, netC is its coordinator, netMembers the
+	// members beside the allowlist, netErr what the coordinator last
+	// said wrong, netJoined the address last joined with.
+	netCancel  context.CancelFunc
+	netC       netClient
+	netMembers []NetworkMember
+	netErr     string
+	netJoined  string
 }
 
 // remotePeerKey returns the key of the peer of a connection accepted by
@@ -255,6 +267,7 @@ func (s *Server) remoteLoad() {
 	if r.cfg.Enabled {
 		s.remoteStartLocked()
 	}
+	s.networkStartLocked()
 }
 
 func (s *Server) remoteEnabled() bool {
@@ -266,9 +279,11 @@ func (s *Server) remoteEnabled() bool {
 // remoteClose stops listening and drops the remote connections.
 func (s *Server) remoteClose() {
 	s.rem.mu.Lock()
+	netDrop := s.networkStopLocked()
 	done := s.remoteStopLocked()
 	s.rem.mu.Unlock()
 	done()
+	netDrop()
 }
 
 // remoteStopLocked stops the listener; the function it returns closes it
@@ -439,7 +454,7 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			k := remotePeerKey(ts, c)
 			// Checked and kept under the lock, so that a revoke drops it.
 			r.mu.Lock()
-			allowed := r.allowedLocked(k)
+			allowed := r.allowedLocked(k) || r.netMemberLocked(k)
 			if r.ln != ln {
 				r.mu.Unlock()
 				c.Close()
@@ -581,6 +596,15 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
 			st.Pending = slices.Clone(r.pending)
 		}
+		if r.cfg.Network != nil {
+			st.Network = &NetworkStatus{
+				Name:        r.cfg.Network.Name,
+				Coordinator: coordinatorHost(r.cfg.Network.URL),
+				Members:     slices.Clone(r.netMembers),
+				Revision:    r.cfg.Network.Revision,
+				LastError:   r.netErr,
+			}
+		}
 		return st, nil
 	case "remote.pairStart":
 		if !r.cfg.Enabled {
@@ -604,6 +628,40 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			return nil, errors.New("rex: no such request")
 		}
 		r.pending = slices.Delete(r.pending, i, i+1)
+		log.Printf("rex: %s", req.Op)
+		return nil, nil
+	case "remote.join":
+		if req.Network == nil {
+			return nil, errors.New("rex: remote.join needs a network")
+		}
+		drop, err := s.networkJoin(req.Network)
+		if err != nil {
+			return nil, err
+		}
+		done = append(done, drop)
+		return nil, nil
+	case "remote.leave":
+		drop, err := s.networkLeave()
+		if err != nil {
+			return nil, err
+		}
+		done = append(done, drop)
+		return nil, nil
+	case "remote.kick":
+		name, nodeKey := "", ""
+		if req.Remote != nil {
+			name, nodeKey = networkName(req.Remote.Name), strings.TrimSpace(req.Remote.PublicKey)
+			if nodeKey != "" {
+				k, err := parsePublicKey(nodeKey)
+				if err != nil {
+					return nil, err
+				}
+				nodeKey = k.String()
+			}
+		}
+		if err := s.networkKick(name, nodeKey); err != nil {
+			return nil, err
+		}
 		log.Printf("rex: %s", req.Op)
 		return nil, nil
 	}

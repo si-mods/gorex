@@ -1017,10 +1017,12 @@ func sortedInfos(m map[string]rex.SessionInfo) []rex.SessionInfo {
 }
 
 // poll asks the server what runs in each session, every half second,
-// until the window closes.
+// until the window closes. Every half minute, less often, it asks after
+// the network this machine joined, if any, whose members become hosts.
 func (a *App) poll(win *mygo.Window, client *rex.Client) {
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
+	rounds := 0
 	for {
 		select {
 		case <-a.stop:
@@ -1034,6 +1036,16 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 			})
 			return
 		case <-tick.C:
+		}
+		rounds++
+		if rounds%30 == 1 {
+			if st, err := client.RemoteStatus(); err == nil && st.Network != nil {
+				win.Update(func() {
+					if a.win == win {
+						a.reconcileNetwork(st.Network)
+					}
+				})
+			}
 		}
 		infos, err := client.List()
 		if err != nil {

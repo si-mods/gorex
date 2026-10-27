@@ -33,6 +33,9 @@ type savedHost struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Address string `json:"address"`
+	// Network marks a host the coordinator's directory made: it comes
+	// and goes with that directory, not by hand.
+	Network bool `json:"network,omitempty"`
 	// Kills are the sessions closed here while the host was away, to end
 	// there once connected again, though GoRex quit meanwhile.
 	Kills []string `json:"kills,omitempty"`
@@ -612,6 +615,45 @@ func (a *App) removeHost(h *hostConn) {
 	a.syncHosts()
 	h.close()
 	a.saveHosts()
+}
+
+// networkHostID is the ID of a host the network makes of a member, so
+// that it is the same one in every file and every window.
+func networkHostID(publicKey string) string { return "net:" + publicKey }
+
+// reconcileNetwork mirrors the members of the network this machine
+// joined into hosts: each member becomes a host of its own, and a member
+// gone goes, its tabs with it. Hosts added by hand stay. It runs on the
+// UI thread.
+func (a *App) reconcileNetwork(n *rex.NetworkStatus) {
+	for _, m := range n.Members {
+		id := networkHostID(m.PublicKey)
+		if h := a.hostByID(id); h != nil {
+			if h.Address == m.Address && h.Name == m.Name {
+				continue
+			}
+			if h.Address != m.Address {
+				// A member that regenerated its address: a fresh
+				// connection, so remove and add again below.
+				a.removeHost(h)
+			} else {
+				h.Name = m.Name
+				a.saveHosts()
+				continue
+			}
+		}
+		a.addHost(savedHost{ID: id, Name: m.Name, Address: m.Address, Network: true})
+	}
+	for _, h := range slices.Clone(a.hosts) {
+		if !h.Network {
+			continue
+		}
+		if !slices.ContainsFunc(n.Members, func(m rex.NetworkMember) bool {
+			return networkHostID(m.PublicKey) == h.ID
+		}) {
+			a.removeHost(h)
+		}
+	}
 }
 
 // host is the host of a tab's panes, nil for this machine: a tab's panes

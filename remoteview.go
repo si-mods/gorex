@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/coordproto"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -33,6 +34,10 @@ var remoteUI struct {
 	copied    string // what was copied just now
 	name, key string // the client to add
 	addErr    bool   // the client to add is not valid: its reason shows
+	// The network to join, as typed: its URL, key and the name this
+	// machine joins by.
+	netURL, netKey, netName string
+	netErr                  bool // what was typed does not read
 }
 
 // showSection chooses a settings section. The Remote page asks the server
@@ -53,6 +58,7 @@ func stopRemotePoll() {
 	page := &remoteUI
 	page.stop, page.st, page.loaded, page.busy = nil, rex.RemoteStatus{}, false, false
 	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, nil, false, "", ""
+	page.netURL, page.netKey, page.netName, page.netErr = "", "", "", false
 }
 
 // remoteAsk runs work off the UI thread, with the app's client of the
@@ -350,6 +356,7 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 	if st.Running {
 		a.remoteAddress(c, k)
 	}
+	a.remoteNetwork(c, k, st)
 	a.remotePairing(c, k, st)
 	a.remoteClients(c, k, st)
 
@@ -413,6 +420,90 @@ func (a *App) remotePairing(c *ui.Context, k *colors, st rex.RemoteStatus) {
 					a.remoteDo(func(srv *rex.Client) error { return srv.RejectPairing(p.PublicKey) }, nil)
 				}
 			})
+		}
+	})
+}
+
+// validateNetwork returns what is wrong with a network to join, "" if
+// nothing: the join URL reads, the key and the name are there.
+func validateNetwork(url, key, name string) string {
+	if strings.TrimSpace(url) == "" {
+		return locales.RemoteNetURL()
+	}
+	if _, _, err := coordproto.SplitJoinURL(url); err != nil {
+		return locales.RemoteNetBadURL()
+	}
+	if strings.TrimSpace(key) == "" {
+		return locales.RemoteNetKey()
+	}
+	if strings.TrimSpace(name) == "" {
+		return locales.RemoteNetName()
+	}
+	return ""
+}
+
+// remoteNetwork is the card of the coordinator network: the fields to
+// join one, or the members of the one joined.
+func (a *App) remoteNetwork(c *ui.Context, k *colors, st rex.RemoteStatus) {
+	page := &remoteUI
+	if st.Network == nil {
+		remoteCard(c, k, locales.RemoteNetTitle(), locales.RemoteNetNote(), func() {
+			if !st.Enabled {
+				ui.Text(c, locales.RemoteNetTurnOn()).FontSize(12.5).TextColor(k.textFaint).LineHeight(1.3)
+				return
+			}
+			if page.netName == "" {
+				page.netName = a.localName()
+			}
+			if ti := ui.TextInput(c.Key("neturl"), &page.netURL).Placeholder("https://host/0123456789abcdef").
+				Label(locales.RemoteNetURLLabel()); ti.Changed() {
+				page.netErr = false
+			}
+			if ti := ui.TextInput(c.Key("netkey"), &page.netKey).Placeholder(locales.RemoteNetKeyPlaceholder()).
+				Label(locales.RemoteNetKeyLabel()); ti.Changed() {
+				page.netErr = false
+			}
+			if ti := ui.TextInput(c.Key("netname"), &page.netName).Placeholder("yibo-macbook").
+				Label(locales.RemoteNetNameLabel()); ti.Changed() {
+				page.netErr = false
+			}
+			if ui.Button(c.Key("netjoin"), locales.RemoteNetJoin()).Disabled(page.busy).Clicked() {
+				if msg := validateNetwork(page.netURL, page.netKey, page.netName); msg != "" {
+					page.netErr = true
+					remoteUI.err = func() string { return msg }
+				} else {
+					url, key := strings.TrimSpace(page.netURL), strings.TrimSpace(page.netKey)
+					name := page.netName
+					a.remoteDo(func(srv *rex.Client) error { return srv.JoinNetwork(url, key, name) },
+						func() { page.netURL, page.netKey, page.netErr = "", "", false })
+				}
+			}
+			if page.netErr {
+				ui.Text(c, validateNetwork(page.netURL, page.netKey, page.netName)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+			}
+		})
+		return
+	}
+	net := st.Network
+	remoteCard(c, k, locales.RemoteNetJoined(net.Name), locales.RemoteNetCoordinator(net.Coordinator), func() {
+		if len(net.Members) == 0 {
+			ui.Text(c, locales.RemoteNetNoMembers()).FontSize(12.5).TextColor(k.textFaint)
+		}
+		for _, m := range net.Members {
+			ui.Row(c.Key(m.PublicKey)).Gap(10).Padding(4, 0).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, m.Name).FontSize(13.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+				ui.Text(c, rex.Fingerprint(m.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).SingleLine().
+					Tooltip(m.PublicKey).Grow(1).Shrink(0)
+				if ui.Button(c.Key("r"), locales.RemoteNetKick()).Disabled(page.busy).Clicked() {
+					a.remoteDo(func(srv *rex.Client) error { return srv.KickNetworkMember(m.Name, m.PublicKey) }, nil)
+				}
+			})
+		}
+		if net.LastError != "" {
+			ui.Text(c, locales.RemoteNetError(net.LastError)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+		}
+		if ui.Button(c.Key("netleave"), locales.RemoteNetLeave()).Disabled(page.busy).Clicked() {
+			a.remoteDo((*rex.Client).LeaveNetwork, nil)
 		}
 	})
 }

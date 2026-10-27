@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"gorex/internal/coordproto"
 	"gorex/internal/rex"
 )
 
@@ -145,7 +146,7 @@ func (s *Server) join(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusConflict, "the name is taken")
 		return
 	}
-	s.st.Members = append(s.st.Members, Member{
+	s.st.Members = append(s.st.Members, coordproto.Member{
 		Name:     name,
 		NodeKey:  nodeKey,
 		Address:  strings.TrimSpace(b.Address),
@@ -153,7 +154,7 @@ func (s *Server) join(w http.ResponseWriter, r *http.Request) {
 		LastSeen: time.Now(),
 	})
 	s.bump()
-	log.Printf("coord: %s joined (%s)", name, Member{NodeKey: nodeKey}.Fingerprint())
+	log.Printf("coord: %s joined (%s)", name, coordproto.Member{NodeKey: nodeKey}.Fingerprint())
 	s.reply(w, nodeKey)
 }
 
@@ -236,7 +237,7 @@ func (s *Server) kick(w http.ResponseWriter, r *http.Request) {
 func (s *Server) Kick(name, nodeKey string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	i := slices.IndexFunc(s.st.Members, func(m Member) bool {
+	i := slices.IndexFunc(s.st.Members, func(m coordproto.Member) bool {
 		if name != "" && m.Name == name {
 			return true
 		}
@@ -264,14 +265,14 @@ func (s *Server) bump() {
 // echoed back so it knows which member it is. It holds the lock.
 func (s *Server) reply(w http.ResponseWriter, nodeKey string) {
 	writeJSON(w, http.StatusOK, struct {
-		Revision int      `json:"revision"`
-		You      string   `json:"you,omitempty"`
-		Members  []Member `json:"members"`
+		Revision int                 `json:"revision"`
+		You      string              `json:"you,omitempty"`
+		Members  []coordproto.Member `json:"members"`
 	}{s.st.Revision, nodeKey, s.st.Members})
 }
 
-func nameTaken(ms []Member, name string) bool {
-	return slices.ContainsFunc(ms, func(m Member) bool { return m.Name == name })
+func nameTaken(ms []coordproto.Member, name string) bool {
+	return slices.ContainsFunc(ms, func(m coordproto.Member) bool { return m.Name == name })
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

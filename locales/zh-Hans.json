@@ -267,5 +267,62 @@
   "sessionCloseBody": "{n, plural, other {它的 # 个终端将结束，其中运行的程序也会停止。}}",
   "sessionCancel": "取消",
   "sessionTabsElsewhere": "{n, plural, other {# 个标签页 · 在另一个窗口中}}",
-  "windowTitle": "{session} — {tab}"
+  "windowTitle": "{session} — {tab}",
+  "remoteNetTitle": "加入网络",
+  "@remoteNetTitle": {
+    "description": "Card title: a coordinator network to join once instead of pairing."
+  },
+  "remoteNetNote": "两两配对没法扩展。协调器把远程访问变成一个网络，像 Tailscale 那样：用网络密钥加入一次，所有成员互信互见。",
+  "@remoteNetNote": {
+    "description": "Note under the title."
+  },
+  "remoteNetTurnOn": "加入网络前先打开远程访问。",
+  "@remoteNetTurnOn": {
+    "description": "Said while remote access is off."
+  },
+  "remoteNetURLLabel": "Join URL",
+  "@remoteNetURLLabel": {
+    "description": "Field label."
+  },
+  "remoteNetKeyLabel": "网络密钥",
+  "@remoteNetKeyLabel": {
+    "description": "Field label."
+  },
+  "remoteNetNameLabel": "本机加入时的名字",
+  "@remoteNetNameLabel": {
+    "description": "Field label."
+  },
+  "remoteNetKeyPlaceholder": "gcoord init 打印的密钥",
+  "@remoteNetKeyPlaceholder": {
+    "description": "Placeholder of the network key field."
+  },
+  "remoteNetJoin": "加入",
+  "remoteNetURL": "粘贴协调器打印的 join URL。",
+  "remoteNetBadURL": "Join URL 的格式是 “https://host/<fingerprint>”。",
+  "remoteNetKey": "粘贴网络密钥。",
+  "remoteNetName": "给这台机器起个名字。",
+  "remoteNetJoined": "网络：{name}",
+  "@remoteNetJoined": {
+    "description": "卡片标题：已加入的网络，name 是本机的成员名。",
+    "placeholders": {
+      "name": {}
+    }
+  },
+  "remoteNetCoordinator": "成员来自 {host} 上的协调器，随它变化。",
+  "@remoteNetCoordinator": {
+    "description": "标题下说明：host 是协调器地址。",
+    "placeholders": {
+      "host": {}
+    }
+  },
+  "remoteNetNoMembers": "还没有其他机器加入。",
+  "remoteNetKick": "移除",
+  "remoteNetLeave": "离开网络",
+  "remoteNetError": "协调器：{error}",
+  "@remoteNetError": {
+    "description": "error 是协调器最近的话。",
+    "placeholders": {
+      "error": {}
+    }
+  }
 }

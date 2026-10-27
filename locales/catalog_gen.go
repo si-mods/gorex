@@ -3881,3 +3881,223 @@ func WindowTitle(session string, tab string) string {
 func (msgs Messages) WindowTitle(session string, tab string) string {
 	return Catalog.Format(msgs.locale, "windowTitle", map[string]any{"session": session, "tab": tab})
 }
+
+// RemoteNetTitle says "Join a network"
+// in the language the app shows.
+//
+// Card title: a coordinator network to join once instead of pairing.
+func RemoteNetTitle() string { return In(i18n.Locale()).RemoteNetTitle() }
+
+// RemoteNetTitle says "Join a network"
+// in the language of msgs.
+//
+// Card title: a coordinator network to join once instead of pairing.
+func (msgs Messages) RemoteNetTitle() string {
+	return Catalog.Format(msgs.locale, "remoteNetTitle", nil)
+}
+
+// RemoteNetNote says "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way …"
+// in the language the app shows.
+//
+// Note under the title.
+func RemoteNetNote() string { return In(i18n.Locale()).RemoteNetNote() }
+
+// RemoteNetNote says "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way …"
+// in the language of msgs.
+//
+// Note under the title.
+func (msgs Messages) RemoteNetNote() string {
+	return Catalog.Format(msgs.locale, "remoteNetNote", nil)
+}
+
+// RemoteNetTurnOn says "Turn remote access on to join a network."
+// in the language the app shows.
+//
+// Said while remote access is off.
+func RemoteNetTurnOn() string { return In(i18n.Locale()).RemoteNetTurnOn() }
+
+// RemoteNetTurnOn says "Turn remote access on to join a network."
+// in the language of msgs.
+//
+// Said while remote access is off.
+func (msgs Messages) RemoteNetTurnOn() string {
+	return Catalog.Format(msgs.locale, "remoteNetTurnOn", nil)
+}
+
+// RemoteNetURLLabel says "Join URL"
+// in the language the app shows.
+//
+// Field label.
+func RemoteNetURLLabel() string { return In(i18n.Locale()).RemoteNetURLLabel() }
+
+// RemoteNetURLLabel says "Join URL"
+// in the language of msgs.
+//
+// Field label.
+func (msgs Messages) RemoteNetURLLabel() string {
+	return Catalog.Format(msgs.locale, "remoteNetURLLabel", nil)
+}
+
+// RemoteNetKeyLabel says "Network key"
+// in the language the app shows.
+//
+// Field label.
+func RemoteNetKeyLabel() string { return In(i18n.Locale()).RemoteNetKeyLabel() }
+
+// RemoteNetKeyLabel says "Network key"
+// in the language of msgs.
+//
+// Field label.
+func (msgs Messages) RemoteNetKeyLabel() string {
+	return Catalog.Format(msgs.locale, "remoteNetKeyLabel", nil)
+}
+
+// RemoteNetNameLabel says "Name this machine joins by"
+// in the language the app shows.
+//
+// Field label.
+func RemoteNetNameLabel() string { return In(i18n.Locale()).RemoteNetNameLabel() }
+
+// RemoteNetNameLabel says "Name this machine joins by"
+// in the language of msgs.
+//
+// Field label.
+func (msgs Messages) RemoteNetNameLabel() string {
+	return Catalog.Format(msgs.locale, "remoteNetNameLabel", nil)
+}
+
+// RemoteNetKeyPlaceholder says "the key gcoord init printed"
+// in the language the app shows.
+//
+// Placeholder of the network key field.
+func RemoteNetKeyPlaceholder() string { return In(i18n.Locale()).RemoteNetKeyPlaceholder() }
+
+// RemoteNetKeyPlaceholder says "the key gcoord init printed"
+// in the language of msgs.
+//
+// Placeholder of the network key field.
+func (msgs Messages) RemoteNetKeyPlaceholder() string {
+	return Catalog.Format(msgs.locale, "remoteNetKeyPlaceholder", nil)
+}
+
+// RemoteNetJoin says "Join"
+// in the language the app shows.
+func RemoteNetJoin() string { return In(i18n.Locale()).RemoteNetJoin() }
+
+// RemoteNetJoin says "Join"
+// in the language of msgs.
+func (msgs Messages) RemoteNetJoin() string {
+	return Catalog.Format(msgs.locale, "remoteNetJoin", nil)
+}
+
+// RemoteNetURL says "Paste the join URL the coordinator printed."
+// in the language the app shows.
+func RemoteNetURL() string { return In(i18n.Locale()).RemoteNetURL() }
+
+// RemoteNetURL says "Paste the join URL the coordinator printed."
+// in the language of msgs.
+func (msgs Messages) RemoteNetURL() string {
+	return Catalog.Format(msgs.locale, "remoteNetURL", nil)
+}
+
+// RemoteNetBadURL says "The join URL reads “https://host/<fingerprint>”."
+// in the language the app shows.
+func RemoteNetBadURL() string { return In(i18n.Locale()).RemoteNetBadURL() }
+
+// RemoteNetBadURL says "The join URL reads “https://host/<fingerprint>”."
+// in the language of msgs.
+func (msgs Messages) RemoteNetBadURL() string {
+	return Catalog.Format(msgs.locale, "remoteNetBadURL", nil)
+}
+
+// RemoteNetKey says "Paste the network key."
+// in the language the app shows.
+func RemoteNetKey() string { return In(i18n.Locale()).RemoteNetKey() }
+
+// RemoteNetKey says "Paste the network key."
+// in the language of msgs.
+func (msgs Messages) RemoteNetKey() string {
+	return Catalog.Format(msgs.locale, "remoteNetKey", nil)
+}
+
+// RemoteNetName says "Name this machine to join."
+// in the language the app shows.
+func RemoteNetName() string { return In(i18n.Locale()).RemoteNetName() }
+
+// RemoteNetName says "Name this machine to join."
+// in the language of msgs.
+func (msgs Messages) RemoteNetName() string {
+	return Catalog.Format(msgs.locale, "remoteNetName", nil)
+}
+
+// RemoteNetJoined says "Network: {name}"
+// in the language the app shows.
+//
+// Card title: the network joined, name this machine's member name.
+func RemoteNetJoined(name string) string { return In(i18n.Locale()).RemoteNetJoined(name) }
+
+// RemoteNetJoined says "Network: {name}"
+// in the language of msgs.
+//
+// Card title: the network joined, name this machine's member name.
+func (msgs Messages) RemoteNetJoined(name string) string {
+	return Catalog.Format(msgs.locale, "remoteNetJoined", map[string]any{"name": name})
+}
+
+// RemoteNetCoordinator says "Members come from the coordinator at {host}, and change with it."
+// in the language the app shows.
+//
+// Note under the title: host the coordinator's address.
+func RemoteNetCoordinator(host string) string { return In(i18n.Locale()).RemoteNetCoordinator(host) }
+
+// RemoteNetCoordinator says "Members come from the coordinator at {host}, and change with it."
+// in the language of msgs.
+//
+// Note under the title: host the coordinator's address.
+func (msgs Messages) RemoteNetCoordinator(host string) string {
+	return Catalog.Format(msgs.locale, "remoteNetCoordinator", map[string]any{"host": host})
+}
+
+// RemoteNetNoMembers says "No other machine has joined yet."
+// in the language the app shows.
+func RemoteNetNoMembers() string { return In(i18n.Locale()).RemoteNetNoMembers() }
+
+// RemoteNetNoMembers says "No other machine has joined yet."
+// in the language of msgs.
+func (msgs Messages) RemoteNetNoMembers() string {
+	return Catalog.Format(msgs.locale, "remoteNetNoMembers", nil)
+}
+
+// RemoteNetKick says "Remove"
+// in the language the app shows.
+func RemoteNetKick() string { return In(i18n.Locale()).RemoteNetKick() }
+
+// RemoteNetKick says "Remove"
+// in the language of msgs.
+func (msgs Messages) RemoteNetKick() string {
+	return Catalog.Format(msgs.locale, "remoteNetKick", nil)
+}
+
+// RemoteNetLeave says "Leave the network"
+// in the language the app shows.
+func RemoteNetLeave() string { return In(i18n.Locale()).RemoteNetLeave() }
+
+// RemoteNetLeave says "Leave the network"
+// in the language of msgs.
+func (msgs Messages) RemoteNetLeave() string {
+	return Catalog.Format(msgs.locale, "remoteNetLeave", nil)
+}
+
+// RemoteNetError says "The coordinator: {error}"
+// in the language the app shows.
+//
+// error is the coordinator's last word.
+func RemoteNetError(error string) string { return In(i18n.Locale()).RemoteNetError(error) }
+
+// RemoteNetError says "The coordinator: {error}"
+// in the language of msgs.
+//
+// error is the coordinator's last word.
+func (msgs Messages) RemoteNetError(error string) string {
+	return Catalog.Format(msgs.locale, "remoteNetError", map[string]any{"error": error})
+}
