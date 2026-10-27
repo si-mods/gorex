@@ -1,0 +1,25 @@
+#!/bin/sh
+# herdr: rootshell's herdr, played by GoRex. rootshell runs `herdr control`
+# over SSH with ~/.local/opt/herdr-rootshell/bin first on PATH: installed
+# there, this runs GoRex's bridge instead (`GoRex control`). Every other
+# herdr command fails at once, and none waits on stdin.
+#
+# GOREX is GoRex's executable, where the app installs by default unless
+# set here or in the environment.
+if [ -z "$GOREX" ]; then
+	case "$(uname -s)" in
+	Darwin) GOREX=/Applications/GoRex.app/Contents/MacOS/GoRex ;;
+	MINGW* | MSYS* | CYGWIN*) GOREX="$(cygpath -u "$LOCALAPPDATA")/Programs/GoRex/GoRex.exe" ;;
+	*) GOREX=gorex ;;
+	esac
+fi
+last=
+for a; do last=$a; done
+case " $* " in
+*" control --help "*)
+	echo "herdr control: GoRex control stream"
+	exit 0
+	;;
+esac
+[ "$last" = control ] && exec "$GOREX" control
+exit 1

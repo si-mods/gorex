@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -48,10 +49,13 @@ type Server struct {
 	kept map[string]*keptConn
 }
 
-// keptConn is a control connection kept alive, and the connections
-// attached through it, which close with it.
+// keptConn is a control connection kept alive, conn, of peer (remote
+// client's key, "" for local), and the connections attached through it,
+// which close with it: only the same peer's may.
 type keptConn struct {
 	id       string
+	conn     net.Conn
+	peer     string
 	mu       sync.Mutex
 	attached map[net.Conn]struct{}
 	gone     bool
@@ -68,9 +72,9 @@ var keepaliveTimeout = newDuration(30 * time.Second)
 // takes nothing.
 var writeTimeout = newDuration(30 * time.Second)
 
-// keep keeps a control connection alive, under a new id.
-func (s *Server) keep() *keptConn {
-	k := &keptConn{id: newID(), attached: map[net.Conn]struct{}{}}
+// keep keeps a control connection alive, of peer, under a new id.
+func (s *Server) keep(conn net.Conn, peer string) *keptConn {
+	k := &keptConn{id: newID(), conn: conn, peer: peer, attached: map[net.Conn]struct{}{}}
 	s.mu.Lock()
 	if s.kept == nil {
 		s.kept = map[string]*keptConn{}
@@ -80,12 +84,19 @@ func (s *Server) keep() *keptConn {
 	return k
 }
 
-// unkeep forgets a control connection gone, and closes the connections
-// attached through it.
+// unkeep forgets a control connection gone, closes the connections
+// attached through it, and unlocks the sizes it locked.
 func (s *Server) unkeep(k *keptConn) {
 	s.mu.Lock()
 	delete(s.kept, k.id)
+	all := make([]*session, 0, len(s.sessions))
+	for _, ss := range s.sessions {
+		all = append(all, ss)
+	}
 	s.mu.Unlock()
+	for _, ss := range all {
+		ss.releaseSize(k.conn)
+	}
 	k.mu.Lock()
 	k.gone = true
 	conns := k.attached
@@ -98,12 +109,12 @@ func (s *Server) unkeep(k *keptConn) {
 
 // bind attaches conn through the control connection id; false when that
 // is gone.
-func (s *Server) bind(id string, conn net.Conn) (*keptConn, bool) {
+func (s *Server) bind(id string, conn net.Conn, peer string) (*keptConn, bool) {
 	s.mu.Lock()
 	k := s.kept[id]
 	s.mu.Unlock()
-	if k == nil {
-		return nil, false
+	if k == nil || k.peer != peer {
+		return nil, false // another's: its sessions answer queries
 	}
 	k.mu.Lock()
 	defer k.mu.Unlock()
@@ -256,14 +267,16 @@ func (s *Server) handle(conn net.Conn, peer string) {
 			conn.Close()
 			return
 		}
+		var via net.Conn
 		if a.Conn != "" {
-			k, ok := s.bind(a.Conn, conn)
+			k, ok := s.bind(a.Conn, conn, peer)
 			if !ok {
 				conn.Write([]byte(`{"error":"` + errConnGone + `"}` + "\n"))
 				conn.Close()
 				return
 			}
 			defer k.unbind(conn)
+			via = k.conn
 		}
 		// The session takes the window's size before the answer, after
 		// which the client may resize it on its control connection: that
@@ -273,11 +286,11 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		}
 		conn.Write([]byte(`{"ok":true}` + "\n"))
 		// What the reader buffered past the first line is input.
+		var typed []byte
 		if n := r.Buffered(); n > 0 {
-			b, _ := r.Peek(n)
-			ss.input(nil, b)
+			typed, _ = r.Peek(n)
 		}
-		ss.attach(conn, peer, func() bool { return s.mayUse(peer, ss) })
+		ss.attach(conn, peer, a, via, func() bool { return s.mayUse(peer, ss) }, typed)
 		return
 	}
 	s.control(conn, r, first, peer)
@@ -320,7 +333,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		var req Request
 		if err := json.Unmarshal(line, &req); err == nil {
 			if req.Op == "hello" && req.Keepalive && kept == nil {
-				kept = s.keep()
+				kept = s.keep(conn, peer)
 			}
 			// Kills wait for the session to end: answer them aside, a
 			// few at a time; the others wait their turn.
@@ -412,6 +425,14 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	} else if data != nil {
 		res.Data, _ = json.Marshal(data)
 	}
+	// A client polling the list gets it only when it changed.
+	if req.Op == "list" && err == nil {
+		sum := sha256.Sum256(res.Data)
+		res.ETag = hex.EncodeToString(sum[:12])
+		if req.ETag == res.ETag {
+			res.Data = nil
+		}
+	}
 	return res
 }
 
@@ -423,6 +444,8 @@ func (s *Server) session(id string) (*session, error) {
 	}
 	return nil, fmt.Errorf("no session %q", id)
 }
+
+var errSizeUnlocked = errors.New("rex: the session's size is not locked by this owner")
 
 var errNotShared = errors.New("rex: that session is not shared with this machine: the host shares only the sessions each client opened")
 
@@ -537,12 +560,30 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		s.mu.Unlock()
 		return nil, nil
-	case "resize":
+	case "resize", "lockSize", "lockedResize", "unlockSize", "renewSize":
 		ss, err := s.use(req.SID, peer)
 		if err != nil {
 			return nil, err
 		}
-		ss.resize(req.Cols, req.Rows)
+		switch req.Op {
+		case "resize":
+			ss.resize(req.Cols, req.Rows)
+		case "lockSize":
+			if kept == nil || req.Owner == "" {
+				return nil, errors.New("rex: lockSize needs an owner, on a connection kept alive")
+			}
+			ss.lockSize(req.Owner, req.Cols, req.Rows, kept.conn)
+		case "lockedResize":
+			if !ss.lockedResize(req.Owner, req.Cols, req.Rows) {
+				return nil, errSizeUnlocked
+			}
+		case "unlockSize":
+			ss.unlockSize(req.Owner, req.Cols, req.Rows)
+		case "renewSize":
+			if !ss.renewSize(req.Owner) {
+				return nil, errSizeUnlocked
+			}
+		}
 		return nil, nil
 	case "getLayout":
 		s.mu.Lock()

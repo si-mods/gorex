@@ -5,6 +5,7 @@
 //
 //	go tool mygo dev    the app, rebuilt as the code changes
 //	go run . -server    the session server alone, in the foreground
+//	go run . control    the bridge rootshell drives as herdr (internal/control)
 package main
 
 import (
@@ -15,6 +16,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater/native"
 
+	"gorex/internal/control"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -36,6 +38,11 @@ func main() {
 		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
 			os.Setenv("GOREX_DIR", dir)
 		}
+	}
+	// control bridges rootshell to the server the app runs, in the same
+	// directory (internal/control).
+	if len(os.Args) > 1 && os.Args[1] == "control" {
+		os.Exit(control.Main())
 	}
 	// The app runs once: launched again, it shows the window focused last.
 	// MyGo keys the lock by the app's identifier and name, which mygo dev's

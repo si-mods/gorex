@@ -17,8 +17,12 @@ import (
 	"time"
 )
 
-// ProtocolVersion changes whenever the wire protocol does.
-const ProtocolVersion = 1
+// ProtocolVersion changes whenever the wire protocol does. Version 2 adds,
+// and only adds, the size lock ("lockSize", "lockedResize", "unlockSize",
+// "renewSize", SessionInfo.SizeLock), framed attaches
+// (Attach.Framed, Attach.History) and the list's ETag: a client of
+// version 1 works as before, its resizes ignored while a session is locked.
+const ProtocolVersion = 2
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -42,6 +46,16 @@ type Request struct {
 
 	// On is the setting of remote.shareSet.
 	On bool `json:"on,omitempty"`
+
+	// Owner is the size lock's owner, of lockSize, lockedResize,
+	// unlockSize and renewSize: unlockSize without one unlocks whoever
+	// holds it. lockSize takes the lock through this connection, which
+	// must be kept alive: the lock ends as it closes, or 30 seconds after
+	// it was taken or renewed last, and the sessions attached through it
+	// answer the programs' queries meanwhile.
+	Owner string `json:"owner,omitempty"`
+	// ETag, on "list", is that of the list the client has (Response.ETag).
+	ETag string `json:"etag,omitempty"`
 }
 
 // RemoteClient is a client allowed to connect remotely: PublicKey is its
@@ -92,6 +106,9 @@ type Response struct {
 	ID    int64           `json:"id"`
 	Error string          `json:"error,omitempty"`
 	Data  json.RawMessage `json:"data,omitempty"`
+	// ETag names the answer to "list": when it is the request's, Data is
+	// left out, the list unchanged.
+	ETag string `json:"etag,omitempty"`
 }
 
 // CreateOptions start a session.
@@ -128,6 +145,9 @@ type SessionInfo struct {
 	Attached   int       `json:"attached"`
 	Cols       int       `json:"cols"`
 	Rows       int       `json:"rows"`
+	// SizeLock is the owner that holds the session's size (lockSize), ""
+	// while the windows set it.
+	SizeLock string `json:"sizeLock,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
 	// said nothing.
@@ -197,6 +217,22 @@ type Attach struct {
 	// detaches this one too: a peer that vanished without closing it is
 	// noticed on the control connection, which pings.
 	Conn string `json:"conn,omitempty"`
+	// Framed puts a SnapshotHeader line before the snapshot, which tells
+	// where it ends, for a client with no emulator of its own. History,
+	// when set, cuts the oldest scrollback of the snapshot to about that
+	// many bytes.
+	Framed  bool `json:"framed,omitempty"`
+	History int  `json:"history,omitempty"`
+}
+
+// SnapshotHeader is the line before the snapshot of a framed attach: its
+// length in bytes, the session's size it was taken at, and whether
+// scrollback was cut (Attach.History).
+type SnapshotHeader struct {
+	Snapshot  int  `json:"snapshot"`
+	Cols      int  `json:"cols"`
+	Rows      int  `json:"rows"`
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // ServerMain runs the server when args, the program's arguments, ask

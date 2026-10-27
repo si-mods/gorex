@@ -250,6 +250,16 @@ did not create close here and their sessions go on there.
 `go run ./tools/remotectl pair ADDRESS NAME` asks to pair from a machine
 without the app.
 
+## rootshell
+
+[rootshell](https://github.com/kitknox/rootshell), on iOS and the Mac,
+shows this machine's tabs over SSH as it shows herdr's in its full control
+mode: GoRex plays herdr. `tools/rootshell/herdr`, installed on the host,
+runs `GoRex control` in herdr's place, a bridge to the server of the GoRex
+already open. The layout stays the desktop's: rootshell shows it, and
+changes to it fail there. Setup on macOS and Windows hosts, the steps in
+rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
+
 ## Develop and build
 
 GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.6.2, whose CLI
@@ -322,6 +332,7 @@ its top included.
 | `tools/remotectl` | runs and probes the session server without the app: allow, enable, probe over tailcat |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
+| `internal/control`, `tools/rootshell` | `GoRex control`, the bridge rootshell drives as herdr, and the `herdr` shim that runs it |
 
 Rex's connections to servers on other machines are only half there: the
 server side exists (remote access, above), but the window cannot open

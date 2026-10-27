@@ -62,6 +62,22 @@ func Connect() (*Client, error) {
 
 func dialSocket() (net.Conn, error) { return net.Dial("unix", SocketPath()) }
 
+// ConnectExisting connects to the server that runs, starting none: one a
+// bridge started from an SSH session would end with the session, as
+// Windows ends what the session's job runs. The connection is kept alive
+// (Hello), so that the sizes it locks unlock as it goes.
+func ConnectExisting() (*Client, error) {
+	conn, err := dialSocket()
+	if err != nil {
+		return nil, errNotRunning
+	}
+	c := newClient(conn, dialSocket)
+	c.keepalive = true
+	return c, nil
+}
+
+var errNotRunning = errors.New("GoRex is not running on this machine; open GoRex first")
+
 // ConnectSocket connects to the server listening on the Unix socket at
 // path, starting none.
 func ConnectSocket(path string) (*Client, error) {
@@ -279,15 +295,27 @@ func (c *Client) call(req Request, out any) error {
 
 // callWithin is call, waiting at most timeout for the answer.
 func (c *Client) callWithin(req Request, out any, timeout time.Duration) error {
+	res, err := c.exchange(req, timeout)
+	if err != nil {
+		return err
+	}
+	if out != nil && len(res.Data) > 0 {
+		return json.Unmarshal(res.Data, out)
+	}
+	return nil
+}
+
+// exchange sends a request and returns the response, its error as one.
+func (c *Client) exchange(req Request, timeout time.Duration) (Response, error) {
 	ch := make(chan Response, 1)
 	c.mu.Lock()
 	if c.err != nil {
 		refused := c.refused
 		c.mu.Unlock()
 		if refused != "" {
-			return errors.New(refused)
+			return Response{}, errors.New(refused)
 		}
-		return errors.New("rex: connection to the server lost")
+		return Response{}, errors.New("rex: connection to the server lost")
 	}
 	c.nextID++
 	req.ID = c.nextID
@@ -298,7 +326,7 @@ func (c *Client) callWithin(req Request, out any, timeout time.Duration) error {
 	_, err := c.conn.Write(append(b, '\n'))
 	c.wmu.Unlock()
 	if err != nil {
-		return err
+		return Response{}, err
 	}
 	var res Response
 	select {
@@ -307,15 +335,12 @@ func (c *Client) callWithin(req Request, out any, timeout time.Duration) error {
 		c.mu.Lock()
 		delete(c.pending, req.ID)
 		c.mu.Unlock()
-		return fmt.Errorf("rex: %s timed out", req.Op)
+		return Response{}, fmt.Errorf("rex: %s timed out", req.Op)
 	}
 	if res.Error != "" {
-		return errors.New(res.Error)
+		return res, errors.New(res.Error)
 	}
-	if out != nil && len(res.Data) > 0 {
-		return json.Unmarshal(res.Data, out)
-	}
-	return nil
+	return res, nil
 }
 
 // Hello greets the server. A client that keeps its connection alive
@@ -343,6 +368,22 @@ func (c *Client) List() (s []SessionInfo, err error) {
 	return
 }
 
+// ListSince is List for a client that polls it: given the ETag of the
+// list it has, it returns changed false, and no list, while the list is
+// the same, and the new list's ETag otherwise. A server before version 2
+// always sends the list, with no ETag.
+func (c *Client) ListSince(etag string) (s []SessionInfo, next string, changed bool, err error) {
+	res, err := c.exchange(Request{Op: "list", ETag: etag}, callTimeout.get())
+	if err != nil {
+		return nil, "", false, err
+	}
+	if etag != "" && res.ETag == etag && len(res.Data) == 0 {
+		return nil, etag, false, nil
+	}
+	err = json.Unmarshal(res.Data, &s)
+	return s, res.ETag, err == nil, err
+}
+
 func (c *Client) Create(o CreateOptions) (s SessionInfo, err error) {
 	err = c.call(Request{Op: "create", Create: &o}, &s)
 	return
@@ -352,6 +393,68 @@ func (c *Client) Kill(sid string) error { return c.call(Request{Op: "kill", SID:
 
 func (c *Client) Resize(sid string, cols, rows int) error {
 	return c.call(Request{Op: "resize", SID: sid, Cols: cols, Rows: rows}, nil)
+}
+
+// UnlockSize takes the session's size back, at cols×rows when given, from
+// owner, or from whoever holds it when "".
+func (c *Client) UnlockSize(sid, owner string, cols, rows int) error {
+	return c.call(Request{Op: "unlockSize", SID: sid, Owner: owner, Cols: cols, Rows: rows}, nil)
+}
+
+// LockSize takes the session's size for owner at cols×rows, leased:
+// RenewSize renews it. Hello must have kept the connection alive.
+func (c *Client) LockSize(sid, owner string, cols, rows int) error {
+	return c.call(Request{Op: "lockSize", SID: sid, Owner: owner, Cols: cols, Rows: rows}, nil)
+}
+
+// LockedResize resizes the session for owner, which fails once owner no
+// longer holds its size.
+func (c *Client) LockedResize(sid, owner string, cols, rows int) error {
+	return c.call(Request{Op: "lockedResize", SID: sid, Owner: owner, Cols: cols, Rows: rows}, nil)
+}
+
+func (c *Client) RenewSize(sid, owner string) error {
+	return c.call(Request{Op: "renewSize", SID: sid, Owner: owner}, nil)
+}
+
+// AttachConn attaches to a session as a, through this connection if kept
+// alive, and returns the connection once the server took it: what
+// follows is the session's output, after a SnapshotHeader with a.Framed.
+func (c *Client) AttachConn(a Attach) (net.Conn, error) {
+	conn, err := c.dial()
+	if err != nil {
+		return nil, err
+	}
+	id, ok := c.track(conn)
+	if !ok {
+		conn.Close()
+		return nil, errors.New("rex: connection to the server lost")
+	}
+	a.Op, a.Conn = "attach", id
+	b, _ := json.Marshal(a)
+	conn.SetDeadline(time.Now().Add(callTimeout.get()))
+	if _, err = conn.Write(append(b, '\n')); err == nil {
+		err = readOK(conn)
+	}
+	conn.SetDeadline(time.Time{})
+	if err != nil {
+		conn.Close()
+		c.untrack(conn)
+		return nil, err
+	}
+	return trackedConn{conn, c}, nil
+}
+
+// trackedConn is a connection attached through a client, which forgets it
+// as it closes.
+type trackedConn struct {
+	net.Conn
+	c *Client
+}
+
+func (t trackedConn) Close() error {
+	t.c.untrack(t.Conn)
+	return t.Conn.Close()
 }
 
 func (c *Client) Layout() (json.RawMessage, error) {
@@ -579,6 +682,16 @@ func (s *Stream) sync() error {
 	s.sentCols, s.sentRows = cols, rows
 	s.mu.Unlock()
 	return s.c.Resize(s.sid, cols, rows)
+}
+
+// ResendSize tells the server the terminal's size again, once attached,
+// though it told it that one last: the session ignored it while another
+// held its size.
+func (s *Stream) ResendSize() error {
+	s.mu.Lock()
+	s.sentCols, s.sentRows = 0, 0
+	s.mu.Unlock()
+	return s.sync()
 }
 
 // readOK reads the server's answer to an attach, a byte at a time so as
