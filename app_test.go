@@ -73,7 +73,7 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 	old := newWindow
 	newWindow = func(*App) *mygo.Window { return nil }
 	t.Cleanup(func() { newWindow = old })
-	st := &store{client: client}
+	st := &store{client: client, started: true}
 	a := &App{st: st, client: client, stop: make(chan struct{})}
 	w := st.addWorkspace()
 	a.ws, w.app, st.apps = w, a, []*App{a}

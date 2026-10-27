@@ -558,9 +558,15 @@ func (a *App) stopHosts() {
 	}
 }
 
+// saveHosts writes the app's hosts: the store's, which every window
+// shares, whichever window saves them, open or closed since.
 func (a *App) saveHosts() error {
-	saved := make([]savedHost, len(a.hosts))
-	for i, h := range a.hosts {
+	hosts := a.hosts
+	if a.st != nil {
+		hosts = a.st.hosts
+	}
+	saved := make([]savedHost, len(hosts))
+	for i, h := range hosts {
 		saved[i] = h.saved()
 	}
 	err := saveHosts(saved)

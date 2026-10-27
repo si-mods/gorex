@@ -963,7 +963,8 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 			return
 		case <-client.Closed():
 			win.Update(func() {
-				if !a.quitting {
+				// Not once the window took a new connection.
+				if !a.quitting && a.client == client {
 					a.errMsg = locales.Messages.ErrorConnectionLost
 				}
 			})

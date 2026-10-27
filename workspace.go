@@ -451,6 +451,18 @@ func (st *store) connect() bool {
 	if err == nil && st.hello.Version != rex.ProtocolVersion {
 		st.errMsg = locales.Messages.ErrorServerVersion
 	}
+	// The windows open take the new connection, attached again to their
+	// sessions, as the old one closed.
+	for _, a := range st.apps {
+		a.client, a.hello, a.errMsg = st.client, st.hello, st.errMsg
+		if w := a.ws; w != nil {
+			a.detach()
+			a.show(w, nil)
+		}
+		if a.win != nil {
+			go a.poll(a.win, st.client)
+		}
+	}
 	return true
 }
 
@@ -458,10 +470,13 @@ func (st *store) connect() bool {
 // one at least, of the first workspace or a new one. Sessions of this
 // machine no workspace names get tabs in the first.
 func (st *store) start() {
-	if !st.connect() {
+	if st.started {
 		return
 	}
 	st.started = true
+	if !st.connect() {
+		return
+	}
 	open := slices.DeleteFunc(st.load(), func(w *Workspace) bool { return w == nil })
 	if len(open) == 0 {
 		if len(st.workspaces) > 0 {
@@ -477,13 +492,10 @@ func (st *store) start() {
 }
 
 // reopen opens a window when none is: of the workspace of the last one,
-// else of one no window shows, else of a new one.
+// else of one no window shows, else of a new one. Before the app started,
+// the start, which opens one at least, serves it.
 func (st *store) reopen() {
-	if !st.started {
-		st.start()
-		return
-	}
-	if len(st.apps) > 0 || !st.connect() {
+	if !st.started || len(st.apps) > 0 || !st.connect() {
 		return
 	}
 	w := st.lastClosed
@@ -498,13 +510,9 @@ func (st *store) reopen() {
 }
 
 // openNew opens a window of a new workspace, as New Window and New
-// Session do without windows.
+// Session do without windows; before the app started, the start serves it.
 func (st *store) openNew() {
-	if !st.started {
-		st.start()
-		return
-	}
-	if st.connect() {
+	if st.started && st.connect() {
 		st.openWindow(st.addWorkspace(), false)
 		st.save()
 	}

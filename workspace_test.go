@@ -566,3 +566,67 @@ func TestDebugVerbs(t *testing.T) {
 	}
 	quit(st)
 }
+
+// TestHostsSavedThroughStore checks that a host that saves itself after
+// the window that started it closed writes the app's hosts, not that
+// window's: a host added since in another window stays saved.
+func TestHostsSavedThroughStore(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	h1 := a.addHost(savedHost{ID: "h1", Name: "one", Address: "x1"})
+	t.Cleanup(h1.close)
+	b := st.openWindow(st.addWorkspace(), false)
+	st.closed(a)
+	h2 := b.addHost(savedHost{ID: "h2", Name: "two", Address: "x2"})
+	t.Cleanup(h2.close)
+	h1.kill("gone") // saves the hosts, h1's kill with them
+	hs, err := loadHosts()
+	if err != nil || len(hs) != 2 || hs[1].ID != "h2" || !slices.Contains(hs[0].Kills, "gone") {
+		t.Fatalf("hosts.json has %+v, %v", hs, err)
+	}
+	quit(st)
+}
+
+// TestStartOnce checks that a second launch or an activation that comes
+// before the app is ready opens no window of its own, and that starting
+// twice opens the windows once.
+func TestStartOnce(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.st.saveNow()
+	quit(a.st)
+	next := &store{}
+	next.secondInstance() // before WhenReady: the start serves it
+	next.reopen()
+	next.openNew()
+	if len(next.apps) != 0 {
+		t.Fatalf("%d windows before the start", len(next.apps))
+	}
+	next.start()
+	next.start()
+	if len(next.apps) != 1 || len(next.workspaces) != 1 {
+		t.Errorf("%d windows of %d workspaces", len(next.apps), len(next.workspaces))
+	}
+	quit(next)
+}
+
+// TestReconnectUpdatesWindows checks that a window opened after the
+// server's connection was lost connects again, and that the windows open
+// then use the new connection, on the same sessions.
+func TestReconnectUpdatesWindows(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	sids, old := sidsOf(a), st.client
+	old.Close()
+	st.openNew()
+	t.Cleanup(func() { st.client.Shutdown() })
+	if st.client == old || len(st.apps) != 2 {
+		t.Fatal("no new connection")
+	}
+	if a.client != st.client {
+		t.Fatal("the window open before keeps the closed connection")
+	}
+	if !slices.Equal(sidsOf(a), sids) {
+		t.Errorf("the window came back on %q, not %q", sidsOf(a), sids)
+	}
+	quit(st)
+}
