@@ -50,13 +50,14 @@ type Server struct {
 	// cmds are the layout commands clients asked for (LayoutCommand), in
 	// order, which the app has not taken; taken are those it took, by id.
 	// cmdWake closes as one comes; takers counts the app's takes waiting,
-	// and tookAt is when one ended last.
+	// and desks the connections open that took commands, the app's: while
+	// one is, a command waits for its next take.
 	cmdMu   sync.Mutex
 	cmds    []*layoutCmd
 	taken   map[int64]*layoutCmd
 	cmdWake chan struct{}
 	takers  int
-	tookAt  time.Time
+	desks   int
 	nextCmd int64
 	// subs are the control connections that subscribed, told of each
 	// change (notify).
@@ -77,18 +78,12 @@ var (
 	takeWait    = newDuration(10 * time.Second)
 )
 
-// retakeGap is how long after the app took a command, or answered one,
-// it counts as taking still: it takes again at once.
-const retakeGap = 500 * time.Millisecond
-
 // command asks the app for c, and returns its answer: Code tells why it
 // did not make it, when the app has no window to take commands, or it
 // did not answer in time; it may make it still.
 func (s *Server) command(c LayoutCommand) LayoutCommand {
 	s.cmdMu.Lock()
-	// The app takes again right after it answered one; one it makes now
-	// it answers first.
-	if s.takers == 0 && len(s.taken) == 0 && time.Since(s.tookAt) > retakeGap {
+	if s.desks == 0 {
 		s.cmdMu.Unlock()
 		return LayoutCommand{Code: "desktop_unavailable", Error: "no GoRex window is open"}
 	}
@@ -120,18 +115,13 @@ func (s *Server) take(gone <-chan struct{}) *LayoutCommand {
 	timeout := time.After(takeWait.get())
 	s.cmdMu.Lock()
 	s.takers++
-	live := true
 	defer func() {
 		s.takers--
-		if live {
-			s.tookAt = time.Now()
-		}
 		s.cmdMu.Unlock()
 	}()
 	for {
 		select {
 		case <-gone:
-			live = false
 			return nil
 		default:
 		}
@@ -166,7 +156,6 @@ func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Lock()
 	lc := s.taken[c.ID]
 	delete(s.taken, c.ID)
-	s.tookAt = time.Now()
 	s.cmdMu.Unlock()
 	if lc != nil {
 		lc.done <- c
@@ -459,9 +448,18 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		write(b)
 	}
 	aside := make(chan struct{}, maxAside)
-	// gone closes with the connection, ending its take.
+	// gone closes with the connection, ending its take; desk tells that it
+	// took commands, the app's.
 	gone := make(chan struct{})
 	defer close(gone)
+	desk := false
+	defer func() {
+		if desk {
+			s.cmdMu.Lock()
+			s.desks--
+			s.cmdMu.Unlock()
+		}
+	}()
 	line := first
 	for {
 		var req Request
@@ -476,6 +474,12 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 			// Kills wait for the session to end, and layout commands for
 			// the app: answer them aside, a few at a time; the others wait
 			// their turn.
+			if req.Op == "command.take" && !remote && !desk {
+				desk = true
+				s.cmdMu.Lock()
+				s.desks++
+				s.cmdMu.Unlock()
+			}
 			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" {
 				aside <- struct{}{}
 				kept := kept // a later hello sets it, as this runs

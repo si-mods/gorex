@@ -373,3 +373,32 @@ func TestTakeOfClosedConnection(t *testing.T) {
 		t.Errorf("answered %+v %v after %v", res, err, time.Since(start))
 	}
 }
+
+// TestCommandBetweenTakes sends a command while the app, its window open,
+// takes none: it waits for the app's next take, and is made.
+func TestCommandBetweenTakes(t *testing.T) {
+	s, _ := testServer(t)
+	app, bridge := pipe(s, ""), pipe(s, "")
+	defer app.Close()
+	defer bridge.Close()
+	defer takeWait.set(takeWait.set(50 * time.Millisecond))
+	if cmd, err := app.TakeCommand(); err != nil || cmd != nil {
+		t.Fatalf("took %+v %v", cmd, err)
+	}
+	// No take waits now; the app's connection is open.
+	answered := make(chan LayoutCommand, 1)
+	go func() {
+		res, _ := bridge.Command(LayoutCommand{Op: "tab.rename", SID: "a", Name: "x"})
+		answered <- res
+	}()
+	time.Sleep(time.Second)
+	takeWait.set(10 * time.Second)
+	cmd, err := app.TakeCommand()
+	if err != nil || cmd == nil || cmd.Op != "tab.rename" {
+		t.Fatalf("took %+v %v", cmd, err)
+	}
+	app.CommandDone(LayoutCommand{ID: cmd.ID})
+	if res := <-answered; res.Code != "" {
+		t.Errorf("answered %+v", res)
+	}
+}

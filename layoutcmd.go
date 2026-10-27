@@ -51,8 +51,9 @@ func (a *App) takeCommands(win *mygo.Window, client *rex.Client) {
 		if cmd == nil {
 			continue
 		}
-		done := make(chan made, 1)
+		started, done := make(chan struct{}), make(chan made, 1)
 		update(func() {
+			close(started)
 			if a.win != win {
 				done <- made{res: unavailable(cmd.ID)}
 				return
@@ -63,10 +64,13 @@ func (a *App) takeCommands(win *mygo.Window, client *rex.Client) {
 			}
 			done <- m
 		})
+		// The window that went runs nothing; one that runs it takes its
+		// time, as a session may be slow to start.
 		var m made
 		select {
-		case m = <-done:
-		case <-time.After(rex.AppCommandTimeout): // the window went
+		case <-started:
+			m = <-done
+		case <-time.After(rex.AppCommandTimeout):
 			m.res = unavailable(cmd.ID)
 		}
 		if m.layout != nil {

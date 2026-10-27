@@ -65,11 +65,13 @@ type Request struct {
 }
 
 // CommandTimeout is how long the server waits for the app to make a
-// layout command; the app gives up on one before, at AppCommandTimeout,
-// and a client waits a while longer, to see the layout saved.
+// layout command, a new session included, which Windows may take seconds
+// to start; the app gives up on one its window does not start making
+// within AppCommandTimeout, and a client waits a while longer than the
+// server, to see the layout saved.
 const (
-	CommandTimeout    = 4 * time.Second
-	AppCommandTimeout = CommandTimeout * 3 / 4
+	CommandTimeout    = 6 * time.Second
+	AppCommandTimeout = CommandTimeout / 2
 )
 
 // LayoutCommand is a change of the layout that a client of this machine,
