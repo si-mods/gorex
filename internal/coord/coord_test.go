@@ -253,10 +253,18 @@ func TestJoinURL(t *testing.T) {
 	if got := JoinURL(host, fp); got != "https://192.168.88.234:7465/0123456789abcdef" {
 		t.Errorf("JoinURL gave %q", got)
 	}
-	if _, _, err := SplitJoinURL("https://coord.example/0123456789abcdef"); err == nil {
-		t.Error("a URL without a port split")
+	// 443, the default, reads without a port on both ways.
+	host, fp, err = SplitJoinURL("https://coord.yibo.si/0123456789abcdef")
+	if err != nil || host != "coord.yibo.si" || fp != "0123456789abcdef" {
+		t.Fatalf("SplitJoinURL without a port: %v %v %v", host, fp, err)
 	}
-	if _, _, err := SplitJoinURL("https://coord.example:7465/"); err == nil {
+	if got := JoinURL("coord.yibo.si:443", fp); got != "https://coord.yibo.si/0123456789abcdef" {
+		t.Errorf("JoinURL hid 443: %q", got)
+	}
+	if _, _, err := SplitJoinURL("https:///0123456789abcdef"); err == nil {
+		t.Error("a URL without a host split")
+	}
+	if _, _, err := SplitJoinURL("https://coord.yibo.si/"); err == nil {
 		t.Error("a URL without a fingerprint split")
 	}
 }

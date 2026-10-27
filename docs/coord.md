@@ -16,7 +16,7 @@ without breaking machines that already know each other.
 ## Deployment
 
 One coordinator per network, on an always-on machine (a small LXC, a
-VPS), run as `gcoord serve`. Default port 7465. State lives in one
+VPS), run as `gcoord serve`. Default port 443, HTTPS's own. State lives in one
 directory (default `/var/lib/gcoord`): `network.json` (members, the
 hashed network key; mode 0600) and `tls.crt`/`tls.key`, a self-signed
 certificate whose fingerprint pins the server.
@@ -25,7 +25,7 @@ certificate whose fingerprint pins the server.
 form
 
 ```
-https://host:7465/<fingerprint>
+https://host/<fingerprint>
 ```
 
 where `<fingerprint>` is the first 16 hex digits of the SHA-256 of the
