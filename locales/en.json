@@ -706,6 +706,14 @@
   "@remoteAllow": {
     "description": "Setting: whether other machines may connect."
   },
+  "remoteShare": "Share open sessions",
+  "@remoteShare": {
+    "description": "Setting: whether allowed remote clients see and use every session of this machine, or only those each opened."
+  },
+  "remoteShareNote": "Allowed clients see and use the sessions open on this machine. Off: each sees only its own.",
+  "@remoteShareNote": {
+    "description": "Help under the Share open sessions switch."
+  },
   "remoteUnreachable": "Server not reachable",
   "@remoteUnreachable": {
     "description": "State: the session server does not answer."

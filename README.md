@@ -82,7 +82,7 @@ The choices go to `settings.json`, as do the sidebar's width and whether
 it is hidden.
 
 Remote turns the server's remote access on and off, and manages it:
-pairing a new device (Start pairing opens a five-minute window; each
+whether allowed clients share the sessions open here, pairing a new device (Start pairing opens a five-minute window; each
 request shows its name and fingerprint, to Approve or Reject), the list
 of allowed clients (revoke one, or add one by name and public key), this
 machine's own key and its fingerprint, and, while listening, the address,
@@ -168,9 +168,18 @@ What to know before turning it on:
   nobody in, but it lets anyone ask to pair while a window is open:
   compare fingerprints, and regenerate a leaked address anyway.
 - An allowed key means running commands as this user: a client may
-  start any program with any environment and attach to every session.
-  From a shell there it can reach the local socket, and so change the
-  layout and remote access itself. Trust it as you would an SSH key.
+  start any program with any environment. From a shell there it can
+  reach the local socket, and so change the layout, remote access, and
+  sharing itself. Trust it as you would an SSH key.
+- Share open sessions (Settings › Remote, off by default, kept in
+  `remote.json`) decides what else a client sees. Off, each client lists,
+  attaches to, resizes and kills only the sessions it created; the others
+  (this machine's window's, other clients') are refused. On, every allowed
+  client sees and uses every session. Turning it off detaches clients
+  from the sessions they did not create. The server remembers which key
+  created a session, in memory, and keeps it across an in-place upgrade;
+  a session survives a revoke and approval of the same key as its own.
+  Local connections always see every session.
 - Over the connection itself, a remote client may list, create, kill,
   resize and attach to sessions only. It may not shut the server down,
   read or set the window layout, or see or change remote access
@@ -212,9 +221,14 @@ show a host's name on its tabs. A pane whose host is away keeps its
 screen under "Reconnecting to …", drops what is typed meanwhile, and
 attaches again by itself; one whose session ended there closes. The
 window's layout keeps the host of each pane, so a host's tabs come back
-when GoRex opens again, attached once the host answers. Sessions another
-machine opened on a host do not show here. `go run ./tools/remotectl pair
-ADDRESS NAME` asks to pair from a machine without the app.
+when GoRex opens again, attached once the host answers. Sessions the host
+lists that no tab shows (opened in the host's own window, or by another
+client, while the host shares its sessions) get a tab each, last among
+the host's; a tab closed here ends its session as any other and does not
+come back. When the host stops sharing, the tabs of sessions this machine
+did not create close here and their sessions go on there.
+`go run ./tools/remotectl pair ADDRESS NAME` asks to pair from a machine
+without the app.
 
 ## Develop and build
 

@@ -168,6 +168,10 @@ func shortDir(t *testing.T) string {
 // tailcat listener does.
 func serveRemote(t *testing.T, s *Server) string {
 	t.Helper()
+	// The remote client attaches to the local test sessions: the host shares them.
+	s.rem.mu.Lock()
+	s.rem.cfg.ShareSessions = true
+	s.rem.mu.Unlock()
 	sock := filepath.Join(shortDir(t), "s.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
@@ -181,7 +185,7 @@ func serveRemote(t *testing.T, s *Server) string {
 				return
 			}
 			go func() {
-				s.handle(c, true)
+				s.handle(c, "nodekey:stale-test")
 				c.Close()
 			}()
 		}
@@ -238,7 +242,7 @@ func settledGoroutines(want int, d time.Duration) int {
 func TestBlackholedAttachesAreDropped(t *testing.T) {
 	defer SetTimeoutsForTest(600*time.Millisecond, 2*time.Second)()
 	s, _ := testServer(t)
-	local := pipe(s, false)
+	local := pipe(s, "")
 	defer local.Close()
 	cmd, dir := testShell()
 	info, err := local.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
@@ -337,7 +341,7 @@ func TestStalledClientIsDropped(t *testing.T) {
 	}
 	defer SetTimeoutsForTest(500*time.Millisecond, 2*time.Second)()
 	s, _ := testServer(t)
-	local := pipe(s, false)
+	local := pipe(s, "")
 	defer local.Close()
 	// A session that prints 16 KiB every tenth of a second: more than the
 	// socket holds soon, but far fewer chunks than a queue holds, so that
@@ -473,7 +477,7 @@ func TestKillBesideKeepaliveHello(t *testing.T) {
 	s, _ := testServer(t)
 	for range 20 {
 		a, b := net.Pipe()
-		go s.handle(b, true)
+		go s.handle(b, "nodekey:stale-test")
 		// One write: the server reads the hello as the kill is answered.
 		go a.Write([]byte(`{"id":1,"op":"kill","sid":"nosuch"}` + "\n" + `{"id":2,"op":"hello","keepalive":true}` + "\n"))
 		a.SetReadDeadline(time.Now().Add(5 * time.Second))

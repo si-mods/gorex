@@ -23,7 +23,7 @@ func TestLineLimit(t *testing.T) {
 	big := append(bytes.Repeat([]byte("x"), maxLine+1), '\n')
 	for _, name := range []string{"first line", "later line"} {
 		a, b := net.Pipe()
-		go s.handle(b, false)
+		go s.handle(b, "")
 		r := bufio.NewReader(a)
 		if name == "later line" {
 			a.Write([]byte(`{"op":"hello","id":1}` + "\n"))
@@ -50,7 +50,7 @@ func TestClampSize(t *testing.T) {
 		}
 	}
 	s, _ := testServer(t)
-	c := pipe(s, true)
+	c := pipe(s, testPeer)
 	defer c.Close()
 	cmd, dir := testShell()
 	info, err := c.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 1 << 20, Rows: 1 << 20})
@@ -72,7 +72,7 @@ func TestClampSize(t *testing.T) {
 
 func TestKillsAreBounded(t *testing.T) {
 	s, _ := testServer(t)
-	c := pipe(s, true)
+	c := pipe(s, testPeer)
 	defer c.Close()
 	var cur, most atomic.Int32
 	release := make(chan struct{})
@@ -137,7 +137,7 @@ func TestAcceptFailureRestarts(t *testing.T) {
 		}
 		return ln, "tcFAKE", 7, err
 	}
-	c := pipe(s, false)
+	c := pipe(s, "")
 	defer c.Close()
 	if err := c.AllowRemote("alice-laptop", key.NewNode().Public().String()); err != nil {
 		t.Fatal(err)
