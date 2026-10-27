@@ -1172,16 +1172,16 @@ func (msgs Messages) HostServer() string {
 	return Catalog.Format(msgs.locale, "hostServer", nil)
 }
 
-// HostSessions says "Sessions"
+// HostSessions says "Terminals"
 // in the language the app shows.
 //
-// Host panel row: the sessions.
+// Host panel row: the terminals, which the session server runs.
 func HostSessions() string { return In(i18n.Locale()).HostSessions() }
 
-// HostSessions says "Sessions"
+// HostSessions says "Terminals"
 // in the language of msgs.
 //
-// Host panel row: the sessions.
+// Host panel row: the terminals, which the session server runs.
 func (msgs Messages) HostSessions() string {
 	return Catalog.Format(msgs.locale, "hostSessions", nil)
 }
@@ -3344,16 +3344,16 @@ func (msgs Messages) HostsManage() string {
 	return Catalog.Format(msgs.locale, "hostsManage", nil)
 }
 
-// HostsSessions says "{n, plural, =0 {No sessions} one {# session} other {# sessions}}"
+// HostsSessions says "{n, plural, =0 {No terminals} one {# terminal} other {# terminals}}"
 // in the language the app shows.
 //
-// Host panel: how many sessions (panes) a host has in the window.
+// Host panel: how many terminals (panes) a host has in the window.
 func HostsSessions(n int) string { return In(i18n.Locale()).HostsSessions(n) }
 
-// HostsSessions says "{n, plural, =0 {No sessions} one {# session} other {# sessions}}"
+// HostsSessions says "{n, plural, =0 {No terminals} one {# terminal} other {# terminals}}"
 // in the language of msgs.
 //
-// Host panel: how many sessions (panes) a host has in the window.
+// Host panel: how many terminals (panes) a host has in the window.
 func (msgs Messages) HostsSessions(n int) string {
 	return Catalog.Format(msgs.locale, "hostsSessions", map[string]any{"n": n})
 }

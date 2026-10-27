@@ -356,9 +356,9 @@
   "@hostServer": {
     "description": "Host panel row: the session server."
   },
-  "hostSessions": "Sessions",
+  "hostSessions": "Terminals",
   "@hostSessions": {
-    "description": "Host panel row: the sessions."
+    "description": "Host panel row: the terminals, which the session server runs."
   },
   "hostServerUp": "pid {pid, number, ::group-off} · up {uptime}",
   "@hostServerUp": {
@@ -1124,9 +1124,9 @@
   "@hostsManage": {
     "description": "Host panel button: open the Remote Hosts settings."
   },
-  "hostsSessions": "{n, plural, =0 {No sessions} one {# session} other {# sessions}}",
+  "hostsSessions": "{n, plural, =0 {No terminals} one {# terminal} other {# terminals}}",
   "@hostsSessions": {
-    "description": "Host panel: how many sessions (panes) a host has in the window.",
+    "description": "Host panel: how many terminals (panes) a host has in the window.",
     "placeholders": {
       "n": {
         "type": "int",

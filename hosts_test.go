@@ -1094,9 +1094,9 @@ func TestHostMessagesInChinese(t *testing.T) {
 	zh, en := locales.In("zh-Hans"), locales.In("en")
 	for got, want := range map[string]string{
 		zh.HostsReconnecting(3):  "正在重新连接（第 3 次）…",
-		zh.HostsSessions(2):      "2 个会话",
-		en.HostsSessions(1):      "1 session",
-		en.HostsSessions(0):      "No sessions",
+		zh.HostsSessions(2):      "2 个终端",
+		en.HostsSessions(1):      "1 terminal",
+		en.HostsSessions(0):      "No terminals",
 		zh.CmdNewTabOn("studio"): "在 studio 上新建标签页",
 	} {
 		if got != want {
