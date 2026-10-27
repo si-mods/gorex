@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -48,10 +49,11 @@ type Server struct {
 	kept map[string]*keptConn
 }
 
-// keptConn is a control connection kept alive, and the connections
+// keptConn is a control connection kept alive, conn, and the connections
 // attached through it, which close with it.
 type keptConn struct {
 	id       string
+	conn     net.Conn
 	mu       sync.Mutex
 	attached map[net.Conn]struct{}
 	gone     bool
@@ -69,8 +71,8 @@ var keepaliveTimeout = newDuration(30 * time.Second)
 var writeTimeout = newDuration(30 * time.Second)
 
 // keep keeps a control connection alive, under a new id.
-func (s *Server) keep() *keptConn {
-	k := &keptConn{id: newID(), attached: map[net.Conn]struct{}{}}
+func (s *Server) keep(conn net.Conn) *keptConn {
+	k := &keptConn{id: newID(), conn: conn, attached: map[net.Conn]struct{}{}}
 	s.mu.Lock()
 	if s.kept == nil {
 		s.kept = map[string]*keptConn{}
@@ -80,12 +82,19 @@ func (s *Server) keep() *keptConn {
 	return k
 }
 
-// unkeep forgets a control connection gone, and closes the connections
-// attached through it.
+// unkeep forgets a control connection gone, closes the connections
+// attached through it, and unlocks the sizes it locked.
 func (s *Server) unkeep(k *keptConn) {
 	s.mu.Lock()
 	delete(s.kept, k.id)
+	all := make([]*session, 0, len(s.sessions))
+	for _, ss := range s.sessions {
+		all = append(all, ss)
+	}
 	s.mu.Unlock()
+	for _, ss := range all {
+		ss.releaseSize(k.conn)
+	}
 	k.mu.Lock()
 	k.gone = true
 	conns := k.attached
@@ -256,6 +265,7 @@ func (s *Server) handle(conn net.Conn, peer string) {
 			conn.Close()
 			return
 		}
+		var via net.Conn
 		if a.Conn != "" {
 			k, ok := s.bind(a.Conn, conn)
 			if !ok {
@@ -264,20 +274,29 @@ func (s *Server) handle(conn net.Conn, peer string) {
 				return
 			}
 			defer k.unbind(conn)
+			via = k.conn
 		}
 		// The session takes the window's size before the answer, after
 		// which the client may resize it on its control connection: that
-		// size must not be overwritten by this older one.
-		if a.Cols > 0 && a.Rows > 0 {
+		// size must not be overwritten by this older one. An owner takes
+		// the size lock with it.
+		answer := `{"ok":true}`
+		if a.Owner != "" {
+			ss.lockSize(a.Owner, a.Device, a.Cols, a.Rows, conn, a.SizeLease)
+			defer ss.releaseSize(conn)
+			if a.SizeLease {
+				answer = `{"ok":true,"sizeLease":true}`
+			}
+		} else if a.Cols > 0 && a.Rows > 0 {
 			ss.resize(a.Cols, a.Rows)
 		}
-		conn.Write([]byte(`{"ok":true}` + "\n"))
+		conn.Write([]byte(answer + "\n"))
 		// What the reader buffered past the first line is input.
+		var typed []byte
 		if n := r.Buffered(); n > 0 {
-			b, _ := r.Peek(n)
-			ss.input(b)
+			typed, _ = r.Peek(n)
 		}
-		ss.attach(conn, peer, func() bool { return s.mayUse(peer, ss) })
+		ss.attach(conn, peer, a, via, func() bool { return s.mayUse(peer, ss) }, typed)
 		return
 	}
 	s.control(conn, r, first, peer)
@@ -320,7 +339,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		var req Request
 		if err := json.Unmarshal(line, &req); err == nil {
 			if req.Op == "hello" && req.Keepalive && kept == nil {
-				kept = s.keep()
+				kept = s.keep(conn)
 			}
 			// Kills wait for the session to end: answer them aside, a
 			// few at a time; the others wait their turn.
@@ -412,6 +431,14 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	} else if data != nil {
 		res.Data, _ = json.Marshal(data)
 	}
+	// A client polling the list gets it only when it changed.
+	if req.Op == "list" && err == nil {
+		sum := sha256.Sum256(res.Data)
+		res.ETag = hex.EncodeToString(sum[:12])
+		if req.ETag == res.ETag {
+			res.Data = nil
+		}
+	}
 	return res
 }
 
@@ -423,6 +450,8 @@ func (s *Server) session(id string) (*session, error) {
 	}
 	return nil, fmt.Errorf("no session %q", id)
 }
+
+var errSizeUnlocked = errors.New("rex: the session's size is not locked by this owner")
 
 var errNotShared = errors.New("rex: that session is not shared with this machine: the host shares only the sessions each client opened")
 
@@ -537,12 +566,30 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		s.mu.Unlock()
 		return nil, nil
-	case "resize":
+	case "resize", "lockSize", "lockedResize", "unlockSize", "renewSize":
 		ss, err := s.use(req.SID, peer)
 		if err != nil {
 			return nil, err
 		}
-		ss.resize(req.Cols, req.Rows)
+		switch req.Op {
+		case "resize":
+			ss.resize(req.Cols, req.Rows)
+		case "lockSize":
+			if kept == nil || req.Owner == "" {
+				return nil, errors.New("rex: lockSize needs an owner, on a connection kept alive")
+			}
+			ss.lockSize(req.Owner, req.Device, req.Cols, req.Rows, kept.conn, req.SizeLease)
+		case "lockedResize":
+			if !ss.lockedResize(req.Owner, req.Cols, req.Rows) {
+				return nil, errSizeUnlocked
+			}
+		case "unlockSize":
+			ss.unlockSize(req.Owner, req.Cols, req.Rows)
+		case "renewSize":
+			if !ss.renewSize(req.Owner) {
+				return nil, errSizeUnlocked
+			}
+		}
 		return nil, nil
 	case "getLayout":
 		s.mu.Lock()

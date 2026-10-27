@@ -15,6 +15,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
@@ -279,6 +280,19 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		p.stream = a.client.Stream(p.SID, cols, rows)
 		p.stream.OnData = onData
 		opts.Conn = p.stream
+		// Who types last takes the session's size back from a device that
+		// holds it (SizeLock): the session gets the pane's size again.
+		// Command's keys are the app's shortcuts.
+		opts.OnKey = func(mods ui.Modifiers, _ ui.Key) bool {
+			if mods&ui.Super == 0 {
+				a.takeSize(p)
+			}
+			return false
+		}
+		opts.OnPaste = func(transfer.Data) bool {
+			a.takeSize(p)
+			return false
+		}
 	}
 	opts.OnTitle = func(title string) {
 		update(func() { p.title = title })
@@ -318,6 +332,18 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// attaching changes nothing in the session.
 	term.Resize(cols, rows)
 	p.term = term
+}
+
+// takeSize takes the size of the pane's session back from the device that
+// holds it, at the pane's size.
+func (a *App) takeSize(p *Pane) {
+	if p.info.SizeLock == "" || p.term == nil {
+		return
+	}
+	p.info.SizeLock, p.info.SizeLockDevice = "", ""
+	cols, rows := p.term.Size()
+	client, sid := a.client, p.SID
+	go client.UnlockSize(sid, cols, rows)
 }
 
 // nopConn is the Conn of a terminal that only shows what the app feeds it.
@@ -985,6 +1011,12 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 			}
 			was := p.info
 			p.info = in
+			// While another device holds the session's size, the pane's
+			// resizes are ignored, and the session keeps that size; once
+			// it lets go, the pane gives the session its own.
+			if was.SizeLock != "" && in.SizeLock == "" && p.stream != nil {
+				go p.stream.ResendSize()
+			}
 			// A program that ran a while and finished out of sight
 			// asks for attention.
 			if !was.Idle && was.Program != "" && in.Idle && was.Program != in.Program {

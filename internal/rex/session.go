@@ -4,6 +4,7 @@ package rex
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -59,6 +60,24 @@ type session struct {
 	// hold keeps the terminal open while the server hands it to another
 	// executable (upgrade).
 	hold sync.RWMutex
+	// sizeLock is the owner holding the session's size (lockSize), through
+	// sizeLockConn, an attached connection or a control one, until
+	// sizeLockUntil when leased: while it holds it, the windows' resizes
+	// are ignored.
+	sizeLock, sizeLockDevice string
+	sizeLockConn             net.Conn
+	sizeLockUntil            time.Time
+	sizeLockTimer            *time.Timer
+	// typed is the client that last typed, whose terminal answers the
+	// program's queries (authorityLocked); attaches counts the attaches,
+	// for the newest.
+	typed    *attached
+	attaches uint64
+	// batchEnd, while the output is inside a synchronized update (mode
+	// 2026), closes as it ends; tail is the end of the output read last,
+	// which may hold the start of the mode.
+	batchEnd chan struct{}
+	tail     []byte
 }
 
 // attached is a connection attached to a session, whose output a
@@ -76,6 +95,10 @@ type attached struct {
 	peer   string
 	queued atomic.Int64
 	remote bool
+	// seq orders the attaches of a session; via is the control connection
+	// it attached through, which may hold the size lock (lockSize).
+	seq uint64
+	via net.Conn
 }
 
 // The most chunks of output that may wait for a client, and bytes for a
@@ -224,6 +247,7 @@ func (s *session) run(wait func() int) {
 		s.mu.Lock()
 		s.screen, s.title = s.vt.Snapshot(), s.vt.Title()
 		s.exited = true
+		s.clearSizeLockLocked()
 		for a := range s.clients {
 			a.finish()
 		}
@@ -318,6 +342,7 @@ func (s *session) read() {
 			data := append([]byte(nil), buf[:n]...)
 			s.mu.Lock()
 			s.vt.Feed(data)
+			s.batch(data)
 			s.output += uint64(n)
 			s.lastOutput = time.Now()
 			for a := range s.clients {
@@ -340,26 +365,40 @@ func (s *session) read() {
 
 // attach attaches a connection: it gets a snapshot of the session's
 // screen and scrollback, at the size the server gave the session for it
-// (resize), then what the session prints, and what it sends is typed.
+// (resize), then what the session prints, and what it sends is typed,
+// typed first, what the server read past the attach's line.
 // may, checked as it joins, tells whether peer may still use the session:
-// detach drops it later when it may not.
-func (s *session) attach(conn net.Conn, peer string, may func() bool) {
-	a := &attached{conn: conn, peer: peer, out: make(chan []byte, maxQueue), remote: peer != ""}
+// detach drops it later when it may not. via is the control connection
+// it attached through (Attach.Conn), if any; o.History and o.Framed shape
+// the snapshot.
+func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may func() bool, typed []byte) {
+	a := &attached{conn: conn, via: via, peer: peer, out: make(chan []byte, maxQueue), remote: peer != ""}
 	s.mu.Lock()
+	s.waitBatchLocked()
 	if !may() {
 		s.mu.Unlock()
 		conn.Close()
 		return
 	}
 	snap, title := s.view()
+	cut := false
+	if o.History > 0 {
+		snap, cut = trimSnapshot(snap, s.rows, o.History)
+	}
 	if title != "" {
 		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
+	}
+	if o.Framed {
+		head, _ := json.Marshal(SnapshotHeader{Snapshot: len(snap), Cols: s.cols, Rows: s.rows, Truncated: cut})
+		snap = append(append(head, '\n'), snap...)
 	}
 	a.first = snap
 	exited := s.exited
 	if exited {
 		a.finish()
 	} else {
+		s.attaches++
+		a.seq = s.attaches
 		s.clients[a] = struct{}{}
 	}
 	s.mu.Unlock()
@@ -367,11 +406,14 @@ func (s *session) attach(conn net.Conn, peer string, may func() bool) {
 	if exited {
 		return
 	}
+	if len(typed) > 0 {
+		s.input(a, typed)
+	}
 	buf := make([]byte, 32<<10)
 	for {
 		n, err := conn.Read(buf)
 		if n > 0 {
-			s.input(buf[:n])
+			s.input(a, buf[:n])
 		}
 		if err != nil {
 			break
@@ -398,20 +440,237 @@ func (s *session) detach(drop func(peer string) bool) {
 	}
 }
 
-func (s *session) input(p []byte) {
-	s.mu.Lock()
-	s.lastInput = time.Now()
-	exited := s.exited
-	s.mu.Unlock()
-	if !exited {
+// input types what client a sends.
+func (s *session) input(a *attached, p []byte) {
+	if p := s.admit(a, p); len(p) > 0 {
 		s.p.write(p)
 	}
 }
 
-// resize sets the size of the terminal and reports whether it changed.
-func (s *session) resize(cols, rows int) bool {
-	cols, rows = clampSize(cols), clampSize(rows)
+// admit returns what of p, which client a sends, the program gets. Every
+// terminal attached answers the program's queries, and the program would
+// read each answer once per client: only the authority's answers reach
+// it (authorityLocked).
+func (s *session) admit(a *attached, p []byte) []byte {
+	typed := dropReplies(p)
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(typed) > 0 {
+		s.typed = a
+	}
+	if s.authorityLocked() != a {
+		p = typed
+	}
+	if s.exited || len(p) == 0 {
+		return nil
+	}
+	s.lastInput = time.Now()
+	return p
+}
+
+// authorityLocked returns the client whose terminal answers the program's
+// queries: the size lock's owner, whose size the program draws for, else
+// the client that typed last, else the one attached last; s.mu is held.
+func (s *session) authorityLocked() *attached {
+	var newest *attached
+	for a := range s.clients {
+		if s.sizeLock != "" && (a.conn == s.sizeLockConn || a.via != nil && a.via == s.sizeLockConn) {
+			return a
+		}
+		if newest == nil || a.seq > newest.seq {
+			newest = a
+		}
+	}
+	if _, ok := s.clients[s.typed]; ok {
+		return s.typed
+	}
+	return newest
+}
+
+// dropReplies returns p without the terminal's answers to queries in it:
+// reports of the cursor (CPR), the device (DA, DSR), modes (DECRQM), the
+// window's size and the keyboard protocol's flags, and whole control
+// strings (OSC, DCS, APC), as colors, XTVERSION and DECRQSS answer. Only
+// whole sequences go; any other byte stays.
+// ponytail: what a user types that has an answer's shape goes too, on a
+// client other than the authority, as Shift+F3 (CSI 1;2R, a CPR's);
+// telling them apart needs the client to mark its answers.
+func dropReplies(p []byte) []byte {
+	if bytes.IndexByte(p, 0x1b) < 0 {
+		return p
+	}
+	out := make([]byte, 0, len(p))
+	for i := 0; i < len(p); {
+		if n := replyLen(p[i:]); n > 0 {
+			i += n
+			continue
+		}
+		out = append(out, p[i])
+		i++
+	}
+	return out
+}
+
+// replyLen returns the length of the answer to a query that p starts
+// with, 0 when it starts with none.
+func replyLen(p []byte) int {
+	if len(p) < 3 || p[0] != 0x1b {
+		return 0
+	}
+	switch p[1] {
+	case ']', 'P', '_':
+		// A control string: keys send none. It ends with ST, or BEL for
+		// an OSC.
+		for i := 2; i < len(p); i++ {
+			switch {
+			case p[i] == 0x07 && p[1] == ']':
+				return i + 1
+			case p[i] == 0x1b:
+				if i+1 < len(p) && p[i+1] == '\\' {
+					return i + 2
+				}
+				return 0
+			}
+		}
+	case '[':
+		i, mark := 2, byte(0)
+		if p[i] == '?' || p[i] == '>' {
+			mark = p[i]
+			i++
+		}
+		for i < len(p) && (p[i] >= '0' && p[i] <= '9' || p[i] == ';') {
+			i++
+		}
+		if i == len(p) {
+			return 0
+		}
+		switch f := p[i]; {
+		case f == '$':
+			if i+1 < len(p) && p[i+1] == 'y' { // DECRPM
+				return i + 2
+			}
+		case f == 'R', f == 'n', // CPR, DECXCPR, DSR
+			f == 'c' && mark != 0,   // DA1, DA2
+			f == 't' && mark == 0,   // the window's size
+			f == 'u' && mark == '?': // the keyboard protocol's flags
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// sizeLease is how long a leased size lock lasts unless renewed.
+var sizeLease = newDuration(30 * time.Second)
+
+// resize sets the size of the terminal and reports whether it changed:
+// not while an owner holds the size (lockSize).
+func (s *session) resize(cols, rows int) bool {
+	s.mu.Lock()
+	if s.sizeLock != "" {
+		s.mu.Unlock()
+		return false
+	}
+	return s.resizeUnlock(cols, rows)
+}
+
+// lockSize gives the session's size to owner, attached through conn, at
+// cols×rows when given: until it unlocks, or conn closes (releaseSize),
+// only its resizes size the session. Leased, the lock ends sizeLease
+// after it was taken or renewed last.
+func (s *session) lockSize(owner, device string, cols, rows int, conn net.Conn, leased bool) {
+	s.mu.Lock()
+	s.clearSizeLockLocked()
+	s.sizeLock, s.sizeLockDevice, s.sizeLockConn = owner, device, conn
+	if leased {
+		s.renewLocked()
+	}
+	if cols > 0 && rows > 0 {
+		s.resizeUnlock(cols, rows)
+		return
+	}
+	s.mu.Unlock()
+}
+
+// lockedResize resizes the session for owner, and reports whether it
+// holds the size.
+func (s *session) lockedResize(owner string, cols, rows int) bool {
+	s.mu.Lock()
+	if owner == "" || s.sizeLock != owner {
+		s.mu.Unlock()
+		return false
+	}
+	s.resizeUnlock(cols, rows)
+	return true
+}
+
+// unlockSize gives the size back to the windows, at cols×rows when given,
+// the size of the window unlocking. With an owner, it unlocks only that
+// owner's lock.
+func (s *session) unlockSize(owner string, cols, rows int) {
+	s.mu.Lock()
+	if owner != "" && s.sizeLock != owner {
+		s.mu.Unlock()
+		return
+	}
+	s.clearSizeLockLocked()
+	if cols > 0 && rows > 0 {
+		s.resizeUnlock(cols, rows)
+		return
+	}
+	s.mu.Unlock()
+}
+
+// releaseSize unlocks the lock taken through conn, which closed: an
+// attach of before, closing, leaves a lock taken anew, by its owner too.
+func (s *session) releaseSize(conn net.Conn) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sizeLock != "" && s.sizeLockConn == conn {
+		s.clearSizeLockLocked()
+	}
+}
+
+// renewSize renews owner's leased lock, and reports whether it holds one.
+func (s *session) renewSize(owner string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if owner == "" || s.sizeLock != owner || s.sizeLockUntil.IsZero() {
+		return false
+	}
+	s.renewLocked()
+	return true
+}
+
+func (s *session) renewLocked() {
+	lease := sizeLease.get()
+	s.sizeLockUntil = time.Now().Add(lease)
+	if s.sizeLockTimer != nil {
+		s.sizeLockTimer.Reset(lease)
+		return
+	}
+	s.sizeLockTimer = time.AfterFunc(lease, func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		// A renewal may have come as the timer fired.
+		if !s.sizeLockUntil.IsZero() && !time.Now().Before(s.sizeLockUntil) {
+			s.clearSizeLockLocked()
+		}
+	})
+}
+
+func (s *session) clearSizeLockLocked() {
+	if s.sizeLockTimer != nil {
+		s.sizeLockTimer.Stop()
+		s.sizeLockTimer = nil
+	}
+	s.sizeLock, s.sizeLockDevice = "", ""
+	s.sizeLockConn, s.sizeLockUntil = nil, time.Time{}
+}
+
+// resizeUnlock is resize with s.mu held, which it lets go of before it
+// resizes the terminal.
+func (s *session) resizeUnlock(cols, rows int) bool {
+	cols, rows = clampSize(cols), clampSize(rows)
 	changed := cols != s.cols || rows != s.rows
 	s.cols, s.rows = cols, rows
 	exited := s.exited
@@ -430,6 +689,54 @@ func (s *session) resize(cols, rows int) bool {
 		s.p.resize(cols, rows)
 	}
 	return changed
+}
+
+// batchWait is the longest an attach waits for a synchronized update to
+// end before it takes its snapshot.
+const batchWait = 100 * time.Millisecond
+
+var syncOn, syncOff = []byte("\x1b[?2026h"), []byte("\x1b[?2026l")
+
+// batch follows the synchronized updates (mode 2026) in the output p, a
+// program drawing a frame that windows show once it ends; s.mu is held.
+func (s *session) batch(p []byte) {
+	// A mode the read before cut in two is in seam.
+	k := len(syncOn) - 1
+	seam := append(append([]byte(nil), s.tail...), p[:min(len(p), k)]...)
+	on, off := bytes.LastIndex(p, syncOn), bytes.LastIndex(p, syncOff)
+	if on < 0 && off < 0 {
+		on, off = bytes.LastIndex(seam, syncOn), bytes.LastIndex(seam, syncOff)
+	}
+	switch {
+	case on > off && s.batchEnd == nil:
+		s.batchEnd = make(chan struct{})
+	case off > on && s.batchEnd != nil:
+		close(s.batchEnd)
+		s.batchEnd = nil
+	}
+	if len(p) < k {
+		s.tail = seam[max(len(seam)-k, 0):]
+	} else {
+		s.tail = append(s.tail[:0], p[len(p)-k:]...)
+	}
+}
+
+// waitBatchLocked waits for the synchronized update the output is in, if
+// any, to end, at most batchWait; s.mu is held. A snapshot of its middle
+// holds half a frame, which the window attaching would show.
+func (s *session) waitBatchLocked() {
+	timeout := time.After(batchWait)
+	for s.batchEnd != nil {
+		end := s.batchEnd
+		s.mu.Unlock()
+		select {
+		case <-end:
+		case <-timeout:
+			s.mu.Lock()
+			return
+		}
+		s.mu.Lock()
+	}
 }
 
 // resyncDelay is how long after the last resize the screen of a
@@ -486,6 +793,41 @@ func (s *session) view() ([]byte, string) {
 	return s.vt.Snapshot(), s.vt.Title()
 }
 
+// trimSnapshot cuts the oldest rows of snap, the snapshot of a screen of
+// rows rows, to about limit bytes, and reports whether it cut. What comes
+// before the first cursor home, the modes and tab stops, and the screen's
+// rows stay: only scrollback goes, whole rows, each of which sets its own
+// style. A snapshot of the alternate screen has none.
+func trimSnapshot(snap []byte, rows, limit int) ([]byte, bool) {
+	home := bytes.Index(snap, []byte("\x1b[H"))
+	if len(snap) <= limit || home < 0 {
+		return snap, false
+	}
+	head, body := snap[:home+3], snap[home+3:]
+	var breaks []int // where each row but the first starts
+	for i := 0; ; {
+		j := bytes.Index(body[i:], []byte("\r\n"))
+		if j < 0 {
+			break
+		}
+		i += j + 2
+		breaks = append(breaks, i)
+	}
+	// The last rows rows are the screen's.
+	n := len(breaks) + 1 - rows
+	if n <= 0 {
+		return snap, false
+	}
+	cut := 0
+	for _, b := range breaks[:n] {
+		cut = b
+		if b >= len(snap)-limit {
+			break
+		}
+	}
+	return append(head[:len(head):len(head)], body[cut:]...), true
+}
+
 // info describes the session and what runs in its foreground.
 func (s *session) info() SessionInfo {
 	s.mu.Lock()
@@ -498,6 +840,7 @@ func (s *session) info() SessionInfo {
 		Title: title, LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,
+		SizeLock: s.sizeLock, SizeLockDevice: s.sizeLockDevice,
 	}
 	s.mu.Unlock()
 	in.PID = s.p.pid()
