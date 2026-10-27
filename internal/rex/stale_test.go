@@ -3,6 +3,7 @@
 package rex
 
 import (
+	"bufio"
 	"fmt"
 	"net"
 	"os"
@@ -384,7 +385,7 @@ func TestStalledClientIsDropped(t *testing.T) {
 // is bounded in bytes, not only in chunks: 2048 chunks of a megabyte would
 // be two gigabytes.
 func TestQueueIsBounded(t *testing.T) {
-	a := &attached{out: make(chan []byte, 2048)}
+	a := &attached{out: make(chan []byte, 2048), remote: true}
 	chunk := make([]byte, 1<<20)
 	queued := 0
 	for range 2048 {
@@ -414,5 +415,74 @@ func TestNetstackKeepalive(t *testing.T) {
 		if v, set := os.LookupEnv(k); set {
 			t.Errorf("%s=%s is in the environment", k, v)
 		}
+	}
+}
+
+// TestWriterClosesOnFailedWrite is a remote client that takes nothing of
+// its snapshot, of a session that prints nothing after: once the write
+// times out the server closes the connection at once, not when the
+// session prints again, which an idle one may never do.
+func TestWriterClosesOnFailedWrite(t *testing.T) {
+	defer SetTimeoutsForTest(200*time.Millisecond, 2*time.Second)()
+	client, server := net.Pipe()
+	defer client.Close()
+	a := &attached{conn: server, first: []byte("snapshot"), out: make(chan []byte, maxQueue), remote: true}
+	done := make(chan struct{})
+	go func() {
+		a.writer()
+		close(done)
+	}()
+	time.Sleep(500 * time.Millisecond) // past the write's deadline
+	client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, err := client.Read(make([]byte, 64))
+	if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		t.Fatal("the connection stays open after its write failed")
+	}
+	a.finish() // as the attach does, its read failing
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the writer does not return")
+	}
+}
+
+// TestLocalQueueNotCappedInBytes checks that a local client, whose
+// dropped stream would close its pane, keeps the queue bounded in chunks
+// only, as before; a remote one is capped in bytes.
+func TestLocalQueueNotCappedInBytes(t *testing.T) {
+	chunk := make([]byte, 1<<20)
+	for _, remote := range []bool{false, true} {
+		a := &attached{out: make(chan []byte, maxQueue), remote: remote}
+		n := 0
+		for range 16 {
+			if !a.send(chunk) {
+				break
+			}
+			n++
+		}
+		if want := map[bool]int{false: 16, true: 8}[remote]; n != want {
+			t.Errorf("remote %v: %d MiB queued, want %d", remote, n, want)
+		}
+	}
+}
+
+// TestKillBesideKeepaliveHello sends a kill and a hello that keeps the
+// connection alive at once: the kill's answer, aside, must not race the
+// hello (go test -race).
+func TestKillBesideKeepaliveHello(t *testing.T) {
+	s, _ := testServer(t)
+	for range 20 {
+		a, b := net.Pipe()
+		go s.handle(b, true)
+		// One write: the server reads the hello as the kill is answered.
+		go a.Write([]byte(`{"id":1,"op":"kill","sid":"nosuch"}` + "\n" + `{"id":2,"op":"hello","keepalive":true}` + "\n"))
+		a.SetReadDeadline(time.Now().Add(5 * time.Second))
+		r := bufio.NewReader(a)
+		for range 2 {
+			if _, err := r.ReadString('\n'); err != nil {
+				t.Fatal(err)
+			}
+		}
+		a.Close()
 	}
 }

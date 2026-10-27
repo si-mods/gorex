@@ -318,6 +318,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, remote bo
 			// few at a time; the others wait their turn.
 			if req.Op == "kill" {
 				kills <- struct{}{}
+				kept := kept // a later hello sets it, as this runs
 				go func() {
 					defer func() { <-kills }()
 					if killHook != nil {

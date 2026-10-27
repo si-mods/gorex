@@ -255,7 +255,7 @@ func (c *Client) untrack(conn net.Conn) {
 // ping asks the server every interval, so that it keeps the connection,
 // and drops the connection once it does not answer in time: the server,
 // or the network to it, is gone.
-func (c *Client) ping(every time.Duration) {
+func (c *Client) ping(every, timeout time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -264,7 +264,7 @@ func (c *Client) ping(every time.Duration) {
 			return
 		case <-t.C:
 		}
-		if err := c.callWithin(Request{Op: "ping"}, nil, every); err != nil {
+		if err := c.callWithin(Request{Op: "ping"}, nil, timeout); err != nil {
 			c.conn.Close()
 			c.closeAttached()
 			return
@@ -328,7 +328,11 @@ func (c *Client) Hello() (h Hello, err error) {
 			c.mu.Lock()
 			c.connID = h.Conn
 			c.mu.Unlock()
-			go c.ping(max(h.Keepalive/3, 10*time.Millisecond))
+			// A ping every third of the server's wait, each with the rest
+			// of it to be answered: as long as the server waits, no more,
+			// on a link slow but alive.
+			every := max(h.Keepalive/3, 10*time.Millisecond)
+			go c.ping(every, max(h.Keepalive-every, every))
 		})
 	}
 	return

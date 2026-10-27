@@ -73,17 +73,19 @@ type attached struct {
 	remote bool
 }
 
-// The most chunks and bytes of output that may wait for a client: one
-// further behind is dropped, and attaches again to a snapshot. Without a
-// bound, a client that stopped reading would hold all the session
-// printed since.
+// The most chunks of output that may wait for a client, and bytes for a
+// remote one: one further behind is dropped, and attaches again to a
+// snapshot. Without a bound, a client that stopped reading would hold
+// all the session printed since.
 const (
 	maxQueue       = 2048
 	maxQueuedBytes = 8 << 20
 )
 
 func (a *attached) send(p []byte) bool {
-	if a.queued.Add(int64(len(p))) > maxQueuedBytes {
+	// The bytes are capped for remote clients only: a local one dropped
+	// closes its pane, and reads what it is sent quick enough.
+	if a.queued.Add(int64(len(p))) > maxQueuedBytes && a.remote {
 		a.queued.Add(-int64(len(p)))
 		return false
 	}
@@ -103,18 +105,26 @@ func (a *attached) finish() { a.once.Do(func() { close(a.out) }) }
 // snapshot takes it longer than that on a slow network.
 const writeChunk = 32 << 10
 
+// writer writes the client what it gets until a write fails, then closes
+// the connection at once: the attach's read fails with it, and drops the
+// client, though the session prints nothing more.
 func (a *attached) writer() {
-	err := a.write(a.first)
-	a.first = nil
-	for p := range a.out {
-		if err != nil {
-			break
+	defer func() {
+		a.conn.Close()
+		for range a.out {
 		}
-		err = a.write(p)
-		a.queued.Add(-int64(len(p)))
+	}()
+	first := a.first
+	a.first = nil
+	if a.write(first) != nil {
+		return
 	}
-	a.conn.Close()
-	for range a.out {
+	for p := range a.out {
+		err := a.write(p)
+		a.queued.Add(-int64(len(p)))
+		if err != nil {
+			return
+		}
 	}
 }
 
