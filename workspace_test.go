@@ -494,3 +494,75 @@ func TestAdoptAcrossWorkspaces(t *testing.T) {
 	}
 	quit(st)
 }
+
+// TestDebugVerbs checks the debug hook's verbs of windows and workspaces:
+// "state" describes them, "win" targets a window by place, "focus-win"
+// fronts one, and "session", "rename-session", "cancel" and "confirm" act
+// on the target.
+func TestDebugVerbs(t *testing.T) {
+	a, _ := newTestApp(t)
+	old := debugMain
+	debugMain = func(fn func()) { fn() }
+	t.Cleanup(func() { debugMain = old })
+	st := a.st
+	b := st.openWindow(st.addWorkspace(), false)
+	a.ws.Name, b.ws.Name = "icy-ridge", "quiet-harbor"
+	hidden := st.addWorkspace()
+	hidden.Name = "misty-canyon"
+	dir := t.TempDir()
+	state := func() debugState {
+		t.Helper()
+		st.debug(dir, "state s.json")
+		raw, err := os.ReadFile(filepath.Join(dir, "s.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var s debugState
+		if err := json.Unmarshal(raw, &s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	s := state()
+	if s.PID != os.Getpid() || len(s.Windows) != 2 || len(s.Sessions) != 3 {
+		t.Fatalf("state %+v", s)
+	}
+	w1, w2 := s.Windows[0], s.Windows[1]
+	if w1.Index != 1 || w1.StateKey != "main" || w1.Session.Name != "icy-ridge" || w1.Focused || len(w1.Tabs) != 1 || w1.ActiveTab != 1 {
+		t.Errorf("window 1 %+v", w1)
+	}
+	if w2.Index != 2 || w2.StateKey != "main-2" || w2.Session.ID != b.ws.ID || !w2.Focused {
+		t.Errorf("window 2 %+v", w2)
+	}
+	if s.Sessions[1].Window != 2 || s.Sessions[2].Name != "misty-canyon" || s.Sessions[2].Window != 0 || s.Sessions[2].Tabs != 0 {
+		t.Errorf("sessions %+v", s.Sessions)
+	}
+
+	st.debug(dir, "focus-win 1")
+	if st.apps[0] != a || !state().Windows[0].Focused {
+		t.Error("focus-win 1 did not front the first window")
+	}
+	st.debug(dir, "win 2")
+	st.debug(dir, "rename-session my-work")
+	st.debug(dir, "session misty-canyon")
+	if b.ws != hidden || st.byID(s.Sessions[1].ID).Name != "my-work" {
+		t.Errorf("window 2 shows %s; renamed %q", b.ws.Name, st.byID(s.Sessions[1].ID).Name)
+	}
+	st.debug(dir, "win 9")
+	if st.debugWin != 2 {
+		t.Errorf("win 9 targets %d", st.debugWin)
+	}
+	st.debug(dir, "win 0") // the window focused last: the first
+	first := a.ws
+	a.askCloseWorkspace()
+	st.debug(dir, "cancel")
+	if a.wsConfirm || a.ws != first {
+		t.Error("cancel closed the workspace")
+	}
+	a.askCloseWorkspace()
+	st.debug(dir, "confirm")
+	if a.ws == first || slices.Contains(st.workspaces, first) {
+		t.Error("confirm kept the workspace")
+	}
+	quit(st)
+}

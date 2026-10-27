@@ -59,8 +59,11 @@ type store struct {
 	lastClosed *Workspace
 
 	started, quitting, debugging bool
-	last                         string // the layout sent last
-	writer                       layoutWriter
+	// debugWin is the window, from 1 by place, the debug hook's lines
+	// target; 0 for the one focused last.
+	debugWin int
+	last     string // the layout sent last
+	writer   layoutWriter
 }
 
 // The layout the server keeps, opaque to it: every workspace, and which
@@ -561,7 +564,7 @@ func (st *store) openWindow(w *Workspace, adopt bool) *App {
 		win.OnClosed(func() { st.closed(a) })
 		if !st.debugging {
 			st.debugging = true
-			a.debugHook()
+			st.debugHook(a)
 		}
 	}
 	return a
