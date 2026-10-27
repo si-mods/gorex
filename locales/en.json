@@ -356,9 +356,9 @@
   "@hostServer": {
     "description": "Host panel row: the session server."
   },
-  "hostSessions": "Sessions",
+  "hostSessions": "Terminals",
   "@hostSessions": {
-    "description": "Host panel row: the sessions."
+    "description": "Host panel row: the terminals, which the session server runs."
   },
   "hostServerUp": "pid {pid, number, ::group-off} · up {uptime}",
   "@hostServerUp": {
@@ -706,13 +706,13 @@
   "@remoteAllow": {
     "description": "Setting: whether other machines may connect."
   },
-  "remoteShare": "Share open sessions",
+  "remoteShare": "Share open terminals",
   "@remoteShare": {
-    "description": "Setting: whether allowed remote clients see and use every session of this machine, or only those each opened."
+    "description": "Setting: whether allowed remote clients see and use every terminal of this machine (the server's sessions), or only those each opened."
   },
-  "remoteShareNote": "Allowed clients see and use the sessions open on this machine. Off: each sees only its own.",
+  "remoteShareNote": "Allowed clients see and use the terminals open on this machine. Off: each sees only its own.",
   "@remoteShareNote": {
-    "description": "Help under the Share open sessions switch."
+    "description": "Help under the Share open terminals switch."
   },
   "remoteUnreachable": "Server not reachable",
   "@remoteUnreachable": {
@@ -1124,9 +1124,9 @@
   "@hostsManage": {
     "description": "Host panel button: open the Remote Hosts settings."
   },
-  "hostsSessions": "{n, plural, =0 {No sessions} one {# session} other {# sessions}}",
+  "hostsSessions": "{n, plural, =0 {No terminals} one {# terminal} other {# terminals}}",
   "@hostsSessions": {
-    "description": "Host panel: how many sessions (panes) a host has in the window.",
+    "description": "Host panel: how many terminals (panes) a host has in the window.",
     "placeholders": {
       "n": {
         "type": "int",
@@ -1169,6 +1169,122 @@
       "host": {
         "type": "String",
         "example": "office-mac"
+      }
+    }
+  },
+  "cmdNewWindow": "New Window",
+  "@cmdNewWindow": {
+    "description": "Command: open a new window, which shows a new session."
+  },
+  "cmdNewSession": "New Session",
+  "@cmdNewSession": {
+    "description": "Command: show a new session, with one tab, in the window. A session is a set of tabs, as in Rex."
+  },
+  "cmdChangeSession": "Change Session…",
+  "@cmdChangeSession": {
+    "description": "Command: open a list of the sessions, to show one in the window."
+  },
+  "cmdNextSession": "Next Session",
+  "@cmdNextSession": {
+    "description": "Command: show the next session in the window."
+  },
+  "cmdPreviousSession": "Previous Session",
+  "@cmdPreviousSession": {
+    "description": "Command: show the previous session in the window."
+  },
+  "cmdRenameSession": "Rename Session…",
+  "@cmdRenameSession": {
+    "description": "Command: rename the window's session."
+  },
+  "cmdCloseSession": "Close Session",
+  "@cmdCloseSession": {
+    "description": "Command: end the terminals of the window's session, after asking, and forget it."
+  },
+  "cmdMoveTabToNewWindow": "Move Tab to New Window",
+  "@cmdMoveTabToNewWindow": {
+    "description": "Command: move the active tab to a new window, in a new session."
+  },
+  "menuSession": "Session",
+  "@menuSession": {
+    "description": "Title of the Session menu."
+  },
+  "sessionLabel": "Session {name}",
+  "@sessionLabel": {
+    "description": "Accessibility label and tooltip of the title bar's session button. name is the session's name, as icy-ridge.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "icy-ridge"
+      }
+    }
+  },
+  "sessionListTitle": "Sessions",
+  "@sessionListTitle": {
+    "description": "Session popover: title over the list of sessions."
+  },
+  "sessionTabs": "{n, plural, one {# tab} other {# tabs}}",
+  "@sessionTabs": {
+    "description": "Session popover and palette: how many tabs a session has.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "sessionElsewhere": "In another window",
+  "@sessionElsewhere": {
+    "description": "Session popover and palette: the session shows in another window, which choosing it focuses."
+  },
+  "sessionPlaceholder": "Change to a session…",
+  "@sessionPlaceholder": {
+    "description": "Placeholder of the command palette listing the sessions."
+  },
+  "sessionCloseTitle": "Close “{name}”?",
+  "@sessionCloseTitle": {
+    "description": "Title of the question before closing a session.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "icy-ridge"
+      }
+    }
+  },
+  "sessionCloseBody": "{n, plural, one {Its terminal ends, and the program running in it.} other {Its # terminals end, and the programs running in them.}}",
+  "@sessionCloseBody": {
+    "description": "Body of the question before closing a session: what closing it ends.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "4"
+      }
+    }
+  },
+  "sessionCancel": "Cancel",
+  "@sessionCancel": {
+    "description": "Button of the question before closing a session: keep it."
+  },
+  "sessionTabsElsewhere": "{n, plural, one {# tab · In another window} other {# tabs · In another window}}",
+  "@sessionTabsElsewhere": {
+    "description": "Session popover and palette: how many tabs a session has, which another window shows.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "windowTitle": "{session} — {tab}",
+  "@windowTitle": {
+    "description": "Title of a window, which the Window menu and the taskbar show: its session's name and its active tab's label.",
+    "placeholders": {
+      "session": {
+        "type": "String",
+        "example": "icy-ridge"
+      },
+      "tab": {
+        "type": "String",
+        "example": "zsh ~/src"
       }
     }
   }

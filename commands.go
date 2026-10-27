@@ -67,6 +67,15 @@ var (
 	cmdSettings    = command{Name: locales.Messages.CmdSettings, Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
 	cmdUpdates     = command{Name: locales.Messages.CmdCheckForUpdates, Run: func(a *App) { updater.CheckForUpdates() }}
 	cmdEndAll      = command{Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
+
+	cmdNewWindow     = command{Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
+	cmdNewSession    = command{Name: locales.Messages.CmdNewSession, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.newWorkspace() }}
+	cmdChangeSession = command{Name: locales.Messages.CmdChangeSession, Accel: "CmdOrCtrl+Shift+O", Keys: "⇧⌘O", Other: ctrlShift(ui.KeyO), Run: func(a *App) { a.openSessionPalette() }}
+	cmdNextSession   = command{Name: locales.Messages.CmdNextSession, Accel: "CmdOrCtrl+Ctrl+]", Keys: "⌃⌘]", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageDown}, Run: func(a *App) { a.cycleWorkspace(1) }}
+	cmdPrevSession   = command{Name: locales.Messages.CmdPreviousSession, Accel: "CmdOrCtrl+Ctrl+[", Keys: "⌃⌘[", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageUp}, Run: func(a *App) { a.cycleWorkspace(-1) }}
+	cmdRenameSession = command{Name: locales.Messages.CmdRenameSession, Run: func(a *App) { a.startWorkspaceRename() }}
+	cmdCloseSession  = command{Name: locales.Messages.CmdCloseSession, Run: func(a *App) { a.askCloseWorkspace() }}
+	cmdMoveTabWindow = command{Name: locales.Messages.CmdMoveTabToNewWindow}
 )
 
 // Title is the command's title in the language the app shows.
@@ -88,6 +97,15 @@ var paletteCommands = []*command{
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
 	&cmdGhostty, &cmdClearScroll, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdEndAll,
+	&cmdNewWindow, &cmdNewSession, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
+	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
+}
+
+// sessionCommands are those of the workspaces and the windows, which an
+// app without a store, as in tests, does not list.
+var sessionCommands = []*command{
+	&cmdNewWindow, &cmdNewSession, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
+	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
 }
 
 // commands are all of them.
@@ -158,11 +176,12 @@ func (cmd *command) menuAccel() string {
 	return cmd.Other.String()
 }
 
-// menu builds the menu bar, whose items run commands in the window.
-func (a *App) menu() *mygo.Menu {
+// menu builds the menu bar, whose items run commands in the window they
+// are chosen in, or in the one focused last.
+func (st *store) menu() *mygo.Menu {
 	item := func(cmd *command) *mygo.MenuItem {
-		return &mygo.MenuItem{Label: cmd.Title(), Accelerator: cmd.menuAccel(), Click: func(*mygo.MenuItem, *mygo.Window) {
-			a.run(cmd)
+		return &mygo.MenuItem{Label: cmd.Title(), Accelerator: cmd.menuAccel(), Click: func(_ *mygo.MenuItem, w *mygo.Window) {
+			st.run(cmd, w)
 		}}
 	}
 	tabItems := []*mygo.MenuItem{item(&cmdNextTab), item(&cmdPrevTab), mygo.Separator()}
@@ -174,22 +193,25 @@ func (a *App) menu() *mygo.Menu {
 		}
 		tabItems = append(tabItems, &mygo.MenuItem{
 			Label: locales.MenuShowTab(i), Accelerator: accel,
-			Click: func(*mygo.MenuItem, *mygo.Window) {
-				a.do(func() { a.showTab(i) })
+			Click: func(_ *mygo.MenuItem, w *mygo.Window) {
+				if a := st.appOf(w); a != nil {
+					a.do(func() { a.showTab(i) })
+				}
 			},
 		})
 	}
 	appearance := func(label, v string) *mygo.MenuItem {
 		return &mygo.MenuItem{Label: label, Type: mygo.MenuItemRadio, Checked: prefs.Appearance == v, Click: func(*mygo.MenuItem, *mygo.Window) {
-			a.setAppearance(v)
+			new(App).setAppearance(v) // it changes no window of its own
 		}}
 	}
-	a.sidebarMenuItem = item(&cmdSidebar)
-	a.sidebarMenuItem.Disabled = prefs.TabPlacement == ""
+	sidebarMenuItem = item(&cmdSidebar)
+	sidebarMenuItem.Disabled = prefs.TabPlacement == ""
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Label: locales.MenuShell(), Submenu: []*mygo.MenuItem{
 			item(&cmdNewTab),
+			item(&cmdNewWindow),
 			mygo.Separator(),
 			item(&cmdSplitRight),
 			item(&cmdSplitDown),
@@ -220,7 +242,7 @@ func (a *App) menu() *mygo.Menu {
 			mygo.Separator(),
 			item(&cmdZoom),
 			item(&cmdEqualize),
-			a.sidebarMenuItem,
+			sidebarMenuItem,
 			mygo.Separator(),
 			{Label: locales.MenuFocus(), Submenu: []*mygo.MenuItem{item(&cmdFocusLeft), item(&cmdFocusRight), item(&cmdFocusUp), item(&cmdFocusDown)}},
 			{Label: locales.MenuResize(), Submenu: []*mygo.MenuItem{item(&cmdGrowLeft), item(&cmdGrowRight), item(&cmdGrowUp), item(&cmdGrowDown)}},
@@ -238,7 +260,17 @@ func (a *App) menu() *mygo.Menu {
 			{Role: mygo.RoleToggleFullScreen},
 			{Role: mygo.RoleToggleDevTools, Label: locales.MenuInspector(), Hidden: !mygo.IsDev()},
 		}},
-		{Label: locales.MenuTabs(), Submenu: append(tabItems, mygo.Separator(), item(&cmdRenameTab))},
+		{Label: locales.MenuTabs(), Submenu: append(tabItems, mygo.Separator(), item(&cmdRenameTab), item(&cmdMoveTabWindow))},
+		{Label: locales.MenuSession(), Submenu: []*mygo.MenuItem{
+			item(&cmdNewSession),
+			item(&cmdChangeSession),
+			mygo.Separator(),
+			item(&cmdNextSession),
+			item(&cmdPrevSession),
+			mygo.Separator(),
+			item(&cmdRenameSession),
+			item(&cmdCloseSession),
+		}},
 		{Role: mygo.RoleWindowMenu},
 	})
 }
@@ -251,13 +283,23 @@ func (a *App) do(fn func()) {
 	a.win.Update(fn)
 }
 
-// run runs a command of the menus, on the main thread. New Tab opens the
-// window again when it was closed.
+// run runs a command of the menus in the window w, or the one focused
+// last, on the main thread. Without windows, New Tab, New Window and New
+// Session open one.
+func (st *store) run(cmd *command, w *mygo.Window) {
+	switch a := st.appOf(w); {
+	case a != nil:
+		a.run(cmd)
+	case cmd == &cmdNewTab:
+		mygo.RunOnMain(st.reopen)
+	case cmd == &cmdNewWindow || cmd == &cmdNewSession:
+		mygo.RunOnMain(st.openNew)
+	}
+}
+
+// run runs a command in the window, on the main thread.
 func (a *App) run(cmd *command) {
 	if a.win == nil {
-		if cmd == &cmdNewTab {
-			mygo.RunOnMain(a.open)
-		}
 		return
 	}
 	a.do(func() {
@@ -359,8 +401,16 @@ func (a *App) quitAndEnd() {
 }
 
 func (a *App) openPalette() {
-	a.paletteOpen, a.paletteQuery, a.paletteSel = true, "", 0
+	a.paletteOpen, a.paletteQuery, a.paletteSel, a.paletteSessions = true, "", 0, false
 	a.focusReq = nil // the palette takes the focus
+}
+
+// openSessionPalette opens the palette on the workspaces, to show one.
+func (a *App) openSessionPalette() {
+	if a.st != nil {
+		a.openPalette()
+		a.paletteSessions = true
+	}
 }
 
 // shortcuts handles the keys the menus do not: Control-Tab between tabs,
@@ -401,6 +451,9 @@ func (a *App) paletteItems() []paletteItem {
 	var items []paletteItem
 	q := strings.ToLower(strings.TrimSpace(a.paletteQuery))
 	match := func(s string) bool { return q == "" || fuzzy(strings.ToLower(s), q) }
+	if a.paletteSessions {
+		return a.sessionItems(match)
+	}
 	for ti, t := range a.tabs {
 		for _, p := range t.panes() {
 			name, detail := p.label()
@@ -420,7 +473,8 @@ func (a *App) paletteItems() []paletteItem {
 		}
 	}
 	for _, cmd := range paletteCommands {
-		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" || !match(cmd.Title()) && !match(cmd.English()) {
+		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" ||
+			a.st == nil && slices.Contains(sessionCommands, cmd) || !match(cmd.Title()) && !match(cmd.English()) {
 			continue
 		}
 		cmd := cmd
@@ -494,7 +548,11 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
 		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(k.panelBorder).Children(func() {
 			ui.Icon(c, icon("search")).Size(17, 17).TextColor(k.textFaint)
-			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(15).Placeholder(locales.PalettePlaceholder()).AutoFocus()
+			placeholder := locales.PalettePlaceholder()
+			if a.paletteSessions {
+				placeholder = locales.SessionPlaceholder()
+			}
+			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(15).Placeholder(placeholder).AutoFocus()
 			if in.Changed() {
 				a.paletteSel, reveal = 0, true
 			}

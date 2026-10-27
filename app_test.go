@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
@@ -68,10 +69,27 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 		os.RemoveAll(dir)
 	})
 	registerFonts()
-	a := &App{client: client}
+	// The app's windows are views without a window, as this one.
+	old := newWindow
+	newWindow = func(*App) *mygo.Window { return nil }
+	t.Cleanup(func() { newWindow = old })
+	st := &store{client: client, started: true}
+	a := &App{st: st, client: client, stop: make(chan struct{})}
+	w := st.addWorkspace()
+	a.ws, w.app, st.apps = w, a, []*App{a}
 	a.newTab(os.TempDir())
 	tt := ui.NewTester(a.view, 1000, 620)
 	return a, tt
+}
+
+// savedWorkspaces reads the workspaces the server keeps.
+func savedWorkspaces(t *testing.T, c *rex.Client) savedStore {
+	t.Helper()
+	raw, err := c.Layout()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parseLayout(raw)
 }
 
 // refresh asks the server what runs in the sessions, as the window does
@@ -203,7 +221,7 @@ func TestRestore(t *testing.T) {
 	}
 	// Another app, as the next launch, finds them all.
 	b := &App{client: a.client}
-	if !b.restore() {
+	if !b.restore(savedWorkspaces(t, a.client).Sessions[0].savedLayout, nil) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 2 || b.tabs[1].Name != "second" || b.active != 1 {

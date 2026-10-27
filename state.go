@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"os"
@@ -79,9 +78,16 @@ type Pane struct {
 	startDir string
 }
 
-// App is the state of GoRex's window.
+// App is the state of a window of GoRex's, which shows a workspace.
 type App struct {
-	win    *mygo.Window
+	win *mygo.Window
+	// st is the app's store of workspaces, ws the one the window shows,
+	// and slot the window's place among the windows. stop closes with the
+	// window.
+	st     *store
+	ws     *Workspace
+	slot   int
+	stop   chan struct{}
 	client *rex.Client
 	hello  rex.Hello
 	err    string
@@ -111,16 +117,23 @@ type App struct {
 	lastSave     time.Time
 	quitting     bool
 	focusedWin   bool
-	lastSnapshot string
 	title        string
 
-	// The sidebar: the menu's Toggle Sidebar, the tab last scrolled into
-	// view, and a drag of its edge, from the width it began at.
-	sidebarMenuItem *mygo.MenuItem
-	revealed        *Tab
-	edgeDrag        bool
-	edgeFrom        float32
-	edgeMoved       float32
+	// The workspace's popover, the field that renames it, Close
+	// Session's question, and the palette listing the workspaces.
+	wsOpen          bool
+	wsRenaming      bool
+	wsRenameText    string
+	wsRenameFocus   bool
+	wsConfirm       bool
+	paletteSessions bool
+
+	// The sidebar: the tab last scrolled into view, and a drag of its
+	// edge, from the width it began at.
+	revealed  *Tab
+	edgeDrag  bool
+	edgeFrom  float32
+	edgeMoved float32
 
 	// posted are changes to make in the next frame, from terminals of a
 	// view without a window, as in tests.
@@ -483,6 +496,9 @@ func (a *App) removeTab(t *Tab) {
 	}
 	if len(a.tabs) == 0 {
 		a.changed()
+		if a.emptied() {
+			return
+		}
 		a.save()
 		if a.win != nil {
 			a.win.Close()
@@ -774,7 +790,15 @@ type savedNode struct {
 }
 
 func (a *App) snapshot() savedLayout {
-	l := savedLayout{Active: a.active}
+	l := savedLayout{Active: a.active, Tabs: []savedTab{}}
+	for _, t := range a.tabs {
+		l.Tabs = append(l.Tabs, a.savedTab(t))
+	}
+	return l
+}
+
+// savedTab is a tab as the layout keeps it.
+func (a *App) savedTab(t *Tab) savedTab {
 	var save func(n *Node) *savedNode
 	save = func(n *Node) *savedNode {
 		if p := n.Pane; p != nil {
@@ -792,42 +816,31 @@ func (a *App) snapshot() savedLayout {
 		}
 		return &savedNode{Vertical: n.Vertical, Ratio: n.Ratio, A: save(n.A), B: save(n.B)}
 	}
-	for _, t := range a.tabs {
-		st := savedTab{Name: t.Name, Root: save(t.Root), Zoom: t.Zoom != nil}
-		st.Focus = max(slices.Index(t.panes(), t.Focus), 0)
-		l.Tabs = append(l.Tabs, st)
-	}
-	return l
+	st := savedTab{Name: t.Name, Root: save(t.Root), Zoom: t.Zoom != nil}
+	st.Focus = max(slices.Index(t.panes(), t.Focus), 0)
+	return st
 }
 
 // changed notes that the layout changed, to save it soon.
 func (a *App) changed() { a.saveDue = true }
 
-// save sends the layout to the server, which keeps it on disk.
+// save sends the layout of every workspace to the server, which keeps it
+// on disk.
 func (a *App) save() {
 	a.saveDue = false
-	if a.client == nil {
-		return
-	}
-	b, err := json.Marshal(a.snapshot())
-	if err != nil || string(b) == a.lastSnapshot {
-		return
-	}
-	a.lastSnapshot = string(b)
 	a.lastSave = time.Now()
-	c := a.client
-	go c.SetLayout(b)
+	if a.st != nil {
+		a.st.save()
+	}
 }
 
-// restore opens the tabs of the saved layout, attaching to the sessions
+// restore opens the tabs of a saved layout, attaching to the sessions
 // the server still has and starting new ones in place of those it lost.
-func (a *App) restore() bool {
-	raw, err := a.client.Layout()
-	if err != nil || len(raw) == 0 {
-		return false
-	}
-	var l savedLayout
-	if json.Unmarshal(raw, &l) != nil || len(l.Tabs) == 0 {
+// With others, sessions of this machine that neither the layout nor
+// others name get tabs too, rather than running unseen. It reports
+// whether it opened a tab.
+func (a *App) restore(l savedLayout, others map[string]bool) bool {
+	if a.client == nil || len(l.Tabs) == 0 && others == nil {
 		return false
 	}
 	live := map[string]rex.SessionInfo{}
@@ -902,10 +915,10 @@ func (a *App) restore() bool {
 		}
 		a.tabs = append(a.tabs, t)
 	}
-	// Sessions no tab shows, as those of another window that crashed,
-	// get a tab of their own rather than running unseen.
+	// Sessions no tab shows, as those of an app that crashed, get a tab
+	// of their own.
 	for _, in := range sortedInfos(live) {
-		if !used[in.ID] {
+		if others != nil && !used[in.ID] && !others[in.ID] {
 			a.tabs = append(a.tabs, a.sessionTab(nil, in))
 		}
 	}
@@ -946,9 +959,12 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 	defer tick.Stop()
 	for {
 		select {
+		case <-a.stop:
+			return
 		case <-client.Closed():
 			win.Update(func() {
-				if !a.quitting {
+				// Not once the window took a new connection.
+				if !a.quitting && a.client == client {
 					a.errMsg = locales.Messages.ErrorConnectionLost
 				}
 			})
