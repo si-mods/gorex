@@ -34,9 +34,9 @@ import (
 	"gorex/internal/rex"
 )
 
-// DefaultPort is the port the coordinator listens on, the one after the
-// session server's remote port.
-const DefaultPort = 7465
+// DefaultPort is the port the coordinator listens on: HTTPS's own, so
+// a join URL reads without a port.
+const DefaultPort = 443
 
 // MaxName is the longest member name; a longer one is cut.
 const MaxName = 40
@@ -143,17 +143,26 @@ func Fingerprint(cert *x509.Certificate) string {
 }
 
 // JoinURL builds the URL a machine joins by: the coordinator's address
-// with its fingerprint, so the URL itself pins the certificate.
+// with its fingerprint, so the URL itself pins the certificate. Port
+// 443, the default, is left out.
 func JoinURL(hostport, fingerprint string) string {
-	u := url.URL{Scheme: "https", Host: hostport, Path: "/" + fingerprint}
+	host := hostport
+	if u, err := url.Parse("https://" + hostport); err == nil && u.Port() == "443" {
+		host = u.Hostname()
+		if strings.Contains(host, ":") { // an IPv6 address needs its brackets
+			host = "[" + host + "]"
+		}
+	}
+	u := url.URL{Scheme: "https", Host: host, Path: "/" + fingerprint}
 	return u.String()
 }
 
-// SplitJoinURL takes apart a join URL into its address and fingerprint.
+// SplitJoinURL takes apart a join URL into its address and fingerprint;
+// an address without a port means 443.
 func SplitJoinURL(raw string) (hostport, fingerprint string, err error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || u.Scheme != "https" || u.Port() == "" {
-		return "", "", errors.New(`coord: a join URL reads "https://host:port/<fingerprint>"`)
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return "", "", errors.New(`coord: a join URL reads "https://host/<fingerprint>"`)
 	}
 	m := fingerprintRx.FindStringSubmatch(u.EscapedPath())
 	if m == nil {

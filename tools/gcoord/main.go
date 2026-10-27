@@ -5,9 +5,10 @@
 // state directory holds secrets — every member's address — so it stays
 // 0600 and off every backup that is not already secret.
 //
-//	gcoord init DIR HOST:PORT   make a network: key, certificate, state;
+//	gcoord init DIR HOST[:PORT]  make a network: key, certificate, state;
 //	                            prints the network key once, then the join URL
-//	gcoord serve DIR [LISTEN]   answer members (default :7465)
+//	                            (the port is 443 when left out)
+//	gcoord serve DIR [LISTEN]   answer members (default :443)
 //	gcoord members DIR          list the members
 //	gcoord kick DIR NAME        drop a member, who is then refused everywhere
 package main
@@ -33,7 +34,7 @@ func main() {
 	switch cmd {
 	case "init":
 		if len(args) != 2 {
-			fail(errors.New("gcoord init DIR HOST:PORT"))
+			fail(errors.New("gcoord init DIR HOST[:PORT]"))
 		}
 		fail(initNetwork(args[0], args[1]))
 	case "serve":
