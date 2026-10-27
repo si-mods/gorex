@@ -1,13 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -299,6 +302,9 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 			}
 			if tv.Focused() {
 				p.attention = false
+				if a.focusedWin {
+					p.see()
+				}
 			}
 			a.reconnecting(c, k, p)
 		})
@@ -409,6 +415,9 @@ func (a *App) statusOf(c *ui.Context, p *Pane) status {
 	if p.attention {
 		return statusAttention
 	}
+	if s := p.status(); s != nil && s.State == "working" {
+		return statusRunning
+	}
 	if p.info.Idle || p.info.Program == "" || programOf(p.info.Program).Shell {
 		return statusIdle
 	}
@@ -423,12 +432,63 @@ func (a *App) statusOf(c *ui.Context, p *Pane) status {
 // activityBadge shows what a pane does: a pulse while its program
 // prints, a dot when it asks for attention.
 func (a *App) activityBadge(c *ui.Context, k *colors, p *Pane) {
+	if s := p.status(); needsUser(s) || s != nil && s.State == "working" && !p.attention {
+		statusDot(c, k, s, 6).Margin(0, 0, 0, 2)
+		return
+	}
 	switch a.statusOf(c, p) {
 	case statusRunning:
 		activityDot(c, k.busy, 6)
 	case statusAttention:
 		ui.Box(c).Size(7, 7).Radius(4).Background(k.attention).Margin(0, 0, 0, 2).Tooltip(locales.PaneNeedsAttention())
 	}
+}
+
+// needsUser tells a record of a program that waits for the user, or whose
+// end the user did not see.
+func needsUser(s *rex.ProgramStatus) bool {
+	return s != nil && rex.StatusRank(s.State) >= rex.StatusRank("done")
+}
+
+// statusDot shows a record a program reported: the dot of the activity
+// while working, after its progress when known, else the dot of
+// attention, red for an error.
+func statusDot(c *ui.Context, k *colors, s *rex.ProgramStatus, size float32) ui.Element {
+	if s.State == "working" {
+		if s.Progress >= 0 {
+			ui.Text(c, fmt.Sprintf("%d%%", s.Progress)).FontSize(11).TextColor(k.textFaint).Shrink(0)
+		}
+		return activityDot(c, k.busy, size).Tooltip(statusTip(s))
+	}
+	col := k.attention
+	if s.State == "error" {
+		col = k.danger
+	}
+	return ui.Box(c).Size(7, 7).Radius(4).Background(col).Shrink(0).Tooltip(statusTip(s))
+}
+
+// statusTip says what a record tells: the program, its state, why it
+// waits, and its title and message.
+func statusTip(s *rex.ProgramStatus) string {
+	says := map[string]func() string{
+		"idle": locales.StatusIdle, "working": locales.StatusWorking, "blocked": locales.StatusBlocked,
+		"done": locales.StatusDone, "error": locales.StatusError,
+		"permission": locales.StatusPermission, "question": locales.StatusQuestion, "auth": locales.StatusAuth,
+	}
+	var state string
+	if f := says[s.State]; f != nil {
+		state = f()
+	}
+	if f := says[s.Kind]; f != nil {
+		state += ", " + f()
+	}
+	var parts []string
+	for _, p := range []string{s.App, state, s.Title, s.Msg} {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // activityDot is the dot of a program printing: a solid dot in a soft

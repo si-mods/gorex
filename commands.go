@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"runtime"
@@ -12,6 +13,7 @@ import (
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -445,6 +447,8 @@ type paletteItem struct {
 	title, detail, keys string
 	glyph               string
 	run                 func()
+	// status is what the program of a pane reported.
+	status *rex.ProgramStatus
 }
 
 func (a *App) paletteItems() []paletteItem {
@@ -461,9 +465,13 @@ func (a *App) paletteItems() []paletteItem {
 				continue
 			}
 			ti, t, p := ti, t, p
+			s := p.status()
+			if s != nil && s.State != "idle" {
+				detail = cmp.Or(s.Msg, s.Title, detail)
+			}
 			items = append(items, paletteItem{
 				title: name, detail: detail, glyph: paneProgram(p).Glyph,
-				keys: locales.PaletteTabKeys(ti + 1),
+				keys: locales.PaletteTabKeys(ti + 1), status: s,
 				run: func() {
 					a.selectTab(ti)
 					t.setFocus(p)
@@ -471,6 +479,19 @@ func (a *App) paletteItems() []paletteItem {
 				},
 			})
 		}
+	}
+	// Without a query, the panes waiting for the user come first: blocked,
+	// then failed, then done.
+	if q == "" {
+		slices.SortStableFunc(items, func(x, y paletteItem) int {
+			rank := func(s *rex.ProgramStatus) int {
+				if needsUser(s) {
+					return rex.StatusRank(s.State)
+				}
+				return 0
+			}
+			return rank(y.status) - rank(x.status)
+		})
 	}
 	for _, cmd := range paletteCommands {
 		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" ||
@@ -593,6 +614,9 @@ func (a *App) palette(c *ui.Context, k *colors) {
 						ui.Text(c, it.detail).FontSize(13).TextColor(k.textFaint).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 					}
 					ui.Spacer(c)
+					if s := it.status; s != nil && s.State != "idle" {
+						statusDot(c, k, s, 6)
+					}
 					if it.keys != "" {
 						ui.Text(c, it.keys).FontSize(12).TextColor(k.textFaint).Padding(2, 7).Radius(6).Background(k.hover).Shrink(0)
 					}

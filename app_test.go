@@ -585,3 +585,30 @@ func TestSidebarHostButton(t *testing.T) {
 		t.Errorf("the hosts' list is out of reach; texts %q", tt.Texts())
 	}
 }
+
+// TestStatusSeen checks that a pane's done record asks for attention
+// until seen, and that only records going blocked, done or error are news.
+func TestStatusSeen(t *testing.T) {
+	now := time.Now()
+	work := rex.ProgramStatus{ID: "a", State: "working", Progress: -1, Updated: now}
+	done := rex.ProgramStatus{ID: "a", State: "done", Progress: -1, Updated: now.Add(time.Second)}
+	p := &Pane{info: rex.SessionInfo{Statuses: []rex.ProgramStatus{done}}}
+	if s := p.status(); s == nil || s.State != "done" {
+		t.Fatalf("status %+v", s)
+	}
+	p.see()
+	if s := p.status(); s != nil {
+		t.Fatalf("status after seen %+v", s)
+	}
+	was := rex.SessionInfo{LastOutput: now, Statuses: []rex.ProgramStatus{work}}
+	in := rex.SessionInfo{LastOutput: now, Statuses: []rex.ProgramStatus{done}}
+	if r := entered(was, in); r == nil || r.State != "done" {
+		t.Fatalf("entered %+v", r)
+	}
+	if r := entered(in, in); r != nil {
+		t.Fatalf("entered again %+v", r)
+	}
+	if r := entered(rex.SessionInfo{}, in); r != nil {
+		t.Fatalf("entered on first poll %+v", r)
+	}
+}

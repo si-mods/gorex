@@ -486,6 +486,72 @@
       }
     }
   },
+  "notifyBlocked": "{program} is waiting for you",
+  "@notifyBlocked": {
+    "description": "Title of the notification of a program that reported it waits for the user (program status), in a pane out of sight.",
+    "placeholders": {
+      "program": {
+        "type": "String",
+        "example": "Claude Code"
+      }
+    }
+  },
+  "notifyFailed": "{program} failed",
+  "@notifyFailed": {
+    "description": "Title of the notification of a program that reported it failed (program status), in a pane out of sight.",
+    "placeholders": {
+      "program": {
+        "type": "String",
+        "example": "Claude Code"
+      }
+    }
+  },
+  "notifyOnHost": "{pane} on {host}",
+  "@notifyOnHost": {
+    "description": "Where a notification comes from: a pane of a remote host.",
+    "placeholders": {
+      "pane": {
+        "type": "String",
+        "example": "claude"
+      },
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "statusIdle": "Idle",
+  "@statusIdle": {
+    "description": "State a program reported (program status): at rest. Pane tooltip."
+  },
+  "statusWorking": "Working",
+  "@statusWorking": {
+    "description": "State a program reported (program status): busy. Pane tooltip."
+  },
+  "statusBlocked": "Waiting for you",
+  "@statusBlocked": {
+    "description": "State a program reported (program status): waiting for the user. Pane tooltip."
+  },
+  "statusDone": "Done",
+  "@statusDone": {
+    "description": "State a program reported (program status): finished, result not seen yet. Pane tooltip."
+  },
+  "statusError": "Failed",
+  "@statusError": {
+    "description": "State a program reported (program status): failed and stopped. Pane tooltip."
+  },
+  "statusPermission": "needs permission",
+  "@statusPermission": {
+    "description": "Why a program waits for the user (program status): it asks for permission. Pane tooltip, after the state."
+  },
+  "statusQuestion": "has a question",
+  "@statusQuestion": {
+    "description": "Why a program waits for the user (program status): it asks a question. Pane tooltip, after the state."
+  },
+  "statusAuth": "needs sign-in",
+  "@statusAuth": {
+    "description": "Why a program waits for the user (program status): it needs credentials. Pane tooltip, after the state."
+  },
   "settingsTitle": "Settings",
   "@settingsTitle": {
     "description": "Title of the settings window."
