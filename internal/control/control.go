@@ -15,13 +15,15 @@ import (
 	"io"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"gorex/internal/rex"
 )
 
 // version is the herdr version the bridge says it is: rootshell needs
-// 0.9.0 at least, and stream protocol 2.
+// 0.9.0 at least, and stream protocol 2; protocol 3, which a client asks
+// for in HERDR_CONTROL_PROTOCOL, sizes each pane on its own.
 const version = "0.9.0-gorex"
 
 // Intervals of the bridge: how often it reads the server's list and
@@ -70,18 +72,24 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 		locked: map[string]bool{}, attaches: map[string]*attach{},
 		told: map[string]string{}, ctl: map[string]controller{},
 		picked: map[string]string{}, jobs: make(chan *job, 16), done: make(chan *job),
+		paneSizes: map[string]map[string]paneSize{}, proto: 2,
 	}
 	b.id = connectionID(b.owner)
+	features := []string{"shared_attach", "geometry_ownership", "geometry_controller"}
+	if n, _ := strconv.Atoi(os.Getenv("HERDR_CONTROL_PROTOCOL")); n >= 3 {
+		b.proto = 3
+		features = append(features, "pane_geometry")
+	}
 	// Subscribed before the first poll: no change after it goes untold.
 	b.subscribed = c.Subscribe() == nil
 	go b.write(out)
 	b.send(map[string]any{"id": "control.open", "result": map[string]any{
 		"connection_id": b.id,
 		"boot_id":       fmt.Sprintf("gorex-%d-%d-%d", h.PID, h.Started.Unix(), os.Getpid()),
-		"version":       version, "protocol": 1, "control_protocol": 2,
+		"version":       version, "protocol": 1, "control_protocol": b.proto,
 		"capabilities": map[string]any{
-			"terminal_control_stream": 2,
-			"control_features":        []string{"shared_attach", "geometry_ownership", "geometry_controller"},
+			"terminal_control_stream": b.proto,
+			"control_features":        features,
 			"server_pid":              h.PID, "live_handoff": false,
 		},
 	}})
