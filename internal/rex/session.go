@@ -43,6 +43,10 @@ type session struct {
 	lastOutput time.Time
 	lastInput  time.Time
 	resync     *time.Timer
+	// status is what the program reported of itself; busy, that the last
+	// info found a program in the foreground.
+	status programStatus
+	busy   bool
 	// reaped tells that the process ended, with code; exited, that what
 	// it printed was read too.
 	reaped bool
@@ -247,6 +251,7 @@ func (s *session) run(wait func() int) {
 		s.screen, s.title = s.vt.Snapshot(), s.vt.Title()
 		s.exited = true
 		s.clearSizeLockLocked()
+		s.status.drop()
 		for a := range s.clients {
 			a.finish()
 		}
@@ -312,7 +317,7 @@ func sessionEnv(id string, extra []string) []string {
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"TERM_PROGRAM=GoRex",
-		"TERM_PROGRAM_VERSION=0.1.0",
+		"TERM_PROGRAM_VERSION=0.2.0",
 		"GOREX_SESSION="+id,
 	)
 	if !hasLang {
@@ -342,6 +347,7 @@ func (s *session) read() {
 			s.mu.Lock()
 			s.vt.Feed(data)
 			s.batch(data)
+			queries := s.status.feed(data)
 			s.output += uint64(n)
 			s.lastOutput = time.Now()
 			for a := range s.clients {
@@ -351,6 +357,10 @@ func (s *session) read() {
 				}
 			}
 			s.mu.Unlock()
+			// The server answers, as the windows' terminals do not.
+			for range queries {
+				s.p.write(statusReply)
+			}
 		}
 		if err != nil {
 			s.mu.Lock()
@@ -426,6 +436,9 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may
 		delete(s.clients, a)
 		a.finish()
 	}
+	if s.typist == a {
+		s.typist = nil
+	}
 	s.mu.Unlock()
 }
 
@@ -453,14 +466,15 @@ func (s *session) input(a *attached, p []byte) {
 // terminal attached answers the program's queries, and the program would
 // read each answer once per client: only the authority's answers reach
 // it (authorityLocked).
+// What the server types itself, a nil client's, goes as it is.
 func (s *session) admit(a *attached, p []byte) []byte {
 	typed := dropReplies(p)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(typed) > 0 {
+	if a != nil && len(typed) > 0 {
 		s.typist = a
 	}
-	if s.authorityLocked() != a {
+	if a != nil && s.authorityLocked() != a {
 		p = typed
 	}
 	if s.exited || len(p) == 0 {
@@ -522,8 +536,12 @@ func replyLen(p []byte) int {
 	}
 	switch p[1] {
 	case ']', 'P', '_':
-		// A control string: keys send none. It ends with ST, or BEL for
-		// an OSC.
+		// A control string: keys send none, but OSC 5522 (Kitty's
+		// clipboard) is a paste in a window, which only it sends. It ends
+		// with ST, or BEL for an OSC.
+		if bytes.HasPrefix(p, []byte("\x1b]5522;")) {
+			return 0
+		}
 		for i := 2; i < len(p); i++ {
 			switch {
 			case p[i] == 0x07 && p[1] == ']':
@@ -852,14 +870,27 @@ func (s *session) info() SessionInfo {
 	}
 	s.mu.Unlock()
 	in.PID = s.p.pid()
+	fg := in.PID
+	if !in.Exited {
+		if fg = s.p.foreground(); fg <= 0 {
+			fg = in.PID
+		}
+		in.Idle = fg == in.PID
+	}
+	s.mu.Lock()
+	// A program that went back to the shell is no longer working nor
+	// blocked. Only the change counts: a session whose process is the
+	// program is idle all along.
+	if in.Idle && s.busy {
+		s.status.drop()
+	}
+	s.busy = !in.Exited && !in.Idle
+	in.Statuses = s.status.list()
+	s.mu.Unlock()
+	in.Status = MostUrgent(in.Statuses, time.Time{})
 	if in.Exited {
 		return in
 	}
-	fg := s.p.foreground()
-	if fg <= 0 {
-		fg = in.PID
-	}
-	in.Idle = fg == in.PID
 	p := inspect(fg)
 	in.Program, in.Args, in.Dir = p.programName(), p.args, p.dir
 	if in.Program == "" {

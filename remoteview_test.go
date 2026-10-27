@@ -96,7 +96,7 @@ func TestPairingLeft(t *testing.T) {
 	}
 }
 
-// TestShareSwitch checks the Remote page's Share open sessions switch: it
+// TestShareSwitch checks the Remote page's Share open terminals switch: it
 // follows the server, changes nothing by itself as the server's answers
 // come, and asks the server once toggled.
 func TestShareSwitch(t *testing.T) {
@@ -108,7 +108,7 @@ func TestShareSwitch(t *testing.T) {
 	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
 	tt := ui.NewTester(a.settingsView, 780, 900)
 	tt.Frame()
-	if !tt.HasText("Share open sessions") || !tt.HasText("Allowed clients see and use the sessions open on this machine. Off: each sees only its own.") {
+	if !tt.HasText("Share open terminals") || !tt.HasText("Allowed clients see and use the terminals open on this machine. Off: each sees only its own.") {
 		t.Fatalf("texts %q", tt.Texts())
 	}
 	// The server's answers flip it, and the other switch: no call.
@@ -122,8 +122,8 @@ func TestShareSwitch(t *testing.T) {
 	}
 	// Toggled, it calls the server: none here, which it says. The switch
 	// is at the right of its card's title and note.
-	title, _ := tt.Find("Share open sessions")
-	note, _ := tt.Find("Allowed clients see and use the sessions open on this machine. Off: each sees only its own.")
+	title, _ := tt.Find("Share open terminals")
+	note, _ := tt.Find("Allowed clients see and use the terminals open on this machine. Off: each sees only its own.")
 	toggle := func() bool {
 		y := (title.Y + note.Y + note.H) / 2
 		for x := float32(775); x > note.X+note.W; x -= 4 {

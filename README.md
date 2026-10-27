@@ -18,6 +18,22 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
   it was, programs still running. The server keeps each session's screen in
   a headless libghostty-vt emulator and sends a snapshot on attach, so
   full-screen programs (lazygit, vim, htop…) come back exactly.
+- **Sessions.** As in Rex, a session is a set of tabs of its own, with a
+  name such as `icy-ridge`, and each window shows one. The session chip
+  in the title bar, or atop the sidebar, lists the sessions with their
+  tabs and the window that shows them, and makes, renames and closes
+  them; so do the Session menu and the command palette, whose Change
+  Session… finds one by its name. New Window opens a window of a new
+  session, and Move Tab to New Window moves a tab to one. Choosing a
+  session another window shows brings that window to the front. Closing
+  a window keeps its session, its programs running; Close Session asks,
+  then ends its terminals. GoRex opens again the windows open when it
+  quit, each on its session; terminals that no session has, as after a
+  crash, get tabs in the first.
+- **Single instance.** GoRex runs once: opened again, it brings the
+  window used last to the front, or opens one. The installed app and
+  `mygo dev`'s GoRex Dev each run once, apart, and an app given a
+  `GOREX_DIR` of its own runs beside them.
 - **Program activity.** The server watches each terminal's foreground
   process (`tcgetpgrp`, `sysctl`, `proc_pidinfo`; on Windows, the shell's
   newest child, its command line and directory): headers and tabs name the
@@ -58,6 +74,10 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
 | ⌃⌘= | | Equalize panes |
 | ⌘1…⌘9, ⇧⌘[ ⇧⌘], ⌃Tab | Ctrl+Shift+1…9, Ctrl+PageUp/PageDown, Ctrl+Tab | Switch tabs |
 | ⇧⌘R | Ctrl+Shift+R | Rename tab |
+| ⌘N | Ctrl+Shift+N | New window, of a new session |
+| ⇧⌘N | | New session |
+| ⇧⌘O | Ctrl+Shift+O | Change session |
+| ⌃⌘] ⌃⌘[ | Ctrl+Shift+PageDown/PageUp | Next / previous session |
 | ⌃⌘S | Ctrl+Shift+S | Hide or show the tabs' sidebar |
 | ⇧⌘P, ⌘P | Ctrl+Shift+P | Command palette |
 | ⌘K | Ctrl+Shift+K | Clear |
@@ -171,7 +191,7 @@ What to know before turning it on:
   start any program with any environment. From a shell there it can
   reach the local socket, and so change the layout, remote access, and
   sharing itself. Trust it as you would an SSH key.
-- Share open sessions (Settings › Remote, off by default, kept in
+- Share open terminals (Settings › Remote, off by default, kept in
   `remote.json`) decides what else a client sees. Off, each client lists,
   attaches to, resizes and kills only the sessions it created; the others
   (this machine's window's, other clients') are refused. On, every allowed
@@ -303,6 +323,7 @@ its top included.
 |---|---|
 | `main.go` | the app, its window, and `-server` |
 | `state.go` | tabs, the tree of splits, panes, saving and restoring the layout |
+| `workspace.go`, `workspaceview.go` | sessions of tabs (workspaces in the code) and the windows showing them; the session chip, its list, and Close Session's question |
 | `view.go`, `tabs.go`, `sidebar.go`, `host.go`, `commands.go` | the interface: title bar, tabs and their sidebar, panes, host popover, menus and palette |
 | `programs.go` | how programs show: names, glyphs, tile colors |
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
