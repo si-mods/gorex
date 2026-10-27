@@ -303,7 +303,9 @@ func (a *App) attach(p *Pane, cols, rows int) {
 				home, _ := os.UserHomeDir()
 				a.newTabOn(nil, home)
 			}
-			a.closePane(p)
+			// A session the host no longer lists, as one it stopped sharing,
+			// is not this machine's to end.
+			a.dropPane(p, p.remote == nil || !p.remote.Gone())
 		})
 	}
 	term, err := terminal.New(opts)
@@ -903,16 +905,9 @@ func (a *App) restore() bool {
 	// Sessions no tab shows, as those of another window that crashed,
 	// get a tab of their own rather than running unseen.
 	for _, in := range sortedInfos(live) {
-		if used[in.ID] {
-			continue
+		if !used[in.ID] {
+			a.tabs = append(a.tabs, a.sessionTab(nil, in))
 		}
-		t := &Tab{ID: a.id()}
-		p := &Pane{ID: a.id(), SID: in.ID, info: in, startDir: in.Dir}
-		a.attach(p, in.Cols, in.Rows)
-		t.Root = &Node{ID: a.id(), Pane: p}
-		p.Tab, p.Node = t, t.Root
-		t.setFocus(p)
-		a.tabs = append(a.tabs, t)
 	}
 	if len(a.tabs) == 0 {
 		return false
@@ -921,6 +916,18 @@ func (a *App) restore() bool {
 	a.groupTabs()
 	a.focusReq = a.tab().Focus
 	return true
+}
+
+// sessionTab makes a tab of one pane, attached to session in of host h,
+// nil for this machine, at the session's size.
+func (a *App) sessionTab(h *hostConn, in rex.SessionInfo) *Tab {
+	t := &Tab{ID: a.id()}
+	p := &Pane{ID: a.id(), SID: in.ID, info: in, startDir: in.Dir, host: h}
+	a.attach(p, in.Cols, in.Rows)
+	t.Root = &Node{ID: a.id(), Pane: p}
+	p.Tab, p.Node = t, t.Root
+	t.setFocus(p)
+	return t
 }
 
 func sortedInfos(m map[string]rex.SessionInfo) []rex.SessionInfo {
@@ -967,6 +974,9 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 // apply takes what the server of host h, nil for this machine's, said of
 // its sessions.
 func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
+	if h != nil {
+		a.adopt(h, byID)
+	}
 	for ti, t := range a.tabs {
 		for _, p := range t.panes() {
 			in, ok := byID[p.SID]

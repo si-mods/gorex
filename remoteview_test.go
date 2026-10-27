@@ -6,7 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
+
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 var testKey = "nodekey:" + strings.Repeat("0123456789abcdef", 4)
@@ -90,6 +93,57 @@ func TestPairingLeft(t *testing.T) {
 		if got := pairingLeft(now.Add(d), now); got != want {
 			t.Errorf("pairingLeft(%v) = %q, want %q", d, got, want)
 		}
+	}
+}
+
+// TestShareSwitch checks the Remote page's Share open sessions switch: it
+// follows the server, changes nothing by itself as the server's answers
+// come, and asks the server once toggled.
+func TestShareSwitch(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Cleanup(stopRemotePoll)
+	a := &App{}
+	settingsUI.section = "remote"
+	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
+	tt := ui.NewTester(a.settingsView, 780, 900)
+	tt.Frame()
+	if !tt.HasText("Share open sessions") || !tt.HasText("Allowed clients see and use the sessions open on this machine. Off: each sees only its own.") {
+		t.Fatalf("texts %q", tt.Texts())
+	}
+	// The server's answers flip it, and the other switch: no call.
+	for _, st := range []rex.RemoteStatus{{ShareSessions: true}, {Enabled: true, ShareSessions: true}, {}} {
+		remoteUI.st = st
+		tt.Frame()
+		tt.Frame()
+		if remoteUI.err != nil || remoteUI.busy {
+			t.Fatalf("a change without input, at %+v", st)
+		}
+	}
+	// Toggled, it calls the server: none here, which it says. The switch
+	// is at the right of its card's title and note.
+	title, _ := tt.Find("Share open sessions")
+	note, _ := tt.Find("Allowed clients see and use the sessions open on this machine. Off: each sees only its own.")
+	toggle := func() bool {
+		y := (title.Y + note.Y + note.H) / 2
+		for x := float32(775); x > note.X+note.W; x -= 4 {
+			tt.ClickAt(x, y)
+			tt.Frame()
+			if remoteUI.err != nil {
+				return true
+			}
+		}
+		return false
+	}
+	remoteUI.unreachable = true
+	tt.Frame()
+	if toggle() {
+		t.Error("toggled while the server is not reachable")
+	}
+	remoteUI.unreachable = false
+	tt.Frame()
+	if !toggle() || remoteUI.err() != locales.RemoteNotConnected() {
+		t.Error("toggling did not ask the server")
 	}
 }
 

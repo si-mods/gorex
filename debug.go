@@ -46,9 +46,11 @@ func (a *App) debug(dir, line string) {
 		if w := settingsUI.win; w != nil {
 			w.Update(func() { a.showSection(arg) })
 		}
-	case "remote": // allow NAME KEY, enable, disable, regenerate, reveal, confirm: the Remote page's calls
+	case "remote": // allow NAME KEY, enable, disable, share on|off, regenerate, reveal, confirm: the Remote page's calls
 		op, rest, _ := strings.Cut(arg, " ")
 		switch op {
+		case "share":
+			a.client.ShareSessions(rest == "on")
 		case "allow":
 			name, key, _ := strings.Cut(rest, " ")
 			a.client.AllowRemote(name, key)

@@ -673,6 +673,118 @@ func TestRestoreRemote(t *testing.T) {
 	}
 }
 
+// TestAdoptHostSessions checks that the sessions opened on a host by its
+// own window get a tab here, once, through reconnects and a restored
+// layout; and that a tab closed here does not come back from a list made
+// before its session ended, nor an exited session.
+func TestAdoptHostSessions(t *testing.T) {
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, remote := startHostServer(t)
+	proxy := newHostProxy(t, sock)
+	t.Cleanup(a.stopHosts)
+	h := a.addHost(savedHost{ID: "h1", Name: "office-mac", Address: proxy.path})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	if len(a.tabs) != 1 {
+		t.Fatalf("%d tabs before the host opened any", len(a.tabs))
+	}
+	info, err := remote.Create(rex.CreateOptions{Cols: 97, Rows: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tabsOf := func(app *App, sid string) []*Tab {
+		var out []*Tab
+		for _, t := range app.tabs {
+			for _, p := range t.panes() {
+				if p.SID == sid && p.host != nil && p.host.ID == "h1" {
+					out = append(out, t)
+				}
+			}
+		}
+		return out
+	}
+	waitFor(t, tt, "the host's session to get a tab", func() bool { return len(tabsOf(a, info.ID)) == 1 })
+	got := tabsOf(a, info.ID)[0]
+	if a.tabs[len(a.tabs)-1] != got || a.tab() == got {
+		t.Errorf("the adopted tab is not last, or took the focus")
+	}
+	if cols, rows := got.Focus.term.Size(); cols != 97 || rows != 31 {
+		t.Errorf("attached at %dx%d", cols, rows)
+	}
+	a.selectTab(slices.Index(a.tabs, got))
+	waitFor(t, tt, "its shell", func() bool { return strings.Contains(got.Focus.term.Text(), testShell.prompt) })
+
+	// Polls and a reconnect open no other.
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to drop", func() bool { return h.state != hostConnected })
+	proxy.setDown(false)
+	h.poke()
+	waitFor(t, tt, "the host to come back", func() bool { return h.state == hostConnected })
+	for range 3 {
+		time.Sleep(400 * time.Millisecond)
+		tt.Frame()
+	}
+	if n := len(tabsOf(a, info.ID)); n != 1 {
+		t.Fatalf("%d tabs of the session", n)
+	}
+
+	// A restored layout's pane, not attached yet, is the session's.
+	a.saveNow()
+	for _, t := range a.tabs {
+		for _, p := range t.panes() {
+			p.term.Close()
+		}
+	}
+	a.stopHosts()
+	b := &App{client: a.client}
+	b.loadHosts()
+	t.Cleanup(b.stopHosts)
+	if !b.restore() {
+		t.Fatal("nothing restored")
+	}
+	tb := ui.NewTester(b.view, 1000, 620)
+	bh := b.hosts[0]
+	waitFor(t, tb, "the host to connect", func() bool { return bh.state == hostConnected })
+	for range 3 {
+		time.Sleep(400 * time.Millisecond)
+		tb.Frame()
+	}
+	if n := len(tabsOf(b, info.ID)); n != 1 {
+		t.Fatalf("%d tabs of the session after restoring", n)
+	}
+
+	// Closed here, it ends; a list from before does not open it again.
+	stale := map[string]rex.SessionInfo{info.ID: info}
+	b.closeTab(tabsOf(b, info.ID)[0])
+	waitFor(t, tb, "the session to end", func() bool { return !slices.Contains(sessionIDs(t, remote), info.ID) })
+	waitFor(t, tb, "the kill to be done", func() bool {
+		bh.mu.Lock()
+		defer bh.mu.Unlock()
+		return len(bh.Kills) == 0
+	})
+	b.apply(bh, stale)
+	if n := len(tabsOf(b, info.ID)); n != 0 {
+		t.Errorf("the closed session came back in %d tabs", n)
+	}
+	// Nor an exited session.
+	b.apply(bh, map[string]rex.SessionInfo{"x": {ID: "x", Exited: true}})
+	if n := len(tabsOf(b, "x")); n != 0 {
+		t.Error("an exited session got a tab")
+	}
+
+	// One the host ends closes here, and is not kept to end.
+	other, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, tb, "the other session's tab", func() bool { return len(tabsOf(b, other.ID)) == 1 })
+	remote.Kill(other.ID)
+	waitFor(t, tb, "its tab to close", func() bool { return len(tabsOf(b, other.ID)) == 0 })
+	if hs, _ := loadHosts(); len(hs) != 1 || slices.Contains(hs[0].Kills, other.ID) {
+		t.Errorf("hosts.json keeps %+v", hs)
+	}
+}
+
 // What a fake host does with a connection.
 const (
 	fakeRefuse   int32 = iota // not pairing: says it refuses, and closes

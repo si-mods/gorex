@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -84,11 +85,19 @@ func wantClosed(t *testing.T, c *Client, what string) {
 	}
 }
 
-// pipe connects to s's handler, as a local or remote connection.
-func pipe(s *Server, remote bool) *Client {
+// testPeer is the key of a remote client of pipe.
+var testPeer = "nodekey:" + strings.Repeat("0", 64)
+
+// pipe connects to s's handler, as a local connection for peer "", else
+// as the remote client of key peer.
+func pipe(s *Server, peer string) *Client {
 	a, b := net.Pipe()
-	go s.handle(b, remote)
-	return newClient(a, nil)
+	go s.handle(b, peer)
+	return newClient(a, func() (net.Conn, error) {
+		a, b := net.Pipe()
+		go s.handle(b, peer)
+		return a, nil
+	})
 }
 
 func readConfig(t *testing.T) RemoteConfig {
@@ -131,7 +140,7 @@ func testShell() (cmd []string, dir string) {
 
 func TestRemoteWithoutClients(t *testing.T) {
 	s, listens := testServer(t)
-	c := pipe(s, false)
+	c := pipe(s, "")
 	defer c.Close()
 	if err := c.EnableRemote(); err != nil {
 		t.Fatalf("enable without clients: %v", err)
@@ -166,7 +175,7 @@ func TestRemoteWithoutClients(t *testing.T) {
 
 func TestRemoteLifecycle(t *testing.T) {
 	s, listens := testServer(t)
-	c := pipe(s, false)
+	c := pipe(s, "")
 	defer c.Close()
 	phone, laptop := key.NewNode().Public().String(), key.NewNode().Public().String()
 	if err := c.AllowRemote("phone", phone); err != nil {
@@ -266,7 +275,7 @@ func TestRemoteLifecycle(t *testing.T) {
 
 func TestRemotePairing(t *testing.T) {
 	s, _ := testServer(t)
-	c := pipe(s, false)
+	c := pipe(s, "")
 	defer c.Close()
 	if err := c.StartPairing(); err == nil {
 		t.Error("paired while off")
@@ -444,15 +453,16 @@ func TestPairName(t *testing.T) {
 
 func TestRemoteDenied(t *testing.T) {
 	s, _ := testServer(t)
-	c := pipe(s, true)
+	c := pipe(s, testPeer)
 	defer c.Close()
 	if _, err := c.Hello(); err != nil {
 		t.Fatal(err)
 	}
 	for _, op := range []string{"shutdown", "setLayout", "getLayout", "remote.status", "remote.enable",
 		"remote.disable", "remote.allow", "remote.revoke", "remote.regenerate", "remote.pairStart",
-		"remote.pairStop", "remote.approve", "remote.reject", "nope"} {
-		req := Request{Op: op, Layout: json.RawMessage(`{}`), Remote: &RemoteClient{Name: "x", PublicKey: key.NewNode().Public().String()}}
+		"remote.pairStop", "remote.approve", "remote.reject", "remote.shareSet", "nope"} {
+		// On, as a remote client would want sharing.
+		req := Request{Op: op, On: true, Layout: json.RawMessage(`{}`), Remote: &RemoteClient{Name: "x", PublicKey: key.NewNode().Public().String()}}
 		if err := c.call(req, nil); err == nil || !strings.Contains(err.Error(), "not allowed remotely") {
 			t.Errorf("%s: %v", op, err)
 		}
@@ -481,9 +491,167 @@ func TestRemoteDenied(t *testing.T) {
 	}
 }
 
+// readsUntilClosed reads st in the background and tells, on the channel,
+// its error once it ends.
+func readsUntilClosed(st *Stream) <-chan error {
+	done := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 32<<10)
+		for {
+			if _, err := st.Read(buf); err != nil {
+				done <- err
+				return
+			}
+		}
+	}()
+	return done
+}
+
+// TestShareSessions checks what remote clients see and use of the sessions
+// of others, as the host shares them or not: local connections see all.
+func TestShareSessions(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	alice, bob := key.NewNode().Public().String(), key.NewNode().Public().String()
+	ac, bc := pipe(s, alice), pipe(s, bob)
+	defer ac.Close()
+	defer bc.Close()
+	if st, err := local.RemoteStatus(); err != nil || st.ShareSessions {
+		t.Fatalf("shared by default: %+v %v", st, err)
+	}
+	cmd, dir := testShell()
+	create := func(c *Client) string {
+		t.Helper()
+		info, err := c.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { local.Kill(info.ID) })
+		return info.ID
+	}
+	ls, as, bs := create(local), create(ac), create(bc)
+	ids := func(c *Client) []string {
+		t.Helper()
+		list, err := c.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for _, in := range list {
+			out = append(out, in.ID)
+		}
+		return out
+	}
+	wantIDs := func(what string, c *Client, want ...string) {
+		t.Helper()
+		if got := ids(c); !slices.Equal(got, want) {
+			t.Errorf("%s lists %v, want %v", what, got, want)
+		}
+	}
+	notShared := func(what string, err error) {
+		t.Helper()
+		if err == nil || !strings.Contains(err.Error(), "not shared") {
+			t.Errorf("%s: %v", what, err)
+		}
+	}
+
+	// Off: each remote client its own; the local one all.
+	wantIDs("local", local, ls, as, bs)
+	wantIDs("alice", ac, as)
+	wantIDs("bob", bc, bs)
+	for _, sid := range []string{ls, bs} {
+		notShared("kill "+sid, ac.Kill(sid))
+		notShared("resize "+sid, ac.Resize(sid, 100, 30))
+		st := ac.Stream(sid, 80, 24)
+		st.Resize(80, 24)
+		notShared("attach "+sid, <-readsUntilClosed(st))
+	}
+	if err := ac.Resize(as, 100, 30); err != nil {
+		t.Error(err)
+	}
+	if err := local.Resize(bs, 100, 30); err != nil {
+		t.Error(err)
+	}
+	wantIDs("local after", local, ls, as, bs)
+
+	// On: every client all, saved.
+	if err := local.ShareSessions(true); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := local.RemoteStatus(); !st.ShareSessions || !readConfig(t).ShareSessions {
+		t.Errorf("not shared: status %+v", st)
+	}
+	wantIDs("alice shared", ac, ls, as, bs)
+	if err := ac.Resize(ls, 90, 30); err != nil {
+		t.Error(err)
+	}
+	theirs, mine := ac.Stream(bs, 80, 24), ac.Stream(as, 80, 24)
+	defer theirs.Close()
+	defer mine.Close()
+	var ends []<-chan error
+	for _, st := range []*Stream{theirs, mine} {
+		st.Resize(80, 24)
+		ends = append(ends, readsUntilClosed(st))
+	}
+	waitAttached := func(sid string, n int) {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+			s.mu.Lock()
+			ss := s.sessions[sid]
+			s.mu.Unlock()
+			if ss.info().Attached == n {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: not %d attached", sid, n)
+			}
+		}
+	}
+	waitAttached(bs, 1)
+	waitAttached(as, 1)
+
+	// Off again: alice's window on bob's session goes, hers stays.
+	if err := local.ShareSessions(false); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ends[0]:
+	case <-time.After(3 * time.Second):
+		t.Error("the window on another's session stays")
+	}
+	select {
+	case err := <-ends[1]:
+		t.Errorf("the window on her own session went: %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+	waitAttached(as, 1)
+	wantIDs("alice unshared", ac, as)
+	if readConfig(t).ShareSessions {
+		t.Error("saved shared")
+	}
+
+	// Revoked and allowed again, the same key has its sessions still.
+	if err := local.EnableRemote(); err != nil {
+		t.Fatal(err)
+	}
+	waitRunning(t, local, true)
+	if err := local.AllowRemote("alice-laptop", alice); err != nil {
+		t.Fatal(err)
+	}
+	wantIDs("alice through the listener", dialAs(t, s, alice), as)
+	if err := local.RevokeRemote(alice); err != nil {
+		t.Fatal(err)
+	}
+	if err := local.AllowRemote("alice-laptop", alice); err != nil {
+		t.Fatal(err)
+	}
+	wantIDs("alice allowed again", dialAs(t, s, alice), as)
+}
+
 func TestLocalAllowed(t *testing.T) {
 	s, _ := testServer(t)
-	c := pipe(s, false)
+	c := pipe(s, "")
 	defer c.Close()
 	if err := c.SetLayout(json.RawMessage(`{"a":1}`)); err != nil {
 		t.Fatal(err)
@@ -665,7 +833,7 @@ func TestRemoteTailcat(t *testing.T) {
 // than finding its connection lost, and whether its request waits.
 func TestRemoteRefusal(t *testing.T) {
 	s, _ := testServer(t)
-	c := pipe(s, false)
+	c := pipe(s, "")
 	defer c.Close()
 	if err := c.EnableRemote(); err != nil {
 		t.Fatal(err)

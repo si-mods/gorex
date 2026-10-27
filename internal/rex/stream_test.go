@@ -18,7 +18,7 @@ func streamServer(t *testing.T, dial func() (net.Conn, error)) (*Server, *Client
 	t.Helper()
 	s, _ := testServer(t)
 	a, b := net.Pipe()
-	go s.handle(b, false)
+	go s.handle(b, "")
 	c := newClient(a, dial)
 	t.Cleanup(func() {
 		for _, in := range must(c.List()) {
@@ -59,7 +59,7 @@ func TestAttachSizeBeforeAnswer(t *testing.T) {
 	s, c, sid := streamServer(t, nil)
 	for i := range 20 {
 		a, b := net.Pipe()
-		go s.handle(b, false)
+		go s.handle(b, "")
 		size := [2]int{100 + i, 30 + i}
 		line, _ := json.Marshal(Attach{Op: "attach", SID: sid, Cols: size[0], Rows: size[1]})
 		go a.Write(append(line, '\n'))
@@ -86,7 +86,7 @@ func TestStreamAttachesAtLatestSize(t *testing.T) {
 		dialing.Add(1)
 		<-gate
 		a, b := net.Pipe()
-		go s.handle(b, false)
+		go s.handle(b, "")
 		return a, nil
 	})
 	st := c.Stream(sid, 80, 24)
@@ -113,7 +113,7 @@ func TestStreamLastSizeWins(t *testing.T) {
 	var s *Server
 	s, c, sid := streamServer(t, func() (net.Conn, error) {
 		a, b := net.Pipe()
-		go s.handle(b, false)
+		go s.handle(b, "")
 		return a, nil
 	})
 	st := c.Stream(sid, 80, 24)

@@ -129,6 +129,9 @@ type hostConn struct {
 	attempt int           // of the attempt under way, or the next one
 	reason  func() string // why it is not connected, said when drawn
 	hello   rex.Hello
+	// closed are the sessions closed here since the host connected, which
+	// adopt does not open again though a list still has them.
+	closed map[string]bool
 
 	// mu guards client, and Kills of savedHost.
 	mu     sync.Mutex
@@ -186,6 +189,10 @@ func (h *hostConn) saved() savedHost {
 // it did, through the client of the moment, or the next one. Call it on the
 // main thread.
 func (h *hostConn) kill(sid string) {
+	if h.closed == nil {
+		h.closed = map[string]bool{}
+	}
+	h.closed[sid] = true
 	h.mu.Lock()
 	if !slices.Contains(h.Kills, sid) {
 		h.Kills = append(h.Kills, sid)
@@ -350,7 +357,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			h.client = c
 			h.mu.Unlock()
 			logged.log(h.Name, nil)
-			update(func() { h.state, h.reason, h.hello = hostConnected, nil, hello })
+			update(func() { h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil })
 			since := time.Now()
 			h.runKills(c)
 			a.watchHost(h, c, update)
@@ -415,6 +422,42 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 			byID[in.ID] = in
 		}
 		update(func() { a.apply(h, byID) })
+	}
+}
+
+// adopt opens a tab for each live session of host h that no pane here
+// shows, as those of the host's own window or of another client while the
+// host shares them; not those closed here, which end. Call it on the main
+// thread.
+func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo) {
+	// A list on its way as the host was removed, or the window closed.
+	if a.quitting || !slices.Contains(a.hosts, h) {
+		return
+	}
+	shown := map[string]bool{}
+	for _, t := range a.tabs {
+		for _, p := range t.panes() {
+			if p.host == h {
+				shown[p.SID] = true
+			}
+		}
+	}
+	h.mu.Lock()
+	for _, sid := range h.Kills {
+		shown[sid] = true
+	}
+	h.mu.Unlock()
+	added := false
+	for _, in := range sortedInfos(byID) {
+		if in.Exited || shown[in.ID] || h.closed[in.ID] {
+			continue
+		}
+		a.tabs = append(a.tabs, a.sessionTab(h, in))
+		added = true
+	}
+	if added {
+		a.groupTabs()
+		a.changed()
 	}
 }
 
@@ -586,8 +629,9 @@ type hostStream struct {
 	cols, rows int
 	closed     bool
 	detached   bool
-	attaches   int // the streams that printed
-	fails      int // the streams lost since one printed
+	gone       bool // the host no longer lists the session to this machine
+	attaches   int  // the streams that printed
+	fails      int  // the streams lost since one printed
 	pending    []byte
 }
 
@@ -714,23 +758,34 @@ func (s *hostStream) lost(st *rex.Stream, err error) bool {
 	if !was {
 		s.changed()
 	}
-	if err.Error() == "no such session" {
-		return true
-	}
-	c := s.h.current()
-	if c == nil {
-		return false
-	}
-	infos, lerr := c.List()
-	if lerr != nil {
-		return false
-	}
-	for _, in := range infos {
-		if in.ID == s.sid {
-			return in.Exited
+	if err.Error() != "no such session" {
+		c := s.h.current()
+		if c == nil {
+			return false
+		}
+		infos, lerr := c.List()
+		if lerr != nil {
+			return false
+		}
+		for _, in := range infos {
+			if in.ID == s.sid {
+				return in.Exited
+			}
 		}
 	}
+	// Ended, or no longer shared with this machine: not for it to end.
+	s.mu.Lock()
+	s.gone = true
+	s.mu.Unlock()
 	return true
+}
+
+// Gone tells that the session ended without a trace, or that the host no
+// longer shares it with this machine.
+func (s *hostStream) Gone() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.gone
 }
 
 func (s *hostStream) Write(p []byte) (int, error) {

@@ -39,6 +39,9 @@ type Request struct {
 	// through it (Attach.Conn): the client pings meanwhile. A server that
 	// does not know it ignores it, and answers no Hello.Keepalive.
 	Keepalive bool `json:"keepalive,omitempty"`
+
+	// On is the setting of remote.shareSet.
+	On bool `json:"on,omitempty"`
 }
 
 // RemoteClient is a client allowed to connect remotely: PublicKey is its
@@ -59,6 +62,9 @@ type RemoteStatus struct {
 	// Pairing is the pairing window, Pending the requests made in it.
 	Pairing RemotePairing   `json:"pairing"`
 	Pending []RemotePending `json:"pending,omitempty"`
+	// ShareSessions tells that remote clients see and use every session;
+	// off, each only those it created.
+	ShareSessions bool `json:"shareSessions"`
 }
 
 // RemotePairing is the pairing window: while open, a client not allowed

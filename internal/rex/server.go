@@ -203,7 +203,7 @@ func (s *Server) serve() error {
 			}
 			return err
 		}
-		go s.handle(conn, false)
+		go s.handle(conn, "")
 	}
 }
 
@@ -229,9 +229,11 @@ func (s *Server) watchIdle() {
 
 func (s *Server) shutdown() { s.quitOnce.Do(func() { close(s.quit) }) }
 
-// handle serves a connection; a remote one may make the ops of
-// remoteAllowed only.
-func (s *Server) handle(conn net.Conn, remote bool) {
+// handle serves a connection: peer is the key of a remote client, "" for
+// a local connection (a remote one always has a key: remoteAccept refuses
+// a peer without). A remote one may make the ops of remoteAllowed only, on
+// the sessions it may use (mayUse).
+func (s *Server) handle(conn net.Conn, peer string) {
 	r := bufio.NewReaderSize(conn, 64<<10)
 	first, err := readLine(r)
 	if err != nil {
@@ -246,6 +248,11 @@ func (s *Server) handle(conn net.Conn, remote bool) {
 		s.mu.Unlock()
 		if ss == nil {
 			conn.Write([]byte(`{"error":"no such session"}` + "\n"))
+			conn.Close()
+			return
+		}
+		if !s.mayUse(peer, ss) {
+			conn.Write([]byte(`{"error":"` + errNotShared.Error() + `"}` + "\n"))
 			conn.Close()
 			return
 		}
@@ -270,14 +277,14 @@ func (s *Server) handle(conn net.Conn, remote bool) {
 			b, _ := r.Peek(n)
 			ss.input(b)
 		}
-		ss.attach(conn, remote)
+		ss.attach(conn, peer, func() bool { return s.mayUse(peer, ss) })
 		return
 	}
-	s.control(conn, r, first, remote)
+	s.control(conn, r, first, peer)
 }
 
 // control serves a control connection: a request per line.
-func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, remote bool) {
+func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer string) {
 	s.mu.Lock()
 	s.controls++
 	s.mu.Unlock()
@@ -294,6 +301,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, remote bo
 			s.unkeep(kept)
 		}
 	}()
+	remote := peer != ""
 	var wmu sync.Mutex
 	reply := func(res Response) {
 		b, _ := json.Marshal(res)
@@ -324,10 +332,10 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, remote bo
 					if killHook != nil {
 						killHook()
 					}
-					reply(s.request(req, remote, kept))
+					reply(s.request(req, peer, kept))
 				}()
 			} else {
-				reply(s.request(req, remote, kept))
+				reply(s.request(req, peer, kept))
 			}
 		}
 		if kept != nil {
@@ -386,16 +394,17 @@ func refuseLine(conn net.Conn, err error) {
 	}
 }
 
-func (s *Server) request(req Request, remote bool, kept *keptConn) Response {
+func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	var data any
 	var err error
+	remote := peer != ""
 	if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
 	} else if remote && !remoteAllowed(req.Op) {
 		log.Printf("rex: denied %q to a remote connection", req.Op)
 		err = fmt.Errorf("%s is not allowed remotely", req.Op)
 	} else {
-		data, err = s.do(req, kept)
+		data, err = s.do(req, peer, kept)
 	}
 	res := Response{ID: req.ID}
 	if err != nil {
@@ -415,9 +424,46 @@ func (s *Server) session(id string) (*session, error) {
 	return nil, fmt.Errorf("no session %q", id)
 }
 
+var errNotShared = errors.New("rex: that session is not shared with this machine: the host shares only the sessions each client opened")
+
+// mayUse tells whether peer, a remote client's key or "" for a local
+// connection, may see and use ss: a local one always, a remote one the
+// sessions it created, and any while the server shares them.
+func (s *Server) mayUse(peer string, ss *session) bool {
+	if peer == "" || ss.owner == peer {
+		return true
+	}
+	s.rem.mu.Lock()
+	defer s.rem.mu.Unlock()
+	return s.rem.cfg.ShareSessions
+}
+
+// use returns the session id for peer (mayUse).
+func (s *Server) use(id, peer string) (*session, error) {
+	ss, err := s.session(id)
+	if err == nil && !s.mayUse(peer, ss) {
+		return nil, errNotShared
+	}
+	return ss, err
+}
+
+// dropUnshared detaches the remote windows from the sessions their client
+// may no longer use, as sharing turns off.
+func (s *Server) dropUnshared() {
+	s.mu.Lock()
+	all := make([]*session, 0, len(s.sessions))
+	for _, ss := range s.sessions {
+		all = append(all, ss)
+	}
+	s.mu.Unlock()
+	for _, ss := range all {
+		ss.detach(func(peer string) bool { return !s.mayUse(peer, ss) })
+	}
+}
+
 // do serves a request of a control connection, kept alive when kept is
 // not nil.
-func (s *Server) do(req Request, kept *keptConn) (any, error) {
+func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 	if strings.HasPrefix(req.Op, "remote.") {
 		return s.remoteDo(req)
 	}
@@ -441,9 +487,11 @@ func (s *Server) do(req Request, kept *keptConn) (any, error) {
 			all = append(all, s.sessions[id])
 		}
 		s.mu.Unlock()
-		infos := make([]SessionInfo, len(all))
-		for i, ss := range all {
-			infos[i] = ss.info()
+		infos := make([]SessionInfo, 0, len(all))
+		for _, ss := range all {
+			if s.mayUse(peer, ss) {
+				infos = append(infos, ss.info())
+			}
 		}
 		return infos, nil
 	case "create":
@@ -458,6 +506,7 @@ func (s *Server) do(req Request, kept *keptConn) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		ss.owner = peer
 		s.mu.Lock()
 		s.sessions[id] = ss
 		s.order = append(s.order, id)
@@ -466,7 +515,10 @@ func (s *Server) do(req Request, kept *keptConn) (any, error) {
 	case "kill":
 		s.ops.RLock()
 		defer s.ops.RUnlock()
-		ss, err := s.session(req.SID)
+		ss, err := s.use(req.SID, peer)
+		if err == errNotShared {
+			return nil, err
+		}
 		if err != nil {
 			return nil, nil // already gone
 		}
@@ -480,7 +532,7 @@ func (s *Server) do(req Request, kept *keptConn) (any, error) {
 		s.mu.Unlock()
 		return nil, nil
 	case "resize":
-		ss, err := s.session(req.SID)
+		ss, err := s.use(req.SID, peer)
 		if err != nil {
 			return nil, err
 		}

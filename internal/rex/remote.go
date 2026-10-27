@@ -48,6 +48,9 @@ type RemoteConfig struct {
 	// address stays the same.
 	Region  int            `json:"region,omitempty"`
 	Allowed []RemoteClient `json:"allowed"`
+	// ShareSessions lets remote clients see and use every session; off,
+	// each sees and uses only the sessions it created.
+	ShareSessions bool `json:"shareSessions,omitempty"`
 }
 
 // The pairing window: how long it stays open, how many requests it
@@ -450,7 +453,7 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			r.conns[c] = k
 			r.mu.Unlock()
 			if allowed {
-				s.handle(c, true)
+				s.handle(c, k)
 			} else {
 				s.pairConn(c, k)
 			}
@@ -572,6 +575,7 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		st := RemoteStatus{
 			Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr),
 			Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
+			ShareSessions: r.cfg.ShareSessions,
 		}
 		if r.pairOpenLocked() {
 			st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
@@ -657,6 +661,12 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		revoked = k
 	case "remote.regenerate":
 		cfg.NodeKey, cfg.PresharedKey = key.NewNode(), tailcat.NewPresharedKey()
+	case "remote.shareSet":
+		cfg.ShareSessions = req.On
+		if !req.On {
+			// Run once r.cfg says so: an attach checks it as it joins.
+			done = append(done, s.dropUnshared)
+		}
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}

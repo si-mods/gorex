@@ -334,6 +334,19 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 		}
 	})
 
+	// Whether remote clients see the sessions open here.
+	share := st.ShareSessions
+	card(ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(11, 14), k).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+			ui.Text(c, locales.RemoteShare()).FontSize(13.5).FontWeight(600).TextColor(k.text)
+			ui.Text(c, locales.RemoteShareNote()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+		})
+		sw := ui.Switch(c.Key("share"), &share).Label(locales.RemoteShare()).Disabled(page.unreachable || page.busy)
+		if sw.Changed() {
+			a.remoteDo(func(srv *rex.Client) error { return srv.ShareSessions(share) }, nil)
+		}
+	})
+
 	if st.Running {
 		a.remoteAddress(c, k)
 	}

@@ -144,6 +144,8 @@
   "remoteTitle": "远程访问",
   "remoteAsking": "正在询问会话服务器…",
   "remoteAllow": "允许远程客户端",
+  "remoteShare": "共享已打开的会话",
+  "remoteShareNote": "已允许的客户端可以查看并使用此设备上打开的会话。关闭时，每个客户端只能看到自己打开的会话。",
   "remoteUnreachable": "无法连接服务器",
   "remoteUnreachableHint": "GoRex 每两秒重试一次。",
   "remoteListening": "正在监听",

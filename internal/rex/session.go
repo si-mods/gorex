@@ -26,6 +26,9 @@ type session struct {
 	shell   string
 	created time.Time
 	p       *pty
+	// owner is the key of the remote client that created the session, ""
+	// for one created locally; set before the session is listed.
+	owner string
 
 	mu sync.Mutex
 	// vt is the session's screen, kept by the terminal emulator of the
@@ -67,8 +70,10 @@ type attached struct {
 	first []byte
 	out   chan []byte
 	once  sync.Once
-	// queued is how many bytes wait in out; remote tells a remote
-	// connection, whose writes have a deadline.
+	// peer is the remote client's key, "" for a local window; queued is how
+	// many bytes wait in out; remote tells a remote connection, whose writes
+	// have a deadline.
+	peer   string
 	queued atomic.Int64
 	remote bool
 }
@@ -336,9 +341,16 @@ func (s *session) read() {
 // attach attaches a connection: it gets a snapshot of the session's
 // screen and scrollback, at the size the server gave the session for it
 // (resize), then what the session prints, and what it sends is typed.
-func (s *session) attach(conn net.Conn, remote bool) {
-	a := &attached{conn: conn, out: make(chan []byte, maxQueue), remote: remote}
+// may, checked as it joins, tells whether peer may still use the session:
+// detach drops it later when it may not.
+func (s *session) attach(conn net.Conn, peer string, may func() bool) {
+	a := &attached{conn: conn, peer: peer, out: make(chan []byte, maxQueue), remote: peer != ""}
 	s.mu.Lock()
+	if !may() {
+		s.mu.Unlock()
+		conn.Close()
+		return
+	}
 	snap, title := s.view()
 	if title != "" {
 		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
@@ -371,6 +383,19 @@ func (s *session) attach(conn net.Conn, remote bool) {
 		a.finish()
 	}
 	s.mu.Unlock()
+}
+
+// detach drops the windows attached for a peer that drop tells.
+func (s *session) detach(drop func(peer string) bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for a := range s.clients {
+		if drop(a.peer) {
+			a.conn.Close() // reads no more of what it types
+			a.finish()
+			delete(s.clients, a)
+		}
+	}
 }
 
 func (s *session) input(p []byte) {

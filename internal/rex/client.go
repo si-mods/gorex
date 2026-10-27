@@ -379,6 +379,12 @@ func (c *Client) EnableRemote() error { return c.call(Request{Op: "remote.enable
 
 func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }
 
+// ShareSessions sets whether remote clients see and use every session;
+// off, each only those it created, and those attached to another's detach.
+func (c *Client) ShareSessions(on bool) error {
+	return c.call(Request{Op: "remote.shareSet", On: on}, nil)
+}
+
 // StartPairing opens the pairing window for five minutes, or opens it
 // five minutes more, while remote access is on.
 func (c *Client) StartPairing() error { return c.call(Request{Op: "remote.pairStart"}, nil) }
