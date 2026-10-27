@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	"gorex/internal/rex"
 )
@@ -86,11 +87,13 @@ func TestPaneGeometry(t *testing.T) {
 
 	// The holder's sizes go through without a claim; a grid is 4×2 at least.
 	result(t, r.call("tab.set_pane_geometry", geometry(false, [2]int{2, 1}, [2]int{60, 25})))
+	time.Sleep(3 * geometrySettle)
 	if size(sids[0]) != "4x2 true" || size(sids[1]) != "60x25 true" {
 		t.Errorf("the holder's sizes %s, %s", size(sids[0]), size(sids[1]))
 	}
 	// tab.set_geometry tiles the tab again, as with protocol 2.
 	result(t, r.call("tab.set_geometry", map[string]any{"tab_id": tabID, "cols": 100, "rows": 30, "chrome": "none", "claim": false}))
+	time.Sleep(3 * geometrySettle)
 	if size(sids[0]) != "50x30 true" || size(sids[1]) != "50x30 true" {
 		t.Errorf("tiled again %s, %s", size(sids[0]), size(sids[1]))
 	}

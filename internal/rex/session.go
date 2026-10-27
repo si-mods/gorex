@@ -204,7 +204,7 @@ func newSession(id string, o CreateOptions, changed func()) (*session, error) {
 	s := &session{
 		id: id, shell: name, created: time.Now(), p: p,
 		clients: map[*attached]struct{}{}, changed: changed,
-		cols:    cols, rows: rows, done: make(chan struct{}),
+		cols: cols, rows: rows, done: make(chan struct{}),
 	}
 	if err := s.newVT(); err != nil {
 		p.hangup()

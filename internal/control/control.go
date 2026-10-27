@@ -36,6 +36,12 @@ var (
 	safetyEvery = 30 * time.Second
 	settle      = 20 * time.Millisecond
 	renewEvery  = 5 * time.Second
+	// geometrySettle is how long the sizes rootshell gives a tab it holds
+	// must stay the same before the bridge resizes its sessions, and
+	// redrawAfter how long after a session's size changed its panes get
+	// its screen anew.
+	geometrySettle = 120 * time.Millisecond
+	redrawAfter    = 250 * time.Millisecond
 )
 
 // Main runs the bridge on the process's stdin and stdout, and returns its
@@ -73,6 +79,7 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 		told: map[string]string{}, ctl: map[string]controller{},
 		picked: map[string]string{}, jobs: make(chan *job, 16), done: make(chan *job),
 		paneSizes: map[string]map[string]paneSize{}, proto: 2,
+		wanted: map[string]geometry{}, redraws: map[string]time.Time{},
 	}
 	b.id = connectionID(b.owner)
 	features := []string{"shared_attach", "geometry_ownership", "geometry_controller"}
@@ -141,6 +148,10 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 				b.tell()
 			}
 			b.check()
+		case <-b.geometryDue():
+			b.settleGeometry()
+		case <-b.redrawDue():
+			b.redraw()
 		case <-b.recheck():
 			if !b.subscribed && b.poll() {
 				b.tell()

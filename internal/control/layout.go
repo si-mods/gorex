@@ -4,9 +4,11 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strings"
+	"time"
 
 	"gorex/internal/rex"
 )
@@ -45,6 +47,11 @@ type bridge struct {
 	// own: paneSizes are those rootshell gave, by tab id, then pane id.
 	proto     int
 	paneSizes map[string]map[string]paneSize
+	// wanted are the sizes rootshell gave the tabs it holds, by id, to
+	// settle (settleGeometry); redraws when to send each session's panes
+	// their screen anew (redrawLater).
+	wanted  map[string]geometry
+	redraws map[string]time.Time
 	// shape is the topology rootshell was last told, and told and ctl the
 	// layouts and controllers of its tabs.
 	shape string
@@ -144,9 +151,13 @@ func (b *bridge) fetch(sessions, layout bool) bool {
 	}
 	if changed {
 		b.etag = etag
+		was := maps.Clone(b.infos)
 		clear(b.infos)
 		for _, in := range list {
 			b.infos[in.ID] = in
+			if old, ok := was[in.ID]; ok && (old.Cols != in.Cols || old.Rows != in.Rows) {
+				b.redrawLater(in.ID)
+			}
 		}
 	}
 	b.layout = l
@@ -606,4 +617,104 @@ func exportNode(n *node) map[string]any {
 		return map[string]any{"type": "pane", "pane_id": paneID(n.sid)}
 	}
 	return map[string]any{"type": "split", "direction": direction(n), "ratio": n.ratio, "first": exportNode(n.a), "second": exportNode(n.b)}
+}
+
+// geometry is a size rootshell gave a tab, at: panes, with protocol 3,
+// the grids of its panes, by pane id.
+type geometry struct {
+	cols, rows int
+	panes      map[string]paneSize
+	at         time.Time
+}
+
+// setSize makes g the size of t.
+func (b *bridge) setSize(t *tab, g geometry) {
+	b.sizes[t.id] = [2]int{g.cols, g.rows}
+	if g.panes == nil {
+		delete(b.paneSizes, t.id)
+	} else {
+		b.paneSizes[t.id] = g.panes
+	}
+}
+
+// apply sizes the sessions of t, which rootshell holds, to its size:
+// rootshell hears of the new layout first, and holds the output until its
+// panes are at it.
+func (b *bridge) apply(t *tab) {
+	if b.owned[t.id] {
+		b.tell()
+		b.lockTab(t)
+	}
+	b.tell()
+}
+
+// settleGeometry applies the sizes rootshell gave the tabs it holds once
+// they stopped changing for geometrySettle: one resize for a burst.
+func (b *bridge) settleGeometry() {
+	for id, g := range b.wanted {
+		if time.Since(g.at) < geometrySettle {
+			continue
+		}
+		delete(b.wanted, id)
+		if t := b.tab(id); t != nil {
+			b.setSize(t, g)
+			b.apply(t)
+		}
+	}
+}
+
+// geometryDue fires when the next size waiting settles.
+func (b *bridge) geometryDue() <-chan time.Time {
+	var due time.Time
+	for _, g := range b.wanted {
+		if at := g.at.Add(geometrySettle); due.IsZero() || at.Before(due) {
+			due = at
+		}
+	}
+	if due.IsZero() {
+		return nil
+	}
+	return time.After(time.Until(due))
+}
+
+// redrawLater sends rootshell the screen of each pane of session sid
+// anew, a while after its size changed, once the program drew it again
+// at that size: what it printed for the size before, still on its way as
+// the session resized, landed in rootshell's grid of the new size.
+func (b *bridge) redrawLater(sid string) {
+	for _, at := range b.attaches {
+		if at.sid == sid {
+			b.redraws[sid] = time.Now().Add(redrawAfter)
+			return
+		}
+	}
+}
+
+// redraw sends the snapshots due (redrawLater).
+func (b *bridge) redraw() {
+	for sid, due := range b.redraws {
+		if time.Now().Before(due) {
+			continue
+		}
+		delete(b.redraws, sid)
+		for _, at := range b.attaches {
+			if at.sid == sid {
+				at.reattach(b.infos[sid])
+			}
+		}
+	}
+}
+
+// redrawDue fires when the next snapshot is due.
+func (b *bridge) redrawDue() <-chan time.Time {
+	var due time.Time
+	for _, at := range b.redraws {
+		if due.IsZero() || at.Before(due) {
+			due = at
+		}
+	}
+	if due.IsZero() {
+		return nil
+	}
+	return time.After(time.Until(due))
 }

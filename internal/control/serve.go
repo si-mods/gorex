@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"strings"
+	"time"
 )
 
 // readOnly are herdr's methods that GoRex has no part of: dividers,
@@ -135,24 +136,31 @@ func (b *bridge) do(req request) (any, error) {
 		if p.Cols < 1 || p.Rows < 1 {
 			return nil, &failure{"invalid_params", "cols and rows must be positive"}
 		}
-		if req.Method == "tab.set_geometry" {
-			delete(b.paneSizes, t.id)
-		} else if err := b.setPaneSizes(t, p.Panes); err != nil {
-			return nil, err
+		g := geometry{cols: p.Cols, rows: p.Rows, at: time.Now()}
+		if req.Method == "tab.set_pane_geometry" {
+			var err error
+			if g.panes, err = paneSizesOf(t, p.Panes); err != nil {
+				return nil, err
+			}
 		}
 		// Rootshell sizes a tab it holds, claiming it as the user goes to
-		// it; another's sizes it only notes, a viewer. It hears of the new
-		// layout first, and holds the output until its panes are at it.
-		b.sizes[t.id] = [2]int{p.Cols, p.Rows}
-		if p.Claim {
+		// it; another's sizes it only notes, a viewer. The sizes of the tab
+		// it holds settle first (settleGeometry): a window dragged sends
+		// many, and each resize makes the shell draw its prompt again, for
+		// a width rootshell may have left by the time it comes.
+		switch {
+		case p.Claim:
+			delete(b.wanted, t.id)
+			b.setSize(t, g)
 			b.claim(t)
 			b.anchor = t.id
-		}
-		if b.owned[t.id] {
+			b.apply(t)
+		case b.owned[t.id]:
+			b.wanted[t.id] = g
+		default:
+			b.setSize(t, g)
 			b.tell()
-			b.lockTab(t)
 		}
-		b.tell()
 		return nil, nil
 	case "tab.create", "pane.split", "pane.close", "tab.close", "tab.rename", "pane.zoom", "tab.move":
 		return nil, b.ask(req, p)
@@ -188,22 +196,21 @@ func (b *bridge) do(req request) (any, error) {
 	return nil, &failure{"unknown_method", "GoRex does not serve " + req.Method}
 }
 
-// setPaneSizes keeps the grids rootshell gave the panes of t, each 4×2
+// paneSizesOf returns the grids rootshell gave the panes of t, each 4×2
 // at least, as herdr's: those of other tabs' panes are left out.
-func (b *bridge) setPaneSizes(t *tab, panes map[string]paneSize) error {
+func paneSizesOf(t *tab, panes map[string]paneSize) (map[string]paneSize, error) {
 	sizes := map[string]paneSize{}
 	for id, s := range panes {
 		if !slices.Contains(t.root.sids(), sidOf(id)) || id != paneID(sidOf(id)) {
 			continue
 		}
 		if s.Cols < 1 || s.Rows < 1 || s.CellW < 1 || s.CellH < 1 || s.CellW > math.MaxUint16 || s.CellH > math.MaxUint16 {
-			return &failure{"invalid_params", "pane " + id + ": cols, rows and cell sizes must be positive"}
+			return nil, &failure{"invalid_params", "pane " + id + ": cols, rows and cell sizes must be positive"}
 		}
 		s.Cols, s.Rows = min(max(s.Cols, 4), math.MaxUint16), min(max(s.Rows, 2), math.MaxUint16)
 		sizes[id] = s
 	}
-	b.paneSizes[t.id] = sizes
-	return nil
+	return sizes, nil
 }
 
 // tabInfo is t as herdr's TabInfo.

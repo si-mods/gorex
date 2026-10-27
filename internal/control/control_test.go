@@ -274,6 +274,7 @@ func TestBridge(t *testing.T) {
 		t.Errorf("a plain resize of a locked session: %s", size(sids[0]))
 	}
 	result(t, r.call("tab.set_geometry", map[string]any{"tab_id": tabID, "cols": 120, "rows": 30, "chrome": "none", "claim": false}))
+	time.Sleep(3 * geometrySettle)
 	if size(sids[0]) != "60x30 true" {
 		t.Errorf("the holder's resize: %s", size(sids[0]))
 	}
