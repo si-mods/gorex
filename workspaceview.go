@@ -106,6 +106,8 @@ func (a *App) workspacePopover(c *ui.Context, k *colors, anchor ui.Element) {
 	})
 }
 
+// workspaceList is the popover's body: a row for each workspace, then
+// the actions.
 func (a *App) workspaceList(c *ui.Context, k *colors) {
 	ui.Text(c, locales.SessionListTitle()).FontSize(12).FontWeight(600).TextColor(k.textFaint).Padding(6, 8, 4, 8)
 	for _, w := range a.st.workspaces {
@@ -159,11 +161,10 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 // workspaceDetail says of a workspace how many tabs it has, and when
 // another window than a's shows it.
 func workspaceDetail(w *Workspace, a *App) string {
-	d := locales.SessionTabs(w.tabCount())
 	if w.app != nil && w.app != a {
-		d += " · " + locales.SessionElsewhere()
+		return locales.SessionTabsElsewhere(w.tabCount())
 	}
-	return d
+	return locales.SessionTabs(w.tabCount())
 }
 
 // sessionItems are the rows of the palette listing the workspaces: the
@@ -263,7 +264,7 @@ func (a *App) windowTitle() string {
 		title = strings.TrimSpace(name + " " + detail)
 	}
 	if a.ws != nil {
-		title = a.ws.Name + " — " + title
+		title = locales.WindowTitle(a.ws.Name, title)
 	}
 	return title
 }

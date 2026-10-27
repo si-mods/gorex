@@ -77,6 +77,7 @@ type savedStore struct {
 	savedLayout
 }
 
+// savedWorkspace is a workspace as the layout keeps it.
 type savedWorkspace struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
@@ -184,6 +185,7 @@ type layoutWriter struct {
 	idle    chan struct{} // closed once nothing waits
 }
 
+// write sends b through c, after the layout being sent, if any.
 func (w *layoutWriter) write(c *rex.Client, b []byte) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -195,6 +197,7 @@ func (w *layoutWriter) write(c *rex.Client, b []byte) {
 	go w.run()
 }
 
+// run sends the layout waiting until none waits.
 func (w *layoutWriter) run() {
 	for {
 		w.mu.Lock()
@@ -246,6 +249,7 @@ func (st *store) load() []*Workspace {
 	return open
 }
 
+// byID returns the workspace of an id, nil when none.
 func (st *store) byID(id string) *Workspace {
 	for _, w := range st.workspaces {
 		if w.ID == id {
@@ -322,6 +326,7 @@ func (st *store) taken(name string) bool {
 	return slices.ContainsFunc(st.workspaces, func(w *Workspace) bool { return strings.EqualFold(w.Name, name) })
 }
 
+// remove forgets a workspace, and the window that shows it shows none.
 func (st *store) remove(w *Workspace) {
 	st.workspaces = slices.DeleteFunc(st.workspaces, func(o *Workspace) bool { return o == w })
 	if w.app != nil {

@@ -254,5 +254,7 @@
   "sessionPlaceholder": "切换到会话…",
   "sessionCloseTitle": "关闭“{name}”？",
   "sessionCloseBody": "{n, plural, other {它的 # 个终端将结束，其中运行的程序也会停止。}}",
-  "sessionCancel": "取消"
+  "sessionCancel": "取消",
+  "sessionTabsElsewhere": "{n, plural, other {# 个标签页 · 在另一个窗口中}}",
+  "windowTitle": "{session} — {tab}"
 }

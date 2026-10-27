@@ -52,6 +52,7 @@ type debugState struct {
 	Sessions []debugSession `json:"sessions"`
 }
 
+// debugWindow is a window as "state" describes it.
 type debugWindow struct {
 	Index     int      `json:"index"` // from 1, as "win" takes it
 	StateKey  string   `json:"stateKey"`
@@ -62,11 +63,13 @@ type debugWindow struct {
 	Minimized bool     `json:"minimized"`
 }
 
+// debugRef names a workspace.
 type debugRef struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
+// debugSession is a workspace as "state" describes it.
 type debugSession struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`

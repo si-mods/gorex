@@ -3677,3 +3677,37 @@ func SessionCancel() string { return In(i18n.Locale()).SessionCancel() }
 func (msgs Messages) SessionCancel() string {
 	return Catalog.Format(msgs.locale, "sessionCancel", nil)
 }
+
+// SessionTabsElsewhere says "{n, plural, one {# tab · In another window} other {# tabs · In another window}}"
+// in the language the app shows.
+//
+// Session popover and palette: how many tabs a session has, which another
+// window shows.
+func SessionTabsElsewhere(n int) string { return In(i18n.Locale()).SessionTabsElsewhere(n) }
+
+// SessionTabsElsewhere says "{n, plural, one {# tab · In another window} other {# tabs · In another window}}"
+// in the language of msgs.
+//
+// Session popover and palette: how many tabs a session has, which another
+// window shows.
+func (msgs Messages) SessionTabsElsewhere(n int) string {
+	return Catalog.Format(msgs.locale, "sessionTabsElsewhere", map[string]any{"n": n})
+}
+
+// WindowTitle says "{session} — {tab}"
+// in the language the app shows.
+//
+// Title of a window, which the Window menu and the taskbar show: its
+// session's name and its active tab's label.
+func WindowTitle(session string, tab string) string {
+	return In(i18n.Locale()).WindowTitle(session, tab)
+}
+
+// WindowTitle says "{session} — {tab}"
+// in the language of msgs.
+//
+// Title of a window, which the Window menu and the taskbar show: its
+// session's name and its active tab's label.
+func (msgs Messages) WindowTitle(session string, tab string) string {
+	return Catalog.Format(msgs.locale, "windowTitle", map[string]any{"session": session, "tab": tab})
+}
