@@ -37,6 +37,13 @@ func main() {
 			os.Setenv("GOREX_DIR", dir)
 		}
 	}
+	// The app runs once: launched again, it shows the window focused last.
+	// MyGo keys the lock by the app's identifier and name, which mygo dev's
+	// GoRex Dev has of its own; an app given a GOREX_DIR of its own, as
+	// tests and trials are, has other sessions, and runs beside it.
+	if !ownDir && !mygo.App.RequestSingleInstanceLock() {
+		return
+	}
 	mygo.Use(native.Plugin)
 	registerFonts()
 	loadSettings()
@@ -49,6 +56,7 @@ func main() {
 		mygo.App.SetMenu(st.menu())
 		st.start()
 	})
+	mygo.App.OnSecondInstance(func([]string, string) { st.secondInstance() })
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
 		if !hasVisibleWindows && len(st.apps) == 0 {
 			st.reopen()

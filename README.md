@@ -30,6 +30,10 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
   then ends its terminals. GoRex opens again the windows open when it
   quit, each on its session; terminals that no session has, as after a
   crash, get tabs in the first.
+- **Single instance.** GoRex runs once: opened again, it brings the
+  window used last to the front, or opens one. The installed app and
+  `mygo dev`'s GoRex Dev each run once, apart, and an app given a
+  `GOREX_DIR` of its own runs beside them.
 - **Program activity.** The server watches each terminal's foreground
   process (`tcgetpgrp`, `sysctl`, `proc_pidinfo`; on Windows, the shell's
   newest child, its command line and directory): headers and tabs name the
