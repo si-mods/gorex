@@ -88,6 +88,10 @@ var (
 		"make":      {Name: "Make", Glyph: "cpu", TileBg: ui.Hex("#6b7280"), TileFg: ui.Hex("#ffffff")},
 		"swift":     {Name: "Swift", Glyph: "brand:swift", TileBg: ui.Hex("#f05138"), TileFg: ui.Hex("#ffffff")},
 		"kotlin":    {Name: "Kotlin", Glyph: "brand:kotlin", TileBg: ui.Hex("#7f52ff"), TileFg: ui.Hex("#ffffff")},
+		// Windows shells: at their prompt they show as shells (Shell), with their own tile.
+		"pwsh":       {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
+		"powershell": {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
+		"cmd":        {Name: "Command Prompt", Glyph: "square-terminal", TileGlyph: "terminal", TileBg: ui.Hex("#0c0c0c"), TileFg: ui.Hex("#cccccc"), Shell: true},
 	}
 
 	shells = map[string]bool{"zsh": true, "bash": true, "fish": true, "sh": true, "dash": true, "nu": true, "pwsh": true, "elvish": true, "xonsh": true, "tcsh": true, "csh": true, "ksh": true,
