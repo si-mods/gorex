@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,12 @@ type session struct {
 	// owner is the key of the remote client that created the session, ""
 	// for one created locally; set before the session is listed.
 	owner string
+	// changed tells the server's subscribers that what the list shows of
+	// the session changed; sampler looks, as the session prints, whether
+	// its title or foreground program did, from seen.
+	changed func()
+	sampler *throttle
+	seen    SessionInfo
 
 	mu sync.Mutex
 	// vt is the session's screen, kept by the terminal emulator of the
@@ -179,7 +186,7 @@ const maxSize = 1000
 
 func clampSize(n int) int { return min(max(n, 1), maxSize) }
 
-func newSession(id string, o CreateOptions) (*session, error) {
+func newSession(id string, o CreateOptions, changed func()) (*session, error) {
 	path, argv, name, err := shellCommand(o.Command)
 	if err != nil {
 		return nil, err
@@ -200,8 +207,8 @@ func newSession(id string, o CreateOptions) (*session, error) {
 	}
 	s := &session{
 		id: id, shell: name, created: time.Now(), p: p,
-		clients: map[*attached]struct{}{},
-		cols:    cols, rows: rows, done: make(chan struct{}),
+		clients: map[*attached]struct{}{}, changed: changed,
+		cols: cols, rows: rows, done: make(chan struct{}),
 	}
 	if err := s.newVT(); err != nil {
 		p.hangup()
@@ -229,6 +236,7 @@ func (s *session) newVT() error {
 // for it and returns its exit code.
 func (s *session) run(wait func() int) {
 	s.readEnd = make(chan struct{})
+	s.sampler = &throttle{every: sampleEvery, f: s.sample}
 	s.startRead()
 	go func() {
 		code := wait()
@@ -256,6 +264,7 @@ func (s *session) run(wait func() int) {
 			a.finish()
 		}
 		clear(s.clients)
+		s.notify()
 		s.mu.Unlock()
 		close(s.done)
 		s.vtIn.Close()
@@ -350,6 +359,7 @@ func (s *session) read() {
 			queries := s.status.feed(data)
 			s.output += uint64(n)
 			s.lastOutput = time.Now()
+			s.sampler.ask()
 			for a := range s.clients {
 				if !a.send(data) {
 					a.finish()
@@ -604,6 +614,7 @@ func (s *session) lockSize(owner string, cols, rows int, conn net.Conn) {
 	s.clearSizeLockLocked()
 	s.sizeLock, s.sizeLockConn = owner, conn
 	s.renewLocked()
+	s.notify()
 	pty := cols > 0 && rows > 0 && s.resizeLocked(cols, rows)
 	cols, rows = s.cols, s.rows
 	s.mu.Unlock()
@@ -681,6 +692,9 @@ func (s *session) renewLocked() {
 }
 
 func (s *session) clearSizeLockLocked() {
+	if s.sizeLock != "" {
+		s.notify()
+	}
 	if s.sizeLockTimer != nil {
 		s.sizeLockTimer.Stop()
 		s.sizeLockTimer = nil
@@ -697,6 +711,7 @@ func (s *session) resizeLocked(cols, rows int) bool {
 	changed := cols != s.cols || rows != s.rows
 	s.cols, s.rows = cols, rows
 	if changed {
+		s.notify()
 		s.vt.Resize(cols, rows)
 		// Once the program drew its screen at the new size, the windows
 		// get it again.
@@ -870,12 +885,8 @@ func (s *session) info() SessionInfo {
 	}
 	s.mu.Unlock()
 	in.PID = s.p.pid()
-	fg := in.PID
 	if !in.Exited {
-		if fg = s.p.foreground(); fg <= 0 {
-			fg = in.PID
-		}
-		in.Idle = fg == in.PID
+		s.foreground(&in)
 	}
 	s.mu.Lock()
 	// A program that went back to the shell is no longer working nor
@@ -888,9 +899,17 @@ func (s *session) info() SessionInfo {
 	in.Statuses = s.status.list()
 	s.mu.Unlock()
 	in.Status = MostUrgent(in.Statuses, time.Time{})
-	if in.Exited {
-		return in
+	return in
+}
+
+// foreground fills in what runs in the foreground of the session, whose
+// process is in.PID.
+func (s *session) foreground(in *SessionInfo) {
+	fg := s.p.foreground()
+	if fg <= 0 {
+		fg = in.PID
 	}
+	in.Idle = fg == in.PID
 	p := inspect(fg)
 	in.Program, in.Args, in.Dir = p.programName(), p.args, p.dir
 	if in.Program == "" {
@@ -899,7 +918,38 @@ func (s *session) info() SessionInfo {
 	if in.Dir == "" && !in.Idle {
 		in.Dir = inspect(in.PID).dir
 	}
-	return in
+}
+
+// sampleEvery is how often at most a session that prints looks whether
+// its title or foreground program changed: the system tells of neither.
+const sampleEvery = 500 * time.Millisecond
+
+// sample tells the subscribers when the session's title or foreground
+// program changed since it looked last.
+func (s *session) sample() {
+	s.mu.Lock()
+	if s.exited {
+		s.mu.Unlock()
+		return
+	}
+	now := SessionInfo{Title: s.vt.Title()}
+	s.mu.Unlock()
+	now.PID = s.p.pid()
+	s.foreground(&now)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	was := s.seen
+	s.seen = now
+	if now.Title != was.Title || now.Program != was.Program || now.Dir != was.Dir || now.Idle != was.Idle || !slices.Equal(now.Args, was.Args) {
+		s.notify()
+	}
+}
+
+// notify tells the server's subscribers that the session changed.
+func (s *session) notify() {
+	if s.changed != nil {
+		s.changed()
+	}
 }
 
 // discard is the Conn of a session's emulator: it reads from a pipe that

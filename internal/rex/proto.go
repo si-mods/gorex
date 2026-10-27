@@ -23,6 +23,8 @@ import (
 // framed attaches
 // (Attach.Framed, Attach.History) and the list's ETag: a client of
 // version 1 works as before, its resizes ignored while a session is locked.
+// Later, still within 2, "subscribe" (Response.Event): a server before it
+// answers it with an error, and a client that does not ask gets no events.
 const ProtocolVersion = 2
 
 // Request is a line of the control connection, from the client.
@@ -142,6 +144,11 @@ type Response struct {
 	// ETag names the answer to "list": when it is the request's, Data is
 	// left out, the list unchanged.
 	ETag string `json:"etag,omitempty"`
+	// Event, on a line of no ID, tells a connection that subscribed of a
+	// change: "layout", as setLayout changes it, or "sessions", as one
+	// starts, ends, or changes its size, size lock, title or foreground
+	// program; ETag then names the change.
+	Event string `json:"event,omitempty"`
 }
 
 // CreateOptions start a session.

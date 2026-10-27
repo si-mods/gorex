@@ -23,11 +23,14 @@ Windows a server started from an SSH logon would end with it.
 
 - **Tabs** are the desktop's tabs on this machine, with their splits. Panes
   of remote hosts are left out, and tabs of only those too.
-- **The layout is the desktop's.** rootshell follows it as it changes
-  (the bridge looks every half second), and changes it through the GoRex
-  window: new tab, split, close pane, close tab, rename tab, zoom and
-  moving tabs go to the window, which makes them as its own buttons do,
-  and rootshell shows them within a second. A new tab opens after the tab
+- **The layout is the desktop's.** rootshell follows it as it changes:
+  the server tells the bridge of each change of the layout and the
+  sessions as it happens, and rootshell shows it at once (a new program
+  in a pane, within half a second of its printing; one that prints
+  nothing, within 30 seconds). rootshell changes the layout through the
+  GoRex window: new tab, split, close pane, close tab, rename tab, zoom
+  and moving tabs go to the window, which makes them as its own buttons
+  do, and rootshell shows them as soon as the window saved them. A new tab opens after the tab
   last used in rootshell, in its directory. Closing a pane or a tab ends
   its sessions, as on the desktop.
 - **Size.** One terminal has one size. The tab rootshell shows takes it:

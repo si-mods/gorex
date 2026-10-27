@@ -120,20 +120,52 @@ func (b *bridge) work() {
 	}
 }
 
-// finish answers a change the app made, or did not: rootshell is told of
-// the new layout first, and every session snapshot after has it.
+// finish answers a change the app did not make, and waits to see one it
+// made (check).
 func (b *bridge) finish(j *job) {
+	if j.err == nil && j.res.Code == "" {
+		b.waiting = j
+		b.poll()
+		b.check()
+		return
+	}
+	b.complete(j)
+}
+
+// check answers the change waited for once the bridge's tabs show it, as
+// the server tells of the layout the app saved, or once it took too long.
+func (b *bridge) check() {
+	j := b.waiting
+	if j == nil {
+		return
+	}
+	if !b.shows(j) {
+		if time.Since(j.start) <= commandWait {
+			return
+		}
+		j.res.Code, j.res.Error = "layout_timeout", "GoRex did not apply the change in time; it may still appear"
+	}
+	b.waiting = nil
+	b.complete(j)
+}
+
+// recheck fires when to look again at the change waited for: at its
+// timeout, or soon, from a server that tells of no change.
+func (b *bridge) recheck() <-chan time.Time {
+	switch {
+	case b.waiting == nil:
+		return nil
+	case !b.subscribed:
+		return time.After(50 * time.Millisecond)
+	}
+	return time.After(time.Until(b.waiting.start.Add(commandWait)) + time.Millisecond)
+}
+
+// complete answers a change: rootshell is told of the new layout first,
+// and every session snapshot after has it.
+func (b *bridge) complete(j *job) {
 	defer close(j.handled)
 	res, err := j.res, j.err
-	if err == nil && res.Code == "" {
-		for b.poll(); !b.shows(j); b.poll() {
-			if time.Since(j.start) > commandWait {
-				res.Code, res.Error = "layout_timeout", "GoRex did not apply the change in time; it may still appear"
-				break
-			}
-			time.Sleep(50 * time.Millisecond)
-		}
-	}
 	if err == nil && res.Code != "" {
 		if res.Code == "desktop_unavailable" {
 			res.Error = fmt.Sprintf("Open the GoRex window on %s to change layouts", b.hello.Host.Name)

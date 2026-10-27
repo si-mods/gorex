@@ -25,10 +25,15 @@ import (
 const version = "0.9.0-gorex"
 
 // Intervals of the bridge: how often it reads the server's list and
-// layout, which push nothing, and renews the size locks it holds.
+// layout, from a server that pushes nothing, or one that tells of its
+// changes (rex.Client.Subscribe), for what it does not tell; how long it
+// lets a burst of changes told of settle before it reads them; how often
+// it renews the size locks it holds.
 var (
-	pollEvery  = 500 * time.Millisecond
-	renewEvery = 5 * time.Second
+	pollEvery   = 500 * time.Millisecond
+	safetyEvery = 30 * time.Second
+	settle      = 20 * time.Millisecond
+	renewEvery  = 5 * time.Second
 )
 
 // Main runs the bridge on the process's stdin and stdout, and returns its
@@ -67,6 +72,8 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 		picked: map[string]string{}, jobs: make(chan *job, 16), done: make(chan *job),
 	}
 	b.id = connectionID(b.owner)
+	// Subscribed before the first poll: no change after it goes untold.
+	b.subscribed = c.Subscribe() == nil
 	go b.write(out)
 	b.send(map[string]any{"id": "control.open", "result": map[string]any{
 		"connection_id": b.id,
@@ -96,9 +103,14 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 		}
 	}()
 	go b.work()
-	poll, renew := time.NewTicker(pollEvery), time.NewTicker(renewEvery)
+	every := pollEvery
+	if b.subscribed {
+		every = safetyEvery
+	}
+	poll, renew := time.NewTicker(every), time.NewTicker(renewEvery)
 	defer poll.Stop()
 	defer renew.Stop()
+	var settled <-chan time.Time
 	for {
 		select {
 		case line, ok := <-lines:
@@ -106,10 +118,26 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 				b.close()
 				return 0
 			}
+		case <-c.Changed():
+			if settled == nil {
+				settled = time.After(settle)
+			}
+		case <-settled:
+			settled = nil
+			if layout, sessions := c.Changes(); b.fetch(sessions, layout) {
+				b.tell()
+			}
+			b.check()
 		case <-poll.C:
 			if b.poll() {
 				b.tell()
 			}
+			b.check()
+		case <-b.recheck():
+			if !b.subscribed && b.poll() {
+				b.tell()
+			}
+			b.check()
 		case <-renew.C:
 			b.renew()
 			b.tell()
