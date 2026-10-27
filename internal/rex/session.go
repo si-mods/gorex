@@ -45,6 +45,10 @@ type session struct {
 	lastOutput time.Time
 	lastInput  time.Time
 	resync     *time.Timer
+	// status is what the program reported of itself; busy, that the last
+	// info found a program in the foreground.
+	status programStatus
+	busy   bool
 	// reaped tells that the process ended, with code; exited, that what
 	// it printed was read too.
 	reaped bool
@@ -227,6 +231,7 @@ func (s *session) run(wait func() int) {
 		s.mu.Lock()
 		s.screen, s.title = s.vt.Snapshot(), s.vt.Title()
 		s.exited = true
+		s.status.drop()
 		for a := range s.clients {
 			a.finish()
 		}
@@ -321,6 +326,7 @@ func (s *session) read() {
 			data := append([]byte(nil), buf[:n]...)
 			s.mu.Lock()
 			s.vt.Feed(data)
+			queries := s.status.feed(data)
 			s.output += uint64(n)
 			s.lastOutput = time.Now()
 			for a := range s.clients {
@@ -330,6 +336,10 @@ func (s *session) read() {
 				}
 			}
 			s.mu.Unlock()
+			// The server answers, as the windows' terminals do not.
+			for range queries {
+				s.p.write(statusReply)
+			}
 		}
 		if err != nil {
 			// A deadline is a pause: what the terminal has stays unread.
@@ -591,14 +601,27 @@ func (s *session) info() SessionInfo {
 	}
 	s.mu.Unlock()
 	in.PID = s.p.pid()
+	fg := in.PID
+	if !in.Exited {
+		if fg = s.p.foreground(); fg <= 0 {
+			fg = in.PID
+		}
+		in.Idle = fg == in.PID
+	}
+	s.mu.Lock()
+	// A program that went back to the shell is no longer working nor
+	// blocked. Only the change counts: a session whose process is the
+	// program is idle all along.
+	if in.Idle && s.busy {
+		s.status.drop()
+	}
+	s.busy = !in.Exited && !in.Idle
+	in.Statuses = s.status.list()
+	s.mu.Unlock()
+	in.Status = MostUrgent(in.Statuses, time.Time{})
 	if in.Exited {
 		return in
 	}
-	fg := s.p.foreground()
-	if fg <= 0 {
-		fg = in.PID
-	}
-	in.Idle = fg == in.PID
 	p := inspect(fg)
 	in.Program, in.Args, in.Dir = p.programName(), p.args, p.dir
 	if in.Program == "" {

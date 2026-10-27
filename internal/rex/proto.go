@@ -128,6 +128,28 @@ type SessionInfo struct {
 	Attached   int       `json:"attached"`
 	Cols       int       `json:"cols"`
 	Rows       int       `json:"rows"`
+	// Statuses are what the programs said they do (OSC 7501), by id, and
+	// Status the one that most needs the user (MostUrgent); nil when they
+	// said nothing.
+	Statuses []ProgramStatus `json:"statuses,omitempty"`
+	Status   *ProgramStatus  `json:"status,omitempty"`
+}
+
+// ProgramStatus is a record of the program status protocol (OSC 7501).
+type ProgramStatus struct {
+	// ID is a path of segments, "" for the root record.
+	ID string `json:"id,omitempty"`
+	// State is idle, working, blocked, done or error; Kind, for blocked,
+	// permission, question or auth.
+	State string `json:"state"`
+	Kind  string `json:"kind,omitempty"`
+	// Progress is a percentage, -1 when unknown.
+	Progress int `json:"progress"`
+	// App is the program's name, its ancestor's when it gave none.
+	App     string    `json:"app,omitempty"`
+	Title   string    `json:"title,omitempty"`
+	Msg     string    `json:"msg,omitempty"`
+	Updated time.Time `json:"updated"`
 }
 
 // Hello is the server's answer to "hello".
