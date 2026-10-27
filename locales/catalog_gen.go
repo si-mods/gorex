@@ -1410,6 +1410,176 @@ func (msgs Messages) NotifyIn(dir string) string {
 	return Catalog.Format(msgs.locale, "notifyIn", map[string]any{"dir": dir})
 }
 
+// NotifyBlocked says "{program} is waiting for you"
+// in the language the app shows.
+//
+// Title of the notification of a program that reported it waits for the
+// user (program status), in a pane out of sight.
+func NotifyBlocked(program string) string { return In(i18n.Locale()).NotifyBlocked(program) }
+
+// NotifyBlocked says "{program} is waiting for you"
+// in the language of msgs.
+//
+// Title of the notification of a program that reported it waits for the
+// user (program status), in a pane out of sight.
+func (msgs Messages) NotifyBlocked(program string) string {
+	return Catalog.Format(msgs.locale, "notifyBlocked", map[string]any{"program": program})
+}
+
+// NotifyFailed says "{program} failed"
+// in the language the app shows.
+//
+// Title of the notification of a program that reported it failed (program
+// status), in a pane out of sight.
+func NotifyFailed(program string) string { return In(i18n.Locale()).NotifyFailed(program) }
+
+// NotifyFailed says "{program} failed"
+// in the language of msgs.
+//
+// Title of the notification of a program that reported it failed (program
+// status), in a pane out of sight.
+func (msgs Messages) NotifyFailed(program string) string {
+	return Catalog.Format(msgs.locale, "notifyFailed", map[string]any{"program": program})
+}
+
+// NotifyOnHost says "{pane} on {host}"
+// in the language the app shows.
+//
+// Where a notification comes from: a pane of a remote host.
+func NotifyOnHost(pane string, host string) string { return In(i18n.Locale()).NotifyOnHost(pane, host) }
+
+// NotifyOnHost says "{pane} on {host}"
+// in the language of msgs.
+//
+// Where a notification comes from: a pane of a remote host.
+func (msgs Messages) NotifyOnHost(pane string, host string) string {
+	return Catalog.Format(msgs.locale, "notifyOnHost", map[string]any{"pane": pane, "host": host})
+}
+
+// StatusIdle says "Idle"
+// in the language the app shows.
+//
+// State a program reported (program status): at rest. Pane tooltip.
+func StatusIdle() string { return In(i18n.Locale()).StatusIdle() }
+
+// StatusIdle says "Idle"
+// in the language of msgs.
+//
+// State a program reported (program status): at rest. Pane tooltip.
+func (msgs Messages) StatusIdle() string {
+	return Catalog.Format(msgs.locale, "statusIdle", nil)
+}
+
+// StatusWorking says "Working"
+// in the language the app shows.
+//
+// State a program reported (program status): busy. Pane tooltip.
+func StatusWorking() string { return In(i18n.Locale()).StatusWorking() }
+
+// StatusWorking says "Working"
+// in the language of msgs.
+//
+// State a program reported (program status): busy. Pane tooltip.
+func (msgs Messages) StatusWorking() string {
+	return Catalog.Format(msgs.locale, "statusWorking", nil)
+}
+
+// StatusBlocked says "Waiting for you"
+// in the language the app shows.
+//
+// State a program reported (program status): waiting for the user. Pane
+// tooltip.
+func StatusBlocked() string { return In(i18n.Locale()).StatusBlocked() }
+
+// StatusBlocked says "Waiting for you"
+// in the language of msgs.
+//
+// State a program reported (program status): waiting for the user. Pane
+// tooltip.
+func (msgs Messages) StatusBlocked() string {
+	return Catalog.Format(msgs.locale, "statusBlocked", nil)
+}
+
+// StatusDone says "Done"
+// in the language the app shows.
+//
+// State a program reported (program status): finished, result not seen yet.
+// Pane tooltip.
+func StatusDone() string { return In(i18n.Locale()).StatusDone() }
+
+// StatusDone says "Done"
+// in the language of msgs.
+//
+// State a program reported (program status): finished, result not seen yet.
+// Pane tooltip.
+func (msgs Messages) StatusDone() string {
+	return Catalog.Format(msgs.locale, "statusDone", nil)
+}
+
+// StatusError says "Failed"
+// in the language the app shows.
+//
+// State a program reported (program status): failed and stopped. Pane
+// tooltip.
+func StatusError() string { return In(i18n.Locale()).StatusError() }
+
+// StatusError says "Failed"
+// in the language of msgs.
+//
+// State a program reported (program status): failed and stopped. Pane
+// tooltip.
+func (msgs Messages) StatusError() string {
+	return Catalog.Format(msgs.locale, "statusError", nil)
+}
+
+// StatusPermission says "needs permission"
+// in the language the app shows.
+//
+// Why a program waits for the user (program status): it asks for
+// permission. Pane tooltip, after the state.
+func StatusPermission() string { return In(i18n.Locale()).StatusPermission() }
+
+// StatusPermission says "needs permission"
+// in the language of msgs.
+//
+// Why a program waits for the user (program status): it asks for
+// permission. Pane tooltip, after the state.
+func (msgs Messages) StatusPermission() string {
+	return Catalog.Format(msgs.locale, "statusPermission", nil)
+}
+
+// StatusQuestion says "has a question"
+// in the language the app shows.
+//
+// Why a program waits for the user (program status): it asks a question.
+// Pane tooltip, after the state.
+func StatusQuestion() string { return In(i18n.Locale()).StatusQuestion() }
+
+// StatusQuestion says "has a question"
+// in the language of msgs.
+//
+// Why a program waits for the user (program status): it asks a question.
+// Pane tooltip, after the state.
+func (msgs Messages) StatusQuestion() string {
+	return Catalog.Format(msgs.locale, "statusQuestion", nil)
+}
+
+// StatusAuth says "needs sign-in"
+// in the language the app shows.
+//
+// Why a program waits for the user (program status): it needs credentials.
+// Pane tooltip, after the state.
+func StatusAuth() string { return In(i18n.Locale()).StatusAuth() }
+
+// StatusAuth says "needs sign-in"
+// in the language of msgs.
+//
+// Why a program waits for the user (program status): it needs credentials.
+// Pane tooltip, after the state.
+func (msgs Messages) StatusAuth() string {
+	return Catalog.Format(msgs.locale, "statusAuth", nil)
+}
+
 // SettingsTitle says "Settings"
 // in the language the app shows.
 //

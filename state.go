@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"log"
 	"os"
@@ -69,6 +70,10 @@ type Pane struct {
 	// attention marks a pane that rang the bell or whose program finished
 	// while it was out of sight; seen clears it.
 	attention bool
+	// seen is when the program's last record the user saw was updated:
+	// done and error records till then no longer ask for attention.
+	// notified is when the pane's last status notification was shown.
+	seen, notified time.Time
 	// bounds is where the pane's card was in the last frame.
 	bounds ui.Rect
 	closed bool
@@ -199,7 +204,7 @@ func (t *Tab) setFocus(p *Pane) {
 		return
 	}
 	t.Focus = p
-	p.attention = false
+	p.see()
 	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
 	t.recent = append(t.recent, p)
 }
@@ -530,7 +535,7 @@ func (a *App) selectTab(i int) {
 	a.active = i
 	t := a.tabs[i]
 	if t.Focus != nil {
-		t.Focus.attention = false
+		t.Focus.see()
 	}
 	a.focusReq = t.Focus
 	a.changed()
@@ -1001,14 +1006,22 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 			}
 			was := p.info
 			p.info = in
+			seen := ti == a.active && t.Focus == p && a.focusedWin
+			if seen {
+				p.see()
+			} else if r := entered(was, in); r != nil && time.Since(p.notified) > 10*time.Second {
+				p.notified = time.Now()
+				a.notifyStatus(h, t, p, r)
+			}
 			// A program that ran a while and finished out of sight
-			// asks for attention.
+			// asks for attention. One that reports its status was
+			// notified of it.
 			if !was.Idle && was.Program != "" && in.Idle && was.Program != in.Program {
-				seen := ti == a.active && t.Focus == p && a.focusedWin
 				if !seen {
 					p.attention = true
 				}
-				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second {
+				statuses := len(was.Statuses) > 0 || len(in.Statuses) > 0
+				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second && !statuses {
 					prog := programOf(was.Program)
 					n := mygo.NewNotification(mygo.NotificationOptions{
 						Title: locales.NotifyFinished(prog.Name),
@@ -1025,6 +1038,70 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 	if a.saveDue && time.Since(a.lastSave) > time.Second {
 		a.save()
 	}
+}
+
+// see marks what the pane shows as seen: its attention, and the done and
+// error records of its program.
+func (p *Pane) see() {
+	p.attention = false
+	for _, r := range p.info.Statuses {
+		if r.Updated.After(p.seen) {
+			p.seen = r.Updated
+		}
+	}
+}
+
+// status is the record of the pane's program that most needs the user,
+// nil for none.
+func (p *Pane) status() *rex.ProgramStatus { return rex.MostUrgent(p.info.Statuses, p.seen) }
+
+// entered returns the most urgent record that went blocked, done or error
+// between two infos of a session, nil for none. An info of a pane not
+// polled yet has no output: its records are not news.
+func entered(was, in rex.SessionInfo) *rex.ProgramStatus {
+	if was.LastOutput.IsZero() {
+		return nil
+	}
+	var news []rex.ProgramStatus
+	for _, r := range in.Statuses {
+		if rex.StatusRank(r.State) < rex.StatusRank("done") {
+			continue
+		}
+		i := slices.IndexFunc(was.Statuses, func(o rex.ProgramStatus) bool { return o.ID == r.ID })
+		if i < 0 || was.Statuses[i].State != r.State {
+			news = append(news, r)
+		}
+	}
+	return rex.MostUrgent(news, time.Time{})
+}
+
+// notifyStatus tells, with a notification, that a program of pane p, on
+// host h, reported r.
+func (a *App) notifyStatus(h *hostConn, t *Tab, p *Pane, r *rex.ProgramStatus) {
+	name, _ := p.label()
+	prog := r.App
+	if prog == "" {
+		prog = name
+	}
+	title := locales.NotifyFinished(prog)
+	switch r.State {
+	case "blocked":
+		title = locales.NotifyBlocked(prog)
+	case "error":
+		title = locales.NotifyFailed(prog)
+	}
+	src := name
+	if tn, _ := t.label(); tn != name {
+		src = tn + " · " + name
+	}
+	if h != nil {
+		src = locales.NotifyOnHost(src, a.hostName(h))
+	}
+	body := src
+	if msg := cmp.Or(r.Msg, r.Title); msg != "" {
+		body = msg + "\n" + src
+	}
+	mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
 }
 
 // laterService queues a menu action without keeping a build context.

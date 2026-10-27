@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -166,8 +167,12 @@ func (a *App) tabEnd(c *ui.Context, k *colors, t *Tab, hovered bool) {
 		if x.Clicked() {
 			a.later(c, func() { a.closeTab(t) })
 		}
+	} else if s := t.status(); needsUser(s) {
+		statusDot(c, k, s, 5.5).Margin(0, 5, 0, 0)
 	} else if t.attention() {
 		ui.Box(c).Size(7, 7).Radius(4).Background(k.attention).Margin(0, 5, 0, 0)
+	} else if s != nil && s.State == "working" {
+		statusDot(c, k, s, 5.5)
 	} else if a.tabBusy(c, t) {
 		activityDot(c, k.busy, 5.5)
 	}
@@ -205,6 +210,18 @@ func (t *Tab) attention() bool {
 		}
 	}
 	return false
+}
+
+// status is the record of its panes' programs that most needs the user,
+// nil for none.
+func (t *Tab) status() *rex.ProgramStatus {
+	var best *rex.ProgramStatus
+	for _, p := range t.panes() {
+		if s := p.status(); s != nil && (best == nil || rex.StatusRank(s.State) > rex.StatusRank(best.State)) {
+			best = s
+		}
+	}
+	return best
 }
 
 func (a *App) tabBusy(c *ui.Context, t *Tab) bool {

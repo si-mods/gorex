@@ -71,6 +71,8 @@ type sessionState struct {
 	Reaped bool `json:"reaped,omitempty"`
 	Exited bool `json:"exited,omitempty"`
 	Code   int  `json:"code,omitempty"`
+	// ponytail: the program's status records (OSC 7501) are not handed
+	// over, and start empty after an upgrade; carry them if that shows.
 }
 
 func handoffPath() string { return filepath.Join(Dir(), "handoff.json") }
