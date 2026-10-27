@@ -12,9 +12,10 @@ import (
 
 // takeCommands makes the changes of the layout that other clients of this
 // machine's server ask for (rex.LayoutCommand), as rootshell's bridge does,
-// one at a time, on the main thread through update, until client closes:
+// one at a time, on the main thread through update, in the window whose
+// tabs the server's layout shows first (commandApp), until client closes:
 // a take waits on the server for the next, so each comes at once.
-func (a *App) takeCommands(client *rex.Client, update func(func())) {
+func (st *store) takeCommands(client *rex.Client, update func(func())) {
 	for {
 		cmd, err := client.TakeCommand()
 		select {
@@ -31,7 +32,14 @@ func (a *App) takeCommands(client *rex.Client, update func(func())) {
 			continue
 		}
 		done := make(chan rex.LayoutCommand, 1)
-		update(func() { done <- a.command(*cmd) })
+		update(func() {
+			a := st.commandApp()
+			if a == nil {
+				done <- rex.LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}
+				return
+			}
+			done <- a.command(*cmd)
+		})
 		var res rex.LayoutCommand
 		select {
 		case res = <-done:
@@ -42,6 +50,19 @@ func (a *App) takeCommands(client *rex.Client, update func(func())) {
 			log.Printf("answering a layout command: %v", err)
 		}
 	}
+}
+
+// commandApp is the window of the first workspace of the server's layout,
+// whose tabs it keeps for clients of one window, as rootshell's bridge:
+// that of the first place; nil without windows.
+func (st *store) commandApp() *App {
+	var first *App
+	for _, a := range st.apps {
+		if a.ws != nil && (first == nil || a.slot < first.slot) {
+			first = a
+		}
+	}
+	return first
 }
 
 // command makes a change of the layout another client asks for, as the

@@ -139,22 +139,31 @@ func (c ghosttyConfig) withPrefs(p settings) ghosttyConfig {
 }
 
 // applyPrefs makes the configuration, the user's choices over it, current
-// in every pane. The cursor is a pane's own once made, so it is applied
-// by setCursor, not here.
+// in every pane of every window. The cursor is a pane's own once made, so
+// it is applied by setCursor, not here.
 func (a *App) applyPrefs() {
 	ghostty = ghosttyRaw.withPrefs(prefs)
 	applyGhostty()
 	applyAppearance()
-	for _, t := range a.tabs {
-		for _, p := range t.panes() {
-			if p.term != nil {
-				p.term.SetFont(termFont)
-				p.term.SetTheme(termLight, termDark)
-				p.term.SetCopyOnSelect(ghostty.CopyOnSelect)
-				p.term.SetMinimumContrast(ghostty.MinimumContrast)
-			}
+	for _, p := range a.allPanes() {
+		if p.term != nil {
+			p.term.SetFont(termFont)
+			p.term.SetTheme(termLight, termDark)
+			p.term.SetCopyOnSelect(ghostty.CopyOnSelect)
+			p.term.SetMinimumContrast(ghostty.MinimumContrast)
 		}
 	}
+}
+
+// allPanes are the panes of every window.
+func (a *App) allPanes() []*Pane {
+	var out []*Pane
+	for _, o := range a.peers() {
+		for _, t := range o.tabs {
+			out = append(out, t.panes()...)
+		}
+	}
+	return out
 }
 
 // setPref changes the user's choices, keeps them, and applies them.
@@ -178,11 +187,9 @@ func cursorSeq(s terminal.CursorStyle, blink bool) string {
 func (a *App) setCursor(change func(*settings)) {
 	a.setPref(change)
 	seq := []byte(cursorSeq(ghostty.Cursor, !ghostty.NoBlink))
-	for _, t := range a.tabs {
-		for _, p := range t.panes() {
-			if p.term != nil {
-				p.term.Feed(seq)
-			}
+	for _, p := range a.allPanes() {
+		if p.term != nil {
+			p.term.Feed(seq)
 		}
 	}
 }
@@ -201,13 +208,15 @@ func (a *App) setLanguage(tag string) {
 	setLocale(tag)
 }
 
-// setWindowPref changes a choice of how the window lays out, keeps it, and
-// draws the window again.
+// setWindowPref changes a choice of how the windows lay out, keeps it, and
+// draws them again.
 func (a *App) setWindowPref(change func(*settings)) {
 	change(&prefs)
 	saveSettings()
 	a.syncSidebarItem()
-	a.do(func() {})
+	for _, o := range a.peers() {
+		o.do(func() {})
+	}
 }
 
 // setFontSize changes the size of the terminals' text, in every pane. Zero
@@ -218,11 +227,9 @@ func (a *App) setFontSize(size float32) {
 	}
 	prefs.FontSize = size
 	termFont.Size = ghostty.fontSize(size)
-	for _, t := range a.tabs {
-		for _, p := range t.panes() {
-			if p.term != nil {
-				p.term.SetFont(termFont)
-			}
+	for _, p := range a.allPanes() {
+		if p.term != nil {
+			p.term.SetFont(termFont)
 		}
 	}
 	saveSettings()
