@@ -59,10 +59,9 @@ type Server struct {
 	tookAt  time.Time
 	nextCmd int64
 	// subs are the control connections that subscribed, told of each
-	// change (notify); changes counts the changes, for their ETags.
-	subMu   sync.Mutex
-	subs    map[*subscriber]struct{}
-	changes uint64
+	// change (notify).
+	subMu sync.Mutex
+	subs  map[*subscriber]struct{}
 }
 
 // layoutCmd is a layout command waiting for the app's answer, done.
@@ -74,17 +73,22 @@ type layoutCmd struct {
 // commandWait is how long a layout command waits for the app to make it,
 // and takeWait how long the app's take waits for one.
 var (
-	commandWait = newDuration(4 * time.Second)
+	commandWait = newDuration(CommandTimeout)
 	takeWait    = newDuration(10 * time.Second)
 )
+
+// retakeGap is how long after the app took a command, or answered one,
+// it counts as taking still: it takes again at once.
+const retakeGap = 500 * time.Millisecond
 
 // command asks the app for c, and returns its answer: Code tells why it
 // did not make it, when the app has no window to take commands, or it
 // did not answer in time; it may make it still.
 func (s *Server) command(c LayoutCommand) LayoutCommand {
 	s.cmdMu.Lock()
-	// The app takes again right after it answered one.
-	if s.takers == 0 && time.Since(s.tookAt) > 3*time.Second {
+	// The app takes again right after it answered one; one it makes now
+	// it answers first.
+	if s.takers == 0 && len(s.taken) == 0 && time.Since(s.tookAt) > retakeGap {
 		s.cmdMu.Unlock()
 		return LayoutCommand{Code: "desktop_unavailable", Error: "no GoRex window is open"}
 	}
@@ -110,17 +114,30 @@ func (s *Server) command(c LayoutCommand) LayoutCommand {
 }
 
 // take returns the first layout command waiting, after waiting takeWait
-// at most for one; nil when none came.
-func (s *Server) take() *LayoutCommand {
+// at most for one; nil when none came, or once gone closes, as the
+// connection of the take does: a take of no one counts no more.
+func (s *Server) take(gone <-chan struct{}) *LayoutCommand {
 	timeout := time.After(takeWait.get())
 	s.cmdMu.Lock()
 	s.takers++
+	live := true
 	defer func() {
 		s.takers--
-		s.tookAt = time.Now()
+		if live {
+			s.tookAt = time.Now()
+		}
 		s.cmdMu.Unlock()
 	}()
-	for len(s.cmds) == 0 {
+	for {
+		select {
+		case <-gone:
+			live = false
+			return nil
+		default:
+		}
+		if len(s.cmds) > 0 {
+			break
+		}
 		if s.cmdWake == nil {
 			s.cmdWake = make(chan struct{})
 		}
@@ -128,6 +145,7 @@ func (s *Server) take() *LayoutCommand {
 		s.cmdMu.Unlock()
 		select {
 		case <-wake:
+		case <-gone:
 		case <-timeout:
 			s.cmdMu.Lock()
 			return nil
@@ -148,6 +166,7 @@ func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Lock()
 	lc := s.taken[c.ID]
 	delete(s.taken, c.ID)
+	s.tookAt = time.Now()
 	s.cmdMu.Unlock()
 	if lc != nil {
 		lc.done <- c
@@ -439,7 +458,10 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		b, _ := json.Marshal(res)
 		write(b)
 	}
-	kills := make(chan struct{}, maxKills)
+	aside := make(chan struct{}, maxAside)
+	// gone closes with the connection, ending its take.
+	gone := make(chan struct{})
+	defer close(gone)
 	line := first
 	for {
 		var req Request
@@ -455,12 +477,20 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 			// the app: answer them aside, a few at a time; the others wait
 			// their turn.
 			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" {
-				kills <- struct{}{}
+				aside <- struct{}{}
 				kept := kept // a later hello sets it, as this runs
 				go func() {
-					defer func() { <-kills }()
+					defer func() { <-aside }()
 					if killHook != nil && req.Op == "kill" {
 						killHook()
+					}
+					if req.Op == "command.take" && !remote {
+						res := Response{ID: req.ID}
+						if c := s.take(gone); c != nil {
+							res.Data, _ = json.Marshal(c)
+						}
+						reply(res)
+						return
 					}
 					reply(s.request(req, peer, kept))
 				}()
@@ -483,10 +513,11 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 }
 
 // maxLine is the longest line of control a connection may send, and
-// maxKills how many kills of a connection run at once.
+// maxAside how many of its requests answered aside (kills, layout
+// commands) run at once.
 const (
 	maxLine  = 1 << 20
-	maxKills = 8
+	maxAside = 8
 )
 
 var errLineTooLong = errors.New("rex: the request is too long")
@@ -739,11 +770,6 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			return nil, nil
 		}
 		return s.command(*req.Command), nil
-	case "command.take":
-		if c := s.take(); c != nil {
-			return c, nil
-		}
-		return nil, nil
 	case "upgrade":
 		// Once it runs, the connection closes with this executable.
 		return nil, s.upgrade(req.Exe)

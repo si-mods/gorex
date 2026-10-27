@@ -100,6 +100,9 @@ func (b *bridge) do(req request) (any, error) {
 			return nil, &failure{"invalid_params", err.Error()}
 		}
 	}
+	if layoutOps[req.Method] {
+		return nil, b.ask(req, p)
+	}
 	switch req.Method {
 	case "ping", "events.subscribe", "tab.focus", "control.close":
 		return nil, nil
@@ -162,8 +165,6 @@ func (b *bridge) do(req request) (any, error) {
 			b.tell()
 		}
 		return nil, nil
-	case "tab.create", "pane.split", "pane.close", "tab.close", "tab.rename", "pane.zoom", "tab.move":
-		return nil, b.ask(req, p)
 	case "terminal.attach":
 		sid := sidOf(p.Target)
 		if _, ok := b.infos[sid]; !ok {

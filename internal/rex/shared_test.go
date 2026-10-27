@@ -339,3 +339,37 @@ func TestConnectExistingStartsNone(t *testing.T) {
 		t.Error("a server started")
 	}
 }
+
+// TestTakeOfClosedConnection checks that a take whose connection closed
+// counts as no window: a command fails at once.
+func TestTakeOfClosedConnection(t *testing.T) {
+	s, _ := testServer(t)
+	app, bridge := pipe(s, ""), pipe(s, "")
+	defer bridge.Close()
+	go app.TakeCommand()
+	for {
+		s.cmdMu.Lock()
+		n := s.takers
+		s.cmdMu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	app.Close()
+	for deadline := time.Now().Add(time.Second); ; time.Sleep(5 * time.Millisecond) {
+		s.cmdMu.Lock()
+		n := s.takers
+		s.cmdMu.Unlock()
+		if n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the take of a closed connection still counts")
+		}
+	}
+	start := time.Now()
+	if res, err := bridge.Command(LayoutCommand{Op: "tab.create"}); err != nil || res.Code != "desktop_unavailable" || time.Since(start) > time.Second {
+		t.Errorf("answered %+v %v after %v", res, err, time.Since(start))
+	}
+}

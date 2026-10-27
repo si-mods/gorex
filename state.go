@@ -114,6 +114,11 @@ type App struct {
 	focusedWin   bool
 	lastSnapshot string
 	title        string
+	// saveSeq counts the layouts saved, on the main thread; sentSeq is the
+	// last sent, under saveMu.
+	saveSeq uint64
+	saveMu  sync.Mutex
+	sentSeq uint64
 
 	// The sidebar: the menu's Toggle Sidebar, the tab last scrolled into
 	// view, and a drag of its edge, from the width it began at.
@@ -872,10 +877,30 @@ func (a *App) save() {
 	if err != nil || string(b) == a.lastSnapshot {
 		return
 	}
-	a.lastSnapshot = string(b)
-	a.lastSave = time.Now()
+	b, seq := a.layoutToSave()
 	c := a.client
-	go c.SetLayout(b)
+	go a.sendLayout(c, b, seq)
+}
+
+// layoutToSave returns the layout to send the server now, and its number
+// for sendLayout; on the main thread.
+func (a *App) layoutToSave() ([]byte, uint64) {
+	b, _ := json.Marshal(a.snapshot())
+	a.saveDue, a.lastSnapshot, a.lastSave = false, string(b), time.Now()
+	a.saveSeq++
+	return b, a.saveSeq
+}
+
+// sendLayout sends c layout b, the seq-th saved, unless a later one went
+// first: saves go one at a time, in order.
+func (a *App) sendLayout(c *rex.Client, b []byte, seq uint64) {
+	a.saveMu.Lock()
+	defer a.saveMu.Unlock()
+	if seq <= a.sentSeq {
+		return
+	}
+	a.sentSeq = seq
+	c.SetLayout(b)
 }
 
 // restore opens the tabs of the saved layout, attaching to the sessions

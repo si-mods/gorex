@@ -86,7 +86,7 @@ func (r *phone) snapshot() (tabs []string, labels map[string]string, panes map[s
 func TestRootshellLayout(t *testing.T) {
 	a, tt := newTestApp(t)
 	first := a.tab()
-	go a.takeCommands(a.client, a.post)
+	go a.takeCommands(nil, a.client)
 	a.saveNow()
 	c, err := rex.ConnectExisting()
 	if err != nil {
@@ -156,9 +156,13 @@ func TestRootshellLayout(t *testing.T) {
 	mark = len(r.log)
 	r.call("pane.split", map[string]any{"target_pane_id": "p-" + sid1, "direction": "right", "focus": true})
 	var layout map[string]any
+	var focused []any
 	for _, m := range r.since(mark) {
 		if l, ok := m["layout"].(map[string]any); ok && m["type"] == "tab.layout" && l["tab_id"] == t1 {
 			layout = l
+			if len(l["panes"].([]any)) == 2 {
+				focused = append(focused, l["focused_pane_id"])
+			}
 		}
 	}
 	if layout == nil || len(layout["panes"].([]any)) != 2 {
@@ -166,8 +170,10 @@ func TestRootshellLayout(t *testing.T) {
 	}
 	_, _, panes = r.snapshot()
 	sidNew := panes[t1][1]
-	if layout["focused_pane_id"] != "p-"+sidNew {
-		t.Errorf("focused %v, want the new pane", layout["focused_pane_id"])
+	for _, f := range focused {
+		if f != "p-"+sidNew {
+			t.Errorf("focused %v, want the new pane", focused)
+		}
 	}
 	size := func(sid string) string {
 		list, _ := a.client.List()
@@ -223,4 +229,21 @@ func TestRootshellLayout(t *testing.T) {
 		t.Errorf("after closing a tab: %v, the desktop's %d", tabs, len(a.tabs))
 	}
 	waitFor(t, tt, "the closed tab's session to end", func() bool { return size(sid2) == "gone" })
+}
+
+// TestCommandCreateFails checks that a tab or a pane whose session does
+// not start leaves the layout as it was, and tells why.
+func TestCommandCreateFails(t *testing.T) {
+	a, _ := newTestApp(t)
+	first := a.tab()
+	a.err = "an older error"
+	a.client.Close() // no session starts
+	res := a.command(rex.LayoutCommand{Op: "tab.create"})
+	if res.Code != "create_failed" || res.Error == "" || res.Error == "an older error" || len(a.tabs) != 1 {
+		t.Errorf("tab.create: %+v, %d tabs", res, len(a.tabs))
+	}
+	res = a.command(rex.LayoutCommand{Op: "pane.split", SID: first.Focus.SID})
+	if res.Code != "create_failed" || len(first.panes()) != 1 || first.Root.Pane != first.Focus {
+		t.Errorf("pane.split: %+v, %d panes", res, len(first.panes()))
+	}
 }

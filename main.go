@@ -9,7 +9,6 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 	"os"
 	"runtime"
@@ -148,7 +147,7 @@ func (a *App) open() {
 	}
 	a.changed()
 	go a.poll(win, client)
-	go a.takeCommands(client, win.Update)
+	go a.takeCommands(win, client)
 	a.debugHook()
 	win.OnClosed(func() {
 		a.saveNow()
@@ -182,13 +181,10 @@ func (a *App) saveNow() {
 	if a.client == nil || len(a.tabs) == 0 && !a.quitting {
 		return
 	}
-	b, err := json.Marshal(a.snapshot())
-	if err != nil {
-		return
-	}
-	done := make(chan struct{})
+	b, seq := a.layoutToSave()
+	c, done := a.client, make(chan struct{})
 	go func() {
-		a.client.SetLayout(b)
+		a.sendLayout(c, b, seq)
 		close(done)
 	}()
 	select {
