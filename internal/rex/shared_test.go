@@ -339,3 +339,66 @@ func TestConnectExistingStartsNone(t *testing.T) {
 		t.Error("a server started")
 	}
 }
+
+// TestTakeOfClosedConnection checks that a take whose connection closed
+// counts as no window: a command fails at once.
+func TestTakeOfClosedConnection(t *testing.T) {
+	s, _ := testServer(t)
+	app, bridge := pipe(s, ""), pipe(s, "")
+	defer bridge.Close()
+	go app.TakeCommand()
+	for {
+		s.cmdMu.Lock()
+		n := s.takers
+		s.cmdMu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	app.Close()
+	for deadline := time.Now().Add(time.Second); ; time.Sleep(5 * time.Millisecond) {
+		s.cmdMu.Lock()
+		n := s.takers
+		s.cmdMu.Unlock()
+		if n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the take of a closed connection still counts")
+		}
+	}
+	start := time.Now()
+	if res, err := bridge.Command(LayoutCommand{Op: "tab.create"}); err != nil || res.Code != "desktop_unavailable" || time.Since(start) > time.Second {
+		t.Errorf("answered %+v %v after %v", res, err, time.Since(start))
+	}
+}
+
+// TestCommandBetweenTakes sends a command while the app, its window open,
+// takes none: it waits for the app's next take, and is made.
+func TestCommandBetweenTakes(t *testing.T) {
+	s, _ := testServer(t)
+	app, bridge := pipe(s, ""), pipe(s, "")
+	defer app.Close()
+	defer bridge.Close()
+	defer takeWait.set(takeWait.set(50 * time.Millisecond))
+	if cmd, err := app.TakeCommand(); err != nil || cmd != nil {
+		t.Fatalf("took %+v %v", cmd, err)
+	}
+	// No take waits now; the app's connection is open.
+	answered := make(chan LayoutCommand, 1)
+	go func() {
+		res, _ := bridge.Command(LayoutCommand{Op: "tab.rename", SID: "a", Name: "x"})
+		answered <- res
+	}()
+	time.Sleep(time.Second)
+	takeWait.set(10 * time.Second)
+	cmd, err := app.TakeCommand()
+	if err != nil || cmd == nil || cmd.Op != "tab.rename" {
+		t.Fatalf("took %+v %v", cmd, err)
+	}
+	app.CommandDone(LayoutCommand{ID: cmd.ID})
+	if res := <-answered; res.Code != "" {
+		t.Errorf("answered %+v", res)
+	}
+}

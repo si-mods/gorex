@@ -27,6 +27,7 @@ type attach struct {
 	gen    int // the attach to the server that is current
 	closed bool
 	quiet  bool // its pane closes from rootshell: its end is no news
+	ended  bool // it ended while quiet
 	// push orders what the attach sends: a snapshot before the output that
 	// follows it, and nothing of an attach of before after it.
 	push sync.Mutex
@@ -154,7 +155,9 @@ func (at *attach) lost(gen int) {
 // snapshot of it.
 func (at *attach) alive(gen int) bool {
 	at.mu.Lock()
-	current := at.gen == gen && !at.closed && !at.quiet
+	current := at.gen == gen && !at.closed
+	at.ended = at.ended || current && at.quiet
+	current = current && !at.quiet
 	at.mu.Unlock()
 	if !current {
 		return false

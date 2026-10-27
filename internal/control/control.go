@@ -36,6 +36,15 @@ var (
 	safetyEvery = 30 * time.Second
 	settle      = 20 * time.Millisecond
 	renewEvery  = 5 * time.Second
+	// retryEvery is how often the bridge reads the layout again while it
+	// waits to see a change, from a server that tells of none.
+	retryEvery = 50 * time.Millisecond
+	// geometrySettle is how long the sizes rootshell gives a tab it holds
+	// must stay the same before the bridge resizes its sessions, and
+	// redrawAfter how long after a session's size changed its panes get
+	// its screen anew.
+	geometrySettle = 120 * time.Millisecond
+	redrawAfter    = 250 * time.Millisecond
 )
 
 // Main runs the bridge on the process's stdin and stdout, and returns its
@@ -71,8 +80,9 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 		infos: map[string]rex.SessionInfo{}, sizes: map[string][2]int{}, owned: map[string]bool{},
 		locked: map[string]bool{}, attaches: map[string]*attach{},
 		told: map[string]string{}, ctl: map[string]controller{},
-		picked: map[string]string{}, jobs: make(chan *job, 16), done: make(chan *job),
+		picked: map[string]string{}, jobs: make(chan *job, queued()-1), done: make(chan *job),
 		paneSizes: map[string]map[string]paneSize{}, proto: 2,
+		wanted: map[string]geometry{}, redraws: map[string]time.Time{},
 	}
 	b.id = connectionID(b.owner)
 	features := []string{"shared_attach", "geometry_ownership", "geometry_controller"}
@@ -118,6 +128,8 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 	poll, renew := time.NewTicker(every), time.NewTicker(renewEvery)
 	defer poll.Stop()
 	defer renew.Stop()
+	retry := time.NewTicker(retryEvery)
+	defer retry.Stop()
 	var settled <-chan time.Time
 	for {
 		select {
@@ -141,7 +153,10 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 				b.tell()
 			}
 			b.check()
-		case <-b.recheck():
+		case <-b.due():
+			b.settleGeometry()
+			b.redraw()
+		case <-b.recheck(retry.C):
 			if !b.subscribed && b.poll() {
 				b.tell()
 			}

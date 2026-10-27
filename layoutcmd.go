@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"log"
 	"os"
 	"slices"
@@ -14,14 +15,23 @@ import (
 // machine's server ask for (rex.LayoutCommand), as rootshell's bridge does,
 // one at a time, on the main thread through update, in the window whose
 // tabs the server's layout shows first (commandApp), until client closes:
-// a take waits on the server for the next, so each comes at once.
+// a take waits on the server for the next, so each comes at once. Each is
+// answered once the server has its layout, the main thread going on
+// meanwhile.
 func (st *store) takeCommands(client *rex.Client, update func(func())) {
+	unavailable := func(id int64, msg string) rex.LayoutCommand {
+		return rex.LayoutCommand{ID: id, Code: "desktop_unavailable", Error: msg}
+	}
 	for {
 		cmd, err := client.TakeCommand()
 		select {
 		case <-client.Closed():
 			return
 		default:
+		}
+		if err != nil && strings.Contains(err.Error(), "unknown op") {
+			log.Printf("the server takes no layout commands: %v", err)
+			return
 		}
 		if err != nil {
 			log.Printf("taking layout commands: %v", err)
@@ -31,20 +41,32 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 		if cmd == nil {
 			continue
 		}
-		done := make(chan rex.LayoutCommand, 1)
+		started, done := make(chan struct{}), make(chan rex.LayoutCommand, 1)
 		update(func() {
+			close(started)
 			a := st.commandApp()
 			if a == nil {
-				done <- rex.LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}
+				done <- unavailable(cmd.ID, "no GoRex window is open")
 				return
 			}
-			done <- a.command(*cmd)
+			res := a.command(*cmd)
+			if res.Code == "" {
+				a.saveDue = false
+				st.save()
+			}
+			done <- res
 		})
+		// A main thread that runs nothing has no window; one that runs it
+		// takes its time, as a session may be slow to start.
 		var res rex.LayoutCommand
 		select {
-		case res = <-done:
-		case <-time.After(5 * time.Second): // the window went
-			res = rex.LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "the GoRex window closed"}
+		case <-started:
+			res = <-done
+		case <-time.After(rex.AppCommandTimeout):
+			res = unavailable(cmd.ID, "the GoRex window does not answer")
+		}
+		if res.Code == "" {
+			st.writer.wait(rex.CommandTimeout)
 		}
 		if err := client.CommandDone(res); err != nil {
 			log.Printf("answering a layout command: %v", err)
@@ -66,9 +88,9 @@ func (st *store) commandApp() *App {
 }
 
 // command makes a change of the layout another client asks for, as the
-// window's buttons do, on this machine's panes, and saves the layout at
-// once, for the client to see it. The active tab and the keyboard's focus
-// stay.
+// window's buttons do, on this machine's panes; the caller saves the
+// layout at once, for the client to see it. The active tab and the
+// keyboard's focus stay.
 func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 	res := rex.LayoutCommand{ID: c.ID}
 	fail := func(code, msg string) rex.LayoutCommand {
@@ -100,9 +122,14 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if dir == "" {
 			dir, _ = os.UserHomeDir()
 		}
+		a.err = ""
 		t := a.newTabAfter(nil, dir, after)
-		if t == nil || t.Focus.SID == "" {
-			return fail("create_failed", a.err)
+		if t == nil {
+			return fail("create_failed", "GoRex cannot open a tab now")
+		}
+		if t.Focus.SID == "" {
+			a.dropPane(t.Focus, false) // and its tab
+			return fail("create_failed", cmp.Or(a.err, "the session did not start"))
 		}
 		res.New = t.Focus.SID
 	case "pane.split":
@@ -110,9 +137,14 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if dir == "" {
 			dir = p.info.Dir
 		}
+		a.err = ""
 		n := a.splitPane(p, c.Vertical, dir)
-		if n == nil || n.SID == "" {
-			return fail("create_failed", a.err)
+		if n == nil {
+			return fail("create_failed", "GoRex cannot split the pane now")
+		}
+		if n.SID == "" {
+			a.dropPane(n, false)
+			return fail("create_failed", cmp.Or(a.err, "the session did not start"))
 		}
 		res.New = n.SID
 	case "pane.close":
@@ -127,18 +159,38 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		a.zoom(p, on)
 		res.Zoomed = p.Tab.Zoom != nil
 	case "tab.move":
+		// Index is the place among this machine's tabs as they are now,
+		// counted before the tab leaves its own.
 		t := p.Tab
+		local := a.localTabs()
+		at := min(max(c.Index, 0), len(local))
+		if slices.Index(local, t) < at {
+			at--
+		}
+		local = slices.DeleteFunc(local, func(x *Tab) bool { return x == t })
 		rest := slices.DeleteFunc(slices.Clone(a.tabs), func(x *Tab) bool { return x == t })
 		to := slices.IndexFunc(rest, func(x *Tab) bool { return x.host() == nil })
-		if q := a.localPane(c.After); q != nil && q.Tab != t {
-			to = slices.Index(rest, q.Tab) + 1
+		if at > 0 {
+			to = slices.Index(rest, local[at-1]) + 1
 		}
 		a.moveTab(t, max(to, 0))
+		res.Index = slices.Index(a.localTabs(), t)
 	default:
 		return fail("unknown_op", "GoRex does not know "+c.Op)
 	}
-	a.saveNow()
 	return res
+}
+
+// localTabs returns the tabs with a pane of this machine, in order: those
+// the server's other clients see.
+func (a *App) localTabs() []*Tab {
+	var tabs []*Tab
+	for _, t := range a.tabs {
+		if slices.ContainsFunc(t.panes(), func(p *Pane) bool { return p.host == nil && p.SID != "" && !p.closed }) {
+			tabs = append(tabs, t)
+		}
+	}
+	return tabs
 }
 
 // localPane returns the pane of this machine's session sid, nil for none.

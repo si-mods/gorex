@@ -64,6 +64,16 @@ type Request struct {
 	Command *LayoutCommand `json:"command,omitempty"`
 }
 
+// CommandTimeout is how long the server waits for the app to make a
+// layout command, a new session included, which Windows may take seconds
+// to start; the app gives up on one its window does not start making
+// within AppCommandTimeout, and a client waits a while longer than the
+// server, to see the layout saved.
+const (
+	CommandTimeout    = 6 * time.Second
+	AppCommandTimeout = CommandTimeout / 2
+)
+
 // LayoutCommand is a change of the layout that a client of this machine,
 // as rootshell's bridge, asks the app to make ("command"): the app, which
 // owns the layout, takes the commands in order ("command.take"), makes
@@ -85,6 +95,10 @@ type LayoutCommand struct {
 	Vertical bool   `json:"vertical,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Mode     string `json:"mode,omitempty"`
+	// Index is where tab.move puts the tab among this machine's tabs as
+	// the app makes it, counted with the tab in its place; in the answer,
+	// where the tab is then.
+	Index int `json:"index,omitempty"`
 	// The answer: Code and Error when it was not made, New the session of
 	// the pane made, and Zoomed whether the pane's tab is zoomed now.
 	Code   string `json:"code,omitempty"`
@@ -147,7 +161,7 @@ type Response struct {
 	// Event, on a line of no ID, tells a connection that subscribed of a
 	// change: "layout", as setLayout changes it, or "sessions", as one
 	// starts, ends, or changes its size, size lock, title or foreground
-	// program; ETag then names the change.
+	// program.
 	Event string `json:"event,omitempty"`
 }
 

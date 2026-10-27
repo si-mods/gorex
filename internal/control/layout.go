@@ -4,9 +4,11 @@ import (
 	"cmp"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"strings"
+	"time"
 
 	"gorex/internal/rex"
 )
@@ -45,6 +47,11 @@ type bridge struct {
 	// own: paneSizes are those rootshell gave, by tab id, then pane id.
 	proto     int
 	paneSizes map[string]map[string]paneSize
+	// wanted are the sizes rootshell gave the tabs it holds, by id, to
+	// settle (settleGeometry); redraws when to send each session's panes
+	// their screen anew (redrawLater).
+	wanted  map[string]geometry
+	redraws map[string]time.Time
 	// shape is the topology rootshell was last told, and told and ctl the
 	// layouts and controllers of its tabs.
 	shape string
@@ -144,9 +151,13 @@ func (b *bridge) fetch(sessions, layout bool) bool {
 	}
 	if changed {
 		b.etag = etag
+		was := maps.Clone(b.infos)
 		clear(b.infos)
 		for _, in := range list {
 			b.infos[in.ID] = in
+			if old, ok := was[in.ID]; ok && (old.Cols != in.Cols || old.Rows != in.Rows) {
+				b.redrawLater(in.ID)
+			}
 		}
 	}
 	b.layout = l
@@ -231,7 +242,9 @@ func (b *bridge) build() {
 		t := &tab{name: st.Name, root: root, focus: root.sids()[0]}
 		if st.Focus >= 0 && st.Focus < len(leaves) && leaves[st.Focus] != "" {
 			t.focus = leaves[st.Focus]
-			t.zoom = st.Zoom && len(root.sids()) > 1
+			// As the desktop, which zooms a tab of more than one pane,
+			// counting those of other hosts.
+			t.zoom = st.Zoom
 		}
 		best, most := "", 0
 		for _, o := range b.tabs {
@@ -434,10 +447,11 @@ type paneRect struct {
 
 // paneSize is a pane's grid, as herdr's PaneTerminalSize.
 type paneSize struct {
-	Cols  int `json:"cols"`
-	Rows  int `json:"rows"`
-	CellW int `json:"cell_width_px"`
-	CellH int `json:"cell_height_px"`
+	Cols  int  `json:"cols"`
+	Rows  int  `json:"rows"`
+	CellW int  `json:"cell_width_px"`
+	CellH int  `json:"cell_height_px"`
+	in    rect // the pane's place it was given for
 }
 
 type splitRect struct {
@@ -499,10 +513,31 @@ func (b *bridge) layoutOf(t *tab) layoutSnapshot {
 // pane rootshell gave a grid of its own has it (protocol 3).
 func (b *bridge) tiled(t *tab, cols, rows int) layoutSnapshot {
 	l := b.tile(t, cols, rows)
+	sizes := b.paneSizes[t.id]
+	if len(sizes) == 0 {
+		return l
+	}
+	// A pane rootshell gave no grid yet, as a new one, has its place's,
+	// in the cells of the tab's focused pane, or of another.
+	var cells paneSize
+	for _, s := range sizes {
+		cells = s
+	}
+	cells = cmp.Or(sizes[paneID(t.focus)], cells)
 	for i, p := range l.Panes {
-		if size, ok := b.paneSizes[t.id][p.PaneID]; ok {
-			l.Panes[i].Size = &size
+		s, ok := sizes[p.PaneID]
+		switch {
+		case !ok || l.Zoomed:
+			// The zoomed pane fills the tab; the others keep their grids.
+			s.CellW, s.CellH = cmp.Or(s.CellW, cells.CellW), cmp.Or(s.CellH, cells.CellH)
+			s.Cols, s.Rows = p.Rect.Width, p.Rect.Height
+		case s.in != p.Rect && s.in.Width > 0 && s.in.Height > 0:
+			// Its place changed, as the tab split: its grid with it.
+			s.Cols = int(math.Round(float64(s.Cols) * float64(p.Rect.Width) / float64(s.in.Width)))
+			s.Rows = int(math.Round(float64(s.Rows) * float64(p.Rect.Height) / float64(s.in.Height)))
 		}
+		s.Cols, s.Rows = min(max(s.Cols, 4), math.MaxUint16), min(max(s.Rows, 2), math.MaxUint16)
+		l.Panes[i].Size = &s
 	}
 	return l
 }
@@ -606,4 +641,115 @@ func exportNode(n *node) map[string]any {
 		return map[string]any{"type": "pane", "pane_id": paneID(n.sid)}
 	}
 	return map[string]any{"type": "split", "direction": direction(n), "ratio": n.ratio, "first": exportNode(n.a), "second": exportNode(n.b)}
+}
+
+// geometry is a size rootshell gave a tab, at: panes, with protocol 3,
+// the grids of its panes, by pane id.
+type geometry struct {
+	cols, rows int
+	panes      map[string]paneSize
+	at         time.Time
+}
+
+// setSize makes g the size of t.
+// The grid of each pane is kept with the place it was given for, in;
+// a pane the tab's zoom hides keeps its own.
+func (b *bridge) setSize(t *tab, g geometry) {
+	b.sizes[t.id] = [2]int{g.cols, g.rows}
+	if g.panes == nil {
+		delete(b.paneSizes, t.id)
+		return
+	}
+	shown := map[string]rect{}
+	for _, p := range b.tile(t, g.cols, g.rows).Panes {
+		shown[p.PaneID] = p.Rect
+	}
+	sizes := map[string]paneSize{}
+	for id, s := range b.paneSizes[t.id] {
+		if _, ok := shown[id]; !ok && slices.Contains(t.root.sids(), sidOf(id)) {
+			sizes[id] = s
+		}
+	}
+	for id, s := range g.panes {
+		if r, ok := shown[id]; ok {
+			s.in = r
+			sizes[id] = s
+		}
+	}
+	b.paneSizes[t.id] = sizes
+}
+
+// apply sizes the sessions of t, which rootshell holds, to its size:
+// rootshell hears of the new layout first, and holds the output until its
+// panes are at it.
+func (b *bridge) apply(t *tab) {
+	if b.owned[t.id] {
+		b.tell()
+		b.lockTab(t)
+	}
+	b.tell()
+}
+
+// settleGeometry applies the sizes rootshell gave the tabs it holds once
+// they stopped changing for geometrySettle: one resize for a burst.
+func (b *bridge) settleGeometry() {
+	for id, g := range b.wanted {
+		if time.Since(g.at) < geometrySettle {
+			continue
+		}
+		delete(b.wanted, id)
+		if t := b.tab(id); t != nil {
+			b.setSize(t, g)
+			b.apply(t)
+		}
+	}
+}
+
+// due fires when the next size waiting settles (settleGeometry), or the
+// next snapshot is due (redraw).
+func (b *bridge) due() <-chan time.Time {
+	var due time.Time
+	soon := func(at time.Time) {
+		if due.IsZero() || at.Before(due) {
+			due = at
+		}
+	}
+	for _, g := range b.wanted {
+		soon(g.at.Add(geometrySettle))
+	}
+	for _, at := range b.redraws {
+		soon(at)
+	}
+	if due.IsZero() {
+		return nil
+	}
+	return time.After(time.Until(due))
+}
+
+// redrawLater sends rootshell the screen of each pane of session sid
+// anew, a while after its size changed, once the program drew it again
+// at that size: what it printed for the size before, still on its way as
+// the session resized, landed in rootshell's grid of the new size.
+func (b *bridge) redrawLater(sid string) {
+	for _, at := range b.attaches {
+		if at.sid == sid {
+			b.redraws[sid] = time.Now().Add(redrawAfter)
+			return
+		}
+	}
+}
+
+// redraw sends the snapshots due (redrawLater).
+func (b *bridge) redraw() {
+	for sid, due := range b.redraws {
+		if time.Now().Before(due) {
+			continue
+		}
+		delete(b.redraws, sid)
+		for _, at := range b.attaches {
+			if at.sid == sid {
+				at.reattach(b.infos[sid])
+			}
+		}
+	}
 }

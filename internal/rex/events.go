@@ -3,17 +3,15 @@
 package rex
 
 import (
-	"encoding/json"
-	"strconv"
 	"sync"
 	"time"
 )
 
 // subscriber is a control connection that subscribed: pending are the
-// changes not written to it yet, by kind, each with its ETag; wake tells
-// its writer of them. A burst of changes is written as one of each kind.
+// kinds of change not written to it yet; wake tells its writer of them. A
+// burst of changes is written as one of each kind.
 type subscriber struct {
-	pending map[string]string
+	pending map[string]bool
 	wake    chan struct{}
 	done    chan struct{}
 }
@@ -21,7 +19,7 @@ type subscriber struct {
 // subscribe tells write, a control connection's, of the changes to come,
 // until unsubscribe.
 func (s *Server) subscribe(write func([]byte)) *subscriber {
-	sub := &subscriber{pending: map[string]string{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
+	sub := &subscriber{pending: map[string]bool{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
 	s.subMu.Lock()
 	if s.subs == nil {
 		s.subs = map[*subscriber]struct{}{}
@@ -37,16 +35,12 @@ func (s *Server) subscribe(write func([]byte)) *subscriber {
 			}
 			s.subMu.Lock()
 			pending := sub.pending
-			sub.pending = map[string]string{}
+			sub.pending = map[string]bool{}
 			s.subMu.Unlock()
 			// The sessions first: a new tab's layout names a new session.
 			for _, kind := range []string{"sessions", "layout"} {
-				if tag, ok := pending[kind]; ok {
-					b, _ := json.Marshal(struct {
-						Event string `json:"event"`
-						ETag  string `json:"etag"`
-					}{kind, tag})
-					write(b)
+				if pending[kind] {
+					write([]byte(`{"event":"` + kind + `"}`))
 				}
 			}
 		}
@@ -66,10 +60,8 @@ func (s *Server) unsubscribe(sub *subscriber) {
 func (s *Server) notify(kind string) {
 	s.subMu.Lock()
 	defer s.subMu.Unlock()
-	s.changes++
-	tag := strconv.FormatUint(s.changes, 10)
 	for sub := range s.subs {
-		sub.pending[kind] = tag
+		sub.pending[kind] = true
 		select {
 		case sub.wake <- struct{}{}:
 		default:

@@ -11,9 +11,22 @@ import (
 )
 
 // commandWait is the longest a change of the layout may take, the app's
-// and the bridge's seeing it: rootshell gives up on a request after 15
-// seconds.
-var commandWait = 5 * time.Second
+// and the bridge's seeing it: a second more than the server waits for the
+// app. rootshell gives up on a request after rootshellWait.
+var commandWait = rex.CommandTimeout + time.Second
+
+const rootshellWait = 15 * time.Second
+
+// queued is how many changes may wait for the app at once, the one it
+// makes too, each answered within rootshellWait: one more is busy.
+func queued() int { return max(int((rootshellWait-time.Second)/commandWait), 1) }
+
+// layoutOps are rootshell's methods that the app makes, as the commands
+// (rex.LayoutCommand) of the same name.
+var layoutOps = map[string]bool{
+	"tab.create": true, "pane.split": true, "pane.close": true, "tab.close": true,
+	"tab.rename": true, "pane.zoom": true, "tab.move": true,
+}
 
 // job is a change of the layout rootshell asked for in req, which the app
 // makes (rex.LayoutCommand): sids are the sessions it ends, whose
@@ -41,11 +54,12 @@ func (b *bridge) ask(req request, p params) error {
 	}
 	switch req.Method {
 	case "tab.create":
-		// After the tab rootshell went to last, as the desktop opens one
-		// after the active tab.
+		// After the tab rootshell went to last, in its focused pane's
+		// directory, as the desktop opens one after the active tab.
 		j.cmd.Dir = p.Cwd
 		if t := cmp.Or(b.tab(b.anchor), b.tab(b.active)); t != nil {
 			j.cmd.After = t.root.sids()[0]
+			j.cmd.Dir = cmp.Or(p.Cwd, b.infos[t.focus].Dir)
 		}
 	case "pane.split":
 		if _, err := paneTab(p.Pane); err != nil {
@@ -57,6 +71,9 @@ func (b *bridge) ask(req request, p params) error {
 			return err
 		}
 		j.cmd.Mode = p.Mode
+		if req.Method == "pane.zoom" && !slices.Contains([]string{"", "on", "off", "toggle"}, p.Mode) {
+			return &failure{"invalid_params", "mode is on, off or toggle"}
+		}
 		if req.Method == "pane.close" {
 			j.sids = []string{j.cmd.SID}
 		}
@@ -75,15 +92,9 @@ func (b *bridge) ask(req request, p params) error {
 				return &failure{"invalid_params", "a tab's name cannot be empty"}
 			}
 		case "tab.move":
-			// insert_index is where it goes among the tabs before it moves.
-			from, to := slices.Index(b.tabs, t), min(max(p.Index, 0), len(b.tabs))
-			if from < to {
-				to--
-			}
-			order := slices.Insert(slices.Delete(slices.Clone(b.tabs), from, from+1), to, t)
-			if to > 0 {
-				j.cmd.After = order[to-1].root.sids()[0]
-			}
+			// insert_index is where it goes among the tabs before it moves:
+			// the app counts it among its tabs as it makes it.
+			j.cmd.Index = p.Index
 		}
 	}
 	b.quiet(j.sids, true)
@@ -124,6 +135,11 @@ func (b *bridge) work() {
 // made (check).
 func (b *bridge) finish(j *job) {
 	if j.err == nil && j.res.Code == "" {
+		// The new pane has rootshell's focus, as herdr gives it, in what
+		// it hears of the layout before the answer too.
+		if t := b.tabOf(j.cmd.SID); t != nil && j.cmd.Op == "pane.split" {
+			b.picked[t.id] = j.res.New
+		}
 		b.waiting = j
 		b.poll()
 		b.check()
@@ -150,13 +166,13 @@ func (b *bridge) check() {
 }
 
 // recheck fires when to look again at the change waited for: at its
-// timeout, or soon, from a server that tells of no change.
-func (b *bridge) recheck() <-chan time.Time {
+// timeout, or at each tick, from a server that tells of no change.
+func (b *bridge) recheck(tick <-chan time.Time) <-chan time.Time {
 	switch {
 	case b.waiting == nil:
 		return nil
 	case !b.subscribed:
-		return time.After(50 * time.Millisecond)
+		return tick
 	}
 	return time.After(time.Until(b.waiting.start.Add(commandWait)) + time.Millisecond)
 }
@@ -214,18 +230,30 @@ func (b *bridge) shows(j *job) bool {
 	case "pane.zoom":
 		t := b.tabOf(j.cmd.SID)
 		return t != nil && t.zoom == j.res.Zoomed
+	case "tab.move":
+		return slices.Index(b.tabs, b.tabOf(j.cmd.SID)) == j.res.Index
 	}
 	return true
 }
 
 // quiet makes the attaches of sids end without a word, as their panes
-// close, or speak again.
+// close, or speak again: one that ended meanwhile attaches anew, after a
+// gap, its pane staying.
 func (b *bridge) quiet(sids []string, on bool) {
 	for _, at := range b.attaches {
-		if slices.Contains(sids, at.sid) {
-			at.mu.Lock()
-			at.quiet = on
-			at.mu.Unlock()
+		if !slices.Contains(sids, at.sid) {
+			continue
+		}
+		at.mu.Lock()
+		at.quiet = on
+		ended, gen := at.ended && !on, at.gen
+		at.ended = false
+		at.mu.Unlock()
+		if ended {
+			at.emit(gen, func(seq uint64) any {
+				return map[string]any{"type": "terminal.gap", "attach_id": at.id, "seq": seq, "dropped_bytes": 0}
+			})
+			at.reattach(b.infos[at.sid])
 		}
 	}
 }

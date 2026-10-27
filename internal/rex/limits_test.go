@@ -85,7 +85,7 @@ func TestKillsAreBounded(t *testing.T) {
 	}
 	defer func() { killHook = nil }()
 	var wg sync.WaitGroup
-	for range 3 * maxKills {
+	for range 3 * maxAside {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -93,13 +93,13 @@ func TestKillsAreBounded(t *testing.T) {
 		}()
 	}
 	time.Sleep(300 * time.Millisecond)
-	if got := cur.Load(); got != maxKills {
-		t.Errorf("%d kills at once, want %d", got, maxKills)
+	if got := cur.Load(); got != maxAside {
+		t.Errorf("%d kills at once, want %d", got, maxAside)
 	}
 	close(release)
 	wg.Wait()
-	if most.Load() > maxKills {
-		t.Errorf("at most %d kills at once, want %d", most.Load(), maxKills)
+	if most.Load() > maxAside {
+		t.Errorf("at most %d kills at once, want %d", most.Load(), maxAside)
 	}
 }
 

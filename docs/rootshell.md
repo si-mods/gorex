@@ -40,7 +40,10 @@ Windows a server started from an SSH logon would end with it.
   back. rootshell keeps the size of the last GoRex tab it went to while
   it stays connected, renewing it every 5 seconds: going to another GoRex
   tab, or detaching, gives it back at once, and a dropped connection or
-  the app put away in the background within 30 seconds.
+  the app put away in the background within 30 seconds. While the
+  window is dragged, the sessions resize once it stops, and a moment
+  later rootshell gets each resized pane's screen again, drawn at the new
+  size, as after a resize on the desktop.
 - **Per-pane zoom.** Each pane is a session with a size of its own:
   zooming one pane's font in rootshell resizes only that pane's session,
   and the tab's other panes keep their sizes (protocol 3).
