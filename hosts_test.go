@@ -35,7 +35,7 @@ func fakeHosts(t *testing.T) {
 		if g := dialGate.Load(); g != nil {
 			<-*g
 		}
-		return rex.ConnectSocket(address)
+		return rex.ConnectSocketKeepalive(address)
 	}
 	validAddress = func(s string) bool { return strings.HasPrefix(strings.TrimSpace(s), "/") }
 	pairPoll = 50 * time.Millisecond
@@ -78,15 +78,59 @@ func startHostServer(t *testing.T) (string, *rex.Client) {
 // hostProxy forwards the connections of a socket of its own to a host's,
 // as a network between them that drops: down closes them all and refuses
 // new ones until up. While gate is set, new connections wait for it to
-// close, as over a slow network; held counts those waiting.
+// close, as over a slow network; held counts those waiting. blackhole is
+// a network gone without a word: nothing passes and nothing closes, new
+// connections are accepted and dead too, and the flows of then stay dead
+// once it heals, as a NAT that forgot them.
 type hostProxy struct {
 	path, to string
 	ln       net.Listener
 	mu       sync.Mutex
 	conns    []net.Conn
 	down     bool
+	out      bool
+	gen      int // of the network: a flow of an older one is dead
 	gate     chan struct{}
 	held     atomic.Int32
+}
+
+func (p *hostProxy) blackhole() {
+	p.mu.Lock()
+	p.out = true
+	p.gen++
+	p.mu.Unlock()
+}
+
+func (p *hostProxy) heal() {
+	p.mu.Lock()
+	p.out = false
+	p.mu.Unlock()
+}
+
+// alive tells whether a flow of network gen still passes.
+func (p *hostProxy) alive(gen int) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return !p.out && p.gen == gen
+}
+
+// pump copies src to dst while the flow of network gen passes; it closes
+// dst as src closes, but once the flow is dead it passes nothing.
+func (p *hostProxy) pump(gen int, dst, src net.Conn) {
+	buf := make([]byte, 32<<10)
+	for {
+		n, err := src.Read(buf)
+		alive := p.alive(gen)
+		if n > 0 && alive {
+			dst.Write(buf[:n])
+		}
+		if err != nil {
+			if alive {
+				dst.Close()
+			}
+			return
+		}
+	}
 }
 
 func newHostProxy(t *testing.T, to string) *hostProxy {
@@ -107,10 +151,17 @@ func newHostProxy(t *testing.T, to string) *hostProxy {
 				return
 			}
 			p.mu.Lock()
-			down, gate := p.down, p.gate
+			down, gate, out, gen := p.down, p.gate, p.out, p.gen
+			if !down {
+				p.conns = append(p.conns, c)
+			}
 			p.mu.Unlock()
 			if down {
 				c.Close()
+				continue
+			}
+			if out { // unanswered: it reads what comes, until closed
+				go io.Copy(io.Discard, c)
 				continue
 			}
 			go func() {
@@ -131,11 +182,10 @@ func newHostProxy(t *testing.T, to string) *hostProxy {
 					s.Close()
 					return
 				}
-				p.conns = append(p.conns, c, s)
+				p.conns = append(p.conns, s)
 				p.mu.Unlock()
-				go func() { io.Copy(s, c); s.Close() }()
-				io.Copy(c, s)
-				c.Close()
+				go p.pump(gen, s, c)
+				p.pump(gen, c, s)
 			}()
 		}
 	}()
@@ -401,6 +451,104 @@ func TestRemoteHost(t *testing.T) {
 	}
 	if hs, _ := loadHosts(); len(hs) != 0 {
 		t.Errorf("hosts.json keeps %v", hs)
+	}
+}
+
+// TestHostBlackholeReattaches is a remote pane whose network goes away
+// without a word, again and again, as the Mac's to a Windows host on an
+// unstable network: each time the app connects anew and the pane attaches
+// again. The host must count one window attached to the session, not one
+// more per drop, and the app must keep no goroutine of the connections
+// gone.
+func TestHostBlackholeReattaches(t *testing.T) {
+	defer rex.SetTimeoutsForTest(600*time.Millisecond, 2*time.Second)()
+	fakeHosts(t)
+	oldHealthy := hostHealthy
+	hostHealthy = 0 // a drop tries again at once
+	t.Cleanup(func() { hostHealthy = oldHealthy })
+	sock, remote := startHostServer(t)
+	info, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := newHostProxy(t, sock)
+	h := newHostConn(savedHost{ID: "h1", Name: "office-pc", Address: proxy.path})
+	a := &App{}
+	go a.runHost(h, func(fn func()) {})
+	t.Cleanup(h.close)
+	s := newHostStream(h, info.ID, 80, 24)
+	t.Cleanup(func() { s.Close() })
+	go func() {
+		buf := make([]byte, 32<<10)
+		for {
+			if _, err := s.Read(buf); err != nil {
+				return
+			}
+		}
+	}()
+	attached := func() int {
+		infos, err := remote.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, in := range infos {
+			if in.ID == info.ID {
+				return in.Attached
+			}
+		}
+		t.Fatal("the session is gone")
+		return 0
+	}
+	attaches := func() int {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.attaches
+	}
+	until := func(what string, cond func() bool) {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); !cond(); time.Sleep(20 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s; attached %d", what, attached())
+			}
+		}
+	}
+
+	const cycles = 4
+	base := 0
+	var counts []int
+	for i := range cycles {
+		until("the pane to attach", func() bool { return attaches() == i+1 && !s.Detached() })
+		if i == 0 {
+			time.Sleep(200 * time.Millisecond)
+			base = runtime.NumGoroutine()
+		}
+		proxy.blackhole()
+		until("the pane to notice", s.Detached)
+		proxy.heal()
+		h.poke()
+		until("the pane to attach again", func() bool { return attaches() == i+2 && !s.Detached() })
+		// The host drops the connections of before in a bounded time.
+		for deadline := time.Now().Add(5 * time.Second); attached() != 1 && time.Now().Before(deadline); {
+			time.Sleep(20 * time.Millisecond)
+		}
+		counts = append(counts, attached())
+	}
+	for _, n := range counts {
+		if n != 1 {
+			t.Fatalf("the host counts %v windows attached after each drop, want 1 each time", counts)
+		}
+	}
+	// What is left of each drop, on the app's side: nothing, but the dead
+	// flows of the proxy that wait for their ends to close.
+	want := base + 4
+	n := runtime.NumGoroutine()
+	for deadline := time.Now().Add(5 * time.Second); n > want && time.Now().Before(deadline); n = runtime.NumGoroutine() {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if n > want {
+		buf := make([]byte, 1<<20)
+		buf = buf[:runtime.Stack(buf, true)]
+		t.Errorf("%d goroutines after %d drops, want at most %d\n%s", n, cycles, want, buf)
 	}
 }
 

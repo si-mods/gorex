@@ -62,30 +62,84 @@ type session struct {
 // goroutine writes so that a slow client never holds up the others.
 type attached struct {
 	conn net.Conn
-	out  chan []byte
-	once sync.Once
+	// first is the snapshot it gets first, out what the session printed
+	// since.
+	first []byte
+	out   chan []byte
+	once  sync.Once
+	// queued is how many bytes wait in out; remote tells a remote
+	// connection, whose writes have a deadline.
+	queued atomic.Int64
+	remote bool
 }
 
+// The most chunks of output that may wait for a client, and bytes for a
+// remote one: one further behind is dropped, and attaches again to a
+// snapshot. Without a bound, a client that stopped reading would hold
+// all the session printed since.
+const (
+	maxQueue       = 2048
+	maxQueuedBytes = 8 << 20
+)
+
 func (a *attached) send(p []byte) bool {
+	// The bytes are capped for remote clients only: a local one dropped
+	// closes its pane, and reads what it is sent quick enough.
+	if a.queued.Add(int64(len(p))) > maxQueuedBytes && a.remote {
+		a.queued.Add(-int64(len(p)))
+		return false
+	}
 	select {
 	case a.out <- p:
 		return true
 	default:
+		a.queued.Add(-int64(len(p)))
 		return false // too far behind: drop it, it attaches again
 	}
 }
 
 func (a *attached) finish() { a.once.Do(func() { close(a.out) }) }
 
+// writeChunk is the most the writer writes under one deadline: a remote
+// client is dropped once it takes nothing for writeTimeout, not when a
+// snapshot takes it longer than that on a slow network.
+const writeChunk = 32 << 10
+
+// writer writes the client what it gets until a write fails, then closes
+// the connection at once: the attach's read fails with it, and drops the
+// client, though the session prints nothing more.
 func (a *attached) writer() {
+	defer func() {
+		a.conn.Close()
+		for range a.out {
+		}
+	}()
+	first := a.first
+	a.first = nil
+	if a.write(first) != nil {
+		return
+	}
 	for p := range a.out {
-		if _, err := a.conn.Write(p); err != nil {
-			break
+		err := a.write(p)
+		a.queued.Add(-int64(len(p)))
+		if err != nil {
+			return
 		}
 	}
-	a.conn.Close()
-	for range a.out {
+}
+
+func (a *attached) write(p []byte) error {
+	for len(p) > 0 {
+		n := min(len(p), writeChunk)
+		if a.remote {
+			a.conn.SetWriteDeadline(time.Now().Add(writeTimeout.get()))
+		}
+		if _, err := a.conn.Write(p[:n]); err != nil {
+			return err
+		}
+		p = p[n:]
 	}
+	return nil
 }
 
 // maxSize is the most columns or rows a terminal may have: the sizes a
@@ -282,14 +336,14 @@ func (s *session) read() {
 // attach attaches a connection: it gets a snapshot of the session's
 // screen and scrollback, at the size the server gave the session for it
 // (resize), then what the session prints, and what it sends is typed.
-func (s *session) attach(conn net.Conn) {
-	a := &attached{conn: conn, out: make(chan []byte, 2048)}
+func (s *session) attach(conn net.Conn, remote bool) {
+	a := &attached{conn: conn, out: make(chan []byte, maxQueue), remote: remote}
 	s.mu.Lock()
 	snap, title := s.view()
 	if title != "" {
 		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
 	}
-	a.out <- snap
+	a.first = snap
 	exited := s.exited
 	if exited {
 		a.finish()
