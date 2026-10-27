@@ -438,6 +438,8 @@ func (s *session) takes(a *attached, p []byte) bool {
 // DCS and APC strings, and the CSI reports (cursor position, device
 // attributes, status, modes, window size, keyboard flags). Keys and mouse
 // make none of them, but for a modified F3, alike a cursor position.
+// OSC 5522 (Kitty clipboard) is a paste in a window, and the answers of
+// that window only to the program's reads of it: it counts as typing.
 // ponytail: a terminal writes each answer at once, but a network may join
 // one to keys; joined, it counts as typing and passes.
 func isReply(p []byte) bool {
@@ -450,6 +452,9 @@ func isReply(p []byte) bool {
 		}
 		switch p[1] {
 		case ']', 'P', '_':
+			if bytes.HasPrefix(p, []byte("\x1b]5522;")) {
+				return false
+			}
 			n := stringEnd(p[2:])
 			if n < 0 {
 				return false

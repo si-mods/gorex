@@ -21,6 +21,8 @@ func TestIsReply(t *testing.T) {
 		"\x1b[<0;10;5M":                             false, // mouse
 		"\x1b]":                                     false, // Alt+]
 		"\x1b]11;rgb:0/0/0\x07l":                    false,
+		"\x1b]5522;type=read:status=DATA\x1b\\":     false, // a paste
+		"\x1b[1;5R":                                 true,  // Ctrl+F3, alike a cursor position
 	} {
 		if got := isReply([]byte(in)); got != want {
 			t.Errorf("isReply(%q) = %v, want %v", in, got, want)
@@ -49,6 +51,8 @@ func TestRepliesFromOneWindow(t *testing.T) {
 		{b, reply, true},
 		{a, reply, false},
 		{nil, reply, true},
+		{a, []byte("\x1b]5522;type=read:status=DATA\x1b\\"), true}, // pasted in a
+		{a, reply, true},
 	}
 	for i, st := range steps {
 		if got := s.takes(st.from, st.in); got != st.want {
