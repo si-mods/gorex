@@ -40,6 +40,11 @@ type Client struct {
 	attached  map[net.Conn]struct{}
 	lost      bool // the attached were closed
 	pinging   sync.Once
+
+	// changes are the kinds of change the server told of (Subscribe) and
+	// Changes did not take yet; changed is signaled as one comes.
+	changes map[string]bool
+	changed chan struct{}
 }
 
 // callTimeout is how long a request waits for its answer.
@@ -112,7 +117,8 @@ func dialUntil(deadline time.Time) (net.Conn, error) {
 }
 
 func newClient(conn net.Conn, dial func() (net.Conn, error)) *Client {
-	c := &Client{conn: conn, dial: dial, pending: map[int64]chan Response{}, closed: make(chan struct{})}
+	c := &Client{conn: conn, dial: dial, pending: map[int64]chan Response{}, closed: make(chan struct{}),
+		changes: map[string]bool{}, changed: make(chan struct{}, 1)}
 	go c.read()
 	return c
 }
@@ -220,6 +226,15 @@ func (c *Client) read() {
 			continue
 		}
 		c.mu.Lock()
+		if res.ID == 0 && res.Event != "" {
+			c.changes[res.Event] = true
+			c.mu.Unlock()
+			select {
+			case c.changed <- struct{}{}:
+			default:
+			}
+			continue
+		}
 		if res.ID == 0 && res.Error != "" {
 			c.refused = res.Error // unprompted: the server refuses
 		}
@@ -360,6 +375,25 @@ func (c *Client) Hello() (h Hello, err error) {
 			go c.ping(every, max(h.Keepalive-every, every))
 		})
 	}
+	return
+}
+
+// Subscribe asks the server to tell this connection of the changes of
+// the layout and the sessions as they come (Changed). A server before it
+// answers an error: poll it then.
+func (c *Client) Subscribe() error { return c.call(Request{Op: "subscribe"}, nil) }
+
+// Changed is signaled once the server told of a change, which Changes
+// takes: a burst of them signals it once.
+func (c *Client) Changed() <-chan struct{} { return c.changed }
+
+// Changes returns whether the layout and the sessions changed since it
+// was called last, as the server told.
+func (c *Client) Changes() (layout, sessions bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	layout, sessions = c.changes["layout"], c.changes["sessions"]
+	clear(c.changes)
 	return
 }
 

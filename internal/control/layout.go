@@ -56,8 +56,12 @@ type bridge struct {
 	picked map[string]string
 	anchor string
 	// jobs are the layout commands for the app, one at a time (work), and
-	// done those it answered, to finish (finish).
+	// done those it answered, to finish (finish); waiting is the one the
+	// app made that the bridge waits to see (check).
 	jobs, done chan *job
+	waiting    *job
+	// subscribed tells that the server tells of its changes.
+	subscribed bool
 }
 
 // tab is a tab of the layout, without the panes of remote hosts: zoom
@@ -112,17 +116,27 @@ type savedNode struct {
 	B        *savedNode `json:"b"`
 }
 
-// poll reads the server's sessions and layout, makes the tabs of them,
-// and keeps the locks of the tabs rootshell holds. It reports whether it
-// read them: it changes nothing when it could not.
-func (b *bridge) poll() bool {
-	list, etag, changed, err := b.c.ListSince(b.etag)
-	if err != nil {
-		return false
+// poll reads the server's sessions and layout (fetch).
+func (b *bridge) poll() bool { return b.fetch(true, true) }
+
+// fetch reads the server's sessions and layout, those asked for, makes the
+// tabs of them, and keeps the locks of the tabs rootshell holds. It
+// reports whether it read them: it changes nothing when it could not.
+func (b *bridge) fetch(sessions, layout bool) bool {
+	var list []rex.SessionInfo
+	var etag string
+	var changed bool
+	var err error
+	if sessions {
+		if list, etag, changed, err = b.c.ListSince(b.etag); err != nil {
+			return false
+		}
 	}
-	l, err := b.c.Layout()
-	if err != nil {
-		return false
+	l := json.RawMessage(b.layout)
+	if layout {
+		if l, err = b.c.Layout(); err != nil {
+			return false
+		}
 	}
 	if changed {
 		b.etag = etag

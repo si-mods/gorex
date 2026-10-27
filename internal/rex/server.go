@@ -58,6 +58,11 @@ type Server struct {
 	takers  int
 	tookAt  time.Time
 	nextCmd int64
+	// subs are the control connections that subscribed, told of each
+	// change (notify); changes counts the changes, for their ETags.
+	subMu   sync.Mutex
+	subs    map[*subscriber]struct{}
+	changes uint64
 }
 
 // layoutCmd is a layout command waiting for the app's answer, done.
@@ -409,15 +414,18 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		conn.Close()
 	}()
 	var kept *keptConn
+	var sub *subscriber
 	defer func() {
 		if kept != nil {
 			s.unkeep(kept)
 		}
+		if sub != nil {
+			s.unsubscribe(sub)
+		}
 	}()
 	remote := peer != ""
 	var wmu sync.Mutex
-	reply := func(res Response) {
-		b, _ := json.Marshal(res)
+	write := func(b []byte) {
 		wmu.Lock()
 		if remote {
 			conn.SetWriteDeadline(time.Now().Add(writeTimeout.get()))
@@ -427,6 +435,10 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		}
 		wmu.Unlock()
 	}
+	reply := func(res Response) {
+		b, _ := json.Marshal(res)
+		write(b)
+	}
 	kills := make(chan struct{}, maxKills)
 	line := first
 	for {
@@ -434,6 +446,10 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		if err := json.Unmarshal(line, &req); err == nil {
 			if req.Op == "hello" && req.Keepalive && kept == nil {
 				kept = s.keep(conn, peer)
+			}
+			// Before the answer: no change after it goes untold.
+			if req.Op == "subscribe" && !remote && sub == nil {
+				sub = s.subscribe(write)
 			}
 			// Kills wait for the session to end, and layout commands for
 			// the app: answer them aside, a few at a time; the others wait
@@ -608,7 +624,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			h.Keepalive, h.Conn = keepaliveTimeout.get(), kept.id
 		}
 		return h, nil
-	case "ping":
+	case "ping", "subscribe":
 		return nil, nil
 	case "list":
 		s.mu.Lock()
@@ -632,7 +648,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			o = *req.Create
 		}
 		id := newID()
-		ss, err := newSession(id, o)
+		ss, err := newSession(id, o, s.sessionsChanged)
 		if err != nil {
 			return nil, err
 		}
@@ -641,6 +657,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		s.sessions[id] = ss
 		s.order = append(s.order, id)
 		s.mu.Unlock()
+		s.notify("sessions")
 		return ss.info(), nil
 	case "kill":
 		s.ops.RLock()
@@ -660,6 +677,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			s.idleFrom = time.Now()
 		}
 		s.mu.Unlock()
+		s.notify("sessions")
 		return nil, nil
 	case "resize", "lockSize", "lockedResize", "unlockSize", "renewSize":
 		ss, err := s.use(req.SID, peer)
@@ -700,8 +718,12 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		l := bytes.Clone(req.Layout)
 		s.mu.Lock()
+		same := bytes.Equal(s.layout, l)
 		s.layout = l
 		s.mu.Unlock()
+		if !same {
+			s.notify("layout")
+		}
 		path := filepath.Join(Dir(), "layout.json")
 		tmp := path + ".tmp"
 		if err := os.WriteFile(tmp, l, 0o600); err == nil {

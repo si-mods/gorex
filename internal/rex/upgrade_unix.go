@@ -254,7 +254,7 @@ func Resume(path string) error {
 	s := newServer(ln, lock)
 	s.started, s.layout = h.Started, h.Layout
 	for _, st := range h.Sessions {
-		ss, err := resumeSession(st)
+		ss, err := resumeSession(st, s.sessionsChanged)
 		if err != nil {
 			log.Printf("rex: session %s is lost: %v", st.ID, err)
 			if st.Master >= 0 {
@@ -270,9 +270,9 @@ func Resume(path string) error {
 }
 
 // resumeSession makes a session of a handoff's again.
-func resumeSession(st sessionState) (*session, error) {
+func resumeSession(st sessionState, changed func()) (*session, error) {
 	s := &session{
-		id: st.ID, shell: st.Shell, created: st.Created, owner: st.Owner,
+		id: st.ID, shell: st.Shell, created: st.Created, owner: st.Owner, changed: changed,
 		clients: map[*attached]struct{}{},
 		output:  st.Output, lastOutput: st.LastOutput, lastInput: st.LastInput,
 		cols: clampSize(st.Cols), rows: clampSize(st.Rows), done: make(chan struct{}),

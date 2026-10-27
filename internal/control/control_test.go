@@ -127,6 +127,48 @@ func TestPollKeepsOnError(t *testing.T) {
 	desk.Close()
 }
 
+// start runs a bridge to the server of the test, and returns rootshell's
+// end of it, and its exit status once it ends.
+func start(t *testing.T) (*rootshell, chan int) {
+	t.Helper()
+	c, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	exit := make(chan int, 1)
+	ended := make(chan struct{})
+	go func() {
+		exit <- Run(c, inR, outW)
+		outW.Close()
+		close(ended)
+	}()
+	// Ended before the next test sets the intervals.
+	t.Cleanup(func() {
+		inW.Close()
+		select {
+		case <-ended:
+		case <-time.After(5 * time.Second):
+		}
+	})
+	r := &rootshell{t: t, in: inW, lines: make(chan map[string]any, 1024)}
+	go func() {
+		defer close(r.lines)
+		sc := bufio.NewScanner(outR)
+		sc.Buffer(nil, 16<<20)
+		for sc.Scan() {
+			var m map[string]any
+			if err := json.Unmarshal(sc.Bytes(), &m); err != nil {
+				t.Errorf("not JSON: %q", sc.Bytes())
+				continue
+			}
+			r.lines <- m
+		}
+	}()
+	return r, exit
+}
+
 func TestBridge(t *testing.T) {
 	desk := serve(t)
 	shell, typed := []string{"/bin/sh"}, "echo mar''ker\n"
@@ -152,29 +194,7 @@ func TestBridge(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	c, err := rex.ConnectExisting()
-	if err != nil {
-		t.Fatal(err)
-	}
-	inR, inW := io.Pipe()
-	outR, outW := io.Pipe()
-	exit := make(chan int, 1)
-	go func() { exit <- Run(c, inR, outW); outW.Close() }()
-	r := &rootshell{t: t, in: inW, lines: make(chan map[string]any, 1024)}
-	go func() {
-		defer close(r.lines)
-		sc := bufio.NewScanner(outR)
-		sc.Buffer(nil, 16<<20)
-		for sc.Scan() {
-			var m map[string]any
-			if err := json.Unmarshal(sc.Bytes(), &m); err != nil {
-				t.Errorf("not JSON: %q", sc.Bytes())
-				continue
-			}
-			r.lines <- m
-		}
-	}()
-
+	r, exit := start(t)
 	open := result(t, r.next("control.open", func(m map[string]any) bool { return m["id"] == "control.open" }))
 	caps := open["capabilities"].(map[string]any)
 	if open["version"] != "0.9.0-gorex" || caps["terminal_control_stream"] != 2.0 || len(caps["control_features"].([]any)) != 3 {
