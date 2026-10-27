@@ -47,6 +47,106 @@ type Server struct {
 	// kept are the control connections kept alive (Request.Keepalive), by
 	// Hello.Conn, with the connections attached through them.
 	kept map[string]*keptConn
+	// cmds are the layout commands clients asked for (LayoutCommand), in
+	// order, which the app has not taken; taken are those it took, by id.
+	// cmdWake closes as one comes; takers counts the app's takes waiting,
+	// and tookAt is when one ended last.
+	cmdMu   sync.Mutex
+	cmds    []*layoutCmd
+	taken   map[int64]*layoutCmd
+	cmdWake chan struct{}
+	takers  int
+	tookAt  time.Time
+	nextCmd int64
+}
+
+// layoutCmd is a layout command waiting for the app's answer, done.
+type layoutCmd struct {
+	LayoutCommand
+	done chan LayoutCommand
+}
+
+// commandWait is how long a layout command waits for the app to make it,
+// and takeWait how long the app's take waits for one.
+var (
+	commandWait = newDuration(4 * time.Second)
+	takeWait    = newDuration(10 * time.Second)
+)
+
+// command asks the app for c, and returns its answer: Code tells why it
+// did not make it, when the app has no window to take commands, or it
+// did not answer in time; it may make it still.
+func (s *Server) command(c LayoutCommand) LayoutCommand {
+	s.cmdMu.Lock()
+	// The app takes again right after it answered one.
+	if s.takers == 0 && time.Since(s.tookAt) > 3*time.Second {
+		s.cmdMu.Unlock()
+		return LayoutCommand{Code: "desktop_unavailable", Error: "no GoRex window is open"}
+	}
+	s.nextCmd++
+	c.ID = s.nextCmd
+	lc := &layoutCmd{c, make(chan LayoutCommand, 1)}
+	s.cmds = append(s.cmds, lc)
+	if s.cmdWake != nil {
+		close(s.cmdWake)
+		s.cmdWake = nil
+	}
+	s.cmdMu.Unlock()
+	select {
+	case res := <-lc.done:
+		return res
+	case <-time.After(commandWait.get()):
+	}
+	s.cmdMu.Lock()
+	s.cmds = slices.DeleteFunc(s.cmds, func(x *layoutCmd) bool { return x == lc })
+	delete(s.taken, c.ID)
+	s.cmdMu.Unlock()
+	return LayoutCommand{Code: "layout_timeout", Error: "GoRex did not apply the change in time; it may still appear"}
+}
+
+// take returns the first layout command waiting, after waiting takeWait
+// at most for one; nil when none came.
+func (s *Server) take() *LayoutCommand {
+	timeout := time.After(takeWait.get())
+	s.cmdMu.Lock()
+	s.takers++
+	defer func() {
+		s.takers--
+		s.tookAt = time.Now()
+		s.cmdMu.Unlock()
+	}()
+	for len(s.cmds) == 0 {
+		if s.cmdWake == nil {
+			s.cmdWake = make(chan struct{})
+		}
+		wake := s.cmdWake
+		s.cmdMu.Unlock()
+		select {
+		case <-wake:
+		case <-timeout:
+			s.cmdMu.Lock()
+			return nil
+		}
+		s.cmdMu.Lock()
+	}
+	lc := s.cmds[0]
+	s.cmds = s.cmds[1:]
+	if s.taken == nil {
+		s.taken = map[int64]*layoutCmd{}
+	}
+	s.taken[lc.ID] = lc
+	return &lc.LayoutCommand
+}
+
+// commandDone gives the answer the app made to a command it took.
+func (s *Server) commandDone(c LayoutCommand) {
+	s.cmdMu.Lock()
+	lc := s.taken[c.ID]
+	delete(s.taken, c.ID)
+	s.cmdMu.Unlock()
+	if lc != nil {
+		lc.done <- c
+	}
 }
 
 // keptConn is a control connection kept alive, conn, of peer (remote
@@ -335,14 +435,15 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 			if req.Op == "hello" && req.Keepalive && kept == nil {
 				kept = s.keep(conn, peer)
 			}
-			// Kills wait for the session to end: answer them aside, a
-			// few at a time; the others wait their turn.
-			if req.Op == "kill" {
+			// Kills wait for the session to end, and layout commands for
+			// the app: answer them aside, a few at a time; the others wait
+			// their turn.
+			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" {
 				kills <- struct{}{}
 				kept := kept // a later hello sets it, as this runs
 				go func() {
 					defer func() { <-kills }()
-					if killHook != nil {
+					if killHook != nil && req.Op == "kill" {
 						killHook()
 					}
 					reply(s.request(req, peer, kept))
@@ -605,6 +706,20 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		tmp := path + ".tmp"
 		if err := os.WriteFile(tmp, l, 0o600); err == nil {
 			os.Rename(tmp, path)
+		}
+		return nil, nil
+	case "command", "command.done":
+		if req.Command == nil {
+			return nil, errors.New("rex: no command")
+		}
+		if req.Op == "command.done" {
+			s.commandDone(*req.Command)
+			return nil, nil
+		}
+		return s.command(*req.Command), nil
+	case "command.take":
+		if c := s.take(); c != nil {
+			return c, nil
 		}
 		return nil, nil
 	case "upgrade":

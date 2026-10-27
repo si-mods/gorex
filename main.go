@@ -148,6 +148,7 @@ func (a *App) open() {
 	}
 	a.changed()
 	go a.poll(win, client)
+	go a.takeCommands(client, win.Update)
 	a.debugHook()
 	win.OnClosed(func() {
 		a.saveNow()

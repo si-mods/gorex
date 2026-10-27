@@ -19,7 +19,8 @@ import (
 
 // ProtocolVersion changes whenever the wire protocol does. Version 2 adds,
 // and only adds, the size lock ("lockSize", "lockedResize", "unlockSize",
-// "renewSize", SessionInfo.SizeLock), framed attaches
+// "renewSize", SessionInfo.SizeLock), layout commands (LayoutCommand),
+// framed attaches
 // (Attach.Framed, Attach.History) and the list's ETag: a client of
 // version 1 works as before, its resizes ignored while a session is locked.
 const ProtocolVersion = 2
@@ -56,6 +57,38 @@ type Request struct {
 	Owner string `json:"owner,omitempty"`
 	// ETag, on "list", is that of the list the client has (Response.ETag).
 	ETag string `json:"etag,omitempty"`
+	// Command is the layout command of "command", and the app's answer of
+	// "command.done".
+	Command *LayoutCommand `json:"command,omitempty"`
+}
+
+// LayoutCommand is a change of the layout that a client of this machine,
+// as rootshell's bridge, asks the app to make ("command"): the app, which
+// owns the layout, takes the commands in order ("command.take"), makes
+// them as its own buttons do, saves the layout and answers each
+// ("command.done"). Panes and tabs are named by a session of theirs.
+type LayoutCommand struct {
+	ID int64 `json:"id,omitempty"`
+	// Op is "tab.create", "pane.split", "pane.close", "tab.close",
+	// "tab.rename", "pane.zoom" or "tab.move".
+	Op  string `json:"op,omitempty"`
+	SID string `json:"sid,omitempty"`
+	// After is the tab a new or moved tab goes after, the first of this
+	// machine's tabs when "" for tab.move.
+	After string `json:"after,omitempty"`
+	// Dir is where a new pane starts, its tab's or its pane's when "".
+	Dir string `json:"dir,omitempty"`
+	// Vertical splits down, else right; Name is a tab's new name; Mode is
+	// zoom's "on", "off" or "toggle".
+	Vertical bool   `json:"vertical,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Mode     string `json:"mode,omitempty"`
+	// The answer: Code and Error when it was not made, New the session of
+	// the pane made, and Zoomed whether the pane's tab is zoomed now.
+	Code   string `json:"code,omitempty"`
+	Error  string `json:"error,omitempty"`
+	New    string `json:"new,omitempty"`
+	Zoomed bool   `json:"zoomed,omitempty"`
 }
 
 // RemoteClient is a client allowed to connect remotely: PublicKey is its

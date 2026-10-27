@@ -272,8 +272,13 @@ func TestBridge(t *testing.T) {
 		t.Errorf("detached %v", m)
 	}
 
-	if e, ok := r.call("tab.create", map[string]any{})["error"].(map[string]any); !ok || e["code"] != "read_only" || e["message"] == "" {
-		t.Errorf("tab.create answered %v", e)
+	if e, ok := r.call("pane.resize", map[string]any{})["error"].(map[string]any); !ok || e["code"] != "read_only" || e["message"] == "" {
+		t.Errorf("pane.resize answered %v", e)
+	}
+	// With no window to make it, a change of the layout fails at once.
+	start := time.Now()
+	if e, ok := r.call("tab.create", map[string]any{"workspace_id": "w", "focus": true})["error"].(map[string]any); !ok || e["code"] != "desktop_unavailable" || time.Since(start) > time.Second {
+		t.Errorf("tab.create without the desktop answered %v after %v", e, time.Since(start))
 	}
 	r.send("r200", "terminal.snapshot", map[string]any{"attach_id": aid})
 	r.next("a snapshot asked for", func(m map[string]any) bool { return m["type"] == "terminal.snapshot" && m["attach_id"] == aid })

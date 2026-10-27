@@ -49,13 +49,24 @@ type bridge struct {
 
 	attaches   map[string]*attach
 	nextAttach int
+
+	// picked is the pane rootshell focused last in each tab, by tab id,
+	// which it shows focused over the desktop's; anchor is the tab it
+	// focused or claimed last, which a new tab goes after.
+	picked map[string]string
+	anchor string
+	// jobs are the layout commands for the app, one at a time (work), and
+	// done those it answered, to finish (finish).
+	jobs, done chan *job
 }
 
-// tab is a tab of the layout, without the panes of remote hosts.
+// tab is a tab of the layout, without the panes of remote hosts: zoom
+// tells that its focused pane fills it.
 type tab struct {
 	id, name string
 	root     *node
 	focus    string // the focused pane's session
+	zoom     bool
 }
 
 // node is a pane, of session sid, or a split: vertical stacks a above b,
@@ -88,6 +99,7 @@ type savedLayout struct {
 		Name  string     `json:"name"`
 		Root  *savedNode `json:"root"`
 		Focus int        `json:"focus"`
+		Zoom  bool       `json:"zoom"`
 	} `json:"tabs"`
 }
 
@@ -196,6 +208,7 @@ func (b *bridge) build() {
 		t := &tab{name: st.Name, root: root, focus: root.sids()[0]}
 		if st.Focus >= 0 && st.Focus < len(leaves) && leaves[st.Focus] != "" {
 			t.focus = leaves[st.Focus]
+			t.zoom = st.Zoom && len(root.sids()) > 1
 		}
 		best, most := "", 0
 		for _, o := range b.tabs {
@@ -209,6 +222,10 @@ func (b *bridge) build() {
 		}
 		used[best] = true
 		t.id = best
+		// The pane zoomed is the desktop's focus; else rootshell's stays.
+		if sid := b.picked[t.id]; !t.zoom && slices.Contains(root.sids(), sid) {
+			t.focus = sid
+		}
 		tabs = append(tabs, t)
 		if i == l.Active {
 			active = t.id
@@ -324,9 +341,11 @@ func (b *bridge) topology() string {
 func (b *bridge) tell() {
 	if shape := b.topology(); shape != b.shape {
 		b.shape = shape
-		b.tellQuietly()
 		b.send(map[string]any{"type": "events.gap", "dropped": 0, "resume_sequence": 0})
-		return
+		// The snapshot rootshell asks for has them too; their layouts now
+		// tell it as soon, the new pane's size with them.
+		clear(b.told)
+		clear(b.ctl)
 	}
 	for _, t := range b.tabs {
 		l := b.layoutOf(t)
@@ -415,8 +434,14 @@ func (b *bridge) layoutOf(t *tab) layoutSnapshot {
 		return b.tiled(t, size[0], size[1])
 	}
 	l := layoutSnapshot{WorkspaceID: workspace, TabID: t.id, FocusedPaneID: paneID(t.focus), Panes: []paneRect{}, Splits: []splitRect{}}
-	w, h := b.pack(t.root, 0, 0, "s", t.focus, &l)
-	l.Area = rect{0, 0, cell(w), cell(h)}
+	if t.zoom {
+		in := b.infos[t.focus]
+		l.Zoomed, l.Area = true, rect{0, 0, cell(in.Cols), cell(in.Rows)}
+		l.Panes = append(l.Panes, paneRect{paneID(t.focus), true, l.Area})
+	} else {
+		w, h := b.pack(t.root, 0, 0, "s", t.focus, &l)
+		l.Area = rect{0, 0, cell(w), cell(h)}
+	}
 	// The lock of another, which holds every session of the tab, makes it
 	// that one's; the bridge's own, a tab it lost, is on its way out.
 	l.GeometryController = controller{Kind: "client", Chrome: "none"}
@@ -440,6 +465,12 @@ func (b *bridge) tiled(t *tab, cols, rows int) layoutSnapshot {
 		WorkspaceID: workspace, TabID: t.id, Area: rect{0, 0, cols, rows}, FocusedPaneID: paneID(t.focus),
 		Panes: []paneRect{}, Splits: []splitRect{},
 		GeometryController: controller{Kind: "control", ConnectionID: b.id, Chrome: "none"},
+	}
+	// A zoomed pane fills the tab; the others keep their sizes.
+	if t.zoom {
+		l.Zoomed = true
+		l.Panes = append(l.Panes, paneRect{paneID(t.focus), true, l.Area})
+		return l
 	}
 	var tile func(n *node, r rect, id string)
 	tile = func(n *node, r rect, id string) {

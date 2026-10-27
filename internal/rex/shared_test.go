@@ -281,6 +281,55 @@ func TestTrimSnapshot(t *testing.T) {
 	}
 }
 
+// TestLayoutCommands passes layout commands from a client to the app that
+// takes them, and back its answers; none without the app, a timeout when
+// it does not answer, and none from remote clients.
+func TestLayoutCommands(t *testing.T) {
+	defer commandWait.set(commandWait.set(300 * time.Millisecond))
+	s, _ := testServer(t)
+	app, bridge := pipe(s, ""), pipe(s, "")
+	defer app.Close()
+	defer bridge.Close()
+	if res, err := bridge.Command(LayoutCommand{Op: "tab.create"}); err != nil || res.Code != "desktop_unavailable" {
+		t.Fatalf("without the app: %+v %v", res, err)
+	}
+	// take takes a command, once the app waits for one, and answers it.
+	take := func(answer bool) chan *LayoutCommand {
+		took := make(chan *LayoutCommand, 1)
+		go func() {
+			cmd, err := app.TakeCommand()
+			if err == nil && cmd != nil && answer {
+				app.CommandDone(LayoutCommand{ID: cmd.ID, New: "new-" + cmd.SID})
+			}
+			took <- cmd
+		}()
+		for {
+			s.cmdMu.Lock()
+			n := s.takers
+			s.cmdMu.Unlock()
+			if n > 0 {
+				return took
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	took := take(true)
+	res, err := bridge.Command(LayoutCommand{Op: "pane.split", SID: "a", Vertical: true})
+	if cmd := <-took; err != nil || res.New != "new-a" || cmd.Op != "pane.split" || !cmd.Vertical {
+		t.Errorf("answered: %+v %v, took %+v", res, err, cmd)
+	}
+	took = take(false)
+	if res, err := bridge.Command(LayoutCommand{Op: "tab.close", SID: "b"}); err != nil || res.Code != "layout_timeout" {
+		t.Errorf("unanswered: %+v %v", res, err)
+	}
+	<-took
+	remote := pipe(s, "nodekey:"+strings.Repeat("0", 64))
+	defer remote.Close()
+	if _, err := remote.Command(LayoutCommand{Op: "tab.create"}); err == nil {
+		t.Error("a remote client asked for a command")
+	}
+}
+
 func TestConnectExistingStartsNone(t *testing.T) {
 	t.Setenv("GOREX_DIR", t.TempDir())
 	if _, err := ConnectExisting(); err != errNotRunning {
