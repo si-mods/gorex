@@ -1,6 +1,7 @@
 package control
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -10,12 +11,14 @@ import (
 	"gorex/internal/rex"
 )
 
+// workspace is the id of the one workspace, this machine.
+const workspace = "w"
+
 // bridge is the state of a bridge: one goroutine runs it (Run), but for
 // out, which the attaches send to too.
 type bridge struct {
-	c      *rex.Client
-	hello  rex.Hello
-	device string
+	c     *rex.Client
+	hello rex.Hello
 	// owner is the bridge's size lock owner, and id its connection id.
 	owner string
 	id    uint64
@@ -98,18 +101,25 @@ type savedNode struct {
 }
 
 // poll reads the server's sessions and layout, makes the tabs of them,
-// and keeps the locks of the tabs rootshell holds.
-func (b *bridge) poll() {
-	if list, etag, changed, err := b.c.ListSince(b.etag); err == nil && changed {
+// and keeps the locks of the tabs rootshell holds. It reports whether it
+// read them: it changes nothing when it could not.
+func (b *bridge) poll() bool {
+	list, etag, changed, err := b.c.ListSince(b.etag)
+	if err != nil {
+		return false
+	}
+	l, err := b.c.Layout()
+	if err != nil {
+		return false
+	}
+	if changed {
 		b.etag = etag
 		clear(b.infos)
 		for _, in := range list {
 			b.infos[in.ID] = in
 		}
 	}
-	if l, err := b.c.Layout(); err == nil {
-		b.layout = l
-	}
+	b.layout = l
 	b.build()
 	// A tab whose session another took is no longer rootshell's; one
 	// whose new pane is not locked yet locks it.
@@ -126,12 +136,12 @@ func (b *bridge) poll() {
 			}
 		}
 		if b.owned[t.id] {
-			b.lockTab(t, true)
+			b.lockTab(t)
 		}
 	}
 	for sid := range b.locked {
 		if !inOwned[sid] {
-			b.c.ReleaseSize(sid, b.owner)
+			b.c.UnlockSize(sid, b.owner, 0, 0)
 			delete(b.locked, sid)
 		}
 	}
@@ -140,6 +150,7 @@ func (b *bridge) poll() {
 			delete(b.owned, id)
 		}
 	}
+	return true
 }
 
 // build makes the tabs of the layout, keeping each tab's id by the
@@ -170,7 +181,7 @@ func (b *bridge) build() {
 			}
 			x, y := conv(n.A), conv(n.B)
 			if x == nil || y == nil {
-				return cmpOr(x, y)
+				return cmp.Or(x, y)
 			}
 			r := n.Ratio
 			if r == 0 {
@@ -209,13 +220,6 @@ func (b *bridge) build() {
 	b.tabs, b.active = tabs, active
 }
 
-func cmpOr(x, y *node) *node {
-	if x != nil {
-		return x
-	}
-	return y
-}
-
 func overlap(a, b *tab) int {
 	n := 0
 	for _, sid := range b.root.sids() {
@@ -245,43 +249,50 @@ func (b *bridge) tabOf(sid string) *tab {
 	return nil
 }
 
-// lockTab sizes the sessions of t, which rootshell holds, to the tiles of
-// its size: claim takes the size of those the bridge does not lock yet.
-// It reports whether it holds them all.
-func (b *bridge) lockTab(t *tab, claim bool) bool {
+// claim makes t rootshell's, which sizes it, and gives the desktop back
+// the tab rootshell held before: rootshell shows one tab at a time.
+func (b *bridge) claim(t *tab) {
+	for _, o := range b.tabs {
+		if o != t && b.owned[o.id] {
+			b.lose(o)
+		}
+	}
+	b.owned[t.id] = true
+}
+
+// lockTab locks the sessions of t, which rootshell holds, to the tiles of
+// its size, and gives t back when it cannot.
+func (b *bridge) lockTab(t *tab) {
 	size := b.sizes[t.id]
 	l := b.tiled(t, size[0], size[1])
 	for _, p := range l.Panes {
-		sid := strings.TrimPrefix(p.PaneID, "p-")
+		sid := sidOf(p.PaneID)
 		w, h := max(p.Rect.Width, 1), max(p.Rect.Height, 1)
 		in := b.infos[sid]
+		var err error
 		switch {
 		case b.locked[sid] && in.Cols == w && in.Rows == h && in.SizeLock == b.owner:
 		case b.locked[sid]:
-			if err := b.c.LockedResize(sid, b.owner, w, h); err != nil {
-				b.lose(t)
-				return false
-			}
-		case claim:
-			if err := b.c.LockSize(sid, b.owner, b.device, w, h); err != nil {
-				b.lose(t)
-				return false
-			}
-			b.locked[sid] = true
+			err = b.c.LockedResize(sid, b.owner, w, h)
+		default:
+			err = b.c.LockSize(sid, b.owner, w, h)
+			b.locked[sid] = err == nil
+		}
+		if err != nil {
+			b.lose(t)
+			return
 		}
 	}
-	return true
 }
 
-// lose gives t back to the desktop: another took one of its sessions, and
-// rootshell views it now.
+// lose gives t back to the desktop: rootshell views it now.
 func (b *bridge) lose(t *tab) {
 	b.owned[t.id] = false
 	for _, sid := range t.root.sids() {
 		if b.locked[sid] {
-			b.c.ReleaseSize(sid, b.owner)
-			delete(b.locked, sid)
+			b.c.UnlockSize(sid, b.owner, 0, 0)
 		}
+		delete(b.locked, sid)
 	}
 }
 
@@ -321,7 +332,7 @@ func (b *bridge) tell() {
 		l := b.layoutOf(t)
 		if was, ok := b.ctl[t.id]; ok && was != l.GeometryController {
 			b.send(map[string]any{"event": "tab.geometry_changed", "data": map[string]any{
-				"tab_id": t.id, "workspace_id": "w", "geometry_controller": l.GeometryController, "previous": was,
+				"tab_id": t.id, "workspace_id": workspace, "geometry_controller": l.GeometryController, "previous": was,
 			}})
 		}
 		b.ctl[t.id] = l.GeometryController
@@ -390,6 +401,12 @@ type controller struct {
 
 func paneID(sid string) string { return "p-" + sid }
 
+// sidOf is the session of a pane id, or of a terminal id, the session's.
+func sidOf(id string) string { return strings.TrimPrefix(id, "p-") }
+
+// cell clamps n to what rootshell takes for a size: 1 to 65535.
+func cell(n int) int { return min(max(n, 1), math.MaxUint16) }
+
 // layoutOf is t's layout: tiled at the size rootshell gave it while
 // rootshell holds it, else its sessions' sizes packed.
 func (b *bridge) layoutOf(t *tab) layoutSnapshot {
@@ -397,9 +414,9 @@ func (b *bridge) layoutOf(t *tab) layoutSnapshot {
 		size := b.sizes[t.id]
 		return b.tiled(t, size[0], size[1])
 	}
-	l := layoutSnapshot{WorkspaceID: "w", TabID: t.id, FocusedPaneID: paneID(t.focus), Panes: []paneRect{}, Splits: []splitRect{}}
+	l := layoutSnapshot{WorkspaceID: workspace, TabID: t.id, FocusedPaneID: paneID(t.focus), Panes: []paneRect{}, Splits: []splitRect{}}
 	w, h := b.pack(t.root, 0, 0, "s", t.focus, &l)
-	l.Area = rect{0, 0, max(w, 1), max(h, 1)}
+	l.Area = rect{0, 0, cell(w), cell(h)}
 	// The lock of another, which holds every session of the tab, makes it
 	// that one's; the bridge's own, a tab it lost, is on its way out.
 	l.GeometryController = controller{Kind: "client", Chrome: "none"}
@@ -416,11 +433,11 @@ func (b *bridge) layoutOf(t *tab) layoutSnapshot {
 }
 
 // tiled lays t out at cols×rows, its panes tiling it, as rootshell draws
-// the dividers.
+// the dividers: each pane 4×2 at least, where the tab has the room.
 func (b *bridge) tiled(t *tab, cols, rows int) layoutSnapshot {
-	cols, rows = min(max(cols, 1), math.MaxUint16), min(max(rows, 1), math.MaxUint16)
+	cols, rows = cell(cols), cell(rows)
 	l := layoutSnapshot{
-		WorkspaceID: "w", TabID: t.id, Area: rect{0, 0, cols, rows}, FocusedPaneID: paneID(t.focus),
+		WorkspaceID: workspace, TabID: t.id, Area: rect{0, 0, cols, rows}, FocusedPaneID: paneID(t.focus),
 		Panes: []paneRect{}, Splits: []splitRect{},
 		GeometryController: controller{Kind: "control", ConnectionID: b.id, Chrome: "none"},
 	}
@@ -434,9 +451,12 @@ func (b *bridge) tiled(t *tab, cols, rows int) layoutSnapshot {
 		if n.vertical {
 			ext = r.Height
 		}
-		a := ext
+		a, least, most := ext, 1, ext-1
+		if lo, hi := least4x2(n.a, n.vertical), least4x2(n.b, n.vertical); lo+hi <= ext {
+			least, most = lo, ext-hi
+		}
 		if ext >= 2 {
-			a = min(max(int(math.Round(float64(ext)*n.ratio)), 1), ext-1)
+			a = min(max(int(math.Round(float64(ext)*n.ratio)), least), most)
 		}
 		first, second := r, r
 		if n.vertical {
@@ -452,6 +472,22 @@ func (b *bridge) tiled(t *tab, cols, rows int) layoutSnapshot {
 	return l
 }
 
+// least4x2 is the least extent of n's panes, 4×2 each, down if vertical,
+// else across.
+func least4x2(n *node, vertical bool) int {
+	if n.sid != "" {
+		if vertical {
+			return 2
+		}
+		return 4
+	}
+	a, b := least4x2(n.a, vertical), least4x2(n.b, vertical)
+	if n.vertical == vertical {
+		return a + b
+	}
+	return max(a, b)
+}
+
 func direction(n *node) string {
 	if n.vertical {
 		return "down"
@@ -464,7 +500,7 @@ func direction(n *node) string {
 func (b *bridge) pack(n *node, x, y int, id, focus string, l *layoutSnapshot) (w, h int) {
 	if n.sid != "" {
 		in := b.infos[n.sid]
-		w, h = min(max(in.Cols, 1), math.MaxUint16), min(max(in.Rows, 1), math.MaxUint16)
+		w, h = cell(in.Cols), cell(in.Rows)
 		l.Panes = append(l.Panes, paneRect{paneID(n.sid), n.sid == focus, rect{x, y, w, h}})
 		return w, h
 	}

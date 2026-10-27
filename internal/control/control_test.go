@@ -86,12 +86,15 @@ func sessions(t *testing.T, c *rex.Client) map[string]rex.SessionInfo {
 	return m
 }
 
-func TestBridge(t *testing.T) {
+// serve starts a server for the test, and returns a client of it, as the
+// desktop's.
+func serve(t *testing.T) *rex.Client {
+	t.Helper()
 	dir, err := os.MkdirTemp(map[bool]string{true: "", false: "/tmp"}[runtime.GOOS == "windows"], "ctl")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	t.Setenv("GOREX_DIR", dir)
 	go rex.Serve()
 	for i := 0; i < 200; i++ {
@@ -104,13 +107,34 @@ func TestBridge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer desk.Shutdown()
+	t.Cleanup(func() { desk.Shutdown() })
+	return desk
+}
+
+// TestPollKeepsOnError checks that a poll that cannot read the server
+// changes nothing: no tab is given back for a list it did not get.
+func TestPollKeepsOnError(t *testing.T) {
+	desk := serve(t)
+	c, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	b := &bridge{c: c, owned: map[string]bool{"t1": true}, locked: map[string]bool{"s": true}, infos: map[string]rex.SessionInfo{}}
+	if b.poll() || !b.owned["t1"] || !b.locked["s"] {
+		t.Errorf("a failed poll changed the locks: %v %v", b.owned, b.locked)
+	}
+	desk.Close()
+}
+
+func TestBridge(t *testing.T) {
+	desk := serve(t)
 	shell, typed := []string{"/bin/sh"}, "echo mar''ker\n"
 	if runtime.GOOS == "windows" {
 		shell, typed = []string{"cmd.exe"}, "echo mar^ker\r"
 	}
 	var sids []string
-	for range 2 {
+	for range 3 {
 		in, err := desk.Create(rex.CreateOptions{Command: shell, Dir: os.TempDir(), Cols: 80, Rows: 24})
 		if err != nil {
 			t.Fatal(err)
@@ -118,10 +142,12 @@ func TestBridge(t *testing.T) {
 		sids = append(sids, in.ID)
 	}
 	// A tab of two panes side by side, and a pane of a remote host,
-	// which rootshell does not see; a tab of only a remote pane neither.
+	// which rootshell does not see; a tab of only a remote pane neither;
+	// a tab of one pane.
 	layout := fmt.Sprintf(`{"active":0,"tabs":[
 		{"name":"work","focus":1,"root":{"ratio":0.5,"a":{"sid":%q},"b":{"vertical":true,"ratio":0.5,"a":{"sid":%q},"b":{"sid":"far","host":"h1"}}}},
-		{"root":{"sid":"far2","host":"h1"}}]}`, sids[0], sids[1])
+		{"root":{"sid":"far2","host":"h1"}},
+		{"name":"two","root":{"sid":%q}}]}`, sids[0], sids[1], sids[2])
 	if err := desk.SetLayout(json.RawMessage(layout)); err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +159,7 @@ func TestBridge(t *testing.T) {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	exit := make(chan int, 1)
-	go func() { exit <- Run(c, inR, outW, "rootshell/test"); outW.Close() }()
+	go func() { exit <- Run(c, inR, outW); outW.Close() }()
 	r := &rootshell{t: t, in: inW, lines: make(chan map[string]any, 1024)}
 	go func() {
 		defer close(r.lines)
@@ -159,7 +185,7 @@ func TestBridge(t *testing.T) {
 	result(t, r.call("events.subscribe", map[string]any{"subscriptions": []any{map[string]any{"type": "layout.updated"}}}))
 	snap := result(t, r.call("session.snapshot", map[string]any{}))["snapshot"].(map[string]any)
 	tabs, panes := snap["tabs"].([]any), snap["panes"].([]any)
-	if len(tabs) != 1 || len(panes) != 2 || snap["focused_pane_id"] != "p-"+sids[1] {
+	if len(tabs) != 2 || len(panes) != 3 || snap["focused_pane_id"] != "p-"+sids[1] {
 		t.Fatalf("snapshot %v", snap)
 	}
 	tabID := tabs[0].(map[string]any)["tab_id"].(string)
@@ -230,6 +256,20 @@ func TestBridge(t *testing.T) {
 	result(t, r.call("tab.set_geometry", map[string]any{"tab_id": tabID, "cols": 120, "rows": 30, "chrome": "none", "claim": false}))
 	if size(sids[0]) != "60x30 true" {
 		t.Errorf("the holder's resize: %s", size(sids[0]))
+	}
+
+	// Going to another tab gives the one before back to the desktop.
+	tab2 := tabs[1].(map[string]any)["tab_id"].(string)
+	result(t, r.call("tab.set_geometry", map[string]any{"tab_id": tab2, "cols": 90, "rows": 25, "chrome": "none", "claim": true}))
+	if size(sids[0]) != "60x30 false" || size(sids[1]) != "60x30 false" || size(sids[2]) != "90x25 true" {
+		t.Errorf("after going to another tab: %s, %s, %s", size(sids[0]), size(sids[1]), size(sids[2]))
+	}
+	// A pane whose session is gone detaches.
+	aid2 := result(t, r.call("terminal.attach", map[string]any{"target": sids[2]}))["attach_id"].(string)
+	r.next("its snapshot", func(m map[string]any) bool { return m["type"] == "terminal.snapshot" && m["attach_id"] == aid2 })
+	desk.Kill(sids[2])
+	if m := r.next("terminal.detached", ofType("terminal.detached")); m["attach_id"] != aid2 || m["reason"] != "closed" {
+		t.Errorf("detached %v", m)
 	}
 
 	if e, ok := r.call("tab.create", map[string]any{})["error"].(map[string]any); !ok || e["code"] != "read_only" || e["message"] == "" {

@@ -335,15 +335,20 @@ func (a *App) attach(p *Pane, cols, rows int) {
 }
 
 // takeSize takes the size of the pane's session back from the device that
-// holds it, at the pane's size.
+// holds it, at the pane's size. The terminal's OnKey and OnPaste call it on
+// the main thread, which apply sets p.info on.
 func (a *App) takeSize(p *Pane) {
 	if p.info.SizeLock == "" || p.term == nil {
 		return
 	}
-	p.info.SizeLock, p.info.SizeLockDevice = "", ""
+	p.info.SizeLock = ""
 	cols, rows := p.term.Size()
 	client, sid := a.client, p.SID
-	go client.UnlockSize(sid, cols, rows)
+	go func() {
+		if err := client.UnlockSize(sid, "", cols, rows); err != nil {
+			log.Printf("taking the size back: %v", err)
+		}
+	}()
 }
 
 // nopConn is the Conn of a terminal that only shows what the app feeds it.
@@ -1015,7 +1020,11 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 			// resizes are ignored, and the session keeps that size; once
 			// it lets go, the pane gives the session its own.
 			if was.SizeLock != "" && in.SizeLock == "" && p.stream != nil {
-				go p.stream.ResendSize()
+				go func(st *rex.Stream) {
+					if err := st.ResendSize(); err != nil {
+						log.Printf("resizing a session given back: %v", err)
+					}
+				}(p.stream)
 			}
 			// A program that ran a while and finished out of sight
 			// asks for attention.

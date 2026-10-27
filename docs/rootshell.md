@@ -28,8 +28,10 @@ Windows a server started from an SSH logon would end with it.
 - **Size.** One terminal has one size. The tab rootshell shows takes it:
   its panes are drawn for the phone, and the desktop shows them at the
   phone's size meanwhile. Typing in one of them on the desktop takes it
-  back. rootshell keeps the size while it shows the tab, renewing it every
-  5 seconds; leaving, or a dropped connection, gives it back within 30.
+  back. rootshell keeps the size of the last GoRex tab it went to while
+  it stays connected, renewing it every 5 seconds: going to another GoRex
+  tab, or detaching, gives it back at once, and a dropped connection or
+  the app put away in the background within 30 seconds.
 - **Terminal queries** (cursor position, colors, device attributes) are
   answered by the device holding the size only, not once per device.
 
@@ -128,6 +130,9 @@ shim for herdr's sessions, which it answers with none anyway.
 - The desktop's panes do not shrink to the phone's size: what the program
   draws sits in the top-left of the pane until the desktop takes the size
   back.
+- Only this machine's own GoRex takes the size back by typing: a GoRex on
+  another machine showing this one as a Remote Host waits for rootshell
+  to let go.
 - On a desktop pane not holding the size, a key that sends what looks like
   a terminal's answer (Shift+F3 sends a cursor report's) is dropped.
 - The shim takes the name `herdr` in that directory: a host running

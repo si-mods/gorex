@@ -7,6 +7,8 @@ package control
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -39,25 +41,25 @@ func Main() int {
 		os.Stdout.Write(append(line, '\n'))
 		return 1
 	}
-	device := os.Getenv("HERDR_CONTROL_CLIENT")
-	if device == "" {
-		device = "rootshell"
-	}
-	return Run(c, os.Stdin, os.Stdout, device)
+	return Run(c, os.Stdin, os.Stdout)
 }
 
 // Run bridges the server of c to in and out until in ends or asks to
 // close, then unlocks what it locked; it returns the exit status, 1 when
-// it lost the server.
-func Run(c *rex.Client, in io.Reader, out io.Writer, device string) int {
+// it lost the server or out.
+func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 	defer c.Close()
 	h, err := c.Hello()
 	if err != nil || h.Conn == "" {
 		log.Printf("control: hello: %v", err)
 		return 1
 	}
+	// The owner is the bridge's own, which the sessions' list shows: not
+	// the connection's id, which would let others attach through it.
+	token := make([]byte, 8)
+	rand.Read(token)
 	b := &bridge{
-		c: c, hello: h, device: device, owner: "control-" + h.Conn,
+		c: c, hello: h, owner: "control-" + hex.EncodeToString(token),
 		out: make(chan []byte, 256), quit: make(chan struct{}), flushed: make(chan struct{}),
 		infos: map[string]rex.SessionInfo{}, sizes: map[string][2]int{}, owned: map[string]bool{},
 		locked: map[string]bool{}, attaches: map[string]*attach{},
@@ -85,7 +87,11 @@ func Run(c *rex.Client, in io.Reader, out io.Writer, device string) int {
 		sc := bufio.NewScanner(in)
 		sc.Buffer(make([]byte, 64<<10), 16<<20)
 		for sc.Scan() {
-			lines <- append([]byte(nil), sc.Bytes()...)
+			select {
+			case lines <- append([]byte(nil), sc.Bytes()...):
+			case <-b.quit:
+				return
+			}
 		}
 	}()
 	poll, renew := time.NewTicker(pollEvery), time.NewTicker(renewEvery)
@@ -99,13 +105,18 @@ func Run(c *rex.Client, in io.Reader, out io.Writer, device string) int {
 				return 0
 			}
 		case <-poll.C:
-			b.poll()
-			b.tell()
+			if b.poll() {
+				b.tell()
+			}
 		case <-renew.C:
 			b.renew()
 			b.tell()
 		case <-c.Closed():
 			log.Print("control: lost the server")
+			b.close()
+			return 1
+		case <-b.flushed:
+			b.close() // rootshell is gone
 			return 1
 		}
 	}
@@ -119,17 +130,17 @@ func connectionID(owner string) uint64 {
 	return h.Sum64()&(1<<53-1) | 1
 }
 
-// write writes out the lines sent, one at a time, until a nil one, after
-// which it closes flushed.
+// write writes out the lines sent, one at a time, until a nil one or an
+// error, after which it closes flushed.
 func (b *bridge) write(out io.Writer) {
+	defer close(b.flushed)
 	for line := range b.out {
 		if line == nil {
-			close(b.flushed)
 			return
 		}
 		if _, err := out.Write(line); err != nil {
 			log.Printf("control: %v", err)
-			os.Exit(1) // rootshell is gone
+			return
 		}
 	}
 }
@@ -144,6 +155,7 @@ func (b *bridge) send(v any) {
 	select {
 	case b.out <- append(line, '\n'):
 	case <-b.quit:
+	case <-b.flushed:
 	}
 }
 
@@ -152,11 +164,14 @@ func (b *bridge) send(v any) {
 func (b *bridge) close() {
 	close(b.quit)
 	for sid := range b.locked {
-		b.c.ReleaseSize(sid, b.owner)
+		b.c.UnlockSize(sid, b.owner, 0, 0)
 	}
 	for _, at := range b.attaches {
 		at.detach()
 	}
-	b.out <- nil
+	select {
+	case b.out <- nil:
+	case <-b.flushed:
+	}
 	<-b.flushed
 }

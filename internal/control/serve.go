@@ -6,8 +6,9 @@ import (
 	"strings"
 )
 
-// readOnly are herdr's methods that change the layout, which is the
-// desktop's: rootshell shows their error, and goes on.
+// readOnly are herdr's methods that manage the layout, which is the
+// desktop's, or list or scroll what GoRex does not have: rootshell shows
+// their error, or logs it, and goes on.
 var readOnly = map[string]bool{
 	"pane.split": true, "pane.close": true, "pane.resize": true, "pane.zoom": true, "pane.move": true,
 	"pane.swap": true, "pane.rename": true, "pane.scroll": true,
@@ -88,7 +89,7 @@ func (b *bridge) do(req request) (any, error) {
 		if t == nil {
 			return nil, &failure{"tab_not_found", "no tab " + p.TabID}
 		}
-		return map[string]any{"layout": map[string]any{"workspace_id": "w", "tab_id": t.id, "root": exportNode(t.root)}}, nil
+		return map[string]any{"layout": map[string]any{"workspace_id": workspace, "tab_id": t.id, "root": exportNode(t.root)}}, nil
 	case "tab.set_geometry":
 		t := b.tab(p.TabID)
 		if t == nil {
@@ -98,17 +99,20 @@ func (b *bridge) do(req request) (any, error) {
 			return nil, &failure{"invalid_params", "cols and rows must be positive"}
 		}
 		// Rootshell sizes a tab it holds, claiming it as the user goes to
-		// it; another's sizes it only notes, a viewer.
+		// it; another's sizes it only notes, a viewer. It hears of the new
+		// layout first, and holds the output until its panes are at it.
 		b.sizes[t.id] = [2]int{p.Cols, p.Rows}
-		if p.Claim || b.owned[t.id] {
-			if b.lockTab(t, p.Claim) && p.Claim {
-				b.owned[t.id] = true
-			}
+		if p.Claim {
+			b.claim(t)
+		}
+		if b.owned[t.id] {
+			b.tell()
+			b.lockTab(t)
 		}
 		b.tell()
 		return nil, nil
 	case "terminal.attach":
-		sid := strings.TrimPrefix(p.Target, "p-")
+		sid := sidOf(p.Target)
 		if _, ok := b.infos[sid]; !ok {
 			return nil, &failure{"terminal_not_found", "no terminal " + p.Target}
 		}
@@ -148,13 +152,13 @@ func (b *bridge) snapshot() map[string]any {
 		sids := t.root.sids()
 		active := t.id == b.active
 		tabs = append(tabs, map[string]any{
-			"tab_id": t.id, "workspace_id": "w", "number": i + 1, "label": t.name,
+			"tab_id": t.id, "workspace_id": workspace, "number": i + 1, "label": t.name,
 			"focused": active, "pane_count": len(sids), "agent_status": "unknown",
 		})
 		for _, sid := range sids {
 			in := b.infos[sid]
 			pane := map[string]any{
-				"pane_id": paneID(sid), "terminal_id": sid, "workspace_id": "w", "tab_id": t.id,
+				"pane_id": paneID(sid), "terminal_id": sid, "workspace_id": workspace, "tab_id": t.id,
 				"focused": active && sid == t.focus, "agent_status": "unknown",
 				"terminal_title": in.Title, "title": in.Title,
 				"foreground_process": map[string]any{"name": in.Program, "argv": in.Args, "is_shell": in.Idle},
@@ -171,9 +175,9 @@ func (b *bridge) snapshot() map[string]any {
 	}
 	return map[string]any{
 		"version": version, "protocol": 1,
-		"focused_workspace_id": "w", "focused_tab_id": b.active, "focused_pane_id": focusedPane,
+		"focused_workspace_id": workspace, "focused_tab_id": b.active, "focused_pane_id": focusedPane,
 		"workspaces": []any{map[string]any{
-			"workspace_id": "w", "label": b.hello.Host.Name, "number": 1, "focused": true,
+			"workspace_id": workspace, "label": b.hello.Host.Name, "number": 1, "focused": true,
 			"active_tab_id": b.active, "agent_status": "unknown", "tab_count": len(b.tabs), "pane_count": len(panes),
 		}},
 		"tabs": tabs, "panes": panes, "layouts": layouts, "agents": []any{},

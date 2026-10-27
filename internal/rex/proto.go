@@ -18,8 +18,8 @@ import (
 )
 
 // ProtocolVersion changes whenever the wire protocol does. Version 2 adds,
-// and only adds, the size lock (Attach.Owner, "lockSize", "lockedResize",
-// "unlockSize", "renewSize", SessionInfo.SizeLock), framed attaches
+// and only adds, the size lock ("lockSize", "lockedResize", "unlockSize",
+// "renewSize", SessionInfo.SizeLock), framed attaches
 // (Attach.Framed, Attach.History) and the list's ETag: a client of
 // version 1 works as before, its resizes ignored while a session is locked.
 const ProtocolVersion = 2
@@ -49,13 +49,11 @@ type Request struct {
 
 	// Owner is the size lock's owner, of lockSize, lockedResize,
 	// unlockSize and renewSize: unlockSize without one unlocks whoever
-	// holds it. lockSize takes the lock for Device, leased with SizeLease,
-	// through this connection, which must be kept alive: it unlocks as
-	// the connection closes, and the sessions attached through it answer
-	// the programs' queries (Attach.Owner's lock otherwise).
-	Owner     string `json:"owner,omitempty"`
-	Device    string `json:"device,omitempty"`
-	SizeLease bool   `json:"sizeLease,omitempty"`
+	// holds it. lockSize takes the lock through this connection, which
+	// must be kept alive: the lock ends as it closes, or 30 seconds after
+	// it was taken or renewed last, and the sessions attached through it
+	// answer the programs' queries meanwhile.
+	Owner string `json:"owner,omitempty"`
 	// ETag, on "list", is that of the list the client has (Response.ETag).
 	ETag string `json:"etag,omitempty"`
 }
@@ -147,10 +145,9 @@ type SessionInfo struct {
 	Attached   int       `json:"attached"`
 	Cols       int       `json:"cols"`
 	Rows       int       `json:"rows"`
-	// SizeLock is the owner that holds the session's size (Attach.Owner),
-	// "" while the windows set it; SizeLockDevice names its device.
-	SizeLock       string `json:"sizeLock,omitempty"`
-	SizeLockDevice string `json:"sizeLockDevice,omitempty"`
+	// SizeLock is the owner that holds the session's size (lockSize), ""
+	// while the windows set it.
+	SizeLock string `json:"sizeLock,omitempty"`
 }
 
 // Hello is the server's answer to "hello".
@@ -198,15 +195,6 @@ type Attach struct {
 	// detaches this one too: a peer that vanished without closing it is
 	// noticed on the control connection, which pings.
 	Conn string `json:"conn,omitempty"`
-	// Owner, when set, takes the session's size lock at Cols×Rows before
-	// the snapshot, for a device named Device: only the owner's resizes
-	// (lockedResize) size the session then, until it unlocks or this
-	// connection closes. SizeLease makes the lock expire 30 seconds after
-	// it was taken or renewed last ("renewSize", every 5 seconds), and the
-	// answer says "sizeLease":true when it does.
-	Owner     string `json:"owner,omitempty"`
-	Device    string `json:"device,omitempty"`
-	SizeLease bool   `json:"sizeLease,omitempty"`
 	// Framed puts a SnapshotHeader line before the snapshot, which tells
 	// where it ends, for a client with no emulator of its own. History,
 	// when set, cuts the oldest scrollback of the snapshot to about that

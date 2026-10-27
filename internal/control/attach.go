@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"gorex/internal/rex"
 )
@@ -43,12 +44,26 @@ func (at *attach) reattach(in rex.SessionInfo) {
 	go at.run(gen, in)
 }
 
+// The waits between attaches to a session that refuses them while it
+// lives.
+const (
+	retryFirst = 250 * time.Millisecond
+	retryMost  = 5 * time.Second
+)
+
 func (at *attach) run(gen int, in rex.SessionInfo) {
-	conn, err := at.b.c.AttachConn(rex.Attach{SID: at.sid, Framed: true, History: at.limit})
-	if err != nil {
+	var conn net.Conn
+	for wait := retryFirst; ; wait = min(wait*2, retryMost) {
+		var err error
+		conn, err = at.b.c.AttachConn(rex.Attach{SID: at.sid, Framed: true, History: at.limit})
+		if err == nil {
+			break
+		}
 		log.Printf("control: attaching %s: %v", at.sid, err)
-		at.lost(gen)
-		return
+		if !at.alive(gen) {
+			return
+		}
+		time.Sleep(wait)
 	}
 	at.mu.Lock()
 	if at.gen != gen || at.closed {
@@ -123,25 +138,40 @@ func (at *attach) emit(gen int, rec func(seq uint64) any) {
 
 // lost tells rootshell that output of the session is lost, the server
 // having dropped the attach while the session goes on: it asks for a
-// snapshot then. An exited session's ends, and that is all.
+// snapshot then. A session gone detaches (alive).
 func (at *attach) lost(gen int) {
+	if at.alive(gen) {
+		at.emit(gen, func(seq uint64) any {
+			return map[string]any{"type": "terminal.gap", "attach_id": at.id, "seq": seq, "dropped_bytes": 0}
+		})
+	}
+}
+
+// alive tells whether gen is current and its session runs. A session that
+// ended, or that the server no longer has, is gone, and its pane with it,
+// as the desktop closes it: rootshell is told so, and waits for no
+// snapshot of it.
+func (at *attach) alive(gen int) bool {
 	at.mu.Lock()
 	current := at.gen == gen && !at.closed
 	at.mu.Unlock()
 	if !current {
-		return
+		return false
 	}
 	list, err := at.b.c.List()
 	if err != nil {
-		return
+		return false
 	}
 	for _, in := range list {
 		if in.ID == at.sid && !in.Exited {
-			at.emit(gen, func(seq uint64) any {
-				return map[string]any{"type": "terminal.gap", "attach_id": at.id, "seq": seq, "dropped_bytes": 0}
-			})
+			return true
 		}
 	}
+	at.emit(gen, func(uint64) any {
+		return map[string]any{"type": "terminal.detached", "attach_id": at.id, "reason": "closed"}
+	})
+	at.detach()
+	return false
 }
 
 func (at *attach) input(p []byte) {
@@ -163,8 +193,9 @@ func (at *attach) detach() {
 	}
 }
 
-// cup is a cursor position, of which a snapshot's last is the cursor's.
-var cup = regexp.MustCompile(`\x1b\[(\d+);(\d+)H`)
+// cup is a cursor position, of which a snapshot's last is the cursor's;
+// a row or column left out is 1.
+var cup = regexp.MustCompile(`\x1b\[(\d*)(?:;(\d*))?H`)
 
 // cursor returns where a snapshot leaves the cursor, from 0.
 func cursor(snap []byte) (x, y int) {

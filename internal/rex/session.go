@@ -61,17 +61,16 @@ type session struct {
 	// executable (upgrade).
 	hold sync.RWMutex
 	// sizeLock is the owner holding the session's size (lockSize), through
-	// sizeLockConn, an attached connection or a control one, until
-	// sizeLockUntil when leased: while it holds it, the windows' resizes
-	// are ignored.
-	sizeLock, sizeLockDevice string
-	sizeLockConn             net.Conn
-	sizeLockUntil            time.Time
-	sizeLockTimer            *time.Timer
-	// typed is the client that last typed, whose terminal answers the
+	// the control connection sizeLockConn, until sizeLockUntil, its lease:
+	// while it holds it, the windows' resizes are ignored.
+	sizeLock      string
+	sizeLockConn  net.Conn
+	sizeLockUntil time.Time
+	sizeLockTimer *time.Timer
+	// typist is the client that last typed, whose terminal answers the
 	// program's queries (authorityLocked); attaches counts the attaches,
 	// for the newest.
-	typed    *attached
+	typist   *attached
 	attaches uint64
 	// batchEnd, while the output is inside a synchronized update (mode
 	// 2026), closes as it ends; tail is the end of the output read last,
@@ -354,6 +353,9 @@ func (s *session) read() {
 			s.mu.Unlock()
 		}
 		if err != nil {
+			s.mu.Lock()
+			s.endBatchLocked()
+			s.mu.Unlock()
 			// A deadline is a pause: what the terminal has stays unread.
 			if !errors.Is(err, os.ErrDeadlineExceeded) {
 				close(s.readEnd)
@@ -456,7 +458,7 @@ func (s *session) admit(a *attached, p []byte) []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if len(typed) > 0 {
-		s.typed = a
+		s.typist = a
 	}
 	if s.authorityLocked() != a {
 		p = typed
@@ -469,20 +471,21 @@ func (s *session) admit(a *attached, p []byte) []byte {
 }
 
 // authorityLocked returns the client whose terminal answers the program's
-// queries: the size lock's owner, whose size the program draws for, else
-// the client that typed last, else the one attached last; s.mu is held.
+// queries: one attached through the control connection that holds the
+// size, whose size the program draws for, else the client that typed
+// last, else the one attached last; s.mu is held.
 func (s *session) authorityLocked() *attached {
 	var newest *attached
 	for a := range s.clients {
-		if s.sizeLock != "" && (a.conn == s.sizeLockConn || a.via != nil && a.via == s.sizeLockConn) {
+		if s.sizeLock != "" && a.via != nil && a.via == s.sizeLockConn {
 			return a
 		}
 		if newest == nil || a.seq > newest.seq {
 			newest = a
 		}
 	}
-	if _, ok := s.clients[s.typed]; ok {
-		return s.typed
+	if _, ok := s.clients[s.typist]; ok {
+		return s.typist
 	}
 	return newest
 }
@@ -559,48 +562,50 @@ func replyLen(p []byte) int {
 	return 0
 }
 
-// sizeLease is how long a leased size lock lasts unless renewed.
+// sizeLease is how long a size lock lasts unless renewed.
 var sizeLease = newDuration(30 * time.Second)
 
-// resize sets the size of the terminal and reports whether it changed:
-// not while an owner holds the size (lockSize).
-func (s *session) resize(cols, rows int) bool {
+// resize sets the size of the terminal: not while an owner holds the size
+// (lockSize).
+func (s *session) resize(cols, rows int) {
 	s.mu.Lock()
-	if s.sizeLock != "" {
-		s.mu.Unlock()
-		return false
+	pty := s.sizeLock == "" && s.resizeLocked(cols, rows)
+	cols, rows = s.cols, s.rows
+	s.mu.Unlock()
+	if pty {
+		s.p.resize(cols, rows)
 	}
-	return s.resizeUnlock(cols, rows)
 }
 
-// lockSize gives the session's size to owner, attached through conn, at
-// cols×rows when given: until it unlocks, or conn closes (releaseSize),
-// only its resizes size the session. Leased, the lock ends sizeLease
-// after it was taken or renewed last.
-func (s *session) lockSize(owner, device string, cols, rows int, conn net.Conn, leased bool) {
+// lockSize gives the session's size to owner, through the control
+// connection conn, at cols×rows when given: until it unlocks, or conn
+// closes (releaseSize), only its resizes size the session. The lock ends
+// sizeLease after it was taken or renewed last.
+func (s *session) lockSize(owner string, cols, rows int, conn net.Conn) {
 	s.mu.Lock()
 	s.clearSizeLockLocked()
-	s.sizeLock, s.sizeLockDevice, s.sizeLockConn = owner, device, conn
-	if leased {
-		s.renewLocked()
-	}
-	if cols > 0 && rows > 0 {
-		s.resizeUnlock(cols, rows)
-		return
-	}
+	s.sizeLock, s.sizeLockConn = owner, conn
+	s.renewLocked()
+	pty := cols > 0 && rows > 0 && s.resizeLocked(cols, rows)
+	cols, rows = s.cols, s.rows
 	s.mu.Unlock()
+	if pty {
+		s.p.resize(cols, rows)
+	}
 }
 
 // lockedResize resizes the session for owner, and reports whether it
 // holds the size.
 func (s *session) lockedResize(owner string, cols, rows int) bool {
 	s.mu.Lock()
-	if owner == "" || s.sizeLock != owner {
-		s.mu.Unlock()
-		return false
+	held := owner != "" && s.sizeLock == owner
+	pty := held && s.resizeLocked(cols, rows)
+	cols, rows = s.cols, s.rows
+	s.mu.Unlock()
+	if pty {
+		s.p.resize(cols, rows)
 	}
-	s.resizeUnlock(cols, rows)
-	return true
+	return held
 }
 
 // unlockSize gives the size back to the windows, at cols×rows when given,
@@ -608,20 +613,19 @@ func (s *session) lockedResize(owner string, cols, rows int) bool {
 // owner's lock.
 func (s *session) unlockSize(owner string, cols, rows int) {
 	s.mu.Lock()
-	if owner != "" && s.sizeLock != owner {
-		s.mu.Unlock()
-		return
+	pty := false
+	if owner == "" || s.sizeLock == owner {
+		s.clearSizeLockLocked()
+		pty = cols > 0 && rows > 0 && s.resizeLocked(cols, rows)
 	}
-	s.clearSizeLockLocked()
-	if cols > 0 && rows > 0 {
-		s.resizeUnlock(cols, rows)
-		return
-	}
+	cols, rows = s.cols, s.rows
 	s.mu.Unlock()
+	if pty {
+		s.p.resize(cols, rows)
+	}
 }
 
-// releaseSize unlocks the lock taken through conn, which closed: an
-// attach of before, closing, leaves a lock taken anew, by its owner too.
+// releaseSize unlocks the lock taken through conn, which closed.
 func (s *session) releaseSize(conn net.Conn) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -630,11 +634,11 @@ func (s *session) releaseSize(conn net.Conn) {
 	}
 }
 
-// renewSize renews owner's leased lock, and reports whether it holds one.
+// renewSize renews owner's lock, and reports whether it holds it.
 func (s *session) renewSize(owner string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if owner == "" || s.sizeLock != owner || s.sizeLockUntil.IsZero() {
+	if owner == "" || s.sizeLock != owner {
 		return false
 	}
 	s.renewLocked()
@@ -663,17 +667,17 @@ func (s *session) clearSizeLockLocked() {
 		s.sizeLockTimer.Stop()
 		s.sizeLockTimer = nil
 	}
-	s.sizeLock, s.sizeLockDevice = "", ""
-	s.sizeLockConn, s.sizeLockUntil = nil, time.Time{}
+	s.sizeLock, s.sizeLockConn, s.sizeLockUntil = "", nil, time.Time{}
 }
 
-// resizeUnlock is resize with s.mu held, which it lets go of before it
-// resizes the terminal.
-func (s *session) resizeUnlock(cols, rows int) bool {
+// resizeLocked sets the size of the session's emulator, s.mu held, and
+// reports whether to resize the terminal to it, which the caller does
+// once it let go of s.mu: the console may write as it resizes, which the
+// reader takes s.mu to read.
+func (s *session) resizeLocked(cols, rows int) bool {
 	cols, rows = clampSize(cols), clampSize(rows)
 	changed := cols != s.cols || rows != s.rows
 	s.cols, s.rows = cols, rows
-	exited := s.exited
 	if changed {
 		s.vt.Resize(cols, rows)
 		// Once the program drew its screen at the new size, the windows
@@ -684,11 +688,7 @@ func (s *session) resizeUnlock(cols, rows int) bool {
 			s.resync.Reset(resyncDelay)
 		}
 	}
-	s.mu.Unlock()
-	if changed && !exited {
-		s.p.resize(cols, rows)
-	}
-	return changed
+	return changed && !s.exited
 }
 
 // batchWait is the longest an attach waits for a synchronized update to
@@ -710,14 +710,22 @@ func (s *session) batch(p []byte) {
 	switch {
 	case on > off && s.batchEnd == nil:
 		s.batchEnd = make(chan struct{})
-	case off > on && s.batchEnd != nil:
-		close(s.batchEnd)
-		s.batchEnd = nil
+	case off > on:
+		s.endBatchLocked()
 	}
 	if len(p) < k {
 		s.tail = seam[max(len(seam)-k, 0):]
 	} else {
 		s.tail = append(s.tail[:0], p[len(p)-k:]...)
+	}
+}
+
+// endBatchLocked ends the synchronized update the output is in, if any:
+// it ended, or the output stopped; s.mu is held.
+func (s *session) endBatchLocked() {
+	if s.batchEnd != nil {
+		close(s.batchEnd)
+		s.batchEnd = nil
 	}
 }
 
@@ -840,7 +848,7 @@ func (s *session) info() SessionInfo {
 		Title: title, LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,
-		SizeLock: s.sizeLock, SizeLockDevice: s.sizeLockDevice,
+		SizeLock: s.sizeLock,
 	}
 	s.mu.Unlock()
 	in.PID = s.p.pid()

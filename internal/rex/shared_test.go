@@ -4,7 +4,6 @@ package rex
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -16,26 +15,23 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 )
 
-// TestSizeLock attaches as a phone that takes the session's size: the
-// desktop's resizes are ignored until the phone leaves, its lease ends, or
-// the desktop takes the size back.
+// TestSizeLock takes a session's size from a phone's control connection:
+// the desktop's resizes are ignored until the phone unlocks, its
+// connection closes, its lease ends, or the desktop takes the size back.
 func TestSizeLock(t *testing.T) {
 	defer sizeLease.set(sizeLease.set(300 * time.Millisecond))
 	s, c, sid := streamServer(t, nil)
-	lock := func(owner string, cols, rows int, lease bool) (net.Conn, string) {
-		a, b := net.Pipe()
-		go s.handle(b, "")
-		line, _ := json.Marshal(Attach{Op: "attach", SID: sid, Cols: cols, Rows: rows, Owner: owner, Device: "iPhone", SizeLease: lease})
-		go a.Write(append(line, '\n'))
-		var answer []byte
-		for b := make([]byte, 1); ; {
-			if _, err := a.Read(b); err != nil || b[0] == '\n' {
-				break
-			}
-			answer = append(answer, b[0])
+	lock := func(owner string, cols, rows int) *Client {
+		t.Helper()
+		pc := pipe(s, "")
+		pc.keepalive = true
+		if _, err := pc.Hello(); err != nil {
+			t.Fatal(err)
 		}
-		go io.Copy(io.Discard, a)
-		return a, string(answer)
+		if err := pc.LockSize(sid, owner, cols, rows); err != nil {
+			t.Fatal(err)
+		}
+		return pc
 	}
 	info := func() SessionInfo {
 		t.Helper()
@@ -63,9 +59,12 @@ func TestSizeLock(t *testing.T) {
 		return c.call(Request{Op: op, SID: sid, Owner: owner, Cols: cols, Rows: rows}, nil)
 	}
 
-	phone, answer := lock("phone", 40, 20, false)
-	if in := info(); answer != `{"ok":true}` || in.SizeLock != "phone" || in.SizeLockDevice != "iPhone" || in.Cols != 40 || in.Rows != 20 {
-		t.Fatalf("locked: answer %s, %+v", answer, in)
+	if err := c.LockSize(sid, "desk", 40, 20); err == nil {
+		t.Error("locked on a connection not kept alive")
+	}
+	phone := lock("phone", 40, 20)
+	if in := info(); in.SizeLock != "phone" || in.Cols != 40 || in.Rows != 20 {
+		t.Fatalf("locked: %+v", in)
 	}
 	c.Resize(sid, 100, 30)
 	if got := sessionSize(t, c, sid); got != "40x20" {
@@ -77,13 +76,13 @@ func TestSizeLock(t *testing.T) {
 	if err := call("lockedResize", "phone", 45, 22); err != nil || sessionSize(t, c, sid) != "45x22" {
 		t.Errorf("the owner's resize: %v, %s", err, sessionSize(t, c, sid))
 	}
-	// The same owner attaching anew takes the lock: the old attach closing
-	// leaves it, the new one closing ends it.
-	phone2, _ := lock("phone", 50, 25, false)
+	// Another connection takes the lock: the old one closing leaves it,
+	// the new one closing ends it.
+	phone2 := lock("phone2", 50, 25)
 	phone.Close()
 	time.Sleep(100 * time.Millisecond)
-	if in := info(); in.SizeLock != "phone" || in.Cols != 50 {
-		t.Fatalf("an old attach closing unlocked: %+v", in)
+	if in := info(); in.SizeLock != "phone2" || in.Cols != 50 {
+		t.Fatalf("an old connection closing unlocked: %+v", in)
 	}
 	phone2.Close()
 	waitUnlocked()
@@ -92,19 +91,20 @@ func TestSizeLock(t *testing.T) {
 		t.Errorf("unlocked, the window's size is %s", got)
 	}
 
-	// The desktop takes the size back, at its own.
-	phone3, _ := lock("phone", 40, 20, false)
+	// The desktop takes the size back, at its own; another owner's unlock
+	// leaves it.
+	phone3 := lock("phone", 40, 20)
 	defer phone3.Close()
-	if err := c.UnlockSize(sid, 90, 30); err != nil || info().SizeLock != "" || sessionSize(t, c, sid) != "90x30" {
+	if err := c.UnlockSize(sid, "other", 0, 0); err != nil || info().SizeLock != "phone" {
+		t.Errorf("unlocked by another owner: %v, %+v", err, info())
+	}
+	if err := c.UnlockSize(sid, "", 90, 30); err != nil || info().SizeLock != "" || sessionSize(t, c, sid) != "90x30" {
 		t.Errorf("unlocked by the desktop: %v, %+v", err, info())
 	}
 
-	// A lease ends unless renewed, the phone still attached.
-	phone4, answer := lock("phone", 40, 20, true)
+	// A lease ends unless renewed, the connection still open.
+	phone4 := lock("phone", 40, 20)
 	defer phone4.Close()
-	if answer != `{"ok":true,"sizeLease":true}` {
-		t.Errorf("leased answer %s", answer)
-	}
 	for range 3 {
 		time.Sleep(150 * time.Millisecond)
 		if err := call("renewSize", "phone", 0, 0); err != nil {
@@ -114,6 +114,26 @@ func TestSizeLock(t *testing.T) {
 	waitUnlocked()
 	if err := call("renewSize", "phone", 0, 0); err == nil {
 		t.Error("renewed a lease that ended")
+	}
+}
+
+// TestBindSamePeer checks that an attach binds only to a control
+// connection of its own peer: one bound answers the program's queries
+// while that connection holds the size.
+func TestBindSamePeer(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	local.keepalive = true
+	h, err := local.Hello()
+	if err != nil || h.Conn == "" {
+		t.Fatalf("hello %+v %v", h, err)
+	}
+	b := pipe(s, "")
+	if _, ok := s.bind(h.Conn, must(b.dial()), "nodekey:other"); ok {
+		t.Error("a remote peer bound to a local connection")
+	}
+	if _, ok := s.bind(h.Conn, must(b.dial()), ""); !ok {
+		t.Error("a local attach did not bind")
 	}
 }
 
@@ -138,6 +158,7 @@ func TestReplyAuthority(t *testing.T) {
 	check("the desktop typed last, and answers", desk, reply, reply)
 	check("the phone's answers go", phone, reply, "")
 	// The phone holds the size: it answers, whoever types.
+	phone.via = phoneConn
 	s.sizeLock, s.sizeLockConn = "phone", phoneConn
 	check("typed on the desktop with answers", desk, "a"+reply+"\x1b[A\x1b[1;5D", "a\x1b[A\x1b[1;5D")
 	check("the owner answers", phone, reply, reply)

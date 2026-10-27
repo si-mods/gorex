@@ -395,17 +395,16 @@ func (c *Client) Resize(sid string, cols, rows int) error {
 	return c.call(Request{Op: "resize", SID: sid, Cols: cols, Rows: rows}, nil)
 }
 
-// UnlockSize takes the session's size back from whoever holds it
-// (Attach.Owner), at cols×rows.
-func (c *Client) UnlockSize(sid string, cols, rows int) error {
-	return c.call(Request{Op: "unlockSize", SID: sid, Cols: cols, Rows: rows}, nil)
+// UnlockSize takes the session's size back, at cols×rows when given, from
+// owner, or from whoever holds it when "".
+func (c *Client) UnlockSize(sid, owner string, cols, rows int) error {
+	return c.call(Request{Op: "unlockSize", SID: sid, Owner: owner, Cols: cols, Rows: rows}, nil)
 }
 
-// LockSize takes the session's size for owner, a device named device, at
-// cols×rows, leased: RenewSize renews it. Hello must have kept the
-// connection alive.
-func (c *Client) LockSize(sid, owner, device string, cols, rows int) error {
-	return c.call(Request{Op: "lockSize", SID: sid, Owner: owner, Device: device, Cols: cols, Rows: rows, SizeLease: true}, nil)
+// LockSize takes the session's size for owner at cols×rows, leased:
+// RenewSize renews it. Hello must have kept the connection alive.
+func (c *Client) LockSize(sid, owner string, cols, rows int) error {
+	return c.call(Request{Op: "lockSize", SID: sid, Owner: owner, Cols: cols, Rows: rows}, nil)
 }
 
 // LockedResize resizes the session for owner, which fails once owner no
@@ -416,11 +415,6 @@ func (c *Client) LockedResize(sid, owner string, cols, rows int) error {
 
 func (c *Client) RenewSize(sid, owner string) error {
 	return c.call(Request{Op: "renewSize", SID: sid, Owner: owner}, nil)
-}
-
-// ReleaseSize unlocks the session's size if owner holds it.
-func (c *Client) ReleaseSize(sid, owner string) error {
-	return c.call(Request{Op: "unlockSize", SID: sid, Owner: owner}, nil)
 }
 
 // AttachConn attaches to a session as a, through this connection if kept
