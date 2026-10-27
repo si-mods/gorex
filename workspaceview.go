@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -220,7 +221,7 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 				if ui.Button(c, locales.SessionCancel()).Clicked() {
 					a.wsConfirm = false
 				}
-				if ui.Button(c, cmdCloseSession.Title()).Clicked() {
+				if dangerButton(c, k, cmdCloseSession.Title()).Clicked() {
 					a.wsConfirm = false
 					a.later(c, a.closeWorkspace)
 				}
@@ -232,6 +233,25 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 			a.focusReq = t.Focus
 		}
 	}
+}
+
+// dangerButton is a button that destroys: white on red, darker under the
+// pointer and pressed.
+func dangerButton(c *ui.Context, k *colors, label string) ui.Element {
+	b := ui.Row(c).Height(32).Padding(0, 14).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+		Role(ui.RoleButton).Label(label)
+	bg := k.danger
+	switch {
+	case b.Pressed():
+		bg = bg.Mix(ui.Hex("#000000"), 0.25)
+	case b.Hovered():
+		bg = bg.Mix(ui.Hex("#000000"), 0.12)
+	}
+	b.Background(bg).Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
+	b.Children(func() {
+		ui.Text(c, label).FontSize(13).FontWeight(600).TextColor(ui.Hex("#ffffff"))
+	})
+	return b
 }
 
 // windowTitle is the title of the window, which the Window menu and the
