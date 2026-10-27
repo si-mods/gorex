@@ -2094,32 +2094,32 @@ func (msgs Messages) RemoteAllow() string {
 	return Catalog.Format(msgs.locale, "remoteAllow", nil)
 }
 
-// RemoteShare says "Share open sessions"
+// RemoteShare says "Share open terminals"
 // in the language the app shows.
 //
-// Setting: whether allowed remote clients see and use every session of this
-// machine, or only those each opened.
+// Setting: whether allowed remote clients see and use every terminal of
+// this machine (the server's sessions), or only those each opened.
 func RemoteShare() string { return In(i18n.Locale()).RemoteShare() }
 
-// RemoteShare says "Share open sessions"
+// RemoteShare says "Share open terminals"
 // in the language of msgs.
 //
-// Setting: whether allowed remote clients see and use every session of this
-// machine, or only those each opened.
+// Setting: whether allowed remote clients see and use every terminal of
+// this machine (the server's sessions), or only those each opened.
 func (msgs Messages) RemoteShare() string {
 	return Catalog.Format(msgs.locale, "remoteShare", nil)
 }
 
-// RemoteShareNote says "Allowed clients see and use the sessions open on this machine. Off: each sees only its own."
+// RemoteShareNote says "Allowed clients see and use the terminals open on this machine. Off: each sees only its own."
 // in the language the app shows.
 //
-// Help under the Share open sessions switch.
+// Help under the Share open terminals switch.
 func RemoteShareNote() string { return In(i18n.Locale()).RemoteShareNote() }
 
-// RemoteShareNote says "Allowed clients see and use the sessions open on this machine. Off: each sees only its own."
+// RemoteShareNote says "Allowed clients see and use the terminals open on this machine. Off: each sees only its own."
 // in the language of msgs.
 //
-// Help under the Share open sessions switch.
+// Help under the Share open terminals switch.
 func (msgs Messages) RemoteShareNote() string {
 	return Catalog.Format(msgs.locale, "remoteShareNote", nil)
 }

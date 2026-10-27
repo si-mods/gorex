@@ -191,7 +191,7 @@ What to know before turning it on:
   start any program with any environment. From a shell there it can
   reach the local socket, and so change the layout, remote access, and
   sharing itself. Trust it as you would an SSH key.
-- Share open sessions (Settings › Remote, off by default, kept in
+- Share open terminals (Settings › Remote, off by default, kept in
   `remote.json`) decides what else a client sees. Off, each client lists,
   attaches to, resizes and kills only the sessions it created; the others
   (this machine's window's, other clients') are refused. On, every allowed

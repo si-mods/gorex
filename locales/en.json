@@ -706,13 +706,13 @@
   "@remoteAllow": {
     "description": "Setting: whether other machines may connect."
   },
-  "remoteShare": "Share open sessions",
+  "remoteShare": "Share open terminals",
   "@remoteShare": {
-    "description": "Setting: whether allowed remote clients see and use every session of this machine, or only those each opened."
+    "description": "Setting: whether allowed remote clients see and use every terminal of this machine (the server's sessions), or only those each opened."
   },
-  "remoteShareNote": "Allowed clients see and use the sessions open on this machine. Off: each sees only its own.",
+  "remoteShareNote": "Allowed clients see and use the terminals open on this machine. Off: each sees only its own.",
   "@remoteShareNote": {
-    "description": "Help under the Share open sessions switch."
+    "description": "Help under the Share open terminals switch."
   },
   "remoteUnreachable": "Server not reachable",
   "@remoteUnreachable": {
