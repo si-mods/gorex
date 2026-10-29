@@ -3,11 +3,13 @@
 package config
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	lua "github.com/yuin/gopher-lua"
 )
@@ -50,12 +52,38 @@ type Config struct {
 	Modes    []Mode
 	state    *lua.LState
 	invoke   func(string, map[string]any) error
+	invoking int
+	retire   bool
 }
 
 // Load reads path. A missing file is an empty configuration.
-func Load(path string) (*Config, error) {
-	c := &Config{state: lua.NewState()}
-	l := c.state
+func Load(path string) (*Config, error) { return load(path, false) }
+
+// LoadCheck reads path without os, io or file loading, for config check.
+func LoadCheck(path string) (*Config, error) { return load(path, true) }
+
+func load(path string, sandbox bool) (*Config, error) {
+	l := lua.NewState(lua.Options{SkipOpenLibs: true})
+	c := &Config{state: l}
+	if sandbox {
+		for _, lib := range []struct {
+			name string
+			fn   lua.LGFunction
+		}{
+			{lua.BaseLibName, lua.OpenBase}, {lua.TabLibName, lua.OpenTable},
+			{lua.StringLibName, lua.OpenString}, {lua.MathLibName, lua.OpenMath},
+			{lua.CoroutineLibName, lua.OpenCoroutine},
+		} {
+			l.Push(l.NewFunction(lib.fn))
+			l.Push(lua.LString(lib.name))
+			l.Call(1, 0)
+		}
+		for _, name := range []string{"dofile", "loadfile", "load", "require"} {
+			l.SetGlobal(name, lua.LNil)
+		}
+	} else {
+		l.OpenLibs()
+	}
 	l.SetGlobal("gorex", c.table())
 	if path == "" {
 		return c, nil
@@ -63,16 +91,33 @@ func Load(path string) (*Config, error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return c, nil
 	}
-	if err := l.DoFile(path); err != nil {
-		l.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	l.SetContext(ctx)
+	err := l.DoFile(path)
+	l.RemoveContext()
+	if err != nil {
+		c.closeNow()
 		return nil, err
 	}
 	return c, nil
 }
 
-// Close frees the Lua state.
+// Close frees the Lua state, unless it is running now: the close waits for
+// the call to return.
 func (c *Config) Close() {
-	if c != nil && c.state != nil {
+	if c == nil {
+		return
+	}
+	if c.invoking > 0 {
+		c.retire = true
+		return
+	}
+	c.closeNow()
+}
+
+func (c *Config) closeNow() {
+	if c.state != nil {
 		c.state.Close()
 		c.state = nil
 	}
@@ -195,6 +240,13 @@ func (c *Config) Invoke(name string, ctx, args map[string]any) error {
 	if c == nil || c.state == nil {
 		return errors.New("config: no Lua state")
 	}
+	c.invoking++
+	defer func() {
+		c.invoking--
+		if c.invoking == 0 && c.retire {
+			c.closeNow()
+		}
+	}()
 	for _, a := range c.Actions {
 		if a.Name != name {
 			continue
@@ -202,10 +254,12 @@ func (c *Config) Invoke(name string, ctx, args map[string]any) error {
 		c.state.Push(a.run)
 		c.state.Push(goTable(c.state, ctx))
 		c.state.Push(goTable(c.state, args))
-		if err := c.state.PCall(2, 0, nil); err != nil {
-			return err
-		}
-		return nil
+		cctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		c.state.SetContext(cctx)
+		err := c.state.PCall(2, 0, nil)
+		c.state.RemoveContext()
+		return err
 	}
 	return fmt.Errorf("config: no action %q", name)
 }
@@ -285,6 +339,14 @@ func goTable(l *lua.LState, m map[string]any) *lua.LTable {
 			t.RawSetString(k, lua.LNumber(x))
 		case int:
 			t.RawSetString(k, lua.LNumber(x))
+		case int64:
+			t.RawSetString(k, lua.LNumber(x))
+		case []any:
+			a := l.NewTable()
+			for i, v := range x {
+				a.RawSetInt(i+1, lua.LString(fmt.Sprint(v)))
+			}
+			t.RawSetString(k, a)
 		case map[string]any:
 			t.RawSetString(k, goTable(l, x))
 		}

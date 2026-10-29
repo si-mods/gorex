@@ -46,7 +46,20 @@ type command struct {
 	Available func(a *App) bool
 	// Hidden keeps it out of the palette.
 	Hidden bool
+	// Custom marks an action defined in the Lua configuration.
+	Custom bool
 }
+
+// clientBlockedActions are actions a client may not run, even when it may
+// reach the action channel.
+var clientBlockedActions = map[string]bool{
+	"app.quit": true, "app.updates": true, "config.reload": true, "config.lua.reload": true,
+	"session.close": true, "tab.close": true, "pane.close": true, "pane.restart": true,
+	"screen.clear": true, "scrollback.clear": true, "tab.move_window": true,
+	"mode.enter": true, "mode.exit": true, "mode.exit_all": true,
+}
+
+func blockedFromClient(id string) bool { return clientBlockedActions[id] }
 
 // actionArg is one argument of an action. Type is "string", "number",
 // "integer", "boolean", "object", "array" or "any"; Values, when set,
@@ -171,6 +184,9 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 			Args: args,
 			RunArgs: func(app *App, args map[string]any) error {
 				cfg.SetInvoke(func(id string, args map[string]any) error {
+					if blockedFromClient(id) {
+						return fmt.Errorf("%s is not allowed from an action", id)
+					}
 					cmd := lookupCommand(id)
 					if cmd == nil {
 						return fmt.Errorf("no action %q", id)
@@ -753,9 +769,12 @@ func (a *App) paletteItems() []paletteItem {
 			items = append(items, a.newTabOnItems(match)...)
 		}
 	}
-	for _, cmd := range customCommands {
+	for _, cmd := range a.custom {
 		if !match(cmd.Title()) && !match(cmd.English()) {
 			continue
+		}
+		if slices.ContainsFunc(cmd.Args, func(a actionArg) bool { return !a.Optional }) {
+			continue // the palette supplies no arguments
 		}
 		cmd := cmd
 		items = append(items, paletteItem{title: cmd.Title(), glyph: "command", run: func() { a.invokeCommand(cmd, nil) }})

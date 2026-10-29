@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func write(t *testing.T, body string) string {
@@ -38,8 +39,13 @@ gorex.action{
 	if len(c.Modes) != 1 || !c.Modes[0].Exclusive || !c.Modes[0].Once {
 		t.Fatalf("modes %+v", c.Modes)
 	}
-	if len(c.Actions) != 1 || len(c.Actions[0].Args) != 2 || !c.Actions[0].Args[1].Optional {
+	if len(c.Actions) != 1 || len(c.Actions[0].Args) != 2 {
 		t.Fatalf("actions %+v", c.Actions)
+	}
+	for _, a := range c.Actions[0].Args {
+		if a.Name == "ratio" && !a.Optional {
+			t.Fatalf("ratio is not optional: %+v", c.Actions[0].Args)
+		}
 	}
 	var called string
 	c.SetInvoke(func(id string, args map[string]any) error {
@@ -82,5 +88,23 @@ func TestPath(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/cfg")
 	if got := Path(); got != "/tmp/cfg/gorex/init.lua" {
 		t.Fatalf("path %q", got)
+	}
+}
+
+func TestCheckSandbox(t *testing.T) {
+	path := write(t, `os.execute("true")`)
+	if _, err := LoadCheck(path); err == nil {
+		t.Fatal("config check ran os.execute")
+	}
+}
+
+func TestLoadTimeout(t *testing.T) {
+	path := write(t, `while true do end`)
+	start := time.Now()
+	if _, err := Load(path); err == nil {
+		t.Fatal("an endless config loaded")
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("timeout took %v", time.Since(start))
 	}
 }

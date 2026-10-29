@@ -10,8 +10,18 @@ import (
 // reloadLuaConfig reads the Lua configuration again, keeping the last
 // good one when it fails.
 func (a *App) reloadLuaConfig() {
-	if err := a.loadLuaConfig(); err != nil {
-		a.err = err.Error()
+	var first error
+	apps := []*App{a}
+	if a.st != nil {
+		apps = a.st.apps
+	}
+	for _, app := range apps {
+		if err := app.loadLuaConfig(); err != nil && first == nil {
+			first = err
+		}
+	}
+	if first != nil {
+		a.err = first.Error()
 		return
 	}
 	a.err = ""
@@ -62,6 +72,7 @@ func (a *App) loadLuaConfig() error {
 	old := a.luaConfig
 	setCustomCommands(cmds)
 	a.keys = d
+	a.custom = cmds
 	a.luaConfig = cfg
 	if old != nil {
 		old.Close()

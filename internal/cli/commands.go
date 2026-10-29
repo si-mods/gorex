@@ -630,6 +630,10 @@ func configCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, "gorex config: use path, check or reload")
 		return ExitUsage, true
 	}
+	if serverTarget != "" && args[0] != "reload" {
+		fmt.Fprintln(errOut, "gorex config: path and check read this machine's file")
+		return ExitUsage, true
+	}
 	switch args[0] {
 	case "path":
 		fmt.Fprintln(out, config.Path())
@@ -639,7 +643,7 @@ func configCmd(args []string, out, errOut io.Writer) (int, bool) {
 		if len(args) > 1 {
 			path = args[1]
 		}
-		cfg, err := config.Load(path)
+		cfg, err := config.LoadCheck(path)
 		if err != nil {
 			fmt.Fprintln(errOut, err)
 			return ExitFailed, true
@@ -653,7 +657,7 @@ func configCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return code, true
 		}
 		defer c.Close()
-		res, err := c.Action("", "config.lua.reload", nil)
+		res, err := c.Command(rex.LayoutCommand{Op: "config.reload"})
 		if err != nil {
 			fmt.Fprintln(errOut, err)
 			return codeFor(err), true

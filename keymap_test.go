@@ -105,3 +105,37 @@ func TestKeyDispatcherInTerminal(t *testing.T) {
 		t.Fatalf("action ran %d times, want 1", ran)
 	}
 }
+
+func TestKeyModes(t *testing.T) {
+	global := &command{ID: "global", Run: func(*App) {}}
+	outer := &command{ID: "outer", Run: func(*App) {}}
+	inner := &command{ID: "inner", Run: func(*App) {}}
+	d := newKeyDispatcher()
+	d.defineMode("outer", keyMode{exclusive: true})
+	d.defineMode("inner", keyMode{})
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyG}}, global, nil, "")
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyX}}, outer, nil, "outer")
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyY}}, inner, nil, "inner")
+	d.enterMode("outer", false)
+	if cmd, _, ok := d.handle(ui.Ctrl, ui.KeyG); cmd != nil || ok {
+		t.Fatalf("exclusive mode let a global binding run: %v", cmd)
+	}
+	if cmd, _, _ := d.handle(ui.Ctrl, ui.KeyX); cmd != outer {
+		t.Fatalf("outer binding: %v", cmd)
+	}
+	d.enterMode("inner", false)
+	if cmd, _, _ := d.handle(ui.Ctrl, ui.KeyY); cmd != inner {
+		t.Fatalf("inner binding: %v", cmd)
+	}
+	if cmd, _, _ := d.handle(ui.Ctrl, ui.KeyX); cmd != outer {
+		t.Fatalf("outer binding while nested: %v", cmd)
+	}
+	d.exitMode()
+	if d.currentMode() != "outer" {
+		t.Fatalf("mode after leaving inner: %q", d.currentMode())
+	}
+	d.exitAll()
+	if cmd, _, _ := d.handle(ui.Ctrl, ui.KeyG); cmd != global {
+		t.Fatalf("global after modes: %v", cmd)
+	}
+}

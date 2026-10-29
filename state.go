@@ -103,6 +103,7 @@ type App struct {
 	// keymap and palette use.
 	keys      *keyDispatcher
 	luaConfig *config.Config
+	custom    []*command
 	err       string
 	// errMsg is a message of the catalog, said when drawn, which wins
 	// over err, a message of the server.

@@ -81,3 +81,13 @@ gorex.bind("ctrl+shift+l", "scratch")
 		t.Fatal("the old keymap was lost")
 	}
 }
+
+func TestCoerceArgs(t *testing.T) {
+	cmd := &command{ID: "x", Args: []actionArg{
+		{Name: "n", Type: "number"}, {Name: "i", Type: "integer"}, {Name: "b", Type: "boolean"},
+	}}
+	got := coerceArgs(cmd, map[string]any{"n": "1.5", "i": "2", "b": "true"})
+	if got["n"] != 1.5 || got["i"] != int64(2) || got["b"] != true {
+		t.Fatalf("coerced %#v", got)
+	}
+}

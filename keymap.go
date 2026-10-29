@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -38,17 +39,18 @@ const keySequenceTimeout = time.Second
 // between presses. The zero value is ready; a nil *keyDispatcher handles
 // nothing.
 type keyDispatcher struct {
-	bindings []keyBinding
-	modes    map[string]keyMode
-	stack    []string
-	pending  []keyChord
-	at       time.Time
-	timeout  time.Duration
+	bindings  []keyBinding
+	modes     map[string]keyMode
+	onceModes map[string]bool
+	stack     []string
+	pending   []keyChord
+	at        time.Time
+	timeout   time.Duration
 }
 
 // newKeyDispatcher returns an empty dispatcher.
 func newKeyDispatcher() *keyDispatcher {
-	return &keyDispatcher{timeout: keySequenceTimeout, modes: map[string]keyMode{}}
+	return &keyDispatcher{timeout: keySequenceTimeout, modes: map[string]keyMode{}, onceModes: map[string]bool{}}
 }
 
 // bind adds a binding; a later binding for the same keys wins.
@@ -72,15 +74,14 @@ func (d *keyDispatcher) defineMode(name string, m keyMode) {
 
 // enterMode enters a mode; once exits it after its next action.
 func (d *keyDispatcher) enterMode(name string, once bool) {
-	if d == nil || name == "" {
+	if d == nil || name == "" || len(d.stack) >= 16 {
 		return
 	}
-	m := d.modes[name]
-	if once {
-		m.once = true
-	}
-	d.modes[name] = m
+	d.stack = slices.DeleteFunc(d.stack, func(s string) bool { return s == name })
 	d.stack = append(d.stack, name)
+	if once {
+		d.onceModes[name] = true
+	}
 	d.reset()
 }
 
@@ -89,7 +90,9 @@ func (d *keyDispatcher) exitMode() {
 	if d == nil || len(d.stack) == 0 {
 		return
 	}
+	last := d.stack[len(d.stack)-1]
 	d.stack = d.stack[:len(d.stack)-1]
+	delete(d.onceModes, last)
 	d.reset()
 }
 
@@ -99,6 +102,7 @@ func (d *keyDispatcher) exitAll() {
 		return
 	}
 	d.stack = nil
+	d.onceModes = map[string]bool{}
 	d.reset()
 }
 
@@ -116,11 +120,26 @@ func (d *keyDispatcher) modeCurrent(mode string) keyMode {
 	return d.modes[mode]
 }
 
-func (d *keyDispatcher) allowed(b *keyBinding, mode string, exclusive bool) bool {
+func (d *keyDispatcher) allowed(b *keyBinding, exclusive bool) bool {
 	if b.Mode == "" {
-		return !exclusive
+		return !exclusive || b.Run.ID == "mode.exit" || b.Run.ID == "mode.exit_all"
 	}
-	return b.Mode == mode
+	return slices.Contains(d.stack, b.Mode)
+}
+
+// exitNamed leaves the most recent occurrence of mode.
+func (d *keyDispatcher) exitNamed(mode string) {
+	if d == nil {
+		return
+	}
+	for i := len(d.stack) - 1; i >= 0; i-- {
+		if d.stack[i] == mode {
+			d.stack = append(d.stack[:i], d.stack[i+1:]...)
+			delete(d.onceModes, mode)
+			d.reset()
+			return
+		}
+	}
 }
 
 // handle takes one key press and reports what it did: an action to run,
@@ -146,7 +165,7 @@ func (d *keyDispatcher) handle(mods ui.Modifiers, key ui.Key) (*command, map[str
 	var longer bool
 	for i := range d.bindings {
 		b := &d.bindings[i]
-		if !d.allowed(b, mode, exclusive) || len(b.Keys) < len(candidate) {
+		if !d.allowed(b, exclusive) || len(b.Keys) < len(candidate) {
 			continue
 		}
 		match := true
@@ -167,8 +186,12 @@ func (d *keyDispatcher) handle(mods ui.Modifiers, key ui.Key) (*command, map[str
 	}
 	if exact != nil && !longer {
 		d.reset()
-		if mode != "" && d.modeCurrent(mode).once {
-			d.exitMode()
+		if exact.Run.ID != "mode.exit" && exact.Run.ID != "mode.exit_all" {
+			if exact.Mode != "" && (d.modeCurrent(exact.Mode).once || d.onceModes[exact.Mode]) {
+				d.exitNamed(exact.Mode)
+			} else if exact.Mode == "" && mode != "" && (d.modeCurrent(mode).once || d.onceModes[mode]) {
+				d.exitMode()
+			}
 		}
 		return exact.Run, exact.Args, true
 	}

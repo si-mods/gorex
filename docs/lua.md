@@ -42,7 +42,7 @@ gorex.action{
     gorex.invoke("tab.new", { dir = args.dir })
   end,
 }
-gorex.bind("cmd+shift+n", "scratch", { dir = "/tmp" })
+gorex.bind("cmd+shift+j", "scratch", { dir = "/tmp" })
 ```
 
 Custom actions appear in the palette and in `gorex action run`. Argument
