@@ -300,10 +300,17 @@ func TestFilterLayout(t *testing.T) {
 	if err := json.Unmarshal(got, &st); err != nil {
 		t.Fatal(err)
 	}
-	if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 1 || st.Sessions[0].Tabs[0].Root.SID != "a" {
+	if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 2 {
 		t.Fatalf("filtered %s", got)
 	}
-	if bytes.Contains(got, []byte(`"b"`)) || bytes.Contains(got, []byte(`"other"`)) {
+	root := st.Sessions[0].Tabs[0].Root
+	if root == nil || root.A == nil || root.A.SID != "a" || root.B == nil || !root.B.Unavailable {
+		t.Fatalf("panes %+v", root)
+	}
+	if !st.Sessions[0].Tabs[1].Root.Unavailable {
+		t.Fatalf("placeholder %+v", st.Sessions[0].Tabs[1].Root)
+	}
+	if bytes.Contains(got, []byte(`"sid":"b"`)) || bytes.Contains(got, []byte(`"host":"other"`)) {
 		t.Fatalf("leaked %s", got)
 	}
 }

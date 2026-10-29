@@ -441,7 +441,7 @@ func layoutLines(n *savedNode, depth int) []string {
 		return nil
 	}
 	prefix := strings.Repeat("  ", depth)
-	if n.SID != "" || n.A == nil && n.B == nil {
+	if n.SID != "" || n.A == nil && n.B == nil || n.Unavailable {
 		name := n.Name
 		if name == "" {
 			name = n.SID
