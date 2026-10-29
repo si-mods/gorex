@@ -950,7 +950,7 @@ func (s *session) info() SessionInfo {
 		title = s.vt.Title()
 	}
 	in := SessionInfo{
-		ID: s.id, Shell: s.shell, Created: s.created,
+		ID: s.id, Shell: s.shell, Created: s.created, Owner: s.owner,
 		Title: title, LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,

@@ -597,6 +597,17 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	return res
 }
 
+// info describes ss, with the paired name of its remote owner.
+func (s *Server) info(ss *session) SessionInfo {
+	in := ss.info()
+	if in.Owner != "" {
+		if c := s.remoteClientFor(in.Owner); c != nil {
+			in.OwnerName = c.Name
+		}
+	}
+	return in
+}
+
 func (s *Server) session(id string) (*session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -688,7 +699,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		infos := make([]SessionInfo, 0, len(all))
 		for _, ss := range all {
 			if s.mayUse(peer, ss) {
-				infos = append(infos, ss.info())
+				infos = append(infos, s.info(ss))
 			}
 		}
 		return infos, nil
@@ -710,7 +721,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		s.order = append(s.order, id)
 		s.mu.Unlock()
 		s.notify("sessions")
-		return ss.info(), nil
+		return s.info(ss), nil
 	case "kill":
 		s.ops.RLock()
 		defer s.ops.RUnlock()

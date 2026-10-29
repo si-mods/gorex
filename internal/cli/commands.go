@@ -281,7 +281,7 @@ func listCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitOK, true
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tPROGRAM\tDIR\tATTACHED\tSTATUS")
+	fmt.Fprintln(tw, "ID\tPROGRAM\tOWNER\tDIR\tATTACHED\tSTATUS")
 	for _, in := range infos {
 		program := in.Program
 		if program == "" {
@@ -294,7 +294,14 @@ func listCmd(args []string, out, errOut io.Writer) (int, bool) {
 		if in.Exited {
 			status = "exited"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", in.ID, program, in.Dir, in.Attached, status)
+		owner := in.OwnerName
+		if owner == "" && in.Owner != "" {
+			owner = "remote"
+		}
+		if owner == "" {
+			owner = "local"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\n", in.ID, program, owner, in.Dir, in.Attached, status)
 	}
 	tw.Flush()
 	return ExitOK, true

@@ -352,6 +352,11 @@ type SessionInfo struct {
 	// SizeLock is the owner that holds the session's size (lockSize), ""
 	// while the windows set it.
 	SizeLock string `json:"sizeLock,omitempty"`
+	// Owner is the public key of the remote client that created the
+	// session, "" for one created locally; OwnerName is its paired name
+	// when known.
+	Owner     string `json:"owner,omitempty"`
+	OwnerName string `json:"ownerName,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
 	// said nothing.

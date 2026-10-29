@@ -101,7 +101,7 @@ func (s *Server) eventSessions() []EventSession {
 	slices.SortFunc(all, func(a, b *session) int { return strings.Compare(a.id, b.id) })
 	out := make([]EventSession, 0, len(all))
 	for _, ss := range all {
-		in := ss.info()
+		in := s.info(ss)
 		if len(in.Statuses) == 0 {
 			out = append(out, EventSession{ID: in.ID})
 			continue
