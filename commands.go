@@ -317,6 +317,9 @@ var (
 	}
 	cmdClear       = command{ID: "screen.clear", Name: locales.Messages.CmdClearScreen, Accel: "CmdOrCtrl+K", Keys: "⌘K", Other: ctrlShift(ui.KeyK), Run: func(a *App) { a.clearFocused() }, Hidden: true}
 	cmdClearScroll = command{ID: "scrollback.clear", Name: locales.Messages.CmdClearScrollback, Run: func(a *App) { a.clearFocused() }}
+	cmdFind        = command{ID: "find.open", Name: locales.Messages.CmdFind, Accel: "CmdOrCtrl+F", Keys: "⌘F", Other: ctrlShift(ui.KeyF), Run: func(a *App) { a.openFind() }, Available: func(a *App) bool { return a.findable() }}
+	cmdFindNext    = command{ID: "find.next", Name: locales.Messages.FindNext, Accel: "CmdOrCtrl+G", Keys: "⌘G", Other: ctrlShift(ui.KeyG), Run: func(a *App) { a.findNext() }, Available: func(a *App) bool { return a.findable() }}
+	cmdFindPrev    = command{ID: "find.previous", Name: locales.Messages.FindPrevious, Accel: "CmdOrCtrl+Shift+G", Keys: "⇧⌘G", Run: func(a *App) { a.findPrevious() }, Available: func(a *App) bool { return a.findable() }}
 	cmdRestart     = command{ID: "pane.restart", Name: locales.Messages.CmdRestartShell, Run: func(a *App) { a.restartFocused() }}
 	cmdBigger      = command{ID: "font.bigger", Name: locales.Messages.CmdBiggerText, Accel: "CmdOrCtrl+=", Keys: "⌘+", Other: shortcut{ui.Ctrl, ui.KeyEqual}, Run: func(a *App) { a.setFontSize(termFont.Size + 1) }}
 	cmdSmaller     = command{ID: "font.smaller", Name: locales.Messages.CmdSmallerText, Accel: "CmdOrCtrl+-", Keys: "⌘−", Other: shortcut{ui.Ctrl, ui.KeyMinus}, Run: func(a *App) { a.setFontSize(termFont.Size - 1) }}
@@ -403,7 +406,7 @@ var paletteCommands = []*command{
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
-	&cmdGhostty, &cmdClearScroll, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdEndAll,
+	&cmdGhostty, &cmdClearScroll, &cmdFind, &cmdFindNext, &cmdFindPrev, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdEndAll,
 	&cmdNewWindow, &cmdNewSession, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
 	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
 }
@@ -568,6 +571,10 @@ func (st *store) menu() *mygo.Menu {
 			{Role: mygo.RoleCopy},
 			{Role: mygo.RolePaste},
 			{Role: mygo.RoleSelectAll},
+			mygo.Separator(),
+			item(&cmdFind),
+			item(&cmdFindNext),
+			item(&cmdFindPrev),
 			mygo.Separator(),
 			item(&cmdClear),
 		}},

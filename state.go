@@ -132,11 +132,18 @@ type App struct {
 	paneRenaming  *Pane
 	paneNameText  string
 	paneNameFocus bool
-	saveDue       bool
-	lastSave      time.Time
-	quitting      bool
-	focusedWin    bool
-	title         string
+	// findPane is the pane whose find bar shows, findText its query, and
+	// findStatus how its search goes; lastFind reopens the bar.
+	findPane   *Pane
+	findText   string
+	lastFind   string
+	findStatus terminal.SearchStatus
+	findFocus  bool
+	saveDue    bool
+	lastSave   time.Time
+	quitting   bool
+	focusedWin bool
+	title      string
 
 	// The workspace's popover, the field that renames it, Close
 	// Session's question, and the palette listing the workspaces.
@@ -347,6 +354,15 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		}
 		mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
 	}
+	opts.OnSearch = func(s terminal.SearchStatus) {
+		update(func() {
+			if a.findPane == p {
+				a.findStatus = s
+				a.changed()
+			}
+		})
+	}
+	opts.OpenLink = func(link string) bool { return a.openLink(p, link) }
 	opts.OnExit = func(int) {
 		update(func() {
 			if p.closed || a.quitting {
@@ -524,6 +540,9 @@ func (a *App) dropPane(p *Pane, kill bool) {
 		return
 	}
 	p.closed = true
+	if a.findPane == p {
+		a.closeFind()
+	}
 	if p.term != nil {
 		p.term.Close()
 	}
@@ -1337,6 +1356,9 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		cols, rows = p.term.Size()
 	}
 	src := p.Tab
+	if a.findPane == p {
+		a.closeFind()
+	}
 	a.detachPane(p)
 	p.closed = true
 	if p.term != nil {

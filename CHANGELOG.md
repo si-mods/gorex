@@ -4,6 +4,10 @@
 
 - Kitty graphics sent by file path (`t=f`) are read on the machine that
   runs the program, rewritten in-band, and replayed when a window attaches.
+- Find bar: Cmd+F/Ctrl+Shift+F searches the focused pane, with match count,
+  next and previous, and Escape to close; search colors come from Ghostty's
+  `search-*` options. Command-click opens URLs and file links, resolving
+  relative paths against the pane's program directory.
 
 ## 0.2.1
 

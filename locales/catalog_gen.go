@@ -4157,3 +4157,89 @@ func PaneMoveWindow() string { return In(i18n.Locale()).PaneMoveWindow() }
 func (msgs Messages) PaneMoveWindow() string {
 	return Catalog.Format(msgs.locale, "paneMoveWindow", nil)
 }
+
+// CmdFind says "Find…"
+// in the language the app shows.
+//
+// Command palette and menu: open the find bar of the focused pane.
+func CmdFind() string { return In(i18n.Locale()).CmdFind() }
+
+// CmdFind says "Find…"
+// in the language of msgs.
+//
+// Command palette and menu: open the find bar of the focused pane.
+func (msgs Messages) CmdFind() string {
+	return Catalog.Format(msgs.locale, "cmdFind", nil)
+}
+
+// FindNext says "Find Next"
+// in the language the app shows.
+//
+// Find bar: select the next match toward older output.
+func FindNext() string { return In(i18n.Locale()).FindNext() }
+
+// FindNext says "Find Next"
+// in the language of msgs.
+//
+// Find bar: select the next match toward older output.
+func (msgs Messages) FindNext() string {
+	return Catalog.Format(msgs.locale, "findNext", nil)
+}
+
+// FindPrevious says "Find Previous"
+// in the language the app shows.
+//
+// Find bar: select the previous match.
+func FindPrevious() string { return In(i18n.Locale()).FindPrevious() }
+
+// FindPrevious says "Find Previous"
+// in the language of msgs.
+//
+// Find bar: select the previous match.
+func (msgs Messages) FindPrevious() string {
+	return Catalog.Format(msgs.locale, "findPrevious", nil)
+}
+
+// FindClose says "Close Find"
+// in the language the app shows.
+//
+// Close the find bar and clear its highlights.
+func FindClose() string { return In(i18n.Locale()).FindClose() }
+
+// FindClose says "Close Find"
+// in the language of msgs.
+//
+// Close the find bar and clear its highlights.
+func (msgs Messages) FindClose() string {
+	return Catalog.Format(msgs.locale, "findClose", nil)
+}
+
+// FindPlaceholder says "Search scrollback"
+// in the language the app shows.
+//
+// Placeholder of the find bar input.
+func FindPlaceholder() string { return In(i18n.Locale()).FindPlaceholder() }
+
+// FindPlaceholder says "Search scrollback"
+// in the language of msgs.
+//
+// Placeholder of the find bar input.
+func (msgs Messages) FindPlaceholder() string {
+	return Catalog.Format(msgs.locale, "findPlaceholder", nil)
+}
+
+// FindCount says "{selected} of {total}"
+// in the language the app shows.
+//
+// Find bar: the selected match and how many were found.
+func FindCount(selected string, total string) string {
+	return In(i18n.Locale()).FindCount(selected, total)
+}
+
+// FindCount says "{selected} of {total}"
+// in the language of msgs.
+//
+// Find bar: the selected match and how many were found.
+func (msgs Messages) FindCount(selected string, total string) string {
+	return Catalog.Format(msgs.locale, "findCount", map[string]any{"selected": selected, "total": total})
+}

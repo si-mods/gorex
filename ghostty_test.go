@@ -125,9 +125,11 @@ func TestGhosttyThemes(t *testing.T) {
 
 	// Colors go over the theme, and never change lightTerm or darkTerm.
 	before := *lightTerm
-	l, _, opaque = parseGhostty(writeConf(t, dir, "c4", "theme = "+mine+"\nbackground = #123456\ncursor-color = abc\nselection-background = #000000\npalette = 0=#010203\n")).themes()
+	l, _, opaque = parseGhostty(writeConf(t, dir, "c4", "theme = "+mine+"\nbackground = #123456\ncursor-color = abc\nselection-background = #000000\nsearch-background = #010101\nsearch-foreground = #020202\nsearch-selected-background = #030303\nsearch-selected-foreground = #040404\npalette = 0=#010203\n")).themes()
 	if !opaque || l.Background != ui.Hex("#123456") || l.Foreground != ui.Hex("#eeeeee") ||
-		l.Cursor != ui.Hex("#aabbcc") || l.Selection != ui.Hex("#000000") || l.Palette[0] != ui.Hex("#010203") {
+		l.Cursor != ui.Hex("#aabbcc") || l.Selection != ui.Hex("#000000") ||
+		l.Search != ui.Hex("#010101") || l.SearchText != ui.Hex("#020202") ||
+		l.SearchSelected != ui.Hex("#030303") || l.SearchSelectedText != ui.Hex("#040404") || l.Palette[0] != ui.Hex("#010203") {
 		t.Errorf("overrides: %+v", l)
 	}
 	if *lightTerm != before {
