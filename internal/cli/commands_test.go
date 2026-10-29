@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -146,6 +147,12 @@ func TestUsageErrors(t *testing.T) {
 	if code, handled, _, _ := runMain(t, "capture", "--raw", "--json", "-s", "x"); code != ExitUsage || !handled {
 		t.Fatalf("capture --raw --json: %d %v", code, handled)
 	}
+	if code, handled, _, _ := runMain(t, "-S"); code != ExitUsage || !handled {
+		t.Fatalf("-S without a host: %d %v", code, handled)
+	}
+	if code, handled, _, _ := runMain(t, "-S", "not-an-address", "ls"); code != ExitServer || !handled {
+		t.Fatalf("-S bad address: %d %v", code, handled)
+	}
 }
 
 func TestHostsList(t *testing.T) {
@@ -215,5 +222,39 @@ func TestSkill(t *testing.T) {
 	}
 	if b, err := os.ReadFile(victim); err != nil || string(b) != "keep" {
 		t.Fatalf("the tmp symlink was followed: %q %v", b, err)
+	}
+}
+
+func TestTargetResolution(t *testing.T) {
+	c := startServer(t)
+	one, err := c.Create(rex.CreateOptions{Dir: t.TempDir(), Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := c.Create(rex.CreateOptions{Dir: t.TempDir(), Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Kill(two.ID)
+	defer c.Kill(one.ID)
+	if got, err := resolveTarget(c, one.ID); err != nil || got != one.ID {
+		t.Fatalf("exact: %q %v", got, err)
+	}
+	if got, err := resolveTarget(c, one.ID[:4]); err != nil || got != one.ID {
+		t.Fatalf("suffix: %q %v", got, err)
+	}
+	if got, err := resolveTarget(c, "1"); err != nil || got != one.ID {
+		t.Fatalf("position: %q %v", got, err)
+	}
+	if _, err := resolveTarget(c, "no-such-session"); !errors.Is(err, errNoSession) {
+		t.Fatalf("missing: %v", err)
+	}
+}
+
+func TestLayoutLabels(t *testing.T) {
+	raw := json.RawMessage(`{"sessions":[{"name":"work","active":0,"tabs":[{"name":"build","focus":1,"root":{"a":{"sid":"one"},"b":{"sid":"two"}}}]}]}`)
+	labels := sessionLabels(raw)
+	if labels["work"] != "two" || labels["build"] != "two" {
+		t.Fatalf("labels %v", labels)
 	}
 }
