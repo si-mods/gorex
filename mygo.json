@@ -1,7 +1,7 @@
 {
   "name": "GoRex",
   "identifier": "dev.gorex.app",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "copyright": "A replica of Superlogical's Rex, built with MyGo",
   "out": "build",
   "updates": { "github": "si-mods/gorex", "publicKey": "IB19S2Q9eOxUndE8mWbXvrcCYxYow8Ay6SrWw+6uoS8=" },

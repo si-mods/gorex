@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.0
+## 0.3.1
 
 - A session server that dies — a crash, a `kill`, a reboot — no longer
   takes the windows with it. The server keeps every layout the app sends in
@@ -13,6 +13,12 @@
   attaching the window to the sessions that came back. A run that stops — the
   app asking it to, an idle exit, an upgrade — records why, with the sessions
   it held, so that the server after it starts nothing.
+
+- Dropping a tab on the middle half of another tab grafts its panes beside
+  the target tab's, with their sessions; the outer quarters still reorder,
+  and tabs of different hosts only reorder.
+
+## 0.3.0
 
 - rootshell's pane actions work: dragging a split's divider
   (`pane.resize`), swapping (`pane.swap`), renaming (`pane.rename`) and
