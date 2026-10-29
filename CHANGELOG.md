@@ -36,6 +36,9 @@
   times; a remote client's hello says which principal it is, and old
   allowlists get created times. `gorex clients` shows the principal and
   how long each attachment has been live.
+- A Linux shared-server service and `gorex remote` administration commands
+  (enable, address, pair, approve, revoke, share) are documented in
+  `docs/shared-server.md`.
 - Sessions carry the principal that created them; `gorex ls` shows local
   or the paired client's name.
 - Program status changes notify subscribers and carry their session IDs and
