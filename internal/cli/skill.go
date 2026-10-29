@@ -87,6 +87,7 @@ type skillState struct {
 	Agent  string `json:"agent"`
 	Path   string `json:"path"`
 	State  string `json:"state"` // missing, installed, current, conflict, failed, removed
+	Hook   string `json:"hook,omitempty"`
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -253,6 +254,24 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 				}
 			}
 		}
+		if !*project {
+			switch action {
+			case "setup":
+				if st.State == "installed" || st.State == "current" || st.State == "would install" {
+					st.Hook, err = setHook(a.Name, true, *dry)
+				}
+			case "remove":
+				st.Hook, err = setHook(a.Name, false, *dry)
+			case "status":
+				st.Hook, err = hookState(a.Name)
+			}
+			if err != nil {
+				st.Reason = err.Error()
+				if st.State != "conflict" {
+					st.State = "failed"
+				}
+			}
+		}
 		states = append(states, st)
 	}
 	if *asJSON {
@@ -260,6 +279,9 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	} else {
 		for _, st := range states {
 			fmt.Fprintf(out, "%s\t%s\t%s", st.Agent, st.State, st.Path)
+			if st.Hook != "" {
+				fmt.Fprintf(out, "\t%s", st.Hook)
+			}
 			if st.Reason != "" {
 				fmt.Fprintf(out, "\t%s", st.Reason)
 			}
