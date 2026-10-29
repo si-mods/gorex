@@ -169,6 +169,11 @@ func TestShortcutRecorder(t *testing.T) {
 	a.startRecording(&cmdRenameTab)
 	tt := ui.NewTester(func(c *ui.Context) { a.keyboardSettings(c, colorsOf(c)) }, 900, 600)
 	tt.Frame()
+	tt.Key(0, ui.KeyJ)
+	tt.Frame()
+	if shortcutsUI.recording == nil || shortcutsUI.err == "" {
+		t.Fatal("a plain key was accepted")
+	}
 	tt.Key(ui.Super|ui.Shift, ui.KeyJ)
 	tt.Frame()
 	b, err := loadShortcuts()

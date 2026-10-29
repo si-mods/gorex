@@ -92,8 +92,8 @@ func (a *App) loadLuaConfig() error {
 	for _, o := range overrides {
 		keys, err := parseKeySequence(o.Key)
 		if err != nil {
-			cfg.Close()
-			return fmt.Errorf("gorex shortcuts: %s: %w", o.Key, err)
+			log.Printf("gorex shortcuts: %s: %v", o.Key, err)
+			continue
 		}
 		var cmd *command
 		for _, c := range cmds {
@@ -109,8 +109,8 @@ func (a *App) loadLuaConfig() error {
 			}
 		}
 		if cmd == nil {
-			cfg.Close()
-			return fmt.Errorf("gorex shortcuts: no action %q", o.Action)
+			log.Printf("gorex shortcuts: no action %q", o.Action)
+			continue
 		}
 		d.bind(keys, cmd, o.Args, "")
 		if len(keys) > 0 {
@@ -170,7 +170,7 @@ func saveShortcut(action, key string) error {
 	found := false
 	for i := range b {
 		if b[i].Action == action {
-			b[i].Key, b[i].Args, found = key, nil, true
+			b[i].Key, found = key, true
 		}
 	}
 	if !found {
@@ -215,6 +215,11 @@ func writeShortcuts(b []shortcutBinding) error {
 	}
 	name := tmp.Name()
 	if _, err := tmp.Write(j); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
 		tmp.Close()
 		os.Remove(name)
 		return err

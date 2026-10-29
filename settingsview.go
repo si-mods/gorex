@@ -385,15 +385,26 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 type shortcutRow struct {
 	Title, Keys string
 	Command     *command
+	Overridden  bool
 }
 
 // shortcutRows lists GoRex's shortcuts from the commands, with the keys of
 // this system, and the tab keys the commands lack.
 func shortcutRows() []shortcutRow {
+	overrides := map[string]string{}
+	if b, err := loadShortcuts(); err == nil {
+		for _, o := range b {
+			overrides[o.Action] = o.Key
+		}
+	}
 	var rows []shortcutRow
 	for _, cmd := range commands {
 		if cmd.Keys != "" {
-			rows = append(rows, shortcutRow{cmd.Title(), cmd.Keys, cmd})
+			keys, over := cmd.Keys, false
+			if k, ok := overrides[cmd.ID]; ok {
+				keys, over = k, true
+			}
+			rows = append(rows, shortcutRow{cmd.Title(), keys, cmd, over})
 		}
 	}
 	first, last, cycle := showTabKey(1).String(), showTabKey(9).String(), "Ctrl+Tab, Ctrl+Shift+Tab"
@@ -425,10 +436,11 @@ func (a *App) keyboardSettings(c *ui.Context, k *colors) {
 				ui.Text(c, r.Title).FontSize(13.5).TextColor(k.text).Grow(1)
 				ui.Text(c, r.Keys).FontSize(12).TextColor(k.textMuted).Padding(2, 7).Radius(7).Background(k.hover)
 				if r.Command != nil {
-					if ui.Button(c.Key("change"), "Change").Clicked() {
+					if !blockedFromClient(r.Command.ID) && ui.Button(c.Key("change"), "Change").Clicked() {
 						a.startRecording(r.Command)
 					}
-					if ui.Button(c.Key("reset"), locales.SettingsReset()).Clicked() {
+					reset := ui.Button(c.Key("reset"), locales.SettingsReset()).Disabled(!r.Overridden)
+					if reset.Clicked() {
 						a.resetShortcut(r.Command)
 					}
 				}

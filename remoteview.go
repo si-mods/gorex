@@ -43,6 +43,9 @@ var remoteUI struct {
 // showSection chooses a settings section. The Remote page asks the server
 // every two seconds while it shows, and drops the address when it goes.
 func (a *App) showSection(id string) {
+	if id != "keyboard" && shortcutsUI.recording != nil {
+		a.stopRecording()
+	}
 	settingsUI.section = id
 	if id == "remote" {
 		a.startRemotePoll()

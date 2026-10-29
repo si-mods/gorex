@@ -62,12 +62,14 @@ var reloadConfig func(*App)
 
 func init() {
 	rebuildMenu = func(st *store) {
+		if st.recording {
+			mygo.App.SetMenu(mygo.NewMenu(nil))
+			return
+		}
 		mygo.App.SetMenu(st.menu())
 	}
 	reloadConfig = func(a *App) {
-		if err := a.loadLuaConfig(); err != nil {
-			a.err = err.Error()
-		}
+		a.reloadLuaConfig()
 	}
 }
 
@@ -101,9 +103,17 @@ func (a *App) recordShortcut(c *ui.Context) {
 			if !c.Shortcut(mods, key) {
 				continue
 			}
+			if mods == 0 && (key < ui.KeyF1 || key > ui.KeyF12) {
+				shortcutsUI.err = "Use a modifier, or an F-key"
+				return
+			}
 			chord := keyChord{Mods: mods, Key: key}.String()
 			if owner, ok := conflictingShortcut(shortcutsUI.recording.ID, chord); ok {
 				shortcutsUI.err = "Already bound to " + owner
+				return
+			}
+			if owner := a.bindingOwner(mods, key, shortcutsUI.recording); owner != nil {
+				shortcutsUI.err = "Already bound to " + owner.Title()
 				return
 			}
 			if err := saveShortcut(shortcutsUI.recording.ID, chord); err != nil {
@@ -115,6 +125,18 @@ func (a *App) recordShortcut(c *ui.Context) {
 			return
 		}
 	}
+}
+
+func (a *App) bindingOwner(mods ui.Modifiers, key ui.Key, except *command) *command {
+	if a.keys == nil {
+		return nil
+	}
+	for _, b := range a.keys.bindings {
+		if len(b.Keys) > 0 && b.Keys[0].Mods == mods && b.Keys[0].Key == key && b.Run != nil && b.Run.ID != except.ID {
+			return b.Run
+		}
+	}
+	return nil
 }
 
 func conflictingShortcut(action, key string) (string, bool) {
