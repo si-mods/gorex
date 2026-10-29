@@ -36,6 +36,8 @@
   times; a remote client's hello says which principal it is, and old
   allowlists get created times. `gorex clients` shows the principal and
   how long each attachment has been live.
+- A login/PAM proposal documents the path from one-account shared mode to
+  per-user isolation; it is not implemented.
 - A Linux shared-server service and `gorex remote` administration commands
   (enable, address, pair, approve, revoke, share) are documented in
   `docs/shared-server.md`.

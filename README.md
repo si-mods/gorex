@@ -276,7 +276,8 @@ panes of other hosts are left out; `gorex -S HOST layout`
 reads it and `events` follows changes.
 
 For a Linux service shared by several paired clients, see
-[docs/shared-server.md](docs/shared-server.md).
+[docs/shared-server.md](docs/shared-server.md). Per-user isolation and
+PAM login are a separate proposal: [docs/login-server-rfc.md](docs/login-server-rfc.md).
 
 Settings › Remote Hosts connects this machine to other machines' session
 servers, whose sessions then open in tabs of the window beside its own.
