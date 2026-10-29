@@ -100,7 +100,8 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 	}
 	if c.Op == "action" {
 		switch c.Action {
-		case "app.quit", "session.close", "tab.close", "pane.close", "pane.restart":
+		case "app.quit", "app.updates", "config.reload", "session.close", "tab.close", "pane.close", "pane.restart",
+			"screen.clear", "scrollback.clear", "tab.move_window":
 			return fail("not_allowed", "GoRex does not run "+c.Action+" from a client")
 		}
 		if c.SID != "" {

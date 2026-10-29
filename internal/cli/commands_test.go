@@ -162,6 +162,12 @@ func TestUsageErrors(t *testing.T) {
 	if code, handled, _, _ := runMain(t, "-S", "", "ls"); code != ExitUsage || !handled {
 		t.Fatalf("-S with an empty host: %d %v", code, handled)
 	}
+	if code, handled, _, _ := runMain(t, "remote", "bogus"); code != ExitUsage || !handled {
+		t.Fatalf("remote bogus: %d %v", code, handled)
+	}
+	if code, handled, _, _ := runMain(t, "remote", "control"); code != ExitUsage || !handled {
+		t.Fatalf("remote control without a value: %d %v", code, handled)
+	}
 	if code, handled, _, _ := runMain(t, "-S", "not-an-address", "ls"); code != ExitServer || !handled {
 		t.Fatalf("-S bad address: %d %v", code, handled)
 	}

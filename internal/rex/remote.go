@@ -247,8 +247,6 @@ var remoteListen = func(ctx context.Context, ts *tailcat.Server, region int) (ne
 	return ln, ts.TailcatAddr(), region, nil
 }
 
-// remoteAllowed tells the ops a remote connection may make; it may also
-// attach to sessions.
 // remoteControlEnabled tells whether remote clients may run app actions.
 func (s *Server) remoteControlEnabled() bool {
 	s.rem.mu.Lock()
@@ -256,6 +254,8 @@ func (s *Server) remoteControlEnabled() bool {
 	return s.rem.cfg.RemoteControl
 }
 
+// remoteAllowed tells the ops a remote connection may make; it may also
+// attach to sessions.
 func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "input", "capture", "clients":

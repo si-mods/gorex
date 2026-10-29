@@ -58,7 +58,7 @@ type Request struct {
 	// does not know it ignores it, and answers no Hello.Keepalive.
 	Keepalive bool `json:"keepalive,omitempty"`
 
-	// On is the setting of remote.shareSet.
+	// On is the setting of remote.shareSet and remote.controlSet.
 	On bool `json:"on,omitempty"`
 
 	// Owner is the size lock's owner, of lockSize, lockedResize,

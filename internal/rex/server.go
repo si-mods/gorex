@@ -770,6 +770,11 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if req.Action == nil || req.Action.ID == "" {
 			return nil, errors.New("rex: no action")
 		}
+		if req.SID != "" {
+			if _, err := s.use(req.SID, peer); err != nil {
+				return nil, err
+			}
+		}
 		return s.command(LayoutCommand{Op: "action", SID: req.SID, Action: req.Action.ID, Args: req.Action.Args}), nil
 	case "resize", "lockSize", "lockedResize", "unlockSize", "renewSize":
 		ss, err := s.use(req.SID, peer)

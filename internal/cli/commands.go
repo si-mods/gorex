@@ -618,6 +618,23 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, "gorex remote: use status or control on|off")
 		return ExitUsage, true
 	}
+	var asJSON *bool
+	switch args[0] {
+	case "status":
+		fs := flagSet("remote status", errOut)
+		asJSON = fs.Bool("json", false, "print JSON")
+		if code, stop := parse(fs, args[1:]); stop {
+			return code, true
+		}
+	case "control":
+		if len(args) != 2 || (args[1] != "on" && args[1] != "off") {
+			fmt.Fprintln(errOut, "gorex remote control: give on or off")
+			return ExitUsage, true
+		}
+	default:
+		fmt.Fprintln(errOut, "gorex remote: use status or control on|off")
+		return ExitUsage, true
+	}
 	c, code := connect(errOut)
 	if c == nil {
 		return code, true
@@ -625,11 +642,6 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 	defer c.Close()
 	switch args[0] {
 	case "status":
-		fs := flagSet("remote status", errOut)
-		asJSON := fs.Bool("json", false, "print JSON")
-		if code, stop := parse(fs, args[1:]); stop {
-			return code, true
-		}
 		st, err := c.RemoteStatus()
 		if err != nil {
 			fmt.Fprintln(errOut, err)
@@ -640,21 +652,17 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			Running       bool `json:"running"`
 			ShareSessions bool `json:"shareSessions"`
 			RemoteControl bool `json:"remoteControl"`
-			Clients       int  `json:"clients"`
+			Allowed       int  `json:"allowed"`
 			Network       bool `json:"network"`
 		}{st.Enabled, st.Running, st.ShareSessions, st.RemoteControl, len(st.Allowed), st.Network != nil}
 		if *asJSON {
 			WriteJSON(out, shown)
 			return ExitOK, true
 		}
-		fmt.Fprintf(out, "enabled=%v running=%v share=%v control=%v clients=%d network=%v\n",
-			shown.Enabled, shown.Running, shown.ShareSessions, shown.RemoteControl, shown.Clients, shown.Network)
+		fmt.Fprintf(out, "enabled=%v running=%v share=%v control=%v allowed=%d network=%v\n",
+			shown.Enabled, shown.Running, shown.ShareSessions, shown.RemoteControl, shown.Allowed, shown.Network)
 		return ExitOK, true
 	case "control":
-		if len(args) != 2 || (args[1] != "on" && args[1] != "off") {
-			fmt.Fprintln(errOut, "gorex remote control: give on or off")
-			return ExitUsage, true
-		}
 		on := args[1] == "on"
 		if err := c.RemoteControl(on); err != nil {
 			fmt.Fprintln(errOut, err)
