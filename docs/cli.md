@@ -3,6 +3,11 @@
 `gorex` is the same binary as the app. From a terminal it drives sessions
 without opening a window; with no arguments it starts the app.
 
+`-S HOST` before a command uses a saved remote host from `hosts.json`, or
+an address, instead of this machine's server. Local-only commands (`hosts`,
+`skill`) and window-only commands (`split`, `close`, `action`) do not
+apply remotely.
+
 Every local terminal GoRex opens gets:
 
 - `GOREX_SESSION`, the session the terminal belongs to, which commands
@@ -35,6 +40,10 @@ gorex skill show|setup|status|remove [--agent NAME] [--project] [--json]
 gorex action run [-s SESSION] ACTION [KEY=VALUE...]
 gorex version [--json]
 ```
+
+Targets are a full session ID, a workspace or tab label, a position in
+`ls` (1 is the first), or the end of an ID (at least four characters). An
+ambiguous target exits 3.
 
 - `new` creates a session and prints its ID.
 - `send` types without attaching; `--enter` presses Return.
@@ -70,5 +79,5 @@ gorex wait -s <id> --contains FAIL --timeout 120s
 gorex capture -s <id>
 ```
 
-Remote `-S` targets, host add/remove, label/position target resolution and
-agent hooks are not part of this slice.
+Host add/remove, remote window actions and agent context hooks are not
+part of this slice.

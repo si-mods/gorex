@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -27,11 +28,22 @@ const (
 	ExitServer = 4
 )
 
+// serverTarget is -S, a host label or address; Main sets it for a call.
+var serverTarget string
+
 // Main runs the command line. handled is false when args are the app's, as
 // an AppKit argument, and the GUI should start.
 func Main(args []string, out, errOut io.Writer, version string) (code int, handled bool) {
+	serverTarget = ""
 	if len(args) == 0 {
 		return 0, false
+	}
+	if args[0] == "-S" || args[0] == "--server" {
+		if len(args) < 3 || strings.TrimSpace(args[1]) == "" {
+			fmt.Fprintln(errOut, "gorex: -S needs a host and a command")
+			return ExitUsage, true
+		}
+		serverTarget, args = args[1], args[2:]
 	}
 	name, args := args[0], args[1:]
 	switch name {
@@ -80,7 +92,7 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `gorex — the GoRex command line
 
 Usage:
-  gorex ls [--json]
+  gorex [-S HOST] ls [--json]
   gorex clients [--json]
   gorex split [-s SESSION] [--down] [--dir DIR]
   gorex close [-s SESSION] [--tab]
@@ -122,9 +134,62 @@ func parse(fs *flag.FlagSet, args []string) (int, bool) {
 	return 0, false
 }
 
-// connect connects to the server, starting one when none runs.
+// connect connects to the server, starting one when none runs; -S names a
+// saved host or an address.
 func connect(errOut io.Writer) (*rex.Client, int) {
-	c, err := rex.Connect()
+	if serverTarget == "" {
+		c, err := rex.Connect()
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return nil, ExitServer
+		}
+		return c, ExitOK
+	}
+	f, err := loadHosts()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return nil, ExitFailed
+	}
+	{
+		var manual, network []savedHost
+		for _, h := range f.Hosts {
+			if h.ID == "" || h.Address == "" || !strings.EqualFold(h.Name, serverTarget) {
+				continue
+			}
+			if h.Network {
+				network = append(network, h)
+			} else {
+				manual = append(manual, h)
+			}
+		}
+		// A host added by hand wins over one the directory brought; if
+		// there is none, a directory host must still be unique.
+		found := manual
+		if len(found) == 0 {
+			found = network
+		}
+		if len(found) > 1 {
+			fmt.Fprintf(errOut, "gorex: host %q is ambiguous\n", serverTarget)
+			return nil, ExitTarget
+		}
+		if len(found) == 1 {
+			return dialRemote(found[0], errOut)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	c, err := rex.ConnectRemote(ctx, serverTarget)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return nil, ExitServer
+	}
+	return c, ExitOK
+}
+
+func dialRemote(h savedHost, errOut io.Writer) (*rex.Client, int) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	c, err := rex.ConnectRemote(ctx, h.Address)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return nil, ExitServer
@@ -134,7 +199,10 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 
 // targetFlag adds -s/--session, defaulting to GOREX_SESSION.
 func targetFlag(fs *flag.FlagSet) *string {
-	def := os.Getenv("GOREX_SESSION")
+	def := ""
+	if serverTarget == "" {
+		def = os.Getenv("GOREX_SESSION")
+	}
 	return fs.String("s", def, "session ID")
 }
 
@@ -246,7 +314,12 @@ func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	res, err := c.Command(rex.LayoutCommand{Op: "pane.split", SID: *sid, Vertical: *down, Dir: *dir})
+	target, err := resolveTarget(c, *sid)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	res, err := c.Command(rex.LayoutCommand{Op: "pane.split", SID: target, Vertical: *down, Dir: *dir})
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -280,11 +353,16 @@ func closeCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
+	target, err := resolveTarget(c, *sid)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
 	op := "pane.close"
 	if *tab {
 		op = "tab.close"
 	}
-	res, err := c.Command(rex.LayoutCommand{Op: op, SID: *sid})
+	res, err := c.Command(rex.LayoutCommand{Op: op, SID: target})
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -345,7 +423,12 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	if err := c.Input(*sid, []byte(text)); err != nil {
+	target, err := resolveTarget(c, *sid)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if err := c.Input(target, []byte(text)); err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
@@ -373,7 +456,12 @@ func captureCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	res, err := c.Capture(*sid, *history)
+	target, err := resolveTarget(c, *sid)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	res, err := c.Capture(target, *history)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -460,16 +548,9 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, "gorex hosts: use `gorex hosts [ls]`")
 		return ExitUsage, true
 	}
-	b, err := os.ReadFile(filepath.Join(rex.Dir(), "hosts.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		b = []byte(`{"hosts":[]}`)
-	} else if err != nil {
+	f, err := loadHosts()
+	if err != nil {
 		fmt.Fprintln(errOut, err)
-		return ExitFailed, true
-	}
-	var f hostsFile
-	if err := json.Unmarshal(b, &f); err != nil {
-		fmt.Fprintln(errOut, "hosts.json is not valid:", err)
 		return ExitFailed, true
 	}
 	hosts := f.Hosts[:0]
@@ -498,6 +579,21 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	tw.Flush()
 	return ExitOK, true
+}
+
+func loadHosts() (hostsFile, error) {
+	b, err := os.ReadFile(filepath.Join(rex.Dir(), "hosts.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return hostsFile{}, nil
+	}
+	if err != nil {
+		return hostsFile{}, err
+	}
+	var f hostsFile
+	if err := json.Unmarshal(b, &f); err != nil {
+		return hostsFile{}, errors.New("hosts.json is not valid: " + err.Error())
+	}
+	return f, nil
 }
 
 // printable keeps a name from moving the cursor or changing the title.
@@ -551,6 +647,11 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
+	target, err := resolveTarget(c, *sid)
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
 	var deadline time.Time
 	if *timeout > 0 {
 		deadline = time.Now().Add(*timeout)
@@ -561,9 +662,9 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 			fmt.Fprintln(errOut, err)
 			return ExitServer, true
 		}
-		in, ok := findSession(infos, *sid)
+		in, ok := findSession(infos, target)
 		if !ok {
-			fmt.Fprintf(errOut, "gorex: no session %q\n", *sid)
+			fmt.Fprintf(errOut, "gorex: no session %q\n", target)
 			return ExitTarget, true
 		}
 		ready := true
@@ -577,7 +678,7 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 			ready = false
 		}
 		if *contains != "" {
-			res, err := c.Capture(*sid, 64<<10)
+			res, err := c.Capture(target, 64<<10)
 			if err != nil {
 				fmt.Fprintln(errOut, err)
 				return codeFor(err), true
@@ -598,7 +699,7 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitOK, true
 		}
 		if !deadline.IsZero() && time.Now().After(deadline) {
-			fmt.Fprintf(errOut, "gorex wait: %s did not become ready in %v\n", *sid, *timeout)
+			fmt.Fprintf(errOut, "gorex wait: %s did not become ready in %v\n", target, *timeout)
 			return ExitFailed, true
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -682,7 +783,16 @@ func actionCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	res, err := c.Action(*sid, id, actionArgs)
+	target := *sid
+	if target != "" {
+		var err error
+		target, err = resolveTarget(c, target)
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return codeFor(err), true
+		}
+	}
+	res, err := c.Action(target, id, actionArgs)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -758,8 +868,8 @@ func codeFor(err error) int {
 	if err == nil {
 		return ExitOK
 	}
-	if rex.NotShared(err) || errors.Is(err, errNoSession) || strings.Contains(err.Error(), "no session") ||
-		strings.Contains(err.Error(), "session has ended") {
+	if rex.NotShared(err) || errors.Is(err, errNoSession) || errors.Is(err, errAmbiguous) ||
+		strings.Contains(err.Error(), "no session") || strings.Contains(err.Error(), "session has ended") {
 		return ExitTarget
 	}
 	return ExitFailed
