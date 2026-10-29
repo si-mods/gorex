@@ -275,6 +275,9 @@ may use; panes it may not use are shown as unavailable placeholders, and
 panes of other hosts are left out; `gorex -S HOST layout`
 reads it and `events` follows changes.
 
+For a Linux service shared by several paired clients, see
+[docs/shared-server.md](docs/shared-server.md).
+
 Settings › Remote Hosts connects this machine to other machines' session
 servers, whose sessions then open in tabs of the window beside its own.
 Add Remote Host… asks for the host's address (the one its Settings ›

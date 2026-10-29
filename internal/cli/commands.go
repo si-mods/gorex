@@ -119,7 +119,7 @@ Usage:
   gorex events
   gorex hosts [ls] [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project]
-  gorex remote status [--json] | remote control on|off
+  gorex remote status [--json] | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
   gorex config path | config check [FILE] | config reload
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
@@ -808,34 +808,108 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, "gorex remote: this changes the local server only")
 		return ExitUsage, true
 	}
-	if len(args) == 0 {
-		fmt.Fprintln(errOut, "gorex remote: use status or control on|off")
+	usage := func() (int, bool) {
+		fmt.Fprintln(errOut, "gorex remote: status | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY")
 		return ExitUsage, true
 	}
-	var asJSON *bool
+	if len(args) == 0 {
+		return usage()
+	}
+	asJSON := false
+	if args[0] == "status" && len(args) > 1 && args[1] == "--json" {
+		asJSON = true
+		args = append(args[:1], args[2:]...)
+	}
+	if len(args) > 1 && args[0] == "status" {
+		return usage()
+	}
+	need := func(n int) bool {
+		if len(args) != n {
+			usage()
+			return false
+		}
+		return true
+	}
+	onOff := func(what string) (bool, bool) {
+		if !need(2) || (args[1] != "on" && args[1] != "off") {
+			fmt.Fprintf(errOut, "gorex remote %s: give on or off\n", what)
+			return false, false
+		}
+		return args[1] == "on", true
+	}
+	var run func(*rex.Client) error
 	switch args[0] {
 	case "status":
-		fs := flagSet("remote status", errOut)
-		asJSON = fs.Bool("json", false, "print JSON")
-		if code, stop := parse(fs, args[1:]); stop {
-			return code, true
-		}
-	case "control":
-		if len(args) != 2 || (args[1] != "on" && args[1] != "off") {
-			fmt.Fprintln(errOut, "gorex remote control: give on or off")
+	case "address":
+	case "enable":
+		if !need(1) {
 			return ExitUsage, true
 		}
+		run = func(c *rex.Client) error { return c.EnableRemote() }
+	case "disable":
+		if !need(1) {
+			return ExitUsage, true
+		}
+		run = func(c *rex.Client) error { return c.DisableRemote() }
+	case "control":
+		on, ok := onOff("control")
+		if !ok {
+			return ExitUsage, true
+		}
+		run = func(c *rex.Client) error { return c.RemoteControl(on) }
+	case "share":
+		on, ok := onOff("share")
+		if !ok {
+			return ExitUsage, true
+		}
+		run = func(c *rex.Client) error { return c.ShareSessions(on) }
+	case "layout":
+		on, ok := onOff("layout")
+		if !ok {
+			return ExitUsage, true
+		}
+		run = func(c *rex.Client) error { return c.ShareLayout(on) }
+	case "pair":
+		if !need(2) || (args[1] != "start" && args[1] != "stop") {
+			return usage()
+		}
+		if args[1] == "start" {
+			run = func(c *rex.Client) error { return c.StartPairing() }
+		} else {
+			run = func(c *rex.Client) error { return c.StopPairing() }
+		}
+	case "pending":
+		if !need(1) {
+			return ExitUsage, true
+		}
+	case "approve", "reject", "revoke":
+		if !need(2) {
+			return ExitUsage, true
+		}
+		key := args[1]
+		switch args[0] {
+		case "approve":
+			run = func(c *rex.Client) error { return c.ApprovePairing(key) }
+		case "reject":
+			run = func(c *rex.Client) error { return c.RejectPairing(key) }
+		default:
+			run = func(c *rex.Client) error { return c.RevokeRemote(key) }
+		}
+	case "allow":
+		if !need(3) {
+			return ExitUsage, true
+		}
+		name, key := args[1], args[2]
+		run = func(c *rex.Client) error { return c.AllowRemote(name, key) }
 	default:
-		fmt.Fprintln(errOut, "gorex remote: use status or control on|off")
-		return ExitUsage, true
+		return usage()
 	}
 	c, code := connect(errOut)
 	if c == nil {
 		return code, true
 	}
 	defer c.Close()
-	switch args[0] {
-	case "status":
+	if args[0] == "status" {
 		st, err := c.RemoteStatus()
 		if err != nil {
 			fmt.Fprintln(errOut, err)
@@ -845,27 +919,42 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			Enabled       bool `json:"enabled"`
 			Running       bool `json:"running"`
 			ShareSessions bool `json:"shareSessions"`
+			ShareLayout   bool `json:"shareLayout"`
 			RemoteControl bool `json:"remoteControl"`
 			Allowed       int  `json:"allowed"`
 			Network       bool `json:"network"`
-		}{st.Enabled, st.Running, st.ShareSessions, st.RemoteControl, len(st.Allowed), st.Network != nil}
-		if *asJSON {
+		}{st.Enabled, st.Running, st.ShareSessions, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Network != nil}
+		if asJSON {
 			WriteJSON(out, shown)
 			return ExitOK, true
 		}
-		fmt.Fprintf(out, "enabled=%v running=%v share=%v control=%v allowed=%d network=%v\n",
-			shown.Enabled, shown.Running, shown.ShareSessions, shown.RemoteControl, shown.Allowed, shown.Network)
-		return ExitOK, true
-	case "control":
-		on := args[1] == "on"
-		if err := c.RemoteControl(on); err != nil {
-			fmt.Fprintln(errOut, err)
-			return ExitFailed, true
-		}
+		fmt.Fprintf(out, "enabled=%v running=%v share=%v layout=%v control=%v allowed=%d network=%v\n",
+			shown.Enabled, shown.Running, shown.ShareSessions, shown.ShareLayout, shown.RemoteControl, shown.Allowed, shown.Network)
 		return ExitOK, true
 	}
-	fmt.Fprintln(errOut, "gorex remote: use status or control on|off")
-	return ExitUsage, true
+	if args[0] == "address" {
+		st, err := c.RemoteStatus()
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return ExitServer, true
+		}
+		fmt.Fprintln(out, st.Address)
+		return ExitOK, true
+	}
+	if args[0] == "pending" {
+		st, err := c.RemoteStatus()
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return ExitServer, true
+		}
+		WriteJSON(out, st.Pending)
+		return ExitOK, true
+	}
+	if err := run(c); err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	return ExitOK, true
 }
 
 func eventsCmd(args []string, out, errOut io.Writer) (int, bool) {

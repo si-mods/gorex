@@ -1,0 +1,18 @@
+[Unit]
+Description=GoRex session server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gorex
+Group=gorex
+Environment=GOREX_DIR=/var/lib/gorex
+ExecStart=/usr/local/bin/gorex -server
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
