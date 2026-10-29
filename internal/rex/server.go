@@ -568,7 +568,7 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	var data any
 	var err error
 	remote := peer != ""
-	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe") && s.remoteShareLayout()
+	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe" || req.Op == "command") && s.remoteShareLayout()
 	if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
 	} else if remote && !remoteAllowed(req.Op) && !layout && !(req.Op == "action" && s.remoteControlEnabled()) {
