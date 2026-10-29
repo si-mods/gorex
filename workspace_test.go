@@ -984,7 +984,7 @@ func TestAdoptAcrossWorkspaces(t *testing.T) {
 	b := st.openWindow(st.addWorkspace(), false)
 	byID := map[string]rex.SessionInfo{"r1": {ID: "r1"}, "r2": {ID: "r2"}}
 	for _, o := range a.peers() {
-		o.apply(h, byID)
+		o.apply(h, byID, hostLayout{})
 	}
 	count := func(o *App, sid string) int {
 		n := 0

@@ -100,7 +100,7 @@ func refresh(a *App) {
 	for _, in := range infos {
 		byID[in.ID] = in
 	}
-	a.apply(nil, byID)
+	a.apply(nil, byID, hostLayout{})
 }
 
 // waitFor runs frames until cond holds, or fails after a few seconds.

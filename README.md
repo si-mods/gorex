@@ -313,10 +313,13 @@ attaches again by itself; one whose session ended there closes. The
 window's layout keeps the host of each pane, so a host's tabs come back
 when GoRex opens again, attached once the host answers. Sessions the host
 lists that no tab shows (opened in the host's own window, or by another
-client, while the host shares its sessions) get a tab each, last among
-the host's; a tab closed here ends its session as any other and does not
-come back. When the host stops sharing, the tabs of sessions this machine
-did not create close here and their sessions go on there.
+client, while the host shares its sessions) open last among the host's:
+one tab for each session, or, while the host shares its layout, one tab
+for each tab that layout shows, with its splits, so two panes side by
+side there are not two tabs here; a tab closed here ends its session as
+any other and does not come back. When the host stops sharing, the tabs
+of sessions this machine did not create close here and their sessions go
+on there.
 `go run ./tools/remotectl pair ADDRESS NAME` asks to pair from a machine
 without the app.
 

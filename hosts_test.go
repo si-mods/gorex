@@ -764,12 +764,12 @@ func TestAdoptHostSessions(t *testing.T) {
 		defer bh.mu.Unlock()
 		return len(bh.Kills) == 0
 	})
-	b.apply(bh, stale)
+	b.apply(bh, stale, hostLayout{})
 	if n := len(tabsOf(b, info.ID)); n != 0 {
 		t.Errorf("the closed session came back in %d tabs", n)
 	}
 	// Nor an exited session.
-	b.apply(bh, map[string]rex.SessionInfo{"x": {ID: "x", Exited: true}})
+	b.apply(bh, map[string]rex.SessionInfo{"x": {ID: "x", Exited: true}}, hostLayout{})
 	if n := len(tabsOf(b, "x")); n != 0 {
 		t.Error("an exited session got a tab")
 	}
@@ -784,6 +784,137 @@ func TestAdoptHostSessions(t *testing.T) {
 	waitFor(t, tb, "its tab to close", func() bool { return len(tabsOf(b, other.ID)) == 0 })
 	if hs, _ := loadHosts(); len(hs) != 1 || slices.Contains(hs[0].Kills, other.ID) {
 		t.Errorf("hosts.json keeps %+v", hs)
+	}
+}
+
+// TestAdoptHostTabSplits checks that the sessions of one tab of the host's
+// shared layout open here as one tab, with its splits, rather than a tab
+// each.
+func TestAdoptHostTabSplits(t *testing.T) {
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, remote := startHostServer(t)
+	t.Cleanup(a.stopHosts)
+	left, err := remote.Create(rex.CreateOptions{Cols: 90, Rows: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := remote.Create(rex.CreateOptions{Cols: 88, Rows: 28})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := savedStore{
+		Version: layoutVersion,
+		Sessions: []savedWorkspace{{
+			ID: "w", Name: "studio",
+			Layout: savedLayout{Tabs: []savedTab{{
+				Name: "build",
+				// The layout a client gets has the panes it may not use
+				// left out of the focus: here the first pane is one, so
+				// pane 1 is the right one, not the left.
+				Focus: 1,
+				Root: &savedNode{
+					Ratio: 0.5,
+					A:     &savedNode{Name: "Unavailable", Unavailable: true},
+					B: &savedNode{
+						Ratio: 0.5,
+						A:     &savedNode{SID: left.ID, Dir: "/tmp"},
+						B:     &savedNode{SID: right.ID, Dir: "/tmp"},
+					},
+				},
+			}}},
+		}},
+		Windows: []string{"w"},
+	}
+	raw, err := json.Marshal(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+
+	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	tabsOn := func() []*Tab { return a.tabsOn(h) }
+	waitFor(t, tt, "the host's tab", func() bool { return len(tabsOn()) == 1 })
+	got := tabsOn()[0]
+	if got.Name != "build" {
+		t.Errorf("the tab is named %q", got.Name)
+	}
+	if n := len(got.panes()); n != 2 {
+		t.Fatalf("the host's tab came back with %d panes", n)
+	}
+	if got.Root.Vertical {
+		t.Error("the panes are stacked, not side by side")
+	}
+	if sid := got.Root.A.Pane.SID; sid != left.ID {
+		t.Errorf("the left pane is %s, not %s", sid, left.ID)
+	}
+	if sid := got.Root.B.Pane.SID; sid != right.ID {
+		t.Errorf("the right pane is %s, not %s", sid, right.ID)
+	}
+	if sid := got.Focus.SID; sid != right.ID {
+		t.Errorf("the focus is %s, not %s", sid, right.ID)
+	}
+	tb := ui.NewTester(a.view, 1000, 620)
+	a.selectTab(slices.Index(a.tabs, got))
+	waitFor(t, tb, "both shells", func() bool {
+		for _, p := range got.panes() {
+			if p.term == nil || !strings.Contains(p.term.Text(), testShell.prompt) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+// TestAdoptHostTabSavedLate checks that a session the host's layout names
+// only after a poll or two still opens in its tab: the host saves its
+// layout at most once a second, so a list can show its sessions before the
+// save.
+func TestAdoptHostTabSavedLate(t *testing.T) {
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, remote := startHostServer(t)
+	t.Cleanup(a.stopHosts)
+	left, err := remote.Create(rex.CreateOptions{Cols: 90, Rows: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := remote.Create(rex.CreateOptions{Cols: 88, Rows: 28})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	// The first polls see the sessions and a layout that names neither,
+	// as the host has not saved it yet.
+	time.Sleep(1500 * time.Millisecond)
+	l := savedStore{
+		Version: layoutVersion,
+		Sessions: []savedWorkspace{{
+			ID: "w", Name: "studio",
+			Layout: savedLayout{Tabs: []savedTab{{
+				Root: &savedNode{
+					Ratio: 0.5,
+					A:     &savedNode{SID: left.ID},
+					B:     &savedNode{SID: right.ID},
+				},
+			}}},
+		}},
+		Windows: []string{"w"},
+	}
+	raw, err := json.Marshal(l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := remote.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, tt, "the host's tab", func() bool { return len(a.tabsOn(h)) == 1 })
+	if n := len(a.tabsOn(h)[0].panes()); n != 2 {
+		t.Errorf("the host's tab came back with %d panes", n)
 	}
 }
 
