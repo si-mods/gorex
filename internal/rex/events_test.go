@@ -265,3 +265,11 @@ func TestShareLayoutGate(t *testing.T) {
 		t.Fatalf("shared layout: %q %q", res.Error, res.Data)
 	}
 }
+
+func TestClientShareSessions(t *testing.T) {
+	s := &Server{rem: remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "a", ShareSessions: true}}}}}
+	ss := &session{owner: "a"}
+	if !s.mayUse("a", ss) || s.mayUse("b", ss) {
+		t.Fatal("per-client sharing")
+	}
+}

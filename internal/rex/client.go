@@ -665,6 +665,12 @@ func (c *Client) ShareLayout(on bool) error {
 	return c.call(Request{Op: "remote.shareLayoutSet", On: on}, nil)
 }
 
+// ShareClientSessions sets whether one allowed client sees every session
+// or only those it opened.
+func (c *Client) ShareClientSessions(publicKey string, on bool) error {
+	return c.call(Request{Op: "remote.clientShareSet", Remote: &RemoteClient{PublicKey: publicKey}, On: on}, nil)
+}
+
 // StartPairing opens the pairing window for five minutes, or opens it
 // five minutes more, while remote access is on.
 func (c *Client) StartPairing() error { return c.call(Request{Op: "remote.pairStart"}, nil) }
