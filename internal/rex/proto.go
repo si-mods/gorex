@@ -25,7 +25,16 @@ import (
 // version 1 works as before, its resizes ignored while a session is locked.
 // Later, still within 2, "subscribe" (Response.Event): a server before it
 // answers it with an error, and a client that does not ask gets no events.
-const ProtocolVersion = 2
+//
+// Version 3 adds capabilities in Hello, layout revisions ("getLayoutState",
+// Request.LayoutRevision, Response.Revision) and revisions on events. It
+// only adds: a version 2 client gets the same answers, with fields it
+// ignores.
+const ProtocolVersion = 3
+
+// capabilities are what a version 3 server does beyond version 2. A
+// client reads them from Hello and falls back when one is absent.
+var capabilities = []string{"layout.revision", "events.revision"}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -61,6 +70,9 @@ type Request struct {
 	Owner string `json:"owner,omitempty"`
 	// ETag, on "list", is that of the list the client has (Response.ETag).
 	ETag string `json:"etag,omitempty"`
+	// LayoutRevision, on "setLayout", makes the change only when the
+	// server's layout is at that revision; 0 sets it whatever it is.
+	LayoutRevision uint64 `json:"layoutRevision,omitempty"`
 	// Command is the layout command of "command", and the app's answer of
 	// "command.done".
 	Command *LayoutCommand `json:"command,omitempty"`
@@ -198,6 +210,24 @@ type Response struct {
 	// starts, ends, or changes its size, size lock, title or foreground
 	// program.
 	Event string `json:"event,omitempty"`
+	// Revision, on a layout event, is the layout's revision after the
+	// change (LayoutState).
+	Revision uint64 `json:"revision,omitempty"`
+}
+
+// Event is a line a subscribed connection gets, with no ID: the change
+// it tells of, and the layout's revision for a layout change.
+type Event struct {
+	Kind     string `json:"event"`
+	Revision uint64 `json:"revision,omitempty"`
+}
+
+// LayoutState is the layout the server keeps, with its revision: a
+// client sends the revision it has to setLayout, and gets an error when
+// another client changed the layout since.
+type LayoutState struct {
+	Layout   json.RawMessage `json:"layout"`
+	Revision uint64          `json:"revision"`
 }
 
 // CreateOptions start a session.
@@ -280,6 +310,9 @@ type Hello struct {
 	// drops it, and Conn names the connection for Attach.Conn.
 	Keepalive time.Duration `json:"keepalive,omitempty"`
 	Conn      string        `json:"conn,omitempty"`
+	// Capabilities are what this server does beyond the version 2
+	// protocol, such as "layout.revision" and "events.revision".
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 // HostInfo describes the machine the server runs on.

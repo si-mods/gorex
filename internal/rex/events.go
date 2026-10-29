@@ -3,6 +3,7 @@
 package rex
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -39,9 +40,15 @@ func (s *Server) subscribe(write func([]byte)) *subscriber {
 			s.subMu.Unlock()
 			// The sessions first: a new tab's layout names a new session.
 			for _, kind := range []string{"sessions", "layout"} {
-				if pending[kind] {
-					write([]byte(`{"event":"` + kind + `"}`))
+				if !pending[kind] {
+					continue
 				}
+				ev := Event{Kind: kind}
+				if kind == "layout" {
+					ev.Revision = s.layoutRevision()
+				}
+				b, _ := json.Marshal(ev)
+				write(b)
 			}
 		}
 	}()
@@ -70,6 +77,13 @@ func (s *Server) notify(kind string) {
 }
 
 func (s *Server) sessionsChanged() { s.notify("sessions") }
+
+// layoutRevision returns the revision of the layout the server keeps.
+func (s *Server) layoutRevision() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.layoutRev
+}
 
 // throttle runs f at most once every every, and after each ask: one
 // asked again while it waits runs once, when its turn comes.

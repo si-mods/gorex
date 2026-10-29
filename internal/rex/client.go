@@ -45,6 +45,8 @@ type Client struct {
 	// Changes did not take yet; changed is signaled as one comes.
 	changes map[string]bool
 	changed chan struct{}
+	// revision is the last layout revision the server told of.
+	revision uint64
 }
 
 // callTimeout is how long a request waits for its answer.
@@ -228,6 +230,9 @@ func (c *Client) read() {
 		c.mu.Lock()
 		if res.ID == 0 && res.Event != "" {
 			c.changes[res.Event] = true
+			if res.Revision > 0 {
+				c.revision = res.Revision
+			}
 			c.mu.Unlock()
 			select {
 			case c.changed <- struct{}{}:
@@ -516,8 +521,30 @@ func (c *Client) Layout() (json.RawMessage, error) {
 	return l, err
 }
 
+// LayoutState returns the layout and the revision it is at (ProtocolVersion
+// 3). A server before 3 answers an error: use Layout then.
+func (c *Client) LayoutState() (LayoutState, error) {
+	var st LayoutState
+	err := c.call(Request{Op: "getLayoutState"}, &st)
+	return st, err
+}
+
 func (c *Client) SetLayout(l json.RawMessage) error {
 	return c.call(Request{Op: "setLayout", Layout: l}, nil)
+}
+
+// SetLayoutAt sets the layout only when it is still at revision; a
+// revision of 0 sets it whatever it is. A server before 3 errors.
+func (c *Client) SetLayoutAt(l json.RawMessage, revision uint64) error {
+	return c.call(Request{Op: "setLayout", Layout: l, LayoutRevision: revision}, nil)
+}
+
+// Revision returns the layout revision the server last told of, 0 when it
+// told of none.
+func (c *Client) Revision() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.revision
 }
 
 func (c *Client) Shutdown() error { return c.call(Request{Op: "shutdown"}, nil) }
