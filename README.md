@@ -172,7 +172,8 @@ and `window-padding-y` (the library has one width and one height),
 the supported `keybind`s. Options it reads but leaves out, as the library
 has no mapping: `background-opacity`, `background-blur`,
 `mouse-hide-while-typing`, `scroll-multiplier`, `window-padding-balance`,
-and window decorations. Other options are ignored.
+and window decorations. Other options are ignored, and `gorex config check`
+lists the Ghostty options it ignores.
 
 ## Remote access
 

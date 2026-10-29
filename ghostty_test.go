@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/plugins/terminal"
@@ -291,5 +292,15 @@ func TestGhosttyTermOptions(t *testing.T) {
 	ghostty = *parseGhostty(writeConf(t, t.TempDir(), "c3", "image-storage-limit = 0\n"))
 	if o = termOptions(); o.ImageLimit >= 0 {
 		t.Errorf("image limit 0: %d", o.ImageLimit)
+	}
+}
+
+func TestGhosttyWarnings(t *testing.T) {
+	dir := t.TempDir()
+	path := writeConf(t, dir, "c", "unknown-key = 1\nfont-size = 12\n")
+	t.Setenv("GOREX_GHOSTTY_CONFIG", path)
+	w := ghosttyWarnings()
+	if len(w) != 1 || !strings.Contains(w[0], "unknown-key") {
+		t.Fatalf("warnings %v", w)
 	}
 }

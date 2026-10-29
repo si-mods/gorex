@@ -47,6 +47,7 @@ func main() {
 	}
 	// The command line shares the binary: it runs before the app, and
 	// leaves the app's own arguments, as AppKit's, alone.
+	cli.GhosttyWarnings = ghosttyWarnings
 	if code, handled := cli.Main(os.Args[1:], os.Stdout, os.Stderr, mygo.App.Version()); handled {
 		os.Exit(code)
 	}

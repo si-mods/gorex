@@ -20,7 +20,8 @@
   relative paths against the pane's program directory.
 - Ghostty `clipboard-read`, `clipboard-write`, window padding, padding
   color and image-storage-limit now reach the terminal; the README lists
-  which options map, are unsupported, or are ignored.
+  which options map, are unsupported, or are ignored, and `gorex config
+  check` warns about the ignored ones.
 - Program status changes notify subscribers and carry their session IDs and
   records in events; the session picker and sidebar show a session's most
   urgent status; rootshell gets the pane's and tab's `agent_status`; and

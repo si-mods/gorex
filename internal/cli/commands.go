@@ -32,6 +32,10 @@ const (
 // serverTarget is -S, a host label or address; Main sets it for a call.
 var serverTarget string
 
+// GhosttyWarnings, when set by the app, lists the Ghostty options the app
+// ignores, for config check. It is nil in tests and tools.
+var GhosttyWarnings func() []string
+
 // Main runs the command line. handled is false when args are the app's, as
 // an AppKit argument, and the GUI should start.
 func Main(args []string, out, errOut io.Writer, version string) (code int, handled bool) {
@@ -710,6 +714,11 @@ func configCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintf(out, "path: %s\nbindings: %d\nactions: %d\nmodes: %d\n", path, len(cfg.Bindings), len(cfg.Actions), len(cfg.Modes))
 		for _, w := range cfg.Warnings {
 			fmt.Fprintln(out, "warning:", w)
+		}
+		if GhosttyWarnings != nil {
+			for _, w := range GhosttyWarnings() {
+				fmt.Fprintln(out, "warning:", w)
+			}
 		}
 		return ExitOK, true
 	case "reload":
