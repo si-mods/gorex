@@ -1148,8 +1148,8 @@ func TestReconcileNetwork(t *testing.T) {
 func TestLayoutLines(t *testing.T) {
 	n := &savedNode{A: &savedNode{Name: "left", SID: "a", Dir: "/tmp"}, B: &savedNode{Name: "right", SID: "b"}}
 	lines := layoutLines(n, 1)
-	if len(lines) != 2 || lines[0] != "  left — /tmp" || lines[1] != "  right" {
-		t.Fatalf("lines %q", lines)
+	if len(lines) != 2 || lines[0].text != "  left — /tmp" || lines[0].sid != "a" || lines[1].text != "  right" || lines[1].sid != "b" {
+		t.Fatalf("lines %+v", lines)
 	}
 	if got := layoutTabName(savedTab{}, 2); got != "Tab 3" {
 		t.Fatalf("tab %q", got)

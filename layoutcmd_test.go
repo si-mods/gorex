@@ -692,3 +692,17 @@ func TestCommandPaneResizeNested(t *testing.T) {
 		t.Fatalf("outer right of C: %+v, root %v, split %v", res, ratio(root), ratio(s))
 	}
 }
+
+func TestPaneFocusCommand(t *testing.T) {
+	a, _ := newTestApp(t)
+	first := a.tab().Focus
+	a.split(false)
+	second := a.tab().Focus
+	res := a.command(rex.LayoutCommand{Op: "pane.focus", SID: first.SID})
+	if res.Error != "" || a.tab().Focus != first || a.focusReq != first {
+		t.Fatalf("focus: %+v focus %v", res, a.tab().Focus == first)
+	}
+	if second == first {
+		t.Fatal("same pane")
+	}
+}
