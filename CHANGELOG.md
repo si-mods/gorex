@@ -18,7 +18,8 @@
 - Remote hosts can share their layout read-only: Settings › Remote Hosts
   shows the host's workspaces, tabs and panes, `gorex -S HOST layout`
   reads it, and `gorex -S HOST events` follows layout changes when Share
-  Layout is on.
+  Layout is on. The server filters the layout to sessions the client may
+  use, and drops panes of other hosts.
 - Kitty graphics sent by file path (`t=f`) are read on the machine that
   runs the program, rewritten in-band, and replayed when a window attaches.
 - Find bar: Cmd+F/Ctrl+Shift+F searches the focused pane, with match count,

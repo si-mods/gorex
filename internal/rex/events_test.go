@@ -4,6 +4,7 @@ package rex
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"net"
 	"runtime"
@@ -11,6 +12,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gorex/internal/layout"
 )
 
 // TestThrottle asks a throttle many times quickly: it runs once per
@@ -267,7 +270,7 @@ func TestShareLayoutGate(t *testing.T) {
 }
 
 func TestClientShareSessions(t *testing.T) {
-	s := &Server{rem: remote{cfg: RemoteConfig{ShareLayout: true, Allowed: []RemoteClient{
+	s := &Server{rem: remote{cfg: RemoteConfig{Allowed: []RemoteClient{
 		{PublicKey: "a", ShareSessions: true, ShareLayout: true},
 		{PublicKey: "b"},
 	}}}}
@@ -280,5 +283,27 @@ func TestClientShareSessions(t *testing.T) {
 	}
 	if s.mayUse("b", ss) || s.mayUse("d", ss) {
 		t.Error("a client that does not share them sees another's session")
+	}
+}
+
+func TestFilterLayout(t *testing.T) {
+	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","active":0,"tabs":[{"root":{"a":{"sid":"a"},"b":{"sid":"b"}},"focus":0},{"root":{"sid":"h","host":"other"}}]}],"windows":["w"]}`)
+	s := &Server{
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "other"}},
+		rem:      remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "p"}}}},
+	}
+	got, err := s.filterLayout(raw, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st layout.Store
+	if err := json.Unmarshal(got, &st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 1 || st.Sessions[0].Tabs[0].Root.SID != "a" {
+		t.Fatalf("filtered %s", got)
+	}
+	if bytes.Contains(got, []byte(`"b"`)) || bytes.Contains(got, []byte(`"other"`)) {
+		t.Fatalf("leaked %s", got)
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/config"
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -1003,32 +1004,9 @@ func (t *Tab) label() (name, detail string) {
 
 // The saved layout: the tabs, their splits and the sessions of their
 // panes, which the server keeps, and the app restores when it starts.
-type savedLayout struct {
-	Active int        `json:"active"`
-	Tabs   []savedTab `json:"tabs"`
-}
-
-type savedTab struct {
-	Name  string     `json:"name,omitempty"`
-	Root  *savedNode `json:"root"`
-	Focus int        `json:"focus"`
-	Zoom  bool       `json:"zoom,omitempty"`
-}
-
-type savedNode struct {
-	SID  string `json:"sid,omitempty"`
-	Name string `json:"name,omitempty"`
-	// Host is the id of the remote host of the session, "" for this
-	// machine's.
-	Host     string     `json:"host,omitempty"`
-	Dir      string     `json:"dir,omitempty"`
-	Cols     int        `json:"cols,omitempty"`
-	Rows     int        `json:"rows,omitempty"`
-	Vertical bool       `json:"vertical,omitempty"`
-	Ratio    float32    `json:"ratio,omitempty"`
-	A        *savedNode `json:"a,omitempty"`
-	B        *savedNode `json:"b,omitempty"`
-}
+type savedLayout = layout.Layout
+type savedTab = layout.Tab
+type savedNode = layout.Node
 
 func (a *App) snapshot() savedLayout {
 	l := savedLayout{Active: a.active, Tabs: []savedTab{}}

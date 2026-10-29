@@ -15,6 +15,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -133,21 +134,10 @@ type store struct {
 
 // The layout the server keeps, opaque to it: every workspace, and which
 // of them the windows showed, in the order of their places.
-type savedStore struct {
-	Version  int              `json:"version"`
-	Sessions []savedWorkspace `json:"sessions"`
-	Windows  []string         `json:"windows"`
-	// The first window's tabs, for a GoRex from before workspaces, which
-	// shows them, and the sessions of the others in tabs of their own.
-	savedLayout
-}
+type savedStore = layout.Store
 
 // savedWorkspace is a workspace as the layout keeps it.
-type savedWorkspace struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	savedLayout
-}
+type savedWorkspace = layout.Workspace
 
 // layoutVersion is the version of savedStore; a layout without one is the
 // tabs of a GoRex of one window.
@@ -165,7 +155,7 @@ func parseLayout(raw []byte) savedStore {
 		if len(s.Tabs) == 0 {
 			return savedStore{Version: layoutVersion}
 		}
-		w := savedWorkspace{ID: newWorkspaceID(), Name: workspaceName(nil), savedLayout: s.savedLayout}
+		w := savedWorkspace{ID: newWorkspaceID(), Name: workspaceName(nil), Layout: s.Layout}
 		return savedStore{Version: layoutVersion, Sessions: []savedWorkspace{w}, Windows: []string{w.ID}}
 	}
 	out := savedStore{Version: s.Version}
@@ -196,9 +186,9 @@ func (st *store) saved() savedStore {
 		if w.app != nil {
 			l = w.app.snapshot()
 		}
-		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, savedLayout: l})
+		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Layout: l})
 		if len(s.Windows) > 0 && w.ID == s.Windows[0] {
-			s.savedLayout = l
+			s.Layout = l
 		}
 	}
 	return s
@@ -309,7 +299,7 @@ func (st *store) load() []*Workspace {
 	s := parseLayout(raw)
 	st.workspaces = nil
 	for _, sw := range s.Sessions {
-		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, layout: sw.savedLayout})
+		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, layout: sw.Layout})
 	}
 	var open []*Workspace
 	for _, id := range s.Windows {

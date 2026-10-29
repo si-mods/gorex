@@ -828,11 +828,18 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if l == nil {
 			return nil, nil
 		}
-		return l, nil
+		return s.filterLayout(l, peer)
 	case "getLayoutState":
 		s.mu.Lock()
 		st := LayoutState{Layout: s.layout, Revision: s.layoutRev}
 		s.mu.Unlock()
+		if peer != "" && len(st.Layout) > 0 {
+			filtered, err := s.filterLayout(st.Layout, peer)
+			if err != nil {
+				return nil, err
+			}
+			st.Layout = filtered
+		}
 		return st, nil
 	case "setLayout":
 		if !json.Valid(req.Layout) {

@@ -269,8 +269,8 @@ times; a client's hello names its principal, and `gorex clients` lists
 the live attachments with their principal and age. Settings › Remote
 Hosts can share this window's layout read-only, and each allowed client
 can be given all sessions, and the layout with them, or only the
-sessions it opened; a client sees the layout only when it may see every
-session the layout names; `gorex -S HOST layout`
+sessions it opened; the shared layout is filtered to sessions that client
+may use, and panes of other hosts are left out; `gorex -S HOST layout`
 reads it and `events` follows changes.
 
 Settings › Remote Hosts connects this machine to other machines' session
