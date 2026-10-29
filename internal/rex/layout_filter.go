@@ -4,6 +4,7 @@ package rex
 
 import (
 	"encoding/json"
+	"slices"
 
 	"gorex/internal/layout"
 )
@@ -34,8 +35,11 @@ func (s *Server) filterLayout(raw []byte, peer string) (json.RawMessage, error) 
 	if len(sessions) == 0 && len(st.Tabs) > 0 {
 		st.Tabs = s.filterLayoutTabs(st.Tabs, peer)
 		st.Active = min(max(st.Active, 0), max(len(st.Tabs)-1, 0))
+		st.Sessions, st.Windows = nil, nil
 		return json.Marshal(st)
 	}
+	st.Tabs = s.filterLayoutTabs(st.Tabs, peer)
+	st.Active = min(max(st.Active, 0), max(len(st.Tabs)-1, 0))
 	st.Sessions = sessions
 	var windows []string
 	for _, id := range st.Windows {
@@ -50,16 +54,20 @@ func (s *Server) filterLayout(raw []byte, peer string) (json.RawMessage, error) 
 func (s *Server) filterLayoutTabs(tabs []layout.Tab, peer string) []layout.Tab {
 	var out []layout.Tab
 	for _, t := range tabs {
+		before := sidsOf(t.Root)
 		root := s.filterLayoutNode(t.Root, peer)
 		if root == nil {
 			continue
 		}
 		t.Root = root
-		if t.Focus >= 0 && t.Focus >= len(sidsOf(root)) {
-			t.Focus = 0
-		}
-		if t.Zoom && t.Focus == 0 {
-			t.Zoom = false
+		after := sidsOf(root)
+		if len(after) != len(before) {
+			focus := -1
+			if t.Focus >= 0 && t.Focus < len(before) {
+				focus = slices.Index(after, before[t.Focus])
+			}
+			t.Focus = max(focus, 0)
+			t.Zoom = t.Zoom && focus >= 0 && len(after) > 1
 		}
 		out = append(out, t)
 	}

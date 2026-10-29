@@ -307,3 +307,21 @@ func TestFilterLayout(t *testing.T) {
 		t.Fatalf("leaked %s", got)
 	}
 }
+
+func TestFilterLayoutMirror(t *testing.T) {
+	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"sid":"a"}}]}],"windows":["w"],"tabs":[{"root":{"sid":"a"}},{"root":{"sid":"b"}}]}`)
+	s := &Server{
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "other"}},
+		rem:      remote{},
+	}
+	got, err := s.filterLayout(raw, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(got, []byte(`"sid":"b"`)) {
+		t.Fatalf("mirror leaked: %s", got)
+	}
+	if !bytes.Contains(got, []byte(`"sid":"a"`)) {
+		t.Fatalf("allowed pane lost: %s", got)
+	}
+}
