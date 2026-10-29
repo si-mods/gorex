@@ -356,6 +356,68 @@ func TestPaletteScrolls(t *testing.T) {
 	}
 }
 
+// TestPaneScrollbarDrag checks that a pane's scroll bar, at the right edge
+// of its terminal, drags the scrollback: the text the pane shows scrolled
+// back, and a click after it, which selects nothing, leaves it scrolled.
+func TestPaneScrollbarDrag(t *testing.T) {
+	a, tt := newTestApp(t)
+	tt.Frame()
+	p := a.tab().Focus
+	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+
+	var out strings.Builder
+	for i := range 400 {
+		fmt.Fprintf(&out, "line %d\r\n", i)
+	}
+	p.term.Feed([]byte(out.String()))
+	tt.Frame()
+	tt.Frame()
+
+	term, ok := tt.Find("Terminal")
+	if !ok || term.W == 0 || term.H == 0 {
+		t.Fatalf("no terminal in the pane; texts %q", tt.Texts())
+	}
+	// The top rows the terminal shows, which a drag back replaces: clear of
+	// the bar over its right edge, with the pointer off the pane so that it
+	// is not painted, and of the cursor at the bottom, which blinks by the
+	// clock the frames do not advance.
+	text := func() []int {
+		tt.Move(2, term.Y+term.H/2)
+		tt.Frame()
+		img := tt.Image()
+		var px []int
+		for y := int(term.Y) + 6; y < int(term.Y)+150; y += 2 {
+			for x := int(term.X) + 6; x < int(term.X+term.W-20); x += 2 {
+				r, g, bl, _ := img.At(x, y).RGBA()
+				px = append(px, int(r), int(g), int(bl))
+			}
+		}
+		return px
+	}
+	before := text()
+	// The rows stand still until the drag: one that changes on its own, as
+	// a cursor blinking, would make any drag pass.
+	if still := text(); !slices.Equal(before, still) {
+		t.Fatalf("the pane's top rows change without the drag")
+	}
+	// The bar takes the rightmost 12 DIPs of the terminal and paints 2 to 10
+	// in while lit, 3 to 7 otherwise: 6 in is on it either way. The thumb is
+	// at the bottom, at the end of the scrollback.
+	x := term.X + term.W - 6
+	tt.Move(x, term.Y+term.H*0.75)
+	tt.Frame()
+	tt.Press(x, term.Y+term.H-8)
+	tt.Move(x, term.Y+term.H*0.5)
+	tt.Move(x, term.Y+term.H*0.2)
+	tt.Release(x, term.Y+term.H*0.2)
+	// A click in the text takes away what the press selected, if anything,
+	// and leaves the scrollback where the drag left it.
+	tt.ClickAt(term.X+term.W/2, term.Y+term.H/2)
+	if after := text(); slices.Equal(before, after) {
+		t.Errorf("dragging the bar did not scroll the pane")
+	}
+}
+
 // TestSidebar checks the tabs in a sidebar: a tab drags to another's place,
 // the edge drags the width within its bounds and keeps it, the button hides
 // the sidebar, and hidden pane headers come back with it hidden.
