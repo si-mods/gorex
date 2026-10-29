@@ -432,3 +432,35 @@ func TestPaneName(t *testing.T) {
 		t.Fatalf("capped runes %d", len([]rune(got)))
 	}
 }
+
+func TestMovePaneToWindow(t *testing.T) {
+	a, _ := newTestApp(t)
+	b := a.st.openWindow(a.st.addWorkspace(), false)
+	a.split(false)
+	p := a.tab().Focus
+	p.Name = "logs"
+	sid, src := p.SID, p.Tab
+	a.movePaneToWindow(p, b)
+	if !p.closed || len(src.panes()) != 1 {
+		t.Fatalf("source: closed %v panes %d", p.closed, len(src.panes()))
+	}
+	var moved *Pane
+	for _, q := range b.tab().panes() {
+		if q.SID == sid {
+			moved = q
+		}
+	}
+	if moved == nil || moved.Name != "logs" || b.focusReq != moved {
+		t.Fatalf("target: moved %v name %q focus %v", moved != nil, moved.Name, b.focusReq == moved)
+	}
+	infos, _ := a.client.List()
+	found := false
+	for _, in := range infos {
+		if in.ID == sid {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the session ended")
+	}
+}

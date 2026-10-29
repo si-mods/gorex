@@ -1279,16 +1279,25 @@ func (a *App) movePaneToPane(p, target *Pane) {
 	}
 	t, src, wasActive := target.Tab, p.Tab, a.tab() == p.Tab
 	a.detachPane(p)
-	old := target.Node
-	if old == nil || t.Root == nil {
+	a.placePane(t, p, target)
+	a.finishPaneMove(t, p, src, wasActive)
+	a.changed()
+}
+
+// placePane puts p beside target in tab t, or alone when the tab has no
+// pane; p is not in a tree.
+func (a *App) placePane(t *Tab, p *Pane, target *Pane) {
+	if t == nil || p == nil {
+		return
+	}
+	if target == nil || target.Node == nil || t.Root == nil {
 		p.Tab, p.Node = t, &Node{ID: a.id(), Pane: p}
 		t.Root, t.Zoom = p.Node, nil
 		t.setFocus(p)
-		a.finishPaneMove(t, p, src, wasActive)
-		a.changed()
 		return
 	}
-	sp := &Node{ID: a.id(), Parent: old.Parent, A: old, B: &Node{ID: a.id(), Pane: p, Parent: nil}, Ratio: 0.5}
+	old := target.Node
+	sp := &Node{ID: a.id(), Parent: old.Parent, A: old, B: &Node{ID: a.id(), Pane: p}, Ratio: 0.5}
 	sp.B.Parent = sp
 	if old.Parent == nil {
 		t.Root = sp
@@ -1301,8 +1310,43 @@ func (a *App) movePaneToPane(p, target *Pane) {
 	p.Tab, p.Node = t, sp.B
 	t.Zoom = nil
 	t.setFocus(p)
-	a.finishPaneMove(t, p, src, wasActive)
-	a.changed()
+}
+
+// movePaneToWindow moves p to target's active tab, as a session target
+// attaches again to: its program is not restarted.
+func (a *App) movePaneToWindow(p *Pane, target *App) {
+	if p == nil || target == nil || target == a || p.Tab == nil {
+		return
+	}
+	var h *hostConn
+	if p.host != nil {
+		h = target.hostByID(p.host.ID)
+		if h == nil {
+			return
+		}
+	}
+	t := target.tab()
+	if t == nil {
+		return
+	}
+	src := p.Tab
+	a.detachPane(p)
+	p.closed = true
+	if p.term != nil {
+		p.term.Close()
+	}
+	if a.tab() == src && src.Focus != nil {
+		a.focusReq = src.Focus
+	}
+	if len(src.panes()) == 0 {
+		a.removeTab(src)
+	}
+	np := &Pane{ID: target.id(), SID: p.SID, Name: p.Name, info: p.info, title: p.title, startDir: p.startDir, host: h}
+	target.attach(np, 0, 0)
+	target.placePane(t, np, t.Focus)
+	target.focusReq = np
+	target.front()
+	target.changed()
 }
 
 // finishPaneMove settles focus after p moved to t from src.
