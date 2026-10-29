@@ -42,6 +42,15 @@ func (a *App) view(c *ui.Context) {
 	a.shortcuts(c)
 	a.palette(c, k)
 	a.workspaceConfirm(c, k)
+	// mygo paints a text input's caret in the theme of the frame as it
+	// paints, and a field cannot give it one of its own: the widgets above
+	// have taken their colors already, so the theme changes now, after
+	// them, and the caret of the field with the focus is the space's
+	// accent. A popover's rows took their colors as they were made.
+	t := *c.Theme()
+	t.Accent = k.accent
+	c.SetTheme(&t)
+	c.Root().Background(k.bgBottom) // SetTheme gave the root the theme's
 	if a.saveDue && time.Since(a.lastSave) > time.Second {
 		a.save()
 	}
