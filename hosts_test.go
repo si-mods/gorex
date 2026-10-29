@@ -606,11 +606,16 @@ func TestHostStreamResizeWhileAttaching(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the stream does not attach")
 	}
-	for _, in := range sessionInfos(t, remote) {
-		if in.ID == info.ID && (in.Cols != 121 || in.Rows != 41) {
-			t.Fatalf("the session is %dx%d, the window 121x41", in.Cols, in.Rows)
+	// The session takes the size the stream told it once attached, as its
+	// last size settles (the server debounces a window's resize).
+	waitForThat(t, func() bool {
+		for _, in := range sessionInfos(t, remote) {
+			if in.ID == info.ID {
+				return in.Cols == 121 && in.Rows == 41
+			}
 		}
-	}
+		return false
+	}, "the session to take the window's size")
 }
 
 // TestRestoreRemote checks that a layout with remote panes comes back on

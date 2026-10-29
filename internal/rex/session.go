@@ -55,6 +55,11 @@ type session struct {
 	lastOutput time.Time
 	lastInput  time.Time
 	resync     *time.Timer
+	// pendingResize applies the windows' last requested size once it
+	// settled (resize); pendingCols and pendingRows are that size.
+	pendingResize *time.Timer
+	pendingCols   int
+	pendingRows   int
 	// status is what the program reported of itself; busy, that the last
 	// info found a program in the foreground.
 	status programStatus
@@ -265,6 +270,7 @@ func (s *session) run(wait func() int) {
 		s.screen = append(s.vt.Snapshot(), s.graphics.replay()...)
 		s.title = s.vt.Title()
 		s.exited = true
+		s.clearPendingResizeLocked()
 		s.clearSizeLockLocked()
 		s.status.drop()
 		for a := range s.clients {
@@ -417,7 +423,7 @@ func (s *session) read() {
 
 // attach attaches a connection: it gets a snapshot of the session's
 // screen and scrollback, at the size the server gave the session for it
-// (resize), then what the session prints, and what it sends is typed,
+// (resizeNow), then what the session prints, and what it sends is typed,
 // typed first, what the server read past the attach's line.
 // may, checked as it joins, tells whether peer may still use the session:
 // detach drops it later when it may not. via is the control connection
@@ -642,15 +648,81 @@ func replyLen(p []byte) int {
 // sizeLease is how long a size lock lasts unless renewed.
 var sizeLease = newDuration(30 * time.Second)
 
-// resize sets the size of the terminal: not while an owner holds the size
-// (lockSize).
+// resizeSettle is how long a size the windows asked for must hold before
+// the session takes it. Dragging a window's edge resizes it every step,
+// and each step reflows the emulator and sends SIGWINCH: a program that
+// redraws its prompt on the signal (zsh with a right prompt) leaves a
+// stale copy per step, as the emulator's reflow does upstream
+// (libghostty-vt), so the size waits for the drag to settle.
+var resizeSettle = newDuration(150 * time.Millisecond)
+
+// resize takes the size the windows ask for once it settled
+// (resizeSettle): not while an owner holds the size (lockSize). An
+// explicit size (resizeNow, lockSize, lockedResize, unlockSize) is taken
+// at once and drops a size still waiting.
 func (s *session) resize(cols, rows int) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	cols, rows = clampSize(cols), clampSize(rows)
+	if s.sizeLock != "" || s.exited {
+		return
+	}
+	if cols == s.cols && rows == s.rows && s.pendingResize == nil {
+		return
+	}
+	s.pendingCols, s.pendingRows = cols, rows
+	settle := resizeSettle.get()
+	if s.pendingResize == nil {
+		s.pendingResize = time.AfterFunc(settle, s.applyResize)
+	} else {
+		s.pendingResize.Reset(settle)
+	}
+}
+
+// resizeTerminal resizes the terminal, the caller having let go of s.mu:
+// the console may write as it resizes, which the reader takes s.mu to
+// read.
+func (s *session) resizeTerminal(cols, rows int) {
+	if resized != nil {
+		resized(cols, rows)
+	}
+	s.p.resize(cols, rows)
+}
+
+// resized, set by tests, is told each size the terminal takes, to count
+// the resizes SIGWINCH follows.
+var resized func(cols, rows int)
+
+// applyResize takes the size the windows asked for last, once it settled.
+func (s *session) applyResize() {
+	s.mu.Lock()
+	cols, rows := s.pendingCols, s.pendingRows
+	if cols == 0 || rows == 0 {
+		// An explicit size dropped this one as the timer fired.
+		s.mu.Unlock()
+		return
+	}
+	s.pendingResize = nil
+	s.pendingCols, s.pendingRows = 0, 0
+	pty := !s.exited && s.sizeLock == "" && s.resizeLocked(cols, rows)
+	cols, rows = s.cols, s.rows
+	s.mu.Unlock()
+	if pty {
+		s.resizeTerminal(cols, rows)
+	}
+}
+
+// resizeNow sets the size of the terminal at once, not while an owner
+// holds the size (lockSize): for a window attaching, whose screen is
+// replayed at its size before it can resize the session itself.
+func (s *session) resizeNow(cols, rows int) {
+	s.mu.Lock()
+	s.clearPendingResizeLocked()
 	pty := s.sizeLock == "" && s.resizeLocked(cols, rows)
 	cols, rows = s.cols, s.rows
 	s.mu.Unlock()
 	if pty {
-		s.p.resize(cols, rows)
+		s.resizeTerminal(cols, rows)
 	}
 }
 
@@ -660,6 +732,7 @@ func (s *session) resize(cols, rows int) {
 // sizeLease after it was taken or renewed last.
 func (s *session) lockSize(owner string, cols, rows int, conn net.Conn) {
 	s.mu.Lock()
+	s.clearPendingResizeLocked()
 	s.clearSizeLockLocked()
 	s.sizeLock, s.sizeLockConn = owner, conn
 	s.renewLocked()
@@ -668,7 +741,7 @@ func (s *session) lockSize(owner string, cols, rows int, conn net.Conn) {
 	cols, rows = s.cols, s.rows
 	s.mu.Unlock()
 	if pty {
-		s.p.resize(cols, rows)
+		s.resizeTerminal(cols, rows)
 	}
 }
 
@@ -676,12 +749,13 @@ func (s *session) lockSize(owner string, cols, rows int, conn net.Conn) {
 // holds the size.
 func (s *session) lockedResize(owner string, cols, rows int) bool {
 	s.mu.Lock()
+	s.clearPendingResizeLocked()
 	held := owner != "" && s.sizeLock == owner
 	pty := held && s.resizeLocked(cols, rows)
 	cols, rows = s.cols, s.rows
 	s.mu.Unlock()
 	if pty {
-		s.p.resize(cols, rows)
+		s.resizeTerminal(cols, rows)
 	}
 	return held
 }
@@ -691,6 +765,7 @@ func (s *session) lockedResize(owner string, cols, rows int) bool {
 // owner's lock.
 func (s *session) unlockSize(owner string, cols, rows int) {
 	s.mu.Lock()
+	s.clearPendingResizeLocked()
 	pty := false
 	if owner == "" || s.sizeLock == owner {
 		s.clearSizeLockLocked()
@@ -699,7 +774,7 @@ func (s *session) unlockSize(owner string, cols, rows int) {
 	cols, rows = s.cols, s.rows
 	s.mu.Unlock()
 	if pty {
-		s.p.resize(cols, rows)
+		s.resizeTerminal(cols, rows)
 	}
 }
 
@@ -738,6 +813,16 @@ func (s *session) renewLocked() {
 			s.clearSizeLockLocked()
 		}
 	})
+}
+
+// clearPendingResizeLocked drops a size still waiting for the drag to
+// settle: an explicit one replaces it. s.mu is held.
+func (s *session) clearPendingResizeLocked() {
+	if s.pendingResize != nil {
+		s.pendingResize.Stop()
+		s.pendingResize = nil
+	}
+	s.pendingCols, s.pendingRows = 0, 0
 }
 
 func (s *session) clearSizeLockLocked() {
