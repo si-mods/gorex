@@ -803,6 +803,9 @@ func TestRemoteTailcat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if info.Owner != ClientPublicKey() || info.OwnerName == "" {
+		t.Fatalf("session owner %q %q", info.Owner, info.OwnerName)
+	}
 	s := rc.Stream(info.ID, 80, 24)
 	s.Resize(80, 24)
 	s.Write([]byte(typed))

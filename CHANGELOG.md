@@ -36,6 +36,8 @@
   times; a remote client's hello says which principal it is, and old
   allowlists get created times. `gorex clients` shows the principal and
   how long each attachment has been live.
+- Sessions carry the principal that created them; `gorex ls` shows local
+  or the paired client's name.
 - Program status changes notify subscribers and carry their session IDs and
   records in events; the session picker and sidebar show a session's most
   urgent status; rootshell gets the pane's and tab's `agent_status`; and
