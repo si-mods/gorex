@@ -1506,5 +1506,13 @@
   "hostsLayoutFocus": "Focus",
   "@hostsLayoutFocus": {
     "description": "Focus a pane in the host layout."
+  },
+  "hostsLayoutNewTab": "New Tab",
+  "@hostsLayoutNewTab": {
+    "description": "Host layout edit action."
+  },
+  "hostsLayoutCloseTab": "Close Tab",
+  "@hostsLayoutCloseTab": {
+    "description": "Host layout edit action."
   }
 }

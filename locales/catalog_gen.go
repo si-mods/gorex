@@ -4383,3 +4383,31 @@ func HostsLayoutFocus() string { return In(i18n.Locale()).HostsLayoutFocus() }
 func (msgs Messages) HostsLayoutFocus() string {
 	return Catalog.Format(msgs.locale, "hostsLayoutFocus", nil)
 }
+
+// HostsLayoutNewTab says "New Tab"
+// in the language the app shows.
+//
+// Host layout edit action.
+func HostsLayoutNewTab() string { return In(i18n.Locale()).HostsLayoutNewTab() }
+
+// HostsLayoutNewTab says "New Tab"
+// in the language of msgs.
+//
+// Host layout edit action.
+func (msgs Messages) HostsLayoutNewTab() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutNewTab", nil)
+}
+
+// HostsLayoutCloseTab says "Close Tab"
+// in the language the app shows.
+//
+// Host layout edit action.
+func HostsLayoutCloseTab() string { return In(i18n.Locale()).HostsLayoutCloseTab() }
+
+// HostsLayoutCloseTab says "Close Tab"
+// in the language of msgs.
+//
+// Host layout edit action.
+func (msgs Messages) HostsLayoutCloseTab() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutCloseTab", nil)
+}
