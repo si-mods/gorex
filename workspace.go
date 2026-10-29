@@ -561,6 +561,9 @@ var newWindow = func(a *App) *mygo.Window {
 func (st *store) openWindow(w *Workspace, adopt bool) *App {
 	a := &App{st: st, client: st.client, hello: st.hello, errMsg: st.errMsg, slot: st.freeSlot(), stop: make(chan struct{}), keys: newKeyDispatcher()}
 	a.win = newWindow(a)
+	if err := a.loadLuaConfig(); err != nil {
+		a.err = err.Error()
+	}
 	st.apps = slices.Insert(st.apps, 0, a)
 	if !st.hostsUp {
 		a.loadHosts()

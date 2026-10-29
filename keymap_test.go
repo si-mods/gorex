@@ -10,7 +10,7 @@ import (
 func TestKeyDispatcher(t *testing.T) {
 	cmd := &command{ID: "test.action", Run: func(*App) {}}
 	d := newKeyDispatcher()
-	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, nil)
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, nil, "")
 
 	if got, _, ok := d.handle(ui.Ctrl, ui.KeyB); got != nil || !ok {
 		t.Fatalf("prefix: command %v, taken %v", got, ok)
@@ -50,7 +50,7 @@ func TestKeyDispatcherTimeout(t *testing.T) {
 	cmd := &command{ID: "test.action", Run: func(*App) {}}
 	d := newKeyDispatcher()
 	d.timeout = 10 * time.Millisecond
-	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, nil)
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, nil, "")
 	d.handle(ui.Ctrl, ui.KeyB)
 	d.at = time.Now().Add(-time.Second)
 	if got, _, ok := d.handle(0, ui.KeyC); got != nil || ok {
@@ -65,7 +65,7 @@ func TestKeyDispatcherArgs(t *testing.T) {
 	cmd := &command{ID: "test.action", RunArgs: func(*App, map[string]any) error { return nil }}
 	d := newKeyDispatcher()
 	want := map[string]any{"dir": "/tmp"}
-	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, want)
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, want, "")
 	d.handle(ui.Ctrl, ui.KeyB)
 	got, args, ok := d.handle(0, ui.KeyC)
 	if got != cmd || !ok || args["dir"] != want["dir"] {
@@ -78,7 +78,7 @@ func TestKeyDispatcherNil(t *testing.T) {
 	if cmd, _, ok := d.handle(0, ui.KeyA); cmd != nil || ok {
 		t.Fatalf("nil dispatcher: command %v, taken %v", cmd, ok)
 	}
-	d.bind(nil, &command{ID: "test.action"}, nil) // no panic
+	d.bind(nil, &command{ID: "test.action"}, nil, "") // no panic
 	d.reset()
 	if d.pendingKeys() != nil {
 		t.Error("nil dispatcher has pending keys")
@@ -94,7 +94,7 @@ func TestKeyDispatcherInTerminal(t *testing.T) {
 	ran := 0
 	a.keys.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, &command{
 		ID: "test.action", Run: func(*App) { ran++ },
-	}, nil)
+	}, nil, "")
 	a.focusReq = a.tab().Focus
 	tt.Frame()
 	tt.Key(ui.Ctrl, ui.KeyB)

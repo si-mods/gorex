@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/config"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -140,8 +141,59 @@ func (cmd *command) invoke(a *App, args map[string]any) error {
 	return nil
 }
 
-// commandsByID is every action by its ID, made from commands at start.
+// commandsByID is every action by its ID, made from commands at start,
+// plus the custom actions of the Lua configuration.
 var commandsByID = map[string]*command{}
+
+// customCommands are the Lua configuration's actions, which the palette
+// and the CLI list beside the built-ins.
+var customCommands []*command
+
+// newCustomCommands builds the actions of cfg without registering them.
+func newCustomCommands(cfg *config.Config) ([]*command, error) {
+	out := make([]*command, 0, len(cfg.Actions))
+	for _, ca := range cfg.Actions {
+		if lookupCommand(ca.Name) != nil && !slices.ContainsFunc(customCommands, func(c *command) bool { return c.ID == ca.Name }) {
+			return nil, fmt.Errorf("custom action %q collides with a built-in", ca.Name)
+		}
+		ca := ca
+		title := ca.Title
+		if title == "" {
+			title = ca.Name
+		}
+		args := make([]actionArg, 0, len(ca.Args))
+		for _, a := range ca.Args {
+			args = append(args, actionArg{Name: a.Name, Type: a.Type, Optional: a.Optional})
+		}
+		out = append(out, &command{
+			ID:   ca.Name,
+			Name: func(locales.Messages) string { return title },
+			Args: args,
+			RunArgs: func(app *App, args map[string]any) error {
+				cfg.SetInvoke(func(id string, args map[string]any) error {
+					cmd := lookupCommand(id)
+					if cmd == nil {
+						return fmt.Errorf("no action %q", id)
+					}
+					return cmd.invoke(app, args)
+				})
+				return cfg.Invoke(ca.Name, map[string]any{"origin": "action"}, args)
+			},
+		})
+	}
+	return out, nil
+}
+
+// setCustomCommands replaces the registered custom actions.
+func setCustomCommands(list []*command) {
+	for _, c := range customCommands {
+		delete(commandsByID, c.ID)
+	}
+	customCommands = list
+	for _, c := range list {
+		commandsByID[c.ID] = c
+	}
+}
 
 // lookupCommand returns the action ID, nil when there is none.
 func lookupCommand(id string) *command { return commandsByID[id] }
@@ -233,6 +285,25 @@ var (
 	cmdRenameSession = command{ID: "session.rename", Name: locales.Messages.CmdRenameSession, Run: func(a *App) { a.startWorkspaceRename() }}
 	cmdCloseSession  = command{ID: "session.close", Name: locales.Messages.CmdCloseSession, Run: func(a *App) { a.askCloseWorkspace() }}
 	cmdMoveTabWindow = command{ID: "tab.move_window", Name: locales.Messages.CmdMoveTabToNewWindow}
+	cmdReloadLua     = command{ID: "config.lua.reload", Name: locales.Messages.CmdReloadGhostty, Hidden: true, Run: func(a *App) { a.reloadLuaConfig() }}
+	cmdModeEnter     = command{
+		ID: "mode.enter", Name: func(locales.Messages) string { return "Enter Mode" }, Hidden: true,
+		Args: []actionArg{{Name: "name", Type: "string"}, {Name: "once", Type: "boolean", Optional: true}},
+		RunArgs: func(a *App, args map[string]any) error {
+			name, _ := args["name"].(string)
+			once, _ := args["once"].(bool)
+			a.keys.enterMode(name, once)
+			return nil
+		},
+	}
+	cmdModeExit = command{
+		ID: "mode.exit", Name: func(locales.Messages) string { return "Leave Mode" }, Hidden: true,
+		Run: func(a *App) { a.keys.exitMode() },
+	}
+	cmdModeExitAll = command{
+		ID: "mode.exit_all", Name: func(locales.Messages) string { return "Leave Every Mode" }, Hidden: true,
+		Run: func(a *App) { a.keys.exitAll() },
+	}
 )
 
 // argString returns the string argument name, "" when absent.
@@ -272,7 +343,7 @@ var sessionCommands = []*command{
 }
 
 // commands are all of them.
-var commands = append(slices.Clone(paletteCommands), &cmdPalette, &cmdPalette2, &cmdClear)
+var commands = append(slices.Clone(paletteCommands), &cmdPalette, &cmdPalette2, &cmdClear, &cmdReloadLua, &cmdModeEnter, &cmdModeExit, &cmdModeExitAll)
 
 func init() {
 	for _, cmd := range commands {
@@ -681,6 +752,13 @@ func (a *App) paletteItems() []paletteItem {
 		if cmd == &cmdNewTab {
 			items = append(items, a.newTabOnItems(match)...)
 		}
+	}
+	for _, cmd := range customCommands {
+		if !match(cmd.Title()) && !match(cmd.English()) {
+			continue
+		}
+		cmd := cmd
+		items = append(items, paletteItem{title: cmd.Title(), glyph: "command", run: func() { a.invokeCommand(cmd, nil) }})
 	}
 	return items
 }
