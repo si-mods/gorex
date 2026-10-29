@@ -460,7 +460,7 @@ func TestRemoteDenied(t *testing.T) {
 	}
 	for _, op := range []string{"shutdown", "setLayout", "getLayout", "remote.status", "remote.enable",
 		"remote.disable", "remote.allow", "remote.revoke", "remote.regenerate", "remote.pairStart",
-		"remote.pairStop", "remote.approve", "remote.reject", "remote.shareSet", "nope"} {
+		"remote.pairStop", "remote.approve", "remote.reject", "remote.shareSet", "remote.controlSet", "nope"} {
 		// On, as a remote client would want sharing.
 		req := Request{Op: op, On: true, Layout: json.RawMessage(`{}`), Remote: &RemoteClient{Name: "x", PublicKey: key.NewNode().Public().String()}}
 		if err := c.call(req, nil); err == nil || !strings.Contains(err.Error(), "not allowed remotely") {
@@ -867,5 +867,46 @@ func TestRemoteRefusal(t *testing.T) {
 	}
 	if IsRefused(errors.New("rex: connection to the server lost")) {
 		t.Error("a connection lost counts as a refusal")
+	}
+}
+
+// TestRemoteControlGatesActions checks that a remote action is refused
+// until the server's Remote Control is on.
+func TestRemoteControlGatesActions(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, testPeer)
+	defer c.Close()
+	if _, err := c.Action("", "tab.rename", nil); err == nil || !strings.Contains(err.Error(), "not allowed remotely") {
+		t.Fatalf("action with control off: %v", err)
+	}
+	local := pipe(s, "")
+	defer local.Close()
+	if err := local.RemoteControl(true); err != nil {
+		t.Fatal(err)
+	}
+	if !readConfig(t).RemoteControl {
+		t.Fatal("remote control was not written")
+	}
+	if st, err := local.RemoteStatus(); err != nil || !st.RemoteControl {
+		t.Fatalf("remote control status: %+v %v", st, err)
+	}
+	if err := c.RemoteControl(false); err == nil || !strings.Contains(err.Error(), "not allowed remotely") {
+		t.Fatalf("a remote set the control: %v", err)
+	}
+	res, err := c.Action("", "tab.rename", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Code != "desktop_unavailable" {
+		t.Fatalf("action with control on: %+v", res)
+	}
+	cmd, dir := testShell()
+	info, err := local.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer local.Kill(info.ID)
+	if _, err := c.Action(info.ID, "tab.rename", nil); err == nil || !strings.Contains(err.Error(), "not shared") {
+		t.Fatalf("action on a session the peer may not use: %v", err)
 	}
 }

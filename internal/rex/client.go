@@ -648,6 +648,11 @@ func (c *Client) KickNetworkMember(name, publicKey string) error {
 	return c.call(Request{Op: "remote.kick", Remote: &RemoteClient{Name: name, PublicKey: publicKey}}, nil)
 }
 
+// RemoteControl lets remote clients run app actions through the window.
+func (c *Client) RemoteControl(on bool) error {
+	return c.call(Request{Op: "remote.controlSet", On: on}, nil)
+}
+
 // ShareSessions sets whether remote clients see and use every session;
 // off, each only those it created, and those attached to another's detach.
 func (c *Client) ShareSessions(on bool) error {

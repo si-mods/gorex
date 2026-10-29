@@ -58,7 +58,7 @@ type Request struct {
 	// does not know it ignores it, and answers no Hello.Keepalive.
 	Keepalive bool `json:"keepalive,omitempty"`
 
-	// On is the setting of remote.shareSet.
+	// On is the setting of remote.shareSet and remote.controlSet.
 	On bool `json:"on,omitempty"`
 
 	// Owner is the size lock's owner, of lockSize, lockedResize,
@@ -184,6 +184,9 @@ type RemoteStatus struct {
 	// ShareSessions tells that remote clients see and use every session;
 	// off, each only those it created.
 	ShareSessions bool `json:"shareSessions"`
+	// RemoteControl tells that remote clients may run app actions through
+	// this window.
+	RemoteControl bool `json:"remoteControl"`
 	// Network is the coordinator network this machine joined, if any;
 	// its Members are served beside Allowed.
 	Network *NetworkStatus `json:"network,omitempty"`

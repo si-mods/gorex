@@ -570,7 +570,7 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	remote := peer != ""
 	if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
-	} else if remote && !remoteAllowed(req.Op) {
+	} else if remote && !remoteAllowed(req.Op) && !(req.Op == "action" && s.remoteControlEnabled()) {
 		log.Printf("rex: denied %q to a remote connection", req.Op)
 		err = fmt.Errorf("%s is not allowed remotely", req.Op)
 	} else {
@@ -769,6 +769,11 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 	case "action":
 		if req.Action == nil || req.Action.ID == "" {
 			return nil, errors.New("rex: no action")
+		}
+		if req.SID != "" {
+			if _, err := s.use(req.SID, peer); err != nil {
+				return nil, err
+			}
 		}
 		return s.command(LayoutCommand{Op: "action", SID: req.SID, Action: req.Action.ID, Args: req.Action.Args}), nil
 	case "resize", "lockSize", "lockedResize", "unlockSize", "renewSize":

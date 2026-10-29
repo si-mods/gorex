@@ -5,8 +5,9 @@ without opening a window; with no arguments it starts the app.
 
 `-S HOST` before a command uses a saved remote host from `hosts.json`, or
 an address, instead of this machine's server. Local-only commands (`hosts`,
-`skill`) and window-only commands (`split`, `close`, `action`) do not
-apply remotely.
+`skill`, `remote`) and window-only commands (`split`, `close`) do not
+apply remotely. `action` applies remotely when the host turns Remote
+Control on.
 
 Every local terminal GoRex opens gets:
 
@@ -37,6 +38,7 @@ gorex run [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--json]
+gorex remote status [--json] | remote control on|off
 gorex action run [-s SESSION] ACTION [KEY=VALUE...]
 gorex version [--json]
 ```
@@ -60,6 +62,11 @@ ambiguous target exits 3.
 - `skill setup` installs the GoRex guide into Claude Code, Codex, OpenCode
   and Pi skill directories. `--project` writes into the repository;
   `--dry-run` reports first. Hooks are not installed yet.
+- `remote status` shows the local server's remote access without its
+  address; `remote control on|off` lets paired clients run app actions
+  through the window. It applies to every paired client and every member
+  of a joined network, and persists even while remote access is off.
+  Destructive actions stay refused.
 - `action run` runs a built-in action by its ID, through the window.
   Values after the action are strings; the CLI does not guess types.
 
@@ -79,5 +86,5 @@ gorex wait -s <id> --contains FAIL --timeout 120s
 gorex capture -s <id>
 ```
 
-Host add/remove, remote window actions and agent context hooks are not
+Host add/remove, remote `split`/`close` and agent context hooks are not
 part of this slice.

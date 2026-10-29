@@ -90,6 +90,14 @@ func TestCLI(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
+	code, _, out, errOut = runMain(t, "remote", "control", "on")
+	if code != ExitOK {
+		t.Fatalf("remote control on: %d %s", code, errOut)
+	}
+	code, _, out, errOut = runMain(t, "remote", "status", "--json")
+	if code != ExitOK || !strings.Contains(out, `"remoteControl": true`) {
+		t.Fatalf("remote status: %d %q %s", code, out, errOut)
+	}
 	code, _, out, errOut = runMain(t, "ls", "--json")
 	if code != ExitOK || !strings.Contains(out, info.ID) {
 		t.Fatalf("ls: %d %q %s", code, out, errOut)
@@ -153,6 +161,12 @@ func TestUsageErrors(t *testing.T) {
 	}
 	if code, handled, _, _ := runMain(t, "-S", "", "ls"); code != ExitUsage || !handled {
 		t.Fatalf("-S with an empty host: %d %v", code, handled)
+	}
+	if code, handled, _, _ := runMain(t, "remote", "bogus"); code != ExitUsage || !handled {
+		t.Fatalf("remote bogus: %d %v", code, handled)
+	}
+	if code, handled, _, _ := runMain(t, "remote", "control"); code != ExitUsage || !handled {
+		t.Fatalf("remote control without a value: %d %v", code, handled)
 	}
 	if code, handled, _, _ := runMain(t, "-S", "not-an-address", "ls"); code != ExitServer || !handled {
 		t.Fatalf("-S bad address: %d %v", code, handled)
