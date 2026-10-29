@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Kitty graphics sent by file path (`t=f`) are read on the machine that
+  runs the program, rewritten in-band, and replayed when a window attaches.
+
 ## 0.2.1
 
 - Upgraded MyGo from v0.6.2 to v0.7.2. In the terminal, the scroll bar now

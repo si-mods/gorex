@@ -18,6 +18,9 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
   it was, programs still running. The server keeps each session's screen in
   a headless libghostty-vt emulator and sends a snapshot on attach, so
   full-screen programs (lazygit, vim, htop…) come back exactly.
+- **Kitty graphics.** Images sent by file path are read where the program
+runs, including on a remote host, and are shown in-band; a window that
+attaches again replays them.
 - **Sessions.** As in Rex, a session is a set of tabs of its own, with a
   name such as `icy-ridge`, and each window shows one. The session chip
   in the title bar, or atop the sidebar, lists the sessions with their

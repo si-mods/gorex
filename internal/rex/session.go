@@ -31,6 +31,7 @@ type session struct {
 	shell   string
 	created time.Time
 	p       *pty
+	dir     string
 	// owner is the key of the remote client that created the session, ""
 	// for one created locally; set before the session is listed.
 	owner string
@@ -47,6 +48,7 @@ type session struct {
 	// of it at its size, as the session shows it now.
 	vt         *terminal.Terminal
 	vtIn       *io.PipeWriter
+	graphics   graphics
 	output     uint64
 	bells      atomic.Int64
 	clients    map[*attached]struct{}
@@ -209,7 +211,7 @@ func newSession(id string, o CreateOptions, owner string, changed func()) (*sess
 		return nil, err
 	}
 	s := &session{
-		id: id, shell: name, created: time.Now(), p: p,
+		id: id, shell: name, created: time.Now(), p: p, dir: dir,
 		clients: map[*attached]struct{}{}, changed: changed,
 		cols: cols, rows: rows, done: make(chan struct{}),
 	}
@@ -259,7 +261,8 @@ func (s *session) run(wait func() int) {
 		s.hold.RLock()
 		defer s.hold.RUnlock()
 		s.mu.Lock()
-		s.screen, s.title = s.vt.Snapshot(), s.vt.Title()
+		s.screen = append(s.vt.Snapshot(), s.graphics.replay()...)
+		s.title = s.vt.Title()
 		s.exited = true
 		s.clearSizeLockLocked()
 		s.status.drop()
@@ -369,6 +372,11 @@ func (s *session) read() {
 		if n > 0 {
 			data := append([]byte(nil), buf[:n]...)
 			s.mu.Lock()
+			cwd := s.dir
+			if bytes.Contains(data, []byte("t=f")) {
+				cwd = s.imageDir()
+			}
+			data = s.graphics.filter(data, cwd)
 			s.vt.Feed(data)
 			s.batch(data)
 			queries := s.status.feed(data)
@@ -830,7 +838,7 @@ func (s *session) resyncScreen() {
 	if s.exited || len(s.clients) == 0 {
 		return
 	}
-	snap := s.vt.Snapshot()
+	snap, _ := s.view()
 	if !bytes.Contains(snap, []byte("\x1b[?1049h")) {
 		return
 	}
@@ -878,7 +886,18 @@ func (s *session) view() ([]byte, string) {
 	if s.exited {
 		return s.screen, s.title
 	}
-	return s.vt.Snapshot(), s.vt.Title()
+	return append(s.vt.Snapshot(), s.graphics.replay()...), s.vt.Title()
+}
+
+// imageDir resolves a file a program names relative to where it runs: its
+// foreground process's directory, else the session's start.
+func (s *session) imageDir() string {
+	if pid := s.p.foreground(); pid > 0 {
+		if in := inspect(pid); in.dir != "" {
+			return in.dir
+		}
+	}
+	return s.dir
 }
 
 // trimSnapshot cuts the oldest rows of snap, the snapshot of a screen of
