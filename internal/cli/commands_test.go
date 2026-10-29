@@ -151,7 +151,7 @@ func TestUsageErrors(t *testing.T) {
 func TestHostsList(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
-	body := `{"hosts":[{"id":"abc","name":"studio","address":"secret-address","network":true}]}`
+	body := `{"hosts":[{"id":"abc","name":"studio","address":"secret-address","network":true},{"id":"def","name":"evil\u001b]0;x\u0007","address":"secret-address"}]}`
 	if err := os.WriteFile(filepath.Join(dir, "hosts.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -164,6 +164,10 @@ func TestHostsList(t *testing.T) {
 	}
 	if strings.Contains(out, "secret-address") {
 		t.Fatalf("hosts printed the address: %q", out)
+	}
+	code, _, out, errOut = runMain(t, "hosts")
+	if code != ExitOK || strings.ContainsRune(out, 0x1b) || strings.ContainsRune(out, 0x07) {
+		t.Fatalf("hosts table: %d %q %s", code, out, errOut)
 	}
 }
 
@@ -194,5 +198,22 @@ func TestSkill(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("skill file remains: %v", err)
+	}
+	victim := filepath.Join(home, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, path+".tmp"); err != nil {
+		t.Fatal(err)
+	}
+	code, _, _, errOut = runMain(t, "skill", "setup", "--agent", "claude")
+	if code != ExitOK {
+		t.Fatalf("skill setup with tmp symlink: %d %s", code, errOut)
+	}
+	if b, err := os.ReadFile(victim); err != nil || string(b) != "keep" {
+		t.Fatalf("the tmp symlink was followed: %q %v", b, err)
 	}
 }

@@ -494,10 +494,20 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAME\tNETWORK\tID")
 	for _, h := range hosts {
-		fmt.Fprintf(tw, "%s\t%v\t%s\n", h.Name, h.Network, h.ID)
+		fmt.Fprintf(tw, "%s\t%v\t%s\n", printable(h.Name), h.Network, h.ID)
 	}
 	tw.Flush()
 	return ExitOK, true
+}
+
+// printable keeps a name from moving the cursor or changing the title.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
 }
 
 func eventsCmd(args []string, out, errOut io.Writer) (int, bool) {

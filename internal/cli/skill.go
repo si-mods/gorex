@@ -14,11 +14,11 @@ import (
 const skillMarker = "<!-- gorex skill -->"
 
 // skillGuide is what an agent reads.
-const skillGuide = skillMarker + `
----
+const skillGuide = `---
 name: gorex
 description: Drive GoRex sessions: open, type, wait, read and run commands.
 ---
+` + skillMarker + `
 
 # GoRex
 
@@ -86,7 +86,7 @@ func agentsDir(project bool) (string, error) {
 type skillState struct {
 	Agent  string `json:"agent"`
 	Path   string `json:"path"`
-	State  string `json:"state"` // missing, installed, current, conflict, removed
+	State  string `json:"state"` // missing, installed, current, conflict, failed, removed
 	Reason string `json:"reason,omitempty"`
 }
 
@@ -102,6 +102,9 @@ func readSkill(dir string) (string, error) {
 
 // writeSkill writes the guide, refusing a file it does not own.
 func writeSkill(dir string, force bool) (string, error) {
+	if st, err := os.Lstat(dir); err == nil && st.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("the skill directory is a symlink")
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
@@ -116,12 +119,26 @@ func writeSkill(dir string, force bool) (string, error) {
 	if old == skillGuide {
 		return "current", nil
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(skillGuide), 0o644); err != nil {
+	tmp, err := os.CreateTemp(dir, ".SKILL.md-*")
+	if err != nil {
 		return "", err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+	name := tmp.Name()
+	if _, err := tmp.WriteString(skillGuide); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(name)
+		return "", err
+	}
+	if err := os.Chmod(name, 0o644); err != nil {
+		os.Remove(name)
+		return "", err
+	}
+	if err := os.Rename(name, path); err != nil {
+		os.Remove(name)
 		return "", err
 	}
 	return "installed", nil
@@ -188,10 +205,16 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 		case "setup":
 			if *dry {
 				st.State = "would install"
+				if old, err := readSkill(dir); err == nil && old != "" && !strings.Contains(old, skillMarker) && !*force {
+					st.State = "conflict"
+				}
 				break
 			}
 			st.State, err = writeSkill(dir, *force)
 			if err != nil {
+				if st.State == "" {
+					st.State = "failed"
+				}
 				st.Reason = err.Error()
 			}
 		case "status":
@@ -244,7 +267,7 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 		}
 	}
 	for _, st := range states {
-		if st.State == "conflict" {
+		if st.State == "conflict" || st.State == "failed" || st.State == "" {
 			return ExitFailed, true
 		}
 	}
