@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -238,6 +239,54 @@ func (d *keyDispatcher) sequenceTimeout() time.Duration {
 	return keySequenceTimeout
 }
 
+// String writes the chord as config keys use it.
+func (k keyChord) String() string {
+	var parts []string
+	for _, m := range []struct {
+		mod  ui.Modifiers
+		name string
+	}{{ui.Ctrl, "ctrl"}, {ui.Alt, "alt"}, {ui.Shift, "shift"}, {ui.Super, "cmd"}} {
+		if k.Mods&m.mod != 0 {
+			parts = append(parts, m.name)
+		}
+	}
+	parts = append(parts, keyName(k.Key))
+	return strings.Join(parts, "+")
+}
+
+func keyName(k ui.Key) string {
+	switch {
+	case k >= ui.KeyA && k <= ui.KeyZ:
+		return string(rune('a' + k - ui.KeyA))
+	case k >= ui.Key0 && k <= ui.Key9:
+		return string(rune('0' + k - ui.Key0))
+	case k >= ui.KeyF1 && k <= ui.KeyF12:
+		return fmt.Sprintf("f%d", int(k-ui.KeyF1)+1)
+	}
+	for name, key := range keybindKeys {
+		if key == k {
+			return name
+		}
+	}
+	return fmt.Sprintf("key%d", k)
+}
+
+// accelChord reads a menu accelerator, "CmdOrCtrl+Shift+T".
+func accelChord(acc string) (keyChord, bool) {
+	if strings.Contains(acc, "CmdOrCtrl") {
+		mod := "ctrl"
+		if runtime.GOOS == "darwin" {
+			mod = "cmd"
+		}
+		acc = strings.ReplaceAll(acc, "CmdOrCtrl", mod)
+	}
+	keys, err := parseKeySequence(acc)
+	if err != nil || len(keys) != 1 {
+		return keyChord{}, false
+	}
+	return keys[0], true
+}
+
 // parseKeySequence reads "ctrl+b>c", "cmd+shift+d" or a single key.
 func parseKeySequence(s string) ([]keyChord, error) {
 	parts := strings.Split(s, ">")
@@ -270,6 +319,32 @@ func parseKeyChord(s string) (keyChord, error) {
 	}
 	name := strings.ToLower(parts[len(parts)-1])
 	key, ok := keybindKeys[name]
+	if !ok {
+		switch name {
+		case "[":
+			key, ok = ui.KeyBracketLeft, true
+		case "]":
+			key, ok = ui.KeyBracketRight, true
+		case "=":
+			key, ok = ui.KeyEqual, true
+		case "-":
+			key, ok = ui.KeyMinus, true
+		case ",":
+			key, ok = ui.KeyComma, true
+		case ".":
+			key, ok = ui.KeyPeriod, true
+		case "/":
+			key, ok = ui.KeySlash, true
+		case "\\":
+			key, ok = ui.KeyBackslash, true
+		case ";":
+			key, ok = ui.KeySemicolon, true
+		case "'":
+			key, ok = ui.KeyQuote, true
+		case "`":
+			key, ok = ui.KeyBackquote, true
+		}
+	}
 	if !ok {
 		switch name {
 		case "up":

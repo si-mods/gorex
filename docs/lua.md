@@ -49,6 +49,20 @@ Custom actions appear in the palette and in `gorex action run`. Argument
 types are `string`, `number`, `integer`, `boolean` and `any`; a trailing
 `?` makes one optional. `gorex.invoke` runs a built-in action by ID.
 
+## App overrides
+
+The app keeps its own overrides apart from Lua, in `shortcuts.json` beside
+the settings:
+
+```json
+{"bindings":[{"key":"cmd+shift+j","action":"tab.new","args":{"dir":"/tmp"}}]}
+```
+
+They load after the Lua file, so they win over it. A binding whose key is
+a menu shortcut takes that shortcut over: the menu item no longer answers
+it, and the key reaches the terminal and the keymap (unless an exclusive
+mode is active).
+
 ## Reload
 
 ```sh

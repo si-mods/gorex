@@ -108,3 +108,20 @@ func TestLoadTimeout(t *testing.T) {
 		t.Fatalf("timeout took %v", time.Since(start))
 	}
 }
+
+func TestWarnings(t *testing.T) {
+	path := write(t, `
+gorex.bind("ctrl+b", "tab.new")
+gorex.bind("ctrl+b>c", "tab.close")
+gorex.bind("ctrl+x", "tab.new")
+gorex.bind("ctrl+x", "tab.close")
+`)
+	c, err := LoadCheck(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if len(c.Warnings) < 2 {
+		t.Fatalf("warnings %v", c.Warnings)
+	}
+}

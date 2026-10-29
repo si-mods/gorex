@@ -252,7 +252,7 @@ func TestCommandCreateFails(t *testing.T) {
 // the CLI does, and sees the window change.
 func TestClientActionsCannotQuit(t *testing.T) {
 	a, _ := newTestApp(t)
-	for _, id := range []string{"app.quit", "config.lua.reload", "mode.enter", "screen.clear"} {
+	for _, id := range []string{"app.quit", "config.reload", "mode.enter", "screen.clear"} {
 		res := a.command(rex.LayoutCommand{Op: "action", Action: id})
 		if res.Code != "not_allowed" {
 			t.Fatalf("%s: %+v", id, res)

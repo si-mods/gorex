@@ -63,7 +63,9 @@ type store struct {
 	// target; 0 for the one focused last.
 	debugWin int
 	last     string // the layout sent last
-	writer   layoutWriter
+	// noAccel are the menu shortcuts a keymap binding takes over.
+	noAccel map[string]bool
+	writer  layoutWriter
 }
 
 // The layout the server keeps, opaque to it: every workspace, and which
