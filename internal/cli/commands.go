@@ -72,6 +72,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return hostsCmd(args, out, errOut)
 	case "skill":
 		return skillCmd(args, out, errOut)
+	case "remote":
+		return remoteCmd(args, out, errOut)
 	case "wait":
 		return waitCmd(args, out, errOut)
 	case "run":
@@ -102,6 +104,7 @@ Usage:
   gorex events
   gorex hosts [ls] [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project]
+  gorex remote status [--json] | remote control on|off
   gorex wait [-s SESSION] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] ACTION [KEY=VALUE...]
@@ -604,6 +607,63 @@ func printable(s string) string {
 		}
 		return r
 	}, s)
+}
+
+func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
+	if serverTarget != "" {
+		fmt.Fprintln(errOut, "gorex remote: this changes the local server only")
+		return ExitUsage, true
+	}
+	if len(args) == 0 {
+		fmt.Fprintln(errOut, "gorex remote: use status or control on|off")
+		return ExitUsage, true
+	}
+	c, code := connect(errOut)
+	if c == nil {
+		return code, true
+	}
+	defer c.Close()
+	switch args[0] {
+	case "status":
+		fs := flagSet("remote status", errOut)
+		asJSON := fs.Bool("json", false, "print JSON")
+		if code, stop := parse(fs, args[1:]); stop {
+			return code, true
+		}
+		st, err := c.RemoteStatus()
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return ExitServer, true
+		}
+		shown := struct {
+			Enabled       bool `json:"enabled"`
+			Running       bool `json:"running"`
+			ShareSessions bool `json:"shareSessions"`
+			RemoteControl bool `json:"remoteControl"`
+			Clients       int  `json:"clients"`
+			Network       bool `json:"network"`
+		}{st.Enabled, st.Running, st.ShareSessions, st.RemoteControl, len(st.Allowed), st.Network != nil}
+		if *asJSON {
+			WriteJSON(out, shown)
+			return ExitOK, true
+		}
+		fmt.Fprintf(out, "enabled=%v running=%v share=%v control=%v clients=%d network=%v\n",
+			shown.Enabled, shown.Running, shown.ShareSessions, shown.RemoteControl, shown.Clients, shown.Network)
+		return ExitOK, true
+	case "control":
+		if len(args) != 2 || (args[1] != "on" && args[1] != "off") {
+			fmt.Fprintln(errOut, "gorex remote control: give on or off")
+			return ExitUsage, true
+		}
+		on := args[1] == "on"
+		if err := c.RemoteControl(on); err != nil {
+			fmt.Fprintln(errOut, err)
+			return ExitFailed, true
+		}
+		return ExitOK, true
+	}
+	fmt.Fprintln(errOut, "gorex remote: use status or control on|off")
+	return ExitUsage, true
 }
 
 func eventsCmd(args []string, out, errOut io.Writer) (int, bool) {

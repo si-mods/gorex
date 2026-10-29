@@ -869,3 +869,24 @@ func TestRemoteRefusal(t *testing.T) {
 		t.Error("a connection lost counts as a refusal")
 	}
 }
+
+// TestRemoteControlGatesActions checks that a remote action is refused
+// until the server's Remote Control is on.
+func TestRemoteControlGatesActions(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, testPeer)
+	defer c.Close()
+	if _, err := c.Action("", "tab.rename", nil); err == nil || !strings.Contains(err.Error(), "not allowed remotely") {
+		t.Fatalf("action with control off: %v", err)
+	}
+	s.rem.mu.Lock()
+	s.rem.cfg.RemoteControl = true
+	s.rem.mu.Unlock()
+	res, err := c.Action("", "tab.rename", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Code != "desktop_unavailable" {
+		t.Fatalf("action with control on: %+v", res)
+	}
+}

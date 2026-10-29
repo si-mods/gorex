@@ -51,6 +51,9 @@ type RemoteConfig struct {
 	// ShareSessions lets remote clients see and use every session; off,
 	// each sees and uses only the sessions it created.
 	ShareSessions bool `json:"shareSessions,omitempty"`
+	// RemoteControl lets remote clients run app actions through this
+	// window; off by default.
+	RemoteControl bool `json:"remoteControl,omitempty"`
 	// Network is the coordinator network this machine joined, if any;
 	// its members are served beside Allowed, and kept in memory only.
 	Network *NetworkConfig `json:"network,omitempty"`
@@ -246,6 +249,13 @@ var remoteListen = func(ctx context.Context, ts *tailcat.Server, region int) (ne
 
 // remoteAllowed tells the ops a remote connection may make; it may also
 // attach to sessions.
+// remoteControlEnabled tells whether remote clients may run app actions.
+func (s *Server) remoteControlEnabled() bool {
+	s.rem.mu.Lock()
+	defer s.rem.mu.Unlock()
+	return s.rem.cfg.RemoteControl
+}
+
 func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "input", "capture", "clients":
@@ -590,7 +600,7 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		st := RemoteStatus{
 			Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr),
 			Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
-			ShareSessions: r.cfg.ShareSessions,
+			ShareSessions: r.cfg.ShareSessions, RemoteControl: r.cfg.RemoteControl,
 		}
 		if r.pairOpenLocked() {
 			st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
@@ -719,6 +729,8 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		revoked = k
 	case "remote.regenerate":
 		cfg.NodeKey, cfg.PresharedKey = key.NewNode(), tailcat.NewPresharedKey()
+	case "remote.controlSet":
+		cfg.RemoteControl = req.On
 	case "remote.shareSet":
 		cfg.ShareSessions = req.On
 		if !req.On {

@@ -37,6 +37,7 @@ gorex run [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--json]
+gorex remote status [--json] | remote control on|off
 gorex action run [-s SESSION] ACTION [KEY=VALUE...]
 gorex version [--json]
 ```
@@ -60,6 +61,9 @@ ambiguous target exits 3.
 - `skill setup` installs the GoRex guide into Claude Code, Codex, OpenCode
   and Pi skill directories. `--project` writes into the repository;
   `--dry-run` reports first. Hooks are not installed yet.
+- `remote status` shows the local server's remote access without its
+  address; `remote control on|off` lets paired clients run app actions
+  through the window. Destructive actions stay refused.
 - `action run` runs a built-in action by its ID, through the window.
   Values after the action are strings; the CLI does not guess types.
 
