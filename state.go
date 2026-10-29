@@ -96,7 +96,10 @@ type App struct {
 	stop   chan struct{}
 	client *rex.Client
 	hello  rex.Hello
-	err    string
+	// keys matches key presses to actions; it runs before the terminal
+	// sees a key a binding takes.
+	keys *keyDispatcher
+	err  string
 	// errMsg is a message of the catalog, said when drawn, which wins
 	// over err, a message of the server.
 	errMsg func(locales.Messages) string
@@ -301,16 +304,19 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		// Who types last takes the session's size back from a device that
 		// holds it (SizeLock): the session gets the pane's size again.
 		// Command's keys are the app's shortcuts.
-		opts.OnKey = func(mods ui.Modifiers, _ ui.Key) bool {
-			if mods&ui.Super == 0 {
-				a.takeSize(p)
-			}
-			return false
-		}
 		opts.OnPaste = func(transfer.Data) bool {
 			a.takeSize(p)
 			return false
 		}
+	}
+	// A key with a binding runs its action; one without goes to the
+	// program. Menu accelerators run before the terminal, so a sequence
+	// cannot start with one of those.
+	opts.OnKey = func(mods ui.Modifiers, key ui.Key) bool {
+		if p.host == nil && mods&ui.Super == 0 {
+			a.takeSize(p)
+		}
+		return a.dispatchKey(mods, key)
 	}
 	opts.OnTitle = func(title string) {
 		update(func() { p.title = title })
@@ -447,12 +453,18 @@ func (a *App) currentDir() string {
 }
 
 // split splits the focused pane, the new pane right of it or below it.
-func (a *App) split(vertical bool) {
+func (a *App) split(vertical bool) { a.splitAt(vertical, "") }
+
+// splitAt splits the focused pane in dir, the current directory when "".
+func (a *App) splitAt(vertical bool, dir string) {
 	t := a.tab()
 	if t == nil || t.Focus == nil {
 		return
 	}
-	if p := a.splitPane(t.Focus, vertical, a.currentDir()); p != nil {
+	if dir == "" {
+		dir = a.currentDir()
+	}
+	if p := a.splitPane(t.Focus, vertical, dir); p != nil {
 		a.focusReq = p
 	}
 }
@@ -700,13 +712,25 @@ func (a *App) equalize() {
 	a.changed()
 }
 
-func (a *App) toggleZoom() {
+func (a *App) toggleZoom() { _ = a.zoomFocused("toggle") }
+
+// zoomFocused makes the focused pane fill its tab, mode "on"; gives its
+// room back, "off"; or toggles, "" or "toggle".
+func (a *App) zoomFocused(mode string) error {
 	t := a.tab()
 	if t == nil || t.Focus == nil {
-		return
+		return nil
 	}
-	a.zoom(t.Focus, t.Zoom == nil)
+	on := t.Zoom == nil
+	switch mode {
+	case "on":
+		on = true
+	case "off":
+		on = false
+	}
+	a.zoom(t.Focus, on)
 	a.focusReq = t.Focus
+	return nil
 }
 
 // zoom makes pane p fill its tab, with its focus, when the tab has

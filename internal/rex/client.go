@@ -45,6 +45,8 @@ type Client struct {
 	// Changes did not take yet; changed is signaled as one comes.
 	changes map[string]bool
 	changed chan struct{}
+	// revision is the last layout revision the server told of.
+	revision uint64
 }
 
 // callTimeout is how long a request waits for its answer.
@@ -228,6 +230,9 @@ func (c *Client) read() {
 		c.mu.Lock()
 		if res.ID == 0 && res.Event != "" {
 			c.changes[res.Event] = true
+			if res.Revision > 0 {
+				c.revision = res.Revision
+			}
 			c.mu.Unlock()
 			select {
 			case c.changed <- struct{}{}:
@@ -516,8 +521,50 @@ func (c *Client) Layout() (json.RawMessage, error) {
 	return l, err
 }
 
+// LayoutState returns the layout and the revision it is at (ProtocolVersion
+// 3). A server before 3 answers an error: use Layout then.
+func (c *Client) LayoutState() (LayoutState, error) {
+	var st LayoutState
+	if err := c.call(Request{Op: "getLayoutState"}, &st); err != nil {
+		return st, err
+	}
+	c.mu.Lock()
+	c.revision = st.Revision
+	c.mu.Unlock()
+	return st, nil
+}
+
 func (c *Client) SetLayout(l json.RawMessage) error {
-	return c.call(Request{Op: "setLayout", Layout: l}, nil)
+	return c.SetLayoutAt(l, 0)
+}
+
+// SetLayoutAt sets the layout only when it is still at revision; a
+// revision of 0 sets it whatever it is. A server before 3 answers the
+// check with an error instead of ignoring the revision.
+func (c *Client) SetLayoutAt(l json.RawMessage, revision uint64) error {
+	if revision != 0 {
+		if _, err := c.LayoutState(); err != nil {
+			return fmt.Errorf("rex: layout revisions need a version 3 server: %w", err)
+		}
+	}
+	var st LayoutState
+	if err := c.call(Request{Op: "setLayout", Layout: l, LayoutRevision: revision}, &st); err != nil {
+		return err
+	}
+	if st.Revision > 0 {
+		c.mu.Lock()
+		c.revision = st.Revision
+		c.mu.Unlock()
+	}
+	return nil
+}
+
+// Revision returns the layout revision the server last stated, from a
+// LayoutState, a SetLayoutAt, or a layout event; 0 before any.
+func (c *Client) Revision() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.revision
 }
 
 func (c *Client) Shutdown() error { return c.call(Request{Op: "shutdown"}, nil) }

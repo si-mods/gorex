@@ -24,22 +24,24 @@ import (
 
 // Server owns the sessions.
 type Server struct {
-	mu       sync.Mutex
-	sessions map[string]*session
-	order    []string
-	layout   json.RawMessage
-	started  time.Time
-	host     HostInfo
-	hostDone chan struct{}
-	ln       net.Listener
-	lock     *os.File
-	exe      string
-	exeTime  time.Time
-	controls int
-	idleFrom time.Time
-	quit     chan struct{}
-	quitOnce sync.Once
-	rem      remote
+	mu         sync.Mutex
+	sessions   map[string]*session
+	order      []string
+	layout     json.RawMessage
+	layoutRev  uint64
+	layoutFile sync.Mutex
+	started    time.Time
+	host       HostInfo
+	hostDone   chan struct{}
+	ln         net.Listener
+	lock       *os.File
+	exe        string
+	exeTime    time.Time
+	controls   int
+	idleFrom   time.Time
+	quit       chan struct{}
+	quitOnce   sync.Once
+	rem        remote
 	// ops is held by the ops that add or end sessions, and an upgrade
 	// takes it alone; acceptMu holds Accept while an upgrade stops it.
 	ops      sync.RWMutex
@@ -280,7 +282,7 @@ func Serve() error {
 func newServer(ln net.Listener, lock *os.File) *Server {
 	s := &Server{
 		sessions: map[string]*session{}, started: time.Now(), ln: ln, lock: lock,
-		hostDone: make(chan struct{}), idleFrom: time.Now(), quit: make(chan struct{}),
+		layoutRev: 1, hostDone: make(chan struct{}), idleFrom: time.Now(), quit: make(chan struct{}),
 	}
 	s.exe, s.exeTime = Executable()
 	return s
@@ -654,7 +656,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		case <-s.hostDone:
 		case <-time.After(3 * time.Second):
 		}
-		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade}
+		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
 		if kept != nil {
 			h.Keepalive, h.Conn = keepaliveTimeout.get(), kept.id
 		}
@@ -747,24 +749,45 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			return nil, nil
 		}
 		return l, nil
+	case "getLayoutState":
+		s.mu.Lock()
+		st := LayoutState{Layout: s.layout, Revision: s.layoutRev}
+		s.mu.Unlock()
+		return st, nil
 	case "setLayout":
 		if !json.Valid(req.Layout) {
 			return nil, errors.New("layout is not JSON")
 		}
 		l := bytes.Clone(req.Layout)
 		s.mu.Lock()
+		if req.LayoutRevision != 0 && req.LayoutRevision != s.layoutRev {
+			rev := s.layoutRev
+			s.mu.Unlock()
+			return nil, fmt.Errorf("rex: layout is at revision %d", rev)
+		}
 		same := bytes.Equal(s.layout, l)
 		s.layout = l
+		if !same {
+			s.layoutRev++
+		}
+		rev := s.layoutRev
 		s.mu.Unlock()
 		if !same {
 			s.notify("layout")
 		}
+		// Write the layout the server has now, not this request's: two
+		// writes that cross must not leave the older one on disk.
+		s.layoutFile.Lock()
+		s.mu.Lock()
+		current := bytes.Clone(s.layout)
+		s.mu.Unlock()
 		path := filepath.Join(Dir(), "layout.json")
 		tmp := path + ".tmp"
-		if err := os.WriteFile(tmp, l, 0o600); err == nil {
+		if err := os.WriteFile(tmp, current, 0o600); err == nil {
 			os.Rename(tmp, path)
 		}
-		return nil, nil
+		s.layoutFile.Unlock()
+		return LayoutState{Layout: l, Revision: rev}, nil
 	case "command", "command.done":
 		if req.Command == nil {
 			return nil, errors.New("rex: no command")

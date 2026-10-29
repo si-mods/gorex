@@ -17,8 +17,13 @@ import (
 	"gorex/locales"
 )
 
-// command is an action of the menus and the command palette.
+// command is an action of the menus, the command palette, the keymap, the
+// CLI and Lua: one registry, one ID, one set of arguments. Menus and the
+// palette are built from it; commands without an ID are not actions.
 type command struct {
+	// ID names the action across the app, such as "pane.split.right". It
+	// is stable: scripts and user configuration refer to it.
+	ID string
 	// Name says the title in a language: a method of the catalog's
 	// messages, as locales.Messages.CmdNewTab.
 	Name func(locales.Messages) string
@@ -29,56 +34,212 @@ type command struct {
 	// with it, as when copying and pasting; Alt and Control-Alt make
 	// characters (AltGr), and Alt and a letter open the menus on Windows.
 	Other shortcut
-	Run   func(a *App)
+	// Args are the arguments an action takes. A command with none takes
+	// none; invocation rejects an unknown or wrongly typed one.
+	Args []actionArg
+	// Run makes the action when it takes no arguments. RunArgs, when set,
+	// makes it with arguments, which Run does not see.
+	Run     func(a *App)
+	RunArgs func(a *App, args map[string]any) error
+	// Available, when set, tells whether the action can run now.
+	Available func(a *App) bool
 	// Hidden keeps it out of the palette.
 	Hidden bool
 }
 
-var (
-	cmdNewTab      = command{Name: locales.Messages.CmdNewTab, Accel: "CmdOrCtrl+T", Keys: "⌘T", Other: ctrlShift(ui.KeyT), Run: func(a *App) { a.newTab(a.currentDir()) }}
-	cmdSplitRight  = command{Name: locales.Messages.CmdSplitRight, Accel: "CmdOrCtrl+D", Keys: "⌘D", Other: ctrlShift(ui.KeyD), Run: func(a *App) { a.split(false) }}
-	cmdSplitDown   = command{Name: locales.Messages.CmdSplitDown, Accel: "CmdOrCtrl+Shift+D", Keys: "⇧⌘D", Other: ctrlShift(ui.KeyE), Run: func(a *App) { a.split(true) }}
-	cmdClosePane   = command{Name: locales.Messages.CmdClosePane, Accel: "CmdOrCtrl+W", Keys: "⌘W", Other: ctrlShift(ui.KeyW), Run: func(a *App) { a.closeFocused() }}
-	cmdCloseTab    = command{Name: locales.Messages.CmdCloseTab, Accel: "CmdOrCtrl+Shift+W", Keys: "⇧⌘W", Run: func(a *App) { a.closeActiveTab() }}
-	cmdZoom        = command{Name: locales.Messages.CmdZoomPane, Accel: "CmdOrCtrl+Shift+Enter", Keys: "⇧⌘↩", Other: ctrlShift(ui.KeyEnter), Run: func(a *App) { a.toggleZoom() }}
-	cmdEqualize    = command{Name: locales.Messages.CmdEqualizePanes, Accel: "CmdOrCtrl+Ctrl+=", Keys: "⌃⌘=", Run: func(a *App) { a.equalize() }}
-	cmdNextTab     = command{Name: locales.Messages.CmdNextTab, Accel: "CmdOrCtrl+Shift+]", Keys: "⇧⌘]", Other: shortcut{ui.Ctrl, ui.KeyPageDown}, Run: func(a *App) { a.cycleTab(1) }}
-	cmdPrevTab     = command{Name: locales.Messages.CmdPreviousTab, Accel: "CmdOrCtrl+Shift+[", Keys: "⇧⌘[", Other: shortcut{ui.Ctrl, ui.KeyPageUp}, Run: func(a *App) { a.cycleTab(-1) }}
-	cmdSidebar     = command{Name: locales.Messages.CmdToggleSidebar, Accel: "CmdOrCtrl+Ctrl+S", Keys: "⌃⌘S", Other: ctrlShift(ui.KeyS), Run: func(a *App) { a.toggleSidebar() }}
-	cmdRenameTab   = command{Name: locales.Messages.CmdRenameTab, Accel: "CmdOrCtrl+Shift+R", Keys: "⇧⌘R", Other: ctrlShift(ui.KeyR), Run: func(a *App) { a.startRename() }}
-	cmdPalette     = command{Name: locales.Messages.CmdCommandPalette, Accel: "CmdOrCtrl+Shift+P", Keys: "⇧⌘P", Other: ctrlShift(ui.KeyP), Run: func(a *App) { a.openPalette() }, Hidden: true}
-	cmdPalette2    = command{Name: locales.Messages.CmdGoToPane, Accel: "CmdOrCtrl+P", Keys: "⌘P", Run: func(a *App) { a.openPalette() }, Hidden: true}
-	cmdFocusLeft   = command{Name: locales.Messages.CmdFocusPaneLeft, Accel: "CmdOrCtrl+Alt+Left", Keys: "⌥⌘←", Other: shortcut{ui.Alt, ui.KeyLeft}, Run: func(a *App) { a.moveFocus(-1, 0) }}
-	cmdFocusRight  = command{Name: locales.Messages.CmdFocusPaneRight, Accel: "CmdOrCtrl+Alt+Right", Keys: "⌥⌘→", Other: shortcut{ui.Alt, ui.KeyRight}, Run: func(a *App) { a.moveFocus(1, 0) }}
-	cmdFocusUp     = command{Name: locales.Messages.CmdFocusPaneAbove, Accel: "CmdOrCtrl+Alt+Up", Keys: "⌥⌘↑", Other: shortcut{ui.Alt, ui.KeyUp}, Run: func(a *App) { a.moveFocus(0, -1) }}
-	cmdFocusDown   = command{Name: locales.Messages.CmdFocusPaneBelow, Accel: "CmdOrCtrl+Alt+Down", Keys: "⌥⌘↓", Other: shortcut{ui.Alt, ui.KeyDown}, Run: func(a *App) { a.moveFocus(0, 1) }}
-	cmdGrowLeft    = command{Name: locales.Messages.CmdMoveDividerLeft, Accel: "CmdOrCtrl+Ctrl+Left", Keys: "⌃⌘←", Other: shortcut{ui.Alt | ui.Shift, ui.KeyLeft}, Run: func(a *App) { a.resizeFocused(-1, 0) }}
-	cmdGrowRight   = command{Name: locales.Messages.CmdMoveDividerRight, Accel: "CmdOrCtrl+Ctrl+Right", Keys: "⌃⌘→", Other: shortcut{ui.Alt | ui.Shift, ui.KeyRight}, Run: func(a *App) { a.resizeFocused(1, 0) }}
-	cmdGrowUp      = command{Name: locales.Messages.CmdMoveDividerUp, Accel: "CmdOrCtrl+Ctrl+Up", Keys: "⌃⌘↑", Other: shortcut{ui.Alt | ui.Shift, ui.KeyUp}, Run: func(a *App) { a.resizeFocused(0, -1) }}
-	cmdGrowDown    = command{Name: locales.Messages.CmdMoveDividerDown, Accel: "CmdOrCtrl+Ctrl+Down", Keys: "⌃⌘↓", Other: shortcut{ui.Alt | ui.Shift, ui.KeyDown}, Run: func(a *App) { a.resizeFocused(0, 1) }}
-	cmdClear       = command{Name: locales.Messages.CmdClearScreen, Accel: "CmdOrCtrl+K", Keys: "⌘K", Other: ctrlShift(ui.KeyK), Run: func(a *App) { a.clearFocused() }, Hidden: true}
-	cmdClearScroll = command{Name: locales.Messages.CmdClearScrollback, Run: func(a *App) { a.clearFocused() }}
-	cmdRestart     = command{Name: locales.Messages.CmdRestartShell, Run: func(a *App) { a.restartFocused() }}
-	cmdBigger      = command{Name: locales.Messages.CmdBiggerText, Accel: "CmdOrCtrl+=", Keys: "⌘+", Other: shortcut{ui.Ctrl, ui.KeyEqual}, Run: func(a *App) { a.setFontSize(termFont.Size + 1) }}
-	cmdSmaller     = command{Name: locales.Messages.CmdSmallerText, Accel: "CmdOrCtrl+-", Keys: "⌘−", Other: shortcut{ui.Ctrl, ui.KeyMinus}, Run: func(a *App) { a.setFontSize(termFont.Size - 1) }}
-	cmdActualSize  = command{Name: locales.Messages.CmdActualSize, Accel: "CmdOrCtrl+0", Keys: "⌘0", Other: shortcut{ui.Ctrl, ui.Key0}, Run: func(a *App) { a.setFontSize(0) }}
-	cmdGhostty     = command{Name: locales.Messages.CmdReloadGhostty, Run: func(a *App) { a.reloadGhostty() }}
-	cmdLight       = command{Name: locales.Messages.CmdAppearanceLight, Run: func(a *App) { a.setAppearance("light") }}
-	cmdDark        = command{Name: locales.Messages.CmdAppearanceDark, Run: func(a *App) { a.setAppearance("dark") }}
-	cmdSystem      = command{Name: locales.Messages.CmdAppearanceSystem, Run: func(a *App) { a.setAppearance("") }}
-	cmdSettings    = command{Name: locales.Messages.CmdSettings, Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
-	cmdUpdates     = command{Name: locales.Messages.CmdCheckForUpdates, Run: func(a *App) { updater.CheckForUpdates() }}
-	cmdEndAll      = command{Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
+// actionArg is one argument of an action. Type is "string", "number",
+// "integer", "boolean", "object", "array" or "any"; Values, when set,
+// limits a string to one of them.
+type actionArg struct {
+	Name     string
+	Type     string
+	Optional bool
+	Values   []string
+}
 
-	cmdNewWindow     = command{Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
-	cmdNewSession    = command{Name: locales.Messages.CmdNewSession, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.newWorkspace() }}
-	cmdChangeSession = command{Name: locales.Messages.CmdChangeSession, Accel: "CmdOrCtrl+Shift+O", Keys: "⇧⌘O", Other: ctrlShift(ui.KeyO), Run: func(a *App) { a.openSessionPalette() }}
-	cmdNextSession   = command{Name: locales.Messages.CmdNextSession, Accel: "CmdOrCtrl+Ctrl+]", Keys: "⌃⌘]", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageDown}, Run: func(a *App) { a.cycleWorkspace(1) }}
-	cmdPrevSession   = command{Name: locales.Messages.CmdPreviousSession, Accel: "CmdOrCtrl+Ctrl+[", Keys: "⌃⌘[", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageUp}, Run: func(a *App) { a.cycleWorkspace(-1) }}
-	cmdRenameSession = command{Name: locales.Messages.CmdRenameSession, Run: func(a *App) { a.startWorkspaceRename() }}
-	cmdCloseSession  = command{Name: locales.Messages.CmdCloseSession, Run: func(a *App) { a.askCloseWorkspace() }}
-	cmdMoveTabWindow = command{Name: locales.Messages.CmdMoveTabToNewWindow}
+// validateArgs checks args against the action's arguments.
+func (cmd *command) validateArgs(args map[string]any) error {
+	specs := make(map[string]actionArg, len(cmd.Args))
+	for _, a := range cmd.Args {
+		specs[a.Name] = a
+	}
+	for name := range args {
+		if _, ok := specs[name]; !ok {
+			return fmt.Errorf("%s: no argument %q", cmd.ID, name)
+		}
+	}
+	for _, a := range cmd.Args {
+		v, ok := args[a.Name]
+		if !ok {
+			if a.Optional {
+				continue
+			}
+			return fmt.Errorf("%s: %s is required", cmd.ID, a.Name)
+		}
+		if err := a.check(v); err != nil {
+			return fmt.Errorf("%s: %s: %w", cmd.ID, a.Name, err)
+		}
+	}
+	return nil
+}
+
+// check reports whether v is of the argument's type.
+func (a actionArg) check(v any) error {
+	ok := false
+	switch a.Type {
+	case "", "any":
+		ok = true
+	case "string":
+		s, is := v.(string)
+		ok = is
+		if ok && len(a.Values) > 0 && !slices.Contains(a.Values, s) {
+			return fmt.Errorf("want one of %s", strings.Join(a.Values, ", "))
+		}
+	case "number":
+		switch v.(type) {
+		case float64, float32, int, int64:
+			ok = true
+		}
+	case "integer":
+		switch n := v.(type) {
+		case int, int64:
+			ok = true
+		case float64:
+			ok = n == float64(int64(n))
+		}
+	case "boolean":
+		_, ok = v.(bool)
+	case "object":
+		_, ok = v.(map[string]any)
+	case "array":
+		_, ok = v.([]any)
+	default:
+		return fmt.Errorf("unknown type %q", a.Type)
+	}
+	if !ok {
+		return fmt.Errorf("want %s", a.Type)
+	}
+	return nil
+}
+
+// invoke runs the action with args, after checking them and whether it can
+// run now.
+func (cmd *command) invoke(a *App, args map[string]any) error {
+	if cmd.Available != nil && !cmd.Available(a) {
+		return fmt.Errorf("%s is not available now", cmd.ID)
+	}
+	if err := cmd.validateArgs(args); err != nil {
+		return err
+	}
+	if cmd.RunArgs != nil {
+		return cmd.RunArgs(a, args)
+	}
+	if cmd.Run != nil {
+		cmd.Run(a)
+	}
+	return nil
+}
+
+// commandsByID is every action by its ID, made from commands at start.
+var commandsByID = map[string]*command{}
+
+// lookupCommand returns the action ID, nil when there is none.
+func lookupCommand(id string) *command { return commandsByID[id] }
+
+var (
+	cmdNewTab = command{
+		ID: "tab.new", Name: locales.Messages.CmdNewTab, Accel: "CmdOrCtrl+T", Keys: "⌘T", Other: ctrlShift(ui.KeyT),
+		Args: []actionArg{{Name: "dir", Type: "string", Optional: true}},
+		Run:  func(a *App) { a.newTab(a.currentDir()) },
+		RunArgs: func(a *App, args map[string]any) error {
+			dir, _ := args["dir"].(string)
+			if strings.TrimSpace(dir) == "" {
+				dir = a.currentDir()
+			}
+			a.newTab(dir)
+			return nil
+		},
+	}
+	cmdSplitRight = command{
+		ID: "pane.split.right", Name: locales.Messages.CmdSplitRight, Accel: "CmdOrCtrl+D", Keys: "⌘D", Other: ctrlShift(ui.KeyD),
+		Args:    []actionArg{{Name: "dir", Type: "string", Optional: true}},
+		Run:     func(a *App) { a.split(false) },
+		RunArgs: func(a *App, args map[string]any) error { a.splitAt(false, argString(args, "dir")); return nil },
+	}
+	cmdSplitDown = command{
+		ID: "pane.split.down", Name: locales.Messages.CmdSplitDown, Accel: "CmdOrCtrl+Shift+D", Keys: "⇧⌘D", Other: ctrlShift(ui.KeyE),
+		Args:    []actionArg{{Name: "dir", Type: "string", Optional: true}},
+		Run:     func(a *App) { a.split(true) },
+		RunArgs: func(a *App, args map[string]any) error { a.splitAt(true, argString(args, "dir")); return nil },
+	}
+	cmdClosePane = command{ID: "pane.close", Name: locales.Messages.CmdClosePane, Accel: "CmdOrCtrl+W", Keys: "⌘W", Other: ctrlShift(ui.KeyW), Run: func(a *App) { a.closeFocused() }}
+	cmdCloseTab  = command{ID: "tab.close", Name: locales.Messages.CmdCloseTab, Accel: "CmdOrCtrl+Shift+W", Keys: "⇧⌘W", Run: func(a *App) { a.closeActiveTab() }}
+	cmdZoom      = command{
+		ID: "pane.zoom", Name: locales.Messages.CmdZoomPane, Accel: "CmdOrCtrl+Shift+Enter", Keys: "⇧⌘↩", Other: ctrlShift(ui.KeyEnter),
+		Args:    []actionArg{{Name: "mode", Type: "string", Optional: true, Values: []string{"on", "off", "toggle"}}},
+		Run:     func(a *App) { _ = a.zoomFocused("toggle") },
+		RunArgs: func(a *App, args map[string]any) error { return a.zoomFocused(argString(args, "mode")) },
+	}
+	cmdEqualize  = command{ID: "pane.equalize", Name: locales.Messages.CmdEqualizePanes, Accel: "CmdOrCtrl+Ctrl+=", Keys: "⌃⌘=", Run: func(a *App) { a.equalize() }}
+	cmdNextTab   = command{ID: "tab.next", Name: locales.Messages.CmdNextTab, Accel: "CmdOrCtrl+Shift+]", Keys: "⇧⌘]", Other: shortcut{ui.Ctrl, ui.KeyPageDown}, Run: func(a *App) { a.cycleTab(1) }}
+	cmdPrevTab   = command{ID: "tab.previous", Name: locales.Messages.CmdPreviousTab, Accel: "CmdOrCtrl+Shift+[", Keys: "⇧⌘[", Other: shortcut{ui.Ctrl, ui.KeyPageUp}, Run: func(a *App) { a.cycleTab(-1) }}
+	cmdSidebar   = command{ID: "sidebar.toggle", Name: locales.Messages.CmdToggleSidebar, Accel: "CmdOrCtrl+Ctrl+S", Keys: "⌃⌘S", Other: ctrlShift(ui.KeyS), Run: func(a *App) { a.toggleSidebar() }}
+	cmdRenameTab = command{
+		ID: "tab.rename", Name: locales.Messages.CmdRenameTab, Accel: "CmdOrCtrl+Shift+R", Keys: "⇧⌘R", Other: ctrlShift(ui.KeyR),
+		Args: []actionArg{{Name: "name", Type: "string", Optional: true}},
+		Run:  func(a *App) { a.startRename() },
+		RunArgs: func(a *App, args map[string]any) error {
+			name := strings.TrimSpace(argString(args, "name"))
+			if name == "" {
+				a.startRename()
+				return nil
+			}
+			if t := a.tab(); t != nil {
+				t.Name = name
+				a.changed()
+			}
+			return nil
+		},
+	}
+	cmdPalette     = command{ID: "palette.open", Name: locales.Messages.CmdCommandPalette, Accel: "CmdOrCtrl+Shift+P", Keys: "⇧⌘P", Other: ctrlShift(ui.KeyP), Run: func(a *App) { a.openPalette() }, Hidden: true}
+	cmdPalette2    = command{ID: "pane.goto", Name: locales.Messages.CmdGoToPane, Accel: "CmdOrCtrl+P", Keys: "⌘P", Run: func(a *App) { a.openPalette() }, Hidden: true}
+	cmdFocusLeft   = command{ID: "pane.focus.left", Name: locales.Messages.CmdFocusPaneLeft, Accel: "CmdOrCtrl+Alt+Left", Keys: "⌥⌘←", Other: shortcut{ui.Alt, ui.KeyLeft}, Run: func(a *App) { a.moveFocus(-1, 0) }}
+	cmdFocusRight  = command{ID: "pane.focus.right", Name: locales.Messages.CmdFocusPaneRight, Accel: "CmdOrCtrl+Alt+Right", Keys: "⌥⌘→", Other: shortcut{ui.Alt, ui.KeyRight}, Run: func(a *App) { a.moveFocus(1, 0) }}
+	cmdFocusUp     = command{ID: "pane.focus.up", Name: locales.Messages.CmdFocusPaneAbove, Accel: "CmdOrCtrl+Alt+Up", Keys: "⌥⌘↑", Other: shortcut{ui.Alt, ui.KeyUp}, Run: func(a *App) { a.moveFocus(0, -1) }}
+	cmdFocusDown   = command{ID: "pane.focus.down", Name: locales.Messages.CmdFocusPaneBelow, Accel: "CmdOrCtrl+Alt+Down", Keys: "⌥⌘↓", Other: shortcut{ui.Alt, ui.KeyDown}, Run: func(a *App) { a.moveFocus(0, 1) }}
+	cmdGrowLeft    = command{ID: "pane.resize.left", Name: locales.Messages.CmdMoveDividerLeft, Accel: "CmdOrCtrl+Ctrl+Left", Keys: "⌃⌘←", Other: shortcut{ui.Alt | ui.Shift, ui.KeyLeft}, Run: func(a *App) { a.resizeFocused(-1, 0) }}
+	cmdGrowRight   = command{ID: "pane.resize.right", Name: locales.Messages.CmdMoveDividerRight, Accel: "CmdOrCtrl+Ctrl+Right", Keys: "⌃⌘→", Other: shortcut{ui.Alt | ui.Shift, ui.KeyRight}, Run: func(a *App) { a.resizeFocused(1, 0) }}
+	cmdGrowUp      = command{ID: "pane.resize.up", Name: locales.Messages.CmdMoveDividerUp, Accel: "CmdOrCtrl+Ctrl+Up", Keys: "⌃⌘↑", Other: shortcut{ui.Alt | ui.Shift, ui.KeyUp}, Run: func(a *App) { a.resizeFocused(0, -1) }}
+	cmdGrowDown    = command{ID: "pane.resize.down", Name: locales.Messages.CmdMoveDividerDown, Accel: "CmdOrCtrl+Ctrl+Down", Keys: "⌃⌘↓", Other: shortcut{ui.Alt | ui.Shift, ui.KeyDown}, Run: func(a *App) { a.resizeFocused(0, 1) }}
+	cmdClear       = command{ID: "screen.clear", Name: locales.Messages.CmdClearScreen, Accel: "CmdOrCtrl+K", Keys: "⌘K", Other: ctrlShift(ui.KeyK), Run: func(a *App) { a.clearFocused() }, Hidden: true}
+	cmdClearScroll = command{ID: "scrollback.clear", Name: locales.Messages.CmdClearScrollback, Run: func(a *App) { a.clearFocused() }}
+	cmdRestart     = command{ID: "pane.restart", Name: locales.Messages.CmdRestartShell, Run: func(a *App) { a.restartFocused() }}
+	cmdBigger      = command{ID: "font.bigger", Name: locales.Messages.CmdBiggerText, Accel: "CmdOrCtrl+=", Keys: "⌘+", Other: shortcut{ui.Ctrl, ui.KeyEqual}, Run: func(a *App) { a.setFontSize(termFont.Size + 1) }}
+	cmdSmaller     = command{ID: "font.smaller", Name: locales.Messages.CmdSmallerText, Accel: "CmdOrCtrl+-", Keys: "⌘−", Other: shortcut{ui.Ctrl, ui.KeyMinus}, Run: func(a *App) { a.setFontSize(termFont.Size - 1) }}
+	cmdActualSize  = command{ID: "font.reset", Name: locales.Messages.CmdActualSize, Accel: "CmdOrCtrl+0", Keys: "⌘0", Other: shortcut{ui.Ctrl, ui.Key0}, Run: func(a *App) { a.setFontSize(0) }}
+	cmdGhostty     = command{ID: "config.reload", Name: locales.Messages.CmdReloadGhostty, Run: func(a *App) { a.reloadGhostty() }}
+	cmdLight       = command{ID: "appearance.light", Name: locales.Messages.CmdAppearanceLight, Run: func(a *App) { a.setAppearance("light") }}
+	cmdDark        = command{ID: "appearance.dark", Name: locales.Messages.CmdAppearanceDark, Run: func(a *App) { a.setAppearance("dark") }}
+	cmdSystem      = command{ID: "appearance.system", Name: locales.Messages.CmdAppearanceSystem, Run: func(a *App) { a.setAppearance("") }}
+	cmdSettings    = command{ID: "app.settings", Name: locales.Messages.CmdSettings, Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
+	cmdUpdates     = command{ID: "app.updates", Name: locales.Messages.CmdCheckForUpdates, Run: func(a *App) { updater.CheckForUpdates() }}
+	cmdEndAll      = command{ID: "app.quit", Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
+
+	cmdNewWindow     = command{ID: "window.new", Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
+	cmdNewSession    = command{ID: "session.new", Name: locales.Messages.CmdNewSession, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.newWorkspace() }}
+	cmdChangeSession = command{ID: "session.switch", Name: locales.Messages.CmdChangeSession, Accel: "CmdOrCtrl+Shift+O", Keys: "⇧⌘O", Other: ctrlShift(ui.KeyO), Run: func(a *App) { a.openSessionPalette() }}
+	cmdNextSession   = command{ID: "session.next", Name: locales.Messages.CmdNextSession, Accel: "CmdOrCtrl+Ctrl+]", Keys: "⌃⌘]", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageDown}, Run: func(a *App) { a.cycleWorkspace(1) }}
+	cmdPrevSession   = command{ID: "session.previous", Name: locales.Messages.CmdPreviousSession, Accel: "CmdOrCtrl+Ctrl+[", Keys: "⌃⌘[", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageUp}, Run: func(a *App) { a.cycleWorkspace(-1) }}
+	cmdRenameSession = command{ID: "session.rename", Name: locales.Messages.CmdRenameSession, Run: func(a *App) { a.startWorkspaceRename() }}
+	cmdCloseSession  = command{ID: "session.close", Name: locales.Messages.CmdCloseSession, Run: func(a *App) { a.askCloseWorkspace() }}
+	cmdMoveTabWindow = command{ID: "tab.move_window", Name: locales.Messages.CmdMoveTabToNewWindow}
 )
+
+// argString returns the string argument name, "" when absent.
+func argString(args map[string]any, name string) string {
+	s, _ := args[name].(string)
+	return s
+}
 
 // Title is the command's title in the language the app shows.
 func (cmd *command) Title() string { return say(cmd.Name) }
@@ -114,6 +275,15 @@ var sessionCommands = []*command{
 var commands = append(slices.Clone(paletteCommands), &cmdPalette, &cmdPalette2, &cmdClear)
 
 func init() {
+	for _, cmd := range commands {
+		if cmd.ID == "" {
+			panic("gorex: command without an ID: " + cmd.English())
+		}
+		if _, ok := commandsByID[cmd.ID]; ok {
+			panic("gorex: duplicate command ID: " + cmd.ID)
+		}
+		commandsByID[cmd.ID] = cmd
+	}
 	if runtime.GOOS == "darwin" {
 		return
 	}
@@ -306,9 +476,17 @@ func (a *App) run(cmd *command) {
 	}
 	a.do(func() {
 		if a.win != nil {
-			cmd.Run(a)
+			a.invokeCommand(cmd, nil)
 		}
 	})
+}
+
+// invokeCommand runs an action on the main thread, keeping what went
+// wrong for the view to say.
+func (a *App) invokeCommand(cmd *command, args map[string]any) {
+	if err := cmd.invoke(a, args); err != nil {
+		a.err = err.Error()
+	}
 }
 
 func (a *App) closeFocused() {
@@ -431,7 +609,7 @@ func (a *App) shortcuts(c *ui.Context) {
 	}
 	for _, cmd := range commands {
 		if cmd.Other != (shortcut{}) && c.Shortcut(cmd.Other.Mods, cmd.Other.Key) {
-			a.later(c, func() { cmd.Run(a) })
+			a.later(c, func() { a.invokeCommand(cmd, nil) })
 		}
 	}
 	for i := 1; i <= 9; i++ {
@@ -499,7 +677,7 @@ func (a *App) paletteItems() []paletteItem {
 			continue
 		}
 		cmd := cmd
-		items = append(items, paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { cmd.Run(a) }})
+		items = append(items, paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { a.invokeCommand(cmd, nil) }})
 		if cmd == &cmdNewTab {
 			items = append(items, a.newTabOnItems(match)...)
 		}

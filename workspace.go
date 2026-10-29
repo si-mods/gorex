@@ -559,7 +559,7 @@ var newWindow = func(a *App) *mygo.Window {
 // openWindow opens a window that shows w; with adopt, the sessions of this
 // machine no workspace names get tabs in it.
 func (st *store) openWindow(w *Workspace, adopt bool) *App {
-	a := &App{st: st, client: st.client, hello: st.hello, errMsg: st.errMsg, slot: st.freeSlot(), stop: make(chan struct{})}
+	a := &App{st: st, client: st.client, hello: st.hello, errMsg: st.errMsg, slot: st.freeSlot(), stop: make(chan struct{}), keys: newKeyDispatcher()}
 	a.win = newWindow(a)
 	st.apps = slices.Insert(st.apps, 0, a)
 	if !st.hostsUp {

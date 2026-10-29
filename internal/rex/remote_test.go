@@ -44,7 +44,7 @@ func testServer(t *testing.T) (*Server, *atomic.Int32) {
 	}
 	hostDone := make(chan struct{})
 	close(hostDone)
-	s := &Server{sessions: map[string]*session{}, started: time.Now(), hostDone: hostDone, quit: make(chan struct{})}
+	s := &Server{sessions: map[string]*session{}, started: time.Now(), layoutRev: 1, hostDone: hostDone, quit: make(chan struct{})}
 	t.Cleanup(func() {
 		s.remoteClose()
 		remoteListen, remotePeerKey = old, oldKey
