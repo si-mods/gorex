@@ -61,7 +61,10 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 // workspaceRenameField renames the workspace in place, as tabs are: Enter
 // or moving the focus away keeps the name, Escape goes back.
 func (a *App) workspaceRenameField(c *ui.Context, name string) {
-	in := ui.TextInput(c, &a.wsRenameText).Placeholder(name).Grow(1).MinWidth(60).Height(22).FontSize(13).AutoFocus()
+	// PaddingY(0): TextInput's 6-DIP vertical padding leaves 8 DIPs of
+	// content box in Height(22), less than the 15-DIP line of size 13, and
+	// the bottom of the glyphs, their descenders, is clipped.
+	in := ui.TextInput(c, &a.wsRenameText).Placeholder(name).Grow(1).MinWidth(60).Height(22).PaddingY(0).FontSize(13).AutoFocus()
 	done := func(keep bool) {
 		if keep {
 			a.renameWorkspace(a.wsRenameText)
