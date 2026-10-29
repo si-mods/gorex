@@ -370,3 +370,24 @@ func TestRestoreMost(t *testing.T) {
 		t.Fatalf("the server started %d sessions, not 2", len(infos))
 	}
 }
+
+// TestJournalEndsTheRun checks that a run's stop is its last entry: what
+// comes after it — a layout, a session — is not kept, so that the run is not
+// read as one that did not stop.
+func TestJournalEndsTheRun(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	j := openJournal()
+	j.layout(1, testLayout(&layout.Node{SID: "a", Dir: dir}))
+	j.stopped("request", nil)
+	j.layout(2, testLayout(&layout.Node{SID: "b", Dir: dir}))
+	j.session("c", "", "zsh", dir)
+	j.close()
+	entries := readJournal()
+	if len(entries) != 2 || entries[1].Event != eventStop {
+		t.Fatalf("the journal holds %+v", entries)
+	}
+	if !journalStopped(entries) {
+		t.Error("the run's stop is not its last entry")
+	}
+}
