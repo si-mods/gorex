@@ -141,7 +141,11 @@ Supported: `font-family`, `font-size`, `font-feature`, `font-thicken`,
 `cursor-style`, `cursor-style-blink`, `scrollback-limit`,
 `macos-option-as-alt`, `copy-on-select` (`clipboard`; `true` is
 Linux's selection clipboard, so it copies nothing), `right-click-action`,
-`minimum-contrast`, `keybind`. `keybind` takes `clear`, `performable:`,
+`minimum-contrast`, `clipboard-read`, `clipboard-write`,
+`window-padding-x`, `window-padding-y`, `window-padding-color`,
+`image-storage-limit`, `search-background`, `search-foreground`,
+`search-selected-background`, `search-selected-foreground`, `keybind`.
+`keybind` takes `clear`, `performable:`,
 and the actions unbind, ignore, copy_to_clipboard, paste_from_clipboard,
 select_all, clear_screen, increase_font_size, decrease_font_size,
 reset_font_size, and scroll_page_up, scroll_page_down, scroll_to_top,
@@ -155,6 +159,18 @@ dark or light by it, as Ghostty's `window-theme = auto` does (not with
 (command palette, View menu) applies fonts, themes, `copy-on-select`,
 and `minimum-contrast` to open panes; the other options apply to new
 panes.
+
+Options GoRex maps fully: the colors and fonts above, `cursor-style`,
+`cursor-style-blink`, `scrollback-limit`, `macos-option-as-alt`,
+`copy-on-select`, `right-click-action`, `minimum-contrast`,
+`clipboard-read` (allow, ask or deny), `clipboard-write` (allow or
+deny; ask is treated as deny), the first value of `window-padding-x`
+and `window-padding-y` (the library has one width and one height),
+`window-padding-color`, `image-storage-limit` (0 refuses images), and
+the supported `keybind`s. Options it reads but leaves out, as the library
+has no mapping: `background-opacity`, `background-blur`,
+`mouse-hide-while-typing`, `scroll-multiplier`, `window-padding-balance`,
+and window decorations. Other options are ignored.
 
 ## Remote access
 

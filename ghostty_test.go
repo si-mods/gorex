@@ -270,16 +270,26 @@ func TestGhosttyTermOptions(t *testing.T) {
 	old := ghostty
 	defer func() { ghostty = old }()
 	ghostty = *parseGhostty(writeConf(t, t.TempDir(), "c",
-		"copy-on-select = clipboard\nright-click-action = copy-or-paste\nminimum-contrast = 3\nkeybind = clear\nkeybind = ctrl+a=select_all\n"))
+		"copy-on-select = clipboard\nright-click-action = copy-or-paste\nminimum-contrast = 3\nkeybind = clear\nkeybind = ctrl+a=select_all\n"+
+			"clipboard-read = allow\nclipboard-write = deny\nwindow-padding-x = 10\nwindow-padding-y = 5\nwindow-padding-color = extend-always\nimage-storage-limit = 1048576\n"))
 	o := termOptions()
 	if o.CopyOnSelect != terminal.CopyOnSelectClipboard || o.RightClick != terminal.RightClickCopyOrPaste ||
-		o.MinimumContrast != 3 || !o.NoDefaultKeybinds || len(o.Keybinds) != 1 {
+		o.MinimumContrast != 3 || !o.NoDefaultKeybinds || len(o.Keybinds) != 1 ||
+		!o.NoClipboardWrite || o.ClipboardRead != terminal.ClipboardAllow ||
+		o.Padding.X != 10 || o.Padding.Y != 5 || o.PaddingColor != terminal.PaddingExtendAlways || o.ImageLimit != 1048576 {
 		t.Errorf("options = %+v", o)
 	}
 	// A reload starts from a fresh configuration: nothing is kept.
 	ghostty = *parseGhostty(writeConf(t, t.TempDir(), "c2", "font-size = 12\n"))
 	o = termOptions()
-	if o.CopyOnSelect != 0 || o.RightClick != 0 || o.MinimumContrast != 0 || o.NoDefaultKeybinds || o.Keybinds != nil {
+	if o.CopyOnSelect != 0 || o.RightClick != 0 || o.MinimumContrast != 0 || o.NoDefaultKeybinds || o.Keybinds != nil ||
+		o.NoClipboardWrite || o.ClipboardRead != terminal.ClipboardAsk || o.Padding != (terminal.Padding{}) ||
+		o.PaddingColor != terminal.PaddingBackground || o.ImageLimit != 0 {
 		t.Errorf("options leaked: %+v", o)
+	}
+	// An explicit zero disables images; Ghostty's default asks for reads.
+	ghostty = *parseGhostty(writeConf(t, t.TempDir(), "c3", "image-storage-limit = 0\n"))
+	if o = termOptions(); o.ImageLimit >= 0 {
+		t.Errorf("image limit 0: %d", o.ImageLimit)
 	}
 }
