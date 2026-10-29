@@ -120,6 +120,9 @@ type attached struct {
 	// it attached through, which may hold the size lock (lockSize).
 	seq uint64
 	via net.Conn
+	// cols and rows are the size its terminal has, which the session
+	// follows once this client is the authority (authorityLocked).
+	cols, rows int
 }
 
 // The most chunks of output that may wait for a client, and bytes for a
@@ -423,14 +426,17 @@ func (s *session) read() {
 
 // attach attaches a connection: it gets a snapshot of the session's
 // screen and scrollback, at the size the server gave the session for it
-// (resizeNow), then what the session prints, and what it sends is typed,
-// typed first, what the server read past the attach's line.
+// (resizeForAttach), then what the session prints, and what it sends is
+// typed, typed first, what the server read past the attach's line.
 // may, checked as it joins, tells whether peer may still use the session:
 // detach drops it later when it may not. via is the control connection
 // it attached through (Attach.Conn), if any; o.History and o.Framed shape
 // the snapshot.
 func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may func() bool, typed []byte) {
 	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != ""}
+	if o.Cols > 0 && o.Rows > 0 {
+		a.cols, a.rows = o.Cols, o.Rows
+	}
 	s.mu.Lock()
 	s.waitBatchLocked()
 	if !may() {
@@ -477,7 +483,14 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may
 			break
 		}
 	}
+	s.leave(a)
+}
+
+// leave drops a client that is gone, and lets the session's size follow
+// the authority that is left: the typist, or the newest attaching.
+func (s *session) leave(a *attached) {
 	s.mu.Lock()
+	prev := s.authorityLocked()
 	if _, ok := s.clients[a]; ok {
 		delete(s.clients, a)
 		a.finish()
@@ -485,19 +498,35 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may
 	if s.typist == a {
 		s.typist = nil
 	}
+	pty, cols, rows := s.followAuthorityLocked(prev)
 	s.mu.Unlock()
+	if pty {
+		s.resizeTerminal(cols, rows)
+	}
 }
 
 // detach drops the windows attached for a peer that drop tells.
 func (s *session) detach(drop func(peer string) bool) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	pty := false
+	cols, rows := 0, 0
 	for a := range s.clients {
 		if drop(a.peer) {
+			prev := s.authorityLocked()
 			a.conn.Close() // reads no more of what it types
 			a.finish()
 			delete(s.clients, a)
+			if s.typist == a {
+				s.typist = nil
+			}
+			if p, c, r := s.followAuthorityLocked(prev); p {
+				pty, cols, rows = true, c, r
+			}
 		}
+	}
+	s.mu.Unlock()
+	if pty {
+		s.resizeTerminal(cols, rows)
 	}
 }
 
@@ -535,18 +564,56 @@ func (s *session) inputProgram(p []byte) error {
 func (s *session) admit(a *attached, p []byte) []byte {
 	typed := dropReplies(p)
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if a != nil && len(typed) > 0 {
+	prev := s.authorityLocked()
+	if a != nil && len(dropFocusReports(typed)) > 0 {
 		s.typist = a
 	}
 	if a != nil && s.authorityLocked() != a {
 		p = typed
 	}
-	if s.exited || len(p) == 0 {
-		return nil
+	pty, cols, rows := false, 0, 0
+	if a != nil {
+		pty, cols, rows = s.followAuthorityLocked(prev)
 	}
-	s.lastInput = time.Now()
+	if s.exited || len(p) == 0 {
+		p = nil
+	} else {
+		s.lastInput = time.Now()
+	}
+	s.mu.Unlock()
+	if pty {
+		s.resizeTerminal(cols, rows)
+	}
 	return p
+}
+
+// dropFocusReports returns p without the reports of the terminal's window
+// gaining or losing focus (CSI I, CSI O): a terminal sends them as its
+// window changes, without the user typing.
+func dropFocusReports(p []byte) []byte {
+	if bytes.IndexByte(p, 0x1b) < 0 {
+		return p
+	}
+	p = bytes.ReplaceAll(p, []byte("\x1b[I"), nil)
+	return bytes.ReplaceAll(p, []byte("\x1b[O"), nil)
+}
+
+// followAuthorityLocked takes the size of the new authority when it
+// changed from prev, s.mu held: the session's size follows the client
+// whose terminal answers the program's queries, which draws for it. It
+// reports whether to resize the terminal, and to what, which the caller
+// does once it let go of s.mu.
+func (s *session) followAuthorityLocked(prev *attached) (pty bool, cols, rows int) {
+	if s.exited || s.sizeLock != "" {
+		return false, 0, 0
+	}
+	a := s.authorityLocked()
+	if a == nil || a == prev || a.cols == 0 || a.rows == 0 {
+		return false, 0, 0
+	}
+	s.clearPendingResizeLocked()
+	pty = s.resizeLocked(a.cols, a.rows)
+	return pty, s.cols, s.rows
 }
 
 // authorityLocked returns the client whose terminal answers the program's
@@ -663,6 +730,13 @@ var resizeSettle = newDuration(150 * time.Millisecond)
 func (s *session) resize(cols, rows int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.resizeLaterLocked(cols, rows)
+}
+
+// resizeLaterLocked takes a size once it settled (resizeSettle), s.mu
+// held: not while an owner holds the size (lockSize), and not when it is
+// the session's already.
+func (s *session) resizeLaterLocked(cols, rows int) {
 	cols, rows = clampSize(cols), clampSize(rows)
 	if s.sizeLock != "" || s.exited {
 		return
@@ -677,6 +751,38 @@ func (s *session) resize(cols, rows int) {
 	} else {
 		s.pendingResize.Reset(settle)
 	}
+}
+
+// resizeFrom records the size cols×rows of the clients that asked for
+// it, and takes it once it settled (resize) when the authority is one of
+// them: the size of the client whose terminal answers the program's
+// queries is the session's (authorityLocked). The clients that asked are
+// those attached through the control connection via; with none, as the
+// app's windows on this machine, those of peer attached without one. A
+// request of no client attached resizes the session as before.
+func (s *session) resizeFrom(via net.Conn, peer string, cols, rows int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cols, rows = clampSize(cols), clampSize(rows)
+	asked := func(a *attached) bool {
+		if via != nil {
+			return a.via == via
+		}
+		return a.via == nil && a.peer == peer
+	}
+	matched := false
+	for a := range s.clients {
+		if asked(a) {
+			a.cols, a.rows = cols, rows
+			matched = true
+		}
+	}
+	if matched {
+		if a := s.authorityLocked(); a == nil || !asked(a) {
+			return
+		}
+	}
+	s.resizeLaterLocked(cols, rows)
 }
 
 // resizeTerminal resizes the terminal, the caller having let go of s.mu:
@@ -713,10 +819,29 @@ func (s *session) applyResize() {
 }
 
 // resizeNow sets the size of the terminal at once, not while an owner
-// holds the size (lockSize): for a window attaching, whose screen is
-// replayed at its size before it can resize the session itself.
+// holds the size (lockSize).
 func (s *session) resizeNow(cols, rows int) {
 	s.mu.Lock()
+	s.clearPendingResizeLocked()
+	pty := s.sizeLock == "" && s.resizeLocked(cols, rows)
+	cols, rows = s.cols, s.rows
+	s.mu.Unlock()
+	if pty {
+		s.resizeTerminal(cols, rows)
+	}
+}
+
+// resizeForAttach sets the size of the terminal at once for a window
+// attaching, whose screen is replayed at its size before it can resize
+// the session itself: unless a client that typed is attached, in which
+// case the session keeps its size, the attaching client becoming the
+// authority as the newest.
+func (s *session) resizeForAttach(cols, rows int) {
+	s.mu.Lock()
+	if _, ok := s.clients[s.typist]; ok {
+		s.mu.Unlock()
+		return
+	}
 	s.clearPendingResizeLocked()
 	pty := s.sizeLock == "" && s.resizeLocked(cols, rows)
 	cols, rows = s.cols, s.rows

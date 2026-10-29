@@ -436,9 +436,10 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		// The session takes the window's size before the answer, after
 		// which the client may resize it on its control connection: that
 		// size must not be overwritten by this older one. At once, not
-		// once it settled (resize): the screen is replayed at its size.
+		// once it settled (resize): the screen is replayed at its size,
+		// and not under a client that is typing.
 		if a.Cols > 0 && a.Rows > 0 {
-			ss.resizeNow(a.Cols, a.Rows)
+			ss.resizeForAttach(a.Cols, a.Rows)
 		}
 		conn.Write([]byte(`{"ok":true}` + "\n"))
 		// What the reader buffered past the first line is input.
@@ -858,7 +859,11 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		switch req.Op {
 		case "resize":
-			ss.resize(req.Cols, req.Rows)
+			var via net.Conn
+			if kept != nil {
+				via = kept.conn
+			}
+			ss.resizeFrom(via, peer, req.Cols, req.Rows)
 		case "lockSize":
 			if kept == nil || req.Owner == "" {
 				return nil, errors.New("rex: lockSize needs an owner, on a connection kept alive")

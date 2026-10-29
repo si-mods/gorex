@@ -51,9 +51,9 @@ func TestRepliesFromOneWindow(t *testing.T) {
 		{a, []byte("gh repo clone x\r"), true},
 		{a, reply, true},
 		{b, reply, false},
-		{b, []byte("\x1b[I"), true}, // focused, b is looked at now
-		{b, reply, true},
-		{a, reply, false},
+		{b, []byte("\x1b[I"), true}, // focused, but a focus report is not typing
+		{b, reply, false},           // so a still answers
+		{a, reply, true},
 		{nil, reply, true},
 		{a, []byte("\x1b]5522;type=read:status=DATA\x1b\\"), true}, // pasted in a
 		{a, reply, true},
