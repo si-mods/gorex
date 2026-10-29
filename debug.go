@@ -385,6 +385,8 @@ func (a *App) debug(dir, line string) {
 		})
 	case "host": // opens or closes the host chip's panel
 		win.Update(func() { a.hostOpen = !a.hostOpen })
+	case "chip": // opens or closes the session chip's popover
+		win.Update(func() { a.wsOpen = !a.wsOpen })
 	case "tabs": // above, left or right: where the tabs go
 		win.Update(func() {
 			setTabPlacement(&prefs, map[string]string{"left": "left", "right": "right"}[arg])

@@ -43,7 +43,7 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 	chip.Children(func() {
 		ui.Icon(c, icon("layers")).Size(15, 15).TextColor(glyph).Shrink(0)
 		if a.wsRenaming {
-			a.workspaceRenameField(c, w.Name)
+			a.workspaceRenameField(c, k, w.Name)
 			return
 		}
 		name := ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").MinWidth(0)
@@ -60,11 +60,8 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 
 // workspaceRenameField renames the workspace in place, as tabs are: Enter
 // or moving the focus away keeps the name, Escape goes back.
-func (a *App) workspaceRenameField(c *ui.Context, name string) {
-	// PaddingY(0): TextInput's 6-DIP vertical padding leaves 8 DIPs of
-	// content box in Height(22), less than the 15-DIP line of size 13, and
-	// the bottom of the glyphs, their descenders, is clipped.
-	in := ui.TextInput(c, &a.wsRenameText).Placeholder(name).Grow(1).MinWidth(60).Height(22).PaddingY(0).FontSize(13).AutoFocus()
+func (a *App) workspaceRenameField(c *ui.Context, k *colors, name string) {
+	in := textField(c, k, &a.wsRenameText, fieldCompact).Placeholder(name).Grow(1).MinWidth(60).AutoFocus()
 	done := func(keep bool) {
 		if keep {
 			a.renameWorkspace(a.wsRenameText)
@@ -188,7 +185,7 @@ func (a *App) spaceColorPicker(c *ui.Context, k *colors) {
 			a.spaceSwatch(c, k, p.ID, strings.ToUpper(p.ID[:1])+p.ID[1:], ui.Hex(p.Hex), false)
 		}
 	})
-	in := ui.TextInput(c, &a.wsColorText).FontSize(12).Height(24).Margin(0, 8, 6, 8).Placeholder(locales.SpaceColorCustom())
+	in := textField(c, k, &a.wsColorText, fieldRegular).Margin(0, 8, 6, 8).Placeholder(locales.SpaceColorCustom())
 	if in.Submitted() {
 		a.useSpaceColorText()
 	}

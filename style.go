@@ -24,7 +24,12 @@ type colors struct {
 
 	busy, attention, exited, danger ui.Color
 
+	// panel is the face of popovers, dialogs and the rows that float over
+	// a pane: opaque, so that the text they cover shows through nowhere.
 	panel, panelBorder, panelSel, backdrop ui.Color
+	// field is the face of a text field, which is opaque as panel, and its
+	// outline.
+	field, fieldBorder ui.Color
 
 	// accent is the color of what is chosen or on; panelSel is its wash.
 	accent, accentHover, accentPressed ui.Color
@@ -64,13 +69,15 @@ var lightColors = colors{
 	attention: ui.Hex("#f59e0b"),
 	exited:    ui.Hex("#a1a1a6"),
 
-	panel:       ui.RGBA(252, 252, 253, 0.97),
+	panel:       ui.Hex("#fcfcfd"),
 	panelBorder: ui.RGBA(0, 0, 0, 0.08),
 	panelSel:    ui.RGBA(46, 111, 208, 0.12),
 	backdrop:    ui.RGBA(40, 20, 40, 0.06),
 
 	accent: ui.Hex("#2e6fd0"), accentHover: ui.Hex("#2a64bd"), accentPressed: ui.Hex("#2459a8"),
 	surface: ui.Hex("#fcfcfd"), surfaceHover: ui.Hex("#efeff2"), surfacePressed: ui.Hex("#e3e3e8"),
+
+	field: ui.Hex("#f4f4f5"), fieldBorder: ui.Hex("#d9d9de"),
 }
 
 var darkColors = colors{
@@ -105,13 +112,15 @@ var darkColors = colors{
 	attention: ui.Hex("#fbbf24"),
 	exited:    ui.Hex("#636366"),
 
-	panel:       ui.RGBA(38, 38, 42, 0.97),
+	panel:       ui.Hex("#26262a"),
 	panelBorder: ui.RGBA(255, 255, 255, 0.1),
 	panelSel:    ui.RGBA(108, 178, 255, 0.18),
 	backdrop:    ui.RGBA(0, 0, 0, 0.2),
 
 	accent: ui.Hex("#6cb2ff"), accentHover: ui.Hex("#82bfff"), accentPressed: ui.Hex("#5aa2f0"),
 	surface: ui.Hex("#262629"), surfaceHover: ui.Hex("#303035"), surfacePressed: ui.Hex("#3a3a40"),
+
+	field: ui.Hex("#2d2d32"), fieldBorder: ui.Hex("#3f3f46"),
 }
 
 func colorsOf(c *ui.Context) *colors {

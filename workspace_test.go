@@ -715,6 +715,72 @@ func TestSpaceColorShots(t *testing.T) {
 	quit(a.st)
 }
 
+// saveShot writes img as name in dir, magnified by scale when it is not
+// 1 and cropped to r when r is not empty.
+func saveShot(t *testing.T, dir, name string, img *image.RGBA, r image.Rectangle, scale int) {
+	t.Helper()
+	if r.Empty() {
+		r = img.Bounds()
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, r.Dx()*scale, r.Dy()*scale))
+	for y := range r.Dy() * scale {
+		for x := range r.Dx() * scale {
+			dst.Set(x, y, img.At(r.Min.X+x/scale, r.Min.Y+y/scale))
+		}
+	}
+	f, err := os.Create(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, dst); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestColorPickerShots renders the space popover's colors in the sidebar,
+// whole and magnified, light and dark, into GOREX_SHOTS, to look at: the
+// panel must be opaque behind the color label, the swatches and the
+// field, whichever tab titles sit under it.
+func TestColorPickerShots(t *testing.T) {
+	dir := os.Getenv("GOREX_SHOTS")
+	if dir == "" {
+		t.Skip("GOREX_SHOTS names no directory")
+	}
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left"}
+	st := a.st
+	a.ws.Name = "icy-ridge"
+	for _, name := range []string{
+		`pwsh C:\Users\yibo\repos\gorex`,
+		`vim src/workspaceview.go`,
+		`ssh studio -t tail -f build.log`,
+	} {
+		a.newTab(os.TempDir()).Name = name
+	}
+	os.MkdirAll(dir, 0o755)
+	for _, dark := range []bool{false, true} {
+		theme := map[bool]string{false: "light", true: "dark"}[dark]
+		tt.SetDark(dark)
+		a.wsOpen = true
+		for range 3 {
+			tt.Frame()
+		}
+		img := tt.Image()
+		saveShot(t, dir, fmt.Sprintf("color-picker-%s.png", theme), img, image.Rectangle{}, 1)
+		label, ok := tt.Find(locales.SpaceColor())
+		if !ok {
+			t.Fatalf("no color section; texts %q", tt.Texts())
+		}
+		saveShot(t, dir, fmt.Sprintf("color-picker-%s-colors.png", theme), img,
+			image.Rect(int(label.X)-10, int(label.Y)-8, int(label.X)+272, int(label.Y)+92), 2)
+		a.wsOpen = false
+	}
+	quit(st)
+}
+
 // TestSpaceStripShots renders the sidebar's strip of four colored spaces,
 // light and dark, into GOREX_SHOTS, to look at.
 func TestSpaceStripShots(t *testing.T) {
@@ -801,6 +867,22 @@ func TestRenameFieldShots(t *testing.T) {
 			}
 			shot(fmt.Sprintf("rename-tab-%s-%s.png", space, theme), tab, 6)
 			a.renaming = nil
+			find, pane := image.Rect(250, 42, 700, 68), image.Rect(250, 8, 540, 40)
+			if place == "" {
+				find, pane = image.Rect(14, 78, 470, 104), image.Rect(14, 46, 310, 76)
+			}
+			a.openFind()
+			for range 3 {
+				tt.Frame()
+			}
+			shot(fmt.Sprintf("rename-find-%s-%s.png", space, theme), find, 4)
+			a.closeFind()
+			a.startPaneRename(a.tab().Focus)
+			for range 3 {
+				tt.Frame()
+			}
+			shot(fmt.Sprintf("rename-pane-%s-%s.png", space, theme), pane, 4)
+			a.paneRenaming, a.paneNameFocus = nil, false
 			for range 2 {
 				tt.Frame()
 			}
