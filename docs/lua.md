@@ -49,6 +49,22 @@ Custom actions appear in the palette and in `gorex action run`. Argument
 types are `string`, `number`, `integer`, `boolean` and `any`; a trailing
 `?` makes one optional. `gorex.invoke` runs a built-in action by ID.
 
+## Events
+
+```lua
+gorex.on("program_status_changed", function(ev)
+  if ev.state == "blocked" then
+    gorex.invoke("app.settings")
+  end
+end)
+```
+
+`program_status_changed` runs when a pane's program reports a new or
+changed status (`OSC 7501`), or when a record goes away (`ev.state ==
+"clear"`). Fields are `session`, `pane`, `state`, `id`, `kind`, `title`,
+`msg`, `app`, `progress`, `program` and `dir`. Events run on the app's
+thread after the poll that saw the change.
+
 ## App overrides
 
 The app keeps its own overrides apart from Lua, in `shortcuts.json` beside

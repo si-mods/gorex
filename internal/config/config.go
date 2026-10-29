@@ -38,6 +38,12 @@ type Binding struct {
 	Args   map[string]any
 }
 
+// EventHandler is a function gorex.on registered for an event.
+type EventHandler struct {
+	Name string
+	fn   *lua.LFunction
+}
+
 // Mode is a named key mode.
 type Mode struct {
 	Name      string
@@ -51,6 +57,8 @@ type Config struct {
 	Actions  []Action
 	Modes    []Mode
 	Warnings []string
+	// Events are the handlers gorex.on registered.
+	Events   []EventHandler
 	state    *lua.LState
 	invoke   func(string, map[string]any) error
 	invoking int
@@ -135,7 +143,45 @@ func (c *Config) table() *lua.LTable {
 	t.RawSetString("mode", c.state.NewFunction(c.mode))
 	t.RawSetString("action", c.state.NewFunction(c.action))
 	t.RawSetString("invoke", c.state.NewFunction(c.invokeFn))
+	t.RawSetString("on", c.state.NewFunction(c.on))
 	return t
+}
+
+func (c *Config) on(l *lua.LState) int {
+	name := strings.TrimSpace(l.CheckString(1))
+	fn, ok := l.Get(2).(*lua.LFunction)
+	if !ok || name == "" {
+		l.RaiseError("gorex.on: an event name and a function are required")
+		return 0
+	}
+	c.Events = append(c.Events, EventHandler{Name: name, fn: fn})
+	return 0
+}
+
+// Emit calls the handlers of event with a table of fields, on the thread
+// that runs the configuration.
+func (c *Config) Emit(event string, fields map[string]string) {
+	if c == nil || c.state == nil {
+		return
+	}
+	var handlers []EventHandler
+	for _, h := range c.Events {
+		if h.Name == event {
+			handlers = append(handlers, h)
+		}
+	}
+	for _, h := range handlers {
+		l := c.state
+		t := l.NewTable()
+		for k, v := range fields {
+			t.RawSetString(k, lua.LString(v))
+		}
+		l.Push(h.fn)
+		l.Push(t)
+		if err := l.PCall(1, 0, nil); err != nil {
+			c.Warnings = append(c.Warnings, "event "+event+": "+err.Error())
+		}
+	}
 }
 
 func (c *Config) bind(l *lua.LState) int {
