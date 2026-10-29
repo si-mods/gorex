@@ -158,3 +158,29 @@ func TestInputCapture(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// TestClients lists the clients attached to a session.
+func TestClients(t *testing.T) {
+	srv, c, sid := streamServer(t, nil)
+	c.dial = func() (net.Conn, error) {
+		a, b := net.Pipe()
+		go srv.handle(b, "")
+		return a, nil
+	}
+	st := c.Stream(sid, 80, 24)
+	defer st.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		clients, err := c.Clients()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(clients) == 1 && clients[0].SessionID == sid && !clients[0].Remote {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("clients %+v", clients)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}

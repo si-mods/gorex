@@ -130,6 +130,16 @@ type LayoutCommand struct {
 	Zoomed bool   `json:"zoomed,omitempty"`
 }
 
+// ClientInfo is one client attached to a session: a window, or a CLI
+// reading it, and whether it came from a remote host.
+type ClientInfo struct {
+	SessionID string `json:"sessionId"`
+	Peer      string `json:"peer,omitempty"`
+	Remote    bool   `json:"remote,omitempty"`
+	Seq       uint64 `json:"seq,omitempty"`
+	Via       bool   `json:"via,omitempty"`
+}
+
 // CaptureOptions shape a capture.
 type CaptureOptions struct {
 	// History cuts the oldest scrollback to about this many bytes; 0 keeps

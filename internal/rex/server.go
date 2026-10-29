@@ -719,6 +719,37 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		s.mu.Unlock()
 		s.notify("sessions")
 		return nil, nil
+	case "clients":
+		s.mu.Lock()
+		all := make([]*session, 0, len(s.order))
+		for _, id := range s.order {
+			all = append(all, s.sessions[id])
+		}
+		s.mu.Unlock()
+		out := []ClientInfo{}
+		for _, ss := range all {
+			if !s.mayUse(peer, ss) {
+				continue
+			}
+			ss.mu.Lock()
+			for a := range ss.clients {
+				out = append(out, ClientInfo{SessionID: ss.id, Peer: a.peer, Remote: a.remote, Seq: a.seq, Via: a.via != nil})
+			}
+			ss.mu.Unlock()
+		}
+		slices.SortFunc(out, func(a, b ClientInfo) int {
+			if a.SessionID != b.SessionID {
+				return strings.Compare(a.SessionID, b.SessionID)
+			}
+			switch {
+			case a.Seq < b.Seq:
+				return -1
+			case a.Seq > b.Seq:
+				return 1
+			}
+			return 0
+		})
+		return out, nil
 	case "input":
 		ss, err := s.use(req.SID, peer)
 		if err != nil {

@@ -95,6 +95,14 @@ func TestCLI(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("wait: %d %s", code, errOut)
 	}
+	code, _, _, errOut = runMain(t, "wait", "-s", info.ID, "--contains", "cli-marker", "--timeout", "5s")
+	if code != ExitOK {
+		t.Fatalf("wait --contains: %d %s", code, errOut)
+	}
+	code, _, out, errOut = runMain(t, "clients", "--json")
+	if code != ExitOK || !strings.Contains(out, "[") {
+		t.Fatalf("clients: %d %q %s", code, out, errOut)
+	}
 
 	code, _, out, errOut = runMain(t, "run", "--", "sh", "-c", "printf 'run-marker\\n'; exit 7")
 	if code != 7 || !strings.Contains(out, "run-marker") {

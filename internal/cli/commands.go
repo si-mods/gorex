@@ -40,8 +40,14 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return versionCmd(args, out, errOut, version)
 	case "ls", "list":
 		return listCmd(args, out, errOut)
+	case "clients":
+		return clientsCmd(args, out, errOut)
 	case "new":
 		return newCmd(args, out, errOut)
+	case "split":
+		return splitCmd(args, out, errOut)
+	case "close":
+		return closeCmd(args, out, errOut)
 	case "send", "type":
 		return sendCmd(args, out, errOut)
 	case "capture":
@@ -65,10 +71,13 @@ func usage(w io.Writer) {
 
 Usage:
   gorex ls [--json]
+  gorex clients [--json]
+  gorex split [-s SESSION] [--down] [--dir DIR]
+  gorex close [-s SESSION] [--tab]
   gorex new [--dir DIR] [--json] [-- COMMAND...]
   gorex send [-s SESSION] [--enter] [--json] TEXT...
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
-  gorex wait [-s SESSION] (--exit | --idle | --status STATE) [--timeout D]
+  gorex wait [-s SESSION] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] ACTION [KEY=VALUE...]
   gorex version [--json]
@@ -167,6 +176,110 @@ func listCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\n", in.ID, program, in.Dir, in.Attached, status)
 	}
 	tw.Flush()
+	return ExitOK, true
+}
+
+func clientsCmd(args []string, out, errOut io.Writer) (int, bool) {
+	fs := flagSet("clients", errOut)
+	asJSON := fs.Bool("json", false, "print JSON")
+	if code, stop := parse(fs, args); stop {
+		return code, true
+	}
+	c, code := connect(errOut)
+	if c == nil {
+		return code, true
+	}
+	defer c.Close()
+	clients, err := c.Clients()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return ExitServer, true
+	}
+	if *asJSON {
+		WriteJSON(out, clients)
+		return ExitOK, true
+	}
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "SESSION\tPEER\tREMOTE\tVIA\tSEQ")
+	for _, cl := range clients {
+		peer := cl.Peer
+		if peer == "" {
+			peer = "local"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%v\t%v\t%d\n", cl.SessionID, peer, cl.Remote, cl.Via, cl.Seq)
+	}
+	tw.Flush()
+	return ExitOK, true
+}
+
+func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
+	fs := flagSet("split", errOut)
+	sid := targetFlag(fs)
+	down := fs.Bool("down", false, "split below, not right")
+	dir := fs.String("dir", "", "directory to start in")
+	asJSON := fs.Bool("json", false, "print JSON")
+	if code, stop := parse(fs, args); stop {
+		return code, true
+	}
+	if *sid == "" {
+		fmt.Fprintln(errOut, "gorex split: no session; use -s or GOREX_SESSION")
+		return ExitTarget, true
+	}
+	c, code := connect(errOut)
+	if c == nil {
+		return code, true
+	}
+	defer c.Close()
+	res, err := c.Command(rex.LayoutCommand{Op: "pane.split", SID: *sid, Vertical: *down, Dir: *dir})
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if res.Code != "" {
+		fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
+		return ExitFailed, true
+	}
+	if *asJSON {
+		WriteJSON(out, res)
+	} else if res.New != "" {
+		fmt.Fprintln(out, res.New)
+	}
+	return ExitOK, true
+}
+
+func closeCmd(args []string, out, errOut io.Writer) (int, bool) {
+	fs := flagSet("close", errOut)
+	sid := targetFlag(fs)
+	tab := fs.Bool("tab", false, "close the tab, not the pane")
+	asJSON := fs.Bool("json", false, "print JSON")
+	if code, stop := parse(fs, args); stop {
+		return code, true
+	}
+	if *sid == "" {
+		fmt.Fprintln(errOut, "gorex close: no session; use -s or GOREX_SESSION")
+		return ExitTarget, true
+	}
+	c, code := connect(errOut)
+	if c == nil {
+		return code, true
+	}
+	defer c.Close()
+	op := "pane.close"
+	if *tab {
+		op = "tab.close"
+	}
+	res, err := c.Command(rex.LayoutCommand{Op: op, SID: *sid})
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if res.Code != "" {
+		fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
+		return ExitFailed, true
+	}
+	if *asJSON {
+		WriteJSON(out, res)
+	}
 	return ExitOK, true
 }
 
@@ -293,12 +406,13 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	waitExit := fs.Bool("exit", false, "wait for the program to exit")
 	idle := fs.Bool("idle", false, "wait for the shell's prompt")
 	status := fs.String("status", "", "wait for a program status, as blocked")
+	contains := fs.String("contains", "", "wait for the screen to contain text")
 	timeout := fs.Duration("timeout", 30*time.Second, "how long to wait")
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
-	if !*waitExit && !*idle && *status == "" {
-		fmt.Fprintln(errOut, "gorex wait: give --exit, --idle or --status")
+	if !*waitExit && !*idle && *status == "" && *contains == "" {
+		fmt.Fprintln(errOut, "gorex wait: give --exit, --idle, --status or --contains")
 		return ExitUsage, true
 	}
 	c, code := connect(errOut)
@@ -318,13 +432,35 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 			fmt.Fprintf(errOut, "gorex: no session %q\n", *sid)
 			return ExitTarget, true
 		}
-		if *waitExit && in.Exited {
-			return in.ExitCode, true
+		ready := true
+		if *waitExit && !in.Exited {
+			ready = false
 		}
-		if *idle && in.Idle {
-			return ExitOK, true
+		if *idle && !in.Idle {
+			ready = false
 		}
-		if *status != "" && hasStatus(in, *status) {
+		if *status != "" && !hasStatus(in, *status) {
+			ready = false
+		}
+		if *contains != "" {
+			res, err := c.Capture(*sid, 0)
+			if err != nil {
+				fmt.Fprintln(errOut, err)
+				return codeFor(err), true
+			}
+			text, err := plainText(res)
+			if err != nil {
+				fmt.Fprintln(errOut, err)
+				return ExitFailed, true
+			}
+			if !strings.Contains(text, *contains) {
+				ready = false
+			}
+		}
+		if ready {
+			if *waitExit {
+				return in.ExitCode, true
+			}
 			return ExitOK, true
 		}
 		if time.Now().After(deadline) {

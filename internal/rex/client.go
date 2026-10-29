@@ -520,6 +520,13 @@ func (c *Client) Input(sid string, b []byte) error {
 	return c.call(Request{Op: "input", SID: sid, Bytes: b}, nil)
 }
 
+// Clients returns the clients attached to the sessions this one may use.
+func (c *Client) Clients() ([]ClientInfo, error) {
+	var out []ClientInfo
+	err := c.call(Request{Op: "clients"}, &out)
+	return out, err
+}
+
 // Capture returns the session's screen as an attach would send it, cut to
 // about history bytes of scrollback when history is positive.
 func (c *Client) Capture(sid string, history int) (CaptureResult, error) {
