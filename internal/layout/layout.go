@@ -14,8 +14,9 @@ type Store struct {
 
 // Workspace is a workspace as the layout keeps it.
 type Workspace struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Color string `json:"color,omitempty"`
 	Layout
 }
 

@@ -3619,100 +3619,100 @@ func (msgs Messages) HostsPairRejected(host string) string {
 // CmdNewWindow says "New Window"
 // in the language the app shows.
 //
-// Command: open a new window, which shows a new session.
+// Command: open a new window, which shows a new space.
 func CmdNewWindow() string { return In(i18n.Locale()).CmdNewWindow() }
 
 // CmdNewWindow says "New Window"
 // in the language of msgs.
 //
-// Command: open a new window, which shows a new session.
+// Command: open a new window, which shows a new space.
 func (msgs Messages) CmdNewWindow() string {
 	return Catalog.Format(msgs.locale, "cmdNewWindow", nil)
 }
 
-// CmdNewSession says "New Session"
+// CmdNewSession says "New Space"
 // in the language the app shows.
 //
-// Command: show a new session, with one tab, in the window. A session is a
-// set of tabs, as in Rex.
+// Command: show a new space, with one tab, in the window. A space is a set
+// of tabs of its own, as a session was in Rex.
 func CmdNewSession() string { return In(i18n.Locale()).CmdNewSession() }
 
-// CmdNewSession says "New Session"
+// CmdNewSession says "New Space"
 // in the language of msgs.
 //
-// Command: show a new session, with one tab, in the window. A session is a
-// set of tabs, as in Rex.
+// Command: show a new space, with one tab, in the window. A space is a set
+// of tabs of its own, as a session was in Rex.
 func (msgs Messages) CmdNewSession() string {
 	return Catalog.Format(msgs.locale, "cmdNewSession", nil)
 }
 
-// CmdChangeSession says "Change Session…"
+// CmdChangeSession says "Change Space…"
 // in the language the app shows.
 //
-// Command: open a list of the sessions, to show one in the window.
+// Command: open a list of the spaces, to show one in the window.
 func CmdChangeSession() string { return In(i18n.Locale()).CmdChangeSession() }
 
-// CmdChangeSession says "Change Session…"
+// CmdChangeSession says "Change Space…"
 // in the language of msgs.
 //
-// Command: open a list of the sessions, to show one in the window.
+// Command: open a list of the spaces, to show one in the window.
 func (msgs Messages) CmdChangeSession() string {
 	return Catalog.Format(msgs.locale, "cmdChangeSession", nil)
 }
 
-// CmdNextSession says "Next Session"
+// CmdNextSession says "Next Space"
 // in the language the app shows.
 //
-// Command: show the next session in the window.
+// Command: show the next space in the window.
 func CmdNextSession() string { return In(i18n.Locale()).CmdNextSession() }
 
-// CmdNextSession says "Next Session"
+// CmdNextSession says "Next Space"
 // in the language of msgs.
 //
-// Command: show the next session in the window.
+// Command: show the next space in the window.
 func (msgs Messages) CmdNextSession() string {
 	return Catalog.Format(msgs.locale, "cmdNextSession", nil)
 }
 
-// CmdPreviousSession says "Previous Session"
+// CmdPreviousSession says "Previous Space"
 // in the language the app shows.
 //
-// Command: show the previous session in the window.
+// Command: show the previous space in the window.
 func CmdPreviousSession() string { return In(i18n.Locale()).CmdPreviousSession() }
 
-// CmdPreviousSession says "Previous Session"
+// CmdPreviousSession says "Previous Space"
 // in the language of msgs.
 //
-// Command: show the previous session in the window.
+// Command: show the previous space in the window.
 func (msgs Messages) CmdPreviousSession() string {
 	return Catalog.Format(msgs.locale, "cmdPreviousSession", nil)
 }
 
-// CmdRenameSession says "Rename Session…"
+// CmdRenameSession says "Rename Space…"
 // in the language the app shows.
 //
-// Command: rename the window's session.
+// Command: rename the window's space.
 func CmdRenameSession() string { return In(i18n.Locale()).CmdRenameSession() }
 
-// CmdRenameSession says "Rename Session…"
+// CmdRenameSession says "Rename Space…"
 // in the language of msgs.
 //
-// Command: rename the window's session.
+// Command: rename the window's space.
 func (msgs Messages) CmdRenameSession() string {
 	return Catalog.Format(msgs.locale, "cmdRenameSession", nil)
 }
 
-// CmdCloseSession says "Close Session"
+// CmdCloseSession says "Close Space"
 // in the language the app shows.
 //
-// Command: end the terminals of the window's session, after asking, and
+// Command: end the terminals of the window's space, after asking, and
 // forget it.
 func CmdCloseSession() string { return In(i18n.Locale()).CmdCloseSession() }
 
-// CmdCloseSession says "Close Session"
+// CmdCloseSession says "Close Space"
 // in the language of msgs.
 //
-// Command: end the terminals of the window's session, after asking, and
+// Command: end the terminals of the window's space, after asking, and
 // forget it.
 func (msgs Messages) CmdCloseSession() string {
 	return Catalog.Format(msgs.locale, "cmdCloseSession", nil)
@@ -3721,57 +3721,57 @@ func (msgs Messages) CmdCloseSession() string {
 // CmdMoveTabToNewWindow says "Move Tab to New Window"
 // in the language the app shows.
 //
-// Command: move the active tab to a new window, in a new session.
+// Command: move the active tab to a new window, in a new space.
 func CmdMoveTabToNewWindow() string { return In(i18n.Locale()).CmdMoveTabToNewWindow() }
 
 // CmdMoveTabToNewWindow says "Move Tab to New Window"
 // in the language of msgs.
 //
-// Command: move the active tab to a new window, in a new session.
+// Command: move the active tab to a new window, in a new space.
 func (msgs Messages) CmdMoveTabToNewWindow() string {
 	return Catalog.Format(msgs.locale, "cmdMoveTabToNewWindow", nil)
 }
 
-// MenuSession says "Session"
+// MenuSession says "Space"
 // in the language the app shows.
 //
-// Title of the Session menu.
+// Title of the Space menu.
 func MenuSession() string { return In(i18n.Locale()).MenuSession() }
 
-// MenuSession says "Session"
+// MenuSession says "Space"
 // in the language of msgs.
 //
-// Title of the Session menu.
+// Title of the Space menu.
 func (msgs Messages) MenuSession() string {
 	return Catalog.Format(msgs.locale, "menuSession", nil)
 }
 
-// SessionLabel says "Session {name}"
+// SessionLabel says "Space {name}"
 // in the language the app shows.
 //
-// Accessibility label and tooltip of the title bar's session button. name
-// is the session's name, as icy-ridge.
+// Accessibility label and tooltip of the title bar's space button. name is
+// the space's name, as icy-ridge.
 func SessionLabel(name string) string { return In(i18n.Locale()).SessionLabel(name) }
 
-// SessionLabel says "Session {name}"
+// SessionLabel says "Space {name}"
 // in the language of msgs.
 //
-// Accessibility label and tooltip of the title bar's session button. name
-// is the session's name, as icy-ridge.
+// Accessibility label and tooltip of the title bar's space button. name is
+// the space's name, as icy-ridge.
 func (msgs Messages) SessionLabel(name string) string {
 	return Catalog.Format(msgs.locale, "sessionLabel", map[string]any{"name": name})
 }
 
-// SessionListTitle says "Sessions"
+// SessionListTitle says "Spaces"
 // in the language the app shows.
 //
-// Session popover: title over the list of sessions.
+// Space popover: title over the list of spaces.
 func SessionListTitle() string { return In(i18n.Locale()).SessionListTitle() }
 
-// SessionListTitle says "Sessions"
+// SessionListTitle says "Spaces"
 // in the language of msgs.
 //
-// Session popover: title over the list of sessions.
+// Space popover: title over the list of spaces.
 func (msgs Messages) SessionListTitle() string {
 	return Catalog.Format(msgs.locale, "sessionListTitle", nil)
 }
@@ -3779,13 +3779,13 @@ func (msgs Messages) SessionListTitle() string {
 // SessionTabs says "{n, plural, one {# tab} other {# tabs}}"
 // in the language the app shows.
 //
-// Session popover and palette: how many tabs a session has.
+// Space popover and palette: how many tabs a space has.
 func SessionTabs(n int) string { return In(i18n.Locale()).SessionTabs(n) }
 
 // SessionTabs says "{n, plural, one {# tab} other {# tabs}}"
 // in the language of msgs.
 //
-// Session popover and palette: how many tabs a session has.
+// Space popover and palette: how many tabs a space has.
 func (msgs Messages) SessionTabs(n int) string {
 	return Catalog.Format(msgs.locale, "sessionTabs", map[string]any{"n": n})
 }
@@ -3793,29 +3793,29 @@ func (msgs Messages) SessionTabs(n int) string {
 // SessionElsewhere says "In another window"
 // in the language the app shows.
 //
-// Session popover and palette: the session shows in another window, which
+// Space popover and palette: the space shows in another window, which
 // choosing it focuses.
 func SessionElsewhere() string { return In(i18n.Locale()).SessionElsewhere() }
 
 // SessionElsewhere says "In another window"
 // in the language of msgs.
 //
-// Session popover and palette: the session shows in another window, which
+// Space popover and palette: the space shows in another window, which
 // choosing it focuses.
 func (msgs Messages) SessionElsewhere() string {
 	return Catalog.Format(msgs.locale, "sessionElsewhere", nil)
 }
 
-// SessionPlaceholder says "Change to a session…"
+// SessionPlaceholder says "Change to a space…"
 // in the language the app shows.
 //
-// Placeholder of the command palette listing the sessions.
+// Placeholder of the command palette listing the spaces.
 func SessionPlaceholder() string { return In(i18n.Locale()).SessionPlaceholder() }
 
-// SessionPlaceholder says "Change to a session…"
+// SessionPlaceholder says "Change to a space…"
 // in the language of msgs.
 //
-// Placeholder of the command palette listing the sessions.
+// Placeholder of the command palette listing the spaces.
 func (msgs Messages) SessionPlaceholder() string {
 	return Catalog.Format(msgs.locale, "sessionPlaceholder", nil)
 }
@@ -3823,13 +3823,13 @@ func (msgs Messages) SessionPlaceholder() string {
 // SessionCloseTitle says "Close “{name}”?"
 // in the language the app shows.
 //
-// Title of the question before closing a session.
+// Title of the question before closing a space.
 func SessionCloseTitle(name string) string { return In(i18n.Locale()).SessionCloseTitle(name) }
 
 // SessionCloseTitle says "Close “{name}”?"
 // in the language of msgs.
 //
-// Title of the question before closing a session.
+// Title of the question before closing a space.
 func (msgs Messages) SessionCloseTitle(name string) string {
 	return Catalog.Format(msgs.locale, "sessionCloseTitle", map[string]any{"name": name})
 }
@@ -3837,13 +3837,13 @@ func (msgs Messages) SessionCloseTitle(name string) string {
 // SessionCloseBody says "{n, plural, one {Its terminal ends, and the program running in it.} other {Its # terminals end, and the programs runn…"
 // in the language the app shows.
 //
-// Body of the question before closing a session: what closing it ends.
+// Body of the question before closing a space: what closing it ends.
 func SessionCloseBody(n int) string { return In(i18n.Locale()).SessionCloseBody(n) }
 
 // SessionCloseBody says "{n, plural, one {Its terminal ends, and the program running in it.} other {Its # terminals end, and the programs runn…"
 // in the language of msgs.
 //
-// Body of the question before closing a session: what closing it ends.
+// Body of the question before closing a space: what closing it ends.
 func (msgs Messages) SessionCloseBody(n int) string {
 	return Catalog.Format(msgs.locale, "sessionCloseBody", map[string]any{"n": n})
 }
@@ -3851,13 +3851,13 @@ func (msgs Messages) SessionCloseBody(n int) string {
 // SessionCancel says "Cancel"
 // in the language the app shows.
 //
-// Button of the question before closing a session: keep it.
+// Button of the question before closing a space: keep it.
 func SessionCancel() string { return In(i18n.Locale()).SessionCancel() }
 
 // SessionCancel says "Cancel"
 // in the language of msgs.
 //
-// Button of the question before closing a session: keep it.
+// Button of the question before closing a space: keep it.
 func (msgs Messages) SessionCancel() string {
 	return Catalog.Format(msgs.locale, "sessionCancel", nil)
 }
@@ -3865,14 +3865,14 @@ func (msgs Messages) SessionCancel() string {
 // SessionTabsElsewhere says "{n, plural, one {# tab · In another window} other {# tabs · In another window}}"
 // in the language the app shows.
 //
-// Session popover and palette: how many tabs a session has, which another
+// Space popover and palette: how many tabs a space has, which another
 // window shows.
 func SessionTabsElsewhere(n int) string { return In(i18n.Locale()).SessionTabsElsewhere(n) }
 
 // SessionTabsElsewhere says "{n, plural, one {# tab · In another window} other {# tabs · In another window}}"
 // in the language of msgs.
 //
-// Session popover and palette: how many tabs a session has, which another
+// Space popover and palette: how many tabs a space has, which another
 // window shows.
 func (msgs Messages) SessionTabsElsewhere(n int) string {
 	return Catalog.Format(msgs.locale, "sessionTabsElsewhere", map[string]any{"n": n})
@@ -3882,7 +3882,7 @@ func (msgs Messages) SessionTabsElsewhere(n int) string {
 // in the language the app shows.
 //
 // Title of a window, which the Window menu and the taskbar show: its
-// session's name and its active tab's label.
+// space's name and its active tab's label.
 func WindowTitle(session string, tab string) string {
 	return In(i18n.Locale()).WindowTitle(session, tab)
 }
@@ -3891,7 +3891,7 @@ func WindowTitle(session string, tab string) string {
 // in the language of msgs.
 //
 // Title of a window, which the Window menu and the taskbar show: its
-// session's name and its active tab's label.
+// space's name and its active tab's label.
 func (msgs Messages) WindowTitle(session string, tab string) string {
 	return Catalog.Format(msgs.locale, "windowTitle", map[string]any{"session": session, "tab": tab})
 }

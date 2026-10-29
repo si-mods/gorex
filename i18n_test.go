@@ -162,6 +162,17 @@ func TestChineseSurfaces(t *testing.T) {
 	}
 }
 
+// TestSpaceChipInChinese checks that the chip above the tabs names spaces in
+// Chinese.
+func TestSpaceChipInChinese(t *testing.T) {
+	isolateSettings(t, "")
+	a, tt := newTestApp(t)
+	inChinese(t, tt)
+	if _, ok := tt.Find(locales.SessionLabel(a.ws.Name)); !ok {
+		t.Fatalf("no space chip in Chinese; texts %q", tt.Texts())
+	}
+}
+
 func TestChineseSettings(t *testing.T) {
 	isolateSettings(t, "")
 	a := &App{}

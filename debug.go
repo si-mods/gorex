@@ -195,7 +195,7 @@ func (st *store) debug(dir, line string) {
 		})
 	case "rename-session": // NAME: names the target window's workspace
 		debugMain(func() { a.renameWorkspace(arg) })
-	case "confirm": // closes the workspace Close Session asks about
+	case "confirm": // closes the workspace Close Space asks about
 		debugMain(func() {
 			if a.wsConfirm {
 				a.wsConfirm = false
