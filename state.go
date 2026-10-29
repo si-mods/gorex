@@ -1264,17 +1264,18 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 				if a.st != nil {
 					a.st.infos = byID
 				}
-				a.apply(nil, byID)
+				a.apply(nil, byID, hostLayout{})
 			}
 		})
 	}
 }
 
 // apply takes what the server of host h, nil for this machine's, said of
-// its sessions.
-func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
+// its sessions; l is the host's shared layout, when it was read, to open
+// new sessions in the tabs it shows them in.
+func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) {
 	if h != nil {
-		a.adopt(h, byID)
+		a.adopt(h, byID, l)
 	}
 	var events []map[string]string
 	for ti, t := range a.tabs {
