@@ -414,8 +414,11 @@ func TestConfig(t *testing.T) {
 	if code != ExitOK || !handled || !strings.Contains(out, path) {
 		t.Fatalf("config path: %d %v %q %s", code, handled, out, errOut)
 	}
+	oldWarnings := GhosttyWarnings
+	GhosttyWarnings = func() []string { return []string{"Ghostty option \"x\" is ignored"} }
 	code, _, out, errOut = runMain(t, "config", "check")
-	if code != ExitOK || !strings.Contains(out, "bindings: 1") {
+	GhosttyWarnings = oldWarnings
+	if code != ExitOK || !strings.Contains(out, "bindings: 1") || !strings.Contains(out, "warning: Ghostty option") {
 		t.Fatalf("config check: %d %q %s", code, out, errOut)
 	}
 	if err := os.WriteFile(path, []byte(`gorex.bind(`), 0o600); err != nil {

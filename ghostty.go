@@ -46,6 +46,8 @@ type ghosttyConfig struct {
 	MinimumContrast   float32
 	Keybinds          []terminal.Keybind
 	NoDefaultKeybinds bool
+	// Unknown are options GoRex has no mapping for, said by config check.
+	Unknown []string
 }
 
 // ghosttyRaw is the configuration GoRex has read, and ghostty the one it
@@ -80,6 +82,16 @@ func ghosttyConfigPaths() []string {
 		}
 	}
 	return paths
+}
+
+// ghosttyWarnings names the Ghostty options GoRex ignores.
+func ghosttyWarnings() []string {
+	c := parseGhostty(ghosttyConfigPaths()...)
+	out := make([]string, 0, len(c.Unknown))
+	for _, k := range c.Unknown {
+		out = append(out, "Ghostty option "+strconv.Quote(k)+" is ignored")
+	}
+	return out
 }
 
 // loadGhostty reads the configuration anew.
@@ -320,6 +332,10 @@ func (c *ghosttyConfig) set(key, val string) {
 		}
 	case "keybind":
 		c.setKeybind(val)
+	default:
+		if key != "" && !slices.Contains(c.Unknown, key) {
+			c.Unknown = append(c.Unknown, key)
+		}
 	}
 }
 
