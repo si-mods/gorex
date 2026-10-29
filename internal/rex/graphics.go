@@ -90,10 +90,12 @@ func (g *graphics) filter(p []byte, cwd string) ([]byte, [][]byte) {
 		seq := rest[:j+len(apcEnd)]
 		if len(out) >= maxGraphicsRewrite {
 			out = append(out, seq...)
+			g.skipChunks(seq)
 		} else {
 			part, recs := g.sequence(seq, cwd)
 			if len(out)+len(part) > maxGraphicsRewrite {
 				out = append(out, seq...)
+				g.skipChunks(seq)
 			} else {
 				out = append(out, part...)
 				records = append(records, recs...)
@@ -132,6 +134,12 @@ func (g *graphics) sequence(seq []byte, cwd string) ([]byte, [][]byte) {
 			break
 		}
 	}
+	if g.chunkSkip {
+		if !graphicsMore(params) {
+			g.chunkSkip, g.chunks, g.chunkBytes = false, nil, 0
+		}
+		return seq, nil
+	}
 	if !isFile || payload == "" {
 		if graphicsMore(params) {
 			if g.chunkBytes+len(seq) > maxGraphicsHistory {
@@ -140,10 +148,6 @@ func (g *graphics) sequence(seq []byte, cwd string) ([]byte, [][]byte) {
 				g.chunks = append(g.chunks, seq)
 				g.chunkBytes += len(seq)
 			}
-			return seq, nil
-		}
-		if g.chunkSkip {
-			g.chunkSkip = false
 			return seq, nil
 		}
 		if len(g.chunks) > 0 {
@@ -158,7 +162,8 @@ func (g *graphics) sequence(seq []byte, cwd string) ([]byte, [][]byte) {
 		return seq, nil
 	}
 	out := rewriteFileImage(params, data)
-	return bytes.Join(out, nil), [][]byte{bytes.Join(out, nil)}
+	joined := bytes.Join(out, nil)
+	return joined, [][]byte{joined}
 }
 
 // readImageFile reads the file payload, resolved against cwd, at most
@@ -194,6 +199,21 @@ func readImageFile(payload, cwd string) ([]byte, bool) {
 // rewriteFileImage turns a file-medium image into in-band chunks, keeping
 // its placement parameters. A PNG keeps its format; without one, the
 // image is sent as a PNG only when its bytes are.
+// skipChunks drops the chunk group seq continues, when the rewrite budget
+// keeps it from being parsed.
+func (g *graphics) skipChunks(seq []byte) {
+	body := seq[len(apcGraphicsStart) : len(seq)-len(apcEnd)]
+	header, _, ok := strings.Cut(string(body), ";")
+	if !ok {
+		return
+	}
+	if graphicsMore(strings.Split(header, ",")) {
+		g.chunks, g.chunkBytes, g.chunkSkip = nil, 0, true
+		return
+	}
+	g.chunks, g.chunkBytes, g.chunkSkip = nil, 0, false
+}
+
 // graphicsMore reports whether params say more chunks follow.
 func graphicsMore(params []string) bool {
 	for _, p := range params {

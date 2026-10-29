@@ -2,8 +2,21 @@
 
 package rex
 
-import "os"
+import (
+	"io/fs"
+	"os"
+	"strings"
+)
 
-// openImageFile opens path; the regular-file check in readImageFile
-// rejects devices and pipes before reading.
-func openImageFile(path string) (*os.File, error) { return os.Open(path) }
+// openImageFile refuses a device or pipe path, which opening would wait
+// on, then opens path; the regular-file check in readImageFile rejects
+// the rest before reading.
+func openImageFile(path string) (*os.File, error) {
+	switch {
+	case strings.HasPrefix(path, `\\.\`),
+		strings.HasPrefix(path, `\\?\pipe\`),
+		strings.HasPrefix(path, `\\?\GLOBALROOT`):
+		return nil, fs.ErrInvalid
+	}
+	return os.Open(path)
+}
