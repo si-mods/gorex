@@ -1434,5 +1434,9 @@
   "paneMoveTab": "Move to Tab",
   "@paneMoveTab": {
     "description": "Submenu of the tabs a pane moves to."
+  },
+  "paneMoveWindow": "Move to Window",
+  "@paneMoveWindow": {
+    "description": "Submenu of the windows a pane moves to."
   }
 }

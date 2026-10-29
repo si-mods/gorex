@@ -336,5 +336,9 @@
   "paneMoveTab": "移动到标签页",
   "@paneMoveTab": {
     "description": "Submenu of the tabs a pane moves to."
+  },
+  "paneMoveWindow": "移动到窗口",
+  "@paneMoveWindow": {
+    "description": "Submenu of the windows a pane moves to."
   }
 }

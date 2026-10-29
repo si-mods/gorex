@@ -4143,3 +4143,17 @@ func PaneMoveTab() string { return In(i18n.Locale()).PaneMoveTab() }
 func (msgs Messages) PaneMoveTab() string {
 	return Catalog.Format(msgs.locale, "paneMoveTab", nil)
 }
+
+// PaneMoveWindow says "Move to Window"
+// in the language the app shows.
+//
+// Submenu of the windows a pane moves to.
+func PaneMoveWindow() string { return In(i18n.Locale()).PaneMoveWindow() }
+
+// PaneMoveWindow says "Move to Window"
+// in the language of msgs.
+//
+// Submenu of the windows a pane moves to.
+func (msgs Messages) PaneMoveWindow() string {
+	return Catalog.Format(msgs.locale, "paneMoveWindow", nil)
+}

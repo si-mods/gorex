@@ -348,13 +348,29 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 			m.Separator()
 			m.Submenu(locales.PaneMoveTab(), func(sm *ui.Menu) {
 				for _, o := range append([]*Tab(nil), a.tabs...) {
-					if o == p.Tab {
+					if o == p.Tab || o.Root != nil && o.host() != p.host {
 						continue
 					}
 					o := o
 					name, _ := o.label()
 					if sm.Item(name).Chosen() {
 						a.movePaneToTab(p, o)
+					}
+				}
+			})
+		}
+		if a.st != nil && len(a.st.apps) > 1 {
+			m.Submenu(locales.PaneMoveWindow(), func(sm *ui.Menu) {
+				for _, o := range append([]*App(nil), a.st.apps...) {
+					if o == a || o.ws == nil {
+						continue
+					}
+					if t := o.tab(); t != nil && t.Root != nil && t.host() != p.host {
+						continue
+					}
+					o := o
+					if sm.Item(o.ws.Name).Chosen() {
+						a.movePaneToWindow(p, o)
 					}
 				}
 			})
