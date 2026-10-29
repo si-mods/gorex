@@ -2,6 +2,18 @@
 
 ## 0.3.0
 
+- A session server that dies — a crash, a `kill`, a reboot — no longer
+  takes the windows with it. The server keeps every layout the app sends in
+  an append-only journal beside the layout, and the server that starts
+  after one that left no stop record starts the sessions of that layout
+  again: the same ids, at the directories their panes were in, at their
+  panes' sizes, so every window attaches to the sessions it had. A pane
+  whose stream ends while the server still has its session stays open
+  instead of closing its tab, and the app connects again on its own,
+  attaching the window to the sessions that came back. A run that stops — the
+  app asking it to, an idle exit, an upgrade — records why, with the sessions
+  it held, so that the server after it starts nothing.
+
 - rootshell's pane actions work: dragging a split's divider
   (`pane.resize`), swapping (`pane.swap`), renaming (`pane.rename`) and
   moving a pane to another tab or a new tab (`pane.move`). Pane labels
