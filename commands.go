@@ -53,7 +53,7 @@ type command struct {
 // clientBlockedActions are actions a client may not run, even when it may
 // reach the action channel.
 var clientBlockedActions = map[string]bool{
-	"app.quit": true, "app.updates": true, "config.reload": true, "config.lua.reload": true,
+	"app.quit": true, "app.updates": true, "config.reload": true,
 	"session.close": true, "tab.close": true, "pane.close": true, "pane.restart": true,
 	"screen.clear": true, "scrollback.clear": true, "tab.move_window": true,
 	"mode.enter": true, "mode.exit": true, "mode.exit_all": true,
@@ -301,7 +301,6 @@ var (
 	cmdRenameSession = command{ID: "session.rename", Name: locales.Messages.CmdRenameSession, Run: func(a *App) { a.startWorkspaceRename() }}
 	cmdCloseSession  = command{ID: "session.close", Name: locales.Messages.CmdCloseSession, Run: func(a *App) { a.askCloseWorkspace() }}
 	cmdMoveTabWindow = command{ID: "tab.move_window", Name: locales.Messages.CmdMoveTabToNewWindow}
-	cmdReloadLua     = command{ID: "config.lua.reload", Name: locales.Messages.CmdReloadGhostty, Hidden: true, Run: func(a *App) { a.reloadLuaConfig() }}
 	cmdModeEnter     = command{
 		ID: "mode.enter", Name: func(locales.Messages) string { return "Enter Mode" }, Hidden: true,
 		Args: []actionArg{{Name: "name", Type: "string"}, {Name: "once", Type: "boolean", Optional: true}},
@@ -463,6 +462,9 @@ func (st *store) menu() *mygo.Menu {
 		accel := fmt.Sprintf("CmdOrCtrl+%d", i)
 		if runtime.GOOS != "darwin" {
 			accel = showTabKey(i).String()
+		}
+		if chord, ok := accelChord(accel); ok && st.noAccel[chord.String()] {
+			accel = ""
 		}
 		tabItems = append(tabItems, &mygo.MenuItem{
 			Label: locales.MenuShowTab(i), Accelerator: accel,
@@ -717,7 +719,11 @@ func (a *App) shortcuts(c *ui.Context) {
 		}
 	}
 	for i := 1; i <= 9; i++ {
-		if k := showTabKey(i); c.Shortcut(k.Mods, k.Key) {
+		k := showTabKey(i)
+		if a.st != nil && a.st.noAccel[keyChord{Mods: k.Mods, Key: k.Key}.String()] {
+			continue
+		}
+		if c.Shortcut(k.Mods, k.Key) {
 			a.later(c, func() { a.showTab(i) })
 		}
 	}

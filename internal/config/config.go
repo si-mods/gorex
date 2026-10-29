@@ -273,14 +273,23 @@ func (c *Config) check() {
 			if i == j || b.Mode != o.Mode {
 				continue
 			}
-			if b.Key == o.Key && i < j {
+			bk, ok := normalizeKey(b.Key), normalizeKey(o.Key)
+			if bk == ok && i < j {
 				c.Warnings = append(c.Warnings, fmt.Sprintf("%s: %s replaces %s", b.Key, o.Action, b.Action))
 			}
-			if strings.HasPrefix(o.Key, b.Key+">") {
+			if strings.HasPrefix(ok, bk+">") {
 				c.Warnings = append(c.Warnings, fmt.Sprintf("%s is a prefix of %s; it will not run alone", b.Key, o.Key))
 			}
 		}
 	}
+}
+
+func normalizeKey(s string) string {
+	parts := strings.Split(s, ">")
+	for i := range parts {
+		parts[i] = strings.ToLower(strings.TrimSpace(parts[i]))
+	}
+	return strings.Join(parts, ">")
 }
 
 // Path returns the configuration file: GOREX_CONFIG, else the usual XDG

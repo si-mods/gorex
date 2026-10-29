@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -79,14 +80,14 @@ func (a *App) loadLuaConfig() error {
 			return fmt.Errorf("gorex config: no action %q", b.Action)
 		}
 		d.bind(keys, cmd, b.Args, b.Mode)
-		if len(keys) > 0 {
+		if b.Mode == "" && len(keys) > 0 {
 			taken[keys[0].String()] = true
 		}
 	}
 	overrides, err := loadShortcuts()
 	if err != nil {
-		cfg.Close()
-		return err
+		log.Printf("gorex shortcuts: %v", err)
+		overrides = nil
 	}
 	for _, o := range overrides {
 		keys, err := parseKeySequence(o.Key)
@@ -103,6 +104,9 @@ func (a *App) loadLuaConfig() error {
 		}
 		if cmd == nil {
 			cmd = lookupCommand(o.Action)
+			if cmd != nil && slices.ContainsFunc(customCommands, func(c *command) bool { return c.ID == o.Action }) {
+				cmd = nil // removed from the new configuration
+			}
 		}
 		if cmd == nil {
 			cfg.Close()
@@ -148,7 +152,9 @@ func loadShortcuts() ([]shortcutBinding, error) {
 		return nil, err
 	}
 	var f shortcutsFile
-	if err := json.Unmarshal(b, &f); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&f); err != nil {
 		return nil, fmt.Errorf("gorex shortcuts: %s: %w", filepath.Base(filepath.Join(rex.Dir(), "shortcuts.json")), err)
 	}
 	return f.Bindings, nil

@@ -60,7 +60,8 @@ the settings:
 
 They load after the Lua file, so they win over it. A binding whose key is
 a menu shortcut takes that shortcut over: the menu item no longer answers
-it, and the key reaches the terminal and the keymap.
+it, and the key reaches the terminal and the keymap (unless an exclusive
+mode is active).
 
 ## Reload
 

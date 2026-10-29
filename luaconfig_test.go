@@ -103,9 +103,9 @@ func TestShortcutOverrides(t *testing.T) {
 			a.luaConfig.Close()
 		}
 	})
-	key, mod := "cmd+shift+k", ui.Super
+	key, mod := "cmd+shift+r", ui.Super
 	if runtime.GOOS != "darwin" {
-		key, mod = "ctrl+shift+k", ui.Ctrl
+		key, mod = "ctrl+shift+r", ui.Ctrl
 	}
 	path := filepath.Join(rex.Dir(), "shortcuts.json")
 	body := `{"bindings":[{"key":"` + key + `","action":"tab.rename","args":{"name":"short"}}]}`
@@ -115,7 +115,7 @@ func TestShortcutOverrides(t *testing.T) {
 	if err := a.loadLuaConfig(); err != nil {
 		t.Fatal(err)
 	}
-	cmd, args, ok := a.keys.handle(mod|ui.Shift, ui.KeyK)
+	cmd, args, ok := a.keys.handle(mod|ui.Shift, ui.KeyR)
 	if !ok || cmd == nil || cmd.ID != "tab.rename" || args["name"] != "short" {
 		t.Fatalf("override: %v %v %v", cmd, args, ok)
 	}
@@ -125,8 +125,10 @@ func TestShortcutOverrides(t *testing.T) {
 	if a.tab().Name != "short" {
 		t.Fatalf("tab %q", a.tab().Name)
 	}
-	chord, _ := accelChord("CmdOrCtrl+Shift+K")
-	if !a.st.noAccel[chord.String()] {
+	if !a.st.overrides(&cmdRenameTab) {
 		t.Fatalf("the menu accelerator was not taken over: %v", a.st.noAccel)
+	}
+	if a.st.overrides(&cmdNewTab) {
+		t.Fatal("an unrelated menu accelerator was taken over")
 	}
 }
