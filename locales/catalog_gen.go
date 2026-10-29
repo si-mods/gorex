@@ -4467,3 +4467,31 @@ func HostsLayoutDown() string { return In(i18n.Locale()).HostsLayoutDown() }
 func (msgs Messages) HostsLayoutDown() string {
 	return Catalog.Format(msgs.locale, "hostsLayoutDown", nil)
 }
+
+// HostsLayoutOpen says "Open"
+// in the language the app shows.
+//
+// Attach a shared pane in this window.
+func HostsLayoutOpen() string { return In(i18n.Locale()).HostsLayoutOpen() }
+
+// HostsLayoutOpen says "Open"
+// in the language of msgs.
+//
+// Attach a shared pane in this window.
+func (msgs Messages) HostsLayoutOpen() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutOpen", nil)
+}
+
+// HostsLayoutNoSession says "That session is no longer available."
+// in the language the app shows.
+//
+// A shared pane could not be opened.
+func HostsLayoutNoSession() string { return In(i18n.Locale()).HostsLayoutNoSession() }
+
+// HostsLayoutNoSession says "That session is no longer available."
+// in the language of msgs.
+//
+// A shared pane could not be opened.
+func (msgs Messages) HostsLayoutNoSession() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutNoSession", nil)
+}

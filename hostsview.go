@@ -419,6 +419,9 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 									ui.Text(c, line.text).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 									if line.sid != "" {
+										if ui.Button(c.Key("open-"+line.sid), locales.HostsLayoutOpen()).Clicked() {
+											a.openHostPane(page.layoutHost, line.sid)
+										}
 										if ui.Button(c.Key("focus-"+line.sid), locales.HostsLayoutFocus()).Clicked() {
 											a.focusHostPane(page.layoutHost, line.sid)
 										}
@@ -525,6 +528,53 @@ func layoutLines(n *savedNode, depth int) []layoutLine {
 		return []layoutLine{{text: prefix + name, sid: n.SID}}
 	}
 	return append(layoutLines(n.A, depth), layoutLines(n.B, depth)...)
+}
+
+// openHostPane shows a host session in a tab of this window, or focuses
+// the pane that already shows it.
+func (a *App) openHostPane(h *hostConn, sid string) {
+	if h == nil {
+		return
+	}
+	for ti, t := range a.tabs {
+		for _, p := range t.panes() {
+			if p.host == h && p.SID == sid {
+				a.selectTab(ti)
+				t.setFocus(p)
+				a.focusReq = p
+				return
+			}
+		}
+	}
+	c := h.current()
+	if c == nil || h.update == nil {
+		return
+	}
+	go func() {
+		infos, err := c.List()
+		if err != nil {
+			h.update(func() { hostsUI.layoutErr = err.Error() })
+			return
+		}
+		var in rex.SessionInfo
+		found := false
+		for _, o := range infos {
+			if o.ID == sid && !o.Exited {
+				in, found = o, true
+				break
+			}
+		}
+		h.update(func() {
+			if !found {
+				hostsUI.layoutErr = locales.HostsLayoutNoSession()
+				return
+			}
+			a.tabs = append(a.tabs, a.sessionTab(h, in))
+			a.active = len(a.tabs) - 1
+			a.focusReq = a.tab().Focus
+			a.changed()
+		})
+	}()
 }
 
 // focusHostPane asks the host app to focus a pane it shared.

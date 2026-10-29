@@ -432,5 +432,13 @@
   "hostsLayoutDown": "向下调整",
   "@hostsLayoutDown": {
     "description": "Resize a shared pane."
+  },
+  "hostsLayoutOpen": "打开",
+  "@hostsLayoutOpen": {
+    "description": "Attach a shared pane in this window."
+  },
+  "hostsLayoutNoSession": "该会话已不可用。",
+  "@hostsLayoutNoSession": {
+    "description": "A shared pane could not be opened."
   }
 }

@@ -1530,5 +1530,13 @@
   "hostsLayoutDown": "Resize down",
   "@hostsLayoutDown": {
     "description": "Resize a shared pane."
+  },
+  "hostsLayoutOpen": "Open",
+  "@hostsLayoutOpen": {
+    "description": "Attach a shared pane in this window."
+  },
+  "hostsLayoutNoSession": "That session is no longer available.",
+  "@hostsLayoutNoSession": {
+    "description": "A shared pane could not be opened."
   }
 }
