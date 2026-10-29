@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // CLIDir is where the gorex command lives: a shim to this executable, put
@@ -18,22 +19,48 @@ func EnsureCLI() error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return err
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	if runtime.GOOS == "windows" {
 		path := filepath.Join(dir, "gorex.cmd")
-		body := fmt.Sprintf("@echo off\r\n\"%s\" %%*\r\n", exe)
+		body := fmt.Sprintf("@echo off\r\n\"%s\" %%*\r\n", strings.ReplaceAll(exe, "%", "%%"))
 		if old, err := os.ReadFile(path); err == nil && string(old) == body {
 			return nil
 		}
-		return os.WriteFile(path, []byte(body), 0o700)
+		return replaceFile(path, []byte(body))
 	}
 	path := filepath.Join(dir, "gorex")
 	if target, err := os.Readlink(path); err == nil && target == exe {
 		return nil
 	}
+	tmp := path + ".tmp"
+	os.Remove(tmp)
+	if err := os.Symlink(exe, tmp); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// replaceFile writes b to path through a temporary name.
+func replaceFile(path string, b []byte) error {
+	tmp := path + ".tmp"
+	os.Remove(tmp)
+	if err := os.WriteFile(tmp, b, 0o700); err != nil {
+		return err
+	}
 	os.Remove(path)
-	return os.Symlink(exe, path)
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }

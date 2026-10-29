@@ -22,6 +22,9 @@ import (
 // screen, for the windows that attach to it.
 const scrollback = 8 << 20
 
+// ErrSessionEnded is input to a session whose program has ended.
+var ErrSessionEnded = errors.New("rex: the session has ended")
+
 // session is a pseudo-terminal of the server and its shell.
 type session struct {
 	id      string
@@ -186,7 +189,7 @@ const maxSize = 1000
 
 func clampSize(n int) int { return min(max(n, 1), maxSize) }
 
-func newSession(id string, o CreateOptions, changed func()) (*session, error) {
+func newSession(id string, o CreateOptions, owner string, changed func()) (*session, error) {
 	path, argv, name, err := shellCommand(o.Command)
 	if err != nil {
 		return nil, err
@@ -200,7 +203,7 @@ func newSession(id string, o CreateOptions, changed func()) (*session, error) {
 	if dir == "" {
 		dir, _ = os.UserHomeDir()
 	}
-	env := sessionEnv(id, o.Env)
+	env := sessionEnv(id, o.Env, owner == "")
 	p, err := startPTY(path, argv, dir, env, cols, rows)
 	if err != nil {
 		return nil, err
@@ -302,14 +305,16 @@ func serverEnv() []string {
 }
 
 // sessionEnv returns the environment of a session's shell: the server's,
-// without what other terminals set, and what terminal apps set.
-func sessionEnv(id string, extra []string) []string {
+// without what other terminals set, and what terminal apps set. A local
+// session gets the gorex shim on PATH; one a remote client made does not,
+// so its shell cannot reach this machine's local socket as a local client.
+func sessionEnv(id string, extra []string, local bool) []string {
 	var env []string
 	hasLang := false
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
-		case k == "PATH":
+		case k == "PATH" && local:
 			continue // added below, with the gorex directory first
 		case k == "TERM", k == "COLORTERM", k == "TERM_PROGRAM", k == "TERM_PROGRAM_VERSION",
 			k == "TERM_SESSION_ID", k == "TMUX", k == "TMUX_PANE", k == "STY", k == "WINDOWID",
@@ -324,20 +329,21 @@ func sessionEnv(id string, extra []string) []string {
 		}
 		env = append(env, kv)
 	}
-	bin := CLIDir()
-	path := bin
-	if p := os.Getenv("PATH"); p != "" {
-		path += string(os.PathListSeparator) + p
-	}
 	env = append(env,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"TERM_PROGRAM=GoRex",
 		"TERM_PROGRAM_VERSION=0.2.0",
 		"GOREX_SESSION="+id,
-		"GOREX_BIN_DIR="+bin,
-		"PATH="+path,
 	)
+	if local {
+		bin := CLIDir()
+		path := bin
+		if p := os.Getenv("PATH"); p != "" {
+			path += string(os.PathListSeparator) + p
+		}
+		env = append(env, "GOREX_BIN_DIR="+bin, "PATH="+path)
+	}
 	if !hasLang {
 		env = append(env, "LANG=en_US.UTF-8")
 	}
@@ -479,6 +485,25 @@ func (s *session) input(a *attached, p []byte) {
 	if p := s.admit(a, p); len(p) > 0 {
 		s.p.write(p)
 	}
+}
+
+// inputProgram types what a client that is not attached sends, without
+// the terminal's answers a program would read as its own.
+func (s *session) inputProgram(p []byte) error {
+	p = dropReplies(p)
+	s.mu.Lock()
+	if s.exited {
+		s.mu.Unlock()
+		return ErrSessionEnded
+	}
+	if len(p) == 0 {
+		s.mu.Unlock()
+		return nil
+	}
+	s.lastInput = time.Now()
+	s.mu.Unlock()
+	s.p.write(p)
+	return nil
 }
 
 // admit returns what of p, which client a sends, the program gets. Every

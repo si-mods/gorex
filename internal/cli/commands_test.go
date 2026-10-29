@@ -54,7 +54,7 @@ func TestCLI(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses sh")
 	}
-	startServer(t)
+	c := startServer(t)
 
 	code, _, out, errOut := runMain(t, "new", "--json")
 	if code != ExitOK {
@@ -108,6 +108,20 @@ func TestCLI(t *testing.T) {
 	if code != 7 || !strings.Contains(out, "run-marker") {
 		t.Fatalf("run: %d %q %s", code, out, errOut)
 	}
+
+	code, _, out, errOut = runMain(t, "new", "--json", "--", "sh", "-c", "sleep 0.1; exit 5")
+	if code != ExitOK {
+		t.Fatalf("new command: %d %s", code, errOut)
+	}
+	var short rex.SessionInfo
+	if err := json.Unmarshal([]byte(out), &short); err != nil {
+		t.Fatal(err)
+	}
+	code, _, _, errOut = runMain(t, "wait", "-s", short.ID, "--exit", "--timeout", "5s")
+	if code != 5 {
+		t.Fatalf("wait --exit: %d %s", code, errOut)
+	}
+	c.Kill(short.ID)
 
 	code, _, _, _ = runMain(t, "capture", "-s", "no-such-session")
 	if code != ExitTarget {

@@ -99,10 +99,17 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		return res
 	}
 	if c.Op == "action" {
+		switch c.Action {
+		case "app.quit", "session.close", "tab.close", "pane.close", "pane.restart":
+			return fail("not_allowed", "GoRex does not run "+c.Action+" from a client")
+		}
 		if c.SID != "" {
 			p := a.localPane(c.SID)
 			if p == nil {
 				return fail("pane_not_found", "no such pane in the GoRex window")
+			}
+			if i := slices.Index(a.tabs, p.Tab); i >= 0 {
+				a.selectTab(i)
 			}
 			p.Tab.setFocus(p)
 			a.focusReq = p

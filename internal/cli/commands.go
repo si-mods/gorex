@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
+	"sync"
 	"text/tabwriter"
 	"time"
 
@@ -62,7 +62,9 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 	if strings.HasPrefix(name, "-") {
 		return 0, false
 	}
-	return 0, false
+	fmt.Fprintf(errOut, "gorex: unknown command %q\n", name)
+	usage(errOut)
+	return ExitUsage, true
 }
 
 // usage writes what the command line does.
@@ -92,7 +94,10 @@ unreachable, 130 interrupted.
 func flagSet(name string, errOut io.Writer) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(errOut)
-	fs.Usage = func() {}
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "gorex %s\n", name)
+		fs.PrintDefaults()
+	}
 	return fs
 }
 
@@ -237,7 +242,7 @@ func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	if res.Code != "" {
 		fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
-		return ExitFailed, true
+		return codeForResult(res), true
 	}
 	if *asJSON {
 		WriteJSON(out, res)
@@ -275,7 +280,7 @@ func closeCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	if res.Code != "" {
 		fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
-		return ExitFailed, true
+		return codeForResult(res), true
 	}
 	if *asJSON {
 		WriteJSON(out, res)
@@ -358,6 +363,10 @@ func captureCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
+	if *raw && *asJSON {
+		fmt.Fprintln(errOut, "gorex capture: --raw and --json cannot be used together")
+		return ExitUsage, true
+	}
 	if *raw {
 		out.Write(res.Screen)
 		return ExitOK, true
@@ -383,22 +392,36 @@ func plainText(res rex.CaptureResult) (string, error) {
 	if err := terminal.Load(); err != nil {
 		return "", err
 	}
-	term, err := terminal.New(terminal.Options{Conn: nopConn{}})
+	conn := newNopConn()
+	term, err := terminal.New(terminal.Options{Conn: conn})
 	if err != nil {
+		conn.Close()
 		return "", err
 	}
 	defer term.Close()
+	defer conn.Close()
 	term.Resize(res.Cols, res.Rows)
 	term.Feed(res.Screen)
 	return term.Text(), nil
 }
 
-// nopConn is the Conn of a terminal that only shows what the app feeds it.
-type nopConn struct{}
+// nopConn is the Conn of a terminal that only shows what the app feeds it;
+// Close ends its reader.
+type nopConn struct {
+	done chan struct{}
+	once sync.Once
+}
 
-func (nopConn) Read([]byte) (int, error)    { select {} }
-func (nopConn) Write(p []byte) (int, error) { return len(p), nil }
-func (nopConn) Close() error                { return nil }
+func newNopConn() *nopConn { return &nopConn{done: make(chan struct{})} }
+func (c *nopConn) Read([]byte) (int, error) {
+	<-c.done
+	return 0, io.EOF
+}
+func (c *nopConn) Write(p []byte) (int, error) { return len(p), nil }
+func (c *nopConn) Close() error {
+	c.once.Do(func() { close(c.done) })
+	return nil
+}
 
 func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("wait", errOut)
@@ -407,7 +430,7 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	idle := fs.Bool("idle", false, "wait for the shell's prompt")
 	status := fs.String("status", "", "wait for a program status, as blocked")
 	contains := fs.String("contains", "", "wait for the screen to contain text")
-	timeout := fs.Duration("timeout", 30*time.Second, "how long to wait")
+	timeout := fs.Duration("timeout", 0, "how long to wait; 0 waits forever")
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
@@ -420,7 +443,10 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	deadline := time.Now().Add(*timeout)
+	var deadline time.Time
+	if *timeout > 0 {
+		deadline = time.Now().Add(*timeout)
+	}
 	for {
 		infos, err := c.List()
 		if err != nil {
@@ -443,7 +469,7 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 			ready = false
 		}
 		if *contains != "" {
-			res, err := c.Capture(*sid, 0)
+			res, err := c.Capture(*sid, 64<<10)
 			if err != nil {
 				fmt.Fprintln(errOut, err)
 				return codeFor(err), true
@@ -463,7 +489,7 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 			}
 			return ExitOK, true
 		}
-		if time.Now().After(deadline) {
+		if !deadline.IsZero() && time.Now().After(deadline) {
 			fmt.Fprintf(errOut, "gorex wait: %s did not become ready in %v\n", *sid, *timeout)
 			return ExitFailed, true
 		}
@@ -493,10 +519,13 @@ func runCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitFailed, true
 	}
 	defer c.Kill(info.ID)
-	in, ok := waitExit(c, info.ID, 0)
-	if !ok {
-		fmt.Fprintf(errOut, "gorex run: %s did not end\n", info.ID)
-		return ExitFailed, true
+	in, err := waitExit(c, info.ID, 0)
+	if err != nil {
+		if errors.Is(err, errNoSession) {
+			return ExitTarget, true
+		}
+		fmt.Fprintln(errOut, err)
+		return ExitServer, true
 	}
 	res, err := c.Capture(info.ID, 0)
 	if err != nil {
@@ -557,18 +586,12 @@ func actionCmd(args []string, out, errOut io.Writer) (int, bool) {
 	return ExitOK, true
 }
 
-func parseValue(v string) any {
-	if v == "true" {
-		return true
-	}
-	if v == "false" {
-		return false
-	}
-	if n, err := strconv.ParseFloat(v, 64); err == nil {
-		return n
-	}
-	return v
-}
+// parseValue keeps an action argument a string: the CLI does not know the
+// action's schema, and 123 for a name must stay "123".
+func parseValue(v string) any { return v }
+
+// errNoSession says a session is no longer listed.
+var errNoSession = errors.New("no such session")
 
 func findSession(infos []rex.SessionInfo, sid string) (rex.SessionInfo, bool) {
 	for _, in := range infos {
@@ -591,27 +614,44 @@ func hasStatus(in rex.SessionInfo, want string) bool {
 	return false
 }
 
-func waitExit(c *rex.Client, sid string, d time.Duration) (rex.SessionInfo, bool) {
-	deadline := time.Now().Add(d)
+func waitExit(c *rex.Client, sid string, d time.Duration) (rex.SessionInfo, error) {
+	var deadline time.Time
+	if d > 0 {
+		deadline = time.Now().Add(d)
+	}
 	for {
 		infos, err := c.List()
-		if err == nil {
-			if in, ok := findSession(infos, sid); ok && in.Exited {
-				return in, true
-			}
+		if err != nil {
+			return rex.SessionInfo{}, err
 		}
-		if d > 0 && time.Now().After(deadline) {
-			return rex.SessionInfo{}, false
+		in, ok := findSession(infos, sid)
+		if !ok {
+			return rex.SessionInfo{}, errNoSession
+		}
+		if in.Exited {
+			return in, nil
+		}
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			return rex.SessionInfo{}, errors.New("timed out waiting for the session to end")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+func codeForResult(res rex.LayoutCommand) int {
+	switch res.Code {
+	case "pane_not_found", "tab_not_found":
+		return ExitTarget
+	}
+	return ExitFailed
 }
 
 func codeFor(err error) int {
 	if err == nil {
 		return ExitOK
 	}
-	if rex.NotShared(err) || strings.Contains(err.Error(), "no session") {
+	if rex.NotShared(err) || errors.Is(err, errNoSession) || strings.Contains(err.Error(), "no session") ||
+		strings.Contains(err.Error(), "session has ended") {
 		return ExitTarget
 	}
 	return ExitFailed

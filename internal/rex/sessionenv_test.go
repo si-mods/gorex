@@ -43,7 +43,7 @@ func TestSessionEnvDropsStarterMarkers(t *testing.T) {
 	t.Setenv("TMUX", "x")
 	t.Setenv("ITERM_PROFILE", "x")
 	t.Setenv("GOREX_SESSION", "stale")
-	got := envMap(sessionEnv("abc", nil))
+	got := envMap(sessionEnv("abc", nil, true))
 	for _, k := range append(testMarkers, "TMUX", "ITERM_PROFILE") {
 		if _, ok := got[k]; ok {
 			t.Errorf("%s leaked into the session environment", k)
@@ -68,6 +68,13 @@ func TestSessionEnvDropsStarterMarkers(t *testing.T) {
 	}
 	if !strings.HasPrefix(got["PATH"], CLIDir()+string(os.PathListSeparator)) {
 		t.Errorf("PATH %q does not start with the gorex directory", got["PATH"])
+	}
+	remote := envMap(sessionEnv("abc", nil, false))
+	if _, ok := remote["GOREX_BIN_DIR"]; ok {
+		t.Error("a remote session got the gorex shim directory")
+	}
+	if remote["PATH"] != os.Getenv("PATH") {
+		t.Errorf("remote PATH = %q, want the server's", remote["PATH"])
 	}
 }
 

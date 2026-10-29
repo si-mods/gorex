@@ -250,6 +250,14 @@ func TestCommandCreateFails(t *testing.T) {
 
 // TestActionFromClient runs an app action through the command queue, as
 // the CLI does, and sees the window change.
+func TestClientActionsCannotQuit(t *testing.T) {
+	a, _ := newTestApp(t)
+	res := a.command(rex.LayoutCommand{Op: "action", Action: "app.quit"})
+	if res.Code != "not_allowed" {
+		t.Fatalf("app.quit: %+v", res)
+	}
+}
+
 func TestActionFromClient(t *testing.T) {
 	a, tt := newTestApp(t)
 	go a.st.takeCommands(a.client, a.post)

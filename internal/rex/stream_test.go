@@ -160,6 +160,26 @@ func TestInputCapture(t *testing.T) {
 }
 
 // TestClients lists the clients attached to a session.
+func TestInputEnded(t *testing.T) {
+	_, c, sid := streamServer(t, nil)
+	if err := c.Input(sid, []byte("exit\n")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if sessionInfo(t, c, sid).Exited {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("session did not exit")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := c.Input(sid, []byte("x")); err == nil || !strings.Contains(err.Error(), "has ended") {
+		t.Fatalf("input after exit: %v", err)
+	}
+}
+
 func TestClients(t *testing.T) {
 	srv, c, sid := streamServer(t, nil)
 	c.dial = func() (net.Conn, error) {

@@ -3,12 +3,16 @@
 `gorex` is the same binary as the app. From a terminal it drives sessions
 without opening a window; with no arguments it starts the app.
 
-Every terminal GoRex opens gets:
+Every local terminal GoRex opens gets:
 
 - `GOREX_SESSION`, the session the terminal belongs to, which commands
   use when `-s` is not given.
 - `GOREX_BIN_DIR`, and that directory at the front of `PATH`, where a
   `gorex` shim points at the app binary.
+
+A session a remote client created does not get the shim: its shell is
+already reachable from another machine, and the shim would make this
+machine's local socket look local. It still gets `GOREX_SESSION`.
 
 ## Commands
 
@@ -31,19 +35,22 @@ gorex version [--json]
 - `capture` prints the screen as text, or the escape sequences with
   `--raw`.
 - `wait --exit` exits with the program's status; the other conditions
-  exit 0, and a timeout exits 1.
+  exit 0, and a timeout exits 1. `--timeout 0` (the default) waits forever.
 - `run` creates a session, runs the command, prints what the screen shows
   when it ends, and exits with the program's status.
 - `split` and `close` change the window's layout, so they need the GoRex
   window open on that machine.
 - `action run` runs a built-in action by its ID, through the window.
+  Values after the action are strings; the CLI does not guess types.
 
 Exit codes: 0 ok, 1 failed, 2 usage, 3 no such session or target, 4
-server unreachable, 130 interrupted.
+server unreachable. A signal exits 130. `run` and `wait --exit` return the
+program's own status, which can collide with 1–4; the rest return the
+codes above.
 
 ## Agents
 
-A session's shell already has `gorex` on `PATH`, so an agent can run:
+A local session's shell already has `gorex` on `PATH`, so an agent can run:
 
 ```sh
 gorex new --dir /tmp/demo

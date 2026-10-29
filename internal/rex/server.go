@@ -688,7 +688,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			o = *req.Create
 		}
 		id := newID()
-		ss, err := newSession(id, o, s.sessionsChanged)
+		ss, err := newSession(id, o, peer, s.sessionsChanged)
 		if err != nil {
 			return nil, err
 		}
@@ -755,8 +755,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		ss.input(nil, req.Bytes)
-		return nil, nil
+		return nil, ss.inputProgram(req.Bytes)
 	case "capture":
 		ss, err := s.use(req.SID, peer)
 		if err != nil {
