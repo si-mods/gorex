@@ -793,6 +793,26 @@ func TestRemoteTailcat(t *testing.T) {
 		h.Client.Created.IsZero() || h.Client.LastSeen.IsZero() {
 		t.Fatalf("client identity %+v", h.Client)
 	}
+	// A shared layout crosses the real connection; turning it off closes
+	// the read gate.
+	if err := c.SetLayout(json.RawMessage(`{"tabs":[]}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ShareLayout(true); err != nil {
+		t.Fatal(err)
+	}
+	if raw, err := rc.Layout(); err != nil || !strings.Contains(string(raw), "tabs") {
+		t.Fatalf("shared layout %q %v", raw, err)
+	}
+	if err := c.ShareLayout(false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rc.Layout(); err == nil {
+		t.Fatal("layout read after sharing stopped")
+	}
+	if err := c.ShareLayout(true); err != nil {
+		t.Fatal(err)
+	}
 	if err := rc.Shutdown(); err == nil {
 		t.Error("remote shutdown")
 	}
