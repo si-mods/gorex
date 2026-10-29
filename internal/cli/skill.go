@@ -279,6 +279,9 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	} else {
 		for _, st := range states {
 			fmt.Fprintf(out, "%s\t%s\t%s", st.Agent, st.State, st.Path)
+			if st.Hook != "" {
+				fmt.Fprintf(out, "\t%s", st.Hook)
+			}
 			if st.Reason != "" {
 				fmt.Fprintf(out, "\t%s", st.Reason)
 			}

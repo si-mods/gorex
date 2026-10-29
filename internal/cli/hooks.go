@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -51,7 +52,7 @@ func hookCommand(agent string) string {
 	if err != nil {
 		exe = "gorex"
 	}
-	inner := shellQuote(exe) + " __internal session-start --agent " + agent + " 2>/dev/null || true"
+	inner := shellQuote(exe) + " __internal session-start --agent " + agent + " 2>/dev/null || true # gorex"
 	return "/bin/sh -c " + shellQuote(inner)
 }
 
@@ -90,12 +91,16 @@ func hasHook(root map[string]any, event, marker string) string {
 		for _, h := range items {
 			hook, _ := h.(map[string]any)
 			cmd, _ := hook["command"].(string)
-			if strings.Contains(cmd, marker) {
+			if isOurHook(cmd, marker) {
 				return "installed"
 			}
 		}
 	}
 	return "missing"
+}
+
+func isOurHook(cmd, marker string) bool {
+	return strings.Contains(cmd, marker) && strings.Contains(cmd, "# gorex")
 }
 
 func readObject(path string) (map[string]any, error) {
@@ -107,7 +112,9 @@ func readObject(path string) (map[string]any, error) {
 		return nil, err
 	}
 	var root map[string]any
-	if err := json.Unmarshal(b, &root); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	if err := dec.Decode(&root); err != nil {
 		return nil, err
 	}
 	if root == nil {
@@ -117,6 +124,9 @@ func readObject(path string) (map[string]any, error) {
 }
 
 func writeObject(path string, root map[string]any) error {
+	if st, err := os.Lstat(path); err == nil && st.Mode()&os.ModeSymlink != 0 {
+		return errors.New("settings is a symlink; not rewriting it")
+	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
@@ -131,6 +141,11 @@ func writeObject(path string, root map[string]any) error {
 	}
 	name := tmp.Name()
 	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
 		tmp.Close()
 		os.Remove(name)
 		return err
@@ -170,40 +185,65 @@ func setHook(agent string, install, dry bool) (string, error) {
 	}
 	hooks, _ := root["hooks"].(map[string]any)
 	if hooks == nil {
+		if _, exists := root["hooks"]; exists {
+			return "conflict", errors.New("hooks is not a JSON object")
+		}
 		hooks = map[string]any{}
 	}
 	entries, _ := hooks[spec.Event].([]any)
+	if _, exists := hooks[spec.Event]; exists {
+		if _, ok := hooks[spec.Event].([]any); !ok {
+			return "conflict", errors.New(spec.Event + " is not a JSON array")
+		}
+	}
 	marker := hookMarker(agent)
-	found := false
+	command := hookCommand(agent)
+	found, current := false, false
 	var kept []any
 	for _, e := range entries {
-		entry, _ := e.(map[string]any)
-		items, _ := entry["hooks"].([]any)
+		entry, ok := e.(map[string]any)
+		if !ok {
+			return "conflict", errors.New("a hook entry is not a JSON object")
+		}
+		items, ok := entry["hooks"].([]any)
+		if !ok {
+			if _, exists := entry["hooks"]; exists {
+				return "conflict", errors.New("a hook entry's hooks is not a JSON array")
+			}
+			kept = append(kept, entry)
+			continue
+		}
 		var keep []any
 		for _, h := range items {
-			hook, _ := h.(map[string]any)
+			hook, ok := h.(map[string]any)
+			if !ok {
+				return "conflict", errors.New("a hook is not a JSON object")
+			}
 			cmd, _ := hook["command"].(string)
-			if strings.Contains(cmd, marker) {
+			if isOurHook(cmd, marker) {
 				found = true
-				if install {
+				if install && cmd == command {
+					current = true
 					keep = append(keep, h)
 				}
 				continue
 			}
 			keep = append(keep, h)
 		}
-		if len(keep) > 0 {
-			entry["hooks"] = keep
+		if len(keep) > 0 || len(entry) > 1 {
+			if len(keep) > 0 {
+				entry["hooks"] = keep
+			}
 			kept = append(kept, entry)
 		}
 	}
-	if install && !found {
-		kept = append(kept, map[string]any{"hooks": []any{map[string]any{
-			"type": "command", "command": hookCommand(agent), "timeout": 5,
-		}}})
-	}
-	if install && found {
+	if install && current {
 		return "current", nil
+	}
+	if install && (!found || !current) {
+		kept = append(kept, map[string]any{"hooks": []any{map[string]any{
+			"type": "command", "command": command, "timeout": 5,
+		}}})
 	}
 	if !install && !found {
 		return "missing", nil

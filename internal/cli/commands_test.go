@@ -309,7 +309,7 @@ func TestHooks(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(claude), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	const old = `{"theme":"x","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"other-hook"}]}]}}`
+	const old = `{"theme":"x","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"other-hook"}]},{"matcher":"x"}]}}`
 	if err := os.WriteFile(claude, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -322,12 +322,21 @@ func TestHooks(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(b), "__internal session-start --agent claude") ||
-		!strings.Contains(string(b), "other-hook") || !strings.Contains(string(b), `"theme": "x"`) {
+		!strings.Contains(string(b), "other-hook") || !strings.Contains(string(b), `"theme": "x"`) ||
+		!strings.Contains(string(b), `"matcher": "x"`) {
 		t.Fatalf("claude settings %s", b)
 	}
 	codex := filepath.Join(home, ".codex", "hooks.json")
 	if b, err := os.ReadFile(codex); err != nil || !strings.Contains(string(b), "__internal session-start --agent codex") {
 		t.Fatalf("codex hooks %q %v", b, err)
+	}
+	before, _ := os.ReadFile(claude)
+	code, _, _, errOut = runMain(t, "skill", "setup", "--agent", "claude", "--agent", "codex")
+	if code != ExitOK {
+		t.Fatalf("second setup: %d %s", code, errOut)
+	}
+	if after, _ := os.ReadFile(claude); string(after) != string(before) {
+		t.Fatal("a second setup changed the settings")
 	}
 	code, _, out, _ := runMain(t, "skill", "status", "--agent", "claude", "--json")
 	if code != ExitOK || !strings.Contains(out, `"hook": "installed"`) {
@@ -337,11 +346,31 @@ func TestHooks(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("remove hooks: %d %s", code, errOut)
 	}
-	if b, _ := os.ReadFile(claude); strings.Contains(string(b), "__internal session-start") || !strings.Contains(string(b), "other-hook") {
+	if b, _ := os.ReadFile(claude); strings.Contains(string(b), "__internal session-start") ||
+		!strings.Contains(string(b), "other-hook") || !strings.Contains(string(b), `"matcher": "x"`) {
 		t.Fatalf("claude settings after remove %s", b)
 	}
 	if b, _ := os.ReadFile(codex); strings.Contains(string(b), "__internal session-start") {
 		t.Fatalf("codex hooks after remove %s", b)
+	}
+}
+
+func TestSkillDryRun(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	code, _, _, errOut := runMain(t, "skill", "setup", "--agent", "claude", "--dry-run")
+	if code != ExitOK {
+		t.Fatalf("dry run: %d %s", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".claude", "skills", "gorex", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("dry run wrote the skill: %v", err)
+	}
+}
+
+func TestShellQuote(t *testing.T) {
+	if got := shellQuote("a'b c"); got != `'a'\''b c'` {
+		t.Fatalf("quote %q", got)
 	}
 }
 
@@ -351,5 +380,26 @@ func TestSessionStart(t *testing.T) {
 	code, _, out, _ := runMain(t, "__internal", "session-start", "--agent", "claude")
 	if code != ExitOK || !strings.Contains(out, "abc") || !strings.Contains(out, "studio") {
 		t.Fatalf("session-start: %d %q", code, out)
+	}
+}
+
+func TestHookConflict(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	path := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const bad = `{"hooks":"not-an-object"}`
+	if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, _, _ := runMain(t, "skill", "setup", "--agent", "claude")
+	if code != ExitFailed {
+		t.Fatalf("setup with bad hooks: %d", code)
+	}
+	if b, _ := os.ReadFile(path); string(b) != bad {
+		t.Fatalf("settings changed: %s", b)
 	}
 }

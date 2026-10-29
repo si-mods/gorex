@@ -601,6 +601,16 @@ func loadHosts() (hostsFile, error) {
 	return f, nil
 }
 
+// contextValue keeps an environment value from adding lines or prompt text
+// to an agent's context.
+func contextValue(s string) string {
+	s = printable(s)
+	if len(s) > 128 {
+		s = s[:128]
+	}
+	return s
+}
+
 // printable keeps a name from moving the cursor or changing the title.
 func printable(s string) string {
 	return strings.Map(func(r rune) rune {
@@ -613,11 +623,11 @@ func printable(s string) string {
 
 func internalCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if len(args) > 0 && args[0] == "session-start" {
-		id := os.Getenv("GOREX_SESSION")
+		id := contextValue(os.Getenv("GOREX_SESSION"))
 		if id == "" {
 			return ExitOK, true
 		}
-		host := os.Getenv("GOREX_HOST")
+		host := contextValue(os.Getenv("GOREX_HOST"))
 		if host == "" {
 			host = "this machine"
 		}
@@ -790,7 +800,11 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitOK, true
 		}
 		if !deadline.IsZero() && time.Now().After(deadline) {
-			fmt.Fprintf(errOut, "gorex wait: %s did not become ready in %v\n", target, *timeout)
+			msg := fmt.Sprintf("%s did not become ready in %v", target, *timeout)
+			if *asJSON {
+				WriteJSON(out, map[string]any{"session": target, "error": msg})
+			}
+			fmt.Fprintln(errOut, "gorex wait:", msg)
 			return ExitFailed, true
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -816,12 +830,18 @@ func runCmd(args []string, out, errOut io.Writer) (int, bool) {
 	defer c.Close()
 	info, err := c.Create(rex.CreateOptions{Command: cmd, Dir: *dir, Cols: 80, Rows: 24})
 	if err != nil {
+		if *asJSON {
+			WriteJSON(out, map[string]any{"error": err.Error()})
+		}
 		fmt.Fprintln(errOut, err)
 		return ExitFailed, true
 	}
 	defer c.Kill(info.ID)
 	in, err := waitExit(c, info.ID, 0)
 	if err != nil {
+		if *asJSON {
+			WriteJSON(out, map[string]any{"session": info.ID, "error": err.Error()})
+		}
 		if errors.Is(err, errNoSession) {
 			return ExitTarget, true
 		}
@@ -830,11 +850,17 @@ func runCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	res, err := c.Capture(info.ID, 0)
 	if err != nil {
+		if *asJSON {
+			WriteJSON(out, map[string]any{"session": info.ID, "error": err.Error()})
+		}
 		fmt.Fprintln(errOut, err)
 		return ExitFailed, true
 	}
 	text, err := plainText(res)
 	if err != nil {
+		if *asJSON {
+			WriteJSON(out, map[string]any{"session": info.ID, "error": err.Error()})
+		}
 		fmt.Fprintln(errOut, err)
 		return ExitFailed, true
 	}
@@ -895,6 +921,9 @@ func actionCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return codeFor(err), true
 	}
 	if res.Code != "" {
+		if *asJSON {
+			WriteJSON(out, res)
+		}
 		fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
 		return ExitFailed, true
 	}
