@@ -14,10 +14,14 @@ import (
 const (
 	// maxGraphicsImage is the largest image file a session reads and
 	// rewrites. A larger one reaches the window as the program sent it,
-	// which refuses the file medium.
-	maxGraphicsImage = 16 << 20
+	// which refuses the file medium. Its base64 form must fit one client
+	// message (maxQueuedBytes).
+	maxGraphicsImage = 4 << 20
+	// maxGraphicsRewrite bounds what one read's images add to the output:
+	// a program naming many files must not multiply what it printed.
+	maxGraphicsRewrite = 6 << 20
 	// maxGraphicsHistory bounds what a session keeps to replay on attach.
-	maxGraphicsHistory = 32 << 20
+	maxGraphicsHistory = 8 << 20
 	// graphicsChunk is the file bytes of one in-band chunk: base64 keeps
 	// it within Kitty's 4096-byte payload.
 	graphicsChunk = 3072
@@ -33,14 +37,19 @@ var (
 // file where the program runs, and keeps the sequences to replay when a
 // window attaches.
 type graphics struct {
-	pending []byte
-	history [][]byte
-	kept    int
+	pending    []byte
+	chunks     [][]byte
+	chunkBytes int
+	chunkSkip  bool
+	history    [][]byte
+	kept       int
 }
 
-// filter returns p with its file-medium Kitty images rewritten, and
-// records the graphics sequences for replay. cwd resolves relative paths.
-func (g *graphics) filter(p []byte, cwd string) []byte {
+// filter returns p with its file-medium Kitty images rewritten, and the
+// complete graphics sequences to record for replay. cwd resolves relative
+// paths. It runs outside the session's lock: opening a file must not hold
+// up the session.
+func (g *graphics) filter(p []byte, cwd string) ([]byte, [][]byte) {
 	if len(g.pending) > 0 {
 		p = append(g.pending, p...)
 		g.pending = nil
@@ -51,9 +60,10 @@ func (g *graphics) filter(p []byte, cwd string) []byte {
 			g.pending = append(g.pending, p[len(p)-hold:]...)
 			p = p[:len(p)-hold]
 		}
-		return p
+		return p, nil
 	}
 	var out []byte
+	var records [][]byte
 	for {
 		i := bytes.Index(p, apcGraphicsStart)
 		if i < 0 {
@@ -78,10 +88,20 @@ func (g *graphics) filter(p []byte, cwd string) []byte {
 			break
 		}
 		seq := rest[:j+len(apcEnd)]
-		out = append(out, g.sequence(seq, cwd)...)
+		if len(out) >= maxGraphicsRewrite {
+			out = append(out, seq...)
+		} else {
+			part, recs := g.sequence(seq, cwd)
+			if len(out)+len(part) > maxGraphicsRewrite {
+				out = append(out, seq...)
+			} else {
+				out = append(out, part...)
+				records = append(records, recs...)
+			}
+		}
 		p = rest[j+len(apcEnd):]
 	}
-	return out
+	return out, records
 }
 
 // graphicsPrefix returns how many bytes at the end of p start an APC
@@ -97,13 +117,12 @@ func graphicsPrefix(p []byte) int {
 }
 
 // sequence returns the Kitty sequence seq, rewritten when it transmits a
-// file, and records it for replay.
-func (g *graphics) sequence(seq []byte, cwd string) []byte {
+// file, and the sequences to record for replay.
+func (g *graphics) sequence(seq []byte, cwd string) ([]byte, [][]byte) {
 	body := seq[len(apcGraphicsStart) : len(seq)-len(apcEnd)]
 	header, payload, ok := strings.Cut(string(body), ";")
 	if !ok {
-		g.add(seq)
-		return seq
+		return seq, [][]byte{seq}
 	}
 	params := strings.Split(header, ",")
 	isFile := false
@@ -114,16 +133,32 @@ func (g *graphics) sequence(seq []byte, cwd string) []byte {
 		}
 	}
 	if !isFile || payload == "" {
-		g.add(seq)
-		return seq
+		if graphicsMore(params) {
+			if g.chunkBytes+len(seq) > maxGraphicsHistory {
+				g.chunks, g.chunkBytes, g.chunkSkip = nil, 0, true
+			} else {
+				g.chunks = append(g.chunks, seq)
+				g.chunkBytes += len(seq)
+			}
+			return seq, nil
+		}
+		if g.chunkSkip {
+			g.chunkSkip = false
+			return seq, nil
+		}
+		if len(g.chunks) > 0 {
+			group := append(g.chunks, seq)
+			g.chunks, g.chunkBytes = nil, 0
+			return seq, [][]byte{bytes.Join(group, nil)}
+		}
+		return seq, [][]byte{seq}
 	}
 	data, ok := readImageFile(payload, cwd)
 	if !ok {
-		return seq
+		return seq, nil
 	}
 	out := rewriteFileImage(params, data)
-	g.addAll(out)
-	return bytes.Join(out, nil)
+	return bytes.Join(out, nil), [][]byte{bytes.Join(out, nil)}
 }
 
 // readImageFile reads the file payload, resolved against cwd, at most
@@ -141,7 +176,7 @@ func readImageFile(payload, cwd string) ([]byte, bool) {
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(cwd, path)
 	}
-	f, err := os.Open(filepath.Clean(path))
+	f, err := openImageFile(filepath.Clean(path))
 	if err != nil {
 		return nil, false
 	}
@@ -159,6 +194,16 @@ func readImageFile(payload, cwd string) ([]byte, bool) {
 // rewriteFileImage turns a file-medium image into in-band chunks, keeping
 // its placement parameters. A PNG keeps its format; without one, the
 // image is sent as a PNG only when its bytes are.
+// graphicsMore reports whether params say more chunks follow.
+func graphicsMore(params []string) bool {
+	for _, p := range params {
+		if p == "m=1" || strings.HasPrefix(p, "m=1,") {
+			return true
+		}
+	}
+	return false
+}
+
 func rewriteFileImage(params []string, data []byte) [][]byte {
 	kept := make([]string, 0, len(params)+2)
 	hasFormat := false
@@ -204,35 +249,21 @@ func rewriteFileImage(params []string, data []byte) [][]byte {
 	return out
 }
 
-// add records seq for replay, keeping the most recent maxGraphicsHistory
-// bytes.
-func (g *graphics) add(seq []byte) {
-	if len(seq) > maxGraphicsHistory {
-		return
+// record adds sequences for replay, keeping the most recent
+// maxGraphicsHistory bytes. The session holds its lock.
+func (g *graphics) record(seqs [][]byte) {
+	for _, seq := range seqs {
+		if len(seq) > maxGraphicsHistory {
+			continue
+		}
+		seq = append([]byte(nil), seq...)
+		g.history = append(g.history, seq)
+		g.kept += len(seq)
+		for g.kept > maxGraphicsHistory && len(g.history) > 0 {
+			g.kept -= len(g.history[0])
+			g.history = g.history[1:]
+		}
 	}
-	g.history = append(g.history, seq)
-	g.kept += len(seq)
-	for g.kept > maxGraphicsHistory && len(g.history) > 0 {
-		g.kept -= len(g.history[0])
-		g.history = g.history[1:]
-	}
-}
-
-// addAll records one image's chunks as one entry, so that replay never
-// starts in the middle of it.
-func (g *graphics) addAll(parts [][]byte) {
-	n := 0
-	for _, p := range parts {
-		n += len(p)
-	}
-	if n > maxGraphicsHistory {
-		return
-	}
-	seq := make([]byte, 0, n)
-	for _, p := range parts {
-		seq = append(seq, p...)
-	}
-	g.add(seq)
 }
 
 // replay returns the graphics sequences an attaching window needs to show

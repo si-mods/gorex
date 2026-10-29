@@ -371,12 +371,13 @@ func (s *session) read() {
 		n, err := s.p.read(buf)
 		if n > 0 {
 			data := append([]byte(nil), buf[:n]...)
-			s.mu.Lock()
 			cwd := s.dir
 			if bytes.Contains(data, []byte("t=f")) {
 				cwd = s.imageDir()
 			}
-			data = s.graphics.filter(data, cwd)
+			data, graphics := s.graphics.filter(data, cwd)
+			s.mu.Lock()
+			s.graphics.record(graphics)
 			s.vt.Feed(data)
 			s.batch(data)
 			queries := s.status.feed(data)

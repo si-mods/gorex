@@ -29,7 +29,8 @@ func TestGraphicsTerminalAcceptsRewrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	var g graphics
-	rewritten := g.filter([]byte("\x1b_Gi=7,a=T,t=f;image.png\x1b\\"), dir)
+	rewritten, recs := g.filter([]byte("\x1b_Gi=7,a=T,t=f;image.png\x1b\\"), dir)
+	g.record(recs)
 	if bytes.Contains(rewritten, []byte("t=f")) {
 		t.Fatalf("not rewritten: %q", rewritten)
 	}
