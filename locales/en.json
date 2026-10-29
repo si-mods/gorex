@@ -1478,5 +1478,9 @@
   "remoteClientShare": "All sessions",
   "@remoteClientShare": {
     "description": "Switch: this remote client may use all sessions."
+  },
+  "remoteClientLayout": "Layout",
+  "@remoteClientLayout": {
+    "description": "Switch: this remote client may read the layout."
   }
 }

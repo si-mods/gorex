@@ -192,6 +192,7 @@ type RemoteClient struct {
 	Created       time.Time `json:"created,omitzero"`
 	LastSeen      time.Time `json:"lastSeen,omitzero"`
 	ShareSessions bool      `json:"shareSessions,omitempty"`
+	ShareLayout   bool      `json:"shareLayout,omitempty"`
 }
 
 // RemoteStatus answers remote.status. Address, the tailcat address

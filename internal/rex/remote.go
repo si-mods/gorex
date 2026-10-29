@@ -293,10 +293,15 @@ func (s *Server) remoteSeen(peer string) {
 
 // remoteShareLayout tells whether remote clients may read and subscribe
 // to the layout.
-func (s *Server) remoteShareLayout() bool {
+func (s *Server) remoteShareLayout(peer string) bool {
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	return s.rem.cfg.ShareLayout
+	if s.rem.cfg.ShareLayout {
+		return true
+	}
+	return slices.ContainsFunc(s.rem.cfg.Allowed, func(c RemoteClient) bool {
+		return c.PublicKey == peer && c.ShareLayout
+	})
 }
 
 // remoteAllowed tells the ops a remote connection may make; it may also
@@ -788,6 +793,16 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		revoked = k
 	case "remote.regenerate":
 		cfg.NodeKey, cfg.PresharedKey = key.NewNode(), tailcat.NewPresharedKey()
+	case "remote.clientLayoutSet":
+		k, err := reqKey()
+		if err != nil {
+			return nil, err
+		}
+		i := slices.IndexFunc(cfg.Allowed, func(c RemoteClient) bool { return c.PublicKey == k })
+		if i < 0 {
+			return nil, errors.New("rex: no such client")
+		}
+		cfg.Allowed[i].ShareLayout = req.On
 	case "remote.clientShareSet":
 		k, err := reqKey()
 		if err != nil {
