@@ -28,6 +28,10 @@
   "@cmdEqualizePanes": {
     "description": "Command: give all panes of the tab the same size."
   },
+  "cmdPaneToNewTab": "Move Pane to New Tab",
+  "@cmdPaneToNewTab": {
+    "description": "Command and pane-header tooltip: move the pane into a new tab of its own."
+  },
   "cmdNextTab": "Next Tab",
   "@cmdNextTab": {
     "description": "Command: show the next tab."

@@ -1637,6 +1637,16 @@ func (a *App) movePaneToNewTab(p *Pane, label string) bool {
 	return true
 }
 
+// paneToNewTab moves the focused pane of the active tab into a tab of its
+// own, doing nothing when that pane is the tab's only one.
+func (a *App) paneToNewTab() {
+	t := a.tab()
+	if t == nil || t.Focus == nil || len(t.panes()) < 2 {
+		return
+	}
+	a.movePaneToNewTab(t.Focus, "")
+}
+
 // finishPaneMove settles focus after p moved to t from src.
 func (a *App) finishPaneMove(t *Tab, p *Pane, src *Tab, wasActive bool) {
 	if src != t && len(src.panes()) == 0 {
