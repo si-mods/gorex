@@ -150,11 +150,14 @@ type LayoutCommand struct {
 // ClientInfo is one client attached to a session: a window, or a CLI
 // reading it, and whether it came from a remote host.
 type ClientInfo struct {
-	SessionID string `json:"sessionId"`
-	Peer      string `json:"peer,omitempty"`
-	Remote    bool   `json:"remote,omitempty"`
-	Seq       uint64 `json:"seq,omitempty"`
-	Via       bool   `json:"via,omitempty"`
+	SessionID string    `json:"sessionId"`
+	Peer      string    `json:"peer,omitempty"`
+	Principal string    `json:"principal,omitempty"`
+	Remote    bool      `json:"remote,omitempty"`
+	Seq       uint64    `json:"seq,omitempty"`
+	Via       bool      `json:"via,omitempty"`
+	Since     time.Time `json:"since,omitzero"`
+	Age       int64     `json:"age,omitempty"` // seconds
 }
 
 // CaptureOptions shape a capture.

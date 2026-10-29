@@ -318,13 +318,17 @@ func clientsCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitOK, true
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "SESSION\tPEER\tREMOTE\tVIA\tSEQ")
+	fmt.Fprintln(tw, "SESSION\tPRINCIPAL\tPEER\tREMOTE\tVIA\tAGE")
 	for _, cl := range clients {
 		peer := cl.Peer
 		if peer == "" {
 			peer = "local"
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%v\t%v\t%d\n", cl.SessionID, peer, cl.Remote, cl.Via, cl.Seq)
+		name := cl.Principal
+		if name == "" && !cl.Remote {
+			name = "local"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\t%ds\n", cl.SessionID, name, peer, cl.Remote, cl.Via, cl.Age)
 	}
 	tw.Flush()
 	return ExitOK, true

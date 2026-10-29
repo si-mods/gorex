@@ -108,6 +108,7 @@ type attached struct {
 	// many bytes wait in out; remote tells a remote connection, whose writes
 	// have a deadline.
 	peer   string
+	since  time.Time
 	queued atomic.Int64
 	remote bool
 	// seq orders the attaches of a session; via is the control connection
@@ -423,7 +424,7 @@ func (s *session) read() {
 // it attached through (Attach.Conn), if any; o.History and o.Framed shape
 // the snapshot.
 func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may func() bool, typed []byte) {
-	a := &attached{conn: conn, via: via, peer: peer, out: make(chan []byte, maxQueue), remote: peer != ""}
+	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != ""}
 	s.mu.Lock()
 	s.waitBatchLocked()
 	if !may() {
