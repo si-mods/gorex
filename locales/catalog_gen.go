@@ -132,6 +132,20 @@ func (msgs Messages) CmdEqualizePanes() string {
 	return Catalog.Format(msgs.locale, "cmdEqualizePanes", nil)
 }
 
+// CmdPaneToNewTab says "Move Pane to New Tab"
+// in the language the app shows.
+//
+// Command and pane-header tooltip: move the pane into a new tab of its own.
+func CmdPaneToNewTab() string { return In(i18n.Locale()).CmdPaneToNewTab() }
+
+// CmdPaneToNewTab says "Move Pane to New Tab"
+// in the language of msgs.
+//
+// Command and pane-header tooltip: move the pane into a new tab of its own.
+func (msgs Messages) CmdPaneToNewTab() string {
+	return Catalog.Format(msgs.locale, "cmdPaneToNewTab", nil)
+}
+
 // CmdNextTab says "Next Tab"
 // in the language the app shows.
 //

@@ -857,6 +857,49 @@ func TestMovePaneToNewTabKeepsActive(t *testing.T) {
 	}
 }
 
+// TestCommandPaneToNewTab moves the focused pane into a tab of its own,
+// after its source tab, keeping its session.
+func TestCommandPaneToNewTab(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.split(false)
+	src := a.tab()
+	p := src.Focus
+	sid, term := p.SID, p.term
+	at := slices.Index(a.tabs, src)
+
+	cmdPaneToNewTab.Run(a)
+
+	if len(a.tabs) != 2 || at < 0 {
+		t.Fatalf("tabs %d", len(a.tabs))
+	}
+	moved := a.tabs[at+1]
+	if moved == src || !slices.Contains(a.tabs, src) {
+		t.Fatal("the new tab is not after the source tab")
+	}
+	if ps := moved.panes(); len(ps) != 1 || ps[0] != p {
+		t.Fatalf("new tab panes %d", len(ps))
+	}
+	if len(src.panes()) != 1 {
+		t.Fatalf("source panes %d", len(src.panes()))
+	}
+	if p.Tab != moved || p.SID != sid || p.term != term {
+		t.Fatal("the moved pane's tab or session changed")
+	}
+}
+
+// TestCommandPaneToNewTabSinglePane leaves a tab alone when its only pane
+// is the focused one.
+func TestCommandPaneToNewTabSinglePane(t *testing.T) {
+	a, _ := newTestApp(t)
+	p := a.tab().Focus
+
+	cmdPaneToNewTab.Run(a)
+
+	if len(a.tabs) != 1 || a.tab().Focus != p || p.Tab != a.tab() {
+		t.Fatalf("tabs %d, focus %v", len(a.tabs), a.tab().Focus == p)
+	}
+}
+
 // TestCommandPaneResizeNested moves the divider a nested pane's edge
 // belongs to, not its nearest same-axis split.
 func TestCommandPaneResizeNested(t *testing.T) {

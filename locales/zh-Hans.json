@@ -7,6 +7,7 @@
   "cmdCloseTab": "关闭标签页",
   "cmdZoomPane": "放大窗格",
   "cmdEqualizePanes": "均分窗格",
+  "cmdPaneToNewTab": "将窗格移到新标签页",
   "cmdNextTab": "下一个标签页",
   "cmdPreviousTab": "上一个标签页",
   "cmdToggleSidebar": "切换边栏",

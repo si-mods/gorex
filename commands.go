@@ -245,9 +245,10 @@ var (
 		Run:     func(a *App) { a.split(true) },
 		RunArgs: func(a *App, args map[string]any) error { a.splitAt(true, argString(args, "dir")); return nil },
 	}
-	cmdClosePane = command{ID: "pane.close", Name: locales.Messages.CmdClosePane, Accel: "CmdOrCtrl+W", Keys: "⌘W", Other: ctrlShift(ui.KeyW), Run: func(a *App) { a.closeFocused() }}
-	cmdCloseTab  = command{ID: "tab.close", Name: locales.Messages.CmdCloseTab, Accel: "CmdOrCtrl+Shift+W", Keys: "⇧⌘W", Run: func(a *App) { a.closeActiveTab() }}
-	cmdZoom      = command{
+	cmdClosePane    = command{ID: "pane.close", Name: locales.Messages.CmdClosePane, Accel: "CmdOrCtrl+W", Keys: "⌘W", Other: ctrlShift(ui.KeyW), Run: func(a *App) { a.closeFocused() }}
+	cmdPaneToNewTab = command{ID: "pane.to_new_tab", Name: locales.Messages.CmdPaneToNewTab, Run: func(a *App) { a.paneToNewTab() }}
+	cmdCloseTab     = command{ID: "tab.close", Name: locales.Messages.CmdCloseTab, Accel: "CmdOrCtrl+Shift+W", Keys: "⇧⌘W", Run: func(a *App) { a.closeActiveTab() }}
+	cmdZoom         = command{
 		ID: "pane.zoom", Name: locales.Messages.CmdZoomPane, Accel: "CmdOrCtrl+Shift+Enter", Keys: "⇧⌘↩", Other: ctrlShift(ui.KeyEnter),
 		Args:    []actionArg{{Name: "mode", Type: "string", Optional: true, Values: []string{"on", "off", "toggle"}}},
 		Run:     func(a *App) { _ = a.zoomFocused("toggle") },
@@ -401,7 +402,7 @@ func (cmd *command) English() string { return cmd.Name(locales.In("en")) }
 
 // paletteCommands are those the command palette lists, before the tabs.
 var paletteCommands = []*command{
-	&cmdNewTab, &cmdSplitRight, &cmdSplitDown, &cmdZoom, &cmdEqualize, &cmdClosePane, &cmdCloseTab,
+	&cmdNewTab, &cmdSplitRight, &cmdSplitDown, &cmdZoom, &cmdEqualize, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdNextTab, &cmdPrevTab, &cmdRenameTab, &cmdSidebar,
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,

@@ -459,6 +459,9 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 				t.setFocus(p)
 				a.split(true)
 			}
+			if len(t.panes()) > 1 && iconButton(c, k, "square-arrow-out-up-right", locales.CmdPaneToNewTab(), 26, 16).Tooltip(tip(locales.CmdPaneToNewTab(), &cmdPaneToNewTab)).Clicked() {
+				a.later(c, func() { a.movePaneToNewTab(p, "") })
+			}
 			zoom, label := "maximize-2", locales.PaneZoom()
 			if t.Zoom == p {
 				zoom, label = "minimize-2", locales.PaneUnzoom()
