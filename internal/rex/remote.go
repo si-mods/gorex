@@ -278,19 +278,14 @@ func (s *Server) remoteClientFor(peer string) *RemoteClient {
 func (s *Server) remoteSeen(peer string) {
 	r := &s.rem
 	r.mu.Lock()
-	changed := false
+	defer r.mu.Unlock()
 	for i := range r.cfg.Allowed {
 		if r.cfg.Allowed[i].PublicKey == peer {
 			r.cfg.Allowed[i].LastSeen = time.Now()
-			changed = true
-			break
-		}
-	}
-	cfg := r.cfg
-	r.mu.Unlock()
-	if changed {
-		if err := writeJSON(remotePath(), cfg); err != nil {
-			log.Printf("rex: saving the remote allowlist: %v", err)
+			if err := writeJSON(remotePath(), r.cfg); err != nil {
+				log.Printf("rex: saving the remote allowlist: %v", err)
+			}
+			return
 		}
 	}
 }
