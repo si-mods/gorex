@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"encoding/json"
 	"log"
 	"os"
 	"slices"
@@ -95,6 +96,37 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 	res := rex.LayoutCommand{ID: c.ID}
 	fail := func(code, msg string) rex.LayoutCommand {
 		res.Code, res.Error = code, msg
+		return res
+	}
+	if c.Op == "action" {
+		switch c.Action {
+		case "app.quit", "session.close", "tab.close", "pane.close", "pane.restart":
+			return fail("not_allowed", "GoRex does not run "+c.Action+" from a client")
+		}
+		if c.SID != "" {
+			p := a.localPane(c.SID)
+			if p == nil {
+				return fail("pane_not_found", "no such pane in the GoRex window")
+			}
+			if i := slices.Index(a.tabs, p.Tab); i >= 0 {
+				a.selectTab(i)
+			}
+			p.Tab.setFocus(p)
+			a.focusReq = p
+		}
+		cmd := lookupCommand(c.Action)
+		if cmd == nil {
+			return fail("unknown_action", "GoRex does not know "+c.Action)
+		}
+		var args map[string]any
+		if len(c.Args) > 0 {
+			if err := json.Unmarshal(c.Args, &args); err != nil {
+				return fail("bad_args", err.Error())
+			}
+		}
+		if err := cmd.invoke(a, args); err != nil {
+			return fail("action_failed", err.Error())
+		}
 		return res
 	}
 	p := a.localPane(c.SID)

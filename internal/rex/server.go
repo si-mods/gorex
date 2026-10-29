@@ -257,6 +257,9 @@ func Serve() error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	if err := EnsureCLI(); err != nil {
+		log.Printf("rex: the gorex command: %v", err)
+	}
 	lock, err := os.OpenFile(filepath.Join(dir, "server.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
@@ -685,7 +688,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			o = *req.Create
 		}
 		id := newID()
-		ss, err := newSession(id, o, s.sessionsChanged)
+		ss, err := newSession(id, o, peer, s.sessionsChanged)
 		if err != nil {
 			return nil, err
 		}
@@ -716,6 +719,58 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		s.mu.Unlock()
 		s.notify("sessions")
 		return nil, nil
+	case "clients":
+		s.mu.Lock()
+		all := make([]*session, 0, len(s.order))
+		for _, id := range s.order {
+			all = append(all, s.sessions[id])
+		}
+		s.mu.Unlock()
+		out := []ClientInfo{}
+		for _, ss := range all {
+			if !s.mayUse(peer, ss) {
+				continue
+			}
+			ss.mu.Lock()
+			for a := range ss.clients {
+				out = append(out, ClientInfo{SessionID: ss.id, Peer: a.peer, Remote: a.remote, Seq: a.seq, Via: a.via != nil})
+			}
+			ss.mu.Unlock()
+		}
+		slices.SortFunc(out, func(a, b ClientInfo) int {
+			if a.SessionID != b.SessionID {
+				return strings.Compare(a.SessionID, b.SessionID)
+			}
+			switch {
+			case a.Seq < b.Seq:
+				return -1
+			case a.Seq > b.Seq:
+				return 1
+			}
+			return 0
+		})
+		return out, nil
+	case "input":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		return nil, ss.inputProgram(req.Bytes)
+	case "capture":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		o := CaptureOptions{}
+		if req.Capture != nil {
+			o = *req.Capture
+		}
+		return ss.capture(o.History), nil
+	case "action":
+		if req.Action == nil || req.Action.ID == "" {
+			return nil, errors.New("rex: no action")
+		}
+		return s.command(LayoutCommand{Op: "action", SID: req.SID, Action: req.Action.ID, Args: req.Action.Args}), nil
 	case "resize", "lockSize", "lockedResize", "unlockSize", "renewSize":
 		ss, err := s.use(req.SID, peer)
 		if err != nil {

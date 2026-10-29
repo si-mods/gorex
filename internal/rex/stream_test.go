@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -129,5 +130,77 @@ func TestStreamLastSizeWins(t *testing.T) {
 		if got, want := sessionSize(t, c, sid), fmt.Sprintf("%dx%d", cols, rows); got != want {
 			t.Fatalf("round %d: session %s, stream %s", round, got, want)
 		}
+	}
+}
+
+// TestInputCapture types into a session without attaching, and captures
+// its screen: what a CLI sends and reads.
+func TestInputCapture(t *testing.T) {
+	_, c, sid := streamServer(t, nil)
+	if err := c.Input(sid, []byte("echo gorex-marker\n")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		res, err := c.Capture(sid, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(res.Screen), "gorex-marker") {
+			if res.Cols < 1 || res.Rows < 1 {
+				t.Fatalf("capture size %dx%d", res.Cols, res.Rows)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("capture does not show the marker: %q", res.Screen)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestClients lists the clients attached to a session.
+func TestInputEnded(t *testing.T) {
+	_, c, sid := streamServer(t, nil)
+	if err := c.Input(sid, []byte("exit\n")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if sessionInfo(t, c, sid).Exited {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("session did not exit")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := c.Input(sid, []byte("x")); err == nil || !strings.Contains(err.Error(), "has ended") {
+		t.Fatalf("input after exit: %v", err)
+	}
+}
+
+func TestClients(t *testing.T) {
+	srv, c, sid := streamServer(t, nil)
+	c.dial = func() (net.Conn, error) {
+		a, b := net.Pipe()
+		go srv.handle(b, "")
+		return a, nil
+	}
+	st := c.Stream(sid, 80, 24)
+	defer st.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		clients, err := c.Clients()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(clients) == 1 && clients[0].SessionID == sid && !clients[0].Remote {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("clients %+v", clients)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

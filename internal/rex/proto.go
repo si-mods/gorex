@@ -68,6 +68,12 @@ type Request struct {
 	// it was taken or renewed last, and the sessions attached through it
 	// answer the programs' queries meanwhile.
 	Owner string `json:"owner,omitempty"`
+	// Bytes is what "input" types into the session.
+	Bytes []byte `json:"bytes,omitempty"`
+	// Capture is what "capture" shows of the session.
+	Capture *CaptureOptions `json:"capture,omitempty"`
+	// Action is the app action "action" runs.
+	Action *ActionCall `json:"action,omitempty"`
 	// ETag, on "list", is that of the list the client has (Response.ETag).
 	ETag string `json:"etag,omitempty"`
 	// LayoutRevision, on "setLayout", makes the change only when the
@@ -109,6 +115,9 @@ type LayoutCommand struct {
 	Vertical bool   `json:"vertical,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Mode     string `json:"mode,omitempty"`
+	// Action is the action of "action", and Args its arguments.
+	Action string          `json:"action,omitempty"`
+	Args   json.RawMessage `json:"args,omitempty"`
 	// Index is where tab.move puts the tab among this machine's tabs as
 	// the app makes it, counted with the tab in its place; in the answer,
 	// where the tab is then.
@@ -119,6 +128,39 @@ type LayoutCommand struct {
 	Error  string `json:"error,omitempty"`
 	New    string `json:"new,omitempty"`
 	Zoomed bool   `json:"zoomed,omitempty"`
+}
+
+// ClientInfo is one client attached to a session: a window, or a CLI
+// reading it, and whether it came from a remote host.
+type ClientInfo struct {
+	SessionID string `json:"sessionId"`
+	Peer      string `json:"peer,omitempty"`
+	Remote    bool   `json:"remote,omitempty"`
+	Seq       uint64 `json:"seq,omitempty"`
+	Via       bool   `json:"via,omitempty"`
+}
+
+// CaptureOptions shape a capture.
+type CaptureOptions struct {
+	// History cuts the oldest scrollback to about this many bytes; 0 keeps
+	// all of it.
+	History int `json:"history,omitempty"`
+}
+
+// CaptureResult is a session's screen as escape sequences, the way an
+// attach sends it, and what the session shows.
+type CaptureResult struct {
+	Screen    []byte `json:"screen"`
+	Title     string `json:"title,omitempty"`
+	Cols      int    `json:"cols"`
+	Rows      int    `json:"rows"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
+// ActionCall names an app action and its arguments.
+type ActionCall struct {
+	ID   string          `json:"id"`
+	Args json.RawMessage `json:"args,omitempty"`
 }
 
 // RemoteClient is a client allowed to connect remotely: PublicKey is its

@@ -247,3 +247,52 @@ func TestCommandCreateFails(t *testing.T) {
 		t.Errorf("pane.split: %+v, %d panes", res, len(first.panes()))
 	}
 }
+
+// TestActionFromClient runs an app action through the command queue, as
+// the CLI does, and sees the window change.
+func TestClientActionsCannotQuit(t *testing.T) {
+	a, _ := newTestApp(t)
+	res := a.command(rex.LayoutCommand{Op: "action", Action: "app.quit"})
+	if res.Code != "not_allowed" {
+		t.Fatalf("app.quit: %+v", res)
+	}
+}
+
+func TestActionFromClient(t *testing.T) {
+	a, tt := newTestApp(t)
+	go a.st.takeCommands(a.client, a.post)
+	a.saveNow()
+	c, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	type result struct {
+		res rex.LayoutCommand
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		res, err := c.Action("", "tab.rename", map[string]any{"name": "cli-test"})
+		done <- result{res, err}
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		tt.Frame()
+		select {
+		case r := <-done:
+			if r.err != nil || r.res.Code != "" {
+				t.Fatalf("action: %+v %v", r.res, r.err)
+			}
+			if a.tab().Name != "cli-test" {
+				t.Fatalf("the action renamed the tab %q", a.tab().Name)
+			}
+			return
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the action")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
