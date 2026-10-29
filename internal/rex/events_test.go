@@ -254,7 +254,7 @@ func TestStatusEvent(t *testing.T) {
 }
 
 func TestShareLayoutGate(t *testing.T) {
-	s := &Server{layout: []byte(`{"tabs":[]}`)}
+	s := &Server{layout: []byte(`{"tabs":[]}`), rem: remote{cfg: RemoteConfig{ShareSessions: true}}}
 	req := Request{ID: 1, Op: "getLayout"}
 	if res := s.request(req, "peer", nil); res.Error == "" {
 		t.Fatal("layout shared while off")
@@ -267,7 +267,7 @@ func TestShareLayoutGate(t *testing.T) {
 }
 
 func TestClientShareSessions(t *testing.T) {
-	s := &Server{rem: remote{cfg: RemoteConfig{Allowed: []RemoteClient{
+	s := &Server{rem: remote{cfg: RemoteConfig{ShareLayout: true, Allowed: []RemoteClient{
 		{PublicKey: "a", ShareSessions: true, ShareLayout: true},
 		{PublicKey: "b"},
 	}}}}

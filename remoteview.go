@@ -584,7 +584,7 @@ func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				}
 				ui.Text(c, locales.RemoteClientLayout()).FontSize(12.5).TextColor(k.textMuted).Shrink(0)
 				layoutShare := client.ShareLayout
-				lsw := ui.Switch(c.Key("l"), &layoutShare).Label(locales.RemoteClientLayout()).Disabled(page.busy)
+				lsw := ui.Switch(c.Key("l"), &layoutShare).Label(locales.RemoteClientLayout()).Disabled(page.busy || !client.ShareSessions)
 				if lsw.Changed() {
 					a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientLayout(client.PublicKey, layoutShare) }, nil)
 				}
