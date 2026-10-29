@@ -805,6 +805,10 @@ type paletteItem struct {
 	run                 func()
 	// status is what the program of a pane reported.
 	status *rex.ProgramStatus
+	// dot is the color of the space a row stands for, drawn before its
+	// title, when hasDot.
+	dot    ui.Color
+	hasDot bool
 }
 
 func (a *App) paletteItems() []paletteItem {
@@ -975,6 +979,9 @@ func (a *App) palette(c *ui.Context, k *colors) {
 				}
 				row.Children(func() {
 					ui.Icon(c, icon(it.glyph)).Size(15, 15).TextColor(k.textMuted)
+					if it.hasDot {
+						ui.Box(c).Size(8, 8).Radius(4).Background(it.dot).Shrink(0)
+					}
 					ui.Text(c, it.title).FontSize(13.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
 					if it.detail != "" {
 						ui.Text(c, it.detail).FontSize(13).TextColor(k.textFaint).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)

@@ -269,6 +269,18 @@
   "sessionCancel": "取消",
   "sessionTabsElsewhere": "{n, plural, other {# 个标签页 · 在另一个窗口中}}",
   "windowTitle": "{session} — {tab}",
+  "spaceColor": "颜色",
+  "@spaceColor": {
+    "description": "Space popover: label over the space's colors."
+  },
+  "spaceColorDefault": "默认",
+  "@spaceColorDefault": {
+    "description": "Space popover: the first of the space's colors, which leaves the window its theme's."
+  },
+  "spaceColorCustom": "自定义 #rrggbb",
+  "@spaceColorCustom": {
+    "description": "Space popover: placeholder of the field that takes a custom color of the space, as #0090ff."
+  },
   "remoteNetTitle": "加入网络",
   "@remoteNetTitle": {
     "description": "Card title: a coordinator network to join once instead of pairing."

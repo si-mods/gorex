@@ -36,8 +36,12 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 	if chip.Clicked() && !a.wsRenaming {
 		a.wsOpen = !a.wsOpen
 	}
+	glyph := k.textMuted
+	if _, ok := spaceColorHex(w.Color); ok {
+		glyph = k.accent
+	}
 	chip.Children(func() {
-		ui.Icon(c, icon("layers")).Size(15, 15).TextColor(k.textMuted).Shrink(0)
+		ui.Icon(c, icon("layers")).Size(15, 15).TextColor(glyph).Shrink(0)
 		if a.wsRenaming {
 			a.workspaceRenameField(c, w.Name)
 			return
@@ -131,6 +135,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 					ui.Icon(c, icon("check")).Size(15, 15).TextColor(k.text)
 				}
 			})
+			spaceDot(c, k, w)
 			ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 				ui.Text(c, w.Name).FontSize(13.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 				ui.Text(c, detail).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
@@ -143,6 +148,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 			}
 		})
 	}
+	a.spaceColorPicker(c, k)
 	ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder)
 	action := func(glyph, label string, run func()) {
 		row := ui.Row(c.Key("action-"+glyph)).Height(32).Padding(0, 8).Gap(9).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).
@@ -162,6 +168,77 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 	action("plus", cmdNewSession.Title(), a.newWorkspace)
 	action("pencil", cmdRenameSession.Title(), a.startWorkspaceRename)
 	action("trash-2", cmdCloseSession.Title(), a.askCloseWorkspace)
+}
+
+// spaceColorPicker is the popover's colors for the window's space: the
+// default look, the presets, and a field for a custom #rrggbb. A choice
+// keeps the popover open, so that the window shows it at once.
+func (a *App) spaceColorPicker(c *ui.Context, k *colors) {
+	if a.ws == nil {
+		return
+	}
+	ui.Text(c, locales.SpaceColor()).FontSize(12).FontWeight(600).TextColor(k.textFaint).Padding(10, 8, 4, 8)
+	base := colorsOf(c)
+	ui.Row(c).Gap(5).Wrap().Padding(0, 8, 4, 8).Children(func() {
+		a.spaceSwatch(c, k, "", locales.SpaceColorDefault(), base.bgMid, true)
+		for _, p := range spacePalette {
+			a.spaceSwatch(c, k, p.ID, strings.ToUpper(p.ID[:1])+p.ID[1:], ui.Hex(p.Hex), false)
+		}
+	})
+	in := ui.TextInput(c, &a.wsColorText).FontSize(12).Height(24).Margin(0, 8, 6, 8).Placeholder(locales.SpaceColorCustom())
+	if in.Submitted() {
+		a.useSpaceColorText()
+	}
+}
+
+// spaceSwatch is one of the popover's colors: the space's own, ringed,
+// and the one that takes it when clicked. Outlined is the default look,
+// which shows the window's own gradient.
+func (a *App) spaceSwatch(c *ui.Context, k *colors, id, label string, face ui.Color, outlined bool) ui.Element {
+	b := ui.Box(c).Size(20, 20).Radius(10).Shrink(0).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label).Background(face)
+	switch {
+	case a.ws != nil && a.ws.Color == id:
+		b.Border(2, k.text)
+	case outlined:
+		b.Border(1, k.textFaint)
+	}
+	if b.Clicked() {
+		a.setSpaceColor(id)
+	}
+	return b
+}
+
+// setSpaceColor gives the window's space a color, which the layout keeps.
+func (a *App) setSpaceColor(color string) {
+	if a.ws != nil && a.ws.Color != color {
+		a.ws.Color = color
+		a.changed()
+	}
+}
+
+// useSpaceColorText takes the color the picker's field holds, when it
+// names one: a preset's id, or a #rrggbb.
+func (a *App) useSpaceColorText() {
+	v := strings.TrimSpace(a.wsColorText)
+	hex, ok := spaceColorHex(v)
+	if !ok {
+		return
+	}
+	if strings.HasPrefix(v, "#") {
+		v = hex
+	}
+	a.setSpaceColor(v)
+}
+
+// spaceDot is the mark of a space's color before its name in the
+// popover: a dot of its base color, or only an outline for the default
+// look.
+func spaceDot(c *ui.Context, k *colors, w *Workspace) ui.Element {
+	dot := ui.Box(c).Size(8, 8).Radius(4).Shrink(0)
+	if hex, ok := spaceColorHex(w.Color); ok {
+		return dot.Background(ui.Hex(hex))
+	}
+	return dot.Border(1, k.textFaint)
 }
 
 // workspaceDetail says of a workspace how many tabs it has, and when
@@ -192,6 +269,9 @@ func (a *App) sessionItems(match func(string) bool) []paletteItem {
 			glyph = "app-window"
 		}
 		it := paletteItem{title: w.Name, detail: workspaceDetail(w, a), glyph: glyph, status: a.st.status(w), run: func() { a.showWorkspace(w) }}
+		if hex, ok := spaceColorHex(w.Color); ok {
+			it.dot, it.hasDot = ui.Hex(hex), true
+		}
 		if w == a.ws {
 			items = append([]paletteItem{it}, items...)
 		} else {

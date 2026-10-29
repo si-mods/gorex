@@ -3896,6 +3896,52 @@ func (msgs Messages) WindowTitle(session string, tab string) string {
 	return Catalog.Format(msgs.locale, "windowTitle", map[string]any{"session": session, "tab": tab})
 }
 
+// SpaceColor says "Color"
+// in the language the app shows.
+//
+// Space popover: label over the space's colors.
+func SpaceColor() string { return In(i18n.Locale()).SpaceColor() }
+
+// SpaceColor says "Color"
+// in the language of msgs.
+//
+// Space popover: label over the space's colors.
+func (msgs Messages) SpaceColor() string {
+	return Catalog.Format(msgs.locale, "spaceColor", nil)
+}
+
+// SpaceColorDefault says "Default"
+// in the language the app shows.
+//
+// Space popover: the first of the space's colors, which leaves the window
+// its theme's.
+func SpaceColorDefault() string { return In(i18n.Locale()).SpaceColorDefault() }
+
+// SpaceColorDefault says "Default"
+// in the language of msgs.
+//
+// Space popover: the first of the space's colors, which leaves the window
+// its theme's.
+func (msgs Messages) SpaceColorDefault() string {
+	return Catalog.Format(msgs.locale, "spaceColorDefault", nil)
+}
+
+// SpaceColorCustom says "Custom #rrggbb"
+// in the language the app shows.
+//
+// Space popover: placeholder of the field that takes a custom color of the
+// space, as #0090ff.
+func SpaceColorCustom() string { return In(i18n.Locale()).SpaceColorCustom() }
+
+// SpaceColorCustom says "Custom #rrggbb"
+// in the language of msgs.
+//
+// Space popover: placeholder of the field that takes a custom color of the
+// space, as #0090ff.
+func (msgs Messages) SpaceColorCustom() string {
+	return Catalog.Format(msgs.locale, "spaceColorCustom", nil)
+}
+
 // RemoteNetTitle says "Join a network"
 // in the language the app shows.
 //

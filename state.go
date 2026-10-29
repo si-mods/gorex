@@ -150,10 +150,12 @@ type App struct {
 
 	// The workspace's popover, the field that renames it, Close
 	// Session's question, and the palette listing the workspaces.
-	wsOpen          bool
-	wsRenaming      bool
-	wsRenameText    string
-	wsRenameFocus   bool
+	wsOpen        bool
+	wsRenaming    bool
+	wsRenameText  string
+	wsRenameFocus bool
+	// wsColorText is the color the popover's custom field holds.
+	wsColorText     string
 	wsConfirm       bool
 	paletteSessions bool
 

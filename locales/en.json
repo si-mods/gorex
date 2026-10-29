@@ -1370,6 +1370,18 @@
       }
     }
   },
+  "spaceColor": "Color",
+  "@spaceColor": {
+    "description": "Space popover: label over the space's colors."
+  },
+  "spaceColorDefault": "Default",
+  "@spaceColorDefault": {
+    "description": "Space popover: the first of the space's colors, which leaves the window its theme's."
+  },
+  "spaceColorCustom": "Custom #rrggbb",
+  "@spaceColorCustom": {
+    "description": "Space popover: placeholder of the field that takes a custom color of the space, as #0090ff."
+  },
   "remoteNetTitle": "Join a network",
   "@remoteNetTitle": {
     "description": "Card title: a coordinator network to join once instead of pairing."

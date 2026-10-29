@@ -499,6 +499,86 @@ func TestSessionChip(t *testing.T) {
 	quit(st)
 }
 
+// TestSpaceColorPicker checks the popover's colors: a click takes one,
+// which the layout keeps, and Default gives the window its own back.
+func TestSpaceColorPicker(t *testing.T) {
+	a, tt := newTestApp(t)
+	st := a.st
+	tt.Frame()
+	if err := tt.Click(locales.SessionLabel(a.ws.Name)); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !tt.HasText(locales.SpaceColor()) || !tt.HasText(locales.SpaceColorDefault()) {
+		t.Fatalf("no colors in the popover; texts %q", tt.Texts())
+	}
+	if err := tt.Click("Blue"); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if a.ws.Color != "blue" {
+		t.Errorf("the space is of color %q, want blue", a.ws.Color)
+	}
+	if !a.wsOpen {
+		t.Error("choosing a color closed the popover")
+	}
+	st.saveNow()
+	if got := savedWorkspaces(t, a.client).Sessions[0].Color; got != "blue" {
+		t.Errorf("the server keeps color %q, want blue", got)
+	}
+	if err := tt.Click(locales.SpaceColorDefault()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if a.ws.Color != "" {
+		t.Errorf("Default left the space of color %q", a.ws.Color)
+	}
+
+	// The field takes a custom #rrggbb, and leaves a color it cannot use.
+	a.wsColorText = " #ABCDEF "
+	a.useSpaceColorText()
+	if a.ws.Color != "#abcdef" {
+		t.Errorf("the field gave the space %q", a.ws.Color)
+	}
+	a.wsColorText = "nope"
+	a.useSpaceColorText()
+	if a.ws.Color != "#abcdef" {
+		t.Errorf("an unusable color became %q", a.ws.Color)
+	}
+	quit(st)
+}
+
+// TestSpaceColorShots renders a window whose space is teal, light and
+// dark, into GOREX_SHOTS, to look at.
+func TestSpaceColorShots(t *testing.T) {
+	dir := os.Getenv("GOREX_SHOTS")
+	if dir == "" {
+		t.Skip("GOREX_SHOTS names no directory")
+	}
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	a.ws.Color = "teal"
+	os.MkdirAll(dir, 0o755)
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		a.wsOpen = true
+		for range 3 {
+			tt.Frame()
+		}
+		name := fmt.Sprintf("space-teal-%s.png", map[bool]string{false: "light", true: "dark"}[dark])
+		f, err := os.Create(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		png.Encode(f, tt.Image())
+		f.Close()
+	}
+	a.wsOpen = false
+	quit(a.st)
+}
+
 // TestSessionShots renders the session popover, above the tabs and in the
 // sidebar, light and dark, into GOREX_SHOTS, to look at.
 func TestSessionShots(t *testing.T) {
