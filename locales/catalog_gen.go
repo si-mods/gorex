@@ -4285,3 +4285,17 @@ func RemoteClientShare() string { return In(i18n.Locale()).RemoteClientShare() }
 func (msgs Messages) RemoteClientShare() string {
 	return Catalog.Format(msgs.locale, "remoteClientShare", nil)
 }
+
+// RemoteClientLayout says "Layout"
+// in the language the app shows.
+//
+// Switch: this remote client may read the layout.
+func RemoteClientLayout() string { return In(i18n.Locale()).RemoteClientLayout() }
+
+// RemoteClientLayout says "Layout"
+// in the language of msgs.
+//
+// Switch: this remote client may read the layout.
+func (msgs Messages) RemoteClientLayout() string {
+	return Catalog.Format(msgs.locale, "remoteClientLayout", nil)
+}

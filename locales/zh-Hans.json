@@ -380,5 +380,9 @@
   "remoteClientShare": "所有会话",
   "@remoteClientShare": {
     "description": "Switch: this remote client may use all sessions."
+  },
+  "remoteClientLayout": "布局",
+  "@remoteClientLayout": {
+    "description": "Switch: this remote client may read the layout."
   }
 }

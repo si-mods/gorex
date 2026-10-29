@@ -582,6 +582,12 @@ func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				if sw.Changed() {
 					a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientSessions(client.PublicKey, share) }, nil)
 				}
+				ui.Text(c, locales.RemoteClientLayout()).FontSize(12.5).TextColor(k.textMuted).Shrink(0)
+				layoutShare := client.ShareLayout
+				lsw := ui.Switch(c.Key("l"), &layoutShare).Label(locales.RemoteClientLayout()).Disabled(page.busy)
+				if lsw.Changed() {
+					a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientLayout(client.PublicKey, layoutShare) }, nil)
+				}
 				if iconButton(c.Key("c"), k, "copy", locales.RemoteCopyKey(), 26, 15).Tooltip(locales.RemoteCopyKeyTip()).Clicked() {
 					copyText(client.PublicKey, client.PublicKey)
 				}

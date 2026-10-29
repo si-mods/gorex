@@ -12,8 +12,9 @@
   gets the picture even over SSH or on a remote host, where a path of this
   machine means nothing. A path pasted as text still types as the path, and
   a clipboard whose read fails whole pastes its text.
-- A remote client can be given every session from Settings › Remote Hosts,
-  per client, while others keep only the sessions they opened.
+- A remote client can be given every session, or the layout, from
+  Settings › Remote Hosts per client, while others keep only their own
+  sessions.
 - Remote hosts can share their layout read-only: `gorex -S HOST layout`
   reads it, and `gorex -S HOST events` follows layout changes when Share
   Layout is on.

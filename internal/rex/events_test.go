@@ -268,10 +268,13 @@ func TestShareLayoutGate(t *testing.T) {
 
 func TestClientShareSessions(t *testing.T) {
 	s := &Server{rem: remote{cfg: RemoteConfig{Allowed: []RemoteClient{
-		{PublicKey: "a", ShareSessions: true},
+		{PublicKey: "a", ShareSessions: true, ShareLayout: true},
 		{PublicKey: "b"},
 	}}}}
 	ss := &session{owner: "c"}
+	if !s.remoteShareLayout("a") || s.remoteShareLayout("b") {
+		t.Error("per-client layout sharing")
+	}
 	if !s.mayUse("a", ss) {
 		t.Error("a client that shares them does not see another's session")
 	}
