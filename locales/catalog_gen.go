@@ -4299,3 +4299,73 @@ func RemoteClientLayout() string { return In(i18n.Locale()).RemoteClientLayout()
 func (msgs Messages) RemoteClientLayout() string {
 	return Catalog.Format(msgs.locale, "remoteClientLayout", nil)
 }
+
+// HostsLayout says "Layout"
+// in the language the app shows.
+//
+// Remote host layout sheet.
+func HostsLayout() string { return In(i18n.Locale()).HostsLayout() }
+
+// HostsLayout says "Layout"
+// in the language of msgs.
+//
+// Remote host layout sheet.
+func (msgs Messages) HostsLayout() string {
+	return Catalog.Format(msgs.locale, "hostsLayout", nil)
+}
+
+// HostsLayoutTitle says "Remote layout"
+// in the language the app shows.
+//
+// Remote host layout sheet.
+func HostsLayoutTitle() string { return In(i18n.Locale()).HostsLayoutTitle() }
+
+// HostsLayoutTitle says "Remote layout"
+// in the language of msgs.
+//
+// Remote host layout sheet.
+func (msgs Messages) HostsLayoutTitle() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutTitle", nil)
+}
+
+// HostsLayoutEmpty says "This host shares no layout."
+// in the language the app shows.
+//
+// Remote host layout sheet.
+func HostsLayoutEmpty() string { return In(i18n.Locale()).HostsLayoutEmpty() }
+
+// HostsLayoutEmpty says "This host shares no layout."
+// in the language of msgs.
+//
+// Remote host layout sheet.
+func (msgs Messages) HostsLayoutEmpty() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutEmpty", nil)
+}
+
+// HostsLayoutLoading says "Reading the layout…"
+// in the language the app shows.
+//
+// Remote host layout sheet.
+func HostsLayoutLoading() string { return In(i18n.Locale()).HostsLayoutLoading() }
+
+// HostsLayoutLoading says "Reading the layout…"
+// in the language of msgs.
+//
+// Remote host layout sheet.
+func (msgs Messages) HostsLayoutLoading() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutLoading", nil)
+}
+
+// HostsLayoutClose says "Close"
+// in the language the app shows.
+//
+// Close the remote layout sheet.
+func HostsLayoutClose() string { return In(i18n.Locale()).HostsLayoutClose() }
+
+// HostsLayoutClose says "Close"
+// in the language of msgs.
+//
+// Close the remote layout sheet.
+func (msgs Messages) HostsLayoutClose() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutClose", nil)
+}

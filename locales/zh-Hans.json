@@ -384,5 +384,25 @@
   "remoteClientLayout": "布局",
   "@remoteClientLayout": {
     "description": "Switch: this remote client may read the layout."
+  },
+  "hostsLayout": "布局",
+  "@hostsLayout": {
+    "description": "Remote host layout sheet."
+  },
+  "hostsLayoutTitle": "远程布局",
+  "@hostsLayoutTitle": {
+    "description": "Remote host layout sheet."
+  },
+  "hostsLayoutEmpty": "此主机未共享布局。",
+  "@hostsLayoutEmpty": {
+    "description": "Remote host layout sheet."
+  },
+  "hostsLayoutLoading": "正在读取布局…",
+  "@hostsLayoutLoading": {
+    "description": "Remote host layout sheet."
+  },
+  "hostsLayoutClose": "关闭",
+  "@hostsLayoutClose": {
+    "description": "Close the remote layout sheet."
   }
 }
