@@ -79,6 +79,7 @@ type layoutTab struct {
 type layoutNode struct {
 	SID  string      `json:"sid"`
 	Name string      `json:"name,omitempty"`
+	Host string      `json:"host,omitempty"`
 	A    *layoutNode `json:"a"`
 	B    *layoutNode `json:"b"`
 }
@@ -119,7 +120,7 @@ func addNodeNames(n *layoutNode, add func(string, string)) {
 	if n == nil {
 		return
 	}
-	if n.Name != "" && n.SID != "" {
+	if n.Name != "" && n.SID != "" && n.Host == "" {
 		add(n.Name, n.SID)
 	}
 	addNodeNames(n.A, add)

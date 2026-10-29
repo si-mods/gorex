@@ -1422,5 +1422,17 @@
     "placeholders": {
       "error": {}
     }
+  },
+  "paneRename": "Rename Pane…",
+  "@paneRename": {
+    "description": "Context menu item for a pane."
+  },
+  "paneResetName": "Reset Pane Name",
+  "@paneResetName": {
+    "description": "Context menu item for a pane."
+  },
+  "paneMoveTab": "Move to Tab",
+  "@paneMoveTab": {
+    "description": "Submenu of the tabs a pane moves to."
   }
 }

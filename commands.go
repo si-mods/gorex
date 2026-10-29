@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"slices"
@@ -110,8 +111,12 @@ func (a actionArg) check(v any) error {
 			return fmt.Errorf("want one of %s", strings.Join(a.Values, ", "))
 		}
 	case "number":
-		switch v.(type) {
-		case float64, float32, int, int64:
+		switch n := v.(type) {
+		case float64:
+			ok = !math.IsNaN(n) && !math.IsInf(n, 0)
+		case float32:
+			ok = !float32IsBad(n)
+		case int, int64:
 			ok = true
 		}
 	case "integer":
@@ -353,11 +358,19 @@ var (
 )
 
 // argString returns the string argument name, "" when absent.
+func float32IsBad(n float32) bool { return math.IsNaN(float64(n)) || math.IsInf(float64(n), 0) }
+
 func argFloat(args map[string]any, name string) float32 {
 	switch n := args[name].(type) {
 	case float64:
+		if math.IsNaN(n) || math.IsInf(n, 0) {
+			return 0
+		}
 		return float32(n)
 	case float32:
+		if float32IsBad(n) {
+			return 0
+		}
 		return n
 	case int:
 		return float32(n)

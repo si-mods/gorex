@@ -131,6 +131,12 @@ func (a *App) tabRest(c *ui.Context, k *colors, t *Tab, active, hovered bool) {
 	label.Draw(func(p *ui.Painter, r ui.Rect) {
 		fadeText(p, r, tabLabel(name, detail, nameColor, detailColor))
 	})
+	if dragged, ok := ui.Drop[*Pane](label); ok {
+		a.movePaneToTab(dragged, t)
+	}
+	if _, over := ui.DragOver[*Pane](label); over {
+		label.Border(1.5, k.busy.Alpha(0.6))
+	}
 	a.tabEnd(c, k, t, hovered)
 }
 
@@ -142,9 +148,6 @@ func (a *App) tabEvents(e ui.Element, k *colors, i int, t *Tab) {
 	e.Drag(t)
 	if dragged, ok := ui.Drop[*Tab](e); ok && dragged != t {
 		a.moveTab(dragged, i)
-	}
-	if dragged, ok := ui.Drop[*Pane](e); ok {
-		a.movePaneToTab(dragged, t)
 	}
 	if _, over := ui.DragOver[*Tab](e); over {
 		e.Border(1.5, k.busy.Alpha(0.6))

@@ -310,7 +310,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 		})
 	})
 	if dragged, ok := ui.Drop[*Pane](card); ok && dragged != p {
-		a.movePaneToTab(dragged, t)
+		a.movePaneToPane(dragged, p)
 	}
 	if _, over := ui.DragOver[*Pane](card); over {
 		card.Border(1.5, k.busy.Alpha(0.6))
@@ -337,17 +337,17 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	}
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) {
-		if m.Item("Rename Pane…").Chosen() {
+		if m.Item(locales.PaneRename()).Chosen() {
 			a.startPaneRename(p)
 		}
-		if p.Name != "" && m.Item("Reset Pane Name").Chosen() {
+		if p.Name != "" && m.Item(locales.PaneResetName()).Chosen() {
 			p.Name = ""
 			a.changed()
 		}
 		if len(a.tabs) > 1 {
 			m.Separator()
-			m.Submenu("Move to Tab", func(sm *ui.Menu) {
-				for _, o := range a.tabs {
+			m.Submenu(locales.PaneMoveTab(), func(sm *ui.Menu) {
+				for _, o := range append([]*Tab(nil), a.tabs...) {
 					if o == p.Tab {
 						continue
 					}

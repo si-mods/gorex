@@ -691,7 +691,7 @@ func (a *App) resizeFocusedBy(dx, dy int, amount float32) {
 	if t == nil || t.Focus == nil {
 		return
 	}
-	if amount <= 0 {
+	if amount <= 0 || float32IsBad(amount) {
 		amount = 5
 	}
 	vertical := dy != 0
@@ -713,7 +713,7 @@ func (a *App) resizeFocusedBy(dx, dy int, amount float32) {
 // setSplitRatio sets the nearest split of the focused pane.
 func (a *App) setSplitRatio(ratio float32) {
 	t := a.tab()
-	if t == nil || t.Focus == nil || t.Focus.Node.Parent == nil {
+	if t == nil || t.Focus == nil || t.Focus.Node.Parent == nil || float32IsBad(ratio) {
 		return
 	}
 	t.Focus.Node.Parent.Ratio = min(max(ratio, 0.1), 0.9)
@@ -1255,17 +1255,39 @@ func (a *App) movePaneToTab(p *Pane, t *Tab) {
 	if p == nil || t == nil || p.Tab == nil || p.Tab == t {
 		return
 	}
-	src := p.Tab
-	a.detachPane(p)
+	if t.Root != nil && p.host != t.host() {
+		return
+	}
 	if t.Focus == nil || t.Root == nil {
+		src, wasActive := p.Tab, a.tab() == p.Tab
+		a.detachPane(p)
 		p.Tab, p.Node = t, &Node{ID: a.id(), Pane: p}
 		t.Root, t.Zoom = p.Node, nil
 		t.setFocus(p)
-		a.focusReq = p
+		a.finishPaneMove(t, p, src, wasActive)
 		a.changed()
 		return
 	}
-	old := t.Focus.Node
+	a.movePaneToPane(p, t.Focus)
+}
+
+// movePaneToPane moves pane p beside target, in target's tab. It works
+// within a tab too, detaching p and splitting target's node.
+func (a *App) movePaneToPane(p, target *Pane) {
+	if p == nil || target == nil || p == target || p.Tab == nil || p.host != target.host {
+		return
+	}
+	t, src, wasActive := target.Tab, p.Tab, a.tab() == p.Tab
+	a.detachPane(p)
+	old := target.Node
+	if old == nil || t.Root == nil {
+		p.Tab, p.Node = t, &Node{ID: a.id(), Pane: p}
+		t.Root, t.Zoom = p.Node, nil
+		t.setFocus(p)
+		a.finishPaneMove(t, p, src, wasActive)
+		a.changed()
+		return
+	}
 	sp := &Node{ID: a.id(), Parent: old.Parent, A: old, B: &Node{ID: a.id(), Pane: p, Parent: nil}, Ratio: 0.5}
 	sp.B.Parent = sp
 	if old.Parent == nil {
@@ -1279,11 +1301,26 @@ func (a *App) movePaneToTab(p *Pane, t *Tab) {
 	p.Tab, p.Node = t, sp.B
 	t.Zoom = nil
 	t.setFocus(p)
-	a.focusReq = p
+	a.finishPaneMove(t, p, src, wasActive)
+	a.changed()
+}
+
+// finishPaneMove settles focus after p moved to t from src.
+func (a *App) finishPaneMove(t *Tab, p *Pane, src *Tab, wasActive bool) {
 	if src != t && len(src.panes()) == 0 {
 		a.removeTab(src)
+		if wasActive {
+			if i := slices.Index(a.tabs, t); i >= 0 {
+				a.selectTab(i)
+			}
+		}
 	}
-	a.changed()
+	switch {
+	case a.tab() == t:
+		a.focusReq = p
+	case wasActive && a.tab() == src && src.Focus != nil:
+		a.focusReq = src.Focus
+	}
 }
 
 // detachPane removes p from its tab's tree, promoting its sibling, and

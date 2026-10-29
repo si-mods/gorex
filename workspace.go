@@ -166,7 +166,11 @@ func (st *store) save() {
 		return
 	}
 	b, err := json.Marshal(st.saved())
-	if err != nil || string(b) == st.last {
+	if err != nil {
+		log.Printf("gorex: saving the layout: %v", err)
+		return
+	}
+	if string(b) == st.last {
 		return
 	}
 	st.last = string(b)

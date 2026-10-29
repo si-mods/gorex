@@ -368,3 +368,56 @@ func TestResizeAmounts(t *testing.T) {
 		t.Fatalf("ratio clamp %v", tb.Root.Ratio)
 	}
 }
+
+func TestMovePaneWithinTab(t *testing.T) {
+	a, _ := newTestApp(t)
+	first := a.tab().Focus
+	a.split(false)
+	second := a.tab().Focus
+	sid, term := first.SID, first.term
+	a.movePaneToPane(first, second)
+	tb := a.tab()
+	if tb.Root.A == nil || tb.Root.B == nil || len(tb.panes()) != 2 || tb.Focus != first {
+		t.Fatalf("after move: focus %v panes %d", tb.Focus == first, len(tb.panes()))
+	}
+	if first.SID != sid || first.term != term {
+		t.Fatal("the moved pane's session changed")
+	}
+}
+
+func TestMovePaneFromActiveTab(t *testing.T) {
+	a, _ := newTestApp(t)
+	dir := t.TempDir()
+	first := a.tab()
+	a.newTab(dir)
+	second := a.tab()
+	a.newTab(dir)
+	third := a.tab()
+	a.selectTab(slices.Index(a.tabs, first))
+	p := first.Focus
+	a.movePaneToTab(p, third)
+	if a.tab() != third || a.focusReq != p {
+		t.Fatalf("active %v focus %v", a.tab() == third, a.focusReq == p)
+	}
+	if len(a.tabs) != 2 || slices.Contains(a.tabs, first) || !slices.Contains(a.tabs, second) || !slices.Contains(a.tabs, third) {
+		t.Fatalf("tabs %d", len(a.tabs))
+	}
+}
+
+func TestMovePaneKeepsActiveTabFocus(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.split(false)
+	first := a.tab()
+	dir := t.TempDir()
+	a.newTab(dir)
+	second := a.tab()
+	a.selectTab(slices.Index(a.tabs, first))
+	p := first.Focus
+	a.movePaneToTab(p, second)
+	if a.tab() != first || a.focusReq != first.Focus {
+		t.Fatalf("active %v focus %v", a.tab() == first, a.focusReq == first.Focus)
+	}
+	if p.Tab != second {
+		t.Fatal("pane did not move")
+	}
+}

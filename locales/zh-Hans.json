@@ -324,5 +324,17 @@
     "placeholders": {
       "error": {}
     }
+  },
+  "paneRename": "重命名窗格…",
+  "@paneRename": {
+    "description": "Context menu item for a pane."
+  },
+  "paneResetName": "重置窗格名称",
+  "@paneResetName": {
+    "description": "Context menu item for a pane."
+  },
+  "paneMoveTab": "移动到标签页",
+  "@paneMoveTab": {
+    "description": "Submenu of the tabs a pane moves to."
   }
 }

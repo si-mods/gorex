@@ -4101,3 +4101,45 @@ func RemoteNetError(error string) string { return In(i18n.Locale()).RemoteNetErr
 func (msgs Messages) RemoteNetError(error string) string {
 	return Catalog.Format(msgs.locale, "remoteNetError", map[string]any{"error": error})
 }
+
+// PaneRename says "Rename Pane…"
+// in the language the app shows.
+//
+// Context menu item for a pane.
+func PaneRename() string { return In(i18n.Locale()).PaneRename() }
+
+// PaneRename says "Rename Pane…"
+// in the language of msgs.
+//
+// Context menu item for a pane.
+func (msgs Messages) PaneRename() string {
+	return Catalog.Format(msgs.locale, "paneRename", nil)
+}
+
+// PaneResetName says "Reset Pane Name"
+// in the language the app shows.
+//
+// Context menu item for a pane.
+func PaneResetName() string { return In(i18n.Locale()).PaneResetName() }
+
+// PaneResetName says "Reset Pane Name"
+// in the language of msgs.
+//
+// Context menu item for a pane.
+func (msgs Messages) PaneResetName() string {
+	return Catalog.Format(msgs.locale, "paneResetName", nil)
+}
+
+// PaneMoveTab says "Move to Tab"
+// in the language the app shows.
+//
+// Submenu of the tabs a pane moves to.
+func PaneMoveTab() string { return In(i18n.Locale()).PaneMoveTab() }
+
+// PaneMoveTab says "Move to Tab"
+// in the language of msgs.
+//
+// Submenu of the tabs a pane moves to.
+func (msgs Messages) PaneMoveTab() string {
+	return Catalog.Format(msgs.locale, "paneMoveTab", nil)
+}
