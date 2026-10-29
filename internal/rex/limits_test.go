@@ -64,10 +64,8 @@ func TestClampSize(t *testing.T) {
 	if err := c.Resize(info.ID, 5000, -1); err != nil {
 		t.Fatal(err)
 	}
-	list, err := c.List()
-	if err != nil || len(list) != 1 || list[0].Cols != 1000 || list[0].Rows != 1 {
-		t.Errorf("resized: %+v %v", list, err)
-	}
+	// The size lands once it settles (resize).
+	waitSize(t, c, info.ID, "1000x1")
 }
 
 func TestKillsAreBounded(t *testing.T) {

@@ -87,9 +87,8 @@ func TestSizeLock(t *testing.T) {
 	phone2.Close()
 	waitUnlocked()
 	c.Resize(sid, 100, 30)
-	if got := sessionSize(t, c, sid); got != "100x30" {
-		t.Errorf("unlocked, the window's size is %s", got)
-	}
+	// A window's size lands once the drag settles (resize).
+	waitSize(t, c, sid, "100x30")
 
 	// The desktop takes the size back, at its own; another owner's unlock
 	// leaves it.
@@ -192,9 +191,27 @@ func TestListETag(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	c.Resize(sid, 90, 30)
-	list, next, changed, err := c.ListSince(etag)
-	if err != nil || !changed || next == etag || len(list) != 1 || list[0].Cols != 90 {
-		t.Errorf("resized: %v %q %v %v", list, next, changed, err)
+	// The size lands once the drag settles (resize), and the list changes
+	// with it.
+	var list []SessionInfo
+	var next string
+	var changed bool
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		var err error
+		list, next, changed, err = c.ListSince(etag)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if changed && len(list) == 1 && list[0].Cols == 90 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("resized: %v %q %v", list, next, changed)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if next == etag {
+		t.Errorf("resized: etag did not change: %q", next)
 	}
 }
 

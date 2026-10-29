@@ -53,6 +53,21 @@ func sessionSize(t *testing.T, c *Client, sid string) string {
 	return ""
 }
 
+// waitSize waits for a window's resize to settle at want: the session
+// takes its last size once the drag does (resize).
+func waitSize(t *testing.T, c *Client, sid, want string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		if got := sessionSize(t, c, sid); got == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session %s, want %s", sessionSize(t, c, sid), want)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 // TestAttachSizeBeforeAnswer checks that the session has the attach's
 // size once the server answers it: a resize the client sends then, on its
 // control connection, is not overwritten by the attach's older size.
@@ -127,9 +142,7 @@ func TestStreamLastSizeWins(t *testing.T) {
 		}
 		wg.Wait()
 		cols, rows := st.Size()
-		if got, want := sessionSize(t, c, sid), fmt.Sprintf("%dx%d", cols, rows); got != want {
-			t.Fatalf("round %d: session %s, stream %s", round, got, want)
-		}
+		waitSize(t, c, sid, fmt.Sprintf("%dx%d", cols, rows))
 	}
 }
 
