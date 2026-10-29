@@ -739,6 +739,77 @@ func (a *App) setSplitRatio(ratio float32) {
 	a.changed()
 }
 
+// resizePane moves the divider on p's direction edge by amount, a share
+// of the split as herdr's pane.resize has it. It reports whether the
+// split moved.
+func (a *App) resizePane(p *Pane, direction string, amount float32) (bool, string) {
+	if p == nil || p.Node == nil {
+		return false, "unchanged"
+	}
+	vertical := direction == "up" || direction == "down"
+	if direction != "left" && direction != "right" && !vertical {
+		return false, "unchanged"
+	}
+	amount = abs(amount)
+	if amount == 0 || float32IsBad(amount) {
+		amount = 0.05
+	}
+	amount = min(amount, 0.5)
+	if direction == "left" || direction == "up" {
+		amount = -amount
+	}
+	// The split a pane's direction edge belongs to is the one that has
+	// the pane on that side: A's right edge, or B's left edge. Walk out
+	// to it, keeping the nearest same-axis split for an outer edge, which
+	// moves that one as herdr does.
+	var nearest *Node
+	grows := direction == "right" || direction == "down"
+	for n := p.Node; n.Parent != nil; n = n.Parent {
+		split := n.Parent
+		if split.Vertical != vertical {
+			continue
+		}
+		if nearest == nil {
+			nearest = split
+		}
+		if (split.A == n) == grows {
+			return a.shiftSplit(split, amount)
+		}
+	}
+	if nearest != nil {
+		return a.shiftSplit(nearest, amount)
+	}
+	return false, "unchanged"
+}
+
+// shiftSplit moves split's ratio by amount, within the bounds the
+// desktop's own divider drags use.
+func (a *App) shiftSplit(split *Node, amount float32) (bool, string) {
+	old := split.Ratio
+	split.Ratio = min(max(old+amount, 0.1), 0.9)
+	if split.Ratio == old {
+		return false, "unchanged"
+	}
+	a.changed()
+	return true, ""
+}
+
+// swapPanes puts p and q in each other's places, in their tab, and gives
+// the focus to p as herdr's pane.swap does.
+func (a *App) swapPanes(p, q *Pane) {
+	if p == nil || q == nil || p == q || p.Tab == nil || p.Tab != q.Tab || p.Node == nil || q.Node == nil {
+		return
+	}
+	pn, qn := p.Node, q.Node
+	pn.Pane, qn.Pane = q, p
+	p.Node, q.Node = qn, pn
+	if p.Tab.Zoom == q {
+		p.Tab.Zoom = p
+	}
+	p.Tab.setFocus(p)
+	a.changed()
+}
+
 // equalize gives every split of the tab equal shares, by the panes on
 // either side.
 func (a *App) equalize() {
@@ -1292,23 +1363,32 @@ func (a *App) movePaneToTab(p *Pane, t *Tab) {
 
 // movePaneToPane moves pane p beside target, in target's tab. It works
 // within a tab too, detaching p and splitting target's node.
-func (a *App) movePaneToPane(p, target *Pane) {
+func (a *App) movePaneToPane(p, target *Pane) { a.movePaneBeside(p, target, false, 0.5) }
+
+// movePaneBeside moves pane p beside target in target's tab, in a split
+// of the given orientation and ratio, herdr's pane.move; the session
+// keeps running.
+func (a *App) movePaneBeside(p, target *Pane, vertical bool, ratio float32) {
 	if p == nil || target == nil || p == target || p.Tab == nil || p.host != target.host {
 		return
 	}
 	t, src, wasActive := target.Tab, p.Tab, a.tab() == p.Tab
 	a.detachPane(p)
-	a.placePane(t, p, target)
+	a.placePane(t, p, target, vertical, ratio)
 	a.finishPaneMove(t, p, src, wasActive)
 	a.changed()
 }
 
 // placePane puts p beside target in tab t, or alone when the tab has no
 // pane; p is not in a tree.
-func (a *App) placePane(t *Tab, p *Pane, target *Pane) {
+func (a *App) placePane(t *Tab, p *Pane, target *Pane, vertical bool, ratio float32) {
 	if t == nil || p == nil {
 		return
 	}
+	if float32IsBad(ratio) || ratio <= 0 || ratio >= 1 {
+		ratio = 0.5
+	}
+	ratio = min(max(ratio, 0.1), 0.9)
 	if t.Root == nil {
 		p.Tab, p.Node = t, &Node{ID: a.id(), Pane: p}
 		t.Root, t.Zoom = p.Node, nil
@@ -1319,7 +1399,7 @@ func (a *App) placePane(t *Tab, p *Pane, target *Pane) {
 		return
 	}
 	old := target.Node
-	sp := &Node{ID: a.id(), Parent: old.Parent, A: old, B: &Node{ID: a.id(), Pane: p}, Ratio: 0.5}
+	sp := &Node{ID: a.id(), Parent: old.Parent, A: old, B: &Node{ID: a.id(), Pane: p}, Vertical: vertical, Ratio: ratio}
 	sp.B.Parent = sp
 	if old.Parent == nil {
 		t.Root = sp
@@ -1372,10 +1452,48 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	}
 	np := &Pane{ID: target.id(), SID: p.SID, Name: p.Name, info: p.info, title: p.title, startDir: p.startDir, host: h}
 	target.attach(np, cols, rows)
-	target.placePane(t, np, t.Focus)
+	target.placePane(t, np, t.Focus, false, 0.5)
 	target.focusReq = np
 	target.front()
 	target.changed()
+}
+
+// movePaneToNewTab moves pane p into a tab of its own, after its tab,
+// keeping its session and program.
+func (a *App) movePaneToNewTab(p *Pane, label string) bool {
+	if p == nil || p.Tab == nil {
+		return false
+	}
+	src, cur := p.Tab, a.tab()
+	wasActive := cur == src
+	a.detachPane(p)
+	t := &Tab{ID: a.id(), Name: paneName(label)}
+	t.Root = &Node{ID: a.id(), Pane: p}
+	p.Tab, p.Node = t, t.Root
+	t.setFocus(p)
+	at := len(a.tabs)
+	if i := slices.Index(a.tabs, src); i >= 0 {
+		at = i + 1
+	}
+	a.tabs = slices.Insert(a.tabs, at, t)
+	if i := slices.Index(a.tabs, cur); cur != nil && i >= 0 {
+		a.active = i
+	}
+	if len(src.panes()) == 0 {
+		a.removeTab(src)
+		if wasActive {
+			a.active = max(slices.Index(a.tabs, t), 0)
+		}
+	}
+	switch {
+	case a.tab() == t:
+		a.focusReq = t.Focus
+	case wasActive && a.tab() == src && src.Focus != nil:
+		a.focusReq = src.Focus
+	}
+	a.groupTabs()
+	a.changed()
+	return true
 }
 
 // finishPaneMove settles focus after p moved to t from src.

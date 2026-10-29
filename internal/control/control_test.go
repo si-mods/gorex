@@ -293,8 +293,11 @@ func TestBridge(t *testing.T) {
 		t.Errorf("detached %v", m)
 	}
 
-	if e, ok := r.call("pane.resize", map[string]any{})["error"].(map[string]any); !ok || e["code"] != "read_only" || e["message"] == "" {
-		t.Errorf("pane.resize answered %v", e)
+	if e, ok := r.call("pane.scroll", map[string]any{"pane_id": "p-" + sids[0], "offset_from_bottom": 1})["error"].(map[string]any); !ok || e["code"] != "read_only" || e["message"] == "" {
+		t.Errorf("pane.scroll answered %v", e)
+	}
+	if e, ok := r.call("pane.resize", map[string]any{})["error"].(map[string]any); !ok || e["code"] != "invalid_params" {
+		t.Errorf("pane.resize without a pane answered %v", e)
 	}
 	// With no window to make it, a change of the layout fails at once.
 	start := time.Now()

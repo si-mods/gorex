@@ -84,10 +84,14 @@ type tab struct {
 	zoom     bool
 }
 
+// nameOf returns the name the user gave the pane of sid, "" for none.
+func (t *tab) nameOf(sid string) string { return t.root.nameOf(sid) }
+
 // node is a pane, of session sid, or a split: vertical stacks a above b,
 // else a is left of b; ratio is a's share.
 type node struct {
 	sid      string
+	name     string
 	vertical bool
 	ratio    float64
 	a, b     *node
@@ -107,6 +111,39 @@ func (n *node) shape() string {
 	return fmt.Sprintf("(%v %s %s)", n.vertical, n.a.shape(), n.b.shape())
 }
 
+// note returns the pane of sid in n, nil for none.
+func (n *node) note(sid string) *node {
+	switch {
+	case n == nil:
+		return nil
+	case n.sid != "":
+		if n.sid == sid {
+			return n
+		}
+		return nil
+	}
+	if x := n.a.note(sid); x != nil {
+		return x
+	}
+	return n.b.note(sid)
+}
+
+// nameOf returns the name the user gave the pane of sid, "" for none.
+func (n *node) nameOf(sid string) string {
+	if x := n.note(sid); x != nil {
+		return x.name
+	}
+	return ""
+}
+
+// ratios is the splits of n and their ratios, for a change of them.
+func (n *node) ratios() string {
+	if n == nil || n.sid != "" {
+		return ""
+	}
+	return fmt.Sprintf("(%v %g %s %s)", n.vertical, n.ratio, n.a.ratios(), n.b.ratios())
+}
+
 // The layout the app keeps on the server (main's savedLayout).
 type savedLayout struct {
 	Active int `json:"active"`
@@ -120,6 +157,7 @@ type savedLayout struct {
 
 type savedNode struct {
 	SID      string     `json:"sid"`
+	Name     string     `json:"name"`
 	Host     string     `json:"host"`
 	Vertical bool       `json:"vertical"`
 	Ratio    float64    `json:"ratio"`
@@ -223,7 +261,7 @@ func (b *bridge) build() {
 				}
 				seen[n.SID] = true
 				leaves = append(leaves, n.SID)
-				return &node{sid: n.SID}
+				return &node{sid: n.SID, name: n.Name}
 			}
 			x, y := conv(n.A), conv(n.B)
 			if x == nil || y == nil {

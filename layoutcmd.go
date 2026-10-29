@@ -200,7 +200,53 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		a.changed()
 	case "pane.rename":
 		p.Name = paneName(c.Name)
+		res.Name = p.Name
 		a.changed()
+	case "pane.resize":
+		res.Changed, res.Reason = a.resizePane(p, c.Direction, c.Amount)
+	case "pane.swap":
+		q := a.localPane(c.Target)
+		switch {
+		case q == nil:
+			res.Reason = "not_found"
+		case q == p:
+			res.Reason = "same_pane"
+		case q.Tab != p.Tab:
+			res.Reason = "cross_tab"
+		default:
+			a.swapPanes(p, q)
+			res.Changed = true
+		}
+	case "pane.move":
+		if p.Tab.Zoom != nil {
+			res.Reason = "zoomed_tab"
+			break
+		}
+		if c.NewTab {
+			if a.movePaneToNewTab(p, c.Name) {
+				res.Changed = true
+			}
+			break
+		}
+		q := a.localPane(c.Target)
+		switch {
+		case q == nil:
+			res.Reason = "not_found"
+		case q.Tab == p.Tab:
+			res.Reason = "same_tab"
+		case q.Tab.Zoom != nil:
+			res.Reason = "zoomed_tab"
+		case p.host != q.host:
+			res.Reason = "not_found"
+		default:
+			ratio := c.Ratio
+			if ratio <= 0 || ratio > 1 {
+				ratio = 0.5
+			}
+			ratio = min(max(ratio, 0.1), 0.9)
+			a.movePaneBeside(p, q, c.Direction == "down", ratio)
+			res.Changed = true
+		}
 	case "pane.zoom":
 		on := c.Mode == "on" || c.Mode != "off" && p.Tab.Zoom == nil
 		a.zoom(p, on)

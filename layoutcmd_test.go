@@ -82,12 +82,10 @@ func (r *phone) snapshot() (tabs []string, labels map[string]string, panes map[s
 	return
 }
 
-// TestRootshellLayout changes the window's layout from rootshell, through
-// the bridge and the app's own code: new tabs, splits, zoom, closing,
-// renaming and moving, each seen by rootshell before its answer.
-func TestRootshellLayout(t *testing.T) {
-	a, tt := newTestApp(t)
-	first := a.tab()
+// startPhone runs the app's command loop and a bridge, and returns
+// rootshell's end of it, opened.
+func startPhone(t *testing.T, a *App, tt *ui.Tester) *phone {
+	t.Helper()
 	go a.st.takeCommands(a.client, a.post)
 	a.saveNow()
 	c, err := rex.ConnectExisting()
@@ -96,6 +94,7 @@ func TestRootshellLayout(t *testing.T) {
 	}
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
+	t.Cleanup(func() { inW.Close() })
 	go func() { control.Run(c, inR, outW); outW.Close() }()
 	r := &phone{t: t, tt: tt, in: inW, lines: make(chan map[string]any, 1024)}
 	go func() {
@@ -108,8 +107,17 @@ func TestRootshellLayout(t *testing.T) {
 			r.lines <- m
 		}
 	}()
-	defer inW.Close()
 	r.next("control.open", func(m map[string]any) bool { return m["id"] == "control.open" })
+	return r
+}
+
+// TestRootshellLayout changes the window's layout from rootshell, through
+// the bridge and the app's own code: new tabs, splits, zoom, closing,
+// renaming and moving, each seen by rootshell before its answer.
+func TestRootshellLayout(t *testing.T) {
+	a, tt := newTestApp(t)
+	first := a.tab()
+	r := startPhone(t, a, tt)
 	tabs, _, panes := r.snapshot()
 	if len(tabs) != 1 || len(panes[tabs[0]]) != 1 {
 		t.Fatalf("tabs %v, panes %v", tabs, panes)
@@ -482,5 +490,205 @@ func TestMoveOnlyPaneToWindow(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("the only pane did not move")
+	}
+}
+
+// TestRootshellPaneCommands resizes, swaps, renames and moves panes from
+// rootshell, through the bridge and the app, as herdr's pane methods do.
+func TestRootshellPaneCommands(t *testing.T) {
+	a, tt := newTestApp(t)
+	r := startPhone(t, a, tt)
+	tabs, _, panes := r.snapshot()
+	if len(tabs) != 1 || len(panes[tabs[0]]) != 1 {
+		t.Fatalf("tabs %v, panes %v", tabs, panes)
+	}
+	t1, sid1 := tabs[0], panes[tabs[0]][0]
+	r.call("pane.focus", map[string]any{"pane_id": "p-" + sid1})
+	r.call("tab.set_geometry", map[string]any{"tab_id": t1, "cols": 100, "rows": 30, "chrome": "none", "claim": true})
+	r.call("pane.split", map[string]any{"target_pane_id": "p-" + sid1, "direction": "right", "focus": true})
+	_, _, panes = r.snapshot()
+	if len(panes[t1]) != 2 {
+		t.Fatalf("panes %v after a split", panes)
+	}
+	sid2 := panes[t1][1]
+	tab := a.tab()
+
+	// A divider drag moves the nearest split's ratio.
+	res := r.call("pane.resize", map[string]any{"pane_id": "p-" + sid2, "direction": "left", "amount": 0.1})
+	if resize := res["resize"].(map[string]any); resize["changed"] != true || resize["layout"] == nil {
+		t.Fatalf("pane.resize %v", res)
+	}
+	if tab.Root == nil || tab.Root.Ratio < 0.39 || tab.Root.Ratio > 0.41 {
+		t.Fatalf("ratio %v", tab.Root)
+	}
+
+	// A swap puts the panes in each other's places, and focuses the source.
+	res = r.call("pane.swap", map[string]any{"source_pane_id": "p-" + sid1, "target_pane_id": "p-" + sid2})
+	if swap := res["swap"].(map[string]any); swap["changed"] != true {
+		t.Fatalf("pane.swap %v", res)
+	}
+	if ps := tab.panes(); ps[0].SID != sid2 || ps[1].SID != sid1 || tab.Focus.SID != sid1 {
+		t.Fatalf("panes %v, focus %s", []string{ps[0].SID, ps[1].SID}, tab.Focus.SID)
+	}
+
+	// A label rootshell gave shows in the answer and the snapshot.
+	res = r.call("pane.rename", map[string]any{"pane_id": "p-" + sid1, "label": " logs "})
+	if pane := res["pane"].(map[string]any); pane["label"] != "logs" {
+		t.Fatalf("pane.rename %v", res)
+	}
+	// The app's sanitizing is what the wait compares against.
+	res = r.call("pane.rename", map[string]any{"pane_id": "p-" + sid1, "label": " lo\x01gs "})
+	if pane := res["pane"].(map[string]any); pane["label"] != "logs" {
+		t.Fatalf("sanitized pane.rename %v", res)
+	}
+	snap := r.call("session.snapshot", map[string]any{})["snapshot"].(map[string]any)
+	found := false
+	for _, x := range snap["panes"].([]any) {
+		if p := x.(map[string]any); p["terminal_id"] == sid1 && p["label"] == "logs" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("snapshot without the label: %v", snap["panes"])
+	}
+
+	// A second tab to move panes into.
+	t2 := r.call("tab.create", map[string]any{"workspace_id": "w", "focus": true})["tab"].(map[string]any)["tab_id"].(string)
+	_, _, panes = r.snapshot()
+	sid3 := panes[t2][0]
+
+	// A tab of one pane has no divider to move.
+	res = r.call("pane.resize", map[string]any{"pane_id": "p-" + sid3, "direction": "left", "amount": 0.1})
+	if resize := res["resize"].(map[string]any); resize["changed"] != false || resize["reason"] != "unchanged" {
+		t.Fatalf("resize of one pane %v", res)
+	}
+
+	// A swap across tabs changes nothing.
+	res = r.call("pane.swap", map[string]any{"source_pane_id": "p-" + sid1, "target_pane_id": "p-" + sid3})
+	if swap := res["swap"].(map[string]any); swap["changed"] != false || swap["reason"] != "cross_tab" {
+		t.Fatalf("cross-tab swap %v", res)
+	}
+
+	// A move into another tab keeps the session.
+	res = r.call("pane.move", map[string]any{"pane_id": "p-" + sid2, "destination": map[string]any{"type": "tab", "tab_id": t2, "split": "down"}})
+	move := res["move_result"].(map[string]any)
+	if move["changed"] != true || move["previous_tab_id"] != t1 || move["pane"].(map[string]any)["tab_id"] != t2 {
+		t.Fatalf("pane.move %v", res)
+	}
+	_, _, panes = r.snapshot()
+	if !slices.Contains(panes[t2], sid2) || slices.Contains(panes[t1], sid2) {
+		t.Fatalf("panes after the move: %v", panes)
+	}
+	list, _ := a.client.List()
+	alive := false
+	for _, in := range list {
+		if in.ID == sid2 {
+			alive = true
+		}
+	}
+	if !alive {
+		t.Fatal("the moved pane's session ended")
+	}
+
+	// A move into its own tab changes nothing.
+	res = r.call("pane.move", map[string]any{"pane_id": "p-" + sid2, "destination": map[string]any{"type": "tab", "tab_id": t2}})
+	if move := res["move_result"].(map[string]any); move["changed"] != false || move["reason"] != "same_tab" {
+		t.Fatalf("same-tab move %v", res)
+	}
+
+	// A move into a new tab makes one, keeping the pane.
+	res = r.call("pane.move", map[string]any{"pane_id": "p-" + sid1, "destination": map[string]any{"type": "new_tab", "label": "moved"}})
+	move = res["move_result"].(map[string]any)
+	created, _ := move["created_tab"].(map[string]any)
+	if move["changed"] != true || created == nil || created["label"] != "moved" {
+		t.Fatalf("new-tab move %v", res)
+	}
+	if _, _, panes := r.snapshot(); !slices.Contains(panes[created["tab_id"].(string)], sid1) {
+		t.Fatalf("panes after the new-tab move: %v", panes)
+	}
+}
+
+// TestCommandPaneMove moves a pane into another tab and into a new one.
+func TestCommandPaneMove(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.split(false)
+	first := a.tab()
+	p := first.Focus
+	a.newTab(t.TempDir())
+	target := a.tab().Focus
+	res := a.command(rex.LayoutCommand{Op: "pane.move", SID: p.SID, Target: target.SID, Direction: "down", Ratio: 0.4})
+	if res.Code != "" || !res.Changed || p.Tab != target.Tab || len(first.panes()) != 1 {
+		t.Fatalf("pane.move: %+v, pane tab %v, source panes %d", res, p.Tab == target.Tab, len(first.panes()))
+	}
+	if target.Node == nil || target.Node.Parent == nil || target.Node.Parent.Vertical != true || target.Node.Parent.Ratio < 0.39 {
+		t.Fatalf("moved split %+v", target.Node.Parent)
+	}
+	p = target.Tab.Focus
+	a.newTab(t.TempDir())
+	src := p.Tab
+	res = a.command(rex.LayoutCommand{Op: "pane.move", SID: p.SID, NewTab: true, Name: "moved"})
+	if res.Code != "" || !res.Changed || p.Tab == src || p.Tab.Name != "moved" {
+		t.Fatalf("new-tab move: %+v, tab %v %q", res, p.Tab != src, p.Tab.Name)
+	}
+}
+
+// TestMovePaneToNewTabKeepsActive leaves the window on its tab when a
+// pane of another tab goes to a tab of its own.
+func TestMovePaneToNewTabKeepsActive(t *testing.T) {
+	a, _ := newTestApp(t)
+	first := a.tab()
+	a.newTab(t.TempDir())
+	second := a.tab()
+	a.newTab(t.TempDir())
+	a.selectTab(slices.Index(a.tabs, second))
+	p := first.Focus
+	src := p.Tab
+	if !a.movePaneToNewTab(p, "moved") {
+		t.Fatal("no new tab")
+	}
+	if p.Tab == src || !slices.Contains(a.tabs, p.Tab) || a.tab() != second {
+		t.Fatalf("tab %v, active %v", p.Tab == src, a.tab() == second)
+	}
+	if slices.Contains(a.tabs, first) {
+		t.Fatal("the emptied tab stayed")
+	}
+}
+
+// TestCommandPaneResizeNested moves the divider a nested pane's edge
+// belongs to, not its nearest same-axis split.
+func TestCommandPaneResizeNested(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.split(false)
+	b := a.tab().Focus
+	a.split(false)
+	c := a.tab().Focus
+	tab := a.tab()
+	root := tab.Root
+	s := root.B
+	if root.Vertical || s == nil || s.Vertical || s.A != b.Node || s.B != c.Node {
+		t.Fatalf("tree %+v", root)
+	}
+	ratio := func(n *Node) float32 { return n.Ratio }
+	near := func(got, want float32) bool { return got > want-0.001 && got < want+0.001 }
+
+	// B's left edge is the root divider: the root moves, not B's parent.
+	res := a.command(rex.LayoutCommand{Op: "pane.resize", SID: b.SID, Direction: "left", Amount: 0.1})
+	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.5) {
+		t.Fatalf("left of B: %+v, root %v, split %v", res, ratio(root), ratio(s))
+	}
+	// B's right edge is its parent split.
+	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: b.SID, Direction: "right", Amount: 0.1})
+	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.6) {
+		t.Fatalf("right of B: %+v, root %v, split %v", res, ratio(root), ratio(s))
+	}
+	// C's left edge is its parent split.
+	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: c.SID, Direction: "left", Amount: 0.1})
+	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.5) {
+		t.Fatalf("left of C: %+v, root %v, split %v", res, ratio(root), ratio(s))
+	}
+	// C's outer right edge moves its nearest split the other way, as herdr.
+	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: c.SID, Direction: "right", Amount: 0.1})
+	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.6) {
+		t.Fatalf("outer right of C: %+v, root %v, split %v", res, ratio(root), ratio(s))
 	}
 }
