@@ -376,5 +376,9 @@
   "remoteShareLayoutNote": "远程客户端可读取此窗口的标签页与分屏，并跟随变化。",
   "@remoteShareLayoutNote": {
     "description": "Remote access: share this window layout with remote clients."
+  },
+  "remoteClientShare": "所有会话",
+  "@remoteClientShare": {
+    "description": "Switch: this remote client may use all sessions."
   }
 }

@@ -622,7 +622,12 @@ func (s *Server) mayUse(peer string, ss *session) bool {
 	}
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	return s.rem.cfg.ShareSessions
+	if s.rem.cfg.ShareSessions {
+		return true
+	}
+	return slices.ContainsFunc(s.rem.cfg.Allowed, func(c RemoteClient) bool {
+		return c.PublicKey == peer && c.ShareSessions
+	})
 }
 
 // use returns the session id for peer (mayUse).

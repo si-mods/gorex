@@ -49,7 +49,8 @@ type RemoteConfig struct {
 	Region  int            `json:"region,omitempty"`
 	Allowed []RemoteClient `json:"allowed"`
 	// ShareSessions lets remote clients see and use every session; off,
-	// each sees and uses only the sessions it created.
+	// each sees and uses only the sessions it created, unless its
+	// allowlist entry shares them.
 	ShareSessions bool `json:"shareSessions,omitempty"`
 	// ShareLayout lets remote clients read the layout and subscribe to
 	// its changes; off by default.
@@ -787,6 +788,19 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		revoked = k
 	case "remote.regenerate":
 		cfg.NodeKey, cfg.PresharedKey = key.NewNode(), tailcat.NewPresharedKey()
+	case "remote.clientShareSet":
+		k, err := reqKey()
+		if err != nil {
+			return nil, err
+		}
+		i := slices.IndexFunc(cfg.Allowed, func(c RemoteClient) bool { return c.PublicKey == k })
+		if i < 0 {
+			return nil, errors.New("rex: no such client")
+		}
+		cfg.Allowed[i].ShareSessions = req.On
+		if !req.On {
+			done = append(done, s.dropUnshared)
+		}
 	case "remote.shareLayoutSet":
 		cfg.ShareLayout = req.On
 	case "remote.controlSet":

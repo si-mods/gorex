@@ -1474,5 +1474,9 @@
   "remoteShareLayoutNote": "Remote clients may read this window's tabs and splits, and follow changes.",
   "@remoteShareLayoutNote": {
     "description": "Remote access: share this window layout with remote clients."
+  },
+  "remoteClientShare": "All sessions",
+  "@remoteClientShare": {
+    "description": "Switch: this remote client may use all sessions."
   }
 }

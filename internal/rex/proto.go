@@ -187,10 +187,11 @@ type ActionCall struct {
 // RemoteClient is a client allowed to connect remotely: PublicKey is its
 // tailcat node key, "nodekey:" and 64 hex digits.
 type RemoteClient struct {
-	Name      string    `json:"name"`
-	PublicKey string    `json:"publicKey"`
-	Created   time.Time `json:"created,omitzero"`
-	LastSeen  time.Time `json:"lastSeen,omitzero"`
+	Name          string    `json:"name"`
+	PublicKey     string    `json:"publicKey"`
+	Created       time.Time `json:"created,omitzero"`
+	LastSeen      time.Time `json:"lastSeen,omitzero"`
+	ShareSessions bool      `json:"shareSessions,omitempty"`
 }
 
 // RemoteStatus answers remote.status. Address, the tailcat address

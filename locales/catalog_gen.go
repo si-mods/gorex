@@ -4271,3 +4271,17 @@ func RemoteShareLayoutNote() string { return In(i18n.Locale()).RemoteShareLayout
 func (msgs Messages) RemoteShareLayoutNote() string {
 	return Catalog.Format(msgs.locale, "remoteShareLayoutNote", nil)
 }
+
+// RemoteClientShare says "All sessions"
+// in the language the app shows.
+//
+// Switch: this remote client may use all sessions.
+func RemoteClientShare() string { return In(i18n.Locale()).RemoteClientShare() }
+
+// RemoteClientShare says "All sessions"
+// in the language of msgs.
+//
+// Switch: this remote client may use all sessions.
+func (msgs Messages) RemoteClientShare() string {
+	return Catalog.Format(msgs.locale, "remoteClientShare", nil)
+}

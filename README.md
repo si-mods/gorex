@@ -267,7 +267,8 @@ coordinator; a machine in a network never needs it.
 Remote clients pair by name and keep their key and created/last-seen
 times; a client's hello names its principal, and `gorex clients` lists
 the live attachments with their principal and age. Settings › Remote
-Hosts can share this window's layout read-only; `gorex -S HOST layout`
+Hosts can share this window's layout read-only, and each allowed client
+can be given all sessions or only the ones it opened; `gorex -S HOST layout`
 reads it and `events` follows changes.
 
 Settings › Remote Hosts connects this machine to other machines' session
