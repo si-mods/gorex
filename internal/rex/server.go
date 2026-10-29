@@ -474,7 +474,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 			}
 			// Before the answer: no change after it goes untold.
 			if req.Op == "subscribe" && (!remote || s.remoteShareLayout()) && sub == nil {
-				sub = s.subscribe(write)
+				sub = s.subscribe(write, remote)
 			}
 			// Kills wait for the session to end, and layout commands for
 			// the app: answer them aside, a few at a time; the others wait
