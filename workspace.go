@@ -53,15 +53,15 @@ func (st *store) status(w *Workspace) *rex.ProgramStatus {
 	for _, t := range w.layout.Tabs {
 		savedSIDs(t.Root, &sids)
 	}
-	var all []rex.ProgramStatus
-	var seen time.Time
+	var best *rex.ProgramStatus
 	for _, sid := range sids {
-		all = append(all, st.infos[sid].Statuses...)
-		if t := st.seen[sid]; t.After(seen) {
-			seen = t
+		s := rex.MostUrgent(st.infos[sid].Statuses, st.seen[sid])
+		if s != nil && (best == nil || rex.StatusRank(s.State) > rex.StatusRank(best.State) ||
+			rex.StatusRank(s.State) == rex.StatusRank(best.State) && s.Updated.After(best.Updated)) {
+			best = s
 		}
 	}
-	return rex.MostUrgent(all, seen)
+	return best
 }
 
 // recordSeen notes that a session's status was seen.

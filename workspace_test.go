@@ -657,4 +657,12 @@ func TestWorkspaceStatus(t *testing.T) {
 	if s := a.st.status(w); s == nil || s.State != "error" {
 		t.Fatalf("hidden status %+v", s)
 	}
+	// Another session's unseen done record still asks, though this pane's
+	// was seen later.
+	w.layout = savedLayout{Tabs: []savedTab{{Root: &savedNode{SID: p.SID}}, {Root: &savedNode{SID: "other"}}}}
+	a.st.infos[p.SID] = rex.SessionInfo{ID: p.SID, Statuses: []rex.ProgramStatus{{ID: "a", State: "done", Updated: time.Now().Add(time.Second)}}}
+	a.st.infos["other"] = rex.SessionInfo{ID: "other", Statuses: []rex.ProgramStatus{{ID: "b", State: "done", Updated: time.Now().Add(2 * time.Second)}}}
+	if s := a.st.status(w); s == nil || s.ID != "b" {
+		t.Fatalf("other hidden status %+v", s)
+	}
 }
