@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- rootshell's pane actions work: dragging a split's divider
+  (`pane.resize`), swapping (`pane.swap`), renaming (`pane.rename`) and
+  moving a pane to another tab or a new tab (`pane.move`). Pane labels
+  stay in snapshots.
 - Kitty graphics sent by file path (`t=f`) are read on the machine that
   runs the program, rewritten in-band, and replayed when a window attaches.
 

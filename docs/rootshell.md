@@ -29,9 +29,10 @@ Windows a server started from an SSH logon would end with it.
   sessions as it happens, and rootshell shows it at once (a new program
   in a pane, within half a second of its printing; one that prints
   nothing, within 30 seconds). rootshell changes the layout through the
-  GoRex window: new tab, split, close pane, close tab, rename tab, zoom
-  and moving tabs go to the window, which makes them as its own buttons
-  do, and rootshell shows them as soon as the window saved them. A new tab opens after the tab
+  GoRex window: new tab, split, close pane, close tab, rename tab or
+  pane, zoom, move or swap a pane, move a divider, and moving tabs go to
+  the window, which makes them as its own buttons do, and rootshell shows
+  them as soon as the window saved them. A new tab opens after the tab
   last used in rootshell, in its directory. Closing a pane or a tab ends
   its sessions, as on the desktop.
 - **Size.** One terminal has one size. The tab rootshell shows takes it:
@@ -135,13 +136,15 @@ shim for herdr's sessions, which it answers with none anyway.
 
 - Changing the layout needs the GoRex window open on the host. Without
   it, a new tab or a rename fails with "Open the GoRex window on …", and
-  a split, a close or a zoom does nothing, silently.
+  a split, a close, a zoom or a pane move or resize does nothing, silently.
 - The window's last tab closes only on the desktop: closing it from
   rootshell fails, as GoRex closes with it.
 - Closing a tab from rootshell ends its panes of remote hosts too, which
   rootshell does not show, as closing it on the desktop does.
-- Dragging a divider, equalizing, moving or renaming panes, workspaces and
-  worktrees fail with "herdr Action Failed" (read-only).
+- Equalizing, workspaces and worktrees fail with "herdr Action Failed"
+  (read-only).
+- A pane moves to another tab or a new tab, not to a new workspace: GoRex
+  has one workspace.
 - While a full-screen program runs (vim, lazygit, an agent), rootshell has
   no scrollback of that pane: the server keeps the alternate screen only.
 - A snapshot holds at most the history rootshell asks for (1 MiB); older

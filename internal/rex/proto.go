@@ -102,7 +102,8 @@ const (
 type LayoutCommand struct {
 	ID int64 `json:"id,omitempty"`
 	// Op is "tab.create", "pane.split", "pane.close", "tab.close",
-	// "tab.rename", "pane.zoom" or "tab.move".
+	// "tab.rename", "pane.rename", "pane.zoom", "tab.move", "pane.resize",
+	// "pane.swap" or "pane.move".
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// After is the tab a new or moved tab goes after, the first of this
@@ -110,11 +111,21 @@ type LayoutCommand struct {
 	After string `json:"after,omitempty"`
 	// Dir is where a new pane starts, its tab's or its pane's when "".
 	Dir string `json:"dir,omitempty"`
-	// Vertical splits down, else right; Name is a tab's new name; Mode is
-	// zoom's "on", "off" or "toggle".
+	// Vertical splits down, else right; Name is a tab's or a pane's new
+	// name; Mode is zoom's "on", "off" or "toggle".
 	Vertical bool   `json:"vertical,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Mode     string `json:"mode,omitempty"`
+	// Direction is the edge pane.resize moves or the split pane.move makes,
+	// "left", "right", "up" or "down"; Amount is resize's share of the
+	// split and Ratio the moved pane's split's share of its target. Target
+	// is the other pane of a swap or a move.
+	Direction string  `json:"direction,omitempty"`
+	Amount    float32 `json:"amount,omitempty"`
+	Target    string  `json:"target,omitempty"`
+	Ratio     float32 `json:"ratio,omitempty"`
+	// NewTab moves a pane into a tab of its own, named Name.
+	NewTab bool `json:"new_tab,omitempty"`
 	// Action is the action of "action", and Args its arguments. Remote
 	// tells an action a remote client asked for.
 	Action string          `json:"action,omitempty"`
@@ -126,10 +137,13 @@ type LayoutCommand struct {
 	Index int `json:"index,omitempty"`
 	// The answer: Code and Error when it was not made, New the session of
 	// the pane made, and Zoomed whether the pane's tab is zoomed now.
-	Code   string `json:"code,omitempty"`
-	Error  string `json:"error,omitempty"`
-	New    string `json:"new,omitempty"`
-	Zoomed bool   `json:"zoomed,omitempty"`
+	// Changed and Reason answer pane.resize, pane.swap and pane.move.
+	Code    string `json:"code,omitempty"`
+	Error   string `json:"error,omitempty"`
+	New     string `json:"new,omitempty"`
+	Zoomed  bool   `json:"zoomed,omitempty"`
+	Changed bool   `json:"changed,omitempty"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // ClientInfo is one client attached to a session: a window, or a CLI

@@ -10,11 +10,11 @@ import (
 	"time"
 )
 
-// readOnly are herdr's methods that GoRex has no part of: dividers,
-// equalizing, moving panes, workspaces and worktrees. rootshell shows
-// their error, or logs it, and goes on.
+// readOnly are herdr's methods that GoRex has no part of: scrolling a
+// server-owned viewport, equalizing, workspaces and worktrees. rootshell
+// shows their error, or logs it, and goes on.
 var readOnly = map[string]bool{
-	"pane.resize": true, "pane.move": true, "pane.swap": true, "pane.rename": true, "pane.scroll": true,
+	"pane.scroll":      true,
 	"workspace.create": true, "workspace.close": true, "workspace.rename": true, "workspace.move": true,
 	"workspace.move_block": true, "workspace.focus": true, "workspace.list": true,
 	"worktree.list": true, "worktree.create": true, "worktree.open": true, "worktree.remove": true,
@@ -86,8 +86,25 @@ type params struct {
 	Label    string `json:"label"`
 	Mode     string `json:"mode"`
 	Index    int    `json:"insert_index"`
+	// Source is the pane a swap moves, Amount resize's share of a split,
+	// and Destination where a pane moves.
+	Source      string      `json:"source_pane_id"`
+	Amount      float64     `json:"amount"`
+	Destination destination `json:"destination"`
 	// Panes are the grids of tab.set_pane_geometry, by pane id.
 	Panes map[string]paneSize `json:"panes"`
+}
+
+// destination is where pane.move puts a pane, as herdr's
+// PaneMoveDestination.
+type destination struct {
+	Type         string  `json:"type"`
+	TabID        string  `json:"tab_id"`
+	WorkspaceID  string  `json:"workspace_id"`
+	TargetPaneID string  `json:"target_pane_id"`
+	Split        string  `json:"split"`
+	Ratio        float64 `json:"ratio"`
+	Label        string  `json:"label"`
 }
 
 func (b *bridge) do(req request) (any, error) {
@@ -101,7 +118,7 @@ func (b *bridge) do(req request) (any, error) {
 		}
 	}
 	if layoutOps[req.Method] {
-		return nil, b.ask(req, p)
+		return b.ask(req, p)
 	}
 	switch req.Method {
 	case "ping", "events.subscribe", "tab.focus", "control.close":
@@ -241,6 +258,9 @@ func (b *bridge) paneInfo(t *tab, sid string) map[string]any {
 	}
 	if strings.HasPrefix(in.Dir, "/") {
 		pane["cwd"], pane["foreground_cwd"] = in.Dir, in.Dir
+	}
+	if name := t.nameOf(sid); name != "" {
+		pane["label"] = name
 	}
 	return pane
 }
