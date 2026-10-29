@@ -91,9 +91,15 @@ function applyProgress(issueBody, items, milestone) {
 // pullRequestForEvent returns the merged pull request of a
 // pull_request_target event, or the one a push's commit came from.
 async function pullRequestForEvent({ github, context }) {
-  if (context.payload.pull_request) return context.payload.pull_request;
   const owner = context.repo.owner;
   const repo = context.repo.repo;
+  if (context.eventName === 'workflow_dispatch') {
+    const n = Number(context.payload.inputs && context.payload.inputs.pr);
+    if (!n) return null;
+    const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: n });
+    return pr.merged_at ? pr : null;
+  }
+  if (context.payload.pull_request) return context.payload.pull_request;
   const sha = (context.payload.head_commit && context.payload.head_commit.id) || context.sha;
   if (!sha) return null;
   const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
