@@ -16,6 +16,12 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Merged pull request number
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -32,16 +38,29 @@ env:
 
 jobs:
   update:
-    if: github.event_name == 'push' || github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'push' && github.sha || github.event.pull_request.base.sha }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.sha }}
           persist-credentials: false
       - uses: actions/github-script@v7
         with:
           script: |
             const path = require('path');
-            const update = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/milestone-progress.cjs'));
-            await update({ github, context, core });
+            const file = path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/milestone-progress.cjs');
+            let mod;
+            try {
+              mod = require(file);
+            } catch (err) {
+              if (context.eventName === 'pull_request_target') {
+                core.info('The base commit has no progress script yet; skipping.');
+                return;
+              }
+              throw err;
+            }
+            if (typeof mod.update !== 'function') {
+              throw new Error('milestone-progress.cjs does not export update');
+            }
+            await mod.update({ github, context, core });
