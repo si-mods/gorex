@@ -196,6 +196,9 @@ func TestClients(t *testing.T) {
 			t.Fatal(err)
 		}
 		if len(clients) == 1 && clients[0].SessionID == sid && !clients[0].Remote {
+			if clients[0].Since.IsZero() || clients[0].Age < 0 {
+				t.Fatalf("client times %+v", clients[0])
+			}
 			return
 		}
 		if time.Now().After(deadline) {

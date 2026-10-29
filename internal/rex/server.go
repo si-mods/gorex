@@ -735,10 +735,21 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 				continue
 			}
 			ss.mu.Lock()
+			var attached []*attached
 			for a := range ss.clients {
-				out = append(out, ClientInfo{SessionID: ss.id, Peer: a.peer, Remote: a.remote, Seq: a.seq, Via: a.via != nil})
+				attached = append(attached, a)
 			}
 			ss.mu.Unlock()
+			for _, a := range attached {
+				ci := ClientInfo{SessionID: ss.id, Peer: a.peer, Remote: a.remote, Seq: a.seq, Via: a.via != nil, Since: a.since}
+				if a.remote {
+					if c := s.remoteClientFor(a.peer); c != nil {
+						ci.Principal = c.Name
+					}
+				}
+				ci.Age = int64(time.Since(a.since).Seconds())
+				out = append(out, ci)
+			}
 		}
 		slices.SortFunc(out, func(a, b ClientInfo) int {
 			if a.SessionID != b.SessionID {

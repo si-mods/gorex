@@ -24,7 +24,8 @@
   check` warns about the ignored ones.
 - Remote identities carry the paired name, key and created/last-seen
   times; a remote client's hello says which principal it is, and old
-  allowlists get created times.
+  allowlists get created times. `gorex clients` shows the principal and
+  how long each attachment has been live.
 - Program status changes notify subscribers and carry their session IDs and
   records in events; the session picker and sidebar show a session's most
   urgent status; rootshell gets the pane's and tab's `agent_status`; and
