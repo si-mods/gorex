@@ -51,6 +51,9 @@ type RemoteConfig struct {
 	// ShareSessions lets remote clients see and use every session; off,
 	// each sees and uses only the sessions it created.
 	ShareSessions bool `json:"shareSessions,omitempty"`
+	// ShareLayout lets remote clients read the layout and subscribe to
+	// its changes; off by default.
+	ShareLayout bool `json:"shareLayout,omitempty"`
 	// RemoteControl lets remote clients run app actions through this
 	// window; off by default.
 	RemoteControl bool `json:"remoteControl,omitempty"`
@@ -285,6 +288,14 @@ func (s *Server) remoteSeen(peer string) {
 			return // saved with the next configuration change
 		}
 	}
+}
+
+// remoteShareLayout tells whether remote clients may read and subscribe
+// to the layout.
+func (s *Server) remoteShareLayout() bool {
+	s.rem.mu.Lock()
+	defer s.rem.mu.Unlock()
+	return s.rem.cfg.ShareLayout
 }
 
 // remoteAllowed tells the ops a remote connection may make; it may also
@@ -647,7 +658,7 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		st := RemoteStatus{
 			Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr),
 			Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
-			ShareSessions: r.cfg.ShareSessions, RemoteControl: r.cfg.RemoteControl,
+			ShareSessions: r.cfg.ShareSessions, ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
 		}
 		if r.pairOpenLocked() {
 			st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
@@ -776,6 +787,8 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		revoked = k
 	case "remote.regenerate":
 		cfg.NodeKey, cfg.PresharedKey = key.NewNode(), tailcat.NewPresharedKey()
+	case "remote.shareLayoutSet":
+		cfg.ShareLayout = req.On
 	case "remote.controlSet":
 		cfg.RemoteControl = req.On
 	case "remote.shareSet":

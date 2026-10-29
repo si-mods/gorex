@@ -61,6 +61,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return listCmd(args, out, errOut)
 	case "clients":
 		return clientsCmd(args, out, errOut)
+	case "layout":
+		return layoutCmd(args, out, errOut)
 	case "new":
 		return newCmd(args, out, errOut)
 	case "split":
@@ -107,6 +109,7 @@ func usage(w io.Writer) {
 Usage:
   gorex [-S HOST] ls [--json]
   gorex clients [--json]
+  gorex [-S HOST] layout [--json]
   gorex split [-s SESSION] [--down] [--dir DIR]
   gorex close [-s SESSION] [--tab]
   gorex rename [-s SESSION] NAME
@@ -331,6 +334,36 @@ func clientsCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%v\t%v\t%ds\n", cl.SessionID, name, peer, cl.Remote, cl.Via, cl.Age)
 	}
 	tw.Flush()
+	return ExitOK, true
+}
+
+func layoutCmd(args []string, out, errOut io.Writer) (int, bool) {
+	fs := flagSet("layout", errOut)
+	asJSON := fs.Bool("json", false, "print the raw JSON")
+	if code, stop := parse(fs, args); stop {
+		return code, true
+	}
+	c, code := connect(errOut)
+	if c == nil {
+		return code, true
+	}
+	defer c.Close()
+	raw, err := c.Layout()
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if *asJSON || len(raw) == 0 {
+		fmt.Fprintln(out, string(raw))
+		return ExitOK, true
+	}
+	var v any
+	if json.Unmarshal(raw, &v) != nil {
+		fmt.Fprintln(out, string(raw))
+		return ExitOK, true
+	}
+	b, _ := json.MarshalIndent(v, "", "  ")
+	fmt.Fprintln(out, string(b))
 	return ExitOK, true
 }
 

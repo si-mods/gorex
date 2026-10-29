@@ -12,6 +12,9 @@
   gets the picture even over SSH or on a remote host, where a path of this
   machine means nothing. A path pasted as text still types as the path, and
   a clipboard whose read fails whole pastes its text.
+- Remote hosts can share their layout read-only: `gorex -S HOST layout`
+  reads it, and `gorex -S HOST events` follows layout changes when Share
+  Layout is on.
 - Kitty graphics sent by file path (`t=f`) are read on the machine that
   runs the program, rewritten in-band, and replayed when a window attaches.
 - Find bar: Cmd+F/Ctrl+Shift+F searches the focused pane, with match count,

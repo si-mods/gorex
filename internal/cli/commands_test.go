@@ -429,3 +429,14 @@ func TestConfig(t *testing.T) {
 		t.Fatalf("bad config check: %d", code)
 	}
 }
+
+func TestLayoutCommand(t *testing.T) {
+	c := startServer(t)
+	if err := c.SetLayout(json.RawMessage(`{"tabs":[]}`)); err != nil {
+		t.Fatal(err)
+	}
+	code, handled, out, errOut := runMain(t, "layout", "--json")
+	if code != ExitOK || !handled || !strings.Contains(out, `"tabs"`) {
+		t.Fatalf("layout: %d %v %q %s", code, handled, out, errOut)
+	}
+}

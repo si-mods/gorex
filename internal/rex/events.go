@@ -14,6 +14,7 @@ import (
 // kinds of change not written to it yet; wake tells its writer of them. A
 // burst of changes is written as one of each kind.
 type subscriber struct {
+	remote  bool
 	pending map[string]bool
 	wake    chan struct{}
 	done    chan struct{}
@@ -21,8 +22,8 @@ type subscriber struct {
 
 // subscribe tells write, a control connection's, of the changes to come,
 // until unsubscribe.
-func (s *Server) subscribe(write func([]byte)) *subscriber {
-	sub := &subscriber{pending: map[string]bool{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
+func (s *Server) subscribe(write func([]byte), remote bool) *subscriber {
+	sub := &subscriber{remote: remote, pending: map[string]bool{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
 	s.subMu.Lock()
 	if s.subs == nil {
 		s.subs = map[*subscriber]struct{}{}
@@ -44,6 +45,11 @@ func (s *Server) subscribe(write func([]byte)) *subscriber {
 			for _, kind := range []string{"sessions", "layout"} {
 				if !pending[kind] {
 					continue
+				}
+				if sub.remote {
+					if kind == "sessions" || !s.remoteShareLayout() {
+						continue
+					}
 				}
 				ev := Event{Kind: kind}
 				if kind == "layout" {
