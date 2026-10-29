@@ -387,6 +387,9 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 				ui.Text(c, page.layoutHost.Name).FontSize(12.5).TextColor(k.textFaint)
 			}
 			ui.Spacer(c)
+			if page.layoutHost != nil && ui.Button(c, locales.HostsLayoutNewTab()).Clicked() {
+				a.hostLayoutCommand(page.layoutHost, rex.LayoutCommand{Op: "tab.create"}, "")
+			}
 			if ui.Button(c, locales.HostsLayoutClose()).Clicked() {
 				page.layoutOpen = false
 			}
@@ -406,7 +409,12 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 					ui.Column(c).Gap(4).Children(func() {
 						ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text)
 						for ti, t := range w.Tabs {
-							ui.Text(c, "  "+layoutTabName(t, ti)).FontSize(12.5).TextColor(k.textMuted)
+							ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+								ui.Text(c, "  "+layoutTabName(t, ti)).FontSize(12.5).TextColor(k.textMuted).Grow(1).MinWidth(0)
+								if sid := tabSID(t.Root); sid != "" && ui.Button(c.Key("close-tab-"+sid), locales.HostsLayoutCloseTab()).Clicked() {
+									a.hostLayoutCommand(page.layoutHost, rex.LayoutCommand{Op: "tab.close", SID: sid}, "")
+								}
+							})
 							for _, line := range layoutLines(t.Root, 2) {
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 									ui.Text(c, line.text).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
@@ -432,6 +440,44 @@ func closeHostLayout() {
 	page := &hostsUI
 	page.layoutOpen, page.layoutHost = false, nil
 	page.layout, page.layoutErr, page.layoutLoading, page.layoutAt = savedStore{}, "", false, time.Time{}
+}
+
+func tabSID(n *savedNode) string {
+	if n == nil {
+		return ""
+	}
+	if n.SID != "" {
+		return n.SID
+	}
+	if sid := tabSID(n.A); sid != "" {
+		return sid
+	}
+	return tabSID(n.B)
+}
+
+// hostLayoutCommand asks the host app to change its layout, then reloads
+// the sheet's copy.
+func (a *App) hostLayoutCommand(h *hostConn, cmd rex.LayoutCommand, errText string) {
+	c := h.current()
+	if c == nil || h.update == nil {
+		hostsUI.layoutErr = errText
+		return
+	}
+	go func() {
+		res, err := c.Command(cmd)
+		h.update(func() {
+			page := &hostsUI
+			if err != nil {
+				page.layoutErr = err.Error()
+			} else if res.Code != "" {
+				page.layoutErr = res.Error
+			} else {
+				page.layoutErr = ""
+			}
+			page.layoutAt = time.Time{}
+			a.refreshHostLayout()
+		})
+	}()
 }
 
 func layoutTabName(t savedTab, at int) string {

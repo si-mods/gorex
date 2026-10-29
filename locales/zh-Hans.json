@@ -408,5 +408,13 @@
   "hostsLayoutFocus": "聚焦",
   "@hostsLayoutFocus": {
     "description": "Focus a pane in the host layout."
+  },
+  "hostsLayoutNewTab": "新建标签页",
+  "@hostsLayoutNewTab": {
+    "description": "Host layout edit action."
+  },
+  "hostsLayoutCloseTab": "关闭标签页",
+  "@hostsLayoutCloseTab": {
+    "description": "Host layout edit action."
   }
 }
