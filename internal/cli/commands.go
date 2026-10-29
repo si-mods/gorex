@@ -74,6 +74,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return skillCmd(args, out, errOut)
 	case "remote":
 		return remoteCmd(args, out, errOut)
+	case "__internal":
+		return internalCmd(args, out, errOut)
 	case "wait":
 		return waitCmd(args, out, errOut)
 	case "run":
@@ -105,9 +107,9 @@ Usage:
   gorex hosts [ls] [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project]
   gorex remote status [--json] | remote control on|off
-  gorex wait [-s SESSION] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
-  gorex run [--dir DIR] -- COMMAND...
-  gorex action run [-s SESSION] ACTION [KEY=VALUE...]
+  gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
+  gorex run [--json] [--dir DIR] -- COMMAND...
+  gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
   gorex version [--json]
 
 A session defaults to GOREX_SESSION, set in every terminal GoRex opens.
@@ -609,6 +611,23 @@ func printable(s string) string {
 	}, s)
 }
 
+func internalCmd(args []string, out, errOut io.Writer) (int, bool) {
+	if len(args) > 0 && args[0] == "session-start" {
+		id := os.Getenv("GOREX_SESSION")
+		if id == "" {
+			return ExitOK, true
+		}
+		host := os.Getenv("GOREX_HOST")
+		if host == "" {
+			host = "this machine"
+		}
+		fmt.Fprintf(out, "GoRex session %s on %s. Use gorex ls, gorex send, gorex capture and gorex wait to work in it or in other sessions.\n", id, host)
+		return ExitOK, true
+	}
+	fmt.Fprintln(errOut, "gorex: unknown internal command")
+	return ExitUsage, true
+}
+
 func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if serverTarget != "" {
 		fmt.Fprintln(errOut, "gorex remote: this changes the local server only")
@@ -703,6 +722,7 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	status := fs.String("status", "", "wait for a program status, as blocked")
 	contains := fs.String("contains", "", "wait for the screen to contain text")
 	timeout := fs.Duration("timeout", 0, "how long to wait; 0 waits forever")
+	asJSON := fs.Bool("json", false, "print JSON when ready")
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
@@ -761,6 +781,9 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 			}
 		}
 		if ready {
+			if *asJSON {
+				WriteJSON(out, map[string]any{"session": target, "exitCode": in.ExitCode})
+			}
 			if *waitExit {
 				return in.ExitCode, true
 			}
@@ -777,6 +800,7 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 func runCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("run", errOut)
 	dir := fs.String("dir", "", "directory to start in")
+	asJSON := fs.Bool("json", false, "print JSON")
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
@@ -814,9 +838,13 @@ func runCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return ExitFailed, true
 	}
-	fmt.Fprint(out, text)
-	if text != "" && !strings.HasSuffix(text, "\n") {
-		fmt.Fprintln(out)
+	if *asJSON {
+		WriteJSON(out, map[string]any{"session": info.ID, "exitCode": in.ExitCode, "text": text})
+	} else {
+		fmt.Fprint(out, text)
+		if text != "" && !strings.HasSuffix(text, "\n") {
+			fmt.Fprintln(out)
+		}
 	}
 	return in.ExitCode, true
 }
@@ -828,6 +856,7 @@ func actionCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	fs := flagSet("action run", errOut)
 	sid := targetFlag(fs)
+	asJSON := fs.Bool("json", false, "print JSON")
 	if code, stop := parse(fs, args[1:]); stop {
 		return code, true
 	}
@@ -868,6 +897,9 @@ func actionCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if res.Code != "" {
 		fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
 		return ExitFailed, true
+	}
+	if *asJSON {
+		WriteJSON(out, res)
 	}
 	return ExitOK, true
 }

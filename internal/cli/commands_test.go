@@ -119,6 +119,10 @@ func TestCLI(t *testing.T) {
 	if code != 7 || !strings.Contains(out, "run-marker") {
 		t.Fatalf("run: %d %q %s", code, out, errOut)
 	}
+	code, _, out, errOut = runMain(t, "run", "--json", "--", "sh", "-c", "printf 'json-run'")
+	if code != ExitOK || !strings.Contains(out, `"text": "json-run"`) {
+		t.Fatalf("run --json: %d %q %s", code, out, errOut)
+	}
 
 	code, _, out, errOut = runMain(t, "new", "--json", "--", "sh", "-c", "sleep 0.1; exit 5")
 	if code != ExitOK {
@@ -131,6 +135,10 @@ func TestCLI(t *testing.T) {
 	code, _, _, errOut = runMain(t, "wait", "-s", short.ID, "--exit", "--timeout", "5s")
 	if code != 5 {
 		t.Fatalf("wait --exit: %d %s", code, errOut)
+	}
+	code, _, out, errOut = runMain(t, "wait", "-s", short.ID, "--exit", "--json", "--timeout", "5s")
+	if code != 5 || !strings.Contains(out, `"exitCode": 5`) {
+		t.Fatalf("wait --json: %d %q %s", code, out, errOut)
 	}
 	c.Kill(short.ID)
 
@@ -289,5 +297,59 @@ func TestBrokenHostsFile(t *testing.T) {
 	code, handled, _, errOut := runMain(t, "-S", "studio", "ls")
 	if code != ExitFailed || !handled || !strings.Contains(errOut, "not valid") {
 		t.Fatalf("broken hosts: %d %v %q", code, handled, errOut)
+	}
+}
+
+func TestHooks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("CODEX_HOME", "")
+	claude := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(claude), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const old = `{"theme":"x","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"other-hook"}]}]}}`
+	if err := os.WriteFile(claude, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, _, errOut := runMain(t, "skill", "setup", "--agent", "claude", "--agent", "codex")
+	if code != ExitOK {
+		t.Fatalf("setup hooks: %d %s", code, errOut)
+	}
+	b, err := os.ReadFile(claude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "__internal session-start --agent claude") ||
+		!strings.Contains(string(b), "other-hook") || !strings.Contains(string(b), `"theme": "x"`) {
+		t.Fatalf("claude settings %s", b)
+	}
+	codex := filepath.Join(home, ".codex", "hooks.json")
+	if b, err := os.ReadFile(codex); err != nil || !strings.Contains(string(b), "__internal session-start --agent codex") {
+		t.Fatalf("codex hooks %q %v", b, err)
+	}
+	code, _, out, _ := runMain(t, "skill", "status", "--agent", "claude", "--json")
+	if code != ExitOK || !strings.Contains(out, `"hook": "installed"`) {
+		t.Fatalf("status hooks: %d %q", code, out)
+	}
+	code, _, _, errOut = runMain(t, "skill", "remove", "--agent", "claude", "--agent", "codex")
+	if code != ExitOK {
+		t.Fatalf("remove hooks: %d %s", code, errOut)
+	}
+	if b, _ := os.ReadFile(claude); strings.Contains(string(b), "__internal session-start") || !strings.Contains(string(b), "other-hook") {
+		t.Fatalf("claude settings after remove %s", b)
+	}
+	if b, _ := os.ReadFile(codex); strings.Contains(string(b), "__internal session-start") {
+		t.Fatalf("codex hooks after remove %s", b)
+	}
+}
+
+func TestSessionStart(t *testing.T) {
+	t.Setenv("GOREX_SESSION", "abc")
+	t.Setenv("GOREX_HOST", "studio")
+	code, _, out, _ := runMain(t, "__internal", "session-start", "--agent", "claude")
+	if code != ExitOK || !strings.Contains(out, "abc") || !strings.Contains(out, "studio") {
+		t.Fatalf("session-start: %d %q", code, out)
 	}
 }

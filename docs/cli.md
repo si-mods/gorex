@@ -33,13 +33,13 @@ gorex split [-s SESSION] [--down] [--dir DIR]
 gorex close [-s SESSION] [--tab]
 gorex send [-s SESSION] [--enter] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
-gorex wait [-s SESSION] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
-gorex run [--dir DIR] -- COMMAND...
+gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
+gorex run [--json] [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--json]
 gorex remote status [--json] | remote control on|off
-gorex action run [-s SESSION] ACTION [KEY=VALUE...]
+gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
 gorex version [--json]
 ```
 
@@ -60,8 +60,10 @@ ambiguous target exits 3.
 - `events` prints each layout or session change as one JSON line.
 - `hosts` lists saved remote hosts; addresses stay hidden.
 - `skill setup` installs the GoRex guide into Claude Code, Codex, OpenCode
-  and Pi skill directories. `--project` writes into the repository;
-  `--dry-run` reports first. Hooks are not installed yet.
+  and Pi skill directories, and a `SessionStart` context hook for Claude
+  Code and Codex. `--project` writes the skill into the repository without
+  touching settings; `--dry-run` reports first; `skill remove` removes
+  only what GoRex installed.
 - `remote status` shows the local server's remote access without its
   address; `remote control on|off` lets paired clients run app actions
   through the window. It applies to every paired client and every member
@@ -73,7 +75,8 @@ ambiguous target exits 3.
 Exit codes: 0 ok, 1 failed, 2 usage, 3 no such session or target, 4
 server unreachable. A signal exits 130. `run` and `wait --exit` return the
 program's own status, which can collide with 1–4; the rest return the
-codes above.
+codes above. `wait --json`, `run --json` and `action run --json` print a
+JSON object while keeping the same exit status.
 
 ## Agents
 
@@ -86,5 +89,4 @@ gorex wait -s <id> --contains FAIL --timeout 120s
 gorex capture -s <id>
 ```
 
-Host add/remove, remote `split`/`close` and agent context hooks are not
-part of this slice.
+Host add/remove and remote `split`/`close` are not part of this slice.
