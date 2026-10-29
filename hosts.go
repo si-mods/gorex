@@ -596,6 +596,9 @@ func (a *App) removeHost(h *hostConn) {
 	if !slices.Contains(a.hosts, h) {
 		return
 	}
+	if hostsUI.layoutHost == h {
+		closeHostLayout()
+	}
 	for _, o := range a.peers() {
 		// The window keeps a tab, as it would close with its last.
 		if len(o.tabsOn(h)) == len(o.tabs) {

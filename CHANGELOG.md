@@ -15,7 +15,8 @@
 - A remote client can be given every session, or the layout, from
   Settings › Remote Hosts per client, while others keep only their own
   sessions.
-- Remote hosts can share their layout read-only: `gorex -S HOST layout`
+- Remote hosts can share their layout read-only: Settings › Remote Hosts
+  shows the host's workspaces, tabs and panes, `gorex -S HOST layout`
   reads it, and `gorex -S HOST events` follows layout changes when Share
   Layout is on.
 - Kitty graphics sent by file path (`t=f`) are read on the machine that

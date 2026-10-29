@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,12 @@ var hostsUI struct {
 	fingerprint           string             // this machine's, while the host is asked to approve it
 	cancel                context.CancelFunc // stops the attempt under way
 	removing              string             // the id of the host Remove asks about
+	layoutOpen            bool
+	layoutHost            *hostConn
+	layout                savedStore
+	layoutErr             string
+	layoutLoading         bool
+	layoutAt              time.Time
 }
 
 type addStage int
@@ -267,6 +274,9 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 	if page.adding {
 		a.addHostSheet(c, k)
 	}
+	if page.layoutOpen {
+		a.hostLayoutSheet(c, k)
+	}
 }
 
 // hostRow is a saved host: its state, Retry while it is not connected, and
@@ -290,6 +300,9 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 					ui.Text(c, detail).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
 				}
 			})
+			if up && ui.Button(c.Key("layout"), locales.HostsLayout()).Clicked() {
+				a.openHostLayout(h)
+			}
 			if !up && ui.Button(c.Key("retry"), locales.HostsRetry()).Clicked() {
 				h.poke()
 			}
@@ -315,6 +328,131 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 			})
 		})
 	})
+}
+
+// openHostLayout shows h's layout read-only.
+func (a *App) openHostLayout(h *hostConn) {
+	page := &hostsUI
+	page.layoutOpen, page.layoutHost = true, h
+	page.layout, page.layoutErr, page.layoutLoading, page.layoutAt = savedStore{}, "", false, time.Time{}
+	a.refreshHostLayout()
+}
+
+// refreshHostLayout reads the host's layout, at most once a second.
+func (a *App) refreshHostLayout() {
+	page := &hostsUI
+	h := page.layoutHost
+	if h == nil || page.layoutLoading || time.Since(page.layoutAt) < time.Second {
+		return
+	}
+	if h.update == nil {
+		return
+	}
+	c := h.current()
+	if c == nil {
+		label, _, _ := hostStatus(h)
+		page.layoutErr = label
+		return
+	}
+	page.layoutLoading = true
+	go func() {
+		raw, err := c.Layout()
+		h.update(func() {
+			page := &hostsUI
+			if page.layoutHost != h {
+				return
+			}
+			page.layoutLoading, page.layoutAt = false, time.Now()
+			if err != nil {
+				page.layoutErr = err.Error()
+				return
+			}
+			page.layoutErr = ""
+			page.layout = parseLayout(raw)
+		})
+	}()
+}
+
+// hostLayoutSheet lists the host's workspaces, tabs and panes, read-only.
+func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
+	page := &hostsUI
+	was := page.layoutOpen
+	ui.DialogBase(c, &page.layoutOpen, func(backdrop, panel ui.Element) {
+		backdrop.Background(k.backdrop)
+		panel.Width(620).MaxHeight(560).Padding(18).Gap(12).Radius(16).Background(k.panel).Border(1, k.panelBorder).
+			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Role(ui.RoleDialog).Label(locales.HostsLayoutTitle())
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, locales.HostsLayoutTitle()).FontSize(15).FontWeight(700).TextColor(k.text)
+			if page.layoutHost != nil {
+				ui.Text(c, page.layoutHost.Name).FontSize(12.5).TextColor(k.textFaint)
+			}
+			ui.Spacer(c)
+			if ui.Button(c, locales.HostsLayoutClose()).Clicked() {
+				page.layoutOpen = false
+			}
+		})
+		if page.layoutErr != "" {
+			ui.Text(c, page.layoutErr).FontSize(12.5).TextColor(k.danger).LineHeight(1.3)
+		}
+		if page.layoutLoading {
+			ui.Text(c, locales.HostsLayoutLoading()).FontSize(12.5).TextColor(k.textMuted)
+		}
+		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			ui.Column(c).Gap(10).Children(func() {
+				if len(page.layout.Sessions) == 0 && !page.layoutLoading && page.layoutErr == "" {
+					ui.Text(c, locales.HostsLayoutEmpty()).FontSize(12.5).TextColor(k.textFaint)
+				}
+				for _, w := range page.layout.Sessions {
+					ui.Column(c).Gap(4).Children(func() {
+						ui.Text(c, w.Name).FontSize(13).FontWeight(600).TextColor(k.text)
+						for ti, t := range w.Tabs {
+							ui.Text(c, "  "+layoutTabName(t, ti)).FontSize(12.5).TextColor(k.textMuted)
+							for _, line := range layoutLines(t.Root, 2) {
+								ui.Text(c, line).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
+							}
+						}
+					})
+				}
+			})
+		})
+		a.refreshHostLayout()
+	})
+	if was && !page.layoutOpen {
+		closeHostLayout()
+	}
+}
+
+// closeHostLayout forgets the sheet's host and state.
+func closeHostLayout() {
+	page := &hostsUI
+	page.layoutOpen, page.layoutHost = false, nil
+	page.layout, page.layoutErr, page.layoutLoading, page.layoutAt = savedStore{}, "", false, time.Time{}
+}
+
+func layoutTabName(t savedTab, at int) string {
+	if t.Name != "" {
+		return t.Name
+	}
+	return "Tab " + strconv.Itoa(at+1)
+}
+
+func layoutLines(n *savedNode, depth int) []string {
+	if n == nil {
+		return nil
+	}
+	prefix := strings.Repeat("  ", depth)
+	if n.SID != "" || n.A == nil && n.B == nil {
+		name := n.Name
+		if name == "" {
+			name = n.SID
+		}
+		dir := n.Dir
+		if dir != "" {
+			name += " — " + dir
+		}
+		return []string{prefix + name}
+	}
+	return append(layoutLines(n.A, depth), layoutLines(n.B, depth)...)
 }
 
 // hostDot is the color of a host's state.
