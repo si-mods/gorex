@@ -568,10 +568,13 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	var data any
 	var err error
 	remote := peer != ""
-	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe" || req.Op == "command") && s.remoteShareLayout(peer)
-	if remote && req.Op == "remote.pair" {
+	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe") && s.remoteShareLayout(peer)
+	command := remote && req.Op == "command" && s.remoteMayCommand(peer)
+	if remote && req.Op == "command" && req.Command != nil && req.Command.Op == "action" && !s.remoteControlEnabled() {
+		err = errors.New("rex: remote control is off")
+	} else if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
-	} else if remote && !remoteAllowed(req.Op) && !layout && !(req.Op == "action" && s.remoteControlEnabled()) {
+	} else if remote && !remoteAllowed(req.Op) && !layout && !command && !(req.Op == "action" && s.remoteControlEnabled()) {
 		log.Printf("rex: denied %q to a remote connection", req.Op)
 		err = fmt.Errorf("%s is not allowed remotely", req.Op)
 	} else {
@@ -828,11 +831,18 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if l == nil {
 			return nil, nil
 		}
-		return l, nil
+		return s.filterLayout(l, peer)
 	case "getLayoutState":
 		s.mu.Lock()
 		st := LayoutState{Layout: s.layout, Revision: s.layoutRev}
 		s.mu.Unlock()
+		if peer != "" && len(st.Layout) > 0 {
+			filtered, err := s.filterLayout(st.Layout, peer)
+			if err != nil {
+				return nil, err
+			}
+			st.Layout = filtered
+		}
 		return st, nil
 	case "setLayout":
 		if !json.Valid(req.Layout) {

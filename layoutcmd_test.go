@@ -329,7 +329,7 @@ func TestPaneRename(t *testing.T) {
 		t.Fatalf("saved %+v", saved.Sessions[0].Tabs[0].Root)
 	}
 	b := &App{client: a.client}
-	if !b.restore(saved.Sessions[0].savedLayout, nil) {
+	if !b.restore(saved.Sessions[0].Layout, nil) {
 		t.Fatal("nothing restored")
 	}
 	if b.tab().Focus.Name != "logs" {
