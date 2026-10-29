@@ -247,6 +247,13 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			a.movePaneBeside(p, q, c.Direction == "down", ratio)
 			res.Changed = true
 		}
+	case "pane.focus":
+		if i := slices.Index(a.tabs, p.Tab); i >= 0 {
+			a.selectTab(i)
+		}
+		p.Tab.setFocus(p)
+		a.focusReq = p
+		a.changed()
 	case "pane.zoom":
 		on := c.Mode == "on" || c.Mode != "off" && p.Tab.Zoom == nil
 		a.zoom(p, on)

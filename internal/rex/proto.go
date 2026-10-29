@@ -103,8 +103,8 @@ const (
 type LayoutCommand struct {
 	ID int64 `json:"id,omitempty"`
 	// Op is "tab.create", "pane.split", "pane.close", "tab.close",
-	// "tab.rename", "pane.rename", "pane.zoom", "tab.move", "pane.resize",
-	// "pane.swap" or "pane.move".
+	// "tab.rename", "pane.rename", "pane.focus", "pane.zoom", "tab.move",
+	// "pane.resize", "pane.swap" or "pane.move".
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// After is the tab a new or moved tab goes after, the first of this

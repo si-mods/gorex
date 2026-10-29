@@ -4369,3 +4369,17 @@ func HostsLayoutClose() string { return In(i18n.Locale()).HostsLayoutClose() }
 func (msgs Messages) HostsLayoutClose() string {
 	return Catalog.Format(msgs.locale, "hostsLayoutClose", nil)
 }
+
+// HostsLayoutFocus says "Focus"
+// in the language the app shows.
+//
+// Focus a pane in the host layout.
+func HostsLayoutFocus() string { return In(i18n.Locale()).HostsLayoutFocus() }
+
+// HostsLayoutFocus says "Focus"
+// in the language of msgs.
+//
+// Focus a pane in the host layout.
+func (msgs Messages) HostsLayoutFocus() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutFocus", nil)
+}

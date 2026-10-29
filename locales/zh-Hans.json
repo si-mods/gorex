@@ -404,5 +404,9 @@
   "hostsLayoutClose": "关闭",
   "@hostsLayoutClose": {
     "description": "Close the remote layout sheet."
+  },
+  "hostsLayoutFocus": "聚焦",
+  "@hostsLayoutFocus": {
+    "description": "Focus a pane in the host layout."
   }
 }

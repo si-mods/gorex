@@ -408,7 +408,12 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 						for ti, t := range w.Tabs {
 							ui.Text(c, "  "+layoutTabName(t, ti)).FontSize(12.5).TextColor(k.textMuted)
 							for _, line := range layoutLines(t.Root, 2) {
-								ui.Text(c, line).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
+								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+									ui.Text(c, line.text).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+									if line.sid != "" && ui.Button(c.Key("focus-"+line.sid), locales.HostsLayoutFocus()).Clicked() {
+										a.focusHostPane(page.layoutHost, line.sid)
+									}
+								})
 							}
 						}
 					})
@@ -436,7 +441,12 @@ func layoutTabName(t savedTab, at int) string {
 	return "Tab " + strconv.Itoa(at+1)
 }
 
-func layoutLines(n *savedNode, depth int) []string {
+type layoutLine struct {
+	text string
+	sid  string
+}
+
+func layoutLines(n *savedNode, depth int) []layoutLine {
 	if n == nil {
 		return nil
 	}
@@ -450,9 +460,30 @@ func layoutLines(n *savedNode, depth int) []string {
 		if dir != "" {
 			name += " — " + dir
 		}
-		return []string{prefix + name}
+		return []layoutLine{{text: prefix + name, sid: n.SID}}
 	}
 	return append(layoutLines(n.A, depth), layoutLines(n.B, depth)...)
+}
+
+// focusHostPane asks the host app to focus a pane it shared.
+func (a *App) focusHostPane(h *hostConn, sid string) {
+	if h == nil {
+		return
+	}
+	c := h.current()
+	if c == nil || h.update == nil {
+		return
+	}
+	go func() {
+		_, err := c.Command(rex.LayoutCommand{Op: "pane.focus", SID: sid})
+		h.update(func() {
+			if err != nil {
+				hostsUI.layoutErr = err.Error()
+			} else {
+				hostsUI.layoutErr = ""
+			}
+		})
+	}()
 }
 
 // hostDot is the color of a host's state.

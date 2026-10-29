@@ -1502,5 +1502,9 @@
   "hostsLayoutClose": "Close",
   "@hostsLayoutClose": {
     "description": "Close the remote layout sheet."
+  },
+  "hostsLayoutFocus": "Focus",
+  "@hostsLayoutFocus": {
+    "description": "Focus a pane in the host layout."
   }
 }
