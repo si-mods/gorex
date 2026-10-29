@@ -39,6 +39,7 @@ gorex events
 gorex hosts [ls] [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--json]
 gorex remote status [--json] | remote control on|off
+gorex config path | config check [FILE] | config reload
 gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
 gorex version [--json]
 ```

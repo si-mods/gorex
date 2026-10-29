@@ -403,3 +403,26 @@ func TestHookConflict(t *testing.T) {
 		t.Fatalf("settings changed: %s", b)
 	}
 }
+
+func TestConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "init.lua")
+	if err := os.WriteFile(path, []byte(`gorex.bind("ctrl+b>c", "tab.new")`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GOREX_CONFIG", path)
+	code, handled, out, errOut := runMain(t, "config", "path")
+	if code != ExitOK || !handled || !strings.Contains(out, path) {
+		t.Fatalf("config path: %d %v %q %s", code, handled, out, errOut)
+	}
+	code, _, out, errOut = runMain(t, "config", "check")
+	if code != ExitOK || !strings.Contains(out, "bindings: 1") {
+		t.Fatalf("config check: %d %q %s", code, out, errOut)
+	}
+	if err := os.WriteFile(path, []byte(`gorex.bind(`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, _, _, _ = runMain(t, "config", "check")
+	if code != ExitFailed {
+		t.Fatalf("bad config check: %d", code)
+	}
+}

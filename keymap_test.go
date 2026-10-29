@@ -10,7 +10,7 @@ import (
 func TestKeyDispatcher(t *testing.T) {
 	cmd := &command{ID: "test.action", Run: func(*App) {}}
 	d := newKeyDispatcher()
-	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, nil)
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, nil, "")
 
 	if got, _, ok := d.handle(ui.Ctrl, ui.KeyB); got != nil || !ok {
 		t.Fatalf("prefix: command %v, taken %v", got, ok)
@@ -50,7 +50,7 @@ func TestKeyDispatcherTimeout(t *testing.T) {
 	cmd := &command{ID: "test.action", Run: func(*App) {}}
 	d := newKeyDispatcher()
 	d.timeout = 10 * time.Millisecond
-	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, nil)
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, nil, "")
 	d.handle(ui.Ctrl, ui.KeyB)
 	d.at = time.Now().Add(-time.Second)
 	if got, _, ok := d.handle(0, ui.KeyC); got != nil || ok {
@@ -65,7 +65,7 @@ func TestKeyDispatcherArgs(t *testing.T) {
 	cmd := &command{ID: "test.action", RunArgs: func(*App, map[string]any) error { return nil }}
 	d := newKeyDispatcher()
 	want := map[string]any{"dir": "/tmp"}
-	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, want)
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, cmd, want, "")
 	d.handle(ui.Ctrl, ui.KeyB)
 	got, args, ok := d.handle(0, ui.KeyC)
 	if got != cmd || !ok || args["dir"] != want["dir"] {
@@ -78,7 +78,7 @@ func TestKeyDispatcherNil(t *testing.T) {
 	if cmd, _, ok := d.handle(0, ui.KeyA); cmd != nil || ok {
 		t.Fatalf("nil dispatcher: command %v, taken %v", cmd, ok)
 	}
-	d.bind(nil, &command{ID: "test.action"}, nil) // no panic
+	d.bind(nil, &command{ID: "test.action"}, nil, "") // no panic
 	d.reset()
 	if d.pendingKeys() != nil {
 		t.Error("nil dispatcher has pending keys")
@@ -94,7 +94,7 @@ func TestKeyDispatcherInTerminal(t *testing.T) {
 	ran := 0
 	a.keys.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyB}, {Key: ui.KeyC}}, &command{
 		ID: "test.action", Run: func(*App) { ran++ },
-	}, nil)
+	}, nil, "")
 	a.focusReq = a.tab().Focus
 	tt.Frame()
 	tt.Key(ui.Ctrl, ui.KeyB)
@@ -103,5 +103,39 @@ func TestKeyDispatcherInTerminal(t *testing.T) {
 	tt.Frame()
 	if ran != 1 {
 		t.Fatalf("action ran %d times, want 1", ran)
+	}
+}
+
+func TestKeyModes(t *testing.T) {
+	global := &command{ID: "global", Run: func(*App) {}}
+	outer := &command{ID: "outer", Run: func(*App) {}}
+	inner := &command{ID: "inner", Run: func(*App) {}}
+	d := newKeyDispatcher()
+	d.defineMode("outer", keyMode{exclusive: true})
+	d.defineMode("inner", keyMode{})
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyG}}, global, nil, "")
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyX}}, outer, nil, "outer")
+	d.bind([]keyChord{{Mods: ui.Ctrl, Key: ui.KeyY}}, inner, nil, "inner")
+	d.enterMode("outer", false)
+	if cmd, _, ok := d.handle(ui.Ctrl, ui.KeyG); cmd != nil || ok {
+		t.Fatalf("exclusive mode let a global binding run: %v", cmd)
+	}
+	if cmd, _, _ := d.handle(ui.Ctrl, ui.KeyX); cmd != outer {
+		t.Fatalf("outer binding: %v", cmd)
+	}
+	d.enterMode("inner", false)
+	if cmd, _, _ := d.handle(ui.Ctrl, ui.KeyY); cmd != inner {
+		t.Fatalf("inner binding: %v", cmd)
+	}
+	if cmd, _, _ := d.handle(ui.Ctrl, ui.KeyX); cmd != outer {
+		t.Fatalf("outer binding while nested: %v", cmd)
+	}
+	d.exitMode()
+	if d.currentMode() != "outer" {
+		t.Fatalf("mode after leaving inner: %q", d.currentMode())
+	}
+	d.exitAll()
+	if cmd, _, _ := d.handle(ui.Ctrl, ui.KeyG); cmd != global {
+		t.Fatalf("global after modes: %v", cmd)
 	}
 }

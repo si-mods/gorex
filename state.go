@@ -19,6 +19,7 @@ import (
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/config"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -98,9 +99,12 @@ type App struct {
 	client *rex.Client
 	hello  rex.Hello
 	// keys matches key presses to actions; it runs before the terminal
-	// sees a key a binding takes.
-	keys *keyDispatcher
-	err  string
+	// sees a key a binding takes. luaConfig owns the custom actions the
+	// keymap and palette use.
+	keys      *keyDispatcher
+	luaConfig *config.Config
+	custom    []*command
+	err       string
 	// errMsg is a message of the catalog, said when drawn, which wins
 	// over err, a message of the server.
 	errMsg func(locales.Messages) string

@@ -16,6 +16,7 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 
+	"gorex/internal/config"
 	"gorex/internal/rex"
 )
 
@@ -74,6 +75,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return skillCmd(args, out, errOut)
 	case "remote":
 		return remoteCmd(args, out, errOut)
+	case "config":
+		return configCmd(args, out, errOut)
 	case "__internal":
 		return internalCmd(args, out, errOut)
 	case "wait":
@@ -107,6 +110,7 @@ Usage:
   gorex hosts [ls] [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project]
   gorex remote status [--json] | remote control on|off
+  gorex config path | config check [FILE] | config reload
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
@@ -619,6 +623,53 @@ func printable(s string) string {
 		}
 		return r
 	}, s)
+}
+
+func configCmd(args []string, out, errOut io.Writer) (int, bool) {
+	if len(args) == 0 {
+		fmt.Fprintln(errOut, "gorex config: use path, check or reload")
+		return ExitUsage, true
+	}
+	if serverTarget != "" && args[0] != "reload" {
+		fmt.Fprintln(errOut, "gorex config: path and check read this machine's file")
+		return ExitUsage, true
+	}
+	switch args[0] {
+	case "path":
+		fmt.Fprintln(out, config.Path())
+		return ExitOK, true
+	case "check":
+		path := config.Path()
+		if len(args) > 1 {
+			path = args[1]
+		}
+		cfg, err := config.LoadCheck(path)
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return ExitFailed, true
+		}
+		defer cfg.Close()
+		fmt.Fprintf(out, "path: %s\nbindings: %d\nactions: %d\nmodes: %d\n", path, len(cfg.Bindings), len(cfg.Actions), len(cfg.Modes))
+		return ExitOK, true
+	case "reload":
+		c, code := connect(errOut)
+		if c == nil {
+			return code, true
+		}
+		defer c.Close()
+		res, err := c.Command(rex.LayoutCommand{Op: "config.reload"})
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return codeFor(err), true
+		}
+		if res.Code != "" {
+			fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
+			return ExitFailed, true
+		}
+		return ExitOK, true
+	}
+	fmt.Fprintln(errOut, "gorex config: use path, check or reload")
+	return ExitUsage, true
 }
 
 func internalCmd(args []string, out, errOut io.Writer) (int, bool) {

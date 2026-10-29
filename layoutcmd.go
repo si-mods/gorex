@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -98,10 +99,16 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		res.Code, res.Error = code, msg
 		return res
 	}
+	if c.Op == "config.reload" {
+		a.err = ""
+		a.reloadLuaConfig()
+		if a.err != "" {
+			return fail("config_failed", a.err)
+		}
+		return res
+	}
 	if c.Op == "action" {
-		switch c.Action {
-		case "app.quit", "app.updates", "config.reload", "session.close", "tab.close", "pane.close", "pane.restart",
-			"screen.clear", "scrollback.clear", "tab.move_window":
+		if blockedFromClient(c.Action) {
 			return fail("not_allowed", "GoRex does not run "+c.Action+" from a client")
 		}
 		if c.SID != "" {
@@ -119,12 +126,16 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if cmd == nil {
 			return fail("unknown_action", "GoRex does not know "+c.Action)
 		}
+		if c.Remote && cmd.Custom {
+			return fail("not_allowed", "GoRex does not run a custom action from a remote client")
+		}
 		var args map[string]any
 		if len(c.Args) > 0 {
 			if err := json.Unmarshal(c.Args, &args); err != nil {
 				return fail("bad_args", err.Error())
 			}
 		}
+		args = coerceArgs(cmd, args)
 		if err := cmd.invoke(a, args); err != nil {
 			return fail("action_failed", err.Error())
 		}
@@ -212,6 +223,31 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		return fail("unknown_op", "GoRex does not know "+c.Op)
 	}
 	return res
+}
+
+// coerceArgs turns the CLI's strings into the types an action declares.
+func coerceArgs(cmd *command, args map[string]any) map[string]any {
+	for _, spec := range cmd.Args {
+		s, ok := args[spec.Name].(string)
+		if !ok {
+			continue
+		}
+		switch spec.Type {
+		case "number":
+			if n, err := strconv.ParseFloat(s, 64); err == nil {
+				args[spec.Name] = n
+			}
+		case "integer":
+			if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+				args[spec.Name] = n
+			}
+		case "boolean":
+			if b, err := strconv.ParseBool(s); err == nil {
+				args[spec.Name] = b
+			}
+		}
+	}
+	return args
 }
 
 // localTabs returns the tabs with a pane of this machine, in order: those

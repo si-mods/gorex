@@ -775,7 +775,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 				return nil, err
 			}
 		}
-		return s.command(LayoutCommand{Op: "action", SID: req.SID, Action: req.Action.ID, Args: req.Action.Args}), nil
+		return s.command(LayoutCommand{Op: "action", SID: req.SID, Action: req.Action.ID, Args: req.Action.Args, Remote: peer != ""}), nil
 	case "resize", "lockSize", "lockedResize", "unlockSize", "renewSize":
 		ss, err := s.use(req.SID, peer)
 		if err != nil {

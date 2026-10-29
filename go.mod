@@ -6,6 +6,7 @@ require (
 	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.7.2
 	github.com/tailscale/tailcat v0.7.0
+	github.com/yuin/gopher-lua v1.1.1
 	golang.org/x/image v0.46.0
 	golang.org/x/sys v0.48.0
 	tailscale.com v1.103.0-pre.0.20260916030321-a2263542f260

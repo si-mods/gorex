@@ -115,9 +115,11 @@ type LayoutCommand struct {
 	Vertical bool   `json:"vertical,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Mode     string `json:"mode,omitempty"`
-	// Action is the action of "action", and Args its arguments.
+	// Action is the action of "action", and Args its arguments. Remote
+	// tells an action a remote client asked for.
 	Action string          `json:"action,omitempty"`
 	Args   json.RawMessage `json:"args,omitempty"`
+	Remote bool            `json:"remote,omitempty"`
 	// Index is where tab.move puts the tab among this machine's tabs as
 	// the app makes it, counted with the tab in its place; in the answer,
 	// where the tab is then.
