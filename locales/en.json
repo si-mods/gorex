@@ -1438,5 +1438,33 @@
   "paneMoveWindow": "Move to Window",
   "@paneMoveWindow": {
     "description": "Submenu of the windows a pane moves to."
+  },
+  "cmdFind": "Find…",
+  "@cmdFind": {
+    "description": "Command palette and menu: open the find bar of the focused pane."
+  },
+  "findNext": "Find Next",
+  "@findNext": {
+    "description": "Find bar: select the next match toward older output."
+  },
+  "findPrevious": "Find Previous",
+  "@findPrevious": {
+    "description": "Find bar: select the previous match."
+  },
+  "findClose": "Close Find",
+  "@findClose": {
+    "description": "Close the find bar and clear its highlights."
+  },
+  "findPlaceholder": "Search scrollback",
+  "@findPlaceholder": {
+    "description": "Placeholder of the find bar input."
+  },
+  "findCount": "{selected} of {total}",
+  "@findCount": {
+    "description": "Find bar: the selected match and how many were found.",
+    "placeholders": {
+      "selected": {},
+      "total": {}
+    }
   }
 }

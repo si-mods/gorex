@@ -286,12 +286,15 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 		} else {
 			top = 6
 		}
-		body := ui.Box(c).Grow(1).MinHeight(0).Padding(top, 5, 6, 5)
+		body := ui.Column(c).Grow(1).MinHeight(0).Padding(top, 5, 6, 5)
 		body.Children(func() {
+			if a.findPane == p {
+				a.findBar(c, k, p)
+			}
 			if p.term == nil {
 				return
 			}
-			tv := terminal.View(c, p.term).Fill()
+			tv := terminal.View(c, p.term).Grow(1).MinHeight(0)
 			if a.focusReq == p && a.tab() == t {
 				tv.Focus()
 				a.focusReq = nil
@@ -321,6 +324,41 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 		a.focusReq = p
 	}
 	return card
+}
+
+// findBar is the find bar of pane p: its query, how the search goes, and
+// the buttons that step through the matches and close it.
+func (a *App) findBar(c *ui.Context, k *colors, p *Pane) ui.Element {
+	row := ui.Row(c.Key("find")).Height(30).Shrink(0).Padding(0, 8).Gap(6).AlignItems(ui.Center).
+		Background(k.hover).Radius(7)
+	row.Children(func() {
+		in := ui.TextInput(c.Key("query"), &a.findText).Placeholder(locales.FindPlaceholder()).
+			Grow(1).MinWidth(0).Height(22).FontSize(12.5)
+		if a.findFocus {
+			in.AutoFocus()
+		}
+		in.OnChange(a.findQuery)
+		in.OnShortcut(0, ui.KeyEscape, a.closeFind)
+		in.OnShortcut(0, ui.KeyEnter, a.findNext)
+		in.OnShortcut(ui.Shift, ui.KeyEnter, a.findPrevious)
+		if count := a.findCount(); count != "" {
+			ui.Text(c.Key("count"), count).FontSize(11.5).TextColor(k.textMuted).Shrink(0)
+		}
+		if ui.Button(c.Key("prev"), "↑").Tooltip(locales.FindPrevious()).Clicked() {
+			a.findPrevious()
+			a.findFocus = true
+			a.changed()
+		}
+		if ui.Button(c.Key("next"), "↓").Tooltip(locales.FindNext()).Clicked() {
+			a.findNext()
+			a.findFocus = true
+			a.changed()
+		}
+		if ui.Button(c.Key("close"), "×").Tooltip(locales.FindClose()).Clicked() {
+			a.closeFind()
+		}
+	})
+	return row
 }
 
 // paneHeader draws a pane's program, title and directory, its activity,

@@ -340,5 +340,33 @@
   "paneMoveWindow": "移动到窗口",
   "@paneMoveWindow": {
     "description": "Submenu of the windows a pane moves to."
+  },
+  "cmdFind": "查找…",
+  "@cmdFind": {
+    "description": "打开当前窗格的查找栏。"
+  },
+  "findNext": "查找下一个",
+  "@findNext": {
+    "description": "查找栏：选择向历史方向的下一处匹配。"
+  },
+  "findPrevious": "查找上一个",
+  "@findPrevious": {
+    "description": "查找栏：选择上一处匹配。"
+  },
+  "findClose": "关闭查找",
+  "@findClose": {
+    "description": "关闭查找栏并清除高亮。"
+  },
+  "findPlaceholder": "搜索回滚内容",
+  "@findPlaceholder": {
+    "description": "查找栏输入框的占位提示。"
+  },
+  "findCount": "第 {selected} 个，共 {total} 个",
+  "@findCount": {
+    "description": "查找栏：当前匹配和总数。",
+    "placeholders": {
+      "selected": {},
+      "total": {}
+    }
   }
 }

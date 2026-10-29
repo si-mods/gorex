@@ -14,23 +14,27 @@ import (
 
 // ghosttyConfig is what GoRex takes from the user's Ghostty configuration.
 type ghosttyConfig struct {
-	Families    []string
-	Size        float32
-	Features    []string
-	Thicken     bool
-	LineHeight  float32
-	Theme       string
-	Background  *ui.Color
-	Foreground  *ui.Color
-	CursorColor *ui.Color
-	CursorText  *ui.Color
-	SelectionBg *ui.Color
-	SelectionFg *ui.Color
-	Palette     map[int]ui.Color
-	Cursor      terminal.CursorStyle
-	NoBlink     bool
-	Scrollback  int
-	OptionAsAlt bool
+	Families      []string
+	Size          float32
+	Features      []string
+	Thicken       bool
+	LineHeight    float32
+	Theme         string
+	Background    *ui.Color
+	Foreground    *ui.Color
+	CursorColor   *ui.Color
+	CursorText    *ui.Color
+	SelectionBg   *ui.Color
+	SelectionFg   *ui.Color
+	Search        *ui.Color
+	SearchText    *ui.Color
+	SearchSel     *ui.Color
+	SearchSelText *ui.Color
+	Palette       map[int]ui.Color
+	Cursor        terminal.CursorStyle
+	NoBlink       bool
+	Scrollback    int
+	OptionAsAlt   bool
 
 	CopyOnSelect      terminal.CopyOnSelect
 	RightClick        terminal.RightClickAction
@@ -207,6 +211,14 @@ func (c *ghosttyConfig) set(key, val string) {
 		c.SelectionBg = parseColor(val)
 	case "selection-foreground":
 		c.SelectionFg = parseColor(val)
+	case "search-background":
+		c.Search = parseColor(val)
+	case "search-foreground":
+		c.SearchText = parseColor(val)
+	case "search-selected-background":
+		c.SearchSel = parseColor(val)
+	case "search-selected-foreground":
+		c.SearchSelText = parseColor(val)
 	case "palette":
 		n, col, ok := strings.Cut(val, "=")
 		i, err := strconv.Atoi(strings.TrimSpace(n))
@@ -449,6 +461,18 @@ func (c *ghosttyConfig) themes() (light, dark *terminal.Theme, opaque bool) {
 		}
 		if c.SelectionFg != nil {
 			t.SelectionText = *c.SelectionFg
+		}
+		if c.Search != nil {
+			t.Search = *c.Search
+		}
+		if c.SearchText != nil {
+			t.SearchText = *c.SearchText
+		}
+		if c.SearchSel != nil {
+			t.SearchSelected = *c.SearchSel
+		}
+		if c.SearchSelText != nil {
+			t.SearchSelectedText = *c.SearchSelText
 		}
 		for i, col := range c.Palette {
 			t.Palette[i] = col
