@@ -183,8 +183,10 @@ type ActionCall struct {
 // RemoteClient is a client allowed to connect remotely: PublicKey is its
 // tailcat node key, "nodekey:" and 64 hex digits.
 type RemoteClient struct {
-	Name      string `json:"name"`
-	PublicKey string `json:"publicKey"`
+	Name      string    `json:"name"`
+	PublicKey string    `json:"publicKey"`
+	Created   time.Time `json:"created,omitzero"`
+	LastSeen  time.Time `json:"lastSeen,omitzero"`
 }
 
 // RemoteStatus answers remote.status. Address, the tailcat address
@@ -387,6 +389,9 @@ type Hello struct {
 	// Capabilities are what this server does beyond the version 2
 	// protocol, such as "layout.revision" and "events.revision".
 	Capabilities []string `json:"capabilities,omitempty"`
+	// Client is the remote client this connection is, with its label and
+	// the times it was allowed and last connected; nil for a local one.
+	Client *RemoteClient `json:"client,omitempty"`
 }
 
 // HostInfo describes the machine the server runs on.

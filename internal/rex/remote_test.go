@@ -783,8 +783,13 @@ func TestRemoteTailcat(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer rc.Close()
-	if _, err := rc.Hello(); err != nil {
+	h, err := rc.Hello()
+	if err != nil {
 		t.Fatal(err)
+	}
+	if h.Client == nil || h.Client.PublicKey != ClientPublicKey() || h.Client.Name == "" ||
+		h.Client.Created.IsZero() || h.Client.LastSeen.IsZero() {
+		t.Fatalf("client identity %+v", h.Client)
 	}
 	if err := rc.Shutdown(); err == nil {
 		t.Error("remote shutdown")
