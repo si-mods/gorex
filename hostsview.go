@@ -418,8 +418,24 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 							for _, line := range layoutLines(t.Root, 2) {
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 									ui.Text(c, line.text).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-									if line.sid != "" && ui.Button(c.Key("focus-"+line.sid), locales.HostsLayoutFocus()).Clicked() {
-										a.focusHostPane(page.layoutHost, line.sid)
+									if line.sid != "" {
+										if ui.Button(c.Key("focus-"+line.sid), locales.HostsLayoutFocus()).Clicked() {
+											a.focusHostPane(page.layoutHost, line.sid)
+										}
+										for _, dir := range []struct{ name, label string }{
+											{"left", "←"}, {"right", "→"}, {"up", "↑"}, {"down", "↓"},
+										} {
+											dir := dir
+											label := map[string]string{
+												"left": locales.HostsLayoutLeft(), "right": locales.HostsLayoutRight(),
+												"up": locales.HostsLayoutUp(), "down": locales.HostsLayoutDown(),
+											}[dir.name]
+											if ui.Button(c.Key("resize-"+line.sid+"-"+dir.name), dir.label).Tooltip(label).Clicked() {
+												a.hostLayoutCommand(page.layoutHost, rex.LayoutCommand{
+													Op: "pane.resize", SID: line.sid, Direction: dir.name, Amount: 0.05,
+												}, "")
+											}
+										}
 									}
 								})
 							}
