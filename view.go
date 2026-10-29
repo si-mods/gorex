@@ -365,6 +365,9 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 					if o == a || o.ws == nil {
 						continue
 					}
+					if t := o.tab(); t != nil && t.Root != nil && t.host() != p.host {
+						continue
+					}
 					o := o
 					if sm.Item(o.ws.Name).Chosen() {
 						a.movePaneToWindow(p, o)

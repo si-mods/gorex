@@ -1290,10 +1290,13 @@ func (a *App) placePane(t *Tab, p *Pane, target *Pane) {
 	if t == nil || p == nil {
 		return
 	}
-	if target == nil || target.Node == nil || t.Root == nil {
+	if t.Root == nil {
 		p.Tab, p.Node = t, &Node{ID: a.id(), Pane: p}
 		t.Root, t.Zoom = p.Node, nil
 		t.setFocus(p)
+		return
+	}
+	if target == nil || target.Node == nil {
 		return
 	}
 	old := target.Node
@@ -1326,8 +1329,12 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		}
 	}
 	t := target.tab()
-	if t == nil {
+	if t == nil || t.Root != nil && t.host() != p.host {
 		return
+	}
+	cols, rows := 80, 24
+	if p.term != nil {
+		cols, rows = p.term.Size()
 	}
 	src := p.Tab
 	a.detachPane(p)
@@ -1342,7 +1349,7 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		a.removeTab(src)
 	}
 	np := &Pane{ID: target.id(), SID: p.SID, Name: p.Name, info: p.info, title: p.title, startDir: p.startDir, host: h}
-	target.attach(np, 0, 0)
+	target.attach(np, cols, rows)
 	target.placePane(t, np, t.Focus)
 	target.focusReq = np
 	target.front()

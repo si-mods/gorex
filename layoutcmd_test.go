@@ -450,7 +450,7 @@ func TestMovePaneToWindow(t *testing.T) {
 			moved = q
 		}
 	}
-	if moved == nil || moved.Name != "logs" || b.focusReq != moved {
+	if moved == nil || moved.Name != "logs" || b.focusReq != moved || moved.term == nil {
 		t.Fatalf("target: moved %v name %q focus %v", moved != nil, moved.Name, b.focusReq == moved)
 	}
 	infos, _ := a.client.List()
@@ -462,5 +462,25 @@ func TestMovePaneToWindow(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("the session ended")
+	}
+}
+
+func TestMoveOnlyPaneToWindow(t *testing.T) {
+	a, _ := newTestApp(t)
+	b := a.st.openWindow(a.st.addWorkspace(), false)
+	p := a.tab().Focus
+	sid := p.SID
+	a.movePaneToWindow(p, b)
+	if len(a.tabs) != 0 {
+		t.Fatalf("source kept %d tabs", len(a.tabs))
+	}
+	found := false
+	for _, q := range b.tab().panes() {
+		if q.SID == sid && q.term != nil {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the only pane did not move")
 	}
 }
