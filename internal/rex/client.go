@@ -515,6 +515,35 @@ func (t trackedConn) Close() error {
 	return t.Conn.Close()
 }
 
+// Input types b into the session, as a terminal would.
+func (c *Client) Input(sid string, b []byte) error {
+	return c.call(Request{Op: "input", SID: sid, Bytes: b}, nil)
+}
+
+// Capture returns the session's screen as an attach would send it, cut to
+// about history bytes of scrollback when history is positive.
+func (c *Client) Capture(sid string, history int) (CaptureResult, error) {
+	var r CaptureResult
+	err := c.call(Request{Op: "capture", SID: sid, Capture: &CaptureOptions{History: history}}, &r)
+	return r, err
+}
+
+// Action runs an app action with args, through the window that owns the
+// layout, with the pane of session sid focused when sid is not "". It
+// fails when no window is open.
+func (c *Client) Action(sid, id string, args map[string]any) (LayoutCommand, error) {
+	var raw json.RawMessage
+	if args != nil {
+		var err error
+		if raw, err = json.Marshal(args); err != nil {
+			return LayoutCommand{}, err
+		}
+	}
+	var res LayoutCommand
+	err := c.call(Request{Op: "action", SID: sid, Action: &ActionCall{ID: id, Args: raw}}, &res)
+	return res, err
+}
+
 func (c *Client) Layout() (json.RawMessage, error) {
 	var l json.RawMessage
 	err := c.call(Request{Op: "getLayout"}, &l)

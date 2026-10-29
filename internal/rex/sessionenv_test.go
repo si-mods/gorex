@@ -1,6 +1,7 @@
 package rex
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -61,6 +62,12 @@ func TestSessionEnvDropsStarterMarkers(t *testing.T) {
 	}
 	if got["GOREX_SESSION"] != "abc" {
 		t.Errorf("GOREX_SESSION = %q, want abc", got["GOREX_SESSION"])
+	}
+	if got["GOREX_BIN_DIR"] != CLIDir() {
+		t.Errorf("GOREX_BIN_DIR = %q, want %q", got["GOREX_BIN_DIR"], CLIDir())
+	}
+	if !strings.HasPrefix(got["PATH"], CLIDir()+string(os.PathListSeparator)) {
+		t.Errorf("PATH %q does not start with the gorex directory", got["PATH"])
 	}
 }
 

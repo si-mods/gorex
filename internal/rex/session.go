@@ -309,6 +309,8 @@ func sessionEnv(id string, extra []string) []string {
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
+		case k == "PATH":
+			continue // added below, with the gorex directory first
 		case k == "TERM", k == "COLORTERM", k == "TERM_PROGRAM", k == "TERM_PROGRAM_VERSION",
 			k == "TERM_SESSION_ID", k == "TMUX", k == "TMUX_PANE", k == "STY", k == "WINDOWID",
 			k == "COLUMNS", k == "LINES", k == "SHLVL", k == "OLDPWD", k == "PWD", k == "_",
@@ -322,12 +324,19 @@ func sessionEnv(id string, extra []string) []string {
 		}
 		env = append(env, kv)
 	}
+	bin := CLIDir()
+	path := bin
+	if p := os.Getenv("PATH"); p != "" {
+		path += string(os.PathListSeparator) + p
+	}
 	env = append(env,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"TERM_PROGRAM=GoRex",
 		"TERM_PROGRAM_VERSION=0.2.0",
 		"GOREX_SESSION="+id,
+		"GOREX_BIN_DIR="+bin,
+		"PATH="+path,
 	)
 	if !hasLang {
 		env = append(env, "LANG=en_US.UTF-8")
@@ -823,6 +832,19 @@ func (s *session) kill() {
 	case <-time.After(time.Second):
 		s.p.kill()
 	}
+}
+
+// capture returns the session's screen as an attach would send it, cut to
+// about history bytes of scrollback when history is positive.
+func (s *session) capture(history int) CaptureResult {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	snap, title := s.view()
+	cut := false
+	if history > 0 {
+		snap, cut = trimSnapshot(snap, s.rows, history)
+	}
+	return CaptureResult{Screen: snap, Title: title, Cols: s.cols, Rows: s.rows, Truncated: cut}
 }
 
 // view returns the session's screen, as escape sequences, and its

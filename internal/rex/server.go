@@ -257,6 +257,9 @@ func Serve() error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	if err := EnsureCLI(); err != nil {
+		log.Printf("rex: the gorex command: %v", err)
+	}
 	lock, err := os.OpenFile(filepath.Join(dir, "server.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
@@ -716,6 +719,28 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		s.mu.Unlock()
 		s.notify("sessions")
 		return nil, nil
+	case "input":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		ss.input(nil, req.Bytes)
+		return nil, nil
+	case "capture":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		o := CaptureOptions{}
+		if req.Capture != nil {
+			o = *req.Capture
+		}
+		return ss.capture(o.History), nil
+	case "action":
+		if req.Action == nil || req.Action.ID == "" {
+			return nil, errors.New("rex: no action")
+		}
+		return s.command(LayoutCommand{Op: "action", SID: req.SID, Action: req.Action.ID, Args: req.Action.Args}), nil
 	case "resize", "lockSize", "lockedResize", "unlockSize", "renewSize":
 		ss, err := s.use(req.SID, peer)
 		if err != nil {

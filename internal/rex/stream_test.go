@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -129,5 +130,31 @@ func TestStreamLastSizeWins(t *testing.T) {
 		if got, want := sessionSize(t, c, sid), fmt.Sprintf("%dx%d", cols, rows); got != want {
 			t.Fatalf("round %d: session %s, stream %s", round, got, want)
 		}
+	}
+}
+
+// TestInputCapture types into a session without attaching, and captures
+// its screen: what a CLI sends and reads.
+func TestInputCapture(t *testing.T) {
+	_, c, sid := streamServer(t, nil)
+	if err := c.Input(sid, []byte("echo gorex-marker\n")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		res, err := c.Capture(sid, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(res.Screen), "gorex-marker") {
+			if res.Cols < 1 || res.Rows < 1 {
+				t.Fatalf("capture size %dx%d", res.Cols, res.Rows)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("capture does not show the marker: %q", res.Screen)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }

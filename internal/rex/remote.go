@@ -248,7 +248,7 @@ var remoteListen = func(ctx context.Context, ts *tailcat.Server, region int) (ne
 // attach to sessions.
 func remoteAllowed(op string) bool {
 	switch op {
-	case "hello", "ping", "list", "create", "kill", "resize":
+	case "hello", "ping", "list", "create", "kill", "resize", "input", "capture":
 		return true
 	}
 	return false

@@ -16,6 +16,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater/native"
 
+	"gorex/internal/cli"
 	"gorex/internal/control"
 	"gorex/internal/rex"
 	"gorex/locales"
@@ -43,6 +44,11 @@ func main() {
 	// directory (internal/control).
 	if len(os.Args) > 1 && os.Args[1] == "control" {
 		os.Exit(control.Main())
+	}
+	// The command line shares the binary: it runs before the app, and
+	// leaves the app's own arguments, as AppKit's, alone.
+	if code, handled := cli.Main(os.Args[1:], os.Stdout, os.Stderr, mygo.App.Version()); handled {
+		os.Exit(code)
 	}
 	// The app runs once: launched again, it shows the window focused last.
 	// MyGo keys the lock by the app's identifier and name, which mygo dev's
