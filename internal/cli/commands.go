@@ -650,6 +650,9 @@ func configCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 		defer cfg.Close()
 		fmt.Fprintf(out, "path: %s\nbindings: %d\nactions: %d\nmodes: %d\n", path, len(cfg.Bindings), len(cfg.Actions), len(cfg.Modes))
+		for _, w := range cfg.Warnings {
+			fmt.Fprintln(out, "warning:", w)
+		}
 		return ExitOK, true
 	case "reload":
 		c, code := connect(errOut)

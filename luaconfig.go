@@ -1,10 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"slices"
 
+	"github.com/egoist/mygo"
+
 	"gorex/internal/config"
+	"gorex/internal/rex"
 )
 
 // reloadLuaConfig reads the Lua configuration again, keeping the last
@@ -35,12 +42,16 @@ func (a *App) loadLuaConfig() error {
 	if err != nil {
 		return err
 	}
+	for _, w := range cfg.Warnings {
+		log.Printf("gorex config: %s", w)
+	}
 	cmds, err := newCustomCommands(cfg)
 	if err != nil {
 		cfg.Close()
 		return err
 	}
 	d := newKeyDispatcher()
+	taken := map[string]bool{}
 	for _, m := range cfg.Modes {
 		d.defineMode(m.Name, keyMode{exclusive: m.Exclusive, once: m.Once})
 	}
@@ -68,14 +79,77 @@ func (a *App) loadLuaConfig() error {
 			return fmt.Errorf("gorex config: no action %q", b.Action)
 		}
 		d.bind(keys, cmd, b.Args, b.Mode)
+		if len(keys) > 0 {
+			taken[keys[0].String()] = true
+		}
+	}
+	overrides, err := loadShortcuts()
+	if err != nil {
+		cfg.Close()
+		return err
+	}
+	for _, o := range overrides {
+		keys, err := parseKeySequence(o.Key)
+		if err != nil {
+			cfg.Close()
+			return fmt.Errorf("gorex shortcuts: %s: %w", o.Key, err)
+		}
+		var cmd *command
+		for _, c := range cmds {
+			if c.ID == o.Action {
+				cmd = c
+				break
+			}
+		}
+		if cmd == nil {
+			cmd = lookupCommand(o.Action)
+		}
+		if cmd == nil {
+			cfg.Close()
+			return fmt.Errorf("gorex shortcuts: no action %q", o.Action)
+		}
+		d.bind(keys, cmd, o.Args, "")
+		if len(keys) > 0 {
+			taken[keys[0].String()] = true
+		}
 	}
 	old := a.luaConfig
 	setCustomCommands(cmds)
 	a.keys = d
 	a.custom = cmds
 	a.luaConfig = cfg
+	if a.st != nil {
+		a.st.noAccel = taken
+		mygo.App.SetMenu(a.st.menu())
+	}
 	if old != nil {
 		old.Close()
 	}
 	return nil
+}
+
+type shortcutBinding struct {
+	Key    string         `json:"key"`
+	Action string         `json:"action"`
+	Args   map[string]any `json:"args,omitempty"`
+}
+
+type shortcutsFile struct {
+	Bindings []shortcutBinding `json:"bindings"`
+}
+
+// loadShortcuts reads the app's own overrides, separate from the Lua file.
+func loadShortcuts() ([]shortcutBinding, error) {
+	b, err := os.ReadFile(filepath.Join(rex.Dir(), "shortcuts.json"))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var f shortcutsFile
+	if err := json.Unmarshal(b, &f); err != nil {
+		return nil, fmt.Errorf("gorex shortcuts: %s: %w", filepath.Base(filepath.Join(rex.Dir(), "shortcuts.json")), err)
+	}
+	return f.Bindings, nil
 }

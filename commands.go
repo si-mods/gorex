@@ -359,7 +359,7 @@ var sessionCommands = []*command{
 }
 
 // commands are all of them.
-var commands = append(slices.Clone(paletteCommands), &cmdPalette, &cmdPalette2, &cmdClear, &cmdReloadLua, &cmdModeEnter, &cmdModeExit, &cmdModeExitAll)
+var commands = append(slices.Clone(paletteCommands), &cmdPalette, &cmdPalette2, &cmdClear, &cmdModeEnter, &cmdModeExit, &cmdModeExitAll)
 
 func init() {
 	for _, cmd := range commands {
@@ -381,6 +381,16 @@ func init() {
 			cmd.Keys = cmd.Accel
 		}
 	}
+}
+
+// overrides reports that a keymap binding took this command's menu
+// shortcut over.
+func (st *store) overrides(cmd *command) bool {
+	if st == nil || st.noAccel == nil {
+		return false
+	}
+	chord, ok := accelChord(cmd.menuAccel())
+	return ok && st.noAccel[chord.String()]
 }
 
 // shortcut is a key with modifiers, elsewhere than on macOS.
@@ -439,7 +449,11 @@ func (cmd *command) menuAccel() string {
 // are chosen in, or in the one focused last.
 func (st *store) menu() *mygo.Menu {
 	item := func(cmd *command) *mygo.MenuItem {
-		return &mygo.MenuItem{Label: cmd.Title(), Accelerator: cmd.menuAccel(), Click: func(_ *mygo.MenuItem, w *mygo.Window) {
+		accel := cmd.menuAccel()
+		if st.overrides(cmd) {
+			accel = ""
+		}
+		return &mygo.MenuItem{Label: cmd.Title(), Accelerator: accel, Click: func(_ *mygo.MenuItem, w *mygo.Window) {
 			st.run(cmd, w)
 		}}
 	}
@@ -695,6 +709,9 @@ func (a *App) shortcuts(c *ui.Context) {
 		return
 	}
 	for _, cmd := range commands {
+		if a.st != nil && a.st.overrides(cmd) {
+			continue
+		}
 		if cmd.Other != (shortcut{}) && c.Shortcut(cmd.Other.Mods, cmd.Other.Key) {
 			a.later(c, func() { a.invokeCommand(cmd, nil) })
 		}

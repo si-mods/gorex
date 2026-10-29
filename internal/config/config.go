@@ -50,6 +50,7 @@ type Config struct {
 	Bindings []Binding
 	Actions  []Action
 	Modes    []Mode
+	Warnings []string
 	state    *lua.LState
 	invoke   func(string, map[string]any) error
 	invoking int
@@ -100,6 +101,7 @@ func load(path string, sandbox bool) (*Config, error) {
 		c.closeNow()
 		return nil, err
 	}
+	c.check()
 	return c, nil
 }
 
@@ -262,6 +264,23 @@ func (c *Config) Invoke(name string, ctx, args map[string]any) error {
 		return err
 	}
 	return fmt.Errorf("config: no action %q", name)
+}
+
+// check records bindings that shadow or prefix another in their mode.
+func (c *Config) check() {
+	for i, b := range c.Bindings {
+		for j, o := range c.Bindings {
+			if i == j || b.Mode != o.Mode {
+				continue
+			}
+			if b.Key == o.Key && i < j {
+				c.Warnings = append(c.Warnings, fmt.Sprintf("%s: %s replaces %s", b.Key, o.Action, b.Action))
+			}
+			if strings.HasPrefix(o.Key, b.Key+">") {
+				c.Warnings = append(c.Warnings, fmt.Sprintf("%s is a prefix of %s; it will not run alone", b.Key, o.Key))
+			}
+		}
+	}
 }
 
 // Path returns the configuration file: GOREX_CONFIG, else the usual XDG
