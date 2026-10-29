@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -52,6 +54,12 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return sendCmd(args, out, errOut)
 	case "capture":
 		return captureCmd(args, out, errOut)
+	case "events":
+		return eventsCmd(args, out, errOut)
+	case "hosts":
+		return hostsCmd(args, out, errOut)
+	case "skill":
+		return skillCmd(args, out, errOut)
 	case "wait":
 		return waitCmd(args, out, errOut)
 	case "run":
@@ -79,6 +87,9 @@ Usage:
   gorex new [--dir DIR] [--json] [-- COMMAND...]
   gorex send [-s SESSION] [--enter] [--json] TEXT...
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
+  gorex events
+  gorex hosts [ls] [--json]
+  gorex skill show|setup|status|remove [--agent NAME] [--project]
   gorex wait [-s SESSION] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] ACTION [KEY=VALUE...]
@@ -421,6 +432,103 @@ func (c *nopConn) Write(p []byte) (int, error) { return len(p), nil }
 func (c *nopConn) Close() error {
 	c.once.Do(func() { close(c.done) })
 	return nil
+}
+
+// savedHost is a remote host as hosts.json keeps it. Address is a secret
+// and is never printed here.
+type savedHost struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	Network bool   `json:"network,omitempty"`
+}
+
+type hostsFile struct {
+	Hosts []savedHost `json:"hosts"`
+}
+
+func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
+	if len(args) > 0 && args[0] == "ls" {
+		args = args[1:]
+	}
+	fs := flagSet("hosts", errOut)
+	asJSON := fs.Bool("json", false, "print JSON")
+	if code, stop := parse(fs, args); stop {
+		return code, true
+	}
+	if len(fs.Args()) > 0 {
+		fmt.Fprintln(errOut, "gorex hosts: use `gorex hosts [ls]`")
+		return ExitUsage, true
+	}
+	b, err := os.ReadFile(filepath.Join(rex.Dir(), "hosts.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		b = []byte(`{"hosts":[]}`)
+	} else if err != nil {
+		fmt.Fprintln(errOut, err)
+		return ExitFailed, true
+	}
+	var f hostsFile
+	if err := json.Unmarshal(b, &f); err != nil {
+		fmt.Fprintln(errOut, "hosts.json is not valid:", err)
+		return ExitFailed, true
+	}
+	hosts := f.Hosts[:0]
+	for _, h := range f.Hosts {
+		if h.ID != "" && h.Address != "" {
+			hosts = append(hosts, h)
+		}
+	}
+	if *asJSON {
+		type shown struct {
+			ID      string `json:"id"`
+			Name    string `json:"name"`
+			Network bool   `json:"network,omitempty"`
+		}
+		shownHosts := make([]shown, 0, len(hosts))
+		for _, h := range hosts {
+			shownHosts = append(shownHosts, shown{ID: h.ID, Name: h.Name, Network: h.Network})
+		}
+		WriteJSON(out, shownHosts)
+		return ExitOK, true
+	}
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "NAME\tNETWORK\tID")
+	for _, h := range hosts {
+		fmt.Fprintf(tw, "%s\t%v\t%s\n", printable(h.Name), h.Network, h.ID)
+	}
+	tw.Flush()
+	return ExitOK, true
+}
+
+// printable keeps a name from moving the cursor or changing the title.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func eventsCmd(args []string, out, errOut io.Writer) (int, bool) {
+	fs := flagSet("events", errOut)
+	if code, stop := parse(fs, args); stop {
+		return code, true
+	}
+	c, code := connect(errOut)
+	if c == nil {
+		return code, true
+	}
+	defer c.Close()
+	if err := c.Subscribe(); err != nil {
+		fmt.Fprintln(errOut, err)
+		return ExitServer, true
+	}
+	for ev := range c.Events() {
+		b, _ := json.Marshal(ev)
+		out.Write(append(b, '\n'))
+	}
+	return ExitServer, true
 }
 
 func waitCmd(args []string, out, errOut io.Writer) (int, bool) {

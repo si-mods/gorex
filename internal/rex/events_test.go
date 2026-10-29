@@ -188,3 +188,28 @@ func sessionInfo(t *testing.T, c *Client, sid string) SessionInfo {
 	t.Fatalf("no session %s", sid)
 	return SessionInfo{}
 }
+
+// TestEventStream checks that a client reads the changes themselves, not
+// only that one came.
+func TestEventStream(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	defer c.Close()
+	if _, err := c.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Subscribe(); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetLayoutAt([]byte(`{"tabs":[]}`), 0); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev := <-c.Events():
+		if ev.Kind != "layout" || ev.Revision == 0 {
+			t.Fatalf("event %+v", ev)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no event")
+	}
+}

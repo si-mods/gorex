@@ -9,6 +9,9 @@ Every local terminal GoRex opens gets:
   use when `-s` is not given.
 - `GOREX_BIN_DIR`, and that directory at the front of `PATH`, where a
   `gorex` shim points at the app binary.
+- `GOREX_SERVER`, the server's socket.
+- A pane made by the app also gets `GOREX_PANE`, and `GOREX_HOST` for a
+  remote host's pane or `GOREX_CLIENT` for a local one.
 
 A session a remote client created does not get the shim: its shell is
 already reachable from another machine, and the shim would make this
@@ -26,6 +29,9 @@ gorex send [-s SESSION] [--enter] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
 gorex wait [-s SESSION] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
 gorex run [--dir DIR] -- COMMAND...
+gorex events
+gorex hosts [ls] [--json]
+gorex skill show|setup|status|remove [--agent NAME] [--project] [--json]
 gorex action run [-s SESSION] ACTION [KEY=VALUE...]
 gorex version [--json]
 ```
@@ -40,6 +46,11 @@ gorex version [--json]
   when it ends, and exits with the program's status.
 - `split` and `close` change the window's layout, so they need the GoRex
   window open on that machine.
+- `events` prints each layout or session change as one JSON line.
+- `hosts` lists saved remote hosts; addresses stay hidden.
+- `skill setup` installs the GoRex guide into Claude Code, Codex, OpenCode
+  and Pi skill directories. `--project` writes into the repository;
+  `--dry-run` reports first. Hooks are not installed yet.
 - `action run` runs a built-in action by its ID, through the window.
   Values after the action are strings; the CLI does not guess types.
 
@@ -59,5 +70,5 @@ gorex wait -s <id> --contains FAIL --timeout 120s
 gorex capture -s <id>
 ```
 
-Remote hosts and the agent skill installer are not part of this first
-slice.
+Remote `-S` targets, host add/remove, label/position target resolution and
+agent hooks are not part of this slice.

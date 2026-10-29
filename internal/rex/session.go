@@ -342,7 +342,7 @@ func sessionEnv(id string, extra []string, local bool) []string {
 		if p := os.Getenv("PATH"); p != "" {
 			path += string(os.PathListSeparator) + p
 		}
-		env = append(env, "GOREX_BIN_DIR="+bin, "PATH="+path)
+		env = append(env, "GOREX_BIN_DIR="+bin, "GOREX_SERVER="+SocketPath(), "PATH="+path)
 	}
 	if !hasLang {
 		env = append(env, "LANG=en_US.UTF-8")

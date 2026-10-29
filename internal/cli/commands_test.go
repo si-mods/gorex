@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -144,5 +145,75 @@ func TestUsageErrors(t *testing.T) {
 	}
 	if code, handled, _, _ := runMain(t, "capture", "--raw", "--json", "-s", "x"); code != ExitUsage || !handled {
 		t.Fatalf("capture --raw --json: %d %v", code, handled)
+	}
+}
+
+func TestHostsList(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	body := `{"hosts":[{"id":"abc","name":"studio","address":"secret-address","network":true},{"id":"def","name":"evil\u001b]0;x\u0007","address":"secret-address"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "hosts.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, handled, out, errOut := runMain(t, "hosts", "--json")
+	if code != ExitOK || !handled {
+		t.Fatalf("hosts: %d %v %s", code, handled, errOut)
+	}
+	if !strings.Contains(out, `"name": "studio"`) || !strings.Contains(out, `"network": true`) {
+		t.Fatalf("hosts JSON %q", out)
+	}
+	if strings.Contains(out, "secret-address") {
+		t.Fatalf("hosts printed the address: %q", out)
+	}
+	code, _, out, errOut = runMain(t, "hosts")
+	if code != ExitOK || strings.ContainsRune(out, 0x1b) || strings.ContainsRune(out, 0x07) {
+		t.Fatalf("hosts table: %d %q %s", code, out, errOut)
+	}
+}
+
+func TestSkill(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	code, handled, out, errOut := runMain(t, "skill", "show")
+	if code != ExitOK || !handled || !strings.Contains(out, "gorex send") {
+		t.Fatalf("skill show: %d %v %q %s", code, handled, out, errOut)
+	}
+	code, _, _, errOut = runMain(t, "skill", "setup", "--agent", "claude")
+	if code != ExitOK {
+		t.Fatalf("skill setup: %d %s", code, errOut)
+	}
+	path := filepath.Join(home, ".claude", "skills", "gorex", "SKILL.md")
+	b, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(b), skillMarker) {
+		t.Fatalf("skill file %q: %v", b, err)
+	}
+	code, _, out, errOut = runMain(t, "skill", "status", "--agent", "claude", "--json")
+	if code != ExitOK || !strings.Contains(out, `"current"`) {
+		t.Fatalf("skill status: %d %q %s", code, out, errOut)
+	}
+	code, _, _, errOut = runMain(t, "skill", "remove", "--agent", "claude")
+	if code != ExitOK {
+		t.Fatalf("skill remove: %d %s", code, errOut)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("skill file remains: %v", err)
+	}
+	victim := filepath.Join(home, "victim")
+	if err := os.WriteFile(victim, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, path+".tmp"); err != nil {
+		t.Fatal(err)
+	}
+	code, _, _, errOut = runMain(t, "skill", "setup", "--agent", "claude")
+	if code != ExitOK {
+		t.Fatalf("skill setup with tmp symlink: %d %s", code, errOut)
+	}
+	if b, err := os.ReadFile(victim); err != nil || string(b) != "keep" {
+		t.Fatalf("the tmp symlink was followed: %q %v", b, err)
 	}
 }
