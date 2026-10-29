@@ -332,8 +332,8 @@ func (a *App) findBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 	row := ui.Row(c.Key("find")).Height(30).Shrink(0).Padding(0, 8).Gap(6).AlignItems(ui.Center).
 		Background(k.hover).Radius(7)
 	row.Children(func() {
-		in := ui.TextInput(c.Key("query"), &a.findText).Placeholder(locales.FindPlaceholder()).
-			Grow(1).MinWidth(0).Height(22).FontSize(12.5)
+		in := textField(c.Key("query"), k, &a.findText, fieldCompact).Placeholder(locales.FindPlaceholder()).
+			Grow(1).MinWidth(0)
 		if a.findFocus {
 			in.Focus()
 			a.findFocus = false
@@ -379,7 +379,7 @@ func (a *App) findBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 // and its buttons.
 func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hovered bool) {
 	if a.paneRenaming == p {
-		a.paneRename(c)
+		a.paneRename(c, k)
 		return
 	}
 	name, detail := p.label()
@@ -477,13 +477,18 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	})
 }
 
-// paneRename draws the label field over a pane's header.
-func (a *App) paneRename(c *ui.Context) {
+// paneRename draws the label field over a pane's header, in the row the
+// header would take: a field of its own, a child of the card, would take
+// half of it.
+func (a *App) paneRename(c *ui.Context, k *colors) {
 	p := a.paneRenaming
 	if p == nil {
 		return
 	}
-	in := ui.TextInput(c, &a.paneNameText).Placeholder(p.labelName()).Grow(1).MinWidth(0).Height(22).FontSize(12.5).AutoFocus()
+	var in ui.Element
+	ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).Children(func() {
+		in = textField(c, k, &a.paneNameText, fieldCompact).Placeholder(p.labelName()).Grow(1).MinWidth(0).AutoFocus()
+	})
 	done := func(keep bool) {
 		if keep {
 			p.Name = paneName(a.paneNameText)

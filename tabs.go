@@ -260,13 +260,7 @@ func (a *App) tabEnd(c *ui.Context, k *colors, t *Tab, hovered bool) {
 // away keeps it, Escape goes back, and an empty name follows the panes
 // again.
 func (a *App) renameField(c *ui.Context, k *colors, t *Tab, name string) {
-	// PaddingY(0): TextInput's 6-DIP vertical padding leaves 8 DIPs of
-	// content box in Height(22), less than the 15-DIP line of size 13, and
-	// the bottom of the glyphs, their descenders, is clipped. TextColor:
-	// the tab's Selected(true) gives its row AccentText, which the input
-	// would take as its text color, white on the light field.
-	in := ui.TextInput(c, &a.renameText).Placeholder(name).Grow(1).MinWidth(0).Height(22).PaddingY(0).FontSize(13).
-		TextColor(k.text).AutoFocus()
+	in := textField(c, k, &a.renameText, fieldCompact).Placeholder(name).Grow(1).MinWidth(0).AutoFocus()
 	done := func(keep bool) {
 		if keep {
 			t.Name = strings.TrimSpace(a.renameText)
