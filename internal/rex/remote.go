@@ -282,10 +282,7 @@ func (s *Server) remoteSeen(peer string) {
 	for i := range r.cfg.Allowed {
 		if r.cfg.Allowed[i].PublicKey == peer {
 			r.cfg.Allowed[i].LastSeen = time.Now()
-			if err := writeJSON(remotePath(), r.cfg); err != nil {
-				log.Printf("rex: saving the remote allowlist: %v", err)
-			}
-			return
+			return // saved with the next configuration change
 		}
 	}
 }
@@ -752,7 +749,7 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		if slices.ContainsFunc(cfg.Allowed, func(c RemoteClient) bool { return c.PublicKey == k.String() }) {
 			return nil, errors.New("rex: that client is allowed already")
 		}
-		cfg.Allowed = append(cfg.Allowed, RemoteClient{Name: name, PublicKey: k.String()})
+		cfg.Allowed = append(cfg.Allowed, RemoteClient{Name: name, PublicKey: k.String(), Created: time.Now()})
 	case "remote.approve":
 		k, err := reqKey()
 		if err != nil {
@@ -763,7 +760,7 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			return nil, errors.New("rex: no such request")
 		}
 		if !r.allowedLocked(k) {
-			cfg.Allowed = append(cfg.Allowed, RemoteClient{Name: r.pending[i].Name, PublicKey: k})
+			cfg.Allowed = append(cfg.Allowed, RemoteClient{Name: r.pending[i].Name, PublicKey: k, Created: time.Now()})
 		}
 		approved = i
 	case "remote.revoke":
