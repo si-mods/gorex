@@ -77,9 +77,11 @@ type layoutTab struct {
 }
 
 type layoutNode struct {
-	SID string      `json:"sid"`
-	A   *layoutNode `json:"a"`
-	B   *layoutNode `json:"b"`
+	SID  string      `json:"sid"`
+	Name string      `json:"name,omitempty"`
+	Host string      `json:"host,omitempty"`
+	A    *layoutNode `json:"a"`
+	B    *layoutNode `json:"b"`
 }
 
 // sessionLabels maps a workspace's name and its tabs' names to the session
@@ -107,10 +109,22 @@ func sessionLabels(raw json.RawMessage) map[string]string {
 		}
 		for _, t := range w.Tabs {
 			add(t.Name, tabSession(t))
+			addNodeNames(t.Root, add)
 		}
 		add(w.Name, focused)
 	}
 	return out
+}
+
+func addNodeNames(n *layoutNode, add func(string, string)) {
+	if n == nil {
+		return
+	}
+	if n.Name != "" && n.SID != "" && n.Host == "" {
+		add(n.Name, n.SID)
+	}
+	addNodeNames(n.A, add)
+	addNodeNames(n.B, add)
 }
 
 func tabSession(t layoutTab) string {

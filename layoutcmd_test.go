@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
@@ -296,5 +298,137 @@ func TestActionFromClient(t *testing.T) {
 			t.Fatal("timed out waiting for the action")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestPaneRename(t *testing.T) {
+	a, _ := newTestApp(t)
+	p := a.tab().Focus
+	res := a.command(rex.LayoutCommand{Op: "pane.rename", SID: p.SID, Name: " logs "})
+	if res.Code != "" || p.Name != "logs" {
+		t.Fatalf("rename: %+v %q", res, p.Name)
+	}
+	if name, _ := p.label(); name != "logs" {
+		t.Fatalf("label %q", name)
+	}
+	a.saveNow()
+	raw, err := a.client.Layout()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := parseLayout(raw)
+	if saved.Sessions[0].Tabs[0].Root.Name != "logs" {
+		t.Fatalf("saved %+v", saved.Sessions[0].Tabs[0].Root)
+	}
+	b := &App{client: a.client}
+	if !b.restore(saved.Sessions[0].savedLayout, nil) {
+		t.Fatal("nothing restored")
+	}
+	if b.tab().Focus.Name != "logs" {
+		t.Fatalf("restored %q", b.tab().Focus.Name)
+	}
+}
+
+func TestMovePane(t *testing.T) {
+	a, _ := newTestApp(t)
+	dir := t.TempDir()
+	first := a.tab()
+	a.newTab(dir)
+	second := a.tab()
+	p := first.Focus
+	sid, term := p.SID, p.term
+	a.movePaneToTab(p, second)
+	if len(a.tabs) != 1 || a.tab() != second {
+		t.Fatalf("tabs %d, active %v", len(a.tabs), a.tab() == second)
+	}
+	if p.Tab != second || p.SID != sid || p.term != term {
+		t.Fatalf("moved pane %+v", p)
+	}
+	if len(second.panes()) != 2 || second.Focus != p {
+		t.Fatalf("target panes %d, focus %v", len(second.panes()), second.Focus == p)
+	}
+	if second.Zoom != nil {
+		t.Fatal("zoom survived the move")
+	}
+}
+
+func TestResizeAmounts(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.split(false)
+	tb := a.tab()
+	before := tb.Root.Ratio
+	a.resizeFocusedBy(1, 0, 10)
+	if got := tb.Root.Ratio; got < before+0.09 || got > before+0.11 {
+		t.Fatalf("resize amount: %v -> %v", before, got)
+	}
+	a.setSplitRatio(0.7)
+	if tb.Root.Ratio != 0.7 {
+		t.Fatalf("ratio %v", tb.Root.Ratio)
+	}
+	a.setSplitRatio(2)
+	if tb.Root.Ratio != 0.9 {
+		t.Fatalf("ratio clamp %v", tb.Root.Ratio)
+	}
+}
+
+func TestMovePaneWithinTab(t *testing.T) {
+	a, _ := newTestApp(t)
+	first := a.tab().Focus
+	a.split(false)
+	second := a.tab().Focus
+	sid, term := first.SID, first.term
+	a.movePaneToPane(first, second)
+	tb := a.tab()
+	if tb.Root.A == nil || tb.Root.B == nil || len(tb.panes()) != 2 || tb.Focus != first {
+		t.Fatalf("after move: focus %v panes %d", tb.Focus == first, len(tb.panes()))
+	}
+	if first.SID != sid || first.term != term {
+		t.Fatal("the moved pane's session changed")
+	}
+}
+
+func TestMovePaneFromActiveTab(t *testing.T) {
+	a, _ := newTestApp(t)
+	dir := t.TempDir()
+	first := a.tab()
+	a.newTab(dir)
+	second := a.tab()
+	a.newTab(dir)
+	third := a.tab()
+	a.selectTab(slices.Index(a.tabs, first))
+	p := first.Focus
+	a.movePaneToTab(p, third)
+	if a.tab() != third || a.focusReq != p {
+		t.Fatalf("active %v focus %v", a.tab() == third, a.focusReq == p)
+	}
+	if len(a.tabs) != 2 || slices.Contains(a.tabs, first) || !slices.Contains(a.tabs, second) || !slices.Contains(a.tabs, third) {
+		t.Fatalf("tabs %d", len(a.tabs))
+	}
+}
+
+func TestMovePaneKeepsActiveTabFocus(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.split(false)
+	first := a.tab()
+	dir := t.TempDir()
+	a.newTab(dir)
+	second := a.tab()
+	a.selectTab(slices.Index(a.tabs, first))
+	p := first.Focus
+	a.movePaneToTab(p, second)
+	if a.tab() != first || a.focusReq != first.Focus {
+		t.Fatalf("active %v focus %v", a.tab() == first, a.focusReq == first.Focus)
+	}
+	if p.Tab != second {
+		t.Fatal("pane did not move")
+	}
+}
+
+func TestPaneName(t *testing.T) {
+	if got := paneName("  logs\x01  "); got != "logs" {
+		t.Fatalf("sanitized %q", got)
+	}
+	if got := paneName(strings.Repeat("界", 70)); len([]rune(got)) != 64 || !utf8.ValidString(got) {
+		t.Fatalf("capped runes %d", len([]rune(got)))
 	}
 }

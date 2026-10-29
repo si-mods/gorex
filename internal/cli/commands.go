@@ -63,6 +63,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return splitCmd(args, out, errOut)
 	case "close":
 		return closeCmd(args, out, errOut)
+	case "rename":
+		return renameCmd(args, out, errOut)
 	case "send", "type":
 		return sendCmd(args, out, errOut)
 	case "capture":
@@ -103,8 +105,9 @@ Usage:
   gorex clients [--json]
   gorex split [-s SESSION] [--down] [--dir DIR]
   gorex close [-s SESSION] [--tab]
+  gorex rename [-s SESSION] NAME
   gorex new [--dir DIR] [--json] [-- COMMAND...]
-  gorex send [-s SESSION] [--enter] [--json] TEXT...
+  gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--json] TEXT...
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
   gorex hosts [ls] [--json]
@@ -116,7 +119,8 @@ Usage:
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
   gorex version [--json]
 
-A session defaults to GOREX_SESSION, set in every terminal GoRex opens.
+Targets: -s SESSION, -w TAB or -b PANE; -b wins, then -w, then -s.
+The session defaults to GOREX_SESSION, set in every terminal GoRex opens.
 Codes: 0 ok, 1 failed, 2 usage, 3 no such session or target, 4 server
 unreachable, 130 interrupted.
 `)
@@ -206,13 +210,30 @@ func dialRemote(h savedHost, errOut io.Writer) (*rex.Client, int) {
 	return c, ExitOK
 }
 
-// targetFlag adds -s/--session, defaulting to GOREX_SESSION.
-func targetFlag(fs *flag.FlagSet) *string {
+// targetFlags are -s, -w and -b; the pane wins, then the tab, then the
+// session. The session defaults to GOREX_SESSION.
+type targetFlags struct{ s, w, b *string }
+
+func targetFlag(fs *flag.FlagSet) *targetFlags {
 	def := ""
 	if serverTarget == "" {
 		def = os.Getenv("GOREX_SESSION")
 	}
-	return fs.String("s", def, "session ID")
+	return &targetFlags{
+		s: fs.String("s", def, "session ID"),
+		w: fs.String("w", "", "tab label or ID"),
+		b: fs.String("b", "", "pane label or ID"),
+	}
+}
+
+func (t *targetFlags) value() string {
+	if *t.b != "" {
+		return *t.b
+	}
+	if *t.w != "" {
+		return *t.w
+	}
+	return *t.s
 }
 
 func versionCmd(args []string, out, errOut io.Writer, version string) (int, bool) {
@@ -314,7 +335,7 @@ func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
-	if *sid == "" {
+	if sid.value() == "" {
 		fmt.Fprintln(errOut, "gorex split: no session; use -s or GOREX_SESSION")
 		return ExitTarget, true
 	}
@@ -323,7 +344,7 @@ func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	target, err := resolveTarget(c, *sid)
+	target, err := resolveTarget(c, sid.value())
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -353,7 +374,7 @@ func closeCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
-	if *sid == "" {
+	if sid.value() == "" {
 		fmt.Fprintln(errOut, "gorex close: no session; use -s or GOREX_SESSION")
 		return ExitTarget, true
 	}
@@ -362,7 +383,7 @@ func closeCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	target, err := resolveTarget(c, *sid)
+	target, err := resolveTarget(c, sid.value())
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -411,6 +432,43 @@ func newCmd(args []string, out, errOut io.Writer) (int, bool) {
 	return ExitOK, true
 }
 
+func renameCmd(args []string, out, errOut io.Writer) (int, bool) {
+	fs := flagSet("rename", errOut)
+	sid := targetFlag(fs)
+	asJSON := fs.Bool("json", false, "print JSON")
+	if code, stop := parse(fs, args); stop {
+		return code, true
+	}
+	if len(fs.Args()) == 0 {
+		fmt.Fprintln(errOut, "gorex rename: no name")
+		return ExitUsage, true
+	}
+	name := strings.Join(fs.Args(), " ")
+	c, code := connect(errOut)
+	if c == nil {
+		return code, true
+	}
+	defer c.Close()
+	target, err := resolveTarget(c, sid.value())
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	res, err := c.Command(rex.LayoutCommand{Op: "pane.rename", SID: target, Name: name})
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if res.Code != "" {
+		fmt.Fprintf(errOut, "gorex: %s: %s\n", res.Code, res.Error)
+		return codeForResult(res), true
+	}
+	if *asJSON {
+		WriteJSON(out, res)
+	}
+	return ExitOK, true
+}
+
 func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("send", errOut)
 	sid := targetFlag(fs)
@@ -432,7 +490,7 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	target, err := resolveTarget(c, *sid)
+	target, err := resolveTarget(c, sid.value())
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -465,7 +523,7 @@ func captureCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	target, err := resolveTarget(c, *sid)
+	target, err := resolveTarget(c, sid.value())
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -799,7 +857,7 @@ func waitCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	target, err := resolveTarget(c, *sid)
+	target, err := resolveTarget(c, sid.value())
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
@@ -960,7 +1018,7 @@ func actionCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer c.Close()
-	target := *sid
+	target := sid.value()
 	if target != "" {
 		var err error
 		target, err = resolveTarget(c, target)

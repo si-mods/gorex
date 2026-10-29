@@ -53,8 +53,10 @@ type Node struct {
 // Pane is a terminal attached to a session of the server, or of a remote
 // host's.
 type Pane struct {
-	ID     int
-	SID    string
+	ID  int
+	SID string
+	// Name is the label the user gave the pane, "" to follow its program.
+	Name   string
 	Tab    *Tab
 	Node   *Node
 	term   *terminal.Terminal
@@ -120,18 +122,21 @@ type App struct {
 	focusReq *Pane
 
 	// The command palette, the host's popover and the tab being renamed.
-	paletteOpen  bool
-	paletteQuery string
-	paletteSel   int
-	hostOpen     bool
-	renaming     *Tab
-	renameText   string
-	renameFocus  bool
-	saveDue      bool
-	lastSave     time.Time
-	quitting     bool
-	focusedWin   bool
-	title        string
+	paletteOpen   bool
+	paletteQuery  string
+	paletteSel    int
+	hostOpen      bool
+	renaming      *Tab
+	renameText    string
+	renameFocus   bool
+	paneRenaming  *Pane
+	paneNameText  string
+	paneNameFocus bool
+	saveDue       bool
+	lastSave      time.Time
+	quitting      bool
+	focusedWin    bool
+	title         string
 
 	// The workspace's popover, the field that renames it, Close
 	// Session's question, and the palette listing the workspaces.
@@ -678,10 +683,16 @@ func abs(v float32) float32 {
 
 // resizeFocused moves the nearest divider of the focused pane on the
 // axis of dx, dy.
-func (a *App) resizeFocused(dx, dy int) {
+func (a *App) resizeFocused(dx, dy int) { a.resizeFocusedBy(dx, dy, 5) }
+
+// resizeFocusedBy moves the nearest matching divider by amount percent.
+func (a *App) resizeFocusedBy(dx, dy int, amount float32) {
 	t := a.tab()
 	if t == nil || t.Focus == nil {
 		return
+	}
+	if amount <= 0 || float32IsBad(amount) {
+		amount = 5
 	}
 	vertical := dy != 0
 	for n := t.Focus.Node; n.Parent != nil; n = n.Parent {
@@ -689,7 +700,7 @@ func (a *App) resizeFocused(dx, dy int) {
 		if p.Vertical != vertical {
 			continue
 		}
-		step := float32(0.05)
+		step := amount / 100
 		if dx < 0 || dy < 0 {
 			step = -step
 		}
@@ -697,6 +708,16 @@ func (a *App) resizeFocused(dx, dy int) {
 		a.changed()
 		return
 	}
+}
+
+// setSplitRatio sets the nearest split of the focused pane.
+func (a *App) setSplitRatio(ratio float32) {
+	t := a.tab()
+	if t == nil || t.Focus == nil || t.Focus.Node.Parent == nil || float32IsBad(ratio) {
+		return
+	}
+	t.Focus.Node.Parent.Ratio = min(max(ratio, 0.1), 0.9)
+	a.changed()
 }
 
 // equalize gives every split of the tab equal shares, by the panes on
@@ -761,6 +782,9 @@ func (a *App) zoom(p *Pane, on bool) {
 // program set, and the directory it works in.
 func (p *Pane) label() (name, detail string) {
 	in := p.info
+	if p.Name != "" {
+		return p.Name, shortDir(in.Dir)
+	}
 	prog := programOf(in.Program)
 	dir := shortDir(in.Dir)
 	if in.Program == "" {
@@ -876,7 +900,8 @@ type savedTab struct {
 }
 
 type savedNode struct {
-	SID string `json:"sid,omitempty"`
+	SID  string `json:"sid,omitempty"`
+	Name string `json:"name,omitempty"`
 	// Host is the id of the remote host of the session, "" for this
 	// machine's.
 	Host     string     `json:"host,omitempty"`
@@ -902,7 +927,7 @@ func (a *App) savedTab(t *Tab) savedTab {
 	var save func(n *Node) *savedNode
 	save = func(n *Node) *savedNode {
 		if p := n.Pane; p != nil {
-			s := &savedNode{SID: p.SID, Dir: p.info.Dir}
+			s := &savedNode{SID: p.SID, Name: p.Name, Dir: p.info.Dir}
 			if p.host != nil {
 				s.Host = p.host.ID
 			}
@@ -964,11 +989,11 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 				if h == nil || s.SID == "" {
 					return nil
 				}
-				p = &Pane{ID: a.id(), SID: s.SID, host: h, info: rex.SessionInfo{ID: s.SID, Dir: s.Dir}, startDir: s.Dir}
+				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, host: h, info: rex.SessionInfo{ID: s.SID, Dir: s.Dir}, startDir: s.Dir}
 				a.attach(p, s.Cols, s.Rows)
 			} else if in, ok := live[s.SID]; ok && !used[s.SID] {
 				used[s.SID] = true
-				p = &Pane{ID: a.id(), SID: s.SID, info: in, startDir: s.Dir}
+				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, info: in, startDir: s.Dir}
 				a.attach(p, in.Cols, in.Rows)
 			} else {
 				dir := s.Dir
@@ -976,7 +1001,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 					dir, _ = os.UserHomeDir()
 				}
 				p = a.newPane(nil, dir, s.Cols, s.Rows)
-				p.restored = true
+				p.Name, p.restored = s.Name, true
 			}
 			p.Tab, p.Node = t, n
 			n.Pane = p
@@ -1223,3 +1248,130 @@ func (a *App) notifyStatus(h *hostConn, t *Tab, p *Pane, r *rex.ProgramStatus) {
 
 // laterService queues a menu action without keeping a build context.
 func (a *App) laterService(fn func()) { a.post(fn); a.services.Invalidate() }
+
+// movePaneToTab moves pane p into tab t, beside the pane that has its
+// focus. Its session keeps running and its term is not recreated.
+func (a *App) movePaneToTab(p *Pane, t *Tab) {
+	if p == nil || t == nil || p.Tab == nil || p.Tab == t {
+		return
+	}
+	if t.Root != nil && p.host != t.host() {
+		return
+	}
+	if t.Focus == nil || t.Root == nil {
+		src, wasActive := p.Tab, a.tab() == p.Tab
+		a.detachPane(p)
+		p.Tab, p.Node = t, &Node{ID: a.id(), Pane: p}
+		t.Root, t.Zoom = p.Node, nil
+		t.setFocus(p)
+		a.finishPaneMove(t, p, src, wasActive)
+		a.changed()
+		return
+	}
+	a.movePaneToPane(p, t.Focus)
+}
+
+// movePaneToPane moves pane p beside target, in target's tab. It works
+// within a tab too, detaching p and splitting target's node.
+func (a *App) movePaneToPane(p, target *Pane) {
+	if p == nil || target == nil || p == target || p.Tab == nil || p.host != target.host {
+		return
+	}
+	t, src, wasActive := target.Tab, p.Tab, a.tab() == p.Tab
+	a.detachPane(p)
+	old := target.Node
+	if old == nil || t.Root == nil {
+		p.Tab, p.Node = t, &Node{ID: a.id(), Pane: p}
+		t.Root, t.Zoom = p.Node, nil
+		t.setFocus(p)
+		a.finishPaneMove(t, p, src, wasActive)
+		a.changed()
+		return
+	}
+	sp := &Node{ID: a.id(), Parent: old.Parent, A: old, B: &Node{ID: a.id(), Pane: p, Parent: nil}, Ratio: 0.5}
+	sp.B.Parent = sp
+	if old.Parent == nil {
+		t.Root = sp
+	} else if old.Parent.A == old {
+		old.Parent.A = sp
+	} else {
+		old.Parent.B = sp
+	}
+	old.Parent = sp
+	p.Tab, p.Node = t, sp.B
+	t.Zoom = nil
+	t.setFocus(p)
+	a.finishPaneMove(t, p, src, wasActive)
+	a.changed()
+}
+
+// finishPaneMove settles focus after p moved to t from src.
+func (a *App) finishPaneMove(t *Tab, p *Pane, src *Tab, wasActive bool) {
+	if src != t && len(src.panes()) == 0 {
+		a.removeTab(src)
+		if wasActive {
+			if i := slices.Index(a.tabs, t); i >= 0 {
+				a.selectTab(i)
+			}
+		}
+	}
+	switch {
+	case a.tab() == t:
+		a.focusReq = p
+	case wasActive && a.tab() == src && src.Focus != nil:
+		a.focusReq = src.Focus
+	}
+}
+
+// paneName is the name a user gave a pane: trimmed, without control
+// characters, and cut to 64 characters.
+func paneName(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(s))
+	if r := []rune(s); len(r) > 64 {
+		return string(r[:64])
+	}
+	return s
+}
+
+// detachPane removes p from its tab's tree, promoting its sibling, and
+// leaves the tab empty when p was its only pane.
+func (a *App) detachPane(p *Pane) {
+	t, n := p.Tab, p.Node
+	if t == nil || n == nil {
+		return
+	}
+	if t.Zoom == p {
+		t.Zoom = nil
+	}
+	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
+	if n.Parent == nil {
+		t.Root, t.Focus = nil, nil
+		p.Tab, p.Node = nil, nil
+		return
+	}
+	parent, other := n.Parent, n.Parent.A
+	if other == n {
+		other = n.Parent.B
+	}
+	parent.Pane, parent.Vertical, parent.Ratio = other.Pane, other.Vertical, other.Ratio
+	parent.A, parent.B = other.A, other.B
+	if parent.Pane != nil {
+		parent.Pane.Node = parent
+	} else {
+		parent.A.Parent, parent.B.Parent = parent, parent
+	}
+	if t.Focus == p {
+		t.Focus = nil
+		if len(t.recent) > 0 {
+			t.setFocus(t.recent[len(t.recent)-1])
+		} else if ps := t.panes(); len(ps) > 0 {
+			t.setFocus(ps[0])
+		}
+	}
+	p.Tab, p.Node = nil, nil
+}

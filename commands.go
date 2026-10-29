@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"slices"
@@ -110,8 +111,12 @@ func (a actionArg) check(v any) error {
 			return fmt.Errorf("want one of %s", strings.Join(a.Values, ", "))
 		}
 	case "number":
-		switch v.(type) {
-		case float64, float32, int, int64:
+		switch n := v.(type) {
+		case float64:
+			ok = !math.IsNaN(n) && !math.IsInf(n, 0)
+		case float32:
+			ok = !float32IsBad(n)
+		case int, int64:
 			ok = true
 		}
 	case "integer":
@@ -269,16 +274,47 @@ var (
 			return nil
 		},
 	}
-	cmdPalette     = command{ID: "palette.open", Name: locales.Messages.CmdCommandPalette, Accel: "CmdOrCtrl+Shift+P", Keys: "⇧⌘P", Other: ctrlShift(ui.KeyP), Run: func(a *App) { a.openPalette() }, Hidden: true}
-	cmdPalette2    = command{ID: "pane.goto", Name: locales.Messages.CmdGoToPane, Accel: "CmdOrCtrl+P", Keys: "⌘P", Run: func(a *App) { a.openPalette() }, Hidden: true}
-	cmdFocusLeft   = command{ID: "pane.focus.left", Name: locales.Messages.CmdFocusPaneLeft, Accel: "CmdOrCtrl+Alt+Left", Keys: "⌥⌘←", Other: shortcut{ui.Alt, ui.KeyLeft}, Run: func(a *App) { a.moveFocus(-1, 0) }}
-	cmdFocusRight  = command{ID: "pane.focus.right", Name: locales.Messages.CmdFocusPaneRight, Accel: "CmdOrCtrl+Alt+Right", Keys: "⌥⌘→", Other: shortcut{ui.Alt, ui.KeyRight}, Run: func(a *App) { a.moveFocus(1, 0) }}
-	cmdFocusUp     = command{ID: "pane.focus.up", Name: locales.Messages.CmdFocusPaneAbove, Accel: "CmdOrCtrl+Alt+Up", Keys: "⌥⌘↑", Other: shortcut{ui.Alt, ui.KeyUp}, Run: func(a *App) { a.moveFocus(0, -1) }}
-	cmdFocusDown   = command{ID: "pane.focus.down", Name: locales.Messages.CmdFocusPaneBelow, Accel: "CmdOrCtrl+Alt+Down", Keys: "⌥⌘↓", Other: shortcut{ui.Alt, ui.KeyDown}, Run: func(a *App) { a.moveFocus(0, 1) }}
-	cmdGrowLeft    = command{ID: "pane.resize.left", Name: locales.Messages.CmdMoveDividerLeft, Accel: "CmdOrCtrl+Ctrl+Left", Keys: "⌃⌘←", Other: shortcut{ui.Alt | ui.Shift, ui.KeyLeft}, Run: func(a *App) { a.resizeFocused(-1, 0) }}
-	cmdGrowRight   = command{ID: "pane.resize.right", Name: locales.Messages.CmdMoveDividerRight, Accel: "CmdOrCtrl+Ctrl+Right", Keys: "⌃⌘→", Other: shortcut{ui.Alt | ui.Shift, ui.KeyRight}, Run: func(a *App) { a.resizeFocused(1, 0) }}
-	cmdGrowUp      = command{ID: "pane.resize.up", Name: locales.Messages.CmdMoveDividerUp, Accel: "CmdOrCtrl+Ctrl+Up", Keys: "⌃⌘↑", Other: shortcut{ui.Alt | ui.Shift, ui.KeyUp}, Run: func(a *App) { a.resizeFocused(0, -1) }}
-	cmdGrowDown    = command{ID: "pane.resize.down", Name: locales.Messages.CmdMoveDividerDown, Accel: "CmdOrCtrl+Ctrl+Down", Keys: "⌃⌘↓", Other: shortcut{ui.Alt | ui.Shift, ui.KeyDown}, Run: func(a *App) { a.resizeFocused(0, 1) }}
+	cmdPalette    = command{ID: "palette.open", Name: locales.Messages.CmdCommandPalette, Accel: "CmdOrCtrl+Shift+P", Keys: "⇧⌘P", Other: ctrlShift(ui.KeyP), Run: func(a *App) { a.openPalette() }, Hidden: true}
+	cmdPalette2   = command{ID: "pane.goto", Name: locales.Messages.CmdGoToPane, Accel: "CmdOrCtrl+P", Keys: "⌘P", Run: func(a *App) { a.openPalette() }, Hidden: true}
+	cmdFocusLeft  = command{ID: "pane.focus.left", Name: locales.Messages.CmdFocusPaneLeft, Accel: "CmdOrCtrl+Alt+Left", Keys: "⌥⌘←", Other: shortcut{ui.Alt, ui.KeyLeft}, Run: func(a *App) { a.moveFocus(-1, 0) }}
+	cmdFocusRight = command{ID: "pane.focus.right", Name: locales.Messages.CmdFocusPaneRight, Accel: "CmdOrCtrl+Alt+Right", Keys: "⌥⌘→", Other: shortcut{ui.Alt, ui.KeyRight}, Run: func(a *App) { a.moveFocus(1, 0) }}
+	cmdFocusUp    = command{ID: "pane.focus.up", Name: locales.Messages.CmdFocusPaneAbove, Accel: "CmdOrCtrl+Alt+Up", Keys: "⌥⌘↑", Other: shortcut{ui.Alt, ui.KeyUp}, Run: func(a *App) { a.moveFocus(0, -1) }}
+	cmdFocusDown  = command{ID: "pane.focus.down", Name: locales.Messages.CmdFocusPaneBelow, Accel: "CmdOrCtrl+Alt+Down", Keys: "⌥⌘↓", Other: shortcut{ui.Alt, ui.KeyDown}, Run: func(a *App) { a.moveFocus(0, 1) }}
+	cmdGrowLeft   = command{
+		ID: "pane.resize.left", Name: locales.Messages.CmdMoveDividerLeft, Accel: "CmdOrCtrl+Ctrl+Left", Keys: "⌃⌘←", Other: shortcut{ui.Alt | ui.Shift, ui.KeyLeft},
+		Args: []actionArg{{Name: "amount", Type: "number", Optional: true}},
+		Run:  func(a *App) { a.resizeFocused(-1, 0) },
+		RunArgs: func(a *App, args map[string]any) error {
+			a.resizeFocusedBy(-1, 0, argFloat(args, "amount"))
+			return nil
+		},
+	}
+	cmdGrowRight = command{
+		ID: "pane.resize.right", Name: locales.Messages.CmdMoveDividerRight, Accel: "CmdOrCtrl+Ctrl+Right", Keys: "⌃⌘→", Other: shortcut{ui.Alt | ui.Shift, ui.KeyRight},
+		Args:    []actionArg{{Name: "amount", Type: "number", Optional: true}},
+		Run:     func(a *App) { a.resizeFocused(1, 0) },
+		RunArgs: func(a *App, args map[string]any) error { a.resizeFocusedBy(1, 0, argFloat(args, "amount")); return nil },
+	}
+	cmdGrowUp = command{
+		ID: "pane.resize.up", Name: locales.Messages.CmdMoveDividerUp, Accel: "CmdOrCtrl+Ctrl+Up", Keys: "⌃⌘↑", Other: shortcut{ui.Alt | ui.Shift, ui.KeyUp},
+		Args: []actionArg{{Name: "amount", Type: "number", Optional: true}},
+		Run:  func(a *App) { a.resizeFocused(0, -1) },
+		RunArgs: func(a *App, args map[string]any) error {
+			a.resizeFocusedBy(0, -1, argFloat(args, "amount"))
+			return nil
+		},
+	}
+	cmdGrowDown = command{
+		ID: "pane.resize.down", Name: locales.Messages.CmdMoveDividerDown, Accel: "CmdOrCtrl+Ctrl+Down", Keys: "⌃⌘↓", Other: shortcut{ui.Alt | ui.Shift, ui.KeyDown},
+		Args:    []actionArg{{Name: "amount", Type: "number", Optional: true}},
+		Run:     func(a *App) { a.resizeFocused(0, 1) },
+		RunArgs: func(a *App, args map[string]any) error { a.resizeFocusedBy(0, 1, argFloat(args, "amount")); return nil },
+	}
+	cmdPaneRatio = command{
+		ID: "pane.ratio", Name: func(locales.Messages) string { return "Set Split Ratio" }, Hidden: true,
+		Args:    []actionArg{{Name: "ratio", Type: "number"}},
+		RunArgs: func(a *App, args map[string]any) error { a.setSplitRatio(argFloat(args, "ratio")); return nil },
+	}
 	cmdClear       = command{ID: "screen.clear", Name: locales.Messages.CmdClearScreen, Accel: "CmdOrCtrl+K", Keys: "⌘K", Other: ctrlShift(ui.KeyK), Run: func(a *App) { a.clearFocused() }, Hidden: true}
 	cmdClearScroll = command{ID: "scrollback.clear", Name: locales.Messages.CmdClearScrollback, Run: func(a *App) { a.clearFocused() }}
 	cmdRestart     = command{ID: "pane.restart", Name: locales.Messages.CmdRestartShell, Run: func(a *App) { a.restartFocused() }}
@@ -322,6 +358,28 @@ var (
 )
 
 // argString returns the string argument name, "" when absent.
+func float32IsBad(n float32) bool { return math.IsNaN(float64(n)) || math.IsInf(float64(n), 0) }
+
+func argFloat(args map[string]any, name string) float32 {
+	switch n := args[name].(type) {
+	case float64:
+		if math.IsNaN(n) || math.IsInf(n, 0) {
+			return 0
+		}
+		return float32(n)
+	case float32:
+		if float32IsBad(n) {
+			return 0
+		}
+		return n
+	case int:
+		return float32(n)
+	case int64:
+		return float32(n)
+	}
+	return 0
+}
+
 func argString(args map[string]any, name string) string {
 	s, _ := args[name].(string)
 	return s
@@ -358,7 +416,7 @@ var sessionCommands = []*command{
 }
 
 // commands are all of them.
-var commands = append(slices.Clone(paletteCommands), &cmdPalette, &cmdPalette2, &cmdClear, &cmdModeEnter, &cmdModeExit, &cmdModeExitAll)
+var commands = append(slices.Clone(paletteCommands), &cmdPalette, &cmdPalette2, &cmdClear, &cmdModeEnter, &cmdModeExit, &cmdModeExitAll, &cmdPaneRatio)
 
 func init() {
 	for _, cmd := range commands {
