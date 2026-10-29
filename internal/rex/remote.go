@@ -798,6 +798,9 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			return nil, errors.New("rex: no such client")
 		}
 		cfg.Allowed[i].ShareSessions = req.On
+		if !req.On {
+			done = append(done, s.dropUnshared)
+		}
 	case "remote.shareLayoutSet":
 		cfg.ShareLayout = req.On
 	case "remote.controlSet":
