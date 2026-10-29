@@ -38,11 +38,11 @@ type ghosttyConfig struct {
 
 	CopyOnSelect      terminal.CopyOnSelect
 	NoClipboardWrite  bool
-	ClipboardRead     terminal.ClipboardAccess
+	ClipboardRead     *terminal.ClipboardAccess
 	RightClick        terminal.RightClickAction
 	Padding           *terminal.Padding
 	PaddingColor      *terminal.PaddingColor
-	ImageLimit        int64
+	ImageLimit        *int64
 	MinimumContrast   float32
 	Keybinds          []terminal.Keybind
 	NoDefaultKeybinds bool
@@ -261,26 +261,33 @@ func (c *ghosttyConfig) set(key, val string) {
 			c.CopyOnSelect = terminal.CopyOnSelectClipboard
 		}
 	case "clipboard-write":
-		c.NoClipboardWrite = strings.ToLower(val) == "deny"
+		switch strings.ToLower(val) {
+		case "deny", "ask": // the library has no write prompt: refuse
+			c.NoClipboardWrite = true
+		case "allow":
+			c.NoClipboardWrite = false
+		}
 	case "clipboard-read":
 		switch strings.ToLower(val) {
 		case "allow":
-			c.ClipboardRead = terminal.ClipboardAllow
+			a := terminal.ClipboardAllow
+			c.ClipboardRead = &a
 		case "ask":
-			c.ClipboardRead = terminal.ClipboardAsk
-		default:
-			c.ClipboardRead = terminal.ClipboardDeny
+			a := terminal.ClipboardAsk
+			c.ClipboardRead = &a
+		case "deny":
+			a := terminal.ClipboardDeny
+			c.ClipboardRead = &a
 		}
 	case "window-padding-x", "window-padding-y":
-		f, err := strconv.ParseFloat(val, 32)
-		if err == nil {
+		if f, ok := paddingValue(val); ok {
 			if c.Padding == nil {
-				c.Padding = &terminal.Padding{X: 6, Y: 4}
+				c.Padding = &terminal.Padding{X: 2, Y: 2}
 			}
 			if strings.HasSuffix(key, "-x") {
-				c.Padding.X = float32(f)
+				c.Padding.X = f
 			} else {
-				c.Padding.Y = float32(f)
+				c.Padding.Y = f
 			}
 		}
 	case "window-padding-color":
@@ -296,8 +303,12 @@ func (c *ghosttyConfig) set(key, val string) {
 			c.PaddingColor = &col
 		}
 	case "image-storage-limit":
-		if n, err := strconv.ParseInt(val, 10, 64); err == nil {
-			c.ImageLimit = n
+		if n, err := strconv.ParseUint(val, 10, 64); err == nil && n <= 4<<30 {
+			i := int64(n)
+			if n == 0 {
+				i = -1 // the library refuses images with a negative limit
+			}
+			c.ImageLimit = &i
 		}
 	case "right-click-action":
 		if a, ok := rightClickActions[strings.ToLower(val)]; ok {
@@ -567,11 +578,11 @@ func termOptions() terminal.Options {
 
 		CopyOnSelect:      ghostty.CopyOnSelect,
 		NoClipboardWrite:  ghostty.NoClipboardWrite,
-		ClipboardRead:     ghostty.ClipboardRead,
+		ClipboardRead:     clipboardReadOrAsk(ghostty.ClipboardRead),
 		RightClick:        ghostty.RightClick,
 		Padding:           paddingOrZero(ghostty.Padding),
 		PaddingColor:      paddingColorOrZero(ghostty.PaddingColor),
-		ImageLimit:        ghostty.ImageLimit,
+		ImageLimit:        imageLimitOrZero(ghostty.ImageLimit),
 		MinimumContrast:   ghostty.MinimumContrast,
 		Keybinds:          ghostty.Keybinds,
 		NoDefaultKeybinds: ghostty.NoDefaultKeybinds,
@@ -583,6 +594,31 @@ func paddingOrZero(p *terminal.Padding) terminal.Padding {
 		return terminal.Padding{}
 	}
 	return *p
+}
+
+func clipboardReadOrAsk(a *terminal.ClipboardAccess) terminal.ClipboardAccess {
+	if a == nil {
+		return terminal.ClipboardAsk
+	}
+	return *a
+}
+
+func imageLimitOrZero(n *int64) int64 {
+	if n == nil {
+		return 0
+	}
+	return *n
+}
+
+// paddingValue reads Ghostty's window padding, a u32; the comma form's
+// two sides are one value to the library, which takes the first.
+func paddingValue(v string) (float32, bool) {
+	v, _, _ = strings.Cut(v, ",")
+	n, err := strconv.ParseUint(strings.TrimSpace(v), 10, 32)
+	if err != nil {
+		return 0, false
+	}
+	return float32(n), true
 }
 
 func paddingColorOrZero(p *terminal.PaddingColor) terminal.PaddingColor {

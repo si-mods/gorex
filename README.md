@@ -163,8 +163,10 @@ panes.
 Options GoRex maps fully: the colors and fonts above, `cursor-style`,
 `cursor-style-blink`, `scrollback-limit`, `macos-option-as-alt`,
 `copy-on-select`, `right-click-action`, `minimum-contrast`,
-`clipboard-read`, `clipboard-write`, `window-padding-x`,
-`window-padding-y`, `window-padding-color`, `image-storage-limit`, and
+`clipboard-read` (allow, ask or deny), `clipboard-write` (allow or
+deny; ask is treated as deny), the first value of `window-padding-x`
+and `window-padding-y` (the library has one width and one height),
+`window-padding-color`, `image-storage-limit` (0 refuses images), and
 the supported `keybind`s. Options it reads but leaves out, as the library
 has no mapping: `background-opacity`, `background-blur`,
 `mouse-hide-while-typing`, `scroll-multiplier`, `window-padding-balance`,
