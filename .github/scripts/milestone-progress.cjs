@@ -134,12 +134,8 @@ async function update({ github, context, core }) {
   const pr = await pullRequestForEvent({ github, context });
   if (!pr || (pr.merged !== true && !pr.merged_at)) return;
 
-  const association = pr.author_association || '';
-  if (association && !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association)) {
-    core.warning(`PR #${pr.number} is from ${association}, not a repository member; progress is not updated.`);
-    return;
-  }
-
+  // The merge is the authorization: this only runs for a merged PR, or a
+  // manual replay of one, and edits only ROADMAP_ISSUE.
   const body = stripComments(pr.body);
   const progress = parseProgress(body);
   if (!progress) {
