@@ -44,6 +44,10 @@
   "menuTabs": "标签页",
   "menuInspector": "检查器",
   "menuShowTab": "显示标签页 {n}",
+  "menuShowSpace": "显示空间 {n}",
+  "@menuShowSpace": {
+    "description": "菜单项：显示第 n 个空间，n 从 1 到 9。"
+  },
   "appearanceSystem": "系统",
   "appearanceLight": "浅色",
   "appearanceDark": "深色",
@@ -148,6 +152,10 @@
   "settingsMoreThemes": "还有 {count} 个：输入关键词以缩小范围。",
   "settingsKeyboardNote": "GoRex 的快捷键优先于终端按键。Ghostty 的键位绑定在其配置中设置。",
   "settingsShowTabRange": "显示标签页 1…9",
+  "settingsShowSpaceRange": "显示第 1 至 9 个空间",
+  "@settingsShowSpaceRange": {
+    "description": "键盘设置行：显示第 1 至第 9 个空间的按键。"
+  },
   "settingsNextPrevTab": "下一个标签页、上一个标签页",
   "settingsDevBuild": "开发版本",
   "settingsVersion": "版本 {version}",

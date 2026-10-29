@@ -412,7 +412,10 @@ func shortcutRows() []shortcutRow {
 	if runtime.GOOS == "darwin" {
 		first, last, cycle = "⌘1", "⌘9", "⌃Tab, ⇧⌃Tab"
 	}
-	return append(rows, shortcutRow{Title: locales.SettingsShowTabRange(), Keys: first + " … " + last}, shortcutRow{Title: locales.SettingsNextPrevTab(), Keys: cycle})
+	return append(rows,
+		shortcutRow{Title: locales.SettingsShowTabRange(), Keys: first + " … " + last},
+		shortcutRow{Title: locales.SettingsShowSpaceRange(), Keys: showSpaceKeys(1) + " … " + showSpaceKeys(9)},
+		shortcutRow{Title: locales.SettingsNextPrevTab(), Keys: cycle})
 }
 
 func (a *App) keyboardSettings(c *ui.Context, k *colors) {

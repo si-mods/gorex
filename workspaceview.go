@@ -241,6 +241,75 @@ func spaceDot(c *ui.Context, k *colors, w *Workspace) ui.Element {
 	return dot.Border(1, k.textFaint)
 }
 
+// spaceStrip is the foot of the sidebar's spaces: a dot for each space,
+// the window's ringed, and a button that makes another. A dot shows its
+// space, or the window showing it.
+func (a *App) spaceStrip(c *ui.Context, k *colors) {
+	if a.st == nil {
+		ui.Spacer(c)
+		return
+	}
+	ui.Row(c).Grow(1).MinWidth(0).ClipX().Gap(2).AlignItems(ui.Center).Children(func() {
+		for i, w := range a.st.workspaces {
+			a.spaceDotButton(c, k, i, w)
+		}
+		if b := iconButton(c, k, "plus", cmdNewSession.Title(), 22, 13).Tooltip(cmdNewSession.Title()); b.Clicked() {
+			a.later(c, a.newWorkspace)
+		}
+	})
+}
+
+// spaceDotButton is a space's dot in the strip: a click shows it, and a
+// right click on the window's own space renames or closes it.
+func (a *App) spaceDotButton(c *ui.Context, k *colors, i int, w *Workspace) {
+	label := w.Name
+	if w.app != nil && w != a.ws {
+		label += " · " + locales.SessionElsewhere()
+	}
+	if i < 9 {
+		label += "  " + showSpaceKeys(i+1)
+	}
+	b := ui.Box(c).Size(24, 24).Center().Radius(6).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+	if b.Hovered() {
+		b.Background(k.hover)
+	}
+	if w.app != nil && w != a.ws {
+		b.Opacity(0.5)
+	}
+	if b.Clicked() {
+		a.later(c, func() { a.showWorkspace(w) })
+	}
+	if w == a.ws {
+		b.ContextMenu(func(m *ui.Menu) {
+			if m.Item(cmdRenameSession.Title()).Chosen() {
+				a.startWorkspaceRename()
+			}
+			if m.Item(cmdCloseSession.Title()).Chosen() {
+				a.askCloseWorkspace()
+			}
+		})
+	}
+	b.Children(func() { spaceDotMark(c, k, w, w == a.ws) })
+}
+
+// spaceDotMark is a space's color in the strip: a dot of its base color,
+// or only an outline for the default look; the window's own space sits in
+// a ring.
+func spaceDotMark(c *ui.Context, k *colors, w *Workspace, own bool) {
+	dot := func(size float32) ui.Element {
+		d := ui.Box(c).Size(size, size).Radius(size / 2)
+		if hex, ok := spaceColorHex(w.Color); ok {
+			return d.Background(ui.Hex(hex))
+		}
+		return d.Border(1.5, k.textFaint)
+	}
+	if !own {
+		dot(12)
+		return
+	}
+	ui.Box(c).Size(18, 18).Radius(9).Border(2, k.text).Center().Children(func() { dot(14) })
+}
+
 // workspaceDetail says of a workspace how many tabs it has, and when
 // another window than a's shows it.
 func workspaceDetail(w *Workspace, a *App) string {

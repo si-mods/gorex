@@ -548,6 +548,141 @@ func TestSpaceColorPicker(t *testing.T) {
 	quit(st)
 }
 
+// TestShowSpace checks that Show Space counts the spaces from 1, that 9 is
+// the last, and that a number no space has does nothing.
+func TestShowSpace(t *testing.T) {
+	a, tt := newTestApp(t)
+	st := a.st
+	first := a.ws
+	second := st.addWorkspace()
+	third := st.addWorkspace()
+	tt.Frame()
+	a.showSpace(2)
+	tt.Frame()
+	if a.ws != second {
+		t.Fatalf("Show Space 2 shows %s", a.ws.Name)
+	}
+	a.showSpace(9)
+	tt.Frame()
+	if a.ws != third {
+		t.Fatalf("Show Space 9 shows %s", a.ws.Name)
+	}
+	a.showSpace(5)
+	tt.Frame()
+	if a.ws != third {
+		t.Errorf("Show Space 5 shows %s", a.ws.Name)
+	}
+	a.showSpace(0)
+	tt.Frame()
+	if a.ws != third {
+		t.Errorf("Show Space 0 shows %s", a.ws.Name)
+	}
+	a.showSpace(1)
+	tt.Frame()
+	if a.ws != first {
+		t.Errorf("Show Space 1 shows %s", a.ws.Name)
+	}
+	quit(st)
+}
+
+// spaceDotLabel is the label of a space's dot in the sidebar's strip: its
+// name, and its shortcut.
+func spaceDotLabel(i int, w *Workspace) string {
+	return w.Name + "  " + showSpaceKeys(i+1)
+}
+
+// TestSpaceStrip checks the dots at the foot of the sidebar: the 2nd shows
+// its space, and the plus button makes a space, which the window shows.
+func TestSpaceStrip(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left"}
+	st := a.st
+	a.ws.Name = "icy-ridge"
+	a.ws.Color = "teal"
+	second := st.addWorkspace()
+	second.Name = "quiet-harbor"
+	second.Color = "blue"
+	third := st.addWorkspace()
+	third.Name = "misty-canyon"
+	third.Color = "#ff8800"
+	tt.Frame()
+	before := len(st.workspaces)
+	if _, ok := tt.Find(spaceDotLabel(1, second)); !ok {
+		t.Fatalf("no dot for %s; texts %q", second.Name, tt.Texts())
+	}
+	if err := tt.Click(spaceDotLabel(1, second)); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	tt.Frame()
+	if a.ws != second {
+		t.Fatalf("the 2nd dot shows %s", a.ws.Name)
+	}
+	// A right click on the window's own dot renames or closes its space;
+	// another's has no menu.
+	if err := tt.RightClick(spaceDotLabel(2, third)); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if got := tt.Menu(); got != nil {
+		t.Errorf("another space's dot has the menu %q", got)
+	}
+	if err := tt.RightClick(spaceDotLabel(1, second)); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if got := tt.Menu(); !slices.Contains(got, cmdRenameSession.Title()) || !slices.Contains(got, cmdCloseSession.Title()) {
+		t.Fatalf("the own dot's menu is %q", got)
+	}
+	if err := tt.ChooseMenuItem(cmdRenameSession.Title()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !a.wsRenaming {
+		t.Error("Rename Space… did not open the space's name")
+	}
+	a.wsRenaming, a.wsRenameFocus = false, false
+	tt.Frame()
+	if err := tt.Click(cmdNewSession.Title()); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	tt.Frame()
+	if len(st.workspaces) != before+1 {
+		t.Fatalf("the plus button made %d spaces", len(st.workspaces)-before)
+	}
+	if a.ws != st.workspaces[len(st.workspaces)-1] {
+		t.Errorf("the plus button did not show the space it made")
+	}
+	quit(st)
+}
+
+// TestSpaceStripKeys checks that the shortcut of a space shows it, as the
+// menu's keys do on the platform it runs on.
+func TestSpaceStripKeys(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left"}
+	st := a.st
+	second := st.addWorkspace()
+	st.addWorkspace()
+	tt.Frame()
+	k := showSpaceKey(2)
+	if !tt.HasText(spaceDotLabel(1, second)) {
+		t.Fatalf("no dot for %s; texts %q", second.Name, tt.Texts())
+	}
+	tt.Key(k.Mods, k.Key)
+	tt.Frame()
+	tt.Frame()
+	if a.ws != second {
+		t.Fatalf("%s shows %s", k.String(), a.ws.Name)
+	}
+	quit(st)
+}
+
 // TestSpaceColorShots renders a window whose space is teal, light and
 // dark, into GOREX_SHOTS, to look at.
 func TestSpaceColorShots(t *testing.T) {
@@ -577,6 +712,39 @@ func TestSpaceColorShots(t *testing.T) {
 	}
 	a.wsOpen = false
 	quit(a.st)
+}
+
+// TestSpaceStripShots renders the sidebar's strip of four colored spaces,
+// light and dark, into GOREX_SHOTS, to look at.
+func TestSpaceStripShots(t *testing.T) {
+	dir := os.Getenv("GOREX_SHOTS")
+	if dir == "" {
+		t.Skip("GOREX_SHOTS names no directory")
+	}
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{TabPlacement: "left"}
+	st := a.st
+	a.ws.Color = "teal"
+	for _, c := range []string{"blue", "violet", ""} {
+		st.addWorkspace().Color = c
+	}
+	os.MkdirAll(dir, 0o755)
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		for range 3 {
+			tt.Frame()
+		}
+		name := fmt.Sprintf("strip-%s.png", map[bool]string{false: "light", true: "dark"}[dark])
+		f, err := os.Create(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		png.Encode(f, tt.Image())
+		f.Close()
+	}
+	quit(st)
 }
 
 // TestSessionShots renders the session popover, above the tabs and in the

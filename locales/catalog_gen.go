@@ -654,6 +654,20 @@ func (msgs Messages) MenuShowTab(n int) string {
 	return Catalog.Format(msgs.locale, "menuShowTab", map[string]any{"n": n})
 }
 
+// MenuShowSpace says "Show Space {n}"
+// in the language the app shows.
+//
+// Menu item that shows the nth space, from 1 to 9.
+func MenuShowSpace(n int) string { return In(i18n.Locale()).MenuShowSpace(n) }
+
+// MenuShowSpace says "Show Space {n}"
+// in the language of msgs.
+//
+// Menu item that shows the nth space, from 1 to 9.
+func (msgs Messages) MenuShowSpace(n int) string {
+	return Catalog.Format(msgs.locale, "menuShowSpace", map[string]any{"n": n})
+}
+
 // AppearanceSystem says "System"
 // in the language the app shows.
 //
@@ -2164,6 +2178,20 @@ func SettingsShowTabRange() string { return In(i18n.Locale()).SettingsShowTabRan
 // Keyboard section row: the keys that show the 1st to the 9th tab.
 func (msgs Messages) SettingsShowTabRange() string {
 	return Catalog.Format(msgs.locale, "settingsShowTabRange", nil)
+}
+
+// SettingsShowSpaceRange says "Show Space 1 to 9"
+// in the language the app shows.
+//
+// Keyboard section row: the keys that show the 1st to the 9th space.
+func SettingsShowSpaceRange() string { return In(i18n.Locale()).SettingsShowSpaceRange() }
+
+// SettingsShowSpaceRange says "Show Space 1 to 9"
+// in the language of msgs.
+//
+// Keyboard section row: the keys that show the 1st to the 9th space.
+func (msgs Messages) SettingsShowSpaceRange() string {
+	return Catalog.Format(msgs.locale, "settingsShowSpaceRange", nil)
 }
 
 // SettingsNextPrevTab says "Next Tab, Previous Tab"

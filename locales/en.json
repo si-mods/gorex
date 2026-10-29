@@ -182,6 +182,16 @@
       }
     }
   },
+  "menuShowSpace": "Show Space {n}",
+  "@menuShowSpace": {
+    "description": "Menu item that shows the nth space, from 1 to 9.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
   "appearanceSystem": "System",
   "@appearanceSystem": {
     "description": "Option: follow the system's appearance."
@@ -749,6 +759,10 @@
   "settingsShowTabRange": "Show Tab 1…9",
   "@settingsShowTabRange": {
     "description": "Keyboard section row: the keys that show the 1st to the 9th tab."
+  },
+  "settingsShowSpaceRange": "Show Space 1 to 9",
+  "@settingsShowSpaceRange": {
+    "description": "Keyboard section row: the keys that show the 1st to the 9th space."
   },
   "settingsNextPrevTab": "Next Tab, Previous Tab",
   "@settingsNextPrevTab": {

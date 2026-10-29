@@ -465,6 +465,28 @@ func ctrlShift(k ui.Key) shortcut { return shortcut{ui.Ctrl | ui.Shift, k} }
 // showTabKey is the shortcut of the nth tab, from 1 to 9.
 func showTabKey(n int) shortcut { return ctrlShift(ui.Key0 + ui.Key(n)) }
 
+// showSpaceKey is the shortcut of the nth space, from 1 to 9: Control and
+// the digit, which leaves the terminal Command. Elsewhere Control and the
+// digit are the terminal's, and Shift's are the tabs', so the spaces take
+// Alt.
+func showSpaceKey(n int) shortcut {
+	key := ui.Key0 + ui.Key(n)
+	if runtime.GOOS == "darwin" {
+		return shortcut{Mods: ui.Ctrl, Key: key}
+	}
+	return shortcut{Mods: ui.Ctrl | ui.Alt, Key: key}
+}
+
+// showSpaceKeys names the shortcut of the nth space as the interface
+// writes it, as the shortcuts of the tabs: "⌃1" on macOS, "Ctrl+Alt+1"
+// elsewhere.
+func showSpaceKeys(n int) string {
+	if runtime.GOOS == "darwin" {
+		return fmt.Sprintf("⌃%d", n)
+	}
+	return showSpaceKey(n).String()
+}
+
 // String writes the shortcut as menus take it, and as Windows shows it:
 // "Ctrl+Shift+T".
 func (s shortcut) String() string {
@@ -539,6 +561,28 @@ func (st *store) menu() *mygo.Menu {
 			},
 		})
 	}
+	spaceItems := make([]*mygo.MenuItem, 0, 10)
+	spaceItems = append(spaceItems, mygo.Separator())
+	for i := 1; i <= 9; i++ {
+		i := i
+		accel := fmt.Sprintf("Ctrl+%d", i)
+		if runtime.GOOS != "darwin" {
+			accel = showSpaceKey(i).String()
+		}
+		if st.recording {
+			accel = ""
+		} else if chord, ok := accelChord(accel); ok && st.noAccel[chord.String()] {
+			accel = ""
+		}
+		spaceItems = append(spaceItems, &mygo.MenuItem{
+			Label: locales.MenuShowSpace(i), Accelerator: accel,
+			Click: func(_ *mygo.MenuItem, w *mygo.Window) {
+				if a := st.appOf(w); a != nil {
+					a.do(func() { a.showSpace(i) })
+				}
+			},
+		})
+	}
 	appearance := func(label, v string) *mygo.MenuItem {
 		return &mygo.MenuItem{Label: label, Type: mygo.MenuItemRadio, Checked: prefs.Appearance == v, Click: func(*mygo.MenuItem, *mygo.Window) {
 			new(App).setAppearance(v) // it changes no window of its own
@@ -604,7 +648,7 @@ func (st *store) menu() *mygo.Menu {
 			{Role: mygo.RoleToggleDevTools, Label: locales.MenuInspector(), Hidden: !mygo.IsDev()},
 		}},
 		{Label: locales.MenuTabs(), Submenu: append(tabItems, mygo.Separator(), item(&cmdRenameTab), item(&cmdMoveTabWindow))},
-		{Label: locales.MenuSession(), Submenu: []*mygo.MenuItem{
+		{Label: locales.MenuSession(), Submenu: append([]*mygo.MenuItem{
 			item(&cmdNewSession),
 			item(&cmdChangeSession),
 			mygo.Separator(),
@@ -613,7 +657,7 @@ func (st *store) menu() *mygo.Menu {
 			mygo.Separator(),
 			item(&cmdRenameSession),
 			item(&cmdCloseSession),
-		}},
+		}, spaceItems...)},
 		{Role: mygo.RoleWindowMenu},
 	})
 }
@@ -774,6 +818,15 @@ func (a *App) shortcuts(c *ui.Context) {
 	}
 	if c.Shortcut(ui.Ctrl|ui.Shift, ui.KeyTab) {
 		a.cycleTab(-1)
+	}
+	for i := 1; i <= 9; i++ {
+		k := showSpaceKey(i)
+		if a.st != nil && a.st.noAccel[keyChord{Mods: k.Mods, Key: k.Key}.String()] {
+			continue
+		}
+		if c.Shortcut(k.Mods, k.Key) {
+			a.later(c, func() { a.showSpace(i) })
+		}
 	}
 	if runtime.GOOS != "windows" {
 		return

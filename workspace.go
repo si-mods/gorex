@@ -806,6 +806,22 @@ func (a *App) showWorkspace(w *Workspace) {
 	a.st.save()
 }
 
+// showSpace shows the nth space, from 1; 9 is the last, as showTab's
+// numbers the tabs. A number no space has does nothing.
+func (a *App) showSpace(n int) {
+	if a.st == nil || n < 1 || n > 9 {
+		return
+	}
+	homes := a.st.workspaces
+	if n == 9 || n > len(homes) {
+		n = len(homes)
+	}
+	if n < 1 {
+		return
+	}
+	a.showWorkspace(homes[n-1])
+}
+
 // newWorkspace shows a new workspace in the window.
 func (a *App) newWorkspace() {
 	if a.st != nil {
