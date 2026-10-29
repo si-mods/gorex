@@ -219,7 +219,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			if iconButton(c, k, "settings-2", locales.SidebarSettings(), 30, 16).Tooltip(tip(locales.SidebarSettings(), &cmdSettings)).Clicked() {
 				a.openSettings()
 			}
-			ui.Spacer(c)
+			a.spaceStrip(c, k)
 			a.hostButton(c, k)
 		})
 	})
