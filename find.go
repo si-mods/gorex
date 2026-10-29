@@ -29,6 +29,7 @@ func (a *App) openFind() {
 		a.findPane.term.EndSearch()
 	}
 	a.findPane, a.findText, a.findFocus = p, "", true
+	a.lastFind = ""
 	a.findStatus = terminal.SearchStatus{}
 	a.focusReq = nil
 	a.changed()
@@ -39,6 +40,9 @@ func (a *App) closeFind() {
 	p := a.findPane
 	if p != nil && p.term != nil {
 		p.term.EndSearch()
+	}
+	if a.findText != "" {
+		a.lastFind = a.findText
 	}
 	a.findPane, a.findText, a.findFocus = nil, "", false
 	a.findStatus = terminal.SearchStatus{}
@@ -60,6 +64,9 @@ func (a *App) findQuery() {
 
 // findNext selects the next match.
 func (a *App) findNext() {
+	if a.findPane == nil && !a.resumeFind() {
+		return
+	}
 	if p := a.findPane; p != nil && p.term != nil && a.findText != "" {
 		p.term.SearchNext()
 		a.changed()
@@ -68,10 +75,29 @@ func (a *App) findNext() {
 
 // findPrevious selects the previous match.
 func (a *App) findPrevious() {
+	if a.findPane == nil && !a.resumeFind() {
+		return
+	}
 	if p := a.findPane; p != nil && p.term != nil && a.findText != "" {
 		p.term.SearchPrevious()
 		a.changed()
 	}
+}
+
+// resumeFind reopens the bar on the last query, reporting whether there
+// was one.
+func (a *App) resumeFind() bool {
+	if a.lastFind == "" {
+		return false
+	}
+	last := a.lastFind
+	a.openFind()
+	if a.findPane == nil {
+		return false
+	}
+	a.findText, a.lastFind = last, last
+	a.findQuery()
+	return true
 }
 
 // findCount says how the search goes.
@@ -99,6 +125,9 @@ func (a *App) openLink(p *Pane, link string) bool {
 // panePath turns a printed file link into a path, resolving a relative one
 // against the pane's program directory; false for a URL or a missing path.
 func panePath(p *Pane, link string) (string, bool) {
+	if p != nil && p.host != nil {
+		return "", false // the path is on the host, not here
+	}
 	if strings.Contains(link, "://") {
 		return "", false
 	}
@@ -132,7 +161,8 @@ func panePath(p *Pane, link string) (string, bool) {
 }
 
 func fileURL(path string) string {
-	// A path may hold characters a URL escapes; a file URL keeps a
-	// Windows drive's colon, which url.URL does as a path's colon.
+	if filepath.VolumeName(path) != "" {
+		path = "/" + filepath.ToSlash(path)
+	}
 	return (&url.URL{Scheme: "file", Path: path}).String()
 }

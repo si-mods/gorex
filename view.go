@@ -335,12 +335,26 @@ func (a *App) findBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 		in := ui.TextInput(c.Key("query"), &a.findText).Placeholder(locales.FindPlaceholder()).
 			Grow(1).MinWidth(0).Height(22).FontSize(12.5)
 		if a.findFocus {
-			in.AutoFocus()
+			in.Focus()
+			a.findFocus = false
 		}
 		in.OnChange(a.findQuery)
 		in.OnShortcut(0, ui.KeyEscape, a.closeFind)
-		in.OnShortcut(0, ui.KeyEnter, a.findNext)
-		in.OnShortcut(ui.Shift, ui.KeyEnter, a.findPrevious)
+		in.OnTextKey(func(k ui.TextKey) bool {
+			if k.Key != ui.KeyEnter || k.Mods&^ui.Shift != 0 {
+				return false
+			}
+			if q := k.Text(); q != a.findText {
+				a.findText = q
+				a.findQuery()
+			}
+			if k.Mods&ui.Shift != 0 {
+				a.findPrevious()
+			} else {
+				a.findNext()
+			}
+			return true
+		})
 		if count := a.findCount(); count != "" {
 			ui.Text(c.Key("count"), count).FontSize(11.5).TextColor(k.textMuted).Shrink(0)
 		}

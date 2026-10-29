@@ -28,14 +28,25 @@ func TestFindBarSearches(t *testing.T) {
 	if got := a.findCount(); !strings.Contains(got, "2") {
 		t.Fatalf("count %q", got)
 	}
+	tt.Key(0, ui.KeyEnter)
+	tt.Key(ui.Shift, ui.KeyEnter)
 	a.findNext()
 	a.findPrevious()
 	tt.Frame()
+	if a.findPane != p {
+		t.Fatal("Enter closed the find bar")
+	}
 	tt.Key(0, ui.KeyEscape)
 	tt.Frame()
 	if a.findPane != nil || a.findText != "" || a.tab().Focus != p {
 		t.Fatalf("after escape: pane %v text %q focus %v", a.findPane != nil, a.findText, a.tab().Focus == p)
 	}
+	a.findNext()
+	tt.Frame()
+	if a.findPane != p || a.findText != "alpha" {
+		t.Fatalf("next after escape: pane %v text %q", a.findPane != nil, a.findText)
+	}
+	a.closeFind()
 }
 
 func TestPanePath(t *testing.T) {
@@ -53,5 +64,8 @@ func TestPanePath(t *testing.T) {
 	}
 	if _, ok := panePath(p, "missing.txt"); ok {
 		t.Fatal("opened a missing path")
+	}
+	if _, ok := panePath(&Pane{host: &hostConn{}, info: rex.SessionInfo{Dir: dir}}, "notes.txt"); ok {
+		t.Fatal("resolved a host path locally")
 	}
 }

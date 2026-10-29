@@ -133,9 +133,10 @@ type App struct {
 	paneNameText  string
 	paneNameFocus bool
 	// findPane is the pane whose find bar shows, findText its query, and
-	// findStatus how its search goes.
+	// findStatus how its search goes; lastFind reopens the bar.
 	findPane   *Pane
 	findText   string
+	lastFind   string
 	findStatus terminal.SearchStatus
 	findFocus  bool
 	saveDue    bool
@@ -538,10 +539,10 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	if p.closed {
 		return
 	}
+	p.closed = true
 	if a.findPane == p {
 		a.closeFind()
 	}
-	p.closed = true
 	if p.term != nil {
 		p.term.Close()
 	}
