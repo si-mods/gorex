@@ -27,7 +27,10 @@ func (p procInfo) programName() string {
 		if ext := filepath.Ext(base); strings.EqualFold(ext, ".exe") {
 			base = strings.TrimSuffix(base, ext)
 		}
-		if base != "" && len(base) > len(name) && strings.HasPrefix(base, name) {
+		if base != "" && strings.Contains(name, ".") && strings.Trim(name, "0123456789.") == "" {
+			// Claude Code's native binary is named after its version.
+			name = base
+		} else if base != "" && len(base) > len(name) && strings.HasPrefix(base, name) {
 			// p_comm is cut at 16 bytes.
 			name = base
 		}
