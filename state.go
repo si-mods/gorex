@@ -325,17 +325,29 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		p.stream = a.client.Stream(p.SID, cols, rows)
 		p.stream.OnData = onData
 		opts.Conn = p.stream
-		// Who types last takes the session's size back from a device that
-		// holds it (SizeLock): the session gets the pane's size again.
-		// Command's keys are the app's shortcuts.
-		opts.OnPaste = func(transfer.Data) bool {
+	}
+	// A paste offers the bytes the clipboard holds here, an image's among
+	// them: a program that reads the clipboard itself (Kitty's paste
+	// events) takes them even over SSH or on a host, where a path of this
+	// machine means nothing. Who types last takes the session's size back
+	// from a device that holds it (SizeLock): the session gets the pane's
+	// size again.
+	opts.OnPaste = func(d transfer.Data) bool {
+		if p.host == nil {
 			a.takeSize(p)
-			return false
 		}
+		if img, ok := pasteImageData(d); ok {
+			if p.term != nil {
+				p.term.PasteData(img)
+			}
+			return true
+		}
+		return false
 	}
 	// A key with a binding runs its action; one without goes to the
 	// program. Menu accelerators run before the terminal, so a sequence
-	// cannot start with one of those.
+	// cannot start with one of those. Command's keys are the app's
+	// shortcuts.
 	opts.OnKey = func(mods ui.Modifiers, key ui.Key) bool {
 		if p.host == nil && mods&ui.Super == 0 {
 			a.takeSize(p)

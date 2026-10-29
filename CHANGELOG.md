@@ -6,6 +6,11 @@
   (`pane.resize`), swapping (`pane.swap`), renaming (`pane.rename`) and
   moving a pane to another tab or a new tab (`pane.move`). Pane labels
   stay in snapshots.
+- A paste of a copied image file, or of text that is one absolute path to
+  an image here, offers the image's bytes ahead of the path: a program that
+  reads the clipboard itself (Kitty's paste events) gets the picture even
+  over SSH or on a remote host, where a path of this machine means nothing,
+  and a shell or an editor still gets the path.
 - Kitty graphics sent by file path (`t=f`) are read on the machine that
   runs the program, rewritten in-band, and replayed when a window attaches.
 - Find bar: Cmd+F/Ctrl+Shift+F searches the focused pane, with match count,
