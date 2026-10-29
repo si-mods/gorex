@@ -12,6 +12,9 @@
   next and previous, and Escape to close; search colors come from Ghostty's
   `search-*` options. Command-click opens URLs and file links, resolving
   relative paths against the pane's program directory.
+- Ghostty `clipboard-read`, `clipboard-write`, window padding, padding
+  color and image-storage-limit now reach the terminal; the README lists
+  which options map, are unsupported, or are ignored.
 
 ## 0.2.1
 

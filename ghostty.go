@@ -37,7 +37,12 @@ type ghosttyConfig struct {
 	OptionAsAlt   bool
 
 	CopyOnSelect      terminal.CopyOnSelect
+	NoClipboardWrite  bool
+	ClipboardRead     terminal.ClipboardAccess
 	RightClick        terminal.RightClickAction
+	Padding           *terminal.Padding
+	PaddingColor      *terminal.PaddingColor
+	ImageLimit        int64
 	MinimumContrast   float32
 	Keybinds          []terminal.Keybind
 	NoDefaultKeybinds bool
@@ -254,6 +259,45 @@ func (c *ghosttyConfig) set(key, val string) {
 		c.CopyOnSelect = terminal.CopyOnSelectNone
 		if strings.ToLower(val) == "clipboard" {
 			c.CopyOnSelect = terminal.CopyOnSelectClipboard
+		}
+	case "clipboard-write":
+		c.NoClipboardWrite = strings.ToLower(val) == "deny"
+	case "clipboard-read":
+		switch strings.ToLower(val) {
+		case "allow":
+			c.ClipboardRead = terminal.ClipboardAllow
+		case "ask":
+			c.ClipboardRead = terminal.ClipboardAsk
+		default:
+			c.ClipboardRead = terminal.ClipboardDeny
+		}
+	case "window-padding-x", "window-padding-y":
+		f, err := strconv.ParseFloat(val, 32)
+		if err == nil {
+			if c.Padding == nil {
+				c.Padding = &terminal.Padding{X: 6, Y: 4}
+			}
+			if strings.HasSuffix(key, "-x") {
+				c.Padding.X = float32(f)
+			} else {
+				c.Padding.Y = float32(f)
+			}
+		}
+	case "window-padding-color":
+		switch strings.ToLower(val) {
+		case "background":
+			col := terminal.PaddingBackground
+			c.PaddingColor = &col
+		case "extend":
+			col := terminal.PaddingExtend
+			c.PaddingColor = &col
+		case "extend-always":
+			col := terminal.PaddingExtendAlways
+			c.PaddingColor = &col
+		}
+	case "image-storage-limit":
+		if n, err := strconv.ParseInt(val, 10, 64); err == nil {
+			c.ImageLimit = n
 		}
 	case "right-click-action":
 		if a, ok := rightClickActions[strings.ToLower(val)]; ok {
@@ -522,11 +566,30 @@ func termOptions() terminal.Options {
 		OptionAsAlt: ghostty.OptionAsAlt,
 
 		CopyOnSelect:      ghostty.CopyOnSelect,
+		NoClipboardWrite:  ghostty.NoClipboardWrite,
+		ClipboardRead:     ghostty.ClipboardRead,
 		RightClick:        ghostty.RightClick,
+		Padding:           paddingOrZero(ghostty.Padding),
+		PaddingColor:      paddingColorOrZero(ghostty.PaddingColor),
+		ImageLimit:        ghostty.ImageLimit,
 		MinimumContrast:   ghostty.MinimumContrast,
 		Keybinds:          ghostty.Keybinds,
 		NoDefaultKeybinds: ghostty.NoDefaultKeybinds,
 	}
+}
+
+func paddingOrZero(p *terminal.Padding) terminal.Padding {
+	if p == nil {
+		return terminal.Padding{}
+	}
+	return *p
+}
+
+func paddingColorOrZero(p *terminal.PaddingColor) terminal.PaddingColor {
+	if p == nil {
+		return terminal.PaddingBackground
+	}
+	return *p
 }
 
 // reloadGhostty reads the configuration again and applies the font, colors,
