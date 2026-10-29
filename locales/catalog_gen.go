@@ -4411,3 +4411,59 @@ func HostsLayoutCloseTab() string { return In(i18n.Locale()).HostsLayoutCloseTab
 func (msgs Messages) HostsLayoutCloseTab() string {
 	return Catalog.Format(msgs.locale, "hostsLayoutCloseTab", nil)
 }
+
+// HostsLayoutLeft says "Resize left"
+// in the language the app shows.
+//
+// Resize a shared pane.
+func HostsLayoutLeft() string { return In(i18n.Locale()).HostsLayoutLeft() }
+
+// HostsLayoutLeft says "Resize left"
+// in the language of msgs.
+//
+// Resize a shared pane.
+func (msgs Messages) HostsLayoutLeft() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutLeft", nil)
+}
+
+// HostsLayoutRight says "Resize right"
+// in the language the app shows.
+//
+// Resize a shared pane.
+func HostsLayoutRight() string { return In(i18n.Locale()).HostsLayoutRight() }
+
+// HostsLayoutRight says "Resize right"
+// in the language of msgs.
+//
+// Resize a shared pane.
+func (msgs Messages) HostsLayoutRight() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutRight", nil)
+}
+
+// HostsLayoutUp says "Resize up"
+// in the language the app shows.
+//
+// Resize a shared pane.
+func HostsLayoutUp() string { return In(i18n.Locale()).HostsLayoutUp() }
+
+// HostsLayoutUp says "Resize up"
+// in the language of msgs.
+//
+// Resize a shared pane.
+func (msgs Messages) HostsLayoutUp() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutUp", nil)
+}
+
+// HostsLayoutDown says "Resize down"
+// in the language the app shows.
+//
+// Resize a shared pane.
+func HostsLayoutDown() string { return In(i18n.Locale()).HostsLayoutDown() }
+
+// HostsLayoutDown says "Resize down"
+// in the language of msgs.
+//
+// Resize a shared pane.
+func (msgs Messages) HostsLayoutDown() string {
+	return Catalog.Format(msgs.locale, "hostsLayoutDown", nil)
+}

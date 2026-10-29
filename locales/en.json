@@ -1514,5 +1514,21 @@
   "hostsLayoutCloseTab": "Close Tab",
   "@hostsLayoutCloseTab": {
     "description": "Host layout edit action."
+  },
+  "hostsLayoutLeft": "Resize left",
+  "@hostsLayoutLeft": {
+    "description": "Resize a shared pane."
+  },
+  "hostsLayoutRight": "Resize right",
+  "@hostsLayoutRight": {
+    "description": "Resize a shared pane."
+  },
+  "hostsLayoutUp": "Resize up",
+  "@hostsLayoutUp": {
+    "description": "Resize a shared pane."
+  },
+  "hostsLayoutDown": "Resize down",
+  "@hostsLayoutDown": {
+    "description": "Resize a shared pane."
   }
 }

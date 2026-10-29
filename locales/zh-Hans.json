@@ -416,5 +416,21 @@
   "hostsLayoutCloseTab": "关闭标签页",
   "@hostsLayoutCloseTab": {
     "description": "Host layout edit action."
+  },
+  "hostsLayoutLeft": "向左调整",
+  "@hostsLayoutLeft": {
+    "description": "Resize a shared pane."
+  },
+  "hostsLayoutRight": "向右调整",
+  "@hostsLayoutRight": {
+    "description": "Resize a shared pane."
+  },
+  "hostsLayoutUp": "向上调整",
+  "@hostsLayoutUp": {
+    "description": "Resize a shared pane."
+  },
+  "hostsLayoutDown": "向下调整",
+  "@hostsLayoutDown": {
+    "description": "Resize a shared pane."
   }
 }

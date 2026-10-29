@@ -16,8 +16,8 @@
   Settings › Remote Hosts per client, while others keep only their own
   sessions.
 - Remote hosts can share their layout read-only: Settings › Remote Hosts
-  shows the host's workspaces, tabs and panes with Focus, New Tab and
-  Close Tab commands, `gorex -S HOST layout`
+  shows the host's workspaces, tabs and panes with Focus, resize,
+  New Tab and Close Tab commands, `gorex -S HOST layout`
   reads it, and `gorex -S HOST events` follows layout changes when Share
   Layout is on. The server filters the layout to sessions the client may
   use, shows the rest as unavailable placeholders, and drops panes of
