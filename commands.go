@@ -449,7 +449,7 @@ func (cmd *command) menuAccel() string {
 func (st *store) menu() *mygo.Menu {
 	item := func(cmd *command) *mygo.MenuItem {
 		accel := cmd.menuAccel()
-		if st.overrides(cmd) {
+		if st.recording || st.overrides(cmd) {
 			accel = ""
 		}
 		return &mygo.MenuItem{Label: cmd.Title(), Accelerator: accel, Click: func(_ *mygo.MenuItem, w *mygo.Window) {
@@ -463,7 +463,9 @@ func (st *store) menu() *mygo.Menu {
 		if runtime.GOOS != "darwin" {
 			accel = showTabKey(i).String()
 		}
-		if chord, ok := accelChord(accel); ok && st.noAccel[chord.String()] {
+		if st.recording {
+			accel = ""
+		} else if chord, ok := accelChord(accel); ok && st.noAccel[chord.String()] {
 			accel = ""
 		}
 		tabItems = append(tabItems, &mygo.MenuItem{

@@ -144,7 +144,7 @@ type shortcutsFile struct {
 
 // loadShortcuts reads the app's own overrides, separate from the Lua file.
 func loadShortcuts() ([]shortcutBinding, error) {
-	b, err := os.ReadFile(filepath.Join(rex.Dir(), "shortcuts.json"))
+	b, err := os.ReadFile(rexShortcutsPath())
 	if os.IsNotExist(err) {
 		return nil, nil
 	}
@@ -155,7 +155,81 @@ func loadShortcuts() ([]shortcutBinding, error) {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&f); err != nil {
-		return nil, fmt.Errorf("gorex shortcuts: %s: %w", filepath.Base(filepath.Join(rex.Dir(), "shortcuts.json")), err)
+		return nil, fmt.Errorf("gorex shortcuts: %s: %w", filepath.Base(rexShortcutsPath()), err)
 	}
 	return f.Bindings, nil
+}
+
+func rexShortcutsPath() string { return filepath.Join(rex.Dir(), "shortcuts.json") }
+
+func saveShortcut(action, key string) error {
+	b, err := loadShortcuts()
+	if err != nil {
+		return err
+	}
+	found := false
+	for i := range b {
+		if b[i].Action == action {
+			b[i].Key, b[i].Args, found = key, nil, true
+		}
+	}
+	if !found {
+		b = append(b, shortcutBinding{Key: key, Action: action})
+	}
+	return writeShortcuts(b)
+}
+
+func removeShortcut(action string) error {
+	b, err := loadShortcuts()
+	if err != nil {
+		return err
+	}
+	out := b[:0]
+	for _, o := range b {
+		if o.Action != action {
+			out = append(out, o)
+		}
+	}
+	if len(out) == 0 {
+		err := os.Remove(rexShortcutsPath())
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	return writeShortcuts(out)
+}
+
+func writeShortcuts(b []shortcutBinding) error {
+	j, err := json.MarshalIndent(shortcutsFile{Bindings: b}, "", "  ")
+	if err != nil {
+		return err
+	}
+	j = append(j, '\n')
+	if err := os.MkdirAll(filepath.Dir(rexShortcutsPath()), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(rexShortcutsPath()), ".shortcuts-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	if _, err := tmp.Write(j); err != nil {
+		tmp.Close()
+		os.Remove(name)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if err := os.Chmod(name, 0o600); err != nil {
+		os.Remove(name)
+		return err
+	}
+	if err := os.Rename(name, rexShortcutsPath()); err != nil {
+		os.Remove(name)
+		return err
+	}
+	return nil
 }

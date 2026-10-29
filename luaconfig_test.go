@@ -132,3 +132,47 @@ func TestShortcutOverrides(t *testing.T) {
 		t.Fatal("an unrelated menu accelerator was taken over")
 	}
 }
+
+func TestSaveShortcut(t *testing.T) {
+	a, _ := newTestApp(t)
+	_ = a
+	if err := saveShortcut("tab.rename", "cmd+shift+j"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := loadShortcuts()
+	if err != nil || len(b) != 1 || b[0].Action != "tab.rename" || b[0].Key != "cmd+shift+j" {
+		t.Fatalf("shortcuts %+v %v", b, err)
+	}
+	if err := saveShortcut("tab.rename", "cmd+shift+k"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ = loadShortcuts(); len(b) != 1 || b[0].Key != "cmd+shift+k" {
+		t.Fatalf("replace %+v", b)
+	}
+	if err := removeShortcut("tab.rename"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(rexShortcutsPath()); !os.IsNotExist(err) {
+		t.Fatalf("shortcuts remain: %v", err)
+	}
+}
+
+func TestShortcutRecorder(t *testing.T) {
+	a, _ := newTestApp(t)
+	oldMenu, oldReload := rebuildMenu, reloadConfig
+	rebuildMenu, reloadConfig = func(*store) {}, func(*App) {}
+	t.Cleanup(func() {
+		rebuildMenu, reloadConfig = oldMenu, oldReload
+		shortcutsUI = shortcutsState{}
+		a.st.recording = false
+	})
+	a.startRecording(&cmdRenameTab)
+	tt := ui.NewTester(func(c *ui.Context) { a.keyboardSettings(c, colorsOf(c)) }, 900, 600)
+	tt.Frame()
+	tt.Key(ui.Super|ui.Shift, ui.KeyJ)
+	tt.Frame()
+	b, err := loadShortcuts()
+	if err != nil || len(b) != 1 || b[0].Action != "tab.rename" || b[0].Key != "cmd+shift+j" {
+		t.Fatalf("recorded %+v %v", b, err)
+	}
+}
