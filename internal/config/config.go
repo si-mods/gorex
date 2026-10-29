@@ -164,6 +164,13 @@ func (c *Config) Emit(event string, fields map[string]string) {
 	if c == nil || c.state == nil {
 		return
 	}
+	c.invoking++
+	defer func() {
+		c.invoking--
+		if c.invoking == 0 && c.retire {
+			c.closeNow()
+		}
+	}()
 	var handlers []EventHandler
 	for _, h := range c.Events {
 		if h.Name == event {
