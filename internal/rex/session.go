@@ -335,6 +335,7 @@ func sessionEnv(id string, extra []string, local bool) []string {
 		"TERM_PROGRAM=GoRex",
 		"TERM_PROGRAM_VERSION=0.2.0",
 		"GOREX_SESSION="+id,
+		"GOREX_SERVER="+SocketPath(),
 	)
 	if local {
 		bin := CLIDir()

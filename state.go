@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -251,16 +252,23 @@ func (a *App) newPane(h *hostConn, dir string, cols, rows int) *Pane {
 		cols, rows = 80, 24
 	}
 	var info rex.SessionInfo
+	id := a.id()
+	env := []string{"GOREX_PANE=" + strconv.Itoa(id)}
+	if h != nil {
+		env = append(env, "GOREX_HOST="+h.Name)
+	} else if a.hello.Host.Name != "" {
+		env = append(env, "GOREX_CLIENT="+a.hello.Host.Name)
+	}
 	err := errors.New("rex: connection to the server lost")
 	if c := a.clientOf(h); c != nil {
-		info, err = c.Create(rex.CreateOptions{Dir: dir, Cols: cols, Rows: rows})
+		info, err = c.Create(rex.CreateOptions{Dir: dir, Cols: cols, Rows: rows, Env: env})
 	}
 	if err != nil {
 		log.Printf("creating a session: %v", err)
 		a.err, a.errMsg = err.Error(), nil
 		info = rex.SessionInfo{ID: "", Exited: true}
 	}
-	p := &Pane{ID: a.id(), SID: info.ID, info: info, startDir: dir, host: h}
+	p := &Pane{ID: id, SID: info.ID, info: info, startDir: dir, host: h}
 	if p.info.Dir == "" {
 		p.info.Dir = dir
 	}
