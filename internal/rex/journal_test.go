@@ -74,7 +74,7 @@ func TestJournalKeepsLayouts(t *testing.T) {
 		}
 	}
 	entries := readJournal()
-	if len(entries) == 0 || entries[0].Event != journalStart {
+	if len(entries) == 0 || entries[0].Event != eventStart {
 		t.Fatalf("the journal starts with %+v", entries)
 	}
 	if got := lastLayout(entries); string(got) != string(second) {
@@ -243,16 +243,130 @@ func TestCompactJournal(t *testing.T) {
 		last = string(b)
 		j.layout(uint64(i), b)
 	}
+	j.stopped("request", nil)
 	j.close()
 	compactJournal(journalPath())
 	entries := readJournal()
 	if len(entries) > journalKeep || len(entries) == 0 {
 		t.Fatalf("the journal kept %d entries", len(entries))
 	}
+	// What the last run left says how it ended, and keeps its last layout.
+	if !journalStopped(entries) {
+		t.Errorf("the compacted journal does not say how the run ended: %+v", entries)
+	}
 	if got := lastLayout(entries); string(got) != last {
 		t.Errorf("the last layout is %s, not %s", got, last)
 	}
 	if st, err := os.Stat(journalPath()); err != nil || st.Size() == 0 {
 		t.Fatalf("the compacted journal: %v", err)
+	}
+}
+
+// TestJournalChangedLayoutsOnly checks that a layout sent again is not
+// journaled again: a run keeps each layout once.
+func TestJournalChangedLayoutsOnly(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	c, _ := connectTest(t)
+	l := testLayout(&layout.Node{SID: "one", Dir: dir})
+	for range 3 {
+		if err := c.SetLayout(l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	n := 0
+	for _, e := range readJournal() {
+		if e.Event == eventLayout {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("the journal kept the same layout %d times", n)
+	}
+}
+
+// TestJournalTornLine checks that a line a run cut short does not take the
+// entry after it with it.
+func TestJournalTornLine(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	torn := `{"at":"2026-10-29T00:00:00Z","event":"layout","layout":{"version":2`
+	if err := os.WriteFile(journalPath(), []byte(torn), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	j := openJournal()
+	j.started()
+	j.close()
+	entries := readJournal()
+	if len(entries) != 1 || entries[0].Event != eventStart {
+		t.Fatalf("the journal holds %+v", entries)
+	}
+}
+
+// TestJournalOwners checks that the journal remembers which client created a
+// session, the newest record of one last.
+func TestJournalOwners(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	j := openJournal()
+	j.session("a", "pc-one", "zsh", "/tmp")
+	j.session("b", "", "zsh", dir)
+	j.session("a", "pc-two", "zsh", "/tmp")
+	j.session("c", "pc-one", "zsh", dir)
+	j.close()
+	owners := journalOwners(readJournal())
+	if owners["a"] != "pc-two" || owners["b"] != "" || owners["c"] != "pc-one" || len(owners) != 3 {
+		t.Fatalf("the owners are %+v", owners)
+	}
+}
+
+// TestRestoreMost checks that a run's layout starts no more sessions than
+// restoreMost, however many panes it names.
+func TestRestoreMost(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	l := testLayout(
+		&layout.Node{SID: "one", Dir: dir},
+		&layout.Node{SID: "two", Dir: dir},
+	)
+	var store layout.Store
+	if err := json.Unmarshal(l, &store); err != nil {
+		t.Fatal(err)
+	}
+	// A third tab, so that two panes are not all the layout names.
+	store.Sessions[0].Tabs = append(store.Sessions[0].Tabs, layout.Tab{Root: &layout.Node{SID: "three", Dir: dir}})
+	b, err := json.Marshal(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "layout.json"), b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := restoreMost
+	restoreMost = 2
+	t.Cleanup(func() { restoreMost = old })
+
+	// The server runs in this process, so the limit is this process's.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		Serve()
+	}()
+	c, err := dialUntil(time.Now().Add(5 * time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := newClient(c, dialSocket)
+	defer func() {
+		client.Shutdown()
+		client.Close()
+		<-done
+	}()
+	infos, err := client.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 2 {
+		t.Fatalf("the server started %d sessions, not 2", len(infos))
 	}
 }

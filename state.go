@@ -391,26 +391,12 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	}
 	opts.OpenLink = func(link string) bool { return a.openLink(p, link) }
 	opts.OnExit = func(int) {
-		// A session of this machine whose stream stops is not a session that
-		// ended until the server says so: a server that went away — a crash,
-		// a kill, a restart — ends every stream it had, and the one that
-		// comes after it starts the sessions again.
-		if p.host == nil && p.SID != "" {
-			update(func() {
-				if p.closed || a.quitting {
-					return
-				}
-				c, sid := a.client, p.SID
-				go func() {
-					if sessionAlive(c, sid) {
-						return
-					}
-					update(func() { a.endPane(p) })
-				}()
-			})
-			return
-		}
-		update(func() { a.endPane(p) })
+		update(func() {
+			if p.closed || a.quitting {
+				return
+			}
+			a.paneStopped(p, update)
+		})
 	}
 	term, err := terminal.New(opts)
 	if err != nil {
@@ -566,6 +552,25 @@ func (a *App) splitPane(old *Pane, vertical bool, dir string) *Pane {
 
 // closePane closes a pane and ends its session.
 func (a *App) closePane(p *Pane) { a.dropPane(p, true) }
+
+// paneStopped decides what a terminal that stopped reading ends: a session
+// of a host, or one the server no longer has, ends its pane; one the server
+// still has is a stream of a server that went away — a crash, a kill, a
+// restart — and the pane stays, to attach to the session the server starts
+// in its place.
+func (a *App) paneStopped(p *Pane, update func(func())) {
+	if p.host != nil || p.SID == "" {
+		a.endPane(p)
+		return
+	}
+	c, sid := a.client, p.SID
+	go func() {
+		if sessionAlive(c, sid) {
+			return
+		}
+		update(func() { a.endPane(p) })
+	}()
+}
 
 // endPane ends the pane of a terminal that stopped reading, and its tab with
 // it when it was the last. The window keeps a tab of this machine's rather

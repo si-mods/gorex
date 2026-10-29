@@ -135,8 +135,14 @@ func (s *Server) upgrade(exe string) error {
 	}
 	defer os.Remove(path)
 	// The sessions go on in the process this run hands them to: this run
-	// stops with a record, not as one that crashed.
+	// stops with a record, not as one that crashed, and no layout comes
+	// after it.
+	s.mu.Lock()
+	s.stopping = true
+	s.mu.Unlock()
+	s.layoutFile.Lock()
 	s.journal.stopped("upgrade", s.inventory())
+	s.layoutFile.Unlock()
 	log.Printf("rex: upgrading to %s", exe)
 	// No process starts meanwhile, which would get the descriptors.
 	syscall.ForkLock.Lock()
@@ -148,6 +154,12 @@ func (s *Server) upgrade(exe string) error {
 		unix.CloseOnExec(fd)
 	}
 	syscall.ForkLock.Unlock()
+	// The exec failed: this run goes on with its sessions, keeping its
+	// layouts, and is one that did not stop.
+	s.mu.Lock()
+	s.stopping = false
+	s.mu.Unlock()
+	s.journal.started()
 	return fmt.Errorf("rex: running %s: %w", exe, err)
 }
 

@@ -44,6 +44,9 @@ type Server struct {
 	// stopReason is why the server stops, as the journal records it; "" is
 	// a run that did not stop, a crash.
 	stopReason string
+	// stopping tells that the run is ending: a layout that comes then is
+	// not kept, which would say the run did not stop.
+	stopping bool
 	// journal keeps the layouts of this run, and how it ends.
 	journal *journal
 	rem     remote
@@ -296,7 +299,7 @@ func Serve() error {
 	if !journalStopped(entries) {
 		// The run before this one did not stop: its sessions ended with
 		// it, and the layout it kept names them.
-		s.restoreSessions(s.layout)
+		s.restoreSessions(s.layout, journalOwners(entries))
 	}
 	s.journal.started()
 	return s.serve()
@@ -338,8 +341,11 @@ func (s *Server) serve() error {
 				reason := s.stopReason
 				s.mu.Unlock()
 				// The stop is recorded before the sessions end: a run that
-				// leaves no stop record is one that did not stop.
+				// leaves no stop record is one that did not stop. No layout
+				// comes after it.
+				s.layoutFile.Lock()
 				s.journal.stopped(reason, s.inventory())
+				s.layoutFile.Unlock()
 				s.remoteClose()
 				for _, ss := range all {
 					ss.kill()
@@ -381,7 +387,12 @@ func (s *Server) watchIdle() {
 }
 
 func (s *Server) shutdown(reason string) {
-	s.quitOnce.Do(func() { s.stopReason = reason; close(s.quit) })
+	s.quitOnce.Do(func() {
+		s.mu.Lock()
+		s.stopReason, s.stopping = reason, true
+		s.mu.Unlock()
+		close(s.quit)
+	})
 }
 
 // handle serves a connection: peer is the key of a remote client, "" for
@@ -746,6 +757,9 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		s.sessions[id] = ss
 		s.order = append(s.order, id)
 		s.mu.Unlock()
+		// The journal names the session's client, so that one started again
+		// after a crash stays that client's.
+		s.journal.session(id, peer, ss.shell, ss.dir)
 		s.notify("sessions")
 		return s.info(ss), nil
 	case "kill":
@@ -907,16 +921,23 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		s.layoutFile.Lock()
 		s.mu.Lock()
 		current := bytes.Clone(s.layout)
+		stopping := s.stopping
 		s.mu.Unlock()
-		path := filepath.Join(Dir(), "layout.json")
-		tmp := path + ".tmp"
-		if err := os.WriteFile(tmp, current, 0o600); err == nil {
-			os.Rename(tmp, path)
+		// A run that is ending keeps no layout: the last entry of the
+		// journal says it stopped, and the run after it starts nothing.
+		if !stopping {
+			path := filepath.Join(Dir(), "layout.json")
+			tmp := path + ".tmp"
+			if err := os.WriteFile(tmp, current, 0o600); err == nil {
+				os.Rename(tmp, path)
+			}
+			// The journal keeps every layout of the run, so that one the
+			// app prunes after a session ends cannot take the record of
+			// another with it.
+			if !same {
+				s.journal.layout(rev, current)
+			}
 		}
-		// The journal keeps every layout of the run, so that one the app
-		// prunes after a session ends cannot take the record of another
-		// with it.
-		s.journal.layout(rev, current)
 		s.layoutFile.Unlock()
 		return LayoutState{Layout: l, Revision: rev}, nil
 	case "command", "command.done":
