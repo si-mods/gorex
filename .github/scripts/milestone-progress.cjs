@@ -11,7 +11,7 @@
 // items are never unchecked. The workflow runs on pull_request_target with
 // the base branch checked out, so it never runs code from the PR.
 
-const progressLine = /^\s*Progress:\s*#(\d+)(?:\s+([A-Za-z0-9]+))?\s*$/im;
+const progressLine = /^\s*Progress:\s*#(\d+)\s+([A-Za-z0-9]+)\s*$/im;
 const checkedLine = /^\s*[-*]\s*\[[xX]\]\s+(.+?)\s*$/;
 const taskLine = /^(\s*)- \[([ xX])\] (.+?)\s*$/;
 const sectionLine = /^##\s+(M\d+)\b/;
@@ -32,7 +32,7 @@ function normalize(text) {
 function parseProgress(prBody) {
   const m = (prBody || '').match(progressLine);
   if (!m) return null;
-  return { issue: Number(m[1]), milestone: (m[2] || '').toUpperCase() };
+  return { issue: Number(m[1]), milestone: m[2].toUpperCase() };
 }
 
 // checkedItems returns the normalized text of the checked items in a PR
@@ -109,12 +109,17 @@ async function pullRequestForEvent({ github, context }) {
   const message = (context.payload.head_commit && context.payload.head_commit.message) || '';
   const m = message.match(/Merge pull request #(\d+)/) || message.match(/\(#(\d+)\)/);
   if (!m) return null;
-  const { data: named } = await github.rest.pulls.get({
-    owner,
-    repo,
-    pull_number: Number(m[1]),
-  });
-  return named.merged_at ? named : null;
+  try {
+    const { data: named } = await github.rest.pulls.get({
+      owner,
+      repo,
+      pull_number: Number(m[1]),
+    });
+    return named.merged_at ? named : null;
+  } catch (err) {
+    // A commit message's (#N) may name an issue, not a pull request.
+    return null;
+  }
 }
 
 // update is the workflow body: it reads the merged PR, updates the issue,
@@ -123,10 +128,21 @@ async function update({ github, context, core }) {
   const pr = await pullRequestForEvent({ github, context });
   if (!pr || (pr.merged !== true && !pr.merged_at)) return;
 
+  const association = pr.author_association || '';
+  if (association && !['OWNER', 'MEMBER', 'COLLABORATOR'].includes(association)) {
+    core.warning(`PR #${pr.number} is from ${association}, not a repository member; progress is not updated.`);
+    return;
+  }
+
   const body = stripComments(pr.body);
   const progress = parseProgress(body);
   if (!progress) {
-    core.info('No "Progress: #issue [milestone]" line; nothing to update.');
+    core.info('No "Progress: #issue milestone" line; nothing to update.');
+    return;
+  }
+  const only = Number(process.env.ROADMAP_ISSUE || 0);
+  if (only && progress.issue !== only) {
+    core.warning(`Progress names #${progress.issue}, not the roadmap issue #${only}.`);
     return;
   }
   const items = checkedItems(body);
@@ -137,11 +153,25 @@ async function update({ github, context, core }) {
 
   const owner = context.repo.owner;
   const repo = context.repo.repo;
-  const { data: issue } = await github.rest.issues.get({
-    owner,
-    repo,
-    issue_number: progress.issue,
-  });
+  let issue;
+  try {
+    ({ data: issue } = await github.rest.issues.get({
+      owner,
+      repo,
+      issue_number: progress.issue,
+    }));
+  } catch (err) {
+    core.warning(`Cannot read issue #${progress.issue}: ${err.message}`);
+    return;
+  }
+  if (issue.pull_request) {
+    core.warning(`#${progress.issue} is a pull request; progress updates issues only.`);
+    return;
+  }
+  if (issue.state !== 'open') {
+    core.warning(`Issue #${progress.issue} is ${issue.state}; progress updates open issues only.`);
+    return;
+  }
   if (!issue.body) {
     core.warning(`Issue #${progress.issue} has no body.`);
     return;

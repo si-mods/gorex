@@ -525,22 +525,42 @@ func (c *Client) Layout() (json.RawMessage, error) {
 // 3). A server before 3 answers an error: use Layout then.
 func (c *Client) LayoutState() (LayoutState, error) {
 	var st LayoutState
-	err := c.call(Request{Op: "getLayoutState"}, &st)
-	return st, err
+	if err := c.call(Request{Op: "getLayoutState"}, &st); err != nil {
+		return st, err
+	}
+	c.mu.Lock()
+	c.revision = st.Revision
+	c.mu.Unlock()
+	return st, nil
 }
 
 func (c *Client) SetLayout(l json.RawMessage) error {
-	return c.call(Request{Op: "setLayout", Layout: l}, nil)
+	return c.SetLayoutAt(l, 0)
 }
 
 // SetLayoutAt sets the layout only when it is still at revision; a
-// revision of 0 sets it whatever it is. A server before 3 errors.
+// revision of 0 sets it whatever it is. A server before 3 answers the
+// check with an error instead of ignoring the revision.
 func (c *Client) SetLayoutAt(l json.RawMessage, revision uint64) error {
-	return c.call(Request{Op: "setLayout", Layout: l, LayoutRevision: revision}, nil)
+	if revision != 0 {
+		if _, err := c.LayoutState(); err != nil {
+			return fmt.Errorf("rex: layout revisions need a version 3 server: %w", err)
+		}
+	}
+	var st LayoutState
+	if err := c.call(Request{Op: "setLayout", Layout: l, LayoutRevision: revision}, &st); err != nil {
+		return err
+	}
+	if st.Revision > 0 {
+		c.mu.Lock()
+		c.revision = st.Revision
+		c.mu.Unlock()
+	}
+	return nil
 }
 
-// Revision returns the layout revision the server last told of, 0 when it
-// told of none.
+// Revision returns the layout revision the server last stated, from a
+// LayoutState, a SetLayoutAt, or a layout event; 0 before any.
 func (c *Client) Revision() uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()

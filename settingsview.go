@@ -413,7 +413,7 @@ func (a *App) aboutSettings(c *ui.Context, k *colors) {
 	settingRow(c, k, "GoRex", locales.SettingsVersion(version), func() {
 		if mygo.Updater.Enabled() {
 			if ui.Button(c, locales.CmdCheckForUpdates()).Clicked() {
-				cmdUpdates.Run(a)
+				a.invokeCommand(&cmdUpdates, nil)
 			}
 		} else {
 			ui.Text(c, locales.SettingsUpdatesOff()).FontSize(12).TextColor(k.textFaint)

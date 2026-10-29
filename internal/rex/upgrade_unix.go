@@ -37,11 +37,12 @@ type handoff struct {
 	Version int `json:"version"`
 	// Listener and Lock are the descriptors of the listener and of the
 	// lock file, which stays locked.
-	Listener int             `json:"listener"`
-	Lock     int             `json:"lock"`
-	Started  time.Time       `json:"started"`
-	Layout   json.RawMessage `json:"layout,omitempty"`
-	Sessions []sessionState  `json:"sessions"`
+	Listener       int             `json:"listener"`
+	Lock           int             `json:"lock"`
+	Started        time.Time       `json:"started"`
+	Layout         json.RawMessage `json:"layout,omitempty"`
+	LayoutRevision uint64          `json:"layoutRevision,omitempty"`
+	Sessions       []sessionState  `json:"sessions"`
 }
 
 // sessionState is a session in a handoff.
@@ -106,7 +107,7 @@ func (s *Server) upgrade(exe string) error {
 	for _, id := range s.order {
 		all = append(all, s.sessions[id])
 	}
-	h := handoff{Version: handoffVersion, Started: s.started, Layout: s.layout}
+	h := handoff{Version: handoffVersion, Started: s.started, Layout: s.layout, LayoutRevision: s.layoutRev}
 	s.mu.Unlock()
 	for _, ss := range all {
 		if err := ss.pause(); err != nil {
@@ -254,7 +255,10 @@ func Resume(path string) error {
 		return fmt.Errorf("rex: resuming the listener: %w", err)
 	}
 	s := newServer(ln, lock)
-	s.started, s.layout = h.Started, h.Layout
+	s.started, s.layout, s.layoutRev = h.Started, h.Layout, h.LayoutRevision
+	if s.layoutRev == 0 {
+		s.layoutRev = 1
+	}
 	for _, st := range h.Sessions {
 		ss, err := resumeSession(st, s.sessionsChanged)
 		if err != nil {

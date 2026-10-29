@@ -476,11 +476,17 @@ func (a *App) run(cmd *command) {
 	}
 	a.do(func() {
 		if a.win != nil {
-			if err := cmd.invoke(a, nil); err != nil {
-				a.err = err.Error()
-			}
+			a.invokeCommand(cmd, nil)
 		}
 	})
+}
+
+// invokeCommand runs an action on the main thread, keeping what went
+// wrong for the view to say.
+func (a *App) invokeCommand(cmd *command, args map[string]any) {
+	if err := cmd.invoke(a, args); err != nil {
+		a.err = err.Error()
+	}
 }
 
 func (a *App) closeFocused() {
@@ -603,7 +609,7 @@ func (a *App) shortcuts(c *ui.Context) {
 	}
 	for _, cmd := range commands {
 		if cmd.Other != (shortcut{}) && c.Shortcut(cmd.Other.Mods, cmd.Other.Key) {
-			a.later(c, func() { cmd.Run(a) })
+			a.later(c, func() { a.invokeCommand(cmd, nil) })
 		}
 	}
 	for i := 1; i <= 9; i++ {
@@ -671,7 +677,7 @@ func (a *App) paletteItems() []paletteItem {
 			continue
 		}
 		cmd := cmd
-		items = append(items, paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { cmd.Run(a) }})
+		items = append(items, paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { a.invokeCommand(cmd, nil) }})
 		if cmd == &cmdNewTab {
 			items = append(items, a.newTabOnItems(match)...)
 		}

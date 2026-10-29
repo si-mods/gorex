@@ -33,7 +33,7 @@ func TestProtocolV3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Revision != 0 || len(st.Layout) != 0 && string(st.Layout) != "null" {
+	if st.Revision != 1 || len(st.Layout) != 0 && string(st.Layout) != "null" {
 		t.Fatalf("empty server: %+v", st)
 	}
 
@@ -44,7 +44,7 @@ func TestProtocolV3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Revision != 1 || !bytes.Equal(st.Layout, []byte(`{"a":1}`)) {
+	if st.Revision != 2 || !bytes.Equal(st.Layout, []byte(`{"a":1}`)) {
 		t.Fatalf("after set: %+v", st)
 	}
 
@@ -52,23 +52,23 @@ func TestProtocolV3(t *testing.T) {
 	if err := c.SetLayoutAt([]byte(`{"a":1}`), st.Revision); err != nil {
 		t.Fatal(err)
 	}
-	if st, _ = c.LayoutState(); st.Revision != 1 {
-		t.Fatalf("same layout: revision %d, want 1", st.Revision)
+	if st, _ = c.LayoutState(); st.Revision != 2 {
+		t.Fatalf("same layout: revision %d, want 2", st.Revision)
 	}
 
 	// A change at the revision the client has goes through.
-	if err := c.SetLayoutAt([]byte(`{"a":2}`), 1); err != nil {
+	if err := c.SetLayoutAt([]byte(`{"a":2}`), 2); err != nil {
 		t.Fatal(err)
 	}
-	if st, _ = c.LayoutState(); st.Revision != 2 {
-		t.Fatalf("second change: revision %d, want 2", st.Revision)
+	if st, _ = c.LayoutState(); st.Revision != 3 {
+		t.Fatalf("second change: revision %d, want 3", st.Revision)
 	}
 
 	// One at an old revision does not.
-	if err := c.SetLayoutAt([]byte(`{"a":3}`), 1); err == nil {
+	if err := c.SetLayoutAt([]byte(`{"a":3}`), 2); err == nil {
 		t.Fatal("a stale revision was accepted")
 	}
-	if st, _ = c.LayoutState(); st.Revision != 2 || !bytes.Equal(st.Layout, []byte(`{"a":2}`)) {
+	if st, _ = c.LayoutState(); st.Revision != 3 || !bytes.Equal(st.Layout, []byte(`{"a":2}`)) {
 		t.Fatalf("after a stale change: %+v", st)
 	}
 
@@ -81,7 +81,7 @@ func TestProtocolV3(t *testing.T) {
 	if err := sub.Subscribe(); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.SetLayoutAt([]byte(`{"a":4}`), 2); err != nil {
+	if err := c.SetLayoutAt([]byte(`{"a":4}`), 3); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -92,7 +92,7 @@ func TestProtocolV3(t *testing.T) {
 	if layout, _ := sub.Changes(); !layout {
 		t.Fatal("the event was not a layout change")
 	}
-	if got := sub.Revision(); got != 3 {
-		t.Fatalf("event revision %d, want 3", got)
+	if got := sub.Revision(); got != 4 {
+		t.Fatalf("event revision %d, want 4", got)
 	}
 }
