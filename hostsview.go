@@ -345,17 +345,18 @@ func (a *App) refreshHostLayout() {
 	if h == nil || page.layoutLoading || time.Since(page.layoutAt) < time.Second {
 		return
 	}
+	if h.update == nil {
+		return
+	}
 	c := h.current()
 	if c == nil {
-		page.layoutErr = locales.HostsLayoutEmpty()
+		label, _, _ := hostStatus(h)
+		page.layoutErr = label
 		return
 	}
 	page.layoutLoading = true
 	go func() {
 		raw, err := c.Layout()
-		if h.update == nil {
-			return
-		}
 		h.update(func() {
 			page := &hostsUI
 			if page.layoutHost != h {
@@ -417,8 +418,15 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 		a.refreshHostLayout()
 	})
 	if was && !page.layoutOpen {
-		page.layoutHost = nil
+		closeHostLayout()
 	}
+}
+
+// closeHostLayout forgets the sheet's host and state.
+func closeHostLayout() {
+	page := &hostsUI
+	page.layoutOpen, page.layoutHost = false, nil
+	page.layout, page.layoutErr, page.layoutLoading, page.layoutAt = savedStore{}, "", false, time.Time{}
 }
 
 func layoutTabName(t savedTab, at int) string {

@@ -72,6 +72,7 @@ func (a *App) openSettings() {
 	win.OnClosed(func() {
 		stopRemotePoll()
 		closeAddHost()
+		closeHostLayout()
 		shortcutsUI = shortcutsState{}
 		if a.st != nil && a.st.recording {
 			a.st.recording = false
