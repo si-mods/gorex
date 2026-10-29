@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - rootshell's pane actions work: dragging a split's divider
   (`pane.resize`), swapping (`pane.swap`), renaming (`pane.rename`) and
