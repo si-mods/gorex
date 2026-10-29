@@ -776,6 +776,41 @@ func TestColorPickerShots(t *testing.T) {
 		}
 		saveShot(t, dir, fmt.Sprintf("color-picker-%s-colors.png", theme), img,
 			image.Rect(int(label.X)-10, int(label.Y)-8, int(label.X)+272, int(label.Y)+92), 2)
+		// The fields with the focus: the popover's custom color, and the
+		// space's name, both outlined in the space's accent.
+		swatch, ok := tt.Find("Default")
+		if !ok {
+			t.Fatalf("no color swatches; texts %q", tt.Texts())
+		}
+		field := ui.Rect{X: label.X, Y: swatch.Y + swatch.H + 6, W: 254, H: 28}
+		for _, c := range []string{"green", "pink"} {
+			a.ws.Color = c
+			for range 3 {
+				tt.Frame()
+			}
+			tt.ClickAt(field.X+field.W/2, field.Y+field.H/2)
+			for range 3 {
+				tt.Frame()
+			}
+			saveShot(t, dir, fmt.Sprintf("focus-color-%s-%s.png", c, theme), tt.Image(),
+				image.Rect(int(field.X)-8, int(field.Y)-8, int(field.X+field.W)+8, int(field.Y+field.H)+8), 3)
+			a.wsRenaming, a.wsRenameText, a.wsRenameFocus = true, a.ws.Name, false
+			for range 3 {
+				tt.Frame()
+			}
+			tt.Key(ui.Cmd, ui.KeyA)
+			for range 3 {
+				tt.Frame()
+			}
+			chip, ok := tt.Find(locales.SessionLabel(a.ws.Name))
+			if !ok {
+				t.Fatalf("no session chip; texts %q", tt.Texts())
+			}
+			saveShot(t, dir, fmt.Sprintf("focus-rename-%s-%s.png", c, theme), tt.Image(),
+				image.Rect(int(chip.X)-6, int(chip.Y)-6, int(chip.X)+214, int(chip.Y+chip.H)+6), 4)
+			a.wsRenaming = false
+		}
+		a.ws.Color = ""
 		a.wsOpen = false
 	}
 	quit(st)
