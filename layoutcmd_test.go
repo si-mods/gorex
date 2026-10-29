@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/control"
@@ -357,6 +358,208 @@ func TestMovePane(t *testing.T) {
 	}
 	if second.Zoom != nil {
 		t.Fatal("zoom survived the move")
+	}
+}
+
+func TestMergeTab(t *testing.T) {
+	a, src, dst := newMergeTestTabs()
+	src.Name, dst.Name = "source", "target"
+	src.Root.Vertical = true
+	src.Root.Ratio = 0.63
+	srcRoot := src.Root
+	sourcePanes := slices.Clone(src.panes())
+	sourceNodes := make([]*Node, len(sourcePanes))
+	sids := make([]string, len(sourcePanes))
+	terms := make([]any, len(sourcePanes))
+	for i, p := range sourcePanes {
+		sourceNodes[i], sids[i], terms[i] = p.Node, p.SID, p.term
+	}
+	focused := src.Focus
+	dst.Zoom = dst.Focus
+	dstRoot := dst.Root
+	targetPane := dst.Focus
+	targetSID, targetTerm := targetPane.SID, targetPane.term
+
+	a.mergeTab(src, dst)
+
+	if len(a.tabs) != 1 || a.tabs[0] != dst || a.tab() != dst {
+		t.Fatalf("tabs %d, active target %v", len(a.tabs), a.tab() == dst)
+	}
+	if dst.Root == nil || dst.Root.A != dstRoot || dst.Root.B != srcRoot || dst.Root.Vertical || dst.Root.Ratio != 0.5 {
+		t.Fatalf("merged root %+v", dst.Root)
+	}
+	if dst.Root.ID == srcRoot.ID || dst.Root.ID == dstRoot.ID || dstRoot.Parent != dst.Root || srcRoot.Parent != dst.Root {
+		t.Fatal("root split ID or parent pointers are wrong")
+	}
+	if len(dst.panes()) != 3 || dst.Focus != focused || a.focusReq != focused || dst.Zoom != nil {
+		t.Fatalf("panes %d, focus %v, focus request %v, zoom %v", len(dst.panes()), dst.Focus == focused, a.focusReq == focused, dst.Zoom)
+	}
+	if dst.Name != "target" || slices.Contains(a.tabs, src) {
+		t.Fatalf("destination name %q, source still present %v", dst.Name, slices.Contains(a.tabs, src))
+	}
+	if dstRoot.Pane != targetPane || targetPane.Tab != dst || targetPane.SID != targetSID || targetPane.term != targetTerm {
+		t.Fatal("destination pane changed during merge")
+	}
+	for i, p := range sourcePanes {
+		if p.Tab != dst || p.Node != sourceNodes[i] || p.SID != sids[i] || p.term != terms[i] || p.closed {
+			t.Fatalf("source pane %d changed during merge", i)
+		}
+		if !slices.Contains(dst.recent, p) {
+			t.Fatalf("source pane %d missing from recent focus history", i)
+		}
+	}
+	if srcRoot.Ratio != 0.63 || srcRoot.A.Parent != srcRoot || srcRoot.B.Parent != srcRoot {
+		t.Fatal("source split tree changed during merge")
+	}
+}
+
+func TestMergeTabSelf(t *testing.T) {
+	a, tab, _ := newMergeTestTabs()
+	roots, focus := tab.Root, tab.Focus
+	tabs, activeTab := slices.Clone(a.tabs), a.tab()
+	active := a.active
+	a.mergeTab(tab, tab)
+	if !slices.Equal(a.tabs, tabs) || a.tab() != activeTab || a.active != active || tab.Root != roots || tab.Focus != focus {
+		t.Fatal("merging a tab into itself changed it")
+	}
+}
+
+func TestMergeTabNoopCases(t *testing.T) {
+	a, _, dst := newMergeTestTabs()
+	empty := &Tab{ID: 20}
+	a.tabs = append(a.tabs, empty)
+	dstRoot := dst.Root
+	emptyRoot := empty.Root
+	active := a.active
+	a.mergeTab(nil, dst)
+	a.mergeTab(dst, nil)
+	a.mergeTab(empty, dst)
+	if len(a.tabs) != 3 || dst.Root != dstRoot || empty.Root != emptyRoot || a.active != active {
+		t.Fatal("a nil or empty source changed the tabs")
+	}
+}
+
+func TestMergeTabDifferentHosts(t *testing.T) {
+	a, src, dst := newMergeTestTabs()
+	for _, p := range src.panes() {
+		p.host = &hostConn{ID: "source-host"}
+	}
+	dst.Focus.host = &hostConn{ID: "target-host"}
+	srcRoot, dstRoot, active := src.Root, dst.Root, a.active
+	a.mergeTab(src, dst)
+	if len(a.tabs) != 2 || src.Root != srcRoot || dst.Root != dstRoot || a.active != active {
+		t.Fatal("tabs on different hosts were merged")
+	}
+}
+
+func TestMergeTabIntoEmptyTarget(t *testing.T) {
+	a, src, dst := newMergeTestTabs()
+	sourceRoot := src.Root
+	dst.Root, dst.Focus = nil, nil
+	a.mergeTab(src, dst)
+	if len(a.tabs) != 1 || a.tab() != dst || dst.Root != sourceRoot || sourceRoot.Parent != nil {
+		t.Fatal("source tree was not adopted by the empty target")
+	}
+	for _, p := range dst.panes() {
+		if p.Tab != dst {
+			t.Fatal("adopted pane still points at the source tab")
+		}
+	}
+}
+
+func newMergeTestTabs() (*App, *Tab, *Tab) {
+	app := &App{active: 1, nextID: 7}
+	src := &Tab{ID: 1}
+	sourcePanes := make([]*Pane, 2)
+	sourceLeaves := make([]*Node, 2)
+	for i := range sourcePanes {
+		sourcePanes[i] = &Pane{ID: i + 2, SID: fmt.Sprintf("source-%d", i+1), term: new(terminal.Terminal), Tab: src}
+		sourceLeaves[i] = &Node{ID: i + 4, Pane: sourcePanes[i]}
+		sourcePanes[i].Node = sourceLeaves[i]
+	}
+	src.Root = &Node{ID: 6, A: sourceLeaves[0], B: sourceLeaves[1], Ratio: 0.5}
+	sourceLeaves[0].Parent, sourceLeaves[1].Parent = src.Root, src.Root
+	src.Focus, src.recent = sourcePanes[1], slices.Clone(sourcePanes)
+
+	dst := &Tab{ID: 7}
+	targetPane := &Pane{ID: 8, SID: "target", term: new(terminal.Terminal), Tab: dst}
+	dst.Root = &Node{ID: 9, Pane: targetPane}
+	targetPane.Node, dst.Focus, dst.recent = dst.Root, targetPane, []*Pane{targetPane}
+	app.tabs = []*Tab{src, dst}
+	app.nextID = 9
+	return app, src, dst
+}
+
+func TestTabDropZone(t *testing.T) {
+	tests := []struct {
+		pos, size float32
+		merge     bool
+		before    bool
+	}{
+		{0, 100, false, true},
+		{24.9, 100, false, true},
+		{25, 100, true, true},
+		{49, 100, true, true},
+		{50, 100, true, false},
+		{74.9, 100, true, false},
+		{75, 100, false, false},
+		{100, 100, false, false},
+	}
+	for _, tt := range tests {
+		merge, before := tabDropZone(tt.pos, tt.size)
+		if merge != tt.merge || before != tt.before {
+			t.Errorf("tabDropZone(%v, %v) = (%v, %v), want (%v, %v)", tt.pos, tt.size, merge, before, tt.merge, tt.before)
+		}
+	}
+}
+
+func TestTabEventsDropMergesHeadless(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, place := range []string{"left", ""} {
+		name := place
+		if name == "" {
+			name = "top"
+		}
+		t.Run(name, func(t *testing.T) {
+			prefs = settings{TabPlacement: place}
+			a, src, dst := newMergeTestTabs()
+			src.Name, dst.Name = "source", "target"
+			sourceRoot := src.Root
+			view := func(c *ui.Context) {
+				k := colorsOf(c)
+				drawTabs := func() {
+					for i, tab := range a.tabs {
+						e := ui.Box(c.Key(tab.ID)).Size(120, 32).Label(tab.Name)
+						a.tabEvents(e, k, i, tab)
+					}
+				}
+				if place == "" {
+					ui.Row(c).Gap(0).Children(drawTabs)
+				} else {
+					ui.Column(c).Gap(0).Children(drawTabs)
+				}
+			}
+			tt := ui.NewTester(view, 300, 100)
+			source, sourceOK := tt.Find("source")
+			target, targetOK := tt.Find("target")
+			if !sourceOK || !targetOK {
+				t.Fatalf("tabs not laid out: %q", tt.Texts())
+			}
+			sx, sy := source.X+source.W/2, source.Y+source.H/2
+			tx, ty := target.X+target.W/2, target.Y+target.H/2
+			tt.Press(sx, sy)
+			tt.Frame()
+			tt.Move(sx+5, sy)
+			tt.Frame()
+			tt.Move(tx, ty)
+			tt.Frame()
+			tt.Release(tx, ty)
+			tt.Frame()
+			if len(a.tabs) != 1 || a.tab() != dst || dst.Root.B != sourceRoot || len(dst.panes()) != 3 {
+				t.Fatalf("merge failed for placement %q: tabs %d, active target %v, panes %d", place, len(a.tabs), a.tab() == dst, len(dst.panes()))
+			}
+		})
 	}
 }
 

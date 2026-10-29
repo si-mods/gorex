@@ -1457,6 +1457,51 @@ func (a *App) movePaneToTab(p *Pane, t *Tab) {
 	a.movePaneToPane(p, t.Focus)
 }
 
+// mergeTab grafts src's pane tree beside dst's, keeping every session and
+// terminal attached to its existing pane.
+func (a *App) mergeTab(src, dst *Tab) {
+	if !tabsCanMerge(src, dst) || slices.Index(a.tabs, src) < 0 || slices.Index(a.tabs, dst) < 0 {
+		return
+	}
+
+	moved := src.panes()
+	recent := append(slices.Clone(dst.recent), src.recent...)
+	focused := src.Focus
+	if focused == nil {
+		focused = moved[0]
+	}
+
+	if dst.Root == nil {
+		dst.Root = src.Root
+		dst.Root.Parent = nil
+	} else {
+		root := &Node{ID: a.id(), A: dst.Root, B: src.Root, Vertical: false, Ratio: 0.5}
+		dst.Root.Parent = root
+		src.Root.Parent = root
+		dst.Root = root
+	}
+	for _, p := range moved {
+		p.Tab = dst
+	}
+	dst.Zoom = nil
+
+	// Keep both tabs' focus history, and add any source panes absent from it.
+	allPanes := dst.panes()
+	dst.recent = nil
+	for _, p := range append(recent, moved...) {
+		if p != nil && slices.Contains(allPanes, p) && !slices.Contains(dst.recent, p) {
+			dst.recent = append(dst.recent, p)
+		}
+	}
+	dst.setFocus(focused)
+
+	a.removeTab(src)
+	a.groupTabs()
+	a.selectTab(slices.Index(a.tabs, dst))
+	a.focusReq = focused
+	a.changed()
+}
+
 // movePaneToPane moves pane p beside target, in target's tab. It works
 // within a tab too, detaching p and splitting target's node.
 func (a *App) movePaneToPane(p, target *Pane) { a.movePaneBeside(p, target, false, 0.5) }

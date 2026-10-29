@@ -147,10 +147,21 @@ func (a *App) tabEvents(e ui.Element, k *colors, i int, t *Tab) {
 	e.Transition(ui.ElementTransition{Colors: true, Position: true, Duration: 160 * time.Millisecond})
 	e.Drag(t)
 	if dragged, ok := ui.Drop[*Tab](e); ok && dragged != t {
-		a.moveTab(dragged, i)
+		merge, _, _ := tabDropZoneAt(e, prefs.TabPlacement)
+		if merge && tabsCanMerge(dragged, t) {
+			a.mergeTab(dragged, t)
+		} else {
+			a.moveTab(dragged, i)
+		}
 	}
-	if _, over := ui.DragOver[*Tab](e); over {
-		e.Border(1.5, k.busy.Alpha(0.6))
+	if dragged, over := ui.DragOver[*Tab](e); over && dragged != t {
+		merge, _, inside := tabDropZoneAt(e, prefs.TabPlacement)
+		merge = merge && tabsCanMerge(dragged, t)
+		if inside && merge {
+			e.Border(1.5, k.busy.Alpha(0.6))
+		} else if inside {
+			drawTabInsertion(e, k, prefs.TabPlacement, slices.Index(a.tabs, dragged) > i)
+		}
 	}
 	if e.Dragging() {
 		e.Opacity(0.4)
@@ -163,6 +174,67 @@ func (a *App) tabEvents(e ui.Element, k *colors, i int, t *Tab) {
 		a.startRename()
 	}
 	e.ContextMenu(func(m *ui.Menu) { a.tabMenu(m, t) })
+}
+
+// tabDropZone divides a tab along the tabs' list axis: the outer quarters
+// reorder, and the middle half merges. before tells which edge is nearer.
+func tabDropZone(pos, size float32) (merge, before bool) {
+	if size <= 0 {
+		return false, true
+	}
+	before = pos < size/2
+	switch {
+	case pos < size/4:
+		return false, true
+	case pos >= size*3/4:
+		return false, false
+	default:
+		return true, before
+	}
+}
+
+// tabDropZoneAt uses the pointer's position in a tab and its previous-frame
+// bounds, along the list axis.
+func tabDropZoneAt(e ui.Element, placement string) (merge, before, over bool) {
+	x, y, over := e.PointerPosition()
+	if !over {
+		return false, false, false
+	}
+	bounds := e.LayoutBounds()
+	if placement == "left" || placement == "right" {
+		merge, before = tabDropZone(y, bounds.H)
+	} else {
+		merge, before = tabDropZone(x, bounds.W)
+	}
+	return merge, before, true
+}
+
+// drawTabInsertion shows the edge where a reordered tab goes.
+func drawTabInsertion(e ui.Element, k *colors, placement string, before bool) {
+	e.DrawOver(func(p *ui.Painter, r ui.Rect) {
+		const inset, thickness = float32(7), float32(2)
+		if placement == "left" || placement == "right" {
+			y := r.Y + r.H - thickness
+			if before {
+				y = r.Y
+			}
+			p.Fill(ui.Rect{X: r.X + inset, Y: y, W: max(r.W-2*inset, 0), H: thickness}, k.busy, thickness/2)
+		} else {
+			x := r.X + r.W - thickness
+			if before {
+				x = r.X
+			}
+			p.Fill(ui.Rect{X: x, Y: r.Y + inset, W: thickness, H: max(r.H-2*inset, 0)}, k.busy, thickness/2)
+		}
+	})
+}
+
+// tabsCanMerge reports whether src's panes can join dst's panes.
+func tabsCanMerge(src, dst *Tab) bool {
+	if src == nil || dst == nil || src == dst || len(src.panes()) == 0 {
+		return false
+	}
+	return len(dst.panes()) == 0 || src.host() == dst.host()
 }
 
 // tabEnd draws the end of a tab: its close button while hovered, else the
