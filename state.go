@@ -86,6 +86,8 @@ type Pane struct {
 	// saved layout whose session was gone.
 	restored bool
 	startDir string
+	// seenFunc tells the window's store which session status was seen.
+	seenFunc func(sid string, at time.Time)
 }
 
 // App is the state of a window of GoRex's, which shows a workspace.
@@ -315,6 +317,9 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		}
 	}
 	onData := func(int) { p.lastData.Store(time.Now().UnixNano()) }
+	if a.st != nil {
+		p.seenFunc = func(sid string, at time.Time) { a.st.recordSeen(sid, at) }
+	}
 	opts := termOptions()
 	if p.host != nil {
 		p.remote = newHostStream(p.host, p.SID, cols, rows)
@@ -1283,6 +1288,9 @@ func (p *Pane) see() {
 		if r.Updated.After(p.seen) {
 			p.seen = r.Updated
 		}
+	}
+	if p.seenFunc != nil {
+		p.seenFunc(p.SID, p.seen)
 	}
 }
 

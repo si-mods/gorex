@@ -54,6 +54,9 @@ func (st *programStatus) feed(p []byte) (queries int) {
 		}
 		switch p[1] {
 		case 'c': // RIS
+			if len(st.records) > 0 {
+				st.updates++
+			}
 			clear(st.records)
 			p = p[2:]
 			continue

@@ -641,13 +641,19 @@ func TestWorkspaceStatus(t *testing.T) {
 	// Seen done work no longer asks for the workspace.
 	p.info.Statuses = []rex.ProgramStatus{{ID: "a", State: "done", Updated: time.Now()}}
 	p.seen = time.Now().Add(time.Second)
+	p.see()
 	if s := a.st.status(a.ws); s != nil && s.State == "done" {
 		t.Fatalf("seen status %+v", s)
 	}
-	// A hidden workspace's sessions come from the last list.
+	// A hidden workspace's sessions come from the last list, with the
+	// seen times its window recorded.
 	w := a.st.addWorkspace()
-	w.layout = savedLayout{Tabs: []savedTab{{Root: &savedNode{SID: "hidden-1"}}}}
-	a.st.infos = map[string]rex.SessionInfo{"hidden-1": {ID: "hidden-1", Statuses: []rex.ProgramStatus{{ID: "a", State: "error", Updated: time.Now()}}}}
+	w.layout = savedLayout{Tabs: []savedTab{{Root: &savedNode{SID: p.SID}}}}
+	a.st.infos = map[string]rex.SessionInfo{p.SID: p.info}
+	if s := a.st.status(w); s != nil && s.State == "done" {
+		t.Fatalf("hidden seen status %+v", s)
+	}
+	a.st.infos[p.SID] = rex.SessionInfo{ID: p.SID, Statuses: []rex.ProgramStatus{{ID: "a", State: "error", Updated: time.Now().Add(time.Second)}}}
 	if s := a.st.status(w); s == nil || s.State != "error" {
 		t.Fatalf("hidden status %+v", s)
 	}
