@@ -329,20 +329,29 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// A paste offers the bytes the clipboard holds here, an image's among
 	// them: a program that reads the clipboard itself (Kitty's paste
 	// events) takes them even over SSH or on a host, where a path of this
-	// machine means nothing. Who types last takes the session's size back
-	// from a device that holds it (SizeLock): the session gets the pane's
-	// size again.
+	// machine means nothing. The terminal then reads every format the
+	// clipboard holds, as it does in a pane of this machine. Who types last
+	// takes the session's size back from a device that holds it (SizeLock):
+	// the session gets the pane's size again.
 	opts.OnPaste = func(d transfer.Data) bool {
 		if p.host == nil {
 			a.takeSize(p)
 		}
-		if img, ok := pasteImageData(d); ok {
-			if p.term != nil {
-				p.term.PasteData(img)
+		img, ok := pasteImageData(d)
+		if !ok || p.term == nil {
+			// A read fails whole when one of the clipboard's
+			// representations is larger than a read takes: the text, which
+			// a shell or an editor wants, still pastes.
+			if len(d.Formats()) == 0 && p.term != nil {
+				if text := mygo.Clipboard.ReadText(); text != "" {
+					p.term.Paste(text)
+					return true
+				}
 			}
-			return true
+			return false
 		}
-		return false
+		p.term.PasteData(img)
+		return true
 	}
 	// A key with a binding runs its action; one without goes to the
 	// program. Menu accelerators run before the terminal, so a sequence
