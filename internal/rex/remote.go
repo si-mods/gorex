@@ -296,11 +296,16 @@ func (s *Server) remoteSeen(peer string) {
 func (s *Server) remoteShareLayout(peer string) bool {
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	if s.rem.cfg.ShareLayout {
+	if !s.rem.cfg.ShareLayout {
+		return false
+	}
+	// The layout names every session, so it is shared only with a client
+	// that may see every session: no filtering is possible here.
+	if s.rem.cfg.ShareSessions {
 		return true
 	}
 	return slices.ContainsFunc(s.rem.cfg.Allowed, func(c RemoteClient) bool {
-		return c.PublicKey == peer && c.ShareLayout
+		return c.PublicKey == peer && c.ShareSessions && c.ShareLayout
 	})
 }
 
