@@ -720,9 +720,9 @@ func (a *App) setSplitRatio(ratio float32) {
 	a.changed()
 }
 
-// resizePane moves the nearest split of p on direction's axis by amount,
-// a share of the split as herdr's pane.resize has it. It reports whether
-// the split moved.
+// resizePane moves the divider on p's direction edge by amount, a share
+// of the split as herdr's pane.resize has it. It reports whether the
+// split moved.
 func (a *App) resizePane(p *Pane, direction string, amount float32) (bool, string) {
 	if p == nil || p.Node == nil {
 		return false, "unchanged"
@@ -739,20 +739,40 @@ func (a *App) resizePane(p *Pane, direction string, amount float32) (bool, strin
 	if direction == "left" || direction == "up" {
 		amount = -amount
 	}
+	// The split a pane's direction edge belongs to is the one that has
+	// the pane on that side: A's right edge, or B's left edge. Walk out
+	// to it, keeping the nearest same-axis split for an outer edge, which
+	// moves that one as herdr does.
+	var nearest *Node
+	grows := direction == "right" || direction == "down"
 	for n := p.Node; n.Parent != nil; n = n.Parent {
 		split := n.Parent
 		if split.Vertical != vertical {
 			continue
 		}
-		old := split.Ratio
-		split.Ratio = min(max(old+amount, 0.1), 0.9)
-		if split.Ratio == old {
-			return false, "unchanged"
+		if nearest == nil {
+			nearest = split
 		}
-		a.changed()
-		return true, ""
+		if (split.A == n) == grows {
+			return a.shiftSplit(split, amount)
+		}
+	}
+	if nearest != nil {
+		return a.shiftSplit(nearest, amount)
 	}
 	return false, "unchanged"
+}
+
+// shiftSplit moves split's ratio by amount, within the bounds the
+// desktop's own divider drags use.
+func (a *App) shiftSplit(split *Node, amount float32) (bool, string) {
+	old := split.Ratio
+	split.Ratio = min(max(old+amount, 0.1), 0.9)
+	if split.Ratio == old {
+		return false, "unchanged"
+	}
+	a.changed()
+	return true, ""
 }
 
 // swapPanes puts p and q in each other's places, in their tab, and gives
@@ -1422,7 +1442,8 @@ func (a *App) movePaneToNewTab(p *Pane, label string) bool {
 	if p == nil || p.Tab == nil {
 		return false
 	}
-	src, wasActive := p.Tab, a.tab() == p.Tab
+	src, cur := p.Tab, a.tab()
+	wasActive := cur == src
 	a.detachPane(p)
 	t := &Tab{ID: a.id(), Name: paneName(label)}
 	t.Root = &Node{ID: a.id(), Pane: p}
@@ -1433,6 +1454,9 @@ func (a *App) movePaneToNewTab(p *Pane, label string) bool {
 		at = i + 1
 	}
 	a.tabs = slices.Insert(a.tabs, at, t)
+	if i := slices.Index(a.tabs, cur); cur != nil && i >= 0 {
+		a.active = i
+	}
 	if len(src.panes()) == 0 {
 		a.removeTab(src)
 		if wasActive {

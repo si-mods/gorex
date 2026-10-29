@@ -200,6 +200,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		a.changed()
 	case "pane.rename":
 		p.Name = paneName(c.Name)
+		res.Name = p.Name
 		a.changed()
 	case "pane.resize":
 		res.Changed, res.Reason = a.resizePane(p, c.Direction, c.Amount)

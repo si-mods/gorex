@@ -217,7 +217,7 @@ func (b *bridge) swapAnswer(reason, src, dst string) map[string]any {
 		"changed": false, "reason": reason,
 		"source_pane_id": paneID(src), "target_pane_id": paneID(dst),
 	}
-	if t := cmp.Or(b.tabOf(src), b.tabOf(dst)); t != nil {
+	if t := cmp.Or(b.tabOf(src), b.tabOf(dst), b.tab(b.active)); t != nil {
 		swap["focused_pane_id"], swap["layout"] = paneID(t.focus), b.layoutOf(t)
 	}
 	return map[string]any{"swap": swap}
@@ -401,6 +401,10 @@ func (b *bridge) complete(j *job) {
 			result = map[string]any{"move_result": move}
 		}
 	}
+	if result == nil && (paneOp(j.cmd.Op) || j.cmd.Op == "pane.rename") {
+		b.answer(j.req, nil, &failure{"pane_not_found", "the pane is gone"})
+		return
+	}
 	b.tell()
 	b.answer(j.req, result, nil)
 }
@@ -422,7 +426,7 @@ func (b *bridge) shows(j *job) bool {
 		return slices.Index(b.tabs, b.tabOf(j.cmd.SID)) == j.res.Index
 	case "pane.rename":
 		t := b.tabOf(j.cmd.SID)
-		return t != nil && t.root.note(j.cmd.SID) != nil && t.nameOf(j.cmd.SID) == j.cmd.Name
+		return t != nil && t.root.note(j.cmd.SID) != nil && t.nameOf(j.cmd.SID) == j.res.Name
 	case "pane.resize":
 		t := b.tabOf(j.cmd.SID)
 		return t != nil && t.root.note(j.cmd.SID) != nil && t.root.ratios() != j.before

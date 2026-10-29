@@ -112,7 +112,8 @@ type LayoutCommand struct {
 	// Dir is where a new pane starts, its tab's or its pane's when "".
 	Dir string `json:"dir,omitempty"`
 	// Vertical splits down, else right; Name is a tab's or a pane's new
-	// name; Mode is zoom's "on", "off" or "toggle".
+	// name, and in the answer a pane's name as the app keeps it; Mode is
+	// zoom's "on", "off" or "toggle".
 	Vertical bool   `json:"vertical,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Mode     string `json:"mode,omitempty"`

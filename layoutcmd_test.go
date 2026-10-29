@@ -536,6 +536,11 @@ func TestRootshellPaneCommands(t *testing.T) {
 	if pane := res["pane"].(map[string]any); pane["label"] != "logs" {
 		t.Fatalf("pane.rename %v", res)
 	}
+	// The app's sanitizing is what the wait compares against.
+	res = r.call("pane.rename", map[string]any{"pane_id": "p-" + sid1, "label": " lo\x01gs "})
+	if pane := res["pane"].(map[string]any); pane["label"] != "logs" {
+		t.Fatalf("sanitized pane.rename %v", res)
+	}
 	snap := r.call("session.snapshot", map[string]any{})["snapshot"].(map[string]any)
 	found := false
 	for _, x := range snap["panes"].([]any) {
@@ -624,5 +629,66 @@ func TestCommandPaneMove(t *testing.T) {
 	res = a.command(rex.LayoutCommand{Op: "pane.move", SID: p.SID, NewTab: true, Name: "moved"})
 	if res.Code != "" || !res.Changed || p.Tab == src || p.Tab.Name != "moved" {
 		t.Fatalf("new-tab move: %+v, tab %v %q", res, p.Tab != src, p.Tab.Name)
+	}
+}
+
+// TestMovePaneToNewTabKeepsActive leaves the window on its tab when a
+// pane of another tab goes to a tab of its own.
+func TestMovePaneToNewTabKeepsActive(t *testing.T) {
+	a, _ := newTestApp(t)
+	first := a.tab()
+	a.newTab(t.TempDir())
+	second := a.tab()
+	a.newTab(t.TempDir())
+	a.selectTab(slices.Index(a.tabs, second))
+	p := first.Focus
+	src := p.Tab
+	if !a.movePaneToNewTab(p, "moved") {
+		t.Fatal("no new tab")
+	}
+	if p.Tab == src || !slices.Contains(a.tabs, p.Tab) || a.tab() != second {
+		t.Fatalf("tab %v, active %v", p.Tab == src, a.tab() == second)
+	}
+	if slices.Contains(a.tabs, first) {
+		t.Fatal("the emptied tab stayed")
+	}
+}
+
+// TestCommandPaneResizeNested moves the divider a nested pane's edge
+// belongs to, not its nearest same-axis split.
+func TestCommandPaneResizeNested(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.split(false)
+	b := a.tab().Focus
+	a.split(false)
+	c := a.tab().Focus
+	tab := a.tab()
+	root := tab.Root
+	s := root.B
+	if root.Vertical || s == nil || s.Vertical || s.A != b.Node || s.B != c.Node {
+		t.Fatalf("tree %+v", root)
+	}
+	ratio := func(n *Node) float32 { return n.Ratio }
+	near := func(got, want float32) bool { return got > want-0.001 && got < want+0.001 }
+
+	// B's left edge is the root divider: the root moves, not B's parent.
+	res := a.command(rex.LayoutCommand{Op: "pane.resize", SID: b.SID, Direction: "left", Amount: 0.1})
+	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.5) {
+		t.Fatalf("left of B: %+v, root %v, split %v", res, ratio(root), ratio(s))
+	}
+	// B's right edge is its parent split.
+	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: b.SID, Direction: "right", Amount: 0.1})
+	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.6) {
+		t.Fatalf("right of B: %+v, root %v, split %v", res, ratio(root), ratio(s))
+	}
+	// C's left edge is its parent split.
+	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: c.SID, Direction: "left", Amount: 0.1})
+	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.5) {
+		t.Fatalf("left of C: %+v, root %v, split %v", res, ratio(root), ratio(s))
+	}
+	// C's outer right edge moves its nearest split the other way, as herdr.
+	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: c.SID, Direction: "right", Amount: 0.1})
+	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.6) {
+		t.Fatalf("outer right of C: %+v, root %v, split %v", res, ratio(root), ratio(s))
 	}
 }
