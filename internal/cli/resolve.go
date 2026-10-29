@@ -34,6 +34,9 @@ func resolveTarget(c *rex.Client, target string) (string, error) {
 		labels = sessionLabels(raw)
 	}
 	if sid, ok := labels[target]; ok {
+		if sid == "" {
+			return "", fmt.Errorf("%w: %s", errAmbiguous, target)
+		}
 		return sid, nil
 	}
 	if n, err := strconv.Atoi(target); err == nil && n >= 1 && n <= len(infos) {
@@ -42,7 +45,7 @@ func resolveTarget(c *rex.Client, target string) (string, error) {
 	if len(target) >= 4 {
 		var found []string
 		for _, in := range infos {
-			if strings.HasPrefix(in.ID, target) || strings.HasSuffix(in.ID, target) {
+			if strings.HasSuffix(in.ID, target) {
 				found = append(found, in.ID)
 			}
 		}
@@ -87,20 +90,25 @@ func sessionLabels(raw json.RawMessage) map[string]string {
 		return nil
 	}
 	out := map[string]string{}
+	add := func(label, sid string) {
+		if label == "" || sid == "" {
+			return
+		}
+		if old, ok := out[label]; ok && old != sid {
+			out[label] = "" // ambiguous
+			return
+		}
+		out[label] = sid
+	}
 	for _, w := range st.Sessions {
 		var focused string
 		if w.Active >= 0 && w.Active < len(w.Tabs) {
 			focused = tabSession(w.Tabs[w.Active])
 		}
 		for _, t := range w.Tabs {
-			sid := tabSession(t)
-			if t.Name != "" && sid != "" {
-				out[t.Name] = sid
-			}
+			add(t.Name, tabSession(t))
 		}
-		if w.Name != "" && focused != "" {
-			out[w.Name] = focused
-		}
+		add(w.Name, focused)
 	}
 	return out
 }

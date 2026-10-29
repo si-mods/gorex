@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -150,6 +151,9 @@ func TestUsageErrors(t *testing.T) {
 	if code, handled, _, _ := runMain(t, "-S"); code != ExitUsage || !handled {
 		t.Fatalf("-S without a host: %d %v", code, handled)
 	}
+	if code, handled, _, _ := runMain(t, "-S", "", "ls"); code != ExitUsage || !handled {
+		t.Fatalf("-S with an empty host: %d %v", code, handled)
+	}
 	if code, handled, _, _ := runMain(t, "-S", "not-an-address", "ls"); code != ExitServer || !handled {
 		t.Fatalf("-S bad address: %d %v", code, handled)
 	}
@@ -240,7 +244,7 @@ func TestTargetResolution(t *testing.T) {
 	if got, err := resolveTarget(c, one.ID); err != nil || got != one.ID {
 		t.Fatalf("exact: %q %v", got, err)
 	}
-	if got, err := resolveTarget(c, one.ID[:4]); err != nil || got != one.ID {
+	if got, err := resolveTarget(c, one.ID[len(one.ID)-4:]); err != nil || got != one.ID {
 		t.Fatalf("suffix: %q %v", got, err)
 	}
 	if got, err := resolveTarget(c, "1"); err != nil || got != one.ID {
@@ -249,6 +253,9 @@ func TestTargetResolution(t *testing.T) {
 	if _, err := resolveTarget(c, "no-such-session"); !errors.Is(err, errNoSession) {
 		t.Fatalf("missing: %v", err)
 	}
+	if got := codeFor(fmt.Errorf("x: %w", errAmbiguous)); got != ExitTarget {
+		t.Fatalf("ambiguous code %d, want %d", got, ExitTarget)
+	}
 }
 
 func TestLayoutLabels(t *testing.T) {
@@ -256,5 +263,17 @@ func TestLayoutLabels(t *testing.T) {
 	labels := sessionLabels(raw)
 	if labels["work"] != "two" || labels["build"] != "two" {
 		t.Fatalf("labels %v", labels)
+	}
+}
+
+func TestBrokenHostsFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	if err := os.WriteFile(filepath.Join(dir, "hosts.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, handled, _, errOut := runMain(t, "-S", "studio", "ls")
+	if code != ExitFailed || !handled || !strings.Contains(errOut, "not valid") {
+		t.Fatalf("broken hosts: %d %v %q", code, handled, errOut)
 	}
 }

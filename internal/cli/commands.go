@@ -39,7 +39,7 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return 0, false
 	}
 	if args[0] == "-S" || args[0] == "--server" {
-		if len(args) < 3 {
+		if len(args) < 3 || strings.TrimSpace(args[1]) == "" {
 			fmt.Fprintln(errOut, "gorex: -S needs a host and a command")
 			return ExitUsage, true
 		}
@@ -146,12 +146,27 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 		return c, ExitOK
 	}
 	f, err := loadHosts()
-	if err == nil {
-		var found []savedHost
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return nil, ExitFailed
+	}
+	{
+		var manual, network []savedHost
 		for _, h := range f.Hosts {
-			if strings.EqualFold(h.Name, serverTarget) {
-				found = append(found, h)
+			if h.ID == "" || h.Address == "" || !strings.EqualFold(h.Name, serverTarget) {
+				continue
 			}
+			if h.Network {
+				network = append(network, h)
+			} else {
+				manual = append(manual, h)
+			}
+		}
+		// A host added by hand wins over one the directory brought; if
+		// there is none, a directory host must still be unique.
+		found := manual
+		if len(found) == 0 {
+			found = network
 		}
 		if len(found) > 1 {
 			fmt.Fprintf(errOut, "gorex: host %q is ambiguous\n", serverTarget)
@@ -184,7 +199,10 @@ func dialRemote(h savedHost, errOut io.Writer) (*rex.Client, int) {
 
 // targetFlag adds -s/--session, defaulting to GOREX_SESSION.
 func targetFlag(fs *flag.FlagSet) *string {
-	def := os.Getenv("GOREX_SESSION")
+	def := ""
+	if serverTarget == "" {
+		def = os.Getenv("GOREX_SESSION")
+	}
 	return fs.String("s", def, "session ID")
 }
 
@@ -850,8 +868,8 @@ func codeFor(err error) int {
 	if err == nil {
 		return ExitOK
 	}
-	if rex.NotShared(err) || errors.Is(err, errNoSession) || strings.Contains(err.Error(), "no session") ||
-		strings.Contains(err.Error(), "session has ended") {
+	if rex.NotShared(err) || errors.Is(err, errNoSession) || errors.Is(err, errAmbiguous) ||
+		strings.Contains(err.Error(), "no session") || strings.Contains(err.Error(), "session has ended") {
 		return ExitTarget
 	}
 	return ExitFailed
