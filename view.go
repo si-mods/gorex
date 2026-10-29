@@ -25,7 +25,7 @@ const (
 func (a *App) view(c *ui.Context) {
 	a.services = c.Services()
 	a.runPosted()
-	k := colorsOf(c)
+	k := a.colors(c)
 	a.focusedWin = a.win == nil || a.win.IsFocused()
 	c.Root().Background(k.bgBottom)
 	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k) }).Children(func() {
