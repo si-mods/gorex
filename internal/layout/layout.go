@@ -47,4 +47,7 @@ type Node struct {
 	Ratio    float32 `json:"ratio,omitempty"`
 	A        *Node   `json:"a,omitempty"`
 	B        *Node   `json:"b,omitempty"`
+	// Unavailable marks a pane the server would not share with this
+	// client: its SID and host are gone, but its place in the layout stays.
+	Unavailable bool `json:"unavailable,omitempty"`
 }

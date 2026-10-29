@@ -91,7 +91,7 @@ func (s *Server) filterLayoutNode(n *layout.Node, peer string) *layout.Node {
 	if n.SID != "" {
 		ss, err := s.session(n.SID)
 		if err != nil || !s.mayUse(peer, ss) || n.Host != "" {
-			return nil
+			return &layout.Node{Name: "Unavailable", Unavailable: true}
 		}
 		return n
 	}

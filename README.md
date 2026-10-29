@@ -270,7 +270,8 @@ the live attachments with their principal and age. Settings › Remote
 Hosts can share this window's layout read-only, and each allowed client
 can be given all sessions, and the layout with them, or only the
 sessions it opened; the shared layout is filtered to sessions that client
-may use, and panes of other hosts are left out; `gorex -S HOST layout`
+may use; panes it may not use are shown as unavailable placeholders, and
+panes of other hosts are left out; `gorex -S HOST layout`
 reads it and `events` follows changes.
 
 Settings › Remote Hosts connects this machine to other machines' session
