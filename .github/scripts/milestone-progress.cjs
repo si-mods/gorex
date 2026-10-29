@@ -101,7 +101,20 @@ async function pullRequestForEvent({ github, context }) {
     repo,
     commit_sha: sha,
   });
-  return prs.find((pr) => pr.merged_at) || null;
+  const pr = prs.find((p) => p.merged_at);
+  if (pr) return pr;
+
+  // A merge commit's message names its pull request when the API does not
+  // associate the merge commit with it.
+  const message = (context.payload.head_commit && context.payload.head_commit.message) || '';
+  const m = message.match(/Merge pull request #(\d+)/) || message.match(/\(#(\d+)\)/);
+  if (!m) return null;
+  const { data: named } = await github.rest.pulls.get({
+    owner,
+    repo,
+    pull_number: Number(m[1]),
+  });
+  return named.merged_at ? named : null;
 }
 
 // update is the workflow body: it reads the merged PR, updates the issue,
