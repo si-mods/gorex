@@ -660,6 +660,9 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		case <-time.After(3 * time.Second):
 		}
 		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
+		if peer != "" {
+			h.Client = s.remoteClientFor(peer)
+		}
 		if kept != nil {
 			h.Keepalive, h.Conn = keepaliveTimeout.get(), kept.id
 		}

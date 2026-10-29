@@ -264,6 +264,9 @@ coordinator; a machine in a network never needs it.
 
 ### Remote hosts
 
+Remote clients pair by name and keep their key and created/last-seen
+times; a client's hello names its principal.
+
 Settings › Remote Hosts connects this machine to other machines' session
 servers, whose sessions then open in tabs of the window beside its own.
 Add Remote Host… asks for the host's address (the one its Settings ›
