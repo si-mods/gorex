@@ -27,6 +27,9 @@ import (
 type Workspace struct {
 	ID   string
 	Name string
+	// Color is the space's color: a preset id from spacePalette, a custom
+	// "#rrggbb", or "" for the default look.
+	Color string
 	// layout is its tabs while no window shows it; app is the window that
 	// shows it, whose tabs are then its own.
 	layout savedLayout
@@ -186,7 +189,7 @@ func (st *store) saved() savedStore {
 		if w.app != nil {
 			l = w.app.snapshot()
 		}
-		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Layout: l})
+		s.Sessions = append(s.Sessions, savedWorkspace{ID: w.ID, Name: w.Name, Color: w.Color, Layout: l})
 		if len(s.Windows) > 0 && w.ID == s.Windows[0] {
 			s.Layout = l
 		}
@@ -299,7 +302,7 @@ func (st *store) load() []*Workspace {
 	s := parseLayout(raw)
 	st.workspaces = nil
 	for _, sw := range s.Sessions {
-		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, layout: sw.Layout})
+		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, layout: sw.Layout})
 	}
 	var open []*Workspace
 	for _, id := range s.Windows {
@@ -373,9 +376,9 @@ func (st *store) hostSIDs(h *hostConn) map[string]bool {
 	return out
 }
 
-// addWorkspace makes a workspace of a new name, last.
+// addWorkspace makes a workspace of a new name and color, last.
 func (st *store) addWorkspace() *Workspace {
-	w := &Workspace{ID: newWorkspaceID(), Name: workspaceName(st.taken)}
+	w := &Workspace{ID: newWorkspaceID(), Name: workspaceName(st.taken), Color: st.nextSpaceColor()}
 	st.workspaces = append(st.workspaces, w)
 	return w
 }
@@ -623,7 +626,7 @@ func (st *store) reopen() {
 }
 
 // openNew opens a window of a new workspace, as New Window and New
-// Session do without windows; before the app started, the start serves it.
+// Space do without windows; before the app started, the start serves it.
 func (st *store) openNew() {
 	if st.started && st.connect() {
 		st.openWindow(st.addWorkspace(), false)

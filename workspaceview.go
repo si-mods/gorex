@@ -204,7 +204,7 @@ func (a *App) sessionItems(match func(string) bool) []paletteItem {
 	return items
 }
 
-// workspaceConfirm asks before Close Session ends the workspace's
+// workspaceConfirm asks before Close Space ends the workspace's
 // terminals.
 func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 	if !a.wsConfirm || a.ws == nil {

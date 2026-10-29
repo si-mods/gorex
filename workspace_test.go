@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -45,6 +46,84 @@ func TestParseLayout(t *testing.T) {
 	}
 	if !slices.Equal(s.Windows, []string{"b", "a"}) {
 		t.Errorf("windows %q", s.Windows)
+	}
+}
+
+// TestSpaceColor checks that the layout keeps a space's color, that a layout
+// of before colors parses, and is saved again without one.
+func TestSpaceColor(t *testing.T) {
+	s := parseLayout([]byte(`{"version":2,"sessions":[{"id":"a","name":"icy-ridge","color":"rose"}],"windows":["a"]}`))
+	if len(s.Sessions) != 1 || s.Sessions[0].Color != "rose" {
+		t.Fatalf("parsed %+v", s.Sessions)
+	}
+	older := parseLayout([]byte(`{"version":2,"sessions":[{"id":"a","name":"icy-ridge"}],"windows":["a"]}`))
+	if len(older.Sessions) != 1 || older.Sessions[0].Color != "" {
+		t.Fatalf("a layout of before colors parsed %+v", older.Sessions)
+	}
+	if b, err := json.Marshal(older); err != nil || strings.Contains(string(b), "color") {
+		t.Errorf("saved %s: %v", b, err)
+	}
+
+	// A new space is of the first color the palette has, which the server
+	// keeps with it.
+	a, _ := newTestApp(t)
+	st := a.st
+	first := a.ws
+	if first.Color != spacePalette[0].ID {
+		t.Fatalf("the first space is of color %q", first.Color)
+	}
+	st.saveNow()
+	if got := savedWorkspaces(t, a.client).Sessions[0].Color; got != first.Color {
+		t.Errorf("the server keeps color %q, want %q", got, first.Color)
+	}
+	quit(st)
+}
+
+// TestSpaceColorsAssigned checks that new spaces take the palette's colors
+// in order, and that the tenth, every one taken, takes a spare.
+func TestSpaceColorsAssigned(t *testing.T) {
+	st := &store{}
+	for i, p := range spacePalette {
+		if w := st.addWorkspace(); w.Color != p.ID {
+			t.Fatalf("space %d is of color %q, want %q", i+1, w.Color, p.ID)
+		}
+	}
+	if w := st.addWorkspace(); w.Color != spacePalette[0].ID {
+		t.Errorf("the tenth space is of color %q, want %q", w.Color, spacePalette[0].ID)
+	}
+	// The least used, in the palette's order, once two are used twice.
+	if w := st.addWorkspace(); w.Color != spacePalette[1].ID {
+		t.Errorf("the eleventh space is of color %q, want %q", w.Color, spacePalette[1].ID)
+	}
+	// A custom color takes no preset.
+	st.workspaces[0].Color = "#123456"
+	if w := st.addWorkspace(); w.Color != spacePalette[0].ID {
+		t.Errorf("with a custom color, rose is of color %q", w.Color)
+	}
+}
+
+// TestSpaceColorHex checks which colors spaceColorHex reads.
+func TestSpaceColorHex(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"rose", "#e54666", true},
+		{"pink", "#d6409f", true},
+		{"#ABCDEF", "#abcdef", true},
+		{"#0090ff", "#0090ff", true},
+		{"#abc", "", false},
+		{"#1234567", "", false},
+		{"#gggggg", "", false},
+		{"123456", "", false},
+		{"red", "", false},
+		{"", "", false},
+	} {
+		got, ok := spaceColorHex(c.in)
+		if got != c.want || ok != c.ok {
+			t.Errorf("spaceColorHex(%q) = %q, %v; want %q, %v", c.in, got, ok, c.want, c.ok)
+		}
 	}
 }
 
@@ -128,6 +207,9 @@ func TestWorkspacesSaved(t *testing.T) {
 	if n0.ws.ID != first.ID || n1.ws.ID != third.ID || n0.ws.Name != first.Name {
 		t.Fatalf("the windows show %s and %s", n0.ws.ID, n1.ws.ID)
 	}
+	if n0.ws.Color != first.Color || n1.ws.Color != third.Color {
+		t.Errorf("the spaces came back of colors %q and %q", n0.ws.Color, n1.ws.Color)
+	}
 	if !slices.Equal(sidsOf(n0), firstSIDs) || n0.tabs[0].Name != "one" {
 		t.Errorf("the first window attached to %q, not %q", sidsOf(n0), firstSIDs)
 	}
@@ -145,7 +227,7 @@ func TestWorkspacesSaved(t *testing.T) {
 }
 
 // TestShowWorkspaceInOtherWindow checks that showing a workspace another
-// window shows focuses that window, and that Next Session passes over it.
+// window shows focuses that window, and that Next Space passes over it.
 func TestShowWorkspaceInOtherWindow(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
@@ -160,15 +242,15 @@ func TestShowWorkspaceInOtherWindow(t *testing.T) {
 	hidden := st.addWorkspace()
 	a.cycleWorkspace(1)
 	if a.ws != hidden || mine.app != nil || len(mine.layout.Tabs) != 1 {
-		t.Fatalf("Next Session shows %s", a.ws.Name)
+		t.Fatalf("Next Space shows %s", a.ws.Name)
 	}
 	a.cycleWorkspace(1)
 	if a.ws != mine || !slices.Equal(sidsOf(a), sids) {
-		t.Errorf("Next Session came back to %s on %q, not %q", a.ws.Name, sidsOf(a), sids)
+		t.Errorf("Next Space came back to %s on %q, not %q", a.ws.Name, sidsOf(a), sids)
 	}
 	a.cycleWorkspace(-1)
 	if a.ws != hidden {
-		t.Errorf("Previous Session shows %s", a.ws.Name)
+		t.Errorf("Previous Space shows %s", a.ws.Name)
 	}
 	quit(st)
 }
@@ -189,7 +271,7 @@ func liveSIDs(t *testing.T, c *rex.Client) []string {
 	return out
 }
 
-// TestCloseWorkspace checks that Close Session asks, ends the workspace's
+// TestCloseWorkspace checks that Close Space asks, ends the workspace's
 // sessions, and shows another workspace, or a new one when none is left.
 func TestCloseWorkspace(t *testing.T) {
 	a, tt := newTestApp(t)
@@ -217,7 +299,7 @@ func TestCloseWorkspace(t *testing.T) {
 	tt.Frame()
 	tt.Frame()
 	if a.ws != other || slices.Contains(st.workspaces, first) || len(a.tabs) != 1 {
-		t.Fatalf("after Close Session the window shows %v, of %d tabs", a.ws, len(a.tabs))
+		t.Fatalf("after Close Space the window shows %v, of %d tabs", a.ws, len(a.tabs))
 	}
 	waitFor(t, tt, "the sessions to end", func() bool {
 		live := liveSIDs(t, a.client)
@@ -384,7 +466,7 @@ func TestSessionChip(t *testing.T) {
 		t.Errorf("window title %q", got)
 	}
 
-	// Rename Session edits the name in the chip.
+	// Rename Space edits the name in the chip.
 	a.startWorkspaceRename()
 	a.wsRenameText = ""
 	tt.Frame()
@@ -402,7 +484,7 @@ func TestSessionChip(t *testing.T) {
 		t.Errorf("no session chip in the sidebar; texts %q", tt.Texts())
 	}
 
-	// Change Session… lists the workspaces by name.
+	// Change Space… lists the workspaces by name.
 	a.openSessionPalette()
 	tt.Frame()
 	if !tt.HasText("icy-ridge") || !a.paletteSessions {
@@ -412,7 +494,7 @@ func TestSessionChip(t *testing.T) {
 	tt.Key(0, ui.KeyEnter)
 	tt.Frame()
 	if a.ws != first {
-		t.Errorf("Change Session showed %s", a.ws.Name)
+		t.Errorf("Change Space showed %s", a.ws.Name)
 	}
 	quit(st)
 }

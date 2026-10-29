@@ -1256,43 +1256,43 @@
   },
   "cmdNewWindow": "New Window",
   "@cmdNewWindow": {
-    "description": "Command: open a new window, which shows a new session."
+    "description": "Command: open a new window, which shows a new space."
   },
-  "cmdNewSession": "New Session",
+  "cmdNewSession": "New Space",
   "@cmdNewSession": {
-    "description": "Command: show a new session, with one tab, in the window. A session is a set of tabs, as in Rex."
+    "description": "Command: show a new space, with one tab, in the window. A space is a set of tabs of its own, as a session was in Rex."
   },
-  "cmdChangeSession": "Change Session…",
+  "cmdChangeSession": "Change Space…",
   "@cmdChangeSession": {
-    "description": "Command: open a list of the sessions, to show one in the window."
+    "description": "Command: open a list of the spaces, to show one in the window."
   },
-  "cmdNextSession": "Next Session",
+  "cmdNextSession": "Next Space",
   "@cmdNextSession": {
-    "description": "Command: show the next session in the window."
+    "description": "Command: show the next space in the window."
   },
-  "cmdPreviousSession": "Previous Session",
+  "cmdPreviousSession": "Previous Space",
   "@cmdPreviousSession": {
-    "description": "Command: show the previous session in the window."
+    "description": "Command: show the previous space in the window."
   },
-  "cmdRenameSession": "Rename Session…",
+  "cmdRenameSession": "Rename Space…",
   "@cmdRenameSession": {
-    "description": "Command: rename the window's session."
+    "description": "Command: rename the window's space."
   },
-  "cmdCloseSession": "Close Session",
+  "cmdCloseSession": "Close Space",
   "@cmdCloseSession": {
-    "description": "Command: end the terminals of the window's session, after asking, and forget it."
+    "description": "Command: end the terminals of the window's space, after asking, and forget it."
   },
   "cmdMoveTabToNewWindow": "Move Tab to New Window",
   "@cmdMoveTabToNewWindow": {
-    "description": "Command: move the active tab to a new window, in a new session."
+    "description": "Command: move the active tab to a new window, in a new space."
   },
-  "menuSession": "Session",
+  "menuSession": "Space",
   "@menuSession": {
-    "description": "Title of the Session menu."
+    "description": "Title of the Space menu."
   },
-  "sessionLabel": "Session {name}",
+  "sessionLabel": "Space {name}",
   "@sessionLabel": {
-    "description": "Accessibility label and tooltip of the title bar's session button. name is the session's name, as icy-ridge.",
+    "description": "Accessibility label and tooltip of the title bar's space button. name is the space's name, as icy-ridge.",
     "placeholders": {
       "name": {
         "type": "String",
@@ -1300,13 +1300,13 @@
       }
     }
   },
-  "sessionListTitle": "Sessions",
+  "sessionListTitle": "Spaces",
   "@sessionListTitle": {
-    "description": "Session popover: title over the list of sessions."
+    "description": "Space popover: title over the list of spaces."
   },
   "sessionTabs": "{n, plural, one {# tab} other {# tabs}}",
   "@sessionTabs": {
-    "description": "Session popover and palette: how many tabs a session has.",
+    "description": "Space popover and palette: how many tabs a space has.",
     "placeholders": {
       "n": {
         "type": "int",
@@ -1316,15 +1316,15 @@
   },
   "sessionElsewhere": "In another window",
   "@sessionElsewhere": {
-    "description": "Session popover and palette: the session shows in another window, which choosing it focuses."
+    "description": "Space popover and palette: the space shows in another window, which choosing it focuses."
   },
-  "sessionPlaceholder": "Change to a session…",
+  "sessionPlaceholder": "Change to a space…",
   "@sessionPlaceholder": {
-    "description": "Placeholder of the command palette listing the sessions."
+    "description": "Placeholder of the command palette listing the spaces."
   },
   "sessionCloseTitle": "Close “{name}”?",
   "@sessionCloseTitle": {
-    "description": "Title of the question before closing a session.",
+    "description": "Title of the question before closing a space.",
     "placeholders": {
       "name": {
         "type": "String",
@@ -1334,7 +1334,7 @@
   },
   "sessionCloseBody": "{n, plural, one {Its terminal ends, and the program running in it.} other {Its # terminals end, and the programs running in them.}}",
   "@sessionCloseBody": {
-    "description": "Body of the question before closing a session: what closing it ends.",
+    "description": "Body of the question before closing a space: what closing it ends.",
     "placeholders": {
       "n": {
         "type": "int",
@@ -1344,11 +1344,11 @@
   },
   "sessionCancel": "Cancel",
   "@sessionCancel": {
-    "description": "Button of the question before closing a session: keep it."
+    "description": "Button of the question before closing a space: keep it."
   },
   "sessionTabsElsewhere": "{n, plural, one {# tab · In another window} other {# tabs · In another window}}",
   "@sessionTabsElsewhere": {
-    "description": "Session popover and palette: how many tabs a session has, which another window shows.",
+    "description": "Space popover and palette: how many tabs a space has, which another window shows.",
     "placeholders": {
       "n": {
         "type": "int",
@@ -1358,7 +1358,7 @@
   },
   "windowTitle": "{session} — {tab}",
   "@windowTitle": {
-    "description": "Title of a window, which the Window menu and the taskbar show: its session's name and its active tab's label.",
+    "description": "Title of a window, which the Window menu and the taskbar show: its space's name and its active tab's label.",
     "placeholders": {
       "session": {
         "type": "String",
