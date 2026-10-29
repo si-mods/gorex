@@ -204,6 +204,60 @@ func TestPanesAndTabs(t *testing.T) {
 	waitFor(t, tt, "the pane to close", func() bool { return len(tab.panes()) == 2 })
 }
 
+// TestPanesDump checks the "panes" dump: the pane's terminal, and the
+// screen the session server sends for it.
+func TestPanesDump(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := debugMain
+	debugMain = func(fn func()) { fn() }
+	t.Cleanup(func() { debugMain = old })
+	p := a.tab().Focus
+	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+	p.term.Send([]byte("echo DUMP_$((6*7))\r"))
+	waitFor(t, tt, "the output", func() bool { return strings.Contains(p.term.Text(), "DUMP_42") })
+	tt.Frame()
+
+	dir := t.TempDir()
+	a.st.debug(dir, "panes p.json")
+	a.st.debug(dir, "panes")
+	if _, err := os.Stat(filepath.Join(dir, "panes.json")); err != nil {
+		t.Errorf("default file: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "p.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d debugPanes
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Panes) != 1 {
+		t.Fatalf("%d panes, want 1", len(d.Panes))
+	}
+	g := d.Panes[0]
+	if g.Tab != 1 || g.Pane != p.ID {
+		t.Errorf("tab %d pane %d, want tab 1, pane %d", g.Tab, g.Pane, p.ID)
+	}
+	if g.Session != p.SID {
+		t.Errorf("session %q, want %q", g.Session, p.SID)
+	}
+	if c, r := p.term.Size(); g.Cols != c || g.Rows != r {
+		t.Errorf("size %dx%d, want %dx%d", g.Cols, g.Rows, c, r)
+	}
+	if !strings.Contains(g.Text, "DUMP_42") {
+		t.Errorf("text %q lacks the output", g.Text)
+	}
+	if g.CaptureError != "" {
+		t.Fatalf("capture: %s", g.CaptureError)
+	}
+	if g.ScreenCols <= 0 || g.ScreenRows <= 0 {
+		t.Errorf("screen size %dx%d", g.ScreenCols, g.ScreenRows)
+	}
+	if !strings.Contains(g.Screen, "DUMP_42") {
+		t.Errorf("screen %q lacks the output", g.Screen)
+	}
+}
+
 func TestRestore(t *testing.T) {
 	a, tt := newTestApp(t)
 	a.split(false)

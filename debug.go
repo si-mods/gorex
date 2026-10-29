@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/terminal"
 )
 
 // debugHook lets a script drive the app while GOREX_DEBUG names a
@@ -75,6 +77,29 @@ type debugSession struct {
 	Name   string `json:"name"`
 	Tabs   int    `json:"tabs"`
 	Window int    `json:"window"` // the index of the window that shows it, 0 for none
+}
+
+// debugPanes is what "panes" writes: every pane of the window.
+type debugPanes struct {
+	Panes []debugPane `json:"panes"`
+}
+
+// debugPane is a pane as "panes" describes it: the terminal's text and
+// size, and the screen the session server's snapshot of it renders, so
+// that a duplication in the scrollback can be told from a fault of the
+// server.
+type debugPane struct {
+	Tab          int    `json:"tab"`                // from 1
+	Pane         int    `json:"pane"`               // the pane's ID
+	Session      string `json:"session,omitempty"`  // the id that state's sessions join with
+	TabTitle     string `json:"tabTitle,omitempty"` // the tab's label, shared by its panes
+	Cols         int    `json:"cols"`
+	Rows         int    `json:"rows"`
+	Text         string `json:"text"` // the terminal's Text()
+	ScreenCols   int    `json:"screenCols,omitempty"`
+	ScreenRows   int    `json:"screenRows,omitempty"`
+	Screen       string `json:"screen,omitempty"` // the server's snapshot, rendered
+	CaptureError string `json:"captureError,omitempty"`
 }
 
 // byPlace returns the windows in the order of their places.
@@ -189,8 +214,100 @@ func (st *store) debug(dir, line string) {
 	})
 }
 
+// panesDump describes every pane of the window, in tab order: the
+// terminal's text and size, and the screen the session server sends for
+// it, rendered. It reads the window's panes on the main thread, then
+// waits for the server, and renders, off it: the capture round trip is
+// never held on the UI thread.
+func (a *App) panesDump() debugPanes {
+	type paneRef struct {
+		tab      int
+		tabTitle string
+		pane     *Pane
+		term     *terminal.Terminal
+	}
+	var refs []paneRef
+	debugMain(func() {
+		for i, t := range a.tabs {
+			name, detail := t.label()
+			title := strings.TrimSpace(name + " " + detail)
+			for _, p := range t.panes() {
+				refs = append(refs, paneRef{i + 1, title, p, p.term})
+			}
+		}
+	})
+	d := debugPanes{Panes: []debugPane{}}
+	for _, r := range refs {
+		dp := debugPane{Tab: r.tab, Pane: r.pane.ID, Session: r.pane.SID, TabTitle: r.tabTitle}
+		if r.term != nil {
+			dp.Cols, dp.Rows = r.term.Size()
+			dp.Text = r.term.Text()
+		}
+		switch {
+		case r.pane.host != nil:
+			dp.CaptureError = "remote session"
+		case r.pane.SID == "":
+			dp.CaptureError = "no session"
+		case r.term == nil:
+			dp.CaptureError = "no terminal"
+		default:
+			res, err := a.client.Capture(r.pane.SID, 0)
+			if err != nil {
+				dp.CaptureError = err.Error()
+				break
+			}
+			dp.ScreenCols, dp.ScreenRows = res.Cols, res.Rows
+			screen, err := renderScreen(res.Screen, res.Cols, res.Rows)
+			if err != nil {
+				dp.CaptureError = err.Error()
+				break
+			}
+			dp.Screen = screen
+		}
+		d.Panes = append(d.Panes, dp)
+	}
+	return d
+}
+
+// renderScreen feeds a session's snapshot into a terminal of its size, and
+// returns the text that terminal shows.
+func renderScreen(snapshot []byte, cols, rows int) (string, error) {
+	pr, _ := io.Pipe()
+	v, err := terminal.New(terminal.Options{Conn: dumpConn{pr}, Scrollback: termOptions().Scrollback})
+	if err != nil {
+		return "", err
+	}
+	defer v.Close()
+	v.Resize(cols, rows)
+	v.Feed(snapshot)
+	return v.Text(), nil
+}
+
+// dumpConn is the Conn of a terminal that only replays a snapshot: it
+// reads from an empty pipe, and drops what the terminal answers. It is
+// not nopConn, whose Read parks on select{} and whose Close is nil, so
+// closing the terminal would leave that reader parked.
+type dumpConn struct{ r *io.PipeReader }
+
+func (c dumpConn) Read(p []byte) (int, error)  { return c.r.Read(p) }
+func (c dumpConn) Write(p []byte) (int, error) { return len(p), nil }
+func (c dumpConn) Close() error                { return c.r.Close() }
+
 func (a *App) debug(dir, line string) {
 	verb, arg, _ := strings.Cut(line, " ")
+	switch verb {
+	case "panes": // FILE: each pane's text and size, and the session server's snapshot, as JSON, into FILE
+		name := "panes.json"
+		if arg != "" {
+			name = arg
+		}
+		b, _ := json.MarshalIndent(a.panesDump(), "", "  ")
+		path := filepath.Join(dir, name)
+		if os.WriteFile(path+".tmp", b, 0o644) == nil {
+			os.Rename(path+".tmp", path)
+		}
+		return
+	}
 	win := a.win
 	if win == nil {
 		return
