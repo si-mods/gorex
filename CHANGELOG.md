@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.1
+
+- Upgraded MyGo from v0.6.2 to v0.7.2. In the terminal, the scroll bar now
+  shows where the viewport is as macOS's do, and drags it; Shift-click
+  extends a selection; and a trackpad's wheel momentum no longer zooms the
+  text under the pointer.
+- The disk image is named after the app's slug, `gorex-0.2.1-<arch>.dmg`,
+  as MyGo v0.7.0 changed, and `install.sh` installs on macOS as well as
+  Linux.
+
 ## 0.2.0
 
 - Program status (OSC 7501): tabs, panes and the palette show when a

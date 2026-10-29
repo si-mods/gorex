@@ -291,7 +291,7 @@ rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 
 ## Develop and build
 
-GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.6.2, whose CLI
+GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.7.2, whose CLI
 `go.mod` pins as a tool:
 
 ```sh
