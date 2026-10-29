@@ -353,6 +353,10 @@ func captureCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
+	if *raw && *asJSON {
+		fmt.Fprintln(errOut, "gorex capture: --raw and --json cannot be used together")
+		return ExitUsage, true
+	}
 	c, code := connect(errOut)
 	if c == nil {
 		return code, true
@@ -362,10 +366,6 @@ func captureCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
-	}
-	if *raw && *asJSON {
-		fmt.Fprintln(errOut, "gorex capture: --raw and --json cannot be used together")
-		return ExitUsage, true
 	}
 	if *raw {
 		out.Write(res.Screen)

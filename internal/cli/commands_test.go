@@ -137,3 +137,12 @@ func TestMainLeavesAppArguments(t *testing.T) {
 		t.Error("no arguments were handled")
 	}
 }
+
+func TestUsageErrors(t *testing.T) {
+	if code, handled, _, _ := runMain(t, "lsit"); code != ExitUsage || !handled {
+		t.Fatalf("unknown command: %d %v", code, handled)
+	}
+	if code, handled, _, _ := runMain(t, "capture", "--raw", "--json", "-s", "x"); code != ExitUsage || !handled {
+		t.Fatalf("capture --raw --json: %d %v", code, handled)
+	}
+}
