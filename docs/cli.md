@@ -31,6 +31,7 @@ gorex clients [--json]
 gorex new [--dir DIR] [--json] [-- COMMAND...]
 gorex split [-s SESSION] [--down] [--dir DIR]
 gorex close [-s SESSION] [--tab]
+gorex rename [-s SESSION] NAME
 gorex send [-s SESSION] [--enter] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
 gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
@@ -44,9 +45,10 @@ gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
 gorex version [--json]
 ```
 
-Targets are a full session ID, a workspace or tab label, a position in
-`ls` (1 is the first), or the end of an ID (at least four characters). An
-ambiguous target exits 3.
+Targets are a full session ID, a workspace, tab or pane label, a position
+in `ls` (1 is the first), or the end of an ID (at least four characters).
+`-b` chooses a pane label, `-w` a tab label; `-b` wins over `-w`, which
+wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 
 - `new` creates a session and prints its ID.
 - `send` types without attaching; `--enter` presses Return.

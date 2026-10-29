@@ -143,6 +143,9 @@ func (a *App) tabEvents(e ui.Element, k *colors, i int, t *Tab) {
 	if dragged, ok := ui.Drop[*Tab](e); ok && dragged != t {
 		a.moveTab(dragged, i)
 	}
+	if dragged, ok := ui.Drop[*Pane](e); ok {
+		a.movePaneToTab(dragged, t)
+	}
 	if _, over := ui.DragOver[*Tab](e); over {
 		e.Border(1.5, k.busy.Alpha(0.6))
 	}

@@ -309,6 +309,12 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 			a.reconnecting(c, k, p)
 		})
 	})
+	if dragged, ok := ui.Drop[*Pane](card); ok && dragged != p {
+		a.movePaneToTab(dragged, t)
+	}
+	if _, over := ui.DragOver[*Pane](card); over {
+		card.Border(1.5, k.busy.Alpha(0.6))
+	}
 	p.bounds = card.Bounds()
 	if card.Pressed() && t.Focus != p {
 		t.setFocus(p)
@@ -320,12 +326,41 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 // paneHeader draws a pane's program, title and directory, its activity,
 // and its buttons.
 func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hovered bool) {
+	if a.paneRenaming == p {
+		a.paneRename(c)
+		return
+	}
 	name, detail := p.label()
 	prog := programOf(p.info.Program)
 	if p.info.Idle || p.info.Program == "" {
 		prog = programOf(p.info.Shell)
 	}
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).MinWidth(0)
+	h.ContextMenu(func(m *ui.Menu) {
+		if m.Item("Rename Pane…").Chosen() {
+			a.startPaneRename(p)
+		}
+		if p.Name != "" && m.Item("Reset Pane Name").Chosen() {
+			p.Name = ""
+			a.changed()
+		}
+		if len(a.tabs) > 1 {
+			m.Separator()
+			m.Submenu("Move to Tab", func(sm *ui.Menu) {
+				for _, o := range a.tabs {
+					if o == p.Tab {
+						continue
+					}
+					o := o
+					name, _ := o.label()
+					if sm.Item(name).Chosen() {
+						a.movePaneToTab(p, o)
+					}
+				}
+			})
+		}
+	})
+	h.Drag(p)
 	if h.DoubleClicked() {
 		t.setFocus(p)
 		a.toggleZoom()
@@ -369,6 +404,44 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 			}
 		})
 	})
+}
+
+// paneRename draws the label field over a pane's header.
+func (a *App) paneRename(c *ui.Context) {
+	p := a.paneRenaming
+	if p == nil {
+		return
+	}
+	in := ui.TextInput(c, &a.paneNameText).Placeholder(p.labelName()).Grow(1).MinWidth(0).Height(22).FontSize(12.5).AutoFocus()
+	done := func(keep bool) {
+		if keep {
+			p.Name = strings.TrimSpace(a.paneNameText)
+			a.changed()
+		}
+		a.paneRenaming, a.paneNameFocus = nil, false
+		a.focusReq = p
+	}
+	switch {
+	case in.Shortcut(0, ui.KeyEscape):
+		done(false)
+	case in.Submitted():
+		done(true)
+	case in.Focused():
+		a.paneNameFocus = true
+	case a.paneNameFocus:
+		done(true)
+	}
+}
+
+func (a *App) startPaneRename(p *Pane) {
+	a.paneRenaming, a.paneNameText, a.paneNameFocus = p, p.Name, false
+	a.focusReq = nil
+}
+
+// labelName is the pane's current name, or its program's.
+func (p *Pane) labelName() string {
+	name, _ := p.label()
+	return name
 }
 
 // reconnecting shows over the screen of a pane whose host or stream is
