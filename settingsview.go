@@ -69,7 +69,16 @@ func (a *App) openSettings() {
 	win := mygo.NewWindow(opts)
 	settingsUI.win = win
 	win.SetMenu(mygo.NewMenu(nil)) // not the terminal window's menus
-	win.OnClosed(func() { stopRemotePoll(); closeAddHost(); settingsUI.win = nil })
+	win.OnClosed(func() {
+		stopRemotePoll()
+		closeAddHost()
+		shortcutsUI = shortcutsState{}
+		if a.st != nil && a.st.recording {
+			a.st.recording = false
+			rebuildMenu(a.st)
+		}
+		settingsUI.win = nil
+	})
 }
 
 // sections are the sidebar's items.
@@ -148,7 +157,7 @@ func (a *App) settingsTitleBar(c *ui.Context, k *colors) {
 // active tab's face.
 func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
 	active := settingsUI.section == id
-	e := ui.Row(c.Key(id)).Height(tabH+4).Padding(0, 12, 0, 10).Gap(9).AlignItems(ui.Center).Radius((tabH+4)/2).
+	e := ui.Row(c.Key(id)).Height(tabH+4).Padding(0, 12, 0, 10).Gap(9).AlignItems(ui.Center).Radius((tabH + 4) / 2).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(label)
 	if active {
 		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 8, 0, k.shadow)
@@ -373,32 +382,68 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 }
 
 // shortcutRow is a shortcut of GoRex's, for the keyboard section.
-type shortcutRow struct{ Title, Keys string }
+type shortcutRow struct {
+	Title, Keys string
+	Command     *command
+	Overridden  bool
+}
 
 // shortcutRows lists GoRex's shortcuts from the commands, with the keys of
 // this system, and the tab keys the commands lack.
 func shortcutRows() []shortcutRow {
+	overrides := map[string]string{}
+	if b, err := loadShortcuts(); err == nil {
+		for _, o := range b {
+			overrides[o.Action] = o.Key
+		}
+	}
 	var rows []shortcutRow
 	for _, cmd := range commands {
 		if cmd.Keys != "" {
-			rows = append(rows, shortcutRow{cmd.Title(), cmd.Keys})
+			keys, over := cmd.Keys, false
+			if k, ok := overrides[cmd.ID]; ok {
+				keys, over = k, true
+			}
+			rows = append(rows, shortcutRow{cmd.Title(), keys, cmd, over})
 		}
 	}
 	first, last, cycle := showTabKey(1).String(), showTabKey(9).String(), "Ctrl+Tab, Ctrl+Shift+Tab"
 	if runtime.GOOS == "darwin" {
 		first, last, cycle = "⌘1", "⌘9", "⌃Tab, ⇧⌃Tab"
 	}
-	return append(rows, shortcutRow{locales.SettingsShowTabRange(), first + " … " + last}, shortcutRow{locales.SettingsNextPrevTab(), cycle})
+	return append(rows, shortcutRow{Title: locales.SettingsShowTabRange(), Keys: first + " … " + last}, shortcutRow{Title: locales.SettingsNextPrevTab(), Keys: cycle})
 }
 
 func (a *App) keyboardSettings(c *ui.Context, k *colors) {
+	a.recordShortcut(c)
 	settingsTitle(c, k, locales.SettingsKeyboard())
 	ui.Text(c, locales.SettingsKeyboardNote()).FontSize(12).TextColor(k.textFaint)
+	resetAllButton(a, c)
+	if shortcutsUI.recording != nil {
+		card(ui.Column(c).Gap(6).Padding(12, 14), k).Children(func() {
+			ui.Text(c, "Press the new shortcut for "+shortcutsUI.recording.Title()).FontSize(13.5).TextColor(k.text)
+			if shortcutsUI.err != "" {
+				ui.Text(c, shortcutsUI.err).FontSize(12).TextColor(k.danger)
+			}
+			if ui.Button(c, "Cancel").Clicked() {
+				a.stopRecording()
+			}
+		})
+	}
 	card(ui.Column(c).Padding(6), k).Children(func() {
 		for i, r := range shortcutRows() {
 			ui.Row(c.Key(i)).Gap(12).Padding(7, 10).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, r.Title).FontSize(13.5).TextColor(k.text).Grow(1)
 				ui.Text(c, r.Keys).FontSize(12).TextColor(k.textMuted).Padding(2, 7).Radius(7).Background(k.hover)
+				if r.Command != nil {
+					if !blockedFromClient(r.Command.ID) && ui.Button(c.Key("change"), "Change").Clicked() {
+						a.startRecording(r.Command)
+					}
+					reset := ui.Button(c.Key("reset"), locales.SettingsReset()).Disabled(!r.Overridden)
+					if reset.Clicked() {
+						a.resetShortcut(r.Command)
+					}
+				}
 			})
 		}
 	})

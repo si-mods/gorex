@@ -245,7 +245,7 @@ func (k keyChord) String() string {
 	for _, m := range []struct {
 		mod  ui.Modifiers
 		name string
-	}{{ui.Ctrl, "ctrl"}, {ui.Alt, "alt"}, {ui.Shift, "shift"}, {ui.Super, "cmd"}} {
+	}{{ui.Super, "cmd"}, {ui.Ctrl, "ctrl"}, {ui.Alt, "alt"}, {ui.Shift, "shift"}} {
 		if k.Mods&m.mod != 0 {
 			parts = append(parts, m.name)
 		}
