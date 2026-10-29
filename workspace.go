@@ -479,6 +479,15 @@ func (st *store) connect() bool {
 		mygo.App.Quit()
 		return false
 	}
+	return st.adopt(client)
+}
+
+// adopt takes client as the app's connection: the hello, a server a build of
+// before this one runs made to run this build's in its place, its layout
+// commands, and the windows open shown again on it, attached to their
+// sessions.
+func (st *store) adopt(client *rex.Client) bool {
+	var err error
 	st.client, st.errMsg = client, nil
 	st.hello, err = client.Hello()
 	if err == nil && staleServer(st.hello) {
@@ -528,7 +537,46 @@ func (st *store) connect() bool {
 			go a.poll(a.win, st.client)
 		}
 	}
+	go st.watch(st.client)
 	return true
+}
+
+// watch connects again when the connection to c closes. A server that goes
+// away — a crash, a kill, a restart — ends every stream it had, and the
+// server that comes next starts the sessions of the run before it again; the
+// windows attach to theirs, as they were.
+func (st *store) watch(c *rex.Client) {
+	if c == nil {
+		return
+	}
+	go func() {
+		<-c.Closed()
+		for i := range 40 {
+			time.Sleep(min(time.Duration(i+1)*250*time.Millisecond, 3*time.Second))
+			var stop bool
+			mygo.RunOnMain(func() { stop = !st.started || st.quitting || st.client != c })
+			if stop {
+				return
+			}
+			// Dialing waits, and a window that waits does not draw.
+			client, err := rex.Connect()
+			if err != nil {
+				log.Print(err)
+				continue
+			}
+			mygo.RunOnMain(func() {
+				if st.client != c {
+					client.Close()
+					stop = true
+					return
+				}
+				stop = st.adopt(client)
+			})
+			if stop {
+				return
+			}
+		}
+	}()
 }
 
 // start opens the windows open when the app quit, with their workspaces;

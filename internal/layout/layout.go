@@ -1,5 +1,6 @@
 // Package layout is the saved shape of GoRex's windows, tabs and panes.
-// The app owns it; the session server shares it read-only.
+// The app owns it; the session server keeps it read-only, and reads it to
+// start again the sessions of a run that did not stop.
 package layout
 
 // Store is every workspace and the windows that show them, in order.

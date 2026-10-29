@@ -391,20 +391,26 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	}
 	opts.OpenLink = func(link string) bool { return a.openLink(p, link) }
 	opts.OnExit = func(int) {
-		update(func() {
-			if p.closed || a.quitting {
-				return
-			}
-			// The session of a host ended, or is gone: the window keeps a
-			// tab of this machine's rather than closing with its last.
-			if p.host != nil && len(a.tabs) == 1 && len(a.tabs[0].panes()) == 1 {
-				home, _ := os.UserHomeDir()
-				a.newTabOn(nil, home)
-			}
-			// A session the host no longer lists, as one it stopped sharing,
-			// is not this machine's to end.
-			a.dropPane(p, p.remote == nil || !p.remote.Gone())
-		})
+		// A session of this machine whose stream stops is not a session that
+		// ended until the server says so: a server that went away — a crash,
+		// a kill, a restart — ends every stream it had, and the one that
+		// comes after it starts the sessions again.
+		if p.host == nil && p.SID != "" {
+			update(func() {
+				if p.closed || a.quitting {
+					return
+				}
+				c, sid := a.client, p.SID
+				go func() {
+					if sessionAlive(c, sid) {
+						return
+					}
+					update(func() { a.endPane(p) })
+				}()
+			})
+			return
+		}
+		update(func() { a.endPane(p) })
 	}
 	term, err := terminal.New(opts)
 	if err != nil {
@@ -560,6 +566,42 @@ func (a *App) splitPane(old *Pane, vertical bool, dir string) *Pane {
 
 // closePane closes a pane and ends its session.
 func (a *App) closePane(p *Pane) { a.dropPane(p, true) }
+
+// endPane ends the pane of a terminal that stopped reading, and its tab with
+// it when it was the last. The window keeps a tab of this machine's rather
+// than closing with its last.
+func (a *App) endPane(p *Pane) {
+	if p.closed || a.quitting {
+		return
+	}
+	if p.host != nil && len(a.tabs) == 1 && len(a.tabs[0].panes()) == 1 {
+		home, _ := os.UserHomeDir()
+		a.newTabOn(nil, home)
+	}
+	// A session the host no longer lists, as one it stopped sharing, is not
+	// this machine's to end.
+	a.dropPane(p, p.remote == nil || !p.remote.Gone())
+}
+
+// sessionAlive tells whether the server still has session sid, and has not
+// seen it exit. One that answers nothing — gone, restarting — leaves the
+// question open, and the pane with it: the server that comes back starts the
+// session again.
+func sessionAlive(c *rex.Client, sid string) bool {
+	if c == nil {
+		return true
+	}
+	infos, err := c.List()
+	if err != nil {
+		return true
+	}
+	for _, in := range infos {
+		if in.ID == sid {
+			return !in.Exited
+		}
+	}
+	return false
+}
 
 // dropPane closes a pane, and ends its session when kill is set.
 func (a *App) dropPane(p *Pane, kill bool) {

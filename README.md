@@ -367,7 +367,13 @@ The app keeps its state in its data directory: the server's socket and
 log, `layout.json` and `settings.json`, in `~/Library/Application
 Support/GoRex` for the built app and `GoRex Dev` for `mygo dev`'s, so
 that developing never touches the sessions of the app you use
-(`GOREX_DIR` names another directory). The sessions outlive the app, and
+(`GOREX_DIR` names another directory). `layout.jsonl` beside the layout
+is a journal of every layout the app sent, and of each run's start and
+stop: a server that starts after one that left no stop record — a crash,
+a kill, a reboot — starts the sessions of the last layout again, the same
+ids in the same directories, so the windows attach to them as they were.
+A run that stops says why and what it held, and the server after it
+starts nothing. The sessions outlive the app, and
 a new build: on macOS and Linux, a build that finds a server an older
 build started has it run the new build in its place, in the same
 process, its shells still running and their screens kept. On Windows a

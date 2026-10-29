@@ -41,7 +41,12 @@ type Server struct {
 	idleFrom   time.Time
 	quit       chan struct{}
 	quitOnce   sync.Once
-	rem        remote
+	// stopReason is why the server stops, as the journal records it; "" is
+	// a run that did not stop, a crash.
+	stopReason string
+	// journal keeps the layouts of this run, and how it ends.
+	journal *journal
+	rem     remote
 	// ops is held by the ops that add or end sessions, and an upgrade
 	// takes it alone; acceptMu holds Accept while an upgrade stops it.
 	ops      sync.RWMutex
@@ -276,9 +281,24 @@ func Serve() error {
 	}
 	os.Chmod(sock, 0o600)
 	s := newServer(ln, lock)
+	// The journal is read before this run records its start: what it kept
+	// of the run before this one tells whether that one stopped, and which
+	// layout it had last.
+	entries := readJournal()
+	s.journal = openJournal()
+	defer s.journal.close()
 	if b, err := os.ReadFile(filepath.Join(dir, "layout.json")); err == nil && json.Valid(b) {
 		s.layout = b
+	} else if b := lastLayout(entries); len(b) > 0 {
+		s.layout = b
+		log.Print("rex: the layout is the last the journal kept")
 	}
+	if !journalStopped(entries) {
+		// The run before this one did not stop: its sessions ended with
+		// it, and the layout it kept names them.
+		s.restoreSessions(s.layout)
+	}
+	s.journal.started()
 	return s.serve()
 }
 
@@ -315,7 +335,11 @@ func (s *Server) serve() error {
 				for _, ss := range s.sessions {
 					all = append(all, ss)
 				}
+				reason := s.stopReason
 				s.mu.Unlock()
+				// The stop is recorded before the sessions end: a run that
+				// leaves no stop record is one that did not stop.
+				s.journal.stopped(reason, s.inventory())
 				s.remoteClose()
 				for _, ss := range all {
 					ss.kill()
@@ -350,13 +374,15 @@ func (s *Server) watchIdle() {
 		s.mu.Unlock()
 		if idle && !s.remoteEnabled() {
 			log.Print("rex: idle, exiting")
-			s.shutdown()
+			s.shutdown("idle")
 			return
 		}
 	}
 }
 
-func (s *Server) shutdown() { s.quitOnce.Do(func() { close(s.quit) }) }
+func (s *Server) shutdown(reason string) {
+	s.quitOnce.Do(func() { s.stopReason = reason; close(s.quit) })
+}
 
 // handle serves a connection: peer is the key of a remote client, "" for
 // a local connection (a remote one always has a key: remoteAccept refuses
@@ -887,6 +913,10 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if err := os.WriteFile(tmp, current, 0o600); err == nil {
 			os.Rename(tmp, path)
 		}
+		// The journal keeps every layout of the run, so that one the app
+		// prunes after a session ends cannot take the record of another
+		// with it.
+		s.journal.layout(rev, current)
 		s.layoutFile.Unlock()
 		return LayoutState{Layout: l, Revision: rev}, nil
 	case "command", "command.done":
@@ -904,7 +934,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 	case "shutdown":
 		go func() {
 			time.Sleep(50 * time.Millisecond)
-			s.shutdown()
+			s.shutdown("request")
 		}()
 		return nil, nil
 	}

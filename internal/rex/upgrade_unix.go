@@ -134,6 +134,9 @@ func (s *Server) upgrade(exe string) error {
 		return err
 	}
 	defer os.Remove(path)
+	// The sessions go on in the process this run hands them to: this run
+	// stops with a record, not as one that crashed.
+	s.journal.stopped("upgrade", s.inventory())
 	log.Printf("rex: upgrading to %s", exe)
 	// No process starts meanwhile, which would get the descriptors.
 	syscall.ForkLock.Lock()
@@ -256,6 +259,9 @@ func Resume(path string) error {
 		return fmt.Errorf("rex: resuming the listener: %w", err)
 	}
 	s := newServer(ln, lock)
+	s.journal = openJournal()
+	defer s.journal.close()
+	s.journal.started()
 	s.started, s.layout, s.layoutRev = h.Started, h.Layout, h.LayoutRevision
 	if s.layoutRev == 0 {
 		s.layoutRev = 1
