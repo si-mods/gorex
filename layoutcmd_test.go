@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
@@ -419,5 +421,14 @@ func TestMovePaneKeepsActiveTabFocus(t *testing.T) {
 	}
 	if p.Tab != second {
 		t.Fatal("pane did not move")
+	}
+}
+
+func TestPaneName(t *testing.T) {
+	if got := paneName("  logs\x01  "); got != "logs" {
+		t.Fatalf("sanitized %q", got)
+	}
+	if got := paneName(strings.Repeat("界", 70)); len([]rune(got)) != 64 || !utf8.ValidString(got) {
+		t.Fatalf("capped runes %d", len([]rune(got)))
 	}
 }

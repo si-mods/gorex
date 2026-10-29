@@ -415,7 +415,7 @@ func (a *App) paneRename(c *ui.Context) {
 	in := ui.TextInput(c, &a.paneNameText).Placeholder(p.labelName()).Grow(1).MinWidth(0).Height(22).FontSize(12.5).AutoFocus()
 	done := func(keep bool) {
 		if keep {
-			p.Name = strings.TrimSpace(a.paneNameText)
+			p.Name = paneName(a.paneNameText)
 			a.changed()
 		}
 		a.paneRenaming, a.paneNameFocus = nil, false

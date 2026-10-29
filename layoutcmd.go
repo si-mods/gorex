@@ -199,17 +199,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		p.Tab.Name = strings.TrimSpace(c.Name)
 		a.changed()
 	case "pane.rename":
-		name := strings.TrimSpace(c.Name)
-		name = strings.Map(func(r rune) rune {
-			if r < 0x20 || r == 0x7f {
-				return -1
-			}
-			return r
-		}, name)
-		if len(name) > 64 {
-			name = name[:64]
-		}
-		p.Name = name
+		p.Name = paneName(c.Name)
 		a.changed()
 	case "pane.zoom":
 		on := c.Mode == "on" || c.Mode != "off" && p.Tab.Zoom == nil

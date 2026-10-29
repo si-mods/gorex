@@ -1323,6 +1323,21 @@ func (a *App) finishPaneMove(t *Tab, p *Pane, src *Tab, wasActive bool) {
 	}
 }
 
+// paneName is the name a user gave a pane: trimmed, without control
+// characters, and cut to 64 characters.
+func paneName(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(s))
+	if r := []rune(s); len(r) > 64 {
+		return string(r[:64])
+	}
+	return s
+}
+
 // detachPane removes p from its tab's tree, promoting its sibling, and
 // leaves the tab empty when p was its only pane.
 func (a *App) detachPane(p *Pane) {

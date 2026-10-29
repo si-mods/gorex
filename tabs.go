@@ -134,7 +134,7 @@ func (a *App) tabRest(c *ui.Context, k *colors, t *Tab, active, hovered bool) {
 	if dragged, ok := ui.Drop[*Pane](label); ok {
 		a.movePaneToTab(dragged, t)
 	}
-	if _, over := ui.DragOver[*Pane](label); over {
+	if dragged, over := ui.DragOver[*Pane](label); over && (t.Root == nil || dragged.host == t.host()) {
 		label.Border(1.5, k.busy.Alpha(0.6))
 	}
 	a.tabEnd(c, k, t, hovered)
