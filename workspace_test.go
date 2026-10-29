@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -743,6 +744,67 @@ func TestSpaceStripShots(t *testing.T) {
 		}
 		png.Encode(f, tt.Image())
 		f.Close()
+	}
+	quit(st)
+}
+
+// TestRenameFieldShots renders the fields that rename a space and a tab,
+// in the sidebar and above the tabs, light and dark, cropped and
+// magnified into GOREX_SHOTS, to look at: their text must show whole,
+// descenders too, inside the field.
+func TestRenameFieldShots(t *testing.T) {
+	dir := os.Getenv("GOREX_SHOTS")
+	if dir == "" {
+		t.Skip("GOREX_SHOTS names no directory")
+	}
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	st := a.st
+	a.ws.Name = "Vinda gyp"
+	os.MkdirAll(dir, 0o755)
+	shot := func(name string, r image.Rectangle, scale int) {
+		t.Helper()
+		src := tt.Image()
+		dst := image.NewRGBA(image.Rect(0, 0, r.Dx()*scale, r.Dy()*scale))
+		for y := range r.Dy() * scale {
+			for x := range r.Dx() * scale {
+				dst.Set(x, y, src.At(r.Min.X+x/scale, r.Min.Y+y/scale))
+			}
+		}
+		f, err := os.Create(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		png.Encode(f, dst)
+		f.Close()
+	}
+	for _, place := range []string{"left", ""} {
+		for _, dark := range []bool{false, true} {
+			prefs = settings{TabPlacement: place}
+			tt.SetDark(dark)
+			theme := map[bool]string{false: "light", true: "dark"}[dark]
+			space := map[string]string{"left": "sidebar", "": "top"}[place]
+			chip, tab := image.Rect(0, 40, 240, 78), image.Rect(0, 78, 240, 114)
+			if place == "" {
+				chip, tab = image.Rect(185, 0, 350, 44), image.Rect(340, 0, 700, 44)
+			}
+			a.wsRenaming, a.wsRenameText, a.wsRenameFocus = true, "Vinda gyp", false
+			for range 3 {
+				tt.Frame()
+			}
+			shot(fmt.Sprintf("rename-space-%s-%s.png", space, theme), chip, 6)
+			a.wsRenaming = false
+			a.renaming, a.renameText, a.renameFocus = a.tab(), "Vinda gyp", false
+			for range 3 {
+				tt.Frame()
+			}
+			shot(fmt.Sprintf("rename-tab-%s-%s.png", space, theme), tab, 6)
+			a.renaming = nil
+			for range 2 {
+				tt.Frame()
+			}
+		}
 	}
 	quit(st)
 }
