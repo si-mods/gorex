@@ -113,10 +113,15 @@ func mayBe(p []byte, prefix string) bool {
 // drop drops the records of what was running, as its program ended or a
 // prompt came: done and error stay until seen.
 func (st *programStatus) drop() {
+	changed := false
 	for id, r := range st.records {
 		if r.State != "done" && r.State != "error" {
 			delete(st.records, id)
+			changed = true
 		}
+	}
+	if changed {
+		st.updates++
 	}
 }
 
@@ -141,6 +146,7 @@ func (st *programStatus) report(body string) {
 	r := ProgramStatus{ID: id, State: kv["state"], Progress: -1, Updated: time.Now()}
 	switch r.State {
 	case "clear":
+		st.updates++
 		if !hasID {
 			clear(st.records)
 			return

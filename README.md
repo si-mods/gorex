@@ -48,7 +48,9 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
   working directory, a green dot shows a program printing, and an orange dot
   marks a pane whose program finished or rang the bell out of sight. When
   the window is in the background, a long command finishing posts a
-  notification.
+  notification. A session's most urgent program status shows in the
+  session picker and the sidebar, and rootshell sees it as the pane's and
+  tab's `agent_status`.
 - **Tab icons** stack the tiles of a tab's programs, the focused pane's in
   front, as Rex does. Tabs reorder by dragging, rename by double-click, and
   have a context menu.

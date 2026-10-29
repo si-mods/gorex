@@ -380,7 +380,9 @@ func (s *session) read() {
 			s.graphics.record(graphics)
 			s.vt.Feed(data)
 			s.batch(data)
+			beforeStatus := s.status.updates
 			queries := s.status.feed(data)
+			statusChanged := s.status.updates != beforeStatus
 			s.output += uint64(n)
 			s.lastOutput = time.Now()
 			s.sampler.ask()
@@ -391,6 +393,9 @@ func (s *session) read() {
 				}
 			}
 			s.mu.Unlock()
+			if statusChanged {
+				s.notify()
+			}
 			// The server answers, as the windows' terminals do not.
 			for range queries {
 				s.p.write(statusReply)
@@ -959,12 +964,17 @@ func (s *session) info() SessionInfo {
 	// A program that went back to the shell is no longer working nor
 	// blocked. Only the change counts: a session whose process is the
 	// program is idle all along.
+	beforeStatus := s.status.updates
 	if in.Idle && s.busy {
 		s.status.drop()
 	}
+	statusChanged := s.status.updates != beforeStatus
 	s.busy = !in.Exited && !in.Idle
 	in.Statuses = s.status.list()
 	s.mu.Unlock()
+	if statusChanged {
+		s.notify()
+	}
 	in.Status = MostUrgent(in.Statuses, time.Time{})
 	return in
 }

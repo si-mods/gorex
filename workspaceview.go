@@ -46,6 +46,9 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 		if wide {
 			name.Grow(1)
 		}
+		if s := a.st.status(w); s != nil && s.State != "idle" {
+			statusDot(c, k, s, 7)
+		}
 		ui.Icon(c, icon("chevron-down")).Size(13, 13).TextColor(k.textFaint).Shrink(0)
 	})
 	a.workspacePopover(c, k, chip)
@@ -132,6 +135,9 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 				ui.Text(c, w.Name).FontSize(13.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 				ui.Text(c, detail).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
 			})
+			if s := a.st.status(w); s != nil && s.State != "idle" {
+				statusDot(c, k, s, 7)
+			}
 			if w.app != nil && !current {
 				ui.Icon(c, icon("app-window")).Size(14, 14).TextColor(k.textFaint).Shrink(0).Tooltip(locales.SessionElsewhere())
 			}
@@ -185,7 +191,7 @@ func (a *App) sessionItems(match func(string) bool) []paletteItem {
 		case w.app != nil:
 			glyph = "app-window"
 		}
-		it := paletteItem{title: w.Name, detail: workspaceDetail(w, a), glyph: glyph, run: func() { a.showWorkspace(w) }}
+		it := paletteItem{title: w.Name, detail: workspaceDetail(w, a), glyph: glyph, status: a.st.status(w), run: func() { a.showWorkspace(w) }}
 		if w == a.ws {
 			items = append([]paletteItem{it}, items...)
 		} else {

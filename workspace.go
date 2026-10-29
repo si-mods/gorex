@@ -32,6 +32,45 @@ type Workspace struct {
 	app    *App
 }
 
+// status is the most urgent status of the workspace's sessions, from the
+// window that shows it or, hidden, from the last session list.
+func (st *store) status(w *Workspace) *rex.ProgramStatus {
+	if w == nil {
+		return nil
+	}
+	if w.app != nil {
+		var all []rex.ProgramStatus
+		for _, t := range w.app.tabs {
+			for _, p := range t.panes() {
+				if s := p.status(); s != nil {
+					all = append(all, *s)
+				}
+			}
+		}
+		return rex.MostUrgent(all, time.Time{})
+	}
+	var sids []string
+	for _, t := range w.layout.Tabs {
+		savedSIDs(t.Root, &sids)
+	}
+	var all []rex.ProgramStatus
+	for _, sid := range sids {
+		all = append(all, st.infos[sid].Statuses...)
+	}
+	return rex.MostUrgent(all, time.Time{})
+}
+
+func savedSIDs(n *savedNode, out *[]string) {
+	if n == nil {
+		return
+	}
+	if n.SID != "" {
+		*out = append(*out, n.SID)
+	}
+	savedSIDs(n.A, out)
+	savedSIDs(n.B, out)
+}
+
 // tabCount is how many tabs the workspace has.
 func (w *Workspace) tabCount() int {
 	if w.app != nil {
@@ -52,6 +91,9 @@ type store struct {
 	hostsUp bool
 
 	workspaces []*Workspace
+	// infos are this machine's sessions, as the windows last polled them,
+	// for the status of workspaces no window shows.
+	infos map[string]rex.SessionInfo
 	// apps are the open windows, the most recently focused first.
 	apps []*App
 	// lastClosed is the workspace of the last window, once it closed: it

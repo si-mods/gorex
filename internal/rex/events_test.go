@@ -213,3 +213,42 @@ func TestEventStream(t *testing.T) {
 		t.Fatal("no event")
 	}
 }
+
+func TestStatusEvent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("printf")
+	}
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	defer c.Close()
+	if _, err := c.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Subscribe(); err != nil {
+		t.Fatal(err)
+	}
+	in, err := c.Create(CreateOptions{Command: []string{"/bin/sh"}, Dir: "/tmp", Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := c.Stream(in.ID, 80, 24)
+	defer st.Close()
+	st.Write([]byte("printf '\\033]7501;state=blocked:kind=question\\007'\n"))
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case ev := <-c.Events():
+			if ev.Kind != "sessions" {
+				continue
+			}
+			for _, es := range ev.Sessions {
+				if es.ID == in.ID && es.Status != nil && es.Status.State == "blocked" {
+					return
+				}
+			}
+		case <-deadline:
+			in := sessionInfo(t, c, in.ID)
+			t.Fatalf("no blocked event; statuses %+v", in.Statuses)
+		}
+	}
+}

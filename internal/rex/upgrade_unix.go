@@ -72,8 +72,8 @@ type sessionState struct {
 	Reaped bool `json:"reaped,omitempty"`
 	Exited bool `json:"exited,omitempty"`
 	Code   int  `json:"code,omitempty"`
-	// ponytail: the program's status records (OSC 7501) are not handed
-	// over, and start empty after an upgrade; carry them if that shows.
+	// Statuses are the program's status records (OSC 7501).
+	Statuses []ProgramStatus `json:"statuses,omitempty"`
 }
 
 func handoffPath() string { return filepath.Join(Dir(), "handoff.json") }
@@ -214,6 +214,7 @@ func (s *session) state() sessionState {
 		Cols: s.cols, Rows: s.rows,
 		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
+		Statuses: s.status.list(),
 	}
 	st.Screen, st.Title = s.view()
 	select {
@@ -285,6 +286,13 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 	}
 	if err := s.newVT(); err != nil {
 		return nil, err
+	}
+	for _, r := range st.Statuses {
+		if s.status.records == nil {
+			s.status.records = map[string]*statusRecord{}
+		}
+		s.status.updates++
+		s.status.records[r.ID] = &statusRecord{r, s.status.updates}
 	}
 	if st.Exited || st.Master < 0 {
 		s.p = &pty{proc: st.PID}

@@ -273,8 +273,10 @@ type Response struct {
 	// program.
 	Event string `json:"event,omitempty"`
 	// Revision, on a layout event, is the layout's revision after the
-	// change (LayoutState).
-	Revision uint64 `json:"revision,omitempty"`
+	// change (LayoutState); Sessions, on a sessions event, the sessions
+	// and their status records.
+	Revision uint64         `json:"revision,omitempty"`
+	Sessions []EventSession `json:"sessions,omitempty"`
 }
 
 // Event is a line a subscribed connection gets, with no ID: the change
@@ -282,6 +284,16 @@ type Response struct {
 type Event struct {
 	Kind     string `json:"event"`
 	Revision uint64 `json:"revision,omitempty"`
+	// Sessions carries what the session list changed to, with the status
+	// records of each session that reported some.
+	Sessions []EventSession `json:"sessions,omitempty"`
+}
+
+// EventSession is one session in an Event.
+type EventSession struct {
+	ID       string          `json:"id"`
+	Status   *ProgramStatus  `json:"status,omitempty"`
+	Statuses []ProgramStatus `json:"statuses,omitempty"`
 }
 
 // LayoutState is the layout the server keeps, with its revision: a

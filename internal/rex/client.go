@@ -240,7 +240,7 @@ func (c *Client) read() {
 			}
 			c.mu.Unlock()
 			select {
-			case c.events <- Event{Kind: res.Event, Revision: res.Revision}:
+			case c.events <- Event{Kind: res.Event, Revision: res.Revision, Sessions: res.Sessions}:
 			default: // a reader that stopped reading does not hold the client
 			}
 			select {

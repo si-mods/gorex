@@ -1208,6 +1208,9 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 		}
 		win.Update(func() {
 			if a.win == win {
+				if a.st != nil {
+					a.st.infos = byID
+				}
 				a.apply(nil, byID)
 			}
 		})
