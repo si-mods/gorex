@@ -742,8 +742,10 @@ func TestRemoteTailcat(t *testing.T) {
 	if conn, err := stranger.DialTCPPort(ctx, RemotePort); err == nil {
 		conn.Write([]byte(`{"id":1,"op":"list"}` + "\n"))
 		conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-		if n, _ := conn.Read(make([]byte, 64)); n != 0 {
-			t.Error("a stranger got an answer")
+		buf := make([]byte, 512)
+		n, _ := conn.Read(buf)
+		if n == 0 || !strings.Contains(string(buf[:n]), refusedMessage) {
+			t.Errorf("a stranger got %q, not a refusal", buf[:n])
 		}
 		conn.Close()
 	}
