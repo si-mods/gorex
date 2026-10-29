@@ -491,18 +491,19 @@ func TestSidebar(t *testing.T) {
 		t.Error("the pane's header shows beside the left sidebar")
 	}
 
-	// The second tab, dragged over the first, takes its place.
+	// Dropping the second tab at the first tab's leading edge reorders it.
 	x, y := list.X+60, list.Y+sideRowH*1.5+2
+	targetY := list.Y + 4
 	tt.Press(x, y)
 	tt.Frame()
-	for _, dy := range []float32{4, 10, 20, sideRowH + 2} {
-		tt.Move(x, y-dy)
+	for _, yy := range []float32{y - 4, y - 10, y - 20, targetY} {
+		tt.Move(x, yy)
 		tt.Frame()
 	}
-	tt.Release(x, y-sideRowH-2)
+	tt.Release(x, targetY)
 	tt.Frame()
 	if a.tabs[1] != first {
-		t.Error("dragging the second tab over the first did not reorder them")
+		t.Error("dragging the second tab to the first tab's leading edge did not reorder them")
 	}
 
 	// The edge drags the width, between its bounds, and keeps it.
@@ -583,6 +584,41 @@ func TestSidebar(t *testing.T) {
 	}
 	if prefs.SidebarHidden {
 		t.Error("the sidebar did not show again")
+	}
+}
+
+func TestSidebarTabDropMerges(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left", HidePaneHeaders: true}
+	src := a.tab()
+	a.split(false)
+	src.Name = "source"
+	sourceRoot := src.Root
+	a.newTab(os.TempDir())
+	dst := a.tab()
+	dst.Name = "target"
+	tt.Frame()
+
+	list, ok := tt.Find("Tabs")
+	if !ok {
+		t.Fatalf("no sidebar; texts %q", tt.Texts())
+	}
+	x := list.X + 60
+	fromY := list.Y + sideRowH/2 + 2
+	targetY := list.Y + sideRowH*1.5 + 2
+	tt.Press(x, fromY)
+	tt.Frame()
+	for _, y := range []float32{fromY + 4, fromY + 10, fromY + 20, targetY} {
+		tt.Move(x, y)
+		tt.Frame()
+	}
+	tt.Release(x, targetY)
+	tt.Frame()
+
+	if len(a.tabs) != 1 || a.tab() != dst || dst.Root.A == nil || dst.Root.B != sourceRoot || len(dst.panes()) != 3 {
+		t.Fatalf("merge result: tabs %d, active target %v, panes %d", len(a.tabs), a.tab() == dst, len(dst.panes()))
 	}
 }
 
