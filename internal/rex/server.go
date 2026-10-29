@@ -473,7 +473,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 				kept = s.keep(conn, peer)
 			}
 			// Before the answer: no change after it goes untold.
-			if req.Op == "subscribe" && !remote && sub == nil {
+			if req.Op == "subscribe" && (!remote || s.remoteShareLayout()) && sub == nil {
 				sub = s.subscribe(write)
 			}
 			// Kills wait for the session to end, and layout commands for
@@ -568,9 +568,10 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	var data any
 	var err error
 	remote := peer != ""
+	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe") && s.remoteShareLayout()
 	if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
-	} else if remote && !remoteAllowed(req.Op) && !(req.Op == "action" && s.remoteControlEnabled()) {
+	} else if remote && !remoteAllowed(req.Op) && !layout && !(req.Op == "action" && s.remoteControlEnabled()) {
 		log.Printf("rex: denied %q to a remote connection", req.Op)
 		err = fmt.Errorf("%s is not allowed remotely", req.Op)
 	} else {

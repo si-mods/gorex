@@ -4243,3 +4243,31 @@ func FindCount(selected string, total string) string {
 func (msgs Messages) FindCount(selected string, total string) string {
 	return Catalog.Format(msgs.locale, "findCount", map[string]any{"selected": selected, "total": total})
 }
+
+// RemoteShareLayout says "Share layout"
+// in the language the app shows.
+//
+// Remote access: share this window layout with remote clients.
+func RemoteShareLayout() string { return In(i18n.Locale()).RemoteShareLayout() }
+
+// RemoteShareLayout says "Share layout"
+// in the language of msgs.
+//
+// Remote access: share this window layout with remote clients.
+func (msgs Messages) RemoteShareLayout() string {
+	return Catalog.Format(msgs.locale, "remoteShareLayout", nil)
+}
+
+// RemoteShareLayoutNote says "Remote clients may read this window's tabs and splits, and follow changes."
+// in the language the app shows.
+//
+// Remote access: share this window layout with remote clients.
+func RemoteShareLayoutNote() string { return In(i18n.Locale()).RemoteShareLayoutNote() }
+
+// RemoteShareLayoutNote says "Remote clients may read this window's tabs and splits, and follow changes."
+// in the language of msgs.
+//
+// Remote access: share this window layout with remote clients.
+func (msgs Messages) RemoteShareLayoutNote() string {
+	return Catalog.Format(msgs.locale, "remoteShareLayoutNote", nil)
+}

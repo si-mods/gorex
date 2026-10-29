@@ -252,3 +252,16 @@ func TestStatusEvent(t *testing.T) {
 		}
 	}
 }
+
+func TestShareLayoutGate(t *testing.T) {
+	s := &Server{layout: []byte(`{"tabs":[]}`)}
+	req := Request{ID: 1, Op: "getLayout"}
+	if res := s.request(req, "peer", nil); res.Error == "" {
+		t.Fatal("layout shared while off")
+	}
+	s.rem.cfg.ShareLayout = true
+	res := s.request(req, "peer", nil)
+	if res.Error != "" || !strings.Contains(string(res.Data), "tabs") {
+		t.Fatalf("shared layout: %q %q", res.Error, res.Data)
+	}
+}

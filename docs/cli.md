@@ -7,7 +7,7 @@ without opening a window; with no arguments it starts the app.
 an address, instead of this machine's server. Local-only commands (`hosts`,
 `skill`, `remote`) and window-only commands (`split`, `close`) do not
 apply remotely. `action` applies remotely when the host turns Remote
-Control on.
+Control on; `layout` reads a host's layout when it turns Share Layout on.
 
 Every local terminal GoRex opens gets:
 
@@ -28,6 +28,7 @@ machine's local socket look local. It still gets `GOREX_SESSION`.
 ```sh
 gorex ls [--json]
 gorex clients [--json]
+gorex [-S HOST] layout [--json]
 gorex new [--dir DIR] [--json] [-- COMMAND...]
 gorex split [-s SESSION] [--down] [--dir DIR]
 gorex close [-s SESSION] [--tab]
@@ -60,7 +61,10 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   when it ends, and exits with the program's status.
 - `split` and `close` change the window's layout, so they need the GoRex
   window open on that machine.
-- `events` prints each layout or session change as one JSON line.
+- `events` prints each layout or session change as one JSON line; with a
+  host that shares its layout, it subscribes to that host's layout too.
+- `clients` prints the principal, peer key, whether it is remote, through a
+  kept connection, and how many seconds it has been attached.
 - `hosts` lists saved remote hosts; addresses stay hidden.
 - `skill setup` installs the GoRex guide into Claude Code, Codex, OpenCode
   and Pi skill directories, and a `SessionStart` context hook for Claude

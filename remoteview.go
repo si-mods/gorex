@@ -355,6 +355,18 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 			a.remoteDo(func(srv *rex.Client) error { return srv.ShareSessions(share) }, nil)
 		}
 	})
+	// Whether remote clients read the layout and follow it.
+	layoutShare := st.ShareLayout
+	card(ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(11, 14), k).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+			ui.Text(c, locales.RemoteShareLayout()).FontSize(13.5).FontWeight(600).TextColor(k.text)
+			ui.Text(c, locales.RemoteShareLayoutNote()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+		})
+		sw := ui.Switch(c.Key("share-layout"), &layoutShare).Label(locales.RemoteShareLayout()).Disabled(page.unreachable || page.busy)
+		if sw.Changed() {
+			a.remoteDo(func(srv *rex.Client) error { return srv.ShareLayout(layoutShare) }, nil)
+		}
+	})
 
 	if st.Running {
 		a.remoteAddress(c, k)
