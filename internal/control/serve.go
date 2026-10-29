@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"gorex/internal/rex"
 )
 
 // readOnly are herdr's methods that GoRex has no part of: scrolling a
@@ -231,11 +233,31 @@ func paneSizesOf(t *tab, panes map[string]paneSize) (map[string]paneSize, error)
 	return sizes, nil
 }
 
+// agentStatus says what a session's program reported, "unknown" when it
+// reported nothing.
+func (b *bridge) agentStatus(sid string) string {
+	if s := b.infos[sid].Status; s != nil {
+		return s.State
+	}
+	return "unknown"
+}
+
+// tabStatus is the most urgent status among the tab's sessions.
+func (b *bridge) tabStatus(t *tab) string {
+	best := "unknown"
+	for _, sid := range t.root.sids() {
+		if s := b.infos[sid].Status; s != nil && (best == "unknown" || rex.StatusRank(s.State) > rex.StatusRank(best)) {
+			best = s.State
+		}
+	}
+	return best
+}
+
 // tabInfo is t as herdr's TabInfo.
 func (b *bridge) tabInfo(t *tab) map[string]any {
 	return map[string]any{
 		"tab_id": t.id, "workspace_id": workspace, "number": slices.Index(b.tabs, t) + 1, "label": t.name,
-		"focused": t.id == b.active, "pane_count": len(t.root.sids()), "agent_status": "unknown",
+		"focused": t.id == b.active, "pane_count": len(t.root.sids()), "agent_status": b.tabStatus(t),
 	}
 }
 
@@ -252,7 +274,7 @@ func (b *bridge) paneInfo(t *tab, sid string) map[string]any {
 	in := b.infos[sid]
 	pane := map[string]any{
 		"pane_id": paneID(sid), "terminal_id": sid, "workspace_id": workspace, "tab_id": t.id,
-		"focused": t.id == b.active && sid == t.focus, "agent_status": "unknown",
+		"focused": t.id == b.active && sid == t.focus, "agent_status": b.agentStatus(sid),
 		"terminal_title": in.Title, "title": in.Title,
 		"foreground_process": map[string]any{"name": in.Program, "argv": in.Args, "is_shell": in.Idle},
 	}

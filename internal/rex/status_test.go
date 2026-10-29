@@ -141,3 +141,13 @@ func TestStatusSplitAndQuery(t *testing.T) {
 		t.Fatalf("carried an OSC 52")
 	}
 }
+
+func TestStatusRISClears(t *testing.T) {
+	var st programStatus
+	st.report("state=working")
+	before := st.updates
+	st.feed([]byte("\x1bc"))
+	if st.updates != before+1 || len(st.records) != 0 {
+		t.Fatalf("updates %d -> %d, records %d", before, st.updates, len(st.records))
+	}
+}

@@ -4,6 +4,8 @@ package rex
 
 import (
 	"encoding/json"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -46,6 +48,8 @@ func (s *Server) subscribe(write func([]byte)) *subscriber {
 				ev := Event{Kind: kind}
 				if kind == "layout" {
 					ev.Revision = s.layoutRevision()
+				} else {
+					ev.Sessions = s.eventSessions()
 				}
 				b, _ := json.Marshal(ev)
 				write(b)
@@ -77,6 +81,28 @@ func (s *Server) notify(kind string) {
 }
 
 func (s *Server) sessionsChanged() { s.notify("sessions") }
+
+// eventSessions is what an Event says of the sessions: their IDs and the
+// status records that answered the status protocol.
+func (s *Server) eventSessions() []EventSession {
+	s.mu.Lock()
+	all := make([]*session, 0, len(s.sessions))
+	for _, ss := range s.sessions {
+		all = append(all, ss)
+	}
+	s.mu.Unlock()
+	slices.SortFunc(all, func(a, b *session) int { return strings.Compare(a.id, b.id) })
+	out := make([]EventSession, 0, len(all))
+	for _, ss := range all {
+		in := ss.info()
+		if len(in.Statuses) == 0 {
+			out = append(out, EventSession{ID: in.ID})
+			continue
+		}
+		out = append(out, EventSession{ID: in.ID, Status: in.Status, Statuses: in.Statuses})
+	}
+	return out
+}
 
 // layoutRevision returns the revision of the layout the server keeps.
 func (s *Server) layoutRevision() uint64 {
