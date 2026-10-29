@@ -1249,6 +1249,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 	if h != nil {
 		a.adopt(h, byID)
 	}
+	var events []map[string]string
 	for ti, t := range a.tabs {
 		for _, p := range t.panes() {
 			in, ok := byID[p.SID]
@@ -1257,6 +1258,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 			}
 			was := p.info
 			p.info = in
+			events = append(events, statusEvents(p, was.Statuses, in.Statuses)...)
 			// While another device holds the session's size, the pane's
 			// resizes are ignored, and the session keeps that size; once
 			// it lets go, the pane gives the session its own.
@@ -1296,9 +1298,46 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo) {
 			}
 		}
 	}
+	if a.luaConfig != nil {
+		for _, ev := range events {
+			a.luaConfig.Emit("program_status_changed", ev)
+		}
+	}
 	if a.saveDue && time.Since(a.lastSave) > time.Second {
 		a.save()
 	}
+}
+
+// statusEvents are the program status changes of a pane, for the Lua
+// event. A record gone says clear.
+func statusEvents(p *Pane, was, now []rex.ProgramStatus) []map[string]string {
+	if len(was) == 0 && len(now) == 0 {
+		return nil
+	}
+	old := make(map[string]rex.ProgramStatus, len(was))
+	for _, r := range was {
+		old[r.ID] = r
+	}
+	var out []map[string]string
+	add := func(r rex.ProgramStatus, state string) {
+		out = append(out, map[string]string{
+			"session": p.SID, "pane": p.labelName(), "state": state,
+			"id": r.ID, "kind": r.Kind, "title": r.Title, "msg": r.Msg,
+			"app": r.App, "progress": strconv.Itoa(r.Progress),
+			"program": p.info.Program, "dir": p.info.Dir,
+		})
+	}
+	for _, r := range now {
+		if o, ok := old[r.ID]; !ok || o.State != r.State || o.Kind != r.Kind ||
+			o.Title != r.Title || o.Msg != r.Msg || o.App != r.App || o.Progress != r.Progress {
+			add(r, r.State)
+		}
+		delete(old, r.ID)
+	}
+	for _, r := range old {
+		add(r, "clear")
+	}
+	return out
 }
 
 // see marks what the pane shows as seen: its attention, and the done and

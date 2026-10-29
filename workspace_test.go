@@ -666,3 +666,18 @@ func TestWorkspaceStatus(t *testing.T) {
 		t.Fatalf("other hidden status %+v", s)
 	}
 }
+
+func TestStatusEvents(t *testing.T) {
+	p := &Pane{SID: "s1", info: rex.SessionInfo{Program: "claude", Dir: "/tmp"}}
+	ev := statusEvents(p, nil, []rex.ProgramStatus{{ID: "a", State: "blocked", Kind: "question", Title: "T", Progress: 40}})
+	if len(ev) != 1 || ev[0]["state"] != "blocked" || ev[0]["session"] != "s1" || ev[0]["progress"] != "40" {
+		t.Fatalf("events %+v", ev)
+	}
+	ev = statusEvents(p, []rex.ProgramStatus{{ID: "a", State: "blocked"}}, nil)
+	if len(ev) != 1 || ev[0]["state"] != "clear" {
+		t.Fatalf("clear %+v", ev)
+	}
+	if ev := statusEvents(p, nil, nil); ev != nil {
+		t.Fatalf("no change %+v", ev)
+	}
+}

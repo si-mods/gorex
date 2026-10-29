@@ -125,3 +125,20 @@ gorex.bind("ctrl+x", "tab.close")
 		t.Fatalf("warnings %v", c.Warnings)
 	}
 }
+
+func TestEvent(t *testing.T) {
+	path := write(t, `
+gorex.on("program_status_changed", function(ev)
+  got = ev.id .. ":" .. ev.state
+end)
+`)
+	c, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.Emit("program_status_changed", map[string]string{"id": "agent", "state": "blocked"})
+	if got := c.state.GetGlobal("got").String(); got != "agent:blocked" {
+		t.Fatalf("event got %q", got)
+	}
+}
