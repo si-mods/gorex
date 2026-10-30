@@ -81,6 +81,10 @@ func (p *pty) resize(cols, rows int) error { return setSize(p.master, cols, rows
 
 func (p *pty) pid() int { return p.proc }
 
+// conpty tells that the console is a ConPTY, which drops the OSC that a
+// terminal's paste event is; a pty is not.
+func (p *pty) conpty() bool { return false }
+
 // kill kills the process group of the session's process.
 func (p *pty) kill() {
 	if pid := p.pid(); pid > 0 {

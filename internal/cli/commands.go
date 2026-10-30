@@ -73,6 +73,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return renameCmd(args, out, errOut)
 	case "send", "type":
 		return sendCmd(args, out, errOut)
+	case "paste":
+		return pasteCmd(args, out, errOut)
 	case "capture":
 		return captureCmd(args, out, errOut)
 	case "events":
@@ -117,6 +119,7 @@ Usage:
   gorex rename [-s SESSION] NAME
   gorex new [--dir DIR] [--json] [-- COMMAND...]
   gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--json] TEXT...
+  gorex paste [-s SESSION] [-w TAB] [-b PANE] [--json] TEXT...
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
   gorex hosts [ls] [--json]
@@ -547,6 +550,38 @@ func sendCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return codeFor(err), true
 	}
 	if err := c.Input(target, []byte(text)); err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if *asJSON {
+		WriteJSON(out, map[string]bool{"ok": true})
+	}
+	return ExitOK, true
+}
+
+func pasteCmd(args []string, out, errOut io.Writer) (int, bool) {
+	fs := flagSet("paste", errOut)
+	sid := targetFlag(fs)
+	asJSON := fs.Bool("json", false, "print JSON")
+	if code, stop := parse(fs, args); stop {
+		return code, true
+	}
+	text := strings.Join(fs.Args(), " ")
+	if text == "" {
+		fmt.Fprintln(errOut, "gorex paste: no text")
+		return ExitUsage, true
+	}
+	c, code := connect(errOut)
+	if c == nil {
+		return code, true
+	}
+	defer c.Close()
+	target, err := resolveTarget(c, sid.value())
+	if err != nil {
+		fmt.Fprintln(errOut, err)
+		return codeFor(err), true
+	}
+	if err := c.Paste(target, text); err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}

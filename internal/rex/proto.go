@@ -82,6 +82,11 @@ type Request struct {
 	Owner string `json:"owner,omitempty"`
 	// Bytes is what "input" types into the session.
 	Bytes []byte `json:"bytes,omitempty"`
+	// Paste is the text "paste" writes to the session's program as a
+	// paste, bracketed when the program asked for bracketed pastes: a
+	// console that drops the terminal's paste event, a ConPTY on Windows,
+	// gets a paste this way (SessionInfo.ConPTY).
+	Paste string `json:"paste,omitempty"`
 	// Capture is what "capture" shows of the session.
 	Capture *CaptureOptions `json:"capture,omitempty"`
 	// Action is the app action "action" runs.
@@ -358,8 +363,12 @@ type SessionInfo struct {
 	Exited     bool      `json:"exited"`
 	ExitCode   int       `json:"exitCode"`
 	Attached   int       `json:"attached"`
-	Cols       int       `json:"cols"`
-	Rows       int       `json:"rows"`
+	// ConPTY tells that the session's console is a ConPTY, which drops the
+	// OSC that a terminal's paste event is: a paste reaches its program as
+	// the text of a "paste" request.
+	ConPTY bool `json:"conpty,omitempty"`
+	Cols   int  `json:"cols"`
+	Rows   int  `json:"rows"`
 	// SizeLock is the owner that holds the session's size (lockSize), ""
 	// while the windows set it.
 	SizeLock string `json:"sizeLock,omitempty"`

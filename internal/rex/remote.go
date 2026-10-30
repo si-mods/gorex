@@ -321,7 +321,7 @@ func (s *Server) remoteMayCommand(peer string) bool {
 // attach to sessions.
 func remoteAllowed(op string) bool {
 	switch op {
-	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "capture", "clients":
+	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "paste", "capture", "clients":
 		return true
 	}
 	return false

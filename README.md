@@ -409,6 +409,14 @@ and the system's buttons with it: the title bar draws minimize, maximize and
 close with the other buttons, and the window still resizes from every edge,
 its top included.
 
+A ConPTY's input drops the OSC that a terminal's paste event is, so a
+program there that reads the clipboard itself, as agents do, is never told
+of a paste. GoRex writes the paste to the session as text instead, through
+the session's server, which brackets it when the program asked for
+bracketed pastes (`gorex paste`); a pane of a remote client pastes the same
+in a Windows session. An image alone has no text to write: on Windows an
+image reaches a program as a file it opens, not as clipboard data.
+
 ## Layout
 
 | | |

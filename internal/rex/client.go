@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // Client is a control connection to the server.
@@ -550,6 +551,30 @@ func (t trackedConn) Close() error {
 // Input types b into the session, as a terminal would.
 func (c *Client) Input(sid string, b []byte) error {
 	return c.call(Request{Op: "input", SID: sid, Bytes: b}, nil)
+}
+
+// pasteChunk bounds one "paste" request: a control connection's line
+// holds maxLine, which a string may take six times over as JSON escapes
+// it, and a paste of a larger text goes as several.
+const pasteChunk = 64 << 10
+
+// Paste writes text to a session's program as a paste, as the terminal's
+// paste keys do: bracketed when the program asked for bracketed pastes,
+// as SessionInfo.ConPTY needs, a console that drops the terminal's paste
+// event. A text longer than pasteChunk goes as several pastes, each of a
+// piece of its own, in order.
+func (c *Client) Paste(sid, text string) error {
+	for len(text) > 0 {
+		n := min(len(text), pasteChunk)
+		for n > 0 && n < len(text) && !utf8.RuneStart(text[n]) {
+			n-- // a piece never splits a rune
+		}
+		if err := c.call(Request{Op: "paste", SID: sid, Paste: text[:n]}, nil); err != nil {
+			return err
+		}
+		text = text[n:]
+	}
+	return nil
 }
 
 // Clients returns the clients attached to the sessions this one may use.

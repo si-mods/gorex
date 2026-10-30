@@ -298,3 +298,46 @@ func TestPasteOfAPathOverTheSession(t *testing.T) {
 		t.Errorf("a paste of a path sent %q, want the path; screen %q", got, text)
 	}
 }
+
+// TestPasteToAConPTYGoesThroughTheServer: a console that drops the
+// terminal's paste event (a ConPTY, as Windows runs its programs in) takes
+// the text as a paste its session's server writes, bracketed when the
+// program asked for bracketed pastes.
+func TestPasteToAConPTYGoesThroughTheServer(t *testing.T) {
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+	got := filepath.Join(t.TempDir(), "pasted")
+	p.term.Send([]byte("echo GO; printf '\\033[?2004h'; cat > '" + got + "'\n"))
+	waitFor(t, tt, "cat", func() bool { return strings.Contains(p.term.Text(), "GO") })
+	tt.SetClipboardData(transfer.TextData("HELLO-CONPTY\n"))
+	// What the server of a Windows session says of it.
+	p.info.ConPTY = true
+	tt.Frame()
+	key := ui.Modifiers(ui.Super)
+	if runtime.GOOS != "darwin" {
+		key = ui.Ctrl | ui.Shift
+	}
+	tt.Key(key, ui.KeyV)
+	read := func(want string) []byte {
+		deadline := time.Now().Add(5 * time.Second)
+		var b []byte
+		for time.Now().Before(deadline) {
+			b, _ = os.ReadFile(got)
+			if strings.Contains(string(b), want) {
+				break
+			}
+			tt.Frame()
+			time.Sleep(20 * time.Millisecond)
+		}
+		return b
+	}
+	// The paste goes to the session's server on a goroutine of its own:
+	// wait for it to land before flushing the line the console holds.
+	read("HELLO-CONPTY")
+	p.term.Send([]byte("\n"))
+	b := read("\x1b[201~")
+	if want := "\x1b[200~HELLO-CONPTY\n\x1b[201~"; !strings.Contains(string(b), want) {
+		t.Errorf("the program read %q, want the paste %q", b, want)
+	}
+}
