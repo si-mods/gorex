@@ -9,8 +9,9 @@ import (
 
 // TestPanesMove: with a style of animation, the panes spring to their
 // places as a split, a zoom and a close change the layout, and a new pane
-// pops in: the focused pane's buttons show away from where they rest; with Off, or while the desktop asks for less motion, the
-// layout changes at once.
+// pops in: the focused pane's buttons show away from where they rest;
+// with Off, or while the desktop asks for less motion, the layout changes
+// at once.
 func TestPanesMove(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
@@ -85,4 +86,93 @@ func settle(tt *ui.Tester) {
 		tt.Advance(100 * time.Millisecond)
 		tt.Frame()
 	}
+}
+
+// TestTerminalHoldsSizeWhileMoving: while a pane moves, or the sidebar
+// changes the room it has, its terminal keeps the size it had at rest,
+// and takes the new one once it rests; with animations off, it takes it
+// at once.
+func TestTerminalHoldsSizeWhileMoving(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range []struct{ name, style string }{
+		{"snappy", ""},
+		{"natural", "natural"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{TabPlacement: "left", Animation: tc.style}
+			tt.Frame()
+			settle(tt)
+			a.split(false)
+			waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
+			settle(tt)
+			p := a.tab().Focus
+			if p == nil || p.term == nil {
+				t.Fatal("no focused terminal")
+			}
+			// check changes the layout, and records each size the
+			// terminal takes as the panes move and come to rest.
+			check := func(what string, change func()) {
+				t.Helper()
+				c, r := p.term.Size()
+				start := [2]int{c, r}
+				var seen [][2]int
+				record := func() {
+					c, r := p.term.Size()
+					if len(seen) == 0 || seen[len(seen)-1] != [2]int{c, r} {
+						seen = append(seen, [2]int{c, r})
+					}
+				}
+				change()
+				for range 40 {
+					tt.Advance(16 * time.Millisecond)
+					tt.Frame()
+					record()
+				}
+				for range 20 {
+					tt.Advance(100 * time.Millisecond)
+					tt.Frame()
+					record()
+				}
+				c, r = p.term.Size()
+				end := [2]int{c, r}
+				if end == start {
+					t.Fatalf("%s: the terminal did not resize (%v)", what, end)
+				}
+				if len(seen) > 2 {
+					t.Errorf("%s: the terminal took %d sizes while moving: %v", what, len(seen), seen)
+				}
+				if seen[0] != start {
+					t.Errorf("%s: it left %v at once, not when at rest", what, start)
+				}
+				if seen[len(seen)-1] != end {
+					t.Errorf("%s: it rests at %v, not %v", what, end, seen[len(seen)-1])
+				}
+			}
+			check("zoom", a.toggleZoom)
+			check("unzoom", a.toggleZoom)
+			check("sidebar", a.toggleSidebar)
+		})
+	}
+	t.Run("off", func(t *testing.T) {
+		a, tt := newTestApp(t)
+		prefs = settings{TabPlacement: "left", Animation: "off"}
+		tt.Frame()
+		settle(tt)
+		a.split(false)
+		waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
+		settle(tt)
+		p := a.tab().Focus
+		start, _ := p.term.Size()
+		a.toggleZoom()
+		tt.Frame()
+		tt.Frame()
+		atOnce, _ := p.term.Size()
+		settle(tt)
+		rest, _ := p.term.Size()
+		if atOnce != rest || atOnce == start {
+			t.Errorf("with animations off the terminal took %d columns at once, %d at rest, from %d", atOnce, rest, start)
+		}
+	})
 }

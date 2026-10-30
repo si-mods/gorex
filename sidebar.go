@@ -99,6 +99,9 @@ func (a *App) sidebarLayout(c *ui.Context, k *colors, right bool) {
 		barH = titleH
 	}
 	barH = animated(c, row, "pane-bar", barH)
+	// The panes' room changes as the sidebar and the bar move: their
+	// terminals hold their size until both rest.
+	a.sidebarMoving = !row.Settled("sidebar") || !row.Settled("pane-bar")
 	row.Children(func() {
 		if !right {
 			a.sidebarDrawer(c, k, false, open)

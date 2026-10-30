@@ -25,6 +25,7 @@ const (
 func (a *App) view(c *ui.Context) {
 	a.services = c.Services()
 	a.runPosted()
+	a.sidebarMoving = false
 	k := a.colors(c)
 	a.focusedWin = a.win == nil || a.win.IsFocused()
 	a.claimFocus()
@@ -301,12 +302,15 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	if tr != nil {
 		cell.Transition(*tr)
 	}
+	// While the cell moves or the sidebar resizes the panes, the
+	// terminals keep the size they had at rest.
+	held := tr != nil && (cell.Transitioning() || a.sidebarMoving)
 	cell.Children(func() {
 		if tr != nil && tr.Position {
 			fadeColors = false
 			defer func() { fadeColors = true }()
 		}
-		a.paneCard(c, k, t, p).Grow(1)
+		a.paneCard(c, k, t, p, held).Grow(1)
 	})
 }
 
@@ -355,8 +359,9 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 	}
 }
 
-// paneCard draws a pane: a card with a header over its terminal.
-func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
+// paneCard draws a pane: a card with a header over its terminal, which
+// holds its size while held.
+func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.Element {
 	focused := t.Focus == p
 	card := ui.Column(c.Key(p.ID)).Radius(cardR).Clip().MinWidth(0).MinHeight(0)
 	bg, border, shadow := k.card, k.cardBorder, k.shadow
@@ -387,6 +392,11 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 			top = 6
 		}
 		body := ui.Column(c).Grow(1).MinHeight(0).Padding(top, 5, 6, 5)
+		if held {
+			// A terminal that outgrows the body as the pane shrinks stays
+			// out of sight.
+			body.Clip()
+		}
 		body.Children(func() {
 			if a.findPane == p {
 				a.findBar(c, k, p)
@@ -394,7 +404,19 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 			if p.term == nil {
 				return
 			}
-			tv := terminal.View(c, p.term).Grow(1).MinHeight(0)
+			tv := terminal.View(c, p.term)
+			if held && p.termSize.W > 0 && p.termSize.H > 0 {
+				// Painted at the size it rested at: the program hears of
+				// the new size once the pane rests again.
+				tv.Width(p.termSize.W).Height(p.termSize.H).Shrink(0)
+			} else {
+				tv.Grow(1).MinHeight(0)
+				if !held {
+					if b := tv.LayoutBounds(); b.W > 0 && b.H > 0 {
+						p.termSize = b
+					}
+				}
+			}
 			if a.focusReq == p && a.tab() == t {
 				tv.Focus()
 				a.focusReq = nil
