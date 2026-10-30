@@ -778,6 +778,11 @@ type Stream struct {
 	// focused tells that the user looks at the terminal, whose session
 	// the server sizes for it (Focus).
 	focused bool
+	// Present, when set, tells whether the user is at this machine: the
+	// stream claims the focus only then, so an unattended machine whose
+	// window kept the focus takes no session's size. nil counts as
+	// present. Set it with SetPresent, under mu.
+	Present func() bool
 
 	// OnData, when set, is called with the size of what the session
 	// prints, from the reading goroutine.
@@ -797,9 +802,6 @@ func (c *Client) Stream(sid string, cols, rows int) *Stream {
 func (s *Stream) attach() {
 	s.attachOnce()
 	s.sync()
-	// The window may have had the focus before the stream attached, which
-	// attaches a moment after it is made: it tells the server now.
-	s.sendFocus()
 }
 
 // SetFocused tells the server whether the user looks at the session: its
@@ -811,14 +813,24 @@ func (s *Stream) SetFocused(on bool) {
 	s.sendFocus()
 }
 
+// SetPresent sets Present under the stream's mutex, which the attaching
+// goroutine reads: a stream told its machine's presence right after it is
+// made is race-free.
+func (s *Stream) SetPresent(present func() bool) {
+	s.mu.Lock()
+	s.Present = present
+	s.mu.Unlock()
+}
+
 // sendFocus tells the server that the user looks at the session, once
-// attached; a server that does not know the request answers an error,
-// which stays untold.
+// attached, and only while the user is at this machine: a window that
+// kept the focus of an unattended machine claims nothing. A server that
+// does not know the request answers an error, which stays untold.
 func (s *Stream) sendFocus() {
 	s.mu.Lock()
-	conn, focused := s.conn, s.focused
+	conn, focused, present := s.conn, s.focused, s.Present
 	s.mu.Unlock()
-	if conn != nil && focused {
+	if conn != nil && focused && (present == nil || present()) {
 		go s.c.Focus(s.sid)
 	}
 }
@@ -827,6 +839,16 @@ func (s *Stream) sendFocus() {
 func (s *Stream) attachOnce() {
 	s.attachMu.Lock()
 	defer s.attachMu.Unlock()
+	// A window focused while the stream attached, after the attach said
+	// whether it was, claims once attached. Only then: a claim each time
+	// attachOnce runs would take the size back from a client that took it
+	// since.
+	late := false
+	defer func() {
+		if late {
+			s.sendFocus()
+		}
+	}()
 	s.mu.Lock()
 	if s.conn != nil || s.err != nil || s.closed {
 		s.mu.Unlock()
@@ -835,6 +857,7 @@ func (s *Stream) attachOnce() {
 	s.mu.Unlock()
 	conn, err := s.c.dial()
 	var cols, rows int
+	focused := false
 	if err == nil {
 		// Closed with the client's connection, or the stream, while it
 		// attaches too: a network gone answers nothing.
@@ -854,8 +877,15 @@ func (s *Stream) attachOnce() {
 		defer s.sizeMu.Unlock()
 		s.mu.Lock()
 		cols, rows = s.cols, s.rows
-		focused := s.focused
+		var present func() bool
+		focused, present = s.focused, s.Present
 		s.mu.Unlock()
+		// An attach claims the focus only while the user is at this
+		// machine: a stream made and focused on an unattended one leaves
+		// the session's size where it is.
+		if present != nil && !present() {
+			focused = false
+		}
 		if err == nil {
 			conn.SetDeadline(time.Now().Add(callTimeout.get()))
 			b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows, Conn: connID, Focused: focused})
@@ -883,6 +913,7 @@ func (s *Stream) attachOnce() {
 		s.err = err
 	} else {
 		s.conn, s.sentCols, s.sentRows = conn, cols, rows
+		late = s.focused && !focused
 	}
 	s.cond.Broadcast()
 }

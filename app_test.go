@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,10 +45,18 @@ func testDir(t *testing.T) string {
 	return dir
 }
 
+// testPresent is whether the user is at the machine the tests run on,
+// which may be idle for long: presence is the tests' to say.
+var testPresent atomic.Bool
+
 // newTestApp starts a session server of its own and an app on it, whose
 // view runs without a window.
 func newTestApp(t *testing.T) (*App, *ui.Tester) {
 	t.Helper()
+	testPresent.Store(true)
+	oldPresent := userPresent
+	userPresent = testPresent.Load
+	t.Cleanup(func() { userPresent = oldPresent })
 	dir := testDir(t)
 	t.Setenv("GOREX_DIR", dir)
 	t.Setenv("SHELL", testShell.path)

@@ -153,6 +153,11 @@ type App struct {
 	quitting   bool
 	focusedWin bool
 	title      string
+	// focusPresent tells whether the user was at this machine when the
+	// focus was last claimed, and focusSampled when that was: a window
+	// that kept the focus of an unattended machine claims no session.
+	focusPresent bool
+	focusSampled time.Time
 
 	// The workspace's popover, the field that renames it, Close
 	// Session's question, and the palette listing the workspaces.
@@ -332,11 +337,15 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	opts := termOptions()
 	if p.host != nil {
 		p.remote = newHostStream(p.host, p.SID, cols, rows)
+		// A host's streams claim the focus on each attach only while the
+		// user is at this machine.
+		p.remote.present = userPresent
 		p.remote.OnData = onData
 		p.remote.onChange = func() { update(func() {}) }
 		opts.Conn = p.remote
 	} else {
 		p.stream = a.client.Stream(p.SID, cols, rows)
+		p.stream.SetPresent(userPresent)
 		p.stream.OnData = onData
 		opts.Conn = p.stream
 	}
@@ -440,6 +449,24 @@ func (a *App) takeSize(p *Pane) {
 // session's size follows the machine the user's focus is on. It runs each
 // frame, and acts only as that changes.
 func (a *App) claimFocus() {
+	// Whether the user is at this machine, asked at most once a second:
+	// this runs each frame, and a window that kept the focus of an
+	// unattended machine claims nothing.
+	was := a.focusPresent
+	if a.focusedWin && time.Since(a.focusSampled) >= time.Second {
+		a.focusPresent = userPresent()
+		a.focusSampled = time.Now()
+	}
+	// The user came back to a machine that was idle while its window kept
+	// the focus: the panes' focus did not change, so nothing else would
+	// claim again, and their claims start over.
+	if a.focusPresent && !was {
+		for _, t := range a.tabs {
+			for _, p := range t.panes() {
+				p.focusClaimed = false
+			}
+		}
+	}
 	for _, t := range a.tabs {
 		on := a.focusedWin && t == a.tab()
 		for _, p := range t.panes() {

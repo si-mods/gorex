@@ -275,6 +275,10 @@ may use; panes it may not use are shown as unavailable placeholders, and
 panes of other hosts are left out; `gorex -S HOST layout`
 reads it and `events` follows changes.
 
+A session attached by several clients takes the size of the one the
+user's focus is on, if that machine had input in the last minute; see
+[docs/session-size.md](docs/session-size.md).
+
 For a Linux service shared by several paired clients, see
 [docs/shared-server.md](docs/shared-server.md). Per-user isolation and
 PAM login are a separate proposal: [docs/login-server-rfc.md](docs/login-server-rfc.md).

@@ -928,7 +928,10 @@ type hostStream struct {
 	cols, rows int
 	// focused tells that the user looks at the pane, whose session the
 	// server sizes for it; cur is told as it changes.
-	focused  bool
+	focused bool
+	// present, when set, tells whether the user is at this machine: each
+	// stream attached again claims the focus only then.
+	present  func() bool
 	closed   bool
 	detached bool
 	gone     bool // the host no longer lists the session to this machine
@@ -968,7 +971,7 @@ func (s *hostStream) stream() (*rex.Stream, error) {
 			s.mu.Unlock()
 			return st, nil
 		}
-		cols, rows, fails := s.cols, s.rows, s.fails
+		cols, rows, fails, present := s.cols, s.rows, s.fails, s.present
 		s.mu.Unlock()
 		c := s.h.current()
 		if c == nil || fails > 0 {
@@ -978,6 +981,9 @@ func (s *hostStream) stream() (*rex.Stream, error) {
 			}
 		}
 		st := c.Stream(s.sid, cols, rows)
+		// Before it attaches: a host's session is claimed again on each
+		// new stream only while the user is at this machine.
+		st.SetPresent(present)
 		st.Resize(cols, rows) // attaches now
 		s.mu.Lock()
 		if s.closed {
