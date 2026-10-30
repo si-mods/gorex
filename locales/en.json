@@ -642,6 +642,26 @@
   "@settingsPaneHeadersHint": {
     "description": "Hint under the Show pane headers setting."
   },
+  "settingsAnimation": "Animation style",
+  "@settingsAnimation": {
+    "description": "Setting: how panes and the sidebar animate."
+  },
+  "settingsAnimationHint": "How panes move, split, zoom, open and close, and how the sidebar shows and hides. Animations are off while the system's Reduce Motion is on.",
+  "@settingsAnimationHint": {
+    "description": "Hint under the Animation style setting. Its options are the next three messages."
+  },
+  "animationSnappy": "Snappy",
+  "@animationSnappy": {
+    "description": "Animation style option: quick springs with a little bounce."
+  },
+  "animationNatural": "Natural",
+  "@animationNatural": {
+    "description": "Animation style option: softer, slower springs without bounce."
+  },
+  "animationOff": "Off",
+  "@animationOff": {
+    "description": "Animation style option: no animations."
+  },
   "settingsTextSize": "Text size",
   "@settingsTextSize": {
     "description": "Setting: the terminal's text size."

@@ -114,7 +114,7 @@ func TestSettingsPersist(t *testing.T) {
 	}
 	yes := true
 	want := settings{Appearance: "dark", FontSize: 14, Font: "Hack", Theme: "Nord", Cursor: "bar", CursorBlink: &yes,
-		TabPlacement: "left", SidebarWidth: 280, SidebarHidden: true, HidePaneHeaders: true}
+		TabPlacement: "left", SidebarWidth: 280, SidebarHidden: true, HidePaneHeaders: true, Animation: "natural"}
 	prefs = want
 	saveSettings()
 	prefs = settings{}
@@ -131,6 +131,13 @@ func TestSettingsPersist(t *testing.T) {
 	loadSettings()
 	if prefs.FontSize != 0 {
 		t.Errorf("size %v out of range was kept", prefs.FontSize)
+	}
+	// An animation style of none of the options is Snappy's.
+	os.WriteFile(settingsPath(), []byte(`{"animation": "bouncy"}`), 0o600)
+	prefs = settings{}
+	loadSettings()
+	if prefs.Animation != "" {
+		t.Errorf("unknown animation style %q was kept", prefs.Animation)
 	}
 }
 

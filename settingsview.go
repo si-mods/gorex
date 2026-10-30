@@ -215,6 +215,12 @@ func (a *App) appearanceSettings(c *ui.Context, k *colors) {
 			a.setWindowPref(func(s *settings) { s.HidePaneHeaders = !headers })
 		}
 	})
+	anim := max(slices.Index(animations, prefs.Animation), 0)
+	settingRow(c, k, locales.SettingsAnimation(), locales.SettingsAnimationHint(), func() {
+		if ui.Segmented(c, &anim, locales.AnimationSnappy(), locales.AnimationNatural(), locales.AnimationOff()).Label(locales.SettingsAnimation()).Changed() {
+			a.setWindowPref(func(s *settings) { s.Animation = animations[anim] })
+		}
+	})
 	size := float64(termFont.Size)
 	hint := locales.SettingsTextSizeHint(float64(ghosttyRaw.fontSize(0)), float64(defaultFontSize))
 	settingRow(c, k, locales.SettingsTextSize(), hint, func() {

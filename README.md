@@ -60,6 +60,11 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
   Sidebar (⌃⌘S) hides and shows it. "Show pane headers" off hides the
   panes' headers while the sidebar shows on the left; they always show
   when it is hidden or on the right, as in Rex.
+- **Pane animations.** Panes spring into place when they move, split or
+  zoom, and new or closing panes pop in and out. Settings ▸ Appearance ▸
+  Animation style chooses Snappy, Natural or Off, which also sets how the
+  sidebar shows and hides. While the system's Reduce Motion is on,
+  animations stay off.
 - **Host chip** with the machine's name and model; its popover shows the
   chip, memory, OS and the session server.
 - **Command palette** (⇧⌘P, Ctrl+Shift+P, or the ⌘ button): every command, and every pane
@@ -102,7 +107,8 @@ which type characters (AltGr) on many keyboards.
 
 Settings… (⌘, on macOS, Ctrl+, elsewhere; Shell menu and command palette)
 opens a window of its own with a sidebar of sections: Appearance (light,
-dark or system; tab placement; pane headers; text size; language), Terminal (font, cursor style and blink, copy on
+dark or system; tab placement; pane headers; animation style; text size;
+language), Terminal (font, cursor style and blink, copy on
 selection), Theme (any of Ghostty's themes, or follow the config),
 Keyboard (GoRex's shortcuts, read only), Remote (see
 [Remote access](#remote-access)), Remote Hosts (see

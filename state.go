@@ -37,6 +37,10 @@ type Tab struct {
 	// recent lists the panes by when they had the focus last, the latest
 	// last: closing a pane gives the focus back to the one before.
 	recent []*Pane
+	// laid is the layout of the panes the window showed last, and settle
+	// when the panes are done moving from the one before.
+	laid   string
+	settle time.Time
 }
 
 // Node is a pane, or a split of two nodes.
@@ -80,9 +84,11 @@ type Pane struct {
 	// done and error records till then no longer ask for attention.
 	// notified is when the pane's last status notification was shown.
 	seen, notified time.Time
-	// bounds is where the pane's card was in the last frame.
-	bounds ui.Rect
-	closed bool
+	// bounds is where the pane's card rests in the layout, and termSize
+	// the size of its terminal when the pane was last at rest.
+	bounds   ui.Rect
+	termSize ui.Rect
+	closed   bool
 	// restored tells that the session was made anew for a pane of a
 	// saved layout whose session was gone.
 	restored bool
@@ -176,6 +182,12 @@ type App struct {
 	edgeDrag  bool
 	edgeFrom  float32
 	edgeMoved float32
+	// dividerDrag tells that a divider between panes was dragging in the
+	// frame before: the panes then follow it at once.
+	dividerDrag bool
+	// sidebarMoving tells that the sidebar or the bar over the panes
+	// moved in the last frame: the terminals there hold their size.
+	sidebarMoving bool
 
 	// posted are changes to make in the next frame, from terminals of a
 	// view without a window, as in tests.

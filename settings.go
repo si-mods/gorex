@@ -32,6 +32,9 @@ type settings struct {
 	SidebarWidth    float32 `json:"sidebarWidth,omitempty"`
 	SidebarHidden   bool    `json:"sidebarHidden,omitempty"`
 	HidePaneHeaders bool    `json:"hidePaneHeaders,omitempty"`
+	// Animation is how the panes and the sidebar move: "" springs snappily,
+	// "natural" more softly, and "off" not at all.
+	Animation string `json:"animation,omitempty"`
 
 	// The rest, when set, win over Ghostty's configuration, which wins over
 	// GoRex's defaults. Empty and nil follow Ghostty.
@@ -58,6 +61,9 @@ func loadSettings() {
 	}
 	if !slices.Contains(placements, prefs.TabPlacement) {
 		prefs.TabPlacement = ""
+	}
+	if !slices.Contains(animations, prefs.Animation) {
+		prefs.Animation = ""
 	}
 	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
 		prefs.SidebarWidth = 0

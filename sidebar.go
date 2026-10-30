@@ -84,32 +84,86 @@ func (a *App) syncSidebarItem() {
 // when the sidebar does not hold the window's controls.
 func (a *App) sidebarLayout(c *ui.Context, k *colors, right bool) {
 	shown := !prefs.SidebarHidden
-	ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-		if shown && !right {
-			a.sidebar(c, k, false)
-			a.sidebarEdge(c, k, false)
+	row := ui.Row(c.Key("sidebar-layout")).Grow(1).MinHeight(0).AlignItems(ui.Stretch)
+	// How open the sidebar is, from 0 to 1, as it shows and hides; and how
+	// tall the bar over the panes, which the sidebar hides when it has the
+	// window's controls.
+	var open float32
+	if shown {
+		open = 1
+	}
+	open = max(animated(c, row, "sidebar", open), 0)
+	bar := !shown || right || ownControls
+	barH := float32(gap)
+	if bar {
+		barH = titleH
+	}
+	barH = animated(c, row, "pane-bar", barH)
+	// The panes' room changes as the sidebar and the bar move: their
+	// terminals hold their size until both rest.
+	a.sidebarMoving = !row.Settled("sidebar") || !row.Settled("pane-bar")
+	row.Children(func() {
+		if !right {
+			a.sidebarDrawer(c, k, false, open)
 		}
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-			if !shown || right || ownControls {
-				a.paneBar(c, k, right, shown)
-			} else {
-				// The panes come up to the top, as the window's controls are
-				// the sidebar's; the gap over them drags the window.
-				ui.Box(c).Height(gap).Shrink(0).DragWindow()
-			}
+			ui.Column(c).Height(max(barH, 0)).Shrink(0).Clip().Children(func() {
+				if bar {
+					a.paneBar(c, k, right, shown)
+				} else {
+					// The panes come up to the top, as the window's controls
+					// are the sidebar's; the gap over them drags the window.
+					ui.Box(c).Height(gap).Shrink(0).DragWindow()
+				}
+			})
+			// The panes' gap on the sidebar's side is its edge's.
+			side := gap * (1 - min(open, 1))
 			left, end := float32(gap), float32(gap)
-			if shown && right {
-				end = 0
-			} else if shown {
-				left = 0
+			if right {
+				end = side
+			} else {
+				left = side
 			}
 			a.panes(c, k, left, end)
 		})
-		if shown && right {
-			a.sidebarEdge(c, k, true)
-			a.sidebar(c, k, true)
+		if right {
+			a.sidebarDrawer(c, k, true, open)
 		}
 	})
+}
+
+// sidebarDrawer holds the sidebar and its edge, as open as open says: the
+// sidebar slides out of sight under the window's side as it closes.
+func (a *App) sidebarDrawer(c *ui.Context, k *colors, right bool, open float32) {
+	if open <= 0.001 {
+		return
+	}
+	winW, _ := c.Size()
+	full := sidebarWidthIn(winW) + gap
+	drawer := ui.Row(c.Key("sidebar-drawer")).Width(full * min(open, 1)).Shrink(0)
+	if open < 1 {
+		drawer.Clip()
+	}
+	drawer.Children(func() {
+		in := ui.Row(c).Absolute().Top(0).Bottom(0).Width(full).AlignItems(ui.Stretch)
+		if right {
+			in.Left(0)
+		} else {
+			in.Right(0)
+		}
+		in.Children(func() { a.sidebarParts(c, k, right) })
+	})
+}
+
+// sidebarParts are the sidebar and its edge, the edge inside.
+func (a *App) sidebarParts(c *ui.Context, k *colors, right bool) {
+	if right {
+		a.sidebarEdge(c, k, true)
+		a.sidebar(c, k, true)
+		return
+	}
+	a.sidebar(c, k, false)
+	a.sidebarEdge(c, k, false)
 }
 
 // paneBar is the title bar over the panes beside a sidebar: the host and
