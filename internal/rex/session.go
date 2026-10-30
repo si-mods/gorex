@@ -890,11 +890,17 @@ func (s *session) lockedResize(owner string, cols, rows int) bool {
 // owner's lock.
 func (s *session) unlockSize(owner string, cols, rows int) {
 	s.mu.Lock()
-	s.clearPendingResizeLocked()
 	pty := false
 	if owner == "" || s.sizeLock == owner {
 		s.clearSizeLockLocked()
-		pty = cols > 0 && rows > 0 && s.resizeLocked(cols, rows)
+		// With a size, it is the window's own and is taken at once,
+		// replacing a size still waiting. Without one, the unlock takes
+		// no size: another window's waiting size is left to land, as a
+		// caller releasing a lock it no longer holds must not drop it.
+		if cols > 0 && rows > 0 {
+			s.clearPendingResizeLocked()
+			pty = s.resizeLocked(cols, rows)
+		}
 	}
 	cols, rows = s.cols, s.rows
 	s.mu.Unlock()
