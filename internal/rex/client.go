@@ -447,6 +447,10 @@ func (c *Client) Resize(sid string, cols, rows int) error {
 	return c.call(Request{Op: "resize", SID: sid, Cols: cols, Rows: rows}, nil)
 }
 
+// Focus tells the server the user of this client looks at the session
+// now: its size follows the machine the user's focus is on.
+func (c *Client) Focus(sid string) error { return c.call(Request{Op: "focus", SID: sid}, nil) }
+
 // UnlockSize takes the session's size back, at cols×rows when given, from
 // owner, or from whoever holds it when "".
 func (c *Client) UnlockSize(sid, owner string, cols, rows int) error {
@@ -771,6 +775,9 @@ type Stream struct {
 	// size the server was told last.
 	cols, rows         int
 	sentCols, sentRows int
+	// focused tells that the user looks at the terminal, whose session
+	// the server sizes for it (Focus).
+	focused bool
 
 	// OnData, when set, is called with the size of what the session
 	// prints, from the reading goroutine.
@@ -790,6 +797,30 @@ func (c *Client) Stream(sid string, cols, rows int) *Stream {
 func (s *Stream) attach() {
 	s.attachOnce()
 	s.sync()
+	// The window may have had the focus before the stream attached, which
+	// attaches a moment after it is made: it tells the server now.
+	s.sendFocus()
+}
+
+// SetFocused tells the server whether the user looks at the session: its
+// size follows the screen the user's focus is on.
+func (s *Stream) SetFocused(on bool) {
+	s.mu.Lock()
+	s.focused = on
+	s.mu.Unlock()
+	s.sendFocus()
+}
+
+// sendFocus tells the server that the user looks at the session, once
+// attached; a server that does not know the request answers an error,
+// which stays untold.
+func (s *Stream) sendFocus() {
+	s.mu.Lock()
+	conn, focused := s.conn, s.focused
+	s.mu.Unlock()
+	if conn != nil && focused {
+		go s.c.Focus(s.sid)
+	}
 }
 
 // attachOnce attaches, once; a stream that attached or failed stays so.
@@ -823,10 +854,11 @@ func (s *Stream) attachOnce() {
 		defer s.sizeMu.Unlock()
 		s.mu.Lock()
 		cols, rows = s.cols, s.rows
+		focused := s.focused
 		s.mu.Unlock()
 		if err == nil {
 			conn.SetDeadline(time.Now().Add(callTimeout.get()))
-			b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows, Conn: connID})
+			b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows, Conn: connID, Focused: focused})
 			if _, err = conn.Write(append(b, '\n')); err == nil {
 				err = readOK(conn)
 			}

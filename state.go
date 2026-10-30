@@ -89,6 +89,12 @@ type Pane struct {
 	startDir string
 	// seenFunc tells the window's store which session status was seen.
 	seenFunc func(sid string, at time.Time)
+	// focusClaimed tells whether the session was last told that the user
+	// looks at this pane, through focusConn: the session's size follows
+	// the pane shown with the window's focus. A pane attached again tells
+	// its new stream.
+	focusClaimed bool
+	focusConn    any
 }
 
 // App is the state of a window of GoRex's, which shows a workspace.
@@ -427,6 +433,41 @@ func (a *App) takeSize(p *Pane) {
 			log.Printf("taking the size back: %v", err)
 		}
 	}()
+}
+
+// claimFocus tells every pane whether the user looks at it: the one shown
+// with the window's focus, the other panes of the active tab losing it. A
+// session's size follows the machine the user's focus is on. It runs each
+// frame, and acts only as that changes.
+func (a *App) claimFocus() {
+	for _, t := range a.tabs {
+		on := a.focusedWin && t == a.tab()
+		for _, p := range t.panes() {
+			p.setFocused(on)
+		}
+	}
+}
+
+// setFocused tells the pane's session whether the user looks at it, once
+// it changed.
+func (p *Pane) setFocused(on bool) {
+	var conn any
+	switch {
+	case p.stream != nil:
+		conn = p.stream
+	case p.remote != nil:
+		conn = p.remote
+	}
+	if on == p.focusClaimed && conn == p.focusConn {
+		return
+	}
+	p.focusClaimed, p.focusConn = on, conn
+	switch {
+	case p.stream != nil:
+		p.stream.SetFocused(on)
+	case p.remote != nil:
+		p.remote.SetFocused(on)
+	}
 }
 
 // nopConn is the Conn of a terminal that only shows what the app feeds it.

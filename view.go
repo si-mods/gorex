@@ -27,6 +27,7 @@ func (a *App) view(c *ui.Context) {
 	a.runPosted()
 	k := a.colors(c)
 	a.focusedWin = a.win == nil || a.win.IsFocused()
+	a.claimFocus()
 	c.Root().Background(k.bgBottom)
 	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k) }).Children(func() {
 		if prefs.TabPlacement != "" {
