@@ -47,6 +47,15 @@ func connectTest(t *testing.T) (*Client, Hello) {
 	return c, h
 }
 
+// journalStopped tells whether the run before this one stopped cleanly: the
+// last entry it left is a stop, not a layout it kept or a start.
+func journalStopped(entries []journalEntry) bool {
+	if len(entries) == 0 {
+		return false
+	}
+	return entries[len(entries)-1].Event == eventStop
+}
+
 // waitStopped waits for the server to stop, which takes its socket with it.
 func waitStopped(t *testing.T) {
 	t.Helper()
@@ -389,5 +398,144 @@ func TestJournalEndsTheRun(t *testing.T) {
 	}
 	if !journalStopped(entries) {
 		t.Error("the run's stop is not its last entry")
+	}
+}
+
+// TestJournalResumes checks which runs the server after one starts sessions
+// for: one that did not stop, and one that stopped to be replaced; not one
+// that quit or exited idle, whose sessions ended with it.
+func TestJournalResumes(t *testing.T) {
+	if !journalResumes(nil) {
+		t.Error("a journal before the journal does not resume")
+	}
+	if !journalResumes([]journalEntry{{Event: eventStart}, {Event: eventLayout}}) {
+		t.Error("a run that did not stop does not resume")
+	}
+	if !journalResumes([]journalEntry{{Event: eventStop, Reason: stopRestart}}) {
+		t.Error("a run that stopped to be replaced does not resume")
+	}
+	for _, reason := range []string{stopRequest, "idle", "upgrade"} {
+		if journalResumes([]journalEntry{{Event: eventStop, Reason: reason}}) {
+			t.Errorf("a run that stopped for %q resumes", reason)
+		}
+	}
+}
+
+// TestRestartRestoresSessions checks that a server restarted — stopped so
+// that a new one takes its place — starts the sessions of its layout again,
+// as one that crashed does, and that one quit ends them.
+func TestRestartRestoresSessions(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		restart bool
+		reason  string
+	}{
+		{name: "restart", restart: true, reason: stopRestart},
+		{name: "quit", restart: false, reason: stopRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			t.Setenv("GOREX_DIR", dir)
+			c, err := Connect()
+			if err != nil {
+				t.Fatal(err)
+			}
+			h, err := c.Hello()
+			if err != nil {
+				t.Fatal(err)
+			}
+			one, err := c.Create(CreateOptions{Command: []string{"/bin/sh"}, Dir: dir, Cols: 80, Rows: 24})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := c.SetLayout(testLayout(&layout.Node{SID: one.ID, Dir: dir, Cols: 80, Rows: 24})); err != nil {
+				t.Fatal(err)
+			}
+			var next *Client
+			if tc.restart {
+				next, err = c.Restart(h.PID)
+			} else {
+				err = c.Shutdown()
+				c.Close()
+				waitStopped(t)
+				if err == nil {
+					next, err = Connect()
+				}
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				next.Shutdown()
+				next.Close()
+			}()
+			entries := readJournal()
+			var stop journalEntry
+			for _, e := range entries {
+				if e.Event == eventStop {
+					stop = e
+				}
+			}
+			if stop.Event != eventStop || stop.Reason != tc.reason {
+				t.Fatalf("the stop record is %+v", stop)
+			}
+			infos, err := next.List()
+			if err != nil {
+				t.Fatal(err)
+			}
+			back := false
+			for _, in := range infos {
+				if in.ID == one.ID {
+					back = true
+				}
+			}
+			if back != tc.restart {
+				t.Fatalf("after %s the sessions are %+v", tc.name, infos)
+			}
+		})
+	}
+}
+
+// TestStopToRestartRecordsRestart checks that StopToRestart stops the server
+// as one a new server replaces: the journal records a stop for a restart,
+// and the server after it starts the sessions of the layout again.
+func TestStopToRestartRecordsRestart(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	c, err := Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, err := c.Create(CreateOptions{Command: []string{"/bin/sh"}, Dir: dir, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetLayout(testLayout(&layout.Node{SID: one.ID, Dir: dir, Cols: 80, Rows: 24})); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.StopToRestart(); err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	waitStopped(t)
+	entries := readJournal()
+	stop := entries[len(entries)-1]
+	if stop.Event != eventStop || stop.Reason != stopRestart {
+		t.Fatalf("the stop record is %+v", stop)
+	}
+	next, err := Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		next.Shutdown()
+		next.Close()
+	}()
+	infos, err := next.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 1 || infos[0].ID != one.ID || infos[0].Exited {
+		t.Fatalf("the server after it has %+v", infos)
 	}
 }

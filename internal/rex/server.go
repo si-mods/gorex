@@ -296,9 +296,10 @@ func Serve() error {
 		s.layout = b
 		log.Print("rex: the layout is the last the journal kept")
 	}
-	if !journalStopped(entries) {
-		// The run before this one did not stop: its sessions ended with
-		// it, and the layout it kept names them.
+	if journalResumes(entries) {
+		// The run before this one did not stop, or stopped to be
+		// replaced: its sessions ended with it, and the layout it kept
+		// names them.
 		s.restoreSessions(s.layout, journalOwners(entries))
 	}
 	s.journal.started()
@@ -970,9 +971,15 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		// Once it runs, the connection closes with this executable.
 		return nil, s.upgrade(req.Exe)
 	case "shutdown":
+		// A restart is a stop a new server replaces: the next one starts
+		// the sessions of the layout again.
+		reason := stopRequest
+		if req.Restart {
+			reason = stopRestart
+		}
 		go func() {
 			time.Sleep(50 * time.Millisecond)
-			s.shutdown("request")
+			s.shutdown(reason)
 		}()
 		return nil, nil
 	}
@@ -1012,5 +1019,8 @@ func Spawn() error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	return cmd.Process.Release()
+	// Wait reaps the server when it exits: one that a restart stops would
+	// stay a zombie, alive to kill, as long as the app runs.
+	go cmd.Wait()
+	return nil
 }

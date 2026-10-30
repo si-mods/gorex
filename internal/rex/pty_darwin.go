@@ -6,6 +6,8 @@ import (
 	"os"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 const defaultShell = "/bin/zsh"
@@ -43,4 +45,12 @@ func openMaster() (*os.File, string, error) {
 		n = len(name)
 	}
 	return master, string(name[:n]), nil
+}
+
+// zombie reports whether pid exited and its parent has yet to wait for it.
+func zombie(pid int) bool {
+	// SZOMB, the state of a process that exited (sys/proc.h).
+	const szomb = 5
+	k, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	return err == nil && k.Proc.P_stat == szomb
 }

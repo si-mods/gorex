@@ -7,6 +7,20 @@
   setting in Settings › Appearance lets you choose Snappy, Natural or Off,
   and it also controls how the sidebar shows and hides. While Reduce
   Motion is on, animations stay off.
+- A session server restarted on purpose brings its sessions back, as one
+  that crashed already does: the server after it starts the sessions of the
+  layout again, with the same ids and at the directories their panes were
+  in, so the windows attach to them. `gorex server restart` does it without
+  starting a server itself: the open app reconnects and starts the next one,
+  else the next `gorex` command or launch does; run inside a pane, the
+  command says so, then its shell ends with the server. The app on Windows
+  restarts a server of an older build this way, since Windows servers cannot
+  upgrade in place, after asking whether to, since each pane comes back as a
+  new shell; a newer build is compared first, so that two copies of the app
+  do not restart each other. What the old sessions printed is lost. Quit and
+  End All still ends them, and so does the idle exit. A server too old to
+  know a restart is not restarted: quit it once with Quit and End All, or
+  kill it.
 
 ## 0.3.2
 

@@ -1364,6 +1364,72 @@ func (msgs Messages) ErrorServerVersion() string {
 	return Catalog.Format(msgs.locale, "errorServerVersion", nil)
 }
 
+// ServerRestartAskTitle says "A session server of an older GoRex runs"
+// in the language the app shows.
+//
+// Title of the dialog shown on Windows when a newer build finds a server of
+// an older one that it would restart to run its own, which ends the
+// programs in its panes.
+func ServerRestartAskTitle() string { return In(i18n.Locale()).ServerRestartAskTitle() }
+
+// ServerRestartAskTitle says "A session server of an older GoRex runs"
+// in the language of msgs.
+//
+// Title of the dialog shown on Windows when a newer build finds a server of
+// an older one that it would restart to run its own, which ends the
+// programs in its panes.
+func (msgs Messages) ServerRestartAskTitle() string {
+	return Catalog.Format(msgs.locale, "serverRestartAskTitle", nil)
+}
+
+// ServerRestartAskDetail says "Restarting it ends the programs running in your panes. Each pane comes back as a new shell in its directory, without …"
+// in the language the app shows.
+//
+// Detail of the dialog shown on Windows before restarting a server of an
+// older GoRex.
+func ServerRestartAskDetail() string { return In(i18n.Locale()).ServerRestartAskDetail() }
+
+// ServerRestartAskDetail says "Restarting it ends the programs running in your panes. Each pane comes back as a new shell in its directory, without …"
+// in the language of msgs.
+//
+// Detail of the dialog shown on Windows before restarting a server of an
+// older GoRex.
+func (msgs Messages) ServerRestartAskDetail() string {
+	return Catalog.Format(msgs.locale, "serverRestartAskDetail", nil)
+}
+
+// ServerRestartAskRestart says "Restart"
+// in the language the app shows.
+//
+// Button of the dialog shown before restarting an older server: restarts
+// it.
+func ServerRestartAskRestart() string { return In(i18n.Locale()).ServerRestartAskRestart() }
+
+// ServerRestartAskRestart says "Restart"
+// in the language of msgs.
+//
+// Button of the dialog shown before restarting an older server: restarts
+// it.
+func (msgs Messages) ServerRestartAskRestart() string {
+	return Catalog.Format(msgs.locale, "serverRestartAskRestart", nil)
+}
+
+// ServerRestartAskLater says "Later"
+// in the language the app shows.
+//
+// Button of the dialog shown before restarting an older server: keeps the
+// old server running.
+func ServerRestartAskLater() string { return In(i18n.Locale()).ServerRestartAskLater() }
+
+// ServerRestartAskLater says "Later"
+// in the language of msgs.
+//
+// Button of the dialog shown before restarting an older server: keeps the
+// old server running.
+func (msgs Messages) ServerRestartAskLater() string {
+	return Catalog.Format(msgs.locale, "serverRestartAskLater", nil)
+}
+
 // ErrorConnectionLost says "Lost the connection to the session server."
 // in the language the app shows.
 //

@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/big"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -498,12 +499,12 @@ func (st *store) adopt(client *rex.Client) bool {
 		// code: it runs this build's in its place, keeping its sessions.
 		// Only for a newer build: two copies of the app would take the
 		// server from each other at every launch. One that cannot upgrade
-		// is replaced under mygo dev, ending its sessions, and kept
-		// otherwise.
+		// is under mygo dev restarted, and on Windows by a newer build
+		// once the user agrees: the next server starts its sessions again.
+		// Otherwise it is kept.
 		var next *rex.Client
 		if st.hello.Upgrade {
-			exe, at := rex.Executable()
-			if at.After(st.hello.ExeTime) {
+			if exe, at := rex.Executable(); at.After(st.hello.ExeTime) {
 				if next, err = client.Upgrade(exe); err != nil {
 					log.Print(err)
 					client.Close()
@@ -511,7 +512,26 @@ func (st *store) adopt(client *rex.Client) bool {
 				}
 			}
 		} else if mygo.IsDev() {
+			// A restart stops the server so that the next one starts the
+			// sessions of the layout again (Restart sends restart:true).
 			next, err = client.Restart(st.hello.PID)
+		} else if runtime.GOOS == "windows" && st.hello.Can(rex.CapabilityShutdownRestart) {
+			// Windows servers cannot upgrade in place: a newer build
+			// restarts one that brings its sessions back, once the user
+			// agrees to end the programs in its panes.
+			if _, at := rex.Executable(); at.After(st.hello.ExeTime) {
+				res, derr := mygo.Dialog.Message(mygo.MessageOptions{
+					Type:          mygo.MessageWarning,
+					Message:       locales.ServerRestartAskTitle(),
+					Detail:        locales.ServerRestartAskDetail(),
+					Buttons:       []string{locales.ServerRestartAskRestart(), locales.ServerRestartAskLater()},
+					DefaultButton: 0,
+					CancelButton:  1,
+				})
+				if derr == nil && res.Button == 0 {
+					next, err = client.Restart(st.hello.PID)
+				}
+			}
 		}
 		if err != nil {
 			log.Print(err)
