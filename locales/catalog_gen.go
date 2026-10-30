@@ -1834,6 +1834,78 @@ func (msgs Messages) SettingsPaneHeadersHint() string {
 	return Catalog.Format(msgs.locale, "settingsPaneHeadersHint", nil)
 }
 
+// SettingsAnimation says "Animation style"
+// in the language the app shows.
+//
+// Setting: how panes and the sidebar animate.
+func SettingsAnimation() string { return In(i18n.Locale()).SettingsAnimation() }
+
+// SettingsAnimation says "Animation style"
+// in the language of msgs.
+//
+// Setting: how panes and the sidebar animate.
+func (msgs Messages) SettingsAnimation() string {
+	return Catalog.Format(msgs.locale, "settingsAnimation", nil)
+}
+
+// SettingsAnimationHint says "How panes move, split, zoom, open and close, and how the sidebar shows and hides. Animations are off while the system…"
+// in the language the app shows.
+//
+// Hint under the Animation style setting. Its options are the next three
+// messages.
+func SettingsAnimationHint() string { return In(i18n.Locale()).SettingsAnimationHint() }
+
+// SettingsAnimationHint says "How panes move, split, zoom, open and close, and how the sidebar shows and hides. Animations are off while the system…"
+// in the language of msgs.
+//
+// Hint under the Animation style setting. Its options are the next three
+// messages.
+func (msgs Messages) SettingsAnimationHint() string {
+	return Catalog.Format(msgs.locale, "settingsAnimationHint", nil)
+}
+
+// AnimationSnappy says "Snappy"
+// in the language the app shows.
+//
+// Animation style option: quick springs with a little bounce.
+func AnimationSnappy() string { return In(i18n.Locale()).AnimationSnappy() }
+
+// AnimationSnappy says "Snappy"
+// in the language of msgs.
+//
+// Animation style option: quick springs with a little bounce.
+func (msgs Messages) AnimationSnappy() string {
+	return Catalog.Format(msgs.locale, "animationSnappy", nil)
+}
+
+// AnimationNatural says "Natural"
+// in the language the app shows.
+//
+// Animation style option: softer, slower springs without bounce.
+func AnimationNatural() string { return In(i18n.Locale()).AnimationNatural() }
+
+// AnimationNatural says "Natural"
+// in the language of msgs.
+//
+// Animation style option: softer, slower springs without bounce.
+func (msgs Messages) AnimationNatural() string {
+	return Catalog.Format(msgs.locale, "animationNatural", nil)
+}
+
+// AnimationOff says "Off"
+// in the language the app shows.
+//
+// Animation style option: no animations.
+func AnimationOff() string { return In(i18n.Locale()).AnimationOff() }
+
+// AnimationOff says "Off"
+// in the language of msgs.
+//
+// Animation style option: no animations.
+func (msgs Messages) AnimationOff() string {
+	return Catalog.Format(msgs.locale, "animationOff", nil)
+}
+
 // SettingsTextSize says "Text size"
 // in the language the app shows.
 //

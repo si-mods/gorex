@@ -363,6 +363,7 @@ func TestCloseButtons(t *testing.T) {
 	// A pane without the focus shows its buttons under the pointer.
 	a.split(false)
 	tt.Frame()
+	settle(tt)
 	tab := a.tab()
 	left := tab.panes()[0]
 	if tab.Focus == left {
@@ -582,6 +583,12 @@ func TestSidebar(t *testing.T) {
 	if !prefs.SidebarHidden {
 		t.Fatal("the sidebar did not hide")
 	}
+	// It slides away, then is gone.
+	if _, ok := tt.Find("Tabs"); !ok {
+		t.Error("the sidebar is gone at once")
+	}
+	tt.Advance(time.Second)
+	tt.Frame()
 	if _, ok := tt.Find("Tabs"); ok {
 		t.Error("the hidden sidebar lists the tabs")
 	}

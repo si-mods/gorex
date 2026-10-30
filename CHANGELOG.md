@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Pane animations. Panes now spring into place when they move, split or
+  zoom, and new or closing panes pop in and out. A new Animation style
+  setting in Settings › Appearance lets you choose Snappy, Natural or Off,
+  and it also controls how the sidebar shows and hides. While Reduce
+  Motion is on, animations stay off.
+
 ## 0.3.2
 
 - Sessions are spaces now: the interface says Space / 空间, and each space

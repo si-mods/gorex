@@ -191,7 +191,9 @@ func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize
 	} else if b.Hovered() || active {
 		b.Background(k.hover)
 	}
-	b.Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
+	if fadeColors {
+		b.Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
+	}
 	col := k.iconMuted
 	if b.Hovered() || active {
 		col = k.text
@@ -205,66 +207,152 @@ func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize
 	return b
 }
 
-// tabContent lays out the panes of a tab, or the one zoomed.
+// tabContent lays out the panes of a tab, or the one zoomed. Each pane is
+// a cell placed by its share of the tab's room, and the dividers between
+// them over the cells: all of them in one parent, so that the panes move
+// to their new places as the layout changes, and open and close there.
 func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
-	if t.Zoom != nil {
-		a.paneCard(c, k, t, t.Zoom).Grow(1)
-		return
-	}
-	a.node(c, k, t, t.Root).Grow(1)
+	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
+	bounds := room.Bounds()
+	tr := a.paneTransition(c, t)
+	room.Children(func() {
+		if t.Zoom != nil {
+			a.paneCell(c, k, t, t.Zoom, whole, bounds, tr)
+			return
+		}
+		type split struct {
+			n *Node
+			s share
+		}
+		var splits []split
+		t.Root.shares(whole, func(p *Pane, s share) {
+			a.paneCell(c, k, t, p, s, bounds, tr)
+		}, func(n *Node, s share) {
+			splits = append(splits, split{n, s})
+		})
+		for _, sp := range splits {
+			a.divider(c, k, sp.n, sp.s, bounds, tr)
+		}
+	})
 }
 
-// node lays out a node of the tree of splits.
-func (a *App) node(c *ui.Context, k *colors, t *Tab, n *Node) ui.Element {
+// share is a part of a tab's room, as fractions of its width and height.
+type share struct{ x, y, w, h float32 }
+
+var whole = share{0, 0, 1, 1}
+
+// The keys of a tab's room, and of the cells and dividers in it.
+type (
+	roomKey    int
+	cellKey    int
+	dividerKey int
+)
+
+// shares gives each pane of the tree of n, and each split, its share of s.
+func (n *Node) shares(s share, pane func(*Pane, share), split func(*Node, share)) {
+	if n == nil {
+		return
+	}
 	if n.Pane != nil {
-		return a.paneCard(c, k, t, n.Pane)
+		pane(n.Pane, s)
+		return
 	}
-	var box ui.Element
+	split(n, s)
+	a, b := s, s
 	if n.Vertical {
-		box = ui.Column(c.Key(n.ID))
+		a.h = s.h * n.Ratio
+		b.y, b.h = s.y+a.h, s.h-a.h
 	} else {
-		box = ui.Row(c.Key(n.ID))
+		a.w = s.w * n.Ratio
+		b.x, b.w = s.x+a.w, s.w-a.w
 	}
-	box.MinWidth(0).MinHeight(0).AlignItems(ui.Stretch)
-	bounds := box.Bounds()
-	// The tree may change as its panes build, as a split: build the
-	// children it has now.
-	first, second, ratio := n.A, n.B, n.Ratio
-	box.Children(func() {
-		a.node(c, k, t, first).Grow(ratio).Basis(0).MinWidth(0).MinHeight(0)
-		div := ui.Box(c.Key("divider")).Role(ui.RoleSplitter).Label(locales.PaneDivider())
+	n.A.shares(a, pane, split)
+	n.B.shares(b, pane, split)
+}
+
+// paneCell places pane p in its share s of the tab's room, which is
+// bounds, half the gap from the panes beside it.
+func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bounds ui.Rect, tr *ui.ElementTransition) {
+	const half, eps = gap / 2, 1e-4
+	var top, right, bottom, left float32
+	if s.y > eps {
+		top = half
+	}
+	if s.x+s.w < 1-eps {
+		right = half
+	}
+	if s.y+s.h < 1-eps {
+		bottom = half
+	}
+	if s.x > eps {
+		left = half
+	}
+	cell := ui.Column(c.Key(cellKey(p.ID))).Absolute().
+		LeftPercent(s.x*100).TopPercent(s.y*100).WidthPercent(s.w*100).HeightPercent(s.h*100).
+		Padding(top, right, bottom, left)
+	// Where the pane rests, not where it shows on the way there: moving
+	// the focus goes by the layout, not by a spring.
+	p.bounds = ui.Rect{
+		X: bounds.X + s.x*bounds.W + left,
+		Y: bounds.Y + s.y*bounds.H + top,
+		W: s.w*bounds.W - left - right,
+		H: s.h*bounds.H - top - bottom,
+	}
+	if tr != nil {
+		cell.Transition(*tr)
+	}
+	cell.Children(func() {
+		if tr != nil && tr.Position {
+			fadeColors = false
+			defer func() { fadeColors = true }()
+		}
+		a.paneCard(c, k, t, p).Grow(1)
+	})
+}
+
+// divider is the edge between the two sides of split n, in its share s of
+// the tab's room, which is bounds: dragging it moves the split's ratio.
+func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect, tr *ui.ElementTransition) {
+	div := ui.Box(c.Key(dividerKey(n.ID))).Absolute().Role(ui.RoleSplitter).Label(locales.PaneDivider())
+	total := bounds.W * s.w
+	if n.Vertical {
+		total = bounds.H * s.h
+		div.LeftPercent(s.x*100).WidthPercent(s.w*100).TopPercent((s.y+s.h*n.Ratio)*100).
+			Height(gap).Translate(0, -gap/2).Cursor(ui.CursorResizeRow)
+	} else {
+		div.TopPercent(s.y*100).HeightPercent(s.h*100).LeftPercent((s.x+s.w*n.Ratio)*100).
+			Width(gap).Translate(-gap/2, 0).Cursor(ui.CursorResizeColumn)
+	}
+	if tr != nil {
+		// It moves with the cells, but neither opens nor closes.
+		div.Transition(ui.ElementTransition{Animation: tr.Animation, Position: tr.Position, Size: tr.Size, Colors: tr.Colors})
+	}
+	if dx, dy, ok := div.Dragged(); ok {
+		d := dx
 		if n.Vertical {
-			div.Height(gap).Cursor(ui.CursorResizeRow)
-		} else {
-			div.Width(gap).Cursor(ui.CursorResizeColumn)
+			d = dy
 		}
-		if dx, dy, ok := div.Dragged(); ok {
-			total := bounds.W - gap
-			d := dx
-			if n.Vertical {
-				total, d = bounds.H-gap, dy
-			}
-			if total > 0 {
-				n.Ratio = min(max(n.Ratio+d/total, 0.08), 0.92)
-				a.changed()
-			}
-		}
-		if div.DoubleClicked() {
-			n.Ratio = 0.5
+		if total > 0 {
+			n.Ratio = min(max(n.Ratio+d/total, 0.08), 0.92)
 			a.changed()
 		}
-		if div.Hovered() || div.Dragging() || div.Pressed() {
-			div.Draw(func(p *ui.Painter, r ui.Rect) {
-				if n.Vertical {
-					p.Fill(ui.Rect{X: r.X + r.W/2 - 18, Y: r.Y + r.H/2 - 1.5, W: 36, H: 3}, k.iconMuted.Alpha(0.6), 1.5)
-				} else {
-					p.Fill(ui.Rect{X: r.X + r.W/2 - 1.5, Y: r.Y + r.H/2 - 18, W: 3, H: 36}, k.iconMuted.Alpha(0.6), 1.5)
-				}
-			})
-		}
-		a.node(c, k, t, second).Grow(1 - ratio).Basis(0).MinWidth(0).MinHeight(0)
-	})
-	return box
+	}
+	if div.DoubleClicked() {
+		n.Ratio = 0.5
+		a.changed()
+	}
+	if div.Dragging() {
+		a.dividerDrag = true
+	}
+	if div.Hovered() || div.Dragging() || div.Pressed() {
+		div.Draw(func(p *ui.Painter, r ui.Rect) {
+			if n.Vertical {
+				p.Fill(ui.Rect{X: r.X + r.W/2 - 18, Y: r.Y + r.H/2 - 1.5, W: 36, H: 3}, k.iconMuted.Alpha(0.6), 1.5)
+			} else {
+				p.Fill(ui.Rect{X: r.X + r.W/2 - 1.5, Y: r.Y + r.H/2 - 18, W: 3, H: 36}, k.iconMuted.Alpha(0.6), 1.5)
+			}
+		})
+	}
 }
 
 // paneCard draws a pane: a card with a header over its terminal.
@@ -287,7 +375,9 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 	card.Background(bg).Border(1, border).
 		Shadow(0, 1, 2, 0, shadow).
 		Shadow(0, 6, 22, -2, shadow)
-	card.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
+	if fadeColors {
+		card.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
+	}
 	hovered := card.Hovered()
 	card.Children(func() {
 		top := float32(0)
@@ -328,7 +418,6 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane) ui.Element {
 	if _, over := ui.DragOver[*Pane](card); over {
 		card.Border(1.5, k.busy.Alpha(0.6))
 	}
-	p.bounds = card.Bounds()
 	if card.Pressed() && t.Focus != p {
 		t.setFocus(p)
 		a.focusReq = p

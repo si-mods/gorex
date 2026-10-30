@@ -37,6 +37,10 @@ type Tab struct {
 	// recent lists the panes by when they had the focus last, the latest
 	// last: closing a pane gives the focus back to the one before.
 	recent []*Pane
+	// laid is the layout of the panes the window showed last, and settle
+	// when the panes are done moving from the one before.
+	laid   string
+	settle time.Time
 }
 
 // Node is a pane, or a split of two nodes.
@@ -176,6 +180,9 @@ type App struct {
 	edgeDrag  bool
 	edgeFrom  float32
 	edgeMoved float32
+	// dividerDrag tells that a divider between panes was dragging in the
+	// frame before: the panes then follow it at once.
+	dividerDrag bool
 
 	// posted are changes to make in the next frame, from terminals of a
 	// view without a window, as in tests.
