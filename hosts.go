@@ -926,12 +926,15 @@ type hostStream struct {
 	cur        *rex.Stream
 	fresh      bool // cur printed nothing yet
 	cols, rows int
-	closed     bool
-	detached   bool
-	gone       bool // the host no longer lists the session to this machine
-	attaches   int  // the streams that printed
-	fails      int  // the streams lost since one printed
-	pending    []byte
+	// focused tells that the user looks at the pane, whose session the
+	// server sizes for it; cur is told as it changes.
+	focused  bool
+	closed   bool
+	detached bool
+	gone     bool // the host no longer lists the session to this machine
+	attaches int  // the streams that printed
+	fails    int  // the streams lost since one printed
+	pending  []byte
 }
 
 func newHostStream(h *hostConn, sid string, cols, rows int) *hostStream {
@@ -989,6 +992,12 @@ func (s *hostStream) stream() (*rex.Stream, error) {
 		// Left at the old size, its console draws for a screen of other
 		// rows than the window's, and lines land on each other.
 		s.sendSize()
+		s.mu.Lock()
+		focused := s.focused
+		s.mu.Unlock()
+		if focused {
+			st.SetFocused(true)
+		}
 		return st, nil
 	}
 }
@@ -1108,6 +1117,18 @@ func (s *hostStream) Resize(cols, rows int) error {
 	s.mu.Unlock()
 	s.sendSize()
 	return nil
+}
+
+// SetFocused tells the session whether the user looks at the pane, once
+// attached; a stream attaching again is told when it does (stream).
+func (s *hostStream) SetFocused(on bool) {
+	s.mu.Lock()
+	s.focused = on
+	st := s.cur
+	s.mu.Unlock()
+	if st != nil {
+		st.SetFocused(on)
+	}
 }
 
 // sendSize tells the stream of the moment the latest size, one at a time,

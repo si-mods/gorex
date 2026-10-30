@@ -88,9 +88,9 @@ type session struct {
 	sizeLockConn  net.Conn
 	sizeLockUntil time.Time
 	sizeLockTimer *time.Timer
-	// typist is the client that last typed, whose terminal answers the
-	// program's queries (authorityLocked); attaches counts the attaches,
-	// for the newest.
+	// typist is the client that last typed or told of the user's focus,
+	// whose terminal answers the program's queries (authorityLocked);
+	// attaches counts the attaches, for the newest.
 	typist   *attached
 	attaches uint64
 	// batchEnd, while the output is inside a synchronized update (mode
@@ -457,6 +457,7 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may
 		snap = append(append(head, '\n'), snap...)
 	}
 	a.first = snap
+	prev := s.authorityLocked()
 	exited := s.exited
 	if exited {
 		a.finish()
@@ -464,9 +465,19 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may
 		s.attaches++
 		a.seq = s.attaches
 		s.clients[a] = struct{}{}
+		if o.Focused {
+			s.typist = a
+		}
+	}
+	pty, cols, rows := false, 0, 0
+	if o.Focused && !exited {
+		pty, cols, rows = s.followAuthorityLocked(prev)
 	}
 	s.mu.Unlock()
 	go a.writer()
+	if pty {
+		s.resizeTerminal(cols, rows)
+	}
 	if exited {
 		return
 	}
@@ -764,25 +775,56 @@ func (s *session) resizeFrom(via net.Conn, peer string, cols, rows int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	cols, rows = clampSize(cols), clampSize(rows)
-	asked := func(a *attached) bool {
-		if via != nil {
-			return a.via == via
-		}
-		return a.via == nil && a.peer == peer
-	}
 	matched := false
 	for a := range s.clients {
-		if asked(a) {
+		if askedBy(a, via, peer) {
 			a.cols, a.rows = cols, rows
 			matched = true
 		}
 	}
 	if matched {
-		if a := s.authorityLocked(); a == nil || !asked(a) {
+		if a := s.authorityLocked(); a == nil || !askedBy(a, via, peer) {
 			return
 		}
 	}
 	s.resizeLaterLocked(cols, rows)
+}
+
+// askedBy tells whether a client asked through the control connection
+// via, or, with none, as the app's windows on this machine, as peer
+// attached without one.
+func askedBy(a *attached, via net.Conn, peer string) bool {
+	if via != nil {
+		return a.via == via
+	}
+	return a.via == nil && a.peer == peer
+}
+
+// focusFrom makes the newest client that asked, among those the user
+// looks at now, the authority at once: the session's size follows the
+// machine the user's focus is on, not only the one that typed last. The
+// clients that asked are those attached through the control connection
+// via; with none, those of peer attached without one. A size lock keeps
+// its precedence (followAuthorityLocked).
+func (s *session) focusFrom(via net.Conn, peer string) {
+	s.mu.Lock()
+	prev := s.authorityLocked()
+	var focused *attached
+	for a := range s.clients {
+		if askedBy(a, via, peer) && (focused == nil || a.seq > focused.seq) {
+			focused = a
+		}
+	}
+	if focused == nil {
+		s.mu.Unlock()
+		return
+	}
+	s.typist = focused
+	pty, cols, rows := s.followAuthorityLocked(prev)
+	s.mu.Unlock()
+	if pty {
+		s.resizeTerminal(cols, rows)
+	}
 }
 
 // resizeTerminal resizes the terminal, the caller having let go of s.mu:

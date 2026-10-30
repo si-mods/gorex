@@ -233,3 +233,156 @@ func TestResizeFollowsTypistOverServer(t *testing.T) {
 	pc.Close()
 	waitSize(t, c, sid, "110x32")
 }
+
+// TestFocusTakesSize: a client telling that the user looks at the session
+// takes the size at once, though another client typed last.
+func TestFocusTakesSize(t *testing.T) {
+	settleFor(t, 100*time.Millisecond)
+	s := newResizeSession(t)
+	deskVia, deskPeer := net.Pipe()
+	defer deskVia.Close()
+	defer deskPeer.Close()
+	phoneVia, phonePeer := net.Pipe()
+	defer phoneVia.Close()
+	defer phonePeer.Close()
+	desk := addAttached(s, 1, deskVia, 100, 30)
+	s.resizeForAttach(100, 30)
+	waitApplied(t, s, 100, 30)
+	// The desk types: it answers the program's queries.
+	s.admit(desk, []byte("ls\r"))
+	phone := addAttached(s, 2, phoneVia, 155, 40)
+	// The phone types: the session follows it.
+	s.admit(phone, []byte("x"))
+	if c, r := appliedSize(t, s); c != 155 || r != 40 {
+		t.Fatalf("typing sized the session %dx%d, want the phone's 155x40", c, r)
+	}
+	// The desk's user looks at the session: its size at once.
+	s.focusFrom(deskVia, "")
+	if c, r := appliedSize(t, s); c != 100 || r != 30 {
+		t.Fatalf("focus sized the session %dx%d, want the desk's 100x30", c, r)
+	}
+	// The phone's resize, not the authority's, is not taken.
+	s.resizeFrom(phoneVia, "", 160, 45)
+	settled()
+	if c, r := appliedSize(t, s); c != 100 || r != 30 {
+		t.Fatalf("the phone's resize sized the session %dx%d", c, r)
+	}
+	if a := authorityOf(t, s); a != desk {
+		t.Fatal("focus did not take the authority")
+	}
+}
+
+// TestFocusKeepsSizeLock: a focus from a client does not resize a session
+// whose size another owner holds.
+func TestFocusKeepsSizeLock(t *testing.T) {
+	settleFor(t, 30*time.Millisecond)
+	s := newResizeSession(t)
+	ownerVia, phoneVia := net.Pipe()
+	defer ownerVia.Close()
+	defer phoneVia.Close()
+	addAttached(s, 1, ownerVia, 60, 20)
+	s.lockSize("owner", 60, 20, ownerVia)
+	waitApplied(t, s, 60, 20)
+	addAttached(s, 2, phoneVia, 150, 55)
+	s.focusFrom(phoneVia, "")
+	if c, r := appliedSize(t, s); c != 60 || r != 20 {
+		t.Fatalf("focus resized a locked session to %dx%d", c, r)
+	}
+}
+
+// TestFocusWithoutAttachDoesNothing: a focus request of no client
+// attached changes nothing.
+func TestFocusWithoutAttachDoesNothing(t *testing.T) {
+	settleFor(t, 30*time.Millisecond)
+	s := newResizeSession(t)
+	_, deskVia := net.Pipe()
+	defer deskVia.Close()
+	desk := addAttached(s, 1, deskVia, 100, 30)
+	s.resizeForAttach(100, 30)
+	waitApplied(t, s, 100, 30)
+	s.focusFrom(nil, "nodekey:phone")
+	if c, r := appliedSize(t, s); c != 100 || r != 30 {
+		t.Fatalf("a focus of no attach sized the session %dx%d", c, r)
+	}
+	if a := authorityOf(t, s); a != desk {
+		t.Fatal("a focus of no attach changed the authority")
+	}
+}
+
+// authorityOf returns the session's authority.
+func authorityOf(t *testing.T, s *session) *attached {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.authorityLocked()
+}
+
+// helloStream returns a client of the server s, keeping its connection
+// alive, as a window's is.
+func helloStream(t *testing.T, s *Server) *Client {
+	t.Helper()
+	pc := pipe(s, "")
+	pc.keepalive = true
+	if _, err := pc.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { pc.Close() })
+	return pc
+}
+
+// TestFocusTakesSizeOverServer drives a focus through the server: the
+// desktop's stream telling that its window has the focus takes the size
+// back from the phone that typed.
+func TestFocusTakesSizeOverServer(t *testing.T) {
+	settleFor(t, 100*time.Millisecond)
+	s, c, sid := streamServer(t, nil)
+	desk, phone := helloStream(t, s), helloStream(t, s)
+	st := desk.Stream(sid, 100, 30)
+	if _, err := st.Write(nil); err != nil {
+		t.Fatal(err)
+	}
+	waitSize(t, c, sid, "100x30")
+	pc, err := phone.AttachConn(Attach{SID: sid, Cols: 155, Rows: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	// The phone types: the session follows it.
+	if _, err := pc.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	waitSize(t, c, sid, "155x40")
+	// The desk's window has the focus: the session takes its size at once.
+	st.SetFocused(true)
+	waitSize(t, c, sid, "100x30")
+	// The phone's resize is not taken.
+	if err := phone.Resize(sid, 160, 45); err != nil {
+		t.Fatal(err)
+	}
+	settled()
+	if got := sessionSize(t, c, sid); got != "100x30" {
+		t.Fatalf("the phone's resize sized the session to %s", got)
+	}
+}
+
+// TestFocusBeforeAttach: a stream told that its window has the focus
+// before it attaches tells the server once it does (Stream attaches 400ms
+// after it is made).
+func TestFocusBeforeAttach(t *testing.T) {
+	settleFor(t, 100*time.Millisecond)
+	s, c, sid := streamServer(t, nil)
+	desk, phone := helloStream(t, s), helloStream(t, s)
+	pc, err := phone.AttachConn(Attach{SID: sid, Cols: 155, Rows: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	if _, err := pc.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	waitSize(t, c, sid, "155x40")
+	st := desk.Stream(sid, 90, 28)
+	st.SetFocused(true)
+	t.Cleanup(func() { st.Close() })
+	waitSize(t, c, sid, "90x28")
+}

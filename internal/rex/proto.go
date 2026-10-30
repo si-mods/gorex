@@ -438,6 +438,11 @@ type Attach struct {
 	// many bytes.
 	Framed  bool `json:"framed,omitempty"`
 	History int  `json:"history,omitempty"`
+	// Focused tells that the user looks at this terminal: the session
+	// takes its size at once, though another client typed last. A focus
+	// request sent once the attach is answered may reach the server
+	// before it registers the attach, which this one never does.
+	Focused bool `json:"focused,omitempty"`
 }
 
 // SnapshotHeader is the line before the snapshot of a framed attach: its
