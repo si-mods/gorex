@@ -186,5 +186,9 @@ func shellCommand(cmd []string) (path string, argv []string, name string, err er
 	return path, cmd, filepath.Base(cmd[0]), nil
 }
 
-// processAlive reports whether a process runs.
-func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
+// processAlive reports whether a process runs: one that exited and is kept
+// as a zombie until it is waited for does not, though killing it still
+// works.
+func processAlive(pid int) bool {
+	return syscall.Kill(pid, 0) == nil && !zombie(pid)
+}

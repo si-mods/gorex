@@ -5,8 +5,8 @@ without opening a window; with no arguments it starts the app.
 
 `-S HOST` before a command uses a saved remote host from `hosts.json`, or
 an address, instead of this machine's server. Local-only commands (`hosts`,
-`skill`, `remote`) and window-only commands (`split`, `close`) do not
-apply remotely. `action` applies remotely when the host turns Remote
+`skill`, `remote`, `server`) and window-only commands (`split`, `close`) do
+not apply remotely. `action` applies remotely when the host turns Remote
 Control on; `layout` reads a host's layout when it turns Share Layout on.
 
 Every local terminal GoRex opens gets:
@@ -41,6 +41,7 @@ gorex events
 gorex hosts [ls] [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--json]
 gorex remote status [--json] | remote control on|off
+gorex server restart
 gorex config path | config check [FILE] | config reload
 gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
 gorex version [--json]
@@ -76,6 +77,17 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   through the window. It applies to every paired client and every member
   of a joined network, and persists even while remote access is off.
   Destructive actions stay refused.
+- `server restart` stops the local server, and the next one starts the
+  sessions of the layout again, as one after a crash does: new shells at
+  the directories their panes were in, with the same ids, so the windows
+  attach to them; what the old ones printed is gone. Quit and End All
+  still ends sessions. It starts no server itself: the open app
+  reconnects and starts the next one, else the next `gorex` command or
+  the next launch does, which brings the sessions back; until then none
+  runs. Run inside a pane, it tells of the new shell first, then ends
+  with the pane. It exits 0 when it is done, 1 when the server is too old
+  to bring its sessions back (quit it once with Quit and End All, or kill
+  it), and 4 when no server runs or the server did not stop.
 - `action run` runs a built-in action by its ID, through the window.
   Values after the action are strings; the CLI does not guess types.
 

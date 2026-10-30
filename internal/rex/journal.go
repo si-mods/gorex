@@ -21,7 +21,9 @@ import (
 // leaves its last layout in the journal, and the server that comes next
 // starts the sessions of its panes again: the same ids, at the directories
 // the panes were in, so that the windows attach to the sessions they had as
-// if nothing happened.
+// if nothing happened. A run that stops to be replaced (stopRestart) leaves
+// its layout the same way: the server after it starts those sessions again,
+// as new shells.
 
 const (
 	// journalLimit is the size past which the journal keeps only its last
@@ -33,6 +35,11 @@ const (
 	eventLayout  = "layout"
 	eventSession = "session"
 	eventStop    = "stop"
+	// The reasons a run stops. stopRestart is a run a new server replaces:
+	// the next one starts the sessions of its layout again, as one after a
+	// crash does. The other reasons end the sessions with the run.
+	stopRequest = "request"
+	stopRestart = "restart"
 )
 
 // journalEntry is a line of the journal.
@@ -202,15 +209,18 @@ func readJournal() []journalEntry {
 	return out
 }
 
-// journalStopped tells whether the run before this one stopped cleanly: the
-// last entry it left is a stop, not a layout it kept or a start. A journal
-// without entries is one of a run before the journal, and counts as stopped
-// only when there is nothing to restore.
-func journalStopped(entries []journalEntry) bool {
+// journalResumes tells whether this run starts the sessions of the layout
+// the run before it kept: that run did not stop, as one that crashed or was
+// killed, or it stopped to be replaced (stopRestart). A run that stopped and
+// ended its sessions — quit, idle, upgrade — leaves them none. A journal
+// without entries is one of a run before the journal, which resumes only
+// what its layout names.
+func journalResumes(entries []journalEntry) bool {
 	if len(entries) == 0 {
-		return false
+		return true
 	}
-	return entries[len(entries)-1].Event == eventStop
+	last := entries[len(entries)-1]
+	return last.Event != eventStop || last.Reason == stopRestart
 }
 
 // lastLayout is the layout of the last entry that kept one, for a run whose

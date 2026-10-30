@@ -1,6 +1,7 @@
 package rex
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"syscall"
@@ -28,4 +29,17 @@ func openMaster() (*os.File, string, error) {
 		return nil, "", fmt.Errorf("pty: %w", err)
 	}
 	return master, fmt.Sprintf("/dev/pts/%d", n), nil
+}
+
+// zombie reports whether pid exited and its parent has yet to wait for it.
+func zombie(pid int) bool {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	}
+	// The state follows the command name, in parentheses, and a space.
+	if i := bytes.LastIndexByte(b, ')'); i >= 0 {
+		return len(b) > i+2 && b[i+2] == 'Z'
+	}
+	return false
 }

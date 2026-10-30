@@ -474,6 +474,22 @@
   "@errorServerVersion": {
     "description": "Banner shown when the running session server is of another version."
   },
+  "serverRestartAskTitle": "A session server of an older GoRex runs",
+  "@serverRestartAskTitle": {
+    "description": "Title of the dialog shown on Windows when a newer build finds a server of an older one that it would restart to run its own, which ends the programs in its panes."
+  },
+  "serverRestartAskDetail": "Restarting it ends the programs running in your panes. Each pane comes back as a new shell in its directory, without its scrollback.",
+  "@serverRestartAskDetail": {
+    "description": "Detail of the dialog shown on Windows before restarting a server of an older GoRex."
+  },
+  "serverRestartAskRestart": "Restart",
+  "@serverRestartAskRestart": {
+    "description": "Button of the dialog shown before restarting an older server: restarts it."
+  },
+  "serverRestartAskLater": "Later",
+  "@serverRestartAskLater": {
+    "description": "Button of the dialog shown before restarting an older server: keeps the old server running."
+  },
   "errorConnectionLost": "Lost the connection to the session server.",
   "@errorConnectionLost": {
     "description": "Banner shown when the session server went away."

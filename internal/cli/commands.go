@@ -83,6 +83,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return skillCmd(args, out, errOut)
 	case "remote":
 		return remoteCmd(args, out, errOut)
+	case "server":
+		return serverCmd(args, out, errOut)
 	case "config":
 		return configCmd(args, out, errOut)
 	case "__internal":
@@ -120,6 +122,7 @@ Usage:
   gorex hosts [ls] [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project]
   gorex remote status [--json] | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
+  gorex server restart
   gorex config path | config check [FILE] | config reload
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
@@ -801,6 +804,77 @@ func internalCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	fmt.Fprintln(errOut, "gorex: unknown internal command")
 	return ExitUsage, true
+}
+
+// serverCmd restarts the local server, so that a new one takes its place: it
+// starts the sessions of the layout again, as the server after a crash does.
+// It starts no server itself, which one run from an SSH session would end
+// with it: the app, or the next command, starts it.
+func serverCmd(args []string, out, errOut io.Writer) (int, bool) {
+	if serverTarget != "" {
+		fmt.Fprintln(errOut, "gorex server: this changes the local server only")
+		return ExitUsage, true
+	}
+	usage := func() (int, bool) {
+		fmt.Fprintln(errOut, "gorex server: restart")
+		return ExitUsage, true
+	}
+	if len(args) != 1 || args[0] != "restart" {
+		return usage()
+	}
+	c, err := rex.ConnectExisting()
+	if err != nil {
+		fmt.Fprintln(errOut, "gorex server: no server runs")
+		return ExitServer, true
+	}
+	h, err := c.Hello()
+	if err != nil {
+		c.Close()
+		fmt.Fprintln(errOut, "gorex server: no server runs")
+		return ExitServer, true
+	}
+	if !h.Can(rex.CapabilityShutdownRestart) {
+		c.Close()
+		fmt.Fprintln(errOut, "gorex server: the running server is too old to bring its sessions back: quit it once with Quit and End All, or kill it")
+		return ExitFailed, true
+	}
+	// Run in a pane, this shell ends with the server: say so while it can.
+	if os.Getenv("GOREX_SESSION") != "" {
+		fmt.Fprintln(out, "restarting: this terminal ends, and comes back as a new shell")
+	}
+	if err := c.StopToRestart(); err != nil {
+		c.Close()
+		fmt.Fprintln(errOut, err)
+		return ExitServer, true
+	}
+	c.Close()
+	deadline := time.Now().Add(15 * time.Second)
+	for rex.ProcessAlive(h.PID) && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if rex.ProcessAlive(h.PID) {
+		fmt.Fprintln(errOut, "gorex server: the server did not stop")
+		return ExitServer, true
+	}
+	// The app reconnects and starts the next server; without one, the next
+	// command or launch does, which brings the sessions back then.
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		if next, err := rex.ConnectExisting(); err == nil {
+			nh, herr := next.Hello()
+			next.Close()
+			if herr == nil && nh.PID != h.PID {
+				fmt.Fprintf(out, "restarted (pid %d)\n", nh.PID)
+				return ExitOK, true
+			}
+		}
+		if !time.Now().Before(deadline) {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	fmt.Fprintln(out, "stopped; the next server brings the sessions back")
+	return ExitOK, true
 }
 
 func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {

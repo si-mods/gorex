@@ -152,17 +152,32 @@ func executable(exe string) (string, time.Time) {
 	return exe, st.ModTime()
 }
 
-// Restart shuts the server down, ending its sessions, waits for it to
-// exit, and connects to a new one.
+// Restart shuts the server down to have it replaced, waits for it to exit,
+// and connects to a new one, which starts the sessions of the layout again:
+// new shells at the directories their panes were in, with the same ids. What
+// the old sessions printed is lost with the old server. A server of before
+// CapabilityShutdownRestart ends its sessions instead. A server that did not
+// stop in 15s is an error: connecting to it would undo the restart.
 func (c *Client) Restart(pid int) (*Client, error) {
-	c.Shutdown()
+	err := c.StopToRestart()
 	c.Close()
-	deadline := time.Now().Add(3 * time.Second)
-	for pid > 0 && processAlive(pid) && time.Now().Before(deadline) {
-		time.Sleep(20 * time.Millisecond)
+	if err != nil {
+		return nil, err
+	}
+	if pid > 0 {
+		deadline := time.Now().Add(15 * time.Second)
+		for processAlive(pid) && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
+		}
+		if processAlive(pid) {
+			return nil, errors.New("rex: the server did not stop")
+		}
 	}
 	return Connect()
 }
+
+// ProcessAlive reports whether the process pid runs.
+func ProcessAlive(pid int) bool { return processAlive(pid) }
 
 // Upgrade has the server run exe in its place, keeping its sessions,
 // and connects to it again once it runs it (Hello.Upgrade tells a server
@@ -621,6 +636,13 @@ func (c *Client) Revision() uint64 {
 }
 
 func (c *Client) Shutdown() error { return c.call(Request{Op: "shutdown"}, nil) }
+
+// StopToRestart asks the server to stop as one a new server replaces: the
+// next one starts the sessions of its layout again, as new shells, where
+// Shutdown ends them with the server (CapabilityShutdownRestart).
+func (c *Client) StopToRestart() error {
+	return c.call(Request{Op: "shutdown", Restart: true}, nil)
+}
 
 // RemoteStatus tells the server's remote access; the address it gives
 // is a secret.

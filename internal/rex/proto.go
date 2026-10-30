@@ -14,6 +14,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 )
 
@@ -32,9 +33,13 @@ import (
 // ignores.
 const ProtocolVersion = 3
 
+// CapabilityShutdownRestart is what a server that stops to be replaced — one
+// the next starts the sessions of its layout again — says it does.
+const CapabilityShutdownRestart = "shutdown.restart"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision"}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -57,6 +62,12 @@ type Request struct {
 	// through it (Attach.Conn): the client pings meanwhile. A server that
 	// does not know it ignores it, and answers no Hello.Keepalive.
 	Keepalive bool `json:"keepalive,omitempty"`
+	// Restart, on "shutdown", asks the server to stop as one that a new
+	// server replaces: the next one starts the sessions of its layout
+	// again (Client.Restart, CapabilityShutdownRestart). Without it the
+	// sessions end with the server. A server that does not know it
+	// ignores it.
+	Restart bool `json:"restart,omitempty"`
 
 	// On is the setting of remote.shareSet, remote.shareLayoutSet and
 	// remote.controlSet.
@@ -406,6 +417,12 @@ type Hello struct {
 	// Client is the remote client this connection is, with its label and
 	// the times it was allowed and last connected; nil for a local one.
 	Client *RemoteClient `json:"client,omitempty"`
+}
+
+// Can tells whether the server does capability, as "layout.revision" or
+// CapabilityShutdownRestart. A server of before version 3 says none.
+func (h Hello) Can(capability string) bool {
+	return slices.Contains(h.Capabilities, capability)
 }
 
 // HostInfo describes the machine the server runs on.
