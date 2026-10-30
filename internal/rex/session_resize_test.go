@@ -119,6 +119,36 @@ func TestSessionResizeNowCancelsPending(t *testing.T) {
 	}
 }
 
+// TestSessionUnlockKeepsPendingResize: an unlock that takes no size leaves
+// another window's size waiting to land. A caller releasing a lock it no
+// longer holds, as the control bridge does when the desktop took the size
+// back, must not drop the resize the desktop made.
+func TestSessionUnlockKeepsPendingResize(t *testing.T) {
+	settleFor(t, 50*time.Millisecond)
+	s := newResizeSession(t)
+	calls := watchResizes(t)
+	conn, peer := net.Pipe()
+	defer conn.Close()
+	defer peer.Close()
+	s.lockSize("owner", 80, 24, conn)
+	s.unlockSize("owner", 0, 0)
+	// The desktop's resize waits for the drag to settle.
+	s.resize(100, 30)
+	// A release of the lock the desktop already let go takes no size.
+	s.unlockSize("owner", 0, 0)
+	deadline := time.Now().Add(2 * time.Second)
+	for len(calls()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := calls(); len(got) != 1 || got[0] != [2]int{100, 30} {
+		t.Fatalf("resizes %v, want one 100×30", got)
+	}
+	if cols, rows := appliedSize(t, s); cols != 100 || rows != 30 {
+		t.Fatalf("size %d×%d, want 100×30", cols, rows)
+	}
+}
+
 // TestSessionResizeAfterKill: a size still waiting when the session ends
 // never reaches a closed terminal.
 func TestSessionResizeAfterKill(t *testing.T) {
