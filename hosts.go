@@ -1115,6 +1115,16 @@ func (s *hostStream) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Paste writes text to the session as a paste, as the terminal's paste
+// keys would: the host's server brackets it as the program asked.
+func (s *hostStream) Paste(text string) error {
+	c := s.h.current()
+	if c == nil {
+		return errors.New("gorex: the host is away")
+	}
+	return c.Paste(s.sid, text)
+}
+
 // Resize tells the session the size of the screen, when attached; the
 // next stream attaches at it.
 func (s *hostStream) Resize(cols, rows int) error {

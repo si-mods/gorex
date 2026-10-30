@@ -139,6 +139,11 @@ func (p *pty) resize(cols, rows int) error {
 
 func (p *pty) pid() int { return p.processID }
 
+// conpty tells that the console is a ConPTY: its input drops the OSC that
+// a terminal's paste event is, so a paste reaches the program as text (see
+// session.paste).
+func (p *pty) conpty() bool { return true }
+
 // wait waits for the process and returns its exit code.
 func (p *pty) wait() int {
 	if _, err := windows.WaitForSingleObject(p.process, windows.INFINITE); err != nil {

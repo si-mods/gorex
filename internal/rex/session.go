@@ -54,7 +54,13 @@ type session struct {
 	clients    map[*attached]struct{}
 	lastOutput time.Time
 	lastInput  time.Time
-	resync     *time.Timer
+	// modes are the modes the program set, read from its output: the
+	// bracketed paste mode a paste the server writes follows.
+	modes decModes
+	// writeMu makes one writer at a time of the pty: a paste, which a
+	// client sends in pieces, is never split by what is typed meanwhile.
+	writeMu sync.Mutex
+	resync  *time.Timer
 	// pendingResize applies the windows' last requested size once it
 	// settled (resize); pendingCols and pendingRows are that size.
 	pendingResize *time.Timer
@@ -389,6 +395,7 @@ func (s *session) read() {
 			s.mu.Lock()
 			s.graphics.record(graphics)
 			s.vt.Feed(data)
+			s.modes.feed(data)
 			s.batch(data)
 			beforeStatus := s.status.updates
 			queries := s.status.feed(data)
@@ -408,7 +415,7 @@ func (s *session) read() {
 			}
 			// The server answers, as the windows' terminals do not.
 			for range queries {
-				s.p.write(statusReply)
+				s.write(statusReply)
 			}
 		}
 		if err != nil {
@@ -544,7 +551,7 @@ func (s *session) detach(drop func(peer string) bool) {
 // input types what client a sends.
 func (s *session) input(a *attached, p []byte) {
 	if p := s.admit(a, p); len(p) > 0 {
-		s.p.write(p)
+		s.write(p)
 	}
 }
 
@@ -563,8 +570,30 @@ func (s *session) inputProgram(p []byte) error {
 	}
 	s.lastInput = time.Now()
 	s.mu.Unlock()
-	s.p.write(p)
+	s.write(p)
 	return nil
+}
+
+// write types p into the program, one writer at a time: a writer's p
+// lands whole, and what another writes lands between its writes.
+func (s *session) write(p []byte) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	s.p.write(p)
+}
+
+// paste writes text to the program as the terminal's paste keys would:
+// bracketed when the program asked for bracketed pastes, else with its
+// newlines as returns. A console that drops the terminal's paste event, a
+// ConPTY on Windows, gets a paste this way.
+func (s *session) paste(text string) error {
+	if text == "" {
+		return nil
+	}
+	s.mu.Lock()
+	bracketed := s.modes.bracketed
+	s.mu.Unlock()
+	return s.inputProgram(encodePaste(text, bracketed))
 }
 
 // admit returns what of p, which client a sends, the program gets. Every
@@ -1216,6 +1245,7 @@ func (s *session) info() SessionInfo {
 	}
 	s.mu.Unlock()
 	in.PID = s.p.pid()
+	in.ConPTY = s.p.conpty()
 	if !in.Exited {
 		s.foreground(&in)
 	}

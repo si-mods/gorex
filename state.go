@@ -372,6 +372,18 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		if p.host == nil {
 			a.takeSize(p)
 		}
+		// A console that drops the terminal's paste event, a ConPTY on
+		// Windows, takes the text as a paste the session's server writes:
+		// the event is an OSC, which such a console throws away. An image
+		// alone has no text to write.
+		if p.info.ConPTY {
+			text, err := d.Read(transfer.Text)
+			if err != nil {
+				log.Printf("paste: reading the clipboard's text: %v", err)
+			}
+			a.pasteText(p, string(text))
+			return true
+		}
 		img, ok := pasteImageData(d)
 		if !ok || p.term == nil {
 			// A read fails whole when one of the clipboard's
@@ -437,6 +449,28 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// attaching changes nothing in the session.
 	term.Resize(cols, rows)
 	p.term = term
+}
+
+// pasteText writes a paste's text to the pane's session through its
+// server, which brackets it as the program asked: a program whose console
+// drops the terminal's paste event (SessionInfo.ConPTY) takes a paste this
+// way.
+func (a *App) pasteText(p *Pane, text string) {
+	if text == "" {
+		return
+	}
+	go func() {
+		var err error
+		switch {
+		case p.host == nil:
+			err = a.client.Paste(p.SID, text)
+		case p.remote != nil:
+			err = p.remote.Paste(text)
+		}
+		if err != nil {
+			log.Printf("paste: %v", err)
+		}
+	}()
 }
 
 // takeSize takes the size of the pane's session back from the device that

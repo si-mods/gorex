@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Paste into a program that runs on Windows reaches it again. A ConPTY
+  drops the OSC that a terminal's paste event is, so a program that reads
+  the clipboard itself, as agents do, never learned of a paste, and
+  nothing came of it. A paste now goes to the session's server instead,
+  which writes it as text, bracketed when the program asked for bracketed
+  pastes; `gorex paste` does the same from the command line, and a pane of
+  a remote client pastes the same in a Windows session. An image alone has
+  no text to write, so an image still reaches a Windows program only as a
+  file it opens.
 - Pane animations. Panes now spring into place when they move, split or
   zoom, and new or closing panes pop in and out. A new Animation style
   setting in Settings › Appearance lets you choose Snappy, Natural or Off,
