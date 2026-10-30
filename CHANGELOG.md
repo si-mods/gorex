@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.2
+
+- Sessions are spaces now: the interface says Space / 空间, and each space
+  has a color — nine presets, Default, or a custom `#rrggbb` — drawn in
+  the window's gradient, the active tab and the accent. The sidebar's foot
+  shows a dot per space, its own ringed and other windows' dimmed, and
+  Ctrl+1 to Ctrl+9 (Ctrl+Alt elsewhere) show the nth space.
+- A pane's header has a button that moves the pane to a new tab.
+- A remote host's tab opens here as one tab, with its splits: the sessions
+  it shows are adopted in the tab the host's shared layout names, so two
+  panes side by side there are not two tabs here. A session the host has
+  not saved into its layout yet waits a poll or two for the save, and the
+  host's focused pane is focused here even when its layout leaves panes
+  out.
+- A session attached by several clients takes its size from the client
+  that typed last, so a viewer attaching, or a frame reporting its focus,
+  no longer resizes the session under the typist; the client left takes
+  the size once the typist leaves.
+- Dragging a window's edge gives each session one resize, 150ms after the
+  size settles, instead of one per step: one reflow, one SIGWINCH, and no
+  stale prompt per step from zsh's right prompt.
+- Popovers are opaque, and the app's text fields share one look in two
+  sizes; a focused field takes the space's accent, and the rename fields
+  no longer clip the text.
+
 ## 0.3.1
 
 - A session server that dies — a crash, a `kill`, a reboot — no longer
