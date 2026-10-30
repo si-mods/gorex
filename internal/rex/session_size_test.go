@@ -4,6 +4,7 @@ package rex
 
 import (
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -363,6 +364,44 @@ func TestFocusTakesSizeOverServer(t *testing.T) {
 	if got := sessionSize(t, c, sid); got != "100x30" {
 		t.Fatalf("the phone's resize sized the session to %s", got)
 	}
+}
+
+// TestFocusNeedsPresence: a stream whose machine's user is away claims
+// nothing when it attaches, and a window that kept the focus claims the
+// size again once the user is back.
+func TestFocusNeedsPresence(t *testing.T) {
+	settleFor(t, 100*time.Millisecond)
+	s, c, sid := streamServer(t, nil)
+	desk, phone := helloStream(t, s), helloStream(t, s)
+	pc, err := phone.AttachConn(Attach{SID: sid, Cols: 155, Rows: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	if _, err := pc.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	waitSize(t, c, sid, "155x40")
+	var present atomic.Bool
+	st := desk.Stream(sid, 90, 28)
+	st.SetPresent(present.Load)
+	st.SetFocused(true)
+	t.Cleanup(func() { st.Close() })
+	// It attaches at its size with no claim of the focus: the phone keeps
+	// the size.
+	if err := st.Resize(90, 28); err != nil {
+		t.Fatal(err)
+	}
+	settled()
+	if got := sessionSize(t, c, sid); got != "155x40" {
+		t.Fatalf("an absent user's focus sized the session to %s", got)
+	}
+	// The user is back and the focus moves again: the session takes the
+	// stream's size.
+	present.Store(true)
+	st.SetFocused(false)
+	st.SetFocused(true)
+	waitSize(t, c, sid, "90x28")
 }
 
 // TestFocusBeforeAttach: a stream told that its window has the focus

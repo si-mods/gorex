@@ -101,3 +101,48 @@ func TestFocusFollowsWindow(t *testing.T) {
 	tt.Frame()
 	waitSessionSize(t, tt, a.client, p.SID, paneSize)
 }
+
+// TestFocusNeedsPresence: a window that kept the focus while the user was
+// away from the machine claims no session's size; the user coming back
+// claims it again, though the focus did not change.
+func TestFocusNeedsPresence(t *testing.T) {
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+	cols, rows := p.term.Size()
+	paneSize := fmt.Sprintf("%dx%d", cols, rows)
+	// The user leaves the machine: no input comes to it.
+	testPresent.Store(false)
+	waitFor(t, tt, "the user to leave", func() bool { return !a.focusPresent })
+	// A device of another machine types into the pane's session: the
+	// session follows it.
+	c2, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c2.Close() })
+	if _, err := c2.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	pc, err := c2.AttachConn(rex.Attach{SID: p.SID, Cols: 130, Rows: 44})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	if _, err := pc.Write([]byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	waitSessionSize(t, tt, a.client, p.SID, "130x44")
+	// The window kept the focus, but nobody is at the machine: the frames
+	// claim nothing.
+	for range 5 {
+		tt.Frame()
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := sessionSizeOf(t, a.client, p.SID); got != "130x44" {
+		t.Fatalf("an absent user's window sized the session to %s", got)
+	}
+	// The user comes back: the frames claim the size again.
+	testPresent.Store(true)
+	waitSessionSize(t, tt, a.client, p.SID, paneSize)
+}
