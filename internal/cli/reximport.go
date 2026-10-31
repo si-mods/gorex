@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
-	"gorex/internal/rex"
 	"gorex/internal/reximp"
 	"gorex/internal/rexpeer"
 )
@@ -39,7 +37,7 @@ func rexImportCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	sock := *rexSocket
 	if sock == "" {
-		sock = defaultRexSocket()
+		sock = rexpeer.DefaultSocket()
 	}
 	if sock == "" {
 		fmt.Fprintln(errOut, "gorex rex-import: no Rex server: set --rex or REX_SERVER")
@@ -61,8 +59,8 @@ func rexImportCmd(args []string, out, errOut io.Writer) (int, bool) {
 		Sessions:  sessions,
 		Shell:     *shell,
 		Resize:    *resize,
-		Mirror:    mirrorCommand(sock),
-		StatePath: filepath.Join(rex.Dir(), "rex-import.json"),
+		Mirror:    reximp.MirrorCommand(mirrorExe(), sock),
+		StatePath: reximp.StatePath(),
 		RexSocket: sock,
 	})
 	if err != nil {
@@ -85,12 +83,11 @@ func rexImportCmd(args []string, out, errOut io.Writer) (int, bool) {
 	return ExitOK, true
 }
 
-// mirrorCommand is the command a pane runs to mirror a Rex block: this
-// program, as rex-mirror.
-func mirrorCommand(sock string) []string {
+// mirrorExe is the program a pane runs as rex-mirror: this one.
+func mirrorExe() string {
 	exe, err := os.Executable()
 	if err != nil {
-		exe = "gorex"
+		return "gorex"
 	}
-	return []string{exe, "rex-mirror", "--socket", sock}
+	return exe
 }

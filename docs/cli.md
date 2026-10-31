@@ -98,6 +98,9 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   in `rex-import.json` in the data directory and left alone.
 - `rex-mirror` is what those panes run; it needs the GoRex window open for
   the import, not to mirror.
+- The window's **Space ▸ Import from Rex**, and the palette's *Import from
+  Rex*, do what `rex-import` does with mirrors, for every session not
+  recorded yet.
 - `action run` runs a built-in action by its ID, through the window.
   Values after the action are strings; the CLI does not guess types.
 

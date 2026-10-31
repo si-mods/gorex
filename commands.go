@@ -58,6 +58,7 @@ var clientBlockedActions = map[string]bool{
 	"session.close": true, "tab.close": true, "pane.close": true, "pane.restart": true,
 	"screen.clear": true, "scrollback.clear": true, "tab.move_window": true,
 	"mode.enter": true, "mode.exit": true, "mode.exit_all": true,
+	"rex.import": true,
 }
 
 func blockedFromClient(id string) bool { return clientBlockedActions[id] }
@@ -335,6 +336,7 @@ var (
 
 	cmdNewWindow     = command{ID: "window.new", Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
 	cmdNewSession    = command{ID: "session.new", Name: locales.Messages.CmdNewSession, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.newWorkspace() }}
+	cmdImportRex     = command{ID: "rex.import", Name: locales.Messages.CmdImportRex, Run: func(a *App) { a.importRex() }, Available: func(a *App) bool { return !rexImporting.Load() }}
 	cmdChangeSession = command{ID: "session.switch", Name: locales.Messages.CmdChangeSession, Accel: "CmdOrCtrl+Shift+O", Keys: "⇧⌘O", Other: ctrlShift(ui.KeyO), Run: func(a *App) { a.openSessionPalette() }}
 	cmdNextSession   = command{ID: "session.next", Name: locales.Messages.CmdNextSession, Accel: "CmdOrCtrl+Ctrl+]", Keys: "⌃⌘]", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageDown}, Run: func(a *App) { a.cycleWorkspace(1) }}
 	cmdPrevSession   = command{ID: "session.previous", Name: locales.Messages.CmdPreviousSession, Accel: "CmdOrCtrl+Ctrl+[", Keys: "⌃⌘[", Other: shortcut{ui.Ctrl | ui.Shift, ui.KeyPageUp}, Run: func(a *App) { a.cycleWorkspace(-1) }}
@@ -408,14 +410,14 @@ var paletteCommands = []*command{
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
 	&cmdGhostty, &cmdClearScroll, &cmdFind, &cmdFindNext, &cmdFindPrev, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdEndAll,
-	&cmdNewWindow, &cmdNewSession, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
+	&cmdNewWindow, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
 	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
 }
 
 // sessionCommands are those of the workspaces and the windows, which an
 // app without a store, as in tests, does not list.
 var sessionCommands = []*command{
-	&cmdNewWindow, &cmdNewSession, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
+	&cmdNewWindow, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
 	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
 }
 
@@ -650,6 +652,8 @@ func (st *store) menu() *mygo.Menu {
 		{Label: locales.MenuTabs(), Submenu: append(tabItems, mygo.Separator(), item(&cmdRenameTab), item(&cmdMoveTabWindow))},
 		{Label: locales.MenuSession(), Submenu: append([]*mygo.MenuItem{
 			item(&cmdNewSession),
+			item(&cmdImportRex),
+			mygo.Separator(),
 			item(&cmdChangeSession),
 			mygo.Separator(),
 			item(&cmdNextSession),

@@ -16,6 +16,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -556,6 +558,29 @@ func urlParse(s string) (string, error) {
 		return "", err
 	}
 	return u.Path, nil
+}
+
+// DefaultSocket returns the socket of the Rex server this machine runs,
+// from REX_SERVER when it is set.
+func DefaultSocket() string {
+	if s := os.Getenv("REX_SERVER"); s != "" {
+		if strings.HasPrefix(s, "unix://") {
+			if u, err := url.Parse(s); err == nil {
+				return u.Path
+			}
+		}
+		if strings.HasPrefix(s, "/") {
+			return s
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(home, "Library", "Application Support", "rex", "server.sock")
+	}
+	return filepath.Join(home, ".local", "share", "rex", "server.sock")
 }
 
 // callTimeout is how long a call waits when its caller sets no deadline.

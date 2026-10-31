@@ -5,10 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,7 +34,7 @@ func rexMirrorCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	sock := *socket
 	if sock == "" {
-		sock = defaultRexSocket()
+		sock = rexpeer.DefaultSocket()
 	}
 	if sock == "" {
 		fmt.Fprintln(errOut, "gorex rex-mirror: no Rex server: set --socket or REX_SERVER")
@@ -253,27 +250,4 @@ func streamClosed(err error) bool {
 	return strings.Contains(err.Error(), "status = 1000") ||
 		strings.Contains(err.Error(), "status = 1001") ||
 		strings.Contains(err.Error(), "status = 4000")
-}
-
-// defaultRexSocket returns the socket of the Rex server this machine runs,
-// from REX_SERVER when it is set.
-func defaultRexSocket() string {
-	if s := os.Getenv("REX_SERVER"); s != "" {
-		if strings.HasPrefix(s, "unix://") {
-			if u, err := url.Parse(s); err == nil {
-				return u.Path
-			}
-		}
-		if strings.HasPrefix(s, "/") {
-			return s
-		}
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	if runtime.GOOS == "darwin" {
-		return filepath.Join(home, "Library", "Application Support", "rex", "server.sock")
-	}
-	return filepath.Join(home, ".local", "share", "rex", "server.sock")
 }

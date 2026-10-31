@@ -8,11 +8,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gorex/internal/rex"
 	"gorex/internal/rexpeer"
 )
+
+// MirrorCommand is the command a pane runs to mirror a block: the
+// program that imports, as rex-mirror.
+func MirrorCommand(exe, socket string) []string {
+	return []string{exe, "rex-mirror", "--socket", socket}
+}
+
+// StatePath is where imports are recorded, in GoRex's data directory.
+func StatePath() string { return filepath.Join(rex.Dir(), "rex-import.json") }
 
 // Options tell what to import and how.
 type Options struct {

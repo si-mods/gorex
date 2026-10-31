@@ -2,6 +2,7 @@ package main
 
 import (
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -135,5 +136,23 @@ func TestActionInvoke(t *testing.T) {
 	cmd.Available = func(*App) bool { return false }
 	if err := cmd.invoke(nil, nil); err == nil {
 		t.Fatal("an unavailable action ran")
+	}
+}
+
+// TestImportRexCommand checks that importing a Rex server's sessions is an
+// action of the palette and the Space menu.
+func TestImportRexCommand(t *testing.T) {
+	cmd := lookupCommand("rex.import")
+	if cmd == nil {
+		t.Fatal("rex.import is not an action")
+	}
+	if got := cmd.English(); got != "Import from Rex" {
+		t.Errorf("rex.import is named %q", got)
+	}
+	if !slices.Contains(paletteCommands, cmd) || !slices.Contains(sessionCommands, cmd) {
+		t.Error("rex.import is not in the palette")
+	}
+	if cmd.Run == nil {
+		t.Error("rex.import does nothing")
 	}
 }

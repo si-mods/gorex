@@ -269,6 +269,10 @@
   "hostsPairRejected": "{host} 未批准本机：请求被拒绝，或配对窗口已关闭。请重试。",
   "cmdNewWindow": "新建窗口",
   "cmdNewSession": "新建空间",
+  "cmdImportRex": "从 Rex 导入",
+  "@cmdImportRex": {
+    "description": "命令：把 Rex 服务器的会话导入为 GoRex 的空间、标签和窗格，每个块以镜像显示。"
+  },
   "cmdChangeSession": "切换空间…",
   "cmdNextSession": "下一个空间",
   "cmdPreviousSession": "上一个空间",
@@ -470,5 +474,29 @@
   "hostsLayoutNoSession": "该会话已不可用。",
   "@hostsLayoutNoSession": {
     "description": "A shared pane could not be opened."
+  },
+  "rexImportDone": "已从 Rex 导入 {sessions} 个会话。",
+  "@rexImportDone": {
+    "description": "导入 Rex 服务器会话后的通知。",
+    "placeholders": {
+      "sessions": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "rexImportNone": "Rex 没有 GoRex 尚未导入的会话。",
+  "@rexImportNone": {
+    "description": "导入时没有新内容可导入的通知。"
+  },
+  "rexImportFailed": "无法从 Rex 导入：{error}",
+  "@rexImportFailed": {
+    "description": "从 Rex 导入失败时的对话框。",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "no such file"
+      }
+    }
   }
 }

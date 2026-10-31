@@ -401,6 +401,11 @@ gorex rex-import                           # every session
 gorex rex-import --shell                   # shells, not mirrors
 ```
 
+The window imports the same way without a terminal: **Space ▸ Import from
+Rex** (or the command palette's *Import from Rex*) mirrors every session
+the record does not have yet, and says how many it made in a
+notification; a failure opens a dialog.
+
 The Rex server defaults to `$REX_SERVER`, else `rex/server.sock` in the
 platform's data directory; `--rex` names another, or a socket path. What a
 run imported is recorded in `rex-import.json` in GoRex's data directory,
