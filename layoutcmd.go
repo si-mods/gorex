@@ -130,6 +130,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			if i := slices.Index(a.tabs, p.Tab); i >= 0 {
 				a.selectTab(i)
 			}
+			a.revealPane(p)
 			p.Tab.setFocus(p)
 			a.focusReq = p
 		}
@@ -322,10 +323,17 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if i := slices.Index(a.tabs, p.Tab); i >= 0 {
 			a.selectTab(i)
 		}
+		a.revealPane(p)
 		p.Tab.setFocus(p)
 		a.focusReq = p
 		a.changed()
 	case "pane.zoom":
+		if f := p.float; f != nil {
+			on := c.Mode == "on" || c.Mode != "off" && !f.Zoom
+			a.zoom(p, on)
+			res.Zoomed = f.Zoom
+			break
+		}
 		on := c.Mode == "on" || c.Mode != "off" && p.Tab.Zoom == nil
 		a.zoom(p, on)
 		res.Zoomed = p.Tab.Zoom != nil

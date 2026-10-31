@@ -58,27 +58,26 @@ func (s *Server) filterLayoutTabs(tabs []layout.Tab, peer string) []layout.Tab {
 		// may use, in order, which is what its own count names.
 		before := leavesOf(t.Root)
 		root := s.filterLayoutNode(t.Root, peer)
-		if root == nil {
-			continue
-		}
-		t.Root = root
-		after := leavesOf(root)
-		var wanted *layout.Node
-		if t.Focus >= 0 && t.Focus < len(before) {
-			wanted = before[t.Focus]
-		}
-		focus, kept, named := 0, false, 0
-		for _, n := range after {
-			if n.SID == "" {
-				continue
+		if root != nil {
+			after := leavesOf(root)
+			var wanted *layout.Node
+			if t.Focus >= 0 && t.Focus < len(before) {
+				wanted = before[t.Focus]
 			}
-			if n == wanted {
-				focus, kept = named, true
+			focus, kept, named := 0, false, 0
+			for _, n := range after {
+				if n.SID == "" {
+					continue
+				}
+				if n == wanted {
+					focus, kept = named, true
+				}
+				named++
 			}
-			named++
+			t.Root = root
+			t.Focus = min(max(focus, 0), max(named-1, 0))
+			t.Zoom = t.Zoom && kept && named > 1
 		}
-		t.Focus = min(max(focus, 0), max(named-1, 0))
-		t.Zoom = t.Zoom && kept && named > 1
 		wantedFloat := -1
 		if t.FocusFloat > 0 {
 			wantedFloat = t.FocusFloat - 1
@@ -98,6 +97,24 @@ func (s *Server) filterLayoutTabs(tabs []layout.Tab, peer string) []layout.Tab {
 		}
 		t.Floats = floats
 		t.FocusFloat = newFocusFloat
+		if root == nil {
+			if len(floats) == 0 {
+				continue
+			}
+			// The tiled panes are gone: the first surviving float takes
+			// their place, as the app promotes one when a restore finds
+			// none.
+			t.Root = floats[0].Pane
+			t.Floats = floats[1:]
+			t.Zoom = false
+			t.Focus = 0
+			switch {
+			case newFocusFloat == 1:
+				t.FocusFloat = 0
+			case newFocusFloat > 1:
+				t.FocusFloat = newFocusFloat - 1
+			}
+		}
 		out = append(out, t)
 	}
 	return out

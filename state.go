@@ -86,6 +86,31 @@ func (f *Float) clamp() {
 	f.Y = min(max(f.Y, 0), 1-f.H)
 }
 
+// clampSize keeps the box of a resized float in the room: each side at
+// least floatMin and at most the room right of and below X, Y, which stay
+// put unless the least size no longer fits. NaN/Inf become the defaults.
+func (f *Float) clampSize() {
+	if float32IsBad(f.W) {
+		f.W = 0.7
+	}
+	if float32IsBad(f.H) {
+		f.H = 0.72
+	}
+	f.W = min(max(f.W, floatMin), 1)
+	f.H = min(max(f.H, floatMin), 1)
+	f.W = min(f.W, 1-f.X)
+	f.H = min(f.H, 1-f.Y)
+	// The least size past the edge moves the box back in.
+	if f.W < floatMin {
+		f.W = floatMin
+		f.X = 1 - f.W
+	}
+	if f.H < floatMin {
+		f.H = floatMin
+		f.Y = 1 - f.H
+	}
+}
+
 // Node is a pane, or a split of two nodes.
 type Node struct {
 	ID     int
@@ -394,6 +419,39 @@ func (t *Tab) floatPanes() []*Pane {
 // allPanes returns the tab's tiled panes in tree order, then its floats'.
 func (t *Tab) allPanes() []*Pane {
 	return append(t.panes(), t.floatPanes()...)
+}
+
+// tiledTarget returns the pane a change to the tab's tiled panes goes to:
+// the focused one when it is tiled, else the latest tiled one, else the
+// first. It is nil for a tab without tiled panes.
+func (t *Tab) tiledTarget() *Pane {
+	if t.Focus != nil && t.Focus.float == nil && t.Focus.Node != nil {
+		return t.Focus
+	}
+	if p := t.latestTiled(); p != nil {
+		return p
+	}
+	if ps := t.panes(); len(ps) > 0 {
+		return ps[0]
+	}
+	return nil
+}
+
+// removeFloat drops f from t's floats: its pane no longer floats, keeps no
+// memory as the one hidden last, and leaves t.recent.
+func (t *Tab) removeFloat(f *Float) {
+	if f == nil {
+		return
+	}
+	t.Floats = slices.DeleteFunc(t.Floats, func(x *Float) bool { return x == f })
+	if t.hiddenLast == f {
+		t.hiddenLast = nil
+	}
+	if f.Pane == nil {
+		return
+	}
+	f.Pane.float = nil
+	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == f.Pane })
 }
 
 // latestTiled returns the pane of the latest of t.recent that is tiled, nil
@@ -961,6 +1019,13 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 	if a.offline(old.host) {
 		return nil
 	}
+	// A float splits the tab's tiled pane, not its own standalone node.
+	if old.float != nil {
+		old = old.Tab.tiledTarget()
+		if old == nil {
+			return nil
+		}
+	}
 	cols, rows := 80, 24
 	if old.term != nil {
 		cols, rows = old.term.Size()
@@ -982,15 +1047,28 @@ func (a *App) splitBrowser(vertical bool) {
 	if t == nil || t.Focus == nil || t.Focus.host != nil {
 		return
 	}
+	old := t.Focus
+	// A float splits the tab's tiled pane, not its own standalone node.
+	if old.float != nil {
+		old = t.tiledTarget()
+		if old == nil {
+			return
+		}
+	}
 	p := a.newBrowserPane(browserStart)
-	a.splitWith(t.Focus, p, vertical)
+	a.splitWith(old, p, vertical)
 	a.focusReq = p
 }
 
 // splitWith puts pane p beside old, right of it or below it, with the
-// focus of its tab.
+// focus of its tab. A float as old splits the tab's tiled pane instead.
 func (a *App) splitWith(old, p *Pane, vertical bool) {
 	t := old.Tab
+	if old.float != nil {
+		if old = t.tiledTarget(); old == nil {
+			return
+		}
+	}
 	t.Zoom = nil
 	n := old.Node
 	p.Tab = t
@@ -1082,11 +1160,7 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	}
 	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
 	if f := p.float; f != nil {
-		t.Floats = slices.DeleteFunc(t.Floats, func(x *Float) bool { return x == f })
-		if t.hiddenLast == f {
-			t.hiddenLast = nil
-		}
-		p.float = nil
+		t.removeFloat(f)
 		if t.Focus == p {
 			t.Focus = nil
 			t.setFocus(t.nextFocus(p))
@@ -1294,7 +1368,7 @@ func (a *App) setSplitRatio(ratio float32) {
 // of the split as herdr's pane.resize has it. It reports whether the
 // split moved.
 func (a *App) resizePane(p *Pane, direction string, amount float32) (bool, string) {
-	if p == nil || p.Node == nil {
+	if p == nil {
 		return false, "unchanged"
 	}
 	vertical := direction == "up" || direction == "down"
@@ -1306,6 +1380,26 @@ func (a *App) resizePane(p *Pane, direction string, amount float32) (bool, strin
 		amount = 0.05
 	}
 	amount = min(amount, 0.5)
+	if f := p.float; f != nil {
+		// A float resizes as the focused one does: left and up shrink its
+		// sides, right and down grow them.
+		var dx, dy float32
+		switch direction {
+		case "left":
+			dx = -1
+		case "right":
+			dx = 1
+		case "up":
+			dy = -1
+		case "down":
+			dy = 1
+		}
+		a.resizeFloat(f, dx*amount, dy*amount)
+		return true, ""
+	}
+	if p.Node == nil {
+		return false, "unchanged"
+	}
 	if direction == "left" || direction == "up" {
 		amount = -amount
 	}
@@ -1471,18 +1565,9 @@ func (a *App) dockPane(p *Pane) bool {
 		return false
 	}
 	t, f := p.Tab, p.float
-	t.Floats = slices.DeleteFunc(t.Floats, func(x *Float) bool { return x == f })
-	if t.hiddenLast == f {
-		t.hiddenLast = nil
-	}
-	p.float = nil
+	target := t.tiledTarget()
+	t.removeFloat(f)
 	p.Node = nil
-	target := t.latestTiled()
-	if target == nil {
-		if ps := t.panes(); len(ps) > 0 {
-			target = ps[0]
-		}
-	}
 	a.placePane(t, p, target, false, 0.5)
 	if a.tab() == t {
 		a.focusReq = p
@@ -1550,6 +1635,16 @@ func (a *App) lowerFloat(f *Float) {
 	a.changed()
 }
 
+// revealPane brings a pane into sight: a hidden float shows again, above
+// the tab's other floats.
+func (a *App) revealPane(p *Pane) {
+	if p == nil || p.float == nil {
+		return
+	}
+	p.float.Hidden = false
+	a.raiseFloat(p.float)
+}
+
 // setFloatBox puts f at a box of the tab's room, kept inside it.
 func (a *App) setFloatBox(f *Float, x, y, w, h float32) {
 	if f == nil {
@@ -1576,7 +1671,7 @@ func (a *App) resizeFloat(f *Float, dw, dh float32) {
 		return
 	}
 	f.W, f.H = f.W+dw, f.H+dh
-	f.clamp()
+	f.clampSize()
 	a.changed()
 }
 
@@ -1683,9 +1778,9 @@ func (a *App) toggleAllFloats() {
 	a.changed()
 }
 
-// cycleFloat focuses the next visible float over the focused one, or the
+// cycleFloat focuses the next visible float below the focused one, or the
 // topmost visible float from a tiled pane, and the tiled pane from the
-// topmost float.
+// lowest visible float. Floats keep their order as it goes.
 func (a *App) cycleFloat() {
 	t := a.tab()
 	if t == nil {
@@ -1711,26 +1806,15 @@ func (a *App) cycleFloat() {
 	if t.Focus != nil && t.Focus.float != nil {
 		i = slices.Index(visible, t.Focus.float)
 	}
-	if i < 0 {
-		f := visible[len(visible)-1]
-		a.raiseFloat(f)
-		focus(f.Pane)
-		return
-	}
-	if i+1 < len(visible) {
-		f := visible[i+1]
-		a.raiseFloat(f)
-		focus(f.Pane)
-		return
-	}
-	next := t.latestTiled()
-	if next == nil {
-		if ps := t.panes(); len(ps) > 0 {
-			next = ps[0]
+	switch {
+	case i < 0:
+		focus(visible[len(visible)-1].Pane)
+	case i > 0:
+		focus(visible[i-1].Pane)
+	default:
+		if next := t.tiledTarget(); next != nil {
+			focus(next)
 		}
-	}
-	if next != nil {
-		focus(next)
 	}
 }
 
@@ -2053,7 +2137,14 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 		if st.Root != nil {
 			t.Root = load(st.Root, t, nil)
 		}
-		for _, sf := range st.Floats {
+		// The saved float with the focus, by its place among the saved
+		// floats: a float that does not come shifts no index as it does.
+		wanted := -1
+		if st.FocusFloat > 0 {
+			wanted = st.FocusFloat - 1
+		}
+		var focusedFloat *Float
+		for i, sf := range st.Floats {
 			if sf.Pane == nil {
 				continue
 			}
@@ -2067,18 +2158,17 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			p.Node = &Node{ID: a.id(), Pane: p}
 			p.float = f
 			t.Floats = append(t.Floats, f)
+			if i == wanted {
+				focusedFloat = f
+			}
 		}
 		if t.Root == nil {
 			if len(t.Floats) == 0 {
 				continue
 			}
-			// The tab's tiled panes are gone: its first float takes their
-			// place.
-			f := t.Floats[0]
-			t.Floats = t.Floats[1:]
-			f.Pane.float = nil
-			f.Pane.Node.Parent = nil
-			t.Root = f.Pane.Node
+			// The tab's tiled panes are gone: its topmost float takes
+			// their place, as it does when the last tiled pane closes.
+			a.promoteFloat(t)
 		}
 		ps := t.panes()
 		for _, p := range ps {
@@ -2091,10 +2181,8 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 		if st.Zoom && len(ps) > 1 {
 			t.Zoom = t.Focus
 		}
-		if st.FocusFloat > 0 && st.FocusFloat <= len(t.Floats) {
-			if f := t.Floats[st.FocusFloat-1]; !f.Hidden {
-				t.setFocus(f.Pane)
-			}
+		if focusedFloat != nil && slices.Contains(t.Floats, focusedFloat) && !focusedFloat.Hidden {
+			t.setFocus(focusedFloat.Pane)
 		}
 		a.tabs = append(a.tabs, t)
 	}
@@ -2362,15 +2450,7 @@ func (a *App) movePaneToTab(p *Pane, t *Tab) {
 	if t.Root != nil && p.host != t.host() {
 		return
 	}
-	target := t.Focus
-	if target != nil && target.float != nil {
-		target = t.latestTiled()
-	}
-	if target == nil && t.Root != nil {
-		if ps := t.panes(); len(ps) > 0 {
-			target = ps[0]
-		}
-	}
+	target := t.tiledTarget()
 	if target == nil || t.Root == nil {
 		src, wasActive := p.Tab, a.tab() == p.Tab
 		a.detachPane(p)
@@ -2537,15 +2617,7 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		np = &Pane{ID: target.id(), SID: p.SID, Name: p.Name, info: p.info, title: p.title, startDir: p.startDir, host: h}
 		target.attach(np, cols, rows)
 	}
-	targetPane := t.Focus
-	if targetPane != nil && targetPane.float != nil {
-		targetPane = t.latestTiled()
-	}
-	if targetPane == nil && t.Root != nil {
-		if ps := t.panes(); len(ps) > 0 {
-			targetPane = ps[0]
-		}
-	}
+	targetPane := t.tiledTarget()
 	target.placePane(t, np, targetPane, false, 0.5)
 	target.focusReq = np
 	target.front()
@@ -2661,12 +2733,7 @@ func (a *App) detachPane(p *Pane) {
 		return
 	}
 	if f := p.float; f != nil {
-		t.Floats = slices.DeleteFunc(t.Floats, func(x *Float) bool { return x == f })
-		if t.hiddenLast == f {
-			t.hiddenLast = nil
-		}
-		p.float = nil
-		t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
+		t.removeFloat(f)
 		if t.Focus == p {
 			t.Focus = nil
 			t.setFocus(t.nextFocus(p))

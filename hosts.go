@@ -666,7 +666,14 @@ func (a *App) adoptTab(h *hostConn, st savedTab, free map[string]rex.SessionInfo
 		t.Root = load(st.Root, nil)
 	}
 	tiled := len(named)
-	for _, sf := range st.Floats {
+	// The saved float with the focus, by its place among the saved floats:
+	// a float that does not come shifts no index as it does.
+	wanted := -1
+	if st.FocusFloat > 0 {
+		wanted = st.FocusFloat - 1
+	}
+	var focusedFloat *Float
+	for i, sf := range st.Floats {
 		if sf.Pane == nil {
 			continue
 		}
@@ -680,19 +687,18 @@ func (a *App) adoptTab(h *hostConn, st savedTab, free map[string]rex.SessionInfo
 		p.Node = &Node{ID: a.id(), Pane: p}
 		p.float = f
 		t.Floats = append(t.Floats, f)
+		if i == wanted {
+			focusedFloat = f
+		}
 	}
 	named = named[:tiled]
 	if t.Root == nil {
 		if len(t.Floats) == 0 {
 			return nil
 		}
-		// The tab's tiled panes are not here: its first float takes their
-		// place.
-		f := t.Floats[0]
-		t.Floats = t.Floats[1:]
-		f.Pane.float = nil
-		f.Pane.Node.Parent = nil
-		t.Root = f.Pane.Node
+		// The tab's tiled panes are not here: its topmost float takes
+		// their place, as it does when the last tiled pane closes.
+		a.promoteFloat(t)
 	}
 	ps := t.panes()
 	for _, p := range ps {
@@ -715,10 +721,8 @@ func (a *App) adoptTab(h *hostConn, st savedTab, free map[string]rex.SessionInfo
 	if st.Zoom && len(ps) > 1 {
 		t.Zoom = t.Focus
 	}
-	if st.FocusFloat > 0 && st.FocusFloat <= len(t.Floats) {
-		if f := t.Floats[st.FocusFloat-1]; !f.Hidden {
-			t.setFocus(f.Pane)
-		}
+	if focusedFloat != nil && slices.Contains(t.Floats, focusedFloat) && !focusedFloat.Hidden {
+		t.setFocus(focusedFloat.Pane)
 	}
 	return t
 }

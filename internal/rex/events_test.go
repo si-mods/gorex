@@ -403,6 +403,44 @@ func TestFilterLayoutFloats(t *testing.T) {
 	}
 }
 
+// TestFilterLayoutFloatsTakeRoot checks that a tab whose tiled panes leave
+// keeps the floats that survive, the first of them taking the tree's place,
+// and leaves out a tab with nothing left.
+func TestFilterLayoutFloatsTakeRoot(t *testing.T) {
+	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","active":0,"tabs":[
+		{"root":{"url":"https://tiled.example/"},"focus":0,"floats":[{"pane":{"url":"https://gone.example/"}},{"pane":{"sid":"a"},"x":0.1},{"pane":{"sid":"c"},"x":0.2}],"focusFloat":3},
+		{"root":{"url":"https://tiled.example/"},"focus":0,"floats":[{"pane":{"url":"https://gone.example/"}}]}
+	]}],"windows":["w"]}`)
+	s := &Server{
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "c": {id: "c", owner: "p"}},
+		rem:      remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "p"}}}},
+	}
+	got, err := s.filterLayout(raw, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st layout.Store
+	if err := json.Unmarshal(got, &st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 1 {
+		t.Fatalf("filtered %s", got)
+	}
+	tab := st.Sessions[0].Tabs[0]
+	if tab.Root == nil || tab.Root.SID != "a" {
+		t.Fatalf("the first surviving float did not take the tree: %+v", tab.Root)
+	}
+	if len(tab.Floats) != 1 || tab.Floats[0].Pane == nil || tab.Floats[0].Pane.SID != "c" {
+		t.Fatalf("floats after the promotion: %+v", tab.Floats)
+	}
+	if tab.Focus != 0 || tab.FocusFloat != 1 || tab.Zoom {
+		t.Errorf("focus %d, focus float %d, zoom %v", tab.Focus, tab.FocusFloat, tab.Zoom)
+	}
+	if bytes.Contains(got, []byte("gone.example")) {
+		t.Fatalf("leaked a pane the peer may not use: %s", got)
+	}
+}
+
 func TestFilterLayoutMirror(t *testing.T) {
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"sid":"a"}}]}],"windows":["w"],"tabs":[{"root":{"sid":"a"}},{"root":{"sid":"b"}}]}`)
 	s := &Server{

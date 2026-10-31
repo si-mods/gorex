@@ -1104,6 +1104,7 @@ func (a *App) paletteItems() []paletteItem {
 				keys: locales.PaletteTabKeys(ti + 1), status: s,
 				run: func() {
 					a.selectTab(ti)
+					a.revealPane(p)
 					t.setFocus(p)
 					a.focusReq = p
 				},

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gorex/internal/layout"
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -319,4 +320,260 @@ func floatZoomFixture(t *testing.T) (*App, *Tab) {
 		t.Fatal("no float")
 	}
 	return a, tab
+}
+
+// Splitting a float splits the tab's tiled pane, and focuses the new tiled
+// pane: the float's own node stays a leaf.
+func TestSplitFloatTargetsTiled(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	p := tab.Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	if len(tab.panes()) != 1 || len(tab.Floats) != 1 {
+		t.Fatalf("%d tiled, %d floats", len(tab.panes()), len(tab.Floats))
+	}
+	res := a.command(rex.LayoutCommand{Op: "pane.split", SID: p.SID, Dir: t.TempDir()})
+	if res.Code != "" || res.New == "" {
+		t.Fatalf("split %+v", res)
+	}
+	ps := tab.panes()
+	if len(ps) != 2 || len(tab.Floats) != 1 || p.float == nil {
+		t.Fatalf("split from a float: %d tiled, %d floats", len(ps), len(tab.Floats))
+	}
+	if p.Node == nil || p.Node.Pane != p || p.Node.A != nil || p.Node.B != nil {
+		t.Fatalf("the float's node was split: %+v", p.Node)
+	}
+	if tab.Focus == nil || tab.Focus.float != nil || tab.Focus.SID != res.New {
+		t.Fatalf("the split pane did not take the tiled focus: %v", tab.Focus)
+	}
+	for _, q := range ps {
+		if q == p {
+			t.Fatal("the float is in the tab's tree")
+		}
+	}
+}
+
+// Cycling floats visits every visible one without raising them, from the
+// topmost down to the tiled pane.
+func TestCycleFloatVisitsVisible(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	if !a.floatPane(tab.Focus) {
+		t.Fatal("the pane did not float")
+	}
+	f1 := tab.Floats[0]
+	if a.newFloat(nil) == nil {
+		t.Fatal("no second float")
+	}
+	f2 := tab.Floats[1]
+	if a.newFloat(nil) == nil {
+		t.Fatal("no third float")
+	}
+	f3 := tab.Floats[2]
+	a.hideFloat(f2)
+	tiled := tab.panes()[0]
+	tab.setFocus(tiled)
+
+	a.cycleFloat()
+	if tab.Focus != f3.Pane {
+		t.Fatalf("from a tiled pane the focus went to %v, want the topmost float", tab.Focus)
+	}
+	a.cycleFloat()
+	if tab.Focus != f1.Pane {
+		t.Fatalf("the focus went to %v, want the next visible float below", tab.Focus)
+	}
+	if len(tab.Floats) != 3 || tab.Floats[0] != f1 || tab.Floats[1] != f2 || tab.Floats[2] != f3 {
+		t.Fatalf("cycling reordered the floats: %+v", tab.Floats)
+	}
+	a.cycleFloat()
+	if tab.Focus != tiled {
+		t.Fatalf("from the lowest float the focus went to %v, want the tiled pane", tab.Focus)
+	}
+}
+
+// A restore focuses the float named by its saved place, even when a float
+// before it did not come, and promotes the topmost float of a tab whose
+// tiled pane is missing.
+func TestRestoreFocusesSavedFloat(t *testing.T) {
+	a, _ := newTestApp(t)
+	root := a.tab().Focus
+	for _, p := range a.tab().allPanes() {
+		if p.term != nil {
+			p.term.Close() // detach, as when the app quits
+		}
+	}
+	l := savedLayout{Tabs: []savedTab{
+		{
+			Name:  "x",
+			Root:  &savedNode{SID: root.SID},
+			Focus: 0,
+			Floats: []layout.Float{
+				{Pane: &savedNode{Host: "missing", SID: "gone"}, X: 0.1, Y: 0.1, W: 0.2, H: 0.2},
+				{Pane: &savedNode{URL: "https://a.example/"}, X: 0.2, Y: 0.2, W: 0.2, H: 0.2},
+				{Pane: &savedNode{URL: "https://b.example/"}, X: 0.3, Y: 0.3, W: 0.2, H: 0.2},
+			},
+			FocusFloat: 3,
+		},
+		{
+			Name: "y",
+			Floats: []layout.Float{
+				{Pane: &savedNode{URL: "https://c.example/"}, X: 0.1, Y: 0.1, W: 0.2, H: 0.2},
+				{Pane: &savedNode{URL: "https://d.example/"}, X: 0.2, Y: 0.2, W: 0.2, H: 0.2},
+			},
+		},
+	}}
+	b := &App{client: a.client}
+	if !b.restore(l, nil) {
+		t.Fatal("nothing restored")
+	}
+	if len(b.tabs) != 2 {
+		t.Fatalf("%d tabs restored", len(b.tabs))
+	}
+	x := b.tabs[0]
+	if len(x.Floats) != 2 {
+		t.Fatalf("%d floats of the tab with a tree", len(x.Floats))
+	}
+	if x.Focus != x.Floats[1].Pane {
+		t.Errorf("the focus went to %v, want the float saved third", x.Focus)
+	}
+	y := b.tabs[1]
+	if y.Root == nil || y.Root.Pane == nil || y.Root.Pane.browser == nil ||
+		y.Root.Pane.browser.url != "https://d.example/" {
+		t.Errorf("the tree did not take the topmost float: %+v", y.Root)
+	}
+	if len(y.Floats) != 1 || y.Floats[0].Pane.browser.url != "https://c.example/" {
+		t.Errorf("floats after the promotion: %+v", y.Floats)
+	}
+}
+
+// Focusing a hidden float brings it back and raises it, from the palette,
+// a layout command's focus and an action naming its session.
+func TestRevealFloatFocus(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	p := tab.Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	p.Name = "floater"
+	a.hideFloat(p.float)
+
+	var run func()
+	for _, item := range a.paletteItems() {
+		if item.title == "floater" {
+			run = item.run
+			break
+		}
+	}
+	if run == nil {
+		t.Fatal("the palette has no row for the float")
+	}
+	run()
+	if p.float.Hidden || tab.Focus != p || tab.Floats[len(tab.Floats)-1] != p.float {
+		t.Fatalf("the palette did not reveal and raise the float: hidden %v", p.float.Hidden)
+	}
+
+	a.hideFloat(p.float)
+	if res := a.command(rex.LayoutCommand{Op: "pane.focus", SID: p.SID}); res.Code != "" {
+		t.Fatalf("pane.focus: %+v", res)
+	}
+	if p.float.Hidden || tab.Focus != p {
+		t.Fatalf("pane.focus did not reveal the float: hidden %v", p.float.Hidden)
+	}
+
+	a.hideFloat(p.float)
+	if res := a.command(rex.LayoutCommand{Op: "action", Action: "pane.zoom", SID: p.SID}); res.Code != "" {
+		t.Fatalf("action: %+v", res)
+	}
+	if p.float.Hidden || tab.Focus != p {
+		t.Fatalf("the action did not reveal the float: hidden %v", p.float.Hidden)
+	}
+}
+
+// A float's zoom is the float's own: pane.zoom reports and toggles it.
+func TestZoomFloatCommand(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	p := tab.Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	res := a.command(rex.LayoutCommand{Op: "pane.zoom", SID: p.SID, Mode: "on"})
+	if !res.Zoomed || !p.float.Zoom || tab.Zoom != nil {
+		t.Fatalf("zoom on: %+v, float %v, tab %v", res, p.float.Zoom, tab.Zoom)
+	}
+	res = a.command(rex.LayoutCommand{Op: "pane.zoom", SID: p.SID, Mode: "off"})
+	if res.Zoomed || p.float.Zoom {
+		t.Fatalf("zoom off: %+v, float %v", res, p.float.Zoom)
+	}
+}
+
+// Resizing a float past the right or bottom edge keeps X and Y, and only
+// moving it keeps the size as it moves the box back in.
+func TestFloatResizeKeepsCorner(t *testing.T) {
+	a, _ := newTestApp(t)
+	f := &Float{X: 0.2, Y: 0.3, W: 0.2, H: 0.2}
+	a.resizeFloat(f, 0.3, -0.1)
+	if f.X != 0.2 || f.Y != 0.3 || math.Abs(float64(f.W-0.5)) > 1e-6 || f.H != floatMin {
+		t.Errorf("resize moved the corner or skipped the least size: %+v", f)
+	}
+	f = &Float{X: 0.85, Y: 0.85, W: 0.15, H: 0.15}
+	a.resizeFloat(f, 0.4, 0.4)
+	if f.X != 0.85 || f.Y != 0.85 || math.Abs(float64(f.W-0.15)) > 1e-6 || math.Abs(float64(f.H-0.15)) > 1e-6 ||
+		f.X+f.W > 1.000001 || f.Y+f.H > 1.000001 {
+		t.Errorf("resize past the edge: %+v", f)
+	}
+	f = &Float{X: 0.95, Y: 0.95, W: 0.1, H: 0.1}
+	a.resizeFloat(f, 0, 0)
+	if f.W != floatMin || f.H != floatMin || f.X != 1-floatMin || f.Y != 1-floatMin {
+		t.Errorf("a least size that does not fit did not move the box: %+v", f)
+	}
+	f = &Float{X: 0.85, Y: 0.1, W: 0.15, H: 0.2}
+	a.moveFloat(f, 0.3, 0)
+	if f.W != 0.15 || f.X != 1-f.W {
+		t.Errorf("moving changed the size: %+v", f)
+	}
+}
+
+// pane.resize resizes a float as the focused one resizes: right and down
+// grow it, left and up shrink it.
+func TestResizeFloatLayoutCommand(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	p := tab.Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	a.setFloatBox(p.float, 0.3, 0.3, 0.3, 0.3)
+	step := func(direction string) float32 {
+		res := a.command(rex.LayoutCommand{Op: "pane.resize", SID: p.SID, Direction: direction, Amount: 0.05})
+		if res.Code != "" || !res.Changed {
+			t.Fatalf("resize %s: %+v", direction, res)
+		}
+		return p.float.W
+	}
+	if w := step("right"); math.Abs(float64(w-0.35)) > 1e-6 {
+		t.Errorf("right: W %v, want 0.35", w)
+	}
+	if w := step("left"); math.Abs(float64(w-0.3)) > 1e-6 {
+		t.Errorf("left: W %v, want 0.3", w)
+	}
+	res := a.command(rex.LayoutCommand{Op: "pane.resize", SID: p.SID, Direction: "down", Amount: 0.05})
+	if !res.Changed || math.Abs(float64(p.float.H-0.35)) > 1e-6 {
+		t.Errorf("down: %+v, H %v, want 0.35", res, p.float.H)
+	}
+	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: p.SID, Direction: "up", Amount: 0.05})
+	if !res.Changed || math.Abs(float64(p.float.H-0.3)) > 1e-6 {
+		t.Errorf("up: %+v, H %v, want 0.3", res, p.float.H)
+	}
+	if p.float.X != 0.3 || p.float.Y != 0.3 {
+		t.Errorf("a resize moved the corner: %+v", p.float)
+	}
 }

@@ -415,7 +415,7 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 									a.hostLayoutCommand(page.layoutHost, rex.LayoutCommand{Op: "tab.close", SID: sid}, "")
 								}
 							})
-							for _, line := range layoutLines(t.Root, 2) {
+							lineRow := func(line layoutLine) {
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 									ui.Text(c, line.text).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 									if line.sid != "" {
@@ -441,6 +441,19 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 										}
 									}
 								})
+							}
+							for _, line := range layoutLines(t.Root, 2) {
+								lineRow(line)
+							}
+							// A float's session lists under the tree's, with
+							// the same buttons.
+							for _, f := range t.Floats {
+								if f.Pane == nil {
+									continue
+								}
+								for _, line := range layoutLines(f.Pane, 2) {
+									lineRow(line)
+								}
 							}
 						}
 					})
@@ -540,6 +553,7 @@ func (a *App) openHostPane(h *hostConn, sid string) {
 		for _, p := range t.allPanes() {
 			if p.host == h && p.SID == sid {
 				a.selectTab(ti)
+				a.revealPane(p)
 				t.setFocus(p)
 				a.focusReq = p
 				return
