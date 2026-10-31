@@ -593,11 +593,34 @@ func TestFloatDragOvershoot(t *testing.T) {
 	if f.overX <= 0 {
 		t.Fatalf("overX = %v, want the overshoot kept", f.overX)
 	}
-	if r := rubber(f.overX); r <= 0 || r >= 0.1 || r >= f.overX {
-		t.Fatalf("rubber(%v) = %v, want a damped share under 0.1", f.overX, r)
+	if r := rubber(f.overX); r <= 0.1 || r >= f.overX {
+		t.Fatalf("rubber(%v) = %v, want a damped share that still shows", f.overX, r)
 	}
 	a.moveFloatPx(f, -900, 0, room)
 	if f.overX != 0 || f.X > 0.5 || f.X < 0 {
 		t.Fatalf("back inside: X %v overX %v", f.X, f.overX)
+	}
+}
+
+// Each edge resizes its side of a float's box and leaves the opposite one
+// where it was, within the room and the least size.
+func TestFloatResizeEdges(t *testing.T) {
+	near := func(a, b float32) bool { return math.Abs(float64(a-b)) < 1e-5 }
+	f := &Float{X: 0.2, Y: 0.2, W: 0.5, H: 0.5}
+	f.resizeEdges(edgeLeft, -0.1, 0)
+	if !near(f.X, 0.1) || !near(f.X+f.W, 0.7) {
+		t.Fatalf("left: X %v right %v", f.X, f.X+f.W)
+	}
+	f.resizeEdges(edgeLeft, 0.9, 0)
+	if !near(f.W, floatMin) || !near(f.X+f.W, 0.7) {
+		t.Fatalf("left past the least: W %v right %v", f.W, f.X+f.W)
+	}
+	f.resizeEdges(edgeTop|edgeRight, 0.9, -0.9)
+	if f.Y != 0 || !near(f.Y+f.H, 0.7) || !near(f.X+f.W, 1) {
+		t.Fatalf("top right: %+v", *f)
+	}
+	f.resizeEdges(edgeBottom, 0, 0.9)
+	if !near(f.Y+f.H, 1) {
+		t.Fatalf("bottom: %+v", *f)
 	}
 }

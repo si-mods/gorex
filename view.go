@@ -374,6 +374,9 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	// Under the pointer it moves as it does; else, as it springs back, is
 	// nudged by the keys or zooms, it eases there.
 	if anim := motion(c); anim != nil && !f.dragging {
+		if anim == &snappy {
+			anim = &springBack
+		}
 		cell.Transition(ui.ElementTransition{Animation: anim, Position: true, Size: true})
 	}
 	// Shadows as of a sheet lifted off the panes: a tight one where it
@@ -400,22 +403,72 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		W: s.w * bounds.W,
 		H: s.h * bounds.H,
 	}
+	// While the pointer resizes it or it eases to a new size, the terminal
+	// keeps the size it rested at, and the program hears of the new one
+	// once: else a shell redraws its prompt at every step, over itself.
+	held := f.dragging || cell.Transitioning()
 	cell.Children(func() {
-		a.paneCard(c, k, t, p, false).Grow(1)
+		a.paneCard(c, k, t, p, held).Grow(1)
 		if f.Zoom {
 			return
 		}
-		grip := ui.Box(c.Key(floatGripKey(p.ID))).Absolute().Right(0).Bottom(0).Size(14, 14).Cursor(ui.CursorResizeNWSE)
-		if dx, dy, ok := grip.Dragged(); ok {
-			a.resizeFloatPx(f, dx, dy, bounds)
+		// Every edge and corner resizes it, on a band astride the edge.
+		for _, e := range floatEdges {
+			a.floatEdge(c, k, f, p, e, bounds)
 		}
-		f.dragging = f.dragging || grip.Dragging()
-		grip.Draw(func(pt *ui.Painter, r ui.Rect) {
-			if grip.Hovered() || grip.Dragging() {
-				pt.Fill(ui.Rect{X: r.X + r.W/2 - 1.5, Y: r.Y + r.H/2 - 1.5, W: 3, H: 3}, k.iconMuted.Alpha(0.7), 1.5)
-			}
-		})
 	})
+}
+
+// A float's edges, as the sides of its box a drag of each moves.
+const (
+	edgeLeft = 1 << iota
+	edgeRight
+	edgeTop
+	edgeBottom
+)
+
+// floatEdges are the handles of a float's sides, then of its corners,
+// which lie over them.
+var floatEdges = []int{
+	edgeLeft, edgeRight, edgeTop, edgeBottom,
+	edgeLeft | edgeTop, edgeRight | edgeTop, edgeLeft | edgeBottom, edgeRight | edgeBottom,
+}
+
+// floatEdge is the handle of edges e of float f: dragging it moves those
+// sides of its box, the others staying put.
+func (a *App) floatEdge(c *ui.Context, k *colors, f *Float, p *Pane, e int, bounds ui.Rect) {
+	const band, corner = 8, 16
+	h := ui.Box(c.Key(floatGripKey(p.ID*16 + e))).Absolute()
+	switch {
+	case e&(edgeLeft|edgeRight) != 0 && e&(edgeTop|edgeBottom) != 0:
+		h.Size(corner, corner)
+		cur := ui.CursorResizeNWSE
+		if e == edgeRight|edgeTop || e == edgeLeft|edgeBottom {
+			cur = ui.CursorResizeNESW
+		}
+		h.Cursor(cur)
+	case e&(edgeLeft|edgeRight) != 0:
+		h.Width(band).TopPercent(0).HeightPercent(100).Cursor(ui.CursorResizeEW)
+	default:
+		h.Height(band).LeftPercent(0).WidthPercent(100).Cursor(ui.CursorResizeNS)
+	}
+	if e&edgeLeft != 0 {
+		h.Left(-band / 2)
+	}
+	if e&edgeRight != 0 {
+		h.Right(-band / 2)
+	}
+	if e&edgeTop != 0 {
+		h.Top(-band / 2)
+	}
+	if e&edgeBottom != 0 {
+		h.Bottom(-band / 2)
+	}
+	if dx, dy, ok := h.Dragged(); ok && bounds.W > 0 && bounds.H > 0 {
+		f.resizeEdges(e, dx/bounds.W, dy/bounds.H)
+		a.changed()
+	}
+	f.dragging = f.dragging || h.Dragging()
 }
 
 // divider is the edge between the two sides of split n, in its share s of
@@ -1108,9 +1161,10 @@ func (a *App) dragFloat(f *Float, h ui.Element) {
 }
 
 // rubber is how far a float shows past the room's edge, dragged d past it:
-// less and less as d grows, never more than a tenth of the room.
+// half as far at first, less and less as d grows, as a scroll view's
+// rubber band.
 func rubber(d float32) float32 {
-	const most, give = 0.1, 0.5
+	const most, give = 0.6, 0.55
 	if d == 0 {
 		return 0
 	}

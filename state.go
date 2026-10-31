@@ -1679,6 +1679,27 @@ func (a *App) resizeFloat(f *Float, dw, dh float32) {
 	a.changed()
 }
 
+// resizeEdges moves the sides e of f's box by dx, dy, fractions of the
+// room, the other sides staying put: no side shorter than floatMin, and
+// the box in the room.
+func (f *Float) resizeEdges(e int, dx, dy float32) {
+	right, bottom := f.X+f.W, f.Y+f.H
+	if e&edgeLeft != 0 {
+		f.X = min(max(f.X+dx, 0), right-floatMin)
+		f.W = right - f.X
+	}
+	if e&edgeRight != 0 {
+		f.W = min(max(f.W+dx, floatMin), 1-f.X)
+	}
+	if e&edgeTop != 0 {
+		f.Y = min(max(f.Y+dy, 0), bottom-floatMin)
+		f.H = bottom - f.Y
+	}
+	if e&edgeBottom != 0 {
+		f.H = min(max(f.H+dy, floatMin), 1-f.Y)
+	}
+}
+
 // moveFloatPx moves f by pixels over room, and resizeFloatPx resizes it by
 // pixels there.
 func (a *App) moveFloatPx(f *Float, dx, dy float32, room ui.Rect) {
