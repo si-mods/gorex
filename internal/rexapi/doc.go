@@ -32,7 +32,8 @@
 // | Method | What GoRex does instead |
 // | --- | --- |
 // | session.move | not_supported: sessions are GoRex's workspaces, in the layout's order |
-// | session.new_layer, session.close_layer, session.float_block, session.detach_block, session.resize_layer, session.raise_layer, session.lower_layer | not_supported: GoRex has no floating layers and no detached blocks |
+// | session.view (layers) | GoRex's floating panes are floating layers of one block each, after the tiled layer; a hidden floating pane is shown in no layer |
+// | session.new_layer, session.close_layer, session.float_block, session.detach_block, session.resize_layer, session.raise_layer, session.lower_layer | not_supported: the app takes no layout commands for floating panes, and GoRex has no detached blocks |
 // | session.help | lists every method this server implements, not only a session's |
 // | session.list_clients | connected_at is when the client connected, not when it attached to this session |
 // | session.new_split | conflict when the anchor names a split (GoRex splits blocks), and when side is before and the layout holds more than one block |

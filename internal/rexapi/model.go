@@ -52,7 +52,30 @@ type mWindow struct {
 	layer     string
 	layout    *layoutView
 	tree      *fnode
-	blocks    []*mBlock
+	// blocks are the blocks of the tiled layer, in layout order; floats
+	// are the floating layers over it, back to front.
+	blocks []*mBlock
+	floats []mFloat
+}
+
+// mFloat is a GoRex floating pane as a Rex floating layer of one block.
+type mFloat struct {
+	layer  string
+	bounds [4]float64
+	block  *mBlock
+}
+
+// allBlocks returns every block the window shows: the tiled layer's,
+// then each floating layer's, back to front.
+func (w *mWindow) allBlocks() []*mBlock {
+	if len(w.floats) == 0 {
+		return w.blocks
+	}
+	out := append(make([]*mBlock, 0, len(w.blocks)+len(w.floats)), w.blocks...)
+	for _, f := range w.floats {
+		out = append(out, f.block)
+	}
+	return out
 }
 
 // mBlock is a GoRex pane with a local session as a Rex block.
@@ -173,7 +196,12 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 			if tab.Root == nil {
 				continue
 			}
-			sids := sidsOf(tab.Root)
+			sids := map[string]bool{}
+			for _, r := range tab.Roots() {
+				for sid := range sidsOf(r) {
+					sids[sid] = true
+				}
+			}
 			// A tab keeps its window ID while it keeps any of its
 			// sessions, even while it shows no block this server serves.
 			wid := mp.windowFor(sids, used)
@@ -212,6 +240,33 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 			}
 			if tab.Zoom {
 				w.zoomed = w.focused
+			}
+			// GoRex's floating panes are Rex's floating layers, of one
+			// block each, lowest first as Rex lists layers back to front.
+			// A hidden one is shown nowhere, as a minimized window.
+			for fi, fl := range tab.Floats {
+				leaf := filterNode(fl.Pane)
+				if fl.Hidden || leaf == nil || leaf.leaf == nil {
+					continue
+				}
+				block := &mBlock{
+					id: leaf.block, sid: leaf.leaf.SID, label: blockLabel(leaf.leaf),
+					session: s.id, window: w.id, owner: owners[leaf.block],
+				}
+				s.blocks = append(s.blocks, block)
+				m.blocks[block.id] = block
+				w.floats = append(w.floats, mFloat{
+					layer:  floatLayerID(w.id, block.id),
+					bounds: [4]float64{float64(fl.X), float64(fl.Y), float64(fl.W), float64(fl.H)},
+					block:  block,
+				})
+				if tab.FocusFloat == fi+1 {
+					w.focused = block.id
+					w.zoomed = ""
+					if fl.Zoom {
+						w.zoomed = block.id
+					}
+				}
 			}
 			s.windows = append(s.windows, w)
 			perTab[ti] = w.id
@@ -446,6 +501,23 @@ func (s *mSession) view(host string) view {
 			})
 		}
 		wv.Layers = append(wv.Layers, layer)
+		for _, f := range w.floats {
+			b := f.block
+			wv.Layers = append(wv.Layers, layerView{
+				LayerID: f.layer,
+				Kind:    "floating",
+				Bounds:  f.bounds,
+				Layout:  &layoutView{Rect: f.bounds, BlockID: b.id},
+				Blocks: []blockView{{
+					BlockID:     b.id,
+					Label:       b.label,
+					CreatorName: creatorName,
+					Flavor:      flavorShell,
+					HostID:      host,
+					Owner:       b.owner,
+				}},
+			})
+		}
 		v.Windows = append(v.Windows, wv)
 	}
 	return v

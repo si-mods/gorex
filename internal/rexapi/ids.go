@@ -56,6 +56,10 @@ func blockID(sid string) string { return nameID(kBlock, sid) }
 // layerID names the tiled layer of a window.
 func layerID(window string) string { return nameID(kLayer, window) }
 
+// floatLayerID is the ID of the floating layer that holds block in
+// window: a GoRex floating pane holds one block, which names it.
+func floatLayerID(window, block string) string { return nameID(kLayer, window+" "+block) }
+
 // splitID names a split by the shape of the tree it divides, without its
 // ratio: a split keeps its ID while it is dragged, and while the panes
 // under it are resized.
