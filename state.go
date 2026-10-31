@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -67,6 +68,63 @@ type Float struct {
 	// overY how far past the room's edge the drag took its box.
 	dragging     bool
 	overX, overY float32
+	// fling is where a float the pointer let go of showed, and how fast
+	// it went, for the view to glide it from there to its box; gliding
+	// tells that it is on its way.
+	fling   *floatFling
+	gliding bool
+	// shown is where the view showed its box last, as fractions of the
+	// room: where a press catches it gliding.
+	shown [2]float32
+}
+
+// floatFling is where a float showed as the pointer let go of it, and how
+// fast it went, in fractions of the room and per second.
+type floatFling struct{ x, y, vx, vy float32 }
+
+// floatSnap is how near, as a share of the room, a float thrown toward an
+// edge of the room comes to rest against it.
+const floatSnap = 0.12
+
+// maxFling is the fastest a thrown float goes, in DIPs per second, as
+// MyGo's Draggable: moves the window delivers at once, after a slow frame,
+// would otherwise throw it far away.
+const maxFling = 8000
+
+// throwFloat lets go of f, dragged by the pointer, at vx, vy DIPs per
+// second over room: its box goes where the throw would carry it (Project),
+// in the room, and against an edge or a corner of the room it comes within
+// floatSnap of; the view glides it there from where it showed.
+func (a *App) throwFloat(f *Float, vx, vy float32, room ui.Rect) {
+	x, y := f.X+rubber(f.overX), f.Y+rubber(f.overY)
+	f.dragging, f.overX, f.overY = false, 0, 0
+	if float32IsBad(vx) || float32IsBad(vy) {
+		vx, vy = 0, 0
+	}
+	if n := float32(math.Hypot(float64(vx), float64(vy))); n > maxFling {
+		vx, vy = vx*maxFling/n, vy*maxFling/n
+	}
+	var fx, fy float32
+	if room.W > 0 && room.H > 0 {
+		fx, fy = vx/room.W, vy/room.H
+	}
+	f.fling = &floatFling{x, y, fx, fy}
+	tx, ty := snapFloat(ui.Project(x, fx), f.W), snapFloat(ui.Project(y, fy), f.H)
+	a.moveFloat(f, tx-f.X, ty-f.Y)
+}
+
+// snapFloat returns where a side of a float, of length w, comes to rest
+// thrown to x: in the room, and against its edge when within floatSnap.
+func snapFloat(x, w float32) float32 {
+	hi := max(1-w, 0)
+	x = min(max(x, 0), hi)
+	switch lo, far := x, hi-x; {
+	case lo <= far && lo < floatSnap:
+		return 0
+	case far < floatSnap:
+		return hi
+	}
+	return x
 }
 
 // floatMin is the least share of the room a float's side takes.

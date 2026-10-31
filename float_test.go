@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -622,5 +623,239 @@ func TestFloatResizeEdges(t *testing.T) {
 	f.resizeEdges(edgeBottom, 0, 0.9)
 	if !near(f.Y+f.H, 1) {
 		t.Fatalf("bottom: %+v", *f)
+	}
+}
+
+// throwApp floats the focused pane of a new app, with the animation style
+// given, at a box of a third of the room and at rest.
+func throwApp(t *testing.T, style string, reduce bool) (*App, *ui.Tester, *Float) {
+	t.Helper()
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{Animation: style}
+	tt.SetPreferences(ui.Preferences{ReduceMotion: reduce})
+	tt.Frame()
+	a.split(false)
+	waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
+	p := a.tab().Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	f := p.float
+	f.X, f.Y, f.W, f.H = 0.3, 0.3, 0.3, 0.3
+	a.changed()
+	settle(tt)
+	if a.floatRoom.W <= 0 || a.floatRoom.H <= 0 {
+		t.Fatalf("no room: %+v", a.floatRoom)
+	}
+	return a, tt, f
+}
+
+// throwBy drags f by its header dx, dy DIPs in n moves step apart, then
+// pauses for pause and lets go, in the frame it lets go.
+func throwBy(tt *ui.Tester, f *Float, dx, dy float32, n int, step, pause time.Duration) {
+	b := f.Pane.bounds
+	x, y := b.X+b.W*0.3, b.Y+8
+	tt.Press(x, y)
+	tt.Frame()
+	for i := 1; i <= n; i++ {
+		tt.Advance(step)
+		tt.Move(x+dx*float32(i)/float32(n), y+dy*float32(i)/float32(n))
+		tt.Frame()
+	}
+	tt.Advance(pause)
+	tt.Release(x+dx, y+dy)
+	tt.Frame()
+}
+
+// shownX is where the view shows f across the room, as a fraction of it.
+func shownX(a *App, f *Float) float32 { return (f.Pane.bounds.X - a.floatRoom.X) / a.floatRoom.W }
+
+func near(a, b float32) bool { return math.Abs(float64(a-b)) < 1e-3 }
+
+// A float let go of at rest rests where the pointer left it; thrown, it
+// glides on from there, further, and comes to rest at its new box.
+func TestFloatThrowGlides(t *testing.T) {
+	a, tt, f := throwApp(t, "", false)
+	room := a.floatRoom
+	throwBy(tt, f, 60, 0, 6, 100*time.Millisecond, 200*time.Millisecond)
+	slow := f.X - 0.3
+	if want := 60 / room.W; !near(slow, want) {
+		t.Fatalf("let go at rest, it moved %v of the room, want %v", slow, want)
+	}
+	settle(tt)
+	f.X, f.Y = 0.3, 0.3
+	a.changed()
+	settle(tt)
+	throwBy(tt, f, 60, 0, 6, 16*time.Millisecond, 0)
+	fast := f.X - 0.3
+	if fast <= slow+0.05 {
+		t.Fatalf("thrown, it moved %v of the room, no further than %v let go at rest", fast, slow)
+	}
+	if !f.gliding {
+		t.Fatal("thrown, it does not glide")
+	}
+	// It glides on from where the pointer left it.
+	tt.Advance(16 * time.Millisecond)
+	tt.Frame()
+	if x := shownX(a, f); x <= 0.3+slow || x >= f.X {
+		t.Fatalf("gliding, it shows at %v, not between %v and %v", x, 0.3+slow, f.X)
+	}
+	settle(tt)
+	if f.gliding || !near(shownX(a, f), f.X) {
+		t.Fatalf("at rest, it shows at %v (gliding %v), not at %v", shownX(a, f), f.gliding, f.X)
+	}
+}
+
+// A float thrown to within floatSnap of the room's edges comes to rest
+// against them, in their corner; one thrown short of them rests where the
+// throw takes it; one thrown past them rests in the room.
+func TestFloatThrowSnaps(t *testing.T) {
+	a := &App{}
+	room := ui.Rect{W: 1000, H: 800}
+	// Project carries a throw about half a second's worth.
+	for _, tc := range []struct {
+		name         string
+		vx, vy       float32
+		wantX, wantY float32
+	}{
+		{"short", 200, -100, 0.3 + ui.Project(0, 0.2), 0.3 + ui.Project(0, -0.125)},
+		{"near a corner", 601, 481, 0.7, 0.7},
+		{"near an edge", -501, 0, 0, 0.3},
+		{"far past a corner", 8000, -8000, 0.7, 0},
+	} {
+		f := &Float{X: 0.3, Y: 0.3, W: 0.3, H: 0.3, dragging: true}
+		a.throwFloat(f, tc.vx, tc.vy, room)
+		if !near(f.X, tc.wantX) || !near(f.Y, tc.wantY) {
+			t.Errorf("%s: rests at %v, %v, want %v, %v", tc.name, f.X, f.Y, tc.wantX, tc.wantY)
+		}
+		if f.dragging || f.fling == nil || f.fling.x != 0.3 || f.fling.y != 0.3 {
+			t.Errorf("%s: let go as %+v", tc.name, *f)
+		}
+	}
+	if x := snapFloat(0.62, 0.3); x != 0.7 {
+		t.Errorf("snapFloat(0.62, 0.3) = %v, want 0.7", x)
+	}
+	if x := snapFloat(0.4, 0.3); x != 0.4 {
+		t.Errorf("snapFloat(0.4, 0.3) = %v, want 0.4", x)
+	}
+	// Thrown toward a corner through the view, it comes to rest there.
+	a, tt, f := throwApp(t, "", false)
+	throwBy(tt, f, 120, 120, 6, 16*time.Millisecond, 0)
+	settle(tt)
+	if f.X != 0.7 || f.Y != 0.7 {
+		t.Fatalf("thrown toward the bottom right, it rests at %v, %v", f.X, f.Y)
+	}
+	if b, r := f.Pane.bounds, a.floatRoom; !near(b.X+b.W, r.X+r.W) || !near(b.Y+b.H, r.Y+r.H) {
+		t.Fatalf("in the corner it shows at %+v in %+v", b, r)
+	}
+}
+
+// Dragged past the room's edge, a float shows past it, and let go, it
+// springs back in.
+func TestFloatRubberBandsBack(t *testing.T) {
+	a, tt, f := throwApp(t, "", false)
+	room := a.floatRoom
+	b := f.Pane.bounds
+	x, y := b.X+b.W*0.3, b.Y+8
+	tt.Press(x, y)
+	tt.Frame()
+	for i := 1; i <= 10; i++ {
+		tt.Advance(50 * time.Millisecond)
+		tt.Move(x+room.W*0.08*float32(i), y)
+		tt.Frame()
+	}
+	if f.X != 0.7 || f.overX <= 0 {
+		t.Fatalf("dragged past the edge: X %v over %v", f.X, f.overX)
+	}
+	if past := shownX(a, f) - 0.7; past <= 0 || past >= f.overX {
+		t.Fatalf("dragged %v past the edge, it shows %v past it", f.overX, past)
+	}
+	tt.Advance(200 * time.Millisecond)
+	tt.Release(x+room.W*0.8, y)
+	tt.Frame()
+	tt.Advance(16 * time.Millisecond)
+	tt.Frame()
+	if x := shownX(a, f); x <= 0.7 || !f.gliding {
+		t.Fatalf("let go, it shows at %v (gliding %v), not on its way back", x, f.gliding)
+	}
+	settle(tt)
+	if f.X != 0.7 || f.overX != 0 || !near(shownX(a, f), 0.7) {
+		t.Fatalf("back in, X %v over %v shows at %v", f.X, f.overX, shownX(a, f))
+	}
+}
+
+// With animations off, or while the desktop asks for less motion, a thrown
+// float is at its rest at once.
+func TestFloatThrowOff(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		style  string
+		reduce bool
+	}{
+		{"off", "off", false},
+		{"reduce motion", "", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt, f := throwApp(t, tc.style, tc.reduce)
+			throwBy(tt, f, 60, 0, 6, 16*time.Millisecond, 0)
+			if f.X <= 0.3+60/a.floatRoom.W {
+				t.Fatalf("thrown, it rests at %v, no further than the pointer took it", f.X)
+			}
+			tt.Frame()
+			if f.gliding || !near(shownX(a, f), f.X) {
+				t.Fatalf("it shows at %v (gliding %v), not at once at %v", shownX(a, f), f.gliding, f.X)
+			}
+		})
+	}
+}
+
+// While a thrown float glides, its terminal keeps the size it rested at,
+// and takes a new one once it rests.
+func TestFloatTerminalHeldWhileGliding(t *testing.T) {
+	a, tt, f := throwApp(t, "", false)
+	p := f.Pane
+	cols, rows := p.term.Size()
+	throwBy(tt, f, 0, 40, 4, 16*time.Millisecond, 0)
+	if !f.gliding {
+		t.Fatal("thrown, it does not glide")
+	}
+	// Resized on the way, as by the keys, it keeps its size until it rests.
+	a.resizeFloat(f, 0.1, 0)
+	for range 5 {
+		tt.Advance(16 * time.Millisecond)
+		tt.Frame()
+		if !f.gliding {
+			break
+		}
+		if c, r := p.term.Size(); c != cols || r != rows {
+			t.Fatalf("gliding, the terminal took %dx%d, not %dx%d", c, r, cols, rows)
+		}
+	}
+	settle(tt)
+	waitFor(t, tt, "the terminal to take the new size", func() bool {
+		c, _ := p.term.Size()
+		return c > cols
+	})
+}
+
+// A press catches a gliding float where it shows.
+func TestFloatCatch(t *testing.T) {
+	a, tt, f := throwApp(t, "", false)
+	throwBy(tt, f, 60, 0, 6, 16*time.Millisecond, 0)
+	tt.Advance(32 * time.Millisecond)
+	tt.Frame()
+	shown := shownX(a, f)
+	b := f.Pane.bounds
+	tt.Press(b.X+b.W*0.3, b.Y+8)
+	tt.Frame()
+	if f.gliding || !near(f.X, shown) {
+		t.Fatalf("caught at %v, it rests at %v (gliding %v)", shown, f.X, f.gliding)
+	}
+	tt.Release(b.X+b.W*0.3, b.Y+8)
+	settle(tt)
+	if !near(shownX(a, f), shown) {
+		t.Fatalf("caught at %v, it shows at %v", shown, shownX(a, f))
 	}
 }

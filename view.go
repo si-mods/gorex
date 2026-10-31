@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"runtime"
 	"slices"
@@ -372,23 +373,53 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	if p == nil {
 		return
 	}
+	cell := ui.Column(c.Key(cellKey(p.ID))).Absolute()
+	anim := motion(c)
+	if anim == &snappy {
+		anim = &springBack
+	}
 	// Dragged past the room's edge, the float follows the pointer less and
-	// less, and springs back in once let go.
+	// less; let go, it glides from where it showed to its box, at the
+	// pointer's velocity, and springs back in.
 	s := share{f.X + rubber(f.overX), f.Y + rubber(f.overY), f.W, f.H}
+	var glide ui.Animation
+	if anim != nil {
+		// The place goes in fractions of the room: it rests within a
+		// tenth of a DIP of a room 1000 DIPs across.
+		glide = *anim
+		glide.Spring.Precision = 1e-4
+	}
+	if fl := f.fling; fl != nil {
+		f.fling = nil
+		if anim != nil && !f.Zoom {
+			cell.Jump(glideX, fl.x)
+			cell.Jump(glideY, fl.y)
+			// A velocity of zero would keep the one the value had: the
+			// least one stands for none.
+			gx, gy := glide, glide
+			gx.Spring.Velocity, gy.Spring.Velocity = cmp.Or(fl.vx, 1e-9), cmp.Or(fl.vy, 1e-9)
+			s.x, s.y = cell.AnimateTo(glideX, f.X, gx), cell.AnimateTo(glideY, f.Y, gy)
+			f.gliding = true
+		}
+	} else if f.gliding {
+		if anim == nil || f.Zoom || f.dragging {
+			f.gliding = false
+		} else {
+			s.x, s.y = cell.AnimateTo(glideX, f.X, glide), cell.AnimateTo(glideY, f.Y, glide)
+			f.gliding = s.x != f.X || s.y != f.Y
+		}
+	}
+	f.shown = [2]float32{s.x, s.y}
 	if f.Zoom {
 		s = whole
 	}
-	cell := ui.Column(c.Key(cellKey(p.ID))).Absolute().
-		LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
+	cell.LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
 		Radius(cardR).Background(cardFace(c, k, t.Focus == p, true))
-	// Under the pointer it moves as it does; else, as it springs back, is
-	// nudged by the keys, zooms, or floats from its place among the tiled
-	// panes, it eases there.
+	// Under the pointer, or gliding from it, it moves as it does; else, as
+	// it is nudged by the keys, zooms, or floats from its place among the
+	// tiled panes, it eases there.
 	moves := false
-	if anim := motion(c); anim != nil && !f.dragging {
-		if anim == &snappy {
-			anim = &springBack
-		}
+	if anim != nil && !f.dragging && !f.gliding {
 		cell.Transition(ui.ElementTransition{Animation: anim, Position: true, Size: true})
 		moves = true
 	}
@@ -418,12 +449,13 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	}
 	// It moves from the frame its box changes, as from its place among
 	// the tiled panes, until it rests.
-	moving := moves && (rest != p.bounds || cell.Transitioning())
+	// Gliding, it moves too.
+	moving := f.gliding || moves && (rest != p.bounds || cell.Transitioning())
 	p.bounds = rest
 	// While the pointer resizes it or it eases to a new size, the terminal
 	// keeps the size it rested at, and the program hears of the new one
 	// once: else a shell redraws its prompt at every step, over itself.
-	held := f.dragging || cell.Transitioning()
+	held := f.dragging || f.gliding || cell.Transitioning()
 	cell.Children(func() {
 		// Moving, the card goes with the cell, its colors not fading: an
 		// element of a Transition of its own would be laid out where the
@@ -1289,17 +1321,33 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 	})
 }
 
-// dragFloat moves float f as its handle h is dragged, and lets it spring
-// back inside the room once the drag ends.
+// dragFloat moves float f as its handle h is dragged, and throws it once
+// the drag ends, at the pointer's velocity (throwFloat).
 func (a *App) dragFloat(f *Float, h ui.Element) {
-	if dx, dy, ok := h.Dragged(); ok {
+	dx, dy, pressed := h.Dragged()
+	if pressed && f.gliding {
+		// A press catches it where it shows.
+		f.X, f.Y, f.gliding = f.shown[0], f.shown[1], false
+		f.clamp()
+		a.changed()
+	}
+	if pressed && (dx != 0 || dy != 0) {
 		f.dragging = true
 		a.moveFloatPx(f, dx, dy, a.floatRoom)
 	}
-	if f.dragging && !h.Dragging() {
-		f.dragging, f.overX, f.overY = false, 0, 0
+	if f.dragging && !pressed {
+		vx, vy, _ := h.DragEnded()
+		a.throwFloat(f, vx, vy, a.floatRoom)
 	}
 }
+
+// The keys of the animated place of a float gliding to rest.
+type glideKey int
+
+const (
+	glideX glideKey = iota
+	glideY
+)
 
 // rubber is how far a float shows past the room's edge, dragged d past it:
 // half as far at first, less and less as d grows, as a scroll view's
