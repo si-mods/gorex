@@ -637,14 +637,14 @@ func (a *App) adoptInto(h *hostConn, st savedTab, free map[string]rex.SessionInf
 		return append(leaves(n.A), leaves(n.B)...)
 	}
 	tiled := leaves(st.Root)
-	// pane makes the pane of n's session in tab t of window o.
+	// pane makes the pane of n's session in tab t of window o, which has
+	// had the focus just before the pane that has it.
 	pane := func(o *App, t *Tab, n *savedNode) *Pane {
 		in := free[n.SID]
 		delete(free, n.SID)
-		p := &Pane{ID: o.id(), SID: in.ID, Name: n.Name, info: in, startDir: in.Dir, host: h}
-		o.attach(p, in.Cols, in.Rows)
-		p.Tab = t
+		p := o.adoptPane(h, t, in, n.Name)
 		where[in.ID] = p
+		t.recentBehind(p)
 		o.changed()
 		return p
 	}
@@ -695,8 +695,7 @@ func (a *App) adoptInto(h *hostConn, st savedTab, free map[string]rex.SessionInf
 				if o == nil {
 					break
 				}
-				p := pane(o, t, n)
-				splitNode(o, target, p, !first, s.Vertical, s.Ratio)
+				o.splitNode(t, target, pane(o, t, n), !first, s.Vertical, s.Ratio)
 				added, more = true, true
 				break
 			}
@@ -730,12 +729,7 @@ func (a *App) adoptInto(h *hostConn, st savedTab, free map[string]rex.SessionInf
 		if _, ok := free[n.SID]; n.SID == "" || n.Host != "" || !ok {
 			continue
 		}
-		p := pane(o, t, n)
-		f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
-		f.clamp()
-		p.Node = &Node{ID: o.id(), Pane: p}
-		p.float = f
-		t.Floats = append(t.Floats, f)
+		o.floatOver(t, pane(o, t, n), sf)
 		added = true
 	}
 	return added
@@ -751,21 +745,41 @@ func (a *App) owner(t *Tab) *App {
 	return nil
 }
 
-// splitNode puts pane p beside node n of window o, after it (right or
-// below) when after, else before it, with ratio as the first side's share.
-// The tab's focus stays.
-func splitNode(o *App, n *Node, p *Pane, after, vertical bool, ratio float32) {
+// adoptPane makes the pane of tab t of the host's session in, named name.
+func (a *App) adoptPane(h *hostConn, t *Tab, in rex.SessionInfo, name string) *Pane {
+	p := &Pane{ID: a.id(), SID: in.ID, Name: name, info: in, startDir: in.Dir, host: h}
+	a.attach(p, in.Cols, in.Rows)
+	p.Tab = t
+	return p
+}
+
+// floatOver makes pane p float over tab t, at the box of the saved float sf.
+func (a *App) floatOver(t *Tab, p *Pane, sf savedFloat) *Float {
+	f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
+	f.clamp()
+	p.Node = &Node{ID: a.id(), Pane: p}
+	p.float = f
+	t.Floats = append(t.Floats, f)
+	return f
+}
+
+// splitNode puts pane p beside node n of tab t, after it (right or below)
+// when after, else before it, with ratio as the first side's share. The
+// tab shows all its tiled panes, as no pane fills it; its focus stays.
+func (a *App) splitNode(t *Tab, n *Node, p *Pane, after, vertical bool, ratio float32) {
 	if ratio == 0 {
 		ratio = 0.5
 	}
-	old := &Node{ID: o.id(), Pane: n.Pane, Parent: n, Vertical: n.Vertical, Ratio: n.Ratio, A: n.A, B: n.B}
+	t.Zoom = nil
+	p.Tab = t
+	old := &Node{ID: a.id(), Pane: n.Pane, Parent: n, Vertical: n.Vertical, Ratio: n.Ratio, A: n.A, B: n.B}
 	if old.Pane != nil {
 		old.Pane.Node = old
 	}
 	if old.A != nil {
 		old.A.Parent, old.B.Parent = old, old
 	}
-	node := &Node{ID: o.id(), Pane: p, Parent: n}
+	node := &Node{ID: a.id(), Pane: p, Parent: n}
 	p.Node = node
 	n.Pane, n.Vertical, n.Ratio = nil, vertical, min(max(ratio, 0.05), 0.95)
 	n.A, n.B = old, node
@@ -798,9 +812,8 @@ func (a *App) adoptTab(h *hostConn, st savedTab, free map[string]rex.SessionInfo
 			}
 			delete(free, n.SID)
 			node := &Node{ID: a.id(), Parent: parent}
-			p := &Pane{ID: a.id(), SID: in.ID, Name: n.Name, info: in, startDir: in.Dir, host: h}
-			a.attach(p, in.Cols, in.Rows)
-			p.Tab, p.Node = t, node
+			p := a.adoptPane(h, t, in, n.Name)
+			p.Node = node
 			node.Pane = p
 			return node
 		}
@@ -843,12 +856,7 @@ func (a *App) adoptTab(h *hostConn, st savedTab, free map[string]rex.SessionInfo
 		if n == nil || n.Pane == nil {
 			continue
 		}
-		p := n.Pane
-		f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
-		f.clamp()
-		p.Node = &Node{ID: a.id(), Pane: p}
-		p.float = f
-		t.Floats = append(t.Floats, f)
+		f := a.floatOver(t, n.Pane, sf)
 		if i == wanted {
 			focusedFloat = f
 		}

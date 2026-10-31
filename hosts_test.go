@@ -1007,6 +1007,64 @@ func TestAdoptHostTabSplitLater(t *testing.T) {
 	if got.Focus == nil || got.Focus.SID != first {
 		t.Error("the tab's focus moved")
 	}
+	// The new panes come into the tab's focus history behind its focus.
+	if r := got.recent; len(r) != 4 || r[len(r)-1] != got.Focus {
+		t.Errorf("the tab's focus history has %d panes, its focus last: %v", len(r), len(r) > 0 && r[len(r)-1] == got.Focus)
+	}
+}
+
+// TestAdoptHostTabSplitZoomed checks that a pane the host splits into a
+// zoomed tab shows, as no pane fills the tab any more.
+func TestAdoptHostTabSplitZoomed(t *testing.T) {
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, remote := startHostServer(t)
+	t.Cleanup(a.stopHosts)
+	share := func(root *savedNode, zoom bool) {
+		t.Helper()
+		raw, err := json.Marshal(savedStore{
+			Version: layoutVersion,
+			Sessions: []savedWorkspace{{
+				ID: "w", Name: "studio",
+				Layout: savedLayout{Tabs: []savedTab{{Name: "build", Root: root, Zoom: zoom}}},
+			}},
+			Windows: []string{"w"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := remote.SetLayout(raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	create := func() string {
+		t.Helper()
+		in, err := remote.Create(rex.CreateOptions{Cols: 90, Rows: 30})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return in.ID
+	}
+	first, second := create(), create()
+	share(&savedNode{Ratio: 0.5, A: &savedNode{SID: first}, B: &savedNode{SID: second}}, true)
+	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	waitFor(t, tt, "the host's tab", func() bool { return len(a.tabsOn(h)) == 1 })
+	tab := a.tabsOn(h)[0]
+	if tab.Zoom == nil {
+		t.Fatal("the host's zoomed tab is not zoomed here")
+	}
+
+	third := create()
+	share(&savedNode{
+		Ratio: 0.5,
+		A:     &savedNode{SID: first},
+		B:     &savedNode{Ratio: 0.5, A: &savedNode{SID: second}, B: &savedNode{SID: third}},
+	}, false)
+	waitFor(t, tt, "the third pane", func() bool { return len(tab.panes()) == 3 })
+	if tab.Zoom != nil {
+		t.Error("the tab stays zoomed, which hides the new pane")
+	}
 }
 
 // What a fake host does with a connection.
