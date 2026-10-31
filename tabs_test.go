@@ -12,8 +12,15 @@ import (
 func TestFadeTextFitsWidth(t *testing.T) {
 	registerFonts()
 	const width = 171
-	spill := float32(0)
+	// The draw must run: a test that lays nothing out fails, not passes.
+	spill := float32(1e9)
 	tt := ui.NewTester(func(c *ui.Context) {
+		// Measure with the font registerFonts registers, not the
+		// system's: the metrics, and so the test, stay the same
+		// wherever it runs.
+		theme := *c.Theme()
+		theme.Font = "JetBrains Mono"
+		c.SetTheme(&theme)
 		ui.Box(c).Width(width).Height(18).Draw(func(p *ui.Painter, r ui.Rect) {
 			ink := ui.RGBA(255, 255, 255, 255)
 			f := layoutFade(p, r.W, tabLabel("SYNC: Fix panel sync from remote worktree branches", "", ink, ink))
