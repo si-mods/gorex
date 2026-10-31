@@ -16,6 +16,13 @@ import (
 // streamServer is a test server with a session of 80x24, and a client of
 // it whose attaches dial through dial.
 func streamServer(t *testing.T, dial func() (net.Conn, error)) (*Server, *Client, string) {
+	cmd, dir := testShell()
+	return streamServerCommand(t, dial, cmd, dir)
+}
+
+// streamServerCommand is streamServer over the program cmd, which runs in
+// dir.
+func streamServerCommand(t *testing.T, dial func() (net.Conn, error), cmd []string, dir string) (*Server, *Client, string) {
 	t.Helper()
 	s, _ := testServer(t)
 	a, b := net.Pipe()
@@ -27,7 +34,6 @@ func streamServer(t *testing.T, dial func() (net.Conn, error)) (*Server, *Client
 		}
 		c.Close()
 	})
-	cmd, dir := testShell()
 	info, err := c.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)
