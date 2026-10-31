@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.3
 
 - A pane header reads on its own background: when a pane takes a dark
   terminal background in a light window, or the other way around, its
