@@ -804,8 +804,10 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		if !show {
 			return
 		}
+		// As Rex has them: split right, split down, float, zoom and close.
+		// A float's float button, lit, docks it.
 		if f := p.float; f != nil {
-			if iconButton(c, k, "layout-grid", locales.CmdDockPane(), 26, 16).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
+			if iconButtonWith(c, k, "float", locales.CmdDockPane(), 26, 16, true, nil).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
 				a.later(c, func() { a.dockPane(p) })
 			}
 		} else {
@@ -817,13 +819,8 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 				t.setFocus(p)
 				a.split(true)
 			}
-			if len(t.panes()) > 1 {
-				if iconButton(c, k, "app-window", locales.CmdFloatPane(), 26, 16).Tooltip(tip(locales.CmdFloatPane(), &cmdFloatPane)).Clicked() {
-					a.later(c, func() { a.floatPane(p) })
-				}
-				if iconButton(c, k, "square-arrow-out-up-right", locales.CmdPaneToNewTab(), 26, 16).Tooltip(tip(locales.CmdPaneToNewTab(), &cmdPaneToNewTab)).Clicked() {
-					a.later(c, func() { a.movePaneToNewTab(p, "") })
-				}
+			if len(t.panes()) > 1 && iconButton(c, k, "float", locales.CmdFloatPane(), 26, 16).Tooltip(tip(locales.CmdFloatPane(), &cmdFloatPane)).Clicked() {
+				a.later(c, func() { a.floatPane(p) })
 			}
 		}
 		zoom, label := "maximize-2", locales.PaneZoom()
