@@ -532,7 +532,7 @@ func TestTabEventsDropMergesHeadless(t *testing.T) {
 				drawTabs := func() {
 					for i, tab := range a.tabs {
 						e := ui.Box(c.Key(tab.ID)).Size(120, 32).Label(tab.Name)
-						a.tabEvents(e, k, i, tab)
+						a.tabEvents(c, e, k, i, tab)
 					}
 				}
 				if place == "" {

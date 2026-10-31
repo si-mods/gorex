@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -266,5 +270,251 @@ func TestDividerDoubleClickAnimates(t *testing.T) {
 	rest, _ := tt.Find("Divider")
 	if shown.X == rest.X {
 		t.Errorf("divider at %v at once, want it on its way to %v", shown.X, rest.X)
+	}
+}
+
+// styles are the animation styles the motion tests run with: moving or
+// not.
+var styles = []struct {
+	name, style string
+	moves       bool
+}{
+	{"snappy", "", true},
+	{"off", "off", false},
+}
+
+// TestFloatMorphs: a pane that floats or docks moves from its old box to
+// its new one, as one element, its terminal keeping its size on the way;
+// with Off it is there at once.
+func TestFloatMorphs(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{Animation: tc.style}
+			tt.Frame()
+			a.split(false)
+			waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
+			settle(tt)
+			p := a.tab().Focus
+			// step floats or docks the pane, and checks where its button,
+			// label, shows in the first frame against where it rests.
+			step := func(what, label string, change func() bool) {
+				t.Helper()
+				c, r := p.term.Size()
+				start := [2]int{c, r}
+				if !change() {
+					t.Fatalf("%s: nothing changed", what)
+				}
+				tt.Frame()
+				shown, ok := tt.Find(label)
+				if !ok {
+					t.Fatalf("%s: no %q; texts %q", what, label, tt.Texts())
+				}
+				if tc.moves {
+					for range 10 {
+						tt.Advance(16 * time.Millisecond)
+						tt.Frame()
+						if c, r := p.term.Size(); [2]int{c, r} != start {
+							t.Errorf("%s: the terminal took %dx%d on the way", what, c, r)
+						}
+					}
+				}
+				settle(tt)
+				rest, _ := tt.Find(label)
+				if moving := shown != rest; moving != tc.moves {
+					t.Errorf("%s: moving %v (%v, at rest %v), want %v", what, moving, shown, rest, tc.moves)
+				}
+			}
+			step("float", "Dock Pane", func() bool { return a.floatPane(p) })
+			step("dock", "Float Pane", func() bool { return a.dockPane(p) })
+		})
+	}
+}
+
+// TestTabsOpenAndClose: with a style of animation a new tab unfolds along
+// the tabs, and those after a closed one slide over, in the title bar and
+// in the sidebar; with Off they are where they go at once.
+func TestTabsOpenAndClose(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, place := range []string{"", "left"} {
+		for _, tc := range styles {
+			t.Run(place+tc.name, func(t *testing.T) {
+				a, tt := newTestApp(t)
+				prefs = settings{TabPlacement: place, Animation: tc.style}
+				a.tab().Name = "first"
+				tt.Frame()
+				a.newTab(os.TempDir())
+				a.tab().Name = "second"
+				tt.Frame()
+				opening, ok := tt.Find("second ")
+				if !ok {
+					t.Fatalf("no second tab; texts %q", tt.Texts())
+				}
+				settle(tt)
+				open, _ := tt.Find("second ")
+				folded := opening.W < open.W
+				if place != "" {
+					folded = opening.H < open.H
+				}
+				if folded != tc.moves {
+					t.Errorf("opening %v, open %v: folded %v, want %v", opening, open, folded, tc.moves)
+				}
+				a.closeTab(a.tabs[0])
+				waitFor(t, tt, "1 tab", func() bool { return len(a.tabs) == 1 })
+				tt.Frame()
+				sliding, _ := tt.Find("second ")
+				settle(tt)
+				rest, _ := tt.Find("second ")
+				if moving := sliding != rest; moving != tc.moves {
+					t.Errorf("after a close: moving %v (%v, at rest %v), want %v", moving, sliding, rest, tc.moves)
+				}
+			})
+		}
+	}
+}
+
+// TestPaletteComesAndGoes: with a style of animation the palette's rows
+// come in as it opens, not as its query changes, and it fades out as it
+// closes; with Off it shows and goes at once.
+func TestPaletteComesAndGoes(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	// panel is what the palette's panel covers of the window, and its
+	// pixels, as a shot shows them; the terminal's caret blinks outside.
+	panel := func(tt *ui.Tester) []byte {
+		img := tt.Image()
+		var pix []byte
+		for y := 90; y < 300; y++ {
+			pix = append(pix, img.Pix[img.PixOffset(240, y):img.PixOffset(760, y)]...)
+		}
+		return pix
+	}
+	// row is a title of the palette that shows only there.
+	row := func(t *testing.T, a *App, tt *ui.Tester) string {
+		t.Helper()
+		for _, it := range a.paletteItems() {
+			if n := slices.Index(tt.Texts(), it.title); n >= 0 && slices.Index(tt.Texts()[n+1:], it.title) < 0 {
+				return it.title
+			}
+		}
+		t.Fatalf("no row of its own; texts %q", tt.Texts())
+		return ""
+	}
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{Animation: tc.style}
+			p := a.tab().Focus
+			waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+			settle(tt)
+			closed := panel(tt)
+			a.openPalette()
+			tt.Frame()
+			title := row(t, a, tt)
+			coming, _ := tt.Find(title)
+			settle(tt)
+			rest, _ := tt.Find(title)
+			if moving := coming != rest; moving != tc.moves {
+				t.Errorf("opening: moving %v (%v, at rest %v), want %v", moving, coming, rest, tc.moves)
+			}
+			// A query that changes the rows moves none.
+			tt.Type("e")
+			tt.Frame()
+			title = row(t, a, tt)
+			now, _ := tt.Find(title)
+			settle(tt)
+			if then, _ := tt.Find(title); now != then {
+				t.Errorf("the query moved a row: %v, at rest %v", now, then)
+			}
+			a.paletteOpen = false
+			tt.Frame()
+			going := !bytes.Equal(panel(tt), closed)
+			settle(tt)
+			if !bytes.Equal(panel(tt), closed) {
+				t.Fatal("the window is not as before the palette opened")
+			}
+			if going != tc.moves {
+				t.Errorf("closing: the palette still shows %v, want %v", going, tc.moves)
+			}
+		})
+	}
+}
+
+// TestActivityDotBreathes: an activity dot's halo breathes, painting
+// again, with a style of animation, and stands still with Off.
+func TestActivityDotBreathes(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			prefs = settings{Animation: tc.style}
+			tt := ui.NewTester(func(c *ui.Context) { activityDot(c, ui.RGBA(0, 120, 255, 1), 6) }, 40, 40)
+			tt.Frame()
+			before := slices.Clone(tt.Image().Pix)
+			tt.Advance(600 * time.Millisecond)
+			if pending := tt.FramePending(); pending != tc.moves {
+				t.Errorf("frame pending %v, want %v", pending, tc.moves)
+			}
+			if changed := !bytes.Equal(before, tt.Image().Pix); changed != tc.moves {
+				t.Errorf("the halo changed %v, want %v", changed, tc.moves)
+			}
+		})
+	}
+	if b := breath(time.Unix(0, 0)); b != 0 {
+		t.Errorf("breath at the epoch %v, want 0", b)
+	}
+	if b := breath(time.Unix(0, int64(breathPeriod))); b != 1 {
+		t.Errorf("breath a period on %v, want 1", b)
+	}
+}
+
+// TestAttentionPops: a pane's dot of attention pops as the pane comes to
+// ask for it, once, and not when it is built anew later; with Off it does
+// not pop.
+func TestAttentionPops(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			prefs = settings{Animation: tc.style}
+			p := &Pane{ID: 7}
+			show := true
+			var dot ui.Rect
+			tt := ui.NewTester(func(c *ui.Context) {
+				k := colorsOf(c)
+				ui.Row(c).Padding(10).Children(func() {
+					if show && p.attention {
+						attentionDot(c, k, p).Label("dot")
+					}
+				})
+			}, 40, 40)
+			tt.Frame()
+			p.askAttention()
+			tt.Frame()
+			tt.Advance(140 * time.Millisecond)
+			tt.Frame()
+			dot, _ = tt.Find("dot")
+			if popped := dot.W > 8; popped != tc.moves {
+				t.Errorf("popped %v (%v), want %v", popped, dot, tc.moves)
+			}
+			tt.Advance(time.Second)
+			tt.Frame()
+			if dot, _ = tt.Find("dot"); dot.W != 7 {
+				t.Errorf("at rest the dot is %v", dot)
+			}
+			// Hidden and shown again, it does not pop.
+			show = false
+			tt.Frame()
+			show = true
+			tt.Frame()
+			tt.Advance(140 * time.Millisecond)
+			tt.Frame()
+			if dot, _ = tt.Find("dot"); dot.W != 7 {
+				t.Errorf("built anew, the dot popped: %v", dot)
+			}
+		})
 	}
 }

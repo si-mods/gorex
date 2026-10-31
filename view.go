@@ -39,6 +39,11 @@ func (a *App) view(c *ui.Context) {
 		a.titleBar(c, k)
 		a.panes(c, k, gap, gap)
 	})
+	// The layer over the window is there in every frame, so that what
+	// shows in it, as the palette and the error banner, comes in and goes
+	// out by its Transition: in a layer new to the frame it would appear at
+	// once, and with the layer gone its copy could not go out.
+	ui.Overlay(c, func() {})
 	if a.err != "" || a.errMsg != nil {
 		a.errorBanner(c, k)
 	}
@@ -260,13 +265,15 @@ type share struct{ x, y, w, h float32 }
 
 var whole = share{0, 0, 1, 1}
 
-// The keys of a tab's room, and of the cells and dividers in it.
+// The keys of a tab's room, and of the cells and dividers in it. A pane's
+// cell keeps its key as the pane floats and docks, so that the one element
+// moves from its old box to its new one rather than popping out of one and
+// into the other.
 type (
 	roomKey      int
 	cellKey      int
 	dividerKey   int
 	addressKey   int
-	floatKey     int
 	floatGripKey int
 )
 
@@ -368,11 +375,12 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	if f.Zoom {
 		s = whole
 	}
-	cell := ui.Column(c.Key(floatKey(p.ID))).Absolute().
+	cell := ui.Column(c.Key(cellKey(p.ID))).Absolute().
 		LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
 		Radius(cardR).Background(cardFace(c, k, t.Focus == p, true))
 	// Under the pointer it moves as it does; else, as it springs back, is
-	// nudged by the keys or zooms, it eases there.
+	// nudged by the keys, zooms, or floats from its place among the tiled
+	// panes, it eases there.
 	if anim := motion(c); anim != nil && !f.dragging {
 		if anim == &snappy {
 			anim = &springBack
@@ -625,11 +633,21 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	return card
 }
 
+// findOpen is how the find bar opens: unfolding down from nothing over
+// the terminal, which takes its new size at once, as without it. It has
+// no Exit: a bar going out goes under its siblings, and the terminal takes
+// its room at once, over it.
+var findOpen = &ui.Motion{Collapse: true, Opacity: 0}
+
 // findBar is the find bar of pane p: its query, how the search goes, and
 // the buttons that step through the matches and close it.
 func (a *App) findBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 	row := ui.Row(c.Key("find")).Height(30).Shrink(0).Padding(0, 8).Gap(6).AlignItems(ui.Center).
 		Background(k.hover).Radius(7)
+	// Not in a pane that moves, as fadeColors tells.
+	if anim := motion(c); anim != nil && fadeColors {
+		row.Transition(ui.ElementTransition{Animation: anim, Colors: true, Enter: findOpen})
+	}
 	row.Children(func() {
 		in := textField(c.Key("query"), k, &a.findText, fieldCompact).Placeholder(locales.FindPlaceholder()).
 			Grow(1).MinWidth(0)
@@ -800,12 +818,17 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 }
 
 // paneActions draws a pane's buttons, while show: split right, split
-// down, move to a tab of its own, zoom and close.
+// down, move to a tab of its own, zoom and close. With a style of
+// animation they fade in as they show; they hide at once, leaving nothing
+// to click.
 func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) {
-	ui.Row(c).Gap(1).AlignItems(ui.Center).Opacity(map[bool]float32{true: 1, false: 0}[show]).Children(func() {
-		if !show {
-			return
-		}
+	row := ui.Row(c).Gap(1).AlignItems(ui.Center)
+	if !show {
+		row.Jump("shown", 0)
+		return
+	}
+	row.Opacity(min(animated(c, row, "shown", 1), 1))
+	row.Children(func() {
 		// The symbols keep the sizes they have beside each other, as Rex
 		// draws them, rather than each filling its button.
 		naturalGlyphs = true
@@ -1060,8 +1083,43 @@ func (a *App) activityBadge(c *ui.Context, k *colors, p *Pane) {
 	case statusRunning:
 		activityDot(c, k.busy, 6)
 	case statusAttention:
-		ui.Box(c).Size(7, 7).Radius(4).Background(k.attention).Margin(0, 0, 0, 2).Tooltip(locales.PaneNeedsAttention())
+		attentionDot(c, k, p).Margin(0, 0, 0, 2).Tooltip(locales.PaneNeedsAttention())
 	}
+}
+
+// attentionPop is how a dot of attention pops as a pane comes to ask for
+// it: up to half again its size and back.
+var attentionPop = []ui.Keyframe{
+	{At: 0, Value: 1},
+	{At: 140 * time.Millisecond, Value: 1.5, Ease: ui.EaseOut},
+	{At: 350 * time.Millisecond, Value: 1, Ease: ui.EaseInOut},
+}
+
+// attentionDot is the dot of a pane, or of a tab of panes, asking for
+// attention. With a style of animation it pops as one of them comes to
+// ask, when a frame first shows that, and only then: a dot built anew
+// later, as after a tab's close button hid it, shows still.
+func attentionDot(c *ui.Context, k *colors, panes ...*Pane) ui.Element {
+	dot := ui.Box(c).Size(7, 7).Radius(4).Background(k.attention)
+	now := c.Now()
+	var at time.Time
+	var run uint64
+	for _, p := range panes {
+		if !p.attention {
+			continue
+		}
+		if p.popped != p.asked {
+			p.popped, p.popAt = p.asked, now
+		}
+		if p.popAt.After(at) {
+			at, run = p.popAt, uint64(p.ID)<<32|p.asked
+		}
+	}
+	if motion(c) != nil && !at.IsZero() && now.Sub(at) < attentionPop[len(attentionPop)-1].At {
+		s := dot.Keyframes("pop", attentionPop, ui.KeyframeOptions{Run: run})
+		dot.Scale(s, s)
+	}
+	return dot
 }
 
 // needsUser tells a record of a program that waits for the user, or whose
@@ -1114,17 +1172,39 @@ func statusTip(s *rex.ProgramStatus) string {
 }
 
 // activityDot is the dot of a program printing: a solid dot in a soft
-// halo. It does not animate, as drawing frames all along would cost more
-// than it tells.
+// halo. With a style of animation the halo breathes, growing and fading
+// in and out, all the dots in step; without, it stands still.
 func activityDot(c *ui.Context, col ui.Color, size float32) ui.Element {
 	e := ui.Box(c).Size(size+6, size+6).Margin(0, 0, 0, 1).Tooltip(locales.PanePrinting())
+	breathes := motion(c) != nil
 	e.Draw(func(p *ui.Painter, r ui.Rect) {
 		cx, cy := r.X+r.W/2, r.Y+r.H/2
-		halo := size/2 + 2.5
-		p.Fill(ui.Rect{X: cx - halo, Y: cy - halo, W: 2 * halo, H: 2 * halo}, col.Alpha(0.22), halo)
+		halo, alpha := size/2+2.5, float32(0.22)
+		if breathes {
+			k := breath(p.Now())
+			halo, alpha = size/2+1.5+1.5*k, 0.12+0.2*k
+			// Only the dot paints again, without building the view, and
+			// at a rate the slow change looks as smooth at.
+			p.AnimationFrameRate(30)
+		}
+		p.Fill(ui.Rect{X: cx - halo, Y: cy - halo, W: 2 * halo, H: 2 * halo}, col.Alpha(alpha), halo)
 		p.Fill(ui.Rect{X: cx - size/2, Y: cy - size/2, W: size, H: size}, col, size/2)
 	})
 	return e
+}
+
+// breathPeriod is how long a halo takes to grow, and as long to shrink.
+const breathPeriod = 1200 * time.Millisecond
+
+// breath is how far a breathing halo is grown at now, from 0 to 1: in and
+// out by breathPeriod, easing at both ends, from one epoch for all.
+func breath(now time.Time) float32 {
+	t := now.UnixNano() % int64(2*breathPeriod)
+	f := float32(t) / float32(breathPeriod)
+	if f > 1 {
+		f = 2 - f
+	}
+	return ui.EaseInOut(f)
 }
 
 // errText is what the error banner says.
@@ -1135,10 +1215,18 @@ func (a *App) errText() string {
 	return a.err
 }
 
+// bannerMotion is where the error banner comes up from as it shows, and
+// goes as it is dismissed.
+var bannerMotion = &ui.Motion{Y: 12, Opacity: 0}
+
 // errorBanner shows what went wrong with the server.
 func (a *App) errorBanner(c *ui.Context, k *colors) {
 	ui.Overlay(c, func() {
-		ui.Row(c).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough().Children(func() {
+		banner := ui.Row(c.Key("error-banner")).Absolute().Bottom(18).Left(0).Right(0).Justify(ui.Center).PassThrough()
+		if anim := motion(c); anim != nil {
+			banner.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: bannerMotion, Exit: bannerMotion})
+		}
+		banner.Children(func() {
 			ui.Row(c).Gap(10).Padding(8, 10, 8, 14).Radius(12).Background(k.panel).Border(1, k.panelBorder).
 				Shadow(0, 8, 24, 0, k.shadowFocused).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(8, 8).Radius(4).Background(k.danger)

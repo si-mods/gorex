@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/i18n"
@@ -1014,6 +1015,7 @@ func (a *App) quitAndEnd() {
 
 func (a *App) openPalette() {
 	a.paletteOpen, a.paletteQuery, a.paletteSel, a.paletteSessions = true, "", 0, false
+	a.paletteFresh = true
 	a.focusReq = nil // the palette takes the focus
 }
 
@@ -1193,6 +1195,16 @@ func fuzzy(s, q string) bool {
 	return i == len(want)
 }
 
+// Where the palette comes in from: its panel, its first paletteStagger
+// rows, and the dimmed window behind it.
+var (
+	paletteFrom    = ui.Pose{Y: -6, Scale: 0.96, Fade: 1}
+	paletteRowFrom = ui.Pose{Y: -4, Fade: 1}
+	paletteFade    = &ui.Motion{Opacity: 0}
+)
+
+const paletteStagger = 8
+
 // palette draws the command palette, over the window.
 func (a *App) palette(c *ui.Context, k *colors) {
 	if !a.paletteOpen {
@@ -1204,10 +1216,29 @@ func (a *App) palette(c *ui.Context, k *colors) {
 	// reveal scrolls the selection into view in the frame the keys or the
 	// query move it, and only then, so that the wheel scrolls the list.
 	reveal := false
+	// Opened, the panel comes in from a little above and smaller, and the
+	// first rows after it, one after another; the dimmed window behind
+	// fades in, and all of it out as it closes. The rows come in on the
+	// palette's opening only, not as the query changes them.
+	anim := motion(c)
+	fresh := a.paletteFresh
+	a.paletteFresh = false
+	if fresh && anim != nil {
+		// The frame after this one starts them moving.
+		c.AnimationFrame()
+	}
 	ui.DialogBase(c, &a.paletteOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop).Justify(ui.Start).Padding(78, 0, 0, 0)
 		panel.Width(560).MaxHeight(440).Radius(16).Background(k.panel).Border(1, k.panelBorder).
 			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
+		if anim != nil {
+			backdrop.Transition(ui.ElementTransition{Duration: 150 * time.Millisecond, Colors: true, Enter: paletteFade, Exit: paletteFade})
+			pose := ui.Pose{}
+			if fresh {
+				pose = paletteFrom
+			}
+			panel.TransformOrigin(0.5, 0).AnimatePose(pose, *anim)
+		}
 		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(k.panelBorder).Children(func() {
 			glyphIcon(c, "search", 17, k.textFaint)
 			placeholder := locales.PalettePlaceholder()
@@ -1236,6 +1267,13 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			}
 			for i, it := range items {
 				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+				if anim != nil && i < paletteStagger {
+					pose := ui.Pose{}
+					if fresh {
+						pose = paletteRowFrom
+					}
+					row.AnimatePose(pose, ui.Animation{Spring: anim.Spring, Delay: time.Duration(i) * 15 * time.Millisecond})
+				}
 				if i == a.paletteSel {
 					row.Background(k.panelSel)
 					if reveal {
