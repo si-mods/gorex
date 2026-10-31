@@ -259,7 +259,7 @@ func blockCandidates(ts *targetSearch) []candidate {
 			if several {
 				where += " of " + s.label
 			}
-			for _, b := range w.blocks {
+			for _, b := range w.allBlocks() {
 				out = append(out, candidate{
 					kind: "block",
 					target: targetInfo{

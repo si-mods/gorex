@@ -888,7 +888,7 @@ func (w *mWindow) focusedBlock() *mBlock {
 		return nil
 	}
 	if w.focused != "" {
-		for _, b := range w.blocks {
+		for _, b := range w.allBlocks() {
 			if b.id == w.focused {
 				return b
 			}
