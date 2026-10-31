@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.4
 
 - A session another machine's client opens on this machine gets a tab in
   this window too, last among this machine's tabs and without the focus,
