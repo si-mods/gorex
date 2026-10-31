@@ -52,6 +52,7 @@ func (g *Gateway) handleData(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), g.helloWait)
 	typ, msg, err := ws.Read(ctx)
 	cancel()
+	tracef("data handshake: subprotocols %v, %d bytes, first %x, err %v", offered, len(msg), msg[:min(len(msg), 1)], err)
 	if err != nil {
 		ws.CloseNow()
 		return
@@ -73,6 +74,7 @@ func (g *Gateway) handleData(w http.ResponseWriter, r *http.Request) {
 // rejectData answers a handshake with a REJECT, then closes the
 // connection with the reason the doc gives.
 func rejectData(ws *websocket.Conn, reason byte) {
+	tracef("data reject 0x%02x", reason)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	ws.Write(ctx, websocket.MessageBinary, []byte{0x82, reason})
@@ -120,6 +122,7 @@ func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
 // welcomeThenClose sends a WELCOME, which a handshake that ends after it
 // still owes the client, then closes with a status.
 func (g *Gateway) welcomeThenClose(ws *websocket.Conn, status websocket.StatusCode, reason string) {
+	tracef("data close after welcome %d %q", status, reason)
 	nonce := nonzeroNonce()
 	token := randomBytes(16)
 	if !writeData(ws, welcomeBytes(token, nonce)) {

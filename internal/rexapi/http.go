@@ -10,6 +10,9 @@ import (
 // Handler returns the gateway's HTTP endpoints: the control and data
 // connections, the help document, and this API's own pages.
 func (g *Gateway) Handler() http.Handler {
+	if relay := relayHandler(); relay != nil {
+		return relay
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/control", g.handleControl)
 	mux.HandleFunc("/api/data", g.handleData)
@@ -17,15 +20,16 @@ func (g *Gateway) Handler() http.Handler {
 	mux.HandleFunc("/llms.txt", serveLLMs)
 	mux.HandleFunc("/llms.html", serveLLMsHTML)
 	if g.opt.Access == nil {
-		return mux
+		return traceRequests(mux)
 	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return traceRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := g.opt.Access.Allow(r); err != nil {
+			tracef("refused %s: %v", r.URL.Path, err)
 			writeRefusal(w, err.Error())
 			return
 		}
 		mux.ServeHTTP(w, r)
-	})
+	}))
 }
 
 // writeRefusal answers a request the access rules refuse, as Rex does.

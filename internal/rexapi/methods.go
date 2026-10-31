@@ -3,6 +3,7 @@ package rexapi
 import (
 	"encoding/json"
 	"os"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -251,15 +252,31 @@ func (c *control) hearsOf(sid string) bool {
 type versionResult struct {
 	RexVersion     string  `json:"rex_version"`
 	Platform       string  `json:"platform"`
-	Commit         string  `json:"commit,omitempty"`
+	Commit         string  `json:"commit"`
 	BuiltAt        *string `json:"built_at,omitempty"`
 	Dirty          bool    `json:"dirty"`
 	APIRevision    int     `json:"api_revision,omitempty"`
 	APIMinRevision int     `json:"api_min_revision,omitempty"`
 }
 
+// methodServerVersion reports GoRex's build as Rex reports its own: Rex's
+// apps expect commit and built_at, so they are always there, from the
+// build's VCS stamp when it has one.
 func methodServerVersion(*control, args) (any, *apiError) {
-	return versionResult{RexVersion: "0.0.0-gorex", Platform: platform(), Dirty: false, APIRevision: apiRevision}, nil
+	commit, builtAt, dirty := "", "1970-01-01T00:00:00Z", false
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		for _, kv := range bi.Settings {
+			switch kv.Key {
+			case "vcs.revision":
+				commit = kv.Value
+			case "vcs.time":
+				builtAt = kv.Value
+			case "vcs.modified":
+				dirty = kv.Value == "true"
+			}
+		}
+	}
+	return versionResult{RexVersion: "0.0.0-gorex", Platform: platform(), Commit: commit, BuiltAt: &builtAt, Dirty: dirty, APIRevision: apiRevision}, nil
 }
 
 // statusResult is server.status's result.

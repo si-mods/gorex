@@ -1,6 +1,7 @@
 package rexapi
 
 import (
+	_ "embed"
 	"encoding/json"
 )
 
@@ -86,31 +87,26 @@ func blockCreatorAPI() map[string]any {
 	return map[string]any{"methods": methods, "events": blockEventSchemas}
 }
 
-// methodBlockCreatorList lists the creators GoRex can make blocks with.
+// terminalCreatorJSON is the terminal creator exactly as a Rex server
+// lists it (rex 0.0.1793289060), with its host_id left empty: Rex's apps
+// decode block_creator.list strictly, and close the connection on a
+// creator that leaves out what theirs has.
+//
+//go:embed testdata/rex-terminal-creator.json
+var terminalCreatorJSON []byte
+
+// methodBlockCreatorList lists the creators GoRex can make blocks with:
+// Rex's terminal, as Rex describes it. A method or option it lists that
+// GoRex lacks fails when it is called, with the code doc.go gives.
 func methodBlockCreatorList(c *control, a args) (any, *apiError) {
 	if aerr := a.only(); aerr != nil {
 		return nil, aerr
 	}
-	creator := map[string]any{
-		"name":        creatorName,
-		"title":       "Terminal",
-		"description": "A terminal that runs a shell, in a pane of the GoRex window.",
-		"host_id":     c.g.host,
-		"flavors": []any{map[string]any{
-			"name":        "shell",
-			"flavor":      flavorShell,
-			"title":       "Shell",
-			"description": "A terminal that runs the user's shell.",
-			"options_schema": map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"cwd": map[string]any{"type": "string"},
-				},
-				"additionalProperties": false,
-			},
-		}},
-		"api": blockCreatorAPI(),
+	var creator map[string]any
+	if err := json.Unmarshal(terminalCreatorJSON, &creator); err != nil {
+		return nil, errInternal("terminal creator: %v", err)
 	}
+	creator["host_id"] = c.g.host
 	return map[string]any{"creators": []any{creator}}, nil
 }
 

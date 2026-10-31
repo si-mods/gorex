@@ -102,8 +102,10 @@ func methodClientSetLabel(c *control, a args) (any, *apiError) {
 
 // keymapResult is client.keymap's result.
 type keymapResult struct {
-	Bindings    []any              `json:"bindings"`
-	Diagnostics []any              `json:"diagnostics"`
+	Bindings    []keymapBinding    `json:"bindings"`
+	Diagnostics []keymapDiagnostic `json:"diagnostics"`
+	Actions     []keymapAction     `json:"actions,omitempty"`
+	Modes       []keymapMode       `json:"modes,omitempty"`
 	Config      keymapConfigResult `json:"config"`
 }
 
@@ -116,16 +118,45 @@ type keymapConfigResult struct {
 	Hash       string `json:"hash"`
 }
 
-// methodClientKeymap returns what each key does for the client. GoRex has
-// no Lua bindings and no configuration file, so the keymap is empty.
+// methodClientKeymap returns what each key does for the client: the
+// layers it sends, its defaults and its overrides, stacked. GoRex has no
+// configuration file and runs no Lua scripts, so nothing sits between
+// them. The client's actions are accepted and not checked, as Rex skips
+// checks for actions the client performs itself.
 func methodClientKeymap(c *control, a args) (any, *apiError) {
-	if aerr := a.only(); aerr != nil {
+	if _, ok := a["client_id"]; ok {
+		return nil, errBadRequest("the keymap is always the calling client's")
+	}
+	if _, ok := a["bindings"]; ok {
+		return nil, errBadRequest("send bindings as a layer in defaults")
+	}
+	if aerr := a.only("actions", "server_actions", "defaults", "overrides"); aerr != nil {
+		return nil, aerr
+	}
+	var in struct {
+		Actions       []json.RawMessage `json:"actions"`
+		ServerActions *string           `json:"server_actions"`
+		Defaults      []keymapLayer     `json:"defaults"`
+		Overrides     []keymapLayer     `json:"overrides"`
+	}
+	raw, _ := json.Marshal(a)
+	if err := json.Unmarshal(raw, &in); err != nil {
+		return nil, errBadRequest("client.keymap request: %v", err)
+	}
+	bindings, modes, diags, aerr := resolveKeymap(in.Defaults, in.Overrides)
+	if aerr != nil {
 		return nil, aerr
 	}
 	generation, hash, instance := c.g.keymapSettings()
+	var actions []keymapAction
+	if in.ServerActions == nil || (*in.ServerActions != "none" && *in.ServerActions != "configured") {
+		actions = terminalActions()
+	}
 	return keymapResult{
-		Bindings:    []any{},
-		Diagnostics: []any{},
+		Bindings:    bindings,
+		Diagnostics: diags,
+		Actions:     actions,
+		Modes:       modes,
 		Config: keymapConfigResult{
 			Path: c.g.configPath(), Exists: false,
 			Generation: generation, InstanceID: instance, Hash: hash,

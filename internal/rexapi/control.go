@@ -55,15 +55,18 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		Subprotocols:       []string{controlProtocol},
 		InsecureSkipVerify: true,
-		// Rex offers permessage-deflate without context takeover, and
-		// leaves a hello under 512 bytes uncompressed.
-		CompressionMode:      websocket.CompressionNoContextTakeover,
-		CompressionThreshold: maxHello,
+		// No permessage-deflate: Rex's iPhone app offers it, but drops
+		// the connection on a large compressed message as this library
+		// writes it (seen with block_creator.list, ~50 KB), while it
+		// reads the same messages uncompressed.
+		CompressionMode: websocket.CompressionDisabled,
 	})
 	if err != nil {
+		tracef("control accept: %v", err)
 		return
 	}
 	if ws.Subprotocol() != controlProtocol {
+		tracef("control: subprotocol %q", ws.Subprotocol())
 		ws.Close(1002, "protocol error")
 		return
 	}
@@ -77,6 +80,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	}
 	hello, failure := readHello(ws, g.helloWait)
 	if failure != "" {
+		tracef("control hello failed: %s", failure)
 		// A hello that never came is dropped without a close frame, which
 		// clients see as an abnormal closure.
 		if failure == "timeout" {
@@ -96,6 +100,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	}
 	rev := negotiate(hello.apiRevision, hello.apiMinRevision)
 	if rev < 0 {
+		tracef("control: no common revision for %d..%d", hello.apiMinRevision, hello.apiRevision)
 		ws.Close(1008, "no common API revision: this server speaks revision 0 through 7; update the client")
 		return
 	}
@@ -168,6 +173,11 @@ func readHello(ws *websocket.Conn, wait time.Duration) (*hello, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	typ, data, err := ws.Read(ctx)
+	if err == nil {
+		tracef("control <- %s", clip(data))
+	} else {
+		tracef("control hello read: %v", err)
+	}
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, "timeout"
@@ -294,6 +304,7 @@ func (c *control) writeSync(v any) error {
 	if err != nil {
 		return err
 	}
+	tracef("control -> %s", clip(data))
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return c.ws.Write(ctx, websocket.MessageText, data)
@@ -304,6 +315,7 @@ func (c *control) writeLoop() {
 	for {
 		select {
 		case m := <-c.out:
+			tracef("control -> %s", clip(m.data))
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			err := c.ws.Write(ctx, websocket.MessageText, m.data)
 			cancel()
@@ -330,11 +342,13 @@ func (c *control) readLoop() {
 	for {
 		typ, data, err := c.ws.Read(context.Background())
 		if err != nil {
+			tracef("control %s ended: %v", c.rec.id, err)
 			// A close frame from the client ends its client at once; any
 			// other end keeps it for a reconnect.
 			clean = websocket.CloseStatus(err) >= 0 && !c.ours.Load()
 			return
 		}
+		tracef("control <- %s", clip(data))
 		if typ == websocket.MessageBinary {
 			c.closeWith(1003, "protocol error")
 			return
@@ -597,6 +611,7 @@ func (c *control) keepalive() {
 // closeWith closes the connection with a status and a reason, once.
 func (c *control) closeWith(status websocket.StatusCode, reason string) {
 	c.closeOnce.Do(func() {
+		tracef("control close %d %q", status, reason)
 		c.ours.Store(true)
 		close(c.done)
 		c.ws.Close(status, reason)
