@@ -108,7 +108,9 @@ func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
 		g.welcomeThenClose(ws, 1008, "data provider unavailable")
 	case ws.Subprotocol() != terminalProtocol:
 		g.welcomeThenClose(ws, 1008, "data provider unavailable")
-	case g.opt.Snapshotter == nil:
+	case !g.hello.Can(rex.CapabilitySnapshotGhostty):
+		// A stream starts with a Ghostty snapshot, which the server has
+		// not taken before this capability.
 		g.welcomeThenClose(ws, 1008, "data provider unavailable")
 	default:
 		g.startStream(ws, t)
@@ -166,7 +168,7 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		case <-time.After(5 * time.Second):
 		}
 	}
-	conn, err := g.opt.Client.AttachConn(rex.Attach{SID: t.sid, Framed: true})
+	conn, err := g.opt.Client.AttachConn(rex.Attach{SID: t.sid, Snapshot: rex.SnapshotGhostty, Framed: true})
 	if err != nil {
 		rejectData(ws, rejectUnavailable)
 		return
@@ -178,21 +180,22 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 	if err == nil {
 		err = json.Unmarshal(line, &head)
 	}
-	var vt []byte
+	if err == nil && head.Format != rex.SnapshotGhostty {
+		// The server fell back to escape sequences, which a Rex stream
+		// cannot start with: it carries a binary snapshot.
+		conn.Close()
+		g.welcomeThenClose(ws, 1008, "data provider unavailable")
+		return
+	}
+	var snap []byte
 	if err == nil {
-		vt = make([]byte, max(head.Snapshot, 0))
-		_, err = io.ReadFull(br, vt)
+		snap = make([]byte, max(head.Snapshot, 0))
+		_, err = io.ReadFull(br, snap)
 	}
 	conn.SetReadDeadline(time.Time{})
 	if err != nil {
 		conn.Close()
 		rejectData(ws, rejectUnavailable)
-		return
-	}
-	snap, err := g.opt.Snapshotter.Snapshot(vt, head.Cols, head.Rows)
-	if err != nil {
-		conn.Close()
-		rejectData(ws, rejectFailed)
 		return
 	}
 	nonce := nonzeroNonce()

@@ -94,7 +94,7 @@ func callChecked(t *testing.T, c *testConn, method string, payload any) map[stri
 // schema of the help document, and that bad arguments get the errors the
 // doc names.
 func TestContract(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.setLayout(standardLayout())
 	c := f.dialControl()
 	w := c.hello(apiRevision)
@@ -220,7 +220,7 @@ func TestContract(t *testing.T) {
 
 // TestContractTargets checks target.resolve's documented steps.
 func TestContractTargets(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.setLayout(standardLayout())
 	c := f.dialControl()
 	c.hello(apiRevision)
@@ -284,7 +284,7 @@ func blockOf(t *testing.T, c *testConn, session string) string {
 
 // TestHelpDocument checks the endpoints' documents.
 func TestHelpDocument(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	for _, path := range []string{"/api/help", "/llms.txt", "/llms.html"} {
 		resp, err := httpGet(f.srv.URL + path)
 		if err != nil {

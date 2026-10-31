@@ -40,21 +40,6 @@ var (
 	resumeBytes = 8 << 20
 )
 
-// Snapshotter turns a GoRex terminal snapshot into the binary snapshot a
-// Rex terminal stream starts with, in Ghostty's snapshot format.
-type Snapshotter interface {
-	// Snapshot returns the GHOSTSNP bytes for the screen that vt
-	// describes, of cols by rows cells.
-	Snapshot(vt []byte, cols, rows int) ([]byte, error)
-}
-
-// SnapshotterFunc is a Snapshotter made from a function.
-type SnapshotterFunc func(vt []byte, cols, rows int) ([]byte, error)
-
-func (f SnapshotterFunc) Snapshot(vt []byte, cols, rows int) ([]byte, error) {
-	return f(vt, cols, rows)
-}
-
 // Access decides whether a request may use the API. Rex answers requests
 // it refuses with status 403 and a JSON body, such as {"error": "..."}.
 type Access interface {
@@ -73,10 +58,6 @@ type Options struct {
 	// Client is the connection to the GoRex server, which the gateway
 	// keeps for as long as it serves. Required.
 	Client *rex.Client
-	// Snapshotter makes the snapshot a data connection starts with. A
-	// gateway without one refuses data connections with status 1008,
-	// data provider unavailable.
-	Snapshotter Snapshotter
 	// Access decides who may use the API. A nil Access allows everyone.
 	Access Access
 }

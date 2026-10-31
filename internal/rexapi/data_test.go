@@ -16,20 +16,6 @@ import (
 	"gorex/internal/rex"
 )
 
-// fakeSnapshot is a Snapshotter that records what it was given and returns
-// a recognizable GHOSTSNP.
-type fakeSnapshot struct {
-	vt   []byte
-	cols int
-	rows int
-}
-
-func (f *fakeSnapshot) Snapshot(vt []byte, cols, rows int) ([]byte, error) {
-	f.vt, f.cols, f.rows = append([]byte(nil), vt...), cols, rows
-	out := []byte("GHOSTSNP\x00\x01fake snapshot")
-	return out, nil
-}
-
 // dataSession creates a GoRex session with a command and a layout that
 // shows it, and returns the session ID, block ID and GoRex SID.
 func dataSession(t *testing.T, f *fixture, command []string) (string, string, string) {
@@ -145,11 +131,10 @@ func expectReject(t *testing.T, ws *websocket.Conn, reason byte, status websocke
 	}
 }
 
-// TestDataConnection checks a terminal stream: its snapshot, the resize
-// message after it, and the program's output.
+// TestDataConnection checks a terminal stream: the Ghostty snapshot the
+// server takes, the resize message after it, and the program's output.
 func TestDataConnection(t *testing.T) {
-	snap := &fakeSnapshot{}
-	f := startFixture(t, snap)
+	f := startFixture(t)
 	session, block, sid := inputSession(t, f)
 
 	c := f.dialControl()
@@ -168,28 +153,26 @@ func TestDataConnection(t *testing.T) {
 	}
 	got := readUntil(t, ws, "rexapi-data")
 	if !bytes.HasPrefix(got, []byte("GHOSTSNP")) {
-		t.Errorf("stream starts %q", got[:min(len(got), 16)])
+		t.Fatalf("stream starts %q", got[:min(len(got), 16)])
+	}
+	if v := binary.LittleEndian.Uint16(got[8:10]); v != 1 {
+		t.Errorf("snapshot version %d, want 1", v)
 	}
 	resize := "\x1b_rex1;" + strconv.FormatUint(nonce, 10) + ";"
-	if !bytes.Contains(got, []byte(resize)) || !bytes.Contains(got, []byte(`"type":"resize"`)) {
-		t.Errorf("no resize after the snapshot: %q", got)
-	}
-	if snap.cols != 80 || snap.rows != 24 {
-		t.Errorf("snapshot size %dx%d", snap.cols, snap.rows)
-	}
-	if len(snap.vt) == 0 {
-		t.Error("the snapshotter got no VT bytes")
+	if !bytes.Contains(got, []byte(`"type":"resize"`)) {
+		t.Errorf("no resize message: %q", got)
 	}
 	// The resize comes after the snapshot and before the output.
-	if i, j := bytes.Index(got, []byte("GHOSTSNP")), bytes.Index(got, []byte(resize)); i < 0 || j < i {
-		t.Errorf("resize at %d, snapshot at %d", j, i)
+	i, j, k := bytes.Index(got, []byte("GHOSTSNP")), bytes.Index(got, []byte(resize)), bytes.Index(got, []byte("rexapi-data"))
+	if i < 0 || j < i || k < j {
+		t.Errorf("output at %d, resize at %d, snapshot at %d", k, j, i)
 	}
 }
 
 // TestDataChildExited checks that a program that ends sends child_exited
 // and leaves the stream open.
 func TestDataChildExited(t *testing.T) {
-	f := startFixture(t, &fakeSnapshot{})
+	f := startFixture(t)
 	session, block, _ := dataSession(t, f, exitCommand("byebye"))
 	c := f.dialControl()
 	c.hello(apiRevision)
@@ -210,7 +193,7 @@ func TestDataChildExited(t *testing.T) {
 
 // TestDataHandshake checks the REJECTs of a data connection.
 func TestDataHandshake(t *testing.T) {
-	f := startFixture(t, &fakeSnapshot{})
+	f := startFixture(t)
 	session, block, _ := dataSession(t, f, shellCommand("handshake"))
 	c := f.dialControl()
 	c.hello(apiRevision)
@@ -239,10 +222,11 @@ func TestDataHandshake(t *testing.T) {
 	})
 }
 
-// TestDataNoSnapshotter checks that a gateway without a Snapshotter says
-// the data provider is unavailable.
-func TestDataNoSnapshotter(t *testing.T) {
-	f := startFixture(t, nil)
+// TestDataNoGhostty checks that a gateway over a server that does not take
+// Ghostty snapshots says the data provider is unavailable.
+func TestDataNoGhostty(t *testing.T) {
+	f := startFixture(t)
+	f.g.hello.Capabilities = nil
 	session, block, _ := dataSession(t, f, shellCommand("nodata"))
 	c := f.dialControl()
 	c.hello(apiRevision)
@@ -269,7 +253,7 @@ func TestDataNoSnapshotter(t *testing.T) {
 // TestDataResume checks a resume with the exact count and one with too
 // high a count.
 func TestDataResume(t *testing.T) {
-	f := startFixture(t, &fakeSnapshot{})
+	f := startFixture(t)
 	session, block, sid := inputSession(t, f)
 	c := f.dialControl()
 	c.hello(apiRevision)
