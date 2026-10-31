@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -280,16 +281,21 @@ func TestCheckKey(t *testing.T) {
 func TestConcurrentJoins(t *testing.T) {
 	joinURL, networkKey, _ := testNetwork(t)
 	var ok atomic.Int32
-	done := make(chan struct{})
+	var wg sync.WaitGroup
 	for i := range 4 {
+		wg.Add(1)
 		go func(i int) {
+			defer wg.Done()
 			c, err := coordproto.NewClient(joinURL, networkKey)
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			for range 10 {
-				if _, _, err := c.Join(context.Background(), fmt.Sprintf("m%d", i), testNodeKey(), testAddr()); err != nil {
+			for n := range 10 {
+				// Each round is a new machine: a fresh key needs a name
+				// no one holds, or the coordinator refuses the join.
+				name := fmt.Sprintf("m%d-%d", i, n)
+				if _, _, err := c.Join(context.Background(), name, testNodeKey(), testAddr()); err != nil {
 					t.Error(err)
 					return
 				}
@@ -299,12 +305,9 @@ func TestConcurrentJoins(t *testing.T) {
 				}
 				ok.Add(1)
 			}
-			done <- struct{}{}
 		}(i)
 	}
-	for range 4 {
-		<-done
-	}
+	wg.Wait()
 	if ok.Load() != 40 {
 		t.Fatalf("only %d of 40 rounds came through", ok.Load())
 	}
