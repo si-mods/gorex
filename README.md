@@ -402,6 +402,16 @@ already open. The layout stays the desktop's: rootshell shows it, and
 changes it through the GoRex window. Setup on macOS and Windows hosts, the steps in
 rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 
+## Rex's iPhone app
+
+Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
+server: `GoRex rexapi` serves Rex's API (revision 7) from the server the
+app runs, on the tailnet through a Tailscale device of its own. A space is
+a Rex session, a tab a window, a pane a block, and a floating pane a
+floating layer; terminals stream as Ghostty snapshots, as Rex's do. Setup,
+pairing, what differs from a Rex server, and troubleshooting:
+[docs/rex-api.md](docs/rex-api.md).
+
 ## Develop and build
 
 GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.7.2, whose CLI

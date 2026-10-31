@@ -102,9 +102,13 @@ type testConn struct {
 // dialControl opens a control connection.
 func (f *fixture) dialControl() *testConn {
 	f.t.Helper()
-	ws := f.dial("/api/control", controlProtocol)
+	return newTestConn(f.t, f.dial("/api/control", controlProtocol))
+}
+
+// newTestConn reads the messages of a control connection a test opened.
+func newTestConn(t *testing.T, ws *websocket.Conn) *testConn {
 	ws.SetReadLimit(maxMessage + maxMessage)
-	c := &testConn{t: f.t, ws: ws, msgs: make(chan map[string]any, 256)}
+	c := &testConn{t: t, ws: ws, msgs: make(chan map[string]any, 256)}
 	go func() {
 		defer close(c.msgs)
 		for {

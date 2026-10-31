@@ -144,6 +144,11 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"server.status":                 methodServerStatus,
 	"server.whoami":                 methodServerWhoami,
 	"server.config_reload":          methodServerConfigReload,
+	"server.tailscale.enable":       methodTailscaleEnable,
+	"server.tailscale.disable":      methodTailscaleDisable,
+	"server.tailscale.login":        methodTailscaleLogin,
+	"server.tailscale.logout":       methodTailscaleLogout,
+	"server.tailscale.rename":       methodTailscaleRename,
 	"help.all":                      methodHelpAll,
 	"hosts.list":                    methodHostsList,
 	"hosts.put":                     methodHostsPut,
@@ -291,7 +296,17 @@ func (g *Gateway) status() statusResult {
 		SessionCount: len(m.sessions),
 		APIRevision:  apiRevision,
 		Config:       configResult{Generation: generation, Hash: hash},
+		Tailscale:    g.tailscaleStatus(),
 	}
+}
+
+// tailscaleStatus is server.status's tailscale, nil when the gateway
+// cannot run built-in Tailscale.
+func (g *Gateway) tailscaleStatus() any {
+	if g.tailnet == nil {
+		return nil
+	}
+	return g.tailnet.status()
 }
 
 func methodServerStatus(c *control, _ args) (any, *apiError) {
