@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Browser panes. New Browser Tab (the command palette or the Shell
+  menu) opens a tab whose pane shows a web page in the system's web
+  view, with an address field, back, forward and reload in its header;
+  Split with Browser puts one beside the focused pane. The page's title
+  names its tab, and the layout keeps its URL, so it opens again when
+  GoRex starts. A browser pane belongs to this machine: a remote tab
+  takes none, and Find searches terminals alone. Only http and https
+  pages open, and a page is untrusted: it reaches no GoRex code, asks
+  for no permission, opens no window and downloads nothing.
+
 - Importing a Rex session. `gorex rex-import` reads a Rex server's sessions
   and makes them in GoRex: a space per session, a tab per window, a pane per
   block, each named as Rex names it. Each pane runs `gorex rex-mirror`, which
@@ -24,6 +34,34 @@
   new pane runs, and whether a new tab takes focus; `space.create` makes a
   space, and `space.close` closes one, ending the sessions of a space no
   window shows. Closing a space, or a tab, ends its programs as before.
+- Paste into a program that runs on Windows reaches it again. A ConPTY
+  drops the OSC that a terminal's paste event is, so a program that reads
+  the clipboard itself, as agents do, never learned of a paste, and
+  nothing came of it. A paste now goes to the session's server instead,
+  which writes it as text, bracketed when the program asked for bracketed
+  pastes; `gorex paste` does the same from the command line, and a pane of
+  a remote client pastes the same in a Windows session. An image alone has
+  no text to write, so an image still reaches a Windows program only as a
+  file it opens.
+- Pane animations. Panes now spring into place when they move, split or
+  zoom, and new or closing panes pop in and out. A new Animation style
+  setting in Settings › Appearance lets you choose Snappy, Natural or Off,
+  and it also controls how the sidebar shows and hides. While Reduce
+  Motion is on, animations stay off.
+- A session server restarted on purpose brings its sessions back, as one
+  that crashed already does: the server after it starts the sessions of the
+  layout again, with the same ids and at the directories their panes were
+  in, so the windows attach to them. `gorex server restart` does it without
+  starting a server itself: the open app reconnects and starts the next one,
+  else the next `gorex` command or launch does; run inside a pane, the
+  command says so, then its shell ends with the server. The app on Windows
+  restarts a server of an older build this way, since Windows servers cannot
+  upgrade in place, after asking whether to, since each pane comes back as a
+  new shell; a newer build is compared first, so that two copies of the app
+  do not restart each other. What the old sessions printed is lost. Quit and
+  End All still ends them, and so does the idle exit. A server too old to
+  know a restart is not restarted: quit it once with Quit and End All, or
+  kill it.
 
 ## 0.3.2
 

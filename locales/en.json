@@ -12,6 +12,42 @@
   "@cmdSplitDown": {
     "description": "Command: split the focused pane into two, one above the other."
   },
+  "cmdNewBrowserTab": "New Browser Tab",
+  "@cmdNewBrowserTab": {
+    "description": "Command: open a tab with a browser pane, where a web page shows beside the terminals."
+  },
+  "cmdSplitBrowser": "Split with Browser",
+  "@cmdSplitBrowser": {
+    "description": "Command: split the focused pane into two, the new one a browser."
+  },
+  "browserName": "Browser",
+  "@browserName": {
+    "description": "The name of a browser pane that shows no page of its own and has no name."
+  },
+  "browserAddress": "Enter a URL",
+  "@browserAddress": {
+    "description": "Placeholder of a browser pane's address field."
+  },
+  "browserBack": "Back",
+  "@browserBack": {
+    "description": "Button of a browser pane: the page before this one."
+  },
+  "browserForward": "Forward",
+  "@browserForward": {
+    "description": "Button of a browser pane: the page after this one."
+  },
+  "browserReload": "Reload",
+  "@browserReload": {
+    "description": "Button of a browser pane: load the page again."
+  },
+  "browserUnavailable": "The page could not be shown.",
+  "@browserUnavailable": {
+    "description": "What a browser pane says when its web view could not be made."
+  },
+  "browserOnlyWeb": "Browser panes show web pages: enter an http or https URL.",
+  "@browserOnlyWeb": {
+    "description": "The error banner's text when a browser pane is given a URL it cannot open, such as file: or javascript:."
+  },
   "cmdClosePane": "Close Pane",
   "@cmdClosePane": {
     "description": "Command: close the focused pane."

@@ -41,8 +41,10 @@ type Node struct {
 	Name string `json:"name,omitempty"`
 	// Host is the id of the remote host of the session, "" for this
 	// machine's.
-	Host     string  `json:"host,omitempty"`
-	Dir      string  `json:"dir,omitempty"`
+	Host string `json:"host,omitempty"`
+	Dir  string `json:"dir,omitempty"`
+	// URL is the page of a browser pane, which has no session.
+	URL      string  `json:"url,omitempty"`
 	Cols     int     `json:"cols,omitempty"`
 	Rows     int     `json:"rows,omitempty"`
 	Vertical bool    `json:"vertical,omitempty"`

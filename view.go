@@ -213,6 +213,7 @@ func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize
 // them over the cells: all of them in one parent, so that the panes move
 // to their new places as the layout changes, and open and close there.
 func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
+	a.contentFocus, a.pageHover = false, nil
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	bounds := room.Bounds()
 	tr := a.paneTransition(c, t)
@@ -235,6 +236,15 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 			a.divider(c, k, sp.n, sp.s, bounds, tr)
 		}
 	})
+	// A press on a page gives the page the keyboard, and MyGo clears the
+	// content's focus for it: with no pane's content focused and the
+	// pointer over a page, the page has the keyboard, and its pane takes
+	// the tab's focus, so that the shortcuts act on it.
+	if a.focusReq == nil && !a.contentFocus && a.pageHover != nil && t.Focus != a.pageHover &&
+		!a.paletteOpen && !a.wsConfirm && !a.wsOpen && !a.hostOpen && a.paneRenaming == nil && a.renaming == nil && a.findPane == nil {
+		t.setFocus(a.pageHover)
+		a.changed()
+	}
 }
 
 // share is a part of a tab's room, as fractions of its width and height.
@@ -247,6 +257,7 @@ type (
 	roomKey    int
 	cellKey    int
 	dividerKey int
+	addressKey int
 )
 
 // shares gives each pane of the tree of n, and each split, its share of s.
@@ -386,7 +397,9 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	hovered := card.Hovered()
 	card.Children(func() {
 		top := float32(0)
-		if paneHeaders() {
+		// A browser pane keeps its header: the address field is the only
+		// way to its pages.
+		if paneHeaders() || p.browser != nil {
 			a.paneHeader(c, k, t, p, focused, hovered)
 		} else {
 			top = 6
@@ -398,6 +411,10 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 			body.Clip()
 		}
 		body.Children(func() {
+			if p.browser != nil {
+				a.browserBody(c, k, t, p)
+				return
+			}
 			if a.findPane == p {
 				a.findBar(c, k, p)
 			}
@@ -426,6 +443,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 				a.changed()
 			}
 			if tv.Focused() {
+				a.contentFocus = true
 				p.attention = false
 				if a.focusedWin {
 					p.see()
@@ -503,49 +521,14 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 		a.paneRename(c, k)
 		return
 	}
+	if p.browser != nil {
+		a.browserHeader(c, k, t, p, focused, hovered)
+		return
+	}
 	name, detail := p.label()
 	prog := p.program()
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).MinWidth(0)
-	h.ContextMenu(func(m *ui.Menu) {
-		if m.Item(locales.PaneRename()).Chosen() {
-			a.startPaneRename(p)
-		}
-		if p.Name != "" && m.Item(locales.PaneResetName()).Chosen() {
-			p.Name = ""
-			a.changed()
-		}
-		if len(a.tabs) > 1 {
-			m.Separator()
-			m.Submenu(locales.PaneMoveTab(), func(sm *ui.Menu) {
-				for _, o := range append([]*Tab(nil), a.tabs...) {
-					if o == p.Tab || o.Root != nil && o.host() != p.host {
-						continue
-					}
-					o := o
-					name, _ := o.label()
-					if sm.Item(name).Chosen() {
-						a.movePaneToTab(p, o)
-					}
-				}
-			})
-		}
-		if a.st != nil && len(a.st.apps) > 1 {
-			m.Submenu(locales.PaneMoveWindow(), func(sm *ui.Menu) {
-				for _, o := range append([]*App(nil), a.st.apps...) {
-					if o == a || o.ws == nil {
-						continue
-					}
-					if t := o.tab(); t != nil && t.Root != nil && t.host() != p.host {
-						continue
-					}
-					o := o
-					if sm.Item(o.ws.Name).Chosen() {
-						a.movePaneToWindow(p, o)
-					}
-				}
-			})
-		}
-	})
+	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	h.Drag(p)
 	if h.DoubleClicked() {
 		t.setFocus(p)
@@ -564,35 +547,178 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 			}
 			a.activityBadge(c, k, p)
 		})
-		show := focused || hovered
-		ui.Row(c).Gap(1).AlignItems(ui.Center).Opacity(map[bool]float32{true: 1, false: 0}[show]).Children(func() {
-			if !show {
-				return
-			}
-			if iconButton(c, k, "columns-2", locales.CmdSplitRight(), 26, 16).Tooltip(tip(locales.CmdSplitRight(), &cmdSplitRight)).Clicked() {
-				t.setFocus(p)
-				a.split(false)
-			}
-			if iconButton(c, k, "rows-2", locales.CmdSplitDown(), 26, 16).Tooltip(tip(locales.CmdSplitDown(), &cmdSplitDown)).Clicked() {
-				t.setFocus(p)
-				a.split(true)
-			}
-			if len(t.panes()) > 1 && iconButton(c, k, "square-arrow-out-up-right", locales.CmdPaneToNewTab(), 26, 16).Tooltip(tip(locales.CmdPaneToNewTab(), &cmdPaneToNewTab)).Clicked() {
-				a.later(c, func() { a.movePaneToNewTab(p, "") })
-			}
-			zoom, label := "maximize-2", locales.PaneZoom()
-			if t.Zoom == p {
-				zoom, label = "minimize-2", locales.PaneUnzoom()
-			}
-			if iconButton(c, k, zoom, locales.PaneZoom(), 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
-				t.setFocus(p)
-				a.toggleZoom()
-			}
-			if iconButton(c, k, "x", locales.CmdClosePane(), 26, 17).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
-				a.later(c, func() { a.closePane(p) })
+		a.paneActions(c, k, t, p, focused || hovered)
+	})
+}
+
+// paneMenu is the menu of a pane's header: renaming it, and moving it to
+// another tab or window.
+func (a *App) paneMenu(m *ui.Menu, p *Pane) {
+	if m.Item(locales.PaneRename()).Chosen() {
+		a.startPaneRename(p)
+	}
+	if p.Name != "" && m.Item(locales.PaneResetName()).Chosen() {
+		p.Name = ""
+		a.changed()
+	}
+	if len(a.tabs) > 1 {
+		m.Separator()
+		m.Submenu(locales.PaneMoveTab(), func(sm *ui.Menu) {
+			for _, o := range append([]*Tab(nil), a.tabs...) {
+				if o == p.Tab || o.Root != nil && o.host() != p.host {
+					continue
+				}
+				o := o
+				name, _ := o.label()
+				if sm.Item(name).Chosen() {
+					a.movePaneToTab(p, o)
+				}
 			}
 		})
+	}
+	if a.st != nil && len(a.st.apps) > 1 {
+		m.Submenu(locales.PaneMoveWindow(), func(sm *ui.Menu) {
+			for _, o := range append([]*App(nil), a.st.apps...) {
+				if o == a || o.ws == nil {
+					continue
+				}
+				if t := o.tab(); t != nil && t.Root != nil && t.host() != p.host {
+					continue
+				}
+				o := o
+				if sm.Item(o.ws.Name).Chosen() {
+					a.movePaneToWindow(p, o)
+				}
+			}
+		})
+	}
+}
+
+// paneActions draws a pane's buttons, while show: split right, split
+// down, move to a tab of its own, zoom and close.
+func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) {
+	ui.Row(c).Gap(1).AlignItems(ui.Center).Opacity(map[bool]float32{true: 1, false: 0}[show]).Children(func() {
+		if !show {
+			return
+		}
+		if iconButton(c, k, "columns-2", locales.CmdSplitRight(), 26, 16).Tooltip(tip(locales.CmdSplitRight(), &cmdSplitRight)).Clicked() {
+			t.setFocus(p)
+			a.split(false)
+		}
+		if iconButton(c, k, "rows-2", locales.CmdSplitDown(), 26, 16).Tooltip(tip(locales.CmdSplitDown(), &cmdSplitDown)).Clicked() {
+			t.setFocus(p)
+			a.split(true)
+		}
+		if len(t.panes()) > 1 && iconButton(c, k, "square-arrow-out-up-right", locales.CmdPaneToNewTab(), 26, 16).Tooltip(tip(locales.CmdPaneToNewTab(), &cmdPaneToNewTab)).Clicked() {
+			a.later(c, func() { a.movePaneToNewTab(p, "") })
+		}
+		zoom, label := "maximize-2", locales.PaneZoom()
+		if t.Zoom == p {
+			zoom, label = "minimize-2", locales.PaneUnzoom()
+		}
+		if iconButton(c, k, zoom, locales.PaneZoom(), 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
+			t.setFocus(p)
+			a.toggleZoom()
+		}
+		if iconButton(c, k, "x", locales.CmdClosePane(), 26, 17).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
+			a.later(c, func() { a.closePane(p) })
+		}
 	})
+}
+
+// browserHeader draws a browser pane's header: the page's history, its
+// address field, and the buttons of every pane.
+func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hovered bool) {
+	b := p.browser
+	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 8).Gap(4).AlignItems(ui.Center).MinWidth(0)
+	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
+	h.Drag(p)
+	if h.DoubleClicked() {
+		t.setFocus(p)
+		a.toggleZoom()
+	}
+	if h.Clicked() {
+		t.setFocus(p)
+		a.focusReq = p
+	}
+	h.Children(func() {
+		ui.Icon(c, icon(browserProgram.Glyph)).Size(14.5, 14.5).TextColor(k.text)
+		var page *mygo.Page
+		if b.web != nil {
+			page = b.web.Page()
+		}
+		nav := func(glyph, label string, enabled bool, run func()) {
+			e := iconButton(c, k, glyph, label, 24, 15)
+			if !enabled {
+				e.Opacity(0.35)
+			}
+			if e.Clicked() && enabled {
+				run()
+			}
+		}
+		back, forward := false, false
+		if page != nil {
+			back, forward = page.CanGoBack(), page.CanGoForward()
+		}
+		nav("arrow-left", locales.BrowserBack(), back, func() { page.GoBack() })
+		nav("arrow-right", locales.BrowserForward(), forward, func() { page.GoForward() })
+		nav("rotate-ccw", locales.BrowserReload(), page != nil, func() { page.Reload() })
+		in := textField(c.Key(addressKey(p.ID)), k, &b.addr, fieldCompact).
+			Placeholder(locales.BrowserAddress()).Label(locales.BrowserAddress()).Grow(1).MinWidth(0)
+		if a.focusReq == p && a.tab() == t {
+			// The field of a new pane, which has its URL to type; else the
+			// page.
+			if b.auto {
+				in.Focus()
+			} else if b.web != nil {
+				b.web.Focus()
+			}
+			a.focusReq = nil
+		}
+		if in.Focused() {
+			a.contentFocus = true
+			b.auto = false
+			if t.Focus != p {
+				t.setFocus(p)
+				a.changed()
+			}
+		}
+		b.editing = in.Focused()
+		if in.Submitted() {
+			a.navigateBrowser(p, b.addr)
+			b.auto = false
+			a.focusReq = p
+		}
+		a.paneActions(c, k, t, p, focused || hovered)
+	})
+}
+
+// browserBody shows a browser pane's page, or a word about why it shows
+// none.
+func (a *App) browserBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
+	b := p.browser
+	if b.web == nil {
+		ui.Text(c, locales.BrowserUnavailable()).FontSize(13).TextColor(k.textFaint).Padding(12)
+		return
+	}
+	wv := ui.WebView(c, b.web).Grow(1).MinHeight(0)
+	if a.focusReq == p && a.tab() == t {
+		b.web.Focus()
+		a.focusReq = nil
+	}
+	if wv.Focused() {
+		a.contentFocus = true
+	}
+	if wv.Hovered() {
+		a.pageHover = p
+	}
+	if wv.Focused() && t.Focus != p {
+		t.setFocus(p)
+		a.changed()
+	}
+	if wv.Focused() {
+		p.attention = false
+	}
 }
 
 // paneRename draws the label field over a pane's header, in the row the

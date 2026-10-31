@@ -814,6 +814,7 @@ func (a *App) detach() {
 			if p.term != nil {
 				p.term.Close()
 			}
+			p.browser.destroy()
 		}
 	}
 	a.ws, a.tabs, a.active, a.focusReq, a.renaming = nil, nil, 0, nil, nil
@@ -917,6 +918,7 @@ func (a *App) closeWorkspace() {
 			if p.term != nil {
 				p.term.Close()
 			}
+			p.browser.destroy()
 			a.killOn(p.host, p.SID)
 		}
 	}
@@ -963,6 +965,7 @@ func (a *App) moveTabToNewWindow(t *Tab) {
 		if p.term != nil {
 			p.term.Close()
 		}
+		p.browser.destroy()
 	}
 	a.removeTab(t)
 	w := st.addWorkspace()

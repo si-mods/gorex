@@ -51,6 +51,9 @@ type program struct {
 var (
 	shellTile = program{Glyph: "square-terminal", TileGlyph: "terminal", TileBg: ui.Hex("#1d2420"), TileFg: ui.Hex("#5fd38d"), Shell: true}
 
+	// browserProgram is the tile of a browser pane, which runs no program.
+	browserProgram = program{Name: "Browser", Glyph: "globe", TileGlyph: "globe", TileBg: ui.Hex("#2f6fed"), TileFg: ui.Hex("#ffffff")}
+
 	programs = map[string]program{
 		"codex":     {Name: "Codex", Glyph: "brand:openai", TileBg: ui.Hex("#f7f7f7"), TileFg: ui.Hex("#1a1a1a"), TileBorder: true},
 		"claude":    {Name: "Claude Code", Glyph: "brand:claude", TileBg: ui.Hex("#d97757"), TileFg: ui.Hex("#ffffff")},

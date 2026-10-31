@@ -315,6 +315,60 @@ func TestFilterLayout(t *testing.T) {
 	}
 }
 
+func TestFilterLayoutFocusAcrossBrowser(t *testing.T) {
+	// A tab of a terminal, a browser pane and a terminal, focused on the
+	// last: the browser leaves the peer's layout, and the focus follows
+	// the terminal to its new place.
+	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"a":{"sid":"a"},"b":{"a":{"url":"https://example.com/"},"b":{"sid":"b"}}},"focus":2}]}],"windows":["w"]}`)
+	s := &Server{
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "p"}},
+		rem:      remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "p"}}}},
+	}
+	got, err := s.filterLayout(raw, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st layout.Store
+	if err := json.Unmarshal(got, &st); err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 1 {
+		t.Fatalf("filtered %s", got)
+	}
+	tab := st.Sessions[0].Tabs[0]
+	if tab.Root == nil || tab.Root.A == nil || tab.Root.A.SID != "a" || tab.Root.B == nil || tab.Root.B.SID != "b" {
+		t.Fatalf("panes %+v", tab.Root)
+	}
+	if tab.Focus != 1 {
+		t.Errorf("focus %d, want the second terminal", tab.Focus)
+	}
+	if bytes.Contains(got, []byte("example.com")) {
+		t.Fatalf("leaked the browser pane: %s", got)
+	}
+}
+
+func TestFilterLayoutFocusPastUnavailable(t *testing.T) {
+	// The focused terminal is after one the peer may not use: its place
+	// counts the sessions left, as the peer's own count does.
+	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"a":{"sid":"a"},"b":{"a":{"sid":"b"},"b":{"sid":"c"}}},"focus":2}]}],"windows":["w"]}`)
+	s := &Server{
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "other"}, "c": {id: "c", owner: "p"}},
+		rem:      remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "p"}}}},
+	}
+	got, err := s.filterLayout(raw, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st layout.Store
+	if err := json.Unmarshal(got, &st); err != nil {
+		t.Fatal(err)
+	}
+	tab := st.Sessions[0].Tabs[0]
+	if tab.Focus != 1 {
+		t.Errorf("focus %d, want the second of the peer's sessions", tab.Focus)
+	}
+}
+
 func TestFilterLayoutMirror(t *testing.T) {
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"sid":"a"}}]}],"windows":["w"],"tabs":[{"root":{"sid":"a"}},{"root":{"sid":"b"}}]}`)
 	s := &Server{

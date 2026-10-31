@@ -59,9 +59,10 @@ Run `go test -count=1 ./...` and `go vet ./...`, plus `GOOS=windows go build ./.
 
 `debug.go`: when `GOREX_DEBUG=<dir>` is set, the app reads `<dir>/do` every 150 ms and runs each line, then deletes the file. **Read `debug.go` for the current verbs**; on `main` these are:
 
-- `shot [name.png]`: capture the main window's content (`Window.CapturePage`, no traffic lights). `sshot name.png` captures the settings window.
+- `shot [name.png]`: capture the main window's content (`Window.CapturePage`, no traffic lights). `sshot name.png` captures the settings window. A browser pane's page is a native web view under the content, which `shot` leaves as a hole: `webshot name.png` captures the focused browser pane's page itself.
 - `appearance light|dark|system`, `size W H`, `sleep 300ms`, `type text`, where `\r` is Enter and `\e` is Esc.
 - `tab N`, `focus N`, `name TEXT`, `zoom`, `close`.
+- `url URL`: load the URL in the focused browser pane, as its address field does.
 - Any command title with spaces replaced by `-`, case-insensitive: `new-tab`, `split-right`, `settings`.
 - `section NAME` opens a settings section. `remote …` drives the Remote page.
 - `feat/vertical-tabs` adds `tabs above|left|right` and `headers show|hide`.
