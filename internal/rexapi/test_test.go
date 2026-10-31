@@ -41,7 +41,9 @@ func startFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := rex.ConnectSocket(rex.SocketPath())
+	// The gateway holds the blocks' size locks through its connection, so
+	// the server must keep it alive.
+	c, err := rex.ConnectSocketKeepalive(rex.SocketPath())
 	if err != nil {
 		desk.Shutdown()
 		t.Fatal(err)
@@ -93,6 +95,8 @@ type testConn struct {
 	ws      *websocket.Conn
 	msgs    chan map[string]any
 	pending []map[string]any
+	// welcome is the server's answer to the connection's hello.
+	welcome map[string]any
 }
 
 // dialControl opens a control connection.
@@ -173,7 +177,8 @@ func (c *testConn) hello(revision int) map[string]any {
 		"type": "hello", "api_revision": revision,
 		"client": map[string]any{"kind": "app", "platform": "ios", "name": "Rex.app", "version": "1.6.0"},
 	})
-	return c.nextType("welcome")
+	c.welcome = c.nextType("welcome")
+	return c.welcome
 }
 
 // request sends a request and returns its response.

@@ -45,7 +45,7 @@ func TestViewMapsLayout(t *testing.T) {
 		}},
 	}}}
 	mp := newMapper()
-	m, err := mp.build(layoutOfStore(t, store), "host:test")
+	m, err := mp.build(layoutOfStore(t, store), "host:test", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestIDsStay(t *testing.T) {
 	}}}
 	mp := newMapper()
 	raw := layoutOfStore(t, store)
-	m1, err := mp.build(raw, "h")
+	m1, err := mp.build(raw, "h", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestIDsStay(t *testing.T) {
 
 	// Reordered: the same tabs, now the other way around.
 	store.Sessions[0].Tabs[0], store.Sessions[0].Tabs[1] = store.Sessions[0].Tabs[1], store.Sessions[0].Tabs[0]
-	m2, err := mp.build(layoutOfStore(t, store), "h")
+	m2, err := mp.build(layoutOfStore(t, store), "h", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestIDsStay(t *testing.T) {
 	// Splitting the focused pane of the first tab keeps its window ID.
 	store.Sessions[0].Tabs[0], store.Sessions[0].Tabs[1] = store.Sessions[0].Tabs[1], store.Sessions[0].Tabs[0]
 	store.Sessions[0].Tabs[1].Root = split(pane("c"), pane("d"), true, 0.5)
-	m3, err := mp.build(layoutOfStore(t, store), "h")
+	m3, err := mp.build(layoutOfStore(t, store), "h", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestIDsStay(t *testing.T) {
 	}
 	// The session ID is the same for another mapper.
 	other := newMapper()
-	m4, err := other.build(raw, "h")
+	m4, err := other.build(raw, "h", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,16 +187,16 @@ func TestSessionRevision(t *testing.T) {
 	}}}
 	mp := newMapper()
 	raw := layoutOfStore(t, store)
-	m1, _ := mp.build(raw, "h")
+	m1, _ := mp.build(raw, "h", nil)
 	if m1.sessions[0].revision != 1 {
 		t.Fatalf("revision %d", m1.sessions[0].revision)
 	}
-	m2, _ := mp.build(raw, "h")
+	m2, _ := mp.build(raw, "h", nil)
 	if m2.sessions[0].revision != 1 {
 		t.Errorf("an unchanged view moved to revision %d", m2.sessions[0].revision)
 	}
 	store.Sessions[0].Tabs[0].Name = "renamed"
-	m3, _ := mp.build(layoutOfStore(t, store), "h")
+	m3, _ := mp.build(layoutOfStore(t, store), "h", nil)
 	if m3.sessions[0].revision != 2 {
 		t.Errorf("a changed view stayed at revision %d", m3.sessions[0].revision)
 	}
@@ -217,7 +217,7 @@ func TestUnavailablePanes(t *testing.T) {
 			{Name: "mixed", Root: split(pane("l"), &layout.Node{SID: "f", Unavailable: true}, false, 0.5)},
 		}},
 	}}}
-	m, err := newMapper().build(layoutOfStore(t, store), "h")
+	m, err := newMapper().build(layoutOfStore(t, store), "h", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,7 +237,7 @@ func TestUnavailablePanes(t *testing.T) {
 // TestEmptyWorkspace checks the label fallback and the empty windows.
 func TestEmptyWorkspace(t *testing.T) {
 	store := layout.Store{Sessions: []layout.Workspace{{ID: "w", Name: ""}}}
-	m, _ := newMapper().build(layoutOfStore(t, store), "h")
+	m, _ := newMapper().build(layoutOfStore(t, store), "h", nil)
 	s := m.sessions[0]
 	if s.label == "" || !strings.HasPrefix(s.label, "Session ") {
 		t.Errorf("label %q", s.label)
