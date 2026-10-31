@@ -394,6 +394,15 @@ type SessionInfo struct {
 	Status   *ProgramStatus  `json:"status,omitempty"`
 }
 
+// ProgramName is the program's name for showing: what it reported through
+// the status protocol, else the name of its executable.
+func (s SessionInfo) ProgramName() string {
+	if s.Status != nil && s.Status.App != "" {
+		return s.Status.App
+	}
+	return s.Program
+}
+
 // ProgramStatus is a record of the program status protocol (OSC 7501).
 type ProgramStatus struct {
 	// ID is a path of segments, "" for the root record.

@@ -395,12 +395,7 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 	})
 }
 
-func paneProgram(p *Pane) program {
-	if p.info.Idle || p.info.Program == "" {
-		return programOf(p.info.Shell)
-	}
-	return programOf(p.info.Program)
-}
+func paneProgram(p *Pane) program { return p.program() }
 
 // drawTile draws a program's tile: a rounded card of its color with a
 // light rim, and its glyph when it is in front.

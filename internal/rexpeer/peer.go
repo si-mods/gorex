@@ -320,6 +320,53 @@ func (c *Client) Pwd(ctx context.Context, session, block string) string {
 	return out.Pwd
 }
 
+// Status is what a block's program reported it is doing.
+type Status struct {
+	State    string `json:"state"`
+	Kind     string `json:"kind,omitempty"`
+	App      string `json:"app,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Msg      string `json:"msg,omitempty"`
+	Progress int    `json:"progress"`
+}
+
+// ProgramStatus returns the status a block's program reported, its root
+// record, and whether it reported one at all.
+func (c *Client) ProgramStatus(ctx context.Context, session, block string) (Status, bool) {
+	var out struct {
+		Records []struct {
+			ID           string `json:"id"`
+			State        string `json:"state"`
+			Kind         string `json:"kind"`
+			App          string `json:"app"`
+			EffectiveApp string `json:"effective_app"`
+			Title        string `json:"title"`
+			Msg          string `json:"msg"`
+			Progress     *int   `json:"progress"`
+		} `json:"records"`
+	}
+	if err := c.Call(ctx, "com.superlogical.terminal.program_status", map[string]any{
+		"session_id": session, "block_id": block, "args": map[string]any{},
+	}, &out); err != nil || len(out.Records) == 0 {
+		return Status{}, false
+	}
+	r := out.Records[0]
+	for _, o := range out.Records {
+		if o.ID == "" {
+			r = o
+			break
+		}
+	}
+	st := Status{State: r.State, Kind: r.Kind, App: r.EffectiveApp, Title: r.Title, Msg: r.Msg, Progress: -1}
+	if st.App == "" {
+		st.App = r.App
+	}
+	if r.Progress != nil {
+		st.Progress = *r.Progress
+	}
+	return st, true
+}
+
 // Title returns the title a block's program set, "" when it set none.
 func (c *Client) Title(ctx context.Context, session, block string) string {
 	var out struct {

@@ -6,6 +6,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/plugins/terminal"
+
+	"gorex/internal/rex"
 )
 
 // blockMethod serves a terminal block's methods, under block.method and
@@ -55,6 +57,28 @@ func (c *control) blockMethod(sessionID, blockID, name string, raw json.RawMessa
 		return map[string]any{"title": c.info(b).Title}, nil
 	case "pwd":
 		return map[string]any{"pwd": c.info(b).Dir}, nil
+	case "program_status":
+		out := []map[string]any{}
+		for _, st := range c.statuses(b) {
+			r := map[string]any{
+				"id": st.ID, "state": st.State, "app": st.App,
+				"effective_app": st.App, "updated_at": st.Updated,
+			}
+			if st.Kind != "" {
+				r["kind"] = st.Kind
+			}
+			if st.Title != "" {
+				r["title"] = st.Title
+			}
+			if st.Msg != "" {
+				r["msg"] = st.Msg
+			}
+			if st.Progress >= 0 {
+				r["progress"] = st.Progress
+			}
+			out = append(out, r)
+		}
+		return map[string]any{"records": out}, nil
 	case "process":
 		info := c.info(b)
 		out := map[string]any{"child": nil, "last_exit": nil}
@@ -87,6 +111,17 @@ func (c *control) info(b *mBlock) rexInfo {
 		return rexInfo{Cols: in.Cols, Rows: in.Rows, Title: in.Title, Dir: in.Dir, Program: in.Program, Exited: in.Exited, ExitCode: in.ExitCode}
 	}
 	return rexInfo{}
+}
+
+// statuses returns what a block's program reported it is doing.
+func (c *control) statuses(b *mBlock) []rex.ProgramStatus {
+	c.s.mu.Lock()
+	defer c.s.mu.Unlock()
+	in, ok := c.s.infos[b.SID]
+	if !ok {
+		return nil
+	}
+	return in.Statuses
 }
 
 // rexInfo is the part of a session's record the block methods report.

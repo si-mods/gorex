@@ -122,6 +122,24 @@ func TestPeerListsAndMirrors(t *testing.T) {
 	if err := peer.Resize(ctx, sid, leftID, 100, 30); err != nil {
 		t.Fatalf("resize: %v", err)
 	}
+	// A program's title and status come back as Rex reports them.
+	// The shell prints the title and the status, as a program does.
+	command := "printf '\\033]2;build the site\\033\\\\\\033]7501;state=working:app=omp:progress=40\\033\\\\'\n"
+	if err := c.Input(a.ID, []byte(command)); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		st, ok := peer.ProgramStatus(ctx, sid, leftID)
+		title := peer.Title(ctx, sid, leftID)
+		if ok && st.State == "working" && st.App == "omp" && st.Progress == 40 && title == "build the site" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("status %+v (%v), title %q", st, ok, title)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	if dir := peer.Pwd(ctx, sid, leftID); dir == "" {
 		t.Log("the shell reported no directory")
 	}

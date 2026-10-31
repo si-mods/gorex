@@ -94,3 +94,26 @@ func TestPaneLabelTitle(t *testing.T) {
 		t.Errorf("a mirror without a title is named %q", name)
 	}
 }
+
+// TestPaneProgram checks how a pane's program shows: what it reported,
+// else a shell's own tile, else the executable.
+func TestPaneProgram(t *testing.T) {
+	shell := &Pane{info: rex.SessionInfo{Program: "zsh", Shell: "zsh", Idle: true}}
+	if got := shell.program().Name; got != "zsh" {
+		t.Errorf("a shell shows as %q", got)
+	}
+	mirror := &Pane{info: rex.SessionInfo{
+		Program: "rex-mirror", Shell: "rex-mirror", Idle: true,
+		Status: &rex.ProgramStatus{State: "working", App: "omp"},
+	}}
+	if got := mirror.program().Name; got != "omp" {
+		t.Errorf("a mirror of omp shows as %q", got)
+	}
+	claude := &Pane{info: rex.SessionInfo{
+		Program: "rex-mirror", Shell: "rex-mirror", Idle: true,
+		Status: &rex.ProgramStatus{State: "done", App: "claude-code"},
+	}}
+	if got := claude.program().Name; got != "Claude Code" {
+		t.Errorf("a mirror of Claude Code shows as %q", got)
+	}
+}

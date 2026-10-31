@@ -1079,6 +1079,19 @@ func (a *App) zoom(p *Pane, on bool) {
 	a.changed()
 }
 
+// program is how a pane's program shows: what it reported through the
+// status protocol when it did, else a shell at its prompt, else the
+// executable.
+func (p *Pane) program() program {
+	if p.info.Status != nil && p.info.Status.App != "" {
+		return programOf(p.info.ProgramName())
+	}
+	if p.info.Idle || p.info.Program == "" {
+		return programOf(p.info.Shell)
+	}
+	return programOf(p.info.ProgramName())
+}
+
 // label returns how a pane names itself: its program, or the title the
 // program set, and the directory it works in.
 func (p *Pane) label() (name, detail string) {
@@ -1086,7 +1099,7 @@ func (p *Pane) label() (name, detail string) {
 	if p.Name != "" {
 		return p.Name, shortDir(in.Dir)
 	}
-	prog := programOf(in.Program)
+	prog := programOf(in.ProgramName())
 	dir := shortDir(in.Dir)
 	if in.Program == "" {
 		if in.Shell == "" {
@@ -1461,7 +1474,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 				}
 				statuses := len(was.Statuses) > 0 || len(in.Statuses) > 0
 				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second && !statuses {
-					prog := programOf(was.Program)
+					prog := programOf(was.ProgramName())
 					n := mygo.NewNotification(mygo.NotificationOptions{
 						Title: locales.NotifyFinished(prog.Name),
 						Body:  locales.NotifyIn(shortDir(in.Dir)),

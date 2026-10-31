@@ -107,6 +107,8 @@ func init() {
 	programs["vi"] = programs["vim"]
 	programs["less"] = program{Name: "Pager", Glyph: "file-code", TileBg: ui.Hex("#475569"), TileFg: ui.Hex("#ffffff")}
 	programs["man"] = programs["less"]
+	// Claude Code reports itself as claude-code in the status protocol.
+	programs["claude-code"] = programs["claude"]
 }
 
 // programOf returns how a program shows, by the name of its process.

@@ -1030,7 +1030,7 @@ func init() {
 			return c.blockMethod(p.SessionID, p.BlockID, p.Method, p.Args)
 		},
 	})
-	for _, name := range []string{"format", "write", "size", "title", "pwd", "process", "reset", "clear", "resize"} {
+	for _, name := range []string{"format", "write", "size", "title", "pwd", "process", "program_status", "reset", "clear", "resize"} {
 		n := name
 		register(&method{
 			name: CreatorName + "." + n,
@@ -1454,15 +1454,16 @@ func clientInfo(st *clientState) map[string]any {
 func terminalAPI() map[string]any {
 	methods := map[string]any{}
 	descs := map[string]string{
-		"format":  "Read the terminal's screen as text, HTML, or escape sequences.",
-		"write":   "Write text to the terminal's program as if typed.",
-		"size":    "Get the terminal's size.",
-		"title":   "Get the terminal's title.",
-		"pwd":     "Get the working directory of the program in the foreground.",
-		"process": "Get the program running in the foreground.",
-		"reset":   "Reset the terminal.",
-		"clear":   "Clear the terminal's screen.",
-		"resize":  "Give the terminal a size.",
+		"format":         "Read the terminal's screen as text, HTML, or escape sequences.",
+		"write":          "Write text to the terminal's program as if typed.",
+		"size":           "Get the terminal's size.",
+		"title":          "Get the terminal's title.",
+		"pwd":            "Get the working directory of the program in the foreground.",
+		"process":        "Get the program running in the foreground.",
+		"program_status": "Get what the program running in the foreground reported it is doing.",
+		"reset":          "Reset the terminal.",
+		"clear":          "Clear the terminal's screen.",
+		"resize":         "Give the terminal a size.",
 	}
 	for name, desc := range descs {
 		methods[name] = map[string]any{
@@ -1495,6 +1496,8 @@ func blockMethodDesc(name string) string {
 		return "Get the working directory of the program in the foreground."
 	case "process":
 		return "Get the program running in the foreground."
+	case "program_status":
+		return "Get what the program running in the foreground reported it is doing."
 	case "reset":
 		return "Reset the terminal."
 	case "clear":

@@ -28,7 +28,13 @@
   leaves it alone. A mirrored pane takes the title its Rex block's program
   set, and its tab follows it: Rex's own window labels, `Window 2b63efe2`,
   are not copied. A pane whose program is not a shell names itself by that
-  title even while it is the program its session started with. The Rex server is `$REX_SERVER` unless `--rex` names
+  title even while it is the program its session started with. A mirrored
+  pane shows the tile of the program its Rex block runs, and its status: the
+  mirror reports both with the status protocol (OSC 7501, `app=`), so a
+  block Claude Code works in shows Claude's tile and its working or finished
+  state, as it does in Rex. A pane's program now shows by what it reported
+  through that protocol when it did, else a shell at its prompt, else the
+  executable. The Rex server is `$REX_SERVER` unless `--rex` names
   one, and the GoRex window makes the spaces, tabs and panes.
 
 - Paste into a program that runs on Windows reaches it again. A ConPTY
