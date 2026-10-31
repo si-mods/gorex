@@ -344,8 +344,9 @@ type App struct {
 	edgeDrag  bool
 	edgeFrom  float32
 	edgeMoved float32
-	// dividerDrag tells that a divider between panes was dragging in the
-	// frame before: the panes then follow it at once.
+	// dividerDrag tells that the pointer holding a divider between panes
+	// moved it in the frame before: the panes then follow it at once, with
+	// no spring.
 	dividerDrag bool
 	// sidebarMoving tells that the sidebar or the bar over the panes
 	// moved in the last frame: the terminals there hold their size.
