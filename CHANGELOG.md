@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.5
+
+### Features
+
+* **pane:** float panes over a tab's tiled layout ([#113](https://github.com/si-mods/gorex/pull/113))
+
+### Bug Fixes
+
+* **pane:** resize terminals live while dragging a divider ([#121](https://github.com/si-mods/gorex/pull/121))
+* **remote:** open a host's new split panes in the tab already adopted ([#120](https://github.com/si-mods/gorex/pull/120))
+* **sidebar:** drop the host chip beside a hidden sidebar ([#119](https://github.com/si-mods/gorex/pull/119))
+* **tabs:** keep a faded tab label inside its row ([#115](https://github.com/si-mods/gorex/pull/115))
+
 ## 0.3.4
 
 - A session another machine's client opens on this machine gets a tab in
