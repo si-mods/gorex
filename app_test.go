@@ -754,6 +754,23 @@ func TestSidebarHostButton(t *testing.T) {
 	}
 }
 
+// TestHiddenSidebarHostChip: the bar over the panes has no host chip when
+// the sidebar is hidden.
+func TestHiddenSidebarHostChip(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left", SidebarHidden: true}
+	a.hello.Host.Name, a.hello.Host.Model = "Testbook", "TestModel 9"
+	tt.Frame()
+	if _, ok := tt.Find("Show Sidebar"); !ok {
+		t.Fatalf("no bar over the panes; texts %q", tt.Texts())
+	}
+	if slices.Contains(tt.Texts(), "Testbook") || slices.Contains(tt.Texts(), "TestModel 9") {
+		t.Errorf("the bar shows the host chip; texts %q", tt.Texts())
+	}
+}
+
 // TestStatusSeen checks that a pane's done record asks for attention
 // until seen, and that only records going blocked, done or error are news.
 func TestStatusSeen(t *testing.T) {
