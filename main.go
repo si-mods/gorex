@@ -11,7 +11,9 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater/native"
@@ -39,6 +41,14 @@ func main() {
 		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
 			os.Setenv("GOREX_DIR", dir)
 		}
+	}
+	// mygo dev names its app "GoRex Dev", which tells it from the installed
+	// app only by a suffix. This build says what it is for instead: the
+	// menu bar, and the About, Hide and Quit items, read "GoRex SF". The
+	// data directory above keeps the name mygo gave it, so its sessions
+	// stay as they were.
+	if devBuild() {
+		mygo.App.SetName("GoRex SF")
 	}
 	// control bridges rootshell to the server the app runs, in the same
 	// directory (internal/control).
@@ -88,6 +98,13 @@ func main() {
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// devBuild reports whether mygo dev runs this build, from its .mygo/dev
+// directory.
+func devBuild() bool {
+	exe, err := os.Executable()
+	return err == nil && strings.Contains(filepath.ToSlash(exe), "/.mygo/dev/")
 }
 
 // localeChanged says again what was set once: the menus, and the

@@ -170,7 +170,7 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
 		a.showSection(id)
 	}
 	e.Children(func() {
-		ui.Icon(c, icon(glyph)).Size(16, 16).TextColor(map[bool]ui.Color{true: k.text, false: k.iconMuted}[active])
+		glyphIcon(c, glyph, 16, map[bool]ui.Color{true: k.text, false: k.iconMuted}[active])
 		ui.Text(c, label).FontSize(13.5).FontWeight(500).TextColor(k.text).SingleLine()
 	})
 }
@@ -357,7 +357,7 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 				ui.Text(c, sub).FontSize(12).TextColor(k.textFaint).SingleLine()
 			}
 			if chosen {
-				ui.Icon(c, icon("check")).Size(15, 15).TextColor(k.accent)
+				glyphIcon(c, "check", 15, k.accent)
 			}
 		})
 	}

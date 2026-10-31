@@ -157,7 +157,7 @@ func windowControls(c *ui.Context, k *colors, win *mygo.Window) {
 		}
 		b.Transition(ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond})
 		b.Children(func() {
-			ui.Icon(c, icon("x")).Size(17, 17).TextColor(col)
+			glyphIcon(c, "x", 17, col)
 		})
 		if b.Clicked() {
 			win.Close()
@@ -200,7 +200,7 @@ func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize
 		col = k.text
 	}
 	b.Children(func() {
-		ui.Icon(c, icon(name)).Size(iconSize, iconSize).TextColor(col)
+		glyphIcon(c, name, iconSize, col)
 		if more != nil {
 			more()
 		}
@@ -381,12 +381,14 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	}
 	// With the configuration's colors, the card takes the theme's
 	// background, under its header too.
+	hk := k
 	if termOpaque {
 		th := termLight
 		if c.Theme().Dark {
 			th = termDark
 		}
 		bg = th.Background
+		hk = headerColors(k, bg)
 	}
 	card.Background(bg).Border(1, border).
 		Shadow(0, 1, 2, 0, shadow).
@@ -400,7 +402,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 		// A browser pane keeps its header: the address field is the only
 		// way to its pages.
 		if paneHeaders() || p.browser != nil {
-			a.paneHeader(c, k, t, p, focused, hovered)
+			a.paneHeader(c, hk, t, p, focused, hovered)
 		} else {
 			top = 6
 		}
@@ -539,7 +541,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 		a.focusReq = p
 	}
 	h.Children(func() {
-		ui.Icon(c, icon(prog.Glyph)).Size(14.5, 14.5).TextColor(k.text)
+		glyphIcon(c, prog.Glyph, 14.5, k.text)
 		ui.Row(c).Grow(1).MinWidth(0).Gap(5).AlignItems(ui.Center).ClipX().Children(func() {
 			ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(80)
 			if detail != "" {
