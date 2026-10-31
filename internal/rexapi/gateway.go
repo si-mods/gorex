@@ -67,6 +67,11 @@ type Options struct {
 	Client *rex.Client
 	// Access decides who may use the API. A nil Access allows everyone.
 	Access Access
+	// TailnetDir, when set, is where built-in Tailscale keeps its device
+	// and settings: the gateway can then serve the API on the tailnet,
+	// and turns it on again if it was on when it last stopped. Without
+	// it, the server.tailscale methods fail with not_supported.
+	TailnetDir string
 }
 
 // Gateway serves Rex's API over one GoRex server.
@@ -80,6 +85,8 @@ type Gateway struct {
 	// helloWait is how long a connection may take to send its hello;
 	// tests shorten it on a gateway of their own.
 	helloWait time.Duration
+	// tailnet is built-in Tailscale, nil when the gateway cannot run it.
+	tailnet *tailnet
 	// reconnectWait is how long a dropped client, or a data stream, waits
 	// to be resumed; tests shorten it before making a gateway of their own.
 	reconnectWait time.Duration
@@ -169,6 +176,10 @@ func New(opt Options) (*Gateway, error) {
 		canLock:       hello.Keepalive > 0 && hello.Conn != "",
 		done:          make(chan struct{}),
 	}
+	if opt.TailnetDir != "" {
+		g.tailnet = newTailnet(g, opt.TailnetDir, newTsnetNode)
+		g.tailnet.serve = g.serveOn
+	}
 	g.wg.Add(1)
 	go g.pump()
 	g.wg.Add(1)
@@ -210,6 +221,9 @@ func (g *Gateway) Close() error {
 			streams = append(streams, s)
 		}
 		g.mu.Unlock()
+		if g.tailnet != nil {
+			g.tailnet.close()
+		}
 		for _, c := range conns {
 			c.closeWith(1001, "data provider canceled")
 		}

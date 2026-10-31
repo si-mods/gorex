@@ -108,11 +108,11 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   terminal, `dock` puts the focused float back among the tiled panes, and
   the other subcommands name the `float.*` actions.
 
-`gorex rexapi --listen http://127.0.0.1:PORT` is not a command of this
-line: it serves Rex's API to Rex clients, as the server the app already
-runs, and stays until it is killed. A Rex session is a space, a window is
-a tab, and a block is a pane with a local session; see
-`internal/rexapi`.
+`gorex rexapi` is not a command of this line: it serves Rex's API to Rex
+clients from the server the app already runs, and stays until it is
+killed; `gorex rexapi tailscale on|off|login|logout|rename|status`,
+`gorex rexapi pair` and `gorex rexapi call METHOD [JSON]` talk to it. See
+[rex-api.md](rex-api.md).
 
 Exit codes: 0 ok, 1 failed, 2 usage, 3 no such session or target, 4
 server unreachable. A signal exits 130. `run` and `wait --exit` return the

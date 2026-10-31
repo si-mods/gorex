@@ -66,6 +66,7 @@
 // | block_creator.list, session.describe_block | api.events lists GoRex's terminal events (`bell`, `title_changed`, `program_status_changed`, `child_exited`), which Rex's help document leaves out |
 // | server.config_reload | no configuration file: counts a generation and sends keymap_changed |
 // | hosts.list | an empty list; hosts.put and hosts.remove fail with not_supported |
+// | server.tailscale.* | built-in Tailscale is tsnet, a device of the gateway's own named <hostname>-gorex; the methods are for the local Unix socket only (403 elsewhere), as Rex's are; on Windows, where the socket gives no credentials, its file's permissions are the boundary |
 // | session.own_block, session.disown_block, session.create | need the GoRex server to keep the gateway's connection alive, which the size locks take; otherwise not_supported |
 //
 // block_event events are sent for what the gateway sees change while it

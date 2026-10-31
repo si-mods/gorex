@@ -24,11 +24,14 @@ type outMsg struct {
 
 // control is one control connection.
 type control struct {
-	g    *Gateway
-	ws   *websocket.Conn
-	rec  *clientRecord
-	out  chan outMsg
-	done chan struct{}
+	g  *Gateway
+	ws *websocket.Conn
+	// transport is how the client reached the gateway: the methods that
+	// administer it are for its local socket only.
+	transport string
+	rec       *clientRecord
+	out       chan outMsg
+	done      chan struct{}
 
 	mu      sync.Mutex
 	seq     uint64
@@ -66,7 +69,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.SetReadLimit(maxMessage)
 	c := &control{
-		g: g, ws: ws,
+		g: g, ws: ws, transport: transportOf(r),
 		out:     make(chan outMsg, 1<<16),
 		done:    make(chan struct{}),
 		pending: map[string]bool{},
@@ -274,6 +277,9 @@ func clientPlatform(platform string) string {
 // principalOf reports who the caller is, as Rex identifies a client over
 // a TCP connection it did not authenticate.
 func principalOf(r *http.Request) map[string]any {
+	if p, ok := r.Context().Value(principalKey{}).(map[string]any); ok {
+		return p
+	}
 	display := "anonymous"
 	p := map[string]any{"kind": "anonymous", "transport": "tcp", "display": display}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil && host != "" {
@@ -536,10 +542,14 @@ func (c *control) wants(ch change) bool {
 	all, scope := rec.allScope()
 	switch ch.typ {
 	case "client_joined", "client_left", "client_changed", "client_performed",
-		"hosts_changed", "keymap_changed", "tailscale_status_changed":
+		"hosts_changed", "keymap_changed":
 		// The events of the whole server reach the connections that asked
 		// for all of them.
 		return scope == "all"
+	case "tailscale_status_changed":
+		// Either scope of session.attach_all or session.bootstrap gets the
+		// server's Tailscale status, as the doc's event_scope says.
+		return all
 	case "block_event":
 		// A block's own events reach a session's attached connections,
 		// and the connections that asked for all.
