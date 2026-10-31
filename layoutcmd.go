@@ -158,7 +158,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			return fail("desktop_unavailable", "no GoRex window is open")
 		}
 		w := a.st.addWorkspace()
-		if name := strings.TrimSpace(c.Name); name != "" {
+		if name := labelText(c.Name); name != "" {
 			w.Name = name
 		}
 		res.Space = w.ID
@@ -172,7 +172,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if w == nil {
 			return fail("space_not_found", "no such space in the GoRex layout")
 		}
-		if name := strings.TrimSpace(c.Name); name != "" {
+		if name := labelText(c.Name); name != "" {
 			w.Name = name
 		}
 		res.Name = w.Name
@@ -192,12 +192,21 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			w.app.closeWorkspace()
 			return res
 		}
-		if len(w.layout.Tabs) > 0 {
-			return fail("space_not_empty", "GoRex does not close a space no window shows with tabs in it")
+		// No window shows the space: end its sessions here, and forget it.
+		for _, t := range w.layout.Tabs {
+			a.killSaved(t.Root)
 		}
+		w.layout = savedLayout{}
 		a.st.remove(w)
 		a.changed()
 		return res
+	}
+	// A space no window shows has no panes to change: show it first, as
+	// the tab.create branch always did.
+	if c.Space != "" && a.st != nil {
+		if w := a.st.workspaceByID(c.Space); w != nil && w.app == nil {
+			a.showEmpty(w)
+		}
 	}
 	p := a.localPane(c.SID)
 	if p == nil && c.Op != "tab.create" {
@@ -213,11 +222,6 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 	}
 	switch c.Op {
 	case "tab.create":
-		if c.Space != "" && a.st != nil && a.ws != a.st.workspaceByID(c.Space) {
-			if w := a.st.workspaceByID(c.Space); w != nil && w.app == nil {
-				a.showEmpty(w)
-			}
-		}
 		var after *Tab
 		dir := c.Dir
 		if q := a.localPane(c.After); q != nil {
@@ -238,7 +242,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			a.dropPane(t.Focus, false) // and its tab
 			return fail("create_failed", cmp.Or(a.err, "the session did not start"))
 		}
-		if name := strings.TrimSpace(c.Name); name != "" {
+		if name := labelText(c.Name); name != "" {
 			t.Name = name
 		}
 		if c.Focus {
@@ -271,7 +275,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 	case "tab.close":
 		a.closeTab(p.Tab)
 	case "tab.rename":
-		p.Tab.Name = strings.TrimSpace(c.Name)
+		p.Tab.Name = labelText(c.Name)
 		a.changed()
 	case "pane.rename":
 		p.Name = paneName(c.Name)
@@ -355,6 +359,42 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		return fail("unknown_op", "GoRex does not know "+c.Op)
 	}
 	return res
+}
+
+// killSaved ends the sessions of a workspace no window shows, whose tabs
+// are the layout's.
+func (a *App) killSaved(n *savedNode) {
+	if n == nil {
+		return
+	}
+	if n.A != nil || n.B != nil {
+		a.killSaved(n.A)
+		a.killSaved(n.B)
+		return
+	}
+	if n.SID == "" {
+		return
+	}
+	var h *hostConn
+	if n.Host != "" {
+		h = a.hostByID(n.Host)
+	}
+	a.killOn(h, n.SID)
+}
+
+// labelText cleans a tab's or a space's name of a client: its control
+// characters go, and it is trimmed and bounded, as a pane's name is.
+func labelText(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(s))
+	if r := []rune(s); len(r) > 128 {
+		return string(r[:128])
+	}
+	return s
 }
 
 // coerceArgs turns the CLI's strings into the types an action declares.

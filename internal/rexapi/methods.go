@@ -124,10 +124,12 @@ func init() {
 				return nil, errSessionNotFound("no session has the id %q", p.SessionID)
 			}
 			c.mu.Lock()
+			fresh := !c.attached[s.ID]
 			c.attached[s.ID] = true
-			c.state.Sessions[s.ID] = true
 			c.mu.Unlock()
-			c.s.notifyClient(c, s.ID, "client_connected")
+			if fresh {
+				c.s.notifyClient(c, s.ID, "client_connected")
+			}
 			return map[string]any{"client_id": c.id, "view": m.viewOf(s, c.s.hostID)}, nil
 		},
 	})
@@ -171,7 +173,6 @@ func init() {
 			for _, sid := range p.AttachSessionIDs {
 				if m.session[sid] != nil {
 					c.attached[sid] = true
-					c.state.Sessions[sid] = true
 				}
 			}
 			c.mu.Unlock()
@@ -207,10 +208,12 @@ func init() {
 				return nil, apiErr
 			}
 			c.mu.Lock()
+			was := c.attached[p.SessionID]
 			delete(c.attached, p.SessionID)
-			delete(c.state.Sessions, p.SessionID)
 			c.mu.Unlock()
-			c.s.notifyClient(c, p.SessionID, "client_disconnected")
+			if was {
+				c.s.notifyClient(c, p.SessionID, "client_disconnected")
+			}
 			return nil, nil
 		},
 	})
@@ -245,13 +248,17 @@ func init() {
 				return nil, apiErr
 			}
 			c.s.mu.Lock()
-			out := []map[string]any{}
-			for _, st := range c.s.clients {
-				if st.Sessions[s.ID] {
-					out = append(out, clientInfo(st))
-				}
+			conns := make([]*control, 0, len(c.s.clients))
+			for _, o := range c.s.clients {
+				conns = append(conns, o)
 			}
 			c.s.mu.Unlock()
+			out := []map[string]any{}
+			for _, o := range conns {
+				if o.wants(s.ID) {
+					out = append(out, clientInfo(o.state, o.attachedList()))
+				}
+			}
 			sort.Slice(out, func(i, j int) bool {
 				return out[i]["client_id"].(string) < out[j]["client_id"].(string)
 			})
@@ -373,6 +380,12 @@ func init() {
 			if apiErr := decode(raw, &p); apiErr != nil {
 				return nil, apiErr
 			}
+			if p.Direction != "horizontal" && p.Direction != "vertical" {
+				return nil, errBadRequest("a split's direction is horizontal or vertical")
+			}
+			if p.Side == "before" {
+				return nil, errNotSupported("GoRex splits a block on its after side only")
+			}
 			s, apiErr := c.sessionFor(p.SessionID)
 			if apiErr != nil {
 				return nil, apiErr
@@ -460,11 +473,12 @@ func init() {
 					mode = "off"
 				}
 			}
-			if _, apiErr := c.command(s, rex.LayoutCommand{Op: "pane.zoom", SID: b.SID, Mode: mode}); apiErr != nil {
+			res, apiErr := c.command(s, rex.LayoutCommand{Op: "pane.zoom", SID: b.SID, Mode: mode})
+			if apiErr != nil {
 				return nil, apiErr
 			}
 			c.s.changed()
-			return map[string]any{"block_id": b.ID, "zoomed": want, "revision": c.s.current().rev}, nil
+			return map[string]any{"block_id": b.ID, "zoomed": res.Zoomed, "revision": c.s.current().rev}, nil
 		},
 	})
 	register(&method{
@@ -613,7 +627,7 @@ func init() {
 				return nil, apiErr
 			}
 			if b.Placement == "detached" {
-				if err := c.s.client.Kill(b.SID); err != nil {
+				if err := c.s.conn().Kill(b.SID); err != nil {
 					return nil, errInternal("%v", err)
 				}
 			} else if _, apiErr := c.command(s, rex.LayoutCommand{Op: "pane.close", SID: b.SID}); apiErr != nil {
@@ -631,15 +645,15 @@ func init() {
 			if apiErr != nil {
 				return nil, apiErr
 			}
+			if s.Workspace == "" {
+				return nil, errNotSupported("GoRex cannot destroy the session of detached blocks")
+			}
 			for _, b := range s.Blocks {
 				if b.Placement == "detached" {
-					if err := c.s.client.Kill(b.SID); err != nil {
+					if err := c.s.conn().Kill(b.SID); err != nil {
 						return nil, errInternal("%v", err)
 					}
 				}
-			}
-			if s.Workspace == "" {
-				return nil, errNotSupported("GoRex cannot destroy the session of detached blocks")
 			}
 			// Closing the space ends its windows and their programs, as
 			// Rex's session.destroy does.
@@ -733,6 +747,12 @@ func init() {
 			}
 			if apiErr := decode(raw, &p); apiErr != nil {
 				return nil, apiErr
+			}
+			if p.Direction != "horizontal" && p.Direction != "vertical" {
+				return nil, errBadRequest("a move's direction is horizontal or vertical")
+			}
+			if p.Side == "before" {
+				return nil, errNotSupported("GoRex moves a block to its target's after side only")
 			}
 			s, apiErr := c.sessionFor(p.SessionID)
 			if apiErr != nil {
@@ -878,11 +898,16 @@ func init() {
 			if apiErr := decode(raw, &p); apiErr != nil {
 				return nil, apiErr
 			}
+			switch p.Direction {
+			case "left", "right", "up", "down":
+			default:
+				return nil, errBadRequest("a direction is left, right, up or down")
+			}
 			s, apiErr := c.sessionFor(p.SessionID)
 			if apiErr != nil {
 				return nil, apiErr
 			}
-			b := neighborDirection(s, p.Direction)
+			b := neighborDirection(s, p.Direction, p.Wrap)
 			if b == nil {
 				return map[string]any{"revision": c.s.current().rev}, nil
 			}
@@ -929,11 +954,15 @@ func init() {
 		in: props(nil, nil),
 		handler: func(c *control, _ json.RawMessage) (any, *apiError) {
 			c.s.mu.Lock()
-			out := make([]map[string]any, 0, len(c.s.clients))
-			for _, st := range c.s.clients {
-				out = append(out, clientInfo(st))
+			conns := make([]*control, 0, len(c.s.clients))
+			for _, o := range c.s.clients {
+				conns = append(conns, o)
 			}
 			c.s.mu.Unlock()
+			out := make([]map[string]any, 0, len(conns))
+			for _, o := range conns {
+				out = append(out, clientInfo(o.state, o.attachedList()))
+			}
 			sort.Slice(out, func(i, j int) bool { return out[i]["client_id"].(string) < out[j]["client_id"].(string) })
 			return map[string]any{"clients": out}, nil
 		},
@@ -949,12 +978,12 @@ func init() {
 				return nil, apiErr
 			}
 			c.s.mu.Lock()
-			st := c.s.clients[p.ClientID]
+			o := c.s.clients[p.ClientID]
 			c.s.mu.Unlock()
-			if st == nil {
+			if o == nil {
 				return nil, errNotFound("no client %q", p.ClientID)
 			}
-			return map[string]any{"client": clientInfo(st), "actions": []any{}}, nil
+			return map[string]any{"client": clientInfo(o.state, o.attachedList()), "actions": []any{}}, nil
 		},
 	})
 	register(&method{
@@ -967,9 +996,7 @@ func init() {
 			if apiErr := decode(raw, &p); apiErr != nil {
 				return nil, apiErr
 			}
-			c.s.mu.Lock()
-			c.state.Label = p.Label
-			c.s.mu.Unlock()
+			c.state.setLabel(p.Label)
 			return nil, nil
 		},
 	})
@@ -1081,7 +1108,7 @@ func init() {
 		},
 	})
 	register(&method{
-		name: "client.key", desc: "Send a key to a block, giving key bindings the first chance at it.",
+		name: "client.key", desc: "Send a key to a block, as a terminal would.",
 		in: props([]string{"session_id", "key"}, map[string]any{
 			"session_id": str("The session that holds the block."),
 			"block_id":   str("The block to type in."),
@@ -1115,7 +1142,7 @@ func init() {
 			}
 			data := keyBytes(p.Key.Key, p.Key.Mods, p.Key.Text)
 			if len(data) > 0 {
-				if err := c.s.client.Input(b.SID, data); err != nil {
+				if err := c.s.conn().Input(b.SID, data); err != nil {
 					return nil, errInternal("%v", err)
 				}
 			}
@@ -1360,9 +1387,16 @@ func (c *control) command(s *mSession, cmd rex.LayoutCommand) (*rex.LayoutComman
 	if s != nil {
 		cmd.Space = s.Workspace
 	}
-	res, err := c.s.client.Command(cmd)
+	client := c.s.conn()
+	if client == nil {
+		return nil, errInternal("the server connection is gone")
+	}
+	res, err := client.Command(cmd)
 	if err != nil {
 		return nil, errConflict("%v", err)
+	}
+	if res.Code == "" && res.Reason != "" {
+		return nil, errConflict("the layout command was refused: %s", res.Reason)
 	}
 	if res.Code != "" {
 		code := res.Code
@@ -1421,8 +1455,10 @@ func sessionList(m *model) []map[string]any {
 	return out
 }
 
-// clientInfo is a client as client.list reports it.
-func clientInfo(st *clientState) map[string]any {
+// clientInfo is a client as client.list reports it, and the sessions it
+// is attached to.
+func clientInfo(state *clientState, attached []string) map[string]any {
+	st := state.snapshot()
 	info := map[string]any{}
 	if st.Kind != "" {
 		info["kind"] = st.Kind
@@ -1441,10 +1477,7 @@ func clientInfo(st *clientState) map[string]any {
 	if len(info) > 0 {
 		out["info"] = info
 	}
-	sessions := make([]string, 0, len(st.Sessions))
-	for sid := range st.Sessions {
-		sessions = append(sessions, sid)
-	}
+	sessions := append([]string(nil), attached...)
 	sort.Strings(sessions)
 	out["session_ids"] = sessions
 	return out
@@ -1606,7 +1639,7 @@ func neighborWindow(s *mSession, next, wrap bool) *mWindow {
 
 // neighborDirection returns the block nearest the focused one toward a
 // direction, by where they sit in the window.
-func neighborDirection(s *mSession, dir string) *mBlock {
+func neighborDirection(s *mSession, dir string, wrap bool) *mBlock {
 	w := s.activeWindow()
 	if w == nil || w.Tab == nil || len(w.Blocks) < 2 {
 		return nil
@@ -1655,6 +1688,32 @@ func neighborDirection(s *mSession, dir string) *mBlock {
 		}
 		if d := dx*dx + dy*dy; d < bestDist {
 			best, bestDist = id, d
+		}
+	}
+	if best == "" && wrap {
+		// Nothing on that side: take the block farthest on the other
+		// side, as a focus that wraps around does.
+		bestDist = math.Inf(-1)
+		for id, r := range rects {
+			if id == w.Focused {
+				continue
+			}
+			cx, cy := r[0]+r[2]/2, r[1]+r[3]/2
+			dx, dy := cx-ccx, cy-ccy
+			var d float64
+			switch dir {
+			case "left":
+				d = dx
+			case "right":
+				d = -dx
+			case "up":
+				d = dy
+			case "down":
+				d = -dy
+			}
+			if d > bestDist {
+				best, bestDist = id, d
+			}
 		}
 	}
 	if best == "" {

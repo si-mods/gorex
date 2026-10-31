@@ -507,6 +507,10 @@ func (s *Stream) SkipSnapshot() error {
 	if _, err := io.ReadFull(s.rd, env[:]); err != nil {
 		return err
 	}
+	// A snapshot longer than this is not one: it ends at FINISH, and one
+	// that does not is broken.
+	const maxSnapshot = 16 << 20
+	read := 0
 	for {
 		var h [10]byte
 		if _, err := io.ReadFull(s.rd, h[:]); err != nil {
@@ -516,6 +520,10 @@ func (s *Stream) SkipSnapshot() error {
 		size := binary.LittleEndian.Uint32(h[2:6])
 		if size > 64<<20 {
 			return errors.New("rex: a snapshot record is too large")
+		}
+		read += 10 + int(size)
+		if read > maxSnapshot {
+			return errors.New("rex: the snapshot does not end")
 		}
 		if _, err := io.CopyN(io.Discard, s.rd, int64(size)); err != nil {
 			return err

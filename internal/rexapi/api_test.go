@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -463,5 +464,117 @@ func TestWindowIDKeepsTheTab(t *testing.T) {
 	}
 	if want := "window:" + uuidLike("window", "cc"); m3.sessions[0].Windows[0].ID != want {
 		t.Errorf("a tab without an ID: %q, want %q", m3.sessions[0].Windows[0].ID, want)
+	}
+}
+
+// rawCall is rpc for a goroutine: it returns the error instead of failing
+// the test.
+func rawCall(ws *websocket.Conn, id, method string, payload any) (map[string]any, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req := map[string]any{"type": "request", "id": id, "method": method}
+	if payload != nil {
+		req["payload"] = payload
+	}
+	data, _ := json.Marshal(req)
+	if err := ws.Write(ctx, websocket.MessageText, data); err != nil {
+		return nil, err
+	}
+	for {
+		_, data, err := ws.Read(ctx)
+		if err != nil {
+			return nil, err
+		}
+		var m map[string]any
+		if json.Unmarshal(data, &m) != nil {
+			continue
+		}
+		if m["type"] == "response" && m["id"] == id {
+			if e, has := m["error"]; has {
+				return nil, fmt.Errorf("%v", e)
+			}
+			out, _ := m["payload"].(map[string]any)
+			return out, nil
+		}
+	}
+}
+
+// TestConcurrentAttachAndClientList attaches on one connection while
+// another lists its clients: the two read and write the client list at
+// once, which must not race. Run with -race.
+func TestConcurrentAttachAndClientList(t *testing.T) {
+	c, _ := testServer(t)
+	a, err := c.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := c.Create(rex.CreateOptions{Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testLayout(t, c, a.ID, b.ID)
+	_, sock := testAPI(t, c)
+	sid := "session:" + uuidLike("session", "SPACE1")
+	one, _ := hello(t, sock)
+	two, _ := hello(t, sock)
+	if _, err := rawCall(two, "z", "session.attach", map[string]any{"session_id": sid}); err != nil {
+		t.Fatal(err)
+	}
+	errs := make(chan error, 2)
+	go func() {
+		for i := range 30 {
+			if _, err := rawCall(one, "a"+strconv.Itoa(i), "session.attach", map[string]any{"session_id": sid}); err != nil {
+				errs <- err
+				return
+			}
+		}
+		errs <- nil
+	}()
+	go func() {
+		for i := range 30 {
+			if _, err := rawCall(two, "b"+strconv.Itoa(i), "client.list", nil); err != nil {
+				errs <- err
+				return
+			}
+			if _, err := rawCall(two, "c"+strconv.Itoa(i), "session.list_clients", map[string]any{"session_id": sid}); err != nil {
+				errs <- err
+				return
+			}
+		}
+		errs <- nil
+	}()
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestLayoutLimits checks that a layout of more blocks than a window holds
+// is refused before anything is made.
+func TestLayoutLimits(t *testing.T) {
+	var leaves []string
+	for range maxLeaves {
+		leaves = append(leaves, `{"block":{"flavor":"com.superlogical.terminal.shell"}}`)
+	}
+	raw := []byte(`{"split":{"direction":"horizontal","before":` + leaves[0] + `,"after":` + leaves[0] + `}}`)
+	var l rexLayout
+	if err := json.Unmarshal(raw, &l); err != nil {
+		t.Fatal(err)
+	}
+	if l.leaves() == nil {
+		t.Fatal("no leaves")
+	}
+	// A chain of splits of more leaves than a window holds.
+	big := leaves[0]
+	for range maxLeaves {
+		big = `{"split":{"direction":"vertical","before":` + big + `,"after":` + leaves[0] + `}}`
+	}
+	var over rexLayout
+	if err := json.Unmarshal([]byte(big), &over); err != nil {
+		t.Fatal(err)
+	}
+	if apiErr := checkLayout(&over); apiErr == nil || apiErr.Code != "bad_request" {
+		t.Fatalf("a layout of %d blocks: %+v", len(over.leaves()), apiErr)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,7 +41,6 @@ func (s *Server) ticket(m *mSession, b *mBlock, subprotocol string) (any, *apiEr
 		}
 	}
 	s.tickets[id] = &ticket{
-		session:     b.Session,
 		block:       b.SID,
 		subprotocol: subprotocol,
 		expires:     time.Now().Add(60 * time.Second),
@@ -98,23 +98,38 @@ func (s *Server) handleData(w http.ResponseWriter, r *http.Request) {
 	t := s.takeTicket(id, ws.Subprotocol())
 	if t == nil {
 		// REJECT, reason 0x01: the ticket is unknown, used or expired.
-		ws.Write(context.Background(), websocket.MessageBinary, []byte{0x82, 0x01})
+		writeData(context.Background(), ws, []byte{0x82, 0x01})
 		ws.Close(websocket.StatusPolicyViolation, "data handshake rejected")
 		return
 	}
-	s.streamData(ws, t)
+	conn, err := s.ensure()
+	if err != nil {
+		writeData(context.Background(), ws, []byte{0x82, 0x03})
+		ws.Close(websocket.StatusInternalError, "data handshake rejected")
+		return
+	}
+	defer s.release()
+	s.streamData(conn, ws, t)
+}
+
+// writeData sends one binary message with a deadline, as the handshake
+// frames need: a client that stops reading must not hold the server.
+func writeData(ctx context.Context, ws *websocket.Conn, p []byte) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	ws.Write(ctx, websocket.MessageBinary, p)
 }
 
 // streamData sends a block's screen and output over a data connection.
-func (s *Server) streamData(ws *websocket.Conn, t *ticket) {
+func (s *Server) streamData(client *rex.Client, ws *websocket.Conn, t *ticket) {
 	info := s.sessionInfo(t.block)
 	cols, rows := info.Cols, info.Rows
 	if cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	conn, err := s.client.AttachConn(rex.Attach{SID: t.block, Cols: cols, Rows: rows, Framed: true})
+	conn, err := client.AttachConn(rex.Attach{SID: t.block, Cols: cols, Rows: rows, Framed: true})
 	if err != nil {
-		ws.Write(context.Background(), websocket.MessageBinary, []byte{0x82, 0x03})
+		writeData(context.Background(), ws, []byte{0x82, 0x03})
 		ws.Close(websocket.StatusInternalError, "data handshake rejected")
 		return
 	}
@@ -160,7 +175,7 @@ func (s *Server) streamData(ws *websocket.Conn, t *ticket) {
 		"type": "resize", "cols": head.Cols, "rows": head.Rows,
 		"cell_width_px": 0, "cell_height_px": 0, "owner": nil,
 	}
-	apc := "\x1b_rex1;" + itoa(int(nonce)) + ";" + string(jsonOf(resize)) + "\x1b\\"
+	apc := "\x1b_rex1;" + strconv.Itoa(int(nonce)) + ";" + string(jsonOf(resize)) + "\x1b\\"
 	if err := writeStream(ws, []byte(apc)); err != nil {
 		return
 	}
@@ -226,12 +241,4 @@ func offeredProtocols(r *http.Request) []string {
 		}
 	}
 	return out
-}
-
-// itoa formats an integer.
-func itoa(n int) string { return jsonNumber(n) }
-
-func jsonNumber(n int) string {
-	b, _ := json.Marshal(n)
-	return string(b)
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/coder/websocket"
 )
@@ -94,7 +95,11 @@ func ServeConn(conn net.Conn, r *bufio.Reader, h http.Handler) {
 	wc := &watchConn{Conn: conn, closed: make(chan struct{})}
 	bc := &bufferedConn{Conn: wc, r: r}
 	ln := &oneConnListener{conn: bc}
-	srv := &http.Server{Handler: h}
+	srv := &http.Server{
+		Handler:           h,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 	go srv.Serve(ln)
 	<-wc.closed
 	srv.Close()

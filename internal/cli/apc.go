@@ -6,6 +6,10 @@ import (
 	"strconv"
 )
 
+// maxAPC is the longest escape sequence a stream may wait for: Rex's own
+// messages are short, and one without an end must not hold the stream.
+const maxAPC = 64 << 10
+
 // apcWriter passes a Rex terminal stream on, leaving out Rex's own messages
 // in it: each is an APC escape sequence ESC _ rex1;<nonce>;<json> ESC \,
 // which the server marks with the nonce of the data connection.
@@ -59,6 +63,17 @@ func (w *apcWriter) pass(final bool) error {
 		if end < 0 {
 			if final {
 				w.buf = w.buf[:0]
+				return nil
+			}
+			if len(w.buf) > maxAPC {
+				// No end within a message's length: pass the escape on and
+				// stop waiting for one, so that a broken sequence cannot
+				// hold the stream back or grow without bound.
+				if _, err := w.out.Write(w.buf[:1]); err != nil {
+					return err
+				}
+				w.buf = append(w.buf[:0], w.buf[1:]...)
+				continue
 			}
 			return nil
 		}

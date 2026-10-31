@@ -13,6 +13,9 @@ import (
 // blockMethod serves a terminal block's methods, under block.method and
 // under its full name.
 func (c *control) blockMethod(sessionID, blockID, name string, raw json.RawMessage) (any, *apiError) {
+	if c.s.conn() == nil {
+		return nil, errInternal("the server connection is gone")
+	}
 	s, apiErr := c.sessionFor(sessionID)
 	if apiErr != nil {
 		return nil, apiErr
@@ -31,7 +34,7 @@ func (c *control) blockMethod(sessionID, blockID, name string, raw json.RawMessa
 		if apiErr := decode(raw, &p); apiErr != nil {
 			return nil, apiErr
 		}
-		if err := c.s.client.Input(b.SID, []byte(p.Data)); err != nil {
+		if err := c.s.conn().Input(b.SID, []byte(p.Data)); err != nil {
 			return nil, errInternal("%v", err)
 		}
 		return map[string]any{"bytes_written": len(p.Data)}, nil
@@ -46,7 +49,7 @@ func (c *control) blockMethod(sessionID, blockID, name string, raw json.RawMessa
 		if p.Columns <= 0 || p.Rows <= 0 || p.Columns > 65535 || p.Rows > 65535 {
 			return nil, errBadRequest("a size is 1 to 65535 columns and rows")
 		}
-		if err := c.s.client.Resize(b.SID, p.Columns, p.Rows); err != nil {
+		if err := c.s.conn().Resize(b.SID, p.Columns, p.Rows); err != nil {
 			return nil, errInternal("%v", err)
 		}
 		return map[string]any{}, nil
@@ -89,12 +92,12 @@ func (c *control) blockMethod(sessionID, blockID, name string, raw json.RawMessa
 		}
 		return out, nil
 	case "reset":
-		if err := c.s.client.Input(b.SID, []byte("\x1bc")); err != nil {
+		if err := c.s.conn().Input(b.SID, []byte("\x1bc")); err != nil {
 			return nil, errInternal("%v", err)
 		}
 		return map[string]any{}, nil
 	case "clear":
-		if err := c.s.client.Input(b.SID, []byte("\x1b[2J\x1b[H")); err != nil {
+		if err := c.s.conn().Input(b.SID, []byte("\x1b[2J\x1b[H")); err != nil {
 			return nil, errInternal("%v", err)
 		}
 		return map[string]any{}, nil
@@ -148,7 +151,7 @@ func (c *control) format(b *mBlock, raw json.RawMessage) (any, *apiError) {
 	if p.Format == "" {
 		p.Format = "text"
 	}
-	res, err := c.s.client.Capture(b.SID, 0)
+	res, err := c.s.conn().Capture(b.SID, 0)
 	if err != nil {
 		return nil, errInternal("%v", err)
 	}
@@ -169,9 +172,12 @@ func (c *control) format(b *mBlock, raw json.RawMessage) (any, *apiError) {
 		content = trimText(content)
 	}
 	total := len(content)
+	// A screen of escape sequences grows when it is JSON encoded: keep
+	// the answer well under the message limit.
+	const maxFormat = 128 << 10
 	limit := p.MaxBytes
-	if limit <= 0 || limit > maxMessage-1024 {
-		limit = maxMessage - 1024
+	if limit <= 0 || limit > maxFormat {
+		limit = maxFormat
 	}
 	eof := true
 	if len(content) > limit {
@@ -255,7 +261,7 @@ func (c *control) sendEvent(b *mBlock, typ string, payload json.RawMessage) *api
 		if apiErr := decode(payload, &p); apiErr != nil {
 			return apiErr
 		}
-		if err := c.s.client.Paste(b.SID, p.Text); err != nil {
+		if err := c.s.conn().Paste(b.SID, p.Text); err != nil {
 			return errInternal("%v", err)
 		}
 		return nil
@@ -273,7 +279,7 @@ func (c *control) sendEvent(b *mBlock, typ string, payload json.RawMessage) *api
 			return nil
 		}
 		if data := keyBytes(p.Key, p.Mods, p.Text); len(data) > 0 {
-			if err := c.s.client.Input(b.SID, data); err != nil {
+			if err := c.s.conn().Input(b.SID, data); err != nil {
 				return errInternal("%v", err)
 			}
 		}

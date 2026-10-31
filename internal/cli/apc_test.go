@@ -49,3 +49,27 @@ func TestAPCWriter(t *testing.T) {
 		})
 	}
 }
+
+// TestAPCWriterUnterminated checks that a sequence with no end cannot hold
+// the stream back or grow without bound.
+func TestAPCWriterUnterminated(t *testing.T) {
+	var out bytes.Buffer
+	w := newAPCWriter(&out, 7)
+	w.Write([]byte("a\x1b_rex1;7;{\"ty"))
+	long := make([]byte, 3*maxAPC)
+	for i := range long {
+		long[i] = 'x'
+	}
+	w.Write(long)
+	w.Write([]byte("end"))
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if len(got) < len(long) {
+		t.Errorf("the stream kept %d of %d bytes", len(got), len(long)+5)
+	}
+	if w.buf != nil && len(w.buf) > maxAPC {
+		t.Errorf("the writer holds %d bytes", len(w.buf))
+	}
+}

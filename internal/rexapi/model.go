@@ -28,7 +28,6 @@ type model struct {
 	sig      string
 	sessions []*mSession
 	session  map[string]*mSession
-	windows  map[string]*mWindow
 	blocks   map[string]*mBlock
 }
 
@@ -118,7 +117,6 @@ func buildModel(rev uint64, raw json.RawMessage, infos []rex.SessionInfo) (*mode
 	m := &model{
 		rev:     rev,
 		session: map[string]*mSession{},
-		windows: map[string]*mWindow{},
 		blocks:  map[string]*mBlock{},
 	}
 	placed := map[string]bool{}
@@ -141,7 +139,17 @@ func buildModel(rev uint64, raw json.RawMessage, infos []rex.SessionInfo) (*mode
 			if w.Label == "" {
 				w.Label = "Window " + short(w.ID)
 			}
-			for _, n := range paneNodes(tab.Root) {
+			all := paneNodes(tab.Root)
+			focused := ""
+			if i := tab.Focus; i >= 0 && i < len(all) && all[i].Host == "" && !all[i].Unavailable {
+				focused = blockID(all[i].SID)
+			}
+			for _, n := range all {
+				if n.Host != "" || n.Unavailable {
+					// A pane of another machine's server is not a block
+					// this server can act on.
+					continue
+				}
 				b := &mBlock{
 					ID:        blockID(n.SID),
 					SID:       n.SID,
@@ -158,8 +166,8 @@ func buildModel(rev uint64, raw json.RawMessage, infos []rex.SessionInfo) (*mode
 			if len(w.Blocks) == 0 {
 				continue
 			}
-			if i := tab.Focus; i >= 0 && i < len(w.Blocks) {
-				w.Focused = w.Blocks[i].ID
+			if focused != "" {
+				w.Focused = focused
 			} else {
 				w.Focused = w.Blocks[0].ID
 			}
@@ -170,7 +178,6 @@ func buildModel(rev uint64, raw json.RawMessage, infos []rex.SessionInfo) (*mode
 				s.ActiveWindow = w.ID
 			}
 			s.Windows = append(s.Windows, w)
-			m.windows[w.ID] = w
 		}
 		if s.ActiveWindow == "" && len(s.Windows) > 0 {
 			s.ActiveWindow = s.Windows[0].ID
@@ -350,12 +357,11 @@ func (m *model) viewOf(s *mSession, hostID string) view {
 		Label:          s.Label,
 		ActiveWindowID: s.ActiveWindow,
 		Windows:        make([]windowView, 0, len(s.Windows)),
-		windowIndex:    map[string]int{},
 	}
 	if v.Windows == nil {
 		v.Windows = []windowView{}
 	}
-	for i, w := range s.Windows {
+	for _, w := range s.Windows {
 		wv := windowView{
 			WindowID:       w.ID,
 			Label:          w.Label,
@@ -381,7 +387,6 @@ func (m *model) viewOf(s *mSession, hostID string) view {
 		}
 		wv.Layers = append(wv.Layers, layer)
 		v.Windows = append(v.Windows, wv)
-		v.windowIndex[w.ID] = i
 	}
 	return v
 }

@@ -46,8 +46,16 @@ type Options struct {
 
 // Server serves Rex's API over GoRex.
 type Server struct {
-	opt    Options
-	client *rex.Client
+	opt Options
+	// cmu guards the connection to the server, which is kept only while a
+	// Rex client uses it: a control connection or a data stream. Without
+	// one this server holds no connection, so GoRex's server still ends
+	// when it is idle.
+	cmu      sync.Mutex
+	client   *rex.Client
+	active   int
+	grace    *time.Timer
+	pumpStop chan struct{}
 
 	hello  rex.Hello
 	hostID string
@@ -56,14 +64,13 @@ type Server struct {
 	uid    int
 	gid    int
 
-	mu          sync.Mutex
-	model       *model
-	infos       map[string]rex.SessionInfo
-	conns       map[*control]struct{}
-	clients     map[string]*clientState
-	tickets     map[string]*ticket
-	refreshMu   sync.Mutex
-	lastRefresh time.Time
+	mu        sync.Mutex
+	model     *model
+	infos     map[string]rex.SessionInfo
+	conns     map[*control]struct{}
+	clients   map[string]*control
+	tickets   map[string]*ticket
+	refreshMu sync.Mutex
 
 	done chan struct{}
 	once sync.Once
@@ -71,6 +78,7 @@ type Server struct {
 
 // clientState is a control connection, as client.list reports it.
 type clientState struct {
+	mu        sync.Mutex
 	ID        string
 	Kind      string
 	Name      string
@@ -79,70 +87,181 @@ type clientState struct {
 	Label     string
 	Principal map[string]any
 	Connected time.Time
-	Sessions  map[string]bool
+}
+
+// snapshot returns the client's fields, read under its own lock: the label
+// may change while another connection lists clients.
+func (st *clientState) snapshot() clientState {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return clientState{
+		ID: st.ID, Kind: st.Kind, Name: st.Name, Version: st.Version,
+		Platform: st.Platform, Label: st.Label, Principal: st.Principal,
+		Connected: st.Connected,
+	}
+}
+
+// label returns the client's label.
+func (st *clientState) label() string {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.Label
+}
+
+// setLabel sets the client's label.
+func (st *clientState) setLabel(label string) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.Label = label
 }
 
 // ticket is a one-time pass for a data connection.
 type ticket struct {
-	session     string
 	block       string
 	subprotocol string
 	expires     time.Time
 }
 
-// New connects to the session server and starts serving Rex's API.
+// New serves Rex's API over the session server on opt's socket. It holds
+// no connection until a Rex client needs one.
 func New(opt Options) (*Server, error) {
-	c := opt.Client
-	if c == nil {
-		if opt.Socket == "" {
-			return nil, errors.New("rexapi: no socket")
-		}
-		var err error
-		if c, err = rex.ConnectSocket(opt.Socket); err != nil {
-			return nil, err
-		}
-	}
-	hello, err := c.Hello()
-	if err != nil {
-		c.Close()
-		return nil, err
+	if opt.Client == nil && opt.Socket == "" {
+		return nil, errors.New("rexapi: no socket")
 	}
 	s := &Server{
 		opt:     opt,
-		client:  c,
-		hello:   hello,
 		conns:   map[*control]struct{}{},
 		infos:   map[string]rex.SessionInfo{},
-		clients: map[string]*clientState{},
+		clients: map[string]*control{},
 		tickets: map[string]*ticket{},
 		done:    make(chan struct{}),
-		uid:     os.Getuid(),
-		gid:     os.Getgid(),
+		uid:     currentUID(),
+		gid:     currentGID(),
 	}
 	if u, err := user.Current(); err == nil {
 		s.user = u.Username
 	}
-	s.hostID = hostIDOf(hello)
-	s.instID = instanceIDOf(hello)
-	if err := c.Subscribe(); err == nil {
-		go s.pump()
-	}
-	if err := s.refresh(); err != nil {
-		log.Printf("rexapi: layout: %v", err)
+	if c := opt.Client; c != nil {
+		// A caller that made the connection keeps it for itself.
+		hello, err := c.Hello()
+		if err != nil {
+			c.Close()
+			return nil, err
+		}
+		s.client, s.hello = c, hello
+		s.hostID, s.instID = hostIDOf(hello), instanceIDOf(hello)
+		s.active = 1
+		if err := c.Subscribe(); err == nil {
+			s.startPump(c)
+		}
+		if err := s.refreshWith(c); err != nil {
+			log.Printf("rexapi: layout: %v", err)
+		}
 	}
 	return s, nil
+}
+
+// conn returns the connection to the server, nil when no Rex client is
+// using this API.
+func (s *Server) conn() *rex.Client {
+	s.cmu.Lock()
+	defer s.cmu.Unlock()
+	return s.client
+}
+
+// ensure tells that a Rex client needs the connection, opening one when
+// there is none, and returns it.
+func (s *Server) ensure() (*rex.Client, error) {
+	s.cmu.Lock()
+	defer s.cmu.Unlock()
+	if s.grace != nil {
+		s.grace.Stop()
+		s.grace = nil
+	}
+	if s.client == nil {
+		c, err := rex.ConnectSocket(s.opt.Socket)
+		if err != nil {
+			return nil, err
+		}
+		hello, err := c.Hello()
+		if err != nil {
+			c.Close()
+			return nil, err
+		}
+		s.client = c
+		s.hello = hello
+		s.hostID = hostIDOf(hello)
+		s.instID = instanceIDOf(hello)
+		if err := c.Subscribe(); err == nil {
+			s.startPump(c)
+		}
+		if err := s.refreshWith(c); err != nil {
+			log.Printf("rexapi: layout: %v", err)
+		}
+	}
+	s.active++
+	return s.client, nil
+}
+
+// release tells that a Rex client is done with the connection: the last
+// one closes it shortly after, so that the server it belongs to can end.
+func (s *Server) release() {
+	s.cmu.Lock()
+	defer s.cmu.Unlock()
+	if s.active > 0 {
+		s.active--
+	}
+	if s.active == 0 && s.client != nil && s.grace == nil {
+		s.grace = time.AfterFunc(10*time.Second, s.closeIdle)
+	}
+}
+
+// closeIdle closes the connection when no Rex client came back for it.
+func (s *Server) closeIdle() {
+	s.cmu.Lock()
+	defer s.cmu.Unlock()
+	s.grace = nil
+	if s.active != 0 || s.client == nil {
+		return
+	}
+	if s.pumpStop != nil {
+		close(s.pumpStop)
+		s.pumpStop = nil
+	}
+	s.client.Close()
+	s.client = nil
+	s.mu.Lock()
+	s.model = nil
+	s.infos = nil
+	s.mu.Unlock()
 }
 
 // Close stops serving and closes the connection to the server.
 func (s *Server) Close() {
 	s.once.Do(func() {
 		close(s.done)
-		s.client.Close()
+		s.cmu.Lock()
+		if s.pumpStop != nil {
+			close(s.pumpStop)
+			s.pumpStop = nil
+		}
+		if s.client != nil {
+			s.client.Close()
+			s.client = nil
+		}
+		s.cmu.Unlock()
 	})
 }
 
-// pump reads the server's changes and tells the Rex clients of them.
-func (s *Server) pump() {
+// startPump reads the server's changes on c and tells the Rex clients of
+// them, until stop closes.
+func (s *Server) startPump(c *rex.Client) {
+	stop := make(chan struct{})
+	s.pumpStop = stop
+	go s.pump(c, stop)
+}
+
+func (s *Server) pump(c *rex.Client, stop chan struct{}) {
 	debounce := time.NewTimer(time.Hour)
 	debounce.Stop()
 	defer debounce.Stop()
@@ -151,7 +270,9 @@ func (s *Server) pump() {
 		select {
 		case <-s.done:
 			return
-		case _, ok := <-s.client.Events():
+		case <-stop:
+			return
+		case _, ok := <-c.Events():
 			if !ok {
 				return
 			}
@@ -172,13 +293,23 @@ func (s *Server) pump() {
 // refresh reads the layout and the sessions and tells every connection
 // what changed.
 func (s *Server) refresh() error {
+	c := s.conn()
+	if c == nil {
+		return nil
+	}
+	return s.refreshWith(c)
+}
+
+// refreshWith reads the layout and the sessions over c, which a caller
+// already holds.
+func (s *Server) refreshWith(c *rex.Client) error {
 	s.refreshMu.Lock()
 	defer s.refreshMu.Unlock()
-	st, err := s.client.LayoutState()
+	st, err := c.LayoutState()
 	if err != nil {
 		return err
 	}
-	infos, err := s.client.List()
+	infos, err := c.List()
 	if err != nil {
 		return err
 	}
@@ -193,7 +324,6 @@ func (s *Server) refresh() error {
 	for _, in := range infos {
 		s.infos[in.ID] = in
 	}
-	s.lastRefresh = time.Now()
 	conns := make([]*control, 0, len(s.conns))
 	for c := range s.conns {
 		conns = append(conns, c)
@@ -209,7 +339,8 @@ func (s *Server) refresh() error {
 }
 
 // current returns the model, read from the layout as it is now: a client
-// that connects just after the app changed it sees the change.
+// that connects just after the app changed it sees the change. A server
+// whose layout cannot be read has an empty one.
 func (s *Server) current() *model {
 	if err := s.refresh(); err != nil {
 		log.Printf("rexapi: refresh: %v", err)
@@ -217,6 +348,9 @@ func (s *Server) current() *model {
 	s.mu.Lock()
 	m := s.model
 	s.mu.Unlock()
+	if m == nil {
+		m, _ = buildModel(0, nil, nil)
+	}
 	return m
 }
 
@@ -227,7 +361,7 @@ func (s *Server) changed() { _ = s.refresh() }
 func (s *Server) add(c *control) {
 	s.mu.Lock()
 	s.conns[c] = struct{}{}
-	s.clients[c.id] = c.state
+	s.clients[c.id] = c
 	s.mu.Unlock()
 }
 

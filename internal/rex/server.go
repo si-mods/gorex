@@ -26,20 +26,20 @@ import (
 // (SetHTTPServe).
 var (
 	httpServeMu sync.Mutex
-	httpServeFn func(net.Conn, *bufio.Reader)
+	httpServeFn func(net.Conn, *bufio.Reader, string)
 )
 
 // SetHTTPServe makes the server hand a connection that opens with an HTTP
 // request to fn, which serves it and returns once it is done. GoRex's own
 // clients send JSON, so the two protocols share the socket: a Rex client,
 // such as Rex.app or the rex CLI, can use GoRex's socket as Rex's.
-func SetHTTPServe(fn func(net.Conn, *bufio.Reader)) {
+func SetHTTPServe(fn func(net.Conn, *bufio.Reader, string)) {
 	httpServeMu.Lock()
 	httpServeFn = fn
 	httpServeMu.Unlock()
 }
 
-func httpserve() func(net.Conn, *bufio.Reader) {
+func httpserve() func(net.Conn, *bufio.Reader, string) {
 	httpServeMu.Lock()
 	defer httpServeMu.Unlock()
 	return httpServeFn
@@ -425,13 +425,18 @@ func (s *Server) shutdown(reason string) {
 // the sessions it may use (mayUse).
 func (s *Server) handle(conn net.Conn, peer string) {
 	r := bufio.NewReaderSize(conn, 64<<10)
-	if h := httpserve(); h != nil {
-		// A connection that does not open with a JSON request is an HTTP
-		// client: Rex's API, which the rex CLI and Rex.app speak, shares
-		// this socket (see SetHTTPServe).
-		if b, err := r.Peek(1); err == nil && b[0] != '{' {
-			h(conn, r)
-			return
+	if peer == "" {
+		// A local connection that does not open with a JSON request is an
+		// HTTP client: Rex's API, which the rex CLI and Rex.app speak,
+		// shares this socket (see SetHTTPServe). A remote one gets no such
+		// thing: Rex's API has no notion of the remote permissions this
+		// server enforces, so it would let any paired machine act as the
+		// local user.
+		if h := httpserve(); h != nil {
+			if b, err := r.Peek(1); err == nil && b[0] != '{' {
+				h(conn, r, peer)
+				return
+			}
 		}
 	}
 	first, err := readLine(r)

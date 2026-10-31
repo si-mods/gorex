@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"gorex/internal/rexpeer"
 )
@@ -109,12 +110,20 @@ func rexMirrorCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	go func() {
 		buf := make([]byte, 4096)
+		var carry []byte
 		for {
 			n, err := os.Stdin.Read(buf)
 			if n > 0 {
-				if werr := peer.Write(ctx, *session, *block, string(buf[:n])); werr != nil {
-					return
+				// A read can cut a UTF-8 sequence: the rest waits for
+				// the next one, so that text is not altered.
+				data := append(carry, buf[:n]...)
+				cut := completePrefix(data)
+				if cut > 0 {
+					if werr := peer.Write(ctx, *session, *block, string(data[:cut])); werr != nil {
+						return
+					}
 				}
+				carry = append([]byte(nil), data[cut:]...)
 			}
 			if err != nil {
 				return
@@ -154,7 +163,7 @@ func rexMirrorCmd(args []string, out, errOut io.Writer) (int, bool) {
 	w := newAPCWriter(sw, stream.Nonce())
 	_, err = io.Copy(w, stream)
 	w.Flush()
-	if err != nil && ctx.Err() == nil && !streamClosed(err) {
+	if err != nil && !streamClosed(err) {
 		fmt.Fprintf(errOut, "gorex rex-mirror: the stream ended: %v\n", err)
 	}
 	return ExitOK, true
@@ -184,12 +193,12 @@ func oscSafe(s string) string {
 
 // statusOSC is a program status report, as OSC 7501 carries it.
 func statusOSC(st rexpeer.Status) string {
-	parts := []string{"state=" + st.State}
-	if st.Kind != "" {
-		parts = append(parts, "kind="+st.Kind)
+	parts := []string{"state=" + statusValue(st.State)}
+	if kind := statusValue(st.Kind); kind != "" {
+		parts = append(parts, "kind="+kind)
 	}
-	if st.App != "" {
-		parts = append(parts, "app="+st.App)
+	if app := statusValue(st.App); app != "" {
+		parts = append(parts, "app="+app)
 	}
 	if st.Progress >= 0 {
 		parts = append(parts, "progress="+strconv.Itoa(st.Progress))
@@ -201,6 +210,34 @@ func statusOSC(st rexpeer.Status) string {
 		parts = append(parts, "msg="+base64.RawStdEncoding.EncodeToString([]byte(st.Msg)))
 	}
 	return "\x1b]7501;" + strings.Join(parts, ":") + "\x1b\\"
+}
+
+// completePrefix returns the length of b that ends on a rune boundary.
+func completePrefix(b []byte) int {
+	for i := 1; i <= 3 && i <= len(b); i++ {
+		if utf8.RuneStart(b[len(b)-i]) {
+			if utf8.FullRune(b[len(b)-i:]) {
+				return len(b)
+			}
+			return len(b) - i
+		}
+	}
+	return len(b)
+}
+
+// statusValue keeps what a status report's value may hold: letters,
+// digits and . _ -, so that a server cannot slip a sequence of its own
+// into the terminal.
+func statusValue(s string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			return r
+		case r == '.' || r == '_' || r == '-':
+			return r
+		}
+		return -1
+	}, s)
 }
 
 // statusKey names a status, so that only changes are reported.

@@ -125,8 +125,16 @@ func staleServer(h rex.Hello) bool {
 
 // serveRexAPI serves a Rex client's connection, starting Rex's API over
 // this machine's server the first time one comes.
-func serveRexAPI(conn net.Conn, r *bufio.Reader) {
-	rexAPIOnce.Do(func() {
+func serveRexAPI(conn net.Conn, r *bufio.Reader, peer string) {
+	if peer != "" {
+		// A remote connection has no Rex API: it has no notion of the
+		// remote permissions the server enforces, and would act as the
+		// local user.
+		conn.Close()
+		return
+	}
+	rexAPIMu.Lock()
+	if rexAPIServer == nil {
 		s, err := rexapi.New(rexapi.Options{
 			Socket:  rex.SocketPath(),
 			Version: version(),
@@ -134,19 +142,21 @@ func serveRexAPI(conn net.Conn, r *bufio.Reader) {
 		})
 		if err != nil {
 			log.Printf("gorex: serving Rex's API: %v", err)
-			return
+		} else {
+			rexAPIServer = s
 		}
-		rexAPIServer = s
-	})
-	if rexAPIServer == nil {
+	}
+	server := rexAPIServer
+	rexAPIMu.Unlock()
+	if server == nil {
 		conn.Close()
 		return
 	}
-	rexapi.ServeConn(conn, r, rexAPIServer.Handler())
+	rexapi.ServeConn(conn, r, server.Handler())
 }
 
 var (
-	rexAPIOnce   sync.Once
+	rexAPIMu     sync.Mutex
 	rexAPIServer *rexapi.Server
 )
 

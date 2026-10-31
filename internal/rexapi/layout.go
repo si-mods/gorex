@@ -108,31 +108,33 @@ func (b *rexBlock) check() *apiError {
 	return nil
 }
 
-// splitOf returns the direction and side of the split between two leaves,
-// which is their lowest common ancestor's.
-func splitOf(a, b leaf) (vertical bool, side string) {
+// splitOf tells whether the split between two leaves, their lowest common
+// ancestor's, is vertical.
+func splitOf(a, b leaf) bool {
 	i := 0
 	for i < len(a.path) && i < len(b.path) && a.path[i] == b.path[i] {
 		i++
 	}
 	if i >= len(a.path) || i >= len(b.path) {
-		return false, "after"
+		return false
 	}
-	return a.path[i] == "v", b.path[i]
+	return a.path[i] == "v"
 }
+
+// Limits of one request: a layout of more blocks, or a session of more
+// windows, is refused before anything is made.
+const (
+	maxLeaves  = 64
+	maxWindows = 16
+)
 
 // createWindow makes a Rex window: a GoRex tab of the first block, split
 // for each block after it, in layout order.
 func (c *control) createWindow(s *mSession, label string, l *rexLayout, focus bool) (string, []string, *apiError) {
+	if apiErr := checkLayout(l); apiErr != nil {
+		return "", nil, apiErr
+	}
 	leaves := l.leaves()
-	if len(leaves) == 0 {
-		return "", nil, errBadRequest("the layout has no blocks")
-	}
-	for _, leaf := range leaves {
-		if apiErr := leaf.check(); apiErr != nil {
-			return "", nil, apiErr
-		}
-	}
 	first := leaves[0]
 	res, apiErr := c.command(s, rex.LayoutCommand{
 		Op:      "tab.create",
@@ -161,7 +163,7 @@ func (c *control) createWindow(s *mSession, label string, l *rexLayout, focus bo
 		// The split between this block and the one before it is their
 		// lowest common ancestor's: blocks are made in layout order, so
 		// this one is always on the ancestor's after side.
-		vertical, _ := splitOf(leaves[i], leaf)
+		vertical := splitOf(leaves[i], leaf)
 		cmd := rex.LayoutCommand{
 			Op:       "pane.split",
 			SID:      prev,
@@ -188,6 +190,9 @@ func windowIDOf(seed string) string { return "window:" + uuidLike("window", seed
 func (c *control) createSession(label string, windows []windowDef) (any, *apiError) {
 	// The windows are read and checked before anything is made, so that a
 	// bad layout does not leave half a session.
+	if len(windows) > maxWindows {
+		return nil, errBadRequest("the session asks for %d windows, more than %d", len(windows), maxWindows)
+	}
 	layouts := make([]*rexLayout, len(windows))
 	for i, w := range windows {
 		l, apiErr := parseLayout(w.Layout)
@@ -232,15 +237,20 @@ func (c *control) createSession(label string, windows []windowDef) (any, *apiErr
 	return map[string]any{"session_id": s.ID, "initial_windows": out}, nil
 }
 
-// checkLayout refuses a layout whose blocks GoRex cannot make.
+// checkLayout refuses a layout whose blocks GoRex cannot make, and one of
+// more blocks than a window holds.
 func checkLayout(l *rexLayout) *apiError {
-	for _, leaf := range l.leaves() {
+	leaves := l.leaves()
+	if len(leaves) == 0 {
+		return errBadRequest("the layout has no blocks")
+	}
+	if len(leaves) > maxLeaves {
+		return errBadRequest("the layout has %d blocks, more than %d", len(leaves), maxLeaves)
+	}
+	for _, leaf := range leaves {
 		if apiErr := leaf.check(); apiErr != nil {
 			return apiErr
 		}
-	}
-	if len(l.leaves()) == 0 {
-		return errBadRequest("the layout has no blocks")
 	}
 	return nil
 }

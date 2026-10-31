@@ -411,7 +411,9 @@ A mirror is a view with input: what the Rex block shows is drawn from the
 escape sequences Rex renders, since the data stream's snapshot is in
 Ghostty's binary format, which only a Ghostty terminal restores; the
 stream then carries the program's output, and keys go to the block as
-text. Floating layers are not imported, and splits are made beside the
+text. What the program prints reaches the pane as it would reach a
+terminal itself: the mirror does not filter its escapes (only Rex's own
+APC messages), as a terminal multiplexer would not. Floating layers are not imported, and splits are made beside the
 block before them, as Rex layouts are, so their ratios can differ.
 
 ## rootshell

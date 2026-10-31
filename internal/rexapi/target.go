@@ -295,14 +295,14 @@ func (c *control) defaultTarget(m *model, sessions []*mSession, kinds []string, 
 		c.s.mu.Lock()
 		defer c.s.mu.Unlock()
 		if p.Context != nil {
-			if st := c.s.clients[p.Context.ClientID]; st != nil {
-				return c.targetOfClient(st), true
+			if o := c.s.clients[p.Context.ClientID]; o != nil {
+				return c.targetOfClient(o.state), true
 			}
 		}
 		var apps []*clientState
-		for _, st := range c.s.clients {
-			if st.Kind == "app" {
-				apps = append(apps, st)
+		for _, o := range c.s.clients {
+			if o.state.Kind == "app" {
+				apps = append(apps, o.state)
 			}
 		}
 		if len(apps) == 1 {
@@ -347,10 +347,10 @@ func (c *control) byID(m *model, sessions []*mSession, window string, kinds []st
 			return nil
 		}
 		c.s.mu.Lock()
-		st := c.s.clients[q]
+		o := c.s.clients[q]
 		c.s.mu.Unlock()
-		if st != nil {
-			return c.targetOfClient(st)
+		if o != nil {
+			return c.targetOfClient(o.state)
 		}
 	}
 	return nil
@@ -458,7 +458,8 @@ func (c *control) targetOfBlock(s *mSession, b *mBlock) *target {
 }
 
 // targetOfClient names a client.
-func (c *control) targetOfClient(st *clientState) *target {
+func (c *control) targetOfClient(state *clientState) *target {
+	st := state.snapshot()
 	label := st.Label
 	if label == "" {
 		label = st.Name

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -35,13 +36,12 @@ type envelope struct {
 
 // welcome is the server's first message.
 type welcome struct {
-	Type           string    `json:"type"`
-	Protocol       string    `json:"protocol"`
-	Limits         limits    `json:"limits"`
-	Client         *clientID `json:"client"`
-	APIRevision    int       `json:"api_revision"`
-	APIServerRev   int       `json:"api_server_revision"`
-	APIMinRevision int       `json:"api_min_revision,omitempty"`
+	Type         string    `json:"type"`
+	Protocol     string    `json:"protocol"`
+	Limits       limits    `json:"limits"`
+	Client       *clientID `json:"client"`
+	APIRevision  int       `json:"api_revision"`
+	APIServerRev int       `json:"api_server_revision"`
 }
 
 type limits struct {
@@ -116,7 +116,6 @@ type control struct {
 	scope    string
 	seq      uint64
 	pending  map[string]bool
-	closed   bool
 	wmu      sync.Mutex
 	ordered  sync.Mutex
 }
@@ -155,13 +154,10 @@ func (s *Server) serveControl(ws *websocket.Conn) {
 		}
 		name, version, platform, label = h.Client.Name, h.Client.Version, h.Client.Platform, h.Client.Label
 	}
-	if h.APIRevision > APIRevision {
-		h.APIRevision = APIRevision
-	}
 	c.principalID = c.principal()
 	c.state = &clientState{
 		ID: c.id, Kind: kind, Name: name, Version: version, Platform: platform,
-		Label: label, Principal: c.principalID, Connected: c.connectedAt, Sessions: map[string]bool{},
+		Label: label, Principal: c.principalID, Connected: c.connectedAt,
 	}
 	w := welcome{
 		Type:         "welcome",
@@ -175,6 +171,11 @@ func (s *Server) serveControl(ws *websocket.Conn) {
 		ws.Close(websocket.StatusInternalError, "welcome")
 		return
 	}
+	if _, err := s.ensure(); err != nil {
+		ws.Close(websocket.StatusInternalError, "no server")
+		return
+	}
+	defer s.release()
 	s.add(c)
 	defer func() {
 		s.remove(c)
@@ -203,22 +204,28 @@ func (s *Server) serveControl(ws *websocket.Conn) {
 			return
 		}
 		c.pending[msg.ID] = true
-		seq := c.seq
 		c.mu.Unlock()
-		go c.handle(ctx, msg, seq)
+		go c.handle(msg)
 	}
 }
 
-// handle answers one request.
-func (c *control) handle(ctx context.Context, msg envelope, seq uint64) {
+// handle answers one request. A handler that panics answers an internal
+// error: the session server must outlive it.
+func (c *control) handle(msg envelope) {
 	defer func() {
 		c.mu.Lock()
 		delete(c.pending, msg.ID)
 		c.mu.Unlock()
 	}()
+	defer func() {
+		if p := recover(); p != nil {
+			log.Printf("rexapi: %s: %v", msg.Method, p)
+			c.respond(msg.ID, nil, errInternal("%s failed", msg.Method))
+		}
+	}()
 	m := methods[msg.Method]
 	if m == nil {
-		c.respond(msg.ID, seq, nil, errMethodNotFound("%s is not a method this server has", msg.Method))
+		c.respond(msg.ID, nil, errMethodNotFound("%s is not a method this server has", msg.Method))
 		return
 	}
 	if m.ordered {
@@ -226,16 +233,25 @@ func (c *control) handle(ctx context.Context, msg envelope, seq uint64) {
 		defer c.ordered.Unlock()
 	}
 	payload, apiErr := m.handler(c, msg.Payload)
-	c.respond(msg.ID, seq, payload, apiErr)
+	c.respond(msg.ID, payload, apiErr)
 }
 
-// respond writes a request's answer.
-func (c *control) respond(id string, seq uint64, payload any, apiErr *apiError) {
+// respond writes a request's answer, with the next sequence number.
+func (c *control) respond(id string, payload any, apiErr *apiError) {
+	seq := c.nextSeq()
 	if apiErr != nil {
 		c.write(response{Type: "response", ID: id, Seq: seq, Error: apiErr})
 		return
 	}
 	c.write(response{Type: "response", ID: id, Seq: seq, Payload: payload})
+}
+
+// nextSeq returns the sequence number of the next message.
+func (c *control) nextSeq() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.seq++
+	return c.seq
 }
 
 // write sends one JSON message.
@@ -251,11 +267,13 @@ func (c *control) write(v any) error {
 	return c.ws.Write(ctx, websocket.MessageText, data)
 }
 
-// wants tells whether this connection hears of a session's changes.
+// wants tells whether this connection hears of a session's changes. A
+// connection told to hear the server's own events with event_scope
+// "session" hears only those of the sessions it attached to.
 func (c *control) wants(sid string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.all || c.attached[sid]
+	return c.attached[sid] || c.all && c.scope != "session"
 }
 
 // attachedList returns the sessions the connection is attached to.
@@ -275,14 +293,7 @@ func (c *control) sendEvents(events []sessionEvent) {
 		if !c.wants(ev.Session) {
 			continue
 		}
-		c.mu.Lock()
-		if c.closed {
-			c.mu.Unlock()
-			return
-		}
-		c.seq++
-		seq := c.seq
-		c.mu.Unlock()
+		seq := c.nextSeq()
 		inner := map[string]any{
 			"type":    "session_event",
 			"payload": map[string]any{"session_id": ev.Session, "event": ev.Event},

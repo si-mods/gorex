@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 
 	"gorex/internal/rex"
@@ -74,11 +73,26 @@ type stateSession struct {
 // open: it makes the spaces, tabs and panes.
 func Run(ctx context.Context, gorexClient *rex.Client, peer *rexpeer.Client, opt Options) (Result, error) {
 	st := loadState(opt.StatePath)
+	if st.Rex != "" && st.Rex != opt.RexSocket {
+		// Another server's record: it says nothing of this one.
+		st = state{Sessions: map[string]stateSession{}}
+	}
 	st.Rex = opt.RexSocket
 	sessions, err := peer.Sessions(ctx)
 	if err != nil {
 		return Result{}, err
 	}
+	// A session the server no longer has needs no record.
+	live := map[string]bool{}
+	for _, s := range sessions {
+		live[s.SessionID] = true
+	}
+	for id := range st.Sessions {
+		if !live[id] {
+			delete(st.Sessions, id)
+		}
+	}
+	defer saveState(opt.StatePath, st)
 	wanted := selectSessions(sessions, opt.Sessions)
 	var res Result
 	for _, s := range wanted {
@@ -88,7 +102,7 @@ func Run(ctx context.Context, gorexClient *rex.Client, peer *rexpeer.Client, opt
 		}
 		view, err := peer.Attach(ctx, s.SessionID)
 		if err != nil {
-			return res, fmt.Errorf("%s: %w", s.Label, err)
+			return res, fmt.Errorf("%q: %w", s.Label, err)
 		}
 		if len(view.Windows) == 0 {
 			res.Skipped = append(res.Skipped, Skipped{s.SessionID, s.Label, "it has no windows"})
@@ -96,7 +110,7 @@ func Run(ctx context.Context, gorexClient *rex.Client, peer *rexpeer.Client, opt
 		}
 		imp, err := importSession(ctx, gorexClient, peer, s, view, opt)
 		if err != nil {
-			return res, fmt.Errorf("%s: %w", s.Label, err)
+			return res, fmt.Errorf("%q: %w", s.Label, err)
 		}
 		res.Imported = append(res.Imported, imp)
 		st.Sessions[s.SessionID] = stateSession{Label: s.Label, Space: imp.Space}
@@ -121,6 +135,7 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 		return Imported{}, err
 	}
 	for _, w := range view.Windows {
+		before := out.Blocks
 		layer := tiledLayer(w)
 		if layer == nil {
 			continue
@@ -154,7 +169,7 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 				}
 				prev = res.New
 			} else {
-				vertical, _ := splitOf(leaves[i-1], leaf)
+				vertical := splitOf(leaves[i-1], leaf)
 				res, err := command(g, rex.LayoutCommand{
 					Op: "pane.split", Space: spaceID, SID: prev,
 					Vertical: vertical, Dir: dir, Command: cmd,
@@ -174,7 +189,9 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 			}
 			out.Blocks++
 		}
-		out.Windows++
+		if out.Blocks > before {
+			out.Windows++
+		}
 	}
 	return out, nil
 }
@@ -279,17 +296,17 @@ func leaves(l *rexpeer.Layout) []leaf {
 	return out
 }
 
-// splitOf returns the direction of the split between two leaves, which is
-// their lowest common ancestor's, and whether the second is below it.
-func splitOf(a, b leaf) (vertical, after bool) {
+// splitOf tells whether the split between two leaves, their lowest common
+// ancestor's, is vertical.
+func splitOf(a, b leaf) bool {
 	i := 0
 	for i < len(a.path) && i < len(b.path) && a.path[i] == b.path[i] {
 		i++
 	}
 	if i >= len(a.path) || i >= len(b.path) {
-		return false, true
+		return false
 	}
-	return a.path[i] == "v", b.path[i] == "b"
+	return a.path[i] == "v"
 }
 
 // selectSessions returns the sessions wanted, by ID or label, ignoring
@@ -301,7 +318,7 @@ func selectSessions(all []rexpeer.Session, want []string) []rexpeer.Session {
 	var out []rexpeer.Session
 	for _, s := range all {
 		for _, q := range want {
-			if s.SessionID == q || strings.EqualFold(s.Label, q) || strings.HasSuffix(s.SessionID, q) {
+			if s.SessionID == q || strings.EqualFold(s.Label, q) || len(q) >= 4 && strings.HasSuffix(s.SessionID, q) {
 				out = append(out, s)
 				break
 			}
@@ -337,11 +354,4 @@ func saveState(path string, st state) {
 		return
 	}
 	_ = os.WriteFile(path, append(b, '\n'), 0o600)
-}
-
-// SortedSessions returns sessions by label, for messages.
-func SortedSessions(s []rexpeer.Session) []rexpeer.Session {
-	out := append([]rexpeer.Session(nil), s...)
-	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
-	return out
 }
