@@ -1014,8 +1014,10 @@ func (a *App) quitAndEnd() {
 }
 
 func (a *App) openPalette() {
+	// Opened again while open, as it switches to the spaces, it stays
+	// where it is.
+	a.paletteFresh = a.paletteFresh || !a.paletteOpen
 	a.paletteOpen, a.paletteQuery, a.paletteSel, a.paletteSessions = true, "", 0, false
-	a.paletteFresh = true
 	a.focusReq = nil // the palette takes the focus
 }
 
@@ -1227,7 +1229,9 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		// The frame after this one starts them moving.
 		c.AnimationFrame()
 	}
-	ui.DialogBase(c, &a.paletteOpen, func(backdrop, panel ui.Element) {
+	// Keyed, the palette is the same element whatever shows before it over
+	// the window, as the error banner coming and going.
+	ui.DialogBase(c.Key("palette"), &a.paletteOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop).Justify(ui.Start).Padding(78, 0, 0, 0)
 		panel.Width(560).MaxHeight(440).Radius(16).Background(k.panel).Border(1, k.panelBorder).
 			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()

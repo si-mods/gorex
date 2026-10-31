@@ -463,6 +463,18 @@ func TestActivityDotBreathes(t *testing.T) {
 			}
 		})
 	}
+	t.Run("unfocused", func(t *testing.T) {
+		prefs = settings{}
+		breathing = false
+		t.Cleanup(func() { breathing = true })
+		tt := ui.NewTester(func(c *ui.Context) { activityDot(c, ui.RGBA(0, 120, 255, 1), 6) }, 40, 40)
+		tt.Frame()
+		before := slices.Clone(tt.Image().Pix)
+		tt.Advance(600 * time.Millisecond)
+		if tt.FramePending() || !bytes.Equal(before, tt.Image().Pix) {
+			t.Error("the halo breathes out of the focus")
+		}
+	})
 	if b := breath(time.Unix(0, 0)); b != 0 {
 		t.Errorf("breath at the epoch %v, want 0", b)
 	}
@@ -494,11 +506,19 @@ func TestAttentionPops(t *testing.T) {
 			tt.Frame()
 			p.askAttention()
 			tt.Frame()
+			// Built anew on the way, as a tab's dot shown again, it shows
+			// the pop where it is, not from its start.
+			show = false
+			tt.Frame()
 			tt.Advance(140 * time.Millisecond)
+			show = true
 			tt.Frame()
 			dot, _ = tt.Find("dot")
-			if popped := dot.W > 8; popped != tc.moves {
+			if popped := dot.W > 10; popped != tc.moves {
 				t.Errorf("popped %v (%v), want %v", popped, dot, tc.moves)
+			}
+			if pending := tt.FramePending(); pending != tc.moves {
+				t.Errorf("popping, frame pending %v, want %v", pending, tc.moves)
 			}
 			tt.Advance(time.Second)
 			tt.Frame()
@@ -516,5 +536,58 @@ func TestAttentionPops(t *testing.T) {
 				t.Errorf("built anew, the dot popped: %v", dot)
 			}
 		})
+	}
+}
+
+// TestPaletteStaysPut: opening the palette again while it is open, as on
+// the spaces, does not pose it anew; and the error banner showing over the
+// window while it is open neither brings the palette in again nor takes
+// its query field's focus.
+func TestPaletteStaysPut(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+	// The palette's rows, under its query field, whose caret blinks.
+	panel := func() []byte {
+		img := tt.Image()
+		var pix []byte
+		for y := 140; y < 300; y++ {
+			pix = append(pix, img.Pix[img.PixOffset(240, y):img.PixOffset(760, y)]...)
+		}
+		return pix
+	}
+	a.openPalette()
+	tt.Frame()
+	settle(tt)
+	rest := panel()
+	a.openSessionPalette()
+	a.openPalette()
+	if a.paletteFresh {
+		t.Error("opened again while open, the palette is to come in again")
+	}
+	for range 10 {
+		tt.Frame()
+		tt.Advance(16 * time.Millisecond)
+		tt.Frame()
+		if !bytes.Equal(panel(), rest) {
+			t.Fatal("opened again, the palette moved")
+		}
+	}
+	before := panel()
+	a.err = "boom"
+	tt.Frame()
+	if !tt.HasText("boom") {
+		t.Fatalf("no banner; texts %q", tt.Texts())
+	}
+	if !bytes.Equal(panel(), before) {
+		t.Error("the banner brought the palette in again")
+	}
+	tt.Type("x")
+	tt.Frame()
+	if a.paletteQuery != "x" {
+		t.Errorf("the query is %q, not x: its field lost the focus", a.paletteQuery)
 	}
 }

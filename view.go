@@ -29,6 +29,7 @@ func (a *App) view(c *ui.Context) {
 	a.sidebarMoving = false
 	k := a.colors(c)
 	a.focusedWin = a.win == nil || a.win.IsFocused()
+	breathing = a.focusedWin
 	a.claimFocus()
 	c.Root().Background(k.bgBottom)
 	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k) }).Children(func() {
@@ -243,7 +244,9 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 			}
 		}
 		for _, f := range slices.Clone(t.Floats) {
-			if f.Hidden {
+			// A pane is built once: the zoomed one, always tiled, is not
+			// a float too.
+			if f.Hidden || f.Pane == t.Zoom {
 				continue
 			}
 			a.floatCell(c, k, t, f, bounds)
@@ -820,14 +823,21 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 // paneActions draws a pane's buttons, while show: split right, split
 // down, move to a tab of its own, zoom and close. With a style of
 // animation they fade in as they show; they hide at once, leaving nothing
-// to click.
+// to click. The row is posed faded while they hide, for the fade to start
+// from there.
 func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) {
 	row := ui.Row(c).Gap(1).AlignItems(ui.Center)
+	// The fade only paints, without building the view again.
+	anim := motion(c)
 	if !show {
-		row.Jump("shown", 0)
+		if anim != nil {
+			row.AnimatePose(ui.Pose{Fade: 1}, *anim)
+		}
 		return
 	}
-	row.Opacity(min(animated(c, row, "shown", 1), 1))
+	if anim != nil {
+		row.AnimatePose(ui.Pose{}, *anim)
+	}
 	row.Children(func() {
 		// The symbols keep the sizes they have beside each other, as Rex
 		// draws them, rather than each filling its button.
@@ -1097,13 +1107,13 @@ var attentionPop = []ui.Keyframe{
 
 // attentionDot is the dot of a pane, or of a tab of panes, asking for
 // attention. With a style of animation it pops as one of them comes to
-// ask, when a frame first shows that, and only then: a dot built anew
-// later, as after a tab's close button hid it, shows still.
+// ask, from when a frame first shows that: every dot of the pane, as its
+// tab's and its header's, at the same point of the pop, whenever it is
+// built, and none once it is over.
 func attentionDot(c *ui.Context, k *colors, panes ...*Pane) ui.Element {
 	dot := ui.Box(c).Size(7, 7).Radius(4).Background(k.attention)
 	now := c.Now()
 	var at time.Time
-	var run uint64
 	for _, p := range panes {
 		if !p.attention {
 			continue
@@ -1112,14 +1122,35 @@ func attentionDot(c *ui.Context, k *colors, panes ...*Pane) ui.Element {
 			p.popped, p.popAt = p.asked, now
 		}
 		if p.popAt.After(at) {
-			at, run = p.popAt, uint64(p.ID)<<32|p.asked
+			at = p.popAt
 		}
 	}
-	if motion(c) != nil && !at.IsZero() && now.Sub(at) < attentionPop[len(attentionPop)-1].At {
-		s := dot.Keyframes("pop", attentionPop, ui.KeyframeOptions{Run: run})
+	if motion(c) == nil || at.IsZero() {
+		return dot
+	}
+	if since := now.Sub(at); since < attentionPop[len(attentionPop)-1].At {
+		s := keyframeAt(attentionPop, since)
 		dot.Scale(s, s)
+		c.AnimationFrame()
 	}
 	return dot
+}
+
+// keyframeAt is the value of frames at d from their start, held at the
+// last after them.
+func keyframeAt(frames []ui.Keyframe, d time.Duration) float32 {
+	for i := 1; i < len(frames); i++ {
+		a, b := frames[i-1], frames[i]
+		if d > b.At {
+			continue
+		}
+		ease := b.Ease
+		if ease == nil {
+			ease = ui.Linear
+		}
+		return a.Value + (b.Value-a.Value)*ease(float32(max(d-a.At, 0))/float32(b.At-a.At))
+	}
+	return frames[len(frames)-1].Value
 }
 
 // needsUser tells a record of a program that waits for the user, or whose
@@ -1171,12 +1202,18 @@ func statusTip(s *rex.ProgramStatus) string {
 	return strings.Join(parts, " · ")
 }
 
+// breathing tells that the window being built has the focus, which the
+// activity dots breathe in: out of it, a program printing for hours would
+// keep the window painting for nothing.
+var breathing = true
+
 // activityDot is the dot of a program printing: a solid dot in a soft
-// halo. With a style of animation the halo breathes, growing and fading
-// in and out, all the dots in step; without, it stands still.
+// halo. With a style of animation the halo breathes while the window has
+// the focus, growing and fading in and out, all the dots in step;
+// otherwise it stands still.
 func activityDot(c *ui.Context, col ui.Color, size float32) ui.Element {
 	e := ui.Box(c).Size(size+6, size+6).Margin(0, 0, 0, 1).Tooltip(locales.PanePrinting())
-	breathes := motion(c) != nil
+	breathes := breathing && motion(c) != nil
 	e.Draw(func(p *ui.Painter, r ui.Rect) {
 		cx, cy := r.X+r.W/2, r.Y+r.H/2
 		halo, alpha := size/2+2.5, float32(0.22)
