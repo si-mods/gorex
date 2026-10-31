@@ -94,4 +94,3 @@ func TestWindowIDsSurviveGateway(t *testing.T) {
 		t.Fatalf("window IDs changed: %v to %v", first, second)
 	}
 }
-
