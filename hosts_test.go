@@ -20,6 +20,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -915,6 +916,96 @@ func TestAdoptHostTabSavedLate(t *testing.T) {
 	waitFor(t, tt, "the host's tab", func() bool { return len(a.tabsOn(h)) == 1 })
 	if n := len(a.tabsOn(h)[0].panes()); n != 2 {
 		t.Errorf("the host's tab came back with %d panes", n)
+	}
+}
+
+// TestAdoptHostTabSplitLater checks that a pane the host splits off a tab
+// this client shows already opens in that tab, where the host's split puts
+// it, not in a tab of its own.
+func TestAdoptHostTabSplitLater(t *testing.T) {
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, remote := startHostServer(t)
+	t.Cleanup(a.stopHosts)
+	share := func(root *savedNode, floats ...layout.Float) {
+		t.Helper()
+		raw, err := json.Marshal(savedStore{
+			Version: layoutVersion,
+			Sessions: []savedWorkspace{{
+				ID: "w", Name: "studio",
+				Layout: savedLayout{Tabs: []savedTab{{Name: "build", Root: root, Floats: floats}}},
+			}},
+			Windows: []string{"w"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := remote.SetLayout(raw); err != nil {
+			t.Fatal(err)
+		}
+	}
+	create := func() string {
+		t.Helper()
+		in, err := remote.Create(rex.CreateOptions{Cols: 90, Rows: 30})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return in.ID
+	}
+	var h *hostConn
+	shown := func() int {
+		n := 0
+		for _, tb := range a.tabsOn(h) {
+			n += len(tb.allPanes())
+		}
+		return n
+	}
+	first := create()
+	share(&savedNode{SID: first})
+	h = a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	waitFor(t, tt, "the host's tab", func() bool { return len(a.tabsOn(h)) == 1 })
+
+	// The host splits its pane, then the right one.
+	second := create()
+	share(&savedNode{Ratio: 0.5, A: &savedNode{SID: first}, B: &savedNode{SID: second}})
+	waitFor(t, tt, "the second pane", func() bool { return shown() == 2 })
+	third := create()
+	share(&savedNode{
+		Ratio: 0.5,
+		A:     &savedNode{SID: first},
+		B:     &savedNode{Ratio: 0.5, A: &savedNode{SID: second}, B: &savedNode{SID: third}},
+	})
+	waitFor(t, tt, "the third pane", func() bool { return shown() == 3 })
+	// Then floats a pane over them.
+	fourth := create()
+	share(&savedNode{
+		Ratio: 0.5,
+		A:     &savedNode{SID: first},
+		B:     &savedNode{Ratio: 0.5, A: &savedNode{SID: second}, B: &savedNode{SID: third}},
+	}, layout.Float{Pane: &savedNode{SID: fourth}, X: 0.2, Y: 0.2, W: 0.5, H: 0.5})
+	waitFor(t, tt, "the float", func() bool { return shown() == 4 })
+
+	tabs := a.tabsOn(h)
+	if len(tabs) != 1 {
+		t.Fatalf("the host's tab came back as %d tabs", len(tabs))
+	}
+	got := tabs[0]
+	var sids []string
+	for _, p := range got.panes() {
+		sids = append(sids, p.SID)
+	}
+	if want := []string{first, second, third}; !slices.Equal(sids, want) {
+		t.Errorf("the panes are %v, not %v", sids, want)
+	}
+	if got.Root.Vertical || got.Root.B == nil || got.Root.B.Vertical {
+		t.Error("the panes are stacked, not side by side")
+	}
+	if len(got.Floats) != 1 || got.Floats[0].Pane.SID != fourth {
+		t.Error("the float is not over the tab")
+	}
+	if got.Focus == nil || got.Focus.SID != first {
+		t.Error("the tab's focus moved")
 	}
 }
 

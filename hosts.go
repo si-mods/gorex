@@ -557,11 +557,13 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 		return
 	}
 	shown := map[string]bool{}
+	where := map[string]*Pane{} // the panes here of h's sessions
 	for _, o := range a.peers() {
 		for _, t := range o.tabs {
 			for _, p := range t.allPanes() {
 				if p.host == h {
 					shown[p.SID] = true
+					where[p.SID] = p
 				}
 			}
 		}
@@ -592,6 +594,11 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 	}
 	added := false
 	for _, t := range l.tabs {
+		// A tab here that shows panes of t already takes its new ones,
+		// as when the host splits a pane of it.
+		if a.adoptInto(h, t, free, where) {
+			added = true
+		}
 		if at := a.adoptTab(h, t, free); at != nil {
 			a.tabs = append(a.tabs, at)
 			added = true
@@ -609,6 +616,161 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 	if added {
 		a.groupTabs()
 		a.changed()
+	}
+}
+
+// adoptInto puts the panes of the host's tab st that free has into the
+// tabs here that show its other panes, where its splits put them, and takes
+// them from free; where are the panes here of h's sessions, and gets those
+// it adds. It reports whether it added any. The tabs keep their focus.
+func (a *App) adoptInto(h *hostConn, st savedTab, free map[string]rex.SessionInfo, where map[string]*Pane) bool {
+	up := map[*savedNode]*savedNode{}
+	var leaves func(n *savedNode) []*savedNode
+	leaves = func(n *savedNode) []*savedNode {
+		if n == nil {
+			return nil
+		}
+		if n.A == nil || n.B == nil {
+			return []*savedNode{n}
+		}
+		up[n.A], up[n.B] = n, n
+		return append(leaves(n.A), leaves(n.B)...)
+	}
+	tiled := leaves(st.Root)
+	// pane makes the pane of n's session in tab t of window o.
+	pane := func(o *App, t *Tab, n *savedNode) *Pane {
+		in := free[n.SID]
+		delete(free, n.SID)
+		p := &Pane{ID: o.id(), SID: in.ID, Name: n.Name, info: in, startDir: in.Dir, host: h}
+		o.attach(p, in.Cols, in.Rows)
+		p.Tab = t
+		where[in.ID] = p
+		o.changed()
+		return p
+	}
+	added := false
+	// A pane is placed beside one placed before it, so go on while any is.
+	for more := true; more; {
+		more = false
+		for _, n := range tiled {
+			if _, ok := free[n.SID]; n.SID == "" || n.Host != "" || !ok {
+				continue
+			}
+			// The nearest split with a side shown here: the new pane
+			// splits what shows that side.
+			for c, s := n, up[n]; s != nil; c, s = s, up[s] {
+				first, other := c == s.A, s.A
+				if first {
+					other = s.B
+				}
+				var near []*Pane
+				for _, o := range leaves(other) {
+					if p := where[o.SID]; p != nil && p.float == nil && p.Node != nil {
+						near = append(near, p)
+					}
+				}
+				if len(near) == 0 {
+					continue
+				}
+				// The pane next to the new one there, and those of its tab.
+				next := near[len(near)-1]
+				if first {
+					next = near[0]
+				}
+				t := next.Tab
+				near = slices.DeleteFunc(near, func(p *Pane) bool { return p.Tab != t })
+				// The split here of all those panes, when it has no other,
+				// else the pane next to the new one.
+				target := next.Node
+				for x := next.Node; x != nil; x = x.Parent {
+					ps := x.panes()
+					if !slices.ContainsFunc(near, func(p *Pane) bool { return !slices.Contains(ps, p) }) {
+						if len(ps) == len(near) {
+							target = x
+						}
+						break
+					}
+				}
+				o := a.owner(t)
+				if o == nil {
+					break
+				}
+				p := pane(o, t, n)
+				splitNode(o, target, p, !first, s.Vertical, s.Ratio)
+				added, more = true, true
+				break
+			}
+		}
+	}
+	// A float of st goes over the tab here that shows st's other panes.
+	var t *Tab
+	for _, n := range tiled {
+		if p := where[n.SID]; p != nil {
+			t = p.Tab
+			break
+		}
+	}
+	for _, sf := range st.Floats {
+		if t != nil {
+			break
+		}
+		if sf.Pane != nil && where[sf.Pane.SID] != nil {
+			t = where[sf.Pane.SID].Tab
+		}
+	}
+	o := a.owner(t)
+	if o == nil {
+		return added
+	}
+	for _, sf := range st.Floats {
+		n := sf.Pane
+		if n == nil || n.A != nil && n.B != nil {
+			continue
+		}
+		if _, ok := free[n.SID]; n.SID == "" || n.Host != "" || !ok {
+			continue
+		}
+		p := pane(o, t, n)
+		f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
+		f.clamp()
+		p.Node = &Node{ID: o.id(), Pane: p}
+		p.float = f
+		t.Floats = append(t.Floats, f)
+		added = true
+	}
+	return added
+}
+
+// owner returns the window of the peers whose tabs have t, nil for none.
+func (a *App) owner(t *Tab) *App {
+	for _, o := range a.peers() {
+		if t != nil && slices.Contains(o.tabs, t) {
+			return o
+		}
+	}
+	return nil
+}
+
+// splitNode puts pane p beside node n of window o, after it (right or
+// below) when after, else before it, with ratio as the first side's share.
+// The tab's focus stays.
+func splitNode(o *App, n *Node, p *Pane, after, vertical bool, ratio float32) {
+	if ratio == 0 {
+		ratio = 0.5
+	}
+	old := &Node{ID: o.id(), Pane: n.Pane, Parent: n, Vertical: n.Vertical, Ratio: n.Ratio, A: n.A, B: n.B}
+	if old.Pane != nil {
+		old.Pane.Node = old
+	}
+	if old.A != nil {
+		old.A.Parent, old.B.Parent = old, old
+	}
+	node := &Node{ID: o.id(), Pane: p, Parent: n}
+	p.Node = node
+	n.Pane, n.Vertical, n.Ratio = nil, vertical, min(max(ratio, 0.05), 0.95)
+	n.A, n.B = old, node
+	if !after {
+		n.A, n.B = node, old
 	}
 }
 
