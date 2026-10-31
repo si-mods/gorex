@@ -19,7 +19,7 @@ func TestRexCLIIntegration(t *testing.T) {
 	if err != nil {
 		t.Skip("no rex on PATH")
 	}
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.setLayout(standardLayout())
 	for _, args := range [][]string{
 		{"--autostart=false", "-S", f.srv.URL, "api", "call", "server.version"},
@@ -42,7 +42,7 @@ func TestRexCLIIntegration(t *testing.T) {
 // TestAccessRefusal checks that a refusing access rule answers with
 // status 403 and a JSON error, on every endpoint.
 func TestAccessRefusal(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.g.opt.Access = AccessFunc(func(*http.Request) error { return errors.New("not allowed here") })
 	srv := httptest.NewServer(f.g.Handler())
 	defer srv.Close()
@@ -62,7 +62,7 @@ func TestAccessRefusal(t *testing.T) {
 // TestClientLostState checks that a dropped client is listed as lost
 // until it reconnects.
 func TestClientLostState(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.setLayout(standardLayout())
 	c := f.dialControl()
 	w := c.hello(apiRevision)
@@ -106,7 +106,7 @@ func TestClientLostState(t *testing.T) {
 
 // TestKeepalivePing checks that the server answers a client's ping.
 func TestKeepalivePing(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	c := f.dialControl()
 	c.hello(apiRevision)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

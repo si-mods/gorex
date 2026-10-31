@@ -26,21 +26,21 @@ func expectClose(t *testing.T, ws *websocket.Conn, want websocket.StatusCode) {
 }
 
 func TestControlSubprotocol(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	ws := f.dial("/api/control", "rex.control.v0")
 	wsWrite(t, ws, websocket.MessageText, []byte(`{"type":"hello","api_revision":7}`))
 	expectClose(t, ws, 1002)
 }
 
 func TestHelloNeedsFiveSeconds(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.g.helloWait = 80 * time.Millisecond
 	ws := f.dial("/api/control", controlProtocol)
 	expectClose(t, ws, -1)
 }
 
 func TestHelloSize(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	ws := f.dial("/api/control", controlProtocol)
 	hello := `{"type":"hello","api_revision":7,"client":{"name":"` + strings.Repeat("x", maxHello) + `"}}`
 	wsWrite(t, ws, websocket.MessageText, []byte(hello))
@@ -48,28 +48,28 @@ func TestHelloSize(t *testing.T) {
 }
 
 func TestHelloBinary(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	ws := f.dial("/api/control", controlProtocol)
 	wsWrite(t, ws, websocket.MessageBinary, []byte(`{"type":"hello"}`))
 	expectClose(t, ws, 1003)
 }
 
 func TestHelloInvalidUTF8(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	ws := f.dial("/api/control", controlProtocol)
 	wsWrite(t, ws, websocket.MessageText, []byte{0xff, 0xfe})
 	expectClose(t, ws, 1007)
 }
 
 func TestNoCommonRevision(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	ws := f.dial("/api/control", controlProtocol)
 	wsWrite(t, ws, websocket.MessageText, []byte(`{"type":"hello","api_revision":9,"api_min_revision":8}`))
 	expectClose(t, ws, 1008)
 }
 
 func TestRequestErrors(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.setLayout(standardLayout())
 	t.Run("id", func(t *testing.T) {
 		ws := openControl(t, f)
@@ -112,7 +112,7 @@ func TestRequestErrors(t *testing.T) {
 }
 
 func TestDuplicateRequestID(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})
 	f.g.hold = func(id string) {
@@ -136,7 +136,7 @@ func TestDuplicateRequestID(t *testing.T) {
 // TestReconnect checks that an abnormal end keeps the client for a
 // reconnect, and that a close frame does not.
 func TestReconnect(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.setLayout(standardLayout())
 
 	c1 := f.dialControl()

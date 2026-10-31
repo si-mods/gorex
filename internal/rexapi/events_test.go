@@ -56,7 +56,7 @@ func expectNoMessage(t *testing.T, c *testConn) {
 // TestEvents checks the events an attached connection receives and the
 // gap-free seq the doc promises.
 func TestEvents(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.setLayout(standardLayout())
 	a := f.dialControl()
 	a.hello(apiRevision)
@@ -157,7 +157,7 @@ func TestEvents(t *testing.T) {
 // hears every session's events, including session_created, while one that
 // attached to nothing hears none.
 func TestAttachAllScope(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.setLayout(standardLayout())
 	watcher := f.dialControl()
 	watcher.hello(apiRevision)

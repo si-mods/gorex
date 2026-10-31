@@ -26,7 +26,7 @@ type fixture struct {
 
 // startFixture starts a GoRex server in a directory of its own, connects
 // a gateway to it, and serves the gateway on an HTTP test server.
-func startFixture(t *testing.T, snap Snapshotter) *fixture {
+func startFixture(t *testing.T) *fixture {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
@@ -46,7 +46,7 @@ func startFixture(t *testing.T, snap Snapshotter) *fixture {
 		desk.Shutdown()
 		t.Fatal(err)
 	}
-	g, err := New(Options{Client: c, Snapshotter: snap})
+	g, err := New(Options{Client: c})
 	if err != nil {
 		c.Close()
 		desk.Shutdown()

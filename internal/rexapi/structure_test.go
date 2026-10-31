@@ -9,7 +9,7 @@ import (
 // TestStructuralEvents checks the events of a label change, a window and
 // block closing, and a session being destroyed.
 func TestStructuralEvents(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	f.setLayout(standardLayout())
 	c := f.dialControl()
 	c.hello(apiRevision)
@@ -76,7 +76,7 @@ func TestStructuralEvents(t *testing.T) {
 
 // TestBlockCreated checks block_created when a new pane joins.
 func TestBlockCreated(t *testing.T) {
-	f := startFixture(t, nil)
+	f := startFixture(t)
 	store := layout.Store{Sessions: []layout.Workspace{{
 		ID: "w", Name: "w",
 		Layout: layout.Layout{Tabs: []layout.Tab{{Name: "one", Root: pane("a")}}},
