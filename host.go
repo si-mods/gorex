@@ -25,7 +25,7 @@ func (a *App) hostChip(c *ui.Context, k *colors) {
 		a.hostOpen = !a.hostOpen
 	}
 	chip.Children(func() {
-		ui.Icon(c, icon(glyph)).Size(19, 19).TextColor(k.textMuted)
+		glyphIcon(c, glyph, 19, k.textMuted)
 		ui.Column(c).MinWidth(0).Children(func() {
 			ui.Text(c, name).FontSize(13.5).FontWeight(700).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…")
 			ui.Text(c, model).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
@@ -114,7 +114,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 	h := a.hello.Host
 	ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 		ui.Box(c).Size(38, 38).Radius(10).Background(k.hover).Center().Children(func() {
-			ui.Icon(c, icon(glyph)).Size(24, 24).TextColor(k.text)
+			glyphIcon(c, glyph, 24, k.text)
 		})
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			ui.Text(c, name).FontSize(14).FontWeight(700).TextColor(k.text).SingleLine().Ellipsis("…")

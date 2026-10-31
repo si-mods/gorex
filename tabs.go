@@ -418,7 +418,7 @@ func drawTile(p *ui.Painter, k *colors, r ui.Rect, prog program, glyph bool) {
 		g = prog.Glyph
 	}
 	s := float32(11)
-	p.Icon(icon(g), ui.Rect{X: r.X + (r.W-s)/2, Y: r.Y + (r.H-s)/2, W: s, H: s}, prog.TileFg)
+	glyphIn(p, g, ui.Rect{X: r.X + (r.W-s)/2, Y: r.Y + (r.H-s)/2, W: s, H: s}, prog.TileFg)
 }
 
 // fadeText draws spans on a line, fading the end out when they do not

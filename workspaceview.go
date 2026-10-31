@@ -41,7 +41,7 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 		glyph = k.accent
 	}
 	chip.Children(func() {
-		ui.Icon(c, icon("layers")).Size(15, 15).TextColor(glyph).Shrink(0)
+		glyphIcon(c, "layers", 15, glyph).Shrink(0)
 		if a.wsRenaming {
 			a.workspaceRenameField(c, k, w.Name)
 			return
@@ -53,7 +53,7 @@ func (a *App) workspaceChip(c *ui.Context, k *colors, wide bool) {
 		if s := a.st.status(w); s != nil && s.State != "idle" {
 			statusDot(c, k, s, 7)
 		}
-		ui.Icon(c, icon("chevron-down")).Size(13, 13).TextColor(k.textFaint).Shrink(0)
+		glyphIcon(c, "chevron-down", 13, k.textFaint).Shrink(0)
 	})
 	a.workspacePopover(c, k, chip)
 }
@@ -132,7 +132,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 		row.Children(func() {
 			ui.Box(c).Size(15, 15).Shrink(0).Children(func() {
 				if current {
-					ui.Icon(c, icon("check")).Size(15, 15).TextColor(k.text)
+					glyphIcon(c, "check", 15, k.text)
 				}
 			})
 			spaceDot(c, k, w)
@@ -144,7 +144,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 				statusDot(c, k, s, 7)
 			}
 			if w.app != nil && !current {
-				ui.Icon(c, icon("app-window")).Size(14, 14).TextColor(k.textFaint).Shrink(0).Tooltip(locales.SessionElsewhere())
+				glyphIcon(c, "app-window", 14, k.textFaint).Shrink(0).Tooltip(locales.SessionElsewhere())
 			}
 		})
 	}
@@ -161,7 +161,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 			a.later(c, run)
 		}
 		row.Children(func() {
-			ui.Icon(c, icon(glyph)).Size(15, 15).TextColor(k.textMuted).Shrink(0)
+			glyphIcon(c, glyph, 15, k.textMuted).Shrink(0)
 			ui.Text(c, label).FontSize(13).TextColor(k.text).SingleLine().Ellipsis("…")
 		})
 	}

@@ -286,7 +286,7 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 	label, detail, up := hostStatus(h)
 	ui.Column(c.Key(h.ID)).Gap(8).Padding(9, 0).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, icon("server")).Size(18, 18).TextColor(k.textMuted).Shrink(0)
+			glyphIcon(c, "server", 18, k.textMuted).Shrink(0)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 				ui.Text(c, h.Name).FontSize(13.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
 				ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {

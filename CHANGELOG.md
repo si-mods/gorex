@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- A pane header reads on its own background: when a pane takes a dark
+  terminal background in a light window, or the other way around, its
+  title and buttons take the palette of that background, so a hovered icon
+  no longer turns black on a dark header.
+- Icons are SF Symbols on macOS: the buttons of the window and its pane
+  headers, the tabs, the sidebar and the settings window draw the system's
+  own symbol at their size and color, as Rex does, which follows the
+  design of the macOS they run on and keeps them sharp on any display.
+  Windows and Linux, and a macOS too old for a symbol, draw the SVGs of
+  `assets/icons` as before; brand marks are always SVGs, since SF Symbols
+  has no logos. Nothing of Apple's artwork is in the app or its build.
 - Browser panes. New Browser Tab (the command palette or the Shell
   menu) opens a tab whose pane shows a web page in the system's web
   view, with an address field, back, forward and reload in its header;
@@ -34,6 +45,17 @@
   new pane runs, and whether a new tab takes focus; `space.create` makes a
   space, and `space.close` closes one, ending the sessions of a space no
   window shows. Closing a space, or a tab, ends its programs as before.
+- A pane header reads on its own background: when a pane takes a dark
+  terminal background in a light window, or the other way around, its
+  title and buttons take the palette of that background, so a hovered icon
+  no longer turns black on a dark header.
+- Icons are SF Symbols on macOS: the buttons of the window and its pane
+  headers, the tabs, the sidebar and the settings window draw the system's
+  own symbol at their size and color, as Rex does, which follows the
+  design of the macOS they run on and keeps them sharp on any display.
+  Windows and Linux, and a macOS too old for a symbol, draw the SVGs of
+  `assets/icons` as before; brand marks are always SVGs, since SF Symbols
+  has no logos. Nothing of Apple's artwork is in the app or its build.
 - Paste into a program that runs on Windows reaches it again. A ConPTY
   drops the OSC that a terminal's paste event is, so a program that reads
   the clipboard itself, as agents do, never learned of a paste, and

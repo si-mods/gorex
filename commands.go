@@ -1020,7 +1020,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		panel.Width(560).MaxHeight(440).Radius(16).Background(k.panel).Border(1, k.panelBorder).
 			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
 		ui.Row(c).Padding(12, 16).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(k.panelBorder).Children(func() {
-			ui.Icon(c, icon("search")).Size(17, 17).TextColor(k.textFaint)
+			glyphIcon(c, "search", 17, k.textFaint)
 			placeholder := locales.PalettePlaceholder()
 			if a.paletteSessions {
 				placeholder = locales.SessionPlaceholder()
@@ -1060,7 +1060,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 					it.run()
 				}
 				row.Children(func() {
-					ui.Icon(c, icon(it.glyph)).Size(15, 15).TextColor(k.textMuted)
+					glyphIcon(c, it.glyph, 15, k.textMuted)
 					if it.hasDot {
 						ui.Box(c).Size(8, 8).Radius(4).Background(it.dot).Shrink(0)
 					}

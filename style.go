@@ -130,6 +130,30 @@ func colorsOf(c *ui.Context) *colors {
 	return &lightColors
 }
 
+// isDark reports whether c is darker than the midpoint, as a face is.
+func isDark(c ui.Color) bool {
+	return int(c.R)*299+int(c.G)*587+int(c.B)*114 < 128*1000
+}
+
+// headerColors returns k's colors for a pane header drawn on bg: its own,
+// or those of the palette of bg's lightness when the pane takes a terminal
+// background of the other appearance, as a light window over a dark
+// terminal does. Its title, its buttons and their hover faces then read on
+// the header, rather than turning black on a dark one.
+func headerColors(k *colors, bg ui.Color) *colors {
+	if isDark(bg) == isDark(k.panel) {
+		return k
+	}
+	ref := &lightColors
+	if isDark(bg) {
+		ref = &darkColors
+	}
+	h := *k
+	h.text, h.textMuted, h.textFaint, h.iconMuted = ref.text, ref.textMuted, ref.textFaint, ref.iconMuted
+	h.hover, h.pressed = ref.hover, ref.pressed
+	return &h
+}
+
 // paintBackground paints the window's background.
 func paintBackground(p *ui.Painter, r ui.Rect, k *colors) {
 	h1, h2 := r.H*0.38, r.H*0.32
