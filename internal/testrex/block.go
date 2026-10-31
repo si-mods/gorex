@@ -1,4 +1,4 @@
-package rexapi
+package testrex
 
 import (
 	"encoding/json"

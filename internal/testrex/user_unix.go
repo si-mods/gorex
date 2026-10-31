@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package rexapi
+package testrex
 
 import "os"
 

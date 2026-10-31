@@ -1,4 +1,4 @@
-package rexapi
+package testrex
 
 import (
 	"encoding/json"
@@ -479,31 +479,6 @@ func init() {
 			}
 			c.s.changed()
 			return map[string]any{"block_id": b.ID, "zoomed": res.Zoomed, "revision": c.s.current().rev}, nil
-		},
-	})
-	register(&method{
-		name: "session.set_label", desc: "Set the session's label.",
-		in: props([]string{"session_id"}, map[string]any{
-			"session_id": str("The session to act on."),
-			"label":      str("The new label."),
-		}),
-		handler: func(c *control, raw json.RawMessage) (any, *apiError) {
-			var p struct {
-				SessionID string `json:"session_id"`
-				Label     string `json:"label"`
-			}
-			if apiErr := decode(raw, &p); apiErr != nil {
-				return nil, apiErr
-			}
-			s, apiErr := c.sessionFor(p.SessionID)
-			if apiErr != nil {
-				return nil, apiErr
-			}
-			if _, apiErr := c.command(s, rex.LayoutCommand{Op: "space.rename", Name: p.Label}); apiErr != nil {
-				return nil, apiErr
-			}
-			c.s.changed()
-			return map[string]any{"revision": c.s.current().rev}, nil
 		},
 	})
 	register(&method{

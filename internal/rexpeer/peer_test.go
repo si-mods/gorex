@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"gorex/internal/rex"
-	"gorex/internal/rexapi"
+	"gorex/internal/testrex"
 )
 
 // startGorex starts a session server in a short temporary directory and
@@ -44,7 +44,7 @@ func startGorex(t *testing.T) (*rex.Client, string) {
 		c.Shutdown()
 		time.Sleep(50 * time.Millisecond)
 	})
-	api, err := rexapi.New(rexapi.Options{Socket: rex.SocketPath(), Version: "test"})
+	api, err := testrex.New(testrex.Options{Socket: rex.SocketPath(), Version: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

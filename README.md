@@ -336,90 +336,50 @@ on there.
 `go run ./tools/remotectl pair ADDRESS NAME` asks to pair from a machine
 without the app.
 
-## Rex's API
+## Importing a Rex session
 
-Rex's clients speak HTTP and WebSockets over the session server's socket,
-and GoRex's server answers them: a Rex session is a workspace (a space), a
-Rex window is a tab, and a Rex block is a pane, so Rex.app and the `rex`
-CLI see and drive GoRex as they see Rex. GoRex's own clients send JSON
-lines, which the server tells apart from HTTP, so both share the socket.
-The sessions are GoRex's own: this serves Rex clients over GoRex's
-workspaces, tabs and panes, and does not import the sessions of a Rex
-server, which keeps its own.
-
-```sh
-rex -S "$HOME/Library/Application Support/GoRex/server.sock" ls
-rex -S "$HOME/Library/Application Support/GoRex/server.sock" capture -s <session>
-```
-
-`GET /api/control` is the control WebSocket (`rex.control.v1`),
-`GET /api/data` streams a block's screen and output, and `GET /api/help`
-describes the methods, at the same paths Rex serves them. `internal/rexapi`
-holds the translation: sessions from workspaces, windows from tabs, blocks
-from panes, and every change from a layout command.
-
-What GoRex provides:
-
-- Sessions, windows and blocks: listing, views, labels, focus, zoom,
-  splits, moves, swaps, resizes, closing and creating, including
-  `session.create` with windows whose blocks run a command, and
-  `session.destroy`.
-- Terminals: `format` (text or escape sequences), `write`, `size`,
-  `title`, `pwd`, `process`, `reset` and `clear`, `block.event`,
-  `client.key` with the usual named keys, and data connections that start
-  with a snapshot and then the program's output.
-- Server and clients: `server.status`, `server.version`, `server.whoami`,
-  `client.list`, `client.inspect`, `client.keymap`, `client.action`,
-  `target.resolve`, `target.complete`, `help.all`, and a filtered stream
-  of `session_event` messages.
-
-What it does not provide yet: floating layers and detached blocks placed
-later (`session.new_layer`, `session.float_block`, `session.move_block` for
-a detached block), block ownership (`session.own_block`), `client.perform`,
-hosts, Tailscale and the Apple privacy methods; each answers
-`not_supported` rather than pretending. A connection cannot resume with a
-`reconnect_token`, so a Rex client that reconnects starts a new client. A
-tab keeps an ID in the layout, so a Rex window keeps its ID while its tab
-does, though a tab of a layout saved before tab IDs falls back to its first
-pane.
-Closing a session's last window closes the session, as GoRex's spaces go
-with their last tab, and a layout's exact split ratios are not kept: the
-blocks are made in layout order, each split beside the one before.
-
-### Importing a Rex session
-
-`gorex rex-import` reads a Rex server and makes the same shape in GoRex: a
-Rex session becomes a space, a window a tab, and a block a pane. Each pane
-runs `gorex rex-mirror`, which draws what the Rex block shows and sends
-what is typed there to it, so the two show the same program; `--shell`
-runs a shell in each block's directory instead, and `--resize` lets a
-mirror give its Rex block the pane's size.
+GoRex reads a Rex server and makes the same shape here: a Rex session
+becomes a space, a window a tab, and a block a pane. Each pane runs
+`gorex rex-mirror`, which draws what the Rex block shows and sends what
+is typed there to it, so the two show the same program.
 
 ```sh
 gorex rex-import --session work            # one session, by label or ID
 gorex rex-import                           # every session
 gorex rex-import --shell                   # shells, not mirrors
+gorex rex-import --resize                  # mirrors give their blocks the pane's size
 ```
 
-The window imports the same way without a terminal: **Space ▸ Import from
-Rex** (or the command palette's *Import from Rex*) mirrors every session
-the record does not have yet, and says how many it made in a
-notification; a failure opens a dialog.
+The window imports without a terminal: **Space ▸ Import from Rex**, or the
+command palette's *Import from Rex*, mirrors every session the record does
+not have yet and says how many it made in a notification; a failure opens a
+dialog. The Rex server defaults to `$REX_SERVER`, else `rex/server.sock` in
+the platform's data directory; `--rex` names another. What a run imported
+is recorded in `rex-import.json` in GoRex's data directory, so a second run
+leaves those sessions alone. The GoRex window must be open: it makes the
+spaces, tabs and panes.
 
-The Rex server defaults to `$REX_SERVER`, else `rex/server.sock` in the
-platform's data directory; `--rex` names another, or a socket path. What a
-run imported is recorded in `rex-import.json` in GoRex's data directory,
-so a second run leaves those sessions alone. The GoRex window must be
-open: it makes the spaces, tabs and panes.
+A mirror is a view with input. The data stream starts with a snapshot in
+Ghostty's binary format, which only a Ghostty terminal restores, so the
+mirror draws the screen from the escape sequences Rex renders (`format`
+vt), reads past the snapshot by its record format, and passes the
+program's output on as it comes; Rex's own APC messages are dropped. Keys
+go to the block as text. What the block's program prints reaches the pane
+as it would reach a terminal itself: the mirror does not filter its
+escapes otherwise, as a terminal multiplexer would not.
 
-A mirror is a view with input: what the Rex block shows is drawn from the
-escape sequences Rex renders, since the data stream's snapshot is in
-Ghostty's binary format, which only a Ghostty terminal restores; the
-stream then carries the program's output, and keys go to the block as
-text. What the program prints reaches the pane as it would reach a
-terminal itself: the mirror does not filter its escapes (only Rex's own
-APC messages), as a terminal multiplexer would not. Floating layers are not imported, and splits are made beside the
-block before them, as Rex layouts are, so their ratios can differ.
+A tab keeps its window's label only when a person gave it one; Rex's own
+labels, such as `Window 2b63efe2`, are left out, and the tab follows its
+block's title, as the Rex window does. The tab's tile is the program the
+block runs — Claude Code, omp, a shell — which the mirror reports through
+the program status protocol (OSC 7501) along with the status Rex keeps for
+it, so a working or finished block shows as it does in Rex.
+
+A mirror's pane is a terminal of GoRex's, so what the Rex program writes
+reaches it, escape sequences and all. A layout's exact shape is not kept:
+the blocks are made in layout order, each split beside the one before, so a
+nested split's panes can sit in different halves than Rex put them, and
+ratios are not kept.
 
 ## rootshell
 
@@ -519,7 +479,8 @@ image reaches a program as a file it opens, not as clipboard data.
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 | `internal/control`, `tools/rootshell` | `GoRex control`, the bridge rootshell drives as herdr, and the `herdr` shim that runs it |
-| `internal/rexapi` | Rex's HTTP and WebSocket API over GoRex: a Rex session is a workspace, a window is a tab, a block is a pane, so Rex.app and the `rex` CLI can use GoRex as they use Rex |
+| `internal/rexpeer`, `internal/reximp` | Rex's API as a client, and importing a Rex session into GoRex as spaces, tabs and panes that mirror its blocks |
+| `internal/testrex` | a Rex server for tests, over GoRex's own session server, so the client and the importer have one to talk to |
 
 Rex's connections to servers on other machines are only half there: the
 server side exists (remote access, above), but the window cannot open

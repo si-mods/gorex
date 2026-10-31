@@ -162,13 +162,11 @@ type LayoutCommand struct {
 	// where the tab is then.
 	Index int `json:"index,omitempty"`
 	// The answer: Code and Error when it was not made, New the session of
-	// the pane made, Tab the ID the layout keeps of the tab made or moved,
-	// and Zoomed whether the pane's tab is zoomed now. Changed and Reason
-	// answer pane.resize, pane.swap and pane.move.
+	// the pane made, and Zoomed whether the pane's tab is zoomed now.
+	// Changed and Reason answer pane.resize, pane.swap and pane.move.
 	Code    string `json:"code,omitempty"`
 	Error   string `json:"error,omitempty"`
 	New     string `json:"new,omitempty"`
-	Tab     string `json:"tab,omitempty"`
 	Zoomed  bool   `json:"zoomed,omitempty"`
 	Changed bool   `json:"changed,omitempty"`
 	Reason  string `json:"reason,omitempty"`

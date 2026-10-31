@@ -164,20 +164,6 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		res.Space = w.ID
 		a.changed()
 		return res
-	case "space.rename":
-		if a.st == nil {
-			return fail("desktop_unavailable", "no GoRex window is open")
-		}
-		w := a.st.workspaceByID(c.Space)
-		if w == nil {
-			return fail("space_not_found", "no such space in the GoRex layout")
-		}
-		if name := labelText(c.Name); name != "" {
-			w.Name = name
-		}
-		res.Name = w.Name
-		a.changed()
-		return res
 	case "space.close":
 		if a.st == nil {
 			return fail("desktop_unavailable", "no GoRex window is open")
@@ -251,7 +237,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			}
 			a.focusReq = t.Focus
 		}
-		res.New, res.Tab = t.Focus.SID, t.UID
+		res.New = t.Focus.SID
 	case "pane.split":
 		dir := c.Dir
 		if dir == "" {
@@ -354,7 +340,6 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		}
 		a.moveTab(t, max(to, 0))
 		res.Index = slices.Index(a.localTabs(), t)
-		res.Tab = t.UID
 	default:
 		return fail("unknown_op", "GoRex does not know "+c.Op)
 	}

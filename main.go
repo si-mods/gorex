@@ -9,13 +9,9 @@
 package main
 
 import (
-	"bufio"
 	"log"
-	"net"
 	"os"
 	"runtime"
-	"runtime/debug"
-	"sync"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater/native"
@@ -23,14 +19,10 @@ import (
 	"gorex/internal/cli"
 	"gorex/internal/control"
 	"gorex/internal/rex"
-	"gorex/internal/rexapi"
 	"gorex/locales"
 )
 
 func main() {
-	// Rex's API shares the session server's socket, so that Rex.app and
-	// the rex CLI can use GoRex as they use Rex (internal/rexapi).
-	rex.SetHTTPServe(serveRexAPI)
 	// -server runs the session server (rex.ServerMain); other arguments
 	// are AppKit's, as -NSWindowResizeTime, which it reads itself.
 	if server, err := rex.ServerMain(os.Args[1:]); server {
@@ -121,61 +113,4 @@ func (a *App) saveNow() {
 func staleServer(h rex.Hello) bool {
 	exe, at := rex.Executable()
 	return h.Exe != exe || !h.ExeTime.Equal(at)
-}
-
-// serveRexAPI serves a Rex client's connection, starting Rex's API over
-// this machine's server the first time one comes.
-func serveRexAPI(conn net.Conn, r *bufio.Reader, peer string) {
-	if peer != "" {
-		// A remote connection has no Rex API: it has no notion of the
-		// remote permissions the server enforces, and would act as the
-		// local user.
-		conn.Close()
-		return
-	}
-	rexAPIMu.Lock()
-	if rexAPIServer == nil {
-		s, err := rexapi.New(rexapi.Options{
-			Socket:  rex.SocketPath(),
-			Version: version(),
-			Commit:  commit(),
-		})
-		if err != nil {
-			log.Printf("gorex: serving Rex's API: %v", err)
-		} else {
-			rexAPIServer = s
-		}
-	}
-	server := rexAPIServer
-	rexAPIMu.Unlock()
-	if server == nil {
-		conn.Close()
-		return
-	}
-	rexapi.ServeConn(conn, r, server.Handler())
-}
-
-var (
-	rexAPIMu     sync.Mutex
-	rexAPIServer *rexapi.Server
-)
-
-// version is GoRex's version, as server.version reports it.
-func version() string {
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return "gorex " + info.Main.Version
-	}
-	return "gorex"
-}
-
-// commit is the revision GoRex was built from, when the build knows it.
-func commit() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		for _, setting := range info.Settings {
-			if setting.Key == "vcs.revision" {
-				return setting.Value
-			}
-		}
-	}
-	return ""
 }

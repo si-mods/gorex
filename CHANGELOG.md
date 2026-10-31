@@ -2,69 +2,28 @@
 
 ## Unreleased
 
-- Rex's API, so that Rex's clients can use GoRex. The session server answers
-  HTTP and WebSockets on its socket, beside its own JSON lines: a Rex
-  session is a space, a Rex window is a tab, and a Rex block is a pane. The
-  `rex` CLI lists, inspects, captures, types into, splits, renames, zooms
-  and closes GoRex's panes through it, `rex events` shows the changes, and
-  Rex.app's protocol, method for method, is answered where GoRex has the
-  operation, with `not_supported` where it has not (floating layers,
-  detached blocks placed later, block ownership, host and Tailscale
-  methods). Data connections stream a pane's snapshot and then its
-  program's output. A layout command now names the space it acts on, runs a
-  command in a new pane, and makes a new tab the active one; `space.create`,
-  `space.rename` and `space.close` let a client make and close spaces, as
-  `session.create` and `session.destroy` need. A tab now keeps an ID in the
-  layout, so a Rex window's ID stays while its tab does, even after the pane
-  that came first closes.
 - Importing a Rex session. `gorex rex-import` reads a Rex server's sessions
-  and makes them in GoRex: a space per session, a tab per window, a pane
-  per block, each named as Rex names it. Each pane runs `gorex rex-mirror`,
-  which draws what the Rex block shows, from the escape sequences Rex
-  renders (the data stream's snapshot is Ghostty's binary format), and
-  sends what is typed to the block; `--shell` runs a shell in each block's
-  directory instead, and `--resize` gives the block the pane's size. Where
-  a session came from is recorded in `rex-import.json`, so a second run
-  leaves it alone. A mirrored pane takes the title its Rex block's program
-  set, and its tab follows it: Rex's own window labels, `Window 2b63efe2`,
-  are not copied. A pane whose program is not a shell names itself by that
-  title even while it is the program its session started with. A mirrored
-  pane shows the tile of the program its Rex block runs, and its status: the
-  mirror reports both with the status protocol (OSC 7501, `app=`), so a
-  block Claude Code works in shows Claude's tile and its working or finished
-  state, as it does in Rex. A pane's program now shows by what it reported
-  through that protocol when it did, else a shell at its prompt, else the
-  executable. The Rex server is `$REX_SERVER` unless `--rex` names
-  one, and the GoRex window makes the spaces, tabs and panes.
-
-- Paste into a program that runs on Windows reaches it again. A ConPTY
-  drops the OSC that a terminal's paste event is, so a program that reads
-  the clipboard itself, as agents do, never learned of a paste, and
-  nothing came of it. A paste now goes to the session's server instead,
-  which writes it as text, bracketed when the program asked for bracketed
-  pastes; `gorex paste` does the same from the command line, and a pane of
-  a remote client pastes the same in a Windows session. An image alone has
-  no text to write, so an image still reaches a Windows program only as a
-  file it opens.
-- Pane animations. Panes now spring into place when they move, split or
-  zoom, and new or closing panes pop in and out. A new Animation style
-  setting in Settings › Appearance lets you choose Snappy, Natural or Off,
-  and it also controls how the sidebar shows and hides. While Reduce
-  Motion is on, animations stay off.
-- A session server restarted on purpose brings its sessions back, as one
-  that crashed already does: the server after it starts the sessions of the
-  layout again, with the same ids and at the directories their panes were
-  in, so the windows attach to them. `gorex server restart` does it without
-  starting a server itself: the open app reconnects and starts the next one,
-  else the next `gorex` command or launch does; run inside a pane, the
-  command says so, then its shell ends with the server. The app on Windows
-  restarts a server of an older build this way, since Windows servers cannot
-  upgrade in place, after asking whether to, since each pane comes back as a
-  new shell; a newer build is compared first, so that two copies of the app
-  do not restart each other. What the old sessions printed is lost. Quit and
-  End All still ends them, and so does the idle exit. A server too old to
-  know a restart is not restarted: quit it once with Quit and End All, or
-  kill it.
+  and makes them in GoRex: a space per session, a tab per window, a pane per
+  block, each named as Rex names it. Each pane runs `gorex rex-mirror`, which
+  draws what the Rex block shows, from the escape sequences Rex renders (the
+  data stream's snapshot is Ghostty's binary format, which the mirror reads
+  past), and sends what is typed to the block; `--shell` runs a shell in each
+  block's directory instead, and `--resize` gives the block the pane's size.
+  Where a session came from is recorded in `rex-import.json`, so a second run
+  leaves it alone. The window imports too: **Space ▸ Import from Rex**, and
+  the palette's *Import from Rex*, mirror every session not recorded yet and
+  report the count as a notification (a failure as a dialog). Rex's default
+  labels are not copied: a window called `Window 2b63efe2` and a block called
+  `shell` leave tab and pane to follow the block's title. A mirrored pane
+  shows the tile of the program its Rex block runs, and its status, through
+  the status protocol (OSC 7501, `app=`), so Claude Code's tile and a working
+  or finished state show as they do in Rex; a pane whose program is not a
+  shell names itself by its title even while it is the program its session
+  started with.
+- Layout commands for a client: the space a command acts on, the command a
+  new pane runs, and whether a new tab takes focus; `space.create` makes a
+  space, and `space.close` closes one, ending the sessions of a space no
+  window shows. Closing a space, or a tab, ends its programs as before.
 
 ## 0.3.2
 

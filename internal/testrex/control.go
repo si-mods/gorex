@@ -1,4 +1,4 @@
-package rexapi
+package testrex
 
 import (
 	"context"
@@ -219,7 +219,7 @@ func (c *control) handle(msg envelope) {
 	}()
 	defer func() {
 		if p := recover(); p != nil {
-			log.Printf("rexapi: %s: %v", msg.Method, p)
+			log.Printf("testrex: %s: %v", msg.Method, p)
 			c.respond(msg.ID, nil, errInternal("%s failed", msg.Method))
 		}
 	}()

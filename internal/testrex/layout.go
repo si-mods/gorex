@@ -1,4 +1,4 @@
-package rexapi
+package testrex
 
 import (
 	"encoding/json"
@@ -152,11 +152,7 @@ func (c *control) createWindow(s *mSession, label string, l *rexLayout, focus bo
 			return "", nil, apiErr
 		}
 	}
-	seed := res.New
-	if res.Tab != "" {
-		seed = res.Tab
-	}
-	window := windowIDOf(seed)
+	window := windowIDOf(res.New)
 	blockIDs := []string{blockID(res.New)}
 	prev := res.New
 	for i, leaf := range leaves[1:] {

@@ -1,4 +1,4 @@
-package rexapi
+package testrex
 
 import (
 	"encoding/json"
@@ -68,14 +68,10 @@ func blockID(sid string) string { return "block:" + uuidLike("block", sid) }
 // sessionID names the Rex session of a workspace.
 func sessionID(workspace string) string { return "session:" + uuidLike("session", workspace) }
 
-// windowID names a tab's window by the tab's own ID, or by its first
-// block for a tab of a layout of before tab IDs.
+// windowID names a tab's window by its first block, which stays while the
+// tab keeps that pane.
 func windowID(tab *layout.Tab) string {
-	seed := tab.ID
-	if seed == "" {
-		seed = firstSID(tab.Root)
-	}
-	return "window:" + uuidLike("window", seed)
+	return "window:" + uuidLike("window", firstSID(tab.Root))
 }
 
 // layerID names a window's one layer.

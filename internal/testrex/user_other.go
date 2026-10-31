@@ -1,6 +1,6 @@
 //go:build !darwin && !linux
 
-package rexapi
+package testrex
 
 // currentUID and currentGID name the account the server runs as. A
 // Windows server has no numeric IDs; a local client is the same account.

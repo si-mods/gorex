@@ -983,16 +983,10 @@ func TestCommandSpaces(t *testing.T) {
 	if got := w.app.tabs[0].Focus.SID; got != res.New || w.app.tabs[0].Focus.Tab != w.app.tabs[0] {
 		t.Fatalf("the tab's session: %q, want %q", got, res.New)
 	}
-	if w.app.tabs[0].UID == "" || savedTabID(a.st.saved(), space) != w.app.tabs[0].UID {
-		t.Fatalf("the tab's ID is not in the layout: %q", savedTabID(a.st.saved(), space))
-	}
 	// The window showed the new space: the one before keeps its tab in
 	// the layout, so it comes back as it was.
 	if got := savedTabSID(a.st.saved(), orig); got != origSID {
 		t.Fatalf("the space before holds tab %q, want %q", got, origSID)
-	}
-	if res = a.command(rex.LayoutCommand{Op: "space.rename", Space: space, Name: "renamed"}); res.Code != "" || res.Name != "renamed" {
-		t.Fatalf("space.rename: %+v", res)
 	}
 	// Closing the space ends its tab's program and the space itself, and
 	// the window shows another space.
@@ -1052,16 +1046,6 @@ func savedTabSID(st savedStore, workspace string) string {
 	for _, w := range st.Sessions {
 		if w.ID == workspace && len(w.Layout.Tabs) > 0 && w.Layout.Tabs[0].Root != nil {
 			return w.Layout.Tabs[0].Root.SID
-		}
-	}
-	return ""
-}
-
-// savedTabID returns the ID a workspace's first saved tab keeps.
-func savedTabID(st savedStore, workspace string) string {
-	for _, w := range st.Sessions {
-		if w.ID == workspace && len(w.Layout.Tabs) > 0 {
-			return w.Layout.Tabs[0].ID
 		}
 	}
 	return ""

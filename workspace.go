@@ -748,9 +748,6 @@ func (st *store) closed(a *App) {
 // newWorkspaceID returns a new workspace's id.
 func newWorkspaceID() string { return rand.Text()[:12] }
 
-// newTabID returns a tab's own ID, as "K3QV7Z2M9XPA".
-func newTabID() string { return rand.Text()[:12] }
-
 // The words of workspaces' names, as Rex's "icy-ridge".
 var (
 	nameAdjectives = []string{"amber", "brisk", "calm", "coral", "crisp", "dusky", "eager", "fern", "gentle", "golden", "hazy", "icy", "jade", "keen", "lucky", "lunar", "misty", "mossy", "noble", "quiet", "rapid", "rusty", "silent", "sunny", "swift", "tidal", "velvet", "vivid", "windy", "young"}

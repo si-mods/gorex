@@ -1,13 +1,12 @@
-// Package rexapi serves Rex's HTTP and WebSocket control API, as Rex.app
-// and the rex command line use it, over GoRex's session server: a Rex
-// session is a workspace, a window is a tab, and a block is a pane, so a
-// Rex client sees and drives GoRex as it would Rex.
+// Package testrex is a Rex server for tests: it serves Rex's control and
+// data API over a GoRex session server, so that the client of
+// internal/rexpeer and the importer of internal/reximp have a server to
+// talk to, which CI has no Rex for. A Rex session is a workspace, a window
+// a tab, and a block a pane.
 //
-// The package lives on the side of GoRex's own protocol: it talks to the
-// session server with internal/rex's client, as the app does, and keeps
-// the state Rex's API needs that GoRex keeps in its layout, its commands
-// and its connections.
-package rexapi
+// GoRex itself does not serve it: a Rex client does not reach a GoRex
+// server.
+package testrex
 
 import (
 	"crypto/rand"
@@ -126,7 +125,7 @@ type ticket struct {
 // no connection until a Rex client needs one.
 func New(opt Options) (*Server, error) {
 	if opt.Client == nil && opt.Socket == "" {
-		return nil, errors.New("rexapi: no socket")
+		return nil, errors.New("testrex: no socket")
 	}
 	s := &Server{
 		opt:     opt,
@@ -155,7 +154,7 @@ func New(opt Options) (*Server, error) {
 			s.startPump(c)
 		}
 		if err := s.refreshWith(c); err != nil {
-			log.Printf("rexapi: layout: %v", err)
+			log.Printf("testrex: layout: %v", err)
 		}
 	}
 	return s, nil
@@ -196,7 +195,7 @@ func (s *Server) ensure() (*rex.Client, error) {
 			s.startPump(c)
 		}
 		if err := s.refreshWith(c); err != nil {
-			log.Printf("rexapi: layout: %v", err)
+			log.Printf("testrex: layout: %v", err)
 		}
 	}
 	s.active++
@@ -284,7 +283,7 @@ func (s *Server) pump(c *rex.Client, stop chan struct{}) {
 		case <-debounce.C:
 			pending = false
 			if err := s.refresh(); err != nil {
-				log.Printf("rexapi: refresh: %v", err)
+				log.Printf("testrex: refresh: %v", err)
 			}
 		}
 	}
@@ -343,7 +342,7 @@ func (s *Server) refreshWith(c *rex.Client) error {
 // whose layout cannot be read has an empty one.
 func (s *Server) current() *model {
 	if err := s.refresh(); err != nil {
-		log.Printf("rexapi: refresh: %v", err)
+		log.Printf("testrex: refresh: %v", err)
 	}
 	s.mu.Lock()
 	m := s.model

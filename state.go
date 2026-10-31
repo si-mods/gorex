@@ -593,7 +593,7 @@ func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []stri
 	if a.offline(h) {
 		return nil
 	}
-	t := &Tab{ID: a.id(), UID: newTabID()}
+	t := &Tab{ID: a.id()}
 	p := a.newPaneRun(h, dir, 0, 0, command)
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
@@ -1242,7 +1242,7 @@ func (a *App) savedTab(t *Tab) savedTab {
 		}
 		return &savedNode{Vertical: n.Vertical, Ratio: n.Ratio, A: save(n.A), B: save(n.B)}
 	}
-	st := savedTab{ID: t.UID, Name: t.Name, Root: save(t.Root), Zoom: t.Zoom != nil}
+	st := savedTab{Name: t.Name, Root: save(t.Root), Zoom: t.Zoom != nil}
 	st.Focus = max(slices.Index(t.panes(), t.Focus), 0)
 	return st
 }
@@ -1327,10 +1327,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 		if st.Root == nil {
 			continue
 		}
-		t := &Tab{ID: a.id(), UID: st.ID, Name: st.Name}
-		if t.UID == "" {
-			t.UID = newTabID()
-		}
+		t := &Tab{ID: a.id(), Name: st.Name}
 		if t.Root = load(st.Root, t, nil); t.Root == nil {
 			continue
 		}
@@ -1363,7 +1360,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 // sessionTab makes a tab of one pane, attached to session in of host h,
 // nil for this machine, at the session's size.
 func (a *App) sessionTab(h *hostConn, in rex.SessionInfo) *Tab {
-	t := &Tab{ID: a.id(), UID: newTabID()}
+	t := &Tab{ID: a.id()}
 	p := &Pane{ID: a.id(), SID: in.ID, info: in, startDir: in.Dir, host: h}
 	a.attach(p, in.Cols, in.Rows)
 	t.Root = &Node{ID: a.id(), Pane: p}
@@ -1772,7 +1769,7 @@ func (a *App) movePaneToNewTab(p *Pane, label string) bool {
 	src, cur := p.Tab, a.tab()
 	wasActive := cur == src
 	a.detachPane(p)
-	t := &Tab{ID: a.id(), UID: newTabID(), Name: paneName(label)}
+	t := &Tab{ID: a.id(), Name: paneName(label)}
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
 	t.setFocus(p)

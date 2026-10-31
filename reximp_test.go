@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"gorex/internal/rex"
-	"gorex/internal/rexapi"
+	"gorex/internal/testrex"
 	"gorex/internal/reximp"
 	"gorex/internal/rexpeer"
 )
@@ -50,7 +50,7 @@ func TestRexImportCreatesSpaces(t *testing.T) {
 	if err := a.client.SetLayout(json.RawMessage(layout)); err != nil {
 		t.Fatal(err)
 	}
-	api, err := rexapi.New(rexapi.Options{Socket: rex.SocketPath(), Version: "test"})
+	api, err := testrex.New(testrex.Options{Socket: rex.SocketPath(), Version: "test"})
 	if err != nil {
 		t.Fatal(err)
 	}

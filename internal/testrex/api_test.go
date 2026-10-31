@@ -1,6 +1,6 @@
 //go:build darwin || linux || windows
 
-package rexapi
+package testrex
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 // rex's own tests do, and returns it and its client.
 func testServer(t *testing.T) (*rex.Client, string) {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "rexapi")
+	dir, err := os.MkdirTemp("/tmp", "testrex")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func testAPI(t *testing.T, c *rex.Client) (*Server, string) {
 // testLayout puts two panes of two sessions in one window of a workspace.
 func testLayout(t *testing.T, c *rex.Client, sid1, sid2 string) string {
 	t.Helper()
-	l := fmt.Sprintf(`{"version":2,"sessions":[{"id":"SPACE1","name":"work","active":0,"tabs":[{"id":"TAB1","name":"editor","root":{"vertical":false,"ratio":0.5,"a":{"sid":%q,"name":"left"},"b":{"sid":%q,"name":"right"}},"focus":1}]}],"windows":["SPACE1"]}`, sid1, sid2)
+	l := fmt.Sprintf(`{"version":2,"sessions":[{"id":"SPACE1","name":"work","active":0,"tabs":[{"name":"editor","root":{"vertical":false,"ratio":0.5,"a":{"sid":%q,"name":"left"},"b":{"sid":%q,"name":"right"}},"focus":1}]}],"windows":["SPACE1"]}`, sid1, sid2)
 	if err := c.SetLayout(json.RawMessage(l)); err != nil {
 		t.Fatal(err)
 	}
@@ -207,9 +207,6 @@ func TestControlAndSessions(t *testing.T) {
 	}
 	win := windows[0].(map[string]any)
 	idShape(t, win["window_id"].(string), "window")
-	if want := "window:" + uuidLike("window", "TAB1"); win["window_id"] != want {
-		t.Errorf("window %v, want %v", win["window_id"], want)
-	}
 	if win["label"] != "editor" {
 		t.Errorf("window label %v", win["label"])
 	}
@@ -436,34 +433,6 @@ func TestHelp(t *testing.T) {
 		if m.Name == "session.view" && m.In == nil {
 			t.Error("session.view has no schema")
 		}
-	}
-}
-
-// TestWindowIDKeepsTheTab checks that a window keeps its ID when the pane
-// that came first closes, and that a tab of a layout without IDs falls
-// back to its first pane.
-func TestWindowIDKeepsTheTab(t *testing.T) {
-	first := `{"sessions":[{"id":"S","name":"w","active":0,"tabs":[{"id":"TAB","root":{"a":{"sid":"aa"},"b":{"sid":"bb"}}}]}]}`
-	second := `{"sessions":[{"id":"S","name":"w","active":0,"tabs":[{"id":"TAB","root":{"sid":"bb"}}]}]}`
-	m1, err := buildModel(1, json.RawMessage(first), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m2, err := buildModel(2, json.RawMessage(second), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w1, w2 := m1.sessions[0].Windows[0].ID, m2.sessions[0].Windows[0].ID
-	if w1 != w2 {
-		t.Errorf("the window is %q, then %q", w1, w2)
-	}
-	old := `{"sessions":[{"id":"S","name":"w","active":0,"tabs":[{"root":{"sid":"cc"}}]}]}`
-	m3, err := buildModel(3, json.RawMessage(old), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := "window:" + uuidLike("window", "cc"); m3.sessions[0].Windows[0].ID != want {
-		t.Errorf("a tab without an ID: %q, want %q", m3.sessions[0].Windows[0].ID, want)
 	}
 }
 
