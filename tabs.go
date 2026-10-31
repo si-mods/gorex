@@ -433,7 +433,9 @@ func fadeText(p *ui.Painter, r ui.Rect, spans []ui.Span) {
 		}
 		fades[key] = f
 	}
-	p.RichText(r.X, r.Y+(r.H-f.h)/2, 0, f.spans...)
+	p.Clip(r, 0, func() {
+		p.RichText(r.X, r.Y+(r.H-f.h)/2, 0, f.spans...)
+	})
 }
 
 // fades caches the spans of faded texts, by their width and spans.
@@ -443,6 +445,11 @@ type fadeLayout struct {
 	spans []ui.Span
 	h     float32
 }
+
+// fadeSentinel keeps the advance of a rune that measures alone as
+// nothing, as a space does: the layout trims trailing whitespace, not
+// whitespace before a letter.
+const fadeSentinel = "H"
 
 func layoutFade(p *ui.Painter, width float32, spans []ui.Span) fadeLayout {
 	w, h := p.MeasureText(0, spans...)
@@ -457,11 +464,26 @@ func layoutFade(p *ui.Painter, width float32, spans []ui.Span) fadeLayout {
 	x := float32(0)
 	for _, s := range spans {
 		start := 0
+		sentinel := float32(-1) // the sentinel's width, measured once
 		for i := 0; i < len(s.Text); {
 			_, n := utf8.DecodeRuneInString(s.Text[i:])
 			ch := s
 			ch.Text = s.Text[i : i+n]
 			cw, _ := p.MeasureText(0, ch)
+			if cw == 0 {
+				// A rune alone loses the advance of a space, which the
+				// layout trims at the end of the text: measure it before
+				// a letter instead.
+				if sentinel < 0 {
+					probe := s
+					probe.Text = fadeSentinel
+					sentinel, _ = p.MeasureText(0, probe)
+				}
+				probe := s
+				probe.Text = ch.Text + fadeSentinel
+				adv, _ := p.MeasureText(0, probe)
+				cw = max(adv-sentinel, 0)
+			}
 			if x+cw > r.W-fade {
 				if start < i {
 					head := s
