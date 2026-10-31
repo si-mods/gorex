@@ -118,19 +118,27 @@ const (
 // ("command.done"). Panes and tabs are named by a session of theirs.
 type LayoutCommand struct {
 	ID int64 `json:"id,omitempty"`
-	// Op is "tab.create", "pane.split", "pane.close", "tab.close",
-	// "tab.rename", "pane.rename", "pane.focus", "pane.zoom", "tab.move",
-	// "pane.resize", "pane.swap" or "pane.move".
+	// Op is "space.create", "space.rename", "space.close", "tab.create",
+	// "pane.split", "pane.close", "tab.close", "tab.rename",
+	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
+	// "pane.swap" or "pane.move".
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
+	// Space is the workspace the command acts on, by ID; "" for the
+	// window that has the commands, as a client of before spaces had it.
+	Space string `json:"space,omitempty"`
 	// After is the tab a new or moved tab goes after, the first of this
 	// machine's tabs when "" for tab.move.
 	After string `json:"after,omitempty"`
 	// Dir is where a new pane starts, its tab's or its pane's when "".
 	Dir string `json:"dir,omitempty"`
-	// Vertical splits down, else right; Name is a tab's or a pane's new
-	// name, and in the answer a pane's name as the app keeps it; Mode is
-	// zoom's "on", "off" or "toggle".
+	// Command runs instead of the user's login shell in a new pane or tab.
+	Command []string `json:"command,omitempty"`
+	// Focus makes a new or moved tab the active one.
+	Focus bool `json:"focus,omitempty"`
+	// Vertical splits down, else right; Name is a tab's, a pane's or a
+	// space's new name, and in the answer a pane's name as the app keeps
+	// it; Mode is zoom's "on", "off" or "toggle".
 	Vertical bool   `json:"vertical,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Mode     string `json:"mode,omitempty"`

@@ -3,6 +3,7 @@ module gorex
 go 1.27.3
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.7.2
 	github.com/tailscale/tailcat v0.7.0
@@ -16,7 +17,6 @@ require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/akutz/memconn v0.1.0 // indirect
 	github.com/anmitsu/go-shlex v0.0.0-20200514113438-38f4b401e2be // indirect
-	github.com/coder/websocket v1.8.14 // indirect
 	github.com/creachadair/msync v0.8.1 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/dblohm7/wingoes v0.0.0-20240119213807-a09d6be7affa // indirect

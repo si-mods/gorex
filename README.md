@@ -336,6 +336,50 @@ on there.
 `go run ./tools/remotectl pair ADDRESS NAME` asks to pair from a machine
 without the app.
 
+## Rex's API
+
+Rex's clients speak HTTP and WebSockets over the session server's socket,
+and GoRex's server answers them: a Rex session is a workspace (a space), a
+Rex window is a tab, and a Rex block is a pane, so Rex.app and the `rex`
+CLI see and drive GoRex as they see Rex. GoRex's own clients send JSON
+lines, which the server tells apart from HTTP, so both share the socket.
+
+```sh
+rex -S "$HOME/Library/Application Support/GoRex/server.sock" ls
+rex -S "$HOME/Library/Application Support/GoRex/server.sock" capture -s <session>
+```
+
+`GET /api/control` is the control WebSocket (`rex.control.v1`),
+`GET /api/data` streams a block's screen and output, and `GET /api/help`
+describes the methods, at the same paths Rex serves them. `internal/rexapi`
+holds the translation: sessions from workspaces, windows from tabs, blocks
+from panes, and every change from a layout command.
+
+What GoRex provides:
+
+- Sessions, windows and blocks: listing, views, labels, focus, zoom,
+  splits, moves, swaps, resizes, closing and creating, including
+  `session.create` with windows whose blocks run a command, and
+  `session.destroy`.
+- Terminals: `format` (text or escape sequences), `write`, `size`,
+  `title`, `pwd`, `process`, `reset` and `clear`, `block.event`,
+  `client.key` with the usual named keys, and data connections that start
+  with a snapshot and then the program's output.
+- Server and clients: `server.status`, `server.version`, `server.whoami`,
+  `client.list`, `client.inspect`, `client.keymap`, `client.action`,
+  `target.resolve`, `target.complete`, `help.all`, and a filtered stream
+  of `session_event` messages.
+
+What it does not provide yet: floating layers and detached blocks placed
+later (`session.new_layer`, `session.float_block`, `session.move_block` for
+a detached block), block ownership (`session.own_block`), `client.perform`,
+hosts, Tailscale and the Apple privacy methods; each answers
+`not_supported` rather than pretending. A connection cannot resume with a
+`reconnect_token`, so a Rex client that reconnects starts a new client.
+Closing a session's last window closes the session, as GoRex's spaces go
+with their last tab, and a layout's exact split ratios are not kept: the
+blocks are made in layout order, each split beside the one before.
+
 ## rootshell
 
 [rootshell](https://github.com/kitknox/rootshell), on iOS and the Mac,
@@ -434,6 +478,7 @@ image reaches a program as a file it opens, not as clipboard data.
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 | `internal/control`, `tools/rootshell` | `GoRex control`, the bridge rootshell drives as herdr, and the `herdr` shim that runs it |
+| `internal/rexapi` | Rex's HTTP and WebSocket API over GoRex: a Rex session is a workspace, a window is a tab, a block is a pane, so Rex.app and the `rex` CLI can use GoRex as they use Rex |
 
 Rex's connections to servers on other machines are only half there: the
 server side exists (remote access, above), but the window cannot open

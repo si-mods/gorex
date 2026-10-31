@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -950,5 +951,88 @@ func TestPaneFocusCommand(t *testing.T) {
 	}
 	if second == first {
 		t.Fatal("same pane")
+	}
+}
+
+// TestCommandSpaces makes and names a space from a client, opens a tab in
+// it with the command the client names, and closes it: what a Rex client
+// asks for when it creates a session.
+func TestCommandSpaces(t *testing.T) {
+	a, _ := newTestApp(t)
+	res := a.command(rex.LayoutCommand{Op: "space.create", Name: "work"})
+	if res.Code != "" || res.Space == "" {
+		t.Fatalf("space.create: %+v", res)
+	}
+	space := res.Space
+	w := a.st.workspaceByID(space)
+	if w == nil || w.Name != "work" || w.app != nil {
+		t.Fatalf("the new space: %+v", w)
+	}
+	res = a.command(rex.LayoutCommand{
+		Op: "tab.create", Space: space, Name: "editor", Dir: os.TempDir(),
+		Command: []string{"/bin/sh", "-c", "echo made"}, Focus: true,
+	})
+	if res.Code != "" || res.New == "" {
+		t.Fatalf("tab.create in a space: %+v", res)
+	}
+	w = a.st.workspaceByID(space)
+	if w.app == nil || len(w.app.tabs) != 1 || w.app.tabs[0].Name != "editor" {
+		t.Fatalf("the space's tabs: %+v", w.app)
+	}
+	if got := w.app.tabs[0].Focus.SID; got != res.New || w.app.tabs[0].Focus.Tab != w.app.tabs[0] {
+		t.Fatalf("the tab's session: %q, want %q", got, res.New)
+	}
+	if res = a.command(rex.LayoutCommand{Op: "space.rename", Space: space, Name: "renamed"}); res.Code != "" || res.Name != "renamed" {
+		t.Fatalf("space.rename: %+v", res)
+	}
+	// Closing the space ends its tab's program and the space itself, and
+	// the window shows another space.
+	sid := a.st.workspaceByID(space).app.tabs[0].Focus.SID
+	if res = a.command(rex.LayoutCommand{Op: "space.close", Space: space}); res.Code != "" {
+		t.Fatalf("space.close: %+v", res)
+	}
+	if a.st.workspaceByID(space) != nil {
+		t.Error("the space stays after space.close")
+	}
+	if a.ws == nil || a.tabs == nil || len(a.tabs) == 0 {
+		t.Error("the window shows no space after closing one")
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		info, err := a.client.List()
+		alive := err == nil && slices.ContainsFunc(info, func(in rex.SessionInfo) bool { return in.ID == sid })
+		if !alive {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the closed space's session stays: %v %v", info, err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestCommandSplitRunsCommand splits a pane with a program of the
+// client's, as Rex's session.new_split does.
+func TestCommandSplitRunsCommand(t *testing.T) {
+	a, _ := newTestApp(t)
+	first := a.tab().Focus
+	res := a.command(rex.LayoutCommand{
+		Op: "pane.split", SID: first.SID, Dir: os.TempDir(), Vertical: true,
+		Command: []string{"/bin/sh", "-c", "echo split"},
+	})
+	if res.Code != "" || res.New == "" {
+		t.Fatalf("pane.split: %+v", res)
+	}
+	var split *Pane
+	for _, p := range a.tab().panes() {
+		if p.SID == res.New {
+			split = p
+		}
+	}
+	if split == nil {
+		t.Fatal("the new pane is not in the tab")
+	}
+	if a.tab().Root.Vertical != true {
+		t.Error("the split is not vertical")
 	}
 }

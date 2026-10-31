@@ -292,6 +292,12 @@ func (a *App) offline(h *hostConn) bool {
 
 // newPane makes a pane with a new session in dir, on host h.
 func (a *App) newPane(h *hostConn, dir string, cols, rows int) *Pane {
+	return a.newPaneRun(h, dir, cols, rows, nil)
+}
+
+// newPaneRun is newPane for a pane that runs command instead of the login
+// shell, as a Rex client asks for.
+func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []string) *Pane {
 	if cols <= 0 {
 		cols, rows = 80, 24
 	}
@@ -305,7 +311,7 @@ func (a *App) newPane(h *hostConn, dir string, cols, rows int) *Pane {
 	}
 	err := errors.New("rex: connection to the server lost")
 	if c := a.clientOf(h); c != nil {
-		info, err = c.Create(rex.CreateOptions{Dir: dir, Cols: cols, Rows: rows, Env: env})
+		info, err = c.Create(rex.CreateOptions{Command: command, Dir: dir, Cols: cols, Rows: rows, Env: env})
 	}
 	if err != nil {
 		log.Printf("creating a session: %v", err)
@@ -575,11 +581,17 @@ func (a *App) newTabOn(h *hostConn, dir string) *Tab {
 // or last of the host's tabs when after is another host's. It opens none
 // while the host is not connected. The active tab stays.
 func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
+	return a.newTabAfterRun(h, dir, after, nil)
+}
+
+// newTabAfterRun is newTabAfter for a tab whose first pane runs command
+// instead of the login shell.
+func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []string) *Tab {
 	if a.offline(h) {
 		return nil
 	}
 	t := &Tab{ID: a.id()}
-	p := a.newPane(h, dir, 0, 0)
+	p := a.newPaneRun(h, dir, 0, 0, command)
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
 	t.setFocus(p)
@@ -640,6 +652,12 @@ func (a *App) splitAt(vertical bool, dir string) {
 // splitPane splits pane old, the new pane, in dir, right of it or below
 // it, with the focus of its tab; none while its host is not connected.
 func (a *App) splitPane(old *Pane, vertical bool, dir string) *Pane {
+	return a.splitPaneRun(old, vertical, dir, nil)
+}
+
+// splitPaneRun is splitPane for a pane that runs command instead of the
+// login shell.
+func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []string) *Pane {
 	if a.offline(old.host) {
 		return nil
 	}
@@ -655,7 +673,7 @@ func (a *App) splitPane(old *Pane, vertical bool, dir string) *Pane {
 			cols = max(cols/2, 10)
 		}
 	}
-	p := a.newPane(old.host, dir, cols, rows)
+	p := a.newPaneRun(old.host, dir, cols, rows, command)
 	p.Tab = t
 	left := &Node{ID: a.id(), Pane: old, Parent: n}
 	right := &Node{ID: a.id(), Pane: p, Parent: n}

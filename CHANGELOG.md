@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Rex's API, so that Rex's clients can use GoRex. The session server answers
+  HTTP and WebSockets on its socket, beside its own JSON lines: a Rex
+  session is a space, a Rex window is a tab, and a Rex block is a pane. The
+  `rex` CLI lists, inspects, captures, types into, splits, renames, zooms
+  and closes GoRex's panes through it, `rex events` shows the changes, and
+  Rex.app's protocol, method for method, is answered where GoRex has the
+  operation, with `not_supported` where it has not (floating layers,
+  detached blocks placed later, block ownership, host and Tailscale
+  methods). Data connections stream a pane's snapshot and then its
+  program's output. A layout command now names the space it acts on, runs a
+  command in a new pane, and makes a new tab the active one; `space.create`,
+  `space.rename` and `space.close` let a client make and close spaces, as
+  `session.create` and `session.destroy` need.
+
 - Paste into a program that runs on Windows reaches it again. A ConPTY
   drops the OSC that a terminal's paste event is, so a program that reads
   the clipboard itself, as agents do, never learned of a paste, and
