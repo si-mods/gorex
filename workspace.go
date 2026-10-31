@@ -384,6 +384,16 @@ func (st *store) addWorkspace() *Workspace {
 	return w
 }
 
+// workspaceByID returns the workspace with the ID, nil for none.
+func (st *store) workspaceByID(id string) *Workspace {
+	for _, w := range st.workspaces {
+		if w.ID == id {
+			return w
+		}
+	}
+	return nil
+}
+
 // taken tells whether a workspace has the name.
 func (st *store) taken(name string) bool {
 	return slices.ContainsFunc(st.workspaces, func(w *Workspace) bool { return strings.EqualFold(w.Name, name) })
@@ -768,10 +778,23 @@ func workspaceName(taken func(string) bool) string {
 // show shows w in the window: the tabs of its layout, attached to the
 // sessions the server has. With others, the sessions of this machine
 // neither w nor others name get tabs too. An empty workspace gets a tab.
-func (a *App) show(w *Workspace, others map[string]bool) {
+func (a *App) show(w *Workspace, others map[string]bool) { a.showTabs(w, others, true) }
+
+// showEmpty shows a workspace, opening no tab in one that has none: a
+// client that makes the tabs it wants, as a Rex client does when it
+// creates a session with no windows.
+func (a *App) showEmpty(w *Workspace) { a.showTabs(w, nil, false) }
+
+// showTabs shows a workspace's saved tabs, and opens one in its home
+// directory when it has none and fallback asks for it. A space shown
+// before keeps its tabs in the layout, for the window that shows it again.
+func (a *App) showTabs(w *Workspace, others map[string]bool, fallback bool) {
+	if a.ws != nil && a.ws != w {
+		a.detach()
+	}
 	a.ws, w.app = w, a
 	a.tabs, a.active, a.focusReq, a.renaming = nil, 0, nil, nil
-	if !a.restore(w.layout, others) {
+	if !a.restore(w.layout, others) && fallback {
 		home, _ := os.UserHomeDir()
 		a.newTabOn(nil, home)
 	}

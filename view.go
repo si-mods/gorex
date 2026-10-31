@@ -504,10 +504,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 		return
 	}
 	name, detail := p.label()
-	prog := programOf(p.info.Program)
-	if p.info.Idle || p.info.Program == "" {
-		prog = programOf(p.info.Shell)
-	}
+	prog := p.program()
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) {
 		if m.Item(locales.PaneRename()).Chosen() {

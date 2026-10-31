@@ -1309,6 +1309,10 @@
     "description": "Command: open a new window, which shows a new space."
   },
   "cmdNewSession": "New Space",
+  "cmdImportRex": "Import from Rex",
+  "@cmdImportRex": {
+    "description": "Command: import a Rex server's sessions as spaces, tabs and panes, each block mirrored."
+  },
   "@cmdNewSession": {
     "description": "Command: show a new space, with one tab, in the window. A space is a set of tabs of its own, as a session was in Rex."
   },
@@ -1604,5 +1608,29 @@
   "hostsLayoutNoSession": "That session is no longer available.",
   "@hostsLayoutNoSession": {
     "description": "A shared pane could not be opened."
+  },
+  "rexImportDone": "Imported {sessions} sessions from Rex.",
+  "@rexImportDone": {
+    "description": "Notification after importing a Rex server's sessions.",
+    "placeholders": {
+      "sessions": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "rexImportNone": "Rex has no sessions to import that GoRex does not have.",
+  "@rexImportNone": {
+    "description": "Notification when importing finds nothing new."
+  },
+  "rexImportFailed": "Could not import from Rex: {error}",
+  "@rexImportFailed": {
+    "description": "Dialog when importing from Rex fails.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "no such file"
+      }
+    }
   }
 }

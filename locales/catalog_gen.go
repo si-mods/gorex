@@ -3812,6 +3812,22 @@ func (msgs Messages) CmdNewSession() string {
 	return Catalog.Format(msgs.locale, "cmdNewSession", nil)
 }
 
+// CmdImportRex says "Import from Rex"
+// in the language the app shows.
+//
+// Command: import a Rex server's sessions as spaces, tabs and panes, each
+// block mirrored.
+func CmdImportRex() string { return In(i18n.Locale()).CmdImportRex() }
+
+// CmdImportRex says "Import from Rex"
+// in the language of msgs.
+//
+// Command: import a Rex server's sessions as spaces, tabs and panes, each
+// block mirrored.
+func (msgs Messages) CmdImportRex() string {
+	return Catalog.Format(msgs.locale, "cmdImportRex", nil)
+}
+
 // CmdChangeSession says "Change Space…"
 // in the language the app shows.
 //
@@ -4720,4 +4736,46 @@ func HostsLayoutNoSession() string { return In(i18n.Locale()).HostsLayoutNoSessi
 // A shared pane could not be opened.
 func (msgs Messages) HostsLayoutNoSession() string {
 	return Catalog.Format(msgs.locale, "hostsLayoutNoSession", nil)
+}
+
+// RexImportDone says "Imported {sessions} sessions from Rex."
+// in the language the app shows.
+//
+// Notification after importing a Rex server's sessions.
+func RexImportDone(sessions int) string { return In(i18n.Locale()).RexImportDone(sessions) }
+
+// RexImportDone says "Imported {sessions} sessions from Rex."
+// in the language of msgs.
+//
+// Notification after importing a Rex server's sessions.
+func (msgs Messages) RexImportDone(sessions int) string {
+	return Catalog.Format(msgs.locale, "rexImportDone", map[string]any{"sessions": sessions})
+}
+
+// RexImportNone says "Rex has no sessions to import that GoRex does not have."
+// in the language the app shows.
+//
+// Notification when importing finds nothing new.
+func RexImportNone() string { return In(i18n.Locale()).RexImportNone() }
+
+// RexImportNone says "Rex has no sessions to import that GoRex does not have."
+// in the language of msgs.
+//
+// Notification when importing finds nothing new.
+func (msgs Messages) RexImportNone() string {
+	return Catalog.Format(msgs.locale, "rexImportNone", nil)
+}
+
+// RexImportFailed says "Could not import from Rex: {error}"
+// in the language the app shows.
+//
+// Dialog when importing from Rex fails.
+func RexImportFailed(error string) string { return In(i18n.Locale()).RexImportFailed(error) }
+
+// RexImportFailed says "Could not import from Rex: {error}"
+// in the language of msgs.
+//
+// Dialog when importing from Rex fails.
+func (msgs Messages) RexImportFailed(error string) string {
+	return Catalog.Format(msgs.locale, "rexImportFailed", map[string]any{"error": error})
 }

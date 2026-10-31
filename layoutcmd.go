@@ -46,7 +46,7 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 		started, done := make(chan struct{}), make(chan rex.LayoutCommand, 1)
 		update(func() {
 			close(started)
-			a := st.commandApp()
+			a := st.commandAppFor(cmd.Space)
 			if a == nil {
 				done <- unavailable(cmd.ID, "no GoRex window is open")
 				return
@@ -87,6 +87,17 @@ func (st *store) commandApp() *App {
 		}
 	}
 	return first
+}
+
+// commandAppFor is the window that makes a command: the one showing the
+// command's space, else the first, as a client of before spaces had it.
+func (st *store) commandAppFor(space string) *App {
+	if space != "" {
+		if w := st.workspaceByID(space); w != nil && w.app != nil {
+			return w.app
+		}
+	}
+	return st.commandApp()
 }
 
 // command makes a change of the layout another client asks for, as the
@@ -141,6 +152,48 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		}
 		return res
 	}
+	switch c.Op {
+	case "space.create":
+		if a.st == nil {
+			return fail("desktop_unavailable", "no GoRex window is open")
+		}
+		w := a.st.addWorkspace()
+		if name := labelText(c.Name); name != "" {
+			w.Name = name
+		}
+		res.Space = w.ID
+		a.changed()
+		return res
+	case "space.close":
+		if a.st == nil {
+			return fail("desktop_unavailable", "no GoRex window is open")
+		}
+		w := a.st.workspaceByID(c.Space)
+		if w == nil {
+			return fail("space_not_found", "no such space in the GoRex layout")
+		}
+		if w.app != nil {
+			// closeWorkspace ends its tabs' programs and shows another
+			// space, as closing a window does.
+			w.app.closeWorkspace()
+			return res
+		}
+		// No window shows the space: end its sessions here, and forget it.
+		for _, t := range w.layout.Tabs {
+			a.killSaved(t.Root)
+		}
+		w.layout = savedLayout{}
+		a.st.remove(w)
+		a.changed()
+		return res
+	}
+	// A space no window shows has no panes to change: show it first, as
+	// the tab.create branch always did.
+	if c.Space != "" && a.st != nil {
+		if w := a.st.workspaceByID(c.Space); w != nil && w.app == nil {
+			a.showEmpty(w)
+		}
+	}
 	p := a.localPane(c.SID)
 	if p == nil && c.Op != "tab.create" {
 		if strings.HasPrefix(c.Op, "tab.") {
@@ -167,13 +220,22 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			dir, _ = os.UserHomeDir()
 		}
 		a.err = ""
-		t := a.newTabAfter(nil, dir, after)
+		t := a.newTabAfterRun(nil, dir, after, c.Command)
 		if t == nil {
 			return fail("create_failed", "GoRex cannot open a tab now")
 		}
 		if t.Focus.SID == "" {
 			a.dropPane(t.Focus, false) // and its tab
 			return fail("create_failed", cmp.Or(a.err, "the session did not start"))
+		}
+		if name := labelText(c.Name); name != "" {
+			t.Name = name
+		}
+		if c.Focus {
+			if i := slices.Index(a.tabs, t); i >= 0 {
+				a.selectTab(i)
+			}
+			a.focusReq = t.Focus
 		}
 		res.New = t.Focus.SID
 	case "pane.split":
@@ -182,7 +244,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			dir = p.info.Dir
 		}
 		a.err = ""
-		n := a.splitPane(p, c.Vertical, dir)
+		n := a.splitPaneRun(p, c.Vertical, dir, c.Command)
 		if n == nil {
 			return fail("create_failed", "GoRex cannot split the pane now")
 		}
@@ -190,13 +252,16 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			a.dropPane(n, false)
 			return fail("create_failed", cmp.Or(a.err, "the session did not start"))
 		}
+		if name := strings.TrimSpace(c.Name); name != "" {
+			n.Name = paneName(name)
+		}
 		res.New = n.SID
 	case "pane.close":
 		a.closePane(p)
 	case "tab.close":
 		a.closeTab(p.Tab)
 	case "tab.rename":
-		p.Tab.Name = strings.TrimSpace(c.Name)
+		p.Tab.Name = labelText(c.Name)
 		a.changed()
 	case "pane.rename":
 		p.Name = paneName(c.Name)
@@ -279,6 +344,42 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		return fail("unknown_op", "GoRex does not know "+c.Op)
 	}
 	return res
+}
+
+// killSaved ends the sessions of a workspace no window shows, whose tabs
+// are the layout's.
+func (a *App) killSaved(n *savedNode) {
+	if n == nil {
+		return
+	}
+	if n.A != nil || n.B != nil {
+		a.killSaved(n.A)
+		a.killSaved(n.B)
+		return
+	}
+	if n.SID == "" {
+		return
+	}
+	var h *hostConn
+	if n.Host != "" {
+		h = a.hostByID(n.Host)
+	}
+	a.killOn(h, n.SID)
+}
+
+// labelText cleans a tab's or a space's name of a client: its control
+// characters go, and it is trimmed and bounded, as a pane's name is.
+func labelText(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(s))
+	if r := []rune(s); len(r) > 128 {
+		return string(r[:128])
+	}
+	return s
 }
 
 // coerceArgs turns the CLI's strings into the types an action declares.
