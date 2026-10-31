@@ -8,6 +8,7 @@
 
 ### Bug Fixes
 
+* **fonts:** draw a title's Nerd Font icons, and register a family macOS hides ([#116](https://github.com/si-mods/gorex/pull/116))
 * **pane:** resize terminals live while dragging a divider ([#121](https://github.com/si-mods/gorex/pull/121))
 * **remote:** open a host's new split panes in the tab already adopted ([#120](https://github.com/si-mods/gorex/pull/120))
 * **sidebar:** drop the host chip beside a hidden sidebar ([#119](https://github.com/si-mods/gorex/pull/119))
