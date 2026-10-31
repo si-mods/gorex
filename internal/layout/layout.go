@@ -28,6 +28,9 @@ type Layout struct {
 
 // Tab is a tab of the window: panes in a tree of splits.
 type Tab struct {
+	// ID is the tab's own ID, which a client of another window keeps to
+	// follow it: it stays while the tab does.
+	ID    string `json:"id,omitempty"`
 	Name  string `json:"name,omitempty"`
 	Root  *Node  `json:"root"`
 	Focus int    `json:"focus"`

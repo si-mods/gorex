@@ -617,7 +617,10 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 // in its splits, and takes them from it. It returns nil when none is left,
 // as they all show here already.
 func (a *App) adoptTab(h *hostConn, st savedTab, free map[string]rex.SessionInfo) *Tab {
-	t := &Tab{ID: a.id(), Name: st.Name}
+	t := &Tab{ID: a.id(), UID: st.ID, Name: st.Name}
+	if t.UID == "" {
+		t.UID = newTabID()
+	}
 	// named are st's panes in order, as its focus counts them: the host's
 	// filter leaves out the panes this client may not use, and compresses
 	// the focus over those left.

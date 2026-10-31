@@ -69,10 +69,14 @@ func blockID(sid string) string { return "block:" + uuidLike("block", sid) }
 // sessionID names the Rex session of a workspace.
 func sessionID(workspace string) string { return "session:" + uuidLike("session", workspace) }
 
-// windowID names a tab's window by its first block, which stays while the
-// tab keeps that pane.
-func windowID(root *layout.Node) string {
-	return "window:" + uuidLike("window", firstSID(root))
+// windowID names a tab's window by the tab's own ID, or by its first
+// block for a tab of a layout of before tab IDs.
+func windowID(tab *layout.Tab) string {
+	seed := tab.ID
+	if seed == "" {
+		seed = firstSID(tab.Root)
+	}
+	return "window:" + uuidLike("window", seed)
 }
 
 // layerID names a window's one layer.
@@ -133,7 +137,7 @@ func buildModel(rev uint64, raw json.RawMessage, infos []rex.SessionInfo) (*mode
 			if tab.Root == nil {
 				continue
 			}
-			w := &mWindow{ID: windowID(tab.Root), Label: tab.Name, Tab: tab}
+			w := &mWindow{ID: windowID(tab), Label: tab.Name, Tab: tab}
 			if w.Label == "" {
 				w.Label = "Window " + short(w.ID)
 			}

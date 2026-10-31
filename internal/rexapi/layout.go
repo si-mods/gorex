@@ -144,7 +144,11 @@ func (c *control) createWindow(s *mSession, label string, l *rexLayout, focus bo
 	if apiErr != nil {
 		return "", nil, apiErr
 	}
-	window := windowIDOf(res.New)
+	seed := res.New
+	if res.Tab != "" {
+		seed = res.Tab
+	}
+	window := windowIDOf(seed)
 	blockIDs := []string{blockID(res.New)}
 	prev := res.New
 	for i, leaf := range leaves[1:] {
@@ -171,8 +175,8 @@ func (c *control) createWindow(s *mSession, label string, l *rexLayout, focus bo
 	return window, blockIDs, nil
 }
 
-// windowIDOf names a window by its first block.
-func windowIDOf(sid string) string { return "window:" + sid }
+// windowIDOf names a window from the ID its tab keeps, as the model does.
+func windowIDOf(seed string) string { return "window:" + uuidLike("window", seed) }
 
 // createSession makes a session and its windows.
 func (c *control) createSession(label string, windows []windowDef) (any, *apiError) {
@@ -206,6 +210,9 @@ func (c *control) createSession(label string, windows []windowDef) (any, *apiErr
 	for i, w := range windows {
 		wid, bids, apiErr := c.createWindow(s, w.WindowLabel, layouts[i], true)
 		if apiErr != nil {
+			// A session whose windows did not all come is closed again:
+			// Rex makes none of it.
+			_, _ = c.command(s, rex.LayoutCommand{Op: "space.close"})
 			return nil, apiErr
 		}
 		out = append(out, created{WindowID: wid, BlockIDs: bids})

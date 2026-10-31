@@ -959,6 +959,7 @@ func TestPaneFocusCommand(t *testing.T) {
 // asks for when it creates a session.
 func TestCommandSpaces(t *testing.T) {
 	a, _ := newTestApp(t)
+	orig, origSID := a.ws.ID, a.tab().Focus.SID
 	res := a.command(rex.LayoutCommand{Op: "space.create", Name: "work"})
 	if res.Code != "" || res.Space == "" {
 		t.Fatalf("space.create: %+v", res)
@@ -981,6 +982,14 @@ func TestCommandSpaces(t *testing.T) {
 	}
 	if got := w.app.tabs[0].Focus.SID; got != res.New || w.app.tabs[0].Focus.Tab != w.app.tabs[0] {
 		t.Fatalf("the tab's session: %q, want %q", got, res.New)
+	}
+	if w.app.tabs[0].UID == "" || savedTabID(a.st.saved(), space) != w.app.tabs[0].UID {
+		t.Fatalf("the tab's ID is not in the layout: %q", savedTabID(a.st.saved(), space))
+	}
+	// The window showed the new space: the one before keeps its tab in
+	// the layout, so it comes back as it was.
+	if got := savedTabSID(a.st.saved(), orig); got != origSID {
+		t.Fatalf("the space before holds tab %q, want %q", got, origSID)
 	}
 	if res = a.command(rex.LayoutCommand{Op: "space.rename", Space: space, Name: "renamed"}); res.Code != "" || res.Name != "renamed" {
 		t.Fatalf("space.rename: %+v", res)
@@ -1035,4 +1044,25 @@ func TestCommandSplitRunsCommand(t *testing.T) {
 	if a.tab().Root.Vertical != true {
 		t.Error("the split is not vertical")
 	}
+}
+
+// savedTabSID returns the session of a workspace's first saved tab, "" for
+// none.
+func savedTabSID(st savedStore, workspace string) string {
+	for _, w := range st.Sessions {
+		if w.ID == workspace && len(w.Layout.Tabs) > 0 && w.Layout.Tabs[0].Root != nil {
+			return w.Layout.Tabs[0].Root.SID
+		}
+	}
+	return ""
+}
+
+// savedTabID returns the ID a workspace's first saved tab keeps.
+func savedTabID(st savedStore, workspace string) string {
+	for _, w := range st.Sessions {
+		if w.ID == workspace && len(w.Layout.Tabs) > 0 {
+			return w.Layout.Tabs[0].ID
+		}
+	}
+	return ""
 }

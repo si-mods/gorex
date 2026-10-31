@@ -375,7 +375,10 @@ later (`session.new_layer`, `session.float_block`, `session.move_block` for
 a detached block), block ownership (`session.own_block`), `client.perform`,
 hosts, Tailscale and the Apple privacy methods; each answers
 `not_supported` rather than pretending. A connection cannot resume with a
-`reconnect_token`, so a Rex client that reconnects starts a new client.
+`reconnect_token`, so a Rex client that reconnects starts a new client. A
+tab keeps an ID in the layout, so a Rex window keeps its ID while its tab
+does, though a tab of a layout saved before tab IDs falls back to its first
+pane.
 Closing a session's last window closes the session, as GoRex's spaces go
 with their last tab, and a layout's exact split ratios are not kept: the
 blocks are made in layout order, each split beside the one before.

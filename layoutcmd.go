@@ -247,7 +247,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			}
 			a.focusReq = t.Focus
 		}
-		res.New = t.Focus.SID
+		res.New, res.Tab = t.Focus.SID, t.UID
 	case "pane.split":
 		dir := c.Dir
 		if dir == "" {
@@ -350,6 +350,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		}
 		a.moveTab(t, max(to, 0))
 		res.Index = slices.Index(a.localTabs(), t)
+		res.Tab = t.UID
 	default:
 		return fail("unknown_op", "GoRex does not know "+c.Op)
 	}

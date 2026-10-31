@@ -14,7 +14,9 @@
   program's output. A layout command now names the space it acts on, runs a
   command in a new pane, and makes a new tab the active one; `space.create`,
   `space.rename` and `space.close` let a client make and close spaces, as
-  `session.create` and `session.destroy` need.
+  `session.create` and `session.destroy` need. A tab now keeps an ID in the
+  layout, so a Rex window's ID stays while its tab does, even after the pane
+  that came first closes.
 
 - Paste into a program that runs on Windows reaches it again. A ConPTY
   drops the OSC that a terminal's paste event is, so a program that reads

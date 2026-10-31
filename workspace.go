@@ -748,6 +748,9 @@ func (st *store) closed(a *App) {
 // newWorkspaceID returns a new workspace's id.
 func newWorkspaceID() string { return rand.Text()[:12] }
 
+// newTabID returns a tab's own ID, as "K3QV7Z2M9XPA".
+func newTabID() string { return rand.Text()[:12] }
+
 // The words of workspaces' names, as Rex's "icy-ridge".
 var (
 	nameAdjectives = []string{"amber", "brisk", "calm", "coral", "crisp", "dusky", "eager", "fern", "gentle", "golden", "hazy", "icy", "jade", "keen", "lucky", "lunar", "misty", "mossy", "noble", "quiet", "rapid", "rusty", "silent", "sunny", "swift", "tidal", "velvet", "vivid", "windy", "young"}
@@ -786,8 +789,12 @@ func (a *App) show(w *Workspace, others map[string]bool) { a.showTabs(w, others,
 func (a *App) showEmpty(w *Workspace) { a.showTabs(w, nil, false) }
 
 // showTabs shows a workspace's saved tabs, and opens one in its home
-// directory when it has none and fallback asks for it.
+// directory when it has none and fallback asks for it. A space shown
+// before keeps its tabs in the layout, for the window that shows it again.
 func (a *App) showTabs(w *Workspace, others map[string]bool, fallback bool) {
+	if a.ws != nil && a.ws != w {
+		a.detach()
+	}
 	a.ws, w.app = w, a
 	a.tabs, a.active, a.focusReq, a.renaming = nil, 0, nil, nil
 	if !a.restore(w.layout, others) && fallback {
