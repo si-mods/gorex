@@ -8,7 +8,9 @@
   Split with Browser puts one beside the focused pane. The page's title
   names its tab, and the layout keeps its URL, so it opens again when
   GoRex starts. A browser pane belongs to this machine: a remote tab
-  takes none, and Find searches terminals alone.
+  takes none, and Find searches terminals alone. Only http and https
+  pages open, and a page is untrusted: it reaches no GoRex code, asks
+  for no permission, opens no window and downloads nothing.
 
 - Importing a Rex session. `gorex rex-import` reads a Rex server's sessions
   and makes them in GoRex: a space per session, a tab per window, a pane per

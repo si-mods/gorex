@@ -190,6 +190,22 @@ func (msgs Messages) BrowserUnavailable() string {
 	return Catalog.Format(msgs.locale, "browserUnavailable", nil)
 }
 
+// BrowserOnlyWeb says "Browser panes show web pages: enter an http or https URL."
+// in the language the app shows.
+//
+// The error banner's text when a browser pane is given a URL it cannot
+// open, such as file: or javascript:.
+func BrowserOnlyWeb() string { return In(i18n.Locale()).BrowserOnlyWeb() }
+
+// BrowserOnlyWeb says "Browser panes show web pages: enter an http or https URL."
+// in the language of msgs.
+//
+// The error banner's text when a browser pane is given a URL it cannot
+// open, such as file: or javascript:.
+func (msgs Messages) BrowserOnlyWeb() string {
+	return Catalog.Format(msgs.locale, "browserOnlyWeb", nil)
+}
+
 // CmdClosePane says "Close Pane"
 // in the language the app shows.
 //

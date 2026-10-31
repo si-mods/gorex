@@ -386,7 +386,6 @@ func (a *App) debug(dir, line string) {
 	case "url": // loads the URL in the focused browser pane
 		win.Update(func() {
 			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.browser != nil {
-				t.Focus.browser.addr = arg
 				a.navigateBrowser(t.Focus, arg)
 			}
 		})
@@ -412,22 +411,22 @@ func (a *App) debug(dir, line string) {
 		}
 	case "webshot": // the focused browser pane's page, into the file named by arg
 		time.Sleep(300 * time.Millisecond)
-		var b *browserPane
+		var v *mygo.WebView
 		debugMain(func() {
-			if t := a.tab(); t != nil && t.Focus != nil {
-				b = t.Focus.browser
+			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.browser != nil {
+				v = t.Focus.browser.web
 			}
 		})
-		if b == nil || b.web == nil {
+		if v == nil {
 			log.Printf("webshot: no browser pane")
 			return
 		}
-		png, err := b.web.CapturePage()
+		png, err := v.CapturePage()
 		if err != nil {
 			log.Printf("webshot: %v", err)
 			return
 		}
-		log.Printf("webshot: %s", b.web.Page().URL())
+		log.Printf("webshot: %s", v.Page().URL())
 		name := "webshot.png"
 		if arg != "" {
 			name = arg

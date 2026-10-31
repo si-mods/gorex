@@ -44,6 +44,10 @@
   "@browserUnavailable": {
     "description": "What a browser pane says when its web view could not be made."
   },
+  "browserOnlyWeb": "Browser panes show web pages: enter an http or https URL.",
+  "@browserOnlyWeb": {
+    "description": "The error banner's text when a browser pane is given a URL it cannot open, such as file: or javascript:."
+  },
   "cmdClosePane": "Close Pane",
   "@cmdClosePane": {
     "description": "Command: close the focused pane."

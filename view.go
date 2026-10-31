@@ -213,6 +213,7 @@ func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize
 // them over the cells: all of them in one parent, so that the panes move
 // to their new places as the layout changes, and open and close there.
 func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
+	a.contentFocus, a.pageHover = false, nil
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	bounds := room.Bounds()
 	tr := a.paneTransition(c, t)
@@ -235,6 +236,15 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 			a.divider(c, k, sp.n, sp.s, bounds, tr)
 		}
 	})
+	// A press on a page gives the page the keyboard, and MyGo clears the
+	// content's focus for it: with no pane's content focused and the
+	// pointer over a page, the page has the keyboard, and its pane takes
+	// the tab's focus, so that the shortcuts act on it.
+	if a.focusReq == nil && !a.contentFocus && a.pageHover != nil && t.Focus != a.pageHover &&
+		!a.paletteOpen && !a.wsConfirm && !a.wsOpen && !a.hostOpen && a.paneRenaming == nil && a.renaming == nil && a.findPane == nil {
+		t.setFocus(a.pageHover)
+		a.changed()
+	}
 }
 
 // share is a part of a tab's room, as fractions of its width and height.
@@ -433,6 +443,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 				a.changed()
 			}
 			if tv.Focused() {
+				a.contentFocus = true
 				p.attention = false
 				if a.focusedWin {
 					p.see()
@@ -621,6 +632,7 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 	b := p.browser
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 8).Gap(4).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
+	h.Drag(p)
 	if h.DoubleClicked() {
 		t.setFocus(p)
 		a.toggleZoom()
@@ -664,12 +676,14 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 			a.focusReq = nil
 		}
 		if in.Focused() {
+			a.contentFocus = true
 			b.auto = false
 			if t.Focus != p {
 				t.setFocus(p)
 				a.changed()
 			}
 		}
+		b.editing = in.Focused()
 		if in.Submitted() {
 			a.navigateBrowser(p, b.addr)
 			b.auto = false
@@ -691,6 +705,12 @@ func (a *App) browserBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	if a.focusReq == p && a.tab() == t {
 		b.web.Focus()
 		a.focusReq = nil
+	}
+	if wv.Focused() {
+		a.contentFocus = true
+	}
+	if wv.Hovered() {
+		a.pageHover = p
 	}
 	if wv.Focused() && t.Focus != p {
 		t.setFocus(p)

@@ -119,6 +119,9 @@ type browserPane struct {
 	// auto gives the address field the keyboard when the pane opens, in
 	// place of the page: a new pane has the URL of the page to type.
 	auto bool
+	// editing tells that the address field had the focus as it was drawn:
+	// a page's own navigation then leaves the text being typed.
+	editing bool
 }
 
 // browserStart is the page a browser pane opens at, until a URL is typed.
@@ -133,18 +136,45 @@ func (b *browserPane) destroy() {
 }
 
 // browserURL turns what was typed into a URL to load: one without a
-// scheme is a site, https.
+// scheme is a site, https. Only web pages open in a browser pane: any
+// other scheme, such as file:, data: or javascript:, is "".
 func browserURL(s string) string {
 	s = strings.TrimSpace(s)
-	switch {
-	case s == "":
+	if s == "" {
 		return ""
-	case strings.HasPrefix(s, "http://"), strings.HasPrefix(s, "https://"),
-		strings.HasPrefix(s, "file://"), strings.HasPrefix(s, "about:"),
-		strings.HasPrefix(s, "data:"):
+	}
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
 		return s
 	}
+	if lower == browserStart {
+		return browserStart
+	}
+	if ref, err := url.Parse(lower); err == nil && ref.Scheme != "" {
+		switch ref.Scheme {
+		case "javascript", "file", "data", "blob", "mailto", "ftp", "mygo", "chrome", "view-source":
+			return ""
+		}
+		// A host and port, as localhost:3000, is a site, not a scheme.
+		if rest, _ := strings.CutPrefix(lower, ref.Scheme+":"); rest != "" {
+			port, _, _ := strings.Cut(rest, "/")
+			if port != "" && strings.Trim(port, "0123456789") == "" {
+				return "https://" + s
+			}
+		}
+		return ""
+	}
 	return "https://" + s
+}
+
+// browserCleanURL is the URL a browser pane keeps and shows: without the
+// user info, which a layout file should not hold.
+func browserCleanURL(u string) string {
+	if ref, err := url.Parse(u); err == nil && ref.User != nil {
+		ref.User = nil
+		return ref.String()
+	}
+	return u
 }
 
 // browserHost is the host of a URL, "" when it has none.
@@ -200,6 +230,13 @@ type App struct {
 	paneRenaming  *Pane
 	paneNameText  string
 	paneNameFocus bool
+	// contentFocus tells that a pane's content took the keyboard as the
+	// active tab's panes were built, and pageHover the browser pane whose
+	// page the pointer was over. A press on a page gives the page the
+	// keyboard and clears the content's focus, which MyGo tells no other
+	// way: the tab then takes the page's pane as the focused one.
+	contentFocus bool
+	pageHover    *Pane
 	// findPane is the pane whose find bar shows, findText its query, and
 	// findStatus how its search goes; lastFind reopens the bar.
 	findPane   *Pane
@@ -398,7 +435,10 @@ func (a *App) newBrowserPane(url string) *Pane {
 	v, err := a.win.NewWebView(mygo.WebViewOptions{
 		URL:             url,
 		BackgroundColor: "light-dark(#ffffff, #1e1e24)",
-		Page:            mygo.PageOptions{SwipeNavigation: true, PinchZoom: true},
+		// A page is someone else's, whatever its URL: it calls no Go
+		// method, asks no permission, opens no window of its own and
+		// downloads nothing. The handler below decides where it may go.
+		Page: mygo.PageOptions{Untrusted: true, SwipeNavigation: true, PinchZoom: true},
 	})
 	if err != nil {
 		log.Printf("browser pane: %v", err)
@@ -412,15 +452,26 @@ func (a *App) newBrowserPane(url string) *Pane {
 		}
 	}
 	page := v.Page()
+	// An untrusted page may not go to another origin unless this decides:
+	// a browser pane follows the web, and nothing else.
+	page.OnWillNavigate(func(e *mygo.NavigateEvent) {
+		if browserURL(e.URL) == "" {
+			e.PreventDefault()
+		}
+	})
 	page.OnDidNavigate(func(u string) {
+		u = browserCleanURL(u)
 		update(func() {
 			if p.closed || p.browser == nil {
 				return
 			}
 			p.browser.url = u
+			// The page's title is the new document's, until it says one.
+			p.title = ""
 			// A new pane's first page, about:blank, leaves the field
-			// saying its placeholder, for the URL to type.
-			if p.browser.addr != "" || u != browserStart {
+			// saying its placeholder, for the URL to type; and a page that
+			// goes on by itself leaves the URL being typed.
+			if !p.browser.editing && (p.browser.addr != "" || u != browserStart) {
 				p.browser.addr = u
 			}
 			a.changed()
@@ -436,9 +487,10 @@ func (a *App) newBrowserPane(url string) *Pane {
 	})
 	// A page that asks for a window shows it in this pane: GoRex has no
 	// other window to give a site, and a script's pop-up is not wanted.
+	// The URL is the pane's to load, not the page's to choose.
 	page.SetWindowOpenHandler(func(req mygo.WindowOpenRequest) *mygo.WindowOptions {
-		if req.UserInitiated && req.URL != "" {
-			page.LoadURL(req.URL)
+		if u := browserURL(req.URL); req.UserInitiated && u != "" {
+			page.LoadURL(u)
 		}
 		return nil
 	})
@@ -453,9 +505,13 @@ func (a *App) navigateBrowser(p *Pane, text string) {
 	}
 	u := browserURL(text)
 	if u == "" {
+		a.err, a.errMsg = "", locales.Messages.BrowserOnlyWeb
 		return
 	}
-	b.addr = u
+	a.err, a.errMsg = "", nil
+	// The page keeps what was typed, credentials and all; the field and
+	// the layout keep it without them.
+	b.addr, b.url = browserCleanURL(u), browserCleanURL(u)
 	if b.web == nil {
 		return
 	}
@@ -1934,9 +1990,9 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	if p.term != nil {
 		cols, rows = p.term.Size()
 	}
-	browserURL, isBrowser := "", p.browser != nil
+	pageURL, isBrowser := "", p.browser != nil
 	if isBrowser {
-		browserURL = p.browser.url
+		pageURL = p.browser.url
 	}
 	src := p.Tab
 	if a.findPane == p {
@@ -1956,7 +2012,7 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	}
 	var np *Pane
 	if isBrowser {
-		np = target.newBrowserPane(browserURL)
+		np = target.newBrowserPane(pageURL)
 		np.Name = p.Name
 		np.browser.auto = false
 	} else {

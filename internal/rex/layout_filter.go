@@ -4,7 +4,6 @@ package rex
 
 import (
 	"encoding/json"
-	"slices"
 
 	"gorex/internal/layout"
 )
@@ -54,34 +53,47 @@ func (s *Server) filterLayout(raw []byte, peer string) (json.RawMessage, error) 
 func (s *Server) filterLayoutTabs(tabs []layout.Tab, peer string) []layout.Tab {
 	var out []layout.Tab
 	for _, t := range tabs {
-		before := sidsOf(t.Root)
+		// The focus names a place among every leaf the host keeps, a
+		// browser pane's among them; the peer adopts it by the sessions it
+		// may use, in order, which is what its own count names.
+		before := leavesOf(t.Root)
 		root := s.filterLayoutNode(t.Root, peer)
 		if root == nil {
 			continue
 		}
 		t.Root = root
-		after := sidsOf(root)
-		if len(after) != len(before) {
-			focus := -1
-			if t.Focus >= 0 && t.Focus < len(before) {
-				focus = slices.Index(after, before[t.Focus])
-			}
-			t.Focus = max(focus, 0)
-			t.Zoom = t.Zoom && focus >= 0 && len(after) > 1
+		after := leavesOf(root)
+		var wanted *layout.Node
+		if t.Focus >= 0 && t.Focus < len(before) {
+			wanted = before[t.Focus]
 		}
+		focus, kept, named := 0, false, 0
+		for _, n := range after {
+			if n.SID == "" {
+				continue
+			}
+			if n == wanted {
+				focus, kept = named, true
+			}
+			named++
+		}
+		t.Focus = min(max(focus, 0), max(named-1, 0))
+		t.Zoom = t.Zoom && kept && named > 1
 		out = append(out, t)
 	}
 	return out
 }
 
-func sidsOf(n *layout.Node) []string {
+// leavesOf returns the panes of the tree of n, browser panes and the
+// unavailable among them, as the layout's focus counts them.
+func leavesOf(n *layout.Node) []*layout.Node {
 	if n == nil {
 		return nil
 	}
-	if n.SID != "" {
-		return []string{n.SID}
+	if n.A == nil || n.B == nil {
+		return []*layout.Node{n}
 	}
-	return append(sidsOf(n.A), sidsOf(n.B)...)
+	return append(leavesOf(n.A), leavesOf(n.B)...)
 }
 
 func (s *Server) filterLayoutNode(n *layout.Node, peer string) *layout.Node {

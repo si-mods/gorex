@@ -15,15 +15,32 @@ func TestBrowserURL(t *testing.T) {
 		{"example.com", "https://example.com"},
 		{"  example.com ", "https://example.com"},
 		{"https://example.com/a", "https://example.com/a"},
+		{"HTTP://example.com", "HTTP://example.com"},
 		{"http://example.com", "http://example.com"},
 		{"localhost:3000", "https://localhost:3000"},
+		{"example.com:8080/a", "https://example.com:8080/a"},
 		{"about:blank", "about:blank"},
-		{"file:///tmp/page.html", "file:///tmp/page.html"},
-		{"data:text/html,hi", "data:text/html,hi"},
+		{"ABOUT:BLANK", "about:blank"},
+		// Only web pages: another scheme is no URL for a browser pane.
+		{"file:///tmp/page.html", ""},
+		{"data:text/html,hi", ""},
+		{"javascript:alert(1)", ""},
+		{"JavaScript:alert(1)", ""},
+		{"javascript:123", ""},
+		{"mailto:a@example.com", ""},
+		{"blob:https://example.com/x", ""},
+		{"mygo://localhost/", ""},
 	} {
 		if got := browserURL(c.in); got != c.want {
 			t.Errorf("browserURL(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+	// What a pane keeps is the page's URL without its user info.
+	if got := browserCleanURL("https://me:hunter2@example.com/a?q=1"); got != "https://example.com/a?q=1" {
+		t.Errorf("browserCleanURL keeps user info: %q", got)
+	}
+	if got := browserCleanURL("https://example.com/a"); got != "https://example.com/a" {
+		t.Errorf("browserCleanURL changed a URL with no user info: %q", got)
 	}
 	for _, c := range []struct{ in, want string }{
 		{"https://example.com/a?b", "example.com"},
@@ -73,6 +90,12 @@ func TestBrowserTab(t *testing.T) {
 	if p.browser.addr != "https://example.com" {
 		t.Errorf("address %q after typing", p.browser.addr)
 	}
+	// A URL a browser pane does not open keeps the field, and says why.
+	a.navigateBrowser(p, "file:///tmp/page.html")
+	if p.browser.addr != "https://example.com" {
+		t.Errorf("address %q after a file URL", p.browser.addr)
+	}
+	a.err, a.errMsg = "", nil
 
 	// The address field's URL is a page's, and the pane keeps it.
 	p.title = "Example Domain"

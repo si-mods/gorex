@@ -18,7 +18,9 @@ browser panes use the system's web view.
   forward and reload in its header, and the page's title on its tab. The
   page lives while its tab does, and opens again at its URL when GoRex
   starts. A browser pane belongs to this machine, so a remote tab takes
-  none, and Find searches terminals alone.
+  none, and Find searches terminals alone. Only http and https pages
+  open; a page is untrusted, so it reaches no GoRex code, asks for no
+  permission, opens no window of its own and downloads nothing.
 - **Persistent sessions.** Shells run in a session server, a background
   process of the same binary (`GoRex -server`). Quit GoRex and everything
   keeps running; open it again and every tab, split and pane comes back as
