@@ -698,20 +698,29 @@ type theme struct {
 // blockSetTheme replaces the terminal's default colors, for the stream of
 // the blocks that show it.
 func blockSetTheme(c *control, s *mSession, b *mBlock, a args) (any, *apiError) {
+	t, aerr := parseTheme(a)
+	if aerr != nil {
+		return nil, aerr
+	}
+	c.g.setTheme(b.id, t)
+	return struct{}{}, nil
+}
+
+// parseTheme reads a theme as set_theme and a shell's theme option give
+// it.
+func parseTheme(a args) (theme, *apiError) {
 	var t theme
-	for _, field := range []struct{ name, dst string }{
-		{"foreground", ""}, {"background", ""}, {"cursor", ""},
-	} {
-		v, ok, aerr := a.str(field.name)
+	for _, name := range []string{"foreground", "background", "cursor"} {
+		v, _, aerr := a.str(name)
 		if aerr != nil {
-			return nil, aerr
+			return t, aerr
 		}
-		if ok && v != "" {
-			if aerr := checkColor(field.name, v); aerr != nil {
-				return nil, aerr
+		if v != "" {
+			if aerr := checkColor(name, v); aerr != nil {
+				return t, aerr
 			}
 		}
-		switch field.name {
+		switch name {
 		case "foreground":
 			t.Foreground = v
 		case "background":
@@ -722,26 +731,25 @@ func blockSetTheme(c *control, s *mSession, b *mBlock, a args) (any, *apiError) 
 	}
 	palette, present, aerr := a.strs("palette")
 	if aerr != nil {
-		return nil, aerr
+		return t, aerr
 	}
 	if present && palette != nil {
 		for _, p := range palette {
 			if aerr := checkPalette(p); aerr != nil {
-				return nil, aerr
+				return t, aerr
 			}
 		}
 		t.Palette = palette
 	}
 	scheme, _, aerr := a.str("scheme")
 	if aerr != nil {
-		return nil, aerr
+		return t, aerr
 	}
 	if scheme != "" && scheme != "light" && scheme != "dark" {
-		return nil, errBadRequest("scheme is light or dark")
+		return t, errBadRequest("scheme is light or dark")
 	}
 	t.Scheme = scheme
-	c.g.setTheme(b.id, t)
-	return struct{}{}, nil
+	return t, nil
 }
 
 // checkColor checks a color of set_theme: hex RRGGBB or #RRGGBB.

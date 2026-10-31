@@ -15,7 +15,7 @@ import (
 type specTree struct {
 	leaf     bool
 	label    string
-	cwd      string
+	shell    shellOptions
 	vertical bool
 	ratio    float64
 	a, b     *specTree
@@ -90,16 +90,9 @@ func parseTree(raw json.RawMessage) (*specTree, *apiError) {
 			return nil, aerr
 		}
 		if present && options != nil {
-			for name := range options {
-				if name != "cwd" {
-					return nil, errBadRequest("a shell has no option %q", name)
-				}
-			}
-			cwd, _, aerr := options.str("cwd")
-			if aerr != nil {
+			if t.shell, aerr = parseShellOptions(options); aerr != nil {
 				return nil, aerr
 			}
-			t.cwd = cwd
 		}
 		return t, nil
 	}
@@ -276,7 +269,7 @@ func (g *Gateway) buildWindow(space, label string, tree *specTree, focus bool, a
 	}
 	first := leaves[0].tree
 	res, aerr := g.command(rex.LayoutCommand{
-		Op: "tab.create", Space: space, Name: label, Dir: first.cwd, After: after, Focus: focus,
+		Op: "tab.create", Space: space, Name: label, Dir: first.shell.cwd, Command: first.shell.command, After: after, Focus: focus,
 	})
 	if aerr != nil {
 		return nil, aerr
@@ -291,7 +284,7 @@ func (g *Gateway) buildWindow(space, label string, tree *specTree, focus bool, a
 		vertical, ratio := siblings(leaves[i-1], leaves[i])
 		res, aerr := g.command(rex.LayoutCommand{
 			Op: "pane.split", Space: space, SID: sids[i-1],
-			Vertical: vertical, Dir: leaves[i].tree.cwd,
+			Vertical: vertical, Dir: leaves[i].tree.shell.cwd, Command: leaves[i].tree.shell.command,
 		})
 		if aerr != nil {
 			g.command(rex.LayoutCommand{Op: "tab.close", Space: space, SID: sids[0]})
@@ -314,6 +307,7 @@ func (g *Gateway) buildWindow(space, label string, tree *specTree, focus bool, a
 			}
 		}
 	}
+	g.applyShellOptions(sids, leaves)
 	return sids, nil
 }
 
@@ -766,7 +760,7 @@ func (g *Gateway) buildBeside(s *mSession, anchor *mBlock, tree *specTree, verti
 	}
 	res, aerr := g.command(rex.LayoutCommand{
 		Op: "pane.split", Space: s.space, SID: anchor.sid,
-		Vertical: vertical, Dir: leaves[0].tree.cwd,
+		Vertical: vertical, Dir: leaves[0].tree.shell.cwd, Command: leaves[0].tree.shell.command,
 	})
 	if aerr != nil {
 		return nil, aerr
@@ -779,7 +773,7 @@ func (g *Gateway) buildBeside(s *mSession, anchor *mBlock, tree *specTree, verti
 	for i := 1; i < len(leaves); i++ {
 		v, r := siblings(leaves[i-1], leaves[i])
 		res, aerr := g.command(rex.LayoutCommand{
-			Op: "pane.split", Space: s.space, SID: sids[i-1], Vertical: v, Dir: leaves[i].tree.cwd,
+			Op: "pane.split", Space: s.space, SID: sids[i-1], Vertical: v, Dir: leaves[i].tree.shell.cwd, Command: leaves[i].tree.shell.command,
 		})
 		if aerr != nil {
 			return nil, aerr
@@ -797,6 +791,7 @@ func (g *Gateway) buildBeside(s *mSession, anchor *mBlock, tree *specTree, verti
 		direction, amount := ratioCommand(vertical, 0.5, ratio)
 		g.command(rex.LayoutCommand{Op: "pane.resize", Space: s.space, SID: anchor.sid, Direction: direction, Amount: amount})
 	}
+	g.applyShellOptions(sids, leaves)
 	return sids, nil
 }
 
