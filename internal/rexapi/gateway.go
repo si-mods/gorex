@@ -87,6 +87,9 @@ type Gateway struct {
 	helloWait time.Duration
 	// tailnet is built-in Tailscale, nil when the gateway cannot run it.
 	tailnet *tailnet
+	// lan is the listener on the local network, nil without a state
+	// directory.
+	lan *lanListener
 	// reconnectWait is how long a dropped client, or a data stream, waits
 	// to be resumed; tests shorten it before making a gateway of their own.
 	reconnectWait time.Duration
@@ -177,6 +180,7 @@ func New(opt Options) (*Gateway, error) {
 		done:          make(chan struct{}),
 	}
 	if opt.TailnetDir != "" {
+		g.lan = newLANListener(g, opt.TailnetDir)
 		g.tailnet = newTailnet(g, opt.TailnetDir, newTsnetNode)
 		g.tailnet.serve = g.serveOn
 	}
@@ -223,6 +227,9 @@ func (g *Gateway) Close() error {
 		g.mu.Unlock()
 		if g.tailnet != nil {
 			g.tailnet.close()
+		}
+		if g.lan != nil {
+			g.lan.close()
 		}
 		for _, c := range conns {
 			c.closeWith(1001, "data provider canceled")

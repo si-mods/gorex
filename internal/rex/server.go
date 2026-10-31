@@ -254,6 +254,11 @@ func (k *keptConn) unbind(conn net.Conn) {
 	k.mu.Unlock()
 }
 
+// OnServe, when set, runs beside each server once it listens, until stop
+// closes, after an upgrade too: the Rex API gateway (internal/rexapi),
+// which this package cannot import.
+var OnServe func(stop <-chan struct{})
+
 // idleTimeout is how long a server with no sessions and no app waits
 // before it exits.
 const idleTimeout = 10 * time.Minute
@@ -328,6 +333,9 @@ func (s *Server) serve() error {
 		<-s.quit
 		ln.Close()
 	}()
+	if OnServe != nil {
+		go OnServe(s.quit)
+	}
 	log.Printf("rex: serving on %s (pid %d)", sock, os.Getpid())
 	for {
 		conn, err := ln.Accept()

@@ -2,7 +2,10 @@
 
 package rex
 
-import "errors"
+import (
+	"errors"
+	"os"
+)
 
 var errUnsupported = errors.New("rex: the session server runs on macOS, Linux and Windows")
 
@@ -19,3 +22,9 @@ func Resume(string) error { return errUnsupported }
 func Spawn() error { return errUnsupported }
 
 func processAlive(int) bool { return false }
+
+// LockFile locks a file; not on this platform.
+func LockFile(*os.File) error { return errUnsupported }
+
+// OnServe runs beside a server; there is none on this platform.
+var OnServe func(stop <-chan struct{})

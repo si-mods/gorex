@@ -28,6 +28,9 @@ import (
 func main() {
 	// -server runs the session server (rex.ServerMain); other arguments
 	// are AppKit's, as -NSWindowResizeTime, which it reads itself.
+	// The server runs the Rex API gateway while the local network or
+	// built-in Tailscale is on (internal/rexapi).
+	rex.OnServe = rexapi.Supervise
 	if server, err := rex.ServerMain(os.Args[1:]); server {
 		if err != nil {
 			log.Fatal(err)
