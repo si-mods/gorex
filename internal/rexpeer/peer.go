@@ -320,6 +320,19 @@ func (c *Client) Pwd(ctx context.Context, session, block string) string {
 	return out.Pwd
 }
 
+// Title returns the title a block's program set, "" when it set none.
+func (c *Client) Title(ctx context.Context, session, block string) string {
+	var out struct {
+		Title string `json:"title"`
+	}
+	if err := c.Call(ctx, "com.superlogical.terminal.title", map[string]any{
+		"session_id": session, "block_id": block, "args": map[string]any{},
+	}, &out); err != nil {
+		return ""
+	}
+	return out.Title
+}
+
 // Format renders a block's screen and scrollback as escape sequences.
 func (c *Client) Format(ctx context.Context, session, block, format string) (string, error) {
 	var out struct {

@@ -58,8 +58,14 @@ func rexMirrorCmd(args []string, out, errOut io.Writer) (int, bool) {
 			}
 		}
 	}
-	if *label != "" {
-		fmt.Fprintf(out, "\x1b]2;%s\x07", *label)
+	// The window shows the program's title, as the Rex window does, and
+	// the label only when the program set none.
+	title := *label
+	if t := peer.Title(ctx, *session, *block); t != "" {
+		title = t
+	}
+	if title != "" {
+		fmt.Fprintf(out, "\x1b]2;%s\x07", title)
 	}
 	// The data stream starts with the screen in Ghostty's binary snapshot
 	// format, which only a terminal of Ghostty's restores, so the screen is

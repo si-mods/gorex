@@ -76,3 +76,21 @@ func waitForThat(t *testing.T, cond func() bool, what string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+// TestPaneLabelTitle checks what names a pane: a shell by its name at the
+// prompt, and another program by the title it sets, even when it is the
+// program the session started with.
+func TestPaneLabelTitle(t *testing.T) {
+	shell := &Pane{info: rex.SessionInfo{Program: "zsh", Shell: "zsh", Idle: true}, title: "~/repos/gorex"}
+	if name, _ := shell.label(); name != "zsh" {
+		t.Errorf("a shell is named %q", name)
+	}
+	mirror := &Pane{info: rex.SessionInfo{Program: "rex-mirror", Shell: "rex-mirror", Idle: true}, title: "Build the site"}
+	if name, _ := mirror.label(); name != "Build the site" {
+		t.Errorf("a mirror is named %q", name)
+	}
+	unnamed := &Pane{info: rex.SessionInfo{Program: "rex-mirror", Shell: "rex-mirror", Idle: true}}
+	if name, _ := unnamed.label(); name != "rex-mirror" {
+		t.Errorf("a mirror without a title is named %q", name)
+	}
+}

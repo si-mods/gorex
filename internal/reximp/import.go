@@ -146,7 +146,7 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 			}
 			if i == 0 {
 				res, err := command(g, rex.LayoutCommand{
-					Op: "tab.create", Space: spaceID, Name: w.Label,
+					Op: "tab.create", Space: spaceID, Name: tabName(w),
 					Dir: dir, Command: cmd, Focus: focus,
 				})
 				if err != nil {
@@ -167,7 +167,7 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 			if prev == "" {
 				return fail(fmt.Errorf("GoRex made no pane"))
 			}
-			if b.Label != "" {
+			if namedBlock(b.Label) {
 				if _, err := command(g, rex.LayoutCommand{Op: "pane.rename", Space: spaceID, SID: prev, Name: b.Label}); err != nil {
 					return fail(err)
 				}
@@ -177,6 +177,36 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 		out.Windows++
 	}
 	return out, nil
+}
+
+// tabName is the name a tab keeps of a Rex window: its label, unless that
+// is Rex's own, made from the window's ID, which says nothing; a tab
+// without one follows its block's title, as Rex shows it.
+func tabName(w rexpeer.Window) string {
+	if w.Label == "" || defaultWindowLabel(w.Label, w.WindowID) {
+		return ""
+	}
+	return w.Label
+}
+
+// defaultWindowLabel tells whether a label is the one Rex makes for a
+// window, "Window 89abcdef" of its ID's last eight characters.
+func defaultWindowLabel(label, windowID string) bool {
+	suffix := windowID
+	if i := strings.LastIndexByte(suffix, ':'); i >= 0 {
+		suffix = suffix[i+1:]
+	}
+	if len(suffix) > 8 {
+		suffix = suffix[len(suffix)-8:]
+	}
+	return strings.EqualFold(strings.TrimSpace(label), "Window "+suffix)
+}
+
+// namedBlock tells whether a block's label is one a person gave it: Rex
+// calls a terminal it has no name for "shell".
+func namedBlock(label string) bool {
+	label = strings.TrimSpace(label)
+	return label != "" && !strings.EqualFold(label, "shell")
 }
 
 // paneCommand is what a new pane runs: the mirror, or the login shell.

@@ -25,7 +25,10 @@
   sends what is typed to the block; `--shell` runs a shell in each block's
   directory instead, and `--resize` gives the block the pane's size. Where
   a session came from is recorded in `rex-import.json`, so a second run
-  leaves it alone. The Rex server is `$REX_SERVER` unless `--rex` names
+  leaves it alone. A mirrored pane takes the title its Rex block's program
+  set, and its tab follows it: Rex's own window labels, `Window 2b63efe2`,
+  are not copied. A pane whose program is not a shell names itself by that
+  title even while it is the program its session started with. The Rex server is `$REX_SERVER` unless `--rex` names
   one, and the GoRex window makes the spaces, tabs and panes.
 
 - Paste into a program that runs on Windows reaches it again. A ConPTY

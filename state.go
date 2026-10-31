@@ -1094,15 +1094,25 @@ func (p *Pane) label() (name, detail string) {
 		}
 		return in.Shell, shortDir(p.startDir)
 	}
-	if in.Idle || prog.Shell {
+	if prog.Shell {
 		name := in.Program
 		if name == "" {
 			name = in.Shell
 		}
 		return name, dir
 	}
+	// A program that is not a shell names its pane by the title it sets,
+	// even while it is the one the session started with, as a mirror of a
+	// Rex block does.
 	if t := strings.TrimSpace(p.title); t != "" && !titleOfShell(t, in) {
 		return t, ""
+	}
+	if in.Idle {
+		name := in.Program
+		if name == "" {
+			name = in.Shell
+		}
+		return name, dir
 	}
 	name = prog.Name
 	if name == "ssh" || in.Program == "ssh" {
