@@ -76,8 +76,10 @@ type session struct {
 	exited bool
 	code   int
 	// screen and title are what the session showed as it exited, its
-	// emulator closed.
+	// emulator closed; ghostty is that screen in Ghostty's binary
+	// snapshot format, which an attach asking for one sends.
 	screen     []byte
+	ghostty    []byte
 	title      string
 	cols, rows int
 	done       chan struct{}
@@ -277,6 +279,9 @@ func (s *session) run(wait func() int) {
 		defer s.hold.RUnlock()
 		s.mu.Lock()
 		s.screen = append(s.vt.Snapshot(), s.graphics.replay()...)
+		// When it cannot be taken, the escape sequences stay the only form
+		// the session's screen survives in.
+		s.ghostty, _ = s.vt.GhosttySnapshot()
 		s.title = s.vt.Title()
 		s.exited = true
 		s.clearPendingResizeLocked()
@@ -437,8 +442,8 @@ func (s *session) read() {
 // typed, typed first, what the server read past the attach's line.
 // may, checked as it joins, tells whether peer may still use the session:
 // detach drops it later when it may not. via is the control connection
-// it attached through (Attach.Conn), if any; o.History and o.Framed shape
-// the snapshot.
+// it attached through (Attach.Conn), if any; o.History, o.Framed and
+// o.Snapshot shape the snapshot.
 func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may func() bool, typed []byte) {
 	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != ""}
 	if o.Cols > 0 && o.Rows > 0 {
@@ -451,18 +456,7 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may
 		conn.Close()
 		return
 	}
-	snap, title := s.view()
-	cut := false
-	if o.History > 0 {
-		snap, cut = trimSnapshot(snap, s.rows, o.History)
-	}
-	if title != "" {
-		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
-	}
-	if o.Framed {
-		head, _ := json.Marshal(SnapshotHeader{Snapshot: len(snap), Cols: s.cols, Rows: s.rows, Truncated: cut})
-		snap = append(append(head, '\n'), snap...)
-	}
+	snap := s.snapshotLocked(o)
 	a.first = snap
 	prev := s.authorityLocked()
 	exited := s.exited
@@ -1181,6 +1175,67 @@ func (s *session) view() ([]byte, string) {
 		return s.screen, s.title
 	}
 	return append(s.vt.Snapshot(), s.graphics.replay()...), s.vt.Title()
+}
+
+// snapshotLocked returns what a client attaching with o gets first: the
+// session's screen and scrollback, as the escape sequences that replay
+// them, or for a "ghostty" attach as Ghostty's binary snapshot, followed
+// by the title and Kitty graphics the escape sequences carry. A framed
+// one puts a SnapshotHeader line before it, Format and all. s.mu is held.
+func (s *session) snapshotLocked(o Attach) []byte {
+	if o.Snapshot == SnapshotGhostty {
+		if snap, after, ok := s.ghosttyView(); ok {
+			var first []byte
+			if o.Framed {
+				head, _ := json.Marshal(SnapshotHeader{Snapshot: len(snap), Cols: s.cols, Rows: s.rows, Format: SnapshotGhostty})
+				first = make([]byte, 0, len(head)+1+len(snap)+len(after))
+				first = append(append(append(first, head...), '\n'), snap...)
+			} else {
+				first = append(make([]byte, 0, len(snap)+len(after)), snap...)
+			}
+			return append(first, after...)
+		}
+		// With no binary snapshot to send, the escape sequences go as
+		// they do for a client that asked for none: Format stays empty,
+		// which tells the client which it got.
+	}
+	snap, title := s.view()
+	cut := false
+	if o.History > 0 {
+		snap, cut = trimSnapshot(snap, s.rows, o.History)
+	}
+	if title != "" {
+		snap = append([]byte("\x1b]2;"+title+"\x07"), snap...)
+	}
+	if o.Framed {
+		head, _ := json.Marshal(SnapshotHeader{Snapshot: len(snap), Cols: s.cols, Rows: s.rows, Truncated: cut})
+		snap = append(append(head, '\n'), snap...)
+	}
+	return snap
+}
+
+// ghosttyView returns the session's screen in Ghostty's binary snapshot
+// format, and the title and Kitty graphics an attach sends after it, which
+// that format does not carry; ok is false when the session has none, as an
+// exited one whose terminal took none. s.mu is held.
+func (s *session) ghosttyView() (snap, after []byte, ok bool) {
+	title := s.title
+	if s.exited {
+		if s.ghostty == nil {
+			return nil, nil, false
+		}
+		snap = s.ghostty
+	} else {
+		b, err := s.vt.GhosttySnapshot()
+		if err != nil {
+			return nil, nil, false
+		}
+		snap, title = b, s.vt.Title()
+	}
+	if title != "" {
+		after = append(after, "\x1b]2;"+title+"\x07"...)
+	}
+	return snap, append(after, s.graphics.replay()...), true
 }
 
 // imageDir resolves a file a program names relative to where it runs: its

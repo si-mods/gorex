@@ -30,16 +30,28 @@ import (
 // Version 3 adds capabilities in Hello, layout revisions ("getLayoutState",
 // Request.LayoutRevision, Response.Revision) and revisions on events. It
 // only adds: a version 2 client gets the same answers, with fields it
-// ignores.
+// ignores. Still within 3, the capability "snapshot.ghostty" (see
+// Attach.Snapshot and SnapshotHeader.Format): a client that does not ask
+// attaches to the VT snapshot as before.
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
 // the next starts the sessions of its layout again — says it does.
 const CapabilityShutdownRestart = "shutdown.restart"
 
+// CapabilitySnapshotGhostty is what a server that takes a session's screen
+// as Ghostty's binary snapshot says it does: Attach.Snapshot "ghostty",
+// and SnapshotHeader.Format "ghostty" in the header of a framed attach.
+const CapabilitySnapshotGhostty = "snapshot.ghostty"
+
+// SnapshotGhostty is Attach.Snapshot's value, and SnapshotHeader.Format's,
+// for a screen as Ghostty's binary snapshot ("GHOSTSNP") rather than as
+// the escape sequences that replay it.
+const SnapshotGhostty = "ghostty"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -481,6 +493,13 @@ type Attach struct {
 	// many bytes.
 	Framed  bool `json:"framed,omitempty"`
 	History int  `json:"history,omitempty"`
+	// Snapshot, when "ghostty" (SnapshotGhostty), sends the screen in
+	// Ghostty's binary snapshot format instead of the escape sequences
+	// that replay it: a framed attach then says so in
+	// SnapshotHeader.Format, and the title and Kitty graphics the escape
+	// sequences carry come after it as output. History does not apply:
+	// the binary snapshot holds the whole scrollback.
+	Snapshot string `json:"snapshot,omitempty"`
 	// Focused tells that the user looks at this terminal: the session
 	// takes its size at once, though another client typed last. A focus
 	// request sent once the attach is answered may reach the server
@@ -489,13 +508,15 @@ type Attach struct {
 }
 
 // SnapshotHeader is the line before the snapshot of a framed attach: its
-// length in bytes, the session's size it was taken at, and whether
-// scrollback was cut (Attach.History).
+// length in bytes, the session's size it was taken at, whether scrollback
+// was cut (Attach.History), and, when Format is "ghostty", that the
+// length counts Ghostty's binary snapshot and not escape sequences.
 type SnapshotHeader struct {
-	Snapshot  int  `json:"snapshot"`
-	Cols      int  `json:"cols"`
-	Rows      int  `json:"rows"`
-	Truncated bool `json:"truncated,omitempty"`
+	Snapshot  int    `json:"snapshot"`
+	Cols      int    `json:"cols"`
+	Rows      int    `json:"rows"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Format    string `json:"format,omitempty"`
 }
 
 // ServerMain runs the server when args, the program's arguments, ask
