@@ -176,7 +176,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if w.app != nil {
 			// closeWorkspace ends its tabs' programs and shows another
 			// space, as closing a window does.
-			w.app.closeWorkspace()
+			w.app.closeWorkspaceFor(true)
 			return res
 		}
 		// No window shows the space: end its sessions here, and forget it.
