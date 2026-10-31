@@ -144,6 +144,12 @@ func (c *control) createWindow(s *mSession, label string, l *rexLayout, focus bo
 	if apiErr != nil {
 		return "", nil, apiErr
 	}
+	// A block's label names its pane, as Rex's run --label does.
+	if first.Label != "" {
+		if _, apiErr := c.command(s, rex.LayoutCommand{Op: "pane.rename", SID: res.New, Name: first.Label}); apiErr != nil {
+			return "", nil, apiErr
+		}
+	}
 	seed := res.New
 	if res.Tab != "" {
 		seed = res.Tab

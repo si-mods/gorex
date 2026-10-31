@@ -124,7 +124,8 @@ func TestRexAPICreatesSessions(t *testing.T) {
 			"window_label": "editor",
 			"layout": map[string]any{"block": map[string]any{
 				"flavor":  rexapi.FlavorShell,
-				"options": map[string]any{"cwd": "/tmp", "command": []string{"/bin/sh", "-c", "echo rexmade"}},
+				"label":   "RexBlock",
+				"options": map[string]any{"cwd": "/tmp", "command": []string{"/bin/sh", "-c", "echo rexmade; sleep 30"}},
 			}},
 		}},
 	})
@@ -154,6 +155,14 @@ func TestRexAPICreatesSessions(t *testing.T) {
 	if ws := view["windows"].([]any); len(ws) != 1 || ws[0].(map[string]any)["label"] != "editor" {
 		t.Errorf("windows %v", ws)
 	}
+	blocks := c.call("session.list_blocks", map[string]any{"session_id": sid})["blocks"].([]any)
+	if len(blocks) != 1 || blocks[0].(map[string]any)["label"] != "RexBlock" {
+		t.Errorf("the block's label: %v", blocks)
+	}
+	list := c.call("session.list", nil)["sessions"].([]any)
+	t.Logf("before destroy: %v", list)
+	view2 := c.call("session.view", map[string]any{"session_id": sid})
+	t.Logf("view before destroy: %v", view2["label"])
 	c.call("session.destroy", map[string]any{"session_id": sid})
 	deadline := time.Now().Add(5 * time.Second)
 	for {

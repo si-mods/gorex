@@ -343,6 +343,9 @@ and GoRex's server answers them: a Rex session is a workspace (a space), a
 Rex window is a tab, and a Rex block is a pane, so Rex.app and the `rex`
 CLI see and drive GoRex as they see Rex. GoRex's own clients send JSON
 lines, which the server tells apart from HTTP, so both share the socket.
+The sessions are GoRex's own: this serves Rex clients over GoRex's
+workspaces, tabs and panes, and does not import the sessions of a Rex
+server, which keeps its own.
 
 ```sh
 rex -S "$HOME/Library/Application Support/GoRex/server.sock" ls
