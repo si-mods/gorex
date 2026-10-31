@@ -566,6 +566,7 @@ var (
 // applyGhostty computes the terminals' font and colors from the
 // configuration and the user's text size.
 func applyGhostty() {
+	registerFamilies(fontDirs(), ghostty.Families)
 	termFont = ghostty.font(ghostty.fontSize(prefs.FontSize))
 	termLight, termDark, termOpaque = ghostty.themes()
 	termAppearance = ""

@@ -711,9 +711,9 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	h.Children(func() {
 		glyphIcon(c, prog.Glyph, 14.5, k.text)
 		ui.Row(c).Grow(1).MinWidth(0).Gap(5).AlignItems(ui.Center).ClipX().Children(func() {
-			ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(80)
+			ui.RichText(c, titleSpans(name, 12.5, 600, k.text)...).Label(name).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(80)
 			if detail != "" {
-				ui.Text(c, detail).FontSize(12.5).FontWeight(500).TextColor(k.text.Alpha(0.86)).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
+				ui.RichText(c, titleSpans(detail, 12.5, 500, k.text.Alpha(0.86))...).Label(detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 			}
 			a.activityBadge(c, k, p)
 		})

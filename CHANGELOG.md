@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- A title a program heads with an icon, as omp names its sessions with a
+  Nerd Font glyph, shows the icon rather than a box: a tab's label, in the
+  title bar and the sidebar, a pane's header and the palette's rows draw
+  the private use glyphs of a title in the terminals' font, where alone
+  they have glyphs, and the rest in the window's.
+- A font family the app's configuration names but macOS does not list
+  draws again, with the icons its Nerd Font patch adds: GoRex reads the
+  family's files in the font directories and registers them, as Ghostty
+  does, where the system leaves a quarantined download inactive.
+
 ## 0.3.4
 
 - A session another machine's client opens on this machine gets a tab in
