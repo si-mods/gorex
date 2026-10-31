@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
-	"image/png"
 	"os"
 	"slices"
 	"strings"
@@ -381,8 +379,6 @@ func TestTabsOpenAndClose(t *testing.T) {
 // TestPaletteComesAndGoes: with a style of animation the palette's rows
 // come in as it opens, not as its query changes, and it fades out as it
 // closes; with Off it shows and goes at once.
-var closedPNG, closedTerm string
-
 func TestPaletteComesAndGoes(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
@@ -413,14 +409,13 @@ func TestPaletteComesAndGoes(t *testing.T) {
 			prefs = settings{Animation: tc.style}
 			p := a.tab().Focus
 			waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+			// The terminal's caret blinks by the wall clock, not the
+			// Tester's, and after a long prompt, as a CI machine's long
+			// host name makes, it is in the region compared: hidden, it
+			// leaves the palette alone to tell the shots apart.
+			p.term.Feed([]byte("\x1b[?25l"))
 			settle(tt)
 			closed := panel(tt)
-			{
-				var buf bytes.Buffer
-				png.Encode(&buf, tt.Image())
-				closedPNG = base64.StdEncoding.EncodeToString(buf.Bytes())
-				closedTerm = p.term.Text()
-			}
 			a.openPalette()
 			tt.Frame()
 			title := row(t, a, tt)
@@ -439,8 +434,12 @@ func TestPaletteComesAndGoes(t *testing.T) {
 			if then, _ := tt.Find(title); now != then {
 				t.Errorf("the query moved a row: %v, at rest %v", now, then)
 			}
-			a.paletteOpen = false
+			// Escape closes it as the user does.
+			tt.Key(0, ui.KeyEscape)
 			tt.Frame()
+			if a.paletteOpen {
+				t.Fatal("Escape did not close the palette")
+			}
 			going := !bytes.Equal(panel(tt), closed)
 			settle(tt)
 			if got := panel(tt); !bytes.Equal(got, closed) {
@@ -451,11 +450,7 @@ func TestPaletteComesAndGoes(t *testing.T) {
 						n, x0, y0, x1, y1 = n+1, min(x0, x), min(y0, y), max(x1, x), max(y1, y)
 					}
 				}
-				t.Logf("DIAG %d px differ in %d,%d-%d,%d; texts %q; term %q; err %q", n, x0, y0, x1, y1, tt.Texts(), p.term.Text(), a.err)
-				var buf bytes.Buffer
-				png.Encode(&buf, tt.Image())
-				t.Logf("DIAGBEFORE %s term %q", closedPNG, closedTerm)
-				t.Logf("DIAGPNG %s", base64.StdEncoding.EncodeToString(buf.Bytes()))
+				t.Logf("%d pixels differ within %d,%d-%d,%d; the terminal shows %q", n, x0, y0, x1, y1, p.term.Text())
 				t.Fatal("the window is not as before the palette opened")
 			}
 			if going != tc.moves {
