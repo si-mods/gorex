@@ -118,6 +118,9 @@ type store struct {
 	// session's done or error record was seen.
 	infos map[string]rex.SessionInfo
 	seen  map[string]time.Time
+	// closed are the sessions of this machine a window closed here, which
+	// adoption does not open again while a list still has them.
+	closedHere map[string]bool
 	// apps are the open windows, the most recently focused first.
 	apps []*App
 	// lastClosed is the workspace of the last window, once it closed: it

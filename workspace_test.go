@@ -1004,6 +1004,61 @@ func TestAdoptAcrossWorkspaces(t *testing.T) {
 	quit(st)
 }
 
+// TestAdoptSessionOpenedRemotely checks that a session another machine's
+// client opened here gets a tab in the window, once, last among this
+// machine's tabs and without the focus; that one this machine's own client
+// opened stays unseen; and that one closed here does not come back from a
+// list made before it ended.
+func TestAdoptSessionOpenedRemotely(t *testing.T) {
+	a, tt := newTestApp(t)
+	before := len(a.tabs)
+	local, err := a.client.Create(rex.CreateOptions{Dir: os.TempDir(), Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, err := a.client.Create(rex.CreateOptions{Dir: os.TempDir(), Cols: 97, Rows: 31})
+	if err != nil {
+		t.Fatal(err)
+	}
+	infos, err := a.client.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]rex.SessionInfo{}
+	for _, in := range infos {
+		byID[in.ID] = in
+	}
+	in := byID[remote.ID]
+	in.Owner = "nodekey:" + strings.Repeat("a", 64)
+	byID[remote.ID] = in
+	a.apply(nil, byID, hostLayout{})
+	if len(a.tabs) != before+1 {
+		t.Fatalf("%d tabs, want %d: the remote session, not the local one", len(a.tabs), before+1)
+	}
+	got := a.tabs[len(a.tabs)-1]
+	if got.Focus.SID != remote.ID || a.tab() == got {
+		t.Errorf("the adopted tab is %s, not %s, or took the focus", got.Focus.SID, remote.ID)
+	}
+	if cols, rows := got.Focus.term.Size(); cols != 97 || rows != 31 {
+		t.Errorf("attached at %dx%d", cols, rows)
+	}
+	if slices.Contains(sidsOf(a), local.ID) {
+		t.Error("the local session got a tab")
+	}
+	a.apply(nil, byID, hostLayout{})
+	if len(a.tabs) != before+1 {
+		t.Errorf("%d tabs after another poll", len(a.tabs))
+	}
+
+	// The list still has the session as it ends; the tab stays closed.
+	a.closeTab(got)
+	tt.Frame()
+	a.apply(nil, byID, hostLayout{})
+	if slices.Contains(sidsOf(a), remote.ID) {
+		t.Error("the closed session got a tab again")
+	}
+}
+
 // TestDebugVerbs checks the debug hook's verbs of windows and workspaces:
 // "state" describes them, "win" targets a window by place, "focus-win"
 // fronts one, and "session", "rename-session", "cancel" and "confirm" act

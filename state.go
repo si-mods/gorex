@@ -364,6 +364,12 @@ func (a *App) killOn(h *hostConn, sid string) {
 	case h != nil:
 		h.kill(sid)
 	case a.client != nil:
+		if a.st != nil {
+			if a.st.closedHere == nil {
+				a.st.closedHere = map[string]bool{}
+			}
+			a.st.closedHere[sid] = true
+		}
 		c := a.client
 		go c.Kill(sid)
 	}
@@ -1687,6 +1693,8 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) {
 	if h != nil {
 		a.adopt(h, byID, l)
+	} else {
+		a.adoptLocal(byID)
 	}
 	var events []map[string]string
 	for ti, t := range a.tabs {
@@ -1745,6 +1753,51 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 	if a.saveDue && time.Since(a.lastSave) > time.Second {
 		a.save()
 	}
+}
+
+// adoptLocal opens a tab for each session a remote client created on this
+// machine that no tab shows, as one another machine opens here: the window
+// focused last takes them, last among this machine's tabs, and without the
+// focus. A session this machine's own client opened, from the command line
+// or a pane, is no tab's to open: it stays as it was. Call it on the main
+// thread.
+func (a *App) adoptLocal(byID map[string]rex.SessionInfo) {
+	if a.quitting || a.st == nil || a.ws == nil || len(a.st.apps) == 0 || a.st.apps[0] != a {
+		return
+	}
+	for sid := range a.st.closedHere {
+		if _, ok := byID[sid]; !ok {
+			delete(a.st.closedHere, sid)
+		}
+	}
+	shown := map[string]bool{}
+	for _, o := range a.peers() {
+		for _, t := range o.tabs {
+			for _, p := range t.panes() {
+				if p.host == nil && p.SID != "" {
+					shown[p.SID] = true
+				}
+			}
+		}
+	}
+	for sid := range a.st.namedSIDs(a.ws) {
+		shown[sid] = true
+	}
+	var free []rex.SessionInfo
+	for _, in := range sortedInfos(byID) {
+		if in.Exited || in.Owner == "" || shown[in.ID] || a.st.closedHere[in.ID] {
+			continue
+		}
+		free = append(free, in)
+	}
+	if len(free) == 0 {
+		return
+	}
+	for _, in := range free {
+		a.tabs = append(a.tabs, a.sessionTab(nil, in))
+	}
+	a.groupTabs()
+	a.changed()
 }
 
 // statusEvents are the program status changes of a pane, for the Lua
