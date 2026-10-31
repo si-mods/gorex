@@ -6,6 +6,7 @@ require (
 	github.com/coder/websocket v1.8.14
 	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.7.2
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/tailscale/tailcat v0.7.0
 	github.com/yuin/gopher-lua v1.1.1
 	golang.org/x/image v0.46.0
