@@ -243,7 +243,9 @@ What to know before turning it on:
   from the sessions they did not create. The server remembers which key
   created a session, in memory, and keeps it across an in-place upgrade;
   a session survives a revoke and approval of the same key as its own.
-  Local connections always see every session.
+  Local connections always see every session. A session a client opens
+  here gets a tab in this window too, last among this machine's tabs and
+  without taking the focus, rather than running unseen.
 - Over the connection itself, a remote client may list, create, kill,
   resize and attach to sessions only. It may not shut the server down,
   read or set the window layout, or see or change remote access

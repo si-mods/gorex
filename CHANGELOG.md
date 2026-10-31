@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- A session another machine's client opens on this machine gets a tab in
+  this window too, last among this machine's tabs and without the focus,
+  rather than running unseen: a pane or tab added from another GoRex
+  through Settings › Remote Hosts shows up here. A session this machine's
+  command line opens stays as it was.
+
 ## 0.3.3
 
 - A pane header reads on its own background: when a pane takes a dark
