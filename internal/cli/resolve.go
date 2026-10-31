@@ -71,9 +71,15 @@ type layoutWorkspace struct {
 }
 
 type layoutTab struct {
-	Name  string      `json:"name"`
-	Focus int         `json:"focus"`
-	Root  *layoutNode `json:"root"`
+	Name   string        `json:"name"`
+	Focus  int           `json:"focus"`
+	Root   *layoutNode   `json:"root"`
+	Floats []layoutFloat `json:"floats"`
+}
+
+// layoutFloat is a pane over the tab's tiled panes.
+type layoutFloat struct {
+	Pane *layoutNode `json:"pane"`
 }
 
 type layoutNode struct {
@@ -110,6 +116,9 @@ func sessionLabels(raw json.RawMessage) map[string]string {
 		for _, t := range w.Tabs {
 			add(t.Name, tabSession(t))
 			addNodeNames(t.Root, add)
+			for _, f := range t.Floats {
+				addNodeNames(f.Pane, add)
+			}
 		}
 		add(w.Name, focused)
 	}

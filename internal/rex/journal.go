@@ -308,7 +308,9 @@ func (s *Server) restoreSessions(l json.RawMessage, owners map[string]string) {
 	}
 	for _, w := range st.Sessions {
 		for _, t := range w.Layout.Tabs {
-			walk(t.Root)
+			for _, n := range t.Roots() {
+				walk(n)
+			}
 		}
 	}
 	if want > 0 {

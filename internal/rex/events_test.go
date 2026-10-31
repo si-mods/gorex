@@ -369,6 +369,40 @@ func TestFilterLayoutFocusPastUnavailable(t *testing.T) {
 	}
 }
 
+// TestFilterLayoutFloats checks that a peer's layout keeps the floats it
+// may use, drops those it cannot, and moves the focus over them.
+func TestFilterLayoutFloats(t *testing.T) {
+	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"sid":"a"},"focus":0,"floats":[{"pane":{"sid":"a"},"x":0.1},{"pane":null},{"pane":{"sid":"b"}}],"focusFloat":2}]}],"windows":["w"]}`)
+	s := &Server{
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "other"}},
+		rem:      remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "p"}}}},
+	}
+	got, err := s.filterLayout(raw, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st layout.Store
+	if err := json.Unmarshal(got, &st); err != nil {
+		t.Fatal(err)
+	}
+	tab := st.Sessions[0].Tabs[0]
+	if len(tab.Floats) != 2 {
+		t.Fatalf("floats %+v", tab.Floats)
+	}
+	if tab.Floats[0].Pane == nil || tab.Floats[0].Pane.SID != "a" || tab.Floats[0].X != 0.1 {
+		t.Errorf("first float %+v", tab.Floats[0])
+	}
+	if !tab.Floats[1].Pane.Unavailable {
+		t.Errorf("a pane of another's float is not unavailable: %+v", tab.Floats[1])
+	}
+	if tab.FocusFloat != 0 {
+		t.Errorf("focus float %d, want 0 after the focused float went", tab.FocusFloat)
+	}
+	if bytes.Contains(got, []byte(`"sid":"b"`)) {
+		t.Fatalf("leaked %s", got)
+	}
+}
+
 func TestFilterLayoutMirror(t *testing.T) {
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"sid":"a"}}]}],"windows":["w"],"tabs":[{"root":{"sid":"a"}},{"root":{"sid":"b"}}]}`)
 	s := &Server{

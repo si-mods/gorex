@@ -1,0 +1,322 @@
+package main
+
+import (
+	"encoding/json"
+	"math"
+	"testing"
+
+	"gorex/internal/layout"
+	"gorex/locales"
+)
+
+// TestFloatClamp checks that a float's box stays in the tab's room.
+func TestFloatClamp(t *testing.T) {
+	for _, f := range []Float{
+		{},
+		{X: -1, Y: -1, W: -1, H: -1},
+		{X: 0.9, Y: 0.9, W: 0.5, H: 0.5},
+		{X: 0, Y: 0, W: 2, H: 2},
+		{X: 0.5, Y: 0.5, W: 0.01, H: 0.01},
+		{X: float32(math.NaN()), Y: float32(math.Inf(1)), W: float32(math.NaN()), H: float32(math.Inf(-1))},
+	} {
+		f.clamp()
+		if f.X < 0 || f.Y < 0 || f.W < floatMin || f.H < floatMin || f.W > 1 || f.H > 1 ||
+			f.X+f.W > 1 || f.Y+f.H > 1 {
+			t.Errorf("clamped %+v is outside the room", f)
+		}
+	}
+	nan := Float{X: float32(math.NaN()), Y: float32(math.Inf(1)), W: float32(math.NaN()), H: float32(math.Inf(-1))}
+	nan.clamp()
+	if nan.X != 0.15 || nan.Y != 0.12 || nan.W != 0.7 || nan.H != 0.72 {
+		t.Errorf("NaN and Inf clamped to %+v, not the defaults", nan)
+	}
+}
+
+// TestFloatPaneDock floats a pane and docks it again.
+func TestFloatPaneDock(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	if a.floatPane(tab.Focus) {
+		t.Fatal("the only tiled pane floated")
+	}
+	a.split(false)
+	p := tab.Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	if len(tab.panes()) != 1 || len(tab.Floats) != 1 || p.float == nil {
+		t.Fatalf("%d tiled, %d floats", len(tab.panes()), len(tab.Floats))
+	}
+	if tab.Root.Pane == nil || tab.Root.Pane == p {
+		t.Fatalf("the tree kept %+v", tab.Root)
+	}
+	if tab.Focus != p {
+		t.Error("the float does not have the focus")
+	}
+	if !a.dockPane(p) {
+		t.Fatal("the float did not dock")
+	}
+	if len(tab.panes()) != 2 || len(tab.Floats) != 0 || p.float != nil {
+		t.Fatalf("docked: %d tiled, %d floats", len(tab.panes()), len(tab.Floats))
+	}
+}
+
+// TestFloatZoomKeepsTiledZoom checks that a zoomed tiled pane stays zoomed
+// while floats open, move and close.
+func TestFloatZoomKeepsTiledZoom(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	zoomed := tab.panes()[0]
+	a.zoom(zoomed, true)
+	if tab.Zoom != zoomed {
+		t.Fatal("the pane did not zoom")
+	}
+	f1 := a.newFloat(nil)
+	if f1 == nil || tab.Zoom != zoomed {
+		t.Fatalf("a new float changed the zoom to %v", tab.Zoom)
+	}
+	other := tab.panes()[1]
+	if !a.floatPane(other) {
+		t.Fatal("the other pane did not float")
+	}
+	if tab.Zoom != zoomed {
+		t.Error("floating a pane changed the zoom")
+	}
+	a.hideFloat(f1.float)
+	if tab.Zoom != zoomed {
+		t.Error("hiding a float changed the zoom")
+	}
+	a.dropPane(other, true)
+	if tab.Zoom != zoomed {
+		t.Error("closing a float changed the zoom")
+	}
+}
+
+// TestZoomFocusedFloat checks that zooming a float fills its own room, and
+// leaves the tab's tiled zoom alone.
+func TestZoomFocusedFloat(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	p := tab.Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	if tab.Zoom != nil {
+		t.Fatal("floating zoomed the tab")
+	}
+	if err := a.zoomFocused("toggle"); err != nil {
+		t.Fatal(err)
+	}
+	if !p.float.Zoom || tab.Zoom != nil {
+		t.Fatalf("float zoom %v, tab zoom %v", p.float.Zoom, tab.Zoom)
+	}
+	if err := a.zoomFocused("off"); err != nil {
+		t.Fatal(err)
+	}
+	if p.float.Zoom {
+		t.Error("the float stayed zoomed")
+	}
+}
+
+// TestDropRootPromotesFloat checks that a tab whose only tiled pane closes
+// keeps its topmost float as the new tree.
+func TestDropRootPromotesFloat(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	p := tab.Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	root := tab.Root.Pane
+	if root == nil {
+		t.Fatalf("the tree is %+v", tab.Root)
+	}
+	a.closePane(root)
+	if len(a.tabs) != 1 || a.tab() != tab {
+		t.Fatalf("the tab closed: %d tabs", len(a.tabs))
+	}
+	if tab.Root == nil || tab.Root.Pane != p || len(tab.Floats) != 0 || p.float != nil {
+		t.Fatalf("the float did not take the tree: root %+v, floats %d", tab.Root, len(tab.Floats))
+	}
+	if tab.Focus != p {
+		t.Error("the promoted float does not have the focus")
+	}
+}
+
+// TestHideFloatToggle checks that hiding a float keeps its session and
+// moves the focus, and that the toggle brings the same float back.
+func TestHideFloatToggle(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	p := tab.Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	a.hideFloat(p.float)
+	if p.closed {
+		t.Fatal("hiding closed the pane")
+	}
+	if !p.float.Hidden || len(tab.Floats) != 1 {
+		t.Fatalf("hidden %v, floats %d", p.float.Hidden, len(tab.Floats))
+	}
+	if tab.Focus == nil || tab.Focus.float != nil {
+		t.Fatalf("the focus stayed on the float: %v", tab.Focus)
+	}
+	a.toggleFloat()
+	if p.float.Hidden || tab.Focus != p {
+		t.Fatalf("the toggle did not bring the float back: hidden %v, focus %v", p.float.Hidden, tab.Focus)
+	}
+}
+
+// TestFloatLayoutRoundTrip checks that the layout keeps floats' boxes, their
+// hidden flag and z order, and the float with the focus, and that a restore
+// brings them back.
+func TestFloatLayoutRoundTrip(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	p1 := tab.Focus
+	if !a.floatPane(p1) {
+		t.Fatal("the pane did not float")
+	}
+	p2 := a.newFloat(nil)
+	if p2 == nil {
+		t.Fatal("no new float")
+	}
+	a.setFloatBox(p1.float, 0.1, 0.2, 0.3, 0.4)
+	a.setFloatBox(p2.float, 0.5, 0.1, 0.25, 0.3)
+	a.hideFloat(p1.float)
+	tab.setFocus(p2)
+
+	raw, err := json.Marshal(a.snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var l savedLayout
+	if err := json.Unmarshal(raw, &l); err != nil {
+		t.Fatal(err)
+	}
+	st := l.Tabs[0]
+	if len(st.Floats) != 2 {
+		t.Fatalf("%d floats saved", len(st.Floats))
+	}
+	if st.FocusFloat != 2 {
+		t.Errorf("focus float %d, want 2", st.FocusFloat)
+	}
+	if !st.Floats[0].Hidden || st.Floats[1].Hidden {
+		t.Errorf("hidden flags %v %v", st.Floats[0].Hidden, st.Floats[1].Hidden)
+	}
+	if f := st.Floats[0]; f.X != 0.1 || f.Y != 0.2 || f.W != 0.3 || f.H != 0.4 {
+		t.Errorf("first box %+v", f)
+	}
+
+	for _, p := range tab.allPanes() {
+		if p.term != nil {
+			p.term.Close() // detach, as when the app quits
+		}
+	}
+	b := &App{client: a.client}
+	if !b.restore(l, nil) {
+		t.Fatal("nothing restored")
+	}
+	if len(b.tabs) != 1 {
+		t.Fatalf("%d tabs restored", len(b.tabs))
+	}
+	bt := b.tabs[0]
+	if len(bt.Floats) != 2 {
+		t.Fatalf("%d floats restored", len(bt.Floats))
+	}
+	if !bt.Floats[0].Hidden || bt.Floats[1].Hidden {
+		t.Errorf("restored hidden flags %v %v", bt.Floats[0].Hidden, bt.Floats[1].Hidden)
+	}
+	if f := bt.Floats[0]; f.X != 0.1 || f.Y != 0.2 || f.W != 0.3 || f.H != 0.4 {
+		t.Errorf("restored first box %+v", f)
+	}
+	if bt.Focus != bt.Floats[1].Pane {
+		t.Error("the visible float does not have the focus")
+	}
+	if bt.Floats[1].Pane.Tab != bt || bt.Floats[1].Pane.float != bt.Floats[1] {
+		t.Error("a restored float pane is not its tab's float")
+	}
+}
+
+// TestFloatDockButton checks that a float draws, and that its header's dock
+// button puts it back among the tiled panes.
+func TestFloatDockButton(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.split(false)
+	p := a.tab().Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	tt.Frame()
+	if err := tt.Click(locales.CmdDockPane()); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if len(a.tab().Floats) != 0 || len(a.tab().panes()) != 2 {
+		t.Fatalf("the dock button left %d floats, %d tiled", len(a.tab().Floats), len(a.tab().panes()))
+	}
+}
+
+// TestLayoutTabWithoutFloats checks that a tab of no floats marshals as it
+// did before floats existed.
+func TestLayoutTabWithoutFloats(t *testing.T) {
+	got, err := json.Marshal(layout.Tab{Name: "x", Root: &layout.Node{SID: "s"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"name":"x","root":{"sid":"s"},"focus":0}`; string(got) != want {
+		t.Errorf("layout %s, want %s", got, want)
+	}
+}
+
+// A tab zoomed while a float has the focus keeps its zoom through the saved
+// layout.
+func TestFloatFocusKeepsSavedZoom(t *testing.T) {
+	a, tab := floatZoomFixture(t)
+	if tab.Focus.float == nil || tab.Zoom == nil {
+		t.Fatal("fixture: want a zoomed tab and a focused float")
+	}
+	st := a.savedTab(tab)
+	if !st.Zoom || st.FocusFloat == 0 {
+		t.Fatalf("saved tab = zoom %v focusFloat %d, want zoom with a focused float", st.Zoom, st.FocusFloat)
+	}
+	if got := tab.panes()[st.Focus]; got != tab.Zoom {
+		t.Fatalf("saved focus names %v, want the zoomed pane", got.ID)
+	}
+}
+
+// Lowering the focused float sticks: drawing does not raise it again.
+func TestLowerFocusedFloatSticks(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	f := a.newFloat(nil).float
+	a.newFloat(nil)
+	tab.setFocus(f.Pane)
+	a.focusReq = f.Pane
+	tt.Frame()
+	a.lowerFloat(f)
+	tt.Frame()
+	tt.Frame()
+	if tab.Floats[0] != f {
+		t.Fatalf("the lowered float rose again")
+	}
+}
+
+// floatZoomFixture is a tab of two tiled panes, the first zoomed, and a
+// float with the focus.
+func floatZoomFixture(t *testing.T) (*App, *Tab) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	a.split(false)
+	a.zoom(tab.panes()[0], true)
+	if a.newFloat(nil) == nil {
+		t.Fatal("no float")
+	}
+	return a, tab
+}

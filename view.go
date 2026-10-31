@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -216,24 +217,31 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	a.contentFocus, a.pageHover = false, nil
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	bounds := room.Bounds()
+	a.floatRoom = bounds
 	tr := a.paneTransition(c, t)
 	room.Children(func() {
 		if t.Zoom != nil {
 			a.paneCell(c, k, t, t.Zoom, whole, bounds, tr)
-			return
+		} else {
+			type split struct {
+				n *Node
+				s share
+			}
+			var splits []split
+			t.Root.shares(whole, func(p *Pane, s share) {
+				a.paneCell(c, k, t, p, s, bounds, tr)
+			}, func(n *Node, s share) {
+				splits = append(splits, split{n, s})
+			})
+			for _, sp := range splits {
+				a.divider(c, k, sp.n, sp.s, bounds, tr)
+			}
 		}
-		type split struct {
-			n *Node
-			s share
-		}
-		var splits []split
-		t.Root.shares(whole, func(p *Pane, s share) {
-			a.paneCell(c, k, t, p, s, bounds, tr)
-		}, func(n *Node, s share) {
-			splits = append(splits, split{n, s})
-		})
-		for _, sp := range splits {
-			a.divider(c, k, sp.n, sp.s, bounds, tr)
+		for _, f := range slices.Clone(t.Floats) {
+			if f.Hidden {
+				continue
+			}
+			a.floatCell(c, k, t, f, bounds)
 		}
 	})
 	// A press on a page gives the page the keyboard, and MyGo clears the
@@ -254,10 +262,12 @@ var whole = share{0, 0, 1, 1}
 
 // The keys of a tab's room, and of the cells and dividers in it.
 type (
-	roomKey    int
-	cellKey    int
-	dividerKey int
-	addressKey int
+	roomKey      int
+	cellKey      int
+	dividerKey   int
+	addressKey   int
+	floatKey     int
+	floatGripKey int
 )
 
 // shares gives each pane of the tree of n, and each split, its share of s.
@@ -322,6 +332,49 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 			defer func() { fadeColors = true }()
 		}
 		a.paneCard(c, k, t, p, held).Grow(1)
+	})
+}
+
+// floatFace is the opaque fill behind a float's card, so that the tiled
+// panes under it show through nowhere.
+func floatFace(k *colors) ui.Color { return k.panel }
+
+// floatCell places a float's pane over the tab's tiled ones, at its box of
+// the room, which is bounds, with a grip that resizes it.
+func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Rect) {
+	p := f.Pane
+	if p == nil {
+		return
+	}
+	s := share{f.X, f.Y, f.W, f.H}
+	if f.Zoom {
+		s = whole
+	}
+	cell := ui.Column(c.Key(floatKey(p.ID))).Absolute().
+		LeftPercent(s.x*100).TopPercent(s.y*100).WidthPercent(s.w*100).HeightPercent(s.h*100).
+		Radius(cardR).Background(floatFace(k)).
+		Shadow(0, 14, 40, -8, k.shadowFocused).
+		Shadow(0, 2, 8, 0, k.shadow)
+	p.bounds = ui.Rect{
+		X: bounds.X + s.x*bounds.W,
+		Y: bounds.Y + s.y*bounds.H,
+		W: s.w * bounds.W,
+		H: s.h * bounds.H,
+	}
+	cell.Children(func() {
+		a.paneCard(c, k, t, p, false).Grow(1)
+		if f.Zoom {
+			return
+		}
+		grip := ui.Box(c.Key(floatGripKey(p.ID))).Absolute().Right(0).Bottom(0).Size(14, 14).Cursor(ui.CursorResizeNWSE)
+		if dx, dy, ok := grip.Dragged(); ok {
+			a.resizeFloatPx(f, dx, dy, bounds)
+		}
+		grip.Draw(func(pt *ui.Painter, r ui.Rect) {
+			if grip.Hovered() || grip.Dragging() {
+				pt.Fill(ui.Rect{X: r.X + r.W/2 - 1.5, Y: r.Y + r.H/2 - 1.5, W: 3, H: 3}, k.iconMuted.Alpha(0.7), 1.5)
+			}
+		})
 	})
 }
 
@@ -403,6 +456,8 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 		// way to its pages.
 		if paneHeaders() || p.browser != nil {
 			a.paneHeader(c, hk, t, p, focused, hovered)
+		} else if p.float != nil {
+			a.floatHandle(c, hk, t, p, p.float)
 		} else {
 			top = 6
 		}
@@ -460,9 +515,14 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	if _, over := ui.DragOver[*Pane](card); over {
 		card.Border(1.5, k.busy.Alpha(0.6))
 	}
-	if card.Pressed() && t.Focus != p {
-		t.setFocus(p)
-		a.focusReq = p
+	if card.Pressed() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
+		if t.Focus != p {
+			t.setFocus(p)
+			a.focusReq = p
+		}
 	}
 	return card
 }
@@ -531,12 +591,24 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	prog := p.program()
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
-	h.Drag(p)
+	if f := p.float; f != nil {
+		if dx, dy, ok := h.Dragged(); ok {
+			a.moveFloatPx(f, dx, dy, a.floatRoom)
+		}
+	} else {
+		h.Drag(p)
+	}
 	if h.DoubleClicked() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
 		t.setFocus(p)
 		a.toggleZoom()
 	}
 	if h.Clicked() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
 		t.setFocus(p)
 		a.focusReq = p
 	}
@@ -553,6 +625,34 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	})
 }
 
+// floatHandle is the row a float keeps when pane headers are off: a grip
+// that moves it, and its zoom and close buttons.
+func (a *App) floatHandle(c *ui.Context, k *colors, t *Tab, p *Pane, f *Float) {
+	h := ui.Row(c).Height(14).Shrink(0).Padding(0, 3, 0, 6).AlignItems(ui.Center).Cursor(ui.CursorMove)
+	if dx, dy, ok := h.Dragged(); ok {
+		a.moveFloatPx(f, dx, dy, a.floatRoom)
+	}
+	if h.Pressed() {
+		a.raiseFloat(f)
+		t.setFocus(p)
+		a.focusReq = p
+	}
+	h.Children(func() {
+		ui.Spacer(c)
+		zoom, label := "maximize-2", locales.PaneZoom()
+		if f.Zoom {
+			zoom, label = "minimize-2", locales.PaneUnzoom()
+		}
+		if iconButton(c, k, zoom, label, 18, 12).Tooltip(label).Clicked() {
+			t.setFocus(p)
+			a.toggleZoom()
+		}
+		if iconButton(c, k, "x", locales.CmdClosePane(), 18, 12).Tooltip(locales.CmdClosePane()).Clicked() {
+			a.later(c, func() { a.closePane(p) })
+		}
+	})
+}
+
 // paneMenu is the menu of a pane's header: renaming it, and moving it to
 // another tab or window.
 func (a *App) paneMenu(m *ui.Menu, p *Pane) {
@@ -562,6 +662,15 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 	if p.Name != "" && m.Item(locales.PaneResetName()).Chosen() {
 		p.Name = ""
 		a.changed()
+	}
+	if p.float != nil {
+		if m.Item(locales.CmdDockPane()).Chosen() {
+			a.dockPane(p)
+		}
+	} else if t := p.Tab; t != nil && len(t.panes()) > 1 {
+		if m.Item(locales.CmdFloatPane()).Chosen() {
+			a.floatPane(p)
+		}
 	}
 	if len(a.tabs) > 1 {
 		m.Separator()
@@ -603,19 +712,30 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		if !show {
 			return
 		}
-		if iconButton(c, k, "columns-2", locales.CmdSplitRight(), 26, 16).Tooltip(tip(locales.CmdSplitRight(), &cmdSplitRight)).Clicked() {
-			t.setFocus(p)
-			a.split(false)
-		}
-		if iconButton(c, k, "rows-2", locales.CmdSplitDown(), 26, 16).Tooltip(tip(locales.CmdSplitDown(), &cmdSplitDown)).Clicked() {
-			t.setFocus(p)
-			a.split(true)
-		}
-		if len(t.panes()) > 1 && iconButton(c, k, "square-arrow-out-up-right", locales.CmdPaneToNewTab(), 26, 16).Tooltip(tip(locales.CmdPaneToNewTab(), &cmdPaneToNewTab)).Clicked() {
-			a.later(c, func() { a.movePaneToNewTab(p, "") })
+		if f := p.float; f != nil {
+			if iconButton(c, k, "layout-grid", locales.CmdDockPane(), 26, 16).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
+				a.later(c, func() { a.dockPane(p) })
+			}
+		} else {
+			if iconButton(c, k, "columns-2", locales.CmdSplitRight(), 26, 16).Tooltip(tip(locales.CmdSplitRight(), &cmdSplitRight)).Clicked() {
+				t.setFocus(p)
+				a.split(false)
+			}
+			if iconButton(c, k, "rows-2", locales.CmdSplitDown(), 26, 16).Tooltip(tip(locales.CmdSplitDown(), &cmdSplitDown)).Clicked() {
+				t.setFocus(p)
+				a.split(true)
+			}
+			if len(t.panes()) > 1 {
+				if iconButton(c, k, "app-window", locales.CmdFloatPane(), 26, 16).Tooltip(tip(locales.CmdFloatPane(), &cmdFloatPane)).Clicked() {
+					a.later(c, func() { a.floatPane(p) })
+				}
+				if iconButton(c, k, "square-arrow-out-up-right", locales.CmdPaneToNewTab(), 26, 16).Tooltip(tip(locales.CmdPaneToNewTab(), &cmdPaneToNewTab)).Clicked() {
+					a.later(c, func() { a.movePaneToNewTab(p, "") })
+				}
+			}
 		}
 		zoom, label := "maximize-2", locales.PaneZoom()
-		if t.Zoom == p {
+		if t.Zoom == p || p.float != nil && p.float.Zoom {
 			zoom, label = "minimize-2", locales.PaneUnzoom()
 		}
 		if iconButton(c, k, zoom, locales.PaneZoom(), 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
@@ -634,12 +754,24 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 	b := p.browser
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 8).Gap(4).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
-	h.Drag(p)
+	if f := p.float; f != nil {
+		if dx, dy, ok := h.Dragged(); ok {
+			a.moveFloatPx(f, dx, dy, a.floatRoom)
+		}
+	} else {
+		h.Drag(p)
+	}
 	if h.DoubleClicked() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
 		t.setFocus(p)
 		a.toggleZoom()
 	}
 	if h.Clicked() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
 		t.setFocus(p)
 		a.focusReq = p
 	}

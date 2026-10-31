@@ -146,7 +146,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 	ui.Divider(c)
 	sessions, running := 0, 0
 	for _, t := range a.tabs {
-		for _, p := range t.panes() {
+		for _, p := range t.allPanes() {
 			sessions++
 			if !p.info.Idle && p.info.Program != "" {
 				running++
@@ -190,7 +190,7 @@ func (a *App) hostsInPanel(c *ui.Context, k *colors) {
 				}
 				sessions := 0
 				for _, t := range a.tabsOn(h) {
-					sessions += len(t.panes())
+					sessions += len(t.allPanes())
 				}
 				key := "local"
 				if h != nil {

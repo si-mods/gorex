@@ -79,6 +79,25 @@ func (s *Server) filterLayoutTabs(tabs []layout.Tab, peer string) []layout.Tab {
 		}
 		t.Focus = min(max(focus, 0), max(named-1, 0))
 		t.Zoom = t.Zoom && kept && named > 1
+		wantedFloat := -1
+		if t.FocusFloat > 0 {
+			wantedFloat = t.FocusFloat - 1
+		}
+		newFocusFloat := 0
+		var floats []layout.Float
+		for i, f := range t.Floats {
+			pane := s.filterLayoutNode(f.Pane, peer)
+			if pane == nil {
+				continue
+			}
+			f.Pane = pane
+			floats = append(floats, f)
+			if i == wantedFloat {
+				newFocusFloat = len(floats)
+			}
+		}
+		t.Floats = floats
+		t.FocusFloat = newFocusFloat
 		out = append(out, t)
 	}
 	return out

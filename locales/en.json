@@ -64,6 +64,54 @@
   "@cmdEqualizePanes": {
     "description": "Command: give all panes of the tab the same size."
   },
+  "cmdFloatPane": "Float Pane",
+  "@cmdFloatPane": {
+    "description": "Command: float the focused pane over the tab's tiled panes, or dock the focused float."
+  },
+  "cmdDockPane": "Dock Pane",
+  "@cmdDockPane": {
+    "description": "Command, pane-header button and menu item: put the floating pane back among the tab's tiled panes."
+  },
+  "cmdNewFloat": "New Floating Terminal",
+  "@cmdNewFloat": {
+    "description": "Command: open a terminal in a pane that floats over the tab's tiled panes."
+  },
+  "cmdToggleFloat": "Toggle Floating Terminal",
+  "@cmdToggleFloat": {
+    "description": "Command: hide the focused float, bring back the one hidden last, or open a new one."
+  },
+  "cmdHideFloats": "Hide or Show Floating Panes",
+  "@cmdHideFloats": {
+    "description": "Command: hide every float of the tab, or show them all again."
+  },
+  "cmdRaiseFloat": "Raise Floating Pane",
+  "@cmdRaiseFloat": {
+    "description": "Command: bring the focused float above the tab's other floats."
+  },
+  "cmdLowerFloat": "Lower Floating Pane",
+  "@cmdLowerFloat": {
+    "description": "Command: put the focused float below the tab's other floats."
+  },
+  "cmdCycleFloat": "Focus Next Floating Pane",
+  "@cmdCycleFloat": {
+    "description": "Command: give the focus to the next visible float, then back to a tiled pane."
+  },
+  "cmdMoveFloatLeft": "Move Floating Pane Left",
+  "@cmdMoveFloatLeft": {
+    "description": "Command: move the focused float left, by a twentieth of the tab."
+  },
+  "cmdMoveFloatRight": "Move Floating Pane Right",
+  "@cmdMoveFloatRight": {
+    "description": "Command: move the focused float right, by a twentieth of the tab."
+  },
+  "cmdMoveFloatUp": "Move Floating Pane Up",
+  "@cmdMoveFloatUp": {
+    "description": "Command: move the focused float up, by a twentieth of the tab."
+  },
+  "cmdMoveFloatDown": "Move Floating Pane Down",
+  "@cmdMoveFloatDown": {
+    "description": "Command: move the focused float down, by a twentieth of the tab."
+  },
   "cmdPaneToNewTab": "Move Pane to New Tab",
   "@cmdPaneToNewTab": {
     "description": "Command and pane-header tooltip: move the pane into a new tab of its own."

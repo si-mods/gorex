@@ -537,7 +537,7 @@ func (a *App) openHostPane(h *hostConn, sid string) {
 		return
 	}
 	for ti, t := range a.tabs {
-		for _, p := range t.panes() {
+		for _, p := range t.allPanes() {
 			if p.host == h && p.SID == sid {
 				a.selectTab(ti)
 				t.setFocus(p)

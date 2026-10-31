@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -154,6 +155,29 @@ func TestMainLeavesAppArguments(t *testing.T) {
 	}
 	if _, handled := Main(nil, &bytes.Buffer{}, &bytes.Buffer{}, "x"); handled {
 		t.Error("no arguments were handled")
+	}
+}
+
+// TestFloatAction checks how `gorex float` names the action it runs, and
+// where it puts the flags and the pairs.
+func TestFloatAction(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		want []string
+		ok   bool
+	}{
+		{nil, []string{"run", "pane.float"}, true},
+		{[]string{"dock"}, []string{"run", "pane.float", "mode=off"}, true},
+		{[]string{"hide-all"}, []string{"run", "float.hide_all"}, true},
+		{[]string{"new", "x=0.2", "w=0.5"}, []string{"run", "float.new", "x=0.2", "w=0.5"}, true},
+		{[]string{"move", "dx=0.1", "-s", "abc", "--json"}, []string{"run", "-s", "abc", "--json", "float.move", "dx=0.1"}, true},
+		{[]string{"-s=abc", "toggle"}, []string{"run", "-s=abc", "float.toggle"}, true},
+		{[]string{"nope"}, nil, false},
+	} {
+		got, ok := floatAction(c.args)
+		if ok != c.ok || !slices.Equal(got, c.want) {
+			t.Errorf("floatAction(%q) = %q, %v; want %q, %v", c.args, got, ok, c.want, c.ok)
+		}
 	}
 }
 

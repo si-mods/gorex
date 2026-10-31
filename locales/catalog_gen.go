@@ -262,6 +262,184 @@ func (msgs Messages) CmdEqualizePanes() string {
 	return Catalog.Format(msgs.locale, "cmdEqualizePanes", nil)
 }
 
+// CmdFloatPane says "Float Pane"
+// in the language the app shows.
+//
+// Command: float the focused pane over the tab's tiled panes, or dock the
+// focused float.
+func CmdFloatPane() string { return In(i18n.Locale()).CmdFloatPane() }
+
+// CmdFloatPane says "Float Pane"
+// in the language of msgs.
+//
+// Command: float the focused pane over the tab's tiled panes, or dock the
+// focused float.
+func (msgs Messages) CmdFloatPane() string {
+	return Catalog.Format(msgs.locale, "cmdFloatPane", nil)
+}
+
+// CmdDockPane says "Dock Pane"
+// in the language the app shows.
+//
+// Command, pane-header button and menu item: put the floating pane back
+// among the tab's tiled panes.
+func CmdDockPane() string { return In(i18n.Locale()).CmdDockPane() }
+
+// CmdDockPane says "Dock Pane"
+// in the language of msgs.
+//
+// Command, pane-header button and menu item: put the floating pane back
+// among the tab's tiled panes.
+func (msgs Messages) CmdDockPane() string {
+	return Catalog.Format(msgs.locale, "cmdDockPane", nil)
+}
+
+// CmdNewFloat says "New Floating Terminal"
+// in the language the app shows.
+//
+// Command: open a terminal in a pane that floats over the tab's tiled
+// panes.
+func CmdNewFloat() string { return In(i18n.Locale()).CmdNewFloat() }
+
+// CmdNewFloat says "New Floating Terminal"
+// in the language of msgs.
+//
+// Command: open a terminal in a pane that floats over the tab's tiled
+// panes.
+func (msgs Messages) CmdNewFloat() string {
+	return Catalog.Format(msgs.locale, "cmdNewFloat", nil)
+}
+
+// CmdToggleFloat says "Toggle Floating Terminal"
+// in the language the app shows.
+//
+// Command: hide the focused float, bring back the one hidden last, or open
+// a new one.
+func CmdToggleFloat() string { return In(i18n.Locale()).CmdToggleFloat() }
+
+// CmdToggleFloat says "Toggle Floating Terminal"
+// in the language of msgs.
+//
+// Command: hide the focused float, bring back the one hidden last, or open
+// a new one.
+func (msgs Messages) CmdToggleFloat() string {
+	return Catalog.Format(msgs.locale, "cmdToggleFloat", nil)
+}
+
+// CmdHideFloats says "Hide or Show Floating Panes"
+// in the language the app shows.
+//
+// Command: hide every float of the tab, or show them all again.
+func CmdHideFloats() string { return In(i18n.Locale()).CmdHideFloats() }
+
+// CmdHideFloats says "Hide or Show Floating Panes"
+// in the language of msgs.
+//
+// Command: hide every float of the tab, or show them all again.
+func (msgs Messages) CmdHideFloats() string {
+	return Catalog.Format(msgs.locale, "cmdHideFloats", nil)
+}
+
+// CmdRaiseFloat says "Raise Floating Pane"
+// in the language the app shows.
+//
+// Command: bring the focused float above the tab's other floats.
+func CmdRaiseFloat() string { return In(i18n.Locale()).CmdRaiseFloat() }
+
+// CmdRaiseFloat says "Raise Floating Pane"
+// in the language of msgs.
+//
+// Command: bring the focused float above the tab's other floats.
+func (msgs Messages) CmdRaiseFloat() string {
+	return Catalog.Format(msgs.locale, "cmdRaiseFloat", nil)
+}
+
+// CmdLowerFloat says "Lower Floating Pane"
+// in the language the app shows.
+//
+// Command: put the focused float below the tab's other floats.
+func CmdLowerFloat() string { return In(i18n.Locale()).CmdLowerFloat() }
+
+// CmdLowerFloat says "Lower Floating Pane"
+// in the language of msgs.
+//
+// Command: put the focused float below the tab's other floats.
+func (msgs Messages) CmdLowerFloat() string {
+	return Catalog.Format(msgs.locale, "cmdLowerFloat", nil)
+}
+
+// CmdCycleFloat says "Focus Next Floating Pane"
+// in the language the app shows.
+//
+// Command: give the focus to the next visible float, then back to a tiled
+// pane.
+func CmdCycleFloat() string { return In(i18n.Locale()).CmdCycleFloat() }
+
+// CmdCycleFloat says "Focus Next Floating Pane"
+// in the language of msgs.
+//
+// Command: give the focus to the next visible float, then back to a tiled
+// pane.
+func (msgs Messages) CmdCycleFloat() string {
+	return Catalog.Format(msgs.locale, "cmdCycleFloat", nil)
+}
+
+// CmdMoveFloatLeft says "Move Floating Pane Left"
+// in the language the app shows.
+//
+// Command: move the focused float left, by a twentieth of the tab.
+func CmdMoveFloatLeft() string { return In(i18n.Locale()).CmdMoveFloatLeft() }
+
+// CmdMoveFloatLeft says "Move Floating Pane Left"
+// in the language of msgs.
+//
+// Command: move the focused float left, by a twentieth of the tab.
+func (msgs Messages) CmdMoveFloatLeft() string {
+	return Catalog.Format(msgs.locale, "cmdMoveFloatLeft", nil)
+}
+
+// CmdMoveFloatRight says "Move Floating Pane Right"
+// in the language the app shows.
+//
+// Command: move the focused float right, by a twentieth of the tab.
+func CmdMoveFloatRight() string { return In(i18n.Locale()).CmdMoveFloatRight() }
+
+// CmdMoveFloatRight says "Move Floating Pane Right"
+// in the language of msgs.
+//
+// Command: move the focused float right, by a twentieth of the tab.
+func (msgs Messages) CmdMoveFloatRight() string {
+	return Catalog.Format(msgs.locale, "cmdMoveFloatRight", nil)
+}
+
+// CmdMoveFloatUp says "Move Floating Pane Up"
+// in the language the app shows.
+//
+// Command: move the focused float up, by a twentieth of the tab.
+func CmdMoveFloatUp() string { return In(i18n.Locale()).CmdMoveFloatUp() }
+
+// CmdMoveFloatUp says "Move Floating Pane Up"
+// in the language of msgs.
+//
+// Command: move the focused float up, by a twentieth of the tab.
+func (msgs Messages) CmdMoveFloatUp() string {
+	return Catalog.Format(msgs.locale, "cmdMoveFloatUp", nil)
+}
+
+// CmdMoveFloatDown says "Move Floating Pane Down"
+// in the language the app shows.
+//
+// Command: move the focused float down, by a twentieth of the tab.
+func CmdMoveFloatDown() string { return In(i18n.Locale()).CmdMoveFloatDown() }
+
+// CmdMoveFloatDown says "Move Floating Pane Down"
+// in the language of msgs.
+//
+// Command: move the focused float down, by a twentieth of the tab.
+func (msgs Messages) CmdMoveFloatDown() string {
+	return Catalog.Format(msgs.locale, "cmdMoveFloatDown", nil)
+}
+
 // CmdPaneToNewTab says "Move Pane to New Tab"
 // in the language the app shows.
 //

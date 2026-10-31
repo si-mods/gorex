@@ -273,6 +273,140 @@ var (
 		RunArgs: func(a *App, args map[string]any) error { return a.zoomFocused(argString(args, "mode")) },
 	}
 	cmdEqualize  = command{ID: "pane.equalize", Name: locales.Messages.CmdEqualizePanes, Accel: "CmdOrCtrl+Ctrl+=", Keys: "⌃⌘=", Run: func(a *App) { a.equalize() }}
+	cmdFloatPane = command{
+		ID: "pane.float", Name: locales.Messages.CmdFloatPane,
+		Args:    []actionArg{{Name: "mode", Type: "string", Optional: true, Values: []string{"on", "off", "toggle"}}},
+		Run:     func(a *App) { _ = a.floatFocused("toggle") },
+		RunArgs: func(a *App, args map[string]any) error { return a.floatFocused(argString(args, "mode")) },
+		Available: func(a *App) bool {
+			t := a.tab()
+			return t != nil && t.Focus != nil && (t.Focus.float != nil || len(t.panes()) > 1)
+		},
+	}
+	cmdNewFloat = command{
+		ID: "float.new", Name: locales.Messages.CmdNewFloat,
+		Args: []actionArg{
+			{Name: "x", Type: "number", Optional: true}, {Name: "y", Type: "number", Optional: true},
+			{Name: "w", Type: "number", Optional: true}, {Name: "h", Type: "number", Optional: true},
+		},
+		Run: func(a *App) { a.newFloat(nil) },
+		RunArgs: func(a *App, args map[string]any) error {
+			p := a.newFloat(nil)
+			if p == nil || p.float == nil {
+				return nil
+			}
+			if _, ok := args["x"]; !ok {
+				return nil
+			}
+			if _, ok := args["y"]; !ok {
+				return nil
+			}
+			if _, ok := args["w"]; !ok {
+				return nil
+			}
+			if _, ok := args["h"]; !ok {
+				return nil
+			}
+			a.setFloatBox(p.float, argFloat(args, "x"), argFloat(args, "y"), argFloat(args, "w"), argFloat(args, "h"))
+			return nil
+		},
+		Available: func(a *App) bool { return tabHostOnline(a) },
+	}
+	cmdToggleFloat = command{
+		ID: "float.toggle", Name: locales.Messages.CmdToggleFloat,
+		Accel: "CmdOrCtrl+Alt+F", Keys: "⌥⌘F",
+		Run:       func(a *App) { a.toggleFloat() },
+		Available: func(a *App) bool { return a.tab() != nil },
+	}
+	cmdHideFloats = command{
+		ID: "float.hide_all", Name: locales.Messages.CmdHideFloats,
+		Run:       func(a *App) { a.toggleAllFloats() },
+		Available: func(a *App) bool { t := a.tab(); return t != nil && len(t.Floats) > 0 },
+	}
+	cmdRaiseFloat = command{
+		ID: "float.raise", Name: locales.Messages.CmdRaiseFloat,
+		Run:       func(a *App) { a.raiseFloat(a.focusedFloat()) },
+		Available: func(a *App) bool { return a.focusedFloat() != nil },
+	}
+	cmdLowerFloat = command{
+		ID: "float.lower", Name: locales.Messages.CmdLowerFloat,
+		Run:       func(a *App) { a.lowerFloat(a.focusedFloat()) },
+		Available: func(a *App) bool { return a.focusedFloat() != nil },
+	}
+	cmdCycleFloat = command{
+		ID: "float.cycle", Name: locales.Messages.CmdCycleFloat,
+		Run: func(a *App) { a.cycleFloat() },
+		Available: func(a *App) bool {
+			t := a.tab()
+			return t != nil && slices.ContainsFunc(t.Floats, func(f *Float) bool { return !f.Hidden })
+		},
+	}
+	cmdFloatMove = command{
+		ID: "float.move", Name: func(locales.Messages) string { return "Move Floating Pane" }, Hidden: true,
+		Args: []actionArg{
+			{Name: "x", Type: "number", Optional: true}, {Name: "y", Type: "number", Optional: true},
+			{Name: "dx", Type: "number", Optional: true}, {Name: "dy", Type: "number", Optional: true},
+		},
+		RunArgs: func(a *App, args map[string]any) error {
+			f := a.focusedFloat()
+			if f == nil {
+				return nil
+			}
+			if _, ok := args["x"]; ok {
+				f.X = argFloat(args, "x")
+			}
+			if _, ok := args["y"]; ok {
+				f.Y = argFloat(args, "y")
+			}
+			f.clamp()
+			a.moveFloat(f, argFloat(args, "dx"), argFloat(args, "dy"))
+			return nil
+		},
+		Available: func(a *App) bool { return a.focusedFloat() != nil },
+	}
+	cmdFloatResize = command{
+		ID: "float.resize", Name: func(locales.Messages) string { return "Resize Floating Pane" }, Hidden: true,
+		Args: []actionArg{
+			{Name: "w", Type: "number", Optional: true}, {Name: "h", Type: "number", Optional: true},
+			{Name: "dw", Type: "number", Optional: true}, {Name: "dh", Type: "number", Optional: true},
+		},
+		RunArgs: func(a *App, args map[string]any) error {
+			f := a.focusedFloat()
+			if f == nil {
+				return nil
+			}
+			if _, ok := args["w"]; ok {
+				f.W = argFloat(args, "w")
+			}
+			if _, ok := args["h"]; ok {
+				f.H = argFloat(args, "h")
+			}
+			f.clamp()
+			a.resizeFloat(f, argFloat(args, "dw"), argFloat(args, "dh"))
+			return nil
+		},
+		Available: func(a *App) bool { return a.focusedFloat() != nil },
+	}
+	cmdMoveFloatLeft = command{
+		ID: "float.move.left", Name: locales.Messages.CmdMoveFloatLeft,
+		Run:       func(a *App) { a.nudgeFloat(-0.05, 0) },
+		Available: func(a *App) bool { return a.focusedFloat() != nil },
+	}
+	cmdMoveFloatRight = command{
+		ID: "float.move.right", Name: locales.Messages.CmdMoveFloatRight,
+		Run:       func(a *App) { a.nudgeFloat(0.05, 0) },
+		Available: func(a *App) bool { return a.focusedFloat() != nil },
+	}
+	cmdMoveFloatUp = command{
+		ID: "float.move.up", Name: locales.Messages.CmdMoveFloatUp,
+		Run:       func(a *App) { a.nudgeFloat(0, -0.05) },
+		Available: func(a *App) bool { return a.focusedFloat() != nil },
+	}
+	cmdMoveFloatDown = command{
+		ID: "float.move.down", Name: locales.Messages.CmdMoveFloatDown,
+		Run:       func(a *App) { a.nudgeFloat(0, 0.05) },
+		Available: func(a *App) bool { return a.focusedFloat() != nil },
+	}
 	cmdNextTab   = command{ID: "tab.next", Name: locales.Messages.CmdNextTab, Accel: "CmdOrCtrl+Shift+]", Keys: "⇧⌘]", Other: shortcut{ui.Ctrl, ui.KeyPageDown}, Run: func(a *App) { a.cycleTab(1) }}
 	cmdPrevTab   = command{ID: "tab.previous", Name: locales.Messages.CmdPreviousTab, Accel: "CmdOrCtrl+Shift+[", Keys: "⇧⌘[", Other: shortcut{ui.Ctrl, ui.KeyPageUp}, Run: func(a *App) { a.cycleTab(-1) }}
 	cmdSidebar   = command{ID: "sidebar.toggle", Name: locales.Messages.CmdToggleSidebar, Accel: "CmdOrCtrl+Ctrl+S", Keys: "⌃⌘S", Other: ctrlShift(ui.KeyS), Run: func(a *App) { a.toggleSidebar() }}
@@ -383,6 +517,52 @@ var (
 // argString returns the string argument name, "" when absent.
 func float32IsBad(n float32) bool { return math.IsNaN(float64(n)) || math.IsInf(float64(n), 0) }
 
+// focusedFloat returns the float of the active tab's focused pane, nil when
+// that pane is tiled.
+func (a *App) focusedFloat() *Float {
+	t := a.tab()
+	if t == nil || t.Focus == nil {
+		return nil
+	}
+	return t.Focus.float
+}
+
+// floatFocused floats the focused tiled pane, docks the focused float, or
+// does nothing, mode "on", "off" or else toggle.
+func (a *App) floatFocused(mode string) error {
+	t := a.tab()
+	if t == nil || t.Focus == nil {
+		return nil
+	}
+	if t.Focus.float != nil {
+		if mode != "on" {
+			a.dockPane(t.Focus)
+		}
+		return nil
+	}
+	if mode != "off" {
+		a.floatPane(t.Focus)
+	}
+	return nil
+}
+
+// nudgeFloat moves the focused float by fractions of the tab's room.
+func (a *App) nudgeFloat(dx, dy float32) {
+	if f := a.focusedFloat(); f != nil {
+		a.moveFloat(f, dx, dy)
+	}
+}
+
+// tabHostOnline tells whether the active tab's host is connected.
+func tabHostOnline(a *App) bool {
+	t := a.tab()
+	if t == nil {
+		return false
+	}
+	h := t.host()
+	return h == nil || h.current() != nil
+}
+
 func argFloat(args map[string]any, name string) float32 {
 	switch n := args[name].(type) {
 	case float64:
@@ -422,6 +602,8 @@ func (cmd *command) English() string { return cmd.Name(locales.In("en")) }
 // paletteCommands are those the command palette lists, before the tabs.
 var paletteCommands = []*command{
 	&cmdNewTab, &cmdNewBrowser, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdZoom, &cmdEqualize, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
+	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
+	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
 	&cmdNextTab, &cmdPrevTab, &cmdRenameTab, &cmdSidebar,
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
@@ -649,6 +831,8 @@ func (st *store) menu() *mygo.Menu {
 			item(&cmdPalette2),
 			mygo.Separator(),
 			item(&cmdZoom),
+			item(&cmdFloatPane),
+			item(&cmdToggleFloat),
 			item(&cmdEqualize),
 			sidebarMenuItem,
 			mygo.Separator(),
@@ -796,6 +980,10 @@ func (a *App) restartFocused() {
 	p := a.newPane(old.host, a.currentDir(), cols, rows)
 	p.Tab, p.Node = t, old.Node
 	old.Node.Pane = p
+	if f := old.float; f != nil {
+		f.Pane = p
+		p.float = f
+	}
 	old.closed = true
 	if old.term != nil {
 		old.term.Close()
@@ -813,7 +1001,7 @@ func (a *App) restartFocused() {
 func (a *App) quitAndEnd() {
 	a.quitting = true
 	for _, t := range a.tabs {
-		for _, p := range t.panes() {
+		for _, p := range t.allPanes() {
 			p.closed = true
 		}
 	}
@@ -901,7 +1089,7 @@ func (a *App) paletteItems() []paletteItem {
 		return a.sessionItems(match)
 	}
 	for ti, t := range a.tabs {
-		for _, p := range t.panes() {
+		for _, p := range t.allPanes() {
 			name, detail := p.label()
 			if !match(fmt.Sprintf("%s %s tab %d", name, detail, ti+1)) && !match(fmt.Sprintf("%s %s %s", name, detail, locales.PaletteTabKeys(ti+1))) {
 				continue
