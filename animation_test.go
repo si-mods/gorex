@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
+	"image/png"
 	"os"
 	"slices"
 	"strings"
@@ -379,6 +381,8 @@ func TestTabsOpenAndClose(t *testing.T) {
 // TestPaletteComesAndGoes: with a style of animation the palette's rows
 // come in as it opens, not as its query changes, and it fades out as it
 // closes; with Off it shows and goes at once.
+var closedPNG, closedTerm string
+
 func TestPaletteComesAndGoes(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
@@ -411,6 +415,12 @@ func TestPaletteComesAndGoes(t *testing.T) {
 			waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
 			settle(tt)
 			closed := panel(tt)
+			{
+				var buf bytes.Buffer
+				png.Encode(&buf, tt.Image())
+				closedPNG = base64.StdEncoding.EncodeToString(buf.Bytes())
+				closedTerm = p.term.Text()
+			}
 			a.openPalette()
 			tt.Frame()
 			title := row(t, a, tt)
@@ -433,7 +443,19 @@ func TestPaletteComesAndGoes(t *testing.T) {
 			tt.Frame()
 			going := !bytes.Equal(panel(tt), closed)
 			settle(tt)
-			if !bytes.Equal(panel(tt), closed) {
+			if got := panel(tt); !bytes.Equal(got, closed) {
+				n, x0, y0, x1, y1 := 0, 1<<30, 1<<30, -1, -1
+				for i := 0; i < len(got); i += 4 {
+					if !bytes.Equal(got[i:i+4], closed[i:i+4]) {
+						x, y := 240+(i/4)%520, 90+(i/4)/520
+						n, x0, y0, x1, y1 = n+1, min(x0, x), min(y0, y), max(x1, x), max(y1, y)
+					}
+				}
+				t.Logf("DIAG %d px differ in %d,%d-%d,%d; texts %q; term %q; err %q", n, x0, y0, x1, y1, tt.Texts(), p.term.Text(), a.err)
+				var buf bytes.Buffer
+				png.Encode(&buf, tt.Image())
+				t.Logf("DIAGBEFORE %s term %q", closedPNG, closedTerm)
+				t.Logf("DIAGPNG %s", base64.StdEncoding.EncodeToString(buf.Bytes()))
 				t.Fatal("the window is not as before the palette opened")
 			}
 			if going != tc.moves {
