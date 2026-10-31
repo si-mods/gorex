@@ -18,6 +18,9 @@ const (
 	transportUnix      = "unix"
 	transportTCP       = "tcp"
 	transportTailscale = "tailscale"
+	// transportLAN is the listener on the local network, whose callers
+	// Rex sees as plain TCP ones.
+	transportLAN = "lan"
 )
 
 type connKey struct{}
@@ -127,6 +130,15 @@ func (g *Gateway) HandlerFor(transport string) http.Handler {
 			var ok bool
 			if p, ok = peerPrincipal(r); !ok {
 				writeRefusal(w, "this socket lets in only the user the server runs as")
+				return
+			}
+		case transportLAN:
+			if g.lan == nil {
+				writeRefusal(w, "the local network listener is off")
+				return
+			}
+			var ok bool
+			if p, ok = g.lan.admit(w, r); !ok {
 				return
 			}
 		case transportTailscale:

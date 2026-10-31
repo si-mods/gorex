@@ -10,9 +10,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"gorex/internal/rex"
 
 	"github.com/coder/websocket"
 	"rsc.io/qr"
@@ -155,6 +159,14 @@ func tailscaleMain(args []string) int {
 		fmt.Fprintln(os.Stderr, usage)
 		return 2
 	}
+	if args[0] == "on" {
+		// Without a gateway, the server runs one once built-in Tailscale
+		// is on: turn it on in the state, and wait for the gateway.
+		if err := wakeGateway(TailnetDir(), func() error { return setTailnetEnabled(TailnetDir(), payload) }); err != nil {
+			fmt.Fprintf(os.Stderr, "gorex rexapi tailscale: %v\n", err)
+			return 1
+		}
+	}
 	out, err := callGateway(SocketPath(), method, payload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gorex rexapi tailscale: %v\n", err)
@@ -170,6 +182,158 @@ func tailscaleMain(args []string) int {
 	}
 	printTailscale(os.Stdout, *res.Tailscale)
 	return 0
+}
+
+// gatewayRuns reports whether a gateway serves the local socket.
+func gatewayRuns() bool {
+	_, err := callGateway(SocketPath(), "server.version", nil)
+	return err == nil
+}
+
+// wakeGateway makes sure a gateway runs: when none does, it calls turnOn,
+// which writes the state that makes the GoRex server run one, and waits
+// for it.
+func wakeGateway(dir string, turnOn func() error) error {
+	if gatewayRuns() {
+		return nil
+	}
+	if c, err := rex.ConnectExisting(); err != nil {
+		return err
+	} else {
+		c.Close()
+	}
+	if err := turnOn(); err != nil {
+		return err
+	}
+	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(250 * time.Millisecond) {
+		if gatewayRuns() {
+			return nil
+		}
+	}
+	if s := LoadLANStatus(dir); s.Error != "" {
+		return errors.New(s.Error)
+	}
+	return errors.New("the GoRex server started no gateway: update GoRex, or run gorex rexapi")
+}
+
+// setTailnetEnabled turns built-in Tailscale on in the state in dir, with
+// the hostname and access rule of payload.
+func setTailnetEnabled(dir string, payload any) error {
+	var t tailnetConf
+	path := filepath.Join(dir, "tailscale.json")
+	if b, err := os.ReadFile(path); err == nil {
+		json.Unmarshal(b, &t)
+	}
+	t.Enabled = true
+	if p, ok := payload.(map[string]any); ok {
+		if h, ok := p["hostname"].(string); ok && h != "" {
+			t.Hostname = h
+		}
+		if a, ok := p["allow_tailnet_members"].(bool); ok {
+			t.AllowTailnetMembers = a
+		}
+	}
+	return writeJSON(path, t)
+}
+
+// lanMain is "gorex rexapi lan on|off|status|listen ADDR|allow NET|deny
+// NET": the gateway's listener on the local network, which the GoRex
+// server runs while it is on.
+func lanMain(args []string) int {
+	usage := "usage: gorex rexapi lan on | off | status | listen HOST:PORT | allow NETWORK | deny NETWORK"
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, usage)
+		return 2
+	}
+	dir := TailnetDir()
+	conf, err := LoadLAN(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gorex rexapi lan: %v\n", err)
+		return 1
+	}
+	change := true
+	switch {
+	case args[0] == "status" && len(args) == 1:
+		change = false
+	case args[0] == "on" && len(args) == 1:
+		conf = conf.WithDefaults()
+		conf.Enabled = true
+		if conf.Listen == "" {
+			fmt.Fprintln(os.Stderr, "gorex rexapi lan: this machine has no private IPv4 address: set one with gorex rexapi lan listen HOST:PORT")
+			return 1
+		}
+	case args[0] == "off" && len(args) == 1:
+		conf.Enabled = false
+	case args[0] == "listen" && len(args) == 2:
+		conf.Listen = args[1]
+	case args[0] == "allow" && len(args) == 2:
+		p, err := ParseNetwork(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gorex rexapi lan: %v\n", err)
+			return 2
+		}
+		if !slices.Contains(conf.Allow, p.String()) {
+			conf.Allow = append(conf.Allow, p.String())
+		}
+	case args[0] == "deny" && len(args) == 2:
+		p, err := ParseNetwork(args[1])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gorex rexapi lan: %v\n", err)
+			return 2
+		}
+		conf.Allow = slices.DeleteFunc(conf.Allow, func(s string) bool {
+			q, err := ParseNetwork(s)
+			return err == nil && q == p
+		})
+	default:
+		fmt.Fprintln(os.Stderr, usage)
+		return 2
+	}
+	if change {
+		before := time.Now()
+		if err := SaveLAN(dir, conf); err != nil {
+			fmt.Fprintf(os.Stderr, "gorex rexapi lan: %v\n", err)
+			return 2
+		}
+		// The server's gateway reads the file within a second; wait for
+		// its word, when there is a server to give it.
+		deadline := time.Now()
+		if c, err := rex.ConnectExisting(); err == nil {
+			c.Close()
+			deadline = deadline.Add(4 * time.Second)
+		}
+		for ; time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+			if LoadLANStatus(dir).Updated.After(before) {
+				break
+			}
+		}
+	}
+	printLAN(os.Stdout, conf, LoadLANStatus(dir))
+	return 0
+}
+
+func printLAN(w io.Writer, c LANConfig, s LANStatus) {
+	state := "off"
+	switch {
+	case s.Listening != "":
+		state = "listening on http://" + s.Listening
+	case c.Enabled && s.Error != "":
+		state = "error"
+	case c.Enabled:
+		state = "on, waiting for the GoRex server"
+	}
+	fmt.Fprintf(w, "lan: %s\n", state)
+	if c.Listen != "" {
+		fmt.Fprintf(w, "  listen: %s\n", c.Listen)
+	}
+	if len(c.Allow) > 0 {
+		fmt.Fprintf(w, "  allow: %s\n", strings.Join(c.Allow, ", "))
+	} else {
+		fmt.Fprintln(w, "  allow: none")
+	}
+	if s.Error != "" {
+		fmt.Fprintf(w, "  error: %s\n", s.Error)
+	}
 }
 
 func readKey(path string) (string, error) {
