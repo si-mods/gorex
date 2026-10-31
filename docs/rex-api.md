@@ -34,15 +34,57 @@ it to Rex clients in Rex's terms:
   move, resize) go to the GoRex window, which makes them as its own
   buttons do, as for rootshell.
 
-The gateway listens on three places:
+The GoRex server runs the gateway itself while the local network
+listener or built-in Tailscale is on, and again after it restarts or
+upgrades: nothing else needs to run. `GoRex rexapi` runs one of its own,
+for development; the two never run on the same data directory at once.
+
+The gateway listens on four places:
 
 - its local socket, `rexapi.sock` in GoRex's data directory, for this
   user only. The Rex CLI reaches it with `rex -S unix://PATH`, and the
   methods that administer the gateway (`server.tailscale.*`) are accepted
   only there, as on a Rex server;
+- the local network, over plain HTTP, while that listener is on: only
+  the networks it allows get in (below);
 - the tailnet, over HTTPS, while built-in Tailscale is on;
-- with `--listen http://127.0.0.1:PORT`, a TCP port that lets everyone in
-  unauthenticated: for tests on this machine only.
+- with `GoRex rexapi --listen http://127.0.0.1:PORT`, a TCP port that lets
+  everyone in unauthenticated: for tests on this machine only.
+
+## Local network
+
+When the phone reaches this machine by its address on the local network,
+directly or through a VPN to it, Rex's app connects without Tailscale.
+Settings › Remote › Rex apps on the local network turns the listener on.
+It listens on this machine's private address with Rex's port, such as
+`192.168.88.119:7297`, and lets in that address's network, such as
+`192.168.88.0/24`; change either there. In Rex's app, add the host
+`http://192.168.88.119:7297`. The same from the command line:
+
+```sh
+gorex rexapi lan on                 # this machine's address and network
+gorex rexapi lan allow 10.6.0.2     # the phone's VPN address, alone
+gorex rexapi lan deny 192.168.88.0/24
+gorex rexapi lan listen 0.0.0.0:7297
+gorex rexapi lan status
+```
+
+A device in no network allowed gets 403. The refusal is in the server's
+log with the device's address, which is how to find the one to allow.
+
+Mind what this listener is:
+
+- **Anyone in a network allowed gets a full shell as you.** Rex's API has
+  no password on a plain TCP listener; the networks are the only check.
+  Allow as little as you can: the phone's address alone (`/32`), or the
+  VPN's network rather than the whole home network.
+- **It is not encrypted.** What you type and what the terminals show
+  cross the local network as plain HTTP. A VPN protects the way to the
+  network, not the last hop in it. Built-in Tailscale encrypts end to
+  end.
+
+The settings live in `rexapi/lan.json` in GoRex's data directory; the
+server's gateway follows a change within a second, without a restart.
 
 ## Built-in Tailscale
 
@@ -60,13 +102,7 @@ allow.
 ## Set up
 
 1. Open GoRex.
-2. Start the gateway, and keep it running:
-
-   ```sh
-   /Applications/GoRex.app/Contents/MacOS/GoRex rexapi
-   ```
-
-3. In another terminal, turn built-in Tailscale on:
+2. Turn built-in Tailscale on; the GoRex server starts the gateway for it:
 
    ```sh
    GoRex rexapi tailscale on
@@ -76,8 +112,8 @@ allow.
    in without a browser with an auth key:
    `GoRex rexapi tailscale on --auth-key-file key.txt` (the key is used
    once, and never saved or logged).
-4. Wait for `https: available` in `GoRex rexapi tailscale status`.
-5. Show the address as a QR code, and scan it with Rex on the phone:
+3. Wait for `https: available` in `GoRex rexapi tailscale status`.
+4. Show the address as a QR code, and scan it with Rex on the phone:
 
    ```sh
    GoRex rexapi pair
@@ -94,7 +130,10 @@ device out; `tailscale rename NAME` renames it.
 
 | Command | What it does |
 | --- | --- |
-| `GoRex rexapi [--listen URL] [--socket PATH] [--tailnet-dir DIR]` | the gateway |
+| `GoRex rexapi [--listen URL] [--socket PATH] [--tailnet-dir DIR]` | a gateway of its own, for development; the server runs one while the local network or built-in Tailscale is on |
+| `GoRex rexapi lan on \| off \| status` | the listener on the local network |
+| `GoRex rexapi lan listen HOST:PORT` | the address it listens on |
+| `GoRex rexapi lan allow NETWORK` / `deny NETWORK` | the networks let in: a CIDR, or an address alone |
 | `GoRex rexapi tailscale on [--hostname NAME] [--allow-tailnet-members] [--auth-key-file FILE]` | turn built-in Tailscale on |
 | `GoRex rexapi tailscale off \| login \| logout \| rename NAME \| status` | the rest of `server.tailscale.*`, and its status |
 | `GoRex rexapi pair [--json]` | the tailnet address as a QR code |

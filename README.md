@@ -405,8 +405,9 @@ rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 ## Rex's iPhone app
 
 Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
-server: `GoRex rexapi` serves Rex's API (revision 7) from the server the
-app runs, on the tailnet through a Tailscale device of its own. A space is
+server: the GoRex server serves Rex's API (revision 7), on the local
+network to the networks you allow (Settings › Remote), and on the tailnet
+through a Tailscale device of its own. A space is
 a Rex session, a tab a window, a pane a block, and a floating pane a
 floating layer; terminals stream as Ghostty snapshots, as Rex's do. Setup,
 pairing, what differs from a Rex server, and troubleshooting:
