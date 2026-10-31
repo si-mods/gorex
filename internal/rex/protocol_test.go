@@ -23,7 +23,7 @@ func TestProtocolV3(t *testing.T) {
 	if h.Version != 3 {
 		t.Fatalf("protocol %d, want 3", h.Version)
 	}
-	for _, want := range []string{"layout.revision", "events.revision"} {
+	for _, want := range []string{"layout.revision", "events.revision", CapabilityInputEvents, CapabilityTerminalQuery} {
 		if !slices.Contains(h.Capabilities, want) {
 			t.Errorf("capability %q missing from %v", want, h.Capabilities)
 		}
