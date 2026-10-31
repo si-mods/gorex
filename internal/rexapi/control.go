@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -410,6 +411,16 @@ func (c *control) handle(req *request) {
 	}()
 	fn := methods[req.Method]
 	if fn == nil {
+		if strings.HasPrefix(req.Method, "com.superlogical.") {
+			args, err := decodeArgs(req.Payload)
+			if err != nil {
+				c.respond(req, nil, err)
+				return
+			}
+			payload, err := callBlockMethod(c, req.Method, args)
+			c.respond(req, payload, err)
+			return
+		}
 		if knownMethods()[req.Method] {
 			c.respond(req, nil, unsupportedMethod(req.Method))
 		} else {
@@ -522,8 +533,17 @@ func (c *control) wants(ch change) bool {
 	if rec == nil {
 		return false
 	}
-	all, _ := rec.allScope()
+	all, scope := rec.allScope()
 	switch ch.typ {
+	case "client_joined", "client_left", "client_changed", "client_performed",
+		"hosts_changed", "keymap_changed", "tailscale_status_changed":
+		// The events of the whole server reach the connections that asked
+		// for all of them.
+		return scope == "all"
+	case "block_event":
+		// A block's own events reach a session's attached connections,
+		// and the connections that asked for all.
+		return scope == "all" || rec.attachedTo(ch.session)
 	case "session_created":
 		return all
 	case "session_destroyed":

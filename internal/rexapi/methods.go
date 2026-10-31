@@ -88,23 +88,158 @@ func (a args) obj(name string) (args, bool, *apiError) {
 	return o, true, nil
 }
 
+// int returns an integer field and whether it was there. A null counts
+// as absent.
+func (a args) int(name string) (int, bool, *apiError) {
+	raw, ok := a[name]
+	if !ok || string(raw) == "null" {
+		return 0, false, nil
+	}
+	var n int64
+	if err := json.Unmarshal(raw, &n); err != nil {
+		return 0, false, errBadRequest("%s must be an integer", name)
+	}
+	return int(n), true, nil
+}
+
+// number returns a number field and whether it was there.
+func (a args) number(name string) (float64, bool, *apiError) {
+	raw, ok := a[name]
+	if !ok || string(raw) == "null" {
+		return 0, false, nil
+	}
+	var f float64
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return 0, false, errBadRequest("%s must be a number", name)
+	}
+	return f, true, nil
+}
+
+// boolean returns a boolean field and whether it was there. A null counts
+// as absent.
+func (a args) boolean(name string) (bool, bool, *apiError) {
+	raw, ok := a[name]
+	if !ok || string(raw) == "null" {
+		return false, false, nil
+	}
+	var b bool
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return false, false, errBadRequest("%s must be a boolean", name)
+	}
+	return b, true, nil
+}
+
+// reject reads no field, but fails when the arguments carry one, for a
+// method that takes none.
+func (a args) reject() *apiError {
+	for name := range a {
+		return errBadRequest("the method takes no %s", name)
+	}
+	return nil
+}
+
 // methods are the methods this server implements.
 var methods = map[string]func(*control, args) (any, *apiError){
-	"server.version":     methodServerVersion,
-	"server.status":      methodServerStatus,
-	"server.whoami":      methodServerWhoami,
-	"help.all":           methodHelpAll,
-	"session.list":       methodSessionList,
-	"session.attach":     methodSessionAttach,
-	"session.attach_all": methodSessionAttachAll,
-	"session.detach":     methodSessionDetach,
-	"session.bootstrap":  methodSessionBootstrap,
-	"session.view":       methodSessionView,
-	"target.resolve":     methodTargetResolve,
-	"target.complete":    methodTargetComplete,
-	"client.list":        methodClientList,
-	"client.inspect":     methodClientInspect,
-	"data.connect":       methodDataConnect,
+	"server.version":                methodServerVersion,
+	"server.status":                 methodServerStatus,
+	"server.whoami":                 methodServerWhoami,
+	"server.config_reload":          methodServerConfigReload,
+	"help.all":                      methodHelpAll,
+	"hosts.list":                    methodHostsList,
+	"hosts.put":                     methodHostsPut,
+	"hosts.remove":                  methodHostsRemove,
+	"block_creator.list":            methodBlockCreatorList,
+	"session.list":                  methodSessionList,
+	"session.attach":                methodSessionAttach,
+	"session.attach_all":            methodSessionAttachAll,
+	"session.bootstrap":             methodSessionBootstrap,
+	"session.detach":                methodSessionDetach,
+	"session.view":                  methodSessionView,
+	"session.help":                  methodSessionHelp,
+	"session.list_blocks":           methodSessionListBlocks,
+	"session.list_clients":          methodSessionListClients,
+	"session.describe_block":        methodSessionDescribeBlock,
+	"session.create":                methodSessionCreate,
+	"session.destroy":               methodSessionDestroy,
+	"session.set_label":             methodSessionSetLabel,
+	"session.new_window":            methodSessionNewWindow,
+	"session.new_split":             methodSessionNewSplit,
+	"session.close_window":          methodSessionCloseWindow,
+	"session.set_window_label":      methodSessionSetWindowLabel,
+	"session.set_block_label":       methodSessionSetBlockLabel,
+	"session.focus_block":           methodSessionFocusBlock,
+	"session.focus_window":          methodSessionFocusWindow,
+	"session.focus_direction":       methodSessionFocusDirection,
+	"session.focus_next_pane":       methodSessionFocusNextPane,
+	"session.focus_previous_pane":   methodSessionFocusPreviousPane,
+	"session.focus_next_window":     methodSessionFocusNextWindow,
+	"session.focus_previous_window": methodSessionFocusPreviousWindow,
+	"session.zoom_block":            methodSessionZoomBlock,
+	"session.swap_blocks":           methodSessionSwapBlocks,
+	"session.move_block":            methodSessionMoveBlock,
+	"session.resize_pane":           methodSessionResizePane,
+	"session.move_window":           methodSessionMoveWindow,
+	"session.own_block":             methodSessionOwnBlock,
+	"session.disown_block":          methodSessionDisownBlock,
+	"block.close":                   methodBlockClose,
+	"block.event":                   methodBlockEvent,
+	"block.method":                  methodBlockMethod,
+	"client.key":                    methodClientKey,
+	"client.set_label":              methodClientSetLabel,
+	"client.keymap":                 methodClientKeymap,
+	"client.set_script":             methodClientSetScript,
+	"client.action":                 methodClientAction,
+	"client.perform":                methodClientPerform,
+	"client.reply":                  methodClientReply,
+	"target.resolve":                methodTargetResolve,
+	"target.complete":               methodTargetComplete,
+	"client.list":                   methodClientList,
+	"client.inspect":                methodClientInspect,
+	"data.connect":                  methodDataConnect,
+}
+
+// blockMethodPrefix is the namespace of the methods every GoRex block
+// provides.
+const blockMethodPrefix = creatorName + "."
+
+// sessionArg reads the session_id argument and returns the session,
+// failing with session_not_found when there is none. A method whose
+// connection must be attached calls attachedArg instead.
+func (c *control) sessionArg(a args) (*mSession, *apiError) {
+	id, aerr := a.reqStr("session_id")
+	if aerr != nil {
+		return nil, aerr
+	}
+	m, err := c.g.current()
+	if err != nil {
+		return nil, errInternal("reading the layout: %v", err)
+	}
+	s := m.byID[id]
+	if s == nil {
+		return nil, errSessionNotFound("no session %s", id)
+	}
+	return s, nil
+}
+
+// attachedArg is sessionArg for a method that uses the session's blocks:
+// the connection must be attached to it, or hear of every session's
+// events, or the call fails with conflict.
+func (c *control) attachedArg(a args) (*mSession, *apiError) {
+	s, aerr := c.sessionArg(a)
+	if aerr != nil {
+		return nil, aerr
+	}
+	if !c.hearsOf(s.id) {
+		return nil, errConflict("the connection is not attached to %s", s.id)
+	}
+	return s, nil
+}
+
+// hearsOf tells whether the connection may use a session: it attached to
+// it, or hears of every session's events.
+func (c *control) hearsOf(sid string) bool {
+	all, _ := c.rec.allScope()
+	return all || c.rec.attachedTo(sid)
 }
 
 // versionResult is server.version's result.
@@ -146,6 +281,7 @@ func (g *Gateway) status() statusResult {
 	if fresh, err := g.current(); err == nil {
 		m = fresh
 	}
+	generation, hash, _ := g.keymapSettings()
 	return statusResult{
 		PID:          os.Getpid(),
 		InstanceID:   g.instanceID,
@@ -154,7 +290,7 @@ func (g *Gateway) status() statusResult {
 		ExitEmpty:    false,
 		SessionCount: len(m.sessions),
 		APIRevision:  apiRevision,
-		Config:       configResult{Generation: 1},
+		Config:       configResult{Generation: generation, Hash: hash},
 	}
 }
 
@@ -251,6 +387,12 @@ func methodSessionDetach(c *control, a args) (any, *apiError) {
 	}
 	if c.rec.detach(sid) {
 		c.g.emitClientEvent(c.rec, sid, "client_disconnected")
+		if m, err := c.g.current(); err == nil {
+			if s := m.byID[sid]; s != nil {
+				c.g.emitOwnerChanges(c.g.releaseIn(c.rec, s, "disconnect"))
+				c.g.refresh()
+			}
+		}
 	}
 	return struct{}{}, nil
 }
@@ -529,4 +671,37 @@ func wellFormedRef(s string) bool {
 		}
 	}
 	return true
+}
+
+// raws returns an array of raw JSON values and whether it was there.
+func (a args) raws(name string) ([]json.RawMessage, bool, *apiError) {
+	raw, ok := a[name]
+	if !ok {
+		return nil, false, nil
+	}
+	if string(raw) == "null" {
+		return nil, true, nil
+	}
+	var out []json.RawMessage
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, false, errBadRequest("%s must be an array", name)
+	}
+	return out, true, nil
+}
+
+// only fails when the arguments carry a field other than the names.
+func (a args) only(names ...string) *apiError {
+	for name := range a {
+		found := false
+		for _, want := range names {
+			if name == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return errBadRequest("the method takes no %s", name)
+		}
+	}
+	return nil
 }

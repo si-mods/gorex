@@ -25,6 +25,8 @@ type model struct {
 	sessions []*mSession
 	byID     map[string]*mSession
 	blocks   map[string]*mBlock
+	// host names the machine the blocks run on.
+	host string
 }
 
 // mSession is a GoRex workspace as a Rex session.
@@ -35,6 +37,8 @@ type mSession struct {
 	windows  []*mWindow
 	blocks   []*mBlock
 	revision uint64
+	// space is the GoRex workspace the session is.
+	space string
 	// sig names everything the session's view shows, so that a later
 	// build can tell whether the view changed.
 	sig string
@@ -47,6 +51,7 @@ type mWindow struct {
 	zoomed    string
 	layer     string
 	layout    *layoutView
+	tree      *fnode
 	blocks    []*mBlock
 }
 
@@ -57,6 +62,8 @@ type mBlock struct {
 	label   string
 	session string
 	window  string
+	// owner is the client that owns the block, "" for none.
+	owner string
 }
 
 // view is session.view's result, and the view inside session.attach and
@@ -135,7 +142,7 @@ func newMapper() *mapper {
 
 // build maps the layout to the Rex model, host naming the machine the
 // blocks run on.
-func (mp *mapper) build(raw json.RawMessage, host string) (*model, error) {
+func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]string) (*model, error) {
 	var store layout.Store
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &store); err != nil {
@@ -147,7 +154,7 @@ func (mp *mapper) build(raw json.RawMessage, host string) (*model, error) {
 		// A layout of before workspaces: its tabs are one workspace.
 		spaces = []layout.Workspace{{ID: "main", Name: "gorex", Layout: store.Layout}}
 	}
-	m := &model{byID: map[string]*mSession{}, blocks: map[string]*mBlock{}}
+	m := &model{byID: map[string]*mSession{}, blocks: map[string]*mBlock{}, host: host}
 	used := make([]bool, len(mp.windows))
 	refs := make([]windowRef, 0, len(spaces))
 	for i := range spaces {
@@ -156,7 +163,7 @@ func (mp *mapper) build(raw json.RawMessage, host string) (*model, error) {
 		if workspace == "" {
 			workspace = "main"
 		}
-		s := &mSession{id: sessionID(workspace), label: ws.Name}
+		s := &mSession{id: sessionID(workspace), label: ws.Name, space: workspace}
 		if s.label == "" {
 			s.label = "Session " + shortID(s.id)
 		}
@@ -188,13 +195,14 @@ func (mp *mapper) build(raw json.RawMessage, host string) (*model, error) {
 				kept[n] = b
 				block := &mBlock{
 					id: b, sid: n.SID, label: blockLabel(n),
-					session: s.id, window: w.id,
+					session: s.id, window: w.id, owner: owners[b],
 				}
 				w.blocks = append(w.blocks, block)
 				s.blocks = append(s.blocks, block)
 				m.blocks[b] = block
 			})
 			assignRect(root, [4]float64{0, 0, 1, 1})
+			w.tree = root
 			w.layout = root.view()
 			// The focus names a place among every leaf the tab keeps,
 			// browser panes and the unavailable among them.
@@ -434,6 +442,7 @@ func (s *mSession) view(host string) view {
 				CreatorName: creatorName,
 				Flavor:      flavorShell,
 				HostID:      host,
+				Owner:       b.owner,
 			})
 		}
 		wv.Layers = append(wv.Layers, layer)
@@ -516,4 +525,281 @@ func joinNonEmpty(parts ...string) string {
 		}
 	}
 	return strings.Join(kept, " ")
+}
+
+// blockByID returns the model's block with ID id, nil for none.
+func (m *model) blockByID(id string) *mBlock {
+	if m == nil {
+		return nil
+	}
+	return m.blocks[id]
+}
+
+// sessionOfSpace returns the session of a GoRex workspace.
+func (m *model) sessionOfSpace(space string) *mSession {
+	for _, s := range m.sessions {
+		if s.space == space {
+			return s
+		}
+	}
+	return nil
+}
+
+// focused returns the block with the focus in the session's active
+// window, nil when it has none.
+func (s *mSession) focused() *mBlock {
+	w := s.window(s.active)
+	if w == nil || w.focused == "" {
+		return nil
+	}
+	return s.findBlock(w.focused)
+}
+
+// windowOf returns the window that holds a block.
+func (s *mSession) windowOf(b *mBlock) *mWindow {
+	if b == nil {
+		return nil
+	}
+	return s.window(b.window)
+}
+
+// placed is a block and its place in its window, in fractions of it.
+type placed struct {
+	b    *mBlock
+	rect [4]float64
+}
+
+// places returns every block of the window with its place, in layout
+// order.
+func (w *mWindow) places() []placed {
+	var out []placed
+	var walk func(*fnode, *mBlock)
+	seen := 0
+	walk = func(n *fnode, _ *mBlock) {
+		if n == nil {
+			return
+		}
+		if n.leaf != nil {
+			if seen < len(w.blocks) {
+				out = append(out, placed{b: w.blocks[seen], rect: n.rect})
+				seen++
+			}
+			return
+		}
+		walk(n.a, nil)
+		walk(n.b, nil)
+	}
+	walk(w.tree, nil)
+	return out
+}
+
+// neighbor returns the block next to from in direction ("left", "right",
+// "up", "down") within w, and whether there was one. With wrap, a block
+// at an edge goes on from the opposite one.
+func (w *mWindow) neighbor(from *mBlock, direction string, wrap bool) (*mBlock, bool) {
+	places := w.places()
+	var at *placed
+	for i := range places {
+		if places[i].b == from {
+			at = &places[i]
+			break
+		}
+	}
+	if at == nil {
+		return nil, false
+	}
+	const eps = 1e-6
+	horizontal := direction == "left" || direction == "right"
+	forward := direction == "right" || direction == "down"
+	best, bestGap, bestOverlap := -1, 0.0, 0.0
+	for i := range places {
+		p := places[i]
+		if p.b == from {
+			continue
+		}
+		var gap, overlap float64
+		if horizontal {
+			if forward {
+				gap = p.rect[0] - (at.rect[0] + at.rect[2])
+				if gap < -eps {
+					continue
+				}
+			} else {
+				gap = at.rect[0] - (p.rect[0] + p.rect[2])
+				if gap < -eps {
+					continue
+				}
+			}
+			overlap = spanOverlap(at.rect[1], at.rect[3], p.rect[1], p.rect[3])
+		} else {
+			if forward {
+				gap = p.rect[1] - (at.rect[1] + at.rect[3])
+				if gap < -eps {
+					continue
+				}
+			} else {
+				gap = at.rect[1] - (p.rect[1] + p.rect[3])
+				if gap < -eps {
+					continue
+				}
+			}
+			overlap = spanOverlap(at.rect[0], at.rect[2], p.rect[0], p.rect[2])
+		}
+		if gap <= eps && overlap <= eps {
+			// Side by side on the other axis only: no neighbor this way.
+			continue
+		}
+		gap = max(gap, 0)
+		if best < 0 || gap < bestGap-eps || (gap <= bestGap+eps && overlap > bestOverlap+eps) {
+			best, bestGap, bestOverlap = i, gap, overlap
+		}
+	}
+	if best >= 0 {
+		return places[best].b, true
+	}
+	if !wrap {
+		return nil, false
+	}
+	// Wrapping: the block farthest the other way.
+	for i := range places {
+		p := places[i]
+		if p.b == from {
+			continue
+		}
+		gap := at.rect[0] - p.rect[0]
+		if !horizontal {
+			gap = at.rect[1] - p.rect[1]
+		}
+		if forward {
+			gap = -gap
+		}
+		if gap < -eps {
+			continue
+		}
+		overlap := spanOverlap(at.rect[1], at.rect[3], p.rect[1], p.rect[3])
+		if !horizontal {
+			overlap = spanOverlap(at.rect[0], at.rect[2], p.rect[0], p.rect[2])
+		}
+		if best < 0 || gap < bestGap-eps || (gap <= bestGap+eps && overlap > bestOverlap+eps) {
+			best, bestGap, bestOverlap = i, gap, overlap
+		}
+	}
+	if best < 0 {
+		return nil, false
+	}
+	return places[best].b, true
+}
+
+// spanOverlap returns how much two spans share.
+func spanOverlap(a0, aLen, b0, bLen float64) float64 {
+	return max(0, min(a0+aLen, b0+bLen)-max(a0, b0))
+}
+
+// splitByID returns the split view of an ID under l.
+func splitByID(l *layoutView, id string) *splitView {
+	if l == nil || l.Split == nil {
+		return nil
+	}
+	if l.Split.SplitID == id {
+		return l.Split
+	}
+	if s := splitByID(l.Split.Before, id); s != nil {
+		return s
+	}
+	return splitByID(l.Split.After, id)
+}
+
+// splitIDs returns every split ID under l.
+func splitIDs(l *layoutView) []string {
+	if l == nil || l.Split == nil {
+		return nil
+	}
+	return append(append([]string{l.Split.SplitID}, splitIDs(l.Split.Before)...), splitIDs(l.Split.After)...)
+}
+
+// lowestSplit returns the innermost split that holds both blocks, nil
+// when none does.
+func lowestSplit(l *layoutView, a, b string) *splitView {
+	if l == nil || l.Split == nil {
+		return nil
+	}
+	if containsBlock(l.Split.Before, a) && containsBlock(l.Split.After, b) ||
+		containsBlock(l.Split.Before, b) && containsBlock(l.Split.After, a) {
+		return l.Split
+	}
+	if containsBlock(l.Split.Before, a) && containsBlock(l.Split.Before, b) {
+		return lowestSplit(l.Split.Before, a, b)
+	}
+	if containsBlock(l.Split.After, a) && containsBlock(l.Split.After, b) {
+		return lowestSplit(l.Split.After, a, b)
+	}
+	return nil
+}
+
+// containsBlock tells whether a block is a leaf of l.
+func containsBlock(l *layoutView, block string) bool {
+	if l == nil {
+		return false
+	}
+	if l.Split == nil {
+		return l.BlockID == block
+	}
+	return containsBlock(l.Split.Before, block) || containsBlock(l.Split.After, block)
+}
+
+// findFnode returns the leaf of a GoRex session under f.
+func findFnode(f *fnode, sid string) *fnode {
+	if f == nil {
+		return nil
+	}
+	if f.leaf != nil {
+		if f.leaf.SID == sid {
+			return f
+		}
+		return nil
+	}
+	if x := findFnode(f.a, sid); x != nil {
+		return x
+	}
+	return findFnode(f.b, sid)
+}
+
+// fnodePath returns the tree from f down to leaf, nil when leaf is not
+// under f.
+func fnodePath(f, leaf *fnode) []*fnode {
+	if f == nil {
+		return nil
+	}
+	if f == leaf {
+		return []*fnode{f}
+	}
+	if p := fnodePath(f.a, leaf); p != nil {
+		return append([]*fnode{f}, p...)
+	}
+	if p := fnodePath(f.b, leaf); p != nil {
+		return append([]*fnode{f}, p...)
+	}
+	return nil
+}
+
+// appResizeSplit returns the split the app moves for leaf, whose
+// direction edge points grows to the right or down: the nearest
+// same-axis split that has leaf on that side, or the nearest one.
+func appResizeSplit(root, leaf *fnode, vertical, grows bool) *fnode {
+	path := fnodePath(root, leaf)
+	var nearest *fnode
+	for i := len(path) - 2; i >= 0; i-- {
+		sp := path[i]
+		if sp.leaf != nil || sp.vertical != vertical {
+			continue
+		}
+		if nearest == nil {
+			nearest = sp
+		}
+		child := path[i+1]
+		if (sp.a == child) == grows {
+			return sp
+		}
+	}
+	return nearest
 }

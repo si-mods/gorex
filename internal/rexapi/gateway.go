@@ -33,6 +33,13 @@ var (
 	// reconnectWait is how long a client's state is kept for a
 	// reconnect, and the same wait for a data stream's resume.
 	reconnectWait = 60 * time.Second
+	// renewEvery is how often the gateway renews the size locks it
+	// holds, as internal/control renews the tabs rootshell holds.
+	renewEvery = 5 * time.Second
+	// commandWait is the longest the gateway waits to see a layout
+	// change, a second more than the server waits for the app: the
+	// app's answer comes once it saved the layout.
+	commandWait = rex.CommandTimeout + time.Second
 	// ticketWait is how long a data connection ticket works.
 	ticketWait = 60 * time.Second
 	// resumeBytes is how many stream bytes a waiting data stream keeps
@@ -73,6 +80,9 @@ type Gateway struct {
 	// helloWait is how long a connection may take to send its hello;
 	// tests shorten it on a gateway of their own.
 	helloWait time.Duration
+	// reconnectWait is how long a dropped client, or a data stream, waits
+	// to be resumed; tests shorten it before making a gateway of their own.
+	reconnectWait time.Duration
 
 	// refreshMu serializes reading the layout and installing the model,
 	// so that changes reach connections in the order they were read.
@@ -88,6 +98,30 @@ type Gateway struct {
 	tickets map[string]*ticket
 	streams map[string]*stream
 	stokens map[string]*stream
+
+	// ownMu guards the ownership of blocks: who owns each, who is in
+	// line, the size each client asked for, and the size locks the
+	// gateway holds (locks, by GoRex session). The server calls a lock
+	// makes run under it, one at a time.
+	ownMu  sync.Mutex
+	owners map[string]*blockOwner
+	locks  map[string]string
+
+	// blobs are the results too large for one reply, which blob_read
+	// reads, and blobsNext their count.
+	blobs     map[int]blob
+	blobsNext int
+
+	// themes are the default colors a client set for a block.
+	themes map[string]theme
+
+	// generation counts the loads the configuration file had, which
+	// server.config_reload makes; keymapHash names the file's contents.
+	generation int
+	keymapHash string
+	// canLock tells whether the server keeps the gateway's connection
+	// alive, which the size locks need.
+	canLock bool
 
 	done      chan struct{}
 	closing   bool
@@ -112,24 +146,35 @@ func New(opt Options) (*Gateway, error) {
 		name, _ = os.Hostname()
 	}
 	g := &Gateway{
-		opt:        opt,
-		started:    time.Now(),
-		hello:      hello,
-		host:       hostID(name, hello.Host.User),
-		user:       currentUser(),
-		instanceID: randomUUID(),
-		helloWait:  helloWait,
-		mapper:     newMapper(),
-		conns:      map[*control]struct{}{},
-		clients:    map[string]*clientRecord{},
-		tokens:     map[string]*clientRecord{},
-		tickets:    map[string]*ticket{},
-		streams:    map[string]*stream{},
-		stokens:    map[string]*stream{},
-		done:       make(chan struct{}),
+		opt:           opt,
+		started:       time.Now(),
+		hello:         hello,
+		host:          hostID(name, hello.Host.User),
+		user:          currentUser(),
+		instanceID:    randomUUID(),
+		helloWait:     helloWait,
+		reconnectWait: reconnectWait,
+		mapper:        newMapper(),
+		conns:         map[*control]struct{}{},
+		clients:       map[string]*clientRecord{},
+		tokens:        map[string]*clientRecord{},
+		tickets:       map[string]*ticket{},
+		streams:       map[string]*stream{},
+		stokens:       map[string]*stream{},
+		owners:        map[string]*blockOwner{},
+		locks:         map[string]string{},
+		blobs:         map[int]blob{},
+		themes:        map[string]theme{},
+		generation:    1,
+		canLock:       hello.Keepalive > 0 && hello.Conn != "",
+		done:          make(chan struct{}),
 	}
 	g.wg.Add(1)
 	go g.pump()
+	g.wg.Add(1)
+	go g.renewLocks()
+	g.wg.Add(1)
+	go g.watchBlocks()
 	return g, nil
 }
 
@@ -228,10 +273,12 @@ func (g *Gateway) refresh() (*model, error) {
 	if err != nil {
 		return g.modelNow(), err
 	}
-	m, err := g.mapper.build(raw, g.host)
+	m, err := g.mapper.build(raw, g.host, g.ownersNow())
 	if err != nil {
 		return g.modelNow(), err
 	}
+	g.pruneOwners(m)
+	g.pruneAttachments(m)
 	g.mu.Lock()
 	old := g.model
 	g.model = m
@@ -247,6 +294,40 @@ func (g *Gateway) refresh() (*model, error) {
 		}
 	}
 	return m, nil
+}
+
+// pruneAttachments forgets the sessions a client attached to that the
+// layout no longer has.
+func (g *Gateway) pruneAttachments(m *model) {
+	g.mu.Lock()
+	recs := make([]*clientRecord, 0, len(g.clients))
+	for _, r := range g.clients {
+		recs = append(recs, r)
+	}
+	g.mu.Unlock()
+	for _, r := range recs {
+		for _, sid := range r.attachedList() {
+			if m.byID[sid] == nil {
+				r.detach(sid)
+			}
+		}
+	}
+}
+
+// renewLocks renews the size locks the gateway holds, every renewEvery,
+// for as long as it serves.
+func (g *Gateway) renewLocks() {
+	defer g.wg.Done()
+	t := time.NewTicker(renewEvery)
+	defer t.Stop()
+	for {
+		select {
+		case <-g.done:
+			return
+		case <-t.C:
+			g.renewOwned()
+		}
+	}
 }
 
 // modelNow returns the last model, or an empty one.
@@ -278,6 +359,37 @@ type clientRecord struct {
 	lostAt   time.Time
 	timer    *time.Timer
 	gone     bool
+	// owned are the blocks the client owned when its connection dropped,
+	// which it gets back when it reconnects, if no one took them since.
+	owned map[string]bool
+}
+
+// rememberOwned notes a block the client owned as its connection went.
+func (r *clientRecord) rememberOwned(block string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.owned == nil {
+		r.owned = map[string]bool{}
+	}
+	r.owned[block] = true
+}
+
+// ownedList returns the blocks the client owned before it dropped.
+func (r *clientRecord) ownedList() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, 0, len(r.owned))
+	for id := range r.owned {
+		out = append(out, id)
+	}
+	return out
+}
+
+// clearOwned forgets the blocks the client owned before it dropped.
+func (r *clientRecord) clearOwned() {
+	r.mu.Lock()
+	r.owned = nil
+	r.mu.Unlock()
 }
 
 // clientInfo is what a client says about itself.
@@ -328,6 +440,7 @@ func (g *Gateway) addControl(c *control, info *clientInfo, principal map[string]
 	g.clients[rec.id] = rec
 	g.mu.Unlock()
 	g.rotateToken(rec)
+	g.emitClientEvent(rec, "", "client_joined")
 	return rec
 }
 
@@ -361,6 +474,9 @@ func (g *Gateway) resumeControl(c *control, token string) (*clientRecord, bool) 
 	}
 	g.mu.Unlock()
 	g.rotateToken(rec)
+	g.emitOwnerChanges(g.restoreBlocks(rec))
+	g.emitConnectionState(rec, rec.attachedList(), "connected", time.Time{})
+	g.refresh()
 	return rec, true
 }
 
@@ -404,10 +520,14 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 	g.mu.Unlock()
 	keep := !clean && !closing && (len(attached) > 0 || rec.all)
 	if keep {
+		lostAt := time.Now()
 		rec.lost = true
-		rec.lostAt = time.Now()
-		rec.timer = time.AfterFunc(reconnectWait, func() { g.expireClient(rec) })
+		rec.lostAt = lostAt
+		rec.timer = time.AfterFunc(g.reconnectWait, func() { g.expireClient(rec) })
 		rec.mu.Unlock()
+		g.emitOwnerChanges(g.releaseBlocks(rec, "lost"))
+		g.emitConnectionState(rec, attached, "lost", lostAt)
+		g.refresh()
 		return
 	}
 	rec.gone = true
@@ -418,10 +538,13 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 		delete(g.tokens, rec.token)
 	}
 	g.mu.Unlock()
+	g.emitOwnerChanges(g.releaseBlocks(rec, "disconnect"))
 	for _, sid := range attached {
 		g.emitClientEvent(rec, sid, "client_disconnected")
 	}
+	g.emitClientEvent(rec, "", "client_left")
 	g.cancelStreams(rec.id)
+	g.refresh()
 }
 
 // expireClient drops a client that no connection came back for.
@@ -440,10 +563,13 @@ func (g *Gateway) expireClient(rec *clientRecord) {
 		delete(g.tokens, rec.token)
 	}
 	g.mu.Unlock()
+	g.emitOwnerChanges(g.releaseBlocks(rec, "disconnect"))
 	for _, sid := range attached {
 		g.emitClientEvent(rec, sid, "client_disconnected")
 	}
+	g.emitClientEvent(rec, "", "client_left")
 	g.cancelStreams(rec.id)
+	g.refresh()
 }
 
 // attachedListLocked returns the sessions a client is attached to. Its
@@ -520,16 +646,76 @@ func (r *clientRecord) state() (lost bool, lostAt time.Time) {
 // went.
 func (g *Gateway) emitClientEvent(rec *clientRecord, sid, typ string) {
 	payload := any(clientIDPayload{ClientID: rec.id})
-	if typ == "client_connected" {
+	switch typ {
+	case "client_connected":
 		payload = map[string]any{
 			"client_id":    rec.id,
 			"principal":    rec.principal,
 			"connected_at": connectedAtString(rec.connectedAt),
 		}
-	} else {
-		payload = map[string]any{"client_id": rec.id, "principal": rec.principal}
+	case "client_joined":
+		g.emitServerEvent(typ, map[string]any{"client": rec.view()})
+		return
+	case "client_left":
+		g.emitServerEvent(typ, map[string]any{"client_id": rec.id})
+		return
 	}
 	g.emitSession(sid, typ, payload)
+}
+
+// emitServerEvent sends a server event to the connections that asked for
+// every event.
+func (g *Gateway) emitServerEvent(typ string, payload any) {
+	g.mu.Lock()
+	conns := make([]*control, 0, len(g.conns))
+	for c := range g.conns {
+		conns = append(conns, c)
+	}
+	g.mu.Unlock()
+	for _, c := range conns {
+		c.sendChanges([]change{{server: true, typ: typ, payload: payload}})
+	}
+}
+
+// emitConnectionState tells the sessions a client is attached to that
+// its connection dropped, or came back.
+func (g *Gateway) emitConnectionState(rec *clientRecord, sids []string, state string, at time.Time) {
+	for _, sid := range sids {
+		payload := map[string]any{
+			"client_id":        rec.id,
+			"principal":        rec.principal,
+			"connection_state": state,
+		}
+		if state == "lost" {
+			payload["connection_lost_at"] = connectedAtString(at)
+		}
+		g.emitSession(sid, "client_connection_changed", payload)
+	}
+}
+
+// emitOwnerChanges tells the sessions that a block's owner changed.
+func (g *Gateway) emitOwnerChanges(changes []ownerChange) {
+	if len(changes) == 0 {
+		return
+	}
+	m := g.modelNow()
+	for _, ch := range changes {
+		b := m.blockByID(ch.block)
+		if b == nil {
+			continue
+		}
+		payload := map[string]any{"block_id": ch.block}
+		if ch.owner != "" {
+			payload["owner"] = ch.owner
+		}
+		if ch.previous != "" {
+			payload["previous"] = ch.previous
+		}
+		if ch.reason != "" {
+			payload["reason"] = ch.reason
+		}
+		g.emitSession(b.session, "block_owner_changed", payload)
+	}
 }
 
 // emitSession sends a session event to the connections that receive the

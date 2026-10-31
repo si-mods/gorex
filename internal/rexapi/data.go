@@ -204,19 +204,27 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		subprotocol: terminalProtocol, nonce: nonce,
 		conn: conn, rd: br,
 		chunks: make(chan []byte, 32), resumes: make(chan *resumeCall),
-		goners: make(chan gone, 8), done: make(chan struct{}),
+		goners: make(chan gone, 8), msgs: make(chan any, 8), done: make(chan struct{}),
 		finished: make(chan struct{}),
-		cols:     head.Cols, rows: head.Rows,
+		cols:     head.Cols, rows: head.Rows, block: t.block,
 	}
 	token := g.rotateStreamToken(s)
 	s.setWS(ws)
 	g.mu.Lock()
 	g.streams[key] = s
 	g.mu.Unlock()
-	// The stream starts with the screen, then the size that screen has.
-	resize := resizeMessage(head.Cols, head.Rows, nil)
+	// The stream starts with the screen, then the size that screen has
+	// and who owns it, then the colors a client replaced, if any.
+	var owner any
+	if o := g.ownerOf(t.block); o != "" {
+		owner = o
+	}
+	resize := resizeMessage(head.Cols, head.Rows, owner)
 	s.buf = append(s.buf, snap...)
 	s.buf = append(s.buf, apcMessage(nonce, resize)...)
+	if th, ok := g.themeOf(t.block); ok {
+		s.buf = append(s.buf, apcMessage(nonce, th.message())...)
+	}
 	s.total = int64(len(s.buf))
 	welcome := welcomeBytes(token, nonce)
 	if !writeData(ws, welcome) || writeStream(ws, s.buf) != nil {
@@ -278,10 +286,12 @@ func rejectReason(err error) byte {
 // stream is one block's data stream, across the connections it is sent
 // on.
 type stream struct {
-	g           *Gateway
-	key         string
-	record      string
-	sid         string
+	g      *Gateway
+	key    string
+	record string
+	sid    string
+	// block is the Rex block the stream shows, for its themes and owner.
+	block       string
 	subprotocol string
 	nonce       uint64
 
@@ -293,9 +303,11 @@ type stream struct {
 	ws     *websocket.Conn
 	wsdone chan struct{}
 
-	chunks   chan []byte
-	resumes  chan *resumeCall
-	goners   chan gone
+	chunks  chan []byte
+	resumes chan *resumeCall
+	goners  chan gone
+	// msgs carries Rex's own messages to send where the output allows.
+	msgs     chan any
 	done     chan struct{}
 	once     sync.Once
 	finished chan struct{}
@@ -393,6 +405,8 @@ func (s *stream) run() {
 			}
 		case call := <-s.resumes:
 			s.resumeStream(call)
+		case msg := <-s.msgs:
+			s.appendApc(msg)
 		case info := <-s.goners:
 			if !s.clearWS(info.ws) {
 				continue
@@ -598,7 +612,7 @@ func (s *stream) resumeStream(call *resumeCall) {
 // dropped.
 func (s *stream) startResumeTimer() {
 	if s.resume == nil {
-		s.resume = time.NewTimer(reconnectWait)
+		s.resume = time.NewTimer(s.g.reconnectWait)
 	}
 }
 
@@ -641,7 +655,22 @@ func (s *stream) poll() {
 	}
 	if info.Cols != s.cols || info.Rows != s.rows {
 		s.cols, s.rows = info.Cols, info.Rows
-		s.appendApc(resizeMessage(s.cols, s.rows, nil))
+		var owner any
+		if o := s.g.ownerOf(s.block); o != "" {
+			owner = o
+		}
+		s.appendApc(resizeMessage(s.cols, s.rows, owner))
+	}
+}
+
+// inject queues one of Rex's messages for the stream's output.
+func (s *stream) inject(payload any) {
+	select {
+	case s.msgs <- payload:
+	case <-s.done:
+	default:
+		// A stream far behind keeps only the newest state: the next
+		// message says it all.
 	}
 }
 

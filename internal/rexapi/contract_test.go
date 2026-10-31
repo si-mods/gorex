@@ -16,38 +16,58 @@ func schemaFor(t *testing.T, method string) *jsonschema.Schema {
 			Name   string          `json:"name"`
 			Output json.RawMessage `json:"output_schema"`
 		} `json:"methods"`
+		BlockTypes []struct {
+			Methods []struct {
+				Name   string `json:"name"`
+				Invoke struct {
+					Method string `json:"method"`
+				} `json:"invoke"`
+				Output json.RawMessage `json:"output_schema"`
+			} `json:"methods"`
+		} `json:"block_types"`
 	}
 	if err := json.Unmarshal(helpJSON, &doc); err != nil {
 		t.Fatal(err)
 	}
+	output := json.RawMessage(nil)
+	found := false
 	for _, m := range doc.Methods {
-		if m.Name != method {
-			continue
+		if m.Name == method {
+			output, found = m.Output, true
+			break
 		}
-		if len(m.Output) == 0 || string(m.Output) == "null" {
-			return nil
-		}
-		var v any
-		if err := json.Unmarshal(m.Output, &v); err != nil {
-			t.Fatal(err)
-		}
-		// session.bootstrap inlines the view schema twice, with the same
-		// anchor. The two are identical, so the second anchor is dropped
-		// and its refs resolve to the first.
-		dedupeAnchors(v, map[string]bool{})
-		c := jsonschema.NewCompiler()
-		url := "mem://" + method + ".json"
-		if err := c.AddResource(url, v); err != nil {
-			t.Fatal(err)
-		}
-		sch, err := c.Compile(url)
-		if err != nil {
-			t.Fatalf("%s: %v", method, err)
-		}
-		return sch
 	}
-	t.Fatalf("%s is not in the help document", method)
-	return nil
+	for _, b := range doc.BlockTypes {
+		for _, m := range b.Methods {
+			if m.Invoke.Method == method {
+				output, found = m.Output, true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("%s is not in the help document", method)
+	}
+	if len(output) == 0 || string(output) == "null" {
+		return nil
+	}
+	var v any
+	if err := json.Unmarshal(output, &v); err != nil {
+		t.Fatal(err)
+	}
+	// session.bootstrap inlines the view schema twice, with the same
+	// anchor. The two are identical, so the second anchor is dropped
+	// and its refs resolve to the first.
+	dedupeAnchors(v, map[string]bool{})
+	c := jsonschema.NewCompiler()
+	url := "mem://" + method + ".json"
+	if err := c.AddResource(url, v); err != nil {
+		t.Fatal(err)
+	}
+	sch, err := c.Compile(url)
+	if err != nil {
+		t.Fatalf("%s: %v", method, err)
+	}
+	return sch
 }
 
 // dedupeAnchors drops repeated anchors from a schema, keeping the first.
@@ -197,8 +217,10 @@ func TestContract(t *testing.T) {
 		{"target.resolve", map[string]any{"kinds": []string{"session"}, "queries": []string{"x"}, "scope": map[string]any{}}, "bad_request", 400},
 		{"target.complete", map[string]any{"kinds": []string{"block"}}, "bad_request", 400},
 		{"target.complete", map[string]any{"kinds": []string{"window"}, "prefix": "a", "scope": map[string]any{"window": "1"}}, "bad_request", 400},
-		{"session.create", map[string]any{"label": "x"}, "not_supported", 400},
-		{"com.superlogical.terminal.write", map[string]any{}, "not_supported", 400},
+		{"client.set_script", map[string]any{"scripts": []any{map[string]any{"source": "x"}}}, "not_supported", 400},
+		{"hosts.put", map[string]any{"host": map[string]any{"label": "a", "endpoints": []string{"b"}}}, "not_supported", 400},
+		{"com.superlogical.terminal.write", map[string]any{}, "bad_request", 400},
+		{"com.superlogical.onboarding.state", map[string]any{}, "conflict", 409},
 		{"no.such.method", map[string]any{}, "method_not_found", 404},
 	}
 	for i, tc := range cases {
@@ -314,9 +336,28 @@ func httpGet(url string) (*http.Response, error) {
 // schema that compiles.
 func TestSchemaCompiles(t *testing.T) {
 	for _, m := range []string{
-		"server.version", "server.status", "server.whoami", "session.list", "session.attach",
-		"session.attach_all", "session.detach", "session.bootstrap", "session.view",
+		"server.version", "server.status", "server.whoami", "server.config_reload",
+		"hosts.list", "block_creator.list",
+		"session.list", "session.attach", "session.attach_all", "session.detach",
+		"session.bootstrap", "session.view", "session.create", "session.destroy",
+		"session.set_label", "session.new_window", "session.new_split",
+		"session.close_window", "session.set_window_label", "session.set_block_label",
+		"session.focus_block", "session.focus_window", "session.focus_direction",
+		"session.focus_next_pane", "session.focus_previous_pane",
+		"session.focus_next_window", "session.focus_previous_window",
+		"session.zoom_block", "session.swap_blocks", "session.move_block",
+		"session.resize_pane", "session.move_window", "session.list_blocks",
+		"session.list_clients", "session.describe_block", "session.own_block",
+		"session.disown_block", "block.close", "block.event",
+		"client.key", "client.set_label", "client.keymap", "client.set_script",
+		"client.action", "client.perform", "client.reply",
 		"target.resolve", "target.complete", "client.list", "client.inspect", "data.connect",
+		creatorName + ".format", creatorName + ".pwd", creatorName + ".title",
+		creatorName + ".process", creatorName + ".program_status", creatorName + ".modes",
+		creatorName + ".clear", creatorName + ".reset", creatorName + ".input_mode",
+		creatorName + ".list_dir", creatorName + ".clipboard_read", creatorName + ".blob_read",
+		creatorName + ".set_theme", creatorName + ".resize", creatorName + ".size",
+		creatorName + ".write",
 	} {
 		if schemaFor(t, m) == nil {
 			t.Errorf("%s has no result schema", m)
