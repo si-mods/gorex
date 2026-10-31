@@ -80,10 +80,57 @@ func hostBadge(c *ui.Context, k *colors, h *hostConn) {
 
 // tabLabel is the label of a tab: the name and, fainter, the detail.
 func tabLabel(name, detail string, nameColor, detailColor ui.Color) []ui.Span {
-	return []ui.Span{
-		{Text: name, Size: 13.5, Weight: 500, Color: nameColor},
-		{Text: " " + detail, Size: 13.5, Weight: 400, Color: detailColor},
+	return append(
+		titleSpans(name, 13.5, 500, nameColor),
+		titleSpans(" "+detail, 13.5, 400, detailColor)...,
+	)
+}
+
+// titleSpans lays out a title programs set, as a tab's name or a pane
+// header shows it: a title's icons, which programs head their titles
+// with, as omp names its sessions with a Nerd Font glyph, draw in the
+// terminals' font, where alone they have glyphs, and its text in the
+// window's, which draws a box where the font of the terminals is absent.
+func titleSpans(text string, size float32, weight int, col ui.Color) []ui.Span {
+	var spans []ui.Span
+	start, private, first := 0, false, true
+	for i := 0; i < len(text); {
+		r, w := utf8.DecodeRuneInString(text[i:])
+		if first {
+			private, first, i = privateUse(r), false, i+w
+			continue
+		}
+		p := privateUse(r)
+		if p == private {
+			i += w
+			continue
+		}
+		// The layout drops a space that heads a span: the spaces after
+		// a run of glyphs stay in its span, in the font that draws it.
+		j := i
+		for j < len(text) && text[j] == ' ' {
+			j++
+		}
+		spans = append(spans, titleSpan(text[start:j], size, weight, col, private))
+		start, private, i = j, p, j
 	}
+	return append(spans, titleSpan(text[start:], size, weight, col, private))
+}
+
+// titleSpan is a span of a title, drawn in the terminals' font when its
+// text is a glyph of a private use area.
+func titleSpan(text string, size float32, weight int, col ui.Color, private bool) ui.Span {
+	sp := ui.Span{Text: text, Size: size, Weight: weight, Color: col}
+	if private {
+		sp.Font = termFont.Family
+	}
+	return sp
+}
+
+// privateUse reports a rune of a private use area: where icon fonts,
+// as the Nerd Fonts that head titles, keep their glyphs.
+func privateUse(r rune) bool {
+	return r >= 0xE000 && r <= 0xF8FF || r >= 0xF0000 && r <= 0xFFFFD || r >= 0x100000 && r <= 0x10FFFD
 }
 
 // titleFree is how much of the title bar the tabs leave free, after
