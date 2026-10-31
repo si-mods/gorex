@@ -5087,3 +5087,215 @@ func RexImportFailed(error string) string { return In(i18n.Locale()).RexImportFa
 func (msgs Messages) RexImportFailed(error string) string {
 	return Catalog.Format(msgs.locale, "rexImportFailed", map[string]any{"error": error})
 }
+
+// RemoteLanTitle says "Rex apps on the local network"
+// in the language the app shows.
+//
+// Title of the card that lets Rex's apps, such as Rex on an iPhone, connect
+// over the local network.
+func RemoteLanTitle() string { return In(i18n.Locale()).RemoteLanTitle() }
+
+// RemoteLanTitle says "Rex apps on the local network"
+// in the language of msgs.
+//
+// Title of the card that lets Rex's apps, such as Rex on an iPhone, connect
+// over the local network.
+func (msgs Messages) RemoteLanTitle() string {
+	return Catalog.Format(msgs.locale, "remoteLanTitle", nil)
+}
+
+// RemoteLanNote says "Rex's apps connect to this address over plain HTTP, Rex on an iPhone among them. There is no password: anyone in a ne…"
+// in the language the app shows.
+//
+// Note under the title of the local network card.
+func RemoteLanNote() string { return In(i18n.Locale()).RemoteLanNote() }
+
+// RemoteLanNote says "Rex's apps connect to this address over plain HTTP, Rex on an iPhone among them. There is no password: anyone in a ne…"
+// in the language of msgs.
+//
+// Note under the title of the local network card.
+func (msgs Messages) RemoteLanNote() string {
+	return Catalog.Format(msgs.locale, "remoteLanNote", nil)
+}
+
+// RemoteLanSwitch says "Serve Rex apps on the local network"
+// in the language the app shows.
+//
+// Switch: turn the local network listener on or off.
+func RemoteLanSwitch() string { return In(i18n.Locale()).RemoteLanSwitch() }
+
+// RemoteLanSwitch says "Serve Rex apps on the local network"
+// in the language of msgs.
+//
+// Switch: turn the local network listener on or off.
+func (msgs Messages) RemoteLanSwitch() string {
+	return Catalog.Format(msgs.locale, "remoteLanSwitch", nil)
+}
+
+// RemoteLanListening says "Listening on {url}"
+// in the language the app shows.
+//
+// State: the listener runs. url is the address to add in Rex's app.
+func RemoteLanListening(url string) string { return In(i18n.Locale()).RemoteLanListening(url) }
+
+// RemoteLanListening says "Listening on {url}"
+// in the language of msgs.
+//
+// State: the listener runs. url is the address to add in Rex's app.
+func (msgs Messages) RemoteLanListening(url string) string {
+	return Catalog.Format(msgs.locale, "remoteLanListening", map[string]any{"url": url})
+}
+
+// RemoteLanOff says "Off"
+// in the language the app shows.
+//
+// State: the listener is off.
+func RemoteLanOff() string { return In(i18n.Locale()).RemoteLanOff() }
+
+// RemoteLanOff says "Off"
+// in the language of msgs.
+//
+// State: the listener is off.
+func (msgs Messages) RemoteLanOff() string {
+	return Catalog.Format(msgs.locale, "remoteLanOff", nil)
+}
+
+// RemoteLanWaiting says "On, waiting for the GoRex server"
+// in the language the app shows.
+//
+// State: turned on, but the session server has not started listening yet.
+func RemoteLanWaiting() string { return In(i18n.Locale()).RemoteLanWaiting() }
+
+// RemoteLanWaiting says "On, waiting for the GoRex server"
+// in the language of msgs.
+//
+// State: turned on, but the session server has not started listening yet.
+func (msgs Messages) RemoteLanWaiting() string {
+	return Catalog.Format(msgs.locale, "remoteLanWaiting", nil)
+}
+
+// RemoteLanError says "Not listening: {error}"
+// in the language the app shows.
+//
+// State: the listener could not start. error says why.
+func RemoteLanError(error string) string { return In(i18n.Locale()).RemoteLanError(error) }
+
+// RemoteLanError says "Not listening: {error}"
+// in the language of msgs.
+//
+// State: the listener could not start. error says why.
+func (msgs Messages) RemoteLanError(error string) string {
+	return Catalog.Format(msgs.locale, "remoteLanError", map[string]any{"error": error})
+}
+
+// RemoteLanAddress says "Address"
+// in the language the app shows.
+//
+// Label of the field with the address and port to listen on.
+func RemoteLanAddress() string { return In(i18n.Locale()).RemoteLanAddress() }
+
+// RemoteLanAddress says "Address"
+// in the language of msgs.
+//
+// Label of the field with the address and port to listen on.
+func (msgs Messages) RemoteLanAddress() string {
+	return Catalog.Format(msgs.locale, "remoteLanAddress", nil)
+}
+
+// RemoteLanSave says "Save"
+// in the language the app shows.
+//
+// Button: save the address typed.
+func RemoteLanSave() string { return In(i18n.Locale()).RemoteLanSave() }
+
+// RemoteLanSave says "Save"
+// in the language of msgs.
+//
+// Button: save the address typed.
+func (msgs Messages) RemoteLanSave() string {
+	return Catalog.Format(msgs.locale, "remoteLanSave", nil)
+}
+
+// RemoteLanNetworks says "Networks allowed"
+// in the language the app shows.
+//
+// Heading of the list of networks whose devices may connect.
+func RemoteLanNetworks() string { return In(i18n.Locale()).RemoteLanNetworks() }
+
+// RemoteLanNetworks says "Networks allowed"
+// in the language of msgs.
+//
+// Heading of the list of networks whose devices may connect.
+func (msgs Messages) RemoteLanNetworks() string {
+	return Catalog.Format(msgs.locale, "remoteLanNetworks", nil)
+}
+
+// RemoteLanNoNetworks says "None: no device can connect."
+// in the language the app shows.
+//
+// Shown when no network is allowed.
+func RemoteLanNoNetworks() string { return In(i18n.Locale()).RemoteLanNoNetworks() }
+
+// RemoteLanNoNetworks says "None: no device can connect."
+// in the language of msgs.
+//
+// Shown when no network is allowed.
+func (msgs Messages) RemoteLanNoNetworks() string {
+	return Catalog.Format(msgs.locale, "remoteLanNoNetworks", nil)
+}
+
+// RemoteLanAdd says "Add"
+// in the language the app shows.
+//
+// Button: allow the network typed.
+func RemoteLanAdd() string { return In(i18n.Locale()).RemoteLanAdd() }
+
+// RemoteLanAdd says "Add"
+// in the language of msgs.
+//
+// Button: allow the network typed.
+func (msgs Messages) RemoteLanAdd() string {
+	return Catalog.Format(msgs.locale, "remoteLanAdd", nil)
+}
+
+// RemoteLanAddPlaceholder says "192.168.1.0/24 or 10.6.0.2"
+// in the language the app shows.
+//
+// Placeholder of the field to type a network or an address to allow.
+func RemoteLanAddPlaceholder() string { return In(i18n.Locale()).RemoteLanAddPlaceholder() }
+
+// RemoteLanAddPlaceholder says "192.168.1.0/24 or 10.6.0.2"
+// in the language of msgs.
+//
+// Placeholder of the field to type a network or an address to allow.
+func (msgs Messages) RemoteLanAddPlaceholder() string {
+	return Catalog.Format(msgs.locale, "remoteLanAddPlaceholder", nil)
+}
+
+// RemoteLanRemove says "Remove"
+// in the language the app shows.
+//
+// Button: stop allowing a network.
+func RemoteLanRemove() string { return In(i18n.Locale()).RemoteLanRemove() }
+
+// RemoteLanRemove says "Remove"
+// in the language of msgs.
+//
+// Button: stop allowing a network.
+func (msgs Messages) RemoteLanRemove() string {
+	return Catalog.Format(msgs.locale, "remoteLanRemove", nil)
+}
+
+// RemoteLanNoAddress says "This machine has no private IPv4 address: type the address to listen on."
+// in the language the app shows.
+//
+// Shown when turning the listener on finds no address of the local network.
+func RemoteLanNoAddress() string { return In(i18n.Locale()).RemoteLanNoAddress() }
+
+// RemoteLanNoAddress says "This machine has no private IPv4 address: type the address to listen on."
+// in the language of msgs.
+//
+// Shown when turning the listener on finds no address of the local network.
+func (msgs Messages) RemoteLanNoAddress() string {
+	return Catalog.Format(msgs.locale, "remoteLanNoAddress", nil)
+}

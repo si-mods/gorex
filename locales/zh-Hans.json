@@ -519,5 +519,20 @@
         "example": "no such file"
       }
     }
-  }
+  },
+  "remoteLanTitle": "局域网上的 Rex 客户端",
+  "remoteLanNote": "Rex 的客户端（包括 iPhone 上的 Rex）通过普通 HTTP 连接这个地址。这里没有密码：允许的网络里任何设备都能拿到完整的 shell，键入的内容在局域网上不加密传输。请尽量只允许必要的范围，比如你手机的地址。",
+  "remoteLanSwitch": "在局域网上为 Rex 客户端提供服务",
+  "remoteLanListening": "正在监听 {url}",
+  "remoteLanOff": "已关闭",
+  "remoteLanWaiting": "已开启，正在等待 GoRex 服务器",
+  "remoteLanError": "未在监听：{error}",
+  "remoteLanAddress": "地址",
+  "remoteLanSave": "保存",
+  "remoteLanNetworks": "允许的网络",
+  "remoteLanNoNetworks": "无：没有设备能连接。",
+  "remoteLanAdd": "添加",
+  "remoteLanAddPlaceholder": "192.168.1.0/24 或 10.6.0.2",
+  "remoteLanRemove": "移除",
+  "remoteLanNoAddress": "这台机器没有私有 IPv4 地址：请输入要监听的地址。"
 }

@@ -1716,5 +1716,77 @@
         "example": "no such file"
       }
     }
+  },
+  "remoteLanTitle": "Rex apps on the local network",
+  "@remoteLanTitle": {
+    "description": "Title of the card that lets Rex's apps, such as Rex on an iPhone, connect over the local network."
+  },
+  "remoteLanNote": "Rex's apps connect to this address over plain HTTP, Rex on an iPhone among them. There is no password: anyone in a network allowed gets a full shell, and what they type crosses the local network unencrypted. Allow as little as you can, such as your phone's address.",
+  "@remoteLanNote": {
+    "description": "Note under the title of the local network card."
+  },
+  "remoteLanSwitch": "Serve Rex apps on the local network",
+  "@remoteLanSwitch": {
+    "description": "Switch: turn the local network listener on or off."
+  },
+  "remoteLanListening": "Listening on {url}",
+  "@remoteLanListening": {
+    "description": "State: the listener runs. url is the address to add in Rex's app.",
+    "placeholders": {
+      "url": {
+        "type": "String",
+        "example": "http://192.168.1.20:7297"
+      }
+    }
+  },
+  "remoteLanOff": "Off",
+  "@remoteLanOff": {
+    "description": "State: the listener is off."
+  },
+  "remoteLanWaiting": "On, waiting for the GoRex server",
+  "@remoteLanWaiting": {
+    "description": "State: turned on, but the session server has not started listening yet."
+  },
+  "remoteLanError": "Not listening: {error}",
+  "@remoteLanError": {
+    "description": "State: the listener could not start. error says why.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "address already in use"
+      }
+    }
+  },
+  "remoteLanAddress": "Address",
+  "@remoteLanAddress": {
+    "description": "Label of the field with the address and port to listen on."
+  },
+  "remoteLanSave": "Save",
+  "@remoteLanSave": {
+    "description": "Button: save the address typed."
+  },
+  "remoteLanNetworks": "Networks allowed",
+  "@remoteLanNetworks": {
+    "description": "Heading of the list of networks whose devices may connect."
+  },
+  "remoteLanNoNetworks": "None: no device can connect.",
+  "@remoteLanNoNetworks": {
+    "description": "Shown when no network is allowed."
+  },
+  "remoteLanAdd": "Add",
+  "@remoteLanAdd": {
+    "description": "Button: allow the network typed."
+  },
+  "remoteLanAddPlaceholder": "192.168.1.0/24 or 10.6.0.2",
+  "@remoteLanAddPlaceholder": {
+    "description": "Placeholder of the field to type a network or an address to allow."
+  },
+  "remoteLanRemove": "Remove",
+  "@remoteLanRemove": {
+    "description": "Button: stop allowing a network."
+  },
+  "remoteLanNoAddress": "This machine has no private IPv4 address: type the address to listen on.",
+  "@remoteLanNoAddress": {
+    "description": "Shown when turning the listener on finds no address of the local network."
   }
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 
 	"gorex/internal/coordproto"
 	"gorex/internal/rex"
+	"gorex/internal/rexapi"
 	"gorex/locales"
 )
 
@@ -38,6 +40,15 @@ var remoteUI struct {
 	// machine joins by.
 	netURL, netKey, netName string
 	netErr                  bool // what was typed does not read
+	// lan is the gateway's listener on the local network, as its files
+	// say (rexapi.LoadLAN, LoadLANStatus); lanListen and lanAdd are what
+	// is typed in its fields, and lanErr what was wrong with the last.
+	lan       rexapi.LANConfig
+	lanStatus rexapi.LANStatus
+	lanListen string
+	lanEdited bool
+	lanAdd    string
+	lanErr    string
 }
 
 // showSection chooses a settings section. The Remote page asks the server
@@ -112,9 +123,120 @@ func (a *App) startRemotePoll() {
 	}()
 }
 
+// fetchLAN reads the local network listener's settings and state, which
+// the server's gateway follows.
+func fetchLAN() {
+	dir := rexapi.TailnetDir()
+	if c, err := rexapi.LoadLAN(dir); err == nil {
+		remoteUI.lan = c
+		if !remoteUI.lanEdited {
+			remoteUI.lanListen = c.Listen
+		}
+	}
+	remoteUI.lanStatus = rexapi.LoadLANStatus(dir)
+}
+
+// saveLAN writes the listener's settings, which the server's gateway
+// applies within a second.
+func saveLAN(c rexapi.LANConfig) bool {
+	if err := rexapi.SaveLAN(rexapi.TailnetDir(), c); err != nil {
+		remoteUI.lanErr = err.Error()
+		return false
+	}
+	remoteUI.lanErr = ""
+	remoteUI.lan = c
+	return true
+}
+
+// remoteLAN is the card of Rex's apps on the local network: the switch,
+// its state, the address and the networks let in.
+func (a *App) remoteLAN(c *ui.Context, k *colors) {
+	page := &remoteUI
+	conf, st := page.lan, page.lanStatus
+	remoteCard(c, k, locales.RemoteLanTitle(), locales.RemoteLanNote(), func() {
+		label, dot := locales.RemoteLanOff(), k.exited
+		switch {
+		case st.Listening != "":
+			label, dot = locales.RemoteLanListening("http://"+st.Listening), k.busy
+		case conf.Enabled && st.Error != "":
+			label, dot = locales.RemoteLanError(st.Error), k.danger
+		case conf.Enabled:
+			label, dot = locales.RemoteLanWaiting(), k.attention
+		}
+		on := conf.Enabled
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Grow(1).MinWidth(0).Gap(7).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
+				ui.Text(c, label).FontSize(12.5).FontWeight(500).TextColor(k.textMuted).Selectable()
+			})
+			if ui.Switch(c.Key("lan"), &on).Label(locales.RemoteLanSwitch()).Changed() {
+				next := conf
+				next.Enabled = on
+				if on {
+					next = next.WithDefaults()
+					if next.Listen == "" {
+						page.lanErr = locales.RemoteLanNoAddress()
+						return
+					}
+					page.lanListen, page.lanEdited = next.Listen, false
+				}
+				saveLAN(next)
+			}
+		})
+		ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
+			if ui.TextInput(c.Key("lan-listen"), &page.lanListen).Placeholder("192.168.1.20:7297").
+				Label(locales.RemoteLanAddress()).Grow(1).Changed() {
+				page.lanEdited = true
+			}
+			if ui.Button(c.Key("lan-save"), locales.RemoteLanSave()).Disabled(!page.lanEdited).Clicked() {
+				next := conf
+				next.Listen = strings.TrimSpace(page.lanListen)
+				if saveLAN(next) {
+					page.lanEdited = false
+				}
+			}
+		})
+		ui.Text(c, locales.RemoteLanNetworks()).FontSize(12.5).FontWeight(600).TextColor(k.textMuted)
+		if len(conf.Allow) == 0 {
+			ui.Text(c, locales.RemoteLanNoNetworks()).FontSize(12.5).TextColor(k.textFaint)
+		}
+		for _, n := range conf.Allow {
+			ui.Row(c.Key("net-" + n)).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, n).Font(monoFamily()).FontSize(12.5).TextColor(k.text).Grow(1).MinWidth(0)
+				if ui.Button(c.Key("rm"), locales.RemoteLanRemove()).Clicked() {
+					next := conf
+					next.Allow = slices.DeleteFunc(slices.Clone(conf.Allow), func(x string) bool { return x == n })
+					saveLAN(next)
+				}
+			})
+		}
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+			ui.TextInput(c.Key("lan-add"), &page.lanAdd).Placeholder(locales.RemoteLanAddPlaceholder()).Grow(1)
+			if ui.Button(c.Key("lan-add-btn"), locales.RemoteLanAdd()).Disabled(strings.TrimSpace(page.lanAdd) == "").Clicked() {
+				p, err := rexapi.ParseNetwork(page.lanAdd)
+				if err != nil {
+					page.lanErr = err.Error()
+					return
+				}
+				next := conf
+				if !slices.Contains(next.Allow, p.String()) {
+					next.Allow = append(slices.Clone(next.Allow), p.String())
+				}
+				if saveLAN(next) {
+					page.lanAdd = ""
+				}
+			}
+		})
+		if page.lanErr != "" {
+			ui.Text(c, page.lanErr).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+		}
+	})
+}
+
 // fetchRemote asks the server for its status; the address comes only
 // while it is shown.
 func (a *App) fetchRemote() {
+	fetchLAN()
 	withAddress := remoteUI.reveal
 	a.remoteAsk(func(srv *rex.Client) func() {
 		st, err := srv.RemoteStatus()
@@ -368,6 +490,7 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 		}
 	})
 
+	a.remoteLAN(c, k)
 	if st.Running {
 		a.remoteAddress(c, k)
 	}
