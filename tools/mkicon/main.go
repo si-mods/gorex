@@ -1,10 +1,14 @@
 // Mkicon draws GoRex's icon, resources/icon.png: the window's gradient in
 // the squircle of macOS icons, with panes on it as the app splits them.
+// With -dev it draws the development app's, resources/icon-dev.png, in the
+// dark of its window, so that the two read apart in the Dock.
 //
 //	go run ./tools/mkicon
+//	go run ./tools/mkicon -dev
 package main
 
 import (
+	"flag"
 	"image"
 	"image/color"
 	"image/draw"
@@ -19,11 +23,35 @@ import (
 const size = 1024
 
 func main() {
+	dev := flag.Bool("dev", false, "draw the development app's icon, resources/icon-dev.png, in dark colors")
+	flag.Parse()
+
+	// Resources of the icon, in the light of the window or, for the
+	// development app, in its dark.
+	out := "resources/icon.png"
+	bg := []stop{{0, rgb(0xf7e4f6)}, {0.45, rgb(0xeedbe3)}, {0.7, rgb(0xeeddd0)}, {1, rgb(0xebdcb2)}}
+	pane, paneBack := uint8(250), uint8(175)
+	ink := color.NRGBA{42, 45, 49, 255}
+	green := color.NRGBA{78, 142, 95, 255}
+	text, accent := color.NRGBA{120, 120, 128, 150}, color.NRGBA{194, 70, 90, 170}
+	snake, red := color.NRGBA{86, 141, 102, 255}, color.NRGBA{188, 83, 98, 255}
+	shade := color.RGBA{60, 30, 50, 46}
+	if *dev {
+		out = "resources/icon-dev.png"
+		bg = []stop{{0, rgb(0x2c2131)}, {0.45, rgb(0x231e27)}, {0.7, rgb(0x221f22)}, {1, rgb(0x2a2619)}}
+		pane, paneBack = 46, 26
+		ink = color.NRGBA{208, 208, 214, 255}
+		green = color.NRGBA{95, 211, 141, 255}
+		text, accent = color.NRGBA{174, 174, 178, 200}, color.NRGBA{255, 140, 156, 210}
+		snake, red = color.NRGBA{123, 216, 143, 255}, color.NRGBA{255, 107, 127, 255}
+		shade = color.RGBA{0, 0, 0, 110}
+	}
+
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	// The squircle of macOS's icon grid: 824 wide, inset by 100.
 	x0, y0, w := float32(100), float32(100), float32(824)
-	shadow(img, x0+6, y0+12, w-12, w-12, 186, 20, color.RGBA{60, 30, 50, 46})
-	grad := gradient(size, []stop{{0, rgb(0xf7e4f6)}, {0.45, rgb(0xeedbe3)}, {0.7, rgb(0xeeddd0)}, {1, rgb(0xebdcb2)}})
+	shadow(img, x0+6, y0+12, w-12, w-12, 186, 20, shade)
+	grad := gradient(size, bg)
 	fill(img, squircle(x0, y0, w, w, 186), grad)
 	// The panes: one left above another, one right, as the app shows them.
 	pad, gap := float32(70), float32(36)
@@ -39,38 +67,42 @@ func main() {
 		{x0 + pad + lw + gap, y0 + pad + 40, inner - lw - gap, inner - 40, 175},
 	}
 	for _, c := range cards {
-		shadow(img, c.x, c.y+8, c.w, c.h, 44, 22, color.RGBA{80, 40, 60, 40})
-		fill(img, rounded(c.x, c.y, c.w, c.h, 44), image.NewUniform(color.NRGBA{255, 255, 255, c.a}))
+		alpha := paneBack
+		if c.a == 250 {
+			alpha = pane
+		}
+		shadow(img, c.x, c.y+8, c.w, c.h, 44, 22, shade)
+		fill(img, rounded(c.x, c.y, c.w, c.h, 44), image.NewUniform(color.NRGBA{255, 255, 255, alpha}))
 	}
 	// A prompt on the first pane: a chevron and a cursor.
 	c := cards[0]
-	ink := image.NewUniform(color.NRGBA{42, 45, 49, 255})
-	green := image.NewUniform(color.NRGBA{78, 142, 95, 255})
+	inkSrc := image.NewUniform(ink)
+	greenSrc := image.NewUniform(green)
 	cx, cy := c.x+68, c.y+c.h/2-6
 	for _, r := range stroke([][2]float32{{cx, cy - 58}, {cx + 62, cy}, {cx, cy + 58}}, 26) {
-		fill(img, r, green)
+		fill(img, r, greenSrc)
 	}
-	fill(img, rounded(cx+100, cy+34, 104, 26, 13), ink)
+	fill(img, rounded(cx+100, cy+34, 104, 26, 13), inkSrc)
 	// Snake dots on the right pane.
 	r := cards[2]
 	for i := 0; i < 4; i++ {
-		fill(img, rounded(r.x+52+float32(i)*44, r.y+r.h*0.42, 30, 30, 7), image.NewUniform(color.NRGBA{86, 141, 102, 255}))
+		fill(img, rounded(r.x+52+float32(i)*44, r.y+r.h*0.42, 30, 30, 7), image.NewUniform(snake))
 	}
-	fill(img, rounded(r.x+52+3*44, r.y+r.h*0.42+44, 30, 30, 7), image.NewUniform(color.NRGBA{86, 141, 102, 255}))
-	fill(img, rounded(r.x+r.w-100, r.y+r.h*0.7, 34, 34, 17), image.NewUniform(color.NRGBA{188, 83, 98, 255}))
+	fill(img, rounded(r.x+52+3*44, r.y+r.h*0.42+44, 30, 30, 7), image.NewUniform(snake))
+	fill(img, rounded(r.x+r.w-100, r.y+r.h*0.7, 34, 34, 17), image.NewUniform(red))
 	// Lines of text on the lower left pane.
 	l := cards[1]
 	for i, lw := range []float32{0.62, 0.44, 0.7} {
-		col := color.NRGBA{120, 120, 128, 150}
+		col := text
 		if i == 1 {
-			col = color.NRGBA{194, 70, 90, 170}
+			col = accent
 		}
 		fill(img, rounded(l.x+52, l.y+56+float32(i)*48, (l.w-104)*lw, 22, 11), image.NewUniform(col))
 	}
 	if err := os.MkdirAll("resources", 0o755); err != nil {
 		log.Fatal(err)
 	}
-	f, err := os.Create("resources/icon.png")
+	f, err := os.Create(out)
 	if err != nil {
 		log.Fatal(err)
 	}
