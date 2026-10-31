@@ -44,6 +44,8 @@ gorex remote status [--json] | remote control on|off
 gorex server restart
 gorex config path | config check [FILE] | config reload
 gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
+gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--resize] [--json]
+gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH] [--resize]
 gorex version [--json]
 ```
 
@@ -88,6 +90,14 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   with the pane. It exits 0 when it is done, 1 when the server is too old
   to bring its sessions back (quit it once with Quit and End All, or kill
   it), and 4 when no server runs or the server did not stop.
+- `rex-import` reads a Rex server and makes its sessions in GoRex: a space
+  per session, a tab per window, a pane per block. Each pane runs this
+  program's `rex-mirror`, which draws the Rex block and types into it, or
+  runs a shell in its directory with `--shell`; `--resize` lets a mirror
+  give the block the pane's size. Sessions already imported are recorded
+  in `rex-import.json` in the data directory and left alone.
+- `rex-mirror` is what those panes run; it needs the GoRex window open for
+  the import, not to mirror.
 - `action run` runs a built-in action by its ID, through the window.
   Values after the action are strings; the CLI does not guess types.
 

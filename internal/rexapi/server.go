@@ -208,19 +208,14 @@ func (s *Server) refresh() error {
 	return nil
 }
 
-// current returns the model, refreshed when it is older than a moment.
+// current returns the model, read from the layout as it is now: a client
+// that connects just after the app changed it sees the change.
 func (s *Server) current() *model {
-	s.mu.Lock()
-	m, age := s.model, time.Since(s.lastRefresh)
-	s.mu.Unlock()
-	if m != nil && age < 50*time.Millisecond {
-		return m
-	}
 	if err := s.refresh(); err != nil {
 		log.Printf("rexapi: refresh: %v", err)
 	}
 	s.mu.Lock()
-	m = s.model
+	m := s.model
 	s.mu.Unlock()
 	return m
 }

@@ -17,6 +17,16 @@
   `session.create` and `session.destroy` need. A tab now keeps an ID in the
   layout, so a Rex window's ID stays while its tab does, even after the pane
   that came first closes.
+- Importing a Rex session. `gorex rex-import` reads a Rex server's sessions
+  and makes them in GoRex: a space per session, a tab per window, a pane
+  per block, each named as Rex names it. Each pane runs `gorex rex-mirror`,
+  which draws what the Rex block shows, from the escape sequences Rex
+  renders (the data stream's snapshot is Ghostty's binary format), and
+  sends what is typed to the block; `--shell` runs a shell in each block's
+  directory instead, and `--resize` gives the block the pane's size. Where
+  a session came from is recorded in `rex-import.json`, so a second run
+  leaves it alone. The Rex server is `$REX_SERVER` unless `--rex` names
+  one, and the GoRex window makes the spaces, tabs and panes.
 
 - Paste into a program that runs on Windows reaches it again. A ConPTY
   drops the OSC that a terminal's paste event is, so a program that reads

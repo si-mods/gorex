@@ -386,6 +386,34 @@ Closing a session's last window closes the session, as GoRex's spaces go
 with their last tab, and a layout's exact split ratios are not kept: the
 blocks are made in layout order, each split beside the one before.
 
+### Importing a Rex session
+
+`gorex rex-import` reads a Rex server and makes the same shape in GoRex: a
+Rex session becomes a space, a window a tab, and a block a pane. Each pane
+runs `gorex rex-mirror`, which draws what the Rex block shows and sends
+what is typed there to it, so the two show the same program; `--shell`
+runs a shell in each block's directory instead, and `--resize` lets a
+mirror give its Rex block the pane's size.
+
+```sh
+gorex rex-import --session work            # one session, by label or ID
+gorex rex-import                           # every session
+gorex rex-import --shell                   # shells, not mirrors
+```
+
+The Rex server defaults to `$REX_SERVER`, else `rex/server.sock` in the
+platform's data directory; `--rex` names another, or a socket path. What a
+run imported is recorded in `rex-import.json` in GoRex's data directory,
+so a second run leaves those sessions alone. The GoRex window must be
+open: it makes the spaces, tabs and panes.
+
+A mirror is a view with input: what the Rex block shows is drawn from the
+escape sequences Rex renders, since the data stream's snapshot is in
+Ghostty's binary format, which only a Ghostty terminal restores; the
+stream then carries the program's output, and keys go to the block as
+text. Floating layers are not imported, and splits are made beside the
+block before them, as Rex layouts are, so their ratios can differ.
+
 ## rootshell
 
 [rootshell](https://github.com/kitknox/rootshell), on iOS and the Mac,

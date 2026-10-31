@@ -97,6 +97,10 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return runCmd(args, out, errOut)
 	case "action":
 		return actionCmd(args, out, errOut)
+	case "rex-import":
+		return rexImportCmd(args, out, errOut)
+	case "rex-mirror":
+		return rexMirrorCmd(args, out, errOut)
 	}
 	if strings.HasPrefix(name, "-") {
 		return 0, false
@@ -130,6 +134,8 @@ Usage:
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
+  gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--json]
+  gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH]
   gorex version [--json]
 
 Targets: -s SESSION, -w TAB or -b PANE; -b wins, then -w, then -s.

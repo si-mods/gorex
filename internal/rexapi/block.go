@@ -33,6 +33,21 @@ func (c *control) blockMethod(sessionID, blockID, name string, raw json.RawMessa
 			return nil, errInternal("%v", err)
 		}
 		return map[string]any{"bytes_written": len(p.Data)}, nil
+	case "resize":
+		var p struct {
+			Columns int `json:"columns"`
+			Rows    int `json:"rows"`
+		}
+		if apiErr := decode(raw, &p); apiErr != nil {
+			return nil, apiErr
+		}
+		if p.Columns <= 0 || p.Rows <= 0 || p.Columns > 65535 || p.Rows > 65535 {
+			return nil, errBadRequest("a size is 1 to 65535 columns and rows")
+		}
+		if err := c.s.client.Resize(b.SID, p.Columns, p.Rows); err != nil {
+			return nil, errInternal("%v", err)
+		}
+		return map[string]any{}, nil
 	case "size":
 		info := c.info(b)
 		return map[string]any{"columns": info.Cols, "rows": info.Rows, "owner": nil, "desired": []any{}}, nil

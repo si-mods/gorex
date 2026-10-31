@@ -1030,7 +1030,7 @@ func init() {
 			return c.blockMethod(p.SessionID, p.BlockID, p.Method, p.Args)
 		},
 	})
-	for _, name := range []string{"format", "write", "size", "title", "pwd", "process", "reset", "clear"} {
+	for _, name := range []string{"format", "write", "size", "title", "pwd", "process", "reset", "clear", "resize"} {
 		n := name
 		register(&method{
 			name: CreatorName + "." + n,
@@ -1462,6 +1462,7 @@ func terminalAPI() map[string]any {
 		"process": "Get the program running in the foreground.",
 		"reset":   "Reset the terminal.",
 		"clear":   "Clear the terminal's screen.",
+		"resize":  "Give the terminal a size.",
 	}
 	for name, desc := range descs {
 		methods[name] = map[string]any{
@@ -1498,6 +1499,8 @@ func blockMethodDesc(name string) string {
 		return "Reset the terminal."
 	case "clear":
 		return "Clear the terminal's screen."
+	case "resize":
+		return "Give the terminal a size."
 	}
 	return ""
 }
