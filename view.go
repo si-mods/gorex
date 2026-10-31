@@ -488,7 +488,12 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 		// It moves with the cells, but neither opens nor closes.
 		div.Transition(ui.ElementTransition{Animation: tr.Animation, Position: tr.Position, Size: tr.Size, Colors: tr.Colors})
 	}
-	if dx, dy, ok := div.Dragged(); ok {
+	// Held, it drags: the panes follow the pointer at once, and their
+	// terminals take each size. Dragging tells of a Draggable, not of a
+	// press that moves; Pressed, only while the pointer stays over it.
+	dx, dy, held := div.Dragged()
+	if held {
+		a.dividerDrag = true
 		d := dx
 		if n.Vertical {
 			d = dy
@@ -502,10 +507,7 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 		n.Ratio = 0.5
 		a.changed()
 	}
-	if div.Dragging() {
-		a.dividerDrag = true
-	}
-	if div.Hovered() || div.Dragging() || div.Pressed() {
+	if div.Hovered() || held {
 		div.Draw(func(p *ui.Painter, r ui.Rect) {
 			if n.Vertical {
 				p.Fill(ui.Rect{X: r.X + r.W/2 - 18, Y: r.Y + r.H/2 - 1.5, W: 36, H: 3}, k.iconMuted.Alpha(0.6), 1.5)
