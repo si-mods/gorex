@@ -482,7 +482,9 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 					l.tabs = append(l.tabs, w.Tabs...)
 				}
 				for _, t := range l.tabs {
-					namedSIDs(t.Root, l.named)
+					for _, n := range t.Roots() {
+						namedSIDs(n, l.named)
+					}
 				}
 			} else {
 				// Not shared, or not now: each session gets a tab of its
@@ -557,7 +559,7 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 	shown := map[string]bool{}
 	for _, o := range a.peers() {
 		for _, t := range o.tabs {
-			for _, p := range t.panes() {
+			for _, p := range t.allPanes() {
 				if p.host == h {
 					shown[p.SID] = true
 				}
@@ -590,9 +592,6 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 	}
 	added := false
 	for _, t := range l.tabs {
-		if t.Root == nil {
-			continue
-		}
 		if at := a.adoptTab(h, t, free); at != nil {
 			a.tabs = append(a.tabs, at)
 			added = true
@@ -663,12 +662,50 @@ func (a *App) adoptTab(h *hostConn, st savedTab, free map[string]rex.SessionInfo
 		}
 		return node
 	}
-	if t.Root = load(st.Root, nil); t.Root == nil {
-		return nil
+	if st.Root != nil {
+		t.Root = load(st.Root, nil)
+	}
+	tiled := len(named)
+	// The saved float with the focus, by its place among the saved floats:
+	// a float that does not come shifts no index as it does.
+	wanted := -1
+	if st.FocusFloat > 0 {
+		wanted = st.FocusFloat - 1
+	}
+	var focusedFloat *Float
+	for i, sf := range st.Floats {
+		if sf.Pane == nil {
+			continue
+		}
+		n := load(sf.Pane, nil)
+		if n == nil || n.Pane == nil {
+			continue
+		}
+		p := n.Pane
+		f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
+		f.clamp()
+		p.Node = &Node{ID: a.id(), Pane: p}
+		p.float = f
+		t.Floats = append(t.Floats, f)
+		if i == wanted {
+			focusedFloat = f
+		}
+	}
+	named = named[:tiled]
+	if t.Root == nil {
+		if len(t.Floats) == 0 {
+			return nil
+		}
+		// The tab's tiled panes are not here: its topmost float takes
+		// their place, as it does when the last tiled pane closes.
+		a.promoteFloat(t)
 	}
 	ps := t.panes()
 	for _, p := range ps {
 		t.setFocus(p)
+	}
+	for _, f := range t.Floats {
+		t.setFocus(f.Pane)
 	}
 	// The pane the host focuses, or the first when it does not come.
 	focused := ps[0]
@@ -683,6 +720,9 @@ func (a *App) adoptTab(h *hostConn, st savedTab, free map[string]rex.SessionInfo
 	t.setFocus(focused)
 	if st.Zoom && len(ps) > 1 {
 		t.Zoom = t.Focus
+	}
+	if focusedFloat != nil && slices.Contains(t.Floats, focusedFloat) && !focusedFloat.Hidden {
+		t.setFocus(focusedFloat.Pane)
 	}
 	return t
 }
@@ -798,7 +838,7 @@ func (a *App) removeHost(h *hostConn) {
 			o.newTabOn(nil, home)
 		}
 		for _, t := range slices.Clone(o.tabs) {
-			for _, p := range t.panes() {
+			for _, p := range t.allPanes() {
 				if p.host == h {
 					o.dropPane(p, false)
 				}
@@ -854,7 +894,7 @@ func (a *App) reconcileNetwork(n *rex.NetworkStatus) {
 // host is the host of a tab's panes, nil for this machine: a tab's panes
 // are all on one, as splits open on the host of the pane they split.
 func (t *Tab) host() *hostConn {
-	if ps := t.panes(); len(ps) > 0 {
+	if ps := t.allPanes(); len(ps) > 0 {
 		return ps[0].host
 	}
 	return nil

@@ -282,7 +282,7 @@ func (a *App) renameField(c *ui.Context, k *colors, t *Tab, name string) {
 }
 
 func (t *Tab) attention() bool {
-	for _, p := range t.panes() {
+	for _, p := range t.allPanes() {
 		if p.attention {
 			return true
 		}
@@ -294,7 +294,7 @@ func (t *Tab) attention() bool {
 // nil for none.
 func (t *Tab) status() *rex.ProgramStatus {
 	var best *rex.ProgramStatus
-	for _, p := range t.panes() {
+	for _, p := range t.allPanes() {
 		if s := p.status(); s != nil && (best == nil || rex.StatusRank(s.State) > rex.StatusRank(best.State)) {
 			best = s
 		}
@@ -303,7 +303,7 @@ func (t *Tab) status() *rex.ProgramStatus {
 }
 
 func (a *App) tabBusy(c *ui.Context, t *Tab) bool {
-	for _, p := range t.panes() {
+	for _, p := range t.allPanes() {
 		if a.statusOf(c, p) == statusRunning {
 			return true
 		}

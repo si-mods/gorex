@@ -166,7 +166,7 @@ func (a *App) allPanes() []*Pane {
 	var out []*Pane
 	for _, o := range a.peers() {
 		for _, t := range o.tabs {
-			out = append(out, t.panes()...)
+			out = append(out, t.allPanes()...)
 		}
 	}
 	return out

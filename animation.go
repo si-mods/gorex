@@ -17,6 +17,9 @@ var animations = []string{"", "natural", "off"}
 var (
 	snappy  = ui.Animation{Spring: ui.SpringOptions{Duration: 320 * time.Millisecond, Bounce: 0.12}}
 	natural = ui.Animation{Spring: ui.SpringOptions{Duration: 500 * time.Millisecond}}
+	// springBack is how a float let go past the room's edge comes back,
+	// with a bounce one feels.
+	springBack = ui.Animation{Spring: ui.SpringOptions{Duration: 450 * time.Millisecond, Bounce: 0.3}}
 )
 
 // motion is the spring that moves the panes and the sidebar: the user's

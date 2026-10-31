@@ -130,6 +130,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			if i := slices.Index(a.tabs, p.Tab); i >= 0 {
 				a.selectTab(i)
 			}
+			a.revealPane(p)
 			p.Tab.setFocus(p)
 			a.focusReq = p
 		}
@@ -180,7 +181,9 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		}
 		// No window shows the space: end its sessions here, and forget it.
 		for _, t := range w.layout.Tabs {
-			a.killSaved(t.Root)
+			for _, n := range t.Roots() {
+				a.killSaved(n)
+			}
 		}
 		w.layout = savedLayout{}
 		a.st.remove(w)
@@ -202,7 +205,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		return fail("pane_not_found", "no such pane in the GoRex window")
 	}
 	// The window closes with its last tab, which only the desktop closes.
-	last := len(a.tabs) == 1 && (c.Op == "tab.close" || c.Op == "pane.close" && len(p.Tab.panes()) == 1)
+	last := len(a.tabs) == 1 && (c.Op == "tab.close" || c.Op == "pane.close" && len(p.Tab.allPanes()) == 1)
 	if last {
 		return fail("last_tab", "close GoRex's last tab on the desktop")
 	}
@@ -278,6 +281,8 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			res.Reason = "same_pane"
 		case q.Tab != p.Tab:
 			res.Reason = "cross_tab"
+		case q.float != nil || p.float != nil:
+			res.Reason = "not_found"
 		default:
 			a.swapPanes(p, q)
 			res.Changed = true
@@ -303,6 +308,8 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			res.Reason = "zoomed_tab"
 		case p.host != q.host:
 			res.Reason = "not_found"
+		case q.float != nil:
+			res.Reason = "not_found"
 		default:
 			ratio := c.Ratio
 			if ratio <= 0 || ratio > 1 {
@@ -316,10 +323,17 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if i := slices.Index(a.tabs, p.Tab); i >= 0 {
 			a.selectTab(i)
 		}
+		a.revealPane(p)
 		p.Tab.setFocus(p)
 		a.focusReq = p
 		a.changed()
 	case "pane.zoom":
+		if f := p.float; f != nil {
+			on := c.Mode == "on" || c.Mode != "off" && !f.Zoom
+			a.zoom(p, on)
+			res.Zoomed = f.Zoom
+			break
+		}
 		on := c.Mode == "on" || c.Mode != "off" && p.Tab.Zoom == nil
 		a.zoom(p, on)
 		res.Zoomed = p.Tab.Zoom != nil
@@ -412,7 +426,7 @@ func coerceArgs(cmd *command, args map[string]any) map[string]any {
 func (a *App) localTabs() []*Tab {
 	var tabs []*Tab
 	for _, t := range a.tabs {
-		if slices.ContainsFunc(t.panes(), func(p *Pane) bool { return p.host == nil && p.SID != "" && !p.closed }) {
+		if slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.host == nil && p.SID != "" && !p.closed }) {
 			tabs = append(tabs, t)
 		}
 	}
@@ -422,7 +436,7 @@ func (a *App) localTabs() []*Tab {
 // localPane returns the pane of this machine's session sid, nil for none.
 func (a *App) localPane(sid string) *Pane {
 	for _, t := range a.tabs {
-		for _, p := range t.panes() {
+		for _, p := range t.allPanes() {
 			if p.host == nil && sid != "" && p.SID == sid && !p.closed {
 				return p
 			}

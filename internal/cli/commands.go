@@ -97,6 +97,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return runCmd(args, out, errOut)
 	case "action":
 		return actionCmd(args, out, errOut)
+	case "float":
+		return floatCmd(args, out, errOut)
 	case "rex-import":
 		return rexImportCmd(args, out, errOut)
 	case "rex-mirror":
@@ -134,6 +136,7 @@ Usage:
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
+  gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
   gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--json]
   gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH]
   gorex version [--json]
@@ -1242,6 +1245,58 @@ func runCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 	}
 	return in.ExitCode, true
+}
+
+// floatAction maps `gorex float` arguments to those of `gorex action run`:
+// its flags first, then the action its subcommand names, then its
+// KEY=VALUE pairs. ok is false for a subcommand GoRex does not know.
+func floatAction(args []string) (argv []string, ok bool) {
+	var flags, rest []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "-s" || a == "-w" || a == "-b":
+			flags = append(flags, a)
+			if i+1 < len(args) {
+				i++
+				flags = append(flags, args[i])
+			}
+		case strings.HasPrefix(a, "-s=") || strings.HasPrefix(a, "-w=") || strings.HasPrefix(a, "-b="),
+			a == "--json" || a == "-json":
+			flags = append(flags, a)
+		default:
+			rest = append(rest, a)
+		}
+	}
+	sub := ""
+	if len(rest) > 0 && !strings.Contains(rest[0], "=") {
+		sub, rest = rest[0], rest[1:]
+	}
+	id := "pane.float"
+	var pairs []string
+	switch sub {
+	case "":
+	case "new", "toggle", "hide-all", "raise", "lower", "cycle", "move", "resize":
+		id = "float." + strings.ReplaceAll(sub, "-", "_")
+	case "dock":
+		pairs = append(pairs, "mode=off")
+	default:
+		return nil, false
+	}
+	argv = append([]string{"run"}, flags...)
+	argv = append(argv, id)
+	argv = append(argv, pairs...)
+	argv = append(argv, rest...)
+	return argv, true
+}
+
+func floatCmd(args []string, out, errOut io.Writer) (int, bool) {
+	argv, ok := floatAction(args)
+	if !ok {
+		fmt.Fprintln(errOut, "gorex float: use `gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [KEY=VALUE...]`")
+		return ExitUsage, true
+	}
+	return actionCmd(argv, out, errOut)
 }
 
 func actionCmd(args []string, out, errOut io.Writer) (int, bool) {

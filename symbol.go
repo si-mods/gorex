@@ -39,7 +39,7 @@ var sfSymbols = map[string]string{
 	"pencil":                    "pencil",
 	"plus":                      "plus",
 	"plus-minus-circle":         "plusminus.circle",
-	"rows-2":                    "square.split.1x2",
+	"rows-2":                    "rectangle.split.1x2",
 	"search":                    "magnifyingglass",
 	"server":                    "server.rack",
 	"settings-2":                "gearshape",
@@ -50,8 +50,14 @@ var sfSymbols = map[string]string{
 	"terminal":                  "terminal",
 	"trash-2":                   "trash",
 	"x":                         "xmark",
-	"columns-2":                 "square.split.2x1",
+	"columns-2":                 "rectangle.split.2x1",
+	"float":                     "rectangle.on.rectangle",
 }
+
+// naturalGlyphs, while set, draws the SF Symbols at the sizes they have
+// beside each other rather than each filling its box: for a row of
+// buttons that should look as Rex's.
+var naturalGlyphs = false
 
 // glyphIcon draws the icon named name, size DIPs square, in col: an SF
 // Symbol on macOS where one is known and present, else the embedded SVG.
@@ -80,5 +86,5 @@ func symbolFor(name string, size float32, col ui.Color) (ui.ImageSource, bool) {
 		return nil, false
 	}
 	px := int(math.Round(float64(size) * 3))
-	return sfGlyph(sf, px, col)
+	return sfGlyphAt(sf, px, col, naturalGlyphs)
 }

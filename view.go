@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -216,24 +217,31 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	a.contentFocus, a.pageHover = false, nil
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	bounds := room.Bounds()
+	a.floatRoom = bounds
 	tr := a.paneTransition(c, t)
 	room.Children(func() {
 		if t.Zoom != nil {
 			a.paneCell(c, k, t, t.Zoom, whole, bounds, tr)
-			return
+		} else {
+			type split struct {
+				n *Node
+				s share
+			}
+			var splits []split
+			t.Root.shares(whole, func(p *Pane, s share) {
+				a.paneCell(c, k, t, p, s, bounds, tr)
+			}, func(n *Node, s share) {
+				splits = append(splits, split{n, s})
+			})
+			for _, sp := range splits {
+				a.divider(c, k, sp.n, sp.s, bounds, tr)
+			}
 		}
-		type split struct {
-			n *Node
-			s share
-		}
-		var splits []split
-		t.Root.shares(whole, func(p *Pane, s share) {
-			a.paneCell(c, k, t, p, s, bounds, tr)
-		}, func(n *Node, s share) {
-			splits = append(splits, split{n, s})
-		})
-		for _, sp := range splits {
-			a.divider(c, k, sp.n, sp.s, bounds, tr)
+		for _, f := range slices.Clone(t.Floats) {
+			if f.Hidden {
+				continue
+			}
+			a.floatCell(c, k, t, f, bounds)
 		}
 	})
 	// A press on a page gives the page the keyboard, and MyGo clears the
@@ -254,10 +262,12 @@ var whole = share{0, 0, 1, 1}
 
 // The keys of a tab's room, and of the cells and dividers in it.
 type (
-	roomKey    int
-	cellKey    int
-	dividerKey int
-	addressKey int
+	roomKey      int
+	cellKey      int
+	dividerKey   int
+	addressKey   int
+	floatKey     int
+	floatGripKey int
 )
 
 // shares gives each pane of the tree of n, and each split, its share of s.
@@ -325,6 +335,142 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	})
 }
 
+// cardFace is the face of a pane's card, focused or not: the theme's
+// background with the configuration's colors. A float's is opaque, so that
+// the tiled panes under it show through nowhere.
+func cardFace(c *ui.Context, k *colors, focused, float bool) ui.Color {
+	bg := k.card
+	if focused {
+		bg = k.cardFocused
+	}
+	if termOpaque {
+		bg = termLight.Background
+		if c.Theme().Dark {
+			bg = termDark.Background
+		}
+	}
+	if float {
+		bg.A = 255
+	}
+	return bg
+}
+
+// floatCell places a float's pane over the tab's tiled ones, at its box of
+// the room, which is bounds, with a grip that resizes it.
+func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Rect) {
+	p := f.Pane
+	if p == nil {
+		return
+	}
+	// Dragged past the room's edge, the float follows the pointer less and
+	// less, and springs back in once let go.
+	s := share{f.X + rubber(f.overX), f.Y + rubber(f.overY), f.W, f.H}
+	if f.Zoom {
+		s = whole
+	}
+	cell := ui.Column(c.Key(floatKey(p.ID))).Absolute().
+		LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
+		Radius(cardR).Background(cardFace(c, k, t.Focus == p, true))
+	// Under the pointer it moves as it does; else, as it springs back, is
+	// nudged by the keys or zooms, it eases there.
+	if anim := motion(c); anim != nil && !f.dragging {
+		if anim == &snappy {
+			anim = &springBack
+		}
+		cell.Transition(ui.ElementTransition{Animation: anim, Position: true, Size: true})
+	}
+	// Shadows as of a sheet lifted off the panes: a tight one where it
+	// nearly touches them, a soft one under it, and a wide one of the
+	// light around; deeper while it has the focus.
+	lift := float32(1)
+	if t.Focus == p {
+		lift = 1.35
+	}
+	// Over light cards a soft tinted shadow lifts it; over dark ones, as
+	// terminals mostly are, it takes a deep black one to show at all.
+	ink := ui.RGBA(40, 30, 40, 1)
+	alpha := [3]float32{0.10, 0.14, 0.16}
+	if face := cardFace(c, k, false, true); c.Theme().Dark || int(face.R)+int(face.G)+int(face.B) < 3*110 {
+		ink = ui.RGBA(0, 0, 0, 1)
+		alpha = [3]float32{0.55, 0.5, 0.55}
+	}
+	cell.Shadow(0, 1, 3, 0, ink.Alpha(min(alpha[0]*lift, 1))).
+		Shadow(0, 12*lift, 32*lift, -4, ink.Alpha(min(alpha[1]*lift, 1))).
+		Shadow(0, 30*lift, 80*lift, -10, ink.Alpha(min(alpha[2]*lift, 1)))
+	p.bounds = ui.Rect{
+		X: bounds.X + s.x*bounds.W,
+		Y: bounds.Y + s.y*bounds.H,
+		W: s.w * bounds.W,
+		H: s.h * bounds.H,
+	}
+	// While the pointer resizes it or it eases to a new size, the terminal
+	// keeps the size it rested at, and the program hears of the new one
+	// once: else a shell redraws its prompt at every step, over itself.
+	held := f.dragging || cell.Transitioning()
+	cell.Children(func() {
+		a.paneCard(c, k, t, p, held).Grow(1)
+		if f.Zoom {
+			return
+		}
+		// Every edge and corner resizes it, on a band astride the edge.
+		for _, e := range floatEdges {
+			a.floatEdge(c, k, f, p, e, bounds)
+		}
+	})
+}
+
+// A float's edges, as the sides of its box a drag of each moves.
+const (
+	edgeLeft = 1 << iota
+	edgeRight
+	edgeTop
+	edgeBottom
+)
+
+// floatEdges are the handles of a float's sides, then of its corners,
+// which lie over them.
+var floatEdges = []int{
+	edgeLeft, edgeRight, edgeTop, edgeBottom,
+	edgeLeft | edgeTop, edgeRight | edgeTop, edgeLeft | edgeBottom, edgeRight | edgeBottom,
+}
+
+// floatEdge is the handle of edges e of float f: dragging it moves those
+// sides of its box, the others staying put.
+func (a *App) floatEdge(c *ui.Context, k *colors, f *Float, p *Pane, e int, bounds ui.Rect) {
+	const band, corner = 8, 16
+	h := ui.Box(c.Key(floatGripKey(p.ID*16 + e))).Absolute()
+	switch {
+	case e&(edgeLeft|edgeRight) != 0 && e&(edgeTop|edgeBottom) != 0:
+		h.Size(corner, corner)
+		cur := ui.CursorResizeNWSE
+		if e == edgeRight|edgeTop || e == edgeLeft|edgeBottom {
+			cur = ui.CursorResizeNESW
+		}
+		h.Cursor(cur)
+	case e&(edgeLeft|edgeRight) != 0:
+		h.Width(band).TopPercent(0).HeightPercent(100).Cursor(ui.CursorResizeEW)
+	default:
+		h.Height(band).LeftPercent(0).WidthPercent(100).Cursor(ui.CursorResizeNS)
+	}
+	if e&edgeLeft != 0 {
+		h.Left(-band / 2)
+	}
+	if e&edgeRight != 0 {
+		h.Right(-band / 2)
+	}
+	if e&edgeTop != 0 {
+		h.Top(-band / 2)
+	}
+	if e&edgeBottom != 0 {
+		h.Bottom(-band / 2)
+	}
+	if dx, dy, ok := h.Dragged(); ok && bounds.W > 0 && bounds.H > 0 {
+		f.resizeEdges(e, dx/bounds.W, dy/bounds.H)
+		a.changed()
+	}
+	f.dragging = f.dragging || h.Dragging()
+}
+
 // divider is the edge between the two sides of split n, in its share s of
 // the tab's room, which is bounds: dragging it moves the split's ratio.
 func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect, tr *ui.ElementTransition) {
@@ -383,16 +529,19 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	// background, under its header too.
 	hk := k
 	if termOpaque {
-		th := termLight
-		if c.Theme().Dark {
-			th = termDark
-		}
-		bg = th.Background
-		hk = headerColors(k, bg)
+		hk = headerColors(k, cardFace(c, k, focused, false))
 	}
-	card.Background(bg).Border(1, border).
-		Shadow(0, 1, 2, 0, shadow).
-		Shadow(0, 6, 22, -2, shadow)
+	// The card and its float's cell take one face: the cell's, of another
+	// color, would show at the card's rounded corners.
+	bg = cardFace(c, k, focused, p.float != nil)
+	card.Background(bg)
+	// A float has no edge drawn: the shadows of its cell lift it over the
+	// tiled panes.
+	if p.float == nil {
+		card.Border(1, border).
+			Shadow(0, 1, 2, 0, shadow).
+			Shadow(0, 6, 22, -2, shadow)
+	}
 	if fadeColors {
 		card.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
 	}
@@ -403,6 +552,8 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 		// way to its pages.
 		if paneHeaders() || p.browser != nil {
 			a.paneHeader(c, hk, t, p, focused, hovered)
+		} else if p.float != nil {
+			a.floatHandle(c, hk, t, p, p.float)
 		} else {
 			top = 6
 		}
@@ -460,9 +611,14 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	if _, over := ui.DragOver[*Pane](card); over {
 		card.Border(1.5, k.busy.Alpha(0.6))
 	}
-	if card.Pressed() && t.Focus != p {
-		t.setFocus(p)
-		a.focusReq = p
+	if card.Pressed() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
+		if t.Focus != p {
+			t.setFocus(p)
+			a.focusReq = p
+		}
 	}
 	return card
 }
@@ -531,12 +687,22 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	prog := p.program()
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
-	h.Drag(p)
+	if f := p.float; f != nil {
+		a.dragFloat(f, h)
+	} else {
+		h.Drag(p)
+	}
 	if h.DoubleClicked() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
 		t.setFocus(p)
 		a.toggleZoom()
 	}
 	if h.Clicked() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
 		t.setFocus(p)
 		a.focusReq = p
 	}
@@ -553,6 +719,32 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	})
 }
 
+// floatHandle is the row a float keeps when pane headers are off: a grip
+// that moves it, and its zoom and close buttons.
+func (a *App) floatHandle(c *ui.Context, k *colors, t *Tab, p *Pane, f *Float) {
+	h := ui.Row(c).Height(14).Shrink(0).Padding(0, 3, 0, 6).AlignItems(ui.Center).Cursor(ui.CursorMove)
+	a.dragFloat(f, h)
+	if h.Pressed() {
+		a.raiseFloat(f)
+		t.setFocus(p)
+		a.focusReq = p
+	}
+	h.Children(func() {
+		ui.Spacer(c)
+		zoom, label := "maximize-2", locales.PaneZoom()
+		if f.Zoom {
+			zoom, label = "minimize-2", locales.PaneUnzoom()
+		}
+		if iconButton(c, k, zoom, label, 18, 12).Tooltip(label).Clicked() {
+			t.setFocus(p)
+			a.toggleZoom()
+		}
+		if iconButton(c, k, "x", locales.CmdClosePane(), 18, 11).Tooltip(locales.CmdClosePane()).Clicked() {
+			a.later(c, func() { a.closePane(p) })
+		}
+	})
+}
+
 // paneMenu is the menu of a pane's header: renaming it, and moving it to
 // another tab or window.
 func (a *App) paneMenu(m *ui.Menu, p *Pane) {
@@ -562,6 +754,15 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 	if p.Name != "" && m.Item(locales.PaneResetName()).Chosen() {
 		p.Name = ""
 		a.changed()
+	}
+	if p.float != nil {
+		if m.Item(locales.CmdDockPane()).Chosen() {
+			a.dockPane(p)
+		}
+	} else if t := p.Tab; t != nil && len(t.panes()) > 1 {
+		if m.Item(locales.CmdFloatPane()).Chosen() {
+			a.floatPane(p)
+		}
 	}
 	if len(a.tabs) > 1 {
 		m.Separator()
@@ -603,26 +804,38 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		if !show {
 			return
 		}
-		if iconButton(c, k, "columns-2", locales.CmdSplitRight(), 26, 16).Tooltip(tip(locales.CmdSplitRight(), &cmdSplitRight)).Clicked() {
-			t.setFocus(p)
-			a.split(false)
-		}
-		if iconButton(c, k, "rows-2", locales.CmdSplitDown(), 26, 16).Tooltip(tip(locales.CmdSplitDown(), &cmdSplitDown)).Clicked() {
-			t.setFocus(p)
-			a.split(true)
-		}
-		if len(t.panes()) > 1 && iconButton(c, k, "square-arrow-out-up-right", locales.CmdPaneToNewTab(), 26, 16).Tooltip(tip(locales.CmdPaneToNewTab(), &cmdPaneToNewTab)).Clicked() {
-			a.later(c, func() { a.movePaneToNewTab(p, "") })
+		// The symbols keep the sizes they have beside each other, as Rex
+		// draws them, rather than each filling its button.
+		naturalGlyphs = true
+		defer func() { naturalGlyphs = false }()
+		// As Rex has them: split right, split down, float, zoom and close.
+		// A float's float button, lit, docks it.
+		if f := p.float; f != nil {
+			if iconButtonWith(c, k, "float", locales.CmdDockPane(), 26, 16, true, nil).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
+				a.later(c, func() { a.dockPane(p) })
+			}
+		} else {
+			if iconButton(c, k, "columns-2", locales.CmdSplitRight(), 26, 16).Tooltip(tip(locales.CmdSplitRight(), &cmdSplitRight)).Clicked() {
+				t.setFocus(p)
+				a.split(false)
+			}
+			if iconButton(c, k, "rows-2", locales.CmdSplitDown(), 26, 16).Tooltip(tip(locales.CmdSplitDown(), &cmdSplitDown)).Clicked() {
+				t.setFocus(p)
+				a.split(true)
+			}
+			if len(t.panes()) > 1 && iconButton(c, k, "float", locales.CmdFloatPane(), 26, 16).Tooltip(tip(locales.CmdFloatPane(), &cmdFloatPane)).Clicked() {
+				a.later(c, func() { a.floatPane(p) })
+			}
 		}
 		zoom, label := "maximize-2", locales.PaneZoom()
-		if t.Zoom == p {
+		if t.Zoom == p || p.float != nil && p.float.Zoom {
 			zoom, label = "minimize-2", locales.PaneUnzoom()
 		}
 		if iconButton(c, k, zoom, locales.PaneZoom(), 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
 			t.setFocus(p)
 			a.toggleZoom()
 		}
-		if iconButton(c, k, "x", locales.CmdClosePane(), 26, 17).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
+		if iconButton(c, k, "x", locales.CmdClosePane(), 26, 16).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
 			a.later(c, func() { a.closePane(p) })
 		}
 	})
@@ -634,12 +847,22 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 	b := p.browser
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 8).Gap(4).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
-	h.Drag(p)
+	if f := p.float; f != nil {
+		a.dragFloat(f, h)
+	} else {
+		h.Drag(p)
+	}
 	if h.DoubleClicked() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
 		t.setFocus(p)
 		a.toggleZoom()
 	}
 	if h.Clicked() {
+		if f := p.float; f != nil {
+			a.raiseFloat(f)
+		}
 		t.setFocus(p)
 		a.focusReq = p
 	}
@@ -924,4 +1147,31 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 			})
 		})
 	})
+}
+
+// dragFloat moves float f as its handle h is dragged, and lets it spring
+// back inside the room once the drag ends.
+func (a *App) dragFloat(f *Float, h ui.Element) {
+	if dx, dy, ok := h.Dragged(); ok {
+		f.dragging = true
+		a.moveFloatPx(f, dx, dy, a.floatRoom)
+	}
+	if f.dragging && !h.Dragging() {
+		f.dragging, f.overX, f.overY = false, 0, 0
+	}
+}
+
+// rubber is how far a float shows past the room's edge, dragged d past it:
+// half as far at first, less and less as d grows, as a scroll view's
+// rubber band.
+func rubber(d float32) float32 {
+	const most, give = 0.6, 0.55
+	if d == 0 {
+		return 0
+	}
+	m := most * (1 - 1/(abs(d)*give/most+1))
+	if d < 0 {
+		return -m
+	}
+	return m
 }

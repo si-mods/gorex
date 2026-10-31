@@ -32,6 +32,38 @@ type Tab struct {
 	Root  *Node  `json:"root"`
 	Focus int    `json:"focus"`
 	Zoom  bool   `json:"zoom,omitempty"`
+	// Floats are the panes that float over the tab's tiled ones, the lowest
+	// first. FocusFloat is the focused one's place in it, from 1; 0 when the
+	// focus is on a tiled pane, which Focus names.
+	Floats     []Float `json:"floats,omitempty"`
+	FocusFloat int     `json:"focusFloat,omitempty"`
+}
+
+// Float is a pane over a tab's tiled panes: Pane is a leaf, and X, Y, W, H
+// are its box as fractions of the tab's room, spanning [X, X+W) and [Y, Y+H).
+type Float struct {
+	Pane   *Node   `json:"pane"`
+	X      float32 `json:"x"`
+	Y      float32 `json:"y"`
+	W      float32 `json:"w"`
+	H      float32 `json:"h"`
+	Hidden bool    `json:"hidden,omitempty"`
+	Zoom   bool    `json:"zoom,omitempty"`
+}
+
+// Roots are the tab's tree and its floats' panes, which every walk over
+// the tab's sessions goes through.
+func (t Tab) Roots() []*Node {
+	roots := make([]*Node, 0, 1+len(t.Floats))
+	if t.Root != nil {
+		roots = append(roots, t.Root)
+	}
+	for _, f := range t.Floats {
+		if f.Pane != nil {
+			roots = append(roots, f.Pane)
+		}
+	}
+	return roots
 }
 
 // Node is a pane, of session SID, or a split: Vertical stacks A above B,

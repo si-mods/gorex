@@ -362,7 +362,7 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 	}
 	n := 0
 	for _, t := range a.tabs {
-		n += len(t.panes())
+		n += len(t.allPanes())
 	}
 	name := a.ws.Name
 	was := a.wsConfirm

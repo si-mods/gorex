@@ -46,7 +46,7 @@ func (st *store) status(w *Workspace) *rex.ProgramStatus {
 	if w.app != nil {
 		var all []rex.ProgramStatus
 		for _, t := range w.app.tabs {
-			for _, p := range t.panes() {
+			for _, p := range t.allPanes() {
 				if s := p.status(); s != nil {
 					all = append(all, *s)
 				}
@@ -56,7 +56,9 @@ func (st *store) status(w *Workspace) *rex.ProgramStatus {
 	}
 	var sids []string
 	for _, t := range w.layout.Tabs {
-		savedSIDs(t.Root, &sids)
+		for _, n := range t.Roots() {
+			savedSIDs(n, &sids)
+		}
 	}
 	var best *rex.ProgramStatus
 	for _, sid := range sids {
@@ -349,7 +351,9 @@ func (st *store) namedSIDs(w *Workspace) map[string]bool {
 			tabs = o.app.snapshot().Tabs
 		}
 		for _, t := range tabs {
-			walk(t.Root)
+			for _, n := range t.Roots() {
+				walk(n)
+			}
 		}
 	}
 	return out
@@ -373,7 +377,9 @@ func (st *store) hostSIDs(h *hostConn) map[string]bool {
 	for _, w := range st.workspaces {
 		if w.app == nil {
 			for _, t := range w.layout.Tabs {
-				walk(t.Root)
+				for _, n := range t.Roots() {
+					walk(n)
+				}
 			}
 		}
 	}
@@ -812,7 +818,7 @@ func (a *App) detach() {
 		w.app = nil
 	}
 	for _, t := range a.tabs {
-		for _, p := range t.panes() {
+		for _, p := range t.allPanes() {
 			p.closed = true
 			if p.term != nil {
 				p.term.Close()
@@ -916,7 +922,7 @@ func (a *App) closeWorkspace() {
 		return
 	}
 	for _, t := range a.tabs {
-		for _, p := range t.panes() {
+		for _, p := range t.allPanes() {
 			p.closed = true
 			if p.term != nil {
 				p.term.Close()
@@ -963,7 +969,7 @@ func (a *App) moveTabToNewWindow(t *Tab) {
 		return
 	}
 	l := savedLayout{Tabs: []savedTab{a.savedTab(t)}}
-	for _, p := range t.panes() {
+	for _, p := range t.allPanes() {
 		p.closed = true
 		if p.term != nil {
 			p.term.Close()

@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"gorex/internal/rex"
-	"gorex/internal/testrex"
 	"gorex/internal/reximp"
 	"gorex/internal/rexpeer"
+	"gorex/internal/testrex"
 )
 
 // TestRexImportCreatesSpaces imports a Rex session into the app: a space,

@@ -231,7 +231,7 @@ func (a *App) panesDump() debugPanes {
 		for i, t := range a.tabs {
 			name, detail := t.label()
 			title := strings.TrimSpace(name + " " + detail)
-			for _, p := range t.panes() {
+			for _, p := range t.allPanes() {
 				refs = append(refs, paneRef{i + 1, title, p, p.term})
 			}
 		}
@@ -469,7 +469,7 @@ func (a *App) debug(dir, line string) {
 		case "focus":
 			win.Update(func() {
 				if t := a.tab(); t != nil {
-					if ps := t.panes(); atoi(arg)-1 < len(ps) {
+					if ps := t.allPanes(); atoi(arg)-1 < len(ps) {
 						t.setFocus(ps[atoi(arg)-1])
 						a.focusReq = t.Focus
 					}

@@ -44,6 +44,7 @@ gorex remote status [--json] | remote control on|off
 gorex server restart
 gorex config path | config check [FILE] | config reload
 gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
+gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
 gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--resize] [--json]
 gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH] [--resize]
 gorex version [--json]
@@ -103,6 +104,9 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   recorded yet.
 - `action run` runs a built-in action by its ID, through the window.
   Values after the action are strings; the CLI does not guess types.
+- `float` floats or docks panes through the window: `new` opens a floating
+  terminal, `dock` puts the focused float back among the tiled panes, and
+  the other subcommands name the `float.*` actions.
 
 Exit codes: 0 ok, 1 failed, 2 usage, 3 no such session or target, 4
 server unreachable. A signal exits 130. `run` and `wait --exit` return the
