@@ -77,9 +77,12 @@ type session struct {
 	code   int
 	// screen and title are what the session showed as it exited, its
 	// emulator closed; ghostty is that screen in Ghostty's binary
-	// snapshot format, which an attach asking for one sends.
+	// snapshot format, which an attach asking for one sends; text is the
+	// same screen as plain text, for a block query after the program
+	// ended.
 	screen     []byte
 	ghostty    []byte
+	text       string
 	title      string
 	cols, rows int
 	done       chan struct{}
@@ -282,6 +285,7 @@ func (s *session) run(wait func() int) {
 		// When it cannot be taken, the escape sequences stay the only form
 		// the session's screen survives in.
 		s.ghostty, _ = s.vt.GhosttySnapshot()
+		s.text = s.vt.Text()
 		s.title = s.vt.Title()
 		s.exited = true
 		s.clearPendingResizeLocked()
@@ -1330,6 +1334,7 @@ func (s *session) foreground(in *SessionInfo) {
 	if fg <= 0 {
 		fg = in.PID
 	}
+	in.Foreground = fg
 	in.Idle = fg == in.PID
 	p := inspect(fg)
 	in.Program, in.Args, in.Dir = p.programName(), p.args, p.dir

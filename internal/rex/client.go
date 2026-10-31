@@ -553,6 +553,56 @@ func (c *Client) Input(sid string, b []byte) error {
 	return c.call(Request{Op: "input", SID: sid, Bytes: b}, nil)
 }
 
+// SendKey types a key event into the session's program, encoded as the
+// program's modes ask.
+func (c *Client) SendKey(sid string, k KeyInput) error {
+	return c.call(Request{Op: "key", SID: sid, Key: &k}, nil)
+}
+
+// SendMouse sends a pointer event to the session's program, encoded as
+// its mouse modes ask.
+func (c *Client) SendMouse(sid string, m MouseInput) error {
+	return c.call(Request{Op: "mouse", SID: sid, Mouse: &m}, nil)
+}
+
+// SendFocus tells the session's program its window gained or lost the
+// focus, when it asked for focus reports.
+func (c *Client) SendFocus(sid string, in bool) error {
+	return c.call(Request{Op: "focusReport", SID: sid, FocusReport: &in}, nil)
+}
+
+// Modes returns the modes the session's program set, and the screen it
+// shows.
+func (c *Client) Modes(sid string) (m ModeStatus, err error) {
+	err = c.call(Request{Op: "modes", SID: sid}, &m)
+	return
+}
+
+// Format returns the session's screen as text, or as the escape
+// sequences that redraw it.
+func (c *Client) Format(sid, kind string) (f FormatResult, err error) {
+	err = c.call(Request{Op: "format", SID: sid, Format: &FormatOptions{Kind: kind}}, &f)
+	return
+}
+
+// InputMode reports how the session's terminal handles typed input.
+func (c *Client) InputMode(sid string) (m InputMode, err error) {
+	err = c.call(Request{Op: "inputMode", SID: sid}, &m)
+	return
+}
+
+// ClearScreen clears the session's scrollback and the screen above the
+// cursor's line, unless a full-screen program shows.
+func (c *Client) ClearScreen(sid string) error {
+	return c.call(Request{Op: "clear", SID: sid}, nil)
+}
+
+// ResetTerminal puts the session's terminal back to its starting state,
+// clearing the screen and scrollback.
+func (c *Client) ResetTerminal(sid string) error {
+	return c.call(Request{Op: "reset", SID: sid}, nil)
+}
+
 // pasteChunk bounds one "paste" request: a control connection's line
 // holds maxLine, which a string may take six times over as JSON escapes
 // it, and a paste of a larger text goes as several.
