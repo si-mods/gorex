@@ -161,7 +161,14 @@ func rasterize(name string, px int) (*image.RGBA, bool) {
 	const inset = 0.85
 	scale := math.Min(inset*float64(px)/float64(gw), inset*float64(px)/float64(gh))
 	dw, dh := float64(gw)*scale, float64(gh)*scale
-	cg.draw(dctx, cgRect{X: (float64(px) - dw) / 2, Y: (float64(px) - dh) / 2, W: dw, H: dh}, uintptr(cgImage))
+	// The image holds the glyph inside alignment margins: scale the whole
+	// image so that the glyph, and not the margins, fills the box.
+	cg.draw(dctx, cgRect{
+		X: (float64(px)-dw)/2 - float64(minX)*scale,
+		Y: (float64(px)-dh)/2 - float64(minY)*scale,
+		W: float64(w) * scale,
+		H: float64(h) * scale,
+	}, uintptr(cgImage))
 	runtime.KeepAlive(src)
 
 	out := image.NewRGBA(image.Rect(0, 0, px, px))

@@ -39,7 +39,7 @@ var sfSymbols = map[string]string{
 	"pencil":                    "pencil",
 	"plus":                      "plus",
 	"plus-minus-circle":         "plusminus.circle",
-	"rows-2":                    "rectangle.split.1x2",
+	"rows-2":                    "square.split.1x2",
 	"search":                    "magnifyingglass",
 	"server":                    "server.rack",
 	"settings-2":                "gearshape",
@@ -50,7 +50,7 @@ var sfSymbols = map[string]string{
 	"terminal":                  "terminal",
 	"trash-2":                   "trash",
 	"x":                         "xmark",
-	"columns-2":                 "rectangle.split.2x1",
+	"columns-2":                 "square.split.2x1",
 }
 
 // glyphIcon draws the icon named name, size DIPs square, in col: an SF

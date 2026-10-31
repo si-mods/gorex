@@ -3,6 +3,7 @@
 package main
 
 import (
+	"image"
 	"strings"
 	"testing"
 
@@ -66,4 +67,39 @@ func TestSFSymbolNames(t *testing.T) {
 			t.Fatalf("%s: no symbol", name)
 		}
 	}
+}
+
+// TestSFSymbolFillsItsBox checks that a symbol's ink fills the box rather
+// than the alignment margins of the image it comes in, and that it sits
+// centered in it.
+func TestSFSymbolFillsItsBox(t *testing.T) {
+	for _, name := range []string{"xmark", "gearshape", "rectangle.split.2x1", "chevron.down"} {
+		coverage, ok := rasterize(name, 48)
+		if !ok {
+			t.Fatalf("%s drew nothing", name)
+		}
+		b := inkOf(coverage)
+		if big := max(b.Dx(), b.Dy()); big < 40 || big > 44 {
+			t.Fatalf("%s: ink is %dx%d, want about 41x41 in a 48 box", name, b.Dx(), b.Dy())
+		}
+		cx, cy := (b.Min.X+b.Max.X)/2, (b.Min.Y+b.Max.Y)/2
+		if max(cx-24, 24-cx) > 2 || max(cy-24, 24-cy) > 2 {
+			t.Fatalf("%s: ink centered at %d,%d, want 24,24", name, cx, cy)
+		}
+	}
+}
+
+// inkOf returns the box of the lit pixels of coverage.
+func inkOf(coverage *image.RGBA) image.Rectangle {
+	w, h := coverage.Rect.Dx(), coverage.Rect.Dy()
+	minX, minY, maxX, maxY := w, h, -1, -1
+	for y := range h {
+		for x := range w {
+			if coverage.Pix[y*coverage.Stride+x*4+3] != 0 {
+				minX, maxX = min(minX, x), max(maxX, x)
+				minY, maxY = min(minY, y), max(maxY, y)
+			}
+		}
+	}
+	return image.Rect(minX, minY, maxX+1, maxY+1)
 }
