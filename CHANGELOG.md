@@ -1,16 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.3.5
 
-- A title a program heads with an icon, as omp names its sessions with a
-  Nerd Font glyph, shows the icon rather than a box: a tab's label, in the
-  title bar and the sidebar, a pane's header and the palette's rows draw
-  the private use glyphs of a title in the terminals' font, where alone
-  they have glyphs, and the rest in the window's.
-- A font family the app's configuration names but macOS does not list
-  draws again, with the icons its Nerd Font patch adds: GoRex reads the
-  family's files in the font directories and registers them, as Ghostty
-  does, where the system leaves a quarantined download inactive.
+### Features
+
+* **pane:** float panes over a tab's tiled layout ([#113](https://github.com/si-mods/gorex/pull/113))
+
+### Bug Fixes
+
+* **fonts:** draw a title's Nerd Font icons, and register a family macOS hides ([#116](https://github.com/si-mods/gorex/pull/116))
+* **pane:** resize terminals live while dragging a divider ([#121](https://github.com/si-mods/gorex/pull/121))
+* **remote:** open a host's new split panes in the tab already adopted ([#120](https://github.com/si-mods/gorex/pull/120))
+* **sidebar:** drop the host chip beside a hidden sidebar ([#119](https://github.com/si-mods/gorex/pull/119))
+* **tabs:** keep a faded tab label inside its row ([#115](https://github.com/si-mods/gorex/pull/115))
 
 ## 0.3.4
 
