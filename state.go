@@ -496,6 +496,17 @@ func (t *Tab) setFocus(p *Pane) {
 	t.recent = append(t.recent, p)
 }
 
+// recentBehind puts p in t.recent just before the focus, as the pane that
+// had the focus before it; the focus stays.
+func (t *Tab) recentBehind(p *Pane) {
+	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
+	i := slices.Index(t.recent, t.Focus)
+	if i < 0 {
+		i = len(t.recent)
+	}
+	t.recent = slices.Insert(t.recent, i, p)
+}
+
 // clientOf returns the client of a host's server, this machine's for
 // nil; nil while the host is not connected.
 func (a *App) clientOf(h *hostConn) *rex.Client {
@@ -1079,13 +1090,7 @@ func (a *App) splitWith(old, p *Pane, vertical bool) {
 			return
 		}
 	}
-	t.Zoom = nil
-	n := old.Node
-	p.Tab = t
-	left := &Node{ID: a.id(), Pane: old, Parent: n}
-	right := &Node{ID: a.id(), Pane: p, Parent: n}
-	old.Node, p.Node = left, right
-	n.Pane, n.A, n.B, n.Vertical, n.Ratio = nil, left, right, vertical, 0.5
+	a.splitNode(t, old.Node, p, true, vertical, 0.5)
 	t.setFocus(p)
 	a.changed()
 }
@@ -2029,6 +2034,7 @@ func (t *Tab) label() (name, detail string) {
 type savedLayout = layout.Layout
 type savedTab = layout.Tab
 type savedNode = layout.Node
+type savedFloat = layout.Float
 
 func (a *App) snapshot() savedLayout {
 	l := savedLayout{Active: a.active, Tabs: []savedTab{}}
