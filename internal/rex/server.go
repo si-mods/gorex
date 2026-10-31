@@ -833,6 +833,69 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			return nil, err
 		}
 		return nil, ss.inputProgram(req.Bytes)
+	case "key":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		if req.Key == nil {
+			return nil, ErrBadInput
+		}
+		return nil, ss.Key(*req.Key)
+	case "mouse":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		if req.Mouse == nil {
+			return nil, ErrBadInput
+		}
+		return nil, ss.Mouse(*req.Mouse)
+	case "focusReport":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		if req.FocusReport == nil {
+			return nil, ErrBadInput
+		}
+		return nil, ss.FocusReport(*req.FocusReport)
+	case "modes":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		return ss.Modes(), nil
+	case "format":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		o := FormatOptions{}
+		if req.Format != nil {
+			o = *req.Format
+		}
+		return ss.Format(o)
+	case "inputMode":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		return ss.InputMode()
+	case "clear":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		ss.ClearScreen()
+		return nil, nil
+	case "reset":
+		ss, err := s.use(req.SID, peer)
+		if err != nil {
+			return nil, err
+		}
+		ss.ResetTerminal()
+		return nil, nil
 	case "paste":
 		ss, err := s.use(req.SID, peer)
 		if err != nil {

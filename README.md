@@ -402,6 +402,16 @@ already open. The layout stays the desktop's: rootshell shows it, and
 changes it through the GoRex window. Setup on macOS and Windows hosts, the steps in
 rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 
+## Rex's iPhone app
+
+Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
+server: `GoRex rexapi` serves Rex's API (revision 7) from the server the
+app runs, on the tailnet through a Tailscale device of its own. A space is
+a Rex session, a tab a window, a pane a block, and a floating pane a
+floating layer; terminals stream as Ghostty snapshots, as Rex's do. Setup,
+pairing, what differs from a Rex server, and troubleshooting:
+[docs/rex-api.md](docs/rex-api.md).
+
 ## Develop and build
 
 GoRex needs [Go](https://go.dev/dl/) 1.27+ and MyGo 0.7.2, whose CLI
@@ -490,6 +500,7 @@ image reaches a program as a file it opens, not as clipboard data.
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 | `internal/control`, `tools/rootshell` | `GoRex control`, the bridge rootshell drives as herdr, and the `herdr` shim that runs it |
+| `internal/rexapi` | `GoRex rexapi`, the gateway that serves Rex's API to Rex clients from the server the app runs |
 | `internal/rexpeer`, `internal/reximp` | Rex's API as a client, and importing a Rex session into GoRex as spaces, tabs and panes that mirror its blocks |
 | `internal/testrex` | a Rex server for tests, over GoRex's own session server, so the client and the importer have one to talk to |
 

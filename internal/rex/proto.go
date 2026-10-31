@@ -30,16 +30,44 @@ import (
 // Version 3 adds capabilities in Hello, layout revisions ("getLayoutState",
 // Request.LayoutRevision, Response.Revision) and revisions on events. It
 // only adds: a version 2 client gets the same answers, with fields it
-// ignores.
+// ignores. Still within 3, the capability "snapshot.ghostty" (see
+// Attach.Snapshot and SnapshotHeader.Format): a client that does not ask
+// attaches to the VT snapshot as before. Still within 3, the capability
+// "input.events": "key", "mouse" and "focusReport", which encode a
+// client's input as the program's modes ask (KeyInput, MouseInput), and
+// the capability "terminal.query": "modes", "format", "inputMode",
+// "clear" and "reset", which report on and change a session's terminal
+// (ModeStatus, FormatResult, InputMode), and SessionInfo.Foreground, the
+// foreground process's ID.
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
 // the next starts the sessions of its layout again — says it does.
 const CapabilityShutdownRestart = "shutdown.restart"
 
+// CapabilitySnapshotGhostty is what a server that takes a session's screen
+// as Ghostty's binary snapshot says it does: Attach.Snapshot "ghostty",
+// and SnapshotHeader.Format "ghostty" in the header of a framed attach.
+const CapabilitySnapshotGhostty = "snapshot.ghostty"
+
+// SnapshotGhostty is Attach.Snapshot's value, and SnapshotHeader.Format's,
+// for a screen as Ghostty's binary snapshot ("GHOSTSNP") rather than as
+// the escape sequences that replay it.
+const SnapshotGhostty = "ghostty"
+
+// CapabilityInputEvents is what a server that encodes a client's input
+// events for the program, as the program's modes ask, says it does: the
+// "key", "mouse" and "focusReport" ops.
+const CapabilityInputEvents = "input.events"
+
+// CapabilityTerminalQuery is what a server that reports on and changes a
+// session's terminal says it does: the "modes", "format", "inputMode",
+// "clear" and "reset" ops.
+const CapabilityTerminalQuery = "terminal.query"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -99,6 +127,17 @@ type Request struct {
 	// Command is the layout command of "command", and the app's answer of
 	// "command.done".
 	Command *LayoutCommand `json:"command,omitempty"`
+	// Key is the key event of "key", a client's input for the program,
+	// encoded as the program's modes ask (CapabilityInputEvents).
+	Key *KeyInput `json:"key,omitempty"`
+	// Mouse is the pointer event of "mouse", and of the wheel.
+	Mouse *MouseInput `json:"mouse,omitempty"`
+	// FocusReport is the "focusReport" op's payload: true for the
+	// terminal's window gaining the focus, false for losing it.
+	FocusReport *bool `json:"focusReport,omitempty"`
+	// Format is what "format" shows of the session's terminal
+	// (CapabilityTerminalQuery).
+	Format *FormatOptions `json:"format,omitempty"`
 }
 
 // CommandTimeout is how long the server waits for the app to make a
@@ -200,6 +239,90 @@ type CaptureResult struct {
 	Cols      int    `json:"cols"`
 	Rows      int    `json:"rows"`
 	Truncated bool   `json:"truncated,omitempty"`
+}
+
+// KeyInput is a key event of "key", as a client sends it: the physical
+// key by its W3C KeyboardEvent.code ("KeyA", "ArrowUp"), what happened to
+// it, the modifiers held and those that made its text, the text typed,
+// the code point the key types without shift, and whether an input
+// method is composing. The server encodes it for the program as the
+// program's modes ask (terminal.Terminal.EncodeKey).
+type KeyInput struct {
+	Key string `json:"key"`
+	// Action is "press", "release" or "repeat"; "" is "press".
+	Action string `json:"action,omitempty"`
+	// Mods and Consumed are the modifiers, joined with "+": shift, ctrl,
+	// alt, super, caps_lock, num_lock, shift_side, ctrl_side, alt_side,
+	// super_side.
+	Mods     string `json:"mods,omitempty"`
+	Consumed string `json:"consumed,omitempty"`
+	Text     string `json:"text,omitempty"`
+	// Unshifted is the code point the key types without modifiers, 0 for
+	// none.
+	Unshifted int  `json:"unshifted,omitempty"`
+	Composing bool `json:"composing,omitempty"`
+}
+
+// MouseInput is a pointer event of "mouse", in cells counting from zero
+// from the top left of the screen: a button pressed, released or held
+// through motion, or the wheel, which "wheel" names in Button. The server
+// encodes it for the program as the mouse modes ask
+// (terminal.Terminal.EncodeMouse).
+type MouseInput struct {
+	// Action is "press", "release" or "motion"; "" is "press".
+	Action string `json:"action,omitempty"`
+	// Button is "none", "left", "right", "middle", or a wheel's "wheel_up",
+	// "wheel_down", "wheel_left", "wheel_right".
+	Button string `json:"button,omitempty"`
+	Mods   string `json:"mods,omitempty"`
+	// Col and Row are the cell of the pointer.
+	Col int `json:"col,omitempty"`
+	Row int `json:"row,omitempty"`
+}
+
+// FormatOptions choose what "format" shows of a session's screen.
+type FormatOptions struct {
+	// Kind is "text" for the screen and scrollback as plain text, with the
+	// lines a program's long output wrapped joined, or "vt" for the escape
+	// sequences that redraw it.
+	Kind string `json:"kind,omitempty"`
+}
+
+// FormatResult is what "format" shows: the screen in the form asked for.
+type FormatResult struct {
+	Content []byte `json:"content"`
+	Title   string `json:"title,omitempty"`
+	Cols    int    `json:"cols"`
+	Rows    int    `json:"rows"`
+}
+
+// ModeState is one terminal mode, as a program leaves it.
+type ModeState struct {
+	Name   string `json:"name"`
+	Number int    `json:"number"`
+	// ANSI tells an ANSI mode, set with ESC [ number h, from a DEC private
+	// one, set with ESC [ ? number h.
+	ANSI bool `json:"ansi,omitempty"`
+	Set  bool `json:"set"`
+	// Default tells a mode a new terminal has on, and a reset restores.
+	Default bool `json:"default,omitempty"`
+}
+
+// ModeStatus is a terminal's modes of "modes": which screen shows, and
+// every mode the server tracks.
+type ModeStatus struct {
+	// Screen is "primary", or "alternate" while mode 47, 1047 or 1049
+	// switched the screen.
+	Screen string      `json:"screen"`
+	Modes  []ModeState `json:"modes"`
+}
+
+// InputMode is how a session's terminal handles typed input, of
+// "inputMode": the tty's line discipline.
+type InputMode struct {
+	Echo      bool `json:"echo"`
+	Canonical bool `json:"canonical"`
+	Signals   bool `json:"signals"`
 }
 
 // ActionCall names an app action and its arguments.
@@ -360,6 +483,9 @@ type SessionInfo struct {
 	Program string   `json:"program"`
 	Args    []string `json:"args,omitempty"`
 	Idle    bool     `json:"idle"`
+	// Foreground is the ID of the process that has the terminal in the
+	// foreground, the program the shell runs, or 0 when there is none.
+	Foreground int `json:"foreground,omitempty"`
 	// Dir is the working directory of the program in the foreground.
 	Dir string `json:"dir"`
 	// Title is the last title a program set (OSC 0, OSC 2).
@@ -481,6 +607,13 @@ type Attach struct {
 	// many bytes.
 	Framed  bool `json:"framed,omitempty"`
 	History int  `json:"history,omitempty"`
+	// Snapshot, when "ghostty" (SnapshotGhostty), sends the screen in
+	// Ghostty's binary snapshot format instead of the escape sequences
+	// that replay it: a framed attach then says so in
+	// SnapshotHeader.Format, and the title and Kitty graphics the escape
+	// sequences carry come after it as output. History does not apply:
+	// the binary snapshot holds the whole scrollback.
+	Snapshot string `json:"snapshot,omitempty"`
 	// Focused tells that the user looks at this terminal: the session
 	// takes its size at once, though another client typed last. A focus
 	// request sent once the attach is answered may reach the server
@@ -489,13 +622,15 @@ type Attach struct {
 }
 
 // SnapshotHeader is the line before the snapshot of a framed attach: its
-// length in bytes, the session's size it was taken at, and whether
-// scrollback was cut (Attach.History).
+// length in bytes, the session's size it was taken at, whether scrollback
+// was cut (Attach.History), and, when Format is "ghostty", that the
+// length counts Ghostty's binary snapshot and not escape sequences.
 type SnapshotHeader struct {
-	Snapshot  int  `json:"snapshot"`
-	Cols      int  `json:"cols"`
-	Rows      int  `json:"rows"`
-	Truncated bool `json:"truncated,omitempty"`
+	Snapshot  int    `json:"snapshot"`
+	Cols      int    `json:"cols"`
+	Rows      int    `json:"rows"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Format    string `json:"format,omitempty"`
 }
 
 // ServerMain runs the server when args, the program's arguments, ask
