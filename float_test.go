@@ -5,6 +5,8 @@ import (
 	"math"
 	"testing"
 
+	"github.com/egoist/mygo/ui"
+
 	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
@@ -575,5 +577,27 @@ func TestResizeFloatLayoutCommand(t *testing.T) {
 	}
 	if p.float.X != 0.3 || p.float.Y != 0.3 {
 		t.Errorf("a resize moved the corner: %+v", p.float)
+	}
+}
+
+// A float dragged past the room's edge keeps its box inside, shows a
+// little of the overshoot, and lets it go when the drag ends.
+func TestFloatDragOvershoot(t *testing.T) {
+	a := &App{}
+	f := &Float{X: 0.2, Y: 0.2, W: 0.5, H: 0.5, dragging: true}
+	room := ui.Rect{W: 1000, H: 1000}
+	a.moveFloatPx(f, 900, 0, room)
+	if f.X != 0.5 {
+		t.Fatalf("X = %v, want 0.5 at the edge", f.X)
+	}
+	if f.overX <= 0 {
+		t.Fatalf("overX = %v, want the overshoot kept", f.overX)
+	}
+	if r := rubber(f.overX); r <= 0 || r >= 0.1 || r >= f.overX {
+		t.Fatalf("rubber(%v) = %v, want a damped share under 0.1", f.overX, r)
+	}
+	a.moveFloatPx(f, -900, 0, room)
+	if f.overX != 0 || f.X > 0.5 || f.X < 0 {
+		t.Fatalf("back inside: X %v overX %v", f.X, f.overX)
 	}
 }

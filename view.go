@@ -335,9 +335,25 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	})
 }
 
-// floatFace is the opaque fill behind a float's card, so that the tiled
-// panes under it show through nowhere.
-func floatFace(k *colors) ui.Color { return k.panel }
+// cardFace is the face of a pane's card, focused or not: the theme's
+// background with the configuration's colors. A float's is opaque, so that
+// the tiled panes under it show through nowhere.
+func cardFace(c *ui.Context, k *colors, focused, float bool) ui.Color {
+	bg := k.card
+	if focused {
+		bg = k.cardFocused
+	}
+	if termOpaque {
+		bg = termLight.Background
+		if c.Theme().Dark {
+			bg = termDark.Background
+		}
+	}
+	if float {
+		bg.A = 255
+	}
+	return bg
+}
 
 // floatCell places a float's pane over the tab's tiled ones, at its box of
 // the room, which is bounds, with a grip that resizes it.
@@ -346,15 +362,38 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	if p == nil {
 		return
 	}
-	s := share{f.X, f.Y, f.W, f.H}
+	// Dragged past the room's edge, the float follows the pointer less and
+	// less, and springs back in once let go.
+	s := share{f.X + rubber(f.overX), f.Y + rubber(f.overY), f.W, f.H}
 	if f.Zoom {
 		s = whole
 	}
 	cell := ui.Column(c.Key(floatKey(p.ID))).Absolute().
-		LeftPercent(s.x*100).TopPercent(s.y*100).WidthPercent(s.w*100).HeightPercent(s.h*100).
-		Radius(cardR).Background(floatFace(k)).
-		Shadow(0, 14, 40, -8, k.shadowFocused).
-		Shadow(0, 2, 8, 0, k.shadow)
+		LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
+		Radius(cardR).Background(cardFace(c, k, t.Focus == p, true))
+	// Under the pointer it moves as it does; else, as it springs back, is
+	// nudged by the keys or zooms, it eases there.
+	if anim := motion(c); anim != nil && !f.dragging {
+		cell.Transition(ui.ElementTransition{Animation: anim, Position: true, Size: true})
+	}
+	// Shadows as of a sheet lifted off the panes: a tight one where it
+	// nearly touches them, a soft one under it, and a wide one of the
+	// light around; deeper while it has the focus.
+	lift := float32(1)
+	if t.Focus == p {
+		lift = 1.35
+	}
+	// Over light cards a soft tinted shadow lifts it; over dark ones, as
+	// terminals mostly are, it takes a deep black one to show at all.
+	ink := ui.RGBA(40, 30, 40, 1)
+	alpha := [3]float32{0.10, 0.14, 0.16}
+	if face := cardFace(c, k, false, true); c.Theme().Dark || int(face.R)+int(face.G)+int(face.B) < 3*110 {
+		ink = ui.RGBA(0, 0, 0, 1)
+		alpha = [3]float32{0.55, 0.5, 0.55}
+	}
+	cell.Shadow(0, 1, 3, 0, ink.Alpha(min(alpha[0]*lift, 1))).
+		Shadow(0, 12*lift, 32*lift, -4, ink.Alpha(min(alpha[1]*lift, 1))).
+		Shadow(0, 30*lift, 80*lift, -10, ink.Alpha(min(alpha[2]*lift, 1)))
 	p.bounds = ui.Rect{
 		X: bounds.X + s.x*bounds.W,
 		Y: bounds.Y + s.y*bounds.H,
@@ -370,6 +409,7 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		if dx, dy, ok := grip.Dragged(); ok {
 			a.resizeFloatPx(f, dx, dy, bounds)
 		}
+		f.dragging = f.dragging || grip.Dragging()
 		grip.Draw(func(pt *ui.Painter, r ui.Rect) {
 			if grip.Hovered() || grip.Dragging() {
 				pt.Fill(ui.Rect{X: r.X + r.W/2 - 1.5, Y: r.Y + r.H/2 - 1.5, W: 3, H: 3}, k.iconMuted.Alpha(0.7), 1.5)
@@ -436,16 +476,19 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	// background, under its header too.
 	hk := k
 	if termOpaque {
-		th := termLight
-		if c.Theme().Dark {
-			th = termDark
-		}
-		bg = th.Background
-		hk = headerColors(k, bg)
+		hk = headerColors(k, cardFace(c, k, focused, false))
 	}
-	card.Background(bg).Border(1, border).
-		Shadow(0, 1, 2, 0, shadow).
-		Shadow(0, 6, 22, -2, shadow)
+	// The card and its float's cell take one face: the cell's, of another
+	// color, would show at the card's rounded corners.
+	bg = cardFace(c, k, focused, p.float != nil)
+	card.Background(bg)
+	// A float has no edge drawn: the shadows of its cell lift it over the
+	// tiled panes.
+	if p.float == nil {
+		card.Border(1, border).
+			Shadow(0, 1, 2, 0, shadow).
+			Shadow(0, 6, 22, -2, shadow)
+	}
 	if fadeColors {
 		card.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
 	}
@@ -592,9 +635,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	if f := p.float; f != nil {
-		if dx, dy, ok := h.Dragged(); ok {
-			a.moveFloatPx(f, dx, dy, a.floatRoom)
-		}
+		a.dragFloat(f, h)
 	} else {
 		h.Drag(p)
 	}
@@ -629,9 +670,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 // that moves it, and its zoom and close buttons.
 func (a *App) floatHandle(c *ui.Context, k *colors, t *Tab, p *Pane, f *Float) {
 	h := ui.Row(c).Height(14).Shrink(0).Padding(0, 3, 0, 6).AlignItems(ui.Center).Cursor(ui.CursorMove)
-	if dx, dy, ok := h.Dragged(); ok {
-		a.moveFloatPx(f, dx, dy, a.floatRoom)
-	}
+	a.dragFloat(f, h)
 	if h.Pressed() {
 		a.raiseFloat(f)
 		t.setFocus(p)
@@ -647,7 +686,7 @@ func (a *App) floatHandle(c *ui.Context, k *colors, t *Tab, p *Pane, f *Float) {
 			t.setFocus(p)
 			a.toggleZoom()
 		}
-		if iconButton(c, k, "x", locales.CmdClosePane(), 18, 12).Tooltip(locales.CmdClosePane()).Clicked() {
+		if iconButton(c, k, "x", locales.CmdClosePane(), 18, 11).Tooltip(locales.CmdClosePane()).Clicked() {
 			a.later(c, func() { a.closePane(p) })
 		}
 	})
@@ -742,7 +781,7 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 			t.setFocus(p)
 			a.toggleZoom()
 		}
-		if iconButton(c, k, "x", locales.CmdClosePane(), 26, 17).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
+		if iconButton(c, k, "x", locales.CmdClosePane(), 26, 15).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
 			a.later(c, func() { a.closePane(p) })
 		}
 	})
@@ -755,9 +794,7 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 8).Gap(4).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	if f := p.float; f != nil {
-		if dx, dy, ok := h.Dragged(); ok {
-			a.moveFloatPx(f, dx, dy, a.floatRoom)
-		}
+		a.dragFloat(f, h)
 	} else {
 		h.Drag(p)
 	}
@@ -1056,4 +1093,30 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 			})
 		})
 	})
+}
+
+// dragFloat moves float f as its handle h is dragged, and lets it spring
+// back inside the room once the drag ends.
+func (a *App) dragFloat(f *Float, h ui.Element) {
+	if dx, dy, ok := h.Dragged(); ok {
+		f.dragging = true
+		a.moveFloatPx(f, dx, dy, a.floatRoom)
+	}
+	if f.dragging && !h.Dragging() {
+		f.dragging, f.overX, f.overY = false, 0, 0
+	}
+}
+
+// rubber is how far a float shows past the room's edge, dragged d past it:
+// less and less as d grows, never more than a tenth of the room.
+func rubber(d float32) float32 {
+	const most, give = 0.1, 0.5
+	if d == 0 {
+		return 0
+	}
+	m := most * (1 - 1/(abs(d)*give/most+1))
+	if d < 0 {
+		return -m
+	}
+	return m
 }

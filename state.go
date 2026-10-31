@@ -60,6 +60,10 @@ type Float struct {
 	Hidden     bool
 	// Zoom makes it fill the tab's room, over the tiled panes.
 	Zoom bool
+	// dragging tells that the pointer moves or resizes it, and overX,
+	// overY how far past the room's edge the drag took its box.
+	dragging     bool
+	overX, overY float32
 }
 
 // floatMin is the least share of the room a float's side takes.
@@ -1681,7 +1685,15 @@ func (a *App) moveFloatPx(f *Float, dx, dy float32, room ui.Rect) {
 	if room.W <= 0 || room.H <= 0 {
 		return
 	}
-	a.moveFloat(f, dx/room.W, dy/room.H)
+	if !f.dragging {
+		a.moveFloat(f, dx/room.W, dy/room.H)
+		return
+	}
+	// The box goes where the pointer takes it, kept in the room; how far
+	// past its edge the pointer went is kept apart, for the view to show.
+	x, y := f.X+f.overX+dx/room.W, f.Y+f.overY+dy/room.H
+	a.moveFloat(f, x-f.X, y-f.Y)
+	f.overX, f.overY = x-f.X, y-f.Y
 }
 
 func (a *App) resizeFloatPx(f *Float, dx, dy float32, room ui.Rect) {
