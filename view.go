@@ -488,20 +488,20 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 		// It moves with the cells, but neither opens nor closes.
 		div.Transition(ui.ElementTransition{Animation: tr.Animation, Position: tr.Position, Size: tr.Size, Colors: tr.Colors})
 	}
-	// Held, it drags: the panes follow the pointer at once, and their
-	// terminals take each size. Dragging tells of a Draggable, not of a
-	// press that moves; Pressed, only while the pointer stays over it.
+	// Moved while held, it drags: the panes follow the pointer at once, and
+	// their terminals take each size. Dragging tells of a Draggable, not of
+	// a press that moves; Pressed, only while the pointer stays over it. A
+	// press that does not move, as a double click's, leaves the panes'
+	// springs be.
 	dx, dy, held := div.Dragged()
-	if held {
+	d := dx
+	if n.Vertical {
+		d = dy
+	}
+	if held && d != 0 && total > 0 {
+		n.Ratio = min(max(n.Ratio+d/total, 0.08), 0.92)
 		a.dividerDrag = true
-		d := dx
-		if n.Vertical {
-			d = dy
-		}
-		if total > 0 {
-			n.Ratio = min(max(n.Ratio+d/total, 0.08), 0.92)
-			a.changed()
-		}
+		a.changed()
 	}
 	if div.DoubleClicked() {
 		n.Ratio = 0.5

@@ -208,8 +208,12 @@ func TestDividerDragResizesTerminals(t *testing.T) {
 		tt.Advance(16 * time.Millisecond)
 		tt.Frame()
 		// The divider is where the pointer is, not on its way there.
-		if now, _ := tt.Find("Divider"); now.X+now.W/2 > x-float32(i*15)+1 {
-			t.Errorf("step %d: divider at %v behind the pointer at %v", i, now.X+now.W/2, x-float32(i*15))
+		now, ok := tt.Find("Divider")
+		if !ok {
+			t.Fatalf("step %d: no divider", i)
+		}
+		if at, want := now.X+now.W/2, x-float32(i*15); at-want > 1 || want-at > 1 {
+			t.Errorf("step %d: divider at %v, the pointer at %v", i, at, want)
 		}
 		c, _ := p.term.Size()
 		sizes[c] = true
@@ -222,5 +226,45 @@ func TestDividerDragResizesTerminals(t *testing.T) {
 	}
 	if len(sizes) < 3 {
 		t.Errorf("terminal took %d sizes over the drag, want it to follow each step", len(sizes))
+	}
+}
+
+// TestDividerDoubleClickAnimates: a double click on the divider puts it
+// back in the middle with the panes' spring, as a press that does not move
+// is no drag.
+func TestDividerDoubleClickAnimates(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{}
+	tt.Frame()
+	settle(tt)
+	a.split(false)
+	waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
+	a.tab().Root.Ratio = 0.3
+	a.changed()
+	tt.Frame()
+	settle(tt)
+	d, ok := tt.Find("Divider")
+	if !ok {
+		t.Fatalf("no divider; texts %q", tt.Texts())
+	}
+	x, y := d.X+d.W/2, d.Y+d.H/2
+	for range 2 {
+		tt.Press(x, y)
+		tt.Frame()
+		tt.Release(x, y)
+		tt.Frame()
+	}
+	if r := a.tab().Root.Ratio; r != 0.5 {
+		t.Fatalf("ratio %v after a double click, want 0.5", r)
+	}
+	tt.Advance(16 * time.Millisecond)
+	tt.Frame()
+	shown, _ := tt.Find("Divider")
+	settle(tt)
+	rest, _ := tt.Find("Divider")
+	if shown.X == rest.X {
+		t.Errorf("divider at %v at once, want it on its way to %v", shown.X, rest.X)
 	}
 }
