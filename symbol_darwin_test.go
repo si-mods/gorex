@@ -31,7 +31,7 @@ func TestSFSymbolsOfTheIcons(t *testing.T) {
 // TestSFSymbolCoverage checks that a symbol covers some of its box and not
 // all of it, and that tint keeps the premultiplied alpha of the shape.
 func TestSFSymbolCoverage(t *testing.T) {
-	coverage, ok := rasterize("xmark", 64)
+	coverage, ok := rasterize("xmark", 64, false)
 	if !ok {
 		t.Fatal("xmark drew nothing")
 	}
@@ -74,7 +74,7 @@ func TestSFSymbolNames(t *testing.T) {
 // centered in it.
 func TestSFSymbolFillsItsBox(t *testing.T) {
 	for _, name := range []string{"xmark", "gearshape", "rectangle.split.2x1", "chevron.down"} {
-		coverage, ok := rasterize(name, 48)
+		coverage, ok := rasterize(name, 48, false)
 		if !ok {
 			t.Fatalf("%s drew nothing", name)
 		}

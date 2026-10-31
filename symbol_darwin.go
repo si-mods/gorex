@@ -78,6 +78,7 @@ type sfKey struct {
 	name       string
 	px         int
 	r, g, b, a uint8
+	natural    bool
 }
 
 var (
@@ -89,18 +90,24 @@ var (
 // returns it as an image source, or false when this macOS has no such
 // symbol, or AppKit is not here to draw it.
 func sfGlyph(name string, px int, col ui.Color) (ui.ImageSource, bool) {
+	return sfGlyphAt(name, px, col, false)
+}
+
+// sfGlyphAt draws it as sfGlyph does, or with natural, at the size the
+// symbol has beside the others of the same point size.
+func sfGlyphAt(name string, px int, col ui.Color, natural bool) (ui.ImageSource, bool) {
 	if !loadCG() {
 		return nil, false
 	}
 	px = min(max(px, 8), 256)
-	key := sfKey{name: name, px: px, r: col.R, g: col.G, b: col.B, a: col.A}
+	key := sfKey{name: name, px: px, r: col.R, g: col.G, b: col.B, a: col.A, natural: natural}
 	sfMu.Lock()
 	b, ok := sfCache[key]
 	sfMu.Unlock()
 	if ok {
 		return b, true
 	}
-	coverage, ok := rasterize(name, px)
+	coverage, ok := rasterize(name, px, natural)
 	if !ok {
 		return nil, false
 	}
@@ -112,8 +119,11 @@ func sfGlyph(name string, px int, col ui.Color) (ui.ImageSource, bool) {
 }
 
 // rasterize draws the symbol's outline into a px×px canvas, centered and
-// inset a little, as the icons of assets/icons sit in their box.
-func rasterize(name string, px int) (*image.RGBA, bool) {
+// inset a little, as the icons of assets/icons sit in their box. With
+// natural, every symbol takes one scale, as AppKit draws them at one point
+// size: a cross stays smaller than a wide rectangle, as SF Symbols balance
+// them, rather than each filling the box.
+func rasterize(name string, px int, natural bool) (*image.RGBA, bool) {
 	img := objc.Send[objc.ID](objc.ID(objc.GetClass("NSImage")), selSymbolImage, nsString(name), nsString(""))
 	if img == 0 {
 		return nil, false
@@ -160,6 +170,11 @@ func rasterize(name string, px int) (*image.RGBA, bool) {
 	}
 	const inset = 0.85
 	scale := math.Min(inset*float64(px)/float64(gw), inset*float64(px)/float64(gh))
+	if natural {
+		// rectangle.on.rectangle, of the widest, spans 2.43 times the point
+		// size in the image AppKit draws: it, and so every other, fits.
+		scale = math.Min(scale, 0.92/2.43)
+	}
 	dw, dh := float64(gw)*scale, float64(gh)*scale
 	// The image holds the glyph inside alignment margins: scale the whole
 	// image so that the glyph, and not the margins, fills the box.

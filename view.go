@@ -804,6 +804,10 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		if !show {
 			return
 		}
+		// The symbols keep the sizes they have beside each other, as Rex
+		// draws them, rather than each filling its button.
+		naturalGlyphs = true
+		defer func() { naturalGlyphs = false }()
 		// As Rex has them: split right, split down, float, zoom and close.
 		// A float's float button, lit, docks it.
 		if f := p.float; f != nil {
@@ -831,7 +835,7 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 			t.setFocus(p)
 			a.toggleZoom()
 		}
-		if iconButton(c, k, "x", locales.CmdClosePane(), 26, 15).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
+		if iconButton(c, k, "x", locales.CmdClosePane(), 26, 16).Tooltip(tip(locales.CmdClosePane(), &cmdClosePane)).Clicked() {
 			a.later(c, func() { a.closePane(p) })
 		}
 	})

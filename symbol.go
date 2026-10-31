@@ -54,6 +54,11 @@ var sfSymbols = map[string]string{
 	"float":                     "rectangle.on.rectangle",
 }
 
+// naturalGlyphs, while set, draws the SF Symbols at the sizes they have
+// beside each other rather than each filling its box: for a row of
+// buttons that should look as Rex's.
+var naturalGlyphs = false
+
 // glyphIcon draws the icon named name, size DIPs square, in col: an SF
 // Symbol on macOS where one is known and present, else the embedded SVG.
 func glyphIcon(c *ui.Context, name string, size float32, col ui.Color) ui.Element {
@@ -81,5 +86,5 @@ func symbolFor(name string, size float32, col ui.Color) (ui.ImageSource, bool) {
 		return nil, false
 	}
 	px := int(math.Round(float64(size) * 3))
-	return sfGlyph(sf, px, col)
+	return sfGlyphAt(sf, px, col, naturalGlyphs)
 }
