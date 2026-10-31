@@ -2,7 +2,8 @@
 
 A replica of [Superlogical's Rex](https://www.superlogical.com/updates/public-testing-beginning)
 terminal, written in Go with [MyGo](https://mygo.egoist.dev)'s native UI and its
-terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
+terminal plugin (Ghostty's libghostty-vt). No cgo: one ~15 MB app, whose
+browser panes use the system's web view.
 
 ![GoRex](docs/screenshot.png)
 
@@ -12,6 +13,12 @@ terminal plugin (Ghostty's libghostty-vt). No webview, no cgo: one ~15 MB app.
   with its program's icon, name and directory in its header, and buttons to
   split right, split down, zoom and close. Drag the gaps between panes to
   resize them (double-click resets a split to half).
+- **Browser panes.** New Browser Tab, or Split with Browser, opens a pane
+  that shows a web page in the system's web view: an address field, back,
+  forward and reload in its header, and the page's title on its tab. The
+  page lives while its tab does, and opens again at its URL when GoRex
+  starts. A browser pane belongs to this machine, so a remote tab takes
+  none, and Find searches terminals alone.
 - **Persistent sessions.** Shells run in a session server, a background
   process of the same binary (`GoRex -server`). Quit GoRex and everything
   keeps running; open it again and every tab, split and pane comes back as

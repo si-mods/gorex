@@ -383,6 +383,13 @@ func (a *App) debug(dir, line string) {
 				a.newTabOn(on, a.dirOn(on))
 			}
 		})
+	case "url": // loads the URL in the focused browser pane
+		win.Update(func() {
+			if t := a.tab(); t != nil && t.Focus != nil && t.Focus.browser != nil {
+				t.Focus.browser.addr = arg
+				a.navigateBrowser(t.Focus, arg)
+			}
+		})
 	case "host": // opens or closes the host chip's panel
 		win.Update(func() { a.hostOpen = !a.hostOpen })
 	case "chip": // opens or closes the session chip's popover
@@ -403,6 +410,29 @@ func (a *App) debug(dir, line string) {
 				os.WriteFile(filepath.Join(dir, arg), png, 0o644)
 			}
 		}
+	case "webshot": // the focused browser pane's page, into the file named by arg
+		time.Sleep(300 * time.Millisecond)
+		var b *browserPane
+		debugMain(func() {
+			if t := a.tab(); t != nil && t.Focus != nil {
+				b = t.Focus.browser
+			}
+		})
+		if b == nil || b.web == nil {
+			log.Printf("webshot: no browser pane")
+			return
+		}
+		png, err := b.web.CapturePage()
+		if err != nil {
+			log.Printf("webshot: %v", err)
+			return
+		}
+		log.Printf("webshot: %s", b.web.Page().URL())
+		name := "webshot.png"
+		if arg != "" {
+			name = arg
+		}
+		os.WriteFile(filepath.Join(dir, name), png, 0o644)
 	case "shot":
 		time.Sleep(100 * time.Millisecond)
 		if png, err := win.CapturePage(); err == nil {

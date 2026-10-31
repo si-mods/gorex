@@ -76,6 +76,120 @@ func (msgs Messages) CmdSplitDown() string {
 	return Catalog.Format(msgs.locale, "cmdSplitDown", nil)
 }
 
+// CmdNewBrowserTab says "New Browser Tab"
+// in the language the app shows.
+//
+// Command: open a tab with a browser pane, where a web page shows beside
+// the terminals.
+func CmdNewBrowserTab() string { return In(i18n.Locale()).CmdNewBrowserTab() }
+
+// CmdNewBrowserTab says "New Browser Tab"
+// in the language of msgs.
+//
+// Command: open a tab with a browser pane, where a web page shows beside
+// the terminals.
+func (msgs Messages) CmdNewBrowserTab() string {
+	return Catalog.Format(msgs.locale, "cmdNewBrowserTab", nil)
+}
+
+// CmdSplitBrowser says "Split with Browser"
+// in the language the app shows.
+//
+// Command: split the focused pane into two, the new one a browser.
+func CmdSplitBrowser() string { return In(i18n.Locale()).CmdSplitBrowser() }
+
+// CmdSplitBrowser says "Split with Browser"
+// in the language of msgs.
+//
+// Command: split the focused pane into two, the new one a browser.
+func (msgs Messages) CmdSplitBrowser() string {
+	return Catalog.Format(msgs.locale, "cmdSplitBrowser", nil)
+}
+
+// BrowserName says "Browser"
+// in the language the app shows.
+//
+// The name of a browser pane that shows no page of its own and has no name.
+func BrowserName() string { return In(i18n.Locale()).BrowserName() }
+
+// BrowserName says "Browser"
+// in the language of msgs.
+//
+// The name of a browser pane that shows no page of its own and has no name.
+func (msgs Messages) BrowserName() string {
+	return Catalog.Format(msgs.locale, "browserName", nil)
+}
+
+// BrowserAddress says "Enter a URL"
+// in the language the app shows.
+//
+// Placeholder of a browser pane's address field.
+func BrowserAddress() string { return In(i18n.Locale()).BrowserAddress() }
+
+// BrowserAddress says "Enter a URL"
+// in the language of msgs.
+//
+// Placeholder of a browser pane's address field.
+func (msgs Messages) BrowserAddress() string {
+	return Catalog.Format(msgs.locale, "browserAddress", nil)
+}
+
+// BrowserBack says "Back"
+// in the language the app shows.
+//
+// Button of a browser pane: the page before this one.
+func BrowserBack() string { return In(i18n.Locale()).BrowserBack() }
+
+// BrowserBack says "Back"
+// in the language of msgs.
+//
+// Button of a browser pane: the page before this one.
+func (msgs Messages) BrowserBack() string {
+	return Catalog.Format(msgs.locale, "browserBack", nil)
+}
+
+// BrowserForward says "Forward"
+// in the language the app shows.
+//
+// Button of a browser pane: the page after this one.
+func BrowserForward() string { return In(i18n.Locale()).BrowserForward() }
+
+// BrowserForward says "Forward"
+// in the language of msgs.
+//
+// Button of a browser pane: the page after this one.
+func (msgs Messages) BrowserForward() string {
+	return Catalog.Format(msgs.locale, "browserForward", nil)
+}
+
+// BrowserReload says "Reload"
+// in the language the app shows.
+//
+// Button of a browser pane: load the page again.
+func BrowserReload() string { return In(i18n.Locale()).BrowserReload() }
+
+// BrowserReload says "Reload"
+// in the language of msgs.
+//
+// Button of a browser pane: load the page again.
+func (msgs Messages) BrowserReload() string {
+	return Catalog.Format(msgs.locale, "browserReload", nil)
+}
+
+// BrowserUnavailable says "The page could not be shown."
+// in the language the app shows.
+//
+// What a browser pane says when its web view could not be made.
+func BrowserUnavailable() string { return In(i18n.Locale()).BrowserUnavailable() }
+
+// BrowserUnavailable says "The page could not be shown."
+// in the language of msgs.
+//
+// What a browser pane says when its web view could not be made.
+func (msgs Messages) BrowserUnavailable() string {
+	return Catalog.Format(msgs.locale, "browserUnavailable", nil)
+}
+
 // CmdClosePane says "Close Pane"
 // in the language the app shows.
 //

@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -59,7 +60,7 @@ type Node struct {
 }
 
 // Pane is a terminal attached to a session of the server, or of a remote
-// host's.
+// host's, or a browser that shows a page.
 type Pane struct {
 	ID  int
 	SID string
@@ -69,6 +70,8 @@ type Pane struct {
 	Node   *Node
 	term   *terminal.Terminal
 	stream *rex.Stream
+	// browser is the state of a browser pane, nil for a terminal.
+	browser *browserPane
 	// host is the remote host the session lives on, nil for this machine;
 	// remote is then the terminal's Conn.
 	host   *hostConn
@@ -104,6 +107,53 @@ type Pane struct {
 	// its new stream.
 	focusClaimed bool
 	focusConn    any
+}
+
+// browserPane is a pane that shows a web page in a web view of its
+// window, with an address field in its header.
+type browserPane struct {
+	web *mygo.WebView
+	// url is the page the pane shows, as the layout keeps it, and addr
+	// the text of the address field.
+	url, addr string
+	// auto gives the address field the keyboard when the pane opens, in
+	// place of the page: a new pane has the URL of the page to type.
+	auto bool
+}
+
+// browserStart is the page a browser pane opens at, until a URL is typed.
+const browserStart = "about:blank"
+
+// destroy closes the pane's web view, and forgets it.
+func (b *browserPane) destroy() {
+	if b != nil && b.web != nil {
+		b.web.Destroy()
+		b.web = nil
+	}
+}
+
+// browserURL turns what was typed into a URL to load: one without a
+// scheme is a site, https.
+func browserURL(s string) string {
+	s = strings.TrimSpace(s)
+	switch {
+	case s == "":
+		return ""
+	case strings.HasPrefix(s, "http://"), strings.HasPrefix(s, "https://"),
+		strings.HasPrefix(s, "file://"), strings.HasPrefix(s, "about:"),
+		strings.HasPrefix(s, "data:"):
+		return s
+	}
+	return "https://" + s
+}
+
+// browserHost is the host of a URL, "" when it has none.
+func browserHost(s string) string {
+	u, err := url.Parse(s)
+	if err != nil {
+		return ""
+	}
+	return u.Host
 }
 
 // App is the state of a window of GoRex's, which shows a workspace.
@@ -327,6 +377,91 @@ func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []stri
 	}
 	a.attach(p, cols, rows)
 	return p
+}
+
+// newBrowserPane makes a pane that shows url in a web view of the
+// window's, with the address field given the keyboard.
+func (a *App) newBrowserPane(url string) *Pane {
+	if url = browserURL(url); url == "" {
+		url = browserStart
+	}
+	addr := url
+	if url == browserStart {
+		addr = "" // the field says its placeholder, and the URL is typed
+	}
+	p := &Pane{ID: a.id(), browser: &browserPane{url: url, addr: addr, auto: true}}
+	if a.win == nil {
+		// A view without a window, as in tests: the pane keeps its URL,
+		// and shows no page.
+		return p
+	}
+	v, err := a.win.NewWebView(mygo.WebViewOptions{
+		URL:             url,
+		BackgroundColor: "light-dark(#ffffff, #1e1e24)",
+		Page:            mygo.PageOptions{SwipeNavigation: true, PinchZoom: true},
+	})
+	if err != nil {
+		log.Printf("browser pane: %v", err)
+		a.err, a.errMsg = err.Error(), nil
+		return p
+	}
+	p.browser.web = v
+	update := func(fn func()) {
+		if a.win != nil {
+			a.win.Update(fn)
+		}
+	}
+	page := v.Page()
+	page.OnDidNavigate(func(u string) {
+		update(func() {
+			if p.closed || p.browser == nil {
+				return
+			}
+			p.browser.url = u
+			// A new pane's first page, about:blank, leaves the field
+			// saying its placeholder, for the URL to type.
+			if p.browser.addr != "" || u != browserStart {
+				p.browser.addr = u
+			}
+			a.changed()
+		})
+	})
+	page.OnPageTitleUpdated(func(e *mygo.TitleEvent) {
+		update(func() {
+			if p.closed || p.browser == nil {
+				return
+			}
+			p.title = strings.TrimSpace(e.Title)
+		})
+	})
+	// A page that asks for a window shows it in this pane: GoRex has no
+	// other window to give a site, and a script's pop-up is not wanted.
+	page.SetWindowOpenHandler(func(req mygo.WindowOpenRequest) *mygo.WindowOptions {
+		if req.UserInitiated && req.URL != "" {
+			page.LoadURL(req.URL)
+		}
+		return nil
+	})
+	return p
+}
+
+// navigateBrowser loads the URL in a browser pane's address field.
+func (a *App) navigateBrowser(p *Pane, text string) {
+	b := p.browser
+	if b == nil {
+		return
+	}
+	u := browserURL(text)
+	if u == "" {
+		return
+	}
+	b.addr = u
+	if b.web == nil {
+		return
+	}
+	if err := b.web.Page().LoadURL(u); err != nil {
+		a.err, a.errMsg = err.Error(), nil
+	}
 }
 
 // attach makes the pane's terminal, attached to its session.
@@ -612,6 +747,26 @@ func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []stri
 	return t
 }
 
+// newBrowserTab opens a tab of a browser pane after the active tab, and
+// shows it.
+func (a *App) newBrowserTab() *Tab {
+	t := &Tab{ID: a.id()}
+	p := a.newBrowserPane(browserStart)
+	t.Root = &Node{ID: a.id(), Pane: p}
+	p.Tab, p.Node = t, t.Root
+	t.setFocus(p)
+	at := len(a.tabs)
+	if cur := a.tab(); cur != nil {
+		at = slices.Index(a.tabs, cur) + 1
+	}
+	a.tabs = slices.Insert(a.tabs, at, t)
+	a.active = slices.Index(a.tabs, t)
+	a.focusReq = p
+	a.groupTabs()
+	a.changed()
+	return t
+}
+
 // currentHost is the host of the focused pane, nil for this machine.
 func (a *App) currentHost() *hostConn {
 	if t := a.tab(); t != nil && t.Focus != nil {
@@ -664,9 +819,6 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 	if a.offline(old.host) {
 		return nil
 	}
-	t := old.Tab
-	t.Zoom = nil
-	n := old.Node
 	cols, rows := 80, 24
 	if old.term != nil {
 		cols, rows = old.term.Size()
@@ -677,6 +829,28 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 		}
 	}
 	p := a.newPaneRun(old.host, dir, cols, rows, command)
+	a.splitWith(old, p, vertical)
+	return p
+}
+
+// splitBrowser splits the focused pane with a browser pane, right of it or
+// below it. A tab's panes are on one host, so a remote pane takes none.
+func (a *App) splitBrowser(vertical bool) {
+	t := a.tab()
+	if t == nil || t.Focus == nil || t.Focus.host != nil {
+		return
+	}
+	p := a.newBrowserPane(browserStart)
+	a.splitWith(t.Focus, p, vertical)
+	a.focusReq = p
+}
+
+// splitWith puts pane p beside old, right of it or below it, with the
+// focus of its tab.
+func (a *App) splitWith(old, p *Pane, vertical bool) {
+	t := old.Tab
+	t.Zoom = nil
+	n := old.Node
 	p.Tab = t
 	left := &Node{ID: a.id(), Pane: old, Parent: n}
 	right := &Node{ID: a.id(), Pane: p, Parent: n}
@@ -684,7 +858,6 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 	n.Pane, n.A, n.B, n.Vertical, n.Ratio = nil, left, right, vertical, 0.5
 	t.setFocus(p)
 	a.changed()
-	return p
 }
 
 // closePane closes a pane and ends its session.
@@ -757,6 +930,7 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	if p.term != nil {
 		p.term.Close()
 	}
+	p.browser.destroy()
 	if kill {
 		a.killOn(p.host, p.SID)
 	}
@@ -834,6 +1008,7 @@ func (a *App) closeTab(t *Tab) {
 		if p.term != nil {
 			p.term.Close()
 		}
+		p.browser.destroy()
 		a.killOn(p.host, p.SID)
 	}
 	a.removeTab(t)
@@ -1083,6 +1258,9 @@ func (a *App) zoom(p *Pane, on bool) {
 // status protocol when it did, else a shell at its prompt, else the
 // executable.
 func (p *Pane) program() program {
+	if p.browser != nil {
+		return browserProgram
+	}
 	if p.info.Status != nil && p.info.Status.App != "" {
 		return programOf(p.info.ProgramName())
 	}
@@ -1095,6 +1273,16 @@ func (p *Pane) program() program {
 // label returns how a pane names itself: its program, or the title the
 // program set, and the directory it works in.
 func (p *Pane) label() (name, detail string) {
+	if p.browser != nil {
+		name = p.Name
+		if name == "" {
+			name = strings.TrimSpace(p.title)
+		}
+		if name == "" {
+			name = locales.BrowserName()
+		}
+		return name, browserHost(p.browser.url)
+	}
 	in := p.info
 	if p.Name != "" {
 		return p.Name, shortDir(in.Dir)
@@ -1228,6 +1416,9 @@ func (a *App) savedTab(t *Tab) savedTab {
 	var save func(n *Node) *savedNode
 	save = func(n *Node) *savedNode {
 		if p := n.Pane; p != nil {
+			if p.browser != nil {
+				return &savedNode{Name: p.Name, URL: p.browser.url}
+			}
 			s := &savedNode{SID: p.SID, Name: p.Name, Dir: p.info.Dir}
 			if p.host != nil {
 				s.Host = p.host.ID
@@ -1285,18 +1476,24 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 		n := &Node{ID: a.id(), Parent: parent}
 		if s.A == nil || s.B == nil {
 			var p *Pane
-			if s.Host != "" {
+			in, isLive := live[s.SID]
+			switch {
+			case s.URL != "":
+				p = a.newBrowserPane(s.URL)
+				p.Name = s.Name
+				p.browser.auto = false
+			case s.Host != "":
 				h := a.hostByID(s.Host)
 				if h == nil || s.SID == "" {
 					return nil
 				}
 				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, host: h, info: rex.SessionInfo{ID: s.SID, Dir: s.Dir}, startDir: s.Dir}
 				a.attach(p, s.Cols, s.Rows)
-			} else if in, ok := live[s.SID]; ok && !used[s.SID] {
+			case isLive && !used[s.SID]:
 				used[s.SID] = true
 				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, info: in, startDir: s.Dir}
 				a.attach(p, in.Cols, in.Rows)
-			} else {
+			default:
 				dir := s.Dir
 				if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 					dir, _ = os.UserHomeDir()
@@ -1737,6 +1934,10 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	if p.term != nil {
 		cols, rows = p.term.Size()
 	}
+	browserURL, isBrowser := "", p.browser != nil
+	if isBrowser {
+		browserURL = p.browser.url
+	}
 	src := p.Tab
 	if a.findPane == p {
 		a.closeFind()
@@ -1746,14 +1947,22 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	if p.term != nil {
 		p.term.Close()
 	}
+	p.browser.destroy()
 	if a.tab() == src && src.Focus != nil {
 		a.focusReq = src.Focus
 	}
 	if len(src.panes()) == 0 {
 		a.removeTab(src)
 	}
-	np := &Pane{ID: target.id(), SID: p.SID, Name: p.Name, info: p.info, title: p.title, startDir: p.startDir, host: h}
-	target.attach(np, cols, rows)
+	var np *Pane
+	if isBrowser {
+		np = target.newBrowserPane(browserURL)
+		np.Name = p.Name
+		np.browser.auto = false
+	} else {
+		np = &Pane{ID: target.id(), SID: p.SID, Name: p.Name, info: p.info, title: p.title, startDir: p.startDir, host: h}
+		target.attach(np, cols, rows)
+	}
 	target.placePane(t, np, t.Focus, false, 0.5)
 	target.focusReq = np
 	target.front()
