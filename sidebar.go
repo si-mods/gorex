@@ -166,9 +166,9 @@ func (a *App) sidebarParts(c *ui.Context, k *colors, right bool) {
 	a.sidebarEdge(c, k, false)
 }
 
-// paneBar is the title bar over the panes beside a sidebar: the host and
-// the sidebar's buttons while it is hidden, and the window's controls
-// when the sidebar does not have them.
+// paneBar is the title bar over the panes beside a sidebar: the sidebar's
+// buttons while it is hidden, and the window's controls when the sidebar
+// does not have them.
 func (a *App) paneBar(c *ui.Context, k *colors, right, shown bool) {
 	bar := c.TitleBar()
 	left := float32(gap)
@@ -189,7 +189,6 @@ func (a *App) paneBar(c *ui.Context, k *colors, right, shown bool) {
 			a.sidebarButton(c, k, false)
 		}
 		if !shown {
-			a.hostChip(c, k)
 			a.workspaceChip(c, k, false)
 		}
 		ui.Spacer(c)
