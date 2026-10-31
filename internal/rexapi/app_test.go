@@ -19,6 +19,8 @@ type fakeApp struct {
 	desk *rex.Client
 	mu   sync.Mutex
 	seq  int
+	// tabs counts the tabs made, for their lasting IDs.
+	tabs int
 	// store is the layout the app keeps.
 	store layout.Store
 	done  chan struct{}
@@ -133,7 +135,8 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		if sid == "" {
 			return fail("create_failed", "the session did not start")
 		}
-		tab := layout.Tab{Name: c.Name, Root: &layout.Node{SID: sid}, Focus: 0}
+		a.tabs++
+		tab := layout.Tab{ID: fmt.Sprintf("tab-%d", a.tabs), Name: c.Name, Root: &layout.Node{SID: sid}, Focus: 0}
 		at := len(ws.Tabs)
 		if i := findTab(ws, c.After); i >= 0 {
 			at = i + 1
@@ -142,10 +145,19 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		if c.Focus || len(ws.Tabs) == 1 {
 			ws.Active = at
 		}
-		res.New = sid
+		res.New, res.Tab = sid, tab.ID
 		return res
 	}
 	tab, node := findNode(ws, c.SID)
+	if c.Tab != "" && strings.HasPrefix(c.Op, "tab.") {
+		tab, node = nil, nil
+		for i := range ws.Tabs {
+			if ws.Tabs[i].ID == c.Tab {
+				tab = &ws.Tabs[i]
+				node = firstLeaf(tab.Root)
+			}
+		}
+	}
 	if node == nil {
 		if strings.HasPrefix(c.Op, "tab.") {
 			return fail("tab_not_found", "no tab")
@@ -487,4 +499,12 @@ func leafCount(n *layout.Node) int {
 		return 1
 	}
 	return leafCount(n.A) + leafCount(n.B)
+}
+
+// firstLeaf returns a tree's first pane.
+func firstLeaf(n *layout.Node) *layout.Node {
+	for n != nil && n.A != nil {
+		n = n.A
+	}
+	return n
 }

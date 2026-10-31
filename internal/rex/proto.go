@@ -154,9 +154,14 @@ const (
 // as rootshell's bridge, asks the app to make ("command"): the app, which
 // owns the layout, takes the commands in order ("command.take"), makes
 // them as its own buttons do, saves the layout and answers each
-// ("command.done"). Panes and tabs are named by a session of theirs.
+// ("command.done"). Panes are named by their session, and tabs by their
+// lasting ID (Tab), or by a session of theirs.
 type LayoutCommand struct {
 	ID int64 `json:"id,omitempty"`
+	// Tab names the tab of a tab.* command by its lasting ID
+	// (layout.Tab.ID), in place of SID; in tab.create's answer, the ID of
+	// the tab made. An app that does not know it answers by SID alone.
+	Tab string `json:"tab,omitempty"`
 	// Op is "space.create", "space.rename", "space.close", "tab.create",
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",

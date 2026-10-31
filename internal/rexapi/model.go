@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -47,11 +48,13 @@ type mSession struct {
 // mWindow is a GoRex tab as a Rex window.
 type mWindow struct {
 	id, label string
-	focused   string
-	zoomed    string
-	layer     string
-	layout    *layoutView
-	tree      *fnode
+	// tab is the GoRex tab's lasting ID, "" from an app before them.
+	tab     string
+	focused string
+	zoomed  string
+	layer   string
+	layout  *layoutView
+	tree    *fnode
 	// blocks are the blocks of the tiled layer, in layout order; floats
 	// are the floating layers over it, back to front.
 	blocks []*mBlock
@@ -143,20 +146,10 @@ type blockView struct {
 // view. One goroutine uses it at a time, under the gateway's refresh
 // lock.
 type mapper struct {
-	// windows are the windows of the last build, with the sessions that
-	// name each tab.
-	windows []windowRef
 	// revs and sigs are the last revision and view signature of each
 	// session by ID.
 	revs map[string]uint64
 	sigs map[string]string
-}
-
-// windowRef remembers which tab a window ID belongs to, by the sessions
-// in it: a tab keeps its window while it keeps any of them.
-type windowRef struct {
-	id   string
-	sids map[string]bool
 }
 
 func newMapper() *mapper {
@@ -178,8 +171,6 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 		spaces = []layout.Workspace{{ID: "main", Name: "gorex", Layout: store.Layout}}
 	}
 	m := &model{byID: map[string]*mSession{}, blocks: map[string]*mBlock{}, host: host}
-	used := make([]bool, len(mp.windows))
-	refs := make([]windowRef, 0, len(spaces))
 	for i := range spaces {
 		ws := &spaces[i]
 		workspace := ws.ID
@@ -196,23 +187,14 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 			if tab.Root == nil {
 				continue
 			}
-			sids := map[string]bool{}
-			for _, r := range tab.Roots() {
-				for sid := range sidsOf(r) {
-					sids[sid] = true
-				}
-			}
-			// A tab keeps its window ID while it keeps any of its
-			// sessions, even while it shows no block this server serves.
-			wid := mp.windowFor(sids, used)
-			refs = append(refs, windowRef{id: wid, sids: sids})
+			wid := windowIDOf(workspace, ti, tab)
 			root := filterNode(tab.Root)
 			if root == nil {
 				// A tab with no local session is not a window this
 				// server can show.
 				continue
 			}
-			w := &mWindow{id: wid}
+			w := &mWindow{id: wid, tab: tab.ID}
 			w.label = tab.Name
 			if w.label == "" {
 				w.label = "Window " + shortID(w.id)
@@ -290,7 +272,6 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 		m.sessions = append(m.sessions, s)
 		m.byID[s.id] = s
 	}
-	mp.windows = refs
 	for id := range mp.revs {
 		if m.byID[id] == nil {
 			delete(mp.revs, id)
@@ -300,30 +281,25 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 	return m, nil
 }
 
-// windowFor returns the ID of the window of a tab with sids, keeping the
-// ID of the last window that shares any of them, or making a new one.
-// used marks the last build's windows that a tab took.
-func (mp *mapper) windowFor(sids map[string]bool, used []bool) string {
-	best, most := -1, 0
-	for i, w := range mp.windows {
-		if used[i] {
-			continue
-		}
-		n := 0
-		for sid := range sids {
-			if w.sids[sid] {
-				n++
-			}
-		}
-		if n > most {
-			best, most = i, n
+// windowIDOf names the window of a space's tab ti: by the tab's lasting
+// ID, so a window keeps its ID across restarts of the gateway and the app.
+// A tab of an older app, which has none, is named by its first session in
+// order, else by its place.
+func windowIDOf(space string, ti int, tab *layout.Tab) string {
+	if tab.ID != "" {
+		return nameID(kWindow, "tab "+tab.ID)
+	}
+	var sids []string
+	for _, r := range tab.Roots() {
+		for sid := range sidsOf(r) {
+			sids = append(sids, sid)
 		}
 	}
-	if best >= 0 {
-		used[best] = true
-		return mp.windows[best].id
+	if len(sids) > 0 {
+		slices.Sort(sids)
+		return nameID(kWindow, "sid "+sids[0])
 	}
-	return newWindowID()
+	return nameID(kWindow, fmt.Sprintf("place %s %d", space, ti))
 }
 
 // sidsOf returns every session a tab holds, by ID.

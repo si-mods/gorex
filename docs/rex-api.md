@@ -117,9 +117,13 @@ meets:
 - There are no detached blocks, Lua scripts, configuration file or host
   list: `client.set_script`, `client.perform`, `hosts.put` and the like
   fail with `not_supported`, and `client.keymap` is empty.
-- Window IDs last as long as the gateway: GoRex's tabs have no IDs of
-  their own, so a restarted gateway gives windows new ones. Session and
-  block IDs stay.
+- Every ID lasts: a window is named by its tab's own ID, which GoRex
+  keeps in the layout, so windows, sessions and blocks keep their IDs
+  across restarts of the gateway and of GoRex.
+- Closing a session's last window leaves its space empty, the GoRex
+  window open on it, as a Rex session goes on with no windows: make the
+  next window from the client. On the desktop the window closes with its
+  last tab instead.
 - Changing the layout needs the GoRex window open, as for rootshell:
   without it, the call fails with `conflict`.
 - Tabs and panes of remote hosts are left out.

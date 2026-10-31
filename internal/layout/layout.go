@@ -28,6 +28,10 @@ type Layout struct {
 
 // Tab is a tab of the window: panes in a tree of splits.
 type Tab struct {
+	// ID names the tab for good: the app gives it to every tab it makes,
+	// keeps it while the tab lasts, wherever the tab goes, and gives one
+	// to a tab of an older layout that has none. Clients name a tab by it.
+	ID    string `json:"id,omitempty"`
 	Name  string `json:"name,omitempty"`
 	Root  *Node  `json:"root"`
 	Focus int    `json:"focus"`

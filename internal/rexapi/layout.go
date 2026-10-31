@@ -924,7 +924,7 @@ func methodSessionCloseWindow(c *control, a args) (any, *apiError) {
 	if first == nil {
 		return nil, errNotFound("window %s has no block", windowID)
 	}
-	if _, aerr := c.g.command(rex.LayoutCommand{Op: "tab.close", Space: s.space, SID: first.sid}); aerr != nil {
+	if _, aerr := c.g.command(rex.LayoutCommand{Op: "tab.close", Space: s.space, Tab: w.tab, SID: first.sid}); aerr != nil {
 		return nil, aerr
 	}
 	m, aerr := c.g.afterCommand(func(m *model) bool {
@@ -966,7 +966,7 @@ func methodSessionSetWindowLabel(c *control, a args) (any, *apiError) {
 	if first == nil {
 		return nil, errNotFound("window %s has no block", windowID)
 	}
-	if _, aerr := c.g.command(rex.LayoutCommand{Op: "tab.rename", Space: s.space, SID: first.sid, Name: label}); aerr != nil {
+	if _, aerr := c.g.command(rex.LayoutCommand{Op: "tab.rename", Space: s.space, Tab: w.tab, SID: first.sid, Name: label}); aerr != nil {
 		return nil, aerr
 	}
 	m, aerr := c.g.afterCommand(func(m *model) bool {
@@ -1727,7 +1727,7 @@ func methodSessionMoveWindow(c *control, a args) (any, *apiError) {
 		return nil, errNotFound("window %s has no block", windowID)
 	}
 	index := appTabIndex(cur, want, len(s.windows))
-	if _, aerr := c.g.command(rex.LayoutCommand{Op: "tab.move", Space: s.space, SID: first.sid, Index: index}); aerr != nil {
+	if _, aerr := c.g.command(rex.LayoutCommand{Op: "tab.move", Space: s.space, Tab: w.tab, SID: first.sid, Index: index}); aerr != nil {
 		return nil, aerr
 	}
 	m, aerr := c.g.afterCommand(func(m *model) bool {

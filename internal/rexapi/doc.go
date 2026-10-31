@@ -43,7 +43,8 @@
 // | session.create, session.new_window, session.new_split | a layout's splits are made by dividing the space of the block made before them, so nested splits come out right-nested; the blocks' order, labels and each pair's ratio are kept |
 // | session.set_label | an empty label gives the layout's own name ("Session xxxxxxxx"), not a name the server picks |
 // | session.set_block_label | an empty label gives the pane's default ("shell"), not "Block xxxxxxxx" |
-// | session.close_window, block.close | the app's last tab cannot close: conflict |
+// | session.close_window, block.close | closing the last tab leaves the space empty, its window open on it, as a Rex session goes on with no windows |
+// | window IDs | named by the GoRex tab's lasting ID (layout.Tab.ID), so they stay across restarts of the gateway and the app; a tab of an app before tab IDs is named by its first session |
 // | session.create | GoRex sets no limit on sessions |
 // | com.superlogical.terminal.format | text is always trimmed and unwrapped; html is a plain <pre>; the extra_* flags are accepted, and the vt form carries the state GoRex keeps |
 // | com.superlogical.terminal.pwd | the foreground process's directory, as a plain path: GoRex keeps no reported directory separately |
