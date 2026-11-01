@@ -1230,8 +1230,14 @@ func (a *App) palette(c *ui.Context, k *colors) {
 	// Keyed, the palette is the same element whatever shows before it over
 	// the window, as the error banner coming and going.
 	ui.DialogBase(c.Key("palette"), &a.paletteOpen, func(backdrop, panel ui.Element) {
-		backdrop.Background(k.backdrop).Justify(ui.Start).Padding(78, 0, 0, 0)
-		panel.Width(560).MaxHeight(440).Radius(16).Background(k.panel).Border(1, k.panelBorder).
+		// Both are glass where the frame draws on a GPU: the window behind
+		// shows blurred through them. Elsewhere they are flat, as before.
+		backdrop.Justify(ui.Start).Padding(78, 0, 0, 0).Draw(func(p *ui.Painter, r ui.Rect) {
+			paintFrost(p, r, 10, 0, k.backdrop, k.backdrop)
+		})
+		panel.Width(560).MaxHeight(440).Radius(16).Border(1, k.panelBorder).Draw(func(p *ui.Painter, r ui.Rect) {
+			paintFrost(p, r, 24, 16, k.panelGlass, k.panel)
+		}).
 			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
 		if anim != nil {
 			backdrop.Transition(ui.ElementTransition{Duration: 150 * time.Millisecond, Colors: true, Enter: paletteFade, Exit: paletteFade})

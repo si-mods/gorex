@@ -27,6 +27,9 @@ type colors struct {
 	// panel is the face of popovers, dialogs and the rows that float over
 	// a pane: opaque, so that the text they cover shows through nowhere.
 	panel, panelBorder, panelSel, backdrop ui.Color
+	// panelGlass is panel as the palette lays it over the blurred window,
+	// translucent where panel is opaque.
+	panelGlass ui.Color
 	// field is the face of a text field, which is opaque as panel, and its
 	// outline.
 	field, fieldBorder ui.Color
@@ -70,6 +73,7 @@ var lightColors = colors{
 	exited:    ui.Hex("#a1a1a6"),
 
 	panel:       ui.Hex("#fcfcfd"),
+	panelGlass:  ui.RGBA(252, 252, 253, 0.80),
 	panelBorder: ui.RGBA(0, 0, 0, 0.08),
 	panelSel:    ui.RGBA(46, 111, 208, 0.12),
 	backdrop:    ui.RGBA(40, 20, 40, 0.06),
@@ -113,6 +117,7 @@ var darkColors = colors{
 	exited:    ui.Hex("#636366"),
 
 	panel:       ui.Hex("#26262a"),
+	panelGlass:  ui.RGBA(38, 38, 42, 0.78),
 	panelBorder: ui.RGBA(255, 255, 255, 0.1),
 	panelSel:    ui.RGBA(108, 178, 255, 0.18),
 	backdrop:    ui.RGBA(0, 0, 0, 0.2),
