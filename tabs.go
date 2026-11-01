@@ -33,22 +33,41 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 		widths[i] = tabWidth(c, t)
 		total += widths[i]
 	}
-	track := ui.Row(c).Basis(total).Shrink(1).MinWidth(0).Height(tabH+4).Padding(2).Radius((tabH+4)/2).
+	track := ui.Row(c).Shrink(1).MinWidth(0).Height(tabH+4).Padding(2).Radius((tabH+4)/2).
 		Background(k.track).Border(0.5, k.trackBorder).AlignItems(ui.Center).ClipX().
 		DragWindow().Role(ui.RoleTabList).Label(locales.TabListLabel())
+	// With a style of animation the track's width follows its tabs as
+	// they open, close and slide, on their spring: a tab after one that
+	// closes slides in whole, and one opening unfolds into the room the
+	// track makes. Growing, it is narrower than its tabs, which overflow
+	// it then rather than all shrinking for a moment.
+	anim := motion(c)
+	shown, squeeze := total, true
+	if anim != nil {
+		shown = track.AnimateTo("width", total, *anim)
+		squeeze = shown >= total-0.5
+	}
+	track.Basis(shown)
 	tabs := slices.Clone(a.tabs)
 	track.Children(func() {
 		for i, t := range tabs {
 			if i > 0 {
-				sep := ui.Box(c).Size(1, 16).Shrink(0)
+				// The separator before a tab goes with it.
+				sep := ui.Box(c.Key(tabSepKey(t.ID))).Size(1, 16).Shrink(0)
 				if i != a.active && i-1 != a.active {
 					sep.Background(k.tabSep)
 				}
+				if anim != nil {
+					sep.Transition(ui.ElementTransition{Animation: anim, Position: true, Colors: true, Enter: tabMotion, Exit: tabMotion})
+				}
 			}
-			a.tabItem(c, k, i, t, widths[i])
+			a.tabItem(c, k, i, t, widths[i], squeeze)
 		}
 	})
 }
+
+// tabSepKey is the key of the separator before a tab in the title bar.
+type tabSepKey int
 
 // tabWidth returns the width a tab takes when the title bar has room: its
 // tiles and its label, the label faded out past tabMaxW, and room for its
@@ -137,10 +156,15 @@ func privateUse(r rune) bool {
 // them, to drag the window by.
 const titleFree = 56
 
-// tabItem draws a tab: the tiles of its panes' programs and its label.
-func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32) {
+// tabItem draws a tab: the tiles of its panes' programs and its label. It
+// shrinks to fit the title bar while squeeze.
+func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, squeeze bool) {
 	active := i == a.active
-	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(1).MinWidth(64).
+	shrink := float32(0)
+	if squeeze {
+		shrink = 1
+	}
+	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(shrink).MinWidth(64).
 		Padding(0, 10, 0, 6).Gap(9).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
@@ -149,7 +173,7 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32) {
 	} else if e.Hovered() {
 		e.Background(k.hover)
 	}
-	a.tabEvents(e, k, i, t)
+	a.tabEvents(c, e, k, i, t)
 	// The tab stays hovered while its close button is pressed, which it
 	// shows then.
 	hovered := e.Hovered()
@@ -187,11 +211,20 @@ func (a *App) tabRest(c *ui.Context, k *colors, t *Tab, active, hovered bool) {
 	a.tabEnd(c, k, t, hovered)
 }
 
+// tabMotion is where a tab comes from as it opens, and goes as it closes:
+// folded to nothing along the tabs, so that those after it slide over.
+var tabMotion = &ui.Motion{Collapse: true, Opacity: 0}
+
 // tabEvents makes a tab's element do what tabs do: a click selects it, a
 // double click renames it, it drags to another tab's place, and it has the
-// tab's menu.
-func (a *App) tabEvents(e ui.Element, k *colors, i int, t *Tab) {
-	e.Transition(ui.ElementTransition{Colors: true, Position: true, Duration: 160 * time.Millisecond})
+// tab's menu. With a style of animation it springs to its place, opens and
+// closes; without, only its colors fade.
+func (a *App) tabEvents(c *ui.Context, e ui.Element, k *colors, i int, t *Tab) {
+	if anim := motion(c); anim != nil {
+		e.Transition(ui.ElementTransition{Animation: anim, Colors: true, Position: true, Enter: tabMotion, Exit: tabMotion})
+	} else {
+		e.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
+	}
 	e.Drag(t)
 	if dragged, ok := ui.Drop[*Tab](e); ok && dragged != t {
 		merge, _, _ := tabDropZoneAt(e, prefs.TabPlacement)
@@ -295,7 +328,7 @@ func (a *App) tabEnd(c *ui.Context, k *colors, t *Tab, hovered bool) {
 	} else if s := t.status(); needsUser(s) {
 		statusDot(c, k, s, 5.5).Margin(0, 5, 0, 0)
 	} else if t.attention() {
-		ui.Box(c).Size(7, 7).Radius(4).Background(k.attention).Margin(0, 5, 0, 0)
+		attentionDot(c, k, t.allPanes()...).Margin(0, 5, 0, 0)
 	} else if s != nil && s.State == "working" {
 		statusDot(c, k, s, 5.5)
 	} else if a.tabBusy(c, t) {

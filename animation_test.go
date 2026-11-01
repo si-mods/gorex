@@ -1,10 +1,16 @@
 package main
 
 import (
+	"bytes"
+	"os"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 // TestPanesMove: with a style of animation, the panes spring to their
@@ -266,5 +272,388 @@ func TestDividerDoubleClickAnimates(t *testing.T) {
 	rest, _ := tt.Find("Divider")
 	if shown.X == rest.X {
 		t.Errorf("divider at %v at once, want it on its way to %v", shown.X, rest.X)
+	}
+}
+
+// styles are the animation styles the motion tests run with: moving or
+// not.
+var styles = []struct {
+	name, style string
+	moves       bool
+}{
+	{"snappy", "", true},
+	{"off", "off", false},
+}
+
+// TestFloatMorphs: a pane that floats or docks moves from its old box to
+// its new one, as one element, its terminal keeping its size on the way;
+// with Off it is there at once.
+func TestFloatMorphs(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{Animation: tc.style}
+			tt.Frame()
+			a.split(false)
+			waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
+			settle(tt)
+			p := a.tab().Focus
+			// step floats or docks the pane, and checks where its button,
+			// label, shows in the first frame against where it rests.
+			step := func(what, label string, change func() bool) {
+				t.Helper()
+				c, r := p.term.Size()
+				start := [2]int{c, r}
+				if !change() {
+					t.Fatalf("%s: nothing changed", what)
+				}
+				tt.Frame()
+				shown, ok := tt.Find(label)
+				if !ok {
+					t.Fatalf("%s: no %q; texts %q", what, label, tt.Texts())
+				}
+				if tc.moves {
+					for range 10 {
+						tt.Advance(16 * time.Millisecond)
+						tt.Frame()
+						if c, r := p.term.Size(); [2]int{c, r} != start {
+							t.Errorf("%s: the terminal took %dx%d on the way", what, c, r)
+						}
+					}
+				}
+				settle(tt)
+				rest, _ := tt.Find(label)
+				if moving := shown != rest; moving != tc.moves {
+					t.Errorf("%s: moving %v (%v, at rest %v), want %v", what, moving, shown, rest, tc.moves)
+				}
+			}
+			step("float", "Dock Pane", func() bool { return a.floatPane(p) })
+			step("dock", "Float Pane", func() bool { return a.dockPane(p) })
+		})
+	}
+}
+
+// TestTabsOpenAndClose: with a style of animation a new tab unfolds along
+// the tabs, and those after a closed one slide over, in the title bar and
+// in the sidebar; with Off they are where they go at once.
+func TestTabsOpenAndClose(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, place := range []string{"", "left"} {
+		for _, tc := range styles {
+			t.Run(place+tc.name, func(t *testing.T) {
+				a, tt := newTestApp(t)
+				prefs = settings{TabPlacement: place, Animation: tc.style}
+				a.tab().Name = "first"
+				tt.Frame()
+				a.newTab(os.TempDir())
+				a.tab().Name = "second"
+				tt.Frame()
+				opening, ok := tt.Find("second ")
+				if !ok {
+					t.Fatalf("no second tab; texts %q", tt.Texts())
+				}
+				settle(tt)
+				open, _ := tt.Find("second ")
+				folded := opening.W < open.W
+				if place != "" {
+					folded = opening.H < open.H
+				}
+				if folded != tc.moves {
+					t.Errorf("opening %v, open %v: folded %v, want %v", opening, open, folded, tc.moves)
+				}
+				a.closeTab(a.tabs[0])
+				waitFor(t, tt, "1 tab", func() bool { return len(a.tabs) == 1 })
+				tt.Frame()
+				sliding, _ := tt.Find("second ")
+				settle(tt)
+				rest, _ := tt.Find("second ")
+				if moving := sliding != rest; moving != tc.moves {
+					t.Errorf("after a close: moving %v (%v, at rest %v), want %v", moving, sliding, rest, tc.moves)
+				}
+			})
+		}
+	}
+}
+
+// TestPaletteComesAndGoes: with a style of animation the palette's rows
+// come in as it opens, not as its query changes, and it fades out as it
+// closes; with Off it shows and goes at once.
+func TestPaletteComesAndGoes(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	// panel is what the palette's panel covers of the window, and its
+	// pixels, as a shot shows them; the terminal's caret blinks outside.
+	panel := func(tt *ui.Tester) []byte {
+		img := tt.Image()
+		var pix []byte
+		for y := 90; y < 300; y++ {
+			pix = append(pix, img.Pix[img.PixOffset(240, y):img.PixOffset(760, y)]...)
+		}
+		return pix
+	}
+	// row is a title of the palette that shows only there.
+	row := func(t *testing.T, a *App, tt *ui.Tester) string {
+		t.Helper()
+		for _, it := range a.paletteItems() {
+			if n := slices.Index(tt.Texts(), it.title); n >= 0 && slices.Index(tt.Texts()[n+1:], it.title) < 0 {
+				return it.title
+			}
+		}
+		t.Fatalf("no row of its own; texts %q", tt.Texts())
+		return ""
+	}
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{Animation: tc.style}
+			p := a.tab().Focus
+			waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+			// The terminal's caret blinks by the wall clock, not the
+			// Tester's, and after a long prompt, as a CI machine's long
+			// host name makes, it is in the region compared: hidden, it
+			// leaves the palette alone to tell the shots apart.
+			p.term.Feed([]byte("\x1b[?25l"))
+			settle(tt)
+			closed := panel(tt)
+			a.openPalette()
+			tt.Frame()
+			title := row(t, a, tt)
+			coming, _ := tt.Find(title)
+			settle(tt)
+			rest, _ := tt.Find(title)
+			if moving := coming != rest; moving != tc.moves {
+				t.Errorf("opening: moving %v (%v, at rest %v), want %v", moving, coming, rest, tc.moves)
+			}
+			// A query that changes the rows moves none.
+			tt.Type("e")
+			tt.Frame()
+			title = row(t, a, tt)
+			now, _ := tt.Find(title)
+			settle(tt)
+			if then, _ := tt.Find(title); now != then {
+				t.Errorf("the query moved a row: %v, at rest %v", now, then)
+			}
+			// Escape closes it as the user does.
+			tt.Key(0, ui.KeyEscape)
+			tt.Frame()
+			if a.paletteOpen {
+				t.Fatal("Escape did not close the palette")
+			}
+			going := !bytes.Equal(panel(tt), closed)
+			settle(tt)
+			if got := panel(tt); !bytes.Equal(got, closed) {
+				n, x0, y0, x1, y1 := 0, 1<<30, 1<<30, -1, -1
+				for i := 0; i < len(got); i += 4 {
+					if !bytes.Equal(got[i:i+4], closed[i:i+4]) {
+						x, y := 240+(i/4)%520, 90+(i/4)/520
+						n, x0, y0, x1, y1 = n+1, min(x0, x), min(y0, y), max(x1, x), max(y1, y)
+					}
+				}
+				t.Logf("%d pixels differ within %d,%d-%d,%d; the terminal shows %q", n, x0, y0, x1, y1, p.term.Text())
+				t.Fatal("the window is not as before the palette opened")
+			}
+			if going != tc.moves {
+				t.Errorf("closing: the palette still shows %v, want %v", going, tc.moves)
+			}
+		})
+	}
+}
+
+// TestActivityDotBreathes: an activity dot's halo breathes, painting
+// again, with a style of animation, and stands still with Off.
+func TestActivityDotBreathes(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			prefs = settings{Animation: tc.style}
+			tt := ui.NewTester(func(c *ui.Context) { activityDot(c, ui.RGBA(0, 120, 255, 1), 6) }, 40, 40)
+			tt.Frame()
+			before := slices.Clone(tt.Image().Pix)
+			tt.Advance(600 * time.Millisecond)
+			if pending := tt.FramePending(); pending != tc.moves {
+				t.Errorf("frame pending %v, want %v", pending, tc.moves)
+			}
+			if changed := !bytes.Equal(before, tt.Image().Pix); changed != tc.moves {
+				t.Errorf("the halo changed %v, want %v", changed, tc.moves)
+			}
+		})
+	}
+	t.Run("unfocused", func(t *testing.T) {
+		prefs = settings{}
+		breathing = false
+		t.Cleanup(func() { breathing = true })
+		tt := ui.NewTester(func(c *ui.Context) { activityDot(c, ui.RGBA(0, 120, 255, 1), 6) }, 40, 40)
+		tt.Frame()
+		before := slices.Clone(tt.Image().Pix)
+		tt.Advance(600 * time.Millisecond)
+		if tt.FramePending() || !bytes.Equal(before, tt.Image().Pix) {
+			t.Error("the halo breathes out of the focus")
+		}
+	})
+	if b := breath(time.Unix(0, 0)); b != 0 {
+		t.Errorf("breath at the epoch %v, want 0", b)
+	}
+	if b := breath(time.Unix(0, int64(breathPeriod))); b != 1 {
+		t.Errorf("breath a period on %v, want 1", b)
+	}
+}
+
+// TestAttentionPops: a pane's dot of attention pops as the pane comes to
+// ask for it, once, and not when it is built anew later; with Off it does
+// not pop.
+func TestAttentionPops(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			prefs = settings{Animation: tc.style}
+			p := &Pane{ID: 7}
+			show := true
+			var dot ui.Rect
+			tt := ui.NewTester(func(c *ui.Context) {
+				k := colorsOf(c)
+				ui.Row(c).Padding(10).Children(func() {
+					if show && p.attention {
+						attentionDot(c, k, p).Label("dot")
+					}
+				})
+			}, 40, 40)
+			tt.Frame()
+			p.askAttention()
+			tt.Frame()
+			// Built anew on the way, as a tab's dot shown again, it shows
+			// the pop where it is, not from its start.
+			show = false
+			tt.Frame()
+			tt.Advance(140 * time.Millisecond)
+			show = true
+			tt.Frame()
+			dot, _ = tt.Find("dot")
+			if popped := dot.W > 10; popped != tc.moves {
+				t.Errorf("popped %v (%v), want %v", popped, dot, tc.moves)
+			}
+			if pending := tt.FramePending(); pending != tc.moves {
+				t.Errorf("popping, frame pending %v, want %v", pending, tc.moves)
+			}
+			tt.Advance(time.Second)
+			tt.Frame()
+			if dot, _ = tt.Find("dot"); dot.W != 7 {
+				t.Errorf("at rest the dot is %v", dot)
+			}
+			// Hidden and shown again, it does not pop.
+			show = false
+			tt.Frame()
+			show = true
+			tt.Frame()
+			tt.Advance(140 * time.Millisecond)
+			tt.Frame()
+			if dot, _ = tt.Find("dot"); dot.W != 7 {
+				t.Errorf("built anew, the dot popped: %v", dot)
+			}
+		})
+	}
+}
+
+// TestPaletteStaysPut: opening the palette again while it is open, as on
+// the spaces, does not pose it anew; and the error banner showing over the
+// window while it is open neither brings the palette in again nor takes
+// its query field's focus.
+func TestPaletteStaysPut(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+	// The palette's rows, under its query field, whose caret blinks.
+	panel := func() []byte {
+		img := tt.Image()
+		var pix []byte
+		for y := 140; y < 300; y++ {
+			pix = append(pix, img.Pix[img.PixOffset(240, y):img.PixOffset(760, y)]...)
+		}
+		return pix
+	}
+	a.openPalette()
+	tt.Frame()
+	settle(tt)
+	rest := panel()
+	a.openSessionPalette()
+	a.openPalette()
+	if a.paletteFresh {
+		t.Error("opened again while open, the palette is to come in again")
+	}
+	for range 10 {
+		tt.Frame()
+		tt.Advance(16 * time.Millisecond)
+		tt.Frame()
+		if !bytes.Equal(panel(), rest) {
+			t.Fatal("opened again, the palette moved")
+		}
+	}
+	before := panel()
+	a.err = "boom"
+	tt.Frame()
+	if !tt.HasText("boom") {
+		t.Fatalf("no banner; texts %q", tt.Texts())
+	}
+	if !bytes.Equal(panel(), before) {
+		t.Error("the banner brought the palette in again")
+	}
+	tt.Type("x")
+	tt.Frame()
+	if a.paletteQuery != "x" {
+		t.Errorf("the query is %q, not x: its field lost the focus", a.paletteQuery)
+	}
+}
+
+// TestTabTrackFollows: in the title bar, the track's width follows its
+// tabs on their spring: a tab after one that closes slides in whole, never
+// cut by the track, and the track grows as a new tab unfolds rather than
+// at once; with Off it takes its width at once.
+func TestTabTrackFollows(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{Animation: tc.style}
+			a.tab().Name = "one"
+			a.newTab(os.TempDir()).Name = "two"
+			a.newTab(os.TempDir()).Name = "three"
+			tt.Frame()
+			settle(tt)
+			rest, ok := tt.Find("three ")
+			if !ok {
+				t.Fatalf("no third tab; texts %q", tt.Texts())
+			}
+			track, _ := tt.Find(locales.TabListLabel())
+			a.closeTab(a.tabs[1])
+			waitFor(t, tt, "2 tabs", func() bool { return len(a.tabs) == 2 })
+			for range 30 {
+				tt.Frame()
+				if r, _ := tt.Find("three "); abs(r.W-rest.W) > 1 {
+					t.Fatalf("closing, the next tab shows %v wide, %v at rest", r.W, rest.W)
+				}
+				tt.Advance(16 * time.Millisecond)
+			}
+			settle(tt)
+			narrow, _ := tt.Find(locales.TabListLabel())
+			if narrow.W >= track.W {
+				t.Fatalf("the track is %v wide after a close, %v before", narrow.W, track.W)
+			}
+			a.newTab(os.TempDir()).Name = "four"
+			tt.Frame()
+			growing, _ := tt.Find(locales.TabListLabel())
+			settle(tt)
+			grown, _ := tt.Find(locales.TabListLabel())
+			if moving := growing.W < grown.W; moving != tc.moves {
+				t.Errorf("opening, the track is %v wide, %v at rest: growing %v, want %v", growing.W, grown.W, moving, tc.moves)
+			}
+		})
 	}
 }

@@ -157,8 +157,12 @@ type Pane struct {
 	// lastData is when the session last printed, in Unix nanoseconds.
 	lastData atomic.Int64
 	// attention marks a pane that rang the bell or whose program finished
-	// while it was out of sight; seen clears it.
-	attention bool
+	// while it was out of sight; seen clears it. asked counts the times it
+	// came to ask for attention (askAttention), and popped is the last of
+	// those its dots popped for, at popAt.
+	attention     bool
+	asked, popped uint64
+	popAt         time.Time
 	// seen is when the program's last record the user saw was updated:
 	// done and error records till then no longer ask for attention.
 	// notified is when the pane's last status notification was shown.
@@ -340,6 +344,9 @@ type App struct {
 	wsColorText     string
 	wsConfirm       bool
 	paletteSessions bool
+	// paletteFresh tells that the palette was just opened: the frame that
+	// shows it first poses it where it comes in from.
+	paletteFresh bool
 
 	// The sidebar: the tab last scrolled into view, and a drag of its
 	// edge, from the width it began at.
@@ -921,8 +928,17 @@ func (nopConn) Close() error                { return nil }
 
 func (a *App) ring(p *Pane) {
 	if t := a.tab(); t == nil || t.Focus != p || p.Tab != t || !a.focusedWin {
-		p.attention = true
+		p.askAttention()
 	}
+}
+
+// askAttention marks the pane as asking for attention: its dots pop as it
+// comes to.
+func (p *Pane) askAttention() {
+	if !p.attention {
+		p.asked++
+	}
+	p.attention = true
 }
 
 // newTab opens a tab with a shell in dir, after the active tab, on the
@@ -2436,7 +2452,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			// notified of it.
 			if !was.Idle && was.Program != "" && in.Idle && was.Program != in.Program {
 				if !seen {
-					p.attention = true
+					p.askAttention()
 				}
 				statuses := len(was.Statuses) > 0 || len(in.Statuses) > 0
 				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second && !statuses {

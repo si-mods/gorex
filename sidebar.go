@@ -332,7 +332,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab) {
 	} else if e.Hovered() {
 		e.Background(k.hover)
 	}
-	a.tabEvents(e, k, i, t)
+	a.tabEvents(c, e, k, i, t)
 	hovered := e.Hovered()
 	e.Children(func() {
 		// The tiles take the room of three, so that the names line up.
@@ -349,6 +349,10 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) {
 		key += "-" + h.ID
 	}
 	row := ui.Row(c.Key(key)).Height(26).Shrink(0).Padding(6, 2, 0, 8).Gap(6).AlignItems(ui.Center)
+	// It slides with the tabs as those above it open and close.
+	if anim := motion(c); anim != nil {
+		row.Transition(ui.ElementTransition{Animation: anim, Position: true})
+	}
 	hovered := row.Hovered()
 	row.Children(func() {
 		if h != nil {
