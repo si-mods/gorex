@@ -261,6 +261,11 @@ var (
 		},
 		Available: splitsLocal,
 	}
+	cmdNotePreview = command{
+		ID: "note.toggle_preview", Name: locales.Messages.CmdToggleNotePreview, Accel: "CmdOrCtrl+E", Keys: "⌘E", Other: ctrlShift(ui.KeyM),
+		Run:       func(a *App) { a.toggleNotePreview() },
+		Available: func(a *App) bool { return a.focusedNote() != nil },
+	}
 	cmdNewBrowser = command{
 		ID: "tab.new_browser", Name: locales.Messages.CmdNewBrowserTab,
 		Run: func(a *App) { a.newBrowserTab() },
@@ -487,16 +492,28 @@ var (
 	cmdFindNext    = command{ID: "find.next", Name: locales.Messages.FindNext, Accel: "CmdOrCtrl+G", Keys: "⌘G", Other: ctrlShift(ui.KeyG), Run: func(a *App) { a.findNext() }, Available: func(a *App) bool { return a.findable() }}
 	cmdFindPrev    = command{ID: "find.previous", Name: locales.Messages.FindPrevious, Accel: "CmdOrCtrl+Shift+G", Keys: "⇧⌘G", Run: func(a *App) { a.findPrevious() }, Available: func(a *App) bool { return a.findable() }}
 	cmdRestart     = command{ID: "pane.restart", Name: locales.Messages.CmdRestartShell, Run: func(a *App) { a.restartFocused() }}
-	cmdBigger      = command{ID: "font.bigger", Name: locales.Messages.CmdBiggerText, Accel: "CmdOrCtrl+=", Keys: "⌘+", Other: shortcut{ui.Ctrl, ui.KeyEqual}, Run: func(a *App) { a.setFontSize(termFont.Size + 1) }}
-	cmdSmaller     = command{ID: "font.smaller", Name: locales.Messages.CmdSmallerText, Accel: "CmdOrCtrl+-", Keys: "⌘−", Other: shortcut{ui.Ctrl, ui.KeyMinus}, Run: func(a *App) { a.setFontSize(termFont.Size - 1) }}
-	cmdActualSize  = command{ID: "font.reset", Name: locales.Messages.CmdActualSize, Accel: "CmdOrCtrl+0", Keys: "⌘0", Other: shortcut{ui.Ctrl, ui.Key0}, Run: func(a *App) { a.setFontSize(0) }}
-	cmdGhostty     = command{ID: "config.reload", Name: locales.Messages.CmdReloadGhostty, Run: func(a *App) { a.reloadGhostty() }}
-	cmdLight       = command{ID: "appearance.light", Name: locales.Messages.CmdAppearanceLight, Run: func(a *App) { a.setAppearance("light") }}
-	cmdDark        = command{ID: "appearance.dark", Name: locales.Messages.CmdAppearanceDark, Run: func(a *App) { a.setAppearance("dark") }}
-	cmdSystem      = command{ID: "appearance.system", Name: locales.Messages.CmdAppearanceSystem, Run: func(a *App) { a.setAppearance("") }}
-	cmdSettings    = command{ID: "app.settings", Name: locales.Messages.CmdSettings, Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
-	cmdUpdates     = command{ID: "app.updates", Name: locales.Messages.CmdCheckForUpdates, Run: func(a *App) { updater.CheckForUpdates() }}
-	cmdEndAll      = command{ID: "app.quit", Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
+	cmdBigger      = command{ID: "font.bigger", Name: locales.Messages.CmdBiggerText, Accel: "CmdOrCtrl+=", Keys: "⌘+", Other: shortcut{ui.Ctrl, ui.KeyEqual}, Run: func(a *App) {
+		if !a.zoomNote(noteSizeStep) {
+			a.setFontSize(termFont.Size + 1)
+		}
+	}}
+	cmdSmaller = command{ID: "font.smaller", Name: locales.Messages.CmdSmallerText, Accel: "CmdOrCtrl+-", Keys: "⌘−", Other: shortcut{ui.Ctrl, ui.KeyMinus}, Run: func(a *App) {
+		if !a.zoomNote(-noteSizeStep) {
+			a.setFontSize(termFont.Size - 1)
+		}
+	}}
+	cmdActualSize = command{ID: "font.reset", Name: locales.Messages.CmdActualSize, Accel: "CmdOrCtrl+0", Keys: "⌘0", Other: shortcut{ui.Ctrl, ui.Key0}, Run: func(a *App) {
+		if !a.zoomNote(0) {
+			a.setFontSize(0)
+		}
+	}}
+	cmdGhostty  = command{ID: "config.reload", Name: locales.Messages.CmdReloadGhostty, Run: func(a *App) { a.reloadGhostty() }}
+	cmdLight    = command{ID: "appearance.light", Name: locales.Messages.CmdAppearanceLight, Run: func(a *App) { a.setAppearance("light") }}
+	cmdDark     = command{ID: "appearance.dark", Name: locales.Messages.CmdAppearanceDark, Run: func(a *App) { a.setAppearance("dark") }}
+	cmdSystem   = command{ID: "appearance.system", Name: locales.Messages.CmdAppearanceSystem, Run: func(a *App) { a.setAppearance("") }}
+	cmdSettings = command{ID: "app.settings", Name: locales.Messages.CmdSettings, Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
+	cmdUpdates  = command{ID: "app.updates", Name: locales.Messages.CmdCheckForUpdates, Run: func(a *App) { updater.CheckForUpdates() }}
+	cmdEndAll   = command{ID: "app.quit", Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
 
 	cmdNewWindow     = command{ID: "window.new", Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
 	cmdNewSession    = command{ID: "session.new", Name: locales.Messages.CmdNewSession, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.newWorkspace() }}
@@ -614,7 +631,7 @@ func (cmd *command) English() string { return cmd.Name(locales.In("en")) }
 
 // paletteCommands are those the command palette lists, before the tabs.
 var paletteCommands = []*command{
-	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdZoom, &cmdEqualize, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
+	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdNotePreview, &cmdZoom, &cmdEqualize, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
 	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdRenameTab, &cmdSidebar,
@@ -816,6 +833,7 @@ func (st *store) menu() *mygo.Menu {
 			item(&cmdSplitDown),
 			item(&cmdSplitBrowser),
 			item(&cmdSplitNote),
+			item(&cmdNotePreview),
 			mygo.Separator(),
 			item(&cmdClosePane),
 			item(&cmdCloseTab),

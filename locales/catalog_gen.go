@@ -134,6 +134,52 @@ func (msgs Messages) CmdSplitNote() string {
 	return Catalog.Format(msgs.locale, "cmdSplitNote", nil)
 }
 
+// CmdToggleNotePreview says "Toggle Note Preview"
+// in the language the app shows.
+//
+// Command: show the focused note as rendered Markdown, or back as text to
+// edit.
+func CmdToggleNotePreview() string { return In(i18n.Locale()).CmdToggleNotePreview() }
+
+// CmdToggleNotePreview says "Toggle Note Preview"
+// in the language of msgs.
+//
+// Command: show the focused note as rendered Markdown, or back as text to
+// edit.
+func (msgs Messages) CmdToggleNotePreview() string {
+	return Catalog.Format(msgs.locale, "cmdToggleNotePreview", nil)
+}
+
+// NotePreview says "Preview"
+// in the language the app shows.
+//
+// Tooltip of a note pane's button that shows its text as rendered Markdown.
+func NotePreview() string { return In(i18n.Locale()).NotePreview() }
+
+// NotePreview says "Preview"
+// in the language of msgs.
+//
+// Tooltip of a note pane's button that shows its text as rendered Markdown.
+func (msgs Messages) NotePreview() string {
+	return Catalog.Format(msgs.locale, "notePreview", nil)
+}
+
+// NoteEdit says "Edit"
+// in the language the app shows.
+//
+// Tooltip of a note pane's button that goes back from the Markdown preview
+// to editing.
+func NoteEdit() string { return In(i18n.Locale()).NoteEdit() }
+
+// NoteEdit says "Edit"
+// in the language of msgs.
+//
+// Tooltip of a note pane's button that goes back from the Markdown preview
+// to editing.
+func (msgs Messages) NoteEdit() string {
+	return Catalog.Format(msgs.locale, "noteEdit", nil)
+}
+
 // NoteName says "Note"
 // in the language the app shows.
 //

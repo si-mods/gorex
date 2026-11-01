@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/markdown"
 
 	"gorex/internal/rex"
 	"gorex/locales"
@@ -829,11 +830,15 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 // in place. Its keys are the text's: none goes to a terminal.
 func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	n := p.note
+	if n.preview {
+		a.notePreviewBody(c, k, t, p)
+		return
+	}
 	// The text is the whole pane: no field of its own inside it, so no
 	// border, background or corners, only the pane's card around it.
 	in := ui.TextAreaBase(c.Key(noteKey(p.ID)), &n.text).
 		TextColor(k.text).SelectionColor(k.accent.Alpha(0.3)).
-		FontSize(13).Padding(10, 12).Grow(1).MinHeight(0).
+		FontSize(n.textSize()).Padding(10, 12).Grow(1).MinHeight(0).
 		Placeholder(locales.NotePlaceholder()).Label(locales.NotePlaceholder())
 	if a.focusReq == p && a.tab() == t {
 		in.Focus()
@@ -849,6 +854,43 @@ func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	// The text is written as it changes, to its own file, not to the
 	// layout: the title shows at once, and nothing waits on a save.
 	n.save()
+}
+
+// notePreviewBody shows a note's text as Markdown, filling the pane and
+// scrolling. A click gives the pane the focus, so that the app's shortcuts
+// act on it; a double click goes back to editing.
+func (a *App) notePreviewBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
+	n := p.note
+	n.md.Theme = &markdown.Theme{FontSize: n.textSize(), Text: k.text, Link: k.accent}
+	sc := ui.Scroll(c.Key(noteKey(p.ID))).Grow(1).MinHeight(0).Focusable()
+	if a.focusReq == p && a.tab() == t {
+		sc.Focus()
+		a.focusReq = nil
+	}
+	if sc.DoubleClicked() {
+		n.setPreview(false)
+		a.focusReq = p
+		a.changed()
+	} else if sc.Pressed() && t.Focus != p {
+		t.setFocus(p)
+		a.changed()
+	}
+	if sc.FocusWithin() {
+		a.contentFocus = true
+		if t.Focus != p {
+			t.setFocus(p)
+			a.changed()
+		}
+	}
+	sc.Children(func() {
+		ui.Column(c).Padding(10, 12).Children(func() {
+			if strings.TrimSpace(n.text) == "" {
+				ui.Text(c, locales.NotePlaceholder()).FontSize(n.textSize()).TextColor(k.textFaint)
+				return
+			}
+			markdown.View(c, n.text, &n.md)
+		})
+	})
 }
 
 // floatHandle is the row a float keeps when pane headers are off: a grip
@@ -952,6 +994,18 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		// draws them, rather than each filling its button.
 		naturalGlyphs = true
 		defer func() { naturalGlyphs = false }()
+		if n := p.note; n != nil {
+			icon, label := "eye", locales.NotePreview()
+			if n.preview {
+				icon, label = "pencil", locales.NoteEdit()
+			}
+			if iconButton(c, k, icon, label, 26, 16).Tooltip(tip(label, &cmdNotePreview)).Clicked() {
+				t.setFocus(p)
+				a.focusReq = p
+				n.setPreview(!n.preview)
+				a.changed()
+			}
+		}
 		// As Rex has them: split right, split down, float, zoom and close.
 		// A float's float button, lit, docks it.
 		if f := p.float; f != nil {

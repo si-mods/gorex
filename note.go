@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/egoist/mygo/ui/markdown"
+
 	"gorex/internal/rex"
 )
 
@@ -21,7 +23,85 @@ type notePane struct {
 	text string
 	// last is the text the file was last written with, to see an edit.
 	last string
+	// size is the text size in points, 0 for noteDefaultSize, and preview
+	// shows the text rendered as Markdown rather than for editing.
+	size    float32
+	preview bool
+	// md is how the preview shows Markdown; it keeps what it loads.
+	md markdown.Options
 }
+
+// The text size of a note, as a terminal's: noteDefaultSize at first, a
+// step at a time between noteMinSize and noteMaxSize.
+const (
+	noteDefaultSize = 13
+	noteMinSize     = 8
+	noteMaxSize     = 40
+	noteSizeStep    = 1
+)
+
+// textSize is the size the note's text shows in.
+func (n *notePane) textSize() float32 {
+	if n.size <= 0 {
+		return noteDefaultSize
+	}
+	return n.size
+}
+
+// clampNoteSize keeps a saved size in range; 0, the default, stays.
+func clampNoteSize(s float32) float32 {
+	if s <= 0 || s != s {
+		return 0
+	}
+	return min(max(s, noteMinSize), noteMaxSize)
+}
+
+// zoom changes the size by delta points; 0 goes back to the default.
+// It reports whether the size changed.
+func (n *notePane) zoom(delta float32) bool {
+	old := n.size
+	if delta == 0 {
+		n.size = 0
+	} else {
+		n.size = clampNoteSize(n.textSize() + delta)
+		if n.size == noteDefaultSize {
+			n.size = 0
+		}
+	}
+	return n.size != old
+}
+
+// focusedNote is the note pane that has the focus, nil if another has.
+func (a *App) focusedNote() *notePane {
+	if t := a.tab(); t != nil && t.Focus != nil {
+		return t.Focus.note
+	}
+	return nil
+}
+
+// zoomNote changes the text size of the focused note, if one has the
+// focus, and reports whether it did take the command.
+func (a *App) zoomNote(delta float32) bool {
+	n := a.focusedNote()
+	if n == nil {
+		return false
+	}
+	if n.zoom(delta) {
+		a.changed()
+	}
+	return true
+}
+
+// toggleNotePreview switches the focused note between editing and its
+// Markdown preview.
+func (a *App) toggleNotePreview() {
+	if n := a.focusedNote(); n != nil {
+		n.setPreview(!n.preview)
+		a.changed()
+	}
+}
+
+func (n *notePane) setPreview(on bool) { n.preview = on }
 
 // noteKind is the Kind of a note pane in the layout.
 const noteKind = "note"
