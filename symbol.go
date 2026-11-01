@@ -45,6 +45,7 @@ var sfSymbols = map[string]string{
 	"settings-2":                "gearshape",
 	"sparkles":                  "sparkles",
 	"square":                    "square",
+	"sticky-note":               "note.text",
 	"square-arrow-out-up-right": "arrow.up.forward.square",
 	"square-terminal":           "terminal",
 	"terminal":                  "terminal",

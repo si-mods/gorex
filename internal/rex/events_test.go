@@ -458,3 +458,31 @@ func TestFilterLayoutMirror(t *testing.T) {
 		t.Fatalf("allowed pane lost: %s", got)
 	}
 }
+
+func TestFilterLayoutDropsNotes(t *testing.T) {
+	// A note pane is this machine's: it leaves the peer's layout, its text
+	// with it, and the focus follows the terminal to its new place.
+	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"a":{"sid":"a"},"b":{"a":{"kind":"note","note":"secret text"},"b":{"sid":"b"}}},"focus":2}]}],"windows":["w"]}`)
+	s := &Server{
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "p"}},
+		rem:      remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "p"}}}},
+	}
+	got, err := s.filterLayout(raw, "p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var st layout.Store
+	if err := json.Unmarshal(got, &st); err != nil {
+		t.Fatal(err)
+	}
+	tab := st.Sessions[0].Tabs[0]
+	if tab.Root == nil || tab.Root.A == nil || tab.Root.A.SID != "a" || tab.Root.B == nil || tab.Root.B.SID != "b" {
+		t.Fatalf("panes %+v", tab.Root)
+	}
+	if tab.Focus != 1 {
+		t.Errorf("focus %d, want the second terminal", tab.Focus)
+	}
+	if bytes.Contains(got, []byte("secret text")) || bytes.Contains(got, []byte("note")) {
+		t.Fatalf("leaked the note pane: %s", got)
+	}
+}

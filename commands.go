@@ -247,6 +247,23 @@ var (
 		Run:     func(a *App) { a.split(true) },
 		RunArgs: func(a *App, args map[string]any) error { a.splitAt(true, argString(args, "dir")); return nil },
 	}
+	cmdNewNote = command{
+		ID: "tab.new_note", Name: locales.Messages.CmdNewNoteTab,
+		Run: func(a *App) { a.newNoteTab() },
+	}
+	cmdSplitNote = command{
+		ID: "pane.split.note", Name: locales.Messages.CmdSplitNote,
+		Run:  func(a *App) { a.splitNote(false) },
+		Args: []actionArg{{Name: "direction", Type: "string", Optional: true, Values: []string{"right", "down"}}},
+		RunArgs: func(a *App, args map[string]any) error {
+			a.splitNote(argString(args, "direction") == "down")
+			return nil
+		},
+		Available: func(a *App) bool {
+			t := a.tab()
+			return t != nil && t.Focus != nil && t.Focus.host == nil
+		},
+	}
 	cmdNewBrowser = command{
 		ID: "tab.new_browser", Name: locales.Messages.CmdNewBrowserTab,
 		Run: func(a *App) { a.newBrowserTab() },
@@ -603,7 +620,7 @@ func (cmd *command) English() string { return cmd.Name(locales.In("en")) }
 
 // paletteCommands are those the command palette lists, before the tabs.
 var paletteCommands = []*command{
-	&cmdNewTab, &cmdNewBrowser, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdZoom, &cmdEqualize, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
+	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdZoom, &cmdEqualize, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
 	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdRenameTab, &cmdSidebar,
@@ -798,11 +815,13 @@ func (st *store) menu() *mygo.Menu {
 		{Label: locales.MenuShell(), Submenu: []*mygo.MenuItem{
 			item(&cmdNewTab),
 			item(&cmdNewBrowser),
+			item(&cmdNewNote),
 			item(&cmdNewWindow),
 			mygo.Separator(),
 			item(&cmdSplitRight),
 			item(&cmdSplitDown),
 			item(&cmdSplitBrowser),
+			item(&cmdSplitNote),
 			mygo.Separator(),
 			item(&cmdClosePane),
 			item(&cmdCloseTab),
@@ -970,6 +989,9 @@ func (a *App) restartFocused() {
 		if b.web != nil {
 			b.web.Page().Reload()
 		}
+		return
+	}
+	if old.note != nil {
 		return
 	}
 	if a.offline(old.host) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **note:** a note pane is a sticky note of free text: New Note Tab and Split with Note; the layout keeps the text, and the pane stays on this machine
+
 ## 0.5.0
 
 ### Features

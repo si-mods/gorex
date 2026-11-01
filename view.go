@@ -280,6 +280,7 @@ type (
 	cellKey      int
 	dividerKey   int
 	addressKey   int
+	noteKey      int
 	floatGripKey int
 )
 
@@ -633,8 +634,8 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	card.Children(func() {
 		top := float32(0)
 		// A browser pane keeps its header: the address field is the only
-		// way to its pages.
-		if paneHeaders() || p.browser != nil {
+		// way to its pages. A note pane keeps its too, which names it.
+		if paneHeaders() || p.browser != nil || p.note != nil {
 			a.paneHeader(c, hk, t, p, focused, hovered)
 		} else if p.float != nil {
 			a.floatHandle(c, hk, t, p, p.float)
@@ -650,6 +651,10 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 		body.Children(func() {
 			if p.browser != nil {
 				a.browserBody(c, k, t, p)
+				return
+			}
+			if p.note != nil {
+				a.noteBody(c, k, t, p)
 				return
 			}
 			if a.findPane == p {
@@ -812,10 +817,44 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 			if detail != "" {
 				ui.RichText(c, titleSpans(detail, 12.5, 500, k.text.Alpha(0.86))...).Label(detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 			}
-			a.activityBadge(c, k, p)
+			if p.note == nil {
+				a.activityBadge(c, k, p)
+			}
 		})
 		a.paneActions(c, k, t, p, focused || hovered)
 	})
+}
+
+// noteBody shows a note pane's text, which fills the pane and is edited
+// in place. Its keys are the text's: none goes to a terminal.
+func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
+	n := p.note
+	// The area is the theme's, with the app's accent for its outline, as
+	// textField does for a single line.
+	base := c.Theme()
+	th := *base
+	th.Accent = k.accent
+	c.SetTheme(&th)
+	in := ui.TextArea(c.Key(noteKey(p.ID)), &n.text)
+	c.SetTheme(base)
+	in.TextColor(k.text).SelectionColor(k.accent.Alpha(0.3)).Background(k.field).Border(1, k.fieldBorder).
+		FontSize(13).Padding(8).Grow(1).MinHeight(0).
+		Placeholder(locales.NotePlaceholder()).Label(locales.NotePlaceholder())
+	if a.focusReq == p && a.tab() == t {
+		in.Focus()
+		a.focusReq = nil
+	}
+	if in.Focused() {
+		a.contentFocus = true
+		if t.Focus != p {
+			t.setFocus(p)
+			a.changed()
+		}
+	}
+	if n.text != n.last {
+		n.last = n.text
+		a.changed()
+	}
 }
 
 // floatHandle is the row a float keeps when pane headers are off: a grip

@@ -54,6 +54,9 @@ var (
 	// browserProgram is the tile of a browser pane, which runs no program.
 	browserProgram = program{Name: "Browser", Glyph: "globe", TileGlyph: "globe", TileBg: ui.Hex("#2f6fed"), TileFg: ui.Hex("#ffffff")}
 
+	// noteProgram is the tile of a note pane, which runs no program.
+	noteProgram = program{Name: "Note", Glyph: "sticky-note", TileGlyph: "sticky-note", TileBg: ui.Hex("#f5c542"), TileFg: ui.Hex("#3a2f08")}
+
 	programs = map[string]program{
 		"codex":     {Name: "Codex", Glyph: "brand:openai", TileBg: ui.Hex("#f7f7f7"), TileFg: ui.Hex("#1a1a1a"), TileBorder: true},
 		"claude":    {Name: "Claude Code", Glyph: "brand:claude", TileBg: ui.Hex("#d97757"), TileFg: ui.Hex("#ffffff")},

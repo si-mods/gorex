@@ -80,7 +80,12 @@ type Node struct {
 	Host string `json:"host,omitempty"`
 	Dir  string `json:"dir,omitempty"`
 	// URL is the page of a browser pane, which has no session.
-	URL      string  `json:"url,omitempty"`
+	URL string `json:"url,omitempty"`
+	// Kind is "note" for a note pane, which has no session either, and
+	// Note its text; a pane of no kind is a terminal or, with a URL, a
+	// browser.
+	Kind     string  `json:"kind,omitempty"`
+	Note     string  `json:"note,omitempty"`
 	Cols     int     `json:"cols,omitempty"`
 	Rows     int     `json:"rows,omitempty"`
 	Vertical bool    `json:"vertical,omitempty"`

@@ -20,6 +20,22 @@
   "@cmdSplitBrowser": {
     "description": "Command: split the focused pane into two, the new one a browser."
   },
+  "cmdNewNoteTab": "New Note Tab",
+  "@cmdNewNoteTab": {
+    "description": "Command: open a tab with a note pane, a sticky note of free text."
+  },
+  "cmdSplitNote": "Split with Note",
+  "@cmdSplitNote": {
+    "description": "Command: split the focused pane into two, the new one a note."
+  },
+  "noteName": "Note",
+  "@noteName": {
+    "description": "The name of a note pane that has no text and no name."
+  },
+  "notePlaceholder": "Write a note…",
+  "@notePlaceholder": {
+    "description": "Placeholder of a note pane's text area."
+  },
   "browserName": "Browser",
   "@browserName": {
     "description": "The name of a browser pane that shows no page of its own and has no name."

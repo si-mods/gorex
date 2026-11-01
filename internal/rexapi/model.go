@@ -333,7 +333,7 @@ type fnode struct {
 }
 
 // filterNode removes the panes this server does not show: ones on a
-// remote host, browser panes, panes the server would not share, and
+// remote host, browser and note panes, panes the server would not share, and
 // panes with no session. A split with one side left takes the split's
 // whole place.
 func filterNode(n *layout.Node) *fnode {
