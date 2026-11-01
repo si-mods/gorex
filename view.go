@@ -1019,7 +1019,7 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 		nav := func(glyph, label string, enabled bool, run func()) {
 			e := iconButton(c, k, glyph, label, 24, 15)
 			if !enabled {
-				e.Opacity(0.35)
+				dimmed(e, 0.35)
 			}
 			if e.Clicked() && enabled {
 				run()

@@ -5,6 +5,7 @@ import (
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/shader"
 )
 
 // colors are the app's own, in light and dark windows.
@@ -159,8 +160,61 @@ func headerColors(k *colors, bg ui.Color) *colors {
 	return &h
 }
 
-// paintBackground paints the window's background.
+// background is the shader of the window's background: the four colors
+// as vertical gradients, which meet at 38% and at 70% of the height, mixed
+// in sRGB as the gradients are, and the tint over them from 35% of the
+// width, as a horizontal gradient from clear. A hash of the pixel moves
+// each channel by up to half a step of 8 bits, which hides the bands a
+// smooth gradient makes. The colors arrive not premultiplied, and the
+// shader returns an opaque color.
+var background = shader.MustCompile(`package main
+
+var Top, Mid, Low, Bottom, Tint vec4
+
+func hash(v uint) uint {
+	s := v*747796405 + 2891336453
+	w := ((s >> ((s >> 28) + 4)) ^ s) * 277803737
+	return (w >> 22) ^ w
+}
+
+func Fragment(dst vec4, pos vec2) vec4 {
+	size := rectSize()
+	y := pos.y / size.y
+	c := mix(Top.rgb, Mid.rgb, clamp(y/0.38, 0, 1))
+	c = mix(c, Low.rgb, clamp((y-0.38)/0.32, 0, 1))
+	c = mix(c, Bottom.rgb, clamp((y-0.7)/0.3, 0, 1))
+	a := Tint.a * clamp((pos.x/size.x-0.35)/0.65, 0, 1)
+	c = c*(1-a) + Tint.rgb*a
+	n := hash(uint(dst.x) + hash(uint(dst.y)))
+	c += (float(n)/4294967295.0 - 0.5) / 255.0
+	return vec4(clamp(c, 0, 1), 1)
+}
+`)
+
+// The background's uniforms, and the values it draws with, set again for
+// each frame.
+var (
+	bgValues                                   = background.NewValues()
+	bgTopU, bgMidU, bgLowU, bgBottomU, bgTintU = background.Uniform("Top"), background.Uniform("Mid"),
+		background.Uniform("Low"), background.Uniform("Bottom"), background.Uniform("Tint")
+)
+
+// backgroundOptions returns what the background shader draws with: k's
+// colors, in the values made once.
+func backgroundOptions(k *colors) shader.Options {
+	bgValues.Color(bgTopU, k.bgTop).Color(bgMidU, k.bgMid).Color(bgLowU, k.bgLow).
+		Color(bgBottomU, k.bgBottom).Color(bgTintU, k.bgTint)
+	return shader.Options{Values: bgValues}
+}
+
+// paintBackground paints the window's background: one shader, or on the
+// CPU renderer, where a shader over the window runs far too slowly,
+// gradients of the same colors.
 func paintBackground(p *ui.Painter, r ui.Rect, k *colors) {
+	if p.Accelerated() {
+		background.Draw(p, r, backgroundOptions(k))
+		return
+	}
 	h1, h2 := r.H*0.38, r.H*0.32
 	p.FillGradient(ui.Rect{X: r.X, Y: r.Y, W: r.W, H: h1 + 1}, ui.LinearGradient{From: k.bgTop, To: k.bgMid, Angle: 180}, 0)
 	p.FillGradient(ui.Rect{X: r.X, Y: r.Y + h1, W: r.W, H: h2 + 1}, ui.LinearGradient{From: k.bgMid, To: k.bgLow, Angle: 180}, 0)
