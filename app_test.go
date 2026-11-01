@@ -407,7 +407,8 @@ func TestPaletteScrolls(t *testing.T) {
 	tt.Move(top.X, top.Y+100)
 	tt.Scroll(top.X, top.Y+100, 0, 300)
 	tt.Frame()
-	if r, _ := tt.Find("shell10"); r.Y != row10.Y-300 {
+	// Posed as the palette comes in, a row's place has a rounding error.
+	if r, _ := tt.Find("shell10"); abs(r.Y-(row10.Y-300)) > 0.01 {
 		t.Errorf("scrolled 300: a row moved from %v to %v", row10.Y, r.Y)
 	}
 	if r, _ := tt.Find("shell00"); r.H != 0 {

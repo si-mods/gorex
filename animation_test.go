@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/locales"
 )
 
 // TestPanesMove: with a style of animation, the panes spring to their
@@ -606,5 +608,52 @@ func TestPaletteStaysPut(t *testing.T) {
 	tt.Frame()
 	if a.paletteQuery != "x" {
 		t.Errorf("the query is %q, not x: its field lost the focus", a.paletteQuery)
+	}
+}
+
+// TestTabTrackFollows: in the title bar, the track's width follows its
+// tabs on their spring: a tab after one that closes slides in whole, never
+// cut by the track, and the track grows as a new tab unfolds rather than
+// at once; with Off it takes its width at once.
+func TestTabTrackFollows(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{Animation: tc.style}
+			a.tab().Name = "one"
+			a.newTab(os.TempDir()).Name = "two"
+			a.newTab(os.TempDir()).Name = "three"
+			tt.Frame()
+			settle(tt)
+			rest, ok := tt.Find("three ")
+			if !ok {
+				t.Fatalf("no third tab; texts %q", tt.Texts())
+			}
+			track, _ := tt.Find(locales.TabListLabel())
+			a.closeTab(a.tabs[1])
+			waitFor(t, tt, "2 tabs", func() bool { return len(a.tabs) == 2 })
+			for range 30 {
+				tt.Frame()
+				if r, _ := tt.Find("three "); abs(r.W-rest.W) > 1 {
+					t.Fatalf("closing, the next tab shows %v wide, %v at rest", r.W, rest.W)
+				}
+				tt.Advance(16 * time.Millisecond)
+			}
+			settle(tt)
+			narrow, _ := tt.Find(locales.TabListLabel())
+			if narrow.W >= track.W {
+				t.Fatalf("the track is %v wide after a close, %v before", narrow.W, track.W)
+			}
+			a.newTab(os.TempDir()).Name = "four"
+			tt.Frame()
+			growing, _ := tt.Find(locales.TabListLabel())
+			settle(tt)
+			grown, _ := tt.Find(locales.TabListLabel())
+			if moving := growing.W < grown.W; moving != tc.moves {
+				t.Errorf("opening, the track is %v wide, %v at rest: growing %v, want %v", growing.W, grown.W, moving, tc.moves)
+			}
+		})
 	}
 }

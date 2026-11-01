@@ -384,11 +384,13 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	// Under the pointer it moves as it does; else, as it springs back, is
 	// nudged by the keys, zooms, or floats from its place among the tiled
 	// panes, it eases there.
+	moves := false
 	if anim := motion(c); anim != nil && !f.dragging {
 		if anim == &snappy {
 			anim = &springBack
 		}
 		cell.Transition(ui.ElementTransition{Animation: anim, Position: true, Size: true})
+		moves = true
 	}
 	// Shadows as of a sheet lifted off the panes: a tight one where it
 	// nearly touches them, a soft one under it, and a wide one of the
@@ -408,17 +410,28 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	cell.Shadow(0, 1, 3, 0, ink.Alpha(min(alpha[0]*lift, 1))).
 		Shadow(0, 12*lift, 32*lift, -4, ink.Alpha(min(alpha[1]*lift, 1))).
 		Shadow(0, 30*lift, 80*lift, -10, ink.Alpha(min(alpha[2]*lift, 1)))
-	p.bounds = ui.Rect{
+	rest := ui.Rect{
 		X: bounds.X + s.x*bounds.W,
 		Y: bounds.Y + s.y*bounds.H,
 		W: s.w * bounds.W,
 		H: s.h * bounds.H,
 	}
+	// It moves from the frame its box changes, as from its place among
+	// the tiled panes, until it rests.
+	moving := moves && (rest != p.bounds || cell.Transitioning())
+	p.bounds = rest
 	// While the pointer resizes it or it eases to a new size, the terminal
 	// keeps the size it rested at, and the program hears of the new one
 	// once: else a shell redraws its prompt at every step, over itself.
 	held := f.dragging || cell.Transitioning()
 	cell.Children(func() {
+		// Moving, the card goes with the cell, its colors not fading: an
+		// element of a Transition of its own would be laid out where the
+		// cell goes, its terminal out of the cell on the way.
+		if moving {
+			fadeColors = false
+			defer func() { fadeColors = true }()
+		}
 		a.paneCard(c, k, t, p, held).Grow(1)
 		if f.Zoom {
 			return

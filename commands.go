@@ -1197,8 +1197,8 @@ func fuzzy(s, q string) bool {
 	return i == len(want)
 }
 
-// Where the palette comes in from: its panel, its first paletteStagger
-// rows, and the dimmed window behind it.
+// Where the palette comes in from: its panel, its rows, the first
+// paletteStagger one after another, and the dimmed window behind it.
 var (
 	paletteFrom    = ui.Pose{Y: -6, Scale: 0.96, Fade: 1}
 	paletteRowFrom = ui.Pose{Y: -4, Fade: 1}
@@ -1271,12 +1271,15 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			}
 			for i, it := range items {
 				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer)
-				if anim != nil && i < paletteStagger {
+				if anim != nil {
 					pose := ui.Pose{}
 					if fresh {
 						pose = paletteRowFrom
 					}
-					row.AnimatePose(pose, ui.Animation{Spring: anim.Spring, Delay: time.Duration(i) * 15 * time.Millisecond})
+					// The rows past the first paletteStagger come in with
+					// the last of those, not before them.
+					delay := time.Duration(min(i, paletteStagger-1)) * 15 * time.Millisecond
+					row.AnimatePose(pose, ui.Animation{Spring: anim.Spring, Delay: delay})
 				}
 				if i == a.paletteSel {
 					row.Background(k.panelSel)

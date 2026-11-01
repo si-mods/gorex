@@ -33,11 +33,22 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 		widths[i] = tabWidth(c, t)
 		total += widths[i]
 	}
-	track := ui.Row(c).Basis(total).Shrink(1).MinWidth(0).Height(tabH+4).Padding(2).Radius((tabH+4)/2).
+	track := ui.Row(c).Shrink(1).MinWidth(0).Height(tabH+4).Padding(2).Radius((tabH+4)/2).
 		Background(k.track).Border(0.5, k.trackBorder).AlignItems(ui.Center).ClipX().
 		DragWindow().Role(ui.RoleTabList).Label(locales.TabListLabel())
-	tabs := slices.Clone(a.tabs)
+	// With a style of animation the track's width follows its tabs as
+	// they open, close and slide, on their spring: a tab after one that
+	// closes slides in whole, and one opening unfolds into the room the
+	// track makes. Growing, it is narrower than its tabs, which overflow
+	// it then rather than all shrinking for a moment.
 	anim := motion(c)
+	shown, squeeze := total, true
+	if anim != nil {
+		shown = track.AnimateTo("width", total, *anim)
+		squeeze = shown >= total-0.5
+	}
+	track.Basis(shown)
+	tabs := slices.Clone(a.tabs)
 	track.Children(func() {
 		for i, t := range tabs {
 			if i > 0 {
@@ -50,7 +61,7 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 					sep.Transition(ui.ElementTransition{Animation: anim, Position: true, Colors: true, Enter: tabMotion, Exit: tabMotion})
 				}
 			}
-			a.tabItem(c, k, i, t, widths[i])
+			a.tabItem(c, k, i, t, widths[i], squeeze)
 		}
 	})
 }
@@ -98,10 +109,15 @@ func tabLabel(name, detail string, nameColor, detailColor ui.Color) []ui.Span {
 // them, to drag the window by.
 const titleFree = 56
 
-// tabItem draws a tab: the tiles of its panes' programs and its label.
-func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32) {
+// tabItem draws a tab: the tiles of its panes' programs and its label. It
+// shrinks to fit the title bar while squeeze.
+func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, squeeze bool) {
 	active := i == a.active
-	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(1).MinWidth(64).
+	shrink := float32(0)
+	if squeeze {
+		shrink = 1
+	}
+	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(shrink).MinWidth(64).
 		Padding(0, 10, 0, 6).Gap(9).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
