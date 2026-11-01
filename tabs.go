@@ -244,7 +244,7 @@ func (a *App) tabEvents(c *ui.Context, e ui.Element, k *colors, i int, t *Tab) {
 		}
 	}
 	if e.Dragging() {
-		e.Opacity(0.4)
+		dimmed(e, 0.4)
 	}
 	if e.Clicked() && i != a.active {
 		a.selectTab(i)
