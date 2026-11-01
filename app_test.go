@@ -81,10 +81,11 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 		os.RemoveAll(dir)
 	})
 	registerFonts()
-	oldBadge := setBadge
+	oldBadge, oldSupported := setBadge, badgeSupported
+	badgeSupported = true
 	testBadge.Store(0)
 	setBadge = func(n int) { testBadge.Store(int64(n)) }
-	t.Cleanup(func() { setBadge = oldBadge })
+	t.Cleanup(func() { setBadge, badgeSupported = oldBadge, oldSupported })
 	// The app's windows are views without a window, as this one.
 	old := newWindow
 	newWindow = func(*App) *mygo.Window { return nil }

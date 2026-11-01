@@ -222,6 +222,7 @@ func (a *App) setLanguage(tag string) {
 func (a *App) setWindowPref(change func(*settings)) {
 	change(&prefs)
 	saveSettings()
+	a.syncBadge()
 	a.syncSidebarItem()
 	for _, o := range a.peers() {
 		o.do(func() {})

@@ -1121,10 +1121,7 @@ func (a *App) paletteItems() []paletteItem {
 	if q == "" {
 		slices.SortStableFunc(items, func(x, y paletteItem) int {
 			rank := func(s *rex.ProgramStatus) int {
-				if needsUser(s) {
-					return rex.StatusRank(s.State)
-				}
-				return 0
+				return needsYou(false, s)
 			}
 			return rank(y.status) - rank(x.status)
 		})

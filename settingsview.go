@@ -248,11 +248,13 @@ func (a *App) appearanceSettings(c *ui.Context, k *colors) {
 		}
 	})
 	badge := !prefs.HideDockBadge
-	settingRow(c, k, locales.SettingsDockBadge(), locales.SettingsDockBadgeHint(), func() {
-		if ui.Switch(c, &badge).Label(locales.SettingsDockBadge()).Changed() {
-			a.setWindowPref(func(s *settings) { s.HideDockBadge = !badge })
-		}
-	})
+	if badgeSupported {
+		settingRow(c, k, locales.SettingsDockBadge(), locales.SettingsDockBadgeHint(), func() {
+			if ui.Switch(c, &badge).Label(locales.SettingsDockBadge()).Changed() {
+				a.setWindowPref(func(s *settings) { s.HideDockBadge = !badge })
+			}
+		})
+	}
 }
 
 func (a *App) terminalSettings(c *ui.Context, k *colors) {
