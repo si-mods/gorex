@@ -29,7 +29,11 @@ browser panes use the system's web view.
   full-screen programs (lazygit, vim, htop…) come back exactly. A server
   restarted (`gorex server restart`, or the app on Windows replacing an
   older one once asked) brings its sessions back as new shells at their
-  panes' directories; Quit and End All ends them.
+  panes' directories; Quit and End All ends them. A pane that ran Claude
+  Code, omp or Pi, with the hook `gorex skill setup` installs, gets its
+  conversation back too: the new shell types `claude --resume ID`,
+  `omp --resume=ID` or `pi --session ID`, so the pane is back at its shell
+  when the agent exits ([docs/cli.md](docs/cli.md#session-start-hooks)).
 - **Kitty graphics.** Images sent by file path are read where the program
   runs, including on a remote host, and are shown in-band; a window that
   attaches again replays them.
@@ -455,7 +459,8 @@ that developing never touches the sessions of the app you use
 is a journal of every layout the app sent, and of each run's start and
 stop: a server that starts after one that left no stop record — a crash,
 a kill, a reboot — starts the sessions of the last layout again, the same
-ids in the same directories, so the windows attach to them as they were.
+ids in the same directories, so the windows attach to them as they were,
+and resumes the agent conversations that ran in them.
 A run that stops says why and what it held, and the server after it
 starts nothing. The sessions outlive the app, and
 a new build: on macOS and Linux, a build that finds a server an older

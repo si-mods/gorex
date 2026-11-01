@@ -78,6 +78,18 @@ func inspect(pid int) (p procInfo) {
 	return p
 }
 
+// parentPID returns the parent of a process, 0 when unknown.
+func parentPID(pid int) int {
+	if pid <= 0 {
+		return 0
+	}
+	k, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil {
+		return 0
+	}
+	return int(k.Eproc.Ppid)
+}
+
 func sysctlString(name string) string {
 	s, _ := unix.Sysctl(name)
 	return s

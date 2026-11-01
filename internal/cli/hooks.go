@@ -52,7 +52,7 @@ func hookCommand(agent string) string {
 	if err != nil {
 		exe = "gorex"
 	}
-	inner := shellQuote(exe) + " __internal session-start --agent " + agent + " 2>/dev/null || true # gorex"
+	inner := shellQuote(exe) + " " + hookMarker(agent) + " 2>/dev/null || true # gorex"
 	return "/bin/sh -c " + shellQuote(inner)
 }
 
@@ -60,10 +60,17 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-func hookMarker(agent string) string { return "__internal session-start --agent " + agent }
+func hookMarker(agent string) string { return "agent-hook --agent " + agent }
+
+// legacyHookMarker is the hook of a build before agent-hook, which setup
+// replaces and remove removes.
+func legacyHookMarker(agent string) string { return "__internal session-start --agent " + agent }
 
 // hookState tells whether an agent's session-start hook is installed.
 func hookState(agent string) (string, error) {
+	if _, ok := extensionAgents[agent]; ok {
+		return extensionState(agent)
+	}
 	spec, ok := hookSpecs()[agent]
 	if !ok {
 		return "not supported", nil
@@ -85,22 +92,32 @@ func hookState(agent string) (string, error) {
 func hasHook(root map[string]any, event, marker string) string {
 	hooks, _ := root["hooks"].(map[string]any)
 	entries, _ := hooks[event].([]any)
+	state := "missing"
 	for _, e := range entries {
 		entry, _ := e.(map[string]any)
 		items, _ := entry["hooks"].([]any)
 		for _, h := range items {
 			hook, _ := h.(map[string]any)
 			cmd, _ := hook["command"].(string)
-			if isOurHook(cmd, marker) {
+			switch {
+			case !isOurHook(cmd, marker):
+			case strings.Contains(cmd, marker):
 				return "installed"
+			default:
+				// A build before agent-hook's: setup replaces it.
+				state = "outdated"
 			}
 		}
 	}
-	return "missing"
+	return state
 }
 
 func isOurHook(cmd, marker string) bool {
-	return strings.Contains(cmd, marker) && strings.Contains(cmd, "# gorex")
+	if !strings.Contains(cmd, "# gorex") {
+		return false
+	}
+	agent := strings.TrimPrefix(marker, hookMarker(""))
+	return strings.Contains(cmd, marker) || strings.Contains(cmd, legacyHookMarker(agent))
 }
 
 func readObject(path string) (map[string]any, error) {
@@ -168,6 +185,9 @@ func writeObject(path string, root map[string]any) error {
 // setHook adds or removes this executable's session-start hook, leaving
 // every other hook as it is.
 func setHook(agent string, install, dry bool) (string, error) {
+	if _, ok := extensionAgents[agent]; ok {
+		return setExtension(agent, install, dry)
+	}
 	spec, ok := hookSpecs()[agent]
 	if !ok {
 		return "not supported", nil
@@ -198,7 +218,7 @@ func setHook(agent string, install, dry bool) (string, error) {
 	}
 	marker := hookMarker(agent)
 	command := hookCommand(agent)
-	found, current := false, false
+	found, current, stale := false, false, false
 	var kept []any
 	for _, e := range entries {
 		entry, ok := e.(map[string]any)
@@ -214,6 +234,7 @@ func setHook(agent string, install, dry bool) (string, error) {
 			continue
 		}
 		var keep []any
+		dropped := false
 		for _, h := range items {
 			hook, ok := h.(map[string]any)
 			if !ok {
@@ -222,25 +243,29 @@ func setHook(agent string, install, dry bool) (string, error) {
 			cmd, _ := hook["command"].(string)
 			if isOurHook(cmd, marker) {
 				found = true
-				if install && cmd == command {
+				if install && cmd == command && !current {
 					current = true
 					keep = append(keep, h)
+					continue
 				}
+				stale, dropped = true, true
 				continue
 			}
 			keep = append(keep, h)
 		}
-		if len(keep) > 0 || len(entry) > 1 {
-			if len(keep) > 0 {
-				entry["hooks"] = keep
-			}
+		switch {
+		case len(keep) > 0:
+			entry["hooks"] = keep
+			kept = append(kept, entry)
+		case !dropped:
 			kept = append(kept, entry)
 		}
+		// An entry of GoRex's hooks alone goes with them, its matcher too.
 	}
-	if install && current {
+	if install && current && !stale {
 		return "current", nil
 	}
-	if install && (!found || !current) {
+	if install && !current {
 		kept = append(kept, map[string]any{"hooks": []any{map[string]any{
 			"type": "command", "command": command, "timeout": 5,
 		}}})
@@ -249,8 +274,11 @@ func setHook(agent string, install, dry bool) (string, error) {
 		return "missing", nil
 	}
 	if dry {
-		if found {
+		switch {
+		case !install:
 			return "would remove", nil
+		case found:
+			return "would replace", nil
 		}
 		return "would install", nil
 	}

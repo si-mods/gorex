@@ -457,6 +457,13 @@ func (c *Client) Create(o CreateOptions) (s SessionInfo, err error) {
 	return
 }
 
+// ReportAgent tells the server that session sid runs agent a, as the
+// agent's session-start hook does.
+func (c *Client) ReportAgent(sid string, a AgentSession) (r AgentReport, err error) {
+	err = c.call(Request{Op: "agent", SID: sid, Agent: &a}, &r)
+	return
+}
+
 func (c *Client) Kill(sid string) error { return c.call(Request{Op: "kill", SID: sid}, nil) }
 
 func (c *Client) Resize(sid string, cols, rows int) error {

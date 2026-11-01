@@ -138,6 +138,10 @@ type Request struct {
 	// Format is what "format" shows of the session's terminal
 	// (CapabilityTerminalQuery).
 	Format *FormatOptions `json:"format,omitempty"`
+	// Agent is what an agent's session-start hook reports of itself on
+	// "agent": its name, its conversation, and a process of it or of its
+	// hook (AgentSession.PID).
+	Agent *AgentSession `json:"agent,omitempty"`
 }
 
 // CommandTimeout is how long the server waits for the app to make a
@@ -521,6 +525,10 @@ type SessionInfo struct {
 	// said nothing.
 	Statuses []ProgramStatus `json:"statuses,omitempty"`
 	Status   *ProgramStatus  `json:"status,omitempty"`
+	// Agent is the coding agent the session runs, as its session-start
+	// hook reported it, while it runs: a server that starts the session
+	// again after a crash, a reboot or a restart resumes its conversation.
+	Agent *AgentSession `json:"agent,omitempty"`
 }
 
 // ProgramName is the program's name for showing: what it reported through

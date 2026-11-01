@@ -351,13 +351,13 @@ func TestHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), "__internal session-start --agent claude") ||
+	if !strings.Contains(string(b), "agent-hook --agent claude") ||
 		!strings.Contains(string(b), "other-hook") || !strings.Contains(string(b), `"theme": "x"`) ||
 		!strings.Contains(string(b), `"matcher": "x"`) {
 		t.Fatalf("claude settings %s", b)
 	}
 	codex := filepath.Join(home, ".codex", "hooks.json")
-	if b, err := os.ReadFile(codex); err != nil || !strings.Contains(string(b), "__internal session-start --agent codex") {
+	if b, err := os.ReadFile(codex); err != nil || !strings.Contains(string(b), "agent-hook --agent codex") {
 		t.Fatalf("codex hooks %q %v", b, err)
 	}
 	before, _ := os.ReadFile(claude)
@@ -376,11 +376,11 @@ func TestHooks(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("remove hooks: %d %s", code, errOut)
 	}
-	if b, _ := os.ReadFile(claude); strings.Contains(string(b), "__internal session-start") ||
+	if b, _ := os.ReadFile(claude); strings.Contains(string(b), "agent-hook") ||
 		!strings.Contains(string(b), "other-hook") || !strings.Contains(string(b), `"matcher": "x"`) {
 		t.Fatalf("claude settings after remove %s", b)
 	}
-	if b, _ := os.ReadFile(codex); strings.Contains(string(b), "__internal session-start") {
+	if b, _ := os.ReadFile(codex); strings.Contains(string(b), "agent-hook") {
 		t.Fatalf("codex hooks after remove %s", b)
 	}
 }

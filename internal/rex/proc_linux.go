@@ -3,6 +3,7 @@ package rex
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -19,6 +20,29 @@ func inspect(pid int) (p procInfo) {
 	}
 	p.dir, _ = os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid))
 	return p
+}
+
+// parentPID returns the parent of a process, 0 when unknown.
+func parentPID(pid int) int {
+	if pid <= 0 {
+		return 0
+	}
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0
+	}
+	// pid (comm) state ppid ...: comm may hold spaces and parentheses.
+	s := string(b)
+	i := strings.LastIndexByte(s, ')')
+	if i < 0 {
+		return 0
+	}
+	f := strings.Fields(s[i+1:])
+	if len(f) < 2 {
+		return 0
+	}
+	ppid, _ := strconv.Atoi(f[1])
+	return ppid
 }
 
 func sysctlString(string) string { return "" }

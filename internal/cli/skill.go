@@ -67,6 +67,7 @@ func skillAgents() []agentSkill {
 		{Name: "codex", Dir: agentsDir},
 		{Name: "opencode", Dir: agentsDir},
 		{Name: "pi", Dir: agentsDir},
+		{Name: "omp", Dir: agentsDir},
 	}
 }
 
@@ -166,7 +167,7 @@ func skillCmd(args []string, out, errOut io.Writer) (int, bool) {
 func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("skill "+action, errOut)
 	var names agentList
-	fs.Var(&names, "agent", "agent to set up (claude, codex, opencode, pi); repeatable")
+	fs.Var(&names, "agent", "agent to set up (claude, codex, opencode, pi, omp); repeatable")
 	project := fs.Bool("project", false, "use the current repository")
 	dry := fs.Bool("dry-run", false, "report without changing")
 	force := fs.Bool("force", false, "replace a skill GoRex did not install")
