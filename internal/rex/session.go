@@ -307,6 +307,8 @@ func (s *session) run(wait func() int) {
 		close(s.done)
 		s.vtIn.Close()
 		s.vt.Close()
+		// Its agent ended with it.
+		s.watchAgent(&SessionInfo{Exited: true})
 	}()
 }
 

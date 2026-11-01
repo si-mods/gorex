@@ -45,6 +45,64 @@ func TestLegacyHookReplaced(t *testing.T) {
 	}
 }
 
+// TestHookInMatcherEntry checks that GoRex's hook in an entry with a
+// matcher, the older build's and this one's both, is replaced by one and
+// removed whole, and that status and a dry run tell an older hook.
+func TestHookInMatcherEntry(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	path := filepath.Join(home, ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const legacy = `/bin/sh -c '/old/gorex __internal session-start --agent claude 2>/dev/null || true # gorex'`
+	old := `{"hooks":{"SessionStart":[` +
+		`{"matcher":"startup","hooks":[{"type":"command","command":"` + strings.ReplaceAll(legacy, `'`, `'`) + `"}]},` +
+		`{"matcher":"resume","hooks":[{"type":"command","command":"keep-me"},{"type":"command","command":"/bin/sh -c '/x/gorex agent-hook --agent claude # gorex'"}]}]}}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, out, _ := runMain(t, "skill", "status", "--agent", "claude", "--json"); !strings.Contains(out, `"hook": "installed"`) {
+		t.Fatalf("status with both hooks %q", out)
+	}
+	if code, _, out, _ := runMain(t, "skill", "setup", "--agent", "claude", "--dry-run", "--json"); code != ExitOK || !strings.Contains(out, `"hook": "would replace"`) {
+		t.Fatalf("dry run %d %q", code, out)
+	}
+	if code, _, _, errOut := runMain(t, "skill", "setup", "--agent", "claude"); code != ExitOK {
+		t.Fatalf("setup: %d %s", code, errOut)
+	}
+	b, _ := os.ReadFile(path)
+	if strings.Count(string(b), "# gorex") != 1 || strings.Contains(string(b), "__internal") ||
+		strings.Contains(string(b), `"startup"`) || !strings.Contains(string(b), "keep-me") || !strings.Contains(string(b), `"resume"`) {
+		t.Fatalf("settings after setup %s", b)
+	}
+	if _, _, out, _ := runMain(t, "skill", "setup", "--agent", "claude", "--json"); !strings.Contains(out, `"hook": "current"`) {
+		t.Fatalf("second setup %q", out)
+	}
+	if code, _, _, errOut := runMain(t, "skill", "remove", "--agent", "claude"); code != ExitOK {
+		t.Fatalf("remove: %d %s", code, errOut)
+	}
+	b, _ = os.ReadFile(path)
+	if strings.Contains(string(b), "# gorex") || !strings.Contains(string(b), "keep-me") {
+		t.Fatalf("settings after remove %s", b)
+	}
+
+	// An older build's hook alone is outdated.
+	if err := os.WriteFile(path, []byte(`{"hooks":{"SessionStart":[{"matcher":"x","hooks":[{"type":"command","command":"`+legacy+`"}]}]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, out, _ := runMain(t, "skill", "status", "--agent", "claude", "--json"); !strings.Contains(out, `"hook": "outdated"`) {
+		t.Fatalf("status with the older hook %q", out)
+	}
+	if code, _, _, _ := runMain(t, "skill", "remove", "--agent", "claude"); code != ExitOK {
+		t.Fatalf("remove of the older hook: %d", code)
+	}
+	if b, _ := os.ReadFile(path); strings.Contains(string(b), "# gorex") || strings.Contains(string(b), `"x"`) {
+		t.Fatalf("settings after removing the older hook %s", b)
+	}
+}
+
 // TestExtensionHooks installs the extension that is Pi's and omp's hook,
 // in each agent's directory, again without change, and removes it,
 // leaving the user's extensions.
@@ -111,6 +169,18 @@ func TestExtensionHooks(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(agentDir, "extensions", "gorex", "index.ts")); err != nil {
 		t.Fatal(err)
+	}
+
+	// Another build's extension is outdated, and setup replaces it.
+	stale := filepath.Join(agentDir, "extensions", "gorex", "index.ts")
+	if err := os.WriteFile(stale, []byte(extensionMarker+": older\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, out, _ := runMain(t, "skill", "status", "--agent", "pi", "--json"); !strings.Contains(out, `"hook": "outdated"`) {
+		t.Fatalf("status of an older extension %q", out)
+	}
+	if _, _, out, _ := runMain(t, "skill", "setup", "--agent", "pi", "--dry-run", "--json"); !strings.Contains(out, `"hook": "would replace"`) {
+		t.Fatalf("dry run over an older extension %q", out)
 	}
 
 	// An extension named gorex that GoRex did not write stays.

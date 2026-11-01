@@ -49,7 +49,11 @@ type Server struct {
 	stopping bool
 	// journal keeps the layouts of this run, and how it ends.
 	journal *journal
-	rem     remote
+	// paneNames are the names of the layout's panes by session, of the
+	// layout at paneNamesRev.
+	paneNames    map[string]string
+	paneNamesRev uint64
+	rem          remote
 	// ops is held by the ops that add or end sessions, and an upgrade
 	// takes it alone; acceptMu holds Accept while an upgrade stops it.
 	ops      sync.RWMutex
@@ -785,7 +789,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			return nil, nil // already gone
 		}
 		if ss.takeAgent() {
-			s.agentEnded(ss.id)
+			s.journal.agent(ss.id, nil)
 		}
 		ss.kill()
 		s.mu.Lock()

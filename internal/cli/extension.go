@@ -36,10 +36,19 @@ import { basename } from "node:path"
 
 const GOREX = ` + string(quoted) + `
 
+// agentName tells omp from Pi: the process title each sets, else omp's
+// extension API, else the executable's name.
+function agentName(api: any): "omp" | "pi" {
+	const title = basename(String(process.title ?? "")).toLowerCase()
+	if (title === "omp" || title === "pi") return title
+	if (api && typeof api === "object" && "typebox" in api && "runtime" in api) return "omp"
+	const names = [process.execPath, process.argv[1] ?? ""].map((p) => basename(p).toLowerCase())
+	return names.some((n) => n.startsWith("omp")) ? "omp" : "pi"
+}
+
 export default function (api: any) {
 	if (!process.env.GOREX_SESSION) return
-	const names = [process.execPath, process.argv[1] ?? ""].map((p) => basename(p).toLowerCase())
-	const agent = names.some((n) => n.startsWith("omp")) ? "omp" : "pi"
+	const agent = agentName(api)
 	let context: Promise<string> = Promise.resolve("")
 	api.on("session_start", (_event: any, ctx: any) => {
 		const id = ctx?.sessionManager?.getSessionId?.()
@@ -106,6 +115,9 @@ func extensionState(agent string) (string, error) {
 		return "missing", nil
 	case !strings.HasPrefix(old, extensionMarker):
 		return "conflict", errors.New("an extension named gorex already exists and is not GoRex's")
+	case old != extensionSource():
+		// Another build's, or an older one: setup replaces it.
+		return "outdated", nil
 	}
 	return "installed", nil
 }
@@ -141,6 +153,8 @@ func setExtension(agent string, install, dry bool) (string, error) {
 	switch {
 	case old == src:
 		return "current", nil
+	case dry && old != "":
+		return "would replace", nil
 	case dry:
 		return "would install", nil
 	}

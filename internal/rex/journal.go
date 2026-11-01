@@ -253,22 +253,23 @@ func compactJournal(path string) {
 	entries := readJournal()
 	if cut := len(entries) - journalKeep; cut > 0 {
 		live := journalAgents(entries)
+		// The last entry of each session's agent, when it runs still.
+		last := map[string]int{}
+		for i, e := range entries {
+			if e.Event == eventAgent && e.Session != nil {
+				last[e.Session.ID] = i
+			}
+		}
+		var at []int
+		for id := range live {
+			if i := last[id]; i < cut {
+				at = append(at, i)
+			}
+		}
+		slices.Sort(at)
 		var kept []journalEntry
-		for i, e := range entries[:cut] {
-			if e.Event != eventAgent || e.Session == nil || e.Session.Agent == nil {
-				continue
-			}
-			a, ok := live[e.Session.ID]
-			if !ok || a != *e.Session.Agent {
-				continue
-			}
-			// The last entry of the session's agent only.
-			last := !slices.ContainsFunc(entries[i+1:], func(n journalEntry) bool {
-				return n.Event == eventAgent && n.Session != nil && n.Session.ID == e.Session.ID
-			})
-			if last {
-				kept = append(kept, e)
-			}
+		for _, i := range at {
+			kept = append(kept, entries[i])
 		}
 		entries = append(kept, entries[cut:]...)
 	}

@@ -160,12 +160,16 @@ by hyphens). It never fails the agent's start: it exits 0, and gives up on
 a server that does not answer within two seconds.
 
 The server keeps the agent of each session while the agent's process
-runs: the hook's report is kept only when it comes from the program in
-the session's foreground (the first process above the hook that is not a
-shell), so a subagent another agent runs through its shell does not
-replace it. `gorex ls --json` shows it as `agent` (`name`,
+runs: the hook's report is kept only when the agent (the first process
+above the hook that is not a shell) is the program in the session's
+foreground or runs under it, as `caffeinate claude` or `npx` run it. One
+that runs under another agent, a subagent started through its tool's
+shell, does not replace it. `gorex ls --json` shows it as `agent` (`name`,
 `conversation`, `pid`). The record ends when that process does, or the
-session; a pane back at its shell is not resumed later. An in-place
+session; a pane back at its shell is not resumed later. The journal hears
+of that end 5 seconds later, if the server still runs: as the machine
+shuts down every process gets SIGTERM, and an agent that ends a moment
+before the server is still resumed. An in-place
 upgrade hands the records to the new build, and the layout journal keeps
 them, so that a server that starts the sessions
 again — after a crash, a reboot or `gorex server restart` — starts the
@@ -178,7 +182,11 @@ command that resumes the conversation, then Return:
 | omp         | `omp --resume=ID`      |
 | Pi          | `pi --session ID`      |
 
-When the agent exits, the pane is back at its shell. A conversation ID
+When the agent exits, the pane is back at its shell. Nothing is typed
+for an agent that reported itself meanwhile; a shell that does not go
+quiet within 10 seconds, or that runs another program by then, gives the
+agent up. `skill status` shows a hook of an older build as `outdated`,
+and `setup --dry-run` as `would replace`. A conversation ID
 is taken only of letters, digits, `.`, `_` and `-`, starting with a
 letter or digit, so the command is typed unquoted and reads the same in
 every shell GoRex starts, PowerShell and `cmd` on Windows included. An

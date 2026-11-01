@@ -26,9 +26,10 @@ const (
 	// resumeQuiet is how long the shell of a restarted session is quiet,
 	// having printed its prompt, before the resume command is typed;
 	// resumeWaitMost is how long that is waited for at most.
-	resumeQuiet    = 300 * time.Millisecond
-	resumeWaitMost = 10 * time.Second
+	resumeQuiet = 300 * time.Millisecond
 )
+
+var resumeWaitMost = 10 * time.Second
 
 // notAgents are programs between an agent and its hook, or that start the
 // agent: the hook's shell, and gorex itself.
@@ -38,28 +39,53 @@ var notAgents = map[string]bool{
 	"gorex": true,
 }
 
+// knownAgents are coding agents by their program's name: a report from
+// an agent that one of them runs, through its tool's shell, is a
+// subagent's, not the session's.
+var knownAgents = map[string]bool{
+	"claude": true, "codex": true, "omp": true, "pi": true, "opencode": true, "gemini": true,
+	"cursor-agent": true, "aider": true, "amp": true, "droid": true, "qwen": true, "kimi": true,
+	"grok": true, "crush": true, "goose": true,
+}
+
+func programOf(pid int) string {
+	return strings.ToLower(strings.TrimSuffix(inspect(pid).programName(), ".exe"))
+}
+
 // agentProcess finds the agent a report of session ss comes from: from,
-// a process of the agent or of its hook, and its parents up to the first
-// that is not a shell nor gorex, which must be the program in the
-// session's foreground. An agent another runs (a subagent, through a
-// tool's shell) is not, and is not recorded.
+// a process of the agent or of its hook, else the first of its parents
+// that is not a shell nor gorex. The agent must be the program in the
+// session's foreground, or run under it as caffeinate claude or npx do;
+// one that another agent runs (a subagent, through a tool's shell) is
+// not the session's, and is not recorded.
 func agentProcess(ss *session, from int) (int, error) {
 	shell := ss.p.pid()
 	fg := ss.p.foreground()
 	if fg <= 0 || fg == shell {
 		return 0, errors.New("no program runs in the session's foreground")
 	}
+	ss.mu.Lock()
+	current := 0
+	if ss.agent != nil {
+		current = ss.agent.PID
+	}
+	ss.mu.Unlock()
+	agent := 0
 	pid := from
-	for range 16 {
+	for range 32 {
 		if pid <= 1 || pid == shell {
 			break
 		}
-		name := strings.ToLower(strings.TrimSuffix(inspect(pid).programName(), ".exe"))
-		if !notAgents[name] {
-			if pid == fg {
-				return pid, nil
+		name := programOf(pid)
+		if agent == 0 {
+			if !notAgents[name] {
+				agent = pid
 			}
-			return 0, errors.New("the agent is not the session's foreground program")
+		} else if pid == current || knownAgents[name] {
+			return 0, errors.New("the agent runs under another agent")
+		}
+		if agent != 0 && pid == fg {
+			return agent, nil
 		}
 		pid = parentPID(pid)
 	}
@@ -79,15 +105,7 @@ func (s *Server) reportAgent(req Request, peer string) (AgentReport, error) {
 	if err != nil {
 		return AgentReport{}, err
 	}
-	s.mu.Lock()
-	l := s.layout
-	s.mu.Unlock()
-	r := AgentReport{}
-	walkPanes(l, func(n *layout.Node) {
-		if n.SID == req.SID && n.Host == "" {
-			r.Pane = n.Name
-		}
-	})
+	r := AgentReport{Pane: s.paneName(req.SID)}
 	a.PID, err = agentProcess(ss, a.PID)
 	if err != nil {
 		r.Reason = err.Error()
@@ -100,8 +118,46 @@ func (s *Server) reportAgent(req Request, peer string) (AgentReport, error) {
 	return r, nil
 }
 
-// agentEnded journals that session id's agent ended.
-func (s *Server) agentEnded(id string) { s.journal.agent(id, nil) }
+// paneName is the name the layout gives the pane of session id.
+func (s *Server) paneName(id string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.paneNames == nil || s.paneNamesRev != s.layoutRev {
+		names := map[string]string{}
+		walkPanes(s.layout, func(n *layout.Node) {
+			if n.SID != "" && n.Host == "" {
+				names[n.SID] = n.Name
+			}
+		})
+		s.paneNames, s.paneNamesRev = names, s.layoutRev
+	}
+	return s.paneNames[id]
+}
+
+// agentEndDelay is how long the server waits to journal that an agent
+// ended. As the machine shuts down or the user logs out, every process
+// gets SIGTERM: an agent that ends a moment before the server is one to
+// resume, which a run that is still there after the delay did not see.
+var agentEndDelay = 5 * time.Second
+
+// agentEnded journals that session id's agent ended, unless the server is
+// gone by then or the session runs another agent.
+func (s *Server) agentEnded(id string) {
+	time.AfterFunc(agentEndDelay, func() {
+		s.mu.Lock()
+		ss := s.sessions[id]
+		s.mu.Unlock()
+		if ss != nil {
+			ss.mu.Lock()
+			again := ss.agent != nil
+			ss.mu.Unlock()
+			if again {
+				return
+			}
+		}
+		s.journal.agent(id, nil)
+	})
+}
 
 // watch has the server journal the end of ss's agent.
 func (s *Server) watch(ss *session) {
@@ -182,7 +238,9 @@ func (s *session) refreshAgent() {
 
 // resumeAgent types the command that resumes a's conversation into the
 // shell the session just started, once the shell printed its prompt and
-// went quiet: when the agent exits, the pane is back at its shell.
+// went quiet: when the agent exits, the pane is back at its shell. It
+// types nothing when the agent reported itself meanwhile, and gives the
+// agent up when the shell does not settle or runs another program.
 func (s *session) resumeAgent(a AgentSession) {
 	cmd := ResumeCommand(a)
 	if cmd == "" {
@@ -190,9 +248,11 @@ func (s *session) resumeAgent(a AgentSession) {
 	}
 	s.mu.Lock()
 	s.agent = &AgentSession{Name: a.Name, Conversation: a.Conversation}
+	s.agentTyped = time.Time{}
 	s.mu.Unlock()
 	go func() {
-		for start := time.Now(); time.Since(start) < resumeWaitMost; {
+		settled := false
+		for start := time.Now(); !settled && time.Since(start) < resumeWaitMost; {
 			time.Sleep(50 * time.Millisecond)
 			s.mu.Lock()
 			out, last, exited := s.output, s.lastOutput, s.exited
@@ -200,14 +260,27 @@ func (s *session) resumeAgent(a AgentSession) {
 			if exited {
 				return
 			}
-			if out > 0 && time.Since(last) >= resumeQuiet {
-				break
-			}
+			settled = out > 0 && time.Since(last) >= resumeQuiet
 		}
+		fg := s.p.foreground()
+		atPrompt := fg <= 0 || fg == s.p.pid()
 		s.mu.Lock()
-		if s.agent != nil && s.agent.PID == 0 {
-			s.agentTyped = time.Now()
+		if s.agent == nil || s.agent.PID > 0 || s.agent.Conversation != a.Conversation {
+			// It reported itself, or ended: nothing to type.
+			s.mu.Unlock()
+			return
 		}
+		if !settled || !atPrompt {
+			s.agent = nil
+			done := s.agentGone
+			s.mu.Unlock()
+			if done != nil {
+				done(s.id)
+			}
+			s.notify()
+			return
+		}
+		s.agentTyped = time.Now()
 		s.mu.Unlock()
 		if err := s.inputProgram([]byte(cmd + "\r")); err != nil {
 			return

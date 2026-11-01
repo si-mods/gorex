@@ -75,8 +75,11 @@ type sessionState struct {
 	// Statuses are the program's status records (OSC 7501).
 	Statuses []ProgramStatus `json:"statuses,omitempty"`
 	// Agent is the coding agent the session runs, its process unknown
-	// (PID 0) for one a restart resumed whose process did not show yet.
-	Agent *AgentSession `json:"agent,omitempty"`
+	// (PID 0) for one a restart resumed whose process did not show yet;
+	// AgentTyped tells that its resume command was typed, else the
+	// executable after this one types it.
+	Agent      *AgentSession `json:"agent,omitempty"`
+	AgentTyped bool          `json:"agentTyped,omitempty"`
 }
 
 func handoffPath() string { return filepath.Join(Dir(), "handoff.json") }
@@ -236,7 +239,7 @@ func (s *session) state() sessionState {
 	}
 	if s.agent != nil {
 		a := *s.agent
-		st.Agent = &a
+		st.Agent, st.AgentTyped = &a, !s.agentTyped.IsZero()
 	}
 	st.Screen, st.Title = s.view()
 	select {
@@ -319,12 +322,17 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 	if err := s.newVT(); err != nil {
 		return nil, err
 	}
+	resume := false
 	if st.Agent != nil && ValidAgent(*st.Agent) == nil {
 		a := *st.Agent
 		s.agent = &a
 		if a.PID == 0 {
-			// Its process has the grace of one just resumed.
-			s.agentTyped = time.Now()
+			// Its process has the grace of one just resumed; one whose
+			// command was still to type is typed here.
+			resume = !st.AgentTyped
+			if !resume {
+				s.agentTyped = time.Now()
+			}
 		}
 	}
 	for _, r := range st.Statuses {
@@ -365,5 +373,8 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		wait = func() int { return st.Code }
 	}
 	s.run(wait)
+	if resume {
+		s.resumeAgent(*s.agent)
+	}
 	return s, nil
 }

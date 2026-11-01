@@ -92,18 +92,24 @@ func hookState(agent string) (string, error) {
 func hasHook(root map[string]any, event, marker string) string {
 	hooks, _ := root["hooks"].(map[string]any)
 	entries, _ := hooks[event].([]any)
+	state := "missing"
 	for _, e := range entries {
 		entry, _ := e.(map[string]any)
 		items, _ := entry["hooks"].([]any)
 		for _, h := range items {
 			hook, _ := h.(map[string]any)
 			cmd, _ := hook["command"].(string)
-			if isOurHook(cmd, marker) {
+			switch {
+			case !isOurHook(cmd, marker):
+			case strings.Contains(cmd, marker):
 				return "installed"
+			default:
+				// A build before agent-hook's: setup replaces it.
+				state = "outdated"
 			}
 		}
 	}
-	return "missing"
+	return state
 }
 
 func isOurHook(cmd, marker string) bool {
@@ -212,7 +218,7 @@ func setHook(agent string, install, dry bool) (string, error) {
 	}
 	marker := hookMarker(agent)
 	command := hookCommand(agent)
-	found, current := false, false
+	found, current, stale := false, false, false
 	var kept []any
 	for _, e := range entries {
 		entry, ok := e.(map[string]any)
@@ -228,6 +234,7 @@ func setHook(agent string, install, dry bool) (string, error) {
 			continue
 		}
 		var keep []any
+		dropped := false
 		for _, h := range items {
 			hook, ok := h.(map[string]any)
 			if !ok {
@@ -236,25 +243,29 @@ func setHook(agent string, install, dry bool) (string, error) {
 			cmd, _ := hook["command"].(string)
 			if isOurHook(cmd, marker) {
 				found = true
-				if install && cmd == command {
+				if install && cmd == command && !current {
 					current = true
 					keep = append(keep, h)
+					continue
 				}
+				stale, dropped = true, true
 				continue
 			}
 			keep = append(keep, h)
 		}
-		if len(keep) > 0 || len(entry) > 1 {
-			if len(keep) > 0 {
-				entry["hooks"] = keep
-			}
+		switch {
+		case len(keep) > 0:
+			entry["hooks"] = keep
+			kept = append(kept, entry)
+		case !dropped:
 			kept = append(kept, entry)
 		}
+		// An entry of GoRex's hooks alone goes with them, its matcher too.
 	}
-	if install && current {
+	if install && current && !stale {
 		return "current", nil
 	}
-	if install && (!found || !current) {
+	if install && !current {
 		kept = append(kept, map[string]any{"hooks": []any{map[string]any{
 			"type": "command", "command": command, "timeout": 5,
 		}}})
@@ -263,8 +274,11 @@ func setHook(agent string, install, dry bool) (string, error) {
 		return "missing", nil
 	}
 	if dry {
-		if found {
+		switch {
+		case !install:
 			return "would remove", nil
+		case found:
+			return "would replace", nil
 		}
 		return "would install", nil
 	}
