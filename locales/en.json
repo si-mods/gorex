@@ -116,6 +116,10 @@
   "@cmdPaneToNewTab": {
     "description": "Command and pane-header tooltip: move the pane into a new tab of its own."
   },
+  "cmdJumpToNeedy": "Jump to Pane That Needs You",
+  "@cmdJumpToNeedy": {
+    "description": "Command: focus the next pane that needs the user, across tabs and spaces: a program blocked on them, a finished or failed one they did not see, or a bell."
+  },
   "cmdNextTab": "Next Tab",
   "@cmdNextTab": {
     "description": "Command: show the next tab."
@@ -741,6 +745,14 @@
   "settingsPaneHeadersHint": "Pane headers are always shown when the vertical sidebar is hidden or positioned on the right.",
   "@settingsPaneHeadersHint": {
     "description": "Hint under the Show pane headers setting."
+  },
+  "settingsDockBadge": "Dock badge",
+  "@settingsDockBadge": {
+    "description": "Setting: whether the app icon shows how many panes need the user."
+  },
+  "settingsDockBadgeHint": "Show on the app icon how many panes need you: blocked, finished or failed out of sight, or rang the bell.",
+  "@settingsDockBadgeHint": {
+    "description": "Hint under the Dock badge setting."
   },
   "settingsAnimation": "Animation style",
   "@settingsAnimation": {

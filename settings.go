@@ -32,6 +32,9 @@ type settings struct {
 	SidebarWidth    float32 `json:"sidebarWidth,omitempty"`
 	SidebarHidden   bool    `json:"sidebarHidden,omitempty"`
 	HidePaneHeaders bool    `json:"hidePaneHeaders,omitempty"`
+	// HideDockBadge turns off the count of the panes that need the user on
+	// the app icon.
+	HideDockBadge bool `json:"hideDockBadge,omitempty"`
 	// Animation is how the panes and the sidebar move: "" springs snappily,
 	// "natural" more softly, and "off" not at all.
 	Animation string `json:"animation,omitempty"`
@@ -219,6 +222,7 @@ func (a *App) setLanguage(tag string) {
 func (a *App) setWindowPref(change func(*settings)) {
 	change(&prefs)
 	saveSettings()
+	a.syncBadge()
 	a.syncSidebarItem()
 	for _, o := range a.peers() {
 		o.do(func() {})

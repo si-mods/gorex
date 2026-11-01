@@ -75,20 +75,14 @@ func (st *store) status(w *Workspace) *rex.ProgramStatus {
 		}
 		return rex.MostUrgent(all, time.Time{})
 	}
-	var sids []string
-	for _, t := range w.layout.Tabs {
-		for _, n := range t.Roots() {
-			savedSIDs(n, &sids)
-		}
-	}
 	var best *rex.ProgramStatus
-	for _, sid := range sids {
+	st.visitLocalSIDs(w, func(sid string) {
 		s := rex.MostUrgent(st.infos[sid].Statuses, st.seen[sid])
 		if s != nil && (best == nil || rex.StatusRank(s.State) > rex.StatusRank(best.State) ||
 			rex.StatusRank(s.State) == rex.StatusRank(best.State) && s.Updated.After(best.Updated)) {
 			best = s
 		}
-	}
+	})
 	return best
 }
 
@@ -103,17 +97,6 @@ func (st *store) recordSeen(sid string, at time.Time) {
 	if at.After(st.seen[sid]) {
 		st.seen[sid] = at
 	}
-}
-
-func savedSIDs(n *savedNode, out *[]string) {
-	if n == nil {
-		return
-	}
-	if n.SID != "" {
-		*out = append(*out, n.SID)
-	}
-	savedSIDs(n.A, out)
-	savedSIDs(n.B, out)
 }
 
 // tabCount is how many tabs the workspace has.
@@ -136,6 +119,10 @@ type store struct {
 	hostsUp bool
 
 	workspaces []*Workspace
+	// badge is the count the app icon shows.
+	badge int
+	// jumped is the pane the jump to the pane that needs you went to last.
+	jumped jumpMark
 	// infos are this machine's sessions, as the windows last polled them,
 	// for the status of workspaces no window shows; seen is when each
 	// session's done or error record was seen.

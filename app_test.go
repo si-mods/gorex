@@ -49,6 +49,9 @@ func testDir(t *testing.T) string {
 // which may be idle for long: presence is the tests' to say.
 var testPresent atomic.Bool
 
+// testBadge is the count the Dock icon would show.
+var testBadge atomic.Int64
+
 // newTestApp starts a session server of its own and an app on it, whose
 // view runs without a window.
 func newTestApp(t *testing.T) (*App, *ui.Tester) {
@@ -78,6 +81,11 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 		os.RemoveAll(dir)
 	})
 	registerFonts()
+	oldBadge, oldSupported := setBadge, badgeSupported
+	badgeSupported = true
+	testBadge.Store(0)
+	setBadge = func(n int) { testBadge.Store(int64(n)) }
+	t.Cleanup(func() { setBadge, badgeSupported = oldBadge, oldSupported })
 	// The app's windows are views without a window, as this one.
 	old := newWindow
 	newWindow = func(*App) *mygo.Window { return nil }
