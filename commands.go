@@ -1286,10 +1286,15 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		backdrop.Justify(ui.Start).Padding(78, 0, 0, 0).Draw(func(p *ui.Painter, r ui.Rect) {
 			paintFrost(p, r, 10, 0, k.backdrop, k.backdrop)
 		})
-		panel.Width(560).MaxHeight(440).Radius(16).Border(1, k.panelBorder).Draw(func(p *ui.Painter, r ui.Rect) {
-			paintFrost(p, r, 24, 16, k.panelGlass, k.panel)
-		}).
-			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
+		// Under the glass setting the panel is Liquid Glass over the frosted
+		// backdrop, as the other floating layers are.
+		panel.Width(560).MaxHeight(440).Radius(16).Border(1, k.panelBorder)
+		if glassOn() {
+			glassPanel(panel, k.panel)
+		} else {
+			panel.Draw(func(p *ui.Painter, r ui.Rect) { paintFrost(p, r, 24, 16, k.panelGlass, k.panel) })
+		}
+		panel.Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
 		if anim != nil {
 			backdrop.Transition(ui.ElementTransition{Duration: 150 * time.Millisecond, Colors: true, Enter: paletteFade, Exit: paletteFade})
 			pose := ui.Pose{}

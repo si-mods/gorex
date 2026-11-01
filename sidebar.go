@@ -317,12 +317,12 @@ func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
 // its name and detail, and its close button or activity.
 func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab) {
 	active := i == a.active
-	e := ui.Row(c.Key(t.ID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, 6).Gap(8).AlignItems(ui.Center).Radius(9).
+	e := ui.Row(c.Key(t.ID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, 6).Gap(8).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if active {
-		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 8, 0, k.shadow)
+		glassPill(e, k, sideRowH)
 		// A tab chosen otherwise than in the list, as by its keys, scrolls
 		// into view, once: the list scrolls freely after.
 		if a.revealed != t {
@@ -330,7 +330,7 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab) {
 			e.ScrollIntoView()
 		}
 	} else if e.Hovered() {
-		e.Background(k.hover)
+		e.Background(hoverFace(k))
 	}
 	a.tabEvents(c, e, k, i, t)
 	hovered := e.Hovered()

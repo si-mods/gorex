@@ -101,7 +101,7 @@ func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, gly
 		if r := anchor.Bounds(); r.H > 0 {
 			room = min(room, max(r.Y, winH-r.Y-r.H)-16)
 		}
-		panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(14).Background(k.panel).Border(1, k.panelBorder).
+		glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(14), k.panel).Border(1, k.panelBorder).
 			Shadow(0, 12, 32, 0, k.shadowFocused)
 		// A short window or many hosts scroll the panel's body.
 		ui.Scroll(c).MinHeight(0).Children(func() {

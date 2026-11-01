@@ -169,9 +169,9 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if active {
-		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 8, 0, k.shadow)
+		glassPill(e, k, tabH)
 	} else if e.Hovered() {
-		e.Background(k.hover)
+		e.Background(hoverFace(k))
 	}
 	a.tabEvents(c, e, k, i, t)
 	// The tab stays hovered while its close button is pressed, which it

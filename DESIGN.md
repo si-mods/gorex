@@ -15,7 +15,7 @@ thing.
 
 | Look | Code | Use it for |
 |---|---|---|
-| Frosted glass: the window behind, blurred and tinted | `frost.go`, `paintFrost(p, r, blur, radius, tint, flat)` | Overlays: the palette's backdrop (blur 10, `k.backdrop`) and panel (blur 24, radius 16, `k.panelGlass`). A new dialog, popover or floating panel uses `paintFrost` from its `Draw`, without a `Background`. |
+| Frosted glass: the window behind, blurred and tinted | `frost.go`, `paintFrost(p, r, blur, radius, tint, flat)` | Overlays: the palette's backdrop (blur 10, `k.backdrop`) and, with the Glass setting off, its panel (blur 24, radius 16, `k.panelGlass`). A new backdrop uses `paintFrost` from its `Draw`, without a `Background`; a new dialog, popover or floating panel uses `glassPanel` ([Glass](#glass)). |
 | Window background: the gradients, dithered | `style.go`, `paintBackground` | Every full-window page (the main view, Settings). A new page paints it the same way, and does not paint gradients of its own. |
 | Inactive: grey and faded | `dim.go`, `dimmed(e, opacity)` | Disabled or in-flight controls (a dragged tab, a disabled nav button). Use it in place of `e.Opacity(x)` for "not available now". |
 
@@ -69,3 +69,54 @@ thing.
 - The GPU look is checked in a real window on the Mac mini with
   cua-driver: screenshot the state over colored terminal output, so that
   blur and tint can be seen.
+
+## Glass
+
+GoRex's windows are of Liquid Glass, as macOS 26's: the desktop shows
+through them, and what floats over the window floats as glass. The
+Glass setting (Settings, Appearance; `noGlass` in settings.json) turns
+it off, on by default, and with it off every layer paints as it did
+before. Three things make it up:
+
+| Glass | Code | Use it for |
+|---|---|---|
+| The window's material: what is behind the window, frosted by the system | `glass.go`, `glassVibrancy`, `WindowOptions.Vibrancy`, `Window.SetVibrancy` | The windows, main and Settings. `VibrancyGlass` on macOS (from 26; before, MyGo shows the popover material), `VibrancyMica` on Windows 11, none on Linux. |
+| In-window glass: what the window drew under it, through `glass.Glass` | `glass.go`, `glassPanel(e, flat)`, `paneGlass{face, flat}` | Popovers, dialogs, the palette's panel and floats: layers over what the page paints. |
+| The system's glass in an element: AppKit's `NSGlassEffectView` under its box | `glass.go`, `glassPill`, `ui.SystemGlass{Tint, Fallback}` | The active tab's pill, in the sidebar, the tab strip and Settings, as Rex's: no tint dark, `pillTint` light; `faceMaterial{k.pillFace}` where the system draws none (before macOS 26, Windows, Linux, tests). |
+| Frost: the window behind, blurred and tinted | `frost.go`, `paintFrost` | The palette's backdrop, glass setting or not. |
+
+- **Ask the window whether its glass shows.** `windowGlass(c)` is the
+  setting and `c.Vibrancy()`: the system draws no material on Linux,
+  before Windows 11 22H2, in a Windows window created without one, nor
+  in `ui.NewTester`. Only then does the root go clear
+  (`rootBackground`), the background paint as a wash (`paintBackground`
+  at `backgroundAlpha`, 0.3 of the gradients, which keeps the window's
+  and the workspace's colors), and the terminals' face fade by the
+  Terminal opacity setting (`terminalOpacity`, 0.3 to 1, 0.8 by default;
+  in `cardFace`). Browser panes keep their face.
+- **In-window glass is the GPU's.** `paneGlass` paints `glass.Glass`
+  where `p.Accelerated()`, and its flat face elsewhere, as `paintFrost`
+  does: on the CPU the glass runs slowly, and the tests see the old
+  fills. A new popover, dialog or floating panel takes
+  `glassPanel(panel, k.panel)` in place of `Background(k.panel)`, with
+  its radius and border as before.
+- **Over the window's glass, the system's glass.** `glass.Glass` reads
+  only what the page painted: under the clear sidebar and strip that is
+  nothing, and it turns dark. Glass over them is `ui.SystemGlass`, which
+  the system draws from what is behind the window. The page leaves a
+  hole for it, so draw nothing of your own (insets, rims) over it.
+- **Hover as Rex's, the same shape.** A hovered tab is a flat face
+  (`hoverFace`, `k.tabHover`: white 0.10 dark, black 0.05 light), no
+  glass, with the pill's capsule radius (`pillRadius`), so that hovered
+  and active rows have one shape.
+- **macOS windows are transparent.** The window's glass shows the
+  desktop only through a window that is not opaque
+  (`glassTransparent`, `WindowOptions.Transparent`); Mica needs none.
+- **Live, and on Windows at creation.** Turning the setting sets every
+  open window's material (`applyGlass`). Windows shows a material only
+  in a window created with one: a window opened with the setting off
+  shows its glass once opened again.
+- **Not on everything.** The title bar, tab strip and sidebar paint no
+  faces of their own, so the window's glass shows through them; only
+  the chosen tab's pill is glass, the system's. Cards, rows and controls keep their
+  colors, which read on the glass in both appearances.

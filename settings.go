@@ -38,6 +38,12 @@ type settings struct {
 	// Animation is how the panes and the sidebar move: "" springs snappily,
 	// "natural" more softly, and "off" not at all.
 	Animation string `json:"animation,omitempty"`
+	// NoGlass turns off the glass, on until then: the windows' material
+	// behind their pages, and the glass of what floats over them.
+	// TermOpacity is how opaque the terminals' background is over the
+	// window's glass, from 0.3 to 1, or 0 for defaultTermOpacity.
+	NoGlass     bool    `json:"noGlass,omitempty"`
+	TermOpacity float32 `json:"terminalOpacity,omitempty"`
 
 	// The rest, when set, win over Ghostty's configuration, which wins over
 	// GoRex's defaults. Empty and nil follow Ghostty.
@@ -73,6 +79,9 @@ func loadSettings() {
 	}
 	if !slices.Contains(animations, prefs.Animation) {
 		prefs.Animation = ""
+	}
+	if prefs.TermOpacity < minTermOpacity || prefs.TermOpacity > maxTermOpacity {
+		prefs.TermOpacity = 0
 	}
 	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
 		prefs.SidebarWidth = 0
@@ -233,6 +242,13 @@ func (a *App) setWindowPref(change func(*settings)) {
 	for _, o := range a.peers() {
 		o.do(func() {})
 	}
+}
+
+// setGlass turns the glass on or off, keeps it, and shows it in every
+// window.
+func (a *App) setGlass(on bool) {
+	a.setWindowPref(func(s *settings) { s.NoGlass = !on })
+	a.applyGlass()
 }
 
 // setFontSize changes the size of the terminals' text, in every pane. Zero

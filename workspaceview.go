@@ -105,7 +105,7 @@ func (a *App) askCloseWorkspace() {
 func (a *App) workspacePopover(c *ui.Context, k *colors, anchor ui.Element) {
 	ui.PopoverBase(c, anchor, &a.wsOpen, func(panel ui.Element) {
 		_, winH := c.Size()
-		panel.Margin(8, 0, 0, 0).MaxHeight(winH-24-titleH).Width(280).Padding(6).Radius(14).Background(k.panel).Border(1, k.panelBorder).
+		glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(winH-24-titleH).Width(280).Padding(6).Radius(14), k.panel).Border(1, k.panelBorder).
 			Shadow(0, 12, 32, 0, k.shadowFocused)
 		ui.Scroll(c).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(2).Children(func() { a.workspaceList(c, k) })
@@ -368,7 +368,7 @@ func (a *App) workspaceConfirm(c *ui.Context, k *colors) {
 	was := a.wsConfirm
 	ui.DialogBase(c, &a.wsConfirm, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		panel.Width(380).Padding(20).Radius(16).Background(k.panel).Border(1, k.panelBorder).
+		glassPanel(panel.Width(380).Padding(20).Radius(16), k.panel).Border(1, k.panelBorder).
 			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Role(ui.RoleDialog).Label(locales.SessionCloseTitle(name))
 		ui.Column(c).Gap(10).Children(func() {
 			ui.Text(c, locales.SessionCloseTitle(name)).FontSize(15).FontWeight(700).TextColor(k.text)
