@@ -46,6 +46,9 @@ type command struct {
 	RunArgs func(a *App, args map[string]any) error
 	// Available, when set, tells whether the action can run now.
 	Available func(a *App) bool
+	// Passthrough marks an action whose key is not taken while it is
+	// unavailable, and which then fails without a word.
+	Passthrough bool
 	// Hidden keeps it out of the palette.
 	Hidden bool
 	// Custom marks an action defined in the Lua configuration.
@@ -263,8 +266,9 @@ var (
 	}
 	cmdNotePreview = command{
 		ID: "note.toggle_preview", Name: locales.Messages.CmdToggleNotePreview, Accel: "CmdOrCtrl+E", Keys: "⌘E", Other: ctrlShift(ui.KeyM),
-		Run:       func(a *App) { a.toggleNotePreview() },
-		Available: func(a *App) bool { return a.focusedNote() != nil },
+		Run:         func(a *App) { a.toggleNotePreview(a.tab().Focus) },
+		Passthrough: true,
+		Available:   func(a *App) bool { return a.focusedNote() != nil },
 	}
 	cmdNewBrowser = command{
 		ID: "tab.new_browser", Name: locales.Messages.CmdNewBrowserTab,
@@ -767,9 +771,16 @@ func (st *store) menu() *mygo.Menu {
 		if st.recording || st.overrides(cmd) {
 			accel = ""
 		}
-		return &mygo.MenuItem{Label: cmd.Title(), Accelerator: accel, Click: func(_ *mygo.MenuItem, w *mygo.Window) {
+		mi := &mygo.MenuItem{Label: cmd.Title(), Accelerator: accel, Click: func(_ *mygo.MenuItem, w *mygo.Window) {
 			st.run(cmd, w)
 		}}
+		if cmd == &cmdNotePreview {
+			// Disabled, as it is without a note, its key goes on to the
+			// focused terminal or page.
+			mi.Disabled = !noteMenuOn
+			noteMenuItem = mi
+		}
+		return mi
 	}
 	tabItems := []*mygo.MenuItem{item(&cmdNextTab), item(&cmdPrevTab), mygo.Separator()}
 	for i := 1; i <= 9; i++ {
@@ -939,6 +950,9 @@ func (a *App) run(cmd *command) {
 // invokeCommand runs an action on the main thread, keeping what went
 // wrong for the view to say.
 func (a *App) invokeCommand(cmd *command, args map[string]any) {
+	if cmd.Passthrough && cmd.Available != nil && !cmd.Available(a) {
+		return
+	}
 	if err := cmd.invoke(a, args); err != nil {
 		a.err = err.Error()
 	}
@@ -1089,6 +1103,9 @@ func (a *App) shortcuts(c *ui.Context) {
 	}
 	for _, cmd := range commands {
 		if a.st != nil && a.st.overrides(cmd) {
+			continue
+		}
+		if cmd.Passthrough && cmd.Available != nil && !cmd.Available(a) {
 			continue
 		}
 		if cmd.Other != (shortcut{}) && c.Shortcut(cmd.Other.Mods, cmd.Other.Key) {

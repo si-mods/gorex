@@ -348,13 +348,25 @@ func TestNotePreviewAvailable(t *testing.T) {
 	if cmdNotePreview.Available(a) {
 		t.Error("toggle preview is offered on a terminal")
 	}
+	// On a terminal it is a silent no-op, and its key is not taken.
+	a.invokeCommand(&cmdNotePreview, nil)
+	if a.err != "" {
+		t.Errorf("error %q with no note focused", a.err)
+	}
+	if !cmdNotePreview.Passthrough {
+		t.Error("its key is taken from a terminal")
+	}
 	a.invokeCommand(&cmdNewNote, nil)
 	tt.Frame()
 	if !cmdNotePreview.Available(a) {
 		t.Fatal("toggle preview is not offered on a note")
 	}
 	p := a.tab().Focus
+	a.focusReq = nil
 	a.invokeCommand(&cmdNotePreview, nil)
+	if a.focusReq != p {
+		t.Error("the toggle does not give the note the keyboard")
+	}
 	if !p.note.preview {
 		t.Error("not previewing")
 	}
@@ -412,5 +424,19 @@ func TestNotePreviewRenders(t *testing.T) {
 	tt.Frame()
 	if _, ok := tt.Find(locales.NotePlaceholder()); !ok {
 		t.Errorf("no placeholder in an empty preview; texts %q", tt.Texts())
+	}
+}
+
+func TestTextSizeRangeShared(t *testing.T) {
+	a, _ := newTestApp(t)
+	old := prefs.FontSize
+	t.Cleanup(func() { a.setFontSize(old) })
+	a.setFontSize(1000)
+	if prefs.FontSize != maxTextSize || noteMaxSize != maxTextSize {
+		t.Errorf("max: terminal %v note %v", prefs.FontSize, noteMaxSize)
+	}
+	a.setFontSize(1)
+	if prefs.FontSize != minTextSize || noteMinSize != minTextSize {
+		t.Errorf("min: terminal %v note %v", prefs.FontSize, noteMinSize)
 	}
 }

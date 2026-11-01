@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 
 	"gorex/internal/rex"
@@ -28,15 +30,17 @@ type notePane struct {
 	size    float32
 	preview bool
 	// md is how the preview shows Markdown; it keeps what it loads.
-	md markdown.Options
+	md       markdown.Options
+	theme    *markdown.Theme
+	themeKey themeKey
 }
 
 // The text size of a note, as a terminal's: noteDefaultSize at first, a
 // step at a time between noteMinSize and noteMaxSize.
 const (
 	noteDefaultSize = 13
-	noteMinSize     = 8
-	noteMaxSize     = 40
+	noteMinSize     = minTextSize
+	noteMaxSize     = maxTextSize
 	noteSizeStep    = 1
 )
 
@@ -92,16 +96,61 @@ func (a *App) zoomNote(delta float32) bool {
 	return true
 }
 
-// toggleNotePreview switches the focused note between editing and its
-// Markdown preview.
-func (a *App) toggleNotePreview() {
-	if n := a.focusedNote(); n != nil {
-		n.setPreview(!n.preview)
-		a.changed()
+// toggleNotePreview switches the note of pane p between editing and its
+// Markdown preview, and gives the pane the keyboard.
+func (a *App) toggleNotePreview(p *Pane) {
+	if p == nil || p.note == nil {
+		return
+	}
+	p.note.preview = !p.note.preview
+	a.focusReq = p
+	a.changed()
+}
+
+// noteMenuItem is the menu's Toggle Note Preview, and noteMenuOn whether
+// it is enabled: while it is not, its key goes to the terminal or page.
+var (
+	noteMenuItem *mygo.MenuItem
+	noteMenuOn   = true
+)
+
+// syncNoteItem enables the menu's Toggle Note Preview while a note has
+// the focus.
+func (a *App) syncNoteItem() {
+	on := a.focusedNote() != nil
+	if noteMenuItem != nil && on != noteMenuOn {
+		noteMenuOn = on
+		noteMenuItem.SetEnabled(on)
 	}
 }
 
-func (n *notePane) setPreview(on bool) { n.preview = on }
+// previewTheme is the Markdown theme of the note at its size in the
+// colors k, kept until either changes.
+func (n *notePane) previewTheme(k *colors) *markdown.Theme {
+	key := themeKey{n.textSize(), k.text, k.textMuted, k.textFaint, k.accent, k.cardBorder}
+	if n.theme != nil && n.themeKey == key {
+		return n.theme
+	}
+	th := &markdown.Theme{
+		FontSize: key.size, Text: k.text, Strong: k.text, Muted: k.textFaint, Link: k.accent,
+		Code: k.text, CodeBackground: k.text.Alpha(0.07),
+		QuoteBar: k.cardBorder, QuoteText: k.textMuted, Rule: k.cardBorder,
+		CodeBlockBackground: k.text.Alpha(0.04), CodeBlockBorder: k.cardBorder,
+		TableBorder: k.cardBorder, TableHeader: k.text.Alpha(0.04), Checkbox: k.accent,
+	}
+	for i := range th.Headings {
+		th.Headings[i].Color = k.text
+	}
+	th.Headings[5].Color = k.textMuted
+	n.theme, n.themeKey = th, key
+	return th
+}
+
+// themeKey is what a note's Markdown theme is made from.
+type themeKey struct {
+	size                                   float32
+	text, textMuted, textFaint, accent, bd ui.Color
+}
 
 // noteKind is the Kind of a note pane in the layout.
 const noteKind = "note"

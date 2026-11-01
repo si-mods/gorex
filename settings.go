@@ -50,6 +50,12 @@ type settings struct {
 
 const defaultFontSize = 11.6
 
+// The range of the text size, in points, of terminals and notes alike.
+const (
+	minTextSize = 8
+	maxTextSize = 40
+)
+
 var prefs settings
 
 func settingsPath() string { return filepath.Join(rex.Dir(), "settings.json") }
@@ -233,7 +239,7 @@ func (a *App) setWindowPref(change func(*settings)) {
 // goes back to the default size, which Ghostty's font-size sets.
 func (a *App) setFontSize(size float32) {
 	if size > 0 {
-		size = min(max(size, 8), 32)
+		size = min(max(size, minTextSize), maxTextSize)
 	}
 	prefs.FontSize = size
 	termFont.Size = ghostty.fontSize(size)

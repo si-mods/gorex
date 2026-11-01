@@ -224,6 +224,7 @@ func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize
 // to their new places as the layout changes, and open and close there.
 func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	a.contentFocus, a.pageHover = false, nil
+	a.syncNoteItem()
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	bounds := room.Bounds()
 	a.floatRoom = bounds
@@ -277,12 +278,13 @@ var whole = share{0, 0, 1, 1}
 // moves from its old box to its new one rather than popping out of one and
 // into the other.
 type (
-	roomKey      int
-	cellKey      int
-	dividerKey   int
-	addressKey   int
-	noteKey      int
-	floatGripKey int
+	roomKey        int
+	cellKey        int
+	dividerKey     int
+	addressKey     int
+	noteKey        int
+	notePreviewKey int
+	floatGripKey   int
 )
 
 // shares gives each pane of the tree of n, and each split, its share of s.
@@ -857,23 +859,15 @@ func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 }
 
 // notePreviewBody shows a note's text as Markdown, filling the pane and
-// scrolling. A click gives the pane the focus, so that the app's shortcuts
-// act on it; a double click goes back to editing.
+// scrolling. Focus in it gives the pane the focus, so that the app's
+// shortcuts act on it.
 func (a *App) notePreviewBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	n := p.note
-	n.md.Theme = &markdown.Theme{FontSize: n.textSize(), Text: k.text, Link: k.accent}
-	sc := ui.Scroll(c.Key(noteKey(p.ID))).Grow(1).MinHeight(0).Focusable()
+	n.md.Theme = n.previewTheme(k)
+	sc := ui.Scroll(c.Key(notePreviewKey(p.ID))).Grow(1).MinHeight(0).Focusable()
 	if a.focusReq == p && a.tab() == t {
 		sc.Focus()
 		a.focusReq = nil
-	}
-	if sc.DoubleClicked() {
-		n.setPreview(false)
-		a.focusReq = p
-		a.changed()
-	} else if sc.Pressed() && t.Focus != p {
-		t.setFocus(p)
-		a.changed()
 	}
 	if sc.FocusWithin() {
 		a.contentFocus = true
@@ -1001,9 +995,7 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 			}
 			if iconButton(c, k, icon, label, 26, 16).Tooltip(tip(label, &cmdNotePreview)).Clicked() {
 				t.setFocus(p)
-				a.focusReq = p
-				n.setPreview(!n.preview)
-				a.changed()
+				a.toggleNotePreview(p)
 			}
 		}
 		// As Rex has them: split right, split down, float, zoom and close.
