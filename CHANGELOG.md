@@ -1,11 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.6.1
 
-### Features
+### Bug Fixes
 
-* **note:** a note's text size follows the text-size keys, as a terminal's (⌘+, ⌘−, ⌘0; 8 to 40 points, 13 by default) and is kept per note
-* **note:** a note can show its text as Markdown: the eye button in its header, or Toggle Note Preview (⌘E)
+* **skill:** read an agent's settings that start with a byte order mark, so `gorex skill setup` installs the session-start hook on Windows ([#139](https://github.com/si-mods/gorex/pull/139))
 
 ## 0.6.0
 
@@ -14,6 +13,8 @@
 * **note:** a note pane is a sticky note of free text: New Note Tab and Split with Note; the layout keeps the text, and the pane stays on this machine ([#134](https://github.com/si-mods/gorex/pull/134))
 * **palette:** frost the backdrop and the panel with a backdrop shader ([#133](https://github.com/si-mods/gorex/pull/133))
 * **ui:** paint the background with one dithered shader and grey out inactive controls ([#136](https://github.com/si-mods/gorex/pull/136))
+* **note:** a note's text size follows the text-size keys, as a terminal's (⌘+, ⌘−, ⌘0; 8 to 40 points, 13 by default) and is kept per note ([#135](https://github.com/si-mods/gorex/pull/135))
+* **note:** a note can show its text as Markdown: the eye button in its header, or Toggle Note Preview (⌘E) ([#135](https://github.com/si-mods/gorex/pull/135))
 
 ## 0.5.0
 
