@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+### Features
+
+* **float:** throw floats with the pointer's velocity and snap to edges ([#126](https://github.com/si-mods/gorex/pull/126))
+
 ## 0.3.6
 
 ### Features
