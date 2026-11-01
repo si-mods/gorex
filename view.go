@@ -864,7 +864,7 @@ func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 func (a *App) notePreviewBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	n := p.note
 	n.md.Theme = n.previewTheme(k)
-	sc := ui.Scroll(c.Key(notePreviewKey(p.ID))).Grow(1).MinHeight(0).Focusable()
+	sc := ui.Scroll(c.Key(notePreviewKey(p.ID))).Grow(1).MinHeight(0).Focusable().FocusRing(false)
 	if a.focusReq == p && a.tab() == t {
 		sc.Focus()
 		a.focusReq = nil

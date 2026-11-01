@@ -184,6 +184,18 @@ func noteDir() string { return filepath.Join(rex.Dir(), "notes") }
 
 func (n *notePane) path() string { return filepath.Join(noteDir(), n.id+".txt") }
 
+// stripMarkdownMarker drops a heading marker (one to six # and a space) or
+// a list or quote marker ("- ", "* ", "+ ", "> ") from the start of line.
+func stripMarkdownMarker(line string) string {
+	if h := strings.TrimLeft(line, "#"); len(line)-len(h) <= 6 && len(h) < len(line) && strings.HasPrefix(h, " ") {
+		return strings.TrimSpace(h)
+	}
+	if len(line) > 1 && strings.ContainsRune("-*+>", rune(line[0])) && line[1] == ' ' {
+		return strings.TrimSpace(line[2:])
+	}
+	return line
+}
+
 // noteTitle is the first line of a note that has text, shortened, "" for
 // a note of none. It reads no further than that line.
 func noteTitle(text string) string {
@@ -191,6 +203,9 @@ func noteTitle(text string) string {
 		var line string
 		line, text, _ = strings.Cut(text, "\n")
 		if line = strings.TrimSpace(line); line == "" {
+			continue
+		}
+		if line = stripMarkdownMarker(line); line == "" {
 			continue
 		}
 		if utf8.RuneCountInString(line) > noteTitleMax {
