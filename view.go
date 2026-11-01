@@ -51,6 +51,7 @@ func (a *App) view(c *ui.Context) {
 		a.errorBanner(c, k)
 	}
 	a.shortcuts(c)
+	a.syncBadge()
 	a.palette(c, k)
 	a.workspaceConfirm(c, k)
 	// mygo paints a text input's caret in the theme of the frame as it

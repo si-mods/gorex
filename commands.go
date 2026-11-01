@@ -410,6 +410,7 @@ var (
 	}
 	cmdNextTab   = command{ID: "tab.next", Name: locales.Messages.CmdNextTab, Accel: "CmdOrCtrl+Shift+]", Keys: "⇧⌘]", Other: shortcut{ui.Ctrl, ui.KeyPageDown}, Run: func(a *App) { a.cycleTab(1) }}
 	cmdPrevTab   = command{ID: "tab.previous", Name: locales.Messages.CmdPreviousTab, Accel: "CmdOrCtrl+Shift+[", Keys: "⇧⌘[", Other: shortcut{ui.Ctrl, ui.KeyPageUp}, Run: func(a *App) { a.cycleTab(-1) }}
+	cmdJumpNeedy = command{ID: "pane.jump_needy", Name: locales.Messages.CmdJumpToNeedy, Accel: "CmdOrCtrl+J", Keys: "⌘J", Other: ctrlShift(ui.KeyJ), Run: func(a *App) { a.jumpToNeedy() }}
 	cmdSidebar   = command{ID: "sidebar.toggle", Name: locales.Messages.CmdToggleSidebar, Accel: "CmdOrCtrl+Ctrl+S", Keys: "⌃⌘S", Other: ctrlShift(ui.KeyS), Run: func(a *App) { a.toggleSidebar() }}
 	cmdRenameTab = command{
 		ID: "tab.rename", Name: locales.Messages.CmdRenameTab, Accel: "CmdOrCtrl+Shift+R", Keys: "⇧⌘R", Other: ctrlShift(ui.KeyR),
@@ -605,7 +606,7 @@ var paletteCommands = []*command{
 	&cmdNewTab, &cmdNewBrowser, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdZoom, &cmdEqualize, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
-	&cmdNextTab, &cmdPrevTab, &cmdRenameTab, &cmdSidebar,
+	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdRenameTab, &cmdSidebar,
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
@@ -853,7 +854,7 @@ func (st *store) menu() *mygo.Menu {
 			{Role: mygo.RoleToggleFullScreen},
 			{Role: mygo.RoleToggleDevTools, Label: locales.MenuInspector(), Hidden: !mygo.IsDev()},
 		}},
-		{Label: locales.MenuTabs(), Submenu: append(tabItems, mygo.Separator(), item(&cmdRenameTab), item(&cmdMoveTabWindow))},
+		{Label: locales.MenuTabs(), Submenu: append(tabItems, item(&cmdJumpNeedy), mygo.Separator(), item(&cmdRenameTab), item(&cmdMoveTabWindow))},
 		{Label: locales.MenuSession(), Submenu: append([]*mygo.MenuItem{
 			item(&cmdNewSession),
 			item(&cmdImportRex),

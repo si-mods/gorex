@@ -136,6 +136,8 @@ type store struct {
 	hostsUp bool
 
 	workspaces []*Workspace
+	// badge is the count the app icon shows.
+	badge int
 	// infos are this machine's sessions, as the windows last polled them,
 	// for the status of workspaces no window shows; seen is when each
 	// session's done or error record was seen.

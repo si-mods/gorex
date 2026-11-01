@@ -104,6 +104,7 @@ browser panes use the system's web view.
 | ⇧⌘N | | New session |
 | ⇧⌘O | Ctrl+Shift+O | Change session |
 | ⌃⌘] ⌃⌘[ | Ctrl+Shift+PageDown/PageUp | Next / previous session |
+| ⌘J | Ctrl+Shift+J | Jump to the pane that needs you |
 | ⌃⌘S | Ctrl+Shift+S | Hide or show the tabs' sidebar |
 | ⇧⌘P, ⌘P | Ctrl+Shift+P | Command palette |
 | ⌘K | Ctrl+Shift+K | Clear |
