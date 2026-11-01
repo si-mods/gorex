@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.6
+
+### Features
+
+* **motion:** animate floats, tabs, overlays and status dots ([#124](https://github.com/si-mods/gorex/pull/124))
+* **rexapi:** serve Rex's API to Rex's apps, over the tailnet or the local network ([#118](https://github.com/si-mods/gorex/pull/118))
+
 ## 0.3.5
 
 ### Features
