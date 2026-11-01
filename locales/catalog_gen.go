@@ -2356,6 +2356,80 @@ func (msgs Messages) SettingsDockBadgeHint() string {
 	return Catalog.Format(msgs.locale, "settingsDockBadgeHint", nil)
 }
 
+// SettingsGlass says "Glass"
+// in the language the app shows.
+//
+// Setting: whether the windows are of Liquid Glass, the desktop showing
+// through, and popovers and dialogs float as glass.
+func SettingsGlass() string { return In(i18n.Locale()).SettingsGlass() }
+
+// SettingsGlass says "Glass"
+// in the language of msgs.
+//
+// Setting: whether the windows are of Liquid Glass, the desktop showing
+// through, and popovers and dialogs float as glass.
+func (msgs Messages) SettingsGlass() string {
+	return Catalog.Format(msgs.locale, "settingsGlass", nil)
+}
+
+// SettingsGlassHint says "Let the desktop show through the windows, and float popovers, dialogs and floating panes as glass."
+// in the language the app shows.
+//
+// Hint under the Glass setting.
+func SettingsGlassHint() string { return In(i18n.Locale()).SettingsGlassHint() }
+
+// SettingsGlassHint says "Let the desktop show through the windows, and float popovers, dialogs and floating panes as glass."
+// in the language of msgs.
+//
+// Hint under the Glass setting.
+func (msgs Messages) SettingsGlassHint() string {
+	return Catalog.Format(msgs.locale, "settingsGlassHint", nil)
+}
+
+// SettingsTermOpacity says "Terminal opacity"
+// in the language the app shows.
+//
+// Setting: how opaque the terminals' background is over the window's glass.
+func SettingsTermOpacity() string { return In(i18n.Locale()).SettingsTermOpacity() }
+
+// SettingsTermOpacity says "Terminal opacity"
+// in the language of msgs.
+//
+// Setting: how opaque the terminals' background is over the window's glass.
+func (msgs Messages) SettingsTermOpacity() string {
+	return Catalog.Format(msgs.locale, "settingsTermOpacity", nil)
+}
+
+// SettingsTermOpacityHint says "How much of the terminals' background covers the window's glass. Only while Glass is on."
+// in the language the app shows.
+//
+// Hint under the Terminal opacity setting. Glass is the setting above it.
+func SettingsTermOpacityHint() string { return In(i18n.Locale()).SettingsTermOpacityHint() }
+
+// SettingsTermOpacityHint says "How much of the terminals' background covers the window's glass. Only while Glass is on."
+// in the language of msgs.
+//
+// Hint under the Terminal opacity setting. Glass is the setting above it.
+func (msgs Messages) SettingsTermOpacityHint() string {
+	return Catalog.Format(msgs.locale, "settingsTermOpacityHint", nil)
+}
+
+// SettingsTermOpacityValue says "{opacity, number, percent}"
+// in the language the app shows.
+//
+// The terminal opacity as a percentage, next to its slider.
+func SettingsTermOpacityValue(opacity float64) string {
+	return In(i18n.Locale()).SettingsTermOpacityValue(opacity)
+}
+
+// SettingsTermOpacityValue says "{opacity, number, percent}"
+// in the language of msgs.
+//
+// The terminal opacity as a percentage, next to its slider.
+func (msgs Messages) SettingsTermOpacityValue(opacity float64) string {
+	return Catalog.Format(msgs.locale, "settingsTermOpacityValue", map[string]any{"opacity": opacity})
+}
+
 // SettingsAnimation says "Animation style"
 // in the language the app shows.
 //

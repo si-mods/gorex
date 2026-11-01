@@ -61,6 +61,8 @@ func (a *App) openSettings() {
 		TitleBarStyle:        mygo.TitleBarHidden,
 		TrafficLightPosition: &mygo.Point{X: 16, Y: 15},
 		BackgroundColor:      "light-dark(#efe1e6, #231e27)",
+		Vibrancy:             glassVibrancy(),
+		Transparent:          glassTransparent(),
 		Content:              ui.View(a.settingsView),
 	}
 	if ownControls {
@@ -106,8 +108,9 @@ func (a *App) settingsView(c *ui.Context) {
 	a.runPosted() // the hosts' changes, without a terminal window
 	k := colorsOf(c)
 	c.SetTheme(widgetTheme(c.Theme(), k))
-	c.Root().Background(k.bgBottom)
-	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k) }).Children(func() {
+	rootBackground(c, k.bgBottom)
+	wash := backgroundAlpha(c)
+	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k, wash) }).Children(func() {
 		a.settingsTitleBar(c, k)
 		ui.Row(c).Grow(1).MinHeight(0).Gap(gap).Padding(0, gap, gap, gap).AlignItems(ui.Stretch).Children(func() {
 			card(ui.Column(c).Width(196).Shrink(0).Padding(8).Gap(2), k).Children(func() {
@@ -161,9 +164,9 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
 	e := ui.Row(c.Key(id)).Height(tabH+4).Padding(0, 12, 0, 10).Gap(9).AlignItems(ui.Center).Radius((tabH + 4) / 2).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(label)
 	if active {
-		e.Background(k.tabActive).Shadow(0, 1, 2, 0, k.shadow).Shadow(0, 2, 8, 0, k.shadow)
+		glassPill(e, k, tabH+4)
 	} else if e.Hovered() {
-		e.Background(k.hover)
+		e.Background(hoverFace(k))
 	}
 	e.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
 	if e.Clicked() {
@@ -245,6 +248,19 @@ func (a *App) appearanceSettings(c *ui.Context, k *colors) {
 	settingRow(c, k, locales.SettingsLanguage(), locales.SettingsLanguageHint(), func() {
 		if ui.Select(c, &lang, names).Label(locales.SettingsLanguage()).Width(160).Changed() {
 			a.setLanguage(tags[slices.Index(names, lang)])
+		}
+	})
+	glassy := glassOn()
+	settingRow(c, k, locales.SettingsGlass(), locales.SettingsGlassHint(), func() {
+		if ui.Switch(c, &glassy).Label(locales.SettingsGlass()).Changed() {
+			a.setGlass(glassy)
+		}
+	})
+	opacity := float64(termOpacity())
+	settingRow(c, k, locales.SettingsTermOpacity(), locales.SettingsTermOpacityHint(), func() {
+		ui.Text(c, locales.SettingsTermOpacityValue(opacity)).FontSize(13).TextColor(k.textMuted)
+		if ui.StepSlider(c, &opacity, minTermOpacity, maxTermOpacity, 0.1).Label(locales.SettingsTermOpacity()).Width(160).Disabled(!glassy).Changed() {
+			a.setWindowPref(func(s *settings) { s.TermOpacity = float32(opacity) })
 		}
 	})
 	badge := !prefs.HideDockBadge

@@ -21,7 +21,15 @@ type colors struct {
 	hover, pressed                        ui.Color
 
 	track, trackBorder, tabActive, tabSep ui.Color
-	tileRim                               ui.Color
+	// pillFace and pillShadow are the active tab's pill under the glass
+	// setting: its face where the system draws no glass, and its shadow.
+	pillFace, pillShadow ui.Color
+	// tabHover is a hovered tab's face under the glass setting, as Rex's:
+	// lighter in a dark window, darker in a light one, and no glass.
+	tabHover ui.Color
+	// pillTint tints the system's glass of the active tab's pill.
+	pillTint ui.Color
+	tileRim  ui.Color
 
 	busy, attention, exited, danger ui.Color
 
@@ -65,6 +73,10 @@ var lightColors = colors{
 	track:       ui.RGBA(255, 255, 255, 0.34),
 	trackBorder: ui.RGBA(255, 255, 255, 0.45),
 	tabActive:   ui.RGBA(255, 255, 255, 0.97),
+	pillFace:    ui.RGBA(255, 255, 255, 0.45),
+	pillShadow:  ui.RGBA(255, 255, 255, 0.06),
+	tabHover:    ui.RGBA(0, 0, 0, 0.05),
+	pillTint:    ui.RGBA(29, 29, 29, 0.25),
 	tabSep:      ui.RGBA(0, 0, 0, 0.13),
 	tileRim:     ui.RGBA(255, 255, 255, 0.95),
 
@@ -109,6 +121,10 @@ var darkColors = colors{
 	track:       ui.RGBA(255, 255, 255, 0.06),
 	trackBorder: ui.RGBA(255, 255, 255, 0.06),
 	tabActive:   ui.RGBA(255, 255, 255, 0.14),
+	pillFace:    ui.RGBA(255, 255, 255, 0.14),
+	pillShadow:  ui.Transparent,
+	tabHover:    ui.RGBA(255, 255, 255, 0.10),
+	pillTint:    ui.Transparent,
 	tabSep:      ui.RGBA(255, 255, 255, 0.14),
 	tileRim:     ui.RGBA(255, 255, 255, 0.22),
 
@@ -166,10 +182,12 @@ func headerColors(k *colors, bg ui.Color) *colors {
 // width, as a horizontal gradient from clear. A hash of the pixel moves
 // each channel by up to half a step of 8 bits, which hides the bands a
 // smooth gradient makes. The colors arrive not premultiplied, and the
-// shader returns an opaque color.
+// shader returns the color premultiplied, as opaque as Alpha: 1 but over
+// the window's glass.
 var background = shader.MustCompile(`package main
 
 var Top, Mid, Low, Bottom, Tint vec4
+var Alpha float
 
 func hash(v uint) uint {
 	s := v*747796405 + 2891336453
@@ -187,7 +205,7 @@ func Fragment(dst vec4, pos vec2) vec4 {
 	c = c*(1-a) + Tint.rgb*a
 	n := hash(uint(dst.x) + hash(uint(dst.y)))
 	c += (float(n)/4294967295.0 - 0.5) / 255.0
-	return vec4(clamp(c, 0, 1), 1)
+	return vec4(clamp(c, 0, 1)*Alpha, Alpha)
 }
 `)
 
@@ -197,31 +215,39 @@ var (
 	bgValues                                   = background.NewValues()
 	bgTopU, bgMidU, bgLowU, bgBottomU, bgTintU = background.Uniform("Top"), background.Uniform("Mid"),
 		background.Uniform("Low"), background.Uniform("Bottom"), background.Uniform("Tint")
+	bgAlphaU = background.Uniform("Alpha")
 )
 
 // backgroundOptions returns what the background shader draws with: k's
-// colors, in the values made once.
-func backgroundOptions(k *colors) shader.Options {
+// colors, as opaque as alpha, in the values made once.
+func backgroundOptions(k *colors, alpha float32) shader.Options {
 	bgValues.Color(bgTopU, k.bgTop).Color(bgMidU, k.bgMid).Color(bgLowU, k.bgLow).
-		Color(bgBottomU, k.bgBottom).Color(bgTintU, k.bgTint)
+		Color(bgBottomU, k.bgBottom).Color(bgTintU, k.bgTint).Float(bgAlphaU, alpha)
 	return shader.Options{Values: bgValues}
 }
 
-// paintBackground paints the window's background: one shader, or on the
-// CPU renderer, where a shader over the window runs far too slowly,
+// paintBackground paints the window's background, as opaque as alpha: 1,
+// or backgroundAlpha's wash over the window's glass. It is one shader, or
+// on the CPU renderer, where a shader over the window runs far too slowly,
 // gradients of the same colors.
-func paintBackground(p *ui.Painter, r ui.Rect, k *colors) {
+func paintBackground(p *ui.Painter, r ui.Rect, k *colors, alpha float32) {
 	if p.Accelerated() {
-		background.Draw(p, r, backgroundOptions(k))
+		background.Draw(p, r, backgroundOptions(k, alpha))
 		return
 	}
+	top, mid, low, bottom, tint := k.bgTop, k.bgMid, k.bgLow, k.bgBottom, k.bgTint
 	h1, h2 := r.H*0.38, r.H*0.32
-	p.FillGradient(ui.Rect{X: r.X, Y: r.Y, W: r.W, H: h1 + 1}, ui.LinearGradient{From: k.bgTop, To: k.bgMid, Angle: 180}, 0)
-	p.FillGradient(ui.Rect{X: r.X, Y: r.Y + h1, W: r.W, H: h2 + 1}, ui.LinearGradient{From: k.bgMid, To: k.bgLow, Angle: 180}, 0)
-	p.FillGradient(ui.Rect{X: r.X, Y: r.Y + h1 + h2, W: r.W, H: r.H - h1 - h2}, ui.LinearGradient{From: k.bgLow, To: k.bgBottom, Angle: 180}, 0)
-	clear := k.bgTint
+	over := float32(1) // the bands overlap by a DIP, which an opaque one hides
+	if alpha < 1 {
+		top, mid, low, bottom, tint = top.Alpha(alpha), mid.Alpha(alpha), low.Alpha(alpha), bottom.Alpha(alpha), tint.Alpha(alpha)
+		h1, h2, over = float32(int(h1)), float32(int(h2)), 0
+	}
+	p.FillGradient(ui.Rect{X: r.X, Y: r.Y, W: r.W, H: h1 + over}, ui.LinearGradient{From: top, To: mid, Angle: 180}, 0)
+	p.FillGradient(ui.Rect{X: r.X, Y: r.Y + h1, W: r.W, H: h2 + over}, ui.LinearGradient{From: mid, To: low, Angle: 180}, 0)
+	p.FillGradient(ui.Rect{X: r.X, Y: r.Y + h1 + h2, W: r.W, H: r.H - h1 - h2}, ui.LinearGradient{From: low, To: bottom, Angle: 180}, 0)
+	clear := tint
 	clear.A = 0
-	p.FillGradient(r, ui.LinearGradient{From: clear, To: k.bgTint, Angle: 90, Start: 0.35, End: 1}, 0)
+	p.FillGradient(r, ui.LinearGradient{From: clear, To: tint, Angle: 90, Start: 0.35, End: 1}, 0)
 }
 
 //go:embed assets/fonts/JetBrainsMono-Regular.ttf

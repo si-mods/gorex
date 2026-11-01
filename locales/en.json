@@ -782,6 +782,32 @@
   "@settingsDockBadgeHint": {
     "description": "Hint under the Dock badge setting."
   },
+  "settingsGlass": "Glass",
+  "@settingsGlass": {
+    "description": "Setting: whether the windows are of Liquid Glass, the desktop showing through, and popovers and dialogs float as glass."
+  },
+  "settingsGlassHint": "Let the desktop show through the windows, and float popovers, dialogs and floating panes as glass.",
+  "@settingsGlassHint": {
+    "description": "Hint under the Glass setting."
+  },
+  "settingsTermOpacity": "Terminal opacity",
+  "@settingsTermOpacity": {
+    "description": "Setting: how opaque the terminals' background is over the window's glass."
+  },
+  "settingsTermOpacityHint": "How much of the terminals' background covers the window's glass. Only while Glass is on.",
+  "@settingsTermOpacityHint": {
+    "description": "Hint under the Terminal opacity setting. Glass is the setting above it."
+  },
+  "settingsTermOpacityValue": "{opacity, number, percent}",
+  "@settingsTermOpacityValue": {
+    "description": "The terminal opacity as a percentage, next to its slider.",
+    "placeholders": {
+      "opacity": {
+        "type": "double",
+        "example": "0.8"
+      }
+    }
+  },
   "settingsAnimation": "Animation style",
   "@settingsAnimation": {
     "description": "Setting: how panes and the sidebar animate."

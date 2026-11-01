@@ -707,6 +707,8 @@ var newWindow = func(a *App) *mygo.Window {
 		TitleBarStyle:        mygo.TitleBarHidden,
 		TrafficLightPosition: &mygo.Point{X: 16, Y: 15},
 		BackgroundColor:      "light-dark(#efe1e6, #231e27)",
+		Vibrancy:             glassVibrancy(),
+		Transparent:          glassTransparent(),
 		Content:              ui.View(a.view),
 	}
 	if ownControls {

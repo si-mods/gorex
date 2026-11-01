@@ -379,7 +379,7 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 	was := page.layoutOpen
 	ui.DialogBase(c, &page.layoutOpen, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		panel.Width(620).MaxHeight(560).Padding(18).Gap(12).Radius(16).Background(k.panel).Border(1, k.panelBorder).
+		glassPanel(panel.Width(620).MaxHeight(560).Padding(18).Gap(12).Radius(16), k.panel).Border(1, k.panelBorder).
 			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Role(ui.RoleDialog).Label(locales.HostsLayoutTitle())
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, locales.HostsLayoutTitle()).FontSize(15).FontWeight(700).TextColor(k.text)
@@ -630,7 +630,7 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 	was := page.adding
 	ui.DialogBase(c, &page.adding, func(backdrop, panel ui.Element) {
 		backdrop.Background(k.backdrop)
-		panel.Width(440).Padding(18).Gap(12).Radius(16).Background(k.panel).Border(1, k.panelBorder).
+		glassPanel(panel.Width(440).Padding(18).Gap(12).Radius(16), k.panel).Border(1, k.panelBorder).
 			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Role(ui.RoleDialog).Label(locales.HostsAddTitle())
 		ui.Text(c, locales.HostsAddTitle()).FontSize(15).FontWeight(700).TextColor(k.text)
 		switch page.stage {

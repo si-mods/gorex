@@ -34,8 +34,9 @@ func (a *App) view(c *ui.Context) {
 	a.focusedWin = a.win == nil || a.win.IsFocused()
 	breathing = a.focusedWin
 	a.claimFocus()
-	c.Root().Background(k.bgBottom)
-	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k) }).Children(func() {
+	rootBackground(c, k.bgBottom)
+	wash := backgroundAlpha(c)
+	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k, wash) }).Children(func() {
 		if prefs.TabPlacement != "" {
 			a.sidebarLayout(c, k, prefs.TabPlacement == "right")
 			return
@@ -62,7 +63,7 @@ func (a *App) view(c *ui.Context) {
 	t := *c.Theme()
 	t.Accent = k.accent
 	c.SetTheme(&t)
-	c.Root().Background(k.bgBottom) // SetTheme gave the root the theme's
+	rootBackground(c, k.bgBottom) // SetTheme gave the root the theme's
 	if a.saveDue && time.Since(a.lastSave) > time.Second {
 		a.save()
 	}
@@ -368,8 +369,21 @@ func cardFace(c *ui.Context, k *colors, focused, float bool) ui.Color {
 	}
 	if float {
 		bg.A = 255
+	} else if windowGlass(c) {
+		// The window's glass shows through the terminals' background, by
+		// as much as the setting says.
+		bg = bg.Alpha(termOpacity())
 	}
 	return bg
+}
+
+// floatGlass is the face of a float over the pane's glass, which a float
+// has under the glass setting where the frame draws on a GPU: its tiled
+// pane's face, as see-through as the setting makes the terminals.
+func floatGlass(c *ui.Context, k *colors, focused bool) ui.Color {
+	bg := cardFace(c, k, focused, true)
+	bg.A = cardFace(c, k, focused, false).A
+	return bg.Alpha(termOpacity())
 }
 
 // floatCell places a float's pane over the tab's tiled ones, at its box of
@@ -444,7 +458,15 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		s = whole
 	}
 	cell.LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
-		Radius(cardR).Background(cardFace(c, k, t.Focus == p, true))
+		Radius(cardR)
+	// Under the glass setting a float is a pane of glass, the tiled panes
+	// blurred through its face, where the frame draws on a GPU; elsewhere
+	// it is opaque, as before.
+	if face := cardFace(c, k, t.Focus == p, true); glassOn() {
+		cell.Material(paneGlass{face: floatGlass(c, k, t.Focus == p), flat: face})
+	} else {
+		cell.Background(face)
+	}
 	// Under the pointer, or gliding from it, it moves as it does; else, as
 	// it is nudged by the keys, zooms, or floats from its place among the
 	// tiled panes, it eases there.
@@ -622,7 +644,11 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	// The card and its float's cell take one face: the cell's, of another
 	// color, would show at the card's rounded corners.
 	bg = cardFace(c, k, focused, p.float != nil)
-	card.Background(bg)
+	// A float under the glass setting takes its face from its cell's
+	// glass.
+	if p.float == nil || !glassOn() {
+		card.Background(bg)
+	}
 	// A float has no edge drawn: the shadows of its cell lift it over the
 	// tiled panes.
 	if p.float == nil {

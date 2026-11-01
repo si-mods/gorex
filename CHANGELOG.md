@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **ui:** Liquid Glass: the desktop shows through the windows, popovers, dialogs, the palette and floats float as glass, and the active tab sits on the system's own glass, as Rex's; Glass and Terminal opacity in Settings, on and 80% by default
+
 ## 0.6.1
 
 ### Bug Fixes
