@@ -1,7 +1,9 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
+	"math"
 	"runtime"
 	"slices"
 	"strings"
@@ -224,6 +226,7 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	bounds := room.Bounds()
 	a.floatRoom = bounds
+	a.passes++
 	tr := a.paneTransition(c, t)
 	room.Children(func() {
 		if t.Zoom != nil {
@@ -372,23 +375,77 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	if p == nil {
 		return
 	}
+	cell := ui.Column(c.Key(cellKey(p.ID))).Absolute()
+	anim := motion(c)
+	if anim == &snappy {
+		anim = &springBack
+	}
+	if f.built+1 != a.passes {
+		// Not built in the last pass, as hidden or in another tab: it is
+		// at rest.
+		f.gliding, f.fling = false, nil
+	}
+	f.built = a.passes
 	// Dragged past the room's edge, the float follows the pointer less and
-	// less, and springs back in once let go.
+	// less; let go, it glides from where it showed to its box, at the
+	// pointer's velocity, and springs back in.
 	s := share{f.X + rubber(f.overX), f.Y + rubber(f.overY), f.W, f.H}
+	if fl := f.fling; fl != nil && !fl.started {
+		f.gliding = false
+		if anim != nil && !f.Zoom {
+			fl.started = true
+			// The place goes in fractions of the room: it rests within a
+			// tenth of a DIP of a room 1000 DIPs across.
+			glide := *anim
+			glide.Spring.Precision = 1e-4
+			cell.Jump(glideX, fl.x)
+			cell.Jump(glideY, fl.y)
+			// The throw starts it toward its rest, no faster than it
+			// settles there. A velocity of zero would keep the one the
+			// value had: the least one stands for none.
+			rate := glideRate(anim)
+			gx, gy := glide, glide
+			gx.Spring.Velocity = cmp.Or(glideVelocity(fl.vx, fl.x, f.X, rate), 1e-9)
+			gy.Spring.Velocity = cmp.Or(glideVelocity(fl.vy, fl.y, f.Y, rate), 1e-9)
+			cell.AnimateTo(glideX, f.X, gx)
+			cell.AnimateTo(glideY, f.Y, gy)
+			f.gliding = true
+		} else {
+			f.fling = nil
+		}
+	}
+	if f.gliding {
+		if anim == nil || f.Zoom || f.dragging || f.fling == nil {
+			f.gliding, f.fling = false, nil
+		} else {
+			glide := *anim
+			glide.Spring.Precision = 1e-4
+			s.x, s.y = cell.AnimateTo(glideX, f.X, glide), cell.AnimateTo(glideY, f.Y, glide)
+			if s.x == f.X && s.y == f.Y {
+				f.gliding, f.fling = false, nil
+			} else {
+				// Past the room's edges it goes a little way at most,
+				// unless it was let go of past them.
+				if bounds.W > 0 && f.fling.inside[0] {
+					s.x = edgeBand(s.x, f.W, glideOver/bounds.W)
+				}
+				if bounds.H > 0 && f.fling.inside[1] {
+					s.y = edgeBand(s.y, f.H, glideOver/bounds.H)
+				}
+			}
+		}
+	}
+	f.shown = [2]float32{s.x, s.y}
 	if f.Zoom {
 		s = whole
 	}
-	cell := ui.Column(c.Key(cellKey(p.ID))).Absolute().
-		LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
+	cell.LeftPercent(s.x * 100).TopPercent(s.y * 100).WidthPercent(s.w * 100).HeightPercent(s.h * 100).
 		Radius(cardR).Background(cardFace(c, k, t.Focus == p, true))
-	// Under the pointer it moves as it does; else, as it springs back, is
-	// nudged by the keys, zooms, or floats from its place among the tiled
-	// panes, it eases there.
+	// Under the pointer, or gliding from it, it moves as it does; else, as
+	// it is nudged by the keys, zooms, or floats from its place among the
+	// tiled panes, it eases there.
 	moves := false
-	if anim := motion(c); anim != nil && !f.dragging {
-		if anim == &snappy {
-			anim = &springBack
-		}
+	if anim != nil && !f.dragging && !f.gliding {
 		cell.Transition(ui.ElementTransition{Animation: anim, Position: true, Size: true})
 		moves = true
 	}
@@ -418,12 +475,13 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	}
 	// It moves from the frame its box changes, as from its place among
 	// the tiled panes, until it rests.
-	moving := moves && (rest != p.bounds || cell.Transitioning())
+	// Gliding, it moves too.
+	moving := f.gliding || moves && (rest != p.bounds || cell.Transitioning())
 	p.bounds = rest
 	// While the pointer resizes it or it eases to a new size, the terminal
 	// keeps the size it rested at, and the program hears of the new one
 	// once: else a shell redraws its prompt at every step, over itself.
-	held := f.dragging || cell.Transitioning()
+	held := f.dragging || f.gliding || cell.Transitioning()
 	cell.Children(func() {
 		// Moving, the card goes with the cell, its colors not fading: an
 		// element of a Transition of its own would be laid out where the
@@ -601,6 +659,10 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 				return
 			}
 			tv := terminal.View(c, p.term)
+			if tv.Pressed() {
+				// A press on its terminal catches a gliding float.
+				a.catchFloat(p.float)
+			}
 			if held && p.termSize.W > 0 && p.termSize.H > 0 {
 				// Painted at the size it rested at: the program hears of
 				// the new size once the pane rests again.
@@ -639,6 +701,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	}
 	if card.Pressed() {
 		if f := p.float; f != nil {
+			a.catchFloat(f)
 			a.raiseFloat(f)
 		}
 		if t.Focus != p {
@@ -724,7 +787,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 12).Gap(7).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	if f := p.float; f != nil {
-		a.dragFloat(f, h)
+		a.dragFloat(c, f, h)
 	} else {
 		h.Drag(p)
 	}
@@ -759,7 +822,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 // that moves it, and its zoom and close buttons.
 func (a *App) floatHandle(c *ui.Context, k *colors, t *Tab, p *Pane, f *Float) {
 	h := ui.Row(c).Height(14).Shrink(0).Padding(0, 3, 0, 6).AlignItems(ui.Center).Cursor(ui.CursorMove)
-	a.dragFloat(f, h)
+	a.dragFloat(c, f, h)
 	if h.Pressed() {
 		a.raiseFloat(f)
 		t.setFocus(p)
@@ -896,7 +959,7 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 	h := ui.Row(c).Height(headerH).Padding(0, 8, 0, 8).Gap(4).AlignItems(ui.Center).MinWidth(0)
 	h.ContextMenu(func(m *ui.Menu) { a.paneMenu(m, p) })
 	if f := p.float; f != nil {
-		a.dragFloat(f, h)
+		a.dragFloat(c, f, h)
 	} else {
 		h.Drag(p)
 	}
@@ -1289,17 +1352,62 @@ func (a *App) errorBanner(c *ui.Context, k *colors) {
 	})
 }
 
-// dragFloat moves float f as its handle h is dragged, and lets it spring
-// back inside the room once the drag ends.
-func (a *App) dragFloat(f *Float, h ui.Element) {
-	if dx, dy, ok := h.Dragged(); ok {
-		f.dragging = true
+// dragFloat moves float f as its handle h is dragged, once the pointer
+// went floatDragStart from where it pressed, and throws it once the drag
+// ends, at the pointer's velocity (throwFloat).
+//
+// It is not MyGo's Draggable: that moves the element the pointer presses,
+// while a float moves by its header, an element of its own (clicked,
+// double-clicked, with a menu) inside the float's cell; and the cell's
+// Draggable, moved by the app instead, would start its spring at one
+// velocity for both axes.
+func (a *App) dragFloat(c *ui.Context, f *Float, h ui.Element) {
+	dx, dy, pressed := h.Dragged()
+	if !pressed {
+		f.travel = [2]float32{}
+	} else {
+		a.catchFloat(f)
+		if !f.dragging {
+			f.travel[0] += dx
+			f.travel[1] += dy
+			dx, dy = 0, 0
+			if t := f.travel; t[0]*t[0]+t[1]*t[1] >= floatDragStart*floatDragStart {
+				f.dragging, f.travel = true, [2]float32{}
+				dx, dy = t[0], t[1]
+			}
+		}
+	}
+	if f.dragging && (dx != 0 || dy != 0) {
 		a.moveFloatPx(f, dx, dy, a.floatRoom)
 	}
-	if f.dragging && !h.Dragging() {
-		f.dragging, f.overX, f.overY = false, 0, 0
+	if f.dragging && !pressed {
+		vx, vy, _ := h.DragEnded()
+		a.throwFloat(f, vx, vy, a.floatRoom, motion(c) == nil)
 	}
 }
+
+// glideOver is how far, in DIPs, a gliding float shows past the room's
+// edge at most.
+const glideOver = 24
+
+// glideRate is the rate, in radians per second, of the spring of anim: a
+// glide starting no faster than the distance to its rest times it settles
+// there without flying past.
+func glideRate(anim *ui.Animation) float32 {
+	d := anim.Spring.Duration
+	if d <= 0 {
+		d = 500 * time.Millisecond
+	}
+	return float32(2 * math.Pi / d.Seconds())
+}
+
+// The keys of the animated place of a float gliding to rest.
+type glideKey int
+
+const (
+	glideX glideKey = iota
+	glideY
+)
 
 // rubber is how far a float shows past the room's edge, dragged d past it:
 // half as far at first, less and less as d grows, as a scroll view's
