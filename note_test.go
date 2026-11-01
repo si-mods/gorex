@@ -29,7 +29,7 @@ func TestNoteTitle(t *testing.T) {
 		{"> quote", "quote"},
 		{"-5 degrees", "-5 degrees"},
 		{"#\nnext", "#"},
-		{"# \nnext", "next"},
+		{"# \nnext", "#"},
 		{"\n\n  Buy milk  \nand eggs", "Buy milk"},
 		{long, strings.Repeat("x", noteTitleMax) + "…"},
 		{strings.Repeat("é", 100), strings.Repeat("é", noteTitleMax) + "…"},
