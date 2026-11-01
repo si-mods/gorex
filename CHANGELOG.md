@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1
+
+### Bug Fixes
+
+* **skill:** read an agent's settings that start with a byte order mark, so `gorex skill setup` installs the session-start hook on Windows ([#139](https://github.com/si-mods/gorex/pull/139))
+
 ## Unreleased
 
 ### Features
