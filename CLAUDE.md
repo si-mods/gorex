@@ -1,5 +1,9 @@
 # GoRex
 
+## Design
+
+- Before adding or changing UI, read `DESIGN.md`. New overlays, pages and inactive states use its shaders (`paintFrost`, `paintBackground`, `dimmed`) and follow its rules.
+
 ## Worktrees
 
 - Do every change in its own worktree and branch. Do not edit in the main checkout; other sessions use it.
