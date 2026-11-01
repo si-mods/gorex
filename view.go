@@ -829,8 +829,11 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 // in place. Its keys are the text's: none goes to a terminal.
 func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	n := p.note
-	in := styledField(c, k, func(c *ui.Context) ui.Element { return ui.TextArea(c.Key(noteKey(p.ID)), &n.text) }).
-		FontSize(13).Padding(8).Grow(1).MinHeight(0).
+	// The text is the whole pane: no field of its own inside it, so no
+	// border, background or corners, only the pane's card around it.
+	in := ui.TextAreaBase(c.Key(noteKey(p.ID)), &n.text).
+		TextColor(k.text).SelectionColor(k.accent.Alpha(0.3)).
+		FontSize(13).Padding(10, 12).Grow(1).MinHeight(0).
 		Placeholder(locales.NotePlaceholder()).Label(locales.NotePlaceholder())
 	if a.focusReq == p && a.tab() == t {
 		in.Focus()
