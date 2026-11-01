@@ -4,15 +4,9 @@
 
 ### Features
 
-* **note:** keep free text in a note pane ([#134](https://github.com/si-mods/gorex/pull/134))
+* **note:** a note pane is a sticky note of free text: New Note Tab and Split with Note; the layout keeps the text, and the pane stays on this machine ([#134](https://github.com/si-mods/gorex/pull/134))
 * **palette:** frost the backdrop and the panel with a backdrop shader ([#133](https://github.com/si-mods/gorex/pull/133))
 * **ui:** paint the background with one dithered shader and grey out inactive controls ([#136](https://github.com/si-mods/gorex/pull/136))
-
-## Unreleased
-
-### Features
-
-* **note:** a note pane is a sticky note of free text: New Note Tab and Split with Note; the layout keeps the text, and the pane stays on this machine
 
 ## 0.5.0
 
