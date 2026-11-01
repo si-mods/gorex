@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+### Features
+
+* jump to the pane that needs you and badge the Dock icon ([#129](https://github.com/si-mods/gorex/pull/129))
+* resume agents' conversations when sessions restart ([#130](https://github.com/si-mods/gorex/pull/130))
+
+### Dependencies
+
+* **terminal:** bind Ghostty dc8f59943 through si-mods/mygo; snapshots now carry Kitty images ([#131](https://github.com/si-mods/gorex/pull/131))
+
 ## 0.4.0
 
 ### Features
