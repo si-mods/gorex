@@ -82,7 +82,7 @@ type Node struct {
 	// URL is the page of a browser pane, which has no session.
 	URL string `json:"url,omitempty"`
 	// Kind is "note" for a note pane, which has no session either, and
-	// Note its text; a pane of no kind is a terminal or, with a URL, a
+	// Note its id, which names the file of its text; a pane of no kind is a terminal or, with a URL, a
 	// browser.
 	Kind     string  `json:"kind,omitempty"`
 	Note     string  `json:"note,omitempty"`

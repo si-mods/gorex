@@ -259,10 +259,7 @@ var (
 			a.splitNote(argString(args, "direction") == "down")
 			return nil
 		},
-		Available: func(a *App) bool {
-			t := a.tab()
-			return t != nil && t.Focus != nil && t.Focus.host == nil
-		},
+		Available: splitsLocal,
 	}
 	cmdNewBrowser = command{
 		ID: "tab.new_browser", Name: locales.Messages.CmdNewBrowserTab,
@@ -276,10 +273,7 @@ var (
 			a.splitBrowser(argString(args, "direction") == "down")
 			return nil
 		},
-		Available: func(a *App) bool {
-			t := a.tab()
-			return t != nil && t.Focus != nil && t.Focus.host == nil
-		},
+		Available: splitsLocal,
 	}
 	cmdClosePane    = command{ID: "pane.close", Name: locales.Messages.CmdClosePane, Accel: "CmdOrCtrl+W", Keys: "⌘W", Other: ctrlShift(ui.KeyW), Run: func(a *App) { a.closeFocused() }}
 	cmdPaneToNewTab = command{ID: "pane.to_new_tab", Name: locales.Messages.CmdPaneToNewTab, Run: func(a *App) { a.paneToNewTab() }}
@@ -1338,4 +1332,11 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			a.focusReq = t.Focus
 		}
 	}
+}
+
+// splitsLocal tells whether the focused pane is on this machine, whose
+// tab a pane with no session may join.
+func splitsLocal(a *App) bool {
+	t := a.tab()
+	return t != nil && t.Focus != nil && t.Focus.host == nil
 }

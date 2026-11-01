@@ -829,15 +829,7 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 // in place. Its keys are the text's: none goes to a terminal.
 func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	n := p.note
-	// The area is the theme's, with the app's accent for its outline, as
-	// textField does for a single line.
-	base := c.Theme()
-	th := *base
-	th.Accent = k.accent
-	c.SetTheme(&th)
-	in := ui.TextArea(c.Key(noteKey(p.ID)), &n.text)
-	c.SetTheme(base)
-	in.TextColor(k.text).SelectionColor(k.accent.Alpha(0.3)).Background(k.field).Border(1, k.fieldBorder).
+	in := styledField(c, k, func(c *ui.Context) ui.Element { return ui.TextArea(c.Key(noteKey(p.ID)), &n.text) }).
 		FontSize(13).Padding(8).Grow(1).MinHeight(0).
 		Placeholder(locales.NotePlaceholder()).Label(locales.NotePlaceholder())
 	if a.focusReq == p && a.tab() == t {
@@ -851,10 +843,9 @@ func (a *App) noteBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 			a.changed()
 		}
 	}
-	if n.text != n.last {
-		n.last = n.text
-		a.changed()
-	}
+	// The text is written as it changes, to its own file, not to the
+	// layout: the title shows at once, and nothing waits on a save.
+	n.save()
 }
 
 // floatHandle is the row a float keeps when pane headers are off: a grip
