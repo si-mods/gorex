@@ -295,3 +295,30 @@ func TestAgentHook(t *testing.T) {
 		t.Fatalf("agent %+v", a)
 	}
 }
+
+// TestHookSettingsWithBOM checks that setup reads a settings.json that
+// starts with a UTF-8 byte order mark, as Windows editors write it, and
+// keeps the user's settings.
+func TestHookSettingsWithBOM(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, "claude-config"))
+	path := filepath.Join(home, "claude-config", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("\xef\xbb\xbf{\"model\":\"opus\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, _, _, errOut := runMain(t, "skill", "setup", "--agent", "claude"); code != ExitOK {
+		t.Fatalf("setup: %d %s", code, errOut)
+	}
+	b, _ := os.ReadFile(path)
+	var root map[string]any
+	if err := json.Unmarshal(b, &root); err != nil {
+		t.Fatalf("settings after setup are not JSON: %v\n%s", err, b)
+	}
+	if root["model"] != "opus" || strings.Count(string(b), "agent-hook --agent claude") != 1 {
+		t.Fatalf("settings after setup %s", b)
+	}
+}

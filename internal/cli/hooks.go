@@ -128,6 +128,9 @@ func readObject(path string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Windows editors and PowerShell 5 start a UTF-8 file with a byte
+	// order mark, which JSON does not allow; the file is rewritten without.
+	b = bytes.TrimPrefix(b, []byte("\xef\xbb\xbf"))
 	var root map[string]any
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.UseNumber()
