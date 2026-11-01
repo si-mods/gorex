@@ -137,8 +137,8 @@ shim for herdr's sessions, which it answers with none anyway.
 - Changing the layout needs the GoRex window open on the host. Without
   it, a new tab or a rename fails with "Open the GoRex window on …", and
   a split, a close, a zoom or a pane move or resize does nothing, silently.
-- The window's last tab closes only on the desktop: closing it from
-  rootshell fails, as GoRex closes with it.
+- Closing the window's last tab from rootshell leaves its space empty,
+  the GoRex window open on it; a new tab from rootshell fills it again.
 - Closing a tab from rootshell ends its panes of remote hosts too, which
   rootshell does not show, as closing it on the desktop does.
 - Equalizing, workspaces and worktrees fail with "herdr Action Failed"

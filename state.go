@@ -2,7 +2,9 @@ package main
 
 import (
 	"cmp"
+	crand "crypto/rand"
 	"errors"
+	"fmt"
 	"log"
 	"net/url"
 	"os"
@@ -29,8 +31,9 @@ import (
 // Tab is a tab of the window: panes in a tree of splits.
 type Tab struct {
 	ID int
-	// UID is the ID the layout keeps of the tab, for clients of another
-	// window, which the app gives a tab it makes; set in restore.
+	// UID is the tab's lasting ID, layout.Tab.ID: makeTab gives one to
+	// every tab made, restore keeps the saved one, and clients name the
+	// tab by it. ID is only this window's handle for it.
 	UID  string
 	Name string // the name the user gave it, "" to follow its panes
 	Root *Node
@@ -950,7 +953,7 @@ func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []stri
 	if a.offline(h) {
 		return nil
 	}
-	t := &Tab{ID: a.id()}
+	t := a.makeTab("")
 	p := a.newPaneRun(h, dir, 0, 0, command)
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
@@ -972,7 +975,7 @@ func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []stri
 // newBrowserTab opens a tab of a browser pane after the active tab, and
 // shows it.
 func (a *App) newBrowserTab() *Tab {
-	t := &Tab{ID: a.id()}
+	t := a.makeTab("")
 	p := a.newBrowserPane(browserStart)
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
@@ -1249,6 +1252,78 @@ func (a *App) removeTab(t *Tab) {
 		a.focusReq = nt.Focus
 	}
 	a.changed()
+}
+
+// makeTab makes a tab, with the lasting ID id, or a new one when id is ""
+// or another tab of the layout has it already, as a tab of an older
+// layout, or one copied, would.
+func (a *App) makeTab(id string) *Tab {
+	if id == "" || a.tabUIDTaken(id) {
+		id = newTabUID()
+	}
+	return &Tab{ID: a.id(), UID: id}
+}
+
+// tabUIDTaken reports whether a tab of any window has the lasting ID id.
+func (a *App) tabUIDTaken(id string) bool {
+	if slices.ContainsFunc(a.tabs, func(t *Tab) bool { return t.UID == id }) {
+		return true
+	}
+	if a.st == nil {
+		return false
+	}
+	for _, w := range a.st.workspaces {
+		if w.app != nil && w.app != a {
+			if slices.ContainsFunc(w.app.tabs, func(t *Tab) bool { return t.UID == id }) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// tabByUID returns this window's tab of lasting ID id, or nil.
+func (a *App) tabByUID(id string) *Tab {
+	for _, t := range a.tabs {
+		if t.UID == id {
+			return t
+		}
+	}
+	return nil
+}
+
+// newTabUID makes a tab's lasting ID, a UUID version 7.
+func newTabUID() string {
+	var b [16]byte
+	ms := uint64(time.Now().UnixMilli())
+	for i := range 6 {
+		b[i] = byte(ms >> (40 - 8*i))
+	}
+	crand.Read(b[6:])
+	b[6] = b[6]&0x0f | 0x70
+	b[8] = b[8]&0x3f | 0x80
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// closeLastTab closes the window's last tab and ends the sessions of its
+// panes, keeping the window on its space, now empty, for a client that
+// makes the tabs it wants (showEmpty).
+func (a *App) closeLastTab(t *Tab) {
+	for _, p := range t.allPanes() {
+		p.closed = true
+		if p.term != nil {
+			p.term.Close()
+		}
+		p.browser.destroy()
+		a.killOn(p.host, p.SID)
+	}
+	a.tabs = slices.DeleteFunc(a.tabs, func(x *Tab) bool { return x == t })
+	a.active, a.focusReq = 0, nil
+	if a.renaming == t {
+		a.renaming = nil
+	}
+	a.changed()
+	a.save()
 }
 
 // closeTab closes a tab and ends the sessions of its panes.
@@ -2070,7 +2145,7 @@ func (a *App) savedTab(t *Tab) savedTab {
 		}
 		return &savedNode{Vertical: n.Vertical, Ratio: n.Ratio, A: save(n.A), B: save(n.B)}
 	}
-	st := savedTab{Name: t.Name, Root: save(t.Root), Zoom: t.Zoom != nil}
+	st := savedTab{ID: t.UID, Name: t.Name, Root: save(t.Root), Zoom: t.Zoom != nil}
 	for _, f := range t.Floats {
 		if f.Pane == nil || f.Pane.Node == nil {
 			continue
@@ -2179,7 +2254,8 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 		return n
 	}
 	for _, st := range l.Tabs {
-		t := &Tab{ID: a.id(), Name: st.Name}
+		t := a.makeTab(st.ID)
+		t.Name = st.Name
 		if st.Root != nil {
 			t.Root = load(st.Root, t, nil)
 		}
@@ -2251,7 +2327,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 // sessionTab makes a tab of one pane, attached to session in of host h,
 // nil for this machine, at the session's size.
 func (a *App) sessionTab(h *hostConn, in rex.SessionInfo) *Tab {
-	t := &Tab{ID: a.id()}
+	t := a.makeTab("")
 	p := &Pane{ID: a.id(), SID: in.ID, info: in, startDir: in.Dir, host: h}
 	a.attach(p, in.Cols, in.Rows)
 	t.Root = &Node{ID: a.id(), Pane: p}
@@ -2726,7 +2802,8 @@ func (a *App) movePaneToNewTab(p *Pane, label string) bool {
 	src, cur := p.Tab, a.tab()
 	wasActive := cur == src
 	a.detachPane(p)
-	t := &Tab{ID: a.id(), Name: paneName(label)}
+	t := a.makeTab("")
+	t.Name = paneName(label)
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
 	t.setFocus(p)

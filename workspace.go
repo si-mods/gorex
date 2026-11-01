@@ -35,6 +35,27 @@ type Workspace struct {
 	// shows it, whose tabs are then its own.
 	layout savedLayout
 	app    *App
+	// unlisted marks the space a window shows once a client closed the
+	// last one: Rex lets a server have no sessions, so the layout leaves
+	// it out while it has no tabs. Its first tab lists it; a window going
+	// to another space drops it.
+	unlisted bool
+}
+
+// hidden reports whether the layout leaves the workspace out: unlisted,
+// with no tabs yet.
+func (w *Workspace) hidden() bool {
+	if !w.unlisted {
+		return false
+	}
+	if w.app != nil {
+		if len(w.app.tabs) > 0 {
+			return false
+		}
+	} else if len(w.layout.Tabs) > 0 {
+		return false
+	}
+	return true
 }
 
 // status is the most urgent status of the workspace's sessions, from the
@@ -191,6 +212,10 @@ func parseLayout(raw []byte) savedStore {
 func (st *store) saved() savedStore {
 	s := savedStore{Version: layoutVersion, Sessions: []savedWorkspace{}, Windows: st.windowIDs()}
 	for _, w := range st.workspaces {
+		if w.hidden() {
+			continue
+		}
+		w.unlisted = false
 		l := w.layout
 		if w.app != nil {
 			l = w.app.snapshot()
@@ -210,7 +235,7 @@ func (st *store) windowIDs() []string {
 	slices.SortFunc(apps, func(x, y *App) int { return x.slot - y.slot })
 	ids := []string{}
 	for _, a := range apps {
-		if a.ws != nil {
+		if a.ws != nil && !a.ws.hidden() {
 			ids = append(ids, a.ws.ID)
 		}
 	}
@@ -798,8 +823,11 @@ func (a *App) showEmpty(w *Workspace) { a.showTabs(w, nil, false) }
 // directory when it has none and fallback asks for it. A space shown
 // before keeps its tabs in the layout, for the window that shows it again.
 func (a *App) showTabs(w *Workspace, others map[string]bool, fallback bool) {
-	if a.ws != nil && a.ws != w {
+	if old := a.ws; old != nil && old != w {
 		a.detach()
+		if old.hidden() && a.st != nil {
+			a.st.remove(old)
+		}
 	}
 	a.ws, w.app = w, a
 	a.tabs, a.active, a.focusReq, a.renaming = nil, 0, nil, nil
@@ -916,7 +944,12 @@ func (a *App) renameWorkspace(name string) {
 
 // closeWorkspace ends the sessions of the window's workspace and forgets
 // it; the window shows another, which no window shows, or a new one.
-func (a *App) closeWorkspace() {
+func (a *App) closeWorkspace() { a.closeWorkspaceFor(false) }
+
+// closeWorkspaceFor closes the window's workspace; for a client, the last
+// one leaves the window on an unlisted space, so that the layout has no
+// spaces, as a Rex server may have no sessions.
+func (a *App) closeWorkspaceFor(client bool) {
 	st, w := a.st, a.ws
 	if st == nil || w == nil {
 		return
@@ -935,10 +968,17 @@ func (a *App) closeWorkspace() {
 	next := st.hiddenAfter(w)
 	st.remove(w)
 	a.detach()
-	if next == nil {
+	switch {
+	case next != nil:
+		a.show(next, nil)
+	case client:
+		// No tab: the client makes the next session it wants.
 		next = st.addWorkspace()
+		next.unlisted = true
+		a.showEmpty(next)
+	default:
+		a.show(st.addWorkspace(), nil)
 	}
-	a.show(next, nil)
 	st.save()
 }
 

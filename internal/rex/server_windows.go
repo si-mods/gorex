@@ -12,6 +12,10 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
+// LockFile locks f for this process, as the server locks its own; it
+// fails at once when another process holds it.
+func LockFile(f *os.File) error { return lockFile(f) }
+
 // lockFile locks f for this process, or fails at once when another holds
 // it.
 func lockFile(f *os.File) error {

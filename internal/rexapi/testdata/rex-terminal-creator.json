@@ -1,0 +1,1731 @@
+{
+ "api": {
+  "events": {
+   "bell": {
+    "additionalProperties": false,
+    "description": "Sent when a program in the terminal rings the bell. Bells that ring in quick succession can arrive as one event.",
+    "type": "object"
+   },
+   "child_exited": {
+    "additionalProperties": false,
+    "description": "Sent when the terminal's program exits, after the events for its last output. If the terminal is set to close when its program exits, it closes after this event.",
+    "properties": {
+     "error": {
+      "description": "Why the program failed, such as 'exit status 1'. Left out when it exited successfully.",
+      "type": "string"
+     },
+     "exit_code": {
+      "description": "The program's exit code, or -1 if it has none, as when a signal ended it.",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "exit_code"
+    ],
+    "type": "object"
+   },
+   "clipboard_written": {
+    "additionalProperties": false,
+    "description": "Sent when a program in the terminal copies text to the clipboard with OSC 52. The server may run on another machine, so only the client can put the text on the user's clipboard. When a program copies many times in quick succession, some copies are skipped, but the newest is always sent.",
+    "properties": {
+     "bytes": {
+      "description": "The length of the copied text in bytes, whether or not text is included. Left out when the text is empty, and by older servers, which don't keep copies.",
+      "type": "integer"
+     },
+     "id": {
+      "description": "The ID of this copy, to pass to clipboard_read. Left out by older servers, which don't keep copies.",
+      "minimum": 0,
+      "type": "integer"
+     },
+     "text": {
+      "description": "The copied text. Left out when the text is empty or too large for the event. If text is left out and bytes isn't zero, read the text with clipboard_read.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "desktop_notification": {
+    "additionalProperties": false,
+    "description": "Sent when a program in the terminal asks to show a desktop notification, with OSC 9 or OSC 777. The client decides whether and how to show it.",
+    "properties": {
+     "body": {
+      "description": "The notification's text.",
+      "type": "string"
+     },
+     "title": {
+      "description": "The notification's title. Empty for OSC 9, which sends only a body.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "title",
+     "body"
+    ],
+    "type": "object"
+   },
+   "process_changed": {
+    "additionalProperties": false,
+    "description": "Sent when the terminal's foreground process changes, including when that process moves to another directory. It is also sent when the program starts and each time a client starts receiving the terminal's output, even if nothing changed.",
+    "properties": {
+     "ancestors": {
+      "description": "The processes between foreground and the terminal's program, as in the result of process. Left out when foreground is null or is the program itself.",
+      "items": {
+       "additionalProperties": false,
+       "properties": {
+        "argv0": {
+         "description": "The first argument as the process shows it now, such as -zsh for a login shell, cut to 256 bytes. Rex never returns the other arguments, because they can hold secrets.",
+         "type": "string"
+        },
+        "cwd": {
+         "description": "The process's working directory, as an absolute path. Left out if it can't be read, as for another user's process.",
+         "type": "string"
+        },
+        "invoked_path": {
+         "description": "The absolute path the executable was started through, before symlinks were resolved, such as a link in a bin directory. Present only when Rex can confirm it leads to the same file as path.",
+         "type": "string"
+        },
+        "name": {
+         "description": "The file name of the executable, such as zsh. When path is left out, the system's own name for the process, which Linux limits to 15 bytes. To label a process, use the first of script, argv0, and name that is present.",
+         "type": "string"
+        },
+        "path": {
+         "description": "The absolute path of the executable, with symlinks resolved. Left out if it can't be read, as for another user's process on Linux.",
+         "type": "string"
+        },
+        "pid": {
+         "description": "The process ID.",
+         "type": "integer"
+        },
+        "script": {
+         "description": "For an interpreter such as node or python, the absolute path of the script it is running, as the user named it. Left out for other programs.",
+         "type": "string"
+        },
+        "user": {
+         "description": "The name of the account the process runs as. Left out if it can't be looked up.",
+         "type": "string"
+        },
+        "user_id": {
+         "description": "The user ID the process runs as on Unix, which shows when a command runs as another user, such as with sudo. Zero on Windows.",
+         "type": "integer"
+        }
+       },
+       "required": [
+        "pid",
+        "user_id",
+        "name"
+       ],
+       "type": "object"
+      },
+      "type": [
+       "null",
+       "array"
+      ]
+     },
+     "foreground": {
+      "additionalProperties": false,
+      "description": "The foreground process, as described in the result of process. Null when there is none or it can't be read, as after the program exits.",
+      "properties": {
+       "argv0": {
+        "description": "The first argument as the process shows it now, such as -zsh for a login shell, cut to 256 bytes. Rex never returns the other arguments, because they can hold secrets.",
+        "type": "string"
+       },
+       "cwd": {
+        "description": "The process's working directory, as an absolute path. Left out if it can't be read, as for another user's process.",
+        "type": "string"
+       },
+       "invoked_path": {
+        "description": "The absolute path the executable was started through, before symlinks were resolved, such as a link in a bin directory. Present only when Rex can confirm it leads to the same file as path.",
+        "type": "string"
+       },
+       "name": {
+        "description": "The file name of the executable, such as zsh. When path is left out, the system's own name for the process, which Linux limits to 15 bytes. To label a process, use the first of script, argv0, and name that is present.",
+        "type": "string"
+       },
+       "path": {
+        "description": "The absolute path of the executable, with symlinks resolved. Left out if it can't be read, as for another user's process on Linux.",
+        "type": "string"
+       },
+       "pid": {
+        "description": "The process ID.",
+        "type": "integer"
+       },
+       "script": {
+        "description": "For an interpreter such as node or python, the absolute path of the script it is running, as the user named it. Left out for other programs.",
+        "type": "string"
+       },
+       "user": {
+        "description": "The name of the account the process runs as. Left out if it can't be looked up.",
+        "type": "string"
+       },
+       "user_id": {
+        "description": "The user ID the process runs as on Unix, which shows when a command runs as another user, such as with sudo. Zero on Windows.",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "pid",
+       "user_id",
+       "name"
+      ],
+      "type": [
+       "null",
+       "object"
+      ]
+     },
+     "generation": {
+      "description": "Counts this terminal's process_changed events, starting at 1. Clients don't need it to order events, because a block sends its events in order.",
+      "minimum": 0,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "generation",
+     "foreground"
+    ],
+    "type": "object"
+   },
+   "program_status_changed": {
+    "additionalProperties": false,
+    "description": "Sent when a program in the terminal reports its status with OSC 7501. Each report creates or replaces one record, and the event holds the whole new record. It is sent for every report, even one that changes only updated_at.",
+    "properties": {
+     "id": {
+      "description": "The record's ID. Unlike record.id, it is always present, as an empty string for the root record.",
+      "type": "string"
+     },
+     "reason": {
+      "description": "Why the record changed. Today it is always 'report'. Apply the new record whatever the reason, including one you don't know.",
+      "type": "string"
+     },
+     "record": {
+      "additionalProperties": false,
+      "description": "The new record. It replaces the old one completely, so a field that the latest report didn't set is left out.",
+      "properties": {
+       "app": {
+        "description": "The program's name, such as cargo or terraform, exactly as it reported it.",
+        "type": "string"
+       },
+       "effective_app": {
+        "description": "The name of the program the record belongs to: app if it is set, or else the app of the nearest parent record that has one. Left out if no record in the chain has an app.",
+        "type": "string"
+       },
+       "id": {
+        "description": "The record's ID. A slash separates a parent from a child, as in build/test. Left out for the root record, which holds the reports that give no ID.",
+        "type": "string"
+       },
+       "kind": {
+        "description": "What a blocked program is waiting for: 'permission', 'question', or 'auth' (a password or other credential). Left out if the program didn't say. Treat a value you don't know as if it were left out.",
+        "type": "string"
+       },
+       "msg": {
+        "description": "One line of text describing the status. Show it as plain text. A client may shorten it but shouldn't try to interpret it.",
+        "type": "string"
+       },
+       "owner": {
+        "additionalProperties": false,
+        "description": "The terminal's foreground process when the report arrived. Left out if the server couldn't tell.",
+        "properties": {
+         "name": {
+          "description": "The process's name, found the same way as name in the result of process. Compare it as well as pid, because the system reuses process IDs.",
+          "type": "string"
+         },
+         "pid": {
+          "description": "The process ID.",
+          "type": "integer"
+         }
+        },
+        "required": [
+         "pid",
+         "name"
+        ],
+        "type": [
+         "null",
+         "object"
+        ]
+       },
+       "progress": {
+        "description": "How far along the program is, as a percentage from 0 to 100. Only working and blocked records have one, and only if the program reported it.",
+        "maximum": 255,
+        "minimum": 0,
+        "type": [
+         "null",
+         "integer"
+        ]
+       },
+       "state": {
+        "description": "What the program says it is doing: 'idle', 'working', 'done', 'blocked' (waiting for the user), or 'error'. Treat a value you don't know as 'idle'.",
+        "type": "string"
+       },
+       "title": {
+        "description": "A short label for the record, such as the name of a task. It comes from the program, so show it as plain text.",
+        "type": "string"
+       },
+       "updated_at": {
+        "description": "When the report arrived, by the server's clock, as an RFC 3339 timestamp.",
+        "format": "date-time",
+        "type": "string"
+       }
+      },
+      "required": [
+       "state",
+       "updated_at"
+      ],
+      "type": "object"
+     }
+    },
+    "required": [
+     "id",
+     "record",
+     "reason"
+    ],
+    "type": "object"
+   },
+   "program_status_removed": {
+    "additionalProperties": false,
+    "description": "Sent when program status records are removed. One event lists every record removed at the same time for the same reason.",
+    "properties": {
+     "ids": {
+      "description": "The IDs of the removed records, never empty. The root record is listed as an empty string.",
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "reason": {
+      "description": "Why the records were removed: 'clear' (the program cleared them), 'child_exited' (the terminal's program exited), 'reset' (the terminal was reset), 'prompt' (the shell showed a new prompt), 'foreground' (the program that reported them is no longer in the foreground, for example after Ctrl+C), or 'evicted' (the terminal already held 64 records and needed room for another). Remove them whatever the reason, including one you don't know.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "ids",
+     "reason"
+    ],
+    "type": "object"
+   },
+   "progress_report": {
+    "additionalProperties": false,
+    "description": "Sent when a program in the terminal reports its progress with OSC 9;4, which a client can show as a progress bar. When reports arrive in quick succession, some are skipped, but the newest is always sent.",
+    "properties": {
+     "progress": {
+      "description": "How far along the program is, as a percentage from 0 to 100. Left out if the program didn't say.",
+      "maximum": 255,
+      "minimum": 0,
+      "type": [
+       "null",
+       "integer"
+      ]
+     },
+     "state": {
+      "description": "The kind of report: 'set' (progress is known), 'indeterminate' (busy, but the progress is unknown), 'pause' (the work is paused), 'error' (something went wrong), or 'remove' (stop showing progress).",
+      "type": "string"
+     }
+    },
+    "required": [
+     "state"
+    ],
+    "type": "object"
+   },
+   "pwd_changed": {
+    "additionalProperties": false,
+    "description": "Sent when a program in the terminal reports a new working directory, as a shell usually does after cd. Rex doesn't check the directory. When it changes many times in quick succession, some changes are skipped, but the newest is always sent.",
+    "properties": {
+     "owner": {
+      "additionalProperties": false,
+      "description": "The process that reported the directory. Left out if the server couldn't tell.",
+      "properties": {
+       "name": {
+        "description": "The process's name, found the same way as name in the result of process. Compare it as well as pid, because the system reuses process IDs.",
+        "type": "string"
+       },
+       "pid": {
+        "description": "The process ID.",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "pid",
+       "name"
+      ],
+      "type": [
+       "null",
+       "object"
+      ]
+     },
+     "pwd": {
+      "description": "The reported directory: a file:// URL when the program used OSC 7, or a plain path when it used OSC 9 or OSC 1337.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "pwd"
+    ],
+    "type": "object"
+   },
+   "selection_copied": {
+    "additionalProperties": false,
+    "description": "Sent when the user finishes selecting text in the terminal with the mouse, so the client can put the text on the user's clipboard. A large selection is not included in the event. Read it with blob_read instead.",
+    "properties": {
+     "bytes": {
+      "description": "The length of the selected text in bytes, whether or not text is included. Left out by older servers, which always include text.",
+      "type": "integer"
+     },
+     "id": {
+      "description": "The ID of the stored selection, to pass to blob_read. Set only when text is left out. Left out by older servers, which always include text.",
+      "minimum": 0,
+      "type": "integer"
+     },
+     "text": {
+      "description": "The selected text. Left out when it is too large for the event. Then, if id is set, read the text with blob_read. If id is also left out, the server could not keep the text, and bytes gives its size.",
+      "type": "string"
+     }
+    },
+    "type": "object"
+   },
+   "size_changed": {
+    "additionalProperties": false,
+    "description": "Sent when the terminal's size changes, either because a client called resize or because a new owner's size was applied.",
+    "properties": {
+     "cell_height_px": {
+      "description": "The height of one character cell in pixels.",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "cell_width_px": {
+      "description": "The width of one character cell in pixels.",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "columns": {
+      "description": "The new width in columns.",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "owner": {
+      "additionalProperties": false,
+      "description": "The client whose size was applied. This is usually the client that called resize, which isn't always the block's owner. Null if the server itself made the change.",
+      "properties": {},
+      "type": "object"
+     },
+     "principal": {
+      "additionalProperties": false,
+      "description": "Who called resize, as the server identified them. Left out when no call caused the change, as when a new owner's size is applied.",
+      "properties": {
+       "display": {
+        "description": "A readable name for the client, such as uid 501 or alice@example.com. It can be out of date or shared, so compare uid, sid, or user_id instead.",
+        "type": "string"
+       },
+       "gid": {
+        "description": "The client's Unix group ID. Only for kind peer.",
+        "type": [
+         "null",
+         "integer"
+        ]
+       },
+       "kind": {
+        "description": "How the server identified the client: 'peer' (Unix socket credentials), 'windows_peer' (named pipe credentials), 'tailscale' (a Tailscale login), or 'anonymous' (not identified). Show a kind you don't know by its name.",
+        "type": "string"
+       },
+       "login_name": {
+        "description": "The client's Tailscale login name, usually an email address. For display only.",
+        "type": "string"
+       },
+       "node": {
+        "description": "The name of the client's Tailscale device. Only for kind tailscale.",
+        "type": "string"
+       },
+       "path": {
+        "description": "The route the client took to this server, for troubleshooting. Entries include 'tailscale' (built-in Tailscale), 'tailnet' and 'tailnet-serve' (the machine's own Tailscale), and 'login-server' (passed on by a login server).",
+        "items": {
+         "type": "string"
+        },
+        "type": [
+         "null",
+         "array"
+        ]
+       },
+       "pid": {
+        "description": "The client's process ID when it connected, for kind peer or windows_peer, if known. Process IDs are reused, so use it only for debugging.",
+        "type": [
+         "null",
+         "integer"
+        ]
+       },
+       "remote_addr": {
+        "description": "The client's network address. Left out when there is none, such as on a Unix socket.",
+        "type": "string"
+       },
+       "sid": {
+        "description": "The client's Windows security identifier, which survives account renames. Only for kind windows_peer.",
+        "type": "string"
+       },
+       "tags": {
+        "description": "The Tailscale tags of the client's device. Any tag means the client is a machine, such as a CI runner, not a person.",
+        "items": {
+         "type": "string"
+        },
+        "type": [
+         "null",
+         "array"
+        ]
+       },
+       "transport": {
+        "description": "How the client first reached Rex: 'unix', 'named_pipe', 'tcp', or 'tailscale'. A login server passes it on unchanged.",
+        "type": "string"
+       },
+       "uid": {
+        "description": "The client's Unix user ID. Only for kind peer.",
+        "type": [
+         "null",
+         "integer"
+        ]
+       },
+       "user_id": {
+        "description": "The Tailscale user ID that owns the client's device. Only for kind tailscale. Check tags before treating it as a person.",
+        "type": "string"
+       }
+      },
+      "required": [
+       "kind",
+       "transport",
+       "display"
+      ],
+      "type": "object"
+     },
+     "rows": {
+      "description": "The new height in rows.",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "columns",
+     "rows",
+     "cell_width_px",
+     "cell_height_px",
+     "owner"
+    ],
+    "type": "object"
+   },
+   "title_changed": {
+    "additionalProperties": false,
+    "description": "Sent when a program in the terminal changes the terminal's title. When the title changes many times in quick succession, some changes are skipped, but the newest title is always sent.",
+    "properties": {
+     "owner": {
+      "additionalProperties": false,
+      "description": "The process that set the title. Left out if the server couldn't tell.",
+      "properties": {
+       "name": {
+        "description": "The process's name, found the same way as name in the result of process. Compare it as well as pid, because the system reuses process IDs.",
+        "type": "string"
+       },
+       "pid": {
+        "description": "The process ID.",
+        "type": "integer"
+       }
+      },
+      "required": [
+       "pid",
+       "name"
+      ],
+      "type": [
+       "null",
+       "object"
+      ]
+     },
+     "title": {
+      "description": "The new title.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "title"
+    ],
+    "type": "object"
+   },
+   "url_clicked": {
+    "additionalProperties": false,
+    "description": "Sent when the user clicks a link that a program printed in the terminal. The server never opens the link. The client decides what to do with it, such as opening it in a browser.",
+    "properties": {
+     "url": {
+      "description": "The link's URL, exactly as the program wrote it.",
+      "type": "string"
+     }
+    },
+    "required": [
+     "url"
+    ],
+    "type": "object"
+   }
+  },
+  "methods": {
+   "blob_read": {
+    "description": "Read a result that was too large for one reply or event, such as the output of format with max_bytes set, or a selection_copied event without text. The server keeps each result for about five minutes.",
+    "input_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "id": {
+       "description": "The result to read, from the reply or event that named it, such as the id in a format reply or a selection_copied event. Zero or left out reads the newest result, whatever produced it. If the server no longer has the result, the call fails with not_found.",
+       "minimum": 0,
+       "type": "integer"
+      },
+      "max_bytes": {
+       "description": "The most bytes of data to return, measured once it is encoded as a JSON string. Zero or left out means 49152 (48 KiB), and values above 983040 (960 KiB) are lowered to that. Must not be negative.",
+       "type": "integer"
+      },
+      "offset": {
+       "description": "Where to start reading, in bytes from the start of the result. To read the next part, add the length in bytes of the data you received. Must not be negative.",
+       "type": "integer"
+      }
+     },
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "data": {
+       "description": "The text read, starting at offset. It never ends partway through a character. It can be shorter than max_bytes even when more text remains.",
+       "type": "string"
+      },
+      "eof": {
+       "description": "True if data reaches the end of the result.",
+       "type": "boolean"
+      },
+      "id": {
+       "description": "The result that was read. Send it in later requests so that every part comes from the same result.",
+       "minimum": 0,
+       "type": "integer"
+      },
+      "total": {
+       "description": "The length of the whole result, in bytes.",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "id",
+      "data",
+      "total",
+      "eof"
+     ],
+     "type": "object"
+    }
+   },
+   "clear": {
+    "actions": [
+     {
+      "category": "Pane",
+      "description": "Clear the screen and scrollback, keeping the current line.",
+      "keywords": "terminal clear screen scrollback erase cmd+k ctrl+l",
+      "name": "clear",
+      "title": "Clear Terminal"
+     }
+    ],
+    "description": "Clear the screen and scrollback, keeping the current line at the top. It changes nothing while a full-screen program, such as an editor, is running.",
+    "input_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    }
+   },
+   "clipboard_read": {
+    "description": "Read text that a program in the terminal copied to the clipboard. The server keeps each copy for about a minute, so a client can read text too large to send in an event.",
+    "input_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "id": {
+       "description": "The copy to read, from a clipboard_written event or an earlier reply. Zero or left out reads the newest copy. If the server no longer has the copy, the call fails with not_found.",
+       "minimum": 0,
+       "type": "integer"
+      },
+      "max_bytes": {
+       "description": "The most bytes of data to return, measured once it is encoded as a JSON string. Zero or left out means 49152 (48 KiB), and values above 983040 (960 KiB) are lowered to that. Must not be negative.",
+       "type": "integer"
+      },
+      "offset": {
+       "description": "Where to start reading, in bytes from the start of the text. To read the next part, add the length in bytes of the data you received. Must not be negative.",
+       "type": "integer"
+      }
+     },
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "data": {
+       "description": "The text read, starting at offset. It never ends partway through a character. It can be shorter than max_bytes even when more text remains.",
+       "type": "string"
+      },
+      "eof": {
+       "description": "True if data reaches the end of the text.",
+       "type": "boolean"
+      },
+      "id": {
+       "description": "The copy that was read. Send it in later requests so that every part comes from the same copy.",
+       "minimum": 0,
+       "type": "integer"
+      },
+      "total": {
+       "description": "The length of the whole copied text, in bytes.",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "id",
+      "data",
+      "total",
+      "eof"
+     ],
+     "type": "object"
+    }
+   },
+   "format": {
+    "description": "Get the screen and scrollback as plain text, HTML, or escape sequences.",
+    "input_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "extra_charsets": {
+       "description": "Include the selected character sets. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_cursor": {
+       "description": "Include the cursor position. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_hyperlink": {
+       "description": "Include the hyperlink in effect at the cursor. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_keyboard": {
+       "description": "Include keyboard modes such as modifyOtherKeys. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_kitty_keyboard": {
+       "description": "Include the state of the Kitty keyboard protocol. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_modes": {
+       "description": "Include terminal modes that differ from their defaults. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_palette": {
+       "description": "Include the color palette. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_protection": {
+       "description": "Include the character protection mode. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_pwd": {
+       "description": "Include the reported working directory. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_scrolling_region": {
+       "description": "Include the scrolling region. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_style": {
+       "description": "Include the text style in effect at the cursor. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "extra_tabstops": {
+       "description": "Include the tab stops. Only used with the vt format.",
+       "type": "boolean"
+      },
+      "format": {
+       "description": "The format to return: 'text' for plain text, 'html' for HTML with inline styles, or 'vt' for escape sequences that redraw the screen with its colors and styles. Defaults to 'text'.",
+       "type": "string"
+      },
+      "max_bytes": {
+       "description": "The most bytes of content to return, measured once it is encoded as a JSON string. If more output remains, the reply has an id, and you read the rest with blob_read. Values above 983040 (960 KiB) are lowered to that. Zero or left out returns the whole output in one reply, and the call fails with too_large if the output doesn't fit. Must not be negative.",
+       "type": "integer"
+      },
+      "trim": {
+       "description": "Remove spaces from the end of each line.",
+       "type": "boolean"
+      },
+      "unwrap": {
+       "description": "Join lines that the terminal wrapped because they were too long, so each line of output is one line the program wrote.",
+       "type": "boolean"
+      }
+     },
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "content": {
+       "description": "The screen and scrollback in the requested format. If id is set, this is only the first part.",
+       "type": "string"
+      },
+      "eof": {
+       "description": "True if content is the whole output. Sent only when the request set max_bytes. Older servers never send it, so check id instead to tell whether more output remains.",
+       "type": "boolean"
+      },
+      "id": {
+       "description": "Set only when more output remains. To read the rest, call blob_read with this id and with offset set to the length of content in bytes. A reply without id holds the whole output.",
+       "minimum": 0,
+       "type": "integer"
+      },
+      "total": {
+       "description": "The length of the whole output in bytes. Sent only when the request set max_bytes, and left out when it is 0.",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "content"
+     ],
+     "type": "object"
+    }
+   },
+   "input_mode": {
+    "description": "Get how the terminal handles typed input, such as whether it is echoed. On Windows the call fails with not_found.",
+    "input_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "canonical": {
+       "description": "True if input reaches the program a line at a time, with backspace and similar keys handled before the program sees it.",
+       "type": "boolean"
+      },
+      "echo": {
+       "description": "True if typed characters appear on the screen. A program usually turns this off while it reads a password.",
+       "type": "boolean"
+      },
+      "signals": {
+       "description": "True if keys such as Ctrl+C and Ctrl+Z send signals to the foreground process instead of reaching it as input.",
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "echo",
+      "canonical",
+      "signals"
+     ],
+     "type": "object"
+    }
+   },
+   "list_dir": {
+    "description": "List the subdirectories of a directory, and optionally its files. A relative path or ~ is resolved the way a program in the terminal would resolve it.",
+    "input_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "files": {
+       "description": "Include entries that aren't directories, such as files, and mark each with file set to true.",
+       "type": "boolean"
+      },
+      "limit": {
+       "description": "The most entries to return. Zero, negative, or left out means 2000.",
+       "type": "integer"
+      },
+      "path": {
+       "description": "The directory to list: an absolute path, ~ or a path under ~/ for the home directory, or a path relative to the working directory of the terminal's foreground process. Empty lists that working directory.",
+       "type": "string"
+      },
+      "prefix": {
+       "description": "Keep only entries whose names start with this text, ignoring case. Use it to narrow a listing that came back truncated.",
+       "type": "string"
+      }
+     },
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "entries": {
+       "description": "The matching entries, hidden ones included, in the order the filesystem returns them. Sorting and hiding are up to the client. Empty unless status is 'ok'.",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "file": {
+          "description": "True if the entry isn't a directory, or is a link to something that isn't. Only set when the request sets files.",
+          "type": "boolean"
+         },
+         "name": {
+          "description": "The entry's name within the directory.",
+          "type": "string"
+         },
+         "symlink": {
+          "description": "True if the entry is a symbolic link. A link that leads nowhere is left out of the listing.",
+          "type": "boolean"
+         }
+        },
+        "required": [
+         "name"
+        ],
+        "type": "object"
+       },
+       "type": [
+        "null",
+        "array"
+       ]
+      },
+      "home": {
+       "description": "The home directory of the terminal's program. Empty if the server can't tell.",
+       "type": "string"
+      },
+      "path": {
+       "description": "The directory that was listed, as an absolute path. It is set even when the directory couldn't be read.",
+       "type": "string"
+      },
+      "status": {
+       "description": "Whether the directory could be read: 'ok', 'missing' (it doesn't exist), 'not_dir' (it, or a directory on its path, isn't a directory), or 'denied' (the server isn't allowed to read it).",
+       "type": "string"
+      },
+      "truncated": {
+       "description": "True if some matching entries were left out because the listing reached limit or grew too large for one reply. To see the rest, list again with a prefix.",
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "path",
+      "home",
+      "status",
+      "entries",
+      "truncated"
+     ],
+     "type": "object"
+    }
+   },
+   "modes": {
+    "description": "List the terminal modes that programs can turn on, such as the alternate screen, bracketed paste, and mouse reporting, with each mode's name, number, and whether it is on. It doesn't wake an idle terminal.",
+    "input_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "modes": {
+       "description": "Every mode the terminal tracks, ANSI modes first, each group by number. Newer servers can add modes, so look modes up by name or number and skip any you don't know.",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "ansi": {
+          "description": "True for an ANSI mode, which a program sets with ESC [ number h. Left out for a DEC private mode, which a program sets with ESC [ ? number h. The two kinds are numbered separately, so the same number can name one mode of each kind.",
+          "type": "boolean"
+         },
+         "default": {
+          "description": "True if the mode is on in a new terminal and after a reset. Left out if it is off. A mode whose set differs from its default was changed by a program.",
+          "type": "boolean"
+         },
+         "name": {
+          "description": "The mode's name, as Ghostty names it, such as 'bracketed_paste' or 'alt_screen_save_cursor_clear_enter'.",
+          "type": "string"
+         },
+         "number": {
+          "description": "The number a program sends to set or reset the mode, such as 2004 for bracketed paste.",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+         },
+         "set": {
+          "description": "True if the mode is on.",
+          "type": "boolean"
+         }
+        },
+        "required": [
+         "name",
+         "number",
+         "set"
+        ],
+        "type": "object"
+       },
+       "type": [
+        "null",
+        "array"
+       ]
+      },
+      "screen": {
+       "description": "Which screen the terminal shows: 'primary', or 'alternate' while a full-screen program such as an editor has switched to it with mode 47, 1047, or 1049. Treat any other value as 'primary'.",
+       "type": "string"
+      }
+     },
+     "required": [
+      "screen",
+      "modes"
+     ],
+     "type": "object"
+    }
+   },
+   "process": {
+    "description": "Get the processes running in the terminal and how its program exited.",
+    "input_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "ancestors": {
+       "description": "The processes between foreground and child, nearest first: the parent of foreground, then its parent, and so on, ending with child. Left out when foreground is child, when there are more than 16, or when one of them has exited.",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "argv0": {
+          "description": "The first argument as the process shows it now, such as -zsh for a login shell, cut to 256 bytes. Rex never returns the other arguments, because they can hold secrets.",
+          "type": "string"
+         },
+         "cwd": {
+          "description": "The process's working directory, as an absolute path. Left out if it can't be read, as for another user's process.",
+          "type": "string"
+         },
+         "invoked_path": {
+          "description": "The absolute path the executable was started through, before symlinks were resolved, such as a link in a bin directory. Present only when Rex can confirm it leads to the same file as path.",
+          "type": "string"
+         },
+         "name": {
+          "description": "The file name of the executable, such as zsh. When path is left out, the system's own name for the process, which Linux limits to 15 bytes. To label a process, use the first of script, argv0, and name that is present.",
+          "type": "string"
+         },
+         "path": {
+          "description": "The absolute path of the executable, with symlinks resolved. Left out if it can't be read, as for another user's process on Linux.",
+          "type": "string"
+         },
+         "pid": {
+          "description": "The process ID.",
+          "type": "integer"
+         },
+         "script": {
+          "description": "For an interpreter such as node or python, the absolute path of the script it is running, as the user named it. Left out for other programs.",
+          "type": "string"
+         },
+         "user": {
+          "description": "The name of the account the process runs as. Left out if it can't be looked up.",
+          "type": "string"
+         },
+         "user_id": {
+          "description": "The user ID the process runs as on Unix, which shows when a command runs as another user, such as with sudo. Zero on Windows.",
+          "type": "integer"
+         }
+        },
+        "required": [
+         "pid",
+         "user_id",
+         "name"
+        ],
+        "type": "object"
+       },
+       "type": [
+        "null",
+        "array"
+       ]
+      },
+      "child": {
+       "additionalProperties": false,
+       "description": "The process the terminal started, usually a shell. On macOS a login shell runs under login, and this describes login. Left out if there is no such process or it can't be read.",
+       "properties": {
+        "argv0": {
+         "description": "The first argument as the process shows it now, such as -zsh for a login shell, cut to 256 bytes. Rex never returns the other arguments, because they can hold secrets.",
+         "type": "string"
+        },
+        "cwd": {
+         "description": "The process's working directory, as an absolute path. Left out if it can't be read, as for another user's process.",
+         "type": "string"
+        },
+        "invoked_path": {
+         "description": "The absolute path the executable was started through, before symlinks were resolved, such as a link in a bin directory. Present only when Rex can confirm it leads to the same file as path.",
+         "type": "string"
+        },
+        "name": {
+         "description": "The file name of the executable, such as zsh. When path is left out, the system's own name for the process, which Linux limits to 15 bytes. To label a process, use the first of script, argv0, and name that is present.",
+         "type": "string"
+        },
+        "path": {
+         "description": "The absolute path of the executable, with symlinks resolved. Left out if it can't be read, as for another user's process on Linux.",
+         "type": "string"
+        },
+        "pid": {
+         "description": "The process ID.",
+         "type": "integer"
+        },
+        "script": {
+         "description": "For an interpreter such as node or python, the absolute path of the script it is running, as the user named it. Left out for other programs.",
+         "type": "string"
+        },
+        "user": {
+         "description": "The name of the account the process runs as. Left out if it can't be looked up.",
+         "type": "string"
+        },
+        "user_id": {
+         "description": "The user ID the process runs as on Unix, which shows when a command runs as another user, such as with sudo. Zero on Windows.",
+         "type": "integer"
+        }
+       },
+       "required": [
+        "pid",
+        "user_id",
+        "name"
+       ],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "foreground": {
+       "additionalProperties": false,
+       "description": "The process in the foreground, such as the shell at its prompt or the command it is running. For a wrapper such as sudo, git, or cargo, it is the command the wrapper runs. Left out if it can't be found or read.",
+       "properties": {
+        "argv0": {
+         "description": "The first argument as the process shows it now, such as -zsh for a login shell, cut to 256 bytes. Rex never returns the other arguments, because they can hold secrets.",
+         "type": "string"
+        },
+        "cwd": {
+         "description": "The process's working directory, as an absolute path. Left out if it can't be read, as for another user's process.",
+         "type": "string"
+        },
+        "invoked_path": {
+         "description": "The absolute path the executable was started through, before symlinks were resolved, such as a link in a bin directory. Present only when Rex can confirm it leads to the same file as path.",
+         "type": "string"
+        },
+        "name": {
+         "description": "The file name of the executable, such as zsh. When path is left out, the system's own name for the process, which Linux limits to 15 bytes. To label a process, use the first of script, argv0, and name that is present.",
+         "type": "string"
+        },
+        "path": {
+         "description": "The absolute path of the executable, with symlinks resolved. Left out if it can't be read, as for another user's process on Linux.",
+         "type": "string"
+        },
+        "pid": {
+         "description": "The process ID.",
+         "type": "integer"
+        },
+        "script": {
+         "description": "For an interpreter such as node or python, the absolute path of the script it is running, as the user named it. Left out for other programs.",
+         "type": "string"
+        },
+        "user": {
+         "description": "The name of the account the process runs as. Left out if it can't be looked up.",
+         "type": "string"
+        },
+        "user_id": {
+         "description": "The user ID the process runs as on Unix, which shows when a command runs as another user, such as with sudo. Zero on Windows.",
+         "type": "integer"
+        }
+       },
+       "required": [
+        "pid",
+        "user_id",
+        "name"
+       ],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "home": {
+       "description": "The home directory that the terminal's program inherited, for showing and expanding ~ in paths.",
+       "type": "string"
+      },
+      "last_exit": {
+       "additionalProperties": false,
+       "description": "How the terminal's program exited. Null while it is still running, and for a terminal that didn't start a program of its own.",
+       "properties": {
+        "error": {
+         "description": "Why the program failed, such as 'exit status 1'. Left out when it exited successfully.",
+         "type": "string"
+        },
+        "exit_code": {
+         "description": "The program's exit code, or -1 if it has none, as when a signal ended it.",
+         "type": "integer"
+        }
+       },
+       "required": [
+        "exit_code"
+       ],
+       "type": [
+        "null",
+        "object"
+       ]
+      }
+     },
+     "required": [
+      "last_exit"
+     ],
+     "type": "object"
+    }
+   },
+   "program_status": {
+    "description": "List the status that programs in the terminal have reported. Programs report a status, such as working or blocked, with OSC 7501 escape sequences.",
+    "input_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "records": {
+       "description": "Every record, sorted by id. The root record comes first, and each parent comes before its children. Empty if no program has reported a status.",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "app": {
+          "description": "The program's name, such as cargo or terraform, exactly as it reported it.",
+          "type": "string"
+         },
+         "effective_app": {
+          "description": "The name of the program the record belongs to: app if it is set, or else the app of the nearest parent record that has one. Left out if no record in the chain has an app.",
+          "type": "string"
+         },
+         "id": {
+          "description": "The record's ID. A slash separates a parent from a child, as in build/test. Left out for the root record, which holds the reports that give no ID.",
+          "type": "string"
+         },
+         "kind": {
+          "description": "What a blocked program is waiting for: 'permission', 'question', or 'auth' (a password or other credential). Left out if the program didn't say. Treat a value you don't know as if it were left out.",
+          "type": "string"
+         },
+         "msg": {
+          "description": "One line of text describing the status. Show it as plain text. A client may shorten it but shouldn't try to interpret it.",
+          "type": "string"
+         },
+         "owner": {
+          "additionalProperties": false,
+          "description": "The terminal's foreground process when the report arrived. Left out if the server couldn't tell.",
+          "properties": {
+           "name": {
+            "description": "The process's name, found the same way as name in the result of process. Compare it as well as pid, because the system reuses process IDs.",
+            "type": "string"
+           },
+           "pid": {
+            "description": "The process ID.",
+            "type": "integer"
+           }
+          },
+          "required": [
+           "pid",
+           "name"
+          ],
+          "type": [
+           "null",
+           "object"
+          ]
+         },
+         "progress": {
+          "description": "How far along the program is, as a percentage from 0 to 100. Only working and blocked records have one, and only if the program reported it.",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+           "null",
+           "integer"
+          ]
+         },
+         "state": {
+          "description": "What the program says it is doing: 'idle', 'working', 'done', 'blocked' (waiting for the user), or 'error'. Treat a value you don't know as 'idle'.",
+          "type": "string"
+         },
+         "title": {
+          "description": "A short label for the record, such as the name of a task. It comes from the program, so show it as plain text.",
+          "type": "string"
+         },
+         "updated_at": {
+          "description": "When the report arrived, by the server's clock, as an RFC 3339 timestamp.",
+          "format": "date-time",
+          "type": "string"
+         }
+        },
+        "required": [
+         "state",
+         "updated_at"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      }
+     },
+     "required": [
+      "records"
+     ],
+     "type": "object"
+    }
+   },
+   "pwd": {
+    "description": "Get the working directory that a program in the terminal last reported. To find where each process actually is, call process instead.",
+    "input_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "owner": {
+       "additionalProperties": false,
+       "description": "The process that reported the directory. Left out if pwd is left out or the server couldn't tell.",
+       "properties": {
+        "name": {
+         "description": "The process's name, found the same way as name in the result of process. Compare it as well as pid, because the system reuses process IDs.",
+         "type": "string"
+        },
+        "pid": {
+         "description": "The process ID.",
+         "type": "integer"
+        }
+       },
+       "required": [
+        "pid",
+        "name"
+       ],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "pwd": {
+       "description": "The reported directory: a file:// URL when the program used OSC 7, or a plain path otherwise. Left out if no directory has been reported or a reset cleared it.",
+       "type": "string"
+      }
+     },
+     "type": "object"
+    }
+   },
+   "reset": {
+    "actions": [
+     {
+      "category": "Pane",
+      "description": "Return the terminal to its starting state and clear the screen and scrollback.",
+      "keywords": "terminal reset clear scrollback emulator can ris",
+      "name": "reset",
+      "title": "Reset Terminal"
+     }
+    ],
+    "description": "Reset the terminal to its starting state and clear the screen and scrollback. The program keeps running, and the size and default colors stay the same.",
+    "input_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    }
+   },
+   "resize": {
+    "description": "Request a terminal size in columns and rows. It applies at once if the caller owns the block or no client does, and otherwise when the caller becomes the owner.",
+    "input_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "cell_height_px": {
+       "description": "The height of one character cell in pixels, from 1 to 65535. Send it together with cell_width_px, or leave both out to keep the current cell size.",
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": [
+        "null",
+        "integer"
+       ]
+      },
+      "cell_width_px": {
+       "description": "The width of one character cell in pixels, from 1 to 65535. Send it together with cell_height_px, or leave both out to keep the current cell size.",
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": [
+        "null",
+        "integer"
+       ]
+      },
+      "columns": {
+       "description": "The width in columns, that is, characters per line, from 1 to 65535.",
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": "integer"
+      },
+      "rows": {
+       "description": "The height in rows, from 1 to 65535.",
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": "integer"
+      }
+     },
+     "required": [
+      "columns",
+      "rows"
+     ],
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    }
+   },
+   "set_theme": {
+    "description": "Replace the terminal's default colors. As with resize, they apply at once if the caller owns the block or no client does, and otherwise when the caller becomes the owner.",
+    "input_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "background": {
+       "description": "The default background color, as hex RRGGBB or #RRGGBB, such as #011627. Empty or left out uses the built-in color.",
+       "type": "string"
+      },
+      "cursor": {
+       "description": "The cursor color, as hex RRGGBB or #RRGGBB, such as #80a4c2. Empty or left out uses the built-in color.",
+       "type": "string"
+      },
+      "foreground": {
+       "description": "The default text color, as hex RRGGBB or #RRGGBB, such as #d6deeb. Empty or left out uses the built-in color.",
+       "type": "string"
+      },
+      "palette": {
+       "description": "Changes to the 256-color palette, each written as index=RRGGBB or index=#RRGGBB with an index from 0 to 255, such as 1=#ef5350. Colors not listed keep their built-in values.",
+       "items": {
+        "type": "string"
+       },
+       "type": [
+        "null",
+        "array"
+       ]
+      },
+      "scheme": {
+       "description": "Whether the theme is 'light' or 'dark', which programs in the terminal can ask for. If empty, the terminal decides from how bright background is, and treats no background as dark.",
+       "type": "string"
+      }
+     },
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    }
+   },
+   "size": {
+    "description": "Get the terminal's size, its owner, and the size each client last requested.",
+    "input_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "cell_height_px": {
+       "description": "The height of one character cell in pixels.",
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": "integer"
+      },
+      "cell_width_px": {
+       "description": "The width of one character cell in pixels.",
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": "integer"
+      },
+      "columns": {
+       "description": "The terminal's width in columns.",
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": "integer"
+      },
+      "desired": {
+       "description": "The last size each client requested, the owner's included, newest first.",
+       "items": {
+        "additionalProperties": false,
+        "properties": {
+         "client_id": {
+          "description": "The client that requested this size.",
+          "type": [
+           "string",
+           "null"
+          ]
+         },
+         "columns": {
+          "description": "The requested width in columns.",
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+         },
+         "rows": {
+          "description": "The requested height in rows.",
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+         },
+         "updated_at": {
+          "description": "When the server received the request, as an RFC 3339 timestamp.",
+          "format": "date-time",
+          "type": "string"
+         }
+        },
+        "required": [
+         "client_id",
+         "columns",
+         "rows",
+         "updated_at"
+        ],
+        "type": "object"
+       },
+       "type": "array"
+      },
+      "owner": {
+       "description": "The client that owns the block, whose size the terminal uses. Null if the block has no owner.",
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "rows": {
+       "description": "The terminal's height in rows.",
+       "maximum": 4294967295,
+       "minimum": 0,
+       "type": "integer"
+      }
+     },
+     "required": [
+      "columns",
+      "rows",
+      "cell_width_px",
+      "cell_height_px",
+      "owner",
+      "desired"
+     ],
+     "type": "object"
+    }
+   },
+   "title": {
+    "description": "Get the terminal's title and the process that set it.",
+    "input_schema": {
+     "additionalProperties": false,
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "owner": {
+       "additionalProperties": false,
+       "description": "The process that set the title, as title_changed reported it. Left out if no title is set, a reset cleared it, or the server couldn't tell.",
+       "properties": {
+        "name": {
+         "description": "The process's name, found the same way as name in the result of process. Compare it as well as pid, because the system reuses process IDs.",
+         "type": "string"
+        },
+        "pid": {
+         "description": "The process ID.",
+         "type": "integer"
+        }
+       },
+       "required": [
+        "pid",
+        "name"
+       ],
+       "type": [
+        "null",
+        "object"
+       ]
+      },
+      "title": {
+       "description": "The terminal's title, as a program last set it. Empty if no title is set.",
+       "type": "string"
+      }
+     },
+     "required": [
+      "title"
+     ],
+     "type": "object"
+    }
+   },
+   "write": {
+    "description": "Type text into the terminal as if the user had typed it. The call returns once the text is queued, without waiting for the program to read it.",
+    "input_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "data": {
+       "description": "The text to type. It can hold escape sequences for keys that aren't text, such as \\u001b[A for the up arrow.",
+       "type": "string"
+      }
+     },
+     "required": [
+      "data"
+     ],
+     "type": "object"
+    },
+    "output_schema": {
+     "additionalProperties": false,
+     "properties": {
+      "bytes_written": {
+       "description": "The number of bytes queued, which is the length of data in UTF-8 bytes, not characters.",
+       "type": "integer"
+      }
+     },
+     "required": [
+      "bytes_written"
+     ],
+     "type": "object"
+    }
+   }
+  }
+ },
+ "description": "A terminal that runs a shell or any other command-line program.",
+ "flavors": [
+  {
+   "description": "A terminal that runs the user's shell, or a command you choose.",
+   "flavor": "com.superlogical.terminal.shell",
+   "name": "shell",
+   "options_schema": {
+    "additionalProperties": false,
+    "properties": {
+     "args": {
+      "description": "Deprecated: use command instead. Starts shell directly as the terminal's program, with these arguments. Can't be sent together with command.",
+      "items": {
+       "type": "string"
+      },
+      "type": [
+       "null",
+       "array"
+      ]
+     },
+     "command": {
+      "description": "A program and its arguments, to run instead of an interactive shell. Unless shell is 'none', the shell reads its startup files first, so the program is found on the PATH they set. The arguments reach the program unchanged.",
+      "items": {
+       "type": "string"
+      },
+      "type": [
+       "null",
+       "array"
+      ]
+     },
+     "cwd": {
+      "description": "The directory to start in. Empty, or a path that isn't a directory on the server's machine, starts in the user's home directory.",
+      "type": "string"
+     },
+     "exit": {
+      "additionalProperties": false,
+      "description": "When to close the terminal after its program exits. Left out, it closes after most exits but stays open after a quick failure, so the user can read the error.",
+      "properties": {
+       "on_completion": {
+        "default": true,
+        "description": "Whether to close the terminal when its program exits. A quick failure leaves it open either way. Defaults to true.",
+        "type": [
+         "null",
+         "boolean"
+        ]
+       },
+       "quick_exit_threshold_ms": {
+        "default": 250,
+        "description": "The longest run, in milliseconds, that counts as quick. A program that fails within this time leaves the terminal open. Defaults to 250.",
+        "maximum": 4294967295,
+        "minimum": 0,
+        "type": [
+         "null",
+         "integer"
+        ]
+       }
+      },
+      "type": [
+       "null",
+       "object"
+      ]
+     },
+     "initial_input": {
+      "description": "Text to type into the terminal once its program starts, sent exactly as given. No newline is added, so end the text with one to run a command.",
+      "type": "string"
+     },
+     "login": {
+      "description": "Whether to start the shell as a login shell, which reads the account's profile. Left out, it is true. On Windows, it is false unless command runs through a shell.",
+      "type": [
+       "null",
+       "boolean"
+      ]
+     },
+     "path_prepend": {
+      "description": "Directories to put at the front of the program's PATH, in this order. A login shell's startup files can still change PATH.",
+      "items": {
+       "type": "string"
+      },
+      "type": [
+       "null",
+       "array"
+      ]
+     },
+     "shell": {
+      "description": "The shell to start, or to run command through, such as /bin/zsh or fish. Empty uses the user's default shell. Set it to 'none' to start command directly, with no shell.",
+      "type": "string"
+     },
+     "size": {
+      "additionalProperties": false,
+      "description": "The terminal's starting size. Left out, it starts at 80 columns by 24 rows.",
+      "properties": {
+       "cell_height_px": {
+        "description": "The height of one character cell in pixels, from 1 to 65535. Send it together with cell_width_px, or leave both out to keep the current cell size.",
+        "maximum": 4294967295,
+        "minimum": 0,
+        "type": [
+         "null",
+         "integer"
+        ]
+       },
+       "cell_width_px": {
+        "description": "The width of one character cell in pixels, from 1 to 65535. Send it together with cell_height_px, or leave both out to keep the current cell size.",
+        "maximum": 4294967295,
+        "minimum": 0,
+        "type": [
+         "null",
+         "integer"
+        ]
+       },
+       "columns": {
+        "description": "The width in columns, that is, characters per line, from 1 to 65535.",
+        "maximum": 4294967295,
+        "minimum": 0,
+        "type": "integer"
+       },
+       "rows": {
+        "description": "The height in rows, from 1 to 65535.",
+        "maximum": 4294967295,
+        "minimum": 0,
+        "type": "integer"
+       }
+      },
+      "required": [
+       "columns",
+       "rows"
+      ],
+      "type": [
+       "null",
+       "object"
+      ]
+     },
+     "theme": {
+      "additionalProperties": false,
+      "description": "The terminal's default colors, in the same form that set_theme takes. Left out, the terminal uses its built-in colors.",
+      "properties": {
+       "background": {
+        "description": "The default background color, as hex RRGGBB or #RRGGBB, such as #011627. Empty or left out uses the built-in color.",
+        "type": "string"
+       },
+       "cursor": {
+        "description": "The cursor color, as hex RRGGBB or #RRGGBB, such as #80a4c2. Empty or left out uses the built-in color.",
+        "type": "string"
+       },
+       "foreground": {
+        "description": "The default text color, as hex RRGGBB or #RRGGBB, such as #d6deeb. Empty or left out uses the built-in color.",
+        "type": "string"
+       },
+       "palette": {
+        "description": "Changes to the 256-color palette, each written as index=RRGGBB or index=#RRGGBB with an index from 0 to 255, such as 1=#ef5350. Colors not listed keep their built-in values.",
+        "items": {
+         "type": "string"
+        },
+        "type": [
+         "null",
+         "array"
+        ]
+       },
+       "scheme": {
+        "description": "Whether the theme is 'light' or 'dark', which programs in the terminal can ask for. If empty, the terminal decides from how bright background is, and treats no background as dark.",
+        "type": "string"
+       }
+      },
+      "type": "object"
+     }
+    },
+    "type": "object"
+   },
+   "title": "Shell"
+  }
+ ],
+ "host_id": "",
+ "name": "com.superlogical.terminal",
+ "title": "Terminal"
+}

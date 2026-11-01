@@ -176,7 +176,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if w.app != nil {
 			// closeWorkspace ends its tabs' programs and shows another
 			// space, as closing a window does.
-			w.app.closeWorkspace()
+			w.app.closeWorkspaceFor(true)
 			return res
 		}
 		// No window shows the space: end its sessions here, and forget it.
@@ -198,16 +198,38 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		}
 	}
 	p := a.localPane(c.SID)
+	if c.Tab != "" && strings.HasPrefix(c.Op, "tab.") && c.Op != "tab.create" {
+		t := a.tabByUID(c.Tab)
+		if t == nil {
+			return fail("tab_not_found", "no such tab in the GoRex window")
+		}
+		p = t.Focus
+		if p == nil || p.host != nil {
+			p = nil
+			for _, q := range t.allPanes() {
+				if q.host == nil {
+					p = q
+					break
+				}
+			}
+		}
+		if p == nil {
+			return fail("tab_not_found", "the tab has no pane of this machine")
+		}
+	}
 	if p == nil && c.Op != "tab.create" {
 		if strings.HasPrefix(c.Op, "tab.") {
 			return fail("tab_not_found", "no such tab in the GoRex window")
 		}
 		return fail("pane_not_found", "no such pane in the GoRex window")
 	}
-	// The window closes with its last tab, which only the desktop closes.
-	last := len(a.tabs) == 1 && (c.Op == "tab.close" || c.Op == "pane.close" && len(p.Tab.allPanes()) == 1)
-	if last {
-		return fail("last_tab", "close GoRex's last tab on the desktop")
+	// Closing the last tab from a client leaves the space empty, its
+	// window open on it, as a Rex session keeps going with no windows:
+	// the client makes the next tab. On the desktop the window closes
+	// with its last tab instead.
+	if len(a.tabs) == 1 && (c.Op == "tab.close" || c.Op == "pane.close" && len(p.Tab.allPanes()) == 1) {
+		a.closeLastTab(p.Tab)
+		return res
 	}
 	switch c.Op {
 	case "tab.create":
@@ -240,7 +262,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			}
 			a.focusReq = t.Focus
 		}
-		res.New = t.Focus.SID
+		res.New, res.Tab = t.Focus.SID, t.UID
 	case "pane.split":
 		dir := c.Dir
 		if dir == "" {

@@ -21,12 +21,16 @@ import (
 	"gorex/internal/cli"
 	"gorex/internal/control"
 	"gorex/internal/rex"
+	"gorex/internal/rexapi"
 	"gorex/locales"
 )
 
 func main() {
 	// -server runs the session server (rex.ServerMain); other arguments
 	// are AppKit's, as -NSWindowResizeTime, which it reads itself.
+	// The server runs the Rex API gateway while the local network or
+	// built-in Tailscale is on (internal/rexapi).
+	rex.OnServe = rexapi.Supervise
 	if server, err := rex.ServerMain(os.Args[1:]); server {
 		if err != nil {
 			log.Fatal(err)
@@ -54,6 +58,11 @@ func main() {
 	// directory (internal/control).
 	if len(os.Args) > 1 && os.Args[1] == "control" {
 		os.Exit(control.Main())
+	}
+	// rexapi serves Rex's API to Rex clients, from the server the app runs
+	// (internal/rexapi).
+	if len(os.Args) > 1 && os.Args[1] == "rexapi" {
+		os.Exit(rexapi.Main(os.Args[2:]))
 	}
 	// The command line shares the binary: it runs before the app, and
 	// leaves the app's own arguments, as AppKit's, alone.
