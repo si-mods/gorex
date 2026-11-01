@@ -2325,7 +2325,7 @@ func (a *App) savedTab(t *Tab) savedTab {
 				return &savedNode{Name: p.Name, URL: p.browser.url}
 			}
 			if p.note != nil {
-				return &savedNode{Name: p.Name, Kind: noteKind, Note: p.note.id}
+				return &savedNode{Name: p.Name, Kind: noteKind, Note: p.note.id, NoteSize: p.note.size, NotePreview: p.note.preview}
 			}
 			s := &savedNode{SID: p.SID, Name: p.Name, Dir: p.info.Dir}
 			if p.host != nil {
@@ -2410,6 +2410,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			case s.Kind == noteKind:
 				p = a.newNotePane(s.Note)
 				p.Name = s.Name
+				p.note.size, p.note.preview = clampNoteSize(s.NoteSize), s.NotePreview
 			case s.URL != "":
 				p = a.newBrowserPane(s.URL)
 				p.Name = s.Name
@@ -2958,8 +2959,10 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		cols, rows = p.term.Size()
 	}
 	noteID, isNote := "", p.note != nil
+	var noteSize float32
+	var notePreview bool
 	if isNote {
-		noteID = p.note.id
+		noteID, noteSize, notePreview = p.note.id, p.note.size, p.note.preview
 	}
 	pageURL, isBrowser := "", p.browser != nil
 	if isBrowser {
@@ -2985,6 +2988,7 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	if isNote {
 		np = target.newNotePane(noteID)
 		np.Name = p.Name
+		np.note.size, np.note.preview = noteSize, notePreview
 	} else if isBrowser {
 		np = target.newBrowserPane(pageURL)
 		np.Name = p.Name

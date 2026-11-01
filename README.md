@@ -25,7 +25,12 @@ browser panes use the system's web view.
   sticky note: free text you type in place, named by its first line. The
   layout keeps the text, so it is there when GoRex starts. A note pane
   belongs to this machine, so a remote tab takes none, peers and the API
-  never see it, and Find searches terminals alone.
+  never see it, and Find searches terminals alone. With a note focused, the
+  text-size keys (`⌘+`, `⌘−`, `⌘0`) resize its text, a note at a time, and the
+  eye button or `⌘E` shows it as rendered Markdown (links open in the browser,
+  images show their descriptions); the pencil button or `⌘E` edits again. On
+  Windows and Linux the key is `Ctrl+Shift+M`, and a terminal keeps it unless
+  a note has the focus.
 - **Persistent sessions.** Shells run in a session server, a background
   process of the same binary (`GoRex -server`). Quit GoRex and everything
   keeps running; open it again and every tab, split and pane comes back as

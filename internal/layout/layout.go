@@ -84,14 +84,18 @@ type Node struct {
 	// Kind is "note" for a note pane, which has no session either, and
 	// Note its id, which names the file of its text; a pane of no kind is a terminal or, with a URL, a
 	// browser.
-	Kind     string  `json:"kind,omitempty"`
-	Note     string  `json:"note,omitempty"`
-	Cols     int     `json:"cols,omitempty"`
-	Rows     int     `json:"rows,omitempty"`
-	Vertical bool    `json:"vertical,omitempty"`
-	Ratio    float32 `json:"ratio,omitempty"`
-	A        *Node   `json:"a,omitempty"`
-	B        *Node   `json:"b,omitempty"`
+	Kind string `json:"kind,omitempty"`
+	Note string `json:"note,omitempty"`
+	// NoteSize is a note's text size in points, 0 for the default, and
+	// NotePreview whether it shows its text as Markdown.
+	NoteSize    float32 `json:"noteSize,omitempty"`
+	NotePreview bool    `json:"notePreview,omitempty"`
+	Cols        int     `json:"cols,omitempty"`
+	Rows        int     `json:"rows,omitempty"`
+	Vertical    bool    `json:"vertical,omitempty"`
+	Ratio       float32 `json:"ratio,omitempty"`
+	A           *Node   `json:"a,omitempty"`
+	B           *Node   `json:"b,omitempty"`
 	// Unavailable marks a pane the server would not share with this
 	// client: its SID and host are gone, but its place in the layout stays.
 	Unavailable bool `json:"unavailable,omitempty"`

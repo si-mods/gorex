@@ -52,6 +52,7 @@ var sfSymbols = map[string]string{
 	"trash-2":                   "trash",
 	"x":                         "xmark",
 	"columns-2":                 "rectangle.split.2x1",
+	"eye":                       "eye",
 	"float":                     "rectangle.on.rectangle",
 }
 

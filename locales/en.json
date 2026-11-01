@@ -28,6 +28,18 @@
   "@cmdSplitNote": {
     "description": "Command: split the focused pane into two, the new one a note."
   },
+  "cmdToggleNotePreview": "Toggle Note Preview",
+  "@cmdToggleNotePreview": {
+    "description": "Command: show the focused note as rendered Markdown, or back as text to edit."
+  },
+  "notePreview": "Preview",
+  "@notePreview": {
+    "description": "Tooltip of a note pane's button that shows its text as rendered Markdown."
+  },
+  "noteEdit": "Edit",
+  "@noteEdit": {
+    "description": "Tooltip of a note pane's button that goes back from the Markdown preview to editing."
+  },
   "noteName": "Note",
   "@noteName": {
     "description": "The name of a note pane that has no text and no name."

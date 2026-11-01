@@ -211,6 +211,9 @@ func (a *App) dispatchKey(mods ui.Modifiers, key ui.Key) bool {
 	if cmd == nil {
 		return ok
 	}
+	if cmd.Passthrough && cmd.Available != nil && !cmd.Available(a) {
+		return false
+	}
 	if err := cmd.invoke(a, args); err != nil {
 		a.err = err.Error()
 	}

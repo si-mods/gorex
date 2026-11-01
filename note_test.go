@@ -19,6 +19,17 @@ func TestNoteTitle(t *testing.T) {
 		{"", ""},
 		{" \n\t\n", ""},
 		{"Buy milk", "Buy milk"},
+		{"# Title\nbody", "Title"},
+		{"###### Six", "Six"},
+		{"####### Seven", "####### Seven"},
+		{"#hashtag", "#hashtag"},
+		{"- item", "item"},
+		{"* item", "item"},
+		{"+ item", "item"},
+		{"> quote", "quote"},
+		{"-5 degrees", "-5 degrees"},
+		{"#\nnext", "#"},
+		{"# \nnext", "#"},
 		{"\n\n  Buy milk  \nand eggs", "Buy milk"},
 		{long, strings.Repeat("x", noteTitleMax) + "…"},
 		{strings.Repeat("é", 100), strings.Repeat("é", noteTitleMax) + "…"},
@@ -275,5 +286,168 @@ func TestEmptyNoteLayout(t *testing.T) {
 	}
 	if notes != 1 {
 		t.Errorf("%d notes restored, want the empty one", notes)
+	}
+}
+
+func TestNoteZoom(t *testing.T) {
+	n := &notePane{}
+	if n.textSize() != noteDefaultSize {
+		t.Fatalf("default size %v", n.textSize())
+	}
+	n.zoom(noteSizeStep)
+	if n.textSize() != noteDefaultSize+1 {
+		t.Errorf("bigger %v", n.textSize())
+	}
+	n.zoom(-noteSizeStep)
+	if n.size != 0 {
+		t.Errorf("back at the default the size is %v, want 0", n.size)
+	}
+	for i := 0; i < 100; i++ {
+		n.zoom(noteSizeStep)
+	}
+	if n.textSize() != noteMaxSize {
+		t.Errorf("max %v", n.textSize())
+	}
+	for i := 0; i < 100; i++ {
+		n.zoom(-noteSizeStep)
+	}
+	if n.textSize() != noteMinSize {
+		t.Errorf("min %v", n.textSize())
+	}
+	n.zoom(0)
+	if n.size != 0 || n.textSize() != noteDefaultSize {
+		t.Errorf("reset %v", n.size)
+	}
+	if clampNoteSize(1000) != noteMaxSize || clampNoteSize(-3) != 0 || clampNoteSize(2) != noteMinSize {
+		t.Error("clampNoteSize")
+	}
+}
+
+func TestNoteZoomCommands(t *testing.T) {
+	a, tt := newTestApp(t)
+	termSize := termFont.Size
+	// A terminal has the focus: the keys change its text, not a note's.
+	a.invokeCommand(&cmdSplitNote, nil)
+	tt.Frame()
+	note := a.tab().Focus
+	a.tab().setFocus(a.tab().panes()[0])
+	a.invokeCommand(&cmdBigger, nil)
+	if note.note.size != 0 || termFont.Size != termSize+1 {
+		t.Errorf("terminal focused: note %v term %v", note.note.size, termFont.Size)
+	}
+	a.invokeCommand(&cmdActualSize, nil)
+	// A note has it: its size changes, the terminals' does not.
+	a.tab().setFocus(note)
+	a.saveDue = false
+	a.invokeCommand(&cmdBigger, nil)
+	a.invokeCommand(&cmdBigger, nil)
+	a.invokeCommand(&cmdSmaller, nil)
+	if note.note.size != noteDefaultSize+1 || termFont.Size != termSize {
+		t.Errorf("note focused: note %v term %v", note.note.size, termFont.Size)
+	}
+	if !a.saveDue {
+		t.Error("a new size does not ask for a layout save")
+	}
+	a.invokeCommand(&cmdActualSize, nil)
+	if note.note.size != 0 {
+		t.Errorf("reset %v", note.note.size)
+	}
+}
+
+func TestNotePreviewAvailable(t *testing.T) {
+	a, tt := newTestApp(t)
+	if cmdNotePreview.Available(a) {
+		t.Error("toggle preview is offered on a terminal")
+	}
+	// On a terminal it is a silent no-op, and its key is not taken.
+	a.invokeCommand(&cmdNotePreview, nil)
+	if a.err != "" {
+		t.Errorf("error %q with no note focused", a.err)
+	}
+	if !cmdNotePreview.Passthrough {
+		t.Error("its key is taken from a terminal")
+	}
+	a.invokeCommand(&cmdNewNote, nil)
+	tt.Frame()
+	if !cmdNotePreview.Available(a) {
+		t.Fatal("toggle preview is not offered on a note")
+	}
+	p := a.tab().Focus
+	a.focusReq = nil
+	a.invokeCommand(&cmdNotePreview, nil)
+	if a.focusReq != p {
+		t.Error("the toggle does not give the note the keyboard")
+	}
+	if !p.note.preview {
+		t.Error("not previewing")
+	}
+	a.invokeCommand(&cmdNotePreview, nil)
+	if p.note.preview {
+		t.Error("still previewing")
+	}
+}
+
+func TestNoteSizeAndPreviewPersist(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.invokeCommand(&cmdNewNote, nil)
+	tt.Frame()
+	p := a.tab().Focus
+	typeNote(tt, p, "# Title\n\nbody")
+	p.note.size, p.note.preview = 18, true
+	a.saveNow()
+	l := savedWorkspaces(t, a.client).Sessions[0].Layout
+	n := findNote(l.Tabs[len(l.Tabs)-1].Root)
+	if n == nil || n.NoteSize != 18 || !n.NotePreview {
+		t.Fatalf("saved node %+v", n)
+	}
+	b := &App{client: a.client}
+	if !b.restore(l, nil) {
+		t.Fatal("nothing restored")
+	}
+	ns := restoredNotes(b)
+	if len(ns) == 0 || ns[0].note.size != 18 || !ns[0].note.preview {
+		t.Fatalf("restored %+v", ns)
+	}
+	// Moving to another window keeps both.
+	w := a.st.openWindow(a.st.addWorkspace(), false)
+	a.movePaneToWindow(p, w)
+	ms := restoredNotes(w)
+	if len(ms) != 1 || ms[0].note.size != 18 || !ms[0].note.preview {
+		t.Fatalf("moved %+v", ms)
+	}
+}
+
+func TestNotePreviewRenders(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.invokeCommand(&cmdNewNote, nil)
+	tt.Frame()
+	p := a.tab().Focus
+	typeNote(tt, p, "# Shopping list\n\n- milk")
+	a.invokeCommand(&cmdNotePreview, nil)
+	tt.Frame()
+	if _, ok := tt.Find("Shopping list"); !ok {
+		t.Errorf("no heading; texts %q", tt.Texts())
+	}
+	if _, ok := tt.Find(locales.NotePlaceholder()); ok {
+		t.Error("placeholder on a note with text")
+	}
+	typeNote(tt, p, "")
+	tt.Frame()
+	if _, ok := tt.Find(locales.NotePlaceholder()); !ok {
+		t.Errorf("no placeholder in an empty preview; texts %q", tt.Texts())
+	}
+}
+
+func TestTextSizeRangeShared(t *testing.T) {
+	a, _ := newTestApp(t)
+	old := prefs.FontSize
+	t.Cleanup(func() { a.setFontSize(old) })
+	a.setFontSize(1000)
+	if prefs.FontSize != maxTextSize || noteMaxSize != maxTextSize {
+		t.Errorf("max: terminal %v note %v", prefs.FontSize, noteMaxSize)
+	}
+	a.setFontSize(1)
+	if prefs.FontSize != minTextSize || noteMinSize != minTextSize {
+		t.Errorf("min: terminal %v note %v", prefs.FontSize, noteMinSize)
 	}
 }

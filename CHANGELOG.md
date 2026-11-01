@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **note:** a note's text size follows the text-size keys, as a terminal's (⌘+, ⌘−, ⌘0; 8 to 40 points, 13 by default) and is kept per note
+* **note:** a note can show its text as Markdown: the eye button in its header, or Toggle Note Preview (⌘E)
+
 ## 0.6.0
 
 ### Features
