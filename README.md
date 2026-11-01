@@ -21,6 +21,11 @@ browser panes use the system's web view.
   none, and Find searches terminals alone. Only http and https pages
   open; a page is untrusted, so it reaches no GoRex code, asks for no
   permission, opens no window of its own and downloads nothing.
+- **Note panes.** New Note Tab, or Split with Note, opens a pane that is a
+  sticky note: free text you type in place, named by its first line. The
+  layout keeps the text, so it is there when GoRex starts. A note pane
+  belongs to this machine, so a remote tab takes none, peers and the API
+  never see it, and Find searches terminals alone.
 - **Persistent sessions.** Shells run in a session server, a background
   process of the same binary (`GoRex -server`). Quit GoRex and everything
   keeps running; open it again and every tab, split and pane comes back as

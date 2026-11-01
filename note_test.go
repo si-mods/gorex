@@ -1,0 +1,279 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/egoist/mygo/ui"
+
+	"gorex/internal/layout"
+	"gorex/locales"
+)
+
+func TestNoteTitle(t *testing.T) {
+	long := strings.Repeat("x", 60)
+	for _, c := range []struct{ in, want string }{
+		{"", ""},
+		{" \n\t\n", ""},
+		{"Buy milk", "Buy milk"},
+		{"\n\n  Buy milk  \nand eggs", "Buy milk"},
+		{long, strings.Repeat("x", noteTitleMax) + "…"},
+		{strings.Repeat("é", 100), strings.Repeat("é", noteTitleMax) + "…"},
+		{strings.Repeat("\n", 1<<20) + "late", "late"},
+		{"first\n" + strings.Repeat("y", 2<<20), "first"},
+		{strings.Repeat("z", 2<<20), strings.Repeat("z", noteTitleMax) + "…"},
+	} {
+		if got := noteTitle(c.in); got != c.want {
+			t.Errorf("noteTitle(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestNoteTab(t *testing.T) {
+	a, tt := newTestApp(t)
+	first := a.tab()
+	a.invokeCommand(&cmdNewNote, nil)
+	tt.Frame()
+	if len(a.tabs) != 2 || a.tab() == first {
+		t.Fatalf("%d tabs, active one is the first", len(a.tabs))
+	}
+	p := a.tab().Focus
+	if p == nil || p.note == nil || p.SID != "" || p.term != nil {
+		t.Fatalf("focus is not a note pane: %+v", p)
+	}
+	if name, _ := p.label(); name != locales.NoteName() {
+		t.Errorf("name %q", name)
+	}
+	if _, ok := tt.Find(locales.NotePlaceholder()); !ok {
+		t.Errorf("no text area; texts %q", tt.Texts())
+	}
+	if a.findable() {
+		t.Error("find is offered in a note pane")
+	}
+	// The text takes the keyboard of the new pane, and names it.
+	tt.Type("Buy milk")
+	tt.Key(0, ui.KeyEnter)
+	tt.Type("and eggs")
+	tt.Frame()
+	if p.note.text != "Buy milk\nand eggs" {
+		t.Fatalf("text %q", p.note.text)
+	}
+	if name, _ := p.label(); name != "Buy milk" {
+		t.Errorf("name %q", name)
+	}
+	if !a.saveDue {
+		t.Error("an edit does not ask for a save")
+	}
+}
+
+func TestSplitNote(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	a.invokeCommand(&cmdSplitNote, nil)
+	tt.Frame()
+	ps := tab.panes()
+	if len(ps) != 2 {
+		t.Fatalf("%d panes", len(ps))
+	}
+	p := tab.Focus
+	if p == nil || p.note == nil || p == ps[0] {
+		t.Fatalf("the new pane is not a note beside the shell: %+v", p)
+	}
+	if ps[0].note != nil || ps[0].term == nil {
+		t.Error("the shell pane is gone")
+	}
+}
+
+func findNote(n *layout.Node) *layout.Node {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == noteKind {
+		return n
+	}
+	if got := findNote(n.A); got != nil {
+		return got
+	}
+	return findNote(n.B)
+}
+
+func restoredNotes(b *App) []*Pane {
+	var out []*Pane
+	for _, tab := range b.tabs {
+		for _, p := range tab.panes() {
+			if p.note != nil {
+				out = append(out, p)
+			}
+		}
+	}
+	return out
+}
+
+// typeNote sets the text of the note pane p, as the text area does, and
+// shows a frame, which writes the file.
+func typeNote(tt *ui.Tester, p *Pane, text string) {
+	p.note.text = text
+	tt.Frame()
+}
+
+func TestNoteLayout(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.invokeCommand(&cmdNewNote, nil)
+	tt.Frame()
+	p := a.tab().Focus
+	p.Name = "Todo"
+	typeNote(tt, p, "Buy milk\nand eggs")
+	a.saveNow()
+
+	l := savedWorkspaces(t, a.client).Sessions[0].Layout
+	n := findNote(l.Tabs[len(l.Tabs)-1].Root)
+	if n == nil {
+		t.Fatalf("the layout keeps no note: %+v", l.Tabs[len(l.Tabs)-1].Root)
+	}
+	if n.SID != "" || n.Name != "Todo" || n.Note != p.note.id || !validNoteID(n.Note) {
+		t.Errorf("saved node %+v", n)
+	}
+	raw, _ := json.Marshal(l)
+	if strings.Contains(string(raw), "Buy milk") {
+		t.Error("the note's text is in the layout")
+	}
+
+	b := &App{client: a.client}
+	if !b.restore(l, nil) {
+		t.Fatal("nothing restored")
+	}
+	var got *Pane
+	if ns := restoredNotes(b); len(ns) > 0 {
+		got = ns[0]
+	}
+	if got == nil {
+		t.Fatal("the note pane is not restored")
+	}
+	if got.note.text != "Buy milk\nand eggs" || got.note.id != p.note.id || got.Name != "Todo" || got.SID != "" || got.term != nil {
+		t.Errorf("restored %+v %q", got, got.note.text)
+	}
+}
+
+func TestLargeNoteStaysOutOfLayout(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.invokeCommand(&cmdNewNote, nil)
+	tt.Frame()
+	p := a.tab().Focus
+	text := strings.Repeat("0123456789abcdef\n", 2<<20/17)
+	typeNote(tt, p, text)
+	a.saveDue = false
+	typeNote(tt, p, text+"more")
+	if a.saveDue {
+		t.Error("an edit of a note asks for a layout save")
+	}
+	raw, err := json.Marshal(a.snapshot())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(raw) > 64<<10 {
+		t.Errorf("the layout is %d bytes with a large note", len(raw))
+	}
+	b, err := os.ReadFile(p.note.path())
+	if err != nil || string(b) != text+"more" {
+		t.Errorf("the note's file holds %d bytes, err %v", len(b), err)
+	}
+	if fi, err := os.Stat(p.note.path()); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("file %v %v", fi, err)
+	}
+	if ents, _ := os.ReadDir(noteDir()); len(ents) != 1 {
+		t.Errorf("%d files in the notes directory, want 1", len(ents))
+	}
+}
+
+func TestNoteFileLife(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.invokeCommand(&cmdSplitNote, nil)
+	tt.Frame()
+	p := a.tab().Focus
+	typeNote(tt, p, "keep me")
+	path := p.note.path()
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+	// Moving the pane keeps its file and its id.
+	if !a.movePaneToNewTab(p, "") {
+		t.Fatal("not moved")
+	}
+	if p.Tab == nil || len(p.Tab.panes()) != 1 || p.note == nil || p.note.text != "keep me" {
+		t.Fatalf("moved pane %+v", p)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("moving deleted the file: %v", err)
+	}
+	// Closing it deletes the file.
+	a.closePane(p)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("closing kept the file: %v", err)
+	}
+
+	a.invokeCommand(&cmdNewNote, nil)
+	tt.Frame()
+	q := a.tab().Focus
+	typeNote(tt, q, "another")
+	path = q.note.path()
+	a.closeTab(a.tab())
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("closing the tab kept the file: %v", err)
+	}
+}
+
+func TestNoteIDSafe(t *testing.T) {
+	for id, want := range map[string]bool{
+		newNoteID():                      true,
+		"":                               false,
+		"../../etc/passwd":               false,
+		strings.Repeat("a", 31):          false,
+		strings.Repeat("A", 32):          false,
+		strings.Repeat("a", 31) + "/":    false,
+		strings.Repeat("g", 32):          false,
+		strings.Repeat("a", 32) + "\x00": false,
+	} {
+		if got := validNoteID(id); got != want {
+			t.Errorf("validNoteID(%q) = %v", id, got)
+		}
+	}
+	a, _ := newTestApp(t)
+	// An unsafe id makes a new note, and reads and deletes no other file.
+	secret := filepath.Join(noteDir(), "..", "secret.txt")
+	os.MkdirAll(noteDir(), 0o700)
+	os.WriteFile(secret, []byte("x"), 0o600)
+	p := a.newNotePane("../secret")
+	if p.note.text != "" || !validNoteID(p.note.id) {
+		t.Errorf("note %+v", p.note)
+	}
+	(&notePane{id: "../secret"}).destroy()
+	if _, err := os.Stat(secret); err != nil {
+		t.Error("an unsafe id deleted a file")
+	}
+}
+
+func TestEmptyNoteLayout(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.invokeCommand(&cmdNewNote, nil)
+	tt.Frame()
+	a.saveNow()
+	l := savedWorkspaces(t, a.client).Sessions[0].Layout
+	b := &App{client: a.client}
+	if !b.restore(l, nil) {
+		t.Fatal("nothing restored")
+	}
+	notes := 0
+	for _, tab := range b.tabs {
+		for _, p := range tab.panes() {
+			if p.note != nil {
+				notes++
+			}
+		}
+	}
+	if notes != 1 {
+		t.Errorf("%d notes restored, want the empty one", notes)
+	}
+}

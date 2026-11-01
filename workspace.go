@@ -948,6 +948,7 @@ func (a *App) closeWorkspaceFor(client bool) {
 				p.term.Close()
 			}
 			p.browser.destroy()
+			p.note.destroy()
 			a.killOn(p.host, p.SID)
 		}
 	}

@@ -279,6 +279,8 @@ type Pane struct {
 	stream *rex.Stream
 	// browser is the state of a browser pane, nil for a terminal.
 	browser *browserPane
+	// note is the state of a note pane, nil for any other.
+	note *notePane
 	// host is the remote host the session lives on, nil for this machine;
 	// remote is then the terminal's Conn.
 	host   *hostConn
@@ -1128,9 +1130,15 @@ func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []stri
 
 // newBrowserTab opens a tab of a browser pane after the active tab, and
 // shows it.
-func (a *App) newBrowserTab() *Tab {
+func (a *App) newBrowserTab() *Tab { return a.newPaneTab(a.newBrowserPane(browserStart)) }
+
+// newNoteTab opens a tab of a note pane after the active tab, and shows it.
+func (a *App) newNoteTab() *Tab { return a.newPaneTab(a.newNotePane("")) }
+
+// newPaneTab opens a tab of the one pane p, which has no session, after
+// the active tab, and shows it, with the keyboard on p.
+func (a *App) newPaneTab(p *Pane) *Tab {
 	t := a.makeTab("")
-	p := a.newBrowserPane(browserStart)
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
 	t.setFocus(p)
@@ -1220,8 +1228,21 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 }
 
 // splitBrowser splits the focused pane with a browser pane, right of it or
-// below it. A tab's panes are on one host, so a remote pane takes none.
+// below it.
 func (a *App) splitBrowser(vertical bool) {
+	a.splitLocal(vertical, func() *Pane { return a.newBrowserPane(browserStart) })
+}
+
+// splitNote splits the focused pane with a note pane, right of it or
+// below it.
+func (a *App) splitNote(vertical bool) {
+	a.splitLocal(vertical, func() *Pane { return a.newNotePane("") })
+}
+
+// splitLocal splits the focused pane with the pane make returns, right of
+// it or below it. A tab's panes are on one host, so a remote pane takes
+// none.
+func (a *App) splitLocal(vertical bool, make func() *Pane) {
 	t := a.tab()
 	if t == nil || t.Focus == nil || t.Focus.host != nil {
 		return
@@ -1234,7 +1255,7 @@ func (a *App) splitBrowser(vertical bool) {
 			return
 		}
 	}
-	p := a.newBrowserPane(browserStart)
+	p := make()
 	a.splitWith(old, p, vertical)
 	a.focusReq = p
 }
@@ -1324,6 +1345,7 @@ func (a *App) dropPane(p *Pane, kill bool) {
 		p.term.Close()
 	}
 	p.browser.destroy()
+	p.note.destroy()
 	if kill {
 		a.killOn(p.host, p.SID)
 	}
@@ -1469,6 +1491,7 @@ func (a *App) closeLastTab(t *Tab) {
 			p.term.Close()
 		}
 		p.browser.destroy()
+		p.note.destroy()
 		a.killOn(p.host, p.SID)
 	}
 	a.tabs = slices.DeleteFunc(a.tabs, func(x *Tab) bool { return x == t })
@@ -1488,6 +1511,7 @@ func (a *App) closeTab(t *Tab) {
 			p.term.Close()
 		}
 		p.browser.destroy()
+		p.note.destroy()
 		a.killOn(p.host, p.SID)
 	}
 	a.removeTab(t)
@@ -2125,6 +2149,9 @@ func (p *Pane) program() program {
 	if p.browser != nil {
 		return browserProgram
 	}
+	if p.note != nil {
+		return noteProgram
+	}
 	if p.info.Status != nil && p.info.Status.App != "" {
 		return programOf(p.info.ProgramName())
 	}
@@ -2146,6 +2173,16 @@ func (p *Pane) label() (name, detail string) {
 			name = locales.BrowserName()
 		}
 		return name, browserHost(p.browser.url)
+	}
+	if p.note != nil {
+		name = p.Name
+		if name == "" {
+			name = noteTitle(p.note.text)
+		}
+		if name == "" {
+			name = locales.NoteName()
+		}
+		return name, ""
 	}
 	in := p.info
 	if p.Name != "" {
@@ -2287,6 +2324,9 @@ func (a *App) savedTab(t *Tab) savedTab {
 			if p.browser != nil {
 				return &savedNode{Name: p.Name, URL: p.browser.url}
 			}
+			if p.note != nil {
+				return &savedNode{Name: p.Name, Kind: noteKind, Note: p.note.id}
+			}
 			s := &savedNode{SID: p.SID, Name: p.Name, Dir: p.info.Dir}
 			if p.host != nil {
 				s.Host = p.host.ID
@@ -2367,6 +2407,9 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			var p *Pane
 			in, isLive := live[s.SID]
 			switch {
+			case s.Kind == noteKind:
+				p = a.newNotePane(s.Note)
+				p.Name = s.Name
 			case s.URL != "":
 				p = a.newBrowserPane(s.URL)
 				p.Name = s.Name
@@ -2914,6 +2957,10 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	if p.term != nil {
 		cols, rows = p.term.Size()
 	}
+	noteID, isNote := "", p.note != nil
+	if isNote {
+		noteID = p.note.id
+	}
 	pageURL, isBrowser := "", p.browser != nil
 	if isBrowser {
 		pageURL = p.browser.url
@@ -2935,7 +2982,10 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		a.removeTab(src)
 	}
 	var np *Pane
-	if isBrowser {
+	if isNote {
+		np = target.newNotePane(noteID)
+		np.Name = p.Name
+	} else if isBrowser {
 		np = target.newBrowserPane(pageURL)
 		np.Name = p.Name
 		np.browser.auto = false

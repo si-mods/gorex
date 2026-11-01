@@ -106,6 +106,62 @@ func (msgs Messages) CmdSplitBrowser() string {
 	return Catalog.Format(msgs.locale, "cmdSplitBrowser", nil)
 }
 
+// CmdNewNoteTab says "New Note Tab"
+// in the language the app shows.
+//
+// Command: open a tab with a note pane, a sticky note of free text.
+func CmdNewNoteTab() string { return In(i18n.Locale()).CmdNewNoteTab() }
+
+// CmdNewNoteTab says "New Note Tab"
+// in the language of msgs.
+//
+// Command: open a tab with a note pane, a sticky note of free text.
+func (msgs Messages) CmdNewNoteTab() string {
+	return Catalog.Format(msgs.locale, "cmdNewNoteTab", nil)
+}
+
+// CmdSplitNote says "Split with Note"
+// in the language the app shows.
+//
+// Command: split the focused pane into two, the new one a note.
+func CmdSplitNote() string { return In(i18n.Locale()).CmdSplitNote() }
+
+// CmdSplitNote says "Split with Note"
+// in the language of msgs.
+//
+// Command: split the focused pane into two, the new one a note.
+func (msgs Messages) CmdSplitNote() string {
+	return Catalog.Format(msgs.locale, "cmdSplitNote", nil)
+}
+
+// NoteName says "Note"
+// in the language the app shows.
+//
+// The name of a note pane that has no text and no name.
+func NoteName() string { return In(i18n.Locale()).NoteName() }
+
+// NoteName says "Note"
+// in the language of msgs.
+//
+// The name of a note pane that has no text and no name.
+func (msgs Messages) NoteName() string {
+	return Catalog.Format(msgs.locale, "noteName", nil)
+}
+
+// NotePlaceholder says "Write a note…"
+// in the language the app shows.
+//
+// Placeholder of a note pane's text area.
+func NotePlaceholder() string { return In(i18n.Locale()).NotePlaceholder() }
+
+// NotePlaceholder says "Write a note…"
+// in the language of msgs.
+//
+// Placeholder of a note pane's text area.
+func (msgs Messages) NotePlaceholder() string {
+	return Catalog.Format(msgs.locale, "notePlaceholder", nil)
+}
+
 // BrowserName says "Browser"
 // in the language the app shows.
 //
