@@ -233,6 +233,12 @@ func Wanted(dir string) bool {
 	return false
 }
 
+// retryEvery is how long Supervise waits to start the gateway again after
+// a start failed: the server was not reachable, or the gateway of the
+// server it replaced still held the lock, which it lets go of moments
+// after an in-place upgrade.
+const retryEvery = time.Second
+
 // Supervise runs in the GoRex server (rex.OnServe) until stop closes: it
 // runs the gateway while Wanted says so, and stops it when neither the
 // local network nor built-in Tailscale is on, so that a server with
@@ -259,7 +265,7 @@ func Supervise(stop <-chan struct{}) {
 		case want && runStop == nil && time.Now().After(retryAt):
 			c, err := rex.ConnectExisting()
 			if err != nil {
-				retryAt = time.Now().Add(5 * time.Second)
+				retryAt = time.Now().Add(retryEvery)
 				break
 			}
 			runStop, done = make(chan struct{}), make(chan error, 1)
@@ -276,9 +282,9 @@ func Supervise(stop <-chan struct{}) {
 			return
 		case err := <-done:
 			// The run ended by itself: another gateway holds the lock,
-			// or the server went. Try again a little later.
+			// or the server went. Try again shortly.
 			runStop, done = nil, nil
-			retryAt = time.Now().Add(5 * time.Second)
+			retryAt = time.Now().Add(retryEvery)
 			if err != nil && err.Error() != lastErr {
 				lastErr = err.Error()
 				logf("%v", err)
