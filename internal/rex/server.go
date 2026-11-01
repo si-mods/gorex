@@ -305,7 +305,7 @@ func Serve() error {
 		// The run before this one did not stop, or stopped to be
 		// replaced: its sessions ended with it, and the layout it kept
 		// names them.
-		s.restoreSessions(s.layout, journalOwners(entries))
+		s.restoreSessions(s.layout, journalOwners(entries), journalAgents(entries))
 	}
 	s.journal.started()
 	return s.serve()
@@ -764,6 +764,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			return nil, err
 		}
 		ss.owner = peer
+		s.watch(ss)
 		s.mu.Lock()
 		s.sessions[id] = ss
 		s.order = append(s.order, id)
@@ -782,6 +783,9 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		if err != nil {
 			return nil, nil // already gone
+		}
+		if ss.takeAgent() {
+			s.agentEnded(ss.id)
 		}
 		ss.kill()
 		s.mu.Lock()
@@ -1044,6 +1048,8 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			return nil, nil
 		}
 		return s.command(*req.Command), nil
+	case "agent":
+		return s.reportAgent(req, peer)
 	case "upgrade":
 		// Once it runs, the connection closes with this executable.
 		return nil, s.upgrade(req.Exe)

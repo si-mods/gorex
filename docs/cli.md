@@ -70,11 +70,11 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 - `clients` prints the principal, peer key, whether it is remote, through a
   kept connection, and how many seconds it has been attached.
 - `hosts` lists saved remote hosts; addresses stay hidden.
-- `skill setup` installs the GoRex guide into Claude Code, Codex, OpenCode
-  and Pi skill directories, and a `SessionStart` context hook for Claude
-  Code and Codex. `--project` writes the skill into the repository without
-  touching settings; `--dry-run` reports first; `skill remove` removes
-  only what GoRex installed.
+- `skill setup` installs the GoRex guide into Claude Code, Codex, OpenCode,
+  Pi and omp skill directories, and a session-start hook for Claude Code,
+  Codex, Pi and omp (see [Agents](#agents)). `--project` writes the skill
+  into the repository without touching settings; `--dry-run` reports
+  first; `skill remove` removes only what GoRex installed.
 - `remote status` shows the local server's remote access without its
   address; `remote control on|off` lets paired clients run app actions
   through the window. It applies to every paired client and every member
@@ -134,5 +134,55 @@ gorex send -s <id> --enter 'make test'
 gorex wait -s <id> --contains FAIL --timeout 120s
 gorex capture -s <id>
 ```
+
+### Session-start hooks
+
+`gorex skill setup` installs a hook that each agent runs as a session
+starts:
+
+- Claude Code: a `SessionStart` hook in `$CLAUDE_CONFIG_DIR/settings.json`
+  (`~/.claude/settings.json`), beside the hooks already there. It reads
+  the conversation's `session_id` from the JSON the hook gets on its input.
+- Codex: a `SessionStart` hook in `$CODEX_HOME/hooks.json`. It gives the
+  context only: GoRex does not resume Codex.
+- Pi and omp: an extension, `extensions/gorex/index.ts` in the agent
+  directory (`PI_CODING_AGENT_DIR`, which both read, else `~/.pi/agent`
+  and `~/.omp/agent`). It runs the hook in the background as a session
+  starts, new, resumed or forked, prints nothing, and adds what the hook
+  printed to the system prompt.
+
+Outside a GoRex session the hook does nothing. Inside, it runs
+`gorex agent-hook --agent NAME [--conversation ID] [--pid PID]`, which
+tells the session's server the agent and its conversation, and prints the
+session's ID and, when its pane has no name yet, asks the agent to name
+it after its task with `gorex rename` (two to four lowercase words joined
+by hyphens). It never fails the agent's start: it exits 0, and gives up on
+a server that does not answer within two seconds.
+
+The server keeps the agent of each session while the agent's process
+runs: the hook's report is kept only when it comes from the program in
+the session's foreground (the first process above the hook that is not a
+shell), so a subagent another agent runs through its shell does not
+replace it. `gorex ls --json` shows it as `agent` (`name`,
+`conversation`, `pid`). The record ends when that process does, or the
+session; a pane back at its shell is not resumed later. An in-place
+upgrade hands the records to the new build, and the layout journal keeps
+them, so that a server that starts the sessions
+again — after a crash, a reboot or `gorex server restart` — starts the
+shell in the pane's directory, waits for its prompt, and types the
+command that resumes the conversation, then Return:
+
+| Agent       | Command                |
+|-------------|------------------------|
+| Claude Code | `claude --resume ID`   |
+| omp         | `omp --resume=ID`      |
+| Pi          | `pi --session ID`      |
+
+When the agent exits, the pane is back at its shell. A conversation ID
+is taken only of letters, digits, `.`, `_` and `-`, starting with a
+letter or digit, so the command is typed unquoted and reads the same in
+every shell GoRex starts, PowerShell and `cmd` on Windows included. An
+agent the server does not see in the foreground within 30 seconds of the
+command is given up.
 
 Host add/remove and remote `split`/`close` are not part of this slice.

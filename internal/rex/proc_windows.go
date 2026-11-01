@@ -127,6 +127,7 @@ func processDir(h windows.Handle) string {
 // procTree is the processes of the system by their parents.
 type procTree struct {
 	children map[uint32][]uint32
+	parent   map[uint32]uint32
 	name     map[uint32]string
 }
 
@@ -144,7 +145,7 @@ func processTree() procTree {
 	if time.Since(procTreeCache.at) < 100*time.Millisecond {
 		return procTreeCache.tree
 	}
-	t := procTree{children: map[uint32][]uint32{}, name: map[uint32]string{}}
+	t := procTree{children: map[uint32][]uint32{}, parent: map[uint32]uint32{}, name: map[uint32]string{}}
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
 		return t
@@ -155,11 +156,21 @@ func processTree() procTree {
 	for err := windows.Process32First(snap, &e); err == nil; err = windows.Process32Next(snap, &e) {
 		if e.ProcessID != e.ParentProcessID {
 			t.children[e.ParentProcessID] = append(t.children[e.ParentProcessID], e.ProcessID)
+			t.parent[e.ProcessID] = e.ParentProcessID
 		}
 		t.name[e.ProcessID] = windows.UTF16ToString(e.ExeFile[:])
 	}
 	procTreeCache.at, procTreeCache.tree = time.Now(), t
 	return t
+}
+
+// parentPID returns the parent of a process, 0 when unknown. Windows keeps
+// the id of a parent that exited, which another process may have now.
+func parentPID(pid int) int {
+	if pid <= 0 {
+		return 0
+	}
+	return int(processTree().parent[uint32(pid)])
 }
 
 // newestChild returns the child of parent that started last, or 0. A

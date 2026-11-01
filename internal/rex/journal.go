@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -23,7 +24,9 @@ import (
 // the panes were in, so that the windows attach to the sessions they had as
 // if nothing happened. A run that stops to be replaced (stopRestart) leaves
 // its layout the same way: the server after it starts those sessions again,
-// as new shells.
+// as new shells. A session that ran a coding agent (AgentSession) types
+// the command that resumes its conversation in the new shell: agent
+// entries record each agent a session's hook reported, and its end.
 
 const (
 	// journalLimit is the size past which the journal keeps only its last
@@ -34,6 +37,7 @@ const (
 	eventStart   = "start"
 	eventLayout  = "layout"
 	eventSession = "session"
+	eventAgent   = "agent"
 	eventStop    = "stop"
 	// The reasons a run stops. stopRestart is a run a new server replaces:
 	// the next one starts the sessions of its layout again, as one after a
@@ -64,6 +68,9 @@ type journalSession struct {
 	// Owner is the key of the remote client that created the session, "" for
 	// this machine's.
 	Owner string `json:"owner,omitempty"`
+	// Agent, in an agent entry, is the agent the session runs, nil once it
+	// ended.
+	Agent *AgentSession `json:"agent,omitempty"`
 }
 
 // journal appends to layout.jsonl.
@@ -169,6 +176,11 @@ func (j *journal) session(id, owner, shell, dir string) {
 	j.record(journalEntry{Event: eventSession, Session: &journalSession{ID: id, Owner: owner, Shell: shell, Dir: dir}})
 }
 
+// agent records the agent session id runs, nil once it ended.
+func (j *journal) agent(id string, a *AgentSession) {
+	j.record(journalEntry{Event: eventAgent, Session: &journalSession{ID: id, Agent: a}})
+}
+
 // stopped records that a run stopped, why, and the sessions it held.
 func (j *journal) stopped(reason string, sessions []journalSession) {
 	j.record(journalEntry{Event: eventStop, Reason: reason, Sessions: sessions})
@@ -235,11 +247,30 @@ func lastLayout(entries []journalEntry) json.RawMessage {
 }
 
 // compactJournal keeps the last journalKeep entries of the journal, which is
-// every entry of the runs still able to tell how they ended.
+// every entry of the runs still able to tell how they ended, and before
+// them the entry of each agent that runs still (journalAgents).
 func compactJournal(path string) {
 	entries := readJournal()
-	if len(entries) > journalKeep {
-		entries = entries[len(entries)-journalKeep:]
+	if cut := len(entries) - journalKeep; cut > 0 {
+		live := journalAgents(entries)
+		var kept []journalEntry
+		for i, e := range entries[:cut] {
+			if e.Event != eventAgent || e.Session == nil || e.Session.Agent == nil {
+				continue
+			}
+			a, ok := live[e.Session.ID]
+			if !ok || a != *e.Session.Agent {
+				continue
+			}
+			// The last entry of the session's agent only.
+			last := !slices.ContainsFunc(entries[i+1:], func(n journalEntry) bool {
+				return n.Event == eventAgent && n.Session != nil && n.Session.ID == e.Session.ID
+			})
+			if last {
+				kept = append(kept, e)
+			}
+		}
+		entries = append(kept, entries[cut:]...)
 	}
 	var b bytes.Buffer
 	for _, e := range entries {
@@ -273,46 +304,45 @@ func journalOwners(entries []journalEntry) map[string]string {
 	return out
 }
 
+// journalAgents are the agents the journal recorded that run still, by
+// session: a run that stopped and ended its sessions ended their agents.
+func journalAgents(entries []journalEntry) map[string]AgentSession {
+	out := map[string]AgentSession{}
+	for _, e := range entries {
+		switch {
+		case e.Event == eventStop && e.Reason != stopRestart:
+			clear(out)
+		case e.Event == eventAgent && e.Session != nil && e.Session.ID != "":
+			if a := e.Session.Agent; a != nil && ValidAgent(*a) == nil {
+				out[e.Session.ID] = *a
+			} else {
+				delete(out, e.Session.ID)
+			}
+		}
+	}
+	return out
+}
+
 // restoreSessions starts the sessions a run lost. l is the layout of the run
 // before this one, which did not stop: the sessions of its panes start again
 // at the directories the panes were in, with the ids the layout names, so
-// that the app attaches to the sessions it had. owners is the journal's.
-func (s *Server) restoreSessions(l json.RawMessage, owners map[string]string) {
-	if len(l) == 0 {
-		return
-	}
-	st := layout.Store{}
-	if json.Unmarshal(l, &st) != nil {
-		return
-	}
-	if st.Version < 2 {
-		st.Sessions = []layout.Workspace{{Layout: st.Layout}}
-	}
+// that the app attaches to the sessions it had. owners and agents are the
+// journal's: a session whose agent ran resumes its conversation.
+func (s *Server) restoreSessions(l json.RawMessage, owners map[string]string, agents map[string]AgentSession) {
 	want := 0
-	var walk func(n *layout.Node)
-	walk = func(n *layout.Node) {
-		if n == nil {
+	walkPanes(l, func(n *layout.Node) {
+		// A pane of this machine, with a session the layout names.
+		if n.SID == "" || n.Host != "" {
 			return
 		}
-		if n.A == nil || n.B == nil {
-			// A pane: of this machine, with a session the layout names.
-			if n.SID != "" && n.Host == "" {
-				if s.restorePane(n, owners[n.SID]) {
-					want++
-				}
-			}
-			return
+		var a *AgentSession
+		if ag, ok := agents[n.SID]; ok {
+			a = &ag
 		}
-		walk(n.A)
-		walk(n.B)
-	}
-	for _, w := range st.Sessions {
-		for _, t := range w.Layout.Tabs {
-			for _, n := range t.Roots() {
-				walk(n)
-			}
+		if s.restorePane(n, owners[n.SID], a) {
+			want++
 		}
-	}
+	})
 	if want > 0 {
 		log.Printf("rex: resumed %d sessions of the layout the last run kept", want)
 	}
@@ -322,9 +352,10 @@ func (s *Server) restoreSessions(l json.RawMessage, owners map[string]string) {
 // many panes starts no army of shells before the server answers a client.
 var restoreMost = 32
 
-// restorePane starts the session of node n, when the server does not have it:
-// it reports whether it did.
-func (s *Server) restorePane(n *layout.Node, owner string) bool {
+// restorePane starts the session of node n, when the server does not have it,
+// and resumes the conversation of agent a when not nil: it reports whether it
+// did.
+func (s *Server) restorePane(n *layout.Node, owner string, a *AgentSession) bool {
 	s.mu.Lock()
 	_, live := s.sessions[n.SID]
 	more := len(s.sessions) < restoreMost
@@ -343,11 +374,18 @@ func (s *Server) restorePane(n *layout.Node, owner string) bool {
 		return false
 	}
 	ss.owner = owner
+	s.watch(ss)
 	s.mu.Lock()
 	s.sessions[ss.id] = ss
 	s.order = append(s.order, ss.id)
 	s.mu.Unlock()
 	s.journal.session(ss.id, owner, ss.shell, ss.dir)
+	if a != nil {
+		// The agent runs again, its process to learn: this run's journal
+		// keeps it, should it end as the one before did.
+		ss.resumeAgent(*a)
+		s.journal.agent(ss.id, &AgentSession{Name: a.Name, Conversation: a.Conversation})
+	}
 	s.notify("sessions")
 	return true
 }

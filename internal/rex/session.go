@@ -70,6 +70,13 @@ type session struct {
 	// info found a program in the foreground.
 	status programStatus
 	busy   bool
+	// agent is the coding agent the session runs (AgentSession), nil for
+	// none; agentTyped, for one a restart resumes, when its resume command
+	// was typed, until its process is known. agentGone, set by the server,
+	// tells that the agent ended, to journal it.
+	agent      *AgentSession
+	agentTyped time.Time
+	agentGone  func(id string)
 	// reaped tells that the process ended, with code; exited, that what
 	// it printed was read too.
 	reaped bool
@@ -1324,6 +1331,7 @@ func (s *session) info() SessionInfo {
 		s.notify()
 	}
 	in.Status = MostUrgent(in.Statuses, time.Time{})
+	in.Agent = s.watchAgent(&in)
 	return in
 }
 
@@ -1363,11 +1371,16 @@ func (s *session) sample() {
 	now.PID = s.p.pid()
 	s.foreground(&now)
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	was := s.seen
 	s.seen = now
 	if now.Title != was.Title || now.Program != was.Program || now.Dir != was.Dir || now.Idle != was.Idle || !slices.Equal(now.Args, was.Args) {
 		s.notify()
+	}
+	agent := s.agent != nil
+	s.mu.Unlock()
+	if agent {
+		// The agent's end shows as its shell prints the prompt.
+		s.watchAgent(&now)
 	}
 }
 

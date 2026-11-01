@@ -52,7 +52,7 @@ func hookCommand(agent string) string {
 	if err != nil {
 		exe = "gorex"
 	}
-	inner := shellQuote(exe) + " __internal session-start --agent " + agent + " 2>/dev/null || true # gorex"
+	inner := shellQuote(exe) + " " + hookMarker(agent) + " 2>/dev/null || true # gorex"
 	return "/bin/sh -c " + shellQuote(inner)
 }
 
@@ -60,10 +60,17 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-func hookMarker(agent string) string { return "__internal session-start --agent " + agent }
+func hookMarker(agent string) string { return "agent-hook --agent " + agent }
+
+// legacyHookMarker is the hook of a build before agent-hook, which setup
+// replaces and remove removes.
+func legacyHookMarker(agent string) string { return "__internal session-start --agent " + agent }
 
 // hookState tells whether an agent's session-start hook is installed.
 func hookState(agent string) (string, error) {
+	if _, ok := extensionAgents[agent]; ok {
+		return extensionState(agent)
+	}
 	spec, ok := hookSpecs()[agent]
 	if !ok {
 		return "not supported", nil
@@ -100,7 +107,11 @@ func hasHook(root map[string]any, event, marker string) string {
 }
 
 func isOurHook(cmd, marker string) bool {
-	return strings.Contains(cmd, marker) && strings.Contains(cmd, "# gorex")
+	if !strings.Contains(cmd, "# gorex") {
+		return false
+	}
+	agent := strings.TrimPrefix(marker, hookMarker(""))
+	return strings.Contains(cmd, marker) || strings.Contains(cmd, legacyHookMarker(agent))
 }
 
 func readObject(path string) (map[string]any, error) {
@@ -168,6 +179,9 @@ func writeObject(path string, root map[string]any) error {
 // setHook adds or removes this executable's session-start hook, leaving
 // every other hook as it is.
 func setHook(agent string, install, dry bool) (string, error) {
+	if _, ok := extensionAgents[agent]; ok {
+		return setExtension(agent, install, dry)
+	}
 	spec, ok := hookSpecs()[agent]
 	if !ok {
 		return "not supported", nil

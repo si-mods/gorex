@@ -91,6 +91,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return configCmd(args, out, errOut)
 	case "__internal":
 		return internalCmd(args, out, errOut)
+	case "agent-hook":
+		return agentHookCmd(args, stdin, out)
 	case "wait":
 		return waitCmd(args, out, errOut)
 	case "run":
@@ -833,18 +835,13 @@ func configCmd(args []string, out, errOut io.Writer) (int, bool) {
 	return ExitUsage, true
 }
 
+// stdin is what agent-hook reads its hook's input from.
+var stdin io.Reader = os.Stdin
+
 func internalCmd(args []string, out, errOut io.Writer) (int, bool) {
 	if len(args) > 0 && args[0] == "session-start" {
-		id := contextValue(os.Getenv("GOREX_SESSION"))
-		if id == "" {
-			return ExitOK, true
-		}
-		host := contextValue(os.Getenv("GOREX_HOST"))
-		if host == "" {
-			host = "this machine"
-		}
-		fmt.Fprintf(out, "GoRex session %s on %s. Use gorex ls, gorex send, gorex capture and gorex wait to work in it or in other sessions.\n", id, host)
-		return ExitOK, true
+		// The hook of a build before agent-hook.
+		return agentHookCmd(args[1:], stdin, out)
 	}
 	fmt.Fprintln(errOut, "gorex: unknown internal command")
 	return ExitUsage, true
