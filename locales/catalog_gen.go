@@ -454,6 +454,24 @@ func (msgs Messages) CmdPaneToNewTab() string {
 	return Catalog.Format(msgs.locale, "cmdPaneToNewTab", nil)
 }
 
+// CmdJumpToNeedy says "Jump to Pane That Needs You"
+// in the language the app shows.
+//
+// Command: focus the next pane that needs the user, across tabs and spaces:
+// a program blocked on them, a finished or failed one they did not see, or
+// a bell.
+func CmdJumpToNeedy() string { return In(i18n.Locale()).CmdJumpToNeedy() }
+
+// CmdJumpToNeedy says "Jump to Pane That Needs You"
+// in the language of msgs.
+//
+// Command: focus the next pane that needs the user, across tabs and spaces:
+// a program blocked on them, a finished or failed one they did not see, or
+// a bell.
+func (msgs Messages) CmdJumpToNeedy() string {
+	return Catalog.Format(msgs.locale, "cmdJumpToNeedy", nil)
+}
+
 // CmdNextTab says "Next Tab"
 // in the language the app shows.
 //
@@ -2206,6 +2224,34 @@ func SettingsPaneHeadersHint() string { return In(i18n.Locale()).SettingsPaneHea
 // Hint under the Show pane headers setting.
 func (msgs Messages) SettingsPaneHeadersHint() string {
 	return Catalog.Format(msgs.locale, "settingsPaneHeadersHint", nil)
+}
+
+// SettingsDockBadge says "Dock badge"
+// in the language the app shows.
+//
+// Setting: whether the app icon shows how many panes need the user.
+func SettingsDockBadge() string { return In(i18n.Locale()).SettingsDockBadge() }
+
+// SettingsDockBadge says "Dock badge"
+// in the language of msgs.
+//
+// Setting: whether the app icon shows how many panes need the user.
+func (msgs Messages) SettingsDockBadge() string {
+	return Catalog.Format(msgs.locale, "settingsDockBadge", nil)
+}
+
+// SettingsDockBadgeHint says "Show on the app icon how many panes need you: blocked, finished or failed out of sight, or rang the bell."
+// in the language the app shows.
+//
+// Hint under the Dock badge setting.
+func SettingsDockBadgeHint() string { return In(i18n.Locale()).SettingsDockBadgeHint() }
+
+// SettingsDockBadgeHint says "Show on the app icon how many panes need you: blocked, finished or failed out of sight, or rang the bell."
+// in the language of msgs.
+//
+// Hint under the Dock badge setting.
+func (msgs Messages) SettingsDockBadgeHint() string {
+	return Catalog.Format(msgs.locale, "settingsDockBadgeHint", nil)
 }
 
 // SettingsAnimation says "Animation style"

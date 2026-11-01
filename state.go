@@ -1066,6 +1066,7 @@ func (nopConn) Close() error                { return nil }
 func (a *App) ring(p *Pane) {
 	if t := a.tab(); t == nil || t.Focus != p || p.Tab != t || !a.focusedWin {
 		p.askAttention()
+		a.syncBadge()
 	}
 }
 
@@ -2616,6 +2617,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 	if a.saveDue && time.Since(a.lastSave) > time.Second {
 		a.save()
 	}
+	a.syncBadge()
 }
 
 // adoptLocal opens a tab for each session a remote client created on this
