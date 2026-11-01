@@ -77,14 +77,20 @@ func (a *App) needing() []needy {
 
 // jumpToNeedy focuses the pane that most needs the user, other than the
 // focused one: in this window, in another that shows its space, or in this
-// one after showing its space. Pressed again it goes on to the next. It
+// one after showing its space. Pressed again it goes on to the next, and
+// round to the first. It
 // does nothing when no other pane asks.
 func (a *App) jumpToNeedy() {
 	var focused *Pane
 	if t := a.tab(); t != nil {
 		focused = t.Focus
 	}
-	for _, n := range a.needing() {
+	list := a.needing()
+	// Start after the focused pane when it is in the list, and wrap
+	// around, so that presses visit each in turn; else start at the top.
+	start := slices.IndexFunc(list, func(n needy) bool { return n.pane != nil && n.pane == focused }) + 1
+	for k := range list {
+		n := list[(start+k)%len(list)]
 		if n.pane != nil && n.pane == focused {
 			continue
 		}

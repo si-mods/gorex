@@ -110,3 +110,28 @@ func TestDockBadgeSetting(t *testing.T) {
 		t.Fatalf("badge %d with the setting off", testBadge.Load())
 	}
 }
+
+// TestJumpToNeedyCycles visits three blocked panes in turn, which stay
+// blocked when seen.
+func TestJumpToNeedyCycles(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	now := time.Now()
+	ta := a.tab()
+	tb := a.newTab(t.TempDir())
+	tc := a.newTab(t.TempDir())
+	for _, x := range []*Tab{ta, tb, tc} {
+		x.Focus.info.Statuses = oneStatus("blocked", now)
+	}
+	a.selectTab(0)
+	tt.Frame()
+	for i, w := range []*Tab{tb, tc, ta, tb} {
+		a.jumpToNeedy()
+		if a.tab() != w {
+			t.Fatalf("press %d went to tab %d", i+1, a.active)
+		}
+		tt.Frame()
+	}
+}
