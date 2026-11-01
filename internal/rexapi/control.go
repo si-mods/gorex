@@ -346,6 +346,8 @@ func (c *control) readLoop() {
 			// A close frame from the client ends its client at once; any
 			// other end keeps it for a reconnect.
 			clean = websocket.CloseStatus(err) >= 0 && !c.ours.Load()
+			// The writer and the keepalive end with the connection.
+			c.closeWith(websocket.StatusNormalClosure, "")
 			return
 		}
 		tracef("control <- %s", clip(data))

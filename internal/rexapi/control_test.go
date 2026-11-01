@@ -2,6 +2,7 @@ package rexapi
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -193,4 +194,37 @@ func TestReconnect(t *testing.T) {
 	if ev["seq"] != float64(1) {
 		t.Errorf("first event after a reconnect: %v", ev)
 	}
+}
+
+// TestClientCloseEndsWriter checks that a connection the client ends,
+// with a close frame or without, stops its writer and keepalive.
+func TestClientCloseEndsWriter(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(standardLayout())
+	for _, abrupt := range []bool{false, true} {
+		c := f.dialControl()
+		c.hello(apiRevision)
+		waitFor(t, "the writer to start", func() bool { return controlLoops() > 0 })
+		if abrupt {
+			c.ws.CloseNow()
+		} else {
+			c.ws.Close(websocket.StatusNormalClosure, "")
+		}
+		waitFor(t, "the writer and keepalive to end", func() bool { return controlLoops() == 0 })
+	}
+}
+
+// controlLoops counts the goroutines running a control connection's
+// writer or keepalive.
+func controlLoops() int {
+	buf := make([]byte, 1<<20)
+	for {
+		n := runtime.Stack(buf, true)
+		if n < len(buf) {
+			buf = buf[:n]
+			break
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+	return strings.Count(string(buf), "(*control).writeLoop") + strings.Count(string(buf), "(*control).keepalive")
 }
