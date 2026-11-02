@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+* **sidebar:** center the spaces at its foot under the tabs, rather than beside the settings button
+
 ## 0.7.1
 
 ### Bug Fixes

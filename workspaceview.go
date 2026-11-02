@@ -242,14 +242,14 @@ func spaceDot(c *ui.Context, k *colors, w *Workspace) ui.Element {
 }
 
 // spaceStrip is the foot of the sidebar's spaces: a dot for each space,
-// the window's ringed, and a button that makes another. A dot shows its
-// space, or the window showing it.
+// the window's ringed, and a button that makes another, centered under
+// the tabs. A dot shows its space, or the window showing it.
 func (a *App) spaceStrip(c *ui.Context, k *colors) {
 	if a.st == nil {
 		ui.Spacer(c)
 		return
 	}
-	ui.Row(c).Grow(1).MinWidth(0).ClipX().Gap(2).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Grow(1).MinWidth(0).ClipX().Gap(2).AlignItems(ui.Center).Justify(ui.Center).Children(func() {
 		for i, w := range a.st.workspaces {
 			a.spaceDotButton(c, k, i, w)
 		}
