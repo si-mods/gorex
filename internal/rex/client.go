@@ -2,6 +2,7 @@ package rex
 
 import (
 	"bufio"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -887,6 +888,11 @@ type Stream struct {
 	// window kept the focus takes no session's size. nil counts as
 	// present. Set it with SetPresent, under mu.
 	Present func() bool
+	// id is what the attach gives as Attach.Client (ClientID), made
+	// once: the session names its authority by it (SessionInfo.SizedBy),
+	// which tells the window whether the size the program draws for is
+	// its own.
+	id string
 
 	// OnData, when set, is called with the size of what the session
 	// prints, from the reading goroutine.
@@ -983,6 +989,10 @@ func (s *Stream) attachOnce() {
 		cols, rows = s.cols, s.rows
 		var present func() bool
 		focused, present = s.focused, s.Present
+		if s.id == "" {
+			s.id = "s" + rand.Text()[:10]
+		}
+		id := s.id
 		s.mu.Unlock()
 		// An attach claims the focus only while the user is at this
 		// machine: a stream made and focused on an unattended one leaves
@@ -992,7 +1002,7 @@ func (s *Stream) attachOnce() {
 		}
 		if err == nil {
 			conn.SetDeadline(time.Now().Add(callTimeout.get()))
-			b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows, Conn: connID, Focused: focused})
+			b, _ := json.Marshal(Attach{Op: "attach", SID: s.sid, Cols: cols, Rows: rows, Conn: connID, Focused: focused, Client: id})
 			if _, err = conn.Write(append(b, '\n')); err == nil {
 				err = readOK(conn)
 			}
@@ -1142,4 +1152,14 @@ func (s *Stream) Size() (cols, rows int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.cols, s.rows
+}
+
+// ClientID returns the id the stream's attach gives (Attach.Client), ""
+// until it attaches: the session names the client whose terminal sizes it
+// (SessionInfo.SizedBy) by that id, which tells whether the size the
+// program draws for is this stream's.
+func (s *Stream) ClientID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.id
 }

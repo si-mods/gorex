@@ -525,6 +525,16 @@ func (a *App) later(c *ui.Context, fn func()) {
 	c.Invalidate()
 }
 
+// updateOn changes the state on the main thread, in the window the panes
+// are drawn in, or in the next frame of a view without one, as in tests.
+func (a *App) updateOn(fn func()) {
+	if win := a.win; win != nil {
+		win.Update(fn)
+	} else {
+		a.post(fn)
+	}
+}
+
 // runPosted makes the changes posted since the last frame.
 func (a *App) runPosted() {
 	a.postMu.Lock()
@@ -865,6 +875,11 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		p.seenFunc = func(sid string, at time.Time) { a.st.recordSeen(sid, at) }
 	}
 	opts := termOptions()
+	// The session keeps the terminal the program draws to, and the pane
+	// shows what it says: its screen takes the session's size (syncSize),
+	// where the program drew its output, not the pane's, and the view
+	// only asks the session for the size the pane fits.
+	opts.ResizeByConn = true
 	if p.host != nil {
 		p.remote = newHostStream(p.host, p.SID, cols, rows)
 		// A host's streams claim the focus on each attach only while the
@@ -999,12 +1014,143 @@ func (a *App) takeSize(p *Pane) {
 		return
 	}
 	p.info.SizeLock = ""
-	cols, rows := p.term.Size()
+	cols, rows := p.askedSize()
+	if cols <= 0 || rows <= 0 {
+		cols, rows = p.term.Size()
+	}
 	client, sid := a.client, p.SID
 	go func() {
 		if err := client.UnlockSize(sid, "", cols, rows); err != nil {
 			log.Printf("taking the size back: %v", err)
 		}
+	}()
+}
+
+// askedSize returns the size the pane asked the session for, its own,
+// which the program draws for while this pane's stream is the session's
+// authority (SessionInfo.SizedBy).
+func (p *Pane) askedSize() (cols, rows int) {
+	switch {
+	case p.stream != nil:
+		return p.stream.Size()
+	case p.remote != nil:
+		return p.remote.Size()
+	}
+	return 0, 0
+}
+
+// paneSize returns the size of the pane's grid, which a session it opens
+// takes: the size it asked its own session for, or its terminal's while
+// the stream is not attached yet.
+func (p *Pane) paneSize() (cols, rows int) {
+	if p == nil {
+		return 0, 0
+	}
+	if cols, rows = p.askedSize(); cols > 0 && rows > 0 {
+		return cols, rows
+	}
+	if p.term != nil {
+		return p.term.Size()
+	}
+	return 0, 0
+}
+
+// clientID returns the id the pane's stream attaches with, which
+// SessionInfo.SizedBy names the client whose terminal sizes the session
+// by.
+func (p *Pane) clientID() string {
+	switch {
+	case p.stream != nil:
+		return p.stream.ClientID()
+	case p.remote != nil:
+		return p.remote.ClientID()
+	}
+	return ""
+}
+
+// screenSize returns the size the pane's terminal takes, and whether it is
+// another client's: the session's, while another window's terminal, on
+// this machine or another, or a device holding the size (SizeLock), sizes
+// it, so that the pane lays the program's output out at the size the
+// program drew it for; else the pane's own.
+func (p *Pane) screenSize() (cols, rows int, theirs bool) {
+	by := p.info.SizedBy
+	if (p.info.SizeLock != "" || by != "" && by != p.clientID()) && p.info.Cols > 0 && p.info.Rows > 0 {
+		return p.info.Cols, p.info.Rows, true
+	}
+	cols, rows = p.askedSize()
+	return cols, rows, false
+}
+
+// syncSizes gives each pane's terminal the size the program in its session
+// draws for (screenSize). A terminal that lays the output out at another
+// size wraps the lines the program did not, and the program's next frame,
+// moving the cursor from where it thinks it is, lands elsewhere: what
+// agents' interfaces draw in place then covers rows with rows. It runs
+// each frame, on the main thread, and acts only as a size changes.
+func (a *App) syncSizes() {
+	for _, t := range a.tabs {
+		for _, p := range t.allPanes() {
+			a.syncSize(p)
+		}
+	}
+}
+
+// syncSize sizes the pane's terminal (syncSizes), and, when it takes a
+// size the program drew for another, replaces what it shows with the
+// session's screen: the output it laid out before, wrapped and drawn over
+// at the wrong size, is not that screen.
+func (a *App) syncSize(p *Pane) {
+	if p.term == nil || p.closed {
+		return
+	}
+	cols, rows, theirs := p.screenSize()
+	if cols <= 0 || rows <= 0 {
+		return
+	}
+	if c, r := p.term.Size(); c == cols && r == rows {
+		return
+	}
+	p.term.Resize(cols, rows)
+	if theirs {
+		a.resyncPane(p)
+	}
+}
+
+// resyncPane replaces what the pane shows with its session's screen, off
+// the UI thread: a capture taken later for a size the pane no longer has
+// is dropped, and the size's change resyncs.
+func (a *App) resyncPane(p *Pane) {
+	if p.SID == "" || p.closed || p.term == nil {
+		return
+	}
+	sid, term := p.SID, p.term
+	var client *rex.Client
+	if p.host != nil {
+		client = p.host.current()
+	} else {
+		client = a.client
+	}
+	if client == nil {
+		return
+	}
+	go func() {
+		res, err := client.Capture(sid, 0)
+		if err != nil || res.Cols <= 0 || res.Rows <= 0 {
+			return
+		}
+		// The snapshot replays the screen and scrollback that shows it:
+		// what the pane laid out before it clears away.
+		snapshot := append([]byte(screenReset), res.Screen...)
+		a.updateOn(func() {
+			if p.closed || p.term != term {
+				return
+			}
+			if cols, rows, _ := p.screenSize(); cols != res.Cols || rows != res.Rows {
+				return
+			}
+			term.Feed(snapshot)
+		})
 	}()
 }
 
@@ -1216,14 +1362,15 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 			return nil
 		}
 	}
-	cols, rows := 80, 24
-	if old.term != nil {
-		cols, rows = old.term.Size()
+	cols, rows := old.paneSize()
+	if cols > 0 && rows > 0 {
 		if vertical {
 			rows = max(rows/2, 2)
 		} else {
 			cols = max(cols/2, 10)
 		}
+	} else {
+		cols, rows = 80, 24
 	}
 	p := a.newPaneRun(old.host, dir, cols, rows, command)
 	a.splitWith(old, p, vertical)
@@ -1859,9 +2006,9 @@ func (a *App) newFloat(command []string) *Pane {
 	if a.offline(h) {
 		return nil
 	}
-	cols, rows := 80, 24
-	if t.Focus != nil && t.Focus.term != nil {
-		cols, rows = t.Focus.term.Size()
+	cols, rows := t.Focus.paneSize()
+	if cols <= 0 || rows <= 0 {
+		cols, rows = 80, 24
 	}
 	p := a.newPaneRun(h, a.currentDir(), cols, rows, command)
 	p.Tab = t
@@ -2337,8 +2484,8 @@ func (a *App) savedTab(t *Tab) savedTab {
 			if s.Dir == "" {
 				s.Dir = p.startDir
 			}
-			if p.term != nil {
-				s.Cols, s.Rows = p.term.Size()
+			if cols, rows := p.paneSize(); cols > 0 && rows > 0 {
+				s.Cols, s.Rows = cols, rows
 			}
 			return s
 		}
@@ -2656,6 +2803,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			}
 		}
 	}
+	a.syncSizes()
 	if a.luaConfig != nil {
 		for _, ev := range events {
 			a.luaConfig.Emit("program_status_changed", ev)
@@ -2964,9 +3112,9 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	if t == nil || t.Root != nil && t.host() != p.host {
 		return
 	}
-	cols, rows := 80, 24
-	if p.term != nil {
-		cols, rows = p.term.Size()
+	cols, rows := p.paneSize()
+	if cols <= 0 || rows <= 0 {
+		cols, rows = 80, 24
 	}
 	noteID, isNote := "", p.note != nil
 	var noteSize float32

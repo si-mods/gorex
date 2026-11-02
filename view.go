@@ -34,6 +34,7 @@ func (a *App) view(c *ui.Context) {
 	a.focusedWin = a.win == nil || a.win.IsFocused()
 	breathing = a.focusedWin
 	a.claimFocus()
+	a.syncSizes()
 	c.SetTheme(menuTheme(c.Theme(), k))
 	setupMenus(c)
 	rootBackground(c, k.bgBottom)

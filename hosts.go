@@ -1358,6 +1358,27 @@ func (s *hostStream) SetFocused(on bool) {
 	}
 }
 
+// Size returns the size the pane asked the session for, which its next
+// stream attaches at.
+func (s *hostStream) Size() (cols, rows int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cols, s.rows
+}
+
+// ClientID returns the id of the stream attached now, "" while none is:
+// the host's server names the client whose terminal sizes the session
+// (SessionInfo.SizedBy) by it.
+func (s *hostStream) ClientID() string {
+	s.mu.Lock()
+	st := s.cur
+	s.mu.Unlock()
+	if st == nil {
+		return ""
+	}
+	return st.ClientID()
+}
+
 // sendSize tells the stream of the moment the latest size, one at a time,
 // so that an older size never comes last.
 func (s *hostStream) sendSize() {

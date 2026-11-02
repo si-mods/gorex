@@ -97,12 +97,31 @@ Typing claims the size whatever the idle time is: typing is presence.
 - **The app restarts.** Its window gains the focus while the user is
   present, so its panes claim, and no key press is needed.
 
+## What a window shows
+
+A window does not lay the program's output out itself: its terminal takes
+the size the program drew for, the session's, and the program's bytes lay
+out there as they did on the server. Its view only asks the session for
+the size the pane fits.
+
+So each attach gives an id of its own (`Attach.Client`), and the server
+names the authority by it (`SessionInfo.SizedBy`), and `SizeLock` names
+a device holding the size: a window that is neither takes the session's
+size rather than the pane's. When it
+takes one the program drew for another, it asks the server for the
+session's screen (`capture`) and shows that, since what it laid out at the
+pane's size before, wrapped where the program did not wrap and drawn over
+where the program moves its cursor, is not the screen the server shows.
+Typing there, or a focus claim, makes the pane the authority again, and
+the pane takes its own size back.
+
 ## Limits
 
-- The client that does not hold the size still shows a program drawing
-  for another grid. Nothing can fix that while two machines show one
-  session at different sizes; the policy only makes sure it is the
-  machine nobody is looking at.
+- A window that does not hold the size shows the program's grid, which the
+  pane clips when the pane is smaller: the grid's right columns and its
+  last rows, where agents draw their input, are out of view until the pane
+  grows or the size returns. Nothing fits a grid into a smaller pane
+  without scaling it.
 - Presence is per machine, not per window. Someone using another app on
   the PC counts as present, so a GoRex window focused there could claim.
   In practice the window loses the focus to that other app.
