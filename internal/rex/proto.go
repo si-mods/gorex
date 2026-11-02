@@ -25,7 +25,9 @@ import (
 // (Attach.Framed, Attach.History) and the list's ETag: a client of
 // version 1 works as before, its resizes ignored while a session is locked.
 // Later, still within 2, "subscribe" (Response.Event): a server before it
-// answers it with an error, and a client that does not ask gets no events.
+// answers it with an error, and a client that does not ask gets no events;
+// and the attach's client id (Attach.Client), which SessionInfo.SizedBy
+// names the client whose terminal sizes the session by.
 //
 // Version 3 adds capabilities in Hello, layout revisions ("getLayoutState",
 // Request.LayoutRevision, Response.Revision) and revisions on events. It
@@ -515,6 +517,12 @@ type SessionInfo struct {
 	// SizeLock is the owner that holds the session's size (lockSize), ""
 	// while the windows set it.
 	SizeLock string `json:"sizeLock,omitempty"`
+	// SizedBy is the id (Attach.Client) of the client whose terminal the
+	// session's size follows (the authority): the one holding the size
+	// lock, that typed or claimed the focus last, or that attached last.
+	// "" while no client attached with one, as a version 2 client does
+	// not.
+	SizedBy string `json:"sizedBy,omitempty"`
 	// Owner is the public key of the remote client that created the
 	// session, "" for one created locally; OwnerName is its paired name
 	// when known.
@@ -632,6 +640,10 @@ type Attach struct {
 	// request sent once the attach is answered may reach the server
 	// before it registers the attach, which this one never does.
 	Focused bool `json:"focused,omitempty"`
+	// Client is an id of the client's own: SessionInfo.SizedBy names the
+	// session's authority by it, which tells a window whether the size
+	// the program draws for is its own.
+	Client string `json:"client,omitempty"`
 }
 
 // SnapshotHeader is the line before the snapshot of a framed attach: its

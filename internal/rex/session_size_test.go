@@ -425,3 +425,36 @@ func TestFocusBeforeAttach(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 	waitSize(t, c, sid, "90x28")
 }
+
+// TestInfoNamesTheAuthority: SessionInfo.SizedBy names the client whose
+// terminal sizes the session, by the id its attach gave, which a window
+// tells whether the size the program draws for is its own.
+func TestInfoNamesTheAuthority(t *testing.T) {
+	settleFor(t, 30*time.Millisecond)
+	s := newResizeSession(t)
+	s.resizeForAttach(100, 30)
+	waitApplied(t, s, 100, 30)
+	deskVia, phoneVia := net.Pipe()
+	defer deskVia.Close()
+	defer phoneVia.Close()
+	desk := addAttached(s, 1, deskVia, 100, 30)
+	desk.client = "desk"
+	phone := addAttached(s, 2, phoneVia, 150, 55)
+	phone.client = "phone"
+	// With none typing, the authority is the client that attached last.
+	if got := s.info().SizedBy; got != "phone" {
+		t.Fatalf("sizedBy %q, want the newest attach's phone", got)
+	}
+	s.admit(desk, []byte("ls\r"))
+	if got := s.info().SizedBy; got != "desk" {
+		t.Fatalf("sizedBy %q, want the typist's desk", got)
+	}
+	s.admit(phone, []byte("x"))
+	if got := s.info().SizedBy; got != "phone" {
+		t.Fatalf("sizedBy %q, want the typist's phone", got)
+	}
+	s.leave(phone)
+	if got := s.info().SizedBy; got != "desk" {
+		t.Fatalf("sizedBy %q, want the desk left", got)
+	}
+}

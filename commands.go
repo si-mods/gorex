@@ -1023,9 +1023,9 @@ func (a *App) restartFocused() {
 	if a.offline(old.host) {
 		return
 	}
-	cols, rows := 80, 24
-	if old.term != nil {
-		cols, rows = old.term.Size()
+	cols, rows := old.paneSize()
+	if cols <= 0 || rows <= 0 {
+		cols, rows = 80, 24
 	}
 	p := a.newPane(old.host, a.currentDir(), cols, rows)
 	p.Tab, p.Node = t, old.Node

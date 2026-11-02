@@ -141,6 +141,9 @@ type attached struct {
 	// cols and rows are the size its terminal has, which the session
 	// follows once this client is the authority (authorityLocked).
 	cols, rows int
+	// client is the id its attach gave (Attach.Client), "" for none,
+	// which SessionInfo.SizedBy names the authority by.
+	client string
 }
 
 // The most chunks of output that may wait for a client, and bytes for a
@@ -458,7 +461,7 @@ func (s *session) read() {
 // it attached through (Attach.Conn), if any; o.History, o.Framed and
 // o.Snapshot shape the snapshot.
 func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may func() bool, typed []byte) {
-	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != ""}
+	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != "", client: o.Client}
 	if o.Cols > 0 && o.Rows > 0 {
 		a.cols, a.rows = o.Cols, o.Rows
 	}
@@ -1310,6 +1313,11 @@ func (s *session) info() SessionInfo {
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,
 		SizeLock: s.sizeLock,
+	}
+	// The authority's id, and none while a device holds the size: no
+	// attached terminal's size is the session's then.
+	if a := s.authorityLocked(); a != nil && s.sizeLock == "" {
+		in.SizedBy = a.client
 	}
 	s.mu.Unlock()
 	in.PID = s.p.pid()
