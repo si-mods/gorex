@@ -733,8 +733,10 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 		}
 	}
 	if dragged, ok := ui.Drop[*Pane](card); ok {
+		// Once the pass is built: a swap now would show p's card again
+		// in this pass, still holding the drop.
 		if z, ok := paneDropZoneAt(card, dragged, p); ok {
-			a.dropPaneOn(dragged, p, z)
+			a.later(c, func() { a.dropPaneOn(dragged, p, z) })
 		}
 	}
 	if card.Pressed() {

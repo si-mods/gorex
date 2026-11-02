@@ -268,3 +268,35 @@ func TestDragPaneToLeftEdge(t *testing.T) {
 	}
 	_ = second
 }
+
+// A pane dragged onto the center of another swaps with it once: the drop
+// waits for the pass to end, as a swap made while the pass builds the
+// panes would show the target's card again, still holding the drop, and
+// swap the panes back.
+func TestDragPaneToCenterSwaps(t *testing.T) {
+	a, tt := newTestApp(t)
+	tt.Frame()
+	settle(tt)
+	first, _, third := dropTree(t, a)
+	settle(tt)
+	fn, tn := first.Node, third.Node
+	// The dragged pane comes after its target in the tree, so that the
+	// pass reaches the target's node again after the swap.
+	hx, hy := third.termSize.X+third.termSize.W/2, third.termSize.Y-5-headerH/2
+	b := first.termSize
+	tx, ty := b.X+b.W/2, b.Y+b.H/2
+	tt.Press(hx, hy)
+	tt.Frame()
+	for i := 1; i <= 8; i++ {
+		f := float32(i) / 8
+		tt.Move(hx+(tx-hx)*f, hy+(ty-hy)*f)
+		tt.Advance(16 * time.Millisecond)
+		tt.Frame()
+	}
+	tt.Release(tx, ty)
+	tt.Frame()
+	settle(tt)
+	if first.Node != tn || third.Node != fn {
+		t.Fatalf("tree %s, want %d and %d swapped", shape(a.tab().Root), first.ID, third.ID)
+	}
+}
