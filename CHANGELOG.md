@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.9.0
+
+### Features
+
+* **ui:** on Windows and Linux, context menus are drawn as glass, shaped as macOS's: rounded, the highlight in the space's accent, and Chinese labels in one weight rather than the Win32 menus' mixed bold and regular ([#153](https://github.com/si-mods/gorex/pull/153))
 
 ### Bug Fixes
 
-* **palette:** blur only the panel, which is Liquid Glass, and dim the window behind it, rather than blurring the whole window, which read as a smeared window instead of glass
+* **palette:** blur only the panel, which is Liquid Glass, and dim the window behind it, rather than blurring the whole window, which read as a smeared window instead of glass ([#151](https://github.com/si-mods/gorex/pull/151))
 
 ## 0.8.0
 
