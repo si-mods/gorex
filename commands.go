@@ -1281,13 +1281,11 @@ func (a *App) palette(c *ui.Context, k *colors) {
 	// Keyed, the palette is the same element whatever shows before it over
 	// the window, as the error banner coming and going.
 	ui.DialogBase(c.Key("palette"), &a.paletteOpen, func(backdrop, panel ui.Element) {
-		// Both are glass where the frame draws on a GPU: the window behind
-		// shows blurred through them. Elsewhere they are flat, as before.
-		backdrop.Justify(ui.Start).Padding(78, 0, 0, 0).Draw(func(p *ui.Painter, r ui.Rect) {
-			paintFrost(p, r, 10, 0, k.backdrop, k.backdrop)
-		})
-		// Under the glass setting the panel is Liquid Glass over the frosted
-		// backdrop, as the other floating layers are.
+		// The backdrop dims the window; the glass is the panel's, which
+		// blurs only what it covers.
+		backdrop.Justify(ui.Start).Padding(78, 0, 0, 0).Background(k.backdrop)
+		// Under the glass setting the panel is Liquid Glass over the
+		// dimmed window, as the other floating layers are.
 		panel.Width(560).MaxHeight(440).Radius(16).Border(1, k.panelBorder)
 		if glassOn() {
 			glassPanel(panel, k.panel)

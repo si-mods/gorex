@@ -15,7 +15,7 @@ thing.
 
 | Look | Code | Use it for |
 |---|---|---|
-| Frosted glass: the window behind, blurred and tinted | `frost.go`, `paintFrost(p, r, blur, radius, tint, flat)` | Overlays: the palette's backdrop (blur 10, `k.backdrop`) and, with the Glass setting off, its panel (blur 24, radius 16, `k.panelGlass`). A new backdrop uses `paintFrost` from its `Draw`, without a `Background`; a new dialog, popover or floating panel uses `glassPanel` ([Glass](#glass)). |
+| Frosted glass: the window behind, blurred and tinted | `frost.go`, `paintFrost(p, r, blur, radius, tint, flat)` | A panel with the Glass setting off, as the palette's (blur 24, radius 16, `k.panelGlass`). A backdrop dims with a `Background` instead, as the palette's does (`k.backdrop`); a new dialog, popover or floating panel uses `glassPanel` ([Glass](#glass)). |
 | Window background: the gradients, dithered | `style.go`, `paintBackground` | Every full-window page (the main view, Settings). A new page paints it the same way, and does not paint gradients of its own. |
 | Inactive: grey and faded | `dim.go`, `dimmed(e, opacity)` | Disabled or in-flight controls (a dragged tab, a disabled nav button). Use it in place of `e.Opacity(x)` for "not available now". |
 
@@ -83,7 +83,7 @@ before. Three things make it up:
 | The window's material: what is behind the window, frosted by the system | `glass.go`, `glassVibrancy`, `WindowOptions.Vibrancy`, `Window.SetVibrancy` | The windows, main and Settings. `VibrancyGlass` on macOS (from 26; before, MyGo shows the popover material), `VibrancyMica` on Windows 11, none on Linux. |
 | In-window glass: what the window drew under it, through `glass.Glass` | `glass.go`, `glassPanel(e, flat)`, `paneGlass{face, flat}` | Popovers, dialogs, the palette's panel and floats: layers over what the page paints. |
 | The system's glass in an element: AppKit's `NSGlassEffectView` under its box | `glass.go`, `glassPill`, `ui.SystemGlass{Tint, Fallback}` | The active tab's pill, in the sidebar, the tab strip and Settings, as Rex's: no tint dark, `pillTint` light; `faceMaterial{k.pillFace}` where the system draws none (before macOS 26, Windows, Linux, tests). |
-| Frost: the window behind, blurred and tinted | `frost.go`, `paintFrost` | The palette's backdrop, glass setting or not. |
+| Frost: the window behind, blurred and tinted | `frost.go`, `paintFrost` | A panel with the glass setting off, as the palette's, whose backdrop only dims it. |
 
 - **Ask the window whether its glass shows.** `windowGlass(c)` is the
   setting and `c.Vibrancy()`: the system draws no material on Linux,
@@ -97,9 +97,12 @@ before. Three things make it up:
 - **In-window glass is the GPU's.** `paneGlass` paints `glass.Glass`
   where `p.Accelerated()`, and its flat face elsewhere, as `paintFrost`
   does: on the CPU the glass runs slowly, and the tests see the old
-  fills. A new popover, dialog or floating panel takes
-  `glassPanel(panel, k.panel)` in place of `Background(k.panel)`, with
-  its radius and border as before.
+  fills. The palette's backdrop only dims (`k.backdrop`), so that the
+  glass is the panel's alone and blurs only what it covers: a blur over
+  the whole window reads as a smeared window, not as glass. A new
+  popover, dialog or floating panel takes `glassPanel(panel, k.panel)`
+  in place of `Background(k.panel)`, with its radius and border as
+  before.
 - **Over the window's glass, the system's glass.** `glass.Glass` reads
   only what the page painted: under the clear sidebar and strip that is
   nothing, and it turns dark. Glass over them is `ui.SystemGlass`, which
@@ -111,7 +114,8 @@ before. Three things make it up:
   and active rows have one shape.
 - **macOS windows are transparent.** The window's glass shows the
   desktop only through a window that is not opaque
-  (`glassTransparent`, `WindowOptions.Transparent`); Mica needs none.
+  (`glassTransparent`, `WindowOptions.Transparent`); the Windows
+  backdrops need none.
 - **Live, and on Windows at creation.** Turning the setting sets every
   open window's material (`applyGlass`). Windows shows a material only
   in a window created with one: a window opened with the setting off
