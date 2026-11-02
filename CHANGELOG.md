@@ -1,10 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
+
+### Features
+
+* **panes:** drag a pane by its header onto another pane: on a side it splits that pane and takes its half, at the center the two swap places; the target shows where the pane will go, as Rex does ([#148](https://github.com/si-mods/gorex/pull/148))
 
 ### Bug Fixes
 
-* **sidebar:** center the spaces at its foot under the tabs, rather than beside the settings button
+* **sidebar:** center the spaces at its foot under the tabs, rather than beside the settings button ([#146](https://github.com/si-mods/gorex/pull/146))
 
 ## 0.7.1
 
