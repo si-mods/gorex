@@ -31,12 +31,20 @@ func menuStyle(k *colors) *ui.MenuStyle {
 	}
 }
 
+// The styles of the two palettes colorsOf gives, made once: a new one
+// each frame would make the theme differ from the last frame's, which
+// views that compare themes, as markdown's, take for a change of theme.
+var darkMenu, lightMenu = menuStyle(&darkColors), menuStyle(&lightColors)
+
 // setupMenus gives c's window the drawn menus' look, and turns them on
 // where drawMenusOn says. Every window's view calls it each frame, before
 // anything opens a menu.
 func setupMenus(c *ui.Context, k *colors) {
 	c.SetDrawMenus(drawMenusOn(runtime.GOOS, os.Getenv("GOREX_DRAW_MENUS")))
 	t := *c.Theme()
-	t.Menu = menuStyle(k)
+	t.Menu = lightMenu
+	if k == &darkColors {
+		t.Menu = darkMenu
+	}
 	c.SetTheme(&t)
 }
