@@ -80,9 +80,9 @@ func tabWidth(c *ui.Context, t *Tab) float32 {
 	badge := float32(0)
 	if h := t.host(); h != nil {
 		bw, _ := c.MeasureText(0, ui.Span{Text: h.Name, Size: badgeSize, Weight: 600})
-		badge = min(bw, badgeMaxW) + 12 + 9
+		badge = min(bw, badgeMaxW) + 12 + 6
 	}
-	return min(max(6+tiles+9+w+9+18+10, tabMinW), tabMaxW) + badge
+	return min(max(9+tiles+6+w+6+18+10, tabMinW), tabMaxW) + badge
 }
 
 // The badge of a remote host's tab: its text's size, and its widest.
@@ -165,7 +165,7 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 		shrink = 1
 	}
 	e := ui.Row(c.Key(t.ID)).Height(tabH).Basis(width).Shrink(shrink).MinWidth(64).
-		Padding(0, 10, 0, 6).Gap(9).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).Selected(active)
+		Padding(0, 10, 0, 9).Gap(6).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
 	if active {
