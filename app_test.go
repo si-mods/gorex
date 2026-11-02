@@ -612,6 +612,30 @@ func TestSidebar(t *testing.T) {
 	}
 }
 
+// TestSidebarTilesReserve checks the room a sidebar row's tiles take: one
+// tile for a tab alone, and a step more for each pane past it, up to the
+// three the tiles stack.
+func TestSidebarTilesReserve(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, _ := newTestApp(t)
+	tabs := []*Tab{a.tab()}
+	if got := tilesReserve(tabs); got != tileW+2 {
+		t.Errorf("a tab alone reserves %v, past one tile", got)
+	}
+	a.split(false)
+	two := tilesReserve(tabs)
+	if two <= tileW+2 {
+		t.Errorf("a tab of two panes reserves %v, no more than one tile", two)
+	}
+	a.split(false)
+	three := tilesReserve(tabs)
+	a.split(false)
+	if four := tilesReserve(tabs); four != three {
+		t.Errorf("a tab of four panes reserves %v, past the three tiles it draws (%v)", four, three)
+	}
+}
+
 func TestSidebarTabDropMerges(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })

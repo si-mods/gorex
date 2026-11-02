@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+* **tabs:** give the pill of an active tab more room before its icon and less after it, and take a sidebar row's room for tiles from the widest tab's, so that a tab alone no longer keeps the room of three tiles between its icon and its name
+
 ## 0.7.0
 
 ### Features

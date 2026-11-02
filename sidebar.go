@@ -251,10 +251,11 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6, 6, 6).Children(func() {
 			tabs := slices.Clone(a.tabs)
+			reserve := tilesReserve(tabs)
 			ui.Column(c).Gap(2).Role(ui.RoleTabList).Label(locales.TabListLabel()).Children(func() {
 				if len(a.hosts) == 0 {
 					for i, t := range tabs {
-						a.sidebarTab(c, k, i, t)
+						a.sidebarTab(c, k, i, t, reserve)
 					}
 					return
 				}
@@ -263,7 +264,7 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 				for _, h := range a.allHosts() {
 					a.hostSection(c, k, h)
 					for _, t := range a.tabsOn(h) {
-						a.sidebarTab(c, k, slices.Index(tabs, t), t)
+						a.sidebarTab(c, k, slices.Index(tabs, t), t, reserve)
 					}
 				}
 			})
@@ -315,9 +316,9 @@ func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
 
 // sidebarTab draws a tab in the sidebar: the tiles of its panes' programs,
 // its name and detail, and its close button or activity.
-func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab) {
+func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float32) {
 	active := i == a.active
-	e := ui.Row(c.Key(t.ID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, 6).Gap(8).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
+	e := ui.Row(c.Key(t.ID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, 9).Gap(6).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
@@ -335,10 +336,22 @@ func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab) {
 	a.tabEvents(c, e, k, i, t)
 	hovered := e.Hovered()
 	e.Children(func() {
-		// The tiles take the room of three, so that the names line up.
-		ui.Box(c).Width(tileW + tileStep*2 + 2).Shrink(0).Children(func() { a.tiles(c, k, t) })
+		// The tiles take the room of the widest tab's, so that the names
+		// line up.
+		ui.Box(c).Width(reserve).Shrink(0).Children(func() { a.tiles(c, k, t) })
 		a.tabRest(c, k, t, active, hovered)
 	})
+}
+
+// tilesReserve is the room the tiles of a sidebar row take: that of the
+// tab with the most panes, each tile past the first peeking out by
+// tileStep, so that the names of every row line up.
+func tilesReserve(tabs []*Tab) float32 {
+	most := 1
+	for _, t := range tabs {
+		most = max(most, min(len(t.panes()), 3))
+	}
+	return float32(tileW + tileStep*(most-1) + 2)
 }
 
 // hostSection is the label over a host's tabs in the sidebar: its name,
