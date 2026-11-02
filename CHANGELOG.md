@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.7.0
 
 ### Features
 
-* **ui:** Liquid Glass: the desktop shows through the windows, popovers, dialogs, the palette and floats float as glass, and the active tab sits on the system's own glass, as Rex's; Glass and Terminal opacity in Settings, on and 80% by default
+* **ui:** Liquid Glass: the desktop shows through the windows, popovers, dialogs, the palette and floats float as glass, and the active tab sits on the system's own glass, as Rex's; Glass and Terminal opacity in Settings, on and 80% by default ([#141](https://github.com/si-mods/gorex/pull/141))
 
 ## 0.6.1
 
