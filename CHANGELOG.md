@@ -4,6 +4,7 @@
 
 ### Bug Fixes
 
+* **panes:** show the rows around the cursor in a pane shorter than its session's grid, where the pane showed the empty rows above the cursor
 * **panes:** lay a session's output out at the size the program drew it for, the session's, not the pane's: a window whose session another machine's window sizes takes that size and the session's screen, where it laid the output out at its own size and the program's frames landed elsewhere, covering rows with rows
 
 ## 0.9.0
