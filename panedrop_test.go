@@ -244,7 +244,9 @@ func TestDragPaneToLeftEdge(t *testing.T) {
 	hx, hy := first.termSize.X+first.termSize.W/2, first.termSize.Y-5-headerH/2
 	b := third.termSize
 	tx, ty := b.X+4, b.Y+b.H/2
-	a.saveDue = false
+	// No save while the test runs, which would clear saveDue: a slow
+	// machine takes more than the second between saves.
+	a.saveDue, a.lastSave = false, time.Now().Add(time.Hour)
 	tt.Press(hx, hy)
 	tt.Frame()
 	for i := 1; i <= 8; i++ {
