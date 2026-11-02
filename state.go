@@ -493,6 +493,9 @@ type App struct {
 	edgeDrag  bool
 	edgeFrom  float32
 	edgeMoved float32
+	// paneDrop is the drop zone a dragged pane was last shown over, which
+	// a drop on that pane takes.
+	paneDrop shownDrop
 	// dividerDrag tells that the pointer holding a divider between panes
 	// moved it in the frame before: the panes then follow it at once, with
 	// no spring.

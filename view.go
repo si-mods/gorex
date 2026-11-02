@@ -730,12 +730,20 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	if dragged, over := ui.DragOver[*Pane](card); over {
 		if z, ok := paneDropZoneAt(card, dragged, p); ok {
 			drawPaneDrop(card, k, z)
+			a.paneDrop = shownDrop{p, z}
 		}
 	}
 	if dragged, ok := ui.Drop[*Pane](card); ok {
+		// The zone shown last, where the user let go: the pointer may
+		// have left the card since, or the card moved.
+		z, ok := a.paneDrop.zone, a.paneDrop.target == p
+		if !ok {
+			z, ok = paneDropZoneAt(card, dragged, p)
+		}
+		a.paneDrop = shownDrop{}
 		// Once the pass is built: a swap now would show p's card again
 		// in this pass, still holding the drop.
-		if z, ok := paneDropZoneAt(card, dragged, p); ok {
+		if ok {
 			a.later(c, func() { a.dropPaneOn(dragged, p, z) })
 		}
 	}

@@ -41,19 +41,27 @@ func paneDropZone(nx, ny float32, center bool) dropZone {
 	return dropBottom
 }
 
+// shownDrop is a drop zone shown over a pane.
+type shownDrop struct {
+	target *Pane
+	zone   dropZone
+}
+
 // split tells how a zone splits the target: vertical is above and below,
 // and before puts the dragged pane first, left or above. The center splits
-// nothing.
-func (z dropZone) split() (vertical, before bool) {
+// nothing, and answers false.
+func (z dropZone) split() (vertical, before, ok bool) {
 	switch z {
 	case dropLeft:
-		return false, true
+		return false, true, true
+	case dropRight:
+		return false, false, true
 	case dropTop:
-		return true, true
+		return true, true, true
 	case dropBottom:
-		return true, false
+		return true, false, true
 	}
-	return false, false
+	return false, false, false
 }
 
 // paneZoneIn tells the zone at a point of a card with these bounds, false
@@ -104,7 +112,10 @@ func (a *App) dropPaneOn(p, target *Pane, z dropZone) bool {
 		a.focusReq = p
 		return true
 	}
-	vertical, before := z.split()
+	vertical, before, ok := z.split()
+	if !ok {
+		return false
+	}
 	a.movePaneBeside(p, target, vertical, before, 0.5)
 	return true
 }

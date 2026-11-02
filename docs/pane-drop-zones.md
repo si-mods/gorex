@@ -79,8 +79,8 @@ While a pane is over a target, the target shows where the pane would go:
   the card, radius `cardR - 4`, so that its corners nest in the card's.
 - Drawn with `DrawOver` on the card. No shader or `Effect`: the card holds
   a terminal, and `DESIGN.md` forbids effects on panes.
-- The rectangle moves between zones with a short spring when an animation
-  style is set (`motion(c)`), and at once without one.
+- The rectangle moves between zones at once. A spring between zones is
+  left for later: MyGo has no simple way to spring one painted rectangle.
 - It replaces the border the card shows now.
 
 ### Source
@@ -147,14 +147,28 @@ reads `target.Node` after the detach, so this works. A test covers it
 if dragged, over := ui.DragOver[*Pane](card); over {
 	if z, ok := paneDropZoneAt(card, dragged, p); ok {
 		drawPaneDrop(card, k, z)
+		a.paneDrop = shownDrop{p, z}
 	}
 }
 if dragged, ok := ui.Drop[*Pane](card); ok {
-	if z, ok := paneDropZoneAt(card, dragged, p); ok {
-		a.dropPane(dragged, p, z)
+	z, ok := a.paneDrop.zone, a.paneDrop.target == p
+	if !ok {
+		z, ok = paneDropZoneAt(card, dragged, p)
+	}
+	a.paneDrop = shownDrop{}
+	if ok {
+		a.later(c, func() { a.dropPaneOn(dragged, p, z) })
 	}
 }
 ```
+
+- **The drop takes the zone last shown** (`App.paneDrop`), not one found
+  again from the pointer: by the frame that sees the drop, the pointer
+  may have left the card, or the card moved.
+- **The drop runs after the pass** (`a.later`). Run while the pass builds
+  the panes, a swap would show the target's card again in the same pass,
+  still holding the drop, and swap the panes back
+  (`TestDragPaneToCenterSwaps`).
 
 - `paneDropZone(nx, ny float32, center bool) dropZone` is pure, and is
   tested as `tabDropZone` is.
@@ -180,7 +194,7 @@ how):
 
 - `paneDropZone`: each zone, the diagonals, the center with and without
   `center`, a zero-size card.
-- `dropPane`: each edge on a pane in a nested tree gives the expected tree
+- `dropPaneOn`: each edge on a pane in a nested tree gives the expected tree
   (orientation, A/B, ratio 0.5); center swaps; the cases that do not take
   the drop change nothing; a pane dropped on its only sibling, each side;
   a pane from another tab (the source tab closes when emptied, as now).
@@ -200,12 +214,12 @@ Real window, on the Mac mini with cua-driver (not on this MacBook):
 
 ## Risks
 
-- **Browser panes.** A web view is a native view over the window; the
-  pointer over it may not reach MyGo, so the card under a page may not see
-  the drag. The header of a browser pane will take the drop; the page may
-  not. Check on the Mac mini. If the page does not, show the indicator
-  only over the header, or overlay a transparent drop layer over the web
-  view while a pane drag is on.
+- **Browser panes.** A web view is a native view over the window. On the
+  Mac mini a pane dropped on a page still lands: on its left edge it went
+  left of the browser pane, and at its center the two swapped. Whether the
+  indicator shows over the page, under the native view, is not checked
+  yet. If it does not, show it over the header, or overlay a drop layer
+  over the web view while a pane drag is on.
 - **Hit testing.** The innermost element that takes `*Pane` gets the
   drag. Today only cards and tab labels take it. Something added inside a
   card that takes `*Pane` would take drags from the card.
