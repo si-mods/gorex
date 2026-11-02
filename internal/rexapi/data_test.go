@@ -305,3 +305,116 @@ func TestDataResume(t *testing.T) {
 	wsWrite(t, bad, websocket.MessageBinary, tooHigh)
 	expectReject(t, bad, rejectMalformed, 1002)
 }
+
+// TestBootstrapDataTickets checks the tickets session.bootstrap hands out
+// for the blocks it returns: they open the block's data connection as
+// data.connect's do, they work once, and a detach or a bad request leaves
+// none behind.
+func TestBootstrapDataTickets(t *testing.T) {
+	f := startFixture(t)
+	session, block, _ := dataSession(t, f, nil)
+	c := f.dialControl()
+	c.hello(apiRevision)
+
+	terminals := []map[string]any{{
+		"creator_name": creatorName, "data_ref_id": dataTerminal, "subprotocol": terminalProtocol,
+	}}
+	res := result(t, c.request("boot", "session.bootstrap", map[string]any{
+		"event_scope":        "session",
+		"attach_session_ids": []string{session},
+		"data_tickets":       terminals,
+	}))
+	tickets, ok := res["data_tickets"].([]any)
+	if !ok || len(tickets) != 1 {
+		t.Fatalf("data_tickets: %v", res["data_tickets"])
+	}
+	got := tickets[0].(map[string]any)
+	if got["session_id"] != session || got["block_id"] != block {
+		t.Errorf("ticket names %v, want %s/%s", got, session, block)
+	}
+	if got["data_ref_id"] != dataTerminal || got["subprotocol"] != terminalProtocol {
+		t.Errorf("ticket opens %v/%v", got["data_ref_id"], got["subprotocol"])
+	}
+	if got["expires_in_ms"] != float64(60000) {
+		t.Errorf("expires_in_ms %v", got["expires_in_ms"])
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(got["ticket"].(string))
+	if err != nil || len(raw) != 16 {
+		t.Fatalf("ticket %q: %v", got["ticket"], err)
+	}
+
+	// The ticket opens a data connection, as one from data.connect does.
+	ws := f.dial("/api/data", terminalProtocol)
+	ws.SetReadLimit(maxMessage)
+	dataHello(t, ws, raw)
+
+	// A ticket works once: the same bytes are refused.
+	again := f.dial("/api/data", terminalProtocol)
+	wsWrite(t, again, websocket.MessageBinary, append([]byte{0x01}, raw...))
+	expectReject(t, again, rejectTicket, 1008)
+
+	// A detach throws away the tickets the connection did not spend.
+	res = result(t, c.request("boot2", "session.bootstrap", map[string]any{
+		"event_scope":        "session",
+		"attach_session_ids": []string{session},
+		"data_tickets":       terminals,
+	}))
+	unspent := res["data_tickets"].([]any)[0].(map[string]any)["ticket"].(string)
+	result(t, c.request("detach", "session.detach", map[string]any{"session_id": session}))
+	dropped, err := base64.RawURLEncoding.DecodeString(unspent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := f.dial("/api/data", terminalProtocol)
+	wsWrite(t, stale, websocket.MessageBinary, append([]byte{0x01}, dropped...))
+	expectReject(t, stale, rejectTicket, 1008)
+
+	// A kind no block matches issues nothing, and the key is left out.
+	res = result(t, c.request("nomatch", "session.bootstrap", map[string]any{
+		"event_scope":        "session",
+		"attach_session_ids": []string{session},
+		"data_tickets": []map[string]any{{
+			"creator_name": "com.superlogical.note", "data_ref_id": dataTerminal,
+		}},
+	}))
+	if v, ok := res["data_tickets"]; ok {
+		t.Errorf("data_tickets for no block: %v", v)
+	}
+
+	// A request the server rejects is answered before anything attaches:
+	// the connection has no attachment to open a data connection with.
+	rejected := f.dialControl()
+	rejected.hello(apiRevision)
+	tooMany := make([]map[string]any, 9)
+	for i := range tooMany {
+		tooMany[i] = map[string]any{"creator_name": creatorName, "data_ref_id": dataTerminal}
+	}
+	for _, bad := range []struct {
+		id      string
+		kinds   any
+		problem string
+	}{
+		{"many", tooMany, "more than 8 kinds"},
+		{"noref", []map[string]any{{"creator_name": creatorName}}, "no data_ref_id"},
+		{"badsub", []map[string]any{{
+			"creator_name": creatorName, "data_ref_id": dataTerminal, "subprotocol": "bad proto!",
+		}}, "a malformed subprotocol"},
+		{"unknown", "not an array", "data_tickets that is not an array"},
+	} {
+		e := failure(t, rejected.request(bad.id, "session.bootstrap", map[string]any{
+			"event_scope":        "session",
+			"attach_session_ids": []string{session},
+			"data_tickets":       bad.kinds,
+		}))
+		if e["code"] != "bad_request" {
+			t.Errorf("%s: %v", bad.problem, e)
+			continue
+		}
+		e = failure(t, rejected.request(bad.id+"connect", "data.connect", map[string]any{
+			"session_id": session, "block_id": block, "data_ref_id": dataTerminal,
+		}))
+		if e["code"] != "conflict" {
+			t.Errorf("%s: the connection attached anyway: %v", bad.problem, e)
+		}
+	}
+}

@@ -1,7 +1,7 @@
 # Rex's apps
 
 Rex's own apps, the iPhone one among them, connect to GoRex as they
-connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 7, from
+connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 8, from
 the session server the GoRex app runs: the same WebSocket endpoints, the
 same messages, the same errors. Rex's apps need no change.
 
@@ -166,6 +166,10 @@ meets:
 - Changing the layout needs the GoRex window open, as for rootshell:
   without it, the call fails with `conflict`.
 - Tabs and panes of remote hosts are left out.
+- Revision 8's `data_tickets` on `session.bootstrap` is served: a client
+  that asks for the terminal blocks gets a ticket for each one, and opens
+  its terminals without a `data.connect` round trip each. Only terminals
+  have tickets, since every GoRex block is a terminal.
 
 ## Troubleshooting
 
