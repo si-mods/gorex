@@ -25,7 +25,9 @@ import (
 // (Attach.Framed, Attach.History) and the list's ETag: a client of
 // version 1 works as before, its resizes ignored while a session is locked.
 // Later, still within 2, "subscribe" (Response.Event): a server before it
-// answers it with an error, and a client that does not ask gets no events.
+// answers it with an error, and a client that does not ask gets no events;
+// and the attach's client id (Attach.Client), which SessionInfo.SizedBy
+// names the client whose terminal sizes the session by.
 //
 // Version 3 adds capabilities in Hello, layout revisions ("getLayoutState",
 // Request.LayoutRevision, Response.Revision) and revisions on events. It

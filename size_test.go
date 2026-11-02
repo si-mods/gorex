@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/egoist/mygo/ui"
+
 	"gorex/internal/rex"
 )
 
@@ -112,15 +114,24 @@ func TestPaneReturnsToItsSize(t *testing.T) {
 	})
 
 	// The user types here: this pane's stream sizes the session again,
-	// and the pane shows its own size.
-	if _, err := p.stream.Write([]byte(" ")); err != nil {
-		t.Fatal(err)
-	}
-	waitSessionSize(t, tt, a.client, p.SID, fmt.Sprintf("%dx%d", ownCols, ownRows))
-	refresh(a)
+	// and the pane shows its own size, with the screen the program drew
+	// for it, not what it laid out at the size of another.
+	a.focusReq = p
+	a.tab().setFocus(p)
+	tt.Frame()
+	tt.Key(0, ui.KeyX)
 	waitFor(t, tt, "the pane to take its size back", func() bool {
 		cols, rows := p.term.Size()
 		return cols == ownCols && rows == ownRows
+	})
+	waitSessionSize(t, tt, a.client, p.SID, fmt.Sprintf("%dx%d", ownCols, ownRows))
+	waitFor(t, tt, "the session's screen at the pane's size", func() bool {
+		res, err := a.client.Capture(p.SID, 0)
+		if err != nil || res.Cols != ownCols || res.Rows != ownRows {
+			return false
+		}
+		want, err := renderScreen(res.Screen, res.Cols, res.Rows)
+		return err == nil && p.term.Text() == want
 	})
 }
 
@@ -157,4 +168,17 @@ func TestPaneFollowsALockedSize(t *testing.T) {
 		cols, rows := p.term.Size()
 		return cols == 140 && rows == 44
 	})
+
+	// The device gives the size back without one: the session takes the
+	// pane's, and the pane its own, at once.
+	ownCols, ownRows := p.askedSize()
+	if err := sheet.UnlockSize(p.SID, "sheet", 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	refresh(a)
+	waitFor(t, tt, "the pane to take its size back", func() bool {
+		cols, rows := p.term.Size()
+		return cols == ownCols && rows == ownRows
+	})
+	waitSessionSize(t, tt, a.client, p.SID, fmt.Sprintf("%dx%d", ownCols, ownRows))
 }

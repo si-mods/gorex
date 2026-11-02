@@ -1314,7 +1314,9 @@ func (s *session) info() SessionInfo {
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,
 		SizeLock: s.sizeLock,
 	}
-	if a := s.authorityLocked(); a != nil {
+	// The authority's id, and none while a device holds the size: no
+	// attached terminal's size is the session's then.
+	if a := s.authorityLocked(); a != nil && s.sizeLock == "" {
 		in.SizedBy = a.client
 	}
 	s.mu.Unlock()

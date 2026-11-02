@@ -530,6 +530,9 @@ func (c *Client) AttachConn(a Attach) (net.Conn, error) {
 		return nil, errors.New("rex: connection to the server lost")
 	}
 	a.Op, a.Conn = "attach", id
+	if a.Client == "" {
+		a.Client = newClientID()
+	}
 	b, _ := json.Marshal(a)
 	conn.SetDeadline(time.Now().Add(callTimeout.get()))
 	if _, err = conn.Write(append(b, '\n')); err == nil {
@@ -899,6 +902,11 @@ type Stream struct {
 	OnData func(n int)
 }
 
+// newClientID returns an id an attach gives as Attach.Client, by which
+// the session names the client whose terminal sizes it
+// (SessionInfo.SizedBy).
+func newClientID() string { return "s" + rand.Text()[:10] }
+
 // Stream returns a stream of the session sid, which attaches lazily.
 func (c *Client) Stream(sid string, cols, rows int) *Stream {
 	s := &Stream{c: c, sid: sid, cols: cols, rows: rows}
@@ -990,7 +998,7 @@ func (s *Stream) attachOnce() {
 		var present func() bool
 		focused, present = s.focused, s.Present
 		if s.id == "" {
-			s.id = "s" + rand.Text()[:10]
+			s.id = newClientID()
 		}
 		id := s.id
 		s.mu.Unlock()

@@ -105,15 +105,21 @@ out there as they did on the server. Its view only asks the session for
 the size the pane fits.
 
 So each attach gives an id of its own (`Attach.Client`), and the server
-names the authority by it (`SessionInfo.SizedBy`), and `SizeLock` names
-a device holding the size: a window that is neither takes the session's
-size rather than the pane's. When it
-takes one the program drew for another, it asks the server for the
-session's screen (`capture`) and shows that, since what it laid out at the
-pane's size before, wrapped where the program did not wrap and drawn over
-where the program moves its cursor, is not the screen the server shows.
-Typing there, or a focus claim, makes the pane the authority again, and
-the pane takes its own size back.
+names the authority by it (`SessionInfo.SizedBy`, empty while a device
+holds the size, `SizeLock`): a window that is neither takes the session's
+size rather than the pane's. When it takes a size the program drew for
+another, it asks the server for the session's screen (`capture`) and shows
+that, since what it laid out at the pane's size before, wrapped where the
+program did not wrap and drawn over where the program moves its cursor, is
+not the screen the server shows. The way back is mended alike: a pane
+typing or pasting takes the authority at once, without waiting for the
+next ask of the sessions, and the screen it takes back is the session's
+at its own size.
+
+The panes ask the server what runs in its sessions every half second, so
+the size another machine gave may lag that long; the session's own replay
+of a full-screen program arrives in between, and the capture that follows
+the pane's new size replaces it.
 
 ## Limits
 
