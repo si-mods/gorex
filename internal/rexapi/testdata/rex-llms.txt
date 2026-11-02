@@ -8,7 +8,7 @@ Clients, such as Rex.app and the `rex` CLI, connect to the server to show and co
 
 This page documents the API that every client uses, so that you can write your own client, script,
 or tool. The server you fetched it from builds it from its own API, so it always matches that
-server's version. It describes API revision 7.
+server's version. It describes API revision 8.
 
 ## How Rex Is Organized
 
@@ -201,7 +201,7 @@ Within 5 seconds of opening the WebSocket, send a hello:
 ```json
 {
   "type": "hello",
-  "api_revision": 7,
+  "api_revision": 8,
   "client": {"kind": "cli", "name": "my-tool", "version": "0.1.0"}
 }
 ```
@@ -263,14 +263,14 @@ section "When the Server Closes the Connection" lists the reasons.
 ### API Revisions
 
 Each change to what clients and servers send each other, such as a new field, method, or event,
-gets a new API revision, one higher than the last. This page describes API revision 7.
-This server speaks API revisions 0 through 7. When a client
+gets a new API revision, one higher than the last. This page describes API revision 8.
+This server speaks API revisions 0 through 8. When a client
 uses an older revision, the server translates every message to and from that revision's shapes, so
 an older client keeps working with a newer server.
 
 Send the API revision your client was written for in `api_revision`. A client that leaves it out
 uses revision 0. To receive messages
-in the shapes this page shows, send 7.
+in the shapes this page shows, send 8.
 
 Send the oldest revision your client can use in `api_min_revision`. Leaving it out means 0, which
 tells the server that your client can use every revision from 0 through `api_revision`. The server
@@ -2879,6 +2879,10 @@ Arguments:
 - `event_scope` (string, required): Which events to receive. 'session' sends every session's events except block_event, plus session_created, session_destroyed, session_moved, and tailscale_status_changed. 'all' also sends block_event and the client events, such as client_joined.
 - `preferred_session_id` (string): The session to attach to, if it exists. Otherwise the server attaches the first session. Ignored when attach_session_ids is set.
 - `attach_session_ids` (array of strings or null): The sessions to attach to, in order. Unknown and repeated IDs are skipped, and an empty list attaches none. Leave it out to let the server pick one.
+- `data_tickets` (array of objects or null): The kinds of block to issue data tickets for. The response has a ticket for each visible block in an attached session that matches one. At most 8 entries.
+  - `creator_name` (string, required): Issue tickets for blocks whose creator_name is this, such as com.superlogical.terminal. Required.
+  - `data_ref_id` (string, required): Which of each block's data sources the ticket opens, such as terminal.
+  - `subprotocol` (string): The subprotocol the data connection will use, such as rex.data.terminal.v1. If set, each ticket works only on a connection that uses it.
 
 Result:
 
@@ -2951,6 +2955,13 @@ Result:
     - `session_id` (string, required): The session's ID.
     - `label` (string, required): The session's label.
   - `view` (object, required): The session's view, read after the connection started receiving its events. Apply it first, then the events whose seq is higher than the response's. It has the same fields as `selected_session.view`.
+- `data_tickets` (array of objects or null): A data ticket for each visible block in the returned views that matches an entry of the request's data_tickets. Call data.connect for a block that has none.
+  - `session_id` (string, required): The session that holds the block.
+  - `block_id` (string, required): The block the ticket opens.
+  - `data_ref_id` (string, required): The data source the ticket opens.
+  - `subprotocol` (string): The subprotocol the ticket is bound to. Left out if the request named none.
+  - `ticket` (string, required): A single-use ticket to send in the HELLO message that opens the data connection. Only a data connection from the same user can use it.
+  - `expires_in_ms` (integer, required): How long the ticket stays valid after the server issues it, in milliseconds.
 
 Notes:
 

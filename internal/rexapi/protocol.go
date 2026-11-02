@@ -15,10 +15,11 @@ const (
 	terminalProtocol = "rex.data.terminal.v1"
 	// dataTerminal is the data_ref_id of a terminal block's stream.
 	dataTerminal = "terminal"
-	// apiRevision is the newest revision of Rex's API this package serves.
-	apiRevision = 7
+	// apiRevision is the newest revision of Rex's API this package serves:
+	// revision 8 adds session.bootstrap's data_tickets.
+	apiRevision = 8
 	// apiMinRevision is the oldest revision it serves. Shapes are Rex's
-	// revision 7 ones; revision 0 through 6 clients see the same fields,
+	// revision 8 ones; revision 0 through 7 clients see the same fields,
 	// which newer clients ignore.
 	apiMinRevision = 0
 	// maxMessage is the largest message a control connection sends or

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -101,7 +102,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	rev := negotiate(hello.apiRevision, hello.apiMinRevision)
 	if rev < 0 {
 		tracef("control: no common revision for %d..%d", hello.apiMinRevision, hello.apiRevision)
-		ws.Close(1008, "no common API revision: this server speaks revision 0 through 7; update the client")
+		ws.Close(1008, fmt.Sprintf("no common API revision: this server speaks revision %d through %d; update the client", apiMinRevision, apiRevision))
 		return
 	}
 	var rec *clientRecord

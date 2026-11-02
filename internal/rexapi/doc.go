@@ -5,7 +5,10 @@
 // The wire is Rex's own. A control connection at /api/control carries
 // JSON messages, a data connection at /api/data streams a block's output,
 // and /api/help, /llms.txt and /llms.html describe the API. The package
-// speaks revision 7, the revision of the documentation in testdata.
+// speaks revision 8, the revision of the documentation in testdata:
+// revision 8 added session.bootstrap's data_tickets, which hands a client
+// the tickets data.connect would issue, so a terminal opens without a
+// round trip first.
 //
 // The server reads the layout from the GoRex server the app keeps
 // (internal/rex), maps it, and tells its clients of the changes it sees.
@@ -32,6 +35,7 @@
 // | Method | What GoRex does instead |
 // | --- | --- |
 // | session.move | not_supported: sessions are GoRex's workspaces, in the layout's order |
+// | session.bootstrap (data_tickets) | a ticket for each terminal block of the sessions it attaches, since every GoRex block is a terminal; a request that names another creator gets no ticket for it, and the same fallback to data.connect applies |
 // | session.view (layers) | GoRex's floating panes are floating layers of one block each, after the tiled layer; a hidden floating pane is shown in no layer |
 // | session.new_layer, session.close_layer, session.float_block, session.detach_block, session.resize_layer, session.raise_layer, session.lower_layer | not_supported: the app takes no layout commands for floating panes, and GoRex has no detached blocks |
 // | session.help | lists every method this server implements, not only a session's |

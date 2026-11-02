@@ -418,6 +418,7 @@ func methodSessionDetach(c *control, a args) (any, *apiError) {
 		return nil, aerr
 	}
 	if c.rec.detach(sid) {
+		c.g.dropTickets(c.rec.id, sid)
 		c.g.emitClientEvent(c.rec, sid, "client_disconnected")
 		if m, err := c.g.current(); err == nil {
 			if s := m.byID[sid]; s != nil {
@@ -440,6 +441,123 @@ type bootstrapAttachAll struct {
 	Sessions []sessionListEntry `json:"sessions"`
 }
 
+// maxDataTicketKinds is how many kinds of block one bootstrap may ask
+// data tickets for, as Rex limits it.
+const maxDataTicketKinds = 8
+
+// dataTicketKind is one entry of session.bootstrap's data_tickets: the
+// creator of the blocks to issue tickets for, and the data source and
+// subprotocol the tickets open, as data.connect takes them.
+type dataTicketKind struct {
+	creator     string
+	dataRef     string
+	subprotocol string
+}
+
+// dataTicketKinds reads session.bootstrap's data_tickets. A request this
+// rejects attaches nothing, so it is read before any session attaches.
+func (a args) dataTicketKinds() ([]dataTicketKind, *apiError) {
+	raws, present, aerr := a.raws("data_tickets")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if !present || raws == nil {
+		return nil, nil
+	}
+	if len(raws) > maxDataTicketKinds {
+		return nil, errBadRequest("data_tickets has %d entries, more than the limit of %d", len(raws), maxDataTicketKinds)
+	}
+	kinds := make([]dataTicketKind, 0, len(raws))
+	for i, raw := range raws {
+		var e args
+		if err := json.Unmarshal(raw, &e); err != nil || e == nil {
+			return nil, errBadRequest("data_tickets[%d] must be an object", i)
+		}
+		creator, ok, aerr := e.str("creator_name")
+		if aerr != nil || !ok || creator == "" {
+			return nil, errBadRequest("data_tickets[%d].creator_name is required", i)
+		}
+		dataRef, ok, aerr := e.str("data_ref_id")
+		if aerr != nil || !ok || dataRef == "" {
+			return nil, errBadRequest("data_tickets[%d].data_ref_id is required", i)
+		}
+		subprotocol, _, aerr := e.str("subprotocol")
+		if aerr != nil {
+			return nil, errBadRequest("data_tickets[%d].subprotocol must be a string", i)
+		}
+		if subprotocol != "" && !wellFormedRef(subprotocol) {
+			return nil, errBadRequest("data_tickets[%d].subprotocol is malformed", i)
+		}
+		if dataRef != dataTerminal {
+			// A block has no other data source, so a ticket for one would
+			// be refused when it is spent: leave it out, as Rex leaves out
+			// a block that provides no data.
+			continue
+		}
+		kinds = append(kinds, dataTicketKind{creator: creator, dataRef: dataRef, subprotocol: subprotocol})
+	}
+	return kinds, nil
+}
+
+// bootstrapTicket is one of session.bootstrap's data_tickets: what
+// data.connect would have returned for the block.
+type bootstrapTicket struct {
+	SessionID   string `json:"session_id"`
+	BlockID     string `json:"block_id"`
+	DataRef     string `json:"data_ref_id"`
+	Subprotocol string `json:"subprotocol,omitempty"`
+	Ticket      string `json:"ticket"`
+	ExpiresInMS int    `json:"expires_in_ms"`
+}
+
+// dataTickets issues a ticket for each visible block in the views a
+// bootstrap returns whose creator one of kinds names, so that a client
+// opening a terminal right after it needs no data.connect first.
+func (c *control) dataTickets(kinds []dataTicketKind, m *model, views ...view) []bootstrapTicket {
+	if len(kinds) == 0 {
+		return nil
+	}
+	var out []bootstrapTicket
+	for _, v := range views {
+		s := m.byID[v.SessionID]
+		if s == nil {
+			continue
+		}
+		for _, w := range v.Windows {
+			for _, l := range w.Layers {
+				for _, b := range l.Blocks {
+					for _, k := range kinds {
+						if b.CreatorName != k.creator {
+							continue
+						}
+						blk := s.findBlock(b.BlockID)
+						if blk == nil {
+							continue
+						}
+						out = append(out, bootstrapTicket{
+							SessionID:   v.SessionID,
+							BlockID:     b.BlockID,
+							DataRef:     k.dataRef,
+							Subprotocol: k.subprotocol,
+							Ticket: c.g.issueTicket(&ticket{
+								record:      c.rec.id,
+								session:     v.SessionID,
+								block:       b.BlockID,
+								sid:         blk.sid,
+								dataRef:     k.dataRef,
+								subprotocol: k.subprotocol,
+								expires:     time.Now().Add(ticketWait),
+							}),
+							ExpiresInMS: int(ticketWait / time.Millisecond),
+						})
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
 // bootstrapResult is session.bootstrap's result.
 type bootstrapResult struct {
 	ClientID         string             `json:"client_id"`
@@ -447,6 +565,7 @@ type bootstrapResult struct {
 	AttachAll        bootstrapAttachAll `json:"attach_all"`
 	SelectedSession  *attachedSession   `json:"selected_session"`
 	AttachedSessions *[]attachedSession `json:"attached_sessions,omitempty"`
+	DataTickets      []bootstrapTicket  `json:"data_tickets,omitempty"`
 }
 
 func methodSessionBootstrap(c *control, a args) (any, *apiError) {
@@ -462,6 +581,10 @@ func methodSessionBootstrap(c *control, a args) (any, *apiError) {
 		return nil, aerr
 	}
 	ids, present, aerr := a.strs("attach_session_ids")
+	if aerr != nil {
+		return nil, aerr
+	}
+	kinds, aerr := a.dataTicketKinds()
 	if aerr != nil {
 		return nil, aerr
 	}
@@ -497,6 +620,11 @@ func methodSessionBootstrap(c *control, a args) (any, *apiError) {
 			}
 		}
 		res.AttachedSessions = &attached
+		views := make([]view, 0, len(attached))
+		for i := range attached {
+			views = append(views, attached[i].View)
+		}
+		res.DataTickets = c.dataTickets(kinds, m, views...)
 		return res, nil
 	}
 	var chosen *mSession
@@ -509,6 +637,7 @@ func methodSessionBootstrap(c *control, a args) (any, *apiError) {
 	if chosen != nil {
 		one := attach(chosen)
 		res.SelectedSession = &one
+		res.DataTickets = c.dataTickets(kinds, m, one.View)
 	}
 	return res, nil
 }

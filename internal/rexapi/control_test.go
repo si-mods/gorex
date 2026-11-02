@@ -2,6 +2,7 @@ package rexapi
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
@@ -65,7 +66,9 @@ func TestHelloInvalidUTF8(t *testing.T) {
 func TestNoCommonRevision(t *testing.T) {
 	f := startFixture(t)
 	ws := f.dial("/api/control", controlProtocol)
-	wsWrite(t, ws, websocket.MessageText, []byte(`{"type":"hello","api_revision":9,"api_min_revision":8}`))
+	newer := apiRevision + 1
+	wsWrite(t, ws, websocket.MessageText, []byte(fmt.Sprintf(
+		`{"type":"hello","api_revision":%d,"api_min_revision":%d}`, newer, newer)))
 	expectClose(t, ws, 1008)
 }
 

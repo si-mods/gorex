@@ -565,6 +565,7 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 	}
 	g.emitClientEvent(rec, "", "client_left")
 	g.cancelStreams(rec.id)
+	g.dropTickets(rec.id, "")
 	g.refresh()
 }
 
@@ -590,6 +591,7 @@ func (g *Gateway) expireClient(rec *clientRecord) {
 	}
 	g.emitClientEvent(rec, "", "client_left")
 	g.cancelStreams(rec.id)
+	g.dropTickets(rec.id, "")
 	g.refresh()
 }
 
@@ -798,6 +800,20 @@ func (g *Gateway) takeTicket(id, subprotocol string) (*ticket, byte) {
 		return t, 0x03
 	}
 	return t, 0
+}
+
+// dropTickets forgets the unused tickets a client holds, for one session
+// when session is set and for all of them when it is not: Rex throws them
+// away when the connection ends or detaches from the session, so that a
+// ticket never outlives the attachment it was issued for.
+func (g *Gateway) dropTickets(record, session string) {
+	g.mu.Lock()
+	for id, t := range g.tickets {
+		if t.record == record && (session == "" || t.session == session) {
+			delete(g.tickets, id)
+		}
+	}
+	g.mu.Unlock()
 }
 
 // cancelStreams ends the data streams a client opened.
