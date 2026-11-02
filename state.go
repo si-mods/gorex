@@ -1837,7 +1837,7 @@ func (a *App) dockPane(p *Pane) bool {
 	target := t.tiledTarget()
 	t.removeFloat(f)
 	p.Node = nil
-	a.placePane(t, p, target, false, 0.5)
+	a.placePane(t, p, target, false, false, 0.5)
 	if a.tab() == t {
 		a.focusReq = p
 	}
@@ -2886,25 +2886,28 @@ func (a *App) mergeTab(src, dst *Tab) {
 
 // movePaneToPane moves pane p beside target, in target's tab. It works
 // within a tab too, detaching p and splitting target's node.
-func (a *App) movePaneToPane(p, target *Pane) { a.movePaneBeside(p, target, false, 0.5) }
+func (a *App) movePaneToPane(p, target *Pane) { a.movePaneBeside(p, target, false, false, 0.5) }
 
 // movePaneBeside moves pane p beside target in target's tab, in a split
 // of the given orientation and ratio, herdr's pane.move; the session
-// keeps running.
-func (a *App) movePaneBeside(p, target *Pane, vertical bool, ratio float32) {
+// keeps running. With before, p goes left of or above target, and ratio is
+// p's share.
+func (a *App) movePaneBeside(p, target *Pane, vertical, before bool, ratio float32) {
 	if p == nil || target == nil || p == target || p.Tab == nil || target.float != nil || p.host != target.host {
 		return
 	}
 	t, src, wasActive := target.Tab, p.Tab, a.tab() == p.Tab
 	a.detachPane(p)
-	a.placePane(t, p, target, vertical, ratio)
+	a.placePane(t, p, target, vertical, before, ratio)
 	a.finishPaneMove(t, p, src, wasActive)
 	a.changed()
 }
 
 // placePane puts p beside target in tab t, or alone when the tab has no
-// pane; p is not in a tree.
-func (a *App) placePane(t *Tab, p *Pane, target *Pane, vertical bool, ratio float32) {
+// pane; p is not in a tree. With before, p goes in the split's first side
+// and ratio is its share; else p goes in the second and ratio is the
+// target's.
+func (a *App) placePane(t *Tab, p *Pane, target *Pane, vertical, before bool, ratio float32) {
 	if t == nil || p == nil {
 		return
 	}
@@ -2922,8 +2925,12 @@ func (a *App) placePane(t *Tab, p *Pane, target *Pane, vertical bool, ratio floa
 		return
 	}
 	old := target.Node
-	sp := &Node{ID: a.id(), Parent: old.Parent, A: old, B: &Node{ID: a.id(), Pane: p}, Vertical: vertical, Ratio: ratio}
-	sp.B.Parent = sp
+	fresh := &Node{ID: a.id(), Pane: p}
+	sp := &Node{ID: a.id(), Parent: old.Parent, A: old, B: fresh, Vertical: vertical, Ratio: ratio}
+	if before {
+		sp.A, sp.B = fresh, old
+	}
+	fresh.Parent = sp
 	if old.Parent == nil {
 		t.Root = sp
 	} else if old.Parent.A == old {
@@ -2932,7 +2939,7 @@ func (a *App) placePane(t *Tab, p *Pane, target *Pane, vertical bool, ratio floa
 		old.Parent.B = sp
 	}
 	old.Parent = sp
-	p.Tab, p.Node = t, sp.B
+	p.Tab, p.Node = t, fresh
 	t.Zoom = nil
 	t.setFocus(p)
 }
@@ -2998,7 +3005,7 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		target.attach(np, cols, rows)
 	}
 	targetPane := t.tiledTarget()
-	target.placePane(t, np, targetPane, false, 0.5)
+	target.placePane(t, np, targetPane, false, false, 0.5)
 	target.focusReq = np
 	target.front()
 	target.changed()

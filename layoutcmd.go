@@ -338,7 +338,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 				ratio = 0.5
 			}
 			ratio = min(max(ratio, 0.1), 0.9)
-			a.movePaneBeside(p, q, c.Direction == "down", ratio)
+			a.movePaneBeside(p, q, c.Direction == "down", false, ratio)
 			res.Changed = true
 		}
 	case "pane.focus":

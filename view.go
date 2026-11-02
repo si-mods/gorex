@@ -727,11 +727,15 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 			a.reconnecting(c, k, p)
 		})
 	})
-	if dragged, ok := ui.Drop[*Pane](card); ok && dragged != p {
-		a.movePaneToPane(dragged, p)
+	if dragged, over := ui.DragOver[*Pane](card); over {
+		if z, ok := paneDropZoneAt(card, dragged, p); ok {
+			drawPaneDrop(card, k, z)
+		}
 	}
-	if _, over := ui.DragOver[*Pane](card); over {
-		card.Border(1.5, k.busy.Alpha(0.6))
+	if dragged, ok := ui.Drop[*Pane](card); ok {
+		if z, ok := paneDropZoneAt(card, dragged, p); ok {
+			a.dropPaneOn(dragged, p, z)
+		}
 	}
 	if card.Pressed() {
 		if f := p.float; f != nil {
@@ -824,6 +828,9 @@ func (a *App) paneHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, hov
 		a.dragFloat(c, f, h)
 	} else {
 		h.Drag(p)
+		if h.Dragging() {
+			dimmed(h, 0.4)
+		}
 	}
 	if h.DoubleClicked() {
 		if f := p.float; f != nil {
@@ -1067,6 +1074,9 @@ func (a *App) browserHeader(c *ui.Context, k *colors, t *Tab, p *Pane, focused, 
 		a.dragFloat(c, f, h)
 	} else {
 		h.Drag(p)
+		if h.Dragging() {
+			dimmed(h, 0.4)
+		}
 	}
 	if h.DoubleClicked() {
 		if f := p.float; f != nil {
