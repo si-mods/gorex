@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Bug Fixes
+
+* **palette:** blur only the panel, which is Liquid Glass, and dim the window behind it, rather than blurring the whole window, which read as a smeared window instead of glass
+
 ## 0.8.0
 
 ### Features

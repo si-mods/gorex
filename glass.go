@@ -53,7 +53,8 @@ func glassVibrancy() mygo.Vibrancy {
 
 // glassTransparent tells whether a window is made transparent for its
 // glass: on macOS, whose glass shows the desktop only through a window
-// that is not opaque. Windows' Mica shows through its windows as they are.
+// that is not opaque. Windows' backdrops show through its windows as they
+// are.
 func glassTransparent() bool { return glassOn() && runtime.GOOS == "darwin" }
 
 // windowGlass tells whether c's window shows its glass behind the page:
