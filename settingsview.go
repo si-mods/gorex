@@ -108,6 +108,7 @@ func (a *App) settingsView(c *ui.Context) {
 	a.runPosted() // the hosts' changes, without a terminal window
 	k := colorsOf(c)
 	c.SetTheme(widgetTheme(c.Theme(), k))
+	setupMenus(c)
 	rootBackground(c, k.bgBottom)
 	wash := backgroundAlpha(c)
 	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k, wash) }).Children(func() {
