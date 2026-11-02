@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0
+
+### Features
+
+* **rexapi:** hand out data tickets in `session.bootstrap`, serving Rex's API revision 8, so a Rex client opens each terminal it attaches without a `data.connect` round trip first ([#158](https://github.com/si-mods/gorex/pull/158))
+
 ## 0.9.1
 
 ### Bug Fixes
