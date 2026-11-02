@@ -34,7 +34,8 @@ func (a *App) view(c *ui.Context) {
 	a.focusedWin = a.win == nil || a.win.IsFocused()
 	breathing = a.focusedWin
 	a.claimFocus()
-	setupMenus(c, k)
+	c.SetTheme(menuTheme(c.Theme(), k))
+	setupMenus(c)
 	rootBackground(c, k.bgBottom)
 	wash := backgroundAlpha(c)
 	ui.Column(c).Fill().Draw(func(p *ui.Painter, r ui.Rect) { paintBackground(p, r, k, wash) }).Children(func() {

@@ -298,6 +298,15 @@ var darkTerm = &terminal.Theme{
 	},
 }
 
+// accentText is the color of text on the accent: dark on the light accent
+// of a dark window, white on the other.
+func accentText(dark bool) ui.Color {
+	if dark {
+		return ui.Hex("#10151c")
+	}
+	return ui.Hex("#ffffff")
+}
+
 // widgetTheme is the stock widgets' theme in GoRex's colors, so that the
 // segmented controls, switches, steppers and selects of a window look as
 // the rest of the app. Its Background is the face of a segmented control's
@@ -306,10 +315,8 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t := *base
 	t.Background, t.Surface, t.SurfaceHover, t.SurfacePressed = k.surface, k.surface, k.surfaceHover, k.surfacePressed
 	t.Border, t.Text, t.TextMuted = k.panelBorder, k.text, k.textMuted
-	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = k.accent, k.accentHover, k.accentPressed, ui.Hex("#ffffff")
-	if t.Dark {
-		t.AccentText = ui.Hex("#10151c")
-	}
+	t.Accent, t.AccentHover, t.AccentPressed, t.AccentText = k.accent, k.accentHover, k.accentPressed, accentText(t.Dark)
+	t.Menu = menuStyleOf(k, t.Dark)
 	t.Selection, t.Focus = k.accent.Alpha(0.3), k.accent.Alpha(0.55)
 	t.Radius = 9
 	return &t

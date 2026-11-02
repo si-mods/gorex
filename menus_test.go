@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -28,26 +26,85 @@ func TestDrawMenusOn(t *testing.T) {
 	}
 }
 
-func TestMenuStyle(t *testing.T) {
+// windowMenu runs the app's view in a dark or light window, with the
+// space of color, and gives the menu style it left in the theme.
+func windowMenu(t *testing.T, color string, dark bool) *ui.MenuStyle {
+	t.Helper()
+	a, _ := newTestApp(t)
+	a.ws.Color = color
 	var m *ui.MenuStyle
-	var k *colors
-	var drawn bool
 	tt := ui.NewTester(func(c *ui.Context) {
-		k = colorsOf(c)
-		setupMenus(c, k)
-		m, drawn = c.Theme().Menu, c.DrawMenus()
-		ui.Column(c).Fill().Children(func() {})
-	}, 200, 100)
+		a.view(c)
+		m = c.Theme().Menu
+	}, 400, 300)
+	tt.SetDark(dark)
 	tt.Frame()
 	if m == nil {
 		t.Fatal("Theme.Menu is nil")
 	}
-	if m.Panel == nil || m.RowHeight != 24 || m.RowRadius != 7 || m.RowPadding != 10 || m.TextSize != 13 ||
-		m.Highlight != k.accent || m.HighlightText != ui.Hex("#ffffff") || m.Separator != k.panelBorder {
-		t.Errorf("menu style %+v", *m)
+	return m
+}
+
+func TestMenuStyleHasWindowPalette(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		color string
+		dark  bool
+		base  *colors
+		text  ui.Color
+	}{
+		{"dark space", "teal", true, &darkColors, ui.Hex("#10151c")},
+		{"light space", "teal", false, &lightColors, ui.Hex("#ffffff")},
+		{"dark plain", "", true, &darkColors, ui.Hex("#10151c")},
+		{"light plain", "", false, &lightColors, ui.Hex("#ffffff")},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			k := spaceColors(c.base, c.color, c.dark)
+			m := windowMenu(t, c.color, c.dark)
+			if m.Highlight != k.accent || m.Separator != k.panelBorder {
+				t.Errorf("highlight %v, separator %v; want the window's %v, %v", m.Highlight, m.Separator, k.accent, k.panelBorder)
+			}
+			if m.HighlightText != c.text {
+				t.Errorf("HighlightText %v, want %v", m.HighlightText, c.text)
+			}
+			if c.color != "" && k == c.base {
+				t.Fatal("the space has no colors of its own")
+			}
+			if m != menuStyleOf(k, c.dark) {
+				t.Error("the style is not the one of the window's colors")
+			}
+		})
 	}
-	if want := drawMenusOn(runtime.GOOS, os.Getenv("GOREX_DRAW_MENUS")); drawn != want {
-		t.Errorf("DrawMenus = %v, want %v", drawn, want)
+	if windowMenu(t, "teal", true).Highlight == windowMenu(t, "", true).Highlight {
+		t.Error("a space color leaves the stock highlight")
+	}
+}
+
+func TestMenuStyleHoldsStill(t *testing.T) {
+	k := spaceColors(&darkColors, "teal", true)
+	if menuStyleOf(k, true) != menuStyleOf(k, true) {
+		t.Error("the same colors give two styles")
+	}
+	if menuStyleOf(k, true) == menuStyleOf(&darkColors, true) {
+		t.Error("two palettes share a style")
+	}
+	var first, second *ui.MenuStyle
+	a, _ := newTestApp(t)
+	a.ws.Color = "teal"
+	n := 0
+	tt := ui.NewTester(func(c *ui.Context) {
+		a.view(c)
+		if n == 0 {
+			first = c.Theme().Menu
+		} else {
+			second = c.Theme().Menu
+		}
+		n++
+	}, 400, 300)
+	tt.Frame()
+	tt.Frame()
+	if first == nil || first != second {
+		t.Errorf("styles of two frames differ: %p, %p", first, second)
 	}
 }
 
@@ -55,7 +112,9 @@ func TestMenuStyle(t *testing.T) {
 // header's menus open in the window, not as the system's, and that
 // choosing Rename starts the rename.
 func TestDrawnMenus(t *testing.T) {
-	t.Setenv("GOREX_DRAW_MENUS", "1")
+	old := drawMenus
+	drawMenus = true
+	t.Cleanup(func() { drawMenus = old })
 	a, tt := newTestApp(t)
 	tt.Frame()
 	// The tab reads "<shell> …/dir"; the pane header's name is the shell.
