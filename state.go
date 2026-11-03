@@ -504,6 +504,14 @@ type App struct {
 	// moved it in the frame before: the panes then follow it at once, with
 	// no spring.
 	dividerDrag bool
+	// dividerHeld tells that the pointer held a divider between panes in
+	// the frame before: the panes follow it, but their terminals keep the
+	// size they had at rest until it is let go, so the program hears of
+	// one size at the end rather than of each width the drag passed
+	// through. dividerNow is what this frame's dividers found, which the
+	// frame after reads as dividerHeld.
+	dividerHeld bool
+	dividerNow  bool
 	// sidebarMoving tells that the sidebar or the bar over the panes
 	// moved in the last frame: the terminals there hold their size.
 	sidebarMoving bool
