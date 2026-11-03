@@ -68,7 +68,7 @@
 // | client.perform | not_supported: GoRex does not ask clients to perform actions |
 // | client.reply | not_found: nothing waits for a reply |
 // | block.event | a mouse event's payload is action, button, mods, column and row, and a wheel event's is direction (up, down, left or right), mods, column and row: Rex's help document gives them no schema |
-// | block_creator.list, session.describe_block | api.events lists GoRex's terminal events (`bell`, `title_changed`, `program_status_changed`, `child_exited`), which Rex's help document leaves out |
+// | block_creator.list, session.describe_block | api.events lists GoRex's terminal events (`bell`, `title_changed`, `pwd_changed`, `process_changed`, `program_status_changed`, `program_status_removed`, `child_exited`), which Rex's help document leaves out |
 // | server.config_reload | no configuration file: counts a generation and sends keymap_changed |
 // | hosts.list | an empty list; hosts.put and hosts.remove fail with not_supported |
 // | server.tailscale.* | built-in Tailscale is tsnet, a device of the gateway's own named <hostname>-gorex; the methods are for the local Unix socket only (403 elsewhere), as Rex's are; on Windows, where the socket gives no credentials, its file's permissions are the boundary |

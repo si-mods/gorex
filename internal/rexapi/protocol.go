@@ -18,9 +18,9 @@ const (
 	// apiRevision is the newest revision of Rex's API this package serves:
 	// revision 8 adds session.bootstrap's data_tickets.
 	apiRevision = 8
-	// apiMinRevision is the oldest revision it serves. Shapes are Rex's
-	// revision 8 ones; revision 0 through 7 clients see the same fields,
-	// which newer clients ignore.
+	// apiMinRevision is the oldest revision it serves. A client that
+	// negotiates an older revision gets that revision's shape: requests
+	// are translated up and results back down by revisions.go.
 	apiMinRevision = 0
 	// maxMessage is the largest message a control connection sends or
 	// accepts, in bytes.
@@ -40,6 +40,7 @@ type apiError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Status  int    `json:"status"`
+	Action  string `json:"action,omitempty"`
 }
 
 func (e *apiError) Error() string { return e.Code + ": " + e.Message }
@@ -169,11 +170,13 @@ type request struct {
 
 // response is an answer to a request, in Rex's shape.
 type response struct {
-	Type    string    `json:"type"`
-	ID      string    `json:"id"`
-	Seq     uint64    `json:"seq"`
-	Payload any       `json:"payload,omitempty"`
-	Error   *apiError `json:"error,omitempty"`
+	Type         string    `json:"type"`
+	ID           string    `json:"id"`
+	Seq          uint64    `json:"seq"`
+	OrderedAfter string    `json:"ordered_after,omitempty"`
+	Requester    string    `json:"requester,omitempty"`
+	Payload      any       `json:"payload,omitempty"`
+	Error        *apiError `json:"error,omitempty"`
 }
 
 // eventMessage is an event sent without a request.

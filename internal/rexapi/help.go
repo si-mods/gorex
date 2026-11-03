@@ -33,6 +33,31 @@ var blockEventSchemas = map[string]any{
 		},
 		"required": []string{"exit_code"},
 	},
+	"pwd_changed": map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"pwd":   map[string]any{"type": "string", "description": "The working directory, as a file:// URL."},
+			"owner": map[string]any{"type": "object", "description": "The process that reported it."},
+		},
+		"required": []string{"pwd"},
+	},
+	"process_changed": map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"generation": map[string]any{"type": "integer", "description": "Counts changes of the foreground process."},
+			"foreground": map[string]any{"type": "object", "description": "The program in the foreground."},
+			"ancestors":  map[string]any{"type": "array", "description": "The processes above it."},
+		},
+		"required": []string{"generation", "foreground"},
+	},
+	"program_status_removed": map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"ids":    map[string]any{"type": "array", "description": "The records that were removed."},
+			"reason": map[string]any{"type": "string", "description": "Why they were removed."},
+		},
+		"required": []string{"ids"},
+	},
 }
 
 // terminalBlockType is the help document's block type of the creator
@@ -111,8 +136,9 @@ func methodBlockCreatorList(c *control, a args) (any, *apiError) {
 }
 
 // helpDocument returns the help document as this server serves it, limited
-// to what it implements; withHTTP adds the http field session.help has.
-func helpDocument(withHTTP bool) map[string]json.RawMessage {
+// to what it implements and to the methods a client at rev knows; withHTTP
+// adds the http field session.help has.
+func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 	src := helpDoc()
 	doc := map[string]json.RawMessage{}
 	var methodsDoc []json.RawMessage
@@ -127,7 +153,7 @@ func helpDocument(withHTTP bool) map[string]json.RawMessage {
 		if json.Unmarshal(raw, &m) != nil {
 			continue
 		}
-		if !implementedMethods[m.Name] {
+		if !implementedMethods[m.Name] || !methodAvailable(rev, m.Name) {
 			continue
 		}
 		kept = append(kept, raw)
@@ -152,6 +178,48 @@ func helpDocument(withHTTP bool) map[string]json.RawMessage {
 			doc["http"] = raw
 		}
 	}
+	return doc
+}
+
+// helpAllDocument is help.all's answer: every method Rex's document lists,
+// not only the implemented ones, limited to the methods a client at rev
+// knows.
+func helpAllDocument(rev int) map[string]json.RawMessage {
+	src := helpDoc()
+	doc := map[string]json.RawMessage{}
+	var methodsDoc []json.RawMessage
+	if raw, ok := src["methods"]; ok {
+		json.Unmarshal(raw, &methodsDoc)
+	}
+	kept := make([]json.RawMessage, 0, len(methodsDoc))
+	for _, raw := range methodsDoc {
+		var m struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal(raw, &m) != nil || !methodAvailable(rev, m.Name) {
+			continue
+		}
+		kept = append(kept, raw)
+	}
+	doc["methods"], _ = json.Marshal(kept)
+	var blocks []json.RawMessage
+	if raw, ok := src["block_types"]; ok {
+		json.Unmarshal(raw, &blocks)
+	}
+	keptBlocks := make([]json.RawMessage, 0, len(blocks))
+	for _, raw := range blocks {
+		var b struct {
+			Creator string `json:"creator"`
+		}
+		if json.Unmarshal(raw, &b) != nil {
+			continue
+		}
+		if since, ok := creatorSince[b.Creator]; ok && rev < since {
+			continue
+		}
+		keptBlocks = append(keptBlocks, raw)
+	}
+	doc["block_types"], _ = json.Marshal(keptBlocks)
 	return doc
 }
 

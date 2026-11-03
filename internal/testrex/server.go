@@ -25,7 +25,9 @@ import (
 )
 
 // APIRevision is the revision of Rex's control API this package speaks.
-const APIRevision = 7
+// It mirrors the gateway, which serves revision 8 (session.bootstrap's
+// data_tickets); a client that needs an older revision negotiates down.
+const APIRevision = 8
 
 // maxMessage is the largest message this server accepts, in bytes.
 const maxMessage = 1 << 20

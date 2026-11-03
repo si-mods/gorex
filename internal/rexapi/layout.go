@@ -1857,7 +1857,7 @@ func methodSessionHelp(c *control, a args) (any, *apiError) {
 	if _, aerr := c.attachedArg(a); aerr != nil {
 		return nil, aerr
 	}
-	return helpDocument(true), nil
+	return helpDocument(c.rev, true), nil
 }
 
 // methodSessionDescribeBlock describes a block and its methods.

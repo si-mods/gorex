@@ -31,8 +31,11 @@ type control struct {
 	// administer it are for its local socket only.
 	transport string
 	rec       *clientRecord
-	out       chan outMsg
-	done      chan struct{}
+	// rev is the API revision this connection speaks, the newest both
+	// sides know. Requests and results are translated to and from it.
+	rev  int
+	out  chan outMsg
+	done chan struct{}
 
 	mu      sync.Mutex
 	seq     uint64
@@ -105,6 +108,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 		ws.Close(1008, fmt.Sprintf("no common API revision: this server speaks revision %d through %d; update the client", apiMinRevision, apiRevision))
 		return
 	}
+	c.rev = rev
 	var rec *clientRecord
 	resumed := false
 	if hello.reconnectToken != "" {
@@ -145,9 +149,18 @@ type welcome struct {
 	Limits            limits         `json:"limits"`
 	Client            *welcomeClient `json:"client,omitempty"`
 	Features          []string       `json:"features,omitempty"`
+	Carriers          []carrier      `json:"carriers,omitempty"`
 	APIRevision       int            `json:"api_revision"`
 	APIServerRevision int            `json:"api_server_revision"`
 	APIMinRevision    int            `json:"api_min_revision,omitempty"`
+}
+
+// carrier is another way to reach the same server, such as a QUIC
+// endpoint. Rex clients ignore a carrier name they do not know.
+type carrier struct {
+	Name string   `json:"name"`
+	Port int      `json:"port,omitempty"`
+	ALPN []string `json:"alpn,omitempty"`
 }
 
 type limits struct {
@@ -426,6 +439,11 @@ func (c *control) handle(req *request) {
 	if c.hold != nil {
 		c.hold(req.ID)
 	}
+	if !methodAvailable(c.rev, req.Method) {
+		c.respond(req, nil, errMethodNotFound("%s is not a method of revision %d", req.Method, c.rev))
+		return
+	}
+	req.Payload = transformRequest(c.rev, req.Method, req.Payload)
 	defer func() {
 		if p := recover(); p != nil {
 			logf("%s: %v", req.Method, p)
@@ -462,17 +480,22 @@ func (c *control) handle(req *request) {
 
 // respond queues a request's answer.
 func (c *control) respond(req *request, payload any, err *apiError) {
+	requester := ""
+	if c.rec != nil {
+		requester = c.rec.id
+	}
 	if err != nil {
-		c.enqueue(response{Type: "response", ID: req.ID, Seq: req.seq, Error: err})
+		c.enqueue(response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester, Error: err})
 		return
 	}
 	if payload == nil {
 		payload = struct{}{}
 	}
-	res := response{Type: "response", ID: req.ID, Seq: req.seq, Payload: payload}
+	payload = transformResult(c.rev, req.Method, payload)
+	res := response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester, Payload: payload}
 	data, merr := json.Marshal(res)
 	if merr == nil && len(data) > maxMessage {
-		res = response{Type: "response", ID: req.ID, Seq: req.seq,
+		res = response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester,
 			Error: errTooLarge("the result is larger than %d bytes", maxMessage)}
 	}
 	c.enqueue(res)
