@@ -74,12 +74,6 @@ type sessionState struct {
 	Code   int  `json:"code,omitempty"`
 	// Statuses are the program's status records (OSC 7501).
 	Statuses []ProgramStatus `json:"statuses,omitempty"`
-	// Agent is the coding agent the session runs, its process unknown
-	// (PID 0) for one a restart resumed whose process did not show yet;
-	// AgentTyped tells that its resume command was typed, else the
-	// executable after this one types it.
-	Agent      *AgentSession `json:"agent,omitempty"`
-	AgentTyped bool          `json:"agentTyped,omitempty"`
 }
 
 func handoffPath() string { return filepath.Join(Dir(), "handoff.json") }
@@ -237,10 +231,6 @@ func (s *session) state() sessionState {
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
 		Statuses: s.status.list(),
 	}
-	if s.agent != nil {
-		a := *s.agent
-		st.Agent, st.AgentTyped = &a, !s.agentTyped.IsZero()
-	}
 	st.Screen, st.Title = s.view()
 	select {
 	case <-s.readEnd:
@@ -297,15 +287,8 @@ func Resume(path string) error {
 			}
 			continue
 		}
-		s.watch(ss)
 		s.sessions[ss.id] = ss
 		s.order = append(s.order, ss.id)
-		// The run before this one stopped, which ends the agents its
-		// journal kept: this run's keeps them again.
-		if ss.agent != nil {
-			a := *ss.agent
-			s.journal.agent(ss.id, &a)
-		}
 	}
 	log.Printf("rex: resumed %d of %d sessions", len(s.order), len(h.Sessions))
 	return s.serve()
@@ -321,19 +304,6 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 	}
 	if err := s.newVT(); err != nil {
 		return nil, err
-	}
-	resume := false
-	if st.Agent != nil && ValidAgent(*st.Agent) == nil {
-		a := *st.Agent
-		s.agent = &a
-		if a.PID == 0 {
-			// Its process has the grace of one just resumed; one whose
-			// command was still to type is typed here.
-			resume = !st.AgentTyped
-			if !resume {
-				s.agentTyped = time.Now()
-			}
-		}
 	}
 	for _, r := range st.Statuses {
 		if s.status.records == nil {
@@ -373,8 +343,5 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		wait = func() int { return st.Code }
 	}
 	s.run(wait)
-	if resume {
-		s.resumeAgent(*s.agent)
-	}
 	return s, nil
 }
