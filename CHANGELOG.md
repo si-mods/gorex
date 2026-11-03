@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1
+
+### Bug Fixes
+
+* **panes:** hold a divider drag's terminals at their rest size, so the program hears of one size, the drag's, once the pointer lets go rather than of each width on the way, where what it drew for the grid before wrapped where it did not wrap it and a program that draws in place, as an agent's interface does, reprinted its screen from the top again and again ([#161](https://github.com/si-mods/gorex/pull/161))
+
 ## 0.10.0
 
 ### Features
