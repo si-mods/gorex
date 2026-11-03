@@ -148,7 +148,7 @@ func welcomeBytes(token []byte, nonce uint64) []byte {
 	w := make([]byte, 32)
 	w[0] = 0x81
 	copy(w[1:17], token)
-	binary.LittleEndian.PutUint32(w[20:24], uint32(ticketWait/time.Millisecond))
+	binary.LittleEndian.PutUint32(w[20:24], uint32(reconnectWait/time.Millisecond))
 	binary.LittleEndian.PutUint64(w[24:32], nonce)
 	return w
 }

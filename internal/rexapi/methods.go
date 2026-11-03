@@ -340,14 +340,8 @@ func methodServerWhoami(c *control, _ args) (any, *apiError) {
 	return whoamiResult{Principal: c.rec.principal, Account: c.g.user}, nil
 }
 
-func methodHelpAll(*control, args) (any, *apiError) {
-	doc := map[string]json.RawMessage{}
-	for k, v := range helpDoc() {
-		if k != "http" {
-			doc[k] = v
-		}
-	}
-	return doc, nil
+func methodHelpAll(c *control, _ args) (any, *apiError) {
+	return helpAllDocument(c.rev), nil
 }
 
 // sessionsResult is session.list's and session.attach_all's result.

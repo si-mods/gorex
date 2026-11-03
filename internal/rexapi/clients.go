@@ -239,15 +239,15 @@ func methodClientAction(c *control, a args) (any, *apiError) {
 		return nil, aerr
 	}
 	if !strings.Contains(action, ".") {
-		return nil, errNotFound("GoRex has no action %s", action)
+		return nil, errActionNotFound(action)
 	}
 	i := strings.LastIndexByte(action, '.')
 	creator, short := action[:i], action[i+1:]
 	if creator != creatorName {
-		return nil, errNotFound("GoRex has no action %s", action)
+		return nil, errActionNotFound(action)
 	}
 	if _, ok := blockMethods[short]; !ok {
-		return nil, errNotFound("GoRex has no action %s", action)
+		return nil, errActionNotFound(action)
 	}
 	inner := args{}
 	if sid, ok, aerr := a.str("session_id"); aerr != nil {
@@ -268,6 +268,13 @@ func methodClientAction(c *control, a args) (any, *apiError) {
 		return nil, aerr
 	}
 	return actionResult{Result: res, ClientActions: []any{}}, nil
+}
+
+// errActionNotFound names the action in the error, as Rex does.
+func errActionNotFound(action string) *apiError {
+	e := errNotFound("GoRex has no action %s", action)
+	e.Action = action
+	return e
 }
 
 // mustRaw returns a string as the raw JSON a request carries.
