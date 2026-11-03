@@ -466,6 +466,12 @@ is a journal of every layout the app sent, and of each run's start and
 stop: a server that starts after one that left no stop record — a crash,
 a kill, a reboot — starts the sessions of the last layout again, the same
 ids in the same directories, so the windows attach to them as they were.
+A pane whose session is lost keeps what ran there: a strip above its shell
+names the program and runs it again on a click, as the command the shell
+would take, and for Claude Code, Codex, omp or Pi continues its last
+conversation in the pane's directory, which the agent itself finds, so no
+conversation id has to be kept; the process itself does not survive a
+reboot.
 A run that stops says why and what it held, and the server after it
 starts nothing. The sessions outlive the app, and
 a new build: on macOS and Linux, a build that finds a server an older

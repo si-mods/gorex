@@ -707,6 +707,9 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 			if a.findPane == p {
 				a.findBar(c, k, p)
 			}
+			if p.resume != nil {
+				a.resumeBar(c, k, p)
+			}
 			if p.term == nil {
 				return
 			}

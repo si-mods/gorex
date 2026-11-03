@@ -549,5 +549,21 @@
   "remoteLanAdd": "添加",
   "remoteLanAddPlaceholder": "192.168.1.0/24 或 10.6.0.2",
   "remoteLanRemove": "移除",
-  "remoteLanNoAddress": "这台机器没有私有 IPv4 地址：请输入要监听的地址。"
+  "remoteLanNoAddress": "这台机器没有私有 IPv4 地址：请输入要监听的地址。",
+  "resumeLastRun": "上次运行",
+  "@resumeLastRun": {
+    "description": "恢复的 pane 上方的提示条：会话丢失前在这个 pane 里运行的命令。"
+  },
+  "resumeRun": "重新运行",
+  "@resumeRun": {
+    "description": "恢复的 pane 提示条上的按钮：把当时运行的命令键入这个 pane 的 shell。"
+  },
+  "resumeRunTip": "把这条命令键入这个 pane 的 shell",
+  "@resumeRunTip": {
+    "description": "重新运行按钮的提示。"
+  },
+  "resumeDismiss": "忽略",
+  "@resumeDismiss": {
+    "description": "关闭恢复提示条的按钮提示。"
+  }
 }

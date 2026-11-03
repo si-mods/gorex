@@ -1854,5 +1854,21 @@
   "remoteLanNoAddress": "This machine has no private IPv4 address: type the address to listen on.",
   "@remoteLanNoAddress": {
     "description": "Shown when turning the listener on finds no address of the local network."
+  },
+  "resumeLastRun": "Last run",
+  "@resumeLastRun": {
+    "description": "Strip over a restored pane: the command that ran there before the session was lost."
+  },
+  "resumeRun": "Run Again",
+  "@resumeRun": {
+    "description": "Button of a restored pane's strip: types the command that ran there into the pane's shell."
+  },
+  "resumeRunTip": "Type the command into this pane's shell",
+  "@resumeRunTip": {
+    "description": "Tooltip of the button that runs the last command again."
+  },
+  "resumeDismiss": "Dismiss",
+  "@resumeDismiss": {
+    "description": "Tooltip of the button that closes a restored pane's strip."
   }
 }
