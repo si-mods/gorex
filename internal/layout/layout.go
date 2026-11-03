@@ -93,14 +93,14 @@ type Node struct {
 	// Prog is what ran in the pane's session, with Args, when the layout
 	// was saved: the program in the foreground, not the shell at its
 	// prompt. A pane whose session is lost offers to run it again.
-	Prog        string   `json:"prog,omitempty"`
-	Args        []string `json:"args,omitempty"`
-	Cols        int      `json:"cols,omitempty"`
-	Rows        int      `json:"rows,omitempty"`
-	Vertical    bool    `json:"vertical,omitempty"`
-	Ratio       float32 `json:"ratio,omitempty"`
-	A           *Node   `json:"a,omitempty"`
-	B           *Node   `json:"b,omitempty"`
+	Prog     string   `json:"prog,omitempty"`
+	Args     []string `json:"args,omitempty"`
+	Cols     int      `json:"cols,omitempty"`
+	Rows     int      `json:"rows,omitempty"`
+	Vertical bool     `json:"vertical,omitempty"`
+	Ratio    float32  `json:"ratio,omitempty"`
+	A        *Node    `json:"a,omitempty"`
+	B        *Node    `json:"b,omitempty"`
 	// Unavailable marks a pane the server would not share with this
 	// client: its SID and host are gone, but its place in the layout stays.
 	Unavailable bool `json:"unavailable,omitempty"`
