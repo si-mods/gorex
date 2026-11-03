@@ -324,6 +324,11 @@ type Pane struct {
 	// drew for another client (screenSize), which its own size's return
 	// has to be mended from too.
 	followed bool
+	// held tells that the pane's terminal was painted at the size it had
+	// at rest while a divider was dragged, its own size's taking to come:
+	// what it lays out of the program's frames meanwhile is off the
+	// session's screen, which mends it once it takes the drag's size.
+	held bool
 }
 
 // browserPane is a pane that shows a web page in a web view of its
@@ -1137,10 +1142,10 @@ func (a *App) syncSize(p *Pane) {
 		return
 	}
 	p.term.Resize(cols, rows)
-	if theirs || p.followed {
+	if theirs || p.followed || p.held {
 		a.resyncPane(p, cols, rows)
 	}
-	p.followed = theirs
+	p.followed, p.held = theirs, false
 }
 
 // resyncHistory bounds what a resync replays of the scrollback, which it

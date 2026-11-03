@@ -351,6 +351,9 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	// passed through, which the program, told of one size at the end,
 	// never wrapped, and its frames would draw over rows.
 	held := a.dividerHeld || tr != nil && (cell.Transitioning() || a.sidebarMoving)
+	if a.dividerHeld {
+		p.held = true
+	}
 	cell.Children(func() {
 		if tr != nil && tr.Position {
 			fadeColors = false

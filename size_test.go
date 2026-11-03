@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -181,4 +183,56 @@ func TestPaneFollowsALockedSize(t *testing.T) {
 		return cols == ownCols && rows == ownRows
 	})
 	waitSessionSize(t, tt, a.client, p.SID, fmt.Sprintf("%dx%d", ownCols, ownRows))
+}
+
+// TestPaneShowsTheSessionAfterADrag: a pane's terminal keeps the size it
+// had at rest while the pointer drags a divider, and once it takes the
+// drag's size the pane shows the session's screen: the shell printed its
+// prompt again while the pane still laid the output out at the width
+// before, and what that left over is not the screen the session shows.
+func TestPaneShowsTheSessionAfterADrag(t *testing.T) {
+	a, tt := newTestApp(t)
+	tt.Frame()
+	waitFor(t, tt, "the shell", func() bool {
+		p := a.tab().Focus
+		return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt)
+	})
+	settle(tt)
+	a.split(false)
+	waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
+	settle(tt)
+	p := a.tab().panes()[0]
+	if p.term == nil {
+		t.Fatal("no terminal")
+	}
+	before, _ := p.term.Size()
+	d, ok := tt.Find("Divider")
+	if !ok {
+		t.Fatalf("no divider; texts %q", tt.Texts())
+	}
+	x, y := d.X+d.W/2, d.Y+d.H/2
+	tt.Press(x, y)
+	tt.Frame()
+	for i := 1; i <= 12; i++ {
+		tt.Move(x+float32(i*15), y)
+		tt.Advance(16 * time.Millisecond)
+		tt.Frame()
+	}
+	tt.Release(x+180, y)
+	tt.Frame()
+	waitFor(t, tt, "the pane to take the drag's size", func() bool {
+		cols, _ := p.term.Size()
+		return cols != before
+	})
+	cols, rows := p.term.Size()
+	want := fmt.Sprintf("%dx%d", cols, rows)
+	waitSessionSize(t, tt, a.client, p.SID, want)
+	waitFor(t, tt, "the session's screen", func() bool {
+		res, err := a.client.Capture(p.SID, 0)
+		if err != nil || res.Cols != cols || res.Rows != rows {
+			return false
+		}
+		screen, err := renderScreen(res.Screen, res.Cols, res.Rows)
+		return err == nil && p.term.Text() == screen
+	})
 }
