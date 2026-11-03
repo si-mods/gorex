@@ -5521,3 +5521,93 @@ func RemoteLanNoAddress() string { return In(i18n.Locale()).RemoteLanNoAddress()
 func (msgs Messages) RemoteLanNoAddress() string {
 	return Catalog.Format(msgs.locale, "remoteLanNoAddress", nil)
 }
+
+// ResumeLastRun says "Last run"
+// in the language the app shows.
+//
+// Strip over a restored pane: the command that ran there before the session
+// was lost.
+func ResumeLastRun() string { return In(i18n.Locale()).ResumeLastRun() }
+
+// ResumeLastRun says "Last run"
+// in the language of msgs.
+//
+// Strip over a restored pane: the command that ran there before the session
+// was lost.
+func (msgs Messages) ResumeLastRun() string {
+	return Catalog.Format(msgs.locale, "resumeLastRun", nil)
+}
+
+// ResumeRun says "Run Again"
+// in the language the app shows.
+//
+// Button of a restored pane's strip: types the command that ran there into
+// the pane's shell.
+func ResumeRun() string { return In(i18n.Locale()).ResumeRun() }
+
+// ResumeRun says "Run Again"
+// in the language of msgs.
+//
+// Button of a restored pane's strip: types the command that ran there into
+// the pane's shell.
+func (msgs Messages) ResumeRun() string {
+	return Catalog.Format(msgs.locale, "resumeRun", nil)
+}
+
+// ResumeRunTip says "Type the command into this pane's shell"
+// in the language the app shows.
+//
+// Tooltip of the button that runs the last command again.
+func ResumeRunTip() string { return In(i18n.Locale()).ResumeRunTip() }
+
+// ResumeRunTip says "Type the command into this pane's shell"
+// in the language of msgs.
+//
+// Tooltip of the button that runs the last command again.
+func (msgs Messages) ResumeRunTip() string {
+	return Catalog.Format(msgs.locale, "resumeRunTip", nil)
+}
+
+// ResumeDismiss says "Dismiss"
+// in the language the app shows.
+//
+// Tooltip of the button that closes a restored pane's strip.
+func ResumeDismiss() string { return In(i18n.Locale()).ResumeDismiss() }
+
+// ResumeDismiss says "Dismiss"
+// in the language of msgs.
+//
+// Tooltip of the button that closes a restored pane's strip.
+func (msgs Messages) ResumeDismiss() string {
+	return Catalog.Format(msgs.locale, "resumeDismiss", nil)
+}
+
+// ResumeContinue says "Continue"
+// in the language the app shows.
+//
+// Button of a restored pane's strip, for a coding agent: continues its last
+// conversation in the pane's directory.
+func ResumeContinue() string { return In(i18n.Locale()).ResumeContinue() }
+
+// ResumeContinue says "Continue"
+// in the language of msgs.
+//
+// Button of a restored pane's strip, for a coding agent: continues its last
+// conversation in the pane's directory.
+func (msgs Messages) ResumeContinue() string {
+	return Catalog.Format(msgs.locale, "resumeContinue", nil)
+}
+
+// ResumeContinueTip says "Continue the agent's last conversation here"
+// in the language the app shows.
+//
+// Tooltip of the button that continues an agent's last conversation.
+func ResumeContinueTip() string { return In(i18n.Locale()).ResumeContinueTip() }
+
+// ResumeContinueTip says "Continue the agent's last conversation here"
+// in the language of msgs.
+//
+// Tooltip of the button that continues an agent's last conversation.
+func (msgs Messages) ResumeContinueTip() string {
+	return Catalog.Format(msgs.locale, "resumeContinueTip", nil)
+}

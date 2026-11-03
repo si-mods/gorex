@@ -311,6 +311,10 @@ type Pane struct {
 	// restored tells that the session was made anew for a pane of a
 	// saved layout whose session was gone.
 	restored bool
+	// resume is what the pane ran when the layout was saved, for a pane
+	// whose session the server lost: the strip that runs it again, gone
+	// once the user runs it or dismisses it.
+	resume   *resumeHint
 	startDir string
 	// seenFunc tells the window's store which session status was seen.
 	seenFunc func(sid string, at time.Time)
@@ -2546,6 +2550,12 @@ func (a *App) savedTab(t *Tab) savedTab {
 			if cols, rows := p.paneSize(); cols > 0 && rows > 0 {
 				s.Cols, s.Rows = cols, rows
 			}
+			// What ran there, not the shell at its prompt: a pane whose
+			// session is lost offers to run it again. A host's sessions
+			// stay on their machine, and the pane attaches to one again.
+			if p.host == nil && !p.info.Idle && (len(p.info.Args) > 0 || p.info.Program != "") {
+				s.Prog, s.Args = p.info.Program, p.info.Args
+			}
 			return s
 		}
 		return &savedNode{Vertical: n.Vertical, Ratio: n.Ratio, A: save(n.A), B: save(n.B)}
@@ -2635,6 +2645,12 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 				used[s.SID] = true
 				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, info: in, startDir: s.Dir}
 				a.attach(p, in.Cols, in.Rows)
+				// A session the server started again after a crash or a
+				// reboot is the shell the pane's program ran in: back at
+				// its prompt, the pane offers the program again.
+				if in.Idle {
+					p.resume = resumeHintFor(in.Shell, s.Prog, s.Args)
+				}
 			default:
 				dir := s.Dir
 				if st, err := os.Stat(dir); err != nil || !st.IsDir() {
@@ -2642,6 +2658,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 				}
 				p = a.newPane(nil, dir, s.Cols, s.Rows)
 				p.Name, p.restored = s.Name, true
+				p.resume = resumeHintFor(p.info.Shell, s.Prog, s.Args)
 			}
 			p.Tab, p.Node = t, n
 			n.Pane = p
@@ -2822,6 +2839,11 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			}
 			was := p.info
 			p.info = in
+			// A strip naming what the pane ran has served its purpose once
+			// something runs there again.
+			if p.resume != nil && !in.Idle {
+				p.resume = nil
+			}
 			events = append(events, statusEvents(p, was.Statuses, in.Statuses)...)
 			// While another device holds the session's size, the pane's
 			// resizes are ignored, and the session keeps that size; once
@@ -2857,7 +2879,9 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 					n.Show()
 				}
 			}
-			if was.Dir != in.Dir {
+			// The layout keeps the program in the foreground, for a pane
+			// whose session a restart loses: its start and its end save.
+			if was.Dir != in.Dir || was.Idle != in.Idle || was.Program != in.Program || !slices.Equal(was.Args, in.Args) {
 				a.changed()
 			}
 		}
