@@ -324,6 +324,13 @@ type Pane struct {
 	// drew for another client (screenSize), which its own size's return
 	// has to be mended from too.
 	followed bool
+	// held counts the frames in which the pane's terminal may still take
+	// the size a divider drag gave it: it takes that size once the hold
+	// ends, before the session does, so what the program prints in
+	// between lays out at a size the session did not draw for, which the
+	// session's screen mends. A hold that ends at the size it began takes
+	// no size, and asks for no screen.
+	held int
 }
 
 // browserPane is a pane that shows a web page in a web view of its
@@ -504,6 +511,14 @@ type App struct {
 	// moved it in the frame before: the panes then follow it at once, with
 	// no spring.
 	dividerDrag bool
+	// dividerHeld tells that the pointer held a divider between panes in
+	// the frame before: the panes follow it, but their terminals keep the
+	// size they had at rest until it is let go, so the program hears of
+	// one size at the end rather than of each width the drag passed
+	// through. dividerNow is what this frame's dividers found, which the
+	// frame after reads as dividerHeld.
+	dividerHeld bool
+	dividerNow  bool
 	// sidebarMoving tells that the sidebar or the bar over the panes
 	// moved in the last frame: the terminals there hold their size.
 	sidebarMoving bool
@@ -1129,11 +1144,17 @@ func (a *App) syncSize(p *Pane) {
 		return
 	}
 	p.term.Resize(cols, rows)
-	if theirs || p.followed {
+	if theirs || p.followed || p.held > 0 {
 		a.resyncPane(p, cols, rows)
 	}
-	p.followed = theirs
+	p.followed, p.held = theirs, 0
 }
+
+// holdGrace is how many frames a pane's terminal may take to follow the
+// size a divider drag's hold left it at, once the hold ends: the frame
+// the pane's view asks for the drag's size, and the one after it, when
+// the terminal takes it (Pane.held).
+const holdGrace = 2
 
 // resyncHistory bounds what a resync replays of the scrollback, which it
 // clears: the session's screen and the last of it, not a session's whole

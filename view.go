@@ -30,6 +30,7 @@ func (a *App) view(c *ui.Context) {
 	a.services = c.Services()
 	a.runPosted()
 	a.sidebarMoving = false
+	a.dividerHeld, a.dividerNow = a.dividerNow, false
 	k := a.colors(c)
 	a.focusedWin = a.win == nil || a.win.IsFocused()
 	breathing = a.focusedWin
@@ -344,9 +345,20 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	if tr != nil {
 		cell.Transition(*tr)
 	}
-	// While the cell moves or the sidebar resizes the panes, the
-	// terminals keep the size they had at rest.
-	held := tr != nil && (cell.Transitioning() || a.sidebarMoving)
+	// While the cell moves, the sidebar resizes the panes, or a divider
+	// is dragged, the terminals keep the size they had at rest: a drag
+	// would otherwise lay the program's output out at every width it
+	// passed through, which the program, told of one size at the end,
+	// never wrapped, and its frames would draw over rows.
+	held := a.dividerHeld || tr != nil && (cell.Transitioning() || a.sidebarMoving)
+	// The size a drag's hold leaves to take follows it by a frame, which
+	// the count tells (syncSize): a hold that ends at the size it began
+	// takes none.
+	if a.dividerHeld {
+		p.held = holdGrace
+	} else if p.held > 0 {
+		p.held--
+	}
 	cell.Children(func() {
 		if tr != nil && tr.Position {
 			fadeColors = false
@@ -599,15 +611,18 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 		// It moves with the cells, but neither opens nor closes.
 		div.Transition(ui.ElementTransition{Animation: tr.Animation, Position: tr.Position, Size: tr.Size, Colors: tr.Colors})
 	}
-	// Moved while held, it drags: the panes follow the pointer at once, and
-	// their terminals take each size. Dragging tells of a Draggable, not of
-	// a press that moves; Pressed, only while the pointer stays over it. A
-	// press that does not move, as a double click's, leaves the panes'
-	// springs be.
 	dx, dy, held := div.Dragged()
 	d := dx
 	if n.Vertical {
 		d = dy
+	}
+	// Held, it drags: the panes follow the pointer at once, and their
+	// terminals keep the size they had at rest until the drag ends.
+	// Dragged tells of a press, which a pause in the drag keeps, not of a
+	// pointer that stays over it; a press that does not move, as a double
+	// click's, changes no share and leaves the panes' springs be.
+	if held {
+		a.dividerNow = true
 	}
 	if held && d != 0 && total > 0 {
 		n.Ratio = min(max(n.Ratio+d/total, 0.08), 0.92)
