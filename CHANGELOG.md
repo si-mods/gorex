@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.0
+
+### Features
+
+* **panes:** keep what ran in a pane when its session is lost, and show a strip over the new shell that runs it again, quoted for the shell, or continues a Claude Code, Codex, omp or Pi conversation in that directory, which the agent itself finds ([#164](https://github.com/si-mods/gorex/pull/164))
+* **rex:** remove the agent session-start hooks and the Pi/omp extensions (`gorex skill`, `gorex agent-hook`), with the server's agent records and the resume command a restart typed, so GoRex installs nothing into an agent's settings ([#165](https://github.com/si-mods/gorex/pull/165))
+
 ## 0.10.1
 
 ### Features
