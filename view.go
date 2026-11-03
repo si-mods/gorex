@@ -351,8 +351,13 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	// passed through, which the program, told of one size at the end,
 	// never wrapped, and its frames would draw over rows.
 	held := a.dividerHeld || tr != nil && (cell.Transitioning() || a.sidebarMoving)
+	// The size a drag's hold leaves to take follows it by a frame, which
+	// the count tells (syncSize): a hold that ends at the size it began
+	// takes none.
 	if a.dividerHeld {
-		p.held = true
+		p.held = holdGrace
+	} else if p.held > 0 {
+		p.held--
 	}
 	cell.Children(func() {
 		if tr != nil && tr.Position {

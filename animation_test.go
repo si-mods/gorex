@@ -187,66 +187,71 @@ func TestTerminalHoldsSizeWhileMoving(t *testing.T) {
 // TestDividerDragHoldsTerminals: dragging the divider between two panes
 // moves them with the pointer, with no spring, while their terminals keep
 // the size they had at rest: the program hears of one size, the drag's,
-// once the pointer lets go, not of each width on the way.
+// once the pointer lets go, not of each width on the way, with or without
+// animations.
 func TestDividerDragHoldsTerminals(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
-	a, tt := newTestApp(t)
-	prefs = settings{}
-	tt.Frame()
-	settle(tt)
-	a.split(false)
-	waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
-	settle(tt)
-	p := a.tab().Focus
-	if p == nil || p.term == nil {
-		t.Fatal("no focused terminal")
+	for _, st := range styles {
+		t.Run(st.name, func(t *testing.T) {
+			prefs = settings{Animation: st.style}
+			a, tt := newTestApp(t)
+			tt.Frame()
+			settle(tt)
+			a.split(false)
+			waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
+			settle(tt)
+			p := a.tab().Focus
+			if p == nil || p.term == nil {
+				t.Fatal("no focused terminal")
+			}
+			start, rows := p.term.Size()
+			want := fmt.Sprintf("%dx%d", start, rows)
+			waitSessionSize(t, tt, a.client, p.SID, want)
+			d, ok := tt.Find("Divider")
+			if !ok {
+				t.Fatalf("no divider; texts %q", tt.Texts())
+			}
+			x, y := d.X+d.W/2, d.Y+d.H/2
+			tt.Press(x, y)
+			tt.Frame()
+			for i := 1; i <= 12; i++ {
+				tt.Move(x-float32(i*15), y)
+				tt.Advance(16 * time.Millisecond)
+				tt.Frame()
+				// The divider is where the pointer is, not on its way there.
+				now, ok := tt.Find("Divider")
+				if !ok {
+					t.Fatalf("step %d: no divider", i)
+				}
+				if at, want := now.X+now.W/2, x-float32(i*15); at-want > 1 || want-at > 1 {
+					t.Errorf("step %d: divider at %v, the pointer at %v", i, at, want)
+				}
+				if c, r := p.term.Size(); c != start || r != rows {
+					t.Fatalf("step %d: terminal %dx%d, want the %s it rested at", i, c, r, want)
+				}
+			}
+			// Held, the drag outlasts a settle, which the terminal would
+			// have asked for at each width on the way.
+			time.Sleep(400 * time.Millisecond)
+			tt.Frame()
+			waitSessionSize(t, tt, a.client, p.SID, want)
+			if c, r := p.term.Size(); c != start || r != rows {
+				t.Fatalf("terminal %dx%d while the pointer stayed held, want the %s it rested at", c, r, want)
+			}
+			tt.Release(x-180, y)
+			tt.Frame()
+			waitFor(t, tt, "the terminal to take the drag's size", func() bool {
+				c, r := p.term.Size()
+				return c != start || r != rows
+			})
+			cols, lines := p.term.Size()
+			if ac, ar := p.askedSize(); cols != ac || lines != ar {
+				t.Errorf("terminal %dx%d after the drag, want the pane's %dx%d", cols, lines, ac, ar)
+			}
+			waitSessionSize(t, tt, a.client, p.SID, fmt.Sprintf("%dx%d", cols, lines))
+		})
 	}
-	start, rows := p.term.Size()
-	want := fmt.Sprintf("%dx%d", start, rows)
-	waitSessionSize(t, tt, a.client, p.SID, want)
-	d, ok := tt.Find("Divider")
-	if !ok {
-		t.Fatalf("no divider; texts %q", tt.Texts())
-	}
-	x, y := d.X+d.W/2, d.Y+d.H/2
-	tt.Press(x, y)
-	tt.Frame()
-	for i := 1; i <= 12; i++ {
-		tt.Move(x-float32(i*15), y)
-		tt.Advance(16 * time.Millisecond)
-		tt.Frame()
-		// The divider is where the pointer is, not on its way there.
-		now, ok := tt.Find("Divider")
-		if !ok {
-			t.Fatalf("step %d: no divider", i)
-		}
-		if at, want := now.X+now.W/2, x-float32(i*15); at-want > 1 || want-at > 1 {
-			t.Errorf("step %d: divider at %v, the pointer at %v", i, at, want)
-		}
-		if c, r := p.term.Size(); c != start || r != rows {
-			t.Fatalf("step %d: terminal %dx%d, want the %s it rested at", i, c, r, want)
-		}
-	}
-	// Held, the drag outlasts a settle, which the terminal would have
-	// asked for at each width on the way.
-	time.Sleep(400 * time.Millisecond)
-	tt.Frame()
-	waitSessionSize(t, tt, a.client, p.SID, want)
-	if c, r := p.term.Size(); c != start || r != rows {
-		t.Fatalf("terminal %dx%d while the pointer stayed held, want the %s it rested at", c, r, want)
-	}
-	tt.Release(x-180, y)
-	tt.Frame()
-	waitFor(t, tt, "the terminal to take the drag's size", func() bool {
-		c, r := p.term.Size()
-		return c != start || r != rows
-	})
-	cols, lines := p.term.Size()
-	if ac, ar := p.askedSize(); cols != ac || lines != ar {
-		t.Errorf("terminal %dx%d after the drag, want the pane's %dx%d", cols, lines, ac, ar)
-	}
-	waitSessionSize(t, tt, a.client, p.SID, fmt.Sprintf("%dx%d", cols, lines))
 }
 
 // TestDividerDoubleClickAnimates: a double click on the divider puts it

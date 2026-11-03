@@ -324,11 +324,13 @@ type Pane struct {
 	// drew for another client (screenSize), which its own size's return
 	// has to be mended from too.
 	followed bool
-	// held tells that the pane's terminal was painted at the size it had
-	// at rest while a divider was dragged, its own size's taking to come:
-	// what it lays out of the program's frames meanwhile is off the
-	// session's screen, which mends it once it takes the drag's size.
-	held bool
+	// held counts the frames in which the pane's terminal may still take
+	// the size a divider drag gave it: it takes that size once the hold
+	// ends, before the session does, so what the program prints in
+	// between lays out at a size the session did not draw for, which the
+	// session's screen mends. A hold that ends at the size it began takes
+	// no size, and asks for no screen.
+	held int
 }
 
 // browserPane is a pane that shows a web page in a web view of its
@@ -1142,11 +1144,17 @@ func (a *App) syncSize(p *Pane) {
 		return
 	}
 	p.term.Resize(cols, rows)
-	if theirs || p.followed || p.held {
+	if theirs || p.followed || p.held > 0 {
 		a.resyncPane(p, cols, rows)
 	}
-	p.followed, p.held = theirs, false
+	p.followed, p.held = theirs, 0
 }
+
+// holdGrace is how many frames a pane's terminal may take to follow the
+// size a divider drag's hold left it at, once the hold ends: the frame
+// the pane's view asks for the drag's size, and the one after it, when
+// the terminal takes it (Pane.held).
+const holdGrace = 2
 
 // resyncHistory bounds what a resync replays of the scrollback, which it
 // clears: the session's screen and the last of it, not a session's whole

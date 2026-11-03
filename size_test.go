@@ -187,9 +187,10 @@ func TestPaneFollowsALockedSize(t *testing.T) {
 
 // TestPaneShowsTheSessionAfterADrag: a pane's terminal keeps the size it
 // had at rest while the pointer drags a divider, and once it takes the
-// drag's size the pane shows the session's screen: the shell printed its
-// prompt again while the pane still laid the output out at the width
-// before, and what that left over is not the screen the session shows.
+// drag's size the pane shows the session's screen: what the program
+// printed for the width before, as a shell redrawing its prompt, reached
+// the pane while it still laid the output out at that width, and what
+// that left over is not the screen the session shows.
 func TestPaneShowsTheSessionAfterADrag(t *testing.T) {
 	a, tt := newTestApp(t)
 	tt.Frame()
@@ -218,6 +219,9 @@ func TestPaneShowsTheSessionAfterADrag(t *testing.T) {
 		tt.Advance(16 * time.Millisecond)
 		tt.Frame()
 	}
+	// The program's frames for the grid before, reaching the pane while it
+	// still shows that grid: the drag's size takes them away with it.
+	p.term.Feed([]byte("stale-write\r\n"))
 	tt.Release(x+180, y)
 	tt.Frame()
 	waitFor(t, tt, "the pane to take the drag's size", func() bool {
@@ -235,4 +239,67 @@ func TestPaneShowsTheSessionAfterADrag(t *testing.T) {
 		screen, err := renderScreen(res.Screen, res.Cols, res.Rows)
 		return err == nil && p.term.Text() == screen
 	})
+}
+
+// TestDividerHoldEndsAtItsSize: a hold that ends where it began takes no
+// size, so the pane asks for no screen after it: the history it has stays
+// at the next resize there is, instead of being replaced by the session's
+// screen and the last of it.
+func TestDividerHoldEndsAtItsSize(t *testing.T) {
+	a, tt := newTestApp(t)
+	tt.Frame()
+	waitFor(t, tt, "the shell", func() bool {
+		p := a.tab().Focus
+		return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt)
+	})
+	settle(tt)
+	a.split(false)
+	waitFor(t, tt, "2 panes", func() bool { return len(a.tab().panes()) == 2 })
+	settle(tt)
+	p := a.tab().Focus
+	if p.term == nil {
+		t.Fatal("no terminal")
+	}
+	// A history longer than a resync replays, which one would cut.
+	var history strings.Builder
+	for range 3000 {
+		history.WriteString("sentinel " + strings.Repeat("x", 40) + "\r\n")
+	}
+	p.term.Feed([]byte(history.String()))
+	tt.Frame()
+	if got := p.term.Text(); !strings.Contains(got, "sentinel") {
+		t.Fatalf("the terminal did not take the history: %d bytes", len(got))
+	}
+	d, ok := tt.Find("Divider")
+	if !ok {
+		t.Fatalf("no divider; texts %q", tt.Texts())
+	}
+	// A press on the divider, let go where it began.
+	x, y := d.X+d.W/2, d.Y+d.H/2
+	tt.Press(x, y)
+	tt.Frame()
+	for range 4 {
+		tt.Advance(16 * time.Millisecond)
+		tt.Frame()
+	}
+	tt.Release(x, y)
+	tt.Frame()
+	settle(tt)
+	// A resize it did take, the window's, with no drag behind it.
+	beforeC, beforeR := p.term.Size()
+	tt.SetSize(1000, 560)
+	settle(tt)
+	waitFor(t, tt, "the terminal to take the window's size", func() bool {
+		c, r := p.term.Size()
+		return c != beforeC || r != beforeR
+	})
+	// A screen mended from the session's waits for a capture, off the
+	// frames' clock: give one the time to land if it was asked for.
+	for range 30 {
+		time.Sleep(50 * time.Millisecond)
+		tt.Frame()
+	}
+	if got := p.term.Text(); !strings.Contains(got, "sentinel") {
+		t.Errorf("the history is %d bytes, cut: a hold that took no size mended one", len(got))
+	}
 }

@@ -121,6 +121,23 @@ the size another machine gave may lag that long; the session's own replay
 of a full-screen program arrives in between, and the capture that follows
 the pane's new size replaces it.
 
+## A divider drag
+
+A drag of the divider between panes is one size, not one per frame. The
+panes follow the pointer, and their terminals keep the size they had at
+rest until the pointer lets go, as they do while a pane moves: at every
+width on the way the program would lay its output out where it, told of
+one size at the end, never wrapped it, and a program that draws in place,
+as an agent's interface, would draw its screen again and again.
+
+The terminal takes the drag's size once the pointer lets go, before the
+session does (it settles, 150 ms): what the program prints meanwhile, as
+a shell reparks its prompt, lays out at a size the session did not draw
+for. Taking the size asks for the session's screen, as following another
+client's size does, and cuts the pane's history to the session's screen
+and the last 64 KB of it (`resyncHistory`). A press that ends where it
+began takes no size, and asks for nothing.
+
 ## Limits
 
 - A window that does not hold the size shows the program's grid, which the
