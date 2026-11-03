@@ -81,18 +81,12 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return eventsCmd(args, out, errOut)
 	case "hosts":
 		return hostsCmd(args, out, errOut)
-	case "skill":
-		return skillCmd(args, out, errOut)
 	case "remote":
 		return remoteCmd(args, out, errOut)
 	case "server":
 		return serverCmd(args, out, errOut)
 	case "config":
 		return configCmd(args, out, errOut)
-	case "__internal":
-		return internalCmd(args, out, errOut)
-	case "agent-hook":
-		return agentHookCmd(args, stdin, out)
 	case "wait":
 		return waitCmd(args, out, errOut)
 	case "run":
@@ -131,7 +125,6 @@ Usage:
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
   gorex hosts [ls] [--json]
-  gorex skill show|setup|status|remove [--agent NAME] [--project]
   gorex remote status [--json] | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
   gorex server restart
   gorex config path | config check [FILE] | config reload
@@ -832,18 +825,6 @@ func configCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitOK, true
 	}
 	fmt.Fprintln(errOut, "gorex config: use path, check or reload")
-	return ExitUsage, true
-}
-
-// stdin is what agent-hook reads its hook's input from.
-var stdin io.Reader = os.Stdin
-
-func internalCmd(args []string, out, errOut io.Writer) (int, bool) {
-	if len(args) > 0 && args[0] == "session-start" {
-		// The hook of a build before agent-hook.
-		return agentHookCmd(args[1:], stdin, out)
-	}
-	fmt.Fprintln(errOut, "gorex: unknown internal command")
 	return ExitUsage, true
 }
 
