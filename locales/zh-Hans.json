@@ -565,5 +565,13 @@
   "resumeDismiss": "忽略",
   "@resumeDismiss": {
     "description": "关闭恢复提示条的按钮提示。"
+  },
+  "resumeContinue": "继续对话",
+  "@resumeContinue": {
+    "description": "恢复的 pane 提示条上的按钮，用于编码 agent：在这个目录里继续它上次的对话。"
+  },
+  "resumeContinueTip": "在这个目录里继续该 agent 上次的对话",
+  "@resumeContinueTip": {
+    "description": "继续对话按钮的提示。"
   }
 }

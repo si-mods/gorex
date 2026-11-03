@@ -5581,3 +5581,33 @@ func ResumeDismiss() string { return In(i18n.Locale()).ResumeDismiss() }
 func (msgs Messages) ResumeDismiss() string {
 	return Catalog.Format(msgs.locale, "resumeDismiss", nil)
 }
+
+// ResumeContinue says "Continue"
+// in the language the app shows.
+//
+// Button of a restored pane's strip, for a coding agent: continues its last
+// conversation in the pane's directory.
+func ResumeContinue() string { return In(i18n.Locale()).ResumeContinue() }
+
+// ResumeContinue says "Continue"
+// in the language of msgs.
+//
+// Button of a restored pane's strip, for a coding agent: continues its last
+// conversation in the pane's directory.
+func (msgs Messages) ResumeContinue() string {
+	return Catalog.Format(msgs.locale, "resumeContinue", nil)
+}
+
+// ResumeContinueTip says "Continue the agent's last conversation here"
+// in the language the app shows.
+//
+// Tooltip of the button that continues an agent's last conversation.
+func ResumeContinueTip() string { return In(i18n.Locale()).ResumeContinueTip() }
+
+// ResumeContinueTip says "Continue the agent's last conversation here"
+// in the language of msgs.
+//
+// Tooltip of the button that continues an agent's last conversation.
+func (msgs Messages) ResumeContinueTip() string {
+	return Catalog.Format(msgs.locale, "resumeContinueTip", nil)
+}

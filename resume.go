@@ -12,10 +12,15 @@ import (
 
 // resumeHint is what a pane's session ran when the layout was saved, for a
 // pane whose session is lost: the command, as the pane's shell reads it,
-// which one click types again.
+// which one click types again, and for a coding agent, the command that
+// continues its last conversation there.
 type resumeHint struct {
 	// cmd is the command line, quoted for the shell.
 	cmd string
+	// cont continues the agent's last conversation, "" for a program that
+	// is no agent GoRex knows: the agent finds the conversation itself, so
+	// no id has to be kept.
+	cont string
 }
 
 // resumeHintFor is the hint for the program the layout saved, nil when no
@@ -26,7 +31,25 @@ func resumeHintFor(shell, prog string, args []string) *resumeHint {
 	if !ok {
 		return nil
 	}
-	return &resumeHint{cmd: cmd}
+	return &resumeHint{cmd: cmd, cont: continueCommand(prog)}
+}
+
+// agentContinue is the command that continues a coding agent's last
+// conversation, by the name of its program: the agent itself resolves which
+// one that was, in the directory the pane starts in, so nothing has to know
+// a conversation id.
+var agentContinue = map[string]string{
+	"claude": "claude --continue",
+	"codex":  "codex resume --last",
+	"omp":    "omp --continue",
+	"pi":     "pi --continue",
+}
+
+// continueCommand is the continue command of the agent named name, "" for a
+// program that is no agent here.
+func continueCommand(name string) string {
+	name = strings.ToLower(strings.TrimSuffix(filepath.Base(name), ".exe"))
+	return agentContinue[name]
 }
 
 // resumeCommand is argv as the shell at path reads it, "" for a shell the
@@ -150,15 +173,14 @@ func cmdWord(s string) (string, bool) {
 // runResume types the pane's command into its shell, as the user asked by
 // the click: the strip goes, and the command runs where the pane's session
 // started.
-func (a *App) runResume(p *Pane) {
-	h := p.resume
-	if h == nil || p.SID == "" {
+func (a *App) runResume(p *Pane, cmd string) {
+	if p.resume == nil || p.SID == "" || cmd == "" {
 		return
 	}
 	p.resume = nil
 	if c := a.clientOf(p.host); c != nil {
-		if err := c.Input(p.SID, []byte(h.cmd+"\r")); err != nil {
-			log.Printf("running %q again: %v", h.cmd, err)
+		if err := c.Input(p.SID, []byte(cmd+"\r")); err != nil {
+			log.Printf("running %q again: %v", cmd, err)
 		}
 	}
 	a.focusReq = p
@@ -176,8 +198,13 @@ func (a *App) resumeBar(c *ui.Context, k *colors, p *Pane) ui.Element {
 			Shrink(0).SingleLine()
 		ui.Text(c.Key("cmd"), h.cmd).Font(monoFamily()).FontSize(11.5).TextColor(k.text.Alpha(0.8)).
 			Grow(1).Shrink(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(h.cmd)
+		if h.cont != "" {
+			if ui.Button(c.Key("continue"), locales.ResumeContinue()).Tooltip(locales.ResumeContinueTip()).Clicked() {
+				a.runResume(p, h.cont)
+			}
+		}
 		if ui.Button(c.Key("run"), locales.ResumeRun()).Tooltip(locales.ResumeRunTip()).Clicked() {
-			a.runResume(p)
+			a.runResume(p, h.cmd)
 		}
 		if ui.Button(c.Key("close"), "×").Tooltip(locales.ResumeDismiss()).Clicked() {
 			p.resume = nil

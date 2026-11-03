@@ -50,6 +50,25 @@ func TestResumeCommand(t *testing.T) {
 
 // TestSnapshotSavesProgram checks that the layout keeps what ran in a pane,
 // not the shell at its prompt, and nothing for a host's pane.
+// TestAgentContinue checks the agents whose last conversation a restored
+// pane continues, by the names their programs go by.
+func TestAgentContinue(t *testing.T) {
+	for _, c := range []struct{ name, want string }{
+		{"claude", "claude --continue"},
+		{"Claude.exe", "claude --continue"},
+		{"/opt/homebrew/bin/omp", "omp --continue"},
+		{"pi", "pi --continue"},
+		{"codex", "codex resume --last"},
+		{"node", ""},
+		{"npx", ""},
+		{"", ""},
+	} {
+		if got := continueCommand(c.name); got != c.want {
+			t.Errorf("continueCommand(%q) = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
 func TestSnapshotSavesProgram(t *testing.T) {
 	a, _ := newTestApp(t)
 	p := a.tab().Focus
@@ -88,11 +107,14 @@ func TestRestoreOffersRun(t *testing.T) {
 	if p.resume == nil || p.resume.cmd == "" {
 		t.Fatalf("pane restored with no resume, or %+v", p.resume)
 	}
+	if p.resume.cont != "claude --continue" {
+		t.Errorf("continue command %q", p.resume.cont)
+	}
 	tt := ui.NewTester(b.view, 1000, 620)
 	waitFor(t, tt, "the strip of the last run", func() bool {
 		return strings.Contains(strings.Join(tt.Texts(), "\n"), locales.ResumeRun())
 	})
-	b.runResume(p)
+	b.runResume(p, p.resume.cmd)
 	if p.resume != nil {
 		t.Error("the strip stays after running")
 	}

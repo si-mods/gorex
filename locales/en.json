@@ -1870,5 +1870,13 @@
   "resumeDismiss": "Dismiss",
   "@resumeDismiss": {
     "description": "Tooltip of the button that closes a restored pane's strip."
+  },
+  "resumeContinue": "Continue",
+  "@resumeContinue": {
+    "description": "Button of a restored pane's strip, for a coding agent: continues its last conversation in the pane's directory."
+  },
+  "resumeContinueTip": "Continue the agent's last conversation here",
+  "@resumeContinueTip": {
+    "description": "Tooltip of the button that continues an agent's last conversation."
   }
 }
