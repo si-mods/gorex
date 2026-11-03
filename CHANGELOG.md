@@ -2,6 +2,10 @@
 
 ## 0.10.1
 
+### Features
+
+* **rexapi:** serve API revisions 0-7 with request and result translation, and fill the wire gaps: response `ordered_after` and `requester`, error `action`, welcome `carriers`, the stream reconnect grace, and `pwd_changed`, `process_changed` and `program_status_removed` block events ([#160](https://github.com/si-mods/gorex/pull/160))
+
 ### Bug Fixes
 
 * **panes:** hold a divider drag's terminals at their rest size, so the program hears of one size, the drag's, once the pointer lets go rather than of each width on the way, where what it drew for the grid before wrapped where it did not wrap it and a program that draws in place, as an agent's interface does, reprinted its screen from the top again and again ([#161](https://github.com/si-mods/gorex/pull/161))
