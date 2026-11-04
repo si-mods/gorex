@@ -81,7 +81,7 @@ before. Three things make it up:
 | Glass | Code | Use it for |
 |---|---|---|
 | The window's material: what is behind the window, frosted by the system | `glass.go`, `glassVibrancy`, `WindowOptions.Vibrancy`, `Window.SetVibrancy` | The windows, main and Settings. `VibrancyGlass` on macOS (from 26; before, MyGo shows the popover material), `VibrancyMica` on Windows 11, none on Linux. |
-| In-window glass: what the window drew under it, through `glass.Glass` | `glass.go`, `glassPanel(e, flat)`, `paneGlass{face, flat}` | Popovers, dialogs and the palette's panel: layers over what the page paints, in the system's glass. |
+| Layers over the page: the system's glass, else MyGo's | `glass.go`, `glassPanel(e, flat)`, `paneGlass{face, flat}`, `glass_other.go` | Popovers, dialogs and the palette's panel: `ui.SystemGlass`, with `paneGlass` (MyGo's `glass.Glass` on a GPU off macOS) where the system draws none. |
 | The system's glass in an element: AppKit's `NSGlassEffectView` under its box | `glass.go`, `glassPill`, `ui.SystemGlass{Tint, Fallback}` | The panes, tiled and floating, tinted by their face (`glassTint`), with `faceMaterial` and `paneGlass` where the system draws none. The active tab's pill, in the sidebar, the tab strip and Settings, as Rex's: no tint dark, `pillTint` light; `faceMaterial{k.pillFace}` where the system draws none (before macOS 26, Windows, Linux, tests). |
 | Frost: the window behind, blurred and tinted | `frost.go`, `paintFrost` | A panel with the glass setting off, as the palette's, whose backdrop only dims it. |
 
@@ -93,13 +93,15 @@ before. Three things make it up:
   at `backgroundAlpha`, 0.3 of the gradients, which keeps the window's
   and the workspace's colors), and the terminals' face fade by the
   Terminal opacity setting (`terminalOpacity`, 0.3 to 1, 0.8 by default;
-  in `cardFace`). Browser panes keep their face.
+  in `cardFace`); terminal panes are the system's glass, tinted by that
+  face at 0.4 (`glassTint`; a configured theme's whole). Browser panes
+  keep their face.
 - **macOS has only the system's glass.** Every glass layer there is
   `ui.SystemGlass`; `paneGlass`, its fallback, paints flat on macOS (before
   macOS 26), and is MyGo's glass only on Windows and Linux. MyGo's glass
   is imported only in `glass_other.go` (`!darwin`), so macOS builds cannot
   paint it.
-- **In-window glass is the GPU's.** `paneGlass` paints `glass.Glass`
+- **MyGo's glass is the GPU's.** Off macOS `paneGlass` paints `glass.Glass`
   where `p.Accelerated()`, and its flat face elsewhere, as `paintFrost`
   does: on the CPU the glass runs slowly, and the tests see the old
   fills. The palette's backdrop only dims (`k.backdrop`), so that the
@@ -112,7 +114,8 @@ before. Three things make it up:
   only what the page painted: under the clear sidebar and strip that is
   nothing, and it turns dark. Glass over them is `ui.SystemGlass`, which
   the system draws from what is behind the window. The page leaves a
-  hole for it, so draw nothing of your own (insets, rims) over it.
+  hole for it, so draw nothing of your own (insets, rims) over it, but
+  a pane's 1px border, which lies on its edge.
 - **Hover as Rex's, the same shape.** A hovered tab is a flat face
   (`hoverFace`, `k.tabHover`: white 0.10 dark, black 0.05 light), no
   glass, with the pill's capsule radius (`pillRadius`), so that hovered

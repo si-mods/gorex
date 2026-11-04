@@ -392,14 +392,17 @@ func cardFace(c *ui.Context, k *colors, focused, float bool) ui.Color {
 	return bg
 }
 
-// glassTint is a pane's tint over its glass, which panes have under the
-// glass setting: its face, at 0.4 of what the setting makes the
-// terminals: enough to hold its text, little enough for the glass to
-// show.
+// glassTint is a pane's tint over its glass, which terminal panes have
+// under the glass setting: its face as the setting fades it, at 0.4,
+// enough to hold its text and little enough for the glass to show; a
+// configured theme's whole, whose text is set for its own background,
+// not the glass's.
 func glassTint(c *ui.Context, k *colors, focused bool) ui.Color {
-	bg := cardFace(c, k, focused, true)
-	bg.A = cardFace(c, k, focused, false).A
-	return bg.Alpha(termOpacity() * 0.4)
+	bg := cardFace(c, k, focused, false)
+	if termOpaque {
+		return bg
+	}
+	return bg.Alpha(0.4)
 }
 
 // floatCell places a float's pane over the tab's tiled ones, at its box of
@@ -665,11 +668,12 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	// The card and its float's cell take one face: the cell's, of another
 	// color, would show at the card's rounded corners.
 	bg = cardFace(c, k, focused, p.float != nil)
-	// Under the glass setting a tiled pane is a pane of the system's
+	// Under the glass setting a tiled terminal is a pane of the system's
 	// Liquid Glass, its face a tint, and its face where the system draws
-	// none; a float takes its face from its cell's glass.
+	// none; a float takes its face from its cell's glass. A browser pane
+	// keeps its face.
 	switch {
-	case !glassOn():
+	case !glassOn() || p.browser != nil && p.float == nil:
 		card.Background(bg)
 	case p.float == nil:
 		card.Material(ui.SystemGlass{Tint: glassTint(c, k, focused), Fallback: faceMaterial{bg}})
