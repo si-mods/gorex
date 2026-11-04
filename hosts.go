@@ -35,7 +35,8 @@ type savedHost struct {
 	Address string `json:"address"`
 	// Network marks a host the coordinator's directory made: it comes
 	// and goes with that directory, not by hand.
-	Network bool `json:"network,omitempty"`
+	Network       bool `json:"network,omitempty"`
+	TailnetOpened bool `json:"tailnetOpened,omitempty"`
 	// Kills are the sessions closed here while the host was away, to end
 	// there once connected again, though GoRex quit meanwhile.
 	Kills []string `json:"kills,omitempty"`
@@ -123,6 +124,8 @@ const (
 	hostConnected                     // hello answered
 	hostReconnecting                  // an attempt after a drop or a failure
 	hostFailed                        // the last attempt failed: another comes
+	hostAvailable                     // a discovered host awaiting its first open
+	hostOffline                       // a discovered host that has gone away
 )
 
 // hostConn is a saved host and the app's connection to it. The main thread
@@ -136,7 +139,9 @@ type hostConn struct {
 	hello   rex.Hello
 	// closed are the sessions closed here since the host connected, which
 	// adopt does not open again though a list still has them.
-	closed map[string]bool
+	closed        map[string]bool
+	tailnetOnline bool
+	openOnConnect *App
 
 	// mu guards client, and Kills of savedHost.
 	mu     sync.Mutex
@@ -151,7 +156,11 @@ type hostConn struct {
 }
 
 func newHostConn(h savedHost) *hostConn {
-	return &hostConn{savedHost: h, retry: make(chan struct{}, 1), stop: make(chan struct{})}
+	c := &hostConn{savedHost: h, retry: make(chan struct{}, 1), stop: make(chan struct{})}
+	if rex.IsTailnetTarget(h.Address) {
+		c.state = hostOffline
+	}
+	return c
 }
 
 // current returns the host's client, nil while not connected.
@@ -341,6 +350,9 @@ func (a *App) startHost(h *hostConn) {
 // counts as a failure, which waits longer each time, so that a host that
 // greets and drops is not dialed in a loop.
 func (a *App) runHost(h *hostConn, update func(func())) {
+	h.mu.Lock()
+	name := h.Name
+	h.mu.Unlock()
 	attempt := 0
 	var logged failureLog
 	for {
@@ -372,7 +384,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			}
 			h.client = c
 			h.mu.Unlock()
-			logged.log(h.Name, nil)
+			logged.log(name, nil)
 			update(func() { h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil })
 			since := time.Now()
 			h.runKills(c)
@@ -400,7 +412,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			return
 		default:
 		}
-		logged.log(h.Name, why)
+		logged.log(name, why)
 		attempt++
 		n = attempt
 		update(func() { h.state, h.attempt, h.reason = hostFailed, n, why })
@@ -508,6 +520,19 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 		update(func() {
 			for _, o := range a.peers() {
 				o.apply(h, byID, layout)
+			}
+			if h.openOnConnect != nil && h.openOnConnect.quitting {
+				h.openOnConnect = nil
+			}
+			if o := h.openOnConnect; o != nil && h.current() == c {
+				if tabs := o.tabsOn(h); len(tabs) != 0 {
+					h.openOnConnect = nil
+					o.active = slices.Index(o.tabs, tabs[0])
+					o.focusReq = tabs[0].Focus
+				} else if len(layout.hold) == 0 {
+					h.openOnConnect = nil
+					o.newTabOn(h, o.dirOn(h))
+				}
 			}
 		})
 	}
@@ -944,7 +969,9 @@ func (a *App) loadHosts() {
 	for _, s := range saved {
 		h := newHostConn(s)
 		a.hosts = append(a.hosts, h)
-		a.startHost(h)
+		if !rex.IsTailnetTarget(h.Address) || h.TailnetOpened {
+			a.startHost(h)
+		}
 	}
 	a.syncHosts()
 }
@@ -1072,6 +1099,70 @@ func (a *App) reconcileNetwork(n *rex.NetworkStatus) {
 	}
 }
 
+// reconcileTailnet adds proven GoRex hosts without opening terminals. A
+// previously known host stays in the list while temporarily unreachable.
+func (a *App) reconcileTailnet(st *rex.TailnetStatus) {
+	seen := make(map[string]bool)
+	changed := false
+	if st.Running {
+		for _, peer := range st.Hosts {
+			seen[peer.Target] = true
+			h := a.hostByID(peer.Target)
+			if h == nil {
+				h = newHostConn(savedHost{ID: peer.Target, Name: peer.Name, Address: peer.Target})
+				a.hosts = append(slices.Clone(a.hosts), h)
+				changed = true
+			} else if h.Name != peer.Name {
+				h.mu.Lock()
+				h.Name = peer.Name
+				h.mu.Unlock()
+				changed = true
+			}
+		}
+	}
+	if changed {
+		a.syncHosts()
+	}
+	for _, h := range slices.Clone(a.hosts) {
+		if !rex.IsTailnetTarget(h.Address) {
+			continue
+		}
+		if st.Scope != "" && !st.Owns(h.Address) {
+			a.removeHost(h)
+			continue
+		}
+		online := seen[h.Address]
+		if online && !h.tailnetOnline && h.TailnetOpened {
+			h.poke()
+		}
+		h.tailnetOnline = online
+		if !h.TailnetOpened {
+			h.state = hostOffline
+			if online {
+				h.state = hostAvailable
+			}
+		}
+	}
+	if changed {
+		a.saveHosts()
+	}
+}
+
+// openTailnetHost schedules an initial attach, or a shell if there is no
+// session to attach to. It is only called in response to a user action.
+func (a *App) openTailnetHost(h *hostConn) {
+	h.openOnConnect = a
+	if h.TailnetOpened {
+		h.poke()
+		return
+	}
+	h.mu.Lock()
+	h.TailnetOpened = true
+	h.mu.Unlock()
+	a.saveHosts()
+	a.startHost(h)
+}
+
 // host is the host of a tab's panes, nil for this machine: a tab's panes
 // are all on one, as splits open on the host of the pane they split.
 func (t *Tab) host() *hostConn {
@@ -1116,6 +1207,10 @@ func hostStatus(h *hostConn) (label, detail string, up bool) {
 		detail = h.reason()
 	}
 	switch h.state {
+	case hostAvailable:
+		return locales.TailnetAvailable(), "", false
+	case hostOffline:
+		return locales.TailnetOffline(), "", false
 	case hostConnected:
 		return locales.HostsConnected(), "", true
 	case hostReconnecting:

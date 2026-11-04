@@ -519,10 +519,10 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 					glyphIcon(c, "globe", 22, ui.RGB(255, 255, 255))
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-					ui.Text(c, locales.RemoteTitle()).FontSize(15).FontWeight(600).TextColor(k.text)
+					ui.Text(c, locales.TailcatMode()).FontSize(15).FontWeight(600).TextColor(k.text)
 					statusLine(c, k, dot, label)
 				})
-				sw := ui.Switch(c.Key("allow"), &on).Label(locales.RemoteAllow()).Disabled(page.unreachable || page.busy)
+				sw := ui.Switch(c.Key("allow"), &on).Label(locales.TailcatMode()).Disabled(page.unreachable || page.busy)
 				if sw.Changed() {
 					if on {
 						a.remoteDo((*rex.Client).EnableRemote, nil)
@@ -536,14 +536,23 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				rowError(c, k, page.err())
 			}
 		})
+		if st.Tailnet != nil {
+			tailnet := st.Tailnet.Enabled
+			if remoteSwitch(c, k, "system-tailscale", locales.TailnetMode(), locales.TailnetModeNote(), &tailnet, page.unreachable || page.busy, false) {
+				a.remoteDo(func(srv *rex.Client) error { return srv.SetTailnet(tailnet) }, nil)
+			}
+			if st.Tailnet.Enabled && !st.Tailnet.Running {
+				groupRow(c, k, nil).Children(func() { rowHint(c, k, locales.TailnetUnavailable()) })
+			}
+		}
 		// Whether remote clients see the sessions open here.
 		share := st.ShareSessions
-		if remoteSwitch(c, k, "share", locales.RemoteShare(), locales.RemoteShareNote(), &share, page.unreachable || page.busy, !st.Enabled) {
+		if remoteSwitch(c, k, "share", locales.RemoteShare(), locales.RemoteShareNote(), &share, page.unreachable || page.busy, !st.Enabled && (st.Tailnet == nil || !st.Tailnet.Running)) {
 			a.remoteDo(func(srv *rex.Client) error { return srv.ShareSessions(share) }, nil)
 		}
 		// Whether remote clients read the layout and follow it.
 		layoutShare := st.ShareLayout
-		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy, !st.Enabled) {
+		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy, !st.Enabled && (st.Tailnet == nil || !st.Tailnet.Running)) {
 			a.remoteDo(func(srv *rex.Client) error { return srv.ShareLayout(layoutShare) }, nil)
 		}
 	})

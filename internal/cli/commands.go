@@ -125,7 +125,7 @@ Usage:
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
   gorex hosts [ls] [--json]
-  gorex remote status [--json] | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
+  gorex remote status [--json] | tailscale on|off | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
   gorex server restart
   gorex config path | config check [FILE] | config reload
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
@@ -186,7 +186,7 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 			if h.ID == "" || h.Address == "" || !strings.EqualFold(h.Name, serverTarget) {
 				continue
 			}
-			if h.Network {
+			if h.Network || rex.IsTailnetTarget(h.Address) {
 				network = append(network, h)
 			} else {
 				manual = append(manual, h)
@@ -204,6 +204,27 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 		}
 		if len(found) == 1 {
 			return dialRemote(found[0], errOut)
+		}
+	}
+	if local, err := rex.ConnectExisting(); err == nil {
+		st, err := local.RemoteStatus()
+		local.Close()
+		if err == nil && st.Tailnet != nil {
+			var match *rex.TailnetHost
+			for _, host := range st.Tailnet.Hosts {
+				if !strings.EqualFold(host.Name, serverTarget) {
+					continue
+				}
+				if match != nil {
+					fmt.Fprintf(errOut, "gorex: host %q is ambiguous\n", serverTarget)
+					return nil, ExitTarget
+				}
+				h := host
+				match = &h
+			}
+			if match != nil {
+				return dialRemote(savedHost{Address: match.Target}, errOut)
+			}
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -905,7 +926,7 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitUsage, true
 	}
 	usage := func() (int, bool) {
-		fmt.Fprintln(errOut, "gorex remote: status | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY")
+		fmt.Fprintln(errOut, "gorex remote: status | tailscale on|off | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY")
 		return ExitUsage, true
 	}
 	if len(args) == 0 {
@@ -947,6 +968,12 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitUsage, true
 		}
 		run = func(c *rex.Client) error { return c.DisableRemote() }
+	case "tailscale":
+		on, ok := onOff("tailscale")
+		if !ok {
+			return ExitUsage, true
+		}
+		run = func(c *rex.Client) error { return c.SetTailnet(on) }
 	case "control":
 		on, ok := onOff("control")
 		if !ok {
@@ -1012,20 +1039,24 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitServer, true
 		}
 		shown := struct {
-			Enabled       bool `json:"enabled"`
-			Running       bool `json:"running"`
-			ShareSessions bool `json:"shareSessions"`
-			ShareLayout   bool `json:"shareLayout"`
-			RemoteControl bool `json:"remoteControl"`
-			Allowed       int  `json:"allowed"`
-			Network       bool `json:"network"`
-		}{st.Enabled, st.Running, st.ShareSessions, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Network != nil}
+			Enabled       bool               `json:"enabled"`
+			Running       bool               `json:"running"`
+			ShareSessions bool               `json:"shareSessions"`
+			ShareLayout   bool               `json:"shareLayout"`
+			RemoteControl bool               `json:"remoteControl"`
+			Allowed       int                `json:"allowed"`
+			Network       bool               `json:"network"`
+			Tailnet       *rex.TailnetStatus `json:"tailnet,omitempty"`
+		}{st.Enabled, st.Running, st.ShareSessions, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Network != nil, st.Tailnet}
 		if asJSON {
 			WriteJSON(out, shown)
 			return ExitOK, true
 		}
 		fmt.Fprintf(out, "enabled=%v running=%v share=%v layout=%v control=%v allowed=%d network=%v\n",
 			shown.Enabled, shown.Running, shown.ShareSessions, shown.ShareLayout, shown.RemoteControl, shown.Allowed, shown.Network)
+		if st.Tailnet != nil {
+			fmt.Fprintf(out, "tailscale=%v running=%v hosts=%d\n", st.Tailnet.Enabled, st.Tailnet.Running, len(st.Tailnet.Hosts))
+		}
 		return ExitOK, true
 	}
 	if args[0] == "address" {

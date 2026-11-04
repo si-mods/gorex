@@ -2960,6 +2960,76 @@ func (msgs Messages) RemoteAsking() string {
 	return Catalog.Format(msgs.locale, "remoteAsking", nil)
 }
 
+// TailcatMode says "Tailcat remote access"
+// in the language the app shows.
+func TailcatMode() string { return In(i18n.Locale()).TailcatMode() }
+
+// TailcatMode says "Tailcat remote access"
+// in the language of msgs.
+func (msgs Messages) TailcatMode() string {
+	return Catalog.Format(msgs.locale, "tailcatMode", nil)
+}
+
+// TailnetMode says "Tailscale discovery and connections"
+// in the language the app shows.
+func TailnetMode() string { return In(i18n.Locale()).TailnetMode() }
+
+// TailnetMode says "Tailscale discovery and connections"
+// in the language of msgs.
+func (msgs Messages) TailnetMode() string {
+	return Catalog.Format(msgs.locale, "tailnetMode", nil)
+}
+
+// TailnetModeNote says "Find GoRex devices on your Tailscale account and let them open terminals on this computer."
+// in the language the app shows.
+func TailnetModeNote() string { return In(i18n.Locale()).TailnetModeNote() }
+
+// TailnetModeNote says "Find GoRex devices on your Tailscale account and let them open terminals on this computer."
+// in the language of msgs.
+func (msgs Messages) TailnetModeNote() string {
+	return Catalog.Format(msgs.locale, "tailnetModeNote", nil)
+}
+
+// TailnetUnavailable says "System Tailscale is unavailable. GoRex will try again automatically."
+// in the language the app shows.
+func TailnetUnavailable() string { return In(i18n.Locale()).TailnetUnavailable() }
+
+// TailnetUnavailable says "System Tailscale is unavailable. GoRex will try again automatically."
+// in the language of msgs.
+func (msgs Messages) TailnetUnavailable() string {
+	return Catalog.Format(msgs.locale, "tailnetUnavailable", nil)
+}
+
+// TailnetConnect says "Connect"
+// in the language the app shows.
+func TailnetConnect() string { return In(i18n.Locale()).TailnetConnect() }
+
+// TailnetConnect says "Connect"
+// in the language of msgs.
+func (msgs Messages) TailnetConnect() string {
+	return Catalog.Format(msgs.locale, "tailnetConnect", nil)
+}
+
+// TailnetAvailable says "Available via Tailscale"
+// in the language the app shows.
+func TailnetAvailable() string { return In(i18n.Locale()).TailnetAvailable() }
+
+// TailnetAvailable says "Available via Tailscale"
+// in the language of msgs.
+func (msgs Messages) TailnetAvailable() string {
+	return Catalog.Format(msgs.locale, "tailnetAvailable", nil)
+}
+
+// TailnetOffline says "Offline"
+// in the language the app shows.
+func TailnetOffline() string { return In(i18n.Locale()).TailnetOffline() }
+
+// TailnetOffline says "Offline"
+// in the language of msgs.
+func (msgs Messages) TailnetOffline() string {
+	return Catalog.Format(msgs.locale, "tailnetOffline", nil)
+}
+
 // RemoteAllow says "Allow remote clients"
 // in the language the app shows.
 //

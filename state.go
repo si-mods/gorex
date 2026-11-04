@@ -1300,6 +1300,10 @@ func (a *App) newTab(dir string) *Tab { return a.newTabOn(a.currentHost(), dir) 
 // newTabOn opens a tab with a shell in dir on host h, nil for this
 // machine, after the active tab (newTabAfter), and shows it.
 func (a *App) newTabOn(h *hostConn, dir string) *Tab {
+	if h != nil && rex.IsTailnetTarget(h.Address) && h.current() == nil && h.tailnetOnline {
+		a.openTailnetHost(h)
+		return nil
+	}
 	t := a.newTabAfter(h, dir, a.tab())
 	if t != nil {
 		a.active = slices.Index(a.tabs, t)
@@ -2818,8 +2822,7 @@ func sortedInfos(m map[string]rex.SessionInfo) []rex.SessionInfo {
 }
 
 // poll asks the server what runs in each session, every half second,
-// until the window closes. Every half minute, less often, it asks after
-// the network this machine joined, if any, whose members become hosts.
+// until the window closes. Less often it refreshes the remote host lists.
 func (a *App) poll(win *mygo.Window, client *rex.Client) {
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
@@ -2839,11 +2842,18 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 		case <-tick.C:
 		}
 		rounds++
-		if rounds%30 == 1 {
-			if st, err := client.RemoteStatus(); err == nil && st.Network != nil {
+		if rounds%4 == 1 {
+			if st, err := client.RemoteStatus(); err == nil {
+				coordinatorPoll := rounds%32 == 1
 				win.Update(func() {
-					if a.win == win {
+					if a.win != win {
+						return
+					}
+					if coordinatorPoll && st.Network != nil {
 						a.reconcileNetwork(st.Network)
+					}
+					if st.Tailnet != nil {
+						a.reconcileTailnet(st.Tailnet)
 					}
 				})
 			}

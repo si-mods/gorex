@@ -416,6 +416,13 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		conn.Close()
 		return
 	}
+	if peer == "" {
+		var req Request
+		if json.Unmarshal(first, &req) == nil && req.Op == "remote.tailnetDial" {
+			s.relayTailnet(conn, r, req.TailnetTarget)
+			return
+		}
+	}
 	var a Attach
 	if json.Unmarshal(first, &a) == nil && a.Op == "attach" {
 		s.mu.Lock()

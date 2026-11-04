@@ -299,12 +299,17 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 			if up && ui.Button(c.Key("layout"), locales.HostsLayout()).Clicked() {
 				a.openHostLayout(h)
 			}
-			if !up && ui.Button(c.Key("retry"), locales.HostsRetry()).Clicked() {
+			tailnet := rex.IsTailnetTarget(h.Address)
+			if tailnet && h.tailnetOnline && !up {
+				if ui.Button(c.Key("connect"), locales.TailnetConnect()).Clicked() {
+					a.newTabOn(h, a.dirOn(h))
+				}
+			} else if !tailnet && !up && ui.Button(c.Key("retry"), locales.HostsRetry()).Clicked() {
 				h.poke()
 			}
 			// A host of the network comes back with its next
 			// directory; removing it here would only make it return.
-			if !h.Network && ui.Button(c.Key("remove"), locales.HostsRemove()).Disabled(page.removing == h.ID).Clicked() {
+			if !h.Network && !tailnet && ui.Button(c.Key("remove"), locales.HostsRemove()).Disabled(page.removing == h.ID).Clicked() {
 				page.removing = h.ID
 			}
 		})

@@ -737,6 +737,10 @@ func (c *Client) EnableRemote() error { return c.call(Request{Op: "remote.enable
 // DisableRemote turns remote access off.
 func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }
 
+func (c *Client) SetTailnet(on bool) error {
+	return c.call(Request{Op: "remote.tailnetSet", On: on}, nil)
+}
+
 // JoinNetwork joins the coordinator network of a join URL with its
 // network key, under the name; the server then follows its directory,
 // whose members it serves beside its allowlist.

@@ -984,6 +984,13 @@
   "@remoteAsking": {
     "description": "Shown while the page waits for the server's first answer."
   },
+  "tailcatMode": "Tailcat remote access",
+  "tailnetMode": "Tailscale discovery and connections",
+  "tailnetModeNote": "Find GoRex devices on your Tailscale account and let them open terminals on this computer.",
+  "tailnetUnavailable": "System Tailscale is unavailable. GoRex will try again automatically.",
+  "tailnetConnect": "Connect",
+  "tailnetAvailable": "Available via Tailscale",
+  "tailnetOffline": "Offline",
   "remoteAllow": "Allow remote clients",
   "@remoteAllow": {
     "description": "Setting: whether other machines may connect."

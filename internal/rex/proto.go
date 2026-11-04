@@ -73,13 +73,14 @@ var capabilities = []string{"layout.revision", "events.revision", CapabilityShut
 
 // Request is a line of the control connection, from the client.
 type Request struct {
-	ID     int64           `json:"id"`
-	Op     string          `json:"op"`
-	SID    string          `json:"sid,omitempty"`
-	Cols   int             `json:"cols,omitempty"`
-	Rows   int             `json:"rows,omitempty"`
-	Create *CreateOptions  `json:"create,omitempty"`
-	Layout json.RawMessage `json:"layout,omitempty"`
+	TailnetTarget string          `json:"tailnetTarget,omitempty"`
+	ID            int64           `json:"id"`
+	Op            string          `json:"op"`
+	SID           string          `json:"sid,omitempty"`
+	Cols          int             `json:"cols,omitempty"`
+	Rows          int             `json:"rows,omitempty"`
+	Create        *CreateOptions  `json:"create,omitempty"`
+	Layout        json.RawMessage `json:"layout,omitempty"`
 	// Remote is the client of remote.allow, remote.revoke,
 	// remote.approve and remote.reject, and the name of remote.pair.
 	Remote *RemoteClient `json:"remote,omitempty"`
@@ -372,6 +373,7 @@ type RemoteStatus struct {
 	// Network is the coordinator network this machine joined, if any;
 	// its Members are served beside Allowed.
 	Network *NetworkStatus `json:"network,omitempty"`
+	Tailnet *TailnetStatus `json:"tailnet,omitempty"`
 }
 
 // RemotePairing is the pairing window: while open, a client not allowed

@@ -206,6 +206,24 @@ lists the Ghostty options it ignores.
 
 ## Remote access
 
+### System Tailscale (desktop)
+
+On macOS and Linux, GoRex uses an existing, running system Tailscale
+client to discover GoRex hosts and connect to their terminals. Devices
+with the same Tailscale user in the same tailnet appear in Remote Hosts
+once they have a compatible GoRex server and Tailscale policy allows
+TCP port 7464. Click Connect on a host to open or reattach to a session.
+The server only listens on its Tailscale interface and checks each
+connection's device identity with the local Tailscale client.
+
+Turn off **Tailscale discovery and connections** in Settings → Remote,
+or use `gorex remote tailscale off`. The mode is on by default and waits
+when Tailscale is unavailable. `gorex remote status --json` reports the
+local mode and the hosts it has discovered. The existing **Share open
+terminals** setting controls access to sessions created by other clients.
+
+### Tailcat
+
 The session server can also listen on a
 [tailcat](https://github.com/tailscale/tailcat) address: Tailscale's data
 plane without its control plane, so WireGuard end to end, through a DERP
