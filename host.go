@@ -9,6 +9,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -134,17 +135,33 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 			ui.Text(c, value).FontSize(12.5).TextColor(k.text).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		})
 	}
-	ui.Column(c).Gap(7).Children(func() {
-		row(locales.HostModel(), h.Model)
-		row(locales.HostChip(), h.Chip)
-		if h.Memory > 0 {
-			row(locales.HostMemory(), fmt.Sprintf("%d GB", h.Memory>>30))
-		}
-		row(locales.HostSystem(), h.OS)
-		row(locales.HostUser(), h.User)
-	})
+	ui.Column(c).Gap(7).Children(func() { hostFacts(h, row) })
 	ui.Divider(c)
-	sessions, running := 0, 0
+	sessions, running := a.sessionCounts()
+	ui.Column(c).Gap(7).Children(func() {
+		row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
+		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
+	})
+	a.hostsInPanel(c, k)
+	ui.Text(c, locales.HostNote()).
+		FontSize(11.5).TextColor(k.textFaint).LineHeight(1.35)
+}
+
+// hostFacts tells the machine h's facts to row, each as its label and
+// value: its model, chip, memory, system and user.
+func hostFacts(h rex.HostInfo, row func(label, value string)) {
+	row(locales.HostModel(), h.Model)
+	row(locales.HostChip(), h.Chip)
+	if h.Memory > 0 {
+		row(locales.HostMemory(), fmt.Sprintf("%d GB", h.Memory>>30))
+	}
+	row(locales.HostSystem(), h.OS)
+	row(locales.HostUser(), h.User)
+}
+
+// sessionCounts is how many sessions the window has open, and how many of
+// them run a program.
+func (a *App) sessionCounts() (sessions, running int) {
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
 			sessions++
@@ -153,13 +170,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 			}
 		}
 	}
-	ui.Column(c).Gap(7).Children(func() {
-		row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
-		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
-	})
-	a.hostsInPanel(c, k)
-	ui.Text(c, locales.HostNote()).
-		FontSize(11.5).TextColor(k.textFaint).LineHeight(1.35)
+	return
 }
 
 func roundDur(d time.Duration) string {
@@ -188,10 +199,7 @@ func (a *App) hostsInPanel(c *ui.Context, k *colors) {
 					label, _, _ = hostStatus(h)
 					dot = hostDot(k, h)
 				}
-				sessions := 0
-				for _, t := range a.tabsOn(h) {
-					sessions += len(t.allPanes())
-				}
+				sessions := a.sessionsOn(h)
 				key := "local"
 				if h != nil {
 					key = h.ID

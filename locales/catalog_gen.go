@@ -3374,34 +3374,6 @@ func (msgs Messages) RemotePairStop() string {
 	return Catalog.Format(msgs.locale, "remotePairStop", nil)
 }
 
-// RemotePairOpenFor says "Open for five minutes at a time."
-// in the language the app shows.
-//
-// Shown while pairing is closed.
-func RemotePairOpenFor() string { return In(i18n.Locale()).RemotePairOpenFor() }
-
-// RemotePairOpenFor says "Open for five minutes at a time."
-// in the language of msgs.
-//
-// Shown while pairing is closed.
-func (msgs Messages) RemotePairOpenFor() string {
-	return Catalog.Format(msgs.locale, "remotePairOpenFor", nil)
-}
-
-// RemotePairStart says "Start pairing"
-// in the language the app shows.
-//
-// Button: open the pairing window.
-func RemotePairStart() string { return In(i18n.Locale()).RemotePairStart() }
-
-// RemotePairStart says "Start pairing"
-// in the language of msgs.
-//
-// Button: open the pairing window.
-func (msgs Messages) RemotePairStart() string {
-	return Catalog.Format(msgs.locale, "remotePairStart", nil)
-}
-
 // RemotePairNoRequest says "No request yet."
 // in the language the app shows.
 //
@@ -3554,20 +3526,6 @@ func RemoteShow() string { return In(i18n.Locale()).RemoteShow() }
 // Button: show the address.
 func (msgs Messages) RemoteShow() string {
 	return Catalog.Format(msgs.locale, "remoteShow", nil)
-}
-
-// RemoteClients says "Allowed clients"
-// in the language the app shows.
-//
-// Card: the clients allowed to connect.
-func RemoteClients() string { return In(i18n.Locale()).RemoteClients() }
-
-// RemoteClients says "Allowed clients"
-// in the language of msgs.
-//
-// Card: the clients allowed to connect.
-func (msgs Messages) RemoteClients() string {
-	return Catalog.Format(msgs.locale, "remoteClients", nil)
 }
 
 // RemoteClientsNote says "Each runs commands here as your user. Revoking one drops its connections."
@@ -4080,18 +4038,18 @@ func (msgs Messages) HostsNotAllowed() string {
 	return Catalog.Format(msgs.locale, "hostsNotAllowed", nil)
 }
 
-// HostsNotPairing says "{host} is not pairing. There, open Settings › Remote and Start pairing, then try again."
+// HostsNotPairing says "{host} is not pairing. There, open Settings › Remote and choose Pair New Device…, then try again."
 // in the language the app shows.
 //
-// Error of the add sheet: the host's pairing window is closed. Start
-// pairing is remotePairStart.
+// Error of the add sheet: the host's pairing window is closed. Pair New
+// Device… is remotePairNew.
 func HostsNotPairing(host string) string { return In(i18n.Locale()).HostsNotPairing(host) }
 
-// HostsNotPairing says "{host} is not pairing. There, open Settings › Remote and Start pairing, then try again."
+// HostsNotPairing says "{host} is not pairing. There, open Settings › Remote and choose Pair New Device…, then try again."
 // in the language of msgs.
 //
-// Error of the add sheet: the host's pairing window is closed. Start
-// pairing is remotePairStart.
+// Error of the add sheet: the host's pairing window is closed. Pair New
+// Device… is remotePairNew.
 func (msgs Messages) HostsNotPairing(host string) string {
 	return Catalog.Format(msgs.locale, "hostsNotPairing", map[string]any{"host": host})
 }
@@ -4124,18 +4082,16 @@ func (msgs Messages) HostsApprove(host string) string {
 	return Catalog.Format(msgs.locale, "hostsApprove", map[string]any{"host": host})
 }
 
-// HostsApproveWhere says "It shows under Settings › Remote › Pair a new device. Approve it only if the fingerprints match."
+// HostsApproveWhere says "It shows under Settings › Remote › Devices. Approve it only if the fingerprints match."
 // in the language the app shows.
 //
-// Add sheet: where the request shows on the host. Pair a new device is
-// remotePairTitle.
+// Add sheet: where the request shows on the host. Devices is remoteDevices.
 func HostsApproveWhere() string { return In(i18n.Locale()).HostsApproveWhere() }
 
-// HostsApproveWhere says "It shows under Settings › Remote › Pair a new device. Approve it only if the fingerprints match."
+// HostsApproveWhere says "It shows under Settings › Remote › Devices. Approve it only if the fingerprints match."
 // in the language of msgs.
 //
-// Add sheet: where the request shows on the host. Pair a new device is
-// remotePairTitle.
+// Add sheet: where the request shows on the host. Devices is remoteDevices.
 func (msgs Messages) HostsApproveWhere() string {
 	return Catalog.Format(msgs.locale, "hostsApproveWhere", nil)
 }
@@ -4652,20 +4608,6 @@ func SpaceColorCustom() string { return In(i18n.Locale()).SpaceColorCustom() }
 // space, as #0090ff.
 func (msgs Messages) SpaceColorCustom() string {
 	return Catalog.Format(msgs.locale, "spaceColorCustom", nil)
-}
-
-// RemoteNetTitle says "Join a network"
-// in the language the app shows.
-//
-// Card title: a coordinator network to join once instead of pairing.
-func RemoteNetTitle() string { return In(i18n.Locale()).RemoteNetTitle() }
-
-// RemoteNetTitle says "Join a network"
-// in the language of msgs.
-//
-// Card title: a coordinator network to join once instead of pairing.
-func (msgs Messages) RemoteNetTitle() string {
-	return Catalog.Format(msgs.locale, "remoteNetTitle", nil)
 }
 
 // RemoteNetNote says "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way …"
@@ -5610,4 +5552,110 @@ func ResumeContinueTip() string { return In(i18n.Locale()).ResumeContinueTip() }
 // Tooltip of the button that continues an agent's last conversation.
 func (msgs Messages) ResumeContinueTip() string {
 	return Catalog.Format(msgs.locale, "resumeContinueTip", nil)
+}
+
+// RemoteDevices says "Devices"
+// in the language the app shows.
+//
+// Remote page: the group of the devices paired with this machine, and the
+// requests to pair.
+func RemoteDevices() string { return In(i18n.Locale()).RemoteDevices() }
+
+// RemoteDevices says "Devices"
+// in the language of msgs.
+//
+// Remote page: the group of the devices paired with this machine, and the
+// requests to pair.
+func (msgs Messages) RemoteDevices() string {
+	return Catalog.Format(msgs.locale, "remoteDevices", nil)
+}
+
+// RemotePairNew says "Pair New Device…"
+// in the language the app shows.
+//
+// Remote page button: opens the pairing window, in which a new device can
+// ask to pair.
+func RemotePairNew() string { return In(i18n.Locale()).RemotePairNew() }
+
+// RemotePairNew says "Pair New Device…"
+// in the language of msgs.
+//
+// Remote page button: opens the pairing window, in which a new device can
+// ask to pair.
+func (msgs Messages) RemotePairNew() string {
+	return Catalog.Format(msgs.locale, "remotePairNew", nil)
+}
+
+// RemoteAddByKeyAsk says "Add by Key…"
+// in the language the app shows.
+//
+// Remote page button: shows the fields that allow a client by its public
+// key.
+func RemoteAddByKeyAsk() string { return In(i18n.Locale()).RemoteAddByKeyAsk() }
+
+// RemoteAddByKeyAsk says "Add by Key…"
+// in the language of msgs.
+//
+// Remote page button: shows the fields that allow a client by its public
+// key.
+func (msgs Messages) RemoteAddByKeyAsk() string {
+	return Catalog.Format(msgs.locale, "remoteAddByKeyAsk", nil)
+}
+
+// RemoteNetGroup says "Network"
+// in the language the app shows.
+//
+// Remote page: the group of the coordinator network this machine joins.
+func RemoteNetGroup() string { return In(i18n.Locale()).RemoteNetGroup() }
+
+// RemoteNetGroup says "Network"
+// in the language of msgs.
+//
+// Remote page: the group of the coordinator network this machine joins.
+func (msgs Messages) RemoteNetGroup() string {
+	return Catalog.Format(msgs.locale, "remoteNetGroup", nil)
+}
+
+// RemoteNetNone says "Not in a network"
+// in the language the app shows.
+//
+// Remote page: this machine has joined no coordinator network.
+func RemoteNetNone() string { return In(i18n.Locale()).RemoteNetNone() }
+
+// RemoteNetNone says "Not in a network"
+// in the language of msgs.
+//
+// Remote page: this machine has joined no coordinator network.
+func (msgs Messages) RemoteNetNone() string {
+	return Catalog.Format(msgs.locale, "remoteNetNone", nil)
+}
+
+// RemoteNetJoinAsk says "Join a Network…"
+// in the language the app shows.
+//
+// Remote page button: shows the fields to join a coordinator network.
+func RemoteNetJoinAsk() string { return In(i18n.Locale()).RemoteNetJoinAsk() }
+
+// RemoteNetJoinAsk says "Join a Network…"
+// in the language of msgs.
+//
+// Remote page button: shows the fields to join a coordinator network.
+func (msgs Messages) RemoteNetJoinAsk() string {
+	return Catalog.Format(msgs.locale, "remoteNetJoinAsk", nil)
+}
+
+// RemoteLanListenOn says "Listen on"
+// in the language the app shows.
+//
+// Remote page row: the address on the local network that Rex's apps connect
+// to.
+func RemoteLanListenOn() string { return In(i18n.Locale()).RemoteLanListenOn() }
+
+// RemoteLanListenOn says "Listen on"
+// in the language of msgs.
+//
+// Remote page row: the address on the local network that Rex's apps connect
+// to.
+func (msgs Messages) RemoteLanListenOn() string {
+	return Catalog.Format(msgs.locale, "remoteLanListenOn", nil)
 }

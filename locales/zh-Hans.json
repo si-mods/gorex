@@ -237,8 +237,6 @@
   "remotePairTurnOn": "开启远程访问后才能配对。",
   "remotePairWaiting": "正在等待请求，剩余 {left}",
   "remotePairStop": "停止",
-  "remotePairOpenFor": "每次开放五分钟。",
-  "remotePairStart": "开始配对",
   "remotePairNoRequest": "暂无请求。",
   "remoteApprove": "批准",
   "remoteReject": "拒绝",
@@ -250,7 +248,6 @@
   "remoteCancel": "取消",
   "remoteHide": "隐藏",
   "remoteShow": "显示",
-  "remoteClients": "已允许的客户端",
   "remoteClientsNote": "每个客户端都能以你的用户身份在此运行命令。撤销某个客户端会断开它的连接。",
   "remoteNoClients": "尚未允许任何客户端。",
   "remoteCopyKey": "拷贝密钥",
@@ -287,10 +284,10 @@
   "hostsRetryNote": "GoRex 会自动重试。",
   "hostsUnreachable": "无法连接到该主机。请确认那里正在运行 GoRex 并已开启远程访问。",
   "hostsNotAllowed": "该主机不允许本机连接。请移除后重新添加以配对。",
-  "hostsNotPairing": "{host} 未在配对。请在那台机器上打开“设置 › 远程”并点按“开始配对”，然后重试。",
+  "hostsNotPairing": "{host} 未在配对。请在那台机器上打开“设置 › 远程”并点按“配对新设备…”，然后重试。",
   "hostsWaiting": "等待批准…",
   "hostsApprove": "请在 {host} 上批准显示此指纹的请求。",
-  "hostsApproveWhere": "请求显示在“设置 › 远程 › 配对新设备”中。只有指纹一致时才批准。",
+  "hostsApproveWhere": "请求显示在“设置 › 远程 › 设备”中。只有指纹一致时才批准。",
   "hostsFingerprint": "指纹",
   "hostsRetry": "重试",
   "hostsRemove": "移除",
@@ -337,10 +334,6 @@
   "spaceColorCustom": "自定义 #rrggbb",
   "@spaceColorCustom": {
     "description": "Space popover: placeholder of the field that takes a custom color of the space, as #0090ff."
-  },
-  "remoteNetTitle": "加入网络",
-  "@remoteNetTitle": {
-    "description": "Card title: a coordinator network to join once instead of pairing."
   },
   "remoteNetNote": "两两配对没法扩展。协调器把远程访问变成一个网络，像 Tailscale 那样：用网络密钥加入一次，所有成员互信互见。",
   "@remoteNetNote": {
@@ -573,5 +566,12 @@
   "resumeContinueTip": "在这个目录里继续该 agent 上次的对话",
   "@resumeContinueTip": {
     "description": "继续对话按钮的提示。"
-  }
+  },
+  "remoteDevices": "设备",
+  "remotePairNew": "配对新设备…",
+  "remoteAddByKeyAsk": "用公钥添加…",
+  "remoteNetGroup": "网络",
+  "remoteNetNone": "未加入网络",
+  "remoteNetJoinAsk": "加入网络…",
+  "remoteLanListenOn": "监听地址"
 }

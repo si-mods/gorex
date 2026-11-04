@@ -1130,14 +1130,6 @@
   "@remotePairStop": {
     "description": "Button: close the pairing window."
   },
-  "remotePairOpenFor": "Open for five minutes at a time.",
-  "@remotePairOpenFor": {
-    "description": "Shown while pairing is closed."
-  },
-  "remotePairStart": "Start pairing",
-  "@remotePairStart": {
-    "description": "Button: open the pairing window."
-  },
   "remotePairNoRequest": "No request yet.",
   "@remotePairNoRequest": {
     "description": "Shown while pairing is open and nothing was asked."
@@ -1181,10 +1173,6 @@
   "remoteShow": "Show",
   "@remoteShow": {
     "description": "Button: show the address."
-  },
-  "remoteClients": "Allowed clients",
-  "@remoteClients": {
-    "description": "Card: the clients allowed to connect."
   },
   "remoteClientsNote": "Each runs commands here as your user. Revoking one drops its connections.",
   "@remoteClientsNote": {
@@ -1342,9 +1330,9 @@
   "@hostsNotAllowed": {
     "description": "Why a host is not connected: this machine's key is not allowed there."
   },
-  "hostsNotPairing": "{host} is not pairing. There, open Settings › Remote and Start pairing, then try again.",
+  "hostsNotPairing": "{host} is not pairing. There, open Settings › Remote and choose Pair New Device…, then try again.",
   "@hostsNotPairing": {
-    "description": "Error of the add sheet: the host's pairing window is closed. Start pairing is remotePairStart.",
+    "description": "Error of the add sheet: the host's pairing window is closed. Pair New Device… is remotePairNew.",
     "placeholders": {
       "host": {
         "type": "String",
@@ -1366,9 +1354,9 @@
       }
     }
   },
-  "hostsApproveWhere": "It shows under Settings › Remote › Pair a new device. Approve it only if the fingerprints match.",
+  "hostsApproveWhere": "It shows under Settings › Remote › Devices. Approve it only if the fingerprints match.",
   "@hostsApproveWhere": {
-    "description": "Add sheet: where the request shows on the host. Pair a new device is remotePairTitle."
+    "description": "Add sheet: where the request shows on the host. Devices is remoteDevices."
   },
   "hostsFingerprint": "Fingerprint",
   "@hostsFingerprint": {
@@ -1585,10 +1573,6 @@
   "spaceColorCustom": "Custom #rrggbb",
   "@spaceColorCustom": {
     "description": "Space popover: placeholder of the field that takes a custom color of the space, as #0090ff."
-  },
-  "remoteNetTitle": "Join a network",
-  "@remoteNetTitle": {
-    "description": "Card title: a coordinator network to join once instead of pairing."
   },
   "remoteNetNote": "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way Tailscale does: join once with the network key, and every member trusts and finds every other.",
   "@remoteNetNote": {
@@ -1878,5 +1862,33 @@
   "resumeContinueTip": "Continue the agent's last conversation here",
   "@resumeContinueTip": {
     "description": "Tooltip of the button that continues an agent's last conversation."
+  },
+  "remoteDevices": "Devices",
+  "@remoteDevices": {
+    "description": "Remote page: the group of the devices paired with this machine, and the requests to pair."
+  },
+  "remotePairNew": "Pair New Device…",
+  "@remotePairNew": {
+    "description": "Remote page button: opens the pairing window, in which a new device can ask to pair."
+  },
+  "remoteAddByKeyAsk": "Add by Key…",
+  "@remoteAddByKeyAsk": {
+    "description": "Remote page button: shows the fields that allow a client by its public key."
+  },
+  "remoteNetGroup": "Network",
+  "@remoteNetGroup": {
+    "description": "Remote page: the group of the coordinator network this machine joins."
+  },
+  "remoteNetNone": "Not in a network",
+  "@remoteNetNone": {
+    "description": "Remote page: this machine has joined no coordinator network."
+  },
+  "remoteNetJoinAsk": "Join a Network…",
+  "@remoteNetJoinAsk": {
+    "description": "Remote page button: shows the fields to join a coordinator network."
+  },
+  "remoteLanListenOn": "Listen on",
+  "@remoteLanListenOn": {
+    "description": "Remote page row: the address on the local network that Rex's apps connect to."
   }
 }
