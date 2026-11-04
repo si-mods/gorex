@@ -4,7 +4,6 @@ import (
 	"runtime"
 
 	"github.com/egoist/mygo"
-	"github.com/egoist/mygo/plugins/glass"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -98,8 +97,9 @@ func (a *App) applyGlass() {
 }
 
 // paneGlass is the material of a layer floating over the window under the
-// glass setting: Liquid Glass, and face over it, where the frame draws on
-// a GPU; elsewhere, as on the CPU renderer and in tests, where the glass
+// glass setting where the system draws no glass (SystemGlass's Fallback):
+// Liquid Glass, and face over it, where the frame draws on a GPU off
+// macOS; elsewhere, as on the CPU renderer and in tests, where the glass
 // is slow, the flat color flat, as the layer had before. The frame being
 // drawn is known only as it paints, so the material decides then.
 type paneGlass struct {
@@ -107,11 +107,10 @@ type paneGlass struct {
 }
 
 func (g paneGlass) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) {
-	if !p.Accelerated() {
+	if !p.Accelerated() || !paintLens(p, box, radii) {
 		p.Fill(box, g.flat, radii[0])
 		return
 	}
-	glass.Glass{}.PaintMaterial(p, box, radii)
 	if g.face.A > 0 {
 		p.Fill(box, g.face, radii[0])
 	}
@@ -121,7 +120,9 @@ func (g paneGlass) PaintMaterial(p *ui.Painter, box ui.Rect, radii [4]float32) {
 // pill, the glass under the setting, and the flat face flat without it.
 func glassPanel(e ui.Element, flat ui.Color) ui.Element {
 	if glassOn() {
-		return e.Material(paneGlass{flat: flat})
+		// The system's glass, as the panes under it are: in-window glass
+		// over their holes would read them as black.
+		return e.Material(ui.SystemGlass{Fallback: paneGlass{flat: flat}})
 	}
 	return e.Background(flat)
 }
