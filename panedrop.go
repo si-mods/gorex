@@ -123,7 +123,7 @@ func (a *App) dropPaneOn(p, target *Pane, z dropZone) bool {
 // paneDropRect is the part of a card that the pane dropped on zone would
 // take, inset from the card's edge.
 func paneDropRect(r ui.Rect, z dropZone) ui.Rect {
-	const inset = float32(4)
+	const inset = dropInset
 	r = ui.Rect{X: r.X + inset, Y: r.Y + inset, W: max(r.W-2*inset, 0), H: max(r.H-2*inset, 0)}
 	switch z {
 	case dropLeft:
@@ -140,12 +140,15 @@ func paneDropRect(r ui.Rect, z dropZone) ui.Rect {
 	return r
 }
 
+// dropInset is how far a drop zone is inset from the card's edge.
+const dropInset = float32(4)
+
 // drawPaneDrop shows where the pane dragged over e would go. It paints
 // with the card, not an effect: the card holds a terminal.
 func drawPaneDrop(e ui.Element, k *colors, z dropZone) {
 	e.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		d := paneDropRect(r, z)
-		p.Fill(d, k.busy.Alpha(0.18), cardR-4)
-		p.Stroke(d, k.busy.Alpha(0.6), cardR-4, 1.5)
+		p.Fill(d, k.busy.Alpha(0.18), concentric(cardR, dropInset))
+		p.Stroke(d, k.busy.Alpha(0.6), concentric(cardR, dropInset), 1.5)
 	})
 }

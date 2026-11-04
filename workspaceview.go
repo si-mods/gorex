@@ -99,13 +99,17 @@ func (a *App) askCloseWorkspace() {
 	}
 }
 
+// popR and popPad are the workspace popover's radius and padding, which
+// its rows' corners are concentric with.
+const popR, popPad = 14, 6
+
 // workspacePopover lists the workspaces under the chip: their tabs, the
 // window's checked, and those other windows show; then New Session,
 // Rename and Close.
 func (a *App) workspacePopover(c *ui.Context, k *colors, anchor ui.Element) {
 	ui.PopoverBase(c, anchor, &a.wsOpen, func(panel ui.Element) {
 		_, winH := c.Size()
-		glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(winH-24-titleH).Width(280).Padding(6).Radius(14), k.panel).Border(1, k.panelBorder).
+		glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(winH-24-titleH).Width(280).Padding(popPad).Radius(popR), k.panel).Border(1, k.panelBorder).
 			Shadow(0, 12, 32, 0, k.shadowFocused)
 		ui.Scroll(c).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(2).Children(func() { a.workspaceList(c, k) })
@@ -120,7 +124,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 	for _, w := range a.st.workspaces {
 		current := w == a.ws
 		detail := workspaceDetail(w, a)
-		row := ui.Row(c.Key(w.ID)).Height(40).Padding(0, 8).Gap(9).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+		row := ui.Row(c.Key(w.ID)).Height(40).Padding(0, 8).Gap(9).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 			Role(ui.RoleButton).Label(w.Name + ", " + detail)
 		if row.Hovered() {
 			row.Background(k.hover)
@@ -151,7 +155,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 	a.spaceColorPicker(c, k)
 	ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder)
 	action := func(glyph, label string, run func()) {
-		row := ui.Row(c.Key("action-"+glyph)).Height(32).Padding(0, 8).Gap(9).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+		row := ui.Row(c.Key("action-"+glyph)).Height(32).Padding(0, 8).Gap(9).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 			Role(ui.RoleButton).Label(label)
 		if row.Hovered() {
 			row.Background(k.hover)

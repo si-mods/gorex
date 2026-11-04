@@ -132,3 +132,18 @@ before. Three things make it up:
   faces of their own, so the window's glass shows through them; only
   the chosen tab's pill is glass, the system's. Cards, rows and controls keep their
   colors, which read on the glass in both appearances.
+
+## Corners
+
+Corners follow Apple's three shapes (WWDC25, "Get to know the new design
+system"), and no radius is picked on its own:
+
+- **Capsule**, half the height: the active and hovered tab, the tab
+  strip's track, the sidebar's rows (`pillRadius`).
+- **Concentric**, the container's radius less its border and padding
+  (`concentric(outer, inset)`): what sits in a corner of a rounded
+  container, as a menu's, popover's or the palette's rows, and the panes:
+  `cardR` is the window's radius (`windowR`, macOS 27's) less the gap,
+  and every pane, tiled or floating, takes it.
+- **Fixed**, a radius of its own: what sits away from any corner, as a
+  toast, a badge or a button in a dialog's padding.

@@ -54,7 +54,7 @@ func menuStyleOf(k *colors, dark bool) *ui.MenuStyle {
 			glassPanel(panel.Radius(12).Padding(5), k.panel).Border(1, k.panelBorder).
 				Shadow(0, 12, 32, 0, k.shadowFocused)
 		},
-		RowHeight: 24, RowRadius: 7, RowPadding: 10,
+		RowHeight: 24, RowRadius: concentric(12, 1+5), RowPadding: 10,
 		Highlight: k.accent, HighlightText: accentText(dark),
 		Separator: k.panelBorder,
 		TextSize:  13,
