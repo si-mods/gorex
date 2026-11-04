@@ -21,10 +21,14 @@ import (
 const (
 	gap       = 8  // between panes, and around them
 	titleH    = 44 // the title bar
-	cardR     = 8  // the panes' corners: concentric with the window's, 16 on macOS 27, inset by gap
+	windowR   = 16 // the window's corners, as macOS 27 draws them
 	headerH   = 33 // the panes' headers
 	activeFor = 1500 * time.Millisecond
 )
+
+// cardR is the panes' corners: concentric with the window's, which the
+// panes in its bottom corners sit in, and one radius for every pane.
+const cardR = windowR - gap
 
 // concentric is the corner radius of a shape inset by inset (its
 // container's border and padding) in a container of radius outer, as

@@ -134,7 +134,8 @@ system"), and no radius is picked on its own:
   strip's track, the sidebar's rows (`pillRadius`).
 - **Concentric**, the container's radius less its border and padding
   (`concentric(outer, inset)`): what sits in a corner of a rounded
-  container, as a menu's, popover's or the palette's rows, and the panes
-  in the window's corners.
+  container, as a menu's, popover's or the palette's rows, and the panes:
+  `cardR` is the window's radius (`windowR`, macOS 27's) less the gap,
+  and every pane, tiled or floating, takes it.
 - **Fixed**, a radius of its own: what sits away from any corner, as a
   toast, a badge or a button in a dialog's padding.

@@ -1256,6 +1256,10 @@ var (
 
 const paletteStagger = 8
 
+// paletteR and palettePad are the palette's radius and its list's
+// padding, which its rows' corners are concentric with.
+const paletteR, palettePad = 16, 6
+
 // palette draws the command palette, over the window.
 func (a *App) palette(c *ui.Context, k *colors) {
 	if !a.paletteOpen {
@@ -1286,11 +1290,11 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		backdrop.Justify(ui.Start).Padding(78, 0, 0, 0).Background(k.backdrop)
 		// Under the glass setting the panel is Liquid Glass over the
 		// dimmed window, as the other floating layers are.
-		panel.Width(560).MaxHeight(440).Radius(16).Border(1, k.panelBorder)
+		panel.Width(560).MaxHeight(440).Radius(paletteR).Border(1, k.panelBorder)
 		if glassOn() {
 			glassPanel(panel, k.panel)
 		} else {
-			panel.Draw(func(p *ui.Painter, r ui.Rect) { paintFrost(p, r, 24, 16, k.panelGlass, k.panel) })
+			panel.Draw(func(p *ui.Painter, r ui.Rect) { paintFrost(p, r, 24, paletteR, k.panelGlass, k.panel) })
 		}
 		panel.Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
 		if anim != nil {
@@ -1323,12 +1327,12 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			}
 		})
 		listH := float32(min(max(len(items), 1)*34+12, 384))
-		ui.Scroll(c).Height(listH).Padding(6).Children(func() {
+		ui.Scroll(c).Height(listH).Padding(palettePad).Children(func() {
 			if len(items) == 0 {
 				ui.Text(c, locales.PaletteNoMatches()).FontSize(13).TextColor(k.textFaint).Padding(14)
 			}
 			for i, it := range items {
-				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(16, 1+6)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(paletteR, 1+palettePad)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 				if anim != nil {
 					pose := ui.Pose{}
 					if fresh {
