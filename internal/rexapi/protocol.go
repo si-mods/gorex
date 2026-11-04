@@ -16,8 +16,10 @@ const (
 	// dataTerminal is the data_ref_id of a terminal block's stream.
 	dataTerminal = "terminal"
 	// apiRevision is the newest revision of Rex's API this package serves:
-	// revision 8 adds session.bootstrap's data_tickets.
-	apiRevision = 8
+	// revision 8 adds session.bootstrap's data_tickets, revision 9
+	// session.set_layer_state and a layer's state, and revision 10
+	// built-in Tailscale's control_url.
+	apiRevision = 10
 	// apiMinRevision is the oldest revision it serves. A client that
 	// negotiates an older revision gets that revision's shape: requests
 	// are translated up and results back down by revisions.go.
@@ -103,7 +105,7 @@ var orderedMethods = map[string]bool{
 	"session.focus_previous_pane": true, "session.focus_previous_window": true, "session.focus_window": true,
 	"session.move_block": true, "session.move_window": true, "session.new_layer": true,
 	"session.new_split": true, "session.new_window": true, "session.own_block": true,
-	"session.swap_blocks": true, "session.zoom_block": true,
+	"session.set_layer_state": true, "session.swap_blocks": true, "session.zoom_block": true,
 }
 
 // The API's own documents, served at /api/help, /llms.txt and

@@ -250,7 +250,8 @@ func TestEmptyWorkspace(t *testing.T) {
 
 // TestViewMapsFloats checks that GoRex's floating panes become Rex's
 // floating layers, after the tiled one and lowest first, that a hidden
-// one is left out, and that the focus on a float names its block.
+// one is a minimized layer, and that the focus on a float names its
+// block.
 func TestViewMapsFloats(t *testing.T) {
 	store := layout.Store{Sessions: []layout.Workspace{{
 		ID: "work", Name: "work",
@@ -271,25 +272,28 @@ func TestViewMapsFloats(t *testing.T) {
 	s := m.sessions[0]
 	v := s.view("host:test")
 	layers := v.Windows[0].Layers
-	if len(layers) != 3 {
-		t.Fatalf("%d layers, want the tiled one and two floats: %+v", len(layers), layers)
+	if len(layers) != 4 {
+		t.Fatalf("%d layers, want the tiled one and three floats: %+v", len(layers), layers)
 	}
 	if layers[0].Kind != "tiled" || len(layers[0].Blocks) != 2 {
 		t.Errorf("tiled layer: %+v", layers[0])
 	}
-	f1, f3 := blockID("f1"), blockID("f3")
+	f1, f2, f3 := blockID("f1"), blockID("f2"), blockID("f3")
 	if l := layers[1]; l.Kind != "floating" || l.Bounds != [4]float64{float64(float32(0.1)), float64(float32(0.2)), 0.5, float64(float32(0.4))} ||
 		len(l.Blocks) != 1 || l.Blocks[0].BlockID != f1 || l.Layout == nil || l.Layout.BlockID != f1 {
 		t.Errorf("first float: %+v", l)
 	}
-	if l := layers[2]; l.Kind != "floating" || l.Blocks[0].BlockID != f3 || l.LayerID == layers[1].LayerID {
-		t.Errorf("second float: %+v", l)
+	if l := layers[2]; l.Kind != "floating" || l.Blocks[0].BlockID != f2 || l.State != "minimized" {
+		t.Errorf("hidden float: %+v", l)
+	}
+	if l := layers[3]; l.Kind != "floating" || l.Blocks[0].BlockID != f3 || l.State != "" || l.LayerID == layers[1].LayerID {
+		t.Errorf("zoomed float: %+v", l)
 	}
 	if v.Windows[0].FocusedBlockID != f3 || v.Windows[0].ZoomedBlockID != f3 {
 		t.Errorf("focus %q zoom %q, want the zoomed float %q", v.Windows[0].FocusedBlockID, v.Windows[0].ZoomedBlockID, f3)
 	}
-	if m.blocks[blockID("f2")] != nil {
-		t.Error("a hidden float is a block")
+	if m.blocks[f2] == nil || m.blocks[f2].window != s.windows[0].id {
+		t.Error("a hidden float's block is not the window's")
 	}
 	if m.blocks[f1] == nil || m.blocks[f1].window != s.windows[0].id {
 		t.Error("a float's block is not the window's")

@@ -130,6 +130,53 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		}
 		ws = &a.store.Sessions[0]
 	}
+	if c.Op == "action" {
+		if c.Action != "float.set_state" {
+			return fail("unknown_action", "GoRex does not know "+c.Action)
+		}
+		var p struct {
+			SID   string `json:"sid"`
+			State string `json:"state"`
+			Focus bool   `json:"focus"`
+		}
+		if len(c.Args) > 0 {
+			if err := json.Unmarshal(c.Args, &p); err != nil {
+				return fail("bad_args", err.Error())
+			}
+		}
+		for wi := range a.store.Sessions {
+			w := &a.store.Sessions[wi]
+			if c.Space != "" && w.ID != c.Space {
+				continue
+			}
+			for ti := range w.Tabs {
+				tab := &w.Tabs[ti]
+				for fi := range tab.Floats {
+					fl := &tab.Floats[fi]
+					if fl.Pane == nil || fl.Pane.SID != p.SID {
+						continue
+					}
+					switch p.State {
+					case "normal":
+						fl.Hidden = false
+						if p.Focus {
+							tab.FocusFloat = fi + 1
+							w.Active = ti
+						}
+					case "minimized":
+						fl.Hidden = true
+						if tab.FocusFloat == fi+1 {
+							tab.FocusFloat = 0
+						}
+					default:
+						return fail("bad_args", "state is normal or minimized")
+					}
+					return res
+				}
+			}
+		}
+		return fail("pane_not_found", "no floating pane")
+	}
 	if c.Op == "tab.create" {
 		sid := a.newSession(c.Dir)
 		if sid == "" {
@@ -228,6 +275,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		return res
 	case "pane.focus":
 		tab.Focus = leafIndex(tab.Root, node.SID)
+		tab.FocusFloat = 0
 		ws.Active = tabIndex(ws, tab)
 		return res
 	case "pane.zoom":
@@ -235,6 +283,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		tab.Zoom = on
 		if on {
 			tab.Focus = leafIndex(tab.Root, node.SID)
+			tab.FocusFloat = 0
 		}
 		res.Zoomed = tab.Zoom
 		return res

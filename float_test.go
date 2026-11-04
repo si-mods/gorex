@@ -987,3 +987,59 @@ func TestFloatGlideEndsOutOfSight(t *testing.T) {
 		t.Fatalf("back in its tab, it shows at %v (gliding %v), not at %v", shownX(a, f), f.gliding, f.X)
 	}
 }
+
+// TestFloatState checks the action Rex's session.set_layer_state runs:
+// minimizing hides a float, and bringing it back with the focus shows it
+// above the tab's other floats and gives it and its tab the focus.
+func TestFloatState(t *testing.T) {
+	a, _ := newTestApp(t)
+	tab := a.tab()
+	p0 := tab.Focus
+	a.split(false)
+	p := tab.Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	if p.SID == "" {
+		t.Fatal("the pane has no session ID")
+	}
+	cmd := lookupCommand("float.set_state")
+	if cmd == nil {
+		t.Fatal("float.set_state is not an action")
+	}
+	state := func(state string, focus bool) {
+		t.Helper()
+		if err := cmd.invoke(a, map[string]any{"sid": p.SID, "state": state, "focus": focus}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	state("minimized", false)
+	if !p.float.Hidden {
+		t.Error("the float is not hidden")
+	}
+	if tab.Focus == p {
+		t.Error("a hidden float keeps the focus")
+	}
+
+	// A second float, so that returning the first one can raise it.
+	tab.setFocus(p0)
+	a.split(false)
+	q := tab.Focus
+	if !a.floatPane(q) {
+		t.Fatal("the second pane did not float")
+	}
+	if p.float.Hidden != true || q.float.Hidden {
+		t.Fatalf("floats before returning: %+v %+v", p.float, q.float)
+	}
+	state("normal", true)
+	if p.float.Hidden {
+		t.Error("the float is still hidden")
+	}
+	if tab.Focus != p || a.focusReq != p {
+		t.Error("the float did not take the focus")
+	}
+	if last := tab.Floats[len(tab.Floats)-1]; last != p.float {
+		t.Error("the float was not raised above the others")
+	}
+}

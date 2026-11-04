@@ -526,7 +526,11 @@ func (c *control) sendChanges(chs []change) {
 		}
 		var payload any
 		if ch.server {
-			payload = innerEvent{Type: ch.typ, Payload: ch.payload}
+			payload = ch.payload
+			if ch.typ == "tailscale_status_changed" {
+				payload = transformResult(c.rev, ch.typ, payload)
+			}
+			payload = innerEvent{Type: ch.typ, Payload: payload}
 		} else {
 			payload = sessionEvent{
 				Type: "session_event",

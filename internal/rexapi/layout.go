@@ -3,6 +3,7 @@ package rexapi
 import (
 	"encoding/json"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -1751,6 +1752,118 @@ func appTabIndex(cur, want, n int) int {
 		return want
 	}
 	return min(want+1, n)
+}
+
+// methodSessionSetLayerState minimizes a floating layer or returns it to
+// normal, optionally raising and focusing it.
+func methodSessionSetLayerState(c *control, a args) (any, *apiError) {
+	s, aerr := c.attachedArg(a)
+	if aerr != nil {
+		return nil, aerr
+	}
+	if aerr := a.only("session_id", "layer_id", "state", "focus"); aerr != nil {
+		return nil, aerr
+	}
+	layerID, ok, aerr := a.str("layer_id")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if !ok {
+		return nil, errBadRequest("layer_id is required")
+	}
+	state, ok, aerr := a.str("state")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if !ok {
+		return nil, errBadRequest("state is required")
+	}
+	if state != "normal" && state != "minimized" {
+		return nil, errBadRequest("state is normal or minimized")
+	}
+	focus, _, aerr := a.boolean("focus")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if focus && state == "minimized" {
+		return nil, errBadRequest("focus needs state normal")
+	}
+	w, f := s.findLayer(layerID)
+	if w == nil {
+		return nil, errNotFound("no layer %s in %s", layerID, s.id)
+	}
+	if f == nil {
+		// The tiled layer: it cannot be minimized, but focus still
+		// works, and setting it normal changes nothing.
+		if state == "minimized" {
+			return nil, errBadRequest("the tiled layer cannot be minimized")
+		}
+		if !focus {
+			return revisionResult{Revision: s.revision}, nil
+		}
+		b := (*mBlock)(nil)
+		if w.focused != "" {
+			if f := s.findBlock(w.focused); slices.Contains(w.blocks, f) {
+				b = f
+			}
+		}
+		if b == nil && len(w.blocks) > 0 {
+			b = w.blocks[0]
+		}
+		if b == nil {
+			return nil, errBadRequest("%s has no block to focus", layerID)
+		}
+		if _, aerr := c.g.command(rex.LayoutCommand{Op: "pane.focus", Space: s.space, SID: b.sid}); aerr != nil {
+			return nil, aerr
+		}
+		m, aerr := c.g.afterCommand(func(m *model) bool {
+			now := m.byID[s.id]
+			if now == nil {
+				return true
+			}
+			nowW := now.window(w.id)
+			return nowW != nil && now.active == w.id && nowW.focused == b.id
+		})
+		if aerr != nil {
+			return nil, aerr
+		}
+		return revisionResult{Revision: revisionOf(m, s.id)}, nil
+	}
+	minimize := state == "minimized"
+	if f.minimized == minimize && !focus {
+		// The layer already has the state asked for.
+		return revisionResult{Revision: s.revision}, nil
+	}
+	if minimize && w.visibleBlocks() <= 1 {
+		return nil, errBadRequest("a window keeps a visible block: %s is its last", layerID)
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"sid": f.block.sid, "state": state, "focus": focus,
+	})
+	if _, aerr := c.g.command(rex.LayoutCommand{Op: "action", Space: s.space, Action: "float.set_state", Args: raw}); aerr != nil {
+		return nil, aerr
+	}
+	m, aerr := c.g.afterCommand(func(m *model) bool {
+		now := m.byID[s.id]
+		if now == nil {
+			return true
+		}
+		nowW, nowF := now.findLayer(layerID)
+		if nowW == nil || nowF == nil {
+			return true
+		}
+		if nowF.minimized != minimize {
+			return false
+		}
+		if !focus {
+			return true
+		}
+		return now.active == nowW.id && nowW.focused == nowF.block.id
+	})
+	if aerr != nil {
+		return nil, aerr
+	}
+	return revisionResult{Revision: revisionOf(m, s.id)}, nil
 }
 
 // blockViewResult is session.list_blocks' and session.describe_block's

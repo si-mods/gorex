@@ -344,6 +344,20 @@ var (
 		Run:       func(a *App) { a.toggleAllFloats() },
 		Available: func(a *App) bool { t := a.tab(); return t != nil && len(t.Floats) > 0 },
 	}
+	cmdFloatState = command{
+		ID: "float.set_state", Name: func(locales.Messages) string { return "Set Floating Pane State" }, Hidden: true,
+		Args: []actionArg{
+			{Name: "sid", Type: "string"},
+			{Name: "state", Type: "string", Values: []string{"normal", "minimized"}},
+			{Name: "focus", Type: "boolean", Optional: true},
+		},
+		RunArgs: func(a *App, args map[string]any) error {
+			sid, _ := args["sid"].(string)
+			state, _ := args["state"].(string)
+			focus, _ := args["focus"].(bool)
+			return a.setFloatState(sid, state, focus)
+		},
+	}
 	cmdRaiseFloat = command{
 		ID: "float.raise", Name: locales.Messages.CmdRaiseFloat,
 		Run:       func(a *App) { a.raiseFloat(a.focusedFloat()) },
@@ -636,7 +650,7 @@ func (cmd *command) English() string { return cmd.Name(locales.In("en")) }
 // paletteCommands are those the command palette lists, before the tabs.
 var paletteCommands = []*command{
 	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdNotePreview, &cmdZoom, &cmdEqualize, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
-	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
+	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdFloatState, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
 	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdRenameTab, &cmdSidebar,
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,

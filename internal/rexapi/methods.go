@@ -185,6 +185,7 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"session.move_block":            methodSessionMoveBlock,
 	"session.resize_pane":           methodSessionResizePane,
 	"session.move_window":           methodSessionMoveWindow,
+	"session.set_layer_state":       methodSessionSetLayerState,
 	"session.own_block":             methodSessionOwnBlock,
 	"session.disown_block":          methodSessionDisownBlock,
 	"block.close":                   methodBlockClose,
