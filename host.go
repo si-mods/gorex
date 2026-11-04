@@ -144,7 +144,19 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 		row(locales.HostUser(), h.User)
 	})
 	ui.Divider(c)
-	sessions, running := 0, 0
+	sessions, running := a.sessionCounts()
+	ui.Column(c).Gap(7).Children(func() {
+		row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
+		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
+	})
+	a.hostsInPanel(c, k)
+	ui.Text(c, locales.HostNote()).
+		FontSize(11.5).TextColor(k.textFaint).LineHeight(1.35)
+}
+
+// sessionCounts is how many sessions the window has open, and how many of
+// them run a program.
+func (a *App) sessionCounts() (sessions, running int) {
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
 			sessions++
@@ -153,13 +165,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 			}
 		}
 	}
-	ui.Column(c).Gap(7).Children(func() {
-		row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
-		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
-	})
-	a.hostsInPanel(c, k)
-	ui.Text(c, locales.HostNote()).
-		FontSize(11.5).TextColor(k.textFaint).LineHeight(1.35)
+	return
 }
 
 func roundDur(d time.Duration) string {

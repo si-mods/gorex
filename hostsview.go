@@ -252,17 +252,14 @@ func pairHost(ctx context.Context, s savedHost, pairAs string, report func(func(
 }
 
 func (a *App) hostsSettings(c *ui.Context, k *colors) {
-	settingsTitle(c, k, locales.SettingsHosts())
 	page := &hostsUI
-	ui.Text(c, locales.HostsNote()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3).Padding(0, 0, 0, 4)
-	card(ui.Column(c).Padding(6, 14).Gap(0), k).Children(func() {
+	settingsGroup(c, k, "", locales.HostsNote(), func() {
 		if len(a.hosts) == 0 {
-			ui.Text(c, locales.HostsNone()).FontSize(12.5).TextColor(k.textFaint).Padding(8, 0)
+			groupRow(c, k, nil).Children(func() {
+				ui.Text(c, locales.HostsNone()).FontSize(13).TextColor(k.textFaint)
+			})
 		}
-		for i, h := range a.hosts {
-			if i > 0 {
-				ui.Box(c).Height(1).Background(k.tabSep.Alpha(0.5))
-			}
+		for _, h := range a.hosts {
 			a.hostRow(c, k, h)
 		}
 	})
@@ -284,22 +281,24 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 	page := &hostsUI
 	label, detail, up := hostStatus(h)
-	ui.Column(c.Key(h.ID)).Gap(8).Padding(9, 0).Children(func() {
+	sessions := 0
+	for _, t := range a.tabsOn(h) {
+		sessions += len(t.allPanes())
+	}
+	groupRow(c, k, h.ID).Gap(8).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			glyphIcon(c, "server", 18, k.textMuted).Shrink(0)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				ui.Text(c, h.Name).FontSize(13.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
-				ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, h.Name).FontSize(13).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					ui.Box(c).Size(7, 7).Radius(4).Background(hostDot(k, h)).Shrink(0)
-					ui.Text(c, label).FontSize(12.5).FontWeight(500).TextColor(k.textMuted)
+					ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(k.textMuted)
 					if up && h.hello.Host.Model != "" {
-						ui.Text(c, h.hello.Host.Model).FontSize(12).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
+						ui.Text(c, h.hello.Host.Model).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").MinWidth(0)
 					}
 				})
-				if detail != "" {
-					ui.Text(c, detail).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
-				}
 			})
+			ui.Text(c, locales.HostsSessions(sessions)).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
 			if up && ui.Button(c.Key("layout"), locales.HostsLayout()).Clicked() {
 				a.openHostLayout(h)
 			}
@@ -312,11 +311,12 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 				page.removing = h.ID
 			}
 		})
+		rowHint(c, k, detail)
 		if page.removing != h.ID {
 			return
 		}
-		ui.Column(c).Gap(8).Padding(8, 10).Radius(9).Background(k.hover).Children(func() {
-			ui.Text(c, locales.HostsRemoveAsk(h.Name)).FontSize(12).TextColor(k.text).LineHeight(1.3)
+		ui.Column(c).Gap(8).Padding(8, 10).Radius(10).Background(k.hover).Children(func() {
+			ui.Text(c, locales.HostsRemoveAsk(h.Name)).FontSize(12).TextColor(k.text).LineHeight(1.4)
 			ui.Row(c).Gap(8).Children(func() {
 				if ui.Button(c.Key("remove-yes"), locales.HostsRemove()).Clicked() {
 					page.removing = ""

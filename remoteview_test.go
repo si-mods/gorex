@@ -121,12 +121,11 @@ func TestShareSwitch(t *testing.T) {
 		}
 	}
 	// Toggled, it calls the server: none here, which it says. The switch
-	// is at the right of its card's title and note.
+	// is at the right of its row's title, on the title's line.
 	title, _ := tt.Find("Share open terminals")
-	note, _ := tt.Find("Allowed clients see and use the terminals open on this machine. Off: each sees only its own.")
 	toggle := func() bool {
-		y := (title.Y + note.Y + note.H) / 2
-		for x := float32(775); x > note.X+note.W; x -= 4 {
+		y := title.Y + title.H/2
+		for x := float32(775); x > title.X+60; x -= 4 {
 			tt.ClickAt(x, y)
 			tt.Frame()
 			if remoteUI.err != nil {

@@ -164,72 +164,85 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 			label, dot = locales.RemoteLanWaiting(), k.attention
 		}
 		on := conf.Enabled
-		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-			ui.Row(c).Grow(1).MinWidth(0).Gap(7).AlignItems(ui.Center).Children(func() {
-				ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
-				ui.Text(c, label).FontSize(12.5).FontWeight(500).TextColor(k.textMuted).Selectable()
-			})
-			if ui.Switch(c.Key("lan"), &on).Label(locales.RemoteLanSwitch()).Changed() {
-				next := conf
-				next.Enabled = on
-				if on {
-					next = next.WithDefaults()
-					if next.Listen == "" {
-						page.lanErr = locales.RemoteLanNoAddress()
-						return
-					}
-					page.lanListen, page.lanEdited = next.Listen, false
-				}
-				saveLAN(next)
-			}
-		})
-		ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
-			if ui.TextInput(c.Key("lan-listen"), &page.lanListen).Placeholder("192.168.1.20:7297").
-				Label(locales.RemoteLanAddress()).Grow(1).Changed() {
-				page.lanEdited = true
-			}
-			if ui.Button(c.Key("lan-save"), locales.RemoteLanSave()).Disabled(!page.lanEdited).Clicked() {
-				next := conf
-				next.Listen = strings.TrimSpace(page.lanListen)
-				if saveLAN(next) {
-					page.lanEdited = false
-				}
-			}
-		})
-		ui.Text(c, locales.RemoteLanNetworks()).FontSize(12.5).FontWeight(600).TextColor(k.textMuted)
-		if len(conf.Allow) == 0 {
-			ui.Text(c, locales.RemoteLanNoNetworks()).FontSize(12.5).TextColor(k.textFaint)
-		}
-		for _, n := range conf.Allow {
-			ui.Row(c.Key("net-" + n)).Gap(10).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, n).Font(monoFamily()).FontSize(12.5).TextColor(k.text).Grow(1).MinWidth(0)
-				if ui.Button(c.Key("rm"), locales.RemoteLanRemove()).Clicked() {
+		groupRow(c, k, nil).Children(func() {
+			ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
+					ui.Text(c, locales.RemoteLanSwitch()).FontSize(13).FontWeight(500).TextColor(k.text)
+					ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+						ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
+						ui.Text(c, label).FontSize(12).FontWeight(500).TextColor(k.textMuted).Selectable()
+					})
+				})
+				if ui.Switch(c.Key("lan"), &on).Label(locales.RemoteLanSwitch()).Changed() {
 					next := conf
-					next.Allow = slices.DeleteFunc(slices.Clone(conf.Allow), func(x string) bool { return x == n })
+					next.Enabled = on
+					if on {
+						next = next.WithDefaults()
+						if next.Listen == "" {
+							page.lanErr = locales.RemoteLanNoAddress()
+							return
+						}
+						page.lanListen, page.lanEdited = next.Listen, false
+					}
 					saveLAN(next)
 				}
 			})
-		}
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			ui.TextInput(c.Key("lan-add"), &page.lanAdd).Placeholder(locales.RemoteLanAddPlaceholder()).Grow(1)
-			if ui.Button(c.Key("lan-add-btn"), locales.RemoteLanAdd()).Disabled(strings.TrimSpace(page.lanAdd) == "").Clicked() {
-				p, err := rexapi.ParseNetwork(page.lanAdd)
-				if err != nil {
-					page.lanErr = err.Error()
-					return
+		})
+		groupRow(c, k, nil).Children(func() {
+			ui.Row(c).Gap(10).AlignItems(ui.End).Children(func() {
+				if ui.TextInput(c.Key("lan-listen"), &page.lanListen).Placeholder("192.168.1.20:7297").
+					Label(locales.RemoteLanAddress()).Grow(1).Changed() {
+					page.lanEdited = true
 				}
-				next := conf
-				if !slices.Contains(next.Allow, p.String()) {
-					next.Allow = append(slices.Clone(next.Allow), p.String())
+				if ui.Button(c.Key("lan-save"), locales.RemoteLanSave()).Disabled(!page.lanEdited).Clicked() {
+					next := conf
+					next.Listen = strings.TrimSpace(page.lanListen)
+					if saveLAN(next) {
+						page.lanEdited = false
+					}
 				}
-				if saveLAN(next) {
-					page.lanAdd = ""
-				}
+			})
+		})
+		groupRow(c, k, nil).Children(func() {
+			ui.Text(c, locales.RemoteLanNetworks()).FontSize(13).FontWeight(500).TextColor(k.text)
+			if len(conf.Allow) == 0 {
+				rowHint(c, k, locales.RemoteLanNoNetworks())
 			}
 		})
-		if page.lanErr != "" {
-			ui.Text(c, page.lanErr).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+		for _, n := range conf.Allow {
+			groupRow(c, k, "net-"+n).Children(func() {
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, n).Font(monoFamily()).FontSize(12.5).TextColor(k.text).Grow(1).MinWidth(0)
+					if ui.Button(c.Key("rm"), locales.RemoteLanRemove()).Clicked() {
+						next := conf
+						next.Allow = slices.DeleteFunc(slices.Clone(conf.Allow), func(x string) bool { return x == n })
+						saveLAN(next)
+					}
+				})
+			})
 		}
+		groupRow(c, k, nil).Children(func() {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.TextInput(c.Key("lan-add"), &page.lanAdd).Placeholder(locales.RemoteLanAddPlaceholder()).Grow(1)
+				if ui.Button(c.Key("lan-add-btn"), locales.RemoteLanAdd()).Disabled(strings.TrimSpace(page.lanAdd) == "").Clicked() {
+					p, err := rexapi.ParseNetwork(page.lanAdd)
+					if err != nil {
+						page.lanErr = err.Error()
+						return
+					}
+					next := conf
+					if !slices.Contains(next.Allow, p.String()) {
+						next.Allow = append(slices.Clone(next.Allow), p.String())
+					}
+					if saveLAN(next) {
+						page.lanAdd = ""
+					}
+				}
+			})
+			if page.lanErr != "" {
+				rowError(c, k, page.lanErr)
+			}
+		})
 	})
 }
 
@@ -409,28 +422,38 @@ func (a *App) copyAddress() {
 	})
 }
 
-// remoteCard is a card with a title and an optional note, then its body.
+// remoteCard is a group with a title and an optional note above it, then
+// its body, rows of the group.
 func remoteCard(c *ui.Context, k *colors, title, note string, body func()) {
-	card(ui.Column(c).Gap(10).Padding(12, 14), k).Children(func() {
-		ui.Column(c).Gap(2).Children(func() {
-			ui.Text(c, title).FontSize(13.5).FontWeight(600).TextColor(k.text)
-			if note != "" {
-				ui.Text(c, note).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
-			}
+	settingsGroup(c, k, title, note, body)
+}
+
+// rowError says what went wrong, under a row's first line.
+func rowError(c *ui.Context, k *colors, msg string) {
+	ui.Text(c, msg).FontSize(11.5).TextColor(k.danger).LineHeight(1.4).MaxWidth(settingsHintW)
+}
+
+// remoteSwitch is a row of the Remote page's first group: a switch of the
+// server's, its title, and under them what more it says.
+func remoteSwitch(c *ui.Context, k *colors, key, title string, on *bool, disabled bool, under func()) bool {
+	changed := false
+	groupRow(c, k, nil).Children(func() {
+		rowLine(c, k, title, func() {
+			changed = ui.Switch(c.Key(key), on).Label(title).Disabled(disabled).Changed()
 		})
-		body()
+		under()
 	})
+	return changed
 }
 
 func (a *App) remoteSettings(c *ui.Context, k *colors) {
-	settingsTitle(c, k, locales.RemoteTitle())
 	page := &remoteUI
 	if !page.loaded {
 		label := locales.RemoteAsking()
 		if page.unreachable {
 			label, _, _ = remoteState(rex.RemoteStatus{}, true)
 		}
-		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 4)
+		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
 		return
 	}
 	st := page.st
@@ -439,53 +462,37 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 		remoteOff: k.exited, remoteStarting: k.attention, remoteListening: k.busy, remoteError: k.danger, remoteDown: k.danger,
 	}[kind]
 
-	// The switch and the state.
-	on := st.Enabled && !page.unreachable
-	card(ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(11, 14), k).Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-			ui.Text(c, locales.RemoteAllow()).FontSize(13.5).FontWeight(600).TextColor(k.text)
-			ui.Row(c).Gap(7).AlignItems(ui.Center).Children(func() {
+	settingsGroup(c, k, "", "", func() {
+		// The switch and the state.
+		on := st.Enabled && !page.unreachable
+		if remoteSwitch(c, k, "allow", locales.RemoteAllow(), &on, page.unreachable || page.busy, func() {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
-				ui.Text(c, label).FontSize(12.5).FontWeight(500).TextColor(k.textMuted)
+				ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(k.textMuted)
 			})
-			if detail != "" {
-				ui.Text(c, detail).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
-			}
+			rowHint(c, k, detail)
 			if page.err != nil {
-				ui.Text(c, page.err()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+				rowError(c, k, page.err())
 			}
-		})
-		sw := ui.Switch(c, &on).Label(locales.RemoteAllow()).Disabled(page.unreachable || page.busy)
-		if sw.Changed() {
+		}) {
 			if on {
 				a.remoteDo((*rex.Client).EnableRemote, nil)
 			} else {
 				a.remoteDo((*rex.Client).DisableRemote, nil)
 			}
 		}
-	})
-
-	// Whether remote clients see the sessions open here.
-	share := st.ShareSessions
-	card(ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(11, 14), k).Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-			ui.Text(c, locales.RemoteShare()).FontSize(13.5).FontWeight(600).TextColor(k.text)
-			ui.Text(c, locales.RemoteShareNote()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
-		})
-		sw := ui.Switch(c.Key("share"), &share).Label(locales.RemoteShare()).Disabled(page.unreachable || page.busy)
-		if sw.Changed() {
+		// Whether remote clients see the sessions open here.
+		share := st.ShareSessions
+		if remoteSwitch(c, k, "share", locales.RemoteShare(), &share, page.unreachable || page.busy, func() {
+			rowHint(c, k, locales.RemoteShareNote())
+		}) {
 			a.remoteDo(func(srv *rex.Client) error { return srv.ShareSessions(share) }, nil)
 		}
-	})
-	// Whether remote clients read the layout and follow it.
-	layoutShare := st.ShareLayout
-	card(ui.Row(c).Gap(16).AlignItems(ui.Center).Padding(11, 14), k).Children(func() {
-		ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-			ui.Text(c, locales.RemoteShareLayout()).FontSize(13.5).FontWeight(600).TextColor(k.text)
-			ui.Text(c, locales.RemoteShareLayoutNote()).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
-		})
-		sw := ui.Switch(c.Key("share-layout"), &layoutShare).Label(locales.RemoteShareLayout()).Disabled(page.unreachable || page.busy)
-		if sw.Changed() {
+		// Whether remote clients read the layout and follow it.
+		layoutShare := st.ShareLayout
+		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), &layoutShare, page.unreachable || page.busy, func() {
+			rowHint(c, k, locales.RemoteShareLayoutNote())
+		}) {
 			a.remoteDo(func(srv *rex.Client) error { return srv.ShareLayout(layoutShare) }, nil)
 		}
 	})
@@ -499,19 +506,21 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 	a.remoteClients(c, k, st)
 
 	remoteCard(c, k, locales.RemoteMyKey(), locales.RemoteMyKeyNote(), func() {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			shown := page.myKey
-			if shown == "" {
-				shown = locales.RemoteNoKey()
-			}
-			ui.Text(c, shown).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).Grow(1).MinWidth(0).LineHeight(1.35)
-			if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
-				copyText("mine", page.myKey)
+		groupRow(c, k, nil).Children(func() {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				shown := page.myKey
+				if shown == "" {
+					shown = locales.RemoteNoKey()
+				}
+				ui.Text(c, shown).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).Grow(1).MinWidth(0).LineHeight(1.4)
+				if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
+					copyText("mine", page.myKey)
+				}
+			})
+			if fp := rex.Fingerprint(page.myKey); fp != "" {
+				ui.Text(c, locales.RemoteFingerprint(fp)).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint)
 			}
 		})
-		if fp := rex.Fingerprint(page.myKey); fp != "" {
-			ui.Text(c, locales.RemoteFingerprint(fp)).Font(monoFamily()).FontSize(12).TextColor(k.textFaint)
-		}
 	})
 }
 
@@ -526,37 +535,41 @@ func pairingLeft(until, now time.Time) string {
 func (a *App) remotePairing(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	remoteCard(c, k, locales.RemotePairTitle(), locales.RemotePairNote(), func() {
-		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			switch {
-			case !st.Enabled:
-				ui.Text(c, locales.RemotePairTurnOn()).FontSize(12.5).TextColor(k.textFaint).Grow(1)
-			case st.Pairing.Open:
-				ui.Text(c, locales.RemotePairWaiting(pairingLeft(st.Pairing.ExpiresAt, time.Now()))).
-					FontSize(12.5).FontWeight(500).TextColor(k.textMuted).Grow(1)
-				if ui.Button(c.Key("pair-stop"), locales.RemotePairStop()).Disabled(page.busy).Clicked() {
-					a.remoteDo((*rex.Client).StopPairing, nil)
+		groupRow(c, k, nil).Children(func() {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				switch {
+				case !st.Enabled:
+					ui.Text(c, locales.RemotePairTurnOn()).FontSize(13).TextColor(k.textFaint).Grow(1)
+				case st.Pairing.Open:
+					ui.Text(c, locales.RemotePairWaiting(pairingLeft(st.Pairing.ExpiresAt, time.Now()))).
+						FontSize(13).FontWeight(500).TextColor(k.text).Grow(1)
+					if ui.Button(c.Key("pair-stop"), locales.RemotePairStop()).Disabled(page.busy).Clicked() {
+						a.remoteDo((*rex.Client).StopPairing, nil)
+					}
+				default:
+					ui.Text(c, locales.RemotePairOpenFor()).FontSize(13).FontWeight(500).TextColor(k.text).Grow(1)
+					if ui.Button(c.Key("pair-start"), locales.RemotePairStart()).Disabled(page.busy).Clicked() {
+						a.remoteDo((*rex.Client).StartPairing, nil)
+					}
 				}
-			default:
-				ui.Text(c, locales.RemotePairOpenFor()).FontSize(12.5).TextColor(k.textFaint).Grow(1)
-				if ui.Button(c.Key("pair-start"), locales.RemotePairStart()).Disabled(page.busy).Clicked() {
-					a.remoteDo((*rex.Client).StartPairing, nil)
-				}
+			})
+			if st.Pairing.Open && len(st.Pending) == 0 {
+				rowHint(c, k, locales.RemotePairNoRequest())
 			}
 		})
-		if st.Pairing.Open && len(st.Pending) == 0 {
-			ui.Text(c, locales.RemotePairNoRequest()).FontSize(12.5).TextColor(k.textFaint)
-		}
 		for _, p := range st.Pending {
-			ui.Row(c.Key(p.PublicKey)).Gap(10).Padding(4, 0).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, p.Name).FontSize(13.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-				ui.Text(c, rex.Fingerprint(p.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).SingleLine().
-					Tooltip(p.PublicKey).Grow(1).Shrink(0)
-				if ui.Button(c.Key("a"), locales.RemoteApprove()).Disabled(page.busy).Clicked() {
-					a.remoteDo(func(srv *rex.Client) error { return srv.ApprovePairing(p.PublicKey) }, nil)
-				}
-				if ui.Button(c.Key("r"), locales.RemoteReject()).Disabled(page.busy).Clicked() {
-					a.remoteDo(func(srv *rex.Client) error { return srv.RejectPairing(p.PublicKey) }, nil)
-				}
+			groupRow(c, k, p.PublicKey).Children(func() {
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, p.Name).FontSize(13).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+					ui.Text(c, rex.Fingerprint(p.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).SingleLine().
+						Tooltip(p.PublicKey).Grow(1).Shrink(0)
+					if ui.Button(c.Key("r"), locales.RemoteReject()).Disabled(page.busy).Clicked() {
+						a.remoteDo(func(srv *rex.Client) error { return srv.RejectPairing(p.PublicKey) }, nil)
+					}
+					if ui.PrimaryButton(c.Key("a"), locales.RemoteApprove()).Disabled(page.busy).Clicked() {
+						a.remoteDo(func(srv *rex.Client) error { return srv.ApprovePairing(p.PublicKey) }, nil)
+					}
+				})
 			})
 		}
 	})
@@ -586,104 +599,118 @@ func (a *App) remoteNetwork(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	if st.Network == nil {
 		remoteCard(c, k, locales.RemoteNetTitle(), locales.RemoteNetNote(), func() {
-			if !st.Enabled {
-				ui.Text(c, locales.RemoteNetTurnOn()).FontSize(12.5).TextColor(k.textFaint).LineHeight(1.3)
-				return
-			}
-			if page.netName == "" {
-				page.netName = a.localName()
-			}
-			if ti := ui.TextInput(c.Key("neturl"), &page.netURL).Placeholder("https://host/0123456789abcdef").
-				Label(locales.RemoteNetURLLabel()); ti.Changed() {
-				page.netErr = false
-			}
-			if ti := ui.TextInput(c.Key("netkey"), &page.netKey).Placeholder(locales.RemoteNetKeyPlaceholder()).
-				Label(locales.RemoteNetKeyLabel()); ti.Changed() {
-				page.netErr = false
-			}
-			if ti := ui.TextInput(c.Key("netname"), &page.netName).Placeholder("yibo-macbook").
-				Label(locales.RemoteNetNameLabel()); ti.Changed() {
-				page.netErr = false
-			}
-			if ui.Button(c.Key("netjoin"), locales.RemoteNetJoin()).Disabled(page.busy).Clicked() {
-				if msg := validateNetwork(page.netURL, page.netKey, page.netName); msg != "" {
-					page.netErr = true
-					remoteUI.err = func() string { return msg }
-				} else {
-					url, key := strings.TrimSpace(page.netURL), strings.TrimSpace(page.netKey)
-					name := page.netName
-					a.remoteDo(func(srv *rex.Client) error { return srv.JoinNetwork(url, key, name) },
-						func() { page.netURL, page.netKey, page.netErr = "", "", false })
+			groupRow(c, k, nil).Gap(8).Children(func() {
+				if !st.Enabled {
+					ui.Text(c, locales.RemoteNetTurnOn()).FontSize(13).TextColor(k.textFaint).LineHeight(1.4)
+					return
 				}
-			}
-			if page.netErr {
-				ui.Text(c, validateNetwork(page.netURL, page.netKey, page.netName)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
-			}
+				if page.netName == "" {
+					page.netName = a.localName()
+				}
+				if ti := ui.TextInput(c.Key("neturl"), &page.netURL).Placeholder("https://host/0123456789abcdef").
+					Label(locales.RemoteNetURLLabel()); ti.Changed() {
+					page.netErr = false
+				}
+				if ti := ui.TextInput(c.Key("netkey"), &page.netKey).Placeholder(locales.RemoteNetKeyPlaceholder()).
+					Label(locales.RemoteNetKeyLabel()); ti.Changed() {
+					page.netErr = false
+				}
+				if ti := ui.TextInput(c.Key("netname"), &page.netName).Placeholder("yibo-macbook").
+					Label(locales.RemoteNetNameLabel()); ti.Changed() {
+					page.netErr = false
+				}
+				ui.Row(c).Children(func() {
+					if ui.Button(c.Key("netjoin"), locales.RemoteNetJoin()).Disabled(page.busy).Clicked() {
+						if msg := validateNetwork(page.netURL, page.netKey, page.netName); msg != "" {
+							page.netErr = true
+							remoteUI.err = func() string { return msg }
+						} else {
+							url, key := strings.TrimSpace(page.netURL), strings.TrimSpace(page.netKey)
+							name := page.netName
+							a.remoteDo(func(srv *rex.Client) error { return srv.JoinNetwork(url, key, name) },
+								func() { page.netURL, page.netKey, page.netErr = "", "", false })
+						}
+					}
+				})
+				if page.netErr {
+					rowError(c, k, validateNetwork(page.netURL, page.netKey, page.netName))
+				}
+			})
 		})
 		return
 	}
 	net := st.Network
 	remoteCard(c, k, locales.RemoteNetJoined(net.Name), locales.RemoteNetCoordinator(net.Coordinator), func() {
 		if len(net.Members) == 0 {
-			ui.Text(c, locales.RemoteNetNoMembers()).FontSize(12.5).TextColor(k.textFaint)
-		}
-		for _, m := range net.Members {
-			ui.Row(c.Key(m.PublicKey)).Gap(10).Padding(4, 0).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, m.Name).FontSize(13.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-				ui.Text(c, rex.Fingerprint(m.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).SingleLine().
-					Tooltip(m.PublicKey).Grow(1).Shrink(0)
-				if ui.Button(c.Key("r"), locales.RemoteNetKick()).Disabled(page.busy).Clicked() {
-					a.remoteDo(func(srv *rex.Client) error { return srv.KickNetworkMember(m.Name, m.PublicKey) }, nil)
-				}
+			groupRow(c, k, nil).Children(func() {
+				ui.Text(c, locales.RemoteNetNoMembers()).FontSize(13).TextColor(k.textFaint)
 			})
 		}
-		if net.LastError != "" {
-			ui.Text(c, locales.RemoteNetError(net.LastError)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+		for _, m := range net.Members {
+			groupRow(c, k, m.PublicKey).Children(func() {
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, m.Name).FontSize(13).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+					ui.Text(c, rex.Fingerprint(m.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).SingleLine().
+						Tooltip(m.PublicKey).Grow(1).Shrink(0)
+					if ui.Button(c.Key("r"), locales.RemoteNetKick()).Disabled(page.busy).Clicked() {
+						a.remoteDo(func(srv *rex.Client) error { return srv.KickNetworkMember(m.Name, m.PublicKey) }, nil)
+					}
+				})
+			})
 		}
-		if ui.Button(c.Key("netleave"), locales.RemoteNetLeave()).Disabled(page.busy).Clicked() {
-			a.remoteDo((*rex.Client).LeaveNetwork, nil)
-		}
+		groupRow(c, k, nil).Children(func() {
+			ui.Row(c).Children(func() {
+				if ui.Button(c.Key("netleave"), locales.RemoteNetLeave()).Disabled(page.busy).Clicked() {
+					a.remoteDo((*rex.Client).LeaveNetwork, nil)
+				}
+			})
+			if net.LastError != "" {
+				rowError(c, k, locales.RemoteNetError(net.LastError))
+			}
+		})
 	})
 }
 
 func (a *App) remoteAddress(c *ui.Context, k *colors) {
 	page := &remoteUI
 	remoteCard(c, k, locales.RemoteAddress(), locales.RemoteAddressNote(), func() {
-		shown := maskedAddress
-		if page.reveal && page.st.Address != "" {
-			shown = page.st.Address
-		}
-		ui.Text(c, shown).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).LineHeight(1.35).
-			Padding(8, 10).Radius(9).Background(k.hover)
-		if page.confirm {
-			ui.Text(c, locales.RemoteRegenerateNote()).
-				FontSize(12).TextColor(k.text).LineHeight(1.3)
+		groupRow(c, k, nil).Gap(10).Children(func() {
+			shown := maskedAddress
+			if page.reveal && page.st.Address != "" {
+				shown = page.st.Address
+			}
+			ui.Text(c, shown).Font(monoFamily()).FontSize(12).TextColor(k.textMuted).LineHeight(1.4).
+				Padding(8, 12).Radius(10).Background(k.hover)
+			if page.confirm {
+				ui.Text(c, locales.RemoteRegenerateNote()).
+					FontSize(12).TextColor(k.text).LineHeight(1.4)
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					if ui.Button(c, locales.RemoteRegenerate()).Disabled(page.busy).Clicked() {
+						page.confirm, page.reveal, page.st.Address = false, false, ""
+						a.remoteDo((*rex.Client).RegenerateRemote, nil)
+					}
+					if ui.Button(c, locales.RemoteCancel()).Clicked() {
+						page.confirm = false
+					}
+				})
+				return
+			}
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				if ui.Button(c, locales.RemoteRegenerate()).Disabled(page.busy).Clicked() {
-					page.confirm, page.reveal, page.st.Address = false, false, ""
-					a.remoteDo((*rex.Client).RegenerateRemote, nil)
+				if page.reveal {
+					if ui.Button(c, locales.RemoteHide()).Clicked() {
+						page.reveal, page.st.Address = false, ""
+					}
+				} else if ui.Button(c, locales.RemoteShow()).Clicked() {
+					page.reveal = true
+					a.fetchRemote()
 				}
-				if ui.Button(c, locales.RemoteCancel()).Clicked() {
-					page.confirm = false
+				if ui.Button(c.Key("copy-addr"), copyLabel("addr")).Clicked() {
+					a.copyAddress()
+				}
+				if ui.Button(c, locales.RemoteRegenerateAsk()).Clicked() {
+					page.confirm = true
 				}
 			})
-			return
-		}
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if page.reveal {
-				if ui.Button(c, locales.RemoteHide()).Clicked() {
-					page.reveal, page.st.Address = false, ""
-				}
-			} else if ui.Button(c, locales.RemoteShow()).Clicked() {
-				page.reveal = true
-				a.fetchRemote()
-			}
-			if ui.Button(c.Key("copy-addr"), copyLabel("addr")).Clicked() {
-				a.copyAddress()
-			}
-			if ui.Button(c, locales.RemoteRegenerateAsk()).Clicked() {
-				page.confirm = true
-			}
 		})
 	})
 }
@@ -692,52 +719,60 @@ func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	remoteCard(c, k, locales.RemoteClients(), locales.RemoteClientsNote(), func() {
 		if len(st.Allowed) == 0 {
-			ui.Text(c, locales.RemoteNoClients()).FontSize(12.5).TextColor(k.textFaint)
-		}
-		for _, client := range st.Allowed {
-			ui.Row(c.Key(client.PublicKey)).Gap(10).Padding(4, 0).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, client.Name).FontSize(13.5).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
-				ui.Text(c, shortKey(client.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textFaint).SingleLine().
-					Tooltip(client.PublicKey).Grow(1).Shrink(0)
-				ui.Text(c, locales.RemoteClientShare()).FontSize(12.5).TextColor(k.textMuted).Shrink(0)
-				share := client.ShareSessions
-				sw := ui.Switch(c.Key("s"), &share).Label(locales.RemoteClientShare()).Disabled(page.busy)
-				if sw.Changed() {
-					a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientSessions(client.PublicKey, share) }, nil)
-				}
-				ui.Text(c, locales.RemoteClientLayout()).FontSize(12.5).TextColor(k.textMuted).Shrink(0)
-				layoutShare := client.ShareLayout
-				lsw := ui.Switch(c.Key("l"), &layoutShare).Label(locales.RemoteClientLayout()).Disabled(page.busy)
-				if lsw.Changed() {
-					a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientLayout(client.PublicKey, layoutShare) }, nil)
-				}
-				if iconButton(c.Key("c"), k, "copy", locales.RemoteCopyKey(), 26, 15).Tooltip(locales.RemoteCopyKeyTip()).Clicked() {
-					copyText(client.PublicKey, client.PublicKey)
-				}
-				if ui.Button(c.Key("r"), locales.RemoteRevoke()).Disabled(page.busy).Clicked() {
-					a.remoteDo(func(srv *rex.Client) error { return srv.RevokeRemote(client.PublicKey) }, nil)
-				}
+			groupRow(c, k, nil).Children(func() {
+				ui.Text(c, locales.RemoteNoClients()).FontSize(13).TextColor(k.textFaint)
 			})
 		}
-		ui.Box(c).Height(1).Background(k.tabSep.Alpha(0.5))
-		ui.Text(c, locales.RemoteAddByKey()).FontSize(12.5).FontWeight(600).TextColor(k.textMuted)
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-			if ui.TextInput(c.Key("name"), &page.name).Placeholder(locales.RemoteNamePlaceholder()).Label(locales.RemoteNameLabel()).Width(150).Shrink(0).Changed() {
-				page.addErr = false
-			}
-			if ui.TextInput(c.Key("key"), &page.key).Placeholder("nodekey:…").Label(locales.RemoteKeyLabel()).Grow(1).MinWidth(0).Changed() {
-				page.addErr = false
-			}
-			if ui.Button(c, locales.RemoteAdd()).Disabled(page.busy).Clicked() {
-				if page.addErr = validateNewClient(page.name, page.key, st.Allowed) != ""; !page.addErr {
-					name, pub := strings.TrimSpace(page.name), strings.TrimSpace(page.key)
-					a.remoteDo(func(srv *rex.Client) error { return srv.AllowRemote(name, pub) },
-						func() { page.name, page.key = "", "" })
+		for _, client := range st.Allowed {
+			groupRow(c, k, client.PublicKey).Gap(8).Children(func() {
+				ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, client.Name).FontSize(13).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…").MinWidth(0).Shrink(1)
+					ui.Text(c, shortKey(client.PublicKey)).Font(monoFamily()).FontSize(12).TextColor(k.textFaint).SingleLine().
+						Tooltip(client.PublicKey).Grow(1).Shrink(0)
+					if iconButton(c.Key("c"), k, "copy", locales.RemoteCopyKey(), 26, 15).Tooltip(locales.RemoteCopyKeyTip()).Clicked() {
+						copyText(client.PublicKey, client.PublicKey)
+					}
+					if ui.Button(c.Key("r"), locales.RemoteRevoke()).Disabled(page.busy).Clicked() {
+						a.remoteDo(func(srv *rex.Client) error { return srv.RevokeRemote(client.PublicKey) }, nil)
+					}
+				})
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Text(c, locales.RemoteClientShare()).FontSize(12).TextColor(k.textMuted).Shrink(0)
+					share := client.ShareSessions
+					sw := ui.Switch(c.Key("s"), &share).Label(locales.RemoteClientShare()).Disabled(page.busy)
+					if sw.Changed() {
+						a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientSessions(client.PublicKey, share) }, nil)
+					}
+					ui.Box(c).Width(8)
+					ui.Text(c, locales.RemoteClientLayout()).FontSize(12).TextColor(k.textMuted).Shrink(0)
+					layoutShare := client.ShareLayout
+					lsw := ui.Switch(c.Key("l"), &layoutShare).Label(locales.RemoteClientLayout()).Disabled(page.busy)
+					if lsw.Changed() {
+						a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientLayout(client.PublicKey, layoutShare) }, nil)
+					}
+				})
+			})
+		}
+		groupRow(c, k, nil).Gap(8).Children(func() {
+			ui.Text(c, locales.RemoteAddByKey()).FontSize(13).FontWeight(500).TextColor(k.text)
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				if ui.TextInput(c.Key("name"), &page.name).Placeholder(locales.RemoteNamePlaceholder()).Label(locales.RemoteNameLabel()).Width(150).Shrink(0).Changed() {
+					page.addErr = false
 				}
+				if ui.TextInput(c.Key("key"), &page.key).Placeholder("nodekey:…").Label(locales.RemoteKeyLabel()).Grow(1).MinWidth(0).Changed() {
+					page.addErr = false
+				}
+				if ui.Button(c, locales.RemoteAdd()).Disabled(page.busy).Clicked() {
+					if page.addErr = validateNewClient(page.name, page.key, st.Allowed) != ""; !page.addErr {
+						name, pub := strings.TrimSpace(page.name), strings.TrimSpace(page.key)
+						a.remoteDo(func(srv *rex.Client) error { return srv.AllowRemote(name, pub) },
+							func() { page.name, page.key = "", "" })
+					}
+				}
+			})
+			if page.addErr {
+				rowError(c, k, validateNewClient(page.name, page.key, st.Allowed))
 			}
 		})
-		if page.addErr {
-			ui.Text(c, validateNewClient(page.name, page.key, st.Allowed)).FontSize(12).TextColor(k.danger).LineHeight(1.3)
-		}
 	})
 }
