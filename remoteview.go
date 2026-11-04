@@ -510,7 +510,7 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	dot := map[remoteKind]ui.Color{
 		remoteOff: k.exited, remoteStarting: k.attention, remoteListening: k.busy, remoteError: k.danger, remoteDown: k.danger,
 	}[kind]
-	settingsGroup(c, k, "", "", locales.RemoteClientsNote(), func() {
+	settingsGroup(c, k, "", "", "", func() {
 		// The switch and the state.
 		on := st.Enabled && !page.unreachable
 		groupRow(c, k, nil).Children(func() {
@@ -560,7 +560,7 @@ func pairingLeft(until, now time.Time) string {
 // buttons that pair a new device or add one by its key.
 func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
-	settingsGroup(c, k, locales.RemoteDevices(), "", locales.RemotePairNote(), func() {
+	settingsGroup(c, k, locales.RemoteDevices(), locales.RemoteClientsNote(), locales.RemotePairNote(), func() {
 		if st.Enabled && st.Pairing.Open {
 			groupRow(c, k, nil).Children(func() {
 				tileLine(c, k, "plus", locales.RemotePairTitle(), func() {
@@ -576,7 +576,7 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 			})
 		}
 		for _, p := range st.Pending {
-			groupRow(c, k, p.PublicKey).Children(func() {
+			groupRow(c, k, "pending:"+p.PublicKey).Children(func() {
 				tileLine(c, k, "laptop", p.Name, func() {
 					ui.Text(c, rex.Fingerprint(p.PublicKey)).Font(monoFamily()).FontSize(11.5).TextColor(k.textMuted).SingleLine().
 						Ellipsis("…").Tooltip(p.PublicKey)
@@ -596,7 +596,7 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 			})
 		}
 		for _, client := range st.Allowed {
-			row := groupRow(c, k, client.PublicKey)
+			row := groupRow(c, k, "client:"+client.PublicKey)
 			if !st.Enabled {
 				dimmed(row, 0.5)
 			}
@@ -605,6 +605,16 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 					ui.Text(c, shortKey(client.PublicKey)).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().
 						Tooltip(client.PublicKey)
 				}, func() {
+					if iconButton(c.Key("c"), k, "copy", locales.RemoteCopyKey(), 26, 15).Tooltip(locales.RemoteCopyKeyTip()).Clicked() {
+						copyText(client.PublicKey, client.PublicKey)
+					}
+					if ui.Button(c.Key("r"), locales.RemoteRevoke()).Disabled(page.busy).Clicked() {
+						a.remoteDo(func(srv *rex.Client) error { return srv.RevokeRemote(client.PublicKey) }, nil)
+					}
+				})
+				// The client's shares, on a line of their own under its name,
+				// so that a narrow window keeps the name.
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(4, 0, 0, 42).Children(func() {
 					ui.Text(c, locales.RemoteClientShare()).FontSize(12).TextColor(k.textMuted).Shrink(0)
 					share := client.ShareSessions
 					sw := ui.Switch(c.Key("s"), &share).Label(locales.RemoteClientShare()).Disabled(page.busy)
@@ -616,12 +626,6 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 					lsw := ui.Switch(c.Key("l"), &layoutShare).Label(locales.RemoteClientLayout()).Disabled(page.busy)
 					if lsw.Changed() {
 						a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientLayout(client.PublicKey, layoutShare) }, nil)
-					}
-					if iconButton(c.Key("c"), k, "copy", locales.RemoteCopyKey(), 26, 15).Tooltip(locales.RemoteCopyKeyTip()).Clicked() {
-						copyText(client.PublicKey, client.PublicKey)
-					}
-					if ui.Button(c.Key("r"), locales.RemoteRevoke()).Disabled(page.busy).Clicked() {
-						a.remoteDo(func(srv *rex.Client) error { return srv.RevokeRemote(client.PublicKey) }, nil)
 					}
 				})
 			})
@@ -874,7 +878,7 @@ func (a *App) joinNetwork(c *ui.Context, k *colors) {
 					url, key := strings.TrimSpace(page.netURL), strings.TrimSpace(page.netKey)
 					name := page.netName
 					a.remoteDo(func(srv *rex.Client) error { return srv.JoinNetwork(url, key, name) },
-						func() { page.netURL, page.netKey, page.netErr = "", "", false })
+						func() { page.netURL, page.netKey, page.netErr, page.joining = "", "", false, false })
 				}
 			}
 		})

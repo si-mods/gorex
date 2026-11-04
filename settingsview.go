@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"runtime"
 	"slices"
 	"strings"
@@ -295,16 +294,13 @@ func (a *App) serverSettings(c *ui.Context, k *colors) {
 	if up {
 		sub = locales.HostConnected(sub)
 	}
-	ui.Column(c).Gap(6).Children(func() {
-		a.serverGroup(c, k, name, glyph, sub, label, dot, h)
-		ui.Text(c, locales.HostNote()).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(settingsHintW).Padding(0, 14)
-	})
+	a.serverGroup(c, k, name, glyph, sub, label, dot, h)
 }
 
 // serverGroup is the server page's card: the machine, its state, and the
-// server's and the machine's facts.
+// server's and the machine's facts, and the host's note under it.
 func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label string, dot ui.Color, h rex.HostInfo) {
-	settingsGroup(c, k, "", "", "", func() {
+	settingsGroup(c, k, "", "", locales.HostNote(), func() {
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(44, 44).Radius(12).Background(k.hover).Center().Shrink(0).Children(func() {
@@ -336,13 +332,7 @@ func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label stri
 		}
 		sessions, running := a.sessionCounts()
 		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
-		row(locales.HostModel(), h.Model)
-		row(locales.HostChip(), h.Chip)
-		if h.Memory > 0 {
-			row(locales.HostMemory(), fmt.Sprintf("%d GB", h.Memory>>30))
-		}
-		row(locales.HostSystem(), h.OS)
-		row(locales.HostUser(), h.User)
+		hostFacts(h, row)
 	})
 }
 
@@ -369,7 +359,7 @@ func settingsGroup(c *ui.Context, k *colors, label, note, foot string, body func
 		ui.Column(c).Gap(2).Children(func() {
 			ui.Column(c).Radius(14).Background(k.card).Border(1, k.cardBorder).Shadow(0, 1, 2, 0, k.shadow).Children(body)
 			if foot != "" {
-				ui.Text(c, foot).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(600).Padding(0, 14)
+				ui.Text(c, foot).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(settingsHintW).Padding(0, 14)
 			}
 		})
 		groupRows = saved

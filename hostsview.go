@@ -281,10 +281,7 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 	page := &hostsUI
 	label, detail, up := hostStatus(h)
-	sessions := 0
-	for _, t := range a.tabsOn(h) {
-		sessions += len(t.allPanes())
-	}
+	sessions := a.sessionsOn(h)
 	groupRow(c, k, h.ID).Gap(8).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			glyphIcon(c, "server", 18, k.textMuted).Shrink(0)

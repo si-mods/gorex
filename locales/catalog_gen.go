@@ -3374,34 +3374,6 @@ func (msgs Messages) RemotePairStop() string {
 	return Catalog.Format(msgs.locale, "remotePairStop", nil)
 }
 
-// RemotePairOpenFor says "Open for five minutes at a time."
-// in the language the app shows.
-//
-// Shown while pairing is closed.
-func RemotePairOpenFor() string { return In(i18n.Locale()).RemotePairOpenFor() }
-
-// RemotePairOpenFor says "Open for five minutes at a time."
-// in the language of msgs.
-//
-// Shown while pairing is closed.
-func (msgs Messages) RemotePairOpenFor() string {
-	return Catalog.Format(msgs.locale, "remotePairOpenFor", nil)
-}
-
-// RemotePairStart says "Start pairing"
-// in the language the app shows.
-//
-// Button: open the pairing window.
-func RemotePairStart() string { return In(i18n.Locale()).RemotePairStart() }
-
-// RemotePairStart says "Start pairing"
-// in the language of msgs.
-//
-// Button: open the pairing window.
-func (msgs Messages) RemotePairStart() string {
-	return Catalog.Format(msgs.locale, "remotePairStart", nil)
-}
-
 // RemotePairNoRequest says "No request yet."
 // in the language the app shows.
 //
@@ -3554,20 +3526,6 @@ func RemoteShow() string { return In(i18n.Locale()).RemoteShow() }
 // Button: show the address.
 func (msgs Messages) RemoteShow() string {
 	return Catalog.Format(msgs.locale, "remoteShow", nil)
-}
-
-// RemoteClients says "Allowed clients"
-// in the language the app shows.
-//
-// Card: the clients allowed to connect.
-func RemoteClients() string { return In(i18n.Locale()).RemoteClients() }
-
-// RemoteClients says "Allowed clients"
-// in the language of msgs.
-//
-// Card: the clients allowed to connect.
-func (msgs Messages) RemoteClients() string {
-	return Catalog.Format(msgs.locale, "remoteClients", nil)
 }
 
 // RemoteClientsNote says "Each runs commands here as your user. Revoking one drops its connections."
@@ -4124,18 +4082,16 @@ func (msgs Messages) HostsApprove(host string) string {
 	return Catalog.Format(msgs.locale, "hostsApprove", map[string]any{"host": host})
 }
 
-// HostsApproveWhere says "It shows under Settings › Remote › Pair a new device. Approve it only if the fingerprints match."
+// HostsApproveWhere says "It shows under Settings › Remote › Devices. Approve it only if the fingerprints match."
 // in the language the app shows.
 //
-// Add sheet: where the request shows on the host. Pair a new device is
-// remotePairTitle.
+// Add sheet: where the request shows on the host. Devices is remoteDevices.
 func HostsApproveWhere() string { return In(i18n.Locale()).HostsApproveWhere() }
 
-// HostsApproveWhere says "It shows under Settings › Remote › Pair a new device. Approve it only if the fingerprints match."
+// HostsApproveWhere says "It shows under Settings › Remote › Devices. Approve it only if the fingerprints match."
 // in the language of msgs.
 //
-// Add sheet: where the request shows on the host. Pair a new device is
-// remotePairTitle.
+// Add sheet: where the request shows on the host. Devices is remoteDevices.
 func (msgs Messages) HostsApproveWhere() string {
 	return Catalog.Format(msgs.locale, "hostsApproveWhere", nil)
 }
@@ -4652,20 +4608,6 @@ func SpaceColorCustom() string { return In(i18n.Locale()).SpaceColorCustom() }
 // space, as #0090ff.
 func (msgs Messages) SpaceColorCustom() string {
 	return Catalog.Format(msgs.locale, "spaceColorCustom", nil)
-}
-
-// RemoteNetTitle says "Join a network"
-// in the language the app shows.
-//
-// Card title: a coordinator network to join once instead of pairing.
-func RemoteNetTitle() string { return In(i18n.Locale()).RemoteNetTitle() }
-
-// RemoteNetTitle says "Join a network"
-// in the language of msgs.
-//
-// Card title: a coordinator network to join once instead of pairing.
-func (msgs Messages) RemoteNetTitle() string {
-	return Catalog.Format(msgs.locale, "remoteNetTitle", nil)
 }
 
 // RemoteNetNote says "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way …"

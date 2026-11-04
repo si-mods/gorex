@@ -922,6 +922,16 @@ func (a *App) tabsOn(h *hostConn) []*Tab {
 	return out
 }
 
+// sessionsOn is how many sessions the tabs of host h have open, nil for
+// this machine.
+func (a *App) sessionsOn(h *hostConn) int {
+	n := 0
+	for _, t := range a.tabsOn(h) {
+		n += len(t.allPanes())
+	}
+	return n
+}
+
 // loadHosts reads the saved hosts and connects to them, closing the
 // connections of any before.
 func (a *App) loadHosts() {

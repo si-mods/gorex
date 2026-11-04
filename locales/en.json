@@ -1130,14 +1130,6 @@
   "@remotePairStop": {
     "description": "Button: close the pairing window."
   },
-  "remotePairOpenFor": "Open for five minutes at a time.",
-  "@remotePairOpenFor": {
-    "description": "Shown while pairing is closed."
-  },
-  "remotePairStart": "Start pairing",
-  "@remotePairStart": {
-    "description": "Button: open the pairing window."
-  },
   "remotePairNoRequest": "No request yet.",
   "@remotePairNoRequest": {
     "description": "Shown while pairing is open and nothing was asked."
@@ -1181,10 +1173,6 @@
   "remoteShow": "Show",
   "@remoteShow": {
     "description": "Button: show the address."
-  },
-  "remoteClients": "Allowed clients",
-  "@remoteClients": {
-    "description": "Card: the clients allowed to connect."
   },
   "remoteClientsNote": "Each runs commands here as your user. Revoking one drops its connections.",
   "@remoteClientsNote": {
@@ -1366,9 +1354,9 @@
       }
     }
   },
-  "hostsApproveWhere": "It shows under Settings › Remote › Pair a new device. Approve it only if the fingerprints match.",
+  "hostsApproveWhere": "It shows under Settings › Remote › Devices. Approve it only if the fingerprints match.",
   "@hostsApproveWhere": {
-    "description": "Add sheet: where the request shows on the host. Pair a new device is remotePairTitle."
+    "description": "Add sheet: where the request shows on the host. Devices is remoteDevices."
   },
   "hostsFingerprint": "Fingerprint",
   "@hostsFingerprint": {
@@ -1585,10 +1573,6 @@
   "spaceColorCustom": "Custom #rrggbb",
   "@spaceColorCustom": {
     "description": "Space popover: placeholder of the field that takes a custom color of the space, as #0090ff."
-  },
-  "remoteNetTitle": "Join a network",
-  "@remoteNetTitle": {
-    "description": "Card title: a coordinator network to join once instead of pairing."
   },
   "remoteNetNote": "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way Tailscale does: join once with the network key, and every member trusts and finds every other.",
   "@remoteNetNote": {
