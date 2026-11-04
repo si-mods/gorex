@@ -3,6 +3,7 @@ package main
 import (
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -98,6 +99,9 @@ func TestGlassWindow(t *testing.T) {
 		t.Errorf("over the glass the pane reads %v, as without it", glassPane)
 	}
 	prefs.NoGlass = true
+	// The pane's face fades in as the glass goes.
+	tt.Frame()
+	tt.Advance(time.Second)
 	if got := at(edge[0], edge[1]); got != plainEdge {
 		t.Errorf("with the glass off the background reads %v, want %v", got, plainEdge)
 	}
