@@ -1328,7 +1328,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 				ui.Text(c, locales.PaletteNoMatches()).FontSize(13).TextColor(k.textFaint).Padding(14)
 			}
 			for i, it := range items {
-				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(16, 1+6)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 				if anim != nil {
 					pose := ui.Pose{}
 					if fresh {

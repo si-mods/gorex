@@ -618,7 +618,7 @@ func (a *App) themeSettings(c *ui.Context, k *colors) {
 			a.setPref(func(s *settings) { s.Theme = set })
 		}
 		card.Children(func() {
-			ui.Column(c).Height(76).Padding(10, 12).Gap(8).Radius(10).Background(th.Background).Border(1, k.cardBorder).Children(func() {
+			ui.Column(c).Height(76).Padding(10, 12).Gap(8).Radius(concentric(14, 2+5)).Background(th.Background).Border(1, k.cardBorder).Children(func() {
 				ui.Row(c).AlignItems(ui.Center).Children(func() {
 					ui.Text(c, "Aa").Font(monoFamily()).FontSize(15).FontWeight(700).TextColor(th.Foreground).Grow(1)
 					if chosen {

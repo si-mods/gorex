@@ -120,7 +120,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 	for _, w := range a.st.workspaces {
 		current := w == a.ws
 		detail := workspaceDetail(w, a)
-		row := ui.Row(c.Key(w.ID)).Height(40).Padding(0, 8).Gap(9).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+		row := ui.Row(c.Key(w.ID)).Height(40).Padding(0, 8).Gap(9).Radius(concentric(14, 1+6)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 			Role(ui.RoleButton).Label(w.Name + ", " + detail)
 		if row.Hovered() {
 			row.Background(k.hover)
@@ -151,7 +151,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 	a.spaceColorPicker(c, k)
 	ui.Box(c).Height(1).Margin(4, 6).Background(k.panelBorder)
 	action := func(glyph, label string, run func()) {
-		row := ui.Row(c.Key("action-"+glyph)).Height(32).Padding(0, 8).Gap(9).Radius(8).AlignItems(ui.Center).Cursor(ui.CursorPointer).
+		row := ui.Row(c.Key("action-"+glyph)).Height(32).Padding(0, 8).Gap(9).Radius(concentric(14, 1+6)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 			Role(ui.RoleButton).Label(label)
 		if row.Hovered() {
 			row.Background(k.hover)

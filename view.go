@@ -21,10 +21,16 @@ import (
 const (
 	gap       = 8  // between panes, and around them
 	titleH    = 44 // the title bar
-	cardR     = 12 // the panes' corners
+	cardR     = 8  // the panes' corners: concentric with the window's, 16 on macOS 27, inset by gap
 	headerH   = 33 // the panes' headers
 	activeFor = 1500 * time.Millisecond
 )
+
+// concentric is the corner radius of a shape inset by inset (its
+// container's border and padding) in a container of radius outer, as
+// Apple's concentric shapes: the container's less the inset, so that the
+// two curves keep one center.
+func concentric(outer, inset float32) float32 { return max(outer-inset, 0) }
 
 func (a *App) view(c *ui.Context) {
 	a.services = c.Services()
