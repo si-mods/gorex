@@ -54,11 +54,13 @@ func (a *App) openSettings() {
 		}
 	}
 	opts := mygo.WindowOptions{
-		Title:                locales.SettingsTitle(),
-		Width:                780,
-		Height:               540,
-		MinWidth:             620,
-		MinHeight:            400,
+		Title:     locales.SettingsTitle(),
+		Width:     780,
+		Height:    540,
+		MinWidth:  620,
+		MinHeight: 400,
+		// No wider than the sidebar and the settings column need.
+		MaxWidth:             settingsSidebarW + 2*settingsPad + settingsMaxW + 4,
 		StateKey:             "settings",
 		TitleBarStyle:        mygo.TitleBarHidden,
 		TrafficLightPosition: &mygo.Point{X: 18, Y: 19},
@@ -109,6 +111,7 @@ const (
 	settingsPad      = 28
 	settingsGroupGap = 18
 	settingsHintW    = 560
+	settingsMaxW     = 720 // the settings column, at most
 )
 
 // settingsTheme is the widgets' theme in the settings window: the app's,
@@ -144,7 +147,7 @@ func (a *App) settingsView(c *ui.Context) {
 		ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 			a.settingsTitleBar(c, k)
 			ui.Scroll(c).Grow(1).MinHeight(0).Padding(4, settingsPad, settingsPad, settingsPad).Children(func() {
-				ui.Column(c).Gap(settingsGroupGap).MaxWidth(720).Children(func() {
+				ui.Column(c).Gap(settingsGroupGap).MaxWidth(settingsMaxW).Children(func() {
 					switch settingsUI.section {
 					case "server":
 						a.serverSettings(c, k)
