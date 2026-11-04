@@ -125,7 +125,7 @@ func TestShareSwitch(t *testing.T) {
 	title, _ := tt.Find("Share open terminals")
 	toggle := func() bool {
 		y := title.Y + title.H/2
-		for x := float32(775); x > title.X+60; x -= 4 {
+		for x := float32(750); x > max(title.X+60, 600); x -= 6 {
 			tt.ClickAt(x, y)
 			tt.Frame()
 			if remoteUI.err != nil {
@@ -149,5 +149,51 @@ func TestShareSwitch(t *testing.T) {
 func TestServerMessage(t *testing.T) {
 	if got := serverMessage(errors.New("rex: that client is allowed already")); got != "That client is allowed already" {
 		t.Errorf("serverMessage = %q", got)
+	}
+}
+
+// TestDevicesButtons checks the Devices group's buttons: the form that
+// adds a client by its key shows only once Add by Key… is clicked, and
+// Cancel hides it; Pair New Device… asks the server to start pairing, as
+// Start pairing did, and is gone while the pairing window is open.
+func TestDevicesButtons(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Cleanup(stopRemotePoll)
+	a := &App{}
+	settingsUI.section = "remote"
+	remoteUI.loaded, remoteUI.st, remoteUI.err = true, rex.RemoteStatus{Enabled: true}, nil
+	tt := ui.NewTester(a.settingsView, 780, 1400)
+	tt.Frame()
+	if tt.HasText(locales.RemoteAddByKey()) {
+		t.Fatal("the add-by-key form shows before Add by Key… is clicked")
+	}
+	if err := tt.Click(locales.RemoteAddByKeyAsk()); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !tt.HasText(locales.RemoteAddByKey()) || !remoteUI.addingKey {
+		t.Fatalf("no add-by-key form after the click; texts %q", tt.Texts())
+	}
+	if err := tt.Click(locales.RemoteCancel()); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if tt.HasText(locales.RemoteAddByKey()) {
+		t.Fatal("Cancel did not hide the add-by-key form")
+	}
+
+	// No server here: the call says so, as every change of the page does.
+	if err := tt.Click(locales.RemotePairNew()); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if remoteUI.err == nil || remoteUI.err() != locales.RemoteNotConnected() {
+		t.Error("Pair New Device… did not ask the server")
+	}
+	remoteUI.st.Pairing = rex.RemotePairing{Open: true, ExpiresAt: time.Now().Add(time.Minute)}
+	tt.Frame()
+	if tt.HasText(locales.RemotePairNew()) || !tt.HasText(locales.RemotePairStop()) {
+		t.Errorf("pairing open: texts %q", tt.Texts())
 	}
 }

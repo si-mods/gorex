@@ -304,7 +304,7 @@ func (a *App) serverSettings(c *ui.Context, k *colors) {
 // serverGroup is the server page's card: the machine, its state, and the
 // server's and the machine's facts.
 func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label string, dot ui.Color, h rex.HostInfo) {
-	settingsGroup(c, k, "", "", func() {
+	settingsGroup(c, k, "", "", "", func() {
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(44, 44).Radius(12).Background(k.hover).Center().Shrink(0).Children(func() {
@@ -351,8 +351,8 @@ func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label stri
 var groupRows int
 
 // settingsGroup is a group of rows on one card, with an optional label
-// and note above it.
-func settingsGroup(c *ui.Context, k *colors, label, note string, body func()) {
+// and note above it, and an optional footnote under it.
+func settingsGroup(c *ui.Context, k *colors, label, note, foot string, body func()) {
 	ui.Column(c).Gap(6).Children(func() {
 		if label != "" || note != "" {
 			ui.Column(c).Gap(2).Padding(0, 14).Children(func() {
@@ -366,7 +366,12 @@ func settingsGroup(c *ui.Context, k *colors, label, note string, body func()) {
 		}
 		saved := groupRows
 		groupRows = 0
-		ui.Column(c).Radius(14).Background(k.card).Border(1, k.cardBorder).Shadow(0, 1, 2, 0, k.shadow).Children(body)
+		ui.Column(c).Gap(2).Children(func() {
+			ui.Column(c).Radius(14).Background(k.card).Border(1, k.cardBorder).Shadow(0, 1, 2, 0, k.shadow).Children(body)
+			if foot != "" {
+				ui.Text(c, foot).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(600).Padding(0, 14)
+			}
+		})
 		groupRows = saved
 	})
 }
@@ -416,9 +421,9 @@ func settingRow(c *ui.Context, k *colors, label, hint string, control func()) {
 var appearances = []string{"", "light", "dark"}
 
 func (a *App) appearanceSettings(c *ui.Context, k *colors) {
-	settingsGroup(c, k, "", "", func() { a.appearanceWindow(c, k) })
-	settingsGroup(c, k, "", "", func() { a.appearanceText(c, k) })
-	settingsGroup(c, k, "", "", func() { a.appearanceGlass(c, k) })
+	settingsGroup(c, k, "", "", "", func() { a.appearanceWindow(c, k) })
+	settingsGroup(c, k, "", "", "", func() { a.appearanceText(c, k) })
+	settingsGroup(c, k, "", "", "", func() { a.appearanceGlass(c, k) })
 }
 
 // appearanceWindow is the Appearance page's first group: the window, the
@@ -520,7 +525,7 @@ func (a *App) terminalSettings(c *ui.Context, k *colors) {
 	} else if !slices.Contains(fonts, family) {
 		fonts = append(slices.Clone(fonts), family)
 	}
-	settingsGroup(c, k, "", "", func() {
+	settingsGroup(c, k, "", "", "", func() {
 		settingRow(c, k, locales.SettingsFont(), locales.SettingsFontHint(), func() {
 			if ui.Select(c, &family, fonts).Label(locales.SettingsFont()).Width(220).Changed() {
 				a.setPref(func(s *settings) {
@@ -533,8 +538,8 @@ func (a *App) terminalSettings(c *ui.Context, k *colors) {
 		})
 		groupRow(c, k, nil).Children(func() { a.fontPreview(c, k) })
 	})
-	settingsGroup(c, k, "", "", func() { a.cursorSettings(c, k) })
-	settingsGroup(c, k, "", "", func() {
+	settingsGroup(c, k, "", "", "", func() { a.cursorSettings(c, k) })
+	settingsGroup(c, k, "", "", "", func() {
 		groupRow(c, k, nil).Children(func() {
 			rowLine(c, k, locales.SettingsUseGhosttyHint(), func() {
 				if ui.Button(c, locales.SettingsUseGhostty()).Clicked() {
@@ -726,7 +731,7 @@ func (a *App) keyboardSettings(c *ui.Context, k *colors) {
 		resetAllButton(a, c)
 	})
 	if shortcutsUI.recording != nil {
-		settingsGroup(c, k, "", "", func() {
+		settingsGroup(c, k, "", "", "", func() {
 			groupRow(c, k, nil).Children(func() {
 				rowLine(c, k, "Press the new shortcut for "+shortcutsUI.recording.Title(), func() {
 					if ui.Button(c, "Cancel").Clicked() {
@@ -739,7 +744,7 @@ func (a *App) keyboardSettings(c *ui.Context, k *colors) {
 			})
 		})
 	}
-	settingsGroup(c, k, "", "", func() {
+	settingsGroup(c, k, "", "", "", func() {
 		for i, r := range shortcutRows() {
 			groupRow(c, k, i).MinHeight(40).Padding(7, 14).Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -765,7 +770,7 @@ func (a *App) aboutSettings(c *ui.Context, k *colors) {
 	if version == "" {
 		version = locales.SettingsDevBuild()
 	}
-	settingsGroup(c, k, "", "", func() {
+	settingsGroup(c, k, "", "", "", func() {
 		settingRow(c, k, "GoRex", locales.SettingsVersion(version), func() {
 			if mygo.Updater.Enabled() {
 				if ui.Button(c, locales.CmdCheckForUpdates()).Clicked() {

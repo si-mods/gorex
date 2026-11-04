@@ -31,10 +31,10 @@ func TestRemoteLANCard(t *testing.T) {
 	}
 
 	// On, it takes the machine's address and network, or says it has none.
-	// The switch is at the right of the state, under the card's note.
-	note, _ := tt.Find(locales.RemoteLanNote())
-	for y := note.Y + note.H + 4; y < note.Y+note.H+44 && !remoteUI.lan.Enabled && remoteUI.lanErr == ""; y += 4 {
-		for x := float32(775); x > note.X+note.W-60 && !remoteUI.lan.Enabled && remoteUI.lanErr == ""; x -= 6 {
+	// The switch is at the right of the switch's title and state.
+	title, _ := tt.Find(locales.RemoteLanSwitch())
+	for y := title.Y - 6; y < title.Y+title.H+20 && !remoteUI.lan.Enabled && remoteUI.lanErr == ""; y += 4 {
+		for x := float32(775); x > title.X+60 && !remoteUI.lan.Enabled && remoteUI.lanErr == ""; x -= 6 {
 			tt.ClickAt(x, y)
 			tt.Frame()
 		}

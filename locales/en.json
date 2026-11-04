@@ -1342,9 +1342,9 @@
   "@hostsNotAllowed": {
     "description": "Why a host is not connected: this machine's key is not allowed there."
   },
-  "hostsNotPairing": "{host} is not pairing. There, open Settings › Remote and Start pairing, then try again.",
+  "hostsNotPairing": "{host} is not pairing. There, open Settings › Remote and choose Pair New Device…, then try again.",
   "@hostsNotPairing": {
-    "description": "Error of the add sheet: the host's pairing window is closed. Start pairing is remotePairStart.",
+    "description": "Error of the add sheet: the host's pairing window is closed. Pair New Device… is remotePairNew.",
     "placeholders": {
       "host": {
         "type": "String",
@@ -1878,5 +1878,33 @@
   "resumeContinueTip": "Continue the agent's last conversation here",
   "@resumeContinueTip": {
     "description": "Tooltip of the button that continues an agent's last conversation."
+  },
+  "remoteDevices": "Devices",
+  "@remoteDevices": {
+    "description": "Remote page: the group of the devices paired with this machine, and the requests to pair."
+  },
+  "remotePairNew": "Pair New Device…",
+  "@remotePairNew": {
+    "description": "Remote page button: opens the pairing window, in which a new device can ask to pair."
+  },
+  "remoteAddByKeyAsk": "Add by Key…",
+  "@remoteAddByKeyAsk": {
+    "description": "Remote page button: shows the fields that allow a client by its public key."
+  },
+  "remoteNetGroup": "Network",
+  "@remoteNetGroup": {
+    "description": "Remote page: the group of the coordinator network this machine joins."
+  },
+  "remoteNetNone": "Not in a network",
+  "@remoteNetNone": {
+    "description": "Remote page: this machine has joined no coordinator network."
+  },
+  "remoteNetJoinAsk": "Join a Network…",
+  "@remoteNetJoinAsk": {
+    "description": "Remote page button: shows the fields to join a coordinator network."
+  },
+  "remoteLanListenOn": "Listen on",
+  "@remoteLanListenOn": {
+    "description": "Remote page row: the address on the local network that Rex's apps connect to."
   }
 }
