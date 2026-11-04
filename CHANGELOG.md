@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0
+
+### Features
+
+* **settings:** redesign the Settings window in the macOS 27 Liquid Glass style: a full-height glass sidebar with a server status card and a Server page, settings in grouped cards with the hint under each row, capsule controls, a theme card grid, a window no wider than its column, and a Remote page regrouped into the master switch, Devices, This Mac, Network and Rex apps, its notes under each card and its add and join forms opened from buttons ([#167](https://github.com/si-mods/gorex/pull/167))
+
 ## 0.11.0
 
 ### Features
