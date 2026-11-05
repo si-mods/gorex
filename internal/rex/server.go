@@ -259,6 +259,12 @@ func (k *keptConn) unbind(conn net.Conn) {
 // which this package cannot import.
 var OnServe func(stop <-chan struct{})
 
+// RexPairURL, when set, returns the gateway's Rex pairing address: the
+// tailnet's HTTPS address, which another device scans to add this one to
+// Rex. It holds no credential, as "rex server tailscale pair" says of its
+// own. Empty while built-in Tailscale is off or its address is not ready.
+var RexPairURL func() string
+
 // idleTimeout is how long a server with no sessions and no app waits
 // before it exits.
 const idleTimeout = 10 * time.Minute
@@ -415,6 +421,13 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		refuseLine(conn, err)
 		conn.Close()
 		return
+	}
+	if peer == "" {
+		var req Request
+		if json.Unmarshal(first, &req) == nil && req.Op == "remote.tailnetDial" {
+			s.relayTailnet(conn, r, req.TailnetTarget)
+			return
+		}
 	}
 	var a Attach
 	if json.Unmarshal(first, &a) == nil && a.Op == "attach" {
@@ -730,6 +743,9 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
 		if peer != "" {
 			h.Client = s.remoteClientFor(peer)
+		}
+		if RexPairURL != nil {
+			h.RexPairURL = RexPairURL()
 		}
 		if kept != nil {
 			h.Keepalive, h.Conn = keepaliveTimeout.get(), kept.id

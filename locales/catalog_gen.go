@@ -2960,6 +2960,186 @@ func (msgs Messages) RemoteAsking() string {
 	return Catalog.Format(msgs.locale, "remoteAsking", nil)
 }
 
+// TailcatMode says "Tailcat remote access"
+// in the language the app shows.
+func TailcatMode() string { return In(i18n.Locale()).TailcatMode() }
+
+// TailcatMode says "Tailcat remote access"
+// in the language of msgs.
+func (msgs Messages) TailcatMode() string {
+	return Catalog.Format(msgs.locale, "tailcatMode", nil)
+}
+
+// HostsRexQR says "Rex QR…"
+// in the language the app shows.
+func HostsRexQR() string { return In(i18n.Locale()).HostsRexQR() }
+
+// HostsRexQR says "Rex QR…"
+// in the language of msgs.
+func (msgs Messages) HostsRexQR() string {
+	return Catalog.Format(msgs.locale, "hostsRexQR", nil)
+}
+
+// HostsRexQRTitle says "Connect Rex to {host}"
+// in the language the app shows.
+func HostsRexQRTitle(host string) string { return In(i18n.Locale()).HostsRexQRTitle(host) }
+
+// HostsRexQRTitle says "Connect Rex to {host}"
+// in the language of msgs.
+func (msgs Messages) HostsRexQRTitle(host string) string {
+	return Catalog.Format(msgs.locale, "hostsRexQRTitle", map[string]any{"host": host})
+}
+
+// HostsRexQRLoading says "Checking the phone endpoint…"
+// in the language the app shows.
+func HostsRexQRLoading() string { return In(i18n.Locale()).HostsRexQRLoading() }
+
+// HostsRexQRLoading says "Checking the phone endpoint…"
+// in the language of msgs.
+func (msgs Messages) HostsRexQRLoading() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRLoading", nil)
+}
+
+// HostsRexQRHint says "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential."
+// in the language the app shows.
+func HostsRexQRHint() string { return In(i18n.Locale()).HostsRexQRHint() }
+
+// HostsRexQRHint says "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential."
+// in the language of msgs.
+func (msgs Messages) HostsRexQRHint() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRHint", nil)
+}
+
+// HostsLocalRexQRHint says "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential."
+// in the language the app shows.
+func HostsLocalRexQRHint() string { return In(i18n.Locale()).HostsLocalRexQRHint() }
+
+// HostsLocalRexQRHint says "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential."
+// in the language of msgs.
+func (msgs Messages) HostsLocalRexQRHint() string {
+	return Catalog.Format(msgs.locale, "hostsLocalRexQRHint", nil)
+}
+
+// HostsLocalLanRexQRHint says "Scan this code in Rex on a device on the same network as this address. The code holds the address only, not a credent…"
+// in the language the app shows.
+func HostsLocalLanRexQRHint() string { return In(i18n.Locale()).HostsLocalLanRexQRHint() }
+
+// HostsLocalLanRexQRHint says "Scan this code in Rex on a device on the same network as this address. The code holds the address only, not a credent…"
+// in the language of msgs.
+func (msgs Messages) HostsLocalLanRexQRHint() string {
+	return Catalog.Format(msgs.locale, "hostsLocalLanRexQRHint", nil)
+}
+
+// HostsSetUpRex says "Set Up Rex…"
+// in the language the app shows.
+func HostsSetUpRex() string { return In(i18n.Locale()).HostsSetUpRex() }
+
+// HostsSetUpRex says "Set Up Rex…"
+// in the language of msgs.
+func (msgs Messages) HostsSetUpRex() string {
+	return Catalog.Format(msgs.locale, "hostsSetUpRex", nil)
+}
+
+// HostsRexQRUnavailable says "This host has no tailnet address to pair with. Turn on built-in Tailscale, and wait for its HTTPS address in Remote."
+// in the language the app shows.
+func HostsRexQRUnavailable() string { return In(i18n.Locale()).HostsRexQRUnavailable() }
+
+// HostsRexQRUnavailable says "This host has no tailnet address to pair with. Turn on built-in Tailscale, and wait for its HTTPS address in Remote."
+// in the language of msgs.
+func (msgs Messages) HostsRexQRUnavailable() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRUnavailable", nil)
+}
+
+// HostsRexQRCopy says "Copy link"
+// in the language the app shows.
+func HostsRexQRCopy() string { return In(i18n.Locale()).HostsRexQRCopy() }
+
+// HostsRexQRCopy says "Copy link"
+// in the language of msgs.
+func (msgs Messages) HostsRexQRCopy() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRCopy", nil)
+}
+
+// HostsRexQRCopied says "Copied"
+// in the language the app shows.
+func HostsRexQRCopied() string { return In(i18n.Locale()).HostsRexQRCopied() }
+
+// HostsRexQRCopied says "Copied"
+// in the language of msgs.
+func (msgs Messages) HostsRexQRCopied() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRCopied", nil)
+}
+
+// HostsRexQRCopyFailed says "Could not copy the link."
+// in the language the app shows.
+func HostsRexQRCopyFailed() string { return In(i18n.Locale()).HostsRexQRCopyFailed() }
+
+// HostsRexQRCopyFailed says "Could not copy the link."
+// in the language of msgs.
+func (msgs Messages) HostsRexQRCopyFailed() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRCopyFailed", nil)
+}
+
+// TailnetMode says "Tailscale discovery and connections"
+// in the language the app shows.
+func TailnetMode() string { return In(i18n.Locale()).TailnetMode() }
+
+// TailnetMode says "Tailscale discovery and connections"
+// in the language of msgs.
+func (msgs Messages) TailnetMode() string {
+	return Catalog.Format(msgs.locale, "tailnetMode", nil)
+}
+
+// TailnetModeNote says "Find GoRex devices on your Tailscale account and let them open terminals on this computer."
+// in the language the app shows.
+func TailnetModeNote() string { return In(i18n.Locale()).TailnetModeNote() }
+
+// TailnetModeNote says "Find GoRex devices on your Tailscale account and let them open terminals on this computer."
+// in the language of msgs.
+func (msgs Messages) TailnetModeNote() string {
+	return Catalog.Format(msgs.locale, "tailnetModeNote", nil)
+}
+
+// TailnetUnavailable says "System Tailscale is unavailable. GoRex will try again automatically."
+// in the language the app shows.
+func TailnetUnavailable() string { return In(i18n.Locale()).TailnetUnavailable() }
+
+// TailnetUnavailable says "System Tailscale is unavailable. GoRex will try again automatically."
+// in the language of msgs.
+func (msgs Messages) TailnetUnavailable() string {
+	return Catalog.Format(msgs.locale, "tailnetUnavailable", nil)
+}
+
+// TailnetConnect says "Connect"
+// in the language the app shows.
+func TailnetConnect() string { return In(i18n.Locale()).TailnetConnect() }
+
+// TailnetConnect says "Connect"
+// in the language of msgs.
+func (msgs Messages) TailnetConnect() string {
+	return Catalog.Format(msgs.locale, "tailnetConnect", nil)
+}
+
+// TailnetAvailable says "Available via Tailscale"
+// in the language the app shows.
+func TailnetAvailable() string { return In(i18n.Locale()).TailnetAvailable() }
+
+// TailnetAvailable says "Available via Tailscale"
+// in the language of msgs.
+func (msgs Messages) TailnetAvailable() string {
+	return Catalog.Format(msgs.locale, "tailnetAvailable", nil)
+}
+
+// TailnetOffline says "Offline"
+// in the language the app shows.
+func TailnetOffline() string { return In(i18n.Locale()).TailnetOffline() }
+
+// TailnetOffline says "Offline"
+// in the language of msgs.
+func (msgs Messages) TailnetOffline() string {
+	return Catalog.Format(msgs.locale, "tailnetOffline", nil)
+}
+
 // RemoteAllow says "Allow remote clients"
 // in the language the app shows.
 //
@@ -5378,6 +5558,16 @@ func RemoteLanSave() string { return In(i18n.Locale()).RemoteLanSave() }
 // Button: save the address typed.
 func (msgs Messages) RemoteLanSave() string {
 	return Catalog.Format(msgs.locale, "remoteLanSave", nil)
+}
+
+// RemoteLanPairAddress says "To show a QR code, use a specific LAN or Tailscale IP address that your phone can reach."
+// in the language the app shows.
+func RemoteLanPairAddress() string { return In(i18n.Locale()).RemoteLanPairAddress() }
+
+// RemoteLanPairAddress says "To show a QR code, use a specific LAN or Tailscale IP address that your phone can reach."
+// in the language of msgs.
+func (msgs Messages) RemoteLanPairAddress() string {
+	return Catalog.Format(msgs.locale, "remoteLanPairAddress", nil)
 }
 
 // RemoteLanNetworks says "Networks allowed"

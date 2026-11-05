@@ -31,6 +31,8 @@ type LANConfig struct {
 	// Allow are the networks let in, as CIDRs; a bare address stands for
 	// itself alone.
 	Allow []string `json:"allow,omitempty"`
+	// ShowDesktopSessions includes desktop Tailscale sessions outside the host layout.
+	ShowDesktopSessions bool `json:"showDesktopSessions,omitempty"`
 }
 
 // LANStatus is what the gateway did with its LANConfig, kept in
@@ -81,6 +83,28 @@ func LoadLANStatus(dir string) LANStatus {
 		json.Unmarshal(b, &s)
 	}
 	return s
+}
+
+// PairURL returns the active listener's address, which another device on
+// the same network can open in Rex. Rex pairs over its own Tailscale
+// address (gorex rexapi pair); this is the local network's plain HTTP
+// listener, which holds no credential either. Empty unless the listener
+// is bound to a specific, reachable address: a wildcard or loopback one
+// is only a bind address.
+func (c LANConfig) PairURL(s LANStatus) string {
+	if !c.Enabled || len(c.Allow) == 0 || !s.Running || s.Error != "" {
+		return ""
+	}
+	configured, err := netip.ParseAddrPort(c.Listen)
+	if err != nil {
+		return ""
+	}
+	bound, err := netip.ParseAddrPort(s.Listening)
+	if err != nil || bound != configured || bound.Port() == 0 ||
+		!bound.Addr().IsGlobalUnicast() || bound.Addr().Zone() != "" {
+		return ""
+	}
+	return "http://" + bound.String()
 }
 
 func saveLANStatus(dir string, s LANStatus) {
@@ -354,7 +378,13 @@ func (l *lanListener) apply(c LANConfig) {
 }
 
 func sameLAN(a, b LANConfig) bool {
-	return a.Enabled == b.Enabled && a.Listen == b.Listen && slices.Equal(a.Allow, b.Allow)
+	return a.Enabled == b.Enabled && a.Listen == b.Listen && a.ShowDesktopSessions == b.ShowDesktopSessions && slices.Equal(a.Allow, b.Allow)
+}
+
+func (l *lanListener) showDesktopSessions() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.ln != nil && l.conf.ShowDesktopSessions
 }
 
 func (l *lanListener) closeLocked() {

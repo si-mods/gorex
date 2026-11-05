@@ -49,22 +49,27 @@ var remoteUI struct {
 	lanEdited bool
 	lanAdd    string
 	lanErr    string
+	focusLAN  bool
 	// addingKey and joining show the forms that add a client by its key
 	// and join a network, in place of the buttons that open them.
 	addingKey, joining bool
 }
 
-// showSection chooses a settings section. The Remote page asks the server
-// every two seconds while it shows, and drops the address when it goes.
+// showSection chooses a settings section and refreshes its Rex listener
+// status while shown.
 func (a *App) showSection(id string) {
 	if id != "keyboard" && shortcutsUI.recording != nil {
 		a.stopRecording()
 	}
+	if settingsUI.section == id {
+		return
+	}
+	stopRemotePoll()
+	hostsPairQR = nil
 	settingsUI.section = id
-	if id == "remote" {
+	if id == "remote" || id == "hosts" {
+		fetchLAN()
 		a.startRemotePoll()
-	} else {
-		stopRemotePoll()
 	}
 }
 
@@ -77,6 +82,7 @@ func stopRemotePoll() {
 	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, nil, false, "", ""
 	page.netURL, page.netKey, page.netName, page.netErr = "", "", "", false
 	page.addingKey, page.joining = false, false
+	page.focusLAN = false
 }
 
 // remoteAsk runs work off the UI thread, with the app's client of the
@@ -111,13 +117,24 @@ func (a *App) startRemotePoll() {
 	}
 	stop := make(chan struct{})
 	remoteUI.stop = stop
+	refresh := a.fetchRemote
+	if settingsUI.section == "hosts" {
+		refresh = fetchLAN
+	}
 	go func() {
 		pub := rex.ClientPublicKey()
 		win.Update(func() { remoteUI.myKey = pub })
 		t := time.NewTicker(2 * time.Second)
 		defer t.Stop()
 		for {
-			win.Update(a.fetchRemote)
+			win.Update(func() {
+				select {
+				case <-stop:
+					return
+				default:
+					refresh()
+				}
+			})
 			select {
 			case <-stop:
 				return
@@ -131,11 +148,10 @@ func (a *App) startRemotePoll() {
 // the server's gateway follows.
 func fetchLAN() {
 	dir := rexapi.TailnetDir()
-	if c, err := rexapi.LoadLAN(dir); err == nil {
-		remoteUI.lan = c
-		if !remoteUI.lanEdited {
-			remoteUI.lanListen = c.Listen
-		}
+	c, _ := rexapi.LoadLAN(dir)
+	remoteUI.lan = c
+	if !remoteUI.lanEdited {
+		remoteUI.lanListen = c.Listen
 	}
 	remoteUI.lanStatus = rexapi.LoadLANStatus(dir)
 }
@@ -160,15 +176,20 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 	settingsGroup(c, k, locales.RemoteLanTitle(), "", locales.RemoteLanNote(), func() {
 		label, dot := locales.RemoteLanOff(), k.exited
 		switch {
-		case st.Listening != "":
-			label, dot = locales.RemoteLanListening("http://"+st.Listening), k.busy
 		case conf.Enabled && st.Error != "":
 			label, dot = locales.RemoteLanError(st.Error), k.danger
+		case conf.Enabled && st.Listening != "":
+			label, dot = locales.RemoteLanListening("http://"+st.Listening), k.busy
 		case conf.Enabled:
 			label, dot = locales.RemoteLanWaiting(), k.attention
 		}
 		on := conf.Enabled
-		groupRow(c, k, nil).Children(func() {
+		status := groupRow(c, k, nil)
+		if page.focusLAN {
+			page.focusLAN = false
+			status.ScrollIntoView()
+		}
+		status.Children(func() {
 			tileLine(c, k, "app-window", locales.RemoteLanSwitch(), func() {
 				statusLine(c, k, dot, label).Selectable()
 			}, func() {
@@ -189,6 +210,13 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 			// Not in a dimmed row: its color is its meaning.
 			if page.lanErr != "" {
 				rowError(c, k, page.lanErr)
+			}
+			if a.localRexPairURL() != "" {
+				if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
+					a.openLocalPairQR()
+				}
+			} else if conf.Enabled && st.Running && st.Error == "" && st.Listening != "" && len(conf.Allow) != 0 {
+				rowHint(c, k, locales.RemoteLanPairAddress())
 			}
 		})
 		listen := groupRow(c, k, nil)
@@ -519,10 +547,10 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 					glyphIcon(c, "globe", 22, ui.RGB(255, 255, 255))
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-					ui.Text(c, locales.RemoteTitle()).FontSize(15).FontWeight(600).TextColor(k.text)
+					ui.Text(c, locales.TailcatMode()).FontSize(15).FontWeight(600).TextColor(k.text)
 					statusLine(c, k, dot, label)
 				})
-				sw := ui.Switch(c.Key("allow"), &on).Label(locales.RemoteAllow()).Disabled(page.unreachable || page.busy)
+				sw := ui.Switch(c.Key("allow"), &on).Label(locales.TailcatMode()).Disabled(page.unreachable || page.busy)
 				if sw.Changed() {
 					if on {
 						a.remoteDo((*rex.Client).EnableRemote, nil)
@@ -536,14 +564,27 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				rowError(c, k, page.err())
 			}
 		})
+		if st.Tailnet != nil {
+			tailnet := st.Tailnet.Enabled
+			if remoteSwitch(c, k, "system-tailscale", locales.TailnetMode(), locales.TailnetModeNote(), &tailnet, page.unreachable || page.busy, false) {
+				a.remoteDo(func(srv *rex.Client) error { return srv.SetTailnet(tailnet) }, nil)
+			}
+			if st.Tailnet.Enabled && !st.Tailnet.Running {
+				hint := locales.TailnetUnavailable()
+				if st.Tailnet.Error != "" {
+					hint = st.Tailnet.Error
+				}
+				groupRow(c, k, nil).Children(func() { rowHint(c, k, hint) })
+			}
+		}
 		// Whether remote clients see the sessions open here.
 		share := st.ShareSessions
-		if remoteSwitch(c, k, "share", locales.RemoteShare(), locales.RemoteShareNote(), &share, page.unreachable || page.busy, !st.Enabled) {
+		if remoteSwitch(c, k, "share", locales.RemoteShare(), locales.RemoteShareNote(), &share, page.unreachable || page.busy, !st.Enabled && (st.Tailnet == nil || !st.Tailnet.Running)) {
 			a.remoteDo(func(srv *rex.Client) error { return srv.ShareSessions(share) }, nil)
 		}
 		// Whether remote clients read the layout and follow it.
 		layoutShare := st.ShareLayout
-		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy, !st.Enabled) {
+		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy, !st.Enabled && (st.Tailnet == nil || !st.Tailnet.Running)) {
 			a.remoteDo(func(srv *rex.Client) error { return srv.ShareLayout(layoutShare) }, nil)
 		}
 	})

@@ -294,7 +294,14 @@ func (g *Gateway) refresh() (*model, error) {
 	if err != nil {
 		return g.modelNow(), err
 	}
-	m, err := g.mapper.build(raw, g.host, g.ownersNow())
+	var desktop []rex.SessionInfo
+	if g.lan != nil && g.lan.showDesktopSessions() {
+		desktop, err = g.opt.Client.List()
+		if err != nil {
+			return g.modelNow(), err
+		}
+	}
+	m, err := g.mapper.build(raw, g.host, g.ownersNow(), desktop...)
 	if err != nil {
 		return g.modelNow(), err
 	}

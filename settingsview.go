@@ -78,6 +78,7 @@ func (a *App) openSettings() {
 		stopRemotePoll()
 		closeAddHost()
 		closeHostLayout()
+		hostsPairQR = nil
 		shortcutsUI = shortcutsState{}
 		if a.st != nil && a.st.recording {
 			a.st.recording = false
@@ -169,6 +170,13 @@ func (a *App) settingsView(c *ui.Context) {
 			})
 		})
 	})
+	if page := hostsPairQR; page != nil {
+		if page.local && page.address != a.localRexPairURL() {
+			hostsPairQR = nil
+		} else {
+			hostPairQRSheet(c, k, page)
+		}
+	}
 }
 
 // terminalFace gives e the face of the main window's unfocused tiled

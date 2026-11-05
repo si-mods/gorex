@@ -5,11 +5,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
 
 	"gorex/internal/layout"
+	"gorex/internal/rex"
 )
 
 // The one creator and flavor GoRex has: every block is a terminal, and
@@ -192,7 +194,7 @@ func newMapper() *mapper {
 
 // build maps the layout to the Rex model, host naming the machine the
 // blocks run on.
-func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]string) (*model, error) {
+func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]string, desktop ...rex.SessionInfo) (*model, error) {
 	var store layout.Store
 	if len(raw) > 0 {
 		if err := json.Unmarshal(raw, &store); err != nil {
@@ -203,6 +205,9 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 	if len(spaces) == 0 && len(store.Tabs) > 0 {
 		// A layout of before workspaces: its tabs are one workspace.
 		spaces = []layout.Workspace{{ID: "main", Name: "gorex", Layout: store.Layout}}
+	}
+	if ws := desktopWorkspace(spaces, desktop); len(ws.Tabs) != 0 {
+		spaces = append(spaces, ws)
 	}
 	m := &model{byID: map[string]*mSession{}, blocks: map[string]*mBlock{}, host: host}
 	for i := range spaces {
@@ -315,6 +320,51 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 		}
 	}
 	return m, nil
+}
+
+// desktopWorkspace projects live desktop-created sessions that have no
+// local tab. It only changes the Rex view, never the saved GoRex layout.
+func desktopWorkspace(spaces []layout.Workspace, sessions []rex.SessionInfo) layout.Workspace {
+	ws := layout.Workspace{ID: "gorex-desktop-terminals", Name: "Desktop terminals"}
+	if len(sessions) == 0 {
+		return ws
+	}
+	placed := make(map[string]bool)
+	var mark func(*layout.Node)
+	mark = func(n *layout.Node) {
+		if n == nil {
+			return
+		}
+		if n.Host == "" && n.SID != "" {
+			placed[n.SID] = true
+		}
+		mark(n.A)
+		mark(n.B)
+	}
+	for _, space := range spaces {
+		for _, tab := range space.Tabs {
+			for _, root := range tab.Roots() {
+				mark(root)
+			}
+		}
+	}
+	for _, s := range sessions {
+		if s.ID == "" || s.Exited || placed[s.ID] || !rex.IsTailnetTarget(s.Owner) {
+			continue
+		}
+		placed[s.ID] = true
+		name := s.Program
+		if s.Dir != "" {
+			name = filepath.Base(s.Dir)
+			if s.Program != "" {
+				name += " · " + s.Program
+			}
+		}
+		ws.Tabs = append(ws.Tabs, layout.Tab{
+			ID: "desktop-terminal:" + s.ID, Name: name, Root: &layout.Node{SID: s.ID, Name: s.Program, Dir: s.Dir},
+		})
+	}
+	return ws
 }
 
 // windowIDOf names the window of a space's tab ti: by the tab's lasting

@@ -31,6 +31,7 @@ func main() {
 	// The server runs the Rex API gateway while the local network or
 	// built-in Tailscale is on (internal/rexapi).
 	rex.OnServe = rexapi.Supervise
+	rex.RexPairURL = rexapi.PairURL
 	// The state of the sessions lives in the app's data directory, which
 	// the server it starts takes from GOREX_DIR: "GoRex", or "GoRex Dev"
 	// under mygo dev, which keeps the installed app's sessions apart. A plain

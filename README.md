@@ -216,6 +216,24 @@ lists the Ghostty options it ignores.
 
 ## Remote access
 
+### System Tailscale (desktop)
+
+On macOS and Linux, GoRex uses an existing, running system Tailscale
+client to discover GoRex hosts and connect to their terminals. Devices
+with the same Tailscale user in the same tailnet appear in Remote Hosts
+once they have a compatible GoRex server and Tailscale policy allows
+TCP port 7464. Click Connect on a host to open or reattach to a session.
+The server only listens on its Tailscale interface and checks each
+connection's device identity with the local Tailscale client.
+
+Turn **Tailscale discovery and connections** on in Settings → Remote, or
+use `gorex remote tailscale on`. The mode is off by default and waits
+when Tailscale is unavailable. `gorex remote status --json` reports the
+local mode and the hosts it has discovered. The existing **Share open
+terminals** setting controls access to sessions created by other clients.
+
+### Tailcat
+
 The session server can also listen on a
 [tailcat](https://github.com/tailscale/tailcat) address: Tailscale's data
 plane without its control plane, so WireGuard end to end, through a DERP
@@ -485,7 +503,9 @@ reboot.
 A run that stops says why and what it held, and the server after it
 starts nothing. The sessions outlive the app, and
 a new build: on macOS and Linux, a build that finds a server an older
-build started has it run the new build in its place, in the same
+build started has it run the new build in its place. For a headless
+server, run `gorex server upgrade` with the new executable and the
+existing server's data directory (`GOREX_DIR`). The server continues in the same
 process, its shells still running and their screens kept. On Windows a
 development build replaces such a server, ending its sessions, which
 then start again in the same directories, and the built app keeps it.

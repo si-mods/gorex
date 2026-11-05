@@ -41,7 +41,11 @@ const RemotePort = 7464
 
 // RemoteConfig is the server's remote access, kept in Dir()/remote.json.
 type RemoteConfig struct {
-	Enabled      bool                 `json:"enabled"`
+	Enabled bool `json:"enabled"`
+	// Tailnet turns on the system Tailscale mode: the GoRex desktops on
+	// this account's tailnet find this one, and may open terminals on it.
+	// Off until the user turns it on.
+	Tailnet      bool                 `json:"tailnet,omitempty"`
 	NodeKey      key.NodePrivate      `json:"nodeKey,omitzero"`
 	PresharedKey tailcat.PresharedKey `json:"presharedKey,omitzero"`
 	// Region is the DERP region picked the first time, kept so that the
@@ -184,6 +188,7 @@ func parsePublicKey(s string) (key.NodePublic, error) {
 type remote struct {
 	mu      sync.Mutex
 	cfg     RemoteConfig
+	tailnet *systemTailnet
 	gen     int                // changes on every stop, to drop starts in flight
 	cancel  context.CancelFunc // non-nil while starting or running
 	ts      *tailcat.Server    // non-nil while running
@@ -264,6 +269,9 @@ func (s *Server) remoteClientFor(peer string) *RemoteClient {
 	r := &s.rem
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if IsTailnetTarget(peer) && r.tailnet != nil {
+		return r.tailnet.clientFor(peer)
+	}
 	for _, c := range r.cfg.Allowed {
 		if c.PublicKey == peer {
 			c := c
@@ -355,17 +363,31 @@ func (s *Server) remoteLoad() {
 		s.remoteStartLocked()
 	}
 	s.networkStartLocked()
+	if r.cfg.Tailnet {
+		s.tailnetStartLocked()
+	}
 }
 
+// remoteEnabled tells whether a remote client may connect: the tailcat
+// listener runs, or one of the system tailnet's links is open. The
+// tailnet broker alone does not count, so that a server with no sessions
+// and no app still exits when idle.
 func (s *Server) remoteEnabled() bool {
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	return s.rem.cancel != nil
+	if s.rem.cancel != nil {
+		return true
+	}
+	if t := s.rem.tailnet; t != nil {
+		return t.linked()
+	}
+	return false
 }
 
 // remoteClose stops listening and drops the remote connections.
 func (s *Server) remoteClose() {
 	s.rem.mu.Lock()
+	s.tailnetStopLocked()
 	netDrop := s.networkStopLocked()
 	done := s.remoteStopLocked()
 	s.rem.mu.Unlock()
@@ -649,6 +671,30 @@ func (s *Server) remotePair(k, name string) (string, error) {
 	return Fingerprint(k), nil
 }
 
+func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
+	r := &s.rem
+	st := RemoteStatus{
+		Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr),
+		Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
+		ShareSessions: r.cfg.ShareSessions, ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
+	}
+	if r.pairOpenLocked() {
+		st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
+		st.Pending = slices.Clone(r.pending)
+	}
+	if r.cfg.Network != nil {
+		st.Network = &NetworkStatus{
+			Name:        r.cfg.Network.Name,
+			Coordinator: coordinatorHost(r.cfg.Network.URL),
+			Members:     slices.Clone(r.netMembers),
+			Revision:    r.cfg.Network.Revision,
+			LastError:   r.netErr,
+		}
+	}
+	st.Tailnet = tailnet
+	return st
+}
+
 // remoteDo serves the remote.* ops, of local connections only.
 func (s *Server) remoteDo(req Request) (any, error) {
 	var done []func()
@@ -675,25 +721,24 @@ func (s *Server) remoteDo(req Request) (any, error) {
 	}
 	switch req.Op {
 	case "remote.status":
-		st := RemoteStatus{
-			Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr),
-			Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
-			ShareSessions: r.cfg.ShareSessions, ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
+		if r.tailnet != nil {
+			status := r.tailnet.status()
+			return s.remoteStatusLocked(&status), nil
 		}
-		if r.pairOpenLocked() {
-			st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
-			st.Pending = slices.Clone(r.pending)
+		return s.remoteStatusLocked(&TailnetStatus{Enabled: r.cfg.Tailnet}), nil
+	case "remote.tailnetSet":
+		cfg := r.cfg
+		cfg.Tailnet = req.On
+		if err := writeJSON(remotePath(), cfg); err != nil {
+			return nil, err
 		}
-		if r.cfg.Network != nil {
-			st.Network = &NetworkStatus{
-				Name:        r.cfg.Network.Name,
-				Coordinator: coordinatorHost(r.cfg.Network.URL),
-				Members:     slices.Clone(r.netMembers),
-				Revision:    r.cfg.Network.Revision,
-				LastError:   r.netErr,
-			}
+		r.cfg = cfg
+		if cfg.Tailnet {
+			s.tailnetStartLocked()
+		} else {
+			s.tailnetStopLocked()
 		}
-		return st, nil
+		return nil, nil
 	case "remote.pairStart":
 		if !r.cfg.Enabled {
 			return nil, errors.New("rex: turn remote access on to pair")
@@ -927,7 +972,11 @@ func ClientPublicKey() string {
 // ConnectRemote connects to the server at a tailcat address, as the
 // client of ClientPublicKey.
 func ConnectRemote(ctx context.Context, addr string) (*Client, error) {
-	a := tailcat.Addr(strings.TrimSpace(addr))
+	addr = strings.TrimSpace(addr)
+	if IsTailnetTarget(addr) {
+		return connectTailnet(ctx, addr)
+	}
+	a := tailcat.Addr(addr)
 	if a == "" {
 		return nil, errors.New("rex: no remote address")
 	}

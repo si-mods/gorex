@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gorex/internal/rex"
@@ -432,6 +433,42 @@ func pairURL(st *tailscaleStatus) (string, error) {
 		return "", errors.New("the tailnet address is not ready yet (turn on MagicDNS and HTTPS in the tailnet's admin console)")
 	}
 	return st.HTTPS.URL, nil
+}
+
+// PairURL is the address another device scans to pair with this gateway,
+// as "gorex rexapi pair" shows it: the tailnet's HTTPS address, which
+// holds no credential. It is empty while built-in Tailscale is off, the
+// device is not signed in, or its HTTPS address is not ready.
+//
+// A hello asks for it, so the answer is kept for a moment: the address
+// changes only when the gateway's Tailscale mode does.
+var pairURLNow = struct {
+	sync.Mutex
+	at  time.Time
+	url string
+}{}
+
+const pairURLFor = 5 * time.Second
+
+func PairURL() string {
+	pairURLNow.Lock()
+	defer pairURLNow.Unlock()
+	if time.Since(pairURLNow.at) < pairURLFor {
+		return pairURLNow.url
+	}
+	url := ""
+	if out, err := callGateway(SocketPath(), "server.status", nil); err == nil {
+		var res struct {
+			Tailscale *tailscaleStatus `json:"tailscale"`
+		}
+		if json.Unmarshal(out, &res) == nil {
+			if u, err := pairURL(res.Tailscale); err == nil {
+				url = u
+			}
+		}
+	}
+	pairURLNow.at, pairURLNow.url = time.Now(), url
+	return url
 }
 
 // renderQR draws a QR code in a terminal, two rows a line with half
