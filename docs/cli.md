@@ -88,7 +88,10 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   it), and 4 when no server runs or the server did not stop.
 - `server upgrade` hands the local server over to the executable you
   invoked on macOS or Linux. Shell processes and their output survive
-  while clients reconnect.
+  while clients reconnect. The executable's modification time must be
+  newer than the server's, as for an app-initiated upgrade. The exact
+  build already running is a no-op; an older build, or a different path
+  with the same modification time, is refused.
 - `update` checks the signed release feed for the Linux per-user install.
   It installs the update without opening a window and hands over the
   running server when there is one. Use the same `GOREX_DIR` as the

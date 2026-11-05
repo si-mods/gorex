@@ -7,6 +7,21 @@ browser panes use the system's web view.
 
 ![GoRex](docs/screenshot.png)
 
+## Install and update
+
+The signed installer for macOS and Linux is published with each release.
+
+```sh
+curl -fsSL https://github.com/si-mods/gorex/releases/latest/download/install.sh | sh
+```
+
+On Linux, the per-user install links `gorex` in `~/.local/bin`. Run
+`gorex update` to install a signed update and hand an active local session
+server over to the new version. After installing a newer build yourself,
+`gorex server upgrade` performs the handoff on macOS and Linux; it refuses
+a build whose modification time is not newer than the server's. See
+[the CLI reference](docs/cli.md#commands).
+
 ## What it does
 
 - **Tabs and split panes.** Every pane is a card over the window's gradient,
@@ -440,16 +455,6 @@ go run ./tools/mkicon  # redraw resources/icon.png
 CLI together.
 
 ### Release
-
-The signed installer for macOS and Linux is published with each release.
-
-```sh
-curl -fsSL https://github.com/si-mods/gorex/releases/latest/download/install.sh | sh
-```
-
-On Linux, the per-user install links `gorex` in `~/.local/bin`. Run
-`gorex update` to install a signed update and hand an active local session
-server over to the new version. See [the CLI reference](docs/cli.md#commands).
 
 Releases update installed apps, signed with a key that only the
 maintainer holds. Once, run `go tool mygo keygen` and put the contents of

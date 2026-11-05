@@ -37,6 +37,11 @@ func upgradeServer(c *rex.Client, hello rex.Hello, exe string, out io.Writer) er
 		fmt.Fprintln(out, "the server already runs this build")
 		return nil
 	}
+	// Match the app's handoff rule: another path alone does not make a
+	// newer build, and an older one may not understand the server's state.
+	if !info.ModTime().After(hello.ExeTime) {
+		return errors.New("the running server is as new as or newer than this build; use a newer build to upgrade")
+	}
 	next, err := c.Upgrade(exe)
 	if err != nil {
 		return err

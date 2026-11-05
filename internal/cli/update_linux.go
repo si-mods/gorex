@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
-	"golang.org/x/sys/unix"
 
 	"gorex/internal/rex"
 )
@@ -25,15 +24,6 @@ func updateLocal(out io.Writer) error {
 	if err != nil || exe != installed {
 		return errors.New("use the GoRex user install from install.sh")
 	}
-	dir, err := os.Open(filepath.Dir(installed))
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	if err := unix.Flock(int(dir.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
-		return fmt.Errorf("cannot lock the installation for update: %w", err)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 	release, err := mygo.Updater.Check(ctx)
@@ -47,7 +37,7 @@ func updateLocal(out io.Writer) error {
 	client, err := rex.ConnectExisting()
 	if err != nil {
 		if _, err := os.Lstat(rex.SocketPath()); !errors.Is(err, os.ErrNotExist) {
-			return errors.New("cannot verify the local session server is stopped")
+			return fmt.Errorf("cannot reach the local session server; check %s; if no GoRex server is running, remove the stale socket %s and retry gorex update", filepath.Join(rex.Dir(), "server.log"), rex.SocketPath())
 		}
 	} else {
 		defer client.Close()
