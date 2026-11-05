@@ -641,6 +641,12 @@ func (s *Server) relayTailnet(local net.Conn, input io.Reader, target string) {
 	if _, err := io.WriteString(local, tailnetGreeting()); err != nil {
 		return
 	}
+	splice(local, input, c)
+}
+
+// splice copies between a local client and the connection relayed for it,
+// both ways, until both are done.
+func splice(local net.Conn, input io.Reader, c net.Conn) {
 	done := make(chan struct{})
 	go func() {
 		io.Copy(c, input)

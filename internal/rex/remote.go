@@ -970,7 +970,10 @@ func ClientPublicKey() string {
 }
 
 // ConnectRemote connects to the server at a tailcat address, as the
-// client of ClientPublicKey.
+// client of ClientPublicKey, through the local server: one tailcat client
+// per machine, as two of one key take each other's packets (#212). It
+// starts the local server when none runs, as Connect does; it dials itself
+// only when that fails, or the server does not relay yet.
 func ConnectRemote(ctx context.Context, addr string) (*Client, error) {
 	addr = strings.TrimSpace(addr)
 	if IsTailnetTarget(addr) {
@@ -984,22 +987,303 @@ func ConnectRemote(ctx context.Context, addr string) (*Client, error) {
 		// Not the parser's error: it could quote the address.
 		return nil, errors.New("rex: not a tailcat address")
 	}
+	conn, err := dialRemote(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	c := newClient(conn, func() (net.Conn, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), tailcatRedial)
+		defer cancel()
+		return dialRemote(ctx, addr)
+	})
+	c.keepalive = true
+	return c, nil
+}
+
+// tailcatRelayed is what the local server answers remote.tailcatDial once
+// it connected; then the connection is the remote server's.
+const tailcatRelayed = "gorex-tailcat/1 ok\n"
+
+// tailcatRedial bounds a stream's dial again: longer than tailcatDial,
+// so that the local server answers first.
+const tailcatRedial = 20 * time.Second
+
+// dialRemote connects to RemotePort at addr through the local server, or
+// itself when there is none or it does not know remote.tailcatDial.
+func dialRemote(ctx context.Context, addr string) (net.Conn, error) {
+	c, err := relayDial(ctx, addr)
+	if errors.Is(err, errNoRelay) {
+		c, err = dialTailcat(ctx, addr)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("rex: connecting to the remote server: %s", scrub(err.Error(), addr))
+	}
+	return c, nil
+}
+
+var errNoRelay = errors.New("no relay")
+
+// spawnServer starts the local server; tests replace it.
+var spawnServer = Spawn
+
+// relayDial asks the local server to connect to addr, starting it when
+// none runs. It is errNoRelay when that server cannot be reached or does
+// not relay; another error is the relay's, which dialing again here would
+// not mend.
+func relayDial(ctx context.Context, addr string) (net.Conn, error) {
+	c, err := dialSocket()
+	if err != nil {
+		if spawnServer() != nil {
+			return nil, errNoRelay
+		}
+		if c, err = dialUntil(time.Now().Add(5 * time.Second)); err != nil {
+			return nil, errNoRelay
+		}
+	}
+	stop := context.AfterFunc(ctx, func() { c.Close() })
+	b, _ := json.Marshal(Request{Op: "remote.tailcatDial", TailcatAddress: addr})
+	var line []byte
+	if _, err = c.Write(append(b, '\n')); err == nil {
+		// A byte at a time: what follows the line is the remote server's.
+		line, err = readByteLine(c)
+	}
+	if !stop() {
+		err = ctx.Err()
+	}
+	if err == nil && string(line) == tailcatRelayed {
+		return c, nil
+	}
+	c.Close()
+	if err != nil {
+		return nil, err
+	}
+	var resp Response
+	if json.Unmarshal(line, &resp) != nil || resp.Error == "" {
+		return nil, errors.New("the local server answered something else")
+	}
+	if strings.HasPrefix(resp.Error, "unknown op") {
+		return nil, errNoRelay
+	}
+	return nil, errors.New(resp.Error)
+}
+
+func readByteLine(c net.Conn) ([]byte, error) {
+	var line []byte
+	b := make([]byte, 1)
+	for len(line) < maxLine {
+		if _, err := io.ReadFull(c, b); err != nil {
+			return nil, err
+		}
+		line = append(line, b[0])
+		if b[0] == '\n' {
+			return line, nil
+		}
+	}
+	return nil, errLineTooLong
+}
+
+// relayTailcat is reached through the local socket, after a local client
+// names a tailcat address: the connection goes on to its server, through
+// the tailcat client of this process.
+func (s *Server) relayTailcat(local net.Conn, input *bufio.Reader, addr string) {
+	// A remote session through it keeps the server, as a control
+	// connection does. An upgrade drops it: its client dials again.
+	s.mu.Lock()
+	s.controls++
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.controls--
+		s.idleFrom = time.Now()
+		s.mu.Unlock()
+	}()
+	defer local.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), tailcatDial)
+	defer cancel()
+	// The client says nothing before the answer: what it reads is its
+	// close, then the dial is no longer wanted.
+	asked := make(chan struct{})
+	go func() {
+		if _, err := input.Peek(1); err != nil {
+			cancel()
+		}
+		close(asked)
+	}()
+	var c net.Conn
+	var err error
+	if _, perr := tailcat.ParseAddr(tailcat.Addr(addr)); perr != nil {
+		err = errors.New("not a tailcat address")
+	} else {
+		c, err = dialTailcat(ctx, addr)
+	}
+	if err != nil {
+		b, _ := json.Marshal(Response{Error: scrub(err.Error(), addr)})
+		local.Write(append(b, '\n'))
+		return
+	}
+	defer c.Close()
+	if _, err := io.WriteString(local, tailcatRelayed); err != nil {
+		return
+	}
+	splice(local, waitReader{asked, input}, c)
+}
+
+// waitReader reads r once wait is closed.
+type waitReader struct {
+	wait <-chan struct{}
+	r    io.Reader
+}
+
+func (w waitReader) Read(b []byte) (int, error) {
+	<-w.wait
+	return w.r.Read(b)
+}
+
+// The tailcat clients of this process, one per address: a client's
+// connections share it, and it closes once it had none for tailcatIdle.
+var (
+	tailcatMu      sync.Mutex
+	tailcatClients = map[string]*pooledTailcat{}
+	tailcatIdle    = 3 * time.Minute
+)
+
+// tailcatDial bounds a dial; tailcatTry an attempt of a client that
+// connected before, which fails when its server restarted.
+var (
+	tailcatDial = 15 * time.Second
+	tailcatTry  = 3 * time.Second
+)
+
+type pooledTailcat struct {
+	tc    *tailcat.Client
+	conns int  // open, or being dialed
+	used  bool // it connected once
+	idle  *time.Timer
+}
+
+// dialTailcat connects to RemotePort at addr with the tailcat client of
+// addr. A client that connected before and fails now may have a server
+// that restarted and forgot it: it registers again (Ping) and tries once
+// more; then, when no other connection uses it, another client replaces
+// it. A client other connections use is never closed here: one slow dial
+// says little of them, and a restarted server's close soon. A dial its
+// caller gave up (canceled) closes no client.
+func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	k, err := remoteClientKey()
 	if err != nil {
 		return nil, err
 	}
-	tc := &tailcat.Client{Server: a, Key: k, Logf: func(string, ...any) {}}
-	conn, err := tc.DialTCPPort(ctx, RemotePort)
-	if err != nil {
-		tc.Close()
-		return nil, fmt.Errorf("rex: connecting to the remote server: %s", scrub(err.Error(), string(a)))
+	tailcatMu.Lock()
+	p := tailcatClients[addr]
+	if p == nil {
+		p = newPooledTailcat(addr, k)
 	}
-	c := newClient(conn, func() (net.Conn, error) {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		return tc.DialTCPPort(ctx, RemotePort)
+	if p.idle != nil {
+		p.idle.Stop()
+		p.idle = nil
+	}
+	p.conns++
+	used := p.used
+	tailcatMu.Unlock()
+
+	var c net.Conn
+	if used {
+		c, err = p.try(ctx, tailcatTry)
+		if err != nil && ctx.Err() == nil {
+			pctx, cancel := context.WithTimeout(ctx, tailcatTry)
+			_, err = p.tc.Ping(pctx)
+			cancel()
+			if err == nil {
+				c, err = p.try(ctx, tailcatTry)
+			}
+		}
+		if err != nil && ctx.Err() == nil && p.drop(addr) {
+			old := p
+			tailcatMu.Lock()
+			if p = tailcatClients[addr]; p == nil {
+				p = newPooledTailcat(addr, k)
+			}
+			p.conns++
+			tailcatMu.Unlock()
+			old.tc.Close()
+			old.release(addr)
+			c, err = p.tc.DialTCPPort(ctx, RemotePort)
+		}
+	} else {
+		c, err = p.tc.DialTCPPort(ctx, RemotePort)
+	}
+	if err != nil {
+		if !errors.Is(ctx.Err(), context.Canceled) && p.drop(addr) {
+			p.tc.Close()
+		}
+		p.release(addr)
+		return nil, err
+	}
+	tailcatMu.Lock()
+	p.used = true
+	tailcatMu.Unlock()
+	return &tailcatConn{Conn: c, p: p, addr: addr}, nil
+}
+
+// drop takes p out of the pool when the dial under way is its only
+// connection, and reports whether it did.
+func (p *pooledTailcat) drop(addr string) bool {
+	tailcatMu.Lock()
+	defer tailcatMu.Unlock()
+	if p.conns != 1 || tailcatClients[addr] != p {
+		return false
+	}
+	delete(tailcatClients, addr)
+	return true
+}
+
+// newPooledTailcat makes the client of addr. tailcatMu must be held.
+func newPooledTailcat(addr string, k key.NodePrivate) *pooledTailcat {
+	p := &pooledTailcat{tc: &tailcat.Client{Server: tailcat.Addr(addr), Key: k, Logf: func(string, ...any) {}}}
+	tailcatClients[addr] = p
+	return p
+}
+
+// try dials within d.
+func (p *pooledTailcat) try(ctx context.Context, d time.Duration) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(ctx, d)
+	defer cancel()
+	return p.tc.DialTCPPort(ctx, RemotePort)
+}
+
+// release counts a connection of p closed, and closes p after a while
+// without one.
+func (p *pooledTailcat) release(addr string) {
+	tailcatMu.Lock()
+	defer tailcatMu.Unlock()
+	p.conns--
+	if p.conns > 0 || tailcatClients[addr] != p {
+		return
+	}
+	var t *time.Timer
+	t = time.AfterFunc(tailcatIdle, func() {
+		tailcatMu.Lock()
+		idle := p.idle == t && p.conns == 0 && tailcatClients[addr] == p
+		if idle {
+			delete(tailcatClients, addr)
+		}
+		tailcatMu.Unlock()
+		if idle {
+			p.tc.Close()
+		}
 	})
-	c.closer = tc
-	c.keepalive = true
-	return c, nil
+	p.idle = t
+}
+
+type tailcatConn struct {
+	net.Conn
+	p    *pooledTailcat
+	addr string
+	once sync.Once
+}
+
+func (c *tailcatConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(func() { c.p.release(c.addr) })
+	return err
 }
