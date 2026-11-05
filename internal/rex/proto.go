@@ -103,6 +103,9 @@ type Request struct {
 	// through it (Attach.Conn): the client pings meanwhile. A server that
 	// does not know it ignores it, and answers no Hello.Keepalive.
 	Keepalive bool `json:"keepalive,omitempty"`
+	// Transfers, on "subscribe", asks for the "transfer" events too
+	// (CapabilityFileTransfer): a subscriber that does not ask gets none.
+	Transfers bool `json:"transfers,omitempty"`
 	// Restart, on "shutdown", asks the server to stop as one that a new
 	// server replaces: the next one starts the sessions of its layout
 	// again (Client.Restart, CapabilityShutdownRestart). Without it the
@@ -667,7 +670,8 @@ type Attach struct {
 // {"offset":Offset} to go on from there, or {"offset":0} when its own
 // first bytes differ, then sends the rest of the Size bytes as they are.
 // The server keeps them in a hidden file beside the target,
-// ".NAME.ID.gorex-partial", until they are all there, then moves it into
+// ".gorex-HASH.partial", HASH the first 16 hex digits of the SHA-256 of
+// the name, a NUL and the ID, until they are all there, then moves it into
 // place and answers a FileAnswer with Path. A connection lost on the way
 // leaves the hidden file for the next try.
 type FilePut struct {

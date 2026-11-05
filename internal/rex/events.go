@@ -12,21 +12,30 @@ import (
 
 // subscriber is a control connection that subscribed: pending are the
 // kinds of change not written to it yet, and transfers the last state of
-// each transfer not written; wake tells its writer of them. A burst of
-// changes is written as one of each kind.
+// each transfer not written, when it asked for them (wantTransfers);
+// wake tells its writer of them. A burst of changes is written as one of
+// each kind.
 type subscriber struct {
-	remote    bool
-	peer      string
-	pending   map[string]bool
-	transfers []Transfer
-	wake      chan struct{}
-	done      chan struct{}
+	remote        bool
+	peer          string
+	pending       map[string]bool
+	wantTransfers bool
+	transfers     []queuedTransfer
+	wake          chan struct{}
+	done          chan struct{}
+}
+
+// queuedTransfer is a transfer's state to tell of, with the session it
+// goes through, as it was when the transfer started.
+type queuedTransfer struct {
+	Transfer
+	ss *session
 }
 
 // subscribe tells write, a control connection's, of the changes to come,
-// until unsubscribe.
-func (s *Server) subscribe(write func([]byte), remote bool, peer string) *subscriber {
-	sub := &subscriber{remote: remote, peer: peer, pending: map[string]bool{}, wake: make(chan struct{}, 1), done: make(chan struct{})}
+// and of the transfers when transfers, until unsubscribe.
+func (s *Server) subscribe(write func([]byte), remote bool, peer string, transfers bool) *subscriber {
+	sub := &subscriber{remote: remote, peer: peer, pending: map[string]bool{}, wantTransfers: transfers, wake: make(chan struct{}, 1), done: make(chan struct{})}
 	s.subMu.Lock()
 	if s.subs == nil {
 		s.subs = map[*subscriber]struct{}{}
@@ -64,14 +73,12 @@ func (s *Server) subscribe(write func([]byte), remote bool, peer string) *subscr
 				write(b)
 			}
 			// A remote client is told of the transfers of the sessions it
-			// may use.
+			// may use, an ended one's last state too.
 			for _, t := range transfers {
-				if sub.remote {
-					if _, err := s.use(t.SID, sub.peer); err != nil {
-						continue
-					}
+				if sub.remote && !s.mayUse(sub.peer, t.ss) {
+					continue
 				}
-				b, _ := json.Marshal(Event{Kind: "transfer", Transfer: &t})
+				b, _ := json.Marshal(Event{Kind: "transfer", Transfer: &t.Transfer})
 				write(b)
 			}
 		}
@@ -102,16 +109,21 @@ func (s *Server) notify(kind string) {
 
 func (s *Server) sessionsChanged() { s.notify("sessions") }
 
-// transferred tells the subscribers of t, a transfer's state now: one not
-// told of its last state yet gets this one instead.
-func (s *Server) transferred(t Transfer) {
+// transferred tells the subscribers that asked of t, a transfer's state
+// now, through ss: one not told of its last state yet gets this one
+// instead.
+func (s *Server) transferred(t Transfer, ss *session) {
 	s.subMu.Lock()
 	defer s.subMu.Unlock()
 	for sub := range s.subs {
-		if i := slices.IndexFunc(sub.transfers, func(o Transfer) bool { return o.ID == t.ID }); i >= 0 {
-			sub.transfers[i] = t
+		if !sub.wantTransfers {
+			continue
+		}
+		same := func(o queuedTransfer) bool { return o.SID == t.SID && o.Direction == t.Direction && o.ID == t.ID }
+		if i := slices.IndexFunc(sub.transfers, same); i >= 0 {
+			sub.transfers[i] = queuedTransfer{t, ss}
 		} else {
-			sub.transfers = append(sub.transfers, t)
+			sub.transfers = append(sub.transfers, queuedTransfer{t, ss})
 		}
 		select {
 		case sub.wake <- struct{}{}:

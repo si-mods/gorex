@@ -8,9 +8,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -94,7 +96,7 @@ func TestFileRoundTrip(t *testing.T) {
 			if st, _ := os.Stat(got); !st.ModTime().Equal(src.ModTime()) {
 				t.Errorf("downloaded at %v, the file's %v", st.ModTime(), src.ModTime())
 			}
-			if left, _ := filepath.Glob(filepath.Join(dest, ".*gorex-partial")); len(left) > 0 {
+			if left, _ := filepath.Glob(filepath.Join(dest, ".gorex-*.partial")); len(left) > 0 {
 				t.Errorf("partials left: %v", left)
 			}
 			// A directory is no file.
@@ -150,7 +152,7 @@ func TestFileResume(t *testing.T) {
 	conn.Write([]byte(`{"offset":0}` + "\n"))
 	conn.Write(data[:30_000])
 	conn.Close()
-	part := filepath.Join(dir, ".r.bin.r1.gorex-partial")
+	part := filepath.Join(dir, partialName("r.bin", "r1"))
 	for i := 0; i < 100; i++ {
 		if _, busy := partials.Load(part); !busy {
 			break
@@ -171,7 +173,7 @@ func TestFileResume(t *testing.T) {
 
 	// A partial of other bytes, or longer than the file, starts again.
 	for _, junk := range [][]byte{bytes.Repeat([]byte("x"), 500), bytes.Repeat([]byte("x"), len(data)+1)} {
-		os.WriteFile(filepath.Join(dir, ".c.bin.c1.gorex-partial"), junk, 0o644)
+		os.WriteFile(filepath.Join(dir, partialName("c.bin", "c1")), junk, 0o644)
 		path, _, first, err = put(local, sid, dir, "c.bin", "c1", "overwrite", data)
 		if err != nil || first != 0 {
 			t.Fatalf("corrupt partial resumed from %d: %v", first, err)
@@ -199,7 +201,7 @@ func TestFileResume(t *testing.T) {
 		return first
 	}
 	partOf := func(content []byte, mtime time.Time) {
-		p := filepath.Join(dest, ".r.bin."+downloadID(sid, src)+".gorex-partial")
+		p := filepath.Join(dest, partialName("r.bin", downloadID(sid, src)))
 		os.WriteFile(p, content, 0o644)
 		os.Chtimes(p, mtime, mtime)
 	}
@@ -276,9 +278,13 @@ func TestFileEvents(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
 	defer local.Close()
-	sub := pipe(s, "")
+	sub, plain := pipe(s, ""), pipe(s, "")
 	defer sub.Close()
-	if err := sub.Subscribe(); err != nil {
+	defer plain.Close()
+	if err := sub.SubscribeTransfers(); err != nil {
+		t.Fatal(err)
+	}
+	if err := plain.Subscribe(); err != nil {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
@@ -311,6 +317,18 @@ func TestFileEvents(t *testing.T) {
 	if out.State != "done" || out.Done != 6 || out.Name != "e.txt" || out.Path == "" {
 		t.Errorf("get's event %+v", out)
 	}
+	// A subscriber that did not ask is told of none.
+	for {
+		select {
+		case ev := <-plain.Events():
+			if ev.Kind == "transfer" {
+				t.Fatalf("a plain subscriber got %+v", ev)
+			}
+			continue
+		case <-time.After(300 * time.Millisecond):
+		}
+		break
+	}
 }
 
 // TestFileNoCapability checks that a client refuses a server that does
@@ -337,5 +355,125 @@ func TestFileNoCapability(t *testing.T) {
 	}
 	if _, err := c.DownloadFile(context.Background(), "s", "a", t.TempDir(), "", nil); !errors.Is(err, errNoFileTransfer) {
 		t.Errorf("download: %v", err)
+	}
+}
+
+// TestFileLongName sends a file of the longest name: its partial's name
+// is no longer.
+func TestFileLongName(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	name := strings.Repeat("n", 251) + ".txt"
+	path, _, _, err := put(local, sid, dir, name, strings.Repeat("i", 64), "", []byte("long"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFile(t, path, []byte("long"))
+	if got, err := local.DownloadFile(context.Background(), sid, name, t.TempDir(), "", nil); err != nil {
+		t.Fatal(err)
+	} else {
+		wantFile(t, got, []byte("long"))
+	}
+}
+
+// TestFileOverwriteMode checks that a file overwritten keeps its
+// permissions.
+func TestFileOverwriteMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no permission bits")
+	}
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	target := filepath.Join(dir, "run.sh")
+	os.WriteFile(target, []byte("old"), 0o755)
+	os.Chmod(target, 0o755)
+	if _, _, _, err := put(local, sid, dir, "run.sh", "m", "overwrite", []byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	wantFile(t, target, []byte("new"))
+	if st, _ := os.Stat(target); st.Mode().Perm() != 0o755 {
+		t.Errorf("mode %v, want 0755", st.Mode().Perm())
+	}
+}
+
+// TestFilePartialLink plants a link where a partial goes: the transfer
+// fails, and the file linked to stays as it was.
+func TestFilePartialLink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("links need a privilege")
+	}
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir, other := t.TempDir(), t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	victim := filepath.Join(other, "victim")
+	os.WriteFile(victim, []byte("keep"), 0o644)
+	if err := os.Symlink(victim, filepath.Join(dir, partialName("a.txt", "l"))); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := put(local, sid, dir, "a.txt", "l", "", []byte("evil")); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Errorf("put through a link: %v", err)
+	}
+	wantFile(t, victim, []byte("keep"))
+	if exists(filepath.Join(dir, "a.txt")) {
+		t.Error("put through a link made the file")
+	}
+}
+
+// TestFilePutError checks that a client still sending reads the server's
+// error, not a reset: over TCP, which resets a connection closed with
+// bytes unread.
+func TestFilePutError(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go s.handle(c, "")
+		}
+	}()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	r := bufio.NewReader(conn)
+	data := make([]byte, 8<<20)
+	line, _ := json.Marshal(FilePut{Op: "file.put", SID: sid, Dir: dir, Name: "e.bin", Size: int64(len(data)), ID: "e"})
+	conn.Write(append(line, '\n'))
+	if a, _ := r.ReadString('\n'); !strings.Contains(a, `"ok":true`) {
+		t.Fatalf("answer %q", a)
+	}
+	// An offset the server does not have fails the put, as the bytes
+	// come.
+	go func() {
+		conn.Write([]byte(`{"offset":5}` + "\n"))
+		conn.Write(data)
+	}()
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	a, err := r.ReadString('\n')
+	if err != nil || !strings.Contains(a, "neither 0 nor the server's") {
+		t.Fatalf("answer %q %v", a, err)
+	}
+	if _, err := io.Copy(io.Discard, r); err != nil {
+		t.Errorf("after the error: %v", err)
 	}
 }

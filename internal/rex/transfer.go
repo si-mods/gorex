@@ -42,32 +42,52 @@ func (s *Server) transfer(conn net.Conn, r *bufio.Reader, first []byte, op, peer
 		b, _ := json.Marshal(a)
 		conn.Write(append(b, '\n'))
 	}
-	var err error
-	if op == "file.put" {
-		err = s.filePut(r, first, peer, touch, answer)
-	} else {
-		err = s.fileGet(conn, first, peer, touch, answer)
+	if op == "file.get" {
+		if err := s.fileGet(conn, first, peer, touch, answer); err != nil {
+			answer(FileAnswer{Error: err.Error()})
+		}
+		return
 	}
-	if err != nil {
+	if err := s.filePut(conn, r, first, peer, touch, answer); err != nil {
+		// The client may be sending yet: what it sends is read meanwhile,
+		// and a while after, so that it reads the error and not a reset.
+		drained := make(chan struct{})
+		go func() {
+			io.Copy(io.Discard, r)
+			close(drained)
+		}()
 		answer(FileAnswer{Error: err.Error()})
+		conn.SetReadDeadline(time.Now().Add(drainTimeout))
+		if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+			cw.CloseWrite()
+		}
+		<-drained
 	}
 }
+
+// drainTimeout is how long a put that failed reads what its client sends
+// yet, after the error; resumeRate how fast at least a client hashes what
+// the server has of its file, before it answers.
+const (
+	drainTimeout = 2 * time.Second
+	resumeRate   = 10 << 20 // bytes a second
+)
 
 // fileSession is the session sid, for peer (mayUse), and the directory
 // dir names in it: absolute, or relative to that of the program in the
 // foreground (SessionInfo.Dir), which it is when "".
-func (s *Server) fileSession(sid, peer, dir string) (string, error) {
+func (s *Server) fileSession(sid, peer, dir string) (*session, string, error) {
 	ss, err := s.use(sid, peer)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	if filepath.IsAbs(dir) {
-		return filepath.Clean(dir), nil
+		return ss, filepath.Clean(dir), nil
 	}
-	return filepath.Join(ss.imageDir(), dir), nil
+	return ss, filepath.Join(ss.imageDir(), dir), nil
 }
 
-func (s *Server) filePut(r *bufio.Reader, first []byte, peer string, touch func(), answer func(FileAnswer)) error {
+func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer string, touch func(), answer func(FileAnswer)) error {
 	var req FilePut
 	if err := json.Unmarshal(first, &req); err != nil {
 		return err
@@ -81,7 +101,7 @@ func (s *Server) filePut(r *bufio.Reader, first []byte, peer string, touch func(
 	if req.Size < 0 {
 		return errors.New("rex: a negative size")
 	}
-	dir, err := s.fileSession(req.SID, peer, req.Dir)
+	ss, dir, err := s.fileSession(req.SID, peer, req.Dir)
 	if err != nil {
 		return err
 	}
@@ -91,7 +111,7 @@ func (s *Server) filePut(r *bufio.Reader, first []byte, peer string, touch func(
 	t := Transfer{ID: req.ID, SID: req.SID, Name: req.Name, Direction: "in", Size: req.Size, State: "active"}
 	if target := filepath.Join(dir, req.Name); req.Conflict == "skip" && exists(target) {
 		t.Path, t.State = target, "skipped"
-		s.transferred(t)
+		s.transferred(t, ss)
 		answer(FileAnswer{OK: true, Skipped: true, Path: target})
 		return nil
 	}
@@ -109,6 +129,9 @@ func (s *Server) filePut(r *bufio.Reader, first []byte, peer string, touch func(
 		return err
 	}
 	answer(FileAnswer{OK: true, Offset: have, Sum: sum})
+	if peer != "" {
+		conn.SetReadDeadline(time.Now().Add(writeTimeout.get() + time.Duration(have/resumeRate)*time.Second))
+	}
 	line, err := readLine(r)
 	if err != nil {
 		return err
@@ -121,14 +144,14 @@ func (s *Server) filePut(r *bufio.Reader, first []byte, peer string, touch func(
 		return errors.New("rex: the offset is neither 0 nor the server's")
 	}
 	t.Done = from.Offset
-	s.transferred(t)
+	s.transferred(t, ss)
 	last := time.Now()
 	err = p.receive(r, from.Offset, req.Size, func(done int64) {
 		touch()
 		t.Done = done
 		if time.Since(last) >= transferEvery {
 			last = time.Now()
-			s.transferred(t)
+			s.transferred(t, ss)
 		}
 	})
 	var skipped bool
@@ -137,14 +160,14 @@ func (s *Server) filePut(r *bufio.Reader, first []byte, peer string, touch func(
 	}
 	if err != nil {
 		t.State = "failed"
-		s.transferred(t)
+		s.transferred(t, ss)
 		return err
 	}
 	t.State = "done"
 	if skipped {
 		t.State = "skipped"
 	}
-	s.transferred(t)
+	s.transferred(t, ss)
 	answer(FileAnswer{OK: true, Path: t.Path, Skipped: skipped})
 	return nil
 }
@@ -162,7 +185,7 @@ func (s *Server) fileGet(conn net.Conn, first []byte, peer string, touch func(),
 	if req.Path == "" {
 		return errors.New("rex: no path")
 	}
-	path, err := s.fileSession(req.SID, peer, req.Path)
+	ss, path, err := s.fileSession(req.SID, peer, req.Path)
 	if err != nil {
 		return err
 	}
@@ -187,21 +210,21 @@ func (s *Server) fileGet(conn net.Conn, first []byte, peer string, touch func(),
 	}
 	answer(FileAnswer{OK: true, Size: size, Name: filepath.Base(path), MTime: st.ModTime()})
 	t := Transfer{ID: req.ID, SID: req.SID, Name: filepath.Base(path), Path: path, Direction: "out", Size: size, Done: req.Offset, State: "active"}
-	s.transferred(t)
+	s.transferred(t, ss)
 	last := time.Now()
 	err = copyN(conn, f, req.Offset, size, func(done int64) {
 		touch()
 		t.Done = done
 		if time.Since(last) >= transferEvery {
 			last = time.Now()
-			s.transferred(t)
+			s.transferred(t, ss)
 		}
 	})
 	t.State = "done"
 	if err != nil {
 		t.State = "failed"
 	}
-	s.transferred(t)
+	s.transferred(t, ss)
 	return nil // the connection carries no answer after the bytes
 }
 
@@ -283,8 +306,8 @@ func (w progressWriter) Write(b []byte) (int, error) {
 var partials sync.Map
 
 // partial is a file being received: a hidden file beside where it goes,
-// ".NAME.ID.gorex-partial", which a transfer of the same file tried again
-// goes on writing.
+// of a name of a fixed length (partialName), which a transfer of the same
+// file tried again goes on writing.
 type partial struct {
 	path  string
 	f     *os.File
@@ -294,23 +317,58 @@ type partial struct {
 
 // openPartial opens the partial of name in dir for the transfer id, with
 // what an earlier try left of it.
+// A link or another file in its place, as one planted in a directory
+// others write, is an error: it is not followed.
 func openPartial(dir, name, id string) (*partial, error) {
-	path := filepath.Join(dir, "."+name+"."+id+".gorex-partial")
+	path := filepath.Join(dir, partialName(name, id))
 	if _, busy := partials.LoadOrStore(path, true); busy {
 		return nil, errors.New("rex: the file is being transferred already")
 	}
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o666)
+	f, st, err := openRegular(path)
 	if err != nil {
-		partials.Delete(path)
-		return nil, err
-	}
-	st, err := f.Stat()
-	if err != nil {
-		f.Close()
 		partials.Delete(path)
 		return nil, err
 	}
 	return &partial{path: path, f: f, size: st.Size(), mtime: st.ModTime()}, nil
+}
+
+// partialName is the name of the partial of name for the transfer id:
+// ".gorex-" and 16 hex digits of the SHA-256 of both, ".partial", short
+// whatever name's length.
+func partialName(name, id string) string {
+	sum := sha256.Sum256([]byte(name + "\x00" + id))
+	return ".gorex-" + hex.EncodeToString(sum[:8]) + ".partial"
+}
+
+// openRegular opens the regular file at path to write, made when there is
+// none, and no link: the file opened must be the one at path itself.
+func openRegular(path string) (*os.File, os.FileInfo, error) {
+	flag := os.O_RDWR
+	lst, err := os.Lstat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		flag |= os.O_CREATE | os.O_EXCL
+	case err != nil:
+		return nil, nil, err
+	case !lst.Mode().IsRegular():
+		return nil, nil, fmt.Errorf("rex: %s is not a regular file", path)
+	}
+	f, err := os.OpenFile(path, flag, 0o666)
+	if err != nil {
+		return nil, nil, err
+	}
+	st, err := f.Stat()
+	if err == nil {
+		lst, err = os.Lstat(path)
+	}
+	if err == nil && !os.SameFile(lst, st) {
+		err = fmt.Errorf("rex: %s changed as it opened", path)
+	}
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	return f, st, nil
 }
 
 // receive writes the bytes from off to size of the file, as r reads them,
@@ -340,6 +398,10 @@ func (p *partial) finish(dir, name, conflict string) (string, bool, error) {
 	target := filepath.Join(dir, name)
 	switch conflict {
 	case "overwrite":
+		// The file replaced keeps its permissions.
+		if st, err := os.Stat(target); err == nil {
+			os.Chmod(p.path, st.Mode().Perm())
+		}
 		return target, false, os.Rename(p.path, target)
 	case "skip":
 		err := placeNew(p.path, target)
@@ -493,6 +555,11 @@ func (c *Client) PutFile(ctx context.Context, f FilePut, src io.ReaderAt, progre
 	}
 	progress(off)
 	if err := copyN(fc, io.NewSectionReader(src, off, f.Size-off), off, f.Size, progress); err != nil {
+		// The server may have stopped taking it with an error of its own.
+		fc.SetReadDeadline(time.Now().Add(drainTimeout))
+		if a, aerr := fc.answer(); a.Error != "" {
+			return "", false, aerr
+		}
 		return "", false, ctxErr(ctx, err)
 	}
 	a, err = fc.answer()

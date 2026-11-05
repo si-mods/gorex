@@ -414,6 +414,13 @@ func (c *Client) Hello() (h Hello, err error) {
 // answers an error: poll it then.
 func (c *Client) Subscribe() error { return c.call(Request{Op: "subscribe"}, nil) }
 
+// SubscribeTransfers is Subscribe, and asks for the file transfers' events
+// too (Event.Transfer). A server before CapabilityFileTransfer tells of
+// none.
+func (c *Client) SubscribeTransfers() error {
+	return c.call(Request{Op: "subscribe", Transfers: true}, nil)
+}
+
 // Events returns the changes the server tells of, in order, while the
 // connection lasts; the channel closes with it.
 func (c *Client) Events() <-chan Event { return c.events }
