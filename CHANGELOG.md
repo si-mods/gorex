@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.0
+
+### Features
+
+* **panes:** make the terminal panes, floats, popovers and the palette the system's Liquid Glass on macOS 26 and later, the desktop showing through them, each pane tinted by its face at 0.4 of the Terminal opacity setting (a configured theme's whole); browser panes keep their face, and macOS builds no longer link MyGo's own glass, which Windows and Linux keep ([#169](https://github.com/si-mods/gorex/pull/169))
+
+### Bug Fixes
+
+* **ui:** make corners concentric, as Apple's design system: the panes take the window's radius less the gap between them, 8 on macOS 27, and the rows of menus, popovers, the palette and theme cards their container's radius less its border and padding ([#170](https://github.com/si-mods/gorex/pull/170))
+
 ## 0.12.0
 
 ### Features
