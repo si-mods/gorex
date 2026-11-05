@@ -144,8 +144,9 @@ dark or system; tab placement; pane headers; animation style; text size;
 language), Terminal (font, cursor style and blink, copy on
 selection), Theme (any of Ghostty's themes, or follow the config),
 Keyboard (GoRex's shortcuts, read only), Remote (see
-[Remote access](#remote-access)), Remote Hosts (see
-[Remote hosts](#remote-hosts)) and About (version, Check for Updates…).
+[Remote access](#remote-access) and [Remote hosts](#remote-hosts)),
+Network (see [Remote hosts](#remote-hosts) and [System Tailscale](#system-tailscale-desktop))
+and About (version, Check for Updates…).
 The choices go to `settings.json`, as do the sidebar's width and whether
 it is hidden.
 
@@ -155,8 +156,8 @@ request shows its name and fingerprint, to Approve or Reject), the list
 of allowed clients (revoke one, or add one by name and public key), this
 machine's own key and its fingerprint, and, while listening, the address,
 hidden until you show it, with Copy and Regenerate (which asks first). The
-page asks the server every two seconds while it shows. Remote Hosts is the
-other side: the machines this one connects to (see
+page asks the server every two seconds while it shows. Its Remote Hosts
+group is the other side: the machines this one connects to (see
 [Remote hosts](#remote-hosts)).
 
 Precedence: what you set in Settings, over Ghostty's config, over GoRex's
@@ -313,7 +314,7 @@ coordinator printed and its network key (`remotectl join URL KEY
 [NAME]` does the same without the app). The server then asks the
 coordinator every half minute: members come and go with its directory,
 their addresses become this machine's remote hosts by themselves
-(Settings › Remote Hosts shows them without Remove, for the directory,
+(Settings › Remote › Remote Hosts shows them without Remove, for the directory,
 not a hand, decides), and a member removed there — `gcoord kick` on
 the coordinator, or Remove on the network card — loses its
 connections on every machine within its next ask. Leaving the network
@@ -342,7 +343,7 @@ For a Linux service shared by several paired clients, see
 [docs/shared-server.md](docs/shared-server.md). Per-user isolation and
 PAM login are a separate proposal: [docs/login-server-rfc.md](docs/login-server-rfc.md).
 
-Settings › Remote Hosts connects this machine to other machines' session
+Settings › Remote › Remote Hosts connects this machine to other machines' session
 servers, whose sessions then open in tabs of the window beside its own.
 Add Remote Host… asks for the host's address (the one its Settings ›
 Remote shows; the field hides it), a name for it, and the name this

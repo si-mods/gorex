@@ -52,7 +52,7 @@ window; `gorex remote revoke KEY` drops it and its connections.
 `gorex ls` shows the owner of each session: `local` for one the server
 started itself, or the paired client name. Without `share on`, a client
 sees only sessions it created; with `share on`, it sees all. Per-client
-sharing is available in Settings › Remote Hosts, or with the remote admin
+sharing is available in Settings › Remote › Remote Hosts, or with the remote admin
 API. Layout sharing is separate and is filtered to sessions the client
 may use.
 

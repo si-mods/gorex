@@ -85,7 +85,7 @@ Mind what this listener is:
 
 The settings live in `rexapi/lan.json` in GoRex's data directory; the
 server's gateway follows a change within a second, without a restart.
-**Settings → Remote Hosts → Rex QR…** shows this gateway's pairing
+**Settings › Remote › Remote Hosts → Rex QR…** shows this gateway's pairing
 address as a code for Rex to scan, as `gorex rexapi pair` does: the
 built-in Tailscale address, `https://<machine>-gorex.<tailnet>.ts.net`.
 The code holds the address only, not a credential, and the device that
@@ -129,7 +129,7 @@ allow.
    once, and never saved or logged). A tailnet run by your own control
    server, such as Headscale, takes its URL:
    `GoRex rexapi tailscale on --control-url https://headscale.example.com`,
-   or in Settings › Remote's Tailscale card. Turn it off first to switch
+   or in Settings › Network's Tailscale card. Turn it off first to switch
    servers; an explicit empty `control_url`
    (`GoRex rexapi call server.tailscale.enable '{"allow_tailnet_members":false,"control_url":""}'`)
    or an empty field in Settings returns the device to Tailscale's own.

@@ -273,6 +273,17 @@ func (a *App) canvasContent(c *ui.Context, k *colors, t *Tab, bounds ui.Rect) {
 	if zoomed != nil {
 		a.floatCell(c, k, t, zoomed, bounds)
 	}
+	// A minimized box is out of sight as on a tiled tab: its chip over
+	// the canvas's bottom right shows it again.
+	var minimized []*Float
+	for _, f := range slices.Clone(t.Floats) {
+		if f.Hidden {
+			minimized = append(minimized, f)
+		}
+	}
+	if len(minimized) > 0 {
+		a.minimizedRail(c, k, minimized)
+	}
 	if a.canvasPan == t && a.tab() == t {
 		a.canvasPanner(c, t)
 	}

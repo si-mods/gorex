@@ -74,7 +74,7 @@ func (a *App) showSection(id string) {
 	stopRemotePoll()
 	hostsPairQR = nil
 	settingsUI.section = id
-	if id == "remote" || id == "hosts" || id == "network" {
+	if id == "remote" || id == "network" {
 		fetchLAN()
 		a.startRemotePoll()
 	}
@@ -131,9 +131,6 @@ func (a *App) startRemotePoll() {
 	stop := make(chan struct{})
 	remoteUI.stop = stop
 	refresh := a.fetchRemote
-	if settingsUI.section == "hosts" {
-		refresh = fetchLAN
-	}
 	go func() {
 		pub := rex.ClientPublicKey()
 		win.Update(func() { remoteUI.myKey = pub })

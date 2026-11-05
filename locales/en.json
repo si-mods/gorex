@@ -1021,10 +1021,6 @@
   "@settingsFile": {
     "description": "About section row: where the settings are kept."
   },
-  "remoteTitle": "Remote access",
-  "@remoteTitle": {
-    "description": "Title of the Remote page of the settings."
-  },
   "remoteAsking": "Asking the session server…",
   "@remoteAsking": {
     "description": "Shown while the page waits for the server's first answer."
@@ -1279,7 +1275,7 @@
   },
   "settingsHosts": "Remote Hosts",
   "@settingsHosts": {
-    "description": "Settings section: the remote hosts this machine connects to. The sidebar item and the page's title."
+    "description": "The Remote page's group of the remote hosts this machine connects to."
   },
   "hostsNote": "Add and manage remote GoRex hosts, view connection status, and retry connection failures.",
   "@hostsNote": {

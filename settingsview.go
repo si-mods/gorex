@@ -44,8 +44,10 @@ var settingsUI struct {
 // Run is set here: the window's view lists the commands, which list this one.
 func init() { cmdSettings.Run = func(a *App) { a.openSettings() } }
 
-// startServerInfoPoll asks the Rex API gateway for its version every two
-// seconds while the server page shows.
+// startServerInfoPoll asks the Rex API gateway for its version every ten
+// seconds while the server page shows. Each ask is a control connection
+// that every Rex client hears of, and the build cannot change while the
+// gateway runs: only whether it runs is worth asking about.
 func startServerInfoPoll() {
 	win := settingsUI.win
 	if settingsUI.apiStop != nil || win == nil {
@@ -54,7 +56,7 @@ func startServerInfoPoll() {
 	stop := make(chan struct{})
 	settingsUI.apiStop = stop
 	go func() {
-		t := time.NewTicker(2 * time.Second)
+		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
 		for {
 			info, err := rexapi.GatewayVersion()

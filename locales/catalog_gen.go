@@ -3036,20 +3036,6 @@ func (msgs Messages) SettingsFile() string {
 	return Catalog.Format(msgs.locale, "settingsFile", nil)
 }
 
-// RemoteTitle says "Remote access"
-// in the language the app shows.
-//
-// Title of the Remote page of the settings.
-func RemoteTitle() string { return In(i18n.Locale()).RemoteTitle() }
-
-// RemoteTitle says "Remote access"
-// in the language of msgs.
-//
-// Title of the Remote page of the settings.
-func (msgs Messages) RemoteTitle() string {
-	return Catalog.Format(msgs.locale, "remoteTitle", nil)
-}
-
 // RemoteAsking says "Asking the session server…"
 // in the language the app shows.
 //
@@ -3955,15 +3941,13 @@ func (msgs Messages) RemoteAdd() string {
 // SettingsHosts says "Remote Hosts"
 // in the language the app shows.
 //
-// Settings section: the remote hosts this machine connects to. The sidebar
-// item and the page's title.
+// The Remote page's group of the remote hosts this machine connects to.
 func SettingsHosts() string { return In(i18n.Locale()).SettingsHosts() }
 
 // SettingsHosts says "Remote Hosts"
 // in the language of msgs.
 //
-// Settings section: the remote hosts this machine connects to. The sidebar
-// item and the page's title.
+// The Remote page's group of the remote hosts this machine connects to.
 func (msgs Messages) SettingsHosts() string {
 	return Catalog.Format(msgs.locale, "settingsHosts", nil)
 }

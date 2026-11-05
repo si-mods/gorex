@@ -213,7 +213,6 @@
   "settingsVersion": "版本 {version}",
   "settingsUpdatesOff": "开发版本中已关闭更新。",
   "settingsFile": "设置文件",
-  "remoteTitle": "远程访问",
   "remoteAsking": "正在询问会话服务器…",
   "tailcatMode": "Tailcat 远程访问",
   "hostsRexQR": "Rex 二维码…",
