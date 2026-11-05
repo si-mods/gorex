@@ -55,7 +55,8 @@ Manage sessions, arrange panes, and run commands with the ` + "`gorex`" + ` comm
 GoRex sets these in every local terminal it opens:
 
 - ` + "`GOREX_SESSION`" + ` identifies your session. Pass ` + "`-s \"$GOREX_SESSION\"`" + ` to select it.
-- ` + "`GOREX_PANE`" + ` identifies your terminal pane. Pass ` + "`-b \"$GOREX_PANE\"`" + ` to select it.
+- ` + "`GOREX_PANE`" + ` is the app's number for your terminal pane. Commands select
+  the pane by its session, ` + "`-s \"$GOREX_SESSION\"`" + `.
 - ` + "`GOREX_SERVER`" + ` is the session server's socket.
 - A pane made by the app also gets ` + "`GOREX_HOST`" + ` for a remote host's pane or
   ` + "`GOREX_CLIENT`" + ` for a local one.
@@ -133,7 +134,7 @@ gorex new --dir "$PWD" --json -- npm test
 Split below the current pane and run a monitor there:
 
 ` + "```sh" + `
-gorex split -s "$GOREX_SESSION" -b "$GOREX_PANE" --down --json -- top
+gorex split -s "$GOREX_SESSION" --down --json -- top
 ` + "```" + `
 
 Run a command in a new session and read its output:
@@ -145,15 +146,15 @@ gorex run --dir "$PWD" --json -- make test
 Type into a shell and wait for its result:
 
 ` + "```sh" + `
-gorex send -s "$GOREX_SESSION" -b "$GOREX_PANE" --enter 'make test'
-gorex wait -s "$GOREX_SESSION" -b "$GOREX_PANE" --contains FAIL --timeout 120s
+gorex send -s "$GOREX_SESSION" --enter 'make test'
+gorex wait -s "$GOREX_SESSION" --contains FAIL --timeout 120s
 ` + "```" + `
 
 Inspect what a pane shows:
 
 ` + "```sh" + `
-gorex capture -s "$GOREX_SESSION" -b "$GOREX_PANE" --history 65536
-gorex capture -s "$GOREX_SESSION" -b "$GOREX_PANE" --raw
+gorex capture -s "$GOREX_SESSION" --history 65536
+gorex capture -s "$GOREX_SESSION" --raw
 ` + "```" + `
 
 ## Notes
@@ -693,8 +694,9 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 		} else {
 			change, err = removeSkill(t.path, stub, *dry)
 			// Remove old builds' skills in the agents' own directories too.
+			// Those are the account's: a project removes only its own.
 			for _, a := range selected {
-				if a.NativeSkillDir == "" || a.NativeSkillDir == t.path || !containsString(t.harnesses, a.ID) {
+				if *project || a.NativeSkillDir == "" || a.NativeSkillDir == t.path || !containsString(t.harnesses, a.ID) {
 					continue
 				}
 				if c, e := removeSkill(a.NativeSkillDir, stub, *dry); e != nil || c != "absent" {

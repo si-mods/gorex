@@ -237,6 +237,15 @@ func TestSkillProject(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chdir(old) })
 
+	// The account install stays: a project removes only what it wrote.
+	if code, _, _, errOut := runMain(t, "skill", "setup", "--agent", "claude"); code != ExitOK {
+		t.Fatalf("account setup: %d %s", code, errOut)
+	}
+	account := filepath.Join(os.Getenv("HOME"), ".claude", "skills", "gorex", "SKILL.md")
+	if _, err := os.Stat(account); err != nil {
+		t.Fatal(err)
+	}
+
 	code, _, out, errOut := runMain(t, "skill", "setup", "--project", "--agent", "claude", "--json")
 	if code != ExitOK {
 		t.Fatalf("project setup: %d %q %s", code, out, errOut)
@@ -258,6 +267,9 @@ func TestSkillProject(t *testing.T) {
 	}
 	if b := readFile(t, filepath.Join(project, ".claude", "settings.local.json")); strings.Contains(b, "# gorex") {
 		t.Fatalf("project hook remains: %s", b)
+	}
+	if _, err := os.Stat(account); err != nil {
+		t.Fatalf("project remove took the account skill: %v", err)
 	}
 
 	// A project setup without an agent writes only the shared skill.

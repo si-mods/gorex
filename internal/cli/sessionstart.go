@@ -72,10 +72,10 @@ func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 	}
 	fmt.Fprintln(out, "```")
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, "`GOREX_SESSION` identifies your session, and `GOREX_PANE` identifies")
-	fmt.Fprintln(out, "your terminal pane. Both are set in your shell. Pass")
-	fmt.Fprintln(out, "`-s \"$GOREX_SESSION\"` and `-b \"$GOREX_PANE\"` to select them in GoRex")
-	fmt.Fprintln(out, "commands. The user may be viewing a different session or pane.")
+	fmt.Fprintln(out, "`GOREX_SESSION` identifies your session, and `GOREX_PANE` numbers")
+	fmt.Fprintln(out, "your terminal pane; both are set in your shell. Commands select the")
+	fmt.Fprintln(out, "pane with `-s \"$GOREX_SESSION\"`. The user may be viewing a different")
+	fmt.Fprintln(out, "session or pane.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "These inherited IDs haven't been checked against the server. If a")
 	fmt.Fprintln(out, "target can't be found, run `gorex ls --json` to see the sessions on")
@@ -88,7 +88,7 @@ func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 	if *naming {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, "Label the pane as part of handling the first request that identifies")
-		fmt.Fprintln(out, "the work. Run `gorex rename -s \"$GOREX_SESSION\" -b \"$GOREX_PANE\" <label>`")
+		fmt.Fprintln(out, "the work. Run `gorex rename -s \"$GOREX_SESSION\" <label>`")
 		fmt.Fprintln(out, "without waiting for the user to ask, before loading the skill. Use two to")
 		fmt.Fprintln(out, "four lowercase words joined by hyphens, such as `fix-login-redirect`.")
 		fmt.Fprintln(out, "Name the task or project. Keep the existing label if it already")
