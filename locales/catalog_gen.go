@@ -2970,6 +2970,86 @@ func (msgs Messages) TailcatMode() string {
 	return Catalog.Format(msgs.locale, "tailcatMode", nil)
 }
 
+// HostsRexQR says "Rex QR…"
+// in the language the app shows.
+func HostsRexQR() string { return In(i18n.Locale()).HostsRexQR() }
+
+// HostsRexQR says "Rex QR…"
+// in the language of msgs.
+func (msgs Messages) HostsRexQR() string {
+	return Catalog.Format(msgs.locale, "hostsRexQR", nil)
+}
+
+// HostsRexQRTitle says "Connect Rex to {host}"
+// in the language the app shows.
+func HostsRexQRTitle(host string) string { return In(i18n.Locale()).HostsRexQRTitle(host) }
+
+// HostsRexQRTitle says "Connect Rex to {host}"
+// in the language of msgs.
+func (msgs Messages) HostsRexQRTitle(host string) string {
+	return Catalog.Format(msgs.locale, "hostsRexQRTitle", map[string]any{"host": host})
+}
+
+// HostsRexQRLoading says "Checking the phone endpoint…"
+// in the language the app shows.
+func HostsRexQRLoading() string { return In(i18n.Locale()).HostsRexQRLoading() }
+
+// HostsRexQRLoading says "Checking the phone endpoint…"
+// in the language of msgs.
+func (msgs Messages) HostsRexQRLoading() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRLoading", nil)
+}
+
+// HostsRexQRHint says "With Tailscale connected on your phone, scan this code in Rex to add the host."
+// in the language the app shows.
+func HostsRexQRHint() string { return In(i18n.Locale()).HostsRexQRHint() }
+
+// HostsRexQRHint says "With Tailscale connected on your phone, scan this code in Rex to add the host."
+// in the language of msgs.
+func (msgs Messages) HostsRexQRHint() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRHint", nil)
+}
+
+// HostsRexQRUnavailable says "This host did not report an active Rex phone address on Tailscale."
+// in the language the app shows.
+func HostsRexQRUnavailable() string { return In(i18n.Locale()).HostsRexQRUnavailable() }
+
+// HostsRexQRUnavailable says "This host did not report an active Rex phone address on Tailscale."
+// in the language of msgs.
+func (msgs Messages) HostsRexQRUnavailable() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRUnavailable", nil)
+}
+
+// HostsRexQRCopy says "Copy link"
+// in the language the app shows.
+func HostsRexQRCopy() string { return In(i18n.Locale()).HostsRexQRCopy() }
+
+// HostsRexQRCopy says "Copy link"
+// in the language of msgs.
+func (msgs Messages) HostsRexQRCopy() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRCopy", nil)
+}
+
+// HostsRexQRCopied says "Copied"
+// in the language the app shows.
+func HostsRexQRCopied() string { return In(i18n.Locale()).HostsRexQRCopied() }
+
+// HostsRexQRCopied says "Copied"
+// in the language of msgs.
+func (msgs Messages) HostsRexQRCopied() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRCopied", nil)
+}
+
+// HostsRexQRCopyFailed says "Could not copy the link."
+// in the language the app shows.
+func HostsRexQRCopyFailed() string { return In(i18n.Locale()).HostsRexQRCopyFailed() }
+
+// HostsRexQRCopyFailed says "Could not copy the link."
+// in the language of msgs.
+func (msgs Messages) HostsRexQRCopyFailed() string {
+	return Catalog.Format(msgs.locale, "hostsRexQRCopyFailed", nil)
+}
+
 // TailnetMode says "Tailscale discovery and connections"
 // in the language the app shows.
 func TailnetMode() string { return In(i18n.Locale()).TailnetMode() }

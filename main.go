@@ -31,6 +31,7 @@ func main() {
 	// The server runs the Rex API gateway while the local network or
 	// built-in Tailscale is on (internal/rexapi).
 	rex.OnServe = rexapi.Supervise
+	rex.RexPairURL = rexapi.SystemTailnetPairURL
 	if server, err := rex.ServerMain(os.Args[1:]); server {
 		if err != nil {
 			log.Fatal(err)

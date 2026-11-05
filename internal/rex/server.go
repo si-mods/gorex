@@ -737,6 +737,9 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
 		if peer != "" {
 			h.Client = s.remoteClientFor(peer)
+			if IsTailnetTarget(peer) && RexPairURL != nil {
+				h.RexPairURL = RexPairURL(s.tailnetAddress())
+			}
 		}
 		if kept != nil {
 			h.Keepalive, h.Conn = keepaliveTimeout.get(), kept.id

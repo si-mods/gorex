@@ -190,6 +190,23 @@ type systemTailnet struct {
 	hosts []TailnetHost
 }
 
+// RexPairURL reports the local gateway's phone endpoint for the active
+// system Tailscale address. The application wires it to the Rex gateway.
+var RexPairURL func(netip.Addr) string
+
+func (s *Server) tailnetAddress() netip.Addr {
+	s.rem.mu.Lock()
+	defer s.rem.mu.Unlock()
+	if t := s.rem.tailnet; t != nil {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		if t.ln != nil && t.snap.valid() {
+			return t.snap.ip
+		}
+	}
+	return netip.Addr{}
+}
+
 func (s *Server) tailnetStartLocked() {
 	api := systemTailscaleClient()
 	if api == nil || s.rem.tailnet != nil {

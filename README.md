@@ -493,7 +493,9 @@ reboot.
 A run that stops says why and what it held, and the server after it
 starts nothing. The sessions outlive the app, and
 a new build: on macOS and Linux, a build that finds a server an older
-build started has it run the new build in its place, in the same
+build started has it run the new build in its place. For a headless
+server, run `gorex server upgrade` with the new executable and the
+existing server's data directory (`GOREX_DIR`). The server continues in the same
 process, its shells still running and their screens kept. On Windows a
 development build replaces such a server, ending its sessions, which
 then start again in the same directories, and the built app keeps it.

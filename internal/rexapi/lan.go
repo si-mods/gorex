@@ -31,6 +31,8 @@ type LANConfig struct {
 	// Allow are the networks let in, as CIDRs; a bare address stands for
 	// itself alone.
 	Allow []string `json:"allow,omitempty"`
+	// ShowDesktopSessions includes desktop Tailscale sessions outside the host layout.
+	ShowDesktopSessions bool `json:"showDesktopSessions,omitempty"`
 }
 
 // LANStatus is what the gateway did with its LANConfig, kept in
@@ -81,6 +83,25 @@ func LoadLANStatus(dir string) LANStatus {
 		json.Unmarshal(b, &s)
 	}
 	return s
+}
+
+// SystemTailnetPairURL reports the gateway address when the configured
+// mobile listener is active on this machine's system Tailscale IP.
+func SystemTailnetPairURL(ip netip.Addr) string {
+	if !ip.IsValid() {
+		return ""
+	}
+	dir := TailnetDir()
+	conf, err := LoadLAN(dir)
+	if err != nil || !conf.Enabled || len(conf.Allow) == 0 {
+		return ""
+	}
+	status := LoadLANStatus(dir)
+	addr, err := netip.ParseAddrPort(status.Listening)
+	if err != nil || !status.Running || status.Error != "" || addr.Addr() != ip || status.Listening != conf.Listen {
+		return ""
+	}
+	return "http://" + addr.String()
 }
 
 func saveLANStatus(dir string, s LANStatus) {
@@ -354,7 +375,13 @@ func (l *lanListener) apply(c LANConfig) {
 }
 
 func sameLAN(a, b LANConfig) bool {
-	return a.Enabled == b.Enabled && a.Listen == b.Listen && slices.Equal(a.Allow, b.Allow)
+	return a.Enabled == b.Enabled && a.Listen == b.Listen && a.ShowDesktopSessions == b.ShowDesktopSessions && slices.Equal(a.Allow, b.Allow)
+}
+
+func (l *lanListener) showDesktopSessions() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.ln != nil && l.conf.ShowDesktopSessions
 }
 
 func (l *lanListener) closeLocked() {

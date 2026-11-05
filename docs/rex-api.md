@@ -85,6 +85,15 @@ Mind what this listener is:
 
 The settings live in `rexapi/lan.json` in GoRex's data directory; the
 server's gateway follows a change within a second, without a restart.
+When the listener is bound to the active system Tailscale IP, another
+GoRex device connected with system Tailscale can open **Settings →
+Remote Hosts → Rex QR…** to show the address as a code for Rex to scan.
+
+A headless server can set `showDesktopSessions` to `true` in
+`rexapi/lan.json`. Rex then shows live sessions created by desktop
+Tailscale peers under **Desktop terminals** if they are absent from the
+server's desktop layout. Opening a terminal there attaches to the
+existing process.
 
 ## Built-in Tailscale
 

@@ -126,7 +126,7 @@ Usage:
   gorex events
   gorex hosts [ls] [--json]
   gorex remote status [--json] | tailscale on|off | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
-  gorex server restart
+  gorex server restart | upgrade
   gorex config path | config check [FILE] | config reload
   gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
   gorex run [--json] [--dir DIR] -- COMMAND...
@@ -859,10 +859,10 @@ func serverCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitUsage, true
 	}
 	usage := func() (int, bool) {
-		fmt.Fprintln(errOut, "gorex server: restart")
+		fmt.Fprintln(errOut, "gorex server: restart | upgrade")
 		return ExitUsage, true
 	}
-	if len(args) != 1 || args[0] != "restart" {
+	if len(args) != 1 || (args[0] != "restart" && args[0] != "upgrade") {
 		return usage()
 	}
 	c, err := rex.ConnectExisting()
@@ -875,6 +875,26 @@ func serverCmd(args []string, out, errOut io.Writer) (int, bool) {
 		c.Close()
 		fmt.Fprintln(errOut, "gorex server: no server runs")
 		return ExitServer, true
+	}
+	if args[0] == "upgrade" {
+		defer c.Close()
+		if !h.Upgrade {
+			fmt.Fprintln(errOut, "gorex server: the running server cannot upgrade in place")
+			return ExitFailed, true
+		}
+		exe, modified := rex.Executable()
+		if h.Exe == exe && h.ExeTime.Equal(modified) {
+			fmt.Fprintln(out, "the server already runs this build")
+			return ExitOK, true
+		}
+		next, err := c.Upgrade(exe)
+		if err != nil {
+			fmt.Fprintln(errOut, err)
+			return ExitServer, true
+		}
+		next.Close()
+		fmt.Fprintln(out, "upgraded in place; terminal sessions kept")
+		return ExitOK, true
 	}
 	if !h.Can(rex.CapabilityShutdownRestart) {
 		c.Close()

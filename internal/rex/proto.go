@@ -584,6 +584,8 @@ type Hello struct {
 	// Client is the remote client this connection is, with its label and
 	// the times it was allowed and last connected; nil for a local one.
 	Client *RemoteClient `json:"client,omitempty"`
+	// RexPairURL is a ready mobile endpoint, shown only to a verified system Tailscale peer.
+	RexPairURL string `json:"rexPairURL,omitempty"`
 }
 
 // Can tells whether the server does capability, as "layout.revision" or

@@ -274,6 +274,9 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 	if page.layoutOpen {
 		a.hostLayoutSheet(c, k)
 	}
+	if hostsPairQR != nil {
+		hostPairQRSheet(c, k, hostsPairQR)
+	}
 }
 
 // hostRow is a saved host: its state, Retry while it is not connected, and
@@ -300,6 +303,9 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 				a.openHostLayout(h)
 			}
 			tailnet := rex.IsTailnetTarget(h.Address)
+			if tailnet && (h.tailnetOnline || up) && ui.Button(c.Key("rex-qr"), locales.HostsRexQR()).Clicked() {
+				openHostPairQR(h)
+			}
 			if tailnet && h.tailnetOnline && !up {
 				if ui.Button(c.Key("connect"), locales.TailnetConnect()).Clicked() {
 					a.newTabOn(h, a.dirOn(h))

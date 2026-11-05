@@ -78,6 +78,7 @@ func (a *App) openSettings() {
 		stopRemotePoll()
 		closeAddHost()
 		closeHostLayout()
+		hostsPairQR = nil
 		shortcutsUI = shortcutsState{}
 		if a.st != nil && a.st.recording {
 			a.st.recording = false
