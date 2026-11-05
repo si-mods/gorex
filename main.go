@@ -39,11 +39,14 @@ func main() {
 	}
 	// The state of the sessions lives in the app's data directory, which
 	// the server it starts takes from GOREX_DIR: "GoRex", or "GoRex Dev"
-	// under mygo dev, which keeps the installed app's sessions apart.
+	// under mygo dev, which keeps the installed app's sessions apart. A plain
+	// go build is a dev build too, named for its executable ("gorex"), which
+	// is the installed app's directory on a case-insensitive disk, so it
+	// gets a " Dev" one as well.
 	ownDir := os.Getenv("GOREX_DIR") != ""
 	if !ownDir {
 		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
-			os.Setenv("GOREX_DIR", dir)
+			os.Setenv("GOREX_DIR", dataDir(dir, mygo.IsDev()))
 		}
 	}
 	// mygo dev names its app "GoRex Dev", which tells it from the installed
@@ -107,6 +110,15 @@ func main() {
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// dataDir keeps a dev build out of dir when dir could be the installed
+// app's: it adds " Dev" to the name, unless the name has it already.
+func dataDir(dir string, dev bool) string {
+	if !dev || strings.HasSuffix(strings.ToLower(dir), " dev") {
+		return dir
+	}
+	return dir + " Dev"
 }
 
 // devBuild reports whether mygo dev runs this build, from its .mygo/dev
