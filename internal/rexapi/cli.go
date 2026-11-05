@@ -359,6 +359,9 @@ func printTailscale(w io.Writer, st tailscaleStatus) {
 	if st.DNSName != "" {
 		fmt.Fprintf(w, "  device: %s\n", st.DNSName)
 	}
+	if st.ControlURL != "" {
+		fmt.Fprintf(w, "  control: %s\n", st.ControlURL)
+	}
 	if st.Account != nil {
 		fmt.Fprintf(w, "  account: %s\n", st.Account.LoginName)
 	}

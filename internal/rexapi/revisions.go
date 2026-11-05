@@ -41,7 +41,9 @@ var revisionChanges = []revisionChange{
 	// exist on the Rex revision 7 servers the clients were built for.
 	{at: 8, kind: "hide", method: "session.bootstrap", paths: []string{"/data_tickets"}},
 	// Revision 9 adds a floating layer's state, minimized or normal, to
-	// every view that carries layers.
+	// every view that carries layers. A client that predates it sees the
+	// layer as normal, since it knows no state, and draws it; that is
+	// what Rex's own translation does with the member removed.
 	{at: 9, kind: "hide", method: "session.attach", paths: []string{
 		"/view/windows/-/layers/-/state",
 	}},

@@ -175,8 +175,12 @@ func (t *tailnet) saveLocked() {
 
 // enableOptions are server.tailscale.enable's arguments.
 type enableOptions struct {
-	hostname     string
-	controlURL   string
+	hostname   string
+	controlURL string
+	// controlSet tells whether the call named control_url, so that an
+	// explicit empty one returns the device to Tailscale's own control
+	// server instead of reusing the saved one.
+	controlSet   bool
 	allowMembers bool
 	authKey      string
 	tags         []string
@@ -258,9 +262,9 @@ func (t *tailnet) enable(o enableOptions) (tailscaleStatus, *apiError) {
 		t.mu.Unlock()
 		return tailscaleStatus{}, errBadRequest("%q is not a Tailscale device name", name)
 	}
-	control := o.controlURL
-	if control == "" {
-		control = t.conf.ControlURL
+	control := t.conf.ControlURL
+	if o.controlSet {
+		control = o.controlURL
 	}
 	if control != "" && !validControlURL(control) {
 		t.mu.Unlock()

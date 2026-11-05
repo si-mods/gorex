@@ -2244,7 +2244,7 @@ func (a *App) showFloat(f *Float) {
 // focus, the pane is shown above the tab's others, and its tab and the
 // pane take the focus.
 func (a *App) setFloatState(sid, state string, focus bool) error {
-	p := a.paneBySID(sid)
+	p := a.localPane(sid)
 	if p == nil {
 		return fmt.Errorf("no pane %s", sid)
 	}
@@ -2281,22 +2281,6 @@ func (a *App) setFloatState(sid, state string, focus bool) error {
 	if f.Hidden {
 		f.Hidden = false
 		a.changed()
-	}
-	return nil
-}
-
-// paneBySID returns the pane of a session, local or another host's, by
-// its ID, nil when no tab holds it.
-func (a *App) paneBySID(sid string) *Pane {
-	if sid == "" {
-		return nil
-	}
-	for _, t := range a.tabs {
-		for _, p := range t.allPanes() {
-			if p.SID == sid && !p.closed {
-				return p
-			}
-		}
 	}
 	return nil
 }

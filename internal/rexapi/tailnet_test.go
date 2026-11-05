@@ -355,6 +355,18 @@ func TestTailscaleLifecycle(t *testing.T) {
 		!strings.Contains(string(conf), `"control_url": "https://headscale.example.com"`) {
 		t.Errorf("saved after disable: %s", conf)
 	}
+	// An explicit empty control_url goes back to Tailscale's own.
+	ts = tailscaleOf(t, f.mustCall("server.tailscale.enable", map[string]any{
+		"allow_tailnet_members": false, "control_url": "",
+	}))
+	if ts["control_url"] != nil || f.node.control != "" {
+		t.Errorf("clearing the control URL: %v, device at %q", ts, f.node.control)
+	}
+	conf, _ = os.ReadFile(filepath.Join(f.dir, "tailscale.json"))
+	if strings.Contains(string(conf), "control_url") {
+		t.Errorf("saved after clearing: %s", conf)
+	}
+
 	// Disabling again is safe, and logging out while off changes nothing.
 	f.mustCall("server.tailscale.disable", nil)
 	f.mustCall("server.tailscale.logout", nil)

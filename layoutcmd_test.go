@@ -1050,3 +1050,54 @@ func savedTabSID(st savedStore, workspace string) string {
 	}
 	return ""
 }
+
+// TestCommandActionShowsSpace: an action on a space no window shows shows
+// the space first, as the layout commands do, so a Rex client can minimize
+// a floating pane of a session it is not looking at.
+func TestCommandActionShowsSpace(t *testing.T) {
+	a, _ := newTestApp(t)
+	orig := a.ws
+	res := a.command(rex.LayoutCommand{Op: "space.create", Name: "work"})
+	if res.Code != "" || res.Space == "" {
+		t.Fatalf("space.create: %+v", res)
+	}
+	space := res.Space
+	res = a.command(rex.LayoutCommand{
+		Op: "tab.create", Space: space, Dir: os.TempDir(),
+		Command: []string{"/bin/sh", "-c", "echo made"}, Focus: true,
+	})
+	if res.Code != "" || res.New == "" {
+		t.Fatalf("tab.create: %+v", res)
+	}
+	res = a.command(rex.LayoutCommand{
+		Op: "pane.split", Space: space, SID: res.New, Dir: os.TempDir(),
+		Command: []string{"/bin/sh", "-c", "echo split"},
+	})
+	if res.Code != "" || res.New == "" {
+		t.Fatalf("pane.split: %+v", res)
+	}
+	if !a.floatPane(a.tab().Focus) {
+		t.Fatal("the pane did not float")
+	}
+	floatSID := a.tab().Focus.SID
+
+	// No window shows the space now.
+	a.showEmpty(orig)
+	if w := a.st.workspaceByID(space); w == nil || w.app != nil {
+		t.Fatalf("the space is still shown: %+v", w)
+	}
+	app := a.st.commandAppFor(space)
+	args, _ := json.Marshal(map[string]any{"sid": floatSID, "state": "minimized"})
+	res = app.command(rex.LayoutCommand{Op: "action", Space: space, Action: "float.set_state", Args: args})
+	if res.Code != "" {
+		t.Fatalf("float.set_state: %+v", res)
+	}
+	if app.ws == nil || app.ws.ID != space {
+		t.Fatalf("the window shows %+v, want %s", app.ws, space)
+	}
+	for _, f := range app.tab().Floats {
+		if f.Pane != nil && f.Pane.SID == floatSID && !f.Hidden {
+			t.Error("the float is not hidden")
+		}
+	}
+}

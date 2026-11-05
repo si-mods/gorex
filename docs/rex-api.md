@@ -114,6 +114,9 @@ allow.
    once, and never saved or logged). A tailnet run by your own control
    server, such as Headscale, takes its URL:
    `GoRex rexapi tailscale on --control-url https://headscale.example.com`.
+   Turn it off first to switch servers; an explicit empty `control_url`
+   (`GoRex rexapi call server.tailscale.enable '{"allow_tailnet_members":false,"control_url":""}'`)
+   returns the device to Tailscale's own.
 3. Wait for `https: available` in `GoRex rexapi tailscale status`.
 4. Show the address as a QR code, and scan it with Rex on the phone:
 

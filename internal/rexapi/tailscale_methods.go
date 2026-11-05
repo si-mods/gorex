@@ -35,7 +35,7 @@ func methodTailscaleEnable(c *control, a args) (any, *apiError) {
 	if o.hostname, _, aerr = a.str("hostname"); aerr != nil {
 		return nil, aerr
 	}
-	if o.controlURL, _, aerr = a.str("control_url"); aerr != nil {
+	if o.controlURL, o.controlSet, aerr = a.str("control_url"); aerr != nil {
 		return nil, aerr
 	}
 	if o.authKey, _, aerr = a.str("auth_key"); aerr != nil {
