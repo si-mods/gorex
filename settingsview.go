@@ -236,13 +236,13 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
 	if e.Clicked() {
 		a.showSection(id)
 	}
-	icon, text, weight := k.iconMuted, k.text, 500
+	icon, text := k.iconMuted, k.text
 	if active {
-		icon, text, weight = k.accent, k.accent, 600
+		icon, text = k.accent, k.accent
 	}
 	e.Children(func() {
 		glyphIcon(c, glyph, 16, icon)
-		ui.Text(c, label).FontSize(13).FontWeight(weight).TextColor(text).SingleLine()
+		ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(text).SingleLine()
 	})
 }
 
