@@ -483,6 +483,16 @@ func (a *App) debug(dir, line string) {
 			})
 		case "close":
 			win.Close()
+		case "resume": // run or continue: the focused pane's resume strip button
+			win.Update(func() {
+				if t := a.tab(); t != nil && t.Focus != nil && t.Focus.resume != nil {
+					cmd := t.Focus.resume.cmd
+					if arg == "continue" {
+						cmd = t.Focus.resume.cont
+					}
+					a.runResume(t.Focus, cmd)
+				}
+			})
 		case "zoom":
 			win.Update(func() {
 				if win.IsMaximized() {
