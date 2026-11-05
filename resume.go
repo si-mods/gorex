@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"path/filepath"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -58,8 +57,7 @@ var agentContinue = map[string]string{
 // continueCommand is the continue command of the agent named name, "" for a
 // program that is no agent here.
 func continueCommand(name string) string {
-	name = strings.ToLower(strings.TrimSuffix(filepath.Base(name), ".exe"))
-	return agentContinue[name]
+	return agentContinue[rex.ShellName(name)]
 }
 
 // resumeCommand is argv as the shell at path reads it, "" for a shell the

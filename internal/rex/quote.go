@@ -36,11 +36,11 @@ func ClaudeResume(shell, id, config string) (string, bool) {
 	return "CLAUDE_CONFIG_DIR=" + d + " " + cmd, true
 }
 
-// ShellName returns the name of the shell at path, lower case and without
-// .exe: its last element by / or \, as a Windows host's path reads on any
-// client.
-func ShellName(shell string) string {
-	return strings.ToLower(strings.TrimSuffix(shell[strings.LastIndexAny(shell, `/\`)+1:], ".exe"))
+// ShellName returns the name of the shell or program at path, lower case
+// and without .exe: its last element by / or \, as a Windows host's path
+// reads on any client.
+func ShellName(path string) string {
+	return strings.TrimSuffix(strings.ToLower(path[strings.LastIndexAny(path, `/\`)+1:]), ".exe")
 }
 
 // QuoterOf returns the word quoting of the shell at path, by its
