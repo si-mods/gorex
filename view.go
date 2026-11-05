@@ -281,13 +281,21 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 				a.divider(c, k, sp.n, sp.s, bounds, tr)
 			}
 		}
+		var minimized []*Float
 		for _, f := range slices.Clone(t.Floats) {
 			// A pane is built once: the zoomed one, always tiled, is not
 			// a float too.
-			if f.Hidden || f.Pane == t.Zoom {
+			if f.Hidden {
+				minimized = append(minimized, f)
+				continue
+			}
+			if f.Pane == t.Zoom {
 				continue
 			}
 			a.floatCell(c, k, t, f, bounds)
+		}
+		if len(minimized) > 0 {
+			a.minimizedRail(c, k, minimized)
 		}
 	})
 	// A press on a page gives the page the keyboard, and MyGo clears the
@@ -318,6 +326,7 @@ type (
 	noteKey        int
 	notePreviewKey int
 	floatGripKey   int
+	minimizedKey   int
 )
 
 // shares gives each pane of the tree of n, and each split, its share of s.
@@ -999,8 +1008,37 @@ func (a *App) notePreviewBody(c *ui.Context, k *colors, t *Tab, p *Pane) {
 	})
 }
 
+// minimizedRail lists the tab's minimized floats over its bottom right:
+// one chip each, which shows that float again. A hidden float is a
+// minimized layer to Rex's clients, and GoRex draws no pane for it, so
+// this is where the desktop finds it.
+func (a *App) minimizedRail(c *ui.Context, k *colors, floats []*Float) {
+	rail := ui.Row(c.Key("minimized-rail")).Absolute().Bottom(10).Right(10).Gap(6).AlignItems(ui.Center)
+	rail.Children(func() {
+		for _, f := range floats {
+			if f.Pane == nil {
+				continue
+			}
+			name, _ := f.Pane.label()
+			label := locales.FloatRestore(name)
+			chip := ui.Row(c.Key(minimizedKey(f.Pane.ID))).Gap(6).Padding(4, 8).Radius(9).
+				AlignItems(ui.Center).Background(k.panel).Border(1, k.panelBorder).
+				Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
+			chip.Tooltip(label)
+			if chip.Clicked() {
+				a.later(c, func() { a.showFloat(f) })
+			}
+			chip.Children(func() {
+				glyphIcon(c, "square-terminal", 12, k.iconMuted)
+				ui.Text(c, name).FontSize(11.5).FontWeight(500).TextColor(k.text).
+					SingleLine().Ellipsis("…").MaxWidth(180)
+			})
+		}
+	})
+}
+
 // floatHandle is the row a float keeps when pane headers are off: a grip
-// that moves it, and its zoom and close buttons.
+// that moves it, and its minimize, zoom and close buttons.
 func (a *App) floatHandle(c *ui.Context, k *colors, t *Tab, p *Pane, f *Float) {
 	h := ui.Row(c).Height(14).Shrink(0).Padding(0, 3, 0, 6).AlignItems(ui.Center).Cursor(ui.CursorMove)
 	a.dragFloat(c, f, h)
@@ -1011,6 +1049,9 @@ func (a *App) floatHandle(c *ui.Context, k *colors, t *Tab, p *Pane, f *Float) {
 	}
 	h.Children(func() {
 		ui.Spacer(c)
+		if iconButton(c, k, "minus", locales.PaneMinimize(), 18, 12).Tooltip(locales.PaneMinimize()).Clicked() {
+			a.later(c, func() { a.hideFloat(f) })
+		}
 		zoom, label := "maximize-2", locales.PaneZoom()
 		if f.Zoom {
 			zoom, label = "minimize-2", locales.PaneUnzoom()
@@ -1037,6 +1078,9 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 	}
 	// A canvas's panes are all free: none docks.
 	if p.float != nil {
+		if m.Item(locales.PaneMinimize()).Chosen() {
+			a.hideFloat(p.float)
+		}
 		if p.Tab != nil && p.Tab.canvas == nil && m.Item(locales.CmdDockPane()).Chosen() {
 			a.dockPane(p)
 		}
@@ -1114,6 +1158,9 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		// As Rex has them: split right, split down, float, zoom and close.
 		// A float's float button, lit, docks it.
 		if f := p.float; f != nil {
+			if iconButton(c, k, "minus", locales.PaneMinimize(), 26, 16).Tooltip(locales.PaneMinimize()).Clicked() {
+				a.later(c, func() { a.hideFloat(f) })
+			}
 			// A canvas's panes are all free: none docks.
 			if t.canvas == nil && iconButtonWith(c, k, "float", locales.CmdDockPane(), 26, 16, true, nil).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
 				a.later(c, func() { a.dockPane(p) })

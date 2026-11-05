@@ -50,6 +50,13 @@ var remoteUI struct {
 	lanAdd    string
 	lanErr    string
 	focusLAN  bool
+	// ts is the gateway's built-in Tailscale settings, as its files say
+	// (rexapi.LoadTailscale); tsURL is what is typed in its field, and
+	// tsErr what was wrong with the last save.
+	ts       rexapi.TailscaleConfig
+	tsURL    string
+	tsEdited bool
+	tsErr    string
 	// addingKey and joining show the forms that add a client by its key
 	// and join a network, in place of the buttons that open them.
 	addingKey, joining bool
@@ -67,9 +74,14 @@ func (a *App) showSection(id string) {
 	stopRemotePoll()
 	hostsPairQR = nil
 	settingsUI.section = id
-	if id == "remote" || id == "hosts" {
+	if id == "remote" || id == "network" {
 		fetchLAN()
 		a.startRemotePoll()
+	}
+	if id == "server" {
+		startServerInfoPoll()
+	} else {
+		stopServerInfoPoll()
 	}
 }
 
@@ -83,6 +95,7 @@ func stopRemotePoll() {
 	page.netURL, page.netKey, page.netName, page.netErr = "", "", "", false
 	page.addingKey, page.joining = false, false
 	page.focusLAN = false
+	page.ts, page.tsURL, page.tsEdited, page.tsErr = rexapi.TailscaleConfig{}, "", false, ""
 }
 
 // remoteAsk runs work off the UI thread, with the app's client of the
@@ -118,9 +131,6 @@ func (a *App) startRemotePoll() {
 	stop := make(chan struct{})
 	remoteUI.stop = stop
 	refresh := a.fetchRemote
-	if settingsUI.section == "hosts" {
-		refresh = fetchLAN
-	}
 	go func() {
 		pub := rex.ClientPublicKey()
 		win.Update(func() { remoteUI.myKey = pub })
@@ -142,6 +152,17 @@ func (a *App) startRemotePoll() {
 			}
 		}
 	}()
+}
+
+// fetchTailscale reads built-in Tailscale's settings, which the gateway
+// keeps and follows when it next turns the device on.
+func fetchTailscale() {
+	if c, err := rexapi.LoadTailscale(rexapi.TailnetDir()); err == nil {
+		remoteUI.ts = c
+		if !remoteUI.tsEdited {
+			remoteUI.tsURL = c.ControlURL
+		}
+	}
 }
 
 // fetchLAN reads the local network listener's settings and state, which
@@ -282,6 +303,7 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 // while it is shown.
 func (a *App) fetchRemote() {
 	fetchLAN()
+	fetchTailscale()
 	withAddress := remoteUI.reveal
 	a.remoteAsk(func(srv *rex.Client) func() {
 		st, err := srv.RemoteStatus()
@@ -520,14 +542,67 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 			label, _, _ = remoteState(rex.RemoteStatus{}, true)
 		}
 		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
-		return
+	} else {
+		st := page.st
+		a.remoteHeader(c, k, st)
+		a.remoteDevices(c, k, st)
+		a.remoteThisMachine(c, k, st)
+		a.remoteLAN(c, k)
 	}
-	st := page.st
-	a.remoteHeader(c, k, st)
-	a.remoteDevices(c, k, st)
-	a.remoteThisMachine(c, k, st)
-	a.remoteNetwork(c, k, st)
-	a.remoteLAN(c, k)
+	// The hosts this machine connects to sit under what it serves: one
+	// page, the two directions of the same remote access.
+	a.hostsSettings(c, k)
+}
+
+// networkSettings is the Network page: the coordinator network this
+// machine joins, and built-in Tailscale's control server, which the
+// remote access and Rex share.
+func (a *App) networkSettings(c *ui.Context, k *colors) {
+	page := &remoteUI
+	if !page.loaded {
+		label := locales.RemoteAsking()
+		if page.unreachable {
+			label, _, _ = remoteState(rex.RemoteStatus{}, true)
+		}
+		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
+	} else {
+		a.remoteNetwork(c, k, page.st)
+	}
+	a.remoteTailscale(c, k)
+}
+
+// remoteTailscale is the group of built-in Tailscale's control server:
+// the field that sets it, saved to the gateway's settings.
+func (a *App) remoteTailscale(c *ui.Context, k *colors) {
+	page := &remoteUI
+	conf := page.ts
+	settingsGroup(c, k, locales.RemoteTailscaleTitle(), "", locales.RemoteTailscaleNote(), func() {
+		groupRow(c, k, nil).Children(func() {
+			rowLine(c, k, locales.RemoteTailscaleControl(), func() {
+				if ui.TextInput(c.Key("ts-url"), &page.tsURL).Placeholder(locales.RemoteTailscalePlaceholder()).
+					Label(locales.RemoteTailscaleControl()).Font(monoFamily()).Width(260).Changed() {
+					page.tsEdited, page.tsErr = true, ""
+				}
+				if ui.Button(c.Key("ts-save"), locales.RemoteLanSave()).Disabled(!page.tsEdited).Clicked() {
+					url := strings.TrimSpace(page.tsURL)
+					if url != "" && !rexapi.ValidControlURL(url) {
+						page.tsErr = locales.RemoteTailscaleInvalid()
+						return
+					}
+					next := conf
+					next.ControlURL = url
+					if err := rexapi.SaveTailscale(rexapi.TailnetDir(), next); err != nil {
+						page.tsErr = err.Error()
+						return
+					}
+					page.ts, page.tsErr, page.tsEdited = next, "", false
+				}
+			})
+			if page.tsErr != "" {
+				rowError(c, k, page.tsErr)
+			}
+		})
+	})
 }
 
 // remoteHeader is the Remote page's first group: remote access, its
@@ -750,9 +825,21 @@ func (a *App) remoteThisMachine(c *ui.Context, k *colors, st rex.RemoteStatus) {
 					}
 					ui.Text(c, page.myKey).Font(monoFamily()).FontSize(10.5).TextColor(k.textFaint).LineHeight(1.4).Selectable()
 				})
-				if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
-					copyText("mine", page.myKey)
-				}
+				ui.Row(c).Gap(8).Shrink(0).Children(func() {
+					// Rex pairs by this machine's QR code, from the key
+					// above; until remote access serves, the way to set it up
+					// is the local network group below.
+					if a.localRexPairURL() != "" {
+						if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
+							a.openLocalPairQR()
+						}
+					} else if ui.Button(c.Key("setup-rex"), locales.HostsSetUpRex()).Clicked() {
+						remoteUI.focusLAN = true
+					}
+					if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
+						copyText("mine", page.myKey)
+					}
+				})
 			})
 			rowHint(c, k, locales.RemoteMyKeyNote())
 		})

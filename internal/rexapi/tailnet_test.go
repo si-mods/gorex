@@ -520,3 +520,102 @@ func TestPairURLWhy(t *testing.T) {
 		}
 	}
 }
+
+// TestTailscaleConfigFile checks the settings the app reads and writes:
+// a saved control server comes back, and one that is not a URL is refused.
+func TestTailscaleConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := SaveTailscale(dir, TailscaleConfig{ControlURL: "https://headscale.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadTailscale(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ControlURL != "https://headscale.example.com" {
+		t.Errorf("loaded %+v, want the control server", got)
+	}
+	if err := SaveTailscale(dir, TailscaleConfig{ControlURL: "headscale.example.com"}); err == nil {
+		t.Error("a URL without a scheme was saved")
+	}
+	if !ValidControlURL("https://headscale.example.com") || !ValidControlURL("http://10.0.0.1:8080") {
+		t.Error("a control server URL was refused")
+	}
+	if ValidControlURL("ftp://headscale.example.com") || ValidControlURL("https://") {
+		t.Error("a control server URL that is not http was accepted")
+	}
+}
+
+// TestTailscaleControlURLFromFile: a control server the app saved while
+// the gateway runs is used the next time Tailscale is turned on.
+func TestTailscaleControlURLFromFile(t *testing.T) {
+	f := startTailnetFixture(t)
+	f.node.state = "Running"
+	close(f.node.ready)
+	f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false, "hostname": "dev"})
+	f.mustCall("server.tailscale.disable", nil)
+	if err := SaveTailscale(f.dir, TailscaleConfig{ControlURL: "https://headscale.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	ts := tailscaleOf(t, f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false}))
+	if f.node.control != "https://headscale.example.com" {
+		t.Errorf("device made at %q", f.node.control)
+	}
+	if f.node.hostname != "dev" {
+		t.Errorf("hostname %q, want the one before", f.node.hostname)
+	}
+	if ts["control_url"] != "https://headscale.example.com" {
+		t.Errorf("status control_url %v", ts["control_url"])
+	}
+}
+
+// TestSaveTailscaleKeepsTheGatewayFields: the app sets the control server
+// alone, and the rest of the file, which the gateway changes while it
+// runs, stays as it is.
+func TestSaveTailscaleKeepsTheGatewayFields(t *testing.T) {
+	dir := t.TempDir()
+	first := TailscaleConfig{Enabled: true, Hostname: "dev", AllowTailnetMembers: true}
+	if err := writeJSON(tailscaleConfPath(dir), first); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveTailscale(dir, TailscaleConfig{ControlURL: "https://headscale.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadTailscale(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := first
+	want.ControlURL = "https://headscale.example.com"
+	if got != want {
+		t.Errorf("saved %+v, want %+v", got, want)
+	}
+}
+
+// TestTailscaleControlURLKeptByGatewayWrites: a control server the app
+// saved while the device runs survives the gateway's own writes, so that
+// turning it off and on again uses it.
+func TestTailscaleControlURLKeptByGatewayWrites(t *testing.T) {
+	f := startTailnetFixture(t)
+	f.node.state = "Running"
+	close(f.node.ready)
+	f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false, "hostname": "dev"})
+	if err := SaveTailscale(f.dir, TailscaleConfig{ControlURL: "https://headscale.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	f.mustCall("server.tailscale.disable", nil)
+	got, err := LoadTailscale(f.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ControlURL != "https://headscale.example.com" {
+		t.Errorf("turning off wrote %q over the saved control server", got.ControlURL)
+	}
+	if got.Enabled {
+		t.Error("turning off left the device enabled")
+	}
+	f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false})
+	if f.node.control != "https://headscale.example.com" {
+		t.Errorf("device made at %q", f.node.control)
+	}
+}

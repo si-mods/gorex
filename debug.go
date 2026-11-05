@@ -341,11 +341,11 @@ func (a *App) debug(dir, line string) {
 				})
 			}
 		}
-	case "hosts": // add NAME ADDRESS [PAIR-AS], retry NAME, remove NAME: the Remote Hosts page's
+	case "hosts": // add NAME ADDRESS [PAIR-AS], retry NAME, remove NAME: the Remote page's hosts
 		op, rest, _ := strings.Cut(arg, " ")
 		win.Update(func() {
 			if op == "add" {
-				a.openSettingsAt("hosts")
+				a.openSettingsAt("remote")
 				a.openAddHost()
 				f := strings.Fields(rest)
 				if len(f) > 0 {

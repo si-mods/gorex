@@ -2312,8 +2312,9 @@ func (a *App) hideFloat(f *Float) {
 	}
 	t := f.Pane.Tab
 	f.Hidden = true
-	// Out of sight, it is at rest.
-	f.gliding, f.fling = false, nil
+	// Out of sight, it is at rest: it keeps no zoom, and comes back at
+	// the box it was at.
+	f.Zoom, f.gliding, f.fling = false, false, nil
 	t.hiddenLast = f
 	if t.Focus == f.Pane {
 		t.Focus = nil

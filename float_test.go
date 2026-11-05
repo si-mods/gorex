@@ -1043,3 +1043,92 @@ func TestFloatState(t *testing.T) {
 		t.Error("the float was not raised above the others")
 	}
 }
+
+// TestFloatMinimizeRail checks the desktop side of a minimized layer: a
+// float hidden by its button or by Rex's session.set_layer_state leaves a
+// chip over the tab, which shows it again.
+func TestFloatMinimizeRail(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.split(false)
+	p := a.tab().Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	// The float's button appears with the fade of its actions.
+	tt.Frame()
+	tt.Advance(400 * time.Millisecond)
+	tt.Frame()
+	if err := tt.Click(locales.PaneMinimize()); err != nil {
+		t.Fatalf("no minimize button: %v", err)
+	}
+	tt.Frame()
+	if !p.float.Hidden {
+		t.Fatal("the minimize button did not hide the float")
+	}
+	name, _ := p.label()
+	label := locales.FloatRestore(name)
+	if _, ok := tt.Find(label); !ok {
+		t.Fatalf("no minimized chip %q; texts %q", label, tt.Texts())
+	}
+	if err := tt.Click(label); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if p.float.Hidden {
+		t.Error("the float is still hidden after its chip was clicked")
+	}
+	if a.tab().Focus != p {
+		t.Error("the float did not take the focus back")
+	}
+}
+
+// TestFloatMinimizeRailOnCanvas checks the rail on a canvas tab too: a
+// minimized box there has no cell to click, so its chip is the only way
+// back.
+func TestFloatMinimizeRailOnCanvas(t *testing.T) {
+	canvasPrefs(t, true)
+	a, tt := newTestApp(t)
+	a.split(false)
+	p := a.tab().Focus
+	tt.Frame()
+	if p.float == nil {
+		t.Fatal("the pane is not on the canvas")
+	}
+	tt.Advance(400 * time.Millisecond)
+	tt.Frame()
+	if err := tt.Click(locales.PaneMinimize()); err != nil {
+		t.Fatalf("no minimize button: %v", err)
+	}
+	tt.Frame()
+	if !p.float.Hidden {
+		t.Fatal("the minimize button did not hide the box")
+	}
+	name, _ := p.label()
+	label := locales.FloatRestore(name)
+	if _, ok := tt.Find(label); !ok {
+		t.Fatalf("no chip on the canvas; texts %q", tt.Texts())
+	}
+	if err := tt.Click(label); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if p.float.Hidden {
+		t.Error("the box is still hidden after its chip was clicked")
+	}
+}
+
+// TestFloatMinimizeClearsZoom: a minimized float keeps no zoom, whichever
+// path hid it, so its chip brings it back at the box it was at.
+func TestFloatMinimizeClearsZoom(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.split(false)
+	p := a.tab().Focus
+	if !a.floatPane(p) {
+		t.Fatal("the pane did not float")
+	}
+	p.float.Zoom = true
+	a.hideFloat(p.float)
+	if p.float.Zoom {
+		t.Error("the hidden float kept its zoom")
+	}
+}
