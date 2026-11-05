@@ -173,8 +173,14 @@ func (a *App) settingsView(c *ui.Context) {
 
 // terminalFace gives e the face of the main window's unfocused tiled
 // terminal pane, as paneCard draws it: the system's glass tinted by it
-// under the glass setting, else the face whole.
+// under the glass setting, else the face whole. A configured theme's
+// background is not taken: the settings' text is set for the window's
+// colors, and could not be read over a theme of the other appearance.
 func terminalFace(c *ui.Context, k *colors, e ui.Element) {
+	if termOpaque {
+		e.Background(k.card)
+		return
+	}
 	bg := cardFace(c, k, false, false)
 	if glassOn() {
 		e.Material(ui.SystemGlass{Tint: glassTint(c, k, false), Fallback: faceMaterial{bg}})
@@ -370,7 +376,7 @@ func settingsGroup(c *ui.Context, k *colors, label, note, foot string, body func
 		groupRows = 0
 		ui.Column(c).Gap(2).Children(func() {
 			// A group has the face of the main window's terminals.
-			group := ui.Column(c).Radius(14).Border(1, k.cardBorder).Shadow(0, 1, 2, 0, k.shadow)
+			group := ui.Column(c).Radius(14).Clip().Border(1, k.cardBorder).Shadow(0, 1, 2, 0, k.shadow)
 			terminalFace(c, k, group)
 			group.Children(body)
 			if foot != "" {
