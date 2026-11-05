@@ -54,3 +54,16 @@ func zombie(pid int) bool {
 	k, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
 	return err == nil && k.Proc.P_stat == szomb
 }
+
+// slaveName is the name of the slave of the master fd.
+func slaveName(fd int) string {
+	var name [128]byte
+	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), tiocptygname, uintptr(unsafe.Pointer(&name[0]))); e != 0 {
+		return ""
+	}
+	n := bytes.IndexByte(name[:], 0)
+	if n < 0 {
+		n = len(name)
+	}
+	return string(name[:n])
+}

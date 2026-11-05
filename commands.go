@@ -1152,6 +1152,8 @@ type paletteItem struct {
 	// title, when hasDot.
 	dot    ui.Color
 	hasDot bool
+	// disabled rows show, dimmed, what cannot run now, detail saying why.
+	disabled bool
 }
 
 func (a *App) paletteItems() []paletteItem {
@@ -1205,6 +1207,7 @@ func (a *App) paletteItems() []paletteItem {
 			items = append(items, a.newTabOnItems(match)...)
 		}
 	}
+	items = append(items, a.teleportItems(match)...)
 	for _, cmd := range a.custom {
 		if !match(cmd.Title()) && !match(cmd.English()) {
 			continue
@@ -1334,7 +1337,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			if in.Shortcut(0, ui.KeyUp) {
 				a.paletteSel, reveal = max(a.paletteSel-1, 0), true
 			}
-			if in.Submitted() && len(items) > 0 {
+			if in.Submitted() && len(items) > 0 && !items[a.paletteSel].disabled {
 				a.paletteOpen = false
 				items[a.paletteSel].run()
 			}
@@ -1364,7 +1367,9 @@ func (a *App) palette(c *ui.Context, k *colors) {
 				} else if row.Hovered() {
 					row.Background(k.hover)
 				}
-				if row.Clicked() {
+				if it.disabled {
+					dimmed(row, 0.5)
+				} else if row.Clicked() {
 					a.paletteOpen = false
 					it.run()
 				}
@@ -1373,7 +1378,8 @@ func (a *App) palette(c *ui.Context, k *colors) {
 					if it.hasDot {
 						ui.Box(c).Size(8, 8).Radius(4).Background(it.dot).Shrink(0)
 					}
-					ui.RichText(c, titleSpans(it.title, 13.5, 500, k.text)...).Label(it.title).SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
+					// The title takes its width, the detail what is left.
+					ui.RichText(c, titleSpans(it.title, 13.5, 500, k.text)...).Label(it.title).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(70)
 					if it.detail != "" {
 						ui.RichText(c, titleSpans(it.detail, 13, 400, k.textFaint)...).Label(it.detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 					}

@@ -44,7 +44,8 @@ func testServer(t *testing.T) (*Server, *atomic.Int32) {
 	}
 	hostDone := make(chan struct{})
 	close(hostDone)
-	s := &Server{sessions: map[string]*session{}, started: time.Now(), layoutRev: 1, hostDone: hostDone, quit: make(chan struct{})}
+	s := &Server{sessions: map[string]*session{}, started: time.Now(), layoutRev: 1, hostDone: hostDone, quit: make(chan struct{}),
+		linksFile: filepath.Join(os.Getenv("GOREX_DIR"), "teleports.json")}
 	t.Cleanup(func() {
 		s.remoteClose()
 		remoteListen, remotePeerKey = old, oldKey

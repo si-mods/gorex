@@ -29,6 +29,9 @@ type pty struct {
 	processID int
 }
 
+// tty is the name of a terminal's slave: a console has none.
+func (p *pty) tty() string { return "" }
+
 // startPTY runs argv (argv[0] as the program sees it, path the file) in a
 // new pseudo console of cols×rows.
 func startPTY(path string, argv []string, dir string, env []string, cols, rows int) (*pty, error) {

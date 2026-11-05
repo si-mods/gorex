@@ -285,6 +285,20 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			n.Name = paneName(name)
 		}
 		res.New = n.SID
+	case "pane.teleporting", "pane.teleported":
+		// The CLI teleports the pane's work (gorex teleport): the window
+		// waits for the session on the host, then the pane becomes it, as
+		// the menu's teleport does.
+		h, code, msg := a.hostAt(c.Host)
+		if h == nil || c.Target == "" {
+			return fail(cmp.Or(code, "bad_args"), cmp.Or(msg, "no session"))
+		}
+		if c.Op == "pane.teleporting" {
+			h.expecting(c.Target, true)
+			return res
+		}
+		a.teleported(p, h, rex.SessionInfo{ID: c.Target})
+		h.expecting(c.Target, false)
 	case "pane.close":
 		a.closePane(p)
 	case "tab.close":

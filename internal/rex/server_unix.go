@@ -27,6 +27,10 @@ func lockFile(f *os.File) error { return unix.Flock(int(f.Fd()), unix.LOCK_EX|un
 // app's.
 func detached() *syscall.SysProcAttr { return &syscall.SysProcAttr{Setsid: true} }
 
+// hideConsole keeps a command the server runs from showing a window: none
+// does here.
+func hideConsole(*exec.Cmd) {}
+
 // hostInfo describes this machine; it may take a second.
 func hostInfo() HostInfo {
 	h := HostInfo{}

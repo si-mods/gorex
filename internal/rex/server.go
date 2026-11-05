@@ -77,6 +77,10 @@ type Server struct {
 	// peer of each, until it is finished or aborted: an abort after the
 	// session ended takes only these.
 	puts sync.Map
+	// linksFile is teleports.json, in Dir when "", and home the home
+	// directory, the user's when "": a test's servers, in one process,
+	// keep one each.
+	linksFile, home string
 }
 
 // layoutCmd is a layout command waiting for the app's answer, done.
@@ -480,6 +484,12 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		s.transfer(conn, r, first, a.Op, peer)
 		return
 	}
+	// A teleport's package follows its request, as a put's file does.
+	// Only this machine packs one.
+	if a.Op == "teleport" || a.Op == "teleport.pack" && peer == "" {
+		s.teleport(conn, r, first, a.Op, peer)
+		return
+	}
 	s.control(conn, r, first, peer)
 }
 
@@ -641,6 +651,8 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	command := remote && req.Op == "command" && s.remoteMayCommand(peer)
 	if remote && req.Op == "command" && req.Command != nil && req.Command.Op == "action" && !s.remoteControlEnabled() {
 		err = errors.New("rex: remote control is off")
+	} else if remote && req.Op == "command" && req.Command != nil && strings.HasPrefix(req.Command.Op, "pane.teleport") {
+		err = errors.New("rex: a teleport is this machine's to show")
 	} else if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
 	} else if remote && !remoteAllowed(req.Op) && !layout && !command && !(req.Op == "action" && s.remoteControlEnabled()) {
@@ -776,26 +788,14 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return infos, nil
 	case "create":
-		s.ops.RLock()
-		defer s.ops.RUnlock()
 		o := CreateOptions{}
 		if req.Create != nil {
 			o = *req.Create
 		}
-		id := newID()
-		ss, err := newSession(id, o, peer, s.sessionsChanged)
+		ss, err := s.create(o, peer)
 		if err != nil {
 			return nil, err
 		}
-		ss.owner = peer
-		s.mu.Lock()
-		s.sessions[id] = ss
-		s.order = append(s.order, id)
-		s.mu.Unlock()
-		// The journal names the session's client, so that one started again
-		// after a crash stays that client's.
-		s.journal.session(id, peer, ss.shell, ss.dir)
-		s.notify("sessions")
 		return s.info(ss), nil
 	case "kill":
 		s.ops.RLock()
@@ -807,15 +807,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if err != nil {
 			return nil, nil // already gone
 		}
-		ss.kill()
-		s.mu.Lock()
-		delete(s.sessions, req.SID)
-		s.order = slices.DeleteFunc(s.order, func(id string) bool { return id == req.SID })
-		if len(s.sessions) == 0 {
-			s.idleFrom = time.Now()
-		}
-		s.mu.Unlock()
-		s.notify("sessions")
+		s.end(ss)
 		return nil, nil
 	case "clients":
 		s.mu.Lock()
@@ -1085,6 +1077,46 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		return nil, nil
 	}
 	return nil, fmt.Errorf("unknown op %q", req.Op)
+}
+
+// create starts a session of o for peer, a remote client's key or "" for
+// this machine.
+func (s *Server) create(o CreateOptions, peer string) (*session, error) {
+	s.ops.RLock()
+	defer s.ops.RUnlock()
+	id := o.id
+	if id == "" {
+		id = newID()
+	} else if _, err := s.session(id); err == nil {
+		return nil, fmt.Errorf("rex: a session %s runs already", id)
+	}
+	ss, err := newSession(id, o, peer, s.sessionsChanged)
+	if err != nil {
+		return nil, err
+	}
+	ss.owner = peer
+	s.mu.Lock()
+	s.sessions[id] = ss
+	s.order = append(s.order, id)
+	s.mu.Unlock()
+	// The journal names the session's client, so that one started again
+	// after a crash stays that client's.
+	s.journal.session(id, peer, ss.shell, ss.dir)
+	s.notify("sessions")
+	return ss, nil
+}
+
+// end kills ss and forgets it.
+func (s *Server) end(ss *session) {
+	ss.kill()
+	s.mu.Lock()
+	delete(s.sessions, ss.id)
+	s.order = slices.DeleteFunc(s.order, func(id string) bool { return id == ss.id })
+	if len(s.sessions) == 0 {
+		s.idleFrom = time.Now()
+	}
+	s.mu.Unlock()
+	s.notify("sessions")
 }
 
 func newID() string {

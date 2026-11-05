@@ -411,6 +411,20 @@ on there.
 `go run ./tools/remotectl pair ADDRESS NAME` asks to pair from a machine
 without the app.
 
+### Teleport
+
+Teleport to… (the pane's menu, or Teleport to a host in the command
+palette) moves a pane's work to a connected host: the Git work tree's
+commits, changes and untracked files, Claude Code's or omp's conversation, and the
+scrollback. The host makes a work tree of its clone of the repo,
+`.gorex/teleport/<id>` on a branch `teleport/<id>`, or, for work coming
+back to a directory it left untouched, takes it there again; and starts
+`claude --resume` or `omp --resume` there, or a shell; the pane then shows that session, in
+a tab of the host's, and its own session ends. Only a shell at its prompt
+or Claude Code or omp waiting for the user can go, from this machine;
+`gorex teleport PANE HOST` does the same from the command line. See
+[docs/teleport.md](docs/teleport.md).
+
 ## Importing a Rex session
 
 GoRex reads a Rex server and makes the same shape here: a Rex session

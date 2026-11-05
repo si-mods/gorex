@@ -30,7 +30,9 @@ const (
 )
 
 // serverTarget is -S, a host label or address; Main sets it for a call.
-var serverTarget string
+// serverAddress is the address connect dialed for it, by which the window
+// knows the host too.
+var serverTarget, serverAddress string
 
 // GhosttyWarnings, when set by the app, lists the Ghostty options the app
 // ignores, for config check. It is nil in tests and tools.
@@ -101,6 +103,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return actionCmd(args, out, errOut)
 	case "float":
 		return floatCmd(args, out, errOut)
+	case "teleport":
+		return teleportCmd(args, out, errOut)
 	case "rex-import":
 		return rexImportCmd(args, out, errOut)
 	case "rex-mirror":
@@ -140,6 +144,7 @@ Usage:
   gorex run [--json] [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
   gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
+  gorex teleport [--json] PANE HOST
   gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--json]
   gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH]
   gorex version [--json]
@@ -211,6 +216,7 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 			return nil, ExitTarget
 		}
 		if len(found) == 1 {
+			serverAddress = found[0].Address
 			return dialRemote(found[0], errOut)
 		}
 	}
@@ -231,6 +237,7 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 				match = &h
 			}
 			if match != nil {
+				serverAddress = match.Target
 				return dialRemote(savedHost{Address: match.Target}, errOut)
 			}
 		}
@@ -242,6 +249,7 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 		fmt.Fprintln(errOut, err)
 		return nil, ExitServer
 	}
+	serverAddress = strings.TrimSpace(serverTarget)
 	return c, ExitOK
 }
 

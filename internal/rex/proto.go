@@ -43,7 +43,10 @@ import (
 // foreground process's ID. Still within 3, the capability "file.transfer":
 // connections that send a file into a session's directory ("file.put",
 // FilePut) and take one from it ("file.get", FileGet), and the
-// "transfer" events of their progress (Transfer).
+// "transfer" events of their progress (Transfer). Still within 3, the
+// capability "teleport": "teleport" and "teleport.pack", each on a
+// connection of its own, which move a pane's work to another machine
+// (Teleport).
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -77,7 +80,7 @@ const CapabilityFileTransfer = "file.transfer"
 
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityTeleport}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -154,6 +157,9 @@ type Request struct {
 	// Format is what "format" shows of the session's terminal
 	// (CapabilityTerminalQuery).
 	Format *FormatOptions `json:"format,omitempty"`
+	// Teleport is the package that follows "teleport" on its connection
+	// (CapabilityTeleport).
+	Teleport *TeleportManifest `json:"teleport,omitempty"`
 }
 
 // CommandTimeout is how long the server waits for the app to make a
@@ -181,7 +187,10 @@ type LayoutCommand struct {
 	// Op is "space.create", "space.rename", "space.close", "tab.create",
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
-	// "pane.swap" or "pane.move".
+	// "pane.swap", "pane.move", "pane.teleporting" or "pane.teleported":
+	// a local client's only, these tell of the teleport of the pane of SID
+	// to Host, the session Target there (Teleport), which the window waits
+	// for, then makes the pane.
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// Space is the workspace the command acts on, by ID; "" for the
@@ -210,6 +219,9 @@ type LayoutCommand struct {
 	Amount    float32 `json:"amount,omitempty"`
 	Target    string  `json:"target,omitempty"`
 	Ratio     float32 `json:"ratio,omitempty"`
+	// Host is a host of the window's, by its address, of the teleport
+	// commands, whose Target is the session there.
+	Host string `json:"host,omitempty"`
 	// NewTab moves a pane into a tab of its own, named Name.
 	NewTab bool `json:"new_tab,omitempty"`
 	// Action is the action of "action", and Args its arguments. Remote
@@ -496,13 +508,21 @@ type CreateOptions struct {
 	Env     []string `json:"env,omitempty"`
 	Cols    int      `json:"cols,omitempty"`
 	Rows    int      `json:"rows,omitempty"`
+	// prelude is text the session's screen shows before the program's
+	// first output: a teleported pane's scrollback; id the session's id,
+	// a new one when "": a teleport's, its hop's.
+	prelude []byte
+	id      string
 }
 
 // SessionInfo describes a session and what runs in it now.
 type SessionInfo struct {
-	ID      string    `json:"id"`
-	PID     int       `json:"pid"`
-	Shell   string    `json:"shell"`
+	ID    string `json:"id"`
+	PID   int    `json:"pid"`
+	Shell string `json:"shell"`
+	// Command tells a session started with a command, Shell its program,
+	// rather than the user's shell.
+	Command bool      `json:"command,omitempty"`
 	Created time.Time `json:"created"`
 	// Program is the name of the program in the foreground, and Args its
 	// arguments; Idle tells that it is the shell itself, at its prompt.
@@ -516,8 +536,11 @@ type SessionInfo struct {
 	Dir string `json:"dir"`
 	// AgentSession is the conversation Claude Code has open in the
 	// foreground, and AgentConfigDir its config dir when not the default.
+	// For omp, they are its conversation and its data dir, and agentFile
+	// the conversation's file.
 	AgentSession   string `json:"agentSession,omitempty"`
 	AgentConfigDir string `json:"agentConfigDir,omitempty"`
+	agentFile      string
 	// Title is the last title a program set (OSC 0, OSC 2).
 	Title      string    `json:"title,omitempty"`
 	LastOutput time.Time `json:"lastOutput"`

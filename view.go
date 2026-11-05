@@ -805,6 +805,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 			a.reconnecting(c, k, p)
 			a.fileDrop(c, k, p, card, tv)
 			a.transfers(c, k, p)
+			a.teleportOverlay(c, k, p)
 		})
 	})
 	if dragged, over := ui.DragOver[*Pane](card); over {
@@ -1121,6 +1122,10 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 				}
 			}
 		})
+	}
+	if p.SID != "" && p.browser == nil && p.note == nil {
+		m.Separator()
+		m.Submenu(locales.CmdTeleport(), func(sm *ui.Menu) { a.teleportMenu(sm, p) })
 	}
 }
 

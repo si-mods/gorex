@@ -617,5 +617,21 @@
   "settingsCanvasHint": "实验性功能。每个窗格都是无边平面上的自由方框：在空白处滚动或拖动，或在空白处按住空格键后拖动，以平移；捏合，或按住 Ctrl 或 Cmd 滚动，以缩放；右键点击空白处新建窗格。关闭后所有窗格停靠回标签页。",
   "canvasNewTerminal": "新建终端",
   "canvasNewBrowser": "新建浏览器",
-  "canvasNewNote": "新建便签"
+  "canvasNewNote": "新建便签",
+  "cmdTeleport": "传送到",
+  "cmdTeleportTo": "传送到 {host}",
+  "teleportBusy": "正在传送",
+  "teleportFromHost": "只有本机的窗格可以传送",
+  "teleportEnded": "会话已结束",
+  "teleportProgram": "{program} 正在运行：只有停在提示符的 shell、Claude Code 或 omp 可以传送",
+  "teleportUnknown": "尚不知道 {agent} 打开的对话",
+  "teleportWorking": "{agent} 正在工作：等它完成，或先停止它",
+  "teleportNoHosts": "没有已连接的主机",
+  "teleportTooOld": "{host} 上的 GoRex 版本过旧，无法接收传送",
+  "teleportTitle": "正在传送到 {host}",
+  "teleportPackingStep": "正在打包工作树和对话…",
+  "teleportSendingStep": "正在发送到 {host}…",
+  "teleportStartingStep": "正在 {host} 上启动…",
+  "teleportCancel": "取消",
+  "teleportFailed": "传送到 {host} 失败：{error}"
 }
