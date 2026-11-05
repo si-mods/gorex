@@ -5,10 +5,13 @@
 // The wire is Rex's own. A control connection at /api/control carries
 // JSON messages, a data connection at /api/data streams a block's output,
 // and /api/help, /llms.txt and /llms.html describe the API. The package
-// speaks revision 8, the revision of the documentation in testdata:
+// speaks revision 10, the revision of the documentation in testdata:
 // revision 8 added session.bootstrap's data_tickets, which hands a client
 // the tickets data.connect would issue, so a terminal opens without a
-// round trip first.
+// round trip first; revision 9 added session.set_layer_state and a
+// layer's state, so a floating layer can be minimized; and revision 10
+// added built-in Tailscale's control_url, for a control server such as
+// Headscale.
 //
 // The server reads the layout from the GoRex server the app keeps
 // (internal/rex), maps it, and tells its clients of the changes it sees.
@@ -36,7 +39,8 @@
 // | --- | --- |
 // | session.move | not_supported: sessions are GoRex's workspaces, in the layout's order |
 // | session.bootstrap (data_tickets) | a ticket for each terminal block of the sessions it attaches, since every GoRex block is a terminal; a request that names another creator gets no ticket for it, and the same fallback to data.connect applies |
-// | session.view (layers) | GoRex's floating panes are floating layers of one block each, after the tiled layer; a hidden floating pane is shown in no layer |
+// | session.view (layers) | GoRex's floating panes are floating layers of one block each, after the tiled layer; a hidden pane is a minimized layer |
+// | session.set_layer_state | a floating layer is a floating pane: minimizing hides it and gives its focus away, and focus raises it and gives it the focus; the tiled layer cannot be minimized |
 // | session.new_layer, session.close_layer, session.float_block, session.detach_block, session.resize_layer, session.raise_layer, session.lower_layer | not_supported: the app takes no layout commands for floating panes, and GoRex has no detached blocks |
 // | session.help | lists every method this server implements, not only a session's |
 // | session.list_clients | connected_at is when the client connected, not when it attached to this session |

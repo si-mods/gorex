@@ -21,7 +21,7 @@ func methodTailscaleEnable(c *control, a args) (any, *apiError) {
 	if aerr != nil {
 		return nil, aerr
 	}
-	if aerr := a.only("hostname", "allow_tailnet_members", "auth_key", "advertise_tags"); aerr != nil {
+	if aerr := a.only("hostname", "control_url", "allow_tailnet_members", "auth_key", "advertise_tags"); aerr != nil {
 		return nil, aerr
 	}
 	allow, ok, aerr := a.boolean("allow_tailnet_members")
@@ -33,6 +33,9 @@ func methodTailscaleEnable(c *control, a args) (any, *apiError) {
 	}
 	o := enableOptions{allowMembers: allow}
 	if o.hostname, _, aerr = a.str("hostname"); aerr != nil {
+		return nil, aerr
+	}
+	if o.controlURL, o.controlSet, aerr = a.str("control_url"); aerr != nil {
 		return nil, aerr
 	}
 	if o.authKey, _, aerr = a.str("auth_key"); aerr != nil {

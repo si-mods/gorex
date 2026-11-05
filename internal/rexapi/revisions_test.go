@@ -44,7 +44,7 @@ func TestRevisionHidesFields(t *testing.T) {
 	if got := transformResult(0, "server.status", status).(map[string]any); got["api_revision"] != nil || got["api_min_revision"] != nil {
 		t.Fatalf("revision 0 still sees the revisions: %v", got)
 	}
-	if got := transformResult(2, "server.status", status).(map[string]any); got["api_revision"] != 8 {
+	if got := transformResult(2, "server.status", status).(map[string]any); got["api_revision"] != float64(8) {
 		t.Fatalf("revision 2 lost api_revision: %v", got)
 	}
 	format := map[string]any{"id": "b", "total": 3, "eof": true, "args": map[string]any{"max_bytes": 1}}
@@ -61,6 +61,40 @@ func TestRevisionHidesFields(t *testing.T) {
 	if got := transformResult(8, "session.bootstrap", bootstrap).(map[string]any); got["data_tickets"] == nil {
 		t.Fatalf("revision 8 lost data_tickets: %v", got)
 	}
+
+	// Revision 9 adds a layer's state, which older clients do not see.
+	view := map[string]any{"windows": []any{map[string]any{"layers": []any{
+		map[string]any{"layer_id": "l", "state": "minimized"},
+	}}}}
+	if got := transformResult(8, "session.view", view).(map[string]any); layerOf(got)["state"] != nil {
+		t.Fatalf("revision 8 sees a layer's state: %v", got)
+	}
+	if got := transformResult(9, "session.view", view).(map[string]any); layerOf(got)["state"] != "minimized" {
+		t.Fatalf("revision 9 lost a layer's state: %v", got)
+	}
+	attached := map[string]any{"view": view}
+	if got := transformResult(8, "session.attach", attached).(map[string]any); layerOf(got["view"].(map[string]any))["state"] != nil {
+		t.Fatalf("revision 8 attach sees a layer's state: %v", got)
+	}
+
+	// Revision 10 adds Tailscale's control server, which older clients
+	// do not see.
+	tail := map[string]any{"tailscale": map[string]any{"state": "running", "control_url": "https://headscale.example.com"}}
+	if got := transformResult(9, "server.status", tail).(map[string]any); got["tailscale"].(map[string]any)["control_url"] != nil {
+		t.Fatalf("revision 9 sees control_url: %v", got)
+	}
+	if got := transformResult(10, "server.status", tail).(map[string]any); got["tailscale"].(map[string]any)["control_url"] == nil {
+		t.Fatalf("revision 10 lost control_url: %v", got)
+	}
+	event := map[string]any{"state": "running", "control_url": "https://headscale.example.com"}
+	if got := transformResult(9, "tailscale_status_changed", event).(map[string]any); got["control_url"] != nil {
+		t.Fatalf("revision 9 event sees control_url: %v", got)
+	}
+}
+
+// layerOf returns the first layer of a view-like object.
+func layerOf(v map[string]any) map[string]any {
+	return v["windows"].([]any)[0].(map[string]any)["layers"].([]any)[0].(map[string]any)
 }
 
 func TestMethodAvailability(t *testing.T) {
@@ -75,6 +109,12 @@ func TestMethodAvailability(t *testing.T) {
 	}
 	if !methodAvailable(3, "com.superlogical.terminal.modes") {
 		t.Fatal("revision 3 does not know terminal modes")
+	}
+	if methodAvailable(8, "session.set_layer_state") {
+		t.Fatal("revision 8 knows session.set_layer_state")
+	}
+	if !methodAvailable(9, "session.set_layer_state") {
+		t.Fatal("revision 9 does not know session.set_layer_state")
 	}
 }
 
@@ -109,6 +149,12 @@ func TestHelpFollowsRevision(t *testing.T) {
 	}
 	if !names(5, true)["server.apple.privacy_status"] {
 		t.Fatal("revision 5 help.all does not list privacy_status")
+	}
+	if names(8, false)["session.set_layer_state"] {
+		t.Fatal("revision 8 help lists session.set_layer_state")
+	}
+	if !names(9, false)["session.set_layer_state"] {
+		t.Fatal("revision 9 help does not list session.set_layer_state")
 	}
 }
 

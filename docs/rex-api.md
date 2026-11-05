@@ -1,7 +1,7 @@
 # Rex's apps
 
 Rex's own apps, the iPhone one among them, connect to GoRex as they
-connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 8, from
+connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 10, from
 the session server the GoRex app runs: the same WebSocket endpoints, the
 same messages, the same errors. Rex's apps need no change.
 
@@ -111,7 +111,12 @@ allow.
    The first time, it prints a sign-in link: open it and sign in. Or sign
    in without a browser with an auth key:
    `GoRex rexapi tailscale on --auth-key-file key.txt` (the key is used
-   once, and never saved or logged).
+   once, and never saved or logged). A tailnet run by your own control
+   server, such as Headscale, takes its URL:
+   `GoRex rexapi tailscale on --control-url https://headscale.example.com`.
+   Turn it off first to switch servers; an explicit empty `control_url`
+   (`GoRex rexapi call server.tailscale.enable '{"allow_tailnet_members":false,"control_url":""}'`)
+   returns the device to Tailscale's own.
 3. Wait for `https: available` in `GoRex rexapi tailscale status`.
 4. Show the address as a QR code, and scan it with Rex on the phone:
 
@@ -134,7 +139,7 @@ device out; `tailscale rename NAME` renames it.
 | `GoRex rexapi lan on \| off \| status` | the listener on the local network |
 | `GoRex rexapi lan listen HOST:PORT` | the address it listens on |
 | `GoRex rexapi lan allow NETWORK` / `deny NETWORK` | the networks let in: a CIDR, or an address alone |
-| `GoRex rexapi tailscale on [--hostname NAME] [--allow-tailnet-members] [--auth-key-file FILE]` | turn built-in Tailscale on |
+| `GoRex rexapi tailscale on [--hostname NAME] [--control-url URL] [--allow-tailnet-members] [--auth-key-file FILE]` | turn built-in Tailscale on |
 | `GoRex rexapi tailscale off \| login \| logout \| rename NAME \| status` | the rest of `server.tailscale.*`, and its status |
 | `GoRex rexapi pair [--json]` | the tailnet address as a QR code |
 | `GoRex rexapi call METHOD [JSON]` | call any method, as `rex api call` does |
@@ -150,9 +155,10 @@ with the error code Rex's documentation gives the closest meaning, and
 says why. The full list is in `internal/rexapi/doc.go`. The ones a user
 meets:
 
-- Floating layers are shown, but not made, moved or closed from a Rex
-  client: the GoRex window takes no such commands yet. A hidden floating
-  pane is in no layer.
+- Floating layers are shown, but not made or closed from a Rex client:
+  the GoRex window takes no such commands yet. A hidden floating pane is
+  a minimized layer, and `session.set_layer_state` minimizes it and
+  brings it back, with the focus when asked.
 - There are no detached blocks, Lua scripts, configuration file or host
   list: `client.set_script`, `client.perform`, `hosts.put` and the like
   fail with `not_supported`, and `client.keymap` is empty.

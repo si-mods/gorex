@@ -28,6 +28,7 @@ type fakeNode struct {
 	mu       sync.Mutex
 	hostname string
 	authKey  string
+	control  string
 	tags     []string
 	state    string
 	authURL  string
@@ -151,9 +152,9 @@ func startTailnetFixture(t *testing.T) *tailnetFixture {
 	f := startFixture(t)
 	node := &fakeNode{state: "NoState", owner: 7, callers: map[string]*apitype.WhoIsResponse{}, ready: make(chan struct{})}
 	dir := t.TempDir()
-	f.g.tailnet = newTailnet(f.g, dir, func(_, hostname, authKey string, tags []string) tailnetNode {
+	f.g.tailnet = newTailnet(f.g, dir, func(_, hostname, authKey, controlURL string, tags []string) tailnetNode {
 		node.mu.Lock()
-		node.hostname, node.authKey, node.tags, node.closed = hostname, authKey, tags, false
+		node.hostname, node.authKey, node.control, node.tags, node.closed = hostname, authKey, controlURL, tags, false
 		node.mu.Unlock()
 		return node
 	})
@@ -266,14 +267,23 @@ func TestTailscaleLifecycle(t *testing.T) {
 	if _, err := f.call("server.tailscale.enable", map[string]any{}); err == nil || !strings.HasPrefix(err.Error(), "bad_request") {
 		t.Errorf("enable without allow_tailnet_members: %v", err)
 	}
+	if _, err := f.call("server.tailscale.enable", map[string]any{"allow_tailnet_members": false, "control_url": "not a URL"}); err == nil || !strings.HasPrefix(err.Error(), "bad_request") {
+		t.Errorf("enable with a bad control URL: %v", err)
+	}
 
 	f.node.state, f.node.authURL = "NeedsLogin", "https://login.example/abc"
-	ts := tailscaleOf(t, f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false, "hostname": "dev", "auth_key": "tskey-secret"}))
+	ts := tailscaleOf(t, f.mustCall("server.tailscale.enable", map[string]any{
+		"allow_tailnet_members": false, "hostname": "dev", "auth_key": "tskey-secret",
+		"control_url": "https://headscale.example.com",
+	}))
 	if ts["state"] != "needs_login" || ts["auth_url"] != "https://login.example/abc" || ts["allow_tailnet_members"] != false {
 		t.Errorf("enable: %v", ts)
 	}
-	if f.node.hostname != "dev" || f.node.authKey != "tskey-secret" {
-		t.Errorf("device made as %q with key %q", f.node.hostname, f.node.authKey)
+	if ts["control_url"] != "https://headscale.example.com" {
+		t.Errorf("control_url: %v", ts["control_url"])
+	}
+	if f.node.hostname != "dev" || f.node.authKey != "tskey-secret" || f.node.control != "https://headscale.example.com" {
+		t.Errorf("device made as %q with key %q at %q", f.node.hostname, f.node.authKey, f.node.control)
 	}
 	conf, err := os.ReadFile(filepath.Join(f.dir, "tailscale.json"))
 	if err != nil || strings.Contains(string(conf), "tskey") || !strings.Contains(string(conf), `"enabled": true`) {
@@ -316,10 +326,13 @@ func TestTailscaleLifecycle(t *testing.T) {
 		t.Errorf("pair URL: %q %v", url, err)
 	}
 
-	// Enabling again only applies allow_tailnet_members.
-	ts = tailscaleOf(t, f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": true, "hostname": "other"}))
-	if ts["allow_tailnet_members"] != true || f.node.hostname != "dev" {
-		t.Errorf("enable again: %v, hostname %q", ts, f.node.hostname)
+	// Enabling again only applies allow_tailnet_members; a control URL
+	// or hostname is ignored while the device runs.
+	ts = tailscaleOf(t, f.mustCall("server.tailscale.enable", map[string]any{
+		"allow_tailnet_members": true, "hostname": "other", "control_url": "https://other.example.com",
+	}))
+	if ts["allow_tailnet_members"] != true || f.node.hostname != "dev" || f.node.control != "https://headscale.example.com" {
+		t.Errorf("enable again: %v, hostname %q, control %q", ts, f.node.hostname, f.node.control)
 	}
 
 	if _, err := f.call("server.tailscale.rename", map[string]any{"hostname": "-bad"}); err == nil || !strings.HasPrefix(err.Error(), "bad_request") {
@@ -338,9 +351,22 @@ func TestTailscaleLifecycle(t *testing.T) {
 		t.Error("a pair URL while off")
 	}
 	conf, _ = os.ReadFile(filepath.Join(f.dir, "tailscale.json"))
-	if !strings.Contains(string(conf), `"enabled": false`) || !strings.Contains(string(conf), `"hostname": "studio"`) {
+	if !strings.Contains(string(conf), `"enabled": false`) || !strings.Contains(string(conf), `"hostname": "studio"`) ||
+		!strings.Contains(string(conf), `"control_url": "https://headscale.example.com"`) {
 		t.Errorf("saved after disable: %s", conf)
 	}
+	// An explicit empty control_url goes back to Tailscale's own.
+	ts = tailscaleOf(t, f.mustCall("server.tailscale.enable", map[string]any{
+		"allow_tailnet_members": false, "control_url": "",
+	}))
+	if ts["control_url"] != nil || f.node.control != "" {
+		t.Errorf("clearing the control URL: %v, device at %q", ts, f.node.control)
+	}
+	conf, _ = os.ReadFile(filepath.Join(f.dir, "tailscale.json"))
+	if strings.Contains(string(conf), "control_url") {
+		t.Errorf("saved after clearing: %s", conf)
+	}
+
 	// Disabling again is safe, and logging out while off changes nothing.
 	f.mustCall("server.tailscale.disable", nil)
 	f.mustCall("server.tailscale.logout", nil)

@@ -416,7 +416,7 @@ rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 ## Rex's iPhone app
 
 Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
-server: the GoRex server serves Rex's API (revision 8), on the local
+server: the GoRex server serves Rex's API (revision 10), on the local
 network to the networks you allow (Settings › Remote), and on the tailnet
 through a Tailscale device of its own. A space is
 a Rex session, a tab a window, a pane a block, and a floating pane a

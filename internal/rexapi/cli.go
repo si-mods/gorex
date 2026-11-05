@@ -112,7 +112,7 @@ func callMain(args []string) int {
 // tailscaleMain is "gorex rexapi tailscale on|off|login|logout|rename
 // NAME|status": built-in Tailscale of the gateway that runs.
 func tailscaleMain(args []string) int {
-	usage := "usage: gorex rexapi tailscale on [--hostname NAME] [--allow-tailnet-members] [--auth-key-file FILE] | off | login | logout | rename NAME | status"
+	usage := "usage: gorex rexapi tailscale on [--hostname NAME] [--control-url URL] [--allow-tailnet-members] [--auth-key-file FILE] | off | login | logout | rename NAME | status"
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, usage)
 		return 2
@@ -123,6 +123,7 @@ func tailscaleMain(args []string) int {
 	case "on":
 		fs := flag.NewFlagSet("tailscale on", flag.ContinueOnError)
 		hostname := fs.String("hostname", "", "the device's name on the tailnet (default: this machine's, with -gorex)")
+		control := fs.String("control-url", "", "the control server to register with, such as https://headscale.example.com (default: Tailscale's)")
 		allow := fs.Bool("allow-tailnet-members", false, "let in everyone the tailnet's access rules allow, not only you")
 		keyFile := fs.String("auth-key-file", "", "sign in with the Tailscale auth key in FILE ('-' for stdin)")
 		if err := fs.Parse(args[1:]); err != nil {
@@ -131,6 +132,9 @@ func tailscaleMain(args []string) int {
 		p := map[string]any{"allow_tailnet_members": *allow}
 		if *hostname != "" {
 			p["hostname"] = *hostname
+		}
+		if *control != "" {
+			p["control_url"] = *control
 		}
 		if *keyFile != "" {
 			key, err := readKey(*keyFile)
@@ -228,6 +232,9 @@ func setTailnetEnabled(dir string, payload any) error {
 	if p, ok := payload.(map[string]any); ok {
 		if h, ok := p["hostname"].(string); ok && h != "" {
 			t.Hostname = h
+		}
+		if u, ok := p["control_url"].(string); ok && u != "" {
+			t.ControlURL = u
 		}
 		if a, ok := p["allow_tailnet_members"].(bool); ok {
 			t.AllowTailnetMembers = a
@@ -351,6 +358,9 @@ func printTailscale(w io.Writer, st tailscaleStatus) {
 	fmt.Fprintf(w, "tailscale: %s\n", st.State)
 	if st.DNSName != "" {
 		fmt.Fprintf(w, "  device: %s\n", st.DNSName)
+	}
+	if st.ControlURL != "" {
+		fmt.Fprintf(w, "  control: %s\n", st.ControlURL)
 	}
 	if st.Account != nil {
 		fmt.Fprintf(w, "  account: %s\n", st.Account.LoginName)

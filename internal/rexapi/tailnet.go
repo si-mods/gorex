@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -39,8 +40,9 @@ type tailnetNode interface {
 	Close() error
 }
 
-// newNodeFunc makes the device that stores its state in dir.
-type newNodeFunc func(dir, hostname, authKey string, tags []string) tailnetNode
+// newNodeFunc makes the device that stores its state in dir, signing in
+// to the control server at controlURL when it is not empty.
+type newNodeFunc func(dir, hostname, authKey, controlURL string, tags []string) tailnetNode
 
 // tsnetNode is a tailnetNode of tsnet: a copy of Tailscale in the
 // process, joining the tailnet as a device of its own.
@@ -49,11 +51,12 @@ type tsnetNode struct {
 	lc  *local.Client
 }
 
-func newTsnetNode(dir, hostname, authKey string, tags []string) tailnetNode {
+func newTsnetNode(dir, hostname, authKey, controlURL string, tags []string) tailnetNode {
 	return &tsnetNode{srv: &tsnet.Server{
 		Dir:           dir,
 		Hostname:      hostname,
 		AuthKey:       authKey,
+		ControlURL:    controlURL,
 		AdvertiseTags: tags,
 		UserLogf:      logf,
 		Logf:          func(string, ...any) {},
@@ -120,6 +123,7 @@ func (n *tsnetNode) Close() error { return n.srv.Close() }
 type tailnetConf struct {
 	Enabled             bool   `json:"enabled"`
 	Hostname            string `json:"hostname,omitempty"`
+	ControlURL          string `json:"control_url,omitempty"`
 	AllowTailnetMembers bool   `json:"allow_tailnet_members"`
 }
 
@@ -171,7 +175,12 @@ func (t *tailnet) saveLocked() {
 
 // enableOptions are server.tailscale.enable's arguments.
 type enableOptions struct {
-	hostname     string
+	hostname   string
+	controlURL string
+	// controlSet tells whether the call named control_url, so that an
+	// explicit empty one returns the device to Tailscale's own control
+	// server instead of reusing the saved one.
+	controlSet   bool
 	allowMembers bool
 	authKey      string
 	tags         []string
@@ -185,6 +194,13 @@ var (
 // validHostname tells a Tailscale device name: 1 to 63 ASCII letters,
 // digits and hyphens, not starting or ending with a hyphen.
 func validHostname(s string) bool { return hostnameRE.MatchString(s) }
+
+// validControlURL tells a Tailscale control server's URL: an http or
+// https URL with a host, such as https://headscale.example.com.
+func validControlURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil
+}
 
 // defaultHostname is the device name when none is given: this machine's
 // name with "-gorex", so that it stands apart from a Rex server's.
@@ -246,11 +262,19 @@ func (t *tailnet) enable(o enableOptions) (tailscaleStatus, *apiError) {
 		t.mu.Unlock()
 		return tailscaleStatus{}, errBadRequest("%q is not a Tailscale device name", name)
 	}
+	control := t.conf.ControlURL
+	if o.controlSet {
+		control = o.controlURL
+	}
+	if control != "" && !validControlURL(control) {
+		t.mu.Unlock()
+		return tailscaleStatus{}, errBadRequest("%q is not a Tailscale control server URL", control)
+	}
 	if err := os.MkdirAll(filepath.Join(t.dir, "tsnet"), 0o700); err != nil {
 		t.mu.Unlock()
 		return tailscaleStatus{}, errInternal("%v", err)
 	}
-	node := t.newNode(filepath.Join(t.dir, "tsnet"), name, o.authKey, o.tags)
+	node := t.newNode(filepath.Join(t.dir, "tsnet"), name, o.authKey, control, o.tags)
 	if err := node.Start(); err != nil {
 		t.mu.Unlock()
 		node.Close()
@@ -258,7 +282,7 @@ func (t *tailnet) enable(o enableOptions) (tailscaleStatus, *apiError) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.node, t.cancel, t.err, t.https = node, cancel, "", false
-	t.conf = tailnetConf{Enabled: true, Hostname: name, AllowTailnetMembers: o.allowMembers}
+	t.conf = tailnetConf{Enabled: true, Hostname: name, ControlURL: control, AllowTailnetMembers: o.allowMembers}
 	t.saveLocked()
 	t.mu.Unlock()
 	go node.Watch(ctx, t.changed)
@@ -402,6 +426,7 @@ func (t *tailnet) rename(name string) (tailscaleStatus, *apiError) {
 type tailscaleStatus struct {
 	Error               string         `json:"error,omitempty"`
 	State               string         `json:"state"`
+	ControlURL          string         `json:"control_url,omitempty"`
 	DNSName             string         `json:"dns_name,omitempty"`
 	AuthURL             string         `json:"auth_url,omitempty"`
 	Account             *accountStatus `json:"account,omitempty"`
@@ -428,7 +453,7 @@ type tailscaleResult struct {
 
 func (t *tailnet) status() tailscaleStatus {
 	t.mu.Lock()
-	node, https, errText, allow := t.node, t.https, t.err, t.conf.AllowTailnetMembers
+	node, https, errText, allow, control := t.node, t.https, t.err, t.conf.AllowTailnetMembers, t.conf.ControlURL
 	t.mu.Unlock()
 	if node == nil {
 		return tailscaleStatus{State: "disabled", Error: errText, AllowTailnetMembers: allow}
@@ -437,14 +462,15 @@ func (t *tailnet) status() tailscaleStatus {
 	defer cancel()
 	st, err := node.Status(ctx)
 	if err != nil {
-		return tailscaleStatus{State: "starting", AllowTailnetMembers: allow, HTTPS: &httpsStatus{State: "pending"}}
+		return tailscaleStatus{State: "starting", ControlURL: control, AllowTailnetMembers: allow, HTTPS: &httpsStatus{State: "pending"}}
 	}
-	return statusOf(st, allow, https)
+	return statusOf(st, control, allow, https)
 }
 
-// statusOf maps a Tailscale device's status to Rex's.
-func statusOf(st *ipnstate.Status, allow, https bool) tailscaleStatus {
-	out := tailscaleStatus{AllowTailnetMembers: allow, HTTPS: &httpsStatus{State: "pending"}}
+// statusOf maps a Tailscale device's status to Rex's, with the control
+// server the device uses when it is not Tailscale's own.
+func statusOf(st *ipnstate.Status, control string, allow, https bool) tailscaleStatus {
+	out := tailscaleStatus{ControlURL: control, AllowTailnetMembers: allow, HTTPS: &httpsStatus{State: "pending"}}
 	switch st.BackendState {
 	case ipn.NeedsLogin.String():
 		out.State = "needs_login"

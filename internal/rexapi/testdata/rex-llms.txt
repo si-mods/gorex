@@ -8,7 +8,7 @@ Clients, such as Rex.app and the `rex` CLI, connect to the server to show and co
 
 This page documents the API that every client uses, so that you can write your own client, script,
 or tool. The server you fetched it from builds it from its own API, so it always matches that
-server's version. It describes API revision 8.
+server's version. It describes API revision 10.
 
 ## How Rex Is Organized
 
@@ -147,6 +147,7 @@ each one in full.
 - `session.resize_pane`: Move the border between two blocks to change their sizes.
 - `session.set_block_label`: Set a block's label.
 - `session.set_label`: Set the session's label.
+- `session.set_layer_state`: Minimize a floating layer or return it to normal, optionally raising and focusing it.
 - `session.set_window_label`: Set a window's label.
 - `session.swap_blocks`: Swap the places of two blocks.
 - `session.view`: Get the session's windows, their layouts, and their blocks in one snapshot.
@@ -201,7 +202,7 @@ Within 5 seconds of opening the WebSocket, send a hello:
 ```json
 {
   "type": "hello",
-  "api_revision": 8,
+  "api_revision": 10,
   "client": {"kind": "cli", "name": "my-tool", "version": "0.1.0"}
 }
 ```
@@ -263,14 +264,14 @@ section "When the Server Closes the Connection" lists the reasons.
 ### API Revisions
 
 Each change to what clients and servers send each other, such as a new field, method, or event,
-gets a new API revision, one higher than the last. This page describes API revision 8.
-This server speaks API revisions 0 through 8. When a client
+gets a new API revision, one higher than the last. This page describes API revision 10.
+This server speaks API revisions 0 through 10. When a client
 uses an older revision, the server translates every message to and from that revision's shapes, so
 an older client keeps working with a newer server.
 
 Send the API revision your client was written for in `api_revision`. A client that leaves it out
 uses revision 0. To receive messages
-in the shapes this page shows, send 8.
+in the shapes this page shows, send 10.
 
 Send the oldest revision your client can use in `api_min_revision`. Leaving it out means 0, which
 tells the server that your client can use every revision from 0 through `api_revision`. The server
@@ -334,7 +335,7 @@ than their requests. Wait for a response before you send a request that depends 
 
 Some methods are different. The server runs them one at a time, in the order they arrive on the
 connection, so that keys and the changes bound to them happen in the order they were typed. Each
-one waits for the one before it to finish. These methods run in order: `block.close`, `block.event`, `client.action`, `client.key`, `session.close_layer`, `session.close_window`, `session.detach_block`, `session.disown_block`, `session.float_block`, `session.focus_block`, `session.focus_direction`, `session.focus_next_pane`, `session.focus_next_window`, `session.focus_previous_pane`, `session.focus_previous_window`, `session.focus_window`, `session.move_block`, `session.move_window`, `session.new_layer`, `session.new_split`, `session.new_window`, `session.own_block`, `session.swap_blocks`, `session.zoom_block`.
+one waits for the one before it to finish. These methods run in order: `block.close`, `block.event`, `client.action`, `client.key`, `session.close_layer`, `session.close_window`, `session.detach_block`, `session.disown_block`, `session.float_block`, `session.focus_block`, `session.focus_direction`, `session.focus_next_pane`, `session.focus_next_window`, `session.focus_previous_pane`, `session.focus_previous_window`, `session.focus_window`, `session.move_block`, `session.move_window`, `session.new_layer`, `session.new_split`, `session.new_window`, `session.own_block`, `session.set_layer_state`, `session.swap_blocks`, `session.zoom_block`.
 
 Every other method can run at any time, alongside the ordered ones. That includes every block
 method, such as `com.superlogical.terminal.write`. To type text in two calls, wait for the first
@@ -963,6 +964,7 @@ Fields:
 - `https` (object): The state of the device's HTTPS listener. Left out while built-in Tailscale is off, and by older servers.
   - `state` (string, required): 'pending' until the HTTPS listener is ready, then 'available'. The server is reachable over the tailnet only when available. Treat a value you don't know as 'pending'.
   - `url` (string): The server's address on the tailnet, such as https://rex.tail1234.ts.net. Present once HTTPS is available and the device's name is known.
+- `control_url` (string): The control server the device uses, such as a Headscale server. Left out for Tailscale's own, while built-in Tailscale is off, and by older servers.
 
 ### `active_window_changed`
 
@@ -2007,7 +2009,7 @@ Result:
 - `hosts` (array of objects or null, required): Every host in the list, sorted by label, ignoring case, then by id. An empty list when there are no hosts.
   - `id` (string): The host's ID, such as host:<uuid>, chosen by the device that adds the host. If hosts.put leaves it out, the server creates one.
   - `label` (string, required): The name you connect to the host by, such as studio. Unique in the list, ignoring case, and at most 64 characters.
-  - `endpoints` (array of strings or null, required): The addresses that reach the host, in the order to try them, such as studio.tail1234.ts.net. Each takes a form the -S option of rex accepts.
+  - `endpoints` (array of strings or null, required): The addresses that reach the host, in the order to try them, such as studio.tail1234.ts.net or unix:///tmp/rex.sock. Each takes a form the -S option of rex accepts. A socket path works only on a device where the path exists, such as the local end of an ssh -L forward.
   - `icon` (string): The name of an icon for clients to show next to the label. Rex doesn't interpret it.
   - `host_id` (string): The host_id that the host's server.status reported when the host was added, if known. Compare it with a server's host_id to tell whether this host is that server.
   - `added_from` (string): The device or client that added the host. For display only.
@@ -2071,7 +2073,7 @@ Arguments:
 - `host` (object, required): The host to add, or to store in place of the host with the same id.
   - `id` (string): The host's ID, such as host:<uuid>, chosen by the device that adds the host. If hosts.put leaves it out, the server creates one.
   - `label` (string, required): The name you connect to the host by, such as studio. Unique in the list, ignoring case, and at most 64 characters.
-  - `endpoints` (array of strings or null, required): The addresses that reach the host, in the order to try them, such as studio.tail1234.ts.net. Each takes a form the -S option of rex accepts.
+  - `endpoints` (array of strings or null, required): The addresses that reach the host, in the order to try them, such as studio.tail1234.ts.net or unix:///tmp/rex.sock. Each takes a form the -S option of rex accepts. A socket path works only on a device where the path exists, such as the local end of an ssh -L forward.
   - `icon` (string): The name of an icon for clients to show next to the label. Rex doesn't interpret it.
   - `host_id` (string): The host_id that the host's server.status reported when the host was added, if known. Compare it with a server's host_id to tell whether this host is that server.
   - `added_from` (string): The device or client that added the host. For display only.
@@ -2314,6 +2316,7 @@ Result:
   - `https` (object): The state of the device's HTTPS listener. Left out while built-in Tailscale is off, and by older servers.
     - `state` (string, required): 'pending' until the HTTPS listener is ready, then 'available'. The server is reachable over the tailnet only when available. Treat a value you don't know as 'pending'.
     - `url` (string): The server's address on the tailnet, such as https://rex.tail1234.ts.net. Present once HTTPS is available and the device's name is known.
+  - `control_url` (string): The control server the device uses, such as a Headscale server. Left out for Tailscale's own, while built-in Tailscale is off, and by older servers.
 - `api_revision` (integer): The newest revision of the API the server supports. Left out when it is 0.
 - `api_min_revision` (integer): The oldest revision of the API the server supports. Left out when it is 0.
 - `config` (object, required): The configuration file the server loaded most recently. Always present, even when there is no file.
@@ -2414,6 +2417,7 @@ Result:
   - `https` (object): The state of the device's HTTPS listener. Left out while built-in Tailscale is off, and by older servers.
     - `state` (string, required): 'pending' until the HTTPS listener is ready, then 'available'. The server is reachable over the tailnet only when available. Treat a value you don't know as 'pending'.
     - `url` (string): The server's address on the tailnet, such as https://rex.tail1234.ts.net. Present once HTTPS is available and the device's name is known.
+  - `control_url` (string): The control server the device uses, such as a Headscale server. Left out for Tailscale's own, while built-in Tailscale is off, and by older servers.
 
 Notes:
 
@@ -2444,6 +2448,7 @@ Arguments:
 - `allow_tailnet_members` (boolean, required): True lets in anyone your tailnet's access rules allow. False lets in only the Tailscale user who signed the device in. Applies on every call, even when the device is already on.
 - `auth_key` (string): A Tailscale auth key that signs the device in without a browser. Used only when this call starts the device. Never logged or saved.
 - `advertise_tags` (array of strings or null): Tailscale tags, such as tag:rex, for the device to sign in with. Used only when this call starts the device. Needs allow_tailnet_members set to true.
+- `control_url` (string): The control server to sign in with if this call starts the device, such as https://headscale.example.com. If left out, the server uses its configured control server, or Tailscale's own.
 
 Result:
 
@@ -2460,6 +2465,7 @@ Result:
   - `https` (object): The state of the device's HTTPS listener. Left out while built-in Tailscale is off, and by older servers.
     - `state` (string, required): 'pending' until the HTTPS listener is ready, then 'available'. The server is reachable over the tailnet only when available. Treat a value you don't know as 'pending'.
     - `url` (string): The server's address on the tailnet, such as https://rex.tail1234.ts.net. Present once HTTPS is available and the device's name is known.
+  - `control_url` (string): The control server the device uses, such as a Headscale server. Left out for Tailscale's own, while built-in Tailscale is off, and by older servers.
 
 Notes:
 
@@ -2521,6 +2527,7 @@ Result:
   - `https` (object): The state of the device's HTTPS listener. Left out while built-in Tailscale is off, and by older servers.
     - `state` (string, required): 'pending' until the HTTPS listener is ready, then 'available'. The server is reachable over the tailnet only when available. Treat a value you don't know as 'pending'.
     - `url` (string): The server's address on the tailnet, such as https://rex.tail1234.ts.net. Present once HTTPS is available and the device's name is known.
+  - `control_url` (string): The control server the device uses, such as a Headscale server. Left out for Tailscale's own, while built-in Tailscale is off, and by older servers.
 
 Notes:
 
@@ -2569,6 +2576,7 @@ Result:
   - `https` (object): The state of the device's HTTPS listener. Left out while built-in Tailscale is off, and by older servers.
     - `state` (string, required): 'pending' until the HTTPS listener is ready, then 'available'. The server is reachable over the tailnet only when available. Treat a value you don't know as 'pending'.
     - `url` (string): The server's address on the tailnet, such as https://rex.tail1234.ts.net. Present once HTTPS is available and the device's name is known.
+  - `control_url` (string): The control server the device uses, such as a Headscale server. Left out for Tailscale's own, while built-in Tailscale is off, and by older servers.
 
 Notes:
 
@@ -2612,6 +2620,7 @@ Result:
   - `https` (object): The state of the device's HTTPS listener. Left out while built-in Tailscale is off, and by older servers.
     - `state` (string, required): 'pending' until the HTTPS listener is ready, then 'available'. The server is reachable over the tailnet only when available. Treat a value you don't know as 'pending'.
     - `url` (string): The server's address on the tailnet, such as https://rex.tail1234.ts.net. Present once HTTPS is available and the device's name is known.
+  - `control_url` (string): The control server the device uses, such as a Headscale server. Left out for Tailscale's own, while built-in Tailscale is off, and by older servers.
 
 Notes:
 
@@ -2751,6 +2760,7 @@ Result:
       - `layer_id` (string or null, required): The layer's ID.
       - `kind` (string, required): How the layer is placed: 'tiled' for the layer that fills the window, or 'floating' for a floating layer. Draw a kind you don't know as 'floating'.
       - `bounds` (array of 4 numbers, required): Where the layer sits, as [x, y, w, h] fractions of the window's width and height.
+      - `state` (string): How the layer is presented: 'minimized' means don't draw it, though its blocks keep running, and only a floating layer can be minimized. Left out for a normal layer. Draw a state you don't know as normal.
       - `layout` (object or null, required): How the layer divides its space between blocks, as a tree of splits. Null when the layer is empty.
         - `rect` (array of 4 numbers, required): Where this node sits, as [x, y, w, h] fractions of the window's width and height.
         - `block_id` (string or null): The block at this node. Set only when split isn't.
@@ -2907,6 +2917,7 @@ Result:
     - `https` (object): The state of the device's HTTPS listener. Left out while built-in Tailscale is off, and by older servers.
       - `state` (string, required): 'pending' until the HTTPS listener is ready, then 'available'. The server is reachable over the tailnet only when available. Treat a value you don't know as 'pending'.
       - `url` (string): The server's address on the tailnet, such as https://rex.tail1234.ts.net. Present once HTTPS is available and the device's name is known.
+    - `control_url` (string): The control server the device uses, such as a Headscale server. Left out for Tailscale's own, while built-in Tailscale is off, and by older servers.
   - `api_revision` (integer): The newest revision of the API the server supports. Left out when it is 0.
   - `api_min_revision` (integer): The oldest revision of the API the server supports. Left out when it is 0.
   - `config` (object, required): The configuration file the server loaded most recently. Always present, even when there is no file.
@@ -2934,6 +2945,7 @@ Result:
         - `layer_id` (string or null, required): The layer's ID.
         - `kind` (string, required): How the layer is placed: 'tiled' for the layer that fills the window, or 'floating' for a floating layer. Draw a kind you don't know as 'floating'.
         - `bounds` (array of 4 numbers, required): Where the layer sits, as [x, y, w, h] fractions of the window's width and height.
+        - `state` (string): How the layer is presented: 'minimized' means don't draw it, though its blocks keep running, and only a floating layer can be minimized. Left out for a normal layer. Draw a state you don't know as normal.
         - `layout` (object or null, required): How the layer divides its space between blocks, as a tree of splits. Null when the layer is empty.
           - `rect` (array of 4 numbers, required): Where this node sits, as [x, y, w, h] fractions of the window's width and height.
           - `block_id` (string or null): The block at this node. Set only when split isn't.
@@ -4579,6 +4591,50 @@ Example result:
 {"revision": 42}
 ```
 
+### `session.set_layer_state`
+
+Minimize a floating layer or return it to normal, optionally raising and focusing it.
+
+This method runs in order with the other ordered methods on its connection. See "Order of
+Requests" above.
+
+Arguments:
+
+- `session_id` (string, required): The session to act on.
+- `layer_id` (string or null, required): The layer to change.
+- `state` (string, required): The state to set: 'normal' or 'minimized'.
+- `focus` (boolean): Whether to also raise the layer, focus the block last focused in it, and make its window active, all in one change. Needs state to be 'normal' and the layer to have a block. Defaults to false.
+
+Result:
+
+- `revision` (integer, required): The session's revision after this call. It is unchanged if the call changed nothing that session.view shows, unless the method's notes say otherwise.
+
+Notes:
+
+- Only a floating layer can be minimized. Minimizing the window's layout, the layer of kind `tiled` in `session.view`, fails with `bad_request`. Setting it to `normal` succeeds and changes nothing.
+- With `focus` set to `true`, the layer is also raised, the block last focused in it takes focus, or its first block, and its window becomes active, all in one revision. This also works on a layer that is already normal and on the tiled layer. `focus` with `minimized`, or on a layer with no blocks, fails with `bad_request` and changes nothing.
+- `state` must be `normal` or `minimized`. Any other value fails with `bad_request`.
+- A minimized layer stays in `session.view` with `state` set to `minimized`, its blocks keep running, and it keeps its bounds and its place in the stack. `state` is left out for a normal layer.
+- Minimizing the layer that has focus moves focus to the layer used before it, or to the nearest visible pane, and clears zoom. Returning a layer to normal leaves focus where it is. Setting the state the layer already has changes nothing.
+- A window must keep a visible pane, so minimizing the layer that holds its last visible panes fails with `bad_request`.
+- If the session doesn't exist, the call fails with `session_not_found`. If `layer_id` names no layer in the session, it fails with `not_found`.
+
+Example arguments:
+
+```json
+{
+  "session_id": "session:<uuid>",
+  "layer_id": "layer:<uuid>",
+  "state": "minimized"
+}
+```
+
+Example result:
+
+```json
+{"revision": 42}
+```
+
 ### `session.set_window_label`
 
 Set a window's label.
@@ -4679,6 +4735,7 @@ Result:
     - `layer_id` (string or null, required): The layer's ID.
     - `kind` (string, required): How the layer is placed: 'tiled' for the layer that fills the window, or 'floating' for a floating layer. Draw a kind you don't know as 'floating'.
     - `bounds` (array of 4 numbers, required): Where the layer sits, as [x, y, w, h] fractions of the window's width and height.
+    - `state` (string): How the layer is presented: 'minimized' means don't draw it, though its blocks keep running, and only a floating layer can be minimized. Left out for a normal layer. Draw a state you don't know as normal.
     - `layout` (object or null, required): How the layer divides its space between blocks, as a tree of splits. Null when the layer is empty.
       - `rect` (array of 4 numbers, required): Where this node sits, as [x, y, w, h] fractions of the window's width and height.
       - `block_id` (string or null): The block at this node. Set only when split isn't.

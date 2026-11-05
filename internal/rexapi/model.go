@@ -66,6 +66,9 @@ type mFloat struct {
 	layer  string
 	bounds [4]float64
 	block  *mBlock
+	// minimized is a GoRex hidden pane: the layer stays in the window,
+	// with its block running, but a client draws it nowhere.
+	minimized bool
 }
 
 // allBlocks returns every block the window shows: the tiled layer's,
@@ -79,6 +82,34 @@ func (w *mWindow) allBlocks() []*mBlock {
 		out = append(out, f.block)
 	}
 	return out
+}
+
+// visibleBlocks counts the blocks of a window a client draws: the tiled
+// layer's, and those of floating layers that are not minimized.
+func (w *mWindow) visibleBlocks() int {
+	n := len(w.blocks)
+	for _, f := range w.floats {
+		if !f.minimized {
+			n++
+		}
+	}
+	return n
+}
+
+// findLayer returns the window that holds a layer and the floating layer
+// itself, nil when the layer is the window's tiled one.
+func (s *mSession) findLayer(id string) (*mWindow, *mFloat) {
+	for _, w := range s.windows {
+		if w.layer == id {
+			return w, nil
+		}
+		for i := range w.floats {
+			if w.floats[i].layer == id {
+				return w, &w.floats[i]
+			}
+		}
+	}
+	return nil, nil
 }
 
 // mBlock is a GoRex pane with a local session as a Rex block.
@@ -116,6 +147,9 @@ type layerView struct {
 	Bounds  [4]float64  `json:"bounds"`
 	Layout  *layoutView `json:"layout"`
 	Blocks  []blockView `json:"blocks"`
+	// State is "minimized" for a hidden floating layer, and left out
+	// for a normal one.
+	State string `json:"state,omitempty"`
 }
 
 type layoutView struct {
@@ -225,10 +259,11 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 			}
 			// GoRex's floating panes are Rex's floating layers, of one
 			// block each, lowest first as Rex lists layers back to front.
-			// A hidden one is shown nowhere, as a minimized window.
+			// A hidden one is minimized: it stays in the view, with its
+			// block running, and clients draw it nowhere.
 			for fi, fl := range tab.Floats {
 				leaf := filterNode(fl.Pane)
-				if fl.Hidden || leaf == nil || leaf.leaf == nil {
+				if leaf == nil || leaf.leaf == nil {
 					continue
 				}
 				block := &mBlock{
@@ -238,11 +273,12 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 				s.blocks = append(s.blocks, block)
 				m.blocks[block.id] = block
 				w.floats = append(w.floats, mFloat{
-					layer:  floatLayerID(w.id, block.id),
-					bounds: [4]float64{float64(fl.X), float64(fl.Y), float64(fl.W), float64(fl.H)},
-					block:  block,
+					layer:     floatLayerID(w.id, block.id),
+					bounds:    [4]float64{float64(fl.X), float64(fl.Y), float64(fl.W), float64(fl.H)},
+					block:     block,
+					minimized: fl.Hidden,
 				})
-				if tab.FocusFloat == fi+1 {
+				if tab.FocusFloat == fi+1 && !fl.Hidden {
 					w.focused = block.id
 					w.zoomed = ""
 					if fl.Zoom {
@@ -479,7 +515,7 @@ func (s *mSession) view(host string) view {
 		wv.Layers = append(wv.Layers, layer)
 		for _, f := range w.floats {
 			b := f.block
-			wv.Layers = append(wv.Layers, layerView{
+			layer := layerView{
 				LayerID: f.layer,
 				Kind:    "floating",
 				Bounds:  f.bounds,
@@ -492,7 +528,11 @@ func (s *mSession) view(host string) view {
 					HostID:      host,
 					Owner:       b.owner,
 				}},
-			})
+			}
+			if f.minimized {
+				layer.State = "minimized"
+			}
+			wv.Layers = append(wv.Layers, layer)
 		}
 		v.Windows = append(v.Windows, wv)
 	}

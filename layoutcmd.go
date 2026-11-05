@@ -110,6 +110,15 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		res.Code, res.Error = code, msg
 		return res
 	}
+	// A space no window shows has no panes to change: show it first, as
+	// the tab.create branch always did.
+	showSpace := func() {
+		if c.Space != "" && a.st != nil {
+			if w := a.st.workspaceByID(c.Space); w != nil && w.app == nil {
+				a.showEmpty(w)
+			}
+		}
+	}
 	if c.Op == "config.reload" {
 		a.err = ""
 		a.reloadLuaConfig()
@@ -122,6 +131,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if blockedFromClient(c.Action) {
 			return fail("not_allowed", "GoRex does not run "+c.Action+" from a client")
 		}
+		showSpace()
 		if c.SID != "" {
 			p := a.localPane(c.SID)
 			if p == nil {
@@ -190,13 +200,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		a.changed()
 		return res
 	}
-	// A space no window shows has no panes to change: show it first, as
-	// the tab.create branch always did.
-	if c.Space != "" && a.st != nil {
-		if w := a.st.workspaceByID(c.Space); w != nil && w.app == nil {
-			a.showEmpty(w)
-		}
-	}
+	showSpace()
 	p := a.localPane(c.SID)
 	if c.Tab != "" && strings.HasPrefix(c.Op, "tab.") && c.Op != "tab.create" {
 		t := a.tabByUID(c.Tab)

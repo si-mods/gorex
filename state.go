@@ -2239,6 +2239,52 @@ func (a *App) showFloat(f *Float) {
 	a.changed()
 }
 
+// setFloatState makes the floating pane sid the state Rex's
+// session.set_layer_state asks for: hidden is a minimized layer. With
+// focus, the pane is shown above the tab's others, and its tab and the
+// pane take the focus.
+func (a *App) setFloatState(sid, state string, focus bool) error {
+	p := a.localPane(sid)
+	if p == nil {
+		return fmt.Errorf("no pane %s", sid)
+	}
+	f := p.float
+	if f == nil {
+		return fmt.Errorf("%s is not floating", sid)
+	}
+	t := p.Tab
+	if t == nil {
+		return fmt.Errorf("%s is not in a tab", sid)
+	}
+	if state == "minimized" {
+		if f.Hidden {
+			return nil
+		}
+		// A minimized pane is at rest: it keeps no zoom.
+		f.Zoom = false
+		if t.Zoom == p {
+			t.Zoom = nil
+		}
+		a.hideFloat(f)
+		return nil
+	}
+	if focus {
+		if i := slices.Index(a.tabs, t); i >= 0 {
+			a.selectTab(i)
+		}
+		a.revealPane(p)
+		t.setFocus(p)
+		a.focusReq = p
+		a.changed()
+		return nil
+	}
+	if f.Hidden {
+		f.Hidden = false
+		a.changed()
+	}
+	return nil
+}
+
 // toggleFloat hides the focused float, or shows the float hidden last, else
 // the topmost hidden one, else opens a new one.
 func (a *App) toggleFloat() {
