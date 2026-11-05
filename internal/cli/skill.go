@@ -97,7 +97,8 @@ gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION
   ` + "`--`" + ` in its first pane, or a shell. Use ` + "`--dir`" + ` to set the directory.
 - ` + "`split`" + ` splits the selected pane right, or below with ` + "`--down`" + `, and prints
   the new session's ID. The command after ` + "`--`" + ` runs in the new pane, or a
-  shell does. It needs the GoRex window open on that machine.
+  shell does; wrap shell syntax such as a pipe in ` + "`sh -c '...'`" + `. It needs
+  the GoRex window open on that machine.
 - ` + "`close`" + ` closes the selected pane, or its tab with ` + "`--tab`" + `. It needs the
   window open too.
 - ` + "`send`" + ` types without attaching; ` + "`--enter`" + ` presses Return. ` + "`paste`" + ` uses
