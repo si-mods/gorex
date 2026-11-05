@@ -499,17 +499,14 @@ maintainer holds. Once, run `go tool mygo keygen` and put the contents of
 `mygo-update.pub` in `updates.publicKey` of `mygo.json`; keep
 `mygo-update.key` out of the repository. For each release, add a
 `## 0.1.0` section (the version of `mygo.json`) to `CHANGELOG.md`, which
-becomes the release notes, then run the Release workflow, which builds
-every platform and uploads it to a draft GitHub release, and publish the
-draft:
+becomes the release notes, then run the Release workflow on `main`, which
+builds every platform, signs the updates with the repository secret
+`MYGO_UPDATER_PRIVATE_KEY` (the contents of `mygo-update.key`) and uploads
+them to a draft GitHub release, and publish the draft:
 
 ```sh
 gh workflow run release.yml -R si-mods/gorex
 ```
-
-Build the Linux and macOS apps on macOS or Linux, never on Windows: a
-Windows file system has no executable bit, so their archives would install
-an app that cannot start.
 
 Development builds and apps that cannot write where they are installed
 do not update; "Check for Updates…" is in the Shell menu and the command

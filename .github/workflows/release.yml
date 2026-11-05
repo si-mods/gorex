@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   unix:
+    if: github.ref == 'refs/heads/main'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +35,8 @@ jobs:
     needs: unix
     runs-on: windows-latest
     steps:
+      # Keep LF in the files the app embeds, as the other platforms do.
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
