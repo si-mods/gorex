@@ -99,6 +99,9 @@ type Request struct {
 	Remote *RemoteClient `json:"remote,omitempty"`
 	// Network is the network to join, of remote.join.
 	Network *NetworkJoin `json:"network,omitempty"`
+	// TailcatAddress is the address of remote.tailcatDial: the server
+	// connects to it with its tailcat client, and relays the connection.
+	TailcatAddress string `json:"tailcatAddress,omitempty"`
 	// Exe is the executable the server runs in its place on "upgrade".
 	Exe string `json:"exe,omitempty"`
 	// Keepalive, on "hello", asks the server to drop the connection once

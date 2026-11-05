@@ -436,6 +436,10 @@ func (s *Server) handle(conn net.Conn, peer string) {
 			s.relayTailnet(conn, r, req.TailnetTarget)
 			return
 		}
+		if req.Op == "remote.tailcatDial" {
+			s.relayTailcat(conn, r, req.TailcatAddress)
+			return
+		}
 	}
 	var a Attach
 	if json.Unmarshal(first, &a) == nil && a.Op == "attach" {
