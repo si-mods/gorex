@@ -990,6 +990,7 @@
   "hostsRexQRLoading": "Checking the phone endpoint…",
   "hostsRexQRHint": "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential.",
   "hostsLocalRexQRHint": "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential.",
+  "hostsLocalLanRexQRHint": "Scan this code in Rex on a device on the same network as this address. The code holds the address only, not a credential.",
   "hostsSetUpRex": "Set Up Rex…",
   "hostsRexQRUnavailable": "This host has no tailnet address to pair with. Turn on built-in Tailscale, and wait for its HTTPS address in Remote.",
   "hostsRexQRCopy": "Copy link",

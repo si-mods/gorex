@@ -87,6 +87,35 @@ func TestLANConfigCheck(t *testing.T) {
 	}
 }
 
+func TestLANPairURL(t *testing.T) {
+	for _, tc := range []struct {
+		name, listen, bound, bindError string
+		enabled, running, allowed      bool
+		want                           string
+	}{
+		{"LAN", "192.168.1.2:7297", "192.168.1.2:7297", "", true, true, true, "http://192.168.1.2:7297"},
+		{"IPv6", "[fd00:0::2]:7297", "[fd00::2]:7297", "", true, true, true, "http://[fd00::2]:7297"},
+		{"disabled", "192.168.1.2:7297", "192.168.1.2:7297", "", false, true, true, ""},
+		{"stopped", "192.168.1.2:7297", "192.168.1.2:7297", "", true, false, true, ""},
+		{"no allowed peers", "192.168.1.2:7297", "192.168.1.2:7297", "", true, true, false, ""},
+		{"bind error", "192.168.1.2:7297", "192.168.1.2:7297", "bind failed", true, true, true, ""},
+		{"stale status", "192.168.1.2:7297", "192.168.1.3:7297", "", true, true, true, ""},
+		{"wildcard", "[::]:7297", "[::]:7297", "", true, true, true, ""},
+		{"loopback", "127.0.0.1:7297", "127.0.0.1:7297", "", true, true, true, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			config := LANConfig{Enabled: tc.enabled, Listen: tc.listen}
+			if tc.allowed {
+				config.Allow = []string{"192.168.1.3/32"}
+			}
+			status := LANStatus{Running: tc.running, Listening: tc.bound, Error: tc.bindError}
+			if got := config.PairURL(status); got != tc.want {
+				t.Fatalf("PairURL = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDefaultLANNeverEveryone keeps the default allowlist to one network,
 // never every address.
 func TestDefaultLANNeverEveryone(t *testing.T) {

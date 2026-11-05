@@ -21,22 +21,41 @@ type hostPairQR struct {
 	image                             ui.ImageSource
 	open, loading, copied, copyFailed bool
 	local                             bool
+	// tailnet tells that the address is the gateway's tailnet one, which
+	// the device must be on the same tailnet as; the local network's
+	// needs the same network as the address.
+	tailnet bool
 }
 
 var hostsPairQR *hostPairQR
 
-// localRexPairURL is this computer's Rex pairing address: the gateway's
-// tailnet HTTPS address, as "gorex rexapi pair" shows it. The code holds
-// the address only, and another device must be on the same tailnet.
+// localRexPair is this computer's Rex pairing address: the gateway's
+// tailnet HTTPS address, as "gorex rexapi pair" shows it, else the local
+// network listener's, for a phone on the same network. The code holds the
+// address only.
+func (a *App) localRexPair() (string, bool) {
+	if url := rexapi.PairURL(); url != "" {
+		return url, true
+	}
+	dir := rexapi.TailnetDir()
+	conf, err := rexapi.LoadLAN(dir)
+	if err != nil {
+		return "", false
+	}
+	return conf.PairURL(rexapi.LoadLANStatus(dir)), false
+}
+
 func (a *App) localRexPairURL() string {
-	return rexapi.PairURL()
+	url, _ := a.localRexPair()
+	return url
 }
 
 func (a *App) openLocalPairQR() {
-	address, image := mobilePairQR(a.localRexPairURL())
+	address, tailnet := a.localRexPair()
+	_, image := mobilePairQR(address)
 	if image != nil {
 		name, _, _ := a.hostIdentity()
-		hostsPairQR = &hostPairQR{host: name, address: address, image: image, open: true, local: true}
+		hostsPairQR = &hostPairQR{host: name, address: address, image: image, open: true, local: true, tailnet: tailnet}
 	}
 }
 
@@ -99,6 +118,9 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			hint := locales.HostsRexQRHint()
 			if page.local {
 				hint = locales.HostsLocalRexQRHint()
+				if !page.tailnet {
+					hint = locales.HostsLocalLanRexQRHint()
+				}
 			}
 			ui.Text(c, hint).FontSize(13).TextColor(k.textMuted).LineHeight(1.4)
 			ui.Image(c, page.image).Size(248, 248).Label(locales.HostsRexQRTitle(page.host))

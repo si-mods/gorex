@@ -214,6 +214,7 @@
   "hostsRexQRLoading": "正在检查手机连接地址…",
   "hostsRexQRHint": "在同一 Tailscale 网络中的设备上，用 Rex 扫描此二维码。二维码只含地址，不含凭据。",
   "hostsLocalRexQRHint": "在同一 Tailscale 网络中的设备上，用 Rex 扫描此二维码。二维码只含地址，不含凭据。",
+  "hostsLocalLanRexQRHint": "在此地址所在网络中的设备上，用 Rex 扫描此二维码。二维码只含地址，不含凭据。",
   "hostsSetUpRex": "配置 Rex…",
   "hostsRexQRUnavailable": "此主机还没有可配对的 tailnet 地址。请在内置 Tailscale 打开后，等待 Remote 页显示其 HTTPS 地址。",
   "hostsRexQRCopy": "复制链接",

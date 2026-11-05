@@ -89,8 +89,11 @@ server's gateway follows a change within a second, without a restart.
 address as a code for Rex to scan, as `gorex rexapi pair` does: the
 built-in Tailscale address, `https://<machine>-gorex.<tailnet>.ts.net`.
 The code holds the address only, not a credential, and the device that
-scans it must be on the same tailnet. It is empty until built-in
-Tailscale is on and its HTTPS address is ready.
+scans it must be on the same tailnet. Until built-in Tailscale is on and
+its HTTPS address is ready, the dialog shows the local network
+listener's address instead, `http://<address>:7297`, for a device on the
+same network: the listener below is unchanged, and Rex can also add it
+by hand.
 
 A headless server can set `showDesktopSessions` to `true` in
 `rexapi/lan.json`. Rex then shows live sessions created by desktop

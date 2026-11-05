@@ -3020,6 +3020,16 @@ func (msgs Messages) HostsLocalRexQRHint() string {
 	return Catalog.Format(msgs.locale, "hostsLocalRexQRHint", nil)
 }
 
+// HostsLocalLanRexQRHint says "Scan this code in Rex on a device on the same network as this address. The code holds the address only, not a credent…"
+// in the language the app shows.
+func HostsLocalLanRexQRHint() string { return In(i18n.Locale()).HostsLocalLanRexQRHint() }
+
+// HostsLocalLanRexQRHint says "Scan this code in Rex on a device on the same network as this address. The code holds the address only, not a credent…"
+// in the language of msgs.
+func (msgs Messages) HostsLocalLanRexQRHint() string {
+	return Catalog.Format(msgs.locale, "hostsLocalLanRexQRHint", nil)
+}
+
 // HostsSetUpRex says "Set Up Rex…"
 // in the language the app shows.
 func HostsSetUpRex() string { return In(i18n.Locale()).HostsSetUpRex() }
