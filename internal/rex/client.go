@@ -257,7 +257,7 @@ func (c *Client) read() {
 			}
 			c.mu.Unlock()
 			select {
-			case c.events <- Event{Kind: res.Event, Revision: res.Revision, Sessions: res.Sessions}:
+			case c.events <- Event{Kind: res.Event, Revision: res.Revision, Sessions: res.Sessions, Transfer: res.Transfer}:
 			default: // a reader that stopped reading does not hold the client
 			}
 			select {
@@ -413,6 +413,13 @@ func (c *Client) Hello() (h Hello, err error) {
 // the layout and the sessions as they come (Changed). A server before it
 // answers an error: poll it then.
 func (c *Client) Subscribe() error { return c.call(Request{Op: "subscribe"}, nil) }
+
+// SubscribeTransfers is Subscribe, and asks for the file transfers' events
+// too (Event.Transfer). A server before CapabilityFileTransfer tells of
+// none.
+func (c *Client) SubscribeTransfers() error {
+	return c.call(Request{Op: "subscribe", Transfers: true}, nil)
+}
 
 // Events returns the changes the server tells of, in order, while the
 // connection lasts; the channel closes with it.

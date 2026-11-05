@@ -472,6 +472,10 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		ss.attach(conn, peer, a, via, func() bool { return s.mayUse(peer, ss) }, typed)
 		return
 	}
+	if a.Op == "file.put" || a.Op == "file.get" {
+		s.transfer(conn, r, first, a.Op, peer)
+		return
+	}
 	s.control(conn, r, first, peer)
 }
 
@@ -535,7 +539,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 			}
 			// Before the answer: no change after it goes untold.
 			if req.Op == "subscribe" && (!remote || s.remoteShareLayout(peer)) && sub == nil {
-				sub = s.subscribe(write, remote, peer)
+				sub = s.subscribe(write, remote, peer, req.Transfers)
 			}
 			// Kills wait for the session to end, and layout commands for
 			// the app: answer them aside, a few at a time; the others wait
