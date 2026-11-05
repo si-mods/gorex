@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -247,6 +248,13 @@ func TestResumeHintSession(t *testing.T) {
 		// A config dir cmd cannot take leaves the last conversation.
 		{"cmd", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "%x%"}, "claude --continue"},
 		{"bash", savedNode{Prog: "codex", AgentSession: id}, "codex resume --last"},
+		// The layout is a file anyone may write: what is no UUID is not typed.
+		{"bash", savedNode{Prog: "claude", AgentSession: "x; touch pwned"}, "claude --continue"},
+		{"pwsh", savedNode{Prog: "claude", AgentSession: "--add"}, "claude --continue"},
+		{"pwsh", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "x’; Write-Output INJECTED; ’"},
+			"$env:CLAUDE_CONFIG_DIR='x’’; Write-Output INJECTED; ’’'; claude --resume " + id},
+		{"bash", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "x'; touch pwned; '"},
+			`CLAUDE_CONFIG_DIR='x'\''; touch pwned; '\''' claude --resume ` + id},
 	} {
 		h := resumeHintFor(c.shell, &c.node)
 		if h == nil || h.cont != c.want {
@@ -284,10 +292,11 @@ func TestClaudeSessionRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 	var fg int
+	var cwd string
 	waitForThat(t, func() bool {
 		for _, in := range infos(t, a.client) {
 			if in.ID == p.SID && in.Program == "claude" {
-				fg = in.Foreground
+				fg, cwd = in.Foreground, in.Dir
 				return true
 			}
 		}
@@ -305,7 +314,7 @@ func TestClaudeSessionRecorded(t *testing.T) {
 	})
 	const id = "5d454f1b-0c2e-4b8a-9f00-0123456789ab"
 	os.MkdirAll(filepath.Join(config, "sessions"), 0o755)
-	file := fmt.Sprintf(`{"pid":%d,"sessionId":%q}`, fg, id)
+	file := fmt.Sprintf(`{"pid":%d,"sessionId":%q,"cwd":%q}`, fg, id, cwd)
 	if err := os.WriteFile(filepath.Join(config, "sessions", fmt.Sprint(fg)+".json"), []byte(file), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -326,5 +335,36 @@ func TestClaudeSessionRecorded(t *testing.T) {
 	want, _ := claudeResume(testShell.path, id, config)
 	if h == nil || h.cont != want || !strings.Contains(want, id) {
 		t.Errorf("restored with %+v, want continue %q", h, want)
+	}
+}
+
+// TestPowerShellCurlyQuotes checks that a word holding any quote
+// PowerShell ends a single-quoted string with stays one word: its quotes,
+// ASCII and curly, are doubled. With pwsh at hand, the word reads back.
+func TestPowerShellCurlyQuotes(t *testing.T) {
+	words := []string{"'"}
+	for _, q := range []string{"‘", "’", "‚", "‛"} {
+		words = append(words, q)
+		hostile := "x" + q + "; Write-Output INJECTED; " + q
+		got, _ := powerShellWord(hostile)
+		if want := "'x" + q + q + "; Write-Output INJECTED; " + q + q + "'"; got != want {
+			t.Errorf("powerShellWord(%q) = %q, want %q", hostile, got, want)
+		}
+	}
+	pwsh, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("no pwsh to read the words back")
+	}
+	for _, q := range words {
+		s := "x" + q + "; Write-Output INJECTED; " + q
+		w, _ := powerShellWord(s)
+		out, err := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command",
+			"[Console]::OutputEncoding = [Text.Encoding]::UTF8; Write-Output "+w).Output()
+		if err != nil {
+			t.Fatalf("pwsh: %v", err)
+		}
+		if got := strings.TrimRight(string(out), "\r\n"); got != s {
+			t.Errorf("pwsh read %q back as %q", s, got)
+		}
 	}
 }

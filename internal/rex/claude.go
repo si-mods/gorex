@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -33,28 +34,63 @@ func claudeSession(pid int, dir string) (id, config string) {
 	if err != nil {
 		return "", ""
 	}
-	if id = parseClaudeSession(b, pid); id == "" {
+	if id = parseClaudeSession(b, pid, dir); id == "" {
 		return "", ""
 	}
 	return id, config
 }
 
 // parseClaudeSession returns the conversation of Claude Code's file of
-// process pid, "" when the file is another process's, which had the id
-// before, or names none GoRex would type.
-func parseClaudeSession(b []byte, pid int) string {
+// process pid, whose working directory is dir; "" when the file is another
+// process's, which had the id before, or names none GoRex would type.
+func parseClaudeSession(b []byte, pid int, dir string) string {
 	var f struct {
 		PID       int    `json:"pid"`
 		SessionID string `json:"sessionId"`
+		Cwd       string `json:"cwd"`
 	}
-	if json.Unmarshal(b, &f) != nil || f.PID != pid || f.SessionID == "" {
+	if json.Unmarshal(b, &f) != nil || f.PID != pid || !IsUUID(f.SessionID) {
 		return ""
 	}
-	// A UUID: the id is typed into a shell.
-	if strings.Trim(f.SessionID, "0123456789abcdefABCDEF-") != "" {
+	// The file of a process that crashed stays, and names the id it had.
+	if dir != "" && !samePath(f.Cwd, dir) {
 		return ""
 	}
 	return f.SessionID
+}
+
+// IsUUID tells whether s is a UUID, 8-4-4-4-12 hex digits: a conversation
+// id GoRex types into a shell.
+func IsUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, r := range s {
+		switch i {
+		case 8, 13, 18, 23:
+			if r != '-' {
+				return false
+			}
+		default:
+			if !strings.ContainsRune("0123456789abcdefABCDEF", r) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// samePath tells whether a and b name one directory: Windows takes no
+// case, and a trailing separator is none.
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // envValue returns the variable name of env, NAME=value strings.

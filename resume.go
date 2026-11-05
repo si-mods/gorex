@@ -7,6 +7,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -34,7 +35,8 @@ func resumeHintFor(shell string, s *savedNode) *resumeHint {
 	cont := continueCommand(s.Prog)
 	// Claude Code's own conversation, not the last one of the directory,
 	// which another pane there may have had.
-	if cont == agentContinue["claude"] && s.AgentSession != "" {
+	// The layout is a file: an id that is no UUID is not typed.
+	if cont == agentContinue["claude"] && rex.IsUUID(s.AgentSession) {
 		if c, ok := claudeResume(shell, s.AgentSession, s.AgentConfigDir); ok {
 			cont = c
 		}
@@ -63,7 +65,7 @@ func claudeResume(shell, id, config string) (string, bool) {
 		d, _ := q(config)
 		return "env CLAUDE_CONFIG_DIR=" + d + " " + cmd, true
 	case "pwsh", "powershell":
-		return "$env:CLAUDE_CONFIG_DIR='" + strings.ReplaceAll(config, "'", "''") + "'; " + cmd, true
+		return "$env:CLAUDE_CONFIG_DIR=" + powerShellQuoted(config) + "; " + cmd, true
 	case "cmd":
 		if strings.ContainsAny(config, "%!\"\r\n") {
 			return "", false
@@ -187,7 +189,8 @@ func fishWord(s string) (string, bool) {
 }
 
 // powerShellWord is s as one word of PowerShell: in single quotes, where a
-// quote is doubled. Single quotes take nothing else, $ included.
+// quote, ASCII or curly, is doubled. Single quotes take nothing else, $
+// included.
 func powerShellWord(s string) (string, bool) {
 	if s == "" {
 		return "''", true
@@ -195,7 +198,17 @@ func powerShellWord(s string) (string, bool) {
 	if plainWord(s) {
 		return s, true
 	}
-	return "'" + strings.ReplaceAll(s, "'", "''") + "'", true
+	return powerShellQuoted(s), true
+}
+
+// powerShellQuote doubles the quotes PowerShell takes for a single one:
+// ' and the curly ones, U+2018 to U+201B.
+var powerShellQuote = strings.NewReplacer("'", "''",
+	"‘", "‘‘", "’", "’’", "‚", "‚‚", "‛", "‛‛")
+
+// powerShellQuoted is s in PowerShell's single quotes.
+func powerShellQuoted(s string) string {
+	return "'" + powerShellQuote.Replace(s) + "'"
 }
 
 // cmdWord is s as one word of cmd.exe: bare when it reads as one, else in
