@@ -45,25 +45,7 @@ func inspect(pid int) (p procInfo) {
 		}
 		p.name = string(comm)
 	}
-	if raw, err := unix.SysctlRaw("kern.procargs2", pid); err == nil && len(raw) > 4 {
-		argc := int(binary.LittleEndian.Uint32(raw))
-		rest := raw[4:]
-		// The executable's path, then NULs up to the arguments.
-		if i := bytes.IndexByte(rest, 0); i >= 0 {
-			rest = rest[i:]
-		}
-		for len(rest) > 0 && rest[0] == 0 {
-			rest = rest[1:]
-		}
-		for len(p.args) < argc && len(rest) > 0 {
-			i := bytes.IndexByte(rest, 0)
-			if i < 0 {
-				i = len(rest)
-			}
-			p.args = append(p.args, string(rest[:i]))
-			rest = rest[min(i+1, len(rest)):]
-		}
-	}
+	p.args, _ = procArgs(pid, false)
 	procOnce.Do(loadLibproc)
 	if procPidinfo != nil {
 		var buf [2 * (vnodeInfoSize + maxPathLen)]byte
@@ -76,6 +58,49 @@ func inspect(pid int) (p procInfo) {
 		}
 	}
 	return p
+}
+
+// procArgs returns the arguments and the environment of a process, from
+// kern.procargs2: argc, the executable's path, NULs, the arguments and
+// then the environment, each ending in a NUL. withEnv reads the
+// environment too.
+func procArgs(pid int, withEnv bool) (args, env []string) {
+	raw, err := unix.SysctlRaw("kern.procargs2", pid)
+	if err != nil || len(raw) <= 4 {
+		return nil, nil
+	}
+	argc := int(binary.LittleEndian.Uint32(raw))
+	rest := raw[4:]
+	// The executable's path, then NULs up to the arguments.
+	if i := bytes.IndexByte(rest, 0); i >= 0 {
+		rest = rest[i:]
+	}
+	for len(rest) > 0 && rest[0] == 0 {
+		rest = rest[1:]
+	}
+	for len(rest) > 0 {
+		i := bytes.IndexByte(rest, 0)
+		if i < 0 {
+			i = len(rest)
+		}
+		if len(args) < argc {
+			args = append(args, string(rest[:i]))
+		} else if !withEnv || i == 0 {
+			// An empty string ends the environment.
+			break
+		} else {
+			env = append(env, string(rest[:i]))
+		}
+		rest = rest[min(i+1, len(rest)):]
+	}
+	return args, env
+}
+
+// procEnv returns the variable name of a process's environment, "" when
+// it has none or does not tell.
+func procEnv(pid int, name string) string {
+	_, env := procArgs(pid, true)
+	return envValue(env, name)
 }
 
 // parentPID returns the parent of a process, 0 when unknown.

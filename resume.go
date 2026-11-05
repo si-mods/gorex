@@ -18,20 +18,60 @@ type resumeHint struct {
 	// cmd is the command line, quoted for the shell.
 	cmd string
 	// cont continues the agent's last conversation, "" for a program that
-	// is no agent GoRex knows: the agent finds the conversation itself, so
-	// no id has to be kept.
+	// is no agent GoRex knows: the agent finds the conversation itself, or
+	// for Claude Code, resumes the one the layout kept.
 	cont string
 }
 
-// resumeHintFor is the hint for the program the layout saved, nil when no
-// shell can run it again as it was: an unknown shell, or arguments one
-// cannot take unquoted. shell is the pane's shell, its path.
-func resumeHintFor(shell, prog string, args []string) *resumeHint {
-	cmd, ok := resumeCommand(shell, prog, args)
+// resumeHintFor is the hint for the program the layout saved of pane s,
+// nil when no shell can run it again as it was: an unknown shell, or
+// arguments one cannot take unquoted. shell is the pane's shell, its path.
+func resumeHintFor(shell string, s *savedNode) *resumeHint {
+	cmd, ok := resumeCommand(shell, s.Prog, s.Args)
 	if !ok {
 		return nil
 	}
-	return &resumeHint{cmd: cmd, cont: continueCommand(prog)}
+	cont := continueCommand(s.Prog)
+	// Claude Code's own conversation, not the last one of the directory,
+	// which another pane there may have had.
+	if cont == agentContinue["claude"] && s.AgentSession != "" {
+		if c, ok := claudeResume(shell, s.AgentSession, s.AgentConfigDir); ok {
+			cont = c
+		}
+	}
+	return &resumeHint{cmd: cmd, cont: cont}
+}
+
+// claudeResume is the command that resumes Claude Code's conversation id,
+// in config dir config when not "", as the shell at path reads it.
+func claudeResume(shell, id, config string) (string, bool) {
+	q := quoterOf(shell)
+	if q == nil {
+		return "", false
+	}
+	w, ok := q(id)
+	if !ok {
+		return "", false
+	}
+	cmd := "claude --resume " + w
+	if config == "" {
+		return cmd, true
+	}
+	switch strings.ToLower(strings.TrimSuffix(filepath.Base(shell), ".exe")) {
+	case "fish", "csh", "tcsh":
+		// No NAME=value prefix in these.
+		d, _ := q(config)
+		return "env CLAUDE_CONFIG_DIR=" + d + " " + cmd, true
+	case "pwsh", "powershell":
+		return "$env:CLAUDE_CONFIG_DIR='" + strings.ReplaceAll(config, "'", "''") + "'; " + cmd, true
+	case "cmd":
+		if strings.ContainsAny(config, "%!\"\r\n") {
+			return "", false
+		}
+		return `set "CLAUDE_CONFIG_DIR=` + config + `" && ` + cmd, true
+	}
+	d, _ := q(config)
+	return "CLAUDE_CONFIG_DIR=" + d + " " + cmd, true
 }
 
 // agentContinue is the command that continues a coding agent's last
