@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.14.0
+
+### Features
+
+* **canvas:** add an experimental infinite canvas layout, off by default (Settings > Appearance > Experimental): every pane is a free box on an unbounded plane that pans with the wheel, a drag on the empty plane or Space held, and zooms with Ctrl or Cmd and the wheel or a pinch; a right-click on the plane adds a terminal, browser or note where it was clicked, and a window resize resizes no pane ([#174](https://github.com/si-mods/gorex/pull/174))
+* **resume:** resume the exact Claude Code conversation of a pane, rather than the directory's latest ([#181](https://github.com/si-mods/gorex/pull/181))
+* **spaces:** keep a space's panes live when the window switches away, so terminals stay attached, browser pages stay loaded and program-set titles stay ([#179](https://github.com/si-mods/gorex/pull/179))
+* **rexapi:** serve Rex's API revision 10, which Rex's iPhone app needs to connect ([#171](https://github.com/si-mods/gorex/pull/171))
+
+### Bug Fixes
+
+* **server:** keep dev builds out of the installed app's data directory, so a plain build no longer restarts the installed app's session server ([#182](https://github.com/si-mods/gorex/pull/182))
+* **resume:** run a quoted program with `&` in PowerShell ([#176](https://github.com/si-mods/gorex/pull/176))
+* **ui:** render Chinese UI text in Noto Sans SC on Windows where it is installed, so medium and semibold weights show, and give the Settings sidebar's items one weight ([#177](https://github.com/si-mods/gorex/pull/177))
+* **glass:** show the desktop through windows on Windows 11 with Acrylic ([#173](https://github.com/si-mods/gorex/pull/173))
+* **settings:** give the settings groups the terminals' face ([#175](https://github.com/si-mods/gorex/pull/175))
+
+### Dependencies
+
+* update MyGo to si-mods/mygo e0c6f5c ([#183](https://github.com/si-mods/gorex/pull/183))
+
 ## 0.13.0
 
 ### Features
