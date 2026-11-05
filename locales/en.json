@@ -2070,7 +2070,7 @@
   "@teleportEnded": {
     "description": "Disabled teleport item: the pane's program exited."
   },
-  "teleportProgram": "{program} is running: only a shell at its prompt or Claude Code can teleport",
+  "teleportProgram": "{program} is running: only a shell at its prompt, Claude Code or omp can teleport",
   "@teleportProgram": {
     "description": "Disabled teleport item: another program is in the foreground.",
     "placeholders": {
@@ -2080,13 +2080,25 @@
       }
     }
   },
-  "teleportUnknown": "Claude Code's conversation is not known yet",
+  "teleportUnknown": "{agent}'s conversation is not known yet",
   "@teleportUnknown": {
-    "description": "Disabled teleport item: GoRex has not found which conversation Claude Code has open."
+    "description": "Disabled teleport item: GoRex has not found which conversation the coding agent (Claude Code, omp) has open.",
+    "placeholders": {
+      "agent": {
+        "type": "String",
+        "example": "claude"
+      }
+    }
   },
-  "teleportWorking": "Claude Code is working: wait for it to finish, or stop it",
+  "teleportWorking": "{agent} is working: wait for it to finish, or stop it",
   "@teleportWorking": {
-    "description": "Disabled teleport item: Claude Code is still writing its conversation."
+    "description": "Disabled teleport item: the coding agent is still writing its conversation.",
+    "placeholders": {
+      "agent": {
+        "type": "String",
+        "example": "claude"
+      }
+    }
   },
   "teleportNoHosts": "No host is connected",
   "@teleportNoHosts": {

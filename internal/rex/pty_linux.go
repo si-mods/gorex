@@ -43,3 +43,12 @@ func zombie(pid int) bool {
 	}
 	return false
 }
+
+// slaveName is the name of the slave of the master fd.
+func slaveName(fd int) string {
+	n, err := unix.IoctlGetInt(fd, unix.TIOCGPTN)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("/dev/pts/%d", n)
+}

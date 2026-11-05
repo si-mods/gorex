@@ -38,8 +38,8 @@ type teleportRun struct {
 }
 
 // teleportBlocked says why pane p cannot teleport now, "" when it can:
-// only a pane of this machine, a shell at its prompt or Claude Code
-// waiting for the user (docs/teleport.md).
+// only a pane of this machine, a shell at its prompt, or Claude Code or
+// omp waiting for the user (docs/teleport.md).
 func teleportBlocked(p *Pane) string {
 	switch {
 	case p.teleport != nil:
@@ -53,9 +53,9 @@ func teleportBlocked(p *Pane) string {
 	case rex.TeleportProgram:
 		return locales.TeleportProgram(p.info.ProgramName())
 	case rex.TeleportUnknown:
-		return locales.TeleportUnknown()
+		return locales.TeleportUnknown(p.info.ProgramName())
 	case rex.TeleportWorking:
-		return locales.TeleportWorking()
+		return locales.TeleportWorking(p.info.ProgramName())
 	}
 	return ""
 }

@@ -22,6 +22,17 @@ type pty struct {
 	proc int
 }
 
+// tty is the name of the terminal's slave, as /dev/ttys008, "" when it
+// cannot tell.
+func (p *pty) tty() string {
+	name := ""
+	control(p.master, func(fd int) error {
+		name = slaveName(fd)
+		return nil
+	})
+	return name
+}
+
 // startPTY runs argv (argv[0] as the program sees it, path the file) in a
 // new pseudo-terminal of cols×rows.
 func startPTY(path string, argv []string, dir string, env []string, cols, rows int) (*pty, error) {

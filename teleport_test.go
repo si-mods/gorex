@@ -140,7 +140,7 @@ func TestTeleportBlocked(t *testing.T) {
 	}
 	tt.CloseMenu()
 	p.info.Idle, p.info.Program = false, "vim"
-	if why := teleportBlocked(p); why != "vim is running: only a shell at its prompt or Claude Code can teleport" {
+	if why := teleportBlocked(p); why != "vim is running: only a shell at its prompt, Claude Code or omp can teleport" {
 		t.Errorf("blocked %q", why)
 	}
 	p.info = rex.SessionInfo{Program: "claude", AgentSession: "5d454f1b-0c2e-4b8a-9f00-0123456789ab", Status: &rex.ProgramStatus{State: "working"}}

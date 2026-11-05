@@ -533,8 +533,11 @@ type SessionInfo struct {
 	Dir string `json:"dir"`
 	// AgentSession is the conversation Claude Code has open in the
 	// foreground, and AgentConfigDir its config dir when not the default.
+	// For omp, they are its conversation and its data dir, and agentFile
+	// the conversation's file.
 	AgentSession   string `json:"agentSession,omitempty"`
 	AgentConfigDir string `json:"agentConfigDir,omitempty"`
+	agentFile      string
 	// Title is the last title a program set (OSC 0, OSC 2).
 	Title      string    `json:"title,omitempty"`
 	LastOutput time.Time `json:"lastOutput"`

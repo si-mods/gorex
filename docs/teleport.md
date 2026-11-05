@@ -12,15 +12,15 @@ tab of that host's (see The app). The source session ends.
 
 ## Scope
 
-Phase 1 teleports a pane whose foreground is Claude Code, or a shell at
-its prompt, inside a Git work tree, between two hosts GoRex already
+Phase 1 teleports a pane whose foreground is a coding agent GoRex knows,
+Claude Code or omp (oh-my-pi), or a shell at its prompt, inside a Git work tree, between two hosts GoRex already
 connects to (Remote hosts: coord network or system Tailscale), from this
 machine to a host. Anything else is refused with a reason:
 
 - a pane of another host: only this machine's server packs;
 - not a Git work tree (nothing to rebuild the directory from), a repo
   with no commit, or one with no remote URL (nothing to clone);
-- Claude Code working (its conversation file is still being written:
+- the agent working (its conversation file is still being written:
   its status says working, or it printed in the last two seconds, as its
   spinner does); the user waits for it to be idle, or stops it first;
 - another program in the foreground (a server, an editor): its state is
@@ -55,6 +55,7 @@ the package's length.
 | `untracked.tar` | the regular files `git ls-files -o --exclude-standard` lists; ignored files and links stay behind |
 | `claude/<uuid>.jsonl` | the conversation, and its `<uuid>/` directory (subagents, tool results) when there is one |
 | `claude/file-history/<uuid>/<hex>@v<n>` | the backups `/rewind` restores files from (`<config>/file-history/<uuid>/`), regular files of that name only, but those only files outside the work tree have |
+| `omp/<time>_<id>.jsonl` | omp's conversation, the directory of the same name beside it (its artifacts, as `109.bash.log`), and `omp/blobs/<sha256>[.ext]`, the blobs of its data dir that the conversation quotes (`blob:sha256:<hex>`) |
 | `scrollback.txt` | the pane's text (`format` text), its last MiB, for the new pane to show, dimmed and without control characters, above the program |
 
 Limits: the package is refused past 256 MiB, and `untracked.tar` past
@@ -104,6 +105,21 @@ and the target is a host the user trusts with commands already (see
    paths is not followed). The config dir is the target server's
    `CLAUDE_CONFIG_DIR`, else `~/.claude`.
 
+   omp's conversation goes the same way, under omp's data dir: its
+   file, keeping its `<time>_<id>.jsonl` name, and the directory of that
+   name beside it, into `sessions/<omp's slug of the target cwd>/`, its
+   `cwd` rewritten. omp's slug, as its `session-paths.ts` makes it: of
+   the real path, under the temporary directory `-tmp-` and the path from
+   it, under home `-` and the path from it, else `--<path>--`, each `/`,
+   `\` and `:` a `-` (`~/repos/gorex` is `-repos-gorex`, `C:\x` is
+   `--C--x--`). The data dir, as omp's `dirs.ts` has it, of the target
+   server's environment: `~/.omp/agent`, `PI_CONFIG_DIR` in place of
+   `.omp`, a profile's (`OMP_PROFILE`, `PI_PROFILE`) under `profiles/`,
+   `PI_CODING_AGENT_DIR` without one, `$XDG_DATA_HOME/omp` when it is
+   there. The blobs merge into its `blobs/` as Claude Code's file history
+   does (below). A message is the `id` of a line, for the round trip's
+   rule below, as `uuid` is Claude Code's.
+
    A copy of the same uuid already here, in any project, is what a
    round trip leaves: the conversation went A → B, the user went on at
    B, and now comes back to A, which still has the copy it sent (the
@@ -137,8 +153,9 @@ and the target is a host the user trusts with commands already (see
 5. **Start the session.** `create` with the target directory and the
    pane's size, the session's id the hop's link (which the source's window
    knows by then, and waits for, rather than open it as a tab of its own),
-   then type `claude --resume <uuid>` into the shell (`ClaudeResume`), so
-   the shell stays when Claude Code exits, as on the source. A shell GoRex
+   then type `claude --resume <uuid>`, or `omp --resume <id>`, into the
+   shell (`ClaudeResume`, `ompResume`), so the shell stays when the agent
+   exits, as on the source. A shell GoRex
    cannot quote for (nushell) is refused before the package is sent. A
    shell pane only gets its directory.
 
@@ -210,8 +227,15 @@ menu name it.
 
 Packing happens on the source's own server (op `teleport.pack`, local
 socket only, on a connection of its own), which has the session's
-directory, Claude Code's process and its config dir (`AgentSession`,
-`AgentConfigDir`). It answers a `Response` line whose data is the
+directory, the agent's process and its config dir (`AgentSession`,
+`AgentConfigDir`). Claude Code's conversation is the one its
+`sessions/<pid>.json` names; omp's the file its state dir's
+`terminal-sessions/<tty>` records for the pane's terminal (the tty's
+name past `/dev/`, as `ttys008`), its directory the pane's; with no such
+record, as on Windows, where omp keys a terminal by its emulator's
+environment, which GoRex's panes would share, the conversation of the
+pane's directory written last. Its dirs follow the process's
+environment and its `--profile` and `--session-dir`. It answers a `Response` line whose data is the
 manifest, then the package. The source app (or CLI) pipes the package
 from its server to the target's; it holds no files.
 
@@ -246,5 +270,5 @@ from its server to the target's; it holds no files.
   user merges the branches.
 - Cleaning `.gorex/teleport/` work trees: `git worktree remove` by hand,
   or a later "Clean up teleports" command.
-- Agents other than Claude Code (Codex keeps its conversations
-  elsewhere); their panes go as shells.
+- Agents other than Claude Code and omp (Codex keeps its conversations
+  elsewhere): refused while they run; a shell goes.

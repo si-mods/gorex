@@ -1353,8 +1353,13 @@ func (s *session) foreground(in *SessionInfo) {
 	if in.Dir == "" && !in.Idle {
 		in.Dir = inspect(in.PID).dir
 	}
-	if !in.Idle && strings.EqualFold(in.Program, "claude") {
+	switch {
+	case in.Idle:
+	case strings.EqualFold(in.Program, "claude"):
 		in.AgentSession, in.AgentConfigDir = claudeSession(fg, p.dir)
+	case strings.EqualFold(in.Program, "omp"):
+		env := func(k string) string { return procEnv(fg, k) }
+		in.AgentSession, in.AgentConfigDir, in.agentFile = ompSession(env, p.dir, p.args, s.p.tty())
 	}
 }
 

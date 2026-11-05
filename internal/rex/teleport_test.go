@@ -121,7 +121,7 @@ func TestPackageNames(t *testing.T) {
 		"claude/" + id + "/subagents/a.jsonl": true, "claude/" + id + "/../../x": false,
 		"claude/other.jsonl": false, "../repo.bundle": false, "/etc/passwd": false, "notes.txt": false,
 	} {
-		if got := packageName(name, id); got != want {
+		if got := packageName(name, "claude", id); got != want {
 			t.Errorf("packageName(%q) = %v, want %v", name, got, want)
 		}
 	}
@@ -177,7 +177,7 @@ func TestReceivePackageRefuses(t *testing.T) {
 			io.WriteString(tw, body)
 		}
 		tw.Close()
-		if err := receivePackage(bytes.NewReader(b.Bytes()), int64(b.Len()), t.TempDir(), id); err == nil {
+		if err := receivePackage(bytes.NewReader(b.Bytes()), int64(b.Len()), t.TempDir(), "claude", id); err == nil {
 			t.Errorf("received %v", parts)
 		}
 	}
@@ -186,7 +186,7 @@ func TestReceivePackageRefuses(t *testing.T) {
 	tw.WriteHeader(&tar.Header{Name: "scrollback.txt", Mode: 0o600, Size: 2, Typeflag: tar.TypeReg})
 	io.WriteString(tw, "hi")
 	tw.Close()
-	if err := receivePackage(bytes.NewReader(b.Bytes()), int64(b.Len())+512, t.TempDir(), id); err == nil {
+	if err := receivePackage(bytes.NewReader(b.Bytes()), int64(b.Len())+512, t.TempDir(), "claude", id); err == nil {
 		t.Error("received a package shorter than said")
 	}
 }
@@ -208,6 +208,9 @@ func TestTeleportRefusal(t *testing.T) {
 		{SessionInfo{Program: "claude", AgentSession: id, LastOutput: time.Now()}, TeleportWorking},
 		{SessionInfo{Program: "claude", AgentSession: id, LastOutput: quiet, Status: &ProgramStatus{State: "working"}}, TeleportWorking},
 		{SessionInfo{Idle: true, Exited: true}, TeleportEnded},
+		{SessionInfo{Program: "omp", AgentSession: id, LastOutput: quiet}, ""},
+		{SessionInfo{Program: "omp", AgentSession: id, LastOutput: time.Now()}, TeleportWorking},
+		{SessionInfo{Program: "omp", LastOutput: quiet}, TeleportUnknown},
 	} {
 		if got := TeleportRefusal(c.in); got != c.want {
 			t.Errorf("TeleportRefusal(%+v) = %q, want %q", c.in, got, c.want)
@@ -648,15 +651,24 @@ func TestTeleportCleansUp(t *testing.T) {
 	}
 }
 
-// stubClaude puts a claude that only says its arguments first on PATH,
-// which the sessions a teleport starts inherit: the resume they type
-// must not start the real Claude Code.
+// stubClaude puts a claude and an omp that only say their arguments
+// first on PATH, which the sessions a teleport starts inherit: the resume
+// they type must not start the real agent.
 func stubClaude(t *testing.T) {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "stub")
-	writeFile(t, filepath.Join(bin, "claude"), "#!/bin/sh\necho stub-claude \"$@\"\n")
-	os.Chmod(filepath.Join(bin, "claude"), 0o755)
+	for _, agent := range agentPrograms {
+		writeFile(t, filepath.Join(bin, agent), "#!/bin/sh\necho stub-"+agent+" \"$@\"\n")
+		os.Chmod(filepath.Join(bin, agent), 0o755)
+	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// The sessions' shell, a login one, would have /etc/profile put the
+	// system's directories first, where a real agent may be: a shell
+	// named sh that is none.
+	shell := filepath.Join(t.TempDir(), "shell", "sh")
+	writeFile(t, shell, "#!/bin/sh\nexec /bin/sh \"$@\"\n")
+	os.Chmod(shell, 0o755)
+	t.Setenv("SHELL", shell)
 }
 
 const convID = "5d454f1b-0c2e-4b8a-9f00-0123456789ab"
@@ -1190,7 +1202,7 @@ func TestManifestCheck(t *testing.T) {
 		}
 	}
 	for _, name := range []string{"claude/../../x", "claude/../x.jsonl"} {
-		if packageName(name, "") || packageName(name, convID) {
+		if packageName(name, "claude", "") || packageName(name, "claude", convID) {
 			t.Errorf("took part %q", name)
 		}
 	}

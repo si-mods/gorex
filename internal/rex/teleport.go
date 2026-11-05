@@ -10,6 +10,7 @@ import (
 	"io"
 	"net"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -90,7 +91,7 @@ func TeleportRefusal(in SessionInfo) string {
 		return TeleportEnded
 	case in.Idle:
 		return ""
-	case !strings.EqualFold(in.Program, "claude"):
+	case !slices.Contains(agentPrograms, strings.ToLower(in.Program)):
 		return TeleportProgram
 	case !IsUUID(in.AgentSession):
 		return TeleportUnknown
@@ -101,17 +102,21 @@ func TeleportRefusal(in SessionInfo) string {
 	return ""
 }
 
+// agentPrograms are the coding agents whose conversation a teleport takes
+// (teleportAgents).
+var agentPrograms = []string{"claude", "omp"}
+
 // teleportReason says a refusal of TeleportRefusal, for an error.
 func teleportReason(code, program string) string {
 	switch code {
 	case TeleportEnded:
 		return "the session has ended"
 	case TeleportProgram:
-		return program + " is running: only a shell at its prompt or Claude Code can teleport"
+		return program + " is running: only a shell at its prompt, Claude Code or omp can teleport"
 	case TeleportUnknown:
-		return "Claude Code's conversation is not known"
+		return program + "'s conversation is not known"
 	case TeleportWorking:
-		return "Claude Code is working: wait for it to finish, or stop it"
+		return program + " is working: wait for it to finish, or stop it"
 	}
 	return code
 }

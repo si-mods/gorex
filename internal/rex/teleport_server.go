@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -91,7 +92,7 @@ func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
 		return m, nil, errors.New("the repository has no remote to clone it from")
 	}
 	if !in.Idle {
-		m.Program, m.Session = "claude", in.AgentSession
+		m.Program, m.Session = strings.ToLower(in.Program), in.AgentSession
 	}
 
 	tmp, err := os.MkdirTemp("", "gorex-teleport-")
@@ -146,7 +147,7 @@ func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
 			return m, pkg, err
 		}
 	}
-	if m.Program == "claude" {
+	if m.Program != "shell" {
 		if err := s.packConversation(add, in, m.Root); err != nil {
 			return m, pkg, err
 		}
@@ -268,9 +269,13 @@ func packUntracked(root, path string) (int, error) {
 	return n, tw.Close()
 }
 
-// packConversation adds Claude Code's conversation of in, and the
-// directory of its subagents and tool results, under claude/.
+// packConversation adds the conversation of in's agent under its part of
+// the package: Claude Code's (claude/), and the directory of its
+// subagents and tool results, or omp's (packOmp).
 func (s *Server) packConversation(add func(name, path string) error, in SessionInfo, root string) error {
+	if strings.EqualFold(in.Program, "omp") {
+		return s.packOmp(add, in)
+	}
 	config := in.AgentConfigDir
 	if config == "" {
 		var err error
@@ -388,9 +393,10 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		return
 	}
 	config := ""
-	if m.Program == "claude" {
+	agent := teleportAgents[m.Program]
+	if agent != nil {
 		var err error
-		if config, err = s.claudeConfigDir(); err != nil {
+		if config, err = agent.dataDir(s); err != nil {
 			fail(err)
 			return
 		}
@@ -399,8 +405,8 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		if _, _, shell, err := shellCommand(nil); err != nil {
 			fail(err)
 			return
-		} else if _, ok := ClaudeResume(shell, m.Session, ""); !ok {
-			fail(fmt.Errorf("GoRex cannot type Claude Code's resume into %s, the shell here", shell))
+		} else if _, ok := agent.resume(shell, m.Session); !ok {
+			fail(fmt.Errorf("GoRex cannot type %s's resume into %s, the shell here", m.Program, shell))
 			return
 		}
 	}
@@ -413,7 +419,7 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		return
 	}
 	defer os.RemoveAll(tmp)
-	err = receivePackage(io.LimitReader(idleReader{conn, r}, m.Size), m.Size, tmp, m.Session)
+	err = receivePackage(io.LimitReader(idleReader{conn, r}, m.Size), m.Size, tmp, m.Program, m.Session)
 	conn.SetReadDeadline(time.Time{})
 	if err != nil {
 		fail(fmt.Errorf("receiving the package: %w", err))
@@ -484,8 +490,8 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		return
 	}
 	keep := func() {}
-	if m.Program == "claude" {
-		placed, done, err := placeConversation(filepath.Join(tmp, "claude"), config, m, tree, dir)
+	if agent != nil {
+		placed, done, err := placeConversation(filepath.Join(tmp, m.Program), config, m, tree, dir)
 		undo, keep = append(undo, placed...), done
 		if err != nil {
 			fail(step("placing the conversation", err))
@@ -507,9 +513,9 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		fail(step("starting the session", err))
 		return
 	}
-	if m.Program == "claude" {
+	if agent != nil {
 		// The shell takes it: teleportIn checked it would before.
-		cmd, _ := ClaudeResume(ss.shell, m.Session, "")
+		cmd, _ := agent.resume(ss.shell, m.Session)
 		// Typed once the shell printed, its prompt or what comes before
 		// it: a console may drop what comes earlier.
 		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
@@ -551,9 +557,9 @@ func (m *TeleportManifest) check() error {
 	switch {
 	case m.Version != teleportVersion:
 		return fmt.Errorf("a package of version %d: GoRex differs between the machines", m.Version)
-	case m.Program != "shell" && m.Program != "claude":
+	case m.Program != "shell" && teleportAgents[m.Program] == nil:
 		return errors.New("an unknown program")
-	case m.Program == "claude" && !IsUUID(m.Session), m.Program == "shell" && m.Session != "":
+	case m.Program != "shell" && !IsUUID(m.Session), m.Program == "shell" && m.Session != "":
 		// The id names files of the package and of Claude Code's.
 		return errors.New("no conversation id GoRex takes")
 	case !hexHead(m.Head):
@@ -602,24 +608,131 @@ func hexHead(s string) bool {
 	return true
 }
 
+// packOmp adds omp's conversation of in under omp/: the file, the
+// directory of the same name beside it (its artifacts), and the blobs it
+// quotes, from omp's data dir.
+func (s *Server) packOmp(add func(name, path string) error, in SessionInfo) error {
+	file := in.agentFile
+	if file == "" {
+		found, _ := filepath.Glob(filepath.Join(in.AgentConfigDir, "sessions", "*", "*_"+in.AgentSession+".jsonl"))
+		if len(found) == 0 {
+			return errors.New("omp's conversation file is not found")
+		}
+		file = found[0]
+	}
+	name := filepath.Base(file)
+	if ompID(name) != in.AgentSession {
+		return errors.New("omp's conversation file is not its session's")
+	}
+	if err := add("omp/"+name, file); err != nil {
+		return err
+	}
+	dir := strings.TrimSuffix(file, ".jsonl")
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if path == dir && errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		return add("omp/"+strings.TrimSuffix(name, ".jsonl")+"/"+filepath.ToSlash(rel), path)
+	})
+	if err != nil {
+		return err
+	}
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	blobs := filepath.Join(in.AgentConfigDir, "blobs")
+	seen := map[string]bool{}
+	for _, m := range blobRef.FindAllSubmatch(b, -1) {
+		h := string(m[1])
+		if seen[h] {
+			continue
+		}
+		seen[h] = true
+		found, _ := filepath.Glob(filepath.Join(blobs, h+"*"))
+		for _, f := range found {
+			if st, err := os.Lstat(f); err == nil && st.Mode().IsRegular() && blobName(filepath.Base(f)) {
+				if err := add("omp/blobs/"+filepath.Base(f), f); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// blobRef is a reference to one of omp's blobs in its conversation.
+var blobRef = regexp.MustCompile(`blob:sha256:([0-9a-f]{64})`)
+
+// teleportAgent is what a teleport knows of a coding agent's
+// conversations, by its program, which names its part of the package.
+type teleportAgent struct {
+	// dataDir is where the agent keeps them on this machine; files the
+	// glob under it of conversation id's files, and project the directory
+	// under it of those started in dir.
+	dataDir func(s *Server) (string, error)
+	files   func(id string) string
+	project func(dir string) string
+	// idField names a message of a conversation's lines.
+	idField string
+	// shared are the directories, of the package's part and of the data
+	// dir, whose files merge (placeHistory): Claude Code's file history,
+	// omp's blobs.
+	shared func(id string) [2]string
+	// resume is the command that resumes conversation id in a shell.
+	resume func(shell, id string) (string, bool)
+}
+
+// teleportAgents are the agents of agentPrograms.
+var teleportAgents = map[string]*teleportAgent{
+	"claude": {
+		dataDir: (*Server).claudeConfigDir,
+		files:   func(id string) string { return filepath.Join("projects", "*", id+".jsonl") },
+		project: func(dir string) string { return filepath.Join("projects", claudeSlug(dir)) },
+		idField: "uuid",
+		shared:  func(id string) [2]string { return [2]string{"file-history/" + id, "file-history/" + id} },
+		resume:  func(shell, id string) (string, bool) { return ClaudeResume(shell, id, "") },
+	},
+	"omp": {
+		dataDir: (*Server).ompDataDir,
+		files:   func(id string) string { return filepath.Join("sessions", "*", "*_"+id+".jsonl") },
+		project: func(dir string) string {
+			home, _ := os.UserHomeDir()
+			return filepath.Join("sessions", ompSlug(dir, home))
+		},
+		idField: "id",
+		shared:  func(string) [2]string { return [2]string{"blobs", "blobs"} },
+		resume:  ompResume,
+	},
+}
+
 // errDiverged refuses a conversation that has messages here the incoming
 // one lacks: both went on.
 var errDiverged = errors.New("the conversation went on here too")
 
-// messageIDs are the uuid fields of a conversation's lines, of its
+// messageIDs are the field fields of a conversation's lines, of its
 // messages; lines without one, as summaries, have none.
-func messageIDs(path string) (map[string]bool, error) {
+func messageIDs(path, field string) (map[string]bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 	ids := map[string]bool{}
 	for _, line := range bytes.Split(b, []byte("\n")) {
-		var f struct {
-			UUID string `json:"uuid"`
-		}
-		if json.Unmarshal(line, &f) == nil && f.UUID != "" {
-			ids[f.UUID] = true
+		var f map[string]json.RawMessage
+		var id string
+		if json.Unmarshal(line, &f) == nil && json.Unmarshal(f[field], &id) == nil && id != "" {
+			ids[id] = true
 		}
 	}
 	return ids, nil
@@ -627,8 +740,8 @@ func messageIDs(path string) (map[string]bool, error) {
 
 // receivePackage reads a package of size bytes from r into dir, at the
 // names it gives: those of its parts only, each a regular file, the
-// conversation's under claude/ for conversation id.
-func receivePackage(r io.Reader, size int64, dir, id string) error {
+// conversation's under its agent's part, program, for conversation id.
+func receivePackage(r io.Reader, size int64, dir, program, id string) error {
 	cr := &countReader{r: r}
 	tr := tar.NewReader(cr)
 	for {
@@ -639,7 +752,7 @@ func receivePackage(r io.Reader, size int64, dir, id string) error {
 		if err != nil {
 			return err
 		}
-		if h.Typeflag != tar.TypeReg || !packageName(h.Name, id) {
+		if h.Typeflag != tar.TypeReg || !packageName(h.Name, program, id) {
 			return fmt.Errorf("an unexpected part %q", h.Name)
 		}
 		if h.Name == "untracked.tar" && h.Size > untrackedMax {
@@ -694,13 +807,27 @@ func (c *countReader) Read(p []byte) (int, error) {
 }
 
 // packageName tells whether name is a part of a package of conversation
-// id.
-func packageName(name, id string) bool {
+// id of agent program.
+func packageName(name, program, id string) bool {
 	switch name {
 	case "repo.bundle", "worktree.patch", "untracked.tar", "scrollback.txt":
 		return true
 	}
 	if id == "" {
+		return false
+	}
+	if program == "omp" {
+		rest, ok := strings.CutPrefix(name, "omp/")
+		if b, isBlob := strings.CutPrefix(rest, "blobs/"); ok && isBlob {
+			return blobName(b)
+		}
+		stem, sub, _ := strings.Cut(rest, "/")
+		if sub == "" {
+			return ok && ompID(rest) == id
+		}
+		return ok && ompID(stem+".jsonl") == id && localName(sub)
+	}
+	if program != "claude" {
 		return false
 	}
 	if name == "claude/"+id+".jsonl" {
@@ -852,15 +979,27 @@ func noLinkUnder(root, dir string) error {
 // it did, and how to keep it.
 func placeConversation(from, config string, m *TeleportManifest, tree, dir string) (undo []func(), done func(), err error) {
 	done = func() {}
-	file := filepath.Join(from, m.Session+".jsonl")
-	old, _ := filepath.Glob(filepath.Join(config, "projects", "*", m.Session+".jsonl"))
+	agent := teleportAgents[m.Program]
+	if agent == nil {
+		return nil, done, errors.New("an unknown program")
+	}
+	// The conversation's file, as the agent names it.
+	found, _ := filepath.Glob(filepath.Join(from, "*.jsonl"))
+	found = slices.DeleteFunc(found, func(f string) bool {
+		return filepath.Base(f) != m.Session+".jsonl" && ompID(filepath.Base(f)) != m.Session
+	})
+	if len(found) != 1 {
+		return nil, done, errors.New("no conversation in the package")
+	}
+	file := found[0]
+	old, _ := filepath.Glob(filepath.Join(config, agent.files(m.Session)))
 	if len(old) > 0 {
-		incoming, err := messageIDs(file)
+		incoming, err := messageIDs(file, agent.idField)
 		if err != nil {
 			return nil, done, err
 		}
 		for _, path := range old {
-			here, err := messageIDs(path)
+			here, err := messageIDs(path, agent.idField)
 			if err != nil {
 				return nil, done, err
 			}
@@ -893,12 +1032,13 @@ func placeConversation(from, config string, m *TeleportManifest, tree, dir strin
 			}
 		}
 	}
-	added, err := placeHistory(filepath.Join(from, "file-history", m.Session), filepath.Join(config, "file-history", m.Session))
+	shared := agent.shared(m.Session)
+	added, err := placeHistory(filepath.Join(from, filepath.FromSlash(shared[0])), filepath.Join(config, filepath.FromSlash(shared[1])))
 	undo = append(undo, added...)
 	if err != nil {
 		return undo, done, err
 	}
-	project := filepath.Join(config, "projects", claudeSlug(dir))
+	project := filepath.Join(config, agent.project(dir))
 	if err := os.MkdirAll(project, 0o700); err != nil {
 		return undo, done, err
 	}
@@ -929,12 +1069,14 @@ func placeConversation(from, config string, m *TeleportManifest, tree, dir strin
 		}
 		return err
 	}
-	if err := write(file, filepath.Join(project, m.Session+".jsonl")); err != nil {
+	name := filepath.Base(file)
+	if err := write(file, filepath.Join(project, name)); err != nil {
 		return undo, done, err
 	}
 	// The directory the old copies had went with them; this one is new.
-	sub := filepath.Join(from, m.Session)
-	undo = append(undo, func() { os.RemoveAll(filepath.Join(project, m.Session)) })
+	stem := strings.TrimSuffix(name, ".jsonl")
+	sub := filepath.Join(from, stem)
+	undo = append(undo, func() { os.RemoveAll(filepath.Join(project, stem)) })
 	err = filepath.WalkDir(sub, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if path == sub && errors.Is(err, fs.ErrNotExist) {

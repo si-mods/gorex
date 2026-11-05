@@ -6284,13 +6284,13 @@ func (msgs Messages) TeleportEnded() string {
 	return Catalog.Format(msgs.locale, "teleportEnded", nil)
 }
 
-// TeleportProgram says "{program} is running: only a shell at its prompt or Claude Code can teleport"
+// TeleportProgram says "{program} is running: only a shell at its prompt, Claude Code or omp can teleport"
 // in the language the app shows.
 //
 // Disabled teleport item: another program is in the foreground.
 func TeleportProgram(program string) string { return In(i18n.Locale()).TeleportProgram(program) }
 
-// TeleportProgram says "{program} is running: only a shell at its prompt or Claude Code can teleport"
+// TeleportProgram says "{program} is running: only a shell at its prompt, Claude Code or omp can teleport"
 // in the language of msgs.
 //
 // Disabled teleport item: another program is in the foreground.
@@ -6298,34 +6298,36 @@ func (msgs Messages) TeleportProgram(program string) string {
 	return Catalog.Format(msgs.locale, "teleportProgram", map[string]any{"program": program})
 }
 
-// TeleportUnknown says "Claude Code's conversation is not known yet"
+// TeleportUnknown says "{agent}'s conversation is not known yet"
 // in the language the app shows.
 //
-// Disabled teleport item: GoRex has not found which conversation Claude
-// Code has open.
-func TeleportUnknown() string { return In(i18n.Locale()).TeleportUnknown() }
+// Disabled teleport item: GoRex has not found which conversation the coding
+// agent (Claude Code, omp) has open.
+func TeleportUnknown(agent string) string { return In(i18n.Locale()).TeleportUnknown(agent) }
 
-// TeleportUnknown says "Claude Code's conversation is not known yet"
+// TeleportUnknown says "{agent}'s conversation is not known yet"
 // in the language of msgs.
 //
-// Disabled teleport item: GoRex has not found which conversation Claude
-// Code has open.
-func (msgs Messages) TeleportUnknown() string {
-	return Catalog.Format(msgs.locale, "teleportUnknown", nil)
+// Disabled teleport item: GoRex has not found which conversation the coding
+// agent (Claude Code, omp) has open.
+func (msgs Messages) TeleportUnknown(agent string) string {
+	return Catalog.Format(msgs.locale, "teleportUnknown", map[string]any{"agent": agent})
 }
 
-// TeleportWorking says "Claude Code is working: wait for it to finish, or stop it"
+// TeleportWorking says "{agent} is working: wait for it to finish, or stop it"
 // in the language the app shows.
 //
-// Disabled teleport item: Claude Code is still writing its conversation.
-func TeleportWorking() string { return In(i18n.Locale()).TeleportWorking() }
+// Disabled teleport item: the coding agent is still writing its
+// conversation.
+func TeleportWorking(agent string) string { return In(i18n.Locale()).TeleportWorking(agent) }
 
-// TeleportWorking says "Claude Code is working: wait for it to finish, or stop it"
+// TeleportWorking says "{agent} is working: wait for it to finish, or stop it"
 // in the language of msgs.
 //
-// Disabled teleport item: Claude Code is still writing its conversation.
-func (msgs Messages) TeleportWorking() string {
-	return Catalog.Format(msgs.locale, "teleportWorking", nil)
+// Disabled teleport item: the coding agent is still writing its
+// conversation.
+func (msgs Messages) TeleportWorking(agent string) string {
+	return Catalog.Format(msgs.locale, "teleportWorking", map[string]any{"agent": agent})
 }
 
 // TeleportNoHosts says "No host is connected"
