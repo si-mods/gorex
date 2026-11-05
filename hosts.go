@@ -1027,6 +1027,16 @@ func (a *App) removeHost(h *hostConn) {
 		}
 		o.changed()
 	}
+	// Spaces whose kept tabs show the host's panes show from their layout.
+	if a.st != nil {
+		for _, w := range a.st.workspaces {
+			if k := w.kept; k != nil && slices.ContainsFunc(k.tabs, func(t *Tab) bool {
+				return slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.host == h })
+			}) {
+				w.unkeep()
+			}
+		}
+	}
 	a.hosts = slices.DeleteFunc(slices.Clone(a.hosts), func(o *hostConn) bool { return o == h })
 	a.syncHosts()
 	h.close()
