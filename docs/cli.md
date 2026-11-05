@@ -30,7 +30,7 @@ gorex ls [--json]
 gorex clients [--json]
 gorex [-S HOST] layout [--json]
 gorex new [--dir DIR] [--json] [-- COMMAND...]
-gorex split [-s SESSION] [--down] [--dir DIR]
+gorex split [-s SESSION] [--down] [--dir DIR] [-- COMMAND...]
 gorex close [-s SESSION] [--tab]
 gorex rename [-s SESSION] NAME
 gorex send [-s SESSION] [--enter] [--json] TEXT...
@@ -63,8 +63,9 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   exit 0, and a timeout exits 1. `--timeout 0` (the default) waits forever.
 - `run` creates a session, runs the command, prints what the screen shows
   when it ends, and exits with the program's status.
-- `split` and `close` change the window's layout, so they need the GoRex
-  window open on that machine.
+- `split` changes the window's layout, so it needs the GoRex window open
+  on that machine; the command after `--` runs in the new pane, or a shell
+  does. `close` needs the window too.
 - `events` prints each layout or session change as one JSON line; with a
   host that shares its layout, it subscribes to that host's layout too.
 - `clients` prints the principal, peer key, whether it is remote, through a

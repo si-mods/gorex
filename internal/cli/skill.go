@@ -81,7 +81,7 @@ gorex ls [--json]
 gorex clients [--json]
 gorex layout [--json]
 gorex new [--dir DIR] [--json] [-- COMMAND...]
-gorex split [-s SESSION] [-w TAB] [-b PANE] [--down] [--dir DIR] [--json]
+gorex split [-s SESSION] [-w TAB] [-b PANE] [--down] [--dir DIR] [--json] [-- COMMAND...]
 gorex close [-s SESSION] [-w TAB] [-b PANE] [--tab] [--json]
 gorex rename [-s SESSION] [-w TAB] [-b PANE] NAME [--json]
 gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] TEXT...
@@ -96,7 +96,8 @@ gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION
 - ` + "`new`" + ` creates a session and prints its ID. It runs the command after
   ` + "`--`" + ` in its first pane, or a shell. Use ` + "`--dir`" + ` to set the directory.
 - ` + "`split`" + ` splits the selected pane right, or below with ` + "`--down`" + `, and prints
-  the new session's ID. It needs the GoRex window open on that machine.
+  the new session's ID. The command after ` + "`--`" + ` runs in the new pane, or a
+  shell does. It needs the GoRex window open on that machine.
 - ` + "`close`" + ` closes the selected pane, or its tab with ` + "`--tab`" + `. It needs the
   window open too.
 - ` + "`send`" + ` types without attaching; ` + "`--enter`" + ` presses Return. ` + "`paste`" + ` uses

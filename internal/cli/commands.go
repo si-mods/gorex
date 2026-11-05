@@ -120,7 +120,7 @@ Usage:
   gorex [-S HOST] ls [--json]
   gorex clients [--json]
   gorex [-S HOST] layout [--json]
-  gorex split [-s SESSION] [--down] [--dir DIR]
+  gorex split [-s SESSION] [--down] [--dir DIR] [-- COMMAND...]
   gorex close [-s SESSION] [--tab]
   gorex rename [-s SESSION] NAME
   gorex new [--dir DIR] [--json] [-- COMMAND...]
@@ -410,6 +410,12 @@ func layoutCmd(args []string, out, errOut io.Writer) (int, bool) {
 	return ExitOK, true
 }
 
+// splitRequest is the layout change split asks for: a new pane beside
+// target, running command when one is given.
+func splitRequest(target string, vertical bool, dir string, command []string) rex.LayoutCommand {
+	return rex.LayoutCommand{Op: "pane.split", SID: target, Vertical: vertical, Dir: dir, Command: command}
+}
+
 func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("split", errOut)
 	sid := targetFlag(fs)
@@ -433,7 +439,7 @@ func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
-	res, err := c.Command(rex.LayoutCommand{Op: "pane.split", SID: target, Vertical: *down, Dir: *dir})
+	res, err := c.Command(splitRequest(target, *down, *dir, fs.Args()))
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
