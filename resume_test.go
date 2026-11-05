@@ -28,6 +28,9 @@ func TestResumeCommand(t *testing.T) {
 		{shell: "fish", args: []string{`a'b`, `c\d`}, want: `'a\'b' 'c\\d'`, ok: true},
 		{shell: "pwsh", args: []string{"say", "it's"}, want: `say 'it''s'`, ok: true},
 		{shell: "pwsh.exe", args: []string{"node", "x y"}, want: `node 'x y'`, ok: true},
+		// A quoted program is a string to PowerShell; & runs it.
+		{shell: `C:\Program Files\PowerShell\7\pwsh.exe`, args: []string{`C:\Users\u\.local\bin\claude.exe`, "--resume", "8d4ae62f"}, want: `& 'C:\Users\u\.local\bin\claude.exe' --resume 8d4ae62f`, ok: true},
+		{shell: "powershell", args: []string{"my tool"}, want: `& 'my tool'`, ok: true},
 		{shell: "cmd", args: []string{"node", "x y"}, want: `node "x y"`, ok: true},
 		{shell: "cmd.exe", args: []string{"node", "100%"}, ok: false},
 		{shell: "cmd.exe", args: []string{`node`, `a"b`}, ok: false},
