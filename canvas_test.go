@@ -404,10 +404,10 @@ func TestCanvasMenuPlacesBox(t *testing.T) {
 	x, y := room.X+room.W-60, room.Y+room.H-60
 	tt.RightClickAt(x, y)
 	tt.Frame()
-	if !tt.HasText("New Terminal") || !tt.HasText("New Browser") || !tt.HasText("New Note") {
-		t.Fatalf("the plane's menu is not shown: %q", tt.Texts())
+	if m := tt.Menu(); !slices.Equal(m, []string{"New Terminal", "New Browser", "New Note"}) {
+		t.Fatalf("the plane's menu is %q", m)
 	}
-	if err := tt.Click("New Note"); err != nil {
+	if err := tt.ChooseMenuItem("New Note"); err != nil {
 		t.Fatal(err)
 	}
 	settle(tt)
@@ -515,8 +515,8 @@ func TestCanvasMenuAtPointer(t *testing.T) {
 		tt.Frame()
 		tt.RightClickAt(x, y)
 		tt.Frame()
-		if err := tt.Click("New Note"); err != nil {
-			t.Fatalf("at %+v: %v; texts %q", view, err, tt.Texts())
+		if err := tt.ChooseMenuItem("New Note"); err != nil {
+			t.Fatalf("at %+v: %v; menu %q", view, err, tt.Menu())
 		}
 		settle(tt)
 		f := tab.Focus.float

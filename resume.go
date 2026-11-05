@@ -86,7 +86,7 @@ func resumeCommand(shell, prog string, args []string) (string, bool) {
 	}
 	// PowerShell reads a quoted first word as a string, not a command: the
 	// call operator runs it.
-	if name := strings.ToLower(strings.TrimSuffix(filepath.Base(shell), ".exe")); (name == "pwsh" || name == "powershell") && words[0] != args[0] {
+	if name := rex.ShellName(shell); (name == "pwsh" || name == "powershell") && words[0] != args[0] {
 		words[0] = "& " + words[0]
 	}
 	return strings.Join(words, " "), true
