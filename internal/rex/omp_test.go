@@ -213,8 +213,14 @@ func TestTeleportOmpRoundTrip(t *testing.T) {
 	}
 	waitText(t, m.bPeer, in.ID, "stub-omp --resume "+ompConv)
 
+	// The source omp, killed once its pane went, notes it in its copy:
+	// no turn of the conversation.
+	f, _ := os.OpenFile(fileA, os.O_APPEND|os.O_WRONLY, 0)
+	fmt.Fprintln(f, `{"type":"custom","customType":"session_exit","data":{"reason":"sighup"},"id":"cae291a2","parentId":"m2"}`)
+	f.Close()
+
 	// It goes on at B; back to A, found as the newest of its directory.
-	f, _ := os.OpenFile(fileB, os.O_APPEND|os.O_WRONLY, 0)
+	f, _ = os.OpenFile(fileB, os.O_APPEND|os.O_WRONLY, 0)
 	fmt.Fprintln(f, `{"type":"message","id":"b1","parentId":"m2","message":{}}`)
 	f.Close()
 	m.toA(t)

@@ -117,16 +117,21 @@ and the target is a host the user trusts with commands already (see
    `.omp`, a profile's (`OMP_PROFILE`, `PI_PROFILE`) under `profiles/`,
    `PI_CODING_AGENT_DIR` without one, `$XDG_DATA_HOME/omp` when it is
    there. The blobs merge into its `blobs/` as Claude Code's file history
-   does (below). A message is the `id` of a line, for the round trip's
-   rule below, as `uuid` is Claude Code's.
+   does (below). A message is the `id` of a line that is the
+   conversation, for the round trip's rule below, as `uuid` is Claude
+   Code's.
 
    A copy of the same uuid already here, in any project, is what a
    round trip leaves: the conversation went A → B, the user went on at
    B, and now comes back to A, which still has the copy it sent (the
    source keeps its file: after a teleport it is an older version, and
    nothing on the source changes it). The copies are compared by their
-   messages, the `uuid` field of each line (lines without one, as
-   summaries, do not count):
+   messages: the `uuid` of Claude Code's `user` and `assistant` lines,
+   the `id` of omp's `message`, `custom_message`, `branch_summary` and
+   `compaction` entries (those omp makes the model's context of). The
+   other lines do not count: summaries, snapshots, and what an agent
+   notes of itself, as the `session_exit` omp appends to the source's
+   copy once its pane ends after the teleport:
 
    - every message here is in the incoming one (the same, or it went on
      elsewhere): the copies here, each `<uuid>.jsonl` and its `<uuid>/`

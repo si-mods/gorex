@@ -950,6 +950,10 @@ func TestTeleportRoundTrip(t *testing.T) {
 		t.Errorf("B's snapshot %v", snapB)
 	}
 
+	// Claude Code notes things of itself in A's copy, as it exits: no turn
+	// of the conversation.
+	appendLine(filepath.Join(projectP, convID+".jsonl"), `{"type":"system","subtype":"informational","uuid":"sys-exit","content":"bye"}`)
+
 	// It goes on at B: a commit, a change, an untracked file of P's gone.
 	treeW := filepath.Dir(dirW)
 	writeFile(t, filepath.Join(dirW, "b.txt"), "from B\n")

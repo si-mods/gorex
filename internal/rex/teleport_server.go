@@ -683,8 +683,11 @@ type teleportAgent struct {
 	dataDir func(s *Server) (string, error)
 	files   func(id string) string
 	project func(dir string) string
-	// idField names a message of a conversation's lines.
+	// idField names a message of a conversation's lines, and turns are
+	// the types of the lines that are the conversation: what the model
+	// reads, not what the agent notes of itself, as omp's session_exit.
 	idField string
+	turns   []string
 	// shared are the directories, of the package's part and of the data
 	// dir, whose files merge (placeHistory): Claude Code's file history,
 	// omp's blobs.
@@ -700,6 +703,7 @@ var teleportAgents = map[string]*teleportAgent{
 		files:   func(id string) string { return filepath.Join("projects", "*", id+".jsonl") },
 		project: func(dir string) string { return filepath.Join("projects", claudeSlug(dir)) },
 		idField: "uuid",
+		turns:   []string{"user", "assistant"},
 		shared:  func(id string) [2]string { return [2]string{"file-history/" + id, "file-history/" + id} },
 		resume:  func(shell, id string) (string, bool) { return ClaudeResume(shell, id, "") },
 	},
@@ -711,8 +715,11 @@ var teleportAgents = map[string]*teleportAgent{
 			return filepath.Join("sessions", ompSlug(dir, home))
 		},
 		idField: "id",
-		shared:  func(string) [2]string { return [2]string{"blobs", "blobs"} },
-		resume:  ompResume,
+		// The entries omp makes the model's context of (xy in its
+		// branch-summarization.ts); custom, model_change and the like not.
+		turns:  []string{"message", "custom_message", "branch_summary", "compaction"},
+		shared: func(string) [2]string { return [2]string{"blobs", "blobs"} },
+		resume: ompResume,
 	},
 }
 
@@ -720,9 +727,10 @@ var teleportAgents = map[string]*teleportAgent{
 // one lacks: both went on.
 var errDiverged = errors.New("the conversation went on here too")
 
-// messageIDs are the field fields of a conversation's lines, of its
-// messages; lines without one, as summaries, have none.
-func messageIDs(path, field string) (map[string]bool, error) {
+// messageIDs are the field fields of a conversation's lines of the types
+// turns, its messages; other lines, as summaries or what the agent noted
+// as it exited, do not count.
+func messageIDs(path, field string, turns []string) (map[string]bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -730,8 +738,9 @@ func messageIDs(path, field string) (map[string]bool, error) {
 	ids := map[string]bool{}
 	for _, line := range bytes.Split(b, []byte("\n")) {
 		var f map[string]json.RawMessage
-		var id string
-		if json.Unmarshal(line, &f) == nil && json.Unmarshal(f[field], &id) == nil && id != "" {
+		var id, typ string
+		if json.Unmarshal(line, &f) == nil && json.Unmarshal(f[field], &id) == nil && id != "" &&
+			json.Unmarshal(f["type"], &typ) == nil && slices.Contains(turns, typ) {
 			ids[id] = true
 		}
 	}
@@ -994,12 +1003,12 @@ func placeConversation(from, config string, m *TeleportManifest, tree, dir strin
 	file := found[0]
 	old, _ := filepath.Glob(filepath.Join(config, agent.files(m.Session)))
 	if len(old) > 0 {
-		incoming, err := messageIDs(file, agent.idField)
+		incoming, err := messageIDs(file, agent.idField, agent.turns)
 		if err != nil {
 			return nil, done, err
 		}
 		for _, path := range old {
-			here, err := messageIDs(path, agent.idField)
+			here, err := messageIDs(path, agent.idField, agent.turns)
 			if err != nil {
 				return nil, done, err
 			}
