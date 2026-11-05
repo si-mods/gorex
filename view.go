@@ -1035,8 +1035,9 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 		p.Name = ""
 		a.changed()
 	}
+	// A canvas's panes are all free: none docks.
 	if p.float != nil {
-		if m.Item(locales.CmdDockPane()).Chosen() {
+		if p.Tab != nil && p.Tab.canvas == nil && m.Item(locales.CmdDockPane()).Chosen() {
 			a.dockPane(p)
 		}
 	} else if t := p.Tab; t != nil && len(t.panes()) > 1 {
@@ -1113,7 +1114,8 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		// As Rex has them: split right, split down, float, zoom and close.
 		// A float's float button, lit, docks it.
 		if f := p.float; f != nil {
-			if iconButtonWith(c, k, "float", locales.CmdDockPane(), 26, 16, true, nil).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
+			// A canvas's panes are all free: none docks.
+			if t.canvas == nil && iconButtonWith(c, k, "float", locales.CmdDockPane(), 26, 16, true, nil).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
 				a.later(c, func() { a.dockPane(p) })
 			}
 		} else {
