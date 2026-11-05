@@ -73,6 +73,15 @@ browser panes use the system's web view.
   notification. A session's most urgent program status shows in the
   session picker and the sidebar, and rootshell sees it as the pane's and
   tab's `agent_status`.
+- **Agent skill and hooks.** `gorex skill setup` finds Claude Code, Codex,
+  OpenCode and Pi, installs a `gorex` skill into each, and adds a
+  session-start hook to Claude Code and Codex that tells the agent its
+  session and pane and how to drive GoRex from the command line. It adds
+  only its own hook and leaves other settings, hooks and skills as they
+  were; `gorex skill status` says what is installed, and `gorex skill
+  remove` removes only what it added. `--project` keeps the skill in the
+  repository, and `--dry-run` reports first.
+
 - **Tab icons** stack the tiles of a tab's programs, the focused pane's in
   front, as Rex does. Tabs reorder by dragging, rename by double-click, and
   have a context menu.

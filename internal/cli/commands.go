@@ -81,6 +81,10 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return eventsCmd(args, out, errOut)
 	case "hosts":
 		return hostsCmd(args, out, errOut)
+	case "skill":
+		return skillCmd(args, out, errOut)
+	case "__internal":
+		return internalCmd(args, out, errOut)
 	case "remote":
 		return remoteCmd(args, out, errOut)
 	case "server":
@@ -125,6 +129,7 @@ Usage:
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
   gorex hosts [ls] [--json]
+  gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
   gorex remote status [--json] | tailscale on|off | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
   gorex server restart
   gorex config path | config check [FILE] | config reload
