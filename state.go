@@ -1531,7 +1531,7 @@ func (a *App) endPane(p *Pane) {
 
 // endKept ends a pane of the tabs the window keeps of space w, out of
 // sight: its tab goes with its last pane, and the space's layout follows.
-// A space whose last pane ends keeps no tabs, and shows from its layout.
+// A space whose last pane ends goes, as one closed empty.
 func (a *App) endKept(w *Workspace, p *Pane) {
 	k := w.kept
 	shown := k.tabs[min(k.active, len(k.tabs)-1)]
@@ -1541,6 +1541,8 @@ func (a *App) endKept(w *Workspace, p *Pane) {
 	w.layout = a.layoutOf(k.tabs, k.active)
 	if len(k.tabs) == 0 {
 		w.kept = nil
+		a.st.remove(w)
+		a.st.save()
 	}
 	a.changed()
 }

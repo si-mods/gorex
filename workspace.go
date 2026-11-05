@@ -856,6 +856,16 @@ func (a *App) showTabs(w *Workspace, others map[string]bool, fallback bool) {
 	if k := w.kept; k != nil && k.app == a {
 		w.kept = nil
 		a.tabs, a.active, a.focusReq, a.renaming = k.tabs, k.active, nil, nil
+		// The panes' infos are from when they left: take the latest, or
+		// the next poll reads what happened away as news. A host's
+		// sessions are not polled into the store; theirs stay.
+		for _, t := range k.tabs {
+			for _, p := range t.allPanes() {
+				if in, ok := a.st.infos[p.SID]; ok && p.host == nil {
+					p.info = in
+				}
+			}
+		}
 		if t := a.tab(); t != nil {
 			a.focusReq = t.Focus
 		}
@@ -897,12 +907,16 @@ func (a *App) park() {
 // and returns them.
 func (a *App) leave() []*Tab {
 	tabs := a.tabs
+	if a.findPane != nil {
+		a.closeFind()
+	}
 	if w := a.ws; w != nil {
 		w.layout = a.snapshot()
 		w.app = nil
 	}
 	a.ws, a.tabs, a.active, a.focusReq, a.renaming = nil, nil, 0, nil, nil
 	a.wsOpen, a.wsRenaming, a.wsConfirm = false, false, false
+	a.paneRenaming, a.paneNameFocus = nil, false
 	return tabs
 }
 

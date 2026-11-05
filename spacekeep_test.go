@@ -4,6 +4,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"gorex/internal/rex"
 )
 
 // shellUp waits for the pane's shell to print its prompt.
@@ -121,6 +124,82 @@ func TestKeptPaneExits(t *testing.T) {
 	a.showWorkspace(first)
 	if len(a.tabs) != 1 || a.tab() != stays {
 		t.Errorf("the space came back on %d tabs", len(a.tabs))
+	}
+	quit(st)
+}
+
+// TestKeptPaneStatusAway checks that a status a kept pane's program reported
+// while the window was away is not news when the window comes back.
+func TestKeptPaneStatusAway(t *testing.T) {
+	a, tt := newTestApp(t)
+	st := a.st
+	first := a.ws
+	p := a.tab().Focus
+	p.info.LastOutput = time.Now()
+	a.newWorkspace()
+	tt.Frame()
+	in := p.info
+	in.Statuses = []rex.ProgramStatus{{ID: "x", State: "blocked"}}
+	st.infos = map[string]rex.SessionInfo{p.SID: in}
+	a.showWorkspace(first)
+	tt.Frame()
+	a.apply(nil, st.infos, hostLayout{})
+	if !p.notified.IsZero() || p.attention || len(p.info.Statuses) != 1 {
+		t.Errorf("the pane came back notified %v, asking attention %v", !p.notified.IsZero(), p.attention)
+	}
+	quit(st)
+}
+
+// TestKeptSpaceEnds checks that a kept space whose last session ends goes,
+// as a shown one closed empty does.
+func TestKeptSpaceEnds(t *testing.T) {
+	a, tt := newTestApp(t)
+	st := a.st
+	first := a.ws
+	p := a.tab().Focus
+	shellUp(t, a, p)
+	a.newWorkspace()
+	tt.Frame()
+	if err := a.client.Kill(p.SID); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, tt, "the kept pane to end", func() bool { return p.closed })
+	if slices.Contains(st.workspaces, first) || first.kept != nil {
+		t.Errorf("the emptied space stayed listed")
+	}
+	quit(st)
+}
+
+// TestFindClosesOnSpaceSwitch checks that leaving a space ends the search
+// in its pane.
+func TestFindClosesOnSpaceSwitch(t *testing.T) {
+	a, tt := newTestApp(t)
+	st := a.st
+	p := a.tab().Focus
+	shellUp(t, a, p)
+	a.openFind()
+	if a.findPane != p {
+		t.Fatal("find did not open")
+	}
+	a.newWorkspace()
+	tt.Frame()
+	if a.findPane != nil {
+		t.Errorf("find stayed on %v after the space switch", a.findPane)
+	}
+	quit(st)
+}
+
+// TestClosedWindowClosesKept checks that closing a window closes the panes
+// it keeps of other spaces.
+func TestClosedWindowClosesKept(t *testing.T) {
+	a, tt := newTestApp(t)
+	st := a.st
+	p := a.tab().Focus
+	a.newWorkspace()
+	tt.Frame()
+	st.closed(a)
+	if !p.closed {
+		t.Error("closing the window left a kept pane open")
 	}
 	quit(st)
 }

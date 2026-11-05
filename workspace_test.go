@@ -139,8 +139,8 @@ func sidsOf(a *App) []string {
 	return out
 }
 
-// quit detaches every window, as the app quitting does, and closes the
-// panes they keep of other spaces.
+// quit detaches every window, and closes the panes they keep of other
+// spaces, as closing the windows does (the quitting app skips both).
 func quit(st *store) {
 	st.quitting = true
 	for _, a := range st.apps {
