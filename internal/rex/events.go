@@ -11,14 +11,16 @@ import (
 )
 
 // subscriber is a control connection that subscribed: pending are the
-// kinds of change not written to it yet; wake tells its writer of them. A
-// burst of changes is written as one of each kind.
+// kinds of change not written to it yet, and transfers the last state of
+// each transfer not written; wake tells its writer of them. A burst of
+// changes is written as one of each kind.
 type subscriber struct {
-	remote  bool
-	peer    string
-	pending map[string]bool
-	wake    chan struct{}
-	done    chan struct{}
+	remote    bool
+	peer      string
+	pending   map[string]bool
+	transfers []Transfer
+	wake      chan struct{}
+	done      chan struct{}
 }
 
 // subscribe tells write, a control connection's, of the changes to come,
@@ -39,8 +41,8 @@ func (s *Server) subscribe(write func([]byte), remote bool, peer string) *subscr
 				return
 			}
 			s.subMu.Lock()
-			pending := sub.pending
-			sub.pending = map[string]bool{}
+			pending, transfers := sub.pending, sub.transfers
+			sub.pending, sub.transfers = map[string]bool{}, nil
 			s.subMu.Unlock()
 			// The sessions first: a new tab's layout names a new session.
 			for _, kind := range []string{"sessions", "layout"} {
@@ -59,6 +61,17 @@ func (s *Server) subscribe(write func([]byte), remote bool, peer string) *subscr
 					ev.Sessions = s.eventSessions()
 				}
 				b, _ := json.Marshal(ev)
+				write(b)
+			}
+			// A remote client is told of the transfers of the sessions it
+			// may use.
+			for _, t := range transfers {
+				if sub.remote {
+					if _, err := s.use(t.SID, sub.peer); err != nil {
+						continue
+					}
+				}
+				b, _ := json.Marshal(Event{Kind: "transfer", Transfer: &t})
 				write(b)
 			}
 		}
@@ -88,6 +101,24 @@ func (s *Server) notify(kind string) {
 }
 
 func (s *Server) sessionsChanged() { s.notify("sessions") }
+
+// transferred tells the subscribers of t, a transfer's state now: one not
+// told of its last state yet gets this one instead.
+func (s *Server) transferred(t Transfer) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	for sub := range s.subs {
+		if i := slices.IndexFunc(sub.transfers, func(o Transfer) bool { return o.ID == t.ID }); i >= 0 {
+			sub.transfers[i] = t
+		} else {
+			sub.transfers = append(sub.transfers, t)
+		}
+		select {
+		case sub.wake <- struct{}{}:
+		default:
+		}
+	}
+}
 
 // eventSessions is what an Event says of the sessions: their IDs and the
 // status records that answered the status protocol.

@@ -40,7 +40,10 @@ import (
 // the capability "terminal.query": "modes", "format", "inputMode",
 // "clear" and "reset", which report on and change a session's terminal
 // (ModeStatus, FormatResult, InputMode), and SessionInfo.Foreground, the
-// foreground process's ID.
+// foreground process's ID. Still within 3, the capability "file.transfer":
+// connections that send a file into a session's directory ("file.put",
+// FilePut) and take one from it ("file.get", FileGet), and the
+// "transfer" events of their progress (Transfer).
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -67,9 +70,14 @@ const CapabilityInputEvents = "input.events"
 // "clear" and "reset" ops.
 const CapabilityTerminalQuery = "terminal.query"
 
+// CapabilityFileTransfer is what a server that takes files into its
+// sessions' directories and gives files from them says it does: the
+// "file.put" and "file.get" connections, and "transfer" events.
+const CapabilityFileTransfer = "file.transfer"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -437,15 +445,17 @@ type Response struct {
 	// left out, the list unchanged.
 	ETag string `json:"etag,omitempty"`
 	// Event, on a line of no ID, tells a connection that subscribed of a
-	// change: "layout", as setLayout changes it, or "sessions", as one
+	// change: "layout", as setLayout changes it, "sessions", as one
 	// starts, ends, or changes its size, size lock, title or foreground
-	// program.
+	// program, or "transfer", as a file transfer goes on.
 	Event string `json:"event,omitempty"`
 	// Revision, on a layout event, is the layout's revision after the
 	// change (LayoutState); Sessions, on a sessions event, the sessions
-	// and their status records.
+	// and their status records; Transfer, on a transfer event, the
+	// transfer.
 	Revision uint64         `json:"revision,omitempty"`
 	Sessions []EventSession `json:"sessions,omitempty"`
+	Transfer *Transfer      `json:"transfer,omitempty"`
 }
 
 // Event is a line a subscribed connection gets, with no ID: the change
@@ -456,6 +466,8 @@ type Event struct {
 	// Sessions carries what the session list changed to, with the status
 	// records of each session that reported some.
 	Sessions []EventSession `json:"sessions,omitempty"`
+	// Transfer is the file transfer a transfer event tells of.
+	Transfer *Transfer `json:"transfer,omitempty"`
 }
 
 // EventSession is one session in an Event.
@@ -646,6 +658,87 @@ type Attach struct {
 	// session's authority by it, which tells a window whether the size
 	// the program draws for is its own.
 	Client string `json:"client,omitempty"`
+}
+
+// FilePut is the first line of a connection that sends a file into a
+// session's directory (CapabilityFileTransfer). The server answers a
+// FileAnswer: the length of what it has of the file from an earlier try
+// (Offset) and the SHA-256 of it (Sum). The client answers
+// {"offset":Offset} to go on from there, or {"offset":0} when its own
+// first bytes differ, then sends the rest of the Size bytes as they are.
+// The server keeps them in a hidden file beside the target,
+// ".NAME.ID.gorex-partial", until they are all there, then moves it into
+// place and answers a FileAnswer with Path. A connection lost on the way
+// leaves the hidden file for the next try.
+type FilePut struct {
+	Op  string `json:"op"` // "file.put"
+	SID string `json:"sid"`
+	// Dir is where the file goes: absolute, or relative to the directory
+	// of the session's program in the foreground (SessionInfo.Dir), which
+	// it is when "".
+	Dir string `json:"dir,omitempty"`
+	// Name is the file's name, without a directory.
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+	// ID is the client's id of the transfer, of letters, digits, "_" and
+	// "-", at most 64: a try again of the same file uses the same.
+	ID string `json:"id"`
+	// Conflict is what to do with a file of the name there already:
+	// "rename" (the default) names the new one "name (1).ext", or the
+	// first number free; "overwrite" replaces it; "skip" keeps it and
+	// takes no file.
+	Conflict string `json:"conflict,omitempty"`
+}
+
+// FileGet is the first line of a connection that takes a file from a
+// session's machine (CapabilityFileTransfer). The server answers a
+// FileAnswer with Size, Name and MTime, then sends the file's bytes from
+// Offset to Size, and closes the connection.
+type FileGet struct {
+	Op  string `json:"op"` // "file.get"
+	SID string `json:"sid"`
+	// Path is the file's: absolute, or relative to the directory of the
+	// session's program in the foreground. A regular file only.
+	Path   string `json:"path"`
+	Offset int64  `json:"offset,omitempty"`
+	// ID, when set, is the client's id of the transfer, as FilePut's,
+	// which the transfer events name it by.
+	ID string `json:"id,omitempty"`
+}
+
+// FileAnswer is a line of the server on a file.put or file.get
+// connection: Error, after which it closes it, or OK with what the step
+// tells. A number left out is 0.
+type FileAnswer struct {
+	OK    bool   `json:"ok,omitempty"`
+	Error string `json:"error,omitempty"`
+	// Path is where a put's file is, or the file kept when Skipped.
+	Path    string `json:"path,omitempty"`
+	Skipped bool   `json:"skipped,omitempty"`
+	// Offset and Sum are what a put has of the file already: its length,
+	// and the SHA-256 of it in hex.
+	Offset int64  `json:"offset,omitempty"`
+	Sum    string `json:"sum,omitempty"`
+	// Size, Name and MTime are the file a get sends.
+	Size  int64     `json:"size,omitempty"`
+	Name  string    `json:"name,omitempty"`
+	MTime time.Time `json:"mtime,omitzero"`
+}
+
+// Transfer is a file transfer as a "transfer" event tells of it: Direction
+// is "in" for a put and "out" for a get, Done the bytes there so far, and
+// State "active", then "done", "failed" or "skipped". Path is the file's,
+// once known. The events of an active transfer come at most every 250 ms;
+// the last state always comes.
+type Transfer struct {
+	ID        string `json:"id"`
+	SID       string `json:"sid"`
+	Name      string `json:"name"`
+	Path      string `json:"path,omitempty"`
+	Direction string `json:"direction"`
+	Size      int64  `json:"size"`
+	Done      int64  `json:"done"`
+	State     string `json:"state"`
 }
 
 // SnapshotHeader is the line before the snapshot of a framed attach: its

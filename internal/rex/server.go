@@ -472,6 +472,10 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		ss.attach(conn, peer, a, via, func() bool { return s.mayUse(peer, ss) }, typed)
 		return
 	}
+	if a.Op == "file.put" || a.Op == "file.get" {
+		s.transfer(conn, r, first, a.Op, peer)
+		return
+	}
 	s.control(conn, r, first, peer)
 }
 
