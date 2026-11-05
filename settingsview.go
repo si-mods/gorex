@@ -170,6 +170,13 @@ func (a *App) settingsView(c *ui.Context) {
 			})
 		})
 	})
+	if page := hostsPairQR; page != nil {
+		if page.local && page.address != a.localRexPairURL() {
+			hostsPairQR = nil
+		} else {
+			hostPairQRSheet(c, k, page)
+		}
+	}
 }
 
 // sectionTitle is the title of a settings section, as the page's header

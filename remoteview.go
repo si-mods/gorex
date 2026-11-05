@@ -49,22 +49,27 @@ var remoteUI struct {
 	lanEdited bool
 	lanAdd    string
 	lanErr    string
+	focusLAN  bool
 	// addingKey and joining show the forms that add a client by its key
 	// and join a network, in place of the buttons that open them.
 	addingKey, joining bool
 }
 
-// showSection chooses a settings section. The Remote page asks the server
-// every two seconds while it shows, and drops the address when it goes.
+// showSection chooses a settings section and refreshes its Rex listener
+// status while shown.
 func (a *App) showSection(id string) {
 	if id != "keyboard" && shortcutsUI.recording != nil {
 		a.stopRecording()
 	}
+	if settingsUI.section == id {
+		return
+	}
+	stopRemotePoll()
+	hostsPairQR = nil
 	settingsUI.section = id
-	if id == "remote" {
+	if id == "remote" || id == "hosts" {
+		fetchLAN()
 		a.startRemotePoll()
-	} else {
-		stopRemotePoll()
 	}
 }
 
@@ -77,6 +82,7 @@ func stopRemotePoll() {
 	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, nil, false, "", ""
 	page.netURL, page.netKey, page.netName, page.netErr = "", "", "", false
 	page.addingKey, page.joining = false, false
+	page.focusLAN = false
 }
 
 // remoteAsk runs work off the UI thread, with the app's client of the
@@ -111,13 +117,24 @@ func (a *App) startRemotePoll() {
 	}
 	stop := make(chan struct{})
 	remoteUI.stop = stop
+	refresh := a.fetchRemote
+	if settingsUI.section == "hosts" {
+		refresh = fetchLAN
+	}
 	go func() {
 		pub := rex.ClientPublicKey()
 		win.Update(func() { remoteUI.myKey = pub })
 		t := time.NewTicker(2 * time.Second)
 		defer t.Stop()
 		for {
-			win.Update(a.fetchRemote)
+			win.Update(func() {
+				select {
+				case <-stop:
+					return
+				default:
+					refresh()
+				}
+			})
 			select {
 			case <-stop:
 				return
@@ -131,11 +148,10 @@ func (a *App) startRemotePoll() {
 // the server's gateway follows.
 func fetchLAN() {
 	dir := rexapi.TailnetDir()
-	if c, err := rexapi.LoadLAN(dir); err == nil {
-		remoteUI.lan = c
-		if !remoteUI.lanEdited {
-			remoteUI.lanListen = c.Listen
-		}
+	c, _ := rexapi.LoadLAN(dir)
+	remoteUI.lan = c
+	if !remoteUI.lanEdited {
+		remoteUI.lanListen = c.Listen
 	}
 	remoteUI.lanStatus = rexapi.LoadLANStatus(dir)
 }
@@ -160,15 +176,20 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 	settingsGroup(c, k, locales.RemoteLanTitle(), "", locales.RemoteLanNote(), func() {
 		label, dot := locales.RemoteLanOff(), k.exited
 		switch {
-		case st.Listening != "":
-			label, dot = locales.RemoteLanListening("http://"+st.Listening), k.busy
 		case conf.Enabled && st.Error != "":
 			label, dot = locales.RemoteLanError(st.Error), k.danger
+		case conf.Enabled && st.Listening != "":
+			label, dot = locales.RemoteLanListening("http://"+st.Listening), k.busy
 		case conf.Enabled:
 			label, dot = locales.RemoteLanWaiting(), k.attention
 		}
 		on := conf.Enabled
-		groupRow(c, k, nil).Children(func() {
+		status := groupRow(c, k, nil)
+		if page.focusLAN {
+			page.focusLAN = false
+			status.ScrollIntoView()
+		}
+		status.Children(func() {
 			tileLine(c, k, "app-window", locales.RemoteLanSwitch(), func() {
 				statusLine(c, k, dot, label).Selectable()
 			}, func() {
@@ -189,6 +210,13 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 			// Not in a dimmed row: its color is its meaning.
 			if page.lanErr != "" {
 				rowError(c, k, page.lanErr)
+			}
+			if a.localRexPairURL() != "" {
+				if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
+					a.openLocalPairQR()
+				}
+			} else if conf.Enabled && st.Running && st.Error == "" && st.Listening != "" && len(conf.Allow) != 0 {
+				rowHint(c, k, locales.RemoteLanPairAddress())
 			}
 		})
 		listen := groupRow(c, k, nil)

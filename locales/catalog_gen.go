@@ -3010,6 +3010,26 @@ func (msgs Messages) HostsRexQRHint() string {
 	return Catalog.Format(msgs.locale, "hostsRexQRHint", nil)
 }
 
+// HostsLocalRexQRHint says "Connect your phone to the network this address uses, then scan this code in Rex."
+// in the language the app shows.
+func HostsLocalRexQRHint() string { return In(i18n.Locale()).HostsLocalRexQRHint() }
+
+// HostsLocalRexQRHint says "Connect your phone to the network this address uses, then scan this code in Rex."
+// in the language of msgs.
+func (msgs Messages) HostsLocalRexQRHint() string {
+	return Catalog.Format(msgs.locale, "hostsLocalRexQRHint", nil)
+}
+
+// HostsSetUpRex says "Set Up Rex…"
+// in the language the app shows.
+func HostsSetUpRex() string { return In(i18n.Locale()).HostsSetUpRex() }
+
+// HostsSetUpRex says "Set Up Rex…"
+// in the language of msgs.
+func (msgs Messages) HostsSetUpRex() string {
+	return Catalog.Format(msgs.locale, "hostsSetUpRex", nil)
+}
+
 // HostsRexQRUnavailable says "This host did not report an active Rex phone address on Tailscale."
 // in the language the app shows.
 func HostsRexQRUnavailable() string { return In(i18n.Locale()).HostsRexQRUnavailable() }
@@ -5528,6 +5548,16 @@ func RemoteLanSave() string { return In(i18n.Locale()).RemoteLanSave() }
 // Button: save the address typed.
 func (msgs Messages) RemoteLanSave() string {
 	return Catalog.Format(msgs.locale, "remoteLanSave", nil)
+}
+
+// RemoteLanPairAddress says "To show a QR code, use a specific LAN or Tailscale IP address that your phone can reach."
+// in the language the app shows.
+func RemoteLanPairAddress() string { return In(i18n.Locale()).RemoteLanPairAddress() }
+
+// RemoteLanPairAddress says "To show a QR code, use a specific LAN or Tailscale IP address that your phone can reach."
+// in the language of msgs.
+func (msgs Messages) RemoteLanPairAddress() string {
+	return Catalog.Format(msgs.locale, "remoteLanPairAddress", nil)
 }
 
 // RemoteLanNetworks says "Networks allowed"

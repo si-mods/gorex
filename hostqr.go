@@ -19,9 +19,31 @@ type hostPairQR struct {
 	host, address                     string
 	image                             ui.ImageSource
 	open, loading, copied, copyFailed bool
+	local                             bool
 }
 
 var hostsPairQR *hostPairQR
+
+func (a *App) localRexPairURL() string {
+	if a.client == nil {
+		return ""
+	}
+	select {
+	case <-a.client.Closed():
+		return ""
+	default:
+		return remoteUI.lan.PairURL(remoteUI.lanStatus)
+	}
+}
+
+func (a *App) openLocalPairQR() {
+	fetchLAN()
+	address, image := mobilePairQR(a.localRexPairURL())
+	if image != nil {
+		name, _, _ := a.hostIdentity()
+		hostsPairQR = &hostPairQR{host: name, address: address, image: image, open: true, local: true}
+	}
+}
 
 func openHostPairQR(h *hostConn) {
 	win := settingsUI.win
@@ -79,7 +101,11 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		case page.loading:
 			ui.Text(c, locales.HostsRexQRLoading()).FontSize(13).TextColor(k.textMuted)
 		case page.image != nil:
-			ui.Text(c, locales.HostsRexQRHint()).FontSize(13).TextColor(k.textMuted).LineHeight(1.4)
+			hint := locales.HostsRexQRHint()
+			if page.local {
+				hint = locales.HostsLocalRexQRHint()
+			}
+			ui.Text(c, hint).FontSize(13).TextColor(k.textMuted).LineHeight(1.4)
 			ui.Image(c, page.image).Size(248, 248).Label(locales.HostsRexQRTitle(page.host))
 			ui.Text(c, page.address).Font(monoFamily()).FontSize(12).TextColor(k.text).SingleLine()
 		default:

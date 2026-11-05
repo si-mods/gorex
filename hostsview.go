@@ -253,6 +253,21 @@ func pairHost(ctx context.Context, s savedHost, pairAs string, report func(func(
 
 func (a *App) hostsSettings(c *ui.Context, k *colors) {
 	page := &hostsUI
+	settingsGroup(c, k, "", "", "", func() {
+		groupRow(c, k, nil).Children(func() {
+			_, _, glyph := a.hostIdentity()
+			tileLine(c, k, glyph, thisMachine(), nil, func() {
+				if a.localRexPairURL() != "" {
+					if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
+						a.openLocalPairQR()
+					}
+				} else if ui.Button(c.Key("setup-rex"), locales.HostsSetUpRex()).Clicked() {
+					a.showSection("remote")
+					remoteUI.focusLAN = true
+				}
+			})
+		})
+	})
 	settingsGroup(c, k, "", locales.HostsNote(), "", func() {
 		if len(a.hosts) == 0 {
 			groupRow(c, k, nil).Children(func() {
@@ -273,9 +288,6 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 	}
 	if page.layoutOpen {
 		a.hostLayoutSheet(c, k)
-	}
-	if hostsPairQR != nil {
-		hostPairQRSheet(c, k, hostsPairQR)
 	}
 }
 

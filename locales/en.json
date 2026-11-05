@@ -989,6 +989,8 @@
   "hostsRexQRTitle": "Connect Rex to {host}",
   "hostsRexQRLoading": "Checking the phone endpoint…",
   "hostsRexQRHint": "With Tailscale connected on your phone, scan this code in Rex to add the host.",
+  "hostsLocalRexQRHint": "Connect your phone to the network this address uses, then scan this code in Rex.",
+  "hostsSetUpRex": "Set Up Rex…",
   "hostsRexQRUnavailable": "This host did not report an active Rex phone address on Tailscale.",
   "hostsRexQRCopy": "Copy link",
   "hostsRexQRCopied": "Copied",
@@ -1827,6 +1829,7 @@
     "description": "Label of the field with the address and port to listen on."
   },
   "remoteLanSave": "Save",
+  "remoteLanPairAddress": "To show a QR code, use a specific LAN or Tailscale IP address that your phone can reach.",
   "@remoteLanSave": {
     "description": "Button: save the address typed."
   },
