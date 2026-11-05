@@ -80,7 +80,7 @@ before. Three things make it up:
 
 | Glass | Code | Use it for |
 |---|---|---|
-| The window's material: what is behind the window, frosted by the system | `glass.go`, `glassVibrancy`, `WindowOptions.Vibrancy`, `Window.SetVibrancy` | The windows, main and Settings. `VibrancyGlass` on macOS (from 26; before, MyGo shows the popover material), `VibrancyMica` on Windows 11, none on Linux. |
+| The window's material: what is behind the window, frosted by the system | `glass.go`, `glassVibrancy`, `WindowOptions.Vibrancy`, `Window.SetVibrancy` | The windows, main and Settings. `VibrancyGlass` on macOS (from 26; before, MyGo shows the popover material), `VibrancyGlass` on Windows 11 (Acrylic, which shows the desktop blurred), none on Linux. |
 | Layers over the page: the system's glass, else MyGo's | `glass.go`, `glassPanel(e, flat)`, `paneGlass{face, flat}`, `glass_other.go` | Popovers, dialogs and the palette's panel: `ui.SystemGlass`, with `paneGlass` (MyGo's `glass.Glass` on a GPU off macOS) where the system draws none. |
 | The system's glass in an element: AppKit's `NSGlassEffectView` under its box | `glass.go`, `glassPill`, `ui.SystemGlass{Tint, Fallback}` | The panes, tiled and floating, tinted by their face (`glassTint`), with `faceMaterial` and `paneGlass` where the system draws none. The active tab's pill, in the sidebar, the tab strip and Settings, as Rex's: no tint dark, `pillTint` light; `faceMaterial{k.pillFace}` where the system draws none (before macOS 26, Windows, Linux, tests). |
 | Frost: the window behind, blurred and tinted | `frost.go`, `paintFrost` | A panel with the glass setting off, as the palette's, whose backdrop only dims it. |
