@@ -543,6 +543,9 @@ type App struct {
 	wsColorText     string
 	wsConfirm       bool
 	paletteSessions bool
+	// teleportAsk is the question after a tab was dropped on another
+	// host's place in the tabs.
+	teleportAsk teleportAsk
 	// paletteFresh tells that the palette was just opened: the frame that
 	// shows it first poses it where it comes in from.
 	paletteFresh bool

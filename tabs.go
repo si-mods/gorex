@@ -226,17 +226,23 @@ func (a *App) tabEvents(c *ui.Context, e ui.Element, k *colors, i int, t *Tab) {
 		e.Transition(ui.ElementTransition{Colors: true, Duration: 160 * time.Millisecond})
 	}
 	e.Drag(t)
+	// A tab of another host's takes a tab dropped on it to that host: it
+	// asks to teleport it.
+	away := func(dragged *Tab) bool { return len(t.allPanes()) > 0 && teleportsTo(dragged, t.host()) }
 	if dragged, ok := ui.Drop[*Tab](e); ok && dragged != t {
 		merge, _, _ := tabDropZoneAt(e, prefs.TabPlacement)
-		if merge && tabsCanMerge(dragged, t) {
+		switch {
+		case away(dragged):
+			a.askTeleport(dragged, t.host())
+		case merge && tabsCanMerge(dragged, t):
 			a.mergeTab(dragged, t)
-		} else {
+		default:
 			a.moveTab(dragged, i)
 		}
 	}
 	if dragged, over := ui.DragOver[*Tab](e); over && dragged != t {
 		merge, _, inside := tabDropZoneAt(e, prefs.TabPlacement)
-		merge = merge && tabsCanMerge(dragged, t)
+		merge = merge && tabsCanMerge(dragged, t) || away(dragged)
 		if inside && merge {
 			e.Border(1.5, k.busy.Alpha(0.6))
 		} else if inside {

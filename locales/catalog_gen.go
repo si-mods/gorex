@@ -6443,3 +6443,67 @@ func TeleportFailed(host string, error string) string {
 func (msgs Messages) TeleportFailed(host string, error string) string {
 	return Catalog.Format(msgs.locale, "teleportFailed", map[string]any{"host": host, "error": error})
 }
+
+// TeleportAskTitle says "Teleport “{tab}” to {host}?"
+// in the language the app shows.
+//
+// Title of the question after a tab is dropped on another host's place in
+// the tabs.
+func TeleportAskTitle(tab string, host string) string {
+	return In(i18n.Locale()).TeleportAskTitle(tab, host)
+}
+
+// TeleportAskTitle says "Teleport “{tab}” to {host}?"
+// in the language of msgs.
+//
+// Title of the question after a tab is dropped on another host's place in
+// the tabs.
+func (msgs Messages) TeleportAskTitle(tab string, host string) string {
+	return Catalog.Format(msgs.locale, "teleportAskTitle", map[string]any{"tab": tab, "host": host})
+}
+
+// TeleportAskBody says "The work tree, its uncommitted changes and the agent's conversation move to {host}; the session here ends."
+// in the language the app shows.
+//
+// Body of the question before a tab dropped on another host teleports: what
+// moves, and that the session here ends.
+func TeleportAskBody(host string) string { return In(i18n.Locale()).TeleportAskBody(host) }
+
+// TeleportAskBody says "The work tree, its uncommitted changes and the agent's conversation move to {host}; the session here ends."
+// in the language of msgs.
+//
+// Body of the question before a tab dropped on another host teleports: what
+// moves, and that the session here ends.
+func (msgs Messages) TeleportAskBody(host string) string {
+	return Catalog.Format(msgs.locale, "teleportAskBody", map[string]any{"host": host})
+}
+
+// TeleportAskConfirm says "Teleport"
+// in the language the app shows.
+//
+// Button of the question before a dropped tab teleports: go.
+func TeleportAskConfirm() string { return In(i18n.Locale()).TeleportAskConfirm() }
+
+// TeleportAskConfirm says "Teleport"
+// in the language of msgs.
+//
+// Button of the question before a dropped tab teleports: go.
+func (msgs Messages) TeleportAskConfirm() string {
+	return Catalog.Format(msgs.locale, "teleportAskConfirm", nil)
+}
+
+// TeleportOnePane says "Only a tab with one pane can teleport"
+// in the language the app shows.
+//
+// Why a tab dropped on another host cannot teleport: it has more than one
+// pane.
+func TeleportOnePane() string { return In(i18n.Locale()).TeleportOnePane() }
+
+// TeleportOnePane says "Only a tab with one pane can teleport"
+// in the language of msgs.
+//
+// Why a tab dropped on another host cannot teleport: it has more than one
+// pane.
+func (msgs Messages) TeleportOnePane() string {
+	return Catalog.Format(msgs.locale, "teleportOnePane", nil)
+}

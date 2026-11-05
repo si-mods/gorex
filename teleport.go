@@ -238,3 +238,89 @@ func (a *App) teleportOverlay(c *ui.Context, k *colors, p *Pane) {
 		}
 	})
 }
+
+// teleportAsk is the question after tab was dropped on host's place in
+// the tabs, host nil for this machine: whether its pane teleports there.
+type teleportAsk struct {
+	open bool
+	tab  *Tab
+	host *hostConn
+}
+
+// teleportsTo reports whether tab t dropped on host h's place teleports
+// there rather than moves: it has panes, and they are another host's.
+func teleportsTo(t *Tab, h *hostConn) bool {
+	return len(t.allPanes()) > 0 && t.host() != h
+}
+
+// askTeleport asks whether tab t, dropped on host h's place, teleports.
+func (a *App) askTeleport(t *Tab, h *hostConn) {
+	a.teleportAsk = teleportAsk{open: true, tab: t, host: h}
+	a.changed()
+}
+
+// tabTeleportBlocked says why tab t cannot teleport to host h, "" when it
+// can: a tab of one pane that may go, to a host connected that takes it.
+func (a *App) tabTeleportBlocked(t *Tab, h *hostConn) string {
+	ps := t.allPanes()
+	if len(ps) != 1 {
+		return locales.TeleportOnePane()
+	}
+	if why := teleportBlocked(ps[0]); why != "" {
+		return why
+	}
+	hosts, why := a.teleportHosts()
+	if i := slices.Index(hosts, h); i >= 0 {
+		return why[i]
+	}
+	return locales.HostsNotConnectedTo(a.hostName(h))
+}
+
+// teleportConfirm asks before a tab dropped on another host's place
+// teleports there, or tells why it cannot.
+func (a *App) teleportConfirm(c *ui.Context, k *colors) {
+	ask := &a.teleportAsk
+	if !ask.open || !slices.Contains(a.tabs, ask.tab) || ask.host != nil && !slices.Contains(a.hosts, ask.host) {
+		*ask = teleportAsk{}
+		return
+	}
+	name, _ := ask.tab.label()
+	title := locales.TeleportAskTitle(name, a.hostName(ask.host))
+	reason := a.tabTeleportBlocked(ask.tab, ask.host)
+	ui.DialogBase(c, &ask.open, func(backdrop, panel ui.Element) {
+		backdrop.Background(k.backdrop)
+		glassPanel(panel.Width(380).Padding(20).Radius(16), k.panel).Border(1, k.panelBorder).
+			Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Role(ui.RoleDialog).Label(title)
+		ui.Column(c).Gap(10).Children(func() {
+			ui.Text(c, title).FontSize(15).FontWeight(700).TextColor(k.text)
+			body := reason
+			if body == "" {
+				body = locales.TeleportAskBody(a.hostName(ask.host))
+			}
+			ui.Text(c, body).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
+			ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
+				if ui.Button(c, locales.TeleportCancel()).Clicked() {
+					ask.open = false
+				}
+				if reason == "" && ui.PrimaryButton(c, locales.TeleportAskConfirm()).Clicked() {
+					// The tab comes to the front, so that its overlay
+					// shows the step and its Cancel.
+					t, p, h := ask.tab, ask.tab.allPanes()[0], ask.host
+					ask.open = false
+					a.later(c, func() {
+						if i := slices.Index(a.tabs, t); i >= 0 {
+							a.selectTab(i)
+						}
+						a.teleport(p, h)
+					})
+				}
+			})
+		})
+	})
+	if !ask.open {
+		if t := a.tab(); t != nil && a.focusReq == nil {
+			a.focusReq = t.Focus
+		}
+		*ask = teleportAsk{}
+	}
+}
