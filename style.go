@@ -319,5 +319,6 @@ func widgetTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t.Menu = menuStyleOf(k, t.Dark)
 	t.Selection, t.Focus = k.accent.Alpha(0.3), k.accent.Alpha(0.55)
 	t.Radius = 9
+	t.Font = uiFont
 	return &t
 }

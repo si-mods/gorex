@@ -73,6 +73,7 @@ func setupMenus(c *ui.Context) {
 // menuTheme is base with the drawn menus' look in k's colors.
 func menuTheme(base *ui.Theme, k *colors) *ui.Theme {
 	t := *base
+	t.Font = uiFont
 	t.Menu = menuStyleOf(k, t.Dark)
 	return &t
 }
