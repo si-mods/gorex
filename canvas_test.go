@@ -9,6 +9,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/layout"
+	"gorex/locales"
 )
 
 // canvasPrefs turns the canvas setting on for the test, and back after it.
@@ -528,5 +529,55 @@ func TestCanvasMenuAtPointer(t *testing.T) {
 		if !near(sx, x) || !near(sy, y) {
 			t.Errorf("at %+v: the box's top left shows at %v, %v, want %v, %v", view, sx, sy, x, y)
 		}
+	}
+}
+
+// A URL typed into a browser pane's address field loads at Enter, tiled
+// and on a canvas, at any scale.
+func TestCanvasBrowserAddress(t *testing.T) {
+	for _, v := range []struct {
+		name   string
+		canvas bool
+		scale  float32
+	}{{"tiled", false, 1}, {"canvas", true, 1}, {"canvas-half", true, 0.5}} {
+		t.Run(v.name, func(t *testing.T) {
+			canvasPrefs(t, v.canvas)
+			a, tt := newTestApp(t)
+			tt.Frame()
+			settle(tt)
+			tab := a.tab()
+			if v.canvas {
+				tab.canvas.Scale = v.scale
+				a.canvasNew(tab, "browser", 20, 20)
+			} else {
+				a.invokeCommand(&cmdSplitBrowser, nil)
+			}
+			settle(tt)
+			p := tab.Focus
+			if p == nil || p.browser == nil {
+				t.Fatalf("focus is not a browser pane: %+v", p)
+			}
+			// Leave the field, as a user who looked at the page does, and
+			// click back into it.
+			p.browser.auto = false
+			a.focusReq = nil
+			settle(tt)
+			r, ok := tt.Find(locales.BrowserAddress())
+			if !ok {
+				t.Fatalf("no address field: %q", tt.Texts())
+			}
+			tt.ClickAt(r.X+r.W/2, r.Y+r.H/2)
+			tt.Frame()
+			if !tt.Focused(locales.BrowserAddress()) {
+				t.Fatal("the address field has no focus after a click")
+			}
+			tt.Key(ui.Ctrl, ui.KeyA)
+			tt.Type("http://localhost:5173/doc/drafts")
+			tt.Key(0, ui.KeyEnter)
+			settle(tt)
+			if got := p.browser.url; got != "http://localhost:5173/doc/drafts" {
+				t.Fatalf("url %q, addr %q after Enter", got, p.browser.addr)
+			}
+		})
 	}
 }
