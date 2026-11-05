@@ -206,6 +206,12 @@ func TestUsageErrors(t *testing.T) {
 	if code, handled, _, _ := runMain(t, "server", "bogus"); code != ExitUsage || !handled {
 		t.Fatalf("server bogus: %d %v", code, handled)
 	}
+	if code, handled, _, _ := runMain(t, "teleport", "pane"); code != ExitUsage || !handled {
+		t.Fatalf("teleport without a host: %d %v", code, handled)
+	}
+	if code, handled, _, _ := runMain(t, "-S", "host", "teleport", "pane", "other"); code != ExitUsage || !handled {
+		t.Fatalf("-S teleport: %d %v", code, handled)
+	}
 	if code, handled, _, _ := runMain(t, "-S", "not-an-address", "ls"); code != ExitServer || !handled {
 		t.Fatalf("-S bad address: %d %v", code, handled)
 	}

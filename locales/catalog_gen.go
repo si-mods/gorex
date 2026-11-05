@@ -6209,3 +6209,235 @@ func CanvasNewNote() string { return In(i18n.Locale()).CanvasNewNote() }
 func (msgs Messages) CanvasNewNote() string {
 	return Catalog.Format(msgs.locale, "canvasNewNote", nil)
 }
+
+// CmdTeleport says "Teleport to"
+// in the language the app shows.
+//
+// Pane menu: submenu of the hosts a pane's work moves to
+// (docs/teleport.md).
+func CmdTeleport() string { return In(i18n.Locale()).CmdTeleport() }
+
+// CmdTeleport says "Teleport to"
+// in the language of msgs.
+//
+// Pane menu: submenu of the hosts a pane's work moves to
+// (docs/teleport.md).
+func (msgs Messages) CmdTeleport() string {
+	return Catalog.Format(msgs.locale, "cmdTeleport", nil)
+}
+
+// CmdTeleportTo says "Teleport to {host}"
+// in the language the app shows.
+//
+// Command palette: move the focused pane's work, its Git work tree, Claude
+// Code's conversation and scrollback, to a host.
+func CmdTeleportTo(host string) string { return In(i18n.Locale()).CmdTeleportTo(host) }
+
+// CmdTeleportTo says "Teleport to {host}"
+// in the language of msgs.
+//
+// Command palette: move the focused pane's work, its Git work tree, Claude
+// Code's conversation and scrollback, to a host.
+func (msgs Messages) CmdTeleportTo(host string) string {
+	return Catalog.Format(msgs.locale, "cmdTeleportTo", map[string]any{"host": host})
+}
+
+// TeleportBusy says "Teleporting already"
+// in the language the app shows.
+//
+// Disabled teleport item: the pane's teleport is under way.
+func TeleportBusy() string { return In(i18n.Locale()).TeleportBusy() }
+
+// TeleportBusy says "Teleporting already"
+// in the language of msgs.
+//
+// Disabled teleport item: the pane's teleport is under way.
+func (msgs Messages) TeleportBusy() string {
+	return Catalog.Format(msgs.locale, "teleportBusy", nil)
+}
+
+// TeleportFromHost says "Only a pane of this machine can teleport"
+// in the language the app shows.
+//
+// Disabled teleport item: the pane is a remote host's.
+func TeleportFromHost() string { return In(i18n.Locale()).TeleportFromHost() }
+
+// TeleportFromHost says "Only a pane of this machine can teleport"
+// in the language of msgs.
+//
+// Disabled teleport item: the pane is a remote host's.
+func (msgs Messages) TeleportFromHost() string {
+	return Catalog.Format(msgs.locale, "teleportFromHost", nil)
+}
+
+// TeleportEnded says "The session has ended"
+// in the language the app shows.
+//
+// Disabled teleport item: the pane's program exited.
+func TeleportEnded() string { return In(i18n.Locale()).TeleportEnded() }
+
+// TeleportEnded says "The session has ended"
+// in the language of msgs.
+//
+// Disabled teleport item: the pane's program exited.
+func (msgs Messages) TeleportEnded() string {
+	return Catalog.Format(msgs.locale, "teleportEnded", nil)
+}
+
+// TeleportProgram says "{program} is running: only a shell at its prompt or Claude Code can teleport"
+// in the language the app shows.
+//
+// Disabled teleport item: another program is in the foreground.
+func TeleportProgram(program string) string { return In(i18n.Locale()).TeleportProgram(program) }
+
+// TeleportProgram says "{program} is running: only a shell at its prompt or Claude Code can teleport"
+// in the language of msgs.
+//
+// Disabled teleport item: another program is in the foreground.
+func (msgs Messages) TeleportProgram(program string) string {
+	return Catalog.Format(msgs.locale, "teleportProgram", map[string]any{"program": program})
+}
+
+// TeleportUnknown says "Claude Code's conversation is not known yet"
+// in the language the app shows.
+//
+// Disabled teleport item: GoRex has not found which conversation Claude
+// Code has open.
+func TeleportUnknown() string { return In(i18n.Locale()).TeleportUnknown() }
+
+// TeleportUnknown says "Claude Code's conversation is not known yet"
+// in the language of msgs.
+//
+// Disabled teleport item: GoRex has not found which conversation Claude
+// Code has open.
+func (msgs Messages) TeleportUnknown() string {
+	return Catalog.Format(msgs.locale, "teleportUnknown", nil)
+}
+
+// TeleportWorking says "Claude Code is working: wait for it to finish, or stop it"
+// in the language the app shows.
+//
+// Disabled teleport item: Claude Code is still writing its conversation.
+func TeleportWorking() string { return In(i18n.Locale()).TeleportWorking() }
+
+// TeleportWorking says "Claude Code is working: wait for it to finish, or stop it"
+// in the language of msgs.
+//
+// Disabled teleport item: Claude Code is still writing its conversation.
+func (msgs Messages) TeleportWorking() string {
+	return Catalog.Format(msgs.locale, "teleportWorking", nil)
+}
+
+// TeleportNoHosts says "No host is connected"
+// in the language the app shows.
+//
+// Disabled teleport item: no remote host to teleport to.
+func TeleportNoHosts() string { return In(i18n.Locale()).TeleportNoHosts() }
+
+// TeleportNoHosts says "No host is connected"
+// in the language of msgs.
+//
+// Disabled teleport item: no remote host to teleport to.
+func (msgs Messages) TeleportNoHosts() string {
+	return Catalog.Format(msgs.locale, "teleportNoHosts", nil)
+}
+
+// TeleportTooOld says "GoRex on {host} is too old to take a teleport"
+// in the language the app shows.
+//
+// Disabled teleport item: the host's session server lacks the teleport op.
+func TeleportTooOld(host string) string { return In(i18n.Locale()).TeleportTooOld(host) }
+
+// TeleportTooOld says "GoRex on {host} is too old to take a teleport"
+// in the language of msgs.
+//
+// Disabled teleport item: the host's session server lacks the teleport op.
+func (msgs Messages) TeleportTooOld(host string) string {
+	return Catalog.Format(msgs.locale, "teleportTooOld", map[string]any{"host": host})
+}
+
+// TeleportTitle says "Teleporting to {host}"
+// in the language the app shows.
+//
+// Overlay over a pane while its work moves to a host.
+func TeleportTitle(host string) string { return In(i18n.Locale()).TeleportTitle(host) }
+
+// TeleportTitle says "Teleporting to {host}"
+// in the language of msgs.
+//
+// Overlay over a pane while its work moves to a host.
+func (msgs Messages) TeleportTitle(host string) string {
+	return Catalog.Format(msgs.locale, "teleportTitle", map[string]any{"host": host})
+}
+
+// TeleportPackingStep says "Packing the work tree and the conversation…"
+// in the language the app shows.
+//
+// Overlay step: this machine packs the pane's work.
+func TeleportPackingStep() string { return In(i18n.Locale()).TeleportPackingStep() }
+
+// TeleportPackingStep says "Packing the work tree and the conversation…"
+// in the language of msgs.
+//
+// Overlay step: this machine packs the pane's work.
+func (msgs Messages) TeleportPackingStep() string {
+	return Catalog.Format(msgs.locale, "teleportPackingStep", nil)
+}
+
+// TeleportSendingStep says "Sending it to {host}…"
+// in the language the app shows.
+//
+// Overlay step: the package goes to the host.
+func TeleportSendingStep(host string) string { return In(i18n.Locale()).TeleportSendingStep(host) }
+
+// TeleportSendingStep says "Sending it to {host}…"
+// in the language of msgs.
+//
+// Overlay step: the package goes to the host.
+func (msgs Messages) TeleportSendingStep(host string) string {
+	return Catalog.Format(msgs.locale, "teleportSendingStep", map[string]any{"host": host})
+}
+
+// TeleportStartingStep says "Starting it on {host}…"
+// in the language the app shows.
+//
+// Overlay step: the host unpacks the package and starts the session.
+func TeleportStartingStep(host string) string { return In(i18n.Locale()).TeleportStartingStep(host) }
+
+// TeleportStartingStep says "Starting it on {host}…"
+// in the language of msgs.
+//
+// Overlay step: the host unpacks the package and starts the session.
+func (msgs Messages) TeleportStartingStep(host string) string {
+	return Catalog.Format(msgs.locale, "teleportStartingStep", map[string]any{"host": host})
+}
+
+// TeleportCancel says "Cancel"
+// in the language the app shows.
+//
+// Overlay button: stop the teleport; the pane stays as it was.
+func TeleportCancel() string { return In(i18n.Locale()).TeleportCancel() }
+
+// TeleportCancel says "Cancel"
+// in the language of msgs.
+//
+// Overlay button: stop the teleport; the pane stays as it was.
+func (msgs Messages) TeleportCancel() string {
+	return Catalog.Format(msgs.locale, "teleportCancel", nil)
+}
+
+// TeleportFailed says "Teleport to {host} failed: {error}"
+// in the language the app shows.
+//
+// Error banner: a teleport failed; the pane is as it was.
+func TeleportFailed(host string, error string) string {
+	return In(i18n.Locale()).TeleportFailed(host, error)
+}
+
+// TeleportFailed says "Teleport to {host} failed: {error}"
+// in the language of msgs.
+//
+// Error banner: a teleport failed; the pane is as it was.
+func (msgs Messages) TeleportFailed(host string, error string) string {
+	return Catalog.Format(msgs.locale, "teleportFailed", map[string]any{"host": host, "error": error})
+}

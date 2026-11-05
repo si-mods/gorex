@@ -329,6 +329,8 @@ type Pane struct {
 	// once the user runs it or dismisses it.
 	resume   *resumeHint
 	startDir string
+	// teleport is the teleport of the pane under way, nil for none.
+	teleport *teleportRun
 	// seenFunc tells the window's store which session status was seen.
 	seenFunc func(sid string, at time.Time)
 	// focusClaimed tells whether the session was last told that the user

@@ -101,6 +101,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return actionCmd(args, out, errOut)
 	case "float":
 		return floatCmd(args, out, errOut)
+	case "teleport":
+		return teleportCmd(args, out, errOut)
 	case "rex-import":
 		return rexImportCmd(args, out, errOut)
 	case "rex-mirror":
@@ -140,6 +142,7 @@ Usage:
   gorex run [--json] [--dir DIR] -- COMMAND...
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
   gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
+  gorex teleport [--json] PANE HOST
   gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--json]
   gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH]
   gorex version [--json]

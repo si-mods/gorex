@@ -2043,5 +2043,115 @@
   },
   "canvasNewTerminal": "New Terminal",
   "canvasNewBrowser": "New Browser",
-  "canvasNewNote": "New Note"
+  "canvasNewNote": "New Note",
+  "cmdTeleport": "Teleport to",
+  "@cmdTeleport": {
+    "description": "Pane menu: submenu of the hosts a pane's work moves to (docs/teleport.md)."
+  },
+  "cmdTeleportTo": "Teleport to {host}",
+  "@cmdTeleportTo": {
+    "description": "Command palette: move the focused pane's work, its Git work tree, Claude Code's conversation and scrollback, to a host.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "teleportBusy": "Teleporting already",
+  "@teleportBusy": {
+    "description": "Disabled teleport item: the pane's teleport is under way."
+  },
+  "teleportFromHost": "Only a pane of this machine can teleport",
+  "@teleportFromHost": {
+    "description": "Disabled teleport item: the pane is a remote host's."
+  },
+  "teleportEnded": "The session has ended",
+  "@teleportEnded": {
+    "description": "Disabled teleport item: the pane's program exited."
+  },
+  "teleportProgram": "{program} is running: only a shell at its prompt or Claude Code can teleport",
+  "@teleportProgram": {
+    "description": "Disabled teleport item: another program is in the foreground.",
+    "placeholders": {
+      "program": {
+        "type": "String",
+        "example": "vim"
+      }
+    }
+  },
+  "teleportUnknown": "Claude Code's conversation is not known yet",
+  "@teleportUnknown": {
+    "description": "Disabled teleport item: GoRex has not found which conversation Claude Code has open."
+  },
+  "teleportWorking": "Claude Code is working: wait for it to finish, or stop it",
+  "@teleportWorking": {
+    "description": "Disabled teleport item: Claude Code is still writing its conversation."
+  },
+  "teleportNoHosts": "No host is connected",
+  "@teleportNoHosts": {
+    "description": "Disabled teleport item: no remote host to teleport to."
+  },
+  "teleportTooOld": "GoRex on {host} is too old to take a teleport",
+  "@teleportTooOld": {
+    "description": "Disabled teleport item: the host's session server lacks the teleport op.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "teleportTitle": "Teleporting to {host}",
+  "@teleportTitle": {
+    "description": "Overlay over a pane while its work moves to a host.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "teleportPackingStep": "Packing the work tree and the conversation…",
+  "@teleportPackingStep": {
+    "description": "Overlay step: this machine packs the pane's work."
+  },
+  "teleportSendingStep": "Sending it to {host}…",
+  "@teleportSendingStep": {
+    "description": "Overlay step: the package goes to the host.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "teleportStartingStep": "Starting it on {host}…",
+  "@teleportStartingStep": {
+    "description": "Overlay step: the host unpacks the package and starts the session.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "teleportCancel": "Cancel",
+  "@teleportCancel": {
+    "description": "Overlay button: stop the teleport; the pane stays as it was."
+  },
+  "teleportFailed": "Teleport to {host} failed: {error}",
+  "@teleportFailed": {
+    "description": "Error banner: a teleport failed; the pane is as it was.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      },
+      "error": {
+        "type": "String",
+        "example": "not a Git work tree"
+      }
+    }
+  }
 }

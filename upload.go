@@ -262,9 +262,9 @@ func (p *Pane) stopTransfers() {
 // pastedPaths is paths as a drop pastes them into a pane whose shell is at
 // shell, a path of its machine: each a word of the shell, spaces between.
 func pastedPaths(shell string, paths []string) string {
-	q := quoterOf(shell[strings.LastIndexAny(shell, `/\`)+1:])
+	q := rex.QuoterOf(shell[strings.LastIndexAny(shell, `/\`)+1:])
 	if q == nil {
-		q = posixWord
+		q = rex.QuoterOf("sh")
 	}
 	words := make([]string, len(paths))
 	for i, path := range paths {

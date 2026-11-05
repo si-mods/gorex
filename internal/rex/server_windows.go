@@ -2,6 +2,7 @@ package rex
 
 import (
 	"os"
+	"os/exec"
 	"os/user"
 	"strconv"
 	"strings"
@@ -21,6 +22,12 @@ func LockFile(f *os.File) error { return lockFile(f) }
 func lockFile(f *os.File) error {
 	var ol windows.Overlapped
 	return windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ol)
+}
+
+// hideConsole keeps a console program the server runs, as git, from
+// opening a console window: the server has none to lend it.
+func hideConsole(cmd *exec.Cmd) {
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NO_WINDOW}
 }
 
 // detached starts the server without a console, out of the app's process

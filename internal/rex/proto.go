@@ -43,7 +43,10 @@ import (
 // foreground process's ID. Still within 3, the capability "file.transfer":
 // connections that send a file into a session's directory ("file.put",
 // FilePut) and take one from it ("file.get", FileGet), and the
-// "transfer" events of their progress (Transfer).
+// "transfer" events of their progress (Transfer). Still within 3, the
+// capability "teleport": "teleport" and "teleport.pack", each on a
+// connection of its own, which move a pane's work to another machine
+// (Teleport).
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -77,7 +80,7 @@ const CapabilityFileTransfer = "file.transfer"
 
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityTeleport}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -154,6 +157,9 @@ type Request struct {
 	// Format is what "format" shows of the session's terminal
 	// (CapabilityTerminalQuery).
 	Format *FormatOptions `json:"format,omitempty"`
+	// Teleport is the package that follows "teleport" on its connection
+	// (CapabilityTeleport).
+	Teleport *TeleportManifest `json:"teleport,omitempty"`
 }
 
 // CommandTimeout is how long the server waits for the app to make a
@@ -181,7 +187,9 @@ type LayoutCommand struct {
 	// Op is "space.create", "space.rename", "space.close", "tab.create",
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
-	// "pane.swap" or "pane.move".
+	// "pane.swap", "pane.move" or "pane.teleported", which makes the pane
+	// of SID the session Target of the host named Name, its work
+	// teleported there (Teleport); a local client's only.
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// Space is the workspace the command acts on, by ID; "" for the
@@ -496,6 +504,9 @@ type CreateOptions struct {
 	Env     []string `json:"env,omitempty"`
 	Cols    int      `json:"cols,omitempty"`
 	Rows    int      `json:"rows,omitempty"`
+	// prelude is text the session's screen shows before the program's
+	// first output: a teleported pane's scrollback.
+	prelude []byte
 }
 
 // SessionInfo describes a session and what runs in it now.

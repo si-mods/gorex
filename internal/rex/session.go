@@ -242,6 +242,7 @@ func newSession(id string, o CreateOptions, owner string, changed func()) (*sess
 		p.hangup()
 		return nil, err
 	}
+	s.vt.Feed(o.prelude)
 	s.run(p.wait)
 	return s, nil
 }

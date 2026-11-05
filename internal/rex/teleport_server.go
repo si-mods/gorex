@@ -1,0 +1,917 @@
+//go:build darwin || linux || windows
+
+package rex
+
+import (
+	"archive/tar"
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+// teleportPack packs session sid for a teleport, on a connection of this
+// machine: a Response line whose Data is the manifest, then the package,
+// Size bytes; or a Response of the error.
+func (s *Server) teleportPack(conn net.Conn, sid string) {
+	m, pkg, err := s.pack(sid)
+	if pkg != nil {
+		defer os.Remove(pkg.Name())
+		defer pkg.Close()
+	}
+	if err != nil {
+		writeAnswer(conn, Response{Error: "teleport: " + err.Error()})
+		return
+	}
+	data, _ := json.Marshal(m)
+	if writeAnswer(conn, Response{Data: data}) != nil {
+		return
+	}
+	if _, err := pkg.Seek(0, io.SeekStart); err == nil {
+		io.Copy(conn, pkg)
+	}
+}
+
+// writeAnswer writes res as a line.
+func writeAnswer(conn net.Conn, res Response) error {
+	b, _ := json.Marshal(res)
+	_, err := conn.Write(append(b, '\n'))
+	return err
+}
+
+// pack packs session sid into a temporary file, which the caller removes,
+// and describes it.
+func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
+	var m TeleportManifest
+	ss, err := s.session(sid)
+	if err != nil {
+		return m, nil, err
+	}
+	in := s.info(ss)
+	if code := TeleportRefusal(in); code != "" {
+		return m, nil, errors.New(teleportReason(code, in.Program))
+	}
+	if in.Dir == "" {
+		return m, nil, errors.New("the session's directory is not known")
+	}
+	root, err := gitOut(in.Dir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return m, nil, errors.New("not a Git work tree")
+	}
+	prefix, _ := gitOut(in.Dir, "rev-parse", "--show-prefix")
+	head, err := gitOut(root, "rev-parse", "--verify", "-q", "HEAD")
+	if err != nil {
+		return m, nil, errors.New("the repository has no commit yet")
+	}
+	branch, _ := gitOut(root, "symbolic-ref", "--short", "-q", "HEAD")
+	select {
+	case <-s.hostDone:
+	case <-time.After(3 * time.Second):
+	}
+	m = TeleportManifest{
+		Version: teleportVersion, Host: s.host.Name, Program: "shell",
+		Remotes: remoteURLs(root), Branch: branch, Head: head,
+		Root: filepath.FromSlash(root), Dir: strings.TrimSuffix(prefix, "/"),
+		Cols: in.Cols, Rows: in.Rows,
+	}
+	if len(m.Remotes) == 0 {
+		return m, nil, errors.New("the repository has no remote to clone it from")
+	}
+	if !in.Idle {
+		m.Program, m.Session = "claude", in.AgentSession
+	}
+
+	tmp, err := os.MkdirTemp("", "gorex-teleport-")
+	if err != nil {
+		return m, nil, err
+	}
+	defer os.RemoveAll(tmp)
+	pkg, err := os.CreateTemp("", "gorex-teleport-*.tar")
+	if err != nil {
+		return m, nil, err
+	}
+	tw := tar.NewWriter(pkg)
+	add := func(name, path string) error {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		st, err := f.Stat()
+		if err != nil {
+			return err
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o600, Size: st.Size(), Typeflag: tar.TypeReg}); err != nil {
+			return err
+		}
+		_, err = io.Copy(tw, f)
+		return err
+	}
+	// The commits no remote has: those the target cannot fetch.
+	if n, err := gitOut(root, "rev-list", "--count", "HEAD", "--not", "--remotes"); err == nil && n != "0" {
+		b := filepath.Join(tmp, "repo.bundle")
+		if _, err := gitOut(root, "bundle", "create", b, "HEAD", "--not", "--remotes"); err != nil {
+			return m, pkg, fmt.Errorf("bundling the commits: %w", err)
+		}
+		if err := add("repo.bundle", b); err != nil {
+			return m, pkg, err
+		}
+	}
+	patch := filepath.Join(tmp, "worktree.patch")
+	if err := gitTo(root, patch, "diff", "--binary", "--no-color", "--no-ext-diff", "HEAD"); err != nil {
+		return m, pkg, fmt.Errorf("diffing the work tree: %w", err)
+	}
+	if st, err := os.Stat(patch); err == nil && st.Size() > 0 {
+		if err := add("worktree.patch", patch); err != nil {
+			return m, pkg, err
+		}
+	}
+	untracked := filepath.Join(tmp, "untracked.tar")
+	if n, err := packUntracked(root, untracked); err != nil {
+		return m, pkg, err
+	} else if n > 0 {
+		if err := add("untracked.tar", untracked); err != nil {
+			return m, pkg, err
+		}
+	}
+	if m.Program == "claude" {
+		if err := packConversation(add, in); err != nil {
+			return m, pkg, err
+		}
+	}
+	if f, err := ss.Format(FormatOptions{Kind: "text"}); err == nil {
+		text := strings.TrimRight(string(f.Content), " \r\n")
+		if len(text) > scrollbackMax {
+			text = text[len(text)-scrollbackMax:]
+			if i := strings.IndexByte(text, '\n'); i >= 0 {
+				text = text[i+1:]
+			}
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: "scrollback.txt", Mode: 0o600, Size: int64(len(text)), Typeflag: tar.TypeReg}); err != nil {
+			return m, pkg, err
+		}
+		if _, err := io.WriteString(tw, text); err != nil {
+			return m, pkg, err
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return m, pkg, err
+	}
+	st, err := pkg.Stat()
+	if err != nil {
+		return m, pkg, err
+	}
+	if st.Size() > teleportMax {
+		return m, pkg, fmt.Errorf("the package is larger than %d MiB", teleportMax>>20)
+	}
+	m.Size = st.Size()
+	return m, pkg, nil
+}
+
+// remoteURLs are the URLs of the repo's remotes at root, origin's first.
+func remoteURLs(root string) []string {
+	out, err := gitOut(root, "config", "--get-regexp", `^remote\..*\.url$`)
+	if err != nil {
+		return nil
+	}
+	var urls []string
+	for _, line := range strings.Split(out, "\n") {
+		key, u, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok || u == "" {
+			continue
+		}
+		if key == "remote.origin.url" {
+			urls = append([]string{u}, urls...)
+		} else {
+			urls = append(urls, u)
+		}
+	}
+	return urls
+}
+
+// packUntracked writes the files Git does not track and does not ignore,
+// at root, to a tar at path, and returns how many. Only regular files go:
+// a link would point anywhere on the target.
+func packUntracked(root, path string) (int, error) {
+	out, err := gitOut(root, "ls-files", "-o", "--exclude-standard", "-z")
+	if err != nil {
+		return 0, fmt.Errorf("listing the untracked files: %w", err)
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	tw := tar.NewWriter(f)
+	n := 0
+	var size int64
+	for _, name := range strings.Split(out, "\x00") {
+		if name == "" || strings.HasSuffix(name, "/") {
+			continue // a repo of its own
+		}
+		st, err := os.Lstat(filepath.Join(root, filepath.FromSlash(name)))
+		if err != nil || !st.Mode().IsRegular() {
+			continue
+		}
+		if size += st.Size(); size > untrackedMax {
+			return 0, fmt.Errorf("the untracked files are larger than %d MiB", untrackedMax>>20)
+		}
+		mode := int64(0o644)
+		if st.Mode()&0o111 != 0 {
+			mode = 0o755
+		}
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: mode, Size: st.Size(), Typeflag: tar.TypeReg}); err != nil {
+			return 0, err
+		}
+		src, err := os.Open(filepath.Join(root, filepath.FromSlash(name)))
+		if err != nil {
+			return 0, err
+		}
+		_, err = io.CopyN(tw, src, st.Size())
+		src.Close()
+		if err != nil {
+			return 0, err
+		}
+		n++
+	}
+	return n, tw.Close()
+}
+
+// packConversation adds Claude Code's conversation of in, and the
+// directory of its subagents and tool results, under claude/.
+func packConversation(add func(name, path string) error, in SessionInfo) error {
+	config := in.AgentConfigDir
+	if config == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		config = filepath.Join(home, ".claude")
+	}
+	id := in.AgentSession
+	// In its directory's project, or another's when Claude Code moved.
+	file := filepath.Join(config, "projects", claudeSlug(in.Dir), id+".jsonl")
+	if _, err := os.Stat(file); err != nil {
+		found, _ := filepath.Glob(filepath.Join(config, "projects", "*", id+".jsonl"))
+		if len(found) == 0 {
+			return errors.New("Claude Code's conversation file is not found")
+		}
+		file = found[0]
+	}
+	if err := add("claude/"+id+".jsonl", file); err != nil {
+		return err
+	}
+	dir := strings.TrimSuffix(file, ".jsonl")
+	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if path == dir && errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		return add("claude/"+id+"/"+filepath.ToSlash(rel), path)
+	})
+}
+
+// teleportIn unpacks a package that follows on conn, of peer, and starts
+// its session: it answers the manifest m at once, with {"ok":true} or the
+// error, and once the package is in, with a Response of the session or of
+// the error, which names the step that failed. Whatever it made before a
+// failure goes.
+func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest, peer string) {
+	// What a failure leaves goes before the answer tells of it.
+	var undo []func()
+	defer func() {
+		for i := len(undo) - 1; i >= 0; i-- {
+			undo[i]()
+		}
+	}()
+	fail := func(err error) {
+		for i := len(undo) - 1; i >= 0; i-- {
+			undo[i]()
+		}
+		undo = nil
+		writeAnswer(conn, Response{Error: "teleport: " + err.Error()})
+	}
+	if m == nil {
+		fail(errors.New("no manifest"))
+		return
+	}
+	if err := m.check(); err != nil {
+		fail(err)
+		return
+	}
+	config := ""
+	if m.Program == "claude" {
+		var err error
+		if config, err = claudeConfigDir(); err != nil {
+			fail(err)
+			return
+		}
+	}
+	if _, err := conn.Write([]byte(`{"ok":true}` + "\n")); err != nil {
+		return
+	}
+	tmp, err := os.MkdirTemp("", "gorex-teleport-")
+	if err != nil {
+		fail(err)
+		return
+	}
+	defer os.RemoveAll(tmp)
+	err = receivePackage(io.LimitReader(idleReader{conn, r}, m.Size), m.Size, tmp, m.Session)
+	conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		fail(fmt.Errorf("receiving the package: %w", err))
+		return
+	}
+	step := func(name string, err error) error {
+		if err != nil {
+			return fmt.Errorf("%s: %w", name, err)
+		}
+		return nil
+	}
+
+	clone, remote, err := findClone(m.Remotes)
+	if err == nil && clone == "" {
+		clone, remote, err = cloneRepo(m.Remotes[0])
+		err = step("cloning the repo", err)
+	} else {
+		err = step("finding the repo", err)
+	}
+	if err != nil {
+		fail(err)
+		return
+	}
+	id := newID()[:8]
+	tree, branch := filepath.Join(clone, ".gorex", "teleport", id), "teleport/"+id
+	if err := step("fetching the commits", fetchHead(clone, remote, m.Head, filepath.Join(tmp, "repo.bundle"))); err != nil {
+		fail(err)
+		return
+	}
+	excludeTeleports(clone)
+	if _, err := gitOut(clone, "worktree", "add", "-q", "-b", branch, tree, m.Head); err != nil {
+		fail(step("making the work tree", err))
+		return
+	}
+	undo = append(undo, func() {
+		gitOut(clone, "worktree", "remove", "--force", tree)
+		gitOut(clone, "branch", "-D", branch)
+	})
+	if patch := filepath.Join(tmp, "worktree.patch"); exists(patch) {
+		if _, err := gitOut(tree, "apply", "--binary", "--whitespace=nowarn", patch); err != nil {
+			fail(step("applying the changes", err))
+			return
+		}
+	}
+	if err := step("unpacking the untracked files", unpackUntracked(filepath.Join(tmp, "untracked.tar"), tree)); err != nil {
+		fail(err)
+		return
+	}
+	dir := filepath.Join(tree, filepath.FromSlash(m.Dir))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		fail(step("making the directory", err))
+		return
+	}
+	keep := func() {}
+	if m.Program == "claude" {
+		placed, done, err := placeConversation(filepath.Join(tmp, "claude"), config, m, tree, dir)
+		undo, keep = append(undo, placed...), done
+		if err != nil {
+			fail(step("placing the conversation", err))
+			return
+		}
+	}
+	// A cancel closes the connection: nothing starts then.
+	if connGone(conn, r) {
+		return
+	}
+	o := CreateOptions{Dir: dir, Cols: m.Cols, Rows: m.Rows}
+	if b, err := os.ReadFile(filepath.Join(tmp, "scrollback.txt")); err == nil && len(b) > 0 {
+		o.prelude = []byte("\x1b[2m" + strings.ReplaceAll(plainText(string(b)), "\n", "\r\n") + "\x1b[0m\r\n")
+	}
+	ss, err := s.create(o, peer)
+	if err != nil {
+		fail(step("starting the session", err))
+		return
+	}
+	undo = nil
+	keep()
+	if m.Program == "claude" {
+		if cmd, ok := ClaudeResume(ss.shell, m.Session, ""); ok {
+			// Typed once the shell printed, its prompt or what comes
+			// before it: a console may drop what comes earlier.
+			for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+				ss.mu.Lock()
+				out := ss.output
+				ss.mu.Unlock()
+				if out > 0 {
+					break
+				}
+			}
+			ss.inputProgram([]byte(cmd + "\r"))
+		}
+	}
+	data, _ := json.Marshal(s.info(ss))
+	writeAnswer(conn, Response{Data: data})
+}
+
+// check tells what of the manifest this machine does not take.
+func (m *TeleportManifest) check() error {
+	switch {
+	case m.Version != teleportVersion:
+		return fmt.Errorf("a package of version %d: GoRex differs between the machines", m.Version)
+	case m.Program != "shell" && m.Program != "claude":
+		return errors.New("an unknown program")
+	case m.Program == "claude" && !IsUUID(m.Session):
+		return errors.New("no conversation id")
+	case !hexHead(m.Head):
+		return errors.New("no commit")
+	case len(m.Remotes) == 0:
+		return errors.New("the repository has no remote to clone it from")
+	case m.Dir != "" && !localName(m.Dir):
+		return errors.New("the directory is outside the work tree")
+	case m.Size < 0 || m.Size > teleportMax:
+		return fmt.Errorf("the package is larger than %d MiB", teleportMax>>20)
+	}
+	for _, u := range m.Remotes {
+		if u == "" || strings.HasPrefix(u, "-") || strings.ContainsAny(u, "\x00\r\n") {
+			return errors.New("a remote URL Git would not take")
+		}
+	}
+	return nil
+}
+
+// hexHead tells whether s is a commit's full hash, SHA-1 or SHA-256.
+func hexHead(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for _, r := range s {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return false
+		}
+	}
+	return true
+}
+
+// errDiverged refuses a conversation that has messages here the incoming
+// one lacks: both went on.
+var errDiverged = errors.New("the conversation went on here too")
+
+// messageIDs are the uuid fields of a conversation's lines, of its
+// messages; lines without one, as summaries, have none.
+func messageIDs(path string) (map[string]bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	ids := map[string]bool{}
+	for _, line := range bytes.Split(b, []byte("\n")) {
+		var f struct {
+			UUID string `json:"uuid"`
+		}
+		if json.Unmarshal(line, &f) == nil && f.UUID != "" {
+			ids[f.UUID] = true
+		}
+	}
+	return ids, nil
+}
+
+// receivePackage reads a package of size bytes from r into dir, at the
+// names it gives: those of its parts only, each a regular file, the
+// conversation's under claude/ for conversation id.
+func receivePackage(r io.Reader, size int64, dir, id string) error {
+	cr := &countReader{r: r}
+	tr := tar.NewReader(cr)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if h.Typeflag != tar.TypeReg || !packageName(h.Name, id) {
+			return fmt.Errorf("an unexpected part %q", h.Name)
+		}
+		if h.Name == "untracked.tar" && h.Size > untrackedMax {
+			return fmt.Errorf("the untracked files are larger than %d MiB", untrackedMax>>20)
+		}
+		path := filepath.Join(dir, filepath.FromSlash(h.Name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return err
+		}
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(f, tr)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			return err
+		}
+	}
+	// What the tar does not read of its padding.
+	io.Copy(io.Discard, cr)
+	if cr.n != size {
+		return errors.New("the package ended early")
+	}
+	return nil
+}
+
+// idleReader reads r, of conn, failing once conn sent nothing for a
+// minute: a peer gone without closing it, over a network that dropped.
+type idleReader struct {
+	conn net.Conn
+	r    io.Reader
+}
+
+func (i idleReader) Read(p []byte) (int, error) {
+	i.conn.SetReadDeadline(time.Now().Add(time.Minute))
+	return i.r.Read(p)
+}
+
+// countReader counts what it reads.
+type countReader struct {
+	r io.Reader
+	n int64
+}
+
+func (c *countReader) Read(p []byte) (int, error) {
+	n, err := c.r.Read(p)
+	c.n += int64(n)
+	return n, err
+}
+
+// packageName tells whether name is a part of a package of conversation
+// id.
+func packageName(name, id string) bool {
+	switch name {
+	case "repo.bundle", "worktree.patch", "untracked.tar", "scrollback.txt":
+		return true
+	}
+	if id == "" {
+		return false
+	}
+	if name == "claude/"+id+".jsonl" {
+		return true
+	}
+	rest, ok := strings.CutPrefix(name, "claude/"+id+"/")
+	return ok && localName(rest)
+}
+
+// findClone finds a clone of one of the remote URLs under the teleport
+// roots, two levels down at most, and the name of its remote; "" when
+// there is none.
+func findClone(urls []string) (clone, remote string, err error) {
+	want := map[string]bool{}
+	for _, u := range urls {
+		want[repoKey(u)] = true
+	}
+	for _, root := range teleportRoots() {
+		var dirs []string
+		for _, pat := range []string{"*", filepath.Join("*", "*")} {
+			found, _ := filepath.Glob(filepath.Join(root, pat, ".git"))
+			dirs = append(dirs, found...)
+		}
+		for _, g := range dirs {
+			// A clone, not another's work tree, whose .git is a file.
+			if st, err := os.Stat(g); err != nil || !st.IsDir() {
+				continue
+			}
+			d := filepath.Dir(g)
+			out, err := gitOut(d, "config", "--get-regexp", `^remote\..*\.url$`)
+			if err != nil {
+				continue
+			}
+			for _, line := range strings.Split(out, "\n") {
+				key, u, ok := strings.Cut(strings.TrimSpace(line), " ")
+				if ok && want[repoKey(u)] {
+					return d, strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url"), nil
+				}
+			}
+		}
+	}
+	return "", "", nil
+}
+
+// cloneRepo clones u into the first teleport root, under its name, or the
+// name and a number when that is taken.
+func cloneRepo(u string) (clone, remote string, err error) {
+	roots := teleportRoots()
+	if len(roots) == 0 {
+		return "", "", errors.New("no home directory")
+	}
+	if err := os.MkdirAll(roots[0], 0o755); err != nil {
+		return "", "", err
+	}
+	name := repoName(u)
+	clone = filepath.Join(roots[0], name)
+	for i := 2; exists(clone); i++ {
+		clone = filepath.Join(roots[0], fmt.Sprintf("%s-%d", name, i))
+	}
+	if _, err := gitOut(roots[0], "clone", "-q", "--", u, clone); err != nil {
+		return "", "", err
+	}
+	return clone, "origin", nil
+}
+
+// fetchHead gets commit head into clone: from the bundle, a file at path
+// if any, and from the remote for what the bundle needs, or for head when
+// there is no bundle.
+func fetchHead(clone, remote, head, bundle string) error {
+	has := func() bool {
+		_, err := gitOut(clone, "cat-file", "-e", head+"^{commit}")
+		return err == nil
+	}
+	if has() {
+		return nil
+	}
+	if exists(bundle) {
+		if _, err := gitOut(clone, "bundle", "verify", "-q", bundle); err != nil {
+			if _, err := gitOut(clone, "fetch", "-q", remote); err != nil {
+				return err
+			}
+		}
+		if _, err := gitOut(clone, "fetch", "-q", bundle, "HEAD"); err != nil {
+			return err
+		}
+	} else if _, err := gitOut(clone, "fetch", "-q", remote); err != nil {
+		return err
+	}
+	if !has() {
+		return fmt.Errorf("commit %s is neither on the remote nor in the package", head[:12])
+	}
+	return nil
+}
+
+// excludeTeleports keeps the teleports' work trees, under .gorex, out of
+// the clone's own status.
+func excludeTeleports(clone string) {
+	dir, err := gitOut(clone, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return
+	}
+	if dir = filepath.FromSlash(dir); !filepath.IsAbs(dir) {
+		dir = filepath.Join(clone, dir)
+	}
+	path := filepath.Join(dir, "info", "exclude")
+	b, _ := os.ReadFile(path)
+	if bytes.Contains(b, []byte("/.gorex/")) {
+		return
+	}
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	if len(b) > 0 && b[len(b)-1] != '\n' {
+		f.WriteString("\n")
+	}
+	f.WriteString("/.gorex/\n")
+}
+
+// unpackUntracked writes the files of the tar at path, if any, into the
+// work tree at tree: each a new regular file under it, reached through no
+// link.
+func unpackUntracked(path, tree string) error {
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	tr := tar.NewReader(f)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if h.Typeflag != tar.TypeReg || !localName(h.Name) {
+			return fmt.Errorf("a file outside the work tree, %q", h.Name)
+		}
+		dst := filepath.Join(tree, filepath.FromSlash(h.Name))
+		if err := noLinkUnder(tree, filepath.Dir(dst)); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		mode := os.FileMode(0o644)
+		if h.Mode&0o111 != 0 {
+			mode = 0o755
+		}
+		out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+		if err != nil {
+			return err
+		}
+		_, err = io.Copy(out, tr)
+		if cerr := out.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			return err
+		}
+	}
+}
+
+// noLinkUnder tells, by an error, that a directory between root and dir,
+// dir included, is a link: what is written through it lands elsewhere.
+func noLinkUnder(root, dir string) error {
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == "." {
+		return err
+	}
+	p := root
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		p = filepath.Join(p, part)
+		st, err := os.Lstat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if !st.IsDir() {
+			return fmt.Errorf("%q is a link or a file", filepath.ToSlash(rel))
+		}
+	}
+	return nil
+}
+
+// placeConversation writes the conversation of m, unpacked under from,
+// into Claude Code's config dir config, in the project of dir, its cwd
+// moved from the source's work tree to tree. A copy this machine has of
+// it, as one a teleport back left here, gives way when the incoming one
+// has all its messages, the same or ahead: it moves to a backup, which
+// undo puts back and done removes; one with messages the incoming lacks
+// is refused (errDiverged), nothing changed. It returns how to undo what
+// it did, and how to keep it.
+func placeConversation(from, config string, m *TeleportManifest, tree, dir string) (undo []func(), done func(), err error) {
+	done = func() {}
+	file := filepath.Join(from, m.Session+".jsonl")
+	old, _ := filepath.Glob(filepath.Join(config, "projects", "*", m.Session+".jsonl"))
+	if len(old) > 0 {
+		incoming, err := messageIDs(file)
+		if err != nil {
+			return nil, done, err
+		}
+		for _, path := range old {
+			here, err := messageIDs(path)
+			if err != nil {
+				return nil, done, err
+			}
+			for id := range here {
+				if !incoming[id] {
+					return nil, done, errDiverged
+				}
+			}
+		}
+		backup, err := os.MkdirTemp(config, ".teleport-backup-")
+		if err != nil {
+			return nil, done, err
+		}
+		undo = append(undo, func() { os.RemoveAll(backup) })
+		done = func() { os.RemoveAll(backup) }
+		for i, path := range old {
+			// The file, and its directory when it has one.
+			for _, src := range []string{path, strings.TrimSuffix(path, ".jsonl")} {
+				if _, err := os.Lstat(src); errors.Is(err, fs.ErrNotExist) {
+					continue
+				}
+				dst := filepath.Join(backup, fmt.Sprint(i), filepath.Base(src))
+				if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+					return undo, done, err
+				}
+				if err := os.Rename(src, dst); err != nil {
+					return undo, done, err
+				}
+				undo = append(undo, func() { os.Rename(dst, src) })
+			}
+		}
+	}
+	project := filepath.Join(config, "projects", claudeSlug(dir))
+	if err := os.MkdirAll(project, 0o700); err != nil {
+		return undo, done, err
+	}
+	write := func(src, dst string) error {
+		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+			return err
+		}
+		b, err := os.ReadFile(src)
+		if err != nil {
+			return err
+		}
+		if strings.HasSuffix(dst, ".jsonl") {
+			lines := bytes.SplitAfter(b, []byte("\n"))
+			for i, line := range lines {
+				body := bytes.TrimRight(line, "\r\n")
+				lines[i] = append(rewriteCwd(body, m.Root, tree), line[len(body):]...)
+			}
+			b = bytes.Join(lines, nil)
+		}
+		f, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return err
+		}
+		undo = append(undo, func() { os.Remove(dst) })
+		_, err = f.Write(b)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		return err
+	}
+	if err := write(file, filepath.Join(project, m.Session+".jsonl")); err != nil {
+		return undo, done, err
+	}
+	// The directory the old copies had went with them; this one is new.
+	sub := filepath.Join(from, m.Session)
+	undo = append(undo, func() { os.RemoveAll(filepath.Join(project, m.Session)) })
+	err = filepath.WalkDir(sub, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if path == sub && errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		rel, err := filepath.Rel(from, path)
+		if err != nil {
+			return err
+		}
+		return write(path, filepath.Join(project, rel))
+	})
+	return undo, done, err
+}
+
+// connGone tells whether the client closed conn, as a cancel does: it
+// sends nothing after the package.
+func connGone(conn net.Conn, r *bufio.Reader) bool {
+	conn.SetReadDeadline(time.Now().Add(20 * time.Millisecond))
+	defer conn.SetReadDeadline(time.Time{})
+	_, err := r.Peek(1)
+	var ne net.Error
+	return err != nil && !(errors.As(err, &ne) && ne.Timeout())
+}
+
+// gitOut runs git in dir, and returns what it printed, trimmed; its error
+// says the first line Git printed of it.
+func gitOut(dir string, args ...string) (string, error) {
+	var out bytes.Buffer
+	err := runGit(dir, &out, args...)
+	return strings.TrimSpace(out.String()), err
+}
+
+// gitTo runs git in dir, writing what it prints to a file at path.
+func gitTo(dir, path string, args ...string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return runGit(dir, f, args...)
+}
+
+func runGit(dir string, out io.Writer, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	// No prompt that no one would answer, nor a pager.
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "LC_ALL=C")
+	var stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = out, &stderr
+	hideConsole(cmd)
+	if err := cmd.Run(); err != nil {
+		msg, _, _ := strings.Cut(strings.TrimSpace(stderr.String()), "\n")
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("git %s: %s", args[0], msg)
+	}
+	return nil
+}

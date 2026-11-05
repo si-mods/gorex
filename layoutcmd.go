@@ -285,6 +285,20 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			n.Name = paneName(name)
 		}
 		res.New = n.SID
+	case "pane.teleported":
+		// The CLI teleported the pane's work (gorex teleport): the pane
+		// becomes the session on the host, as the menu's teleport does.
+		var h *hostConn
+		for _, o := range a.hosts {
+			if strings.EqualFold(o.Name, c.Name) && o.current() != nil {
+				h = o
+				break
+			}
+		}
+		if h == nil || c.Target == "" {
+			return fail("host_not_found", "no such host connected to the GoRex window")
+		}
+		a.teleported(p, h, rex.SessionInfo{ID: c.Target})
 	case "pane.close":
 		a.closePane(p)
 	case "tab.close":
