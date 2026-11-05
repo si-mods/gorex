@@ -794,13 +794,10 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 				}
 			}
 			a.reconnecting(c, k, p)
-			a.fileDrop(c, k, p, tv)
+			a.fileDrop(c, k, p, card, tv)
 			a.transfers(c, k, p)
 		})
 	})
-	if p.dropOver {
-		drawPaneDrop(card, k, dropCenter)
-	}
 	if dragged, over := ui.DragOver[*Pane](card); over {
 		if z, ok := paneDropZoneAt(card, dragged, p); ok {
 			drawPaneDrop(card, k, z)

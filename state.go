@@ -350,10 +350,8 @@ type Pane struct {
 	held int
 	// transfers are the files on their way to the pane's machine, as its
 	// list shows them; uploading closes once the last drop's are sent.
-	// dropOver tells that files dragged were over the box that takes them.
 	transfers []*fileTransfer
 	uploading chan struct{}
-	dropOver  bool
 }
 
 // browserPane is a pane that shows a web page in a web view of its
@@ -1623,6 +1621,7 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	if p.term != nil {
 		p.term.Close()
 	}
+	p.stopUploads()
 	p.browser.destroy()
 	p.note.destroy()
 	if kill {
@@ -1782,6 +1781,7 @@ func newTabUID() string {
 func (a *App) closeLastTab(t *Tab) {
 	for _, p := range t.allPanes() {
 		p.closed = true
+		p.stopUploads()
 		if p.term != nil {
 			p.term.Close()
 		}
@@ -1802,6 +1802,7 @@ func (a *App) closeLastTab(t *Tab) {
 func (a *App) closeTab(t *Tab) {
 	for _, p := range t.allPanes() {
 		p.closed = true
+		p.stopUploads()
 		if p.term != nil {
 			p.term.Close()
 		}
