@@ -27,6 +27,14 @@ const transferEvery = 250 * time.Millisecond
 
 var errNoFileTransfer = errors.New("rex: the server does not transfer files; update GoRex there")
 
+// errTransferring is the error of a transfer of a file another transfer
+// writes yet.
+var errTransferring = errors.New("rex: the file is being transferred already")
+
+// partialAge is how long a partial is kept since it was last written: a
+// put into its directory removes an older one.
+const partialAge = 24 * time.Hour
+
 // transfer serves a file.put or file.get connection of peer, whose first
 // line is first. A remote connection that takes or gives nothing for
 // writeTimeout is dropped.
@@ -107,6 +115,19 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return fmt.Errorf("rex: %s is not a directory", dir)
+	}
+	sweepPartials(dir)
+	if req.Abort {
+		path := filepath.Join(dir, partialName(req.Name, req.ID))
+		if _, busy := partials.LoadOrStore(path, true); busy {
+			return errTransferring
+		}
+		defer partials.Delete(path)
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		answer(FileAnswer{OK: true})
+		return nil
 	}
 	t := Transfer{ID: req.ID, SID: req.SID, Name: req.Name, Direction: "in", Size: req.Size, State: "active"}
 	if target := filepath.Join(dir, req.Name); req.Conflict == "skip" && exists(target) {
@@ -322,7 +343,7 @@ type partial struct {
 func openPartial(dir, name, id string) (*partial, error) {
 	path := filepath.Join(dir, partialName(name, id))
 	if _, busy := partials.LoadOrStore(path, true); busy {
-		return nil, errors.New("rex: the file is being transferred already")
+		return nil, errTransferring
 	}
 	f, st, err := openRegular(path)
 	if err != nil {
@@ -330,6 +351,26 @@ func openPartial(dir, name, id string) (*partial, error) {
 		return nil, err
 	}
 	return &partial{path: path, f: f, size: st.Size(), mtime: st.ModTime()}, nil
+}
+
+// sweepPartials removes the partials in dir older than partialAge that no
+// transfer writes.
+func sweepPartials(dir string) {
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, ".gorex-") || !strings.HasSuffix(name, ".partial") {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		if st, err := e.Info(); err != nil || time.Since(st.ModTime()) < partialAge {
+			continue
+		}
+		if _, busy := partials.LoadOrStore(path, true); !busy {
+			os.Remove(path)
+			partials.Delete(path)
+		}
+	}
 }
 
 // partialName is the name of the partial of name for the transfer id:
@@ -564,6 +605,30 @@ func (c *Client) PutFile(ctx context.Context, f FilePut, src io.ReaderAt, progre
 	}
 	a, err = fc.answer()
 	return a.Path, a.Skipped, ctxErr(ctx, err)
+}
+
+// AbortFile removes what a put of f left in the session's directory: the
+// partial of f.Name for f.ID in f.Dir, once no transfer writes it, waiting
+// for one stopping to let it go until ctx is done.
+func (c *Client) AbortFile(ctx context.Context, f FilePut) error {
+	if err := c.canTransfer(); err != nil {
+		return err
+	}
+	f.Op, f.Abort, f.Size = "file.put", true, 0
+	for {
+		fc, _, err := c.openFile(ctx, f)
+		if err == nil {
+			return fc.Close()
+		}
+		if err.Error() != errTransferring.Error() {
+			return err
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
 }
 
 // DownloadFile takes the file at path, absolute or relative to the

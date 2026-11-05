@@ -673,7 +673,8 @@ type Attach struct {
 // ".gorex-HASH.partial", HASH the first 16 hex digits of the SHA-256 of
 // the name, a NUL and the ID, until they are all there, then moves it into
 // place and answers a FileAnswer with Path. A connection lost on the way
-// leaves the hidden file for the next try.
+// leaves the hidden file for the next try; a put into the directory a
+// day after it was last written removes it.
 type FilePut struct {
 	Op  string `json:"op"` // "file.put"
 	SID string `json:"sid"`
@@ -692,6 +693,9 @@ type FilePut struct {
 	// first number free; "overwrite" replaces it; "skip" keeps it and
 	// takes no file.
 	Conflict string `json:"conflict,omitempty"`
+	// Abort, set, sends no file: the server removes the partial of Name
+	// for ID in Dir, unless a transfer writes it yet, and answers OK.
+	Abort bool `json:"abort,omitempty"`
 }
 
 // FileGet is the first line of a connection that takes a file from a

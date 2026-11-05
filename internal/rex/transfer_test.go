@@ -477,3 +477,60 @@ func TestFilePutError(t *testing.T) {
 		t.Errorf("after the error: %v", err)
 	}
 }
+
+// TestFileAbort removes a put's partial: not while a transfer writes it,
+// and once it lets it go.
+func TestFileAbort(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	f := FilePut{SID: sid, Dir: dir, Name: "a.bin", ID: "a1"}
+	part := filepath.Join(dir, partialName("a.bin", "a1"))
+	os.WriteFile(part, []byte("half"), 0o644)
+	partials.Store(part, true)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if err := local.AbortFile(ctx, f); !errors.Is(err, context.DeadlineExceeded) || !exists(part) {
+		t.Fatalf("abort of a partial being written: %v, kept %v", err, exists(part))
+	}
+	time.AfterFunc(100*time.Millisecond, func() { partials.Delete(part) })
+	if err := local.AbortFile(context.Background(), f); err != nil || exists(part) {
+		t.Fatalf("abort: %v, kept %v", err, exists(part))
+	}
+	// One of no partial is done already.
+	if err := local.AbortFile(context.Background(), f); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("abort left %v", entries)
+	}
+}
+
+// TestFileSweep removes the partials of a day ago no transfer writes as a
+// put into their directory starts, and keeps newer ones.
+func TestFileSweep(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	old, busy, fresh := filepath.Join(dir, partialName("o", "1")), filepath.Join(dir, partialName("b", "1")), filepath.Join(dir, partialName("f", "1"))
+	other := filepath.Join(dir, ".gorex-notes")
+	day := time.Now().Add(-partialAge - time.Minute)
+	for _, p := range []string{old, busy, fresh, other} {
+		os.WriteFile(p, []byte("x"), 0o644)
+		if p != fresh {
+			os.Chtimes(p, day, day)
+		}
+	}
+	partials.Store(busy, true)
+	defer partials.Delete(busy)
+	if _, _, _, err := put(local, sid, dir, "n.txt", "n1", "", []byte("n")); err != nil {
+		t.Fatal(err)
+	}
+	if exists(old) || !exists(busy) || !exists(fresh) || !exists(other) {
+		t.Errorf("after the sweep: old %v, busy %v, fresh %v, other %v", exists(old), exists(busy), exists(fresh), exists(other))
+	}
+}

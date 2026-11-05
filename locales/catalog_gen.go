@@ -4520,6 +4520,100 @@ func (msgs Messages) PaneStreamInterrupted() string {
 	return Catalog.Format(msgs.locale, "paneStreamInterrupted", nil)
 }
 
+// PaneDropUpload says "Upload to {dir} on {host}"
+// in the language the app shows.
+//
+// Over a pane of a host while files are dragged over it: where a drop sends
+// them.
+func PaneDropUpload(dir string, host string) string {
+	return In(i18n.Locale()).PaneDropUpload(dir, host)
+}
+
+// PaneDropUpload says "Upload to {dir} on {host}"
+// in the language of msgs.
+//
+// Over a pane of a host while files are dragged over it: where a drop sends
+// them.
+func (msgs Messages) PaneDropUpload(dir string, host string) string {
+	return Catalog.Format(msgs.locale, "paneDropUpload", map[string]any{"dir": dir, "host": host})
+}
+
+// PaneDropUpdate says "Update GoRex on {host} to upload files"
+// in the language the app shows.
+//
+// Over a pane of a host that takes no files while files are dragged over
+// it: a drop pastes their paths here.
+func PaneDropUpdate(host string) string { return In(i18n.Locale()).PaneDropUpdate(host) }
+
+// PaneDropUpdate says "Update GoRex on {host} to upload files"
+// in the language of msgs.
+//
+// Over a pane of a host that takes no files while files are dragged over
+// it: a drop pastes their paths here.
+func (msgs Messages) PaneDropUpdate(host string) string {
+	return Catalog.Format(msgs.locale, "paneDropUpdate", map[string]any{"host": host})
+}
+
+// PaneUploadFolder says "Folders are not uploaded yet"
+// in the language the app shows.
+//
+// Transfer list of a pane: a folder dropped on a pane of a host is not
+// sent; its path is pasted.
+func PaneUploadFolder() string { return In(i18n.Locale()).PaneUploadFolder() }
+
+// PaneUploadFolder says "Folders are not uploaded yet"
+// in the language of msgs.
+//
+// Transfer list of a pane: a folder dropped on a pane of a host is not
+// sent; its path is pasted.
+func (msgs Messages) PaneUploadFolder() string {
+	return Catalog.Format(msgs.locale, "paneUploadFolder", nil)
+}
+
+// PaneTransferProgress says "{done} of {size}"
+// in the language the app shows.
+//
+// Transfer list of a pane: how much of a file has gone, in units as 1.2 MB.
+func PaneTransferProgress(done string, size string) string {
+	return In(i18n.Locale()).PaneTransferProgress(done, size)
+}
+
+// PaneTransferProgress says "{done} of {size}"
+// in the language of msgs.
+//
+// Transfer list of a pane: how much of a file has gone, in units as 1.2 MB.
+func (msgs Messages) PaneTransferProgress(done string, size string) string {
+	return Catalog.Format(msgs.locale, "paneTransferProgress", map[string]any{"done": done, "size": size})
+}
+
+// PaneTransferDone says "Done"
+// in the language the app shows.
+//
+// Transfer list of a pane: the file is there.
+func PaneTransferDone() string { return In(i18n.Locale()).PaneTransferDone() }
+
+// PaneTransferDone says "Done"
+// in the language of msgs.
+//
+// Transfer list of a pane: the file is there.
+func (msgs Messages) PaneTransferDone() string {
+	return Catalog.Format(msgs.locale, "paneTransferDone", nil)
+}
+
+// PaneTransferCancel says "Cancel"
+// in the language the app shows.
+//
+// Label of the button that stops a transfer.
+func PaneTransferCancel() string { return In(i18n.Locale()).PaneTransferCancel() }
+
+// PaneTransferCancel says "Cancel"
+// in the language of msgs.
+//
+// Label of the button that stops a transfer.
+func (msgs Messages) PaneTransferCancel() string {
+	return Catalog.Format(msgs.locale, "paneTransferCancel", nil)
+}
+
 // HostsPairRejected says "{host} did not approve this machine: the request was rejected, or its pairing window closed. Try again."
 // in the language the app shows.
 //
