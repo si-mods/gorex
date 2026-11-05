@@ -106,14 +106,16 @@ func mobilePairQR(address string) (string, ui.ImageSource) {
 
 func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 	ui.DialogBase(c, &page.open, func(backdrop, panel ui.Element) {
+		// The backdrop dims the window; the glass is the panel's, as in
+		// the other sheets over the app.
 		backdrop.Background(k.backdrop)
-		glassPanel(panel.Width(370).Padding(18).Gap(12).AlignItems(ui.Center), k.panel).
+		glassPanel(panel.Width(380).Padding(20).Gap(12).Radius(16), k.panel).
 			Border(1, k.panelBorder).Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).
 			Role(ui.RoleDialog).Label(locales.HostsRexQRTitle(page.host))
 		ui.Text(c, locales.HostsRexQRTitle(page.host)).FontSize(15).FontWeight(700).TextColor(k.text)
 		switch {
 		case page.loading:
-			ui.Text(c, locales.HostsRexQRLoading()).FontSize(13).TextColor(k.textMuted)
+			ui.Text(c, locales.HostsRexQRLoading()).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
 		case page.image != nil:
 			hint := locales.HostsRexQRHint()
 			if page.local {
@@ -122,13 +124,25 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 					hint = locales.HostsLocalLanRexQRHint()
 				}
 			}
-			ui.Text(c, hint).FontSize(13).TextColor(k.textMuted).LineHeight(1.4)
-			ui.Image(c, page.image).Size(248, 248).Label(locales.HostsRexQRTitle(page.host))
-			ui.Text(c, page.address).Font(monoFamily()).FontSize(12).TextColor(k.text).SingleLine()
+			ui.Text(c, hint).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)
+			// A QR code keeps its own white, the way a scanner expects,
+			// inside the panel's corner radius.
+			ui.Row(c).Justify(ui.Center).Margin(2, 0, 2, 0).Children(func() {
+				ui.Column(c).Padding(10).Radius(12).Background(ui.RGB(255, 255, 255)).Children(func() {
+					ui.Image(c, page.image).Size(240, 240).Label(locales.HostsRexQRTitle(page.host))
+				})
+			})
+			ui.Text(c, page.address).Font(monoFamily()).FontSize(12).TextColor(k.text).SingleLine().Label(page.address)
 		default:
-			ui.Text(c, locales.HostsRexQRUnavailable()).FontSize(13).TextColor(k.textMuted).LineHeight(1.4)
+			ui.Text(c, locales.HostsRexQRUnavailable()).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)
 		}
-		ui.Row(c).Gap(8).Children(func() {
+		if page.copyFailed {
+			ui.Text(c, locales.HostsRexQRCopyFailed()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+		}
+		ui.Row(c).Gap(8).Justify(ui.End).Margin(8, 0, 0, 0).Children(func() {
+			if ui.Button(c.Key("close"), locales.HostsLayoutClose()).Clicked() {
+				page.open = false
+			}
 			if page.image != nil {
 				label := locales.HostsRexQRCopy()
 				if page.copied {
@@ -139,13 +153,7 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 					page.copied, page.copyFailed = err == nil, err != nil
 				}
 			}
-			if ui.Button(c.Key("close"), locales.HostsLayoutClose()).Clicked() {
-				page.open = false
-			}
 		})
-		if page.copyFailed {
-			ui.Text(c, locales.HostsRexQRCopyFailed()).FontSize(12).TextColor(k.danger)
-		}
 	})
 	if !page.open {
 		hostsPairQR = nil
