@@ -435,6 +435,14 @@ func (a *App) appearanceSettings(c *ui.Context, k *colors) {
 	settingsGroup(c, k, "", "", "", func() { a.appearanceWindow(c, k) })
 	settingsGroup(c, k, "", "", "", func() { a.appearanceText(c, k) })
 	settingsGroup(c, k, "", "", "", func() { a.appearanceGlass(c, k) })
+	settingsGroup(c, k, locales.SettingsExperimental(), "", "", func() {
+		on := prefs.Canvas
+		settingRow(c, k, locales.SettingsCanvas(), locales.SettingsCanvasHint(), func() {
+			if ui.Switch(c, &on).Label(locales.SettingsCanvas()).Changed() {
+				a.setCanvas(on)
+			}
+		})
+	})
 }
 
 // appearanceWindow is the Appearance page's first group: the window, the

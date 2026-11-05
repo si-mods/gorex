@@ -44,6 +44,9 @@ type settings struct {
 	// window's glass, from 0.3 to 1, or 0 for defaultTermOpacity.
 	NoGlass     bool    `json:"noGlass,omitempty"`
 	TermOpacity float32 `json:"terminalOpacity,omitempty"`
+	// Canvas lays every tab out as an infinite canvas of free panes
+	// (canvas.go), an experiment, off by default.
+	Canvas bool `json:"canvas,omitempty"`
 
 	// The rest, when set, win over Ghostty's configuration, which wins over
 	// GoRex's defaults. Empty and nil follow Ghostty.

@@ -573,5 +573,12 @@
   "remoteNetGroup": "网络",
   "remoteNetNone": "未加入网络",
   "remoteNetJoinAsk": "加入网络…",
-  "remoteLanListenOn": "监听地址"
+  "remoteLanListenOn": "监听地址",
+  "cmdResetCanvasView": "重置画布视图",
+  "settingsExperimental": "实验性",
+  "settingsCanvas": "无限画布",
+  "settingsCanvasHint": "实验性功能。每个窗格都是无边平面上的自由方框：在空白处滚动或拖动，或在空白处按住空格键后拖动，以平移；捏合，或按住 Ctrl 或 Cmd 滚动，以缩放；右键点击空白处新建窗格。关闭后所有窗格停靠回标签页。",
+  "canvasNewTerminal": "新建终端",
+  "canvasNewBrowser": "新建浏览器",
+  "canvasNewNote": "新建便签"
 }

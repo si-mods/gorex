@@ -41,6 +41,23 @@ type Tab struct {
 	// focus is on a tiled pane, which Focus names.
 	Floats     []Float `json:"floats,omitempty"`
 	FocusFloat int     `json:"focusFloat,omitempty"`
+	// Canvas, when set, makes the tab an infinite canvas: Root is nil and
+	// every pane is a float, its box in fractions of Canvas.W, Canvas.H
+	// rather than of the room, and not kept inside them.
+	Canvas *Canvas `json:"canvas,omitempty"`
+}
+
+// Canvas is a tab's infinite canvas. W and H are the size, in DIPs, that
+// its floats' fractions are of: the tab's room when it became a canvas,
+// fixed from then on, so that the window's size changes no pane's. X and
+// Y are the canvas's point, in DIPs, at the room's top left, and Scale how
+// large it shows.
+type Canvas struct {
+	W     float32 `json:"w"`
+	H     float32 `json:"h"`
+	X     float32 `json:"x,omitempty"`
+	Y     float32 `json:"y,omitempty"`
+	Scale float32 `json:"scale,omitempty"`
 }
 
 // Float is a pane over a tab's tiled panes: Pane is a leaf, and X, Y, W, H

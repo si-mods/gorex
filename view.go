@@ -242,10 +242,28 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	a.syncNoteItem()
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	bounds := room.Bounds()
+	// A tab shown the first time has no bounds yet: the last tab's room
+	// stands for its own.
+	ref := bounds
+	if ref.W <= 0 || ref.H <= 0 {
+		ref = a.floatRoom
+	}
+	a.syncCanvas(t, ref)
+	if prefs.Canvas && t.Root != nil {
+		// The room is not measured yet: the canvas comes in the next frame.
+		c.Invalidate()
+	}
 	a.floatRoom = bounds
 	a.passes++
 	tr := a.paneTransition(c, t)
+	if t.canvas != nil {
+		a.canvasRoom(t, room)
+	}
 	room.Children(func() {
+		if t.canvas != nil {
+			a.canvasContent(c, k, t, bounds)
+			return
+		}
 		if t.Zoom != nil {
 			a.paneCell(c, k, t, t.Zoom, whole, bounds, tr)
 		} else {
@@ -324,11 +342,10 @@ func (n *Node) shares(s share, pane func(*Pane, share), split func(*Node, share)
 	n.B.shares(b, pane, split)
 }
 
-// paneCell places pane p in its share s of the tab's room, which is
-// bounds, half the gap from the panes beside it.
-func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bounds ui.Rect, tr *ui.ElementTransition) {
+// cellInsets are the paddings of a pane's cell in its share s of the room:
+// half the gap on each side another pane is beside.
+func cellInsets(s share) (top, right, bottom, left float32) {
 	const half, eps = gap / 2, 1e-4
-	var top, right, bottom, left float32
 	if s.y > eps {
 		top = half
 	}
@@ -341,6 +358,13 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	if s.x > eps {
 		left = half
 	}
+	return
+}
+
+// paneCell places pane p in its share s of the tab's room, which is
+// bounds, half the gap from the panes beside it.
+func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bounds ui.Rect, tr *ui.ElementTransition) {
+	top, right, bottom, left := cellInsets(s)
 	cell := ui.Column(c.Key(cellKey(p.ID))).Absolute().
 		LeftPercent(s.x*100).TopPercent(s.y*100).WidthPercent(s.w*100).HeightPercent(s.h*100).
 		Padding(top, right, bottom, left)
@@ -521,9 +545,12 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		ink = ui.RGBA(0, 0, 0, 1)
 		alpha = [3]float32{0.55, 0.5, 0.55}
 	}
-	cell.Shadow(0, 1, 3, 0, ink.Alpha(min(alpha[0]*lift, 1))).
-		Shadow(0, 12*lift, 32*lift, -4, ink.Alpha(min(alpha[1]*lift, 1))).
-		Shadow(0, 30*lift, 80*lift, -10, ink.Alpha(min(alpha[2]*lift, 1)))
+	// A canvas's boxes lie on its plane, over no panes: they lift off none.
+	if !f.free() {
+		cell.Shadow(0, 1, 3, 0, ink.Alpha(min(alpha[0]*lift, 1))).
+			Shadow(0, 12*lift, 32*lift, -4, ink.Alpha(min(alpha[1]*lift, 1))).
+			Shadow(0, 30*lift, 80*lift, -10, ink.Alpha(min(alpha[2]*lift, 1)))
+	}
 	rest := ui.Rect{
 		X: bounds.X + s.x*bounds.W,
 		Y: bounds.Y + s.y*bounds.H,
@@ -1008,8 +1035,9 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 		p.Name = ""
 		a.changed()
 	}
+	// A canvas's panes are all free: none docks.
 	if p.float != nil {
-		if m.Item(locales.CmdDockPane()).Chosen() {
+		if p.Tab != nil && p.Tab.canvas == nil && m.Item(locales.CmdDockPane()).Chosen() {
 			a.dockPane(p)
 		}
 	} else if t := p.Tab; t != nil && len(t.panes()) > 1 {
@@ -1086,7 +1114,8 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		// As Rex has them: split right, split down, float, zoom and close.
 		// A float's float button, lit, docks it.
 		if f := p.float; f != nil {
-			if iconButtonWith(c, k, "float", locales.CmdDockPane(), 26, 16, true, nil).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
+			// A canvas's panes are all free: none docks.
+			if t.canvas == nil && iconButtonWith(c, k, "float", locales.CmdDockPane(), 26, 16, true, nil).Tooltip(tip(locales.CmdDockPane(), &cmdFloatPane)).Clicked() {
 				a.later(c, func() { a.dockPane(p) })
 			}
 		} else {
@@ -1544,12 +1573,17 @@ func (a *App) dragFloat(c *ui.Context, f *Float, h ui.Element) {
 			}
 		}
 	}
+	room := a.floatRoom
+	if f.free() {
+		// The header's drags come in the canvas's DIPs.
+		room = ui.Rect{W: f.Pane.Tab.canvas.W, H: f.Pane.Tab.canvas.H}
+	}
 	if f.dragging && (dx != 0 || dy != 0) {
-		a.moveFloatPx(f, dx, dy, a.floatRoom)
+		a.moveFloatPx(f, dx, dy, room)
 	}
 	if f.dragging && !pressed {
 		vx, vy, _ := h.DragEnded()
-		a.throwFloat(f, vx, vy, a.floatRoom, motion(c) == nil)
+		a.throwFloat(f, vx, vy, room, motion(c) == nil)
 	}
 }
 
