@@ -1516,6 +1516,10 @@ func (a *App) endPane(p *Pane) {
 	if p.closed || a.quitting {
 		return
 	}
+	if w := a.keeper(p.Tab); w != nil {
+		a.endKept(w, p)
+		return
+	}
 	if p.host != nil && len(a.tabs) == 1 && len(a.tabs[0].allPanes()) == 1 {
 		home, _ := os.UserHomeDir()
 		a.newTabOn(nil, home)
@@ -1523,6 +1527,22 @@ func (a *App) endPane(p *Pane) {
 	// A session the host no longer lists, as one it stopped sharing, is not
 	// this machine's to end.
 	a.dropPane(p, p.remote == nil || !p.remote.Gone())
+}
+
+// endKept ends a pane of the tabs the window keeps of space w, out of
+// sight: its tab goes with its last pane, and the space's layout follows.
+// A space whose last pane ends keeps no tabs, and shows from its layout.
+func (a *App) endKept(w *Workspace, p *Pane) {
+	k := w.kept
+	shown := k.tabs[min(k.active, len(k.tabs)-1)]
+	a.dropPane(p, p.remote == nil || !p.remote.Gone())
+	k.tabs = slices.DeleteFunc(k.tabs, func(t *Tab) bool { return t.Root == nil && len(t.Floats) == 0 })
+	k.active = max(slices.Index(k.tabs, shown), 0)
+	w.layout = a.layoutOf(k.tabs, k.active)
+	if len(k.tabs) == 0 {
+		w.kept = nil
+	}
+	a.changed()
 }
 
 // sessionAlive tells whether the server still has session sid, and has not
@@ -2564,9 +2584,12 @@ type savedTab = layout.Tab
 type savedNode = layout.Node
 type savedFloat = layout.Float
 
-func (a *App) snapshot() savedLayout {
-	l := savedLayout{Active: a.active, Tabs: []savedTab{}}
-	for _, t := range a.tabs {
+func (a *App) snapshot() savedLayout { return a.layoutOf(a.tabs, a.active) }
+
+// layoutOf is the layout of the tabs, of which active is shown.
+func (a *App) layoutOf(tabs []*Tab, active int) savedLayout {
+	l := savedLayout{Active: active, Tabs: []savedTab{}}
+	for _, t := range tabs {
 		l.Tabs = append(l.Tabs, a.savedTab(t))
 	}
 	return l

@@ -35,11 +35,40 @@ type Workspace struct {
 	// shows it, whose tabs are then its own.
 	layout savedLayout
 	app    *App
+	// kept are the live tabs of the window that last showed it, which
+	// shows them again as they were; nil when none.
+	kept *keptTabs
 	// unlisted marks the space a window shows once a client closed the
 	// last one: Rex lets a server have no sessions, so the layout leaves
 	// it out while it has no tabs. Its first tab lists it; a window going
 	// to another space drops it.
 	unlisted bool
+}
+
+// keptTabs are a window's tabs of a space it went away from.
+type keptTabs struct {
+	app    *App
+	tabs   []*Tab
+	active int
+}
+
+// unkeep closes the panes a window kept of the space, which then shows
+// from its layout.
+func (w *Workspace) unkeep() {
+	if k := w.kept; k != nil {
+		w.kept = nil
+		closePanes(k.tabs)
+	}
+}
+
+// unkeepAll closes the panes window a keeps of the spaces it went away
+// from: their callbacks are a's.
+func (st *store) unkeepAll(a *App) {
+	for _, w := range st.workspaces {
+		if w.kept != nil && w.kept.app == a {
+			w.unkeep()
+		}
+	}
 }
 
 // hidden reports whether the layout leaves the workspace out: unlisted,
@@ -423,6 +452,7 @@ func (st *store) taken(name string) bool {
 // remove forgets a workspace, and the window that shows it shows none.
 func (st *store) remove(w *Workspace) {
 	st.workspaces = slices.DeleteFunc(st.workspaces, func(o *Workspace) bool { return o == w })
+	w.unkeep()
 	if w.app != nil {
 		w.app.ws = nil
 		w.app = nil
@@ -583,6 +613,8 @@ func (st *store) adopt(client *rex.Client) bool {
 	// sessions, as the old one closed.
 	for _, a := range st.apps {
 		a.client, a.hello, a.errMsg = st.client, st.hello, st.errMsg
+		// Kept panes' streams were the old connection's.
+		st.unkeepAll(a)
 		if w := a.ws; w != nil {
 			a.detach()
 			a.show(w, nil)
@@ -758,6 +790,7 @@ func (st *store) closed(a *App) {
 	a.quitting = true
 	w := a.ws
 	a.detach()
+	st.unkeepAll(a)
 	a.win = nil
 	st.apps = slices.DeleteFunc(st.apps, func(o *App) bool { return o == a })
 	if len(st.apps) == 0 && w != nil {
@@ -809,16 +842,27 @@ func (a *App) show(w *Workspace, others map[string]bool) { a.showTabs(w, others,
 func (a *App) showEmpty(w *Workspace) { a.showTabs(w, nil, false) }
 
 // showTabs shows a workspace's saved tabs, and opens one in its home
-// directory when it has none and fallback asks for it. A space shown
-// before keeps its tabs in the layout, for the window that shows it again.
+// directory when it has none and fallback asks for it. A space this window
+// showed before shows its kept tabs again, as they were; another window's
+// kept tabs close, and the space shows from its layout.
 func (a *App) showTabs(w *Workspace, others map[string]bool, fallback bool) {
 	if old := a.ws; old != nil && old != w {
-		a.detach()
+		a.park()
 		if old.hidden() && a.st != nil {
 			a.st.remove(old)
 		}
 	}
 	a.ws, w.app = w, a
+	if k := w.kept; k != nil && k.app == a {
+		w.kept = nil
+		a.tabs, a.active, a.focusReq, a.renaming = k.tabs, k.active, nil, nil
+		if t := a.tab(); t != nil {
+			a.focusReq = t.Focus
+		}
+		a.changed()
+		return
+	}
+	w.unkeep()
 	a.tabs, a.active, a.focusReq, a.renaming = nil, 0, nil, nil
 	if !a.restore(w.layout, others) && fallback {
 		home, _ := os.UserHomeDir()
@@ -829,12 +873,43 @@ func (a *App) showTabs(w *Workspace, others map[string]bool, fallback bool) {
 
 // detach closes the window's terminals, keeping their sessions, and its
 // tabs in its workspace's layout.
-func (a *App) detach() {
+func (a *App) detach() { closePanes(a.leave()) }
+
+// park takes the window off its workspace as detach does, but keeps its
+// tabs live in the workspace, terminals attached and pages loaded, for the
+// window to show them again (showTabs).
+func (a *App) park() {
+	w, active := a.ws, a.active
+	tabs := a.leave()
+	if w == nil || len(tabs) == 0 {
+		closePanes(tabs)
+		return
+	}
+	for _, t := range tabs {
+		for _, p := range t.allPanes() {
+			p.setFocused(false)
+		}
+	}
+	w.kept = &keptTabs{app: a, tabs: tabs, active: active}
+}
+
+// leave takes the window off its workspace, whose layout keeps its tabs,
+// and returns them.
+func (a *App) leave() []*Tab {
+	tabs := a.tabs
 	if w := a.ws; w != nil {
 		w.layout = a.snapshot()
 		w.app = nil
 	}
-	for _, t := range a.tabs {
+	a.ws, a.tabs, a.active, a.focusReq, a.renaming = nil, nil, 0, nil, nil
+	a.wsOpen, a.wsRenaming, a.wsConfirm = false, false, false
+	return tabs
+}
+
+// closePanes closes the tabs' terminals and web views, keeping their
+// sessions.
+func closePanes(tabs []*Tab) {
+	for _, t := range tabs {
 		for _, p := range t.allPanes() {
 			p.closed = true
 			if p.term != nil {
@@ -843,8 +918,20 @@ func (a *App) detach() {
 			p.browser.destroy()
 		}
 	}
-	a.ws, a.tabs, a.active, a.focusReq, a.renaming = nil, nil, 0, nil, nil
-	a.wsOpen, a.wsRenaming, a.wsConfirm = false, false, false
+}
+
+// keeper is the space whose kept tabs hold t, nil for a tab the window
+// shows.
+func (a *App) keeper(t *Tab) *Workspace {
+	if a.st == nil || slices.Contains(a.tabs, t) {
+		return nil
+	}
+	for _, w := range a.st.workspaces {
+		if k := w.kept; k != nil && k.app == a && slices.Contains(k.tabs, t) {
+			return w
+		}
+	}
+	return nil
 }
 
 // front shows the window over the others, and gives it the keyboard.
@@ -871,7 +958,7 @@ func (a *App) showWorkspace(w *Workspace) {
 		w.app.front()
 		return
 	}
-	a.detach()
+	a.park()
 	a.show(w, nil)
 	a.st.save()
 }
