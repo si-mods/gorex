@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,12 +26,16 @@ import (
 // Files dropped on a pane of a host go there: each is sent into the
 // directory of the session's program in the foreground, and its path there
 // is pasted, as a drop on a pane of this machine pastes the paths here. A
-// drop on a pane of this machine is the terminal's own.
+// drop on a pane of this machine is the terminal's own. A file path
+// Command-clicked in a pane of a host comes here, into Downloads.
 
-// fileTransfer is a file on its way to a pane's machine, as the pane's
-// transfer list shows it.
+// fileTransfer is a file on its way to or from a pane's machine, as the
+// pane's transfer list shows it.
 type fileTransfer struct {
-	name       string
+	name string
+	// from is the path there of a download, absolute when the pane's
+	// directory is known, "" for an upload.
+	from       string
 	size, done int64
 	// ok tells that the file is there, and err why it is not.
 	ok  bool
@@ -154,6 +159,89 @@ func putFile(ctx context.Context, c *rex.Client, f rex.FilePut, path string, x *
 	return there, err
 }
 
+// downloadsDir is where a file Command-clicked in a pane of a host goes.
+var downloadsDir = func() (string, error) {
+	home, err := os.UserHomeDir()
+	return filepath.Join(home, "Downloads"), err
+}
+
+// download takes the file at link, a path printed in p, a pane of a host
+// that transfers files, or a file:// hyperlink, into the Downloads folder
+// here, quarantined as a browser's download, then opens it as a
+// Command-click on a pane of this machine opens a file. A path with
+// :line:col is the file's; a relative one is of the pane's directory
+// there, and one of "~/" of the home there. It reports whether it took
+// the link: a path, not another URL, of a host that transfers files. A
+// click on a file being downloaded does nothing more.
+func (a *App) download(p *Pane, link string) bool {
+	path, ok := linkPath(link)
+	if u, err := url.Parse(link); err == nil && u.Scheme == "file" {
+		// A Windows host's is file:///C:/dir/name.
+		path, ok = u.Path, u.Path != ""
+		if len(path) > 2 && path[2] == ':' {
+			path = path[1:]
+		}
+	}
+	if !ok || !transfersFiles(p) {
+		return false
+	}
+	path = hostPath(p.info.Dir, path)
+	for _, x := range p.transfers {
+		if x.from == path && !x.ok && x.err == "" {
+			return true
+		}
+	}
+	name := strings.TrimRight(path, `/\`)
+	x := &fileTransfer{name: name[strings.LastIndexAny(name, `/\`)+1:], from: path}
+	p.transfers = append(p.transfers, x)
+	dir, err := downloadsDir()
+	if err != nil {
+		x.err = err.Error()
+		return true
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	x.cancel = cancel
+	c, sid, update := p.host.current(), p.SID, a.updater()
+	go func() {
+		defer cancel()
+		var last time.Time
+		got, err := c.DownloadFile(ctx, sid, path, dir, "rename", func(done, size int64) {
+			if now := time.Now(); now.Sub(last) >= transferEvery {
+				last = now
+				update(func() { x.done, x.size = done, size })
+			}
+		})
+		if err == nil {
+			err = quarantine(got)
+		}
+		update(func() {
+			switch {
+			case rex.Folder(err):
+				x.err = locales.PaneDownloadFolder()
+			case err != nil:
+				x.err = strings.TrimPrefix(err.Error(), "rex: ")
+			default:
+				x.done, x.ok = x.size, true
+				a.services.OpenURL(fileURL(got))
+			}
+		})
+	}()
+	return true
+}
+
+// hostPath is path, printed in a pane of a host whose directory there is
+// dir, made absolute against dir when it is relative and dir is known.
+func hostPath(dir, path string) string {
+	if dir == "" || path == "" || strings.ContainsRune(`~/\`, rune(path[0])) || len(path) > 1 && path[1] == ':' {
+		return path
+	}
+	sep := "/"
+	if !strings.HasPrefix(dir, "/") {
+		sep = `\` // a Windows host's
+	}
+	return strings.TrimRight(dir, `/\`) + sep + path
+}
+
 // uploadID is the transfer id of an upload of the file at path, as fi
 // tells of it, into the session sid: the same for each try of the same
 // file, which goes on from what the last left there.
@@ -162,8 +250,8 @@ func uploadID(sid, path string, fi os.FileInfo) string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// stopUploads cancels the pane's uploads, as it closes.
-func (p *Pane) stopUploads() {
+// stopTransfers cancels the pane's transfers, as it closes.
+func (p *Pane) stopTransfers() {
 	for _, x := range p.transfers {
 		if x.cancel != nil {
 			x.cancel()
@@ -202,9 +290,9 @@ func byteSize(n int64) string {
 	return fmt.Sprintf("%.1f %s", f, []string{"kB", "MB", "GB", "TB", "PB"}[i])
 }
 
-// uploads tells whether files dropped on p go to its host: a host
-// connected now that takes them.
-func uploads(p *Pane) bool {
+// transfersFiles tells whether p's host takes files dropped on p and gives
+// those Command-clicked in it: a host connected now that transfers them.
+func transfersFiles(p *Pane) bool {
 	h := p.host
 	return h != nil && h.current() != nil && h.hello.Can(rex.CapabilityFileTransfer)
 }
@@ -219,7 +307,7 @@ var fileDrops = transfer.DropOptions{Formats: []transfer.Format{transfer.FileLis
 func (a *App) fileDrop(c *ui.Context, k *colors, p *Pane, card, tv ui.Element) {
 	var label string
 	switch h := p.host; {
-	case uploads(p):
+	case transfersFiles(p):
 		// The card is an ancestor of all the pane shows, and the native
 		// drag asks for its data targets before the terminal's files.
 		if d, ok := ui.DropData(card, fileDrops); ok {
@@ -314,10 +402,11 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 				})
 				if !failed && !x.ok {
 					ui.Box(c).Height(3).Radius(1.5).Background(k.track).Draw(func(pt *ui.Painter, b ui.Rect) {
+						// A download's size is not known before it begins.
 						if x.size > 0 {
 							b.W *= float32(x.done) / float32(x.size)
+							pt.Fill(b, k.accent, 1.5)
 						}
-						pt.Fill(b, k.accent, 1.5)
 					})
 				}
 				text, col := locales.PaneTransferProgress(byteSize(x.done), byteSize(x.size)), k.textFaint
@@ -326,6 +415,8 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 					text, col = x.err, k.danger
 				case x.ok:
 					text = locales.PaneTransferDone()
+				case x.size == 0:
+					text = "…"
 				}
 				ui.Text(c, text).FontSize(11.5).TextColor(col).LineHeight(1.3)
 			})

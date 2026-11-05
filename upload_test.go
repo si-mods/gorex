@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -105,7 +106,7 @@ func TestDropUploadsToHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, _, p := remotePane(t, a, tt, there)
-	if !uploads(p) {
+	if !transfersFiles(p) {
 		t.Fatal("the host takes no files")
 	}
 	paths := dropped(t, "a b.txt", "hello", "b.txt", "new")
@@ -239,18 +240,18 @@ func TestUploadsOnlyToHostsTaking(t *testing.T) {
 	a, tt := newTestApp(t)
 	local := a.tab().Focus
 	h, proxy, p := remotePane(t, a, tt, "")
-	if uploads(local) || !uploads(p) {
-		t.Fatalf("uploads: local %v, remote %v", uploads(local), uploads(p))
+	if transfersFiles(local) || !transfersFiles(p) {
+		t.Fatalf("transfers files: local %v, remote %v", transfersFiles(local), transfersFiles(p))
 	}
 	caps := h.hello.Capabilities
 	h.hello.Capabilities = nil
-	if uploads(p) {
+	if transfersFiles(p) {
 		t.Error("uploads to a host that takes no files")
 	}
 	h.hello.Capabilities = caps
 	proxy.setDown(true)
 	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil })
-	if uploads(p) {
+	if transfersFiles(p) {
 		t.Error("uploads to a host not connected")
 	}
 }
@@ -315,7 +316,13 @@ func TestTransferList(t *testing.T) {
 		active,
 		{name: "small.txt", size: 10, done: 10, ok: true},
 		{name: "bad.txt", size: 10, err: "disk full"},
+		{name: "new.bin", from: "/tmp/new.bin", cancel: cancel},
 	}
+	tt.Frame()
+	if !tt.HasText("…") || tt.HasText("0 B of 0 B") {
+		t.Errorf("a download of no size yet: texts %q", tt.Texts())
+	}
+	p.transfers = p.transfers[:3]
 	tt.Frame()
 	for _, s := range []string{"big.bin", "1.2 MB of 4.8 MB", "small.txt", "Done", "bad.txt", "disk full"} {
 		if !tt.HasText(s) {
@@ -364,6 +371,196 @@ func TestPastedPaths(t *testing.T) {
 	} {
 		if got := pastedPaths(c.shell, []string{"/tmp/a.txt", "/tmp/b c.txt"}); got != c.want {
 			t.Errorf("pastedPaths(%q) = %q, want %q", c.shell, got, c.want)
+		}
+	}
+}
+
+// downloadsHere makes Command-clicked files of hosts go into a new
+// directory, which it returns.
+func downloadsHere(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	old := downloadsDir
+	downloadsDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { downloadsDir = old })
+	return dir
+}
+
+// clicked Command-clicks link in p, a pane of a host, and waits for its
+// download to end, which it returns.
+func clicked(t *testing.T, a *App, tt *ui.Tester, p *Pane, link string) *fileTransfer {
+	t.Helper()
+	if !a.openLink(p, link) {
+		t.Fatalf("%s not taken", link)
+	}
+	x := p.transfers[len(p.transfers)-1]
+	waitFor(t, tt, link, func() bool { return x.ok || x.err != "" })
+	return x
+}
+
+// TestDownloadFromHost Command-clicks paths printed in a pane of a host:
+// each file comes into Downloads, renamed when the name is taken, and
+// opens; a relative path is of the shell's directory there, "~/" of the
+// home there, and :line:col is trimmed. A folder and a missing file say
+// why until clicked. A URL is the system's.
+func TestDownloadFromHost(t *testing.T) {
+	a, tt := newTestApp(t)
+	there := testDir(t)
+	t.Cleanup(func() { os.RemoveAll(there) })
+	os.WriteFile(filepath.Join(there, "report.txt"), []byte("report"), 0o644)
+	os.Mkdir(filepath.Join(there, "sub"), 0o755)
+	os.WriteFile(filepath.Join(there, "sub", "notes.go"), []byte("package x"), 0o644)
+	os.Mkdir(filepath.Join(there, "folder"), 0o755)
+	os.WriteFile(filepath.Join(there, "linked.txt"), []byte("linked"), 0o644)
+	_, _, p := remotePane(t, a, tt, there)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	os.WriteFile(filepath.Join(home, "h.txt"), []byte("home"), 0o644)
+	downloads := downloadsHere(t)
+	os.WriteFile(filepath.Join(downloads, "report.txt"), []byte("old"), 0o644)
+
+	for _, c := range []struct{ link, name, want string }{
+		{"report.txt", "report (1).txt", "report"},
+		{"sub/notes.go:12:3", "notes.go", "package x"},
+		{"~/h.txt", "h.txt", "home"},
+		{(&url.URL{Scheme: "file", Host: "office-mac", Path: filepath.ToSlash(filepath.Join(there, "linked.txt"))}).String(), "linked.txt", "linked"},
+	} {
+		x := clicked(t, a, tt, p, c.link)
+		path := filepath.Join(downloads, c.name)
+		if !x.ok {
+			t.Fatalf("%s: %+v", c.link, x)
+		}
+		if b, err := os.ReadFile(path); err != nil || string(b) != c.want {
+			t.Errorf("%s: %q, %v", c.link, b, err)
+		}
+		if !slices.Contains(tt.OpenedURLs(), fileURL(path)) {
+			t.Errorf("%s not opened: %q", path, tt.OpenedURLs())
+		}
+		if !quarantined(t, path) {
+			t.Errorf("%s not quarantined", path)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(downloads, "report.txt")); string(b) != "old" {
+		t.Errorf("the file there already became %q", b)
+	}
+	opened := len(tt.OpenedURLs())
+	for _, link := range []string{"folder", "folder/"} {
+		if x := clicked(t, a, tt, p, link); x.err != "Folders are not downloaded yet" {
+			t.Errorf("a folder %s: %+v", link, x)
+		}
+	}
+	if x := clicked(t, a, tt, p, "missing.txt"); !strings.Contains(x.err, "no such file") {
+		t.Errorf("a missing file: %+v", x)
+	}
+	if a.openLink(p, "https://example.com/a.txt") {
+		t.Error("a URL is downloaded")
+	}
+	if len(tt.OpenedURLs()) != opened {
+		t.Errorf("opened %q", tt.OpenedURLs()[opened:])
+	}
+	tt.Advance(transferShown)
+	tt.Frame()
+	if !tt.HasText("Folders are not downloaded yet") || tt.HasText("report.txt") {
+		t.Errorf("texts after a while %q", tt.Texts())
+	}
+	if err := tt.Click("Folders are not downloaded yet"); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.transfers) != 2 {
+		t.Errorf("transfers after a click: %v", p.transfers)
+	}
+	if left, _ := filepath.Glob(filepath.Join(downloads, ".gorex-*.partial")); len(left) > 0 {
+		t.Errorf("partials left: %v", left)
+	}
+}
+
+// TestDownloadCancelled cancels a download, as its pane closes: what
+// Downloads has of the file goes, an earlier try's too, and nothing opens.
+// A second click on a file being downloaded starts no other; one on its
+// name printed in another directory does.
+func TestDownloadCancelled(t *testing.T) {
+	a, tt := newTestApp(t)
+	there := testDir(t)
+	t.Cleanup(func() { os.RemoveAll(there) })
+	os.WriteFile(filepath.Join(there, "big.bin"), []byte(strings.Repeat("x", 1<<20)), 0o644)
+	_, _, p := remotePane(t, a, tt, there)
+	downloads := downloadsHere(t)
+	part := partialOf(downloads, "big.bin", rex.DownloadID(p.SID, hostPath(p.info.Dir, "big.bin")))
+	os.WriteFile(part, []byte("xxxx"), 0o644)
+	if !a.openLink(p, "big.bin") || !a.openLink(p, "big.bin:3") {
+		t.Fatal("the link not taken")
+	}
+	if len(p.transfers) != 1 {
+		t.Fatalf("transfers %v", p.transfers)
+	}
+	// The same name printed in another directory is another file.
+	dir := p.info.Dir
+	p.info.Dir = filepath.Join(dir, "other")
+	a.openLink(p, "big.bin")
+	p.info.Dir = dir
+	if len(p.transfers) != 2 {
+		t.Fatalf("transfers %v", p.transfers)
+	}
+	p.close()
+	for _, x := range p.transfers {
+		waitFor(t, tt, "the download to stop", func() bool { return x.err != "" })
+	}
+	if _, err := os.Stat(part); err == nil {
+		t.Error("the partial stays")
+	}
+	if _, err := os.Stat(filepath.Join(downloads, "big.bin")); err == nil {
+		t.Error("the file came")
+	}
+	if len(tt.OpenedURLs()) != 0 {
+		t.Errorf("opened %q", tt.OpenedURLs())
+	}
+}
+
+// TestOpenLinkOnlyFromHostsTaking downloads only from a host connected
+// that transfers files; a link in a pane of this machine opens here, as
+// before.
+func TestOpenLinkOnlyFromHostsTaking(t *testing.T) {
+	a, tt := newTestApp(t)
+	local := a.tab().Focus
+	downloads := downloadsHere(t)
+	here := dropped(t, "here.txt", "x")[0]
+	if !a.openLink(local, here) || !slices.Equal(tt.OpenedURLs(), []string{fileURL(here)}) || len(local.transfers) != 0 {
+		t.Errorf("a local link: opened %q, transfers %v", tt.OpenedURLs(), local.transfers)
+	}
+	there := testDir(t)
+	t.Cleanup(func() { os.RemoveAll(there) })
+	os.WriteFile(filepath.Join(there, "f.txt"), []byte("f"), 0o644)
+	h, proxy, p := remotePane(t, a, tt, there)
+	caps := h.hello.Capabilities
+	h.hello.Capabilities = nil
+	if a.openLink(p, "f.txt") || len(p.transfers) != 0 {
+		t.Error("a download from a host that transfers no files")
+	}
+	h.hello.Capabilities = caps
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil })
+	if a.openLink(p, "f.txt") || len(p.transfers) != 0 {
+		t.Error("a download from a host not connected")
+	}
+	if entries, _ := os.ReadDir(downloads); len(entries) != 0 || len(tt.OpenedURLs()) != 1 {
+		t.Errorf("downloads %v, opened %q", entries, tt.OpenedURLs())
+	}
+}
+
+func TestHostPath(t *testing.T) {
+	for _, c := range []struct{ dir, path, want string }{
+		{"/srv/app", "config.json", "/srv/app/config.json"},
+		{"/srv/app/", "sub/", "/srv/app/sub/"},
+		{"/", "a", "/a"},
+		{"", "config.json", "config.json"},
+		{"/srv/app", "/etc/hosts", "/etc/hosts"},
+		{"/srv/app", "~/a", "~/a"},
+		{`C:\Users\yibo`, `a\b.txt`, `C:\Users\yibo\a\b.txt`},
+		{`C:\Users\yibo`, `D:\b.txt`, `D:\b.txt`},
+	} {
+		if got := hostPath(c.dir, c.path); got != c.want {
+			t.Errorf("hostPath(%q, %q) = %q, want %q", c.dir, c.path, got, c.want)
 		}
 	}
 }

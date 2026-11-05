@@ -87,13 +87,21 @@ const (
 	resumeRate   = 10 << 20 // bytes a second
 )
 
-// fileSession is the session sid, for peer (mayUse), and the directory
-// dir names in it: absolute, or relative to that of the program in the
-// foreground (SessionInfo.Dir), which it is when "".
+// fileSession is the session sid, for peer (mayUse), and the path dir
+// names in it: absolute, of the home directory of this user when it is
+// "~" or starts with "~/", or relative to the directory of the program in
+// the foreground (SessionInfo.Dir), which it is when "".
 func (s *Server) fileSession(sid, peer, dir string) (*session, string, error) {
 	ss, err := s.use(sid, peer)
 	if err != nil {
 		return nil, "", err
+	}
+	if rest, ok := strings.CutPrefix(dir, "~"); ok && (rest == "" || rest[0] == '/') {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, "", err
+		}
+		return ss, filepath.Join(home, rest), nil
 	}
 	if filepath.IsAbs(dir) {
 		return ss, filepath.Clean(dir), nil
@@ -231,6 +239,9 @@ func (s *Server) fileGet(conn net.Conn, first []byte, peer string, touch func(),
 	st, err := f.Stat()
 	if err != nil {
 		return err
+	}
+	if st.IsDir() {
+		return fmt.Errorf("rex: %s %s", path, isFolder)
 	}
 	if !st.Mode().IsRegular() {
 		return fmt.Errorf("rex: %s is not a regular file", path)
@@ -675,22 +686,36 @@ func (c *Client) AbortFile(ctx context.Context, f FilePut) error {
 	}
 }
 
-// DownloadFile takes the file at path, absolute or relative to the
-// directory of the session sid's program in the foreground, into destDir,
-// as conflict says of a file of its name there already (FilePut.Conflict;
-// "skip" returns the file kept). It writes into a partial file there
-// first, which a later try for the same file goes on from. It returns
-// where the file is. progress, when set, is told of the bytes there so
-// far, and of the file's size.
-func (c *Client) DownloadFile(ctx context.Context, sid, path, destDir, conflict string, progress func(done, size int64)) (string, error) {
+// isFolder ends the error of a get of a folder, which only the server
+// gives.
+const isFolder = "is a folder, which is not sent"
+
+// Folder reports whether err is the server refusing to send a folder (the
+// error arrives as text).
+func Folder(err error) bool {
+	return err != nil && strings.HasSuffix(err.Error(), isFolder)
+}
+
+// DownloadFile takes the file at path, absolute, of the server user's home
+// directory ("~/"), or relative to the directory of the session sid's
+// program in the foreground, into destDir, by the name path ends in
+// (a separator after it trimmed), as conflict says of a file of
+// its name there already (FilePut.Conflict; "skip" returns the file
+// kept). It writes into a partial file there first, which a later try for
+// the same file goes on from (DownloadID), when the file there has its
+// time and is no shorter; a try cancelled (ctx's error is
+// context.Canceled) removes it. It returns where the file is. progress,
+// when set, is told of the bytes there so far, and of the file's size.
+func (c *Client) DownloadFile(ctx context.Context, sid, path, destDir, conflict string, progress func(done, size int64)) (_ string, err error) {
 	if err := c.canTransfer(); err != nil {
 		return "", err
 	}
-	name := path[strings.LastIndexAny(path, `/\`)+1:]
+	name := strings.TrimRight(path, `/\`)
+	name = name[strings.LastIndexAny(name, `/\`)+1:]
 	if conflict == "" {
 		conflict = "rename"
 	}
-	id := downloadID(sid, path)
+	id := DownloadID(sid, path)
 	if err := checkPut(name, id, conflict); err != nil {
 		return "", err
 	}
@@ -701,12 +726,18 @@ func (c *Client) DownloadFile(ctx context.Context, sid, path, destDir, conflict 
 	if err != nil {
 		return "", err
 	}
-	defer p.close()
+	defer func() {
+		if err != nil && errors.Is(ctx.Err(), context.Canceled) {
+			p.f.Close()
+			os.Remove(p.path)
+		}
+		p.close()
+	}()
 	// The partial has the time of the file it is of: one of another
-	// version of it starts again.
+	// version of it, or longer than it, starts again.
 	off := p.size
 	fc, a, err := c.openFile(ctx, FileGet{Op: "file.get", SID: sid, Path: path, Offset: off, ID: id})
-	if off > 0 && (err != nil || !a.MTime.Truncate(time.Second).Equal(p.mtime.Truncate(time.Second))) {
+	if off > 0 && (err != nil || a.Size < off || !a.MTime.Truncate(time.Second).Equal(p.mtime.Truncate(time.Second))) {
 		if err == nil {
 			fc.Close()
 		}
@@ -733,9 +764,11 @@ func (c *Client) DownloadFile(ctx context.Context, sid, path, destDir, conflict 
 	return target, err
 }
 
-// downloadID is the transfer id of a download of path of the session sid:
-// the same for each try, which goes on from the partial of the last.
-func downloadID(sid, path string) string {
+// DownloadID is the transfer id of a download of path of the session sid:
+// the same for each try, which goes on from the partial of the last. A
+// relative path is of the directory the program is in as the try begins:
+// a client that knows it keys the id on it by making path absolute.
+func DownloadID(sid, path string) string {
 	sum := sha256.Sum256([]byte(sid + "\x00" + path))
 	return hex.EncodeToString(sum[:8])
 }

@@ -4570,6 +4570,22 @@ func (msgs Messages) PaneUploadFolder() string {
 	return Catalog.Format(msgs.locale, "paneUploadFolder", nil)
 }
 
+// PaneDownloadFolder says "Folders are not downloaded yet"
+// in the language the app shows.
+//
+// Transfer list of a pane: a folder Command-clicked in a pane of a host is
+// not downloaded.
+func PaneDownloadFolder() string { return In(i18n.Locale()).PaneDownloadFolder() }
+
+// PaneDownloadFolder says "Folders are not downloaded yet"
+// in the language of msgs.
+//
+// Transfer list of a pane: a folder Command-clicked in a pane of a host is
+// not downloaded.
+func (msgs Messages) PaneDownloadFolder() string {
+	return Catalog.Format(msgs.locale, "paneDownloadFolder", nil)
+}
+
 // PaneTransferProgress says "{done} of {size}"
 // in the language the app shows.
 //

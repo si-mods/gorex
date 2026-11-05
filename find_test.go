@@ -65,7 +65,4 @@ func TestPanePath(t *testing.T) {
 	if _, ok := panePath(p, "missing.txt"); ok {
 		t.Fatal("opened a missing path")
 	}
-	if _, ok := panePath(&Pane{host: &hostConn{}, info: rex.SessionInfo{Dir: dir}}, "notes.txt"); ok {
-		t.Fatal("resolved a host path locally")
-	}
 }

@@ -1519,6 +1519,10 @@
   "@paneUploadFolder": {
     "description": "Transfer list of a pane: a folder dropped on a pane of a host is not sent; its path is pasted."
   },
+  "paneDownloadFolder": "Folders are not downloaded yet",
+  "@paneDownloadFolder": {
+    "description": "Transfer list of a pane: a folder Command-clicked in a pane of a host is not downloaded."
+  },
   "paneTransferProgress": "{done} of {size}",
   "@paneTransferProgress": {
     "description": "Transfer list of a pane: how much of a file has gone, in units as 1.2 MB.",

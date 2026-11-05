@@ -678,9 +678,10 @@ type Attach struct {
 type FilePut struct {
 	Op  string `json:"op"` // "file.put"
 	SID string `json:"sid"`
-	// Dir is where the file goes: absolute, or relative to the directory
-	// of the session's program in the foreground (SessionInfo.Dir), which
-	// it is when "".
+	// Dir is where the file goes: absolute, of the server user's home
+	// directory when it is "~" or starts with "~/", or relative to the
+	// directory of the session's program in the foreground
+	// (SessionInfo.Dir), which it is when "".
 	Dir string `json:"dir,omitempty"`
 	// Name is the file's name, without a directory.
 	Name string `json:"name"`
@@ -709,7 +710,8 @@ type FilePut struct {
 type FileGet struct {
 	Op  string `json:"op"` // "file.get"
 	SID string `json:"sid"`
-	// Path is the file's: absolute, or relative to the directory of the
+	// Path is the file's: absolute, of the server user's home directory
+	// when it starts with "~/", or relative to the directory of the
 	// session's program in the foreground. A regular file only.
 	Path   string `json:"path"`
 	Offset int64  `json:"offset,omitempty"`
