@@ -497,3 +497,36 @@ func TestCanvasNoShadow(t *testing.T) {
 		t.Fatal("a float of tiled panes is free")
 	}
 }
+
+// As a user does it: the pointer moves to a point of the empty plane, the
+// secondary button goes down and up there, and an item of the menu is
+// chosen; the new box's top left shows at that point of the room, at any
+// pan and scale.
+func TestCanvasMenuAtPointer(t *testing.T) {
+	for _, view := range []struct{ x, y, scale float32 }{{0, 0, 1}, {-300, 120, 0.5}} {
+		a, tt, tab := canvasApp(t, view.x, view.y, view.scale)
+		cv, room := tab.canvas, a.floatRoom
+		// Off the box, which is at 0.1 to 0.4 of the canvas.
+		x, y := room.X+room.W*0.75, room.Y+room.H*0.7
+		tt.Move(room.X+room.W*0.6, room.Y+room.H*0.5)
+		tt.Frame()
+		tt.Move(x, y)
+		tt.Frame()
+		tt.RightClickAt(x, y)
+		tt.Frame()
+		if err := tt.Click("New Note"); err != nil {
+			t.Fatalf("at %+v: %v; texts %q", view, err, tt.Texts())
+		}
+		settle(tt)
+		f := tab.Focus.float
+		if tab.Focus.note == nil || f == nil {
+			t.Fatalf("at %+v: no new note's box", view)
+		}
+		// Where the box's top left shows, in the window.
+		sx := room.X + (f.X*cv.W-cv.X)*cv.Scale
+		sy := room.Y + (f.Y*cv.H-cv.Y)*cv.Scale
+		if !near(sx, x) || !near(sy, y) {
+			t.Errorf("at %+v: the box's top left shows at %v, %v, want %v, %v", view, sx, sy, x, y)
+		}
+	}
+}

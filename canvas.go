@@ -213,14 +213,11 @@ func (a *App) resetCanvasView() {
 }
 
 // canvasRoom makes room, t's, a canvas's: what shows past it is cut off,
-// a scroll or a pinch over its empty plane pans or zooms it, and a press
-// there says where its menu puts a new box.
+// and a scroll or a pinch over it that nothing in it takes pans or zooms
+// it.
 func (a *App) canvasRoom(t *Tab, room ui.Element) {
 	room.Clip().HandleInput(func(ev ui.InputEvent) bool {
-		switch ev.Kind {
-		case ui.InputPointerDown:
-			a.canvasAt = [2]float32{ev.X, ev.Y}
-		case ui.InputScroll, ui.InputZoom:
+		if ev.Kind == ui.InputScroll || ev.Kind == ui.InputZoom {
 			return a.canvasScroll(t, ev)
 		}
 		return false
@@ -239,7 +236,19 @@ func (a *App) canvasContent(c *ui.Context, k *colors, t *Tab, bounds ui.Rect) {
 		cv.Y -= dy / cv.Scale
 		a.changed()
 	}
-	back.ContextMenu(func(m *ui.Menu) { a.canvasMenu(m, t) })
+	// A press of any button on the plane says where its menu puts a new
+	// box, in back's own axes, which the layer's are placed in. Its
+	// handler, not the room's, gets the input over the plane, so it takes
+	// a scroll or a pinch there too.
+	back.HandleInput(func(ev ui.InputEvent) bool {
+		switch ev.Kind {
+		case ui.InputPointerDown:
+			a.canvasAt = [2]float32{ev.X, ev.Y}
+		case ui.InputScroll, ui.InputZoom:
+			return a.canvasScroll(t, ev)
+		}
+		return false
+	}).ContextMenu(func(m *ui.Menu) { a.canvasMenu(m, t) })
 	if back.Hovered() {
 		a.canvasHover = t
 	} else if a.canvasHover == t {
