@@ -11,6 +11,7 @@ import (
 	"rsc.io/qr"
 
 	"gorex/internal/rex"
+	"gorex/internal/rexapi"
 	"gorex/locales"
 )
 
@@ -24,20 +25,14 @@ type hostPairQR struct {
 
 var hostsPairQR *hostPairQR
 
+// localRexPairURL is this computer's Rex pairing address: the gateway's
+// tailnet HTTPS address, as "gorex rexapi pair" shows it. The code holds
+// the address only, and another device must be on the same tailnet.
 func (a *App) localRexPairURL() string {
-	if a.client == nil {
-		return ""
-	}
-	select {
-	case <-a.client.Closed():
-		return ""
-	default:
-		return remoteUI.lan.PairURL(remoteUI.lanStatus)
-	}
+	return rexapi.PairURL()
 }
 
 func (a *App) openLocalPairQR() {
-	fetchLAN()
 	address, image := mobilePairQR(a.localRexPairURL())
 	if image != nil {
 		name, _, _ := a.hostIdentity()

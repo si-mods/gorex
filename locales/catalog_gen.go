@@ -3000,21 +3000,21 @@ func (msgs Messages) HostsRexQRLoading() string {
 	return Catalog.Format(msgs.locale, "hostsRexQRLoading", nil)
 }
 
-// HostsRexQRHint says "With Tailscale connected on your phone, scan this code in Rex to add the host."
+// HostsRexQRHint says "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential."
 // in the language the app shows.
 func HostsRexQRHint() string { return In(i18n.Locale()).HostsRexQRHint() }
 
-// HostsRexQRHint says "With Tailscale connected on your phone, scan this code in Rex to add the host."
+// HostsRexQRHint says "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential."
 // in the language of msgs.
 func (msgs Messages) HostsRexQRHint() string {
 	return Catalog.Format(msgs.locale, "hostsRexQRHint", nil)
 }
 
-// HostsLocalRexQRHint says "Connect your phone to the network this address uses, then scan this code in Rex."
+// HostsLocalRexQRHint says "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential."
 // in the language the app shows.
 func HostsLocalRexQRHint() string { return In(i18n.Locale()).HostsLocalRexQRHint() }
 
-// HostsLocalRexQRHint says "Connect your phone to the network this address uses, then scan this code in Rex."
+// HostsLocalRexQRHint says "Scan this code in Rex on a device on the same Tailscale network. The code holds the address only, not a credential."
 // in the language of msgs.
 func (msgs Messages) HostsLocalRexQRHint() string {
 	return Catalog.Format(msgs.locale, "hostsLocalRexQRHint", nil)
@@ -3030,11 +3030,11 @@ func (msgs Messages) HostsSetUpRex() string {
 	return Catalog.Format(msgs.locale, "hostsSetUpRex", nil)
 }
 
-// HostsRexQRUnavailable says "This host did not report an active Rex phone address on Tailscale."
+// HostsRexQRUnavailable says "This host has no tailnet address to pair with. Turn on built-in Tailscale, and wait for its HTTPS address in Remote."
 // in the language the app shows.
 func HostsRexQRUnavailable() string { return In(i18n.Locale()).HostsRexQRUnavailable() }
 
-// HostsRexQRUnavailable says "This host did not report an active Rex phone address on Tailscale."
+// HostsRexQRUnavailable says "This host has no tailnet address to pair with. Turn on built-in Tailscale, and wait for its HTTPS address in Remote."
 // in the language of msgs.
 func (msgs Messages) HostsRexQRUnavailable() string {
 	return Catalog.Format(msgs.locale, "hostsRexQRUnavailable", nil)

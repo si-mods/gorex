@@ -85,43 +85,6 @@ func LoadLANStatus(dir string) LANStatus {
 	return s
 }
 
-// PairURL returns an address another device can use to reach the active
-// listener. A wildcard or loopback address only works as a bind address.
-func (c LANConfig) PairURL(s LANStatus) string {
-	if !c.Enabled || len(c.Allow) == 0 || !s.Running || s.Error != "" {
-		return ""
-	}
-	configured, err := netip.ParseAddrPort(c.Listen)
-	if err != nil {
-		return ""
-	}
-	bound, err := netip.ParseAddrPort(s.Listening)
-	if err != nil || bound != configured || bound.Port() == 0 ||
-		!bound.Addr().IsGlobalUnicast() || bound.Addr().Zone() != "" {
-		return ""
-	}
-	return "http://" + bound.String()
-}
-
-// SystemTailnetPairURL reports the gateway address when the configured
-// mobile listener is active on this machine's system Tailscale IP.
-func SystemTailnetPairURL(ip netip.Addr) string {
-	if !ip.IsValid() {
-		return ""
-	}
-	dir := TailnetDir()
-	conf, err := LoadLAN(dir)
-	if err != nil || !conf.Enabled || len(conf.Allow) == 0 {
-		return ""
-	}
-	status := LoadLANStatus(dir)
-	addr, err := netip.ParseAddrPort(status.Listening)
-	if err != nil || !status.Running || status.Error != "" || addr.Addr() != ip || status.Listening != conf.Listen {
-		return ""
-	}
-	return "http://" + addr.String()
-}
-
 func saveLANStatus(dir string, s LANStatus) {
 	s.Updated = time.Now()
 	if err := writeJSON(lanStatusPath(dir), s); err != nil {
