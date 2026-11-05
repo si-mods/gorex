@@ -1056,6 +1056,9 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			shown.Enabled, shown.Running, shown.ShareSessions, shown.ShareLayout, shown.RemoteControl, shown.Allowed, shown.Network)
 		if st.Tailnet != nil {
 			fmt.Fprintf(out, "tailscale=%v running=%v hosts=%d\n", st.Tailnet.Enabled, st.Tailnet.Running, len(st.Tailnet.Hosts))
+			if st.Tailnet.Error != "" {
+				fmt.Fprintf(out, "tailscaleError=%s\n", st.Tailnet.Error)
+			}
 		}
 		return ExitOK, true
 	}

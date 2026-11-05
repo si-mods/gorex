@@ -73,9 +73,11 @@ var capabilities = []string{"layout.revision", "events.revision", CapabilityShut
 
 // Request is a line of the control connection, from the client.
 type Request struct {
+	ID int64  `json:"id"`
+	Op string `json:"op"`
+	// TailnetTarget is the target discovery named, of remote.tailnetDial:
+	// the server relays the connection to it over the system tailnet.
 	TailnetTarget string          `json:"tailnetTarget,omitempty"`
-	ID            int64           `json:"id"`
-	Op            string          `json:"op"`
 	SID           string          `json:"sid,omitempty"`
 	Cols          int             `json:"cols,omitempty"`
 	Rows          int             `json:"rows,omitempty"`
@@ -100,8 +102,8 @@ type Request struct {
 	// ignores it.
 	Restart bool `json:"restart,omitempty"`
 
-	// On is the setting of remote.shareSet, remote.shareLayoutSet and
-	// remote.controlSet.
+	// On is the setting of remote.shareSet, remote.shareLayoutSet,
+	// remote.controlSet and remote.tailnetSet.
 	On bool `json:"on,omitempty"`
 
 	// Owner is the size lock's owner, of lockSize, lockedResize,

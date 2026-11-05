@@ -21,14 +21,30 @@ import (
 )
 
 const (
-	tailnetPrefix  = "tailscale:"
-	tailnetPort    = RemotePort
-	tailnetRefresh = 5 * time.Second
-	tailnetFresh   = 15 * time.Second
-	tailnetIO      = 3 * time.Second
-	tailnetProbe   = "gorex-tailnet/1 probe\n"
-	tailnetConnect = "gorex-tailnet/1 relay\n"
-	tailnetReady   = "gorex-tailnet/1 ok "
+	tailnetPrefix = "tailscale:"
+	tailnetPort   = RemotePort
+	// tailnetRefresh is how often the broker reads the Tailscale status.
+	// It is slow on purpose: each read runs the Tailscale client, which
+	// on macOS is a process of its own.
+	tailnetRefresh = 60 * time.Second
+	// tailnetFresh is how long a snapshot stays usable between reads.
+	tailnetFresh = 2*tailnetRefresh + time.Second
+	// tailnetDiscover is the least time between two discovery passes. A
+	// pass probes the tailnet's peers, which each ask the Tailscale
+	// client who they are, so it runs rarely even while the Hosts page
+	// is open.
+	tailnetDiscover = 2 * time.Minute
+	// tailnetBurst is how many peers a pass probes besides the hosts it
+	// already knows.
+	tailnetBurst = 8
+	// tailnetFailures is how many reads in a row may fail before the
+	// broker decides the tailnet is gone, not merely slow, and drops its
+	// links.
+	tailnetFailures = 3
+	tailnetIO       = 3 * time.Second
+	tailnetProbe    = "gorex-tailnet/1 probe\n"
+	tailnetConnect  = "gorex-tailnet/1 relay\n"
+	tailnetReady    = "gorex-tailnet/1 ok "
 )
 
 var errTailnetUnavailable = errors.New("rex: Tailscale connection unavailable")
@@ -40,6 +56,9 @@ type TailnetStatus struct {
 	Running bool          `json:"running"`
 	Scope   string        `json:"scope,omitempty"`
 	Hosts   []TailnetHost `json:"hosts,omitempty"`
+	// Error is why the broker cannot serve, such as a kernel that does
+	// not let it bind to the Tailscale interface.
+	Error string `json:"error,omitempty"`
 }
 
 // Owns tells whether a previously known target belongs to this profile.
@@ -182,29 +201,20 @@ type systemTailnet struct {
 	cancel    context.CancelFunc
 	slots     chan struct{}
 	nextProbe int
+	// wake asks the run loop to read the status now, when a page that
+	// shows hosts wants it.
+	wake chan struct{}
 
-	mu    sync.Mutex
-	snap  *tailnetSnapshot
-	ln    net.Listener
-	links map[net.Conn]tailnetLink
-	hosts []TailnetHost
-}
-
-// RexPairURL reports the local gateway's phone endpoint for the active
-// system Tailscale address. The application wires it to the Rex gateway.
-var RexPairURL func(netip.Addr) string
-
-func (s *Server) tailnetAddress() netip.Addr {
-	s.rem.mu.Lock()
-	defer s.rem.mu.Unlock()
-	if t := s.rem.tailnet; t != nil {
-		t.mu.Lock()
-		defer t.mu.Unlock()
-		if t.ln != nil && t.snap.valid() {
-			return t.snap.ip
-		}
-	}
-	return netip.Addr{}
+	mu           sync.Mutex
+	snap         *tailnetSnapshot
+	ln           net.Listener
+	links        map[net.Conn]tailnetLink
+	hosts        []TailnetHost
+	wanted       time.Time
+	lastRead     time.Time
+	lastDiscover time.Time
+	errText      string
+	failures     int
 }
 
 func (s *Server) tailnetStartLocked() {
@@ -213,7 +223,7 @@ func (s *Server) tailnetStartLocked() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	t := &systemTailnet{api: api, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 16), links: map[net.Conn]tailnetLink{}}
+	t := &systemTailnet{api: api, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 16), links: map[net.Conn]tailnetLink{}, wake: make(chan struct{}, 1)}
 	s.rem.tailnet = t
 	go t.run(s)
 }
@@ -229,6 +239,7 @@ func (s *Server) tailnetStopLocked() {
 func (t *systemTailnet) clientFor(target string) *RemoteClient {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	t.wanted = time.Now()
 	if t.snap.valid() {
 		if p, ok := t.snap.byTarget[target]; ok {
 			return &RemoteClient{Name: p.name, PublicKey: target}
@@ -237,13 +248,34 @@ func (t *systemTailnet) clientFor(target string) *RemoteClient {
 	return nil
 }
 
-func (t *systemTailnet) status() TailnetStatus {
+// linked tells whether a remote client is attached over the tailnet.
+func (t *systemTailnet) linked() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if !t.snap.valid() || t.ln == nil {
-		return TailnetStatus{Enabled: true}
+	return len(t.links) > 0
+}
+
+func (t *systemTailnet) status() TailnetStatus {
+	t.mu.Lock()
+	t.wanted = time.Now()
+	// A page that asked for the hosts sees them now, not at the next
+	// read, which is a minute away. A read is a process on macOS, so
+	// asking does not start one more than every few seconds.
+	wake := time.Since(t.lastRead) > 10*time.Second
+	st := TailnetStatus{Enabled: true, Error: t.errText}
+	if t.snap.valid() && t.ln != nil {
+		st.Running = true
+		st.Scope = t.snap.scope
+		st.Hosts = slices.Clone(t.hosts)
 	}
-	return TailnetStatus{Enabled: true, Running: true, Scope: t.snap.scope, Hosts: slices.Clone(t.hosts)}
+	t.mu.Unlock()
+	if wake {
+		select {
+		case t.wake <- struct{}{}:
+		default:
+		}
+	}
+	return st
 }
 
 // replace invalidates listeners and established links under the same lock
@@ -279,6 +311,20 @@ func (t *systemTailnet) dropLocked(c net.Conn, link tailnetLink) {
 	}
 }
 
+// noteFailure counts a read that failed. A single failure says nothing of
+// the peers, whose links stay; only a run of them means the tailnet is
+// gone rather than slow.
+func (t *systemTailnet) noteFailure() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.lastRead = time.Now()
+	t.failures++
+	if t.failures < tailnetFailures {
+		return
+	}
+	t.replaceLocked(nil, nil)
+}
+
 func (t *systemTailnet) run(s *Server) {
 	ticker := time.NewTicker(tailnetRefresh)
 	defer ticker.Stop()
@@ -288,6 +334,7 @@ func (t *systemTailnet) run(s *Server) {
 		case <-t.ctx.Done():
 			return
 		case <-ticker.C:
+		case <-t.wake:
 		}
 	}
 }
@@ -297,12 +344,12 @@ func (t *systemTailnet) refresh(s *Server) {
 	st, err := t.api.Status(ctx)
 	cancel()
 	if err != nil {
-		t.replace(nil, nil)
+		t.noteFailure()
 		return
 	}
 	snap, err := tailnetSnapshotFrom(st)
 	if err != nil {
-		t.replace(nil, nil)
+		t.noteFailure()
 		return
 	}
 	t.mu.Lock()
@@ -310,6 +357,8 @@ func (t *systemTailnet) refresh(s *Server) {
 		t.mu.Unlock()
 		return
 	}
+	t.failures = 0
+	t.lastRead = time.Now()
 	ln := t.ln
 	start := ln == nil || !t.snap.sameBinding(snap)
 	if start {
@@ -317,19 +366,36 @@ func (t *systemTailnet) refresh(s *Server) {
 		lc := net.ListenConfig{Control: tailnetSocketControl(snap.device)}
 		ln, err = lc.Listen(t.ctx, "tcp4", netip.AddrPortFrom(snap.ip, tailnetPort).String())
 		if err != nil {
+			// An older Linux kernel refuses to bind to an interface:
+			// the user has to hear why the mode finds nothing.
+			t.errText = err.Error()
 			t.mu.Unlock()
 			return
 		}
 	}
+	t.errText = ""
 	t.replaceLocked(snap, ln)
+	// Probing asks the Tailscale client about every peer it reaches, so
+	// a pass runs rarely, and only while a page that shows hosts asked
+	// for them.
+	probe := time.Since(t.wanted) < 2*tailnetRefresh && time.Since(t.lastDiscover) >= tailnetDiscover
+	var known []string
+	if probe {
+		t.lastDiscover = time.Now()
+		for _, h := range t.hosts {
+			known = append(known, h.Target)
+		}
+	}
 	t.mu.Unlock()
 	if start {
 		go t.accept(s, ln)
 	}
-	t.discover(snap, ln)
+	if probe {
+		t.discover(snap, ln, known)
+	}
 }
 
-func (t *systemTailnet) discover(snap *tailnetSnapshot, ln net.Listener) {
+func (t *systemTailnet) discover(snap *tailnetSnapshot, ln net.Listener, knownTargets []string) {
 	ctx, cancel := context.WithTimeout(t.ctx, tailnetIO)
 	defer cancel()
 	targets := make([]string, 0, len(snap.byTarget))
@@ -337,11 +403,37 @@ func (t *systemTailnet) discover(snap *tailnetSnapshot, ln net.Listener) {
 		targets = append(targets, target)
 	}
 	slices.Sort(targets)
+	// Probe the hosts already found and a few others. Probing every
+	// device, as a pass over the snapshot would, asks the Tailscale
+	// client about phones and servers that never run GoRex.
+	chosen := make([]string, 0, len(knownTargets)+tailnetBurst)
+	seen := make(map[string]bool, len(knownTargets)+tailnetBurst)
+	for _, target := range knownTargets {
+		if _, ok := snap.byTarget[target]; ok && !seen[target] {
+			seen[target] = true
+			chosen = append(chosen, target)
+		}
+	}
+	extra := 0
+	for i := 0; i < len(targets) && extra < tailnetBurst; i++ {
+		target := targets[(t.nextProbe+i)%len(targets)]
+		if seen[target] {
+			continue
+		}
+		seen[target] = true
+		chosen = append(chosen, target)
+		extra++
+	}
+	// Rotate which candidates go first when the pass runs out of time.
+	// Only the refresh loop reads or writes this index.
+	if len(targets) > 0 {
+		t.nextProbe = (t.nextProbe + extra) % len(targets)
+	}
 	jobs := make(chan string)
-	found := make(chan TailnetHost, len(targets))
-	checked := make(chan string, len(targets))
+	found := make(chan TailnetHost, len(chosen))
+	checked := make(chan string, len(chosen))
 	var workers sync.WaitGroup
-	for range min(len(targets), 4) {
+	for range min(len(chosen), 4) {
 		workers.Go(func() {
 			for target := range jobs {
 				p := snap.byTarget[target]
@@ -358,22 +450,13 @@ func (t *systemTailnet) discover(snap *tailnetSnapshot, ln net.Listener) {
 			}
 		})
 	}
-	// Rotate which candidates go first when the pass runs out of time.
-	// Only the refresh loop reads or writes this index.
-	sent := 0
 send:
-	for i := range targets {
-		target := targets[(t.nextProbe+i)%len(targets)]
+	for _, target := range chosen {
 		select {
 		case jobs <- target:
-			sent++
 		case <-ctx.Done():
 			break send
 		}
-	}
-	t.nextProbe += sent
-	if len(targets) > 0 {
-		t.nextProbe %= len(targets)
 	}
 	close(jobs)
 	workers.Wait()

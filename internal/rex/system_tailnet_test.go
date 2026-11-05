@@ -87,3 +87,40 @@ func TestSystemTailnetRevokesBothSidesOfBroker(t *testing.T) {
 		}
 	}
 }
+
+// TestSystemTailnetKeepsLinksOnFailedRead keeps a slow or failed status
+// read from ending sessions: only a run of failures means the tailnet is
+// gone.
+func TestSystemTailnetKeepsLinksOnFailedRead(t *testing.T) {
+	remote, rp := net.Pipe()
+	defer rp.Close()
+	defer remote.Close()
+	tailnet := &systemTailnet{links: map[net.Conn]tailnetLink{remote: {}}}
+	tailnet.noteFailure()
+	if _, ok := tailnet.links[remote]; !ok {
+		t.Fatal("one failed read closed the link")
+	}
+	for range tailnetFailures - 1 {
+		tailnet.noteFailure()
+	}
+	if _, ok := tailnet.links[remote]; ok {
+		t.Fatal("a run of failed reads left the link")
+	}
+}
+
+// TestRemoteEnabledIgnoresAnIdleBroker keeps the server's idle exit: the
+// broker listening on the tailnet is not a remote client.
+func TestRemoteEnabledIgnoresAnIdleBroker(t *testing.T) {
+	s := &Server{}
+	s.rem.tailnet = &systemTailnet{links: map[net.Conn]tailnetLink{}}
+	if s.remoteEnabled() {
+		t.Fatal("an idle tailnet broker kept the server from exiting when idle")
+	}
+	remote, rp := net.Pipe()
+	defer rp.Close()
+	defer remote.Close()
+	s.rem.tailnet.links[remote] = tailnetLink{}
+	if !s.remoteEnabled() {
+		t.Fatal("an attached tailnet client did not keep the server")
+	}
+}

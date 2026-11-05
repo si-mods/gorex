@@ -41,10 +41,13 @@ const RemotePort = 7464
 
 // RemoteConfig is the server's remote access, kept in Dir()/remote.json.
 type RemoteConfig struct {
-	TailnetDisabled bool                 `json:"tailnetDisabled,omitempty"`
-	Enabled         bool                 `json:"enabled"`
-	NodeKey         key.NodePrivate      `json:"nodeKey,omitzero"`
-	PresharedKey    tailcat.PresharedKey `json:"presharedKey,omitzero"`
+	Enabled bool `json:"enabled"`
+	// Tailnet turns on the system Tailscale mode: the GoRex desktops on
+	// this account's tailnet find this one, and may open terminals on it.
+	// Off until the user turns it on.
+	Tailnet      bool                 `json:"tailnet,omitempty"`
+	NodeKey      key.NodePrivate      `json:"nodeKey,omitzero"`
+	PresharedKey tailcat.PresharedKey `json:"presharedKey,omitzero"`
 	// Region is the DERP region picked the first time, kept so that the
 	// address stays the same.
 	Region  int            `json:"region,omitempty"`
@@ -340,7 +343,7 @@ func (s *Server) remoteLoad() {
 	defer r.mu.Unlock()
 	if err := readJSON(remotePath(), &r.cfg); err != nil {
 		log.Printf("rex: remote access stays off: %v", err)
-		r.cfg, r.lastErr = RemoteConfig{TailnetDisabled: true}, err.Error()
+		r.cfg, r.lastErr = RemoteConfig{}, err.Error()
 		return
 	}
 	// Allowlists saved before identities had times get them now.
@@ -360,15 +363,25 @@ func (s *Server) remoteLoad() {
 		s.remoteStartLocked()
 	}
 	s.networkStartLocked()
-	if !r.cfg.TailnetDisabled {
+	if r.cfg.Tailnet {
 		s.tailnetStartLocked()
 	}
 }
 
+// remoteEnabled tells whether a remote client may connect: the tailcat
+// listener runs, or one of the system tailnet's links is open. The
+// tailnet broker alone does not count, so that a server with no sessions
+// and no app still exits when idle.
 func (s *Server) remoteEnabled() bool {
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	return s.rem.cancel != nil || s.rem.tailnet != nil && s.rem.tailnet.status().Running
+	if s.rem.cancel != nil {
+		return true
+	}
+	if t := s.rem.tailnet; t != nil {
+		return t.linked()
+	}
+	return false
 }
 
 // remoteClose stops listening and drops the remote connections.
@@ -712,18 +725,18 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			status := r.tailnet.status()
 			return s.remoteStatusLocked(&status), nil
 		}
-		return s.remoteStatusLocked(&TailnetStatus{Enabled: !r.cfg.TailnetDisabled}), nil
+		return s.remoteStatusLocked(&TailnetStatus{Enabled: r.cfg.Tailnet}), nil
 	case "remote.tailnetSet":
 		cfg := r.cfg
-		cfg.TailnetDisabled = !req.On
+		cfg.Tailnet = req.On
 		if err := writeJSON(remotePath(), cfg); err != nil {
 			return nil, err
 		}
 		r.cfg = cfg
-		if cfg.TailnetDisabled {
-			s.tailnetStopLocked()
-		} else {
+		if cfg.Tailnet {
 			s.tailnetStartLocked()
+		} else {
+			s.tailnetStopLocked()
 		}
 		return nil, nil
 	case "remote.pairStart":

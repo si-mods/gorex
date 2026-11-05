@@ -570,7 +570,11 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				a.remoteDo(func(srv *rex.Client) error { return srv.SetTailnet(tailnet) }, nil)
 			}
 			if st.Tailnet.Enabled && !st.Tailnet.Running {
-				groupRow(c, k, nil).Children(func() { rowHint(c, k, locales.TailnetUnavailable()) })
+				hint := locales.TailnetUnavailable()
+				if st.Tailnet.Error != "" {
+					hint = st.Tailnet.Error
+				}
+				groupRow(c, k, nil).Children(func() { rowHint(c, k, hint) })
 			}
 		}
 		// Whether remote clients see the sessions open here.

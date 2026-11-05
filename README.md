@@ -216,8 +216,8 @@ TCP port 7464. Click Connect on a host to open or reattach to a session.
 The server only listens on its Tailscale interface and checks each
 connection's device identity with the local Tailscale client.
 
-Turn off **Tailscale discovery and connections** in Settings → Remote,
-or use `gorex remote tailscale off`. The mode is on by default and waits
+Turn **Tailscale discovery and connections** on in Settings → Remote, or
+use `gorex remote tailscale on`. The mode is off by default and waits
 when Tailscale is unavailable. `gorex remote status --json` reports the
 local mode and the hosts it has discovered. The existing **Share open
 terminals** setting controls access to sessions created by other clients.

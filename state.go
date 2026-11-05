@@ -2842,7 +2842,7 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 		case <-tick.C:
 		}
 		rounds++
-		if rounds%4 == 1 {
+		if rounds%30 == 1 {
 			if st, err := client.RemoteStatus(); err == nil {
 				coordinatorPoll := rounds%32 == 1
 				win.Update(func() {

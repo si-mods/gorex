@@ -737,6 +737,8 @@ func (c *Client) EnableRemote() error { return c.call(Request{Op: "remote.enable
 // DisableRemote turns remote access off.
 func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }
 
+// SetTailnet turns the system Tailscale mode on or off: discovery and
+// connections with the GoRex desktops on this account's tailnet.
 func (c *Client) SetTailnet(on bool) error {
 	return c.call(Request{Op: "remote.tailnetSet", On: on}, nil)
 }
