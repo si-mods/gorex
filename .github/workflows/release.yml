@@ -49,23 +49,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: the key as Go reads it
-        shell: bash
-        env:
-          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
-          MSYS2_ENV_CONV_EXCL: MYGO_UPDATER_PRIVATE_KEY
-          MSYS_NO_PATHCONV: "1"
-        run: |
-          mkdir -p "$RUNNER_TEMP/keycheck"
-          cat >"$RUNNER_TEMP/keycheck/main.go" <<'GO'
-          package main
-          import ("crypto/sha256"; "fmt"; "os")
-          func main() {
-          	s := os.Getenv("MYGO_UPDATER_PRIVATE_KEY")
-          	fmt.Printf("go key len=%d sha=%x\n", len(s), sha256.Sum256([]byte(s)))
-          }
-          GO
-          go run "$RUNNER_TEMP/keycheck/main.go"
       - name: build and upload
         shell: bash
         env:
