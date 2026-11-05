@@ -1,0 +1,62 @@
+#!/bin/bash
+# testflight: invite testers to Rex Go's TestFlight, over the asc CLI
+# (brew install asc; `asc auth login` with an App Store Connect API key).
+#
+#   testflight invite EMAIL...   invite to the external group (an email each)
+#   testflight internal EMAIL... add App Store Connect users to the internal group
+#   testflight release           give the latest build to the external group,
+#                                submitting it to Beta App Review when it needs one
+#   testflight testers           list the testers and their state
+#   testflight builds            list the builds and their processing state
+#
+# External testers get the email once a build passed Beta App Review and is
+# in their group: run `release` after each upload you want them to have.
+set -euo pipefail
+
+APP=${REXGO_APP_ID:-6831210589}
+EXTERNAL=${REXGO_EXTERNAL_GROUP:-Beta}
+INTERNAL=${REXGO_INTERNAL_GROUP:-Internal}
+
+usage() { sed -n '2,13s/^# \{0,1\}//p' "$0"; exit 2; }
+
+group_id() { # NAME -> ID, or nothing
+	asc testflight groups list --app "$APP" --output json |
+		python3 -I -c 'import sys,json
+n=sys.argv[1]
+for g in json.load(sys.stdin).get("data",[]):
+    if g["attributes"]["name"]==n: print(g["id"]); break' "$1"
+}
+
+external_group() { # the external group's ID, made the first time
+	local id
+	id=$(group_id "$EXTERNAL")
+	if [ -z "$id" ]; then
+		asc testflight groups create --app "$APP" --name "$EXTERNAL" --feedback-enabled --output json >/dev/null
+		id=$(group_id "$EXTERNAL")
+	fi
+	echo "$id"
+}
+
+cmd=${1:-}; [ $# -gt 0 ] && shift
+case "$cmd" in
+invite)
+	[ $# -gt 0 ] || usage
+	external_group >/dev/null
+	for e in "$@"; do
+		asc testflight testers invite --app "$APP" --email "$e" --group "$EXTERNAL" --output json >/dev/null
+		echo "invited $e to $EXTERNAL"
+	done ;;
+internal)
+	[ $# -gt 0 ] || usage
+	for e in "$@"; do
+		asc testflight testers invite --app "$APP" --email "$e" --group "$INTERNAL" --output json >/dev/null
+		echo "invited $e to $INTERNAL"
+	done ;;
+release)
+	asc builds add-groups --app "$APP" --latest --group "$(external_group)" --submit --confirm --output table ;;
+testers)
+	asc testflight testers list --app "$APP" --output table ;;
+builds)
+	asc builds list --app "$APP" --output table ;;
+*) usage ;;
+esac

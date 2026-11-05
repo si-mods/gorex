@@ -12,6 +12,7 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 57QL6YCAH5
     # The xcframework's simulator library is arm64 only.
     EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
 targets:
@@ -26,17 +27,21 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"
     info:
       path: GoRex/Info.plist
       properties:
-        CFBundleDisplayName: GoRex
+        CFBundleDisplayName: Rex Go
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
         CFBundleLocalizations: [en, zh-Hans]
         UILaunchScreen:
           UIColorName: ""
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
-        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # The local network listener is plain HTTP by design (docs/rex-api.md).
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
