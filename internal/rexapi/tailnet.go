@@ -184,14 +184,29 @@ func LoadTailscale(dir string) (TailscaleConfig, error) {
 	return c, nil
 }
 
-// SaveTailscale checks c and writes it in dir. A gateway reads it when
-// built-in Tailscale is next turned on, so a change to the control server
-// takes effect then.
+// SaveTailscale checks c and writes its control server in dir. The rest of
+// the file is the gateway's, which changes it while it runs, so it is kept
+// as it is. A gateway reads the control server when built-in Tailscale is
+// next turned on, so a change takes effect then.
 func SaveTailscale(dir string, c TailscaleConfig) error {
 	if c.ControlURL != "" && !ValidControlURL(c.ControlURL) {
 		return fmt.Errorf("%q is not a Tailscale control server URL", c.ControlURL)
 	}
-	return writeJSON(tailscaleConfPath(dir), c)
+	saved, err := LoadTailscale(dir)
+	if err != nil {
+		return err
+	}
+	saved.ControlURL = c.ControlURL
+	return writeJSON(tailscaleConfPath(dir), saved)
+}
+
+// keepSavedControlURL takes the control server the app saved, which the
+// gateway does not own: the app changes that file while the gateway runs.
+// t.mu is held.
+func (t *tailnet) keepSavedControlURL() {
+	if saved, err := LoadTailscale(t.dir); err == nil {
+		t.conf.ControlURL = saved.ControlURL
+	}
 }
 
 // saveLocked writes the configuration; t.mu is held.
@@ -200,8 +215,7 @@ func (t *tailnet) saveLocked() {
 		logf("tailscale: %v", err)
 		return
 	}
-	b, _ := json.MarshalIndent(t.conf, "", "  ")
-	if err := os.WriteFile(t.confPath(), append(b, '\n'), 0o600); err != nil {
+	if err := writeJSON(t.confPath(), t.conf); err != nil {
 		logf("tailscale: %v", err)
 	}
 }
@@ -268,6 +282,7 @@ func (t *tailnet) enable(o enableOptions) (tailscaleStatus, *apiError) {
 		return tailscaleStatus{}, errConflict("the server is shutting down")
 	}
 	if t.node != nil {
+		t.keepSavedControlURL()
 		t.conf.AllowTailnetMembers = o.allowMembers
 		t.saveLocked()
 		t.mu.Unlock()
@@ -373,6 +388,7 @@ func (t *tailnet) stop(reason string, disable bool) {
 	t.node, t.ln, t.cancel, t.https = nil, nil, nil, false
 	t.err = reason
 	if disable {
+		t.keepSavedControlURL()
 		t.conf.Enabled = false
 		t.saveLocked()
 	}
@@ -456,6 +472,7 @@ func (t *tailnet) rename(name string) (tailscaleStatus, *apiError) {
 		return tailscaleStatus{}, errInternal("renaming the Tailscale device: %v", err)
 	}
 	t.mu.Lock()
+	t.keepSavedControlURL()
 	t.conf.Hostname = name
 	t.saveLocked()
 	t.mu.Unlock()
