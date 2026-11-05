@@ -1053,10 +1053,7 @@ func (a *App) restartFocused() {
 		f.Pane = p
 		p.float = f
 	}
-	old.closed = true
-	if old.term != nil {
-		old.term.Close()
-	}
+	old.close()
 	a.killOn(old.host, old.SID)
 	if t.Zoom == old {
 		t.Zoom = p

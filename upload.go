@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -112,20 +112,25 @@ func (a *App) upload(p *Pane, paths []string) {
 	}()
 }
 
-// abortTimeout is how long a cancelled upload tries to remove what the
-// host has of its file.
-const abortTimeout = 5 * time.Second
+// uploadFile is a file an upload reads.
+type uploadFile interface {
+	io.ReaderAt
+	io.Closer
+}
+
+// openUpload opens the file at path to send it.
+var openUpload = func(path string) (uploadFile, error) { return os.Open(path) }
 
 // putFile sends the file at path as f says, x telling how it goes, and
-// returns its path there. Cancelled, it removes what the host has of the
-// file, an earlier try's too.
+// returns its path there. Cancelled under way, PutFile removes what the
+// host has of the file.
 func putFile(ctx context.Context, c *rex.Client, f rex.FilePut, path string, x *fileTransfer, update func(func())) (string, error) {
 	defer x.cancel()
 	var there string
 	err := ctx.Err()
 	if err == nil {
-		var src *os.File
-		if src, err = os.Open(path); err == nil {
+		var src uploadFile
+		if src, err = openUpload(path); err == nil {
 			var last time.Time
 			there, _, err = c.PutFile(ctx, f, src, func(done int64) {
 				if now := time.Now(); now.Sub(last) >= transferEvery {
@@ -138,13 +143,6 @@ func putFile(ctx context.Context, c *rex.Client, f rex.FilePut, path string, x *
 		if err != nil && ctx.Err() != nil {
 			err = ctx.Err()
 		}
-	}
-	if ctx.Err() != nil {
-		actx, stop := context.WithTimeout(context.Background(), abortTimeout)
-		if aerr := c.AbortFile(actx, f); aerr != nil {
-			log.Printf("upload: removing the partial of %s: %v", f.Name, aerr)
-		}
-		stop()
 	}
 	update(func() {
 		if err == nil {

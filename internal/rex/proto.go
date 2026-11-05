@@ -694,7 +694,11 @@ type FilePut struct {
 	// takes no file.
 	Conflict string `json:"conflict,omitempty"`
 	// Abort, set, sends no file: the server removes the partial of Name
-	// for ID in Dir, unless a transfer writes it yet, and answers OK.
+	// for ID in Dir, unless a transfer writes it yet, and answers OK. With
+	// Dir absolute, as the put's first answer named it (FileAnswer.Dir),
+	// the session need not be there any more, for a partial a put of the
+	// same client opened since the server started; one of before a
+	// restart a put into its directory removes a day after.
 	Abort bool `json:"abort,omitempty"`
 }
 
@@ -727,6 +731,9 @@ type FileAnswer struct {
 	// and the SHA-256 of it in hex.
 	Offset int64  `json:"offset,omitempty"`
 	Sum    string `json:"sum,omitempty"`
+	// Dir is the directory a put's file goes into, absolute, in its
+	// first answer: an abort names it (FilePut.Abort).
+	Dir string `json:"dir,omitempty"`
 	// Size, Name and MTime are the file a get sends.
 	Size  int64     `json:"size,omitempty"`
 	Name  string    `json:"name,omitempty"`

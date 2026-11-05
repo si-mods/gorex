@@ -354,6 +354,22 @@ type Pane struct {
 	uploading chan struct{}
 }
 
+// end lets the pane go from its window: its terminal closes. Its uploads
+// go on, as its session does, moved or detached.
+func (p *Pane) end() {
+	p.closed = true
+	if p.term != nil {
+		p.term.Close()
+	}
+}
+
+// close ends the pane for good, as its session ends or another pane takes
+// its place: its uploads stop too.
+func (p *Pane) close() {
+	p.end()
+	p.stopUploads()
+}
+
 // browserPane is a pane that shows a web page in a web view of its
 // window, with an address field in its header.
 type browserPane struct {
@@ -1618,10 +1634,7 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	if a.findPane == p {
 		a.closeFind()
 	}
-	if p.term != nil {
-		p.term.Close()
-	}
-	p.stopUploads()
+	p.close()
 	p.browser.destroy()
 	p.note.destroy()
 	if kill {
@@ -1780,11 +1793,7 @@ func newTabUID() string {
 // makes the tabs it wants (showEmpty).
 func (a *App) closeLastTab(t *Tab) {
 	for _, p := range t.allPanes() {
-		p.closed = true
-		p.stopUploads()
-		if p.term != nil {
-			p.term.Close()
-		}
+		p.close()
 		p.browser.destroy()
 		p.note.destroy()
 		a.killOn(p.host, p.SID)
@@ -1801,11 +1810,7 @@ func (a *App) closeLastTab(t *Tab) {
 // closeTab closes a tab and ends the sessions of its panes.
 func (a *App) closeTab(t *Tab) {
 	for _, p := range t.allPanes() {
-		p.closed = true
-		p.stopUploads()
-		if p.term != nil {
-			p.term.Close()
-		}
+		p.close()
 		p.browser.destroy()
 		p.note.destroy()
 		a.killOn(p.host, p.SID)
@@ -3401,10 +3406,7 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		a.closeFind()
 	}
 	a.detachPane(p)
-	p.closed = true
-	if p.term != nil {
-		p.term.Close()
-	}
+	p.end()
 	p.browser.destroy()
 	if a.tab() == src && src.Focus != nil {
 		a.focusReq = src.Focus

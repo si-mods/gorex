@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -532,5 +533,101 @@ func TestFileSweep(t *testing.T) {
 	}
 	if exists(old) || !exists(busy) || !exists(fresh) || !exists(other) {
 		t.Errorf("after the sweep: old %v, busy %v, fresh %v, other %v", exists(old), exists(busy), exists(fresh), exists(other))
+	}
+}
+
+// TestFileAbortAfterSession takes an abort of a directory by its absolute
+// path once the session ended only for a partial a put of the same client
+// opened: any other is refused as with no session, the file untouched.
+func TestFileAbortAfterSession(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	part := filepath.Join(dir, partialName("a.bin", "a1"))
+	if err := os.WriteFile(part, []byte("half"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := local.Kill(sid); err != nil {
+		t.Fatal(err)
+	}
+	none := local.AbortFile(context.Background(), FilePut{SID: sid, Name: "a.bin", ID: "a1"})
+	if none == nil {
+		t.Fatal("an abort of no session's directory")
+	}
+	for _, d := range []string{dir, filepath.Join(dir, "nowhere")} {
+		err := local.AbortFile(context.Background(), FilePut{SID: sid, Dir: d, Name: "a.bin", ID: "a1"})
+		if err == nil || err.Error() != none.Error() {
+			t.Errorf("abort in %s: %v, want %v", d, err, none)
+		}
+	}
+	if !exists(part) {
+		t.Error("a partial no put opened went")
+	}
+	// A put's own partial goes, though its session ended.
+	s.puts.Store(part, "")
+	if err := local.AbortFile(context.Background(), FilePut{SID: sid, Dir: dir, Name: "a.bin", ID: "a1"}); err != nil || exists(part) {
+		t.Fatalf("abort: %v, kept %v", err, exists(part))
+	}
+	// Another peer's is not.
+	if err := os.WriteFile(part, []byte("half"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.puts.Store(part, "other")
+	if err := local.AbortFile(context.Background(), FilePut{SID: sid, Dir: dir, Name: "a.bin", ID: "a1"}); err == nil || !exists(part) {
+		t.Errorf("abort of another's partial: %v, kept %v", err, exists(part))
+	}
+}
+
+// stalled reads as zeros, its first n bytes at once, then waits for ctx
+// to end, calling once as it gets there.
+type stalled struct {
+	n    int64
+	ctx  context.Context
+	once func()
+}
+
+func (r stalled) ReadAt(b []byte, off int64) (int, error) {
+	if off >= r.n {
+		r.once()
+		<-r.ctx.Done()
+		return 0, r.ctx.Err()
+	}
+	b = b[:min(int64(len(b)), r.n-off)]
+	clear(b)
+	return len(b), nil
+}
+
+// TestFilePutCancelled cancels a put under way whose session ended
+// meanwhile: what the server has of the file goes all the same.
+func TestFilePutCancelled(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	ctx, cancel := context.WithCancel(context.Background())
+	reached := make(chan struct{})
+	var once sync.Once
+	src := stalled{n: 64 << 10, ctx: ctx, once: func() { once.Do(func() { close(reached) }) }}
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := local.PutFile(ctx, FilePut{SID: sid, Name: "c.bin", Size: 1 << 20, ID: "c1"}, src, nil)
+		done <- err
+	}()
+	<-reached
+	if err := local.Kill(sid); err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("put: %v", err)
+	}
+	if exists(filepath.Join(dir, partialName("c.bin", "c1"))) {
+		t.Error("the partial stays")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("the put left %v", entries)
 	}
 }

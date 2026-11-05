@@ -73,6 +73,10 @@ type Server struct {
 	// change (notify).
 	subMu sync.Mutex
 	subs  map[*subscriber]struct{}
+	// puts are the partials the puts of this run opened, by path, and the
+	// peer of each, until it is finished or aborted: an abort after the
+	// session ended takes only these.
+	puts sync.Map
 }
 
 // layoutCmd is a layout command waiting for the app's answer, done.
