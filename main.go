@@ -31,22 +31,31 @@ func main() {
 	// The server runs the Rex API gateway while the local network or
 	// built-in Tailscale is on (internal/rexapi).
 	rex.OnServe = rexapi.Supervise
+	// The state of the sessions lives in the app's data directory, which
+	// the server it starts takes from GOREX_DIR: "GoRex", or "GoRex Dev"
+	// under mygo dev, which keeps the installed app's sessions apart. A plain
+	// go build is a dev build too, named for its executable ("gorex"), which
+	// is the installed app's directory on a case-insensitive disk, so it
+	// gets a " Dev" one as well. A dev build sets it before -server, whose
+	// rex.Dir() would otherwise be the installed app's, and on an error too.
+	ownDir := os.Getenv("GOREX_DIR") != ""
+	dev := mygo.IsDev()
+	if !ownDir && dev {
+		dir, err := mygo.App.Path(mygo.PathUserData)
+		if err != nil {
+			dir = rex.Dir()
+		}
+		os.Setenv("GOREX_DIR", dataDir(dir, true))
+	}
 	if server, err := rex.ServerMain(os.Args[1:]); server {
 		if err != nil {
 			log.Fatal(err)
 		}
 		return
 	}
-	// The state of the sessions lives in the app's data directory, which
-	// the server it starts takes from GOREX_DIR: "GoRex", or "GoRex Dev"
-	// under mygo dev, which keeps the installed app's sessions apart. A plain
-	// go build is a dev build too, named for its executable ("gorex"), which
-	// is the installed app's directory on a case-insensitive disk, so it
-	// gets a " Dev" one as well.
-	ownDir := os.Getenv("GOREX_DIR") != ""
-	if !ownDir {
+	if !ownDir && !dev {
 		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
-			os.Setenv("GOREX_DIR", dataDir(dir, mygo.IsDev()))
+			os.Setenv("GOREX_DIR", dir)
 		}
 	}
 	// mygo dev names its app "GoRex Dev", which tells it from the installed
