@@ -5,7 +5,7 @@ without opening a window; with no arguments it starts the app.
 
 `-S HOST` before a command uses a saved remote host from `hosts.json`, or
 an address, instead of this machine's server. Local-only commands (`hosts`,
-`remote`, `server`) and window-only commands (`split`, `close`) do
+`remote`, `server`, `update`) and window-only commands (`split`, `close`) do
 not apply remotely. `action` applies remotely when the host turns Remote
 Control on; `layout` reads a host's layout when it turns Share Layout on.
 
@@ -40,7 +40,8 @@ gorex run [--json] [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
 gorex remote status [--json] | remote control on|off
-gorex server restart
+gorex server restart | upgrade
+gorex update
 gorex config path | config check [FILE] | config reload
 gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
 gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
@@ -85,6 +86,16 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   with the pane. It exits 0 when it is done, 1 when the server is too old
   to bring its sessions back (quit it once with Quit and End All, or kill
   it), and 4 when no server runs or the server did not stop.
+- `server upgrade` hands the local server over to the executable you
+  invoked on macOS or Linux. Shell processes and their output survive
+  while clients reconnect. The executable's modification time must be
+  newer than the server's, as for an app-initiated upgrade. The exact
+  build already running is a no-op; an older build, or a different path
+  with the same modification time, is refused.
+- `update` checks the signed release feed for the Linux per-user install.
+  It installs the update without opening a window and hands over the
+  running server when there is one. Use the same `GOREX_DIR` as the
+  server if you set one. On macOS use Check for Updates in the app.
 - `rex-import` reads a Rex server and makes its sessions in GoRex: a space
   per session, a tab per window, a pane per block. Each pane runs this
   program's `rex-mirror`, which draws the Rex block and types into it, or

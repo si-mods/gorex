@@ -6,5 +6,6 @@
   "out": "build",
   "updates": { "github": "si-mods/gorex", "publicKey": "IB19S2Q9eOxUndE8mWbXvrcCYxYow8Ay6SrWw+6uoS8=" },
   "macos": { "minimumSystemVersion": "13.0" },
+  "linux": { "command": "gorex" },
   "i18n": { "dir": "locales", "source": "en" }
 }
