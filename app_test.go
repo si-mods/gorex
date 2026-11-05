@@ -887,8 +887,10 @@ func TestSidebarHostButton(t *testing.T) {
 	if h, ok := tt.Find("Testbook"); !ok || h.Y < 14 {
 		t.Errorf("in a short window the panel's top row is at %v: the panel goes past the window's top", h)
 	}
-	if !tt.HasText(locales.SettingsHosts()) {
-		t.Errorf("the hosts' list is out of reach; texts %q", tt.Texts())
+	// The panel tells this machine and its server, not the remote hosts:
+	// they are on the Remote page alone.
+	if tt.HasText(locales.SettingsHosts()) {
+		t.Errorf("the panel lists the remote hosts; texts %q", tt.Texts())
 	}
 }
 

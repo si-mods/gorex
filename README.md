@@ -393,9 +393,9 @@ in the window and leaves its sessions running on the remote server.
 GoRex keeps a connection to each host and connects again when it drops,
 waiting longer after each failure, up to 30 seconds. New Tab opens on the
 active tab's host, and a split on its pane's; New Tab on a host (the
-command palette, the host panel, or the + of a host's name in the
-sidebar) picks one. Closing a tab or a pane ends its session on its host,
-once connected again if it is not now. With hosts saved, the sidebar lists
+command palette, or the + of a host's name in the sidebar) picks one.
+Closing a tab or a pane ends its session on its host, once connected
+again if it is not now. With hosts saved, the sidebar lists
 the tabs under their host's name, this machine's first, and tabs above
 show a host's name on its tabs. A pane whose host is away keeps its
 screen under "Reconnecting to …", drops what is typed meanwhile, and

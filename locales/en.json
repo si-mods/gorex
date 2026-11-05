@@ -1453,13 +1453,9 @@
       }
     }
   },
-  "hostsManage": "Remote Hosts…",
-  "@hostsManage": {
-    "description": "Host panel button: open the Remote Hosts settings."
-  },
   "hostsSessions": "{n, plural, =0 {No terminals} one {# terminal} other {# terminals}}",
   "@hostsSessions": {
-    "description": "Host panel: how many terminals (panes) a host has in the window.",
+    "description": "Remote page: how many terminals (panes) a host has in the window.",
     "placeholders": {
       "n": {
         "type": "int",

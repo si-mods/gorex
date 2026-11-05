@@ -4452,30 +4452,16 @@ func (msgs Messages) HostsNotConnectedTo(host string) string {
 	return Catalog.Format(msgs.locale, "hostsNotConnectedTo", map[string]any{"host": host})
 }
 
-// HostsManage says "Remote Hosts…"
-// in the language the app shows.
-//
-// Host panel button: open the Remote Hosts settings.
-func HostsManage() string { return In(i18n.Locale()).HostsManage() }
-
-// HostsManage says "Remote Hosts…"
-// in the language of msgs.
-//
-// Host panel button: open the Remote Hosts settings.
-func (msgs Messages) HostsManage() string {
-	return Catalog.Format(msgs.locale, "hostsManage", nil)
-}
-
 // HostsSessions says "{n, plural, =0 {No terminals} one {# terminal} other {# terminals}}"
 // in the language the app shows.
 //
-// Host panel: how many terminals (panes) a host has in the window.
+// Remote page: how many terminals (panes) a host has in the window.
 func HostsSessions(n int) string { return In(i18n.Locale()).HostsSessions(n) }
 
 // HostsSessions says "{n, plural, =0 {No terminals} one {# terminal} other {# terminals}}"
 // in the language of msgs.
 //
-// Host panel: how many terminals (panes) a host has in the window.
+// Remote page: how many terminals (panes) a host has in the window.
 func (msgs Messages) HostsSessions(n int) string {
 	return Catalog.Format(msgs.locale, "hostsSessions", map[string]any{"n": n})
 }
