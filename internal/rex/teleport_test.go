@@ -211,6 +211,12 @@ func TestTeleportRefusal(t *testing.T) {
 		{SessionInfo{Program: "omp", AgentSession: id, LastOutput: quiet}, ""},
 		{SessionInfo{Program: "omp", AgentSession: id, LastOutput: time.Now()}, TeleportWorking},
 		{SessionInfo{Program: "omp", LastOutput: quiet}, TeleportUnknown},
+		// A session's own program, started as gorex new -- ping, though it
+		// is its foreground; a shell started so is a shell.
+		{SessionInfo{Command: true, Shell: "ping", Program: "ping", Idle: true}, TeleportProgram},
+		{SessionInfo{Command: true, Shell: "omp", Program: "omp", Idle: true}, TeleportProgram},
+		{SessionInfo{Command: true, Shell: "sh", Program: "sh", Idle: true}, ""},
+		{SessionInfo{Command: true, Shell: "pwsh", Program: "pwsh", Idle: true}, ""},
 	} {
 		if got := TeleportRefusal(c.in); got != c.want {
 			t.Errorf("TeleportRefusal(%+v) = %q, want %q", c.in, got, c.want)
@@ -420,6 +426,26 @@ func TestTeleportPackRefuses(t *testing.T) {
 		}
 	}
 	refused(t.TempDir(), "not a Git work tree")
+	// A session that runs a program, not a shell, in a work tree.
+	_, work0 := teleportRepo(t)
+	c := pipe(s, "")
+	defer c.Close()
+	prog := []string{"sleep", "30"}
+	if runtime.GOOS == "windows" {
+		prog = []string{"ping", "-n", "30", "127.0.0.1"}
+	}
+	in, err := c.Create(CreateOptions{Command: prog, Dir: work0, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Kill(in.ID)
+	waitInfo(t, c, in.ID, "the program", func(in SessionInfo) bool { return in.Command && in.Dir != "" })
+	if _, pkg, err := s.pack(in.ID); err == nil || !strings.Contains(err.Error(), prog[0]+" is running") {
+		if pkg != nil {
+			os.Remove(pkg.Name())
+		}
+		t.Errorf("packing a program's session: %v", err)
+	}
 	lone := t.TempDir()
 	gitRun(t, lone, "init", "-q")
 	writeFile(t, filepath.Join(lone, "a"), "a")

@@ -24,7 +24,10 @@ machine to a host. Anything else is refused with a reason:
   its status says working, or it printed in the last two seconds, as its
   spinner does); the user waits for it to be idle, or stops it first;
 - another program in the foreground (a server, an editor): its state is
-  in its process;
+  in its process; so is a session started with a program rather than a
+  shell (`gorex new -- ping`), the program its own process, which the
+  target would make a shell of: an agent started so (`gorex new -- omp`)
+  too, as GoRex finds an agent's conversation only under a shell;
 - the target's server too old to have the `teleport` op.
 
 Windows hosts are in: either side may be macOS, Linux or Windows. What

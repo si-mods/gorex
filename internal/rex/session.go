@@ -27,8 +27,11 @@ var ErrSessionEnded = errors.New("rex: the session has ended")
 
 // session is a pseudo-terminal of the server and its shell.
 type session struct {
-	id      string
-	shell   string
+	id    string
+	shell string
+	// command tells a session started with a command, as gorex new --
+	// ping, whose process shell names, rather than the user's shell.
+	command bool
 	created time.Time
 	p       *pty
 	dir     string
@@ -234,7 +237,7 @@ func newSession(id string, o CreateOptions, owner string, changed func()) (*sess
 		return nil, err
 	}
 	s := &session{
-		id: id, shell: name, created: time.Now(), p: p, dir: dir,
+		id: id, shell: name, command: len(o.Command) > 0, created: time.Now(), p: p, dir: dir,
 		clients: map[*attached]struct{}{}, changed: changed,
 		cols: cols, rows: rows, done: make(chan struct{}),
 	}
@@ -1300,7 +1303,7 @@ func (s *session) info() SessionInfo {
 		title = s.vt.Title()
 	}
 	in := SessionInfo{
-		ID: s.id, Shell: s.shell, Created: s.created, Owner: s.owner,
+		ID: s.id, Shell: s.shell, Command: s.command, Created: s.created, Owner: s.owner,
 		Title: title, LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Output: s.output, Bells: int(s.bells.Load()), Exited: s.exited, ExitCode: s.code,
 		Attached: len(s.clients), Cols: s.cols, Rows: s.rows,

@@ -517,9 +517,12 @@ type CreateOptions struct {
 
 // SessionInfo describes a session and what runs in it now.
 type SessionInfo struct {
-	ID      string    `json:"id"`
-	PID     int       `json:"pid"`
-	Shell   string    `json:"shell"`
+	ID    string `json:"id"`
+	PID   int    `json:"pid"`
+	Shell string `json:"shell"`
+	// Command tells a session started with a command, Shell its program,
+	// rather than the user's shell.
+	Command bool      `json:"command,omitempty"`
 	Created time.Time `json:"created"`
 	// Program is the name of the program in the foreground, and Args its
 	// arguments; Idle tells that it is the shell itself, at its prompt.

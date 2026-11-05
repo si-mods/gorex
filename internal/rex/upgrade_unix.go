@@ -47,8 +47,11 @@ type handoff struct {
 
 // sessionState is a session in a handoff.
 type sessionState struct {
-	ID      string    `json:"id"`
-	Shell   string    `json:"shell"`
+	ID    string `json:"id"`
+	Shell string `json:"shell"`
+	// Command tells a session started with a command; a handoff of a build
+	// before it has none.
+	Command bool      `json:"command,omitempty"`
 	Created time.Time `json:"created"`
 	PID     int       `json:"pid"`
 	// Owner is the key of the remote client that created the session. A
@@ -225,7 +228,7 @@ func (s *session) state() sessionState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := sessionState{
-		ID: s.id, Shell: s.shell, Created: s.created, PID: s.p.pid(), Master: -1, Owner: s.owner,
+		ID: s.id, Shell: s.shell, Command: s.command, Created: s.created, PID: s.p.pid(), Master: -1, Owner: s.owner,
 		Cols: s.cols, Rows: s.rows,
 		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
@@ -297,7 +300,7 @@ func Resume(path string) error {
 // resumeSession makes a session of a handoff's again.
 func resumeSession(st sessionState, changed func()) (*session, error) {
 	s := &session{
-		id: st.ID, shell: st.Shell, created: st.Created, owner: st.Owner, changed: changed,
+		id: st.ID, shell: st.Shell, command: st.Command, created: st.Created, owner: st.Owner, changed: changed,
 		clients: map[*attached]struct{}{},
 		output:  st.Output, lastOutput: st.LastOutput, lastInput: st.LastInput,
 		cols: clampSize(st.Cols), rows: clampSize(st.Rows), done: make(chan struct{}),

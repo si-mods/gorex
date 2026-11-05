@@ -89,6 +89,11 @@ func TeleportRefusal(in SessionInfo) string {
 	switch {
 	case in.Exited:
 		return TeleportEnded
+	case in.Command && QuoterOf(in.Shell) == nil:
+		// The session's own program, not a shell at its prompt: the
+		// target would make a shell of it. An agent started so, as
+		// gorex new -- omp, is no shell either.
+		return TeleportProgram
 	case in.Idle:
 		return ""
 	case !slices.Contains(agentPrograms, strings.ToLower(in.Program)):
