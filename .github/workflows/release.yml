@@ -7,6 +7,12 @@ name: Release
 # the other, as each merges its checksums into the release's SHA256SUMS.
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: What to build
+        type: choice
+        options: [all, unix, windows]
+        default: all
 
 permissions:
   contents: write
@@ -17,7 +23,7 @@ concurrency:
 
 jobs:
   unix:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.target != 'windows'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +39,7 @@ jobs:
 
   windows:
     needs: unix
+    if: always() && inputs.target != 'unix' && (needs.unix.result == 'success' || needs.unix.result == 'skipped')
     runs-on: windows-latest
     steps:
       # Keep LF in the files the app embeds, as the other platforms do.
@@ -42,9 +49,28 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: the key as Go reads it
+        shell: bash
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          MSYS2_ENV_CONV_EXCL: MYGO_UPDATER_PRIVATE_KEY
+          MSYS_NO_PATHCONV: "1"
+        run: |
+          mkdir -p "$RUNNER_TEMP/keycheck"
+          cat >"$RUNNER_TEMP/keycheck/main.go" <<'GO'
+          package main
+          import ("crypto/sha256"; "fmt"; "os")
+          func main() {
+          	s := os.Getenv("MYGO_UPDATER_PRIVATE_KEY")
+          	fmt.Printf("go key len=%d sha=%x\n", len(s), sha256.Sum256([]byte(s)))
+          }
+          GO
+          go run "$RUNNER_TEMP/keycheck/main.go"
       - name: build and upload
         shell: bash
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          MSYS2_ENV_CONV_EXCL: MYGO_UPDATER_PRIVATE_KEY
+          MSYS_NO_PATHCONV: "1"
           GH_TOKEN: ${{ github.token }}
         run: go tool mygo build -platform windows/amd64,windows/arm64 -upload
