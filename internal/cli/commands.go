@@ -83,6 +83,10 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return eventsCmd(args, out, errOut)
 	case "hosts":
 		return hostsCmd(args, out, errOut)
+	case "skill":
+		return skillCmd(args, out, errOut)
+	case "__internal":
+		return internalCmd(args, out, errOut)
 	case "remote":
 		return remoteCmd(args, out, errOut)
 	case "server":
@@ -118,7 +122,7 @@ Usage:
   gorex [-S HOST] ls [--json]
   gorex clients [--json]
   gorex [-S HOST] layout [--json]
-  gorex split [-s SESSION] [--down] [--dir DIR]
+  gorex split [-s SESSION] [--down] [--dir DIR] [-- COMMAND...]
   gorex close [-s SESSION] [--tab]
   gorex rename [-s SESSION] NAME
   gorex new [--dir DIR] [--json] [-- COMMAND...]
@@ -127,6 +131,7 @@ Usage:
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
   gorex hosts [ls] [--json]
+  gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
   gorex remote status [--json] | tailscale on|off | address | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
   gorex server restart | upgrade
   gorex update (Linux)
@@ -408,6 +413,12 @@ func layoutCmd(args []string, out, errOut io.Writer) (int, bool) {
 	return ExitOK, true
 }
 
+// splitRequest is the layout change split asks for: a new pane beside
+// target, running command when one is given.
+func splitRequest(target string, vertical bool, dir string, command []string) rex.LayoutCommand {
+	return rex.LayoutCommand{Op: "pane.split", SID: target, Vertical: vertical, Dir: dir, Command: command}
+}
+
 func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("split", errOut)
 	sid := targetFlag(fs)
@@ -431,7 +442,7 @@ func splitCmd(args []string, out, errOut io.Writer) (int, bool) {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true
 	}
-	res, err := c.Command(rex.LayoutCommand{Op: "pane.split", SID: target, Vertical: *down, Dir: *dir})
+	res, err := c.Command(splitRequest(target, *down, *dir, fs.Args()))
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return codeFor(err), true

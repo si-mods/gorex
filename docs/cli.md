@@ -30,7 +30,7 @@ gorex ls [--json]
 gorex clients [--json]
 gorex [-S HOST] layout [--json]
 gorex new [--dir DIR] [--json] [-- COMMAND...]
-gorex split [-s SESSION] [--down] [--dir DIR]
+gorex split [-s SESSION] [--down] [--dir DIR] [-- COMMAND...]
 gorex close [-s SESSION] [--tab]
 gorex rename [-s SESSION] NAME
 gorex send [-s SESSION] [--enter] [--json] TEXT...
@@ -39,6 +39,7 @@ gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains 
 gorex run [--json] [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
+gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
 gorex remote status [--json] | remote control on|off
 gorex server restart | upgrade
 gorex update
@@ -63,8 +64,9 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   exit 0, and a timeout exits 1. `--timeout 0` (the default) waits forever.
 - `run` creates a session, runs the command, prints what the screen shows
   when it ends, and exits with the program's status.
-- `split` and `close` change the window's layout, so they need the GoRex
-  window open on that machine.
+- `split` changes the window's layout, so it needs the GoRex window open
+  on that machine; the command after `--` runs in the new pane, or a shell
+  does. `close` needs the window too.
 - `events` prints each layout or session change as one JSON line; with a
   host that shares its layout, it subscribes to that host's layout too.
 - `clients` prints the principal, peer key, whether it is remote, through a
@@ -140,14 +142,44 @@ gorex wait -s <id> --contains FAIL --timeout 120s
 gorex capture -s <id>
 ```
 
-### No hooks
+### The skill and its hooks
 
-`gorex` installs nothing into an agent's settings: no session-start
-hooks, no extensions. A build before this one did, through `gorex skill
-setup`, which is gone; what it left can be deleted by hand: the
-`SessionStart` entries tagged `# gorex` in `~/.claude/settings.json` and
-`~/.codex/hooks.json`, `extensions/gorex` in the Pi and omp agent
-directories (`~/.pi/agent`, `~/.omp/agent`), and the `gorex` skill
-directories it wrote.
+`gorex skill setup` installs a `gorex` skill that points at the guide the
+installed binary prints, so upgrading GoRex updates what agents are told.
+It finds Claude Code (`~/.claude`), Codex (`~/.codex`), OpenCode
+(`~/.config/opencode`, or `$XDG_CONFIG_HOME/opencode`), and Pi
+(`~/.pi/agent`, or `$PI_CODING_AGENT_DIR`). A named `--agent` is set up
+even when its directory is absent; an unknown one is an error.
+
+The skill goes into Claude Code's own `skills/gorex` directory and into
+the shared `~/.agents/skills/gorex` directory that Codex, OpenCode and Pi
+read. With no agent found, only the shared skill is written.
+
+Claude Code and Codex also get a session-start hook, added to
+`~/.claude/settings.json` and `~/.codex/hooks.json`. The hook runs
+`gorex __internal session-start --agent NAME`, which prints the session,
+pane and connection for the agent's context, and labels the pane when
+`--pane-naming` is on. Only GoRex's own hook is added or removed:
+every other setting and hook is left as it was, and a settings file that
+is not valid JSON is reported as a conflict instead of rewritten.
+
+- `gorex skill status` reports each agent and whether its skill and hook
+  are missing, current, outdated or in conflict. `--json` has the same
+  information for scripts.
+- `gorex skill remove` removes GoRex's skill and hook from every known
+  agent, including agents no longer installed, and cleans up the skill
+  and Pi/omp extension older builds wrote. It never removes a file GoRex
+  did not write.
+- `gorex skill setup --dry-run` reports without changing anything;
+  `--force` replaces a `gorex` skill the user wrote.
+- `--project` writes into the current repository instead: the shared
+  `.agents/skills/gorex`, or with `--agent claude`, `.claude/skills/gorex`
+  and a hook in `.claude/settings.local.json`. Codex project hooks are
+  skipped because Codex asks the user to trust the project and each hook;
+  set those up for the account instead.
+- `gorex skill show` prints the same guide the skill tells agents to read.
+  `gorex __internal skill` and `gorex __internal session-start` are the
+  commands the installed files run and are not part of the documented
+  command line.
 
 Host add/remove and remote `split`/`close` are not part of this slice.
