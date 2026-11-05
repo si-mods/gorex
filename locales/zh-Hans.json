@@ -573,5 +573,9 @@
   "remoteNetGroup": "网络",
   "remoteNetNone": "未加入网络",
   "remoteNetJoinAsk": "加入网络…",
-  "remoteLanListenOn": "监听地址"
+  "remoteLanListenOn": "监听地址",
+  "cmdResetCanvasView": "重置画布视图",
+  "settingsExperimental": "实验性",
+  "settingsCanvas": "无限画布",
+  "settingsCanvasHint": "实验性功能。每个窗格都是无边平面上的自由方框：在空白处滚动或拖动以平移，按住 Ctrl 或 Cmd 滚动以缩放。关闭后所有窗格停靠回标签页。"
 }

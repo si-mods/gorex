@@ -293,7 +293,12 @@ var (
 		Run:     func(a *App) { _ = a.zoomFocused("toggle") },
 		RunArgs: func(a *App, args map[string]any) error { return a.zoomFocused(argString(args, "mode")) },
 	}
-	cmdEqualize  = command{ID: "pane.equalize", Name: locales.Messages.CmdEqualizePanes, Accel: "CmdOrCtrl+Ctrl+=", Keys: "⌃⌘=", Run: func(a *App) { a.equalize() }}
+	cmdEqualize    = command{ID: "pane.equalize", Name: locales.Messages.CmdEqualizePanes, Accel: "CmdOrCtrl+Ctrl+=", Keys: "⌃⌘=", Run: func(a *App) { a.equalize() }}
+	cmdResetCanvas = command{
+		ID: "canvas.reset_view", Name: locales.Messages.CmdResetCanvasView,
+		Run:       func(a *App) { a.resetCanvasView() },
+		Available: func(a *App) bool { t := a.tab(); return t != nil && t.canvas != nil },
+	}
 	cmdFloatPane = command{
 		ID: "pane.float", Name: locales.Messages.CmdFloatPane,
 		Args:    []actionArg{{Name: "mode", Type: "string", Optional: true, Values: []string{"on", "off", "toggle"}}},
@@ -649,7 +654,7 @@ func (cmd *command) English() string { return cmd.Name(locales.In("en")) }
 
 // paletteCommands are those the command palette lists, before the tabs.
 var paletteCommands = []*command{
-	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdNotePreview, &cmdZoom, &cmdEqualize, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
+	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdNotePreview, &cmdZoom, &cmdEqualize, &cmdResetCanvas, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdFloatState, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
 	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdRenameTab, &cmdSidebar,

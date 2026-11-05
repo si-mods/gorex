@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -397,6 +398,24 @@ func (a *App) debug(dir, line string) {
 		win.Update(func() {
 			setTabPlacement(&prefs, map[string]string{"left": "left", "right": "right"}[arg])
 			a.syncSidebarItem()
+		})
+	case "canvas": // on or off: the Infinite canvas setting; pan DX DY or scale S: the active tab's canvas view
+		win.Update(func() {
+			var dx, dy float32
+			t := a.tab()
+			switch v, rest, _ := strings.Cut(arg, " "); {
+			case v == "on" || v == "off":
+				a.setCanvas(v == "on")
+			case t == nil || t.canvas == nil:
+			case v == "pan":
+				if _, err := fmt.Sscan(rest, &dx, &dy); err == nil {
+					t.canvas.X, t.canvas.Y = t.canvas.X+dx, t.canvas.Y+dy
+				}
+			case v == "scale":
+				if _, err := fmt.Sscan(rest, &dx); err == nil {
+					t.canvas.Scale = min(max(dx, canvasMinScale), canvasMaxScale)
+				}
+			}
 		})
 	case "headers": // show or hide: the pane headers beside a left sidebar
 		win.Update(func() { prefs.HidePaneHeaders = arg == "hide" })

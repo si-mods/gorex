@@ -242,10 +242,28 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	a.syncNoteItem()
 	room := ui.Box(c.Key(roomKey(t.ID))).Grow(1).MinWidth(0).MinHeight(0)
 	bounds := room.Bounds()
+	// A tab shown the first time has no bounds yet: the last tab's room
+	// stands for its own.
+	ref := bounds
+	if ref.W <= 0 || ref.H <= 0 {
+		ref = a.floatRoom
+	}
+	a.syncCanvas(t, ref)
+	if prefs.Canvas && t.Root != nil {
+		// The room is not measured yet: the canvas comes in the next frame.
+		c.Invalidate()
+	}
 	a.floatRoom = bounds
 	a.passes++
 	tr := a.paneTransition(c, t)
+	if t.canvas != nil {
+		a.canvasRoom(t, room)
+	}
 	room.Children(func() {
+		if t.canvas != nil {
+			a.canvasContent(c, k, t, bounds)
+			return
+		}
 		if t.Zoom != nil {
 			a.paneCell(c, k, t, t.Zoom, whole, bounds, tr)
 		} else {
@@ -324,11 +342,10 @@ func (n *Node) shares(s share, pane func(*Pane, share), split func(*Node, share)
 	n.B.shares(b, pane, split)
 }
 
-// paneCell places pane p in its share s of the tab's room, which is
-// bounds, half the gap from the panes beside it.
-func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bounds ui.Rect, tr *ui.ElementTransition) {
+// cellInsets are the paddings of a pane's cell in its share s of the room:
+// half the gap on each side another pane is beside.
+func cellInsets(s share) (top, right, bottom, left float32) {
 	const half, eps = gap / 2, 1e-4
-	var top, right, bottom, left float32
 	if s.y > eps {
 		top = half
 	}
@@ -341,6 +358,13 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	if s.x > eps {
 		left = half
 	}
+	return
+}
+
+// paneCell places pane p in its share s of the tab's room, which is
+// bounds, half the gap from the panes beside it.
+func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bounds ui.Rect, tr *ui.ElementTransition) {
+	top, right, bottom, left := cellInsets(s)
 	cell := ui.Column(c.Key(cellKey(p.ID))).Absolute().
 		LeftPercent(s.x*100).TopPercent(s.y*100).WidthPercent(s.w*100).HeightPercent(s.h*100).
 		Padding(top, right, bottom, left)
@@ -1544,12 +1568,17 @@ func (a *App) dragFloat(c *ui.Context, f *Float, h ui.Element) {
 			}
 		}
 	}
+	room := a.floatRoom
+	if f.free() {
+		// The header's drags come in the canvas's DIPs.
+		room = ui.Rect{W: f.Pane.Tab.canvas.W, H: f.Pane.Tab.canvas.H}
+	}
 	if f.dragging && (dx != 0 || dy != 0) {
-		a.moveFloatPx(f, dx, dy, a.floatRoom)
+		a.moveFloatPx(f, dx, dy, room)
 	}
 	if f.dragging && !pressed {
 		vx, vy, _ := h.DragEnded()
-		a.throwFloat(f, vx, vy, a.floatRoom, motion(c) == nil)
+		a.throwFloat(f, vx, vy, room, motion(c) == nil)
 	}
 }
 

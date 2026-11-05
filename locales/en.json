@@ -1890,5 +1890,21 @@
   "remoteLanListenOn": "Listen on",
   "@remoteLanListenOn": {
     "description": "Remote page row: the address on the local network that Rex's apps connect to."
+  },
+  "cmdResetCanvasView": "Reset Canvas View",
+  "@cmdResetCanvasView": {
+    "description": "Command: show the active tab's infinite canvas from its start, at its normal size. Palette row."
+  },
+  "settingsExperimental": "Experimental",
+  "@settingsExperimental": {
+    "description": "Settings group: features still being tried, which may change or go away."
+  },
+  "settingsCanvas": "Infinite canvas",
+  "@settingsCanvas": {
+    "description": "Setting: lay out every tab as an infinite canvas of free panes, an experimental feature."
+  },
+  "settingsCanvasHint": "Experimental. Every pane is a free box on an endless plane: scroll or drag the empty plane to pan, hold Ctrl or Cmd and scroll to zoom. Off docks every pane back into the tab.",
+  "@settingsCanvasHint": {
+    "description": "Hint under the Infinite canvas setting."
   }
 }
