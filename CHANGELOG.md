@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.15.0
+
+### Features
+
+* **teleport:** move a pane's work, and its agent's conversation, to another host ([#199](https://github.com/si-mods/gorex/pull/199))
+* **panes:** Cmd-click a path in a host pane to download it ([#207](https://github.com/si-mods/gorex/pull/207))
+* **panes:** upload files dropped on a host's pane, with a transfer list ([#195](https://github.com/si-mods/gorex/pull/195))
+* **rex:** add `file.put` and `file.get` transfer connections ([#193](https://github.com/si-mods/gorex/pull/193))
+* **remote:** pair Rex by QR code, show this desktop's sessions in Rex, and find the system's Tailscale ([#187](https://github.com/si-mods/gorex/pull/187))
+* **ui:** minimize floating panes with a chip that shows them again, set built-in Tailscale's control server in Settings › Remote, and show the Rex API revisions on the Server page ([#186](https://github.com/si-mods/gorex/pull/186))
+* **cli:** install an agent skill and session-start hooks ([#194](https://github.com/si-mods/gorex/pull/194))
+* **cli:** install signed updates and hand off running sessions ([c98f9ef](https://github.com/si-mods/gorex/commit/c98f9ef))
+
+### Bug Fixes
+
+* **panes:** end a closing host pane's session after its uploads stop ([#206](https://github.com/si-mods/gorex/pull/206))
+
+### Dependencies
+
+* **mygo:** bump for exec bits in Windows-built archives ([#208](https://github.com/si-mods/gorex/pull/208))
+
 ## 0.14.0
 
 ### Features
