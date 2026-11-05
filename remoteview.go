@@ -545,13 +545,16 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 			label, _, _ = remoteState(rex.RemoteStatus{}, true)
 		}
 		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
-		return
+	} else {
+		st := page.st
+		a.remoteHeader(c, k, st)
+		a.remoteDevices(c, k, st)
+		a.remoteThisMachine(c, k, st)
+		a.remoteLAN(c, k)
 	}
-	st := page.st
-	a.remoteHeader(c, k, st)
-	a.remoteDevices(c, k, st)
-	a.remoteThisMachine(c, k, st)
-	a.remoteLAN(c, k)
+	// The hosts this machine connects to sit under what it serves: one
+	// page, the two directions of the same remote access.
+	a.hostsSettings(c, k)
 }
 
 // networkSettings is the Network page: the coordinator network this
@@ -565,9 +568,9 @@ func (a *App) networkSettings(c *ui.Context, k *colors) {
 			label, _, _ = remoteState(rex.RemoteStatus{}, true)
 		}
 		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
-		return
+	} else {
+		a.remoteNetwork(c, k, page.st)
 	}
-	a.remoteNetwork(c, k, page.st)
 	a.remoteTailscale(c, k)
 }
 
@@ -825,9 +828,21 @@ func (a *App) remoteThisMachine(c *ui.Context, k *colors, st rex.RemoteStatus) {
 					}
 					ui.Text(c, page.myKey).Font(monoFamily()).FontSize(10.5).TextColor(k.textFaint).LineHeight(1.4).Selectable()
 				})
-				if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
-					copyText("mine", page.myKey)
-				}
+				ui.Row(c).Gap(8).Shrink(0).Children(func() {
+					// Rex pairs by this machine's QR code, from the key
+					// above; until remote access serves, the way to set it up
+					// is the local network group below.
+					if a.localRexPairURL() != "" {
+						if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
+							a.openLocalPairQR()
+						}
+					} else if ui.Button(c.Key("setup-rex"), locales.HostsSetUpRex()).Clicked() {
+						remoteUI.focusLAN = true
+					}
+					if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
+						copyText("mine", page.myKey)
+					}
+				})
 			})
 			rowHint(c, k, locales.RemoteMyKeyNote())
 		})

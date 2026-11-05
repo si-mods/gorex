@@ -150,7 +150,6 @@ var sections = []struct {
 	{"keyboard", "keyboard", locales.Messages.SettingsKeyboard},
 	{"remote", "globe", locales.Messages.SettingsRemote},
 	{"network", "network", locales.Messages.SettingsNetwork},
-	{"hosts", "server", locales.Messages.SettingsHosts},
 	{"about", "hexagon", locales.Messages.SettingsAbout},
 }
 
@@ -213,8 +212,6 @@ func (a *App) settingsView(c *ui.Context) {
 						a.remoteSettings(c, k)
 					case "network":
 						a.networkSettings(c, k)
-					case "hosts":
-						a.hostsSettings(c, k)
 					case "about":
 						a.aboutSettings(c, k)
 					default:
@@ -257,10 +254,6 @@ func sectionTitle(id string) string {
 	switch id {
 	case "server":
 		return locales.HostServer()
-	case "remote":
-		return locales.RemoteTitle()
-	case "hosts":
-		return locales.SettingsHosts()
 	}
 	for _, s := range sections {
 		if s.id == id {
