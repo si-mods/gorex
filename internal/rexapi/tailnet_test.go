@@ -520,3 +520,55 @@ func TestPairURLWhy(t *testing.T) {
 		}
 	}
 }
+
+// TestTailscaleConfigFile checks the settings the app reads and writes:
+// a saved control server comes back, and one that is not a URL is refused.
+func TestTailscaleConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	conf := TailscaleConfig{
+		Enabled: true, Hostname: "dev", ControlURL: "https://headscale.example.com",
+		AllowTailnetMembers: true,
+	}
+	if err := SaveTailscale(dir, conf); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadTailscale(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != conf {
+		t.Errorf("loaded %+v, want %+v", got, conf)
+	}
+	if err := SaveTailscale(dir, TailscaleConfig{ControlURL: "headscale.example.com"}); err == nil {
+		t.Error("a URL without a scheme was saved")
+	}
+	if !ValidControlURL("https://headscale.example.com") || !ValidControlURL("http://10.0.0.1:8080") {
+		t.Error("a control server URL was refused")
+	}
+	if ValidControlURL("ftp://headscale.example.com") || ValidControlURL("https://") {
+		t.Error("a control server URL that is not http was accepted")
+	}
+}
+
+// TestTailscaleControlURLFromFile: a control server the app saved while
+// the gateway runs is used the next time Tailscale is turned on.
+func TestTailscaleControlURLFromFile(t *testing.T) {
+	f := startTailnetFixture(t)
+	f.node.state = "Running"
+	close(f.node.ready)
+	f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false, "hostname": "dev"})
+	f.mustCall("server.tailscale.disable", nil)
+	if err := SaveTailscale(f.dir, TailscaleConfig{ControlURL: "https://headscale.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	ts := tailscaleOf(t, f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false}))
+	if f.node.control != "https://headscale.example.com" {
+		t.Errorf("device made at %q", f.node.control)
+	}
+	if f.node.hostname != "dev" {
+		t.Errorf("hostname %q, want the one before", f.node.hostname)
+	}
+	if ts["control_url"] != "https://headscale.example.com" {
+		t.Errorf("status control_url %v", ts["control_url"])
+	}
+}

@@ -50,6 +50,13 @@ var remoteUI struct {
 	lanAdd    string
 	lanErr    string
 	focusLAN  bool
+	// ts is the gateway's built-in Tailscale settings, as its files say
+	// (rexapi.LoadTailscale); tsURL is what is typed in its field, and
+	// tsErr what was wrong with the last save.
+	ts       rexapi.TailscaleConfig
+	tsURL    string
+	tsEdited bool
+	tsErr    string
 	// addingKey and joining show the forms that add a client by its key
 	// and join a network, in place of the buttons that open them.
 	addingKey, joining bool
@@ -71,6 +78,11 @@ func (a *App) showSection(id string) {
 		fetchLAN()
 		a.startRemotePoll()
 	}
+	if id == "server" {
+		startServerInfoPoll()
+	} else {
+		stopServerInfoPoll()
+	}
 }
 
 func stopRemotePoll() {
@@ -83,6 +95,7 @@ func stopRemotePoll() {
 	page.netURL, page.netKey, page.netName, page.netErr = "", "", "", false
 	page.addingKey, page.joining = false, false
 	page.focusLAN = false
+	page.ts, page.tsURL, page.tsEdited, page.tsErr = rexapi.TailscaleConfig{}, "", false, ""
 }
 
 // remoteAsk runs work off the UI thread, with the app's client of the
@@ -142,6 +155,17 @@ func (a *App) startRemotePoll() {
 			}
 		}
 	}()
+}
+
+// fetchTailscale reads built-in Tailscale's settings, which the gateway
+// keeps and follows when it next turns the device on.
+func fetchTailscale() {
+	if c, err := rexapi.LoadTailscale(rexapi.TailnetDir()); err == nil {
+		remoteUI.ts = c
+		if !remoteUI.tsEdited {
+			remoteUI.tsURL = c.ControlURL
+		}
+	}
 }
 
 // fetchLAN reads the local network listener's settings and state, which
@@ -282,6 +306,7 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 // while it is shown.
 func (a *App) fetchRemote() {
 	fetchLAN()
+	fetchTailscale()
 	withAddress := remoteUI.reveal
 	a.remoteAsk(func(srv *rex.Client) func() {
 		st, err := srv.RemoteStatus()
@@ -528,6 +553,41 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 	a.remoteThisMachine(c, k, st)
 	a.remoteNetwork(c, k, st)
 	a.remoteLAN(c, k)
+	a.remoteTailscale(c, k)
+}
+
+// remoteTailscale is the group of built-in Tailscale's control server:
+// the field that sets it, saved to the gateway's settings.
+func (a *App) remoteTailscale(c *ui.Context, k *colors) {
+	page := &remoteUI
+	conf := page.ts
+	settingsGroup(c, k, locales.RemoteTailscaleTitle(), "", locales.RemoteTailscaleNote(), func() {
+		groupRow(c, k, nil).Children(func() {
+			rowLine(c, k, locales.RemoteTailscaleControl(), func() {
+				if ui.TextInput(c.Key("ts-url"), &page.tsURL).Placeholder(locales.RemoteTailscalePlaceholder()).
+					Label(locales.RemoteTailscaleControl()).Font(monoFamily()).Width(260).Changed() {
+					page.tsEdited, page.tsErr = true, ""
+				}
+				if ui.Button(c.Key("ts-save"), locales.RemoteLanSave()).Disabled(!page.tsEdited).Clicked() {
+					url := strings.TrimSpace(page.tsURL)
+					if url != "" && !rexapi.ValidControlURL(url) {
+						page.tsErr = locales.RemoteTailscaleInvalid()
+						return
+					}
+					next := conf
+					next.ControlURL = url
+					if err := rexapi.SaveTailscale(rexapi.TailnetDir(), next); err != nil {
+						page.tsErr = err.Error()
+						return
+					}
+					page.ts, page.tsErr, page.tsEdited = next, "", false
+				}
+			})
+			if page.tsErr != "" {
+				rowError(c, k, page.tsErr)
+			}
+		})
+	})
 }
 
 // remoteHeader is the Remote page's first group: remote access, its

@@ -226,7 +226,7 @@ func Wanted(dir string) bool {
 	if c, err := LoadLAN(dir); err == nil && c.Enabled {
 		return true
 	}
-	var t tailnetConf
+	var t TailscaleConfig
 	if b, err := os.ReadFile(filepath.Join(dir, "tailscale.json")); err == nil && json.Unmarshal(b, &t) == nil && t.Enabled {
 		return true
 	}

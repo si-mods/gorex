@@ -1350,6 +1350,38 @@ func (msgs Messages) SidebarSettings() string {
 	return Catalog.Format(msgs.locale, "sidebarSettings", nil)
 }
 
+// PaneMinimize says "Minimize"
+// in the language the app shows.
+//
+// Tooltip of a floating pane's buttons that hide it, and of its menu item:
+// a minimized layer to Rex's clients.
+func PaneMinimize() string { return In(i18n.Locale()).PaneMinimize() }
+
+// PaneMinimize says "Minimize"
+// in the language of msgs.
+//
+// Tooltip of a floating pane's buttons that hide it, and of its menu item:
+// a minimized layer to Rex's clients.
+func (msgs Messages) PaneMinimize() string {
+	return Catalog.Format(msgs.locale, "paneMinimize", nil)
+}
+
+// FloatRestore says "Show {name}"
+// in the language the app shows.
+//
+// Tooltip and accessibility label of a minimized floating pane's chip,
+// which shows the pane again. name is the pane's title.
+func FloatRestore(name string) string { return In(i18n.Locale()).FloatRestore(name) }
+
+// FloatRestore says "Show {name}"
+// in the language of msgs.
+//
+// Tooltip and accessibility label of a minimized floating pane's chip,
+// which shows the pane again. name is the pane's title.
+func (msgs Messages) FloatRestore(name string) string {
+	return Catalog.Format(msgs.locale, "floatRestore", map[string]any{"name": name})
+}
+
 // PaneZoom says "Zoom"
 // in the language the app shows.
 //
@@ -1640,6 +1672,68 @@ func HostSessions() string { return In(i18n.Locale()).HostSessions() }
 // Host panel row: the terminals, which the session server runs.
 func (msgs Messages) HostSessions() string {
 	return Catalog.Format(msgs.locale, "hostSessions", nil)
+}
+
+// HostApiTitle says "Rex API"
+// in the language the app shows.
+//
+// Host panel: label of the row that shows the Rex API revision.
+func HostApiTitle() string { return In(i18n.Locale()).HostApiTitle() }
+
+// HostApiTitle says "Rex API"
+// in the language of msgs.
+//
+// Host panel: label of the row that shows the Rex API revision.
+func (msgs Messages) HostApiTitle() string {
+	return Catalog.Format(msgs.locale, "hostApiTitle", nil)
+}
+
+// HostApiRevisions says "revision {revision} · server {server} · min {min}"
+// in the language the app shows.
+//
+// Host panel: the Rex API revision this app negotiated, the newest the
+// gateway serves, and the oldest it serves.
+func HostApiRevisions(revision int, server int, min int) string {
+	return In(i18n.Locale()).HostApiRevisions(revision, server, min)
+}
+
+// HostApiRevisions says "revision {revision} · server {server} · min {min}"
+// in the language of msgs.
+//
+// Host panel: the Rex API revision this app negotiated, the newest the
+// gateway serves, and the oldest it serves.
+func (msgs Messages) HostApiRevisions(revision int, server int, min int) string {
+	return Catalog.Format(msgs.locale, "hostApiRevisions", map[string]any{"revision": revision, "server": server, "min": min})
+}
+
+// HostApiOff says "gateway off"
+// in the language the app shows.
+//
+// Host panel: the Rex API gateway is not running, so it reports no
+// revision.
+func HostApiOff() string { return In(i18n.Locale()).HostApiOff() }
+
+// HostApiOff says "gateway off"
+// in the language of msgs.
+//
+// Host panel: the Rex API gateway is not running, so it reports no
+// revision.
+func (msgs Messages) HostApiOff() string {
+	return Catalog.Format(msgs.locale, "hostApiOff", nil)
+}
+
+// HostApiVersion says "Rex API version"
+// in the language the app shows.
+//
+// Host panel: label of the row that shows the gateway's version string.
+func HostApiVersion() string { return In(i18n.Locale()).HostApiVersion() }
+
+// HostApiVersion says "Rex API version"
+// in the language of msgs.
+//
+// Host panel: label of the row that shows the gateway's version string.
+func (msgs Messages) HostApiVersion() string {
+	return Catalog.Format(msgs.locale, "hostApiVersion", nil)
 }
 
 // HostServerUp says "pid {pid, number, ::group-off} · up {uptime}"
@@ -5430,6 +5524,78 @@ func RexImportFailed(error string) string { return In(i18n.Locale()).RexImportFa
 // Dialog when importing from Rex fails.
 func (msgs Messages) RexImportFailed(error string) string {
 	return Catalog.Format(msgs.locale, "rexImportFailed", map[string]any{"error": error})
+}
+
+// RemoteTailscaleTitle says "Tailscale"
+// in the language the app shows.
+//
+// Title of the card that sets the control server of built-in Tailscale.
+func RemoteTailscaleTitle() string { return In(i18n.Locale()).RemoteTailscaleTitle() }
+
+// RemoteTailscaleTitle says "Tailscale"
+// in the language of msgs.
+//
+// Title of the card that sets the control server of built-in Tailscale.
+func (msgs Messages) RemoteTailscaleTitle() string {
+	return Catalog.Format(msgs.locale, "remoteTailscaleTitle", nil)
+}
+
+// RemoteTailscaleNote says "The control server built-in Tailscale registers with, such as Headscale. A change applies the next time Tailscale is …"
+// in the language the app shows.
+//
+// Note under the title of the Tailscale card.
+func RemoteTailscaleNote() string { return In(i18n.Locale()).RemoteTailscaleNote() }
+
+// RemoteTailscaleNote says "The control server built-in Tailscale registers with, such as Headscale. A change applies the next time Tailscale is …"
+// in the language of msgs.
+//
+// Note under the title of the Tailscale card.
+func (msgs Messages) RemoteTailscaleNote() string {
+	return Catalog.Format(msgs.locale, "remoteTailscaleNote", nil)
+}
+
+// RemoteTailscaleControl says "Control server"
+// in the language the app shows.
+//
+// Label of the field that holds built-in Tailscale's control server URL.
+func RemoteTailscaleControl() string { return In(i18n.Locale()).RemoteTailscaleControl() }
+
+// RemoteTailscaleControl says "Control server"
+// in the language of msgs.
+//
+// Label of the field that holds built-in Tailscale's control server URL.
+func (msgs Messages) RemoteTailscaleControl() string {
+	return Catalog.Format(msgs.locale, "remoteTailscaleControl", nil)
+}
+
+// RemoteTailscalePlaceholder says "Tailscale's own"
+// in the language the app shows.
+//
+// Placeholder of the empty control server field: the field is left empty
+// for Tailscale's own control plane.
+func RemoteTailscalePlaceholder() string { return In(i18n.Locale()).RemoteTailscalePlaceholder() }
+
+// RemoteTailscalePlaceholder says "Tailscale's own"
+// in the language of msgs.
+//
+// Placeholder of the empty control server field: the field is left empty
+// for Tailscale's own control plane.
+func (msgs Messages) RemoteTailscalePlaceholder() string {
+	return Catalog.Format(msgs.locale, "remoteTailscalePlaceholder", nil)
+}
+
+// RemoteTailscaleInvalid says "Enter an http or https URL, or leave it empty for Tailscale's own."
+// in the language the app shows.
+//
+// Error under the control server field when what was typed is not a URL.
+func RemoteTailscaleInvalid() string { return In(i18n.Locale()).RemoteTailscaleInvalid() }
+
+// RemoteTailscaleInvalid says "Enter an http or https URL, or leave it empty for Tailscale's own."
+// in the language of msgs.
+//
+// Error under the control server field when what was typed is not a URL.
+func (msgs Messages) RemoteTailscaleInvalid() string {
+	return Catalog.Format(msgs.locale, "remoteTailscaleInvalid", nil)
 }
 
 // RemoteLanTitle says "Rex apps on the local network"

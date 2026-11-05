@@ -128,10 +128,11 @@ allow.
    `GoRex rexapi tailscale on --auth-key-file key.txt` (the key is used
    once, and never saved or logged). A tailnet run by your own control
    server, such as Headscale, takes its URL:
-   `GoRex rexapi tailscale on --control-url https://headscale.example.com`.
-   Turn it off first to switch servers; an explicit empty `control_url`
+   `GoRex rexapi tailscale on --control-url https://headscale.example.com`,
+   or in Settings › Remote's Tailscale card. Turn it off first to switch
+   servers; an explicit empty `control_url`
    (`GoRex rexapi call server.tailscale.enable '{"allow_tailnet_members":false,"control_url":""}'`)
-   returns the device to Tailscale's own.
+   or an empty field in Settings returns the device to Tailscale's own.
 3. Wait for `https: available` in `GoRex rexapi tailscale status`.
 4. Show the address as a QR code, and scan it with Rex on the phone:
 
@@ -172,8 +173,9 @@ meets:
 
 - Floating layers are shown, but not made or closed from a Rex client:
   the GoRex window takes no such commands yet. A hidden floating pane is
-  a minimized layer, and `session.set_layer_state` minimizes it and
-  brings it back, with the focus when asked.
+  a minimized layer: its header has a minimize button, a chip over the
+  tab shows it again, and `session.set_layer_state` minimizes it and
+  brings it back from a Rex client, with the focus when asked.
 - There are no detached blocks, Lua scripts, configuration file or host
   list: `client.set_script`, `client.perform`, `hosts.put` and the like
   fail with `not_supported`, and `client.keymap` is empty.

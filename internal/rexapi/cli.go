@@ -23,9 +23,21 @@ import (
 	"rsc.io/qr"
 )
 
+// gatewayWelcome is the part of a gateway's welcome the app reports.
+type gatewayWelcome struct {
+	APIRevision       int `json:"api_revision"`
+	APIServerRevision int `json:"api_server_revision"`
+}
+
 // callGateway calls one method of the gateway serving the socket at
 // path, as a Rex client does, and returns its payload.
 func callGateway(path, method string, payload any) (json.RawMessage, error) {
+	out, _, err := callGatewayWelcome(path, method, payload)
+	return out, err
+}
+
+// callGatewayWelcome is callGateway, with the gateway's welcome.
+func callGatewayWelcome(path, method string, payload any) (json.RawMessage, gatewayWelcome, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	httpc := &http.Client{Transport: &http.Transport{
@@ -38,7 +50,7 @@ func callGateway(path, method string, payload any) (json.RawMessage, error) {
 		HTTPClient: httpc, Subprotocols: []string{controlProtocol},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("no Rex API gateway on %s (run gorex rexapi): %w", path, err)
+		return nil, gatewayWelcome{}, fmt.Errorf("no Rex API gateway on %s (run gorex rexapi): %w", path, err)
 	}
 	defer ws.CloseNow()
 	ws.SetReadLimit(maxMessage)
@@ -47,15 +59,16 @@ func callGateway(path, method string, payload any) (json.RawMessage, error) {
 		"client": map[string]any{"kind": "cli", "name": "gorex", "platform": platform()},
 	})
 	if err := ws.Write(ctx, websocket.MessageText, hello); err != nil {
-		return nil, err
+		return nil, gatewayWelcome{}, err
 	}
-	var welcome struct {
+	var wel struct {
 		Type string `json:"type"`
+		gatewayWelcome
 	}
 	if _, b, err := ws.Read(ctx); err != nil {
-		return nil, err
-	} else if json.Unmarshal(b, &welcome); welcome.Type != "welcome" {
-		return nil, fmt.Errorf("the gateway answered %s", b)
+		return nil, gatewayWelcome{}, err
+	} else if json.Unmarshal(b, &wel); wel.Type != "welcome" {
+		return nil, gatewayWelcome{}, fmt.Errorf("the gateway answered %s", b)
 	}
 	req := map[string]any{"type": "request", "id": "cli-1", "method": method}
 	if payload != nil {
@@ -63,12 +76,12 @@ func callGateway(path, method string, payload any) (json.RawMessage, error) {
 	}
 	b, _ := json.Marshal(req)
 	if err := ws.Write(ctx, websocket.MessageText, b); err != nil {
-		return nil, err
+		return nil, gatewayWelcome{}, err
 	}
 	for {
 		_, b, err := ws.Read(ctx)
 		if err != nil {
-			return nil, err
+			return nil, gatewayWelcome{}, err
 		}
 		var resp struct {
 			Type    string          `json:"type"`
@@ -81,10 +94,45 @@ func callGateway(path, method string, payload any) (json.RawMessage, error) {
 		}
 		ws.Close(websocket.StatusNormalClosure, "")
 		if resp.Error != nil {
-			return nil, fmt.Errorf("%s: %s", resp.Error.Code, resp.Error.Message)
+			return nil, gatewayWelcome{}, fmt.Errorf("%s: %s", resp.Error.Code, resp.Error.Message)
 		}
-		return resp.Payload, nil
+		return resp.Payload, wel.gatewayWelcome, nil
 	}
+}
+
+// GatewayInfo is a gateway's API revision as it welcomes this build, and
+// its version: what the app shows to tell a client and a server apart
+// when one is too old.
+type GatewayInfo struct {
+	// RexVersion is the version string the gateway reports.
+	RexVersion string
+	// APIRevision is the revision this build negotiated, and
+	// ServerRevision the newest the gateway serves.
+	APIRevision, ServerRevision int
+	// MinRevision is the oldest the gateway serves.
+	MinRevision int
+}
+
+// GatewayVersion asks the gateway that runs on this machine, failing
+// when none does.
+func GatewayVersion() (GatewayInfo, error) {
+	raw, wel, err := callGatewayWelcome(SocketPath(), "server.version", nil)
+	if err != nil {
+		return GatewayInfo{}, err
+	}
+	var v struct {
+		RexVersion     string `json:"rex_version"`
+		APIMinRevision int    `json:"api_min_revision"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return GatewayInfo{}, err
+	}
+	return GatewayInfo{
+		RexVersion:     v.RexVersion,
+		APIRevision:    wel.APIRevision,
+		ServerRevision: wel.APIServerRevision,
+		MinRevision:    v.APIMinRevision,
+	}, nil
 }
 
 // callMain is "gorex rexapi call METHOD [JSON]": it calls a method of
@@ -224,7 +272,7 @@ func wakeGateway(dir string, turnOn func() error) error {
 // setTailnetEnabled turns built-in Tailscale on in the state in dir, with
 // the hostname and access rule of payload.
 func setTailnetEnabled(dir string, payload any) error {
-	var t tailnetConf
+	var t TailscaleConfig
 	path := filepath.Join(dir, "tailscale.json")
 	if b, err := os.ReadFile(path); err == nil {
 		json.Unmarshal(b, &t)

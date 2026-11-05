@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
+	"gorex/internal/rexapi"
 	"gorex/locales"
 )
 
@@ -31,10 +32,59 @@ var settingsUI struct {
 	// and langNames are the language control's, "" and its label first.
 	// All are made once the window opens.
 	fontOptions, langTags, langNames []string
+	// apiInfo is the Rex API gateway's version, for the server page's
+	// rows, fetched while that page shows: apiLoaded when it has been
+	// asked once, apiErr when no gateway answered.
+	apiStop   chan struct{}
+	apiInfo   rexapi.GatewayInfo
+	apiErr    string
+	apiLoaded bool
 }
 
 // Run is set here: the window's view lists the commands, which list this one.
 func init() { cmdSettings.Run = func(a *App) { a.openSettings() } }
+
+// startServerInfoPoll asks the Rex API gateway for its version every two
+// seconds while the server page shows.
+func startServerInfoPoll() {
+	win := settingsUI.win
+	if settingsUI.apiStop != nil || win == nil {
+		return
+	}
+	stop := make(chan struct{})
+	settingsUI.apiStop = stop
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		for {
+			info, err := rexapi.GatewayVersion()
+			win.Update(func() {
+				if settingsUI.apiStop != stop {
+					return
+				}
+				settingsUI.apiInfo, settingsUI.apiLoaded = info, true
+				settingsUI.apiErr = ""
+				if err != nil {
+					settingsUI.apiErr = err.Error()
+				}
+			})
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+			}
+		}
+	}()
+}
+
+// stopServerInfoPoll stops asking the gateway, dropping what it said.
+func stopServerInfoPoll() {
+	if settingsUI.apiStop != nil {
+		close(settingsUI.apiStop)
+	}
+	settingsUI.apiStop = nil
+	settingsUI.apiInfo, settingsUI.apiErr, settingsUI.apiLoaded = rexapi.GatewayInfo{}, "", false
+}
 
 // openSettings opens the settings window, or shows it when open. It is a
 // window of its own, which MyGo allows.
@@ -76,6 +126,7 @@ func (a *App) openSettings() {
 	win.SetMenu(mygo.NewMenu(nil)) // not the terminal window's menus
 	win.OnClosed(func() {
 		stopRemotePoll()
+		stopServerInfoPoll()
 		closeAddHost()
 		closeHostLayout()
 		hostsPairQR = nil
@@ -355,6 +406,15 @@ func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label stri
 		}
 		if a.hello.PID > 0 {
 			row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
+		}
+		if settingsUI.apiLoaded {
+			if settingsUI.apiErr != "" {
+				row(locales.HostApiTitle(), locales.HostApiOff())
+			} else {
+				api := settingsUI.apiInfo
+				row(locales.HostApiTitle(), locales.HostApiRevisions(api.APIRevision, api.ServerRevision, api.MinRevision))
+				row(locales.HostApiVersion(), api.RexVersion)
+			}
 		}
 		sessions, running := a.sessionCounts()
 		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))

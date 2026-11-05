@@ -386,6 +386,20 @@
   "@sidebarSettings": {
     "description": "Label and tooltip of the sidebar's button that opens the settings."
   },
+  "paneMinimize": "Minimize",
+  "@paneMinimize": {
+    "description": "Tooltip of a floating pane's buttons that hide it, and of its menu item: a minimized layer to Rex's clients."
+  },
+  "floatRestore": "Show {name}",
+  "@floatRestore": {
+    "description": "Tooltip and accessibility label of a minimized floating pane's chip, which shows the pane again. name is the pane's title.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "shell"
+      }
+    }
+  },
   "paneZoom": "Zoom",
   "@paneZoom": {
     "description": "Tooltip of a pane header's button that makes the pane fill the tab."
@@ -501,6 +515,36 @@
   "hostSessions": "Terminals",
   "@hostSessions": {
     "description": "Host panel row: the terminals, which the session server runs."
+  },
+  "hostApiTitle": "Rex API",
+  "@hostApiTitle": {
+    "description": "Host panel: label of the row that shows the Rex API revision."
+  },
+  "hostApiRevisions": "revision {revision} · server {server} · min {min}",
+  "@hostApiRevisions": {
+    "description": "Host panel: the Rex API revision this app negotiated, the newest the gateway serves, and the oldest it serves.",
+    "placeholders": {
+      "revision": {
+        "type": "int",
+        "example": "10"
+      },
+      "server": {
+        "type": "int",
+        "example": "10"
+      },
+      "min": {
+        "type": "int",
+        "example": "0"
+      }
+    }
+  },
+  "hostApiOff": "gateway off",
+  "@hostApiOff": {
+    "description": "Host panel: the Rex API gateway is not running, so it reports no revision."
+  },
+  "hostApiVersion": "Rex API version",
+  "@hostApiVersion": {
+    "description": "Host panel: label of the row that shows the gateway's version string."
   },
   "hostServerUp": "pid {pid, number, ::group-off} · up {uptime}",
   "@hostServerUp": {
@@ -1784,6 +1828,26 @@
         "example": "no such file"
       }
     }
+  },
+  "remoteTailscaleTitle": "Tailscale",
+  "@remoteTailscaleTitle": {
+    "description": "Title of the card that sets the control server of built-in Tailscale."
+  },
+  "remoteTailscaleNote": "The control server built-in Tailscale registers with, such as Headscale. A change applies the next time Tailscale is turned on.",
+  "@remoteTailscaleNote": {
+    "description": "Note under the title of the Tailscale card."
+  },
+  "remoteTailscaleControl": "Control server",
+  "@remoteTailscaleControl": {
+    "description": "Label of the field that holds built-in Tailscale's control server URL."
+  },
+  "remoteTailscalePlaceholder": "Tailscale's own",
+  "@remoteTailscalePlaceholder": {
+    "description": "Placeholder of the empty control server field: the field is left empty for Tailscale's own control plane."
+  },
+  "remoteTailscaleInvalid": "Enter an http or https URL, or leave it empty for Tailscale's own.",
+  "@remoteTailscaleInvalid": {
+    "description": "Error under the control server field when what was typed is not a URL."
   },
   "remoteLanTitle": "Rex apps on the local network",
   "@remoteLanTitle": {
