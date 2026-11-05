@@ -74,7 +74,7 @@ func (a *App) showSection(id string) {
 	stopRemotePoll()
 	hostsPairQR = nil
 	settingsUI.section = id
-	if id == "remote" || id == "hosts" {
+	if id == "remote" || id == "hosts" || id == "network" {
 		fetchLAN()
 		a.startRemotePoll()
 	}
@@ -553,6 +553,22 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 	a.remoteThisMachine(c, k, st)
 	a.remoteNetwork(c, k, st)
 	a.remoteLAN(c, k)
+}
+
+// networkSettings is the Network page: the coordinator network this
+// machine joins, and built-in Tailscale's control server, which the
+// remote access and Rex share.
+func (a *App) networkSettings(c *ui.Context, k *colors) {
+	page := &remoteUI
+	if !page.loaded {
+		label := locales.RemoteAsking()
+		if page.unreachable {
+			label, _, _ = remoteState(rex.RemoteStatus{}, true)
+		}
+		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
+		return
+	}
+	a.remoteNetwork(c, k, page.st)
 	a.remoteTailscale(c, k)
 }
 

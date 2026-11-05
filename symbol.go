@@ -33,6 +33,7 @@ var sfSymbols = map[string]string{
 	"minimize-2":                "arrow.down.right.and.arrow.up.left",
 	"minus":                     "minus",
 	"monitor":                   "display",
+	"network":                   "network",
 	"node-hex":                  "hexagon",
 	"panel-left":                "sidebar.leading",
 	"panel-right":               "sidebar.trailing",

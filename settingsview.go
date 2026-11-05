@@ -149,6 +149,7 @@ var sections = []struct {
 	{"theme", "sparkles", locales.Messages.SettingsTheme},
 	{"keyboard", "keyboard", locales.Messages.SettingsKeyboard},
 	{"remote", "globe", locales.Messages.SettingsRemote},
+	{"network", "network", locales.Messages.SettingsNetwork},
 	{"hosts", "server", locales.Messages.SettingsHosts},
 	{"about", "hexagon", locales.Messages.SettingsAbout},
 }
@@ -210,6 +211,8 @@ func (a *App) settingsView(c *ui.Context) {
 						a.keyboardSettings(c, k)
 					case "remote":
 						a.remoteSettings(c, k)
+					case "network":
+						a.networkSettings(c, k)
 					case "hosts":
 						a.hostsSettings(c, k)
 					case "about":

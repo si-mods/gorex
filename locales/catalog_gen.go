@@ -2266,6 +2266,16 @@ func (msgs Messages) SettingsKeyboard() string {
 	return Catalog.Format(msgs.locale, "settingsKeyboard", nil)
 }
 
+// SettingsNetwork says "Network"
+// in the language the app shows.
+func SettingsNetwork() string { return In(i18n.Locale()).SettingsNetwork() }
+
+// SettingsNetwork says "Network"
+// in the language of msgs.
+func (msgs Messages) SettingsNetwork() string {
+	return Catalog.Format(msgs.locale, "settingsNetwork", nil)
+}
+
 // SettingsRemote says "Remote"
 // in the language the app shows.
 //

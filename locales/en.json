@@ -774,6 +774,7 @@
   "@settingsKeyboard": {
     "description": "Settings section: the keyboard shortcuts."
   },
+  "settingsNetwork": "Network",
   "settingsRemote": "Remote",
   "@settingsRemote": {
     "description": "Settings section: remote access. The sidebar item."
