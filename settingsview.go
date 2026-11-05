@@ -179,6 +179,24 @@ func (a *App) settingsView(c *ui.Context) {
 	}
 }
 
+// terminalFace gives e the face of the main window's unfocused tiled
+// terminal pane, as paneCard draws it: the system's glass tinted by it
+// under the glass setting, else the face whole. A configured theme's
+// background is not taken: the settings' text is set for the window's
+// colors, and could not be read over a theme of the other appearance.
+func terminalFace(c *ui.Context, k *colors, e ui.Element) {
+	if termOpaque {
+		e.Background(k.card)
+		return
+	}
+	bg := cardFace(c, k, false, false)
+	if glassOn() {
+		e.Material(ui.SystemGlass{Tint: glassTint(c, k, false), Fallback: faceMaterial{bg}})
+		return
+	}
+	e.Background(bg)
+}
+
 // sectionTitle is the title of a settings section, as the page's header
 // shows it.
 func sectionTitle(id string) string {
@@ -226,13 +244,13 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
 	if e.Clicked() {
 		a.showSection(id)
 	}
-	icon, text, weight := k.iconMuted, k.text, 500
+	icon, text := k.iconMuted, k.text
 	if active {
-		icon, text, weight = k.accent, k.accent, 600
+		icon, text = k.accent, k.accent
 	}
 	e.Children(func() {
 		glyphIcon(c, glyph, 16, icon)
-		ui.Text(c, label).FontSize(13).FontWeight(weight).TextColor(text).SingleLine()
+		ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(text).SingleLine()
 	})
 }
 
@@ -365,7 +383,10 @@ func settingsGroup(c *ui.Context, k *colors, label, note, foot string, body func
 		saved := groupRows
 		groupRows = 0
 		ui.Column(c).Gap(2).Children(func() {
-			ui.Column(c).Radius(14).Background(k.card).Border(1, k.cardBorder).Shadow(0, 1, 2, 0, k.shadow).Children(body)
+			// A group has the face of the main window's terminals.
+			group := ui.Column(c).Radius(14).Clip().Border(1, k.cardBorder).Shadow(0, 1, 2, 0, k.shadow)
+			terminalFace(c, k, group)
+			group.Children(body)
 			if foot != "" {
 				ui.Text(c, foot).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4).MaxWidth(settingsHintW).Padding(0, 14)
 			}
@@ -422,6 +443,14 @@ func (a *App) appearanceSettings(c *ui.Context, k *colors) {
 	settingsGroup(c, k, "", "", "", func() { a.appearanceWindow(c, k) })
 	settingsGroup(c, k, "", "", "", func() { a.appearanceText(c, k) })
 	settingsGroup(c, k, "", "", "", func() { a.appearanceGlass(c, k) })
+	settingsGroup(c, k, locales.SettingsExperimental(), "", "", func() {
+		on := prefs.Canvas
+		settingRow(c, k, locales.SettingsCanvas(), locales.SettingsCanvasHint(), func() {
+			if ui.Switch(c, &on).Label(locales.SettingsCanvas()).Changed() {
+				a.setCanvas(on)
+			}
+		})
+	})
 }
 
 // appearanceWindow is the Appearance page's first group: the window, the

@@ -1,0 +1,33 @@
+name: Release
+
+# Builds and signs the macOS app of mygo.json's version and uploads it to
+# that version's draft GitHub release, beside what other machines upload.
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: mygo build -platform targets
+        default: darwin/arm64
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: build and upload
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          PLATFORM: ${{ inputs.platform }}
+        run: go tool mygo build -platform "$PLATFORM" -upload

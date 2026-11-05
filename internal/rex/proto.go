@@ -499,6 +499,10 @@ type SessionInfo struct {
 	Foreground int `json:"foreground,omitempty"`
 	// Dir is the working directory of the program in the foreground.
 	Dir string `json:"dir"`
+	// AgentSession is the conversation Claude Code has open in the
+	// foreground, and AgentConfigDir its config dir when not the default.
+	AgentSession   string `json:"agentSession,omitempty"`
+	AgentConfigDir string `json:"agentConfigDir,omitempty"`
 	// Title is the last title a program set (OSC 0, OSC 2).
 	Title      string    `json:"title,omitempty"`
 	LastOutput time.Time `json:"lastOutput"`

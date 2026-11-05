@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -398,6 +399,33 @@ func (a *App) debug(dir, line string) {
 			setTabPlacement(&prefs, map[string]string{"left": "left", "right": "right"}[arg])
 			a.syncSidebarItem()
 		})
+	case "canvas": // on or off: the Infinite canvas setting; pan DX DY or scale S: the active tab's canvas view; new terminal|browser|note X Y: a pane at X, Y of the room, as its menu puts it; space on|off: Space held over it
+		win.Update(func() {
+			var dx, dy float32
+			t := a.tab()
+			switch v, rest, _ := strings.Cut(arg, " "); {
+			case v == "on" || v == "off":
+				a.setCanvas(v == "on")
+			case t == nil || t.canvas == nil:
+			case v == "pan":
+				if _, err := fmt.Sscan(rest, &dx, &dy); err == nil {
+					t.canvas.X, t.canvas.Y = t.canvas.X+dx, t.canvas.Y+dy
+				}
+			case v == "scale":
+				if _, err := fmt.Sscan(rest, &dx); err == nil {
+					t.canvas.Scale = min(max(dx, canvasMinScale), canvasMaxScale)
+				}
+			case v == "new":
+				var kind string
+				if _, err := fmt.Sscan(rest, &kind, &dx, &dy); err == nil {
+					a.canvasNew(t, kind, dx, dy)
+				}
+			case v == "space" && rest == "on":
+				a.canvasPan = t
+			case v == "space":
+				a.endCanvasPan()
+			}
+		})
 	case "headers": // show or hide: the pane headers beside a left sidebar
 		win.Update(func() { prefs.HidePaneHeaders = arg == "hide" })
 	case "appearance": // system, light or dark
@@ -483,6 +511,16 @@ func (a *App) debug(dir, line string) {
 			})
 		case "close":
 			win.Close()
+		case "resume": // run or continue: the focused pane's resume strip button
+			win.Update(func() {
+				if t := a.tab(); t != nil && t.Focus != nil && t.Focus.resume != nil {
+					cmd := t.Focus.resume.cmd
+					if arg == "continue" {
+						cmd = t.Focus.resume.cont
+					}
+					a.runResume(t.Focus, cmd)
+				}
+			})
 		case "zoom":
 			win.Update(func() {
 				if win.IsMaximized() {

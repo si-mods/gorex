@@ -54,6 +54,9 @@ type Tab struct {
 	// when the panes are done moving from the one before.
 	laid   string
 	settle time.Time
+	// canvas makes the tab an infinite canvas (canvas.go): no tiled
+	// panes, every pane a float on it; nil for a tab of tiled panes.
+	canvas *layout.Canvas
 }
 
 // Float is a pane over its tab's tiled panes, at a box of the tab's room
@@ -119,6 +122,8 @@ const maxFling = 8000
 func (a *App) throwFloat(f *Float, vx, vy float32, room ui.Rect, still bool) {
 	x, y := f.X+rubber(f.overX), f.Y+rubber(f.overY)
 	f.dragging, f.overX, f.overY = false, 0, 0
+	// A canvas has no edge to throw it against: it rests where let go.
+	still = still || f.free()
 	if float32IsBad(vx) || float32IsBad(vy) || room.W <= 0 || room.H <= 0 {
 		vx, vy = 0, 0
 	}
@@ -221,6 +226,10 @@ func (f *Float) clamp() {
 	if float32IsBad(f.H) {
 		f.H = 0.72
 	}
+	if f.free() {
+		f.W, f.H = max(f.W, floatMin), max(f.H, floatMin)
+		return
+	}
 	f.W = min(max(f.W, floatMin), 1)
 	f.H = min(max(f.H, floatMin), 1)
 	f.X = min(max(f.X, 0), 1-f.W)
@@ -236,6 +245,10 @@ func (f *Float) clampSize() {
 	}
 	if float32IsBad(f.H) {
 		f.H = 0.72
+	}
+	if f.free() {
+		f.W, f.H = max(f.W, floatMin), max(f.H, floatMin)
+		return
 	}
 	f.W = min(max(f.W, floatMin), 1)
 	f.H = min(max(f.H, floatMin), 1)
@@ -446,6 +459,13 @@ type App struct {
 	// focusReq asks the view to give the keyboard focus to a pane's
 	// terminal.
 	focusReq *Pane
+	// canvasPan is set while Space, pressed over a canvas's empty plane,
+	// is held: a drag anywhere pans it. canvasHover is the tab whose plane
+	// the pointer is over, and canvasAt where it last pressed there, in the
+	// room's DIPs.
+	canvasPan   *Tab
+	canvasHover *Tab
+	canvasAt    [2]float32
 	// floatRoom is the tab's room as the floats' drags last measured it.
 	floatRoom ui.Rect
 	// passes counts the builds of the tab's room: a float gliding that
@@ -655,7 +675,7 @@ func (t *Tab) nextFocus(skip *Pane) *Pane {
 		}
 		return q
 	}
-	if ps := t.panes(); len(ps) > 0 {
+	if ps := t.allPanes(); len(ps) > 0 {
 		return ps[0]
 	}
 	return nil
@@ -1422,22 +1442,24 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 	if a.offline(old.host) {
 		return nil
 	}
-	// A float splits the tab's tiled pane, not its own standalone node.
-	if old.float != nil {
+	// A float splits the tab's tiled pane, not its own standalone node;
+	// on a canvas the new box is the float's size, beside it.
+	free := old.float != nil && old.Tab.canvas != nil
+	if old.float != nil && !free {
 		old = old.Tab.tiledTarget()
 		if old == nil {
 			return nil
 		}
 	}
 	cols, rows := old.paneSize()
-	if cols > 0 && rows > 0 {
-		if vertical {
-			rows = max(rows/2, 2)
-		} else {
-			cols = max(cols/2, 10)
-		}
-	} else {
+	switch {
+	case cols <= 0 || rows <= 0:
 		cols, rows = 80, 24
+	case free:
+	case vertical:
+		rows = max(rows/2, 2)
+	default:
+		cols = max(cols/2, 10)
 	}
 	p := a.newPaneRun(old.host, dir, cols, rows, command)
 	a.splitWith(old, p, vertical)
@@ -1466,7 +1488,7 @@ func (a *App) splitLocal(vertical bool, make func() *Pane) {
 	}
 	old := t.Focus
 	// A float splits the tab's tiled pane, not its own standalone node.
-	if old.float != nil {
+	if old.float != nil && t.canvas == nil {
 		old = t.tiledTarget()
 		if old == nil {
 			return
@@ -1481,6 +1503,12 @@ func (a *App) splitLocal(vertical bool, make func() *Pane) {
 // focus of its tab. A float as old splits the tab's tiled pane instead.
 func (a *App) splitWith(old, p *Pane, vertical bool) {
 	t := old.Tab
+	if old.float != nil && t.canvas != nil {
+		a.placeOnCanvas(t, old.float, p, vertical)
+		t.setFocus(p)
+		a.changed()
+		return
+	}
 	if old.float != nil {
 		if old = t.tiledTarget(); old == nil {
 			return
@@ -1520,6 +1548,10 @@ func (a *App) endPane(p *Pane) {
 	if p.closed || a.quitting {
 		return
 	}
+	if w := a.keeper(p.Tab); w != nil {
+		a.endKept(w, p)
+		return
+	}
 	if p.host != nil && len(a.tabs) == 1 && len(a.tabs[0].allPanes()) == 1 {
 		home, _ := os.UserHomeDir()
 		a.newTabOn(nil, home)
@@ -1527,6 +1559,24 @@ func (a *App) endPane(p *Pane) {
 	// A session the host no longer lists, as one it stopped sharing, is not
 	// this machine's to end.
 	a.dropPane(p, p.remote == nil || !p.remote.Gone())
+}
+
+// endKept ends a pane of the tabs the window keeps of space w, out of
+// sight: its tab goes with its last pane, and the space's layout follows.
+// A space whose last pane ends goes, as one closed empty.
+func (a *App) endKept(w *Workspace, p *Pane) {
+	k := w.kept
+	shown := k.tabs[min(k.active, len(k.tabs)-1)]
+	a.dropPane(p, p.remote == nil || !p.remote.Gone())
+	k.tabs = slices.DeleteFunc(k.tabs, func(t *Tab) bool { return t.Root == nil && len(t.Floats) == 0 })
+	k.active = max(slices.Index(k.tabs, shown), 0)
+	w.layout = a.layoutOf(k.tabs, k.active)
+	if len(k.tabs) == 0 {
+		w.kept = nil
+		a.st.remove(w)
+		a.st.save()
+	}
+	a.changed()
 }
 
 // sessionAlive tells whether the server still has session sid, and has not
@@ -1573,6 +1623,11 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
 	if f := p.float; f != nil {
 		t.removeFloat(f)
+		if t.Root == nil && len(t.Floats) == 0 {
+			// The last pane of a canvas.
+			a.removeTab(t)
+			return
+		}
 		if t.Focus == p {
 			t.Focus = nil
 			t.setFocus(t.nextFocus(p))
@@ -1586,6 +1641,17 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	n := p.Node
 	if n.Parent == nil {
 		t.Root = nil
+		if t.canvas != nil && len(t.Floats) > 0 {
+			if t.Focus == p {
+				t.Focus = nil
+				t.setFocus(t.nextFocus(p))
+			}
+			if a.tab() == t {
+				a.focusReq = t.Focus
+			}
+			a.changed()
+			return
+		}
 		if a.promoteFloat(t) {
 			if a.tab() == t {
 				a.focusReq = t.Focus
@@ -1758,7 +1824,11 @@ func (a *App) moveFocus(dx, dy int) {
 	cx, cy := from.X+from.W/2, from.Y+from.H/2
 	var best *Pane
 	bestScore := float32(1e9)
-	for _, p := range t.panes() {
+	cands := t.panes()
+	if t.canvas != nil {
+		cands = t.shownFloats()
+	}
+	for _, p := range cands {
 		if p == t.Focus {
 			continue
 		}
@@ -1949,6 +2019,15 @@ func (a *App) equalize() {
 	if t == nil {
 		return
 	}
+	equalizeTree(t.Root)
+	a.changed()
+}
+
+// equalizeTree gives every pane of the tree of root an even share.
+func equalizeTree(root *Node) {
+	if root == nil {
+		return
+	}
 	var walk func(n *Node) (cols, rows int)
 	walk = func(n *Node) (int, int) {
 		if n.Pane != nil {
@@ -1963,8 +2042,7 @@ func (a *App) equalize() {
 		n.Ratio = float32(ac) / float32(ac+bc)
 		return ac + bc, max(ar, br)
 	}
-	walk(t.Root)
-	a.changed()
+	walk(root)
 }
 
 func (a *App) toggleZoom() { _ = a.zoomFocused("toggle") }
@@ -2047,7 +2125,8 @@ func (a *App) floatPane(p *Pane) bool {
 // dockPane puts a float back among its tab's tiled panes, beside the one
 // focused last there.
 func (a *App) dockPane(p *Pane) bool {
-	if p == nil || p.float == nil || p.Tab == nil {
+	// A canvas has no tiled panes to dock among.
+	if p == nil || p.float == nil || p.Tab == nil || p.Tab.canvas != nil {
 		return false
 	}
 	t, f := p.Tab, p.float
@@ -2085,6 +2164,7 @@ func (a *App) newFloat(command []string) *Pane {
 	f.clamp()
 	t.Floats = append(t.Floats, f)
 	p.float = f
+	a.revealFloat(t, f)
 	t.setFocus(p)
 	if a.tab() == t {
 		a.focusReq = p
@@ -2166,6 +2246,24 @@ func (a *App) resizeFloat(f *Float, dw, dh float32) {
 // the box in the room.
 func (f *Float) resizeEdges(e int, dx, dy float32) {
 	right, bottom := f.X+f.W, f.Y+f.H
+	if f.free() {
+		// On a canvas there is no room's edge to keep inside.
+		if e&edgeLeft != 0 {
+			f.X = min(f.X+dx, right-floatMin)
+			f.W = right - f.X
+		}
+		if e&edgeRight != 0 {
+			f.W = max(f.W+dx, floatMin)
+		}
+		if e&edgeTop != 0 {
+			f.Y = min(f.Y+dy, bottom-floatMin)
+			f.H = bottom - f.Y
+		}
+		if e&edgeBottom != 0 {
+			f.H = max(f.H+dy, floatMin)
+		}
+		return
+	}
 	if e&edgeLeft != 0 {
 		f.X = min(max(f.X+dx, 0), right-floatMin)
 		f.W = right - f.X
@@ -2384,7 +2482,8 @@ func (a *App) cycleFloat() {
 // promoteFloat makes the tab's topmost float its tiled pane, when the tab
 // has lost the one it had. It reports whether it did.
 func (a *App) promoteFloat(t *Tab) bool {
-	if t == nil || t.Root != nil || len(t.Floats) == 0 {
+	// A canvas has no tiled panes to promote one to.
+	if t == nil || t.Root != nil || len(t.Floats) == 0 || t.canvas != nil {
 		return false
 	}
 	f := t.Floats[len(t.Floats)-1]
@@ -2568,9 +2667,12 @@ type savedTab = layout.Tab
 type savedNode = layout.Node
 type savedFloat = layout.Float
 
-func (a *App) snapshot() savedLayout {
-	l := savedLayout{Active: a.active, Tabs: []savedTab{}}
-	for _, t := range a.tabs {
+func (a *App) snapshot() savedLayout { return a.layoutOf(a.tabs, a.active) }
+
+// layoutOf is the layout of the tabs, of which active is shown.
+func (a *App) layoutOf(tabs []*Tab, active int) savedLayout {
+	l := savedLayout{Active: active, Tabs: []savedTab{}}
+	for _, t := range tabs {
 		l.Tabs = append(l.Tabs, a.savedTab(t))
 	}
 	return l
@@ -2605,12 +2707,17 @@ func (a *App) savedTab(t *Tab) savedTab {
 			// stay on their machine, and the pane attaches to one again.
 			if p.host == nil && !p.info.Idle && (len(p.info.Args) > 0 || p.info.Program != "") {
 				s.Prog, s.Args = p.info.Program, p.info.Args
+				s.AgentSession, s.AgentConfigDir = p.info.AgentSession, p.info.AgentConfigDir
 			}
 			return s
 		}
 		return &savedNode{Vertical: n.Vertical, Ratio: n.Ratio, A: save(n.A), B: save(n.B)}
 	}
 	st := savedTab{ID: t.UID, Name: t.Name, Root: save(t.Root), Zoom: t.Zoom != nil}
+	if t.canvas != nil {
+		cv := *t.canvas
+		st.Canvas = &cv
+	}
 	for _, f := range t.Floats {
 		if f.Pane == nil || f.Pane.Node == nil {
 			continue
@@ -2699,7 +2806,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 				// reboot is the shell the pane's program ran in: back at
 				// its prompt, the pane offers the program again.
 				if in.Idle {
-					p.resume = resumeHintFor(in.Shell, s.Prog, s.Args)
+					p.resume = resumeHintFor(in.Shell, s)
 				}
 			default:
 				dir := s.Dir
@@ -2708,7 +2815,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 				}
 				p = a.newPane(nil, dir, s.Cols, s.Rows)
 				p.Name, p.restored = s.Name, true
-				p.resume = resumeHintFor(p.info.Shell, s.Prog, s.Args)
+				p.resume = resumeHintFor(p.info.Shell, s)
 			}
 			p.Tab, p.Node = t, n
 			n.Pane = p
@@ -2732,6 +2839,8 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 	for _, st := range l.Tabs {
 		t := a.makeTab(st.ID)
 		t.Name = st.Name
+		// Before its floats, which a canvas keeps where they were.
+		t.canvas = loadCanvas(st.Canvas)
 		if st.Root != nil {
 			t.Root = load(st.Root, t, nil)
 		}
@@ -2775,7 +2884,10 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 		for _, f := range t.Floats {
 			t.setFocus(f.Pane)
 		}
-		t.setFocus(ps[min(max(st.Focus, 0), len(ps)-1)])
+		// A canvas has no tiled pane: its focus is a float's.
+		if len(ps) > 0 {
+			t.setFocus(ps[min(max(st.Focus, 0), len(ps)-1)])
+		}
 		if st.Zoom && len(ps) > 1 {
 			t.Zoom = t.Focus
 		}
@@ -2783,6 +2895,11 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			t.setFocus(focusedFloat.Pane)
 		}
 		a.tabs = append(a.tabs, t)
+		// A canvas saved with the setting on, which is off now, is tiled
+		// again; a tiled tab becomes a canvas as it shows, in its room.
+		if !prefs.Canvas && t.canvas != nil {
+			a.leaveCanvas(t)
+		}
 	}
 	// Sessions no tab shows, as those of an app that crashed, get a tab
 	// of their own.
@@ -2937,7 +3054,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			}
 			// The layout keeps the program in the foreground, for a pane
 			// whose session a restart loses: its start and its end save.
-			if was.Dir != in.Dir || was.Idle != in.Idle || was.Program != in.Program || !slices.Equal(was.Args, in.Args) {
+			if was.Dir != in.Dir || was.Idle != in.Idle || was.Program != in.Program || !slices.Equal(was.Args, in.Args) || was.AgentSession != in.AgentSession {
 				a.changed()
 			}
 		}
@@ -3352,7 +3469,7 @@ func (a *App) paneToNewTab() {
 
 // finishPaneMove settles focus after p moved to t from src.
 func (a *App) finishPaneMove(t *Tab, p *Pane, src *Tab, wasActive bool) {
-	if src != t && len(src.panes()) == 0 {
+	if src != t && len(src.allPanes()) == 0 {
 		a.removeTab(src)
 		if wasActive {
 			if i := slices.Index(a.tabs, t); i >= 0 {

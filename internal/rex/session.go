@@ -1352,6 +1352,9 @@ func (s *session) foreground(in *SessionInfo) {
 	if in.Dir == "" && !in.Idle {
 		in.Dir = inspect(in.PID).dir
 	}
+	if !in.Idle && strings.EqualFold(in.Program, "claude") {
+		in.AgentSession, in.AgentConfigDir = claudeSession(fg, p.dir)
+	}
 }
 
 // sampleEvery is how often at most a session that prints looks whether
@@ -1373,7 +1376,7 @@ func (s *session) sample() {
 	s.mu.Lock()
 	was := s.seen
 	s.seen = now
-	if now.Title != was.Title || now.Program != was.Program || now.Dir != was.Dir || now.Idle != was.Idle || !slices.Equal(now.Args, was.Args) {
+	if now.Title != was.Title || now.Program != was.Program || now.Dir != was.Dir || now.Idle != was.Idle || !slices.Equal(now.Args, was.Args) || now.AgentSession != was.AgentSession {
 		s.notify()
 	}
 	s.mu.Unlock()

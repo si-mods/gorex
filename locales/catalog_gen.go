@@ -5839,3 +5839,93 @@ func RemoteLanListenOn() string { return In(i18n.Locale()).RemoteLanListenOn() }
 func (msgs Messages) RemoteLanListenOn() string {
 	return Catalog.Format(msgs.locale, "remoteLanListenOn", nil)
 }
+
+// CmdResetCanvasView says "Reset Canvas View"
+// in the language the app shows.
+//
+// Command: show the active tab's infinite canvas from its start, at its
+// normal size. Palette row.
+func CmdResetCanvasView() string { return In(i18n.Locale()).CmdResetCanvasView() }
+
+// CmdResetCanvasView says "Reset Canvas View"
+// in the language of msgs.
+//
+// Command: show the active tab's infinite canvas from its start, at its
+// normal size. Palette row.
+func (msgs Messages) CmdResetCanvasView() string {
+	return Catalog.Format(msgs.locale, "cmdResetCanvasView", nil)
+}
+
+// SettingsExperimental says "Experimental"
+// in the language the app shows.
+//
+// Settings group: features still being tried, which may change or go away.
+func SettingsExperimental() string { return In(i18n.Locale()).SettingsExperimental() }
+
+// SettingsExperimental says "Experimental"
+// in the language of msgs.
+//
+// Settings group: features still being tried, which may change or go away.
+func (msgs Messages) SettingsExperimental() string {
+	return Catalog.Format(msgs.locale, "settingsExperimental", nil)
+}
+
+// SettingsCanvas says "Infinite canvas"
+// in the language the app shows.
+//
+// Setting: lay out every tab as an infinite canvas of free panes, an
+// experimental feature.
+func SettingsCanvas() string { return In(i18n.Locale()).SettingsCanvas() }
+
+// SettingsCanvas says "Infinite canvas"
+// in the language of msgs.
+//
+// Setting: lay out every tab as an infinite canvas of free panes, an
+// experimental feature.
+func (msgs Messages) SettingsCanvas() string {
+	return Catalog.Format(msgs.locale, "settingsCanvas", nil)
+}
+
+// SettingsCanvasHint says "Experimental. Every pane is a free box on an endless plane: scroll or drag the empty plane, or hold Space over it and…"
+// in the language the app shows.
+//
+// Hint under the Infinite canvas setting.
+func SettingsCanvasHint() string { return In(i18n.Locale()).SettingsCanvasHint() }
+
+// SettingsCanvasHint says "Experimental. Every pane is a free box on an endless plane: scroll or drag the empty plane, or hold Space over it and…"
+// in the language of msgs.
+//
+// Hint under the Infinite canvas setting.
+func (msgs Messages) SettingsCanvasHint() string {
+	return Catalog.Format(msgs.locale, "settingsCanvasHint", nil)
+}
+
+// CanvasNewTerminal says "New Terminal"
+// in the language the app shows.
+func CanvasNewTerminal() string { return In(i18n.Locale()).CanvasNewTerminal() }
+
+// CanvasNewTerminal says "New Terminal"
+// in the language of msgs.
+func (msgs Messages) CanvasNewTerminal() string {
+	return Catalog.Format(msgs.locale, "canvasNewTerminal", nil)
+}
+
+// CanvasNewBrowser says "New Browser"
+// in the language the app shows.
+func CanvasNewBrowser() string { return In(i18n.Locale()).CanvasNewBrowser() }
+
+// CanvasNewBrowser says "New Browser"
+// in the language of msgs.
+func (msgs Messages) CanvasNewBrowser() string {
+	return Catalog.Format(msgs.locale, "canvasNewBrowser", nil)
+}
+
+// CanvasNewNote says "New Note"
+// in the language the app shows.
+func CanvasNewNote() string { return In(i18n.Locale()).CanvasNewNote() }
+
+// CanvasNewNote says "New Note"
+// in the language of msgs.
+func (msgs Messages) CanvasNewNote() string {
+	return Catalog.Format(msgs.locale, "canvasNewNote", nil)
+}
