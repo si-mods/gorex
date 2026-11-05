@@ -1,7 +1,6 @@
 package rex
 
 import (
-	"path/filepath"
 	"strings"
 )
 
@@ -20,7 +19,7 @@ func ClaudeResume(shell, id, config string) (string, bool) {
 	if config == "" {
 		return cmd, true
 	}
-	switch strings.ToLower(strings.TrimSuffix(filepath.Base(shell), ".exe")) {
+	switch ShellName(shell) {
 	case "fish", "csh", "tcsh":
 		// No NAME=value prefix in these.
 		d, _ := q(config)
@@ -37,11 +36,18 @@ func ClaudeResume(shell, id, config string) (string, bool) {
 	return "CLAUDE_CONFIG_DIR=" + d + " " + cmd, true
 }
 
-// QuoterOf returns the word quoting of the shell at path:
-// path/filepath.Base of it, without .exe. It is nil for a shell the quoting
-// does not know, which gets no command rather than a wrong one.
+// ShellName returns the name of the shell or program at path, lower case
+// and without .exe: its last element by / or \, as a Windows host's path
+// reads on any client.
+func ShellName(path string) string {
+	return strings.TrimSuffix(strings.ToLower(path[strings.LastIndexAny(path, `/\`)+1:]), ".exe")
+}
+
+// QuoterOf returns the word quoting of the shell at path, by its
+// ShellName. It is nil for a shell the quoting does not know, which gets
+// no command rather than a wrong one.
 func QuoterOf(shell string) func(string) (string, bool) {
-	name := strings.ToLower(strings.TrimSuffix(filepath.Base(shell), ".exe"))
+	name := ShellName(shell)
 	switch name {
 	case "sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "yash", "csh", "tcsh":
 		return posixWord

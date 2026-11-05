@@ -2,7 +2,6 @@ package main
 
 import (
 	"log"
-	"path/filepath"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -58,8 +57,7 @@ var agentContinue = map[string]string{
 // continueCommand is the continue command of the agent named name, "" for a
 // program that is no agent here.
 func continueCommand(name string) string {
-	name = strings.ToLower(strings.TrimSuffix(filepath.Base(name), ".exe"))
-	return agentContinue[name]
+	return agentContinue[rex.ShellName(name)]
 }
 
 // resumeCommand is argv as the shell at path reads it, "" for a shell the
@@ -86,7 +84,7 @@ func resumeCommand(shell, prog string, args []string) (string, bool) {
 	}
 	// PowerShell reads a quoted first word as a string, not a command: the
 	// call operator runs it.
-	if name := strings.ToLower(strings.TrimSuffix(filepath.Base(shell), ".exe")); (name == "pwsh" || name == "powershell") && words[0] != args[0] {
+	if name := rex.ShellName(shell); (name == "pwsh" || name == "powershell") && words[0] != args[0] {
 		words[0] = "& " + words[0]
 	}
 	return strings.Join(words, " "), true

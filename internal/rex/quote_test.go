@@ -63,3 +63,17 @@ func TestPowerShellCurlyQuotes(t *testing.T) {
 		}
 	}
 }
+
+func TestShellName(t *testing.T) {
+	for in, want := range map[string]string{
+		"/bin/zsh":                               "zsh",
+		`C:\Program Files\PowerShell\7\pwsh.exe`: "pwsh",
+		`C:\WINDOWS\System32\CMD.EXE`:            "cmd",
+		"fish":                                   "fish",
+		"":                                       "",
+	} {
+		if got := ShellName(in); got != want {
+			t.Errorf("ShellName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

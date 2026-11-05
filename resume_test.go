@@ -64,6 +64,7 @@ func TestAgentContinue(t *testing.T) {
 		{"claude", "claude --continue"},
 		{"Claude.exe", "claude --continue"},
 		{"/opt/homebrew/bin/omp", "omp --continue"},
+		{`C:\Users\u\.local\bin\claude.exe`, "claude --continue"},
 		{"pi", "pi --continue"},
 		{"codex", "codex resume --last"},
 		{"node", ""},
