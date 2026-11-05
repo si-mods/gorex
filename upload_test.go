@@ -6,19 +6,28 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/internal/rex"
 )
 
 // remotePane opens a tab on a host, through a proxy, in dir there, and
 // returns its pane once its shell prompts.
 func remotePane(t *testing.T, a *App, tt *ui.Tester, dir string) (*hostConn, *hostProxy, *Pane) {
+	h, proxy, p, _ := remotePaneOf(t, a, tt, dir)
+	return h, proxy, p
+}
+
+// remotePaneOf is remotePane, with a client of the host's server.
+func remotePaneOf(t *testing.T, a *App, tt *ui.Tester, dir string) (*hostConn, *hostProxy, *Pane, *rex.Client) {
 	t.Helper()
 	fakeHosts(t)
-	sock, _ := startHostServer(t)
+	sock, remote := startHostServer(t)
 	proxy := newHostProxy(t, sock)
 	t.Cleanup(a.stopHosts)
 	h := a.addHost(savedHost{ID: "h1", Name: "office-mac", Address: proxy.path})
@@ -29,7 +38,7 @@ func remotePane(t *testing.T, a *App, tt *ui.Tester, dir string) (*hostConn, *ho
 	}
 	p := rt.Focus
 	waitFor(t, tt, "the remote shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
-	return h, proxy, p
+	return h, proxy, p, remote
 }
 
 // dropped writes files of these names and contents into a new directory,
@@ -90,7 +99,9 @@ func TestDropUploadsToHost(t *testing.T) {
 	a, tt := newTestApp(t)
 	there := testDir(t)
 	t.Cleanup(func() { os.RemoveAll(there) })
-	os.WriteFile(filepath.Join(there, "b.txt"), []byte("old"), 0o644)
+	if err := os.WriteFile(filepath.Join(there, "b.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	_, _, p := remotePane(t, a, tt, there)
 	if !uploads(p) {
 		t.Fatal("the host takes no files")
@@ -98,7 +109,9 @@ func TestDropUploadsToHost(t *testing.T) {
 	paths := dropped(t, "a b.txt", "hello", "b.txt", "new")
 	gone := filepath.Join(filepath.Dir(paths[0]), "gone.txt")
 	part := partialOf(there, "a b.txt", idOf(t, p.SID, paths[0]))
-	os.WriteFile(part, []byte("hel"), 0o644)
+	if err := os.WriteFile(part, []byte("hel"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	a.upload(p, append(paths, gone))
 	if len(p.transfers) != 3 {
 		t.Fatalf("transfers %v", p.transfers)
@@ -148,30 +161,51 @@ func TestDropFolderOnHost(t *testing.T) {
 	}
 }
 
-// TestUploadCancelled cancels an upload: what the host has of the file
-// goes, an earlier try's too, and nothing is pasted. Closing the pane
-// cancels its uploads.
-func TestUploadCancelled(t *testing.T) {
+// TestClosePaneMidUpload closes a pane of a host while it sends a file,
+// which ends its session at once: what the host has of the file goes all
+// the same, in the directory the put named, and nothing is pasted.
+func TestClosePaneMidUpload(t *testing.T) {
 	a, tt := newTestApp(t)
 	there := testDir(t)
 	t.Cleanup(func() { os.RemoveAll(there) })
-	_, _, p := remotePane(t, a, tt, there)
-	paths := dropped(t, "c.bin", strings.Repeat("x", 1<<20))
-	part := partialOf(there, "c.bin", idOf(t, p.SID, paths[0]))
-	os.WriteFile(part, []byte("xxxx"), 0o644)
-	a.upload(p, paths)
-	p.stopUploads()
+	_, _, p, remote := remotePaneOf(t, a, tt, there)
+	a.split(false) // the tab stays
+	sid := p.SID
+	// A file large enough to be under way a while: sparse here, written
+	// there as it comes.
+	path := filepath.Join(t.TempDir(), "big.bin")
+	f, err := os.Create(path)
+	if err == nil {
+		err = f.Truncate(4 << 30)
+		f.Close()
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	part := partialOf(there, "big.bin", idOf(t, sid, path))
+	a.upload(p, []string{path})
+	waitFor(t, tt, "the file under way", func() bool {
+		st, err := os.Stat(part)
+		return err == nil && st.Size() > 0
+	})
+	a.closePane(p)
+	if !p.closed {
+		t.Fatal("the pane did not close")
+	}
+	waitFor(t, tt, "the session to end", func() bool { return !slices.Contains(sessionIDs(t, remote), sid) })
 	waitUploaded(t, tt, p)
 	if _, err := os.Stat(part); err == nil {
 		t.Error("the partial stays")
 	}
-	if _, err := os.Stat(filepath.Join(there, "c.bin")); err == nil {
+	if _, err := os.Stat(filepath.Join(there, "big.bin")); err == nil {
 		t.Error("the file went")
 	}
-	if strings.Contains(p.term.Text(), "c.bin") {
-		t.Error("a cancelled file's path is pasted")
-	}
+}
 
+// TestPaneEndStopsUploads stops a pane's uploads however it ends.
+func TestPaneEndStopsUploads(t *testing.T) {
+	a, _ := newTestApp(t)
+	p := a.tab().Focus
 	ctx, cancel := context.WithCancel(context.Background())
 	p.transfers = []*fileTransfer{{name: "d.bin", cancel: cancel}}
 	a.dropPane(p, false)

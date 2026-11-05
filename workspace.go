@@ -925,10 +925,7 @@ func (a *App) leave() []*Tab {
 func closePanes(tabs []*Tab) {
 	for _, t := range tabs {
 		for _, p := range t.allPanes() {
-			p.closed = true
-			if p.term != nil {
-				p.term.Close()
-			}
+			p.end()
 			p.browser.destroy()
 		}
 	}
@@ -1046,10 +1043,7 @@ func (a *App) closeWorkspaceFor(client bool) {
 	}
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
-			p.closed = true
-			if p.term != nil {
-				p.term.Close()
-			}
+			p.end()
 			p.browser.destroy()
 			p.note.destroy()
 			a.killOn(p.host, p.SID)
@@ -1101,10 +1095,7 @@ func (a *App) moveTabToNewWindow(t *Tab) {
 	}
 	l := savedLayout{Tabs: []savedTab{a.savedTab(t)}}
 	for _, p := range t.allPanes() {
-		p.closed = true
-		if p.term != nil {
-			p.term.Close()
-		}
+		p.end()
 		p.browser.destroy()
 	}
 	a.removeTab(t)

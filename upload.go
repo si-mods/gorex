@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -112,13 +111,9 @@ func (a *App) upload(p *Pane, paths []string) {
 	}()
 }
 
-// abortTimeout is how long a cancelled upload tries to remove what the
-// host has of its file.
-const abortTimeout = 5 * time.Second
-
 // putFile sends the file at path as f says, x telling how it goes, and
-// returns its path there. Cancelled, it removes what the host has of the
-// file, an earlier try's too.
+// returns its path there. Cancelled under way, PutFile removes what the
+// host has of the file.
 func putFile(ctx context.Context, c *rex.Client, f rex.FilePut, path string, x *fileTransfer, update func(func())) (string, error) {
 	defer x.cancel()
 	var there string
@@ -138,13 +133,6 @@ func putFile(ctx context.Context, c *rex.Client, f rex.FilePut, path string, x *
 		if err != nil && ctx.Err() != nil {
 			err = ctx.Err()
 		}
-	}
-	if ctx.Err() != nil {
-		actx, stop := context.WithTimeout(context.Background(), abortTimeout)
-		if aerr := c.AbortFile(actx, f); aerr != nil {
-			log.Printf("upload: removing the partial of %s: %v", f.Name, aerr)
-		}
-		stop()
 	}
 	update(func() {
 		if err == nil {

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -30,6 +31,10 @@ var errNoFileTransfer = errors.New("rex: the server does not transfer files; upd
 // errTransferring is the error of a transfer of a file another transfer
 // writes yet.
 var errTransferring = errors.New("rex: the file is being transferred already")
+
+// abortTimeout is how long a put cancelled tries to remove what the server
+// has of its file.
+const abortTimeout = 5 * time.Second
 
 // partialAge is how long a partial is kept since it was last written: a
 // put into its directory removes an older one.
@@ -111,7 +116,15 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	}
 	ss, dir, err := s.fileSession(req.SID, peer, req.Dir)
 	if err != nil {
-		return err
+		// An abort names the directory absolute, as the put's first answer
+		// told it, and needs no session: the session of a pane closing
+		// ends as its uploads stop. It removes no more than a partial of
+		// GoRex, whose name is of a hash, and only for a client that may
+		// use the session while there is one.
+		if !req.Abort || !filepath.IsAbs(req.Dir) || errors.Is(err, errNotShared) {
+			return err
+		}
+		dir = filepath.Clean(req.Dir)
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return fmt.Errorf("rex: %s is not a directory", dir)
@@ -149,7 +162,7 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	if err != nil {
 		return err
 	}
-	answer(FileAnswer{OK: true, Offset: have, Sum: sum})
+	answer(FileAnswer{OK: true, Offset: have, Sum: sum, Dir: dir})
 	if peer != "" {
 		conn.SetReadDeadline(time.Now().Add(writeTimeout.get() + time.Duration(have/resumeRate)*time.Second))
 	}
@@ -569,7 +582,9 @@ func ctxErr(ctx context.Context, err error) error {
 // directory, as f says (FilePut), going on from what an earlier try with
 // the same f.ID left there when its bytes are src's. It returns where the
 // file is, and whether it was skipped. progress, when set, is told of the
-// bytes there so far.
+// bytes there so far. Cancelled through ctx once the server took it, it
+// removes what the server has of the file (AbortFile), in the directory
+// the server named: the session may end as it is cancelled.
 func (c *Client) PutFile(ctx context.Context, f FilePut, src io.ReaderAt, progress func(done int64)) (path string, skipped bool, err error) {
 	if err := c.canTransfer(); err != nil {
 		return "", false, err
@@ -580,6 +595,18 @@ func (c *Client) PutFile(ctx context.Context, f FilePut, src io.ReaderAt, progre
 		return a.Path, a.Skipped, err
 	}
 	defer fc.Close()
+	defer func(dir string) {
+		if err == nil || ctx.Err() == nil || dir == "" {
+			return
+		}
+		fc.Close() // the server lets the partial go
+		f.Dir = dir
+		actx, stop := context.WithTimeout(context.Background(), abortTimeout)
+		defer stop()
+		if aerr := c.AbortFile(actx, f); aerr != nil {
+			log.Printf("rex: removing the partial of %s: %v", f.Name, aerr)
+		}
+	}(a.Dir)
 	off := a.Offset
 	if off > 0 {
 		if sum, err := hashOf(io.NewSectionReader(src, 0, off)); off > f.Size || err != nil || sum != a.Sum {
@@ -609,7 +636,9 @@ func (c *Client) PutFile(ctx context.Context, f FilePut, src io.ReaderAt, progre
 
 // AbortFile removes what a put of f left in the session's directory: the
 // partial of f.Name for f.ID in f.Dir, once no transfer writes it, waiting
-// for one stopping to let it go until ctx is done.
+// for one stopping to let it go until ctx is done. With f.Dir absolute,
+// as a put's first answer names it (FileAnswer.Dir), the session need not
+// be there any more.
 func (c *Client) AbortFile(ctx context.Context, f FilePut) error {
 	if err := c.canTransfer(); err != nil {
 		return err
