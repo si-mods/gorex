@@ -437,17 +437,6 @@ func (s *Server) handle(conn net.Conn, peer string) {
 			return
 		}
 	}
-	// A teleport's package follows its request on the connection, as a
-	// session's bytes follow an attach. Only this machine packs one.
-	if req := (Request{}); json.Unmarshal(first, &req) == nil && (req.Op == "teleport" || req.Op == "teleport.pack" && peer == "") {
-		defer conn.Close()
-		if req.Op == "teleport" {
-			s.teleportIn(conn, r, req.Teleport, peer)
-		} else {
-			s.teleportPack(conn, req.SID)
-		}
-		return
-	}
 	var a Attach
 	if json.Unmarshal(first, &a) == nil && a.Op == "attach" {
 		s.mu.Lock()
@@ -493,6 +482,12 @@ func (s *Server) handle(conn net.Conn, peer string) {
 	}
 	if a.Op == "file.put" || a.Op == "file.get" {
 		s.transfer(conn, r, first, a.Op, peer)
+		return
+	}
+	// A teleport's package follows its request, as a put's file does.
+	// Only this machine packs one.
+	if a.Op == "teleport" || a.Op == "teleport.pack" && peer == "" {
+		s.teleport(conn, r, first, a.Op, peer)
 		return
 	}
 	s.control(conn, r, first, peer)
@@ -605,10 +600,15 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	}
 }
 
-// maxAside is how many requests of a connection answered aside (kills,
-// layout commands) run at once; maxLine, the longest line it may send, is
-// in teleport.go, which the client shares.
-const maxAside = 8
+// maxLine is the longest line of control a connection may send, and
+// maxAside how many of its requests answered aside (kills, layout
+// commands) run at once.
+const (
+	maxLine  = 1 << 20
+	maxAside = 8
+)
+
+var errLineTooLong = errors.New("rex: the request is too long")
 
 // errConnGone answers an attach through a control connection that is
 // gone: the client lost it too, or is about to.
@@ -616,6 +616,25 @@ const errConnGone = "rex: the connection attached through is gone"
 
 // killHook, when set, runs in each kill before it starts: for tests.
 var killHook func()
+
+// readLine reads a line of at most maxLine bytes, the newline included.
+func readLine(r *bufio.Reader) ([]byte, error) {
+	var line []byte
+	for {
+		part, err := r.ReadSlice('\n')
+		line = append(line, part...)
+		if len(line) > maxLine {
+			return nil, errLineTooLong
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		return line, nil
+	}
+}
 
 // refuseLine tells a connection its first line was too long.
 func refuseLine(conn net.Conn, err error) {

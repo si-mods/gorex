@@ -170,7 +170,7 @@ func (a *App) teleport(p *Pane, h *hostConn) {
 			case !cancelled:
 				// A banner as the others, until dismissed or the pane's
 				// next teleport goes.
-				p.teleportErr = locales.TeleportFailed(h.Name, strings.TrimPrefix(err.Error(), "teleport: "))
+				p.teleportErr = locales.TeleportFailed(h.Name, strings.TrimPrefix(strings.TrimPrefix(err.Error(), "rex: "), "teleport: "))
 				a.err, a.errMsg = p.teleportErr, nil
 			}
 			if expected != "" {

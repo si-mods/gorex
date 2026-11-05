@@ -224,7 +224,9 @@ the directory it lands in.
 
 One new server op, `teleport`, allowed to remote peers that may
 `create` (it runs a command, as `create` does) and only to them, on a
-connection of its own. The request carries the manifest and the
+connection of its own, as a file transfer's (`file.put`): the server
+routes it by its first line, and drops one of a remote peer that sends
+or takes nothing for 30 seconds while it waits on the peer. The request carries the manifest and the
 package's length; the server answers `{"ok":true}`, or refuses at once
 a manifest it does not take. The package then follows as raw bytes, the
 way a framed attach sends its snapshot after a header line
@@ -243,9 +245,11 @@ name past `/dev/`, as `ttys008`), its directory the pane's; with no such
 record, as on Windows, where omp keys a terminal by its emulator's
 environment, which GoRex's panes would share, the conversation of the
 pane's directory written last. Its dirs follow the process's
-environment and its `--profile` and `--session-dir`. It answers a `Response` line whose data is the
-manifest, then the package. The source app (or CLI) pipes the package
-from its server to the target's; it holds no files.
+environment and its `--profile` and `--session-dir`. It answers
+`{"ok":true}`, or the error, then a line of the manifest, then the
+package. The source app (or CLI) opens both connections as it opens a
+file transfer's (`openFile`), cancels by closing them, and pipes the
+package from its server to the target's; it holds no files.
 
 ## The app
 

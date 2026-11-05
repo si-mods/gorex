@@ -59,7 +59,7 @@ func teleportCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 	})
 	if err != nil {
-		fmt.Fprintf(errOut, "gorex teleport: %s\n", strings.TrimPrefix(err.Error(), "teleport: "))
+		fmt.Fprintf(errOut, "gorex teleport: %s\n", strings.TrimPrefix(strings.TrimPrefix(err.Error(), "rex: "), "teleport: "))
 		return ExitFailed, true
 	}
 	// The window makes its pane the host's session, and ends this one.

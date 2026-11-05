@@ -1,3 +1,5 @@
+//go:build darwin || linux || windows
+
 package rex
 
 import (
@@ -8,11 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 	"unicode"
 )
@@ -142,92 +142,49 @@ const (
 // starting, and nothing is left; the source session is never changed:
 // the caller ends it once it has the new one.
 func Teleport(ctx context.Context, src *Client, sid string, dst *Client, step func(step, sid string)) (SessionInfo, error) {
-	var mu sync.Mutex
-	var conns []net.Conn
-	keep := func(c net.Conn) bool {
-		mu.Lock()
-		defer mu.Unlock()
-		conns = append(conns, c)
-		return ctx.Err() == nil
-	}
-	defer context.AfterFunc(ctx, func() {
-		mu.Lock()
-		defer mu.Unlock()
-		for _, c := range conns {
-			c.Close()
-		}
-	})()
-	defer func() {
-		mu.Lock()
-		defer mu.Unlock()
-		for _, c := range conns {
-			c.Close()
-		}
-	}()
-	fail := func(err error) (SessionInfo, error) {
-		if ctx.Err() != nil {
-			return SessionInfo{}, ctx.Err()
-		}
+	// Each a connection of its own, as a file transfer's (openFile): the
+	// first answer says it is taken, and closing it cancels.
+	step(TeleportPacking, "")
+	pc, _, err := src.openFile(ctx, Request{Op: "teleport.pack", SID: sid})
+	if err != nil {
 		return SessionInfo{}, err
 	}
-	if src.dial == nil || dst.dial == nil {
-		return SessionInfo{}, errors.New("rex: no connection to open for a teleport")
-	}
-
-	step(TeleportPacking, "")
-	pc, err := src.dial()
-	if err != nil {
-		return fail(err)
-	}
-	if !keep(pc) {
-		return fail(ctx.Err())
-	}
-	b, _ := json.Marshal(Request{Op: "teleport.pack", SID: sid})
-	if _, err := pc.Write(append(b, '\n')); err != nil {
-		return fail(err)
-	}
-	pr := bufio.NewReaderSize(pc, 64<<10)
+	defer pc.Close()
 	var m TeleportManifest
-	if err := readAnswer(pr, &m); err != nil {
-		return fail(err)
+	line, err := readLine(pc.r)
+	if err == nil {
+		err = json.Unmarshal(line, &m)
+	}
+	if err != nil {
+		return SessionInfo{}, ctxErr(ctx, err)
 	}
 	if m.Size < 0 || m.Size > teleportMax {
-		return fail(errors.New("rex: the package is too large"))
+		return SessionInfo{}, errors.New("rex: the package is too large")
 	}
 
 	step(TeleportSending, m.Link)
-	tc, err := dst.dial()
-	if err != nil {
-		return fail(err)
-	}
-	if !keep(tc) {
-		return fail(ctx.Err())
-	}
-	b, _ = json.Marshal(Request{Op: "teleport", Teleport: &m})
-	if _, err := tc.Write(append(b, '\n')); err != nil {
-		return fail(err)
-	}
 	// The target refuses at once what it would refuse after the package.
-	if err := readOK(tc); err != nil {
-		return fail(err)
+	tc, _, err := dst.openFile(ctx, Request{Op: "teleport", Teleport: &m})
+	if err != nil {
+		return SessionInfo{}, err
 	}
-	if _, err := io.CopyN(tc, pr, m.Size); err != nil {
-		return fail(fmt.Errorf("rex: sending the package: %w", err))
+	defer tc.Close()
+	if _, err := io.CopyN(tc, pc.r, m.Size); err != nil {
+		return SessionInfo{}, ctxErr(ctx, fmt.Errorf("rex: sending the package: %w", err))
 	}
 
 	step(TeleportStarting, m.Link)
 	var in SessionInfo
-	tr := bufio.NewReader(tc)
-	if err := readAnswer(tr, &in); err != nil {
+	if err := readAnswer(tc.r, &in); err != nil {
 		if ctx.Err() != nil {
 			// Cancelled as the target started the session, which may be
 			// there: nothing would show it. Its id is the hop's.
 			dst.Kill(m.Link)
 		}
-		return fail(err)
+		return SessionInfo{}, ctxErr(ctx, err)
 	}
 	// The target closes the connection once it kept what it made.
-	io.Copy(io.Discard, tr)
+	io.Copy(io.Discard, tc.r)
 	return in, nil
 }
 
@@ -249,30 +206,6 @@ func readAnswer(r *bufio.Reader, out any) error {
 	}
 	return json.Unmarshal(res.Data, out)
 }
-
-// readLine reads a line of at most maxLine bytes, the newline included.
-func readLine(r *bufio.Reader) ([]byte, error) {
-	var line []byte
-	for {
-		part, err := r.ReadSlice('\n')
-		line = append(line, part...)
-		if len(line) > maxLine {
-			return nil, errLineTooLong
-		}
-		if err == bufio.ErrBufferFull {
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		return line, nil
-	}
-}
-
-// maxLine is the longest line of control a connection may send.
-const maxLine = 1 << 20
-
-var errLineTooLong = errors.New("rex: the request is too long")
 
 // claudeSlug is the name Claude Code gives the directory of the
 // conversations started in dir, under its config dir's projects: every

@@ -25,9 +25,31 @@ import (
 	"time"
 )
 
+// teleport serves a teleport or teleport.pack connection of peer, whose
+// first line is first: as a file transfer's (transfer), one of a remote
+// peer that takes or gives nothing for writeTimeout is dropped.
+func (s *Server) teleport(conn net.Conn, r *bufio.Reader, first []byte, op, peer string) {
+	defer conn.Close()
+	var req Request
+	if err := json.Unmarshal(first, &req); err != nil {
+		writeAnswer(conn, Response{Error: err.Error()})
+		return
+	}
+	touch := func() {}
+	if peer != "" {
+		touch = func() { conn.SetDeadline(time.Now().Add(writeTimeout.get())) }
+	}
+	touch()
+	if op == "teleport.pack" {
+		s.teleportPack(conn, req.SID)
+		return
+	}
+	s.teleportIn(conn, r, req.Teleport, peer, touch)
+}
+
 // teleportPack packs session sid for a teleport, on a connection of this
-// machine: a Response line whose Data is the manifest, then the package,
-// Size bytes; or a Response of the error.
+// machine: {"ok":true}, a line of the manifest, then the package, Size
+// bytes; or the error.
 func (s *Server) teleportPack(conn net.Conn, sid string) {
 	m, pkg, err := s.pack(sid)
 	if pkg != nil {
@@ -39,7 +61,7 @@ func (s *Server) teleportPack(conn net.Conn, sid string) {
 		return
 	}
 	data, _ := json.Marshal(m)
-	if writeAnswer(conn, Response{Data: data}) != nil {
+	if _, err := conn.Write(append([]byte(`{"ok":true}`+"\n"), append(data, '\n')...)); err != nil {
 		return
 	}
 	if _, err := pkg.Seek(0, io.SeekStart); err == nil {
@@ -369,7 +391,7 @@ func outsideBackups(file, root string) map[string]bool {
 // error, and once the package is in, with a Response of the session or of
 // the error, which names the step that failed. Whatever it made before a
 // failure goes.
-func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest, peer string) {
+func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest, peer string, touch func()) {
 	// What a failure leaves goes before the answer tells of it.
 	var undo []func()
 	defer func() {
@@ -382,6 +404,7 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 			undo[i]()
 		}
 		undo = nil
+		touch()
 		writeAnswer(conn, Response{Error: "teleport: " + err.Error()})
 	}
 	if m == nil {
@@ -419,8 +442,7 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		return
 	}
 	defer os.RemoveAll(tmp)
-	err = receivePackage(io.LimitReader(idleReader{conn, r}, m.Size), m.Size, tmp, m.Program, m.Session)
-	conn.SetReadDeadline(time.Time{})
+	err = receivePackage(io.LimitReader(touching{r, touch}, m.Size), m.Size, tmp, m.Program, m.Session)
 	if err != nil {
 		fail(fmt.Errorf("receiving the package: %w", err))
 		return
@@ -531,6 +553,7 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 	// A cancel meanwhile, or a client gone, leaves no session: nothing
 	// would show it.
 	data, _ := json.Marshal(s.info(ss))
+	touch()
 	if connGone(conn, r) || writeAnswer(conn, Response{Data: data}) != nil {
 		s.ops.RLock()
 		s.end(ss)
@@ -791,16 +814,16 @@ func receivePackage(r io.Reader, size int64, dir, program, id string) error {
 	return nil
 }
 
-// idleReader reads r, of conn, failing once conn sent nothing for a
-// minute: a peer gone without closing it, over a network that dropped.
-type idleReader struct {
-	conn net.Conn
-	r    io.Reader
+// touching reads r, touching the connection's deadline as it reads, as a
+// file transfer's progress does.
+type touching struct {
+	r     io.Reader
+	touch func()
 }
 
-func (i idleReader) Read(p []byte) (int, error) {
-	i.conn.SetReadDeadline(time.Now().Add(time.Minute))
-	return i.r.Read(p)
+func (t touching) Read(p []byte) (int, error) {
+	t.touch()
+	return t.r.Read(p)
 }
 
 // countReader counts what it reads.
