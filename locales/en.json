@@ -2165,5 +2165,37 @@
         "example": "not a Git work tree"
       }
     }
+  },
+  "teleportAskTitle": "Teleport “{tab}” to {host}?",
+  "@teleportAskTitle": {
+    "description": "Title of the question after a tab is dropped on another host's place in the tabs.",
+    "placeholders": {
+      "tab": {
+        "type": "String",
+        "example": "gorex"
+      },
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "teleportAskBody": "The work tree, its uncommitted changes and the agent's conversation move to {host}; the session here ends.",
+  "@teleportAskBody": {
+    "description": "Body of the question before a tab dropped on another host teleports: what moves, and that the session here ends.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "teleportAskConfirm": "Teleport",
+  "@teleportAskConfirm": {
+    "description": "Button of the question before a dropped tab teleports: go."
+  },
+  "teleportOnePane": "Only a tab with one pane can teleport",
+  "@teleportOnePane": {
+    "description": "Why a tab dropped on another host cannot teleport: it has more than one pane."
   }
 }

@@ -633,5 +633,9 @@
   "teleportSendingStep": "正在发送到 {host}…",
   "teleportStartingStep": "正在 {host} 上启动…",
   "teleportCancel": "取消",
-  "teleportFailed": "传送到 {host} 失败：{error}"
+  "teleportFailed": "传送到 {host} 失败：{error}",
+  "teleportAskTitle": "将“{tab}”传送到 {host}？",
+  "teleportAskBody": "它的工作树、未提交的改动和代理的对话将移到 {host}，这里的会话随之结束。",
+  "teleportAskConfirm": "传送",
+  "teleportOnePane": "只有单个窗格的标签页可以传送"
 }

@@ -366,6 +366,13 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) {
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true})
 	}
+	// A tab of another host's dropped on it asks to teleport there.
+	if dragged, ok := ui.Drop[*Tab](row); ok && teleportsTo(dragged, h) {
+		a.askTeleport(dragged, h)
+	}
+	if dragged, over := ui.DragOver[*Tab](row); over && teleportsTo(dragged, h) {
+		row.Radius(pillRadius(26, 9)).Border(1.5, k.busy.Alpha(0.6))
+	}
 	hovered := row.Hovered()
 	row.Children(func() {
 		if h != nil {

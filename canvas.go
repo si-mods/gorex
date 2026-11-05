@@ -300,7 +300,7 @@ func (a *App) canvasSpace(c *ui.Context) {
 		a.endCanvasPan()
 	}
 	if t == nil || t.canvas == nil || a.canvasPan != t && a.canvasHover != t ||
-		a.paletteOpen || a.wsConfirm || a.wsOpen || a.hostOpen || a.paneRenaming != nil || a.renaming != nil || a.findPane != nil {
+		a.paletteOpen || a.wsConfirm || a.teleportAsk.open || a.wsOpen || a.hostOpen || a.paneRenaming != nil || a.renaming != nil || a.findPane != nil {
 		return
 	}
 	if c.Shortcut(0, ui.KeySpace) && a.canvasPan != t {

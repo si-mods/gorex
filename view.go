@@ -69,6 +69,7 @@ func (a *App) view(c *ui.Context) {
 	a.shortcuts(c)
 	a.palette(c, k)
 	a.workspaceConfirm(c, k)
+	a.teleportConfirm(c, k)
 	// mygo paints a text input's caret in the theme of the frame as it
 	// paints, and a field cannot give it one of its own: the widgets above
 	// have taken their colors already, so the theme changes now, after
@@ -303,7 +304,7 @@ func (a *App) tabContent(c *ui.Context, k *colors, t *Tab) {
 	// pointer over a page, the page has the keyboard, and its pane takes
 	// the tab's focus, so that the shortcuts act on it.
 	if a.focusReq == nil && !a.contentFocus && a.pageHover != nil && t.Focus != a.pageHover &&
-		!a.paletteOpen && !a.wsConfirm && !a.wsOpen && !a.hostOpen && a.paneRenaming == nil && a.renaming == nil && a.findPane == nil {
+		!a.paletteOpen && !a.wsConfirm && !a.teleportAsk.open && !a.wsOpen && !a.hostOpen && a.paneRenaming == nil && a.renaming == nil && a.findPane == nil {
 		t.setFocus(a.pageHover)
 		a.changed()
 	}

@@ -256,6 +256,10 @@ package from its server to the target's; it holds no files.
 - **Teleport to…** in the pane's menu and the command palette, listing
   the connected hosts; disabled with the reason when the pane cannot
   go.
+- A tab dragged onto another host's tab, or its header in the sidebar,
+  is outlined there rather than placed, and dropped asks to teleport its
+  pane there: a dialog with Cancel and Teleport, or the reason it cannot
+  go (a tab of more than one pane, the pane's, the host's).
 - While it runs, the pane shows a frosted overlay (`paintFrost`) with
   the step and the host; Cancel closes the connections, and the target,
   which looks at its connection before `create` and before it answers,

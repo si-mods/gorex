@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
+
 	"gorex/internal/rex"
 )
 
@@ -238,5 +240,150 @@ func TestPaletteTitleWidth(t *testing.T) {
 	beside := width("a-long-running-program-whose-name-takes-room")
 	if beside < alone-1 {
 		t.Errorf("the title is %v wide beside the detail, %v alone", beside, alone)
+	}
+}
+
+// TestTabDropTeleportAsks drags a tab onto a tab of another host's, in the
+// tab strip and the sidebar: it asks to teleport there, and neither
+// merges nor moves. Onto a tab of its own host's, it moves as before.
+func TestTabDropTeleportAsks(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, place := range []string{"left", ""} {
+		t.Run("placement="+place, func(t *testing.T) {
+			prefs = settings{TabPlacement: place}
+			a, src, dst := newMergeTestTabs()
+			src.Name, dst.Name = "source", "target"
+			h := &hostConn{savedHost: savedHost{ID: "h1", Name: "office-mac"}}
+			a.hosts = []*hostConn{h}
+			dst.Focus.host = h
+			tt := ui.NewTester(func(c *ui.Context) {
+				k := colorsOf(c)
+				list := ui.Column(c)
+				if place == "" {
+					list = ui.Row(c)
+				}
+				list.Children(func() {
+					for i, tab := range slices.Clone(a.tabs) {
+						a.tabEvents(c, ui.Box(c.Key(tab.ID)).Size(120, 32).Label(tab.Name), k, i, tab)
+					}
+				})
+			}, 300, 100)
+			drag := func(from, to string, at float32) {
+				t.Helper()
+				f, _ := tt.Find(from)
+				r, ok := tt.Find(to)
+				if !ok {
+					t.Fatalf("no %q in %q", to, tt.Texts())
+				}
+				x, y := r.X+r.W*at, r.Y+r.H/2
+				if place != "" {
+					x, y = r.X+r.W/2, r.Y+r.H*at
+				}
+				tt.Press(f.X+f.W/2, f.Y+f.H/2)
+				tt.Frame()
+				tt.Move(f.X+f.W/2+5, f.Y+f.H/2+5)
+				tt.Frame()
+				tt.Move(x, y)
+				tt.Frame()
+				tt.Release(x, y)
+				tt.Frame()
+			}
+			drag("source", "target", 0.5)
+			if ask := a.teleportAsk; !ask.open || ask.tab != src || ask.host != h {
+				t.Fatalf("dropped on the host's tab: ask %+v", ask)
+			}
+			if len(a.tabs) != 2 || a.tabs[0] != src || len(src.panes()) != 2 || len(dst.panes()) != 1 {
+				t.Fatalf("the drop moved or merged tabs: %d tabs, source %d panes", len(a.tabs), len(src.panes()))
+			}
+			a.teleportAsk = teleportAsk{}
+			// Of one host, the target's leading edge moves it.
+			dst.Focus.host = nil
+			a.hosts = nil
+			drag("target", "source", 0.1)
+			if a.teleportAsk.open || a.tabs[0] != dst {
+				t.Errorf("a drop on a tab of the same host: ask %v, first tab %q", a.teleportAsk.open, a.tabs[0].Name)
+			}
+		})
+	}
+}
+
+// TestTeleportDropDialog drops a tab on a host's header in the sidebar: a
+// tab of two panes is told why it cannot go, with no Teleport button; a
+// tab of one pane is asked, and Teleport starts its teleport to the host.
+func TestTeleportDropDialog(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left"}
+	fakeHosts(t)
+	sock, _ := startHostServer(t)
+	t.Cleanup(a.stopHosts)
+	h := a.addHost(savedHost{ID: "h1", Name: "office-mac", Address: sock})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	tab := a.tab()
+	tab.Name = "source"
+	drop := func() {
+		t.Helper()
+		tt.Frame()
+		name, detail := tab.label()
+		f, ok := tt.Find(name + " " + detail)
+		header, ok2 := tt.Find("office-mac")
+		if !ok || !ok2 {
+			t.Fatalf("no tab or header in %q", tt.Texts())
+		}
+		x, y := f.X+f.W/2, f.Y+f.H/2
+		tt.Press(x, y)
+		tt.Frame()
+		for _, yy := range []float32{y + 4, y + 10, y + 20, header.Y + header.H/2} {
+			tt.Move(x, yy)
+			tt.Frame()
+		}
+		tt.Release(x, header.Y+header.H/2)
+		tt.Frame()
+		if ask := a.teleportAsk; !ask.open || ask.tab != tab || ask.host != h {
+			t.Fatalf("dropped on the header: ask %+v", ask)
+		}
+		if !tt.HasText("Teleport “source” to office-mac?") {
+			t.Fatalf("no title in %q", tt.Texts())
+		}
+	}
+
+	a.split(false)
+	drop()
+	if !tt.HasText("Only a tab with one pane can teleport") {
+		t.Errorf("no reason in %q", tt.Texts())
+	}
+	if _, ok := tt.Find("Teleport"); ok {
+		t.Error("a Teleport button for a tab of two panes")
+	}
+	if err := tt.Click("Cancel"); err != nil {
+		t.Fatal(err)
+	}
+	if a.teleportAsk.open {
+		t.Fatal("Cancel left the question open")
+	}
+
+	a.closePane(tab.Focus)
+	p := tab.Focus
+	waitFor(t, tt, "the shell", func() bool {
+		refresh(a)
+		return len(tab.allPanes()) == 1 && p.term != nil && p.info.Idle
+	})
+	// Another tab is in front: the dragged one comes to it on Teleport,
+	// so that its overlay shows.
+	a.newTabOn(nil, t.TempDir())
+	drop()
+	if !tt.HasText("move to office-mac") {
+		t.Errorf("no body in %q", tt.Texts())
+	}
+	if err := tt.Click("Teleport"); err != nil {
+		t.Fatal(err)
+	}
+	// The temporary directory is no work tree: the teleport goes, and
+	// fails there.
+	waitFor(t, tt, "the teleport", func() bool { return p.teleport != nil || p.teleportErr != "" })
+	if a.teleportAsk.open || !slices.Contains(a.tabs, tab) || a.tab() != tab {
+		t.Errorf("after Teleport: ask %v, the tab kept %v, in front %v", a.teleportAsk.open, slices.Contains(a.tabs, tab), a.tab() == tab)
 	}
 }
