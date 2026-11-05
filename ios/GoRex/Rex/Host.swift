@@ -1,5 +1,7 @@
 import Foundation
+import Network
 import Observation
+import SwiftUI
 
 /// A server the app connects to, as the user added it.
 struct HostConfig: Codable, Identifiable, Hashable {
@@ -7,6 +9,58 @@ struct HostConfig: Codable, Identifiable, Hashable {
     var name: String
     var url: URL
     var desktop = false
+    /// The program and arguments new windows run, as typed; nil or empty
+    /// runs the host's login shell.
+    var command: String?
+}
+
+extension HostConfig {
+    /// The host of a pairing QR code. GoRex and Rex show a plain address,
+    /// http(s)://host[:port], with no path, query or user; nil for anything else.
+    init?(pairing code: String) {
+        guard var c = URLComponents(string: code.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = c.scheme?.lowercased(), ["http", "https"].contains(scheme),
+              let host = c.host, !host.isEmpty,
+              c.user == nil, c.password == nil, c.path.isEmpty, c.query == nil, c.fragment == nil
+        else { return nil }
+        c.scheme = scheme
+        guard let url = c.url else { return nil }
+        self.init(name: Self.name(host), url: url)
+    }
+
+    /// A host's name by its address, as Rex's API tells no machine name: an
+    /// IP address as is, else the first label of the DNS name, less the
+    /// "-gorex" that GoRex's built-in Tailscale adds.
+    static func name(_ host: String) -> String {
+        let h = host.trimmingCharacters(in: ["[", "]"])
+        if IPv4Address(h) != nil || IPv6Address(h) != nil { return h }
+        let label = h.split(separator: ".").first.map(String.init) ?? h
+        return label.hasSuffix("-gorex") && label.count > 6 ? String(label.dropLast(6)) : label
+    }
+
+    /// Splits a command shell-style: white space separates words, quotes
+    /// group them, and a backslash outside single quotes takes the next
+    /// character as is.
+    static func argv(_ command: String) -> [String] {
+        var words: [String] = [], word = "", inWord = false, quote: Character?, escaped = false
+        for ch in command {
+            if escaped {
+                word.append(ch); escaped = false
+            } else if ch == "\\" && quote != "'" {
+                escaped = true; inWord = true
+            } else if let q = quote {
+                if ch == q { quote = nil } else { word.append(ch) }
+            } else if ch == "\"" || ch == "'" {
+                quote = ch; inWord = true
+            } else if ch.isWhitespace {
+                if inWord { words.append(word); word = ""; inWord = false }
+            } else {
+                word.append(ch); inWord = true
+            }
+        }
+        if inWord { words.append(word) }
+        return words
+    }
 }
 
 /// One host's control connection and what it shows: its sessions, their
@@ -204,9 +258,11 @@ final class Host: Identifiable {
 
     /// Opens a new window running the shell, and returns its block.
     func newWindow(in session: String) async throws -> String? {
+        var block: [String: Any] = ["flavor": "com.superlogical.terminal.shell"]
+        let argv = HostConfig.argv(config.command ?? "")
+        if !argv.isEmpty { block["options"] = ["command": argv] }
         let r = try await control?.call("session.new_window", [
-            "session_id": session, "focus": false,
-            "layout": ["block": ["flavor": "com.superlogical.terminal.shell"]],
+            "session_id": session, "focus": false, "layout": ["block": block],
         ]).payload
         return (r?["block_ids"] as? [Any])?.first as? String
     }
@@ -237,7 +293,27 @@ final class HostStore {
         save()
     }
 
+    /// Changes a host; one with a new address connects again.
+    func update(_ config: HostConfig) {
+        guard let i = hosts.firstIndex(where: { $0.id == config.id }) else { return }
+        if hosts[i].config.url == config.url {
+            hosts[i].config = config
+        } else {
+            hosts[i].stop()
+            hosts[i] = Host(config)
+            hosts[i].connect()
+        }
+        save()
+    }
+
+    func move(from source: IndexSet, to destination: Int) {
+        hosts.move(fromOffsets: source, toOffset: destination)
+        save()
+    }
+
     func host(_ id: UUID) -> Host? { hosts.first { $0.id == id } }
+
+    func host(at url: URL) -> Host? { hosts.first { $0.config.url == url } }
 
     private func save() {
         UserDefaults.standard.set(try? JSONEncoder().encode(hosts.map(\.config)), forKey: "hosts")

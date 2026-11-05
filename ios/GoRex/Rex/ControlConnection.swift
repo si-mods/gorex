@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 /// A failed call, as the response's error names it.
 struct RexError: LocalizedError {
@@ -88,13 +89,21 @@ final class ControlConnection {
         task.maximumMessageSize = 1 << 20
     }
 
+    /// This client's label for servers to show, as set in Settings, else
+    /// the device's name.
+    static var label: String {
+        let l = UserDefaults.standard.string(forKey: "clientLabel")?.trimmingCharacters(in: .whitespaces) ?? ""
+        return l.isEmpty ? UIDevice.current.name : l
+    }
+
     /// Opens the connection and says hello, continuing the client of token
     /// when the server still has it.
     func open(token: String?) async throws {
         task.resume()
         var hello: [String: Any] = [
             "type": "hello", "api_revision": Self.revision,
-            "client": ["kind": "app", "platform": "ios", "name": "GoRex", "version": Bundle.main.version],
+            "client": ["kind": "app", "platform": "ios", "name": "GoRex", "version": Bundle.main.version,
+                       "label": Self.label],
         ]
         hello["reconnect_token"] = token
         try await task.send(.string(String(decoding: try JSONSerialization.data(withJSONObject: hello), as: UTF8.self)))

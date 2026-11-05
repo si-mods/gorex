@@ -57,7 +57,7 @@ struct TerminalScreen: View {
         case .failed(let why):
             VStack(spacing: 12) {
                 label(why)
-                Button("Retry") { session.start() }.buttonStyle(.borderedProminent)
+                Button("Retry") { session.start() }.buttonStyle(.borderedProminent).foregroundStyle(Color.page)
             }
         }
     }

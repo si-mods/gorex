@@ -9,7 +9,12 @@ import UIKit
 /// full-screen program.
 final class TerminalView: UIView, UIKeyInput {
     let session: TerminalSession
-    private let font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+    /// The font size chosen in Settings.
+    static var fontSize: CGFloat {
+        let v = UserDefaults.standard.double(forKey: "fontSize")
+        return v > 0 ? v : 12
+    }
+    private let font = UIFont.monospacedSystemFont(ofSize: TerminalView.fontSize, weight: .regular)
     private lazy var fonts: [CTFont] = [UIFont.Weight.regular, .bold].flatMap { w -> [CTFont] in
         let f = UIFont.monospacedSystemFont(ofSize: font.pointSize, weight: w)
         let italic = f.fontDescriptor.withSymbolicTraits(.traitItalic).map { UIFont(descriptor: $0, size: 0) } ?? f
@@ -283,7 +288,7 @@ final class KeyBar: UIInputView {
         b.changesSelectionAsPrimaryAction = false
         b.configurationUpdateHandler = { b in
             b.configuration?.baseBackgroundColor = b.isSelected ? .tintColor : nil
-            b.configuration?.baseForegroundColor = b.isSelected ? .white : .label
+            b.configuration?.baseForegroundColor = b.isSelected ? .systemBackground : .label
         }
         return b
     }

@@ -1,8 +1,10 @@
 import SwiftUI
 
 extension Color {
-    static let page = Color(red: 0x22 / 255, green: 0x25 / 255, blue: 0x2F / 255)
-    static let card = Color(red: 0x36 / 255, green: 0x3A / 255, blue: 0x47 / 255)
+    static let page = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0x22 / 255, green: 0x25 / 255, blue: 0x2F / 255, alpha: 1) : .systemGroupedBackground })
+    static let card = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0x36 / 255, green: 0x3A / 255, blue: 0x47 / 255, alpha: 1) : .secondarySystemGroupedBackground })
 }
 
 /// Every host, its sessions, and their windows, as Rex's iPhone app lists
@@ -40,7 +42,6 @@ struct HostListView: View {
             }
             .sheet(isPresented: $settings) { SettingsView() }
         }
-        .preferredColorScheme(.dark)
     }
 
     /// Whether a window's row shows, by the search and the eye.
@@ -85,7 +86,7 @@ struct HostListView: View {
             }
         }
         .font(.title3)
-        .foregroundStyle(.white)
+        .foregroundStyle(.primary)
         .padding(.horizontal, 20)
         .padding(.bottom, 8)
     }
@@ -113,7 +114,7 @@ private struct HostSection: View {
                 }
                 .accessibilityLabel("Host Menu")
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             switch host.status {
             case .connecting where host.sessions.isEmpty:
                 Text("Connecting…").foregroundStyle(.secondary)
@@ -182,7 +183,7 @@ private struct WindowRow: View {
             AppIcon(program: program)
             Text(title.isEmpty ? " " : title)
                 .font(.body.weight(.medium))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
@@ -193,7 +194,7 @@ private struct WindowRow: View {
         .contentShape(Rectangle())
         .overlay(alignment: .bottom) {
             if divider {
-                Rectangle().fill(.white.opacity(0.12)).frame(height: 1 / 3).padding(.leading, 16 + 44 + 14)
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1 / 3).padding(.leading, 16 + 44 + 14)
             }
         }
     }

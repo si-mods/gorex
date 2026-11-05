@@ -118,6 +118,7 @@ final class TerminalSession {
                     return
                 }
                 terminal = t
+                if let m = TerminalTheme.chosen?.message { t.setTheme(m) }
                 state = .live
             case .output(let o):
                 terminal?.write(o)

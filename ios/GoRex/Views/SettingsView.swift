@@ -1,74 +1,223 @@
 import SwiftUI
 
-/// The hosts: add one by its address, swipe one away to remove it.
+/// Settings, as Rex's iPhone app lays them out: cards of rows that open a
+/// page each, the client's label, and a search over the rows' titles.
 struct SettingsView: View {
     @Environment(HostStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    @State private var adding = false
+    @AppStorage("scheme") private var scheme = "dark"
+    @AppStorage("theme") private var theme = ""
+    @AppStorage("clientLabel") private var label = ""
+    @State private var query = ""
+
+    private struct Item: Identifiable {
+        let title: LocalizedStringResource
+        let icon: AnyView
+        var value: String?
+        let page: AnyView
+        var id: String { title.key }
+    }
+
+    private static let schemes: [(String, LocalizedStringResource)] = [("system", "System"), ("dark", "Dark"), ("light", "Light")]
+
+    private var cards: [[Item]] {
+        let version = Bundle.main.version
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        return [
+            [Item(title: "Interface", icon: tile(.black) {
+                    Capsule().fill(Color(red: 0.2, green: 0.55, blue: 1)).frame(width: 20, height: 12)
+                        .overlay(alignment: .trailing) { Circle().fill(.white).padding(1.5) }
+                 }, value: String(localized: Self.schemes.first { $0.0 == scheme }?.1 ?? "Dark"),
+                 page: AnyView(Choices(title: "Interface", options: Self.schemes.map { ($0.0, String(localized: $0.1)) }, selection: $scheme))),
+             Item(title: "Themes", icon: tile(LinearGradient(colors: [.red, .orange, .yellow, .green, .blue, .purple],
+                                                             startPoint: .topLeading, endPoint: .bottomTrailing)) {
+                    Image(systemName: "paintpalette.fill").foregroundStyle(.white)
+                 }, value: theme.isEmpty ? String(localized: "Default") : theme,
+                 page: AnyView(Choices(title: "Themes", options: [("", String(localized: "Default"))] + TerminalTheme.all.map { ($0.name, $0.name) },
+                                       selection: $theme)))],
+            [Item(title: "Terminal", icon: tile(Color(white: 0.13)) {
+                    Text(">_").font(.system(size: 13, weight: .bold, design: .monospaced)).foregroundStyle(.green)
+                 }, page: AnyView(TerminalSettings())),
+             Item(title: "Remote Hosts", icon: tile(Color(red: 0.55, green: 0.36, blue: 0.96)) {
+                    Image(systemName: "globe").foregroundStyle(.white)
+                 }, page: AnyView(RemoteHostsView()))],
+            [Item(title: "About", icon: tile(.gray) { Image(systemName: "info").foregroundStyle(.white) },
+                  value: "\(version) (\(build))", page: AnyView(AboutView(version: version, build: build)))],
+        ]
+    }
 
     var body: some View {
         NavigationStack {
             List {
-                Section("Hosts") {
-                    ForEach(store.hosts) { h in
-                        VStack(alignment: .leading) {
-                            Text(h.config.name)
-                            Text(h.config.url.absoluteString).font(.footnote).foregroundStyle(.secondary)
+                ForEach(Array(cards.map { $0.filter { matches($0.title) } }.filter { !$0.isEmpty }.enumerated()), id: \.offset) { _, items in
+                    Section {
+                        ForEach(items) { item in
+                            NavigationLink { item.page } label: {
+                                SettingsRow(icon: item.icon, title: item.title) {
+                                    if let v = item.value { Text(v).foregroundStyle(.secondary).lineLimit(1) }
+                                }
+                            }
+                            .listRowBackground(Color.card)
                         }
                     }
-                    .onDelete { $0.map { store.hosts[$0].id }.forEach(store.remove) }
-                    Button("Add Host", systemImage: "plus") { adding = true }
+                }
+                if matches("Label") {
+                    Section("Client Info") {
+                        SettingsRow(icon: nil, title: "Label") {
+                            TextField(ControlConnection.label, text: $label)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundStyle(.secondary)
+                                .autocorrectionDisabled()
+                                .submitLabel(.done)
+                                .onSubmit(sendLabel)
+                        }
+                        .listRowBackground(Color.card)
+                    }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.page)
+            .safeAreaInset(edge: .bottom) {
+                HStack {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Search Settings", text: $query)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 50)
+                .glass(in: Capsule())
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+            }
             .navigationTitle("Settings")
-            .toolbar { Button("Done") { dismiss() } }
-            .sheet(isPresented: $adding) { AddHostView() }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("Close")
+                }
+            }
+        }
+        // A sheet keeps its own scheme: change it here too.
+        .preferredColorScheme(GoRexApp.colorScheme(scheme))
+    }
+
+    private func matches(_ title: LocalizedStringResource) -> Bool {
+        query.isEmpty || String(localized: title).localizedCaseInsensitiveContains(query)
+    }
+
+    /// Tells the connected servers the new label, which later hellos carry.
+    private func sendLabel() {
+        let l = ControlConnection.label
+        for h in store.hosts {
+            Task { _ = try? await h.control?.call("client.set_label", ["label": l]) }
+        }
+    }
+
+    private func tile(_ fill: some ShapeStyle, @ViewBuilder _ content: () -> some View) -> AnyView {
+        AnyView(content().font(.system(size: 16, weight: .semibold)).frame(width: 32, height: 32)
+            .background(fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous)))
+    }
+}
+
+/// A settings row: an icon, a title, and what goes on the right.
+private struct SettingsRow<Trailing: View>: View {
+    let icon: AnyView?
+    let title: LocalizedStringResource
+    @ViewBuilder let trailing: Trailing
+
+    var body: some View {
+        HStack(spacing: 14) {
+            if let icon { icon.accessibilityHidden(true) }
+            Text(title).alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+            Spacer(minLength: 12)
+            trailing
         }
     }
 }
 
-private struct AddHostView: View {
-    @Environment(HostStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = ""
-    @State private var address = ""
-    @State private var desktop = false
-
-    /// The address as an http(s) URL with a host; a bare host gets http://.
-    private var url: URL? {
-        let s = address.trimmingCharacters(in: .whitespaces)
-        guard let u = URL(string: s.contains("://") ? s : "http://" + s),
-              ["http", "https"].contains(u.scheme), u.host() != nil else { return nil }
-        return u
-    }
+/// A list to pick one of options in, with a search when they are many.
+private struct Choices: View {
+    let title: LocalizedStringResource
+    let options: [(id: String, name: String)]
+    @Binding var selection: String
+    @State private var query = ""
 
     var body: some View {
-        NavigationStack {
-            Form {
-                TextField("Name", text: $name)
-                    .autocorrectionDisabled()
-                TextField("http://192.168.1.2:7297", text: $address)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("address")
-                Picker("Device", selection: $desktop) {
-                    Text("Laptop").tag(false)
-                    Text("Desktop").tag(true)
+        let shown = options.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+        let list = List(shown, id: \.id) { o in
+            Button { selection = o.id } label: {
+                HStack {
+                    Text(o.name).foregroundStyle(.primary)
+                    Spacer()
+                    if o.id == selection { Image(systemName: "checkmark").fontWeight(.semibold) }
                 }
             }
-            .navigationTitle("Add Host")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        guard let url else { return }
-                        store.add(HostConfig(name: name.isEmpty ? url.host() ?? "" : name, url: url, desktop: desktop))
-                        dismiss()
-                    }
-                    .disabled(url == nil)
-                }
-            }
+            .listRowBackground(Color.card)
         }
+        .scrollContentBackground(.hidden)
+        .background(Color.page)
+        .navigationTitle(Text(title))
+        .navigationBarTitleDisplayMode(.inline)
+        if options.count > 10 {
+            list.searchable(text: $query)
+        } else {
+            list
+        }
+    }
+}
+
+/// The terminal's options: its font size.
+private struct TerminalSettings: View {
+    @AppStorage("fontSize") private var fontSize = 12.0
+
+    var body: some View {
+        List {
+            Stepper(value: $fontSize, in: 8...24) {
+                LabeledContent("Font Size", value: String(localized: "\(Int(fontSize)) pt"))
+            }
+            .listRowBackground(Color.card)
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.page)
+        .navigationTitle("Terminal")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct AboutView: View {
+    let version: String
+    let build: String
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent("Version", value: version)
+                LabeledContent("Build", value: build)
+                Link(destination: URL(string: "https://github.com/si-mods/gorex")!) {
+                    LabeledContent("GitHub", value: "si-mods/gorex")
+                }
+                NavigationLink("Third-Party Notices") { Notices() }
+            }
+            .listRowBackground(Color.card)
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.page)
+        .navigationTitle("About")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct Notices: View {
+    private let text = Bundle.main.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "md")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+
+    var body: some View {
+        ScrollView {
+            Text(text).font(.caption.monospaced()).textSelection(.enabled).padding(20)
+        }
+        .background(Color.page)
+        .navigationTitle("Third-Party Notices")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

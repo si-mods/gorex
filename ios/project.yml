@@ -21,6 +21,8 @@ targets:
     platform: iOS
     sources:
       - GoRex
+      - path: THIRD_PARTY_NOTICES.md
+        buildPhase: resources
     dependencies:
       - framework: Frameworks/GhosttyVt.xcframework
         embed: false
@@ -28,6 +30,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1,2"
     info:
       path: GoRex/Info.plist
@@ -46,6 +49,7 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: GoRex connects to your computers on the local network.
+        NSCameraUsageDescription: Rex Go scans the pairing QR code that GoRex or Rex shows.
   # Hostless, so that it also runs without xcodebuild:
   # xcrun simctl spawn booted .../xctest GoRexTests.xctest
   GoRexTests:
@@ -56,6 +60,7 @@ targets:
       - GoRex/Rex
       - GoRex/Terminal/VTerminal.swift
       - GoRex/Terminal/KeyEvent.swift
+      - GoRex/Terminal/TerminalTheme.swift
       - path: ../internal/rexapi/testdata/rex-terminal-stream.bin
         buildPhase: resources
     dependencies:

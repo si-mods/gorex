@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+# ghostty-themes: write GoRex/ghostty-themes.json, the Ghostty themes of the
+# mygo that ../go.mod pins (plugins/terminal/ghostty_themes.go, generated from
+# Ghostty's sources). Each theme's 22 colors are its 16 palette colors, then
+# background, foreground, cursor, cursor text, selection and selection text.
+import json, os, re, subprocess
+
+ios = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+mod = subprocess.check_output(["go", "list", "-m", "-f", "{{.Dir}}", "github.com/egoist/mygo"],
+                              cwd=os.path.dirname(ios), text=True).strip()
+src = open(os.path.join(mod, "plugins/terminal/ghostty_themes.go"), encoding="utf-8").read()
+themes = [{"name": json.loads(name), "colors": [int(c, 16) for c in colors.split(", ")]}
+          for name, colors in re.findall(r'\{("(?:[^"\\]|\\.)*"), \[22\]uint32\{([^}]*)\}\}', src)]
+assert themes and all(len(t["colors"]) == 22 for t in themes)
+with open(os.path.join(ios, "GoRex/ghostty-themes.json"), "w", encoding="utf-8") as f:
+    f.write("[\n" + ",\n".join(json.dumps(t, ensure_ascii=False, separators=(",", ":")) for t in themes) + "\n]\n")
+print(len(themes), "themes")
