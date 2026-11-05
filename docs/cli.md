@@ -146,8 +146,8 @@ read. With no agent found, only the shared skill is written.
 Claude Code and Codex also get a session-start hook, added to
 `~/.claude/settings.json` and `~/.codex/hooks.json`. The hook runs
 `gorex __internal session-start --agent NAME`, which prints the session,
-pane and connection for the agent's context, and names the session when
-`--session-naming` is on. Only GoRex's own hook is added or removed:
+pane and connection for the agent's context, and labels the pane when
+`--pane-naming` is on. Only GoRex's own hook is added or removed:
 every other setting and hook is left as it was, and a settings file that
 is not valid JSON is reported as a conflict instead of rewritten.
 

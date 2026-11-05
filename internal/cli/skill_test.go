@@ -280,13 +280,13 @@ func TestSessionStart(t *testing.T) {
 
 	t.Setenv("GOREX_SESSION", "abc123")
 	t.Setenv("GOREX_PANE", "4")
-	code, _, out, _ = runMain(t, "__internal", "session-start", "--agent", "claude", "--feature-session-naming=false")
+	code, _, out, _ = runMain(t, "__internal", "session-start", "--agent", "claude", "--feature-pane-naming=false")
 	if code != ExitOK || !strings.Contains(out, "GOREX_SESSION=abc123") || !strings.Contains(out, "GOREX_PANE=4") ||
-		!strings.Contains(out, "GoRex terminal") || strings.Contains(out, "Name the session") {
+		!strings.Contains(out, "GoRex terminal") || strings.Contains(out, "Label the pane") {
 		t.Fatalf("hook output: %d %q", code, out)
 	}
-	_, _, out, _ = runMain(t, "__internal", "session-start", "--agent", "claude", "--feature-session-naming=true")
-	if !strings.Contains(out, "Name the session") {
+	_, _, out, _ = runMain(t, "__internal", "session-start", "--agent", "claude", "--feature-pane-naming=true")
+	if !strings.Contains(out, "Label the pane") {
 		t.Fatalf("naming hook output: %q", out)
 	}
 }

@@ -536,10 +536,10 @@ type statusItem struct {
 }
 
 type harnessStatus struct {
-	ID            string       `json:"id"`
-	Detected      bool         `json:"detected"`
-	SessionNaming bool         `json:"session_naming,omitempty"`
-	Items         []statusItem `json:"items"`
+	ID         string       `json:"id"`
+	Detected   bool         `json:"detected"`
+	PaneNaming bool         `json:"pane_naming,omitempty"`
+	Items      []statusItem `json:"items"`
 }
 
 type statusResult struct {
@@ -638,7 +638,7 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	dry := fs.Bool("dry-run", false, "report without changing")
 	force := fs.Bool("force", false, "replace a skill GoRex did not install")
 	asJSON := fs.Bool("json", false, "print JSON")
-	naming := fs.Bool("session-naming", false, "tell agents to name the session after the task")
+	naming := fs.Bool("pane-naming", false, "tell agents to label the pane after the task")
 	if code, stop := parse(fs, args); stop {
 		return code, true
 	}
@@ -648,7 +648,7 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	}
 	namingSet := false
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "session-naming" {
+		if f.Name == "pane-naming" {
 			namingSet = true
 		}
 	})
@@ -676,9 +676,9 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	if action == "status" {
 		return skillStatus(selected, scope, out, *asJSON)
 	}
-	sessionNaming := *naming
+	paneNaming := *naming
 	if !namingSet {
-		sessionNaming = existingSessionNaming(selected)
+		paneNaming = existingPaneNaming(selected)
 	}
 	stub := skillStub()
 	var steps []stepResult
@@ -729,9 +729,9 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 		seenHook[a.HookPath] = true
 		var change string
 		if action == "setup" {
-			change, err = setHook(a.HookPath, a.ID, true, sessionNaming, *dry)
+			change, err = setHook(a.HookPath, a.ID, true, paneNaming, *dry)
 		} else {
-			change, err = setHook(a.HookPath, a.ID, false, sessionNaming, *dry)
+			change, err = setHook(a.HookPath, a.ID, false, paneNaming, *dry)
 		}
 		steps = append(steps, stepResult{Harnesses: []string{a.ID}, Kind: "hook", Path: a.HookPath, Change: change, Reason: errString(err)})
 		if err != nil {
@@ -795,7 +795,7 @@ func skillStatus(selected []agentInfo, scope string, out io.Writer, asJSON bool)
 			failed = true
 		}
 		if a.HookPath != "" {
-			h.SessionNaming = hookNaming(a.HookPath, a.ID)
+			h.PaneNaming = hookPaneNaming(a.HookPath, a.ID)
 		}
 		h.Items = append(h.Items, item)
 		if a.HookPath == "" {

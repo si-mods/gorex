@@ -25,11 +25,11 @@ func internalCmd(args []string, out, errOut io.Writer) (int, bool) {
 }
 
 // internalSkillCmd prints the guide the stub skill tells an agent to read.
-// The session-naming flag is accepted for the stub's sake and changes
+// The pane-naming flag is accepted for the stub's sake and changes
 // nothing here.
 func internalSkillCmd(args []string, out io.Writer) (int, bool) {
 	fs := flagSet("__internal skill", io.Discard)
-	_ = fs.Bool("feature-session-naming", true, "")
+	_ = fs.Bool("feature-pane-naming", true, "")
 	if fs.Parse(args) != nil {
 		return ExitOK, true
 	}
@@ -43,7 +43,7 @@ func internalSkillCmd(args []string, out io.Writer) (int, bool) {
 func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 	fs := flagSet("__internal session-start", io.Discard)
 	_ = fs.String("agent", "", "")
-	naming := fs.Bool("feature-session-naming", true, "")
+	naming := fs.Bool("feature-pane-naming", true, "")
 	if fs.Parse(args) != nil {
 		return ExitOK, true
 	}
@@ -87,11 +87,12 @@ func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 	fmt.Fprintln(out, "the same guide.")
 	if *naming {
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Name the session as part of handling the first request that identifies")
-		fmt.Fprintln(out, "the work. Run `gorex rename -s \"$GOREX_SESSION\" <label>` without waiting")
-		fmt.Fprintln(out, "for the user to ask, before loading the skill. Use two to four lowercase")
-		fmt.Fprintln(out, "words joined by hyphens, such as `fix-login-redirect`. Name the task or")
-		fmt.Fprintln(out, "project. Keep the existing label if it already describes the same work.")
+		fmt.Fprintln(out, "Label the pane as part of handling the first request that identifies")
+		fmt.Fprintln(out, "the work. Run `gorex rename -s \"$GOREX_SESSION\" -b \"$GOREX_PANE\" <label>`")
+		fmt.Fprintln(out, "without waiting for the user to ask, before loading the skill. Use two to")
+		fmt.Fprintln(out, "four lowercase words joined by hyphens, such as `fix-login-redirect`.")
+		fmt.Fprintln(out, "Name the task or project. Keep the existing label if it already")
+		fmt.Fprintln(out, "describes the same work.")
 	}
 	return ExitOK, true
 }

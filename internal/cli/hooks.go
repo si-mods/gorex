@@ -15,12 +15,12 @@ import (
 // hookCommand is what an agent's session-start hook runs. The trailing
 // marker lets status and remove recognize our hook, and the failure is
 // swallowed so an agent's start never fails for GoRex.
-func hookCommand(agent string, sessionNaming bool) string {
+func hookCommand(agent string, paneNaming bool) string {
 	name := "__internal session-start --agent " + agent
-	if sessionNaming {
-		name += " --feature-session-naming=true"
+	if paneNaming {
+		name += " --feature-pane-naming=true"
 	} else {
-		name += " --feature-session-naming=false"
+		name += " --feature-pane-naming=false"
 	}
 	// `gorex` is on PATH in every GoRex terminal, through GOREX_BIN_DIR's
 	// shim, so the hook keeps working when the app moves or updates.
@@ -177,9 +177,9 @@ func hookState(path, agent string) (string, error) {
 	return state, nil
 }
 
-// hookNaming reports whether the installed hook asks agents to name the
-// session after their task.
-func hookNaming(path, agent string) bool {
+// hookPaneNaming reports whether the installed hook asks agents to label
+// the pane after their task.
+func hookPaneNaming(path, agent string) bool {
 	root, _, err := readObject(path)
 	if err != nil {
 		return false
@@ -191,7 +191,7 @@ func hookNaming(path, agent string) bool {
 		for _, h := range items {
 			hook, _ := h.(map[string]any)
 			cmd, _ := hook["command"].(string)
-			if isOurHook(cmd, agent) && strings.Contains(cmd, "--feature-session-naming=true") {
+			if isOurHook(cmd, agent) && strings.Contains(cmd, "--feature-pane-naming=true") {
 				return true
 			}
 		}
@@ -201,7 +201,7 @@ func hookNaming(path, agent string) bool {
 
 // setHook adds, replaces or removes our session-start hook, leaving every
 // other hook and setting as it was.
-func setHook(path, agent string, install, sessionNaming, dry bool) (string, error) {
+func setHook(path, agent string, install, paneNaming, dry bool) (string, error) {
 	root, created, err := readObject(path)
 	if err != nil {
 		return "conflict", err
@@ -210,7 +210,7 @@ func setHook(path, agent string, install, sessionNaming, dry bool) (string, erro
 	if err != nil {
 		return "conflict", err
 	}
-	command := hookCommand(agent, sessionNaming)
+	command := hookCommand(agent, paneNaming)
 	found, current, keptCurrent, stale := false, false, false, false
 	kept := make([]any, 0, len(entries))
 	for _, e := range entries {
@@ -318,10 +318,10 @@ func setHook(path, agent string, install, sessionNaming, dry bool) (string, erro
 	return "removed", nil
 }
 
-// existingSessionNaming reports whether the installed hooks already ask
-// agents to name sessions, so a setup without --session-naming keeps the
+// existingPaneNaming reports whether the installed hooks already ask
+// agents to label panes, so a setup without --pane-naming keeps the
 // choice.
-func existingSessionNaming(selected []agentInfo) bool {
+func existingPaneNaming(selected []agentInfo) bool {
 	for _, a := range selected {
 		if a.HookPath == "" {
 			continue
@@ -337,7 +337,7 @@ func existingSessionNaming(selected []agentInfo) bool {
 			for _, h := range items {
 				hook, _ := h.(map[string]any)
 				cmd, _ := hook["command"].(string)
-				if isOurHook(cmd, a.ID) && strings.Contains(cmd, "--feature-session-naming=true") {
+				if isOurHook(cmd, a.ID) && strings.Contains(cmd, "--feature-pane-naming=true") {
 					return true
 				}
 			}
