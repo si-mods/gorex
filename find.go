@@ -112,8 +112,12 @@ var linkLine = regexp.MustCompile(`^(.*?)(:\d+)(?::\d+)?$`)
 
 // openLink opens a link the terminal hands over: a URL goes to the system
 // as the terminal would; a file path, with :line:col trimmed, resolves
-// against the pane's program directory and opens with the system.
+// against the pane's program directory and opens with the system. One
+// printed in a pane of a host is downloaded first (download).
 func (a *App) openLink(p *Pane, link string) bool {
+	if p != nil && p.host != nil {
+		return a.download(p, link)
+	}
 	path, ok := panePath(p, link)
 	if !ok {
 		return false

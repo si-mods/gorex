@@ -326,6 +326,7 @@
   "paneDropUpload": "上传到 {host} 的 {dir}",
   "paneDropUpdate": "更新 {host} 上的 GoRex 才能上传文件",
   "paneUploadFolder": "暂不支持上传文件夹",
+  "paneDownloadFolder": "暂不支持下载文件夹",
   "paneTransferProgress": "{done} / {size}",
   "paneTransferDone": "完成",
   "paneTransferCancel": "取消",

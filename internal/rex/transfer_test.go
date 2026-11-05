@@ -101,7 +101,7 @@ func TestFileRoundTrip(t *testing.T) {
 				t.Errorf("partials left: %v", left)
 			}
 			// A directory is no file.
-			if _, err := c.client.DownloadFile(context.Background(), sid, dir, dest, "", nil); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+			if _, err := c.client.DownloadFile(context.Background(), sid, dir, dest, "", nil); !NotAFile(err) {
 				t.Errorf("download of a directory: %v", err)
 			}
 		})
@@ -629,5 +629,75 @@ func TestFilePutCancelled(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Errorf("the put left %v", entries)
+	}
+}
+
+// TestFileHome puts and gets files by paths of "~": the server user's home
+// directory.
+func TestFileHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	sid := transferSession(t, local, local, t.TempDir())
+	path, _, _, err := put(local, sid, "~", "h.txt", "h1", "", []byte("home"))
+	if err != nil || path != filepath.Join(home, "h.txt") {
+		t.Fatalf("put into ~: %q %v", path, err)
+	}
+	os.Mkdir(filepath.Join(home, "sub"), 0o755)
+	if path, _, _, err = put(local, sid, "~/sub", "s.txt", "h2", "", []byte("sub")); err != nil || path != filepath.Join(home, "sub", "s.txt") {
+		t.Fatalf("put into ~/sub: %q %v", path, err)
+	}
+	got, err := local.DownloadFile(context.Background(), sid, "~/sub/s.txt", t.TempDir(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFile(t, got, []byte("sub"))
+}
+
+// TestDownloadCancelled cancels downloads: the partial goes, one an
+// earlier try left too. A download failing otherwise keeps it.
+func TestDownloadCancelled(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	data := bytes.Repeat([]byte("x"), 8<<20)
+	os.WriteFile(filepath.Join(dir, "big.bin"), data, 0o644)
+	dest := t.TempDir()
+	part := filepath.Join(dest, partialName("big.bin", downloadID(sid, "big.bin")))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	_, err := local.DownloadFile(ctx, sid, "big.bin", dest, "", func(done, _ int64) {
+		if done > 0 {
+			cancel()
+		}
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled: %v", err)
+	}
+	if exists(part) {
+		t.Error("a cancelled download keeps its partial")
+	}
+
+	os.WriteFile(part, data[:1000], 0o644)
+	ctx, stop := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer stop()
+	if _, err := local.DownloadFile(ctx, sid, "big.bin", dest, "", nil); err == nil {
+		t.Fatal("a download past its deadline")
+	}
+	if !exists(part) {
+		t.Error("a failed download removed its partial")
+	}
+	ctx, cancel = context.WithCancel(context.Background())
+	cancel()
+	if _, err := local.DownloadFile(ctx, sid, "big.bin", dest, "", nil); err == nil {
+		t.Fatal("a cancelled download")
+	}
+	if exists(part) {
+		t.Error("a cancelled download keeps an earlier try's partial")
 	}
 }
