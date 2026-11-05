@@ -747,6 +747,28 @@ func (a *App) killOn(h *hostConn, sid string) {
 	}
 }
 
+// killPane ends the session of p, closing, and stops its uploads. The
+// session of a pane of a host with uploads going ends once they removed
+// what the host has of their files, which the session's directory names;
+// it counts as closed at once.
+func (a *App) killPane(p *Pane) {
+	p.stopUploads()
+	h, sid, done := p.host, p.SID, p.uploading
+	if h != nil && sid != "" && done != nil && h.update != nil {
+		select {
+		case <-done:
+		default:
+			h.markClosed(sid)
+			go func() {
+				<-done
+				h.update(func() { h.kill(sid) })
+			}()
+			return
+		}
+	}
+	a.killOn(h, sid)
+}
+
 // offline tells, on the error banner, that a host is not connected, and
 // reports whether it is not.
 func (a *App) offline(h *hostConn) bool {
@@ -1621,11 +1643,12 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	if p.term != nil {
 		p.term.Close()
 	}
-	p.stopUploads()
 	p.browser.destroy()
 	p.note.destroy()
 	if kill {
-		a.killOn(p.host, p.SID)
+		a.killPane(p)
+	} else {
+		p.stopUploads()
 	}
 	t := p.Tab
 	if t.Zoom == p {
@@ -1781,13 +1804,12 @@ func newTabUID() string {
 func (a *App) closeLastTab(t *Tab) {
 	for _, p := range t.allPanes() {
 		p.closed = true
-		p.stopUploads()
 		if p.term != nil {
 			p.term.Close()
 		}
 		p.browser.destroy()
 		p.note.destroy()
-		a.killOn(p.host, p.SID)
+		a.killPane(p)
 	}
 	a.tabs = slices.DeleteFunc(a.tabs, func(x *Tab) bool { return x == t })
 	a.active, a.focusReq = 0, nil
@@ -1802,13 +1824,12 @@ func (a *App) closeLastTab(t *Tab) {
 func (a *App) closeTab(t *Tab) {
 	for _, p := range t.allPanes() {
 		p.closed = true
-		p.stopUploads()
 		if p.term != nil {
 			p.term.Close()
 		}
 		p.browser.destroy()
 		p.note.destroy()
-		a.killOn(p.host, p.SID)
+		a.killPane(p)
 	}
 	a.removeTab(t)
 }

@@ -199,14 +199,19 @@ func (h *hostConn) saved() savedHost {
 	return s
 }
 
-// kill ends a session of the host: it is kept to end until the host says
-// it did, through the client of the moment, or the next one. Call it on the
-// main thread.
-func (h *hostConn) kill(sid string) {
+// markClosed keeps adopt from opening the session sid again.
+func (h *hostConn) markClosed(sid string) {
 	if h.closed == nil {
 		h.closed = map[string]bool{}
 	}
 	h.closed[sid] = true
+}
+
+// kill ends a session of the host: it is kept to end until the host says
+// it did, through the client of the moment, or the next one. Call it on the
+// main thread.
+func (h *hostConn) kill(sid string) {
+	h.markClosed(sid)
 	h.mu.Lock()
 	if !slices.Contains(h.Kills, sid) {
 		h.Kills = append(h.Kills, sid)

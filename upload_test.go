@@ -6,19 +6,28 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/internal/rex"
 )
 
 // remotePane opens a tab on a host, through a proxy, in dir there, and
 // returns its pane once its shell prompts.
 func remotePane(t *testing.T, a *App, tt *ui.Tester, dir string) (*hostConn, *hostProxy, *Pane) {
+	h, proxy, p, _ := remotePaneOf(t, a, tt, dir)
+	return h, proxy, p
+}
+
+// remotePaneOf is remotePane, with a client of the host's server.
+func remotePaneOf(t *testing.T, a *App, tt *ui.Tester, dir string) (*hostConn, *hostProxy, *Pane, *rex.Client) {
 	t.Helper()
 	fakeHosts(t)
-	sock, _ := startHostServer(t)
+	sock, remote := startHostServer(t)
 	proxy := newHostProxy(t, sock)
 	t.Cleanup(a.stopHosts)
 	h := a.addHost(savedHost{ID: "h1", Name: "office-mac", Address: proxy.path})
@@ -29,7 +38,7 @@ func remotePane(t *testing.T, a *App, tt *ui.Tester, dir string) (*hostConn, *ho
 	}
 	p := rt.Focus
 	waitFor(t, tt, "the remote shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
-	return h, proxy, p
+	return h, proxy, p, remote
 }
 
 // dropped writes files of these names and contents into a new directory,
@@ -177,6 +186,46 @@ func TestUploadCancelled(t *testing.T) {
 	a.dropPane(p, false)
 	if ctx.Err() == nil {
 		t.Error("closing the pane leaves its upload")
+	}
+}
+
+// TestClosePaneMidUpload closes a pane of a host while it sends a file:
+// what the host has of the file goes before its session ends, which names
+// the directory it is in.
+func TestClosePaneMidUpload(t *testing.T) {
+	a, tt := newTestApp(t)
+	there := testDir(t)
+	t.Cleanup(func() { os.RemoveAll(there) })
+	_, proxy, p, remote := remotePaneOf(t, a, tt, there)
+	sid := p.SID
+	paths := dropped(t, "big.bin", strings.Repeat("x", 1<<20))
+	part := partialOf(there, "big.bin", idOf(t, sid, paths[0]))
+	os.WriteFile(part, []byte("xxxx"), 0o644)
+	a.split(false) // the tab stays
+	q := a.tab().Focus
+	waitFor(t, tt, "the split's shell", func() bool { return q.term != nil && strings.Contains(q.term.Text(), testShell.prompt) })
+	// The put's connection waits on the way, as over a slow network.
+	gate := make(chan struct{})
+	proxy.mu.Lock()
+	proxy.gate = gate
+	proxy.mu.Unlock()
+	a.upload(p, paths)
+	waitFor(t, tt, "the put under way", func() bool { return proxy.held.Load() == 1 })
+	a.closePane(p)
+	time.Sleep(200 * time.Millisecond)
+	if !slices.Contains(sessionIDs(t, remote), sid) {
+		t.Fatal("the session ended before the upload removed its partial")
+	}
+	proxy.mu.Lock()
+	proxy.gate = nil
+	proxy.mu.Unlock()
+	close(gate)
+	waitFor(t, tt, "the session to end", func() bool { return !slices.Contains(sessionIDs(t, remote), sid) })
+	if _, err := os.Stat(part); err == nil {
+		t.Error("the partial stays")
+	}
+	if _, err := os.Stat(filepath.Join(there, "big.bin")); err == nil {
+		t.Error("the file went")
 	}
 }
 
