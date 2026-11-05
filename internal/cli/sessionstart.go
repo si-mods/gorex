@@ -52,7 +52,7 @@ func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 		return ExitOK, true
 	}
 	pane := contextValue(os.Getenv("GOREX_PANE"))
-	server := contextValue(os.Getenv("GOREX_SERVER"))
+	server := printable(os.Getenv("GOREX_SERVER"))
 	host := contextValue(os.Getenv("GOREX_HOST"))
 	client := contextValue(os.Getenv("GOREX_CLIENT"))
 

@@ -226,7 +226,7 @@ func TestSkillReplacesLegacyInstall(t *testing.T) {
 }
 
 func TestSkillProject(t *testing.T) {
-	home := tempHome(t)
+	tempHome(t)
 	project := t.TempDir()
 	old, err := os.Getwd()
 	if err != nil {
@@ -268,7 +268,6 @@ func TestSkillProject(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "gorex", "SKILL.md")); err != nil {
 		t.Fatal(err)
 	}
-	_ = home
 }
 
 func TestSessionStart(t *testing.T) {

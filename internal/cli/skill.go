@@ -748,7 +748,7 @@ func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	if !*project {
 		for _, ext := range legacyExtensionPaths() {
 			change, err := removeLegacyExtension(ext.path, *dry)
-			if change == "absent" && !*dry {
+			if change == "absent" {
 				continue
 			}
 			steps = append(steps, stepResult{Harnesses: []string{ext.agent}, Kind: "extension", Path: ext.path, Change: change, Reason: errString(err)})
