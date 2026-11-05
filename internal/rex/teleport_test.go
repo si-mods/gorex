@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -895,6 +896,21 @@ func TestTeleportRoundTrip(t *testing.T) {
 	projectP := filepath.Join(cfgA, "projects", claudeSlug(dirP))
 	writeFile(t, filepath.Join(projectP, convID+".jsonl"), conversation(dirP, "m1", "m2"))
 	writeFile(t, filepath.Join(projectP, convID, "subagents", "a.jsonl"), conversation(dirP, "s1"))
+	// Its file history: a backup of a file in the work tree, one of a file
+	// outside it alone, one no snapshot names, and a name not a backup's.
+	historyA, historyB := filepath.Join(cfgA, "file-history", convID), filepath.Join(cfgB, "file-history", convID)
+	appendLine := func(file, line string) {
+		f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintln(f, line)
+		f.Close()
+	}
+	appendLine(filepath.Join(projectP, convID+".jsonl"), snapshot(map[string]string{filepath.Join(dirP, "x.go"): "aa@v1", "/etc/hosts": "bb@v1"}))
+	for name, body := range map[string]string{"aa@v1": "x.go before", "bb@v1": "hosts", "cc@v2": "unnamed", "notes.txt": "no"} {
+		writeFile(t, filepath.Join(historyA, name), body)
+	}
 	waitInfo(t, m.aLocal, sidA, "Claude Code quiet", func(in SessionInfo) bool { return in.AgentSession == convID && TeleportRefusal(in) == "" })
 	in, err := Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string, string) {})
 	if err != nil {
@@ -908,6 +924,19 @@ func TestTeleportRoundTrip(t *testing.T) {
 	if got := copies(cfgB); len(got) != 1 || filepath.Dir(got[0]) != filepath.Join(cfgB, "projects", claudeSlug(dirW)) {
 		t.Fatalf("B's copies %v", got)
 	}
+	if got := tree(t, historyB); !maps.Equal(got, map[string]string{"aa@v1": "x.go before", "cc@v2": "unnamed"}) {
+		t.Errorf("B's file history %v", got)
+	}
+	convB, _ := os.ReadFile(filepath.Join(cfgB, "projects", claudeSlug(dirW), convID+".jsonl"))
+	var snapB map[string]string
+	for _, line := range bytes.Split(convB, []byte("\n")) {
+		if b := trackedBackups(line); b != nil {
+			snapB = b
+		}
+	}
+	if !maps.Equal(snapB, map[string]string{filepath.Join(dirW, "x.go"): "aa@v1"}) {
+		t.Errorf("B's snapshot %v", snapB)
+	}
 
 	// It goes on at B: a commit, a change, an untracked file of P's gone.
 	treeW := filepath.Dir(dirW)
@@ -919,6 +948,8 @@ func TestTeleportRoundTrip(t *testing.T) {
 	os.Remove(filepath.Join(dirW, "new", "untracked.txt"))
 	writeFile(t, filepath.Join(dirW, "fresh.txt"), "untracked on B\n")
 	appendMessage(filepath.Join(cfgB, "projects", claudeSlug(dirW), convID+".jsonl"), "m3", dirW)
+	appendLine(filepath.Join(cfgB, "projects", claudeSlug(dirW), convID+".jsonl"), snapshot(map[string]string{filepath.Join(dirW, "x.go"): "dd@v3"}))
+	writeFile(t, filepath.Join(historyB, "dd@v3"), "x.go on B")
 
 	// B to A: in P.
 	m.toA(t)
@@ -960,6 +991,12 @@ func TestTeleportRoundTrip(t *testing.T) {
 	}
 	if !exists(filepath.Join(projectP, convID, "subagents", "a.jsonl")) {
 		t.Error("the subagents' directory is not in P's project")
+	}
+	if got := tree(t, historyA); !maps.Equal(got, map[string]string{"aa@v1": "x.go before", "bb@v1": "hosts", "cc@v2": "unnamed", "dd@v3": "x.go on B", "notes.txt": "no"}) {
+		t.Errorf("A's file history %v", got)
+	}
+	if !strings.Contains(string(conv), jsonString(filepath.Join(dirP, "x.go"))+`:{"backupFileName":"dd@v3"`) {
+		t.Errorf("A's last snapshot is not of P: %s", conv)
 	}
 	waitText(t, m.aPeer, in.ID, "stub-claude --resume "+convID)
 
@@ -1258,5 +1295,110 @@ func TestBundleStaleRemote(t *testing.T) {
 	gitRun(t, work, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
 	if bundled() {
 		t.Error("offline, the remote-tracking ref that has the commit did not stand for the remote")
+	}
+}
+
+// TestBackupName checks the names of Claude Code's file-history backups
+// a package takes.
+func TestBackupName(t *testing.T) {
+	for name, want := range map[string]bool{
+		"47973c9fed2c8b5b@v2": true, "a@v10": true, "x@v1": false, "aa@v": false, "aa@vx": false,
+		"../a@v1": false, "notes.txt": false, "@v1": false, "AA@v1": false,
+	} {
+		if got := backupName(name); got != want {
+			t.Errorf("backupName(%q) = %v", name, got)
+		}
+	}
+}
+
+// snapshot is a file-history snapshot line of backups by path.
+func snapshot(backups map[string]string) string {
+	var parts []string
+	for path, name := range backups {
+		b := "null"
+		if name != "" {
+			b = strconv.Quote(name)
+		}
+		parts = append(parts, fmt.Sprintf("%s:{\"backupFileName\":%s,\"version\":1,\"backupTime\":\"2026-11-05T00:00:00Z\"}", jsonString(path), b))
+	}
+	return `{"type":"file-history-snapshot","messageId":"mx","snapshot":{"messageId":"mx","trackedFileBackups":{` +
+		strings.Join(parts, ",") + `},"timestamp":"2026-11-05T00:00:00Z"},"isSnapshotUpdate":false}`
+}
+
+// TestRewriteSnapshot checks that a snapshot's files move from under the
+// source's work tree to the target's, of POSIX and Windows paths, that
+// one outside it is dropped, and a relative one stays, the rest of the
+// line as it was.
+func TestRewriteSnapshot(t *testing.T) {
+	to := filepath.Join(string(filepath.Separator)+"t", "wt")
+	for _, c := range []struct {
+		root string
+		in   map[string]string
+		want map[string]string
+	}{
+		{"/src/proj", map[string]string{"/src/proj/a/b.go": "aa@v1", "/etc/hosts": "bb@v1", "rel/c.go": ""},
+			map[string]string{filepath.Join(to, "a", "b.go"): "aa@v1", "rel/c.go": ""}},
+		{`C:\Users\me\x`, map[string]string{`C:\Users\me\x\a.go`: "aa@v2", `D:\y.go`: "cc@v1"},
+			map[string]string{filepath.Join(to, "a.go"): "aa@v2"}},
+	} {
+		got := rewriteSnapshot([]byte(snapshot(c.in)), c.root, to)
+		if b := trackedBackups(got); !maps.Equal(b, c.want) {
+			t.Errorf("rewrote %v to %v, want %v", c.in, b, c.want)
+		}
+		for _, s := range []string{`"isSnapshotUpdate":false`, `"messageId":"mx"`, `"timestamp":"2026-11-05T00:00:00Z"`, `"version":1`} {
+			if !strings.Contains(string(got), s) {
+				t.Errorf("lost %s: %s", s, got)
+			}
+		}
+		if _, ok := c.in["rel/c.go"]; ok && !strings.Contains(string(got), `"backupFileName":null`) {
+			t.Errorf("a null backup changed: %s", got)
+		}
+	}
+	for _, line := range []string{snapshot(map[string]string{"rel/c.go": "aa@v1"}), `{"type":"user","cwd":"/x"}`} {
+		if got := string(rewriteSnapshot([]byte(line), "/src/proj", to)); got != line {
+			t.Errorf("changed %s to %s", line, got)
+		}
+	}
+}
+
+// TestPlaceHistory checks that backups merge into the target's history:
+// those it lacks are added, the same ones it has are fine, a different
+// one is refused, nothing changed; undo removes only what it added.
+func TestPlaceHistory(t *testing.T) {
+	src := t.TempDir()
+	writeFile(t, filepath.Join(src, "aa@v1"), "a")
+	writeFile(t, filepath.Join(src, "bb@v1"), "b")
+	dst := filepath.Join(t.TempDir(), "file-history", convID)
+	undo, err := placeHistory(src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tree(t, dst); len(got) != 2 {
+		t.Errorf("placed %v", got)
+	}
+	for i := len(undo) - 1; i >= 0; i-- {
+		undo[i]()
+	}
+	if exists(dst) {
+		t.Error("the directory it made stayed")
+	}
+	writeFile(t, filepath.Join(dst, "aa@v1"), "a")
+	writeFile(t, filepath.Join(dst, "zz@v1"), "z")
+	undo, err = placeHistory(src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := len(undo) - 1; i >= 0; i-- {
+		undo[i]()
+	}
+	if got := tree(t, dst); !maps.Equal(got, map[string]string{"aa@v1": "a", "zz@v1": "z"}) {
+		t.Errorf("undone to %v", got)
+	}
+	writeFile(t, filepath.Join(dst, "aa@v1"), "changed")
+	if _, err := placeHistory(src, dst); err == nil {
+		t.Error("a backup that differs was taken")
+	}
+	if got := tree(t, dst); !maps.Equal(got, map[string]string{"aa@v1": "changed", "zz@v1": "z"}) {
+		t.Errorf("refused, but changed to %v", got)
 	}
 }

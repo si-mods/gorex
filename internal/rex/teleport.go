@@ -2,6 +2,7 @@ package rex
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -351,6 +352,103 @@ func rewriteCwd(line []byte, root, to string) []byte {
 		return line
 	}
 	return b
+}
+
+// backupName tells whether name is a backup's of Claude Code's file
+// history: hex digits, "@v", a version.
+func backupName(name string) bool {
+	h, v, ok := strings.Cut(name, "@v")
+	if !ok || h == "" || v == "" {
+		return false
+	}
+	for _, r := range h {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return false
+		}
+	}
+	for _, r := range v {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// absPath tells whether p, a path of either OS, is absolute.
+func absPath(p string) bool {
+	return strings.HasPrefix(p, "/") || strings.HasPrefix(p, `\`) || len(p) >= 2 && p[1] == ':'
+}
+
+// snapshotLine is the part of a line of Claude Code's conversation that a
+// file-history snapshot has: the files it backed up, by path.
+type snapshotLine struct {
+	Type     string `json:"type"`
+	Snapshot struct {
+		TrackedFileBackups map[string]struct {
+			BackupFileName *string `json:"backupFileName"`
+		} `json:"trackedFileBackups"`
+	} `json:"snapshot"`
+}
+
+// trackedBackups are the backups a file-history snapshot line names, by
+// the path of the file; none for another line.
+func trackedBackups(line []byte) map[string]string {
+	var l snapshotLine
+	if json.Unmarshal(line, &l) != nil || l.Type != "file-history-snapshot" {
+		return nil
+	}
+	out := map[string]string{}
+	for k, v := range l.Snapshot.TrackedFileBackups {
+		if v.BackupFileName != nil {
+			out[k] = *v.BackupFileName
+		} else {
+			out[k] = ""
+		}
+	}
+	return out
+}
+
+// rewriteSnapshot moves the files a file-history snapshot line backed up
+// from under root, a path of the source, to under to: a file outside root
+// is dropped, as a rewind on this machine must write nothing outside the
+// work tree; a relative path stays. Another line, or one with nothing to
+// change, is as it was.
+func rewriteSnapshot(line []byte, root, to string) []byte {
+	if !bytes.Contains(line, []byte(`"file-history-snapshot"`)) || trackedBackups(line) == nil {
+		return line
+	}
+	var all map[string]json.RawMessage
+	var snap map[string]json.RawMessage
+	var tracked map[string]json.RawMessage
+	if json.Unmarshal(line, &all) != nil || json.Unmarshal(all["snapshot"], &snap) != nil ||
+		json.Unmarshal(snap["trackedFileBackups"], &tracked) != nil {
+		return line
+	}
+	moved := make(map[string]json.RawMessage, len(tracked))
+	changed := false
+	for k, v := range tracked {
+		switch p, ok := movePath(k, root, to); {
+		case !absPath(k):
+			moved[k] = v
+		case ok:
+			moved[p], changed = v, changed || p != k
+		default:
+			changed = true
+		}
+	}
+	if !changed {
+		return line
+	}
+	enc := func(v any) json.RawMessage {
+		var b bytes.Buffer
+		e := json.NewEncoder(&b)
+		e.SetEscapeHTML(false)
+		e.Encode(v)
+		return bytes.TrimRight(b.Bytes(), "\n")
+	}
+	snap["trackedFileBackups"] = enc(moved)
+	all["snapshot"] = enc(snap)
+	return enc(all)
 }
 
 // jsonString is s as a JSON string, as JavaScript writes it.

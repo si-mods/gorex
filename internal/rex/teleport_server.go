@@ -147,7 +147,7 @@ func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
 		}
 	}
 	if m.Program == "claude" {
-		if err := s.packConversation(add, in); err != nil {
+		if err := s.packConversation(add, in, m.Root); err != nil {
 			return m, pkg, err
 		}
 	}
@@ -270,7 +270,7 @@ func packUntracked(root, path string) (int, error) {
 
 // packConversation adds Claude Code's conversation of in, and the
 // directory of its subagents and tool results, under claude/.
-func (s *Server) packConversation(add func(name, path string) error, in SessionInfo) error {
+func (s *Server) packConversation(add func(name, path string) error, in SessionInfo, root string) error {
 	config := in.AgentConfigDir
 	if config == "" {
 		var err error
@@ -292,7 +292,7 @@ func (s *Server) packConversation(add func(name, path string) error, in SessionI
 		return err
 	}
 	dir := strings.TrimSuffix(file, ".jsonl")
-	return filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if path == dir && errors.Is(err, fs.ErrNotExist) {
 				return nil
@@ -308,6 +308,55 @@ func (s *Server) packConversation(add func(name, path string) error, in SessionI
 		}
 		return add("claude/"+id+"/"+filepath.ToSlash(rel), path)
 	})
+	if err != nil {
+		return err
+	}
+	// The backups /rewind restores files from, flat, but those of files
+	// outside the work tree, which the target drops: no rewind writes
+	// outside the work tree on another machine.
+	skip := outsideBackups(file, root)
+	history := filepath.Join(config, "file-history", id)
+	entries, err := os.ReadDir(history)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.Type().IsRegular() || !backupName(e.Name()) || skip[e.Name()] {
+			continue
+		}
+		if err := add("claude/file-history/"+id+"/"+e.Name(), filepath.Join(history, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// outsideBackups are the backups of the conversation at file that only
+// files outside root, the work tree, have.
+func outsideBackups(file, root string) map[string]bool {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return nil
+	}
+	in, out := map[string]bool{}, map[string]bool{}
+	for _, line := range bytes.Split(b, []byte("\n")) {
+		for key, name := range trackedBackups(line) {
+			if !absPath(key) {
+				in[name] = true
+			} else if _, ok := movePath(key, root, root); ok {
+				in[name] = true
+			} else {
+				out[name] = true
+			}
+		}
+	}
+	for name := range in {
+		delete(out, name)
+	}
+	return out
 }
 
 // teleportIn unpacks a package that follows on conn, of peer, and starts
@@ -657,6 +706,9 @@ func packageName(name, id string) bool {
 	if name == "claude/"+id+".jsonl" {
 		return true
 	}
+	if b, ok := strings.CutPrefix(name, "claude/file-history/"+id+"/"); ok {
+		return backupName(b)
+	}
 	rest, ok := strings.CutPrefix(name, "claude/"+id+"/")
 	return ok && localName(rest)
 }
@@ -841,6 +893,11 @@ func placeConversation(from, config string, m *TeleportManifest, tree, dir strin
 			}
 		}
 	}
+	added, err := placeHistory(filepath.Join(from, "file-history", m.Session), filepath.Join(config, "file-history", m.Session))
+	undo = append(undo, added...)
+	if err != nil {
+		return undo, done, err
+	}
 	project := filepath.Join(config, "projects", claudeSlug(dir))
 	if err := os.MkdirAll(project, 0o700); err != nil {
 		return undo, done, err
@@ -857,7 +914,7 @@ func placeConversation(from, config string, m *TeleportManifest, tree, dir strin
 			lines := bytes.SplitAfter(b, []byte("\n"))
 			for i, line := range lines {
 				body := bytes.TrimRight(line, "\r\n")
-				lines[i] = append(rewriteCwd(body, m.Root, tree), line[len(body):]...)
+				lines[i] = append(rewriteSnapshot(rewriteCwd(body, m.Root, tree), m.Root, tree), line[len(body):]...)
 			}
 			b = bytes.Join(lines, nil)
 		}
@@ -895,6 +952,63 @@ func placeConversation(from, config string, m *TeleportManifest, tree, dir strin
 		return write(path, filepath.Join(project, rel))
 	})
 	return undo, done, err
+}
+
+// placeHistory copies the file-history backups at src into dst, Claude
+// Code's of the conversation: those dst lacks; one it has must be the
+// same, else the history went on here too, and nothing is copied. It
+// returns how to remove what it added.
+func placeHistory(src, dst string) (undo []func(), err error) {
+	entries, err := os.ReadDir(src)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var fresh []string
+	for _, e := range entries {
+		here, err := os.ReadFile(filepath.Join(dst, e.Name()))
+		if errors.Is(err, fs.ErrNotExist) {
+			fresh = append(fresh, e.Name())
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if there, err := os.ReadFile(filepath.Join(src, e.Name())); err != nil || !bytes.Equal(here, there) {
+			return nil, errors.New("the file history went on here too")
+		}
+	}
+	if len(fresh) == 0 {
+		return nil, nil
+	}
+	if !exists(dst) {
+		if err := os.MkdirAll(dst, 0o700); err != nil {
+			return nil, err
+		}
+		undo = append(undo, func() { os.Remove(dst) })
+	}
+	for _, name := range fresh {
+		b, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			return undo, err
+		}
+		path := filepath.Join(dst, name)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			return undo, err
+		}
+		undo = append(undo, func() { os.Remove(path) })
+		_, err = f.Write(b)
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
+			return undo, err
+		}
+	}
+	return undo, nil
 }
 
 // connGone tells whether the client closed conn, as a cancel does: it

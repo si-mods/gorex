@@ -54,6 +54,7 @@ the package's length.
 | `worktree.patch` | `git diff --binary HEAD`: staged and unstaged changes |
 | `untracked.tar` | the regular files `git ls-files -o --exclude-standard` lists; ignored files and links stay behind |
 | `claude/<uuid>.jsonl` | the conversation, and its `<uuid>/` directory (subagents, tool results) when there is one |
+| `claude/file-history/<uuid>/<hex>@v<n>` | the backups `/rewind` restores files from (`<config>/file-history/<uuid>/`), regular files of that name only, but those only files outside the work tree have |
 | `scrollback.txt` | the pane's text (`format` text), its last MiB, for the new pane to show, dimmed and without control characters, above the program |
 
 Limits: the package is refused past 256 MiB, and `untracked.tar` past
@@ -122,6 +123,17 @@ and the target is a host the user trusts with commands already (see
 
    This is decided once the package is in: the request carries no
    message ids.
+
+   File history, for `/rewind`: in the same pass as `cwd`, each
+   `file-history-snapshot` line's `trackedFileBackups` key under the
+   source's work tree becomes the same path under the target's (the
+   target's separators); a key outside it is dropped, as a rewind on
+   another machine must write nothing outside the work tree, and the
+   source does not send the backups only such keys name; a relative key
+   stays. Only the lines that change are written anew. The backups go to
+   `<config>/file-history/<uuid>/`: those not there are added; one there
+   already must be the same, else the history went on there too and the
+   teleport is refused. A failure removes only what it added.
 5. **Start the session.** `create` with the target directory and the
    pane's size, the session's id the hop's link (which the source's window
    knows by then, and waits for, rather than open it as a tab of its own),
