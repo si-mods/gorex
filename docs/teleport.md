@@ -43,7 +43,8 @@ A package is one tar stream. Its manifest travels before it, in the line
 that asks for it (below): version, source host name, program (`claude` /
 `shell`), the session id, the repo's remote URLs (origin's first),
 branch, HEAD, the work tree's root on the source (for the conversation's
-`cwd`), the pane's directory relative to it, terminal size, the hop's
+`cwd`), the pane's directory relative to it, the work tree's root relative to
+the source's home (when under it), terminal size, the hop's
 link and the links of earlier hops of the work tree (Round trips), and
 the package's length.
 
@@ -68,10 +69,22 @@ and the target is a host the user trusts with commands already (see
    (Round trips, below); steps 1 and 2 are skipped then.
 1. **Find the repo.** A local clone whose remote URL matches one of the
    manifest's (`https://`, `ssh://` and `git@host:` spellings of one repo
-   match), one or two levels under `~/repos`, `~/src`, `~/code` and
-   `~/Projects`, under the home directory on every OS. None: clone the
-   first URL into `~/repos`. No URL (a repo never pushed): refuse. A
-   setting for other roots is for later.
+   match), among the directories the user works in on the target, as
+   GoRex knows them: the directories of the server's sessions, live and
+   those its journal recorded, and the `cwd` of each of Claude Code's
+   projects in the target's config dir (the first line that has one, of
+   one conversation per project). Each is resolved to its Git work tree
+   and repo by reading `.git` (a linked work tree's `.git` file and its
+   `commondir` lead to the repo, whose main work tree is the clone), and
+   the remotes are read from the repo's `config` file, with no `git` run
+   per directory (includes and `insteadOf` are not followed). GoRex
+   searches no fixed directories. None found: clone the first URL where
+   the source has its work tree relative to its home directory
+   (`~/work/x` on a Mac lands in `%USERPROFILE%\work\x` on Windows); a
+   clone of the repo there is taken as it is. When that path is another
+   directory, or the source's work tree was outside its home, clone to
+   `~/<repo name>`, with `-2`, `-3`… when taken. No URL (a repo never
+   pushed): refuse.
 2. **Make a work tree.** Never touch the clone's own checkout: fetch the
    bundle, then `git worktree add -b teleport/<short-id> <clone>/.gorex/teleport/<short-id> <HEAD>`.
    When HEAD is on the remote and the clone lacks it, fetch it first. The

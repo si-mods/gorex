@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -54,8 +53,11 @@ type TeleportManifest struct {
 	// Dir the pane's directory under it, slash separated, "" for the root.
 	Root string `json:"root"`
 	Dir  string `json:"dir,omitempty"`
-	Cols int    `json:"cols,omitempty"`
-	Rows int    `json:"rows,omitempty"`
+	// HomeRel is Root relative to the source's home, slash separated, ""
+	// when outside it: where a target with no clone makes one.
+	HomeRel string `json:"homeRel,omitempty"`
+	Cols    int    `json:"cols,omitempty"`
+	Rows    int    `json:"rows,omitempty"`
 	// Link names this hop, which both machines record of the directory
 	// it leaves and the one it lands in; Links are those the source has
 	// of its work tree from earlier hops, by which a teleport back finds
@@ -374,34 +376,6 @@ func plainText(s string) string {
 		}
 		return -1
 	}, s)
-}
-
-// claudeConfigDir is Claude Code's config dir of this machine's sessions:
-// CLAUDE_CONFIG_DIR of the server's environment, which they inherit, else
-// ~/.claude.
-func claudeConfigDir() (string, error) {
-	if d := os.Getenv("CLAUDE_CONFIG_DIR"); filepath.IsAbs(d) {
-		return d, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".claude"), nil
-}
-
-// teleportRoots are where a teleport looks for a clone of the repo, and
-// clones one into the first: ~/repos, ~/src, ~/code and ~/Projects.
-var teleportRoots = func() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
-	}
-	var roots []string
-	for _, d := range []string{"repos", "src", "code", "Projects"} {
-		roots = append(roots, filepath.Join(home, d))
-	}
-	return roots
 }
 
 // repoKey is a remote URL as two spellings of the same repo share it:

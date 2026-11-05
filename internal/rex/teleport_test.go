@@ -458,18 +458,15 @@ func TestTeleport(t *testing.T) {
 	}
 	_, work := teleportRepo(t)
 	head := gitRun(t, work, "rev-parse", "HEAD")
-	roots, dstConfig := t.TempDir(), t.TempDir()
-	if r, err := filepath.EvalSymlinks(roots); err == nil {
-		roots = r
-	}
-	old := teleportRoots
-	teleportRoots = func() []string { return []string{filepath.Join(roots, "repos")} }
-	t.Cleanup(func() { teleportRoots = old })
-	t.Setenv("CLAUDE_CONFIG_DIR", dstConfig)
+	// The target's home, where it clones, and its Claude Code's config.
+	dstHome := resolved(t)
+	dstConfig := filepath.Join(dstHome, ".claude")
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("SHELL", "/bin/sh")
 	stubClaude(t)
 	src, _ := testServer(t)
 	dst, _ := testServer(t)
+	src.home, dst.home = resolved(t), dstHome
 	remote := pipe(dst, testPeer)
 	t.Cleanup(func() {
 		for _, in := range must(remote.List()) {
@@ -490,7 +487,7 @@ func TestTeleport(t *testing.T) {
 	if strings.Join(steps, ",") != "pack,send,start" {
 		t.Errorf("steps %v", steps)
 	}
-	clone := filepath.Join(roots, "repos", "remote")
+	clone := filepath.Join(dstHome, "remote")
 	trees, _ := filepath.Glob(filepath.Join(clone, ".gorex", "teleport", "*"))
 	if len(trees) != 1 {
 		t.Fatalf("work trees %v", trees)
@@ -532,6 +529,7 @@ func TestTeleport(t *testing.T) {
 	// does not tell the environment of a system binary as sh.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	src.home = home
 	srcConfig := filepath.Join(home, ".claude")
 	fake := filepath.Join(t.TempDir(), "bin", "claude")
 	writeFile(t, fake, "#!/bin/sh\nsleep 60\n")
@@ -585,9 +583,6 @@ func TestTeleport(t *testing.T) {
 func TestTeleportCleansUp(t *testing.T) {
 	_, work := teleportRepo(t)
 	roots := t.TempDir()
-	old := teleportRoots
-	teleportRoots = func() []string { return []string{roots} }
-	t.Cleanup(func() { teleportRoots = old })
 	s, _ := testServer(t)
 	_, sid := shellIn(t, s, work)
 	m, pkg, err := s.pack(sid)
@@ -611,7 +606,10 @@ func TestTeleportCleansUp(t *testing.T) {
 	}
 	tw.Close()
 	m.Size = int64(buf.Len())
+	// The target knows the clone: a session of its is in it.
 	dst, _ := testServer(t)
+	dst.home = resolved(t)
+	shellIn(t, dst, clone)
 	c := pipe(dst, "")
 	defer c.Close()
 	conn, err := c.dial()
@@ -823,19 +821,19 @@ func files(t *testing.T, dir string) map[string]string {
 type twoMachines struct {
 	a, b                         *Server
 	aLocal, aPeer, bLocal, bPeer *Client
-	homeA, homeB, rootsA, rootsB string
+	homeA, homeB                 string
 }
 
 func newTwoMachines(t *testing.T, work string) *twoMachines {
 	t.Helper()
-	m := &twoMachines{homeA: resolved(t), homeB: resolved(t), rootsA: filepath.Dir(work), rootsB: resolved(t)}
+	m := &twoMachines{homeA: resolved(t), homeB: resolved(t)}
 	t.Setenv("SHELL", "/bin/sh")
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	stubClaude(t)
-	old := teleportRoots
-	t.Cleanup(func() { teleportRoots = old })
 	a, _ := testServer(t)
 	b, _ := testServer(t)
 	m.a, m.b = a, b
+	a.home, b.home = m.homeA, m.homeB
 	m.aLocal, m.aPeer, m.bLocal, m.bPeer = pipe(a, ""), pipe(a, testPeer), pipe(b, ""), pipe(b, testPeer)
 	for _, c := range []*Client{m.aLocal, m.aPeer, m.bLocal, m.bPeer} {
 		t.Cleanup(func() {
@@ -851,19 +849,12 @@ func newTwoMachines(t *testing.T, work string) *twoMachines {
 	return m
 }
 
-// toB and toA make the hop's source machine the process's: its home, and
-// the target's config dir and clones' root.
-func (m *twoMachines) toB(t *testing.T) {
-	t.Setenv("HOME", m.homeA)
-	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(m.homeB, ".claude"))
-	teleportRoots = func() []string { return []string{m.rootsB} }
-}
+// toB and toA make the hop's source machine the process's home: where
+// the server finds Claude Code's file of its process when macOS does not
+// tell the process's environment.
+func (m *twoMachines) toB(t *testing.T) { t.Setenv("HOME", m.homeA) }
 
-func (m *twoMachines) toA(t *testing.T) {
-	t.Setenv("HOME", m.homeB)
-	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(m.homeA, ".claude"))
-	teleportRoots = func() []string { return []string{m.rootsA} }
-}
+func (m *twoMachines) toA(t *testing.T) { t.Setenv("HOME", m.homeB) }
 
 // TestTeleportRoundTrip teleports a Claude Code conversation from A's
 // work tree P to B, which makes a work tree W of it, goes on there, and
@@ -908,7 +899,7 @@ func TestTeleportRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	dirW := waitInfo(t, m.bPeer, in.ID, "B's directory", func(in SessionInfo) bool { return in.Dir != "" }).Dir
-	cloneB := filepath.Join(m.rootsB, "remote")
+	cloneB := filepath.Join(m.homeB, "remote")
 	if got := trees(cloneB); len(got) != 1 || filepath.Join(got[0], "sub") != dirW {
 		t.Fatalf("B's work trees %v, the pane in %s", got, dirW)
 	}
@@ -1063,5 +1054,79 @@ func TestTeleportBackFallbacks(t *testing.T) {
 	}
 	if got := state(); !slices.Equal(got, beforeState) {
 		t.Errorf("P's state is\n%q\nwas\n%q", got, beforeState)
+	}
+}
+
+// TestFindClone checks where a target finds a clone of the repo: in the
+// directories its sessions are in, a linked work tree's leading to its
+// main one, and in Claude Code's projects; nowhere else.
+func TestFindClone(t *testing.T) {
+	bare, work := teleportRepo(t)
+	linked := filepath.Join(resolved(t), "linked")
+	gitRun(t, work, "worktree", "add", "-q", "-b", "other", linked)
+	s, _ := testServer(t)
+	s.home = resolved(t)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	urls := []string{"file://" + bare, bare}
+	if clone, _ := s.findClone(urls); clone != "" {
+		t.Fatalf("found %s with nothing to go by", clone)
+	}
+	c, sid := shellIn(t, s, filepath.Join(linked, "sub"))
+	if clone, remote := s.findClone(urls); clone != work || remote != "origin" {
+		t.Errorf("from a session: %q %q, want %q origin", clone, remote, work)
+	}
+	if clone, _ := s.findClone([]string{"https://example.com/other.git"}); clone != "" {
+		t.Errorf("another repo's: %s", clone)
+	}
+	c.Kill(sid)
+	waitFor := time.Now().Add(5 * time.Second)
+	for len(must(c.List())) > 0 && time.Now().Before(waitFor) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	writeFile(t, filepath.Join(s.home, ".claude", "projects", "-x", "a.jsonl"),
+		"{\"type\":\"summary\"}\n"+fmt.Sprintf("{\"cwd\":%s}\n", jsonString(filepath.Join(work, "sub"))))
+	if clone, _ := s.findClone(urls); clone != work {
+		t.Errorf("from Claude Code's projects: %q, want %q", clone, work)
+	}
+}
+
+// TestCloneRepo checks where a target with no clone makes one: where the
+// source has it under its home, that clone when there is one, else in the
+// home under the repo's name, a number after it when taken.
+func TestCloneRepo(t *testing.T) {
+	bare, _ := teleportRepo(t)
+	s, _ := testServer(t)
+	s.home = resolved(t)
+	m := &TeleportManifest{Remotes: []string{bare}, HomeRel: "code/proj"}
+	for _, c := range []struct{ rel, want string }{
+		{"code/proj", "code/proj"},
+		{"code/proj", "code/proj"}, // there now: taken as it is
+		{"taken", "remote"},
+		{"taken", "remote-2"},
+		{"", "remote-3"},
+	} {
+		if c.rel == "taken" {
+			writeFile(t, filepath.Join(s.home, "taken", "notes.txt"), "not a clone")
+		}
+		m.HomeRel = c.rel
+		clone, remote, err := s.cloneRepo(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := filepath.Join(s.home, filepath.FromSlash(c.want)); clone != want || remote != "origin" {
+			t.Errorf("HomeRel %q: %q %q, want %q", c.rel, clone, remote, want)
+		}
+		if !exists(filepath.Join(clone, ".git")) {
+			t.Errorf("no clone at %s", clone)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(s.home, "taken", "notes.txt")); string(b) != "not a clone" {
+		t.Error("the directory in the way changed")
+	}
+	if got := s.homeRel(filepath.Join(s.home, "a", "b")); got != "a/b" {
+		t.Errorf("homeRel %q", got)
+	}
+	if got := s.homeRel(filepath.Dir(s.home)); got != "" {
+		t.Errorf("homeRel outside home %q", got)
 	}
 }

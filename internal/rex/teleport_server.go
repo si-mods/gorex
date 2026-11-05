@@ -83,7 +83,7 @@ func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
 	}
 	m = TeleportManifest{
 		Version: teleportVersion, Host: s.host.Name, Program: "shell",
-		Remotes: remoteURLs(root), Branch: branch, Head: head,
+		Remotes: remoteURLs(root), Branch: branch, Head: head, HomeRel: s.homeRel(filepath.FromSlash(root)),
 		Root: filepath.FromSlash(root), Dir: strings.TrimSuffix(prefix, "/"),
 		Cols: in.Cols, Rows: in.Rows,
 	}
@@ -146,7 +146,7 @@ func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
 		}
 	}
 	if m.Program == "claude" {
-		if err := packConversation(add, in); err != nil {
+		if err := s.packConversation(add, in); err != nil {
 			return m, pkg, err
 		}
 	}
@@ -219,27 +219,6 @@ func workState(root, head, dir string) (int, string, error) {
 	return n, hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// remoteURLs are the URLs of the repo's remotes at root, origin's first.
-func remoteURLs(root string) []string {
-	out, err := gitOut(root, "config", "--get-regexp", `^remote\..*\.url$`)
-	if err != nil {
-		return nil
-	}
-	var urls []string
-	for _, line := range strings.Split(out, "\n") {
-		key, u, ok := strings.Cut(strings.TrimSpace(line), " ")
-		if !ok || u == "" {
-			continue
-		}
-		if key == "remote.origin.url" {
-			urls = append([]string{u}, urls...)
-		} else {
-			urls = append(urls, u)
-		}
-	}
-	return urls
-}
-
 // packUntracked writes the files Git does not track and does not ignore,
 // at root, to a tar at path, and returns how many. Only regular files go:
 // a link would point anywhere on the target.
@@ -290,14 +269,13 @@ func packUntracked(root, path string) (int, error) {
 
 // packConversation adds Claude Code's conversation of in, and the
 // directory of its subagents and tool results, under claude/.
-func packConversation(add func(name, path string) error, in SessionInfo) error {
+func (s *Server) packConversation(add func(name, path string) error, in SessionInfo) error {
 	config := in.AgentConfigDir
 	if config == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
+		var err error
+		if config, err = s.claudeConfigDir(); err != nil {
 			return err
 		}
-		config = filepath.Join(home, ".claude")
 	}
 	id := in.AgentSession
 	// In its directory's project, or another's when Claude Code moved.
@@ -362,7 +340,7 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 	config := ""
 	if m.Program == "claude" {
 		var err error
-		if config, err = claudeConfigDir(); err != nil {
+		if config, err = s.claudeConfigDir(); err != nil {
 			fail(err)
 			return
 		}
@@ -406,16 +384,13 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		}
 	}
 	if tree == "" {
-		clone, remote, err := findClone(m.Remotes)
-		if err == nil && clone == "" {
-			clone, remote, err = cloneRepo(m.Remotes[0])
-			err = step("cloning the repo", err)
-		} else {
-			err = step("finding the repo", err)
-		}
-		if err != nil {
-			fail(err)
-			return
+		clone, remote := s.findClone(m.Remotes)
+		if clone == "" {
+			var err error
+			if clone, remote, err = s.cloneRepo(m); err != nil {
+				fail(step("cloning the repo", err))
+				return
+			}
 		}
 		id := newID()[:8]
 		tree = filepath.Join(clone, ".gorex", "teleport", id)
@@ -516,7 +491,7 @@ func (m *TeleportManifest) check() error {
 		return errors.New("no commit")
 	case len(m.Remotes) == 0:
 		return errors.New("the repository has no remote to clone it from")
-	case m.Dir != "" && !localName(m.Dir):
+	case m.Dir != "" && !localName(m.Dir), m.HomeRel != "" && !localName(m.HomeRel):
 		return errors.New("the directory is outside the work tree")
 	case m.Size < 0 || m.Size > teleportMax:
 		return fmt.Errorf("the package is larger than %d MiB", teleportMax>>20)
@@ -664,62 +639,6 @@ func packageName(name, id string) bool {
 	}
 	rest, ok := strings.CutPrefix(name, "claude/"+id+"/")
 	return ok && localName(rest)
-}
-
-// findClone finds a clone of one of the remote URLs under the teleport
-// roots, two levels down at most, and the name of its remote; "" when
-// there is none.
-func findClone(urls []string) (clone, remote string, err error) {
-	want := map[string]bool{}
-	for _, u := range urls {
-		want[repoKey(u)] = true
-	}
-	for _, root := range teleportRoots() {
-		var dirs []string
-		for _, pat := range []string{"*", filepath.Join("*", "*")} {
-			found, _ := filepath.Glob(filepath.Join(root, pat, ".git"))
-			dirs = append(dirs, found...)
-		}
-		for _, g := range dirs {
-			// A clone, not another's work tree, whose .git is a file.
-			if st, err := os.Stat(g); err != nil || !st.IsDir() {
-				continue
-			}
-			d := filepath.Dir(g)
-			out, err := gitOut(d, "config", "--get-regexp", `^remote\..*\.url$`)
-			if err != nil {
-				continue
-			}
-			for _, line := range strings.Split(out, "\n") {
-				key, u, ok := strings.Cut(strings.TrimSpace(line), " ")
-				if ok && want[repoKey(u)] {
-					return d, strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url"), nil
-				}
-			}
-		}
-	}
-	return "", "", nil
-}
-
-// cloneRepo clones u into the first teleport root, under its name, or the
-// name and a number when that is taken.
-func cloneRepo(u string) (clone, remote string, err error) {
-	roots := teleportRoots()
-	if len(roots) == 0 {
-		return "", "", errors.New("no home directory")
-	}
-	if err := os.MkdirAll(roots[0], 0o755); err != nil {
-		return "", "", err
-	}
-	name := repoName(u)
-	clone = filepath.Join(roots[0], name)
-	for i := 2; exists(clone); i++ {
-		clone = filepath.Join(roots[0], fmt.Sprintf("%s-%d", name, i))
-	}
-	if _, err := gitOut(roots[0], "clone", "-q", "--", u, clone); err != nil {
-		return "", "", err
-	}
-	return clone, "origin", nil
 }
 
 // fetchHead gets commit head into clone: from the bundle, a file at path
@@ -1071,7 +990,11 @@ func (s *Server) returnDir(m *TeleportManifest, tmp string) (dir, remote string,
 		if err != nil || !samePath(filepath.FromSlash(top), l.Dir) {
 			continue
 		}
-		r := matchRemote(l.Dir, m.Remotes)
+		_, common, ok := gitTop(l.Dir)
+		r := ""
+		if ok {
+			r = matchRemote(common, m.Remotes)
+		}
 		if r == "" {
 			continue
 		}
@@ -1086,26 +1009,6 @@ func (s *Server) returnDir(m *TeleportManifest, tmp string) (dir, remote string,
 		dir, remote, link = l.Dir, r, l
 	}
 	return dir, remote, link
-}
-
-// matchRemote is the name of the remote of the repo at dir whose URL is
-// one of urls, "" for none.
-func matchRemote(dir string, urls []string) string {
-	want := map[string]bool{}
-	for _, u := range urls {
-		want[repoKey(u)] = true
-	}
-	out, err := gitOut(dir, "config", "--get-regexp", `^remote\..*\.url$`)
-	if err != nil {
-		return ""
-	}
-	for _, line := range strings.Split(out, "\n") {
-		key, u, ok := strings.Cut(strings.TrimSpace(line), " ")
-		if ok && want[repoKey(u)] {
-			return strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
-		}
-	}
-	return ""
 }
 
 // errBehind tells that the work tree a teleport comes back to is not

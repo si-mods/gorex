@@ -42,7 +42,8 @@ func TestTeleportPane(t *testing.T) {
 	os.WriteFile(filepath.Join(work, "a.txt"), []byte("changed\n"), 0o644)
 
 	a, tt := newTestApp(t)
-	// The host clones under its home's repos: a home of the test's, once
+	// The host finds the clone where the source has it under its home,
+	// both machines' here: a home of the test's, once
 	// the terminals found their library under the user's.
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -85,7 +86,7 @@ func TestTeleportPane(t *testing.T) {
 		t.Errorf("session %s is not the host's", np.SID)
 	}
 	waitFor(t, tt, "the source session to end", func() bool { return !slices.Contains(sessionIDs(t, a.client), p.SID) })
-	trees, _ := filepath.Glob(filepath.Join(home, "repos", "remote", ".gorex", "teleport", "*", "a.txt"))
+	trees, _ := filepath.Glob(filepath.Join(work, ".gorex", "teleport", "*", "a.txt"))
 	if len(trees) != 1 {
 		t.Fatalf("work trees %v", trees)
 	}
