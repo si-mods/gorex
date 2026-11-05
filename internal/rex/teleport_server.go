@@ -6,6 +6,7 @@ import (
 	"archive/tar"
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -77,10 +78,9 @@ func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
 		return m, nil, errors.New("the repository has no commit yet")
 	}
 	branch, _ := gitOut(root, "symbolic-ref", "--short", "-q", "HEAD")
-	select {
-	case <-s.hostDone:
-	case <-time.After(3 * time.Second):
-	}
+	// Its name: what hostInfo writes before hostDone closes, a second at
+	// most.
+	<-s.hostDone
 	m = TeleportManifest{
 		Version: teleportVersion, Host: s.host.Name, Program: "shell",
 		Remotes: remoteURLs(root), Branch: branch, Head: head, HomeRel: s.homeRel(filepath.FromSlash(root)),
@@ -121,9 +121,10 @@ func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
 		return err
 	}
 	// The commits no remote has: those the target cannot fetch.
-	if n, err := gitOut(root, "rev-list", "--count", "HEAD", "--not", "--remotes"); err == nil && n != "0" {
+	have := remoteHave(root)
+	if n, err := gitIn(root, have, "rev-list", "--count", "HEAD", "--stdin"); err == nil && n != "0" {
 		b := filepath.Join(tmp, "repo.bundle")
-		if _, err := gitOut(root, "bundle", "create", b, "HEAD", "--not", "--remotes"); err != nil {
+		if _, err := gitIn(root, have, "bundle", "create", b, "HEAD", "--stdin"); err != nil {
 			return m, pkg, fmt.Errorf("bundling the commits: %w", err)
 		}
 		if err := add("repo.bundle", b); err != nil {
@@ -344,6 +345,15 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 			fail(err)
 			return
 		}
+		// A shell GoRex cannot type the resume into would show a shell
+		// alone: refused before anything is made.
+		if _, _, shell, err := shellCommand(nil); err != nil {
+			fail(err)
+			return
+		} else if _, ok := ClaudeResume(shell, m.Session, ""); !ok {
+			fail(fmt.Errorf("GoRex cannot type Claude Code's resume into %s, the shell here", shell))
+			return
+		}
 	}
 	if _, err := conn.Write([]byte(`{"ok":true}` + "\n")); err != nil {
 		return
@@ -437,13 +447,39 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 	if connGone(conn, r) {
 		return
 	}
-	o := CreateOptions{Dir: dir, Cols: m.Cols, Rows: m.Rows}
+	// The session's id is the hop's, which the client knows before it
+	// starts, and the source's window waits for.
+	o := CreateOptions{Dir: dir, Cols: m.Cols, Rows: m.Rows, id: m.Link}
 	if b, err := os.ReadFile(filepath.Join(tmp, "scrollback.txt")); err == nil && len(b) > 0 {
 		o.prelude = []byte("\x1b[2m" + strings.ReplaceAll(plainText(string(b)), "\n", "\r\n") + "\x1b[0m\r\n")
 	}
 	ss, err := s.create(o, peer)
 	if err != nil {
 		fail(step("starting the session", err))
+		return
+	}
+	if m.Program == "claude" {
+		// The shell takes it: teleportIn checked it would before.
+		cmd, _ := ClaudeResume(ss.shell, m.Session, "")
+		// Typed once the shell printed, its prompt or what comes before
+		// it: a console may drop what comes earlier.
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+			ss.mu.Lock()
+			out := ss.output
+			ss.mu.Unlock()
+			if out > 0 {
+				break
+			}
+		}
+		ss.inputProgram([]byte(cmd + "\r"))
+	}
+	// A cancel meanwhile, or a client gone, leaves no session: nothing
+	// would show it.
+	data, _ := json.Marshal(s.info(ss))
+	if connGone(conn, r) || writeAnswer(conn, Response{Data: data}) != nil {
+		s.ops.RLock()
+		s.end(ss)
+		s.ops.RUnlock()
 		return
 	}
 	undo = nil
@@ -459,23 +495,6 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		}
 		return append(ls, teleportLink{Link: m.Link, Dir: tree, At: time.Now()})
 	})
-	if m.Program == "claude" {
-		if cmd, ok := ClaudeResume(ss.shell, m.Session, ""); ok {
-			// Typed once the shell printed, its prompt or what comes
-			// before it: a console may drop what comes earlier.
-			for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-				ss.mu.Lock()
-				out := ss.output
-				ss.mu.Unlock()
-				if out > 0 {
-					break
-				}
-			}
-			ss.inputProgram([]byte(cmd + "\r"))
-		}
-	}
-	data, _ := json.Marshal(s.info(ss))
-	writeAnswer(conn, Response{Data: data})
 }
 
 // check tells what of the manifest this machine does not take.
@@ -485,8 +504,9 @@ func (m *TeleportManifest) check() error {
 		return fmt.Errorf("a package of version %d: GoRex differs between the machines", m.Version)
 	case m.Program != "shell" && m.Program != "claude":
 		return errors.New("an unknown program")
-	case m.Program == "claude" && !IsUUID(m.Session):
-		return errors.New("no conversation id")
+	case m.Program == "claude" && !IsUUID(m.Session), m.Program == "shell" && m.Session != "":
+		// The id names files of the package and of Claude Code's.
+		return errors.New("no conversation id GoRex takes")
 	case !hexHead(m.Head):
 		return errors.New("no commit")
 	case len(m.Remotes) == 0:
@@ -916,8 +936,65 @@ func gitEnvOut(dir string, env []string, args ...string) (string, error) {
 	return strings.TrimSpace(out.String()), err
 }
 
+// gitIn is gitOut with stdin given git.
+func gitIn(dir, stdin string, args ...string) (string, error) {
+	var out bytes.Buffer
+	err := runGitWith(context.Background(), dir, nil, strings.NewReader(stdin), &out, args...)
+	return strings.TrimSpace(out.String()), err
+}
+
+// remoteHave is what the remotes of the repo at root have that it has
+// too, as rev-list reads it on stdin: a ^commit a line, of the heads and
+// tags the remotes answer now. Its remote-tracking refs, which may be
+// stale, a branch deleted there after a squash merge, or a remote's only
+// of a fork, stand for them when no remote answers, as offline.
+func remoteHave(root string) string {
+	_, common, ok := gitTop(root)
+	if !ok {
+		return "--not\n--remotes\n"
+	}
+	names, _ := configRemotes(filepath.Join(common, "config"))
+	var heads []string
+	answered := false
+	for _, name := range slices.Compact(slices.Sorted(slices.Values(names))) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		var out bytes.Buffer
+		// No prompt: the server has no terminal, and git none to ask.
+		err := runGitWith(ctx, root, nil, nil, &out, "ls-remote", "--heads", "--tags", "--", name)
+		cancel()
+		if err != nil {
+			continue
+		}
+		answered = true
+		for _, line := range strings.Split(out.String(), "\n") {
+			if h, _, ok := strings.Cut(line, "\t"); ok && hexHead(h) {
+				heads = append(heads, h)
+			}
+		}
+	}
+	if !answered {
+		return "--not\n--remotes\n"
+	}
+	// Those this repo has: a commit it lacks cannot be named.
+	var b strings.Builder
+	if len(heads) > 0 {
+		out, _ := gitIn(root, strings.Join(heads, "\n")+"\n", "cat-file", "--batch-check=%(objectname) %(objecttype)")
+		for _, line := range strings.Split(out, "\n") {
+			if h, typ, _ := strings.Cut(line, " "); typ == "commit" || typ == "tag" {
+				b.WriteString("^" + h + "\n")
+			}
+		}
+	}
+	return b.String()
+}
+
 func runGitEnv(dir string, env []string, out io.Writer, args ...string) error {
-	cmd := exec.Command("git", args...)
+	return runGitWith(context.Background(), dir, env, nil, out, args...)
+}
+
+func runGitWith(ctx context.Context, dir string, env []string, stdin io.Reader, out io.Writer, args ...string) error {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Stdin = stdin
 	cmd.Dir = dir
 	// No prompt that no one would answer, nor a pager.
 	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "LC_ALL=C"), env...)

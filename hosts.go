@@ -143,9 +143,11 @@ type hostConn struct {
 	tailnetOnline bool
 	openOnConnect *App
 
-	// mu guards client, and Kills of savedHost.
+	// mu guards client, Kills of savedHost, and expect, the sessions a
+	// teleport starts here, which adopt leaves for their pane.
 	mu     sync.Mutex
 	client *rex.Client // nil while not connected
+	expect map[string]bool
 	retry  chan struct{}
 	stop   chan struct{}
 	once   sync.Once
@@ -168,6 +170,21 @@ func (h *hostConn) current() *rex.Client {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.client
+}
+
+// expecting marks session sid, which a teleport starts on the host, as
+// one its pane takes, or unmarks it.
+func (h *hostConn) expecting(sid string, on bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.expect == nil {
+		h.expect = map[string]bool{}
+	}
+	if on {
+		h.expect[sid] = true
+	} else {
+		delete(h.expect, sid)
+	}
 }
 
 // poke makes the next attempt now.
@@ -600,6 +617,9 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 	}
 	h.mu.Lock()
 	for _, sid := range h.Kills {
+		shown[sid] = true
+	}
+	for sid := range h.expect {
 		shown[sid] = true
 	}
 	h.mu.Unlock()

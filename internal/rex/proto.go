@@ -187,9 +187,10 @@ type LayoutCommand struct {
 	// Op is "space.create", "space.rename", "space.close", "tab.create",
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
-	// "pane.swap", "pane.move" or "pane.teleported", which makes the pane
-	// of SID the session Target of the host named Name, its work
-	// teleported there (Teleport); a local client's only.
+	// "pane.swap", "pane.move", "pane.teleporting" or "pane.teleported":
+	// a local client's only, these tell of the teleport of the pane of SID
+	// to Host, the session Target there (Teleport), which the window waits
+	// for, then makes the pane.
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// Space is the workspace the command acts on, by ID; "" for the
@@ -218,6 +219,9 @@ type LayoutCommand struct {
 	Amount    float32 `json:"amount,omitempty"`
 	Target    string  `json:"target,omitempty"`
 	Ratio     float32 `json:"ratio,omitempty"`
+	// Host is a host of the window's, by its address, of the teleport
+	// commands, whose Target is the session there.
+	Host string `json:"host,omitempty"`
 	// NewTab moves a pane into a tab of its own, named Name.
 	NewTab bool `json:"new_tab,omitempty"`
 	// Action is the action of "action", and Args its arguments. Remote
@@ -505,8 +509,10 @@ type CreateOptions struct {
 	Cols    int      `json:"cols,omitempty"`
 	Rows    int      `json:"rows,omitempty"`
 	// prelude is text the session's screen shows before the program's
-	// first output: a teleported pane's scrollback.
+	// first output: a teleported pane's scrollback; id the session's id,
+	// a new one when "": a teleport's, its hop's.
 	prelude []byte
+	id      string
 }
 
 // SessionInfo describes a session and what runs in it now.

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"gorex/internal/rex"
 )
@@ -74,6 +75,9 @@ func TestTeleportPane(t *testing.T) {
 	if !slices.Contains(tt.Menu(), "Teleport to") {
 		t.Fatalf("menu %q", tt.Menu())
 	}
+	// A banner of an earlier failure of the pane's goes with its success.
+	p.teleportErr = "Teleport to office-mac failed: before"
+	a.err = p.teleportErr
 	if err := tt.ChooseMenuItem("Teleport to", "office-mac"); err != nil {
 		t.Fatal(err)
 	}
@@ -81,6 +85,25 @@ func TestTeleportPane(t *testing.T) {
 		cur := a.tab()
 		return p.closed && cur != nil && cur.host() == h && cur.Focus != nil && cur.Focus.SID != ""
 	})
+	if a.err != "" {
+		t.Errorf("the banner stayed: %q", a.err)
+	}
+	// One tab of the session, though the host's list came meanwhile.
+	for range 3 {
+		refreshHosts(a)
+		tt.Frame()
+	}
+	shows := 0
+	for _, tb := range a.tabs {
+		for _, q := range tb.allPanes() {
+			if q.host == h && q.SID == a.tab().Focus.SID {
+				shows++
+			}
+		}
+	}
+	if shows != 1 {
+		t.Errorf("%d panes show the session", shows)
+	}
 	np := a.tab().Focus
 	if !slices.Contains(sessionIDs(t, remote), np.SID) {
 		t.Errorf("session %s is not the host's", np.SID)
@@ -152,5 +175,68 @@ func TestTeleportOverlay(t *testing.T) {
 	}
 	if !cancelled {
 		t.Error("Cancel did not cancel")
+	}
+}
+
+// refreshHosts adopts what each host lists, as its watch does.
+func refreshHosts(a *App) {
+	for _, h := range a.hosts {
+		if c := h.current(); c != nil {
+			if infos, err := c.List(); err == nil {
+				byID := map[string]rex.SessionInfo{}
+				for _, in := range infos {
+					byID[in.ID] = in
+				}
+				a.adopt(h, byID, hostLayout{})
+			}
+		}
+	}
+}
+
+// TestAdoptLeavesTeleport checks that a session a teleport starts on a
+// host, which the pane takes, does not open as a tab of its own as the
+// host's list comes first.
+func TestAdoptLeavesTeleport(t *testing.T) {
+	a, _ := newTestApp(t)
+	h := &hostConn{savedHost: savedHost{ID: "h1", Name: "office-mac"}}
+	a.hosts = append(a.hosts, h)
+	n := len(a.tabs)
+	h.expecting("0123456789ab", true)
+	a.adopt(h, map[string]rex.SessionInfo{"0123456789ab": {ID: "0123456789ab"}}, hostLayout{})
+	if len(a.tabs) != n {
+		t.Errorf("a tab of the session the teleport starts: %d tabs, were %d", len(a.tabs), n)
+	}
+	h.expecting("0123456789ab", false)
+	if len(h.expect) != 0 {
+		t.Errorf("still expected: %v", h.expect)
+	}
+}
+
+// TestPaletteTitleWidth checks that a palette row's title keeps its width
+// beside a long detail: a teleport row, disabled, with its reason.
+func TestPaletteTitleWidth(t *testing.T) {
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, _ := startHostServer(t)
+	t.Cleanup(a.stopHosts)
+	h := a.addHost(savedHost{ID: "h1", Name: "tp-office-mac-studio", Address: sock})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	p := a.tab().Focus
+	title := "Teleport to tp-office-mac-studio"
+	width := func(program string) float32 {
+		t.Helper()
+		p.info = rex.SessionInfo{Idle: program == "", Program: program, LastOutput: time.Now().Add(-time.Minute)}
+		a.paletteOpen, a.paletteQuery = true, "teleport"
+		tt.Frame()
+		r, ok := tt.Find(title)
+		if !ok {
+			t.Fatalf("no row %q in %q", title, tt.Texts())
+		}
+		return r.W
+	}
+	alone := width("")
+	beside := width("a-long-running-program-whose-name-takes-room")
+	if beside < alone-1 {
+		t.Errorf("the title is %v wide beside the detail, %v alone", beside, alone)
 	}
 }

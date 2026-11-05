@@ -50,7 +50,7 @@ the package's length.
 
 | Part | Content |
 |---|---|
-| `repo.bundle` | `git bundle` of the commits reachable from HEAD that no remote-tracking ref has; empty when HEAD is pushed |
+| `repo.bundle` | `git bundle` of the commits reachable from HEAD that the remotes do not have, by what `git ls-remote` answers of their heads and tags now (a remote-tracking ref may be stale: a branch deleted after a squash merge); by the remote-tracking refs when no remote answers, as offline; empty when HEAD is pushed |
 | `worktree.patch` | `git diff --binary HEAD`: staged and unstaged changes |
 | `untracked.tar` | the regular files `git ls-files -o --exclude-standard` lists; ignored files and links stay behind |
 | `claude/<uuid>.jsonl` | the conversation, and its `<uuid>/` directory (subagents, tool results) when there is one |
@@ -123,9 +123,16 @@ and the target is a host the user trusts with commands already (see
    This is decided once the package is in: the request carries no
    message ids.
 5. **Start the session.** `create` with the target directory and the
-   pane's size, then type `claude --resume <uuid>` into the shell
-   (reusing `claudeResume`), so the shell stays when Claude Code exits,
-   as on the source. A shell pane only gets its directory.
+   pane's size, the session's id the hop's link (which the source's window
+   knows by then, and waits for, rather than open it as a tab of its own),
+   then type `claude --resume <uuid>` into the shell (`ClaudeResume`), so
+   the shell stays when Claude Code exits, as on the source. A shell GoRex
+   cannot quote for (nushell) is refused before the package is sent. A
+   shell pane only gets its directory.
+
+   The answer goes once the session runs; a client gone by then, as a
+   cancel, gets nothing started: the session ends and what step 0–4 made
+   is undone. The target closes the connection once it kept what it made.
 
 The target answers with the new session's id; the source app re-points
 the pane to it, then kills the source session. Until the answer comes,
@@ -203,16 +210,22 @@ from its server to the target's; it holds no files.
   go.
 - While it runs, the pane shows a frosted overlay (`paintFrost`) with
   the step and the host; Cancel closes the connections, and the target,
-  which looks at its connection just before `create`, removes what it
-  made.
+  which looks at its connection before `create` and before it answers,
+  removes what it made; the client kills the session by its id too, in
+  case the answer crossed the cancel. A failure shows in the error banner,
+  as other errors do: until dismissed, or the pane's next teleport goes.
 - On success the pane is the remote session, in a tab of the host's: a
   tab's panes are all on one machine, so the session opens as a tab among
   the host's, named as the pane's tab was when the pane was its only one,
   and the pane closes, ending its session.
 - `gorex teleport <pane> <host>` does the same from the CLI: it pipes the
-  package, then asks the window (layout command `pane.teleported`, local
-  clients only) to show the pane as the host's session; with no window
-  showing the pane, it ends the source session itself.
+  package, telling the window of the session to wait for
+  (`pane.teleporting`), then asks it to show the pane as the host's
+  session (`pane.teleported`; both local clients only, the host named by
+  its address, as `hosts.json` has it, and refused when two hosts have
+  it). With no window, or none showing the pane, it ends the source
+  session itself; when a window cannot show the new session, both stay,
+  and it says so and exits 1.
 
 ## Not in phase 1
 

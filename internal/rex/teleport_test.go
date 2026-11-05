@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -480,7 +481,7 @@ func TestTeleport(t *testing.T) {
 	local.Input(sid, []byte("echo before-tele''port\n"))
 	waitText(t, local, sid, "before-teleport")
 	var steps []string
-	in, err := Teleport(context.Background(), local, sid, remote, func(s string) { steps = append(steps, s) })
+	in, err := Teleport(context.Background(), local, sid, remote, func(s, _ string) { steps = append(steps, s) })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +553,7 @@ func TestTeleport(t *testing.T) {
 	waitInfo(t, local, sid, "the conversation, and Claude Code quiet", func(in SessionInfo) bool {
 		return in.AgentSession == id && TeleportRefusal(in) == ""
 	})
-	in, err = Teleport(context.Background(), local, sid, remote, func(string) {})
+	in, err = Teleport(context.Background(), local, sid, remote, func(string, string) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -866,6 +867,7 @@ func TestTeleportRoundTrip(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the stand-in for Claude Code is a POSIX program")
 	}
+
 	_, work := teleportRepo(t)
 	m := newTwoMachines(t, work)
 	cfgA, cfgB := filepath.Join(m.homeA, ".claude"), filepath.Join(m.homeB, ".claude")
@@ -894,7 +896,7 @@ func TestTeleportRoundTrip(t *testing.T) {
 	writeFile(t, filepath.Join(projectP, convID+".jsonl"), conversation(dirP, "m1", "m2"))
 	writeFile(t, filepath.Join(projectP, convID, "subagents", "a.jsonl"), conversation(dirP, "s1"))
 	waitInfo(t, m.aLocal, sidA, "Claude Code quiet", func(in SessionInfo) bool { return in.AgentSession == convID && TeleportRefusal(in) == "" })
-	in, err := Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string) {})
+	in, err := Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string, string) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -922,7 +924,7 @@ func TestTeleportRoundTrip(t *testing.T) {
 	m.toA(t)
 	sidB := claudeIn(t, m.bLocal, dirW, cfgB)
 	waitInfo(t, m.bLocal, sidB, "Claude Code quiet", func(in SessionInfo) bool { return in.AgentSession == convID && TeleportRefusal(in) == "" })
-	in, err = Teleport(context.Background(), m.bLocal, sidB, m.aPeer, func(string) {})
+	in, err = Teleport(context.Background(), m.bLocal, sidB, m.aPeer, func(string, string) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -967,7 +969,7 @@ func TestTeleportRoundTrip(t *testing.T) {
 	m.toB(t)
 	sidA = claudeIn(t, m.aLocal, dirP, cfgA)
 	waitInfo(t, m.aLocal, sidA, "Claude Code quiet", func(in SessionInfo) bool { return in.AgentSession == convID && TeleportRefusal(in) == "" })
-	if _, err := Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string) {}); err == nil || !strings.Contains(err.Error(), "went on here too") {
+	if _, err := Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string, string) {}); err == nil || !strings.Contains(err.Error(), "went on here too") {
 		t.Fatalf("a conversation gone on at both: %v", err)
 	}
 	if !maps.Equal(tree(t, cfgB), beforeCfg) || !maps.Equal(files(t, treeW), beforeW) {
@@ -980,7 +982,7 @@ func TestTeleportRoundTrip(t *testing.T) {
 	// A to B again, B's copy as A's: in W.
 	b, _ := os.ReadFile(filepath.Join(projectP, convID+".jsonl"))
 	os.WriteFile(filepath.Join(cfgB, "projects", claudeSlug(dirW), convID+".jsonl"), b, 0o600)
-	in, err = Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string) {})
+	in, err = Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string, string) {})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1005,7 +1007,7 @@ func TestTeleportBackFallbacks(t *testing.T) {
 	}
 	_, work := teleportRepo(t)
 	m := newTwoMachines(t, work)
-	ctx, none := context.Background(), func(string) {}
+	ctx, none := context.Background(), func(string, string) {}
 	m.toB(t)
 	dirP := filepath.Join(work, "sub")
 	local, sid := shellIn(t, m.a, dirP)
@@ -1128,5 +1130,133 @@ func TestCloneRepo(t *testing.T) {
 	}
 	if got := s.homeRel(filepath.Dir(s.home)); got != "" {
 		t.Errorf("homeRel outside home %q", got)
+	}
+}
+
+// TestManifestCheck checks that a conversation id names no path: a shell
+// has none, Claude Code a UUID.
+func TestManifestCheck(t *testing.T) {
+	ok := TeleportManifest{Version: teleportVersion, Program: "shell", Head: strings.Repeat("a", 40),
+		Remotes: []string{"https://example.com/x.git"}, Link: "0123456789ab"}
+	if err := ok.check(); err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range []TeleportManifest{
+		func() TeleportManifest { m := ok; m.Session = "../../x"; return m }(),
+		func() TeleportManifest { m := ok; m.Program, m.Session = "claude", "../../x"; return m }(),
+		func() TeleportManifest { m := ok; m.Link = "../x"; return m }(),
+		func() TeleportManifest { m := ok; m.HomeRel = "../x"; return m }(),
+		func() TeleportManifest { m := ok; m.Remotes = []string{"--upload-pack=x"}; return m }(),
+	} {
+		if m.check() == nil {
+			t.Errorf("took %+v", m)
+		}
+	}
+	for _, name := range []string{"claude/../../x", "claude/../x.jsonl"} {
+		if packageName(name, "") || packageName(name, convID) {
+			t.Errorf("took part %q", name)
+		}
+	}
+}
+
+// teleportConn sends a teleport of m and the package pkg to s, as a
+// remote client, and returns what s answered first, and its connection.
+func teleportConn(t *testing.T, s *Server, m TeleportManifest) (net.Conn, error) {
+	t.Helper()
+	conn, err := pipe(s, testPeer).dial()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { conn.Close() })
+	req, _ := json.Marshal(Request{Op: "teleport", Teleport: &m})
+	conn.Write(append(req, '\n'))
+	return conn, readOK(conn)
+}
+
+// TestTeleportShellRefused checks that Claude Code does not go to a host
+// whose shell GoRex cannot type its resume into: refused at once.
+func TestTeleportShellRefused(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SHELL is POSIX's")
+	}
+	t.Setenv("SHELL", "/usr/local/bin/nu")
+	s, _ := testServer(t)
+	s.home = resolved(t)
+	m := TeleportManifest{Version: teleportVersion, Program: "claude", Session: convID, Head: strings.Repeat("a", 40),
+		Remotes: []string{"https://example.com/x.git"}, Link: "0123456789ab"}
+	if _, err := teleportConn(t, s, m); err == nil || !strings.Contains(err.Error(), "nu") {
+		t.Errorf("answered %v", err)
+	}
+}
+
+// TestTeleportClientGone checks that a client gone once it sent the
+// package leaves nothing on the target: no session, no work tree.
+func TestTeleportClientGone(t *testing.T) {
+	_, work := teleportRepo(t)
+	s, _ := testServer(t)
+	_, sid := shellIn(t, s, work)
+	m, pkg, err := s.pack(sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(pkg.Name())
+	defer pkg.Close()
+	dst, _ := testServer(t)
+	dst.home = resolved(t)
+	conn, err := teleportConn(t, dst, m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg.Seek(0, io.SeekStart)
+	io.Copy(conn, pkg)
+	conn.Close()
+	deadline := time.Now().Add(10 * time.Second)
+	c := pipe(dst, "")
+	defer c.Close()
+	for {
+		trees, _ := filepath.Glob(filepath.Join(dst.home, "*", ".gorex", "teleport", "*"))
+		if len(must(c.List())) == 0 && len(trees) == 0 && !exists(filepath.Join(dst.home, "remote", ".gorex", "teleport")) {
+			// The clone may stay; what the teleport made of it goes.
+			time.Sleep(200 * time.Millisecond)
+			if len(must(c.List())) == 0 {
+				break
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("left sessions %v, work trees %v", must(c.List()), trees)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// TestBundleStaleRemote checks that a commit the remote-tracking refs
+// still name, though the remote dropped it, as a branch deleted after a
+// squash merge, is bundled; and that with no remote answering, they stand
+// for the remote.
+func TestBundleStaleRemote(t *testing.T) {
+	bare, work := teleportRepo(t)
+	gitRun(t, work, "push", "-q", "origin", "HEAD:refs/heads/feature")
+	gitRun(t, work, "fetch", "-q", "origin")
+	gitRun(t, bare, "branch", "-D", "feature")
+	s, _ := testServer(t)
+	_, sid := shellIn(t, s, work)
+	bundled := func() bool {
+		t.Helper()
+		_, pkg, err := s.pack(sid)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(pkg.Name())
+		defer pkg.Close()
+		pkg.Seek(0, io.SeekStart)
+		_, ok := readTar(t, pkg)["repo.bundle"]
+		return ok
+	}
+	if !bundled() {
+		t.Error("the commit the remote dropped is not bundled")
+	}
+	gitRun(t, work, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
+	if bundled() {
+		t.Error("offline, the remote-tracking ref that has the commit did not stand for the remote")
 	}
 }

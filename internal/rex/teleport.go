@@ -125,10 +125,12 @@ const (
 // Teleport moves session sid of src, this machine's server, to dst's: src
 // packs it, and the package goes through this process to dst, which
 // unpacks it and starts the program again in a session of its own, which
-// it returns. step is told each step as it begins. Cancelling ctx before
-// dst starts the session ends it there, and nothing is left; the source
-// session is never changed: the caller ends it once it has the new one.
-func Teleport(ctx context.Context, src *Client, sid string, dst *Client, step func(string)) (SessionInfo, error) {
+// it returns. step is told each step as it begins, and from the sending
+// on, the id the session there will have, which the caller expects.
+// Cancelling ctx ends the session there, or before, keeps it from
+// starting, and nothing is left; the source session is never changed:
+// the caller ends it once it has the new one.
+func Teleport(ctx context.Context, src *Client, sid string, dst *Client, step func(step, sid string)) (SessionInfo, error) {
 	var mu sync.Mutex
 	var conns []net.Conn
 	keep := func(c net.Conn) bool {
@@ -161,7 +163,7 @@ func Teleport(ctx context.Context, src *Client, sid string, dst *Client, step fu
 		return SessionInfo{}, errors.New("rex: no connection to open for a teleport")
 	}
 
-	step(TeleportPacking)
+	step(TeleportPacking, "")
 	pc, err := src.dial()
 	if err != nil {
 		return fail(err)
@@ -182,7 +184,7 @@ func Teleport(ctx context.Context, src *Client, sid string, dst *Client, step fu
 		return fail(errors.New("rex: the package is too large"))
 	}
 
-	step(TeleportSending)
+	step(TeleportSending, m.Link)
 	tc, err := dst.dial()
 	if err != nil {
 		return fail(err)
@@ -202,11 +204,19 @@ func Teleport(ctx context.Context, src *Client, sid string, dst *Client, step fu
 		return fail(fmt.Errorf("rex: sending the package: %w", err))
 	}
 
-	step(TeleportStarting)
+	step(TeleportStarting, m.Link)
 	var in SessionInfo
-	if err := readAnswer(bufio.NewReader(tc), &in); err != nil {
+	tr := bufio.NewReader(tc)
+	if err := readAnswer(tr, &in); err != nil {
+		if ctx.Err() != nil {
+			// Cancelled as the target started the session, which may be
+			// there: nothing would show it. Its id is the hop's.
+			dst.Kill(m.Link)
+		}
 		return fail(err)
 	}
+	// The target closes the connection once it kept what it made.
+	io.Copy(io.Discard, tr)
 	return in, nil
 }
 

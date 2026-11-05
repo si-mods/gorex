@@ -1378,7 +1378,8 @@ func (a *App) palette(c *ui.Context, k *colors) {
 					if it.hasDot {
 						ui.Box(c).Size(8, 8).Radius(4).Background(it.dot).Shrink(0)
 					}
-					ui.RichText(c, titleSpans(it.title, 13.5, 500, k.text)...).Label(it.title).SingleLine().Ellipsis("…").Shrink(0.3).MinWidth(0)
+					// The title takes its width, the detail what is left.
+					ui.RichText(c, titleSpans(it.title, 13.5, 500, k.text)...).Label(it.title).SingleLine().Ellipsis("…").Shrink(0).MaxWidthPercent(70)
 					if it.detail != "" {
 						ui.RichText(c, titleSpans(it.detail, 13, 400, k.textFaint)...).Label(it.detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 					}

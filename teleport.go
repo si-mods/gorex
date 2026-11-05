@@ -11,6 +11,24 @@ import (
 	"gorex/locales"
 )
 
+// hostAt is the window's host of address addr, an error code and message
+// when it has none connected, or more than one.
+func (a *App) hostAt(addr string) (*hostConn, string, string) {
+	var found []*hostConn
+	for _, h := range a.hosts {
+		if addr != "" && strings.TrimSpace(h.Address) == strings.TrimSpace(addr) && h.current() != nil {
+			found = append(found, h)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return nil, "host_not_found", "no such host connected to the GoRex window"
+	case 1:
+		return found[0], "", ""
+	}
+	return nil, "host_ambiguous", "more than one host of the GoRex window has that address"
+}
+
 // teleportRun is a teleport of a pane under way: the host it goes to,
 // the step it is at, and how to stop it.
 type teleportRun struct {
@@ -127,7 +145,14 @@ func (a *App) teleport(p *Pane, h *hostConn) {
 	update := a.hostUpdate()
 	src, sid := a.client, p.SID
 	go func() {
-		in, err := rex.Teleport(ctx, src, sid, dst, func(step string) {
+		var expected string
+		in, err := rex.Teleport(ctx, src, sid, dst, func(step, newSID string) {
+			// Marked before the host can start it: its pane takes it,
+			// not a tab of its own.
+			if newSID != "" && expected == "" {
+				expected = newSID
+				h.expecting(newSID, true)
+			}
 			update(func() {
 				run.step = step
 				a.changed()
@@ -143,9 +168,13 @@ func (a *App) teleport(p *Pane, h *hostConn) {
 			case err == nil:
 				a.teleported(p, h, in)
 			case !cancelled:
-				msg := strings.TrimPrefix(err.Error(), "teleport: ")
-				name := h.Name
-				a.err, a.errMsg = "", func(m locales.Messages) string { return m.TeleportFailed(name, msg) }
+				// A banner as the others, until dismissed or the pane's
+				// next teleport goes.
+				p.teleportErr = locales.TeleportFailed(h.Name, strings.TrimPrefix(err.Error(), "teleport: "))
+				a.err, a.errMsg = p.teleportErr, nil
+			}
+			if expected != "" {
+				h.expecting(expected, false)
 			}
 			a.changed()
 		})
@@ -163,6 +192,9 @@ func (a *App) teleported(p *Pane, h *hostConn, in rex.SessionInfo) {
 	}
 	if in.Cols == 0 {
 		in.Cols, in.Rows = p.info.Cols, p.info.Rows
+	}
+	if p.teleportErr != "" && a.err == p.teleportErr {
+		a.err = ""
 	}
 	t := a.sessionTab(h, in)
 	np := t.Focus

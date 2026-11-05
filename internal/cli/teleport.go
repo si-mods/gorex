@@ -40,6 +40,8 @@ func teleportCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer dst.Close()
+	// The window knows the host by its address, as hosts.json has it.
+	addr := serverAddress
 	if h, err := dst.Hello(); err != nil {
 		fmt.Fprintln(errOut, err)
 		return ExitServer, true
@@ -48,24 +50,40 @@ func teleportCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitFailed, true
 	}
 	steps := map[string]string{rex.TeleportPacking: "packing", rex.TeleportSending: "sending to " + host, rex.TeleportStarting: "starting on " + host}
-	in, err := rex.Teleport(context.Background(), src, sid, dst, func(step string) {
+	in, err := rex.Teleport(context.Background(), src, sid, dst, func(step, newSID string) {
 		fmt.Fprintf(errOut, "gorex teleport: %s…\n", steps[step])
+		if step == rex.TeleportSending {
+			// The window waits for the session, so as not to open it as a
+			// tab of its own before the pane becomes it.
+			src.Command(rex.LayoutCommand{Op: "pane.teleporting", SID: sid, Target: newSID, Host: addr})
+		}
 	})
 	if err != nil {
 		fmt.Fprintf(errOut, "gorex teleport: %s\n", strings.TrimPrefix(err.Error(), "teleport: "))
 		return ExitFailed, true
 	}
-	// The window makes its pane the host's session, and ends this one;
-	// without one showing the pane, the session ends here.
-	res, err := src.Command(rex.LayoutCommand{Op: "pane.teleported", SID: sid, Target: in.ID, Name: host})
-	if err != nil || res.Code != "" {
+	// The window makes its pane the host's session, and ends this one.
+	// With no window showing the pane, the session ends here; with one
+	// that cannot show the new session, both stay, for the user to say.
+	res, err := src.Command(rex.LayoutCommand{Op: "pane.teleported", SID: sid, Target: in.ID, Host: addr})
+	code = ExitOK
+	switch {
+	case err == nil && res.Code == "":
+	case err == nil && (res.Code == "desktop_unavailable" || res.Code == "pane_not_found"):
 		src.Kill(sid)
-		fmt.Fprintf(errOut, "gorex teleport: the session is on %s; no window showed it, open it there\n", host)
+		fmt.Fprintf(errOut, "gorex teleport: the session is on %s; no window showed the pane, open it there\n", host)
+	default:
+		why := res.Error
+		if err != nil {
+			why = err.Error()
+		}
+		fmt.Fprintf(errOut, "gorex teleport: the session is on %s as %s, and the pane here still runs: %s\n", host, in.ID, why)
+		code = ExitFailed
 	}
 	if *asJSON {
 		WriteJSON(out, in)
 	} else {
 		fmt.Fprintln(out, in.ID)
 	}
-	return ExitOK, true
+	return code, true
 }
