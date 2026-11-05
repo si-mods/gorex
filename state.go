@@ -348,6 +348,12 @@ type Pane struct {
 	// session's screen mends. A hold that ends at the size it began takes
 	// no size, and asks for no screen.
 	held int
+	// transfers are the files on their way to the pane's machine, as its
+	// list shows them; uploading closes once the last drop's are sent.
+	// dropOver tells that files dragged were over the box that takes them.
+	transfers []*fileTransfer
+	uploading chan struct{}
+	dropOver  bool
 }
 
 // browserPane is a pane that shows a web page in a web view of its
@@ -559,6 +565,19 @@ func (a *App) post(fn func()) {
 	a.postMu.Lock()
 	a.posted = append(a.posted, fn)
 	a.postMu.Unlock()
+}
+
+// updater returns what runs a change on the main thread, from any
+// goroutine: in the window of now, as long as it is open.
+func (a *App) updater() func(func()) {
+	win := a.win
+	return func(fn func()) {
+		if win != nil {
+			win.Update(fn)
+		} else {
+			a.post(fn)
+		}
+	}
 }
 
 // later changes the tree of tabs and panes once the frame building now
@@ -895,14 +914,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	}
 	// The terminal's callbacks change the state on the main thread, in
 	// the window that made the pane, as long as it is open.
-	win := a.win
-	update := func(fn func()) {
-		if win != nil {
-			win.Update(fn)
-		} else {
-			a.post(fn)
-		}
-	}
+	update := a.updater()
 	onData := func(int) { p.lastData.Store(time.Now().UnixNano()) }
 	if a.st != nil {
 		p.seenFunc = func(sid string, at time.Time) { a.st.recordSeen(sid, at) }

@@ -1450,6 +1450,56 @@
   "@paneStreamInterrupted": {
     "description": "Banner over a pane whose stream dropped while its host is connected."
   },
+  "paneDropUpload": "Upload to {dir} on {host}",
+  "@paneDropUpload": {
+    "description": "Over a pane of a host while files are dragged over it: where a drop sends them.",
+    "placeholders": {
+      "dir": {
+        "type": "String",
+        "example": "~/src/gorex"
+      },
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "paneDropUpdate": "Update GoRex on {host} to upload files",
+  "@paneDropUpdate": {
+    "description": "Over a pane of a host that takes no files while files are dragged over it: a drop pastes their paths here.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "paneUploadFolder": "Folders are not uploaded yet",
+  "@paneUploadFolder": {
+    "description": "Transfer list of a pane: a folder dropped on a pane of a host is not sent; its path is pasted."
+  },
+  "paneTransferProgress": "{done} of {size}",
+  "@paneTransferProgress": {
+    "description": "Transfer list of a pane: how much of a file has gone, in units as 1.2 MB.",
+    "placeholders": {
+      "done": {
+        "type": "String",
+        "example": "1.2 MB"
+      },
+      "size": {
+        "type": "String",
+        "example": "4.8 MB"
+      }
+    }
+  },
+  "paneTransferDone": "Done",
+  "@paneTransferDone": {
+    "description": "Transfer list of a pane: the file is there."
+  },
+  "paneTransferCancel": "Cancel",
+  "@paneTransferCancel": {
+    "description": "Label of the button that stops a transfer."
+  },
   "hostsPairRejected": "{host} did not approve this machine: the request was rejected, or its pairing window closed. Try again.",
   "@hostsPairRejected": {
     "description": "Error of the add sheet: the host's user rejected the request, or the pairing window closed before approving it.",

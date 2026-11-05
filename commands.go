@@ -1311,11 +1311,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		// Under the glass setting the panel is Liquid Glass over the
 		// dimmed window, as the other floating layers are.
 		panel.Width(560).MaxHeight(440).Radius(paletteR).Border(1, k.panelBorder)
-		if glassOn() {
-			glassPanel(panel, k.panel)
-		} else {
-			panel.Draw(func(p *ui.Painter, r ui.Rect) { paintFrost(p, r, 24, paletteR, k.panelGlass, k.panel) })
-		}
+		frostPanel(panel, k, paletteR)
 		panel.Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
 		if anim != nil {
 			backdrop.Transition(ui.ElementTransition{Duration: 150 * time.Millisecond, Colors: true, Enter: paletteFade, Exit: paletteFade})
