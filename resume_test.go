@@ -1,9 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -76,9 +81,10 @@ func TestSnapshotSavesProgram(t *testing.T) {
 	a, _ := newTestApp(t)
 	p := a.tab().Focus
 	p.info.Program, p.info.Args, p.info.Idle = "claude", []string{"claude", "--resume"}, false
+	p.info.AgentSession, p.info.AgentConfigDir = "5d454f1b", "/c"
 	n := a.savedTab(a.tab()).Root
-	if n.Prog != "claude" || len(n.Args) != 2 || n.Args[1] != "--resume" {
-		t.Errorf("saved %q %q", n.Prog, n.Args)
+	if n.Prog != "claude" || len(n.Args) != 2 || n.Args[1] != "--resume" || n.AgentSession != "5d454f1b" || n.AgentConfigDir != "/c" {
+		t.Errorf("saved %q %q %q %q", n.Prog, n.Args, n.AgentSession, n.AgentConfigDir)
 	}
 	p.info.Program, p.info.Args, p.info.Idle = testShell.path, nil, true
 	if n := a.savedTab(a.tab()).Root; n.Prog != "" || n.Args != nil {
@@ -197,5 +203,168 @@ func TestRestoreOffersRunOfResumedSession(t *testing.T) {
 	}
 	if p.resume == nil || p.resume.cmd == "" {
 		t.Fatalf("no strip on the resumed session, %+v", p.resume)
+	}
+}
+
+// TestClaudeResume checks the command that resumes Claude Code's own
+// conversation, in its config dir, by the shell it is typed into.
+func TestClaudeResume(t *testing.T) {
+	const id = "5d454f1b-0c2e-4b8a-9f00-0123456789ab"
+	for _, c := range []struct {
+		shell, config, want string
+		ok                  bool
+	}{
+		{"bash", "", "claude --resume " + id, true},
+		{"cmd.exe", "", "claude --resume " + id, true},
+		{"/bin/zsh", "/home/u/.claude-work", "CLAUDE_CONFIG_DIR=/home/u/.claude-work claude --resume " + id, true},
+		{"bash", "/tmp/a b", "CLAUDE_CONFIG_DIR='/tmp/a b' claude --resume " + id, true},
+		{"fish", "/tmp/a b", "env CLAUDE_CONFIG_DIR='/tmp/a b' claude --resume " + id, true},
+		{"tcsh", "/tmp/x", "env CLAUDE_CONFIG_DIR=/tmp/x claude --resume " + id, true},
+		{"pwsh.exe", `D:\it's`, `$env:CLAUDE_CONFIG_DIR='D:\it''s'; claude --resume ` + id, true},
+		{"powershell", `D:\c`, `$env:CLAUDE_CONFIG_DIR='D:\c'; claude --resume ` + id, true},
+		{"cmd.exe", `D:\a & b`, `set "CLAUDE_CONFIG_DIR=D:\a & b" && claude --resume ` + id, true},
+		{"cmd.exe", `D:\100%`, "", false},
+		{"nu", "", "", false},
+	} {
+		got, ok := claudeResume(c.shell, id, c.config)
+		if ok != c.ok || got != c.want {
+			t.Errorf("claudeResume(%q, %q) = %q, %v; want %q, %v", c.shell, c.config, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// TestResumeHintSession checks that a restored Claude Code pane continues
+// the conversation the layout kept, and the last one without it.
+func TestResumeHintSession(t *testing.T) {
+	const id = "5d454f1b-0c2e-4b8a-9f00-0123456789ab"
+	for _, c := range []struct {
+		shell string
+		node  savedNode
+		want  string
+	}{
+		{"bash", savedNode{Prog: "claude", Args: []string{`C:\bin\claude.exe`}, AgentSession: id}, "claude --resume " + id},
+		{"bash", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "/c"}, "CLAUDE_CONFIG_DIR=/c claude --resume " + id},
+		{"bash", savedNode{Prog: "claude"}, "claude --continue"},
+		// A config dir cmd cannot take leaves the last conversation.
+		{"cmd", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "%x%"}, "claude --continue"},
+		{"bash", savedNode{Prog: "codex", AgentSession: id}, "codex resume --last"},
+		// The layout is a file anyone may write: what is no UUID is not typed.
+		{"bash", savedNode{Prog: "claude", AgentSession: "x; touch pwned"}, "claude --continue"},
+		{"pwsh", savedNode{Prog: "claude", AgentSession: "--add"}, "claude --continue"},
+		{"pwsh", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "x’; Write-Output INJECTED; ’"},
+			"$env:CLAUDE_CONFIG_DIR='x’’; Write-Output INJECTED; ’’'; claude --resume " + id},
+		{"bash", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "x'; touch pwned; '"},
+			`CLAUDE_CONFIG_DIR='x'\''; touch pwned; '\''' claude --resume ` + id},
+	} {
+		h := resumeHintFor(c.shell, &c.node)
+		if h == nil || h.cont != c.want {
+			t.Errorf("resumeHintFor(%q, %+v) = %+v, want cont %q", c.shell, c.node, h, c.want)
+		}
+	}
+}
+
+// TestClaudeSessionRecorded runs a stand-in for Claude Code, a copy of a
+// program that waits named claude, with a config dir and the file Claude
+// Code keeps there: the session server finds its conversation, the layout
+// keeps it, and a pane restored from that layout resumes it.
+func TestClaudeSessionRecorded(t *testing.T) {
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	waitFor(t, tt, "the shell", func() bool {
+		return p.info.Idle && p.term != nil && strings.Contains(p.term.Text(), testShell.prompt)
+	})
+	bin, config := t.TempDir(), t.TempDir()
+	src, fake, run := "/bin/sleep", filepath.Join(bin, "claude"), ""
+	if runtime.GOOS == "windows" {
+		src, fake = filepath.Join(os.Getenv("SystemRoot"), "System32", "PING.EXE"), filepath.Join(bin, "claude.exe")
+		run = `set "CLAUDE_CONFIG_DIR=` + config + `" && "` + fake + `" -n 30 127.0.0.1 >nul`
+	} else {
+		run = "CLAUDE_CONFIG_DIR='" + config + "' '" + fake + "' 30"
+	}
+	b, err := os.ReadFile(src)
+	if err != nil {
+		t.Skip(err)
+	}
+	if err := os.WriteFile(fake, b, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.client.Input(p.SID, []byte(run+"\r")); err != nil {
+		t.Fatal(err)
+	}
+	var fg int
+	var cwd string
+	waitForThat(t, func() bool {
+		for _, in := range infos(t, a.client) {
+			if in.ID == p.SID && in.Program == "claude" {
+				fg, cwd = in.Foreground, in.Dir
+				return true
+			}
+		}
+		return false
+	}, "claude in the foreground")
+	// Ends the stand-in before its directory goes: Windows keeps a running
+	// program's file.
+	t.Cleanup(func() {
+		if pr, err := os.FindProcess(fg); err == nil {
+			pr.Kill()
+		}
+		for i := 0; i < 50 && os.Remove(fake) != nil; i++ {
+			time.Sleep(20 * time.Millisecond)
+		}
+	})
+	const id = "5d454f1b-0c2e-4b8a-9f00-0123456789ab"
+	os.MkdirAll(filepath.Join(config, "sessions"), 0o755)
+	file := fmt.Sprintf(`{"pid":%d,"sessionId":%q,"cwd":%q}`, fg, id, cwd)
+	if err := os.WriteFile(filepath.Join(config, "sessions", fmt.Sprint(fg)+".json"), []byte(file), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	waitForThat(t, func() bool {
+		refresh(a)
+		return p.info.AgentSession == id
+	}, "the conversation in the session's info")
+	n := a.savedTab(a.tab()).Root
+	if n.AgentSession != id || n.AgentConfigDir != config {
+		t.Fatalf("the layout kept %q in %q", n.AgentSession, n.AgentConfigDir)
+	}
+	n.SID = "gone"
+	r := &App{client: a.client}
+	if !r.restore(layout.Layout{Tabs: []layout.Tab{{Root: n}}}, nil) {
+		t.Fatal("nothing restored")
+	}
+	h := r.tab().panes()[0].resume
+	want, _ := claudeResume(testShell.path, id, config)
+	if h == nil || h.cont != want || !strings.Contains(want, id) {
+		t.Errorf("restored with %+v, want continue %q", h, want)
+	}
+}
+
+// TestPowerShellCurlyQuotes checks that a word holding any quote
+// PowerShell ends a single-quoted string with stays one word: its quotes,
+// ASCII and curly, are doubled. With pwsh at hand, the word reads back.
+func TestPowerShellCurlyQuotes(t *testing.T) {
+	words := []string{"'"}
+	for _, q := range []string{"‘", "’", "‚", "‛"} {
+		words = append(words, q)
+		hostile := "x" + q + "; Write-Output INJECTED; " + q
+		got, _ := powerShellWord(hostile)
+		if want := "'x" + q + q + "; Write-Output INJECTED; " + q + q + "'"; got != want {
+			t.Errorf("powerShellWord(%q) = %q, want %q", hostile, got, want)
+		}
+	}
+	pwsh, err := exec.LookPath("pwsh")
+	if err != nil {
+		t.Skip("no pwsh to read the words back")
+	}
+	for _, q := range words {
+		s := "x" + q + "; Write-Output INJECTED; " + q
+		w, _ := powerShellWord(s)
+		out, err := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command",
+			"[Console]::OutputEncoding = [Text.Encoding]::UTF8; Write-Output "+w).Output()
+		if err != nil {
+			t.Fatalf("pwsh: %v", err)
+		}
+		if got := strings.TrimRight(string(out), "\r\n"); got != s {
+			t.Errorf("pwsh read %q back as %q", s, got)
+		}
 	}
 }

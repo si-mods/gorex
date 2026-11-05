@@ -89,23 +89,69 @@ type processBasicInformation struct {
 	InheritedFromUniqueProcessID uintptr
 }
 
-// processDir returns the working directory of a process, from its
-// parameters in its memory.
-func processDir(h windows.Handle) string {
+// processParams returns the address of a process's parameters in its
+// memory, and the read of its memory; 0 when it has none to read.
+func processParams(h windows.Handle) (params uintptr, read func(addr uintptr, p unsafe.Pointer, size uintptr) bool) {
+	read = func(addr uintptr, p unsafe.Pointer, size uintptr) bool {
+		return windows.ReadProcessMemory(h, addr, (*byte)(p), size, nil) == nil
+	}
 	var wow bool
 	if windows.IsWow64Process(h, &wow) != nil || wow {
 		// The parameters of a 32-bit process are elsewhere.
-		return ""
+		return 0, read
 	}
 	var pbi processBasicInformation
 	if windows.NtQueryInformationProcess(h, windows.ProcessBasicInformation, unsafe.Pointer(&pbi), uint32(unsafe.Sizeof(pbi)), nil) != nil || pbi.PebBaseAddress == 0 {
+		return 0, read
+	}
+	if !read(pbi.PebBaseAddress+unsafe.Offsetof(windows.PEB{}.ProcessParameters), unsafe.Pointer(&params), unsafe.Sizeof(params)) {
+		return 0, read
+	}
+	return params, read
+}
+
+// procEnv returns the variable name of a process's environment, "" when
+// it has none or does not tell.
+func procEnv(pid int, name string) string {
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION|windows.PROCESS_VM_READ, false, uint32(pid))
+	if err != nil {
 		return ""
 	}
-	read := func(addr uintptr, p unsafe.Pointer, size uintptr) bool {
-		return windows.ReadProcessMemory(h, addr, (*byte)(p), size, nil) == nil
+	defer windows.CloseHandle(h)
+	params, read := processParams(h)
+	if params == 0 {
+		return ""
 	}
-	var params uintptr
-	if !read(pbi.PebBaseAddress+unsafe.Offsetof(windows.PEB{}.ProcessParameters), unsafe.Pointer(&params), unsafe.Sizeof(params)) || params == 0 {
+	var env, size uintptr
+	if !read(params+unsafe.Offsetof(windows.RTL_USER_PROCESS_PARAMETERS{}.Environment), unsafe.Pointer(&env), unsafe.Sizeof(env)) ||
+		!read(params+unsafe.Offsetof(windows.RTL_USER_PROCESS_PARAMETERS{}.EnvironmentSize), unsafe.Pointer(&size), unsafe.Sizeof(size)) ||
+		env == 0 || size < 2 || size > 1<<20 {
+		return ""
+	}
+	block := make([]uint16, size/2)
+	if !read(env, unsafe.Pointer(&block[0]), uintptr(len(block))*2) {
+		return ""
+	}
+	// NAME=value strings, each ending in a NUL; names take no case.
+	for len(block) > 0 && block[0] != 0 {
+		i := 0
+		for i < len(block) && block[i] != 0 {
+			i++
+		}
+		kv := windows.UTF16ToString(block[:i])
+		if k, v, ok := strings.Cut(kv, "="); ok && k != "" && strings.EqualFold(k, name) {
+			return v
+		}
+		block = block[min(i+1, len(block)):]
+	}
+	return ""
+}
+
+// processDir returns the working directory of a process, from its
+// parameters in its memory.
+func processDir(h windows.Handle) string {
+	params, read := processParams(h)
+	if params == 0 {
 		return ""
 	}
 	// CurrentDirectory starts with its path, DosPath.

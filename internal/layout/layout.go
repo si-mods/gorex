@@ -104,4 +104,9 @@ type Node struct {
 	// Unavailable marks a pane the server would not share with this
 	// client: its SID and host are gone, but its place in the layout stays.
 	Unavailable bool `json:"unavailable,omitempty"`
+	// AgentSession is the conversation Claude Code had open as Prog, which
+	// the pane resumes, and AgentConfigDir its config dir when not the
+	// default.
+	AgentSession   string `json:"agentSession,omitempty"`
+	AgentConfigDir string `json:"agentConfigDir,omitempty"`
 }

@@ -2626,6 +2626,7 @@ func (a *App) savedTab(t *Tab) savedTab {
 			// stay on their machine, and the pane attaches to one again.
 			if p.host == nil && !p.info.Idle && (len(p.info.Args) > 0 || p.info.Program != "") {
 				s.Prog, s.Args = p.info.Program, p.info.Args
+				s.AgentSession, s.AgentConfigDir = p.info.AgentSession, p.info.AgentConfigDir
 			}
 			return s
 		}
@@ -2720,7 +2721,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 				// reboot is the shell the pane's program ran in: back at
 				// its prompt, the pane offers the program again.
 				if in.Idle {
-					p.resume = resumeHintFor(in.Shell, s.Prog, s.Args)
+					p.resume = resumeHintFor(in.Shell, s)
 				}
 			default:
 				dir := s.Dir
@@ -2729,7 +2730,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 				}
 				p = a.newPane(nil, dir, s.Cols, s.Rows)
 				p.Name, p.restored = s.Name, true
-				p.resume = resumeHintFor(p.info.Shell, s.Prog, s.Args)
+				p.resume = resumeHintFor(p.info.Shell, s)
 			}
 			p.Tab, p.Node = t, n
 			n.Pane = p
@@ -2952,7 +2953,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			}
 			// The layout keeps the program in the foreground, for a pane
 			// whose session a restart loses: its start and its end save.
-			if was.Dir != in.Dir || was.Idle != in.Idle || was.Program != in.Program || !slices.Equal(was.Args, in.Args) {
+			if was.Dir != in.Dir || was.Idle != in.Idle || was.Program != in.Program || !slices.Equal(was.Args, in.Args) || was.AgentSession != in.AgentSession {
 				a.changed()
 			}
 		}
