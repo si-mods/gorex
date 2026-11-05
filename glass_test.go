@@ -20,7 +20,7 @@ func TestGlassDefaults(t *testing.T) {
 	if got := termOpacity(); got != defaultTermOpacity {
 		t.Errorf("the default terminal opacity is %v, want %v", got, defaultTermOpacity)
 	}
-	want := map[string]mygo.Vibrancy{"darwin": mygo.VibrancyGlass, "windows": mygo.VibrancyMica}[runtime.GOOS]
+	want := map[string]mygo.Vibrancy{"darwin": mygo.VibrancyGlass, "windows": mygo.VibrancyGlass}[runtime.GOOS]
 	if got := glassVibrancy(); got != want {
 		t.Errorf("the window's material is %q, want %q", got, want)
 	}

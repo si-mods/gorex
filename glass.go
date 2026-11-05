@@ -34,18 +34,17 @@ func termOpacity() float32 {
 
 // glassVibrancy is the material the windows show behind their pages for
 // the setting: Liquid Glass on macOS (from macOS 26; before, MyGo shows
-// the popover material in its place), Mica on Windows 11, as its own
-// apps' main windows have, and none on Linux, which has no materials, or
-// with the setting off.
+// the popover material in its place), Acrylic on Windows 11, which blurs
+// the desktop behind the window as the setting promises (Mica only tints
+// with the wallpaper, and shows nothing behind), and none on Linux, which
+// has no materials, or with the setting off.
 func glassVibrancy() mygo.Vibrancy {
 	if !glassOn() {
 		return mygo.VibrancyNone
 	}
 	switch runtime.GOOS {
-	case "darwin":
+	case "darwin", "windows":
 		return mygo.VibrancyGlass
-	case "windows":
-		return mygo.VibrancyMica
 	}
 	return mygo.VibrancyNone
 }
