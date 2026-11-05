@@ -115,10 +115,12 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 - `float` floats or docks panes through the window: `new` opens a floating
   terminal, `dock` puts the focused float back among the tiled panes, and
   the other subcommands name the `float.*` actions.
-- `teleport` moves a pane of this machine to a saved host
-  ([teleport.md](teleport.md)), prints the new session's ID there, and
-  has the window show the pane as that session; with no window showing
-  the pane, its session ends and the new one waits on the host.
+- `teleport` moves a pane of this machine to a host
+  ([teleport.md](teleport.md)), named as `-S` names one: by its name as
+  Remote Hosts shows it, or its address. It prints the new session's ID
+  there, and has the window show the pane as that session; with no window
+  showing the pane, its session ends and the new one waits on the host;
+  when the window cannot show the new session, both stay and it exits 1.
 
 `gorex rexapi` is not a command of this line: it serves Rex's API to Rex
 clients from the server the app already runs. The server runs that

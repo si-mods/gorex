@@ -262,12 +262,15 @@ from its server to the target's; it holds no files.
   tab's panes are all on one machine, so the session opens as a tab among
   the host's, named as the pane's tab was when the pane was its only one,
   and the pane closes, ending its session.
-- `gorex teleport <pane> <host>` does the same from the CLI: it pipes the
-  package, telling the window of the session to wait for
-  (`pane.teleporting`), then asks it to show the pane as the host's
-  session (`pane.teleported`; both local clients only, the host named by
-  its address, as `hosts.json` has it, and refused when two hosts have
-  it). With no window, or none showing the pane, it ends the source
+- `gorex teleport <pane> <host>` does the same from the CLI. The host is
+  named as `-S` names one: by its name as Remote Hosts shows it (a saved
+  host's, else a system Tailscale host's), or by its address; a name two
+  hosts have is refused. The CLI pipes the package, telling the window of
+  the session to wait for (`pane.teleporting`), then asks it to show the
+  pane as the host's session (`pane.teleported`; both local clients
+  only). It tells the window the host by the address it dialed, which the
+  window matches against its hosts' (a name may differ between them), and
+  the window refuses one two of its hosts have. With no window, or none showing the pane, it ends the source
   session itself; when a window cannot show the new session, both stay,
   and it says so and exits 1.
 
