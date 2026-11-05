@@ -971,8 +971,9 @@ func ClientPublicKey() string {
 
 // ConnectRemote connects to the server at a tailcat address, as the
 // client of ClientPublicKey, through the local server: one tailcat client
-// per machine, as two of one key take each other's packets (#212). With
-// no local server, or one that does not relay yet, it dials itself.
+// per machine, as two of one key take each other's packets (#212). It
+// starts the local server when none runs, as Connect does; it dials itself
+// only when that fails, or the server does not relay yet.
 func ConnectRemote(ctx context.Context, addr string) (*Client, error) {
 	addr = strings.TrimSpace(addr)
 	if IsTailnetTarget(addr) {
@@ -985,9 +986,6 @@ func ConnectRemote(ctx context.Context, addr string) (*Client, error) {
 	if _, err := tailcat.ParseAddr(a); err != nil {
 		// Not the parser's error: it could quote the address.
 		return nil, errors.New("rex: not a tailcat address")
-	}
-	if _, err := remoteClientKey(); err != nil {
-		return nil, err
 	}
 	conn, err := dialRemote(ctx, addr)
 	if err != nil {
@@ -1025,14 +1023,22 @@ func dialRemote(ctx context.Context, addr string) (net.Conn, error) {
 
 var errNoRelay = errors.New("no relay")
 
-// relayDial asks the local server to connect to addr. It is errNoRelay
-// when that server is not there or does not relay; another error is the
-// relay's, which dialing again here would not mend.
+// spawnServer starts the local server; tests replace it.
+var spawnServer = Spawn
+
+// relayDial asks the local server to connect to addr, starting it when
+// none runs. It is errNoRelay when that server cannot be reached or does
+// not relay; another error is the relay's, which dialing again here would
+// not mend.
 func relayDial(ctx context.Context, addr string) (net.Conn, error) {
-	var d net.Dialer
-	c, err := d.DialContext(ctx, "unix", SocketPath())
+	c, err := dialSocket()
 	if err != nil {
-		return nil, errNoRelay
+		if spawnServer() != nil {
+			return nil, errNoRelay
+		}
+		if c, err = dialUntil(time.Now().Add(5 * time.Second)); err != nil {
+			return nil, errNoRelay
+		}
 	}
 	stop := context.AfterFunc(ctx, func() { c.Close() })
 	b, _ := json.Marshal(Request{Op: "remote.tailcatDial", TailcatAddress: addr})
@@ -1080,6 +1086,17 @@ func readByteLine(c net.Conn) ([]byte, error) {
 // names a tailcat address: the connection goes on to its server, through
 // the tailcat client of this process.
 func (s *Server) relayTailcat(local net.Conn, input *bufio.Reader, addr string) {
+	// A remote session through it keeps the server, as a control
+	// connection does. An upgrade drops it: its client dials again.
+	s.mu.Lock()
+	s.controls++
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.controls--
+		s.idleFrom = time.Now()
+		s.mu.Unlock()
+	}()
 	defer local.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), tailcatDial)
 	defer cancel()
@@ -1108,16 +1125,18 @@ func (s *Server) relayTailcat(local net.Conn, input *bufio.Reader, addr string) 
 	if _, err := io.WriteString(local, tailcatRelayed); err != nil {
 		return
 	}
-	done := make(chan struct{})
-	go func() {
-		<-asked
-		io.Copy(c, input)
-		c.Close()
-		close(done)
-	}()
-	io.Copy(local, c)
-	local.Close()
-	<-done
+	splice(local, waitReader{asked, input}, c)
+}
+
+// waitReader reads r once wait is closed.
+type waitReader struct {
+	wait <-chan struct{}
+	r    io.Reader
+}
+
+func (w waitReader) Read(b []byte) (int, error) {
+	<-w.wait
+	return w.r.Read(b)
 }
 
 // The tailcat clients of this process, one per address: a client's
@@ -1145,8 +1164,10 @@ type pooledTailcat struct {
 // dialTailcat connects to RemotePort at addr with the tailcat client of
 // addr. A client that connected before and fails now may have a server
 // that restarted and forgot it: it registers again (Ping) and tries once
-// more, then it is closed and another one dials. A dial its caller gave
-// up (canceled) closes no client.
+// more; then, when no other connection uses it, another client replaces
+// it. A client other connections use is never closed here: one slow dial
+// says little of them, and a restarted server's close soon. A dial its
+// caller gave up (canceled) closes no client.
 func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	k, err := remoteClientKey()
 	if err != nil {
@@ -1169,19 +1190,17 @@ func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	if used {
 		c, err = p.try(ctx, tailcatTry)
 		if err != nil && ctx.Err() == nil {
-			if _, err = p.tc.Ping(ctx); err == nil {
+			pctx, cancel := context.WithTimeout(ctx, tailcatTry)
+			_, err = p.tc.Ping(pctx)
+			cancel()
+			if err == nil {
 				c, err = p.try(ctx, tailcatTry)
 			}
 		}
-		if err != nil && ctx.Err() == nil {
-			// Its connections are lost already: the server forgot them.
+		if err != nil && ctx.Err() == nil && p.drop(addr) {
 			old := p
 			tailcatMu.Lock()
-			if tailcatClients[addr] == old {
-				delete(tailcatClients, addr)
-			}
-			p = tailcatClients[addr]
-			if p == nil {
+			if p = tailcatClients[addr]; p == nil {
 				p = newPooledTailcat(addr, k)
 			}
 			p.conns++
@@ -1194,13 +1213,7 @@ func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 		c, err = p.tc.DialTCPPort(ctx, RemotePort)
 	}
 	if err != nil {
-		failed := !errors.Is(ctx.Err(), context.Canceled)
-		tailcatMu.Lock()
-		if failed && tailcatClients[addr] == p {
-			delete(tailcatClients, addr)
-		}
-		tailcatMu.Unlock()
-		if failed {
+		if !errors.Is(ctx.Err(), context.Canceled) && p.drop(addr) {
 			p.tc.Close()
 		}
 		p.release(addr)
@@ -1210,6 +1223,18 @@ func dialTailcat(ctx context.Context, addr string) (net.Conn, error) {
 	p.used = true
 	tailcatMu.Unlock()
 	return &tailcatConn{Conn: c, p: p, addr: addr}, nil
+}
+
+// drop takes p out of the pool when the dial under way is its only
+// connection, and reports whether it did.
+func (p *pooledTailcat) drop(addr string) bool {
+	tailcatMu.Lock()
+	defer tailcatMu.Unlock()
+	if p.conns != 1 || tailcatClients[addr] != p {
+		return false
+	}
+	delete(tailcatClients, addr)
+	return true
 }
 
 // newPooledTailcat makes the client of addr. tailcatMu must be held.

@@ -432,11 +432,12 @@ func (s *Server) handle(conn net.Conn, peer string) {
 	}
 	if peer == "" {
 		var req Request
-		if json.Unmarshal(first, &req) == nil && req.Op == "remote.tailnetDial" {
+		err := json.Unmarshal(first, &req)
+		if err == nil && req.Op == "remote.tailnetDial" {
 			s.relayTailnet(conn, r, req.TailnetTarget)
 			return
 		}
-		if req.Op == "remote.tailcatDial" {
+		if err == nil && req.Op == "remote.tailcatDial" {
 			s.relayTailcat(conn, r, req.TailcatAddress)
 			return
 		}
