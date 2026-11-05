@@ -56,6 +56,12 @@ type TeleportManifest struct {
 	Dir  string `json:"dir,omitempty"`
 	Cols int    `json:"cols,omitempty"`
 	Rows int    `json:"rows,omitempty"`
+	// Link names this hop, which both machines record of the directory
+	// it leaves and the one it lands in; Links are those the source has
+	// of its work tree from earlier hops, by which a teleport back finds
+	// the directory the work came from.
+	Link  string   `json:"link"`
+	Links []string `json:"links,omitempty"`
 	// Size is the length of the package, a tar stream.
 	Size int64 `json:"size"`
 }

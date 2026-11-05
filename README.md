@@ -417,7 +417,8 @@ Teleport to… (the pane's menu, or Teleport to a host in the command
 palette) moves a pane's work to a connected host: the Git work tree's
 commits, changes and untracked files, Claude Code's conversation, and the
 scrollback. The host makes a work tree of its clone of the repo,
-`.gorex/teleport/<id>` on a branch `teleport/<id>`, and starts
+`.gorex/teleport/<id>` on a branch `teleport/<id>`, or, for work coming
+back to a directory it left untouched, takes it there again; and starts
 `claude --resume` there, or a shell; the pane then shows that session, in
 a tab of the host's, and its own session ends. Only a shell at its prompt
 or Claude Code waiting for the user can go, from this machine;

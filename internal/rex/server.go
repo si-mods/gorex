@@ -77,6 +77,9 @@ type Server struct {
 	// peer of each, until it is finished or aborted: an abort after the
 	// session ended takes only these.
 	puts sync.Map
+	// linksFile is teleports.json, in Dir when "": a test's servers, in
+	// one process, keep one each.
+	linksFile string
 }
 
 // layoutCmd is a layout command waiting for the app's answer, done.

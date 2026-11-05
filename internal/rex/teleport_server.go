@@ -6,6 +6,8 @@ import (
 	"archive/tar"
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +17,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -126,19 +130,17 @@ func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
 			return m, pkg, err
 		}
 	}
-	patch := filepath.Join(tmp, "worktree.patch")
-	if err := gitTo(root, patch, "diff", "--binary", "--no-color", "--no-ext-diff", "HEAD"); err != nil {
-		return m, pkg, fmt.Errorf("diffing the work tree: %w", err)
+	n, fp, err := workState(root, head, tmp)
+	if err != nil {
+		return m, pkg, err
 	}
+	patch, untracked := filepath.Join(tmp, "worktree.patch"), filepath.Join(tmp, "untracked.tar")
 	if st, err := os.Stat(patch); err == nil && st.Size() > 0 {
 		if err := add("worktree.patch", patch); err != nil {
 			return m, pkg, err
 		}
 	}
-	untracked := filepath.Join(tmp, "untracked.tar")
-	if n, err := packUntracked(root, untracked); err != nil {
-		return m, pkg, err
-	} else if n > 0 {
+	if n > 0 {
 		if err := add("untracked.tar", untracked); err != nil {
 			return m, pkg, err
 		}
@@ -174,7 +176,47 @@ func (s *Server) pack(sid string) (TeleportManifest, *os.File, error) {
 		return m, pkg, fmt.Errorf("the package is larger than %d MiB", teleportMax>>20)
 	}
 	m.Size = st.Size()
-	return m, pkg, nil
+	// This hop, and those that came here before, of the work tree: a
+	// teleport back names them. Kept now, as nothing tells this machine
+	// of the hop's end.
+	m.Link = newID()
+	err = s.updateLinks(func(ls []teleportLink) []teleportLink {
+		for _, l := range ls {
+			if samePath(l.Dir, m.Root) {
+				m.Links = append(m.Links, l.Link)
+			}
+		}
+		return append(ls, teleportLink{Link: m.Link, Dir: m.Root, Departed: fp, At: time.Now()})
+	})
+	return m, pkg, err
+}
+
+// workState writes, of the work tree at root whose HEAD is head, the
+// changes from HEAD to dir/worktree.patch and its untracked files to
+// dir/untracked.tar, which it returns the number of, and their
+// fingerprint: what a teleport takes of the work tree, which tells
+// whether it changed since.
+func workState(root, head, dir string) (int, string, error) {
+	patch, untracked := filepath.Join(dir, "worktree.patch"), filepath.Join(dir, "untracked.tar")
+	if err := gitTo(root, patch, "diff", "--binary", "--no-color", "--no-ext-diff", "HEAD"); err != nil {
+		return 0, "", fmt.Errorf("diffing the work tree: %w", err)
+	}
+	n, err := packUntracked(root, untracked)
+	if err != nil {
+		return 0, "", err
+	}
+	h := sha256.New()
+	io.WriteString(h, head+"\n")
+	for _, path := range []string{patch, untracked} {
+		f, err := os.Open(path)
+		if err != nil {
+			return 0, "", err
+		}
+		io.Copy(h, f)
+		f.Close()
+		h.Write([]byte{0})
+	}
+	return n, hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // remoteURLs are the URLs of the repo's remotes at root, origin's first.
@@ -347,32 +389,51 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		return nil
 	}
 
-	clone, remote, err := findClone(m.Remotes)
-	if err == nil && clone == "" {
-		clone, remote, err = cloneRepo(m.Remotes[0])
-		err = step("cloning the repo", err)
-	} else {
-		err = step("finding the repo", err)
+	// Back where the work came from, when it left it untouched; else a
+	// new work tree of a clone.
+	tree := ""
+	var back teleportLink
+	keepTree := func() {}
+	if d, remote, l := s.returnDir(m, tmp); d != "" {
+		u, done, err := backInto(d, remote, m, tmp)
+		undo = append(undo, u...)
+		switch {
+		case err == nil:
+			tree, back, keepTree = d, l, done
+		case !errors.Is(err, errBehind):
+			fail(step("going back to the work tree", err))
+			return
+		}
 	}
-	if err != nil {
-		fail(err)
-		return
+	if tree == "" {
+		clone, remote, err := findClone(m.Remotes)
+		if err == nil && clone == "" {
+			clone, remote, err = cloneRepo(m.Remotes[0])
+			err = step("cloning the repo", err)
+		} else {
+			err = step("finding the repo", err)
+		}
+		if err != nil {
+			fail(err)
+			return
+		}
+		id := newID()[:8]
+		tree = filepath.Join(clone, ".gorex", "teleport", id)
+		branch := "teleport/" + id
+		if err := step("fetching the commits", fetchHead(clone, remote, m.Head, filepath.Join(tmp, "repo.bundle"))); err != nil {
+			fail(err)
+			return
+		}
+		excludeTeleports(clone)
+		if _, err := gitOut(clone, "worktree", "add", "-q", "-b", branch, tree, m.Head); err != nil {
+			fail(step("making the work tree", err))
+			return
+		}
+		undo = append(undo, func() {
+			gitOut(clone, "worktree", "remove", "--force", tree)
+			gitOut(clone, "branch", "-D", branch)
+		})
 	}
-	id := newID()[:8]
-	tree, branch := filepath.Join(clone, ".gorex", "teleport", id), "teleport/"+id
-	if err := step("fetching the commits", fetchHead(clone, remote, m.Head, filepath.Join(tmp, "repo.bundle"))); err != nil {
-		fail(err)
-		return
-	}
-	excludeTeleports(clone)
-	if _, err := gitOut(clone, "worktree", "add", "-q", "-b", branch, tree, m.Head); err != nil {
-		fail(step("making the work tree", err))
-		return
-	}
-	undo = append(undo, func() {
-		gitOut(clone, "worktree", "remove", "--force", tree)
-		gitOut(clone, "branch", "-D", branch)
-	})
 	if patch := filepath.Join(tmp, "worktree.patch"); exists(patch) {
 		if _, err := gitOut(tree, "apply", "--binary", "--whitespace=nowarn", patch); err != nil {
 			fail(step("applying the changes", err))
@@ -412,6 +473,17 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 	}
 	undo = nil
 	keep()
+	keepTree()
+	// The hop landed here; the one it came back by left nothing to go
+	// back to.
+	s.updateLinks(func(ls []teleportLink) []teleportLink {
+		for i := range ls {
+			if ls[i].Link == back.Link {
+				ls[i].Departed = ""
+			}
+		}
+		return append(ls, teleportLink{Link: m.Link, Dir: tree, At: time.Now()})
+	})
 	if m.Program == "claude" {
 		if cmd, ok := ClaudeResume(ss.shell, m.Session, ""); ok {
 			// Typed once the shell printed, its prompt or what comes
@@ -449,12 +521,28 @@ func (m *TeleportManifest) check() error {
 	case m.Size < 0 || m.Size > teleportMax:
 		return fmt.Errorf("the package is larger than %d MiB", teleportMax>>20)
 	}
+	if !hexID(m.Link) || len(m.Links) > 1000 || slices.ContainsFunc(m.Links, func(l string) bool { return !hexID(l) }) {
+		return errors.New("a link GoRex did not make")
+	}
 	for _, u := range m.Remotes {
 		if u == "" || strings.HasPrefix(u, "-") || strings.ContainsAny(u, "\x00\r\n") {
 			return errors.New("a remote URL Git would not take")
 		}
 	}
 	return nil
+}
+
+// hexID tells whether s is an id of newID's.
+func hexID(s string) bool {
+	if len(s) != 12 {
+		return false
+	}
+	for _, r := range s {
+		if !strings.ContainsRune("0123456789abcdef", r) {
+			return false
+		}
+	}
+	return true
 }
 
 // hexHead tells whether s is a commit's full hash, SHA-1 or SHA-256.
@@ -899,10 +987,21 @@ func gitTo(dir, path string, args ...string) error {
 }
 
 func runGit(dir string, out io.Writer, args ...string) error {
+	return runGitEnv(dir, nil, out, args...)
+}
+
+// gitEnvOut is gitOut with env added to git's environment.
+func gitEnvOut(dir string, env []string, args ...string) (string, error) {
+	var out bytes.Buffer
+	err := runGitEnv(dir, env, &out, args...)
+	return strings.TrimSpace(out.String()), err
+}
+
+func runGitEnv(dir string, env []string, out io.Writer, args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	// No prompt that no one would answer, nor a pager.
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "LC_ALL=C")
+	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "LC_ALL=C"), env...)
 	var stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = out, &stderr
 	hideConsole(cmd)
@@ -912,6 +1011,185 @@ func runGit(dir string, out io.Writer, args ...string) error {
 			msg = err.Error()
 		}
 		return fmt.Errorf("git %s: %s", args[0], msg)
+	}
+	return nil
+}
+
+// teleportLink is a hop of a teleport as a machine keeps it
+// (teleports.json): the hop, and the work tree it left from or landed
+// in; for one it left from, Departed is the work tree's fingerprint then
+// (workState), else "". A teleport back takes the work to a work tree it
+// left untouched since.
+type teleportLink struct {
+	Link     string    `json:"link"`
+	Dir      string    `json:"dir"`
+	Departed string    `json:"departed,omitempty"`
+	At       time.Time `json:"at"`
+}
+
+// linksMu holds teleports.json while one changes it.
+var linksMu sync.Mutex
+
+// linksPath is the server's teleports.json, in its directory.
+func (s *Server) linksPath() string {
+	if s.linksFile != "" {
+		return s.linksFile
+	}
+	return filepath.Join(Dir(), "teleports.json")
+}
+
+// readLinks reads the hops this machine keeps.
+func (s *Server) readLinks() []teleportLink {
+	var f struct {
+		Links []teleportLink `json:"links"`
+	}
+	readJSON(s.linksPath(), &f)
+	return f.Links
+}
+
+// updateLinks changes the hops this machine keeps, and forgets those of
+// a directory gone.
+func (s *Server) updateLinks(change func([]teleportLink) []teleportLink) error {
+	linksMu.Lock()
+	defer linksMu.Unlock()
+	ls := slices.DeleteFunc(change(s.readLinks()), func(l teleportLink) bool { return !exists(l.Dir) })
+	return writeJSON(s.linksPath(), struct {
+		Links []teleportLink `json:"links"`
+	}{ls})
+}
+
+// returnDir finds the work tree a teleport of m comes back to: the most
+// recent that left this machine by a hop m names, still a work tree of
+// the repo, untouched since it left; "" for none. It returns the name of
+// its remote of m's, and the hop.
+func (s *Server) returnDir(m *TeleportManifest, tmp string) (dir, remote string, link teleportLink) {
+	for i, l := range s.readLinks() {
+		if l.Departed == "" || !slices.Contains(m.Links, l.Link) || l.At.Before(link.At) {
+			continue
+		}
+		top, err := gitOut(l.Dir, "rev-parse", "--show-toplevel")
+		if err != nil || !samePath(filepath.FromSlash(top), l.Dir) {
+			continue
+		}
+		r := matchRemote(l.Dir, m.Remotes)
+		if r == "" {
+			continue
+		}
+		head, err := gitOut(l.Dir, "rev-parse", "--verify", "-q", "HEAD")
+		state := filepath.Join(tmp, fmt.Sprintf("state-%d", i))
+		if err != nil || os.MkdirAll(state, 0o700) != nil {
+			continue
+		}
+		if _, fp, err := workState(l.Dir, head, state); err != nil || fp != l.Departed {
+			continue // the user worked there since
+		}
+		dir, remote, link = l.Dir, r, l
+	}
+	return dir, remote, link
+}
+
+// matchRemote is the name of the remote of the repo at dir whose URL is
+// one of urls, "" for none.
+func matchRemote(dir string, urls []string) string {
+	want := map[string]bool{}
+	for _, u := range urls {
+		want[repoKey(u)] = true
+	}
+	out, err := gitOut(dir, "config", "--get-regexp", `^remote\..*\.url$`)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(out, "\n") {
+		key, u, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if ok && want[repoKey(u)] {
+			return strings.TrimSuffix(strings.TrimPrefix(key, "remote."), ".url")
+		}
+	}
+	return ""
+}
+
+// errBehind tells that the work tree a teleport comes back to is not
+// behind the incoming HEAD: a new work tree takes the work instead.
+var errBehind = errors.New("the work tree went another way")
+
+// backInto moves the work tree at dir, whose remote of the manifest is
+// remote, to m's HEAD, from the bundle under tmp or the remote, for the
+// changes to be applied on it: its branch, or its detached HEAD, fast
+// forwards. First it keeps all it has, files untracked included, as a
+// commit under refs/gorex/teleport-backup/<m.Link>, and its index: undo
+// puts the work tree back as it was, and done drops the backup.
+// errBehind when its HEAD is not an ancestor of m's.
+func backInto(dir, remote string, m *TeleportManifest, tmp string) (undo []func(), done func(), err error) {
+	done = func() {}
+	if err := fetchHead(dir, remote, m.Head, filepath.Join(tmp, "repo.bundle")); err != nil {
+		return nil, done, err
+	}
+	old, err := gitOut(dir, "rev-parse", "--verify", "-q", "HEAD")
+	if err != nil {
+		return nil, done, err
+	}
+	if _, err := gitOut(dir, "merge-base", "--is-ancestor", old, m.Head); err != nil {
+		return nil, done, errBehind
+	}
+	// The backup: the whole work tree, but what Git ignores, through an
+	// index of its own; never the stash, which is the user's.
+	env := []string{"GIT_INDEX_FILE=" + filepath.Join(tmp, "backup.index"),
+		"GIT_AUTHOR_NAME=GoRex", "GIT_AUTHOR_EMAIL=gorex@localhost", "GIT_COMMITTER_NAME=GoRex", "GIT_COMMITTER_EMAIL=gorex@localhost"}
+	if _, err := gitEnvOut(dir, env, "add", "-A"); err != nil {
+		return nil, done, err
+	}
+	tree, err := gitEnvOut(dir, env, "write-tree")
+	if err != nil {
+		return nil, done, err
+	}
+	commit, err := gitEnvOut(dir, env, "commit-tree", "--no-gpg-sign", "-p", old, "-m", "GoRex: the work tree before a teleport came back", tree)
+	if err != nil {
+		return nil, done, err
+	}
+	ref := "refs/gorex/teleport-backup/" + m.Link
+	if _, err := gitOut(dir, "update-ref", ref, commit); err != nil {
+		return nil, done, err
+	}
+	index, err := gitOut(dir, "rev-parse", "--path-format=absolute", "--git-path", "index")
+	if err != nil {
+		gitOut(dir, "update-ref", "-d", ref)
+		return nil, done, err
+	}
+	index = filepath.FromSlash(index)
+	saved, _ := os.ReadFile(index)
+	drop := func() { gitOut(dir, "update-ref", "-d", ref) }
+	undo = append(undo, drop, func() {
+		gitOut(dir, "reset", "-q", "--hard", old)
+		removeUntracked(dir)
+		gitOut(dir, "read-tree", "-u", "--reset", commit)
+		if saved != nil {
+			os.WriteFile(index, saved, 0o644)
+		}
+	})
+	// Its untracked files go too: they are in the backup, and the
+	// incoming ones take their place.
+	if err := removeUntracked(dir); err != nil {
+		return undo, done, err
+	}
+	if _, err := gitOut(dir, "reset", "-q", "--hard", m.Head); err != nil {
+		return undo, done, err
+	}
+	return undo, drop, nil
+}
+
+// removeUntracked removes the files Git does not track and does not
+// ignore from the work tree at dir; a repo of its own in it stays.
+func removeUntracked(dir string) error {
+	out, err := gitOut(dir, "ls-files", "-o", "--exclude-standard", "-z")
+	if err != nil {
+		return err
+	}
+	for _, name := range strings.Split(out, "\x00") {
+		if name != "" && !strings.HasSuffix(name, "/") {
+			if err := os.Remove(filepath.Join(dir, filepath.FromSlash(name))); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+		}
 	}
 	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -794,123 +795,273 @@ func resolved(t *testing.T) string {
 	return d
 }
 
-// TestTeleportRoundTrip teleports a Claude Code conversation from A to B,
-// where it goes on, and back to A, which has the copy it started with:
-// the copy gives way to the one ahead, and each side ends with one copy,
-// in the project of its pane's directory.
-func TestTeleportRoundTrip(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the stand-in for Claude Code is a POSIX program")
-	}
-	_, work := teleportRepo(t)
-	homeA, homeB, rootsB := resolved(t), resolved(t), resolved(t)
-	cfgA, cfgB := filepath.Join(homeA, ".claude"), filepath.Join(homeB, ".claude")
+// files returns the files of the work tree at dir, by slash path, with
+// their contents, Git's own and the teleports' work trees left out.
+func files(t *testing.T, dir string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() && (d.Name() == ".git" || d.Name() == ".gorex") {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() {
+			rel, _ := filepath.Rel(dir, path)
+			b, _ := os.ReadFile(path)
+			out[filepath.ToSlash(rel)] = string(b)
+		}
+		return nil
+	})
+	return out
+}
+
+// twoMachines are two in-process servers, A and B, each with its home,
+// Claude Code's config dir and its clones' root, and clients of each:
+// one of the machine, one of the other as a remote client.
+type twoMachines struct {
+	a, b                         *Server
+	aLocal, aPeer, bLocal, bPeer *Client
+	homeA, homeB, rootsA, rootsB string
+}
+
+func newTwoMachines(t *testing.T, work string) *twoMachines {
+	t.Helper()
+	m := &twoMachines{homeA: resolved(t), homeB: resolved(t), rootsA: filepath.Dir(work), rootsB: resolved(t)}
 	t.Setenv("SHELL", "/bin/sh")
 	stubClaude(t)
 	old := teleportRoots
 	t.Cleanup(func() { teleportRoots = old })
 	a, _ := testServer(t)
 	b, _ := testServer(t)
-	aLocal, aPeer, bLocal, bPeer := pipe(a, ""), pipe(a, testPeer), pipe(b, ""), pipe(b, testPeer)
-	// A terminal first, which finds its library under the user's home,
-	// before the homes of the machines take its place.
-	shellIn(t, a, work)
-	for _, c := range []*Client{aLocal, aPeer, bLocal, bPeer} {
-		t.Cleanup(func() { c.Close() })
-	}
-	t.Cleanup(func() {
-		for _, c := range []*Client{aPeer, bPeer} {
+	m.a, m.b = a, b
+	m.aLocal, m.aPeer, m.bLocal, m.bPeer = pipe(a, ""), pipe(a, testPeer), pipe(b, ""), pipe(b, testPeer)
+	for _, c := range []*Client{m.aLocal, m.aPeer, m.bLocal, m.bPeer} {
+		t.Cleanup(func() {
 			for _, in := range must(c.List()) {
 				c.Kill(in.ID)
 			}
-		}
-	})
+			c.Close()
+		})
+	}
+	// A terminal first, which finds its library under the user's home,
+	// before the homes of the machines take its place.
+	shellIn(t, a, work)
+	return m
+}
+
+// toB and toA make the hop's source machine the process's: its home, and
+// the target's config dir and clones' root.
+func (m *twoMachines) toB(t *testing.T) {
+	t.Setenv("HOME", m.homeA)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(m.homeB, ".claude"))
+	teleportRoots = func() []string { return []string{m.rootsB} }
+}
+
+func (m *twoMachines) toA(t *testing.T) {
+	t.Setenv("HOME", m.homeB)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(m.homeA, ".claude"))
+	teleportRoots = func() []string { return []string{m.rootsA} }
+}
+
+// TestTeleportRoundTrip teleports a Claude Code conversation from A's
+// work tree P to B, which makes a work tree W of it, goes on there, and
+// back: the work lands in P again, its branch fast forwarded, with B's
+// changes, P's untracked files that B removed gone, the conversation in
+// P's project, its copy there given way; and to B again, in W. No other
+// work tree is made. A conversation gone on at both is refused.
+func TestTeleportRoundTrip(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in for Claude Code is a POSIX program")
+	}
+	_, work := teleportRepo(t)
+	m := newTwoMachines(t, work)
+	cfgA, cfgB := filepath.Join(m.homeA, ".claude"), filepath.Join(m.homeB, ".claude")
 	copies := func(config string) []string {
 		found, _ := filepath.Glob(filepath.Join(config, "projects", "*", convID+".jsonl"))
 		return found
 	}
+	trees := func(clone string) []string {
+		found, _ := filepath.Glob(filepath.Join(clone, ".gorex", "teleport", "*"))
+		return found
+	}
+	appendMessage := func(file, id, cwd string) {
+		f, err := os.OpenFile(file, os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(f, "{\"type\":\"user\",\"uuid\":%q,\"cwd\":%s}\n", id, jsonString(cwd))
+		f.Close()
+	}
 
-	// A to B: one machine's server and home at a time, as the hop's.
-	t.Setenv("HOME", homeA)
-	t.Setenv("CLAUDE_CONFIG_DIR", cfgB)
-	teleportRoots = func() []string { return []string{rootsB} }
-	dirA := filepath.Join(work, "sub")
-	sidA := claudeIn(t, aLocal, dirA, cfgA)
-	projectA := filepath.Join(cfgA, "projects", claudeSlug(dirA))
-	writeFile(t, filepath.Join(projectA, convID+".jsonl"), conversation(dirA, "m1", "m2"))
-	writeFile(t, filepath.Join(projectA, convID, "subagents", "a.jsonl"), conversation(dirA, "s1"))
-	waitInfo(t, aLocal, sidA, "Claude Code quiet", func(in SessionInfo) bool { return in.AgentSession == convID && TeleportRefusal(in) == "" })
-	in, err := Teleport(context.Background(), aLocal, sidA, bPeer, func(string) {})
+	// A to B.
+	m.toB(t)
+	dirP := filepath.Join(work, "sub")
+	sidA := claudeIn(t, m.aLocal, dirP, cfgA)
+	projectP := filepath.Join(cfgA, "projects", claudeSlug(dirP))
+	writeFile(t, filepath.Join(projectP, convID+".jsonl"), conversation(dirP, "m1", "m2"))
+	writeFile(t, filepath.Join(projectP, convID, "subagents", "a.jsonl"), conversation(dirP, "s1"))
+	waitInfo(t, m.aLocal, sidA, "Claude Code quiet", func(in SessionInfo) bool { return in.AgentSession == convID && TeleportRefusal(in) == "" })
+	in, err := Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string) {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	dirB := waitInfo(t, bPeer, in.ID, "B's directory", func(in SessionInfo) bool { return in.Dir != "" }).Dir
-	if got := copies(cfgB); len(got) != 1 || filepath.Dir(got[0]) != filepath.Join(cfgB, "projects", claudeSlug(dirB)) {
+	dirW := waitInfo(t, m.bPeer, in.ID, "B's directory", func(in SessionInfo) bool { return in.Dir != "" }).Dir
+	cloneB := filepath.Join(m.rootsB, "remote")
+	if got := trees(cloneB); len(got) != 1 || filepath.Join(got[0], "sub") != dirW {
+		t.Fatalf("B's work trees %v, the pane in %s", got, dirW)
+	}
+	if got := copies(cfgB); len(got) != 1 || filepath.Dir(got[0]) != filepath.Join(cfgB, "projects", claudeSlug(dirW)) {
 		t.Fatalf("B's copies %v", got)
 	}
 
-	// It goes on at B.
-	fileB := filepath.Join(cfgB, "projects", claudeSlug(dirB), convID+".jsonl")
-	f, err := os.OpenFile(fileB, os.O_APPEND|os.O_WRONLY, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Fprintf(f, "{\"type\":\"user\",\"uuid\":\"m3\",\"cwd\":%s}\n", jsonString(dirB))
-	f.Close()
+	// It goes on at B: a commit, a change, an untracked file of P's gone.
+	treeW := filepath.Dir(dirW)
+	writeFile(t, filepath.Join(dirW, "b.txt"), "from B\n")
+	gitRun(t, treeW, "add", "sub/b.txt")
+	gitRun(t, treeW, "commit", "-q", "-m", "on B")
+	headB := gitRun(t, treeW, "rev-parse", "HEAD")
+	writeFile(t, filepath.Join(dirW, "pushed.txt"), "from B\n")
+	os.Remove(filepath.Join(dirW, "new", "untracked.txt"))
+	writeFile(t, filepath.Join(dirW, "fresh.txt"), "untracked on B\n")
+	appendMessage(filepath.Join(cfgB, "projects", claudeSlug(dirW), convID+".jsonl"), "m3", dirW)
 
-	// B to A, whose copy is behind; A finds its own clone.
-	t.Setenv("HOME", homeB)
-	t.Setenv("CLAUDE_CONFIG_DIR", cfgA)
-	teleportRoots = func() []string { return []string{filepath.Dir(work)} }
-	sidB := claudeIn(t, bLocal, dirB, cfgB)
-	waitInfo(t, bLocal, sidB, "Claude Code quiet", func(in SessionInfo) bool { return in.AgentSession == convID && TeleportRefusal(in) == "" })
-	in, err = Teleport(context.Background(), bLocal, sidB, aPeer, func(string) {})
+	// B to A: in P.
+	m.toA(t)
+	sidB := claudeIn(t, m.bLocal, dirW, cfgB)
+	waitInfo(t, m.bLocal, sidB, "Claude Code quiet", func(in SessionInfo) bool { return in.AgentSession == convID && TeleportRefusal(in) == "" })
+	in, err = Teleport(context.Background(), m.bLocal, sidB, m.aPeer, func(string) {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	dirA2 := waitInfo(t, aPeer, in.ID, "A's new directory", func(in SessionInfo) bool { return in.Dir != "" }).Dir
-	if !strings.HasPrefix(dirA2, filepath.Join(work, ".gorex", "teleport")) {
-		t.Errorf("A's new pane is in %s", dirA2)
+	if got := waitInfo(t, m.aPeer, in.ID, "A's directory", func(in SessionInfo) bool { return in.Dir != "" }).Dir; got != dirP {
+		t.Errorf("A's pane is in %s, want %s", got, dirP)
 	}
-	projectA2 := filepath.Join(cfgA, "projects", claudeSlug(dirA2))
-	if got := copies(cfgA); len(got) != 1 || filepath.Dir(got[0]) != projectA2 {
+	if got := gitRun(t, work, "rev-parse", "main"); got != headB {
+		t.Errorf("P's branch at %s, want B's %s", got, headB)
+	}
+	for name, want := range map[string]string{
+		"sub/b.txt": "from B\n", "sub/pushed.txt": "from B\n", "sub/fresh.txt": "untracked on B\n",
+		"sub/staged.txt": "two\n", "sub/build.log": "ignored\n",
+	} {
+		if b, err := os.ReadFile(filepath.Join(work, filepath.FromSlash(name))); string(b) != want {
+			t.Errorf("P's %s: %q %v, want %q", name, b, err, want)
+		}
+	}
+	if exists(filepath.Join(dirP, "new", "untracked.txt")) {
+		t.Error("P's untracked file that B removed stayed")
+	}
+	if got := trees(work); len(got) != 0 {
+		t.Errorf("A's work trees %v", got)
+	}
+	if refs := gitRun(t, work, "for-each-ref", "refs/gorex"); refs != "" {
+		t.Errorf("backups left: %s", refs)
+	}
+	if got := copies(cfgA); len(got) != 1 || filepath.Dir(got[0]) != projectP {
 		t.Fatalf("A's copies %v", got)
 	}
-	conv, _ := os.ReadFile(filepath.Join(projectA2, convID+".jsonl"))
-	if !strings.Contains(string(conv), `"m3"`) || strings.Contains(string(conv), jsonString(dirB)) || !strings.Contains(string(conv), jsonString(dirA2)) {
+	conv, _ := os.ReadFile(filepath.Join(projectP, convID+".jsonl"))
+	if !strings.Contains(string(conv), `"m3"`) || strings.Contains(string(conv), jsonString(dirW)) {
 		t.Errorf("A's conversation %s", conv)
 	}
-	if exists(filepath.Join(projectA, convID)) || !exists(filepath.Join(projectA2, convID, "subagents", "a.jsonl")) {
-		t.Error("the subagents' directory did not move")
+	if !exists(filepath.Join(projectP, convID, "subagents", "a.jsonl")) {
+		t.Error("the subagents' directory is not in P's project")
+	}
+	waitText(t, m.aPeer, in.ID, "stub-claude --resume "+convID)
+
+	// It went on at both: refused, B as it was.
+	appendMessage(filepath.Join(cfgB, "projects", claudeSlug(dirW), convID+".jsonl"), "only-on-B", dirW)
+	beforeCfg, beforeW := tree(t, cfgB), files(t, treeW)
+	m.toB(t)
+	sidA = claudeIn(t, m.aLocal, dirP, cfgA)
+	waitInfo(t, m.aLocal, sidA, "Claude Code quiet", func(in SessionInfo) bool { return in.AgentSession == convID && TeleportRefusal(in) == "" })
+	if _, err := Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string) {}); err == nil || !strings.Contains(err.Error(), "went on here too") {
+		t.Fatalf("a conversation gone on at both: %v", err)
+	}
+	if !maps.Equal(tree(t, cfgB), beforeCfg) || !maps.Equal(files(t, treeW), beforeW) {
+		t.Error("B changed")
+	}
+	if refs := gitRun(t, treeW, "for-each-ref", "refs/gorex"); refs != "" {
+		t.Errorf("backups left: %s", refs)
+	}
+
+	// A to B again, B's copy as A's: in W.
+	b, _ := os.ReadFile(filepath.Join(projectP, convID+".jsonl"))
+	os.WriteFile(filepath.Join(cfgB, "projects", claudeSlug(dirW), convID+".jsonl"), b, 0o600)
+	in, err = Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := waitInfo(t, m.bPeer, in.ID, "B's directory", func(in SessionInfo) bool { return in.Dir != "" }).Dir; got != dirW {
+		t.Errorf("B's pane is in %s, want %s", got, dirW)
+	}
+	if got := trees(cloneB); len(got) != 1 {
+		t.Errorf("B's work trees %v", got)
 	}
 	if got := copies(cfgB); len(got) != 1 {
 		t.Errorf("B's copies %v", got)
 	}
-	if backups, _ := filepath.Glob(filepath.Join(cfgA, ".teleport-backup-*")); len(backups) > 0 {
-		t.Errorf("backups left: %v", backups)
-	}
-	waitText(t, aPeer, in.ID, "stub-claude --resume "+convID)
+}
 
-	// It goes on at A too: B's, which lacks that, is refused, and A keeps
-	// its conversation and its work trees as they were.
-	f, err = os.OpenFile(filepath.Join(projectA2, convID+".jsonl"), os.O_APPEND|os.O_WRONLY, 0)
+// TestTeleportBackFallbacks checks a teleport back that does not take the
+// directory it came from: one that fails after moving it, which puts it
+// back as it was, files, untracked ones and index alike; and one the user
+// changed since, which a new work tree takes, it untouched.
+func TestTeleportBackFallbacks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shells")
+	}
+	_, work := teleportRepo(t)
+	m := newTwoMachines(t, work)
+	ctx, none := context.Background(), func(string) {}
+	m.toB(t)
+	dirP := filepath.Join(work, "sub")
+	local, sid := shellIn(t, m.a, dirP)
+	in, err := Teleport(ctx, local, sid, m.bPeer, none)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Fprintf(f, "{\"type\":\"user\",\"uuid\":\"only-here\",\"cwd\":%s}\n", jsonString(dirA2))
-	f.Close()
-	before := tree(t, cfgA)
-	trees, _ := filepath.Glob(filepath.Join(work, ".gorex", "teleport", "*"))
-	if _, err := Teleport(context.Background(), bLocal, sidB, aPeer, func(string) {}); err == nil || !strings.Contains(err.Error(), "went on here too") {
-		t.Errorf("a conversation gone on at both: %v", err)
+	dirW := waitInfo(t, m.bPeer, in.ID, "B's directory", func(in SessionInfo) bool { return in.Dir != "" }).Dir
+	treeW := filepath.Dir(dirW)
+	state := func() []string {
+		return []string{gitRun(t, work, "rev-parse", "HEAD"), strings.ReplaceAll(gitRun(t, work, "status", "--porcelain", "--ignored"), "!! .gorex/\n", ""),
+			gitRun(t, work, "diff", "--cached"), gitRun(t, work, "for-each-ref", "refs/gorex")}
 	}
-	if got := tree(t, cfgA); !maps.Equal(got, before) {
-		t.Errorf("A's config dir changed:\n%v\nwas\n%v", got, before)
+
+	// B un-ignores *.log, and has an untracked build.log, which P has,
+	// ignored: unpacking it fails once P moved.
+	writeFile(t, filepath.Join(treeW, ".gitignore"), "")
+	writeFile(t, filepath.Join(dirW, "build.log"), "from B\n")
+	m.toA(t)
+	remote, sidB := shellIn(t, m.b, dirW)
+	beforeFiles, beforeState := files(t, work), state()
+	if _, err := Teleport(ctx, remote, sidB, m.aPeer, none); err == nil || !strings.Contains(err.Error(), "untracked") {
+		t.Fatalf("a teleport back that cannot unpack: %v", err)
 	}
-	if now, _ := filepath.Glob(filepath.Join(work, ".gorex", "teleport", "*")); len(now) != len(trees) {
-		t.Errorf("work trees %v, were %v", now, trees)
+	if got := files(t, work); !maps.Equal(got, beforeFiles) {
+		t.Errorf("P is\n%v\nwas\n%v", got, beforeFiles)
 	}
-	if b := gitRun(t, work, "branch", "--list", "teleport/*"); strings.Count(b, "teleport/") != len(trees) {
-		t.Errorf("branches %q", b)
+	if got := state(); !slices.Equal(got, beforeState) {
+		t.Errorf("P's state is\n%q\nwas\n%q", got, beforeState)
+	}
+
+	// P changed since it left: a new work tree takes the work.
+	gitRun(t, treeW, "checkout", "--", ".gitignore")
+	os.Remove(filepath.Join(dirW, "build.log"))
+	writeFile(t, filepath.Join(dirP, "after.txt"), "A went on\n")
+	beforeFiles, beforeState = files(t, work), state()
+	in, err = Teleport(ctx, remote, sidB, m.aPeer, none)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir := waitInfo(t, m.aPeer, in.ID, "A's directory", func(in SessionInfo) bool { return in.Dir != "" }).Dir; !strings.HasPrefix(dir, filepath.Join(work, ".gorex", "teleport")) {
+		t.Errorf("A's pane is in %s", dir)
+	}
+	if got := files(t, work); !maps.Equal(got, beforeFiles) {
+		t.Errorf("P is\n%v\nwas\n%v", got, beforeFiles)
+	}
+	if got := state(); !slices.Equal(got, beforeState) {
+		t.Errorf("P's state is\n%q\nwas\n%q", got, beforeState)
 	}
 }

@@ -43,8 +43,9 @@ A package is one tar stream. Its manifest travels before it, in the line
 that asks for it (below): version, source host name, program (`claude` /
 `shell`), the session id, the repo's remote URLs (origin's first),
 branch, HEAD, the work tree's root on the source (for the conversation's
-`cwd`), the pane's directory relative to it, terminal size, and the
-package's length.
+`cwd`), the pane's directory relative to it, terminal size, the hop's
+link and the links of earlier hops of the work tree (Round trips), and
+the package's length.
 
 | Part | Content |
 |---|---|
@@ -62,6 +63,9 @@ and the target is a host the user trusts with commands already (see
 
 ## Unpacking on the target
 
+0. **Back where it came from.** A teleport that comes back to a work tree
+   it left, untouched since, lands there instead of in a new work tree
+   (Round trips, below); steps 1 and 2 are skipped then.
 1. **Find the repo.** A local clone whose remote URL matches one of the
    manifest's (`https://`, `ssh://` and `git@host:` spellings of one repo
    match), one or two levels under `~/repos`, `~/src`, `~/code` and
@@ -115,6 +119,50 @@ the pane to it, then kills the source session. Until the answer comes,
 nothing on the source changes, so a failed teleport leaves the pane as
 it was.
 
+## Round trips
+
+Each successful hop has a link, a random id. Each server keeps the hops
+it saw in `teleports.json` in its directory (readable by the user only):
+`{link, dir, departed, at}`, where `dir` is a work tree's root and
+`departed` its fingerprint as the work left it, "" for one the work
+landed in. The fingerprint is a SHA-256 of HEAD, the
+`git diff --binary HEAD` and the untracked files' names and contents:
+what a package takes of the work tree.
+
+- The source records `{L, its root, fingerprint}` as it packs, since
+  nothing tells it of the hop's end; the manifest carries `L` and the
+  links it has recorded of the same root, those of earlier hops.
+- The target records `{L, the work tree it landed in, ""}` once the
+  session starts.
+- The target looks the manifest's earlier links up in its own records:
+  a directory the work left by one of them, still a work tree of a clone
+  of the repo, whose fingerprint is still the one it left with, untouched
+  since. The most recent of those, if any, takes the work:
+  1. fetch the bundle or the remote into its repo, as step 2 does; its
+     HEAD must be an ancestor of the incoming one, else a new work tree
+     takes the work;
+  2. keep all it has, ignored files aside, as a commit of a temporary
+     index (`add -A`, `write-tree`, `commit-tree` on HEAD) under
+     `refs/gorex/teleport-backup/<L>`, and its index file; never the
+     stash;
+  3. remove its untracked files (they are in the backup), and
+     `git reset --hard` its branch, or detached HEAD, to the incoming
+     HEAD: a fast forward;
+  4. apply the changes and the untracked files, as step 3 does.
+
+  A failure after the move puts it back as it was: `reset --hard` to its
+  old HEAD, the incoming untracked files removed, `read-tree -u --reset`
+  of the backup, its index file back, and the backup ref deleted. On
+  success the ref is deleted, and the record it left by gets `departed`
+  "": nothing is left to go back to.
+- A directory the user changed since it left is never touched: a new
+  work tree takes the work, as on a first hop.
+
+So MacBook:`~/repos/x` → mini (new work tree W) → MacBook continues in
+`~/repos/x`, and mini → MacBook → mini again in W: round trips leave no
+work trees behind. The conversation follows step 4, in the project of
+the directory it lands in.
+
 ## Protocol
 
 One new server op, `teleport`, allowed to remote peers that may
@@ -155,10 +203,9 @@ from its server to the target's; it holds no files.
 
 ## Not in phase 1
 
-- Teleporting back as a merge: going back is another teleport, which
-  makes a new work tree on the original machine (the conversation takes
-  the place of the older copy there, step 4); the user merges the
-  branch.
+- Merging work that went on at both ends: a teleport back to a
+  directory changed since it left makes a new work tree there, and the
+  user merges the branches.
 - Cleaning `.gorex/teleport/` work trees: `git worktree remove` by hand,
   or a later "Clean up teleports" command.
 - Agents other than Claude Code (Codex keeps its conversations
