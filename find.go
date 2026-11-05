@@ -126,18 +126,24 @@ func (a *App) openLink(p *Pane, link string) bool {
 	return true
 }
 
-// panePath turns a printed file link into a path, resolving a relative one
-// against the pane's program directory; false for a URL or a missing path.
-func panePath(p *Pane, link string) (string, bool) {
-	if p != nil && p.host != nil {
-		return "", false // the path is on the host, not here
-	}
+// linkPath is the file path a printed link names, :line:col trimmed;
+// false for a URL.
+func linkPath(link string) (string, bool) {
 	if strings.Contains(link, "://") {
 		return "", false
 	}
-	path := link
-	if m := linkLine.FindStringSubmatch(path); m != nil {
-		path = m[1]
+	if m := linkLine.FindStringSubmatch(link); m != nil {
+		return m[1], true
+	}
+	return link, true
+}
+
+// panePath turns a printed file link into a path, resolving a relative one
+// against the pane's program directory; false for a URL or a missing path.
+func panePath(p *Pane, link string) (string, bool) {
+	path, ok := linkPath(link)
+	if !ok {
+		return "", false
 	}
 	if strings.HasPrefix(path, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {

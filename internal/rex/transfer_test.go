@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -101,8 +102,13 @@ func TestFileRoundTrip(t *testing.T) {
 				t.Errorf("partials left: %v", left)
 			}
 			// A directory is no file.
-			if _, err := c.client.DownloadFile(context.Background(), sid, dir, dest, "", nil); !NotAFile(err) {
-				t.Errorf("download of a directory: %v", err)
+			for _, d := range []string{dir, dir + string(filepath.Separator)} {
+				if _, err := c.client.DownloadFile(context.Background(), sid, d, dest, "", nil); !Folder(err) {
+					t.Errorf("download of a directory %s: %v", d, err)
+				}
+			}
+			if Folder(errors.New("rex: " + dest + " is not a regular file")) {
+				t.Error("an error here reads as a folder")
 			}
 		})
 	}
@@ -202,7 +208,7 @@ func TestFileResume(t *testing.T) {
 		return first
 	}
 	partOf := func(content []byte, mtime time.Time) {
-		p := filepath.Join(dest, partialName("r.bin", downloadID(sid, src)))
+		p := filepath.Join(dest, partialName("r.bin", DownloadID(sid, src)))
 		os.WriteFile(p, content, 0o644)
 		os.Chtimes(p, mtime, mtime)
 	}
@@ -213,6 +219,10 @@ func TestFileResume(t *testing.T) {
 	partOf(data[:4000], st.ModTime().Add(-time.Hour))
 	if first := download(); first != 0 {
 		t.Errorf("download of another version resumed from %d", first)
+	}
+	partOf(append(slices.Clone(data), "more"...), st.ModTime())
+	if first := download(); first != 0 {
+		t.Errorf("download from a partial longer than the file resumed from %d", first)
 	}
 }
 
@@ -668,7 +678,7 @@ func TestDownloadCancelled(t *testing.T) {
 	data := bytes.Repeat([]byte("x"), 8<<20)
 	os.WriteFile(filepath.Join(dir, "big.bin"), data, 0o644)
 	dest := t.TempDir()
-	part := filepath.Join(dest, partialName("big.bin", downloadID(sid, "big.bin")))
+	part := filepath.Join(dest, partialName("big.bin", DownloadID(sid, "big.bin")))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	_, err := local.DownloadFile(ctx, sid, "big.bin", dest, "", func(done, _ int64) {
