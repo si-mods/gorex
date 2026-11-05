@@ -4,6 +4,7 @@ package rex
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -118,29 +119,24 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	if err != nil {
 		// An abort names the directory absolute, as the put's first answer
 		// told it, and needs no session: the session of a pane closing
-		// ends as its uploads stop. It removes no more than a partial of
-		// GoRex, whose name is of a hash, and only for a client that may
-		// use the session while there is one.
+		// ends as its uploads stop. It is taken only for a partial a put of
+		// the same peer opened in this run of the server, and touches no
+		// other file; after a restart the sweep removes the partial.
 		if !req.Abort || !filepath.IsAbs(req.Dir) || errors.Is(err, errNotShared) {
 			return err
 		}
-		dir = filepath.Clean(req.Dir)
+		path := filepath.Join(filepath.Clean(req.Dir), partialName(req.Name, req.ID))
+		if by, ok := s.puts.Load(path); !ok || by != peer {
+			return err
+		}
+		return s.abortPut(path, answer)
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return fmt.Errorf("rex: %s is not a directory", dir)
 	}
 	sweepPartials(dir)
 	if req.Abort {
-		path := filepath.Join(dir, partialName(req.Name, req.ID))
-		if _, busy := partials.LoadOrStore(path, true); busy {
-			return errTransferring
-		}
-		defer partials.Delete(path)
-		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-		answer(FileAnswer{OK: true})
-		return nil
+		return s.abortPut(filepath.Join(dir, partialName(req.Name, req.ID)), answer)
 	}
 	t := Transfer{ID: req.ID, SID: req.SID, Name: req.Name, Direction: "in", Size: req.Size, State: "active"}
 	if target := filepath.Join(dir, req.Name); req.Conflict == "skip" && exists(target) {
@@ -154,6 +150,7 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		return err
 	}
 	defer p.close()
+	s.puts.Store(p.path, peer)
 	have := p.size
 	if have > req.Size {
 		have = 0
@@ -191,6 +188,9 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	var skipped bool
 	if err == nil {
 		t.Path, skipped, err = p.finish(dir, req.Name, req.Conflict)
+	}
+	if err == nil {
+		s.puts.Delete(p.path)
 	}
 	if err != nil {
 		t.State = "failed"
@@ -364,6 +364,20 @@ func openPartial(dir, name, id string) (*partial, error) {
 		return nil, err
 	}
 	return &partial{path: path, f: f, size: st.Size(), mtime: st.ModTime()}, nil
+}
+
+// abortPut removes the partial at path, unless a transfer writes it.
+func (s *Server) abortPut(path string, answer func(FileAnswer)) error {
+	if _, busy := partials.LoadOrStore(path, true); busy {
+		return errTransferring
+	}
+	defer partials.Delete(path)
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	s.puts.Delete(path)
+	answer(FileAnswer{OK: true})
+	return nil
 }
 
 // sweepPartials removes the partials in dir older than partialAge that no
@@ -596,11 +610,12 @@ func (c *Client) PutFile(ctx context.Context, f FilePut, src io.ReaderAt, progre
 	}
 	defer fc.Close()
 	defer func(dir string) {
-		if err == nil || ctx.Err() == nil || dir == "" {
+		if err == nil || ctx.Err() == nil {
 			return
 		}
 		fc.Close() // the server lets the partial go
-		f.Dir = dir
+		// A server before FileAnswer.Dir names none: the session's then.
+		f.Dir = cmp.Or(dir, f.Dir)
 		actx, stop := context.WithTimeout(context.Background(), abortTimeout)
 		defer stop()
 		if aerr := c.AbortFile(actx, f); aerr != nil {

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -111,6 +112,15 @@ func (a *App) upload(p *Pane, paths []string) {
 	}()
 }
 
+// uploadFile is a file an upload reads.
+type uploadFile interface {
+	io.ReaderAt
+	io.Closer
+}
+
+// openUpload opens the file at path to send it.
+var openUpload = func(path string) (uploadFile, error) { return os.Open(path) }
+
 // putFile sends the file at path as f says, x telling how it goes, and
 // returns its path there. Cancelled under way, PutFile removes what the
 // host has of the file.
@@ -119,8 +129,8 @@ func putFile(ctx context.Context, c *rex.Client, f rex.FilePut, path string, x *
 	var there string
 	err := ctx.Err()
 	if err == nil {
-		var src *os.File
-		if src, err = os.Open(path); err == nil {
+		var src uploadFile
+		if src, err = openUpload(path); err == nil {
 			var last time.Time
 			there, _, err = c.PutFile(ctx, f, src, func(done int64) {
 				if now := time.Now(); now.Sub(last) >= transferEvery {

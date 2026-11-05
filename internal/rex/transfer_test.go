@@ -536,8 +536,9 @@ func TestFileSweep(t *testing.T) {
 	}
 }
 
-// TestFileAbortAfterSession removes a put's partial once its session ended,
-// by the directory's absolute path: by a relative one it cannot.
+// TestFileAbortAfterSession takes an abort of a directory by its absolute
+// path once the session ended only for a partial a put of the same client
+// opened: any other is refused as with no session, the file untouched.
 func TestFileAbortAfterSession(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
@@ -551,23 +552,40 @@ func TestFileAbortAfterSession(t *testing.T) {
 	if err := local.Kill(sid); err != nil {
 		t.Fatal(err)
 	}
-	f := FilePut{SID: sid, Name: "a.bin", ID: "a1"}
-	if err := local.AbortFile(context.Background(), f); err == nil || !exists(part) {
-		t.Fatalf("abort in the directory of no session: %v, kept %v", err, exists(part))
+	none := local.AbortFile(context.Background(), FilePut{SID: sid, Name: "a.bin", ID: "a1"})
+	if none == nil {
+		t.Fatal("an abort of no session's directory")
 	}
-	f.Dir = dir
-	if err := local.AbortFile(context.Background(), f); err != nil || exists(part) {
+	for _, d := range []string{dir, filepath.Join(dir, "nowhere")} {
+		err := local.AbortFile(context.Background(), FilePut{SID: sid, Dir: d, Name: "a.bin", ID: "a1"})
+		if err == nil || err.Error() != none.Error() {
+			t.Errorf("abort in %s: %v, want %v", d, err, none)
+		}
+	}
+	if !exists(part) {
+		t.Error("a partial no put opened went")
+	}
+	// A put's own partial goes, though its session ended.
+	s.puts.Store(part, "")
+	if err := local.AbortFile(context.Background(), FilePut{SID: sid, Dir: dir, Name: "a.bin", ID: "a1"}); err != nil || exists(part) {
 		t.Fatalf("abort: %v, kept %v", err, exists(part))
+	}
+	// Another peer's is not.
+	if err := os.WriteFile(part, []byte("half"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s.puts.Store(part, "other")
+	if err := local.AbortFile(context.Background(), FilePut{SID: sid, Dir: dir, Name: "a.bin", ID: "a1"}); err == nil || !exists(part) {
+		t.Errorf("abort of another's partial: %v, kept %v", err, exists(part))
 	}
 }
 
 // stalled reads as zeros, its first n bytes at once, then waits for ctx
-// to end, telling reached it got there.
+// to end, calling once as it gets there.
 type stalled struct {
-	n       int64
-	ctx     context.Context
-	reached chan struct{}
-	once    func()
+	n    int64
+	ctx  context.Context
+	once func()
 }
 
 func (r stalled) ReadAt(b []byte, off int64) (int, error) {
@@ -592,7 +610,7 @@ func TestFilePutCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	reached := make(chan struct{})
 	var once sync.Once
-	src := stalled{n: 64 << 10, ctx: ctx, reached: reached, once: func() { once.Do(func() { close(reached) }) }}
+	src := stalled{n: 64 << 10, ctx: ctx, once: func() { once.Do(func() { close(reached) }) }}
 	done := make(chan error, 1)
 	go func() {
 		_, _, err := local.PutFile(ctx, FilePut{SID: sid, Name: "c.bin", Size: 1 << 20, ID: "c1"}, src, nil)

@@ -696,9 +696,9 @@ type FilePut struct {
 	// Abort, set, sends no file: the server removes the partial of Name
 	// for ID in Dir, unless a transfer writes it yet, and answers OK. With
 	// Dir absolute, as the put's first answer named it (FileAnswer.Dir),
-	// the session need not be there any more: it removes no more than a
-	// hidden file of GoRex, named by a hash, which only a client that may
-	// use the session may ask while there is one.
+	// the session need not be there any more, for a partial a put of the
+	// same client opened since the server started; one of before a
+	// restart a put into its directory removes a day after.
 	Abort bool `json:"abort,omitempty"`
 }
 

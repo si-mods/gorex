@@ -1043,7 +1043,7 @@ func (a *App) closeWorkspaceFor(client bool) {
 	}
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
-			p.end()
+			p.close()
 			p.browser.destroy()
 			p.note.destroy()
 			a.killOn(p.host, p.SID)

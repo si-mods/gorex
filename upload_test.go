@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -161,9 +163,31 @@ func TestDropFolderOnHost(t *testing.T) {
 	}
 }
 
+// heldFile is a file of size bytes whose first half reads at once, and
+// the rest once released, failing: an upload held under way.
+type heldFile struct {
+	size     int64
+	reached  chan struct{}
+	release  chan struct{}
+	reaching *sync.Once
+}
+
+func (f heldFile) ReadAt(b []byte, off int64) (int, error) {
+	if off >= f.size/2 {
+		f.reaching.Do(func() { close(f.reached) })
+		<-f.release
+		return 0, errors.New("released")
+	}
+	b = b[:min(int64(len(b)), f.size/2-off)]
+	clear(b)
+	return len(b), nil
+}
+
+func (heldFile) Close() error { return nil }
+
 // TestClosePaneMidUpload closes a pane of a host while it sends a file,
 // which ends its session at once: what the host has of the file goes all
-// the same, in the directory the put named, and nothing is pasted.
+// the same, in the directory the put named.
 func TestClosePaneMidUpload(t *testing.T) {
 	a, tt := newTestApp(t)
 	there := testDir(t)
@@ -171,43 +195,38 @@ func TestClosePaneMidUpload(t *testing.T) {
 	_, _, p, remote := remotePaneOf(t, a, tt, there)
 	a.split(false) // the tab stays
 	sid := p.SID
-	// A file large enough to be under way a while: sparse here, written
-	// there as it comes.
-	path := filepath.Join(t.TempDir(), "big.bin")
-	f, err := os.Create(path)
-	if err == nil {
-		err = f.Truncate(4 << 30)
-		f.Close()
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
+	path := dropped(t, "big.bin", strings.Repeat("x", 256<<10))[0]
+	held := heldFile{size: 256 << 10, reached: make(chan struct{}), release: make(chan struct{}), reaching: new(sync.Once)}
+	old := openUpload
+	openUpload = func(string) (uploadFile, error) { return held, nil }
+	t.Cleanup(func() { openUpload = old })
 	part := partialOf(there, "big.bin", idOf(t, sid, path))
 	a.upload(p, []string{path})
-	waitFor(t, tt, "the file under way", func() bool {
-		st, err := os.Stat(part)
-		return err == nil && st.Size() > 0
-	})
-	a.closePane(p)
-	if !p.closed {
-		t.Fatal("the pane did not close")
+	<-held.reached
+	if _, err := os.Stat(part); err != nil {
+		t.Fatalf("no partial under way: %v", err)
 	}
+	a.closePane(p)
 	waitFor(t, tt, "the session to end", func() bool { return !slices.Contains(sessionIDs(t, remote), sid) })
+	close(held.release)
 	waitUploaded(t, tt, p)
 	if _, err := os.Stat(part); err == nil {
 		t.Error("the partial stays")
 	}
-	if _, err := os.Stat(filepath.Join(there, "big.bin")); err == nil {
-		t.Error("the file went")
-	}
 }
 
-// TestPaneEndStopsUploads stops a pane's uploads however it ends.
+// TestPaneEndStopsUploads stops a pane's uploads as it closes for good,
+// and not as it moves to another window, its session going on.
 func TestPaneEndStopsUploads(t *testing.T) {
 	a, _ := newTestApp(t)
 	p := a.tab().Focus
 	ctx, cancel := context.WithCancel(context.Background())
 	p.transfers = []*fileTransfer{{name: "d.bin", cancel: cancel}}
+	p.end()
+	if ctx.Err() != nil {
+		t.Fatal("moving the pane stops its upload")
+	}
+	p.closed = false
 	a.dropPane(p, false)
 	if ctx.Err() == nil {
 		t.Error("closing the pane leaves its upload")
