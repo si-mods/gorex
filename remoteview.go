@@ -551,7 +551,6 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 	a.remoteHeader(c, k, st)
 	a.remoteDevices(c, k, st)
 	a.remoteThisMachine(c, k, st)
-	a.remoteNetwork(c, k, st)
 	a.remoteLAN(c, k)
 }
 
