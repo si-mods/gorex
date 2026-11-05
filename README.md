@@ -441,6 +441,16 @@ CLI together.
 
 ### Release
 
+The signed installer for macOS and Linux is published with each release.
+
+```sh
+curl -fsSL https://github.com/si-mods/gorex/releases/latest/download/install.sh | sh
+```
+
+On Linux, the per-user install links `gorex` in `~/.local/bin`. Run
+`gorex update` to install a signed update and hand an active local session
+server over to the new version. See [the CLI reference](docs/cli.md#commands).
+
 Releases update installed apps, signed with a key that only the
 maintainer holds. Once, run `go tool mygo keygen` and put the contents of
 `mygo-update.pub` in `updates.publicKey` of `mygo.json`; keep
