@@ -89,11 +89,12 @@ browser panes use the system's web view.
   animations stay off.
 - **Infinite canvas (experimental).** Settings ▸ Appearance ▸ Experimental
   ▸ Infinite canvas lays every tab out as free boxes on an endless plane,
-  each pane where it showed. Scroll or drag the empty plane to pan, hold
-  Ctrl or Cmd and scroll to zoom (25% to 200%), and Reset Canvas View in
-  the palette goes back to the start. Move and resize a box by its header
-  and edges; a split puts a box of the same size right of or below the
-  focused one. A box keeps its size as the window resizes or the canvas
+  each pane where it showed. Scroll or drag the empty plane to pan, or
+  hold Space over it and drag anywhere; pinch, or hold Ctrl or Cmd and
+  scroll, to zoom (25% to 200%), and Reset Canvas View in the palette goes
+  back to the start. Right-click the empty plane for a new terminal,
+  browser or note there. Move and resize a box by its header and edges; a
+  split puts a box of the same size right of or below the focused one. A box keeps its size as the window resizes or the canvas
   zooms, so its terminal keeps its columns and rows. Turning it off docks
   every box back into the tab's splits. It may change or go away.
 - **Host chip** with the machine's name and model; its popover shows the

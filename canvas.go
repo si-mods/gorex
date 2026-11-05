@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/layout"
+	"gorex/locales"
 )
 
 // The infinite canvas, an experiment of the Canvas setting: a tab has no
@@ -31,10 +32,12 @@ const (
 // canvasDefault is the room of a saved canvas that has none.
 var canvasDefault = ui.Rect{W: 1280, H: 800}
 
-// The keys of a canvas's background and of its layer of panes.
+// The keys of a canvas's background, of its layer of panes, and of what
+// takes the pointer and the keys while Space pans it.
 type (
 	canvasBackKey  int
 	canvasLayerKey int
+	canvasPanKey   int
 )
 
 // free reports whether f is a float of a canvas, its box not kept inside
@@ -210,10 +213,17 @@ func (a *App) resetCanvasView() {
 }
 
 // canvasRoom makes room, t's, a canvas's: what shows past it is cut off,
-// and a scroll over its empty plane pans or zooms it.
+// a scroll or a pinch over its empty plane pans or zooms it, and a press
+// there says where its menu puts a new box.
 func (a *App) canvasRoom(t *Tab, room ui.Element) {
 	room.Clip().HandleInput(func(ev ui.InputEvent) bool {
-		return ev.Kind == ui.InputScroll && a.canvasScroll(t, ev)
+		switch ev.Kind {
+		case ui.InputPointerDown:
+			a.canvasAt = [2]float32{ev.X, ev.Y}
+		case ui.InputScroll, ui.InputZoom:
+			return a.canvasScroll(t, ev)
+		}
+		return false
 	})
 }
 
@@ -228,6 +238,12 @@ func (a *App) canvasContent(c *ui.Context, k *colors, t *Tab, bounds ui.Rect) {
 		cv.X -= dx / cv.Scale
 		cv.Y -= dy / cv.Scale
 		a.changed()
+	}
+	back.ContextMenu(func(m *ui.Menu) { a.canvasMenu(m, t) })
+	if back.Hovered() {
+		a.canvasHover = t
+	} else if a.canvasHover == t {
+		a.canvasHover = nil
 	}
 	layer := ui.Box(c.Key(canvasLayerKey(t.ID))).Absolute().Left(0).Top(0).Size(cv.W, cv.H).PassThrough().
 		TransformOrigin(0, 0).Transform(ui.Translation(-cv.X, -cv.Y).Then(ui.Scaling(cv.Scale, cv.Scale)))
@@ -248,10 +264,130 @@ func (a *App) canvasContent(c *ui.Context, k *colors, t *Tab, bounds ui.Rect) {
 	if zoomed != nil {
 		a.floatCell(c, k, t, zoomed, bounds)
 	}
+	if a.canvasPan == t && a.tab() == t {
+		a.canvasPanner(c, t)
+	}
+}
+
+// canvasSpace takes Space for the window, from whatever has the keys,
+// when it is pressed over the active canvas's empty plane, and while it is
+// held, so that its repeats go nowhere; over a box, or with a field of the
+// window's open, it is theirs. Space held pans the canvas (canvasPanner).
+func (a *App) canvasSpace(c *ui.Context) {
+	t := a.tab()
+	if a.canvasPan != nil && (a.canvasPan != t || !a.focusedWin || t.canvas == nil) {
+		// Let go of in another window, or away from the canvas.
+		a.endCanvasPan()
+	}
+	if t == nil || t.canvas == nil || a.canvasPan != t && a.canvasHover != t ||
+		a.paletteOpen || a.wsConfirm || a.wsOpen || a.hostOpen || a.paneRenaming != nil || a.renaming != nil || a.findPane != nil {
+		return
+	}
+	if c.Shortcut(0, ui.KeySpace) && a.canvasPan != t {
+		a.canvasPan = t
+		a.changed()
+	}
+}
+
+// canvasPanner lays out, over t's canvas, what Space held makes of it: a
+// hand a drag anywhere pans the canvas with, which has the keys until Space
+// is let go of.
+func (a *App) canvasPanner(c *ui.Context, t *Tab) {
+	cv := t.canvas
+	pan := ui.Box(c.Key(canvasPanKey(t.ID))).Absolute().Left(0).Top(0).WidthPercent(100).HeightPercent(100).Focusable().Focus()
+	if dx, dy, ok := pan.Dragged(); ok && (dx != 0 || dy != 0) {
+		cv.X -= dx / cv.Scale
+		cv.Y -= dy / cv.Scale
+		a.changed()
+	}
+	cur := ui.CursorGrab
+	if pan.Pressed() {
+		cur = ui.CursorGrabbing
+	}
+	pan.Cursor(cur).HandleInput(func(ev ui.InputEvent) bool {
+		if ev.Kind == ui.InputKeyUp && ev.Key == ui.KeySpace || ev.Kind == ui.InputKeyDown && ev.Key == ui.KeyEscape {
+			a.endCanvasPan()
+			return true
+		}
+		return ev.Kind == ui.InputKeyDown || ev.Kind == ui.InputKeyUp || ev.Kind == ui.InputText
+	})
+}
+
+// endCanvasPan ends the pan of Space, and gives the keys back to the
+// focused pane.
+func (a *App) endCanvasPan() {
+	t := a.canvasPan
+	a.canvasPan = nil
+	if t != nil && t.Focus != nil && a.tab() == t {
+		a.focusReq = t.Focus
+	}
+	a.changed()
+}
+
+// canvasMenu is the menu of t's empty plane: a new terminal, browser or
+// note there, its box's top left where it was clicked.
+func (a *App) canvasMenu(m *ui.Menu, t *Tab) {
+	x, y := a.canvasAt[0], a.canvasAt[1]
+	if m.Item(locales.CanvasNewTerminal()).Chosen() {
+		a.canvasNew(t, "terminal", x, y)
+	}
+	// A tab's panes are on one host, which a browser's or a note's is not.
+	if t.host() != nil {
+		return
+	}
+	if m.Item(locales.CanvasNewBrowser()).Chosen() {
+		a.canvasNew(t, "browser", x, y)
+	}
+	if m.Item(locales.CanvasNewNote()).Chosen() {
+		a.canvasNew(t, "note", x, y)
+	}
+}
+
+// canvasNew puts a new pane of kind, "terminal", "browser" or "note", on
+// t's canvas at x, y of the room: a terminal on the tab's host, in the
+// current directory, as a new float's.
+func (a *App) canvasNew(t *Tab, kind string, x, y float32) {
+	switch h := t.host(); {
+	case kind == "terminal" && !a.offline(h):
+		cols, rows := t.Focus.paneSize()
+		if cols <= 0 || rows <= 0 {
+			cols, rows = 80, 24
+		}
+		a.dropOnCanvas(t, a.newPaneRun(h, a.currentDir(), cols, rows, nil), x, y)
+	case h != nil:
+	case kind == "browser":
+		a.dropOnCanvas(t, a.newBrowserPane(browserStart), x, y)
+	case kind == "note":
+		a.dropOnCanvas(t, a.newNotePane(""), x, y)
+	}
+}
+
+// dropOnCanvas puts pane p on t's canvas, focused, its box's top left at
+// x, y of the room, of the focused box's size, or else a new float's.
+func (a *App) dropOnCanvas(t *Tab, p *Pane, x, y float32) {
+	cv := t.canvas
+	if cv == nil || p == nil {
+		return
+	}
+	_, _, w, h := floatBox(0)
+	if t.Focus != nil && t.Focus.float != nil {
+		w, h = t.Focus.float.W, t.Focus.float.H
+	}
+	f := &Float{Pane: p, X: (cv.X + x/cv.Scale) / cv.W, Y: (cv.Y + y/cv.Scale) / cv.H, W: w, H: h}
+	// A float of a canvas's tab is free: its box stays where it is put.
+	p.Tab, p.Node, p.float = t, &Node{ID: a.id(), Pane: p}, f
+	f.clamp()
+	t.Floats = append(t.Floats, f)
+	t.setFocus(p)
+	if a.tab() == t {
+		a.focusReq = p
+	}
+	a.changed()
 }
 
 // canvasScroll pans t's canvas by a scroll over its empty plane, or zooms
-// it around the pointer with Ctrl or Cmd held, and reports whether it did:
+// it around the pointer by a pinch or with Ctrl or Cmd held, and reports
+// whether it did:
 // a scroll over a pane is the pane's.
 func (a *App) canvasScroll(t *Tab, ev ui.InputEvent) bool {
 	cv := t.canvas
@@ -267,8 +403,12 @@ func (a *App) canvasScroll(t *Tab, ev ui.InputEvent) bool {
 			return false
 		}
 	}
-	if ev.Mods&(ui.Ctrl|ui.Super) != 0 {
-		s := cv.Scale * float32(math.Exp(-float64(ev.DY)/300))
+	if ev.Kind == ui.InputZoom || ev.Mods&(ui.Ctrl|ui.Super) != 0 {
+		by := float32(math.Exp(-float64(ev.DY) / 300))
+		if ev.Kind == ui.InputZoom {
+			by = ev.Scale
+		}
+		s := cv.Scale * by
 		s = min(max(s, canvasMinScale), canvasMaxScale)
 		// The point under the pointer stays there.
 		cv.X, cv.Y, cv.Scale = px-ev.X/s, py-ev.Y/s, s

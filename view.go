@@ -545,9 +545,12 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 		ink = ui.RGBA(0, 0, 0, 1)
 		alpha = [3]float32{0.55, 0.5, 0.55}
 	}
-	cell.Shadow(0, 1, 3, 0, ink.Alpha(min(alpha[0]*lift, 1))).
-		Shadow(0, 12*lift, 32*lift, -4, ink.Alpha(min(alpha[1]*lift, 1))).
-		Shadow(0, 30*lift, 80*lift, -10, ink.Alpha(min(alpha[2]*lift, 1)))
+	// A canvas's boxes lie on its plane, over no panes: they lift off none.
+	if !f.free() {
+		cell.Shadow(0, 1, 3, 0, ink.Alpha(min(alpha[0]*lift, 1))).
+			Shadow(0, 12*lift, 32*lift, -4, ink.Alpha(min(alpha[1]*lift, 1))).
+			Shadow(0, 30*lift, 80*lift, -10, ink.Alpha(min(alpha[2]*lift, 1)))
+	}
 	rest := ui.Rect{
 		X: bounds.X + s.x*bounds.W,
 		Y: bounds.Y + s.y*bounds.H,

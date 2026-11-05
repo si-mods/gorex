@@ -459,6 +459,13 @@ type App struct {
 	// focusReq asks the view to give the keyboard focus to a pane's
 	// terminal.
 	focusReq *Pane
+	// canvasPan is set while Space, pressed over a canvas's empty plane,
+	// is held: a drag anywhere pans it. canvasHover is the tab whose plane
+	// the pointer is over, and canvasAt where it last pressed there, in the
+	// room's DIPs.
+	canvasPan   *Tab
+	canvasHover *Tab
+	canvasAt    [2]float32
 	// floatRoom is the tab's room as the floats' drags last measured it.
 	floatRoom ui.Rect
 	// passes counts the builds of the tab's room: a float gliding that

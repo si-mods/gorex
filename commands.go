@@ -1102,6 +1102,7 @@ func (a *App) openSessionPalette() {
 // menu items run there before the view sees them. The window's shortcuts
 // come before the terminal's keys.
 func (a *App) shortcuts(c *ui.Context) {
+	a.canvasSpace(c)
 	if c.Shortcut(ui.Ctrl, ui.KeyTab) {
 		a.cycleTab(1)
 	}

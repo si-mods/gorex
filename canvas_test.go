@@ -374,3 +374,126 @@ func TestCanvasDrags(t *testing.T) {
 		t.Errorf("the header's drag moved the box by %v, %v DIPs of the canvas", (f.X-x0)*cv.W, (f.Y-y0)*cv.H)
 	}
 }
+
+// canvasApp opens a canvas whose one box is at 0.1, 0.1 of it, 0.3 wide
+// and high, and shows it from x, y at scale.
+func canvasApp(t *testing.T, x, y, scale float32) (*App, *ui.Tester, *Tab) {
+	t.Helper()
+	canvasPrefs(t, true)
+	a, tt := newTestApp(t)
+	tt.Frame()
+	settle(tt)
+	tab := a.tab()
+	if tab.canvas == nil || tab.Focus == nil || tab.Focus.float == nil {
+		t.Fatal("no canvas")
+	}
+	f := tab.Focus.float
+	f.X, f.Y, f.W, f.H = 0.1, 0.1, 0.3, 0.3
+	tab.canvas.X, tab.canvas.Y, tab.canvas.Scale = x, y, scale
+	settle(tt)
+	return a, tt, tab
+}
+
+// A right click on the empty plane offers new panes, and puts the one
+// chosen at the canvas's point clicked, of the focused box's size,
+// past the room's edge too.
+func TestCanvasMenuPlacesBox(t *testing.T) {
+	a, tt, tab := canvasApp(t, 400, 50, 2)
+	cv, room, old := tab.canvas, a.floatRoom, tab.Focus
+	x, y := room.X+room.W-60, room.Y+room.H-60
+	tt.RightClickAt(x, y)
+	tt.Frame()
+	if !tt.HasText("New Terminal") || !tt.HasText("New Browser") || !tt.HasText("New Note") {
+		t.Fatalf("the plane's menu is not shown: %q", tt.Texts())
+	}
+	if err := tt.Click("New Note"); err != nil {
+		t.Fatal(err)
+	}
+	settle(tt)
+	p := tab.Focus
+	if p == old || p == nil || p.note == nil || p.float == nil || !slices.Contains(tab.Floats, p.float) {
+		t.Fatalf("the focus is on %+v, not a new note's box", p)
+	}
+	f := p.float
+	if wx, wy := 400+(x-room.X)/2, 50+(y-room.Y)/2; !near(f.X*cv.W, wx) || !near(f.Y*cv.H, wy) {
+		t.Errorf("the box is at %v, %v of the canvas, want %v, %v", f.X*cv.W, f.Y*cv.H, wx, wy)
+	}
+	if !near(f.W, old.float.W) || !near(f.H, old.float.H) {
+		t.Errorf("the box is %v by %v, want the focused one's %v by %v", f.W, f.H, old.float.W, old.float.H)
+	}
+}
+
+// Space pressed over the empty plane pans it with a drag anywhere, over a
+// box too, until it is let go of; pressed over a box, it is the box's.
+func TestCanvasSpacePan(t *testing.T) {
+	a, tt, tab := canvasApp(t, 0, 0, 1)
+	cv, room, f := tab.canvas, a.floatRoom, tab.Focus.float
+	bx, by := room.X+room.W-30, room.Y+room.H-30
+	px, py := room.X+(f.X+f.W/2)*cv.W, room.Y+(f.Y+f.H/2)*cv.H
+
+	tt.Move(px, py)
+	tt.Frame()
+	tt.KeyDown(ui.KeySpace)
+	settle(tt)
+	tt.KeyUp(ui.KeySpace)
+	settle(tt)
+	if a.canvasPan != nil {
+		t.Fatal("Space over a box pans the canvas")
+	}
+
+	tt.Move(bx, by)
+	tt.Frame()
+	tt.KeyDown(ui.KeySpace)
+	settle(tt)
+	if a.canvasPan != tab {
+		t.Fatalf("Space over the plane does not pan it; texts %q", tt.Texts())
+	}
+	tt.Press(px, py)
+	tt.Frame()
+	for i := 1; i <= 4; i++ {
+		tt.Move(px-25*float32(i), py-10*float32(i))
+		tt.Frame()
+	}
+	tt.Release(px-100, py-40)
+	settle(tt)
+	if !near(cv.X, 100) || !near(cv.Y, 40) {
+		t.Errorf("a drag over the box with Space held panned to %v, %v", cv.X, cv.Y)
+	}
+	if !near(f.X, 0.1) || !near(f.Y, 0.1) {
+		t.Errorf("the box moved to %v, %v", f.X, f.Y)
+	}
+	tt.KeyUp(ui.KeySpace)
+	settle(tt)
+	if a.canvasPan != nil {
+		t.Error("letting go of Space does not end the pan")
+	}
+}
+
+// A pinch over the empty plane zooms it around the pointer.
+func TestCanvasPinch(t *testing.T) {
+	a, tt, tab := canvasApp(t, 0, 0, 1)
+	cv, room := tab.canvas, a.floatRoom
+	x, y := room.X+room.W-30, room.Y+room.H-30
+	tt.Pinch(x, y, 1.5)
+	settle(tt)
+	if !near(cv.Scale, 1.5) {
+		t.Fatalf("a pinch zoomed to %v", cv.Scale)
+	}
+	if px := cv.X + (x-room.X)/cv.Scale; !near(px, x-room.X) {
+		t.Errorf("the point under the pointer moved to %v of the canvas", px)
+	}
+}
+
+// A canvas's boxes draw no shadow; a float of tiled panes does.
+func TestCanvasNoShadow(t *testing.T) {
+	_, _, tab := canvasApp(t, 0, 0, 1)
+	if !tab.Focus.float.free() {
+		t.Fatal("a canvas's box is not free")
+	}
+	canvasPrefs(t, false)
+	a, tt := newTestApp(t)
+	tt.Frame()
+	if p := a.newFloat(nil); p == nil || p.float.free() {
+		t.Fatal("a float of tiled panes is free")
+	}
+}
