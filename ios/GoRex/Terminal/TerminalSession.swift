@@ -53,6 +53,10 @@ final class TerminalSession {
     /// Counts the starts and resumes: a task that awaited past a newer
     /// one, or past close, gives up.
     @ObservationIgnored private var generation = 0
+    /// Drops in a row of connections that lasted less than the longest
+    /// wait, and when the last one opened.
+    @ObservationIgnored private var drops = 0
+    @ObservationIgnored private var opened = ContinuousClock.now
     /// Bytes to write, and whether a write is on its way.
     @ObservationIgnored private var typed = Data()
     @ObservationIgnored private var typing = false
@@ -78,9 +82,15 @@ final class TerminalSession {
     }
 
     /// Opens the stream from the start: a ticket, a HELLO, a new snapshot.
-    /// The stream before it ends.
+    /// The stream before it ends. A closed session opens again.
     func start() {
-        guard !closed else { return }
+        closed = false
+        drops = 0
+        open()
+        write()
+    }
+
+    private func open() {
         state = .connecting
         generation += 1
         let g = generation
@@ -99,10 +109,13 @@ final class TerminalSession {
                 try await d.open(ticket: t)
                 guard g == generation else { return }
                 log.info("opened \(self.block, privacy: .public)")
+                opened = .now
                 stream = TerminalStream(nonce: d.nonce)
                 try await claim()
             } catch {
-                if g == generation { state = .failed(error.localizedDescription) }
+                guard g == generation else { return }
+                // Opened by hand, it tells at once; after a drop, it tries again.
+                if drops == 0 { state = .failed(error.localizedDescription) } else { retry(fresh: true) }
             }
         }
     }
@@ -111,6 +124,11 @@ final class TerminalSession {
     /// the server no longer has it.
     func resume() {
         guard !closed else { return }
+        drops = 0
+        rejoin()
+    }
+
+    private func rejoin() {
         host.reconnectIfNeeded()
         generation += 1
         let g = generation
@@ -119,12 +137,13 @@ final class TerminalSession {
                 try await data.resume()
                 guard g == generation else { return }
                 log.info("resumed \(self.block, privacy: .public)")
+                opened = .now
                 // A client that came back too late to resume lost the block.
                 try? await claim()
             } catch {
                 guard g == generation else { return }
                 log.info("resume failed, starting over: \(error.localizedDescription, privacy: .public)")
-                start()
+                retry(fresh: true)
             }
         }
     }
@@ -156,10 +175,33 @@ final class TerminalSession {
             guard let self, d === self.data, !self.closed else { return }
             switch code {
             case 4000: self.state = .failed(String(localized: "The window closed."))
-            case 1000, 1013: self.start()
-            default: self.resume()
+            case 1002, 1008: self.state = .failed(String(localized: "The server refused the terminal."))
+            default: self.retry(fresh: code == 1000 || code == 1013)
             }
         }
+    }
+
+    /// Connects again after a drop, from the start or with a resume,
+    /// waiting longer each time in a row, until it is time to give up.
+    private func retry(fresh: Bool) {
+        if opened.duration(to: .now) > .seconds(10) { drops = 0 }
+        drops += 1
+        guard let wait = Self.backoff(after: drops) else {
+            state = .failed(String(localized: "The connection was lost."))
+            return
+        }
+        let g = generation
+        Task {
+            try? await Task.sleep(for: wait)
+            guard g == generation, !closed else { return }
+            if fresh { open() } else { rejoin() }
+        }
+    }
+
+    /// The wait before connecting again after drops in a row: half a
+    /// second, doubling up to ten; nil after the sixth.
+    static func backoff(after drops: Int) -> Duration? {
+        drops > 6 ? nil : min(.milliseconds(500) * (1 << (drops - 1)), .seconds(10))
     }
 
     private func receive(_ bytes: Data) {

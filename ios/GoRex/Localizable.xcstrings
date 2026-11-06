@@ -842,12 +842,32 @@
         }
       }
     },
+    "The connection was lost.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接已断开。"
+          }
+        }
+      }
+    },
     "The program exited with code %lld.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "程序已退出，退出码 %lld。"
+          }
+        }
+      }
+    },
+    "The server refused the terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器拒绝了这个终端。"
           }
         }
       }

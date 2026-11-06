@@ -97,4 +97,71 @@ nonisolated final class ConnectionTests: XCTestCase {
         s.close()
         h.stop()
     }
+
+    /// A data connection the server closes for policy, after its WELCOME,
+    /// fails the terminal instead of reconnecting forever.
+    @MainActor func testPolicyCloseFails() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in method == "data.connect" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:] }
+        var handshakes = 0
+        rex.data = { c, _ in
+            handshakes += 1
+            FakeRex.send(c, FakeRex.welcome)
+            FakeRex.close(c, .protocolCode(.policyViolation))
+        }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        await until("failed") { if case .failed = s.state { true } else { false } }
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(handshakes, 1)
+        h.stop()
+    }
+
+    /// A data connection that keeps dropping is tried again ever later,
+    /// not at once.
+    @MainActor func testDropsBackOff() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in method == "data.connect" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:] }
+        var handshakes = 0
+        rex.data = { c, _ in
+            handshakes += 1
+            FakeRex.send(c, FakeRex.welcome)
+            FakeRex.close(c, .protocolCode(.goingAway))
+        }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        try await Task.sleep(for: .seconds(2))
+        // At once, then after 0.5 s and 1 s; the next waits 2 s.
+        XCTAssertLessThanOrEqual(handshakes, 4)
+        XCTAssertGreaterThanOrEqual(handshakes, 2)
+        s.close()
+        h.stop()
+    }
+
+    @MainActor func testBackoff() {
+        XCTAssertEqual(TerminalSession.backoff(after: 1), .milliseconds(500))
+        XCTAssertEqual(TerminalSession.backoff(after: 2), .seconds(1))
+        XCTAssertEqual(TerminalSession.backoff(after: 5), .seconds(8))
+        XCTAssertEqual(TerminalSession.backoff(after: 6), .seconds(10))
+        XCTAssertNil(TerminalSession.backoff(after: 7))
+    }
+
+    /// A terminal closed as its screen went away opens again when it comes back.
+    @MainActor func testStartsAgainAfterClose() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in method == "data.connect" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:] }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        await until("connect") { rex.count("data.connect") == 1 }
+        s.close()
+        s.start()
+        await until("connect again") { rex.count("data.connect") == 2 }
+        h.stop()
+    }
 }
