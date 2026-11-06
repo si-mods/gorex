@@ -24,7 +24,9 @@ struct TerminalScreen: View {
         // bar and the key bar too; the bar and the text on it take its scheme.
         let bg = session.background ?? .black
         let scheme: ColorScheme = 0.299 * Double(bg.r) + 0.587 * Double(bg.g) + 0.114 * Double(bg.b) < 128 ? .dark : .light
+        // The keyboard goes over the terminal, which leaves room for it.
         TerminalRepresentable(session: session)
+            .ignoresSafeArea(.keyboard)
             .background(Color(cgColor: bg.cgColor).ignoresSafeArea())
             .overlay { status }
             .navigationTitle(target.title)

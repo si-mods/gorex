@@ -188,13 +188,13 @@ final class TerminalSession {
     // MARK: Input
 
     /// The view's size in cells, and a cell's in pixels, for the block, once
-    /// it has held for a moment: a keyboard sliding in resizes it on the way.
-    func fit(cols: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
+    /// it has held for a while: steps of a pinch, or a keyboard on its way.
+    func fit(cols: Int, rows: Int, cellWidth: Int, cellHeight: Int, after delay: Duration = .milliseconds(100)) {
         guard cols > 0, rows > 0, size.map({ ($0.cols, $0.rows) != (cols, rows) }) ?? true else { return }
         size = (cols, rows, cellWidth, cellHeight)
         sizing?.cancel()
         sizing = Task {
-            try? await Task.sleep(for: .milliseconds(100))
+            try? await Task.sleep(for: delay)
             if !Task.isCancelled { sendSize() }
         }
     }

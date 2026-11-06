@@ -47,6 +47,10 @@ final class TerminalView: UIView, TerminalOutput {
     /// Set while the content is moved to match Ghostty, not by the finger.
     var syncing = false
 
+    /// The keyboard's height over the terminal, and when it stops moving.
+    private var keyboardInset: CGFloat = 0
+    private var settled = ContinuousClock.now
+
     /// The grid's size, shown while pinching.
     lazy var sizeLabel: UILabel = {
         let l = UILabel()
@@ -84,6 +88,7 @@ final class TerminalView: UIView, TerminalOutput {
         // The renderer draws nothing in the background, which iOS forbids.
         NotificationCenter.default.addObserver(self, selector: #selector(hide), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(show), name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboard), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -114,6 +119,7 @@ final class TerminalView: UIView, TerminalOutput {
         _ = fcntl(output, F_SETFL, fcntl(output, F_GETFL) & ~O_NONBLOCK)
         read(ghostty_surface_response_read_fd(s))
         session.output = self
+        ghostty_surface_set_bottom_inset(s, keyboardInset * traitCollection.displayScale)
         addScroller()
         setNeedsLayout()
     }
@@ -240,10 +246,24 @@ final class TerminalView: UIView, TerminalOutput {
         syncScroll()
     }
 
-    /// Ghostty settled on a grid for the view's size: the block takes it.
+    /// The keyboard covers the bottom of the terminal, which stays its size:
+    /// the grid leaves the keyboard's height free at once, and the drawable
+    /// never resizes as the keyboard slides. A program sees one resize, once
+    /// the keyboard stops.
+    @objc private func keyboard(_ n: Notification) {
+        guard let window, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+        settled = .now + .seconds(duration)
+        keyboardInset = max(0, bounds.maxY - window.screen.coordinateSpace.convert(end, to: self).minY)
+        scroller.verticalScrollIndicatorInsets.bottom = keyboardInset
+        if let s = surface { ghostty_surface_set_bottom_inset(s, keyboardInset * traitCollection.displayScale) }
+    }
+
+    /// Ghostty settled on a grid for the view's size: the block takes it,
+    /// after the keyboard stops.
     func resized(cols: Int, rows: Int, width: Int, height: Int) {
         guard cols > 0, rows > 0 else { return }
-        session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows)
+        session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows, after: max(.milliseconds(100), settled - .now))
         if sizeLabel.alpha > 0 { showSize() }
     }
 
