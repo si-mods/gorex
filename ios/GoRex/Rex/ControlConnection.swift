@@ -68,6 +68,11 @@ final class ControlConnection {
     var onEvent: (RexEvent) -> Void = { _ in }
     /// Called once when the connection ends, by either side.
     var onClose: (Error?) -> Void = { _ in }
+    /// How often to ping, how long a pong may take before the connection
+    /// counts as dead, and how long a response may take.
+    var pingEvery = Duration.seconds(30)
+    var pongWait = Duration.seconds(15)
+    var callWait = Duration.seconds(30)
     private(set) var clientID = ""
     private(set) var reconnectToken: String?
 
@@ -127,6 +132,11 @@ final class ControlConnection {
         var req: [String: Any] = ["type": "request", "id": id, "method": method]
         req["payload"] = payload
         let text = String(decoding: try JSONSerialization.data(withJSONObject: req), as: UTF8.self)
+        let timeout = Task { [weak self, callWait] in
+            try await Task.sleep(for: callWait)
+            self?.pending.removeValue(forKey: id)?.resume(throwing: RexError(code: "timeout", message: "no response"))
+        }
+        defer { timeout.cancel() }
         let r = try await withCheckedThrowingContinuation { (c: CheckedContinuation<Reply, Error>) in
             pending[id] = c
             task.send(.string(text)) { [weak self] error in
@@ -171,19 +181,26 @@ final class ControlConnection {
         }
     }
 
-    /// Pings as the server does, so that a server that is gone is noticed.
+    /// Pings as the server does, so that a server that is gone, or a path
+    /// that died without a word, is noticed: a pong that doesn't come in
+    /// time ends the connection.
     private func pingLoop() async {
         while !closed {
-            try? await Task.sleep(for: .seconds(30))
+            try? await Task.sleep(for: pingEvery)
             if closed { return }
-            task.sendPing { [weak self] error in
-                guard let error else { return }
-                Task { @MainActor in
-                    self?.task.cancel()
-                    self?.finish(error)
-                }
+            let deadline = Task { [weak self, pongWait] in
+                try await Task.sleep(for: pongWait)
+                self?.fail(RexError(code: "timeout", message: "no pong"))
             }
+            let error = await withCheckedContinuation { c in task.sendPing { c.resume(returning: $0) } }
+            deadline.cancel()
+            if let error { fail(error) }
         }
+    }
+
+    private func fail(_ error: Error) {
+        task.cancel()
+        finish(error)
     }
 
     private func finish(_ error: Error?) {

@@ -36,4 +36,34 @@ nonisolated final class ConnectionTests: XCTestCase {
         XCTAssertLessThanOrEqual(rex.count("session.view"), 1)
         h.stop()
     }
+
+    /// A server that stops answering pings is a dead connection.
+    @MainActor func testNoPongClosesTheConnection() async throws {
+        let rex = try FakeRex(pongs: false)
+        defer { rex.stop() }
+        let c = ControlConnection(base: try await rex.url())
+        c.pingEvery = .milliseconds(200)
+        c.pongWait = .milliseconds(300)
+        var closed = false
+        c.onClose = { _ in closed = true }
+        try await c.open(token: nil)
+        await until("close") { closed }
+    }
+
+    /// A call the server never answers fails after a while.
+    @MainActor func testUnansweredCallTimesOut() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let c = ControlConnection(base: try await rex.url())
+        c.callWait = .milliseconds(300)
+        try await c.open(token: nil)
+        rex.respond = { _, _ in nil }
+        do {
+            try await c.call("session.bootstrap")
+            XCTFail("the call returned")
+        } catch {
+            XCTAssertEqual((error as? RexError)?.code, "timeout")
+        }
+        c.close()
+    }
 }
