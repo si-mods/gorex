@@ -100,8 +100,10 @@ func TeleportRefusal(in SessionInfo) string {
 		return TeleportProgram
 	case !IsUUID(in.AgentSession):
 		return TeleportUnknown
-	case in.Status != nil && in.Status.State == "working" || time.Since(in.LastOutput) < 2*time.Second:
-		// A conversation still being written; a spinner prints.
+	case in.Status != nil && in.Status.State == "working" || time.Since(in.LastOutput.Round(0)) < 2*time.Second:
+		// A conversation still being written; a spinner prints. By the
+		// wall clock, as a client reads the time over the wire: the
+		// server's check after a client's agrees with it.
 		return TeleportWorking
 	}
 	return ""
