@@ -646,7 +646,7 @@ func TestRestoreRemote(t *testing.T) {
 	b := &App{client: a.client}
 	b.loadHosts()
 	t.Cleanup(b.stopHosts)
-	if !b.restore(l, nil) {
+	if !b.reconcile(l, nil) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 2 {
@@ -742,7 +742,7 @@ func TestAdoptHostSessions(t *testing.T) {
 	b := &App{client: a.client}
 	b.loadHosts()
 	t.Cleanup(b.stopHosts)
-	if !b.restore(savedWorkspaces(t, a.client).Sessions[0].Layout, nil) {
+	if !b.reconcile(savedWorkspaces(t, a.client).Sessions[0].Layout, nil) {
 		t.Fatal("nothing restored")
 	}
 	tb := ui.NewTester(b.view, 1000, 620)

@@ -110,3 +110,22 @@ func TestNextColor(t *testing.T) {
 		}
 	}
 }
+
+// TestParseNamesBrowsers gives a browser pane of a layout without an ID
+// one, in splits, floats and an older layout alike, and keeps one it has.
+func TestParseNamesBrowsers(t *testing.T) {
+	for _, raw := range []string{
+		`{"version":2,"sessions":[{"id":"w","name":"n","tabs":[{"root":{"a":{"sid":"s"},"b":{"url":"https://a.test"}},"floats":[{"pane":{"url":"https://b.test"}}]}]}]}`,
+		`{"tabs":[{"root":{"a":{"sid":"s"},"b":{"url":"https://a.test"}},"floats":[{"pane":{"url":"https://b.test"}}]}]}`,
+	} {
+		tab := Parse([]byte(raw)).Sessions[0].Tabs[0]
+		b, f := tab.Root.B, tab.Floats[0].Pane
+		if b.ID == "" || f.ID == "" || b.ID == f.ID || tab.Root.A.ID != "" {
+			t.Errorf("%s: ids %q %q %q", raw, tab.Root.A.ID, b.ID, f.ID)
+		}
+	}
+	kept := Parse([]byte(`{"version":2,"sessions":[{"id":"w","tabs":[{"root":{"url":"https://a.test","id":"web1"}}]}]}`))
+	if id := kept.Sessions[0].Tabs[0].Root.ID; id != "web1" {
+		t.Errorf("kept id %q", id)
+	}
+}

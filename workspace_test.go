@@ -1184,6 +1184,7 @@ func TestReconnectUpdatesWindows(t *testing.T) {
 	st := a.st
 	sids, old := sidsOf(a), st.client
 	old.Close()
+	<-old.Closed() // its reader ends after Close returns
 	st.openNew()
 	t.Cleanup(func() { st.client.Shutdown() })
 	if st.client == old || len(st.apps) != 2 {

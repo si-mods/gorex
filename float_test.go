@@ -224,7 +224,7 @@ func TestFloatLayoutRoundTrip(t *testing.T) {
 		}
 	}
 	b := &App{client: a.client}
-	if !b.restore(l, nil) {
+	if !b.reconcile(l, nil) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 1 {
@@ -430,7 +430,7 @@ func TestRestoreFocusesSavedFloat(t *testing.T) {
 		},
 	}}
 	b := &App{client: a.client}
-	if !b.restore(l, nil) {
+	if !b.reconcile(l, nil) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 2 {

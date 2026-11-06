@@ -1,5 +1,6 @@
 // Package layout is the saved shape of GoRex's windows, tabs and panes.
-// The app writes it while a window is open; the session server keeps it,
+// The app writes it while a window is open, and shows the changes other
+// clients and the server make of it; the session server keeps it,
 // makes the clients' changes of it while no window is (rex's apply), and
 // reads it to start again the sessions of a run that did not stop.
 package layout
@@ -100,8 +101,11 @@ type Node struct {
 	// machine's.
 	Host string `json:"host,omitempty"`
 	Dir  string `json:"dir,omitempty"`
-	// URL is the page of a browser pane, which has no session.
+	// URL is the page of a browser pane, which has no session, and ID
+	// names the pane for good, as a session names a terminal's: Parse
+	// gives one to a browser pane of a layout that has none.
 	URL string `json:"url,omitempty"`
+	ID  string `json:"id,omitempty"`
 	// Kind is "note" for a note pane, which has no session either, and
 	// Note its id, which names the file of its text; a pane of no kind is a terminal or, with a URL, a
 	// browser.
