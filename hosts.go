@@ -1074,13 +1074,17 @@ func (a *App) removeHost(h *hostConn) {
 		// The window keeps a tab, as it would close with its last: the
 		// host's panes go once the server made it, or could not.
 		if len(o.tabs) > 0 && len(o.tabsOn(h)) == len(o.tabs) {
-			home, _ := os.UserHomeDir()
-			c := rex.LayoutCommand{Op: "tab.create", Dir: home, Focus: true}
-			if o.ws != nil {
-				c.Space = o.ws.ID
+			// A window of no space takes a space of its own for it, never
+			// another window's.
+			if o.ws == nil && o.st != nil {
+				w := o.st.addWorkspace()
+				o.ws, w.app = w, o
 			}
-			o.ask(c, func(rex.LayoutCommand) { drop() })
-			continue
+			if o.ws != nil {
+				home, _ := os.UserHomeDir()
+				o.ask(rex.LayoutCommand{Op: "tab.create", Space: o.ws.ID, Dir: home, Focus: true}, func(rex.LayoutCommand) { drop() })
+				continue
+			}
 		}
 		drop()
 	}

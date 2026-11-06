@@ -1136,6 +1136,9 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand, a *applying) LayoutCo
 	}
 	before := localSIDs(st)
 	focus, at := c.Focus, -1
+	// ahead are the tabs before the one replaced, by ID: the unlinks of
+	// the sessions it takes may close one.
+	var ahead []string
 	for i := range st.Sessions {
 		o := &st.Sessions[i]
 		if ti := slices.IndexFunc(o.Tabs, func(x layout.Tab) bool { return x.ID == t.ID }); ti >= 0 {
@@ -1145,6 +1148,9 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand, a *applying) LayoutCo
 			a.touch(t.ID, &o.Tabs[ti])
 			t.Rev = o.Tabs[ti].Rev
 			if o == w {
+				for _, x := range o.Tabs[:ti] {
+					ahead = append(ahead, x.ID)
+				}
 				at, focus = ti, focus || o.Active == ti
 			}
 			removeTab(o, ti)
@@ -1185,6 +1191,14 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand, a *applying) LayoutCo
 	}
 	t.Focus = max(t.Focus, 0)
 	t.FocusFloat = min(max(t.FocusFloat, 0), len(t.Floats))
+	if at >= 0 {
+		at = 0
+		for _, id := range ahead {
+			if i := slices.IndexFunc(w.Tabs, func(x layout.Tab) bool { return x.ID == id }); i >= 0 {
+				at = i + 1
+			}
+		}
+	}
 	// After the tab of After; with none there, where it was, a new one
 	// after this machine's tabs; with no After, at Index.
 	switch i := slices.IndexFunc(w.Tabs, func(x layout.Tab) bool { return x.ID == c.After }); {
@@ -1251,11 +1265,18 @@ func (s *Server) applyBatch(st *layout.Store, c LayoutCommand, a *applying) Layo
 		if !batched[x.Op] {
 			return fail("bad_args", x.Op+" is not of a layout.apply")
 		}
+		// The close of what another client closed first is made already.
+		if x.Op == "tab.close" && !hasTab(st, x.Tab) {
+			continue
+		}
+		if _, ok := find(st, "", x.SID); x.Op == "pane.close" && !ok {
+			continue
+		}
 		if id := batchTab(x); x.Base != 0 && revs[id] != x.Base {
 			return fail("conflict", "the tab changed meanwhile")
 		}
 		x.Base = 0 // checked
-		if r := s.applyTo(st, x, a); r.Code != "" && !(r.Code == "tab_not_found" && x.Op == "tab.close") {
+		if r := s.applyTo(st, x, a); r.Code != "" {
 			return r
 		}
 	}
@@ -1287,6 +1308,16 @@ func (s *Server) applyBatch(st *layout.Store, c LayoutCommand, a *applying) Layo
 	return res
 }
 
+// hasTab tells a tab of the ID in st.
+func hasTab(st *layout.Store, id string) bool {
+	for _, w := range st.Sessions {
+		if slices.ContainsFunc(w.Tabs, func(t layout.Tab) bool { return t.ID == id }) {
+			return true
+		}
+	}
+	return false
+}
+
 // batchTab is the tab a change of a batch is built on.
 func batchTab(x LayoutCommand) string {
 	if x.Op == "tab.set" && x.TabLayout != nil {
@@ -1298,13 +1329,9 @@ func batchTab(x LayoutCommand) string {
 // countSetRevs is the whole layout l a client sets, with the revisions of
 // its tabs the server's: that of the tab of its ID in was, the layout
 // before, counted up for a tab whose arrangement l changes; a client's
-// own are ignored. A layout of no change of them, as one of tabs of no
-// IDs, is kept as it is.
+// own are ignored. A layout whose revisions need no change, as one of
+// tabs of no IDs, is kept as it is; another goes as parsed.
 func countSetRevs(was, l json.RawMessage) json.RawMessage {
-	var raw map[string]any
-	if json.Unmarshal(l, &raw) != nil {
-		return bytes.Clone(l)
-	}
 	old := map[string]layout.Tab{}
 	for _, w := range layout.Parse(was).Sessions {
 		for _, t := range w.Tabs {
@@ -1313,38 +1340,24 @@ func countSetRevs(was, l json.RawMessage) json.RawMessage {
 	}
 	now := layout.Parse(l)
 	changed := false
-	sessions, _ := raw["sessions"].([]any)
-	for i, sw := range sessions {
-		w, ok := sw.(map[string]any)
-		if !ok || i >= len(now.Sessions) {
-			continue
-		}
-		tabs, _ := w["tabs"].([]any)
-		for j, st := range tabs {
-			t, ok := st.(map[string]any)
-			if !ok || j >= len(now.Sessions[i].Tabs) {
-				continue
-			}
-			nt := now.Sessions[i].Tabs[j]
-			if id, _ := t["id"].(string); id == "" || id != nt.ID {
+	for i := range now.Sessions {
+		for j := range now.Sessions[i].Tabs {
+			t := &now.Sessions[i].Tabs[j]
+			if t.ID == "" {
 				continue // of no ID a change names it by
 			}
-			o, had := old[nt.ID]
+			o, had := old[t.ID]
 			rev := o.Rev
-			if !had || !bytes.Equal(o.Arrangement(), nt.Arrangement()) {
+			if !had || !bytes.Equal(o.Arrangement(), t.Arrangement()) {
 				rev++
 			}
-			if rev != nt.Rev {
-				t["rev"], changed = rev, true
+			if rev != t.Rev {
+				t.Rev, changed = rev, true
 			}
 		}
 	}
 	if !changed {
 		return bytes.Clone(l)
 	}
-	b, err := json.Marshal(raw)
-	if err != nil {
-		return bytes.Clone(l)
-	}
-	return b
+	return encodeLayout(&now)
 }

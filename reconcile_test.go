@@ -837,3 +837,133 @@ func TestUseRunsDroppedDones(t *testing.T) {
 		t.Errorf("the dropped command's answers: %+v", got)
 	}
 }
+
+// TestSaveNowWithTakePosted saves at once, as a window that closes, while
+// the take of another client's change is posted to the main thread, the
+// one saving, and not run yet: the save reaches the server at once; the
+// take, run after, shows the other client's change; and the revisions the
+// next change builds on are the server's, so the server takes it.
+func TestSaveNowWithTakePosted(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	other := followApp(t, a)
+	caughtUp(t, a, tt)
+	if _, err := other.Command(rex.LayoutCommand{Op: "space.create", Name: "elsewhere"}); err != nil {
+		t.Fatal(err)
+	}
+	waitForThat(t, func() bool {
+		a.postMu.Lock()
+		defer a.postMu.Unlock()
+		return len(a.posted) > 0
+	}, "a take posted to the main thread")
+	tab.Name = "closing"
+	a.changed()
+	start := time.Now()
+	a.st.saveNow()
+	if d := time.Since(start); d > 300*time.Millisecond {
+		t.Errorf("the save took %v", d)
+	}
+	if got := savedWorkspaces(t, other).Sessions[0].Tabs[0].Name; got != "closing" {
+		t.Errorf("the server's tab is %q", got)
+	}
+	caughtUp(t, a, tt)
+	if len(a.st.workspaces) != 2 || tab.Name != "closing" {
+		t.Fatalf("after the take: %d spaces, tab %q", len(a.st.workspaces), tab.Name)
+	}
+	// The next change is built on the server's revisions: it is made.
+	tab.Name = "after"
+	a.changed()
+	a.save()
+	caughtUp(t, a, tt)
+	if got := savedWorkspaces(t, other).Sessions[0].Tabs[0].Name; got != "after" || tab.Name != "after" {
+		t.Errorf("the next change: server %q, window %q", got, tab.Name)
+	}
+}
+
+// TestSaveNowLeavesNoCheck saves at once with nothing to send while
+// another client's change is still to be taken: the window takes it
+// still, the outbox not left stopped with a check to make.
+func TestSaveNowLeavesNoCheck(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	other := followApp(t, a)
+	caughtUp(t, a, tt)
+	if _, err := other.Command(rex.LayoutCommand{Op: "tab.rename", Tab: tab.UID, Name: "theirs"}); err != nil {
+		t.Fatal(err)
+	}
+	a.st.saveNow()
+	waitFor(t, tt, "the other client's rename", func() bool { return tab.Name == "theirs" })
+}
+
+// TestUseRunsInFlightDone switches the outbox's connection while a command
+// is on its way: its done runs once, with an error.
+func TestUseRunsInFlightDone(t *testing.T) {
+	a, _ := newTestApp(t)
+	var o outbox
+	o.use(a.client, func(fn func()) { go fn() }, func(rex.LayoutState) bool { return true })
+	calls := make(chan rex.LayoutCommand, 4)
+	// An action waits for a window that takes it and never answers.
+	desk, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer desk.Close()
+	go desk.TakeCommand()
+	time.Sleep(100 * time.Millisecond)
+	o.add(rex.LayoutCommand{Op: "action", Action: "tab.rename"}, func(res rex.LayoutCommand) { calls <- res })
+	o.kick()
+	waitForThat(t, func() bool {
+		o.mu.Lock()
+		defer o.mu.Unlock()
+		return o.sending
+	}, "the command on its way")
+	other, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	o.use(other, func(fn func()) { go fn() }, func(rex.LayoutState) bool { return true })
+	select {
+	case res := <-calls:
+		if res.Code == "" {
+			t.Errorf("the done of a switched connection: %+v", res)
+		}
+	case <-time.After(rex.CommandTimeout + 3*time.Second): // the action times out
+		t.Fatal("the done did not run")
+	}
+	select {
+	case res := <-calls:
+		t.Errorf("the done ran twice: %+v", res)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// TestRemoveHostNoSpace removes the host of every pane of a window that
+// shows no space: the window takes a space of its own for the new tab of
+// this machine, and the other window's space is left as it was.
+func TestRemoveHostNoSpace(t *testing.T) {
+	a, tt := newTestApp(t)
+	st := a.st
+	b := st.openWindow(st.addWorkspace(), false)
+	followApp(t, a)
+	caughtUp(t, a, tt)
+	theirs := len(b.tabs)
+	h := newHostConn(savedHost{ID: "h1", Name: "studio"})
+	a.hosts = []*hostConn{h}
+	rp := &Pane{ID: a.id(), SID: "far", host: h, info: rex.SessionInfo{ID: "far"}}
+	rt := a.makeTab("")
+	rt.Root = &Node{ID: a.id(), Pane: rp}
+	rp.Tab, rp.Node = rt, rt.Root
+	rt.setFocus(rp)
+	closePanes(a.tabs)
+	a.ws.app, a.ws = nil, nil
+	a.tabs, a.active = []*Tab{rt}, 0
+	a.removeHost(h)
+	waitFor(t, tt, "a tab of this machine", func() bool {
+		return len(a.tabs) == 1 && a.tabs[0].Focus != nil && a.tabs[0].Focus.host == nil && a.tabs[0].Focus.SID != ""
+	})
+	if a.ws == nil || a.ws == b.ws || len(b.tabs) != theirs {
+		t.Errorf("window on %v, the other's space has %d tabs, had %d", a.ws, len(b.tabs), theirs)
+	}
+	quit(st)
+}

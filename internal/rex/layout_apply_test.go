@@ -261,11 +261,12 @@ func seed(t *testing.T, c *Client, tabs ...layout.Tab) {
 	}
 }
 
-// TestApplyOnNewerLayout sets the whole layout between an apply's change
-// and its commit, as a window's save may: the apply makes its change again
-// on the new layout, which keeps both.
+// TestApplyOnNewerLayout commits a whole layout between an apply's change
+// and its commit: the apply makes its change again on the new layout,
+// which keeps both. (A setLayout waits for the apply now, as it holds
+// applyMu; the commit stands for any other.)
 func TestApplyOnNewerLayout(t *testing.T) {
-	_, c := applyFixture(t)
+	s, c := applyFixture(t)
 	cmd, dir := testShell()
 	seed(t, c)
 	once := false
@@ -274,7 +275,12 @@ func TestApplyOnNewerLayout(t *testing.T) {
 			return
 		}
 		once = true
-		seed(t, c, layout.Tab{ID: "saved", Root: &layout.Node{SID: "elsewhere", Host: "h"}})
+		st := layout.Store{Version: layout.Version, Windows: []string{"w"}, Sessions: []layout.Workspace{{ID: "w", Name: "work",
+			Layout: layout.Layout{Tabs: []layout.Tab{{ID: "saved", Root: &layout.Node{SID: "elsewhere", Host: "h"}}}}}}}
+		raw, _ := json.Marshal(st)
+		if _, err := s.commitLayout(raw, 0); err != nil {
+			t.Error(err)
+		}
 	}
 	defer func() { applyHook = nil }()
 	res := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
@@ -796,5 +802,104 @@ func TestSetLayoutCountsRevs(t *testing.T) {
 	st = storeOf(t, c)
 	if r := []uint64{st.Sessions[0].Tabs[0].Rev, st.Sessions[0].Tabs[1].Rev}; r[0] != 2 || r[1] != 1 {
 		t.Errorf("tabs at %v, want 2 and 1", r)
+	}
+}
+
+// TestLayoutApplyCloseGone sends a batch that closes a tab and a pane
+// another client closed first: those closes are made already, their old
+// revisions do not refuse the batch, and its other change is made.
+func TestLayoutApplyCloseGone(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Command: cmd})
+	w := storeOf(t, c).Sessions[0]
+	a := w.Tabs[0]
+	command(t, c, LayoutCommand{Op: "tab.close", Tab: two.Tab})
+	command(t, c, LayoutCommand{Op: "pane.close", SID: split.New})
+	a = storeOf(t, c).Sessions[0].Tabs[0]
+	named := a
+	named.Name = "mine"
+	res := command(t, c, LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{
+		{Op: "pane.close", Tab: one.Tab, SID: split.New, Base: w.Tabs[0].Rev},
+		{Op: "tab.set", Space: w.ID, TabLayout: &named, Base: a.Rev},
+		{Op: "tab.close", Space: w.ID, Tab: two.Tab, Base: w.Tabs[1].Rev},
+	}})
+	if got := storeOf(t, c).Sessions[0].Tabs; len(got) != 1 || got[0].Name != "mine" {
+		t.Errorf("after the batch %+v: %+v", res, got)
+	}
+}
+
+// TestSetLayoutWaitsForApply sets a whole layout while an apply makes its
+// change: the set waits for the apply's commit, so that the revisions it
+// counts are of the layout after it, and none goes back.
+func TestSetLayoutWaitsForApply(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	st := storeOf(t, c)
+	setDone := make(chan struct{})
+	once := false
+	applyHook = func() {
+		if once {
+			return
+		}
+		once = true
+		go func() {
+			renamed := st
+			renamed.Sessions[0].Tabs[0].Name = "set"
+			raw, _ := json.Marshal(renamed)
+			c.SetLayout(raw)
+			close(setDone)
+		}()
+		select {
+		case <-setDone:
+			t.Error("the set did not wait for the apply")
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	defer func() { applyHook = nil }()
+	res := command(t, c, LayoutCommand{Op: "tab.rename", Tab: one.Tab, Name: "applied"})
+	<-setDone
+	got := storeOf(t, c).Sessions[0].Tabs[0]
+	if got.Name != "set" || got.Rev <= res.Revs[one.Tab] {
+		t.Errorf("the tab %q at %d, the apply's at %d", got.Name, got.Rev, res.Revs[one.Tab])
+	}
+}
+
+// TestTabSetPlaceAfterUnlink sets a tab, after one gone, that takes a session
+// from a tab before it, which goes, emptied: the tab keeps its place among
+// the others.
+func TestTabSetPlaceAfterUnlink(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	var sids []string
+	for range 4 {
+		sids = append(sids, command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd}).New)
+	}
+	tabs := storeOf(t, c).Sessions[0].Tabs
+	third := tabs[2]
+	third.Root = &layout.Node{Ratio: 0.5, A: third.Root, B: &layout.Node{SID: sids[0]}}
+	command(t, c, LayoutCommand{Op: "tab.set", TabLayout: &third, After: "gone"})
+	var got []string
+	for _, x := range storeOf(t, c).Sessions[0].Tabs {
+		got = append(got, x.ID)
+	}
+	if want := []string{tabs[1].ID, tabs[2].ID, tabs[3].ID}; !slices.Equal(got, want) {
+		t.Errorf("tabs %v, want %v", got, want)
+	}
+}
+
+// TestSetLayoutLegacyRevs sets a layout of before spaces: the server counts
+// its tab's revision on the layout as parsed.
+func TestSetLayoutLegacyRevs(t *testing.T) {
+	_, c := applyFixture(t)
+	if err := c.SetLayout(json.RawMessage(`{"active":0,"tabs":[{"id":"t","root":{"sid":"x"}}]}`)); err != nil {
+		t.Fatal(err)
+	}
+	st := storeOf(t, c)
+	if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 1 || st.Sessions[0].Tabs[0].Rev != 1 {
+		t.Errorf("the layout set: %+v", st)
 	}
 }

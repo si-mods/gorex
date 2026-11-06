@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"gorex/internal/layout"
@@ -272,35 +271,40 @@ func (a *App) localPane(sid string) *Pane {
 // outbox sends the app's changes of the layout to the server, as commands
 // (rex.LayoutCommand), in order and one at a time; once none waits, and
 // the server's layout is past the one the app shows, the app takes it
-// (take): its own changes, as the server made them, and other clients'
-// alike. A command's done runs then, on the main thread, with its answer.
-// Without update, as in tests, it sends on the caller's goroutine.
+// (take), on the main thread: its own changes, as the server made them,
+// and other clients' alike. A command's done runs then, on the main
+// thread, with its answer. The outbox never waits for the main thread: it
+// posts there (update) and goes on. Without update, as in tests, it runs
+// on the caller's goroutine.
 type outbox struct {
 	mu      sync.Mutex
 	client  *rex.Client
 	queue   []outCmd
 	dones   []func()
 	running bool
-	idle    chan struct{} // closed once nothing waits
 	// rev is the revision of the layout the app shows, told the latest the
 	// server told of, and check asks to read the server's, as after a
 	// send; force has the app take it even at rev, as after a refusal,
 	// which the app's own view of the layout may not show. sending tells
-	// a command on its way.
-	rev, told             uint64
-	check, force, sending bool
+	// a command on its way, and taking a take posted to the main thread,
+	// not run yet; sent counts the commands answered, so that a take of a
+	// layout read before the last of them does not take it.
+	rev, told                     uint64
+	check, force, sending, taking bool
+	sent                          uint64
+	// held tells a take the app held off, as for a gesture, which waits
+	// for the next kick, as the save that ends the gesture.
+	held bool
 	// revs are the revisions of the tabs (layout.Tab.Rev) the app's
 	// changes build on: those of the layout it took last, and those its
 	// own changes made since. One another client changed it does not
 	// know, so that a change built on the tab as it was is refused.
 	revs map[string]uint64
-	// quiet closes once no command waits nor is on its way, and hurry
-	// once one who waits for that (wait) needs the main thread, which a
-	// take waiting for it gives up.
-	quiet, hurry chan struct{}
+	// quiet closes once no command waits nor is on its way.
+	quiet chan struct{}
 	// update runs a change on the main thread; take shows the server's
 	// layout there, and returns false while the app has a change of its
-	// own to send first.
+	// own to send first, or a gesture runs.
 	update func(func())
 	take   func(rex.LayoutState) bool
 }
@@ -324,10 +328,17 @@ func baseOf(c rex.LayoutCommand) string {
 	return ""
 }
 
+// lost is the answer of a command of a connection the outbox no longer
+// uses.
+func lost(c rex.LayoutCommand) rex.LayoutCommand {
+	return rex.LayoutCommand{ID: c.ID, Code: "failed", Error: "rex: connection to the server lost"}
+}
+
 // use makes c the connection the outbox sends through, a server's whose
-// revisions are its own: the app shows none of its layouts yet.
-// What waited for the connection before goes: each command's done runs
-// with an error, as the app counts on it to.
+// revisions are its own: the app shows none of its layouts yet. What
+// waited for the connection before goes: each command's done runs with an
+// error, as the app counts on it to, and the one on its way does once it
+// answers.
 func (o *outbox) use(c *rex.Client, update func(func()), take func(rex.LayoutState) bool) {
 	o.mu.Lock()
 	dropped, dones := o.queue, o.dones
@@ -340,7 +351,7 @@ func (o *outbox) use(c *rex.Client, update func(func()), take func(rex.LayoutSta
 	}
 	for _, x := range dropped {
 		if x.done != nil {
-			x.done(rex.LayoutCommand{ID: x.cmd.ID, Code: "failed", Error: "rex: connection to the server lost"})
+			x.done(lost(x.cmd))
 		}
 	}
 }
@@ -366,11 +377,12 @@ func (o *outbox) add(c rex.LayoutCommand, done func(rex.LayoutCommand)) {
 // kick runs the outbox, unless it runs or has nothing to do.
 func (o *outbox) kick() {
 	o.mu.Lock()
+	o.held = false
 	if o.running || o.client == nil || len(o.queue) == 0 && len(o.dones) == 0 && !o.behind() {
 		o.mu.Unlock()
 		return
 	}
-	o.running, o.idle = true, make(chan struct{})
+	o.running = true
 	inline := o.update == nil
 	o.mu.Unlock()
 	if inline {
@@ -380,9 +392,11 @@ func (o *outbox) kick() {
 	}
 }
 
-// behind tells that the server's layout may be past the app's. Call it
-// with mu held.
-func (o *outbox) behind() bool { return o.take != nil && (o.check || o.force || o.told > o.rev) }
+// behind tells that the server's layout may be past the app's, and no
+// take of it waits for the main thread. Call it with mu held.
+func (o *outbox) behind() bool {
+	return o.take != nil && !o.taking && !o.held && (o.check || o.force || o.told > o.rev)
+}
 
 // pending tells that commands wait to be sent.
 func (o *outbox) pending() bool {
@@ -391,47 +405,21 @@ func (o *outbox) pending() bool {
 	return len(o.queue) > 0
 }
 
-// onMain runs fn on the main thread, and returns what it does; false,
-// fn not run, once c closes, or once yield and the main thread waits for
-// the commands to be sent (wait), which goes first.
-func (o *outbox) onMain(c *rex.Client, update func(func()), yield bool, fn func() bool) bool {
+// post runs fn on the main thread, without waiting for it.
+func (o *outbox) post(update func(func()), fn func()) {
 	if update == nil {
-		return fn()
+		fn()
+	} else {
+		update(fn)
 	}
-	var hurry chan struct{}
-	if yield {
-		o.mu.Lock()
-		if o.hurry == nil {
-			o.hurry = make(chan struct{})
-		}
-		hurry = o.hurry
-		o.mu.Unlock()
-	}
-	ch := make(chan bool, 1)
-	var gaveUp atomic.Bool
-	update(func() {
-		if gaveUp.Load() {
-			ch <- false
-			return
-		}
-		ch <- fn()
-	})
-	select {
-	case ok := <-ch:
-		return ok
-	case <-c.Closed():
-	case <-hurry:
-	}
-	gaveUp.Store(true)
-	return false
 }
 
-// run sends the commands waiting, then takes the server's layout, until
-// nothing is left to do or the app holds the take off.
+// run sends the commands waiting, then reads the server's layout and posts
+// its take, until nothing is left to do.
 func (o *outbox) run() {
 	for {
 		o.mu.Lock()
-		c, update, take := o.client, o.update, o.take
+		c, update := o.client, o.update
 		if len(o.queue) > 0 {
 			x := o.queue[0]
 			o.queue = o.queue[1:]
@@ -452,39 +440,43 @@ func (o *outbox) run() {
 			}
 			o.mu.Lock()
 			o.sending = false
+			o.sent++
 			o.quieten()
-			if c == o.client {
+			if c != o.client {
+				res = lost(x.cmd)
+			} else {
 				o.check = true
 				// A refused change leaves the app showing what the server
 				// does not have: it takes the server's, as it is.
 				o.force = o.force || res.Code != "" && res.Code != "tab_not_found"
 				o.count(res.Revs)
-				if x.done != nil {
-					o.dones = append(o.dones, func() { x.done(res) })
-				}
+			}
+			if x.done != nil {
+				o.dones = append(o.dones, func() { x.done(res) })
 			}
 			o.mu.Unlock()
 			continue
 		}
 		if !o.behind() {
+			// The dones run once the window shows their changes: after the
+			// take waiting, if one does.
 			dones := o.dones
-			o.dones = nil
-			if len(dones) == 0 {
-				o.running = false
-				close(o.idle)
-				o.mu.Unlock()
-				return
+			if o.taking {
+				dones = nil
 			}
+			o.dones = o.dones[len(dones):]
+			o.running = false
 			o.mu.Unlock()
-			o.onMain(c, update, false, func() bool {
-				for _, d := range dones {
-					d()
-				}
-				return true
-			})
-			continue
+			if len(dones) > 0 {
+				o.post(update, func() {
+					for _, d := range dones {
+						d()
+					}
+				})
+			}
+			return
 		}
-		rev, force := o.rev, o.force
+		rev, force, sent := o.rev, o.force, o.sent
 		o.check, o.force = false, false
 		o.mu.Unlock()
 		ls, err := c.LayoutState()
@@ -495,35 +487,44 @@ func (o *outbox) run() {
 		}
 		if err != nil || ls.Revision == rev && !force {
 			o.told = min(o.told, o.rev) // nothing to take
-		}
-		o.mu.Unlock()
-		if err != nil {
-			log.Printf("gorex: reading the layout: %v", err)
-			continue
-		}
-		if ls.Revision == rev && !force {
-			continue
-		}
-		took := o.onMain(c, update, true, func() bool {
-			// Not of a connection the app no longer uses.
-			o.mu.Lock()
-			current := c == o.client
 			o.mu.Unlock()
-			return current && take(ls)
-		})
-		o.mu.Lock()
-		if c == o.client {
-			if took {
-				o.rev, o.revs = ls.Revision, tabRevs(ls.Layout)
-			} else if o.check, o.force = true, o.force || force; len(o.queue) == 0 {
-				// Held off by a gesture: the save that ends it kicks.
-				o.running = false
-				close(o.idle)
-				o.mu.Unlock()
-				return
+			if err != nil {
+				log.Printf("gorex: reading the layout: %v", err)
 			}
+			continue
 		}
+		o.taking = true
 		o.mu.Unlock()
+		o.post(update, func() { o.takeOn(c, ls, sent, force) })
+	}
+}
+
+// takeOn has the app take ls, of c, read once sent commands were answered,
+// and makes the revisions the app's changes build on those of ls, at once,
+// on the main thread. A layout read before a later answer, or one the app
+// holds off (take), it leaves for a read after.
+func (o *outbox) takeOn(c *rex.Client, ls rex.LayoutState, sent uint64, force bool) {
+	o.mu.Lock()
+	current := c == o.client && sent == o.sent
+	o.taking = false
+	take := o.take
+	o.mu.Unlock()
+	took := current && take(ls)
+	o.mu.Lock()
+	if c == o.client {
+		if took {
+			o.rev, o.revs = ls.Revision, tabRevs(ls.Layout)
+		} else {
+			o.check, o.force = true, o.force || force
+		}
+	}
+	// Held off by a gesture, with nothing to send, it waits for the save
+	// that ends the gesture, which kicks; else it goes on.
+	o.held = !took && current && len(o.queue) == 0
+	held := o.held
+	o.mu.Unlock()
+	if !held {
+		o.kick()
 	}
 }
 
@@ -601,17 +602,12 @@ func (o *outbox) revision() uint64 {
 	return o.rev
 }
 
-// wait waits until the server answered what was sent, for d at most. It
-// does not wait for the take after it, which needs the main thread: the
-// main thread may be the one waiting, as a window that closes saves, and
-// a take that waits for it gives up for the commands to go.
+// wait waits until the server answered what was sent, for d at most: it
+// needs no main thread, which may be the one waiting, as a window that
+// closes saves.
 func (o *outbox) wait(d time.Duration) {
 	o.mu.Lock()
 	quiet := o.quiet
-	if o.hurry != nil {
-		close(o.hurry)
-		o.hurry = nil
-	}
 	o.mu.Unlock()
 	if quiet == nil {
 		return

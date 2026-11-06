@@ -1037,11 +1037,14 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if !slices.Contains(req.Capabilities, CapabilityLayoutServer) {
 			return nil, errors.New("rex: the session server keeps the layout now, and this GoRex would write over it: update GoRex")
 		}
+		// As an apply does: none commits between the read and this.
+		s.applyMu.Lock()
 		s.mu.Lock()
 		was := s.layout
 		s.mu.Unlock()
 		l := countSetRevs(was, req.Layout)
 		rev, err := s.commitLayout(l, req.LayoutRevision)
+		s.applyMu.Unlock()
 		if err != nil {
 			return nil, err
 		}
