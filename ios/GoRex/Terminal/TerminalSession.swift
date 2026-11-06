@@ -121,9 +121,10 @@ final class TerminalSession {
     }
 
     /// Continues the stream after the app comes back, or starts over when
-    /// the server no longer has it.
+    /// the server no longer has it. A stream that ended, as its window
+    /// closed, stays so: Retry starts it.
     func resume() {
-        guard !closed else { return }
+        guard !closed, going else { return }
         drops = 0
         rejoin()
     }
@@ -186,9 +187,13 @@ final class TerminalSession {
         }
     }
 
+    /// Whether the stream is open or opening, not ended for good.
+    private var going: Bool { state == .connecting || state == .live }
+
     /// Connects again after a drop, from the start or with a resume,
     /// waiting longer each time in a row, until it is time to give up.
     private func retry(fresh: Bool) {
+        guard going else { return }
         if opened.duration(to: .now) > .seconds(10) { drops = 0 }
         drops += 1
         guard let wait = Self.backoff(after: drops) else {

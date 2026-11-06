@@ -164,6 +164,36 @@ nonisolated final class ConnectionTests: XCTestCase {
         h.stop()
     }
 
+    /// Coming back to a terminal whose window closed keeps telling so,
+    /// instead of connecting again.
+    @MainActor func testResumeAfterWindowClosedKeepsTheReason() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in method == "data.connect" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:] }
+        var handshakes = 0
+        rex.data = { c, _ in
+            handshakes += 1
+            if handshakes == 1 {
+                FakeRex.send(c, FakeRex.welcome)
+                FakeRex.close(c, .privateCode(4000))
+            } else {
+                c.cancel()
+            }
+        }
+        let closed = TerminalSession.State.failed(String(localized: "The window closed."))
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        await until("window closed") { s.state == closed }
+        s.suspend()
+        s.resume()
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(s.state, closed)
+        XCTAssertEqual(handshakes, 1)
+        s.close()
+        h.stop()
+    }
+
     /// A data connection that keeps dropping is tried again ever later,
     /// not at once.
     @MainActor func testDropsBackOff() async throws {
