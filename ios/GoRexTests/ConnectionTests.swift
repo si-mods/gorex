@@ -135,6 +135,35 @@ nonisolated final class ConnectionTests: XCTestCase {
         h.stop()
     }
 
+    /// A block that could not be owned leaves its stream as it is: the
+    /// terminal works, at another size.
+    @MainActor func testFailedClaimKeepsTheStream() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        h.control?.callWait = .milliseconds(300)
+        rex.respond = { method, _ in
+            switch method {
+            case "data.connect": ["ticket": "uH4mJKwzMarlTNT-UiyMog"]
+            case "session.own_block": nil
+            default: [:]
+            }
+        }
+        var conns: [NWConnection] = []
+        rex.data = { c, _ in
+            conns.append(c)
+            FakeRex.send(c, FakeRex.welcome)
+        }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        await until("claim") { rex.count("session.own_block") == 1 }
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(s.state, .connecting)
+        s.close()
+        conns.forEach { $0.cancel() }
+        h.stop()
+    }
+
     /// A data connection that keeps dropping is tried again ever later,
     /// not at once.
     @MainActor func testDropsBackOff() async throws {

@@ -111,7 +111,7 @@ final class TerminalSession {
                 log.info("opened \(self.block, privacy: .public)")
                 opened = .now
                 stream = TerminalStream(nonce: d.nonce)
-                try await claim()
+                await claim()
             } catch {
                 guard g == generation else { return }
                 // Opened by hand, it tells at once; after a drop, it tries again.
@@ -139,7 +139,7 @@ final class TerminalSession {
                 log.info("resumed \(self.block, privacy: .public)")
                 opened = .now
                 // A client that came back too late to resume lost the block.
-                try? await claim()
+                await claim()
             } catch {
                 guard g == generation else { return }
                 log.info("resume failed, starting over: \(error.localizedDescription, privacy: .public)")
@@ -148,10 +148,15 @@ final class TerminalSession {
         }
     }
 
-    /// Owns the block, so that it takes this view's size.
-    private func claim() async throws {
-        try await host.control?.call("session.own_block", ["session_id": session, "block_ids": [block], "mode": "take"])
-        sendSize()
+    /// Owns the block, so that it takes this view's size. Not owned, the
+    /// block keeps its size, and its stream goes on.
+    private func claim() async {
+        do {
+            try await host.live().call("session.own_block", ["session_id": session, "block_ids": [block], "mode": "take"])
+            sendSize()
+        } catch {
+            log.error("could not own \(self.block, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Leaves the stream for a resume, as when the app goes to the background.
