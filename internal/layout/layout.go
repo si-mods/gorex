@@ -12,6 +12,9 @@ type Store struct {
 	Windows  []string    `json:"windows"`
 	// The first window's tabs, for a GoRex from before workspaces.
 	Layout
+	// Named tells that Parse gave a browser pane an ID: the layout read is
+	// not the one written, which a writer writes once.
+	Named bool `json:"-"`
 }
 
 // Workspace is a workspace as the layout keeps it.

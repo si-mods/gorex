@@ -17,29 +17,41 @@ const Version = 2
 // Parse reads a layout the server keeps, a workspace for the tabs of an
 // older GoRex. Workspaces without an id, or of an id already read, and
 // windows of none, are dropped; a workspace without a name gets one, and
-// a browser pane without an ID one.
+// a browser pane without an ID one of its place (Named tells it did), the
+// same at every read of that layout.
 func Parse(raw []byte) Store {
 	s := parse(raw)
 	for _, w := range s.Sessions {
-		for _, t := range w.Tabs {
-			for _, n := range t.Roots() {
-				nameBrowsers(n)
+		for i, t := range w.Tabs {
+			tab := t.ID
+			if tab == "" {
+				tab = fmt.Sprintf("%s.%d", w.ID, i)
+			}
+			if nameBrowsers(t.Root, "web:"+tab+":r") {
+				s.Named = true
+			}
+			for j, f := range t.Floats {
+				if nameBrowsers(f.Pane, fmt.Sprintf("web:%s:f%d", tab, j)) {
+					s.Named = true
+				}
 			}
 		}
 	}
 	return s
 }
 
-// nameBrowsers gives an ID to each browser pane of n that has none.
-func nameBrowsers(n *Node) {
+// nameBrowsers gives each browser pane of n that has none the ID of its
+// place in the tree, at, and reports whether it gave one.
+func nameBrowsers(n *Node, at string) bool {
 	if n == nil {
-		return
+		return false
 	}
 	if n.URL != "" && n.ID == "" {
-		n.ID = NewTabID()
+		n.ID = at
+		return true
 	}
-	nameBrowsers(n.A)
-	nameBrowsers(n.B)
+	a := nameBrowsers(n.A, at+"a")
+	return nameBrowsers(n.B, at+"b") || a
 }
 
 func parse(raw []byte) Store {

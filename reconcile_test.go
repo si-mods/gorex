@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"slices"
 	"testing"
@@ -285,4 +286,251 @@ func TestFollowReconnect(t *testing.T) {
 		t.Error("the app shows no revision of the new connection")
 	}
 	quit(st)
+}
+
+// takeOther has the app take the layout another client wrote, as the
+// follower does, and returns the layout's revision.
+func takeOther(t *testing.T, a *App, other *rex.Client) uint64 {
+	t.Helper()
+	ls, err := other.LayoutState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.st.takeLayout(ls)
+	return ls.Revision
+}
+
+// TestFollowKeepsOwnPanes saves a split, a float and a tab the window made
+// after another client's change landed: the server refuses the write, and
+// the window takes the other's layout, keeping what it made, which it
+// writes again. No session runs without a pane.
+func TestFollowKeepsOwnPanes(t *testing.T) {
+	a, tt := newTestApp(t)
+	first := a.tab()
+	p1 := first.Focus
+	other := followApp(t, a)
+	s := savedWorkspaces(t, other)
+	s.Sessions[0].Tabs[0].Name = "theirs"
+	setOther(t, other, s)
+	// Before the window hears of it, it splits, floats and opens a tab,
+	// as a client's split the window makes would.
+	split := a.splitPane(p1, true, os.TempDir())
+	fl := a.newFloat(nil)
+	own := a.newTab(os.TempDir())
+	a.st.save()
+	waitFor(t, tt, "the window to take the other's", func() bool { return first.Name == "theirs" })
+	if ps := first.panes(); len(ps) != 2 || ps[0] != p1 || ps[1] != split || split.closed || !first.Root.Vertical {
+		t.Errorf("the split was not kept below p1: %v", ps)
+	}
+	if len(first.Floats) != 1 || first.Floats[0].Pane != fl || fl.closed {
+		t.Errorf("the float was not kept: %v", first.Floats)
+	}
+	if !slices.Contains(a.tabs, own) || own.Focus.closed {
+		t.Errorf("the tab was not kept: %v", a.tabs)
+	}
+	waitFor(t, tt, "the window to write them", func() bool {
+		a.st.writer.wait(time.Second)
+		got := storeKeys(savedWorkspaces(t, other))
+		return got["/"+split.SID] && got["/"+fl.SID] && got["tab:"+own.UID]
+	})
+	if got := savedWorkspaces(t, other).Sessions[0].Tabs[0].Name; got != "theirs" {
+		t.Errorf("the other's rename went: %q", got)
+	}
+}
+
+// TestFollowReconnectTwoWindows reconnects two windows, the space of the
+// first closed meanwhile: it takes another, never the second's.
+func TestFollowReconnectTwoWindows(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	x := a.ws
+	b := st.openWindow(st.addWorkspace(), false)
+	y := b.ws
+	st.saveNow()
+	other, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	s := savedWorkspaces(t, other)
+	s.Sessions = slices.DeleteFunc(s.Sessions, func(w savedWorkspace) bool { return w.ID == x.ID })
+	s.Windows = []string{y.ID}
+	old := st.client
+	old.Close()
+	<-old.Closed()
+	setOther(t, other, s)
+	if !st.connect() || st.client == old {
+		t.Fatal("no new connection")
+	}
+	t.Cleanup(func() { st.client.Shutdown() })
+	if b.ws != y || a.ws == nil || a.ws == y || a.ws == x || y.app != b || a.ws.app != a {
+		t.Errorf("windows show %v and %v; want y for the second", a.ws, b.ws)
+	}
+	quit(st)
+}
+
+// TestFollowEmptiedAndGone takes a layout that empties the window's space
+// and closes a hidden one: the window shows the space left with tabs, and
+// the emptied space stays.
+func TestFollowEmptiedAndGone(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	x := a.ws
+	gone, left := st.addWorkspace(), st.addWorkspace()
+	for _, w := range []*Workspace{gone, left} {
+		w.layout = savedLayout{Tabs: []savedTab{{ID: layout.NewTabID(), Root: &savedNode{SID: a.tab().Focus.SID}}}}
+	}
+	other := followApp(t, a)
+	s := savedWorkspaces(t, other)
+	for i := range s.Sessions {
+		if s.Sessions[i].ID == x.ID {
+			s.Sessions[i].Tabs = []savedTab{}
+		}
+	}
+	s.Sessions = slices.DeleteFunc(s.Sessions, func(w savedWorkspace) bool { return w.ID == gone.ID })
+	setOther(t, other, s)
+	takeOther(t, a, other)
+	if a.ws != left || len(a.tabs) != 1 {
+		t.Errorf("window shows %v with %d tabs, want the space left", a.ws, len(a.tabs))
+	}
+	if !slices.Contains(st.workspaces, x) || slices.Contains(st.workspaces, gone) {
+		t.Errorf("workspaces %v", st.workspaces)
+	}
+}
+
+// TestFollowBrowser follows another client's page in a browser pane, keeps
+// the pane's own navigation, and keeps the pane of a layout whose writer
+// drops browser IDs.
+func TestFollowBrowser(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.splitBrowser(false)
+	web := a.tab().Focus
+	other := followApp(t, a)
+	browser := func(s savedStore) *savedNode { return s.Sessions[0].Tabs[0].Root.B }
+
+	s := savedWorkspaces(t, other)
+	browser(s).URL = "https://theirs.test/"
+	setOther(t, other, s)
+	takeOther(t, a, other)
+	if p := a.tab().panes()[1]; p != web || web.browser.url != "https://theirs.test/" {
+		t.Errorf("pane %v at %q", p, web.browser.url)
+	}
+	// The page went on by itself, unsaved; another change leaves it.
+	web.browser.url = "https://mine.test/"
+	s = savedWorkspaces(t, other)
+	s.Sessions[0].Tabs[0].Name = "renamed"
+	setOther(t, other, s)
+	takeOther(t, a, other)
+	if web.browser.url != "https://mine.test/" {
+		t.Errorf("own navigation lost: %q", web.browser.url)
+	}
+	// A writer that drops the ID: the pane is named by its place, once,
+	// and stays at the next such write.
+	a.st.writer.wait(time.Second)
+	var kept *Pane
+	for i := range 2 {
+		s = savedWorkspaces(t, other)
+		browser(s).ID = ""
+		s.Sessions[0].Tabs[0].Name = fmt.Sprint("drop", i)
+		b, _ := json.Marshal(s)
+		var raw map[string]any
+		json.Unmarshal(b, &raw)
+		strip(raw)
+		b, _ = json.Marshal(raw)
+		if err := other.SetLayout(b); err != nil {
+			t.Fatal(err)
+		}
+		takeOther(t, a, other)
+		a.st.writer.wait(time.Second)
+		p := a.tab().panes()[1]
+		if i == 1 && p != kept {
+			t.Error("the browser pane was made again")
+		}
+		kept = p
+	}
+	if id := browser(savedWorkspaces(t, other)).ID; id == "" {
+		t.Error("the ID given was not written back")
+	}
+}
+
+// strip drops every "id" of a browser pane of a decoded layout.
+func strip(v any) {
+	switch x := v.(type) {
+	case map[string]any:
+		if _, ok := x["url"]; ok {
+			delete(x, "id")
+		}
+		for _, y := range x {
+			strip(y)
+		}
+	case []any:
+		for _, y := range x {
+			strip(y)
+		}
+	}
+}
+
+// TestFollowRecentAndInfos adds a pane to a tab from another client while
+// the polled list does not have its session yet: it attaches, joins the
+// tab's order of use behind the focus, which stays, and the window writes
+// nothing back.
+func TestFollowRecentAndInfos(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	p1 := tab.Focus
+	other := followApp(t, a)
+	refresh(a) // st.infos, without the session to come
+	a.st.infos = map[string]rex.SessionInfo{p1.SID: a.st.infos[p1.SID]}
+	in, err := other.Create(rex.CreateOptions{Dir: os.TempDir(), Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := savedWorkspaces(t, other)
+	s.Sessions[0].Tabs[0].Root = &layout.Node{Ratio: 0.5, A: &layout.Node{SID: p1.SID}, B: &layout.Node{SID: in.ID}}
+	s.Sessions[0].Tabs[0].Focus = 0
+	setOther(t, other, s)
+	rev := takeOther(t, a, other)
+	ps := tab.panes()
+	if len(ps) != 2 || ps[1].SID != in.ID || ps[1].stream == nil || ps[1].info.ID != in.ID {
+		t.Fatalf("panes %v", ps)
+	}
+	if tab.Focus != p1 || !slices.Contains(tab.recent, ps[1]) || tab.recent[len(tab.recent)-1] != p1 {
+		t.Errorf("focus %v, recent %v", tab.Focus, tab.recent)
+	}
+	for range 30 {
+		tt.Frame()
+		time.Sleep(20 * time.Millisecond)
+	}
+	if ls, _ := other.LayoutState(); ls.Revision != rev {
+		t.Errorf("the window wrote back what it took: revision %d, then %d", rev, ls.Revision)
+	}
+}
+
+// TestWriterIgnoresOldConnection lets a write of a connection the writer
+// no longer uses answer after the change: its revision, of the old server,
+// is not the app's.
+func TestWriterIgnoresOldConnection(t *testing.T) {
+	a, _ := newTestApp(t)
+	c2, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c2.Close()
+	b, _ := json.Marshal(a.st.saved())
+	var w layoutWriter
+	for range 30 {
+		w.use(a.client)
+		w.write(a.client, b)
+		// Once the writer took it, the write is under way, or done.
+		for taken := false; !taken; {
+			w.mu.Lock()
+			taken = w.next == nil
+			w.mu.Unlock()
+		}
+		w.use(c2)
+		w.wait(time.Second)
+		if rev := w.revision(); rev != 0 {
+			t.Fatalf("revision %d of the old connection", rev)
+		}
+	}
 }

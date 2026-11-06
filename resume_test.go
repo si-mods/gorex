@@ -106,7 +106,7 @@ func TestRestoreOffersRun(t *testing.T) {
 		SID: "gone", Dir: os.TempDir(), Prog: "claude", Args: []string{"claude", "-p"},
 	}}}}
 	b := &App{client: a.client}
-	if !b.reconcile(l, nil) {
+	if !b.reconcile(l, nil, nil) {
 		t.Fatal("nothing restored")
 	}
 	p := b.tab().panes()[0]
@@ -194,7 +194,7 @@ func TestRestoreOffersRunOfResumedSession(t *testing.T) {
 		SID: p0.SID, Dir: os.TempDir(), Prog: "claude", Args: []string{"claude"},
 	}}}}
 	b := &App{client: a.client}
-	if !b.reconcile(l, nil) {
+	if !b.reconcile(l, nil, nil) {
 		t.Fatal("nothing restored")
 	}
 	p := b.tab().panes()[0]
@@ -301,7 +301,7 @@ func TestClaudeSessionRecorded(t *testing.T) {
 	}
 	n.SID = "gone"
 	r := &App{client: a.client}
-	if !r.reconcile(layout.Layout{Tabs: []layout.Tab{{Root: n}}}, nil) {
+	if !r.reconcile(layout.Layout{Tabs: []layout.Tab{{Root: n}}}, nil, nil) {
 		t.Fatal("nothing restored")
 	}
 	h := r.tab().panes()[0].resume

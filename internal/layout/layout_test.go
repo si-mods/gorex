@@ -118,14 +118,21 @@ func TestParseNamesBrowsers(t *testing.T) {
 		`{"version":2,"sessions":[{"id":"w","name":"n","tabs":[{"root":{"a":{"sid":"s"},"b":{"url":"https://a.test"}},"floats":[{"pane":{"url":"https://b.test"}}]}]}]}`,
 		`{"tabs":[{"root":{"a":{"sid":"s"},"b":{"url":"https://a.test"}},"floats":[{"pane":{"url":"https://b.test"}}]}]}`,
 	} {
-		tab := Parse([]byte(raw)).Sessions[0].Tabs[0]
+		s := Parse([]byte(raw))
+		tab := s.Sessions[0].Tabs[0]
 		b, f := tab.Root.B, tab.Floats[0].Pane
-		if b.ID == "" || f.ID == "" || b.ID == f.ID || tab.Root.A.ID != "" {
-			t.Errorf("%s: ids %q %q %q", raw, tab.Root.A.ID, b.ID, f.ID)
+		if b.ID == "" || f.ID == "" || b.ID == f.ID || tab.Root.A.ID != "" || !s.Named {
+			t.Errorf("%s: ids %q %q %q, named %v", raw, tab.Root.A.ID, b.ID, f.ID, s.Named)
 		}
 	}
+	// A layout of browser panes without IDs gets the same at every read,
+	// as from a writer that drops them.
+	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"n","tabs":[{"id":"t1","root":{"a":{"sid":"s"},"b":{"url":"https://a.test"}}}]}]}`)
+	if x, y := Parse(raw).Sessions[0].Tabs[0].Root.B.ID, Parse(raw).Sessions[0].Tabs[0].Root.B.ID; x != y {
+		t.Errorf("ids %q then %q", x, y)
+	}
 	kept := Parse([]byte(`{"version":2,"sessions":[{"id":"w","tabs":[{"root":{"url":"https://a.test","id":"web1"}}]}]}`))
-	if id := kept.Sessions[0].Tabs[0].Root.ID; id != "web1" {
-		t.Errorf("kept id %q", id)
+	if id := kept.Sessions[0].Tabs[0].Root.ID; id != "web1" || kept.Named {
+		t.Errorf("kept id %q, named %v", id, kept.Named)
 	}
 }

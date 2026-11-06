@@ -167,7 +167,7 @@ func TestBrowserLayout(t *testing.T) {
 
 	// The next launch shows the page again, with the pane's name.
 	b := &App{client: a.client}
-	if !b.reconcile(l, nil) {
+	if !b.reconcile(l, nil, nil) {
 		t.Fatal("nothing restored")
 	}
 	var got *Pane
