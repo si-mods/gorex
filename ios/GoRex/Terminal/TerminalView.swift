@@ -342,7 +342,9 @@ final class TerminalView: UIView, TerminalOutput {
                 press(KeyEvent.typing(t, ctrl: ctrl, alt: alt, shift: shift))
                 release()
             case .text(let t):
+                // Composed text goes as it is, and lets go of what the bar held.
                 press(KeyEvent.typing(t))
+                release()
             case .backspace:
                 press([.named("backspace", shift: shift, ctrl: ctrl, alt: alt)])
                 release()
