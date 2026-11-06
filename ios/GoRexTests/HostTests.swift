@@ -21,4 +21,28 @@ nonisolated final class HostTests: XCTestCase {
             }
         }
     }
+
+    /// A host given a new address keeps its open terminals working: they
+    /// write through the new connection.
+    @MainActor func testNewAddressKeepsTerminalsWorking() async throws {
+        let saved = UserDefaults.standard.data(forKey: "hosts")
+        defer { UserDefaults.standard.set(saved, forKey: "hosts") }
+        UserDefaults.standard.removeObject(forKey: "hosts")
+        let (a, b) = (try FakeRex(), try FakeRex())
+        defer { a.stop(); b.stop() }
+        for r in [a, b] { r.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] } }
+        let store = HostStore()
+        var config = HostConfig(name: "test", url: try await a.url())
+        store.add(config)
+        let h = try XCTUnwrap(store.host(config.id))
+        await until("online") { h.status == .online }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        config.url = try await b.url()
+        store.update(config)
+        s.type(Data("ls\r".utf8))
+        await until("written at the new address") { b.count("com.superlogical.terminal.write") == 1 }
+        XCTAssertTrue(store.host(config.id) === h)
+        s.close()
+        store.remove(config.id)
+    }
 }

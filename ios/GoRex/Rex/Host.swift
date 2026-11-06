@@ -136,6 +136,14 @@ final class Host: Identifiable {
         control?.close()
     }
 
+    /// Connects anew, as to a new address: the old connection and its
+    /// client end.
+    func reconnect() {
+        token = nil
+        control?.close()
+        connect()
+    }
+
     /// Reconnects now, as after the app returns to the foreground.
     func reconnectIfNeeded() {
         if control == nil { connect() }
@@ -318,16 +326,13 @@ final class HostStore {
         save()
     }
 
-    /// Changes a host; one with a new address connects again.
+    /// Changes a host; one with a new address connects again. The host
+    /// stays the same, for the terminals open on it.
     func update(_ config: HostConfig) {
-        guard let i = hosts.firstIndex(where: { $0.id == config.id }) else { return }
-        if hosts[i].config.url == config.url {
-            hosts[i].config = config
-        } else {
-            hosts[i].stop()
-            hosts[i] = Host(config)
-            hosts[i].connect()
-        }
+        guard let h = host(config.id) else { return }
+        let moved = h.config.url != config.url
+        h.config = config
+        if moved { h.reconnect() }
         save()
     }
 
