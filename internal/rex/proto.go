@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"slices"
 	"time"
+
+	"gorex/internal/layout"
 )
 
 // ProtocolVersion changes whenever the wire protocol does. Version 2 adds,
@@ -46,7 +48,10 @@ import (
 // "transfer" events of their progress (Transfer). Still within 3, the
 // capability "teleport": "teleport" and "teleport.pack", each on a
 // connection of its own, which move a pane's work to another machine
-// (Teleport).
+// (Teleport). Still within 3, the capability "layout.server": the server
+// makes every change of the layout itself, and takes the app's
+// arrangement of a tab ("tab.set") and of its windows ("windows.set"),
+// with the LayoutCommand fields TabLayout, Spaces, Color and Float.
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -82,9 +87,14 @@ const CapabilityFileTransfer = "file.transfer"
 // folder of the user's (FilePut.Temp) says it does.
 const CapabilityFileTemp = "file.temp"
 
+// CapabilityLayoutServer is what a server that makes every change of the
+// layout itself says it does: tab.set and windows.set, from this
+// machine's clients.
+const CapabilityLayoutServer = "layout.server"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -196,14 +206,17 @@ type LayoutCommand struct {
 	// Op is "space.create", "space.rename", "space.close", "tab.create",
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
-	// "pane.swap", "pane.move", "pane.teleporting" or "pane.teleported":
-	// a local client's only, these tell of the teleport of the pane of SID
-	// to Host, the session Target there (Teleport), which the window waits
-	// for, then makes the pane.
+	// "pane.swap", "pane.move", "tab.set", "windows.set",
+	// "pane.teleporting" or "pane.teleported": a local client's only, the
+	// last two tell of the teleport of the pane of SID to Host, the
+	// session Target there (Teleport), which the window waits for, then
+	// makes the pane; tab.set and windows.set are a local client's only too.
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// Space is the workspace the command acts on, by ID; "" for the
 	// window that has the commands, as a client of before spaces had it.
+	// Of space.create, it is the ID the new space takes, unless a space
+	// has it; a new one when "".
 	Space string `json:"space,omitempty"`
 	// After is the tab a new or moved tab goes after, the first of this
 	// machine's tabs when "" for tab.move.
@@ -240,8 +253,23 @@ type LayoutCommand struct {
 	Remote bool            `json:"remote,omitempty"`
 	// Index is where tab.move puts the tab among this machine's tabs as
 	// the app makes it, counted with the tab in its place; in the answer,
-	// where the tab is then.
+	// where the tab is then. Of tab.set, it is the tab's place among all
+	// the tabs of its space.
 	Index int `json:"index,omitempty"`
+	// TabLayout is the tab tab.set puts in Space, by its ID: in place of
+	// the tab of that ID, wherever it is, else as a new one. It arranges
+	// the sessions the layout has; it neither starts nor ends one
+	// (CapabilityLayoutServer).
+	TabLayout *layout.Tab `json:"tabLayout,omitempty"`
+	// Spaces are the spaces windows.set says the windows show, in the
+	// order of their places.
+	Spaces []string `json:"spaces,omitempty"`
+	// Color is the color space.create and space.rename give the space: a
+	// preset's id (layout.Palette), a "#rrggbb", or "default" for the
+	// default look; "" keeps it.
+	Color string `json:"color,omitempty"`
+	// Float makes the pane pane.split makes float over the tab's others.
+	Float bool `json:"float,omitempty"`
 	// The answer: Code and Error when it was not made, New the session of
 	// the pane made, and Zoomed whether the pane's tab is zoomed now.
 	// Changed and Reason answer pane.resize, pane.swap and pane.move.

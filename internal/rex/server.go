@@ -680,6 +680,8 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 		err = errors.New("rex: remote control is off")
 	} else if remote && req.Op == "command" && req.Command != nil && strings.HasPrefix(req.Command.Op, "pane.teleport") {
 		err = errors.New("rex: a teleport is this machine's to show")
+	} else if remote && req.Op == "command" && req.Command != nil && (req.Command.Op == "tab.set" || req.Command.Op == "windows.set") {
+		err = fmt.Errorf("rex: %s is this machine's GoRex window's", req.Command.Op)
 	} else if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
 	} else if remote && !remoteAllowed(req.Op) && !layout && !command && !(req.Op == "action" && s.remoteControlEnabled()) {

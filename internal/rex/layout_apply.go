@@ -22,6 +22,7 @@ var applied = map[string]bool{
 	"tab.create": true, "tab.close": true, "tab.rename": true, "tab.move": true,
 	"pane.split": true, "pane.close": true, "pane.rename": true, "pane.focus": true,
 	"pane.zoom": true, "pane.resize": true, "pane.swap": true, "pane.move": true,
+	"tab.set": true, "windows.set": true,
 }
 
 // apply makes a change of the layout a client asks for with no window to
@@ -486,7 +487,12 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 	}
 	switch c.Op {
 	case "space.create":
-		res.Space = newSpace(st, c.Name).ID
+		w := newSpace(st, c.Name)
+		if c.Space != "" && st.Space(c.Space) == nil {
+			w.ID = c.Space
+		}
+		setColor(w, c.Color)
+		res.Space = w.ID
 		return res
 	case "space.rename":
 		w := st.Space(c.Space)
@@ -496,7 +502,22 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		if name := layout.Label(c.Name); name != "" {
 			w.Name = name
 		}
+		setColor(w, c.Color)
 		return res
+	case "windows.set":
+		var ids []string
+		for _, id := range c.Spaces {
+			if st.Space(id) == nil {
+				return fail("space_not_found", "no such space in the GoRex layout")
+			}
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+		st.Windows = ids
+		return res
+	case "tab.set":
+		return s.setTab(st, c)
 	case "space.close":
 		w := st.Space(c.Space)
 		if w == nil {
@@ -699,7 +720,7 @@ func (s *Server) split(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	var res LayoutCommand
 	t := p.tab()
 	anchor, canvas := p.n, p.fi >= 0 && t.Canvas != nil
-	if p.fi >= 0 && !canvas {
+	if p.fi >= 0 && !canvas && !c.Float {
 		leaves := layout.Leaves(t.Root)
 		if len(leaves) == 0 {
 			res.Code, res.Error = "create_failed", "GoRex cannot split the pane now"
@@ -721,7 +742,7 @@ func (s *Server) split(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	switch {
 	case cols <= 0 || rows <= 0:
 		cols, rows = 80, 24
-	case canvas:
+	case canvas || c.Float:
 	case c.Vertical:
 		rows = max(rows/2, 2)
 	default:
@@ -733,9 +754,16 @@ func (s *Server) split(p spot, c LayoutCommand, a *applying) LayoutCommand {
 		return res
 	}
 	n.Name = layout.PaneName(c.Name)
-	if canvas {
+	switch {
+	case canvas:
 		placeOnCanvas(t, t.Floats[p.fi], n, c.Vertical)
-	} else {
+	case c.Float:
+		// Over the tab's tiled panes, each new float offset from the last,
+		// as the window opens one.
+		d := float32(len(t.Floats)) * 0.03
+		t.Floats = append(t.Floats, layout.Float{Pane: n, X: min(0.15+d, 0.3), Y: min(0.12+d, 0.28), W: 0.7, H: 0.72})
+		t.FocusFloat = len(t.Floats)
+	default:
 		t.Replace(anchor, &layout.Node{Vertical: c.Vertical, Ratio: 0.5, A: anchor, B: n})
 		t.Zoom, t.FocusFloat = false, 0
 		t.Focus = indexOf(t.Root, n)
@@ -946,4 +974,151 @@ func floatState(st *layout.Store, c LayoutCommand) LayoutCommand {
 	reveal(t, p.fi)
 	p.w.Active = p.ti
 	return res
+}
+
+// setColor gives w the color of a command: "default" for the default
+// look, "" for the one it has.
+func setColor(w *layout.Workspace, color string) {
+	switch color = strings.TrimSpace(color); color {
+	case "":
+	case "default":
+		w.Color = ""
+	default:
+		w.Color = color
+	}
+}
+
+// localSIDs are the sessions of this machine the layout's leaves have,
+// each with its leaf.
+func localSIDs(st *layout.Store) map[string]*layout.Node {
+	out := map[string]*layout.Node{}
+	for _, w := range st.Sessions {
+		for _, t := range w.Tabs {
+			for _, r := range t.Roots() {
+				for _, l := range layout.Leaves(r) {
+					if l.Host == "" && l.SID != "" {
+						out[l.SID] = l
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+// live tells a session of this machine the server runs, not exited.
+func (s *Server) live(sid string) bool {
+	in, ok := s.sessionOf(&layout.Node{SID: sid})
+	return ok && !in.Exited
+}
+
+// wellFormed tells a tree whose every node is a leaf or a split of two.
+func wellFormed(n *layout.Node) bool {
+	if n == nil || n.IsLeaf() {
+		return true
+	}
+	return n.A != nil && n.B != nil && wellFormed(n.A) && wellFormed(n.B)
+}
+
+// setTab makes tab.set: the tab of TabLayout's ID goes in place of the one
+// of that ID, wherever it is, else in as a new one, in Space at Index, the
+// active one with Focus or when it was. It arranges what the layout has:
+// a session of this machine another tab has moves from there, and one
+// that ended goes; a session no pane has, as one a remote client made,
+// may come in, until the server places those itself. It starts and ends
+// none: a running session the tab leaves out, a session twice, or one the
+// server does not run is a conflict. Another host's panes, and those of no
+// session, are the app's. The facts of a pane of this machine, its
+// directory, size and program, are the server's.
+func (s *Server) setTab(st *layout.Store, c LayoutCommand) LayoutCommand {
+	var res LayoutCommand
+	fail := func(code, msg string) LayoutCommand {
+		res.Code, res.Error = code, msg
+		return res
+	}
+	if c.TabLayout == nil || c.TabLayout.ID == "" {
+		return fail("bad_args", "tab.set needs a tab with an ID")
+	}
+	t := *c.TabLayout
+	if t.Root == nil && len(t.Floats) == 0 {
+		return fail("bad_args", "tab.set needs a tab with a pane; tab.close closes one")
+	}
+	for _, r := range t.Roots() {
+		if !wellFormed(r) {
+			return fail("bad_args", "a split of the tab lacks a side")
+		}
+	}
+	w := defaultSpace(st)
+	if c.Space != "" {
+		if w = st.Space(c.Space); w == nil {
+			return fail("space_not_found", "no such space in the GoRex layout")
+		}
+	}
+	if w == nil {
+		w = newSpace(st, "")
+	}
+	before := localSIDs(st)
+	focus := c.Focus
+	for i := range st.Sessions {
+		o := &st.Sessions[i]
+		if ti := slices.IndexFunc(o.Tabs, func(x layout.Tab) bool { return x.ID == t.ID }); ti >= 0 {
+			focus = focus || o == w && o.Active == ti
+			removeTab(o, ti)
+		}
+	}
+	mine := map[string]bool{}
+	for _, r := range t.Roots() {
+		for _, l := range layout.Leaves(r) {
+			if l.Host != "" || l.SID == "" {
+				continue
+			}
+			sid := l.SID
+			if mine[sid] {
+				return fail("conflict", "the tab has a session twice")
+			}
+			mine[sid] = true
+			was, had := before[sid]
+			if !had && !s.live(sid) {
+				return fail("conflict", "no such session")
+			}
+			if p, ok := find(st, "", sid); ok && unlink(p, "") {
+				removeTab(p.w, p.ti)
+			}
+			s.stamp(l, was)
+		}
+	}
+	for sid := range before {
+		if !mine[sid] && s.live(sid) {
+			if _, ok := find(st, "", sid); !ok {
+				return fail("conflict", "the tab leaves out a session that runs; pane.close ends one")
+			}
+		}
+	}
+	t.Focus = max(t.Focus, 0)
+	t.FocusFloat = min(max(t.FocusFloat, 0), len(t.Floats))
+	insertTab(w, min(max(c.Index, 0), len(w.Tabs)), t, focus)
+	res.Tab = t.ID
+	return res
+}
+
+// stamp gives leaf n of this machine the facts the server has of its
+// session, as the app saves them, else those its leaf had, was.
+func (s *Server) stamp(n, was *layout.Node) {
+	in, ok := s.sessionOf(n)
+	if !ok {
+		if was != nil {
+			n.Dir, n.Cols, n.Rows = was.Dir, was.Cols, was.Rows
+			n.Prog, n.Args, n.AgentSession, n.AgentConfigDir = was.Prog, was.Args, was.AgentSession, was.AgentConfigDir
+		}
+		return
+	}
+	n.Dir = cmp.Or(in.Dir, n.Dir)
+	if in.Cols > 0 && in.Rows > 0 {
+		n.Cols, n.Rows = in.Cols, in.Rows
+	}
+	n.Prog, n.Args, n.AgentSession, n.AgentConfigDir = "", nil, "", ""
+	if !in.Idle && (len(in.Args) > 0 || in.Program != "") {
+		n.Prog, n.Args = in.Program, in.Args
+		n.AgentSession, n.AgentConfigDir = in.AgentSession, in.AgentConfigDir
+	}
 }

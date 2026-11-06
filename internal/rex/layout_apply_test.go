@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -439,5 +441,153 @@ func TestApplyFloats(t *testing.T) {
 	}
 	if res := command(t, c, LayoutCommand{Op: "pane.resize", SID: "f", Direction: "up", Amount: 0.1}); !res.Changed {
 		t.Errorf("resize: %+v", res)
+	}
+}
+
+// TestTabSet arranges tabs with tab.set: a tab of the layout's sessions
+// changes in place, moves to another space and takes a session from
+// another tab; a tab that would start, end or repeat a session is refused
+// and changes nothing; another host's panes and panes of no session come
+// and go; the server's facts of a pane stay its own.
+func TestTabSet(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: two.New, Command: cmd})
+	space := storeOf(t, c).Sessions[0].ID
+	set := func(x LayoutCommand) LayoutCommand {
+		t.Helper()
+		x.Op = "tab.set"
+		res, err := c.Command(x)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	refused := func(why string, x LayoutCommand) {
+		t.Helper()
+		before := must(c.Layout())
+		if res := set(x); res.Code != "conflict" && res.Code != "bad_args" {
+			t.Errorf("%s: %+v", why, res)
+		}
+		if after := must(c.Layout()); !bytes.Equal(before, after) {
+			t.Errorf("%s changed the layout", why)
+		}
+	}
+
+	// The second tab's split, its ratio and its names change; the active
+	// tab stays, and the session's facts are the server's.
+	tab := layout.Tab{ID: two.Tab, Name: "renamed", Focus: 1, Root: &layout.Node{Ratio: 0.3,
+		A: &layout.Node{SID: two.New, Name: "left", Dir: "/nowhere", Cols: 3, Rows: 3, Prog: "fake"},
+		B: &layout.Node{SID: split.New}}}
+	if res := set(LayoutCommand{Space: space, Index: 1, TabLayout: &tab}); res.Code != "" {
+		t.Fatalf("tab.set: %+v", res)
+	}
+	w := storeOf(t, c).Sessions[0]
+	got := w.Tabs[1]
+	in, _ := liveSession(t, c, two.New)
+	if w.Active != 0 || got.Name != "renamed" || got.Root.Ratio != 0.3 || got.Root.A.Name != "left" || got.Focus != 1 {
+		t.Errorf("the tab set: %+v, active %d", got, w.Active)
+	}
+	if a := got.Root.A; a.Dir != in.Dir || a.Cols != in.Cols || a.Rows != in.Rows || a.Prog != "" {
+		t.Errorf("the facts of the pane: %+v, the session's %+v", a, in)
+	}
+
+	// Refused: a session left out, a session twice, one the server does
+	// not run, and a tab with no pane.
+	refused("a session left out", LayoutCommand{Space: space, Index: 1, TabLayout: &layout.Tab{ID: two.Tab, Root: &layout.Node{SID: two.New}}})
+	refused("a session twice", LayoutCommand{Space: space, Index: 1, TabLayout: &layout.Tab{ID: two.Tab, Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{SID: two.New}}}})
+	refused("a new session", LayoutCommand{Space: space, TabLayout: &layout.Tab{ID: "new", Root: &layout.Node{SID: "nosuch"}}})
+	refused("no pane", LayoutCommand{Space: space, TabLayout: &layout.Tab{ID: two.Tab}})
+
+	// Another host's pane and a browser come into the tab, as a new tab
+	// first in the space; the first tab gives the second its session.
+	mixed := layout.Tab{ID: "mixed", Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: "far", Host: "h1"}, B: &layout.Node{URL: "https://example.com", ID: "web"}}}
+	if res := set(LayoutCommand{Space: space, TabLayout: &mixed, Focus: true}); res.Code != "" {
+		t.Fatalf("a tab of no session of this machine: %+v", res)
+	}
+	moved := layout.Tab{ID: two.Tab, Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: split.New}, B: &layout.Node{SID: one.New}}}}
+	if res := set(LayoutCommand{Space: space, Index: 1, TabLayout: &moved}); res.Code != "" {
+		t.Fatalf("taking a session from another tab: %+v", res)
+	}
+	w = storeOf(t, c).Sessions[0]
+	if len(w.Tabs) != 2 || w.Tabs[0].ID != "mixed" || w.Tabs[1].ID != two.Tab || len(layout.Leaves(w.Tabs[1].Root)) != 3 || w.Active != 0 {
+		t.Fatalf("after the move: %+v", w)
+	}
+
+	// The tab goes to another space; a session that ended may go.
+	other := command(t, c, LayoutCommand{Op: "space.create", Space: "mine", Name: "other", Color: "teal"})
+	if other.Space != "mine" {
+		t.Errorf("space.create of an ID: %+v", other)
+	}
+	if err := c.Kill(one.New); err != nil {
+		t.Fatal(err)
+	}
+	gone := layout.Tab{ID: two.Tab, Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{SID: split.New}}}
+	if res := set(LayoutCommand{Space: "mine", TabLayout: &gone}); res.Code != "" {
+		t.Fatalf("to another space, without an ended session: %+v", res)
+	}
+	st := storeOf(t, c)
+	if len(st.Sessions[0].Tabs) != 1 || len(st.Space("mine").Tabs) != 1 || st.Space("mine").Color != "teal" {
+		t.Errorf("after the move to another space: %+v", st)
+	}
+	// A split that floats goes over the tab's panes, with the focus.
+	fl := command(t, c, LayoutCommand{Op: "pane.split", SID: two.New, Float: true, Command: cmd})
+	st = storeOf(t, c)
+	if tb := st.Space("mine").Tabs[0]; len(tb.Floats) != 1 || tb.FocusFloat != 1 || tb.Floats[0].Pane.SID != fl.New || tb.Floats[0].X != 0.15 || len(layout.Leaves(tb.Root)) != 2 {
+		t.Errorf("a floating split: %+v", tb)
+	}
+	command(t, c, LayoutCommand{Op: "space.rename", Space: "mine", Color: "default"})
+	if st := storeOf(t, c); st.Space("mine").Color != "" || st.Space("mine").Name != "other" {
+		t.Errorf("space.rename to the default color: %+v", st.Space("mine"))
+	}
+}
+
+// TestWindowsSet sets the spaces the windows show, and refuses a space the
+// layout does not have.
+func TestWindowsSet(t *testing.T) {
+	_, c := applyFixture(t)
+	seed(t, c)
+	command(t, c, LayoutCommand{Op: "space.create", Space: "two"})
+	command(t, c, LayoutCommand{Op: "windows.set", Spaces: []string{"two", "w", "two"}})
+	if st := storeOf(t, c); !slices.Equal(st.Windows, []string{"two", "w"}) {
+		t.Errorf("windows %v", st.Windows)
+	}
+	if res, _ := c.Command(LayoutCommand{Op: "windows.set", Spaces: []string{"nosuch"}}); res.Code != "space_not_found" {
+		t.Errorf("an unknown space: %+v", res)
+	}
+}
+
+// TestLayoutServerRemote refuses tab.set and windows.set to a remote
+// client that may change the layout otherwise: the window's arrangement is
+// this machine's.
+func TestLayoutServerRemote(t *testing.T) {
+	s, c := applyFixture(t)
+	seed(t, c, layout.Tab{ID: "far", Root: &layout.Node{SID: "x", Host: "h"}})
+	if err := c.ShareSessions(true); err != nil {
+		t.Fatal(err)
+	}
+	h, err := c.Hello()
+	if err != nil || !h.Can(CapabilityLayoutServer) {
+		t.Errorf("hello %+v %v", h, err)
+	}
+	peer := pipe(s, "peer")
+	defer peer.Close()
+	before := must(c.Layout())
+	for _, x := range []LayoutCommand{
+		{Op: "tab.set", TabLayout: &layout.Tab{ID: "far", Name: "theirs", Root: &layout.Node{SID: "x", Host: "h"}}},
+		{Op: "windows.set", Spaces: []string{"w"}},
+	} {
+		if _, err := peer.Command(x); err == nil || !strings.Contains(err.Error(), x.Op) {
+			t.Errorf("%s remotely: %v", x.Op, err)
+		}
+	}
+	if !bytes.Equal(before, must(c.Layout())) {
+		t.Error("a remote client changed the layout")
+	}
+	// Another command, which sharing allows, is made.
+	if res, err := peer.Command(LayoutCommand{Op: "tab.rename", Tab: "far", Name: "named"}); err != nil || res.Code != "" {
+		t.Errorf("tab.rename remotely: %+v %v", res, err)
 	}
 }
