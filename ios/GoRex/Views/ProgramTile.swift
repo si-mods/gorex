@@ -126,7 +126,7 @@ struct ProgramTiles: View {
     let back: [String?]
 
     /// Points to a DIP of the desktop's tiles, which are 21×16.
-    static let scale: CGFloat = 2
+    static let scale: CGFloat = 1.5
 
     /// The width of tiles with this many behind the front one.
     static func width(behind: Int) -> CGFloat { CGFloat(21 + 5 * min(behind, 2) + 2) * scale }
