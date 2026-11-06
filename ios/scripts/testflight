@@ -1,0 +1,63 @@
+#!/bin/bash
+# testflight: invite testers to Rex Go's internal TestFlight, over the asc
+# CLI (brew install asc; `asc auth login` with an App Store Connect API key).
+# Internal testing needs no Beta App Review: every build reaches the group.
+#
+#   testflight invite EMAIL [FIRST LAST]  invite a tester; someone who is no
+#                                         App Store Connect user yet is invited
+#                                         as one first (Marketing, this app only)
+#   testflight testers                    list the testers and their state
+#   testflight builds                     list the builds and their processing state
+#
+# An internal tester must be a user of the App Store Connect team. A new user
+# gets Apple's team invitation first: once they accept it, run invite again
+# and they get the TestFlight email. A user who cannot see this app is given it.
+set -euo pipefail
+
+APP=${REXGO_APP_ID:-6831210589}
+GROUP=${REXGO_GROUP:-Internal}
+export ASC_TIMEOUT=${ASC_TIMEOUT:-90s}
+
+usage() { sed -n '2,14s/^# \{0,1\}//p' "$0"; exit 2; }
+
+user_id() { # EMAIL -> the team user's ID, or nothing
+	asc users list --paginate --output json |
+		python3 -I -c 'import sys,json
+e=sys.argv[1].lower()
+for u in json.load(sys.stdin).get("data",[]):
+    if u["attributes"].get("username","").lower()==e: print(u["id"]); break' "$1"
+}
+
+show_app() { # USER_ID: let the user see this app, keeping their roles and apps
+	local roles apps
+	read -r roles apps < <(asc users view --id "$1" --output json | python3 -I -c 'import sys,json
+a=json.load(sys.stdin)["data"]["attributes"]
+print(",".join(a["roles"]), "all" if a.get("allAppsVisible") else "")')
+	[ "$apps" = all ] && return
+	apps=$(asc users visible-apps list --id "$1" --output json | python3 -I -c 'import sys,json
+print(",".join(a["id"] for a in json.load(sys.stdin).get("data",[])))')
+	case ",$apps," in *",$APP,"*) return ;; esac
+	asc users update --id "$1" --roles "$roles" --visible-app "${apps:+$apps,}$APP" --confirm --output json >/dev/null
+}
+
+cmd=${1:-}; [ $# -gt 0 ] && shift
+case "$cmd" in
+invite)
+	[ $# -eq 1 ] || [ $# -eq 3 ] || usage
+	email=$1
+	uid=$(user_id "$email")
+	if [ -n "$uid" ]; then
+		show_app "$uid"
+		asc testflight testers invite --app "$APP" --email "$email" --group "$GROUP" --output json >/dev/null
+		echo "invited $email to TestFlight ($GROUP)"
+	else
+		[ $# -eq 3 ] || { echo "$email is no App Store Connect user yet: give FIRST LAST to invite them" >&2; exit 2; }
+		asc users invite --email "$email" --first-name "$2" --last-name "$3" --roles MARKETING --visible-app "$APP" --output json >/dev/null
+		echo "invited $email to the App Store Connect team; once they accept, run: $(basename "$0") invite $email"
+	fi ;;
+testers)
+	asc testflight testers list --app "$APP" --output table ;;
+builds)
+	asc builds list --app "$APP" --output table ;;
+*) usage ;;
+esac

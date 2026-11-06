@@ -1,0 +1,26 @@
+#!/bin/bash
+# upload: archive Rex Go and upload it to TestFlight. Run on a Mac with Xcode,
+# from ios/, after scripts/build-ghostty-vt.sh. Signing is cloud-managed, by
+# the App Store Connect API key in ~/.appstoreconnect/private_keys.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+K=${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_6GG554C43Y.p8}
+A=(-allowProvisioningUpdates -authenticationKeyPath "$K" -authenticationKeyID 6GG554C43Y -authenticationKeyIssuerID 1b9ef96d-c5b4-49a9-8c8d-4f0b999da4d6)
+rm -rf build/GoRex.xcarchive build/export; mkdir -p build
+/opt/homebrew/bin/xcodegen generate -q
+xcodebuild -scheme GoRex -destination generic/platform=iOS -archivePath build/GoRex.xcarchive \
+  CURRENT_PROJECT_VERSION="$(date +%Y%m%d%H%M)" CODE_SIGNING_ALLOWED=NO archive > build/archive.log 2>&1 || { grep -E "error" build/archive.log | tail -15; exit 1; }
+echo ARCHIVED
+cat > build/export.plist <<P
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>method</key><string>app-store-connect</string>
+<key>destination</key><string>upload</string>
+<key>teamID</key><string>57QL6YCAH5</string>
+<key>signingStyle</key><string>automatic</string>
+<key>manageAppVersionAndBuildNumber</key><false/>
+</dict></plist>
+P
+xcodebuild -exportArchive -archivePath build/GoRex.xcarchive -exportOptionsPlist build/export.plist -exportPath build/export "${A[@]}" > build/export.log 2>&1 || { grep -E "error|Error" build/export.log | tail -15; exit 1; }
+tail -3 build/export.log
