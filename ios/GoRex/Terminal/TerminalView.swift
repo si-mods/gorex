@@ -67,6 +67,8 @@ final class TerminalView: UIView, TerminalOutput {
 
     private(set) var surface: ghostty_surface_t?
     private var config: ghostty_config_t?
+    /// The lines the config was made of, which a theme message repeats.
+    private var configured: String?
     /// The surface's terminal takes the program's output here, in order on
     /// the queue: a write waits while Ghostty catches up.
     private var output: Int32 = -1
@@ -211,7 +213,9 @@ final class TerminalView: UIView, TerminalOutput {
                 lines.append("palette = \(i)=\(hex(c))")
             }
         }
-        guard let c = Ghostty.config(lines.joined(separator: "\n")) else { return }
+        let text = lines.joined(separator: "\n")
+        guard text != configured, let c = Ghostty.config(text) else { return }
+        configured = text
         ghostty_surface_update_config(s, c)
         if let config { ghostty_config_free(config) }
         config = c
