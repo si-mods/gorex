@@ -244,11 +244,13 @@ extension Data {
         return s
     }
 
-    /// What one write takes from the start of the bytes: at most max of
-    /// them, with no character cut off at its end, and their text; nil
-    /// while there is only part of a character.
-    func nextWrite(max: Int) -> (count: Int, text: String)? {
-        let n = prefix(max).wholeUTF8
+    /// What one write takes from the start of the bytes, and its text:
+    /// at most max of them. Cut at max, it ends on a whole character. All
+    /// of them end on one too, or it is nil, until flush: the rest may be
+    /// on its way, or the last byte is no UTF-8, as an X10 mouse report's
+    /// coordinate, and goes as it is.
+    func nextWrite(max: Int, flush: Bool = false) -> (count: Int, text: String)? {
+        let n = count > max ? prefix(max).wholeUTF8 : flush || wholeUTF8 == count ? count : 0
         return n > 0 ? (n, prefix(n).text) : nil
     }
 }

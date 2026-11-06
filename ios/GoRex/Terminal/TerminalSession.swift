@@ -294,8 +294,18 @@ final class TerminalSession {
         write()
     }
 
-    private func write() {
-        guard !typing, !closed, let (n, text) = typed.nextWrite(max: 64 << 10) else { return }
+    private func write(flush: Bool = false) {
+        guard !typing, !closed, !typed.isEmpty else { return }
+        guard let (n, text) = typed.nextWrite(max: 64 << 10, flush: flush) else {
+            // A character cut off at the end goes as it is if its rest
+            // doesn't come in a moment.
+            let held = typed.count
+            Task {
+                try? await Task.sleep(for: .milliseconds(50))
+                if typed.count == held { write(flush: true) }
+            }
+            return
+        }
         typing = true
         let (session, block) = (session, block)
         Task {

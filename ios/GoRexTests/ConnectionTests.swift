@@ -98,6 +98,20 @@ nonisolated final class ConnectionTests: XCTestCase {
         h.stop()
     }
 
+    /// A last byte that is no UTF-8, as an X10 mouse report's coordinate,
+    /// is written in a moment, not held until the next key.
+    @MainActor func testMouseReportIsNotHeldBack() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        let report = Data([0x1B, 0x5B, 0x4D, 0x20, 0x21, 0xC2])
+        s.type(report)
+        await until("written") { self.written(rex) == [report.text] }
+        s.close()
+        h.stop()
+    }
+
     /// A paste larger than the server takes in one message goes in parts,
     /// each well under it and ending on a whole character.
     @MainActor func testLargeWriteGoesInParts() async throws {

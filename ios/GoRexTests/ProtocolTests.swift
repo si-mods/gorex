@@ -218,6 +218,14 @@ nonisolated final class KeyTests: XCTestCase {
     @MainActor func testNextWrite() throws {
         let d = Data("ab中".utf8)
         XCTAssertNil(d.dropFirst(2).prefix(2).nextWrite(max: 8))
+        // Flushed, a cut-off end goes as it is: an X10 mouse report's
+        // last coordinate, whole with the report.
+        let report = Data([0x1B, 0x5B, 0x4D, 0x20, 0x21, 0xC2])
+        XCTAssertNil(report.nextWrite(max: 8))
+        XCTAssertEqual(report.nextWrite(max: 8, flush: true)?.count, 6)
+        XCTAssertEqual(report.nextWrite(max: 8, flush: true)?.text, "\u{1b}[M !\u{C2}")
+        // Past the limit, a write still ends on a whole character.
+        XCTAssertEqual(d.nextWrite(max: 3, flush: true)?.count, 2)
         XCTAssertEqual(d.nextWrite(max: 3)?.count, 2)
         XCTAssertEqual(d.nextWrite(max: 3)?.text, "ab")
         XCTAssertEqual(d.nextWrite(max: 8)?.text, "ab中")
