@@ -256,32 +256,38 @@ final class Host: Identifiable {
         return [argv0, p["name"] as? String].compactMap { $0 }.first { !$0.isEmpty }
     }
 
+    /// The control connection; offline, an error to tell.
+    func live() throws -> ControlConnection {
+        guard let control else { throw RexError(code: "offline", message: String(localized: "Offline")) }
+        return control
+    }
+
     /// Opens a new window running the shell, and returns its block.
     func newWindow(in session: String) async throws -> String? {
         var block: [String: Any] = ["flavor": "com.superlogical.terminal.shell"]
         let argv = HostConfig.argv(config.command ?? "")
         if !argv.isEmpty { block["options"] = ["command": argv] }
-        let r = try await control?.call("session.new_window", [
+        let r = try await live().call("session.new_window", [
             "session_id": session, "focus": false, "layout": ["block": block],
         ]).payload
-        return (r?["block_ids"] as? [Any])?.first as? String
+        return (r["block_ids"] as? [Any])?.first as? String
     }
 
     /// Names a window; an empty name gives back its default.
     func renameWindow(_ window: String, in session: String, to label: String) async throws {
-        _ = try await control?.call("session.set_window_label", ["session_id": session, "window_id": window, "label": label])
+        try await live().call("session.set_window_label", ["session_id": session, "window_id": window, "label": label])
     }
 
     /// Moves a window before another, or to the end when before is nil.
     func moveWindow(_ window: String, in session: String, before: String?) async throws {
         var p: [String: Any] = ["session_id": session, "window_id": window]
         if let before { p["before_window_id"] = before }
-        _ = try await control?.call("session.move_window", p)
+        try await live().call("session.move_window", p)
     }
 
     /// Closes a window and its panes.
     func closeWindow(_ window: String, in session: String) async throws {
-        _ = try await control?.call("session.close_window", ["session_id": session, "window_id": window])
+        try await live().call("session.close_window", ["session_id": session, "window_id": window])
     }
 }
 

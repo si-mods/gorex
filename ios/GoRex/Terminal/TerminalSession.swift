@@ -87,8 +87,7 @@ final class TerminalSession {
         data.close()
         Task {
             do {
-                guard let c = host.control else { throw RexError(code: "offline", message: "offline") }
-                let t = try await c.call("data.connect", [
+                let t = try await host.live().call("data.connect", [
                     "session_id": session, "block_id": block,
                     "data_ref_id": "terminal", "subprotocol": "rex.data.terminal.v1",
                 ]).payload["ticket"] as? String ?? ""
