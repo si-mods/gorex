@@ -270,8 +270,9 @@ final class TerminalSession {
     /// Writes what Ghostty encoded for a key, a paste or the wheel to the
     /// program. The server runs writes in any order, so one goes at a time
     /// and what comes meanwhile goes together next, whole characters only,
-    /// in parts well under the server's message limit. What the server may
-    /// not have got, offline or as the connection died, goes again; what
+    /// in parts well under the server's message limit. What was not sent,
+    /// offline, goes again; what was sent but not answered is dropped, as
+    /// the server may have run it, and a command must not run twice. What
     /// is typed past a bound meanwhile is lost.
     /// The server drops what has the shape of Ghostty's own answers to the
     /// program's queries: its terminal answers them.
@@ -291,11 +292,11 @@ final class TerminalSession {
             do {
                 try await host.live().callBlock("write", session: session, block: block, ["data": text])
                 typed = Data(typed.dropFirst(n))
-            } catch let e as RexError where !["offline", "closed", "timeout"].contains(e.code) {
-                log.error("write refused: \(e.message, privacy: .public)")
-                typed = Data(typed.dropFirst(n))
-            } catch {
+            } catch let e as RexError where e.code == "offline" {
                 try? await Task.sleep(for: .seconds(1))
+            } catch {
+                log.error("dropped a write of \(n) bytes: \(error.localizedDescription, privacy: .public)")
+                typed = Data(typed.dropFirst(n))
             }
             typing = false
             write()

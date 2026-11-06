@@ -82,6 +82,22 @@ nonisolated final class ConnectionTests: XCTestCase {
         h.stop()
     }
 
+    /// A write the server may have run, but never answered, is not
+    /// written again: a command would run twice.
+    @MainActor func testUnansweredWriteIsNotWrittenTwice() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        h.control?.callWait = .milliseconds(300)
+        rex.respond = { method, _ in method == "com.superlogical.terminal.write" ? nil : [:] }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.type(Data("rm -r build\r".utf8))
+        try await Task.sleep(for: .seconds(2))
+        XCTAssertEqual(written(rex), ["rm -r build\r"])
+        s.close()
+        h.stop()
+    }
+
     /// A paste larger than the server takes in one message goes in parts,
     /// each well under it and ending on a whole character.
     @MainActor func testLargeWriteGoesInParts() async throws {

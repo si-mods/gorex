@@ -124,9 +124,10 @@ final class ControlConnection {
     }
 
     /// Calls a method and returns its result with the response's seq.
+    /// An "offline" error tells that the request was never sent.
     @discardableResult
     func call(_ method: String, _ payload: [String: Any]? = nil) async throws -> (seq: Int, payload: [String: Any]) {
-        if closed { throw RexError(code: "closed", message: "disconnected") }
+        if closed { throw RexError(code: "offline", message: "disconnected") }
         nextID += 1
         let id = String(nextID)
         var req: [String: Any] = ["type": "request", "id": id, "method": method]
