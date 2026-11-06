@@ -55,6 +55,13 @@ func storeOf(t *testing.T, c *Client) layout.Store {
 	return layout.Parse(raw)
 }
 
+// sameDir tells two paths of one directory, as a process resolves its own.
+func sameDir(a, b string) bool {
+	a, _ = filepath.EvalSymlinks(a)
+	b, _ = filepath.EvalSymlinks(b)
+	return a == b
+}
+
 // liveSession returns the session sid; ok is false once it is gone.
 func liveSession(t *testing.T, c *Client, sid string) (SessionInfo, bool) {
 	t.Helper()
@@ -86,7 +93,7 @@ func TestApplyWithoutApp(t *testing.T) {
 		t.Fatalf("after the first tab: %+v", st)
 	}
 	tab := st.Sessions[0].Tabs[0]
-	if tab.ID != one.Tab || tab.Name != "one" || tab.Root.SID != one.New || tab.Root.Dir != dir {
+	if tab.ID != one.Tab || tab.Name != "one" || tab.Root.SID != one.New || !sameDir(tab.Root.Dir, dir) {
 		t.Errorf("the first tab %+v, answered %+v", tab, one)
 	}
 	if in, ok := liveSession(t, c, one.New); !ok || in.Cols != 80 || in.Rows != 24 {
@@ -205,7 +212,6 @@ func TestApplySpaces(t *testing.T) {
 	for _, x := range []LayoutCommand{
 		{Op: "action", Action: "tab.rename"},
 		{Op: "config.reload"},
-		{Op: "pane.teleported", SID: tab.New},
 	} {
 		if res, _ := c.Command(x); res.Code != "desktop_unavailable" {
 			t.Errorf("%s with no window: %+v", x.Op, res)

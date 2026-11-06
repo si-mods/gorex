@@ -23,7 +23,9 @@ import (
 // the panes were in, so that the windows attach to the sessions they had as
 // if nothing happened. A run that stops to be replaced (stopRestart) leaves
 // its layout the same way: the server after it starts those sessions again,
-// as new shells.
+// as new shells. Those it does not start before it answers, past
+// restoreMost or of a run that stopped, it starts once it listens
+// (restoreLost).
 
 const (
 	// journalLimit is the size past which the journal keeps only its last
@@ -210,9 +212,10 @@ func readJournal() []journalEntry {
 }
 
 // journalResumes tells whether this run starts the sessions of the layout
-// the run before it kept: that run did not stop, as one that crashed or was
-// killed, or it stopped to be replaced (stopRestart). A run that stopped and
-// ended its sessions — quit, idle, upgrade — leaves them none. A journal
+// the run before it kept before it answers: that run did not stop, as one
+// that crashed or was killed, or it stopped to be replaced (stopRestart). A
+// run that stopped and ended its sessions — quit, idle, upgrade — leaves
+// them to start once the server listens, as new shells. A journal
 // without entries is one of a run before the journal, which resumes only
 // what its layout names.
 func journalResumes(entries []journalEntry) bool {
@@ -285,7 +288,7 @@ func (s *Server) restoreSessions(l json.RawMessage, owners map[string]string) {
 		if n.SID == "" || n.Host != "" {
 			return
 		}
-		if s.restorePane(n, owners[n.SID]) {
+		if s.restorePane(n, owners[n.SID], true) {
 			want++
 		}
 	})
@@ -298,18 +301,19 @@ func (s *Server) restoreSessions(l json.RawMessage, owners map[string]string) {
 // many panes starts no army of shells before the server answers a client.
 var restoreMost = 32
 
-// restorePane starts the session of node n, when the server does not have it:
-// it reports whether it did.
-func (s *Server) restorePane(n *layout.Node, owner string) bool {
+// restorePane starts the session of node n, when the server does not have it,
+// and when capped while it has fewer than restoreMost: it reports whether it
+// did.
+func (s *Server) restorePane(n *layout.Node, owner string, capped bool) bool {
 	s.mu.Lock()
 	_, live := s.sessions[n.SID]
-	more := len(s.sessions) < restoreMost
+	more := !capped || len(s.sessions) < restoreMost
 	s.mu.Unlock()
 	if live {
 		return false
 	}
 	if !more {
-		log.Printf("rex: not resuming session %s: %d sessions already", n.SID, restoreMost)
+		log.Printf("rex: resuming session %s once the server listens: %d sessions already", n.SID, restoreMost)
 		return false
 	}
 	o := CreateOptions{Dir: n.Dir, Cols: n.Cols, Rows: n.Rows}

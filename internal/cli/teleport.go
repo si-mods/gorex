@@ -10,7 +10,7 @@ import (
 )
 
 // teleportCmd moves a pane's work to a host (docs/teleport.md): this
-// machine's server packs it, the host's starts it again, and the window
+// machine's server packs it, the host's starts it again, and the layout
 // shows the pane as the host's session; the pane's own session ends.
 func teleportCmd(args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("teleport", errOut)
@@ -40,7 +40,7 @@ func teleportCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return code, true
 	}
 	defer dst.Close()
-	// The window knows the host by its address, as hosts.json has it.
+	// The layout knows the host by its address, as hosts.json has it.
 	addr := serverAddress
 	if h, err := dst.Hello(); err != nil {
 		fmt.Fprintln(errOut, err)
@@ -50,28 +50,23 @@ func teleportCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitFailed, true
 	}
 	steps := map[string]string{rex.TeleportPacking: "packing", rex.TeleportSending: "sending to " + host, rex.TeleportStarting: "starting on " + host}
-	in, err := rex.Teleport(context.Background(), src, sid, dst, func(step, newSID string) {
+	in, err := rex.Teleport(context.Background(), src, sid, dst, func(step, _ string) {
 		fmt.Fprintf(errOut, "gorex teleport: %s…\n", steps[step])
-		if step == rex.TeleportSending {
-			// The window waits for the session, so as not to open it as a
-			// tab of its own before the pane becomes it.
-			src.Command(rex.LayoutCommand{Op: "pane.teleporting", SID: sid, Target: newSID, Host: addr})
-		}
 	})
 	if err != nil {
 		fmt.Fprintf(errOut, "gorex teleport: %s\n", strings.TrimPrefix(strings.TrimPrefix(err.Error(), "rex: "), "teleport: "))
 		return ExitFailed, true
 	}
-	// The window makes its pane the host's session, and ends this one.
-	// With no window showing the pane, the session ends here; with one
-	// that cannot show the new session, both stay, for the user to say.
+	// The server makes the pane the host's session, and ends this one.
+	// With no pane of it in the layout, the session ends here; with a host
+	// the window does not know, both stay, for the user to say.
 	res, err := src.Command(rex.LayoutCommand{Op: "pane.teleported", SID: sid, Target: in.ID, Host: addr})
 	code = ExitOK
 	switch {
 	case err == nil && res.Code == "":
-	case err == nil && (res.Code == "desktop_unavailable" || res.Code == "pane_not_found"):
+	case err == nil && res.Code == "pane_not_found":
 		src.Kill(sid)
-		fmt.Fprintf(errOut, "gorex teleport: the session is on %s; no window showed the pane, open it there\n", host)
+		fmt.Fprintf(errOut, "gorex teleport: the session is on %s; no tab showed the pane, open it there\n", host)
 	default:
 		why := res.Error
 		if err != nil {

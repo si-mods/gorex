@@ -16,8 +16,8 @@ import (
 )
 
 // takeCommands runs what other clients of this machine's server ask of
-// the window (rex.LayoutCommand): an action, config.reload or a teleport,
-// one at a time, on the main thread through update, in the window whose
+// the window (rex.LayoutCommand): an action or config.reload, one at a
+// time, on the main thread through update, in the window whose
 // tabs the server's layout shows first (commandApp), until client closes:
 // a take waits on the server for the next, so each comes at once. The
 // server makes every change of the layout itself.
@@ -138,8 +138,8 @@ func (st *store) hiddenSpace(space, sid string) *Workspace {
 }
 
 // command runs what another client asks of the window: an action, on
-// this machine's panes, config.reload or a teleport; the caller saves the
-// layout at once, for the client to see it. A server of before it made
+// this machine's panes, or config.reload; the caller saves the layout at
+// once, for the client to see it. A server of before it made
 // the layout's changes itself (rex.CapabilityLayoutServer) makes them
 // once the window says it does not.
 func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
@@ -196,24 +196,6 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		if err := cmd.invoke(a, args); err != nil {
 			return fail("action_failed", err.Error())
 		}
-		return res
-	case "pane.teleporting", "pane.teleported":
-		// The CLI teleports the pane's work (gorex teleport): the window
-		// waits for the session on the host, then the pane becomes it, as
-		// the menu's teleport does.
-		p := a.localPane(c.SID)
-		h, code, msg := a.hostAt(c.Host)
-		switch {
-		case p == nil:
-			return fail("pane_not_found", "no such pane in the GoRex window")
-		case h == nil || c.Target == "":
-			return fail(cmp.Or(code, "bad_args"), cmp.Or(msg, "no session"))
-		case c.Op == "pane.teleporting":
-			h.expecting(c.Target, true)
-			return res
-		}
-		a.teleported(p, h, rex.SessionInfo{ID: c.Target})
-		h.expecting(c.Target, false)
 		return res
 	}
 	return fail("desktop_unavailable", "the session server makes this change")
@@ -790,9 +772,9 @@ func serverTab(t layout.Tab) layout.Tab {
 }
 
 // sameTab tells whether the tab the app has is the one the server has,
-// but for its revision, the size of its panes' sessions, which is theirs,
-// and a canvas's view, the window's own.
-func sameTab(x, y layout.Tab) bool { return bytes.Equal(x.Encode(true), y.Encode(true)) }
+// but for its revision, its panes' facts, which the server keeps of their
+// sessions, and a canvas's view, the window's own.
+func sameTab(x, y layout.Tab) bool { return bytes.Equal(x.Arrangement(), y.Arrangement()) }
 
 // sameArrangement tells whether two layouts are the same but for their
 // panes' facts, which the server keeps: what the app sent coming back.

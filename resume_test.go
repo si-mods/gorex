@@ -97,21 +97,25 @@ func TestSnapshotSavesProgram(t *testing.T) {
 	}
 }
 
-// TestRestoreOffersRun checks that a pane whose session the layout lost
-// offers the command it ran, and that one click types it into the new
-// session.
+// TestRestoreOffersRun checks that a pane whose session the server started
+// again, as a shell, offers the command it ran, and that one click types it
+// into the session.
 func TestRestoreOffersRun(t *testing.T) {
 	a, _ := newTestApp(t)
+	in, err := a.client.Create(rex.CreateOptions{Command: []string{testShell.path}, Dir: os.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	l := layout.Layout{Tabs: []layout.Tab{{Root: &layout.Node{
-		SID: "gone", Dir: os.TempDir(), Prog: "claude", Args: []string{"claude", "-p"},
+		SID: in.ID, Dir: os.TempDir(), Prog: "claude", Args: []string{"claude", "-p"},
 	}}}}
 	b := &App{client: a.client}
-	if !b.reconcile(l, nil) {
+	if !b.reconcile(l) {
 		t.Fatal("nothing restored")
 	}
 	p := b.tab().panes()[0]
-	if !p.restored || p.SID == "gone" {
-		t.Fatalf("pane restored %v with session %q", p.restored, p.SID)
+	if p.SID != in.ID {
+		t.Fatalf("pane attached to %q, not %q", p.SID, in.ID)
 	}
 	if p.resume == nil || p.resume.cmd == "" {
 		t.Fatalf("pane restored with no resume, or %+v", p.resume)
@@ -194,7 +198,7 @@ func TestRestoreOffersRunOfResumedSession(t *testing.T) {
 		SID: p0.SID, Dir: os.TempDir(), Prog: "claude", Args: []string{"claude"},
 	}}}}
 	b := &App{client: a.client}
-	if !b.reconcile(l, nil) {
+	if !b.reconcile(l) {
 		t.Fatal("nothing restored")
 	}
 	p := b.tab().panes()[0]
@@ -301,7 +305,7 @@ func TestClaudeSessionRecorded(t *testing.T) {
 	}
 	n.SID = "gone"
 	r := &App{client: a.client}
-	if !r.reconcile(layout.Layout{Tabs: []layout.Tab{{Root: n}}}, nil) {
+	if !r.reconcile(layout.Layout{Tabs: []layout.Tab{{Root: n}}}) {
 		t.Fatal("nothing restored")
 	}
 	h := r.tab().panes()[0].resume

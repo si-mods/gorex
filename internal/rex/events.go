@@ -96,6 +96,9 @@ func (s *Server) unsubscribe(sub *subscriber) {
 // notify tells the subscribers of a change of kind, "layout" or
 // "sessions". It never waits for them: sessions call it as they print.
 func (s *Server) notify(kind string) {
+	if kind == "sessions" {
+		s.refreshSoon()
+	}
 	s.subMu.Lock()
 	defer s.subMu.Unlock()
 	for sub := range s.subs {

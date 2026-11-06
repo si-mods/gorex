@@ -339,7 +339,7 @@ func TestPaneRename(t *testing.T) {
 		t.Fatalf("saved %+v", saved.Sessions[0].Tabs[0].Root)
 	}
 	b := &App{client: a.client}
-	if !b.reconcile(saved.Sessions[0].Layout, nil) {
+	if !b.reconcile(saved.Sessions[0].Layout) {
 		t.Fatal("nothing restored")
 	}
 	if b.tab().Focus.Name != "logs" {
@@ -655,7 +655,7 @@ func TestPaneName(t *testing.T) {
 
 func TestMovePaneToWindow(t *testing.T) {
 	a, _ := newTestApp(t)
-	b := a.st.openWindow(a.st.addWorkspace(), false)
+	b := a.st.openWindow(a.st.addWorkspace())
 	a.split(false)
 	p := a.tab().Focus
 	p.Name = "logs"
@@ -687,7 +687,7 @@ func TestMovePaneToWindow(t *testing.T) {
 
 func TestMoveOnlyPaneToWindow(t *testing.T) {
 	a, _ := newTestApp(t)
-	b := a.st.openWindow(a.st.addWorkspace(), false)
+	b := a.st.openWindow(a.st.addWorkspace())
 	p := a.tab().Focus
 	sid := p.SID
 	a.movePaneToWindow(p, b)

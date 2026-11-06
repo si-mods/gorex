@@ -133,9 +133,6 @@ type store struct {
 	// session's done or error record was seen.
 	infos map[string]rex.SessionInfo
 	seen  map[string]time.Time
-	// closed are the sessions of this machine a window closed here, which
-	// adoption does not open again while a list still has them.
-	closedHere map[string]bool
 	// apps are the open windows, the most recently focused first.
 	apps []*App
 	// lastClosed is the workspace of the last window, once it closed: it
@@ -354,7 +351,7 @@ func (st *store) reconcile(s savedStore) {
 		}
 		w.Name, w.Color = sw.Name, sw.Color
 		if a := w.app; a != nil {
-			if !a.reconcile(sw.Layout, nil) {
+			if !a.reconcile(sw.Layout) {
 				// Emptied by another client: the space stays, as Rex
 				// keeps a session of no windows, and the window goes on.
 				a.leave()
@@ -390,7 +387,7 @@ func (st *store) reconcile(s savedStore) {
 		}
 		if w := st.byID(s.Windows[i]); w != nil && w != a.ws && w.app == nil && a.ws != nil {
 			a.park()
-			a.show(w, nil)
+			a.show(w)
 			homeless = slices.DeleteFunc(homeless, func(o *App) bool { return o == a })
 		}
 	}
@@ -419,7 +416,7 @@ func (st *store) rehome(apps []*App, fresh bool) {
 			}
 			continue
 		}
-		a.show(w, nil)
+		a.show(w)
 	}
 }
 
@@ -501,38 +498,6 @@ func (st *store) byID(id string) *Workspace {
 		}
 	}
 	return nil
-}
-
-// namedSIDs are the sessions of this machine the workspaces' layouts name,
-// but w's.
-func (st *store) namedSIDs(w *Workspace) map[string]bool {
-	out := map[string]bool{}
-	var walk func(n *savedNode)
-	walk = func(n *savedNode) {
-		if n == nil {
-			return
-		}
-		if n.Host == "" && n.SID != "" {
-			out[n.SID] = true
-		}
-		walk(n.A)
-		walk(n.B)
-	}
-	for _, o := range st.workspaces {
-		if o == w {
-			continue
-		}
-		tabs := o.layout.Tabs
-		if o.app != nil {
-			tabs = o.app.snapshot().Tabs
-		}
-		for _, t := range tabs {
-			for _, n := range t.Roots() {
-				walk(n)
-			}
-		}
-	}
-	return out
 }
 
 // hostSIDs are the sessions of host h the layouts of the workspaces no
@@ -785,7 +750,7 @@ func (st *store) adopt(client *rex.Client) bool {
 	for _, a := range st.apps {
 		if w, ok := shown[a]; ok {
 			if slices.Contains(st.workspaces, w) {
-				a.show(w, nil)
+				a.show(w)
 			} else {
 				homeless = append(homeless, a)
 			}
@@ -853,8 +818,8 @@ func (st *store) start() {
 			open = []*Workspace{st.addWorkspace()}
 		}
 	}
-	for i, w := range open {
-		st.openWindow(w, i == 0)
+	for _, w := range open {
+		st.openWindow(w)
 	}
 	st.save()
 }
@@ -877,7 +842,7 @@ func (st *store) reopen() {
 	if w == nil {
 		w = st.addWorkspace()
 	}
-	st.openWindow(w, false)
+	st.openWindow(w)
 	st.save()
 }
 
@@ -891,7 +856,7 @@ func (st *store) openNew() {
 				return
 			}
 		}
-		st.openWindow(st.addWorkspace(), false)
+		st.openWindow(st.addWorkspace())
 		st.save()
 	}
 }
@@ -930,9 +895,8 @@ var newWindow = func(a *App) *mygo.Window {
 	return mygo.NewWindow(opts)
 }
 
-// openWindow opens a window that shows w; with adopt, the sessions of this
-// machine no workspace names get tabs in it.
-func (st *store) openWindow(w *Workspace, adopt bool) *App {
+// openWindow opens a window that shows w.
+func (st *store) openWindow(w *Workspace) *App {
 	a := &App{st: st, client: st.client, hello: st.hello, errMsg: st.errMsg, slot: st.freeSlot(), stop: make(chan struct{}), keys: newKeyDispatcher()}
 	a.win = newWindow(a)
 	if err := a.loadLuaConfig(); err != nil {
@@ -944,11 +908,7 @@ func (st *store) openWindow(w *Workspace, adopt bool) *App {
 	} else {
 		a.hosts = st.hosts
 	}
-	var others map[string]bool
-	if adopt {
-		others = st.namedSIDs(w)
-	}
-	a.show(w, others)
+	a.show(w)
 	if win := a.win; win != nil {
 		go a.poll(win, st.client)
 		win.OnFocus(func() { st.raise(a) })
@@ -981,12 +941,11 @@ func (st *store) closed(a *App) {
 }
 
 // show shows w in the window: the tabs of its layout, attached to the
-// sessions the server has. With others, the sessions of this machine
-// neither w nor others name get tabs too. An empty workspace gets a tab
+// sessions the server has. An empty workspace gets a tab
 // in the home directory. A space this window showed before shows its kept
 // tabs again, as they were; another window's kept tabs close, and the
 // space shows from its layout.
-func (a *App) show(w *Workspace, others map[string]bool) {
+func (a *App) show(w *Workspace) {
 	if old := a.ws; old != nil && old != w {
 		a.park()
 	}
@@ -1012,7 +971,7 @@ func (a *App) show(w *Workspace, others map[string]bool) {
 	}
 	w.unkeep()
 	a.tabs, a.active, a.focusReq, a.renaming = nil, 0, nil, nil
-	if !a.reconcile(w.layout, others) {
+	if !a.reconcile(w.layout) {
 		home, _ := os.UserHomeDir()
 		a.newTabOn(nil, home)
 	}
@@ -1108,7 +1067,7 @@ func (a *App) showWorkspace(w *Workspace) {
 		return
 	}
 	a.park()
-	a.show(w, nil)
+	a.show(w)
 	a.st.save()
 }
 
@@ -1189,7 +1148,7 @@ func (a *App) closeWorkspace() {
 	if next == nil {
 		next = st.addWorkspace()
 	}
-	a.show(next, nil)
+	a.show(next)
 	st.save()
 }
 
@@ -1207,7 +1166,7 @@ func (a *App) emptied() bool {
 		st.save()
 		return false
 	}
-	a.show(next, nil)
+	a.show(next)
 	st.save()
 	return true
 }
@@ -1227,6 +1186,6 @@ func (a *App) moveTabToNewWindow(t *Tab) {
 	a.removeTab(t)
 	w := st.addWorkspace()
 	w.layout = l
-	st.openWindow(w, false)
+	st.openWindow(w)
 	st.save()
 }

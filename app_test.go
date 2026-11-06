@@ -295,7 +295,7 @@ func TestRestore(t *testing.T) {
 	}
 	// Another app, as the next launch, finds them all.
 	b := &App{client: a.client}
-	if !b.reconcile(savedWorkspaces(t, a.client).Sessions[0].Layout, nil) {
+	if !b.reconcile(savedWorkspaces(t, a.client).Sessions[0].Layout) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 2 || b.tabs[1].Name != "second" || b.active != 1 {
@@ -306,7 +306,7 @@ func TestRestore(t *testing.T) {
 	}
 	for _, tab := range b.tabs {
 		for _, p := range tab.panes() {
-			if !sids[p.SID] || p.restored {
+			if !sids[p.SID] {
 				t.Errorf("pane of session %q not attached again", p.SID)
 			}
 		}

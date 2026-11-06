@@ -298,6 +298,8 @@ func Resume(path string) error {
 		s.order = append(s.order, ss.id)
 	}
 	log.Printf("rex: resumed %d of %d sessions", len(s.order), len(h.Sessions))
+	// Those the handoff lost start again, once it listens.
+	go s.restoreLost(journalOwners(readJournal()))
 	return s.serve()
 }
 

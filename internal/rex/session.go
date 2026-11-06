@@ -70,9 +70,10 @@ type session struct {
 	pendingCols   int
 	pendingRows   int
 	// status is what the program reported of itself; busy, that the last
-	// info found a program in the foreground.
+	// info found a program in the foreground, and ran that one did.
 	status programStatus
 	busy   bool
+	ran    bool
 	// reaped tells that the process ended, with code; exited, that what
 	// it printed was read too.
 	reaped bool
@@ -1330,6 +1331,8 @@ func (s *session) info() SessionInfo {
 	}
 	statusChanged := s.status.updates != beforeStatus
 	s.busy = !in.Exited && !in.Idle
+	s.ran = s.ran || s.busy
+	in.ran = s.ran
 	in.Statuses = s.status.list()
 	s.mu.Unlock()
 	if statusChanged {
