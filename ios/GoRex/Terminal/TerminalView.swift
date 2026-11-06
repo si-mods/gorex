@@ -158,6 +158,7 @@ final class TerminalView: UIView, TerminalOutput {
         output = -1
         Ghostty.unregister(s)
         Self.free(s, config, after: input, writes)
+        config = nil
     }
 
     /// Frees a surface and its config on the main thread, after its reader
