@@ -11,23 +11,26 @@ struct TerminalTarget: Hashable {
 /// A window's terminal, full screen, under the navigation bar.
 struct TerminalScreen: View {
     let target: TerminalTarget
-    @State private var session: TerminalSession
+    let host: Host
+    /// Made once, as the screen appears: SwiftUI makes the screen again
+    /// on each update of the list, and keeps the first State.
+    @State private var session: TerminalSession?
     @Environment(\.scenePhase) private var phase
     /// Whether the stream was left in the background, for a resume.
     @State private var suspended = false
 
     init(target: TerminalTarget, host: Host) {
         self.target = target
-        _session = State(initialValue: TerminalSession(host: host, session: target.session, block: target.block))
+        self.host = host
     }
 
     var body: some View {
         // The terminal's background fills the page edge to edge, under the
         // bar and the key bar too; the bar and the text on it take its scheme.
-        let bg = session.background ?? .black
+        let bg = session?.background ?? .black
         let scheme: ColorScheme = 0.299 * Double(bg.r) + 0.587 * Double(bg.g) + 0.114 * Double(bg.b) < 128 ? .dark : .light
         // The keyboard goes over the terminal, which leaves room for it.
-        TerminalRepresentable(session: session)
+        Group { if let session { TerminalRepresentable(session: session) } else { Color.clear } }
             .ignoresSafeArea(.keyboard)
             .background(Color(cgColor: bg.cgColor).ignoresSafeArea())
             .overlay { status }
@@ -41,23 +44,27 @@ struct TerminalScreen: View {
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
             .toolbarColorScheme(scheme, for: .navigationBar)
             .environment(\.colorScheme, scheme)
-            .onAppear { session.start() }
-            .onDisappear { session.close() }
+            .onAppear {
+                let s = session ?? TerminalSession(host: host, session: target.session, block: target.block)
+                session = s
+                s.start()
+            }
+            .onDisappear { session?.close() }
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
-                    session.suspend()
+                    session?.suspend()
                     suspended = true
                 }
                 if p == .active, suspended {
-                    session.resume()
+                    session?.resume()
                     suspended = false
                 }
             }
     }
 
     @ViewBuilder private var status: some View {
-        switch session.state {
+        switch session?.state ?? .connecting {
         case .connecting:
             ProgressView()
         case .live:
@@ -67,7 +74,7 @@ struct TerminalScreen: View {
         case .failed(let why):
             VStack(spacing: 12) {
                 label(why)
-                Button("Retry") { session.start() }.buttonStyle(.glassProminent).foregroundStyle(Color.page)
+                Button("Retry") { session?.start() }.buttonStyle(.glassProminent).foregroundStyle(Color.page)
             }
         }
     }
