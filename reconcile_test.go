@@ -69,6 +69,9 @@ func TestFollowFollowsServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := savedWorkspaces(t, other)
+	// The server placed it in a tab of its own, with no app taking
+	// commands: the other client moves it into the split.
+	s.Sessions[0].Tabs = s.Sessions[0].Tabs[:2]
 	tab := &s.Sessions[0].Tabs[0]
 	tab.Root = &layout.Node{Ratio: 0.3, A: &layout.Node{SID: p1.SID}, B: &layout.Node{SID: in.ID, Name: "added"}}
 	tab.Focus = 1

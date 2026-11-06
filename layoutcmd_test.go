@@ -1075,6 +1075,36 @@ func diffOps(base, now savedStore) []string {
 	return got
 }
 
+// TestDiffHostDirs checks that the directories of another host's panes, which
+// no server here stamps, go as the server's tab with them alone: not the
+// directories of this machine's panes, which the server keeps.
+func TestDiffHostDirs(t *testing.T) {
+	far := func(dir string) *layout.Node { return &layout.Node{SID: "x", Host: "h", Dir: dir} }
+	base := savedStore{Windows: []string{"w"}, Sessions: []savedWorkspace{{ID: "w", Layout: layout.Layout{Tabs: []layout.Tab{
+		{ID: "a", Rev: 3, Focus: 0, Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: "1", Dir: "/one"}, B: far("/old")}},
+	}}}}}
+	now := savedStore{Windows: []string{"w"}, Sessions: []savedWorkspace{{ID: "w", Layout: layout.Layout{Tabs: []layout.Tab{
+		// This machine's pane's directory moved too.
+		{ID: "a", Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: "1", Dir: "/elsewhere"}, B: far("/new")}},
+	}}}}}
+	out := diffLayout(base, now)
+	if len(out) != 1 || out[0].Op != "tab.set" || out[0].Focus {
+		t.Fatalf("commands %+v", out)
+	}
+	got := out[0].TabLayout
+	if got.Focus != 0 || got.Root.B.Dir != "/new" || got.Root.A.Dir != "/one" || got.Root.Ratio != 0.5 {
+		t.Errorf("the tab sent %+v %+v %+v", got, got.Root.A, got.Root.B)
+	}
+	if base.Sessions[0].Tabs[0].Root.B.Dir != "/old" {
+		t.Error("the base changed")
+	}
+	// This machine's directories alone send nothing: the server's.
+	now.Sessions[0].Tabs[0].Root.B.Dir = "/old"
+	if out := diffLayout(base, now); len(out) != 0 {
+		t.Errorf("facts of this machine sent %+v", out)
+	}
+}
+
 // TestDiffLayout checks the commands the app sends for what it changed:
 // new spaces first; the sessions it closed end; a tab that takes a session
 // from another goes before the tab that gives it; a tab the app made

@@ -217,11 +217,14 @@ type LayoutCommand struct {
 	// pane.teleported, a local client's only, tells of the teleport of the
 	// pane of SID to the host of address Host (hosts.json), the session
 	// Target there (Teleport): the server shows that session in the pane's
-	// place, a tab of the host's; pane.teleporting, which came before it,
-	// changes nothing now. tab.set, windows.set and layout.apply are a
-	// local client's only too. The server makes its own changes too: the
-	// pane of a session that ends goes, a session a remote client starts
-	// here gets a tab, and the panes' facts follow their sessions.
+	// place, a tab of the host's. pane.teleporting, before the host starts
+	// it, notes it in the layout (layout.Store.Teleports), so that the
+	// window opens no tab of its own for it; with no Target, it drops the
+	// note of a teleport that failed. tab.set, windows.set and layout.apply
+	// are a local client's only too. The server makes its own changes too:
+	// the pane of a session that ends goes, a session a remote client
+	// starts here gets a tab, and so does one no pane has as the app opens;
+	// the panes' facts follow their sessions.
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// Space is the workspace the command acts on, by ID; "" for the
@@ -606,7 +609,8 @@ type SessionInfo struct {
 	AgentConfigDir string `json:"agentConfigDir,omitempty"`
 	agentFile      string
 	// ran tells that a program ran in the foreground since the session
-	// started: a shell started again after a crash ran none yet.
+	// started (session.facts): a shell started again after a crash ran
+	// none yet.
 	ran bool
 	// Title is the last title a program set (OSC 0, OSC 2).
 	Title      string    `json:"title,omitempty"`

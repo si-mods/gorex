@@ -214,13 +214,7 @@ func TestCleanStopStartsPanesAgain(t *testing.T) {
 		next.Shutdown()
 		next.Close()
 	}()
-	// The layout is read once the panes have their sessions again.
-	if _, err := next.Layout(); err != nil {
-		t.Fatal(err)
-	}
-	if in, ok := liveSession(t, next, one.ID); !ok || in.Exited {
-		t.Fatalf("the pane's session is %+v, %v", in, ok)
-	}
+	waitInfo(t, next, one.ID, "the pane's session again", func(in SessionInfo) bool { return !in.Exited })
 }
 
 // TestLayoutFromJournal checks that the journal of a run whose layout.json is
@@ -362,6 +356,9 @@ func TestRestoreMost(t *testing.T) {
 	restoreMost = 2
 	t.Cleanup(func() { restoreMost = old })
 	t.Cleanup(func() {
+		s.mu.Lock()
+		s.stopping = true // as the run ends: no layout is written then
+		s.mu.Unlock()
 		for _, sid := range []string{"one", "two", "three"} {
 			if ss := s.sessions[sid]; ss != nil {
 				ss.kill()
@@ -373,8 +370,7 @@ func TestRestoreMost(t *testing.T) {
 	if len(s.sessions) != 2 {
 		t.Fatalf("the server started %d sessions, not 2", len(s.sessions))
 	}
-	s.restored = make(chan struct{})
-	s.restoreLost(nil)
+	s.restoreLost(nil, s.lostPanes())
 	if len(s.sessions) != 3 || s.sessions["three"] == nil {
 		t.Fatalf("once it listens, the server has %d sessions", len(s.sessions))
 	}
@@ -482,15 +478,9 @@ func TestRestartRestoresSessions(t *testing.T) {
 			if stop.Event != eventStop || stop.Reason != tc.reason {
 				t.Fatalf("the stop record is %+v", stop)
 			}
-			// Either way the pane's session is back once the layout is
-			// read: a restart's before the server answers, a quit's as
-			// a new shell once it listens.
-			if _, err := next.Layout(); err != nil {
-				t.Fatal(err)
-			}
-			if _, ok := liveSession(t, next, one.ID); !ok {
-				t.Fatalf("after %s the pane's session is not back", tc.name)
-			}
+			// Either way the pane's session comes back: a restart's before
+			// the server answers, a quit's as a new shell once it listens.
+			waitInfo(t, next, one.ID, "the pane's session after "+tc.name, func(SessionInfo) bool { return true })
 		})
 	}
 }

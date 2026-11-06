@@ -887,6 +887,11 @@ func TestAdoptHostTabSavedLate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The host's server placed them, with no app there; its layout names
+	// neither again, as one not saved yet.
+	if err := remote.SetLayout(json.RawMessage(`{"version":2,"sessions":[]}`)); err != nil {
+		t.Fatal(err)
+	}
 	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
 	// The first polls see the sessions and a layout that names neither,

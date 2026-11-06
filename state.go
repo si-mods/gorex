@@ -3292,6 +3292,11 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 					}
 				}(p.stream)
 			}
+			// The layout keeps a host's pane's directory, which this
+			// machine's server does not stamp: a change saves it.
+			if h != nil && was.Dir != in.Dir {
+				a.changed()
+			}
 			seen := ti == a.active && t.Focus == p && a.focusedWin
 			if seen {
 				p.see()

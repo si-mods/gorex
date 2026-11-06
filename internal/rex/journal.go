@@ -316,7 +316,12 @@ func (s *Server) restorePane(n *layout.Node, owner string, capped bool) bool {
 		log.Printf("rex: resuming session %s once the server listens: %d sessions already", n.SID, restoreMost)
 		return false
 	}
-	o := CreateOptions{Dir: n.Dir, Cols: n.Cols, Rows: n.Rows}
+	// A directory gone, as a work tree removed, starts it at home.
+	dir := n.Dir
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		dir, _ = os.UserHomeDir()
+	}
+	o := CreateOptions{Dir: dir, Cols: n.Cols, Rows: n.Rows}
 	ss, err := newSession(n.SID, o, owner, s.sessionsChanged)
 	if err != nil {
 		log.Printf("rex: session %s of the layout is lost: %v", n.SID, err)
@@ -327,6 +332,7 @@ func (s *Server) restorePane(n *layout.Node, owner string, capped bool) bool {
 	s.sessions[ss.id] = ss
 	s.order = append(s.order, ss.id)
 	s.mu.Unlock()
+	s.watchExit(ss)
 	s.journal.session(ss.id, owner, ss.shell, ss.dir)
 	s.notify("sessions")
 	return true

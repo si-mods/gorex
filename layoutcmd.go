@@ -667,6 +667,16 @@ func diffLayout(base, now savedStore) []rex.LayoutCommand {
 			p, ok := was[t.ID]
 			focus := i == w.Active && activeWas != t.ID
 			if ok && p.space == w.ID && !moved[t.ID] && !focus && sameTab(p.tab, t) {
+				// The directories of another host's panes, which no server
+				// here stamps, go as the server's tab with them alone:
+				// neither its focus nor its arrangement.
+				if ft, changed := hostDirs(p.tab, t); changed {
+					c := rex.LayoutCommand{Op: "tab.set", Space: w.ID, TabLayout: &ft}
+					if i > 0 {
+						c.After = w.Tabs[i-1].ID
+					}
+					out = append(out, c)
+				}
 				continue
 			}
 			tab := serverTab(t)
@@ -769,6 +779,31 @@ func serverTab(t layout.Tab) layout.Tab {
 		t.Canvas = &cv
 	}
 	return t
+}
+
+// hostDirs is base, the server's tab, with the directories of another
+// host's panes as the app's tab t has them, and whether one differs.
+func hostDirs(base, t layout.Tab) (layout.Tab, bool) {
+	dirs := map[[2]string]string{}
+	for _, r := range t.Roots() {
+		for _, l := range layout.Leaves(r) {
+			if l.Host != "" && l.SID != "" {
+				dirs[[2]string{l.Host, l.SID}] = l.Dir
+			}
+		}
+	}
+	var out layout.Tab
+	b, _ := json.Marshal(base)
+	json.Unmarshal(b, &out)
+	changed := false
+	for _, r := range out.Roots() {
+		for _, l := range layout.Leaves(r) {
+			if d, ok := dirs[[2]string{l.Host, l.SID}]; ok && l.Host != "" && d != l.Dir {
+				l.Dir, changed = d, true
+			}
+		}
+	}
+	return serverTab(out), changed
 }
 
 // sameTab tells whether the tab the app has is the one the server has,

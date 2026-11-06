@@ -274,8 +274,11 @@ package from its server to the target's; it holds no files.
 - `gorex teleport <pane> <host>` does the same from the CLI. The host is
   named as `-S` names one: by its name as Remote Hosts shows it (a saved
   host's, else a system Tailscale host's), or by its address; a name two
-  hosts have is refused. The CLI pipes the package, then asks this
-  machine's server to show the pane as the host's session
+  hosts have is refused. The CLI pipes the package, telling this
+  machine's server of the session before the host starts it
+  (`pane.teleporting`, which the layout notes so that the window opens no
+  tab of its own for it), then asks the server to show the pane as the
+  host's session
   (`pane.teleported`, a local client's only), with or without a window:
   the host's tab goes after the pane's, active, and the pane goes, its
   session ending. It names the host by the address it dialed, which the

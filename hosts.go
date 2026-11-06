@@ -616,6 +616,15 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			shown[sid] = true
 		}
 	}
+	// A teleport under way, which the layout notes before the host starts
+	// its session, shows it in its pane's place.
+	if a.st != nil {
+		for _, tp := range a.st.base.Teleports {
+			if tp.Host == h.ID {
+				shown[tp.SID] = true
+			}
+		}
+	}
 	h.mu.Lock()
 	for _, sid := range h.Kills {
 		shown[sid] = true

@@ -288,38 +288,35 @@ func find(st *layout.Store, space, sid string) (spot, bool) {
 		}
 	}
 	for _, w := range spaces {
-		if p, ok := findIn(w, sid); ok {
+		if p, ok := findIn(w, localLeaf(sid)); ok {
 			return p, true
 		}
 	}
 	return spot{}, false
 }
 
-// findIn is find in one workspace.
-func findIn(w *layout.Workspace, sid string) (spot, bool) {
-	if sid == "" {
-		return spot{}, false
-	}
-	local := func(n *layout.Node) *layout.Node {
-		for _, l := range layout.Leaves(n) {
-			if l.Host == "" && l.SID == sid {
-				return l
-			}
-		}
-		return nil
-	}
+// findIn returns the first leaf of w that match takes.
+func findIn(w *layout.Workspace, match func(*layout.Node) bool) (spot, bool) {
 	for ti := range w.Tabs {
 		t := &w.Tabs[ti]
-		if n := local(t.Root); n != nil {
-			return spot{w, ti, n, -1}, true
-		}
-		for fi, f := range t.Floats {
-			if n := local(f.Pane); n != nil {
-				return spot{w, ti, n, fi}, true
+		for fi := -1; fi < len(t.Floats); fi++ {
+			r := t.Root
+			if fi >= 0 {
+				r = t.Floats[fi].Pane
+			}
+			for _, l := range layout.Leaves(r) {
+				if match(l) {
+					return spot{w, ti, l, fi}, true
+				}
 			}
 		}
 	}
 	return spot{}, false
+}
+
+// localLeaf matches the leaf of this machine's session sid; none for "".
+func localLeaf(sid string) func(*layout.Node) bool {
+	return func(n *layout.Node) bool { return sid != "" && n.Host == "" && n.SID == sid }
 }
 
 // tabHost is the host of a tab, its first pane's: "" for this machine.
@@ -617,9 +614,7 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 	case "layout.apply":
 		return s.applyBatch(st, c, a)
 	case "pane.teleporting":
-		// Told before the session there starts, by a client of before the
-		// server placed it; the server dedupes it as it comes (teleported).
-		return res
+		return s.teleporting(st, c)
 	case "pane.teleported":
 		return s.teleported(st, c, a)
 	}
@@ -705,7 +700,7 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 	case "pane.resize":
 		res.Changed, res.Reason = resize(p, c.Direction, c.Amount)
 	case "pane.swap":
-		q, ok := findIn(p.w, c.Target)
+		q, ok := findIn(p.w, localLeaf(c.Target))
 		switch {
 		case !ok:
 			res.Reason = "not_found"
@@ -763,7 +758,7 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 		w = newSpace(st, "")
 	}
 	dir, at := c.Dir, -1
-	if p, ok := findIn(w, c.After); ok {
+	if p, ok := findIn(w, localLeaf(c.After)); ok {
 		at = p.ti + 1
 		if dir == "" {
 			if in, ok := s.sessionOf(p.n); ok {
@@ -1001,7 +996,7 @@ func movePane(p spot, c LayoutCommand, a *applying) LayoutCommand {
 		res.Changed = true
 		return res
 	}
-	q, ok := findIn(w, c.Target)
+	q, ok := findIn(w, localLeaf(c.Target))
 	switch {
 	case !ok || q.fi >= 0:
 		res.Reason = "not_found"
@@ -1207,7 +1202,7 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand, a *applying) LayoutCo
 			// Another host's session moves here too, as one the app placed
 			// as the server did.
 			if l.Host != "" {
-				if p, ok := findHost(st, l.Host, l.SID); ok {
+				if p, ok := findLeaf(st, hostLeaf(l.Host, l.SID)); ok {
 					a.touch(p.tab().ID, p.tab())
 					if unlink(p, "") {
 						removeTab(p.w, p.ti)
@@ -1268,22 +1263,36 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand, a *applying) LayoutCo
 
 // stamp gives leaf n of this machine the facts the server has of its
 // session, else those its leaf had, was, when not nil: its directory, its
-// size, and the program in its foreground, not the shell at its prompt. A
-// shell that ran nothing yet, as one started again after a crash, keeps
-// the program the pane ran, which the window offers to run again.
+// size, and the program in its foreground, not the shell at its prompt,
+// as the session last sampled them (session.facts): a stamp inspects no
+// process. A shell that ran nothing yet, as one started again after a
+// crash, keeps the program the pane ran, which the window offers to run
+// again.
 func (s *Server) stamp(n, was *layout.Node) {
 	if was != nil {
 		n.Dir, n.Cols, n.Rows = was.Dir, was.Cols, was.Rows
 		n.Prog, n.Args, n.AgentSession, n.AgentConfigDir = was.Prog, was.Args, was.AgentSession, was.AgentConfigDir
 	}
-	in, ok := s.sessionOf(n)
-	if !ok || in.Exited {
+	if n.Host != "" || n.SID == "" {
 		return
 	}
-	n.Dir = cmp.Or(in.Dir, n.Dir)
+	s.mu.Lock()
+	ss := s.sessions[n.SID]
+	s.mu.Unlock()
+	if ss == nil {
+		return
+	}
+	in, sampled := ss.facts()
+	if in.Exited {
+		return
+	}
 	if in.Cols > 0 && in.Rows > 0 {
 		n.Cols, n.Rows = in.Cols, in.Rows
 	}
+	if !sampled {
+		return
+	}
+	n.Dir = cmp.Or(in.Dir, n.Dir)
 	if in.Idle && !in.ran {
 		return
 	}

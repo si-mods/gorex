@@ -491,7 +491,7 @@ func TestTabSet(t *testing.T) {
 	if w.Active != 0 || got.Name != "renamed" || got.Root.Ratio != 0.3 || got.Root.A.Name != "left" || got.Focus != 1 {
 		t.Errorf("the tab set: %+v, active %d", got, w.Active)
 	}
-	if a := got.Root.A; a.Dir != in.Dir || a.Cols != in.Cols || a.Rows != in.Rows || a.Prog != "" {
+	if a := got.Root.A; !sameDir(a.Dir, in.Dir) || a.Cols != in.Cols || a.Rows != in.Rows || a.Prog != "" {
 		t.Errorf("the facts of the pane: %+v, the session's %+v", a, in)
 	}
 

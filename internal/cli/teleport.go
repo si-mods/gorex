@@ -50,10 +50,16 @@ func teleportCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitFailed, true
 	}
 	steps := map[string]string{rex.TeleportPacking: "packing", rex.TeleportSending: "sending to " + host, rex.TeleportStarting: "starting on " + host}
-	in, err := rex.Teleport(context.Background(), src, sid, dst, func(step, _ string) {
+	in, err := rex.Teleport(context.Background(), src, sid, dst, func(step, newSID string) {
 		fmt.Fprintf(errOut, "gorex teleport: %s…\n", steps[step])
+		if step == rex.TeleportSending {
+			// The layout notes the session before the host starts it, so
+			// that the window opens no tab of its own for it.
+			src.Command(rex.LayoutCommand{Op: "pane.teleporting", SID: sid, Target: newSID, Host: addr})
+		}
 	})
 	if err != nil {
+		src.Command(rex.LayoutCommand{Op: "pane.teleporting", SID: sid, Host: addr})
 		fmt.Fprintf(errOut, "gorex teleport: %s\n", strings.TrimPrefix(strings.TrimPrefix(err.Error(), "rex: "), "teleport: "))
 		return ExitFailed, true
 	}

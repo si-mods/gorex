@@ -1332,7 +1332,6 @@ func (s *session) info() SessionInfo {
 	statusChanged := s.status.updates != beforeStatus
 	s.busy = !in.Exited && !in.Idle
 	s.ran = s.ran || s.busy
-	in.ran = s.ran
 	in.Statuses = s.status.list()
 	s.mu.Unlock()
 	if statusChanged {
@@ -1388,10 +1387,22 @@ func (s *session) sample() {
 	s.mu.Lock()
 	was := s.seen
 	s.seen = now
+	s.ran = s.ran || !now.Idle
 	if now.Title != was.Title || now.Program != was.Program || now.Dir != was.Dir || now.Idle != was.Idle || !slices.Equal(now.Args, was.Args) || now.AgentSession != was.AgentSession {
 		s.notify()
 	}
 	s.mu.Unlock()
+}
+
+// facts are what the session's last sample saw run in its foreground,
+// with its size, whether it exited and whether a program ran (ran);
+// sampled is false before a sample, which its first output asks for.
+func (s *session) facts() (in SessionInfo, sampled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	in = s.seen
+	in.Cols, in.Rows, in.Exited, in.ran = s.cols, s.rows, s.exited, s.ran
+	return in, s.seen.PID != 0
 }
 
 // notify tells the server's subscribers that the session changed.

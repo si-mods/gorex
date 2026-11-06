@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,15 +16,16 @@ import (
 
 // The server's own changes of the layout, which no client asks for: the
 // facts of its panes' sessions, the panes of the sessions that ended, the
-// sessions a remote client starts here, and those a run before lost.
+// sessions no pane has, and those a run before lost.
 
 // refreshWait is how long after a change of the sessions the server
-// refreshes the layout (refresh): the changes of a second go together,
-// and a client that polls the sessions sees one exit before its pane goes.
+// refreshes the layout's facts (refresh), and forgets a session that
+// exited: a client that polls the sessions sees the exit first.
 var refreshWait = newDuration(time.Second)
 
 // refreshSoon refreshes the layout refreshWait from now, unless a refresh
-// is to come already.
+// is to come already: the changes of a second, an animating title's
+// included, cost one refresh.
 func (s *Server) refreshSoon() {
 	if s.refreshDue.CompareAndSwap(false, true) {
 		time.AfterFunc(refreshWait.get(), func() {
@@ -33,67 +35,11 @@ func (s *Server) refreshSoon() {
 	}
 }
 
-// refresh takes out the panes of this machine's sessions that exited or
-// ended, as pane.close does but ending nothing, and forgets the sessions
-// that exited; then it stamps the facts of the others, which counts no
-// revision. It changes nothing while the run stops, nor while an upgrade
-// hands the sessions on, which holds the changes off.
+// refresh stamps the facts of the sessions on the layout (stampAll), from
+// what they sampled, in layout.json but not the journal: the revision
+// stays, as the layout's arrangement does, and the next change takes them
+// along. It changes nothing while the run stops.
 func (s *Server) refresh() {
-	s.mu.Lock()
-	gone := s.gone
-	s.gone = nil
-	s.mu.Unlock()
-	var exited []string
-	a := &applying{s: s}
-	s.change(a, func(st *layout.Store) LayoutCommand {
-		exited = nil
-		s.mu.Lock()
-		stopping := s.stopping
-		s.mu.Unlock()
-		if stopping {
-			return LayoutCommand{Code: "stopping"}
-		}
-		for sid := range localSIDs(st) {
-			s.mu.Lock()
-			ss := s.sessions[sid]
-			s.mu.Unlock()
-			switch {
-			case ss == nil && gone[sid]:
-			case ss != nil && ss.hasExited():
-				exited = append(exited, sid)
-			default:
-				continue
-			}
-			prune(st, sid, a)
-		}
-		return LayoutCommand{}
-	})
-	s.endAll(exited)
-	s.restamp()
-}
-
-// hasExited tells a session whose program exited.
-func (s *session) hasExited() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.exited
-}
-
-// prune takes the pane of session sid out of st, as pane.close does, its
-// tab with its last pane, ending nothing.
-func prune(st *layout.Store, sid string, a *applying) {
-	if p, ok := find(st, "", sid); ok {
-		a.touch(p.tab().ID, p.tab())
-		if unlink(p, "") {
-			removeTab(p.w, p.ti)
-		}
-	}
-}
-
-// restamp stamps the facts of the sessions on the layout (stampAll), in
-// layout.json but not the journal: the revision stays, as the layout's
-// arrangement does, and the next change takes them along.
-func (s *Server) restamp() {
 	s.mu.Lock()
 	raw, rev := s.layout, s.layoutRev
 	s.mu.Unlock()
@@ -112,25 +58,118 @@ func (s *Server) restamp() {
 	s.writeLayout(rev, false)
 }
 
+// watchExit takes the pane of ss out of the layout as soon as its program
+// ends (ended).
+func (s *Server) watchExit(ss *session) {
+	go func() {
+		<-ss.done
+		s.ended(ss.id)
+	}()
+}
+
+// ended takes the pane of session sid, which ended, out of the layout at
+// once, as pane.close does but ending nothing, so that no crash after it
+// starts the session again; a teleport from it is over. It changes nothing
+// while the run stops, nor while an upgrade hands the sessions on, which
+// holds the change off. A session that exited is forgotten refreshWait
+// later, once a client polling the sessions saw it exit.
+func (s *Server) ended(sid string) {
+	a := &applying{s: s}
+	pruned := false
+	s.change(a, func(st *layout.Store) LayoutCommand {
+		s.mu.Lock()
+		stopping := s.stopping
+		s.mu.Unlock()
+		if stopping {
+			return LayoutCommand{Code: "stopping"}
+		}
+		pruned = prune(st, sid, a)
+		st.Teleports = slices.DeleteFunc(st.Teleports, func(t layout.Teleport) bool { return t.From == sid })
+		return LayoutCommand{}
+	})
+	if !pruned {
+		return
+	}
+	time.AfterFunc(refreshWait.get(), func() {
+		s.mu.Lock()
+		ss := s.sessions[sid]
+		s.mu.Unlock()
+		if ss != nil {
+			s.endAll([]string{sid})
+		}
+	})
+}
+
+// prune takes the pane of session sid out of st, as pane.close does, its
+// tab with its last pane, ending nothing; false when st has none.
+func prune(st *layout.Store, sid string, a *applying) bool {
+	p, ok := find(st, "", sid)
+	if ok {
+		a.touch(p.tab().ID, p.tab())
+		if unlink(p, "") {
+			removeTab(p.w, p.ti)
+		}
+	}
+	return ok
+}
+
 // place gives the session ss, which a remote client started here, a tab
-// of its own, as the window would show it: in the default space, after
-// this machine's tabs, without the focus.
+// of its own (placeTab).
 func (s *Server) place(ss *session) {
 	a := &applying{s: s}
 	s.change(a, func(st *layout.Store) LayoutCommand {
-		if _, ok := find(st, "", ss.id); ok {
-			return LayoutCommand{}
+		if _, ok := find(st, "", ss.id); !ok {
+			placeTab(st, a, ss)
 		}
-		w := defaultSpace(st)
-		if w == nil {
-			w = newSpace(st, "")
-		}
-		in := ss.info()
-		t := layout.Tab{ID: layout.NewTabID(), Root: &layout.Node{SID: ss.id, Dir: ss.dir, Cols: in.Cols, Rows: in.Rows}}
-		a.touch(t.ID, nil)
-		insertTab(w, afterLocal(w), t, false)
 		return LayoutCommand{}
 	})
+}
+
+// placeOrphans gives each running session of this machine no pane has a
+// tab of its own (placeTab): one a client started with no tab, as gorex
+// new, or that the layout lost, as layout.json did. The window shows them
+// as it opens, as it did before the server placed sessions.
+func (s *Server) placeOrphans() {
+	a := &applying{s: s}
+	s.change(a, func(st *layout.Store) LayoutCommand {
+		named := localSIDs(st)
+		s.mu.Lock()
+		var orphans []*session
+		for _, id := range s.order {
+			if ss := s.sessions[id]; ss != nil && named[id] == nil {
+				orphans = append(orphans, ss)
+			}
+		}
+		s.mu.Unlock()
+		for _, ss := range orphans {
+			if !ss.hasExited() {
+				placeTab(st, a, ss)
+			}
+		}
+		return LayoutCommand{}
+	})
+}
+
+// hasExited tells a session whose program exited.
+func (s *session) hasExited() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.exited
+}
+
+// placeTab gives ss a tab as the window would show it: in the default
+// space, after this machine's tabs, without the focus.
+func placeTab(st *layout.Store, a *applying, ss *session) {
+	w := defaultSpace(st)
+	if w == nil {
+		w = newSpace(st, "")
+	}
+	ss.mu.Lock()
+	cols, rows := ss.cols, ss.rows
+	ss.mu.Unlock()
+	t := layout.Tab{ID: layout.NewTabID(), Root: &layout.Node{SID: ss.id, Dir: ss.dir, Cols: cols, Rows: rows}}
+	a.touch(t.ID, nil)
+	insertTab(w, afterLocal(w), t, false)
 }
 
 // afterLocal is the place after the last tab of this machine's in w, where
@@ -145,39 +184,96 @@ func afterLocal(w *layout.Workspace) int {
 	return at
 }
 
-// restoreLost starts again the sessions the layout's panes of this machine
-// name that the server does not have, as the run before lost them, past
-// the restoreMost it started before it listened, or as it stopped; owners
-// are the journal's. The pane of one that does not start goes. Clients
-// read the layout once it is done (settled), and close restored then.
-func (s *Server) restoreLost(owners map[string]string) {
-	defer close(s.restored)
-	a := &applying{s: s}
-	s.change(a, func(st *layout.Store) LayoutCommand {
-		var lost []string
-		for _, w := range st.Sessions {
-			for _, t := range w.Tabs {
-				for _, r := range t.Roots() {
-					for _, n := range layout.Leaves(r) {
-						if n.Host != "" || n.SID == "" {
-							continue
-						}
-						s.restorePane(n, owners[n.SID], false)
-						s.mu.Lock()
-						_, live := s.sessions[n.SID]
-						s.mu.Unlock()
-						if !live {
-							lost = append(lost, n.SID)
-						}
-					}
-				}
+// restoreBatch is how many lost sessions restoreLost starts at a time.
+const restoreBatch = 8
+
+// lostPanes are the panes of this machine of the layout whose sessions
+// the server does not have, as the run before lost them past restoreMost,
+// or as it stopped: restoreLost starts them once the server listens, and
+// an attach to one waits for it meanwhile (awaitRestore).
+func (s *Server) lostPanes() []layout.Node {
+	st := layout.Parse(s.layout)
+	var lost []layout.Node
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for sid, n := range localSIDs(&st) {
+		if s.sessions[sid] == nil {
+			if s.restoring == nil {
+				s.restoring = map[string]chan struct{}{}
 			}
+			s.restoring[sid] = make(chan struct{})
+			lost = append(lost, *n)
 		}
-		for _, sid := range lost {
-			prune(st, sid, a)
+	}
+	return lost
+}
+
+// restoreLost starts the sessions of the lost panes, a batch at a time,
+// in the background: the layout is read meanwhile. owners are the
+// journal's. The pane of one that does not start goes. Then the sessions
+// no pane has get tabs (placeOrphans).
+func (s *Server) restoreLost(owners map[string]string, lost []layout.Node) {
+	var failed []string
+	for i := 0; i < len(lost); i += restoreBatch {
+		s.ops.RLock()
+		for _, n := range lost[i:min(i+restoreBatch, len(lost))] {
+			s.restorePane(&n, owners[n.SID], false)
+			s.mu.Lock()
+			if s.sessions[n.SID] == nil {
+				failed = append(failed, n.SID)
+			}
+			close(s.restoring[n.SID])
+			delete(s.restoring, n.SID)
+			s.mu.Unlock()
 		}
-		return LayoutCommand{}
-	})
+		s.ops.RUnlock()
+	}
+	if len(failed) > 0 {
+		a := &applying{s: s}
+		s.change(a, func(st *layout.Store) LayoutCommand {
+			for _, sid := range failed {
+				prune(st, sid, a)
+			}
+			return LayoutCommand{}
+		})
+	}
+	s.placeOrphans()
+}
+
+// awaitRestore waits for the session sid when restoreLost is to start it,
+// a minute at most, and returns it; nil for none.
+func (s *Server) awaitRestore(sid string) *session {
+	s.mu.Lock()
+	ch := s.restoring[sid]
+	s.mu.Unlock()
+	if ch != nil {
+		select {
+		case <-ch:
+		case <-time.After(time.Minute):
+		}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sessions[sid]
+}
+
+// teleporting makes pane.teleporting: the pane's work goes to the host of
+// address Host, as the session Target there, which the layout notes before
+// that host starts it (Store.Teleports), so that the app opens no tab of
+// its own for it; no Target ends a teleport that failed.
+func (s *Server) teleporting(st *layout.Store, c LayoutCommand) LayoutCommand {
+	var res LayoutCommand
+	st.Teleports = slices.DeleteFunc(st.Teleports, func(t layout.Teleport) bool { return t.From == c.SID })
+	if c.Target == "" {
+		return res
+	}
+	host, code, msg := s.hostAt(c.Host)
+	if code != "" {
+		res.Code, res.Error = code, msg
+		return res
+	}
+	st.Teleports = append(st.Teleports, layout.Teleport{Host: host, SID: c.Target, From: c.SID})
+	return res
 }
 
 // teleported makes pane.teleported: the work of pane p went to the host of
@@ -187,25 +283,28 @@ func (s *Server) restoreLost(owners map[string]string) {
 // placed meanwhile, as a host's new session, moves there.
 func (s *Server) teleported(st *layout.Store, c LayoutCommand, a *applying) LayoutCommand {
 	var res LayoutCommand
-	host, code, msg := s.hostAt(c.Host)
-	if code == "" && c.Target == "" {
-		code, msg = "bad_args", "no session"
-	}
-	if code != "" {
+	fail := func(code, msg string) LayoutCommand {
 		res.Code, res.Error = code, msg
 		return res
 	}
-	if q, ok := findHost(st, host, c.Target); ok {
+	if _, ok := find(st, c.Space, c.SID); !ok {
+		return fail("pane_not_found", "no such pane in the GoRex layout")
+	}
+	host, code, msg := s.hostAt(c.Host)
+	if code != "" {
+		return fail(code, msg)
+	}
+	if c.Target == "" {
+		return fail("bad_args", "no session")
+	}
+	st.Teleports = slices.DeleteFunc(st.Teleports, func(t layout.Teleport) bool { return t.From == c.SID })
+	if q, ok := findLeaf(st, hostLeaf(host, c.Target)); ok {
 		a.touch(q.tab().ID, q.tab())
 		if unlink(q, "") {
 			removeTab(q.w, q.ti)
 		}
 	}
-	p, ok := find(st, c.Space, c.SID)
-	if !ok {
-		res.Code, res.Error = "pane_not_found", "no such pane in the GoRex layout"
-		return res
-	}
+	p, _ := find(st, c.Space, c.SID)
 	t := p.tab()
 	leaf := &layout.Node{Host: host, SID: c.Target, Name: p.n.Name, Dir: p.n.Dir, Cols: p.n.Cols, Rows: p.n.Rows}
 	nt := layout.Tab{ID: layout.NewTabID(), Root: leaf}
@@ -224,27 +323,19 @@ func (s *Server) teleported(st *layout.Store, c LayoutCommand, a *applying) Layo
 	return res
 }
 
-// findHost returns the pane of host's session sid in st; ok is false for
-// none.
-func findHost(st *layout.Store, host, sid string) (spot, bool) {
+// findLeaf returns the first leaf of st that match takes.
+func findLeaf(st *layout.Store, match func(*layout.Node) bool) (spot, bool) {
 	for i := range st.Sessions {
-		w := &st.Sessions[i]
-		for ti := range w.Tabs {
-			t := &w.Tabs[ti]
-			for fi := -1; fi < len(t.Floats); fi++ {
-				r := t.Root
-				if fi >= 0 {
-					r = t.Floats[fi].Pane
-				}
-				for _, l := range layout.Leaves(r) {
-					if l.Host == host && l.SID == sid {
-						return spot{w, ti, l, fi}, true
-					}
-				}
-			}
+		if p, ok := findIn(&st.Sessions[i], match); ok {
+			return p, true
 		}
 	}
 	return spot{}, false
+}
+
+// hostLeaf matches the leaf of host's session sid.
+func hostLeaf(host, sid string) func(*layout.Node) bool {
+	return func(n *layout.Node) bool { return n.Host == host && n.SID == sid }
 }
 
 // hostAt is the ID of the app's host of address addr, from hosts.json,

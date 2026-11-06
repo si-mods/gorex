@@ -87,14 +87,11 @@ type Server struct {
 	// keep one each. dir is the directory the server keeps its layout in,
 	// Dir as it was when it started; Dir when "".
 	linksFile, home, dir string
-	// refreshDue tells that a refresh of the layout is to come (refresh);
-	// gone are the sessions that ended since the last, whose panes it
-	// takes out.
+	// refreshDue tells that a refresh of the layout's facts is to come
+	// (refresh); restoring are the sessions restoreLost is to start, each
+	// closing once it tried.
 	refreshDue atomic.Bool
-	gone       map[string]bool
-	// restored closes once the server started again the sessions the run
-	// before lost (restoreLost): the layout is read after; nil for none.
-	restored chan struct{}
+	restoring  map[string]chan struct{}
 }
 
 // layoutCmd is a command waiting for the app's answer, done.
@@ -201,9 +198,6 @@ func (s *Server) commandDone(c LayoutCommand) {
 // settled waits for the change of the layout the server makes, if any:
 // a read after a command sees its change.
 func (s *Server) settled() {
-	if s.restored != nil {
-		<-s.restored
-	}
 	s.applyMu.Lock()
 	s.applyMu.Unlock()
 }
@@ -352,7 +346,7 @@ func Serve() error {
 	}
 	s.journal.started()
 	// The rest, once it listens.
-	go s.restoreLost(owners)
+	go s.restoreLost(owners, s.lostPanes())
 	return s.serve()
 }
 
@@ -360,7 +354,6 @@ func newServer(ln net.Listener, lock *os.File) *Server {
 	s := &Server{
 		sessions: map[string]*session{}, started: time.Now(), ln: ln, lock: lock,
 		layoutRev: 1, hostDone: make(chan struct{}), idleFrom: time.Now(), quit: make(chan struct{}), dir: Dir(),
-		restored: make(chan struct{}),
 	}
 	s.exe, s.exeTime = Executable()
 	return s
@@ -479,6 +472,9 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		s.mu.Lock()
 		ss := s.sessions[a.SID]
 		s.mu.Unlock()
+		if ss == nil {
+			ss = s.awaitRestore(a.SID)
+		}
 		if ss == nil {
 			conn.Write([]byte(`{"error":"no such session"}` + "\n"))
 			conn.Close()
@@ -601,6 +597,9 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 				s.cmdMu.Lock()
 				s.desks++
 				s.cmdMu.Unlock()
+				// The app opens its windows: the sessions no pane has
+				// show in them.
+				go s.placeOrphans()
 			}
 			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" || req.Op == "command.done" {
 				aside <- struct{}{}
@@ -836,22 +835,31 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		if peer != "" {
+		// A remote client's session gets a tab, as one this machine's
+		// client starts with the app closed, which shows it as it opens.
+		s.cmdMu.Lock()
+		app := s.desks > 0
+		s.cmdMu.Unlock()
+		if peer != "" || !app {
 			s.place(ss)
 		}
 		return s.info(ss), nil
 	case "kill":
 		s.ops.RLock()
-		defer s.ops.RUnlock()
 		ss, err := s.use(req.SID, peer)
+		if err == nil {
+			s.end(ss)
+		}
+		s.ops.RUnlock()
 		if err == errNotShared {
 			return nil, err
 		}
-		if err != nil {
-			return nil, nil // already gone
+		if err == nil {
+			// Its pane goes before the answer, so that no crash after
+			// it starts the session again.
+			s.ended(ss.id)
 		}
-		s.end(ss)
-		return nil, nil
+		return nil, nil // or already gone
 	case "clients":
 		s.mu.Lock()
 		all := make([]*session, 0, len(s.order))
@@ -1176,6 +1184,7 @@ func (s *Server) createHeld(o CreateOptions, peer string) (*session, error) {
 	s.sessions[id] = ss
 	s.order = append(s.order, id)
 	s.mu.Unlock()
+	s.watchExit(ss)
 	// The journal names the session's client, so that one started again
 	// after a crash stays that client's.
 	s.journal.session(id, peer, ss.shell, ss.dir)
@@ -1192,11 +1201,6 @@ func (s *Server) end(ss *session) {
 	if len(s.sessions) == 0 {
 		s.idleFrom = time.Now()
 	}
-	// Its pane goes with the next refresh.
-	if s.gone == nil {
-		s.gone = map[string]bool{}
-	}
-	s.gone[ss.id] = true
 	s.mu.Unlock()
 	s.notify("sessions")
 }
