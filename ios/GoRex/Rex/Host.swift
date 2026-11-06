@@ -211,7 +211,8 @@ final class Host: Identifiable {
     }
 
     /// Reads a session's view again; one read at a time, repeated while
-    /// a newer revision was announced meanwhile.
+    /// a newer revision was announced meanwhile. A view that changes
+    /// nothing, as of a session the host doesn't have, ends it.
     private func refresh(_ id: String) {
         guard refreshing.insert(id).inserted else { return }
         Task {
@@ -219,8 +220,9 @@ final class Host: Identifiable {
             while let want = wanted[id], want > revision(id),
                   let r = try? await control?.call("session.view", ["session_id": id]).payload,
                   let view = try? SessionView(json: r) {
-                if view.revision <= revision(id) { break }
+                let had = revision(id)
                 setView(view)
+                if revision(id) == had { break }
             }
         }
     }
