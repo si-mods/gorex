@@ -92,6 +92,8 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 	newWindow = func(*App) *mygo.Window { return nil }
 	t.Cleanup(func() { newWindow = old })
 	st := &store{client: client, started: true}
+	// The server's changes show at once, on the test's goroutine.
+	st.use(client, nil)
 	a := &App{st: st, client: client, stop: make(chan struct{})}
 	w := st.addWorkspace()
 	a.ws, w.app, st.apps = w, a, []*App{a}
@@ -293,7 +295,7 @@ func TestRestore(t *testing.T) {
 	}
 	// Another app, as the next launch, finds them all.
 	b := &App{client: a.client}
-	if !b.reconcile(savedWorkspaces(t, a.client).Sessions[0].Layout, nil, nil) {
+	if !b.reconcile(savedWorkspaces(t, a.client).Sessions[0].Layout, nil) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 2 || b.tabs[1].Name != "second" || b.active != 1 {
@@ -830,4 +832,30 @@ func TestStatusSeen(t *testing.T) {
 	if r := entered(rex.SessionInfo{}, in); r != nil {
 		t.Fatalf("entered on first poll %+v", r)
 	}
+}
+
+// clientCommand has the server make c, as another client asks for it, and
+// the window show what it made.
+func clientCommand(a *App, c rex.LayoutCommand) rex.LayoutCommand {
+	a.st.save()
+	res, err := a.client.Command(c)
+	if err != nil {
+		res.Code, res.Error = "failed", err.Error()
+	}
+	a.st.out.follow(a.client)
+	return res
+}
+
+// caughtUp runs frames until the window shows the server's layout, as it
+// follows it (followApp).
+func caughtUp(t *testing.T, a *App, tt *ui.Tester) {
+	t.Helper()
+	waitFor(t, tt, "the window to show the server's layout", func() bool {
+		ls, err := a.client.LayoutState()
+		a.st.out.mu.Lock()
+		running := a.st.out.running
+		a.st.out.mu.Unlock()
+		return err == nil && ls.Revision == a.st.out.revision() && !running
+	})
+	tt.Frame()
 }

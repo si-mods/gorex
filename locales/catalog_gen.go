@@ -1872,6 +1872,24 @@ func (msgs Messages) ErrorServerRestart() string {
 	return Catalog.Format(msgs.locale, "errorServerRestart", nil)
 }
 
+// ServerLayoutReadOnly says "This GoRex session server is older than the app, so the layout cannot change. Quit GoRex and open it again, then choo…"
+// in the language the app shows.
+//
+// Banner: the session server predates server-kept layouts, so the window
+// shows the layout but cannot change it; the user should restart the
+// server.
+func ServerLayoutReadOnly() string { return In(i18n.Locale()).ServerLayoutReadOnly() }
+
+// ServerLayoutReadOnly says "This GoRex session server is older than the app, so the layout cannot change. Quit GoRex and open it again, then choo…"
+// in the language of msgs.
+//
+// Banner: the session server predates server-kept layouts, so the window
+// shows the layout but cannot change it; the user should restart the
+// server.
+func (msgs Messages) ServerLayoutReadOnly() string {
+	return Catalog.Format(msgs.locale, "serverLayoutReadOnly", nil)
+}
+
 // ErrorServerVersion says "The session server is of another version of GoRex: quit and end all sessions to restart it."
 // in the language the app shows.
 //

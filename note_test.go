@@ -153,7 +153,7 @@ func TestNoteLayout(t *testing.T) {
 	}
 
 	b := &App{client: a.client}
-	if !b.reconcile(l, nil, nil) {
+	if !b.reconcile(l, nil) {
 		t.Fatal("nothing restored")
 	}
 	var got *Pane
@@ -273,7 +273,7 @@ func TestEmptyNoteLayout(t *testing.T) {
 	a.saveNow()
 	l := savedWorkspaces(t, a.client).Sessions[0].Layout
 	b := &App{client: a.client}
-	if !b.reconcile(l, nil, nil) {
+	if !b.reconcile(l, nil) {
 		t.Fatal("nothing restored")
 	}
 	notes := 0
@@ -401,7 +401,7 @@ func TestNoteSizeAndPreviewPersist(t *testing.T) {
 		t.Fatalf("saved node %+v", n)
 	}
 	b := &App{client: a.client}
-	if !b.reconcile(l, nil, nil) {
+	if !b.reconcile(l, nil) {
 		t.Fatal("nothing restored")
 	}
 	ns := restoredNotes(b)

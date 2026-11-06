@@ -10,6 +10,7 @@ import (
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // followApp has the test app follow its server's layout, as adopt does,
@@ -17,11 +18,11 @@ import (
 func followApp(t *testing.T, a *App) (other *rex.Client) {
 	t.Helper()
 	a.saveNow()
-	a.st.writer.use(a.client)
+	a.st.use(a.client, a.post)
 	if _, err := a.st.read(); err != nil {
 		t.Fatal(err)
 	}
-	go a.st.follow(a.client, a.post)
+	go a.st.follow(a.client)
 	c, err := rex.ConnectExisting()
 	if err != nil {
 		t.Fatal(err)
@@ -155,7 +156,7 @@ func TestFollowOwnWrites(t *testing.T) {
 	if p.Name != "unsaved" {
 		t.Errorf("the window reconciled its own write: pane name %q", p.Name)
 	}
-	if rev := a.st.writer.revision(); rev != ls.Revision {
+	if rev := a.st.out.revision(); rev != ls.Revision {
 		t.Errorf("app at revision %d, server at %d", rev, ls.Revision)
 	}
 	for range 25 {
@@ -200,26 +201,6 @@ func TestFollowServerApplied(t *testing.T) {
 	waitFor(t, tt, "the close", func() bool { return len(tab.panes()) == 1 })
 	if tab.Focus != p || tab.panes()[0] != p {
 		t.Errorf("after the close: focus %v", tab.Focus)
-	}
-}
-
-// TestFollowStaleWrite saves a change the window made of the layout
-// before another client's: the server refuses it, and the window takes the
-// other's layout, which stays, as a window that opens while a client's
-// change lands does.
-func TestFollowStaleWrite(t *testing.T) {
-	a, tt := newTestApp(t)
-	other := followApp(t, a)
-	s := savedWorkspaces(t, other)
-	s.Sessions[0].Tabs[0].Name = "theirs"
-	setOther(t, other, s)
-	// Before the window hears of it, it saves a change of its own.
-	a.tab().Name = "mine"
-	a.st.save()
-	waitFor(t, tt, "the window to take the other's", func() bool { return a.tab().Name == "theirs" })
-	a.st.writer.wait(time.Second)
-	if got := savedWorkspaces(t, other).Sessions[0].Tabs[0].Name; got != "theirs" {
-		t.Errorf("the server's tab is %q", got)
 	}
 }
 
@@ -282,7 +263,7 @@ func TestFollowReconnect(t *testing.T) {
 			t.Errorf("pane %s not attached", p.SID)
 		}
 	}
-	if rev := st.writer.revision(); rev == 0 {
+	if rev := st.out.revision(); rev == 0 {
 		t.Error("the app shows no revision of the new connection")
 	}
 	quit(st)
@@ -298,44 +279,6 @@ func takeOther(t *testing.T, a *App, other *rex.Client) uint64 {
 	}
 	a.st.takeLayout(ls)
 	return ls.Revision
-}
-
-// TestFollowKeepsOwnPanes saves a split, a float and a tab the window made
-// after another client's change landed: the server refuses the write, and
-// the window takes the other's layout, keeping what it made, which it
-// writes again. No session runs without a pane.
-func TestFollowKeepsOwnPanes(t *testing.T) {
-	a, tt := newTestApp(t)
-	first := a.tab()
-	p1 := first.Focus
-	other := followApp(t, a)
-	s := savedWorkspaces(t, other)
-	s.Sessions[0].Tabs[0].Name = "theirs"
-	setOther(t, other, s)
-	// Before the window hears of it, it splits, floats and opens a tab,
-	// as a client's split the window makes would.
-	split := a.splitPane(p1, true, os.TempDir())
-	fl := a.newFloat(nil)
-	own := a.newTab(os.TempDir())
-	a.st.save()
-	waitFor(t, tt, "the window to take the other's", func() bool { return first.Name == "theirs" })
-	if ps := first.panes(); len(ps) != 2 || ps[0] != p1 || ps[1] != split || split.closed || !first.Root.Vertical {
-		t.Errorf("the split was not kept below p1: %v", ps)
-	}
-	if len(first.Floats) != 1 || first.Floats[0].Pane != fl || fl.closed {
-		t.Errorf("the float was not kept: %v", first.Floats)
-	}
-	if !slices.Contains(a.tabs, own) || own.Focus.closed {
-		t.Errorf("the tab was not kept: %v", a.tabs)
-	}
-	waitFor(t, tt, "the window to write them", func() bool {
-		a.st.writer.wait(time.Second)
-		got := storeKeys(savedWorkspaces(t, other))
-		return got["/"+split.SID] && got["/"+fl.SID] && got["tab:"+own.UID]
-	})
-	if got := savedWorkspaces(t, other).Sessions[0].Tabs[0].Name; got != "theirs" {
-		t.Errorf("the other's rename went: %q", got)
-	}
 }
 
 // TestFollowReconnectTwoWindows reconnects two windows, the space of the
@@ -377,8 +320,8 @@ func TestFollowEmptiedAndGone(t *testing.T) {
 	st := a.st
 	x := a.ws
 	gone, left := st.addWorkspace(), st.addWorkspace()
-	for _, w := range []*Workspace{gone, left} {
-		w.layout = savedLayout{Tabs: []savedTab{{ID: layout.NewTabID(), Root: &savedNode{SID: a.tab().Focus.SID}}}}
+	for i, w := range []*Workspace{gone, left} {
+		w.layout = savedLayout{Tabs: []savedTab{{ID: layout.NewTabID(), Root: &savedNode{URL: "https://example.com/", ID: fmt.Sprint("web", i)}}}}
 	}
 	other := followApp(t, a)
 	s := savedWorkspaces(t, other)
@@ -426,7 +369,7 @@ func TestFollowBrowser(t *testing.T) {
 	}
 	// A writer that drops the ID: the pane is named by its place, once,
 	// and stays at the next such write.
-	a.st.writer.wait(time.Second)
+	a.st.out.wait(time.Second)
 	var kept *Pane
 	for i := range 2 {
 		s = savedWorkspaces(t, other)
@@ -441,7 +384,7 @@ func TestFollowBrowser(t *testing.T) {
 			t.Fatal(err)
 		}
 		takeOther(t, a, other)
-		a.st.writer.wait(time.Second)
+		a.st.out.wait(time.Second)
 		p := a.tab().panes()[1]
 		if i == 1 && p != kept {
 			t.Error("the browser pane was made again")
@@ -506,31 +449,100 @@ func TestFollowRecentAndInfos(t *testing.T) {
 	}
 }
 
-// TestWriterIgnoresOldConnection lets a write of a connection the writer
-// no longer uses answer after the change: its revision, of the old server,
-// is not the app's.
-func TestWriterIgnoresOldConnection(t *testing.T) {
+// TestSplitReachesServer splits a pane from the window, which follows the
+// server's layout as the app does: the server makes the pane, and the
+// window shows it attached, with the keyboard.
+func TestSplitReachesServer(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	p1 := tab.Focus
+	other := followApp(t, a)
+	if p := a.splitPane(p1, false, os.TempDir()); p != nil {
+		t.Fatal("the split showed before the server made it")
+	}
+	waitFor(t, tt, "the split", func() bool { return len(tab.panes()) == 2 })
+	p2 := tab.panes()[1]
+	if tab.panes()[0] != p1 || p2.stream == nil || tab.Focus != p2 {
+		t.Errorf("panes %v, focus %v", tab.panes(), tab.Focus)
+	}
+	s := savedWorkspaces(t, other)
+	if root := s.Sessions[0].Tabs[0].Root; root.A == nil || root.A.SID != p1.SID || root.B.SID != p2.SID {
+		t.Errorf("the server's tab %+v", s.Sessions[0].Tabs[0])
+	}
+}
+
+// TestRefusedTabSetRestored changes a tab the server changed meanwhile: the
+// window's tab.set, which leaves out the pane another client split off, is
+// refused, and the window shows the server's tab, the pane in it.
+func TestRefusedTabSetRestored(t *testing.T) {
 	a, _ := newTestApp(t)
-	c2, err := rex.ConnectExisting()
+	tab := a.tab()
+	other, err := rex.ConnectExisting()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c2.Close()
-	b, _ := json.Marshal(a.st.saved())
-	var w layoutWriter
-	for range 30 {
-		w.use(a.client)
-		w.write(a.client, b)
-		// Once the writer took it, the write is under way, or done.
-		for taken := false; !taken; {
-			w.mu.Lock()
-			taken = w.next == nil
-			w.mu.Unlock()
+	defer other.Close()
+	res, err := other.Command(rex.LayoutCommand{Op: "pane.split", SID: tab.Focus.SID, Command: exitLater()})
+	if err != nil || res.Code != "" {
+		t.Fatalf("pane.split: %v %+v", err, res)
+	}
+	tab.Name = "mine"
+	a.changed()
+	a.save()
+	if len(tab.panes()) != 2 || tab.panes()[1].SID != res.New || tab.Name != "" {
+		t.Errorf("after the refusal: panes %v, name %q", tab.panes(), tab.Name)
+	}
+	s := savedWorkspaces(t, other)
+	if leaves := layout.Leaves(s.Sessions[0].Tabs[0].Root); len(leaves) != 2 || s.Sessions[0].Tabs[0].Name != "" {
+		t.Errorf("the server's tab %+v", s.Sessions[0].Tabs[0])
+	}
+}
+
+// exitLater is a program that runs a while, as a pane's.
+func exitLater() []string { return []string{testShell.path, "-c", "sleep 30"} }
+
+// TestGestureSendsOneTabSet drags a divider for more than a second: the
+// window keeps the ratio its own while the pointer holds it, and sends it
+// once, as one tab.set, when it lets go.
+func TestGestureSendsOneTabSet(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.split(false)
+	tab := a.tab()
+	a.saveNow()
+	tt.Frame()
+	state := func() (uint64, float32) {
+		ls, err := a.client.LayoutState()
+		if err != nil {
+			t.Fatal(err)
 		}
-		w.use(c2)
-		w.wait(time.Second)
-		if rev := w.revision(); rev != 0 {
-			t.Fatalf("revision %d of the old connection", rev)
-		}
+		return ls.Revision, layout.Parse(ls.Layout).Sessions[0].Tabs[0].Root.Ratio
+	}
+	rev, ratio := state()
+	d, ok := tt.Find(locales.PaneDivider())
+	if !ok {
+		t.Fatalf("no divider; texts %q", tt.Texts())
+	}
+	x, y := d.X+d.W/2, d.Y+d.H/2
+	tt.Press(x, y)
+	tt.Frame()
+	for i := 1; i <= 6; i++ {
+		tt.Move(x-float32(i*20), y)
+		tt.Frame()
+		time.Sleep(250 * time.Millisecond)
+		tt.Frame()
+	}
+	if r, got := state(); r != rev || got != ratio {
+		t.Errorf("during the drag the server's layout changed: revision %d to %d, ratio %v to %v", rev, r, ratio, got)
+	}
+	tt.Release(x-120, y)
+	for range 3 {
+		tt.Frame()
+	}
+	waitFor(t, tt, "the drag's save", func() bool { r, _ := state(); return r != rev })
+	time.Sleep(1200 * time.Millisecond)
+	tt.Frame()
+	r, got := state()
+	if r != rev+1 || got == ratio || got != tab.Root.Ratio {
+		t.Errorf("after the drag: revision %d (from %d), ratio %v, the window's %v", r, rev, got, tab.Root.Ratio)
 	}
 }

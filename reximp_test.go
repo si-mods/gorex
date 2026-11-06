@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/internal/reximp"
 	"gorex/internal/rexpeer"
@@ -46,8 +47,8 @@ func TestRexImportCreatesSpaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	layout := fmt.Sprintf(`{"version":2,"sessions":[{"id":"REXSPACE","name":"rexspace","active":0,"tabs":[{"id":"REXTAB","name":"rexwin","root":{"ratio":0.5,"a":{"sid":%q,"name":"left"},"b":{"sid":%q,"name":"right"}},"focus":0}]}],"windows":["REXSPACE"]}`, one.ID, two.ID)
-	if err := a.client.SetLayout(json.RawMessage(layout)); err != nil {
+	seeded := fmt.Sprintf(`{"version":2,"sessions":[{"id":"REXSPACE","name":"rexspace","active":0,"tabs":[{"id":"REXTAB","name":"rexwin","root":{"ratio":0.5,"a":{"sid":%q,"name":"left"},"b":{"sid":%q,"name":"right"}},"focus":0}]}],"windows":["REXSPACE"]}`, one.ID, two.ID)
+	if err := a.client.SetLayout(json.RawMessage(seeded)); err != nil {
 		t.Fatal(err)
 	}
 	api, err := testrex.New(testrex.Options{Socket: rex.SocketPath(), Version: "test"})
@@ -88,21 +89,23 @@ func TestRexImportCreatesSpaces(t *testing.T) {
 	if imp.Label != "rexspace" || imp.Windows != 1 || imp.Blocks != 2 {
 		t.Fatalf("imported %+v", imp)
 	}
-	var ws *Workspace
-	for _, w := range a.st.workspaces {
+	// The server keeps the space, which no window shows.
+	var ws *layout.Workspace
+	saved := savedWorkspaces(t, a.client)
+	for i, w := range saved.Sessions {
 		if w.Name == "rexspace" {
-			ws = w
+			ws = &saved.Sessions[i]
 		}
 	}
-	if ws == nil || ws.app == nil || len(ws.app.tabs) != 1 {
+	if ws == nil || len(ws.Tabs) != 1 {
 		t.Fatalf("the space: %+v", ws)
 	}
-	tab := ws.app.tabs[0]
-	if tab.Name != "rexwin" || len(tab.panes()) != 2 {
+	tab := ws.Tabs[0]
+	if tab.Name != "rexwin" || len(layout.Leaves(tab.Root)) != 2 {
 		t.Fatalf("the tab: %+v", tab)
 	}
 	names := map[string]bool{}
-	for _, p := range tab.panes() {
+	for _, p := range layout.Leaves(tab.Root) {
 		names[p.Name] = true
 	}
 	if !names["left"] || !names["right"] {
@@ -116,7 +119,7 @@ func TestRexImportCreatesSpaces(t *testing.T) {
 	}
 	var already string
 	for _, s := range now {
-		if s.Label != "rexspace" && s.Label != "Detached" {
+		if s.Label != "Detached" && s.SessionID != imp.Session {
 			already = s.SessionID
 		}
 	}

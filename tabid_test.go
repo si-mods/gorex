@@ -1,9 +1,8 @@
 package main
 
 import (
-	"encoding/json"
+	"slices"
 	"testing"
-	"time"
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
@@ -15,7 +14,7 @@ import (
 func TestTabIDsLast(t *testing.T) {
 	a, _ := newTestApp(t)
 	first := a.tab()
-	res := a.command(rex.LayoutCommand{Op: "tab.create"})
+	res := clientCommand(a, rex.LayoutCommand{Op: "tab.create"})
 	if res.Code != "" || res.Tab == "" {
 		t.Fatalf("tab.create: %+v", res)
 	}
@@ -34,7 +33,7 @@ func TestTabIDsLast(t *testing.T) {
 		t.Fatalf("saved %+v", tabs)
 	}
 	b := &App{client: a.client}
-	if !b.reconcile(saved.Sessions[0].Layout, nil, nil) {
+	if !b.reconcile(saved.Sessions[0].Layout, nil) {
 		t.Fatal("nothing restored")
 	}
 	if b.tabs[0].UID != first.UID || b.tabs[1].UID != second.UID {
@@ -49,7 +48,7 @@ func TestTabIDsLast(t *testing.T) {
 		old.Tabs[i].ID = ""
 	}
 	c := &App{client: a.client}
-	if !c.reconcile(old, nil, nil) {
+	if !c.reconcile(old, nil) {
 		t.Fatal("nothing restored")
 	}
 	if c.tabs[0].UID == "" || c.tabs[1].UID == "" || c.tabs[0].UID == c.tabs[1].UID {
@@ -65,65 +64,40 @@ func TestTabIDsLast(t *testing.T) {
 func TestTabCommandsByID(t *testing.T) {
 	a, _ := newTestApp(t)
 	first := a.tab()
-	made := a.command(rex.LayoutCommand{Op: "tab.create"})
+	made := clientCommand(a, rex.LayoutCommand{Op: "tab.create"})
 	if made.Code != "" {
 		t.Fatalf("tab.create: %+v", made)
 	}
-	if res := a.command(rex.LayoutCommand{Op: "tab.rename", Tab: first.UID, Name: "logs"}); res.Code != "" || first.Name != "logs" {
+	if res := clientCommand(a, rex.LayoutCommand{Op: "tab.rename", Tab: first.UID, Name: "logs"}); res.Code != "" || first.Name != "logs" {
 		t.Fatalf("rename: %+v %q", res, first.Name)
 	}
-	if res := a.command(rex.LayoutCommand{Op: "tab.close", Tab: made.Tab}); res.Code != "" || a.tabByUID(made.Tab) != nil || len(a.tabs) != 1 {
+	if res := clientCommand(a, rex.LayoutCommand{Op: "tab.close", Tab: made.Tab}); res.Code != "" || a.tabByUID(made.Tab) != nil || len(a.tabs) != 1 {
 		t.Fatalf("close: %+v, %d tabs", res, len(a.tabs))
 	}
-	if res := a.command(rex.LayoutCommand{Op: "tab.rename", Tab: "no-such-tab", Name: "x"}); res.Code != "tab_not_found" {
+	if res := clientCommand(a, rex.LayoutCommand{Op: "tab.rename", Tab: "no-such-tab", Name: "x"}); res.Code != "tab_not_found" {
 		t.Fatalf("unknown tab: %+v", res)
 	}
 }
 
 // TestCloseLastTabKeepsSpace closes the window's last tab from a client:
-// its sessions end, but the space stays, the window showing it empty, as a
-// Rex session goes on with no windows.
+// its sessions end, but the space stays, as a Rex session goes on with no
+// windows; the window, with no other space to show, leaves it.
 func TestCloseLastTabKeepsSpace(t *testing.T) {
 	a, _ := newTestApp(t)
 	ws := a.ws
 	only := a.tab()
 	sid := only.Focus.SID
-	if res := a.command(rex.LayoutCommand{Op: "tab.close", Tab: only.UID}); res.Code != "" {
+	if res := clientCommand(a, rex.LayoutCommand{Op: "tab.close", Tab: only.UID}); res.Code != "" {
 		t.Fatalf("close: %+v", res)
 	}
-	if len(a.tabs) != 0 || a.ws != ws || ws == nil || ws.app != a {
-		t.Fatalf("after: %d tabs, space %v (was %v)", len(a.tabs), a.ws, ws)
+	if len(a.tabs) != 0 || a.st.workspaceByID(ws.ID) == nil {
+		t.Fatalf("after: %d tabs, spaces %v", len(a.tabs), a.st.workspaces)
 	}
-	if a.st.workspaceByID(ws.ID) == nil {
-		t.Fatal("the space was forgotten")
+	saved := savedWorkspaces(t, a.client)
+	if w := saved.Space(ws.ID); w == nil || len(w.Tabs) != 0 {
+		t.Fatalf("the server's space: %+v", w)
 	}
-	// The kill is sent; the session ends soon after.
-	for deadline := time.Now().Add(3 * time.Second); ; {
-		infos, err := a.client.List()
-		if err != nil {
-			t.Fatal(err)
-		}
-		running := false
-		for _, in := range infos {
-			running = running || in.ID == sid && !in.Exited
-		}
-		if !running {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("session %s still runs", sid)
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	// A client makes the next tab in the empty space.
-	if res := a.command(rex.LayoutCommand{Op: "tab.create", Space: ws.ID}); res.Code != "" || len(a.tabs) != 1 {
-		t.Fatalf("tab.create: %+v, %d tabs", res, len(a.tabs))
-	}
-	a.saveNow()
-	raw, _ := a.client.Layout()
-	var st layout.Store
-	json.Unmarshal(raw, &st)
-	if len(st.Sessions) == 0 || st.Sessions[0].ID != ws.ID {
-		t.Fatalf("saved %s", raw)
+	if infos, _ := a.client.List(); slices.ContainsFunc(infos, func(in rex.SessionInfo) bool { return in.ID == sid }) {
+		t.Error("the closed tab's session runs")
 	}
 }

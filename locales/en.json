@@ -630,6 +630,10 @@
   "@errorServerRestart": {
     "description": "Title of the dialog shown when the stale session server cannot be restarted."
   },
+  "serverLayoutReadOnly": "This GoRex session server is older than the app, so the layout cannot change. Quit GoRex and open it again, then choose Restart, to restart the server.",
+  "@serverLayoutReadOnly": {
+    "description": "Banner: the session server predates server-kept layouts, so the window shows the layout but cannot change it; the user should restart the server."
+  },
   "errorServerVersion": "The session server is of another version of GoRex: quit and end all sessions to restart it.",
   "@errorServerVersion": {
     "description": "Banner shown when the running session server is of another version."

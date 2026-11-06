@@ -158,8 +158,11 @@ type Request struct {
 	// ETag, on "list", is that of the list the client has (Response.ETag).
 	ETag string `json:"etag,omitempty"`
 	// LayoutRevision, on "setLayout", makes the change only when the
-	// server's layout is at that revision; 0 sets it whatever it is.
-	LayoutRevision uint64 `json:"layoutRevision,omitempty"`
+	// server's layout is at that revision; 0 sets it whatever it is, for a
+	// client that names CapabilityLayoutServer in Capabilities only: an
+	// app of before it would write its whole layout over the server's.
+	LayoutRevision uint64   `json:"layoutRevision,omitempty"`
+	Capabilities   []string `json:"capabilities,omitempty"`
 	// Command is the layout command of "command", and the app's answer of
 	// "command.done".
 	Command *LayoutCommand `json:"command,omitempty"`
@@ -189,14 +192,13 @@ const (
 	AppCommandTimeout = CommandTimeout / 2
 )
 
-// LayoutCommand is a change of the layout that a client of this machine,
-// as rootshell's bridge, asks the app to make ("command"): the app takes
-// the commands in order ("command.take"), makes them as its own buttons
-// do, saves the layout and answers each ("command.done"). With no window
-// to take it, the server makes a change of the layout itself, as the
-// window would; an action, but float.set_state, and a teleport are the
-// window's still. Panes are named by their session, and tabs by their
-// lasting ID (Tab), or by a session of theirs.
+// LayoutCommand is a change of the layout that a client, as rootshell's
+// bridge or the app itself, asks for ("command"): the server makes it, on
+// the layout it keeps, starting and ending the sessions of its panes. An
+// action, but float.set_state, config.reload and a teleport are the
+// window's: the app takes those in order ("command.take"), makes them and
+// answers each ("command.done"). Panes are named by their session, and
+// tabs by their lasting ID (Tab), or by a session of theirs.
 type LayoutCommand struct {
 	ID int64 `json:"id,omitempty"`
 	// Tab names the tab of a tab.* command by its lasting ID

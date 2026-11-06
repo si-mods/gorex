@@ -4,12 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"maps"
 	"os"
 	"runtime"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -37,11 +35,6 @@ type Workspace struct {
 	// kept are the live tabs of the window that last showed it, which
 	// shows them again as they were; nil when none.
 	kept *keptTabs
-	// unlisted marks the space a window shows once a client closed the
-	// last one: Rex lets a server have no sessions, so the layout leaves
-	// it out while it has no tabs. Its first tab lists it; a window going
-	// to another space drops it.
-	unlisted bool
 }
 
 // keptTabs are a window's tabs of a space it went away from.
@@ -68,22 +61,6 @@ func (st *store) unkeepAll(a *App) {
 			w.unkeep()
 		}
 	}
-}
-
-// hidden reports whether the layout leaves the workspace out: unlisted,
-// with no tabs yet.
-func (w *Workspace) hidden() bool {
-	if !w.unlisted {
-		return false
-	}
-	if w.app != nil {
-		if len(w.app.tabs) > 0 {
-			return false
-		}
-	} else if len(w.layout.Tabs) > 0 {
-		return false
-	}
-	return true
 }
 
 // status is the most urgent status of the workspace's sessions, from the
@@ -169,12 +146,17 @@ type store struct {
 	// debugWin is the window, from 1 by place, the debug hook's lines
 	// target; 0 for the one focused last.
 	debugWin int
-	last     string // the layout sent last
 	// noAccel are the menu shortcuts a keymap binding takes over, and
 	// recording takes every accelerator while the keyboard records.
 	noAccel   map[string]bool
 	recording bool
-	writer    layoutWriter
+	// base is the server's layout, as the app knows it: the one it took
+	// last, with the changes it sent since (out). The app sends what it
+	// changes of it, and nothing while readOnly, its server one of before
+	// the server made the layout's changes (rex.CapabilityLayoutServer).
+	base     savedStore
+	out      outbox
+	readOnly bool
 }
 
 // The layout the server keeps, opaque to it: every workspace, and which
@@ -188,10 +170,6 @@ type savedWorkspace = layout.Workspace
 func (st *store) saved() savedStore {
 	s := savedStore{Version: layout.Version, Sessions: []savedWorkspace{}, Windows: st.windowIDs()}
 	for _, w := range st.workspaces {
-		if w.hidden() {
-			continue
-		}
-		w.unlisted = false
 		l := w.layout
 		if w.app != nil {
 			l = w.app.snapshot()
@@ -211,7 +189,7 @@ func (st *store) windowIDs() []string {
 	slices.SortFunc(apps, func(x, y *App) int { return x.slot - y.slot })
 	ids := []string{}
 	for _, a := range apps {
-		if a.ws != nil && !a.ws.hidden() {
+		if a.ws != nil {
 			ids = append(ids, a.ws.ID)
 		}
 	}
@@ -221,283 +199,105 @@ func (st *store) windowIDs() []string {
 	return ids
 }
 
-// save sends the layout to the server, unless it is the one sent last.
+// save sends the server what the app changed of the layout since the
+// server's (base), as commands (diffLayout), after those it sent before.
 func (st *store) save() {
-	if st.client == nil {
-		return
-	}
-	b, err := json.Marshal(st.saved())
-	if err != nil {
-		log.Printf("gorex: saving the layout: %v", err)
-		return
-	}
-	if string(b) == st.last {
-		return
-	}
-	st.last = string(b)
-	st.writer.write(st.client, b)
+	st.queue()
+	st.out.kick()
 }
 
-// saveNow saves, and waits a second at most for the server to keep it.
+// queue queues what the app changed of the layout, to send.
+func (st *store) queue() {
+	for _, a := range st.apps {
+		a.saveDue, a.lastSave = false, time.Now()
+	}
+	if st.client == nil || st.readOnly {
+		return
+	}
+	now := st.saved()
+	for _, c := range diffLayout(st.base, now) {
+		st.out.add(c, nil)
+	}
+	st.base = now
+}
+
+// saveNow saves, and waits a second at most for the server to make it.
 func (st *store) saveNow() {
 	st.save()
-	st.writer.wait(time.Second)
+	st.out.wait(time.Second)
 }
 
-// layoutWriter sends layouts to the server one at a time, in the order
-// written: one waiting to be sent gives way to a newer one. Once the app
-// follows the server's layout (follow), it writes each at the revision of
-// the layout the app shows, and the server refuses it once another client,
-// or the server itself, changed the layout first: the writer takes the
-// server's then (take), dropping what it had to write, as it does when
-// the server tells of a change it did not make.
-type layoutWriter struct {
-	mu      sync.Mutex
-	next    []byte
-	client  *rex.Client
-	running bool
-	idle    chan struct{} // closed once nothing waits
-	// rev is the revision of the layout the app shows: of its own last
-	// write, or of the server's it took last. told is the latest the
-	// server told of, and check asks to read the server's to see whether
-	// it is past rev.
-	rev, told uint64
-	check     bool
-	// base is the layout at rev, as the server has it: what the app
-	// made since is in no layout of the server's yet (App.reconcile).
-	base []byte
-	// take shows the server's layout, on the main thread, and returns once
-	// it did; nil while the app does not follow the server's.
-	take func(rex.LayoutState)
-}
-
-// write sends b through c, after the layout being sent, if any.
-func (w *layoutWriter) write(c *rex.Client, b []byte) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.next, w.client = b, c
-	w.start()
-}
-
-// start runs the writer, unless it runs. Call it with mu held.
-func (w *layoutWriter) start() {
-	if w.running {
+// send asks the server for a change it makes, as a new session, after the
+// app's own changes; done runs on the main thread with its answer, once
+// the windows show the server's layout after it.
+func (st *store) send(c rex.LayoutCommand, done func(rex.LayoutCommand)) {
+	if st.readOnly {
+		if done != nil {
+			done(rex.LayoutCommand{Code: "read_only", Error: locales.ServerLayoutReadOnly()})
+		}
 		return
 	}
-	w.running, w.idle = true, make(chan struct{})
-	go w.run()
+	st.queue()
+	st.out.add(c, done)
+	st.out.kick()
 }
 
-// run sends the layout waiting until none waits, after it took the
-// server's when the server is past the app's.
-func (w *layoutWriter) run() {
-	for {
-		w.mu.Lock()
-		b, c, rev, take := w.next, w.client, w.rev, w.take
-		behind := take != nil && (w.check || w.told > w.rev)
-		w.check = false
-		if behind {
-			b = nil // written of the layout before the server's, if it moved
-		} else {
-			w.next = nil
-		}
-		if b == nil && !behind {
-			w.running = false
-			close(w.idle)
-			w.mu.Unlock()
-			return
-		}
-		w.mu.Unlock()
-		if behind {
-			w.catchUp(c, rev, take)
-			continue
-		}
-		at := rev
-		if take == nil {
-			at = 0 // whatever the server has
-		}
-		r, err := c.WriteLayout(b, at)
-		w.mu.Lock()
-		switch {
-		case c != w.client:
-			// Of a connection the writer no longer uses, as a server's
-			// whose revisions are not this one's.
-		case err != nil:
-			w.check = true // another change came first, or the write failed
-		default:
-			w.rev, w.base = r, b
-		}
-		w.mu.Unlock()
-		if err != nil {
-			log.Printf("gorex: saving the layout: %v", err)
-		}
-	}
+// use makes c the connection the app sends its changes through, and
+// follows the layout of, a server whose revisions are its own; update
+// runs a change on the main thread, nil to run it at once, as tests do.
+func (st *store) use(c *rex.Client, update func(func())) {
+	st.out.use(c, update, st.takeLayout)
 }
 
-// catchUp reads the server's layout, and has the app take it when it is
-// past rev, the app's.
-func (w *layoutWriter) catchUp(c *rex.Client, rev uint64, take func(rex.LayoutState)) {
-	ls, err := c.LayoutState()
-	w.mu.Lock()
-	if c != w.client {
-		w.mu.Unlock()
-		return
-	}
-	if err != nil || ls.Revision == rev {
-		// Nothing to take: the server is where the app is, what waits
-		// goes, or the server says nothing.
-		w.told = min(w.told, w.rev)
-	}
-	w.mu.Unlock()
-	if err != nil {
-		log.Printf("gorex: reading the layout: %v", err)
-		return
-	}
-	if ls.Revision != rev {
-		take(ls)
-	}
-}
-
-// tell notes that the server's layout, of c, is at rev: past the app's, the
-// app takes it.
-func (w *layoutWriter) tell(c *rex.Client, rev uint64) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if c != w.client {
-		return
-	}
-	w.told = max(w.told, rev)
-	if w.told > w.rev {
-		w.start()
-	}
-}
-
-// follow has the app take the layouts of c the server tells of from now
-// on, through take, and checks once for one it did not tell of.
-func (w *layoutWriter) follow(c *rex.Client, take func(rex.LayoutState)) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if c != w.client {
-		return
-	}
-	w.take, w.check = take, true
-	w.start()
-}
-
-// use makes c the connection the writer sends through, a server's whose
-// revisions are its own: the app shows none of its layouts yet.
-func (w *layoutWriter) use(c *rex.Client) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	w.client, w.next, w.take, w.rev, w.told, w.check, w.base = c, nil, nil, 0, 0, false, nil
-}
-
-// revision is the revision of the layout the app shows.
-func (w *layoutWriter) revision() uint64 {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.rev
-}
-
-// took notes that the app shows the server's layout raw, at rev, dropping
-// what it had to write of the one before; false, and nothing done, for a
-// layout older than the one the app shows.
-func (w *layoutWriter) took(rev uint64, raw []byte) bool {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if rev < w.rev {
-		return false
-	}
-	w.rev, w.next, w.base = rev, nil, raw
-	return true
-}
-
-// known is what the layout at rev names: its tabs' IDs and its panes'
-// keys (paneKey); nil when the app followed none.
-func (w *layoutWriter) known() map[string]bool {
-	w.mu.Lock()
-	raw := w.base
-	w.mu.Unlock()
-	if raw == nil {
-		return nil
-	}
-	return storeKeys(layout.Parse(raw))
-}
-
-// wait waits until what was written is sent, for d at most.
-func (w *layoutWriter) wait(d time.Duration) {
-	w.mu.Lock()
-	idle, running := w.idle, w.running
-	w.mu.Unlock()
-	if !running {
-		return
-	}
-	select {
-	case <-idle:
-	case <-time.After(d):
-	}
-}
-
-// follow has the app follow the layout of c's server: on each change
-// another client or the server made, the workspaces take it, and the
-// windows show it (takeLayout). update runs a change on the main thread.
-func (st *store) follow(c *rex.Client, update func(func())) {
+// follow has the app follow the layout of c's server: on each change, the
+// app's own as the server made it and another client's alike, the
+// workspaces take it, and the windows show it (takeLayout).
+func (st *store) follow(c *rex.Client) {
 	if err := c.Subscribe(); err != nil {
 		log.Printf("gorex: following the layout: %v", err)
 		return
 	}
-	st.writer.follow(c, func(ls rex.LayoutState) {
-		done := make(chan struct{})
-		update(func() {
-			defer close(done)
-			if st.client == c {
-				st.takeLayout(ls)
-			}
-		})
-		select {
-		case <-done:
-		case <-c.Closed():
-		}
-	})
+	st.out.follow(c)
 	for ev := range c.Events() {
 		if ev.Kind == "layout" {
-			st.writer.tell(c, ev.Revision)
+			st.out.tell(c, ev.Revision)
 		}
 	}
 }
 
-// takeLayout shows the server's layout ls, past the one the app shows: the
-// workspaces take it, and the windows show their spaces' tabs of it,
-// keeping the tabs and panes they have of it (App.reconcile), and those
-// they made since the layout the server had of them. Call it on the main
-// thread.
-func (st *store) takeLayout(ls rex.LayoutState) {
-	if ls.Revision == st.writer.revision() {
-		return
+// takeLayout shows the server's layout ls: the workspaces take it, and
+// the windows show their spaces' tabs of it, keeping the tabs and panes
+// they have of it (App.reconcile). It does not while a gesture runs, or
+// while the app has changes of its own to send, which go first: false
+// then. Call it on the main thread.
+func (st *store) takeLayout(ls rex.LayoutState) bool {
+	for _, a := range st.apps {
+		if a.gesturing() {
+			a.saveDue = true // a save once it ends, and a take after it
+			return false
+		}
 	}
-	known := st.writer.known()
-	if !st.writer.took(ls.Revision, ls.Layout) {
-		return
+	if slices.ContainsFunc(st.apps, func(a *App) bool { return a.saveDue }) {
+		st.save()
+		if st.out.pending() {
+			return false
+		}
 	}
 	s := layout.Parse(ls.Layout)
-	st.reconcile(s, known)
-	// What the app shows now is the server's layout, which it need not
-	// write back, unless it kept tabs or panes of its own, or Parse named
-	// browser panes: those it writes once.
-	if b, err := json.Marshal(st.saved()); err == nil && !s.Named && maps.Equal(storeKeys(layout.Parse(b)), storeKeys(s)) {
-		st.last = string(b)
+	same := sameArrangement(s, st.base)
+	st.base = s
+	if !same {
+		st.reconcile(s)
 	}
-	st.save()
+	return true
 }
 
 // reconcile makes the workspaces those of s, in its order, keeping the
-// workspace of each id it has: the windows show their spaces' tabs of s,
-// and keep the tabs and panes of their own that known, what the server's
-// layout had before, does not name (App.reconcile). A space s no longer
-// has goes; a window that showed it, or whose space s left with no tabs,
-// shows another no window does, or closes. A space the layout leaves out
-// (hidden) stays.
-func (st *store) reconcile(s savedStore, known map[string]bool) {
+// workspace of each id it has: the windows show their spaces' tabs of s
+// (App.reconcile), and the spaces s.Windows says, by their places. A
+// space s no longer has goes; a window that showed it, or whose space s
+// left with no tabs, shows another no window does, or closes.
+func (st *store) reconcile(s savedStore) {
 	var next, gone []*Workspace
 	var homeless []*App
 	for _, sw := range s.Sessions {
@@ -507,7 +307,7 @@ func (st *store) reconcile(s savedStore, known map[string]bool) {
 		}
 		w.Name, w.Color = sw.Name, sw.Color
 		if a := w.app; a != nil {
-			if !a.reconcile(sw.Layout, nil, known) {
+			if !a.reconcile(sw.Layout, nil) {
 				// Emptied by another client: the space stays, as Rex
 				// keeps a session of no windows, and the window goes on.
 				a.leave()
@@ -523,11 +323,7 @@ func (st *store) reconcile(s savedStore, known map[string]bool) {
 	}
 	for _, w := range st.workspaces {
 		if !slices.Contains(next, w) {
-			if w.hidden() {
-				next = append(next, w)
-			} else {
-				gone = append(gone, w)
-			}
+			gone = append(gone, w)
 		}
 	}
 	st.workspaces = next
@@ -537,6 +333,19 @@ func (st *store) reconcile(s savedStore, known map[string]bool) {
 			homeless = append(homeless, a)
 		}
 		st.remove(w)
+	}
+	// The windows show the spaces the layout says, by their places.
+	apps := slices.Clone(st.apps)
+	slices.SortFunc(apps, func(x, y *App) int { return x.slot - y.slot })
+	for i, a := range apps {
+		if i >= len(s.Windows) {
+			break
+		}
+		if w := st.byID(s.Windows[i]); w != nil && w != a.ws && w.app == nil && a.ws != nil {
+			a.park()
+			a.show(w, nil)
+			homeless = slices.DeleteFunc(homeless, func(o *App) bool { return o == a })
+		}
 	}
 	st.rehome(homeless, false)
 }
@@ -591,8 +400,8 @@ func (st *store) read() ([]byte, error) {
 	if err != nil {
 		return st.client.Layout() // a server of before revisions
 	}
-	st.writer.took(ls.Revision, ls.Layout)
-	st.last = string(ls.Layout)
+	st.out.took(ls.Revision)
+	st.base = layout.Parse(ls.Layout)
 	return ls.Layout, nil
 }
 
@@ -877,13 +686,20 @@ func (st *store) adopt(client *rex.Client) bool {
 			st.hello, err = next.Hello()
 		}
 	}
-	if err == nil && st.hello.Version != rex.ProtocolVersion {
+	// A server of before the server made the layout's changes, as one the
+	// user did not restart yet on Windows, shows the layout but takes no
+	// change of the app's.
+	st.readOnly = err == nil && !st.hello.Can(rex.CapabilityLayoutServer)
+	switch {
+	case err == nil && st.hello.Version != rex.ProtocolVersion:
 		st.errMsg = locales.Messages.ErrorServerVersion
+	case st.readOnly:
+		st.errMsg = locales.Messages.ServerLayoutReadOnly
 	}
 	update := func(fn func()) { go mygo.RunOnMain(fn) }
-	st.writer.use(st.client)
+	st.use(st.client, update)
 	go st.takeCommands(st.client, update)
-	go st.follow(st.client, update)
+	go st.follow(st.client)
 	// The windows open take the new connection, attached again to their
 	// sessions, as the old one closed, and show the layout of the server,
 	// which may have changed meanwhile.
@@ -906,7 +722,7 @@ func (st *store) adopt(client *rex.Client) bool {
 		if raw, err := st.read(); err != nil {
 			log.Printf("gorex: reading the layout: %v", err)
 		} else if len(raw) > 0 && string(raw) != "null" {
-			st.reconcile(layout.Parse(raw), nil)
+			st.reconcile(layout.Parse(raw))
 		}
 	}
 	// Each window shows its space again; those whose space the server
@@ -1112,24 +928,13 @@ func (st *store) closed(a *App) {
 
 // show shows w in the window: the tabs of its layout, attached to the
 // sessions the server has. With others, the sessions of this machine
-// neither w nor others name get tabs too. An empty workspace gets a tab.
-func (a *App) show(w *Workspace, others map[string]bool) { a.showTabs(w, others, true) }
-
-// showEmpty shows a workspace, opening no tab in one that has none: a
-// client that makes the tabs it wants, as a Rex client does when it
-// creates a session with no windows.
-func (a *App) showEmpty(w *Workspace) { a.showTabs(w, nil, false) }
-
-// showTabs shows a workspace's saved tabs, and opens one in its home
-// directory when it has none and fallback asks for it. A space this window
-// showed before shows its kept tabs again, as they were; another window's
-// kept tabs close, and the space shows from its layout.
-func (a *App) showTabs(w *Workspace, others map[string]bool, fallback bool) {
+// neither w nor others name get tabs too. An empty workspace gets a tab
+// in the home directory. A space this window showed before shows its kept
+// tabs again, as they were; another window's kept tabs close, and the
+// space shows from its layout.
+func (a *App) show(w *Workspace, others map[string]bool) {
 	if old := a.ws; old != nil && old != w {
 		a.park()
-		if old.hidden() && a.st != nil {
-			a.st.remove(old)
-		}
 	}
 	a.ws, w.app = w, a
 	if k := w.kept; k != nil && k.app == a {
@@ -1153,7 +958,7 @@ func (a *App) showTabs(w *Workspace, others map[string]bool, fallback bool) {
 	}
 	w.unkeep()
 	a.tabs, a.active, a.focusReq, a.renaming = nil, 0, nil, nil
-	if !a.reconcile(w.layout, others, nil) && fallback {
+	if !a.reconcile(w.layout, others) {
 		home, _ := os.UserHomeDir()
 		a.newTabOn(nil, home)
 	}
@@ -1310,12 +1115,7 @@ func (a *App) renameWorkspace(name string) {
 
 // closeWorkspace ends the sessions of the window's workspace and forgets
 // it; the window shows another, which no window shows, or a new one.
-func (a *App) closeWorkspace() { a.closeWorkspaceFor(false) }
-
-// closeWorkspaceFor closes the window's workspace; for a client, the last
-// one leaves the window on an unlisted space, so that the layout has no
-// spaces, as a Rex server may have no sessions.
-func (a *App) closeWorkspaceFor(client bool) {
+func (a *App) closeWorkspace() {
 	st, w := a.st, a.ws
 	if st == nil || w == nil {
 		return
@@ -1332,17 +1132,10 @@ func (a *App) closeWorkspaceFor(client bool) {
 	next := st.hiddenAfter(w)
 	st.remove(w)
 	a.detach()
-	switch {
-	case next != nil:
-		a.show(next, nil)
-	case client:
-		// No tab: the client makes the next session it wants.
+	if next == nil {
 		next = st.addWorkspace()
-		next.unlisted = true
-		a.showEmpty(next)
-	default:
-		a.show(st.addWorkspace(), nil)
 	}
+	a.show(next, nil)
 	st.save()
 }
 

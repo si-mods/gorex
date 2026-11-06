@@ -213,13 +213,13 @@ func TestApplySpaces(t *testing.T) {
 	}
 }
 
-// TestApplyAfterWindowless makes a command the app answers it has no
-// window to make.
-func TestApplyAfterWindowless(t *testing.T) {
+// TestApplyWithApp makes a change of the layout while an app takes
+// commands: the server makes it, and only an action reaches the app.
+func TestApplyWithApp(t *testing.T) {
 	s, c := applyFixture(t)
 	app := pipe(s, "")
 	defer app.Close()
-	seen := make(chan bool, 1)
+	took := make(chan string, 4)
 	go func() {
 		for {
 			cmd, err := app.TakeCommand()
@@ -227,11 +227,8 @@ func TestApplyAfterWindowless(t *testing.T) {
 				return
 			}
 			if cmd != nil {
-				app.CommandDone(LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"})
-				// The answer returns once the server made the change: a
-				// window the app opens next reads it.
-				raw, _ := app.Layout()
-				seen <- bytes.Contains(raw, []byte(`"late"`))
+				took <- cmd.Op
+				app.CommandDone(LayoutCommand{ID: cmd.ID})
 			}
 		}
 	}()
@@ -248,8 +245,9 @@ func TestApplyAfterWindowless(t *testing.T) {
 	if st := storeOf(t, c); st.Space(res.Space) == nil {
 		t.Errorf("not made: %+v", res)
 	}
-	if !<-seen {
-		t.Error("the app's answer returned before the server made the change")
+	command(t, c, LayoutCommand{Op: "action", Action: "tab.rename"})
+	if op := <-took; op != "action" {
+		t.Errorf("the app took %q, want only the action", op)
 	}
 }
 
@@ -351,10 +349,10 @@ func TestApplyNoChange(t *testing.T) {
 	}
 }
 
-// TestApplyLeavesRemotePanes closes a tab and a space that have a pane of
-// another host with no window: the server, which cannot end that pane's
-// session, leaves them to the window rather than drop the pane.
-func TestApplyLeavesRemotePanes(t *testing.T) {
+// TestApplyDropsRemotePanes closes a tab that has a pane of another host:
+// the server ends this machine's session and drops the host's pane, whose
+// session is the app's to end.
+func TestApplyDropsRemotePanes(t *testing.T) {
 	_, c := applyFixture(t)
 	cmd, dir := testShell()
 	in, err := c.Create(CreateOptions{Command: cmd, Dir: dir})
@@ -362,18 +360,9 @@ func TestApplyLeavesRemotePanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	seed(t, c, layout.Tab{ID: "mixed", Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: in.ID}, B: &layout.Node{SID: "far", Host: "h1"}}})
-	for _, x := range []LayoutCommand{{Op: "tab.close", Tab: "mixed"}, {Op: "space.close", Space: "w"}} {
-		if res, _ := c.Command(x); res.Code != "desktop_unavailable" {
-			t.Errorf("%s: %+v", x.Op, res)
-		}
-	}
-	if _, ok := liveSession(t, c, in.ID); !ok || len(storeOf(t, c).Sessions[0].Tabs) != 1 {
-		t.Error("the tab or its session went")
-	}
-	// Its pane of this machine closes; the host's stays, with its tab.
-	command(t, c, LayoutCommand{Op: "pane.close", SID: in.ID})
-	if tabs := storeOf(t, c).Sessions[0].Tabs; len(tabs) != 1 || tabs[0].Root.SID != "far" {
-		t.Errorf("after closing the local pane: %+v", tabs)
+	command(t, c, LayoutCommand{Op: "tab.close", Tab: "mixed"})
+	if _, ok := liveSession(t, c, in.ID); ok || len(storeOf(t, c).Sessions[0].Tabs) != 0 {
+		t.Error("the tab or its session stays")
 	}
 }
 

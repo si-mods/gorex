@@ -14,9 +14,9 @@ import (
 	"gorex/internal/layout"
 )
 
-// applied are the layout commands the server makes itself while no GoRex
-// window takes them (apply), as the window would; the others, actions and
-// teleports, need the window.
+// applied are the layout commands the server makes itself (apply); the
+// others, actions but float.set_state, config.reload and teleports, need
+// the window.
 var applied = map[string]bool{
 	"space.create": true, "space.rename": true, "space.close": true,
 	"tab.create": true, "tab.close": true, "tab.rename": true, "tab.move": true,
@@ -25,14 +25,14 @@ var applied = map[string]bool{
 	"tab.set": true, "windows.set": true,
 }
 
-// apply makes a change of the layout a client asks for with no window to
-// make it: on the layout the server keeps, starting and ending the
-// sessions of its panes here, as the window would. A command that needs
-// the window is answered so.
+// applies tells a command the server makes itself.
+func applies(c LayoutCommand) bool {
+	return applied[c.Op] || c.Op == "action" && c.Action == "float.set_state"
+}
+
+// apply makes a change of the layout a client asks for: on the layout the
+// server keeps, starting and ending the sessions of its panes here.
 func (s *Server) apply(c LayoutCommand) LayoutCommand {
-	if !applied[c.Op] && (c.Op != "action" || c.Action != "float.set_state") {
-		return LayoutCommand{ID: c.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}
-	}
 	a := &applying{s: s}
 	res := s.applyHeld(c, a)
 	// The sessions of the panes it closed end once the layout no longer
@@ -255,19 +255,6 @@ func tabHost(t *layout.Tab) string {
 		}
 	}
 	return ""
-}
-
-// hasRemote tells a tab with a pane of another host's session: the server
-// cannot end that session, and does not close the tab with no window.
-func hasRemote(t *layout.Tab) bool {
-	for _, r := range t.Roots() {
-		for _, l := range layout.Leaves(r) {
-			if l.Host != "" && l.SID != "" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // hasLocal tells a tab with a session of this machine's, which the
@@ -523,11 +510,8 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		if w == nil {
 			return fail("space_not_found", "no such space in the GoRex layout")
 		}
-		for i := range w.Tabs {
-			if hasRemote(&w.Tabs[i]) {
-				return fail("desktop_unavailable", "the space has panes of another host, which the GoRex window ends")
-			}
-		}
+		// Another host's sessions are the app's to end, as its user closes
+		// them: the server drops their panes.
 		for _, t := range w.Tabs {
 			for _, r := range t.Roots() {
 				a.end(r)
@@ -566,9 +550,6 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 	t := p.tab()
 	switch c.Op {
 	case "tab.close":
-		if hasRemote(t) {
-			return fail("desktop_unavailable", "the tab has panes of another host, which the GoRex window ends")
-		}
 		for _, r := range t.Roots() {
 			a.end(r)
 		}

@@ -688,6 +688,8 @@ func (c *Client) LayoutState() (LayoutState, error) {
 	return st, nil
 }
 
+// SetLayout sets the whole layout, whatever the server has: for tests and
+// tools that seed one. The app changes it with commands (Command).
 func (c *Client) SetLayout(l json.RawMessage) error {
 	return c.SetLayoutAt(l, 0)
 }
@@ -710,7 +712,7 @@ func (c *Client) SetLayoutAt(l json.RawMessage, revision uint64) error {
 // subscribed tells its own change from another's by it.
 func (c *Client) WriteLayout(l json.RawMessage, revision uint64) (uint64, error) {
 	var st LayoutState
-	if err := c.call(Request{Op: "setLayout", Layout: l, LayoutRevision: revision}, &st); err != nil {
+	if err := c.call(Request{Op: "setLayout", Layout: l, LayoutRevision: revision, Capabilities: []string{CapabilityLayoutServer}}, &st); err != nil {
 		return 0, err
 	}
 	if st.Revision > 0 {
