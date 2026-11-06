@@ -16,8 +16,45 @@ const Version = 2
 
 // Parse reads a layout the server keeps, a workspace for the tabs of an
 // older GoRex. Workspaces without an id, or of an id already read, and
-// windows of none, are dropped; a workspace without a name gets one.
+// windows of none, are dropped; a workspace without a name gets one, and
+// a browser pane without an ID one of its place (Named tells it did), the
+// same at every read of that layout.
 func Parse(raw []byte) Store {
+	s := parse(raw)
+	for _, w := range s.Sessions {
+		for i, t := range w.Tabs {
+			tab := t.ID
+			if tab == "" {
+				tab = fmt.Sprintf("%s.%d", w.ID, i)
+			}
+			if nameBrowsers(t.Root, "web:"+tab+":r") {
+				s.Named = true
+			}
+			for j, f := range t.Floats {
+				if nameBrowsers(f.Pane, fmt.Sprintf("web:%s:f%d", tab, j)) {
+					s.Named = true
+				}
+			}
+		}
+	}
+	return s
+}
+
+// nameBrowsers gives each browser pane of n that has none the ID of its
+// place in the tree, at, and reports whether it gave one.
+func nameBrowsers(n *Node, at string) bool {
+	if n == nil {
+		return false
+	}
+	if n.URL != "" && n.ID == "" {
+		n.ID = at
+		return true
+	}
+	a := nameBrowsers(n.A, at+"a")
+	return nameBrowsers(n.B, at+"b") || a
+}
+
+func parse(raw []byte) Store {
 	var s Store
 	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
 		return Store{Version: Version}
@@ -52,7 +89,8 @@ func Parse(raw []byte) Store {
 // NewSpaceID returns a new workspace's id.
 func NewSpaceID() string { return rand.Text()[:12] }
 
-// NewTabID makes a tab's lasting ID, a UUID version 7.
+// NewTabID makes a tab's lasting ID, a UUID version 7, or a browser
+// pane's.
 func NewTabID() string {
 	var b [16]byte
 	ms := uint64(time.Now().UnixMilli())

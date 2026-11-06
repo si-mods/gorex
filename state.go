@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"math"
 	"net/url"
 	"os"
@@ -32,7 +33,7 @@ import (
 type Tab struct {
 	ID int
 	// UID is the tab's lasting ID, layout.Tab.ID: makeTab gives one to
-	// every tab made, restore keeps the saved one, and clients name the
+	// every tab made, reconcile keeps the saved one, and clients name the
 	// tab by it. ID is only this window's handle for it.
 	UID  string
 	Name string // the name the user gave it, "" to follow its panes
@@ -379,8 +380,11 @@ func (p *Pane) close() {
 type browserPane struct {
 	web *mygo.WebView
 	// url is the page the pane shows, as the layout keeps it, and addr
-	// the text of the address field.
-	url, addr string
+	// the text of the address field; id names the pane in the layout
+	// (layout.Node.ID), and synced is the URL the layout had when the
+	// window last wrote or read it: one the server has past it is another
+	// client's, which the pane follows.
+	url, addr, id, synced string
 	// auto gives the address field the keyboard when the pane opens, in
 	// place of the page: a new pane has the URL of the page to type.
 	auto bool
@@ -827,7 +831,7 @@ func (a *App) newBrowserPane(url string) *Pane {
 	if url == browserStart {
 		addr = "" // the field says its placeholder, and the URL is typed
 	}
-	p := &Pane{ID: a.id(), browser: &browserPane{url: url, addr: addr, auto: true}}
+	p := &Pane{ID: a.id(), browser: &browserPane{url: url, addr: addr, id: layout.NewTabID(), auto: true}}
 	if a.win == nil {
 		// A view without a window, as in tests: the pane keeps its URL,
 		// and shows no page.
@@ -2699,8 +2703,9 @@ func (a *App) savedTab(t *Tab) savedTab {
 			return nil
 		}
 		if p := n.Pane; p != nil {
-			if p.browser != nil {
-				return &savedNode{Name: p.Name, URL: p.browser.url}
+			if b := p.browser; b != nil {
+				b.synced = b.url
+				return &savedNode{Name: p.Name, URL: b.url, ID: b.id}
 			}
 			if p.note != nil {
 				return &savedNode{Name: p.Name, Kind: noteKind, Note: p.note.id, NoteSize: p.note.size, NotePreview: p.note.preview}
@@ -2769,32 +2774,133 @@ func (a *App) save() {
 	}
 }
 
-// restore opens the tabs of a saved layout, attaching to the sessions
-// the server still has and starting new ones in place of those it lost.
-// With others, sessions of this machine that neither the layout nor
-// others name get tabs too, rather than running unseen. It reports
-// whether it opened a tab.
-func (a *App) restore(l savedLayout, others map[string]bool) bool {
-	if a.client == nil || len(l.Tabs) == 0 && others == nil {
+// reconcile shows the tabs of layout l in the window, attached to the
+// sessions the server has, keeping what the window has of them already: a
+// tab by its ID, a pane by its key (paneKey), terminal, page and note as
+// they are. A pane new to the window attaches, or starts a new session in
+// place of one the server lost; one l no longer has closes, its session
+// going on. The active tab and the tabs' focus are l's, and the keyboard
+// moves only with a focus that moved. With others, sessions of this
+// machine that neither l nor others name get tabs too, rather than running
+// unseen. It reports whether the window has a tab. A window with no tabs,
+// as one that opens, restores l.
+//
+// With known, what the server's layout named when the window last agreed
+// with it (layoutWriter.known), a tab or pane neither known nor l names is
+// the window's own, made since and not written yet, as a split a client
+// asked for whose write the server refused: it stays, a tab as it is, a
+// pane beside the pane it was beside, or floating as it was, else in a tab
+// of its own. The caller writes it then.
+func (a *App) reconcile(l savedLayout, others, known map[string]bool) bool {
+	if a.client == nil || len(a.tabs) == 0 && len(l.Tabs) == 0 && others == nil {
 		return false
 	}
-	live := map[string]rex.SessionInfo{}
-	if infos, err := a.client.List(); err == nil {
-		for _, in := range infos {
-			if !in.Exited {
-				live[in.ID] = in
+	wasTab := a.tab()
+	var was *Pane
+	if wasTab != nil {
+		was = wasTab.Focus
+	}
+	tabs := map[string]*Tab{}
+	index := map[string]*Pane{}
+	var before []*Pane
+	for _, t := range a.tabs {
+		tabs[t.UID] = t
+		for _, p := range t.allPanes() {
+			before = append(before, p)
+			if k := p.key(); k != "" && index[k] == nil {
+				index[k] = p
 			}
 		}
 	}
+	kept := map[*Pane]bool{}
 	used := map[string]bool{}
+	// The window's own, which l does not have yet.
+	var ownTabs []*Tab
+	var ownPanes []ownPane
+	if known != nil {
+		named := layoutKeys(l)
+		for _, t := range a.tabs {
+			ps := t.allPanes()
+			if !known["tab:"+t.UID] && !named["tab:"+t.UID] &&
+				!slices.ContainsFunc(ps, func(p *Pane) bool { return named[p.key()] }) {
+				ownTabs = append(ownTabs, t)
+				delete(tabs, t.UID)
+				for _, p := range ps {
+					kept[p], used[p.SID] = true, p.host == nil && p.SID != ""
+				}
+				continue
+			}
+			for _, p := range ps {
+				if k := p.key(); k != "" && !known[k] && !named[k] {
+					ownPanes = append(ownPanes, a.ownPaneOf(p))
+					kept[p], used[p.SID] = true, p.host == nil && p.SID != ""
+				}
+			}
+		}
+	}
+	// What the server runs, as the windows last polled it: a session the
+	// list does not have yet, as one a client just made, asks it again.
+	live := map[string]rex.SessionInfo{}
+	listed := false
+	list := func() {
+		if listed {
+			return
+		}
+		listed = true
+		if infos, err := a.client.List(); err == nil {
+			for _, in := range infos {
+				if !in.Exited {
+					live[in.ID] = in
+				}
+			}
+		}
+	}
+	if a.st != nil && a.st.infos != nil && others == nil {
+		for id, in := range a.st.infos {
+			if !in.Exited {
+				live[id] = in
+			}
+		}
+	} else {
+		list()
+	}
 	// A pane of a host attaches once the host connects, and closes then
 	// if its session is gone; one of a host no longer saved goes now.
 	var load func(s *savedNode, t *Tab, parent *Node) *Node
 	load = func(s *savedNode, t *Tab, parent *Node) *Node {
-		n := &Node{ID: a.id(), Parent: parent}
 		if s.A == nil || s.B == nil {
+			if p := index[paneKey(s)]; p != nil && !kept[p] {
+				kept[p] = true
+				if s.Host == "" && s.SID != "" {
+					used[s.SID] = true
+				}
+				p.Name, p.Tab = s.Name, t
+				if p.note != nil {
+					p.note.size, p.note.preview = clampNoteSize(s.NoteSize), s.NotePreview
+				}
+				// Another client's page; the window's own navigation since
+				// it last wrote the layout stays.
+				if b := p.browser; b != nil && s.URL != b.synced {
+					b.url, b.addr, b.synced = s.URL, s.URL, s.URL
+					if b.web != nil {
+						b.web.Page().LoadURL(s.URL)
+					}
+				}
+				n := p.Node
+				if n == nil {
+					n = &Node{ID: a.id()}
+				}
+				n.Pane, n.Parent, n.A, n.B = p, parent, nil, nil
+				p.Node = n
+				return n
+			}
+			n := &Node{ID: a.id(), Parent: parent}
 			var p *Pane
 			in, isLive := live[s.SID]
+			if !isLive && s.Host == "" && s.SID != "" {
+				list()
+				in, isLive = live[s.SID]
+			}
 			switch {
 			case s.Kind == noteKind:
 				p = a.newNotePane(s.Note)
@@ -2803,7 +2909,10 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			case s.URL != "":
 				p = a.newBrowserPane(s.URL)
 				p.Name = s.Name
-				p.browser.auto = false
+				p.browser.auto, p.browser.synced = false, s.URL
+				if s.ID != "" && index[paneKey(s)] == nil {
+					p.browser.id = s.ID
+				}
 			case s.Host != "":
 				h := a.hostByID(s.Host)
 				if h == nil || s.SID == "" {
@@ -2834,6 +2943,7 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			n.Pane = p
 			return n
 		}
+		n := &Node{ID: a.id(), Parent: parent}
 		n.Vertical, n.Ratio = s.Vertical, min(max(s.Ratio, 0.05), 0.95)
 		n.A, n.B = load(s.A, t, n), load(s.B, t, n)
 		// The side left takes the place of a split whose other side went.
@@ -2849,13 +2959,24 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 		}
 		return n
 	}
+	a.tabs = nil
 	for _, st := range l.Tabs {
-		t := a.makeTab(st.ID)
+		t := tabs[st.ID]
+		reused := t != nil && st.ID != ""
+		if reused {
+			delete(tabs, st.ID)
+			t.Root, t.Floats, t.Zoom = nil, nil, nil
+		} else {
+			t = a.makeTab(st.ID)
+		}
 		t.Name = st.Name
 		// Before its floats, which a canvas keeps where they were.
 		t.canvas = loadCanvas(st.Canvas)
 		if st.Root != nil {
 			t.Root = load(st.Root, t, nil)
+		}
+		for _, p := range t.panes() {
+			p.float = nil // a float that docked
 		}
 		// The saved float with the focus, by its place among the saved
 		// floats: a float that does not come shifts no index as it does.
@@ -2873,14 +2994,20 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 				continue
 			}
 			p := n.Pane
-			f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
+			f := p.float // the float it was, which stays as it moves
+			if f == nil {
+				f = &Float{Pane: p}
+			}
+			f.X, f.Y, f.W, f.H, f.Hidden, f.Zoom = sf.X, sf.Y, sf.W, sf.H, sf.Hidden, sf.Zoom
 			f.clamp()
-			p.Node = &Node{ID: a.id(), Pane: p}
 			p.float = f
 			t.Floats = append(t.Floats, f)
 			if i == wanted {
 				focusedFloat = f
 			}
+		}
+		if !slices.Contains(t.Floats, t.hiddenLast) {
+			t.hiddenLast = nil
 		}
 		if t.Root == nil {
 			if len(t.Floats) == 0 {
@@ -2890,22 +3017,38 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			// their place, as it does when the last tiled pane closes.
 			a.promoteFloat(t)
 		}
-		ps := t.panes()
-		for _, p := range ps {
-			t.setFocus(p)
-		}
-		for _, f := range t.Floats {
-			t.setFocus(f.Pane)
+		ps, all := t.panes(), t.allPanes()
+		if reused {
+			// The panes it had keep their order of use.
+			t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return !slices.Contains(all, q) })
+		} else {
+			for _, p := range all {
+				t.setFocus(p)
+			}
 		}
 		// A canvas has no tiled pane: its focus is a float's.
+		want := t.Focus
+		if !slices.Contains(all, want) {
+			want = all[len(all)-1]
+		}
 		if len(ps) > 0 {
-			t.setFocus(ps[min(max(st.Focus, 0), len(ps)-1)])
+			want = ps[min(max(st.Focus, 0), len(ps)-1)]
 		}
 		if st.Zoom && len(ps) > 1 {
-			t.Zoom = t.Focus
+			t.Zoom = want
 		}
 		if focusedFloat != nil && slices.Contains(t.Floats, focusedFloat) && !focusedFloat.Hidden {
-			t.setFocus(focusedFloat.Pane)
+			want = focusedFloat.Pane
+		}
+		if t.Focus != want {
+			t.setFocus(want)
+		}
+		// The panes new to it go in its order of use behind the focus,
+		// which stays.
+		for _, p := range all {
+			if !slices.Contains(t.recent, p) {
+				t.recentBehind(p)
+			}
 		}
 		a.tabs = append(a.tabs, t)
 		// A canvas saved with the setting on, which is off now, is tiled
@@ -2921,13 +3064,166 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			a.tabs = append(a.tabs, a.sessionTab(nil, in))
 		}
 	}
+	a.tabs = append(a.tabs, ownTabs...)
+	for _, o := range ownPanes {
+		a.keepOwn(o)
+	}
+	// What l no longer has closes; the sessions go on.
+	for _, p := range before {
+		if kept[p] {
+			continue
+		}
+		if a.findPane == p {
+			a.closeFind()
+		}
+		p.end()
+		p.browser.destroy()
+	}
+	if a.renaming != nil && !slices.Contains(a.tabs, a.renaming) {
+		a.renaming = nil
+	}
+	if a.paneRenaming != nil && a.paneRenaming.closed {
+		a.paneRenaming, a.paneNameFocus = nil, false
+	}
+	if a.focusReq != nil && a.focusReq.closed {
+		a.focusReq = nil
+	}
 	if len(a.tabs) == 0 {
+		a.active, a.focusReq = 0, nil
 		return false
 	}
 	a.active = min(max(l.Active, 0), len(a.tabs)-1)
 	a.groupTabs()
-	a.focusReq = a.tab().Focus
+	if now := a.tab(); now != wasTab || now.Focus != was {
+		a.focusReq = now.Focus
+	}
 	return true
+}
+
+// paneKey names a pane of a layout for as long as the pane lasts: by its
+// session and the session's host, its note, or its browser's ID; "" for
+// none.
+func paneKey(s *savedNode) string {
+	switch {
+	case s.Kind == noteKind && s.Note != "":
+		return "note:" + s.Note
+	case s.URL != "":
+		if s.ID == "" {
+			return ""
+		}
+		return "web:" + s.ID
+	case s.SID != "":
+		return s.Host + "/" + s.SID
+	}
+	return ""
+}
+
+// key is the pane's paneKey.
+func (p *Pane) key() string {
+	n := savedNode{SID: p.SID}
+	if p.host != nil {
+		n.Host = p.host.ID
+	}
+	if p.browser != nil {
+		n.URL, n.ID = p.browser.url, p.browser.id
+	}
+	if p.note != nil {
+		n.Kind, n.Note = noteKind, p.note.id
+	}
+	return paneKey(&n)
+}
+
+// layoutKeys are what l names: its tabs' IDs, as "tab:ID", and its panes'
+// keys (paneKey).
+func layoutKeys(l savedLayout) map[string]bool {
+	out := map[string]bool{}
+	var walk func(n *savedNode)
+	walk = func(n *savedNode) {
+		if n == nil {
+			return
+		}
+		if k := paneKey(n); k != "" {
+			out[k] = true
+		}
+		walk(n.A)
+		walk(n.B)
+	}
+	for _, t := range l.Tabs {
+		out["tab:"+t.ID] = true
+		for _, n := range t.Roots() {
+			walk(n)
+		}
+	}
+	return out
+}
+
+// storeKeys are layoutKeys of every workspace of s.
+func storeKeys(s savedStore) map[string]bool {
+	out := map[string]bool{}
+	for _, sw := range s.Sessions {
+		maps.Copy(out, layoutKeys(sw.Layout))
+	}
+	return out
+}
+
+// ownPane is a pane of the window's own that a layout of the server's
+// does not have yet, and where it was: its tab, and the float it was, or
+// the pane beside it, after which it came (else before), split along
+// vertical at ratio.
+type ownPane struct {
+	p, beside       *Pane
+	tab             string
+	float           *Float
+	after, vertical bool
+	ratio           float32
+}
+
+// ownPaneOf notes where p is, before its tab changes.
+func (a *App) ownPaneOf(p *Pane) ownPane {
+	o := ownPane{p: p, float: p.float}
+	if p.Tab != nil {
+		o.tab = p.Tab.UID
+	}
+	if n := p.Node; o.float == nil && n != nil && n.Parent != nil {
+		par := n.Parent
+		other := par.A
+		if other == n {
+			other = par.B
+		}
+		if ps := other.panes(); len(ps) > 0 {
+			o.beside = ps[0]
+		}
+		o.after, o.vertical, o.ratio = par.B == n, par.Vertical, par.Ratio
+	}
+	return o
+}
+
+// keepOwn puts the window's own pane back where it was in its tab, which
+// the window has from the server's layout now, or in a tab of its own.
+func (a *App) keepOwn(o ownPane) {
+	p := o.p
+	t := a.tabByUID(o.tab)
+	switch {
+	case t != nil && o.float != nil:
+		p.Tab, p.float = t, o.float
+		if p.Node == nil {
+			p.Node = &Node{ID: a.id(), Pane: p}
+		}
+		p.Node.Parent = nil
+		t.Floats = append(t.Floats, o.float)
+		t.recentBehind(p)
+	case t != nil && o.beside != nil && o.beside.Tab == t && o.beside.float == nil && o.beside.Node != nil:
+		p.float = nil
+		a.splitNode(t, o.beside.Node, p, o.after, o.vertical, o.ratio)
+		t.recentBehind(p)
+	default:
+		t = a.makeTab("")
+		p.float = nil
+		t.Root = &Node{ID: a.id(), Pane: p}
+		p.Tab, p.Node = t, t.Root
+		t.setFocus(p)
+		a.tabs = append(a.tabs, t)
+	}
 }
 
 // sessionTab makes a tab of one pane, attached to session in of host h,

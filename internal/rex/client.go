@@ -701,16 +701,24 @@ func (c *Client) SetLayoutAt(l json.RawMessage, revision uint64) error {
 			return fmt.Errorf("rex: layout revisions need a version 3 server: %w", err)
 		}
 	}
+	_, err := c.WriteLayout(l, revision)
+	return err
+}
+
+// WriteLayout is SetLayoutAt without the check of the server's version,
+// and returns the revision the layout is at once set: a writer that
+// subscribed tells its own change from another's by it.
+func (c *Client) WriteLayout(l json.RawMessage, revision uint64) (uint64, error) {
 	var st LayoutState
 	if err := c.call(Request{Op: "setLayout", Layout: l, LayoutRevision: revision}, &st); err != nil {
-		return err
+		return 0, err
 	}
 	if st.Revision > 0 {
 		c.mu.Lock()
 		c.revision = st.Revision
 		c.mu.Unlock()
 	}
-	return nil
+	return st.Revision, nil
 }
 
 // Revision returns the layout revision the server last stated, from a

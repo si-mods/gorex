@@ -293,7 +293,7 @@ func TestRestore(t *testing.T) {
 	}
 	// Another app, as the next launch, finds them all.
 	b := &App{client: a.client}
-	if !b.restore(savedWorkspaces(t, a.client).Sessions[0].Layout, nil) {
+	if !b.reconcile(savedWorkspaces(t, a.client).Sessions[0].Layout, nil, nil) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 2 || b.tabs[1].Name != "second" || b.active != 1 {
