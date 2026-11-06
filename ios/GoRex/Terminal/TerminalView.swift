@@ -9,7 +9,9 @@ import UIKit
 /// Tab, Ctrl, Alt, Shift, arrows), after rootshell's KeyboardAccessoryView;
 /// the modifiers hold for the next key. Input methods compose at the cursor
 /// (TerminalView+TextInput). A vertical drag turns the wheel: it scrolls
-/// back, or goes to a full-screen program.
+/// back, or goes to a full-screen program. A long press selects
+/// (TerminalView+Selection); a tap clears the selection, else brings up the
+/// keyboard.
 final class TerminalView: UIView, TerminalOutput {
     let session: TerminalSession
     /// The font size chosen in Settings.
@@ -29,6 +31,12 @@ final class TerminalView: UIView, TerminalOutput {
     var markedTextStyle: [NSAttributedString.Key: Any]?
     lazy var tokenizer: UITextInputTokenizer = UITextInputStringTokenizer(textInput: self)
 
+    /// The selection's handles, loupe and menu, while one is shown.
+    let handles = (start: SelectionHandle(start: true), end: SelectionHandle(start: false))
+    var loupe: UITextLoupeSession?
+    lazy var editMenu = UIEditMenuInteraction(delegate: self)
+    var showsSelection = false
+
     private(set) var surface: ghostty_surface_t?
     private var config: ghostty_config_t?
     /// The surface's terminal takes the program's output here, in order on
@@ -44,6 +52,9 @@ final class TerminalView: UIView, TerminalOutput {
         backgroundColor = UIColor(cgColor: (session.background ?? .black).cgColor)
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
         addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(drag)))
+        addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(hold)))
+        for h in [handles.start, handles.end] { h.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(steer))) }
+        addInteraction(editMenu)
         isAccessibilityElement = true
         accessibilityIdentifier = "terminal"
         // The renderer draws nothing in the background, which iOS forbids.
@@ -208,7 +219,8 @@ final class TerminalView: UIView, TerminalOutput {
 
     // MARK: Touch
 
-    @objc private func tap() {
+    @objc private func tap(_ g: UITapGestureRecognizer) {
+        if deselect(at: g.location(in: self)) { return }
         if !isFirstResponder { becomeFirstResponder() }
     }
 
@@ -325,7 +337,12 @@ final class TerminalView: UIView, TerminalOutput {
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-        action == #selector(paste(_:)) ? UIPasteboard.general.hasStrings : super.canPerformAction(action, withSender: sender)
+        switch action {
+        case #selector(paste(_:)): UIPasteboard.general.hasStrings
+        case #selector(copy(_:)): surface.map(ghostty_surface_has_selection) ?? false
+        case #selector(selectAll(_:)): surface != nil
+        default: super.canPerformAction(action, withSender: sender)
+        }
     }
 
     /// Pastes as a terminal does: bracketed when the program asked for it.
