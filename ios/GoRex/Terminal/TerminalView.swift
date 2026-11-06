@@ -71,8 +71,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// the queue: a write waits while Ghostty catches up.
     private var output: Int32 = -1
     private let writes = DispatchQueue(label: "dev.gorex.ios.terminal.output")
-    /// Reads what Ghostty encodes for the program.
+    /// Reads what Ghostty encodes for the program; left once it stopped.
     private var input: DispatchSourceRead?
+    private let reading = DispatchGroup()
     /// The hardware key held, and its repeat.
     private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
 
@@ -129,15 +130,18 @@ final class TerminalView: UIView, TerminalOutput {
     /// Passes what Ghostty encodes to the session, as it comes.
     private func read(_ fd: Int32) {
         guard fd >= 0 else { return }
-        input = Self.reader(fd) { [weak self] got in
+        input = Self.reader(fd, reading) { [weak self] got in
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.session.type(got) } }
         }
     }
 
     /// Reads fd on a queue of its own, not the main actor's.
-    nonisolated private static func reader(_ fd: Int32, _ deliver: @escaping @Sendable (Data) -> Void) -> DispatchSourceRead {
+    /// The reader is in group until it stops, by close or at the end of fd.
+    nonisolated private static func reader(_ fd: Int32, _ group: DispatchGroup, _ deliver: @escaping @Sendable (Data) -> Void) -> DispatchSourceRead {
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue(label: "dev.gorex.ios.terminal.input"))
+        group.enter()
+        source.setCancelHandler { group.leave() }
         source.setEventHandler {
             var buf = [UInt8](repeating: 0, count: 16 << 10)
             var got = Data()
@@ -160,27 +164,22 @@ final class TerminalView: UIView, TerminalOutput {
         surface = nil
         output = -1
         Ghostty.unregister(s)
-        Self.free(s, config, after: input, writes)
+        input?.cancel()
+        Self.free(s, config, of: self, after: reading, writes)
         config = nil
     }
 
     /// Frees a surface and its config on the main thread, after its reader
-    /// stopped and the writes queued before.
-    nonisolated private static func free(_ s: ghostty_surface_t, _ c: ghostty_config_t?, after input: DispatchSourceRead?, _ writes: DispatchQueue) {
-        nonisolated(unsafe) let (surface, config) = (s, c)
-        let free: @Sendable () -> Void = {
-            writes.async {
-                DispatchQueue.main.async {
-                    ghostty_surface_free(surface)
-                    if let config { ghostty_config_free(config) }
-                }
+    /// stopped and the writes queued before. The surface holds its view
+    /// unretained, which lives until then.
+    nonisolated private static func free(_ s: ghostty_surface_t, _ c: ghostty_config_t?, of view: TerminalView, after reading: DispatchGroup, _ writes: DispatchQueue) {
+        nonisolated(unsafe) let (surface, config, view) = (s, c, view)
+        reading.notify(queue: writes) {
+            DispatchQueue.main.async {
+                ghostty_surface_free(surface)
+                if let config { ghostty_config_free(config) }
+                withExtendedLifetime(view) {}
             }
-        }
-        if let input {
-            input.setCancelHandler(handler: free)
-            input.cancel()
-        } else {
-            free()
         }
     }
 
