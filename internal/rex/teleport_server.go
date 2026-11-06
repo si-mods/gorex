@@ -563,6 +563,9 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 	undo = nil
 	keep()
 	keepTree()
+	if peer != "" {
+		s.place(ss)
+	}
 	// The hop landed here; the one it came back by left nothing to go
 	// back to.
 	s.updateLinks(func(ls []teleportLink) []teleportLink {

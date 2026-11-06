@@ -178,7 +178,7 @@ func TestWorkspacesSaved(t *testing.T) {
 	second := a.ws
 	a.newTab(testShell.dir)
 	secondSIDs := sidsOf(a)
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	third := b.ws
 	a.showWorkspace(first)
 	tt.Frame()
@@ -217,11 +217,6 @@ func TestWorkspacesSaved(t *testing.T) {
 	if !slices.Equal(sidsOf(n0), firstSIDs) || n0.tabs[0].Name != "one" {
 		t.Errorf("the first window attached to %q, not %q", sidsOf(n0), firstSIDs)
 	}
-	for _, p := range n0.tabs[0].panes() {
-		if p.restored {
-			t.Errorf("pane %s started anew", p.SID)
-		}
-	}
 	// The workspace no window showed is kept, and shows on its sessions.
 	n0.showWorkspace(next.byID(second.ID))
 	if !slices.Equal(sidsOf(n0), secondSIDs) {
@@ -235,7 +230,7 @@ func TestWorkspacesSaved(t *testing.T) {
 func TestShowWorkspaceInOtherWindow(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	st.raise(a)
 	mine := a.ws
 	sids := sidsOf(a)
@@ -332,36 +327,6 @@ func TestLastTabClosesWorkspace(t *testing.T) {
 	quit(st)
 }
 
-// TestOrphansInFirstWorkspace checks that sessions no workspace names, as
-// those of an app that crashed, get tabs in the first window's workspace,
-// and those of a workspace no window shows do not.
-func TestOrphansInFirstWorkspace(t *testing.T) {
-	a, tt := newTestApp(t)
-	st := a.st
-	first := a.ws
-	a.newWorkspace()
-	hiddenSID := a.tab().Focus.SID
-	a.showWorkspace(first)
-	tt.Frame()
-	orphan, err := a.client.Create(rex.CreateOptions{Dir: os.TempDir(), Cols: 80, Rows: 24})
-	if err != nil {
-		t.Fatal(err)
-	}
-	st.saveNow()
-	quit(st)
-
-	next := &store{}
-	next.start()
-	if len(next.apps) != 1 {
-		t.Fatalf("%d windows", len(next.apps))
-	}
-	got := sidsOf(next.apps[0])
-	if next.apps[0].ws.ID != first.ID || len(got) != 2 || got[1] != orphan.ID || slices.Contains(got, hiddenSID) {
-		t.Errorf("the first workspace has %q; the orphan is %s, the hidden workspace's %s", got, orphan.ID, hiddenSID)
-	}
-	quit(next)
-}
-
 // TestMoveTabToNewWindow checks that a tab moves to a new workspace in a
 // window of its own, its sessions going on, and that the last tab stays.
 func TestMoveTabToNewWindow(t *testing.T) {
@@ -375,7 +340,7 @@ func TestMoveTabToNewWindow(t *testing.T) {
 		t.Fatalf("%d tabs, %d windows, %d workspaces", len(a.tabs), len(st.apps), len(st.workspaces))
 	}
 	b := st.apps[0]
-	if b == a || b.ws == a.ws || len(b.tabs) != 1 || b.tab().Focus.SID != sid || b.tab().Focus.restored {
+	if b == a || b.ws == a.ws || len(b.tabs) != 1 || b.tab().Focus.SID != sid {
 		t.Fatalf("the new window has %q", sidsOf(b))
 	}
 	if !slices.Contains(liveSIDs(t, a.client), sid) {
@@ -395,13 +360,13 @@ func TestWindowsCloseAndReopen(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
 	st.started = true
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	bws := b.ws
 	st.closed(b)
 	if len(st.apps) != 1 || bws.app != nil || !slices.Contains(st.workspaces, bws) {
 		t.Fatalf("closing a window: %d windows, its workspace shown by %p", len(st.apps), bws.app)
 	}
-	c := st.openWindow(st.addWorkspace(), false)
+	c := st.openWindow(st.addWorkspace())
 	st.raise(a)
 	st.secondInstance()
 	if st.apps[0] != a || len(st.apps) != 2 {
@@ -946,7 +911,7 @@ func TestSessionShots(t *testing.T) {
 	a.ws.Name = "icy-ridge"
 	a.newTab(testShell.dir)
 	st.addWorkspace().Name = "quiet-harbor"
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	b.ws.Name = "misty-canyon"
 	os.MkdirAll(dir, 0o755)
 	for _, place := range []string{"", "left"} {
@@ -987,7 +952,7 @@ func TestAdoptAcrossWorkspaces(t *testing.T) {
 	a.syncHosts()
 	hidden := st.addWorkspace()
 	hidden.layout = savedLayout{Tabs: []savedTab{{ID: "r1-tab", Root: &savedNode{SID: "r1", Host: "h1"}}}}
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	byID := map[string]rex.SessionInfo{"r1": {ID: "r1"}, "r2": {ID: "r2"}}
 	for _, o := range a.peers() {
 		o.apply(h, byID, hostLayout{})
@@ -1010,61 +975,6 @@ func TestAdoptAcrossWorkspaces(t *testing.T) {
 	quit(st)
 }
 
-// TestAdoptSessionOpenedRemotely checks that a session another machine's
-// client opened here gets a tab in the window, once, last among this
-// machine's tabs and without the focus; that one this machine's own client
-// opened stays unseen; and that one closed here does not come back from a
-// list made before it ended.
-func TestAdoptSessionOpenedRemotely(t *testing.T) {
-	a, tt := newTestApp(t)
-	before := len(a.tabs)
-	local, err := a.client.Create(rex.CreateOptions{Dir: os.TempDir(), Cols: 80, Rows: 24})
-	if err != nil {
-		t.Fatal(err)
-	}
-	remote, err := a.client.Create(rex.CreateOptions{Dir: os.TempDir(), Cols: 97, Rows: 31})
-	if err != nil {
-		t.Fatal(err)
-	}
-	infos, err := a.client.List()
-	if err != nil {
-		t.Fatal(err)
-	}
-	byID := map[string]rex.SessionInfo{}
-	for _, in := range infos {
-		byID[in.ID] = in
-	}
-	in := byID[remote.ID]
-	in.Owner = "nodekey:" + strings.Repeat("a", 64)
-	byID[remote.ID] = in
-	a.apply(nil, byID, hostLayout{})
-	if len(a.tabs) != before+1 {
-		t.Fatalf("%d tabs, want %d: the remote session, not the local one", len(a.tabs), before+1)
-	}
-	got := a.tabs[len(a.tabs)-1]
-	if got.Focus.SID != remote.ID || a.tab() == got {
-		t.Errorf("the adopted tab is %s, not %s, or took the focus", got.Focus.SID, remote.ID)
-	}
-	if cols, rows := got.Focus.term.Size(); cols != 97 || rows != 31 {
-		t.Errorf("attached at %dx%d", cols, rows)
-	}
-	if slices.Contains(sidsOf(a), local.ID) {
-		t.Error("the local session got a tab")
-	}
-	a.apply(nil, byID, hostLayout{})
-	if len(a.tabs) != before+1 {
-		t.Errorf("%d tabs after another poll", len(a.tabs))
-	}
-
-	// The list still has the session as it ends; the tab stays closed.
-	a.closeTab(got)
-	tt.Frame()
-	a.apply(nil, byID, hostLayout{})
-	if slices.Contains(sidsOf(a), remote.ID) {
-		t.Error("the closed session got a tab again")
-	}
-}
-
 // TestDebugVerbs checks the debug hook's verbs of windows and workspaces:
 // "state" describes them, "win" targets a window by place, "focus-win"
 // fronts one, and "session", "rename-session", "cancel" and "confirm" act
@@ -1075,7 +985,7 @@ func TestDebugVerbs(t *testing.T) {
 	debugMain = func(fn func()) { fn() }
 	t.Cleanup(func() { debugMain = old })
 	st := a.st
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	a.ws.Name, b.ws.Name = "icy-ridge", "quiet-harbor"
 	hidden := st.addWorkspace()
 	hidden.Name = "misty-canyon"
@@ -1145,7 +1055,7 @@ func TestHostsSavedThroughStore(t *testing.T) {
 	st := a.st
 	h1 := a.addHost(savedHost{ID: "h1", Name: "one", Address: "x1"})
 	t.Cleanup(h1.close)
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	st.closed(a)
 	h2 := b.addHost(savedHost{ID: "h2", Name: "two", Address: "x2"})
 	t.Cleanup(h2.close)

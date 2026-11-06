@@ -69,6 +69,9 @@ func TestFollowFollowsServer(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := savedWorkspaces(t, other)
+	// The server placed it in a tab of its own, with no app taking
+	// commands: the other client moves it into the split.
+	s.Sessions[0].Tabs = s.Sessions[0].Tabs[:2]
 	tab := &s.Sessions[0].Tabs[0]
 	tab.Root = &layout.Node{Ratio: 0.3, A: &layout.Node{SID: p1.SID}, B: &layout.Node{SID: in.ID, Name: "added"}}
 	tab.Focus = 1
@@ -223,7 +226,7 @@ func TestFollowNoWindow(t *testing.T) {
 	})
 	b := &App{st: st, client: a.client, stop: make(chan struct{})}
 	st.apps = []*App{b}
-	b.show(w, nil)
+	b.show(w)
 	if len(b.tabs) != 2 || b.tabs[1].Name != "away" || b.tabs[1].Focus.SID != res.New || b.tabs[1].Focus.stream == nil {
 		t.Errorf("reopened tabs %v", b.tabs)
 	}
@@ -287,7 +290,7 @@ func TestFollowReconnectTwoWindows(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
 	x := a.ws
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	y := b.ws
 	st.saveNow()
 	other, err := rex.ConnectExisting()
@@ -468,6 +471,30 @@ func TestSplitReachesServer(t *testing.T) {
 	s := savedWorkspaces(t, other)
 	if root := s.Sessions[0].Tabs[0].Root; root.A == nil || root.A.SID != p1.SID || root.B.SID != p2.SID {
 		t.Errorf("the server's tab %+v", s.Sessions[0].Tabs[0])
+	}
+}
+
+// TestRestartFocusedOnServer restarts the focused pane's shell: the server
+// starts the new session in the pane's place (pane.restart), ends the old
+// one, and the window shows the new one, focused, beside the other pane.
+func TestRestartFocusedOnServer(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	p1 := tab.Focus
+	followApp(t, a)
+	a.splitPane(p1, false, os.TempDir())
+	waitFor(t, tt, "the split", func() bool { return len(tab.panes()) == 2 })
+	old := tab.Focus
+	a.restartFocused()
+	waitFor(t, tt, "the restarted pane", func() bool {
+		ps := tab.panes()
+		return len(ps) == 2 && ps[1] != old && ps[1].SID != old.SID && tab.Focus == ps[1]
+	})
+	if tab.panes()[0] != p1 || !old.closed {
+		t.Errorf("panes %v, the old one closed %v", tab.panes(), old.closed)
+	}
+	if slices.Contains(liveSIDs(t, a.client), old.SID) {
+		t.Error("the old session runs")
 	}
 }
 
@@ -944,7 +971,7 @@ func TestUseRunsInFlightDone(t *testing.T) {
 func TestRemoveHostNoSpace(t *testing.T) {
 	a, tt := newTestApp(t)
 	st := a.st
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	followApp(t, a)
 	caughtUp(t, a, tt)
 	theirs := len(b.tabs)

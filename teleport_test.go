@@ -214,6 +214,54 @@ func TestAdoptLeavesTeleport(t *testing.T) {
 	}
 }
 
+// TestAdoptLeavesCLITeleport runs a CLI teleport's interleaving with the
+// window following the server: the layout notes the session before the
+// host lists it (pane.teleporting), so the window adopts no tab of it, and
+// pane.teleported then shows it in the pane's place, active and named, in
+// one tab.
+func TestAdoptLeavesCLITeleport(t *testing.T) {
+	a, tt := newTestApp(t)
+	if err := os.WriteFile(hostsPath(), []byte(`{"hosts":[{"id":"h1","name":"office","address":"tcOFFICE"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := &hostConn{savedHost: savedHost{ID: "h1", Name: "office", Address: "tcOFFICE"}}
+	a.hosts = append(a.hosts, h)
+	other := followApp(t, a)
+	a.newTab(testShell.dir)
+	caughtUp(t, a, tt)
+	src := a.tab()
+	src.Name = "work"
+	a.changed()
+	a.save()
+	caughtUp(t, a, tt)
+	sid := src.Focus.SID
+	if res, err := other.Command(rex.LayoutCommand{Op: "pane.teleporting", SID: sid, Target: "0123456789ab", Host: "tcOFFICE"}); err != nil || res.Code != "" {
+		t.Fatalf("pane.teleporting: %+v %v", res, err)
+	}
+	caughtUp(t, a, tt)
+	n := len(a.tabs)
+	// The host lists the session before the CLI tells the server it runs.
+	a.adopt(h, map[string]rex.SessionInfo{"0123456789ab": {ID: "0123456789ab"}}, hostLayout{})
+	if len(a.tabs) != n {
+		t.Fatalf("the window adopted the teleport's session: %d tabs, were %d", len(a.tabs), n)
+	}
+	if res, err := other.Command(rex.LayoutCommand{Op: "pane.teleported", SID: sid, Target: "0123456789ab", Host: "tcOFFICE"}); err != nil || res.Code != "" {
+		t.Fatalf("pane.teleported: %+v %v", res, err)
+	}
+	caughtUp(t, a, tt)
+	var shown []*Tab
+	for _, t := range a.tabs {
+		for _, p := range t.allPanes() {
+			if p.host == h && p.SID == "0123456789ab" {
+				shown = append(shown, t)
+			}
+		}
+	}
+	if len(shown) != 1 || a.tab() != shown[0] || shown[0].Name != "work" || len(a.tabs) != n {
+		t.Errorf("the host's session shows in %d tabs, active %v, named %q; %d tabs", len(shown), len(shown) == 1 && a.tab() == shown[0], a.tab().Name, len(a.tabs))
+	}
+}
+
 // TestPaletteTitleWidth checks that a palette row's title keeps its width
 // beside a long detail: a teleport row, disabled, with its reason.
 func TestPaletteTitleWidth(t *testing.T) {

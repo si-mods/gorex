@@ -84,6 +84,16 @@ func TestUpgrade(t *testing.T) {
 			t.Logf("server.log:\n%s", b)
 		}
 	}()
+	// An app runs, so the sessions stay headless: one of a pane that
+	// exits would go with its pane.
+	app, err := ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Close()
+	go app.TakeCommand()
+	time.Sleep(50 * time.Millisecond)
+	app.Hello() // answered after the take, which the server reads first
 	info, err := c.Create(CreateOptions{Command: []string{"/bin/sh"}, Dir: "/tmp", Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)

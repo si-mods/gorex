@@ -1,8 +1,8 @@
 // Package layout is the saved shape of GoRex's windows, tabs and panes.
 // The session server keeps it and makes every change of it (rex's apply),
 // the app's as its clients' (the app sends its arrangement of a tab as
-// tab.set), and reads it to start again the sessions of a run that did
-// not stop; the app shows it.
+// tab.set), its own as its sessions end and start, and reads it to start
+// again the sessions a run before lost; the app shows it.
 package layout
 
 // Store is every workspace and the windows that show them, in order.
@@ -10,11 +10,23 @@ type Store struct {
 	Version  int         `json:"version"`
 	Sessions []Workspace `json:"sessions"`
 	Windows  []string    `json:"windows"`
+	// Teleports are the teleports of this machine's panes under way: the
+	// session each starts on a host, which the app opens as no tab of its
+	// own; the server shows it in the pane's place once it runs.
+	Teleports []Teleport `json:"teleports,omitempty"`
 	// The first window's tabs, for a GoRex from before workspaces.
 	Layout
 	// Named tells that Parse gave a browser pane an ID: the layout read is
 	// not the one written, which a writer writes once.
 	Named bool `json:"-"`
+}
+
+// Teleport is a teleport under way of the pane of this machine's session
+// From, to the session SID it starts on host Host, by the host's ID.
+type Teleport struct {
+	Host string `json:"host"`
+	SID  string `json:"sid"`
+	From string `json:"from"`
 }
 
 // Workspace is a workspace as the layout keeps it.

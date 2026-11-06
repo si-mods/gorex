@@ -197,8 +197,7 @@ const (
 // LayoutCommand is a change of the layout that a client, as rootshell's
 // bridge or the app itself, asks for ("command"): the server makes it, on
 // the layout it keeps, starting and ending the sessions of its panes. An
-// action, but float.set_state, config.reload and a teleport are the
-// window's: the app takes those in order ("command.take"), makes them and
+// action, but float.set_state, and config.reload are the window's: the app takes those in order ("command.take"), makes them and
 // answers each ("command.done"). Panes are named by their session, and
 // tabs by their lasting ID (Tab), or by a session of theirs.
 type LayoutCommand struct {
@@ -212,12 +211,20 @@ type LayoutCommand struct {
 	// Op is "space.create", "space.rename", "space.close", "tab.create",
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
-	// "pane.swap", "pane.move", "tab.set", "windows.set", "layout.apply",
-	// "pane.teleporting" or "pane.teleported": a local client's only, the
-	// last two tell of the teleport of the pane of SID to Host, the
-	// session Target there (Teleport), which the window waits for, then
-	// makes the pane; tab.set, windows.set and layout.apply are a local
-	// client's only too.
+	// "pane.swap", "pane.move", "pane.restart", "tab.set", "windows.set",
+	// "layout.apply", "pane.teleporting" or "pane.teleported".
+	// pane.restart starts a new shell in the place of the pane of SID.
+	// pane.teleported, a local client's only, tells of the teleport of the
+	// pane of SID to the host of address Host (hosts.json), the session
+	// Target there (Teleport): the server shows that session in the pane's
+	// place, a tab of the host's. pane.teleporting, before the host starts
+	// it, notes it in the layout (layout.Store.Teleports), so that the
+	// window opens no tab of its own for it; with no Target, it drops the
+	// note of a teleport that failed. tab.set, windows.set and layout.apply
+	// are a local client's only too. The server makes its own changes too:
+	// the pane of a session that ends goes, a session a remote client
+	// starts here gets a tab, and so does one no pane has as the app opens;
+	// the panes' facts follow their sessions.
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// Space is the workspace the command acts on, by ID; "" for the
@@ -249,8 +256,8 @@ type LayoutCommand struct {
 	Amount    float32 `json:"amount,omitempty"`
 	Target    string  `json:"target,omitempty"`
 	Ratio     float32 `json:"ratio,omitempty"`
-	// Host is a host of the window's, by its address, of the teleport
-	// commands, whose Target is the session there.
+	// Host is a host of the window's, by its address as hosts.json has
+	// it, of the teleport commands, whose Target is the session there.
 	Host string `json:"host,omitempty"`
 	// NewTab moves a pane into a tab of its own, named Name.
 	NewTab bool `json:"new_tab,omitempty"`
@@ -601,6 +608,10 @@ type SessionInfo struct {
 	AgentSession   string `json:"agentSession,omitempty"`
 	AgentConfigDir string `json:"agentConfigDir,omitempty"`
 	agentFile      string
+	// ran tells that a program ran in the foreground since the session
+	// started (session.facts): a shell started again after a crash ran
+	// none yet.
+	ran bool
 	// Title is the last title a program set (OSC 0, OSC 2).
 	Title      string    `json:"title,omitempty"`
 	LastOutput time.Time `json:"lastOutput"`

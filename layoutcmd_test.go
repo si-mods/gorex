@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"gorex/locales"
 	"io"
 	"os"
 	"slices"
@@ -339,7 +340,7 @@ func TestPaneRename(t *testing.T) {
 		t.Fatalf("saved %+v", saved.Sessions[0].Tabs[0].Root)
 	}
 	b := &App{client: a.client}
-	if !b.reconcile(saved.Sessions[0].Layout, nil) {
+	if !b.reconcile(saved.Sessions[0].Layout) {
 		t.Fatal("nothing restored")
 	}
 	if b.tab().Focus.Name != "logs" {
@@ -655,7 +656,7 @@ func TestPaneName(t *testing.T) {
 
 func TestMovePaneToWindow(t *testing.T) {
 	a, _ := newTestApp(t)
-	b := a.st.openWindow(a.st.addWorkspace(), false)
+	b := a.st.openWindow(a.st.addWorkspace())
 	a.split(false)
 	p := a.tab().Focus
 	p.Name = "logs"
@@ -687,7 +688,7 @@ func TestMovePaneToWindow(t *testing.T) {
 
 func TestMoveOnlyPaneToWindow(t *testing.T) {
 	a, _ := newTestApp(t)
-	b := a.st.openWindow(a.st.addWorkspace(), false)
+	b := a.st.openWindow(a.st.addWorkspace())
 	p := a.tab().Focus
 	sid := p.SID
 	a.movePaneToWindow(p, b)
@@ -1075,6 +1076,36 @@ func diffOps(base, now savedStore) []string {
 	return got
 }
 
+// TestDiffHostDirs checks that the directories of another host's panes, which
+// no server here stamps, go as the server's tab with them alone: not the
+// directories of this machine's panes, which the server keeps.
+func TestDiffHostDirs(t *testing.T) {
+	far := func(dir string) *layout.Node { return &layout.Node{SID: "x", Host: "h", Dir: dir} }
+	base := savedStore{Windows: []string{"w"}, Sessions: []savedWorkspace{{ID: "w", Layout: layout.Layout{Tabs: []layout.Tab{
+		{ID: "a", Rev: 3, Focus: 0, Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: "1", Dir: "/one"}, B: far("/old")}},
+	}}}}}
+	now := savedStore{Windows: []string{"w"}, Sessions: []savedWorkspace{{ID: "w", Layout: layout.Layout{Tabs: []layout.Tab{
+		// This machine's pane's directory moved too.
+		{ID: "a", Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: "1", Dir: "/elsewhere"}, B: far("/new")}},
+	}}}}}
+	out := diffLayout(base, now)
+	if len(out) != 1 || out[0].Op != "tab.set" || out[0].Focus {
+		t.Fatalf("commands %+v", out)
+	}
+	got := out[0].TabLayout
+	if got.Focus != 0 || got.Root.B.Dir != "/new" || got.Root.A.Dir != "/one" || got.Root.Ratio != 0.5 {
+		t.Errorf("the tab sent %+v %+v %+v", got, got.Root.A, got.Root.B)
+	}
+	if base.Sessions[0].Tabs[0].Root.B.Dir != "/old" {
+		t.Error("the base changed")
+	}
+	// This machine's directories alone send nothing: the server's.
+	now.Sessions[0].Tabs[0].Root.B.Dir = "/old"
+	if out := diffLayout(base, now); len(out) != 0 {
+		t.Errorf("facts of this machine sent %+v", out)
+	}
+}
+
 // TestDiffLayout checks the commands the app sends for what it changed:
 // new spaces first; the sessions it closed end; a tab that takes a session
 // from another goes before the tab that gives it; a tab the app made
@@ -1193,4 +1224,23 @@ func TestDiffLayoutApplies(t *testing.T) {
 			t.Fatalf("step %d: the server has\n%s\nwant\n%s", i, g, w)
 		}
 	}
+}
+
+// TestReadOnlyCommandSays checks the answer of a layout change an old
+// server queues to the app, which is read-only on it ("Later"): the
+// banner's words, which say to restart the server, not that the server
+// makes it.
+func TestReadOnlyCommandSays(t *testing.T) {
+	a, _ := newTestApp(t)
+	for _, ro := range []bool{true, false} {
+		a.st.readOnly = ro
+		res := a.command(rex.LayoutCommand{Op: "pane.split", SID: a.tab().Focus.SID})
+		switch {
+		case ro && (res.Code != "read_only" || res.Error != locales.ServerLayoutReadOnly()):
+			t.Errorf("read-only: %+v", res)
+		case !ro && res.Code != "desktop_unavailable":
+			t.Errorf("on a server that makes it: %+v", res)
+		}
+	}
+	a.st.readOnly = false
 }

@@ -73,7 +73,7 @@ func TestKeptSpaceInOtherWindow(t *testing.T) {
 	panes, sids := a.tab().allPanes(), sidsOf(a)
 	a.newWorkspace()
 	tt.Frame()
-	b := st.openWindow(st.addWorkspace(), false)
+	b := st.openWindow(st.addWorkspace())
 	b.showWorkspace(first)
 	if b.ws != first || first.app != b || first.kept != nil {
 		t.Fatalf("the other window shows %s, kept %v", b.ws.Name, first.kept)
@@ -95,8 +95,9 @@ func TestKeptSpaceInOtherWindow(t *testing.T) {
 }
 
 // TestKeptPaneExits checks that a kept pane whose session ends leaves the
-// tabs the window shows as they were: its tab goes from the kept ones, and
-// from the space's layout.
+// tabs the window shows as they were: the server takes its pane out of the
+// space's layout, the kept tabs go, and the space shows from its layout
+// again.
 func TestKeptPaneExits(t *testing.T) {
 	a, tt := newTestApp(t)
 	st := a.st
@@ -106,24 +107,22 @@ func TestKeptPaneExits(t *testing.T) {
 	shellUp(t, a, gone)
 	a.selectTab(1)
 	a.newWorkspace()
-	tt.Frame()
+	followApp(t, a)
+	caughtUp(t, a, tt)
 	shown := slices.Clone(a.tabs)
 	if err := a.client.Kill(gone.SID); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, tt, "the kept pane to end", func() bool { return gone.closed })
+	waitFor(t, tt, "the kept pane to end", func() bool { return gone.closed && len(first.layout.Tabs) == 1 })
 	if a.ws == first || !slices.Equal(a.tabs, shown) || a.tab() != shown[0] || a.tab().Root == nil {
 		t.Fatalf("the shown space changed: %d tabs, on %s", len(a.tabs), a.ws.Name)
 	}
-	if k := first.kept; k == nil || !slices.Equal(k.tabs, []*Tab{stays}) || k.active != 0 {
-		t.Fatalf("the kept tabs are %+v", first.kept)
-	}
-	if l := first.layout; len(l.Tabs) != 1 || l.Tabs[0].Root.SID != stays.Focus.SID {
+	if l := first.layout; l.Tabs[0].Root.SID != stays.Focus.SID {
 		t.Errorf("the kept space's layout is %+v", l)
 	}
 	a.showWorkspace(first)
-	if len(a.tabs) != 1 || a.tab() != stays {
-		t.Errorf("the space came back on %d tabs", len(a.tabs))
+	if len(a.tabs) != 1 || a.tab().Focus.SID != stays.Focus.SID {
+		t.Errorf("the space came back on %q", sidsOf(a))
 	}
 	quit(st)
 }
@@ -150,8 +149,8 @@ func TestKeptPaneStatusAway(t *testing.T) {
 	quit(st)
 }
 
-// TestKeptSpaceEnds checks that a kept space whose last session ends goes,
-// as a shown one closed empty does.
+// TestKeptSpaceEnds checks that a kept space whose last session ends is
+// left empty, as the server keeps a space of no tabs (Rex semantics).
 func TestKeptSpaceEnds(t *testing.T) {
 	a, tt := newTestApp(t)
 	st := a.st
@@ -159,13 +158,14 @@ func TestKeptSpaceEnds(t *testing.T) {
 	p := a.tab().Focus
 	shellUp(t, a, p)
 	a.newWorkspace()
-	tt.Frame()
+	followApp(t, a)
+	caughtUp(t, a, tt)
 	if err := a.client.Kill(p.SID); err != nil {
 		t.Fatal(err)
 	}
 	waitFor(t, tt, "the kept pane to end", func() bool { return p.closed })
-	if slices.Contains(st.workspaces, first) || first.kept != nil {
-		t.Errorf("the emptied space stayed listed")
+	if !slices.Contains(st.workspaces, first) || first.kept != nil || first.tabCount() != 0 {
+		t.Errorf("the emptied space is not listed empty")
 	}
 	quit(st)
 }

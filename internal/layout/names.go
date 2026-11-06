@@ -66,7 +66,7 @@ func parse(raw []byte) Store {
 		w := Workspace{ID: NewSpaceID(), Name: SpaceName(nil), Layout: s.Layout}
 		return Store{Version: Version, Sessions: []Workspace{w}, Windows: []string{w.ID}}
 	}
-	out := Store{Version: s.Version}
+	out := Store{Version: s.Version, Teleports: s.Teleports}
 	ids := map[string]bool{}
 	for _, w := range s.Sessions {
 		if w.ID == "" || ids[w.ID] {

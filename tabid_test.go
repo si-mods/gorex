@@ -33,7 +33,7 @@ func TestTabIDsLast(t *testing.T) {
 		t.Fatalf("saved %+v", tabs)
 	}
 	b := &App{client: a.client}
-	if !b.reconcile(saved.Sessions[0].Layout, nil) {
+	if !b.reconcile(saved.Sessions[0].Layout) {
 		t.Fatal("nothing restored")
 	}
 	if b.tabs[0].UID != first.UID || b.tabs[1].UID != second.UID {
@@ -48,7 +48,7 @@ func TestTabIDsLast(t *testing.T) {
 		old.Tabs[i].ID = ""
 	}
 	c := &App{client: a.client}
-	if !c.reconcile(old, nil) {
+	if !c.reconcile(old) {
 		t.Fatal("nothing restored")
 	}
 	if c.tabs[0].UID == "" || c.tabs[1].UID == "" || c.tabs[0].UID == c.tabs[1].UID {

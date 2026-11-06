@@ -174,10 +174,11 @@ func TestCrashRestoresSessions(t *testing.T) {
 	}
 }
 
-// TestCleanStopRestoresNothing checks that a server that was told to stop
-// leaves a record of it, and that the server after it starts no session: the
-// sessions ended with the run, as it said.
-func TestCleanStopRestoresNothing(t *testing.T) {
+// TestCleanStopStartsPanesAgain checks that a server that was told to stop
+// leaves a record of it, and starts no session before it answers: the
+// sessions ended with the run, as it said. Once it listens, the layout's
+// panes, which it kept, get new shells (restoreLost).
+func TestCleanStopStartsPanesAgain(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
 	c, _ := connectTest(t)
@@ -201,6 +202,9 @@ func TestCleanStopRestoresNothing(t *testing.T) {
 	if stop.Reason != "request" || len(stop.Sessions) != 1 || stop.Sessions[0].ID != one.ID || stop.Sessions[0].Dir != dir {
 		t.Errorf("the stop record is %+v", stop)
 	}
+	if journalResumes(entries) {
+		t.Error("a run that was told to stop resumes")
+	}
 
 	next, err := Connect()
 	if err != nil {
@@ -210,9 +214,7 @@ func TestCleanStopRestoresNothing(t *testing.T) {
 		next.Shutdown()
 		next.Close()
 	}()
-	if infos, err := next.List(); err != nil || len(infos) != 0 {
-		t.Fatalf("the server after it has %+v, %v", infos, err)
-	}
+	waitInfo(t, next, one.ID, "the pane's session again", func(in SessionInfo) bool { return !in.Exited })
 }
 
 // TestLayoutFromJournal checks that the journal of a run whose layout.json is
@@ -330,10 +332,11 @@ func TestJournalOwners(t *testing.T) {
 }
 
 // TestRestoreMost checks that a run's layout starts no more sessions than
-// restoreMost, however many panes it names.
+// restoreMost before the server answers, however many panes it names, and
+// the rest once it listens (restoreLost).
 func TestRestoreMost(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("GOREX_DIR", dir)
+	s, _ := testServer(t)
+	dir := os.Getenv("GOREX_DIR")
 	l := testLayout(
 		&layout.Node{SID: "one", Dir: dir},
 		&layout.Node{SID: "two", Dir: dir},
@@ -348,35 +351,31 @@ func TestRestoreMost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "layout.json"), b, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	s.layout = b
 	old := restoreMost
 	restoreMost = 2
 	t.Cleanup(func() { restoreMost = old })
+	t.Cleanup(func() {
+		s.mu.Lock()
+		s.stopping = true // as the run ends: no layout is written then
+		s.mu.Unlock()
+		for _, sid := range []string{"one", "two", "three"} {
+			if ss := s.sessions[sid]; ss != nil {
+				ss.kill()
+			}
+		}
+	})
 
-	// The server runs in this process, so the limit is this process's.
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		Serve()
-	}()
-	c, err := dialUntil(time.Now().Add(5 * time.Second))
-	if err != nil {
-		t.Fatal(err)
+	s.restoreSessions(s.layout, nil)
+	if len(s.sessions) != 2 {
+		t.Fatalf("the server started %d sessions, not 2", len(s.sessions))
 	}
-	client := newClient(c, dialSocket)
-	defer func() {
-		client.Shutdown()
-		client.Close()
-		<-done
-	}()
-	infos, err := client.List()
-	if err != nil {
-		t.Fatal(err)
+	s.restoreLost(nil, s.lostPanes())
+	if len(s.sessions) != 3 || s.sessions["three"] == nil {
+		t.Fatalf("once it listens, the server has %d sessions", len(s.sessions))
 	}
-	if len(infos) != 2 {
-		t.Fatalf("the server started %d sessions, not 2", len(infos))
+	if s.layoutRev != 1 {
+		t.Errorf("the restore changed the layout, to revision %d", s.layoutRev)
 	}
 }
 
@@ -479,19 +478,9 @@ func TestRestartRestoresSessions(t *testing.T) {
 			if stop.Event != eventStop || stop.Reason != tc.reason {
 				t.Fatalf("the stop record is %+v", stop)
 			}
-			infos, err := next.List()
-			if err != nil {
-				t.Fatal(err)
-			}
-			back := false
-			for _, in := range infos {
-				if in.ID == one.ID {
-					back = true
-				}
-			}
-			if back != tc.restart {
-				t.Fatalf("after %s the sessions are %+v", tc.name, infos)
-			}
+			// Either way the pane's session comes back: a restart's before
+			// the server answers, a quit's as a new shell once it listens.
+			waitInfo(t, next, one.ID, "the pane's session after "+tc.name, func(SessionInfo) bool { return true })
 		})
 	}
 }
