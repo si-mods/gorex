@@ -58,7 +58,7 @@ struct HostListView: View {
 
     /// Whether a window's row shows, by the search and the eye.
     private func filter(_ title: String, _ program: String?) -> Bool {
-        if hideIdle, program.map(AppIcon.isShell) ?? true { return false }
+        if hideIdle, Program.of(program).shell { return false }
         return query.isEmpty || title.localizedCaseInsensitiveContains(query)
     }
 }
@@ -109,11 +109,14 @@ private struct HostSection: View {
     }
 
     @ViewBuilder private func session(_ s: Host.Session) -> some View {
-        let windows = (s.view?.windows ?? []).compactMap { w -> (String, String, String?)? in
+        let windows = (s.view?.windows ?? []).compactMap { w -> (String, String, String?, [String?])? in
             guard let b = w.block else { return nil }
             let title = host.titles[b].flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
-            return filter(title, host.programs[b]) ? (b, title, host.programs[b]) : nil
+            let back = w.tiled.filter { $0 != b }.map { host.programs[$0] }
+            return filter(title, host.programs[b]) ? (b, title, host.programs[b], back) : nil
         }
+        // The room of the tiles of the window with the most, so that the titles line up.
+        let tiles = ProgramTiles.width(behind: windows.map(\.3.count).max() ?? 0)
         let isCollapsed = collapsed.contains(s.id)
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -160,7 +163,7 @@ private struct HostSection: View {
                         Button {
                             open(TerminalTarget(host: host.id, session: s.id, block: w.0, title: w.1))
                         } label: {
-                            WindowRow(title: w.1, program: w.2, divider: i < windows.count - 1)
+                            WindowRow(title: w.1, program: w.2, back: w.3, tiles: tiles, divider: i < windows.count - 1)
                         }
                         .buttonStyle(.plain)
                     }
@@ -174,11 +177,13 @@ private struct HostSection: View {
 private struct WindowRow: View {
     let title: String
     let program: String?
+    let back: [String?]
+    let tiles: CGFloat
     let divider: Bool
 
     var body: some View {
         HStack(spacing: 14) {
-            AppIcon(program: program)
+            ProgramTiles(front: program, back: back).frame(width: tiles, height: 44, alignment: .leading)
             Text(title.isEmpty ? " " : title)
                 .font(.body.weight(.medium))
                 .foregroundStyle(.primary)
@@ -192,43 +197,8 @@ private struct WindowRow: View {
         .contentShape(Rectangle())
         .overlay(alignment: .bottom) {
             if divider {
-                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1 / 3).padding(.leading, 16 + 44 + 14)
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1 / 3).padding(.leading, 16 + tiles + 14)
             }
         }
-    }
-}
-
-/// The icon of a window's foreground program.
-struct AppIcon: View {
-    let program: String?
-
-    static func isShell(_ p: String) -> Bool {
-        ["zsh", "bash", "fish", "sh", "dash", "ksh", "tcsh", "nu", "pwsh", "login"].contains(p.trimmingCharacters(in: ["-"]))
-    }
-
-    var body: some View {
-        let p = program?.lowercased() ?? ""
-        let shape = RoundedRectangle(cornerRadius: 11, style: .continuous)
-        Group {
-            if p == "pi" {
-                Text("π").font(.system(size: 26, weight: .bold, design: .serif)).foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(LinearGradient(colors: [Color(red: 0.55, green: 0.36, blue: 0.96), Color(red: 0.93, green: 0.36, blue: 0.62)],
-                                               startPoint: .topLeading, endPoint: .bottomTrailing), in: shape)
-            } else if p == "claude" {
-                Image(systemName: "asterisk").font(.system(size: 22, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(red: 0.85, green: 0.47, blue: 0.34), in: shape)
-            } else if p.isEmpty || Self.isShell(p) {
-                Text(">_").font(.system(size: 17, weight: .bold, design: .monospaced)).foregroundStyle(.green)
-                    .frame(width: 44, height: 44)
-                    .background(Color(white: 0.13), in: shape)
-            } else {
-                Text(p.prefix(1).uppercased()).font(.system(size: 20, weight: .semibold, design: .rounded)).foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
-                    .background(Color(white: 0.22), in: shape)
-            }
-        }
-        .accessibilityHidden(true)
     }
 }

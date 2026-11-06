@@ -33,4 +33,9 @@ extension SessionView.Window {
     var block: String? {
         focused_block_id ?? layers?.lazy.compactMap { $0.blocks?.first?.block_id }.first
     }
+
+    /// The blocks of its tiled layer, the first.
+    var tiled: [String] {
+        layers?.first?.blocks?.map(\.block_id) ?? []
+    }
 }

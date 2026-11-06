@@ -90,3 +90,10 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Simple Icons (brand marks)
+
+The brand marks of `GoRex/Assets.xcassets/Brands`, on the tiles of window
+rows, are GoRex's `assets/brands`: Simple Icons, under CC0 1.0 Universal
+(public domain). The trademarks remain their owners'. omp's mark is drawn
+after omp.sh's favicon. https://simpleicons.org

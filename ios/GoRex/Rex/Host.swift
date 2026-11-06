@@ -231,7 +231,7 @@ final class Host: Identifiable {
         sessions[i].view = v
         if let label = v.label { sessions[i].label = label }
         for w in v.windows ?? [] {
-            if let b = w.block, titles[b] == nil { describe(session: v.session_id, block: b) }
+            for b in [w.block].compactMap(\.self) + w.tiled where titles[b] == nil { describe(session: v.session_id, block: b) }
         }
     }
 
