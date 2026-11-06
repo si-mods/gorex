@@ -136,19 +136,15 @@ extension TerminalView: UIEditMenuInteractionDelegate {
         var shown = (start: true, end: true)
         _ = ghostty_surface_selection_viewport_visibility(s, &shown.start, &shown.end)
         let cols = Int(ghostty_surface_size(s).columns), c = cell
-        guard cols > 0, c.width > 0, c.height > 0 else { return nil }
-        // The grid's top left: the cursor's cell, from its middle and bottom,
-        // less whole cells.
-        var x = 0.0, y = 0.0, w = 0.0, h = 0.0
-        ghostty_surface_ime_point(s, &x, &y, &w, &h)
-        let origin = CGPoint(x: (x - c.width / 2).truncatingRemainder(dividingBy: c.width),
-                             y: y.truncatingRemainder(dividingBy: c.height))
+        guard cols > 0, c.width > 0, c.height > 0, t.tl_px_x.isFinite, t.tl_px_y.isFinite else { return nil }
         // The first cell, and the last: Ghostty counts cells from the
-        // viewport's top left, the length to the last.
+        // viewport's top left, the length to the last, and gives the first
+        // cell's top left in points, whence the grid's.
+        let a = Int(t.offset_start)
+        let origin = CGPoint(x: t.tl_px_x - CGFloat(a % cols) * c.width, y: t.tl_px_y - CGFloat(a / cols) * c.height)
         func corner(_ i: Int, right: Bool) -> CGPoint {
             CGPoint(x: origin.x + CGFloat(i % cols + (right ? 1 : 0)) * c.width, y: origin.y + CGFloat(i / cols) * c.height)
         }
-        let a = Int(t.offset_start)
         let first = corner(a, right: false), last = corner(a + Int(t.offset_len), right: true)
         let box = first.y == last.y
             ? CGRect(x: first.x, y: first.y, width: last.x - first.x, height: c.height)
