@@ -232,7 +232,7 @@ private struct HostSection: View {
                         .contextMenu { menu(s, w.4, title: w.1, shown: windows.map(\.4.window_id)) }
                     }
                 }
-                .background(Color.card, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .background(Color.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
         }
     }
@@ -247,7 +247,7 @@ private struct WindowRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ProgramTiles(front: program, back: back).frame(width: tiles, height: 44, alignment: .leading)
+            ProgramTiles(front: program, back: back).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
             Text(title.isEmpty ? " " : title)
                 .font(.body.weight(.medium))
                 .foregroundStyle(.primary)
@@ -257,7 +257,8 @@ private struct WindowRow: View {
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 8)
+        .frame(minHeight: 44)
         .contentShape(Rectangle())
         .overlay(alignment: .bottom) {
             if divider {
