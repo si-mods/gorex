@@ -82,7 +82,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> TerminalView {
         let v = TerminalView(session: session)
-        DispatchQueue.main.async { v.becomeFirstResponder() }
+        DispatchQueue.main.async { v.focus() }
         return v
     }
 
