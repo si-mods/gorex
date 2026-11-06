@@ -78,12 +78,15 @@ final class TerminalView: UIView, UIKeyInput {
         if lines.count > 4096 { lines = [:] }
         for (y, cells) in rows {
             let top = CGFloat(y) * cell.height
+            // The row's backgrounds first: a wide character's second cell
+            // would paint over the right half of its glyph otherwise.
+            for c in cells {
+                guard let bg = c.bg else { continue }
+                ctx.setFillColor(bg.cgColor)
+                ctx.fill(CGRect(x: CGFloat(c.x) * cell.width, y: top, width: cell.width, height: cell.height))
+            }
             for c in cells {
                 let x = CGFloat(c.x) * cell.width
-                if let bg = c.bg {
-                    ctx.setFillColor(bg.cgColor)
-                    ctx.fill(CGRect(x: x, y: top, width: cell.width, height: cell.height))
-                }
                 if c.text.isEmpty || c.text == " " { continue }
                 let fg = c.faint ? c.fg.mixed(with: s.bg) : c.fg
                 let key = LineKey(text: c.text, fg: fg.packed, font: (c.bold ? 2 : 0) + (c.italic ? 1 : 0))
@@ -217,9 +220,9 @@ final class TerminalView: UIView, UIKeyInput {
 /// Backspace; the last holds a stick that sends arrows the way it is
 /// dragged, and the key that hides the keyboard.
 final class KeyBar: UIView {
-    let ctrl = KeyBar.button("control", String(localized: "Control"))
-    let alt = KeyBar.button("option", String(localized: "Option"))
-    let shift = KeyBar.button("shift", String(localized: "Shift"))
+    let ctrl = KeyBar.button("control", String(localized: "Control"), size: KeyBar.small)
+    let alt = KeyBar.button("option", String(localized: "Option"), size: KeyBar.small)
+    let shift = KeyBar.button("shift", String(localized: "Shift"), size: KeyBar.small)
     private weak var target: TerminalView?
     /// Repeats the arrow the stick points to.
     private var repeating: Task<Void, Never>?
@@ -234,12 +237,12 @@ final class KeyBar: UIView {
         autoresizingMask = .flexibleHeight
         overrideUserInterfaceStyle = .dark
         func key(_ face: String, _ label: String?, _ name: String) -> UIButton {
-            let b = Self.button(face, label)
+            let b = Self.button(face, label, size: Self.small)
             b.addAction(UIAction { [weak target] _ in target?.send(name) }, for: .touchUpInside)
             return b
         }
         func text(_ t: String) -> UIButton {
-            let b = Self.button(t)
+            let b = Self.button(t, size: Self.small)
             b.addAction(UIAction { [weak target] _ in target?.insertText(t) }, for: .touchUpInside)
             return b
         }
@@ -253,9 +256,6 @@ final class KeyBar: UIView {
         }
         more.menu = UIMenu(children: [
             item(String(localized: "Esc"), "escape"),
-            UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak target] _ in
-                target?.paste(nil)
-            },
             UIMenu(options: .displayInline, children: [
                 item(String(localized: "Home"), "home"), item(String(localized: "End"), "end"),
                 item(String(localized: "Page Up"), "page_up"), item(String(localized: "Page Down"), "page_down"),
@@ -263,10 +263,13 @@ final class KeyBar: UIView {
         ])
         more.showsMenuAsPrimaryAction = true
 
-        // Two pages of five keys in even slots, each page as wide as the capsule.
+        let paste = Self.button("clipboard", String(localized: "Paste"), size: Self.small)
+        paste.addAction(UIAction { [weak target] _ in target?.paste(nil) }, for: .touchUpInside)
+
+        // Two pages of keys in even slots, each page as wide as the capsule.
         let pages = UIStackView(arrangedSubviews: [
             [key("escape", String(localized: "Esc"), "escape"), ctrl, alt, shift,
-             key("arrow.right.to.line", String(localized: "Tab"), "tab")],
+             key("arrow.right.to.line", String(localized: "Tab"), "tab"), paste],
             [text("~"), text("|"), text("/"), text("-"), key("delete.left", String(localized: "Delete"), "backspace")],
         ].map { keys in
             let page = UIStackView(arrangedSubviews: keys)
@@ -392,27 +395,30 @@ final class KeyBar: UIView {
 
     /// A key that shows an SF Symbol, read out by its label; without a
     /// label, the key shows its face as text.
-    private static func button(_ face: String, _ label: String? = nil) -> UIButton {
-        let b = UIButton(configuration: config(face, text: label == nil, held: false))
+    /// The size of the middle capsule's keys, a little under the others'.
+    private static let small: CGFloat = 14
+
+    private static func button(_ face: String, _ label: String? = nil, size: CGFloat = 17) -> UIButton {
+        let b = UIButton(configuration: config(face, text: label == nil, size: size, held: false))
         b.accessibilityLabel = label
         b.changesSelectionAsPrimaryAction = false
                 // A held modifier is prominent glass, in the accent: white here.
-        b.configurationUpdateHandler = { b in b.configuration = config(face, text: label == nil, held: b.isSelected) }
+        b.configurationUpdateHandler = { b in b.configuration = config(face, text: label == nil, size: size, held: b.isSelected) }
         return b
     }
 
-    private static func config(_ face: String, text: Bool, held: Bool) -> UIButton.Configuration {
+    private static func config(_ face: String, text: Bool, size: CGFloat, held: Bool) -> UIButton.Configuration {
         var c = held ? UIButton.Configuration.prominentGlass() : .plain()
         if text {
             c.title = face
             c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
                 var a = $0
-                a.font = .systemFont(ofSize: 19, weight: .light)
+                a.font = .systemFont(ofSize: size + 2, weight: .light)
                 return a
             }
         } else {
             c.image = face == "stick" ? stick : UIImage(systemName: face)
-            c.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
+            c.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: size, weight: .regular)
         }
         c.baseForegroundColor = held ? .black : .label
         c.cornerStyle = .capsule

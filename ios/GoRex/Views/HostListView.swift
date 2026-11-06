@@ -88,9 +88,9 @@ private struct HostSection: View {
                     Button("Reconnect", systemImage: "arrow.clockwise") { host.reconnectIfNeeded() }
                     Button("Remove", systemImage: "trash", role: .destructive) { store.remove(host.id) }
                 } label: {
-                    Image(systemName: "ellipsis").font(.title3).frame(width: 36, height: 36)
+                    Image(systemName: "ellipsis").font(.title3).frame(width: 36, height: 36).contentShape(.circle)
                 }
-                .glassEffect(.regular.interactive(), in: .circle)
+                .foregroundStyle(.secondary)
                 .accessibilityLabel("Host Menu")
             }
             .foregroundStyle(.primary)
@@ -195,28 +195,27 @@ private struct HostSection: View {
             HStack {
                 Text(s.label).font(.title3.weight(.semibold)).foregroundStyle(.gray)
                 Spacer()
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Button {
-                            newWindow(s)
-                        } label: {
-                            Group {
-                                if opening.contains(s.id) { ProgressView() } else { Image(systemName: "plus") }
-                            }
-                            .frame(width: 32, height: 32)
+                // Plain ghost buttons: glass is for what floats over the page.
+                HStack(spacing: 4) {
+                    Button {
+                        newWindow(s)
+                    } label: {
+                        Group {
+                            if opening.contains(s.id) { ProgressView() } else { Image(systemName: "plus") }
                         }
-                        .disabled(opening.contains(s.id))
-                        .glassEffect(.regular.interactive(), in: .circle)
-                        .accessibilityLabel("New Window")
-                        Button {
-                            withAnimation(.snappy) { if isCollapsed { collapsed.remove(s.id) } else { collapsed.insert(s.id) } }
-                        } label: {
-                            Image(systemName: "chevron.down").rotationEffect(.degrees(isCollapsed ? -90 : 0)).frame(width: 32, height: 32)
-                        }
-                        .glassEffect(.regular.interactive(), in: .circle)
-                        .accessibilityLabel(isCollapsed ? "Expand" : "Collapse")
+                        .frame(width: 36, height: 36).contentShape(.circle)
                     }
+                    .disabled(opening.contains(s.id))
+                    .accessibilityLabel("New Window")
+                    Button {
+                        withAnimation(.snappy) { if isCollapsed { collapsed.remove(s.id) } else { collapsed.insert(s.id) } }
+                    } label: {
+                        Image(systemName: "chevron.down").rotationEffect(.degrees(isCollapsed ? -90 : 0)).frame(width: 36, height: 36).contentShape(.circle)
+                    }
+                    .accessibilityLabel(isCollapsed ? "Expand" : "Collapse")
                 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
             }
             .font(.body.weight(.semibold))
             .foregroundStyle(.primary)
