@@ -8,10 +8,11 @@ import UIKit
 /// program. The soft keyboard comes with a bar of the keys it lacks (Esc,
 /// Tab, Ctrl, Alt, Shift, arrows), after rootshell's KeyboardAccessoryView;
 /// the modifiers hold for the next key. Input methods compose at the cursor
-/// (TerminalView+TextInput). A vertical drag turns the wheel: it scrolls
-/// back, or goes to a full-screen program. A long press selects
-/// (TerminalView+Selection); a tap clears the selection, else brings up the
-/// keyboard.
+/// (TerminalView+TextInput). A vertical drag scrolls back, or turns a
+/// full-screen program's wheel, with UIKit's physics (TerminalView+Scroll);
+/// a pinch sizes the font (TerminalView+Zoom). A long press selects
+/// (TerminalView+Selection); a tap clears the selection, else clicks for a
+/// program that has the mouse, and brings up the keyboard.
 final class TerminalView: UIView, TerminalOutput {
     let session: TerminalSession
     /// The font size chosen in Settings.
@@ -36,6 +37,29 @@ final class TerminalView: UIView, TerminalOutput {
     var loupe: UITextLoupeSession?
     lazy var editMenu = UIEditMenuInteraction(delegate: self)
     var showsSelection = false
+    lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
+
+    /// The scroll view whose physics the drag has, and where it last was as
+    /// the wheel.
+    let scroller = UIScrollView()
+    var wheel = false
+    var last: CGFloat = 0
+    /// Set while the content is moved to match Ghostty, not by the finger.
+    var syncing = false
+
+    /// The grid's size, shown while pinching.
+    lazy var sizeLabel: UILabel = {
+        let l = UILabel()
+        l.font = .monospacedDigitSystemFont(ofSize: 17, weight: .medium)
+        l.textColor = .white
+        l.textAlignment = .center
+        l.backgroundColor = UIColor(white: 0, alpha: 0.6)
+        l.clipsToBounds = true
+        l.alpha = 0
+        l.isUserInteractionEnabled = false
+        l.accessibilityIdentifier = "grid-size"
+        return l
+    }()
 
     private(set) var surface: ghostty_surface_t?
     private var config: ghostty_config_t?
@@ -51,8 +75,8 @@ final class TerminalView: UIView, TerminalOutput {
         super.init(frame: .zero)
         backgroundColor = UIColor(cgColor: (session.background ?? .black).cgColor)
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
-        addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(drag)))
-        addGestureRecognizer(UILongPressGestureRecognizer(target: self, action: #selector(hold)))
+        addGestureRecognizer(longPress)
+        addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinch)))
         for h in [handles.start, handles.end] { h.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(steer))) }
         addInteraction(editMenu)
         isAccessibilityElement = true
@@ -90,6 +114,7 @@ final class TerminalView: UIView, TerminalOutput {
         _ = fcntl(output, F_SETFL, fcntl(output, F_GETFL) & ~O_NONBLOCK)
         read(ghostty_surface_response_read_fd(s))
         session.output = self
+        addScroller()
         setNeedsLayout()
     }
 
@@ -209,31 +234,35 @@ final class TerminalView: UIView, TerminalOutput {
         CATransaction.commit()
         ghostty_surface_set_content_scale(s, scale, scale)
         ghostty_surface_set_size(s, UInt32(bounds.width * scale), UInt32(bounds.height * scale))
+        syncing = true
+        scroller.frame = bounds
+        syncing = false
+        syncScroll()
     }
 
     /// Ghostty settled on a grid for the view's size: the block takes it.
     func resized(cols: Int, rows: Int, width: Int, height: Int) {
         guard cols > 0, rows > 0 else { return }
         session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows)
+        if sizeLabel.alpha > 0 { showSize() }
     }
 
     // MARK: Touch
 
+    /// A tap that clears no selection clicks for a program that has the
+    /// mouse, and keeps the keyboard.
     @objc private func tap(_ g: UITapGestureRecognizer) {
-        if deselect(at: g.location(in: self)) { return }
+        let p = g.location(in: self)
+        if deselect(at: p) { return }
+        if let s = surface, ghostty_surface_mouse_captured(s) { click(at: p) }
         if !isFirstResponder { becomeFirstResponder() }
     }
 
-    /// Turns the wheel by the drag, so that the lines follow the finger.
-    @objc private func drag(_ g: UIPanGestureRecognizer) {
+    /// A plain left click at a point, as a mouse makes it.
+    func click(at p: CGPoint) {
         guard let s = surface else { return }
-        let p = g.location(in: self)
         ghostty_surface_mouse_pos(s, p.x, p.y, GHOSTTY_MODS_NONE)
-        let dy = g.translation(in: self).y
-        g.setTranslation(.zero, in: self)
-        // The scroll mods' first bit: precise deltas, which Ghostty counts
-        // in pixels.
-        ghostty_surface_mouse_scroll(s, 0, dy * traitCollection.displayScale, 1)
+        for state in [GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RELEASE] { _ = ghostty_surface_mouse_button(s, state, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE) }
     }
 
     // MARK: Keyboard
@@ -320,6 +349,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// keyboard modes.
     func press(_ keys: [KeyEvent]) {
         guard let s = surface else { return }
+        stopScrolling()
         for k in keys {
             for action in [GHOSTTY_ACTION_PRESS, GHOSTTY_ACTION_RELEASE] {
                 k.text.withCString { text in
@@ -349,6 +379,7 @@ final class TerminalView: UIView, TerminalOutput {
     override func paste(_ sender: Any?) {
         guard let s = surface, let t = UIPasteboard.general.string else { return }
         forget()
+        stopScrolling()
         t.withCString { ghostty_surface_text(s, $0, UInt(t.utf8.count)) }
     }
 

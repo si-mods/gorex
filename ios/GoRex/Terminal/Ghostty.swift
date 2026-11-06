@@ -62,7 +62,8 @@ enum Ghostty {
     }
 
     /// The actions a view takes: the grid size Ghostty settled on, the
-    /// background a program set, and a selection that changed or scrolled.
+    /// background a program set, a selection that changed, and the
+    /// scrollback that moved or grew.
     nonisolated private static func action(_ target: ghostty_target_s, _ action: ghostty_action_s) -> Bool {
         guard target.tag == GHOSTTY_TARGET_SURFACE, let s = target.target.surface else { return false }
         let key = Int(bitPattern: s)
@@ -81,9 +82,17 @@ enum Ghostty {
                 MainActor.assumeIsolated { views[key]?.view?.session.drew(background: VTerminal.RGB(r: c.r, g: c.g, b: c.b)) }
             }
             return true
-        case GHOSTTY_ACTION_SELECTION_CHANGED, GHOSTTY_ACTION_SCROLLBAR:
+        case GHOSTTY_ACTION_SELECTION_CHANGED:
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { views[key]?.view?.selectionMoved() }
+            }
+            return true
+        case GHOSTTY_ACTION_SCROLLBAR:
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    views[key]?.view?.selectionMoved()
+                    views[key]?.view?.syncScroll()
+                }
             }
             return true
         default:

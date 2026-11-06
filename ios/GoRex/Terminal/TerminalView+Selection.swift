@@ -109,8 +109,7 @@ extension TerminalView: UIEditMenuInteractionDelegate {
         let captured = ghostty_surface_mouse_captured(s)
         func toggle() { _ = ghostty_surface_binding_action(s, "toggle_mouse_reporting", UInt("toggle_mouse_reporting".utf8.count)) }
         if captured { toggle() }
-        ghostty_surface_mouse_pos(s, p.x, p.y, GHOSTTY_MODS_NONE)
-        for state in [GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RELEASE] { _ = ghostty_surface_mouse_button(s, state, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE) }
+        click(at: p)
         if captured { toggle() }
         return true
     }
