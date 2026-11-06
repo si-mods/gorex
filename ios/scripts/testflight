@@ -16,6 +16,7 @@ set -euo pipefail
 
 APP=${REXGO_APP_ID:-6831210589}
 GROUP=${REXGO_GROUP:-Internal}
+export ASC_TIMEOUT=${ASC_TIMEOUT:-90s}
 
 usage() { sed -n '2,14s/^# \{0,1\}//p' "$0"; exit 2; }
 
