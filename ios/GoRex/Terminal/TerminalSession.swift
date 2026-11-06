@@ -50,6 +50,9 @@ final class TerminalSession {
     @ObservationIgnored private var size: (cols: Int, rows: Int, cw: Int, ch: Int)?
     @ObservationIgnored private var sizing: Task<Void, Never>?
     @ObservationIgnored private var closed = false
+    /// Counts the starts and resumes: a task that awaited past a newer
+    /// one, or past close, gives up.
+    @ObservationIgnored private var generation = 0
     /// Bytes to write, and whether a write is on its way.
     @ObservationIgnored private var typed = Data()
     @ObservationIgnored private var typing = false
@@ -75,8 +78,13 @@ final class TerminalSession {
     }
 
     /// Opens the stream from the start: a ticket, a HELLO, a new snapshot.
+    /// The stream before it ends.
     func start() {
+        guard !closed else { return }
         state = .connecting
+        generation += 1
+        let g = generation
+        data.close()
         Task {
             do {
                 guard let c = host.control else { throw RexError(code: "offline", message: "offline") }
@@ -84,14 +92,18 @@ final class TerminalSession {
                     "session_id": session, "block_id": block,
                     "data_ref_id": "terminal", "subprotocol": "rex.data.terminal.v1",
                 ]).payload["ticket"] as? String ?? ""
-                data = DataConnection(base: host.config.url)
-                wire(data)
-                try await data.open(ticket: t)
+                guard g == generation else { return }
+                // What ends this generation closes the connection it opens.
+                let d = DataConnection(base: host.config.url)
+                data = d
+                wire(d)
+                try await d.open(ticket: t)
+                guard g == generation else { return }
                 log.info("opened \(self.block, privacy: .public)")
-                stream = TerminalStream(nonce: data.nonce)
+                stream = TerminalStream(nonce: d.nonce)
                 try await claim()
             } catch {
-                state = .failed(error.localizedDescription)
+                if g == generation { state = .failed(error.localizedDescription) }
             }
         }
     }
@@ -101,13 +113,17 @@ final class TerminalSession {
     func resume() {
         guard !closed else { return }
         host.reconnectIfNeeded()
+        generation += 1
+        let g = generation
         Task {
             do {
                 try await data.resume()
+                guard g == generation else { return }
                 log.info("resumed \(self.block, privacy: .public)")
                 // A client that came back too late to resume lost the block.
                 try? await claim()
             } catch {
+                guard g == generation else { return }
                 log.info("resume failed, starting over: \(error.localizedDescription, privacy: .public)")
                 start()
             }
@@ -126,6 +142,7 @@ final class TerminalSession {
     /// Ends the stream and gives the block back.
     func close() {
         closed = true
+        generation += 1
         data.close()
         let (session, block) = (session, block)
         Task { _ = try? await host.control?.call("session.disown_block", ["session_id": session, "block_ids": [block]]) }
