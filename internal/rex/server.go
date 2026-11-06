@@ -1034,7 +1034,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if !json.Valid(req.Layout) {
 			return nil, errors.New("layout is not JSON")
 		}
-		if req.LayoutRevision == 0 && !slices.Contains(req.Capabilities, CapabilityLayoutServer) {
+		if !slices.Contains(req.Capabilities, CapabilityLayoutServer) {
 			return nil, errors.New("rex: the session server keeps the layout now, and this GoRex would write over it: update GoRex")
 		}
 		l := bytes.Clone(req.Layout)

@@ -1572,15 +1572,22 @@ func (a *App) splitWith(old, p *Pane, vertical bool) {
 
 // ask asks the server for a change of the layout that starts a session,
 // after the window's own changes (store.send): done runs with its answer
-// once the window shows it. One it does not make shows its error.
+// once the window shows it, made or not (Code). One it does not make shows
+// its error.
 func (a *App) ask(c rex.LayoutCommand, done func(rex.LayoutCommand)) {
 	if a.st == nil {
+		if done != nil {
+			done(rex.LayoutCommand{Code: "desktop_unavailable", Error: "no session server"})
+		}
 		return
 	}
 	a.st.send(c, func(res rex.LayoutCommand) {
-		if res.Code != "" {
+		switch res.Code {
+		case "":
+		case "read_only":
+			a.err, a.errMsg = "", locales.Messages.ServerLayoutReadOnly
+		default:
 			a.err, a.errMsg = res.Error, nil
-			return
 		}
 		if done != nil {
 			done(res)
@@ -1689,7 +1696,8 @@ func (a *App) endPane(p *Pane) {
 		return
 	}
 	if p.host != nil && len(a.tabs) == 1 && len(a.tabs[0].allPanes()) == 1 && a.ws != nil {
-		// The pane goes once the new tab shows, which keeps the window.
+		// The pane goes once the new tab shows, which keeps the window,
+		// or once the tab could not be made.
 		home, _ := os.UserHomeDir()
 		a.ask(rex.LayoutCommand{Op: "tab.create", Space: a.ws.ID, Dir: home, Focus: true}, func(rex.LayoutCommand) {
 			a.dropPane(p, p.remote == nil || !p.remote.Gone())
@@ -2243,7 +2251,12 @@ func (a *App) dockPane(p *Pane) bool {
 
 // newFloat opens a terminal session in the active tab as a float, on the
 // tab's host, in the current directory.
-func (a *App) newFloat(command []string) *Pane {
+func (a *App) newFloat(command []string) *Pane { return a.newFloatThen(command, nil) }
+
+// newFloatThen is newFloat, then runs then with the float once the window
+// shows it: of this machine, the server makes it, and it returns it only
+// as tests have it, at once.
+func (a *App) newFloatThen(command []string, then func(*Pane)) *Pane {
 	t := a.tab()
 	if t == nil {
 		return nil
@@ -2253,7 +2266,12 @@ func (a *App) newFloat(command []string) *Pane {
 		return nil
 	}
 	if h == nil {
-		return a.askPane(t.Focus, rex.LayoutCommand{Op: "pane.split", Float: true, Dir: a.currentDir(), Command: command}, a.revealNew)
+		return a.askPane(t.Focus, rex.LayoutCommand{Op: "pane.split", Float: true, Dir: a.currentDir(), Command: command}, func(p *Pane) {
+			a.revealNew(p)
+			if then != nil {
+				then(p)
+			}
+		})
 	}
 	cols, rows := t.Focus.paneSize()
 	if cols <= 0 || rows <= 0 {
@@ -2273,6 +2291,9 @@ func (a *App) newFloat(command []string) *Pane {
 		a.focusReq = p
 	}
 	a.changed()
+	if then != nil {
+		then(p)
+	}
 	return p
 }
 
@@ -2791,7 +2812,6 @@ func (a *App) savedTab(t *Tab) savedTab {
 		}
 		if p := n.Pane; p != nil {
 			if b := p.browser; b != nil {
-				b.synced = b.url
 				return &savedNode{Name: p.Name, URL: b.url, ID: b.id}
 			}
 			if p.note != nil {

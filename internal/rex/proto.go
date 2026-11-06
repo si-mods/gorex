@@ -158,9 +158,11 @@ type Request struct {
 	// ETag, on "list", is that of the list the client has (Response.ETag).
 	ETag string `json:"etag,omitempty"`
 	// LayoutRevision, on "setLayout", makes the change only when the
-	// server's layout is at that revision; 0 sets it whatever it is, for a
-	// client that names CapabilityLayoutServer in Capabilities only: an
-	// app of before it would write its whole layout over the server's.
+	// server's layout is at that revision; 0 sets it whatever it is. The
+	// server takes a whole layout only from a client that names
+	// CapabilityLayoutServer in Capabilities, as tests and tools that seed
+	// one do (Client.SetLayout): an app of before it would write its whole
+	// layout over the server's changes.
 	LayoutRevision uint64   `json:"layoutRevision,omitempty"`
 	Capabilities   []string `json:"capabilities,omitempty"`
 	// Command is the layout command of "command", and the app's answer of
@@ -202,8 +204,10 @@ const (
 type LayoutCommand struct {
 	ID int64 `json:"id,omitempty"`
 	// Tab names the tab of a tab.* command by its lasting ID
-	// (layout.Tab.ID), in place of SID; in tab.create's answer, the ID of
-	// the tab made. An app that does not know it answers by SID alone.
+	// (layout.Tab.ID), in place of SID, and of a pane.split of no SID,
+	// which splits the tab's focused pane, as one of no session; in
+	// tab.create's answer, the ID of the tab made. An app that does not
+	// know it answers by SID alone.
 	Tab string `json:"tab,omitempty"`
 	// Op is "space.create", "space.rename", "space.close", "tab.create",
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
@@ -221,7 +225,8 @@ type LayoutCommand struct {
 	// has it; a new one when "".
 	Space string `json:"space,omitempty"`
 	// After is the tab a new or moved tab goes after, the first of this
-	// machine's tabs when "" for tab.move.
+	// machine's tabs when "" for tab.move: of tab.create, by a session of
+	// it; of tab.set, by its ID, the tab going to Index without one.
 	After string `json:"after,omitempty"`
 	// Dir is where a new pane starts, its tab's or its pane's when "".
 	Dir string `json:"dir,omitempty"`
@@ -255,8 +260,8 @@ type LayoutCommand struct {
 	Remote bool            `json:"remote,omitempty"`
 	// Index is where tab.move puts the tab among this machine's tabs as
 	// the app makes it, counted with the tab in its place; in the answer,
-	// where the tab is then. Of tab.set, it is the tab's place among all
-	// the tabs of its space.
+	// where the tab is then. Of tab.set with no After, it is the tab's
+	// place among all the tabs of its space.
 	Index int `json:"index,omitempty"`
 	// TabLayout is the tab tab.set puts in Space, by its ID: in place of
 	// the tab of that ID, wherever it is, else as a new one. It arranges
@@ -272,6 +277,13 @@ type LayoutCommand struct {
 	Color string `json:"color,omitempty"`
 	// Float makes the pane pane.split makes float over the tab's others.
 	Float bool `json:"float,omitempty"`
+	// Base is the revision (layout.Tab.Rev) of the tab a change is built
+	// on, of tab.set, tab.close and pane.close: the server refuses it with
+	// conflict once the tab is at another, as another client changed it
+	// first; 0 checks nothing. Revs, in the answer, are the revisions of
+	// the tabs the change changed, each one past the one before.
+	Base uint64            `json:"base,omitempty"`
+	Revs map[string]uint64 `json:"revs,omitempty"`
 	// The answer: Code and Error when it was not made, New the session of
 	// the pane made, and Zoomed whether the pane's tab is zoomed now.
 	// Changed and Reason answer pane.resize, pane.swap and pane.move.

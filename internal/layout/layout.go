@@ -36,7 +36,11 @@ type Tab struct {
 	// ID names the tab for good: the app gives it to every tab it makes,
 	// keeps it while the tab lasts, wherever the tab goes, and gives one
 	// to a tab of an older layout that has none. Clients name a tab by it.
-	ID    string `json:"id,omitempty"`
+	ID string `json:"id,omitempty"`
+	// Rev is the tab's revision: the server counts it up by one at each
+	// change of the tab's arrangement, so that a change built on the tab
+	// as it was (LayoutCommand.Base) is refused once another came first.
+	Rev   uint64 `json:"rev,omitempty"`
 	Name  string `json:"name,omitempty"`
 	Root  *Node  `json:"root"`
 	Focus int    `json:"focus"`

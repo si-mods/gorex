@@ -1061,19 +1061,24 @@ func (a *App) removeHost(h *hostConn) {
 		closeHostLayout()
 	}
 	for _, o := range a.peers() {
-		// The window keeps a tab, as it would close with its last.
-		if len(o.tabsOn(h)) == len(o.tabs) {
-			home, _ := os.UserHomeDir()
-			o.newTabOn(nil, home)
-		}
-		for _, t := range slices.Clone(o.tabs) {
-			for _, p := range t.allPanes() {
-				if p.host == h {
-					o.dropPane(p, false)
+		drop := func() {
+			for _, t := range slices.Clone(o.tabs) {
+				for _, p := range t.allPanes() {
+					if p.host == h {
+						o.dropPane(p, false)
+					}
 				}
 			}
+			o.changed()
 		}
-		o.changed()
+		// The window keeps a tab, as it would close with its last: the
+		// host's panes go once the server made it, or could not.
+		if len(o.tabsOn(h)) == len(o.tabs) && o.ws != nil {
+			home, _ := os.UserHomeDir()
+			o.ask(rex.LayoutCommand{Op: "tab.create", Space: o.ws.ID, Dir: home, Focus: true}, func(rex.LayoutCommand) { drop() })
+			continue
+		}
+		drop()
 	}
 	// Spaces whose kept tabs show the host's panes show from their layout.
 	if a.st != nil {

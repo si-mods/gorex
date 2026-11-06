@@ -74,6 +74,7 @@ func (s *Server) applyHeld(c LayoutCommand, a *applying) LayoutCommand {
 		if res.Code != "" {
 			return res
 		}
+		res.Revs = countRevs(layout.Parse(raw), &st)
 		// A command that changes nothing, as a resize at its bound,
 		// leaves the layout as it was, an older one unmigrated.
 		after := encodeLayout(&st)
@@ -88,6 +89,34 @@ func (s *Server) applyHeld(c LayoutCommand, a *applying) LayoutCommand {
 		}
 	}
 	return LayoutCommand{ID: c.ID, Code: "layout_conflict", Error: "the layout kept changing; try again"}
+}
+
+// countRevs counts up the revision of each tab of st whose arrangement
+// is not that of the tab of its ID in was, and returns them.
+func countRevs(was layout.Store, st *layout.Store) map[string]uint64 {
+	old := map[string]layout.Tab{}
+	for _, w := range was.Sessions {
+		for _, t := range w.Tabs {
+			old[t.ID] = t
+		}
+	}
+	var revs map[string]uint64
+	for i := range st.Sessions {
+		for j := range st.Sessions[i].Tabs {
+			t := &st.Sessions[i].Tabs[j]
+			o, ok := old[t.ID]
+			if ok && bytes.Equal(o.Arrangement(), t.Arrangement()) {
+				t.Rev = o.Rev
+				continue
+			}
+			t.Rev = o.Rev + 1
+			if revs == nil {
+				revs = map[string]uint64{}
+			}
+			revs[t.ID] = t.Rev
+		}
+	}
+	return revs
 }
 
 // encodeLayout writes st as the app saves a layout: with the first
@@ -399,6 +428,21 @@ func unlink(p spot, target string) bool {
 	return false
 }
 
+// focused is the focused pane of t, and its place among the floats, -1
+// for a tiled one; nil for none.
+func focused(t *layout.Tab) (*layout.Node, int) {
+	if f := t.FocusFloat; f > 0 && f <= len(t.Floats) {
+		return t.Floats[f-1].Pane, f - 1
+	}
+	if leaves := layout.Leaves(t.Root); len(leaves) > 0 {
+		return leaves[min(max(t.Focus, 0), len(leaves)-1)], -1
+	}
+	if n := len(t.Floats); n > 0 {
+		return t.Floats[n-1].Pane, n - 1
+	}
+	return nil, -1
+}
+
 // topFloat is the place, from 1, of the topmost float of t in sight, else
 // of its first, as the window's focus goes when it has no tiled pane; 0
 // with no float.
@@ -527,7 +571,9 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 	}
 	isTab := strings.HasPrefix(c.Op, "tab.")
 	p, ok := find(st, c.Space, c.SID)
-	if c.Tab != "" && isTab {
+	// A tab of its ID; a split by the tab, as of a pane of no session,
+	// splits its focused pane.
+	if c.Tab != "" && (isTab || c.Op == "pane.split" && c.SID == "") {
 		ok = false
 		for i := range st.Sessions {
 			w := &st.Sessions[i]
@@ -536,7 +582,8 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 			}
 			for ti := range w.Tabs {
 				if w.Tabs[ti].ID == c.Tab {
-					p, ok = spot{w: w, ti: ti, fi: -1}, true
+					n, fi := focused(&w.Tabs[ti])
+					p, ok = spot{w, ti, n, fi}, n != nil || isTab
 				}
 			}
 		}
@@ -548,6 +595,9 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		return fail("pane_not_found", "no such pane in the GoRex layout")
 	}
 	t := p.tab()
+	if c.Base != 0 && t.Rev != c.Base && (isTab || c.Op == "pane.close") {
+		return fail("conflict", "the tab changed meanwhile")
+	}
 	switch c.Op {
 	case "tab.close":
 		for _, r := range t.Roots() {
@@ -1021,6 +1071,7 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand) LayoutCommand {
 		return fail("bad_args", "tab.set needs a tab with an ID")
 	}
 	t := *c.TabLayout
+	t.Rev = 0
 	if t.Root == nil && len(t.Floats) == 0 {
 		return fail("bad_args", "tab.set needs a tab with a pane; tab.close closes one")
 	}
@@ -1043,6 +1094,10 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand) LayoutCommand {
 	for i := range st.Sessions {
 		o := &st.Sessions[i]
 		if ti := slices.IndexFunc(o.Tabs, func(x layout.Tab) bool { return x.ID == t.ID }); ti >= 0 {
+			if c.Base != 0 && o.Tabs[ti].Rev != c.Base {
+				return fail("conflict", "the tab changed meanwhile")
+			}
+			t.Rev = o.Tabs[ti].Rev
 			focus = focus || o == w && o.Active == ti
 			removeTab(o, ti)
 		}
@@ -1077,7 +1132,13 @@ func (s *Server) setTab(st *layout.Store, c LayoutCommand) LayoutCommand {
 	}
 	t.Focus = max(t.Focus, 0)
 	t.FocusFloat = min(max(t.FocusFloat, 0), len(t.Floats))
-	insertTab(w, min(max(c.Index, 0), len(w.Tabs)), t, focus)
+	at := min(max(c.Index, 0), len(w.Tabs))
+	if c.After != "" {
+		if i := slices.IndexFunc(w.Tabs, func(x layout.Tab) bool { return x.ID == c.After }); i >= 0 {
+			at = i + 1
+		}
+	}
+	insertTab(w, at, t, focus)
 	res.Tab = t.ID
 	return res
 }

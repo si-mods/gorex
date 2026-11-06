@@ -1056,35 +1056,13 @@ func savedTabSID(st savedStore, workspace string) string {
 	return ""
 }
 
-// TestDiffLayout checks the commands the app sends for what it changed:
-// new spaces first; the sessions it closed end; a tab that takes a session
-// from another goes before the tab that gives it; a tab the app made
-// active takes the focus, a tab changed otherwise does not, so another
-// client's focus stays; then closed tabs and spaces, names, and windows.
-func TestDiffLayout(t *testing.T) {
-	leaf := func(sid string) *layout.Node { return &layout.Node{SID: sid} }
-	split := func(a, b *layout.Node) *layout.Node { return &layout.Node{Ratio: 0.5, A: a, B: b} }
-	base := savedStore{Windows: []string{"w"}, Sessions: []savedWorkspace{
-		{ID: "w", Name: "work", Layout: layout.Layout{Active: 0, Tabs: []layout.Tab{
-			{ID: "a", Root: split(leaf("1"), leaf("2"))},
-			{ID: "b", Root: leaf("3")},
-			{ID: "c", Root: leaf("4")},
-		}}},
-		{ID: "old", Name: "old", Layout: layout.Layout{Tabs: []layout.Tab{{ID: "d", Root: leaf("5")}}}},
-	}}
-	now := savedStore{Windows: []string{"w", "new"}, Sessions: []savedWorkspace{
-		// 2 closed, 3 moves from b into a, c closed, b gets a browser.
-		{ID: "w", Name: "renamed", Color: "teal", Layout: layout.Layout{Active: 0, Tabs: []layout.Tab{
-			{ID: "a", Root: split(leaf("1"), leaf("3"))},
-			{ID: "b", Root: &layout.Node{URL: "https://example.com/", ID: "web"}},
-		}}},
-		{ID: "new", Name: "fresh", Layout: layout.Layout{Tabs: []layout.Tab{}}},
-	}}
+// diffOps writes the commands diffLayout sends, one line each.
+func diffOps(base, now savedStore) []string {
 	var got []string
 	for _, c := range diffLayout(base, now) {
 		s := c.Op + " " + c.Space + c.SID + c.Tab
 		if c.TabLayout != nil {
-			s += fmt.Sprintf("%s@%d focus=%v", c.TabLayout.ID, c.Index, c.Focus)
+			s += fmt.Sprintf("%s after=%s focus=%v", c.TabLayout.ID, c.After, c.Focus)
 		}
 		if c.Op == "space.rename" || c.Op == "space.create" {
 			s += " " + c.Name + "/" + c.Color
@@ -1094,17 +1072,45 @@ func TestDiffLayout(t *testing.T) {
 		}
 		got = append(got, s)
 	}
+	return got
+}
+
+// TestDiffLayout checks the commands the app sends for what it changed:
+// new spaces first; the sessions it closed end; a tab that takes a session
+// from another goes before the tab that gives it; a tab the app made
+// active takes the focus, a tab changed otherwise does not, so another
+// client's focus stays; then closed tabs and spaces, names, and windows.
+// A close or a move of one tab sends nothing of the others.
+func TestDiffLayout(t *testing.T) {
+	leaf := func(sid string) *layout.Node { return &layout.Node{SID: sid} }
+	split := func(a, b *layout.Node) *layout.Node { return &layout.Node{Ratio: 0.5, A: a, B: b} }
+	tab := func(id string, root *layout.Node) layout.Tab { return layout.Tab{ID: id, Root: root} }
+	space := func(id string, tabs ...layout.Tab) savedWorkspace {
+		return savedWorkspace{ID: id, Name: id, Layout: layout.Layout{Tabs: tabs}}
+	}
+	base := savedStore{Windows: []string{"w"}, Sessions: []savedWorkspace{
+		space("w", tab("a", split(leaf("1"), leaf("2"))), tab("b", leaf("3")), tab("c", leaf("4"))),
+		space("old", tab("d", leaf("5"))),
+	}}
+	now := savedStore{Windows: []string{"w", "new"}, Sessions: []savedWorkspace{
+		// 2 closed, 3 moves from b into a, c closed, b gets a browser.
+		{ID: "w", Name: "renamed", Color: "teal", Layout: layout.Layout{Tabs: []layout.Tab{
+			tab("a", split(leaf("1"), leaf("3"))),
+			tab("b", &layout.Node{URL: "https://example.com/", ID: "web"}),
+		}}},
+		space("new"),
+	}}
 	want := []string{
-		"space.create new fresh/default",
-		"pane.close w2",
-		"tab.set wa@0 focus=false",
-		"tab.set wb@1 focus=false",
+		"space.create new new/default",
+		"pane.close w2a",
+		"tab.set wa after= focus=false",
+		"tab.set wb after=a focus=false",
 		"tab.close wc",
 		"space.close old",
 		"space.rename w renamed/teal",
 		"windows.set w,new",
 	}
-	if !slices.Equal(got, want) {
+	if got := diffOps(base, now); !slices.Equal(got, want) {
 		t.Errorf("commands\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
 	// The app's active tab, made so here, takes the focus; nothing else
@@ -1117,5 +1123,75 @@ func TestDiffLayout(t *testing.T) {
 	}
 	if cmds := diffLayout(now, now); len(cmds) != 0 {
 		t.Errorf("no change: %+v", cmds)
+	}
+	// Closing the first of five tabs closes it alone; moving the last
+	// first moves it alone.
+	five := savedStore{Sessions: []savedWorkspace{space("w", tab("t1", leaf("1")), tab("t2", leaf("2")), tab("t3", leaf("3")), tab("t4", leaf("4")), tab("t5", leaf("5")))}}
+	closed := savedStore{Sessions: []savedWorkspace{space("w", five.Sessions[0].Tabs[1:]...)}}
+	closed.Sessions[0].Active = 0
+	five.Sessions[0].Active = 1
+	if got := diffOps(five, closed); !slices.Equal(got, []string{"tab.close wt1"}) {
+		t.Errorf("a close: %v", got)
+	}
+	ts := five.Sessions[0].Tabs
+	moved := savedStore{Sessions: []savedWorkspace{space("w", ts[4], ts[0], ts[1], ts[2], ts[3])}}
+	moved.Sessions[0].Active = 2
+	if got := diffOps(five, moved); !slices.Equal(got, []string{"tab.set wt5 after= focus=false"}) {
+		t.Errorf("a move: %v", got)
+	}
+}
+
+// TestDiffLayoutApplies has the server make what diffLayout sends, from
+// layouts of the server's sessions: two tabs that swap panes, a reorder,
+// a tab to another space, a merge. The server's layout is the app's then.
+func TestDiffLayoutApplies(t *testing.T) {
+	a, _ := newTestApp(t)
+	c := a.client
+	var sids []string
+	for range 4 {
+		in, err := c.Create(rex.CreateOptions{Dir: os.TempDir(), Command: []string{testShell.path, "-c", "sleep 60"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sids = append(sids, in.ID)
+	}
+	leaf := func(i int) *layout.Node { return &layout.Node{SID: sids[i]} }
+	split := func(x, y *layout.Node) *layout.Node { return &layout.Node{Ratio: 0.5, A: x, B: y} }
+	tab := func(id string, root *layout.Node) layout.Tab { return layout.Tab{ID: id, Root: root} }
+	store := func(spaces ...savedWorkspace) savedStore {
+		return savedStore{Version: layout.Version, Windows: []string{"w"}, Sessions: spaces}
+	}
+	space := func(id string, tabs ...layout.Tab) savedWorkspace {
+		return savedWorkspace{ID: id, Name: id, Layout: layout.Layout{Tabs: tabs}}
+	}
+	steps := []savedStore{
+		store(space("w", tab("a", split(leaf(0), leaf(1))), tab("b", split(leaf(2), leaf(3))))),
+		// a and b swap their second panes.
+		store(space("w", tab("a", split(leaf(0), leaf(3))), tab("b", split(leaf(2), leaf(1))))),
+		// b goes first.
+		store(space("w", tab("b", split(leaf(2), leaf(1))), tab("a", split(leaf(0), leaf(3))))),
+		// a goes to a space of its own.
+		store(space("w", tab("b", split(leaf(2), leaf(1)))), space("x", tab("a", split(leaf(0), leaf(3))))),
+		// a merges into b.
+		store(space("w", tab("b", split(split(leaf(2), leaf(1)), split(leaf(0), leaf(3))))), space("x")),
+	}
+	raw, _ := json.Marshal(steps[0])
+	if err := c.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(steps); i++ {
+		for _, cmd := range diffLayout(steps[i-1], steps[i]) {
+			// A tab the move emptied went with it, as the outbox lets be.
+			if res, err := c.Command(cmd); err != nil || res.Code != "" && res.Code != "tab_not_found" {
+				t.Fatalf("step %d: %s %+v: %+v %v", i, cmd.Op, cmd, res, err)
+			}
+		}
+		got := savedWorkspaces(t, c)
+		got.Windows = steps[i].Windows
+		if !sameArrangement(got, steps[i]) {
+			g, _ := json.Marshal(got.Sessions)
+			w, _ := json.Marshal(steps[i].Sessions)
+			t.Fatalf("step %d: the server has\n%s\nwant\n%s", i, g, w)
+		}
 	}
 }

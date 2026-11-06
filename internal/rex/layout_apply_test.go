@@ -580,3 +580,90 @@ func TestLayoutServerRemote(t *testing.T) {
 		t.Errorf("tab.rename remotely: %+v %v", res, err)
 	}
 }
+
+// TestTabSetBase changes a tab another client renamed meanwhile: a tab.set
+// or pane.close built on the tab as it was is refused, and the rename
+// stays; one built on the tab as it is now is made. The answers tell the
+// tabs' revisions.
+func TestTabSetBase(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Command: cmd})
+	if split.Revs[one.Tab] == 0 {
+		t.Fatalf("the split's answer names no revision: %+v", split)
+	}
+	tab := storeOf(t, c).Sessions[0].Tabs[0]
+	if tab.Rev != split.Revs[one.Tab] {
+		t.Fatalf("the tab at %d, answered %d", tab.Rev, split.Revs[one.Tab])
+	}
+	base := tab.Rev
+	renamed := command(t, c, LayoutCommand{Op: "tab.rename", Tab: one.Tab, Name: "theirs"})
+	if renamed.Revs[one.Tab] != base+1 {
+		t.Errorf("the rename's revision %v, want %d", renamed.Revs, base+1)
+	}
+	mine := tab
+	mine.Name, mine.Root.Ratio = "mine", 0.3
+	for _, x := range []LayoutCommand{
+		{Op: "tab.set", TabLayout: &mine, Base: base},
+		{Op: "pane.close", SID: split.New, Base: base},
+		{Op: "tab.close", Tab: one.Tab, Base: base},
+	} {
+		if res, _ := c.Command(x); res.Code != "conflict" {
+			t.Errorf("%s on the old tab: %+v", x.Op, res)
+		}
+	}
+	if got := storeOf(t, c).Sessions[0].Tabs[0]; got.Name != "theirs" || got.Root.Ratio != 0.5 {
+		t.Fatalf("the other client's rename went: %+v", got)
+	}
+	res := command(t, c, LayoutCommand{Op: "tab.set", TabLayout: &mine, Base: base + 1})
+	if got := storeOf(t, c).Sessions[0].Tabs[0]; got.Name != "mine" || got.Rev != base+2 || res.Revs[one.Tab] != base+2 {
+		t.Errorf("on the tab as it is: %+v, answered %+v", got, res)
+	}
+	// A tab.set that changes nothing counts nothing.
+	if res := command(t, c, LayoutCommand{Op: "tab.set", TabLayout: &mine, Base: base + 2}); len(res.Revs) != 0 {
+		t.Errorf("a tab.set of no change: %+v", res)
+	}
+}
+
+// TestSplitByTab splits a tab whose focused pane is a browser's, which has
+// no session, by the tab: the new pane goes beside it, tiled or floating.
+func TestSplitByTab(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	tab := storeOf(t, c).Sessions[0].Tabs[0]
+	tab.Root = &layout.Node{Ratio: 0.5, A: tab.Root, B: &layout.Node{URL: "https://example.com/", ID: "web"}}
+	tab.Focus = 1
+	command(t, c, LayoutCommand{Op: "tab.set", TabLayout: &tab})
+	tiled := command(t, c, LayoutCommand{Op: "pane.split", Tab: one.Tab, Dir: dir, Command: cmd, Vertical: true})
+	got := storeOf(t, c).Sessions[0].Tabs[0]
+	web := layout.Parent(got.Root, layout.Find(got.Root, tiled.New))
+	if web == nil || web.A.URL == "" || !web.Vertical {
+		t.Errorf("the split of the browser pane: %s", got.Arrangement())
+	}
+	fl := command(t, c, LayoutCommand{Op: "pane.split", Tab: one.Tab, Command: cmd, Float: true})
+	if got := storeOf(t, c).Sessions[0].Tabs[0]; len(got.Floats) != 1 || got.Floats[0].Pane.SID != fl.New {
+		t.Errorf("a float by the tab: %s", got.Arrangement())
+	}
+}
+
+// TestSetLayoutNeedsCapability refuses a whole layout from a client that
+// does not name layout.server, as an app of before it, at any revision.
+func TestSetLayoutNeedsCapability(t *testing.T) {
+	_, c := applyFixture(t)
+	seed(t, c)
+	ls, err := c.LayoutState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rev := range []uint64{0, ls.Revision} {
+		err := c.call(Request{Op: "setLayout", Layout: json.RawMessage(`{"version":2,"sessions":[]}`), LayoutRevision: rev}, nil)
+		if err == nil || !strings.Contains(err.Error(), "update GoRex") {
+			t.Errorf("at revision %d: %v", rev, err)
+		}
+	}
+	if st := storeOf(t, c); len(st.Sessions) != 1 {
+		t.Errorf("the layout changed: %+v", st)
+	}
+}

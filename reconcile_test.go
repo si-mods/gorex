@@ -546,3 +546,188 @@ func TestGestureSendsOneTabSet(t *testing.T) {
 		t.Errorf("after the drag: revision %d (from %d), ratio %v, the window's %v", r, rev, got, tab.Root.Ratio)
 	}
 }
+
+// TestStaleTabSetKeepsOthersChange renames a tab from another client while
+// the window, which follows the server asynchronously, has a change of its
+// own to the same tab not sent yet: the window's change, built on the tab
+// as it was, is refused, and the other client's rename stays, in the
+// server and in the window.
+func TestStaleTabSetKeepsOthersChange(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	other := followApp(t, a)
+	caughtUp(t, a, tt)
+	if res, err := other.Command(rex.LayoutCommand{Op: "tab.rename", Tab: tab.UID, Name: "theirs"}); err != nil || res.Code != "" {
+		t.Fatalf("rename: %+v %v", res, err)
+	}
+	// The window has not taken it: its own rename goes first.
+	tab.Name = "mine"
+	a.changed()
+	a.save()
+	caughtUp(t, a, tt)
+	if got := savedWorkspaces(t, other).Sessions[0].Tabs[0].Name; got != "theirs" {
+		t.Errorf("the server's tab is %q", got)
+	}
+	if tab.Name != "theirs" {
+		t.Errorf("the window's tab is %q", tab.Name)
+	}
+}
+
+// TestRefusedChangeRestored has the window send a change the server
+// refuses, with no other client's change: the window shows the server's
+// layout again, at the same revision.
+func TestRefusedChangeRestored(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	followApp(t, a)
+	caughtUp(t, a, tt)
+	p := tab.Focus
+	rev := a.st.out.revision()
+	// A second pane of the same session: the tab.set that names it twice
+	// is refused, and changes nothing on the server.
+	twin := &Pane{ID: a.id(), SID: p.SID, info: p.info}
+	a.splitWith(p, twin, false)
+	if len(tab.panes()) != 2 {
+		t.Fatal("no twin")
+	}
+	a.save()
+	waitFor(t, tt, "the window to show the server's tab", func() bool {
+		return len(tab.panes()) == 1 && tab.panes()[0] == p
+	})
+	if ls, _ := a.client.LayoutState(); ls.Revision != rev {
+		t.Errorf("the server's layout changed: revision %d, was %d", ls.Revision, rev)
+	}
+}
+
+// TestSaveNowWhileMainBusy closes a window while the outbox would take the
+// server's layout on the main thread, which is the one saving: the save
+// returns once the server answered, not a second later.
+func TestSaveNowWhileMainBusy(t *testing.T) {
+	a, tt := newTestApp(t)
+	followApp(t, a)
+	caughtUp(t, a, tt)
+	// The main thread runs nothing meanwhile: a.post's work waits.
+	a.tab().Name = "closing"
+	a.changed()
+	start := time.Now()
+	a.st.saveNow()
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Errorf("the save took %v", d)
+	}
+	if got := savedWorkspaces(t, a.client).Sessions[0].Tabs[0].Name; got != "closing" {
+		t.Errorf("the server's tab is %q", got)
+	}
+}
+
+// TestRemoveHostKeepsWindow removes a host whose panes are all the
+// window's, which follows the server asynchronously: the window keeps its
+// space, and shows the new tab of this machine in place of the host's.
+func TestRemoveHostKeepsWindow(t *testing.T) {
+	a, tt := newTestApp(t)
+	h := newHostConn(savedHost{ID: "h1", Name: "studio"})
+	a.hosts = []*hostConn{h}
+	ws := a.ws
+	// Only a host's pane: the local tab goes.
+	local := a.tab()
+	rp := &Pane{ID: a.id(), SID: "far", host: h, info: rex.SessionInfo{ID: "far"}}
+	rt := a.makeTab("")
+	rt.Root = &Node{ID: a.id(), Pane: rp}
+	rp.Tab, rp.Node = rt, rt.Root
+	rt.setFocus(rp)
+	a.tabs = []*Tab{rt}
+	a.active = 0
+	closePanes([]*Tab{local})
+	followApp(t, a)
+	caughtUp(t, a, tt)
+	a.removeHost(h)
+	waitFor(t, tt, "a tab of this machine", func() bool {
+		return len(a.tabs) == 1 && a.tabs[0].Focus != nil && a.tabs[0].Focus.host == nil && a.tabs[0].Focus.SID != ""
+	})
+	if a.ws != ws || a.st.workspaceByID(ws.ID) == nil {
+		t.Errorf("the window left its space: %v", a.ws)
+	}
+	caughtUp(t, a, tt)
+	if a.err != "" {
+		t.Errorf("error %q", a.err)
+	}
+}
+
+// TestFloatNewBox runs float.new with a box, the server making the float
+// asynchronously: the float takes the box once it shows.
+func TestFloatNewBox(t *testing.T) {
+	a, tt := newTestApp(t)
+	followApp(t, a)
+	caughtUp(t, a, tt)
+	if err := cmdNewFloat.RunArgs(a, map[string]any{"x": 0.1, "y": 0.2, "w": 0.5, "h": 0.4}); err != nil {
+		t.Fatal(err)
+	}
+	tab := a.tab()
+	waitFor(t, tt, "the float", func() bool { return len(tab.Floats) == 1 })
+	f := tab.Floats[0]
+	if !near(f.X, 0.1) || !near(f.Y, 0.2) || !near(f.W, 0.5) || !near(f.H, 0.4) {
+		t.Errorf("the float's box %v %v %v %v", f.X, f.Y, f.W, f.H)
+	}
+	a.save()
+	caughtUp(t, a, tt)
+	if fs := savedWorkspaces(t, a.client).Sessions[0].Tabs[0].Floats; len(fs) != 1 || !near(fs[0].W, 0.5) {
+		t.Errorf("the server's floats %+v", fs)
+	}
+}
+
+// TestEndPaneWhenTabFails ends the last pane, a host's, while the server
+// makes no tab: the dead pane goes anyway.
+func TestEndPaneWhenTabFails(t *testing.T) {
+	a, _ := newTestApp(t)
+	h := newHostConn(savedHost{ID: "h1", Name: "studio"})
+	a.hosts = []*hostConn{h}
+	rp := &Pane{ID: a.id(), SID: "far", host: h, info: rex.SessionInfo{ID: "far"}}
+	t1 := a.tab()
+	closePanes([]*Tab{t1})
+	rt := a.makeTab("")
+	rt.Root = &Node{ID: a.id(), Pane: rp}
+	rp.Tab, rp.Node = rt, rt.Root
+	rt.setFocus(rp)
+	a.tabs, a.active = []*Tab{rt}, 0
+	a.st.readOnly = true // no tab comes
+	a.endPane(rp)
+	if !rp.closed {
+		t.Error("the dead pane stays")
+	}
+}
+
+// TestActionOnHiddenSpace runs an action on a pane of a space no window
+// shows: the window shows that space, and the action acts on the pane.
+func TestActionOnHiddenSpace(t *testing.T) {
+	a, _ := newTestApp(t)
+	home := a.ws
+	res := clientCommand(a, rex.LayoutCommand{Op: "space.create", Name: "away"})
+	made := clientCommand(a, rex.LayoutCommand{Op: "tab.create", Space: res.Space, Dir: os.TempDir()})
+	if made.Code != "" || a.ws != home {
+		t.Fatalf("tab.create: %+v, window on %v", made, a.ws)
+	}
+	app := a.st.commandAppFor("", made.New)
+	got := app.command(rex.LayoutCommand{Op: "action", SID: made.New, Action: "tab.rename", Args: json.RawMessage(`{"name":"renamed"}`)})
+	if got.Code != "" || app.ws == nil || app.ws.ID != res.Space || app.tab().Name != "renamed" {
+		t.Errorf("the action: %+v, window on %v", got, app.ws)
+	}
+}
+
+// TestReadOnlyReverts closes a pane while the server is one of before it
+// made the layout's changes: the window shows the pane again, and says why.
+func TestReadOnlyReverts(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.split(false)
+	tab := a.tab()
+	followApp(t, a)
+	caughtUp(t, a, tt)
+	a.st.readOnly = true
+	a.closePane(tab.panes()[1])
+	a.save()
+	waitFor(t, tt, "the pane back", func() bool { return len(tab.panes()) == 2 })
+	if a.errMsg == nil {
+		t.Error("no banner")
+	}
+	if infos, _ := a.client.List(); len(infos) != 2 {
+		t.Errorf("sessions %d", len(infos))
+	}
+}

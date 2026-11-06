@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"bytes"
 	"fmt"
 	"log"
 	"os"
@@ -211,14 +211,50 @@ func (st *store) queue() {
 	for _, a := range st.apps {
 		a.saveDue, a.lastSave = false, time.Now()
 	}
-	if st.client == nil || st.readOnly {
+	if st.client == nil {
 		return
 	}
 	now := st.saved()
+	if st.readOnly {
+		// The server takes no change of the app's: the window shows the
+		// server's layout again, and says why.
+		if !sameArrangement(now, st.base) {
+			for _, a := range st.apps {
+				a.err, a.errMsg = "", locales.Messages.ServerLayoutReadOnly
+			}
+			st.out.refresh()
+		}
+		return
+	}
 	for _, c := range diffLayout(st.base, now) {
+		if c.TabLayout != nil {
+			logFocus(st.base, *c.TabLayout)
+		}
 		st.out.add(c, nil)
 	}
 	st.base = now
+	// What the browser panes show the server has now.
+	for _, a := range st.apps {
+		for _, t := range a.tabs {
+			for _, p := range t.allPanes() {
+				if b := p.browser; b != nil {
+					b.synced = b.url
+				}
+			}
+		}
+	}
+}
+
+// logFocus logs a change of a tab's focus the app sends, for the focus
+// that moved by itself, once a second, in a window left alone (P3's e2e).
+func logFocus(base savedStore, t layout.Tab) {
+	for _, w := range base.Sessions {
+		for _, b := range w.Tabs {
+			if b.ID == t.ID && (b.Focus != t.Focus || b.FocusFloat != t.FocusFloat) {
+				log.Printf("gorex: tab %s focus %d/%d to %d/%d", t.ID, b.Focus, b.FocusFloat, t.Focus, t.FocusFloat)
+			}
+		}
+	}
 }
 
 // saveNow saves, and waits a second at most for the server to make it.
@@ -231,9 +267,13 @@ func (st *store) saveNow() {
 // app's own changes; done runs on the main thread with its answer, once
 // the windows show the server's layout after it.
 func (st *store) send(c rex.LayoutCommand, done func(rex.LayoutCommand)) {
-	if st.readOnly {
+	if st.readOnly || st.client == nil {
 		if done != nil {
-			done(rex.LayoutCommand{Code: "read_only", Error: locales.ServerLayoutReadOnly()})
+			res := rex.LayoutCommand{Code: "read_only", Error: locales.ServerLayoutReadOnly()}
+			if st.client == nil {
+				res = rex.LayoutCommand{Code: "failed", Error: "rex: connection to the server lost"}
+			}
+			done(res)
 		}
 		return
 	}
@@ -279,12 +319,17 @@ func (st *store) takeLayout(ls rex.LayoutState) bool {
 	}
 	if slices.ContainsFunc(st.apps, func(a *App) bool { return a.saveDue }) {
 		st.save()
-		if st.out.pending() {
-			return false
-		}
+	}
+	// Changes queued since the read go first, built on the tabs as the
+	// app knew them: the server refuses one another client's change came
+	// before, and the app reads again after them.
+	if st.out.pending() {
+		return false
 	}
 	s := layout.Parse(ls.Layout)
-	same := sameArrangement(s, st.base)
+	// What the app shows already, as its own change the server made, it
+	// need not take again.
+	same := sameArrangement(s, st.saved())
 	st.base = s
 	if !same {
 		st.reconcile(s)
@@ -376,11 +421,18 @@ func (st *store) rehome(apps []*App, fresh bool) {
 	}
 }
 
-// sameLayout tells whether two layouts are the same.
+// sameLayout tells whether two layouts are the same arrangement, as the
+// server keeps one (layout.Tab.Arrangement).
 func sameLayout(x, y savedLayout) bool {
-	bx, _ := json.Marshal(x)
-	by, _ := json.Marshal(y)
-	return string(bx) == string(by)
+	if x.Active != y.Active || len(x.Tabs) != len(y.Tabs) {
+		return false
+	}
+	for i := range x.Tabs {
+		if !bytes.Equal(x.Tabs[i].Arrangement(), y.Tabs[i].Arrangement()) {
+			return false
+		}
+	}
+	return true
 }
 
 // load reads the workspaces the server keeps, and returns those of the
@@ -400,7 +452,7 @@ func (st *store) read() ([]byte, error) {
 	if err != nil {
 		return st.client.Layout() // a server of before revisions
 	}
-	st.out.took(ls.Revision)
+	st.out.took(ls.Revision, ls.Layout)
 	st.base = layout.Parse(ls.Layout)
 	return ls.Layout, nil
 }
