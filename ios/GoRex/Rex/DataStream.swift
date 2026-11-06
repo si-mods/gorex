@@ -182,14 +182,21 @@ final class DataConnection {
         t.maximumMessageSize = 1 << 20
         task = t
         t.resume()
-        try await t.send(.data(first))
-        guard case .data(let d) = try await t.receive(), let answer = DataHandshake(d) else { throw Failure.malformed }
-        switch answer {
-        case .reject(let r):
-            throw Failure.rejected(r)
-        case .welcome(let tok, _, let n):
-            token = tok
-            nonce = n
+        do {
+            try await t.send(.data(first))
+            guard case .data(let d) = try await t.receive(), let answer = DataHandshake(d) else { throw Failure.malformed }
+            switch answer {
+            case .reject(let r):
+                throw Failure.rejected(r)
+            case .welcome(let tok, _, let n):
+                token = tok
+                nonce = n
+            }
+        } catch {
+            // A handshake that failed leaves no socket open.
+            t.cancel()
+            if task === t { task = nil }
+            throw error
         }
         Task { await read(t) }
     }

@@ -208,6 +208,27 @@ nonisolated final class ConnectionTests: XCTestCase {
         h.stop()
     }
 
+    /// A data handshake the server refuses closes its socket.
+    @MainActor func testRefusedHandshakeClosesTheSocket() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in method == "data.connect" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:] }
+        var conns: [NWConnection] = []
+        var ended = false
+        rex.data = { c, _ in
+            conns.append(c)
+            FakeRex.send(c, Data([0x82, 1]))
+            c.receiveMessage { _, _, _, _ in MainActor.assumeIsolated { ended = true } }
+        }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        await until("failed") { if case .failed = s.state { true } else { false } }
+        await until("socket closed") { ended }
+        conns.forEach { $0.cancel() }
+        h.stop()
+    }
+
     /// A data connection that keeps dropping is tried again ever later,
     /// not at once.
     @MainActor func testDropsBackOff() async throws {
