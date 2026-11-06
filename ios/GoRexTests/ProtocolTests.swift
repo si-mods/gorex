@@ -96,23 +96,38 @@ nonisolated final class TerminalStreamTests: XCTestCase {
         XCTAssertNil(TerminalStream.snapshotLength(fixture.prefix(5)))
     }
 
-    /// libghostty-vt restores the fixture's screen, then takes output.
-    @MainActor func testSnapshotDecodes() throws {
+    /// libghostty-vt restores the fixture's screen, and turns it into the
+    /// escape sequences that draw it again.
+    @MainActor func testSnapshotReplays() throws {
         let t = try XCTUnwrap(VTerminal(snapshot: fixture.prefix(snapshotBytes)))
         XCTAssertEqual(t.size.cols, 80)
         XCTAssertEqual(t.size.rows, 24)
-        var screen: [String] = []
-        t.draw { _, cells in screen.append(cells.map(\.text).joined()) }
-        XCTAssertEqual(screen.count, 24)
-        XCTAssertEqual(screen[0].trimmingCharacters(in: .whitespaces), "hello world")
-        XCTAssertTrue(screen[1].hasPrefix("sh-3.2$"), screen[1])
+        let lines = t.text.components(separatedBy: "\n")
+        XCTAssertEqual(lines.first?.trimmingCharacters(in: .whitespaces), "hello world")
+        XCTAssertTrue(lines.count > 1 && lines[1].hasPrefix("sh-3.2$"), t.text)
         t.write(Data("\r\nhello \u{1b}[31mred".utf8))
-        var second: [VTerminal.Cell] = []
-        t.draw { y, cells in if y == 2 { second = cells } }
-        XCTAssertEqual(second.map(\.text).joined().replacingOccurrences(of: " ", with: ""), "hellored")
-        XCTAssertNotEqual(second.last?.fg, second.first?.fg)
+        XCTAssertTrue(t.text.contains("hello red"), t.text)
+        // Styled: the fixture's bold red "hello", and the red written.
+        let replay = String(decoding: t.replay(), as: UTF8.self)
+        XCTAssertTrue(replay.contains("\u{1b}[1m\u{1b}[38;5;1mhello"), replay)
+        XCTAssertTrue(replay.contains("\u{1b}[38;5;1mred"), replay)
+        // The fixture's terminal has no default colors of its own.
+        XCTAssertNil(t.theme["foreground"])
+        XCTAssertEqual((t.theme["palette"] as? [String])?.count, 256)
         t.resize(cols: 40, rows: 10, cellWidth: 8, cellHeight: 16)
         XCTAssertEqual(t.size.cols, 40)
+    }
+
+    /// A full-screen program's screen comes back on the alternate screen,
+    /// with the modes it set: here application cursor keys.
+    @MainActor func testReplayKeepsModes() throws {
+        let t = try XCTUnwrap(VTerminal(snapshot: fixture.prefix(snapshotBytes)))
+        t.write(Data("\u{1b}[?1049h\u{1b}[?1h\u{1b}[Hfull screen".utf8))
+        let replay = String(decoding: t.replay(), as: UTF8.self)
+        XCTAssertTrue(replay.contains("\u{1b}[?1049h") || replay.contains("\u{1b}[?1047h"), replay)
+        XCTAssertTrue(replay.contains("\u{1b}[?1h"), replay)
+        XCTAssertTrue(replay.contains("full screen"), replay)
+        XCTAssertFalse(replay.contains("hello world"), replay)
     }
 }
 
@@ -170,26 +185,38 @@ nonisolated final class EventTests: XCTestCase {
 nonisolated final class KeyTests: XCTestCase {
     @MainActor func testTyping() {
         let k = KeyEvent.typing("aZ1!é")
-        XCTAssertEqual(k.map(\.key), ["key_a", "key_z", "digit_1", "digit_1", "unidentified"])
-        XCTAssertEqual(k[1].mods, ["shift"])
+        XCTAssertEqual(k.map(\.code), [0x00, 0x06, 0x12, 0x12, KeyEvent.unidentified])
+        XCTAssertEqual(k[1].mods, .shift)
+        XCTAssertEqual(k[1].consumed, .shift)
         XCTAssertEqual(k[1].text, "Z")
-        XCTAssertEqual(k[3].payload["unshifted_codepoint"] as? Int, 49)
+        XCTAssertEqual(k[1].unshifted, "z")
+        XCTAssertEqual(k[3].unshifted, "1")
         XCTAssertEqual(k[4].text, "é")
+        XCTAssertEqual(KeyEvent.typing("你好").map(\.text), ["你", "好"])
+    }
+
+    @MainActor func testWholeUTF8() {
+        let d = Data("a中".utf8)
+        XCTAssertEqual(d.wholeUTF8, 4)
+        XCTAssertEqual(d.prefix(3).wholeUTF8, 1)
+        XCTAssertEqual(d.prefix(2).wholeUTF8, 1)
+        XCTAssertEqual(Data("ab\u{1b}".utf8).wholeUTF8, 3)
     }
 
     @MainActor func testCtrlAndAlt() {
-        XCTAssertEqual(KeyEvent.typing("c", ctrl: true), [KeyEvent(key: "key_c", text: "", mods: ["ctrl"], unshifted: "c")])
-        XCTAssertEqual(KeyEvent.typing("x", alt: true).map(\.key), ["escape", "key_x"])
-        XCTAssertEqual(KeyEvent.typing("\n").first?.key, "enter")
+        XCTAssertEqual(KeyEvent.typing("c", ctrl: true), [KeyEvent(code: 0x08, text: "c", mods: .ctrl, unshifted: "c")])
+        XCTAssertEqual(KeyEvent.typing("x", alt: true).first?.mods, .alt)
+        XCTAssertEqual(KeyEvent.typing("\n").first, KeyEvent.named("enter"))
+        XCTAssertEqual(KeyEvent.named("enter").code, 0x24)
     }
 
     @MainActor func testShift() {
         XCTAssertEqual(KeyEvent.typing("a", shift: true),
-                       [KeyEvent(key: "key_a", text: "A", mods: ["shift"], consumed: ["shift"], unshifted: "a")])
-        XCTAssertEqual(KeyEvent.typing("c", ctrl: true, shift: true).first?.mods, ["shift", "ctrl"])
-        XCTAssertEqual(KeyEvent.typing("\n", shift: true), [KeyEvent(key: "enter", mods: ["shift"])])
+                       [KeyEvent(code: 0x00, text: "A", mods: .shift, consumed: .shift, unshifted: "a")])
+        XCTAssertEqual(KeyEvent.typing("c", ctrl: true, shift: true).first?.mods, [.shift, .ctrl])
+        XCTAssertEqual(KeyEvent.typing("\n", shift: true), [KeyEvent(code: 0x24, mods: .shift)])
         XCTAssertEqual(KeyEvent.typing("1", shift: true).first?.text, "1")
-        XCTAssertEqual(KeyEvent.named("tab", shift: true), KeyEvent(key: "tab", mods: ["shift"]))
-        XCTAssertEqual(KeyEvent.named("arrow_up", shift: true, ctrl: true, alt: true).mods, ["shift", "ctrl", "alt"])
+        XCTAssertEqual(KeyEvent.named("tab", shift: true), KeyEvent(code: 0x30, mods: .shift))
+        XCTAssertEqual(KeyEvent.named("arrow_up", shift: true, ctrl: true, alt: true).mods, [.shift, .ctrl, .alt])
     }
 }

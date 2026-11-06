@@ -210,3 +210,15 @@ final class DataConnection {
         }
     }
 }
+
+extension Data {
+    /// The length of the bytes without a UTF-8 character cut off at their end.
+    var wholeUTF8: Int {
+        let b = [UInt8](suffix(3))
+        for (i, c) in b.enumerated().reversed() where c & 0xC0 != 0x80 {
+            let need = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1
+            return b.count - i >= need ? count : count - (b.count - i)
+        }
+        return count
+    }
+}

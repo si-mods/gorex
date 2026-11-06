@@ -17,7 +17,7 @@ struct TerminalTheme: Decodable {
         return name.isEmpty ? nil : all.first { $0.name == name }
     }
 
-    /// The theme as a stream's theme message, for VTerminal.setTheme. A
+    /// The theme as a stream's theme message, for TerminalView.setTheme. A
     /// theme message from the server replaces it, as each one replaces the last.
     var message: [String: Any] {
         func hex(_ i: Int) -> String { String(format: "%06x", colors[i]) }

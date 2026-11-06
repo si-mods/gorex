@@ -75,8 +75,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
         return v
     }
 
-    func updateUIView(_ v: TerminalView, context: Context) {
-        _ = session.frame
-        v.setNeedsDisplay()
-    }
+    func updateUIView(_ v: TerminalView, context: Context) {}
+
+    static func dismantleUIView(_ v: TerminalView, coordinator: ()) { v.close() }
 }

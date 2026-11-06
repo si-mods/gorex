@@ -1,126 +1,201 @@
-import CoreText
-import GhosttyVt
+import GhosttyKit
 import UIKit
 
-/// Draws a TerminalSession's screen with Core Text and types into it.
-/// The soft keyboard comes with a bar of the keys it lacks (Esc, Tab, Ctrl,
-/// Alt, Shift, arrows), after rootshell's KeyboardAccessoryView; the
-/// modifiers hold for the next key. A vertical drag scrolls back, or turns
-/// the wheel of a full-screen program.
-final class TerminalView: UIView, UIKeyInput {
+/// A TerminalSession's screen, drawn by a Ghostty surface with its Metal
+/// renderer, after rootshell's TerminalView. The session's bytes go into
+/// the surface's terminal; what Ghostty encodes for the keys, the pastes
+/// and the wheel comes back out of it, for the session to write to the
+/// program. The soft keyboard comes with a bar of the keys it lacks (Esc,
+/// Tab, Ctrl, Alt, Shift, arrows), after rootshell's KeyboardAccessoryView;
+/// the modifiers hold for the next key. A vertical drag turns the wheel: it
+/// scrolls back, or goes to a full-screen program.
+final class TerminalView: UIView, UIKeyInput, TerminalOutput {
     let session: TerminalSession
     /// The font size chosen in Settings.
     static var fontSize: CGFloat {
         let v = UserDefaults.standard.double(forKey: "fontSize")
         return v > 0 ? v : 12
     }
-    private let font = UIFont.monospacedSystemFont(ofSize: TerminalView.fontSize, weight: .regular)
-    private lazy var fonts: [CTFont] = [UIFont.Weight.regular, .bold].flatMap { w -> [CTFont] in
-        let f = UIFont.monospacedSystemFont(ofSize: font.pointSize, weight: w)
-        let italic = f.fontDescriptor.withSymbolicTraits(.traitItalic).map { UIFont(descriptor: $0, size: 0) } ?? f
-        return [f as CTFont, italic as CTFont]
-    }
-    let cell: CGSize
-    private var lines: [LineKey: CTLine] = [:]
     var ctrl = false { didSet { bar.ctrl.isSelected = ctrl } }
     var alt = false { didSet { bar.alt.isSelected = alt } }
     var shift = false { didSet { bar.shift.isSelected = shift } }
-    private var dragRows: CGFloat = 0
     private lazy var bar = KeyBar(target: self)
+
+    private var surface: ghostty_surface_t?
+    private var config: ghostty_config_t?
+    /// The surface's terminal takes the program's output here, in order on
+    /// the queue: a write waits while Ghostty catches up.
+    private var output: Int32 = -1
+    private let writes = DispatchQueue(label: "dev.gorex.ios.terminal.output")
+    /// Reads what Ghostty encodes for the program.
+    private var input: DispatchSourceRead?
 
     init(session: TerminalSession) {
         self.session = session
-        let scale = UIScreen.main.scale
-        let advance = ("M" as NSString).size(withAttributes: [.font: font]).width
-        cell = CGSize(width: (advance * scale).rounded() / scale, height: (font.lineHeight * scale).rounded(.up) / scale)
         super.init(frame: .zero)
-        isOpaque = true
-        contentMode = .redraw
         backgroundColor = UIColor(cgColor: (session.background ?? .black).cgColor)
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
         addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(drag)))
         isAccessibilityElement = true
         accessibilityIdentifier = "terminal"
+        // The renderer draws nothing in the background, which iOS forbids.
+        NotificationCenter.default.addObserver(self, selector: #selector(hide), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(show), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    // MARK: Surface
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil, surface == nil { open() }
+    }
+
+    /// Makes the surface, its terminal fed from outside, and shows the
+    /// session in it.
+    private func open() {
+        guard let app = Ghostty.app else { return }
+        var c = ghostty_surface_config_new()
+        c.platform_tag = GHOSTTY_PLATFORM_IOS
+        c.platform = ghostty_platform_u(ios: ghostty_platform_ios_s(uiview: Unmanaged.passUnretained(self).toOpaque()))
+        c.userdata = Unmanaged.passUnretained(self).toOpaque()
+        c.scale_factor = traitCollection.displayScale
+        c.font_size = Float(Self.fontSize)
+        c.use_external_io = true
+        c.initially_visible = true
+        guard let s = ghostty_surface_new(app, &c) else { return }
+        surface = s
+        Ghostty.register(self, for: s)
+        output = ghostty_surface_get_slave_fd(s)
+        _ = fcntl(output, F_SETFL, fcntl(output, F_GETFL) & ~O_NONBLOCK)
+        read(ghostty_surface_response_read_fd(s))
+        session.output = self
+        setNeedsLayout()
+    }
+
+    /// Passes what Ghostty encodes to the session, as it comes.
+    private func read(_ fd: Int32) {
+        guard fd >= 0 else { return }
+        input = Self.reader(fd) { [weak self] got in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.session.type(got) } }
+        }
+    }
+
+    /// Reads fd on a queue of its own, not the main actor's.
+    nonisolated private static func reader(_ fd: Int32, _ deliver: @escaping @Sendable (Data) -> Void) -> DispatchSourceRead {
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: DispatchQueue(label: "dev.gorex.ios.terminal.input"))
+        source.setEventHandler {
+            var buf = [UInt8](repeating: 0, count: 16 << 10)
+            var got = Data()
+            while true {
+                let n = Darwin.read(fd, &buf, buf.count)
+                if n > 0 { got.append(buf, count: n); continue }
+                if n == 0 { source.cancel() }
+                break
+            }
+            if !got.isEmpty { deliver(got) }
+        }
+        source.resume()
+        return source
+    }
+
+    /// Frees the surface, once its last output is written.
+    func close() {
+        guard let s = surface else { return }
+        surface = nil
+        output = -1
+        Ghostty.unregister(s)
+        Self.free(s, config, after: input, writes)
+    }
+
+    /// Frees a surface and its config on the main thread, after its reader
+    /// stopped and the writes queued before.
+    nonisolated private static func free(_ s: ghostty_surface_t, _ c: ghostty_config_t?, after input: DispatchSourceRead?, _ writes: DispatchQueue) {
+        nonisolated(unsafe) let (surface, config) = (s, c)
+        let free: @Sendable () -> Void = {
+            writes.async {
+                DispatchQueue.main.async {
+                    ghostty_surface_free(surface)
+                    if let config { ghostty_config_free(config) }
+                }
+            }
+        }
+        if let input {
+            input.setCancelHandler(handler: free)
+            input.cancel()
+        } else {
+            free()
+        }
+    }
+
+    func write(_ bytes: Data) {
+        let fd = output
+        guard fd >= 0, !bytes.isEmpty else { return }
+        writes.async {
+            bytes.withUnsafeBytes { p in
+                var at = 0
+                while at < p.count {
+                    let n = Darwin.write(fd, p.baseAddress! + at, p.count - at)
+                    if n > 0 { at += n } else if errno != EINTR { return }
+                }
+            }
+        }
+    }
+
+    /// Sets the default colors, and the font size, through Ghostty's config.
+    func setTheme(_ theme: [String: Any]) {
+        guard let s = surface else { return }
+        func hex(_ c: VTerminal.RGB) -> String { String(format: "#%06x", c.packed) }
+        var lines = ["font-size = \(Self.fontSize)"]
+        for (key, name) in [("background", "background"), ("foreground", "foreground"), ("cursor", "cursor-color")] {
+            if let c = (theme[key] as? String).flatMap(VTerminal.RGB.init(hex:)) { lines.append("\(name) = \(hex(c))") }
+        }
+        for entry in theme["palette"] as? [String] ?? [] {
+            let parts = entry.split(separator: "=", maxSplits: 1)
+            if parts.count == 2, let i = Int(parts[0]), (0..<256).contains(i), let c = VTerminal.RGB(hex: String(parts[1])) {
+                lines.append("palette = \(i)=\(hex(c))")
+            }
+        }
+        guard let c = Ghostty.config(lines.joined(separator: "\n")) else { return }
+        ghostty_surface_update_config(s, c)
+        if let config { ghostty_config_free(config) }
+        config = c
+        // The background it came to, Ghostty's own when the theme has none.
+        var bg = ghostty_config_color_s()
+        if ghostty_config_get(c, &bg, "background", UInt("background".utf8.count)) {
+            let rgb = VTerminal.RGB(r: bg.r, g: bg.g, b: bg.b)
+            backgroundColor = UIColor(cgColor: rgb.cgColor)
+            session.drew(background: rgb)
+        }
+    }
+
+    @objc private func hide() { if let surface { ghostty_surface_set_occlusion(surface, false) } }
+    @objc private func show() { if let surface { ghostty_surface_set_occlusion(surface, true) } }
 
     // MARK: Size
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let scale = window?.screen.scale ?? UIScreen.main.scale
-        session.fit(cols: Int(bounds.width / cell.width), rows: Int(bounds.height / cell.height),
-                    cellWidth: Int(cell.width * scale), cellHeight: Int(cell.height * scale))
+        guard let s = surface else { return }
+        let scale = traitCollection.displayScale
+        // The renderer's layer does not follow the view's size by itself.
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for l in layer.sublayers ?? [] where !(l.delegate is UIView) {
+            l.frame = bounds
+            l.contentsScale = scale
+        }
+        CATransaction.commit()
+        ghostty_surface_set_content_scale(s, scale, scale)
+        ghostty_surface_set_size(s, UInt32(bounds.width * scale), UInt32(bounds.height * scale))
     }
 
-    // MARK: Drawing
-
-    private struct LineKey: Hashable {
-        var text: String
-        var fg: Int
-        var font: Int
-    }
-
-    override func draw(_ rect: CGRect) {
-        guard let ctx = UIGraphicsGetCurrentContext() else { return }
-        guard let t = session.terminal else {
-            ctx.setFillColor((session.background ?? .black).cgColor)
-            ctx.fill(bounds)
-            return
-        }
-        var rows: [(Int, [VTerminal.Cell])] = []
-        let s = t.draw { rows.append(($0, $1)) }
-        ctx.setFillColor(s.bg.cgColor)
-        ctx.fill(bounds)
-        let ascent = CTFontGetAscent(fonts[0])
-        ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-        if lines.count > 4096 { lines = [:] }
-        for (y, cells) in rows {
-            let top = CGFloat(y) * cell.height
-            // The row's backgrounds first: a wide character's second cell
-            // would paint over the right half of its glyph otherwise.
-            for c in cells {
-                guard let bg = c.bg else { continue }
-                ctx.setFillColor(bg.cgColor)
-                ctx.fill(CGRect(x: CGFloat(c.x) * cell.width, y: top, width: cell.width, height: cell.height))
-            }
-            for c in cells {
-                let x = CGFloat(c.x) * cell.width
-                if c.text.isEmpty || c.text == " " { continue }
-                let fg = c.faint ? c.fg.mixed(with: s.bg) : c.fg
-                let key = LineKey(text: c.text, fg: fg.packed, font: (c.bold ? 2 : 0) + (c.italic ? 1 : 0))
-                let line = lines[key] ?? {
-                    let a = NSAttributedString(string: c.text, attributes: [
-                        .font: fonts[key.font], .foregroundColor: fg.cgColor,
-                    ])
-                    let l = CTLineCreateWithAttributedString(a)
-                    lines[key] = l
-                    return l
-                }()
-                ctx.textPosition = CGPoint(x: x, y: top + ascent)
-                CTLineDraw(line, ctx)
-                if c.underline || c.strike {
-                    ctx.setFillColor(fg.cgColor)
-                    let ly = c.underline ? top + ascent + 1.5 : top + cell.height / 2
-                    ctx.fill(CGRect(x: x, y: ly, width: cell.width, height: 1))
-                }
-            }
-        }
-        if let cur = s.cursor {
-            let r = CGRect(x: CGFloat(cur.x) * cell.width, y: CGFloat(cur.y) * cell.height, width: cell.width, height: cell.height)
-            ctx.setFillColor((s.cursorColor ?? s.fg).cgColor.copy(alpha: 0.7)!)
-            switch cur.style {
-            case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BAR: ctx.fill(r.divided(atDistance: 2, from: .minXEdge).slice)
-            case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_UNDERLINE: ctx.fill(r.divided(atDistance: 2, from: .maxYEdge).slice)
-            case GHOSTTY_RENDER_STATE_CURSOR_VISUAL_STYLE_BLOCK_HOLLOW:
-                ctx.setStrokeColor((s.cursorColor ?? s.fg).cgColor)
-                ctx.stroke(r.insetBy(dx: 0.5, dy: 0.5))
-            default: ctx.fill(r)
-            }
-        }
-        backgroundColor = UIColor(cgColor: s.bg.cgColor)
-        session.drew(background: s.bg)
+    /// Ghostty settled on a grid for the view's size: the block takes it.
+    func resized(cols: Int, rows: Int, width: Int, height: Int) {
+        guard cols > 0, rows > 0 else { return }
+        session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows)
     }
 
     // MARK: Touch
@@ -129,21 +204,16 @@ final class TerminalView: UIView, UIKeyInput {
         if !isFirstResponder { becomeFirstResponder() }
     }
 
+    /// Turns the wheel by the drag, so that the lines follow the finger.
     @objc private func drag(_ g: UIPanGestureRecognizer) {
-        if g.state == .began { dragRows = 0 }
-        dragRows += g.translation(in: self).y / cell.height
+        guard let s = surface else { return }
+        let p = g.location(in: self)
+        ghostty_surface_mouse_pos(s, p.x, p.y, GHOSTTY_MODS_NONE)
+        let dy = g.translation(in: self).y
         g.setTranslation(.zero, in: self)
-        let n = Int(dragRows)
-        guard n != 0, let t = session.terminal else { return }
-        dragRows -= CGFloat(n)
-        if t.wantsWheel {
-            let p = g.location(in: self)
-            for _ in 0..<abs(n) {
-                session.wheel(up: n > 0, col: Int(p.x / cell.width), row: Int(p.y / cell.height))
-            }
-        } else {
-            session.scrollLocal(-n)
-        }
+        // The scroll mods' first bit: precise deltas, which Ghostty counts
+        // in pixels.
+        ghostty_surface_mouse_scroll(s, 0, dy * traitCollection.displayScale, 1)
     }
 
     // MARK: Keyboard
@@ -163,7 +233,7 @@ final class TerminalView: UIView, UIKeyInput {
     var keyboardAppearance: UIKeyboardAppearance = .dark
 
     func insertText(_ text: String) {
-        session.send(KeyEvent.typing(text, ctrl: ctrl, alt: alt, shift: shift))
+        press(KeyEvent.typing(text, ctrl: ctrl, alt: alt, shift: shift))
         release()
     }
 
@@ -171,7 +241,7 @@ final class TerminalView: UIView, UIKeyInput {
 
     /// Sends a key of the bar, with its held modifiers.
     func send(_ key: String) {
-        session.send([.named(key, shift: shift, ctrl: ctrl, alt: alt)])
+        press([.named(key, shift: shift, ctrl: ctrl, alt: alt)])
         release()
     }
 
@@ -181,12 +251,34 @@ final class TerminalView: UIView, UIKeyInput {
         shift = false
     }
 
+    /// Has Ghostty encode keys, each pressed and let go, for the program's
+    /// keyboard modes.
+    private func press(_ keys: [KeyEvent]) {
+        guard let s = surface else { return }
+        for k in keys {
+            for action in [GHOSTTY_ACTION_PRESS, GHOSTTY_ACTION_RELEASE] {
+                k.text.withCString { text in
+                    var e = ghostty_input_key_s()
+                    e.action = action
+                    e.mods = ghostty_input_mods_e(k.mods.rawValue)
+                    e.consumed_mods = ghostty_input_mods_e(k.consumed.rawValue)
+                    e.keycode = k.code
+                    e.text = action == GHOSTTY_ACTION_PRESS && !k.text.isEmpty ? text : nil
+                    e.unshifted_codepoint = k.unshifted?.unicodeScalars.first?.value ?? 0
+                    _ = ghostty_surface_key(s, e)
+                }
+            }
+        }
+    }
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         action == #selector(paste(_:)) ? UIPasteboard.general.hasStrings : super.canPerformAction(action, withSender: sender)
     }
 
+    /// Pastes as a terminal does: bracketed when the program asked for it.
     override func paste(_ sender: Any?) {
-        if let s = UIPasteboard.general.string { session.paste(s) }
+        guard let s = surface, let t = UIPasteboard.general.string else { return }
+        t.withCString { ghostty_surface_text(s, $0, UInt(t.utf8.count)) }
     }
 
     /// Hardware keys that type no text, and Ctrl chords; the rest arrive as
@@ -195,23 +287,27 @@ final class TerminalView: UIView, UIKeyInput {
         var rest = Set<UIPress>()
         for p in presses {
             guard let k = p.key else { rest.insert(p); continue }
-            let names: [UIKeyboardHIDUsage: String] = [
-                .keyboardEscape: "escape", .keyboardUpArrow: "arrow_up", .keyboardDownArrow: "arrow_down",
-                .keyboardLeftArrow: "arrow_left", .keyboardRightArrow: "arrow_right", .keyboardHome: "home",
-                .keyboardEnd: "end", .keyboardPageUp: "page_up", .keyboardPageDown: "page_down",
-                .keyboardDeleteForward: "delete",
-            ]
-            if let name = names[k.keyCode] {
-                let f = k.modifierFlags
-                session.send([.named(name, shift: f.contains(.shift), ctrl: f.contains(.control), alt: f.contains(.alternate))])
-            } else if k.modifierFlags.contains(.control), !k.charactersIgnoringModifiers.isEmpty {
-                session.send(KeyEvent.typing(k.charactersIgnoringModifiers, ctrl: true))
+            let f = k.modifierFlags
+            if let name = Self.names[k.keyCode] {
+                press([.named(name, shift: f.contains(.shift), ctrl: f.contains(.control), alt: f.contains(.alternate))])
+            } else if f.contains(.control), !k.charactersIgnoringModifiers.isEmpty {
+                press(KeyEvent.typing(k.charactersIgnoringModifiers, ctrl: true))
             } else {
                 rest.insert(p)
             }
         }
         if !rest.isEmpty { super.pressesBegan(rest, with: event) }
     }
+
+    private static let names: [UIKeyboardHIDUsage: String] = [
+        .keyboardEscape: "escape", .keyboardUpArrow: "arrow_up", .keyboardDownArrow: "arrow_down",
+        .keyboardLeftArrow: "arrow_left", .keyboardRightArrow: "arrow_right", .keyboardHome: "home",
+        .keyboardEnd: "end", .keyboardPageUp: "page_up", .keyboardPageDown: "page_down",
+        .keyboardDeleteForward: "delete",
+        .keyboardF1: "f1", .keyboardF2: "f2", .keyboardF3: "f3", .keyboardF4: "f4", .keyboardF5: "f5",
+        .keyboardF6: "f6", .keyboardF7: "f7", .keyboardF8: "f8", .keyboardF9: "f9", .keyboardF10: "f10",
+        .keyboardF11: "f11", .keyboardF12: "f12",
+    ]
 }
 
 /// The bar over the soft keyboard: three capsules of Liquid Glass, dark as
@@ -460,22 +556,5 @@ final class StickPad: UIView {
         disc.stroke()
         UIColor(white: 0.13, alpha: 1).setFill()
         UIBezierPath(arcCenter: c, radius: 8, startAngle: 0, endAngle: 2 * .pi, clockwise: true).fill()
-    }
-}
-
-extension VTerminal.RGB {
-    var cgColor: CGColor {
-        CGColor(srgbRed: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: 1)
-    }
-
-    static let black = Self(0)
-
-    var packed: Int { Int(r) << 16 | Int(g) << 8 | Int(b) }
-
-    init(_ packed: Int) { self.init(r: UInt8(packed >> 16 & 0xff), g: UInt8(packed >> 8 & 0xff), b: UInt8(packed & 0xff)) }
-
-    /// Halfway to another color, for faint text.
-    func mixed(with o: Self) -> Self {
-        Self(r: UInt8((Int(r) + Int(o.r)) / 2), g: UInt8((Int(g) + Int(o.g)) / 2), b: UInt8((Int(b) + Int(o.b)) / 2))
     }
 }

@@ -1,6 +1,12 @@
 # XcodeGen spec: `xcodegen generate` writes GoRex.xcodeproj (not committed).
 # Build ios/Frameworks/GhosttyVt.xcframework first: scripts/build-ghostty-vt.sh.
 name: GoRex
+packages:
+  # rootshell's prebuilt Ghostty (Metal renderer, key encoding), at the
+  # version rootshell pins.
+  GhosttyKit:
+    url: https://github.com/kitknox/ghosttykit-rootshell.git
+    exactVersion: 0.2.22
 options:
   deploymentTarget:
     iOS: "26.0"
@@ -24,10 +30,15 @@ targets:
       - path: THIRD_PARTY_NOTICES.md
         buildPhase: resources
     dependencies:
+      # libghostty-vt reads the snapshot a stream starts with.
       - framework: Frameworks/GhosttyVt.xcframework
         embed: false
+      - package: GhosttyKit
+        product: GhosttyKitAppStore
     settings:
       base:
+        OTHER_LDFLAGS: -lc++
+        SWIFT_OBJC_BRIDGING_HEADER: GoRex/GoRex-Bridging-Header.h
         PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

@@ -4,9 +4,17 @@ import os
 
 private let log = Logger(subsystem: "dev.gorex.ios", category: "terminal")
 
-/// One block's terminal on the phone: its data stream fed into a
-/// VTerminal, the block owned so that it takes the phone's size, and the
-/// keys typed sent back as block events.
+/// What shows a session's screen: Ghostty's surface, in the view.
+protocol TerminalOutput: AnyObject {
+    /// Draws what the program printed.
+    func write(_ bytes: Data)
+    /// Sets the default colors, as a stream's theme message gives them.
+    func setTheme(_ theme: [String: Any])
+}
+
+/// One block's terminal on the phone: its data stream fed to the view's
+/// Ghostty surface, the block owned so that it takes the phone's size, and
+/// the bytes Ghostty encodes for the keys typed written back to the block.
 @Observable
 final class TerminalSession {
     enum State: Equatable {
@@ -20,18 +28,31 @@ final class TerminalSession {
     let session: String
     let block: String
     private(set) var state = State.connecting
-    /// Bumped whenever the screen changed, for the view to draw.
-    private(set) var frame = 0
     /// The terminal's default background, for the page around it. Until
-    /// the view draws the screen it is the last one seen on this host with
-    /// this theme, else the theme's, so that the page opens in its color.
+    /// the stream gives one it is the last one seen on this host with this
+    /// theme, else the theme's, so that the page opens in its color.
     private(set) var background: VTerminal.RGB?
 
-    @ObservationIgnored private(set) var terminal: VTerminal?
+    /// The view, once it shows the session; what comes before waits for it.
+    @ObservationIgnored weak var output: TerminalOutput? {
+        didSet {
+            if let theme { output?.setTheme(theme) }
+            output?.write(pending)
+            pending = Data()
+        }
+    }
+    @ObservationIgnored private var pending = Data()
+    /// The default colors: the theme chosen in Settings, else the
+    /// snapshot's; a theme message from the server replaces them.
+    @ObservationIgnored private var theme: [String: Any]?
     @ObservationIgnored private var stream = TerminalStream(nonce: 0)
     @ObservationIgnored private var data: DataConnection
     @ObservationIgnored private var size: (cols: Int, rows: Int, cw: Int, ch: Int)?
+    @ObservationIgnored private var sizing: Task<Void, Never>?
     @ObservationIgnored private var closed = false
+    /// Bytes to write, and whether a write is on its way.
+    @ObservationIgnored private var typed = Data()
+    @ObservationIgnored private var typing = false
 
     init(host: Host, session: String, block: String) {
         self.host = host
@@ -44,7 +65,7 @@ final class TerminalSession {
 
     private var backgroundKey: String { "\(host.id) \(UserDefaults.standard.string(forKey: "theme") ?? "")" }
 
-    /// Notes the background the view drew, for the page and the next opening.
+    /// Notes the background the view shows, for the page and the next opening.
     func drew(background b: VTerminal.RGB) {
         guard b != background else { return }
         background = b
@@ -68,7 +89,6 @@ final class TerminalSession {
                 try await data.open(ticket: t)
                 log.info("opened \(self.block, privacy: .public)")
                 stream = TerminalStream(nonce: data.nonce)
-                terminal = nil
                 try await claim()
             } catch {
                 state = .failed(error.localizedDescription)
@@ -134,35 +154,49 @@ final class TerminalSession {
                     state = .failed(String(localized: "The terminal's snapshot could not be read."))
                     return
                 }
-                terminal = t
-                if let m = TerminalTheme.chosen?.message { t.setTheme(m) }
+                // Drawn at the view's size, which the block takes next.
+                if let size { t.resize(cols: size.cols, rows: size.rows, cellWidth: size.cw, cellHeight: size.ch) }
+                apply(theme: TerminalTheme.chosen?.message ?? t.theme)
+                // A reset first: the snapshot of a new stream replaces the screen.
+                write(Data("\u{1b}c".utf8) + t.replay())
                 state = .live
             case .output(let o):
-                terminal?.write(o)
+                write(o)
             case .message(let m):
                 switch m["type"] as? String {
-                case "resize":
-                    terminal?.resize(cols: m["cols"] as? Int ?? 0, rows: m["rows"] as? Int ?? 0,
-                                     cellWidth: m["cell_width_px"] as? Int ?? 0, cellHeight: m["cell_height_px"] as? Int ?? 0)
                 case "theme":
-                    terminal?.setTheme(m)
+                    apply(theme: m)
                 case "child_exited":
                     state = .exited(m["exit_code"] as? Int ?? 0)
                 default:
+                    // A resize follows this view's size, which it set.
                     break
                 }
             }
         }
-        frame &+= 1
+    }
+
+    private func write(_ bytes: Data) {
+        if let output { output.write(bytes) } else { pending += bytes }
+    }
+
+    private func apply(theme t: [String: Any]) {
+        theme = t
+        output?.setTheme(t)
     }
 
     // MARK: Input
 
-    /// The view's size in cells, and a cell's in pixels, for the block.
+    /// The view's size in cells, and a cell's in pixels, for the block, once
+    /// it has held for a moment: a keyboard sliding in resizes it on the way.
     func fit(cols: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
         guard cols > 0, rows > 0, size.map({ ($0.cols, $0.rows) != (cols, rows) }) ?? true else { return }
         size = (cols, rows, cellWidth, cellHeight)
-        sendSize()
+        sizing?.cancel()
+        sizing = Task {
+            try? await Task.sleep(for: .milliseconds(100))
+            if !Task.isCancelled { sendSize() }
+        }
     }
 
     private func sendSize() {
@@ -175,29 +209,24 @@ final class TerminalSession {
         }
     }
 
-    func send(_ keys: [KeyEvent]) {
-        terminal?.scroll(nil)
-        for k in keys { event("key", k.payload) }
-    }
-
-    func paste(_ text: String) {
-        terminal?.scroll(nil)
-        event("paste", ["text": text])
-    }
-
-    /// Turns the wheel at a cell, for a program that reads it.
-    func wheel(up: Bool, col: Int, row: Int) {
-        event("wheel", ["direction": up ? "up" : "down", "mods": "", "column": col, "row": row])
-    }
-
-    func scrollLocal(_ rows: Int) {
-        terminal?.scroll(rows)
-        frame &+= 1
-    }
-
-    private func event(_ type: String, _ payload: [String: Any]) {
-        host.control?.post("block.event", [
-            "session_id": session, "block_id": block, "event": ["type": type, "payload": payload],
-        ])
+    /// Writes what Ghostty encoded for a key, a paste or the wheel to the
+    /// program. The server runs writes in any order, so one goes at a time
+    /// and what comes meanwhile goes together next, whole characters only.
+    /// The server drops what has the shape of Ghostty's own answers to the
+    /// program's queries: its terminal answers them.
+    func type(_ bytes: Data) {
+        typed += bytes
+        guard !typing else { return }
+        let n = typed.wholeUTF8
+        guard n > 0 else { return }
+        let text = String(decoding: typed.prefix(n), as: UTF8.self)
+        typed = Data(typed.dropFirst(n))
+        typing = true
+        let (session, block) = (session, block)
+        Task {
+            _ = try? await host.control?.callBlock("write", session: session, block: block, ["data": text])
+            typing = false
+            if !typed.isEmpty { type(Data()) }
+        }
     }
 }
