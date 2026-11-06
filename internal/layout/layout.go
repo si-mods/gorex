@@ -61,6 +61,9 @@ type Canvas struct {
 	Scale float32 `json:"scale,omitempty"`
 }
 
+// FloatMin is the least share of the room a float's side takes.
+const FloatMin = 0.12
+
 // Float is a pane over a tab's tiled panes: Pane is a leaf, and X, Y, W, H
 // are its box as fractions of the tab's room, spanning [X, X+W) and [Y, Y+H).
 type Float struct {

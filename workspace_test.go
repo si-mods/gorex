@@ -1248,3 +1248,46 @@ func TestStatusEvents(t *testing.T) {
 		t.Fatalf("no change %+v", ev)
 	}
 }
+
+// TestReopenReadsServerChanges closes the last window, has the server make
+// a tab with no window, and opens a window again: it shows the tab, and
+// saves no layout of before over it. A layout it cannot read leaves the
+// workspaces as they were.
+func TestReopenReadsServerChanges(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	st.started = true
+	w := a.ws
+	st.closed(a)
+	other, err := rex.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	res, err := other.Command(rex.LayoutCommand{Op: "tab.create", Space: w.ID, Dir: os.TempDir()})
+	if err != nil || res.Code != "" {
+		t.Fatalf("tab.create with no window: %+v %v", res, err)
+	}
+	st.reopen()
+	if len(st.apps) != 1 || st.apps[0].ws.ID != w.ID || !slices.Contains(sidsOf(st.apps[0]), res.New) {
+		t.Fatalf("the window opened again shows %v", sidsOf(st.apps[0]))
+	}
+	st.saveNow()
+	if s := savedWorkspaces(t, a.client); len(s.Sessions) != 1 || len(s.Sessions[0].Tabs) != 2 {
+		t.Errorf("saved %+v", s.Sessions)
+	}
+
+	before := st.workspaces
+	closed, err := rex.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed.Close()
+	live := st.client
+	st.client = closed
+	if err := st.reload(); err == nil || !slices.Equal(st.workspaces, before) {
+		t.Errorf("a reload that failed: %v, workspaces %v, were %v", err, st.workspaces, before)
+	}
+	st.client = live
+	quit(st)
+}

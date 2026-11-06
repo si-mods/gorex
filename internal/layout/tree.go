@@ -135,34 +135,3 @@ func (s *Store) Space(id string) *Workspace {
 	}
 	return nil
 }
-
-// TabOf returns the tab whose tree has a pane of session sid, nil for
-// none.
-func (s *Store) TabOf(sid string) *Tab {
-	for i := range s.Sessions {
-		if t, _ := s.Sessions[i].Find(sid); t != nil {
-			return t
-		}
-	}
-	return nil
-}
-
-// Find returns the tab and the leaf of a session in the workspace's trees.
-func (w *Workspace) Find(sid string) (*Tab, *Node) {
-	for i := range w.Tabs {
-		if n := Find(w.Tabs[i].Root, sid); n != nil {
-			return &w.Tabs[i], n
-		}
-	}
-	return nil, nil
-}
-
-// TabIndex returns a tab's place in the workspace, -1 for none.
-func (w *Workspace) TabIndex(t *Tab) int {
-	for i := range w.Tabs {
-		if &w.Tabs[i] == t {
-			return i
-		}
-	}
-	return -1
-}

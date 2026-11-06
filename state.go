@@ -208,7 +208,7 @@ func (a *App) catchFloat(f *Float) {
 }
 
 // floatMin is the least share of the room a float's side takes.
-const floatMin = 0.12
+const floatMin = layout.FloatMin
 
 // clamp keeps a float's box in the room: each side at least floatMin and at
 // most 1, and the box wholly inside [0,1]. NaN/Inf become the defaults.

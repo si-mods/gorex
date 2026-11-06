@@ -41,13 +41,17 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 		if cmd == nil {
 			continue
 		}
-		started, done := make(chan struct{}), make(chan rex.LayoutCommand, 1)
+		started, done := make(chan struct{}), make(chan *rex.LayoutCommand, 1)
 		update(func() {
 			close(started)
 			a := st.commandAppFor(cmd.Space)
 			if a == nil {
-				// The server makes it itself.
-				done <- rex.LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}
+				// The server makes it itself, before the main thread goes
+				// on: a window that opens next reads the layout after it.
+				if err := client.CommandDone(rex.LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}); err != nil {
+					log.Printf("answering a layout command: %v", err)
+				}
+				done <- nil
 				return
 			}
 			res := a.command(*cmd)
@@ -55,7 +59,7 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 				a.saveDue = false
 				st.save()
 			}
-			done <- res
+			done <- &res
 		})
 		// A main thread that runs nothing does not answer, and may make the
 		// command still; one that runs it takes its time, as a session may
@@ -63,7 +67,11 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 		var res rex.LayoutCommand
 		select {
 		case <-started:
-			res = <-done
+			answer := <-done
+			if answer == nil {
+				continue // answered
+			}
+			res = *answer
 		case <-time.After(rex.AppCommandTimeout):
 			res = rex.LayoutCommand{ID: cmd.ID, Code: "layout_timeout", Error: "the GoRex window does not answer; the change may still appear"}
 		}

@@ -86,10 +86,13 @@ type Server struct {
 	linksFile, home string
 }
 
-// layoutCmd is a layout command waiting for the app's answer, done.
+// layoutCmd is a layout command waiting for the app's answer, done;
+// handled closes once the command's caller has it, the server's own change
+// made when the app had no window to make it.
 type layoutCmd struct {
 	LayoutCommand
-	done chan LayoutCommand
+	done    chan LayoutCommand
+	handled chan struct{}
 }
 
 // commandWait is how long a layout command waits for the app to make it,
@@ -111,7 +114,8 @@ func (s *Server) command(c LayoutCommand) LayoutCommand {
 	}
 	s.nextCmd++
 	c.ID = s.nextCmd
-	lc := &layoutCmd{c, make(chan LayoutCommand, 1)}
+	lc := &layoutCmd{c, make(chan LayoutCommand, 1), make(chan struct{})}
+	defer close(lc.handled)
 	s.cmds = append(s.cmds, lc)
 	if s.cmdWake != nil {
 		close(s.cmdWake)
@@ -176,7 +180,9 @@ func (s *Server) take(gone <-chan struct{}) *LayoutCommand {
 	return &lc.LayoutCommand
 }
 
-// commandDone gives the answer the app made to a command it took.
+// commandDone gives the answer the app made to a command it took, and
+// returns once the server made the change itself, for an app that had no
+// window: one it opens next reads a layout that has the change.
 func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Lock()
 	lc := s.taken[c.ID]
@@ -184,7 +190,15 @@ func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Unlock()
 	if lc != nil {
 		lc.done <- c
+		<-lc.handled
 	}
+}
+
+// settled waits for the change of the layout the server makes, if any:
+// a read after a command sees its change.
+func (s *Server) settled() {
+	s.applyMu.Lock()
+	s.applyMu.Unlock()
 }
 
 // keptConn is a control connection kept alive, conn, of peer (remote
@@ -567,8 +581,9 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 			if req.Op == "subscribe" && (!remote || s.remoteShareLayout(peer)) && sub == nil {
 				sub = s.subscribe(write, remote, peer, req.Transfers)
 			}
-			// Kills wait for the session to end, and layout commands for
-			// the app: answer them aside, a few at a time; the others wait
+			// Kills wait for the session to end, layout commands for the
+			// app, and an answer of no window for the server's change:
+			// answer them aside, a few at a time; the others wait
 			// their turn.
 			if req.Op == "command.take" && !remote && !desk {
 				desk = true
@@ -576,7 +591,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 				s.desks++
 				s.cmdMu.Unlock()
 			}
-			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" {
+			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" || req.Op == "command.done" {
 				aside <- struct{}{}
 				kept := kept // a later hello sets it, as this runs
 				go func() {
@@ -999,6 +1014,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return nil, nil
 	case "getLayout":
+		s.settled()
 		s.mu.Lock()
 		l := s.layout
 		s.mu.Unlock()
@@ -1007,6 +1023,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return s.filterLayout(l, peer)
 	case "getLayoutState":
+		s.settled()
 		s.mu.Lock()
 		st := LayoutState{Layout: s.layout, Revision: s.layoutRev}
 		s.mu.Unlock()

@@ -187,8 +187,9 @@ meets:
   next window from the client. On the desktop the window closes with its
   last tab instead.
 - With no GoRex window open, the server makes a change of the layout
-  itself, and the window shows it as it opens; an app action still needs
-  the window, and fails with `conflict` without it.
+  itself, and the window shows it as it opens. An app action, and the
+  close of a window or session that holds a pane of another host, still
+  need the window, and fail with `conflict` without it.
 - Tabs and panes of remote hosts are left out.
 - Revision 8's `data_tickets` on `session.bootstrap` is served: a client
   that asks for the terminal blocks gets a ticket for each one, and opens

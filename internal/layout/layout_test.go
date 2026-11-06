@@ -63,13 +63,6 @@ func TestStoreFind(t *testing.T) {
 	if s.Space("w2") != &s.Sessions[1] || s.Space("none") != nil {
 		t.Error("Space")
 	}
-	if s.TabOf("z") != &s.Sessions[1].Tabs[0] || s.TabOf("none") != nil {
-		t.Error("TabOf")
-	}
-	tab, n := s.Sessions[0].Find("c")
-	if tab != &s.Sessions[0].Tabs[0] || n.SID != "c" || s.Sessions[0].TabIndex(tab) != 0 || s.Sessions[1].TabIndex(tab) != -1 {
-		t.Error("Workspace.Find")
-	}
 }
 
 func TestNames(t *testing.T) {

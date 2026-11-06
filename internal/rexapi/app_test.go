@@ -183,8 +183,8 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		a.tabs++
 		tab := layout.Tab{ID: fmt.Sprintf("tab-%d", a.tabs), Name: c.Name, Root: &layout.Node{SID: sid}, Focus: 0}
 		at := len(ws.Tabs)
-		if t, _ := ws.Find(c.After); t != nil {
-			at = ws.TabIndex(t) + 1
+		if t, _ := findNode(ws, c.After); t != nil {
+			at = tabIndex(ws, t) + 1
 		}
 		ws.Tabs = append(ws.Tabs[:at:at], append([]layout.Tab{tab}, ws.Tabs[at:]...)...)
 		if c.Focus || len(ws.Tabs) == 1 {
@@ -193,7 +193,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		res.New, res.Tab = sid, tab.ID
 		return res
 	}
-	tab, node := ws.Find(c.SID)
+	tab, node := findNode(ws, c.SID)
 	if c.Tab != "" && strings.HasPrefix(c.Op, "tab.") {
 		tab, node = nil, nil
 		for i := range ws.Tabs {
@@ -211,7 +211,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 	}
 	switch c.Op {
 	case "tab.close":
-		at := ws.TabIndex(tab)
+		at := tabIndex(ws, tab)
 		a.killTree(tab.Root)
 		ws.Tabs = append(ws.Tabs[:at:at], ws.Tabs[at+1:]...)
 		if ws.Active >= len(ws.Tabs) {
@@ -222,7 +222,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		tab.Name = c.Name
 		return res
 	case "tab.move":
-		cur := ws.TabIndex(tab)
+		cur := tabIndex(ws, tab)
 		n := len(ws.Tabs)
 		at := min(max(c.Index, 0), n)
 		if cur < at {
@@ -260,7 +260,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		a.kill(node.SID)
 		tab.Remove(node)
 		if tab.Root == nil {
-			at := ws.TabIndex(tab)
+			at := tabIndex(ws, tab)
 			ws.Tabs = append(ws.Tabs[:at:at], ws.Tabs[at+1:]...)
 			if ws.Active >= len(ws.Tabs) {
 				ws.Active = max(len(ws.Tabs)-1, 0)
@@ -274,7 +274,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 	case "pane.focus":
 		tab.Focus = layout.LeafIndex(tab.Root, node.SID)
 		tab.FocusFloat = 0
-		ws.Active = ws.TabIndex(tab)
+		ws.Active = tabIndex(ws, tab)
 		return res
 	case "pane.zoom":
 		on := c.Mode == "on" || c.Mode != "off" && !tab.Zoom
@@ -306,7 +306,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 			res.Reason = "not_found"
 		case other == node:
 			res.Reason = "same_pane"
-		case a.store.TabOf(c.Target) != tab:
+		case findTabFor(&a.store, c.Target) != tab:
 			res.Reason = "cross_tab"
 		default:
 			node.SID, other.SID = other.SID, node.SID
@@ -320,7 +320,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 			res.Reason = "zoomed_tab"
 			return res
 		}
-		target := a.store.TabOf(c.Target)
+		target := findTabFor(&a.store, c.Target)
 		if target == nil {
 			res.Reason = "not_found"
 			return res
@@ -336,7 +336,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		}
 		tab.Remove(node)
 		if tab.Root == nil {
-			at := ws.TabIndex(tab)
+			at := tabIndex(ws, tab)
 			ws.Tabs = append(ws.Tabs[:at:at], ws.Tabs[at+1:]...)
 		}
 		targetNode := layout.Find(target.Root, c.Target)
@@ -350,7 +350,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 			A: targetNode, B: newNode,
 		})
 		target.Focus = layout.LeafIndex(target.Root, newNode.SID)
-		ws.Active = ws.TabIndex(target)
+		ws.Active = tabIndex(ws, target)
 		res.Changed = true
 		return res
 	}
@@ -368,4 +368,34 @@ func (a *fakeApp) killTree(n *layout.Node) {
 	}
 	a.killTree(n.A)
 	a.killTree(n.B)
+}
+
+// findNode returns the tab and the node of a pane's session.
+func findNode(ws *layout.Workspace, sid string) (*layout.Tab, *layout.Node) {
+	for i := range ws.Tabs {
+		if node := layout.Find(ws.Tabs[i].Root, sid); node != nil {
+			return &ws.Tabs[i], node
+		}
+	}
+	return nil, nil
+}
+
+// findTabFor returns the tab of a pane's session in the whole store.
+func findTabFor(store *layout.Store, sid string) *layout.Tab {
+	for i := range store.Sessions {
+		if t, _ := findNode(&store.Sessions[i], sid); t != nil {
+			return t
+		}
+	}
+	return nil
+}
+
+// tabIndex returns a tab's place in a workspace.
+func tabIndex(ws *layout.Workspace, tab *layout.Tab) int {
+	for i := range ws.Tabs {
+		if &ws.Tabs[i] == tab {
+			return i
+		}
+	}
+	return -1
 }

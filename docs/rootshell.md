@@ -135,7 +135,10 @@ shim for herdr's sessions, which it answers with none anyway.
 ## Limits
 
 - With no GoRex window open on the host, its server makes a change of
-  the layout itself, and the window shows it as it opens.
+  the layout itself, and the window shows it as it opens. A tab or a
+  space that holds a pane of another host is the window's to close: the
+  server cannot end that host's session, so with no window the close
+  fails with "Open the GoRex window on …" and the panes stay.
 - Closing the window's last tab from rootshell leaves its space empty,
   the GoRex window open on it; a new tab from rootshell fills it again.
 - Closing a tab from rootshell ends its panes of remote hosts too, which

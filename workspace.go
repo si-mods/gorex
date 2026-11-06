@@ -305,6 +305,12 @@ func (st *store) load() []*Workspace {
 	if err != nil {
 		log.Print(err)
 	}
+	return st.loaded(raw)
+}
+
+// loaded takes the workspaces of layout raw, and returns those of the
+// windows open last.
+func (st *store) loaded(raw []byte) []*Workspace {
 	s := layout.Parse(raw)
 	st.workspaces = nil
 	for _, sw := range s.Sessions {
@@ -320,14 +326,20 @@ func (st *store) load() []*Workspace {
 // reload reads the workspaces the server keeps again, for a window to
 // open while none is: the server makes the clients' changes itself
 // meanwhile, which the layout the app has does not show, nor must write
-// over.
-func (st *store) reload() {
+// over. One it cannot read leaves the workspaces as they are, and the window
+// unopened, as it would save them over the server's.
+func (st *store) reload() error {
+	raw, err := st.client.Layout()
+	if err != nil {
+		return err
+	}
 	last := st.lastClosed
-	st.load()
+	st.loaded(raw)
 	st.lastClosed = nil
 	if last != nil {
 		st.lastClosed = st.byID(last.ID)
 	}
+	return nil
 }
 
 // byID returns the workspace of an id, nil when none.
@@ -669,7 +681,10 @@ func (st *store) reopen() {
 	if !st.started || len(st.apps) > 0 || !st.connect() {
 		return
 	}
-	st.reload()
+	if err := st.reload(); err != nil {
+		log.Printf("gorex: reading the layout: %v", err)
+		return
+	}
 	w := st.lastClosed
 	if w == nil || !slices.Contains(st.workspaces, w) {
 		w = st.hiddenAfter(nil)
@@ -686,7 +701,10 @@ func (st *store) reopen() {
 func (st *store) openNew() {
 	if st.started && st.connect() {
 		if len(st.apps) == 0 {
-			st.reload()
+			if err := st.reload(); err != nil {
+				log.Printf("gorex: reading the layout: %v", err)
+				return
+			}
 		}
 		st.openWindow(st.addWorkspace(), false)
 		st.save()

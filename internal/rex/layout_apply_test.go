@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -216,6 +217,7 @@ func TestApplyAfterWindowless(t *testing.T) {
 	s, c := applyFixture(t)
 	app := pipe(s, "")
 	defer app.Close()
+	seen := make(chan bool, 1)
 	go func() {
 		for {
 			cmd, err := app.TakeCommand()
@@ -224,6 +226,10 @@ func TestApplyAfterWindowless(t *testing.T) {
 			}
 			if cmd != nil {
 				app.CommandDone(LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"})
+				// The answer returns once the server made the change: a
+				// window the app opens next reads it.
+				raw, _ := app.Layout()
+				seen <- bytes.Contains(raw, []byte(`"late"`))
 			}
 		}
 	}()
@@ -239,5 +245,199 @@ func TestApplyAfterWindowless(t *testing.T) {
 	res := command(t, c, LayoutCommand{Op: "space.create", Name: "late"})
 	if st := storeOf(t, c); st.Space(res.Space) == nil {
 		t.Errorf("not made: %+v", res)
+	}
+	if !<-seen {
+		t.Error("the app's answer returned before the server made the change")
+	}
+}
+
+// seed gives the server a layout of one space, w, of tabs.
+func seed(t *testing.T, c *Client, tabs ...layout.Tab) {
+	t.Helper()
+	st := layout.Store{Version: layout.Version, Sessions: []layout.Workspace{{ID: "w", Name: "work", Layout: layout.Layout{Tabs: tabs}}}, Windows: []string{"w"}}
+	raw, _ := json.Marshal(st)
+	if err := c.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestApplyOnNewerLayout sets the whole layout between an apply's change
+// and its commit, as a window's save may: the apply makes its change again
+// on the new layout, which keeps both.
+func TestApplyOnNewerLayout(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	seed(t, c)
+	once := false
+	applyHook = func() {
+		if once {
+			return
+		}
+		once = true
+		seed(t, c, layout.Tab{ID: "saved", Root: &layout.Node{SID: "elsewhere", Host: "h"}})
+	}
+	defer func() { applyHook = nil }()
+	res := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	st := storeOf(t, c)
+	// The new tab of this machine goes before the host's.
+	if w := st.Space("w"); w == nil || len(w.Tabs) != 2 || w.Tabs[1].ID != "saved" || w.Tabs[0].Root.SID != res.New {
+		t.Fatalf("after a save during the apply: %+v", st)
+	}
+	if infos, _ := c.List(); len(infos) != 1 {
+		t.Errorf("sessions %+v, want the one new pane's", infos)
+	}
+}
+
+// TestLayoutReadWaitsForApply reads the layout while an apply makes its
+// change: the read has it, as the app's read before it opens a window.
+func TestLayoutReadWaitsForApply(t *testing.T) {
+	s, c := applyFixture(t)
+	seed(t, c)
+	reader := pipe(s, "")
+	defer reader.Close()
+	release, read := make(chan struct{}), make(chan json.RawMessage, 1)
+	applyHook = func() {
+		go func() {
+			raw, _ := reader.Layout()
+			read <- raw
+		}()
+		<-release
+	}
+	defer func() { applyHook = nil }()
+	done := make(chan LayoutCommand, 1)
+	go func() {
+		res, _ := c.Command(LayoutCommand{Op: "space.create", Name: "pending"})
+		done <- res
+	}()
+	select {
+	case raw := <-read:
+		t.Fatalf("read before the apply: %s", raw)
+	case <-time.After(200 * time.Millisecond):
+	}
+	close(release)
+	if raw := <-read; !bytes.Contains(raw, []byte(`"pending"`)) {
+		t.Errorf("the read %s has not the change", raw)
+	}
+	<-done
+}
+
+// TestApplyNoChange makes commands that change nothing: the layout, an
+// older one too, stays as it was, at its revision.
+func TestApplyNoChange(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	in, err := c.Create(CreateOptions{Command: cmd, Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	older := []byte(`{"active":0,"tabs":[{"root":{"sid":"` + in.ID + `"},"focus":0}]}`)
+	if err := c.SetLayout(older); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := c.LayoutState()
+	for _, x := range []LayoutCommand{
+		{Op: "pane.resize", SID: in.ID, Direction: "left", Amount: 0.1},
+		{Op: "pane.zoom", SID: in.ID, Mode: "off"},
+		{Op: "pane.focus", SID: in.ID},
+	} {
+		if res := command(t, c, x); res.Op != "" {
+			t.Errorf("%s: %+v", x.Op, res)
+		}
+	}
+	if after, _ := c.LayoutState(); after.Revision != before.Revision || !bytes.Equal(after.Layout, older) {
+		t.Errorf("after commands that change nothing: %d %s, was %d", after.Revision, after.Layout, before.Revision)
+	}
+}
+
+// TestApplyLeavesRemotePanes closes a tab and a space that have a pane of
+// another host with no window: the server, which cannot end that pane's
+// session, leaves them to the window rather than drop the pane.
+func TestApplyLeavesRemotePanes(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	in, err := c.Create(CreateOptions{Command: cmd, Dir: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed(t, c, layout.Tab{ID: "mixed", Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: in.ID}, B: &layout.Node{SID: "far", Host: "h1"}}})
+	for _, x := range []LayoutCommand{{Op: "tab.close", Tab: "mixed"}, {Op: "space.close", Space: "w"}} {
+		if res, _ := c.Command(x); res.Code != "desktop_unavailable" {
+			t.Errorf("%s: %+v", x.Op, res)
+		}
+	}
+	if _, ok := liveSession(t, c, in.ID); !ok || len(storeOf(t, c).Sessions[0].Tabs) != 1 {
+		t.Error("the tab or its session went")
+	}
+	// Its pane of this machine closes; the host's stays, with its tab.
+	command(t, c, LayoutCommand{Op: "pane.close", SID: in.ID})
+	if tabs := storeOf(t, c).Sessions[0].Tabs; len(tabs) != 1 || tabs[0].Root.SID != "far" {
+		t.Errorf("after closing the local pane: %+v", tabs)
+	}
+}
+
+// TestApplyEndsAfterCommit closes a tab of panes whose programs ignore the
+// hangup, which take a second each to end: the layout has the change at
+// once, and the sessions end side by side.
+func TestApplyEndsAfterCommit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+	s, c := applyFixture(t)
+	var sids []string
+	for range 3 {
+		in, err := c.Create(CreateOptions{Command: []string{"/bin/sh", "-c", "trap '' HUP; while :; do sleep 1; done"}, Dir: "/tmp"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sids = append(sids, in.ID)
+	}
+	seed(t, c, layout.Tab{ID: "slow", Root: &layout.Node{A: &layout.Node{SID: sids[0]}, B: &layout.Node{A: &layout.Node{SID: sids[1]}, B: &layout.Node{SID: sids[2]}}}}, layout.Tab{ID: "other", Root: &layout.Node{SID: "x"}})
+	reader := pipe(s, "")
+	defer reader.Close()
+	start := time.Now()
+	done := make(chan struct{})
+	go func() {
+		command(t, c, LayoutCommand{Op: "tab.close", Tab: "slow"})
+		close(done)
+	}()
+	for !bytes.Contains(must(reader.Layout()), []byte(`"other"`)) || bytes.Contains(must(reader.Layout()), []byte(`"slow"`)) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if d := time.Since(start); d > 700*time.Millisecond {
+		t.Errorf("the layout took %v to show the close", d)
+	}
+	<-done
+	if d := time.Since(start); d > 2500*time.Millisecond {
+		t.Errorf("the sessions took %v to end", d)
+	}
+	for _, sid := range sids {
+		if _, ok := liveSession(t, c, sid); ok {
+			t.Errorf("session %s runs", sid)
+		}
+	}
+}
+
+// TestApplyFloats minimizes the focused float of a canvas, whose focus goes
+// to the topmost float in sight, and resizes a float at its bound, which
+// changes nothing.
+func TestApplyFloats(t *testing.T) {
+	_, c := applyFixture(t)
+	f := func(sid string, x float32) layout.Float {
+		return layout.Float{Pane: &layout.Node{SID: sid}, X: x, Y: 0, W: 0.3, H: 1}
+	}
+	seed(t, c, layout.Tab{ID: "cv", Canvas: &layout.Canvas{W: 1000, H: 600, Scale: 1}, Floats: []layout.Float{f("a", 0), f("b", 0.35), f("c", 0.7)}, FocusFloat: 2})
+	args, _ := json.Marshal(map[string]any{"sid": "b", "state": "minimized"})
+	command(t, c, LayoutCommand{Op: "action", Action: "float.set_state", Args: args})
+	tab := storeOf(t, c).Sessions[0].Tabs[0]
+	if !tab.Floats[1].Hidden || tab.FocusFloat != 3 {
+		t.Errorf("after minimizing the focused float: %+v", tab)
+	}
+	// A float of the room's whole height grows no taller.
+	seed(t, c, layout.Tab{ID: "t", Root: &layout.Node{SID: "tiled"}, Floats: []layout.Float{{Pane: &layout.Node{SID: "f"}, X: 0, Y: 0, W: 0.5, H: 1}}})
+	if res := command(t, c, LayoutCommand{Op: "pane.resize", SID: "f", Direction: "down", Amount: 0.1}); res.Changed || res.Reason != "unchanged" {
+		t.Errorf("resize at the bound: %+v", res)
+	}
+	if res := command(t, c, LayoutCommand{Op: "pane.resize", SID: "f", Direction: "up", Amount: 0.1}); !res.Changed {
+		t.Errorf("resize: %+v", res)
 	}
 }

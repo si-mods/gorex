@@ -3,11 +3,13 @@
 package rex
 
 import (
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"math"
 	"slices"
 	"strings"
+	"sync"
 
 	"gorex/internal/layout"
 )
@@ -30,22 +32,68 @@ func (s *Server) apply(c LayoutCommand) LayoutCommand {
 	if !applied[c.Op] && (c.Op != "action" || c.Action != "float.set_state") {
 		return LayoutCommand{ID: c.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}
 	}
-	// An upgrade waits for the change, its sessions and its layout alike.
+	a := &applying{s: s}
+	res := s.applyHeld(c, a)
+	// The sessions of the panes it closed end once the layout no longer
+	// has them, side by side and outside the lock, as each may take a
+	// while; those it started for a change it did not make end too.
+	ends := a.ends
+	if res.Code != "" {
+		ends = nil
+		for _, n := range a.made {
+			ends = append(ends, n.SID)
+		}
+	}
+	s.endAll(ends)
+	return res
+}
+
+// applyHook, when set, runs in each apply between its change and its
+// commit: for tests.
+var applyHook func()
+
+// applyHeld makes c under the locks: an upgrade waits for the change, its
+// sessions and its layout alike, and the applies take their turns. A
+// layout another client set meanwhile, as the app's whole layout, makes
+// it again on that one.
+func (s *Server) applyHeld(c LayoutCommand, a *applying) LayoutCommand {
 	s.ops.RLock()
 	defer s.ops.RUnlock()
 	s.applyMu.Lock()
 	defer s.applyMu.Unlock()
-	s.mu.Lock()
-	st := layout.Parse(s.layout)
-	s.mu.Unlock()
-	res := s.applyTo(&st, c)
-	res.ID = c.ID
-	if res.Code != "" {
-		return res
+	for range 10 {
+		s.mu.Lock()
+		raw, rev := s.layout, s.layoutRev
+		s.mu.Unlock()
+		st := layout.Parse(raw)
+		before := encodeLayout(&st)
+		a.n, a.ends = 0, nil
+		res := s.applyTo(&st, c, a)
+		res.ID = c.ID
+		if res.Code != "" {
+			return res
+		}
+		// A command that changes nothing, as a resize at its bound,
+		// leaves the layout as it was, an older one unmigrated.
+		after := encodeLayout(&st)
+		if bytes.Equal(before, after) {
+			return res
+		}
+		if applyHook != nil {
+			applyHook()
+		}
+		if _, err := s.commitLayout(after, rev); err == nil {
+			return res
+		}
 	}
-	// The tabs of before workspaces are the first window's.
+	return LayoutCommand{ID: c.ID, Code: "layout_conflict", Error: "the layout kept changing; try again"}
+}
+
+// encodeLayout writes st as the app saves a layout: with the first
+// window's tabs for a client of before workspaces, and no nulls.
+func encodeLayout(st *layout.Store) []byte {
 	st.Layout = layout.Layout{Tabs: []layout.Tab{}}
-	if w := defaultSpace(&st); w != nil {
+	if w := defaultSpace(st); w != nil {
 		st.Layout = w.Layout
 	}
 	if st.Sessions == nil {
@@ -59,14 +107,65 @@ func (s *Server) apply(c LayoutCommand) LayoutCommand {
 			st.Sessions[i].Tabs = []layout.Tab{}
 		}
 	}
-	raw, err := json.Marshal(st)
-	if err == nil {
-		_, err = s.commitLayout(raw, 0)
+	b, _ := json.Marshal(st)
+	return b
+}
+
+// applying is what an apply did to sessions: made are the panes it
+// started, the first n of them used by the pass at the layout, and ends
+// the sessions of the panes the pass closed. A pass made again on a newer
+// layout uses the panes started before.
+type applying struct {
+	s    *Server
+	made []*layout.Node
+	n    int
+	ends []string
+}
+
+// start returns a new pane's leaf, starting its session in the first pass.
+func (a *applying) start(dir string, cols, rows int, command []string) (*layout.Node, error) {
+	if a.n < len(a.made) {
+		n := *a.made[a.n]
+		a.n++
+		return &n, nil
 	}
+	n, err := a.s.startPane(dir, cols, rows, command)
 	if err != nil {
-		return LayoutCommand{ID: c.ID, Code: "layout_failed", Error: err.Error()}
+		return nil, err
 	}
-	return res
+	a.made = append(a.made, n)
+	a.n++
+	c := *n
+	return &c, nil
+}
+
+// end ends the sessions of this machine's panes under n, once the layout
+// is saved without them.
+func (a *applying) end(n *layout.Node) {
+	for _, l := range layout.Leaves(n) {
+		if l.Host == "" && l.SID != "" {
+			a.ends = append(a.ends, l.SID)
+		}
+	}
+}
+
+// endAll ends the sessions, side by side, each as a kill does.
+func (s *Server) endAll(sids []string) {
+	var wg sync.WaitGroup
+	for _, sid := range sids {
+		s.mu.Lock()
+		ss := s.sessions[sid]
+		s.mu.Unlock()
+		if ss == nil {
+			continue
+		}
+		wg.Go(func() {
+			s.ops.RLock()
+			defer s.ops.RUnlock()
+			s.end(ss)
+		})
+	}
+	wg.Wait()
 }
 
 // defaultSpace is the workspace of a command of no space: the first
@@ -157,6 +256,19 @@ func tabHost(t *layout.Tab) string {
 	return ""
 }
 
+// hasRemote tells a tab with a pane of another host's session: the server
+// cannot end that session, and does not close the tab with no window.
+func hasRemote(t *layout.Tab) bool {
+	for _, r := range t.Roots() {
+		for _, l := range layout.Leaves(r) {
+			if l.Host != "" && l.SID != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // hasLocal tells a tab with a session of this machine's, which the
 // server's other clients see.
 func hasLocal(t *layout.Tab) bool {
@@ -201,21 +313,6 @@ func (s *Server) sessionOf(n *layout.Node) (SessionInfo, bool) {
 		return SessionInfo{}, false
 	}
 	return ss.info(), true
-}
-
-// endTree ends the sessions of this machine's panes under n.
-func (s *Server) endTree(n *layout.Node) {
-	for _, l := range layout.Leaves(n) {
-		if l.Host != "" || l.SID == "" {
-			continue
-		}
-		s.mu.Lock()
-		ss := s.sessions[l.SID]
-		s.mu.Unlock()
-		if ss != nil {
-			s.end(ss)
-		}
-	}
 }
 
 // removeTab takes tab i out of w, as the window does.
@@ -271,8 +368,8 @@ func unlink(p spot, target string) bool {
 			t.FocusFloat--
 		case focused:
 			t.FocusFloat = 0
-			if !focusOn(t, target) && t.Root == nil && len(t.Floats) > 0 {
-				t.FocusFloat = len(t.Floats)
+			if !focusOn(t, target) && t.Root == nil {
+				t.FocusFloat = topFloat(t)
 			}
 		}
 		return t.Root == nil && len(t.Floats) == 0
@@ -292,7 +389,7 @@ func unlink(p spot, target string) bool {
 			return true
 		case t.Canvas != nil:
 			if focused && !focusOn(t, target) {
-				t.FocusFloat = len(t.Floats)
+				t.FocusFloat = topFloat(t)
 			}
 		default:
 			top := t.Floats[len(t.Floats)-1]
@@ -312,6 +409,26 @@ func unlink(p spot, target string) bool {
 		focusOn(t, target)
 	}
 	return false
+}
+
+// topFloat is the place, from 1, of the topmost float of t in sight, else
+// of its first, as the window's focus goes when it has no tiled pane; 0
+// with no float.
+func topFloat(t *layout.Tab) int {
+	for i := len(t.Floats) - 1; i >= 0; i-- {
+		if !t.Floats[i].Hidden {
+			return i + 1
+		}
+	}
+	return min(len(t.Floats), 1)
+}
+
+// reveal shows float fi of t, above its others, with the focus.
+func reveal(t *layout.Tab, fi int) {
+	f := t.Floats[fi]
+	f.Hidden = false
+	t.Floats = append(slices.Delete(t.Floats, fi, fi+1), f)
+	t.FocusFloat = len(t.Floats)
 }
 
 // canvasGap is the room between the boxes of a canvas, the window's gap
@@ -344,28 +461,24 @@ func placeOnCanvas(t *layout.Tab, of layout.Float, n *layout.Node, below bool) {
 	t.FocusFloat = len(t.Floats)
 }
 
-// floatMin is the least share of the room a float's side takes, as the
-// window keeps it.
-const floatMin = 0.12
-
 // resizeFloat changes a float's size by dw, dh, kept in the room, as the
 // window does.
 func resizeFloat(f *layout.Float, free bool, dw, dh float32) {
-	f.W, f.H = max(f.W+dw, floatMin), max(f.H+dh, floatMin)
+	f.W, f.H = max(f.W+dw, layout.FloatMin), max(f.H+dh, layout.FloatMin)
 	if free {
 		return
 	}
 	f.W, f.H = min(f.W, 1, 1-f.X), min(f.H, 1, 1-f.Y)
-	if f.W < floatMin {
-		f.W, f.X = floatMin, 1-floatMin
+	if f.W < layout.FloatMin {
+		f.W, f.X = layout.FloatMin, 1-layout.FloatMin
 	}
-	if f.H < floatMin {
-		f.H, f.Y = floatMin, 1-floatMin
+	if f.H < layout.FloatMin {
+		f.H, f.Y = layout.FloatMin, 1-layout.FloatMin
 	}
 }
 
 // applyTo makes c on st, and returns the answer.
-func (s *Server) applyTo(st *layout.Store, c LayoutCommand) LayoutCommand {
+func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutCommand {
 	var res LayoutCommand
 	fail := func(code, msg string) LayoutCommand {
 		res.Code, res.Error = code, msg
@@ -389,16 +502,21 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand) LayoutCommand {
 		if w == nil {
 			return fail("space_not_found", "no such space in the GoRex layout")
 		}
+		for i := range w.Tabs {
+			if hasRemote(&w.Tabs[i]) {
+				return fail("desktop_unavailable", "the space has panes of another host, which the GoRex window ends")
+			}
+		}
 		for _, t := range w.Tabs {
 			for _, r := range t.Roots() {
-				s.endTree(r)
+				a.end(r)
 			}
 		}
 		st.Windows = slices.DeleteFunc(st.Windows, func(id string) bool { return id == c.Space })
 		st.Sessions = slices.DeleteFunc(st.Sessions, func(o layout.Workspace) bool { return o.ID == c.Space })
 		return res
 	case "tab.create":
-		return s.createTab(st, c)
+		return s.createTab(st, c, a)
 	case "action":
 		return floatState(st, c)
 	}
@@ -427,8 +545,11 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand) LayoutCommand {
 	t := p.tab()
 	switch c.Op {
 	case "tab.close":
+		if hasRemote(t) {
+			return fail("desktop_unavailable", "the tab has panes of another host, which the GoRex window ends")
+		}
 		for _, r := range t.Roots() {
-			s.endTree(r)
+			a.end(r)
 		}
 		removeTab(p.w, p.ti)
 	case "tab.rename":
@@ -439,20 +560,16 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand) LayoutCommand {
 		p.n.Name = layout.PaneName(c.Name)
 		res.Name = p.n.Name
 	case "pane.split":
-		return s.split(p, c)
+		return s.split(p, c, a)
 	case "pane.close":
-		s.endTree(p.n)
+		a.end(p.n)
 		if unlink(p, c.Target) {
 			removeTab(p.w, p.ti)
 		}
 	case "pane.focus":
 		p.w.Active = p.ti
 		if p.fi >= 0 {
-			// A hidden float shows again, above the others.
-			f := t.Floats[p.fi]
-			f.Hidden = false
-			t.Floats = append(slices.Delete(t.Floats, p.fi, p.fi+1), f)
-			t.FocusFloat = len(t.Floats)
+			reveal(t, p.fi)
 			break
 		}
 		focusOn(t, p.n.SID)
@@ -516,7 +633,7 @@ func newSpace(st *layout.Store, name string) *layout.Workspace {
 
 // createTab makes tab.create: a tab of a new session, after the tab of
 // After, else after this machine's tabs, which stay first.
-func (s *Server) createTab(st *layout.Store, c LayoutCommand) LayoutCommand {
+func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) LayoutCommand {
 	var res LayoutCommand
 	w := defaultSpace(st)
 	if c.Space != "" {
@@ -564,7 +681,7 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand) LayoutCommand {
 			cols, rows = in.Cols, in.Rows
 		}
 	}
-	n, err := s.startPane(dir, cols, rows, c.Command)
+	n, err := a.start(dir, cols, rows, c.Command)
 	if err != nil {
 		res.Code, res.Error = "create_failed", err.Error()
 		return res
@@ -578,7 +695,7 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand) LayoutCommand {
 // split makes pane.split: a new session beside the pane, in its split of
 // the half of its size, or beside its box on a canvas; a float of a tab
 // of tiled panes splits the tab's focused tiled pane.
-func (s *Server) split(p spot, c LayoutCommand) LayoutCommand {
+func (s *Server) split(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	var res LayoutCommand
 	t := p.tab()
 	anchor, canvas := p.n, p.fi >= 0 && t.Canvas != nil
@@ -610,7 +727,7 @@ func (s *Server) split(p spot, c LayoutCommand) LayoutCommand {
 	default:
 		cols = max(cols/2, 10)
 	}
-	n, err := s.startPane(dir, cols, rows, c.Command)
+	n, err := a.start(dir, cols, rows, c.Command)
 	if err != nil {
 		res.Code, res.Error = "create_failed", err.Error()
 		return res
@@ -649,7 +766,12 @@ func resize(p spot, direction string, amount float32) (bool, string) {
 		if vertical {
 			dw, dh = 0, amount
 		}
-		resizeFloat(&t.Floats[p.fi], t.Canvas != nil, dw, dh)
+		f := &t.Floats[p.fi]
+		w, h := f.W, f.H
+		resizeFloat(f, t.Canvas != nil, dw, dh)
+		if f.W == w && f.H == h {
+			return false, "unchanged"
+		}
 		return true, ""
 	}
 	split := layout.SplitAt(t.Root, p.n, direction)
@@ -802,16 +924,26 @@ func floatState(st *layout.Store, c LayoutCommand) LayoutCommand {
 	t := p.tab()
 	f := &t.Floats[p.fi]
 	if a.State == "minimized" {
-		f.Hidden = true
+		if f.Hidden {
+			return res
+		}
+		// At rest out of sight, it keeps no zoom; a focus it had goes to
+		// the tiled panes, else to the topmost float in sight.
+		f.Hidden, f.Zoom = true, false
 		if t.FocusFloat == p.fi+1 {
 			t.FocusFloat = 0
+			if t.Root == nil {
+				t.FocusFloat = topFloat(t)
+			}
 		}
 		return res
 	}
-	f.Hidden = false
-	if a.Focus {
-		t.FocusFloat = p.fi + 1
-		p.w.Active = p.ti
+	if !a.Focus {
+		f.Hidden = false
+		return res
 	}
+	// It shows above the others, with the focus, in the active tab.
+	reveal(t, p.fi)
+	p.w.Active = p.ti
 	return res
 }
