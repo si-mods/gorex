@@ -57,6 +57,33 @@ func journalStopped(entries []journalEntry) bool {
 	return entries[len(entries)-1].Event == eventStop
 }
 
+// waitListed polls the sessions of c, as a client does, until it lists
+// every one of ids, which a server restores once it listens, and returns
+// the list; it fails after a few seconds.
+func waitListed(t *testing.T, c *Client, ids ...string) []SessionInfo {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		infos, err := c.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed := map[string]bool{}
+		for _, in := range infos {
+			listed[in.ID] = true
+		}
+		all := true
+		for _, id := range ids {
+			all = all && listed[id]
+		}
+		if all {
+			return infos
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("sessions %v not all back: %+v", ids, infos)
+		}
+	}
+}
+
 // waitStopped waits for the server to stop, which takes its socket with it.
 func waitStopped(t *testing.T) {
 	t.Helper()
@@ -138,10 +165,8 @@ func TestCrashRestoresSessions(t *testing.T) {
 		next.Shutdown()
 		next.Close()
 	}()
-	infos, err := next.List()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The server starts them once it listens, as a client sees them come.
+	infos := waitListed(t, next, one.ID, two.ID)
 	got := map[string]SessionInfo{}
 	for _, in := range infos {
 		got[in.ID] = in
@@ -520,10 +545,7 @@ func TestStopToRestartRecordsRestart(t *testing.T) {
 		next.Shutdown()
 		next.Close()
 	}()
-	infos, err := next.List()
-	if err != nil {
-		t.Fatal(err)
-	}
+	infos := waitListed(t, next, one.ID)
 	if len(infos) != 1 || infos[0].ID != one.ID || infos[0].Exited {
 		t.Fatalf("the server after it has %+v", infos)
 	}
