@@ -84,17 +84,31 @@ func waitListed(t *testing.T, c *Client, ids ...string) []SessionInfo {
 	}
 }
 
-// waitStopped waits for the server to stop, which takes its socket with it.
+// waitStopped waits for the server to stop: its socket goes as it stops
+// listening, and the lock of its directory once it is done, its stop
+// recorded and its sessions ended.
 func waitStopped(t *testing.T) {
 	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+	deadline := time.Now().Add(5 * time.Second)
+	for ; time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
 		c, err := ConnectExisting()
 		if err != nil {
-			return
+			break
 		}
 		c.Close()
 	}
-	t.Fatal("the server answers still")
+	for ; time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		f, err := os.OpenFile(filepath.Join(Dir(), "server.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = lockFile(f)
+		f.Close()
+		if err == nil {
+			return
+		}
+	}
+	t.Fatal("the server answers still, or holds its lock")
 }
 
 // TestJournalKeepsLayouts checks that every layout the app sends is in the
