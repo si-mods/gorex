@@ -23,6 +23,13 @@ func LockFile(f *os.File) error { return lockFile(f) }
 // it.
 func lockFile(f *os.File) error { return unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB) }
 
+// ownDir reports whether st, of a directory, is this user's alone: no
+// other user may read or write in it, nor make it so.
+func ownDir(st os.FileInfo) bool {
+	sys, ok := st.Sys().(*syscall.Stat_t)
+	return ok && int(sys.Uid) == os.Getuid() && st.Mode().Perm() == 0o700
+}
+
 // detached starts the server in a session of its own, which outlives the
 // app's.
 func detached() *syscall.SysProcAttr { return &syscall.SysProcAttr{Setsid: true} }

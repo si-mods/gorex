@@ -323,7 +323,7 @@
   "paneReconnecting": "正在重新连接 {host}…",
   "paneConnectionDropped": "连接已断开。GoRex 重新连接期间，会话会保持打开。",
   "paneStreamInterrupted": "终端数据流已中断，正在自动重新连接。",
-  "paneDropUpload": "上传到 {host} 的 {dir}",
+  "paneDropUpload": "上传到 {host} 的临时目录",
   "paneDropUpdate": "更新 {host} 上的 GoRex 才能上传文件",
   "paneUploadFolder": "暂不支持上传文件夹",
   "paneDownloadFolder": "暂不支持下载文件夹",

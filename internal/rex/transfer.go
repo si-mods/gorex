@@ -109,6 +109,29 @@ func (s *Server) fileSession(sid, peer, dir string) (*session, string, error) {
 	return ss, filepath.Join(ss.imageDir(), dir), nil
 }
 
+// dropDir is this user's folder in the temporary directory, where a put
+// with Temp goes, made when it is not there. Another user may have made
+// the path first in a temporary directory all share: it is taken only as
+// a directory of this user's alone, not a link.
+func dropDir() (string, error) {
+	name := "gorex-drops"
+	if uid := os.Getuid(); uid >= 0 { // Windows has none, and a temporary directory per user
+		name = fmt.Sprintf("gorex-drops-%d", uid)
+	}
+	dir := filepath.Join(os.TempDir(), name)
+	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+		return "", err
+	}
+	st, err := os.Lstat(dir)
+	if err != nil {
+		return "", err
+	}
+	if !st.IsDir() || !ownDir(st) {
+		return "", fmt.Errorf("rex: %s is not a folder of this user's alone", dir)
+	}
+	return dir, nil
+}
+
 func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer string, touch func(), answer func(FileAnswer)) error {
 	var req FilePut
 	if err := json.Unmarshal(first, &req); err != nil {
@@ -138,6 +161,11 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 			return err
 		}
 		return s.abortPut(path, answer)
+	}
+	if req.Temp {
+		if dir, err = dropDir(); err != nil {
+			return err
+		}
 	}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		return fmt.Errorf("rex: %s is not a directory", dir)

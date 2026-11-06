@@ -1491,14 +1491,10 @@
   "@paneStreamInterrupted": {
     "description": "Banner over a pane whose stream dropped while its host is connected."
   },
-  "paneDropUpload": "Upload to {dir} on {host}",
+  "paneDropUpload": "Upload to a temporary folder on {host}",
   "@paneDropUpload": {
     "description": "Over a pane of a host while files are dragged over it: where a drop sends them.",
     "placeholders": {
-      "dir": {
-        "type": "String",
-        "example": "~/src/gorex"
-      },
       "host": {
         "type": "String",
         "example": "office-mac"

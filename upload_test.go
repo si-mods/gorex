@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -60,6 +61,27 @@ func dropped(t *testing.T, files ...string) []string {
 	return paths
 }
 
+// dropsDir points the temporary directory at a new one, for the hosts the
+// test starts there, and returns the folder in it dropped files go into,
+// made.
+func dropsDir(t *testing.T) string {
+	t.Helper()
+	tmp := testDir(t)
+	t.Cleanup(func() { os.RemoveAll(tmp) })
+	for _, k := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(k, tmp)
+	}
+	name := "gorex-drops"
+	if uid := os.Getuid(); uid >= 0 {
+		name = fmt.Sprintf("gorex-drops-%d", uid)
+	}
+	dir := filepath.Join(tmp, name)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // partialOf is the path of the partial the server keeps in dir of a put of
 // name for the transfer id (rex.FilePut).
 func partialOf(dir, name, id string) string {
@@ -91,21 +113,21 @@ func waitUploaded(t *testing.T, tt *ui.Tester, p *Pane) {
 	tt.Frame() // what they posted
 }
 
-// TestDropUploadsToHost drops files on a pane of a host: they go into the
-// directory of its shell there, going on from what an earlier try left,
+// TestDropUploadsToHost drops files on a pane of a host: they go into a
+// temporary folder there, not the directory of its shell, going on from what an earlier try left,
 // one of a name taken renamed, and their paths there are pasted, quoted,
 // as a drop here pastes paths. A file gone pastes nothing.
 func TestDropUploadsToHost(t *testing.T) {
 	if testShell.path == "cmd.exe" {
 		t.Skip("POSIX quoting")
 	}
+	there := dropsDir(t)
 	a, tt := newTestApp(t)
-	there := testDir(t)
-	t.Cleanup(func() { os.RemoveAll(there) })
 	if err := os.WriteFile(filepath.Join(there, "b.txt"), []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, _, p := remotePane(t, a, tt, there)
+	cwd := t.TempDir()
+	_, _, p := remotePane(t, a, tt, cwd)
 	if !transfersFiles(p) {
 		t.Fatal("the host takes no files")
 	}
@@ -128,6 +150,9 @@ func TestDropUploadsToHost(t *testing.T) {
 	}
 	if _, err := os.Stat(part); err == nil {
 		t.Error("the earlier try's partial stays")
+	}
+	if entries, _ := os.ReadDir(cwd); len(entries) > 0 {
+		t.Errorf("the shell's directory has %v", entries)
 	}
 	text := p.term.Text()
 	if !strings.Contains(text, `/a b.txt' '`) || !strings.Contains(text, `/b (1).txt'`) || strings.Contains(text, paths[0]) || strings.Contains(text, "gone.txt") {
@@ -190,10 +215,9 @@ func (heldFile) Close() error { return nil }
 // which ends its session at once: what the host has of the file goes all
 // the same, in the directory the put named.
 func TestClosePaneMidUpload(t *testing.T) {
+	there := dropsDir(t)
 	a, tt := newTestApp(t)
-	there := testDir(t)
-	t.Cleanup(func() { os.RemoveAll(there) })
-	_, _, p, remote := remotePaneOf(t, a, tt, there)
+	_, _, p, remote := remotePaneOf(t, a, tt, t.TempDir())
 	a.split(false) // the tab stays
 	sid := p.SID
 	path := dropped(t, "big.bin", strings.Repeat("x", 256<<10))[0]

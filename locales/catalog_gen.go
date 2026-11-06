@@ -4520,22 +4520,20 @@ func (msgs Messages) PaneStreamInterrupted() string {
 	return Catalog.Format(msgs.locale, "paneStreamInterrupted", nil)
 }
 
-// PaneDropUpload says "Upload to {dir} on {host}"
+// PaneDropUpload says "Upload to a temporary folder on {host}"
 // in the language the app shows.
 //
 // Over a pane of a host while files are dragged over it: where a drop sends
 // them.
-func PaneDropUpload(dir string, host string) string {
-	return In(i18n.Locale()).PaneDropUpload(dir, host)
-}
+func PaneDropUpload(host string) string { return In(i18n.Locale()).PaneDropUpload(host) }
 
-// PaneDropUpload says "Upload to {dir} on {host}"
+// PaneDropUpload says "Upload to a temporary folder on {host}"
 // in the language of msgs.
 //
 // Over a pane of a host while files are dragged over it: where a drop sends
 // them.
-func (msgs Messages) PaneDropUpload(dir string, host string) string {
-	return Catalog.Format(msgs.locale, "paneDropUpload", map[string]any{"dir": dir, "host": host})
+func (msgs Messages) PaneDropUpload(host string) string {
+	return Catalog.Format(msgs.locale, "paneDropUpload", map[string]any{"host": host})
 }
 
 // PaneDropUpdate says "Update GoRex on {host} to upload files"

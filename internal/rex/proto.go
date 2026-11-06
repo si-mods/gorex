@@ -727,6 +727,10 @@ type FilePut struct {
 	// same client opened since the server started; one of before a
 	// restart a put into its directory removes a day after.
 	Abort bool `json:"abort,omitempty"`
+	// Temp, set, sends the file into the server user's own folder in the
+	// temporary directory instead of Dir. A server before it ignores it
+	// and uses Dir.
+	Temp bool `json:"temp,omitempty"`
 }
 
 // FileGet is the first line of a connection that takes a file from a
