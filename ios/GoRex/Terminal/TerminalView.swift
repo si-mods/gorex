@@ -435,10 +435,10 @@ final class TerminalView: UIView, TerminalOutput {
 }
 
 /// The bar over the soft keyboard: three capsules of Liquid Glass, dark as
-/// the keyboard is. ⌘ opens a menu of the rarer keys; the middle one pages
-/// from Esc, the modifiers and Tab to the punctuation a shell wants and
-/// Backspace; the last holds a stick that sends arrows the way it is
-/// dragged, and the key that hides the keyboard.
+/// the keyboard is. ⌘ opens a menu of the rarer keys and Paste; the middle
+/// one pages from Esc, the modifiers and Tab to the punctuation a shell
+/// wants and Backspace; the last holds a stick that sends arrows the way it
+/// is dragged, and the key that hides the keyboard.
 final class KeyBar: UIView {
     let ctrl = KeyBar.button("control", String(localized: "Control"), size: KeyBar.small)
     let alt = KeyBar.button("option", String(localized: "Option"), size: KeyBar.small)
@@ -476,6 +476,7 @@ final class KeyBar: UIView {
         }
         more.menu = UIMenu(children: [
             item(String(localized: "Esc"), "escape"),
+            UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak target] _ in target?.paste(nil) },
             UIMenu(options: .displayInline, children: [
                 item(String(localized: "Home"), "home"), item(String(localized: "End"), "end"),
                 item(String(localized: "Page Up"), "page_up"), item(String(localized: "Page Down"), "page_down"),
@@ -483,17 +484,17 @@ final class KeyBar: UIView {
         ])
         more.showsMenuAsPrimaryAction = true
 
-        let paste = Self.button("clipboard", String(localized: "Paste"), size: Self.small)
-        paste.addAction(UIAction { [weak target] _ in target?.paste(nil) }, for: .touchUpInside)
-
-        // Two pages of keys in even slots, each page as wide as the capsule.
+        // Two pages of five keys in even slots, inset from the capsule's
+        // ends, each page as wide as the capsule.
         let pages = UIStackView(arrangedSubviews: [
             [key("escape", String(localized: "Esc"), "escape"), ctrl, alt, shift,
-             key("arrow.right.to.line", String(localized: "Tab"), "tab"), paste],
+             key("arrow.right.to.line", String(localized: "Tab"), "tab")],
             [text("~"), text("|"), text("/"), text("-"), key("delete.left", String(localized: "Delete"), "backspace")],
         ].map { keys in
             let page = UIStackView(arrangedSubviews: keys)
             page.distribution = .fillEqually
+            page.isLayoutMarginsRelativeArrangement = true
+            page.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14)
             return page
         })
         let scroll = UIScrollView()
