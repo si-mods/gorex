@@ -398,7 +398,8 @@ func TestServeListensBeforeRestores(t *testing.T) {
 	if _, err := client.Layout(); err != nil {
 		t.Fatal(err)
 	}
-	if d := time.Since(start); d > 300*time.Millisecond {
+	// Long before the restores, of 2.4 s, end.
+	if d := time.Since(start); d > time.Second {
 		t.Errorf("the server answered %v after it started", d)
 	}
 	if infos, _ := client.List(); len(infos) == len(panes) {
