@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **panes:** a new selection is crossed by the light Rex shows on copy: a bright core, a wide bloom and a rim sweep along a slanted line as the drag ends, a copy is made or everything is selected
+
+### Dependencies
+
+* **mygo:** bump for the selection pulse
+
 ## 0.15.0
 
 ### Features
