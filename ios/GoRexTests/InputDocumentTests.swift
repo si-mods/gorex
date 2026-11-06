@@ -96,6 +96,37 @@ nonisolated final class InputDocumentTests: XCTestCase {
         XCTAssertEqual(d.text, "你好世界")
     }
 
+    /// A correction inside the composition commits the whole of it, the
+    /// correction in place, not the corrected part alone.
+    @MainActor func testReplaceInComposition() {
+        var d = InputDocument()
+        _ = d.insert("a")
+        _ = d.mark("ni hao", selected: at(6))
+        XCTAssertEqual(d.replace(NSRange(location: 4, length: 3), with: "好"), [.preedit(nil), .text("ni 好")])
+        XCTAssertNil(d.markedRange)
+        XCTAssertEqual(d.text, "ani 好")
+        // Past the composition: nothing.
+        _ = d.mark("x", selected: at(1))
+        XCTAssertEqual(d.replace(NSRange(location: 6, length: 2), with: "y"), [])
+    }
+
+    /// A key with Ctrl or Alt held sends a control sequence, not its
+    /// letter: the line is no longer what was typed, so a later correction
+    /// erases only what follows.
+    @MainActor func testChord() {
+        var d = InputDocument()
+        _ = d.insert("ab")
+        XCTAssertEqual(d.insert("c", chord: true), [.type("c")])
+        XCTAssertEqual(d.text, "")
+        _ = d.insert("xy")
+        XCTAssertEqual(d.deleteBackward(chord: true), [.backspace])
+        XCTAssertEqual(d.text, "")
+        // Composed text is text, chord or not.
+        _ = d.mark("ni", selected: at(2))
+        XCTAssertEqual(d.insert("你", chord: true), [.preedit(nil), .text("你")])
+        XCTAssertEqual(d.text, "你")
+    }
+
     /// Wide and composed characters count as UIKit counts them.
     @MainActor func testUTF16() {
         var d = InputDocument()

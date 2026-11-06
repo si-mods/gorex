@@ -307,7 +307,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// Sends a key of the bar, with its held modifiers. Backspace is the
     /// keyboard's, which edits the composition first.
     func send(_ key: String) {
-        guard key != "backspace" else { return changing { apply(document.deleteBackward()) } }
+        guard key != "backspace" else { return changing { deleteBackward() } }
         forget()
         press([.named(key, shift: shift, ctrl: ctrl, alt: alt)])
         release()
@@ -315,7 +315,7 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// Types a key of the bar that types text, as the keyboard would.
     func type(_ text: String) {
-        changing { apply(document.insert(text)) }
+        changing { insertText(text) }
     }
 
     /// Carries out the document's edits.

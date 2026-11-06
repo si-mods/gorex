@@ -56,7 +56,9 @@ struct InputDocument {
     }
 
     /// Text in place of the composition, if any, else a key or text typed.
-    mutating func insert(_ text: String) -> [Edit] {
+    /// A key typed as a chord, with Ctrl or Alt held, sends no text: the
+    /// line is no longer what was typed.
+    mutating func insert(_ text: String, chord: Bool = false) -> [Edit] {
         let t = text.precomposedStringWithCanonicalMapping
         if marked != nil {
             marked = nil
@@ -64,29 +66,34 @@ struct InputDocument {
             return t.isEmpty ? [.preedit(nil)] : [.preedit(nil), .text(t)]
         }
         guard !t.isEmpty else { return [] }
-        append(t)
-        return [t.count == 1 ? .type(t) : .text(t)]
+        let key = t.count == 1
+        if key, chord { reset() } else { append(t) }
+        return [key ? .type(t) : .text(t)]
     }
 
-    /// Backspace edits the composition, if any, else goes to the program.
-    mutating func deleteBackward() -> [Edit] {
+    /// Backspace edits the composition, if any, else goes to the program;
+    /// as a chord it may erase more than a character.
+    mutating func deleteBackward(chord: Bool = false) -> [Edit] {
         if var m = marked {
             m.removeLast()
             marked = m.isEmpty ? nil : m
             selected = NSRange(location: m.utf16.count, length: 0)
             return [.preedit(marked)]
         }
-        if !typed.isEmpty { typed.removeLast() }
+        if chord { reset() } else if !typed.isEmpty { typed.removeLast() }
         return [.backspace]
     }
 
-    /// Text in place of a range, as dictation corrects what it typed: the
-    /// composition's range is the composition's, and a range in the typed
-    /// text is erased back to its start and typed again. A range outside
-    /// the text changes nothing.
+    /// Text in place of a range, as dictation corrects what it typed: a
+    /// range in the composition commits the composition so corrected, and
+    /// a range in the typed text is erased back to its start and typed
+    /// again. A range outside the text changes nothing.
     mutating func replace(_ range: NSRange, with text: String) -> [Edit] {
         let n = typed.utf16.count
-        if marked != nil, range.location >= n { return insert(text) }
+        if let m = marked, range.location >= n {
+            guard let r = Range(NSRange(location: range.location - n, length: range.length), in: m) else { return [] }
+            return insert(m.replacingCharacters(in: r, with: text))
+        }
         guard marked == nil, range.length >= 0, range.location >= 0, range.location + range.length <= n,
               let r = Range(range, in: typed) else { return [] }
         if range.location == n { return insert(text) }

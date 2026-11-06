@@ -9,9 +9,9 @@ import UIKit
 extension TerminalView: UITextInput {
     var hasText: Bool { true }
 
-    func insertText(_ text: String) { apply(document.insert(text)) }
+    func insertText(_ text: String) { apply(document.insert(text, chord: ctrl || alt)) }
 
-    func deleteBackward() { apply(document.deleteBackward()) }
+    func deleteBackward() { apply(document.deleteBackward(chord: ctrl || alt)) }
 
     func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
         apply(document.mark(markedText, selected: selectedRange))
