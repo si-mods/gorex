@@ -223,12 +223,14 @@ final class KeyBar: UIView {
     private weak var target: TerminalView?
     /// Repeats the arrow the stick points to.
     private var repeating: Task<Void, Never>?
-    private var arrow: String?
+    private var arrow: String? { didSet { pad.arrow = arrow } }
+    /// What the stick turns into while held.
+    private let pad = StickPad()
     private let tick = UIImpactFeedbackGenerator(style: .light)
 
     init(target: TerminalView) {
         self.target = target
-        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 60))
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 52))
         autoresizingMask = .flexibleHeight
         overrideUserInterfaceStyle = .dark
         func key(_ face: String, _ label: String?, _ name: String) -> UIButton {
@@ -261,14 +263,14 @@ final class KeyBar: UIView {
         ])
         more.showsMenuAsPrimaryAction = true
 
-        // Two pages of five keys, each as wide as the capsule.
+        // Two pages of five keys in even slots, each page as wide as the capsule.
         let pages = UIStackView(arrangedSubviews: [
             [key("escape", String(localized: "Esc"), "escape"), ctrl, alt, shift,
              key("arrow.right.to.line", String(localized: "Tab"), "tab")],
             [text("~"), text("|"), text("/"), text("-"), key("delete.left", String(localized: "Delete"), "backspace")],
         ].map { keys in
             let page = UIStackView(arrangedSubviews: keys)
-            page.distribution = .equalSpacing
+            page.distribution = .fillEqually
             return page
         })
         let scroll = UIScrollView()
@@ -295,13 +297,20 @@ final class KeyBar: UIView {
         let middle = Self.capsule(scroll)
         // The middle capsule takes the room the others leave.
         middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let row = UIStackView(arrangedSubviews: [Self.capsule(more), middle, Self.capsule(UIStackView(arrangedSubviews: [stick, hide]))])
+        let right = UIStackView(arrangedSubviews: [stick, hide])
+        right.distribution = .fillEqually
+        let left = Self.capsule(more), last = Self.capsule(right)
+        // As in the bar this one copies: ⌘ 56pt wide, the stick and Hide 100.
+        left.widthAnchor.constraint(equalToConstant: 56).isActive = true
+        last.widthAnchor.constraint(equalToConstant: 100).isActive = true
+        let row = UIStackView(arrangedSubviews: [left, middle, last])
         row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
+        addSubview(pad)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             row.topAnchor.constraint(equalTo: topAnchor, constant: 4),
             row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])
@@ -309,14 +318,21 @@ final class KeyBar: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 60) }
+    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 52) }
 
     /// Points the stick: past a dead zone, the arrow of the drag's main
     /// axis goes at once, then repeats while held, as a held key does. Each
     /// arrow taps the hand: firmly as the stick turns, lightly as it repeats.
     @objc private func steer(_ g: UILongPressGestureRecognizer) {
         var next: String?
-        if g.state == .began { tick.prepare() }
+        if g.state == .began, let v = g.view {
+            tick.prepare()
+            pad.center = v.convert(CGPoint(x: v.bounds.midX, y: v.bounds.midY), to: self)
+            pad.transform = CGAffineTransform(scaleX: 0.5, y: 0.5)
+            pad.isHidden = false
+            UIView.animate(withDuration: 0.18, delay: 0, usingSpringWithDamping: 0.75, initialSpringVelocity: 0) { self.pad.transform = .identity }
+        }
+        if g.state == .ended || g.state == .cancelled || g.state == .failed { pad.isHidden = true }
         if g.state == .began || g.state == .changed, let v = g.view {
             let p = g.location(in: v)
             let dx = p.x - v.bounds.midX, dy = p.y - v.bounds.midY
@@ -341,17 +357,17 @@ final class KeyBar: UIView {
 
     /// The stick, which no SF Symbol draws: a ring with four arrowheads
     /// inside it and a dot at its centre.
-    private static let stick = UIGraphicsImageRenderer(size: CGSize(width: 26, height: 26)).image { _ in
-        let c = CGPoint(x: 13, y: 13)
-        let ring = UIBezierPath(arcCenter: c, radius: 11.5, startAngle: 0, endAngle: 2 * .pi, clockwise: true)
-        ring.lineWidth = 1.6
+    private static let stick = UIGraphicsImageRenderer(size: CGSize(width: 24, height: 24)).image { _ in
+        let c = CGPoint(x: 12, y: 12)
+        let ring = UIBezierPath(arcCenter: c, radius: 10.6, startAngle: 0, endAngle: 2 * .pi, clockwise: true)
+        ring.lineWidth = 1.4
         ring.stroke()
-        UIBezierPath(arcCenter: c, radius: 4.6, startAngle: 0, endAngle: 2 * .pi, clockwise: true).fill()
+        UIBezierPath(arcCenter: c, radius: 4.2, startAngle: 0, endAngle: 2 * .pi, clockwise: true).fill()
         for i in 0..<4 {
             let head = UIBezierPath()
-            head.move(to: CGPoint(x: 0, y: -9.4))
-            head.addLine(to: CGPoint(x: 2.6, y: -6.8))
-            head.addLine(to: CGPoint(x: -2.6, y: -6.8))
+            head.move(to: CGPoint(x: 0, y: -8.7))
+            head.addLine(to: CGPoint(x: 2.4, y: -6.3))
+            head.addLine(to: CGPoint(x: -2.4, y: -6.3))
             head.close()
             head.apply(CGAffineTransform(rotationAngle: CGFloat(i) * .pi / 2).concatenating(CGAffineTransform(translationX: c.x, y: c.y)))
             head.fill()
@@ -366,8 +382,8 @@ final class KeyBar: UIView {
         glass.contentView.addSubview(content)
         content.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 4),
-            content.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -4),
+            content.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
             content.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: 4),
             content.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -4),
         ])
@@ -380,9 +396,7 @@ final class KeyBar: UIView {
         let b = UIButton(configuration: config(face, text: label == nil, held: false))
         b.accessibilityLabel = label
         b.changesSelectionAsPrimaryAction = false
-        b.setContentHuggingPriority(.required, for: .horizontal)
-        b.setContentCompressionResistancePriority(.required, for: .horizontal)
-        // A held modifier is prominent glass, in the accent: white here.
+                // A held modifier is prominent glass, in the accent: white here.
         b.configurationUpdateHandler = { b in b.configuration = config(face, text: label == nil, held: b.isSelected) }
         return b
     }
@@ -393,17 +407,53 @@ final class KeyBar: UIView {
             c.title = face
             c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
                 var a = $0
-                a.font = .systemFont(ofSize: 22, weight: .light)
+                a.font = .systemFont(ofSize: 19, weight: .light)
                 return a
             }
         } else {
             c.image = face == "stick" ? stick : UIImage(systemName: face)
-            c.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
+            c.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         }
         c.baseForegroundColor = held ? .black : .label
         c.cornerStyle = .capsule
-        c.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
+        c.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0)
         return c
+    }
+}
+
+/// The stick while held: a disc over its capsule, the quarter it points to
+/// lit, and a knob at its centre.
+final class StickPad: UIView {
+    var arrow: String? { didSet { setNeedsDisplay() } }
+
+    init() {
+        super.init(frame: CGRect(x: 0, y: 0, width: 56, height: 56))
+        isOpaque = false
+        isHidden = true
+        isUserInteractionEnabled = false
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ rect: CGRect) {
+        let c = CGPoint(x: bounds.midX, y: bounds.midY), r = bounds.width / 2 - 0.5
+        let disc = UIBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5))
+        UIColor(white: 0.3, alpha: 1).setFill()
+        disc.fill()
+        let angles = ["arrow_right": 0.0, "arrow_down": 0.5, "arrow_left": 1.0, "arrow_up": 1.5]
+        if let a = arrow.flatMap({ angles[$0] }).map({ CGFloat($0) * .pi }) {
+            let wedge = UIBezierPath()
+            wedge.move(to: c)
+            wedge.addArc(withCenter: c, radius: r, startAngle: a - .pi / 4, endAngle: a + .pi / 4, clockwise: true)
+            wedge.close()
+            UIColor(red: 0.31, green: 0.45, blue: 0.42, alpha: 1).setFill()
+            wedge.fill()
+        }
+        UIColor(white: 1, alpha: 0.25).setStroke()
+        disc.lineWidth = 1
+        disc.stroke()
+        UIColor(white: 0.13, alpha: 1).setFill()
+        UIBezierPath(arcCenter: c, radius: 8, startAngle: 0, endAngle: 2 * .pi, clockwise: true).fill()
     }
 }
 
