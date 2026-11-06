@@ -67,9 +67,9 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 - `run` creates a session, runs the command, prints what the screen shows
   when it ends, and exits with the program's status.
 - `split` changes the layout; the command after `--` runs in the new
-  pane, or a shell does. With no GoRex window open the server makes the
-  change, and the window shows it as it opens. `close` and `rename` work
-  the same way.
+  pane, or a shell does. The session server makes the change, and an
+  open window shows it at once, a closed one as it opens. `close` and
+  `rename` work the same way.
 - `events` prints each layout or session change as one JSON line; with a
   host that shares its layout, it subscribes to that host's layout too.
 - `clients` prints the principal, peer key, whether it is remote, through a

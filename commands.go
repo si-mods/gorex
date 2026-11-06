@@ -317,23 +317,18 @@ var (
 		},
 		Run: func(a *App) { a.newFloat(nil) },
 		RunArgs: func(a *App, args map[string]any) error {
-			p := a.newFloat(nil)
-			if p == nil || p.float == nil {
-				return nil
+			for _, k := range []string{"x", "y", "w", "h"} {
+				if _, ok := args[k]; !ok {
+					a.newFloat(nil)
+					return nil
+				}
 			}
-			if _, ok := args["x"]; !ok {
-				return nil
-			}
-			if _, ok := args["y"]; !ok {
-				return nil
-			}
-			if _, ok := args["w"]; !ok {
-				return nil
-			}
-			if _, ok := args["h"]; !ok {
-				return nil
-			}
-			a.setFloatBox(p.float, argFloat(args, "x"), argFloat(args, "y"), argFloat(args, "w"), argFloat(args, "h"))
+			// The box, once the float shows, as the server makes it.
+			a.newFloatThen(nil, func(p *Pane) {
+				if p.float != nil {
+					a.setFloatBox(p.float, argFloat(args, "x"), argFloat(args, "y"), argFloat(args, "w"), argFloat(args, "h"))
+				}
+			})
 			return nil
 		},
 		Available: func(a *App) bool { return tabHostOnline(a) },

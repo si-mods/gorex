@@ -31,8 +31,8 @@ it to Rex clients in Rex's terms:
   The lock is renewed while the client stays, and given back when it
   leaves.
 - **Layout changes** (new window, split, close, rename, focus, zoom, swap,
-  move, resize) go to the GoRex window, which makes them as its own
-  buttons do, as for rootshell.
+  move, resize) the GoRex server makes itself, as for rootshell; an open
+  window shows them at once.
 
 The GoRex server runs the gateway itself while the local network
 listener or built-in Tailscale is on, and again after it restarts or
@@ -182,14 +182,13 @@ meets:
 - Every ID lasts: a window is named by its tab's own ID, which GoRex
   keeps in the layout, so windows, sessions and blocks keep their IDs
   across restarts of the gateway and of GoRex.
-- Closing a session's last window leaves its space empty, the GoRex
-  window open on it, as a Rex session goes on with no windows: make the
-  next window from the client. On the desktop the window closes with its
-  last tab instead.
-- With no GoRex window open, the server makes a change of the layout
-  itself, and the window shows it as it opens. An app action, and the
-  close of a window or session that holds a pane of another host, still
-  need the window, and fail with `conflict` without it.
+- Closing a session's last window leaves its space empty, as a Rex
+  session goes on with no windows: make the next window from the client.
+  A GoRex window that showed it shows another space, or closes. On the
+  desktop the space goes with its last tab instead.
+- An app action still needs the GoRex window, and fails with `conflict`
+  without it. Closing a window or session that holds a pane of another
+  host drops that pane; its session, on the other host, goes on.
 - Tabs and panes of remote hosts are left out.
 - Revision 8's `data_tickets` on `session.bootstrap` is served: a client
   that asks for the terminal blocks gets a ticket for each one, and opens

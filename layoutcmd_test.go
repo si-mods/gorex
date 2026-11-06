@@ -90,7 +90,7 @@ func (r *phone) snapshot() (tabs []string, labels map[string]string, panes map[s
 func startPhone(t *testing.T, a *App, tt *ui.Tester) *phone {
 	t.Helper()
 	go a.st.takeCommands(a.client, a.post)
-	a.saveNow()
+	followApp(t, a)
 	c, err := rex.ConnectExisting()
 	if err != nil {
 		t.Fatal(err)
@@ -142,6 +142,7 @@ func TestRootshellLayout(t *testing.T) {
 	if !slices.ContainsFunc(r.since(mark), func(m map[string]any) bool { return m["type"] == "events.gap" }) {
 		t.Error("no events.gap before tab.create's answer")
 	}
+	caughtUp(t, a, tt)
 	if len(a.tabs) != 2 || a.tabs[1].Focus.SID != sid2 || a.tab() != first {
 		t.Errorf("the desktop's tabs %d, active %v", len(a.tabs), a.tab() == first)
 	}
@@ -181,6 +182,7 @@ func TestRootshellLayout(t *testing.T) {
 	if layout == nil || len(layout["panes"].([]any)) != 2 {
 		t.Fatalf("no tab.layout of two panes before the split's answer: %v", layout)
 	}
+	caughtUp(t, a, tt)
 	_, _, panes = r.snapshot()
 	sidNew := panes[t1][1]
 	for _, f := range focused {
@@ -210,10 +212,12 @@ func TestRootshellLayout(t *testing.T) {
 			l = x
 		}
 	}
+	caughtUp(t, a, tt)
 	if ps, _ := l["panes"].([]any); l["focused_pane_id"] != "p-"+sidNew || len(ps) != 1 || size(sidNew) != "100x30" || first.Zoom == nil {
 		t.Errorf("zoomed %v, size %s", l, size(sidNew))
 	}
 	r.call("pane.zoom", map[string]any{"pane_id": "p-" + sidNew, "mode": "off"})
+	caughtUp(t, a, tt)
 	if first.Zoom != nil || size(sidNew) != "50x30" {
 		t.Errorf("unzoomed: %v, %s", first.Zoom, size(sidNew))
 	}
@@ -223,6 +227,7 @@ func TestRootshellLayout(t *testing.T) {
 	r.next("its snapshot", func(m map[string]any) bool { return m["type"] == "terminal.snapshot" && m["attach_id"] == aid })
 	mark = len(r.log)
 	r.call("pane.close", map[string]any{"pane_id": "p-" + sidNew})
+	caughtUp(t, a, tt)
 	if _, _, panes := r.snapshot(); len(panes[t1]) != 1 || len(first.panes()) != 1 {
 		t.Errorf("after closing a pane: %v, the desktop's %d", panes[t1], len(first.panes()))
 	}
@@ -234,10 +239,12 @@ func TestRootshellLayout(t *testing.T) {
 	if got := r.call("tab.rename", map[string]any{"tab_id": t2, "label": " phone "})["tab"].(map[string]any)["label"]; got != "phone" {
 		t.Errorf("renamed %v", got)
 	}
+	caughtUp(t, a, tt)
 	if _, labels, _ := r.snapshot(); labels[t2] != "phone" || a.tabs[1].Name != "phone" {
 		t.Errorf("labels %v", labels)
 	}
 	r.call("tab.close", map[string]any{"tab_id": t2})
+	caughtUp(t, a, tt)
 	if tabs, _, _ := r.snapshot(); !slices.Equal(tabs, []string{t1, t3}) || len(a.tabs) != 2 {
 		t.Errorf("after closing a tab: %v, the desktop's %d", tabs, len(a.tabs))
 	}
@@ -251,13 +258,13 @@ func TestCommandCreateFails(t *testing.T) {
 	first := a.tab()
 	a.err = "an older error"
 	a.client.Close() // no session starts
-	res := a.command(rex.LayoutCommand{Op: "tab.create"})
-	if res.Code != "create_failed" || res.Error == "" || res.Error == "an older error" || len(a.tabs) != 1 {
-		t.Errorf("tab.create: %+v, %d tabs", res, len(a.tabs))
+	if a.newTab(os.TempDir()) != nil || a.err == "" || a.err == "an older error" || len(a.tabs) != 1 {
+		t.Errorf("a new tab: %q, %d tabs", a.err, len(a.tabs))
 	}
-	res = a.command(rex.LayoutCommand{Op: "pane.split", SID: first.Focus.SID})
-	if res.Code != "create_failed" || len(first.panes()) != 1 || first.Root.Pane != first.Focus {
-		t.Errorf("pane.split: %+v, %d panes", res, len(first.panes()))
+	a.err = ""
+	a.split(false)
+	if a.err == "" || len(first.panes()) != 1 || first.Root.Pane != first.Focus {
+		t.Errorf("a split: %q, %d panes", a.err, len(first.panes()))
 	}
 }
 
@@ -276,7 +283,7 @@ func TestClientActionsCannotQuit(t *testing.T) {
 func TestActionFromClient(t *testing.T) {
 	a, tt := newTestApp(t)
 	go a.st.takeCommands(a.client, a.post)
-	a.saveNow()
+	followApp(t, a)
 	c, err := rex.ConnectExisting()
 	if err != nil {
 		t.Fatal(err)
@@ -315,7 +322,7 @@ func TestActionFromClient(t *testing.T) {
 func TestPaneRename(t *testing.T) {
 	a, _ := newTestApp(t)
 	p := a.tab().Focus
-	res := a.command(rex.LayoutCommand{Op: "pane.rename", SID: p.SID, Name: " logs "})
+	res := clientCommand(a, rex.LayoutCommand{Op: "pane.rename", SID: p.SID, Name: " logs "})
 	if res.Code != "" || p.Name != "logs" {
 		t.Fatalf("rename: %+v %q", res, p.Name)
 	}
@@ -332,7 +339,7 @@ func TestPaneRename(t *testing.T) {
 		t.Fatalf("saved %+v", saved.Sessions[0].Tabs[0].Root)
 	}
 	b := &App{client: a.client}
-	if !b.reconcile(saved.Sessions[0].Layout, nil, nil) {
+	if !b.reconcile(saved.Sessions[0].Layout, nil) {
 		t.Fatal("nothing restored")
 	}
 	if b.tab().Focus.Name != "logs" {
@@ -723,6 +730,7 @@ func TestRootshellPaneCommands(t *testing.T) {
 	if resize := res["resize"].(map[string]any); resize["changed"] != true || resize["layout"] == nil {
 		t.Fatalf("pane.resize %v", res)
 	}
+	caughtUp(t, a, tt)
 	if tab.Root == nil || tab.Root.Ratio < 0.39 || tab.Root.Ratio > 0.41 {
 		t.Fatalf("ratio %v", tab.Root)
 	}
@@ -732,6 +740,7 @@ func TestRootshellPaneCommands(t *testing.T) {
 	if swap := res["swap"].(map[string]any); swap["changed"] != true {
 		t.Fatalf("pane.swap %v", res)
 	}
+	caughtUp(t, a, tt)
 	if ps := tab.panes(); ps[0].SID != sid2 || ps[1].SID != sid1 || tab.Focus.SID != sid1 {
 		t.Fatalf("panes %v, focus %s", []string{ps[0].SID, ps[1].SID}, tab.Focus.SID)
 	}
@@ -821,7 +830,7 @@ func TestCommandPaneMove(t *testing.T) {
 	p := first.Focus
 	a.newTab(t.TempDir())
 	target := a.tab().Focus
-	res := a.command(rex.LayoutCommand{Op: "pane.move", SID: p.SID, Target: target.SID, Direction: "down", Ratio: 0.4})
+	res := clientCommand(a, rex.LayoutCommand{Op: "pane.move", SID: p.SID, Target: target.SID, Direction: "down", Ratio: 0.4})
 	if res.Code != "" || !res.Changed || p.Tab != target.Tab || len(first.panes()) != 1 {
 		t.Fatalf("pane.move: %+v, pane tab %v, source panes %d", res, p.Tab == target.Tab, len(first.panes()))
 	}
@@ -831,7 +840,7 @@ func TestCommandPaneMove(t *testing.T) {
 	p = target.Tab.Focus
 	a.newTab(t.TempDir())
 	src := p.Tab
-	res = a.command(rex.LayoutCommand{Op: "pane.move", SID: p.SID, NewTab: true, Name: "moved"})
+	res = clientCommand(a, rex.LayoutCommand{Op: "pane.move", SID: p.SID, NewTab: true, Name: "moved"})
 	if res.Code != "" || !res.Changed || p.Tab == src || p.Tab.Name != "moved" {
 		t.Fatalf("new-tab move: %+v, tab %v %q", res, p.Tab != src, p.Tab.Name)
 	}
@@ -920,22 +929,22 @@ func TestCommandPaneResizeNested(t *testing.T) {
 	near := func(got, want float32) bool { return got > want-0.001 && got < want+0.001 }
 
 	// B's left edge is the root divider: the root moves, not B's parent.
-	res := a.command(rex.LayoutCommand{Op: "pane.resize", SID: b.SID, Direction: "left", Amount: 0.1})
+	res := clientCommand(a, rex.LayoutCommand{Op: "pane.resize", SID: b.SID, Direction: "left", Amount: 0.1})
 	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.5) {
 		t.Fatalf("left of B: %+v, root %v, split %v", res, ratio(root), ratio(s))
 	}
 	// B's right edge is its parent split.
-	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: b.SID, Direction: "right", Amount: 0.1})
+	res = clientCommand(a, rex.LayoutCommand{Op: "pane.resize", SID: b.SID, Direction: "right", Amount: 0.1})
 	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.6) {
 		t.Fatalf("right of B: %+v, root %v, split %v", res, ratio(root), ratio(s))
 	}
 	// C's left edge is its parent split.
-	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: c.SID, Direction: "left", Amount: 0.1})
+	res = clientCommand(a, rex.LayoutCommand{Op: "pane.resize", SID: c.SID, Direction: "left", Amount: 0.1})
 	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.5) {
 		t.Fatalf("left of C: %+v, root %v, split %v", res, ratio(root), ratio(s))
 	}
 	// C's outer right edge moves its nearest split the other way, as herdr.
-	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: c.SID, Direction: "right", Amount: 0.1})
+	res = clientCommand(a, rex.LayoutCommand{Op: "pane.resize", SID: c.SID, Direction: "right", Amount: 0.1})
 	if res.Code != "" || !res.Changed || !near(ratio(root), 0.4) || !near(ratio(s), 0.6) {
 		t.Fatalf("outer right of C: %+v, root %v, split %v", res, ratio(root), ratio(s))
 	}
@@ -946,7 +955,7 @@ func TestPaneFocusCommand(t *testing.T) {
 	first := a.tab().Focus
 	a.split(false)
 	second := a.tab().Focus
-	res := a.command(rex.LayoutCommand{Op: "pane.focus", SID: first.SID})
+	res := clientCommand(a, rex.LayoutCommand{Op: "pane.focus", SID: first.SID})
 	if res.Error != "" || a.tab().Focus != first || a.focusReq != first {
 		t.Fatalf("focus: %+v focus %v", res, a.tab().Focus == first)
 	}
@@ -961,7 +970,7 @@ func TestPaneFocusCommand(t *testing.T) {
 func TestCommandSpaces(t *testing.T) {
 	a, _ := newTestApp(t)
 	orig, origSID := a.ws.ID, a.tab().Focus.SID
-	res := a.command(rex.LayoutCommand{Op: "space.create", Name: "work"})
+	res := clientCommand(a, rex.LayoutCommand{Op: "space.create", Name: "work"})
 	if res.Code != "" || res.Space == "" {
 		t.Fatalf("space.create: %+v", res)
 	}
@@ -970,29 +979,24 @@ func TestCommandSpaces(t *testing.T) {
 	if w == nil || w.Name != "work" || w.app != nil {
 		t.Fatalf("the new space: %+v", w)
 	}
-	res = a.command(rex.LayoutCommand{
+	res = clientCommand(a, rex.LayoutCommand{
 		Op: "tab.create", Space: space, Name: "editor", Dir: os.TempDir(),
 		Command: []string{"/bin/sh", "-c", "echo made"}, Focus: true,
 	})
 	if res.Code != "" || res.New == "" {
 		t.Fatalf("tab.create in a space: %+v", res)
 	}
+	// The space no window shows has the tab; the window stays on its own.
 	w = a.st.workspaceByID(space)
-	if w.app == nil || len(w.app.tabs) != 1 || w.app.tabs[0].Name != "editor" {
-		t.Fatalf("the space's tabs: %+v", w.app)
+	if w.app != nil || len(w.layout.Tabs) != 1 || w.layout.Tabs[0].Name != "editor" || w.layout.Tabs[0].Root.SID != res.New {
+		t.Fatalf("the space's tabs: %+v", w.layout)
 	}
-	if got := w.app.tabs[0].Focus.SID; got != res.New || w.app.tabs[0].Focus.Tab != w.app.tabs[0] {
-		t.Fatalf("the tab's session: %q, want %q", got, res.New)
+	if a.ws.ID != orig || savedTabSID(a.st.saved(), orig) != origSID {
+		t.Fatalf("the window went to %s", a.ws.ID)
 	}
-	// The window showed the new space: the one before keeps its tab in
-	// the layout, so it comes back as it was.
-	if got := savedTabSID(a.st.saved(), orig); got != origSID {
-		t.Fatalf("the space before holds tab %q, want %q", got, origSID)
-	}
-	// Closing the space ends its tab's program and the space itself, and
-	// the window shows another space.
-	sid := a.st.workspaceByID(space).app.tabs[0].Focus.SID
-	if res = a.command(rex.LayoutCommand{Op: "space.close", Space: space}); res.Code != "" {
+	// Closing the space ends its tab's program and the space itself.
+	sid := res.New
+	if res = clientCommand(a, rex.LayoutCommand{Op: "space.close", Space: space}); res.Code != "" {
 		t.Fatalf("space.close: %+v", res)
 	}
 	if a.st.workspaceByID(space) != nil {
@@ -1020,7 +1024,7 @@ func TestCommandSpaces(t *testing.T) {
 func TestCommandSplitRunsCommand(t *testing.T) {
 	a, _ := newTestApp(t)
 	first := a.tab().Focus
-	res := a.command(rex.LayoutCommand{
+	res := clientCommand(a, rex.LayoutCommand{
 		Op: "pane.split", SID: first.SID, Dir: os.TempDir(), Vertical: true,
 		Command: []string{"/bin/sh", "-c", "echo split"},
 	})
@@ -1052,53 +1056,141 @@ func savedTabSID(st savedStore, workspace string) string {
 	return ""
 }
 
-// TestCommandActionShowsSpace: an action on a space no window shows shows
-// the space first, as the layout commands do, so a Rex client can minimize
-// a floating pane of a session it is not looking at.
-func TestCommandActionShowsSpace(t *testing.T) {
-	a, _ := newTestApp(t)
-	orig := a.ws
-	res := a.command(rex.LayoutCommand{Op: "space.create", Name: "work"})
-	if res.Code != "" || res.Space == "" {
-		t.Fatalf("space.create: %+v", res)
+// diffOps writes the commands diffLayout sends, one line each.
+func diffOps(base, now savedStore) []string {
+	var got []string
+	for _, c := range diffLayout(base, now) {
+		s := c.Op + " " + c.Space + c.SID + c.Tab
+		if c.TabLayout != nil {
+			s += fmt.Sprintf("%s after=%s focus=%v", c.TabLayout.ID, c.After, c.Focus)
+		}
+		if c.Op == "space.rename" || c.Op == "space.create" {
+			s += " " + c.Name + "/" + c.Color
+		}
+		if c.Op == "windows.set" {
+			s += strings.Join(c.Spaces, ",")
+		}
+		got = append(got, s)
 	}
-	space := res.Space
-	res = a.command(rex.LayoutCommand{
-		Op: "tab.create", Space: space, Dir: os.TempDir(),
-		Command: []string{"/bin/sh", "-c", "echo made"}, Focus: true,
-	})
-	if res.Code != "" || res.New == "" {
-		t.Fatalf("tab.create: %+v", res)
-	}
-	res = a.command(rex.LayoutCommand{
-		Op: "pane.split", Space: space, SID: res.New, Dir: os.TempDir(),
-		Command: []string{"/bin/sh", "-c", "echo split"},
-	})
-	if res.Code != "" || res.New == "" {
-		t.Fatalf("pane.split: %+v", res)
-	}
-	if !a.floatPane(a.tab().Focus) {
-		t.Fatal("the pane did not float")
-	}
-	floatSID := a.tab().Focus.SID
+	return got
+}
 
-	// No window shows the space now.
-	a.showEmpty(orig)
-	if w := a.st.workspaceByID(space); w == nil || w.app != nil {
-		t.Fatalf("the space is still shown: %+v", w)
+// TestDiffLayout checks the commands the app sends for what it changed:
+// new spaces first; the sessions it closed end; a tab that takes a session
+// from another goes before the tab that gives it; a tab the app made
+// active takes the focus, a tab changed otherwise does not, so another
+// client's focus stays; then closed tabs and spaces, names, and windows.
+// A close or a move of one tab sends nothing of the others.
+func TestDiffLayout(t *testing.T) {
+	leaf := func(sid string) *layout.Node { return &layout.Node{SID: sid} }
+	split := func(a, b *layout.Node) *layout.Node { return &layout.Node{Ratio: 0.5, A: a, B: b} }
+	tab := func(id string, root *layout.Node) layout.Tab { return layout.Tab{ID: id, Root: root} }
+	space := func(id string, tabs ...layout.Tab) savedWorkspace {
+		return savedWorkspace{ID: id, Name: id, Layout: layout.Layout{Tabs: tabs}}
 	}
-	app := a.st.commandAppFor(space)
-	args, _ := json.Marshal(map[string]any{"sid": floatSID, "state": "minimized"})
-	res = app.command(rex.LayoutCommand{Op: "action", Space: space, Action: "float.set_state", Args: args})
-	if res.Code != "" {
-		t.Fatalf("float.set_state: %+v", res)
+	base := savedStore{Windows: []string{"w"}, Sessions: []savedWorkspace{
+		space("w", tab("a", split(leaf("1"), leaf("2"))), tab("b", leaf("3")), tab("c", leaf("4"))),
+		space("old", tab("d", leaf("5"))),
+	}}
+	now := savedStore{Windows: []string{"w", "new"}, Sessions: []savedWorkspace{
+		// 2 closed, 3 moves from b into a, c closed, b gets a browser.
+		{ID: "w", Name: "renamed", Color: "teal", Layout: layout.Layout{Tabs: []layout.Tab{
+			tab("a", split(leaf("1"), leaf("3"))),
+			tab("b", &layout.Node{URL: "https://example.com/", ID: "web"}),
+		}}},
+		space("new"),
+	}}
+	want := []string{
+		"space.create new new/default",
+		"pane.close w2a",
+		"tab.set wa after= focus=false",
+		"tab.set wb after=a focus=false",
+		"tab.close wc",
+		"space.close old",
+		"space.rename w renamed/teal",
+		"windows.set w,new",
 	}
-	if app.ws == nil || app.ws.ID != space {
-		t.Fatalf("the window shows %+v, want %s", app.ws, space)
+	if got := diffOps(base, now); !slices.Equal(got, want) {
+		t.Errorf("commands\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	for _, f := range app.tab().Floats {
-		if f.Pane != nil && f.Pane.SID == floatSID && !f.Hidden {
-			t.Error("the float is not hidden")
+	// The app's active tab, made so here, takes the focus; nothing else
+	// changed sends nothing more.
+	next := now
+	next.Sessions = slices.Clone(now.Sessions)
+	next.Sessions[0].Active = 1
+	if cmds := diffLayout(now, next); len(cmds) != 1 || cmds[0].Op != "tab.set" || cmds[0].TabLayout.ID != "b" || !cmds[0].Focus {
+		t.Errorf("a tab made active: %+v", cmds)
+	}
+	if cmds := diffLayout(now, now); len(cmds) != 0 {
+		t.Errorf("no change: %+v", cmds)
+	}
+	// Closing the first of five tabs closes it alone; moving the last
+	// first moves it alone.
+	five := savedStore{Sessions: []savedWorkspace{space("w", tab("t1", leaf("1")), tab("t2", leaf("2")), tab("t3", leaf("3")), tab("t4", leaf("4")), tab("t5", leaf("5")))}}
+	closed := savedStore{Sessions: []savedWorkspace{space("w", five.Sessions[0].Tabs[1:]...)}}
+	closed.Sessions[0].Active = 0
+	five.Sessions[0].Active = 1
+	if got := diffOps(five, closed); !slices.Equal(got, []string{"tab.close wt1"}) {
+		t.Errorf("a close: %v", got)
+	}
+	ts := five.Sessions[0].Tabs
+	moved := savedStore{Sessions: []savedWorkspace{space("w", ts[4], ts[0], ts[1], ts[2], ts[3])}}
+	moved.Sessions[0].Active = 2
+	if got := diffOps(five, moved); !slices.Equal(got, []string{"tab.set wt5 after= focus=false"}) {
+		t.Errorf("a move: %v", got)
+	}
+}
+
+// TestDiffLayoutApplies has the server make what diffLayout sends, as one
+// batch, from layouts of the server's sessions: two tabs that swap panes,
+// a reorder, a tab to another space, a merge. The server's layout is the
+// app's then.
+func TestDiffLayoutApplies(t *testing.T) {
+	a, _ := newTestApp(t)
+	c := a.client
+	var sids []string
+	for range 4 {
+		in, err := c.Create(rex.CreateOptions{Dir: os.TempDir(), Command: []string{testShell.path, "-c", "sleep 60"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sids = append(sids, in.ID)
+	}
+	leaf := func(i int) *layout.Node { return &layout.Node{SID: sids[i]} }
+	split := func(x, y *layout.Node) *layout.Node { return &layout.Node{Ratio: 0.5, A: x, B: y} }
+	tab := func(id string, root *layout.Node) layout.Tab { return layout.Tab{ID: id, Root: root} }
+	store := func(spaces ...savedWorkspace) savedStore {
+		return savedStore{Version: layout.Version, Windows: []string{"w"}, Sessions: spaces}
+	}
+	space := func(id string, tabs ...layout.Tab) savedWorkspace {
+		return savedWorkspace{ID: id, Name: id, Layout: layout.Layout{Tabs: tabs}}
+	}
+	steps := []savedStore{
+		store(space("w", tab("a", split(leaf(0), leaf(1))), tab("b", split(leaf(2), leaf(3))))),
+		// a and b swap their second panes.
+		store(space("w", tab("a", split(leaf(0), leaf(3))), tab("b", split(leaf(2), leaf(1))))),
+		// b goes first.
+		store(space("w", tab("b", split(leaf(2), leaf(1))), tab("a", split(leaf(0), leaf(3))))),
+		// a goes to a space of its own.
+		store(space("w", tab("b", split(leaf(2), leaf(1)))), space("x", tab("a", split(leaf(0), leaf(3))))),
+		// a merges into b.
+		store(space("w", tab("b", split(split(leaf(2), leaf(1)), split(leaf(0), leaf(3))))), space("x")),
+	}
+	raw, _ := json.Marshal(steps[0])
+	if err := c.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i < len(steps); i++ {
+		batch := diffLayout(steps[i-1], steps[i])
+		if res, err := c.Command(rex.LayoutCommand{Op: "layout.apply", Batch: batch}); err != nil || res.Code != "" {
+			t.Fatalf("step %d: %+v %v", i, res, err)
+		}
+		got := savedWorkspaces(t, c)
+		got.Windows = steps[i].Windows
+		if !sameArrangement(got, steps[i]) {
+			g, _ := json.Marshal(got.Sessions)
+			w, _ := json.Marshal(steps[i].Sessions)
+			t.Fatalf("step %d: the server has\n%s\nwant\n%s", i, g, w)
 		}
 	}
 }

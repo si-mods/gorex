@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/layout"
+	"gorex/internal/rex"
 	"gorex/locales"
 )
 
@@ -368,6 +369,13 @@ func (a *App) canvasMenu(m *ui.Menu, t *Tab) {
 // current directory, as a new float's.
 func (a *App) canvasNew(t *Tab, kind string, x, y float32) {
 	switch h := t.host(); {
+	case kind == "terminal" && h == nil:
+		a.askPane(t.Focus, rex.LayoutCommand{Op: "pane.split", Float: true, Dir: a.currentDir()}, func(p *Pane) {
+			if p.float != nil && p.Tab == t {
+				t.removeFloat(p.float)
+				a.dropOnCanvas(t, p, x, y)
+			}
+		})
 	case kind == "terminal" && !a.offline(h):
 		cols, rows := t.Focus.paneSize()
 		if cols <= 0 || rows <= 0 {

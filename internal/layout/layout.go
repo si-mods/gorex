@@ -1,8 +1,8 @@
 // Package layout is the saved shape of GoRex's windows, tabs and panes.
-// The app writes it while a window is open, and shows the changes other
-// clients and the server make of it; the session server keeps it,
-// makes the clients' changes of it while no window is (rex's apply), and
-// reads it to start again the sessions of a run that did not stop.
+// The session server keeps it and makes every change of it (rex's apply),
+// the app's as its clients' (the app sends its arrangement of a tab as
+// tab.set), and reads it to start again the sessions of a run that did
+// not stop; the app shows it.
 package layout
 
 // Store is every workspace and the windows that show them, in order.
@@ -36,7 +36,11 @@ type Tab struct {
 	// ID names the tab for good: the app gives it to every tab it makes,
 	// keeps it while the tab lasts, wherever the tab goes, and gives one
 	// to a tab of an older layout that has none. Clients name a tab by it.
-	ID    string `json:"id,omitempty"`
+	ID string `json:"id,omitempty"`
+	// Rev is the tab's revision: the server counts it up by one at each
+	// change of the tab's arrangement, so that a change built on the tab
+	// as it was (LayoutCommand.Base) is refused once another came first.
+	Rev   uint64 `json:"rev,omitempty"`
 	Name  string `json:"name,omitempty"`
 	Root  *Node  `json:"root"`
 	Focus int    `json:"focus"`

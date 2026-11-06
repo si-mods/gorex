@@ -136,3 +136,26 @@ func TestParseNamesBrowsers(t *testing.T) {
 		t.Errorf("kept id %q, named %v", id, kept.Named)
 	}
 }
+
+// TestTabEncode checks the encodings the server's revisions and the app's
+// differ compare: the arrangement leaves out the revision, the canvas's
+// view and the panes' facts; with facts, it keeps their directories and
+// programs, and leaves out their sizes still.
+func TestTabEncode(t *testing.T) {
+	x := Tab{ID: "t", Rev: 3, Canvas: &Canvas{W: 100, H: 100, X: 5, Scale: 2}, Root: &Node{SID: "s", Dir: "/a", Cols: 80, Rows: 24, Prog: "vim"}}
+	y := Tab{ID: "t", Rev: 9, Canvas: &Canvas{W: 100, H: 100}, Root: &Node{SID: "s", Dir: "/b", Cols: 10, Rows: 5}}
+	if string(x.Arrangement()) != string(y.Arrangement()) {
+		t.Errorf("arrangements differ:\n%s\n%s", x.Arrangement(), y.Arrangement())
+	}
+	if string(x.Encode(true)) == string(y.Encode(true)) {
+		t.Error("with facts, the directories and programs do not count")
+	}
+	y.Root.Dir, y.Root.Prog = "/a", "vim"
+	if string(x.Encode(true)) != string(y.Encode(true)) {
+		t.Error("with facts, the sizes count")
+	}
+	y.Name = "n"
+	if string(x.Arrangement()) == string(y.Arrangement()) {
+		t.Error("a name does not count")
+	}
+}

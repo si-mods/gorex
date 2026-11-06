@@ -15,10 +15,9 @@
 //
 // The server reads the layout from the GoRex server the app keeps
 // (internal/rex), maps it, and tells its clients of the changes it sees.
-// A method that changes the layout asks the app for it, as internal/control
-// does (rex.LayoutCommand through the server's "command" op), and answers
-// once the layout shows the change; with no GoRex window open, the server
-// makes it itself.
+// A method that changes the layout asks the server for it, as
+// internal/control does (rex.LayoutCommand through the server's "command"
+// op), which makes it, and answers once the layout shows the change.
 //
 // Input reaches a block through the server's new input ops: "key" encodes
 // a W3C key event with the session's modes (terminal.Terminal.EncodeKey),
@@ -51,7 +50,7 @@
 // | session.create, session.new_window, session.new_split | a layout's splits are made by dividing the space of the block made before them, so nested splits come out right-nested; the blocks' order, labels and each pair's ratio are kept |
 // | session.set_label | an empty label gives the layout's own name ("Session xxxxxxxx"), not a name the server picks |
 // | session.set_block_label | an empty label gives the pane's default ("shell"), not "Block xxxxxxxx" |
-// | session.close_window, block.close | closing the last tab leaves the space empty, its window open on it, as a Rex session goes on with no windows |
+// | session.close_window, block.close | closing the last tab leaves the space empty, as a Rex session goes on with no windows; a GoRex window that showed it shows another space or closes |
 // | window IDs | named by the GoRex tab's lasting ID (layout.Tab.ID), so they stay across restarts of the gateway and the app; a tab of an app before tab IDs is named by its first session |
 // | session.create | GoRex sets no limit on sessions |
 // | com.superlogical.terminal.format | text is always trimmed and unwrapped; html is a plain <pre>; the extra_* flags are accepted, and the vt form carries the state GoRex keeps |

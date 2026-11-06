@@ -423,17 +423,20 @@ func TestWindowsCloseAndReopen(t *testing.T) {
 	quit(st)
 }
 
-// TestLayoutWriterOrder checks that the layouts reach the server in the
-// order written, the last last.
-func TestLayoutWriterOrder(t *testing.T) {
+// TestOutboxOrder checks that the commands reach the server in the order
+// sent, the last last.
+func TestOutboxOrder(t *testing.T) {
 	a, _ := newTestApp(t)
-	var w layoutWriter
+	var o outbox
+	o.use(a.client, func(fn func()) { go fn() }, nil)
+	id := a.tab().UID
 	for i := range 50 {
-		w.write(a.client, []byte(fmt.Sprintf(`{"n":%d}`, i)))
+		o.add(rex.LayoutCommand{Op: "tab.rename", Tab: id, Name: fmt.Sprint("n", i)}, nil)
 	}
-	w.wait(5 * time.Second)
-	if raw, _ := a.client.Layout(); string(raw) != `{"n":49}` {
-		t.Errorf("the server keeps %s", raw)
+	o.kick()
+	o.wait(5 * time.Second)
+	if name := savedWorkspaces(t, a.client).Sessions[0].Tabs[0].Name; name != "n49" {
+		t.Errorf("the server's tab is %q", name)
 	}
 }
 
@@ -983,7 +986,7 @@ func TestAdoptAcrossWorkspaces(t *testing.T) {
 	a.hosts = []*hostConn{h}
 	a.syncHosts()
 	hidden := st.addWorkspace()
-	hidden.layout = savedLayout{Tabs: []savedTab{{Root: &savedNode{SID: "r1", Host: "h1"}}}}
+	hidden.layout = savedLayout{Tabs: []savedTab{{ID: "r1-tab", Root: &savedNode{SID: "r1", Host: "h1"}}}}
 	b := st.openWindow(st.addWorkspace(), false)
 	byID := map[string]rex.SessionInfo{"r1": {ID: "r1"}, "r2": {ID: "r2"}}
 	for _, o := range a.peers() {

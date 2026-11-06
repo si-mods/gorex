@@ -86,13 +86,10 @@ type Server struct {
 	linksFile, home string
 }
 
-// layoutCmd is a layout command waiting for the app's answer, done;
-// handled closes once the command's caller has it, the server's own change
-// made when the app had no window to make it.
+// layoutCmd is a command waiting for the app's answer, done.
 type layoutCmd struct {
 	LayoutCommand
-	done    chan LayoutCommand
-	handled chan struct{}
+	done chan LayoutCommand
 }
 
 // commandWait is how long a layout command waits for the app to make it,
@@ -102,20 +99,22 @@ var (
 	takeWait    = newDuration(10 * time.Second)
 )
 
-// command asks the app for c, and returns its answer: Code tells why it
-// did not make it, when it did not answer in time; it may make it still.
-// With no window to take it, the server makes a change of the layout
-// itself (apply).
+// command makes c: a change of the layout the server makes itself
+// (apply); an action, config.reload or a teleport it asks the app for, and
+// returns its answer: Code tells why it did not make it, when it did not
+// answer in time; it may make it still.
 func (s *Server) command(c LayoutCommand) LayoutCommand {
+	if applies(c) {
+		return s.apply(c)
+	}
 	s.cmdMu.Lock()
 	if s.desks == 0 {
 		s.cmdMu.Unlock()
-		return s.apply(c)
+		return LayoutCommand{ID: c.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}
 	}
 	s.nextCmd++
 	c.ID = s.nextCmd
-	lc := &layoutCmd{c, make(chan LayoutCommand, 1), make(chan struct{})}
-	defer close(lc.handled)
+	lc := &layoutCmd{c, make(chan LayoutCommand, 1)}
 	s.cmds = append(s.cmds, lc)
 	if s.cmdWake != nil {
 		close(s.cmdWake)
@@ -124,9 +123,6 @@ func (s *Server) command(c LayoutCommand) LayoutCommand {
 	s.cmdMu.Unlock()
 	select {
 	case res := <-lc.done:
-		if res.Code == "desktop_unavailable" {
-			return s.apply(c)
-		}
 		return res
 	case <-time.After(commandWait.get()):
 	}
@@ -180,9 +176,7 @@ func (s *Server) take(gone <-chan struct{}) *LayoutCommand {
 	return &lc.LayoutCommand
 }
 
-// commandDone gives the answer the app made to a command it took, and
-// returns once the server made the change itself, for an app that had no
-// window: one it opens next reads a layout that has the change.
+// commandDone gives the answer the app made to a command it took.
 func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Lock()
 	lc := s.taken[c.ID]
@@ -190,7 +184,6 @@ func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Unlock()
 	if lc != nil {
 		lc.done <- c
-		<-lc.handled
 	}
 }
 
@@ -680,6 +673,8 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 		err = errors.New("rex: remote control is off")
 	} else if remote && req.Op == "command" && req.Command != nil && strings.HasPrefix(req.Command.Op, "pane.teleport") {
 		err = errors.New("rex: a teleport is this machine's to show")
+	} else if remote && req.Op == "command" && req.Command != nil && (req.Command.Op == "tab.set" || req.Command.Op == "windows.set" || req.Command.Op == "layout.apply") {
+		err = fmt.Errorf("rex: %s is this machine's GoRex window's", req.Command.Op)
 	} else if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
 	} else if remote && !remoteAllowed(req.Op) && !layout && !command && !(req.Op == "action" && s.remoteControlEnabled()) {
@@ -1039,8 +1034,17 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if !json.Valid(req.Layout) {
 			return nil, errors.New("layout is not JSON")
 		}
-		l := bytes.Clone(req.Layout)
+		if !slices.Contains(req.Capabilities, CapabilityLayoutServer) {
+			return nil, errors.New("rex: the session server keeps the layout now, and this GoRex would write over it: update GoRex")
+		}
+		// As an apply does: none commits between the read and this.
+		s.applyMu.Lock()
+		s.mu.Lock()
+		was := s.layout
+		s.mu.Unlock()
+		l := countSetRevs(was, req.Layout)
 		rev, err := s.commitLayout(l, req.LayoutRevision)
+		s.applyMu.Unlock()
 		if err != nil {
 			return nil, err
 		}

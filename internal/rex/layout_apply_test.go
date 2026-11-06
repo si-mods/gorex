@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -211,13 +213,13 @@ func TestApplySpaces(t *testing.T) {
 	}
 }
 
-// TestApplyAfterWindowless makes a command the app answers it has no
-// window to make.
-func TestApplyAfterWindowless(t *testing.T) {
+// TestApplyWithApp makes a change of the layout while an app takes
+// commands: the server makes it, and only an action reaches the app.
+func TestApplyWithApp(t *testing.T) {
 	s, c := applyFixture(t)
 	app := pipe(s, "")
 	defer app.Close()
-	seen := make(chan bool, 1)
+	took := make(chan string, 4)
 	go func() {
 		for {
 			cmd, err := app.TakeCommand()
@@ -225,11 +227,8 @@ func TestApplyAfterWindowless(t *testing.T) {
 				return
 			}
 			if cmd != nil {
-				app.CommandDone(LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"})
-				// The answer returns once the server made the change: a
-				// window the app opens next reads it.
-				raw, _ := app.Layout()
-				seen <- bytes.Contains(raw, []byte(`"late"`))
+				took <- cmd.Op
+				app.CommandDone(LayoutCommand{ID: cmd.ID})
 			}
 		}
 	}()
@@ -246,8 +245,9 @@ func TestApplyAfterWindowless(t *testing.T) {
 	if st := storeOf(t, c); st.Space(res.Space) == nil {
 		t.Errorf("not made: %+v", res)
 	}
-	if !<-seen {
-		t.Error("the app's answer returned before the server made the change")
+	command(t, c, LayoutCommand{Op: "action", Action: "tab.rename"})
+	if op := <-took; op != "action" {
+		t.Errorf("the app took %q, want only the action", op)
 	}
 }
 
@@ -261,11 +261,12 @@ func seed(t *testing.T, c *Client, tabs ...layout.Tab) {
 	}
 }
 
-// TestApplyOnNewerLayout sets the whole layout between an apply's change
-// and its commit, as a window's save may: the apply makes its change again
-// on the new layout, which keeps both.
+// TestApplyOnNewerLayout commits a whole layout between an apply's change
+// and its commit: the apply makes its change again on the new layout,
+// which keeps both. (A setLayout waits for the apply now, as it holds
+// applyMu; the commit stands for any other.)
 func TestApplyOnNewerLayout(t *testing.T) {
-	_, c := applyFixture(t)
+	s, c := applyFixture(t)
 	cmd, dir := testShell()
 	seed(t, c)
 	once := false
@@ -274,7 +275,12 @@ func TestApplyOnNewerLayout(t *testing.T) {
 			return
 		}
 		once = true
-		seed(t, c, layout.Tab{ID: "saved", Root: &layout.Node{SID: "elsewhere", Host: "h"}})
+		st := layout.Store{Version: layout.Version, Windows: []string{"w"}, Sessions: []layout.Workspace{{ID: "w", Name: "work",
+			Layout: layout.Layout{Tabs: []layout.Tab{{ID: "saved", Root: &layout.Node{SID: "elsewhere", Host: "h"}}}}}}}
+		raw, _ := json.Marshal(st)
+		if _, err := s.commitLayout(raw, 0); err != nil {
+			t.Error(err)
+		}
 	}
 	defer func() { applyHook = nil }()
 	res := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
@@ -349,10 +355,10 @@ func TestApplyNoChange(t *testing.T) {
 	}
 }
 
-// TestApplyLeavesRemotePanes closes a tab and a space that have a pane of
-// another host with no window: the server, which cannot end that pane's
-// session, leaves them to the window rather than drop the pane.
-func TestApplyLeavesRemotePanes(t *testing.T) {
+// TestApplyDropsRemotePanes closes a tab that has a pane of another host:
+// the server ends this machine's session and drops the host's pane, whose
+// session is the app's to end.
+func TestApplyDropsRemotePanes(t *testing.T) {
 	_, c := applyFixture(t)
 	cmd, dir := testShell()
 	in, err := c.Create(CreateOptions{Command: cmd, Dir: dir})
@@ -360,18 +366,9 @@ func TestApplyLeavesRemotePanes(t *testing.T) {
 		t.Fatal(err)
 	}
 	seed(t, c, layout.Tab{ID: "mixed", Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: in.ID}, B: &layout.Node{SID: "far", Host: "h1"}}})
-	for _, x := range []LayoutCommand{{Op: "tab.close", Tab: "mixed"}, {Op: "space.close", Space: "w"}} {
-		if res, _ := c.Command(x); res.Code != "desktop_unavailable" {
-			t.Errorf("%s: %+v", x.Op, res)
-		}
-	}
-	if _, ok := liveSession(t, c, in.ID); !ok || len(storeOf(t, c).Sessions[0].Tabs) != 1 {
-		t.Error("the tab or its session went")
-	}
-	// Its pane of this machine closes; the host's stays, with its tab.
-	command(t, c, LayoutCommand{Op: "pane.close", SID: in.ID})
-	if tabs := storeOf(t, c).Sessions[0].Tabs; len(tabs) != 1 || tabs[0].Root.SID != "far" {
-		t.Errorf("after closing the local pane: %+v", tabs)
+	command(t, c, LayoutCommand{Op: "tab.close", Tab: "mixed"})
+	if _, ok := liveSession(t, c, in.ID); ok || len(storeOf(t, c).Sessions[0].Tabs) != 0 {
+		t.Error("the tab or its session stays")
 	}
 }
 
@@ -439,5 +436,470 @@ func TestApplyFloats(t *testing.T) {
 	}
 	if res := command(t, c, LayoutCommand{Op: "pane.resize", SID: "f", Direction: "up", Amount: 0.1}); !res.Changed {
 		t.Errorf("resize: %+v", res)
+	}
+}
+
+// TestTabSet arranges tabs with tab.set: a tab of the layout's sessions
+// changes in place, moves to another space and takes a session from
+// another tab; a tab that would start, end or repeat a session is refused
+// and changes nothing; another host's panes and panes of no session come
+// and go; the server's facts of a pane stay its own.
+func TestTabSet(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: two.New, Command: cmd})
+	space := storeOf(t, c).Sessions[0].ID
+	set := func(x LayoutCommand) LayoutCommand {
+		t.Helper()
+		x.Op = "tab.set"
+		res, err := c.Command(x)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res
+	}
+	refused := func(why string, x LayoutCommand) {
+		t.Helper()
+		before := must(c.Layout())
+		if res := set(x); res.Code != "conflict" && res.Code != "bad_args" {
+			t.Errorf("%s: %+v", why, res)
+		}
+		if after := must(c.Layout()); !bytes.Equal(before, after) {
+			t.Errorf("%s changed the layout", why)
+		}
+	}
+
+	// The second tab's split, its ratio and its names change; the active
+	// tab stays, and the session's facts are the server's.
+	tab := layout.Tab{ID: two.Tab, Name: "renamed", Focus: 1, Root: &layout.Node{Ratio: 0.3,
+		A: &layout.Node{SID: two.New, Name: "left", Dir: "/nowhere", Cols: 3, Rows: 3, Prog: "fake"},
+		B: &layout.Node{SID: split.New}}}
+	if res := set(LayoutCommand{Space: space, Index: 1, TabLayout: &tab}); res.Code != "" {
+		t.Fatalf("tab.set: %+v", res)
+	}
+	w := storeOf(t, c).Sessions[0]
+	got := w.Tabs[1]
+	in, _ := liveSession(t, c, two.New)
+	if w.Active != 0 || got.Name != "renamed" || got.Root.Ratio != 0.3 || got.Root.A.Name != "left" || got.Focus != 1 {
+		t.Errorf("the tab set: %+v, active %d", got, w.Active)
+	}
+	if a := got.Root.A; a.Dir != in.Dir || a.Cols != in.Cols || a.Rows != in.Rows || a.Prog != "" {
+		t.Errorf("the facts of the pane: %+v, the session's %+v", a, in)
+	}
+
+	// Refused: a session left out, a session twice, one the server does
+	// not run, and a tab with no pane.
+	refused("a session left out", LayoutCommand{Space: space, Index: 1, TabLayout: &layout.Tab{ID: two.Tab, Root: &layout.Node{SID: two.New}}})
+	refused("a session twice", LayoutCommand{Space: space, Index: 1, TabLayout: &layout.Tab{ID: two.Tab, Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{SID: two.New}}}})
+	refused("a new session", LayoutCommand{Space: space, TabLayout: &layout.Tab{ID: "new", Root: &layout.Node{SID: "nosuch"}}})
+	refused("no pane", LayoutCommand{Space: space, TabLayout: &layout.Tab{ID: two.Tab}})
+
+	// Another host's pane and a browser come into the tab, as a new tab
+	// first in the space; the first tab gives the second its session.
+	mixed := layout.Tab{ID: "mixed", Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: "far", Host: "h1"}, B: &layout.Node{URL: "https://example.com", ID: "web"}}}
+	if res := set(LayoutCommand{Space: space, TabLayout: &mixed, Focus: true}); res.Code != "" {
+		t.Fatalf("a tab of no session of this machine: %+v", res)
+	}
+	moved := layout.Tab{ID: two.Tab, Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: split.New}, B: &layout.Node{SID: one.New}}}}
+	if res := set(LayoutCommand{Space: space, Index: 1, TabLayout: &moved}); res.Code != "" {
+		t.Fatalf("taking a session from another tab: %+v", res)
+	}
+	w = storeOf(t, c).Sessions[0]
+	if len(w.Tabs) != 2 || w.Tabs[0].ID != "mixed" || w.Tabs[1].ID != two.Tab || len(layout.Leaves(w.Tabs[1].Root)) != 3 || w.Active != 0 {
+		t.Fatalf("after the move: %+v", w)
+	}
+
+	// The tab goes to another space; a session that ended may go.
+	other := command(t, c, LayoutCommand{Op: "space.create", Space: "mine", Name: "other", Color: "teal"})
+	if other.Space != "mine" {
+		t.Errorf("space.create of an ID: %+v", other)
+	}
+	if err := c.Kill(one.New); err != nil {
+		t.Fatal(err)
+	}
+	gone := layout.Tab{ID: two.Tab, Root: &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{SID: split.New}}}
+	if res := set(LayoutCommand{Space: "mine", TabLayout: &gone}); res.Code != "" {
+		t.Fatalf("to another space, without an ended session: %+v", res)
+	}
+	st := storeOf(t, c)
+	if len(st.Sessions[0].Tabs) != 1 || len(st.Space("mine").Tabs) != 1 || st.Space("mine").Color != "teal" {
+		t.Errorf("after the move to another space: %+v", st)
+	}
+	// A split that floats goes over the tab's panes, with the focus.
+	fl := command(t, c, LayoutCommand{Op: "pane.split", SID: two.New, Float: true, Command: cmd})
+	st = storeOf(t, c)
+	if tb := st.Space("mine").Tabs[0]; len(tb.Floats) != 1 || tb.FocusFloat != 1 || tb.Floats[0].Pane.SID != fl.New || tb.Floats[0].X != 0.15 || len(layout.Leaves(tb.Root)) != 2 {
+		t.Errorf("a floating split: %+v", tb)
+	}
+	command(t, c, LayoutCommand{Op: "space.rename", Space: "mine", Color: "default"})
+	if st := storeOf(t, c); st.Space("mine").Color != "" || st.Space("mine").Name != "other" {
+		t.Errorf("space.rename to the default color: %+v", st.Space("mine"))
+	}
+}
+
+// TestWindowsSet sets the spaces the windows show, and refuses a space the
+// layout does not have.
+func TestWindowsSet(t *testing.T) {
+	_, c := applyFixture(t)
+	seed(t, c)
+	command(t, c, LayoutCommand{Op: "space.create", Space: "two"})
+	command(t, c, LayoutCommand{Op: "windows.set", Spaces: []string{"two", "w", "two"}})
+	if st := storeOf(t, c); !slices.Equal(st.Windows, []string{"two", "w"}) {
+		t.Errorf("windows %v", st.Windows)
+	}
+	if res, _ := c.Command(LayoutCommand{Op: "windows.set", Spaces: []string{"nosuch"}}); res.Code != "space_not_found" {
+		t.Errorf("an unknown space: %+v", res)
+	}
+}
+
+// TestLayoutServerRemote refuses tab.set and windows.set to a remote
+// client that may change the layout otherwise: the window's arrangement is
+// this machine's.
+func TestLayoutServerRemote(t *testing.T) {
+	s, c := applyFixture(t)
+	seed(t, c, layout.Tab{ID: "far", Root: &layout.Node{SID: "x", Host: "h"}})
+	if err := c.ShareSessions(true); err != nil {
+		t.Fatal(err)
+	}
+	h, err := c.Hello()
+	if err != nil || !h.Can(CapabilityLayoutServer) {
+		t.Errorf("hello %+v %v", h, err)
+	}
+	peer := pipe(s, "peer")
+	defer peer.Close()
+	before := must(c.Layout())
+	for _, x := range []LayoutCommand{
+		{Op: "tab.set", TabLayout: &layout.Tab{ID: "far", Name: "theirs", Root: &layout.Node{SID: "x", Host: "h"}}},
+		{Op: "windows.set", Spaces: []string{"w"}},
+	} {
+		if _, err := peer.Command(x); err == nil || !strings.Contains(err.Error(), x.Op) {
+			t.Errorf("%s remotely: %v", x.Op, err)
+		}
+	}
+	if !bytes.Equal(before, must(c.Layout())) {
+		t.Error("a remote client changed the layout")
+	}
+	// Another command, which sharing allows, is made.
+	if res, err := peer.Command(LayoutCommand{Op: "tab.rename", Tab: "far", Name: "named"}); err != nil || res.Code != "" {
+		t.Errorf("tab.rename remotely: %+v %v", res, err)
+	}
+}
+
+// TestTabSetBase changes a tab another client renamed meanwhile: a tab.set
+// or pane.close built on the tab as it was is refused, and the rename
+// stays; one built on the tab as it is now is made. The answers tell the
+// tabs' revisions.
+func TestTabSetBase(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Command: cmd})
+	if split.Revs[one.Tab] == 0 {
+		t.Fatalf("the split's answer names no revision: %+v", split)
+	}
+	tab := storeOf(t, c).Sessions[0].Tabs[0]
+	if tab.Rev != split.Revs[one.Tab] {
+		t.Fatalf("the tab at %d, answered %d", tab.Rev, split.Revs[one.Tab])
+	}
+	base := tab.Rev
+	renamed := command(t, c, LayoutCommand{Op: "tab.rename", Tab: one.Tab, Name: "theirs"})
+	if renamed.Revs[one.Tab] != base+1 {
+		t.Errorf("the rename's revision %v, want %d", renamed.Revs, base+1)
+	}
+	mine := tab
+	mine.Name, mine.Root.Ratio = "mine", 0.3
+	for _, x := range []LayoutCommand{
+		{Op: "tab.set", TabLayout: &mine, Base: base},
+		{Op: "pane.close", SID: split.New, Base: base},
+		{Op: "tab.close", Tab: one.Tab, Base: base},
+	} {
+		if res, _ := c.Command(x); res.Code != "conflict" {
+			t.Errorf("%s on the old tab: %+v", x.Op, res)
+		}
+	}
+	if got := storeOf(t, c).Sessions[0].Tabs[0]; got.Name != "theirs" || got.Root.Ratio != 0.5 {
+		t.Fatalf("the other client's rename went: %+v", got)
+	}
+	res := command(t, c, LayoutCommand{Op: "tab.set", TabLayout: &mine, Base: base + 1})
+	if got := storeOf(t, c).Sessions[0].Tabs[0]; got.Name != "mine" || got.Rev != base+2 || res.Revs[one.Tab] != base+2 {
+		t.Errorf("on the tab as it is: %+v, answered %+v", got, res)
+	}
+	// A tab.set that changes nothing counts nothing.
+	if res := command(t, c, LayoutCommand{Op: "tab.set", TabLayout: &mine, Base: base + 2}); len(res.Revs) != 0 {
+		t.Errorf("a tab.set of no change: %+v", res)
+	}
+}
+
+// TestSplitByTab splits a tab whose focused pane is a browser's, which has
+// no session, by the tab: the new pane goes beside it, tiled or floating.
+func TestSplitByTab(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	tab := storeOf(t, c).Sessions[0].Tabs[0]
+	tab.Root = &layout.Node{Ratio: 0.5, A: tab.Root, B: &layout.Node{URL: "https://example.com/", ID: "web"}}
+	tab.Focus = 1
+	command(t, c, LayoutCommand{Op: "tab.set", TabLayout: &tab})
+	tiled := command(t, c, LayoutCommand{Op: "pane.split", Tab: one.Tab, Dir: dir, Command: cmd, Vertical: true})
+	got := storeOf(t, c).Sessions[0].Tabs[0]
+	web := layout.Parent(got.Root, layout.Find(got.Root, tiled.New))
+	if web == nil || web.A.URL == "" || !web.Vertical {
+		t.Errorf("the split of the browser pane: %s", got.Arrangement())
+	}
+	fl := command(t, c, LayoutCommand{Op: "pane.split", Tab: one.Tab, Command: cmd, Float: true})
+	if got := storeOf(t, c).Sessions[0].Tabs[0]; len(got.Floats) != 1 || got.Floats[0].Pane.SID != fl.New {
+		t.Errorf("a float by the tab: %s", got.Arrangement())
+	}
+}
+
+// TestSetLayoutNeedsCapability refuses a whole layout from a client that
+// does not name layout.server, as an app of before it, at any revision.
+func TestSetLayoutNeedsCapability(t *testing.T) {
+	_, c := applyFixture(t)
+	seed(t, c)
+	ls, err := c.LayoutState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rev := range []uint64{0, ls.Revision} {
+		err := c.call(Request{Op: "setLayout", Layout: json.RawMessage(`{"version":2,"sessions":[]}`), LayoutRevision: rev}, nil)
+		if err == nil || !strings.Contains(err.Error(), "update GoRex") {
+			t.Errorf("at revision %d: %v", rev, err)
+		}
+	}
+	if st := storeOf(t, c); len(st.Sessions) != 1 {
+		t.Errorf("the layout changed: %+v", st)
+	}
+}
+
+// TestLayoutApply makes a batch of the app's changes at once: two tabs
+// that swap their panes, which no order of single tab.sets can make, and
+// a pane closed, in one revision; a batch of which one change is built on
+// a tab another client changed meanwhile is refused whole, closing and
+// changing nothing. The answers name the tabs changed alone.
+func TestLayoutApply(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	x := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Command: cmd})
+	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	y := command(t, c, LayoutCommand{Op: "pane.split", SID: two.New, Command: cmd})
+	three := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	if len(three.Revs) != 1 {
+		t.Errorf("a new tab's answer names %v", three.Revs)
+	}
+	st := storeOf(t, c)
+	w := st.Sessions[0]
+	a, b := w.Tabs[0], w.Tabs[1]
+	rev := must(c.LayoutState()).Revision
+	// a and b swap their second panes; the third tab's pane closes.
+	sa, sb := a, b
+	sa.Root = &layout.Node{Ratio: 0.5, A: &layout.Node{SID: one.New}, B: &layout.Node{SID: y.New}}
+	sb.Root = &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{SID: x.New}}
+	swap := LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{
+		{Op: "pane.close", Tab: three.Tab, SID: three.New, Base: w.Tabs[2].Rev},
+		{Op: "tab.set", Space: w.ID, TabLayout: &sa, Base: a.Rev},
+		{Op: "tab.set", Space: w.ID, TabLayout: &sb, After: a.ID, Base: b.Rev},
+	}}
+	// First, the same batch built on a tab another client renamed: none of
+	// it is made, and the closed pane's session runs.
+	command(t, c, LayoutCommand{Op: "tab.rename", Tab: b.ID, Name: "theirs"})
+	before := must(c.Layout())
+	if res, _ := c.Command(swap); res.Code != "conflict" {
+		t.Fatalf("a batch on an old tab: %+v", res)
+	}
+	if !bytes.Equal(before, must(c.Layout())) {
+		t.Error("a refused batch changed the layout")
+	}
+	if _, ok := liveSession(t, c, three.New); !ok {
+		t.Error("a refused batch ended a session")
+	}
+	swap.Batch[2].Base = b.Rev + 1
+	res := command(t, c, swap)
+	st = storeOf(t, c)
+	w = st.Sessions[0]
+	if len(w.Tabs) != 2 || w.Tabs[0].Root.B.SID != y.New || w.Tabs[1].Root.B.SID != x.New {
+		t.Fatalf("after the swap: %s %s", w.Tabs[0].Arrangement(), w.Tabs[1].Arrangement())
+	}
+	if got := must(c.LayoutState()).Revision; got != rev+2 {
+		t.Errorf("revision %d, want %d: the rename, then the batch at once", got, rev+2)
+	}
+	if res.Revs[a.ID] != a.Rev+1 || res.Revs[b.ID] != b.Rev+2 || len(res.Revs) != 2 {
+		t.Errorf("the batch's revisions %v, from %d and %d", res.Revs, a.Rev, b.Rev)
+	}
+	if _, ok := liveSession(t, c, three.New); ok {
+		t.Error("the closed pane's session runs")
+	}
+	// A batch that leaves a running session out, or has one twice, is
+	// refused.
+	lost := w.Tabs[1]
+	lost.Root = &layout.Node{SID: two.New}
+	twice := w.Tabs[1]
+	twice.Root = &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{SID: one.New}}
+	for _, bad := range []LayoutCommand{
+		{Op: "tab.set", Space: w.ID, TabLayout: &lost},
+		{Op: "tab.set", Space: w.ID, TabLayout: &twice},
+		{Op: "tab.create"},
+	} {
+		if res, _ := c.Command(LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{bad}}); res.Code == "" {
+			t.Errorf("a batch of %s: made", bad.Op)
+		}
+	}
+}
+
+// TestPaneCloseNamesTab closes a pane by the tab the app had it in: one
+// another client moved to another tab meanwhile stays, and runs.
+func TestPaneCloseNamesTab(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: two.New, Command: cmd})
+	command(t, c, LayoutCommand{Op: "pane.move", SID: split.New, Target: one.New})
+	if res, _ := c.Command(LayoutCommand{Op: "pane.close", Tab: two.Tab, SID: split.New}); res.Code != "conflict" {
+		t.Errorf("a close by the tab the pane left: %+v", res)
+	}
+	if _, ok := liveSession(t, c, split.New); !ok {
+		t.Error("the moved pane's session ended")
+	}
+}
+
+// TestTabSetAfterMissing sets tabs after a tab the space does not have: a
+// tab of the space keeps its place, and a new one goes after this
+// machine's tabs, before another host's.
+func TestTabSetAfterMissing(t *testing.T) {
+	_, c := applyFixture(t)
+	seed(t, c, layout.Tab{ID: "a", Root: &layout.Node{SID: "1"}}, layout.Tab{ID: "b", Root: &layout.Node{SID: "2"}},
+		layout.Tab{ID: "far", Root: &layout.Node{SID: "x", Host: "h"}})
+	b := storeOf(t, c).Sessions[0].Tabs[1]
+	b.Name = "named"
+	command(t, c, LayoutCommand{Op: "tab.set", Space: "w", TabLayout: &b, After: "gone"})
+	web := layout.Tab{ID: "web", Root: &layout.Node{URL: "https://example.com/", ID: "p"}}
+	command(t, c, LayoutCommand{Op: "tab.set", Space: "w", TabLayout: &web, After: "gone"})
+	var ids []string
+	for _, x := range storeOf(t, c).Sessions[0].Tabs {
+		ids = append(ids, x.ID)
+	}
+	if !slices.Equal(ids, []string{"a", "b", "web", "far"}) {
+		t.Errorf("tabs %v", ids)
+	}
+}
+
+// TestSetLayoutCountsRevs sets whole layouts whose tabs carry revisions of
+// their own: the server counts them itself, up for a tab that changed,
+// and never down.
+func TestSetLayoutCountsRevs(t *testing.T) {
+	_, c := applyFixture(t)
+	seed(t, c, layout.Tab{ID: "a", Rev: 40, Root: &layout.Node{SID: "1"}}, layout.Tab{ID: "b", Root: &layout.Node{SID: "2"}})
+	st := storeOf(t, c)
+	if r := []uint64{st.Sessions[0].Tabs[0].Rev, st.Sessions[0].Tabs[1].Rev}; r[0] != 1 || r[1] != 1 {
+		t.Fatalf("new tabs at %v", r)
+	}
+	// a renamed, b as it was: given revisions of 0 and 9.
+	seed(t, c, layout.Tab{ID: "a", Name: "x", Root: &layout.Node{SID: "1"}}, layout.Tab{ID: "b", Rev: 9, Root: &layout.Node{SID: "2"}})
+	st = storeOf(t, c)
+	if r := []uint64{st.Sessions[0].Tabs[0].Rev, st.Sessions[0].Tabs[1].Rev}; r[0] != 2 || r[1] != 1 {
+		t.Errorf("tabs at %v, want 2 and 1", r)
+	}
+}
+
+// TestLayoutApplyCloseGone sends a batch that closes a tab and a pane
+// another client closed first: those closes are made already, their old
+// revisions do not refuse the batch, and its other change is made.
+func TestLayoutApplyCloseGone(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Command: cmd})
+	w := storeOf(t, c).Sessions[0]
+	a := w.Tabs[0]
+	command(t, c, LayoutCommand{Op: "tab.close", Tab: two.Tab})
+	command(t, c, LayoutCommand{Op: "pane.close", SID: split.New})
+	a = storeOf(t, c).Sessions[0].Tabs[0]
+	named := a
+	named.Name = "mine"
+	res := command(t, c, LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{
+		{Op: "pane.close", Tab: one.Tab, SID: split.New, Base: w.Tabs[0].Rev},
+		{Op: "tab.set", Space: w.ID, TabLayout: &named, Base: a.Rev},
+		{Op: "tab.close", Space: w.ID, Tab: two.Tab, Base: w.Tabs[1].Rev},
+	}})
+	if got := storeOf(t, c).Sessions[0].Tabs; len(got) != 1 || got[0].Name != "mine" {
+		t.Errorf("after the batch %+v: %+v", res, got)
+	}
+}
+
+// TestSetLayoutWaitsForApply sets a whole layout while an apply makes its
+// change: the set waits for the apply's commit, so that the revisions it
+// counts are of the layout after it, and none goes back.
+func TestSetLayoutWaitsForApply(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	st := storeOf(t, c)
+	setDone := make(chan struct{})
+	once := false
+	applyHook = func() {
+		if once {
+			return
+		}
+		once = true
+		go func() {
+			renamed := st
+			renamed.Sessions[0].Tabs[0].Name = "set"
+			raw, _ := json.Marshal(renamed)
+			c.SetLayout(raw)
+			close(setDone)
+		}()
+		select {
+		case <-setDone:
+			t.Error("the set did not wait for the apply")
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	defer func() { applyHook = nil }()
+	res := command(t, c, LayoutCommand{Op: "tab.rename", Tab: one.Tab, Name: "applied"})
+	<-setDone
+	got := storeOf(t, c).Sessions[0].Tabs[0]
+	if got.Name != "set" || got.Rev <= res.Revs[one.Tab] {
+		t.Errorf("the tab %q at %d, the apply's at %d", got.Name, got.Rev, res.Revs[one.Tab])
+	}
+}
+
+// TestTabSetPlaceAfterUnlink sets a tab, after one gone, that takes a session
+// from a tab before it, which goes, emptied: the tab keeps its place among
+// the others.
+func TestTabSetPlaceAfterUnlink(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	var sids []string
+	for range 4 {
+		sids = append(sids, command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd}).New)
+	}
+	tabs := storeOf(t, c).Sessions[0].Tabs
+	third := tabs[2]
+	third.Root = &layout.Node{Ratio: 0.5, A: third.Root, B: &layout.Node{SID: sids[0]}}
+	command(t, c, LayoutCommand{Op: "tab.set", TabLayout: &third, After: "gone"})
+	var got []string
+	for _, x := range storeOf(t, c).Sessions[0].Tabs {
+		got = append(got, x.ID)
+	}
+	if want := []string{tabs[1].ID, tabs[2].ID, tabs[3].ID}; !slices.Equal(got, want) {
+		t.Errorf("tabs %v, want %v", got, want)
+	}
+}
+
+// TestSetLayoutLegacyRevs sets a layout of before spaces: the server counts
+// its tab's revision on the layout as parsed.
+func TestSetLayoutLegacyRevs(t *testing.T) {
+	_, c := applyFixture(t)
+	if err := c.SetLayout(json.RawMessage(`{"active":0,"tabs":[{"id":"t","root":{"sid":"x"}}]}`)); err != nil {
+		t.Fatal(err)
+	}
+	st := storeOf(t, c)
+	if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 1 || st.Sessions[0].Tabs[0].Rev != 1 {
+		t.Errorf("the layout set: %+v", st)
 	}
 }
