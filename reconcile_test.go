@@ -731,3 +731,109 @@ func TestReadOnlyReverts(t *testing.T) {
 		t.Errorf("sessions %d", len(infos))
 	}
 }
+
+// TestSwapPanesBetweenTabs moves a pane of each of two tabs into the other
+// in one save, the window following the server asynchronously: the server
+// makes both at once, and the window keeps them.
+func TestSwapPanesBetweenTabs(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.split(false)
+	one := a.tab()
+	a.newTab(os.TempDir())
+	a.split(false)
+	two := a.tab()
+	followApp(t, a)
+	caughtUp(t, a, tt)
+	x, y := one.panes()[1], two.panes()[1]
+	rev := a.st.out.revision()
+	a.movePaneBeside(x, two.panes()[0], false, false, 0.5)
+	a.movePaneBeside(y, one.panes()[0], false, false, 0.5)
+	a.save()
+	caughtUp(t, a, tt)
+	s := savedWorkspaces(t, a.client).Sessions[0]
+	has := func(tab layout.Tab, sid string) bool { return layout.Find(tab.Root, sid) != nil }
+	if len(s.Tabs) != 2 || !has(s.Tabs[0], y.SID) || !has(s.Tabs[1], x.SID) || has(s.Tabs[0], x.SID) {
+		t.Fatalf("the server's tabs: %s %s", s.Tabs[0].Arrangement(), s.Tabs[1].Arrangement())
+	}
+	if ls, _ := a.client.LayoutState(); ls.Revision != rev+1 {
+		t.Errorf("revision %d, want %d: the swap at once", ls.Revision, rev+1)
+	}
+	if x.Tab != two || y.Tab != one || x.closed || y.closed {
+		t.Errorf("the window's panes moved back")
+	}
+}
+
+// TestBatchRefusedWhole changes two tabs in one save, one of which another
+// client renamed meanwhile: the server makes neither change, and the
+// window shows the server's tabs, the other client's rename kept.
+func TestBatchRefusedWhole(t *testing.T) {
+	a, tt := newTestApp(t)
+	one := a.tab()
+	a.newTab(os.TempDir())
+	two := a.tab()
+	other := followApp(t, a)
+	caughtUp(t, a, tt)
+	if res, err := other.Command(rex.LayoutCommand{Op: "tab.rename", Tab: two.UID, Name: "theirs"}); err != nil || res.Code != "" {
+		t.Fatalf("rename: %+v %v", res, err)
+	}
+	one.Name, two.Name = "mine-1", "mine-2"
+	a.changed()
+	a.save()
+	caughtUp(t, a, tt)
+	s := savedWorkspaces(t, other).Sessions[0]
+	if s.Tabs[0].Name != "" || s.Tabs[1].Name != "theirs" {
+		t.Errorf("the server's tabs %q %q: half a batch made", s.Tabs[0].Name, s.Tabs[1].Name)
+	}
+	if one.Name != "" || two.Name != "theirs" {
+		t.Errorf("the window's tabs %q %q", one.Name, two.Name)
+	}
+}
+
+// TestSaveNowWhileTakeWaits saves at once, as a window that closes, while
+// the outbox's take of another client's change waits for the main thread,
+// the one saving: the take gives way, the save reaches the server at
+// once, and the take comes after.
+func TestSaveNowWhileTakeWaits(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.tab()
+	other := followApp(t, a)
+	caughtUp(t, a, tt)
+	a.newTab(os.TempDir()) // posted, as the other client's change will be
+	if _, err := other.Command(rex.LayoutCommand{Op: "space.create", Name: "elsewhere"}); err != nil {
+		t.Fatal(err)
+	}
+	// The take of it waits on the main thread, which runs no frame.
+	waitForThat(t, func() bool {
+		a.postMu.Lock()
+		defer a.postMu.Unlock()
+		return len(a.posted) > 0
+	}, "a take waiting for the main thread")
+	tab.Name = "closing"
+	a.changed()
+	start := time.Now()
+	a.st.saveNow()
+	if d := time.Since(start); d > 500*time.Millisecond {
+		t.Errorf("the save took %v", d)
+	}
+	if got := savedWorkspaces(t, other).Sessions[0].Tabs[0].Name; got != "closing" {
+		t.Errorf("the server's tab is %q", got)
+	}
+	caughtUp(t, a, tt)
+	if tab.Name != "closing" || len(a.st.workspaces) != 2 {
+		t.Errorf("after the take: tab %q, %d spaces", tab.Name, len(a.st.workspaces))
+	}
+}
+
+// TestUseRunsDroppedDones switches the outbox's connection with a command
+// queued: its done runs, with an error, as ask promises.
+func TestUseRunsDroppedDones(t *testing.T) {
+	a, _ := newTestApp(t)
+	var o outbox
+	o.use(a.client, func(fn func()) { go fn() }, nil)
+	var got []rex.LayoutCommand
+	o.add(rex.LayoutCommand{Op: "tab.create"}, func(res rex.LayoutCommand) { got = append(got, res) })
+	o.use(a.client, func(fn func()) { go fn() }, nil)
+	if len(got) != 1 || got[0].Code == "" {
+		t.Errorf("the dropped command's answers: %+v", got)
+	}
+}

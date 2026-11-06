@@ -226,11 +226,13 @@ func (st *store) queue() {
 		}
 		return
 	}
-	for _, c := range diffLayout(st.base, now) {
-		if c.TabLayout != nil {
-			logFocus(st.base, *c.TabLayout)
+	if batch := diffLayout(st.base, now); len(batch) > 0 {
+		for _, c := range batch {
+			if c.TabLayout != nil {
+				logFocus(st.base, *c.TabLayout)
+			}
 		}
-		st.out.add(c, nil)
+		st.out.add(rex.LayoutCommand{Op: "layout.apply", Batch: batch}, nil)
 	}
 	st.base = now
 	// What the browser panes show the server has now.

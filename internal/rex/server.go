@@ -673,7 +673,7 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 		err = errors.New("rex: remote control is off")
 	} else if remote && req.Op == "command" && req.Command != nil && strings.HasPrefix(req.Command.Op, "pane.teleport") {
 		err = errors.New("rex: a teleport is this machine's to show")
-	} else if remote && req.Op == "command" && req.Command != nil && (req.Command.Op == "tab.set" || req.Command.Op == "windows.set") {
+	} else if remote && req.Op == "command" && req.Command != nil && (req.Command.Op == "tab.set" || req.Command.Op == "windows.set" || req.Command.Op == "layout.apply") {
 		err = fmt.Errorf("rex: %s is this machine's GoRex window's", req.Command.Op)
 	} else if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
@@ -1037,7 +1037,10 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if !slices.Contains(req.Capabilities, CapabilityLayoutServer) {
 			return nil, errors.New("rex: the session server keeps the layout now, and this GoRex would write over it: update GoRex")
 		}
-		l := bytes.Clone(req.Layout)
+		s.mu.Lock()
+		was := s.layout
+		s.mu.Unlock()
+		l := countSetRevs(was, req.Layout)
 		rev, err := s.commitLayout(l, req.LayoutRevision)
 		if err != nil {
 			return nil, err

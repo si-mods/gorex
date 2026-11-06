@@ -667,3 +667,134 @@ func TestSetLayoutNeedsCapability(t *testing.T) {
 		t.Errorf("the layout changed: %+v", st)
 	}
 }
+
+// TestLayoutApply makes a batch of the app's changes at once: two tabs
+// that swap their panes, which no order of single tab.sets can make, and
+// a pane closed, in one revision; a batch of which one change is built on
+// a tab another client changed meanwhile is refused whole, closing and
+// changing nothing. The answers name the tabs changed alone.
+func TestLayoutApply(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	x := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Command: cmd})
+	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	y := command(t, c, LayoutCommand{Op: "pane.split", SID: two.New, Command: cmd})
+	three := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	if len(three.Revs) != 1 {
+		t.Errorf("a new tab's answer names %v", three.Revs)
+	}
+	st := storeOf(t, c)
+	w := st.Sessions[0]
+	a, b := w.Tabs[0], w.Tabs[1]
+	rev := must(c.LayoutState()).Revision
+	// a and b swap their second panes; the third tab's pane closes.
+	sa, sb := a, b
+	sa.Root = &layout.Node{Ratio: 0.5, A: &layout.Node{SID: one.New}, B: &layout.Node{SID: y.New}}
+	sb.Root = &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{SID: x.New}}
+	swap := LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{
+		{Op: "pane.close", Tab: three.Tab, SID: three.New, Base: w.Tabs[2].Rev},
+		{Op: "tab.set", Space: w.ID, TabLayout: &sa, Base: a.Rev},
+		{Op: "tab.set", Space: w.ID, TabLayout: &sb, After: a.ID, Base: b.Rev},
+	}}
+	// First, the same batch built on a tab another client renamed: none of
+	// it is made, and the closed pane's session runs.
+	command(t, c, LayoutCommand{Op: "tab.rename", Tab: b.ID, Name: "theirs"})
+	before := must(c.Layout())
+	if res, _ := c.Command(swap); res.Code != "conflict" {
+		t.Fatalf("a batch on an old tab: %+v", res)
+	}
+	if !bytes.Equal(before, must(c.Layout())) {
+		t.Error("a refused batch changed the layout")
+	}
+	if _, ok := liveSession(t, c, three.New); !ok {
+		t.Error("a refused batch ended a session")
+	}
+	swap.Batch[2].Base = b.Rev + 1
+	res := command(t, c, swap)
+	st = storeOf(t, c)
+	w = st.Sessions[0]
+	if len(w.Tabs) != 2 || w.Tabs[0].Root.B.SID != y.New || w.Tabs[1].Root.B.SID != x.New {
+		t.Fatalf("after the swap: %s %s", w.Tabs[0].Arrangement(), w.Tabs[1].Arrangement())
+	}
+	if got := must(c.LayoutState()).Revision; got != rev+2 {
+		t.Errorf("revision %d, want %d: the rename, then the batch at once", got, rev+2)
+	}
+	if res.Revs[a.ID] != a.Rev+1 || res.Revs[b.ID] != b.Rev+2 || len(res.Revs) != 2 {
+		t.Errorf("the batch's revisions %v, from %d and %d", res.Revs, a.Rev, b.Rev)
+	}
+	if _, ok := liveSession(t, c, three.New); ok {
+		t.Error("the closed pane's session runs")
+	}
+	// A batch that leaves a running session out, or has one twice, is
+	// refused.
+	lost := w.Tabs[1]
+	lost.Root = &layout.Node{SID: two.New}
+	twice := w.Tabs[1]
+	twice.Root = &layout.Node{Ratio: 0.5, A: &layout.Node{SID: two.New}, B: &layout.Node{SID: one.New}}
+	for _, bad := range []LayoutCommand{
+		{Op: "tab.set", Space: w.ID, TabLayout: &lost},
+		{Op: "tab.set", Space: w.ID, TabLayout: &twice},
+		{Op: "tab.create"},
+	} {
+		if res, _ := c.Command(LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{bad}}); res.Code == "" {
+			t.Errorf("a batch of %s: made", bad.Op)
+		}
+	}
+}
+
+// TestPaneCloseNamesTab closes a pane by the tab the app had it in: one
+// another client moved to another tab meanwhile stays, and runs.
+func TestPaneCloseNamesTab(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: two.New, Command: cmd})
+	command(t, c, LayoutCommand{Op: "pane.move", SID: split.New, Target: one.New})
+	if res, _ := c.Command(LayoutCommand{Op: "pane.close", Tab: two.Tab, SID: split.New}); res.Code != "conflict" {
+		t.Errorf("a close by the tab the pane left: %+v", res)
+	}
+	if _, ok := liveSession(t, c, split.New); !ok {
+		t.Error("the moved pane's session ended")
+	}
+}
+
+// TestTabSetAfterMissing sets tabs after a tab the space does not have: a
+// tab of the space keeps its place, and a new one goes after this
+// machine's tabs, before another host's.
+func TestTabSetAfterMissing(t *testing.T) {
+	_, c := applyFixture(t)
+	seed(t, c, layout.Tab{ID: "a", Root: &layout.Node{SID: "1"}}, layout.Tab{ID: "b", Root: &layout.Node{SID: "2"}},
+		layout.Tab{ID: "far", Root: &layout.Node{SID: "x", Host: "h"}})
+	b := storeOf(t, c).Sessions[0].Tabs[1]
+	b.Name = "named"
+	command(t, c, LayoutCommand{Op: "tab.set", Space: "w", TabLayout: &b, After: "gone"})
+	web := layout.Tab{ID: "web", Root: &layout.Node{URL: "https://example.com/", ID: "p"}}
+	command(t, c, LayoutCommand{Op: "tab.set", Space: "w", TabLayout: &web, After: "gone"})
+	var ids []string
+	for _, x := range storeOf(t, c).Sessions[0].Tabs {
+		ids = append(ids, x.ID)
+	}
+	if !slices.Equal(ids, []string{"a", "b", "web", "far"}) {
+		t.Errorf("tabs %v", ids)
+	}
+}
+
+// TestSetLayoutCountsRevs sets whole layouts whose tabs carry revisions of
+// their own: the server counts them itself, up for a tab that changed,
+// and never down.
+func TestSetLayoutCountsRevs(t *testing.T) {
+	_, c := applyFixture(t)
+	seed(t, c, layout.Tab{ID: "a", Rev: 40, Root: &layout.Node{SID: "1"}}, layout.Tab{ID: "b", Root: &layout.Node{SID: "2"}})
+	st := storeOf(t, c)
+	if r := []uint64{st.Sessions[0].Tabs[0].Rev, st.Sessions[0].Tabs[1].Rev}; r[0] != 1 || r[1] != 1 {
+		t.Fatalf("new tabs at %v", r)
+	}
+	// a renamed, b as it was: given revisions of 0 and 9.
+	seed(t, c, layout.Tab{ID: "a", Name: "x", Root: &layout.Node{SID: "1"}}, layout.Tab{ID: "b", Rev: 9, Root: &layout.Node{SID: "2"}})
+	st = storeOf(t, c)
+	if r := []uint64{st.Sessions[0].Tabs[0].Rev, st.Sessions[0].Tabs[1].Rev}; r[0] != 2 || r[1] != 1 {
+		t.Errorf("tabs at %v, want 2 and 1", r)
+	}
+}

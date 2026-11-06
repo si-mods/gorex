@@ -1073,9 +1073,13 @@ func (a *App) removeHost(h *hostConn) {
 		}
 		// The window keeps a tab, as it would close with its last: the
 		// host's panes go once the server made it, or could not.
-		if len(o.tabsOn(h)) == len(o.tabs) && o.ws != nil {
+		if len(o.tabs) > 0 && len(o.tabsOn(h)) == len(o.tabs) {
 			home, _ := os.UserHomeDir()
-			o.ask(rex.LayoutCommand{Op: "tab.create", Space: o.ws.ID, Dir: home, Focus: true}, func(rex.LayoutCommand) { drop() })
+			c := rex.LayoutCommand{Op: "tab.create", Dir: home, Focus: true}
+			if o.ws != nil {
+				c.Space = o.ws.ID
+			}
+			o.ask(c, func(rex.LayoutCommand) { drop() })
 			continue
 		}
 		drop()

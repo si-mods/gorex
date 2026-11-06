@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gorex/internal/layout"
@@ -293,6 +294,10 @@ type outbox struct {
 	// own changes made since. One another client changed it does not
 	// know, so that a change built on the tab as it was is refused.
 	revs map[string]uint64
+	// quiet closes once no command waits nor is on its way, and hurry
+	// once one who waits for that (wait) needs the main thread, which a
+	// take waiting for it gives up.
+	quiet, hurry chan struct{}
 	// update runs a change on the main thread; take shows the server's
 	// layout there, and returns false while the app has a change of its
 	// own to send first.
@@ -306,9 +311,9 @@ type outCmd struct {
 	done func(rex.LayoutCommand)
 }
 
-// baseOf is the tab a command of the app's builds on, whose revision it is
+// baseOf is the tab a change of the app's builds on, whose revision it is
 // sent with (rex.LayoutCommand.Base): that of a tab.set, a tab.close or a
-// pane.close the app sends of what it changed; "" for none.
+// pane.close of a batch; "" for none.
 func baseOf(c rex.LayoutCommand) string {
 	switch {
 	case c.Op == "tab.set" && c.TabLayout != nil:
@@ -321,17 +326,40 @@ func baseOf(c rex.LayoutCommand) string {
 
 // use makes c the connection the outbox sends through, a server's whose
 // revisions are its own: the app shows none of its layouts yet.
+// What waited for the connection before goes: each command's done runs
+// with an error, as the app counts on it to.
 func (o *outbox) use(c *rex.Client, update func(func()), take func(rex.LayoutState) bool) {
 	o.mu.Lock()
-	defer o.mu.Unlock()
+	dropped, dones := o.queue, o.dones
 	o.client, o.update, o.take = c, update, take
 	o.queue, o.dones, o.rev, o.told, o.check, o.force, o.revs = nil, nil, 0, 0, false, false, nil
+	o.quieten()
+	o.mu.Unlock()
+	for _, d := range dones {
+		d()
+	}
+	for _, x := range dropped {
+		if x.done != nil {
+			x.done(rex.LayoutCommand{ID: x.cmd.ID, Code: "failed", Error: "rex: connection to the server lost"})
+		}
+	}
+}
+
+// quieten tells who waits that no command waits now. Call it with mu held.
+func (o *outbox) quieten() {
+	if o.quiet != nil && len(o.queue) == 0 && !o.sending {
+		close(o.quiet)
+		o.quiet = nil
+	}
 }
 
 // add queues c after the commands waiting, to send once kicked.
 func (o *outbox) add(c rex.LayoutCommand, done func(rex.LayoutCommand)) {
 	o.mu.Lock()
 	o.queue = append(o.queue, outCmd{c, done})
+	if o.quiet == nil {
+		o.quiet = make(chan struct{})
+	}
 	o.mu.Unlock()
 }
 
@@ -363,20 +391,39 @@ func (o *outbox) pending() bool {
 	return len(o.queue) > 0
 }
 
-// onMain runs fn on the main thread, and returns what it does; false once
-// c closes.
-func (o *outbox) onMain(c *rex.Client, update func(func()), fn func() bool) bool {
+// onMain runs fn on the main thread, and returns what it does; false,
+// fn not run, once c closes, or once yield and the main thread waits for
+// the commands to be sent (wait), which goes first.
+func (o *outbox) onMain(c *rex.Client, update func(func()), yield bool, fn func() bool) bool {
 	if update == nil {
 		return fn()
 	}
+	var hurry chan struct{}
+	if yield {
+		o.mu.Lock()
+		if o.hurry == nil {
+			o.hurry = make(chan struct{})
+		}
+		hurry = o.hurry
+		o.mu.Unlock()
+	}
 	ch := make(chan bool, 1)
-	update(func() { ch <- fn() })
+	var gaveUp atomic.Bool
+	update(func() {
+		if gaveUp.Load() {
+			ch <- false
+			return
+		}
+		ch <- fn()
+	})
 	select {
 	case ok := <-ch:
 		return ok
 	case <-c.Closed():
-		return false
+	case <-hurry:
 	}
+	gaveUp.Store(true)
+	return false
 }
 
 // run sends the commands waiting, then takes the server's layout, until
@@ -388,8 +435,11 @@ func (o *outbox) run() {
 		if len(o.queue) > 0 {
 			x := o.queue[0]
 			o.queue = o.queue[1:]
-			if tab := baseOf(x.cmd); tab != "" {
-				x.cmd.Base = o.revs[tab]
+			x.cmd.Batch = slices.Clone(x.cmd.Batch)
+			for i, b := range x.cmd.Batch {
+				if tab := baseOf(b); tab != "" {
+					x.cmd.Batch[i].Base = o.revs[tab]
+				}
 			}
 			o.sending = true
 			o.mu.Unlock()
@@ -402,6 +452,7 @@ func (o *outbox) run() {
 			}
 			o.mu.Lock()
 			o.sending = false
+			o.quieten()
 			if c == o.client {
 				o.check = true
 				// A refused change leaves the app showing what the server
@@ -425,7 +476,7 @@ func (o *outbox) run() {
 				return
 			}
 			o.mu.Unlock()
-			o.onMain(c, update, func() bool {
+			o.onMain(c, update, false, func() bool {
 				for _, d := range dones {
 					d()
 				}
@@ -453,7 +504,7 @@ func (o *outbox) run() {
 		if ls.Revision == rev && !force {
 			continue
 		}
-		took := o.onMain(c, update, func() bool {
+		took := o.onMain(c, update, true, func() bool {
 			// Not of a connection the app no longer uses.
 			o.mu.Lock()
 			current := c == o.client
@@ -552,20 +603,28 @@ func (o *outbox) revision() uint64 {
 
 // wait waits until the server answered what was sent, for d at most. It
 // does not wait for the take after it, which needs the main thread: the
-// main thread may be the one waiting, as a window that closes saves.
+// main thread may be the one waiting, as a window that closes saves, and
+// a take that waits for it gives up for the commands to go.
 func (o *outbox) wait(d time.Duration) {
-	for deadline := time.Now().Add(d); time.Now().Before(deadline); time.Sleep(2 * time.Millisecond) {
-		o.mu.Lock()
-		busy := o.running && (len(o.queue) > 0 || o.sending)
-		o.mu.Unlock()
-		if !busy {
-			return
-		}
+	o.mu.Lock()
+	quiet := o.quiet
+	if o.hurry != nil {
+		close(o.hurry)
+		o.hurry = nil
+	}
+	o.mu.Unlock()
+	if quiet == nil {
+		return
+	}
+	select {
+	case <-quiet:
+	case <-time.After(d):
 	}
 }
 
-// diffLayout returns the commands that make the server's layout, base as
-// the app knows it, the app's, now:
+// diffLayout returns the changes that make the server's layout, base as
+// the app knows it, the app's, now, which the app sends as one batch
+// (layout.apply) the server makes whole or not at all:
 //   - new spaces first (space.create);
 //   - a session of this machine now no longer has ends (pane.close), those
 //     of a tab or a space it no longer has with it (tab.close, space.close,
@@ -574,21 +633,17 @@ func (o *outbox) wait(d time.Duration) {
 //     after the tab before it (After). A move is of the tabs out of order,
 //     the fewest: the others keep their places, and so a close or a move of
 //     one tab sends nothing of the tabs after it;
-//   - the tabs that take a session from another tab go before the others,
-//     so that the session moves before that tab leaves it out. One that
-//     gives a session to a tab not sent yet keeps it until that tab takes
-//     it, then goes again as it is, as two tabs that swap panes do;
 //   - then names and colors, and the windows' spaces.
 //
 // Sessions start only through commands of their own.
 func diffLayout(base, now savedStore) []rex.LayoutCommand {
 	var out []rex.LayoutCommand
-	tabs, home := map[string]bool{}, map[string]string{}
+	tabs, home := map[string]bool{}, map[string]bool{}
 	for _, w := range now.Sessions {
 		for _, t := range w.Tabs {
 			tabs[t.ID] = true
 			for sid := range localOf(t) {
-				home[sid] = t.ID
+				home[sid] = true
 			}
 		}
 	}
@@ -617,20 +672,12 @@ func diffLayout(base, now savedStore) []rex.LayoutCommand {
 				continue
 			}
 			for sid := range localOf(t) {
-				if home[sid] == "" {
+				if !home[sid] {
 					out = append(out, rex.LayoutCommand{Op: "pane.close", Space: bw.ID, Tab: t.ID, SID: sid})
 				}
 			}
 		}
 	}
-	// The tabs to send, the gainers' first.
-	type send struct {
-		space       string
-		tab         layout.Tab
-		after       string
-		focus, gain bool
-	}
-	var sends []send
 	for _, w := range now.Sessions {
 		activeWas := ""
 		bw := base.Space(w.ID)
@@ -644,60 +691,13 @@ func diffLayout(base, now savedStore) []rex.LayoutCommand {
 			if ok && p.space == w.ID && !moved[t.ID] && !focus && sameTab(p.tab, t) {
 				continue
 			}
-			x := send{space: w.ID, tab: serverTab(t), focus: focus}
+			tab := serverTab(t)
+			c := rex.LayoutCommand{Op: "tab.set", Space: w.ID, TabLayout: &tab, Focus: focus}
 			if i > 0 {
-				x.after = w.Tabs[i-1].ID
+				c.After = w.Tabs[i-1].ID
 			}
-			for sid := range localOf(t) {
-				if !localOf(p.tab)[sid] {
-					x.gain = true
-				}
-			}
-			sends = append(sends, x)
+			out = append(out, c)
 		}
-	}
-	// On the server, as the commands go: the tabs of each space there.
-	on := map[string]string{}
-	for id, p := range was {
-		on[id] = p.space
-	}
-	sent := map[string]bool{}
-	var again []send
-	emit := func(x send) {
-		tab := x.tab
-		c := rex.LayoutCommand{Op: "tab.set", Space: x.space, TabLayout: &tab, Focus: x.focus, After: x.after}
-		if x.after != "" && on[x.after] != x.space {
-			// The tab before it is not there yet: it goes again once it is.
-			again = append(again, x)
-		}
-		out = append(out, c)
-		sent[tab.ID], on[tab.ID] = true, x.space
-	}
-	for _, x := range sends {
-		if !x.gain {
-			continue
-		}
-		// Its sessions that go to a tab not sent yet it keeps meanwhile.
-		kept := x
-		for sid := range localOf(was[x.tab.ID].tab) {
-			if to := home[sid]; to != x.tab.ID && to != "" && !sent[to] {
-				kept.tab = withLeaf(kept.tab, sid)
-			}
-		}
-		if kept.tab.Root != x.tab.Root {
-			again = append(again, x)
-		}
-		emit(kept)
-	}
-	for _, x := range sends {
-		if !x.gain {
-			emit(x)
-		}
-	}
-	// Every tab of now is there by now, before each of them.
-	for _, x := range again {
-		tab := x.tab
-		out = append(out, rex.LayoutCommand{Op: "tab.set", Space: x.space, TabLayout: &tab, After: x.after})
 	}
 	for _, bw := range base.Sessions {
 		if now.Space(bw.ID) == nil {
@@ -766,17 +766,6 @@ func outOfOrder(was *savedWorkspace, w savedWorkspace) map[string]bool {
 	return moved
 }
 
-// withLeaf is t with a pane of session sid beside its others.
-func withLeaf(t layout.Tab, sid string) layout.Tab {
-	leaf := &layout.Node{SID: sid}
-	if t.Root == nil {
-		t.Root = leaf
-	} else {
-		t.Root = &layout.Node{Ratio: 0.5, A: t.Root, B: leaf}
-	}
-	return t
-}
-
 // colorArg is a space's color as a command gives it: "default" for none.
 func colorArg(color string) string { return cmp.Or(color, "default") }
 
@@ -807,30 +796,7 @@ func serverTab(t layout.Tab) layout.Tab {
 // sameTab tells whether the tab the app has is the one the server has,
 // but for its revision, the size of its panes' sessions, which is theirs,
 // and a canvas's view, the window's own.
-func sameTab(x, y layout.Tab) bool {
-	strip := func(t layout.Tab) []byte {
-		t = serverTab(t)
-		t.Rev = 0
-		var walk func(n *layout.Node) *layout.Node
-		walk = func(n *layout.Node) *layout.Node {
-			if n == nil {
-				return nil
-			}
-			c := *n
-			c.Cols, c.Rows = 0, 0
-			c.A, c.B = walk(n.A), walk(n.B)
-			return &c
-		}
-		t.Root = walk(t.Root)
-		t.Floats = slices.Clone(t.Floats)
-		for i := range t.Floats {
-			t.Floats[i].Pane = walk(t.Floats[i].Pane)
-		}
-		b, _ := json.Marshal(t)
-		return b
-	}
-	return bytes.Equal(strip(x), strip(y))
-}
+func sameTab(x, y layout.Tab) bool { return bytes.Equal(x.Encode(true), y.Encode(true)) }
 
 // sameArrangement tells whether two layouts are the same but for their
 // panes' facts, which the server keeps: what the app sent coming back.

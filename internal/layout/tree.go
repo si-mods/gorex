@@ -142,7 +142,11 @@ func (s *Store) Space(id string) *Workspace {
 // canvas's view (the window's own), and its panes' facts, which the server
 // keeps of their sessions (directory, size, program). Two tabs of the same
 // arrangement encode the same.
-func (t Tab) Arrangement() []byte {
+func (t Tab) Arrangement() []byte { return t.Encode(false) }
+
+// Encode is the tab as Arrangement has it, with its panes' directories and
+// programs too for facts; never their sizes, which are their sessions'.
+func (t Tab) Encode(facts bool) []byte {
 	t.Rev = 0
 	if t.Canvas != nil {
 		cv := *t.Canvas
@@ -155,7 +159,10 @@ func (t Tab) Arrangement() []byte {
 			return nil
 		}
 		c := *n
-		c.Dir, c.Cols, c.Rows, c.Prog, c.Args, c.AgentSession, c.AgentConfigDir = "", 0, 0, "", nil, "", ""
+		c.Cols, c.Rows = 0, 0
+		if !facts {
+			c.Dir, c.Prog, c.Args, c.AgentSession, c.AgentConfigDir = "", "", nil, "", ""
+		}
 		c.A, c.B = strip(n.A), strip(n.B)
 		return &c
 	}

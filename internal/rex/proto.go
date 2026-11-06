@@ -212,11 +212,12 @@ type LayoutCommand struct {
 	// Op is "space.create", "space.rename", "space.close", "tab.create",
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
-	// "pane.swap", "pane.move", "tab.set", "windows.set",
+	// "pane.swap", "pane.move", "tab.set", "windows.set", "layout.apply",
 	// "pane.teleporting" or "pane.teleported": a local client's only, the
 	// last two tell of the teleport of the pane of SID to Host, the
 	// session Target there (Teleport), which the window waits for, then
-	// makes the pane; tab.set and windows.set are a local client's only too.
+	// makes the pane; tab.set, windows.set and layout.apply are a local
+	// client's only too.
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// Space is the workspace the command acts on, by ID; "" for the
@@ -284,6 +285,14 @@ type LayoutCommand struct {
 	// the tabs the change changed, each one past the one before.
 	Base uint64            `json:"base,omitempty"`
 	Revs map[string]uint64 `json:"revs,omitempty"`
+	// Batch are the changes of layout.apply, the app's of one save: of
+	// space.create, space.rename, space.close, windows.set, tab.set,
+	// tab.close and pane.close, each built on its tab as the layout had it
+	// before (Base). The server makes all of them, in order, and keeps the
+	// layout they make once, or none: a conflict of one refuses them all.
+	// It checks the sessions on that layout: none in two panes, and none
+	// that runs gone but those the batch closes.
+	Batch []LayoutCommand `json:"batch,omitempty"`
 	// The answer: Code and Error when it was not made, New the session of
 	// the pane made, and Zoomed whether the pane's tab is zoomed now.
 	// Changed and Reason answer pane.resize, pane.swap and pane.move.

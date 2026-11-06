@@ -1141,9 +1141,10 @@ func TestDiffLayout(t *testing.T) {
 	}
 }
 
-// TestDiffLayoutApplies has the server make what diffLayout sends, from
-// layouts of the server's sessions: two tabs that swap panes, a reorder,
-// a tab to another space, a merge. The server's layout is the app's then.
+// TestDiffLayoutApplies has the server make what diffLayout sends, as one
+// batch, from layouts of the server's sessions: two tabs that swap panes,
+// a reorder, a tab to another space, a merge. The server's layout is the
+// app's then.
 func TestDiffLayoutApplies(t *testing.T) {
 	a, _ := newTestApp(t)
 	c := a.client
@@ -1180,11 +1181,9 @@ func TestDiffLayoutApplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 1; i < len(steps); i++ {
-		for _, cmd := range diffLayout(steps[i-1], steps[i]) {
-			// A tab the move emptied went with it, as the outbox lets be.
-			if res, err := c.Command(cmd); err != nil || res.Code != "" && res.Code != "tab_not_found" {
-				t.Fatalf("step %d: %s %+v: %+v %v", i, cmd.Op, cmd, res, err)
-			}
+		batch := diffLayout(steps[i-1], steps[i])
+		if res, err := c.Command(rex.LayoutCommand{Op: "layout.apply", Batch: batch}); err != nil || res.Code != "" {
+			t.Fatalf("step %d: %+v %v", i, res, err)
 		}
 		got := savedWorkspaces(t, c)
 		got.Windows = steps[i].Windows
