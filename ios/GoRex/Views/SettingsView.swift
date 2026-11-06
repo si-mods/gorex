@@ -24,24 +24,15 @@ struct SettingsView: View {
         let version = Bundle.main.version
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
         return [
-            [Item(title: "Interface", icon: tile(.black) {
-                    Capsule().fill(Color(red: 0.2, green: 0.55, blue: 1)).frame(width: 20, height: 12)
-                        .overlay(alignment: .trailing) { Circle().fill(.white).padding(1.5) }
-                 }, value: String(localized: Self.schemes.first { $0.0 == scheme }?.1 ?? "Dark"),
-                 page: AnyView(Choices(title: "Interface", options: Self.schemes.map { ($0.0, String(localized: $0.1)) }, selection: $scheme))),
-             Item(title: "Themes", icon: tile(LinearGradient(colors: [.red, .orange, .yellow, .green, .blue, .purple],
-                                                             startPoint: .topLeading, endPoint: .bottomTrailing)) {
-                    Image(systemName: "paintpalette.fill").foregroundStyle(.white)
-                 }, value: theme.isEmpty ? String(localized: "Default") : theme,
-                 page: AnyView(Choices(title: "Themes", options: [("", String(localized: "Default"))] + TerminalTheme.all.map { ($0.name, $0.name) },
-                                       selection: $theme)))],
-            [Item(title: "Terminal", icon: tile(Color(white: 0.13)) {
-                    Text(">_").font(.system(size: 13, weight: .bold, design: .monospaced)).foregroundStyle(.green)
-                 }, page: AnyView(TerminalSettings())),
-             Item(title: "Remote Hosts", icon: tile(Color(red: 0.55, green: 0.36, blue: 0.96)) {
-                    Image(systemName: "globe").foregroundStyle(.white)
-                 }, page: AnyView(RemoteHostsView()))],
-            [Item(title: "About", icon: tile(.gray) { Image(systemName: "info").foregroundStyle(.white) },
+            [Item(title: "Interface", icon: tile("circle.lefthalf.filled", .indigo),
+                  value: String(localized: Self.schemes.first { $0.0 == scheme }?.1 ?? "Dark"),
+                  page: AnyView(Choices(title: "Interface", options: Self.schemes.map { ($0.0, String(localized: $0.1)) }, selection: $scheme))),
+             Item(title: "Themes", icon: tile("paintpalette.fill", .pink), value: theme.isEmpty ? String(localized: "Default") : theme,
+                  page: AnyView(Choices(title: "Themes", options: [("", String(localized: "Default"))] + TerminalTheme.all.map { ($0.name, $0.name) },
+                                        selection: $theme)))],
+            [Item(title: "Terminal", icon: tile("apple.terminal.fill", .gray), page: AnyView(TerminalSettings())),
+             Item(title: "Remote Hosts", icon: tile("globe", .orange), page: AnyView(RemoteHostsView()))],
+            [Item(title: "About", icon: tile("info.circle.fill", .gray),
                   value: "\(version) (\(build))", page: AnyView(AboutView(version: version, build: build)))],
         ]
     }
@@ -77,25 +68,16 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.page)
-            .safeAreaInset(edge: .bottom) {
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search Settings", text: $query)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 50)
-                .glass(in: Capsule())
-                .padding(.horizontal, 20)
-                .padding(.bottom, 8)
-            }
+            .searchable(text: $query, prompt: "Search Settings")
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("Close")
+                    Button("Close", systemImage: "xmark", role: .close) { dismiss() }
                 }
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
             }
         }
         // A sheet keeps its own scheme: change it here too.
@@ -114,9 +96,12 @@ struct SettingsView: View {
         }
     }
 
-    private func tile(_ fill: some ShapeStyle, @ViewBuilder _ content: () -> some View) -> AnyView {
-        AnyView(content().font(.system(size: 16, weight: .semibold)).frame(width: 32, height: 32)
-            .background(fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous)))
+    /// A row's icon as the Settings app draws one: a white symbol on a
+    /// tile of a system color.
+    private func tile(_ symbol: String, _ color: Color) -> AnyView {
+        AnyView(Image(systemName: symbol).font(.system(size: 17, weight: .medium)).foregroundStyle(.white)
+            .frame(width: 30, height: 30)
+            .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous)))
     }
 }
 

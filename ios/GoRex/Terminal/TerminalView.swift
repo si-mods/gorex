@@ -35,7 +35,7 @@ final class TerminalView: UIView, UIKeyInput {
         super.init(frame: .zero)
         isOpaque = true
         contentMode = .redraw
-        backgroundColor = .black
+        backgroundColor = UIColor(cgColor: (session.background ?? .black).cgColor)
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
         addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(drag)))
         isAccessibilityElement = true
@@ -64,7 +64,7 @@ final class TerminalView: UIView, UIKeyInput {
     override func draw(_ rect: CGRect) {
         guard let ctx = UIGraphicsGetCurrentContext() else { return }
         guard let t = session.terminal else {
-            ctx.setFillColor(UIColor.black.cgColor)
+            ctx.setFillColor((session.background ?? .black).cgColor)
             ctx.fill(bounds)
             return
         }
@@ -116,6 +116,7 @@ final class TerminalView: UIView, UIKeyInput {
             }
         }
         backgroundColor = UIColor(cgColor: s.bg.cgColor)
+        session.drew(background: s.bg)
     }
 
     // MARK: Touch
@@ -217,14 +218,16 @@ final class TerminalView: UIView, UIKeyInput {
     }
 }
 
-/// The bar over the soft keyboard.
-final class KeyBar: UIInputView {
+/// The bar over the soft keyboard: a capsule of Liquid Glass, dark as the
+/// keyboard is, that scrolls its keys.
+final class KeyBar: UIView {
     let ctrl = KeyBar.button("ctrl")
     let alt = KeyBar.button("alt")
 
     init(target: TerminalView) {
-        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 46), inputViewStyle: .keyboard)
-        allowsSelfSizing = true
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 56))
+        autoresizingMask = .flexibleHeight
+        overrideUserInterfaceStyle = .dark
         func key(_ title: String, _ name: String) -> UIButton {
             let b = Self.button(title)
             b.addAction(UIAction { [weak target] _ in target?.send(name) }, for: .touchUpInside)
@@ -255,16 +258,25 @@ final class KeyBar: UIInputView {
         stack.spacing = 6
         let scroll = UIScrollView()
         scroll.showsHorizontalScrollIndicator = false
+        scroll.contentInset = UIEdgeInsets(top: 0, left: 6, bottom: 0, right: 6)
         scroll.addSubview(stack)
-        addSubview(scroll)
-        for v in [stack, scroll] as [UIView] { v.translatesAutoresizingMaskIntoConstraints = false }
+        let glass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+        glass.cornerConfiguration = .capsule()
+        glass.clipsToBounds = true
+        glass.contentView.addSubview(scroll)
+        addSubview(glass)
+        for v in [stack, scroll, glass] as [UIView] { v.translatesAutoresizingMaskIntoConstraints = false }
         NSLayoutConstraint.activate([
-            scroll.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor, constant: 8),
-            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor, constant: -8),
+            glass.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            glass.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            glass.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            glass.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            scroll.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: glass.contentView.topAnchor),
+            scroll.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
             stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 6),
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -6),
             stack.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor, constant: -12),
@@ -273,24 +285,30 @@ final class KeyBar: UIInputView {
 
     required init?(coder: NSCoder) { fatalError() }
 
+    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 56) }
+
     private static func button(_ title: String?, symbol: String? = nil) -> UIButton {
-        var c = UIButton.Configuration.gray()
+        let b = UIButton(configuration: config(title, symbol, held: false))
+        b.changesSelectionAsPrimaryAction = false
+        b.setContentHuggingPriority(.required, for: .horizontal)
+        b.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // A held Ctrl or Alt is prominent glass, in the accent: white here.
+        b.configurationUpdateHandler = { b in b.configuration = config(title, symbol, held: b.isSelected) }
+        return b
+    }
+
+    private static func config(_ title: String?, _ symbol: String?, held: Bool) -> UIButton.Configuration {
+        var c = held ? UIButton.Configuration.prominentGlass() : .glass()
         c.title = title
         c.image = symbol.map { UIImage(systemName: $0) } ?? nil
-        c.cornerStyle = .medium
+        c.baseForegroundColor = held ? .black : .label
         c.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12)
         c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             var a = $0
             a.font = .monospacedSystemFont(ofSize: 15, weight: .medium)
             return a
         }
-        let b = UIButton(configuration: c)
-        b.changesSelectionAsPrimaryAction = false
-        b.configurationUpdateHandler = { b in
-            b.configuration?.baseBackgroundColor = b.isSelected ? .tintColor : nil
-            b.configuration?.baseForegroundColor = b.isSelected ? .systemBackground : .label
-        }
-        return b
+        return c
     }
 }
 
@@ -299,7 +317,11 @@ extension VTerminal.RGB {
         CGColor(srgbRed: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: 1)
     }
 
+    static let black = Self(0)
+
     var packed: Int { Int(r) << 16 | Int(g) << 8 | Int(b) }
+
+    init(_ packed: Int) { self.init(r: UInt8(packed >> 16 & 0xff), g: UInt8(packed >> 8 & 0xff), b: UInt8(packed & 0xff)) }
 
     /// Halfway to another color, for faint text.
     func mixed(with o: Self) -> Self {

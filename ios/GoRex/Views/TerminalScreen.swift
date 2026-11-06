@@ -8,11 +8,10 @@ struct TerminalTarget: Hashable {
     let title: String
 }
 
-/// A window's terminal, full screen, with a back button.
+/// A window's terminal, full screen, under the navigation bar.
 struct TerminalScreen: View {
     let target: TerminalTarget
     @State private var session: TerminalSession
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var phase
 
     init(target: TerminalTarget, host: Host) {
@@ -21,23 +20,23 @@ struct TerminalScreen: View {
     }
 
     var body: some View {
+        // The terminal's background fills the page edge to edge, under the
+        // bar and the key bar too; the bar and the text on it take its scheme.
+        let bg = session.background ?? .black
+        let scheme: ColorScheme = 0.299 * Double(bg.r) + 0.587 * Double(bg.g) + 0.114 * Double(bg.b) < 128 ? .dark : .light
         TerminalRepresentable(session: session)
-            .background(Color.black)
+            .background(Color(cgColor: bg.cgColor).ignoresSafeArea())
             .overlay { status }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack(spacing: 12) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "chevron.left").font(.body.weight(.semibold)).frame(width: 36, height: 36)
-                    }
-                    .accessibilityLabel("Back")
-                    .glass(in: Circle())
-                    Text(target.title).font(.subheadline.weight(.semibold)).lineLimit(1).foregroundStyle(.secondary)
-                    Spacer()
+            .navigationTitle(target.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(target.title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 6)
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+            .toolbarColorScheme(scheme, for: .navigationBar)
+            .environment(\.colorScheme, scheme)
             .onAppear { session.start() }
             .onDisappear { session.close() }
             .onChange(of: phase) { _, p in
@@ -49,7 +48,7 @@ struct TerminalScreen: View {
     @ViewBuilder private var status: some View {
         switch session.state {
         case .connecting:
-            ProgressView().tint(.white)
+            ProgressView()
         case .live:
             EmptyView()
         case .exited(let code):
@@ -57,13 +56,13 @@ struct TerminalScreen: View {
         case .failed(let why):
             VStack(spacing: 12) {
                 label(why)
-                Button("Retry") { session.start() }.buttonStyle(.borderedProminent).foregroundStyle(Color.page)
+                Button("Retry") { session.start() }.buttonStyle(.glassProminent).foregroundStyle(Color.page)
             }
         }
     }
 
     private func label(_ s: String) -> some View {
-        Text(s).font(.callout).padding(12).glass(in: RoundedRectangle(cornerRadius: 14))
+        Text(s).font(.callout).padding(12).glassEffect(.regular, in: .rect(cornerRadius: 14))
     }
 }
 

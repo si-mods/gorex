@@ -21,13 +21,15 @@ struct QRScanner: View {
             .overlay(alignment: .bottom) {
                 if let problem {
                     Text(problem).multilineTextAlignment(.center).padding(16)
-                        .glass(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
                         .padding(20)
                 }
             }
             .navigationTitle("Scan QR Code")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel", systemImage: "xmark", role: .cancel) { dismiss() } }
+            }
         }
         #if DEBUG
         // The simulator has no camera: -pair <code> stands in for a scan.

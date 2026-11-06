@@ -3,7 +3,7 @@
 name: GoRex
 options:
   deploymentTarget:
-    iOS: "18.0"
+    iOS: "26.0"
   developmentLanguage: en
 settings:
   base:

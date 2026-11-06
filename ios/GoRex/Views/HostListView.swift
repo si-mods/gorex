@@ -14,10 +14,8 @@ struct HostListView: View {
     @State private var path: [TerminalTarget] = []
     @State private var collapsed: Set<String> = []
     @State private var hideIdle = false
-    @State private var searching = false
     @State private var query = ""
     @State private var settings = false
-    @FocusState private var searchFocused: Bool
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -32,11 +30,25 @@ struct HostListView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
-                .padding(.bottom, 100)
+                .padding(.bottom, 20)
             }
             .background(Color.page)
-            .overlay(alignment: .bottom) { controls }
+            .scrollEdgeEffectStyle(.soft, for: .all)
             .toolbar(.hidden, for: .navigationBar)
+            .toolbar {
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button("Settings", systemImage: "gearshape") { settings = true }
+                    Button(hideIdle ? "Show Idle Windows" : "Hide Idle Windows", systemImage: hideIdle ? "eye.slash" : "eye") {
+                        hideIdle.toggle()
+                    }
+                }
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+            }
+            .searchable(text: $query, prompt: "Search windows")
+            .searchToolbarBehavior(.minimize)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
             .navigationDestination(for: TerminalTarget.self) { t in
                 if let host = store.host(t.host) { TerminalScreen(target: t, host: host) }
             }
@@ -49,47 +61,6 @@ struct HostListView: View {
         if hideIdle, program.map(AppIcon.isShell) ?? true { return false }
         return query.isEmpty || title.localizedCaseInsensitiveContains(query)
     }
-
-    private var controls: some View {
-        HStack {
-            if searching {
-                HStack {
-                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-                    TextField("Search windows", text: $query)
-                        .focused($searchFocused)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    Button { query = ""; searching = false } label: { Image(systemName: "xmark.circle.fill") }
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Close Search")
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 50)
-                .glass(in: Capsule())
-            } else {
-                HStack(spacing: 4) {
-                    Button { settings = true } label: { Image(systemName: "gearshape").frame(width: 44, height: 44) }
-                        .accessibilityLabel("Settings")
-                    Button { hideIdle.toggle() } label: {
-                        Image(systemName: hideIdle ? "eye.slash" : "eye").frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel(hideIdle ? "Show Idle Windows" : "Hide Idle Windows")
-                }
-                .padding(.horizontal, 6)
-                .glass(in: Capsule())
-                Spacer()
-                Button { searching = true; searchFocused = true } label: {
-                    Image(systemName: "magnifyingglass").frame(width: 50, height: 50)
-                }
-                .accessibilityLabel("Search")
-                .glass(in: Circle())
-            }
-        }
-        .font(.title3)
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 20)
-        .padding(.bottom, 8)
-    }
 }
 
 private struct HostSection: View {
@@ -98,6 +69,10 @@ private struct HostSection: View {
     let filter: (String, String?) -> Bool
     let open: (TerminalTarget) -> Void
     @Environment(HostStore.self) private var store
+    /// The sessions whose new window is on its way.
+    @State private var opening: Set<String> = []
+    /// Why the last new window failed, as the server says it.
+    @State private var failure: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -112,6 +87,7 @@ private struct HostSection: View {
                 } label: {
                     Image(systemName: "ellipsis").font(.title3).frame(width: 36, height: 36)
                 }
+                .glassEffect(.regular.interactive(), in: .circle)
                 .accessibilityLabel("Host Menu")
             }
             .foregroundStyle(.primary)
@@ -126,6 +102,10 @@ private struct HostSection: View {
                 ForEach(host.sessions) { s in session(s) }
             }
         }
+        .alert("Can't Open a New Window", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
+        } message: {
+            Text(failure ?? "")
+        }
     }
 
     @ViewBuilder private func session(_ s: Host.Session) -> some View {
@@ -139,23 +119,41 @@ private struct HostSection: View {
             HStack {
                 Text(s.label).font(.title3.weight(.semibold)).foregroundStyle(.gray)
                 Spacer()
-                Button {
-                    Task {
-                        if let b = try? await host.newWindow(in: s.id) {
-                            open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
+                GlassEffectContainer(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Button {
+                            opening.insert(s.id)
+                            Task {
+                                defer { opening.remove(s.id) }
+                                do {
+                                    if let b = try await host.newWindow(in: s.id) {
+                                        open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
+                                    }
+                                } catch {
+                                    failure = error.localizedDescription
+                                }
+                            }
+                        } label: {
+                            Group {
+                                if opening.contains(s.id) { ProgressView() } else { Image(systemName: "plus") }
+                            }
+                            .frame(width: 32, height: 32)
                         }
+                        .disabled(opening.contains(s.id))
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .accessibilityLabel("New Window")
+                        Button {
+                            withAnimation(.snappy) { if isCollapsed { collapsed.remove(s.id) } else { collapsed.insert(s.id) } }
+                        } label: {
+                            Image(systemName: "chevron.down").rotationEffect(.degrees(isCollapsed ? -90 : 0)).frame(width: 32, height: 32)
+                        }
+                        .glassEffect(.regular.interactive(), in: .circle)
+                        .accessibilityLabel(isCollapsed ? "Expand" : "Collapse")
                     }
-                } label: { Image(systemName: "plus.circle").frame(width: 32, height: 32) }
-                .accessibilityLabel("New Window")
-                Button {
-                    withAnimation(.snappy) { if isCollapsed { collapsed.remove(s.id) } else { collapsed.insert(s.id) } }
-                } label: {
-                    Image(systemName: "chevron.down").rotationEffect(.degrees(isCollapsed ? -90 : 0)).frame(width: 32, height: 32)
                 }
-                .accessibilityLabel(isCollapsed ? "Expand" : "Collapse")
             }
-            .font(.title3)
-            .foregroundStyle(.gray)
+            .font(.body.weight(.semibold))
+            .foregroundStyle(.primary)
             if !isCollapsed && !windows.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(Array(windows.enumerated()), id: \.element.0) { i, w in
@@ -232,16 +230,5 @@ struct AppIcon: View {
             }
         }
         .accessibilityHidden(true)
-    }
-}
-
-extension View {
-    /// Liquid Glass where the system has it, else a material.
-    @ViewBuilder func glass(in shape: some Shape) -> some View {
-        if #available(iOS 26, *) {
-            glassEffect(.regular.interactive(), in: shape)
-        } else {
-            background(.ultraThinMaterial, in: shape)
-        }
     }
 }

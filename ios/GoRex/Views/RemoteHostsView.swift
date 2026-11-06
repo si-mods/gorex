@@ -119,16 +119,14 @@ private struct ConnectSheet: View {
             Text("Pair automatically via Tailscale, or enter your Rex server details manually.")
                 .font(.body).foregroundStyle(.secondary).multilineTextAlignment(.center)
             Spacer(minLength: 12)
-            Button(action: manual) { Text("Set Up Manually").frame(maxWidth: .infinity, minHeight: 54) }
-                .foregroundStyle(.white)
-                .background(Color(white: 0.3), in: Capsule())
-            Button(action: scan) {
-                Label("Pair via QR Code", systemImage: "qrcode").frame(maxWidth: .infinity, minHeight: 54)
-            }
-            .foregroundStyle(.black)
-            .background(Color(red: 0xB9 / 255, green: 0xA2 / 255, blue: 0xF5 / 255), in: Capsule())
+            Button(action: manual) { Text("Set Up Manually").frame(maxWidth: .infinity) }
+                .buttonStyle(.glass)
+            Button(action: scan) { Label("Pair via QR Code", systemImage: "qrcode").frame(maxWidth: .infinity) }
+                .buttonStyle(.glassProminent)
+                .foregroundStyle(Color.page)
         }
         .font(.headline)
+        .controlSize(.extraLarge)
         .padding(24)
         .presentationDetents([.height(320)])
     }
@@ -170,95 +168,86 @@ private struct HostForm: View {
 
     var body: some View {
         let c = entered
-        ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Button { dismiss() } label: { Image(systemName: "xmark").frame(width: 44, height: 44) }
-                        .glass(in: Circle())
-                        .accessibilityLabel("Cancel")
-                    Spacer()
-                    Text(config == nil ? "Add Host" : "Edit Host").font(.title2.bold())
-                    Spacer()
-                    Button {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("http://192.168.1.2:7297", text: $address)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("address")
+                } header: {
+                    VStack(spacing: 20) {
+                        Text(config == nil ? "Enter the details of your Rex server." : "Update the details for this remote host.")
+                            .font(.body).textCase(nil)
+                            .frame(maxWidth: .infinity).multilineTextAlignment(.center)
+                        Text("Server address").frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .listRowBackground(Color.card)
+                Section("Host details") {
+                    HStack(spacing: 12) {
+                        Menu {
+                            Picker("Device", selection: $desktop) {
+                                Label("Laptop", systemImage: "laptopcomputer").tag(false)
+                                Label("Desktop", systemImage: "desktopcomputer").tag(true)
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: desktop ? "desktopcomputer" : "laptopcomputer")
+                                Image(systemName: "chevron.up.chevron.down").font(.caption2.weight(.semibold))
+                            }
+                            .foregroundStyle(.primary)
+                        }
+                        .accessibilityLabel("Device")
+                        TextField(c.map { HostConfig.name($0.url.host() ?? "") } ?? String(localized: "Name"), text: $name)
+                            .autocorrectionDisabled()
+                    }
+                }
+                .listRowBackground(Color.card)
+                Section {
+                    TextField("Default login shell", text: $command)
+                        .font(.body.monospaced())
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                } header: {
+                    Text("Startup command")
+                } footer: {
+                    Text("Executable and arguments for new terminals on this host. Use quotes to group arguments. Leave empty to use the host's default login shell.")
+                }
+                .listRowBackground(Color.card)
+                if let config {
+                    Section {
+                        Button("Delete Host", role: .destructive) { deleting = true }
+                            .frame(maxWidth: .infinity)
+                            .confirmationDialog("Delete \(config.name)?", isPresented: $deleting, titleVisibility: .visible) {
+                                Button("Delete Host", role: .destructive) {
+                                    store.remove(config.id)
+                                    dismiss()
+                                }
+                            }
+                    }
+                    .listRowBackground(Color.card)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.page)
+            .navigationTitle(config == nil ? "Add Host" : "Edit Host")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel", systemImage: "xmark", role: .cancel) { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(config == nil ? "Add" : "Save", systemImage: "checkmark", role: .confirm) {
                         guard let c else { return }
                         if config == nil { store.add(c) } else { store.update(c) }
                         dismiss()
-                    } label: { Image(systemName: "checkmark").frame(width: 44, height: 44) }
-                    .glass(in: Circle())
-                    .disabled(c == nil || c == config)
-                    .opacity(c == nil || c == config ? 0.4 : 1)
-                    .accessibilityLabel(config == nil ? "Add" : "Save")
-                }
-                .font(.title3.weight(.semibold))
-                Text(config == nil ? "Enter the details of your Rex server." : "Update the details for this remote host.")
-                    .foregroundStyle(.secondary).frame(maxWidth: .infinity)
-                    .multilineTextAlignment(.center)
-                    .padding(.bottom, 12)
-
-                header("Server address")
-                TextField("http://192.168.1.2:7297", text: $address)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("address")
-                    .capsuleField()
-
-                header("Host details")
-                HStack(spacing: 12) {
-                    Menu {
-                        Picker("Device", selection: $desktop) {
-                            Label("Laptop", systemImage: "laptopcomputer").tag(false)
-                            Label("Desktop", systemImage: "desktopcomputer").tag(true)
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: desktop ? "desktopcomputer" : "laptopcomputer")
-                            Image(systemName: "chevron.up.chevron.down").font(.caption2.weight(.semibold))
-                        }
-                        .foregroundStyle(.primary)
                     }
-                    .accessibilityLabel("Device")
-                    TextField(c.map { HostConfig.name($0.url.host() ?? "") } ?? String(localized: "Name"), text: $name)
-                        .autocorrectionDisabled()
-                }
-                .capsuleField()
-
-                header("Startup command")
-                TextField("Default login shell", text: $command)
-                    .font(.body.monospaced())
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .capsuleField()
-                Text("Executable and arguments for new terminals on this host. Use quotes to group arguments. Leave empty to use the host's default login shell.")
-                    .font(.footnote).foregroundStyle(.secondary).padding(.horizontal, 16)
-
-                if let config {
-                    Button("Delete Host", role: .destructive) { deleting = true }
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                        .background(Color.primary.opacity(0.08), in: Capsule())
-                        .padding(.top, 24)
-                        .confirmationDialog("Delete \(config.name)?", isPresented: $deleting, titleVisibility: .visible) {
-                            Button("Delete Host", role: .destructive) {
-                                store.remove(config.id)
-                                dismiss()
-                            }
-                        }
+                    .disabled(c == nil || c == config)
                 }
             }
-            .padding(20)
         }
         .presentationDetents([.large])
-    }
-
-    private func header(_ title: LocalizedStringKey) -> some View {
-        Text(title).font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            .padding(.horizontal, 16).padding(.top, 8)
-    }
-}
-
-private extension View {
-    func capsuleField() -> some View {
-        padding(.horizontal, 18).frame(minHeight: 50)
-            .background(Color.primary.opacity(0.08), in: Capsule())
     }
 }

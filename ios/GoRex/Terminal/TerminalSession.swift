@@ -22,6 +22,10 @@ final class TerminalSession {
     private(set) var state = State.connecting
     /// Bumped whenever the screen changed, for the view to draw.
     private(set) var frame = 0
+    /// The terminal's default background, for the page around it. Until
+    /// the view draws the screen it is the last one seen on this host with
+    /// this theme, else the theme's, so that the page opens in its color.
+    private(set) var background: VTerminal.RGB?
 
     @ObservationIgnored private(set) var terminal: VTerminal?
     @ObservationIgnored private var stream = TerminalStream(nonce: 0)
@@ -34,6 +38,19 @@ final class TerminalSession {
         self.session = session
         self.block = block
         data = DataConnection(base: host.config.url)
+        background = (UserDefaults.standard.dictionary(forKey: "backgrounds")?[backgroundKey] as? Int).map(VTerminal.RGB.init)
+            ?? TerminalTheme.chosen.map { VTerminal.RGB($0.colors[16]) }
+    }
+
+    private var backgroundKey: String { "\(host.id) \(UserDefaults.standard.string(forKey: "theme") ?? "")" }
+
+    /// Notes the background the view drew, for the page and the next opening.
+    func drew(background b: VTerminal.RGB) {
+        guard b != background else { return }
+        background = b
+        var all = UserDefaults.standard.dictionary(forKey: "backgrounds") ?? [:]
+        all[backgroundKey] = b.packed
+        UserDefaults.standard.set(all, forKey: "backgrounds")
     }
 
     /// Opens the stream from the start: a ticket, a HELLO, a new snapshot.
