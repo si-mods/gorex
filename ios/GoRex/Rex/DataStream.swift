@@ -212,13 +212,43 @@ final class DataConnection {
 }
 
 extension Data {
-    /// The length of the bytes without a UTF-8 character cut off at their end.
+    /// The length of the bytes without a UTF-8 character cut off at their
+    /// end: a lead byte with fewer bytes after it than it needs.
     var wholeUTF8: Int {
         let b = [UInt8](suffix(3))
         for (i, c) in b.enumerated().reversed() where c & 0xC0 != 0x80 {
-            let need = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1
+            guard (0xC2...0xF4).contains(c) else { return count }
+            let need = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : 2
             return b.count - i >= need ? count : count - (b.count - i)
         }
         return count
+    }
+
+    /// The bytes as text, which is what a terminal write takes: UTF-8 as
+    /// it is, and a byte that is no UTF-8, as an X10 mouse report's
+    /// coordinate past 95, as the character of its value. The server
+    /// writes that one as two bytes: what the UTF-8 mouse encoding sends.
+    var text: String {
+        if let s = String(validating: self, as: UTF8.self) { return s }
+        var s = ""
+        var i = startIndex
+        while i < endIndex {
+            if let n = (1...Swift.min(4, endIndex - i)).first(where: { String(validating: self[i..<i + $0], as: UTF8.self) != nil }) {
+                s += String(decoding: self[i..<i + n], as: UTF8.self)
+                i += n
+            } else {
+                s.unicodeScalars.append(Unicode.Scalar(self[i]))
+                i += 1
+            }
+        }
+        return s
+    }
+
+    /// What one write takes from the start of the bytes: at most max of
+    /// them, with no character cut off at its end, and their text; nil
+    /// while there is only part of a character.
+    func nextWrite(max: Int) -> (count: Int, text: String)? {
+        let n = prefix(max).wholeUTF8
+        return n > 0 ? (n, prefix(n).text) : nil
     }
 }

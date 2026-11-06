@@ -227,22 +227,36 @@ final class TerminalSession {
 
     /// Writes what Ghostty encoded for a key, a paste or the wheel to the
     /// program. The server runs writes in any order, so one goes at a time
-    /// and what comes meanwhile goes together next, whole characters only.
+    /// and what comes meanwhile goes together next, whole characters only,
+    /// in parts well under the server's message limit. What the server may
+    /// not have got, offline or as the connection died, goes again; what
+    /// is typed past a bound meanwhile is lost.
     /// The server drops what has the shape of Ghostty's own answers to the
     /// program's queries: its terminal answers them.
     func type(_ bytes: Data) {
+        guard typed.count + bytes.count <= 4 << 20 else {
+            return log.error("dropped \(bytes.count) typed bytes: \(self.typed.count) wait to be written")
+        }
         typed += bytes
-        guard !typing else { return }
-        let n = typed.wholeUTF8
-        guard n > 0 else { return }
-        let text = String(decoding: typed.prefix(n), as: UTF8.self)
-        typed = Data(typed.dropFirst(n))
+        write()
+    }
+
+    private func write() {
+        guard !typing, !closed, let (n, text) = typed.nextWrite(max: 64 << 10) else { return }
         typing = true
         let (session, block) = (session, block)
         Task {
-            _ = try? await host.control?.callBlock("write", session: session, block: block, ["data": text])
+            do {
+                try await host.live().callBlock("write", session: session, block: block, ["data": text])
+                typed = Data(typed.dropFirst(n))
+            } catch let e as RexError where !["offline", "closed", "timeout"].contains(e.code) {
+                log.error("write refused: \(e.message, privacy: .public)")
+                typed = Data(typed.dropFirst(n))
+            } catch {
+                try? await Task.sleep(for: .seconds(1))
+            }
             typing = false
-            if !typed.isEmpty { type(Data()) }
+            write()
         }
     }
 }

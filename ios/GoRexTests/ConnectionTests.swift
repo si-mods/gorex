@@ -66,4 +66,35 @@ nonisolated final class ConnectionTests: XCTestCase {
         }
         c.close()
     }
+
+    /// What is typed while the host is offline is written once it's back.
+    @MainActor func testTypingOfflineWritesOnReconnect() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        rex.respond = { method, _ in method == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.type(Data("ls".utf8))
+        s.type(Data("\r".utf8))
+        h.connect()
+        await until("written") { self.written(rex).joined() == "ls\r" }
+        s.close()
+        h.stop()
+    }
+
+    /// A paste larger than the server takes in one message goes in parts,
+    /// each well under it and ending on a whole character.
+    @MainActor func testLargeWriteGoesInParts() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        let text = String(repeating: "中\u{1}ab", count: 300_000)
+        s.type(Data(text.utf8))
+        await until("written", timeout: 20) { self.written(rex).joined() == text }
+        XCTAssertGreaterThan(written(rex).count, 1)
+        XCTAssertNotNil(h.control)
+        s.close()
+        h.stop()
+    }
 }

@@ -73,6 +73,7 @@ targets:
       - GoRex/Terminal/KeyEvent.swift
       - GoRex/Terminal/InputDocument.swift
       - GoRex/Terminal/TerminalTheme.swift
+      - GoRex/Terminal/TerminalSession.swift
       - path: ../internal/rexapi/testdata/rex-terminal-stream.bin
         buildPhase: resources
     dependencies:

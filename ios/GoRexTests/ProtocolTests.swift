@@ -201,6 +201,37 @@ nonisolated final class KeyTests: XCTestCase {
         XCTAssertEqual(d.prefix(3).wholeUTF8, 1)
         XCTAssertEqual(d.prefix(2).wholeUTF8, 1)
         XCTAssertEqual(Data("ab\u{1b}".utf8).wholeUTF8, 3)
+        // No lead byte: nothing to wait for.
+        XCTAssertEqual(Data([0x61, 0xFF]).wholeUTF8, 2)
+        XCTAssertEqual(Data([0x61, 0xC1]).wholeUTF8, 2)
+    }
+
+    /// Bytes that are no UTF-8, as an X10 mouse report past column 95,
+    /// go as the characters of their values, not as U+FFFD.
+    @MainActor func testText() {
+        XCTAssertEqual(Data("a中\u{1b}".utf8).text, "a中\u{1b}")
+        XCTAssertEqual(Data([0x1B, 0x5B, 0x4D, 0x20, 0xF0, 0x21]).text, "\u{1b}[M \u{F0}!")
+        XCTAssertEqual(Data([0xE4, 0xB8, 0xAD, 0xFF, 0x80]).text, "中\u{FF}\u{80}")
+    }
+
+    /// A write takes at most its limit, ending on a whole character.
+    @MainActor func testNextWrite() throws {
+        let d = Data("ab中".utf8)
+        XCTAssertNil(d.dropFirst(2).prefix(2).nextWrite(max: 8))
+        XCTAssertEqual(d.nextWrite(max: 3)?.count, 2)
+        XCTAssertEqual(d.nextWrite(max: 3)?.text, "ab")
+        XCTAssertEqual(d.nextWrite(max: 8)?.text, "ab中")
+        var big = Data(String(repeating: "中\u{1}", count: 100_000).utf8)
+        var parts: [String] = []
+        while let (n, text) = big.nextWrite(max: 64 << 10) {
+            parts.append(text)
+            big = Data(big.dropFirst(n))
+        }
+        XCTAssertEqual(parts.joined(), String(repeating: "中\u{1}", count: 100_000))
+        for p in parts {
+            let json = try JSONSerialization.data(withJSONObject: ["data": p])
+            XCTAssertLessThan(json.count, 1 << 19)
+        }
     }
 
     @MainActor func testCtrlAndAlt() {
