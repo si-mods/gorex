@@ -73,6 +73,8 @@ final class TerminalView: UIView, TerminalOutput {
     private let writes = DispatchQueue(label: "dev.gorex.ios.terminal.output")
     /// Reads what Ghostty encodes for the program.
     private var input: DispatchSourceRead?
+    /// The hardware key held, and its repeat.
+    private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -153,6 +155,7 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// Frees the surface, once its last output is written.
     func close() {
+        held?.task.cancel()
         guard let s = surface else { return }
         surface = nil
         output = -1
@@ -405,25 +408,71 @@ final class TerminalView: UIView, TerminalOutput {
         t.withCString { ghostty_surface_text(s, $0, UInt(t.utf8.count)) }
     }
 
-    /// Hardware keys that type no text, and Ctrl chords; the rest arrive as
-    /// insertText.
+    /// Hardware keys that type no text, Enter, Tab and Backspace with a
+    /// modifier, and Ctrl and Alt chords: Ghostty encodes them, Alt as Meta,
+    /// and they repeat while held. The rest arrive as insertText and
+    /// deleteBackward, as all keys do but Ctrl chords while an input method
+    /// composes.
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         var rest = Set<UIPress>()
         for p in presses {
-            guard let k = p.key else { rest.insert(p); continue }
-            let f = k.modifierFlags
-            if let name = Self.names[k.keyCode] {
-                forget()
-                press([.named(name, shift: f.contains(.shift), ctrl: f.contains(.control), alt: f.contains(.alternate))])
-            } else if f.contains(.control), !k.charactersIgnoringModifiers.isEmpty {
-                forget()
-                press(KeyEvent.typing(k.charactersIgnoringModifiers, ctrl: true))
-            } else {
+            guard let k = p.key, let keys = Self.keys(for: k, composing: document.markedRange != nil) else {
                 rest.insert(p)
+                continue
             }
+            forget()
+            pressHeld(keys, for: k.keyCode)
         }
         if !rest.isEmpty { super.pressesBegan(rest, with: event) }
     }
+
+    override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        letGo(presses)
+        super.pressesEnded(presses, with: event)
+    }
+
+    override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        letGo(presses)
+        super.pressesCancelled(presses, with: event)
+    }
+
+    /// The keys Ghostty encodes for a hardware key, or nil for UIKit's text input.
+    private static func keys(for k: UIKey, composing: Bool) -> [KeyEvent]? {
+        let f = k.modifierFlags
+        let shift = f.contains(.shift), ctrl = f.contains(.control), alt = f.contains(.alternate)
+        if composing && !ctrl { return nil }
+        if let name = names[k.keyCode] { return [.named(name, shift: shift, ctrl: ctrl, alt: alt)] }
+        guard shift || ctrl || alt, !f.contains(.command) else { return nil }
+        if let name = modified[k.keyCode] { return [.named(name, shift: shift, ctrl: ctrl, alt: alt)] }
+        guard ctrl || alt, !k.charactersIgnoringModifiers.isEmpty else { return nil }
+        return KeyEvent.typing(k.charactersIgnoringModifiers, ctrl: ctrl, alt: alt, shift: shift)
+    }
+
+    /// Presses keys, and again while their hardware key is held, as macOS
+    /// repeats at its fastest: after 225 ms, every 30 ms.
+    private func pressHeld(_ keys: [KeyEvent], for code: UIKeyboardHIDUsage) {
+        press(keys)
+        held?.task.cancel()
+        held = (code, Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(225))
+            while !Task.isCancelled, let v = self {
+                v.press(keys)
+                try? await Task.sleep(for: .milliseconds(30))
+            }
+        })
+    }
+
+    /// Stops the repeat when its key is let go.
+    private func letGo(_ presses: Set<UIPress>) {
+        guard let h = held, presses.contains(where: { $0.key?.keyCode == h.code }) else { return }
+        h.task.cancel()
+        held = nil
+    }
+
+    /// Keys that type text, or edit it, unless a modifier is held.
+    private static let modified: [UIKeyboardHIDUsage: String] = [
+        .keyboardReturnOrEnter: "enter", .keyboardTab: "tab", .keyboardDeleteOrBackspace: "backspace",
+    ]
 
     private static let names: [UIKeyboardHIDUsage: String] = [
         .keyboardEscape: "escape", .keyboardUpArrow: "arrow_up", .keyboardDownArrow: "arrow_down",
