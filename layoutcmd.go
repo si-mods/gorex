@@ -13,6 +13,7 @@ import (
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // takeCommands runs what other clients of this machine's server ask of
@@ -197,6 +198,11 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			return fail("action_failed", err.Error())
 		}
 		return res
+	}
+	// A server of before it made the layout's changes queues them here:
+	// the app, read-only on it, cannot make them either.
+	if a.st != nil && a.st.readOnly {
+		return fail("read_only", locales.ServerLayoutReadOnly())
 	}
 	return fail("desktop_unavailable", "the session server makes this change")
 }

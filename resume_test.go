@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -240,6 +241,14 @@ func TestResumeHintSession(t *testing.T) {
 	}
 }
 
+// TestHelperWait is the stand-in programs of the tests run, a copy of this
+// binary: it waits GOREX_HELPER_WAIT seconds, and is no test otherwise.
+func TestHelperWait(t *testing.T) {
+	if n, err := strconv.Atoi(os.Getenv("GOREX_HELPER_WAIT")); err == nil {
+		time.Sleep(time.Duration(n) * time.Second)
+	}
+}
+
 // TestClaudeSessionRecorded runs a stand-in for Claude Code, a copy of a
 // program that waits named claude, with a config dir and the file Claude
 // Code keeps there: the session server finds its conversation, the layout
@@ -251,12 +260,18 @@ func TestClaudeSessionRecorded(t *testing.T) {
 		return p.info.Idle && p.term != nil && strings.Contains(p.term.Text(), testShell.prompt)
 	})
 	bin, config := t.TempDir(), t.TempDir()
-	src, fake, run := "/bin/sleep", filepath.Join(bin, "claude"), ""
+	// The stand-in is this test binary, which waits as TestHelperWait: a
+	// copy of a system binary may not run on macOS.
+	src, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fake, run := filepath.Join(bin, "claude"), ""
 	if runtime.GOOS == "windows" {
 		src, fake = filepath.Join(os.Getenv("SystemRoot"), "System32", "PING.EXE"), filepath.Join(bin, "claude.exe")
 		run = `set "CLAUDE_CONFIG_DIR=` + config + `" && "` + fake + `" -n 30 127.0.0.1 >nul`
 	} else {
-		run = "CLAUDE_CONFIG_DIR='" + config + "' '" + fake + "' 30"
+		run = "GOREX_HELPER_WAIT=30 CLAUDE_CONFIG_DIR='" + config + "' '" + fake + "' -test.run='^TestHelperWait$'"
 	}
 	b, err := os.ReadFile(src)
 	if err != nil {
@@ -299,11 +314,20 @@ func TestClaudeSessionRecorded(t *testing.T) {
 		refresh(a)
 		return p.info.AgentSession == id
 	}, "the conversation in the session's info")
-	n := a.savedTab(a.tab()).Root
-	if n.AgentSession != id || n.AgentConfigDir != config {
-		t.Fatalf("the layout kept %q in %q", n.AgentSession, n.AgentConfigDir)
+	// The server stamps the conversation on the layout, which a run after
+	// a crash restores from.
+	var n *layout.Node
+	waitForThat(t, func() bool {
+		s := savedWorkspaces(t, a.client)
+		n = layout.Find(s.Sessions[0].Tabs[0].Root, p.SID)
+		return n != nil && n.AgentSession == id && n.AgentConfigDir == config && n.Prog == "claude"
+	}, "the conversation in the server's layout")
+	// That run starts a shell in the pane's place, at its prompt.
+	again, err := a.client.Create(rex.CreateOptions{Command: []string{testShell.path}, Dir: os.TempDir()})
+	if err != nil {
+		t.Fatal(err)
 	}
-	n.SID = "gone"
+	n.SID = again.ID
 	r := &App{client: a.client}
 	if !r.reconcile(layout.Layout{Tabs: []layout.Tab{{Root: n}}}) {
 		t.Fatal("nothing restored")

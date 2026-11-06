@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"gorex/locales"
 	"io"
 	"os"
 	"slices"
@@ -1223,4 +1224,23 @@ func TestDiffLayoutApplies(t *testing.T) {
 			t.Fatalf("step %d: the server has\n%s\nwant\n%s", i, g, w)
 		}
 	}
+}
+
+// TestReadOnlyCommandSays checks the answer of a layout change an old
+// server queues to the app, which is read-only on it ("Later"): the
+// banner's words, which say to restart the server, not that the server
+// makes it.
+func TestReadOnlyCommandSays(t *testing.T) {
+	a, _ := newTestApp(t)
+	for _, ro := range []bool{true, false} {
+		a.st.readOnly = ro
+		res := a.command(rex.LayoutCommand{Op: "pane.split", SID: a.tab().Focus.SID})
+		switch {
+		case ro && (res.Code != "read_only" || res.Error != locales.ServerLayoutReadOnly()):
+			t.Errorf("read-only: %+v", res)
+		case !ro && res.Code != "desktop_unavailable":
+			t.Errorf("on a server that makes it: %+v", res)
+		}
+	}
+	a.st.readOnly = false
 }

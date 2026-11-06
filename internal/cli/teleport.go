@@ -52,7 +52,7 @@ func teleportCmd(args []string, out, errOut io.Writer) (int, bool) {
 	steps := map[string]string{rex.TeleportPacking: "packing", rex.TeleportSending: "sending to " + host, rex.TeleportStarting: "starting on " + host}
 	in, err := rex.Teleport(context.Background(), src, sid, dst, func(step, newSID string) {
 		fmt.Fprintf(errOut, "gorex teleport: %s…\n", steps[step])
-		if step == rex.TeleportSending {
+		if step == rex.TeleportSending && newSID != "" {
 			// The layout notes the session before the host starts it, so
 			// that the window opens no tab of its own for it.
 			src.Command(rex.LayoutCommand{Op: "pane.teleporting", SID: sid, Target: newSID, Host: addr})

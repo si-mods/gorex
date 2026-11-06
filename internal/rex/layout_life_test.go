@@ -529,3 +529,75 @@ func TestStampAfterRun(t *testing.T) {
 		t.Errorf("an animating title changed the revision %d to %d, the journal %d to %d", rev, got, lines, journalLines())
 	}
 }
+
+// TestKillDuringApply kills a session over the socket while another
+// change of the layout is under way, holding the locks a change takes:
+// the kill waits for it, takes the pane out, and neither deadlocks.
+func TestKillDuringApply(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	inApply, release := make(chan struct{}), make(chan struct{})
+	applyHook = func() {
+		select {
+		case <-inApply:
+		default:
+			close(inApply)
+			<-release
+		}
+	}
+	t.Cleanup(func() { applyHook = nil })
+	created := make(chan LayoutCommand, 1)
+	go func() {
+		res, _ := c.Command(LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+		created <- res
+	}()
+	<-inApply
+	killed := make(chan error, 1)
+	go func() { killed <- c.Kill(one.New) }()
+	time.Sleep(100 * time.Millisecond)
+	close(release)
+	select {
+	case <-killed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the kill deadlocked")
+	}
+	select {
+	case <-created:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the apply deadlocked")
+	}
+	if _, ok := find(&layout.Store{Sessions: storeOf(t, c).Sessions}, "", one.New); ok {
+		t.Error("the killed pane stays")
+	}
+}
+
+// TestResizeStampsSize checks that a pane's size in the layout follows its
+// session's after a resize, as a divider drag makes, with no revision, and
+// that the server sizes the panes it makes from the sessions, not from a
+// size the layout kept: a new tab as the active tab's pane, a split half.
+func TestResizeStampsSize(t *testing.T) {
+	quickRefresh(t)
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	rev := must(c.LayoutState()).Revision
+	if err := c.Resize(one.New, 66, 15); err != nil {
+		t.Fatal(err)
+	}
+	waitStore(t, c, "the stamped size", func(st layout.Store) bool {
+		n := st.Sessions[0].Tabs[0].Root
+		return n.Cols == 66 && n.Rows == 15
+	})
+	if got := must(c.LayoutState()).Revision; got != rev {
+		t.Errorf("the size counted a revision: %d, was %d", got, rev)
+	}
+	two := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	if in, _ := liveSession(t, c, two.New); in.Cols != 66 || in.Rows != 15 {
+		t.Errorf("a new tab of %dx%d", in.Cols, in.Rows)
+	}
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Command: cmd})
+	if in, _ := liveSession(t, c, split.New); in.Cols != 33 || in.Rows != 15 {
+		t.Errorf("a split of %dx%d", in.Cols, in.Rows)
+	}
+}
