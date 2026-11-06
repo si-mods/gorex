@@ -601,3 +601,36 @@ func TestResizeStampsSize(t *testing.T) {
 		t.Errorf("a split of %dx%d", in.Cols, in.Rows)
 	}
 }
+
+// TestNewTabSize checks the size a new tab starts at: the room of the
+// active tab's tiled panes, its splits added up as the window lays them
+// out, not its focused narrow split's, which a tab made in the background
+// would wrap its output to; with no pane sized there, the space's largest.
+func TestNewTabSize(t *testing.T) {
+	_, c := applyFixture(t)
+	cmd, dir := testShell()
+	one := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	// One pane left, two right, one above the other, as a window of
+	// 77x33 cells lays them out.
+	right := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Command: cmd})
+	down := command(t, c, LayoutCommand{Op: "pane.split", SID: right.New, Vertical: true, Command: cmd})
+	for sid, size := range map[string][2]int{one.New: {60, 30}, right.New: {12, 11}, down.New: {12, 17}} {
+		if err := c.Resize(sid, size[0], size[1]); err != nil {
+			t.Fatal(err)
+		}
+		waitInfo(t, c, sid, "the size", func(in SessionInfo) bool { return in.Cols == size[0] && in.Rows == size[1] })
+	}
+	bg := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	if in, _ := liveSession(t, c, bg.New); in.Cols != 60+splitCost+12 || in.Rows != 11+splitCost+17 {
+		t.Errorf("a tab in the background of %dx%d, want %dx%d", in.Cols, in.Rows, 77, 33)
+	}
+	// A page alone in the active tab: the space's largest pane, the tab
+	// just made.
+	st := storeOf(t, c)
+	web := layout.Tab{ID: "web", Root: &layout.Node{URL: "https://example.com/", ID: "p"}}
+	command(t, c, LayoutCommand{Op: "tab.set", Space: st.Sessions[0].ID, TabLayout: &web, Focus: true})
+	next := command(t, c, LayoutCommand{Op: "tab.create", Dir: dir, Command: cmd})
+	if in, _ := liveSession(t, c, next.New); in.Cols != 77 || in.Rows != 33 {
+		t.Errorf("a tab beside a page of %dx%d, want the largest, 77x33", in.Cols, in.Rows)
+	}
+}

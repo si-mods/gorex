@@ -1244,3 +1244,23 @@ func TestReadOnlyCommandSays(t *testing.T) {
 	}
 	a.st.readOnly = false
 }
+
+// TestOutboxUseForgetsRevision checks that a connection to a server that
+// started again, whose revisions count from 1, starts the app's from
+// nothing: the revision it follows, and its tabs', which it reads again
+// from the layout, which keeps the tabs' own (layout.Tab.Rev).
+func TestOutboxUseForgetsRevision(t *testing.T) {
+	var o outbox
+	o.took(12, []byte(`{"version":2,"sessions":[{"id":"w","tabs":[{"id":"a","rev":7,"root":{"sid":"1"}}]}]}`))
+	if o.revision() != 12 || o.revs["a"] != 7 {
+		t.Fatalf("took %d %v", o.revision(), o.revs)
+	}
+	o.use(nil, nil, nil)
+	if o.revision() != 0 || o.revs != nil {
+		t.Errorf("after a new connection: %d %v", o.revision(), o.revs)
+	}
+	o.took(2, []byte(`{"version":2,"sessions":[{"id":"w","tabs":[{"id":"a","rev":7,"root":{"sid":"1"}}]}]}`))
+	if o.revision() != 2 || o.revs["a"] != 7 {
+		t.Errorf("after the restarted server's layout: %d %v", o.revision(), o.revs)
+	}
+}

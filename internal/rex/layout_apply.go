@@ -770,20 +770,15 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 	if at < 0 {
 		at = afterLocal(w)
 	}
-	// The size of the pane the window shows, the active tab's focused one.
+	// The room of the tab the window shows, all its tiled panes', so that
+	// a tab made in the background does not start at a narrow split's size
+	// and wrap what it prints; else the largest pane of the space.
 	var cols, rows int
 	if w.Active >= 0 && w.Active < len(w.Tabs) {
-		t := &w.Tabs[w.Active]
-		focused := layout.FirstLeaf(t.Root)
-		if leaves := layout.Leaves(t.Root); t.Focus >= 0 && t.Focus < len(leaves) {
-			focused = leaves[t.Focus]
-		}
-		if f := t.FocusFloat; f > 0 && f <= len(t.Floats) {
-			focused = t.Floats[f-1].Pane
-		}
-		if in, ok := s.sessionOf(focused); ok {
-			cols, rows = in.Cols, in.Rows
-		}
+		cols, rows = s.area(w.Tabs[w.Active].Root)
+	}
+	if cols <= 0 || rows <= 0 {
+		cols, rows = s.largest(w)
 	}
 	n, err := a.start(dir, cols, rows, c.Command)
 	if err != nil {
@@ -795,6 +790,67 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 	insertTab(w, min(at, len(w.Tabs)), t, c.Focus)
 	res.New, res.Tab = n.SID, t.ID
 	return res
+}
+
+// splitCost is what a split takes of its room, in cells, as the window
+// lays it out at its font: the gap between the sides and their padding,
+// and below the lower side's header too; 135 columns split into 65 and 65,
+// 33 rows into 14 and 14.
+const splitCost = 5
+
+// area is the size, in cells, of the room of the tiled panes under n, as
+// the window lays them out: a split's sides, side by side or one above
+// the other, with what the split takes between them (splitCost); 0, 0
+// when no pane under n has a size.
+func (s *Server) area(n *layout.Node) (cols, rows int) {
+	if n == nil {
+		return 0, 0
+	}
+	if n.IsLeaf() {
+		return s.sizeOf(n)
+	}
+	ac, ar := s.area(n.A)
+	bc, br := s.area(n.B)
+	switch {
+	case ac <= 0 || ar <= 0:
+		return bc, br
+	case bc <= 0 || br <= 0:
+		return ac, ar
+	case n.Vertical:
+		return max(ac, bc), ar + br + splitCost
+	}
+	return ac + bc + splitCost, max(ar, br)
+}
+
+// sizeOf is the size of leaf n: its session's, else the one the layout
+// keeps, as of another host's pane; 0, 0 for none, as a page's.
+func (s *Server) sizeOf(n *layout.Node) (cols, rows int) {
+	if n.Host == "" && n.SID != "" {
+		s.mu.Lock()
+		ss := s.sessions[n.SID]
+		s.mu.Unlock()
+		if ss != nil {
+			ss.mu.Lock()
+			defer ss.mu.Unlock()
+			return ss.cols, ss.rows
+		}
+	}
+	return n.Cols, n.Rows
+}
+
+// largest is the size of the largest pane of w, tiled or floating; 0, 0
+// for none.
+func (s *Server) largest(w *layout.Workspace) (cols, rows int) {
+	for _, t := range w.Tabs {
+		for _, r := range t.Roots() {
+			for _, l := range layout.Leaves(r) {
+				if c, r := s.sizeOf(l); c*r > cols*rows {
+					cols, rows = c, r
+				}
+			}
+		}
+	}
+	return cols, rows
 }
 
 // split makes pane.split: a new session beside the pane, in its split of

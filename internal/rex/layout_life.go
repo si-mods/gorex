@@ -188,21 +188,42 @@ func afterLocal(w *layout.Workspace) int {
 const restoreBatch = 8
 
 // lostPanes are the panes of this machine of the layout whose sessions
-// the server does not have, as the run before lost them past restoreMost,
-// or as it stopped: restoreLost starts them once the server listens, and
-// an attach to one waits for it meanwhile (awaitRestore).
+// the server does not have, as the run before ended with them, a crash,
+// a restart or a stop: restoreLost starts them once the server listens,
+// and an attach to one waits for it meanwhile (awaitRestore).
 func (s *Server) lostPanes() []layout.Node {
 	st := layout.Parse(s.layout)
+	// The spaces the windows show first, and in each its active tab first:
+	// the panes in sight attach first.
+	var spaces []*layout.Workspace
+	for _, id := range st.Windows {
+		if w := st.Space(id); w != nil {
+			spaces = append(spaces, w)
+		}
+	}
+	for i := range st.Sessions {
+		if w := &st.Sessions[i]; !slices.Contains(spaces, w) {
+			spaces = append(spaces, w)
+		}
+	}
 	var lost []layout.Node
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for sid, n := range localSIDs(&st) {
-		if s.sessions[sid] == nil {
-			if s.restoring == nil {
-				s.restoring = map[string]chan struct{}{}
+	for _, w := range spaces {
+		for k := range w.Tabs {
+			t := w.Tabs[(k+max(w.Active, 0))%len(w.Tabs)]
+			for _, r := range t.Roots() {
+				for _, n := range layout.Leaves(r) {
+					if n.Host != "" || n.SID == "" || s.sessions[n.SID] != nil || s.restoring[n.SID] != nil {
+						continue
+					}
+					if s.restoring == nil {
+						s.restoring = map[string]chan struct{}{}
+					}
+					s.restoring[n.SID] = make(chan struct{})
+					lost = append(lost, *n)
+				}
 			}
-			s.restoring[sid] = make(chan struct{})
-			lost = append(lost, *n)
 		}
 	}
 	return lost
@@ -215,9 +236,12 @@ func (s *Server) lostPanes() []layout.Node {
 func (s *Server) restoreLost(owners map[string]string, lost []layout.Node) {
 	var failed []string
 	for i := 0; i < len(lost); i += restoreBatch {
+		// One after another, in the order the windows show them: shells
+		// started side by side, as consoles on Windows, slow each other
+		// down. An attach to one waits for it alone.
 		s.ops.RLock()
 		for _, n := range lost[i:min(i+restoreBatch, len(lost))] {
-			s.restorePane(&n, owners[n.SID], false)
+			s.restorePane(&n, owners[n.SID])
 			s.mu.Lock()
 			if s.sessions[n.SID] == nil {
 				failed = append(failed, n.SID)

@@ -21,11 +21,11 @@ import (
 // leaves its last layout in the journal, and the server that comes next
 // starts the sessions of its panes again: the same ids, at the directories
 // the panes were in, so that the windows attach to the sessions they had as
-// if nothing happened. A run that stops to be replaced (stopRestart) leaves
-// its layout the same way: the server after it starts those sessions again,
-// as new shells. Those it does not start before it answers, past
-// restoreMost or of a run that stopped, it starts once it listens
-// (restoreLost).
+// if nothing happened. A run that stops to be replaced (stopRestart), or
+// that stopped, leaves its layout the same way: the server after it starts
+// those sessions again, as new shells. It starts them in the background
+// once it listens (restoreLost), so that no shell's start, slow as a
+// console's on Windows, holds its answers up.
 
 const (
 	// journalLimit is the size past which the journal keeps only its last
@@ -211,21 +211,6 @@ func readJournal() []journalEntry {
 	return out
 }
 
-// journalResumes tells whether this run starts the sessions of the layout
-// the run before it kept before it answers: that run did not stop, as one
-// that crashed or was killed, or it stopped to be replaced (stopRestart). A
-// run that stopped and ended its sessions — quit, idle, upgrade — leaves
-// them to start once the server listens, as new shells. A journal
-// without entries is one of a run before the journal, which resumes only
-// what its layout names.
-func journalResumes(entries []journalEntry) bool {
-	if len(entries) == 0 {
-		return true
-	}
-	last := entries[len(entries)-1]
-	return last.Event != eventStop || last.Reason == stopRestart
-}
-
 // lastLayout is the layout of the last entry that kept one, for a run whose
 // layout.json is gone or cut short.
 func lastLayout(entries []journalEntry) json.RawMessage {
@@ -276,45 +261,19 @@ func journalOwners(entries []journalEntry) map[string]string {
 	return out
 }
 
-// restoreSessions starts the sessions a run lost. l is the layout of the run
-// before this one, which did not stop: the sessions of its panes start again
-// at the directories the panes were in, with the ids the layout names, so
-// that the app attaches to the sessions it had. owners is the journal's: a
-// session started again stays its client's.
-func (s *Server) restoreSessions(l json.RawMessage, owners map[string]string) {
-	want := 0
-	walkPanes(l, func(n *layout.Node) {
-		// A pane of this machine, with a session the layout names.
-		if n.SID == "" || n.Host != "" {
-			return
-		}
-		if s.restorePane(n, owners[n.SID], true) {
-			want++
-		}
-	})
-	if want > 0 {
-		log.Printf("rex: resumed %d sessions of the layout the last run kept", want)
-	}
-}
-
-// restoreMost is the most sessions a run's layout starts again: a layout of
-// many panes starts no army of shells before the server answers a client.
-var restoreMost = 32
-
-// restorePane starts the session of node n, when the server does not have it,
-// and when capped while it has fewer than restoreMost: it reports whether it
-// did.
-func (s *Server) restorePane(n *layout.Node, owner string, capped bool) bool {
+// restorePane starts the session of node n, when the server does not have
+// it, with the id the layout names, so that the app attaches to the session
+// it had; owner is the journal's: a session started again stays its
+// client's. It reports whether it did.
+func (s *Server) restorePane(n *layout.Node, owner string) bool {
 	s.mu.Lock()
 	_, live := s.sessions[n.SID]
-	more := !capped || len(s.sessions) < restoreMost
 	s.mu.Unlock()
 	if live {
 		return false
 	}
-	if !more {
-		log.Printf("rex: resuming session %s once the server listens: %d sessions already", n.SID, restoreMost)
-		return false
+	if restoreHook != nil {
+		restoreHook()
 	}
 	// A directory gone, as a work tree removed, starts it at home.
 	dir := n.Dir
@@ -338,38 +297,9 @@ func (s *Server) restorePane(n *layout.Node, owner string, capped bool) bool {
 	return true
 }
 
-// walkPanes calls f with each pane of layout l.
-func walkPanes(l json.RawMessage, f func(n *layout.Node)) {
-	if len(l) == 0 {
-		return
-	}
-	st := layout.Store{}
-	if json.Unmarshal(l, &st) != nil {
-		return
-	}
-	if st.Version < 2 {
-		st.Sessions = []layout.Workspace{{Layout: st.Layout}}
-	}
-	var walk func(n *layout.Node)
-	walk = func(n *layout.Node) {
-		if n == nil {
-			return
-		}
-		if n.A == nil || n.B == nil {
-			f(n)
-			return
-		}
-		walk(n.A)
-		walk(n.B)
-	}
-	for _, w := range st.Sessions {
-		for _, t := range w.Layout.Tabs {
-			for _, n := range t.Roots() {
-				walk(n)
-			}
-		}
-	}
-}
+// restoreHook, when set, runs before each session restorePane starts: for
+// tests.
+var restoreHook func()
 
 // inventory is the sessions the server holds now, as a stop record keeps
 // them.

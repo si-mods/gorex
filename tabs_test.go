@@ -96,3 +96,21 @@ func TestPrivateUse(t *testing.T) {
 		}
 	}
 }
+
+// TestRenameSelectsName checks that renaming a tab starts with its name
+// selected, as macOS's rename fields do: what is typed replaces it, and
+// what is typed after goes on from there.
+func TestRenameSelectsName(t *testing.T) {
+	a, tt := newTestApp(t)
+	a.tab().Name = "Main Work"
+	tt.Frame()
+	a.startRename()
+	tt.Frame()
+	tt.Type("P4")
+	tt.Frame()
+	tt.Type(" Renamed")
+	tt.Frame()
+	if a.renameText != "P4 Renamed" {
+		t.Errorf("the field holds %q", a.renameText)
+	}
+}
