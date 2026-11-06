@@ -137,16 +137,6 @@ final class ControlConnection {
         return (r.seq, r.payload)
     }
 
-    /// Sends a request now, in order with the others sent so, and ignores
-    /// its response: for keys, which the server runs in the order sent.
-    func post(_ method: String, _ payload: [String: Any]) {
-        if closed { return }
-        nextID += 1
-        let req: [String: Any] = ["type": "request", "id": String(nextID), "method": method, "payload": payload]
-        guard let d = try? JSONSerialization.data(withJSONObject: req) else { return }
-        task.send(.string(String(decoding: d, as: UTF8.self))) { _ in }
-    }
-
     /// Calls a block method, such as com.superlogical.terminal.title.
     @discardableResult
     func callBlock(_ method: String, session: String, block: String, _ args: [String: Any] = [:]) async throws -> [String: Any] {
