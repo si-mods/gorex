@@ -112,7 +112,8 @@ func (s *Server) fileSession(sid, peer, dir string) (*session, string, error) {
 // dropDir is this user's folder in the temporary directory, where a put
 // with Temp goes, made when it is not there. Another user may have made
 // the path first in a temporary directory all share: it is taken only as
-// a directory of this user's alone, not a link.
+// a directory of this user's, not a link, which it then lets no other
+// user read or write in, whatever the umask or a chmod made it.
 func dropDir() (string, error) {
 	name := "gorex-drops"
 	if uid := os.Getuid(); uid >= 0 { // Windows has none, and a temporary directory per user
@@ -127,7 +128,12 @@ func dropDir() (string, error) {
 		return "", err
 	}
 	if !st.IsDir() || !ownDir(st) {
-		return "", fmt.Errorf("rex: %s is not a folder of this user's alone", dir)
+		return "", fmt.Errorf("rex: %s is not a folder of this user's", dir)
+	}
+	if st.Mode().Perm() != 0o700 {
+		if err := os.Chmod(dir, 0o700); err != nil {
+			return "", err
+		}
 	}
 	return dir, nil
 }

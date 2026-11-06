@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -24,7 +25,8 @@ import (
 
 // Files dropped on a pane of a host go there: each is sent into a
 // temporary folder of the host's, not to litter the directory the pane
-// works in, and its path there is pasted, as a drop on a pane of this
+// works in (into that directory, of a host before CapabilityFileTemp),
+// and its path there is pasted, as a drop on a pane of this
 // machine pastes the paths here. A drop on a pane of this machine is the
 // terminal's own. A file path
 // Command-clicked in a pane of a host comes here, into Downloads.
@@ -79,12 +81,13 @@ func (a *App) upload(p *Pane, paths []string) {
 			items = append(items, item{path: path})
 		default:
 			x.size = fi.Size()
-			it := item{path: path, x: x, put: rex.FilePut{SID: p.SID, Name: x.name, Size: x.size, ID: uploadID(p.SID, path, fi), Conflict: "rename", Temp: true}}
+			it := item{path: path, x: x, put: rex.FilePut{SID: p.SID, Name: x.name, Size: x.size, ID: uploadID(p.SID, path, fi), Conflict: "rename"}}
 			it.ctx, x.cancel = context.WithCancel(context.Background())
 			items = append(items, it)
 		}
 	}
 	h, offline, shell := p.host, locales.HostsNotConnectedTo(p.host.Name), p.info.Shell
+	temp := h.hello.Can(rex.CapabilityFileTemp)
 	update := a.updater()
 	prev, done := p.uploading, make(chan struct{})
 	p.uploading = done
@@ -99,6 +102,7 @@ func (a *App) upload(p *Pane, paths []string) {
 				pasted = append(pasted, it.path)
 				continue
 			}
+			it.put.Temp = temp
 			c := h.current()
 			if c == nil {
 				it.x.cancel()
@@ -316,7 +320,10 @@ func (a *App) fileDrop(c *ui.Context, k *colors, p *Pane, card, tv ui.Element) {
 			}
 		}
 		if _, over := ui.DataDragOver(card, fileDrops); over {
-			label = locales.PaneDropUpload(h.Name)
+			label = locales.PaneDropUpload(cmp.Or(p.info.Dir, "~"), h.Name)
+			if h.hello.Can(rex.CapabilityFileTemp) {
+				label = locales.PaneDropUploadTemp(h.Name)
+			}
 			drawPaneDrop(card, k, dropCenter)
 		}
 	case h != nil && h.current() != nil && tv.FileDragOver():

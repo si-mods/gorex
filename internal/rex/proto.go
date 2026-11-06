@@ -78,9 +78,13 @@ const CapabilityTerminalQuery = "terminal.query"
 // "file.put" and "file.get" connections, and "transfer" events.
 const CapabilityFileTransfer = "file.transfer"
 
+// CapabilityFileTemp is what a server that takes a put into a temporary
+// folder of the user's (FilePut.Temp) says it does.
+const CapabilityFileTemp = "file.temp"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityTeleport}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -728,8 +732,8 @@ type FilePut struct {
 	// restart a put into its directory removes a day after.
 	Abort bool `json:"abort,omitempty"`
 	// Temp, set, sends the file into the server user's own folder in the
-	// temporary directory instead of Dir. A server before it ignores it
-	// and uses Dir.
+	// temporary directory instead of Dir (CapabilityFileTemp). A server
+	// before it ignores it and uses Dir.
 	Temp bool `json:"temp,omitempty"`
 }
 

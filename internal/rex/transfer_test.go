@@ -761,8 +761,8 @@ func TestFileTemp(t *testing.T) {
 	}
 }
 
-// TestDropDirRefuses takes no folder in the temporary directory another
-// user may read or write in, or have made a link of.
+// TestDropDirRefuses takes no link or file for the folder in the
+// temporary directory, and makes its own folder the user's alone.
 func TestDropDirRefuses(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("a temporary directory of the user's own")
@@ -776,8 +776,11 @@ func TestDropDirRefuses(t *testing.T) {
 	if err := os.Chmod(dir, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := dropDir(); err == nil {
-		t.Error("took a folder all may write in")
+	if _, err := dropDir(); err != nil {
+		t.Fatalf("dropDir of its own folder all may write in: %v", err)
+	}
+	if st, err := os.Stat(dir); err != nil || st.Mode().Perm() != 0o700 {
+		t.Errorf("left the folder %v %v, want 0700", st.Mode().Perm(), err)
 	}
 	os.Remove(dir)
 	other := t.TempDir()
