@@ -154,6 +154,17 @@ nonisolated final class EventTests: XCTestCase {
         ])
         XCTAssertEqual(v.windows?.first?.block, "block:7")
     }
+
+    @MainActor func testWindowName() throws {
+        let v = try SessionView(json: [
+            "revision": 1, "session_id": "session:1",
+            "windows": [
+                ["window_id": "window:0123abcd4567ef89", "label": "Window 4567ef89"],
+                ["window_id": "window:89", "label": "build"],
+            ],
+        ])
+        XCTAssertEqual(v.windows?.map(\.name), [nil, "build"])
+    }
 }
 
 nonisolated final class KeyTests: XCTestCase {

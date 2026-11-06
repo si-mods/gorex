@@ -266,6 +266,23 @@ final class Host: Identifiable {
         ]).payload
         return (r?["block_ids"] as? [Any])?.first as? String
     }
+
+    /// Names a window; an empty name gives back its default.
+    func renameWindow(_ window: String, in session: String, to label: String) async throws {
+        _ = try await control?.call("session.set_window_label", ["session_id": session, "window_id": window, "label": label])
+    }
+
+    /// Moves a window before another, or to the end when before is nil.
+    func moveWindow(_ window: String, in session: String, before: String?) async throws {
+        var p: [String: Any] = ["session_id": session, "window_id": window]
+        if let before { p["before_window_id"] = before }
+        _ = try await control?.call("session.move_window", p)
+    }
+
+    /// Closes a window and its panes.
+    func closeWindow(_ window: String, in session: String) async throws {
+        _ = try await control?.call("session.close_window", ["session_id": session, "window_id": window])
+    }
 }
 
 /// The hosts the user added, kept in UserDefaults.

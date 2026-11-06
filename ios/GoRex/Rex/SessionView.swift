@@ -34,6 +34,13 @@ extension SessionView.Window {
         focused_block_id ?? layers?.lazy.compactMap { $0.blocks?.first?.block_id }.first
     }
 
+    /// The name the user gave it; nil when its label is the server's
+    /// default, "Window " and the end of its ID.
+    var name: String? {
+        guard let label, !label.isEmpty, label != "Window " + window_id.suffix(8) else { return nil }
+        return label
+    }
+
     /// The blocks of its tiled layer, the first.
     var tiled: [String] {
         layers?.first?.blocks?.map(\.block_id) ?? []

@@ -71,8 +71,11 @@ private struct HostSection: View {
     @Environment(HostStore.self) private var store
     /// The sessions whose new window is on its way.
     @State private var opening: Set<String> = []
-    /// Why the last new window failed, as the server says it.
-    @State private var failure: String?
+    /// What failed last, and why, as the server says it.
+    @State private var failure: (title: LocalizedStringKey, why: String)?
+    /// The window being renamed, and the name being typed.
+    @State private var renaming: (session: String, window: String, title: String)?
+    @State private var name = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -102,18 +105,88 @@ private struct HostSection: View {
                 ForEach(host.sessions) { s in session(s) }
             }
         }
-        .alert("Can't Open a New Window", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
+        .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
         } message: {
-            Text(failure ?? "")
+            Text(failure?.why ?? "")
+        }
+        .alert("Rename Tab", isPresented: Binding { renaming != nil } set: { if !$0 { renaming = nil } }, presenting: renaming) { r in
+            TextField(r.title, text: $name)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                change("Can't Rename the Tab") { try await host.renameWindow(r.window, in: r.session, to: name) }
+            }
         }
     }
 
+    /// Runs a change to a session's windows, and tells why when it fails.
+    private func change(_ title: LocalizedStringKey, _ body: @escaping () async throws -> Void) {
+        Task {
+            do { try await body() } catch { failure = (title, error.localizedDescription) }
+        }
+    }
+
+    /// Opens a new window in a session, and goes to it.
+    private func newWindow(_ s: Host.Session) {
+        opening.insert(s.id)
+        Task {
+            defer { opening.remove(s.id) }
+            do {
+                if let b = try await host.newWindow(in: s.id) {
+                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
+                }
+            } catch {
+                failure = ("Can't Open a New Window", error.localizedDescription)
+            }
+        }
+    }
+
+    /// A window's menu, as the desktop's tab menu. It moves a window past
+    /// the rows shown, and closes only those: the server's order also has
+    /// windows the list leaves out.
+    @ViewBuilder private func menu(_ s: Host.Session, _ w: SessionView.Window, title: String, shown: [String]) -> some View {
+        let all = (s.view?.windows ?? []).map(\.window_id)
+        let id = w.window_id
+        let i = shown.firstIndex(of: id) ?? 0
+        Button("Rename Tab…", systemImage: "pencil") {
+            name = w.name ?? ""
+            renaming = (s.id, id, title)
+        }
+        if w.name != nil {
+            Button("Reset Name", systemImage: "arrow.uturn.backward") {
+                change("Can't Rename the Tab") { try await host.renameWindow(id, in: s.id, to: "") }
+            }
+        }
+        Divider()
+        Button("Move Up", systemImage: "arrow.up") {
+            change("Can't Move the Tab") { try await host.moveWindow(id, in: s.id, before: shown[i - 1]) }
+        }
+        .disabled(i <= 0)
+        Button("Move Down", systemImage: "arrow.down") {
+            // Just after the next row: before the window after it, if any.
+            let after = all.firstIndex(of: shown[i + 1]).map { $0 + 1 } ?? all.count
+            change("Can't Move the Tab") { try await host.moveWindow(id, in: s.id, before: after < all.count ? all[after] : nil) }
+        }
+        .disabled(i >= shown.count - 1)
+        Divider()
+        Button("New Tab", systemImage: "plus") { newWindow(s) }
+        Button("Close Tab", systemImage: "xmark", role: .destructive) {
+            change("Can't Close the Tab") { try await host.closeWindow(id, in: s.id) }
+        }
+        Button("Close Other Tabs", systemImage: "xmark.square", role: .destructive) {
+            change("Can't Close the Tab") {
+                for o in shown where o != id { try await host.closeWindow(o, in: s.id) }
+            }
+        }
+        .disabled(shown.count < 2)
+    }
+
     @ViewBuilder private func session(_ s: Host.Session) -> some View {
-        let windows = (s.view?.windows ?? []).compactMap { w -> (String, String, String?, [String?])? in
+        let windows = (s.view?.windows ?? []).compactMap { w -> (String, String, String?, [String?], SessionView.Window)? in
             guard let b = w.block else { return nil }
-            let title = host.titles[b].flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
+            // As the desktop names a tab: its name when it has one, else its terminal's title.
+            let title = w.name ?? host.titles[b].flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
             let back = w.tiled.filter { $0 != b }.map { host.programs[$0] }
-            return filter(title, host.programs[b]) ? (b, title, host.programs[b], back) : nil
+            return filter(title, host.programs[b]) ? (b, title, host.programs[b], back, w) : nil
         }
         // The room of the tiles of the window with the most, so that the titles line up.
         let tiles = ProgramTiles.width(behind: windows.map(\.3.count).max() ?? 0)
@@ -125,17 +198,7 @@ private struct HostSection: View {
                 GlassEffectContainer(spacing: 8) {
                     HStack(spacing: 8) {
                         Button {
-                            opening.insert(s.id)
-                            Task {
-                                defer { opening.remove(s.id) }
-                                do {
-                                    if let b = try await host.newWindow(in: s.id) {
-                                        open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
-                                    }
-                                } catch {
-                                    failure = error.localizedDescription
-                                }
-                            }
+                            newWindow(s)
                         } label: {
                             Group {
                                 if opening.contains(s.id) { ProgressView() } else { Image(systemName: "plus") }
@@ -166,6 +229,7 @@ private struct HostSection: View {
                             WindowRow(title: w.1, program: w.2, back: w.3, tiles: tiles, divider: i < windows.count - 1)
                         }
                         .buttonStyle(.plain)
+                        .contextMenu { menu(s, w.4, title: w.1, shown: windows.map(\.4.window_id)) }
                     }
                 }
                 .background(Color.card, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
