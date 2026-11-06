@@ -13,6 +13,8 @@ struct TerminalScreen: View {
     let target: TerminalTarget
     @State private var session: TerminalSession
     @Environment(\.scenePhase) private var phase
+    /// Whether the stream was left in the background, for a resume.
+    @State private var suspended = false
 
     init(target: TerminalTarget, host: Host) {
         self.target = target
@@ -42,8 +44,15 @@ struct TerminalScreen: View {
             .onAppear { session.start() }
             .onDisappear { session.close() }
             .onChange(of: phase) { _, p in
-                if p == .background { session.suspend() }
-                if p == .active { session.resume() }
+                // Inactive, as under Control Center or an alert, keeps it.
+                if p == .background {
+                    session.suspend()
+                    suspended = true
+                }
+                if p == .active, suspended {
+                    session.resume()
+                    suspended = false
+                }
             }
     }
 
