@@ -7,9 +7,10 @@ import UIKit
 /// and the wheel comes back out of it, for the session to write to the
 /// program. The soft keyboard comes with a bar of the keys it lacks (Esc,
 /// Tab, Ctrl, Alt, Shift, arrows), after rootshell's KeyboardAccessoryView;
-/// the modifiers hold for the next key. A vertical drag turns the wheel: it
-/// scrolls back, or goes to a full-screen program.
-final class TerminalView: UIView, UIKeyInput, TerminalOutput {
+/// the modifiers hold for the next key. Input methods compose at the cursor
+/// (TerminalView+TextInput). A vertical drag turns the wheel: it scrolls
+/// back, or goes to a full-screen program.
+final class TerminalView: UIView, TerminalOutput {
     let session: TerminalSession
     /// The font size chosen in Settings.
     static var fontSize: CGFloat {
@@ -21,7 +22,14 @@ final class TerminalView: UIView, UIKeyInput, TerminalOutput {
     var shift = false { didSet { bar.shift.isSelected = shift } }
     private lazy var bar = KeyBar(target: self)
 
-    private var surface: ghostty_surface_t?
+    /// What the keyboard believes it edits.
+    var document = InputDocument()
+    var trackpad = Trackpad()
+    weak var inputDelegate: UITextInputDelegate?
+    var markedTextStyle: [NSAttributedString.Key: Any]?
+    lazy var tokenizer: UITextInputTokenizer = UITextInputStringTokenizer(textInput: self)
+
+    private(set) var surface: ghostty_surface_t?
     private var config: ghostty_config_t?
     /// The surface's terminal takes the program's output here, in order on
     /// the queue: a write waits while Ghostty catches up.
@@ -221,7 +229,6 @@ final class TerminalView: UIView, UIKeyInput, TerminalOutput {
     override var canBecomeFirstResponder: Bool { true }
     override var inputAccessoryView: UIView? { bar }
 
-    var hasText: Bool { true }
     var autocorrectionType: UITextAutocorrectionType = .no
     var autocapitalizationType: UITextAutocapitalizationType = .none
     var spellCheckingType: UITextSpellCheckingType = .no
@@ -229,20 +236,66 @@ final class TerminalView: UIView, UIKeyInput, TerminalOutput {
     var smartDashesType: UITextSmartDashesType = .no
     var smartInsertDeleteType: UITextSmartInsertDeleteType = .no
     var inlinePredictionType: UITextInlinePredictionType = .no
-    var keyboardType: UIKeyboardType = .asciiCapable
+    var mathExpressionCompletionType: UITextMathExpressionCompletionType = .no
+    var writingToolsBehavior: UIWritingToolsBehavior = .none
+    var keyboardType: UIKeyboardType = .default
     var keyboardAppearance: UIKeyboardAppearance = .dark
+    /// The keyboard comes back in the language it was left in.
+    override var textInputContextIdentifier: String? { "terminal" }
 
-    func insertText(_ text: String) {
-        press(KeyEvent.typing(text, ctrl: ctrl, alt: alt, shift: shift))
+    /// Sends a key of the bar, with its held modifiers. Backspace is the
+    /// keyboard's, which edits the composition first.
+    func send(_ key: String) {
+        guard key != "backspace" else { return changing { apply(document.deleteBackward()) } }
+        forget()
+        press([.named(key, shift: shift, ctrl: ctrl, alt: alt)])
         release()
     }
 
-    func deleteBackward() { send("backspace") }
+    /// Types a key of the bar that types text, as the keyboard would.
+    func type(_ text: String) {
+        changing { apply(document.insert(text)) }
+    }
 
-    /// Sends a key of the bar, with its held modifiers.
-    func send(_ key: String) {
-        press([.named(key, shift: shift, ctrl: ctrl, alt: alt)])
-        release()
+    /// Carries out the document's edits.
+    func apply(_ edits: [InputDocument.Edit]) {
+        for e in edits {
+            switch e {
+            case .type(let t):
+                press(KeyEvent.typing(t, ctrl: ctrl, alt: alt, shift: shift))
+                release()
+            case .text(let t):
+                press(KeyEvent.typing(t))
+            case .backspace:
+                press([.named("backspace", shift: shift, ctrl: ctrl, alt: alt)])
+                release()
+            case .erase(let n):
+                press(Array(repeating: .named("backspace"), count: n))
+            case .preedit(let t):
+                guard let s = surface else { continue }
+                if let t {
+                    t.withCString { ghostty_surface_preedit(s, $0, UInt(t.utf8.count)) }
+                } else {
+                    ghostty_surface_preedit(s, nil, 0)
+                }
+                ghostty_surface_refresh(s)
+            }
+        }
+    }
+
+    /// The line moved on without the keyboard: what it typed is gone.
+    func forget() {
+        guard !document.typed.isEmpty else { return }
+        changing { document.reset() }
+    }
+
+    /// Tells the keyboard of a change it did not make.
+    private func changing(_ change: () -> Void) {
+        inputDelegate?.textWillChange(self)
+        inputDelegate?.selectionWillChange(self)
+        change()
+        inputDelegate?.selectionDidChange(self)
+        inputDelegate?.textDidChange(self)
     }
 
     private func release() {
@@ -253,7 +306,7 @@ final class TerminalView: UIView, UIKeyInput, TerminalOutput {
 
     /// Has Ghostty encode keys, each pressed and let go, for the program's
     /// keyboard modes.
-    private func press(_ keys: [KeyEvent]) {
+    func press(_ keys: [KeyEvent]) {
         guard let s = surface else { return }
         for k in keys {
             for action in [GHOSTTY_ACTION_PRESS, GHOSTTY_ACTION_RELEASE] {
@@ -278,6 +331,7 @@ final class TerminalView: UIView, UIKeyInput, TerminalOutput {
     /// Pastes as a terminal does: bracketed when the program asked for it.
     override func paste(_ sender: Any?) {
         guard let s = surface, let t = UIPasteboard.general.string else { return }
+        forget()
         t.withCString { ghostty_surface_text(s, $0, UInt(t.utf8.count)) }
     }
 
@@ -289,8 +343,10 @@ final class TerminalView: UIView, UIKeyInput, TerminalOutput {
             guard let k = p.key else { rest.insert(p); continue }
             let f = k.modifierFlags
             if let name = Self.names[k.keyCode] {
+                forget()
                 press([.named(name, shift: f.contains(.shift), ctrl: f.contains(.control), alt: f.contains(.alternate))])
             } else if f.contains(.control), !k.charactersIgnoringModifiers.isEmpty {
+                forget()
                 press(KeyEvent.typing(k.charactersIgnoringModifiers, ctrl: true))
             } else {
                 rest.insert(p)
@@ -339,7 +395,7 @@ final class KeyBar: UIView {
         }
         func text(_ t: String) -> UIButton {
             let b = Self.button(t, size: Self.small)
-            b.addAction(UIAction { [weak target] _ in target?.insertText(t) }, for: .touchUpInside)
+            b.addAction(UIAction { [weak target] _ in target?.type(t) }, for: .touchUpInside)
             return b
         }
         ctrl.addAction(UIAction { [weak target] _ in target?.ctrl.toggle() }, for: .touchUpInside)
