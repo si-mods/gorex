@@ -395,10 +395,10 @@ func TestByteSize(t *testing.T) {
 
 func TestPastedPaths(t *testing.T) {
 	for _, c := range []struct{ shell, want string }{
-		{"/bin/zsh", `/tmp/a.txt '/tmp/b c.txt'`},
-		{"", `/tmp/a.txt '/tmp/b c.txt'`},
-		{`C:\Program Files\PowerShell\7\pwsh.exe`, `/tmp/a.txt '/tmp/b c.txt'`},
-		{`C:\Windows\System32\cmd.exe`, `/tmp/a.txt "/tmp/b c.txt"`},
+		{"/bin/zsh", `/tmp/a.txt '/tmp/b c.txt' `},
+		{"", `/tmp/a.txt '/tmp/b c.txt' `},
+		{`C:\Program Files\PowerShell\7\pwsh.exe`, `/tmp/a.txt '/tmp/b c.txt' `},
+		{`C:\Windows\System32\cmd.exe`, `/tmp/a.txt "/tmp/b c.txt" `},
 	} {
 		if got := pastedPaths(c.shell, []string{"/tmp/a.txt", "/tmp/b c.txt"}); got != c.want {
 			t.Errorf("pastedPaths(%q) = %q, want %q", c.shell, got, c.want)

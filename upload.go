@@ -264,7 +264,9 @@ func (p *Pane) stopTransfers() {
 }
 
 // pastedPaths is paths as a drop pastes them into a pane whose shell is at
-// shell, a path of its machine: each a word of the shell, spaces between.
+// shell, a path of its machine: each a word of the shell followed by a
+// space, so that the paths of the next drop, or what is typed, are
+// another word.
 func pastedPaths(shell string, paths []string) string {
 	q := rex.QuoterOf(shell)
 	if q == nil {
@@ -278,7 +280,7 @@ func pastedPaths(shell string, paths []string) string {
 		}
 		words[i] = w
 	}
-	return strings.Join(words, " ")
+	return strings.Join(words, " ") + " "
 }
 
 // byteSize is n bytes as Finder writes them: 1000 to the kB.
