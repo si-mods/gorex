@@ -1505,6 +1505,16 @@
       }
     }
   },
+  "paneDropUploadTemp": "Upload to a temporary folder on {host}",
+  "@paneDropUploadTemp": {
+    "description": "Over a pane of a host while files are dragged over it: a drop sends them into a temporary folder there.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
   "paneDropUpdate": "Update GoRex on {host} to upload files",
   "@paneDropUpdate": {
     "description": "Over a pane of a host that takes no files while files are dragged over it: a drop pastes their paths here.",

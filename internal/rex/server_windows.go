@@ -24,6 +24,10 @@ func lockFile(f *os.File) error {
 	return windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ol)
 }
 
+// ownDir reports whether st, of a directory, is this user's alone: one in
+// the temporary directory is, which Windows has one of for each user.
+func ownDir(os.FileInfo) bool { return true }
+
 // hideConsole keeps a console program the server runs, as git, from
 // opening a console window: the server has none to lend it.
 func hideConsole(cmd *exec.Cmd) {

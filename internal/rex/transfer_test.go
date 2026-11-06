@@ -711,3 +711,89 @@ func TestDownloadCancelled(t *testing.T) {
 		t.Error("a cancelled download keeps an earlier try's partial")
 	}
 }
+
+// TestFileTemp puts a file with Temp into this user's folder in the
+// temporary directory, not the session's, and takes back what a put
+// cancelled there left, the session gone or not.
+func TestFileTemp(t *testing.T) {
+	tmp := t.TempDir()
+	for _, k := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(k, tmp)
+	}
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	cwd := t.TempDir()
+	sid := transferSession(t, local, local, cwd)
+	f := FilePut{SID: sid, Name: "shot.png", Size: 4, ID: "t1", Temp: true}
+	path, _, err := local.PutFile(context.Background(), f, strings.NewReader("shot"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drops, err := dropDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(drops) != tmp || path != filepath.Join(drops, "shot.png") {
+		t.Fatalf("put into %q, want it in %q of %q", path, drops, tmp)
+	}
+	wantFile(t, path, []byte("shot"))
+	if st, err := os.Stat(drops); err != nil || runtime.GOOS != "windows" && st.Mode().Perm() != 0o700 {
+		t.Errorf("the folder: %v %v", st.Mode(), err)
+	}
+	if entries, _ := os.ReadDir(cwd); len(entries) != 0 {
+		t.Errorf("the session's directory has %v", entries)
+	}
+	// An abort names the folder as the put's first answer did.
+	part := filepath.Join(drops, partialName("a.bin", "a1"))
+	os.WriteFile(part, []byte("half"), 0o644)
+	abort := FilePut{SID: sid, Dir: drops, Name: "a.bin", ID: "a1", Temp: true}
+	if err := local.AbortFile(context.Background(), abort); err != nil || exists(part) {
+		t.Fatalf("abort: %v, kept %v", err, exists(part))
+	}
+	os.WriteFile(part, []byte("half"), 0o644)
+	s.puts.Store(part, "")
+	if err := local.Kill(sid); err != nil {
+		t.Fatal(err)
+	}
+	if err := local.AbortFile(context.Background(), abort); err != nil || exists(part) {
+		t.Fatalf("abort after the session: %v, kept %v", err, exists(part))
+	}
+}
+
+// TestDropDirRefuses takes no link or file for the folder in the
+// temporary directory, and makes its own folder the user's alone.
+func TestDropDirRefuses(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a temporary directory of the user's own")
+	}
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	dir, err := dropDir()
+	if err != nil || filepath.Dir(dir) != tmp {
+		t.Fatalf("dropDir: %q %v", dir, err)
+	}
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dropDir(); err != nil {
+		t.Fatalf("dropDir of its own folder all may write in: %v", err)
+	}
+	if st, err := os.Stat(dir); err != nil || st.Mode().Perm() != 0o700 {
+		t.Errorf("left the folder %v %v, want 0700", st.Mode().Perm(), err)
+	}
+	os.Remove(dir)
+	other := t.TempDir()
+	os.Chmod(other, 0o700)
+	if err := os.Symlink(other, dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dropDir(); err == nil {
+		t.Error("took a link")
+	}
+	os.Remove(dir)
+	os.WriteFile(dir, nil, 0o600)
+	if _, err := dropDir(); err == nil {
+		t.Error("took a file")
+	}
+}
