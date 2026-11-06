@@ -305,13 +305,14 @@ final class TerminalView: UIView, TerminalOutput {
     /// The keyboard comes back in the language it was left in.
     override var textInputContextIdentifier: String? { "terminal" }
 
-    /// Sends a key of the bar, with its held modifiers. Backspace is the
+    /// Sends a key of the bar, with its held modifiers, which it lets go
+    /// unless they hold on, as for the stick's repeats. Backspace is the
     /// keyboard's, which edits the composition first.
-    func send(_ key: String) {
+    func send(_ key: String, holding: Bool = false) {
         guard key != "backspace" else { return changing { deleteBackward() } }
         forget()
         press([.named(key, shift: shift, ctrl: ctrl, alt: alt)])
-        release()
+        if !holding { release() }
     }
 
     /// Types a key of the bar that types text, as the keyboard would.
@@ -360,7 +361,7 @@ final class TerminalView: UIView, TerminalOutput {
         inputDelegate?.textDidChange(self)
     }
 
-    private func release() {
+    func release() {
         ctrl = false
         alt = false
         shift = false
@@ -445,8 +446,10 @@ final class KeyBar: UIView {
     let alt = KeyBar.button("option", String(localized: "Option"), size: KeyBar.small)
     let shift = KeyBar.button("shift", String(localized: "Shift"), size: KeyBar.small)
     private weak var target: TerminalView?
-    /// Repeats the arrow the stick points to.
+    /// Repeats the arrow the stick points to, with the modifiers held
+    /// until the stick is let go.
     private var repeating: Task<Void, Never>?
+    private var steered = false
     private var arrow: String? { didSet { pad.arrow = arrow } }
     /// What the stick turns into while held.
     private let pad = StickPad()
@@ -557,7 +560,11 @@ final class KeyBar: UIView {
             pad.isHidden = false
             UIView.animate(withDuration: 0.18, delay: 0, usingSpringWithDamping: 0.75, initialSpringVelocity: 0) { self.pad.transform = .identity }
         }
-        if g.state == .ended || g.state == .cancelled || g.state == .failed { pad.isHidden = true }
+        if g.state == .ended || g.state == .cancelled || g.state == .failed {
+            pad.isHidden = true
+            if steered { target?.release() }
+            steered = false
+        }
         if g.state == .began || g.state == .changed, let v = g.view {
             let p = g.location(in: v)
             let dx = p.x - v.bounds.midX, dy = p.y - v.bounds.midY
@@ -569,10 +576,11 @@ final class KeyBar: UIView {
         arrow = next
         repeating?.cancel()
         guard let next else { return }
+        steered = true
         repeating = Task { [weak target, tick] in
             var delay = 0.4
             repeat {
-                target?.send(next)
+                target?.send(next, holding: true)
                 tick.impactOccurred(intensity: delay == 0.4 ? 1 : 0.5)
                 try? await Task.sleep(for: .seconds(delay))
                 delay = 0.08
