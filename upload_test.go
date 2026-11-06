@@ -114,9 +114,10 @@ func waitUploaded(t *testing.T, tt *ui.Tester, p *Pane) {
 }
 
 // TestDropUploadsToHost drops files on a pane of a host: they go into a
-// temporary folder there, not the directory of its shell, going on from what an earlier try left,
-// one of a name taken renamed, and their paths there are pasted, quoted,
-// as a drop here pastes paths. A file gone pastes nothing.
+// temporary folder there, not the directory of its shell, going on from
+// what an earlier try left, one of a name taken renamed, and their paths
+// there are pasted, quoted, as a drop here pastes paths. A file gone
+// pastes nothing.
 func TestDropUploadsToHost(t *testing.T) {
 	if testShell.path == "cmd.exe" {
 		t.Skip("POSIX quoting")
@@ -127,10 +128,16 @@ func TestDropUploadsToHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	cwd := t.TempDir()
-	_, _, p := remotePane(t, a, tt, cwd)
+	_, _, p, c := remotePaneOf(t, a, tt, cwd)
 	if !transfersFiles(p) {
 		t.Fatal("the host takes no files")
 	}
+	// cat shows the paths pasted as they are: sh scrolls a line longer
+	// than the pane.
+	if err := c.Input(p.SID, []byte("exec cat\r")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, tt, "cat", func() bool { return p.info.Program == "cat" })
 	paths := dropped(t, "a b.txt", "hello", "b.txt", "new")
 	gone := filepath.Join(filepath.Dir(paths[0]), "gone.txt")
 	part := partialOf(there, "a b.txt", idOf(t, p.SID, paths[0]))
