@@ -43,26 +43,6 @@ func windowOf(t *testing.T, view map[string]any, at int) map[string]any {
 	return view["windows"].([]any)[at].(map[string]any)
 }
 
-// TestLayoutWithoutApp: a change of the layout needs the GoRex window.
-func TestLayoutWithoutApp(t *testing.T) {
-	f := startFixture(t)
-	f.setLayout(layout.Store{Sessions: []layout.Workspace{{ID: "w", Name: "work"}}})
-	c := f.dialControl()
-	c.hello(apiRevision)
-	callChecked(t, c, "session.attach", map[string]any{"session_id": sessionID("w")})
-	for _, method := range []string{"session.create", "session.new_window", "session.destroy"} {
-		payload := map[string]any{}
-		if method != "session.create" {
-			payload["session_id"] = sessionID("w")
-			payload["layout"] = splitLayout("horizontal", 0.5)
-		}
-		e := failure(t, c.request("x"+method, method, payload))
-		if e["code"] != "conflict" || !strings.Contains(e["message"].(string), "Open the GoRex window on") {
-			t.Errorf("%s: %v", method, e)
-		}
-	}
-}
-
 // TestSessionCreateLayout: session.create makes a workspace with its
 // windows, and the view shows them.
 func TestSessionCreateLayout(t *testing.T) {
@@ -183,10 +163,18 @@ func viewOf(t *testing.T, c *testConn, sid string) map[string]any {
 
 // TestLayoutChanges makes the changes of the layout the API documents,
 // through the fake window, and checks the view after each.
-func TestLayoutChanges(t *testing.T) {
+func TestLayoutChanges(t *testing.T) { layoutChanges(t, true) }
+
+// TestLayoutChangesWithoutApp makes them with no window open: the server
+// makes them itself.
+func TestLayoutChangesWithoutApp(t *testing.T) { layoutChanges(t, false) }
+
+func layoutChanges(t *testing.T, app bool) {
 	f := startFixture(t)
 	f.setLayout(emptyStore())
-	startApp(f)
+	if app {
+		startApp(f)
+	}
 	c := f.dialControl()
 	c.hello(apiRevision)
 	created := callChecked(t, c, "session.create", map[string]any{

@@ -174,6 +174,67 @@ func TestUpgrade(t *testing.T) {
 	s.Close()
 }
 
+// TestUpgradeKeepsAppliedLayout makes a tab with no window, upgrades the
+// server, and finds the tab, its session and the layout's revision as they
+// were.
+func TestUpgradeKeepsAppliedLayout(t *testing.T) {
+	dir, err := os.MkdirTemp("/tmp", "rex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	t.Setenv("GOREX_DIR", dir)
+	c, err := Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := c.Hello()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		c.Shutdown()
+		c.Close()
+		time.Sleep(100 * time.Millisecond)
+		if processAlive(h.PID) {
+			syscall.Kill(h.PID, syscall.SIGKILL)
+		}
+	}()
+	res, err := c.Command(LayoutCommand{Op: "tab.create", Dir: "/tmp", Command: []string{"/bin/sh"}, Name: "kept"})
+	if err != nil || res.Code != "" || res.New == "" {
+		t.Fatalf("tab.create: %+v %v", res, err)
+	}
+	before, err := c.LayoutState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, "rex-upgraded.test")
+	if err := copyFile(self, exe); err != nil {
+		t.Fatal(err)
+	}
+	if c, err = c.Upgrade(exe); err != nil {
+		t.Fatal(err)
+	}
+	after, err := c.LayoutState()
+	if err != nil || after.Revision != before.Revision || !bytes.Equal(after.Layout, before.Layout) {
+		t.Fatalf("after the upgrade %d %s %v, before %d %s", after.Revision, after.Layout, err, before.Revision, before.Layout)
+	}
+	if !bytes.Contains(after.Layout, []byte(res.New)) || !bytes.Contains(after.Layout, []byte(`"kept"`)) {
+		t.Errorf("the tab is gone: %s", after.Layout)
+	}
+	if list, err := c.List(); err != nil || len(list) != 1 || list[0].ID != res.New || list[0].Exited {
+		t.Errorf("sessions %+v %v", list, err)
+	}
+	// The server goes on making changes after it.
+	if res, err := c.Command(LayoutCommand{Op: "pane.split", SID: res.New, Command: []string{"/bin/sh"}}); err != nil || res.Code != "" {
+		t.Errorf("split after the upgrade: %+v %v", res, err)
+	}
+}
+
 func copyFile(from, to string) error {
 	r, err := os.Open(from)
 	if err != nil {

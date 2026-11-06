@@ -22,9 +22,6 @@ import (
 // answered once the server has its layout, the main thread going on
 // meanwhile.
 func (st *store) takeCommands(client *rex.Client, update func(func())) {
-	unavailable := func(id int64, msg string) rex.LayoutCommand {
-		return rex.LayoutCommand{ID: id, Code: "desktop_unavailable", Error: msg}
-	}
 	for {
 		cmd, err := client.TakeCommand()
 		select {
@@ -49,7 +46,8 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 			close(started)
 			a := st.commandAppFor(cmd.Space)
 			if a == nil {
-				done <- unavailable(cmd.ID, "no GoRex window is open")
+				// The server makes it itself.
+				done <- rex.LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}
 				return
 			}
 			res := a.command(*cmd)
@@ -59,14 +57,15 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 			}
 			done <- res
 		})
-		// A main thread that runs nothing has no window; one that runs it
-		// takes its time, as a session may be slow to start.
+		// A main thread that runs nothing does not answer, and may make the
+		// command still; one that runs it takes its time, as a session may
+		// be slow to start.
 		var res rex.LayoutCommand
 		select {
 		case <-started:
 			res = <-done
 		case <-time.After(rex.AppCommandTimeout):
-			res = unavailable(cmd.ID, "the GoRex window does not answer")
+			res = rex.LayoutCommand{ID: cmd.ID, Code: "layout_timeout", Error: "the GoRex window does not answer; the change may still appear"}
 		}
 		if res.Code == "" {
 			st.writer.wait(rex.CommandTimeout)
@@ -175,6 +174,19 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 		}
 		res.Space = w.ID
 		a.changed()
+		return res
+	case "space.rename":
+		if a.st == nil {
+			return fail("desktop_unavailable", "no GoRex window is open")
+		}
+		w := a.st.workspaceByID(c.Space)
+		if w == nil {
+			return fail("space_not_found", "no such space in the GoRex layout")
+		}
+		if name := layout.Label(c.Name); name != "" {
+			w.Name = name
+			a.changed()
+		}
 		return res
 	case "space.close":
 		if a.st == nil {

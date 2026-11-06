@@ -299,15 +299,16 @@ func TestTrimSnapshot(t *testing.T) {
 }
 
 // TestLayoutCommands passes layout commands from a client to the app that
-// takes them, and back its answers; none without the app, a timeout when
-// it does not answer, and none from remote clients.
+// takes them, and back its answers; none that needs the window without
+// the app, a timeout when it does not answer, and none from remote
+// clients.
 func TestLayoutCommands(t *testing.T) {
 	defer commandWait.set(commandWait.set(300 * time.Millisecond))
 	s, _ := testServer(t)
 	app, bridge := pipe(s, ""), pipe(s, "")
 	defer app.Close()
 	defer bridge.Close()
-	if res, err := bridge.Command(LayoutCommand{Op: "tab.create"}); err != nil || res.Code != "desktop_unavailable" {
+	if res, err := bridge.Command(LayoutCommand{Op: "action", Action: "tab.rename"}); err != nil || res.Code != "desktop_unavailable" {
 		t.Fatalf("without the app: %+v %v", res, err)
 	}
 	// take takes a command, once the app waits for one, and answers it.
@@ -386,7 +387,7 @@ func TestTakeOfClosedConnection(t *testing.T) {
 		}
 	}
 	start := time.Now()
-	if res, err := bridge.Command(LayoutCommand{Op: "tab.create"}); err != nil || res.Code != "desktop_unavailable" || time.Since(start) > time.Second {
+	if res, err := bridge.Command(LayoutCommand{Op: "action", Action: "tab.rename"}); err != nil || res.Code != "desktop_unavailable" || time.Since(start) > time.Second {
 		t.Errorf("answered %+v %v after %v", res, err, time.Since(start))
 	}
 }

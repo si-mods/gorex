@@ -417,7 +417,7 @@ func TestWindowsCloseAndReopen(t *testing.T) {
 		t.Errorf("saved windows %q of %d workspaces", s.Windows, len(s.Sessions))
 	}
 	st.secondInstance()
-	if len(st.apps) != 1 || st.apps[0].ws != w || !slices.Equal(sidsOf(st.apps[0]), sids) {
+	if len(st.apps) != 1 || st.apps[0].ws.ID != w.ID || !slices.Equal(sidsOf(st.apps[0]), sids) {
 		t.Errorf("a second launch opened %d windows", len(st.apps))
 	}
 	quit(st)

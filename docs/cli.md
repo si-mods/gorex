@@ -17,7 +17,8 @@ Every local terminal GoRex opens gets:
   `gorex` shim points at the app binary.
 - `GOREX_SERVER`, the server's socket.
 - A pane made by the app also gets `GOREX_PANE`, and `GOREX_HOST` for a
-  remote host's pane or `GOREX_CLIENT` for a local one.
+  remote host's pane or `GOREX_CLIENT` for a local one. A pane the server
+  made for a client with no window open gets `GOREX_CLIENT` only.
 
 A session a remote client created does not get the shim: its shell is
 already reachable from another machine, and the shim would make this
@@ -65,9 +66,10 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   exit 0, and a timeout exits 1. `--timeout 0` (the default) waits forever.
 - `run` creates a session, runs the command, prints what the screen shows
   when it ends, and exits with the program's status.
-- `split` changes the window's layout, so it needs the GoRex window open
-  on that machine; the command after `--` runs in the new pane, or a shell
-  does. `close` needs the window too.
+- `split` changes the layout; the command after `--` runs in the new
+  pane, or a shell does. With no GoRex window open the server makes the
+  change, and the window shows it as it opens. `close` and `rename` work
+  the same way.
 - `events` prints each layout or session change as one JSON line; with a
   host that shares its layout, it subscribes to that host's layout too.
 - `clients` prints the principal, peer key, whether it is remote, through a

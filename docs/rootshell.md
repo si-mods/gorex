@@ -134,9 +134,8 @@ shim for herdr's sessions, which it answers with none anyway.
 
 ## Limits
 
-- Changing the layout needs the GoRex window open on the host. Without
-  it, a new tab or a rename fails with "Open the GoRex window on …", and
-  a split, a close, a zoom or a pane move or resize does nothing, silently.
+- With no GoRex window open on the host, its server makes a change of
+  the layout itself, and the window shows it as it opens.
 - Closing the window's last tab from rootshell leaves its space empty,
   the GoRex window open on it; a new tab from rootshell fills it again.
 - Closing a tab from rootshell ends its panes of remote hosts too, which

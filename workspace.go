@@ -317,6 +317,19 @@ func (st *store) load() []*Workspace {
 	return open
 }
 
+// reload reads the workspaces the server keeps again, for a window to
+// open while none is: the server makes the clients' changes itself
+// meanwhile, which the layout the app has does not show, nor must write
+// over.
+func (st *store) reload() {
+	last := st.lastClosed
+	st.load()
+	st.lastClosed = nil
+	if last != nil {
+		st.lastClosed = st.byID(last.ID)
+	}
+}
+
 // byID returns the workspace of an id, nil when none.
 func (st *store) byID(id string) *Workspace {
 	for _, w := range st.workspaces {
@@ -656,6 +669,7 @@ func (st *store) reopen() {
 	if !st.started || len(st.apps) > 0 || !st.connect() {
 		return
 	}
+	st.reload()
 	w := st.lastClosed
 	if w == nil || !slices.Contains(st.workspaces, w) {
 		w = st.hiddenAfter(nil)
@@ -671,6 +685,9 @@ func (st *store) reopen() {
 // Space do without windows; before the app started, the start serves it.
 func (st *store) openNew() {
 	if st.started && st.connect() {
+		if len(st.apps) == 0 {
+			st.reload()
+		}
 		st.openWindow(st.addWorkspace(), false)
 		st.save()
 	}

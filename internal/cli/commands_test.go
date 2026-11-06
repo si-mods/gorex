@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
 
@@ -323,5 +324,54 @@ func TestLayoutCommand(t *testing.T) {
 	code, handled, out, errOut := runMain(t, "layout", "--json")
 	if code != ExitOK || !handled || !strings.Contains(out, `"tabs"`) {
 		t.Fatalf("layout: %d %v %q %s", code, handled, out, errOut)
+	}
+}
+
+// TestLayoutWithoutWindow splits, renames and closes panes with no GoRex
+// window open: the server makes the changes.
+func TestLayoutWithoutWindow(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+	c := startServer(t)
+	in, err := c.Create(rex.CreateOptions{Command: []string{"sh"}, Dir: os.TempDir(), Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := layout.Store{Version: layout.Version, Sessions: []layout.Workspace{{ID: "w", Name: "work", Layout: layout.Layout{Tabs: []layout.Tab{{ID: "t", Root: &layout.Node{SID: in.ID}}}}}}, Windows: []string{"w"}}
+	raw, _ := json.Marshal(l)
+	if err := c.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+	read := func() layout.Tab {
+		raw, err := c.Layout()
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := layout.Parse(raw)
+		if len(st.Sessions) != 1 || len(st.Sessions[0].Tabs) != 1 {
+			t.Fatalf("layout %s", raw)
+		}
+		return st.Sessions[0].Tabs[0]
+	}
+	code, _, out, errOut := runMain(t, "split", "-s", in.ID, "--down", "--json", "--", "sh")
+	var res rex.LayoutCommand
+	if code != ExitOK || json.Unmarshal([]byte(out), &res) != nil || res.New == "" {
+		t.Fatalf("split: %d %q %s", code, out, errOut)
+	}
+	if tab := read(); tab.Root.B == nil || tab.Root.B.SID != res.New || !tab.Root.Vertical {
+		t.Errorf("after the split: %+v", tab.Root)
+	}
+	if code, _, _, errOut := runMain(t, "rename", "-s", res.New, "logs"); code != ExitOK {
+		t.Fatalf("rename: %d %s", code, errOut)
+	}
+	if tab := read(); tab.Root.B.Name != "logs" {
+		t.Errorf("after the rename: %+v", tab.Root.B)
+	}
+	if code, _, _, errOut := runMain(t, "close", "-s", res.New); code != ExitOK {
+		t.Fatalf("close: %d %s", code, errOut)
+	}
+	if tab := read(); tab.Root.SID != in.ID {
+		t.Errorf("after the close: %+v", tab.Root)
 	}
 }

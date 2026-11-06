@@ -299,10 +299,19 @@ func TestBridge(t *testing.T) {
 	if e, ok := r.call("pane.resize", map[string]any{})["error"].(map[string]any); !ok || e["code"] != "invalid_params" {
 		t.Errorf("pane.resize without a pane answered %v", e)
 	}
-	// With no window to make it, a change of the layout fails at once.
-	start := time.Now()
-	if e, ok := r.call("tab.create", map[string]any{"workspace_id": "w", "focus": true})["error"].(map[string]any); !ok || e["code"] != "desktop_unavailable" || time.Since(start) > time.Second {
-		t.Errorf("tab.create without the desktop answered %v after %v", e, time.Since(start))
+	// With no window to make it, the server makes a change of the layout:
+	// a new tab, after the one rootshell went to last, in its pane's
+	// directory, whose pane rootshell sees.
+	made := result(t, r.call("tab.create", map[string]any{"workspace_id": "w", "focus": true}))
+	root := made["root_pane"].(map[string]any)["pane_id"].(string)
+	in := sessions(t, desk)[strings.TrimPrefix(root, "p-")]
+	if in.ID == "" || in.Dir != sessions(t, desk)[sids[0]].Dir {
+		t.Errorf("tab.create without the desktop made %v: %+v", made, in)
+	}
+	// The tab of the session killed went with it.
+	snap = result(t, r.call("session.snapshot", map[string]any{}))["snapshot"].(map[string]any)
+	if tabs := snap["tabs"].([]any); len(tabs) != 2 || tabs[1].(map[string]any)["tab_id"] != made["tab"].(map[string]any)["tab_id"] {
+		t.Errorf("the snapshot after tab.create: %v", snap)
 	}
 	r.send("r200", "terminal.snapshot", map[string]any{"attach_id": aid})
 	r.next("a snapshot asked for", func(m map[string]any) bool { return m["type"] == "terminal.snapshot" && m["attach_id"] == aid })

@@ -180,10 +180,12 @@ const (
 )
 
 // LayoutCommand is a change of the layout that a client of this machine,
-// as rootshell's bridge, asks the app to make ("command"): the app, which
-// owns the layout, takes the commands in order ("command.take"), makes
-// them as its own buttons do, saves the layout and answers each
-// ("command.done"). Panes are named by their session, and tabs by their
+// as rootshell's bridge, asks the app to make ("command"): the app takes
+// the commands in order ("command.take"), makes them as its own buttons
+// do, saves the layout and answers each ("command.done"). With no window
+// to take it, the server makes a change of the layout itself, as the
+// window would; an action, but float.set_state, and a teleport are the
+// window's still. Panes are named by their session, and tabs by their
 // lasting ID (Tab), or by a session of theirs.
 type LayoutCommand struct {
 	ID int64 `json:"id,omitempty"`
