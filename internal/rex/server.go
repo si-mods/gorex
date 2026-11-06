@@ -337,16 +337,10 @@ func Serve() error {
 		s.layout = b
 		log.Print("rex: the layout is the last the journal kept")
 	}
-	owners := journalOwners(entries)
-	if journalResumes(entries) {
-		// The run before this one did not stop, or stopped to be
-		// replaced: its sessions ended with it, and the layout it kept
-		// names them.
-		s.restoreSessions(s.layout, owners)
-	}
 	s.journal.started()
-	// The rest, once it listens.
-	go s.restoreLost(owners, s.lostPanes())
+	// The sessions of the layout's panes start again once it listens: an
+	// attach to one waits for its own.
+	go s.restoreLost(journalOwners(entries), s.lostPanes())
 	return s.serve()
 }
 

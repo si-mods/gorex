@@ -361,6 +361,11 @@ func (a *App) renameField(c *ui.Context, k *colors, t *Tab, name string) {
 	case in.Submitted():
 		done(true)
 	case in.Focused():
+		// The old name, selected as the field takes the focus, goes as
+		// the new one is typed, as macOS's rename fields do.
+		if !a.renameFocus {
+			in.SetTextSelection(0, utf8.RuneCountInString(a.renameText))
+		}
 		a.renameFocus = true
 	case a.renameFocus:
 		done(true) // the focus went elsewhere

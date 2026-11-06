@@ -4,6 +4,7 @@ package rex
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -175,9 +176,9 @@ func TestCrashRestoresSessions(t *testing.T) {
 }
 
 // TestCleanStopStartsPanesAgain checks that a server that was told to stop
-// leaves a record of it, and starts no session before it answers: the
-// sessions ended with the run, as it said. Once it listens, the layout's
-// panes, which it kept, get new shells (restoreLost).
+// leaves a record of it, its sessions ending with the run, as it said, and
+// that the server after it gives the layout's panes, which it kept, new
+// shells once it listens (restoreLost).
 func TestCleanStopStartsPanesAgain(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
@@ -201,9 +202,6 @@ func TestCleanStopStartsPanesAgain(t *testing.T) {
 	stop := entries[len(entries)-1]
 	if stop.Reason != "request" || len(stop.Sessions) != 1 || stop.Sessions[0].ID != one.ID || stop.Sessions[0].Dir != dir {
 		t.Errorf("the stop record is %+v", stop)
-	}
-	if journalResumes(entries) {
-		t.Error("a run that was told to stop resumes")
 	}
 
 	next, err := Connect()
@@ -331,51 +329,73 @@ func TestJournalOwners(t *testing.T) {
 	}
 }
 
-// TestRestoreMost checks that a run's layout starts no more sessions than
-// restoreMost before the server answers, however many panes it names, and
-// the rest once it listens (restoreLost).
-func TestRestoreMost(t *testing.T) {
-	s, _ := testServer(t)
-	dir := os.Getenv("GOREX_DIR")
-	l := testLayout(
-		&layout.Node{SID: "one", Dir: dir},
-		&layout.Node{SID: "two", Dir: dir},
-	)
-	var store layout.Store
-	if err := json.Unmarshal(l, &store); err != nil {
+// TestServeListensBeforeRestores checks that a server whose layout names
+// sessions the run before lost answers at once, however slow their shells
+// are to start, as a console's on Windows: it starts them in the
+// background, and an attach to one waits for its own.
+func TestServeListensBeforeRestores(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	var panes []*layout.Node
+	for i := range 12 {
+		panes = append(panes, &layout.Node{SID: fmt.Sprintf("lost%02d", i), Dir: dir})
+	}
+	store := layout.Store{Version: 2, Sessions: []layout.Workspace{{ID: "w1", Name: "w"}}, Windows: []string{"w1"}}
+	for _, n := range panes {
+		store.Sessions[0].Tabs = append(store.Sessions[0].Tabs, layout.Tab{ID: n.SID, Root: n})
+	}
+	// The window shows the last tab, whose session starts first.
+	store.Sessions[0].Active = len(panes) - 1
+	b, _ := json.Marshal(store)
+	if err := os.WriteFile(filepath.Join(dir, "layout.json"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// A third tab, so that two panes are not all the layout names.
-	store.Sessions[0].Tabs = append(store.Sessions[0].Tabs, layout.Tab{Root: &layout.Node{SID: "three", Dir: dir}})
-	b, err := json.Marshal(store)
+	restoreHook = func() { time.Sleep(200 * time.Millisecond) }
+	t.Cleanup(func() { restoreHook = nil })
+
+	// The server runs in this process, so the hook is this process's.
+	start := time.Now()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		Serve()
+	}()
+	c, err := dialUntil(time.Now().Add(5 * time.Second))
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.layout = b
-	old := restoreMost
-	restoreMost = 2
-	t.Cleanup(func() { restoreMost = old })
-	t.Cleanup(func() {
-		s.mu.Lock()
-		s.stopping = true // as the run ends: no layout is written then
-		s.mu.Unlock()
-		for _, sid := range []string{"one", "two", "three"} {
-			if ss := s.sessions[sid]; ss != nil {
-				ss.kill()
+	client := newClient(c, dialSocket)
+	defer func() {
+		client.Shutdown()
+		client.Close()
+		<-done
+	}()
+	if _, err := client.Layout(); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 300*time.Millisecond {
+		t.Errorf("the server answered %v after it started", d)
+	}
+	if infos, _ := client.List(); len(infos) == len(panes) {
+		t.Error("every session ran before the server answered")
+	}
+	// An attach to the first tab's, restored last, waits for it, and gets it.
+	s := client.Stream(panes[0].SID, 80, 24)
+	defer s.Close()
+	if err := s.Resize(80, 24); err != nil {
+		t.Fatalf("attaching to a session restored late: %v", err)
+	}
+	waitInfo(t, client, panes[0].SID, "the session restored last", func(SessionInfo) bool { return true })
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		infos, _ := client.List()
+		if len(infos) == len(panes) {
+			if infos[0].ID != panes[len(panes)-1].SID {
+				t.Errorf("the first restored is %s, not the active tab's", infos[0].ID)
 			}
+			break
+		} else if time.Now().After(deadline) {
+			t.Fatalf("%d sessions restored, not %d", len(infos), len(panes))
 		}
-	})
-
-	s.restoreSessions(s.layout, nil)
-	if len(s.sessions) != 2 {
-		t.Fatalf("the server started %d sessions, not 2", len(s.sessions))
-	}
-	s.restoreLost(nil, s.lostPanes())
-	if len(s.sessions) != 3 || s.sessions["three"] == nil {
-		t.Fatalf("once it listens, the server has %d sessions", len(s.sessions))
-	}
-	if s.layoutRev != 1 {
-		t.Errorf("the restore changed the layout, to revision %d", s.layoutRev)
 	}
 }
 
@@ -397,26 +417,6 @@ func TestJournalEndsTheRun(t *testing.T) {
 	}
 	if !journalStopped(entries) {
 		t.Error("the run's stop is not its last entry")
-	}
-}
-
-// TestJournalResumes checks which runs the server after one starts sessions
-// for: one that did not stop, and one that stopped to be replaced; not one
-// that quit or exited idle, whose sessions ended with it.
-func TestJournalResumes(t *testing.T) {
-	if !journalResumes(nil) {
-		t.Error("a journal before the journal does not resume")
-	}
-	if !journalResumes([]journalEntry{{Event: eventStart}, {Event: eventLayout}}) {
-		t.Error("a run that did not stop does not resume")
-	}
-	if !journalResumes([]journalEntry{{Event: eventStop, Reason: stopRestart}}) {
-		t.Error("a run that stopped to be replaced does not resume")
-	}
-	for _, reason := range []string{stopRequest, "idle", "upgrade"} {
-		if journalResumes([]journalEntry{{Event: eventStop, Reason: reason}}) {
-			t.Errorf("a run that stopped for %q resumes", reason)
-		}
 	}
 }
 
