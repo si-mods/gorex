@@ -19,6 +19,7 @@ import (
 
 	"github.com/egoist/mygo"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -507,7 +508,7 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 			raw, err := c.Layout()
 			if shared = err == nil; shared {
 				l = hostLayout{named: map[string]bool{}}
-				for _, w := range parseLayout(raw).Sessions {
+				for _, w := range layout.Parse(raw).Sessions {
 					l.tabs = append(l.tabs, w.Tabs...)
 				}
 				for _, t := range l.tabs {

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
 
@@ -169,7 +170,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			return fail("desktop_unavailable", "no GoRex window is open")
 		}
 		w := a.st.addWorkspace()
-		if name := labelText(c.Name); name != "" {
+		if name := layout.Label(c.Name); name != "" {
 			w.Name = name
 		}
 		res.Space = w.ID
@@ -257,7 +258,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			a.dropPane(t.Focus, false) // and its tab
 			return fail("create_failed", cmp.Or(a.err, "the session did not start"))
 		}
-		if name := labelText(c.Name); name != "" {
+		if name := layout.Label(c.Name); name != "" {
 			t.Name = name
 		}
 		if c.Focus {
@@ -282,7 +283,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			return fail("create_failed", cmp.Or(a.err, "the session did not start"))
 		}
 		if name := strings.TrimSpace(c.Name); name != "" {
-			n.Name = paneName(name)
+			n.Name = layout.PaneName(name)
 		}
 		res.New = n.SID
 	case "pane.teleporting", "pane.teleported":
@@ -304,10 +305,10 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 	case "tab.close":
 		a.closeTab(p.Tab)
 	case "tab.rename":
-		p.Tab.Name = labelText(c.Name)
+		p.Tab.Name = layout.Label(c.Name)
 		a.changed()
 	case "pane.rename":
-		p.Name = paneName(c.Name)
+		p.Name = layout.PaneName(c.Name)
 		res.Name = p.Name
 		a.changed()
 	case "pane.resize":
@@ -419,21 +420,6 @@ func (a *App) killSaved(n *savedNode) {
 		h = a.hostByID(n.Host)
 	}
 	a.killOn(h, n.SID)
-}
-
-// labelText cleans a tab's or a space's name of a client: its control
-// characters go, and it is trimmed and bounded, as a pane's name is.
-func labelText(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, strings.TrimSpace(s))
-	if r := []rune(s); len(r) > 128 {
-		return string(r[:128])
-	}
-	return s
 }
 
 // coerceArgs turns the CLI's strings into the types an action declares.

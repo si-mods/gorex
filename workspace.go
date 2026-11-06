@@ -1,11 +1,9 @@
 package main
 
 import (
-	"crypto/rand"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/big"
 	"os"
 	"runtime"
 	"slices"
@@ -28,7 +26,7 @@ import (
 type Workspace struct {
 	ID   string
 	Name string
-	// Color is the space's color: a preset id from spacePalette, a custom
+	// Color is the space's color: a preset id from layout.Palette, a custom
 	// "#rrggbb", or "" for the default look.
 	Color string
 	// layout is its tabs while no window shows it; app is the window that
@@ -185,48 +183,9 @@ type savedStore = layout.Store
 // savedWorkspace is a workspace as the layout keeps it.
 type savedWorkspace = layout.Workspace
 
-// layoutVersion is the version of savedStore; a layout without one is the
-// tabs of a GoRex of one window.
-const layoutVersion = 2
-
-// parseLayout reads the layout the server keeps, a workspace for the
-// tabs of an older GoRex. Workspaces without an id, or of an id already
-// read, and windows of none, are dropped.
-func parseLayout(raw []byte) savedStore {
-	var s savedStore
-	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
-		return savedStore{Version: layoutVersion}
-	}
-	if s.Version < layoutVersion {
-		if len(s.Tabs) == 0 {
-			return savedStore{Version: layoutVersion}
-		}
-		w := savedWorkspace{ID: newWorkspaceID(), Name: workspaceName(nil), Layout: s.Layout}
-		return savedStore{Version: layoutVersion, Sessions: []savedWorkspace{w}, Windows: []string{w.ID}}
-	}
-	out := savedStore{Version: s.Version}
-	ids := map[string]bool{}
-	for _, w := range s.Sessions {
-		if w.ID == "" || ids[w.ID] {
-			continue
-		}
-		ids[w.ID] = true
-		if strings.TrimSpace(w.Name) == "" {
-			w.Name = workspaceName(nil)
-		}
-		out.Sessions = append(out.Sessions, w)
-	}
-	for _, id := range s.Windows {
-		if ids[id] && !slices.Contains(out.Windows, id) {
-			out.Windows = append(out.Windows, id)
-		}
-	}
-	return out
-}
-
 // saved is the layout of every workspace, and of the windows.
 func (st *store) saved() savedStore {
-	s := savedStore{Version: layoutVersion, Sessions: []savedWorkspace{}, Windows: st.windowIDs()}
+	s := savedStore{Version: layout.Version, Sessions: []savedWorkspace{}, Windows: st.windowIDs()}
 	for _, w := range st.workspaces {
 		if w.hidden() {
 			continue
@@ -346,7 +305,7 @@ func (st *store) load() []*Workspace {
 	if err != nil {
 		log.Print(err)
 	}
-	s := parseLayout(raw)
+	s := layout.Parse(raw)
 	st.workspaces = nil
 	for _, sw := range s.Sessions {
 		st.workspaces = append(st.workspaces, &Workspace{ID: sw.ID, Name: sw.Name, Color: sw.Color, layout: sw.Layout})
@@ -429,7 +388,7 @@ func (st *store) hostSIDs(h *hostConn) map[string]bool {
 
 // addWorkspace makes a workspace of a new name and color, last.
 func (st *store) addWorkspace() *Workspace {
-	w := &Workspace{ID: newWorkspaceID(), Name: workspaceName(st.taken), Color: st.nextSpaceColor()}
+	w := &Workspace{ID: layout.NewSpaceID(), Name: layout.SpaceName(st.taken), Color: st.nextSpaceColor()}
 	st.workspaces = append(st.workspaces, w)
 	return w
 }
@@ -798,36 +757,6 @@ func (st *store) closed(a *App) {
 	}
 	if !st.quitting {
 		st.saveNow()
-	}
-}
-
-// newWorkspaceID returns a new workspace's id.
-func newWorkspaceID() string { return rand.Text()[:12] }
-
-// The words of workspaces' names, as Rex's "icy-ridge".
-var (
-	nameAdjectives = []string{"amber", "brisk", "calm", "coral", "crisp", "dusky", "eager", "fern", "gentle", "golden", "hazy", "icy", "jade", "keen", "lucky", "lunar", "misty", "mossy", "noble", "quiet", "rapid", "rusty", "silent", "sunny", "swift", "tidal", "velvet", "vivid", "windy", "young"}
-	nameNouns      = []string{"bay", "brook", "canyon", "cedar", "cliff", "comet", "delta", "dune", "ember", "fjord", "glade", "grove", "harbor", "island", "lagoon", "meadow", "mesa", "orbit", "peak", "pine", "reef", "ridge", "river", "shore", "summit", "tundra", "valley", "willow"}
-)
-
-// workspaceName returns a random name, as "icy-ridge", that taken does not
-// report taken, if it finds one.
-func workspaceName(taken func(string) bool) string {
-	pick := func(words []string) string {
-		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(words))))
-		return words[n.Int64()]
-	}
-	name := ""
-	for range 50 {
-		name = pick(nameAdjectives) + "-" + pick(nameNouns)
-		if taken == nil || !taken(name) {
-			return name
-		}
-	}
-	for i := 2; ; i++ {
-		if n := fmt.Sprintf("%s-%d", name, i); !taken(n) {
-			return n
-		}
 	}
 }
 

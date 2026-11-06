@@ -15,6 +15,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -106,7 +107,7 @@ func savedWorkspaces(t *testing.T, c *rex.Client) savedStore {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return parseLayout(raw)
+	return layout.Parse(raw)
 }
 
 // refresh asks the server what runs in the sessions, as the window does

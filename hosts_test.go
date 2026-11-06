@@ -805,7 +805,7 @@ func TestAdoptHostTabSplits(t *testing.T) {
 		t.Fatal(err)
 	}
 	l := savedStore{
-		Version: layoutVersion,
+		Version: layout.Version,
 		Sessions: []savedWorkspace{{
 			ID: "w", Name: "studio",
 			Layout: savedLayout{Tabs: []savedTab{{
@@ -893,7 +893,7 @@ func TestAdoptHostTabSavedLate(t *testing.T) {
 	// as the host has not saved it yet.
 	time.Sleep(1500 * time.Millisecond)
 	l := savedStore{
-		Version: layoutVersion,
+		Version: layout.Version,
 		Sessions: []savedWorkspace{{
 			ID: "w", Name: "studio",
 			Layout: savedLayout{Tabs: []savedTab{{
@@ -930,7 +930,7 @@ func TestAdoptHostTabSplitLater(t *testing.T) {
 	share := func(root *savedNode, floats ...layout.Float) {
 		t.Helper()
 		raw, err := json.Marshal(savedStore{
-			Version: layoutVersion,
+			Version: layout.Version,
 			Sessions: []savedWorkspace{{
 				ID: "w", Name: "studio",
 				Layout: savedLayout{Tabs: []savedTab{{Name: "build", Root: root, Floats: floats}}},
@@ -1023,7 +1023,7 @@ func TestAdoptHostTabSplitZoomed(t *testing.T) {
 	share := func(root *savedNode, zoom bool) {
 		t.Helper()
 		raw, err := json.Marshal(savedStore{
-			Version: layoutVersion,
+			Version: layout.Version,
 			Sessions: []savedWorkspace{{
 				ID: "w", Name: "studio",
 				Layout: savedLayout{Tabs: []savedTab{{Name: "build", Root: root, Zoom: zoom}}},

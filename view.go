@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/markdown"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -1322,7 +1323,7 @@ func (a *App) paneRename(c *ui.Context, k *colors) {
 	})
 	done := func(keep bool) {
 		if keep {
-			p.Name = paneName(a.paneNameText)
+			p.Name = layout.PaneName(a.paneNameText)
 			a.changed()
 		}
 		a.paneRenaming, a.paneNameFocus = nil, false

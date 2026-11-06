@@ -28,7 +28,7 @@ func TestTabIDsLast(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := parseLayout(raw)
+	saved := layout.Parse(raw)
 	tabs := saved.Sessions[0].Tabs
 	if len(tabs) != 2 || tabs[0].ID != first.UID || tabs[1].ID != second.UID {
 		t.Fatalf("saved %+v", tabs)

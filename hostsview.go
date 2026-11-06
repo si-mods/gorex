@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -373,7 +374,7 @@ func (a *App) refreshHostLayout() {
 				return
 			}
 			page.layoutErr = ""
-			page.layout = parseLayout(raw)
+			page.layout = layout.Parse(raw)
 		})
 	}()
 }

@@ -16,6 +16,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/control"
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
 
@@ -326,7 +327,7 @@ func TestPaneRename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := parseLayout(raw)
+	saved := layout.Parse(raw)
 	if saved.Sessions[0].Tabs[0].Root.Name != "logs" {
 		t.Fatalf("saved %+v", saved.Sessions[0].Tabs[0].Root)
 	}
@@ -637,10 +638,10 @@ func TestMovePaneKeepsActiveTabFocus(t *testing.T) {
 }
 
 func TestPaneName(t *testing.T) {
-	if got := paneName("  logs\x01  "); got != "logs" {
+	if got := layout.PaneName("  logs\x01  "); got != "logs" {
 		t.Fatalf("sanitized %q", got)
 	}
-	if got := paneName(strings.Repeat("界", 70)); len([]rune(got)) != 64 || !utf8.ValidString(got) {
+	if got := layout.PaneName(strings.Repeat("界", 70)); len([]rune(got)) != 64 || !utf8.ValidString(got) {
 		t.Fatalf("capped runes %d", len([]rune(got)))
 	}
 }

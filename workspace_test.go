@@ -15,6 +15,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 	"gorex/locales"
 )
@@ -24,8 +25,8 @@ import (
 // drops what it cannot use.
 func TestParseLayout(t *testing.T) {
 	one := `{"active":1,"tabs":[{"name":"a","root":{"sid":"s1","dir":"/x"},"focus":0},{"root":{"sid":"s2"},"focus":0}]}`
-	s := parseLayout([]byte(one))
-	if s.Version != layoutVersion || len(s.Sessions) != 1 || !slices.Equal(s.Windows, []string{s.Sessions[0].ID}) {
+	s := layout.Parse([]byte(one))
+	if s.Version != layout.Version || len(s.Sessions) != 1 || !slices.Equal(s.Windows, []string{s.Sessions[0].ID}) {
 		t.Fatalf("migrated to %+v", s)
 	}
 	w := s.Sessions[0]
@@ -36,12 +37,12 @@ func TestParseLayout(t *testing.T) {
 		t.Errorf("migrated workspace named %q", w.Name)
 	}
 	for _, raw := range []string{"", "null", "not json", `{"active":0,"tabs":[]}`, `{"version":2}`} {
-		if s := parseLayout([]byte(raw)); len(s.Sessions) != 0 || len(s.Windows) != 0 {
+		if s := layout.Parse([]byte(raw)); len(s.Sessions) != 0 || len(s.Windows) != 0 {
 			t.Errorf("%q: %+v", raw, s)
 		}
 	}
 	two := `{"version":2,"sessions":[{"id":"a","name":"icy-ridge","tabs":[]},{"id":"a","name":"again"},{"id":"","name":"none"},{"id":"b","name":" "}],"windows":["b","zz","a","b"]}`
-	s = parseLayout([]byte(two))
+	s = layout.Parse([]byte(two))
 	if len(s.Sessions) != 2 || s.Sessions[0].Name != "icy-ridge" || s.Sessions[1].ID != "b" || s.Sessions[1].Name == " " {
 		t.Errorf("sessions %+v", s.Sessions)
 	}
@@ -53,11 +54,11 @@ func TestParseLayout(t *testing.T) {
 // TestSpaceColor checks that the layout keeps a space's color, that a layout
 // of before colors parses, and is saved again without one.
 func TestSpaceColor(t *testing.T) {
-	s := parseLayout([]byte(`{"version":2,"sessions":[{"id":"a","name":"icy-ridge","color":"rose"}],"windows":["a"]}`))
+	s := layout.Parse([]byte(`{"version":2,"sessions":[{"id":"a","name":"icy-ridge","color":"rose"}],"windows":["a"]}`))
 	if len(s.Sessions) != 1 || s.Sessions[0].Color != "rose" {
 		t.Fatalf("parsed %+v", s.Sessions)
 	}
-	older := parseLayout([]byte(`{"version":2,"sessions":[{"id":"a","name":"icy-ridge"}],"windows":["a"]}`))
+	older := layout.Parse([]byte(`{"version":2,"sessions":[{"id":"a","name":"icy-ridge"}],"windows":["a"]}`))
 	if len(older.Sessions) != 1 || older.Sessions[0].Color != "" {
 		t.Fatalf("a layout of before colors parsed %+v", older.Sessions)
 	}
@@ -70,7 +71,7 @@ func TestSpaceColor(t *testing.T) {
 	a, _ := newTestApp(t)
 	st := a.st
 	first := a.ws
-	if first.Color != spacePalette[0].ID {
+	if first.Color != layout.Palette[0].ID {
 		t.Fatalf("the first space is of color %q", first.Color)
 	}
 	st.saveNow()
@@ -84,21 +85,21 @@ func TestSpaceColor(t *testing.T) {
 // in order, and that the tenth, every one taken, takes a spare.
 func TestSpaceColorsAssigned(t *testing.T) {
 	st := &store{}
-	for i, p := range spacePalette {
+	for i, p := range layout.Palette {
 		if w := st.addWorkspace(); w.Color != p.ID {
 			t.Fatalf("space %d is of color %q, want %q", i+1, w.Color, p.ID)
 		}
 	}
-	if w := st.addWorkspace(); w.Color != spacePalette[0].ID {
-		t.Errorf("the tenth space is of color %q, want %q", w.Color, spacePalette[0].ID)
+	if w := st.addWorkspace(); w.Color != layout.Palette[0].ID {
+		t.Errorf("the tenth space is of color %q, want %q", w.Color, layout.Palette[0].ID)
 	}
 	// The least used, in the palette's order, once two are used twice.
-	if w := st.addWorkspace(); w.Color != spacePalette[1].ID {
-		t.Errorf("the eleventh space is of color %q, want %q", w.Color, spacePalette[1].ID)
+	if w := st.addWorkspace(); w.Color != layout.Palette[1].ID {
+		t.Errorf("the eleventh space is of color %q, want %q", w.Color, layout.Palette[1].ID)
 	}
 	// A custom color takes no preset.
 	st.workspaces[0].Color = "#123456"
-	if w := st.addWorkspace(); w.Color != spacePalette[0].ID {
+	if w := st.addWorkspace(); w.Color != layout.Palette[0].ID {
 		t.Errorf("with a custom color, rose is of color %q", w.Color)
 	}
 }

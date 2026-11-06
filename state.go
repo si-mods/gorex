@@ -2,7 +2,6 @@ package main
 
 import (
 	"cmp"
-	crand "crypto/rand"
 	"errors"
 	"fmt"
 	"log"
@@ -1750,7 +1749,7 @@ func (a *App) removeTab(t *Tab) {
 // layout, or one copied, would.
 func (a *App) makeTab(id string) *Tab {
 	if id == "" || a.tabUIDTaken(id) {
-		id = newTabUID()
+		id = layout.NewTabID()
 	}
 	return &Tab{ID: a.id(), UID: id}
 }
@@ -1781,19 +1780,6 @@ func (a *App) tabByUID(id string) *Tab {
 		}
 	}
 	return nil
-}
-
-// newTabUID makes a tab's lasting ID, a UUID version 7.
-func newTabUID() string {
-	var b [16]byte
-	ms := uint64(time.Now().UnixMilli())
-	for i := range 6 {
-		b[i] = byte(ms >> (40 - 8*i))
-	}
-	crand.Read(b[6:])
-	b[6] = b[6]&0x0f | 0x70
-	b[8] = b[8]&0x3f | 0x80
-	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // closeLastTab closes the window's last tab and ends the sessions of its
@@ -3452,7 +3438,7 @@ func (a *App) movePaneToNewTab(p *Pane, label string) bool {
 	wasActive := cur == src
 	a.detachPane(p)
 	t := a.makeTab("")
-	t.Name = paneName(label)
+	t.Name = layout.PaneName(label)
 	t.Root = &Node{ID: a.id(), Pane: p}
 	p.Tab, p.Node = t, t.Root
 	t.setFocus(p)
@@ -3507,21 +3493,6 @@ func (a *App) finishPaneMove(t *Tab, p *Pane, src *Tab, wasActive bool) {
 	case wasActive && a.tab() == src && src.Focus != nil:
 		a.focusReq = src.Focus
 	}
-}
-
-// paneName is the name a user gave a pane: trimmed, without control
-// characters, and cut to 64 characters.
-func paneName(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, strings.TrimSpace(s))
-	if r := []rune(s); len(r) > 64 {
-		return string(r[:64])
-	}
-	return s
 }
 
 // unlinkTiled takes a tiled pane out of its tab's tree, the other side of
