@@ -252,6 +252,10 @@ func (s *session) state() sessionState {
 // Resume serves the sessions a server upgrading to this executable
 // handed it in the file path, as Serve does.
 func Resume(path string) error {
+	// The executable may have moved: an upgrade is one.
+	if err := EnsureCLI(); err != nil {
+		log.Printf("rex: the gorex command: %v", err)
+	}
 	b, err := os.ReadFile(path)
 	os.Remove(path)
 	if err != nil {
