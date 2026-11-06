@@ -7,9 +7,11 @@ import (
 	"maps"
 	"math"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
 
@@ -144,27 +146,6 @@ func (n *node) ratios() string {
 	return fmt.Sprintf("(%v %g %s %s)", n.vertical, n.ratio, n.a.ratios(), n.b.ratios())
 }
 
-// The layout the app keeps on the server (main's savedLayout).
-type savedLayout struct {
-	Active int `json:"active"`
-	Tabs   []struct {
-		Name  string     `json:"name"`
-		Root  *savedNode `json:"root"`
-		Focus int        `json:"focus"`
-		Zoom  bool       `json:"zoom"`
-	} `json:"tabs"`
-}
-
-type savedNode struct {
-	SID      string     `json:"sid"`
-	Name     string     `json:"name"`
-	Host     string     `json:"host"`
-	Vertical bool       `json:"vertical"`
-	Ratio    float64    `json:"ratio"`
-	A        *savedNode `json:"a"`
-	B        *savedNode `json:"b"`
-}
-
 // poll reads the server's sessions and layout (fetch).
 func (b *bridge) poll() bool { return b.fetch(true, true) }
 
@@ -240,7 +221,9 @@ func (b *bridge) fetch(sessions, layout bool) bool {
 // build makes the tabs of the layout, keeping each tab's id by the
 // sessions it shares with a tab of before.
 func (b *bridge) build() {
-	var l savedLayout
+	// The first window's tabs, which the layout keeps for a client of one
+	// window.
+	var l layout.Layout
 	json.Unmarshal(b.layout, &l)
 	seen := map[string]bool{}
 	var tabs []*tab
@@ -248,8 +231,8 @@ func (b *bridge) build() {
 	used := map[string]bool{}
 	for i, st := range l.Tabs {
 		var leaves []string // every pane's, "" for those left out
-		var conv func(n *savedNode) *node
-		conv = func(n *savedNode) *node {
+		var conv func(n *layout.Node) *node
+		conv = func(n *layout.Node) *node {
 			if n == nil {
 				return nil
 			}
@@ -267,7 +250,8 @@ func (b *bridge) build() {
 			if x == nil || y == nil {
 				return cmp.Or(x, y)
 			}
-			r := n.Ratio
+			// The share as the layout wrote it, not float32's nearest float64.
+			r, _ := strconv.ParseFloat(strconv.FormatFloat(float64(n.Ratio), 'g', -1, 32), 64)
 			if r == 0 {
 				r = 0.5
 			}

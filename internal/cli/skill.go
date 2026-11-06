@@ -55,8 +55,9 @@ Manage sessions, arrange panes, and run commands with the ` + "`gorex`" + ` comm
 GoRex sets these in every local terminal it opens:
 
 - ` + "`GOREX_SESSION`" + ` identifies your session. Pass ` + "`-s \"$GOREX_SESSION\"`" + ` to select it.
-- ` + "`GOREX_PANE`" + ` is the app's number for your terminal pane. Commands select
-  the pane by its session, ` + "`-s \"$GOREX_SESSION\"`" + `.
+- ` + "`GOREX_PANE`" + ` is the app's number for your terminal pane, unset in a pane
+  the server made with no window open. Commands select the pane by its
+  session, ` + "`-s \"$GOREX_SESSION\"`" + `.
 - ` + "`GOREX_SERVER`" + ` is the session server's socket.
 - A pane made by the app also gets ` + "`GOREX_HOST`" + ` for a remote host's pane or
   ` + "`GOREX_CLIENT`" + ` for a local one.

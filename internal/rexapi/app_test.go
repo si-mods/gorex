@@ -114,15 +114,13 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		}
 		return fail("space_not_found", "no workspace")
 	case "space.rename":
-		for i := range a.store.Sessions {
-			if a.store.Sessions[i].ID == c.Space {
-				a.store.Sessions[i].Name = c.Name
-				return res
-			}
+		if ws := a.store.Space(c.Space); ws != nil {
+			ws.Name = c.Name
+			return res
 		}
 		return fail("space_not_found", "no workspace")
 	}
-	ws := a.workspace(c.Space)
+	ws := a.store.Space(c.Space)
 	if ws == nil {
 		// The app shows the window that has the commands.
 		if len(a.store.Sessions) == 0 {
@@ -185,8 +183,8 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		a.tabs++
 		tab := layout.Tab{ID: fmt.Sprintf("tab-%d", a.tabs), Name: c.Name, Root: &layout.Node{SID: sid}, Focus: 0}
 		at := len(ws.Tabs)
-		if i := findTab(ws, c.After); i >= 0 {
-			at = i + 1
+		if t, _ := findNode(ws, c.After); t != nil {
+			at = tabIndex(ws, t) + 1
 		}
 		ws.Tabs = append(ws.Tabs[:at:at], append([]layout.Tab{tab}, ws.Tabs[at:]...)...)
 		if c.Focus || len(ws.Tabs) == 1 {
@@ -201,7 +199,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		for i := range ws.Tabs {
 			if ws.Tabs[i].ID == c.Tab {
 				tab = &ws.Tabs[i]
-				node = firstLeaf(tab.Root)
+				node = layout.FirstLeaf(tab.Root)
 			}
 		}
 	}
@@ -253,14 +251,14 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 			return fail("create_failed", "the session did not start")
 		}
 		newNode := &layout.Node{SID: sid}
-		replaceNode(tab, node, &layout.Node{Vertical: c.Vertical, Ratio: 0.5, A: node, B: newNode})
+		tab.Replace(node, &layout.Node{Vertical: c.Vertical, Ratio: 0.5, A: node, B: newNode})
 		tab.Zoom = false
-		tab.Focus = leafIndex(tab.Root, newNode.SID)
+		tab.Focus = layout.LeafIndex(tab.Root, newNode.SID)
 		res.New = sid
 		return res
 	case "pane.close":
 		a.kill(node.SID)
-		removeNode(tab, node)
+		tab.Remove(node)
 		if tab.Root == nil {
 			at := tabIndex(ws, tab)
 			ws.Tabs = append(ws.Tabs[:at:at], ws.Tabs[at+1:]...)
@@ -274,7 +272,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		res.Name = c.Name
 		return res
 	case "pane.focus":
-		tab.Focus = leafIndex(tab.Root, node.SID)
+		tab.Focus = layout.LeafIndex(tab.Root, node.SID)
 		tab.FocusFloat = 0
 		ws.Active = tabIndex(ws, tab)
 		return res
@@ -282,13 +280,13 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		on := c.Mode == "on" || c.Mode != "off" && !tab.Zoom
 		tab.Zoom = on
 		if on {
-			tab.Focus = leafIndex(tab.Root, node.SID)
+			tab.Focus = layout.LeafIndex(tab.Root, node.SID)
 			tab.FocusFloat = 0
 		}
 		res.Zoomed = tab.Zoom
 		return res
 	case "pane.resize":
-		split := splitOfNode(tab.Root, node, c.Direction)
+		split := layout.SplitAt(tab.Root, node, c.Direction)
 		if split == nil {
 			res.Reason = "unchanged"
 			return res
@@ -302,7 +300,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		res.Changed = split.Ratio != old
 		return res
 	case "pane.swap":
-		other := nodeOf(tab.Root, c.Target)
+		other := layout.Find(tab.Root, c.Target)
 		switch {
 		case other == nil:
 			res.Reason = "not_found"
@@ -314,7 +312,7 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 			node.SID, other.SID = other.SID, node.SID
 			node.Name, other.Name = other.Name, node.Name
 			res.Changed = true
-			tab.Focus = leafIndex(tab.Root, node.SID)
+			tab.Focus = layout.LeafIndex(tab.Root, node.SID)
 		}
 		return res
 	case "pane.move":
@@ -336,37 +334,27 @@ func (a *fakeApp) apply(c rex.LayoutCommand) rex.LayoutCommand {
 		if ratio <= 0 || ratio >= 1 {
 			ratio = 0.5
 		}
-		removeNode(tab, node)
+		tab.Remove(node)
 		if tab.Root == nil {
 			at := tabIndex(ws, tab)
 			ws.Tabs = append(ws.Tabs[:at:at], ws.Tabs[at+1:]...)
 		}
-		targetNode := nodeOf(target.Root, c.Target)
+		targetNode := layout.Find(target.Root, c.Target)
 		if targetNode == nil {
 			res.Reason = "not_found"
 			return res
 		}
 		newNode := &layout.Node{SID: node.SID, Name: node.Name}
-		replaceNode(target, targetNode, &layout.Node{
+		target.Replace(targetNode, &layout.Node{
 			Vertical: vertical, Ratio: ratio,
 			A: targetNode, B: newNode,
 		})
-		target.Focus = leafIndex(target.Root, newNode.SID)
+		target.Focus = layout.LeafIndex(target.Root, newNode.SID)
 		ws.Active = tabIndex(ws, target)
 		res.Changed = true
 		return res
 	}
 	return fail("unknown_op", "GoRex does not know "+c.Op)
-}
-
-// workspace returns the workspace with an ID, nil for none.
-func (a *fakeApp) workspace(id string) *layout.Workspace {
-	for i := range a.store.Sessions {
-		if a.store.Sessions[i].ID == id {
-			return &a.store.Sessions[i]
-		}
-	}
-	return nil
 }
 
 // killTree ends the sessions of a layout tree.
@@ -382,14 +370,24 @@ func (a *fakeApp) killTree(n *layout.Node) {
 	a.killTree(n.B)
 }
 
-// findTab returns the index of the tab that holds a pane's session.
-func findTab(ws *layout.Workspace, sid string) int {
-	for i, tab := range ws.Tabs {
-		if leafIndex(tab.Root, sid) >= 0 {
-			return i
+// findNode returns the tab and the node of a pane's session.
+func findNode(ws *layout.Workspace, sid string) (*layout.Tab, *layout.Node) {
+	for i := range ws.Tabs {
+		if node := layout.Find(ws.Tabs[i].Root, sid); node != nil {
+			return &ws.Tabs[i], node
 		}
 	}
-	return -1
+	return nil, nil
+}
+
+// findTabFor returns the tab of a pane's session in the whole store.
+func findTabFor(store *layout.Store, sid string) *layout.Tab {
+	for i := range store.Sessions {
+		if t, _ := findNode(&store.Sessions[i], sid); t != nil {
+			return t
+		}
+	}
+	return nil
 }
 
 // tabIndex returns a tab's place in a workspace.
@@ -400,160 +398,4 @@ func tabIndex(ws *layout.Workspace, tab *layout.Tab) int {
 		}
 	}
 	return -1
-}
-
-// findNode returns the tab and the node of a pane's session.
-func findNode(ws *layout.Workspace, sid string) (*layout.Tab, *layout.Node) {
-	for i := range ws.Tabs {
-		if node := nodeOf(ws.Tabs[i].Root, sid); node != nil {
-			return &ws.Tabs[i], node
-		}
-	}
-	return nil, nil
-}
-
-// findTabFor returns the tab of a pane's session in the whole store.
-func findTabFor(store *layout.Store, sid string) *layout.Tab {
-	for i := range store.Sessions {
-		for j := range store.Sessions[i].Tabs {
-			if nodeOf(store.Sessions[i].Tabs[j].Root, sid) != nil {
-				return &store.Sessions[i].Tabs[j]
-			}
-		}
-	}
-	return nil
-}
-
-// nodeOf returns the leaf of a session under n.
-func nodeOf(n *layout.Node, sid string) *layout.Node {
-	if n == nil {
-		return nil
-	}
-	if n.A == nil && n.B == nil {
-		if n.SID == sid {
-			return n
-		}
-		return nil
-	}
-	if x := nodeOf(n.A, sid); x != nil {
-		return x
-	}
-	return nodeOf(n.B, sid)
-}
-
-// leafIndex returns the place of a session among a tree's leaves.
-func leafIndex(n *layout.Node, sid string) int {
-	i := 0
-	var walk func(*layout.Node) int
-	walk = func(n *layout.Node) int {
-		if n == nil {
-			return -1
-		}
-		if n.A == nil && n.B == nil {
-			if n.SID == sid {
-				return i
-			}
-			i++
-			return -1
-		}
-		if at := walk(n.A); at >= 0 {
-			return at
-		}
-		return walk(n.B)
-	}
-	return walk(n)
-}
-
-// splitOfNode returns the split a pane's direction edge belongs to.
-func splitOfNode(root, node *layout.Node, direction string) *layout.Node {
-	vertical := direction == "up" || direction == "down"
-	grows := direction == "right" || direction == "down"
-	var nearest *layout.Node
-	for n := node; ; {
-		split := parentOf(root, n)
-		if split == nil {
-			break
-		}
-		if split.Vertical == vertical {
-			if nearest == nil {
-				nearest = split
-			}
-			if (split.A == n) == grows {
-				return split
-			}
-		}
-		n = split
-	}
-	return nearest
-}
-
-// parentOf returns the split above a node.
-func parentOf(root, node *layout.Node) *layout.Node {
-	if root == nil || root == node {
-		return nil
-	}
-	if root.A == node || root.B == node {
-		return root
-	}
-	if p := parentOf(root.A, node); p != nil {
-		return p
-	}
-	return parentOf(root.B, node)
-}
-
-// replaceNode puts next where old was under n.
-func replaceNode(tab *layout.Tab, old, next *layout.Node) {
-	if tab.Root == old {
-		tab.Root = next
-		return
-	}
-	p := parentOf(tab.Root, old)
-	if p == nil {
-		return
-	}
-	if p.A == old {
-		p.A = next
-	} else {
-		p.B = next
-	}
-}
-
-// removeNode takes a leaf out of a tab's tree, closing the splits it
-// leaves empty.
-func removeNode(tab *layout.Tab, node *layout.Node) {
-	if tab.Root == node {
-		tab.Root, tab.Zoom = nil, false
-		return
-	}
-	p := parentOf(tab.Root, node)
-	if p == nil {
-		return
-	}
-	var keep *layout.Node
-	if p.A == node {
-		keep = p.B
-	} else {
-		keep = p.A
-	}
-	replaceNode(tab, p, keep)
-	tab.Focus = min(max(tab.Focus, 0), leafCount(tab.Root)-1)
-}
-
-// leafCount counts a tree's leaves.
-func leafCount(n *layout.Node) int {
-	if n == nil {
-		return 0
-	}
-	if n.A == nil && n.B == nil {
-		return 1
-	}
-	return leafCount(n.A) + leafCount(n.B)
-}
-
-// firstLeaf returns a tree's first pane.
-func firstLeaf(n *layout.Node) *layout.Node {
-	for n != nil && n.A != nil {
-		n = n.A
-	}
-	return n
 }

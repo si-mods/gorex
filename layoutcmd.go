@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
 
@@ -21,9 +22,6 @@ import (
 // answered once the server has its layout, the main thread going on
 // meanwhile.
 func (st *store) takeCommands(client *rex.Client, update func(func())) {
-	unavailable := func(id int64, msg string) rex.LayoutCommand {
-		return rex.LayoutCommand{ID: id, Code: "desktop_unavailable", Error: msg}
-	}
 	for {
 		cmd, err := client.TakeCommand()
 		select {
@@ -43,12 +41,17 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 		if cmd == nil {
 			continue
 		}
-		started, done := make(chan struct{}), make(chan rex.LayoutCommand, 1)
+		started, done := make(chan struct{}), make(chan *rex.LayoutCommand, 1)
 		update(func() {
 			close(started)
 			a := st.commandAppFor(cmd.Space)
 			if a == nil {
-				done <- unavailable(cmd.ID, "no GoRex window is open")
+				// The server makes it itself, before the main thread goes
+				// on: a window that opens next reads the layout after it.
+				if err := client.CommandDone(rex.LayoutCommand{ID: cmd.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}); err != nil {
+					log.Printf("answering a layout command: %v", err)
+				}
+				done <- nil
 				return
 			}
 			res := a.command(*cmd)
@@ -56,16 +59,21 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 				a.saveDue = false
 				st.save()
 			}
-			done <- res
+			done <- &res
 		})
-		// A main thread that runs nothing has no window; one that runs it
-		// takes its time, as a session may be slow to start.
+		// A main thread that runs nothing does not answer, and may make the
+		// command still; one that runs it takes its time, as a session may
+		// be slow to start.
 		var res rex.LayoutCommand
 		select {
 		case <-started:
-			res = <-done
+			answer := <-done
+			if answer == nil {
+				continue // answered
+			}
+			res = *answer
 		case <-time.After(rex.AppCommandTimeout):
-			res = unavailable(cmd.ID, "the GoRex window does not answer")
+			res = rex.LayoutCommand{ID: cmd.ID, Code: "layout_timeout", Error: "the GoRex window does not answer; the change may still appear"}
 		}
 		if res.Code == "" {
 			st.writer.wait(rex.CommandTimeout)
@@ -169,11 +177,24 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			return fail("desktop_unavailable", "no GoRex window is open")
 		}
 		w := a.st.addWorkspace()
-		if name := labelText(c.Name); name != "" {
+		if name := layout.Label(c.Name); name != "" {
 			w.Name = name
 		}
 		res.Space = w.ID
 		a.changed()
+		return res
+	case "space.rename":
+		if a.st == nil {
+			return fail("desktop_unavailable", "no GoRex window is open")
+		}
+		w := a.st.workspaceByID(c.Space)
+		if w == nil {
+			return fail("space_not_found", "no such space in the GoRex layout")
+		}
+		if name := layout.Label(c.Name); name != "" {
+			w.Name = name
+			a.changed()
+		}
 		return res
 	case "space.close":
 		if a.st == nil {
@@ -257,7 +278,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			a.dropPane(t.Focus, false) // and its tab
 			return fail("create_failed", cmp.Or(a.err, "the session did not start"))
 		}
-		if name := labelText(c.Name); name != "" {
+		if name := layout.Label(c.Name); name != "" {
 			t.Name = name
 		}
 		if c.Focus {
@@ -282,7 +303,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			return fail("create_failed", cmp.Or(a.err, "the session did not start"))
 		}
 		if name := strings.TrimSpace(c.Name); name != "" {
-			n.Name = paneName(name)
+			n.Name = layout.PaneName(name)
 		}
 		res.New = n.SID
 	case "pane.teleporting", "pane.teleported":
@@ -304,10 +325,10 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 	case "tab.close":
 		a.closeTab(p.Tab)
 	case "tab.rename":
-		p.Tab.Name = labelText(c.Name)
+		p.Tab.Name = layout.Label(c.Name)
 		a.changed()
 	case "pane.rename":
-		p.Name = paneName(c.Name)
+		p.Name = layout.PaneName(c.Name)
 		res.Name = p.Name
 		a.changed()
 	case "pane.resize":
@@ -419,21 +440,6 @@ func (a *App) killSaved(n *savedNode) {
 		h = a.hostByID(n.Host)
 	}
 	a.killOn(h, n.SID)
-}
-
-// labelText cleans a tab's or a space's name of a client: its control
-// characters go, and it is trimmed and bounded, as a pane's name is.
-func labelText(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, strings.TrimSpace(s))
-	if r := []rune(s); len(r) > 128 {
-		return string(r[:128])
-	}
-	return s
 }
 
 // coerceArgs turns the CLI's strings into the types an action declares.

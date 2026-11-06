@@ -4,14 +4,16 @@ import (
 	"testing"
 
 	"github.com/egoist/mygo/ui"
+
+	"gorex/internal/layout"
 )
 
 // TestSpaceColorsReadable checks that every color a space takes leaves its
 // text on the window's every background, and its accent on the face of
 // controls, as readable as WCAG asks.
 func TestSpaceColorsReadable(t *testing.T) {
-	ids := make([]string, 0, len(spacePalette)+4)
-	for _, p := range spacePalette {
+	ids := make([]string, 0, len(layout.Palette)+4)
+	for _, p := range layout.Palette {
 		ids = append(ids, p.ID)
 	}
 	ids = append(ids, "#ffff00", "#000000", "#ffffff", "#808080")

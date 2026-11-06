@@ -170,6 +170,9 @@ func (st *store) debug(dir, line string) {
 			}
 		})
 		return
+	case "reopen": // the app activated with no window open, as by a click on its Dock icon
+		debugMain(st.reopen)
+		return
 	case "state": // FILE: the windows and the workspaces, as JSON, into FILE
 		var b []byte
 		debugMain(func() { b, _ = json.MarshalIndent(st.state(), "", "  ") })

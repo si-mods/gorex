@@ -54,6 +54,9 @@ type Server struct {
 	// takes it alone; acceptMu holds Accept while an upgrade stops it.
 	ops      sync.RWMutex
 	acceptMu sync.Mutex
+	// applyMu makes the changes of the layout the server makes itself
+	// (apply) one at a time.
+	applyMu sync.Mutex
 	// kept are the control connections kept alive (Request.Keepalive), by
 	// Hello.Conn, with the connections attached through them.
 	kept map[string]*keptConn
@@ -83,10 +86,13 @@ type Server struct {
 	linksFile, home string
 }
 
-// layoutCmd is a layout command waiting for the app's answer, done.
+// layoutCmd is a layout command waiting for the app's answer, done;
+// handled closes once the command's caller has it, the server's own change
+// made when the app had no window to make it.
 type layoutCmd struct {
 	LayoutCommand
-	done chan LayoutCommand
+	done    chan LayoutCommand
+	handled chan struct{}
 }
 
 // commandWait is how long a layout command waits for the app to make it,
@@ -97,17 +103,19 @@ var (
 )
 
 // command asks the app for c, and returns its answer: Code tells why it
-// did not make it, when the app has no window to take commands, or it
-// did not answer in time; it may make it still.
+// did not make it, when it did not answer in time; it may make it still.
+// With no window to take it, the server makes a change of the layout
+// itself (apply).
 func (s *Server) command(c LayoutCommand) LayoutCommand {
 	s.cmdMu.Lock()
 	if s.desks == 0 {
 		s.cmdMu.Unlock()
-		return LayoutCommand{Code: "desktop_unavailable", Error: "no GoRex window is open"}
+		return s.apply(c)
 	}
 	s.nextCmd++
 	c.ID = s.nextCmd
-	lc := &layoutCmd{c, make(chan LayoutCommand, 1)}
+	lc := &layoutCmd{c, make(chan LayoutCommand, 1), make(chan struct{})}
+	defer close(lc.handled)
 	s.cmds = append(s.cmds, lc)
 	if s.cmdWake != nil {
 		close(s.cmdWake)
@@ -116,6 +124,9 @@ func (s *Server) command(c LayoutCommand) LayoutCommand {
 	s.cmdMu.Unlock()
 	select {
 	case res := <-lc.done:
+		if res.Code == "desktop_unavailable" {
+			return s.apply(c)
+		}
 		return res
 	case <-time.After(commandWait.get()):
 	}
@@ -169,7 +180,9 @@ func (s *Server) take(gone <-chan struct{}) *LayoutCommand {
 	return &lc.LayoutCommand
 }
 
-// commandDone gives the answer the app made to a command it took.
+// commandDone gives the answer the app made to a command it took, and
+// returns once the server made the change itself, for an app that had no
+// window: one it opens next reads a layout that has the change.
 func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Lock()
 	lc := s.taken[c.ID]
@@ -177,7 +190,15 @@ func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Unlock()
 	if lc != nil {
 		lc.done <- c
+		<-lc.handled
 	}
+}
+
+// settled waits for the change of the layout the server makes, if any:
+// a read after a command sees its change.
+func (s *Server) settled() {
+	s.applyMu.Lock()
+	s.applyMu.Unlock()
 }
 
 // keptConn is a control connection kept alive, conn, of peer (remote
@@ -560,8 +581,9 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 			if req.Op == "subscribe" && (!remote || s.remoteShareLayout(peer)) && sub == nil {
 				sub = s.subscribe(write, remote, peer, req.Transfers)
 			}
-			// Kills wait for the session to end, and layout commands for
-			// the app: answer them aside, a few at a time; the others wait
+			// Kills wait for the session to end, layout commands for the
+			// app, and an answer of no window for the server's change:
+			// answer them aside, a few at a time; the others wait
 			// their turn.
 			if req.Op == "command.take" && !remote && !desk {
 				desk = true
@@ -569,7 +591,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 				s.desks++
 				s.cmdMu.Unlock()
 			}
-			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" {
+			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" || req.Op == "command.done" {
 				aside <- struct{}{}
 				kept := kept // a later hello sets it, as this runs
 				go func() {
@@ -992,6 +1014,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return nil, nil
 	case "getLayout":
+		s.settled()
 		s.mu.Lock()
 		l := s.layout
 		s.mu.Unlock()
@@ -1000,6 +1023,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return s.filterLayout(l, peer)
 	case "getLayoutState":
+		s.settled()
 		s.mu.Lock()
 		st := LayoutState{Layout: s.layout, Revision: s.layoutRev}
 		s.mu.Unlock()
@@ -1016,45 +1040,10 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			return nil, errors.New("layout is not JSON")
 		}
 		l := bytes.Clone(req.Layout)
-		s.mu.Lock()
-		if req.LayoutRevision != 0 && req.LayoutRevision != s.layoutRev {
-			rev := s.layoutRev
-			s.mu.Unlock()
-			return nil, fmt.Errorf("rex: layout is at revision %d", rev)
+		rev, err := s.commitLayout(l, req.LayoutRevision)
+		if err != nil {
+			return nil, err
 		}
-		same := bytes.Equal(s.layout, l)
-		s.layout = l
-		if !same {
-			s.layoutRev++
-		}
-		rev := s.layoutRev
-		s.mu.Unlock()
-		if !same {
-			s.notify("layout")
-		}
-		// Write the layout the server has now, not this request's: two
-		// writes that cross must not leave the older one on disk.
-		s.layoutFile.Lock()
-		s.mu.Lock()
-		current := bytes.Clone(s.layout)
-		stopping := s.stopping
-		s.mu.Unlock()
-		// A run that is ending keeps no layout: the last entry of the
-		// journal says it stopped, and the run after it starts nothing.
-		if !stopping {
-			path := filepath.Join(Dir(), "layout.json")
-			tmp := path + ".tmp"
-			if err := os.WriteFile(tmp, current, 0o600); err == nil {
-				os.Rename(tmp, path)
-			}
-			// The journal keeps every layout of the run, so that one the
-			// app prunes after a session ends cannot take the record of
-			// another with it.
-			if !same {
-				s.journal.layout(rev, current)
-			}
-		}
-		s.layoutFile.Unlock()
 		return LayoutState{Layout: l, Revision: rev}, nil
 	case "command", "command.done":
 		if req.Command == nil {
@@ -1084,11 +1073,63 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 	return nil, fmt.Errorf("unknown op %q", req.Op)
 }
 
+// commitLayout makes l the layout, when it is at revision at, or at any
+// with 0, and returns the revision it is at then: a change bumps it, tells
+// the subscribers, and goes to layout.json and the journal.
+func (s *Server) commitLayout(l json.RawMessage, at uint64) (uint64, error) {
+	s.mu.Lock()
+	if at != 0 && at != s.layoutRev {
+		rev := s.layoutRev
+		s.mu.Unlock()
+		return 0, fmt.Errorf("rex: layout is at revision %d", rev)
+	}
+	same := bytes.Equal(s.layout, l)
+	s.layout = l
+	if !same {
+		s.layoutRev++
+	}
+	rev := s.layoutRev
+	s.mu.Unlock()
+	if !same {
+		s.notify("layout")
+	}
+	// Write the layout the server has now, not this one: two writes that
+	// cross must not leave the older one on disk.
+	s.layoutFile.Lock()
+	s.mu.Lock()
+	current := bytes.Clone(s.layout)
+	stopping := s.stopping
+	s.mu.Unlock()
+	// A run that is ending keeps no layout: the last entry of the
+	// journal says it stopped, and the run after it starts nothing.
+	if !stopping {
+		path := filepath.Join(Dir(), "layout.json")
+		tmp := path + ".tmp"
+		if err := os.WriteFile(tmp, current, 0o600); err == nil {
+			os.Rename(tmp, path)
+		}
+		// The journal keeps every layout of the run, so that one the
+		// app prunes after a session ends cannot take the record of
+		// another with it.
+		if !same {
+			s.journal.layout(rev, current)
+		}
+	}
+	s.layoutFile.Unlock()
+	return rev, nil
+}
+
 // create starts a session of o for peer, a remote client's key or "" for
 // this machine.
 func (s *Server) create(o CreateOptions, peer string) (*session, error) {
 	s.ops.RLock()
 	defer s.ops.RUnlock()
+	return s.createHeld(o, peer)
+}
+
+// createHeld is create for a caller that holds ops already: a read lock
+// taken again deadlocks while an upgrade waits for it.
+func (s *Server) createHeld(o CreateOptions, peer string) (*session, error) {
 	id := o.id
 	if id == "" {
 		id = newID()

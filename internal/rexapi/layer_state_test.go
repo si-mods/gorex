@@ -10,6 +10,7 @@ import (
 // floating one.
 func floatLayout() layout.Store {
 	return layout.Store{
+		Version: layout.Version,
 		Sessions: []layout.Workspace{
 			{
 				ID: "work", Name: "work",
@@ -44,10 +45,17 @@ func layerOfBlock(t *testing.T, view map[string]any, block string) map[string]an
 
 // TestSetLayerState minimizes a floating layer, brings it back with the
 // focus, and checks the errors the method documents.
-func TestSetLayerState(t *testing.T) {
+func TestSetLayerState(t *testing.T) { setLayerState(t, true) }
+
+// TestSetLayerStateWithoutApp does it with no window open.
+func TestSetLayerStateWithoutApp(t *testing.T) { setLayerState(t, false) }
+
+func setLayerState(t *testing.T, app bool) {
 	f := startFixture(t)
 	f.setLayout(floatLayout())
-	startApp(f)
+	if app {
+		startApp(f)
+	}
 	c := f.dialControl()
 	c.hello(apiRevision)
 	sid := sessionIDs(t, c)["work"]

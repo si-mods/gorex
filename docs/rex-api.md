@@ -186,8 +186,10 @@ meets:
   window open on it, as a Rex session goes on with no windows: make the
   next window from the client. On the desktop the window closes with its
   last tab instead.
-- Changing the layout needs the GoRex window open, as for rootshell:
-  without it, the call fails with `conflict`.
+- With no GoRex window open, the server makes a change of the layout
+  itself, and the window shows it as it opens. An app action, and the
+  close of a window or session that holds a pane of another host, still
+  need the window, and fail with `conflict` without it.
 - Tabs and panes of remote hosts are left out.
 - Revision 8's `data_tickets` on `session.bootstrap` is served: a client
   that asks for the terminal blocks gets a ticket for each one, and opens
@@ -203,4 +205,3 @@ meets:
 | `https: pending` stays, or Tailscale turns off with an error | Turn on MagicDNS and HTTPS in the tailnet's admin console, then `GoRex rexapi tailscale on` again. |
 | The phone gets 403 | It is signed in to Tailscale as another user, or is a tagged device: sign it in as you, or turn on `--allow-tailnet-members`. |
 | `no Rex API gateway on …` | The gateway is not running, or listens on another socket (`--socket`, `GOREX_REXAPI_SOCKET`). |
-| A split, close or rename from the phone fails with `conflict` | Open the GoRex window. |

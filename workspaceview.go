@@ -7,6 +7,8 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/locales"
+
+	"gorex/internal/layout"
 )
 
 // Run is set here: they open windows, whose debug hook lists the commands.
@@ -185,7 +187,7 @@ func (a *App) spaceColorPicker(c *ui.Context, k *colors) {
 	base := colorsOf(c)
 	ui.Row(c).Gap(5).Wrap().Padding(0, 8, 4, 8).Children(func() {
 		a.spaceSwatch(c, k, "", locales.SpaceColorDefault(), base.bgMid, true)
-		for _, p := range spacePalette {
+		for _, p := range layout.Palette {
 			a.spaceSwatch(c, k, p.ID, strings.ToUpper(p.ID[:1])+p.ID[1:], ui.Hex(p.Hex), false)
 		}
 	})
