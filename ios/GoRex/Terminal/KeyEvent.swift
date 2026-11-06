@@ -18,15 +18,18 @@ struct KeyEvent: Equatable {
         ]
     }
 
-    static func named(_ key: String, ctrl: Bool = false) -> KeyEvent {
-        KeyEvent(key: key, mods: ctrl ? ["ctrl"] : [])
+    static func named(_ key: String, shift: Bool = false, ctrl: Bool = false, alt: Bool = false) -> KeyEvent {
+        KeyEvent(key: key, mods: [(shift, "shift"), (ctrl, "ctrl"), (alt, "alt")].filter(\.0).map(\.1))
     }
 
-    /// The keys that type text on a US keyboard, with Ctrl or Alt held from
-    /// the accessory bar. Alt is sent as Escape first, as terminals read it.
-    static func typing(_ text: String, ctrl: Bool = false, alt: Bool = false) -> [KeyEvent] {
-        text.flatMap { c -> [KeyEvent] in
+    /// The keys that type text on a US keyboard, with Shift, Ctrl or Alt held
+    /// from the accessory bar. Shift capitalizes letters and holds on the keys
+    /// that type no text, as Enter and Tab. Alt is sent as Escape first, as
+    /// terminals read it.
+    static func typing(_ text: String, ctrl: Bool = false, alt: Bool = false, shift: Bool = false) -> [KeyEvent] {
+        (shift ? text.uppercased() : text).flatMap { c -> [KeyEvent] in
             var k = key(for: c)
+            if shift, k.text.isEmpty { k.mods = ["shift"] }
             if ctrl {
                 k.mods.insert("ctrl", at: k.mods.first == "shift" ? 1 : 0)
                 if k.key != "unidentified" { k.text = "" }

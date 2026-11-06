@@ -171,4 +171,14 @@ nonisolated final class KeyTests: XCTestCase {
         XCTAssertEqual(KeyEvent.typing("x", alt: true).map(\.key), ["escape", "key_x"])
         XCTAssertEqual(KeyEvent.typing("\n").first?.key, "enter")
     }
+
+    @MainActor func testShift() {
+        XCTAssertEqual(KeyEvent.typing("a", shift: true),
+                       [KeyEvent(key: "key_a", text: "A", mods: ["shift"], consumed: ["shift"], unshifted: "a")])
+        XCTAssertEqual(KeyEvent.typing("c", ctrl: true, shift: true).first?.mods, ["shift", "ctrl"])
+        XCTAssertEqual(KeyEvent.typing("\n", shift: true), [KeyEvent(key: "enter", mods: ["shift"])])
+        XCTAssertEqual(KeyEvent.typing("1", shift: true).first?.text, "1")
+        XCTAssertEqual(KeyEvent.named("tab", shift: true), KeyEvent(key: "tab", mods: ["shift"]))
+        XCTAssertEqual(KeyEvent.named("arrow_up", shift: true, ctrl: true, alt: true).mods, ["shift", "ctrl", "alt"])
+    }
 }

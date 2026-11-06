@@ -4,9 +4,9 @@ import UIKit
 
 /// Draws a TerminalSession's screen with Core Text and types into it.
 /// The soft keyboard comes with a bar of the keys it lacks (Esc, Tab, Ctrl,
-/// Alt, arrows), after rootshell's KeyboardAccessoryView; Ctrl and Alt hold
-/// for the next key. A vertical drag scrolls back, or turns the wheel of a
-/// full-screen program.
+/// Alt, Shift, arrows), after rootshell's KeyboardAccessoryView; the
+/// modifiers hold for the next key. A vertical drag scrolls back, or turns
+/// the wheel of a full-screen program.
 final class TerminalView: UIView, UIKeyInput {
     let session: TerminalSession
     /// The font size chosen in Settings.
@@ -22,8 +22,9 @@ final class TerminalView: UIView, UIKeyInput {
     }
     let cell: CGSize
     private var lines: [LineKey: CTLine] = [:]
-    private var ctrl = false { didSet { bar.ctrl.isSelected = ctrl } }
-    private var alt = false { didSet { bar.alt.isSelected = alt } }
+    var ctrl = false { didSet { bar.ctrl.isSelected = ctrl } }
+    var alt = false { didSet { bar.alt.isSelected = alt } }
+    var shift = false { didSet { bar.shift.isSelected = shift } }
     private var dragRows: CGFloat = 0
     private lazy var bar = KeyBar(target: self)
 
@@ -159,27 +160,22 @@ final class TerminalView: UIView, UIKeyInput {
     var keyboardAppearance: UIKeyboardAppearance = .dark
 
     func insertText(_ text: String) {
-        session.send(KeyEvent.typing(text, ctrl: ctrl, alt: alt))
-        ctrl = false
-        alt = false
+        session.send(KeyEvent.typing(text, ctrl: ctrl, alt: alt, shift: shift))
+        release()
     }
 
-    func deleteBackward() {
-        session.send([.named("backspace", ctrl: ctrl)])
-        ctrl = false
-    }
+    func deleteBackward() { send("backspace") }
 
     /// Sends a key of the bar, with its held modifiers.
     func send(_ key: String) {
-        var k = KeyEvent.named(key, ctrl: ctrl)
-        if alt { k.mods.append("alt") }
-        session.send([k])
-        ctrl = false
-        alt = false
+        session.send([.named(key, shift: shift, ctrl: ctrl, alt: alt)])
+        release()
     }
 
-    func toggle(ctrl c: Bool) {
-        if c { ctrl.toggle() } else { alt.toggle() }
+    private func release() {
+        ctrl = false
+        alt = false
+        shift = false
     }
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
@@ -203,11 +199,8 @@ final class TerminalView: UIView, UIKeyInput {
                 .keyboardDeleteForward: "delete",
             ]
             if let name = names[k.keyCode] {
-                var e = KeyEvent.named(name)
-                if k.modifierFlags.contains(.shift) { e.mods.append("shift") }
-                if k.modifierFlags.contains(.control) { e.mods.append("ctrl") }
-                if k.modifierFlags.contains(.alternate) { e.mods.append("alt") }
-                session.send([e])
+                let f = k.modifierFlags
+                session.send([.named(name, shift: f.contains(.shift), ctrl: f.contains(.control), alt: f.contains(.alternate))])
             } else if k.modifierFlags.contains(.control), !k.charactersIgnoringModifiers.isEmpty {
                 session.send(KeyEvent.typing(k.charactersIgnoringModifiers, ctrl: true))
             } else {
@@ -218,18 +211,28 @@ final class TerminalView: UIView, UIKeyInput {
     }
 }
 
-/// The bar over the soft keyboard: a capsule of Liquid Glass, dark as the
-/// keyboard is, that scrolls its keys.
+/// The bar over the soft keyboard: three capsules of Liquid Glass, dark as
+/// the keyboard is. ⌘ opens a menu of the rarer keys; the middle one pages
+/// from Esc, the modifiers and Tab to the punctuation a shell wants and
+/// Backspace; the last holds a stick that sends arrows the way it is
+/// dragged, and the key that hides the keyboard.
 final class KeyBar: UIView {
-    let ctrl = KeyBar.button("ctrl")
-    let alt = KeyBar.button("alt")
+    let ctrl = KeyBar.button("control", String(localized: "Control"))
+    let alt = KeyBar.button("option", String(localized: "Option"))
+    let shift = KeyBar.button("shift", String(localized: "Shift"))
+    private weak var target: TerminalView?
+    /// Repeats the arrow the stick points to.
+    private var repeating: Task<Void, Never>?
+    private var arrow: String?
+    private let tick = UIImpactFeedbackGenerator(style: .light)
 
     init(target: TerminalView) {
-        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 56))
+        self.target = target
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 60))
         autoresizingMask = .flexibleHeight
         overrideUserInterfaceStyle = .dark
-        func key(_ title: String, _ name: String) -> UIButton {
-            let b = Self.button(title)
+        func key(_ face: String, _ label: String?, _ name: String) -> UIButton {
+            let b = Self.button(face, label)
             b.addAction(UIAction { [weak target] _ in target?.send(name) }, for: .touchUpInside)
             return b
         }
@@ -238,76 +241,168 @@ final class KeyBar: UIView {
             b.addAction(UIAction { [weak target] _ in target?.insertText(t) }, for: .touchUpInside)
             return b
         }
-        ctrl.addAction(UIAction { [weak target] _ in target?.toggle(ctrl: true) }, for: .touchUpInside)
-        alt.addAction(UIAction { [weak target] _ in target?.toggle(ctrl: false) }, for: .touchUpInside)
-        var buttons = [
-            key("esc", "escape"), ctrl, alt, key("tab", "tab"),
-            key("←", "arrow_left"), key("↓", "arrow_down"), key("↑", "arrow_up"), key("→", "arrow_right"),
-            text("~"), text("|"), text("/"), text("-"),
-            key("home", "home"), key("end", "end"), key("pgup", "page_up"), key("pgdn", "page_down"),
-        ]
-        let paste = Self.button(nil, symbol: "doc.on.clipboard")
-        paste.accessibilityLabel = String(localized: "Paste")
-        paste.addAction(UIAction { [weak target] _ in target?.paste(nil) }, for: .touchUpInside)
-        let hide = Self.button(nil, symbol: "keyboard.chevron.compact.down")
-        hide.accessibilityLabel = String(localized: "Hide Keyboard")
-        hide.addAction(UIAction { [weak target] _ in target?.resignFirstResponder() }, for: .touchUpInside)
-        buttons += [paste, hide]
+        ctrl.addAction(UIAction { [weak target] _ in target?.ctrl.toggle() }, for: .touchUpInside)
+        alt.addAction(UIAction { [weak target] _ in target?.alt.toggle() }, for: .touchUpInside)
+        shift.addAction(UIAction { [weak target] _ in target?.shift.toggle() }, for: .touchUpInside)
 
-        let stack = UIStackView(arrangedSubviews: buttons)
-        stack.spacing = 6
+        let more = Self.button("command", String(localized: "More Keys"))
+        func item(_ title: String, _ name: String) -> UIAction {
+            UIAction(title: title) { [weak target] _ in target?.send(name) }
+        }
+        more.menu = UIMenu(children: [
+            item(String(localized: "Esc"), "escape"),
+            UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak target] _ in
+                target?.paste(nil)
+            },
+            UIMenu(options: .displayInline, children: [
+                item(String(localized: "Home"), "home"), item(String(localized: "End"), "end"),
+                item(String(localized: "Page Up"), "page_up"), item(String(localized: "Page Down"), "page_down"),
+            ]),
+        ])
+        more.showsMenuAsPrimaryAction = true
+
+        // Two pages of five keys, each as wide as the capsule.
+        let pages = UIStackView(arrangedSubviews: [
+            [key("escape", String(localized: "Esc"), "escape"), ctrl, alt, shift,
+             key("arrow.right.to.line", String(localized: "Tab"), "tab")],
+            [text("~"), text("|"), text("/"), text("-"), key("delete.left", String(localized: "Delete"), "backspace")],
+        ].map { keys in
+            let page = UIStackView(arrangedSubviews: keys)
+            page.distribution = .equalSpacing
+            return page
+        })
         let scroll = UIScrollView()
+        scroll.isPagingEnabled = true
         scroll.showsHorizontalScrollIndicator = false
-        scroll.contentInset = UIEdgeInsets(top: 0, left: 6, bottom: 0, right: 6)
-        scroll.addSubview(stack)
-        let glass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
-        glass.cornerConfiguration = .capsule()
-        glass.clipsToBounds = true
-        glass.contentView.addSubview(scroll)
-        addSubview(glass)
-        for v in [stack, scroll, glass] as [UIView] { v.translatesAutoresizingMaskIntoConstraints = false }
+        scroll.addSubview(pages)
+        pages.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            glass.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
-            glass.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
-            glass.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            glass.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
-            scroll.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor),
-            scroll.topAnchor.constraint(equalTo: glass.contentView.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor),
-            stack.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor, constant: 6),
-            stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -6),
-            stack.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor, constant: -12),
+            pages.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            pages.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            pages.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            pages.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            pages.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor),
+        ] + pages.arrangedSubviews.map { $0.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor) })
+
+        let stick = Self.button("stick", String(localized: "Arrow Keys"))
+        let drag = UILongPressGestureRecognizer(target: self, action: #selector(steer))
+        drag.minimumPressDuration = 0
+        drag.allowableMovement = .greatestFiniteMagnitude
+        stick.addGestureRecognizer(drag)
+        let hide = Self.button("keyboard.chevron.compact.down", String(localized: "Hide Keyboard"))
+        hide.addAction(UIAction { [weak target] _ in target?.resignFirstResponder() }, for: .touchUpInside)
+
+        let middle = Self.capsule(scroll)
+        // The middle capsule takes the room the others leave.
+        middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        let row = UIStackView(arrangedSubviews: [Self.capsule(more), middle, Self.capsule(UIStackView(arrangedSubviews: [stick, hide]))])
+        row.spacing = 8
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            row.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 56) }
+    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 60) }
 
-    private static func button(_ title: String?, symbol: String? = nil) -> UIButton {
-        let b = UIButton(configuration: config(title, symbol, held: false))
+    /// Points the stick: past a dead zone, the arrow of the drag's main
+    /// axis goes at once, then repeats while held, as a held key does. Each
+    /// arrow taps the hand: firmly as the stick turns, lightly as it repeats.
+    @objc private func steer(_ g: UILongPressGestureRecognizer) {
+        var next: String?
+        if g.state == .began { tick.prepare() }
+        if g.state == .began || g.state == .changed, let v = g.view {
+            let p = g.location(in: v)
+            let dx = p.x - v.bounds.midX, dy = p.y - v.bounds.midY
+            if max(abs(dx), abs(dy)) > 12 {
+                next = abs(dx) > abs(dy) ? (dx > 0 ? "arrow_right" : "arrow_left") : (dy > 0 ? "arrow_down" : "arrow_up")
+            }
+        }
+        guard next != arrow else { return }
+        arrow = next
+        repeating?.cancel()
+        guard let next else { return }
+        repeating = Task { [weak target, tick] in
+            var delay = 0.4
+            repeat {
+                target?.send(next)
+                tick.impactOccurred(intensity: delay == 0.4 ? 1 : 0.5)
+                try? await Task.sleep(for: .seconds(delay))
+                delay = 0.08
+            } while !Task.isCancelled
+        }
+    }
+
+    /// The stick, which no SF Symbol draws: a ring with four arrowheads
+    /// inside it and a dot at its centre.
+    private static let stick = UIGraphicsImageRenderer(size: CGSize(width: 26, height: 26)).image { _ in
+        let c = CGPoint(x: 13, y: 13)
+        let ring = UIBezierPath(arcCenter: c, radius: 11.5, startAngle: 0, endAngle: 2 * .pi, clockwise: true)
+        ring.lineWidth = 1.6
+        ring.stroke()
+        UIBezierPath(arcCenter: c, radius: 4.6, startAngle: 0, endAngle: 2 * .pi, clockwise: true).fill()
+        for i in 0..<4 {
+            let head = UIBezierPath()
+            head.move(to: CGPoint(x: 0, y: -9.4))
+            head.addLine(to: CGPoint(x: 2.6, y: -6.8))
+            head.addLine(to: CGPoint(x: -2.6, y: -6.8))
+            head.close()
+            head.apply(CGAffineTransform(rotationAngle: CGFloat(i) * .pi / 2).concatenating(CGAffineTransform(translationX: c.x, y: c.y)))
+            head.fill()
+        }
+    }.withRenderingMode(.alwaysTemplate)
+
+    /// A capsule of glass around a view.
+    private static func capsule(_ content: UIView) -> UIView {
+        let glass = UIVisualEffectView(effect: UIGlassEffect(style: .regular))
+        glass.cornerConfiguration = .capsule()
+        glass.clipsToBounds = true
+        glass.contentView.addSubview(content)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: glass.contentView.leadingAnchor, constant: 4),
+            content.trailingAnchor.constraint(equalTo: glass.contentView.trailingAnchor, constant: -4),
+            content.topAnchor.constraint(equalTo: glass.contentView.topAnchor, constant: 4),
+            content.bottomAnchor.constraint(equalTo: glass.contentView.bottomAnchor, constant: -4),
+        ])
+        return glass
+    }
+
+    /// A key that shows an SF Symbol, read out by its label; without a
+    /// label, the key shows its face as text.
+    private static func button(_ face: String, _ label: String? = nil) -> UIButton {
+        let b = UIButton(configuration: config(face, text: label == nil, held: false))
+        b.accessibilityLabel = label
         b.changesSelectionAsPrimaryAction = false
         b.setContentHuggingPriority(.required, for: .horizontal)
         b.setContentCompressionResistancePriority(.required, for: .horizontal)
-        // A held Ctrl or Alt is prominent glass, in the accent: white here.
-        b.configurationUpdateHandler = { b in b.configuration = config(title, symbol, held: b.isSelected) }
+        // A held modifier is prominent glass, in the accent: white here.
+        b.configurationUpdateHandler = { b in b.configuration = config(face, text: label == nil, held: b.isSelected) }
         return b
     }
 
-    private static func config(_ title: String?, _ symbol: String?, held: Bool) -> UIButton.Configuration {
-        var c = held ? UIButton.Configuration.prominentGlass() : .glass()
-        c.title = title
-        c.image = symbol.map { UIImage(systemName: $0) } ?? nil
-        c.baseForegroundColor = held ? .black : .label
-        c.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12)
-        c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
-            var a = $0
-            a.font = .monospacedSystemFont(ofSize: 15, weight: .medium)
-            return a
+    private static func config(_ face: String, text: Bool, held: Bool) -> UIButton.Configuration {
+        var c = held ? UIButton.Configuration.prominentGlass() : .plain()
+        if text {
+            c.title = face
+            c.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+                var a = $0
+                a.font = .systemFont(ofSize: 22, weight: .light)
+                return a
+            }
+        } else {
+            c.image = face == "stick" ? stick : UIImage(systemName: face)
+            c.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
         }
+        c.baseForegroundColor = held ? .black : .label
+        c.cornerStyle = .capsule
+        c.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8)
         return c
     }
 }
