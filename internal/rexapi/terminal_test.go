@@ -278,3 +278,24 @@ func TestTerminalEndedSession(t *testing.T) {
 		t.Errorf("last_exit: %v", last)
 	}
 }
+
+// A record carries the last message a report gave it as last_msg, and
+// leaves it out when there is none.
+func TestStatusRecordLastMsg(t *testing.T) {
+	info := &rex.SessionInfo{Statuses: []rex.ProgramStatus{
+		{State: "done", Progress: -1, LastMsg: "Testing"},
+		{ID: "a", State: "idle", Progress: -1},
+	}}
+	raw, err := json.Marshal(statusRecords(info))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []map[string]any
+	json.Unmarshal(raw, &got)
+	if len(got) != 2 || got[0]["last_msg"] != "Testing" || got[0]["msg"] != nil {
+		t.Fatalf("records: %s", raw)
+	}
+	if _, ok := got[1]["last_msg"]; ok {
+		t.Fatalf("empty last_msg not left out: %s", raw)
+	}
+}

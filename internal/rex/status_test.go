@@ -109,6 +109,46 @@ func TestStatusRecords(t *testing.T) {
 	}
 }
 
+// A record keeps the last message a report carried when a later one
+// carries none, as Claude Code reports done without one.
+func TestStatusLastMsg(t *testing.T) {
+	var st programStatus
+	last := func(id string) string {
+		if r := st.records[id]; r != nil {
+			return r.LastMsg
+		}
+		return "<none>"
+	}
+	st.feed([]byte(osc("state=working:msg="+b64("Testing")) + osc("state=working:id=x:msg="+b64("Other"))))
+	st.feed([]byte(osc("state=done")))
+	if got := st.records[""]; got.Msg != "" || got.LastMsg != "Testing" {
+		t.Fatalf("done without msg: %+v, want last msg Testing", got.ProgramStatus)
+	}
+	// A blocked question is no step of the work: done after it tells the work's.
+	st.feed([]byte(osc("state=blocked:kind=question:msg="+b64("Allow rm?")) + osc("state=working") + osc("state=done")))
+	if got := st.records[""]; got.LastMsg != "Testing" || got.Message() != "Testing" {
+		t.Fatalf("after a question: last %q, message %q, want Testing", got.LastMsg, got.Message())
+	}
+	if w := (ProgramStatus{State: "working", LastMsg: "Testing"}); w.Message() != "" {
+		t.Fatalf("working without msg tells %q, want none", w.Message())
+	}
+	st.feed([]byte(osc("state=working:msg=" + b64("Uploading"))))
+	if got := last(""); got != "Uploading" {
+		t.Fatalf("new msg: last %q, want Uploading", got)
+	}
+	if got := last("x"); got != "Other" {
+		t.Fatalf("other id: last %q, want Other", got)
+	}
+	st.feed([]byte(osc("state=clear:id=x") + osc("state=done:id=x")))
+	if got := last("x"); got != "" {
+		t.Fatalf("after clear: last %q, want none", got)
+	}
+	st.feed([]byte(osc("state=clear") + osc("state=done")))
+	if got := last(""); got != "" {
+		t.Fatalf("after clear all: last %q, want none", got)
+	}
+}
+
 func TestStatusSplitAndQuery(t *testing.T) {
 	in := "x" + osc("?") + "\x1b[c" + "y" + osc("state=done:msg="+b64("ok")) + "\x1b]133;A\x07" + osc("state=working:id=w") + "\x1b]7501;?\x07"
 	// Cut at every byte, the reads find what one read does.

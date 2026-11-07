@@ -57,7 +57,7 @@
 // | com.superlogical.terminal.pwd | the foreground process's directory, as a plain path: GoRex keeps no reported directory separately |
 // | com.superlogical.terminal.title | no owner, which GoRex does not know |
 // | com.superlogical.terminal.process | the fields GoRex can read; path, argv0 and script are left out, and ancestors is left out |
-// | com.superlogical.terminal.program_status | the owner is the foreground process when a report arrives |
+// | com.superlogical.terminal.program_status | the owner is the foreground process when a report arrives; last_msg, GoRex's own, is the last msg a report for the record carried, kept when a later one carries none |
 // | com.superlogical.terminal.modes | the modes GoRex follows (trackedModes in internal/rex), not every mode Ghostty keeps |
 // | com.superlogical.terminal.input_mode | not_found on Windows: a ConPTY has no line discipline |
 // | com.superlogical.terminal.clipboard_read | not_found: GoRex keeps no clipboard copies |

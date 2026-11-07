@@ -62,7 +62,8 @@ end)
 `program_status_changed` runs when a pane's program reports a new or
 changed status (`OSC 7501`), or when a record goes away (`ev.state ==
 "clear"`). Fields are `session`, `pane`, `state`, `id`, `kind`, `title`,
-`msg`, `app`, `progress`, `program` and `dir`. Events run on the app's
+`msg`, `last_msg` (the last message a working report carried), `app`,
+`progress`, `program` and `dir`. Events run on the app's
 thread after the poll that saw the change.
 
 ## App overrides

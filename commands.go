@@ -1178,7 +1178,7 @@ func (a *App) paletteItems() []paletteItem {
 			ti, t, p := ti, t, p
 			s := p.status()
 			if s != nil && s.State != "idle" {
-				detail = cmp.Or(s.Msg, s.Title, detail)
+				detail = cmp.Or(s.Message(), s.Title, detail)
 			}
 			items = append(items, paletteItem{
 				title: name, detail: detail, glyph: paneProgram(p).Glyph,

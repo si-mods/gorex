@@ -90,6 +90,9 @@ final class Host: Identifiable {
         var app: String?
         var title: String?
         var msg: String?
+        /// The last message the record carried, kept when a later report
+        /// carries none.
+        var lastMsg: String?
         /// When it last changed; nil when the server doesn't say.
         var updated: Date?
 
@@ -103,6 +106,7 @@ final class Host: Identifiable {
             app = text("effective_app") ?? text("app")
             title = text("title")
             msg = text("msg")
+            lastMsg = text("last_msg")
             // The server writes Go's zero time for none.
             updated = text("updated_at").flatMap { try? Date($0, strategy: .iso8601) }.flatMap { $0.timeIntervalSince1970 > 0 ? $0 : nil }
         }

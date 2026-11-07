@@ -2,6 +2,7 @@ package rex
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/base64"
 	"slices"
 	"strconv"
@@ -199,6 +200,12 @@ func (st *programStatus) report(body string) {
 			}
 		}
 		delete(st.records, oldestID)
+	}
+	if old := st.records[id]; old != nil {
+		r.LastMsg = old.LastMsg
+	}
+	if r.State == "working" {
+		r.LastMsg = cmp.Or(r.Msg, r.LastMsg)
 	}
 	st.updates++
 	st.records[id] = &statusRecord{r, st.updates}

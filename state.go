@@ -3349,7 +3349,7 @@ func statusEvents(p *Pane, was, now []rex.ProgramStatus) []map[string]string {
 	add := func(r rex.ProgramStatus, state string) {
 		out = append(out, map[string]string{
 			"session": p.SID, "pane": p.labelName(), "state": state,
-			"id": r.ID, "kind": r.Kind, "title": r.Title, "msg": r.Msg,
+			"id": r.ID, "kind": r.Kind, "title": r.Title, "msg": r.Msg, "last_msg": r.LastMsg,
 			"app": r.App, "progress": strconv.Itoa(r.Progress),
 			"program": p.info.Program, "dir": p.info.Dir,
 		})
@@ -3428,7 +3428,7 @@ func (a *App) notifyStatus(h *hostConn, t *Tab, p *Pane, r *rex.ProgramStatus) {
 		src = locales.NotifyOnHost(src, a.hostName(h))
 	}
 	body := src
-	if msg := cmp.Or(r.Msg, r.Title); msg != "" {
+	if msg := cmp.Or(r.Message(), r.Title); msg != "" {
 		body = msg + "\n" + src
 	}
 	mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()

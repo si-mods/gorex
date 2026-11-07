@@ -5328,6 +5328,7 @@ Result:
   - `effective_app` (string): The name of the program the record belongs to: app if it is set, or else the app of the nearest parent record that has one. Left out if no record in the chain has an app.
   - `title` (string): A short label for the record, such as the name of a task. It comes from the program, so show it as plain text.
   - `msg` (string): One line of text describing the status. Show it as plain text. A client may shorten it but shouldn't try to interpret it.
+  - `last_msg` (string): GoRex's own: the last msg a report for the record carried, kept when a later report carries none. Left out if none carried one.
   - `updated_at` (string, required): When the report arrived, by the server's clock, as an RFC 3339 timestamp.
   - `owner` (object or null): The terminal's foreground process when the report arrived. Left out if the server couldn't tell.
     - `pid` (integer, required): The process ID.

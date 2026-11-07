@@ -374,6 +374,7 @@ type statusRecord struct {
 	EffectiveApp string      `json:"effective_app,omitempty"`
 	Title        string      `json:"title,omitempty"`
 	Msg          string      `json:"msg,omitempty"`
+	LastMsg      string      `json:"last_msg,omitempty"`
 	UpdatedAt    string      `json:"updated_at"`
 	Owner        *processRef `json:"owner,omitempty"`
 }
@@ -403,7 +404,7 @@ func statusRecords(info *rex.SessionInfo) []statusRecord {
 	for _, st := range info.Statuses {
 		r := statusRecord{
 			ID: st.ID, State: st.State, Kind: st.Kind, App: st.App,
-			Title: st.Title, Msg: st.Msg, UpdatedAt: connectedAtString(st.Updated),
+			Title: st.Title, Msg: st.Msg, LastMsg: st.LastMsg, UpdatedAt: connectedAtString(st.Updated),
 			EffectiveApp: effectiveApp(st.ID, byID),
 		}
 		if st.Progress >= 0 {
