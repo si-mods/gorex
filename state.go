@@ -313,7 +313,7 @@ type Pane struct {
 	popAt         time.Time
 	// seen is when the program's last record the user saw was updated:
 	// done and error records till then no longer ask for attention.
-	// notified is when the pane's last status notification was shown.
+	// notified is when the pane's last notification was shown.
 	seen, notified time.Time
 	// bounds is where the pane's card rests in the layout, and termSize
 	// the size of its terminal when the pane was last at rest.
@@ -1011,8 +1011,8 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	}
 	opts.OnNotify = func(title, body string) {
 		update(func() {
-			if !a.shows(p) {
-				a.notifyPane(p, cmp.Or(title, "GoRex"), body)
+			if !a.shows(p) && p.notifyDue() {
+				a.notifyPane(p, "", cmp.Or(title, "GoRex"), body)
 			}
 		})
 	}
@@ -3276,7 +3276,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 		a.adopt(h, byID, l)
 	}
 	var events []map[string]string
-	for ti, t := range a.tabs {
+	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
 			in, ok := byID[p.SID]
 			if !ok || p.host != h {
@@ -3305,11 +3305,10 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			if h != nil && was.Dir != in.Dir {
 				a.changed()
 			}
-			seen := ti == a.active && t.Focus == p && a.focusedWin
+			seen := a.shows(p)
 			if seen {
 				p.see()
-			} else if r := entered(was, in); r != nil && time.Since(p.notified) > 10*time.Second {
-				p.notified = time.Now()
+			} else if r := entered(was, in); r != nil && p.notifyDue() {
 				a.notifyStatus(p, r)
 			}
 			// A program that ran a while and finished out of sight
@@ -3322,7 +3321,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 				statuses := len(was.Statuses) > 0 || len(in.Statuses) > 0
 				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second && !statuses {
 					prog := programOf(was.ProgramName())
-					a.notifyPane(p, locales.NotifyFinished(prog.Name), locales.NotifyIn(shortDir(in.Dir)))
+					a.notifyPane(p, prog.Name, locales.NotifyFinished(prog.Name), locales.NotifyIn(shortDir(in.Dir)))
 				}
 			}
 		}
@@ -3423,40 +3422,105 @@ func (a *App) notifyStatus(p *Pane, r *rex.ProgramStatus) {
 	case "error":
 		title = locales.NotifyFailed(prog)
 	}
-	a.notifyPane(p, title, cmp.Or(r.Message(), r.Title))
+	a.notifyPane(p, prog, title, cmp.Or(r.Message(), r.Title))
 }
 
-// showNotification shows a notification, and calls click on the main
-// thread when the user clicks it; tests, which run no app, take its
-// place.
-var showNotification = func(o mygo.NotificationOptions, click func()) {
-	n := mygo.NewNotification(o)
-	n.OnClick(click)
-	n.Show()
+// notifyDue tells whether a notification of the pane may show, and if so
+// marks it shown: one in 10 seconds at most.
+func (p *Pane) notifyDue() bool {
+	if time.Since(p.notified) <= 10*time.Second {
+		return false
+	}
+	p.notified = time.Now()
+	return true
 }
 
-// notifyPane shows a notification of pane p: under the title, the names
-// of its tab and pane and of its host; the notifications of a session
-// stack together, and a click brings the pane to the front.
-func (a *App) notifyPane(p *Pane, title, body string) {
-	name, _ := p.label()
-	src, group := name, p.SID
+// showNotification shows a notification. Show waits for the system, and
+// the first time for the user to allow notifications, so it runs off the
+// main thread; tests, which run no app, take its place.
+var showNotification = func(o mygo.NotificationOptions) { go mygo.NewNotification(o).Show() }
+
+// notifyPane shows a notification of pane p, whose title names prog, ""
+// for none: under the title, the names of its tab and pane and of its
+// host, but for those the title says already. The notifications of a
+// session stack together, and the store's notificationClicked brings
+// the pane of one clicked to the front, from its ID.
+func (a *App) notifyPane(p *Pane, prog, title, body string) {
+	var parts []string
+	add := func(s string) {
+		if s != "" && s != prog && !slices.Contains(parts, s) {
+			parts = append(parts, s)
+		}
+	}
 	if p.Tab != nil {
-		if tn, _ := p.Tab.label(); tn != name {
-			src = tn + " · " + name
-		}
+		tn, _ := p.Tab.label()
+		add(tn)
 	}
+	name, _ := p.label()
+	add(name)
+	host, src := "", strings.Join(parts, " · ")
 	if p.host != nil {
-		src = locales.NotifyOnHost(src, a.hostName(p.host))
-		group = p.host.ID + " " + p.SID
-	}
-	showNotification(mygo.NotificationOptions{Title: title, Subtitle: src, Body: body, Group: group}, func() {
-		if p.closed {
-			return
+		host = p.host.ID
+		if src == "" {
+			src = a.hostName(p.host)
+		} else {
+			src = locales.NotifyOnHost(src, a.hostName(p.host))
 		}
-		a.front()
-		a.focusNeedy(needy{app: a, tab: p.Tab, pane: p})
+	}
+	group := host + "|" + p.SID
+	showNotification(mygo.NotificationOptions{
+		ID:       "gorex|" + group + "|" + strconv.FormatInt(time.Now().UnixNano(), 36),
+		Title:    title,
+		Subtitle: src,
+		Body:     body,
+		Group:    group,
 	})
+}
+
+// notificationClicked brings to the front the pane of the notification
+// clicked, by the host and session of the ID notifyPane gave it: in a
+// window, or in a space no window shows, which shows then. A session
+// gone does nothing.
+func (st *store) notificationClicked(id string) {
+	f := strings.Split(id, "|")
+	if len(f) != 4 || f[0] != "gorex" || len(st.apps) == 0 {
+		return
+	}
+	n, ok := st.needyOf(f[1], f[2])
+	if !ok {
+		return
+	}
+	if p := st.apps[0].focusNeedy(n); p != nil {
+		for _, o := range st.apps {
+			if slices.Contains(o.tabs, p.Tab) {
+				o.front()
+			}
+		}
+	}
+}
+
+// needyOf finds session sid of host, "" for this machine: its pane in a
+// window, else, of this machine, a space no window shows that has it.
+func (st *store) needyOf(host, sid string) (needy, bool) {
+	for _, o := range st.apps {
+		for _, t := range o.tabs {
+			for _, p := range t.allPanes() {
+				if p.SID == sid && (p.host == nil && host == "" || p.host != nil && p.host.ID == host) {
+					return needy{app: o, tab: t, pane: p}, true
+				}
+			}
+		}
+	}
+	for _, w := range st.workspaces {
+		found := false
+		if w.app == nil && host == "" {
+			st.visitLocalSIDs(w, func(s string) { found = found || s == sid })
+		}
+		if found {
+			return needy{ws: w, sid: sid}, true
+		}
+	}
+	return needy{}, false
 }
 
 // laterService queues a menu action without keeping a build context.
