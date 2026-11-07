@@ -23,9 +23,10 @@ moving a pane to another machine in [teleport.md](teleport.md).
 - **Rex's apps start a stream with a Ghostty snapshot (GHOSTSNP).** The
   server takes it from the same emulator (`GhosttySnapshot`).
 - **Questions about a session need a screen.** `capture`, `format` (the
-  screen as text or as escape sequences), `modes`, `clear` and `reset`
-  read or change the emulator; so do the CLI, rootshell's bridge and
-  teleport's `scrollback.txt`.
+  screen as text or as escape sequences), `clear` and `reset` read or
+  change the emulator; so do the CLI, rootshell's bridge and teleport's
+  `scrollback.txt`. `modes` is answered from a separate tracker of the
+  output (`decModes` in `paste.go`), not from the emulator.
 
 ## Which emulator
 
@@ -79,15 +80,18 @@ into the escape sequences that draw the same screen. See
 feeds the emulator, follows the modes, and queues the same bytes for
 every attached client (`attached.send`). Each client has a goroutine that
 writes its queue (`attached.writer`), so a slow client does not hold up
-the others. A client too far behind (2048 chunks, or 8 MiB for a remote
-one) is dropped, and attaches again to a new snapshot.
+the others. A client too far behind (2048 queued chunks; for a remote
+one also 8 MiB) is dropped. A remote host's stream attaches again to a new
+snapshot (`hostStream` in `hosts.go`); a local window's stream ends, and
+its pane closes (`attached.send`).
 
 ## Attaching
 
 A client opens a connection whose first line is an `Attach`
-(`internal/rex/proto.go`). The server gives the session the client's size
-first, unless another client is typing (`resizeForAttach`), then answers
-`{"ok":true}`, then sends:
+(`internal/rex/proto.go`). When the attach gives a size, the server gives
+it to the session first (`resizeForAttach`), except while the client that
+typed or claimed focus last is still attached, or while a size lock is
+held. Then it answers `{"ok":true}`, and sends:
 
 1. **The snapshot** (`snapshotLocked`). If the program is in the middle of
    a synchronized update (mode 2026), the server waits for it to end, at
@@ -124,7 +128,7 @@ runs (`graphics.filter`, `imageDir`). Images up to 4 MiB are rewritten;
 one read adds at most 6 MiB. The server records the graphics sequences,
 the last 8 MiB of them (`graphics.record`), and sends them after every
 snapshot (`graphics.replay`): the snapshot carries the cells, not the
-images.
+images. This history is not handed over in an upgrade (Limits).
 
 ### After a resize
 
@@ -132,8 +136,16 @@ A window resizes its terminal while the program's output is on its way,
 so output drawn for one size can land in a screen of another. Full-screen
 programs never repair that. 150 ms after the session's last resize, if
 the screen is the alternate one, the server sends every client the
-emulator's screen again (`resyncScreen`). The main screen and scrollback
-reflow alike in both emulators and need nothing.
+emulator's screen again (`resyncScreen`). That is all the server mends.
+
+The main screen is mended by the app. When a pane's terminal takes a
+size the session's screen was not laid out for (it follows another
+client's size, or a divider drag ends), the app asks the server for the
+screen with `capture` (`resyncPane` in `state.go`): it tries every 50 ms,
+up to 20 times, until the capture has the pane's size, then resets the
+pane's terminal and feeds it the session's screen and the last 64 KiB of
+scrollback (`resyncHistory`). `capture` itself only reads. See
+[session-size.md](session-size.md).
 
 ## Terminal queries
 
@@ -194,7 +206,8 @@ When the process ends, the server reads the rest of its output, then
 keeps what the emulator showed (`run`): the screen as escape sequences
 with the Kitty graphics, as GHOSTSNP, as text, and the title. It closes
 the emulator. An attach, `capture` or `format` after that gets the kept
-screen.
+screen. After an upgrade an exited session keeps only the escape
+sequences and the title (Limits).
 
 ### In-place upgrade (macOS, Linux)
 
@@ -216,7 +229,8 @@ emulator's snapshot and the graphics replay) and the title, the output
 and bell counters, the last input and output times, the exit state, and
 the status records. The new server makes a new emulator, feeds it the
 title and the screen (`resumeSession`), and reads the PTY again. The
-programs do not notice.
+programs keep running and their screens come back, but some of the
+session's own state starts over (Limits).
 
 The handoff takes the escape-sequence form, not GHOSTSNP: the plugin's
 documentation gives GHOSTSNP no compatibility guarantee across versions
@@ -253,23 +267,40 @@ emulator before the program's first output (`CreateOptions.prelude`). See
   (`scrollback`), and the graphics replay 8 MiB.
 - **Two emulators per window.** A window's terminal and the server's
   emulator each parse the output. They agree because both are the same
-  libghostty-vt at the same size; `resyncScreen` and `capture` mend the
-  alternate screen when they drift.
-- **Queries go unanswered while no client answers them.** The server's
-  emulator drops its answers, and Rex's apps send input through the
-  `input` and `key` ops, whose answers are removed. While no window or
-  rootshell is attached, or while a Rex app holds the size (the gateway's
-  attach is then the authority, and it writes nothing), a program asking
-  the cursor's position or the device attributes gets no answer and waits
-  for its own timeout.
+  libghostty-vt at the same size. When they drift, the server mends the
+  alternate screen (`resyncScreen`), and the app the pane it resized
+  (`resyncPane`); nothing mends the main screen of a pane whose size did
+  not change.
+- **Queries go unanswered while the authority answers nothing.** The
+  server's emulator drops its answers. The rexapi gateway's attach
+  (`startStream`) sends no size and no client id, and never writes: Rex's
+  apps send input through the `input` and `key` ops, whose answers are
+  removed. The authority is the client holding the size lock, else the
+  one that typed or claimed focus last, else the newest attach
+  (`authorityLocked`). So a program asking the cursor's position or the
+  device attributes gets no answer, and waits for its own timeout, while
+  no window or rootshell is attached; while a Rex app holds the size; and
+  while the gateway attached last and no window has typed or claimed
+  focus since.
 - **What looks like an answer is removed** from a client that is not the
   authority, as Shift+F3 (`CSI 1;2R`, a CPR's shape) (`dropReplies`).
 - **Screens survive an upgrade, not a restart.** On Windows, every update
   of the server is a restart.
 - **Kitty images after an upgrade.** The screen handed over carries the
-  graphics replay, but the new session's graphics history starts empty
-  (`resumeSession` sets none): attaches after an upgrade replay only the
-  images the new emulator's snapshot keeps.
+  graphics replay, fed into the new emulator, but the new session's
+  graphics history starts empty (`resumeSession` sets none) and the
+  emulator's snapshot carries no images. An attach after an upgrade
+  replays no image the program showed before it.
+- **Other state an upgrade does not hand over** (`sessionState`,
+  `resumeSession`): the modes tracker (`decModes`) starts empty, so
+  `paste` writes unbracketed and `modes` reports nothing until the program
+  sets its modes again; the session's directory is empty, so a Kitty file
+  path resolves against the foreground process's directory alone
+  (`imageDir`); a synchronized update in progress is not known.
+- **An exited session loses forms in an upgrade.** Only its escape
+  sequences and title are handed over: `format` text comes back empty,
+  and a `ghostty` attach gets the escape sequences instead, which the
+  rexapi gateway refuses.
 - **GHOSTSNP is tied to one libghostty-vt.** The iOS app's
   `GhosttyVt.xcframework` must be built at the commit the server's MyGo
   binds.
