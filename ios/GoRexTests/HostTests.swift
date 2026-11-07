@@ -11,6 +11,8 @@ nonisolated final class HostTests: XCTestCase {
             ("rename", { try await h.renameWindow("w", in: "s", to: "x") }),
             ("move", { try await h.moveWindow("w", in: "s", before: nil) }),
             ("close", { try await h.closeWindow("w", in: "s") }),
+            ("rename session", { try await h.renameSession("s", to: "x") }),
+            ("close session", { try await h.closeSession("s") }),
         ]
         for (name, change) in changes {
             do {
@@ -20,6 +22,29 @@ nonisolated final class HostTests: XCTestCase {
                 XCTAssertEqual((error as? RexError)?.code, "offline", name)
             }
         }
+    }
+
+    /// A session's menu renames and closes the session by its id.
+    @MainActor func testSessionMenuCalls() async throws {
+        let saved = UserDefaults.standard.data(forKey: "hosts")
+        defer { UserDefaults.standard.set(saved, forKey: "hosts") }
+        UserDefaults.standard.removeObject(forKey: "hosts")
+        let r = try FakeRex()
+        defer { r.stop() }
+        r.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] }
+        let store = HostStore()
+        let config = HostConfig(name: "test", url: try await r.url())
+        store.add(config)
+        let h = try XCTUnwrap(store.host(config.id))
+        await until("online") { h.status == .online }
+        try await h.renameSession("s1", to: "work")
+        try await h.closeSession("s1")
+        let i = try XCTUnwrap(r.calls.firstIndex(of: "session.set_label"))
+        XCTAssertEqual(r.payloads[i]["session_id"] as? String, "s1")
+        XCTAssertEqual(r.payloads[i]["label"] as? String, "work")
+        let j = try XCTUnwrap(r.calls.firstIndex(of: "session.destroy"))
+        XCTAssertEqual(r.payloads[j]["session_id"] as? String, "s1")
+        store.remove(config.id)
     }
 
     /// A host given a new address keeps its open terminals working: they

@@ -1111,6 +1111,66 @@
           }
         }
       }
+    },
+    "Rename Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名会话"
+          }
+        }
+      }
+    },
+    "Rename Session…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名会话…"
+          }
+        }
+      }
+    },
+    "Close Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭会话"
+          }
+        }
+      }
+    },
+    "Can't Rename the Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法重命名会话"
+          }
+        }
+      }
+    },
+    "Can't Close the Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法关闭会话"
+          }
+        }
+      }
+    },
+    "Close %@ and every window in it?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭 %@ 及其中所有窗口？"
+          }
+        }
+      }
     }
   }
 }

@@ -406,6 +406,16 @@ final class Host: Identifiable {
         try await live().call("session.move_window", p)
     }
 
+    /// Names a session; an empty name gives back its default.
+    func renameSession(_ session: String, to label: String) async throws {
+        try await live().call("session.set_label", ["session_id": session, "label": label])
+    }
+
+    /// Closes a session, its windows and their panes.
+    func closeSession(_ session: String) async throws {
+        try await live().call("session.destroy", ["session_id": session])
+    }
+
     /// Closes a window and its panes.
     func closeWindow(_ window: String, in session: String) async throws {
         try await live().call("session.close_window", ["session_id": session, "window_id": window])
