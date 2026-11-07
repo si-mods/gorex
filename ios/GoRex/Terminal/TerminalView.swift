@@ -57,6 +57,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// Set while the content is moved to match Ghostty, not by the finger.
     var syncing = false
 
+    /// The keyboard's height over the terminal.
+    private var covered: CGFloat = 0
+
     /// The grid's size, shown while pinching.
     lazy var sizeLabel: UILabel = {
         let l = UILabel()
@@ -268,18 +271,30 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// The keyboard never resizes the grid: a resize makes a program that
     /// draws in the scrollback, as an agent does, draw again, and what the
-    /// terminal reflowed meanwhile leaves gaps. The terminal slides up with
-    /// the keyboard instead, its bottom rows and the cursor above it, its
-    /// top under the bar.
+    /// terminal reflowed meanwhile leaves gaps. The terminal slides up under
+    /// the bar instead, as far as the cursor's row needs to show above the
+    /// keyboard, and no farther than the keyboard is tall.
     @objc private func keyboard(_ n: Notification) {
         guard let window, let superview = superview as? TerminalHost, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
         let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         // Measured on the host, which does not slide.
-        let covered = max(0, superview.bounds.maxY - window.screen.coordinateSpace.convert(end, to: superview).minY)
-        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: covered, left: 0, bottom: covered, right: 0)
-        UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState]) {
-            self.transform = CGAffineTransform(translationX: 0, y: -covered)
+        covered = max(0, superview.bounds.maxY - window.screen.coordinateSpace.convert(end, to: superview).minY)
+        slide(duration: duration, options: UIView.AnimationOptions(rawValue: curve << 16))
+    }
+
+    /// Slides the terminal to show the cursor's row above the keyboard.
+    func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
+        var shift: CGFloat = 0
+        if covered > 0, let s = surface {
+            var x = 0.0, y = 0.0, w = 0.0, h = 0.0
+            ghostty_surface_ime_point(s, &x, &y, &w, &h)
+            shift = min(covered, max(0, y - (bounds.height - covered)))
+        }
+        guard transform.ty != -shift else { return }
+        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: shift, left: 0, bottom: covered - shift, right: 0)
+        UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
+            self.transform = CGAffineTransform(translationX: 0, y: -shift)
         }
     }
 

@@ -52,17 +52,19 @@ extension TerminalView: UIScrollViewDelegate {
         guard let s = surface else { return }
         var b = ghostty_action_scrollbar_s()
         let live = !ghostty_surface_display_scrollbar(s, &b) || b.offset + b.len >= b.total
-        let under = live && cover > 0 && cursor(width: nil).minY < cover
+        // On the screen: the terminal slides up over the keyboard.
+        let under = live && cover > 0 && cursor(width: nil).minY + transform.ty < cover
         if session.covered != under { session.covered = under }
     }
 
-    /// Checks again once Ghostty has drawn the output that came, which moves
-    /// the cursor: a tick later, once for a burst.
+    /// Slides and checks again once Ghostty has drawn the output that came,
+    /// which moves the cursor: a tick later, once for a burst.
     func laterCheckCover() {
         guard !coverCheck else { return }
         coverCheck = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             self?.coverCheck = false
+            self?.slide(duration: 0.15)
             self?.checkCover()
         }
     }
