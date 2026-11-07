@@ -935,3 +935,47 @@ func TestSetLayoutLegacyRevs(t *testing.T) {
 		t.Errorf("the layout set: %+v", st)
 	}
 }
+
+// TestShowFocusedCreate notes the space of a tab.create with the focus in
+// the layout (Store.Show), and when, if no window shows it, till
+// show.taken: not of
+// one without the focus, of one in a space a window shows, nor of a pane
+// moved to a tab of its own or teleported. A remote client's layout has
+// none.
+func TestShowFocusedCreate(t *testing.T) {
+	s, c := applyFixture(t)
+	writeFile(t, filepath.Join(s.dir, "hosts.json"), `{"hosts":[{"id":"h1","address":"tcDST"}]}`)
+	raw, _ := json.Marshal(layout.Store{Version: layout.Version, Sessions: []layout.Workspace{{ID: "w"}, {ID: "x"}}, Windows: []string{"w"}})
+	if err := c.SetLayout(raw); err != nil {
+		t.Fatal(err)
+	}
+	cmd, dir := testShell()
+	show := func(op, want string) {
+		t.Helper()
+		if st := storeOf(t, c); st.Show != want || st.ShowAt.IsZero() != (want == "") {
+			t.Fatalf("after %s the layout shows %q at %v, not %q", op, st.Show, st.ShowAt, want)
+		}
+	}
+	command(t, c, LayoutCommand{Op: "tab.create", Space: "w", Dir: dir, Command: cmd, Focus: true})
+	show("a focused tab.create in a shown space", "")
+	one := command(t, c, LayoutCommand{Op: "tab.create", Space: "x", Dir: dir, Command: cmd})
+	show("a tab.create without the focus", "")
+	split := command(t, c, LayoutCommand{Op: "pane.split", SID: one.New, Dir: dir, Command: cmd})
+	command(t, c, LayoutCommand{Op: "pane.move", SID: split.New, NewTab: true})
+	show("pane.move to a new tab", "")
+	command(t, c, LayoutCommand{Op: "pane.teleported", SID: split.New, Target: "remote1", Host: "tcDST"})
+	show("pane.teleported", "")
+	command(t, c, LayoutCommand{Op: "tab.create", Space: "x", Dir: dir, Command: cmd, Focus: true})
+	show("a focused tab.create in a hidden space", "x")
+	raw, err := c.Layout()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := s.filterLayout(raw, testPeer); err != nil || layout.Parse(out).Show != "" || !layout.Parse(out).ShowAt.IsZero() {
+		t.Errorf("a remote client's layout: %s %v", out, err)
+	}
+	command(t, c, LayoutCommand{Op: "show.taken", Space: "w"})
+	show("show.taken of another space", "x")
+	command(t, c, LayoutCommand{Op: "show.taken", Space: "x"})
+	show("show.taken", "")
+}

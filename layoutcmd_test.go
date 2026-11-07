@@ -987,13 +987,14 @@ func TestCommandSpaces(t *testing.T) {
 	if res.Code != "" || res.New == "" {
 		t.Fatalf("tab.create in a space: %+v", res)
 	}
-	// The space no window shows has the tab; the window stays on its own.
+	// The space no window showed has the tab, and the window shows it, as
+	// the command asks for the focus.
 	w = a.st.workspaceByID(space)
-	if w.app != nil || len(w.layout.Tabs) != 1 || w.layout.Tabs[0].Name != "editor" || w.layout.Tabs[0].Root.SID != res.New {
-		t.Fatalf("the space's tabs: %+v", w.layout)
+	if w.app != a || a.ws != w || len(a.tabs) != 1 || a.tab().Name != "editor" || a.tab().Focus.SID != res.New {
+		t.Fatalf("the window shows %s, the space's tabs: %+v", a.ws.ID, w.layout)
 	}
-	if a.ws.ID != orig || savedTabSID(a.st.saved(), orig) != origSID {
-		t.Fatalf("the window went to %s", a.ws.ID)
+	if savedTabSID(a.st.saved(), orig) != origSID {
+		t.Fatalf("the window's space lost its tab: %+v", a.st.saved())
 	}
 	// Closing the space ends its tab's program and the space itself.
 	sid := res.New
@@ -1017,6 +1018,75 @@ func TestCommandSpaces(t *testing.T) {
 			t.Fatalf("the closed space's session stays: %v %v", info, err)
 		}
 		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestCommandTabFocus shows a space no window shows for a tab a client
+// makes in it with the focus, and the server forgets it then. Without the
+// focus nothing moves the window: a tab made in an empty space or one with
+// tabs, spaces a batch makes, a pane moved to a tab of its own, and a tab
+// the space had that becomes the active one by a move, a focus or a close.
+func TestCommandTabFocus(t *testing.T) {
+	a, _ := newTestApp(t)
+	orig := a.ws
+	space := clientCommand(a, rex.LayoutCommand{Op: "space.create", Name: "work"}).Space
+	if res := clientCommand(a, rex.LayoutCommand{Op: "tab.create", Space: space, Focus: true}); res.Code != "" || res.New == "" {
+		t.Fatalf("tab.create with the focus: %+v", res)
+	}
+	w := a.ws
+	if w.ID != space {
+		t.Fatalf("the window shows %s, not %s", w.ID, space)
+	}
+	if ls, err := a.client.LayoutState(); err != nil || layout.Parse(ls.Layout).Show != "" {
+		t.Fatalf("the server still asks to show a space: %s %v", ls.Layout, err)
+	}
+	stays := func(c rex.LayoutCommand) rex.LayoutCommand {
+		t.Helper()
+		res := clientCommand(a, c)
+		if res.Code != "" {
+			t.Fatalf("%s: %+v", c.Op, res)
+		}
+		if a.ws != w {
+			t.Fatalf("%s: the window shows %s", c.Op, a.ws.ID)
+		}
+		return res
+	}
+	empty := stays(rex.LayoutCommand{Op: "space.create", Name: "empty"}).Space
+	stays(rex.LayoutCommand{Op: "tab.create", Space: empty})
+	stays(rex.LayoutCommand{Op: "layout.apply", Batch: []rex.LayoutCommand{{Op: "space.create", Name: "one"}, {Op: "space.create", Name: "two"}}})
+	made := stays(rex.LayoutCommand{Op: "tab.create", Space: orig.ID})
+	split := stays(rex.LayoutCommand{Op: "pane.split", SID: made.New})
+	stays(rex.LayoutCommand{Op: "pane.move", SID: split.New, NewTab: true})
+	if orig.app != nil || len(orig.layout.Tabs) != 3 {
+		t.Fatalf("%s has %d tabs", orig.ID, len(orig.layout.Tabs))
+	}
+	first, second := orig.layout.Tabs[0], orig.layout.Tabs[1]
+	stays(rex.LayoutCommand{Op: "tab.move", Space: orig.ID, Tab: second.ID, Index: 0})
+	stays(rex.LayoutCommand{Op: "pane.focus", Space: orig.ID, SID: second.Root.SID})
+	stays(rex.LayoutCommand{Op: "tab.close", Space: orig.ID, Tab: second.ID})
+	if len(orig.layout.Tabs) != 2 || orig.layout.Tabs[0].ID != first.ID {
+		t.Fatalf("%s has tabs %+v", orig.ID, orig.layout.Tabs)
+	}
+}
+
+// TestCommandTabFocusWindow shows the space of a client's tab made with
+// the focus in the window focused last.
+func TestCommandTabFocusWindow(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	b := st.openWindow(st.addWorkspace())
+	for _, front := range []*App{b, a} {
+		st.raise(front)
+		back := a
+		if front == a {
+			back = b
+		}
+		was := back.ws
+		space := clientCommand(a, rex.LayoutCommand{Op: "space.create"}).Space
+		clientCommand(a, rex.LayoutCommand{Op: "tab.create", Space: space, Focus: true})
+		if front.ws == nil || front.ws.ID != space || back.ws != was {
+			t.Fatalf("the window focused last shows %v, the other %v", front.ws, back.ws)
+		}
 	}
 }
 

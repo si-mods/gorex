@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -99,6 +100,11 @@ func TestRexImportCreatesSpaces(t *testing.T) {
 	}
 	if ws == nil || len(ws.Tabs) != 1 {
 		t.Fatalf("the space: %+v", ws)
+	}
+	// Rex's active window is the space's active tab, which asks no window
+	// to show the space as it is built.
+	if saved.Show != "" || slices.Contains(saved.Windows, ws.ID) || ws.Active != 0 {
+		t.Fatalf("the import asks to show %q; the windows show %v", saved.Show, saved.Windows)
 	}
 	tab := ws.Tabs[0]
 	if tab.Name != "rexwin" || len(layout.Leaves(tab.Root)) != 2 {

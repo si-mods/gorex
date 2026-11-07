@@ -346,6 +346,7 @@ func (st *store) takeLayout(ls rex.LayoutState) bool {
 	if len(st.apps) > 0 {
 		st.takeKills(st.apps[0])
 	}
+	st.takeShow()
 	return true
 }
 
@@ -405,6 +406,26 @@ func (st *store) takeKills(a *App) {
 	st.out.add(rex.LayoutCommand{Op: "kills.taken", Kills: taken}, nil)
 	st.out.kick()
 }
+
+// takeShow shows the space the server's layout asks a window to show
+// (layout.Store.Show), of a client's tab.create with the focus, in the
+// window focused last, and tells the server it did (show.taken). With no
+// window it waits for one; one asked longer ago than showFor it drops, as
+// the user moved on. Call it on the main thread.
+func (st *store) takeShow() {
+	id := st.base.Show
+	if id == "" || len(st.apps) == 0 {
+		return
+	}
+	if w := st.byID(id); w != nil && time.Since(st.base.ShowAt) < showFor {
+		st.apps[0].showWorkspace(w)
+	}
+	st.out.add(rex.LayoutCommand{Op: "show.taken", Space: id}, nil)
+	st.out.kick()
+}
+
+// showFor is how long a client's request to show a space stands.
+const showFor = 30 * time.Second
 
 // reconcile makes the workspaces those of s, in its order, keeping the
 // workspace of each id it has: the windows show their spaces' tabs of s
@@ -807,11 +828,14 @@ func (st *store) adopt(client *rex.Client) bool {
 	}
 	// A server with no layout, as one that stopped for good, lost it:
 	// the windows keep theirs.
+	// takeShow acts on the layout read here, never the last connection's.
+	read := false
 	if len(shown) > 0 {
 		if raw, err := st.read(); err != nil {
 			log.Printf("gorex: reading the layout: %v", err)
 		} else if len(raw) > 0 && string(raw) != "null" {
 			st.reconcile(layout.Parse(raw))
+			read = true
 		}
 	}
 	// Each window shows its space again; those whose space the server
@@ -827,6 +851,9 @@ func (st *store) adopt(client *rex.Client) bool {
 		}
 	}
 	st.rehome(homeless, true)
+	if read {
+		st.takeShow()
+	}
 	go st.watch(st.client)
 	return true
 }
@@ -891,6 +918,7 @@ func (st *store) start() {
 	for _, w := range open {
 		st.openWindow(w)
 	}
+	st.takeShow()
 	st.save()
 }
 
@@ -913,6 +941,7 @@ func (st *store) reopen() {
 		w = st.addWorkspace()
 	}
 	st.openWindow(w)
+	st.takeShow()
 	st.save()
 }
 
@@ -927,6 +956,7 @@ func (st *store) openNew() {
 			}
 		}
 		st.openWindow(st.addWorkspace())
+		st.takeShow()
 		st.save()
 	}
 }

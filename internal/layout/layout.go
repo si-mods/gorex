@@ -5,6 +5,8 @@
 // again the sessions a run before lost; the app shows it.
 package layout
 
+import "time"
+
 // Store is every workspace and the windows that show them, in order.
 type Store struct {
 	Version  int         `json:"version"`
@@ -18,6 +20,11 @@ type Store struct {
 	// server closed: the app ends each on its host, as it ends those its
 	// user closes, and the server forgets it then (kills.taken).
 	Kills []Kill `json:"kills,omitempty"`
+	// Show is the space a client's tab.create with the focus made a tab
+	// in while no window showed it, at ShowAt: a window of the app shows
+	// it, and the server forgets it then (show.taken).
+	Show   string    `json:"show,omitempty"`
+	ShowAt time.Time `json:"showAt,omitzero"`
 	// The first window's tabs, for a GoRex from before workspaces.
 	Layout
 	// Named tells that Parse gave a browser pane an ID: the layout read is

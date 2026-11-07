@@ -212,8 +212,8 @@ type LayoutCommand struct {
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
 	// "pane.swap", "pane.move", "pane.restart", "tab.set", "windows.set",
-	// "layout.apply", "pane.teleporting", "pane.teleported" or
-	// "kills.taken".
+	// "layout.apply", "pane.teleporting", "pane.teleported", "kills.taken"
+	// or "show.taken".
 	// pane.restart starts a new shell in the place of the pane of SID.
 	// pane.teleported, a local client's only, tells of the teleport of the
 	// pane of SID to the host of address Host (hosts.json), the session
@@ -223,8 +223,11 @@ type LayoutCommand struct {
 	// window opens no tab of its own for it; with no Target, it drops the
 	// note of a teleport that failed. kills.taken tells that the app took
 	// Kills, the layout's sessions of other hosts to end
-	// (layout.Store.Kills). tab.set, windows.set, layout.apply and
-	// kills.taken are a local client's only too. The server makes its own changes too:
+	// (layout.Store.Kills). tab.create with Focus in a space no window
+	// shows notes it in the layout, with when (layout.Store.Show), for a
+	// window to show it; show.taken tells that one did, for Space. tab.set,
+	// windows.set, layout.apply, kills.taken and show.taken are a local
+	// client's only too. The server makes its own changes too:
 	// the pane of a session that ends goes, a session a remote client
 	// starts here gets a tab, and so does one no pane has as the app opens;
 	// the panes' facts follow their sessions.
