@@ -32,12 +32,32 @@
         }
       }
     },
+    "Add File": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加文件"
+          }
+        }
+      }
+    },
     "Add Host": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "添加主机"
+          }
+        }
+      }
+    },
+    "Add Photo": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加照片"
           }
         }
       }
@@ -312,16 +332,6 @@
         }
       }
     },
-    "End": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "End"
-          }
-        }
-      }
-    },
     "Enter the details of your Rex server.": {
       "localizations": {
         "zh-Hans": {
@@ -388,16 +398,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "收起键盘"
-          }
-        }
-      }
-    },
-    "Home": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Home"
           }
         }
       }
@@ -472,12 +472,12 @@
         }
       }
     },
-    "More Keys": {
+    "More": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "更多按键"
+            "value": "更多"
           }
         }
       }
@@ -588,26 +588,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Option"
-          }
-        }
-      }
-    },
-    "Page Down": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "向下翻页"
-          }
-        }
-      }
-    },
-    "Page Up": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "向上翻页"
           }
         }
       }
