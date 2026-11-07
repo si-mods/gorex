@@ -8,7 +8,7 @@ struct TerminalTarget: Hashable {
     let title: String
 }
 
-/// A window's terminal, full screen, with the navigation bar clear over it.
+/// A window's terminal, full screen under a clear navigation bar.
 struct TerminalScreen: View {
     let target: TerminalTarget
     let host: Host
@@ -18,6 +18,8 @@ struct TerminalScreen: View {
     @Environment(\.scenePhase) private var phase
     /// Whether the stream was left in the background, for a resume.
     @State private var suspended = false
+    /// Where the terminal starts, under the bar, in the window.
+    @State private var top: CGFloat = 0
 
     init(target: TerminalTarget, host: Host) {
         self.target = target
@@ -29,19 +31,18 @@ struct TerminalScreen: View {
         // bar and the key bar too; the bar and the text on it take its scheme.
         let bg = session?.background ?? .black
         let scheme: ColorScheme = 0.299 * Double(bg.r) + 0.587 * Double(bg.g) + 0.114 * Double(bg.b) < 128 ? .dark : .light
-        // The terminal goes up under the clear bar to the status bar; the
-        // keyboard goes over it, which leaves room for it.
-        let top = Self.statusBar
+        // The terminal starts under the clear bar, which hides none of it;
+        // the keyboard goes over it, which leaves room for it.
         Group { if let session { TerminalRepresentable(session: session) } else { Color.clear } }
-            .padding(.top, top)
-            .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)
+            .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top = $0 }
+            .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p) } }
             .background(Color(cgColor: bg.cgColor).ignoresSafeArea())
-            // As the list's edge under its bar: what scrolls up under the
-            // status bar and the bar blurs and fades into the background.
-            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: top + 56) }
+            // As the list's edge under its bar: the bar and the status bar
+            // blur, and what scrolls up fades into the background a little
+            // below them.
+            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: top + 10) }
             .overlay { status }
-            .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p).padding(.top, top).ignoresSafeArea(.container, edges: .top) } }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -96,11 +97,6 @@ struct TerminalScreen: View {
         target.title.isEmpty ? host.sessions.first { $0.id == target.session }?.label ?? "" : target.title
     }
 
-    /// The height of the status bar, which the terminal stays under.
-    private static var statusBar: CGFloat {
-        UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
-    }
-
     @ViewBuilder private var status: some View {
         switch session?.state ?? .connecting {
         case .connecting:
@@ -126,17 +122,22 @@ struct TerminalScreen: View {
 /// color at the top, clear below.
 private struct TopEdge: View {
     let color: Color
+    /// How far down from the top of the screen it reaches.
     let height: CGFloat
 
     var body: some View {
         let fade = LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.35), .init(color: .clear, location: 1)],
                                   startPoint: .top, endPoint: .bottom)
-        ZStack {
-            Rectangle().fill(.ultraThinMaterial)
-            color.opacity(0.75)
+        // From the top of the screen, height down.
+        VStack(spacing: 0) {
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                color.opacity(0.75)
+            }
+            .mask(fade)
+            .frame(height: height)
+            Spacer(minLength: 0)
         }
-        .mask(fade)
-        .frame(height: height)
         .ignoresSafeArea(.container, edges: .top)
         .allowsHitTesting(false)
     }
