@@ -1,0 +1,64 @@
+name: TestFlight
+
+# Archives Rex Go and uploads it to TestFlight, as ios/scripts/upload does on
+# a Mac: the build number is App Store Connect's last one for the version,
+# plus one. Runs never overlap; a newer pending run replaces an older one,
+# which is fine, as it has the older one's commits too.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ios/**
+      - .github/workflows/testflight.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  upload:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      # The deployment target is iOS 26: the newest Xcode 26.
+      - run: sudo xcode-select -s "$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
+      - run: brew install asc xcodegen
+      # The script pins Ghostty's commit and Zig's version.
+      - uses: actions/cache/restore@v4
+        id: ghostty-vt
+        with:
+          path: ios/Frameworks/GhosttyVt.xcframework
+          key: ghostty-vt-${{ hashFiles('ios/scripts/build-ghostty-vt.sh') }}
+      - if: steps.ghostty-vt.outputs.cache-hit != 'true'
+        run: ios/scripts/build-ghostty-vt.sh
+      - if: steps.ghostty-vt.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ios/Frameworks/GhosttyVt.xcframework
+          key: ${{ steps.ghostty-vt.outputs.cache-primary-key }}
+      - name: upload
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          [[ -n $ASC_KEY_P8 ]] || { echo "::error::The ASC_KEY_P8 secret is empty: set it to the App Store Connect API key (.p8)"; exit 1; }
+          export ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          (umask 077; printf '%s\n' "$ASC_KEY_P8" > "$ASC_KEY_PATH")
+          ios/scripts/upload | tee "$RUNNER_TEMP/upload.log"
+          sed -n 's/^UPLOADED /Uploaded Rex Go /p' "$RUNNER_TEMP/upload.log" >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-logs
+          path: ios/build/*.log
+          if-no-files-found: ignore
