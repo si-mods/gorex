@@ -169,6 +169,9 @@ func (m *decModes) setMode(n int, ansi, on bool) {
 		}
 		if m.set == nil {
 			m.set = make([]bool, len(trackedModes))
+			for j, md := range trackedModes {
+				m.set[j] = md.def
+			}
 		}
 		m.set[i] = on
 	}
