@@ -120,6 +120,60 @@ func blockCreatorAPI() map[string]any {
 //go:embed testdata/rex-terminal-creator.json
 var terminalCreatorJSON []byte
 
+// uploadBeginEntry is the method entry revision 11's terminal creator
+// adds, which the revision 10 snapshot predates. Its prose and schemas
+// come from Rex 0.1.0 (1861)'s own doc; the limits the schemas leave out
+// are GoRex's, in upload.go.
+var uploadBeginEntry = map[string]any{
+	"description": "Reserve a file to upload to the terminal's machine, such as one the user dropped on the terminal, and get a ticket for the rex.data.bytes.v1 data stream that carries its bytes. Once every file of the batch has arrived, the terminal types their paths as if the user had pasted them.",
+	"input_schema": map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"ref": map[string]any{
+				"type":        "string",
+				"description": "The upload's ref: upload: followed by a new UUID in lower-case canonical form.",
+			},
+			"name": map[string]any{
+				"type":        "string",
+				"description": "The file's name, which is its last path component only.",
+			},
+			"size": map[string]any{
+				"type":        "integer",
+				"description": "The file's exact size in bytes.",
+			},
+			"batch": map[string]any{
+				"type":        "string",
+				"description": "An ID the client chooses for a group of files whose paths are typed together.",
+			},
+			"index": map[string]any{
+				"type":        "integer",
+				"description": "The file's position in its batch, from 0.",
+			},
+			"count": map[string]any{
+				"type":        "integer",
+				"description": "How many files the batch has. Required with batch.",
+			},
+		},
+		"required": []any{"ref", "name", "size"},
+	},
+	"output_schema": map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"ticket": map[string]any{
+				"type":        "string",
+				"description": "The ticket of the rex.data.bytes.v1 stream that carries the file, as data.connect's is.",
+			},
+			"expires_in_ms": map[string]any{
+				"type":        "integer",
+				"description": "How long the ticket works, in milliseconds.",
+			},
+		},
+		"required": []any{"ticket", "expires_in_ms"},
+	},
+}
+
 // methodBlockCreatorList lists the creators GoRex can make blocks with:
 // Rex's terminal, as Rex describes it. A method or option it lists that
 // GoRex lacks fails when it is called, with the code doc.go gives.
@@ -132,6 +186,15 @@ func methodBlockCreatorList(c *control, a args) (any, *apiError) {
 		return nil, errInternal("terminal creator: %v", err)
 	}
 	creator["host_id"] = c.g.host
+	// Revision 11's terminal creator lists upload_begin, which the
+	// snapshot predates; a client that decodes the creator strictly
+	// closes the connection on a method its own has and this one leaves
+	// out.
+	if api, ok := creator["api"].(map[string]any); ok {
+		if methods, ok := api["methods"].(map[string]any); ok {
+			methods["upload_begin"] = uploadBeginEntry
+		}
+	}
 	return map[string]any{"creators": []any{creator}}, nil
 }
 
