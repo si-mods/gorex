@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -592,6 +593,49 @@ func TestHostPath(t *testing.T) {
 	} {
 		if got := hostPath(c.dir, c.path); got != c.want {
 			t.Errorf("hostPath(%q, %q) = %q, want %q", c.dir, c.path, got, c.want)
+		}
+	}
+}
+
+// TestTransferListContrast draws the transfer list without glass, light
+// and dark: its progress track and its edge stand out from the panel.
+func TestTransferListContrast(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs.NoGlass
+	prefs.NoGlass = true
+	t.Cleanup(func() { prefs.NoGlass = old })
+	p := a.tab().Focus
+	p.transfers = []*fileTransfer{{name: "big.bin", size: 100, cancel: func() {}}}
+	// spread is how far apart in brightness, of 255, the pixels of img
+	// from x0, y0 to x1, y1 are.
+	spread := func(img image.Image, x0, y0, x1, y1 int) float64 {
+		lo, hi := 255.0, 0.0
+		for x := x0; x <= x1; x++ {
+			for y := y0; y <= y1; y++ {
+				r, g, b, _ := img.At(x, y).RGBA()
+				l := (0.299*float64(r) + 0.587*float64(g) + 0.114*float64(b)) / 257
+				lo, hi = min(lo, l), max(hi, l)
+			}
+		}
+		return hi - lo
+	}
+	for _, dark := range []bool{false, true} {
+		tt.SetDark(dark)
+		tt.Frame()
+		tt.Advance(time.Second) // the list's entrance
+		tt.Frame()
+		name, ok := tt.Find("big.bin")
+		if !ok {
+			t.Fatalf("no row; texts %q", tt.Texts())
+		}
+		// The track runs under the name, whose text ends well before its
+		// box; the list's edge is 13 left of the name, past the row's
+		// padding and the list's.
+		img, x, y := tt.Image(), int(name.X+name.W)-10, int(name.Y+name.H)
+		track := spread(img, x, y, x, y+8)
+		edge := spread(img, int(name.X)-16, y, int(name.X)-8, y)
+		if track < 12 || edge < 12 {
+			t.Errorf("dark %v: the track differs from the panel by %.1f, the edge by %.1f, of 255", dark, track, edge)
 		}
 	}
 }

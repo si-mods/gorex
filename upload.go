@@ -402,7 +402,9 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 					}
 				})
 				if !failed && !x.ok {
-					ui.Box(c).Height(3).Radius(1.5).Background(k.track).Draw(func(pt *ui.Painter, b ui.Rect) {
+					// The track is a pressed face of the panel's: k.track is
+					// the window background's, white on a light panel.
+					ui.Box(c).Height(3).Radius(1.5).Background(k.pressed).Draw(func(pt *ui.Painter, b ui.Rect) {
 						// A download's size is not known before it begins.
 						if x.size > 0 {
 							b.W *= float32(x.done) / float32(x.size)
