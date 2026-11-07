@@ -44,12 +44,15 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1,2"
+        # The short git hash About shows; scripts/upload sets it.
+        GOREX_COMMIT: ""
     info:
       path: GoRex/Info.plist
       properties:
         CFBundleDisplayName: Rex Go
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        GoRexCommit: $(GOREX_COMMIT)
         ITSAppUsesNonExemptEncryption: false
         CFBundleLocalizations: [en, zh-Hans]
         UILaunchScreen:

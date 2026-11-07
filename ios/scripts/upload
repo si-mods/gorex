@@ -17,6 +17,8 @@ V=$(sed -n 's/^ *MARKETING_VERSION: "\([0-9.]*\)"$/\1/p' project.yml)
 B=${BUILD:-$(ASC_TIMEOUT=90s asc builds list --app 6831210589 --version "$V" --processing-state all --limit 200 --output json |
   python3 -I -c 'import sys,json; print(1+max([int(b["attributes"]["version"]) for b in json.load(sys.stdin)["data"]], default=0))')}
 [[ $B =~ ^[0-9]+$ ]] || { echo "bad build number: $B" >&2; exit 1; }
+# The commit About shows; none when run from an archive without .git.
+C=$(git rev-parse --short=7 HEAD 2>/dev/null || true)
 xcodegen generate -q
 mkdir -p build
 cat > build/export.plist <<P
@@ -36,7 +38,7 @@ for try in 0 1 2; do
   echo "BUILD $V ($B)"
   rm -rf build/GoRex.xcarchive build/export
   xcodebuild -scheme GoRex -destination generic/platform=iOS -archivePath build/GoRex.xcarchive \
-    CURRENT_PROJECT_VERSION="$B" CODE_SIGNING_ALLOWED=NO archive > build/archive.log 2>&1 || { grep -E "error" build/archive.log | tail -15; exit 1; }
+    CURRENT_PROJECT_VERSION="$B" GOREX_COMMIT="$C" CODE_SIGNING_ALLOWED=NO archive > build/archive.log 2>&1 || { grep -E "error" build/archive.log | tail -15; exit 1; }
   echo ARCHIVED
   xcodebuild -exportArchive -archivePath build/GoRex.xcarchive -exportOptionsPlist build/export.plist -exportPath build/export "${A[@]}" > build/export.log 2>&1 && break
   grep -iE "error" build/export.log | tail -15 || true
