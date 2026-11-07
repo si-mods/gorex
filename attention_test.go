@@ -239,7 +239,7 @@ func TestNeedsPalette(t *testing.T) {
 			t.Fatalf("row %d is %q, want %q; rows %q", i, got[i], want[i], got)
 		}
 	}
-	for _, s := range []string{locales.StatusBlocked(), "Allow edit?", locales.AgoNow(), locales.AgoHours(2), locales.AgoMinutes(5), "mini"} {
+	for _, s := range []string{locales.StatusBlocked(), "Allow edit?", locales.AgoNow(), locales.Ago(roundDur(2 * time.Hour)), locales.Ago(locales.HostDurMinutes(5)), "mini"} {
 		if !tt.HasText(s) {
 			t.Errorf("no %q in the palette; texts %q", s, tt.Texts())
 		}
@@ -247,7 +247,7 @@ func TestNeedsPalette(t *testing.T) {
 	// The times go on as the minutes do.
 	tt.Advance(time.Minute)
 	tt.Frame()
-	if !tt.HasText(locales.AgoMinutes(1)) || !tt.HasText(locales.AgoMinutes(6)) {
+	if !tt.HasText(locales.Ago(locales.HostDurMinutes(1))) || !tt.HasText(locales.Ago(locales.HostDurMinutes(6))) {
 		t.Errorf("the times did not go on; texts %q", tt.Texts())
 	}
 	if a.paletteSel != 1 {
@@ -306,12 +306,72 @@ func TestAgo(t *testing.T) {
 		next time.Duration
 	}{
 		{10 * time.Second, locales.AgoNow(), 50 * time.Second},
-		{90 * time.Second, locales.AgoMinutes(1), 30 * time.Second},
-		{3*time.Hour + time.Minute, locales.AgoHours(3), 59 * time.Minute},
-		{50 * time.Hour, locales.AgoDays(2), 22 * time.Hour},
+		{90 * time.Second, locales.Ago(locales.HostDurMinutes(1)), 30 * time.Second},
+		{3*time.Hour + time.Minute, locales.Ago(locales.HostDurHoursMinutes(3, 1)), time.Minute},
+		{50 * time.Hour, locales.Ago(locales.HostDurDays(2)), time.Minute},
 	} {
 		if s, next := ago(now.Add(-c.d), now); s != c.want || next != c.next {
 			t.Errorf("%v ago: %q, next in %v; want %q in %v", c.d, s, next, c.want, c.next)
 		}
+	}
+}
+
+// TestNeedsPaletteSelection checks that the selection stays on its pane
+// as a status comes in before it, and that with only a host not connected
+// the palette says nothing needs the user, lists the host, and does not
+// select it.
+func TestNeedsPaletteSelection(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	now := tt.Now()
+	t1 := a.tab()
+	t2 := a.newTab(t.TempDir())
+	t3 := a.newTab(t.TempDir())
+	t1.Focus.info.Statuses = oneStatus("done", now)
+	t2.Focus.info.Statuses = oneStatus("done", now)
+	a.selectTab(2)
+
+	cmdNeeds.Run(a)
+	tt.Frame()
+	tt.Key(0, ui.KeyDown) // the second done pane
+	tt.Frame()
+	// A pane blocks, and its rows come before the selected one.
+	t3.Focus.info.Statuses = oneStatus("blocked", now)
+	tt.Frame()
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if a.paletteOpen || a.tab() != t2 {
+		t.Fatalf("Enter went to tab %d, not the selected pane's", a.active+1)
+	}
+
+	for _, tab := range a.tabs {
+		tab.Focus.info.Statuses, tab.Focus.attention = nil, false
+	}
+	a.hosts = append(a.hosts, newHostConn(savedHost{ID: "h", Name: "mini", Address: "10.0.0.9:7297"}))
+	cmdNeeds.Run(a)
+	tt.Frame()
+	if !tt.HasText(locales.NeedsNothing()) || !tt.HasText("mini") {
+		t.Fatalf("want the empty state and the host; texts %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	// The host's row has nothing to run: Enter on it would panic.
+	if !a.paletteOpen {
+		t.Fatal("Enter closed the palette on the host's row")
+	}
+}
+
+// TestNeedSection checks that every rank names a section, those no state
+// has among them.
+func TestNeedSection(t *testing.T) {
+	for rank := -1; rank <= 6; rank++ {
+		if needSection(rank) == "" {
+			t.Errorf("rank %d names no section", rank)
+		}
+	}
+	if needSection(rex.StatusRank("blocked")) != locales.StatusBlocked() || needSection(2) != locales.PaneNeedsAttention() {
+		t.Error("sections misnamed")
 	}
 }

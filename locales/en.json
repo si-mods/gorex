@@ -1657,33 +1657,13 @@
   "@agoNow": {
     "description": "How long ago a program reported its status, under a minute. Palette row of a pane that needs the user."
   },
-  "agoMinutes": "{n}m",
-  "@agoMinutes": {
-    "description": "How long ago a program reported its status, in whole minutes, narrow. Palette row of a pane that needs the user.",
+  "ago": "{time} ago",
+  "@ago": {
+    "description": "How long ago a program reported its status. time is a duration, as \"5m\" or \"3h 20m\". Palette row of a pane that needs the user.",
     "placeholders": {
-      "n": {
-        "type": "int",
-        "example": "5"
-      }
-    }
-  },
-  "agoHours": "{n}h",
-  "@agoHours": {
-    "description": "How long ago a program reported its status, in whole hours, narrow.",
-    "placeholders": {
-      "n": {
-        "type": "int",
-        "example": "3"
-      }
-    }
-  },
-  "agoDays": "{n}d",
-  "@agoDays": {
-    "description": "How long ago a program reported its status, in whole days, narrow.",
-    "placeholders": {
-      "n": {
-        "type": "int",
-        "example": "2"
+      "time": {
+        "type": "String",
+        "example": "5m"
       }
     }
   },

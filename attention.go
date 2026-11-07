@@ -228,17 +228,22 @@ func (a *App) focusNeedy(n needy) *Pane {
 // iPhone app's inbox lists it.
 func (a *App) openNeedsPalette() {
 	a.openPalette()
-	a.paletteNeeds = true
+	a.paletteList = listNeeds
 }
 
-// needSections name the sections of what needs the user by its rank: a
-// program blocked on them, failed, done, and the attention of a bell or of
-// a program that finished out of sight.
-var needSections = map[int]func() string{
-	rex.StatusRank("blocked"): locales.StatusBlocked,
-	rex.StatusRank("error"):   locales.StatusError,
-	rex.StatusRank("done"):    locales.StatusDone,
-	1:                         locales.PaneNeedsAttention,
+// needSection names the section of what needs the user by its rank, as
+// needsYou ranks it: a program blocked on them, failed, done, else the
+// attention of a bell or of a program that finished out of sight.
+func needSection(rank int) string {
+	switch rank {
+	case rex.StatusRank("blocked"):
+		return locales.StatusBlocked()
+	case rex.StatusRank("error"):
+		return locales.StatusError()
+	case rex.StatusRank("done"):
+		return locales.StatusDone()
+	}
+	return locales.PaneNeedsAttention()
 }
 
 // needItems are the palette's rows of what needs the user, in the order of
@@ -250,13 +255,13 @@ func (a *App) needItems(match func(string) bool) []paletteItem {
 	var items []paletteItem
 	rank := 0
 	for _, n := range list {
-		it := a.needItem(n)
-		if !match(it.title + " " + it.detail + " " + it.aside) {
+		it, dir := a.needItem(n)
+		if !match(it.title + " " + it.detail + " " + dir + " " + it.aside) {
 			continue
 		}
 		if n.rank != rank {
 			rank = n.rank
-			items = append(items, paletteItem{title: needSections[rank](), header: true})
+			items = append(items, paletteItem{title: needSection(rank), header: true})
 		}
 		items = append(items, it)
 	}
@@ -266,55 +271,54 @@ func (a *App) needItems(match func(string) bool) []paletteItem {
 			continue
 		}
 		label, _, _ := hostStatus(h)
-		items = append(items, paletteItem{title: h.Name, detail: label, glyph: "server", disabled: true})
+		items = append(items, paletteItem{title: h.Name, detail: label, glyph: "server", disabled: true, id: h})
 	}
 	return items
 }
 
 // needItem is the palette's row of n: the pane's name and what its program
 // told, the host or the space it is in when not this machine's or not
-// shown, and going there.
-func (a *App) needItem(n needy) paletteItem {
-	var it paletteItem
-	if p := n.pane; p != nil {
-		name, detail := p.label()
-		s := p.status()
-		if s != nil && s.State != "idle" {
-			detail = cmp.Or(s.Message(), s.Title, detail)
-		}
-		it = paletteItem{title: name, detail: detail, glyph: paneProgram(p).Glyph, status: s}
-		if p.host != nil {
-			it.aside = p.host.Name
-		}
-	} else {
-		info := a.st.infos[n.sid]
-		s := rex.MostUrgent(info.Statuses, a.st.seen[n.sid])
-		prog := programOf(info.ProgramName())
-		it = paletteItem{title: prog.Name, detail: cmp.Or(s.Message(), s.Title), glyph: prog.Glyph, status: s, aside: n.ws.Name}
+// shown, and going there; dir is the detail the pane's name has, which the
+// query matches though the program's message shows in its place.
+func (a *App) needItem(n needy) (it paletteItem, dir string) {
+	p, id := n.pane, any(n.pane)
+	if p == nil {
+		// A session of a space no window shows has no pane: it is named
+		// as its pane would be, from what this machine knows of it.
+		p, id = &Pane{info: a.st.infos[n.sid]}, n.sid
+		p.seen = a.st.seen[n.sid]
+	}
+	name, dir := p.label()
+	s := p.status()
+	detail := dir
+	if s != nil && s.State != "idle" {
+		detail = cmp.Or(s.Message(), s.Title, detail)
+	}
+	it = paletteItem{title: name, detail: detail, glyph: paneProgram(p).Glyph, status: s, id: id}
+	switch {
+	case p.host != nil:
+		it.aside = p.host.Name
+	case n.ws != nil:
+		it.aside = n.ws.Name
 	}
 	it.run = func() {
 		if a.focusNeedy(n) != nil {
 			a.syncBadge()
 		}
 	}
-	return it
+	return it, dir
 }
 
-// ago says how long before now t was, as the iPhone app's inbox does: now
-// under a minute, else in whole minutes, hours or days; and in how long it
-// says otherwise.
+// ago says how long before now t was: now under a minute, else the
+// duration as the host's panel says it, in minutes at least; and in how
+// long it says otherwise.
 func ago(t, now time.Time) (string, time.Duration) {
-	const day = 24 * time.Hour
 	d := max(now.Sub(t), 0)
-	switch {
-	case d < time.Minute:
-		return locales.AgoNow(), time.Minute - d
-	case d < time.Hour:
-		return locales.AgoMinutes(int(d / time.Minute)), time.Minute - d%time.Minute
-	case d < day:
-		return locales.AgoHours(int(d / time.Hour)), time.Hour - d%time.Hour
+	next := time.Minute - d%time.Minute
+	if d < time.Minute {
+		return locales.AgoNow(), next
 	}
-	return locales.AgoDays(int(d / day)), day - d%day
+	return locales.Ago(roundDur(d)), next
 }
 
 // badgeSupported tells that the platform shows a count on the application

@@ -4962,48 +4962,20 @@ func (msgs Messages) AgoNow() string {
 	return Catalog.Format(msgs.locale, "agoNow", nil)
 }
 
-// AgoMinutes says "{n}m"
+// Ago says "{time} ago"
 // in the language the app shows.
 //
-// How long ago a program reported its status, in whole minutes, narrow.
-// Palette row of a pane that needs the user.
-func AgoMinutes(n int) string { return In(i18n.Locale()).AgoMinutes(n) }
+// How long ago a program reported its status. time is a duration, as "5m"
+// or "3h 20m". Palette row of a pane that needs the user.
+func Ago(time_ string) string { return In(i18n.Locale()).Ago(time_) }
 
-// AgoMinutes says "{n}m"
+// Ago says "{time} ago"
 // in the language of msgs.
 //
-// How long ago a program reported its status, in whole minutes, narrow.
-// Palette row of a pane that needs the user.
-func (msgs Messages) AgoMinutes(n int) string {
-	return Catalog.Format(msgs.locale, "agoMinutes", map[string]any{"n": n})
-}
-
-// AgoHours says "{n}h"
-// in the language the app shows.
-//
-// How long ago a program reported its status, in whole hours, narrow.
-func AgoHours(n int) string { return In(i18n.Locale()).AgoHours(n) }
-
-// AgoHours says "{n}h"
-// in the language of msgs.
-//
-// How long ago a program reported its status, in whole hours, narrow.
-func (msgs Messages) AgoHours(n int) string {
-	return Catalog.Format(msgs.locale, "agoHours", map[string]any{"n": n})
-}
-
-// AgoDays says "{n}d"
-// in the language the app shows.
-//
-// How long ago a program reported its status, in whole days, narrow.
-func AgoDays(n int) string { return In(i18n.Locale()).AgoDays(n) }
-
-// AgoDays says "{n}d"
-// in the language of msgs.
-//
-// How long ago a program reported its status, in whole days, narrow.
-func (msgs Messages) AgoDays(n int) string {
-	return Catalog.Format(msgs.locale, "agoDays", map[string]any{"n": n})
+// How long ago a program reported its status. time is a duration, as "5m"
+// or "3h 20m". Palette row of a pane that needs the user.
+func (msgs Messages) Ago(time_ string) string {
+	return Catalog.Format(msgs.locale, "ago", map[string]any{"time": time_})
 }
 
 // SessionCloseTitle says "Close “{name}”?"
