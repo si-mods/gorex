@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // remotePane opens a tab on a host, through a proxy, in dir there, and
@@ -290,8 +292,11 @@ func TestUploadsOnlyToHostsTaking(t *testing.T) {
 	h.hello.Capabilities = caps
 	proxy.setDown(true)
 	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil })
-	if transfersFiles(p) {
-		t.Error("uploads to a host not connected")
+	if !transfersFiles(p) {
+		t.Error("no uploads to a host coming back")
+	}
+	if transfersFiles(&Pane{host: newHostConn(savedHost{ID: "h2", Name: "never"})}) {
+		t.Error("uploads to a host never connected")
 	}
 }
 
@@ -725,5 +730,127 @@ func TestClosedPaneDropsItsPaste(t *testing.T) {
 	})
 	if x.ok {
 		t.Error("the upload went on")
+	}
+}
+
+// TestDropWaitsForHost drops a file on a pane of a host while it
+// reconnects: the drop is the upload's, which waits for the host and
+// pastes the path there once it is back. One that waits too long says
+// why the host is not back.
+func TestDropWaitsForHost(t *testing.T) {
+	dropsDir(t)
+	a, tt := newTestApp(t)
+	h, proxy, p := remotePane(t, a, tt, t.TempDir())
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil })
+	if !transfersFiles(p) {
+		t.Fatal("the drop not taken")
+	}
+	a.upload(p, dropped(t, "late.txt", "x"))
+	x := listOf(p)[0]
+	proxy.setDown(false)
+	h.poke()
+	waitFor(t, tt, "the path there", func() bool { return strings.Contains(p.term.Text(), "late.txt") })
+	waitFor(t, tt, "the upload", func() bool { return x.ok })
+
+	old := hostWait
+	hostWait = 100 * time.Millisecond
+	t.Cleanup(func() { hostWait = old })
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to fail", func() bool { return h.state == hostFailed })
+	a.upload(p, dropped(t, "never.txt", "x"))
+	x = listOf(p)[len(listOf(p))-1]
+	waitUploaded(t, tt, p)
+	if x.err != "Not connected to office-mac." {
+		t.Errorf("the upload: %+v", x)
+	}
+	// A host that refuses this machine says so: the next attempt is a
+	// second away at least.
+	h.failed, h.reason = failRefused, locales.HostsNotAllowed
+	a.upload(p, dropped(t, "refused.txt", "x"))
+	x = listOf(p)[len(listOf(p))-1]
+	waitUploaded(t, tt, p)
+	if x.err != locales.HostsNotAllowed() {
+		t.Errorf("the upload to a host refusing: %+v", x)
+	}
+}
+
+// resumedFile is a file of size zeros whose first open reads half, then
+// waits for release and goes on; it tells reached once there.
+type resumedFile struct {
+	size             int64
+	reached, release chan struct{}
+	reaching         *sync.Once
+}
+
+func (f resumedFile) ReadAt(b []byte, off int64) (int, error) {
+	if off >= f.size/2 {
+		f.reaching.Do(func() { close(f.reached) })
+		<-f.release
+	}
+	if off >= f.size {
+		return 0, io.EOF
+	}
+	b = b[:min(int64(len(b)), f.size-off)]
+	clear(b)
+	return len(b), nil
+}
+
+func (resumedFile) Close() error { return nil }
+
+// TestUploadOutlivesConnection loses the connection to the host halfway
+// through a file: the upload goes on through the next connection, from
+// what the host has, and pastes the path there; no second copy is made.
+func TestUploadOutlivesConnection(t *testing.T) {
+	there := dropsDir(t)
+	a, tt := newTestApp(t)
+	h, proxy, p := remotePane(t, a, tt, t.TempDir())
+	const size = 4 << 20
+	path := dropped(t, "kept.bin", string(make([]byte, size)))[0]
+	f := resumedFile{size: size, reached: make(chan struct{}), release: make(chan struct{}), reaching: new(sync.Once)}
+	old := openUpload
+	openUpload = func(string) (uploadFile, error) { return f, nil }
+	t.Cleanup(func() { openUpload = old })
+	c := h.current()
+	a.upload(p, []string{path})
+	<-f.reached
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to go", func() bool { return h.current() != c })
+	close(f.release)
+	proxy.setDown(false)
+	h.poke()
+	waitFor(t, tt, "the path there", func() bool { return strings.Contains(p.term.Text(), "kept.bin") })
+	if st, err := os.Stat(filepath.Join(there, "kept.bin")); err != nil || st.Size() != size {
+		t.Errorf("there: %v, %v", st, err)
+	}
+	if entries, _ := os.ReadDir(there); len(entries) != 1 {
+		t.Errorf("there: %v", entries)
+	}
+}
+
+// TestUploadWaitsForHeldFile drops a file whose partial on the host another
+// put holds, as the put of a connection lost does until the host notices:
+// the upload waits for it to let go, then sends the file.
+func TestUploadWaitsForHeldFile(t *testing.T) {
+	there := dropsDir(t)
+	a, tt := newTestApp(t)
+	_, _, p, remote := remotePaneOf(t, a, tt, t.TempDir())
+	path := dropped(t, "held.bin", string(make([]byte, 1<<20)))[0]
+	fi, _ := os.Stat(path)
+	ctx, cancel := context.WithCancel(context.Background())
+	held := heldFile{size: 1 << 20, reached: make(chan struct{}), release: make(chan struct{}), reaching: new(sync.Once)}
+	go remote.PutFile(ctx, rex.FilePut{SID: p.SID, Name: "held.bin", Size: 1 << 20, ID: uploadID(p.SID, path, fi), Temp: true}, held, nil)
+	<-held.reached
+	a.upload(p, []string{path})
+	x := listOf(p)[0]
+	time.Sleep(1500 * time.Millisecond)
+	if x.err != "" || x.ok {
+		t.Fatalf("the upload did not wait: %+v", x)
+	}
+	cancel()
+	close(held.release)
+	waitFor(t, tt, "the path there", func() bool { return strings.Contains(p.term.Text(), "held.bin") })
+	if st, err := os.Stat(filepath.Join(there, "held.bin")); err != nil || st.Size() != 1<<20 {
+		t.Errorf("there: %v, %v", st, err)
 	}
 }

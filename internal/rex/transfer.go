@@ -33,6 +33,13 @@ var errNoFileTransfer = errors.New("rex: the server does not transfer files; upd
 // writes yet.
 var errTransferring = errors.New("rex: the file is being transferred already")
 
+// Transferring reports whether err is the server refusing a transfer of a
+// file another transfer writes yet, as one whose connection was lost
+// does until the server notices (the error arrives as text).
+func Transferring(err error) bool {
+	return err != nil && err.Error() == errTransferring.Error()
+}
+
 // abortTimeout is how long a put cancelled tries to remove what the server
 // has of its file.
 const abortTimeout = 5 * time.Second
@@ -187,6 +194,18 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		answer(FileAnswer{OK: true, Skipped: true, Path: target})
 		return nil
 	}
+	// A put again of one this run finished, whose answer was lost, learns
+	// where its file went.
+	if f, ok := s.finished.Load(filepath.Join(dir, partialName(req.Name, req.ID))); ok && req.Again {
+		if f := f.(finishedPut); f.peer == peer {
+			if st, err := os.Stat(f.path); err == nil && st.Size() == req.Size {
+				t.Path, t.State = f.path, "skipped"
+				s.transferred(t, ss)
+				answer(FileAnswer{OK: true, Skipped: true, Path: f.path})
+				return nil
+			}
+		}
+	}
 	p, err := openPartial(dir, req.Name, req.ID)
 	if err != nil {
 		return err
@@ -233,6 +252,7 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	}
 	if err == nil {
 		s.puts.Delete(p.path)
+		s.finished.Store(p.path, finishedPut{peer, t.Path})
 	}
 	if err != nil {
 		t.State = "failed"
@@ -379,6 +399,10 @@ func (w progressWriter) Write(b []byte) (int, error) {
 	w.f(*w.done)
 	return len(b), nil
 }
+
+// finishedPut is a put that finished: the peer that sent it, and where its
+// file went.
+type finishedPut struct{ peer, path string }
 
 // partials are the partial files being written, which one transfer at a
 // time may write.
@@ -709,7 +733,7 @@ func (c *Client) AbortFile(ctx context.Context, f FilePut) error {
 		if err == nil {
 			return fc.Close()
 		}
-		if err.Error() != errTransferring.Error() {
+		if !Transferring(err) {
 			return err
 		}
 		select {
