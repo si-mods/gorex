@@ -412,6 +412,16 @@
         }
       }
     },
+    "Download": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载"
+          }
+        }
+      }
+    },
     "Edit Host": {
       "localizations": {
         "zh-Hans": {

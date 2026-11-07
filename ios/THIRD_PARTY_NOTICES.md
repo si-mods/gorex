@@ -212,3 +212,10 @@ The brand marks of `GoRex/Assets.xcassets/Brands`, on the tiles of window
 rows, are GoRex's `assets/brands`: Simple Icons, under CC0 1.0 Universal
 (public domain). The trademarks remain their owners'. omp's mark is drawn
 after omp.sh's favicon. https://simpleicons.org
+
+## Maple Mono
+
+The app does not ship Maple Mono NF CN: Settings › Terminal downloads it,
+on request, from its release at
+https://github.com/subframe7536/maple-font (v7.9), under the SIL Open Font
+License 1.1.

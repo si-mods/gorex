@@ -7,8 +7,10 @@ struct GoRexApp: App {
     @AppStorage("scheme") private var scheme = "dark"
 
     /// Ghostty starts with the app, as in rootshell, not in a terminal's
-    /// push; the notifications too, for a tap that launches it.
+    /// push; the notifications too, for a tap that launches it. A
+    /// downloaded font is known before.
     init() {
+        Maple.shared.register()
         _ = Ghostty.app
         Notifier.shared.start()
     }
