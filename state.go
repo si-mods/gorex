@@ -3531,37 +3531,32 @@ func (a *App) notifyPane(p *Pane, prog string, icon program, title, body string)
 
 // tileImage is the tile of prog, as tabs show it in the dark appearance
 // or the light, as a PNG of 72 pixels square; nil for a shell, which has
-// no program to show. Each tile is drawn once, off the main thread, which
-// waits for none: nil too till it is drawn, and so the first notification
-// of a tile shows without.
+// no program to show. Each tile is drawn once, in a frame of its own,
+// which ui.Render draws on the main thread: call it there, out of a frame
+// the windows build, as the updates that notify are. One MyGo refuses to
+// draw gives none, and is drawn again the next time.
 func tileImage(prog program, dark bool) []byte {
 	if prog.Name == "" || prog.Shell {
 		return nil
 	}
 	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBorder, dark}
-	tileMu.Lock()
-	defer tileMu.Unlock()
 	if b, ok := tileImages[key]; ok {
 		return b
+	}
+	b := drawTileImage(prog, dark)
+	if b == nil {
+		return nil
 	}
 	if len(tileImages) >= 512 {
 		clear(tileImages)
 	}
-	tileImages[key] = nil
-	go func() {
-		b := drawTileImage(prog, dark)
-		tileMu.Lock()
-		if _, ok := tileImages[key]; ok {
-			tileImages[key] = b
-		}
-		tileMu.Unlock()
-	}()
-	return nil
+	tileImages[key] = b
+	return b
 }
 
-// drawTileImage draws the tile of tileImage, in a frame of its own, on a
-// window of no background: the tile's corners stay clear. A view MyGo
-// refuses to draw gives none.
+// drawTileImage draws the tile of tileImage on a window of no background:
+// the tile's corners stay clear. A view MyGo refuses to draw, as its
+// headless runtime panics, gives none.
 func drawTileImage(prog program, dark bool) (out []byte) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -3595,12 +3590,8 @@ type tileKey struct {
 	border, dark     bool
 }
 
-// tileImages are the PNGs of tileImage, nil while one is drawn, 512 at
-// most.
-var (
-	tileMu     sync.Mutex
-	tileImages = map[tileKey][]byte{}
-)
+// tileImages are the PNGs of tileImage, 512 at most.
+var tileImages = map[tileKey][]byte{}
 
 // appearanceDark tells whether the app shows its dark appearance; tests,
 // which run no app, take its place.
