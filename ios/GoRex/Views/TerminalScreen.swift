@@ -151,20 +151,27 @@ struct TerminalScreen: View {
         UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
     }
 
-    /// The window open, as its session's view has it.
-    private var window: SessionView.Window? {
-        host.sessions.first { $0.id == target.session }?.view?.windows?.first { $0.block == target.block || $0.tiled.contains(target.block) }
+    /// The session of the window open, as the host has it.
+    private var hostSession: Host.Session? {
+        host.sessions.first { $0.id == target.session }
     }
 
-    /// The window's title as its row shows it, else as the row gave it,
-    /// else its session's name, as for a new session.
+    /// The window open, as its session's view has it.
+    private var window: SessionView.Window? {
+        hostSession?.view?.windows?.first { $0.holds(target.block) }
+    }
+
+    /// The window's title as its row shows it, when the block open is the
+    /// one in front, else as the row gave it, else its session's name, as
+    /// for a new session.
     private var title: String {
-        [window.map(host.title) ?? "", target.title].first { !$0.isEmpty } ?? sessionLabel
+        let live = window.flatMap { $0.block == target.block ? host.title($0) : nil } ?? ""
+        return [live, target.title].first { !$0.isEmpty } ?? sessionLabel
     }
 
     /// The name of the window's session.
     private var sessionLabel: String {
-        host.sessions.first { $0.id == target.session }?.label ?? ""
+        hostSession?.label ?? ""
     }
 
     /// Opens a new window in the session, and goes to it.

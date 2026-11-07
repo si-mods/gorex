@@ -64,14 +64,14 @@ struct SessionSheet: View {
         let tiles = ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
         return VStack(spacing: 0) {
             ForEach(Array(windows.enumerated()), id: \.element.window.window_id) { i, w in
+                let open = w.window.holds(target.block)
                 Button {
                     dismiss()
-                    go(TerminalTarget(host: host.id, session: s.id, block: w.block, title: host.title(w.window)))
+                    // The one open stays, with its scrollback.
+                    if !open { go(TerminalTarget(host: host.id, session: s.id, block: w.block, title: host.title(w.window))) }
                 } label: {
                     WindowRow(host: host, block: w.block, window: w.window, tiles: tiles, divider: i < windows.count - 1) {
-                        if w.block == target.block || w.window.tiled.contains(target.block) {
-                            Image(systemName: "checkmark").font(.body.weight(.semibold))
-                        }
+                        if open { Image(systemName: "checkmark").font(.body.weight(.semibold)) }
                     }
                 }
             }
@@ -79,15 +79,15 @@ struct SessionSheet: View {
         .background(Color.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
-    /// The host's sessions; one goes to its first window.
+    /// The host's sessions; another one goes to its first window.
     private var sessions: some View {
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(Array(host.sessions.enumerated()), id: \.element.id) { i, s in
                     let first = s.view?.windows?.first { $0.block != nil }
                     Button {
-                        guard let first, let b = first.block else { return }
                         dismiss()
+                        guard s.id != target.session, let first, let b = first.block else { return }
                         go(TerminalTarget(host: host.id, session: s.id, block: b, title: host.title(first)))
                     } label: {
                         Row(title: Text(s.label), divider: i < host.sessions.count - 1) {
