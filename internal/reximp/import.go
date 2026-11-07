@@ -172,12 +172,20 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 			if i == 0 {
 				res, err := command(g, rex.LayoutCommand{
 					Op: "tab.create", Space: spaceID, Name: tabName(w),
-					Dir: dir, Command: cmd, Focus: focus,
+					Dir: dir, Command: cmd,
 				})
 				if err != nil {
 					return fail(err)
 				}
 				prev = res.New
+				// Rex's active window becomes the space's active tab by
+				// pane.focus: tab.create's Focus would have a GoRex window
+				// show the space as it is built.
+				if focus && prev != "" {
+					if _, err := command(g, rex.LayoutCommand{Op: "pane.focus", Space: spaceID, SID: prev}); err != nil {
+						return fail(err)
+					}
+				}
 			} else {
 				vertical := splitOf(leaves[i-1], leaf)
 				res, err := command(g, rex.LayoutCommand{

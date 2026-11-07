@@ -1163,6 +1163,56 @@ func TestStatusEvents(t *testing.T) {
 	}
 }
 
+// TestReopenShowsSpace closes the last window and has a client make a tab
+// with the focus in a space: the window opened again shows that space,
+// and the server forgets the request. One asked longer ago than showFor
+// is dropped: the window shows the space it showed.
+func TestReopenShowsSpace(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	st.started = true
+	other, err := rex.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	for _, stale := range []bool{false, true} {
+		last := st.apps[0].ws
+		st.closed(st.apps[0])
+		made, err := other.Command(rex.LayoutCommand{Op: "space.create"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		space := made.Space
+		if res, err := other.Command(rex.LayoutCommand{Op: "tab.create", Space: space, Dir: os.TempDir(), Focus: true}); err != nil || res.Code != "" {
+			t.Fatalf("tab.create: %+v %v", res, err)
+		}
+		saved := savedWorkspaces(t, other)
+		if saved.Show != space {
+			t.Fatalf("the server asks to show %q, not %s", saved.Show, space)
+		}
+		if stale {
+			saved.ShowAt = time.Now().Add(-2 * showFor)
+			raw, _ := json.Marshal(saved)
+			if err := other.SetLayout(raw); err != nil {
+				t.Fatal(err)
+			}
+		}
+		st.reopen()
+		want := space
+		if stale {
+			want = last.ID
+		}
+		if len(st.apps) != 1 || st.apps[0].ws.ID != want {
+			t.Fatalf("stale %v: the window opened again shows %s, not %s", stale, st.apps[0].ws.ID, want)
+		}
+		st.saveNow()
+		if s := savedWorkspaces(t, other); s.Show != "" {
+			t.Fatalf("stale %v: the server still asks to show %s", stale, s.Show)
+		}
+	}
+}
+
 // TestReopenReadsServerChanges closes the last window, has the server make
 // a tab with no window, and opens a window again: it shows the tab, and
 // saves no layout of before over it. A layout it cannot read leaves the

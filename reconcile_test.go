@@ -272,6 +272,58 @@ func TestFollowReconnect(t *testing.T) {
 	quit(st)
 }
 
+// TestReconnectShowsSpace reconnects after another client made a tab with
+// the focus in a space no window shows: the window shows that space then.
+func TestReconnectShowsSpace(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	space := clientCommand(a, rex.LayoutCommand{Op: "space.create", Name: "away"}).Space
+	a.saveNow()
+	old := st.client
+	old.Close()
+	<-old.Closed()
+	other, err := rex.ConnectExisting()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	if res, err := other.Command(rex.LayoutCommand{Op: "tab.create", Space: space, Dir: os.TempDir(), Focus: true}); err != nil || res.Code != "" {
+		t.Fatalf("tab.create: %v %+v", err, res)
+	}
+	if !st.connect() || st.client == old {
+		t.Fatal("no new connection")
+	}
+	t.Cleanup(func() { st.client.Shutdown() })
+	if a.ws == nil || a.ws.ID != space {
+		t.Fatalf("the window shows %v, not %s", a.ws, space)
+	}
+	quit(st)
+}
+
+// TestReconnectReadsShow reconnects with a request to show a space the
+// app knew of the last connection, which the server forgot meanwhile:
+// the window acts on the layout it reads then, and stays.
+func TestReconnectReadsShow(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	home := a.ws
+	space := clientCommand(a, rex.LayoutCommand{Op: "space.create", Name: "away"}).Space
+	clientCommand(a, rex.LayoutCommand{Op: "tab.create", Space: space, Dir: os.TempDir()})
+	a.saveNow()
+	st.base.Show, st.base.ShowAt = space, time.Now()
+	old := st.client
+	old.Close()
+	<-old.Closed()
+	if !st.connect() || st.client == old {
+		t.Fatal("no new connection")
+	}
+	t.Cleanup(func() { st.client.Shutdown() })
+	if a.ws != home {
+		t.Fatalf("the window shows %s", a.ws.ID)
+	}
+	quit(st)
+}
+
 // takeOther has the app take the layout another client wrote, as the
 // follower does, and returns the layout's revision.
 func takeOther(t *testing.T, a *App, other *rex.Client) uint64 {

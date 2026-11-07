@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"gorex/internal/layout"
 )
@@ -23,7 +24,7 @@ var applied = map[string]bool{
 	"pane.split": true, "pane.close": true, "pane.rename": true, "pane.focus": true,
 	"pane.zoom": true, "pane.resize": true, "pane.swap": true, "pane.move": true,
 	"pane.restart": true, "pane.teleporting": true, "pane.teleported": true,
-	"tab.set": true, "windows.set": true, "layout.apply": true, "kills.taken": true,
+	"tab.set": true, "windows.set": true, "layout.apply": true, "kills.taken": true, "show.taken": true,
 }
 
 // batched are the commands a layout.apply carries: the app's changes of
@@ -600,6 +601,11 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		}
 		st.Windows = ids
 		return res
+	case "show.taken":
+		if st.Show == c.Space {
+			st.Show, st.ShowAt = "", time.Time{}
+		}
+		return res
 	case "tab.set":
 		return s.setTab(st, c, a)
 	case "space.close":
@@ -799,6 +805,9 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 	t := layout.Tab{ID: layout.NewTabID(), Name: layout.Label(c.Name), Root: n}
 	a.touch(t.ID, nil)
 	insertTab(w, min(at, len(w.Tabs)), t, c.Focus)
+	if c.Focus && !slices.Contains(st.Windows, w.ID) {
+		st.Show, st.ShowAt = w.ID, time.Now()
+	}
 	res.New, res.Tab = n.SID, t.ID
 	return res
 }

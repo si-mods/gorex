@@ -195,6 +195,10 @@ meets:
   session goes on with no windows: make the next window from the client.
   A GoRex window that showed it shows another space, or closes. On the
   desktop the space goes with its last tab instead.
+- A new window made with the focus in a session no GoRex window shows
+  brings that session's space into view, in the GoRex window focused
+  last, or in the next one to open within 30 seconds; one made without
+  the focus leaves every GoRex window where it is.
 - An app action still needs the GoRex window, and fails with `conflict`
   without it. Closing a window or session that holds a pane of another
   host drops that pane, and the GoRex app ends its session on that host,
