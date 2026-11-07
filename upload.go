@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -55,10 +56,51 @@ const (
 	transferShown = 2 * time.Second
 )
 
+// sessionTransfers are the files on their way to or from a session of a
+// host, as the transfer list of a pane that shows it lists them: they
+// are the session's, not a pane's, and go on as its pane moves to
+// another window or its window closes. uploading closes once the last
+// drop's are sent; ctx is done once a pane of the session closes for
+// good, which stops them.
+type sessionTransfers struct {
+	list      []*fileTransfer
+	uploading chan struct{}
+	ctx       context.Context
+	stop      context.CancelFunc
+}
+
+// transfersOf returns the transfers of session sid of the host, made when
+// it has none. Call it on the main thread.
+func (h *hostConn) transfersOf(sid string) *sessionTransfers {
+	ts := h.transfers[sid]
+	if ts == nil {
+		if h.transfers == nil {
+			h.transfers = map[string]*sessionTransfers{}
+		}
+		ts = &sessionTransfers{}
+		ts.ctx, ts.stop = context.WithCancel(context.Background())
+		h.transfers[sid] = ts
+	}
+	return ts
+}
+
+// stopTransfers stops the transfers of session sid of the host, as a pane
+// of it closes for good: what they would paste is not pasted.
+func (h *hostConn) stopTransfers(sid string) {
+	if ts := h.transfers[sid]; ts != nil {
+		ts.stop()
+		delete(h.transfers, sid)
+	}
+}
+
 // upload sends the files dropped on p, a pane of a host, one after another,
-// after those of the drops before, then pastes their paths there into it.
-// A folder is not sent: its path here is pasted, as before.
+// after those of the drops before, then pastes their paths there into its
+// session, through the host's server: whichever pane shows it then, in
+// whichever window, shows them. A folder is not sent: its path here is
+// pasted, as before.
 func (a *App) upload(p *Pane, paths []string) {
+	h, sid := p.host, p.SID
+	ts := h.transfersOf(sid)
 	type item struct {
 		path string
 		x    *fileTransfer
@@ -68,7 +110,7 @@ func (a *App) upload(p *Pane, paths []string) {
 	var items []item
 	for _, path := range paths {
 		x := &fileTransfer{name: filepath.Base(path)}
-		p.transfers = append(p.transfers, x)
+		ts.list = append(ts.list, x)
 		fi, err := os.Stat(path)
 		switch {
 		case err != nil:
@@ -82,16 +124,16 @@ func (a *App) upload(p *Pane, paths []string) {
 			items = append(items, item{path: path})
 		default:
 			x.size = fi.Size()
-			it := item{path: path, x: x, put: rex.FilePut{SID: p.SID, Name: x.name, Size: x.size, ID: uploadID(p.SID, path, fi), Conflict: "rename"}}
-			it.ctx, x.cancel = context.WithCancel(context.Background())
+			it := item{path: path, x: x, put: rex.FilePut{SID: sid, Name: x.name, Size: x.size, ID: uploadID(sid, path, fi), Conflict: "rename"}}
+			it.ctx, x.cancel = context.WithCancel(ts.ctx)
 			items = append(items, it)
 		}
 	}
-	h, offline, shell := p.host, locales.HostsNotConnectedTo(p.host.Name), p.info.Shell
+	offline, shell := locales.HostsNotConnectedTo(h.Name), p.info.Shell
 	temp := h.hello.Can(rex.CapabilityFileTemp)
-	update := a.paneUpdater(p)
-	prev, done := p.uploading, make(chan struct{})
-	p.uploading = done
+	update := h.update
+	prev, done := ts.uploading, make(chan struct{})
+	ts.uploading = done
 	go func() {
 		defer close(done)
 		if prev != nil {
@@ -114,11 +156,11 @@ func (a *App) upload(p *Pane, paths []string) {
 				pasted = append(pasted, path)
 			}
 		}
-		update(func() {
-			if _, q := a.paneNow(p); len(pasted) > 0 && !q.closed && q.term != nil {
-				q.term.Paste(pastedPaths(shell, pasted))
+		if c := h.current(); c != nil && len(pasted) > 0 && ts.ctx.Err() == nil {
+			if err := c.Paste(sid, pastedPaths(shell, pasted)); err != nil {
+				log.Printf("upload: pasting into %s: %v", sid, err)
 			}
-		})
+		}
 	}()
 }
 
@@ -195,22 +237,23 @@ func (a *App) download(p *Pane, link string) bool {
 		return false
 	}
 	path = hostPath(p.info.Dir, path)
-	for _, x := range p.transfers {
+	ts := p.host.transfersOf(p.SID)
+	for _, x := range ts.list {
 		if x.from == path && !x.ok && x.err == "" {
 			return true
 		}
 	}
 	name := strings.TrimRight(path, `/\`)
 	x := &fileTransfer{name: name[strings.LastIndexAny(name, `/\`)+1:], from: path}
-	p.transfers = append(p.transfers, x)
+	ts.list = append(ts.list, x)
 	dir, err := downloadsDir()
 	if err != nil {
 		x.err = err.Error()
 		return true
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ts.ctx)
 	x.cancel = cancel
-	c, sid, update := p.host.current(), p.SID, a.paneUpdater(p)
+	c, sid, update := p.host.current(), p.SID, p.host.update
 	go func() {
 		defer cancel()
 		var last time.Time
@@ -257,48 +300,6 @@ func hostPath(dir, path string) string {
 func uploadID(sid, path string, fi os.FileInfo) string {
 	sum := sha256.Sum256(fmt.Appendf(nil, "%s\x00%s\x00%d\x00%d", sid, path, fi.Size(), fi.ModTime().UnixNano()))
 	return hex.EncodeToString(sum[:8])
-}
-
-// paneNow returns p and a, its window, or, p having moved to another
-// window, the pane that shows its session there and that window.
-func (a *App) paneNow(p *Pane) (*App, *Pane) {
-	if p.closed && a.st != nil && p.host != nil {
-		if n, ok := a.st.needyOf(p.host.ID, p.SID); ok && n.pane != nil {
-			return n.app, n.pane
-		}
-	}
-	return a, p
-}
-
-// paneUpdater is a.updater for p's transfers: each change draws the window
-// that shows p's session now.
-func (a *App) paneUpdater(p *Pane) func(func()) {
-	update := a.updater()
-	return func(fn func()) {
-		update(func() {
-			fn()
-			if o, _ := a.paneNow(p); o != a && o.win != nil {
-				o.win.Update(func() {})
-			}
-		})
-	}
-}
-
-// handTransfers gives p's transfers to the pane that shows its session
-// now, p having moved to another window.
-func (a *App) handTransfers(p *Pane) {
-	if _, q := a.paneNow(p); q != p {
-		q.transfers, q.uploading = p.transfers, p.uploading
-	}
-}
-
-// stopTransfers cancels the pane's transfers, as it closes.
-func (p *Pane) stopTransfers() {
-	for _, x := range p.transfers {
-		if x.cancel != nil {
-			x.cancel()
-		}
-	}
 }
 
 // pastedPaths is paths as a drop pastes them into a pane whose shell is at
@@ -380,11 +381,14 @@ func (a *App) fileDrop(c *ui.Context, k *colors, p *Pane, card, tv ui.Element) {
 	})
 }
 
-// transfers lists p's transfers in its bottom-right corner: a file there
-// for transferShown, one that failed until clicked.
+// transfers lists the transfers of p's session in its bottom-right
+// corner: a file there for transferShown, one that failed until clicked.
 func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
-	now := c.Now()
-	p.transfers = slices.DeleteFunc(p.transfers, func(x *fileTransfer) bool {
+	if p.host == nil || p.host.transfers[p.SID] == nil {
+		return
+	}
+	ts, now := p.host.transfers[p.SID], c.Now()
+	ts.list = slices.DeleteFunc(ts.list, func(x *fileTransfer) bool {
 		if !x.ok {
 			return false
 		}
@@ -397,7 +401,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 		}
 		return left <= 0
 	})
-	if len(p.transfers) == 0 {
+	if len(ts.list) == 0 {
 		return
 	}
 	// The list sits in the body's padding, which is inside the card's
@@ -418,10 +422,10 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 	// A row clicked away goes once the list is built.
 	var gone *fileTransfer
 	defer func() {
-		p.transfers = slices.DeleteFunc(p.transfers, func(x *fileTransfer) bool { return x == gone })
+		ts.list = slices.DeleteFunc(ts.list, func(x *fileTransfer) bool { return x == gone })
 	}()
 	list.Children(func() {
-		for _, x := range p.transfers {
+		for _, x := range ts.list {
 			row := ui.Column(c.Key(x)).Padding(6, 8).Gap(4).Radius(concentric(r, pad))
 			if anim != nil {
 				row.Transition(ui.ElementTransition{Animation: anim, Position: true, Size: true, Enter: bannerMotion, Exit: bannerMotion})
