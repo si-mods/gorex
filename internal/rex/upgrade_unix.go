@@ -3,6 +3,7 @@
 package rex
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -54,6 +55,9 @@ type sessionState struct {
 	Command bool      `json:"command,omitempty"`
 	Created time.Time `json:"created"`
 	PID     int       `json:"pid"`
+	// Dir is the directory the session started in; a handoff of a build
+	// before it has none.
+	Dir string `json:"dir,omitempty"`
 	// Owner is the key of the remote client that created the session. A
 	// handoff of a build before it has none: its sessions count as created
 	// locally.
@@ -63,8 +67,12 @@ type sessionState struct {
 	Master int `json:"master"`
 	Cols   int `json:"cols"`
 	Rows   int `json:"rows"`
-	// Screen is the emulator's snapshot, and Title its title.
+	// Screen is the emulator's snapshot, from which the modes are read
+	// again, Images the graphics sequences the session replays on attach,
+	// and Title its title. A handoff of a build before Images has the
+	// replay at the end of Screen.
 	Screen     []byte    `json:"screen,omitempty"`
+	Images     [][]byte  `json:"images,omitempty"`
 	Title      string    `json:"title,omitempty"`
 	Output     uint64    `json:"output"`
 	Bells      int64     `json:"bells"`
@@ -228,13 +236,14 @@ func (s *session) state() sessionState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := sessionState{
-		ID: s.id, Shell: s.shell, Command: s.command, Created: s.created, PID: s.p.pid(), Master: -1, Owner: s.owner,
+		ID: s.id, Shell: s.shell, Command: s.command, Created: s.created, PID: s.p.pid(), Dir: s.dir, Master: -1, Owner: s.owner,
 		Cols: s.cols, Rows: s.rows,
 		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
-		Statuses: s.status.list(),
+		Statuses: s.status.list(), Images: s.graphics.history,
 	}
 	st.Screen, st.Title = s.view()
+	st.Screen = bytes.TrimSuffix(st.Screen, s.graphics.replay())
 	select {
 	case <-s.readEnd:
 		// Its output ended: once its process did too, it exited.
@@ -307,7 +316,7 @@ func Resume(path string) error {
 // resumeSession makes a session of a handoff's again.
 func resumeSession(st sessionState, changed func()) (*session, error) {
 	s := &session{
-		id: st.ID, shell: st.Shell, command: st.Command, created: st.Created, owner: st.Owner, changed: changed,
+		id: st.ID, shell: st.Shell, command: st.Command, created: st.Created, dir: st.Dir, owner: st.Owner, changed: changed,
 		clients: map[*attached]struct{}{},
 		output:  st.Output, lastOutput: st.LastOutput, lastInput: st.LastInput,
 		cols: clampSize(st.Cols), rows: clampSize(st.Rows), done: make(chan struct{}),
@@ -322,10 +331,21 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		s.status.updates++
 		s.status.records[r.ID] = &statusRecord{r, s.status.updates}
 	}
+	// The images go to the history the attaches replay, not to the
+	// emulator, which the snapshot left as it was: a placement moves the
+	// cursor.
+	s.graphics.record(st.Images)
+	if st.Title != "" {
+		s.vt.Feed([]byte("\x1b]2;" + st.Title + "\x07"))
+	}
+	s.vt.Feed(st.Screen)
+	s.modes.feed(st.Screen)
 	if st.Exited || st.Master < 0 {
 		s.p = &pty{proc: st.PID}
 		s.reaped, s.exited, s.code = true, true, st.Code
-		s.screen, s.title = st.Screen, st.Title
+		s.screen, s.title = append(st.Screen, s.graphics.replay()...), st.Title
+		s.ghostty, _ = s.vt.GhosttySnapshot()
+		s.text = s.vt.Text()
 		s.reading, s.readEnd = make(chan struct{}), make(chan struct{})
 		close(s.reading)
 		close(s.readEnd)
@@ -342,10 +362,7 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		return nil, err
 	}
 	s.p = p
-	if st.Title != "" {
-		s.vt.Feed([]byte("\x1b]2;" + st.Title + "\x07"))
-	}
-	s.vt.Feed(st.Screen)
+	s.graphics.cut = true
 	s.bells.Store(st.Bells)
 	wait := p.wait
 	if st.Reaped {

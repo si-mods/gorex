@@ -43,6 +43,9 @@ type graphics struct {
 	chunkSkip  bool
 	history    [][]byte
 	kept       int
+	// cut tells that a transfer may have started before the session read
+	// its output, as across an upgrade, until the next sequence.
+	cut bool
 }
 
 // filter returns p with its file-medium Kitty images rewritten, and the
@@ -140,6 +143,15 @@ func (g *graphics) sequence(seq []byte, cwd string) ([]byte, [][]byte) {
 		}
 		return seq, nil
 	}
+	if g.cut {
+		g.cut = false
+		if graphicsContinues(params) {
+			// The rest of a transfer whose start the session did not read:
+			// no image to replay.
+			g.chunkSkip = graphicsMore(params)
+			return seq, nil
+		}
+	}
 	if !isFile || payload == "" {
 		if graphicsMore(params) {
 			if g.chunkBytes+len(seq) > maxGraphicsHistory {
@@ -222,6 +234,17 @@ func graphicsMore(params []string) bool {
 		}
 	}
 	return false
+}
+
+// graphicsContinues reports whether params are those of a chunk after a
+// transfer's first, which has the m and q keys alone.
+func graphicsContinues(params []string) bool {
+	for _, p := range params {
+		if key, _, _ := strings.Cut(p, "="); key != "m" && key != "q" {
+			return false
+		}
+	}
+	return true
 }
 
 func rewriteFileImage(params []string, data []byte) [][]byte {

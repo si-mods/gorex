@@ -40,6 +40,12 @@ func TestDecModes(t *testing.T) {
 	if !m.bracketed {
 		t.Fatal("2004 set, not tracked")
 	}
+	// The modes it did not set keep their defaults.
+	for _, md := range m.status().Modes {
+		if md.Number != 2004 && md.Set != md.Default {
+			t.Errorf("mode %s set %v, its default %v", md.Name, md.Set, md.Default)
+		}
+	}
 	m.feed([]byte("\x1b[?2004l"))
 	if m.bracketed {
 		t.Error("2004 reset, still set")
