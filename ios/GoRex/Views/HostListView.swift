@@ -13,8 +13,12 @@ extension Color {
 
 /// Every host, its sessions, and their windows, as Rex's iPhone app lists
 /// them. The eye hides idle windows: those whose program is only the shell.
+/// A wide window shows the list beside the terminal open; a narrow one
+/// pushes the terminal over the list.
 struct HostListView: View {
     @Environment(HostStore.self) private var store
+    @Environment(\.horizontalSizeClass) private var width
+    /// The terminal open, pushed or beside the list: one at most.
     @State private var path: [TerminalTarget] = []
     @State private var collapsed: Set<String> = []
     @State private var hideIdle = false
@@ -22,48 +26,75 @@ struct HostListView: View {
     @State private var settings = false
 
     var body: some View {
-        NavigationStack(path: $path) {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 30) {
-                    if store.hosts.isEmpty {
-                        Text("No hosts yet. Add one in Settings.").foregroundStyle(.secondary).padding(.top, 40)
-                    }
-                    ForEach(store.hosts) { host in
-                        HostSection(host: host, collapsed: $collapsed, filter: filter, open: { path.append($0) })
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 20)
-            }
-            .background(Color.page)
-            .scrollEdgeEffectStyle(.soft, for: .all)
-            .toolbar(.hidden, for: .navigationBar)
-            .toolbar {
-                ToolbarItemGroup(placement: .bottomBar) {
-                    Button("Settings", systemImage: "gearshape") { settings = true }
-                    Button(hideIdle ? "Show Idle Windows" : "Hide Idle Windows", systemImage: hideIdle ? "eye.slash" : "eye") {
-                        hideIdle.toggle()
+        Group {
+            if width == .regular {
+                NavigationSplitView {
+                    list
+                } detail: {
+                    // A terminal of its own for each target: the last one
+                    // closes as the next opens.
+                    if let t = path.last, let host = store.host(t.host) {
+                        TerminalScreen(target: t, host: host, go: go).id(t)
+                    } else {
+                        ContentUnavailableView("No Window Open", systemImage: "terminal",
+                                               description: Text("Choose a window in the list."))
+                            .background(Color.page)
                     }
                 }
-                ToolbarSpacer(.flexible, placement: .bottomBar)
-                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+            } else {
+                NavigationStack(path: $path) {
+                    list.navigationDestination(for: TerminalTarget.self) { t in
+                        if let host = store.host(t.host) { TerminalScreen(target: t, host: host, go: go) }
+                    }
+                }
             }
-            .searchable(text: $query, prompt: "Search windows")
-            .searchToolbarBehavior(.minimize)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled()
-            .navigationDestination(for: TerminalTarget.self) { t in
-                if let host = store.host(t.host) { TerminalScreen(target: t, host: host) }
-            }
-            .sheet(isPresented: $settings) { SettingsView() }
         }
         // A tapped notification opens its terminal.
         .onChange(of: Notifier.shared.opening, initial: true) { _, t in
             guard let t else { return }
-            path = [t]
+            go(t)
             Notifier.shared.opening = nil
         }
+    }
+
+    /// Opens a terminal, in place of the one open; nil goes back to the list.
+    private func go(_ t: TerminalTarget?) {
+        path = t.map { [$0] } ?? []
+    }
+
+    private var list: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 30) {
+                if store.hosts.isEmpty {
+                    Text("No hosts yet. Add one in Settings.").foregroundStyle(.secondary).padding(.top, 40)
+                }
+                ForEach(store.hosts) { host in
+                    HostSection(host: host, collapsed: $collapsed, filter: filter, open: { go($0) })
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
+            .padding(.bottom, 20)
+        }
+        .background(Color.page)
+        .scrollEdgeEffectStyle(.soft, for: .all)
+        // Beside the terminal the bar stays, for the sidebar's toggle.
+        .toolbar(width == .regular ? .automatic : .hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button("Settings", systemImage: "gearshape") { settings = true }
+                Button(hideIdle ? "Show Idle Windows" : "Hide Idle Windows", systemImage: hideIdle ? "eye.slash" : "eye") {
+                    hideIdle.toggle()
+                }
+            }
+            ToolbarSpacer(.flexible, placement: .bottomBar)
+            DefaultToolbarItem(kind: .search, placement: .bottomBar)
+        }
+        .searchable(text: $query, prompt: "Search windows")
+        .searchToolbarBehavior(.minimize)
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .sheet(isPresented: $settings) { SettingsView() }
     }
 
     /// Whether a window's row shows, by the search and the eye.
@@ -274,6 +305,7 @@ private struct HostSection: View {
                             WindowRow(title: w.1, program: w.2, back: w.3, status: w.5, tiles: tiles, divider: i < windows.count - 1)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.highlight)
                         .contextMenu { menu(s, w.4, title: w.1, shown: windows.map(\.4.window_id)) }
                     }
                 }
