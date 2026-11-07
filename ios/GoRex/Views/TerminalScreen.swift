@@ -105,10 +105,14 @@ struct TerminalScreen: View {
                     .buttonStyle(.plain)
                 }
                 .sharedBackgroundVisibility(.hidden)
-                // Holds the place of a menu to come; the bar's glass draws it.
+                // The window's menu; the bar's glass draws it.
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {} label: { Image(systemName: "ellipsis") }
-                        .accessibilityLabel("More")
+                    Menu {
+                        Button("New Tab", systemImage: "plus") { newTab() }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .accessibilityLabel("More")
                 }
             }
             // The sheet takes the terminal's scheme as the bar does; the
