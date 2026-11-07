@@ -240,41 +240,45 @@ private struct HostSection: View {
     /// A window's menu, as the desktop's tab menu. It moves a window past
     /// the rows shown, and closes only those: the server's order also has
     /// windows the list leaves out.
-    @ViewBuilder private func menu(_ s: Host.Session, _ w: SessionView.Window, title: String, shown: [String]) -> some View {
+    private func menu(_ s: Host.Session, _ w: SessionView.Window, shown: [String]) -> some View {
         let all = (s.view?.windows ?? []).map(\.window_id)
         let id = w.window_id
         let i = shown.firstIndex(of: id) ?? 0
-        Button("Rename Tab…", systemImage: "pencil") {
-            name = w.name ?? ""
-            renaming = (s.id, id, title)
-        }
-        if w.name != nil {
-            Button("Reset Name", systemImage: "arrow.uturn.backward") {
-                change("Can't Rename the Tab") { try await host.renameWindow(id, in: s.id, to: "") }
+        // The title changes while the menu is open: it's read on the tap.
+        return Unchanged([s.id, s.label, id, w.name, shown, all]) {
+            Button("Rename Tab…", systemImage: "pencil") {
+                name = w.name ?? ""
+                renaming = (s.id, id, host.title(w))
             }
-        }
-        Divider()
-        Button("Move Up", systemImage: "arrow.up") {
-            change("Can't Move the Tab") { try await host.moveWindow(id, in: s.id, before: shown[i - 1]) }
-        }
-        .disabled(i <= 0)
-        Button("Move Down", systemImage: "arrow.down") {
-            // Just after the next row: before the window after it, if any.
-            let after = all.firstIndex(of: shown[i + 1]).map { $0 + 1 } ?? all.count
-            change("Can't Move the Tab") { try await host.moveWindow(id, in: s.id, before: after < all.count ? all[after] : nil) }
-        }
-        .disabled(i >= shown.count - 1)
-        Divider()
-        Button("New Tab", systemImage: "plus") { newWindow(s) }
-        Button("Close Tab", systemImage: "xmark", role: .destructive) {
-            change("Can't Close the Tab") { try await host.closeWindow(id, in: s.id) }
-        }
-        Button("Close Other Tabs", systemImage: "xmark.square", role: .destructive) {
-            change("Can't Close the Tab") {
-                for o in shown where o != id { try await host.closeWindow(o, in: s.id) }
+            if w.name != nil {
+                Button("Reset Name", systemImage: "arrow.uturn.backward") {
+                    change("Can't Rename the Tab") { try await host.renameWindow(id, in: s.id, to: "") }
+                }
             }
+            Divider()
+            Button("Move Up", systemImage: "arrow.up") {
+                change("Can't Move the Tab") { try await host.moveWindow(id, in: s.id, before: shown[i - 1]) }
+            }
+            .disabled(i <= 0)
+            Button("Move Down", systemImage: "arrow.down") {
+                // Just after the next row: before the window after it, if any.
+                let after = all.firstIndex(of: shown[i + 1]).map { $0 + 1 } ?? all.count
+                change("Can't Move the Tab") { try await host.moveWindow(id, in: s.id, before: after < all.count ? all[after] : nil) }
+            }
+            .disabled(i >= shown.count - 1)
+            Divider()
+            Button("New Tab", systemImage: "plus") { newWindow(s) }
+            Button("Close Tab", systemImage: "xmark", role: .destructive) {
+                change("Can't Close the Tab") { try await host.closeWindow(id, in: s.id) }
+            }
+            Button("Close Other Tabs", systemImage: "xmark.square", role: .destructive) {
+                change("Can't Close the Tab") {
+                    for o in shown where o != id { try await host.closeWindow(o, in: s.id) }
+                }
+            }
+            .disabled(shown.count < 2)
         }
-        .disabled(shown.count < 2)
+        .equatable()
     }
 
     @ViewBuilder private func session(_ s: Host.Session) -> some View {
@@ -346,7 +350,7 @@ private struct HostSection: View {
                     }
                     .buttonStyle(.plain)
                     .hoverEffect(.highlight)
-                    .contextMenu { menu(s, w.window, title: title, shown: windows.map(\.window.window_id)) }
+                    .contextMenu { menu(s, w.window, shown: windows.map(\.window.window_id)) }
                 }
             }
         }
@@ -354,6 +358,23 @@ private struct HostSection: View {
         // The rows' highlights keep to the card's corners.
         .clipShape(.rect(cornerRadius: 22, style: .continuous))
     }
+}
+
+/// A menu's items, built again only when what they show changes. The
+/// host changes many times a second, as titles spin, and an open menu
+/// whose items are built again draws itself again.
+private struct Unchanged<Content: View>: View, Equatable {
+    let key: [AnyHashable]
+    @ViewBuilder let content: () -> Content
+
+    init(_ key: [AnyHashable], @ViewBuilder content: @escaping () -> Content) {
+        self.key = key
+        self.content = content
+    }
+
+    var body: some View { content() }
+
+    static func == (a: Self, b: Self) -> Bool { a.key == b.key }
 }
 
 /// A window's row: the tiles of its programs, its title, and a mark at
