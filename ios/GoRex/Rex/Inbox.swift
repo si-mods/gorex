@@ -93,9 +93,7 @@ extension Host {
                     }
                 }
                 guard let pick, Inbox.states.contains(pick.status.state) else { return nil }
-                // As the list names a window.
-                let title = w.name ?? titles[b].flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
-                return InboxItem(host: id, session: s.id, block: pick.block, title: title, program: programs[pick.block], status: pick.status)
+                return InboxItem(host: id, session: s.id, block: pick.block, title: title(w), program: programs[pick.block], status: pick.status)
             }
         }
     }
