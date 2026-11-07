@@ -43,8 +43,10 @@ struct HostListView: View {
                 }
             } else {
                 NavigationStack(path: $path) {
+                    // A terminal of its own here too: go replaces the path, which
+                    // alone would keep the old one.
                     list.navigationDestination(for: TerminalTarget.self) { t in
-                        if let host = store.host(t.host) { TerminalScreen(target: t, host: host, go: go) }
+                        if let host = store.host(t.host) { TerminalScreen(target: t, host: host, go: go).id(t) }
                     }
                 }
             }
