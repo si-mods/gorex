@@ -6,10 +6,19 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 K=${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_6GG554C43Y.p8}
 A=(-allowProvisioningUpdates -authenticationKeyPath "$K" -authenticationKeyID 6GG554C43Y -authenticationKeyIssuerID 1b9ef96d-c5b4-49a9-8c8d-4f0b999da4d6)
+# Builds count up from 1 for each version, as TestFlight shows them: 1.1 (3).
+# App Store Connect has the last one; BUILD sets it.
+V=$(sed -n 's/^ *MARKETING_VERSION: "\([0-9.]*\)"$/\1/p' project.yml)
+[[ $V =~ ^[0-9]+(\.[0-9]+)+$ ]] || { echo "no MARKETING_VERSION in project.yml" >&2; exit 1; }
+B=${BUILD:-$(ASC_KEY_ID=6GG554C43Y ASC_ISSUER_ID=1b9ef96d-c5b4-49a9-8c8d-4f0b999da4d6 ASC_PRIVATE_KEY_PATH="$K" ASC_TIMEOUT=90s \
+  /opt/homebrew/bin/asc builds list --app 6831210589 --version "$V" --processing-state all --limit 200 |
+  python3 -I -c 'import sys,json; print(1+max([int(b["attributes"]["version"]) for b in json.load(sys.stdin)["data"]], default=0))')}
+[[ $B =~ ^[0-9]+$ ]] || { echo "bad build number: $B" >&2; exit 1; }
+echo "BUILD $V ($B)"
 rm -rf build/GoRex.xcarchive build/export; mkdir -p build
 /opt/homebrew/bin/xcodegen generate -q
 xcodebuild -scheme GoRex -destination generic/platform=iOS -archivePath build/GoRex.xcarchive \
-  CURRENT_PROJECT_VERSION="$(date +%Y%m%d%H%M)" CODE_SIGNING_ALLOWED=NO archive > build/archive.log 2>&1 || { grep -E "error" build/archive.log | tail -15; exit 1; }
+  CURRENT_PROJECT_VERSION="$B" CODE_SIGNING_ALLOWED=NO archive > build/archive.log 2>&1 || { grep -E "error" build/archive.log | tail -15; exit 1; }
 echo ARCHIVED
 cat > build/export.plist <<P
 <?xml version="1.0" encoding="UTF-8"?>
@@ -24,3 +33,4 @@ cat > build/export.plist <<P
 P
 xcodebuild -exportArchive -archivePath build/GoRex.xcarchive -exportOptionsPlist build/export.plist -exportPath build/export "${A[@]}" > build/export.log 2>&1 || { grep -E "error|Error" build/export.log | tail -15; exit 1; }
 tail -3 build/export.log
+echo "UPLOADED $V ($B)"
