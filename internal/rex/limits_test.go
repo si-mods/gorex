@@ -115,6 +115,16 @@ func TestAddressNotInErrors(t *testing.T) {
 	if strings.Contains(got, "Ab1-Ab1-") || strings.Contains(got, "Zq9_") || !strings.Contains(got, "refused") {
 		t.Errorf("scrub = %q", got)
 	}
+	for in, want := range map[string]string{
+		"connect tcp [fd7a:115c:a1e0:7690:FF45:5b76:b13f:f19d]:7464: timed out": "connect tcp [<redacted>]:7464: timed out",
+		"dial fd7a:115c:a1e0:7690:ff45:5b76:b13f:f19d:7464 failed":              "dial <redacted>:7464 failed",
+		"read fd7a:115c:a1e0:7690:ff45:5b76:b13f:f19d: i/o timeout":             "read <redacted>: i/o timeout",
+		"to fd7a:115c:a1e0::1, then":                                            "to <redacted>, then",
+	} {
+		if got := scrub(in); got != want {
+			t.Errorf("scrub(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 // failAccept is a listener whose accepting fails.

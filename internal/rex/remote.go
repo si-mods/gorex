@@ -127,6 +127,10 @@ func NormalizePublicKey(s string) (string, error) {
 // key: a long run of base64 characters.
 var secretRun = regexp.MustCompile(`[A-Za-z0-9_+/=-]{32,}`)
 
+// tailnetIP finds a tailcat node's IPv6 address, which holds a part of
+// its key: the prefix and at most the five groups that follow it.
+var tailnetIP = regexp.MustCompile(`(?i)fd7a:115c:a1e0(?::(?::)?[0-9a-f]{1,4}){0,5}`)
+
 // scrub removes from s the tailcat address, and anything that looks like
 // a part of one, so that an error or a log line never holds it.
 func scrub(s string, addrs ...string) string {
@@ -135,6 +139,7 @@ func scrub(s string, addrs ...string) string {
 			s = strings.ReplaceAll(s, a, "<address>")
 		}
 	}
+	s = tailnetIP.ReplaceAllString(s, "<redacted>")
 	return secretRun.ReplaceAllString(s, "<redacted>")
 }
 
