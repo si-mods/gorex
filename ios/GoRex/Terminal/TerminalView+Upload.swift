@@ -68,7 +68,9 @@ extension TerminalView: UIDocumentPickerDelegate {
             }
             try? FileManager.default.removeItem(at: dir)
             bar.uploading -= 1
-            if !words.isEmpty { insert(words.joined(separator: " ")) }
+            // A space after each, as a drop on the Mac pastes paths, so that
+            // what is typed next is another word.
+            if !words.isEmpty { insert(words.joined(separator: " ") + " ") }
         }
     }
 

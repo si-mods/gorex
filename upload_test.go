@@ -9,11 +9,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/egoist/mygo/ui"
 
@@ -116,8 +118,9 @@ func waitUploaded(t *testing.T, tt *ui.Tester, p *Pane) {
 // TestDropUploadsToHost drops files on a pane of a host: they go into a
 // temporary folder there, not the directory of its shell, going on from
 // what an earlier try left, one of a name taken renamed, and their paths
-// there are pasted, quoted, as a drop here pastes paths. A file gone
-// pastes nothing.
+// there are pasted, quoted, a space after each, as a drop here pastes
+// paths, so that what is typed next is another word. A file gone pastes
+// nothing.
 func TestDropUploadsToHost(t *testing.T) {
 	if testShell.path == "cmd.exe" {
 		t.Skip("POSIX quoting")
@@ -168,6 +171,13 @@ func TestDropUploadsToHost(t *testing.T) {
 	if !tt.HasText("Done") || !tt.HasText("no such file or directory") {
 		t.Errorf("texts %q", tt.Texts())
 	}
+	// What is typed next follows the space after the last path.
+	if err := c.Input(p.SID, []byte("next")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, tt, "the typing", func() bool {
+		return strings.Contains(strings.ReplaceAll(p.term.Text(), "\n", ""), `/b (1).txt' next`)
+	})
 	tt.Advance(transferShown)
 	tt.Frame()
 	if len(p.transfers) != 1 || tt.HasText("Done") || !tt.HasText("gone.txt") {
@@ -321,19 +331,33 @@ func TestDropOnOldHost(t *testing.T) {
 }
 
 // TestDropOnLocalPane keeps a drop on a pane of this machine the terminal's:
-// the path is pasted, nothing is sent.
+// the path is pasted, nothing is sent. A space follows it, so that a second
+// drop's path does not join it (#204).
 func TestDropOnLocalPane(t *testing.T) {
 	a, tt := newTestApp(t)
 	p := a.tab().Focus
 	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
-	paths := dropped(t, "here.txt", "x")
-	if !tt.DropFiles(500, 300, paths...) {
+	paths := dropped(t, "here.txt", "x", "there.txt", "y")
+	if !tt.DropFiles(500, 300, paths[0]) {
 		t.Fatal("no element took the drop")
 	}
 	waitFor(t, tt, "the path", func() bool { return strings.Contains(p.term.Text(), "here.txt") })
 	if len(p.transfers) != 0 || p.uploading != nil {
 		t.Errorf("a local drop uploads: %v", p.transfers)
 	}
+	// The shell, a plain sh, echoes what the drop pasted, quoted: as the
+	// path is only when nothing in it needs quoting.
+	if runtime.GOOS == "windows" || strings.ContainsFunc(paths[1], func(r rune) bool {
+		return !(r == '/' || r == '.' || r == '_' || r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r))
+	}) {
+		return
+	}
+	if !tt.DropFiles(500, 300, paths[1]) {
+		t.Fatal("no element took the second drop")
+	}
+	waitFor(t, tt, "the second path after a space", func() bool {
+		return strings.Contains(strings.ReplaceAll(p.term.Text(), "\n", ""), "here.txt "+paths[1])
+	})
 }
 
 // TestTransferList shows a pane's transfers: progress, a file there for a
