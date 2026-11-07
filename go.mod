@@ -71,4 +71,4 @@ require (
 
 tool github.com/egoist/mygo/cmd/mygo
 
-replace github.com/egoist/mygo => github.com/si-mods/mygo v0.7.4-0.20261107143844-cf1daa4f936f
+replace github.com/egoist/mygo => github.com/si-mods/mygo v0.7.4-0.20261107154129-2b602616f645

@@ -1028,6 +1028,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		})
 	}
 	opts.OpenLink = func(link string) bool { return a.openLink(p, link) }
+	opts.LinkDir = func(dir string) bool { return linkDir(p, dir) }
 	opts.OnExit = func(int) {
 		update(func() {
 			if p.closed || a.quitting {

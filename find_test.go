@@ -49,6 +49,28 @@ func TestFindBarSearches(t *testing.T) {
 	a.closeFind()
 }
 
+// TestLinkDir: a directory printed in a pane of this machine is a link
+// only when it is there, so that a word before a slash in prose is none;
+// in a pane of a host none is, as a folder is not downloaded.
+func TestLinkDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "docs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := &Pane{info: rex.SessionInfo{Dir: dir}}
+	for d, want := range map[string]bool{"docs/": true, "./": true, "../": true, "~/": true, "w/": false, "I/": false, "notes.txt/": false} {
+		if got := linkDir(p, d); got != want {
+			t.Errorf("linkDir(%q) = %v, want %v", d, got, want)
+		}
+	}
+	if linkDir(&Pane{info: p.info, host: &hostConn{}}, "docs/") {
+		t.Error("a directory is a link in a pane of a host")
+	}
+}
+
 func TestPanePath(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "notes.txt")

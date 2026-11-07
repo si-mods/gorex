@@ -9,11 +9,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode"
 
 	"github.com/egoist/mygo/ui"
 
@@ -173,7 +175,9 @@ func TestDropUploadsToHost(t *testing.T) {
 	if err := c.Input(p.SID, []byte("next")); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, tt, "the typing", func() bool { return strings.Contains(p.term.Text(), `/b (1).txt' next`) })
+	waitFor(t, tt, "the typing", func() bool {
+		return strings.Contains(strings.ReplaceAll(p.term.Text(), "\n", ""), `/b (1).txt' next`)
+	})
 	tt.Advance(transferShown)
 	tt.Frame()
 	if len(p.transfers) != 1 || tt.HasText("Done") || !tt.HasText("gone.txt") {
@@ -334,6 +338,13 @@ func TestDropOnLocalPane(t *testing.T) {
 	p := a.tab().Focus
 	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
 	paths := dropped(t, "here.txt", "x", "there.txt", "y")
+	// The paths are pasted quoted for the shell: as they are only when
+	// nothing in them needs quoting.
+	if runtime.GOOS == "windows" || strings.ContainsFunc(paths[1], func(r rune) bool {
+		return !(r == '/' || r == '.' || r == '_' || r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r))
+	}) {
+		t.Skipf("%s is quoted when pasted", paths[1])
+	}
 	for _, path := range paths {
 		if !tt.DropFiles(500, 300, path) {
 			t.Fatal("no element took the drop")

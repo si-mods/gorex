@@ -126,6 +126,22 @@ func (a *App) openLink(p *Pane, link string) bool {
 	return true
 }
 
+// linkDir reports whether dir, a directory printed in the pane, as docs/,
+// is a link: one of this machine that is there, so that a word before a
+// slash in prose (w/, I/) is none. A pane of a host has none, as a folder
+// is not downloaded.
+func linkDir(p *Pane, dir string) bool {
+	if p == nil || p.host != nil {
+		return false
+	}
+	path, ok := panePath(p, dir)
+	if !ok {
+		return false
+	}
+	st, err := os.Stat(path)
+	return err == nil && st.IsDir()
+}
+
 // linkPath is the file path a printed link names, :line:col trimmed;
 // false for a URL.
 func linkPath(link string) (string, bool) {
