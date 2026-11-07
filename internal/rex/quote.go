@@ -61,6 +61,20 @@ func QuoterOf(shell string) func(string) (string, bool) {
 	return nil
 }
 
+// PathWord is path as a word of the shell at shell, as a file's path is
+// pasted into a terminal: quoted as sh quotes it for a shell the quoting
+// does not know, and as it is when it cannot be quoted.
+func PathWord(shell, path string) string {
+	q := QuoterOf(shell)
+	if q == nil {
+		q = posixWord
+	}
+	if w, ok := q(path); ok {
+		return w
+	}
+	return path
+}
+
 // plainWord tells whether s reads as one word of every shell here: letters,
 // digits and punctuation none of them takes for syntax. An argument as
 // ordinary as an @scope or a comma is quoted: PowerShell takes @name for a

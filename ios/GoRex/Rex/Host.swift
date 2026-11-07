@@ -322,6 +322,17 @@ final class Host: Identifiable {
         return [argv0, p["name"] as? String].compactMap { $0 }.first { !$0.isEmpty }
     }
 
+    /// Whether the server takes files into its machine's temporary folder
+    /// (Upload).
+    var canUpload: Bool { control?.features.contains(Upload.feature) == true }
+
+    /// Sends a file into the temporary folder of the host's machine, for
+    /// block, and returns its path there as a word of the block's shell.
+    func upload(_ file: URL, block: String) async throws -> String {
+        _ = try live()
+        return try await Upload.send(file, name: file.lastPathComponent, block: block, to: config.url)
+    }
+
     /// The control connection; offline, an error to tell.
     func live() throws -> ControlConnection {
         guard let control else { throw RexError(code: "offline", message: String(localized: "Offline")) }

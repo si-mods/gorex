@@ -10,6 +10,8 @@ import XCTest
     var respond: (_ method: String, _ payload: [String: Any]) -> [String: Any]? = { _, _ in [:] }
     /// A data connection, with its handshake message.
     var data: (_ conn: NWConnection, _ first: Data) -> Void = { c, _ in c.cancel() }
+    /// The features the welcome lists.
+    var features: [String] = []
     /// The methods called, in order.
     private(set) var calls: [String] = []
     private(set) var payloads: [[String: Any]] = []
@@ -102,7 +104,8 @@ import XCTest
         switch m["type"] as? String {
         case "hello":
             controls.append(c)
-            Self.send(c, json: ["type": "welcome", "protocol": "rex.control.v1", "client": ["id": "c\(controls.count)"]])
+            Self.send(c, json: ["type": "welcome", "protocol": "rex.control.v1", "client": ["id": "c\(controls.count)"],
+                                "features": features])
         case "request":
             let method = m["method"] as? String ?? ""
             let payload = m["payload"] as? [String: Any] ?? [:]
@@ -114,6 +117,80 @@ import XCTest
         default:
             break
         }
+    }
+}
+
+/// A plain HTTP server, as the gateway's /api/upload: it reads one request
+/// of a Content-Length on each connection and answers it as the test says.
+@MainActor final class FakeHTTP {
+    struct Request {
+        /// The request line and the headers.
+        let head: String
+        let body: Data
+
+        /// A header's value, by its name in any case.
+        func header(_ name: String) -> String? {
+            head.split(separator: "\r\n").dropFirst().lazy.compactMap { line in
+                let kv = line.split(separator: ":", maxSplits: 1)
+                return kv.count == 2 && kv[0].lowercased() == name.lowercased() ? kv[1].trimmingCharacters(in: .whitespaces) : nil
+            }.first
+        }
+    }
+
+    var respond: (Request) -> (status: Int, json: [String: Any]) = { _ in (200, [:]) }
+    private(set) var requests: [Request] = []
+    private let listener: NWListener
+
+    init() throws {
+        listener = try NWListener(using: .tcp, on: .any)
+        listener.newConnectionHandler = { [weak self] c in
+            MainActor.assumeIsolated { self?.accept(c) }
+        }
+        listener.start(queue: .main)
+    }
+
+    func url() async throws -> URL {
+        for _ in 0..<250 {
+            if let p = listener.port, p.rawValue != 0 { return URL(string: "http://127.0.0.1:\(p.rawValue)")! }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        throw URLError(.cannotConnectToHost)
+    }
+
+    func stop() { listener.cancel() }
+
+    private func accept(_ c: NWConnection) {
+        c.start(queue: .main)
+        read(c, Data())
+    }
+
+    private func read(_ c: NWConnection, _ got: Data) {
+        c.receive(minimumIncompleteLength: 1, maximumLength: 1 << 16) { [weak self] d, _, done, error in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                var got = got
+                if let d { got.append(d) }
+                if let end = got.range(of: Data("\r\n\r\n".utf8)) {
+                    let r = Request(head: String(decoding: got[..<end.lowerBound], as: UTF8.self), body: Data(got[end.upperBound...]))
+                    guard let length = r.header("Content-Length").flatMap({ Int($0) }) else {
+                        return self.answer(c, 411, ["error": "an upload has a Content-Length"])
+                    }
+                    if r.body.count >= length {
+                        self.requests.append(r)
+                        let (status, json) = self.respond(r)
+                        return self.answer(c, status, json)
+                    }
+                }
+                if done || error != nil { return c.cancel() }
+                self.read(c, got)
+            }
+        }
+    }
+
+    private func answer(_ c: NWConnection, _ status: Int, _ json: [String: Any]) {
+        let body = try! JSONSerialization.data(withJSONObject: json)
+        let head = "HTTP/1.1 \(status) X\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
+        c.send(content: Data(head.utf8) + body, completion: .contentProcessed { _ in c.cancel() })
     }
 }
 
