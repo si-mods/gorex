@@ -17,6 +17,15 @@ extension TerminalView: PHPickerViewControllerDelegate, UIDocumentPickerDelegate
         c.selectionLimit = 0
         let p = PHPickerViewController(configuration: c)
         p.delegate = self
+        // Half the screen, the terminal above undimmed; the grabber pulls it
+        // up. The keyboard goes, or it covers the sheet's lower half.
+        if let s = p.sheetPresentationController {
+            s.detents = [.medium(), .large()]
+            s.prefersGrabberVisible = true
+            s.prefersScrollingExpandsWhenScrolledToEdge = false
+            s.largestUndimmedDetentIdentifier = .medium
+        }
+        resignFirstResponder()
         present(p)
     }
 
