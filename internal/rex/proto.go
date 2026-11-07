@@ -769,6 +769,10 @@ type Attach struct {
 	// session's authority by it, which tells a window whether the size
 	// the program draws for is its own.
 	Client string `json:"client,omitempty"`
+	// Mute tells that the client's terminal answers none of the program's
+	// queries, as the rexapi gateway, which types through the input ops:
+	// while it is the session's authority, the server's emulator answers.
+	Mute bool `json:"mute,omitempty"`
 }
 
 // FilePut is the first line of a connection that sends a file into a

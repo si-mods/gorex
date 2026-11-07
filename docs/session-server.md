@@ -154,15 +154,22 @@ A program asks its terminal questions: the cursor's position, the device
 attributes, the colors, the modes. Every terminal attached to a session
 would answer, and the program would read one answer per terminal.
 
-- **The server's emulator answers nothing.** Its `Conn` (`discard`) drops
-  what it writes.
 - **One client's answers reach the program: the authority's**
   (`authorityLocked`, the client holding the size; see
-  [session-size.md](session-size.md)). `admit` passes the authority's
-  input as it is. From any other client it removes the answers
+  [session-size.md](session-size.md)), unless its attach is mute
+  (`Attach.Mute`, the rexapi gateway's, whose apps type through the
+  input ops). `admit` passes the answerer's input as it is
+  (`answererLocked`). From any other client it removes the answers
   (`dropReplies`): CPR, DA, DSR, DECRPM, the window's size, the keyboard
   protocol's flags, and whole OSC, DCS and APC strings, except OSC 5522
   (Kitty's clipboard), which is a paste.
+- **The server's emulator answers while the authority is mute, or no
+  client is attached.** It is at the session's size, so its cursor and
+  size answers fit what the program draws for. Its `Conn` (`vtConn`)
+  types its answers, except colors (OSC, the color scheme's `CSI ? 997`),
+  since its theme is not the windows'. Whether it answers is decided as
+  the output is fed (`answerLocked`), not as it writes, so a client
+  attaching or leaving in between makes no answer twice or none.
 - **Input that is not a client's** (the `input`, `key`, `mouse`,
   `focusReport` and `paste` ops, `inputProgram`) has its answers removed
   whatever its source.
@@ -272,17 +279,14 @@ emulator before the program's first output (`CreateOptions.prelude`). See
   alternate screen (`resyncScreen`), and the app the pane it resized
   (`resyncPane`); nothing mends the main screen of a pane whose size did
   not change.
-- **Queries go unanswered while the authority answers nothing.** The
-  server's emulator drops its answers. The rexapi gateway's attach
-  (`startStream`) sends no size and no client id, and never writes: Rex's
-  apps send input through the `input` and `key` ops, whose answers are
-  removed. The authority is the client holding the size lock, else the
-  one that typed or claimed focus last, else the newest attach
-  (`authorityLocked`). So a program asking the cursor's position or the
-  device attributes gets no answer, and waits for its own timeout, while
-  no window or rootshell is attached; while a Rex app holds the size; and
-  while the gateway attached last and no window has typed or claimed
-  focus since.
+- **Colors go unanswered while the server's emulator answers.** A
+  program asking the palette, the foreground or background color, or the
+  color scheme waits for its own timeout while a Rex app is the
+  authority or no client is attached; a window attached beside the Rex
+  app does not answer for it.
+- **A query goes unanswered when the answering window leaves** before
+  its terminal answered: the emulator does not answer a query fed while
+  a window was the authority.
 - **What looks like an answer is removed** from a client that is not the
   authority, as Shift+F3 (`CSI 1;2R`, a CPR's shape) (`dropReplies`).
 - **Screens survive an upgrade, not a restart.** On Windows, every update

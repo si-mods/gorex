@@ -171,7 +171,7 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		case <-time.After(5 * time.Second):
 		}
 	}
-	conn, err := g.opt.Client.AttachConn(rex.Attach{SID: t.sid, Snapshot: rex.SnapshotGhostty, Framed: true})
+	conn, err := g.opt.Client.AttachConn(rex.Attach{SID: t.sid, Snapshot: rex.SnapshotGhostty, Framed: true, Mute: true})
 	if err != nil {
 		rejectData(ws, rejectUnavailable)
 		return

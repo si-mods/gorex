@@ -43,7 +43,7 @@ func printAndExit() []string {
 func headless(t *testing.T) *terminal.Terminal {
 	t.Helper()
 	pr, pw := io.Pipe()
-	term, err := terminal.New(terminal.Options{Conn: discard{pr}})
+	term, err := terminal.New(terminal.Options{Conn: &vtConn{r: pr}})
 	if err != nil {
 		pw.Close()
 		t.Fatal(err)
