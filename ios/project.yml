@@ -16,7 +16,8 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
     MARKETING_VERSION: "1.1"
-    CURRENT_PROJECT_VERSION: "1"
+    # Local builds are (0); uploads count from 1.
+    CURRENT_PROJECT_VERSION: "0"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 57QL6YCAH5
     # The xcframework's simulator library is arm64 only.
