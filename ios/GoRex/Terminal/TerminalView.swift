@@ -57,10 +57,6 @@ final class TerminalView: UIView, TerminalOutput {
     /// Set while the content is moved to match Ghostty, not by the finger.
     var syncing = false
 
-    /// The keyboard's height over the terminal, and when it stops moving.
-    private var keyboardInset: CGFloat = 0
-    private var settled = ContinuousClock.now
-
     /// The grid's size, shown while pinching.
     lazy var sizeLabel: UILabel = {
         let l = UILabel()
@@ -140,7 +136,6 @@ final class TerminalView: UIView, TerminalOutput {
         _ = fcntl(output, F_SETFL, fcntl(output, F_GETFL) & ~O_NONBLOCK)
         read(ghostty_surface_response_read_fd(s))
         session.output = self
-        ghostty_surface_set_bottom_inset(s, keyboardInset * traitCollection.displayScale)
         addScroller()
         setNeedsLayout()
     }
@@ -271,24 +266,27 @@ final class TerminalView: UIView, TerminalOutput {
         checkCover()
     }
 
-    /// The keyboard covers the bottom of the terminal, which stays its size:
-    /// the grid leaves the keyboard's height free at once, and the drawable
-    /// never resizes as the keyboard slides. A program sees one resize, once
-    /// the keyboard stops.
+    /// The keyboard never resizes the grid: a resize makes a program that
+    /// draws in the scrollback, as an agent does, draw again, and what the
+    /// terminal reflowed meanwhile leaves gaps. The terminal slides up with
+    /// the keyboard instead, its bottom rows and the cursor above it, its
+    /// top under the bar.
     @objc private func keyboard(_ n: Notification) {
-        guard let window, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        guard let window, let superview, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
-        settled = .now + .seconds(duration)
-        keyboardInset = max(0, bounds.maxY - window.screen.coordinateSpace.convert(end, to: self).minY)
-        scroller.verticalScrollIndicatorInsets.bottom = keyboardInset
-        if let s = surface { ghostty_surface_set_bottom_inset(s, keyboardInset * traitCollection.displayScale) }
+        let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
+        // Measured without the slide: center and bounds do not take it.
+        let covered = max(0, center.y + bounds.height / 2 - window.screen.coordinateSpace.convert(end, to: superview).minY)
+        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: covered, left: 0, bottom: covered, right: 0)
+        UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState]) {
+            self.transform = CGAffineTransform(translationX: 0, y: -covered)
+        }
     }
 
-    /// Ghostty settled on a grid for the view's size: the block takes it,
-    /// after the keyboard stops.
+    /// Ghostty settled on a grid for the view's size: the block takes it.
     func resized(cols: Int, rows: Int, width: Int, height: Int) {
         guard cols > 0, rows > 0 else { return }
-        session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows, after: max(.milliseconds(100), settled - .now))
+        session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows)
         if sizeLabel.alpha > 0 { showSize() }
     }
 
