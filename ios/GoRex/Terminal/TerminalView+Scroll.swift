@@ -20,6 +20,9 @@ extension TerminalView: UIScrollViewDelegate {
         // The bar floats over the terminal clear, without a blur at its edge.
         scroller.topEdgeEffect.isHidden = true
         scroller.panGestureRecognizer.maximumNumberOfTouches = 1
+        // A trackpad's two fingers scroll; a pointer's drag selects instead.
+        scroller.panGestureRecognizer.allowedScrollTypesMask = .all
+        scroller.panGestureRecognizer.allowedTouchTypes = [UITouch.TouchType.direct, .pencil].map { $0.rawValue as NSNumber }
         addSubview(scroller)
         addGestureRecognizer(scroller.panGestureRecognizer)
     }

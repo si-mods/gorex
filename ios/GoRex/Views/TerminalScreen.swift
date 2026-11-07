@@ -12,6 +12,9 @@ struct TerminalTarget: Hashable {
 struct TerminalScreen: View {
     let target: TerminalTarget
     let host: Host
+    /// Opens another terminal in place of this one, or goes back to the
+    /// list, for ⌘T and ⌘W.
+    let go: (TerminalTarget?) -> Void
     /// Made once, as the screen appears: SwiftUI makes the screen again
     /// on each update of the list, and keeps the first State.
     @State private var session: TerminalSession?
@@ -20,10 +23,13 @@ struct TerminalScreen: View {
     @State private var suspended = false
     /// Where the terminal starts, under the bar, in the window.
     @State private var top: CGFloat = 0
+    /// What failed last, and why, as the server says it.
+    @State private var failure: (title: LocalizedStringKey, why: String)?
 
-    init(target: TerminalTarget, host: Host) {
+    init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
         self.host = host
+        self.go = go
     }
 
     var body: some View {
@@ -33,7 +39,7 @@ struct TerminalScreen: View {
         let scheme: ColorScheme = 0.299 * Double(bg.r) + 0.587 * Double(bg.g) + 0.114 * Double(bg.b) < 128 ? .dark : .light
         // The terminal starts under the clear bar, which hides none of it;
         // the keyboard goes over it, which leaves room for it.
-        Group { if let session { TerminalRepresentable(session: session) } else { Color.clear } }
+        Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab) } else { Color.clear } }
             .ignoresSafeArea(.keyboard)
             .onGeometryChange(for: CGFloat.self) { $0.frame(in: .global).minY } action: { top = $0 }
             .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p) } }
@@ -79,6 +85,10 @@ struct TerminalScreen: View {
                 session?.close()
                 if Notifier.shared.onScreen == target { Notifier.shared.onScreen = nil }
             }
+            .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
+            } message: {
+                Text(failure?.why ?? "")
+            }
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
@@ -95,6 +105,34 @@ struct TerminalScreen: View {
     /// The window's title, else its session's name, as for a new session.
     private var title: String {
         target.title.isEmpty ? host.sessions.first { $0.id == target.session }?.label ?? "" : target.title
+    }
+
+    /// Opens a new window in the session, and goes to it.
+    private func newTab() {
+        Task {
+            do {
+                if let b = try await host.newWindow(in: target.session) {
+                    go(TerminalTarget(host: host.id, session: target.session, block: b, title: ""))
+                }
+            } catch {
+                failure = ("Can't Open a New Window", error.localizedDescription)
+            }
+        }
+    }
+
+    /// Closes the window, without asking, as its row's Close Tab does, and
+    /// goes back to the list.
+    private func closeTab() {
+        let windows = host.sessions.first { $0.id == target.session }?.view?.windows ?? []
+        guard let w = windows.first(where: { $0.block == target.block || $0.tiled.contains(target.block) }) else { return }
+        Task {
+            do {
+                try await host.closeWindow(w.window_id, in: target.session)
+                go(nil)
+            } catch {
+                failure = ("Can't Close the Tab", error.localizedDescription)
+            }
+        }
     }
 
     @ViewBuilder private var status: some View {
@@ -163,14 +201,20 @@ private struct ProgressLine: View {
 
 private struct TerminalRepresentable: UIViewRepresentable {
     let session: TerminalSession
+    let newTab: () -> Void
+    let closeTab: () -> Void
 
     func makeUIView(context: Context) -> TerminalView {
         let v = TerminalView(session: session)
+        updateUIView(v, context: context)
         DispatchQueue.main.async { v.focus() }
         return v
     }
 
-    func updateUIView(_ v: TerminalView, context: Context) {}
+    func updateUIView(_ v: TerminalView, context: Context) {
+        v.newTab = newTab
+        v.closeTab = closeTab
+    }
 
     static func dismantleUIView(_ v: TerminalView, coordinator: ()) { v.close() }
 }

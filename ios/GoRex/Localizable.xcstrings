@@ -32,6 +32,16 @@
         }
       }
     },
+    "Actual Size": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "实际大小"
+          }
+        }
+      }
+    },
     "Add": {
       "localizations": {
         "zh-Hans": {
@@ -88,6 +98,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "方向键"
+          }
+        }
+      }
+    },
+    "Bigger Text": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "放大文字"
           }
         }
       }
@@ -178,6 +198,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "取消"
+          }
+        }
+      }
+    },
+    "Choose a window in the list.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在列表中选择一个窗口。"
+          }
+        }
+      }
+    },
+    "Clear Screen and Scrollback": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除屏幕和回滚缓冲区"
           }
         }
       }
@@ -622,6 +662,16 @@
         }
       }
     },
+    "No Window Open": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未打开窗口"
+          }
+        }
+      }
+    },
     "Not a Rex pairing code. Scan the Rex QR code that GoRex or Rex shows.": {
       "localizations": {
         "zh-Hans": {
@@ -858,6 +908,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "显示空闲窗口"
+          }
+        }
+      }
+    },
+    "Smaller Text": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "缩小文字"
           }
         }
       }
