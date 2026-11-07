@@ -8,7 +8,7 @@ import (
 )
 
 // Handler returns the gateway's HTTP endpoints: the control and data
-// connections, the help document, and this API's own pages.
+// connections, uploads, the help document, and this API's own pages.
 func (g *Gateway) Handler() http.Handler {
 	if relay := relayHandler(); relay != nil {
 		return relay
@@ -16,6 +16,7 @@ func (g *Gateway) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/control", g.handleControl)
 	mux.HandleFunc("/api/data", g.handleData)
+	mux.HandleFunc("/api/upload", g.handleUpload)
 	mux.HandleFunc("/api/help", serveHelp)
 	mux.HandleFunc("/llms.txt", serveLLMs)
 	mux.HandleFunc("/llms.html", serveLLMsHTML)
@@ -34,8 +35,14 @@ func (g *Gateway) Handler() http.Handler {
 
 // writeRefusal answers a request the access rules refuse, as Rex does.
 func writeRefusal(w http.ResponseWriter, message string) {
+	writeError(w, http.StatusForbidden, message)
+}
+
+// writeError answers a request that failed with status, in the shape of a
+// refusal.
+func writeError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
+	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 

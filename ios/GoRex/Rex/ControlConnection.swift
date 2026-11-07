@@ -75,6 +75,8 @@ final class ControlConnection {
     var callWait = Duration.seconds(30)
     private(set) var clientID = ""
     private(set) var reconnectToken: String?
+    /// The optional behaviors the server lists in its welcome.
+    private(set) var features: Set<String> = []
 
     private let task: URLSessionWebSocketTask
     private var nextID = 0
@@ -119,6 +121,7 @@ final class ControlConnection {
         let client = welcome["client"] as? [String: Any]
         clientID = client?["id"] as? String ?? ""
         reconnectToken = client?["reconnect_token"] as? String
+        features = Set(welcome["features"] as? [String] ?? [])
         Task { await receiveLoop() }
         Task { await pingLoop() }
     }

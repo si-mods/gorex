@@ -23,7 +23,7 @@ final class TerminalView: UIView, TerminalOutput {
     var ctrl = false { didSet { bar.ctrl.isSelected = ctrl } }
     var alt = false { didSet { bar.alt.isSelected = alt } }
     var shift = false { didSet { bar.shift.isSelected = shift } }
-    private lazy var bar = KeyBar(target: self)
+    lazy var bar = KeyBar(target: self)
 
     /// What the keyboard believes it edits.
     var document = InputDocument()
@@ -416,9 +416,13 @@ final class TerminalView: UIView, TerminalOutput {
         }
     }
 
-    /// Pastes as a terminal does: bracketed when the program asked for it.
     override func paste(_ sender: Any?) {
-        guard let s = surface, let t = UIPasteboard.general.string else { return }
+        if let t = UIPasteboard.general.string { insert(t) }
+    }
+
+    /// Pastes text as a terminal does: bracketed when the program asked for it.
+    func insert(_ t: String) {
+        guard let s = surface else { return }
         forget()
         stopScrolling()
         t.withCString { ghostty_surface_text(s, $0, UInt(t.utf8.count)) }
@@ -502,15 +506,19 @@ final class TerminalView: UIView, TerminalOutput {
 }
 
 /// The bar over the soft keyboard: three capsules of Liquid Glass, dark as
-/// the keyboard is. ⌘ opens a menu of Paste, and Add Photo and Add File to
-/// come; the middle one pages from Esc, the modifiers and Tab to the
-/// punctuation a shell wants and Backspace; the last holds a stick that sends arrows the way it
-/// is dragged, and the key that hides the keyboard.
+/// the keyboard is. ⌘ opens a menu of Paste, Add Photo and Add File, and
+/// spins while a file goes up; the middle one pages from Esc, the modifiers
+/// and Tab to the punctuation a shell wants and Backspace; the last holds a
+/// stick that sends arrows the way it is dragged, and the key that hides
+/// the keyboard.
 final class KeyBar: UIView {
     let ctrl = KeyBar.button("control", String(localized: "Control"), size: KeyBar.small)
     let alt = KeyBar.button("option", String(localized: "Option"), size: KeyBar.small)
     let shift = KeyBar.button("shift", String(localized: "Shift"), size: KeyBar.small)
     private weak var target: TerminalView?
+    private let more = KeyBar.button("command", String(localized: "More"))
+    /// The files going up; ⌘ spins while there are any.
+    var uploading = 0 { didSet { more.setNeedsUpdateConfiguration() } }
     /// Repeats the arrow the stick points to, with the modifiers held
     /// until the stick is let go.
     private var repeating: Task<Void, Never>?
@@ -557,14 +565,23 @@ final class KeyBar: UIView {
         alt.addAction(UIAction { [weak target] _ in target?.alt.toggle() }, for: .touchUpInside)
         shift.addAction(UIAction { [weak target] _ in target?.shift.toggle() }, for: .touchUpInside)
 
-        let more = Self.button("command", String(localized: "More"))
-        // Adding a photo or a file is to come; their places are kept.
+        // Add Photo and Add File are for a server that takes uploads, as
+        // the menu opens.
         more.menu = UIMenu(children: [
             UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak target] _ in target?.paste(nil) },
-            UIAction(title: String(localized: "Add Photo"), image: UIImage(systemName: "photo"), attributes: .disabled) { _ in },
-            UIAction(title: String(localized: "Add File"), image: UIImage(systemName: "folder"), attributes: .disabled) { _ in },
+            UIDeferredMenuElement.uncached { [weak target] done in
+                let off: UIMenuElement.Attributes = target?.session.host.canUpload == true ? [] : .disabled
+                done([
+                    UIAction(title: String(localized: "Add Photo"), image: UIImage(systemName: "photo"), attributes: off) { _ in target?.addPhoto() },
+                    UIAction(title: String(localized: "Add File"), image: UIImage(systemName: "folder"), attributes: off) { _ in target?.addFile() },
+                ])
+            },
         ])
         more.showsMenuAsPrimaryAction = true
+        more.configurationUpdateHandler = { [weak self] b in
+            b.configuration = Self.config("command", text: false, size: 17, held: false)
+            b.configuration?.showsActivityIndicator = (self?.uploading ?? 0) > 0
+        }
 
         // Two pages of five keys in even slots, inset from the capsule's
         // ends, each page as wide as the capsule.

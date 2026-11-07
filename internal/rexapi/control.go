@@ -127,6 +127,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 			ReconnectToken: rec.token,
 			Resumed:        resumed,
 		},
+		Features:          g.features(),
 		APIRevision:       rev,
 		APIServerRevision: apiRevision,
 	}
