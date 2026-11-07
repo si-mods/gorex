@@ -445,6 +445,7 @@ var (
 	cmdNextTab   = command{ID: "tab.next", Name: locales.Messages.CmdNextTab, Accel: "CmdOrCtrl+Shift+]", Keys: "⇧⌘]", Other: shortcut{ui.Ctrl, ui.KeyPageDown}, Run: func(a *App) { a.cycleTab(1) }}
 	cmdPrevTab   = command{ID: "tab.previous", Name: locales.Messages.CmdPreviousTab, Accel: "CmdOrCtrl+Shift+[", Keys: "⇧⌘[", Other: shortcut{ui.Ctrl, ui.KeyPageUp}, Run: func(a *App) { a.cycleTab(-1) }}
 	cmdJumpNeedy = command{ID: "pane.jump_needy", Name: locales.Messages.CmdJumpToNeedy, Accel: "CmdOrCtrl+J", Keys: "⌘J", Other: ctrlShift(ui.KeyJ), Run: func(a *App) { a.jumpToNeedy() }}
+	cmdNeeds     = command{ID: "pane.needs", Name: locales.Messages.CmdNeedsYou, Accel: "CmdOrCtrl+Shift+J", Keys: "⇧⌘J", Other: ctrlShift(ui.KeyI), Run: func(a *App) { a.openNeedsPalette() }}
 	cmdSidebar   = command{ID: "sidebar.toggle", Name: locales.Messages.CmdToggleSidebar, Accel: "CmdOrCtrl+Ctrl+S", Keys: "⌃⌘S", Other: ctrlShift(ui.KeyS), Run: func(a *App) { a.toggleSidebar() }}
 	cmdRenameTab = command{
 		ID: "tab.rename", Name: locales.Messages.CmdRenameTab, Accel: "CmdOrCtrl+Shift+R", Keys: "⇧⌘R", Other: ctrlShift(ui.KeyR),
@@ -652,7 +653,7 @@ var paletteCommands = []*command{
 	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdNotePreview, &cmdZoom, &cmdEqualize, &cmdResetCanvas, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdFloatState, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
-	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdRenameTab, &cmdSidebar,
+	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdNeeds, &cmdRenameTab, &cmdSidebar,
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
@@ -910,7 +911,7 @@ func (st *store) menu() *mygo.Menu {
 			{Role: mygo.RoleToggleFullScreen},
 			{Role: mygo.RoleToggleDevTools, Label: locales.MenuInspector(), Hidden: !mygo.IsDev()},
 		}},
-		{Label: locales.MenuTabs(), Submenu: append(tabItems, item(&cmdJumpNeedy), mygo.Separator(), item(&cmdRenameTab), item(&cmdMoveTabWindow))},
+		{Label: locales.MenuTabs(), Submenu: append(tabItems, item(&cmdJumpNeedy), item(&cmdNeeds), mygo.Separator(), item(&cmdRenameTab), item(&cmdMoveTabWindow))},
 		{Label: locales.MenuSession(), Submenu: append([]*mygo.MenuItem{
 			item(&cmdNewSession),
 			item(&cmdImportRex),
@@ -1088,7 +1089,7 @@ func (a *App) openPalette() {
 	// Opened again while open, as it switches to the spaces, it stays
 	// where it is.
 	a.paletteFresh = a.paletteFresh || !a.paletteOpen
-	a.paletteOpen, a.paletteQuery, a.paletteSel, a.paletteSessions = true, "", 0, false
+	a.paletteOpen, a.paletteQuery, a.paletteSel, a.paletteSessions, a.paletteNeeds = true, "", 0, false, false
 	a.focusReq = nil // the palette takes the focus
 }
 
@@ -1160,6 +1161,22 @@ type paletteItem struct {
 	hasDot bool
 	// disabled rows show, dimmed, what cannot run now, detail saying why.
 	disabled bool
+	// header rows name the section of the rows after them, and are not
+	// chosen; aside is said at the end of a row, before how long ago its
+	// status came when the palette lists what needs the user.
+	header bool
+	aside  string
+}
+
+// paletteStep moves the selection from i by d, over the sections'
+// headers; it stays at i when no row is that way.
+func paletteStep(items []paletteItem, i, d int) int {
+	for j := i + d; j >= 0 && j < len(items); j += d {
+		if !items[j].header {
+			return j
+		}
+	}
+	return i
 }
 
 func (a *App) paletteItems() []paletteItem {
@@ -1168,6 +1185,9 @@ func (a *App) paletteItems() []paletteItem {
 	match := func(s string) bool { return q == "" || fuzzy(strings.ToLower(s), q) }
 	if a.paletteSessions {
 		return a.sessionItems(match)
+	}
+	if a.paletteNeeds {
+		return a.needItems(match)
 	}
 	for ti, t := range a.tabs {
 		for _, p := range t.allPanes() {
@@ -1293,6 +1313,9 @@ func (a *App) palette(c *ui.Context, k *colors) {
 	}
 	items := a.paletteItems()
 	a.paletteSel = min(max(a.paletteSel, 0), max(len(items)-1, 0))
+	if len(items) > 0 && items[a.paletteSel].header {
+		a.paletteSel = paletteStep(items, a.paletteSel, 1)
+	}
 	was := a.paletteOpen
 	// reveal scrolls the selection into view in the frame the keys or the
 	// query move it, and only then, so that the wheel scrolls the list.
@@ -1333,27 +1356,47 @@ func (a *App) palette(c *ui.Context, k *colors) {
 			if a.paletteSessions {
 				placeholder = locales.SessionPlaceholder()
 			}
+			if a.paletteNeeds {
+				placeholder = locales.NeedsPlaceholder()
+			}
 			in := ui.TextInputBase(c, &a.paletteQuery).Grow(1).FontSize(15).Placeholder(placeholder).AutoFocus()
 			if in.Changed() {
 				a.paletteSel, reveal = 0, true
 			}
 			if in.Shortcut(0, ui.KeyDown) {
-				a.paletteSel, reveal = min(a.paletteSel+1, len(items)-1), true
+				a.paletteSel, reveal = paletteStep(items, a.paletteSel, 1), true
 			}
 			if in.Shortcut(0, ui.KeyUp) {
-				a.paletteSel, reveal = max(a.paletteSel-1, 0), true
+				a.paletteSel, reveal = paletteStep(items, a.paletteSel, -1), true
 			}
-			if in.Submitted() && len(items) > 0 && !items[a.paletteSel].disabled {
+			if in.Submitted() && len(items) > 0 && !items[a.paletteSel].disabled && !items[a.paletteSel].header {
 				a.paletteOpen = false
 				items[a.paletteSel].run()
 			}
 		})
-		listH := float32(min(max(len(items), 1)*34+12, 384))
-		ui.Scroll(c).Height(listH).Padding(palettePad).Children(func() {
+		// Rows are 34 high, the sections' headers 28.
+		listH := 0
+		for _, it := range items {
+			listH += 34
+			if it.header {
+				listH -= 6
+			}
+		}
+		ui.Scroll(c).Height(float32(min(max(listH, 34)+12, 384))).Padding(palettePad).Children(func() {
 			if len(items) == 0 {
-				ui.Text(c, locales.PaletteNoMatches()).FontSize(13).TextColor(k.textFaint).Padding(14)
+				empty := locales.PaletteNoMatches()
+				if a.paletteNeeds && strings.TrimSpace(a.paletteQuery) == "" {
+					empty = locales.NeedsNothing()
+				}
+				ui.Text(c, empty).FontSize(13).TextColor(k.textFaint).Padding(14)
 			}
 			for i, it := range items {
+				if it.header {
+					ui.Row(c.Key(i)).Height(28).Padding(8, 10, 0, 10).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, it.title).FontSize(11.5).FontWeight(600).TextColor(k.textFaint)
+					})
+					continue
+				}
 				row := ui.Row(c.Key(i)).Height(34).Padding(0, 10).Gap(10).Radius(concentric(paletteR, 1+palettePad)).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 				if anim != nil {
 					pose := ui.Pose{}
@@ -1390,6 +1433,18 @@ func (a *App) palette(c *ui.Context, k *colors) {
 						ui.RichText(c, titleSpans(it.detail, 13, 400, k.textFaint)...).Label(it.detail).SingleLine().Ellipsis("…").Shrink(1).MinWidth(0)
 					}
 					ui.Spacer(c)
+					aside := it.aside
+					if s := it.status; a.paletteNeeds && needsUser(s) && !s.Updated.IsZero() {
+						when, next := ago(s.Updated, c.Now())
+						c.After(next)
+						if aside != "" {
+							aside += " · "
+						}
+						aside += when
+					}
+					if aside != "" {
+						ui.Text(c, aside).FontSize(12).TextColor(k.textFaint).SingleLine().Shrink(0)
+					}
 					if s := it.status; s != nil && s.State != "idle" {
 						statusDot(c, k, s, 6)
 					}

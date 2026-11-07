@@ -1,10 +1,14 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/egoist/mygo/ui"
+
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 func oneStatus(state string, at time.Time) []rex.ProgramStatus {
@@ -191,5 +195,123 @@ func TestJumpIntoZoomedTab(t *testing.T) {
 	}
 	if first.status() == nil {
 		t.Fatal("the pane the tab had in focus was marked seen")
+	}
+}
+
+// TestNeedsPalette checks What Needs You…: the panes that need the user
+// under a header for each state, with what their programs told last and
+// how long ago, a host that is not connected at the end, and a row that
+// goes to its pane, which drops out once its done record was seen.
+func TestNeedsPalette(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	now := tt.Now()
+	t1 := a.tab()
+	t2 := a.newTab(t.TempDir())
+	t3 := a.newTab(t.TempDir())
+	t4 := a.newTab(t.TempDir())
+	t1.Focus.info.Statuses = []rex.ProgramStatus{{State: "done", Msg: "", LastMsg: "Wrote tests", Updated: now.Add(-5 * time.Minute)}}
+	t2.Focus.info.Statuses = []rex.ProgramStatus{{State: "blocked", Msg: "Allow edit?", Updated: now}}
+	t3.Focus.attention = true
+	t4.Focus.info.Statuses = []rex.ProgramStatus{{State: "error", Msg: "Build failed", Updated: now.Add(-2 * time.Hour)}}
+	a.hosts = append(a.hosts, newHostConn(savedHost{ID: "h", Name: "mini", Address: "10.0.0.9:7297"}))
+
+	cmdNeeds.Run(a)
+	tt.Frame()
+	var got []string
+	for _, it := range a.paletteItems() {
+		got = append(got, it.title+"|"+it.detail)
+	}
+	want := []string{
+		locales.StatusBlocked() + "|", "|Allow edit?",
+		locales.StatusError() + "|", "|Build failed",
+		locales.StatusDone() + "|", "|Wrote tests",
+		locales.PaneNeedsAttention() + "|", "", // the bell's pane, by its directory
+		"mini|" + locales.HostsConnecting(),
+	}
+	if len(got) != len(want) {
+		t.Fatalf("rows %q", got)
+	}
+	for i := range want {
+		if !strings.HasSuffix(got[i], want[i]) || strings.HasSuffix(want[i], "|") && got[i] != want[i] {
+			t.Fatalf("row %d is %q, want %q; rows %q", i, got[i], want[i], got)
+		}
+	}
+	for _, s := range []string{locales.StatusBlocked(), "Allow edit?", locales.AgoNow(), locales.AgoHours(2), locales.AgoMinutes(5), "mini"} {
+		if !tt.HasText(s) {
+			t.Errorf("no %q in the palette; texts %q", s, tt.Texts())
+		}
+	}
+	// The times go on as the minutes do.
+	tt.Advance(time.Minute)
+	tt.Frame()
+	if !tt.HasText(locales.AgoMinutes(1)) || !tt.HasText(locales.AgoMinutes(6)) {
+		t.Errorf("the times did not go on; texts %q", tt.Texts())
+	}
+	if a.paletteSel != 1 {
+		t.Errorf("selection on row %d, not the first pane's", a.paletteSel)
+	}
+	// Down goes over the header to the failed pane, and Enter goes there.
+	tt.Key(0, ui.KeyDown)
+	tt.Frame()
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if a.paletteOpen || a.tab() != t4 {
+		t.Fatalf("Enter went to tab %d", a.active)
+	}
+
+	// Seen, the done pane drops out.
+	cmdNeeds.Run(a)
+	tt.Frame()
+	tt.Type("wrote")
+	tt.Frame()
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if a.tab() != t1 {
+		t.Fatalf("the done row went to tab %d", a.active)
+	}
+	cmdNeeds.Run(a)
+	tt.Frame()
+	if tt.HasText("Wrote tests") || tt.HasText(locales.StatusDone()) {
+		t.Errorf("the seen done pane is still listed; texts %q", tt.Texts())
+	}
+
+	// A click on a row goes to its pane.
+	tt.Click("Allow edit?")
+	tt.Frame()
+	if a.paletteOpen || a.tab() != t2 {
+		t.Fatalf("the click went to tab %d", a.active)
+	}
+
+	cmdNeeds.Run(a)
+	tt.Frame()
+	// With nothing asking and no host away, it says so.
+	a.hosts = nil
+	for _, tab := range a.tabs {
+		tab.Focus.info.Statuses, tab.Focus.attention = nil, false
+	}
+	tt.Frame()
+	if !tt.HasText(locales.NeedsNothing()) {
+		t.Errorf("no empty state; texts %q", tt.Texts())
+	}
+}
+
+func TestAgo(t *testing.T) {
+	now := time.Now()
+	for _, c := range []struct {
+		d    time.Duration
+		want string
+		next time.Duration
+	}{
+		{10 * time.Second, locales.AgoNow(), 50 * time.Second},
+		{90 * time.Second, locales.AgoMinutes(1), 30 * time.Second},
+		{3*time.Hour + time.Minute, locales.AgoHours(3), 59 * time.Minute},
+		{50 * time.Hour, locales.AgoDays(2), 22 * time.Hour},
+	} {
+		if s, next := ago(now.Add(-c.d), now); s != c.want || next != c.next {
+			t.Errorf("%v ago: %q, next in %v; want %q in %v", c.d, s, next, c.want, c.next)
+		}
 	}
 }

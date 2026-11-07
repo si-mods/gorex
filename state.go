@@ -533,7 +533,8 @@ type App struct {
 	focusSampled time.Time
 
 	// The workspace's popover, the field that renames it, Close
-	// Session's question, and the palette listing the workspaces.
+	// Session's question, and the palette listing the workspaces, or what
+	// needs the user.
 	wsOpen        bool
 	wsRenaming    bool
 	wsRenameText  string
@@ -542,6 +543,7 @@ type App struct {
 	wsColorText     string
 	wsConfirm       bool
 	paletteSessions bool
+	paletteNeeds    bool
 	// teleportAsk is the question after a tab was dropped on another
 	// host's place in the tabs.
 	teleportAsk teleportAsk

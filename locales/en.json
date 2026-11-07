@@ -1641,6 +1641,52 @@
   "@sessionPlaceholder": {
     "description": "Placeholder of the command palette listing the spaces."
   },
+  "cmdNeedsYou": "What Needs You…",
+  "@cmdNeedsYou": {
+    "description": "Command: open a list of the panes that need the user, across windows, spaces and hosts, by what their programs need."
+  },
+  "needsPlaceholder": "Filter what needs you…",
+  "@needsPlaceholder": {
+    "description": "Placeholder of the command palette listing the panes that need the user."
+  },
+  "needsNothing": "Nothing needs you",
+  "@needsNothing": {
+    "description": "Shown in the command palette listing the panes that need the user when none does."
+  },
+  "agoNow": "now",
+  "@agoNow": {
+    "description": "How long ago a program reported its status, under a minute. Palette row of a pane that needs the user."
+  },
+  "agoMinutes": "{n}m",
+  "@agoMinutes": {
+    "description": "How long ago a program reported its status, in whole minutes, narrow. Palette row of a pane that needs the user.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
+  "agoHours": "{n}h",
+  "@agoHours": {
+    "description": "How long ago a program reported its status, in whole hours, narrow.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
+  },
+  "agoDays": "{n}d",
+  "@agoDays": {
+    "description": "How long ago a program reported its status, in whole days, narrow.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
   "sessionCloseTitle": "Close “{name}”?",
   "@sessionCloseTitle": {
     "description": "Title of the question before closing a space.",

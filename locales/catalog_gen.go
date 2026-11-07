@@ -4900,6 +4900,112 @@ func (msgs Messages) SessionPlaceholder() string {
 	return Catalog.Format(msgs.locale, "sessionPlaceholder", nil)
 }
 
+// CmdNeedsYou says "What Needs You…"
+// in the language the app shows.
+//
+// Command: open a list of the panes that need the user, across windows,
+// spaces and hosts, by what their programs need.
+func CmdNeedsYou() string { return In(i18n.Locale()).CmdNeedsYou() }
+
+// CmdNeedsYou says "What Needs You…"
+// in the language of msgs.
+//
+// Command: open a list of the panes that need the user, across windows,
+// spaces and hosts, by what their programs need.
+func (msgs Messages) CmdNeedsYou() string {
+	return Catalog.Format(msgs.locale, "cmdNeedsYou", nil)
+}
+
+// NeedsPlaceholder says "Filter what needs you…"
+// in the language the app shows.
+//
+// Placeholder of the command palette listing the panes that need the user.
+func NeedsPlaceholder() string { return In(i18n.Locale()).NeedsPlaceholder() }
+
+// NeedsPlaceholder says "Filter what needs you…"
+// in the language of msgs.
+//
+// Placeholder of the command palette listing the panes that need the user.
+func (msgs Messages) NeedsPlaceholder() string {
+	return Catalog.Format(msgs.locale, "needsPlaceholder", nil)
+}
+
+// NeedsNothing says "Nothing needs you"
+// in the language the app shows.
+//
+// Shown in the command palette listing the panes that need the user when
+// none does.
+func NeedsNothing() string { return In(i18n.Locale()).NeedsNothing() }
+
+// NeedsNothing says "Nothing needs you"
+// in the language of msgs.
+//
+// Shown in the command palette listing the panes that need the user when
+// none does.
+func (msgs Messages) NeedsNothing() string {
+	return Catalog.Format(msgs.locale, "needsNothing", nil)
+}
+
+// AgoNow says "now"
+// in the language the app shows.
+//
+// How long ago a program reported its status, under a minute. Palette row
+// of a pane that needs the user.
+func AgoNow() string { return In(i18n.Locale()).AgoNow() }
+
+// AgoNow says "now"
+// in the language of msgs.
+//
+// How long ago a program reported its status, under a minute. Palette row
+// of a pane that needs the user.
+func (msgs Messages) AgoNow() string {
+	return Catalog.Format(msgs.locale, "agoNow", nil)
+}
+
+// AgoMinutes says "{n}m"
+// in the language the app shows.
+//
+// How long ago a program reported its status, in whole minutes, narrow.
+// Palette row of a pane that needs the user.
+func AgoMinutes(n int) string { return In(i18n.Locale()).AgoMinutes(n) }
+
+// AgoMinutes says "{n}m"
+// in the language of msgs.
+//
+// How long ago a program reported its status, in whole minutes, narrow.
+// Palette row of a pane that needs the user.
+func (msgs Messages) AgoMinutes(n int) string {
+	return Catalog.Format(msgs.locale, "agoMinutes", map[string]any{"n": n})
+}
+
+// AgoHours says "{n}h"
+// in the language the app shows.
+//
+// How long ago a program reported its status, in whole hours, narrow.
+func AgoHours(n int) string { return In(i18n.Locale()).AgoHours(n) }
+
+// AgoHours says "{n}h"
+// in the language of msgs.
+//
+// How long ago a program reported its status, in whole hours, narrow.
+func (msgs Messages) AgoHours(n int) string {
+	return Catalog.Format(msgs.locale, "agoHours", map[string]any{"n": n})
+}
+
+// AgoDays says "{n}d"
+// in the language the app shows.
+//
+// How long ago a program reported its status, in whole days, narrow.
+func AgoDays(n int) string { return In(i18n.Locale()).AgoDays(n) }
+
+// AgoDays says "{n}d"
+// in the language of msgs.
+//
+// How long ago a program reported its status, in whole days, narrow.
+func (msgs Messages) AgoDays(n int) string {
+	return Catalog.Format(msgs.locale, "agoDays", map[string]any{"n": n})
+}
+
 // SessionCloseTitle says "Close “{name}”?"
 // in the language the app shows.
 //

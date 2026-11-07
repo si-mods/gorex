@@ -1,13 +1,16 @@
 package main
 
 import (
+	"cmp"
 	"runtime"
 	"slices"
+	"time"
 
 	"github.com/egoist/mygo"
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // needsYou ranks how much a pane asks for the user, 0 for not at all: a
@@ -219,6 +222,99 @@ func (a *App) focusNeedy(n needy) *Pane {
 	o.focusReq = p
 	o.do(func() {})
 	return p
+}
+
+// openNeedsPalette opens the palette on what needs the user, as the
+// iPhone app's inbox lists it.
+func (a *App) openNeedsPalette() {
+	a.openPalette()
+	a.paletteNeeds = true
+}
+
+// needSections name the sections of what needs the user by its rank: a
+// program blocked on them, failed, done, and the attention of a bell or of
+// a program that finished out of sight.
+var needSections = map[int]func() string{
+	rex.StatusRank("blocked"): locales.StatusBlocked,
+	rex.StatusRank("error"):   locales.StatusError,
+	rex.StatusRank("done"):    locales.StatusDone,
+	1:                         locales.PaneNeedsAttention,
+}
+
+// needItems are the palette's rows of what needs the user, in the order of
+// needing under a header for each rank, with what each program told last.
+// The hosts not connected come after them: their panes may need the user
+// too, which cannot be told.
+func (a *App) needItems(match func(string) bool) []paletteItem {
+	list, _ := a.needing(nil)
+	var items []paletteItem
+	rank := 0
+	for _, n := range list {
+		it := a.needItem(n)
+		if !match(it.title + " " + it.detail + " " + it.aside) {
+			continue
+		}
+		if n.rank != rank {
+			rank = n.rank
+			items = append(items, paletteItem{title: needSections[rank](), header: true})
+		}
+		items = append(items, it)
+	}
+	for _, h := range a.hosts {
+		// A host of the tailnet not yet opened is not connected to.
+		if h.state == hostConnected || rex.IsTailnetTarget(h.Address) && !h.TailnetOpened || !match(h.Name) {
+			continue
+		}
+		label, _, _ := hostStatus(h)
+		items = append(items, paletteItem{title: h.Name, detail: label, glyph: "server", disabled: true})
+	}
+	return items
+}
+
+// needItem is the palette's row of n: the pane's name and what its program
+// told, the host or the space it is in when not this machine's or not
+// shown, and going there.
+func (a *App) needItem(n needy) paletteItem {
+	var it paletteItem
+	if p := n.pane; p != nil {
+		name, detail := p.label()
+		s := p.status()
+		if s != nil && s.State != "idle" {
+			detail = cmp.Or(s.Message(), s.Title, detail)
+		}
+		it = paletteItem{title: name, detail: detail, glyph: paneProgram(p).Glyph, status: s}
+		if p.host != nil {
+			it.aside = p.host.Name
+		}
+	} else {
+		info := a.st.infos[n.sid]
+		s := rex.MostUrgent(info.Statuses, a.st.seen[n.sid])
+		prog := programOf(info.ProgramName())
+		it = paletteItem{title: prog.Name, detail: cmp.Or(s.Message(), s.Title), glyph: prog.Glyph, status: s, aside: n.ws.Name}
+	}
+	it.run = func() {
+		if a.focusNeedy(n) != nil {
+			a.syncBadge()
+		}
+	}
+	return it
+}
+
+// ago says how long before now t was, as the iPhone app's inbox does: now
+// under a minute, else in whole minutes, hours or days; and in how long it
+// says otherwise.
+func ago(t, now time.Time) (string, time.Duration) {
+	const day = 24 * time.Hour
+	d := max(now.Sub(t), 0)
+	switch {
+	case d < time.Minute:
+		return locales.AgoNow(), time.Minute - d
+	case d < time.Hour:
+		return locales.AgoMinutes(int(d / time.Minute)), time.Minute - d%time.Minute
+	case d < day:
+		return locales.AgoHours(int(d / time.Hour)), time.Hour - d%time.Hour
+	}
+	return locales.AgoDays(int(d / day)), day - d%day
 }
 
 // badgeSupported tells that the platform shows a count on the application
