@@ -598,8 +598,12 @@ func (a *App) remoteTailscale(c *ui.Context, k *colors) {
 					page.ts, page.tsErr, page.tsEdited = next, "", false
 				}
 			})
+			// A saved control server this version refuses, such as a
+			// cleartext one from before it, keeps the device off.
 			if page.tsErr != "" {
 				rowError(c, k, page.tsErr)
+			} else if !page.tsEdited && conf.ControlURL != "" && !rexapi.ValidControlURL(conf.ControlURL) {
+				rowError(c, k, locales.RemoteTailscaleInvalid())
 			}
 		})
 	})

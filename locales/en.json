@@ -1936,9 +1936,9 @@
   "@remoteTailscalePlaceholder": {
     "description": "Placeholder of the empty control server field: the field is left empty for Tailscale's own control plane."
   },
-  "remoteTailscaleInvalid": "Enter an http or https URL, or leave it empty for Tailscale's own.",
+  "remoteTailscaleInvalid": "Enter an https URL, or http to localhost or a private address. Leave it empty for Tailscale's own.",
   "@remoteTailscaleInvalid": {
-    "description": "Error under the control server field when what was typed is not a URL."
+    "description": "Error under the control server field when what was typed is not a URL, or is a cleartext http URL to a public host or a name."
   },
   "remoteLanTitle": "Rex apps on the local network",
   "@remoteLanTitle": {

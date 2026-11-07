@@ -283,6 +283,9 @@ func setTailnetEnabled(dir string, payload any) error {
 			t.Hostname = h
 		}
 		if u, ok := p["control_url"].(string); ok && u != "" {
+			if !ValidControlURL(u) {
+				return errControlURL(u)
+			}
 			t.ControlURL = u
 		}
 		if a, ok := p["allow_tailnet_members"].(bool); ok {

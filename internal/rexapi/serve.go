@@ -165,12 +165,8 @@ func run(c *rex.Client, o runOptions) error {
 			fmt.Printf("rexapi: listening on http://%s\n", ln.Addr())
 		}
 	}
-	if g.tailnet != nil && g.tailnet.conf.Enabled {
-		// Built-in Tailscale was on when the gateway last stopped: it
-		// comes back with its sign-in and settings.
-		if _, aerr := g.tailnet.enable(enableOptions{allowMembers: g.tailnet.conf.AllowTailnetMembers}); aerr != nil {
-			logf("tailscale: %s", aerr.Message)
-		}
+	if g.tailnet != nil {
+		g.tailnet.resume()
 	}
 	w := &confWatch{path: lanConfPath(o.dir)}
 	applyLAN := func() {
