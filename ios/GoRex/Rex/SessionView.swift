@@ -45,4 +45,14 @@ extension SessionView.Window {
     var tiled: [String] {
         layers?.first?.blocks?.map(\.block_id) ?? []
     }
+
+    /// Whether the block is in it: the one its row opens, or a tiled one.
+    func holds(_ b: String) -> Bool {
+        block == b || tiled.contains(b)
+    }
+
+    /// The blocks tiled behind the one its row opens.
+    var back: [String] {
+        tiled.filter { $0 != block }
+    }
 }
