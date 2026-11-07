@@ -514,6 +514,8 @@ final class KeyBar: UIView {
     /// Repeats the arrow the stick points to, with the modifiers held
     /// until the stick is let go.
     private var repeating: Task<Void, Never>?
+    /// Repeats Backspace while it is held.
+    private var deleting: Task<Void, Never>?
     private var steered = false
     private var arrow: String? { didSet { pad.arrow = arrow } }
     /// What the stick turns into while held.
@@ -535,6 +537,22 @@ final class KeyBar: UIView {
             b.addAction(UIAction { [weak target] _ in target?.type(t) }, for: .touchUpInside)
             return b
         }
+        // Backspace goes on touch down and repeats while held, as the
+        // keyboard's does: after 400 ms, every 50 ms.
+        let delete = Self.button("delete.left", String(localized: "Delete"), size: Self.small)
+        delete.addAction(UIAction { [weak self, weak target, tick] _ in
+            self?.deleting?.cancel()
+            self?.deleting = Task {
+                var delay = 0.4
+                repeat {
+                    target?.send("backspace")
+                    tick.impactOccurred(intensity: 0.5)
+                    try? await Task.sleep(for: .seconds(delay))
+                    delay = 0.05
+                } while !Task.isCancelled
+            }
+        }, for: .touchDown)
+        delete.addAction(UIAction { [weak self] _ in self?.deleting?.cancel() }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
         ctrl.addAction(UIAction { [weak target] _ in target?.ctrl.toggle() }, for: .touchUpInside)
         alt.addAction(UIAction { [weak target] _ in target?.alt.toggle() }, for: .touchUpInside)
         shift.addAction(UIAction { [weak target] _ in target?.shift.toggle() }, for: .touchUpInside)
@@ -558,7 +576,7 @@ final class KeyBar: UIView {
         let pages = UIStackView(arrangedSubviews: [
             [key("escape", String(localized: "Esc"), "escape"), ctrl, alt, shift,
              key("arrow.right.to.line", String(localized: "Tab"), "tab")],
-            [text("~"), text("|"), text("/"), text("-"), key("delete.left", String(localized: "Delete"), "backspace")],
+            [text("~"), text("|"), text("/"), text("-"), delete],
         ].map { keys in
             let page = UIStackView(arrangedSubviews: keys)
             page.distribution = .fillEqually
