@@ -41,10 +41,8 @@ final class TerminalView: UIView, TerminalOutput {
     lazy var editMenu = UIEditMenuInteraction(delegate: self)
     var showsSelection = false
     lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
-    /// How far down the screen's bar reaches over the terminal, and whether
-    /// a check of the cursor under it waits for the output to be drawn.
-    var cover: CGFloat = 0 { didSet { if cover != oldValue { checkCover() } } }
-    var coverCheck = false
+    /// Whether a slide waits for the output to be drawn.
+    var slideWaits = false
     /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
     var newTab: (() -> Void)?
     var closeTab: (() -> Void)?
@@ -202,7 +200,7 @@ final class TerminalView: UIView, TerminalOutput {
     func write(_ bytes: Data) {
         let fd = output
         guard fd >= 0, !bytes.isEmpty else { return }
-        laterCheckCover()
+        laterSlide()
         writes.async {
             bytes.withUnsafeBytes { p in
                 var at = 0
@@ -266,16 +264,14 @@ final class TerminalView: UIView, TerminalOutput {
         scroller.frame = bounds
         syncing = false
         syncScroll()
-        checkCover()
     }
 
     /// The keyboard never resizes the grid: a resize makes a program that
     /// draws in the scrollback, as an agent does, draw again, and what the
-    /// terminal reflowed meanwhile leaves gaps. The terminal slides up under
-    /// the bar instead, no farther than the keyboard is tall: as far as the
-    /// cursor's row and the lines drawn under it, as an agent's box and
-    /// status, need to show above the keyboard, but not the cursor under the
-    /// bar.
+    /// terminal reflowed meanwhile leaves gaps. The terminal slides up
+    /// instead, no farther than the keyboard is tall: as far as the cursor's
+    /// row and the lines drawn under it, as an agent's box and status, need
+    /// to show above the keyboard, but not the cursor past the top.
     @objc private func keyboard(_ n: Notification) {
         guard let window, let superview = superview as? TerminalHost, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
@@ -292,14 +288,13 @@ final class TerminalView: UIView, TerminalOutput {
         if covered > 0 {
             let c = cursor(width: nil)
             let needed = drawnBottom(under: c) - (bounds.height - covered)
-            shift = max(0, min(covered, needed, c.minY - cover))
+            shift = max(0, min(covered, needed, c.minY))
         }
         guard transform.ty != -shift else { return }
         scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: shift, left: 0, bottom: covered - shift, right: 0)
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: -shift)
         }
-        checkCover()
     }
 
     /// The bottom of the last line of the screen with text under the
@@ -569,6 +564,8 @@ final class TerminalHost: UIView {
     init(_ terminal: TerminalView) {
         self.terminal = terminal
         super.init(frame: .zero)
+        // What slides up stops at the bar.
+        clipsToBounds = true
         addSubview(terminal)
     }
 

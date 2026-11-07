@@ -8,8 +8,7 @@ struct TerminalTarget: Hashable {
     let title: String
 }
 
-/// A window's terminal, full screen, under a clear navigation bar that
-/// steps aside from the cursor.
+/// A window's terminal, full screen, below a clear navigation bar.
 struct TerminalScreen: View {
     let target: TerminalTarget
     let host: Host
@@ -22,11 +21,6 @@ struct TerminalScreen: View {
     @Environment(\.scenePhase) private var phase
     /// Whether the stream was left in the background, for a resume.
     @State private var suspended = false
-    /// Where the bar ends and the status bar, down from the top of the
-    /// screen; whether a tap brought the bar back over the cursor.
-    @State private var top: CGFloat = 0
-    @State private var statusBar: CGFloat = 0
-    @State private var revealed = false
     /// What failed last, and why, as the server says it.
     @State private var failure: (title: LocalizedStringKey, why: String)?
     /// Whether the session's sheet is open, as the title opens it.
@@ -43,42 +37,13 @@ struct TerminalScreen: View {
         // bar and the key bar too; the bar and the text on it take its scheme.
         let bg = session?.background ?? .black
         let scheme: ColorScheme = 0.299 * Double(bg.r) + 0.587 * Double(bg.g) + 0.114 * Double(bg.b) < 128 ? .dark : .light
-        // The terminal goes up under the clear bar to the status bar, and the
-        // bar steps aside while the cursor is under it, as in a new
-        // terminal: a scroll back or a tap at the top brings it back. The
+        // The terminal starts below the bar, which never covers it. The
         // keyboard goes over the terminal, which leaves room for it.
-        let away = session?.covered == true && !revealed
-        let bar = top - statusBar
-        Group { if let session { TerminalRepresentable(session: session, cover: bar, newTab: newTab, closeTab: closeTab) } else { Color.clear } }
-            .padding(.top, statusBar)
-            .ignoresSafeArea(.container, edges: .top)
+        Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab) } else { Color.clear } }
             .ignoresSafeArea(.keyboard)
-            .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p).padding(.top, statusBar).ignoresSafeArea(.container, edges: .top) } }
-            .background {
-                // Where the bar ends; the status bar is the window's inset.
-                Color(cgColor: bg.cgColor)
-                    .ignoresSafeArea()
-                    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: {
-                        // Measured with the bar there: away, it leaves the
-                        // status bar's alone, and must not step back for that.
-                        statusBar = Self.statusBar
-                        if $0 > statusBar { top = $0 }
-                    }
-            }
-            // As the list's edge under its bar: what scrolls up under the
-            // bar blurs and fades into the background; with the bar away,
-            // only under the status bar.
-            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: (away ? statusBar : top) + 10) }
-            .overlay(alignment: .top) {
-                if away {
-                    Color.clear.frame(height: bar).contentShape(.rect)
-                        .onTapGesture { withAnimation(.snappy) { revealed = true } }
-                }
-            }
+            .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p) } }
+            .background { Color(cgColor: bg.cgColor).ignoresSafeArea() }
             .overlay { status }
-            .toolbar(away ? .hidden : .visible, for: .navigationBar)
-            .animation(.snappy, value: away)
-            .onChange(of: session?.covered) { _, c in if c != true { revealed = false } }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -148,11 +113,6 @@ struct TerminalScreen: View {
                     suspended = false
                 }
             }
-    }
-
-    /// The height of the status bar, the window's top inset.
-    private static var statusBar: CGFloat {
-        UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
     }
 
     /// The session of the window open, as the host has it.
@@ -226,31 +186,6 @@ struct TerminalScreen: View {
     }
 }
 
-/// A soft edge at the top of the page: blurred and in the background's
-/// color at the top, clear below.
-private struct TopEdge: View {
-    let color: Color
-    /// How far down from the top of the screen it reaches.
-    let height: CGFloat
-
-    var body: some View {
-        let fade = LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.35), .init(color: .clear, location: 1)],
-                                  startPoint: .top, endPoint: .bottom)
-        // From the top of the screen, height down.
-        VStack(spacing: 0) {
-            ZStack {
-                Rectangle().fill(.ultraThinMaterial)
-                color.opacity(0.75)
-            }
-            .mask(fade)
-            .frame(height: height)
-            Spacer(minLength: 0)
-        }
-        .ignoresSafeArea(.container, edges: .top)
-        .allowsHitTesting(false)
-    }
-}
-
 /// The progress a program reports, as a thin line atop the terminal: its
 /// share, or all of it faint while it can't tell, red on an error.
 private struct ProgressLine: View {
@@ -271,8 +206,6 @@ private struct ProgressLine: View {
 
 private struct TerminalRepresentable: UIViewRepresentable {
     let session: TerminalSession
-    /// How far down the bar reaches over the terminal.
-    let cover: CGFloat
     let newTab: () -> Void
     let closeTab: () -> Void
 
@@ -285,7 +218,6 @@ private struct TerminalRepresentable: UIViewRepresentable {
     }
 
     func updateUIView(_ v: TerminalHost, context: Context) {
-        v.terminal.cover = cover
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
     }
