@@ -239,18 +239,19 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let newTab: () -> Void
     let closeTab: () -> Void
 
-    func makeUIView(context: Context) -> TerminalView {
+    func makeUIView(context: Context) -> TerminalHost {
         let v = TerminalView(session: session)
-        updateUIView(v, context: context)
+        let host = TerminalHost(v)
+        updateUIView(host, context: context)
         DispatchQueue.main.async { v.focus() }
-        return v
+        return host
     }
 
-    func updateUIView(_ v: TerminalView, context: Context) {
-        v.cover = cover
-        v.newTab = newTab
-        v.closeTab = closeTab
+    func updateUIView(_ v: TerminalHost, context: Context) {
+        v.terminal.cover = cover
+        v.terminal.newTab = newTab
+        v.terminal.closeTab = closeTab
     }
 
-    static func dismantleUIView(_ v: TerminalView, coordinator: ()) { v.close() }
+    static func dismantleUIView(_ v: TerminalHost, coordinator: ()) { v.terminal.close() }
 }

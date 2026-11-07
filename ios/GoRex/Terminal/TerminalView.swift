@@ -57,9 +57,8 @@ final class TerminalView: UIView, TerminalOutput {
     /// Set while the content is moved to match Ghostty, not by the finger.
     var syncing = false
 
-    /// The keyboard's height over the terminal, and when it stops moving.
-    private var keyboardInset: CGFloat = 0
-    private var settled = ContinuousClock.now
+    /// The keyboard's height over the terminal.
+    private var covered: CGFloat = 0
 
     /// The grid's size, shown while pinching.
     lazy var sizeLabel: UILabel = {
@@ -140,7 +139,6 @@ final class TerminalView: UIView, TerminalOutput {
         _ = fcntl(output, F_SETFL, fcntl(output, F_GETFL) & ~O_NONBLOCK)
         read(ghostty_surface_response_read_fd(s))
         session.output = self
-        ghostty_surface_set_bottom_inset(s, keyboardInset * traitCollection.displayScale)
         addScroller()
         setNeedsLayout()
     }
@@ -271,24 +269,40 @@ final class TerminalView: UIView, TerminalOutput {
         checkCover()
     }
 
-    /// The keyboard covers the bottom of the terminal, which stays its size:
-    /// the grid leaves the keyboard's height free at once, and the drawable
-    /// never resizes as the keyboard slides. A program sees one resize, once
-    /// the keyboard stops.
+    /// The keyboard never resizes the grid: a resize makes a program that
+    /// draws in the scrollback, as an agent does, draw again, and what the
+    /// terminal reflowed meanwhile leaves gaps. The terminal slides up under
+    /// the bar instead, as far as the cursor's row needs to show above the
+    /// keyboard, and no farther than the keyboard is tall.
     @objc private func keyboard(_ n: Notification) {
-        guard let window, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        guard let window, let superview = superview as? TerminalHost, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
-        settled = .now + .seconds(duration)
-        keyboardInset = max(0, bounds.maxY - window.screen.coordinateSpace.convert(end, to: self).minY)
-        scroller.verticalScrollIndicatorInsets.bottom = keyboardInset
-        if let s = surface { ghostty_surface_set_bottom_inset(s, keyboardInset * traitCollection.displayScale) }
+        let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
+        // Measured on the host, which does not slide.
+        covered = max(0, superview.bounds.maxY - window.screen.coordinateSpace.convert(end, to: superview).minY)
+        slide(duration: duration, options: UIView.AnimationOptions(rawValue: curve << 16))
     }
 
-    /// Ghostty settled on a grid for the view's size: the block takes it,
-    /// after the keyboard stops.
+    /// Slides the terminal to show the cursor's row above the keyboard.
+    func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
+        var shift: CGFloat = 0
+        if covered > 0, let s = surface {
+            var x = 0.0, y = 0.0, w = 0.0, h = 0.0
+            ghostty_surface_ime_point(s, &x, &y, &w, &h)
+            shift = min(covered, max(0, y - (bounds.height - covered)))
+        }
+        guard transform.ty != -shift else { return }
+        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: shift, left: 0, bottom: covered - shift, right: 0)
+        UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
+            self.transform = CGAffineTransform(translationX: 0, y: -shift)
+        }
+        checkCover()
+    }
+
+    /// Ghostty settled on a grid for the view's size: the block takes it.
     func resized(cols: Int, rows: Int, width: Int, height: Int) {
         guard cols > 0, rows > 0 else { return }
-        session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows, after: max(.milliseconds(100), settled - .now))
+        session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows)
         if sizeLabel.alpha > 0 { showSize() }
     }
 
@@ -522,6 +536,27 @@ final class TerminalView: UIView, TerminalOutput {
         .keyboardF6: "f6", .keyboardF7: "f7", .keyboardF8: "f8", .keyboardF9: "f9", .keyboardF10: "f10",
         .keyboardF11: "f11", .keyboardF12: "f12",
     ]
+}
+
+/// Holds a TerminalView for SwiftUI, which sets its views' frames and so
+/// would undo the slide: the host sets the terminal's bounds and center,
+/// which keep it.
+final class TerminalHost: UIView {
+    let terminal: TerminalView
+
+    init(_ terminal: TerminalView) {
+        self.terminal = terminal
+        super.init(frame: .zero)
+        addSubview(terminal)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        terminal.bounds = CGRect(origin: .zero, size: bounds.size)
+        terminal.center = CGPoint(x: bounds.midX, y: bounds.midY)
+    }
 }
 
 /// The bar over the soft keyboard: three capsules of Liquid Glass, dark as
