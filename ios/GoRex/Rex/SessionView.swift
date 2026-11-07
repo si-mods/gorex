@@ -45,4 +45,9 @@ extension SessionView.Window {
     var tiled: [String] {
         layers?.first?.blocks?.map(\.block_id) ?? []
     }
+
+    /// The blocks tiled behind the one its row opens.
+    var back: [String] {
+        tiled.filter { $0 != block }
+    }
 }

@@ -1051,6 +1051,16 @@
           }
         }
       }
+    },
+    "Switch Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换会话"
+          }
+        }
+      }
     }
   }
 }

@@ -258,15 +258,11 @@ private struct HostSection: View {
     }
 
     @ViewBuilder private func session(_ s: Host.Session) -> some View {
-        let windows = (s.view?.windows ?? []).compactMap { w -> (String, String, String?, [String?], SessionView.Window, Host.ProgramStatus?)? in
-            guard let b = w.block else { return nil }
-            // As the desktop names a tab: its name when it has one, else its terminal's title.
-            let title = w.name ?? host.titles[b].flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
-            let back = w.tiled.filter { $0 != b }.map { host.programs[$0] }
-            return filter(title, host.programs[b]) ? (b, title, host.programs[b], back, w, host.status([b] + w.tiled)) : nil
+        let windows = (s.view?.windows ?? []).compactMap { w in
+            w.block.flatMap { filter(host.title(w), host.programs[$0]) ? (block: $0, window: w) : nil }
         }
         // The room of the tiles of the window with the most, so that the titles line up.
-        let tiles = ProgramTiles.width(behind: windows.map(\.3.count).max() ?? 0)
+        let tiles = ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
         let isCollapsed = collapsed.contains(s.id)
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -298,15 +294,18 @@ private struct HostSection: View {
             .foregroundStyle(.primary)
             if !isCollapsed && !windows.isEmpty {
                 VStack(spacing: 0) {
-                    ForEach(Array(windows.enumerated()), id: \.element.0) { i, w in
+                    ForEach(Array(windows.enumerated()), id: \.element.window.window_id) { i, w in
+                        let title = host.title(w.window)
                         Button {
-                            open(TerminalTarget(host: host.id, session: s.id, block: w.0, title: w.1))
+                            open(TerminalTarget(host: host.id, session: s.id, block: w.block, title: title))
                         } label: {
-                            WindowRow(title: w.1, program: w.2, back: w.3, status: w.5, tiles: tiles, divider: i < windows.count - 1)
+                            WindowRow(host: host, block: w.block, window: w.window, tiles: tiles, divider: i < windows.count - 1) {
+                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
+                            }
                         }
                         .buttonStyle(.plain)
                         .hoverEffect(.highlight)
-                        .contextMenu { menu(s, w.4, title: w.1, shown: windows.map(\.4.window_id)) }
+                        .contextMenu { menu(s, w.window, title: title, shown: windows.map(\.window.window_id)) }
                     }
                 }
                 .background(Color.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -315,17 +314,21 @@ private struct HostSection: View {
     }
 }
 
-private struct WindowRow: View {
-    let title: String
-    let program: String?
-    let back: [String?]
-    let status: Host.ProgramStatus?
+/// A window's row: the tiles of its programs, its title, and a mark at
+/// the end.
+struct WindowRow<Mark: View>: View {
+    let host: Host
+    let block: String
+    let window: SessionView.Window
     let tiles: CGFloat
     let divider: Bool
+    @ViewBuilder let mark: Mark
 
     var body: some View {
+        let title = host.title(window)
+        let status = host.status([block] + window.tiled)
         HStack(spacing: 14) {
-            ProgramTiles(front: program, back: back).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
+            ProgramTiles(front: host.programs[block], back: window.back.map { host.programs[$0] }).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
             Text(title.isEmpty ? " " : title)
                 .font(.body.weight(.medium))
                 .foregroundStyle(.primary)
@@ -344,7 +347,7 @@ private struct WindowRow: View {
                     .frame(width: 12, height: 12)
                     .accessibilityLabel(Text(verbatim: "\(p)%"))
             }
-            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
+            mark
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
