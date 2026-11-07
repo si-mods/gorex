@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -190,7 +191,7 @@ func LoadTailscale(dir string) (TailscaleConfig, error) {
 // next turned on, so a change takes effect then.
 func SaveTailscale(dir string, c TailscaleConfig) error {
 	if c.ControlURL != "" && !ValidControlURL(c.ControlURL) {
-		return fmt.Errorf("%q is not a Tailscale control server URL", c.ControlURL)
+		return fmt.Errorf("%q is not a Tailscale control server URL: use https, or http only to localhost or a private address", c.ControlURL)
 	}
 	saved, err := LoadTailscale(dir)
 	if err != nil {
@@ -242,11 +243,28 @@ var (
 // digits and hyphens, not starting or ending with a hyphen.
 func validHostname(s string) bool { return hostnameRE.MatchString(s) }
 
-// ValidControlURL tells a Tailscale control server's URL: an http or
-// https URL with a host, such as https://headscale.example.com.
+// ValidControlURL tells a Tailscale control server's URL: an https URL
+// with a host, such as https://headscale.example.com. An http URL is one
+// only when its host is localhost or a loopback, private or link-local IP
+// address, since the control traffic crosses the network in the clear.
+// The host is judged as written; a name is not resolved.
 func ValidControlURL(s string) bool {
 	u, err := url.Parse(s)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil
+	if err != nil || u.Host == "" || u.User != nil {
+		return false
+	}
+	switch u.Scheme {
+	case "https":
+		return true
+	case "http":
+		if u.Hostname() == "localhost" {
+			return true
+		}
+		ip, err := netip.ParseAddr(u.Hostname())
+		ip = ip.Unmap()
+		return err == nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast())
+	}
+	return false
 }
 
 // defaultHostname is the device name when none is given: this machine's
@@ -325,7 +343,7 @@ func (t *tailnet) enable(o enableOptions) (tailscaleStatus, *apiError) {
 	}
 	if control != "" && !ValidControlURL(control) {
 		t.mu.Unlock()
-		return tailscaleStatus{}, errBadRequest("%q is not a Tailscale control server URL", control)
+		return tailscaleStatus{}, errBadRequest("%q is not a Tailscale control server URL: use https, or http only to localhost or a private address", control)
 	}
 	if err := os.MkdirAll(filepath.Join(t.dir, "tsnet"), 0o700); err != nil {
 		t.mu.Unlock()

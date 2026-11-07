@@ -5800,16 +5800,18 @@ func (msgs Messages) RemoteTailscalePlaceholder() string {
 	return Catalog.Format(msgs.locale, "remoteTailscalePlaceholder", nil)
 }
 
-// RemoteTailscaleInvalid says "Enter an http or https URL, or leave it empty for Tailscale's own."
+// RemoteTailscaleInvalid says "Enter an https URL, or http to localhost or a private address. Leave it empty for Tailscale's own."
 // in the language the app shows.
 //
-// Error under the control server field when what was typed is not a URL.
+// Error under the control server field when what was typed is not a URL, or
+// is a cleartext http URL to a public host or a name.
 func RemoteTailscaleInvalid() string { return In(i18n.Locale()).RemoteTailscaleInvalid() }
 
-// RemoteTailscaleInvalid says "Enter an http or https URL, or leave it empty for Tailscale's own."
+// RemoteTailscaleInvalid says "Enter an https URL, or http to localhost or a private address. Leave it empty for Tailscale's own."
 // in the language of msgs.
 //
-// Error under the control server field when what was typed is not a URL.
+// Error under the control server field when what was typed is not a URL, or
+// is a cleartext http URL to a public host or a name.
 func (msgs Messages) RemoteTailscaleInvalid() string {
 	return Catalog.Format(msgs.locale, "remoteTailscaleInvalid", nil)
 }

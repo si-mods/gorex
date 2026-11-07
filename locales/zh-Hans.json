@@ -570,7 +570,7 @@
   "remoteTailscaleNote": "内置 Tailscale 注册的控制服务器，例如 Headscale。改动在下次开启 Tailscale 时生效。",
   "remoteTailscaleControl": "控制服务器",
   "remoteTailscalePlaceholder": "Tailscale 官方",
-  "remoteTailscaleInvalid": "请输入 http 或 https 地址；留空则使用 Tailscale 官方控制面。",
+  "remoteTailscaleInvalid": "请输入 https 地址；http 仅限 localhost 或私有地址。留空则使用 Tailscale 官方控制面。",
   "remoteLanTitle": "局域网上的 Rex 客户端",
   "remoteLanNote": "Rex 的客户端（包括 iPhone 上的 Rex）通过普通 HTTP 连接这个地址。这里没有密码：允许的网络里任何设备都能拿到完整的 shell，键入的内容在局域网上不加密传输。请尽量只允许必要的范围，比如你手机的地址。",
   "remoteLanSwitch": "在局域网上为 Rex 客户端提供服务",
