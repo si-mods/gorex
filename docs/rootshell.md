@@ -136,8 +136,9 @@ shim for herdr's sessions, which it answers with none anyway.
 
 - The host's server makes every change of the layout itself, a GoRex
   window open or not. Closing a tab or a space that holds a pane of
-  another host drops that pane, which rootshell does not show; the
-  server cannot end that host's session, which goes on there.
+  another host, which rootshell does not show, drops that pane, and the
+  GoRex app ends its session on that host, as it ends one its user
+  closes: at once, or once the app runs and the host is connected again.
 - Closing the window's last tab from rootshell leaves its space empty; a
   new tab from rootshell fills it again. A GoRex window that showed it
   shows another space, or closes.

@@ -23,7 +23,7 @@ var applied = map[string]bool{
 	"pane.split": true, "pane.close": true, "pane.rename": true, "pane.focus": true,
 	"pane.zoom": true, "pane.resize": true, "pane.swap": true, "pane.move": true,
 	"pane.restart": true, "pane.teleporting": true, "pane.teleported": true,
-	"tab.set": true, "windows.set": true, "layout.apply": true,
+	"tab.set": true, "windows.set": true, "layout.apply": true, "kills.taken": true,
 }
 
 // batched are the commands a layout.apply carries: the app's changes of
@@ -84,11 +84,12 @@ func (s *Server) change(a *applying, f func(st *layout.Store) LayoutCommand) Lay
 		s.mu.Unlock()
 		st := layout.Parse(raw)
 		before := encodeLayout(&st)
-		a.n, a.ends, a.touched = 0, nil, nil
+		a.n, a.ends, a.kills, a.touched = 0, nil, nil, nil
 		res := f(&st)
 		if res.Code != "" {
 			return res
 		}
+		st.Kills = append(st.Kills, a.kills...)
 		res.Revs = a.countRevs(&st)
 		// A command that changes nothing, as a resize at its bound,
 		// leaves the layout as it was, an older one unmigrated.
@@ -196,6 +197,9 @@ type applying struct {
 	batch   bool
 	before  map[string]*layout.Node
 	ends    []string
+
+	// kills are the sessions of other hosts' panes the pass closed.
+	kills []layout.Kill
 }
 
 // start returns a new pane's leaf, starting its session in the first pass.
@@ -215,12 +219,18 @@ func (a *applying) start(dir string, cols, rows int, command []string) (*layout.
 	return &c, nil
 }
 
-// end ends the sessions of this machine's panes under n, once the layout
-// is saved without them.
+// end ends the sessions of the panes under n, once the layout is saved
+// without them: this machine's here, another host's through the app
+// (layout.Store.Kills), but in a batch, the app's, which ends those itself
+// as its user closes them.
 func (a *applying) end(n *layout.Node) {
 	for _, l := range layout.Leaves(n) {
-		if l.Host == "" && l.SID != "" {
+		switch {
+		case l.SID == "":
+		case l.Host == "":
 			a.ends = append(a.ends, l.SID)
+		case !a.batch:
+			a.kills = append(a.kills, layout.Kill{Host: l.Host, SID: l.SID})
 		}
 	}
 }
@@ -597,8 +607,6 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		if w == nil {
 			return fail("space_not_found", "no such space in the GoRex layout")
 		}
-		// Another host's sessions are the app's to end, as its user closes
-		// them: the server drops their panes.
 		for _, t := range w.Tabs {
 			for _, r := range t.Roots() {
 				a.end(r)
@@ -617,6 +625,9 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		return s.teleporting(st, c)
 	case "pane.teleported":
 		return s.teleported(st, c, a)
+	case "kills.taken":
+		st.Kills = slices.DeleteFunc(st.Kills, func(k layout.Kill) bool { return slices.Contains(c.Kills, k) })
+		return res
 	}
 	isTab := strings.HasPrefix(c.Op, "tab.")
 	p, ok := find(st, c.Space, c.SID)

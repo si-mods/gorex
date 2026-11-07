@@ -363,7 +363,7 @@ func TestApplyNoChange(t *testing.T) {
 
 // TestApplyDropsRemotePanes closes a tab that has a pane of another host:
 // the server ends this machine's session and drops the host's pane, whose
-// session is the app's to end.
+// session the app ends (TestCloseKillsHostSessions).
 func TestApplyDropsRemotePanes(t *testing.T) {
 	_, c := applyFixture(t)
 	cmd, dir := testShell()
@@ -375,6 +375,32 @@ func TestApplyDropsRemotePanes(t *testing.T) {
 	command(t, c, LayoutCommand{Op: "tab.close", Tab: "mixed"})
 	if _, ok := liveSession(t, c, in.ID); ok || len(storeOf(t, c).Sessions[0].Tabs) != 0 {
 		t.Error("the tab or its session stays")
+	}
+}
+
+// TestCloseKillsHostSessions closes tabs and a space of another host's
+// panes, as the API does: the layout notes their sessions for the app to
+// end on that host (Store.Kills), until it says it took them. A
+// layout.apply, the app's, notes none: the app ends those its user closes.
+func TestCloseKillsHostSessions(t *testing.T) {
+	_, c := applyFixture(t)
+	far := func(sid string) *layout.Node { return &layout.Node{SID: sid, Host: "h1"} }
+	seed(t, c,
+		layout.Tab{ID: "closed", Root: far("a")},
+		layout.Tab{ID: "kept", Root: far("b")},
+		layout.Tab{ID: "split", Root: &layout.Node{Ratio: 0.5, A: far("c"), B: far("d")}},
+	)
+	command(t, c, LayoutCommand{Op: "tab.close", Tab: "closed"})
+	command(t, c, LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{{Op: "tab.close", Tab: "kept"}}})
+	command(t, c, LayoutCommand{Op: "space.close", Space: "w"})
+	st := storeOf(t, c)
+	want := []layout.Kill{{Host: "h1", SID: "a"}, {Host: "h1", SID: "c"}, {Host: "h1", SID: "d"}}
+	if len(st.Sessions) != 0 || !slices.Equal(st.Kills, want) {
+		t.Fatalf("spaces %d, kills %+v, want %+v", len(st.Sessions), st.Kills, want)
+	}
+	command(t, c, LayoutCommand{Op: "kills.taken", Kills: want[:2]})
+	if st := storeOf(t, c); !slices.Equal(st.Kills, want[2:]) {
+		t.Errorf("kills %+v after two taken", st.Kills)
 	}
 }
 

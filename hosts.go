@@ -221,22 +221,31 @@ func (h *hostConn) saved() savedHost {
 // it did, through the client of the moment, or the next one. Call it on the
 // main thread.
 func (h *hostConn) kill(sid string) {
-	if h.closed == nil {
-		h.closed = map[string]bool{}
-	}
-	h.closed[sid] = true
-	h.mu.Lock()
-	if !slices.Contains(h.Kills, sid) {
-		h.Kills = append(h.Kills, sid)
-	}
-	c := h.client
-	h.mu.Unlock()
+	c := h.keepKills([]string{sid})
 	if h.persist != nil {
 		h.persist()
 	}
 	if c != nil {
 		go h.runKills(c)
 	}
+}
+
+// keepKills keeps sessions sids to end, as kill does, saving nothing, and
+// returns the client to end them through, nil while not connected. Call
+// it on the main thread.
+func (h *hostConn) keepKills(sids []string) *rex.Client {
+	if h.closed == nil {
+		h.closed = map[string]bool{}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, sid := range sids {
+		h.closed[sid] = true
+		if !slices.Contains(h.Kills, sid) {
+			h.Kills = append(h.Kills, sid)
+		}
+	}
+	return h.client
 }
 
 // runKills ends the sessions kept to end, through c, and forgets those the
@@ -995,6 +1004,9 @@ func (a *App) loadHosts() {
 	if err != nil {
 		log.Print(err)
 	}
+	if a.st != nil {
+		a.st.hostsLost = err != nil
+	}
 	a.hosts = nil
 	for _, s := range saved {
 		h := newHostConn(s)
@@ -1023,6 +1035,7 @@ func (a *App) syncHosts() {
 	for _, o := range a.st.apps {
 		o.hosts = a.hosts
 	}
+	a.st.takeKills(a)
 }
 
 func (a *App) stopHosts() {

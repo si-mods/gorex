@@ -197,7 +197,9 @@ meets:
   desktop the space goes with its last tab instead.
 - An app action still needs the GoRex window, and fails with `conflict`
   without it. Closing a window or session that holds a pane of another
-  host drops that pane; its session, on the other host, goes on.
+  host drops that pane, and the GoRex app ends its session on that host,
+  as it ends one its user closes: at once, or once the app runs and the
+  host is connected again.
 - Tabs and panes of remote hosts are left out.
 - Built-in Tailscale's sign-in link, `auth_url`, goes only to the local
   socket: whoever opens it first claims the device. Over the local

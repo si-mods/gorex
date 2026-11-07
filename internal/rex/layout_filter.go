@@ -19,7 +19,7 @@ func (s *Server) filterLayout(raw []byte, peer string) (json.RawMessage, error) 
 	if err := json.Unmarshal(raw, &st); err != nil {
 		return nil, err
 	}
-	st.Teleports = nil // this machine's
+	st.Teleports, st.Kills = nil, nil // this machine's
 	var sessions []layout.Workspace
 	ids := map[string]bool{}
 	for _, w := range st.Sessions {
