@@ -54,7 +54,8 @@ a build whose modification time is not newer than the server's. See
   full-screen programs (lazygit, vim, htop…) come back exactly. A server
   restarted (`gorex server restart`, or the app on Windows replacing an
   older one once asked) brings its sessions back as new shells at their
-  panes' directories; Quit and End All ends them.
+  panes' directories; Quit and End All ends them. How the server keeps
+  the screens: [docs/session-server.md](docs/session-server.md).
 - **Kitty graphics.** Images sent by file path are read where the program
   runs, including on a remote host, and are shown in-band; a window that
   attaches again replays them.
