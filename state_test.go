@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"image/png"
 	"slices"
 	"strings"
 	"testing"
@@ -154,6 +156,36 @@ func TestNotifyPane(t *testing.T) {
 	}
 }
 
+// TestNotificationImage: a program's notification shows its tile, as a
+// PNG, the tile's color in its middle; one of a shell shows none.
+func TestNotificationImage(t *testing.T) {
+	a, _ := newTestApp(t)
+	var got []mygo.NotificationOptions
+	showNotification = func(o mygo.NotificationOptions) func() { got = append(got, o); return func() {} }
+	p := a.tab().Focus
+	a.focusedWin = false
+	a.notifyStatus(p, &rex.ProgramStatus{State: "done", App: "claude"})
+	p.notified = time.Time{}
+	a.notifyProgram(p, "hi", "")
+	if len(got) != 2 {
+		t.Fatalf("%d notifications", len(got))
+	}
+	img, err := png.Decode(bytes.NewReader(got[0].Image))
+	if err != nil {
+		t.Fatalf("the image of Claude Code's notification: %v", err)
+	}
+	b := img.Bounds()
+	r, g, bl, _ := img.At(b.Min.X+b.Dx()/2-b.Dx()/4, b.Min.Y+b.Dy()/2).RGBA()
+	if want := programs["claude"].TileBg; absDiff(r>>8, uint32(want.R)) > 24 || absDiff(g>>8, uint32(want.G)) > 24 || absDiff(bl>>8, uint32(want.B)) > 24 {
+		t.Errorf("the tile is %d,%d,%d, not %v", r>>8, g>>8, bl>>8, want)
+	}
+	if got[1].Image != nil {
+		t.Error("a shell's notification has an image")
+	}
+}
+
+func absDiff(x, y uint32) uint32 { return max(x, y) - min(x, y) }
+
 // TestNotificationClickFindsSession: a click on a notification shows its
 // session though the pane it was of is gone: from the space no window
 // shows, then in another window that attached it again.
@@ -165,7 +197,7 @@ func TestNotificationClickFindsSession(t *testing.T) {
 	first := a.ws
 	a.newTab(t.TempDir())
 	p := a.tabs[0].Focus
-	a.notifyPane(p, "", "hi", "")
+	a.notifyPane(p, "", program{}, "hi", "")
 	id := got[0].ID
 	a.newWorkspace()
 	tt.Frame()
@@ -203,7 +235,7 @@ func TestNotificationClickWaits(t *testing.T) {
 	var got []mygo.NotificationOptions
 	showNotification = func(o mygo.NotificationOptions) func() { got = append(got, o); return func() {} }
 	p := a.tab().Focus
-	a.notifyPane(p, "", "hi", "")
+	a.notifyPane(p, "", program{}, "hi", "")
 	a.newTab(t.TempDir())
 	apps := st.apps
 	st.apps = nil

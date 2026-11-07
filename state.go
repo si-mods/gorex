@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"errors"
 	"fmt"
+	"image/png"
 	"log"
 	"math"
 	"net/url"
@@ -3324,7 +3326,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 				statuses := len(was.Statuses) > 0 || len(in.Statuses) > 0
 				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second && !statuses && p.notifyDue(false) {
 					prog := programOf(was.ProgramName())
-					a.notifyPane(p, prog.Name, locales.NotifyFinished(prog.Name), locales.NotifyIn(shortDir(in.Dir)))
+					a.notifyPane(p, prog.Name, prog, locales.NotifyFinished(prog.Name), locales.NotifyIn(shortDir(in.Dir)))
 				}
 			}
 		}
@@ -3417,9 +3419,11 @@ func entered(was, in rex.SessionInfo) *rex.ProgramStatus {
 // notifyStatus tells, with a notification, that a program of pane p
 // reported r.
 func (a *App) notifyStatus(p *Pane, r *rex.ProgramStatus) {
-	prog := r.App
+	prog, icon := r.App, p.program()
 	if prog == "" {
 		prog, _ = p.label()
+	} else {
+		icon = programOf(prog)
 	}
 	title := locales.NotifyFinished(prog)
 	switch r.State {
@@ -3428,7 +3432,7 @@ func (a *App) notifyStatus(p *Pane, r *rex.ProgramStatus) {
 	case "error":
 		title = locales.NotifyFailed(prog)
 	}
-	a.notifyPane(p, prog, title, cmp.Or(r.Message(), r.Title))
+	a.notifyPane(p, prog, icon, title, cmp.Or(r.Message(), r.Title))
 }
 
 // notifyDue tells whether a notification of the pane may show, and if so
@@ -3451,7 +3455,7 @@ func (p *Pane) notifyDue(own bool) bool {
 // and 777), unless the pane is gone or the user looks at it.
 func (a *App) notifyProgram(p *Pane, title, body string) {
 	if !p.closed && !a.shows(p) && p.notifyDue(true) {
-		a.notifyPane(p, "", cmp.Or(title, "GoRex"), body)
+		a.notifyPane(p, "", p.program(), cmp.Or(title, "GoRex"), body)
 	}
 }
 
@@ -3480,8 +3484,9 @@ var showNotification = func(o mygo.NotificationOptions) (close func()) {
 // session stack together till its pane is seen, and the store's
 // notificationClicked brings the pane of one clicked to the front, from
 // its ID. With no body, the names take its place: Windows and Linux put
-// them on a line of the body.
-func (a *App) notifyPane(p *Pane, prog, title, body string) {
+// them on a line of the body. The tile of icon, the pane's program, is
+// its image (tileImage).
+func (a *App) notifyPane(p *Pane, prog string, icon program, title, body string) {
 	var parts []string
 	add := func(s string) {
 		if s != "" && s != prog && !slices.Contains(parts, s) {
@@ -3512,6 +3517,7 @@ func (a *App) notifyPane(p *Pane, prog, title, body string) {
 		Subtitle: src,
 		Body:     body,
 		Group:    key,
+		Image:    tileImage(icon),
 	})
 	if a.st != nil {
 		if a.st.shown == nil {
@@ -3520,6 +3526,36 @@ func (a *App) notifyPane(p *Pane, prog, title, body string) {
 		a.st.shown[key] = append(a.st.shown[key], close)
 	}
 }
+
+// tileImage is the tile of prog, as tabs show it, as a PNG of 72 pixels
+// square; nil for a shell, which has no program to show. Each program's
+// is drawn once.
+func tileImage(prog program) []byte {
+	if prog.Name == "" || prog.Shell {
+		return nil
+	}
+	if b, ok := tileImages[prog.Name]; ok {
+		return b
+	}
+	img := ui.Render(func(c *ui.Context) {
+		// A window of no background: the tile's corners stay clear.
+		t := *c.Theme()
+		t.Background = ui.RGBA(0, 0, 0, 0)
+		c.SetTheme(&t)
+		ui.Box(c).Size(24, 24).Draw(func(p *ui.Painter, r ui.Rect) {
+			drawTile(p, &lightColors, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
+		})
+	}, 24, 24, 3)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil
+	}
+	tileImages[prog.Name] = buf.Bytes()
+	return buf.Bytes()
+}
+
+// tileImages are the PNGs of tileImage, by the programs' names.
+var tileImages = map[string][]byte{}
 
 // closeNotifications removes the notifications of a session, by its
 // notifyKey, as its pane is seen.
