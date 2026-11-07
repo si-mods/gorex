@@ -57,7 +57,8 @@ struct TerminalScreen: View {
                     .padding(.leading, 12)
                     .padding(.trailing, 18)
                     .frame(height: 44)
-                    .glassEffect(.regular, in: .capsule)
+                    // Glass behind, not over: on the content it would fade the tile.
+                    .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
