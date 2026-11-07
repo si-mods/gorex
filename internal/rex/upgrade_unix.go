@@ -3,6 +3,7 @@
 package rex
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -66,10 +67,12 @@ type sessionState struct {
 	Master int `json:"master"`
 	Cols   int `json:"cols"`
 	Rows   int `json:"rows"`
-	// Screen is the emulator's snapshot, and Title its title. The modes,
-	// the synchronized update and the images the session shows are read
-	// again from Screen, as from the program's output.
+	// Screen is the emulator's snapshot followed by Images, the graphics
+	// sequences the session replays on attach, and Title its title. The
+	// modes are read again from the snapshot. A handoff of a build before
+	// Images has the replay in Screen alone.
 	Screen     []byte    `json:"screen,omitempty"`
+	Images     [][]byte  `json:"images,omitempty"`
 	Title      string    `json:"title,omitempty"`
 	Output     uint64    `json:"output"`
 	Bells      int64     `json:"bells"`
@@ -237,7 +240,7 @@ func (s *session) state() sessionState {
 		Cols: s.cols, Rows: s.rows,
 		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
-		Statuses: s.status.list(),
+		Statuses: s.status.list(), Images: s.graphics.history,
 	}
 	st.Screen, st.Title = s.view()
 	select {
@@ -327,11 +330,14 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		s.status.updates++
 		s.status.records[r.ID] = &statusRecord{r, s.status.updates}
 	}
+	// The images go to the history the attaches replay, not to the
+	// emulator, which the snapshot left as it was: a placement moves the
+	// cursor.
+	s.graphics.record(st.Images)
+	screen := bytes.TrimSuffix(st.Screen, bytes.Join(st.Images, nil))
 	if st.Title != "" {
 		s.vt.Feed([]byte("\x1b]2;" + st.Title + "\x07"))
 	}
-	screen, images := s.graphics.filter(st.Screen, s.dir)
-	s.graphics.record(images)
 	s.vt.Feed(screen)
 	s.modes.feed(screen)
 	if st.Exited || st.Master < 0 {
@@ -356,7 +362,9 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		return nil, err
 	}
 	s.p = p
-	s.batch(screen)
+	if s.modes.synchronized() {
+		s.batchEnd = make(chan struct{})
+	}
 	s.bells.Store(st.Bells)
 	wait := p.wait
 	if st.Reaped {

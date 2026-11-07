@@ -219,3 +219,17 @@ func TestGraphicsLeavesOversizeFile(t *testing.T) {
 		t.Fatal("rewrote an oversize file")
 	}
 }
+
+// TestGraphicsRecordsNoOrphanChunks: the rest of a transfer whose start
+// went before, as across an upgrade, is no image to replay.
+func TestGraphicsRecordsNoOrphanChunks(t *testing.T) {
+	var g graphics
+	out, recs := g.filter([]byte("\x1b_Gm=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
+	if len(recs) != 0 || !bytes.Contains(out, []byte("m=0;AAAA")) {
+		t.Fatalf("recorded %q, passed %q", recs, out)
+	}
+	_, recs = g.filter([]byte("\x1b_Ga=T,f=100,m=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
+	if len(recs) != 1 || !bytes.HasPrefix(recs[0], []byte("\x1b_Ga=T")) {
+		t.Fatalf("a whole transfer recorded %q", recs)
+	}
+}

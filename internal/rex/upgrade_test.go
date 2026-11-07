@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"log"
 	"os"
@@ -302,9 +305,9 @@ func TestUpgradeKeepsWhatTheScreenTells(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
-		if l, _ := c.List(); len(l) == 2 && l[1].Exited {
-			break
+	for deadline := time.Now().Add(5 * time.Second); !sessionInfo(t, c, done.ID).Exited; time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the session did not exit")
 		}
 	}
 
@@ -350,6 +353,91 @@ func TestUpgradeKeepsWhatTheScreenTells(t *testing.T) {
 	}
 }
 
+// TestResumeAnExitedSession hands over a session that exited with a
+// snapshot larger than what one read may rewrite, and an image on its
+// screen: the resumed one replays the image, and shows the screen and
+// cursor it had.
+func TestResumeAnExitedSession(t *testing.T) {
+	dir := t.TempDir()
+	var img, out bytes.Buffer
+	png.Encode(&img, image.NewGray(image.Rect(0, 0, 40, 60)))
+	for range 8000 {
+		for j := range 80 {
+			fmt.Fprintf(&out, "\x1b[38;2;%d;%d;%dm%c", j, 255-j, j*3%256, 'a'+j%26)
+		}
+		out.WriteString("\r\n")
+	}
+	// An image sent in-band, as the program sent it, moves the cursor.
+	fmt.Fprintf(&out, "\x1b_Gi=9,a=T,f=100;%s\x1b\\last-words", base64.StdEncoding.EncodeToString(img.Bytes()))
+	if err := os.WriteFile(filepath.Join(dir, "out"), out.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newSession("big", CreateOptions{Command: []string{"/bin/cat", "out"}, Dir: dir, Cols: 80, Rows: 24}, "", func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.kill)
+	select {
+	case <-s.done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("session did not end")
+	}
+	if len(s.screen) <= maxGraphicsRewrite {
+		t.Fatalf("a screen of %d bytes", len(s.screen))
+	}
+	r, err := resumeSession(s.state(), func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := r.graphics.replay(), s.graphics.replay(); len(want) == 0 || !bytes.Equal(got, want) {
+		t.Errorf("replay of %d bytes after the handoff, want %d", len(got), len(want))
+	}
+	before, after := headless(t), headless(t)
+	if err := before.RestoreGhosttySnapshot(s.ghostty); err != nil {
+		t.Fatal(err)
+	}
+	if err := after.RestoreGhosttySnapshot(r.ghostty); err != nil {
+		t.Fatal(err)
+	}
+	if b, a := before.Snapshot(), after.Snapshot(); !bytes.Equal(b, a) {
+		t.Errorf("the Ghostty snapshot differs after the handoff: ends %q, want %q", a[max(len(a)-24, 0):], b[max(len(b)-24, 0):])
+	}
+}
+
+// TestResumeKeepsTheCursor hands over an exited session whose last image
+// moved the cursor: the resumed one's cursor is where it was, not moved
+// again by the image's replay.
+func TestResumeKeepsTheCursor(t *testing.T) {
+	var img bytes.Buffer
+	png.Encode(&img, image.NewGray(image.Rect(0, 0, 40, 60)))
+	seq := []byte("\x1b_Gi=9,a=T,f=100;" + base64.StdEncoding.EncodeToString(img.Bytes()) + "\x1b\\")
+	s := &session{cols: 40, rows: 10, p: &pty{}, exited: true}
+	if err := s.newVT(); err != nil {
+		t.Fatal(err)
+	}
+	defer s.vt.Close()
+	s.vt.Feed(append([]byte("hello\r\n"), seq...))
+	s.graphics.record([][]byte{seq})
+	s.screen = append(s.vt.Snapshot(), s.graphics.replay()...)
+	s.ghostty, _ = s.vt.GhosttySnapshot()
+	r, err := resumeSession(s.state(), func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, after := headless(t), headless(t)
+	before.Resize(40, 10)
+	after.Resize(40, 10)
+	if err := before.RestoreGhosttySnapshot(s.ghostty); err != nil {
+		t.Fatal(err)
+	}
+	if err := after.RestoreGhosttySnapshot(r.ghostty); err != nil {
+		t.Fatal(err)
+	}
+	if b, a := before.Snapshot(), after.Snapshot(); !bytes.Equal(b, a) {
+		t.Errorf("after the handoff the screen ends %q, want %q", a[max(len(a)-12, 0):], b[max(len(b)-12, 0):])
+	}
+}
+
 // TestResumeAnOlderHandoff resumes an exited session of a handoff an
 // older build wrote, which has its screen and nothing it tells.
 func TestResumeAnOlderHandoff(t *testing.T) {
@@ -371,7 +459,7 @@ func TestResumeAnOlderHandoff(t *testing.T) {
 	s.mu.Lock()
 	snap, after, ok := s.ghosttyView()
 	s.mu.Unlock()
-	if !ok || !bytes.HasPrefix(snap, []byte("GHOSTSNP")) || !bytes.Contains(after, []byte("\x1b_Gi=4,")) {
+	if !ok || !bytes.HasPrefix(snap, []byte("GHOSTSNP")) || bytes.Contains(after, []byte("\x1b_G")) {
 		t.Errorf("ghostty view %v, after %q", ok, after)
 	}
 	if !s.modes.bracketed || s.dir != "" || s.code != 2 {

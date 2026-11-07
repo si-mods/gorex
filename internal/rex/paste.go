@@ -177,6 +177,17 @@ func (m *decModes) setMode(n int, ansi, on bool) {
 	}
 }
 
+// synchronized tells whether the program is inside a synchronized update
+// (mode 2026).
+func (m *decModes) synchronized() bool {
+	for i, md := range trackedModes {
+		if md.number == 2026 && !md.ansi {
+			return m.set != nil && m.set[i]
+		}
+	}
+	return false
+}
+
 // status reports the modes as "modes" shows them, and which screen shows.
 func (m *decModes) status() ModeStatus {
 	st := ModeStatus{Screen: "primary", Modes: make([]ModeState, 0, len(trackedModes))}

@@ -70,6 +70,15 @@ func TestDecModes(t *testing.T) {
 	if m.bracketed {
 		t.Error("plain output changed the mode")
 	}
+	// A synchronized update is known while it lasts.
+	m.feed([]byte("\x1b[?2026h"))
+	if !m.synchronized() {
+		t.Error("2026 set, not synchronized")
+	}
+	m.feed([]byte("\x1b[?2026l"))
+	if m.synchronized() {
+		t.Error("2026 reset, still synchronized")
+	}
 	// A full reset takes the mode with the screen.
 	m.feed([]byte("\x1b[?2004h\x1bc"))
 	if m.bracketed {

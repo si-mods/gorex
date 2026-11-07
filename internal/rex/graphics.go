@@ -140,6 +140,12 @@ func (g *graphics) sequence(seq []byte, cwd string) ([]byte, [][]byte) {
 		}
 		return seq, nil
 	}
+	if len(g.chunks) == 0 && graphicsContinues(params) {
+		// The rest of a transfer whose start the session did not read, as
+		// across an upgrade: no image to replay.
+		g.chunkSkip = graphicsMore(params)
+		return seq, nil
+	}
 	if !isFile || payload == "" {
 		if graphicsMore(params) {
 			if g.chunkBytes+len(seq) > maxGraphicsHistory {
@@ -222,6 +228,17 @@ func graphicsMore(params []string) bool {
 		}
 	}
 	return false
+}
+
+// graphicsContinues reports whether params are those of a chunk after a
+// transfer's first, which has the m and q keys alone.
+func graphicsContinues(params []string) bool {
+	for _, p := range params {
+		if key, _, _ := strings.Cut(p, "="); key != "m" && key != "q" {
+			return false
+		}
+	}
+	return true
 }
 
 func rewriteFileImage(params []string, data []byte) [][]byte {
