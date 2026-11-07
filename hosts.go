@@ -137,12 +137,15 @@ type hostConn struct {
 	state   hostState
 	attempt int           // of the attempt under way, or the next one
 	reason  func() string // why it is not connected, said when drawn
+	failed  hostFailure   // how the last attempt failed, 0 for none
 	hello   rex.Hello
 	// closed are the sessions closed here since the host connected, which
 	// adopt does not open again though a list still has them.
 	closed        map[string]bool
 	tailnetOnline bool
 	openOnConnect *App
+	// transfers are those of the host's sessions, by session.
+	transfers map[string]*sessionTransfers
 
 	// mu guards client, Kills of savedHost, and expect, the sessions a
 	// teleport starts here, which adopt leaves for their pane.
@@ -171,6 +174,19 @@ func (h *hostConn) current() *rex.Client {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return h.client
+}
+
+// next waits, until ctx is done or for hostWait at most, for a client of
+// the host other than c, nil for any; nil when none comes.
+func (h *hostConn) next(ctx context.Context, c *rex.Client) *rex.Client {
+	for end := time.Now().Add(hostWait); ; {
+		if n := h.current(); n != nil && n != c {
+			return n
+		}
+		if time.Now().After(end) || sleepCtx(ctx, 100*time.Millisecond) != nil {
+			return nil
+		}
+	}
 }
 
 // expecting marks session sid, which a teleport starts on the host, as
@@ -398,7 +414,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			case <-ctx.Done():
 			}
 		}()
-		c, hello, why, _ := connectHost(ctx, h.Address)
+		c, hello, why, fail := connectHost(ctx, h.Address)
 		cancel()
 		if c != nil {
 			h.mu.Lock()
@@ -412,7 +428,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			h.client = c
 			h.mu.Unlock()
 			logged.log(name, nil)
-			update(func() { h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil })
+			update(func() { h.state, h.reason, h.failed, h.hello, h.closed = hostConnected, nil, 0, hello, nil })
 			since := time.Now()
 			h.runKills(c)
 			a.watchHost(h, c, update)
@@ -442,7 +458,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 		logged.log(name, why)
 		attempt++
 		n = attempt
-		update(func() { h.state, h.attempt, h.reason = hostFailed, n, why })
+		update(func() { h.state, h.attempt, h.reason, h.failed = hostFailed, n, why, fail })
 		select {
 		case <-h.stop:
 			return
