@@ -249,7 +249,7 @@ private struct Preview: View {
 }
 
 /// The terminal's fonts: Ghostty's own, then the monospaced ones iOS has,
-/// by the family names Ghostty finds them by.
+/// by the family names Ghostty finds them by; Maple Mono once downloaded.
 private enum Fonts {
     static let all: [(family: String, name: String)] = [("", "JetBrains Mono"), ("Menlo", "Menlo"), ("Courier New", "Courier New")]
 
@@ -264,6 +264,7 @@ private enum Fonts {
 private struct TerminalSettings: View {
     @AppStorage("fontSize") private var fontSize = 12.0
     @AppStorage("fontFamily") private var family = ""
+    private let maple = Maple.shared
 
     var body: some View {
         List {
@@ -272,15 +273,12 @@ private struct TerminalSettings: View {
             }
             .listRowBackground(Color.card)
             Section("Font") {
-                ForEach(Fonts.all, id: \.family) { f in
-                    Button { family = f.family } label: {
-                        HStack {
-                            Text(f.name).font(Fonts.face(f.family, size: 17)).foregroundStyle(.primary)
-                            Spacer()
-                            if f.family == family { Image(systemName: "checkmark").fontWeight(.semibold) }
-                        }
-                    }
-                    .listRowBackground(Color.card)
+                ForEach(Fonts.all, id: \.family) { row($0.family, $0.name) }
+                if maple.installed {
+                    row(Maple.family, Maple.family)
+                        .swipeActions { Button("Delete", role: .destructive) { maple.delete() } }
+                } else {
+                    download
                 }
             }
         }
@@ -288,6 +286,39 @@ private struct TerminalSettings: View {
         .background(Color.page)
         .navigationTitle("Terminal")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(_ f: String, _ name: String) -> some View {
+        Button { family = f } label: {
+            HStack {
+                Text(name).font(Fonts.face(f, size: 17)).foregroundStyle(.primary)
+                Spacer()
+                if f == family { Image(systemName: "checkmark").fontWeight(.semibold) }
+            }
+        }
+        .listRowBackground(Color.card)
+    }
+
+    /// Maple Mono, not downloaded: its size and a download, or the
+    /// download's progress and a stop.
+    private var download: some View {
+        Button { maple.progress == nil ? maple.download() : maple.cancel() } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(verbatim: Maple.family).foregroundStyle(.primary)
+                    Spacer()
+                    if let p = maple.progress {
+                        ProgressView(value: p).frame(width: 64)
+                        Image(systemName: "stop.circle").accessibilityLabel("Cancel")
+                    } else {
+                        Text(Maple.size.formatted(.byteCount(style: .file))).foregroundStyle(.secondary)
+                        Image(systemName: "arrow.down.circle").accessibilityLabel("Download")
+                    }
+                }
+                if let e = maple.error { Text(e).font(.footnote).foregroundStyle(.red) }
+            }
+        }
+        .listRowBackground(Color.card)
     }
 }
 
