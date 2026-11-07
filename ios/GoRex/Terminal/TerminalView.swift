@@ -296,6 +296,7 @@ final class TerminalView: UIView, TerminalOutput {
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: -shift)
         }
+        checkCover()
     }
 
     /// Ghostty settled on a grid for the view's size: the block takes it.
