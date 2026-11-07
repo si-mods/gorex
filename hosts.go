@@ -143,6 +143,8 @@ type hostConn struct {
 	closed        map[string]bool
 	tailnetOnline bool
 	openOnConnect *App
+	// transfers are those of the host's sessions, by session.
+	transfers map[string]*sessionTransfers
 
 	// mu guards client, Kills of savedHost, and expect, the sessions a
 	// teleport starts here, which adopt leaves for their pane.
