@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"gorex/locales"
@@ -126,20 +127,61 @@ func (a *App) openLink(p *Pane, link string) bool {
 	return true
 }
 
-// linkDir reports whether dir, a directory printed in the pane, as docs/,
-// is a link: one of this machine that is there, so that a word before a
-// slash in prose (w/, I/) is none. A pane of a host has none, as a folder
-// is not downloaded.
-func linkDir(p *Pane, dir string) bool {
-	if p == nil || p.host != nil {
+// pathStat is what a stat found of a path printed in a pane of this
+// machine: whether it is there, and a directory, as of at; pending while a
+// stat runs.
+type pathStat struct {
+	there, dir, pending bool
+	at                  time.Time
+}
+
+const (
+	// pathStatsMax bounds App.pathStats: once full it starts over.
+	pathStatsMax = 256
+	// pathStatAge is how long a stat holds before another checks it again,
+	// in the background, a path that came or went meanwhile.
+	pathStatAge = 5 * time.Second
+)
+
+// isLink reports whether link, a file path printed in the pane, is one the
+// terminal shows as a link: in a pane of this machine, one that is there,
+// so that prose such as and/or or w/ is none; in a pane of a host, any but
+// a directory, as a folder is not downloaded. It runs on every frame of a
+// Command hover with the terminal locked, so it never waits on the disk,
+// which a dead mount can hang: it answers from App.pathStats and on a miss
+// stats the path on another goroutine, update storing what it found and
+// building a frame again.
+func (a *App) isLink(p *Pane, link string, update func(func())) bool {
+	path, ok := linkPath(link)
+	if !ok || p == nil {
 		return false
 	}
-	path, ok := panePath(p, dir)
+	dir := strings.HasSuffix(path, "/")
+	if p.host != nil {
+		return !dir
+	}
+	path, ok = resolvePath(p, path)
 	if !ok {
 		return false
 	}
-	st, err := os.Stat(path)
-	return err == nil && st.IsDir()
+	s, known := a.pathStats[path]
+	if !s.pending && (!known || time.Since(s.at) > pathStatAge) {
+		a.setPathStat(path, pathStat{there: s.there, dir: s.dir, at: s.at, pending: true})
+		go func() {
+			st, err := os.Stat(path)
+			found := pathStat{there: err == nil, dir: err == nil && st.IsDir(), at: time.Now()}
+			update(func() { a.setPathStat(path, found) })
+		}()
+	}
+	return s.there && (!dir || s.dir)
+}
+
+// setPathStat records s of path, starting over once App.pathStats is full.
+func (a *App) setPathStat(path string, s pathStat) {
+	if a.pathStats == nil || len(a.pathStats) >= pathStatsMax {
+		a.pathStats = make(map[string]pathStat)
+	}
+	a.pathStats[path] = s
 }
 
 // linkPath is the file path a printed link names, :line:col trimmed;
@@ -161,6 +203,19 @@ func panePath(p *Pane, link string) (string, bool) {
 	if !ok {
 		return "", false
 	}
+	if path, ok = resolvePath(p, path); !ok {
+		return "", false
+	}
+	if _, err := os.Stat(path); err != nil {
+		return "", false
+	}
+	return path, true
+}
+
+// resolvePath is path, printed in the pane without :line:col, made
+// absolute: from ~/ in the home directory, a relative one in the pane's
+// program directory; false when there is none.
+func resolvePath(p *Pane, path string) (string, bool) {
 	if strings.HasPrefix(path, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
 			path = filepath.Join(home, path[2:])
@@ -179,11 +234,7 @@ func panePath(p *Pane, link string) (string, bool) {
 		}
 		path = filepath.Join(dir, path)
 	}
-	path = filepath.Clean(path)
-	if st, err := os.Stat(path); err != nil || st == nil {
-		return "", false
-	}
-	return path, true
+	return filepath.Clean(path), true
 }
 
 func fileURL(path string) string {

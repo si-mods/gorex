@@ -338,25 +338,26 @@ func TestDropOnLocalPane(t *testing.T) {
 	p := a.tab().Focus
 	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
 	paths := dropped(t, "here.txt", "x", "there.txt", "y")
-	// The paths are pasted quoted for the shell: as they are only when
-	// nothing in them needs quoting.
-	if runtime.GOOS == "windows" || strings.ContainsFunc(paths[1], func(r rune) bool {
-		return !(r == '/' || r == '.' || r == '_' || r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r))
-	}) {
-		t.Skipf("%s is quoted when pasted", paths[1])
+	if !tt.DropFiles(500, 300, paths[0]) {
+		t.Fatal("no element took the drop")
 	}
-	for _, path := range paths {
-		if !tt.DropFiles(500, 300, path) {
-			t.Fatal("no element took the drop")
-		}
-		tt.Frame()
-	}
-	waitFor(t, tt, "the paths", func() bool {
-		return strings.Contains(strings.ReplaceAll(p.term.Text(), "\n", ""), "here.txt "+paths[1])
-	})
+	waitFor(t, tt, "the path", func() bool { return strings.Contains(p.term.Text(), "here.txt") })
 	if len(p.transfers) != 0 || p.uploading != nil {
 		t.Errorf("a local drop uploads: %v", p.transfers)
 	}
+	// The shell, a plain sh, echoes what the drop pasted, quoted: as the
+	// path is only when nothing in it needs quoting.
+	if runtime.GOOS == "windows" || strings.ContainsFunc(paths[1], func(r rune) bool {
+		return !(r == '/' || r == '.' || r == '_' || r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r))
+	}) {
+		return
+	}
+	if !tt.DropFiles(500, 300, paths[1]) {
+		t.Fatal("no element took the second drop")
+	}
+	waitFor(t, tt, "the second path after a space", func() bool {
+		return strings.Contains(strings.ReplaceAll(p.term.Text(), "\n", ""), "here.txt "+paths[1])
+	})
 }
 
 // TestTransferList shows a pane's transfers: progress, a file there for a

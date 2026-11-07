@@ -455,6 +455,9 @@ func browserHost(s string) string {
 // App is the state of a window of GoRex's, which shows a workspace.
 type App struct {
 	win *mygo.Window
+	// pathStats is what stats found of the paths printed in panes of this
+	// machine, which isLink answers from; the main thread's.
+	pathStats map[string]pathStat
 	// st is the app's store of workspaces, ws the one the window shows,
 	// and slot the window's place among the windows. stop closes with the
 	// window.
@@ -1028,7 +1031,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		})
 	}
 	opts.OpenLink = func(link string) bool { return a.openLink(p, link) }
-	opts.LinkDir = func(dir string) bool { return linkDir(p, dir) }
+	opts.LinkPath = func(link string) bool { return a.isLink(p, link, update) }
 	opts.OnExit = func(int) {
 		update(func() {
 			if p.closed || a.quitting {
