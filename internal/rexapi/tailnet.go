@@ -526,6 +526,16 @@ func (t *tailnet) status() tailscaleStatus {
 	return statusOf(st, control, allow, https)
 }
 
+// over is a status as a connection over transport sees it. The sign-in
+// link binds the device to whoever opens it first, so, like the
+// server.tailscale methods, it is for the local socket only.
+func (st tailscaleStatus) over(transport string) tailscaleStatus {
+	if transport != transportUnix {
+		st.AuthURL = ""
+	}
+	return st
+}
+
 // statusOf maps a Tailscale device's status to Rex's, with the control
 // server the device uses when it is not Tailscale's own.
 func statusOf(st *ipnstate.Status, control string, allow, https bool) tailscaleStatus {

@@ -123,8 +123,10 @@ allow.
    GoRex rexapi tailscale on
    ```
 
-   The first time, it prints a sign-in link: open it and sign in. Or sign
-   in without a browser with an auth key:
+   The first time, it prints a sign-in link: open it and sign in. The
+   link is shown only over the local socket, since whoever opens it first
+   claims the device: a client over the local network or the tailnet gets
+   the status without it. Or sign in without a browser with an auth key:
    `GoRex rexapi tailscale on --auth-key-file key.txt` (the key is used
    once, and never saved or logged). A tailnet run by your own control
    server, such as Headscale, takes its URL:

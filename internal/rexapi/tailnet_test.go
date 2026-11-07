@@ -619,3 +619,63 @@ func TestTailscaleControlURLKeptByGatewayWrites(t *testing.T) {
 		t.Errorf("device made at %q", f.node.control)
 	}
 }
+
+// TestAuthURLOnlyLocal: the sign-in link lets whoever opens it first
+// claim the device, so server.status, session.bootstrap's server_status
+// and tailscale_status_changed carry it only over the local socket.
+func TestAuthURLOnlyLocal(t *testing.T) {
+	f := startTailnetFixture(t)
+	f.node.state, f.node.authURL = "NeedsLogin", "https://login.example/abc"
+	f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws://localhost/api/control", &websocket.DialOptions{
+		HTTPClient: &http.Client{Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", f.sock)
+			},
+		}},
+		Subprotocols: []string{controlProtocol},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.CloseNow()
+	local := newTestConn(t, ws)
+	local.hello(apiRevision)
+	remote := f.dialControl()
+	remote.hello(apiRevision)
+
+	authURL := func(ts any) any {
+		m, _ := ts.(map[string]any)
+		if m["state"] != "needs_login" {
+			t.Fatalf("tailscale: %v", ts)
+		}
+		return m["auth_url"]
+	}
+	for _, c := range []struct {
+		name string
+		conn *testConn
+		want any
+	}{{"local", local, "https://login.example/abc"}, {"tcp", remote, nil}} {
+		st := callChecked(t, c.conn, "server.status", nil)
+		if got := authURL(st["tailscale"]); got != c.want {
+			t.Errorf("%s server.status auth_url: %v", c.name, got)
+		}
+		boot := callChecked(t, c.conn, "session.bootstrap", map[string]any{"event_scope": "all"})
+		ss, _ := boot["server_status"].(map[string]any)
+		if got := authURL(ss["tailscale"]); got != c.want {
+			t.Errorf("%s session.bootstrap auth_url: %v", c.name, got)
+		}
+	}
+
+	f.node.set("NeedsLogin", "https://login.example/def")
+	if got := authURL(serverEvent(t, local, "tailscale_status_changed")); got != "https://login.example/def" {
+		t.Errorf("local event auth_url: %v", got)
+	}
+	if got := authURL(serverEvent(t, remote, "tailscale_status_changed")); got != nil {
+		t.Errorf("tcp event auth_url: %v", got)
+	}
+}
