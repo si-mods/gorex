@@ -707,6 +707,12 @@ final class KeyBar: UIView {
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         addSubview(pad)
+        // Every key taps the hand as it goes down, as the keyboard's do.
+        // Backspace and the stick tap on their own as they repeat.
+        let keys = pages.arrangedSubviews.flatMap { ($0 as? UIStackView)?.arrangedSubviews ?? [] }
+        for case let b as UIButton in keys + [more, hide] where b !== delete {
+            b.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
+        }
         // The width of a phone's bar at most, in the middle of a wider one.
         let fill = row.widthAnchor.constraint(equalTo: widthAnchor, constant: -32)
         fill.priority = .defaultHigh
