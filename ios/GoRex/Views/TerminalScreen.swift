@@ -39,7 +39,7 @@ struct TerminalScreen: View {
             .background(Color(cgColor: bg.cgColor).ignoresSafeArea())
             .overlay { status }
             .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p).padding(.top, top).ignoresSafeArea(.container, edges: .top) } }
-            .navigationTitle(target.title)
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // The title floats in a capsule of glass, with the tile of
@@ -51,7 +51,7 @@ struct TerminalScreen: View {
                             .frame(width: 21 * k, height: 16 * k)
                             .scaleEffect(small)
                             .frame(width: 21 * k * small, height: 16 * k * small)
-                        Text(target.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
                     }
                     .padding(.leading, 8)
                     .padding(.trailing, 14)
@@ -84,6 +84,11 @@ struct TerminalScreen: View {
                     suspended = false
                 }
             }
+    }
+
+    /// The window's title, else its session's name, as for a new session.
+    private var title: String {
+        target.title.isEmpty ? host.sessions.first { $0.id == target.session }?.label ?? "" : target.title
     }
 
     /// The height of the status bar, which the terminal stays under.

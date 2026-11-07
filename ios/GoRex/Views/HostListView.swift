@@ -81,6 +81,8 @@ private struct HostSection: View {
     @Environment(HostStore.self) private var store
     /// The sessions whose new window is on its way.
     @State private var opening: Set<String> = []
+    /// Whether a new session is on its way.
+    @State private var creating = false
     /// What failed last, and why, as the server says it.
     @State private var failure: (title: LocalizedStringKey, why: String)?
     /// The window being renamed, and the name being typed.
@@ -88,32 +90,37 @@ private struct HostSection: View {
     @State private var name = ""
 
     var body: some View {
+        let key = host.id.uuidString
+        let isCollapsed = collapsed.contains(key)
         VStack(alignment: .leading, spacing: 18) {
+            // The whole row folds the host's sessions away, but its menu.
             HStack(spacing: 10) {
                 Image(systemName: host.config.desktop ? "desktopcomputer" : "laptopcomputer")
-                    .font(.title2)
-                Text(host.config.name).font(.system(size: 30, weight: .bold)).lineLimit(1)
+                    .font(.title3)
+                Text(host.config.name).font(.system(size: 24, weight: .bold)).lineLimit(1)
                 Spacer()
                 Menu {
+                    Button("New Session", systemImage: "plus.rectangle.on.rectangle") { newSession() }
+                        .disabled(creating)
                     Button("Reconnect", systemImage: "arrow.clockwise") { host.reconnectIfNeeded() }
                     Button("Remove", systemImage: "trash", role: .destructive) { store.remove(host.id) }
                 } label: {
-                    Image(systemName: "ellipsis").font(.title3).frame(width: 36, height: 36).contentShape(.circle)
+                    Group {
+                        if creating { ProgressView() } else { Image(systemName: "ellipsis").font(.title3) }
+                    }
+                    .frame(width: 36, height: 36).contentShape(.circle)
                 }
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("Host Menu")
             }
             .foregroundStyle(.primary)
-            switch host.status {
-            case .connecting where host.sessions.isEmpty:
-                Text("Connecting…").foregroundStyle(.secondary)
-            case .offline(let why):
-                Label(why.isEmpty ? String(localized: "Offline") : String(localized: "Offline: \(why)"), systemImage: "wifi.slash")
-                    .foregroundStyle(.secondary)
-            default:
-                if host.sessions.isEmpty { Text("No sessions").foregroundStyle(.secondary) }
-                ForEach(host.sessions) { s in session(s) }
+            .contentShape(.rect)
+            .onTapGesture {
+                withAnimation(.snappy) { if isCollapsed { collapsed.remove(key) } else { collapsed.insert(key) } }
             }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityHint(isCollapsed ? "Expand" : "Collapse")
+            if !isCollapsed { sessions }
         }
         .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
         } message: {
@@ -124,6 +131,35 @@ private struct HostSection: View {
             Button("Cancel", role: .cancel) {}
             Button("Save") {
                 change("Can't Rename the Tab") { try await host.renameWindow(r.window, in: r.session, to: name) }
+            }
+        }
+    }
+
+    /// The host's sessions, or why there are none.
+    @ViewBuilder private var sessions: some View {
+        switch host.status {
+        case .connecting where host.sessions.isEmpty:
+            Text("Connecting…").foregroundStyle(.secondary)
+        case .offline(let why):
+            Label(why.isEmpty ? String(localized: "Offline") : String(localized: "Offline: \(why)"), systemImage: "wifi.slash")
+                .foregroundStyle(.secondary)
+        default:
+            if host.sessions.isEmpty { Text("No sessions").foregroundStyle(.secondary) }
+            ForEach(host.sessions) { s in session(s) }
+        }
+    }
+
+    /// Makes a session with a window, and goes to it.
+    private func newSession() {
+        creating = true
+        Task {
+            defer { creating = false }
+            do {
+                if let (s, b) = try await host.newSession() {
+                    open(TerminalTarget(host: host.id, session: s, block: b, title: ""))
+                }
+            } catch {
+                failure = ("Can't Make a New Session", error.localizedDescription)
             }
         }
     }
