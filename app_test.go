@@ -91,6 +91,9 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 	oldNotify := showNotification
 	showNotification = func(mygo.NotificationOptions) func() { return func() {} }
 	t.Cleanup(func() { showNotification = oldNotify })
+	oldDark := appearanceDark
+	appearanceDark = func() bool { return false }
+	t.Cleanup(func() { appearanceDark = oldDark })
 	// The app's windows are views without a window, as this one.
 	old := newWindow
 	newWindow = func(*App) *mygo.Window { return nil }

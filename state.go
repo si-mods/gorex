@@ -3484,8 +3484,10 @@ var showNotification = func(o mygo.NotificationOptions) (close func()) {
 // session stack together till its pane is seen, and the store's
 // notificationClicked brings the pane of one clicked to the front, from
 // its ID. With no body, the names take its place: Windows and Linux put
-// them on a line of the body. The tile of icon, the pane's program, is
-// its image (tileImage).
+// them on a line of the body. Its image is the tile of icon (tileImage):
+// of the program that finished, of the program a status names or else
+// the pane's, and of the pane's program for one a program sent; none for
+// a shell.
 func (a *App) notifyPane(p *Pane, prog string, icon program, title, body string) {
 	var parts []string
 	add := func(s string) {
@@ -3517,7 +3519,7 @@ func (a *App) notifyPane(p *Pane, prog string, icon program, title, body string)
 		Subtitle: src,
 		Body:     body,
 		Group:    key,
-		Image:    tileImage(icon),
+		Image:    tileImage(icon, appearanceDark()),
 	})
 	if a.st != nil {
 		if a.st.shown == nil {
@@ -3527,35 +3529,82 @@ func (a *App) notifyPane(p *Pane, prog string, icon program, title, body string)
 	}
 }
 
-// tileImage is the tile of prog, as tabs show it, as a PNG of 72 pixels
-// square; nil for a shell, which has no program to show. Each program's
-// is drawn once.
-func tileImage(prog program) []byte {
+// tileImage is the tile of prog, as tabs show it in the dark appearance
+// or the light, as a PNG of 72 pixels square; nil for a shell, which has
+// no program to show. Each tile is drawn once, off the main thread, which
+// waits for none: nil too till it is drawn, and so the first notification
+// of a tile shows without.
+func tileImage(prog program, dark bool) []byte {
 	if prog.Name == "" || prog.Shell {
 		return nil
 	}
-	if b, ok := tileImages[prog.Name]; ok {
+	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBorder, dark}
+	tileMu.Lock()
+	defer tileMu.Unlock()
+	if b, ok := tileImages[key]; ok {
 		return b
 	}
+	if len(tileImages) >= 512 {
+		clear(tileImages)
+	}
+	tileImages[key] = nil
+	go func() {
+		b := drawTileImage(prog, dark)
+		tileMu.Lock()
+		if _, ok := tileImages[key]; ok {
+			tileImages[key] = b
+		}
+		tileMu.Unlock()
+	}()
+	return nil
+}
+
+// drawTileImage draws the tile of tileImage, in a frame of its own, on a
+// window of no background: the tile's corners stay clear. A view MyGo
+// refuses to draw gives none.
+func drawTileImage(prog program, dark bool) (out []byte) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("gorex: drawing the tile of %s: %v", prog.Name, r)
+			out = nil
+		}
+	}()
+	k := &lightColors
+	if dark {
+		k = &darkColors
+	}
 	img := ui.Render(func(c *ui.Context) {
-		// A window of no background: the tile's corners stay clear.
 		t := *c.Theme()
 		t.Background = ui.RGBA(0, 0, 0, 0)
 		c.SetTheme(&t)
 		ui.Box(c).Size(24, 24).Draw(func(p *ui.Painter, r ui.Rect) {
-			drawTile(p, &lightColors, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
+			drawTile(p, k, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
 		})
 	}, 24, 24, 3)
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, img); err != nil {
 		return nil
 	}
-	tileImages[prog.Name] = buf.Bytes()
 	return buf.Bytes()
 }
 
-// tileImages are the PNGs of tileImage, by the programs' names.
-var tileImages = map[string][]byte{}
+// tileKey is what a tile shows: its glyphs and colors, and the appearance.
+type tileKey struct {
+	glyph, tileGlyph string
+	bg, fg           ui.Color
+	border, dark     bool
+}
+
+// tileImages are the PNGs of tileImage, nil while one is drawn, 512 at
+// most.
+var (
+	tileMu     sync.Mutex
+	tileImages = map[tileKey][]byte{}
+)
+
+// appearanceDark tells whether the app shows its dark appearance; tests,
+// which run no app, take its place.
+var appearanceDark = mygo.Theme.IsDark
 
 // closeNotifications removes the notifications of a session, by its
 // notifyKey, as its pane is seen.

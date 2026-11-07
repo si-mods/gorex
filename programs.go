@@ -4,6 +4,7 @@ import (
 	"embed"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -11,11 +12,16 @@ import (
 //go:embed assets/icons/*.svg assets/brands/*.svg
 var assets embed.FS
 
-var svgs = map[string]*ui.SVG{}
+var (
+	svgsMu sync.Mutex
+	svgs   = map[string]*ui.SVG{}
+)
 
 // icon returns an embedded SVG: "x" from the icons, "brand:git" from the
-// brands.
+// brands. Tiles drawn off the main thread (tileImage) ask for them too.
 func icon(name string) *ui.SVG {
+	svgsMu.Lock()
+	defer svgsMu.Unlock()
 	if s, ok := svgs[name]; ok {
 		return s
 	}

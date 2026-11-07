@@ -12,6 +12,7 @@ import (
 	"gorex/locales"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 )
 
 // TestPaneStopped keeps the pane of a session whose stream ended while the
@@ -157,31 +158,65 @@ func TestNotifyPane(t *testing.T) {
 }
 
 // TestNotificationImage: a program's notification shows its tile, as a
-// PNG, the tile's color in its middle; one of a shell shows none.
+// PNG, the tile's color in its middle, once the tile is drawn, which the
+// first notification does not wait for; one of a shell shows none.
 func TestNotificationImage(t *testing.T) {
-	a, _ := newTestApp(t)
+	a, tt := newTestApp(t)
 	var got []mygo.NotificationOptions
 	showNotification = func(o mygo.NotificationOptions) func() { got = append(got, o); return func() {} }
 	p := a.tab().Focus
 	a.focusedWin = false
+	claude := programOf("claude")
+	tile := waitTile(t, tt, claude, false)
 	a.notifyStatus(p, &rex.ProgramStatus{State: "done", App: "claude"})
 	p.notified = time.Time{}
 	a.notifyProgram(p, "hi", "")
 	if len(got) != 2 {
 		t.Fatalf("%d notifications", len(got))
 	}
+	if !bytes.Equal(got[0].Image, tile) {
+		t.Fatal("Claude Code's notification shows another image")
+	}
 	img, err := png.Decode(bytes.NewReader(got[0].Image))
 	if err != nil {
 		t.Fatalf("the image of Claude Code's notification: %v", err)
 	}
 	b := img.Bounds()
-	r, g, bl, _ := img.At(b.Min.X+b.Dx()/2-b.Dx()/4, b.Min.Y+b.Dy()/2).RGBA()
-	if want := programs["claude"].TileBg; absDiff(r>>8, uint32(want.R)) > 24 || absDiff(g>>8, uint32(want.G)) > 24 || absDiff(bl>>8, uint32(want.B)) > 24 {
+	r, g, bl, _ := img.At(b.Min.X+b.Dx()/4, b.Min.Y+b.Dy()/2).RGBA()
+	if want := claude.TileBg; absDiff(r>>8, uint32(want.R)) > 24 || absDiff(g>>8, uint32(want.G)) > 24 || absDiff(bl>>8, uint32(want.B)) > 24 {
 		t.Errorf("the tile is %d,%d,%d, not %v", r>>8, g>>8, bl>>8, want)
 	}
 	if got[1].Image != nil {
 		t.Error("a shell's notification has an image")
 	}
+}
+
+// TestTileImageKey draws a tile for what it shows, not the program's
+// name: two names of one tile share it, one name of two colors does not,
+// nor do the dark appearance and the light, whose rims differ.
+func TestTileImageKey(t *testing.T) {
+	_, tt := newTestApp(t)
+	py, ipy := programOf("python"), programOf("ipython")
+	other := py
+	other.TileBg = ui.Hex("#000000")
+	light := waitTile(t, tt, py, false)
+	if b := tileImage(ipy, false); !bytes.Equal(b, light) {
+		t.Error("two names of one tile draw it twice")
+	}
+	if b := waitTile(t, tt, other, false); bytes.Equal(b, light) {
+		t.Error("a tile of another color is the cached one")
+	}
+	if b := waitTile(t, tt, py, true); bytes.Equal(b, light) {
+		t.Error("the dark appearance's tile is the light one")
+	}
+}
+
+// waitTile waits for tileImage to have drawn the tile of prog.
+func waitTile(t *testing.T, tt *ui.Tester, prog program, dark bool) []byte {
+	t.Helper()
+	var b []byte
+	waitFor(t, tt, "the tile of "+prog.Name, func() bool { b = tileImage(prog, dark); return b != nil })
+	return b
 }
 
 func absDiff(x, y uint32) uint32 { return max(x, y) - min(x, y) }
