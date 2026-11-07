@@ -1466,24 +1466,78 @@ type vtConn struct {
 	r  *io.PipeReader
 	s  *session
 	on bool
+	// rest is the start of an answer, whose end a later write brings.
+	rest []byte
 }
 
 // vtOn and vtOff mark where the emulator's answers start and stop
-// reaching the program; no answer starts with NUL.
+// reaching the program; no answer starts with NUL. Each is a write of
+// its own: Send queues it apart from the emulator's answers.
 var vtOn, vtOff = []byte("\x00on"), []byte("\x00off")
 
 func (c *vtConn) Read(p []byte) (int, error) { return c.r.Read(p) }
 func (c *vtConn) Close() error               { return c.r.Close() }
 
-// Write is called once per answer, on the emulator's input goroutine.
+// Write is called on the emulator's input goroutine with what it
+// answered, which may hold several answers, or part of one (the binding
+// writes what libghostty-vt writes, and cuts a long reply in pieces): it
+// takes each answer whole.
 func (c *vtConn) Write(p []byte) (int, error) {
-	switch {
-	case bytes.Equal(p, vtOn), bytes.Equal(p, vtOff):
+	if bytes.Equal(p, vtOn) || bytes.Equal(p, vtOff) {
 		c.on = bytes.Equal(p, vtOn)
-	case c.on && !colorReply(p):
-		c.s.write(p)
+		return len(p), nil
+	}
+	c.rest = append(c.rest, p...)
+	var out []byte
+	for len(c.rest) > 0 {
+		n := seqLen(c.rest)
+		if n == 0 {
+			break
+		}
+		if c.on && !colorReply(c.rest[:n]) {
+			out = append(out, c.rest[:n]...)
+		}
+		c.rest = c.rest[n:]
+	}
+	if len(out) > 0 && c.s != nil {
+		c.s.write(out)
 	}
 	return len(p), nil
+}
+
+// seqLen returns the length of the escape sequence p starts with, or of
+// the text up to the next one; 0 when p holds only part of a sequence.
+func seqLen(p []byte) int {
+	if p[0] != 0x1b {
+		if i := bytes.IndexByte(p, 0x1b); i >= 0 {
+			return i
+		}
+		return len(p)
+	}
+	if len(p) < 2 {
+		return 0
+	}
+	switch p[1] {
+	case ']', 'P', '_', '^', 'X':
+		// A control string ends with ST, or BEL for an OSC.
+		for i := 2; i < len(p); i++ {
+			if p[i] == 0x07 && p[1] == ']' {
+				return i + 1
+			}
+			if p[i] == 0x1b && i+1 < len(p) && p[i+1] == '\\' {
+				return i + 2
+			}
+		}
+		return 0
+	case '[':
+		for i := 2; i < len(p); i++ {
+			if p[i] >= 0x40 && p[i] <= 0x7e {
+				return i + 1
+			}
+		}
+		return 0
+	}
+	return 2
 }
 
 // colorReply tells an answer about colors: a palette's or a theme's (OSC),

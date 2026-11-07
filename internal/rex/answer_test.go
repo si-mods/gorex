@@ -8,6 +8,7 @@ import (
 	"net"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -167,5 +168,22 @@ func answer(conn net.Conn, cols, rows int) {
 				seen = append(seen[:i], seen[i+len(q[0]):]...)
 			}
 		}
+	}
+}
+
+// TestEmulatorAnswersWhole checks that the emulator's Conn takes its
+// answers whole, though a write holds several, or part of one: it types
+// all but the colors.
+func TestEmulatorAnswersWhole(t *testing.T) {
+	s, c, sid := streamServerCommand(t, nil, answerScript(""), "/tmp")
+	ready(t, c, sid)
+	vc := &vtConn{s: s.sessions[sid]}
+	for _, p := range []string{"\x00on", "\x1b[3;4R\x1b]11;rgb:0/0/0\x07\x1b]4;1;rgb:c", "c/6/6\x1b", "\\\x1b[?6", "2;22c\x1b[?997;1n"} {
+		vc.Write([]byte(p))
+	}
+	waitCapture(t, c, sid, "END")
+	screen := string(must(c.Capture(sid, 0)).Screen)
+	if !strings.Contains(screen, "ready^[[3;4R^[[?62;22c") || strings.Contains(screen, "^[]") || strings.Contains(screen, "997") {
+		t.Errorf("the program read %q, want the cursor and the device, not the colors", screen)
 	}
 }

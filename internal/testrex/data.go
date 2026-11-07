@@ -127,7 +127,7 @@ func (s *Server) streamData(client *rex.Client, ws *websocket.Conn, t *ticket) {
 	if cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	conn, err := client.AttachConn(rex.Attach{SID: t.block, Cols: cols, Rows: rows, Framed: true})
+	conn, err := client.AttachConn(rex.Attach{SID: t.block, Cols: cols, Rows: rows, Framed: true, Mute: true})
 	if err != nil {
 		writeData(context.Background(), ws, []byte{0x82, 0x03})
 		ws.Close(websocket.StatusInternalError, "data handshake rejected")
