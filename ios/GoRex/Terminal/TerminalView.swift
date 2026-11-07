@@ -1,3 +1,4 @@
+import GameController
 import GhosttyKit
 import UIKit
 
@@ -12,7 +13,9 @@ import UIKit
 /// full-screen program's wheel, with UIKit's physics (TerminalView+Scroll);
 /// a pinch sizes the font (TerminalView+Zoom). A long press selects
 /// (TerminalView+Selection); a tap clears the selection, else clicks for a
-/// program that has the mouse, and brings up the keyboard.
+/// program that has the mouse, and brings up the keyboard. With a hardware
+/// keyboard the bar stays away, and ⌘ keys work the tab and the font
+/// (TerminalView+Commands); a pointer's click and drag selects.
 final class TerminalView: UIView, TerminalOutput {
     let session: TerminalSession
     /// The font size chosen in Settings.
@@ -38,6 +41,9 @@ final class TerminalView: UIView, TerminalOutput {
     lazy var editMenu = UIEditMenuInteraction(delegate: self)
     var showsSelection = false
     lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
+    /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
+    var newTab: (() -> Void)?
+    var closeTab: (() -> Void)?
 
     /// The scroll view whose physics the drag has, and where it last was as
     /// the wheel.
@@ -86,6 +92,9 @@ final class TerminalView: UIView, TerminalOutput {
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tap)))
         addGestureRecognizer(longPress)
         addGestureRecognizer(UIPinchGestureRecognizer(target: self, action: #selector(pinch)))
+        let drag = UIPanGestureRecognizer(target: self, action: #selector(self.drag))
+        drag.allowedTouchTypes = [UITouch.TouchType.indirectPointer.rawValue as NSNumber]
+        addGestureRecognizer(drag)
         for h in [handles.start, handles.end] { h.addGestureRecognizer(UIPanGestureRecognizer(target: self, action: #selector(steer))) }
         addInteraction(editMenu)
         isAccessibilityElement = true
@@ -94,6 +103,9 @@ final class TerminalView: UIView, TerminalOutput {
         NotificationCenter.default.addObserver(self, selector: #selector(hide), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(show), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboard), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        for name in [Notification.Name.GCKeyboardDidConnect, .GCKeyboardDidDisconnect] {
+            NotificationCenter.default.addObserver(self, selector: #selector(reloadInputViews), name: name, object: nil)
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -306,7 +318,8 @@ final class TerminalView: UIView, TerminalOutput {
         }
     }
 
-    override var inputAccessoryView: UIView? { bar }
+    /// The bar is for the soft keyboard, which a hardware one keeps away.
+    override var inputAccessoryView: UIView? { GCKeyboard.coalesced == nil ? bar : nil }
 
     var autocorrectionType: UITextAutocorrectionType = .no
     var autocapitalizationType: UITextAutocapitalizationType = .none
@@ -631,9 +644,13 @@ final class KeyBar: UIView {
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         addSubview(pad)
+        // The width of a phone's bar at most, in the middle of a wider one.
+        let fill = row.widthAnchor.constraint(equalTo: widthAnchor, constant: -32)
+        fill.priority = .defaultHigh
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            row.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            fill,
+            row.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
+            row.centerXAnchor.constraint(equalTo: centerXAnchor),
             row.topAnchor.constraint(equalTo: topAnchor, constant: 4),
             row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])

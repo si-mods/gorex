@@ -4,7 +4,8 @@ import UIKit
 /// Selecting the screen's text, after rootshell's selection gestures. A long
 /// press selects the word under the finger, as a double click does, with the
 /// system's loupe; the drag that follows extends it a word at a time, and
-/// past the top or bottom edge Ghostty scrolls on. Two handles move the ends,
+/// past the top or bottom edge Ghostty scrolls on. A pointer's click and
+/// drag selects as a mouse's does. Two handles move the ends,
 /// and a menu copies. Ghostty selects as for a mouse, with Shift while a
 /// program has the mouse: Ghostty then keeps the clicks from the program.
 /// None of this is the keyboard's InputDocument, which never sees the screen.
@@ -34,6 +35,24 @@ extension TerminalView: UIEditMenuInteractionDelegate {
         case .changed:
             ghostty_surface_mouse_pos(s, p.x, p.y, mods)
             loupe?.move(to: p, withCaretRect: .null, trackingCaret: false)
+        default:
+            click(s, [GHOSTTY_MOUSE_RELEASE], at: p)
+            showSelection()
+        }
+    }
+
+    /// A pointer's drag selects from where it went down.
+    @objc func drag(_ g: UIPanGestureRecognizer) {
+        guard let s = surface else { return }
+        let p = g.location(in: self)
+        switch g.state {
+        case .began:
+            hideSelection()
+            let t = g.translation(in: self)
+            click(s, [GHOSTTY_MOUSE_PRESS], at: CGPoint(x: p.x - t.x, y: p.y - t.y))
+            ghostty_surface_mouse_pos(s, p.x, p.y, mods)
+        case .changed:
+            ghostty_surface_mouse_pos(s, p.x, p.y, mods)
         default:
             click(s, [GHOSTTY_MOUSE_RELEASE], at: p)
             showSelection()

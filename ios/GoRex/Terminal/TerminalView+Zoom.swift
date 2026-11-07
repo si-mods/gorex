@@ -24,12 +24,17 @@ extension TerminalView {
     }
 
     /// Makes the font a point larger or smaller, within Settings' range.
-    private func zoom(by step: Int) {
+    func zoom(by step: Int) {
+        zoom(to: Self.fontSize + CGFloat(step))
+    }
+
+    /// Sizes the font, within Settings' range.
+    func zoom(to size: CGFloat) {
         guard let s = surface else { return }
-        let size = min(max(Self.fontSize + CGFloat(step), 8), 24)
-        guard size != Self.fontSize else { return }
+        let size = min(max(size, 8), 24), step = Int(size - Self.fontSize)
+        guard step != 0 else { return }
         UserDefaults.standard.set(Double(size), forKey: "fontSize")
-        let action = step > 0 ? "increase_font_size:1" : "decrease_font_size:1"
+        let action = step > 0 ? "increase_font_size:\(step)" : "decrease_font_size:\(-step)"
         _ = ghostty_surface_binding_action(s, action, UInt(action.utf8.count))
         UIImpactFeedbackGenerator(style: .light, view: self).impactOccurred()
         showSize()
