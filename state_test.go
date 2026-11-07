@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"gorex/internal/rex"
+	"gorex/locales"
+
+	"github.com/egoist/mygo"
 )
 
 // TestPaneStopped keeps the pane of a session whose stream ended while the
@@ -91,4 +94,162 @@ func TestPaneProgram(t *testing.T) {
 	if got := claude.program().Name; got != "Claude Code" {
 		t.Errorf("a mirror of Claude Code shows as %q", got)
 	}
+}
+
+// TestNotifyPane: a status notification names the program in its title,
+// tells the record's message, else what a done program did last, and
+// under the title the pane's tab and name but for the program, in the
+// body when it has none. A
+// session's notifications stack together, and a click brings the pane
+// back from another tab. The notification holds no pane, only its ID.
+func TestNotifyPane(t *testing.T) {
+	a, _ := newTestApp(t)
+	var got []mygo.NotificationOptions
+	showNotification = func(o mygo.NotificationOptions) func() { got = append(got, o); return func() {} }
+	t1 := a.tab()
+	t1.Name = "work"
+	p := t1.Focus
+	name, _ := p.label()
+	a.newTab(t.TempDir())
+	a.notifyStatus(p, &rex.ProgramStatus{State: "blocked", App: "claude", Msg: "Allow edit?"})
+	a.notifyStatus(p, &rex.ProgramStatus{State: "done", App: "claude", LastMsg: "Fixed the test"})
+	a.notifyStatus(p, &rex.ProgramStatus{State: "done", App: name})
+	t1.Name = "claude"
+	a.notifyStatus(p, &rex.ProgramStatus{State: "error", App: "claude"})
+	want := [][4]string{
+		{locales.NotifyBlocked("claude"), "work · " + name, "Allow edit?", "|" + p.SID},
+		{locales.NotifyFinished("claude"), "work · " + name, "Fixed the test", "|" + p.SID},
+		{locales.NotifyFinished(name), "", "work", "|" + p.SID},
+		{locales.NotifyFailed("claude"), "", name, "|" + p.SID},
+	}
+	for i, o := range got {
+		if g := [4]string{o.Title, o.Subtitle, o.Body, o.Group}; i >= len(want) || g != want[i] {
+			t.Fatalf("notification %d is %q", i, g)
+		}
+	}
+	if len(got) != len(want) || got[0].ID == got[1].ID {
+		t.Fatalf("%d notifications, IDs %q", len(got), got[0].ID)
+	}
+	a.focusedWin = true
+	if a.tab() == t1 || a.shows(p) {
+		t.Fatal("the pane shows from another tab")
+	}
+	a.st.notificationClicked(got[0].ID)
+	if a.tab() != t1 || t1.Focus != p || !a.shows(p) {
+		t.Fatalf("the click went to tab %d", a.active)
+	}
+	a.focusedWin = false
+	if a.shows(p) {
+		t.Fatal("the pane shows in a window without the focus")
+	}
+	// One status notification in 10 seconds; a program's own does not
+	// keep one from showing, and waits after either.
+	p.notified, p.told = time.Time{}, time.Time{}
+	if !p.notifyDue(true) || p.notifyDue(true) || !p.notifyDue(false) || p.notifyDue(false) {
+		t.Error("a program's notification kept the status's from showing, or two came at once")
+	}
+	p.told = time.Time{}
+	if p.notifyDue(true) {
+		t.Error("a program's notification came right after the status's")
+	}
+}
+
+// TestNotificationClickFindsSession: a click on a notification shows its
+// session though the pane it was of is gone: from the space no window
+// shows, then in another window that attached it again.
+func TestNotificationClickFindsSession(t *testing.T) {
+	a, tt := newTestApp(t)
+	st := a.st
+	var got []mygo.NotificationOptions
+	showNotification = func(o mygo.NotificationOptions) func() { got = append(got, o); return func() {} }
+	first := a.ws
+	a.newTab(t.TempDir())
+	p := a.tabs[0].Focus
+	a.notifyPane(p, "", "hi", "")
+	id := got[0].ID
+	a.newWorkspace()
+	tt.Frame()
+	if first.app != nil || a.ws == first {
+		t.Fatal("the space still shows")
+	}
+	st.notificationClicked(id)
+	if a.ws != first || a.tab().Focus != p {
+		t.Fatalf("the click showed %s", a.ws.Name)
+	}
+	a.newWorkspace()
+	tt.Frame()
+	b := st.openWindow(st.addWorkspace())
+	b.showWorkspace(first)
+	b.selectTab(1)
+	if !p.closed {
+		t.Fatal("the kept pane is still open")
+	}
+	st.notificationClicked(id)
+	if q := b.tab().Focus; b.active != 0 || q == p || q.SID != p.SID {
+		t.Fatalf("the click went to tab %d", b.active)
+	}
+	st.notificationClicked("gorex||gone|1")
+	st.notificationClicked("other")
+	if st.clicked != "" {
+		t.Fatal("a notification of no GoRex session waits")
+	}
+}
+
+// TestNotificationClickWaits: a click with no window, as one that launched
+// the app, waits for the windows' polls, which bring its pane forward.
+func TestNotificationClickWaits(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	var got []mygo.NotificationOptions
+	showNotification = func(o mygo.NotificationOptions) func() { got = append(got, o); return func() {} }
+	p := a.tab().Focus
+	a.notifyPane(p, "", "hi", "")
+	a.newTab(t.TempDir())
+	apps := st.apps
+	st.apps = nil
+	st.notificationClicked(got[0].ID)
+	st.apps = apps
+	if st.clicked == "" || a.active != 1 {
+		t.Fatalf("the click went to tab %d, waits %v", a.active, st.clicked != "")
+	}
+	refresh(a)
+	if st.clicked != "" || a.active != 0 || a.tab().Focus != p {
+		t.Fatalf("the poll went to tab %d, waits %v", a.active, st.clicked != "")
+	}
+}
+
+// TestNotificationsCloseSeen: a session's notifications go once its pane
+// is seen, others stay; a program's own notification of a pane gone or
+// on screen does not show.
+func TestNotificationsCloseSeen(t *testing.T) {
+	a, _ := newTestApp(t)
+	closed := map[string]int{}
+	shown := 0
+	showNotification = func(o mygo.NotificationOptions) func() {
+		shown++
+		return func() { closed[o.Group]++ }
+	}
+	t1 := a.tab()
+	p := t1.Focus
+	q := a.newTab(t.TempDir()).Focus
+	a.focusedWin = true
+	a.notifyProgram(q, "", "on screen")
+	a.notifyProgram(p, "", "one")
+	a.notifyStatus(p, &rex.ProgramStatus{State: "blocked", App: "claude"})
+	a.notifyStatus(q, &rex.ProgramStatus{State: "blocked", App: "claude"})
+	if shown != 3 {
+		t.Fatalf("%d notifications, want 3", shown)
+	}
+	a.selectTab(0)
+	if closed[notifyKey(p)] != 2 || closed[notifyKey(q)] != 0 {
+		t.Fatalf("seeing the pane closed %v", closed)
+	}
+	p.told = time.Time{}
+	p.closed = true
+	a.focusedWin = false
+	a.notifyProgram(p, "", "gone")
+	if shown != 3 {
+		t.Fatal("a notification of a pane gone showed")
+	}
+	p.closed = false
 }

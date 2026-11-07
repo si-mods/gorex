@@ -108,6 +108,9 @@ func main() {
 			st.reopen()
 		}
 	})
+	// A click on a notification shows its pane, also one that launched
+	// the app.
+	mygo.App.OnNotificationClick(st.notificationClicked)
 	mygo.App.OnWindowAllClosed(func() {
 		if runtime.GOOS != "darwin" {
 			mygo.App.Quit()
