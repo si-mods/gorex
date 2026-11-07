@@ -291,19 +291,84 @@ private struct TerminalSettings: View {
     }
 }
 
+/// About, as Rex's iPhone app lays it out: the app and its version, the
+/// hosts' Rex versions, what to copy into a problem report, and the open
+/// source the app ships.
 private struct AboutView: View {
     let version: String
     let build: String
+    @Environment(HostStore.self) private var store
+    /// Each host's Rex version, as server.version tells it.
+    @State private var versions: [UUID: String] = [:]
+    /// The text last copied, for its row to say so a moment.
+    @State private var copied: String?
+
+    private let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Rex Go"
+    /// The short git hash the upload builds from; empty for a local build.
+    private let commit = Bundle.main.object(forInfoDictionaryKey: "GoRexCommit") as? String ?? ""
+    private let system = UIDevice.current.systemName + " " + UIDevice.current.systemVersion
+
+    /// The hardware model, as iPhone18,2; the simulator names the one it
+    /// simulates.
+    private let device: String = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] ?? {
+        var u = utsname()
+        uname(&u)
+        return withUnsafeBytes(of: u.machine) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+    }()
+
+    /// The open source the app ships, by its section in the notices.
+    private static let components = [("Ghostty", "MIT"), ("JetBrains Mono", "SIL OFL 1.1"), ("rootshell", "MIT"),
+                                     ("iTerm2-Color-Schemes", "MIT"), ("Simple Icons", "CC0 1.0")]
 
     var body: some View {
         List {
             Section {
-                LabeledContent("Version", value: version)
-                LabeledContent("Build", value: build)
+                VStack(spacing: 6) {
+                    Image("AboutIcon").resizable().frame(width: 110, height: 110)
+                        .clipShape(.rect(cornerRadius: 25, style: .continuous))
+                        .padding(.bottom, 8)
+                    Text(name).font(.largeTitle.bold())
+                    Text("Version \(version) (\(build))").foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+            }
+            Section("Version Info") {
+                LabeledContent("Version", value: "\(version) (\(build))")
+                if !commit.isEmpty {
+                    LabeledContent("Commit") { Text(commit).monospaced() }
+                }
+                LabeledContent("Device", value: device)
+                // "System" is the interface's System elsewhere.
+                LabeledContent { Text(system) } label: { Text(LocalizedStringResource("About System", defaultValue: "System")) }
+            }
+            .listRowBackground(Color.card)
+            if !store.hosts.isEmpty {
+                Section("Hosts") {
+                    ForEach(store.hosts) { h in
+                        LabeledContent(h.config.name, value: rex(h) ?? String(localized: "not connected"))
+                    }
+                }
+                .listRowBackground(Color.card)
+            }
+            Section {
+                copy("Copy Version Info", icon: "info.circle", versionInfo)
+                copy("Copy Debug Info", icon: "doc.on.doc", debugInfo)
+            } footer: {
+                Text("Include version info when you report a problem. Debug info also describes the network and the hosts.")
+            }
+            .listRowBackground(Color.card)
+            Section {
+                ForEach(Self.components, id: \.0) { name, license in
+                    NavigationLink { Notices(section: name) } label: { LabeledContent(name, value: license) }
+                }
                 Link(destination: URL(string: "https://github.com/si-mods/gorex")!) {
                     LabeledContent("GitHub", value: "si-mods/gorex")
                 }
-                NavigationLink("Third-Party Notices") { Notices() }
+            } header: {
+                Text("Open Source")
+            } footer: {
+                Text("Code, fonts and themes that ship with Rex Go.")
             }
             .listRowBackground(Color.card)
         }
@@ -311,16 +376,73 @@ private struct AboutView: View {
         .background(Color.page)
         .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: store.hosts.map(\.status)) {
+            for h in store.hosts where h.status == .online {
+                if let v = try? await h.control?.call("server.version").payload["rex_version"] as? String { versions[h.id] = v }
+            }
+        }
+        .task(id: copied) {
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = nil
+        }
+        .sensoryFeedback(.success, trigger: copied) { _, new in new != nil }
+    }
+
+    /// A host's Rex version while it is online.
+    private func rex(_ h: Host) -> String? {
+        h.status == .online ? versions[h.id].map { "Rex \($0)" } : nil
+    }
+
+    private func copy(_ title: LocalizedStringKey, icon: String, _ text: String) -> some View {
+        Button {
+            UIPasteboard.general.string = text
+            copied = text
+        } label: {
+            LabeledContent {
+                if copied == text { Text("Copied") }
+            } label: {
+                Label(title, systemImage: icon)
+            }
+        }
+    }
+
+    // What the rows copy is for whoever reads the report: not localized.
+
+    private var versionInfo: String {
+        ["\(name) \(version) (\(build))", commit.isEmpty ? nil : "Commit \(commit)", "Device \(device)", "System \(system)"]
+            .compactMap { $0 }.joined(separator: "\n")
+            + store.hosts.map { "\n\($0.config.name): \(rex($0) ?? "not connected")" }.joined()
+    }
+
+    private var debugInfo: String {
+        versionInfo + store.hosts.map { h in
+            let status = switch h.status {
+            case .online: "online"
+            case .connecting: "connecting"
+            case .offline(let why): "offline (\(why))"
+            }
+            return "\n\n\(h.config.name)\nURL \(h.config.url.absoluteString)\nStatus \(status)\nSessions \(h.sessions.count)"
+        }.joined()
     }
 }
 
+/// The third-party notices, scrolled to a component's section.
 private struct Notices: View {
-    private let text = Bundle.main.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "md")
-        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+    let section: String
+    private let parts = (Bundle.main.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "md")
+        .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? "").split(separator: /\n(?=## )/).map(String.init)
 
     var body: some View {
-        ScrollView {
-            Text(text).font(.caption.monospaced()).textSelection(.enabled).padding(20)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(parts.indices, id: \.self) { Text(parts[$0]).id($0) }
+                }
+                .font(.caption.monospaced()).textSelection(.enabled).padding(20)
+            }
+            .onAppear {
+                if let i = parts.firstIndex(where: { $0.hasPrefix("## " + section) }) { proxy.scrollTo(i, anchor: .top) }
+            }
         }
         .background(Color.page)
         .navigationTitle("Third-Party Notices")
