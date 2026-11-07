@@ -90,6 +90,8 @@ final class Host: Identifiable {
         var app: String?
         var title: String?
         var msg: String?
+        /// When it last changed; nil when the server doesn't say.
+        var updated: Date?
 
         init?(json: Any) {
             guard let j = json as? [String: Any], let state = j["state"] as? String else { return nil }
@@ -101,6 +103,8 @@ final class Host: Identifiable {
             app = text("effective_app") ?? text("app")
             title = text("title")
             msg = text("msg")
+            // The server writes Go's zero time for none.
+            updated = text("updated_at").flatMap { try? Date($0, strategy: .iso8601) }.flatMap { $0.timeIntervalSince1970 > 0 ? $0 : nil }
         }
 
         /// How much the record needs the user, as the desktop orders them.
@@ -120,6 +124,9 @@ final class Host: Identifiable {
     private(set) var programs: [String: String] = [:]
     /// What the programs in each block reported, by block.
     private(set) var statuses: [String: [ProgramStatus]] = [:]
+    /// When the user last saw each block, by its records' times: done and
+    /// error records of then or before were seen (Inbox.swift).
+    var seen: [String: Date] = [:]
     private(set) var control: ControlConnection?
 
     @ObservationIgnored private var gate = EventGate()

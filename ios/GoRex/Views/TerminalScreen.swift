@@ -124,8 +124,10 @@ struct TerminalScreen: View {
                 session = s
                 s.start()
                 Notifier.shared.onScreen = target
+                host.see(target.block)
             }
             .onDisappear {
+                host.see(target.block)
                 session?.close()
                 if Notifier.shared.onScreen == target { Notifier.shared.onScreen = nil }
             }

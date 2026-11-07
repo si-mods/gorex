@@ -12,7 +12,7 @@ extension Color {
 }
 
 /// Every host, its sessions, and their windows, as Rex's iPhone app lists
-/// them. The eye hides idle windows: those whose program is only the shell.
+/// them. The eye lists instead the windows by what their programs need.
 /// A wide window shows the list beside the terminal open; a narrow one
 /// pushes the terminal over the list.
 struct HostListView: View {
@@ -21,7 +21,7 @@ struct HostListView: View {
     /// The terminal open, pushed or beside the list: one at most.
     @State private var path: [TerminalTarget] = []
     @State private var collapsed: Set<String> = []
-    @State private var hideIdle = false
+    @State private var inbox = false
     @State private var query = ""
     @State private var settings = false
 
@@ -68,8 +68,12 @@ struct HostListView: View {
                 if store.hosts.isEmpty {
                     Text("No hosts yet. Add one in Settings.").foregroundStyle(.secondary).padding(.top, 40)
                 }
-                ForEach(store.hosts) { host in
-                    HostSection(host: host, collapsed: $collapsed, filter: filter, open: { go($0) })
+                if inbox {
+                    StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
+                } else {
+                    ForEach(store.hosts) { host in
+                        HostSection(host: host, collapsed: $collapsed, filter: filter, open: { go($0) })
+                    }
                 }
             }
             .padding(.horizontal, 20)
@@ -83,8 +87,8 @@ struct HostListView: View {
         .toolbar {
             ToolbarItemGroup(placement: .bottomBar) {
                 Button("Settings", systemImage: "gearshape") { settings = true }
-                Button(hideIdle ? "Show Idle Windows" : "Hide Idle Windows", systemImage: hideIdle ? "eye.slash" : "eye") {
-                    hideIdle.toggle()
+                Button(inbox ? "Show All Windows" : "Show Activity", systemImage: inbox ? "eye.slash" : "eye") {
+                    inbox.toggle()
                 }
             }
             ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -97,10 +101,9 @@ struct HostListView: View {
         .sheet(isPresented: $settings) { SettingsView() }
     }
 
-    /// Whether a window's row shows, by the search and the eye.
+    /// Whether a window's row shows, by the search.
     private func filter(_ title: String, _ program: String?) -> Bool {
-        if hideIdle, Program.of(program).shell { return false }
-        return query.isEmpty || title.localizedCaseInsensitiveContains(query)
+        query.isEmpty || title.localizedCaseInsensitiveContains(query)
     }
 }
 

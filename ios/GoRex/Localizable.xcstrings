@@ -402,6 +402,16 @@
         }
       }
     },
+    "Done": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已完成"
+          }
+        }
+      }
+    },
     "Edit Host": {
       "localizations": {
         "zh-Hans": {
@@ -462,22 +472,22 @@
         }
       }
     },
+    "Failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "失败"
+          }
+        }
+      }
+    },
     "Font Size": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "字号"
-          }
-        }
-      }
-    },
-    "Hide Idle Windows": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "隐藏空闲窗口"
           }
         }
       }
@@ -678,6 +688,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "这不是 Rex 配对码。请扫描 GoRex 或 Rex 显示的 Rex 二维码。"
+          }
+        }
+      }
+    },
+    "Nothing needs you": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有需要你处理的事"
+          }
+        }
+      }
+    },
+    "now": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刚刚"
           }
         }
       }
@@ -902,12 +932,22 @@
         }
       }
     },
-    "Show Idle Windows": {
+    "Show Activity": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "显示空闲窗口"
+            "value": "显示动态"
+          }
+        }
+      }
+    },
+    "Show All Windows": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示所有窗口"
           }
         }
       }
@@ -1058,6 +1098,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "切换会话"
+          }
+        }
+      }
+    },
+    "Working": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进行中"
           }
         }
       }
