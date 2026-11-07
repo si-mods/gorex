@@ -317,23 +317,18 @@ var (
 		},
 		Run: func(a *App) { a.newFloat(nil) },
 		RunArgs: func(a *App, args map[string]any) error {
-			p := a.newFloat(nil)
-			if p == nil || p.float == nil {
-				return nil
+			for _, k := range []string{"x", "y", "w", "h"} {
+				if _, ok := args[k]; !ok {
+					a.newFloat(nil)
+					return nil
+				}
 			}
-			if _, ok := args["x"]; !ok {
-				return nil
-			}
-			if _, ok := args["y"]; !ok {
-				return nil
-			}
-			if _, ok := args["w"]; !ok {
-				return nil
-			}
-			if _, ok := args["h"]; !ok {
-				return nil
-			}
-			a.setFloatBox(p.float, argFloat(args, "x"), argFloat(args, "y"), argFloat(args, "w"), argFloat(args, "h"))
+			// The box, once the float shows, as the server makes it.
+			a.newFloatThen(nil, func(p *Pane) {
+				if p.float != nil {
+					a.setFloatBox(p.float, argFloat(args, "x"), argFloat(args, "y"), argFloat(args, "w"), argFloat(args, "h"))
+				}
+			})
 			return nil
 		},
 		Available: func(a *App) bool { return tabHostOnline(a) },
@@ -1023,7 +1018,8 @@ func (a *App) clearFocused() {
 }
 
 // restartFocused ends the focused pane's session and starts a shell in
-// its place, in the same directory.
+// its place, in the same directory: the server's (pane.restart), or the
+// host's for a pane of a host.
 func (a *App) restartFocused() {
 	t := a.tab()
 	if t == nil || t.Focus == nil {
@@ -1037,6 +1033,16 @@ func (a *App) restartFocused() {
 		return
 	}
 	if old.note != nil {
+		return
+	}
+	if old.host == nil {
+		if old.SID != "" && a.ws != nil {
+			a.ask(rex.LayoutCommand{Op: "pane.restart", Space: a.ws.ID, SID: old.SID}, func(res rex.LayoutCommand) {
+				if p := a.localPane(res.New); p != nil && a.tab() == p.Tab {
+					a.focusReq = p
+				}
+			})
+		}
 		return
 	}
 	if a.offline(old.host) {

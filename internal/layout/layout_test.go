@@ -110,3 +110,44 @@ func TestNextColor(t *testing.T) {
 		}
 	}
 }
+
+// TestParseNamesBrowsers gives a browser pane of a layout without an ID
+// one, in splits, floats and an older layout alike, and keeps one it has.
+func TestParseNamesBrowsers(t *testing.T) {
+	for _, raw := range []string{
+		`{"version":2,"sessions":[{"id":"w","name":"n","tabs":[{"root":{"a":{"sid":"s"},"b":{"url":"https://a.test"}},"floats":[{"pane":{"url":"https://b.test"}}]}]}]}`,
+		`{"tabs":[{"root":{"a":{"sid":"s"},"b":{"url":"https://a.test"}},"floats":[{"pane":{"url":"https://b.test"}}]}]}`,
+	} {
+		s := Parse([]byte(raw))
+		tab := s.Sessions[0].Tabs[0]
+		b, f := tab.Root.B, tab.Floats[0].Pane
+		if b.ID == "" || f.ID == "" || b.ID == f.ID || tab.Root.A.ID != "" || !s.Named {
+			t.Errorf("%s: ids %q %q %q, named %v", raw, tab.Root.A.ID, b.ID, f.ID, s.Named)
+		}
+	}
+	// A layout of browser panes without IDs gets the same at every read,
+	// as from a writer that drops them.
+	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"n","tabs":[{"id":"t1","root":{"a":{"sid":"s"},"b":{"url":"https://a.test"}}}]}]}`)
+	if x, y := Parse(raw).Sessions[0].Tabs[0].Root.B.ID, Parse(raw).Sessions[0].Tabs[0].Root.B.ID; x != y {
+		t.Errorf("ids %q then %q", x, y)
+	}
+	kept := Parse([]byte(`{"version":2,"sessions":[{"id":"w","tabs":[{"root":{"url":"https://a.test","id":"web1"}}]}]}`))
+	if id := kept.Sessions[0].Tabs[0].Root.ID; id != "web1" || kept.Named {
+		t.Errorf("kept id %q, named %v", id, kept.Named)
+	}
+}
+
+// TestTabEncode checks the encoding the server's revisions and the app's
+// differ compare: the arrangement leaves out the revision, the canvas's
+// view and the panes' facts.
+func TestTabEncode(t *testing.T) {
+	x := Tab{ID: "t", Rev: 3, Canvas: &Canvas{W: 100, H: 100, X: 5, Scale: 2}, Root: &Node{SID: "s", Dir: "/a", Cols: 80, Rows: 24, Prog: "vim"}}
+	y := Tab{ID: "t", Rev: 9, Canvas: &Canvas{W: 100, H: 100}, Root: &Node{SID: "s", Dir: "/b", Cols: 10, Rows: 5}}
+	if string(x.Arrangement()) != string(y.Arrangement()) {
+		t.Errorf("arrangements differ:\n%s\n%s", x.Arrangement(), y.Arrangement())
+	}
+	y.Name = "n"
+	if string(x.Arrangement()) == string(y.Arrangement()) {
+		t.Error("a name does not count")
+	}
+}

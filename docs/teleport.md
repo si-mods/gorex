@@ -160,7 +160,8 @@ and the target is a host the user trusts with commands already (see
    teleport is refused. A failure removes only what it added.
 5. **Start the session.** `create` with the target directory and the
    pane's size, the session's id the hop's link (which the source's window
-   knows by then, and waits for, rather than open it as a tab of its own),
+   knows by then, and waits for, rather than open it as a tab of its own;
+   the target's server gives it a tab there, as a remote client's),
    then type `claude --resume <uuid>`, or `omp --resume <id>`, into the
    shell (`ClaudeResume`, `ompResume`), so the shell stays when the agent
    exits, as on the source. A shell GoRex
@@ -273,14 +274,21 @@ package from its server to the target's; it holds no files.
 - `gorex teleport <pane> <host>` does the same from the CLI. The host is
   named as `-S` names one: by its name as Remote Hosts shows it (a saved
   host's, else a system Tailscale host's), or by its address; a name two
-  hosts have is refused. The CLI pipes the package, telling the window of
-  the session to wait for (`pane.teleporting`), then asks it to show the
-  pane as the host's session (`pane.teleported`; both local clients
-  only). It tells the window the host by the address it dialed, which the
-  window matches against its hosts' (a name may differ between them), and
-  the window refuses one two of its hosts have. With no window, or none showing the pane, it ends the source
-  session itself; when a window cannot show the new session, both stay,
-  and it says so and exits 1.
+  hosts have is refused. The CLI pipes the package, telling this
+  machine's server of the session before the host starts it
+  (`pane.teleporting`, which the layout notes so that the window opens no
+  tab of its own for it), then asks the server to show the pane as the
+  host's session
+  (`pane.teleported`, a local client's only), with or without a window:
+  the host's tab goes after the pane's, active, and the pane goes, its
+  session ending. It names the host by the address it dialed, which the
+  server matches against the hosts the app keeps in `hosts.json` (it
+  only reads it; a name may differ between them), and the server refuses
+  an address none of them, or two, have. A pane of the new session the
+  window placed meanwhile, as a host's new session, moves there rather
+  than show twice. With no pane of the source in the layout, the CLI ends
+  the source session itself; when the server cannot show the new
+  session, both stay, and it says so and exits 1.
 
 ## Not in phase 1
 

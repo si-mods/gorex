@@ -45,10 +45,20 @@ func testServer(t *testing.T) (*Server, *atomic.Int32) {
 	hostDone := make(chan struct{})
 	close(hostDone)
 	s := &Server{sessions: map[string]*session{}, started: time.Now(), layoutRev: 1, hostDone: hostDone, quit: make(chan struct{}),
-		linksFile: filepath.Join(os.Getenv("GOREX_DIR"), "teleports.json")}
+		linksFile: filepath.Join(os.Getenv("GOREX_DIR"), "teleports.json"), dir: os.Getenv("GOREX_DIR")}
 	t.Cleanup(func() {
 		s.remoteClose()
 		remoteListen, remotePeerKey = old, oldKey
+		// The server stops with the test, as one that shuts down: what it
+		// does after, as a refresh or a session's end, writes no layout
+		// into a directory the test removes; those under way finish first.
+		s.mu.Lock()
+		s.stopping = true
+		s.mu.Unlock()
+		s.applyMu.Lock()
+		s.applyMu.Unlock()
+		s.layoutFile.Lock()
+		s.layoutFile.Unlock()
 	})
 	return s, &listens
 }

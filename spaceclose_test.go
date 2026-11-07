@@ -33,34 +33,29 @@ func savedSpaces(t *testing.T, a *App) []layout.Workspace {
 }
 
 // TestClientClosesLastSpace closes every space from a client, as Rex's
-// app destroys every session: none is left, rather than a new one coming
-// back each time; the next one the client makes takes the window.
+// app destroys every session: none is left, and the window, with no space
+// to show, leaves it; the next one the client makes is the layout's only.
 func TestClientClosesLastSpace(t *testing.T) {
 	a, _ := newTestApp(t)
-	if res := a.command(rex.LayoutCommand{Op: "space.close", Space: a.ws.ID}); res.Code != "" {
+	if res := clientCommand(a, rex.LayoutCommand{Op: "space.close", Space: a.ws.ID}); res.Code != "" {
 		t.Fatalf("space.close: %+v", res)
 	}
 	if spaces := savedSpaces(t, a); len(spaces) != 0 {
 		t.Fatalf("after closing the last space, the layout has %d: %+v", len(spaces), spaces)
 	}
-	if a.ws == nil || !a.ws.unlisted || len(a.tabs) != 0 {
-		t.Fatalf("the window shows %+v with %d tabs, want an unlisted empty space", a.ws, len(a.tabs))
+	if a.ws != nil || len(a.tabs) != 0 {
+		t.Fatalf("the window shows %+v with %d tabs", a.ws, len(a.tabs))
 	}
-	placeholder := a.ws
-
-	res := a.command(rex.LayoutCommand{Op: "space.create", Name: "next"})
+	res := clientCommand(a, rex.LayoutCommand{Op: "space.create", Name: "next"})
 	if res.Code != "" || res.Space == "" {
 		t.Fatalf("space.create: %+v", res)
 	}
-	if res := a.command(rex.LayoutCommand{Op: "tab.create", Space: res.Space}); res.Code != "" {
+	if res := clientCommand(a, rex.LayoutCommand{Op: "tab.create", Space: res.Space}); res.Code != "" {
 		t.Fatalf("tab.create: %+v", res)
 	}
 	spaces := savedSpaces(t, a)
 	if len(spaces) != 1 || spaces[0].Name != "next" || len(spaces[0].Tabs) != 1 {
 		t.Fatalf("layout = %+v, want only the space made", spaces)
-	}
-	if a.st.workspaceByID(placeholder.ID) != nil {
-		t.Error("the unlisted space stayed after the window went to another")
 	}
 }
 
@@ -69,25 +64,10 @@ func TestClientClosesLastSpace(t *testing.T) {
 func TestDesktopClosesLastSpace(t *testing.T) {
 	a, _ := newTestApp(t)
 	a.closeWorkspace()
-	if a.ws == nil || a.ws.unlisted || len(a.tabs) != 1 {
-		t.Fatalf("the window shows %+v with %d tabs, want a new listed space with a tab", a.ws, len(a.tabs))
+	if a.ws == nil || len(a.tabs) != 1 {
+		t.Fatalf("the window shows %+v with %d tabs, want a new space with a tab", a.ws, len(a.tabs))
 	}
-	if spaces := savedSpaces(t, a); len(spaces) != 1 {
-		t.Fatalf("layout has %d spaces, want 1", len(spaces))
-	}
-}
-
-// TestUnlistedSpaceListsWithFirstTab lists the space once the desktop
-// opens a tab in it.
-func TestUnlistedSpaceListsWithFirstTab(t *testing.T) {
-	a, _ := newTestApp(t)
-	a.command(rex.LayoutCommand{Op: "space.close", Space: a.ws.ID})
-	id := a.ws.ID
-	if res := a.command(rex.LayoutCommand{Op: "tab.create", Space: id}); res.Code != "" {
-		t.Fatalf("tab.create: %+v", res)
-	}
-	spaces := savedSpaces(t, a)
-	if len(spaces) != 1 || spaces[0].ID != id {
-		t.Fatalf("layout = %+v, want the window's space listed", spaces)
+	if spaces := savedSpaces(t, a); len(spaces) != 1 || len(spaces[0].Tabs) != 1 {
+		t.Fatalf("layout has %+v, want 1 space of a tab", spaces)
 	}
 }

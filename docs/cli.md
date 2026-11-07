@@ -67,9 +67,9 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 - `run` creates a session, runs the command, prints what the screen shows
   when it ends, and exits with the program's status.
 - `split` changes the layout; the command after `--` runs in the new
-  pane, or a shell does. With no GoRex window open the server makes the
-  change, and the window shows it as it opens. `close` and `rename` work
-  the same way.
+  pane, or a shell does. The session server makes the change, and an
+  open window shows it at once, a closed one as it opens. `close` and
+  `rename` work the same way.
 - `events` prints each layout or session change as one JSON line; with a
   host that shares its layout, it subscribes to that host's layout too.
 - `clients` prints the principal, peer key, whether it is remote, through a
@@ -120,9 +120,11 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 - `teleport` moves a pane of this machine to a host
   ([teleport.md](teleport.md)), named as `-S` names one: by its name as
   Remote Hosts shows it, or its address. It prints the new session's ID
-  there, and has the window show the pane as that session; with no window
-  showing the pane, its session ends and the new one waits on the host;
-  when the window cannot show the new session, both stay and it exits 1.
+  there, and has the server show the pane as that session, with or
+  without a window; with no tab showing the pane, its session ends and
+  the new one waits on the host; when the server cannot show the new
+  session, as of a host the window does not know, both stay and it exits
+  1.
 
 `gorex rexapi` is not a command of this line: it serves Rex's API to Rex
 clients from the server the app already runs. The server runs that

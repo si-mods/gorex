@@ -48,7 +48,6 @@ func windowOf(t *testing.T, view map[string]any, at int) map[string]any {
 func TestSessionCreateLayout(t *testing.T) {
 	f := startFixture(t)
 	f.setLayout(emptyStore())
-	startApp(f)
 	c := f.dialControl()
 	c.hello(apiRevision)
 	client := welcomeID(t, c.welcome)
@@ -162,19 +161,10 @@ func viewOf(t *testing.T, c *testConn, sid string) map[string]any {
 }
 
 // TestLayoutChanges makes the changes of the layout the API documents,
-// through the fake window, and checks the view after each.
-func TestLayoutChanges(t *testing.T) { layoutChanges(t, true) }
-
-// TestLayoutChangesWithoutApp makes them with no window open: the server
-// makes them itself.
-func TestLayoutChangesWithoutApp(t *testing.T) { layoutChanges(t, false) }
-
-func layoutChanges(t *testing.T, app bool) {
+// on the server, which makes them itself, and checks the view after each.
+func TestLayoutChanges(t *testing.T) {
 	f := startFixture(t)
 	f.setLayout(emptyStore())
-	if app {
-		startApp(f)
-	}
 	c := f.dialControl()
 	c.hello(apiRevision)
 	created := callChecked(t, c, "session.create", map[string]any{
@@ -411,7 +401,6 @@ func mustJSON(v any) string {
 func TestNewWindowWithoutFocus(t *testing.T) {
 	f := startFixture(t)
 	f.setLayout(emptyStore())
-	startApp(f)
 	c := f.dialControl()
 	c.hello(apiRevision)
 	created := callChecked(t, c, "session.create", map[string]any{
@@ -441,7 +430,6 @@ func TestNewWindowWithoutFocus(t *testing.T) {
 func TestResizePaneBorders(t *testing.T) {
 	f := startFixture(t)
 	f.setLayout(emptyStore())
-	startApp(f)
 	c := f.dialControl()
 	c.hello(apiRevision)
 	// ((A h B) h (C h D)) is built as A h (B h (C h D)): the blocks are

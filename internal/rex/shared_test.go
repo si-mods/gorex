@@ -298,10 +298,10 @@ func TestTrimSnapshot(t *testing.T) {
 	}
 }
 
-// TestLayoutCommands passes layout commands from a client to the app that
-// takes them, and back its answers; none that needs the window without
-// the app, a timeout when it does not answer, and none from remote
-// clients.
+// TestLayoutCommands passes the commands that need the window, actions,
+// from a client to the app that takes them, and back its answers; none
+// without the app, a timeout when it does not answer, and none from
+// remote clients.
 func TestLayoutCommands(t *testing.T) {
 	defer commandWait.set(commandWait.set(300 * time.Millisecond))
 	s, _ := testServer(t)
@@ -317,7 +317,7 @@ func TestLayoutCommands(t *testing.T) {
 		go func() {
 			cmd, err := app.TakeCommand()
 			if err == nil && cmd != nil && answer {
-				app.CommandDone(LayoutCommand{ID: cmd.ID, New: "new-" + cmd.SID})
+				app.CommandDone(LayoutCommand{ID: cmd.ID, New: "new-" + cmd.Action})
 			}
 			took <- cmd
 		}()
@@ -332,12 +332,12 @@ func TestLayoutCommands(t *testing.T) {
 		}
 	}
 	took := take(true)
-	res, err := bridge.Command(LayoutCommand{Op: "pane.split", SID: "a", Vertical: true})
-	if cmd := <-took; err != nil || res.New != "new-a" || cmd.Op != "pane.split" || !cmd.Vertical {
+	res, err := bridge.Command(LayoutCommand{Op: "action", Action: "a"})
+	if cmd := <-took; err != nil || res.New != "new-a" || cmd.Op != "action" {
 		t.Errorf("answered: %+v %v, took %+v", res, err, cmd)
 	}
 	took = take(false)
-	if res, err := bridge.Command(LayoutCommand{Op: "tab.close", SID: "b"}); err != nil || res.Code != "layout_timeout" {
+	if res, err := bridge.Command(LayoutCommand{Op: "config.reload"}); err != nil || res.Code != "layout_timeout" {
 		t.Errorf("unanswered: %+v %v", res, err)
 	}
 	<-took
@@ -406,13 +406,13 @@ func TestCommandBetweenTakes(t *testing.T) {
 	// No take waits now; the app's connection is open.
 	answered := make(chan LayoutCommand, 1)
 	go func() {
-		res, _ := bridge.Command(LayoutCommand{Op: "tab.rename", SID: "a", Name: "x"})
+		res, _ := bridge.Command(LayoutCommand{Op: "action", Action: "tab.rename"})
 		answered <- res
 	}()
 	time.Sleep(time.Second)
 	takeWait.set(10 * time.Second)
 	cmd, err := app.TakeCommand()
-	if err != nil || cmd == nil || cmd.Op != "tab.rename" {
+	if err != nil || cmd == nil || cmd.Action != "tab.rename" {
 		t.Fatalf("took %+v %v", cmd, err)
 	}
 	app.CommandDone(LayoutCommand{ID: cmd.ID})

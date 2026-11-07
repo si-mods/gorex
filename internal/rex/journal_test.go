@@ -4,6 +4,7 @@ package rex
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -56,17 +57,58 @@ func journalStopped(entries []journalEntry) bool {
 	return entries[len(entries)-1].Event == eventStop
 }
 
-// waitStopped waits for the server to stop, which takes its socket with it.
+// waitListed polls the sessions of c, as a client does, until it lists
+// every one of ids, which a server restores once it listens, and returns
+// the list; it fails after a few seconds.
+func waitListed(t *testing.T, c *Client, ids ...string) []SessionInfo {
+	t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		infos, err := c.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed := map[string]bool{}
+		for _, in := range infos {
+			listed[in.ID] = true
+		}
+		all := true
+		for _, id := range ids {
+			all = all && listed[id]
+		}
+		if all {
+			return infos
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("sessions %v not all back: %+v", ids, infos)
+		}
+	}
+}
+
+// waitStopped waits for the server to stop: its socket goes as it stops
+// listening, and the lock of its directory once it is done, its stop
+// recorded and its sessions ended.
 func waitStopped(t *testing.T) {
 	t.Helper()
-	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+	deadline := time.Now().Add(5 * time.Second)
+	for ; time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
 		c, err := ConnectExisting()
 		if err != nil {
-			return
+			break
 		}
 		c.Close()
 	}
-	t.Fatal("the server answers still")
+	for ; time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		f, err := os.OpenFile(filepath.Join(Dir(), "server.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = lockFile(f)
+		f.Close()
+		if err == nil {
+			return
+		}
+	}
+	t.Fatal("the server answers still, or holds its lock")
 }
 
 // TestJournalKeepsLayouts checks that every layout the app sends is in the
@@ -137,10 +179,8 @@ func TestCrashRestoresSessions(t *testing.T) {
 		next.Shutdown()
 		next.Close()
 	}()
-	infos, err := next.List()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The server starts them once it listens, as a client sees them come.
+	infos := waitListed(t, next, one.ID, two.ID)
 	got := map[string]SessionInfo{}
 	for _, in := range infos {
 		got[in.ID] = in
@@ -174,10 +214,11 @@ func TestCrashRestoresSessions(t *testing.T) {
 	}
 }
 
-// TestCleanStopRestoresNothing checks that a server that was told to stop
-// leaves a record of it, and that the server after it starts no session: the
-// sessions ended with the run, as it said.
-func TestCleanStopRestoresNothing(t *testing.T) {
+// TestCleanStopStartsPanesAgain checks that a server that was told to stop
+// leaves a record of it, its sessions ending with the run, as it said, and
+// that the server after it gives the layout's panes, which it kept, new
+// shells once it listens (restoreLost).
+func TestCleanStopStartsPanesAgain(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
 	c, _ := connectTest(t)
@@ -210,9 +251,7 @@ func TestCleanStopRestoresNothing(t *testing.T) {
 		next.Shutdown()
 		next.Close()
 	}()
-	if infos, err := next.List(); err != nil || len(infos) != 0 {
-		t.Fatalf("the server after it has %+v, %v", infos, err)
-	}
+	waitInfo(t, next, one.ID, "the pane's session again", func(in SessionInfo) bool { return !in.Exited })
 }
 
 // TestLayoutFromJournal checks that the journal of a run whose layout.json is
@@ -329,33 +368,32 @@ func TestJournalOwners(t *testing.T) {
 	}
 }
 
-// TestRestoreMost checks that a run's layout starts no more sessions than
-// restoreMost, however many panes it names.
-func TestRestoreMost(t *testing.T) {
+// TestServeListensBeforeRestores checks that a server whose layout names
+// sessions the run before lost answers at once, however slow their shells
+// are to start, as a console's on Windows: it starts them in the
+// background, and an attach to one waits for its own.
+func TestServeListensBeforeRestores(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
-	l := testLayout(
-		&layout.Node{SID: "one", Dir: dir},
-		&layout.Node{SID: "two", Dir: dir},
-	)
-	var store layout.Store
-	if err := json.Unmarshal(l, &store); err != nil {
-		t.Fatal(err)
+	var panes []*layout.Node
+	for i := range 12 {
+		panes = append(panes, &layout.Node{SID: fmt.Sprintf("lost%02d", i), Dir: dir})
 	}
-	// A third tab, so that two panes are not all the layout names.
-	store.Sessions[0].Tabs = append(store.Sessions[0].Tabs, layout.Tab{Root: &layout.Node{SID: "three", Dir: dir}})
-	b, err := json.Marshal(store)
-	if err != nil {
-		t.Fatal(err)
+	store := layout.Store{Version: 2, Sessions: []layout.Workspace{{ID: "w1", Name: "w"}}, Windows: []string{"w1"}}
+	for _, n := range panes {
+		store.Sessions[0].Tabs = append(store.Sessions[0].Tabs, layout.Tab{ID: n.SID, Root: n})
 	}
+	// The window shows the last tab, whose session starts first.
+	store.Sessions[0].Active = len(panes) - 1
+	b, _ := json.Marshal(store)
 	if err := os.WriteFile(filepath.Join(dir, "layout.json"), b, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old := restoreMost
-	restoreMost = 2
-	t.Cleanup(func() { restoreMost = old })
+	restoreHook = func() { time.Sleep(200 * time.Millisecond) }
+	t.Cleanup(func() { restoreHook = nil })
 
-	// The server runs in this process, so the limit is this process's.
+	// The server runs in this process, so the hook is this process's.
+	start := time.Now()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -371,12 +409,33 @@ func TestRestoreMost(t *testing.T) {
 		client.Close()
 		<-done
 	}()
-	infos, err := client.List()
-	if err != nil {
+	if _, err := client.Layout(); err != nil {
 		t.Fatal(err)
 	}
-	if len(infos) != 2 {
-		t.Fatalf("the server started %d sessions, not 2", len(infos))
+	// Long before the restores, of 2.4 s, end.
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("the server answered %v after it started", d)
+	}
+	if infos, _ := client.List(); len(infos) == len(panes) {
+		t.Error("every session ran before the server answered")
+	}
+	// An attach to the first tab's, restored last, waits for it, and gets it.
+	s := client.Stream(panes[0].SID, 80, 24)
+	defer s.Close()
+	if err := s.Resize(80, 24); err != nil {
+		t.Fatalf("attaching to a session restored late: %v", err)
+	}
+	waitInfo(t, client, panes[0].SID, "the session restored last", func(SessionInfo) bool { return true })
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+		infos, _ := client.List()
+		if len(infos) == len(panes) {
+			if infos[0].ID != panes[len(panes)-1].SID {
+				t.Errorf("the first restored is %s, not the active tab's", infos[0].ID)
+			}
+			break
+		} else if time.Now().After(deadline) {
+			t.Fatalf("%d sessions restored, not %d", len(infos), len(panes))
+		}
 	}
 }
 
@@ -398,26 +457,6 @@ func TestJournalEndsTheRun(t *testing.T) {
 	}
 	if !journalStopped(entries) {
 		t.Error("the run's stop is not its last entry")
-	}
-}
-
-// TestJournalResumes checks which runs the server after one starts sessions
-// for: one that did not stop, and one that stopped to be replaced; not one
-// that quit or exited idle, whose sessions ended with it.
-func TestJournalResumes(t *testing.T) {
-	if !journalResumes(nil) {
-		t.Error("a journal before the journal does not resume")
-	}
-	if !journalResumes([]journalEntry{{Event: eventStart}, {Event: eventLayout}}) {
-		t.Error("a run that did not stop does not resume")
-	}
-	if !journalResumes([]journalEntry{{Event: eventStop, Reason: stopRestart}}) {
-		t.Error("a run that stopped to be replaced does not resume")
-	}
-	for _, reason := range []string{stopRequest, "idle", "upgrade"} {
-		if journalResumes([]journalEntry{{Event: eventStop, Reason: reason}}) {
-			t.Errorf("a run that stopped for %q resumes", reason)
-		}
 	}
 }
 
@@ -479,19 +518,9 @@ func TestRestartRestoresSessions(t *testing.T) {
 			if stop.Event != eventStop || stop.Reason != tc.reason {
 				t.Fatalf("the stop record is %+v", stop)
 			}
-			infos, err := next.List()
-			if err != nil {
-				t.Fatal(err)
-			}
-			back := false
-			for _, in := range infos {
-				if in.ID == one.ID {
-					back = true
-				}
-			}
-			if back != tc.restart {
-				t.Fatalf("after %s the sessions are %+v", tc.name, infos)
-			}
+			// Either way the pane's session comes back: a restart's before
+			// the server answers, a quit's as a new shell once it listens.
+			waitInfo(t, next, one.ID, "the pane's session after "+tc.name, func(SessionInfo) bool { return true })
 		})
 	}
 }
@@ -531,10 +560,7 @@ func TestStopToRestartRecordsRestart(t *testing.T) {
 		next.Shutdown()
 		next.Close()
 	}()
-	infos, err := next.List()
-	if err != nil {
-		t.Fatal(err)
-	}
+	infos := waitListed(t, next, one.ID)
 	if len(infos) != 1 || infos[0].ID != one.ID || infos[0].Exited {
 		t.Fatalf("the server after it has %+v", infos)
 	}

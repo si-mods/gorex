@@ -224,7 +224,7 @@ func TestFloatLayoutRoundTrip(t *testing.T) {
 		}
 	}
 	b := &App{client: a.client}
-	if !b.restore(l, nil) {
+	if !b.reconcile(l) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 1 {
@@ -338,7 +338,7 @@ func TestSplitFloatTargetsTiled(t *testing.T) {
 	if len(tab.panes()) != 1 || len(tab.Floats) != 1 {
 		t.Fatalf("%d tiled, %d floats", len(tab.panes()), len(tab.Floats))
 	}
-	res := a.command(rex.LayoutCommand{Op: "pane.split", SID: p.SID, Dir: t.TempDir()})
+	res := clientCommand(a, rex.LayoutCommand{Op: "pane.split", SID: p.SID, Dir: t.TempDir()})
 	if res.Code != "" || res.New == "" {
 		t.Fatalf("split %+v", res)
 	}
@@ -430,7 +430,7 @@ func TestRestoreFocusesSavedFloat(t *testing.T) {
 		},
 	}}
 	b := &App{client: a.client}
-	if !b.restore(l, nil) {
+	if !b.reconcile(l) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 2 {
@@ -482,7 +482,7 @@ func TestRevealFloatFocus(t *testing.T) {
 	}
 
 	a.hideFloat(p.float)
-	if res := a.command(rex.LayoutCommand{Op: "pane.focus", SID: p.SID}); res.Code != "" {
+	if res := clientCommand(a, rex.LayoutCommand{Op: "pane.focus", SID: p.SID}); res.Code != "" {
 		t.Fatalf("pane.focus: %+v", res)
 	}
 	if p.float.Hidden || tab.Focus != p {
@@ -507,11 +507,11 @@ func TestZoomFloatCommand(t *testing.T) {
 	if !a.floatPane(p) {
 		t.Fatal("the pane did not float")
 	}
-	res := a.command(rex.LayoutCommand{Op: "pane.zoom", SID: p.SID, Mode: "on"})
+	res := clientCommand(a, rex.LayoutCommand{Op: "pane.zoom", SID: p.SID, Mode: "on"})
 	if !res.Zoomed || !p.float.Zoom || tab.Zoom != nil {
 		t.Fatalf("zoom on: %+v, float %v, tab %v", res, p.float.Zoom, tab.Zoom)
 	}
-	res = a.command(rex.LayoutCommand{Op: "pane.zoom", SID: p.SID, Mode: "off"})
+	res = clientCommand(a, rex.LayoutCommand{Op: "pane.zoom", SID: p.SID, Mode: "off"})
 	if res.Zoomed || p.float.Zoom {
 		t.Fatalf("zoom off: %+v, float %v", res, p.float.Zoom)
 	}
@@ -556,7 +556,7 @@ func TestResizeFloatLayoutCommand(t *testing.T) {
 	}
 	a.setFloatBox(p.float, 0.3, 0.3, 0.3, 0.3)
 	step := func(direction string) float32 {
-		res := a.command(rex.LayoutCommand{Op: "pane.resize", SID: p.SID, Direction: direction, Amount: 0.05})
+		res := clientCommand(a, rex.LayoutCommand{Op: "pane.resize", SID: p.SID, Direction: direction, Amount: 0.05})
 		if res.Code != "" || !res.Changed {
 			t.Fatalf("resize %s: %+v", direction, res)
 		}
@@ -568,11 +568,11 @@ func TestResizeFloatLayoutCommand(t *testing.T) {
 	if w := step("left"); math.Abs(float64(w-0.3)) > 1e-6 {
 		t.Errorf("left: W %v, want 0.3", w)
 	}
-	res := a.command(rex.LayoutCommand{Op: "pane.resize", SID: p.SID, Direction: "down", Amount: 0.05})
+	res := clientCommand(a, rex.LayoutCommand{Op: "pane.resize", SID: p.SID, Direction: "down", Amount: 0.05})
 	if !res.Changed || math.Abs(float64(p.float.H-0.35)) > 1e-6 {
 		t.Errorf("down: %+v, H %v, want 0.35", res, p.float.H)
 	}
-	res = a.command(rex.LayoutCommand{Op: "pane.resize", SID: p.SID, Direction: "up", Amount: 0.05})
+	res = clientCommand(a, rex.LayoutCommand{Op: "pane.resize", SID: p.SID, Direction: "up", Amount: 0.05})
 	if !res.Changed || math.Abs(float64(p.float.H-0.3)) > 1e-6 {
 		t.Errorf("up: %+v, H %v, want 0.3", res, p.float.H)
 	}

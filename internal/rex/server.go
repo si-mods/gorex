@@ -5,6 +5,7 @@ package rex
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -19,6 +20,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -82,17 +84,20 @@ type Server struct {
 	puts sync.Map
 	// linksFile is teleports.json, in Dir when "", and home the home
 	// directory, the user's when "": a test's servers, in one process,
-	// keep one each.
-	linksFile, home string
+	// keep one each. dir is the directory the server keeps its layout in,
+	// Dir as it was when it started; Dir when "".
+	linksFile, home, dir string
+	// refreshDue tells that a refresh of the layout's facts is to come
+	// (refresh); restoring are the sessions restoreLost is to start, each
+	// closing once it tried.
+	refreshDue atomic.Bool
+	restoring  map[string]chan struct{}
 }
 
-// layoutCmd is a layout command waiting for the app's answer, done;
-// handled closes once the command's caller has it, the server's own change
-// made when the app had no window to make it.
+// layoutCmd is a command waiting for the app's answer, done.
 type layoutCmd struct {
 	LayoutCommand
-	done    chan LayoutCommand
-	handled chan struct{}
+	done chan LayoutCommand
 }
 
 // commandWait is how long a layout command waits for the app to make it,
@@ -102,20 +107,22 @@ var (
 	takeWait    = newDuration(10 * time.Second)
 )
 
-// command asks the app for c, and returns its answer: Code tells why it
-// did not make it, when it did not answer in time; it may make it still.
-// With no window to take it, the server makes a change of the layout
-// itself (apply).
+// command makes c: a change of the layout the server makes itself
+// (apply); an action, config.reload or a teleport it asks the app for, and
+// returns its answer: Code tells why it did not make it, when it did not
+// answer in time; it may make it still.
 func (s *Server) command(c LayoutCommand) LayoutCommand {
+	if applies(c) {
+		return s.apply(c)
+	}
 	s.cmdMu.Lock()
 	if s.desks == 0 {
 		s.cmdMu.Unlock()
-		return s.apply(c)
+		return LayoutCommand{ID: c.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}
 	}
 	s.nextCmd++
 	c.ID = s.nextCmd
-	lc := &layoutCmd{c, make(chan LayoutCommand, 1), make(chan struct{})}
-	defer close(lc.handled)
+	lc := &layoutCmd{c, make(chan LayoutCommand, 1)}
 	s.cmds = append(s.cmds, lc)
 	if s.cmdWake != nil {
 		close(s.cmdWake)
@@ -124,9 +131,6 @@ func (s *Server) command(c LayoutCommand) LayoutCommand {
 	s.cmdMu.Unlock()
 	select {
 	case res := <-lc.done:
-		if res.Code == "desktop_unavailable" {
-			return s.apply(c)
-		}
 		return res
 	case <-time.After(commandWait.get()):
 	}
@@ -180,9 +184,7 @@ func (s *Server) take(gone <-chan struct{}) *LayoutCommand {
 	return &lc.LayoutCommand
 }
 
-// commandDone gives the answer the app made to a command it took, and
-// returns once the server made the change itself, for an app that had no
-// window: one it opens next reads a layout that has the change.
+// commandDone gives the answer the app made to a command it took.
 func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Lock()
 	lc := s.taken[c.ID]
@@ -190,7 +192,6 @@ func (s *Server) commandDone(c LayoutCommand) {
 	s.cmdMu.Unlock()
 	if lc != nil {
 		lc.done <- c
-		<-lc.handled
 	}
 }
 
@@ -336,20 +337,17 @@ func Serve() error {
 		s.layout = b
 		log.Print("rex: the layout is the last the journal kept")
 	}
-	if journalResumes(entries) {
-		// The run before this one did not stop, or stopped to be
-		// replaced: its sessions ended with it, and the layout it kept
-		// names them.
-		s.restoreSessions(s.layout, journalOwners(entries))
-	}
 	s.journal.started()
+	// The sessions of the layout's panes start again once it listens: an
+	// attach to one waits for its own.
+	go s.restoreLost(journalOwners(entries), s.lostPanes())
 	return s.serve()
 }
 
 func newServer(ln net.Listener, lock *os.File) *Server {
 	s := &Server{
 		sessions: map[string]*session{}, started: time.Now(), ln: ln, lock: lock,
-		layoutRev: 1, hostDone: make(chan struct{}), idleFrom: time.Now(), quit: make(chan struct{}),
+		layoutRev: 1, hostDone: make(chan struct{}), idleFrom: time.Now(), quit: make(chan struct{}), dir: Dir(),
 	}
 	s.exe, s.exeTime = Executable()
 	return s
@@ -468,6 +466,9 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		s.mu.Lock()
 		ss := s.sessions[a.SID]
 		s.mu.Unlock()
+		if ss == nil {
+			ss = s.awaitRestore(a.SID)
+		}
 		if ss == nil {
 			conn.Write([]byte(`{"error":"no such session"}` + "\n"))
 			conn.Close()
@@ -590,6 +591,9 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 				s.cmdMu.Lock()
 				s.desks++
 				s.cmdMu.Unlock()
+				// The app opens its windows: the sessions no pane has
+				// show in them.
+				go s.placeOrphans()
 			}
 			if req.Op == "kill" || req.Op == "command" || req.Op == "command.take" || req.Op == "command.done" {
 				aside <- struct{}{}
@@ -680,6 +684,8 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 		err = errors.New("rex: remote control is off")
 	} else if remote && req.Op == "command" && req.Command != nil && strings.HasPrefix(req.Command.Op, "pane.teleport") {
 		err = errors.New("rex: a teleport is this machine's to show")
+	} else if remote && req.Op == "command" && req.Command != nil && (req.Command.Op == "tab.set" || req.Command.Op == "windows.set" || req.Command.Op == "layout.apply") {
+		err = fmt.Errorf("rex: %s is this machine's GoRex window's", req.Command.Op)
 	} else if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
 	} else if remote && !remoteAllowed(req.Op) && !layout && !command && !(req.Op == "action" && s.remoteControlEnabled()) {
@@ -788,11 +794,14 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		case <-time.After(3 * time.Second):
 		}
 		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
+		// The pairing address is for a remote peer's QR code. A local
+		// client never shows it, and asking the gateway for it would wait
+		// on the gateway's own requests when the gateway says hello.
 		if peer != "" {
 			h.Client = s.remoteClientFor(peer)
-		}
-		if RexPairURL != nil {
-			h.RexPairURL = RexPairURL()
+			if RexPairURL != nil {
+				h.RexPairURL = RexPairURL()
+			}
 		}
 		if kept != nil {
 			h.Keepalive, h.Conn = keepaliveTimeout.get(), kept.id
@@ -823,19 +832,31 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		// A remote client's session gets a tab, as one this machine's
+		// client starts with the app closed, which shows it as it opens.
+		s.cmdMu.Lock()
+		app := s.desks > 0
+		s.cmdMu.Unlock()
+		if peer != "" || !app {
+			s.place(ss)
+		}
 		return s.info(ss), nil
 	case "kill":
 		s.ops.RLock()
-		defer s.ops.RUnlock()
 		ss, err := s.use(req.SID, peer)
+		if err == nil {
+			s.end(ss)
+		}
+		s.ops.RUnlock()
 		if err == errNotShared {
 			return nil, err
 		}
-		if err != nil {
-			return nil, nil // already gone
+		if err == nil {
+			// Its pane goes before the answer, so that no crash after
+			// it starts the session again.
+			s.ended(ss.id)
 		}
-		s.end(ss)
-		return nil, nil
+		return nil, nil // or already gone
 	case "clients":
 		s.mu.Lock()
 		all := make([]*session, 0, len(s.order))
@@ -1039,8 +1060,17 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		if !json.Valid(req.Layout) {
 			return nil, errors.New("layout is not JSON")
 		}
-		l := bytes.Clone(req.Layout)
+		if !slices.Contains(req.Capabilities, CapabilityLayoutServer) {
+			return nil, errors.New("rex: the session server keeps the layout now, and this GoRex would write over it: update GoRex")
+		}
+		// As an apply does: none commits between the read and this.
+		s.applyMu.Lock()
+		s.mu.Lock()
+		was := s.layout
+		s.mu.Unlock()
+		l := countSetRevs(was, req.Layout)
 		rev, err := s.commitLayout(l, req.LayoutRevision)
+		s.applyMu.Unlock()
 		if err != nil {
 			return nil, err
 		}
@@ -1093,30 +1123,36 @@ func (s *Server) commitLayout(l json.RawMessage, at uint64) (uint64, error) {
 	if !same {
 		s.notify("layout")
 	}
-	// Write the layout the server has now, not this one: two writes that
-	// cross must not leave the older one on disk.
+	s.writeLayout(rev, !same)
+	return rev, nil
+}
+
+// writeLayout writes the layout the server has now to layout.json, and to
+// the journal at revision rev when journal is set.
+func (s *Server) writeLayout(rev uint64, journal bool) {
+	// Write the layout the server has now, not the caller's: two writes
+	// that cross must not leave the older one on disk.
 	s.layoutFile.Lock()
+	defer s.layoutFile.Unlock()
 	s.mu.Lock()
 	current := bytes.Clone(s.layout)
 	stopping := s.stopping
 	s.mu.Unlock()
 	// A run that is ending keeps no layout: the last entry of the
 	// journal says it stopped, and the run after it starts nothing.
-	if !stopping {
-		path := filepath.Join(Dir(), "layout.json")
-		tmp := path + ".tmp"
-		if err := os.WriteFile(tmp, current, 0o600); err == nil {
-			os.Rename(tmp, path)
-		}
-		// The journal keeps every layout of the run, so that one the
-		// app prunes after a session ends cannot take the record of
-		// another with it.
-		if !same {
-			s.journal.layout(rev, current)
-		}
+	if stopping {
+		return
 	}
-	s.layoutFile.Unlock()
-	return rev, nil
+	path := filepath.Join(cmp.Or(s.dir, Dir()), "layout.json")
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, current, 0o600); err == nil {
+		os.Rename(tmp, path)
+	}
+	// The journal keeps every layout of the run, so that one pruned after
+	// a session ends cannot take the record of another with it.
+	if journal {
+		s.journal.layout(rev, current)
+	}
 }
 
 // create starts a session of o for peer, a remote client's key or "" for
@@ -1145,6 +1181,7 @@ func (s *Server) createHeld(o CreateOptions, peer string) (*session, error) {
 	s.sessions[id] = ss
 	s.order = append(s.order, id)
 	s.mu.Unlock()
+	s.watchExit(ss)
 	// The journal names the session's client, so that one started again
 	// after a crash stays that client's.
 	s.journal.session(id, peer, ss.shell, ss.dir)

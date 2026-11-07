@@ -16,6 +16,8 @@ import (
 	"path/filepath"
 	"slices"
 	"time"
+
+	"gorex/internal/layout"
 )
 
 // ProtocolVersion changes whenever the wire protocol does. Version 2 adds,
@@ -46,7 +48,10 @@ import (
 // "transfer" events of their progress (Transfer). Still within 3, the
 // capability "teleport": "teleport" and "teleport.pack", each on a
 // connection of its own, which move a pane's work to another machine
-// (Teleport).
+// (Teleport). Still within 3, the capability "layout.server": the server
+// makes every change of the layout itself, and takes the app's
+// arrangement of a tab ("tab.set") and of its windows ("windows.set"),
+// with the LayoutCommand fields TabLayout, Spaces, Color and Float.
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -82,9 +87,14 @@ const CapabilityFileTransfer = "file.transfer"
 // folder of the user's (FilePut.Temp) says it does.
 const CapabilityFileTemp = "file.temp"
 
+// CapabilityLayoutServer is what a server that makes every change of the
+// layout itself says it does: tab.set and windows.set, from this
+// machine's clients.
+const CapabilityLayoutServer = "layout.server"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -148,8 +158,13 @@ type Request struct {
 	// ETag, on "list", is that of the list the client has (Response.ETag).
 	ETag string `json:"etag,omitempty"`
 	// LayoutRevision, on "setLayout", makes the change only when the
-	// server's layout is at that revision; 0 sets it whatever it is.
-	LayoutRevision uint64 `json:"layoutRevision,omitempty"`
+	// server's layout is at that revision; 0 sets it whatever it is. The
+	// server takes a whole layout only from a client that names
+	// CapabilityLayoutServer in Capabilities, as tests and tools that seed
+	// one do (Client.SetLayout): an app of before it would write its whole
+	// layout over the server's changes.
+	LayoutRevision uint64   `json:"layoutRevision,omitempty"`
+	Capabilities   []string `json:"capabilities,omitempty"`
 	// Command is the layout command of "command", and the app's answer of
 	// "command.done".
 	Command *LayoutCommand `json:"command,omitempty"`
@@ -179,34 +194,47 @@ const (
 	AppCommandTimeout = CommandTimeout / 2
 )
 
-// LayoutCommand is a change of the layout that a client of this machine,
-// as rootshell's bridge, asks the app to make ("command"): the app takes
-// the commands in order ("command.take"), makes them as its own buttons
-// do, saves the layout and answers each ("command.done"). With no window
-// to take it, the server makes a change of the layout itself, as the
-// window would; an action, but float.set_state, and a teleport are the
-// window's still. Panes are named by their session, and tabs by their
-// lasting ID (Tab), or by a session of theirs.
+// LayoutCommand is a change of the layout that a client, as rootshell's
+// bridge or the app itself, asks for ("command"): the server makes it, on
+// the layout it keeps, starting and ending the sessions of its panes. An
+// action, but float.set_state, and config.reload are the window's: the app takes those in order ("command.take"), makes them and
+// answers each ("command.done"). Panes are named by their session, and
+// tabs by their lasting ID (Tab), or by a session of theirs.
 type LayoutCommand struct {
 	ID int64 `json:"id,omitempty"`
 	// Tab names the tab of a tab.* command by its lasting ID
-	// (layout.Tab.ID), in place of SID; in tab.create's answer, the ID of
-	// the tab made. An app that does not know it answers by SID alone.
+	// (layout.Tab.ID), in place of SID, and of a pane.split of no SID,
+	// which splits the tab's focused pane, as one of no session; in
+	// tab.create's answer, the ID of the tab made. An app that does not
+	// know it answers by SID alone.
 	Tab string `json:"tab,omitempty"`
 	// Op is "space.create", "space.rename", "space.close", "tab.create",
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
-	// "pane.swap", "pane.move", "pane.teleporting" or "pane.teleported":
-	// a local client's only, these tell of the teleport of the pane of SID
-	// to Host, the session Target there (Teleport), which the window waits
-	// for, then makes the pane.
+	// "pane.swap", "pane.move", "pane.restart", "tab.set", "windows.set",
+	// "layout.apply", "pane.teleporting" or "pane.teleported".
+	// pane.restart starts a new shell in the place of the pane of SID.
+	// pane.teleported, a local client's only, tells of the teleport of the
+	// pane of SID to the host of address Host (hosts.json), the session
+	// Target there (Teleport): the server shows that session in the pane's
+	// place, a tab of the host's. pane.teleporting, before the host starts
+	// it, notes it in the layout (layout.Store.Teleports), so that the
+	// window opens no tab of its own for it; with no Target, it drops the
+	// note of a teleport that failed. tab.set, windows.set and layout.apply
+	// are a local client's only too. The server makes its own changes too:
+	// the pane of a session that ends goes, a session a remote client
+	// starts here gets a tab, and so does one no pane has as the app opens;
+	// the panes' facts follow their sessions.
 	Op  string `json:"op,omitempty"`
 	SID string `json:"sid,omitempty"`
 	// Space is the workspace the command acts on, by ID; "" for the
 	// window that has the commands, as a client of before spaces had it.
+	// Of space.create, it is the ID the new space takes, unless a space
+	// has it; a new one when "".
 	Space string `json:"space,omitempty"`
 	// After is the tab a new or moved tab goes after, the first of this
-	// machine's tabs when "" for tab.move.
+	// machine's tabs when "" for tab.move: of tab.create, by a session of
+	// it; of tab.set, by its ID, the tab going to Index without one.
 	After string `json:"after,omitempty"`
 	// Dir is where a new pane starts, its tab's or its pane's when "".
 	Dir string `json:"dir,omitempty"`
@@ -228,8 +256,8 @@ type LayoutCommand struct {
 	Amount    float32 `json:"amount,omitempty"`
 	Target    string  `json:"target,omitempty"`
 	Ratio     float32 `json:"ratio,omitempty"`
-	// Host is a host of the window's, by its address, of the teleport
-	// commands, whose Target is the session there.
+	// Host is a host of the window's, by its address as hosts.json has
+	// it, of the teleport commands, whose Target is the session there.
 	Host string `json:"host,omitempty"`
 	// NewTab moves a pane into a tab of its own, named Name.
 	NewTab bool `json:"new_tab,omitempty"`
@@ -240,8 +268,38 @@ type LayoutCommand struct {
 	Remote bool            `json:"remote,omitempty"`
 	// Index is where tab.move puts the tab among this machine's tabs as
 	// the app makes it, counted with the tab in its place; in the answer,
-	// where the tab is then.
+	// where the tab is then. Of tab.set with no After, it is the tab's
+	// place among all the tabs of its space.
 	Index int `json:"index,omitempty"`
+	// TabLayout is the tab tab.set puts in Space, by its ID: in place of
+	// the tab of that ID, wherever it is, else as a new one. It arranges
+	// the sessions the layout has; it neither starts nor ends one
+	// (CapabilityLayoutServer).
+	TabLayout *layout.Tab `json:"tabLayout,omitempty"`
+	// Spaces are the spaces windows.set says the windows show, in the
+	// order of their places.
+	Spaces []string `json:"spaces,omitempty"`
+	// Color is the color space.create and space.rename give the space: a
+	// preset's id (layout.Palette), a "#rrggbb", or "default" for the
+	// default look; "" keeps it.
+	Color string `json:"color,omitempty"`
+	// Float makes the pane pane.split makes float over the tab's others.
+	Float bool `json:"float,omitempty"`
+	// Base is the revision (layout.Tab.Rev) of the tab a change is built
+	// on, of tab.set, tab.close and pane.close: the server refuses it with
+	// conflict once the tab is at another, as another client changed it
+	// first; 0 checks nothing. Revs, in the answer, are the revisions of
+	// the tabs the change changed, each one past the one before.
+	Base uint64            `json:"base,omitempty"`
+	Revs map[string]uint64 `json:"revs,omitempty"`
+	// Batch are the changes of layout.apply, the app's of one save: of
+	// space.create, space.rename, space.close, windows.set, tab.set,
+	// tab.close and pane.close, each built on its tab as the layout had it
+	// before (Base). The server makes all of them, in order, and keeps the
+	// layout they make once, or none: a conflict of one refuses them all.
+	// It checks the sessions on that layout: none in two panes, and none
+	// that runs gone but those the batch closes.
+	Batch []LayoutCommand `json:"batch,omitempty"`
 	// The answer: Code and Error when it was not made, New the session of
 	// the pane made, and Zoomed whether the pane's tab is zoomed now.
 	// Changed and Reason answer pane.resize, pane.swap and pane.move.
@@ -550,6 +608,10 @@ type SessionInfo struct {
 	AgentSession   string `json:"agentSession,omitempty"`
 	AgentConfigDir string `json:"agentConfigDir,omitempty"`
 	agentFile      string
+	// ran tells that a program ran in the foreground since the session
+	// started (session.facts): a shell started again after a crash ran
+	// none yet.
+	ran bool
 	// Title is the last title a program set (OSC 0, OSC 2).
 	Title      string    `json:"title,omitempty"`
 	LastOutput time.Time `json:"lastOutput"`

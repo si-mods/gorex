@@ -70,9 +70,10 @@ type session struct {
 	pendingCols   int
 	pendingRows   int
 	// status is what the program reported of itself; busy, that the last
-	// info found a program in the foreground.
+	// info found a program in the foreground, and ran that one did.
 	status programStatus
 	busy   bool
+	ran    bool
 	// reaped tells that the process ended, with code; exited, that what
 	// it printed was read too.
 	reaped bool
@@ -1330,6 +1331,12 @@ func (s *session) info() SessionInfo {
 	}
 	statusChanged := s.status.updates != beforeStatus
 	s.busy = !in.Exited && !in.Idle
+	// What it saw is the latest look, as a conversation Claude Code
+	// names only after it started, which no output tells.
+	if !in.Exited {
+		s.see(SessionInfo{Title: in.Title, PID: in.PID, Foreground: in.Foreground, Idle: in.Idle, Program: in.Program, Args: in.Args,
+			Dir: in.Dir, AgentSession: in.AgentSession, AgentConfigDir: in.AgentConfigDir, agentFile: in.agentFile})
+	}
 	in.Statuses = s.status.list()
 	s.mu.Unlock()
 	if statusChanged {
@@ -1383,12 +1390,32 @@ func (s *session) sample() {
 	now.PID = s.p.pid()
 	s.foreground(&now)
 	s.mu.Lock()
+	s.see(now)
+	s.mu.Unlock()
+}
+
+// see keeps what a look at the foreground saw, a sample's or an info's,
+// which the layout's facts are stamped from (facts), and tells the
+// subscribers when it changed. s.mu is held.
+func (s *session) see(now SessionInfo) {
 	was := s.seen
 	s.seen = now
-	if now.Title != was.Title || now.Program != was.Program || now.Dir != was.Dir || now.Idle != was.Idle || !slices.Equal(now.Args, was.Args) || now.AgentSession != was.AgentSession {
+	s.ran = s.ran || !now.Idle
+	if now.Title != was.Title || now.Program != was.Program || now.Dir != was.Dir || now.Idle != was.Idle || !slices.Equal(now.Args, was.Args) ||
+		now.AgentSession != was.AgentSession || now.AgentConfigDir != was.AgentConfigDir {
 		s.notify()
 	}
-	s.mu.Unlock()
+}
+
+// facts are what the session's last look saw run in its foreground (see),
+// with its size, whether it exited and whether a program ran (ran);
+// sampled is false before a look, which its first output asks for.
+func (s *session) facts() (in SessionInfo, sampled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	in = s.seen
+	in.Cols, in.Rows, in.Exited, in.ran = s.cols, s.rows, s.exited, s.ran
+	return in, s.seen.PID != 0
 }
 
 // notify tells the server's subscribers that the session changed.

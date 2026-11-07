@@ -32,7 +32,7 @@ import (
 type Tab struct {
 	ID int
 	// UID is the tab's lasting ID, layout.Tab.ID: makeTab gives one to
-	// every tab made, restore keeps the saved one, and clients name the
+	// every tab made, reconcile keeps the saved one, and clients name the
 	// tab by it. ID is only this window's handle for it.
 	UID  string
 	Name string // the name the user gave it, "" to follow its panes
@@ -320,9 +320,6 @@ type Pane struct {
 	bounds   ui.Rect
 	termSize ui.Rect
 	closed   bool
-	// restored tells that the session was made anew for a pane of a
-	// saved layout whose session was gone.
-	restored bool
 	// resume is what the pane ran when the layout was saved, for a pane
 	// whose session the server lost: the strip that runs it again, gone
 	// once the user runs it or dismisses it.
@@ -379,8 +376,11 @@ func (p *Pane) close() {
 type browserPane struct {
 	web *mygo.WebView
 	// url is the page the pane shows, as the layout keeps it, and addr
-	// the text of the address field.
-	url, addr string
+	// the text of the address field; id names the pane in the layout
+	// (layout.Node.ID), and synced is the URL the layout had when the
+	// window last wrote or read it: one the server has past it is another
+	// client's, which the pane follows.
+	url, addr, id, synced string
 	// auto gives the address field the keyboard when the pane opens, in
 	// place of the page: a new pane has the URL of the page to type.
 	auto bool
@@ -752,21 +752,11 @@ func (a *App) clientOf(h *hostConn) *rex.Client {
 	return h.current()
 }
 
-// killOn ends a session of a host, or of this machine for nil.
+// killOn ends a session of a host; one of this machine, for nil, the
+// server ends as the layout no longer has it (diffLayout).
 func (a *App) killOn(h *hostConn, sid string) {
-	switch {
-	case sid == "":
-	case h != nil:
+	if h != nil && sid != "" {
 		h.kill(sid)
-	case a.client != nil:
-		if a.st != nil {
-			if a.st.closedHere == nil {
-				a.st.closedHere = map[string]bool{}
-			}
-			a.st.closedHere[sid] = true
-		}
-		c := a.client
-		go c.Kill(sid)
 	}
 }
 
@@ -827,7 +817,7 @@ func (a *App) newBrowserPane(url string) *Pane {
 	if url == browserStart {
 		addr = "" // the field says its placeholder, and the URL is typed
 	}
-	p := &Pane{ID: a.id(), browser: &browserPane{url: url, addr: addr, auto: true}}
+	p := &Pane{ID: a.id(), browser: &browserPane{url: url, addr: addr, id: layout.NewTabID(), auto: true}}
 	if a.win == nil {
 		// A view without a window, as in tests: the pane keeps its URL,
 		// and shows no page.
@@ -1039,7 +1029,7 @@ func (a *App) attach(p *Pane, cols, rows int) {
 			if p.closed || a.quitting {
 				return
 			}
-			a.paneStopped(p, update)
+			a.paneStopped(p)
 		})
 	}
 	term, err := terminal.New(opts)
@@ -1373,10 +1363,24 @@ func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
 }
 
 // newTabAfterRun is newTabAfter for a tab whose first pane runs command
-// instead of the login shell.
+// instead of the login shell. One of this machine the server makes, the
+// active tab, and returns once the window shows it, as tests have it, else
+// nil.
 func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []string) *Tab {
 	if a.offline(h) {
 		return nil
+	}
+	if h == nil {
+		c := rex.LayoutCommand{Op: "tab.create", Dir: dir, Command: command, Focus: true}
+		if a.ws != nil {
+			c.Space = a.ws.ID
+		}
+		if p := after.localPane(); p != nil {
+			c.After = p.SID
+		}
+		var t *Tab
+		a.ask(c, func(res rex.LayoutCommand) { t = a.tabByUID(res.Tab) })
+		return t
 	}
 	t := a.makeTab("")
 	p := a.newPaneRun(h, dir, 0, 0, command)
@@ -1470,10 +1474,14 @@ func (a *App) splitPane(old *Pane, vertical bool, dir string) *Pane {
 }
 
 // splitPaneRun is splitPane for a pane that runs command instead of the
-// login shell.
+// login shell. One of this machine the server makes; it returns once the
+// window shows it, as tests have it, else nil.
 func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []string) *Pane {
 	if a.offline(old.host) {
 		return nil
+	}
+	if old.host == nil {
+		return a.askPane(old, rex.LayoutCommand{Op: "pane.split", Vertical: vertical, Dir: dir, Command: command}, a.revealNew)
 	}
 	// A float splits the tab's tiled pane, not its own standalone node;
 	// on a canvas the new box is the float's size, beside it.
@@ -1552,26 +1560,110 @@ func (a *App) splitWith(old, p *Pane, vertical bool) {
 	a.changed()
 }
 
+// ask asks the server for a change of the layout that starts a session,
+// after the window's own changes (store.send): done runs with its answer
+// once the window shows it, made or not (Code). One it does not make shows
+// its error.
+func (a *App) ask(c rex.LayoutCommand, done func(rex.LayoutCommand)) {
+	if a.st == nil {
+		if done != nil {
+			done(rex.LayoutCommand{Code: "desktop_unavailable", Error: "no session server"})
+		}
+		return
+	}
+	a.st.send(c, func(res rex.LayoutCommand) {
+		switch res.Code {
+		case "":
+		case "read_only":
+			a.err, a.errMsg = "", locales.Messages.ServerLayoutReadOnly
+		default:
+			a.err, a.errMsg = res.Error, nil
+		}
+		if done != nil {
+			done(res)
+		}
+	})
+}
+
+// askPane asks for a pane.split of c by pane at, its session's or, of no
+// session, its tab's focused one, in the window's space; done runs with
+// the new pane once the window shows it. It returns the pane then, as
+// tests have it, else nil.
+func (a *App) askPane(at *Pane, c rex.LayoutCommand, done func(*Pane)) *Pane {
+	if at == nil || at.Tab == nil {
+		return nil
+	}
+	if a.ws != nil {
+		c.Space = a.ws.ID
+	}
+	if at.SID != "" {
+		c.SID = at.SID
+	} else {
+		at.Tab.setFocus(at)
+		c.Tab = at.Tab.UID
+	}
+	var p *Pane
+	a.ask(c, func(res rex.LayoutCommand) {
+		if p = a.localPane(res.New); p != nil && done != nil {
+			done(p)
+		}
+	})
+	return p
+}
+
+// revealNew pans a canvas to show its new pane p, which gets the keyboard.
+func (a *App) revealNew(p *Pane) {
+	if p.float != nil {
+		a.revealFloat(p.Tab, p.float)
+	}
+	if a.tab() == p.Tab {
+		a.focusReq = p
+	}
+}
+
+// localPane is the first pane of this machine's sessions in t, nil for
+// none or no tab.
+func (t *Tab) localPane() *Pane {
+	if t == nil {
+		return nil
+	}
+	for _, p := range t.allPanes() {
+		if p.host == nil && p.SID != "" && !p.closed {
+			return p
+		}
+	}
+	return nil
+}
+
+// gesturing tells that a gesture moves the window's panes, a divider's or
+// a float's drag (a thrown float rests where its glide ends already): what it changes stays the window's until it ends, then
+// saves once, and the server's changes wait for it.
+func (a *App) gesturing() bool {
+	if a.dividerHeld || a.dividerNow {
+		return true
+	}
+	for _, t := range a.tabs {
+		for _, f := range t.Floats {
+			if f.dragging {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // closePane closes a pane and ends its session.
 func (a *App) closePane(p *Pane) { a.dropPane(p, true) }
 
 // paneStopped decides what a terminal that stopped reading ends: a session
-// of a host, or one the server no longer has, ends its pane; one the server
-// still has is a stream of a server that went away — a crash, a kill, a
-// restart — and the pane stays, to attach to the session the server starts
-// in its place.
-func (a *App) paneStopped(p *Pane, update func(func())) {
+// of a host ends its pane. One of this machine's ends nothing: the server
+// takes the pane out of the layout once its session ended, and a stream of
+// a server that went away — a crash, a kill, a restart — keeps its pane, to
+// attach to the session the server starts in its place.
+func (a *App) paneStopped(p *Pane) {
 	if p.host != nil || p.SID == "" {
 		a.endPane(p)
-		return
 	}
-	c, sid := a.client, p.SID
-	go func() {
-		if sessionAlive(c, sid) {
-			return
-		}
-		update(func() { a.endPane(p) })
-	}()
 }
 
 // endPane ends the pane of a terminal that stopped reading, and its tab with
@@ -1585,9 +1677,14 @@ func (a *App) endPane(p *Pane) {
 		a.endKept(w, p)
 		return
 	}
-	if p.host != nil && len(a.tabs) == 1 && len(a.tabs[0].allPanes()) == 1 {
+	if p.host != nil && len(a.tabs) == 1 && len(a.tabs[0].allPanes()) == 1 && a.ws != nil {
+		// The pane goes once the new tab shows, which keeps the window,
+		// or once the tab could not be made.
 		home, _ := os.UserHomeDir()
-		a.newTabOn(nil, home)
+		a.ask(rex.LayoutCommand{Op: "tab.create", Space: a.ws.ID, Dir: home, Focus: true}, func(rex.LayoutCommand) {
+			a.dropPane(p, p.remote == nil || !p.remote.Gone())
+		})
+		return
 	}
 	// A session the host no longer lists, as one it stopped sharing, is not
 	// this machine's to end.
@@ -1610,26 +1707,6 @@ func (a *App) endKept(w *Workspace, p *Pane) {
 		a.st.save()
 	}
 	a.changed()
-}
-
-// sessionAlive tells whether the server still has session sid, and has not
-// seen it exit. One that answers nothing — gone, restarting — leaves the
-// question open, and the pane with it: the server that comes back starts the
-// session again.
-func sessionAlive(c *rex.Client, sid string) bool {
-	if c == nil {
-		return true
-	}
-	infos, err := c.List()
-	if err != nil {
-		return true
-	}
-	for _, in := range infos {
-		if in.ID == sid {
-			return !in.Exited
-		}
-	}
-	return false
 }
 
 // dropPane closes a pane, and ends its session when kill is set.
@@ -1780,25 +1857,6 @@ func (a *App) tabByUID(id string) *Tab {
 		}
 	}
 	return nil
-}
-
-// closeLastTab closes the window's last tab and ends the sessions of its
-// panes, keeping the window on its space, now empty, for a client that
-// makes the tabs it wants (showEmpty).
-func (a *App) closeLastTab(t *Tab) {
-	for _, p := range t.allPanes() {
-		p.close()
-		p.browser.destroy()
-		p.note.destroy()
-		a.killOn(p.host, p.SID)
-	}
-	a.tabs = slices.DeleteFunc(a.tabs, func(x *Tab) bool { return x == t })
-	a.active, a.focusReq = 0, nil
-	if a.renaming == t {
-		a.renaming = nil
-	}
-	a.changed()
-	a.save()
 }
 
 // closeTab closes a tab and ends the sessions of its panes.
@@ -2155,7 +2213,12 @@ func (a *App) dockPane(p *Pane) bool {
 
 // newFloat opens a terminal session in the active tab as a float, on the
 // tab's host, in the current directory.
-func (a *App) newFloat(command []string) *Pane {
+func (a *App) newFloat(command []string) *Pane { return a.newFloatThen(command, nil) }
+
+// newFloatThen is newFloat, then runs then with the float once the window
+// shows it: of this machine, the server makes it, and it returns it only
+// as tests have it, at once.
+func (a *App) newFloatThen(command []string, then func(*Pane)) *Pane {
 	t := a.tab()
 	if t == nil {
 		return nil
@@ -2163,6 +2226,14 @@ func (a *App) newFloat(command []string) *Pane {
 	h := t.host()
 	if a.offline(h) {
 		return nil
+	}
+	if h == nil {
+		return a.askPane(t.Focus, rex.LayoutCommand{Op: "pane.split", Float: true, Dir: a.currentDir(), Command: command}, func(p *Pane) {
+			a.revealNew(p)
+			if then != nil {
+				then(p)
+			}
+		})
 	}
 	cols, rows := t.Focus.paneSize()
 	if cols <= 0 || rows <= 0 {
@@ -2182,6 +2253,9 @@ func (a *App) newFloat(command []string) *Pane {
 		a.focusReq = p
 	}
 	a.changed()
+	if then != nil {
+		then(p)
+	}
 	return p
 }
 
@@ -2699,8 +2773,8 @@ func (a *App) savedTab(t *Tab) savedTab {
 			return nil
 		}
 		if p := n.Pane; p != nil {
-			if p.browser != nil {
-				return &savedNode{Name: p.Name, URL: p.browser.url}
+			if b := p.browser; b != nil {
+				return &savedNode{Name: p.Name, URL: b.url, ID: b.id}
 			}
 			if p.note != nil {
 				return &savedNode{Name: p.Name, Kind: noteKind, Note: p.note.id, NoteSize: p.note.size, NotePreview: p.note.preview}
@@ -2769,32 +2843,116 @@ func (a *App) save() {
 	}
 }
 
-// restore opens the tabs of a saved layout, attaching to the sessions
-// the server still has and starting new ones in place of those it lost.
-// With others, sessions of this machine that neither the layout nor
-// others name get tabs too, rather than running unseen. It reports
-// whether it opened a tab.
-func (a *App) restore(l savedLayout, others map[string]bool) bool {
-	if a.client == nil || len(l.Tabs) == 0 && others == nil {
+// reconcile shows the tabs of layout l in the window, attached to the
+// sessions the server has, keeping what the window has of them already: a
+// tab by its ID, a pane by its key (paneKey), terminal, page and note as
+// they are. A pane new to the window attaches, to a session the server
+// started again in place of one a run lost too; one l no longer has
+// closes, its session going on. The active tab and the tabs' focus are
+// l's, and the keyboard moves only with a focus that moved. It reports
+// whether the window has a tab. A window with no tabs, as one that opens,
+// restores l. A canvas the window shows keeps its pan and zoom, which are
+// its own.
+func (a *App) reconcile(l savedLayout) bool {
+	if a.client == nil || len(a.tabs) == 0 && len(l.Tabs) == 0 {
 		return false
 	}
-	live := map[string]rex.SessionInfo{}
-	if infos, err := a.client.List(); err == nil {
-		for _, in := range infos {
-			if !in.Exited {
-				live[in.ID] = in
+	wasTab := a.tab()
+	var was *Pane
+	if wasTab != nil {
+		was = wasTab.Focus
+	}
+	tabs := map[string]*Tab{}
+	index := map[string]*Pane{}
+	var before []*Pane
+	for _, t := range a.tabs {
+		tabs[t.UID] = t
+		for _, p := range t.allPanes() {
+			before = append(before, p)
+			if k := p.key(); k != "" && index[k] == nil {
+				index[k] = p
 			}
 		}
 	}
+	kept := map[*Pane]bool{}
 	used := map[string]bool{}
+	// The splits the window has, by their sides: one of the same two sides
+	// stays, as its divider does.
+	parents := map[*Node]*Node{}
+	for _, t := range a.tabs {
+		var walk func(n *Node)
+		walk = func(n *Node) {
+			if n != nil && n.A != nil && n.B != nil {
+				parents[n.A], parents[n.B] = n, n
+				walk(n.A)
+				walk(n.B)
+			}
+		}
+		walk(t.Root)
+	}
+	// What the server runs, as the windows last polled it: a session the
+	// list does not have yet, as one a client just made, asks it again.
+	live := map[string]rex.SessionInfo{}
+	listed := false
+	list := func() {
+		if listed {
+			return
+		}
+		listed = true
+		if infos, err := a.client.List(); err == nil {
+			for _, in := range infos {
+				if !in.Exited {
+					live[in.ID] = in
+				}
+			}
+		}
+	}
+	if a.st != nil && a.st.infos != nil {
+		for id, in := range a.st.infos {
+			if !in.Exited {
+				live[id] = in
+			}
+		}
+	} else {
+		list()
+	}
 	// A pane of a host attaches once the host connects, and closes then
 	// if its session is gone; one of a host no longer saved goes now.
 	var load func(s *savedNode, t *Tab, parent *Node) *Node
 	load = func(s *savedNode, t *Tab, parent *Node) *Node {
-		n := &Node{ID: a.id(), Parent: parent}
 		if s.A == nil || s.B == nil {
+			if p := index[paneKey(s)]; p != nil && !kept[p] {
+				kept[p] = true
+				if s.Host == "" && s.SID != "" {
+					used[s.SID] = true
+				}
+				p.Name, p.Tab = s.Name, t
+				if p.note != nil {
+					p.note.size, p.note.preview = clampNoteSize(s.NoteSize), s.NotePreview
+				}
+				// Another client's page; the window's own navigation since
+				// it last wrote the layout stays.
+				if b := p.browser; b != nil && s.URL != b.synced {
+					b.url, b.addr, b.synced = s.URL, s.URL, s.URL
+					if b.web != nil {
+						b.web.Page().LoadURL(s.URL)
+					}
+				}
+				n := p.Node
+				if n == nil {
+					n = &Node{ID: a.id()}
+				}
+				n.Pane, n.Parent, n.A, n.B = p, parent, nil, nil
+				p.Node = n
+				return n
+			}
+			n := &Node{ID: a.id(), Parent: parent}
 			var p *Pane
 			in, isLive := live[s.SID]
+			if !isLive && s.Host == "" && s.SID != "" {
+				list()
+				in, isLive = live[s.SID]
+			}
 			switch {
 			case s.Kind == noteKind:
 				p = a.newNotePane(s.Note)
@@ -2803,7 +2961,10 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			case s.URL != "":
 				p = a.newBrowserPane(s.URL)
 				p.Name = s.Name
-				p.browser.auto = false
+				p.browser.auto, p.browser.synced = false, s.URL
+				if s.ID != "" && index[paneKey(s)] == nil {
+					p.browser.id = s.ID
+				}
 			case s.Host != "":
 				h := a.hostByID(s.Host)
 				if h == nil || s.SID == "" {
@@ -2822,18 +2983,17 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 					p.resume = resumeHintFor(in.Shell, s)
 				}
 			default:
-				dir := s.Dir
-				if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-					dir, _ = os.UserHomeDir()
-				}
-				p = a.newPane(nil, dir, s.Cols, s.Rows)
-				p.Name, p.restored = s.Name, true
-				p.resume = resumeHintFor(p.info.Shell, s)
+				// A session the server does not run, as one that just
+				// ended, whose pane the server takes out: the pane is it
+				// till then.
+				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, info: rex.SessionInfo{ID: s.SID, Dir: s.Dir}, startDir: s.Dir}
+				a.attach(p, s.Cols, s.Rows)
 			}
 			p.Tab, p.Node = t, n
 			n.Pane = p
 			return n
 		}
+		n := &Node{ID: a.id(), Parent: parent}
 		n.Vertical, n.Ratio = s.Vertical, min(max(s.Ratio, 0.05), 0.95)
 		n.A, n.B = load(s.A, t, n), load(s.B, t, n)
 		// The side left takes the place of a split whose other side went.
@@ -2847,15 +3007,37 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			n.A.Parent = parent
 			return n.A
 		}
+		if old := parents[n.A]; old != nil && old == parents[n.B] && old.A == n.A && old.B == n.B {
+			delete(parents, n.A)
+			delete(parents, n.B)
+			old.Parent, old.Vertical, old.Ratio, old.Pane = parent, n.Vertical, n.Ratio, nil
+			n.A.Parent, n.B.Parent = old, old
+			return old
+		}
 		return n
 	}
+	a.tabs = nil
 	for _, st := range l.Tabs {
-		t := a.makeTab(st.ID)
+		t := tabs[st.ID]
+		reused := t != nil && st.ID != ""
+		if reused {
+			delete(tabs, st.ID)
+			t.Root, t.Floats, t.Zoom = nil, nil, nil
+		} else {
+			t = a.makeTab(st.ID)
+		}
 		t.Name = st.Name
 		// Before its floats, which a canvas keeps where they were.
+		view := t.canvas
 		t.canvas = loadCanvas(st.Canvas)
+		if view != nil && t.canvas != nil {
+			t.canvas.X, t.canvas.Y, t.canvas.Scale = view.X, view.Y, view.Scale
+		}
 		if st.Root != nil {
 			t.Root = load(st.Root, t, nil)
+		}
+		for _, p := range t.panes() {
+			p.float = nil // a float that docked
 		}
 		// The saved float with the focus, by its place among the saved
 		// floats: a float that does not come shifts no index as it does.
@@ -2873,14 +3055,20 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 				continue
 			}
 			p := n.Pane
-			f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
+			f := p.float // the float it was, which stays as it moves
+			if f == nil {
+				f = &Float{Pane: p}
+			}
+			f.X, f.Y, f.W, f.H, f.Hidden, f.Zoom = sf.X, sf.Y, sf.W, sf.H, sf.Hidden, sf.Zoom
 			f.clamp()
-			p.Node = &Node{ID: a.id(), Pane: p}
 			p.float = f
 			t.Floats = append(t.Floats, f)
 			if i == wanted {
 				focusedFloat = f
 			}
+		}
+		if !slices.Contains(t.Floats, t.hiddenLast) {
+			t.hiddenLast = nil
 		}
 		if t.Root == nil {
 			if len(t.Floats) == 0 {
@@ -2890,22 +3078,38 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			// their place, as it does when the last tiled pane closes.
 			a.promoteFloat(t)
 		}
-		ps := t.panes()
-		for _, p := range ps {
-			t.setFocus(p)
-		}
-		for _, f := range t.Floats {
-			t.setFocus(f.Pane)
+		ps, all := t.panes(), t.allPanes()
+		if reused {
+			// The panes it had keep their order of use.
+			t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return !slices.Contains(all, q) })
+		} else {
+			for _, p := range all {
+				t.setFocus(p)
+			}
 		}
 		// A canvas has no tiled pane: its focus is a float's.
+		want := t.Focus
+		if !slices.Contains(all, want) {
+			want = all[len(all)-1]
+		}
 		if len(ps) > 0 {
-			t.setFocus(ps[min(max(st.Focus, 0), len(ps)-1)])
+			want = ps[min(max(st.Focus, 0), len(ps)-1)]
 		}
 		if st.Zoom && len(ps) > 1 {
-			t.Zoom = t.Focus
+			t.Zoom = want
 		}
 		if focusedFloat != nil && slices.Contains(t.Floats, focusedFloat) && !focusedFloat.Hidden {
-			t.setFocus(focusedFloat.Pane)
+			want = focusedFloat.Pane
+		}
+		if t.Focus != want {
+			t.setFocus(want)
+		}
+		// The panes new to it go in its order of use behind the focus,
+		// which stays.
+		for _, p := range all {
+			if !slices.Contains(t.recent, p) {
+				t.recentBehind(p)
+			}
 		}
 		a.tabs = append(a.tabs, t)
 		// A canvas saved with the setting on, which is off now, is tiled
@@ -2914,20 +3118,69 @@ func (a *App) restore(l savedLayout, others map[string]bool) bool {
 			a.leaveCanvas(t)
 		}
 	}
-	// Sessions no tab shows, as those of an app that crashed, get a tab
-	// of their own.
-	for _, in := range sortedInfos(live) {
-		if others != nil && !used[in.ID] && !others[in.ID] {
-			a.tabs = append(a.tabs, a.sessionTab(nil, in))
+	// What l no longer has closes; the sessions go on.
+	for _, p := range before {
+		if kept[p] {
+			continue
 		}
+		if a.findPane == p {
+			a.closeFind()
+		}
+		p.end()
+		p.browser.destroy()
+	}
+	if a.renaming != nil && !slices.Contains(a.tabs, a.renaming) {
+		a.renaming = nil
+	}
+	if a.paneRenaming != nil && a.paneRenaming.closed {
+		a.paneRenaming, a.paneNameFocus = nil, false
+	}
+	if a.focusReq != nil && a.focusReq.closed {
+		a.focusReq = nil
 	}
 	if len(a.tabs) == 0 {
+		a.active, a.focusReq = 0, nil
 		return false
 	}
 	a.active = min(max(l.Active, 0), len(a.tabs)-1)
 	a.groupTabs()
-	a.focusReq = a.tab().Focus
+	if now := a.tab(); now != wasTab || now.Focus != was {
+		a.focusReq = now.Focus
+	}
 	return true
+}
+
+// paneKey names a pane of a layout for as long as the pane lasts: by its
+// session and the session's host, its note, or its browser's ID; "" for
+// none.
+func paneKey(s *savedNode) string {
+	switch {
+	case s.Kind == noteKind && s.Note != "":
+		return "note:" + s.Note
+	case s.URL != "":
+		if s.ID == "" {
+			return ""
+		}
+		return "web:" + s.ID
+	case s.SID != "":
+		return s.Host + "/" + s.SID
+	}
+	return ""
+}
+
+// key is the pane's paneKey.
+func (p *Pane) key() string {
+	n := savedNode{SID: p.SID}
+	if p.host != nil {
+		n.Host = p.host.ID
+	}
+	if p.browser != nil {
+		n.URL, n.ID = p.browser.url, p.browser.id
+	}
+	if p.note != nil {
+		n.Kind, n.Note = noteKind, p.note.id
+	}
+	return paneKey(&n)
 }
 
 // sessionTab makes a tab of one pane, attached to session in of host h,
@@ -3013,8 +3266,6 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) {
 	if h != nil {
 		a.adopt(h, byID, l)
-	} else {
-		a.adoptLocal(byID)
 	}
 	var events []map[string]string
 	for ti, t := range a.tabs {
@@ -3041,6 +3292,11 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 					}
 				}(p.stream)
 			}
+			// The layout keeps a host's pane's directory, which this
+			// machine's server does not stamp: a change saves it.
+			if h != nil && was.Dir != in.Dir {
+				a.changed()
+			}
 			seen := ti == a.active && t.Focus == p && a.focusedWin
 			if seen {
 				p.see()
@@ -3065,11 +3321,6 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 					n.Show()
 				}
 			}
-			// The layout keeps the program in the foreground, for a pane
-			// whose session a restart loses: its start and its end save.
-			if was.Dir != in.Dir || was.Idle != in.Idle || was.Program != in.Program || !slices.Equal(was.Args, in.Args) || was.AgentSession != in.AgentSession {
-				a.changed()
-			}
 		}
 	}
 	a.syncSizes()
@@ -3078,55 +3329,10 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			a.luaConfig.Emit("program_status_changed", ev)
 		}
 	}
-	if a.saveDue && time.Since(a.lastSave) > time.Second {
+	if a.saveDue && time.Since(a.lastSave) > time.Second && !a.gesturing() {
 		a.save()
 	}
 	a.syncBadge()
-}
-
-// adoptLocal opens a tab for each session a remote client created on this
-// machine that no tab shows, as one another machine opens here: the window
-// focused last takes them, last among this machine's tabs, and without the
-// focus. A session this machine's own client opened, from the command line
-// or a pane, is no tab's to open: it stays as it was. Call it on the main
-// thread.
-func (a *App) adoptLocal(byID map[string]rex.SessionInfo) {
-	if a.quitting || a.st == nil || a.ws == nil || len(a.st.apps) == 0 || a.st.apps[0] != a {
-		return
-	}
-	for sid := range a.st.closedHere {
-		if _, ok := byID[sid]; !ok {
-			delete(a.st.closedHere, sid)
-		}
-	}
-	shown := map[string]bool{}
-	for _, o := range a.peers() {
-		for _, t := range o.tabs {
-			for _, p := range t.panes() {
-				if p.host == nil && p.SID != "" {
-					shown[p.SID] = true
-				}
-			}
-		}
-	}
-	for sid := range a.st.namedSIDs(a.ws) {
-		shown[sid] = true
-	}
-	var free []rex.SessionInfo
-	for _, in := range sortedInfos(byID) {
-		if in.Exited || in.Owner == "" || shown[in.ID] || a.st.closedHere[in.ID] {
-			continue
-		}
-		free = append(free, in)
-	}
-	if len(free) == 0 {
-		return
-	}
-	for _, in := range free {
-		a.tabs = append(a.tabs, a.sessionTab(nil, in))
-	}
-	a.groupTabs()
-	a.changed()
 }
 
 // statusEvents are the program status changes of a pane, for the Lua

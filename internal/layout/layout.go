@@ -1,7 +1,8 @@
 // Package layout is the saved shape of GoRex's windows, tabs and panes.
-// The app writes it while a window is open; the session server keeps it,
-// makes the clients' changes of it while no window is (rex's apply), and
-// reads it to start again the sessions of a run that did not stop.
+// The session server keeps it and makes every change of it (rex's apply),
+// the app's as its clients' (the app sends its arrangement of a tab as
+// tab.set), its own as its sessions end and start, and reads it to start
+// again the sessions a run before lost; the app shows it.
 package layout
 
 // Store is every workspace and the windows that show them, in order.
@@ -9,8 +10,23 @@ type Store struct {
 	Version  int         `json:"version"`
 	Sessions []Workspace `json:"sessions"`
 	Windows  []string    `json:"windows"`
+	// Teleports are the teleports of this machine's panes under way: the
+	// session each starts on a host, which the app opens as no tab of its
+	// own; the server shows it in the pane's place once it runs.
+	Teleports []Teleport `json:"teleports,omitempty"`
 	// The first window's tabs, for a GoRex from before workspaces.
 	Layout
+	// Named tells that Parse gave a browser pane an ID: the layout read is
+	// not the one written, which a writer writes once.
+	Named bool `json:"-"`
+}
+
+// Teleport is a teleport under way of the pane of this machine's session
+// From, to the session SID it starts on host Host, by the host's ID.
+type Teleport struct {
+	Host string `json:"host"`
+	SID  string `json:"sid"`
+	From string `json:"from"`
 }
 
 // Workspace is a workspace as the layout keeps it.
@@ -32,7 +48,11 @@ type Tab struct {
 	// ID names the tab for good: the app gives it to every tab it makes,
 	// keeps it while the tab lasts, wherever the tab goes, and gives one
 	// to a tab of an older layout that has none. Clients name a tab by it.
-	ID    string `json:"id,omitempty"`
+	ID string `json:"id,omitempty"`
+	// Rev is the tab's revision: the server counts it up by one at each
+	// change of the tab's arrangement, so that a change built on the tab
+	// as it was (LayoutCommand.Base) is refused once another came first.
+	Rev   uint64 `json:"rev,omitempty"`
 	Name  string `json:"name,omitempty"`
 	Root  *Node  `json:"root"`
 	Focus int    `json:"focus"`
@@ -100,8 +120,11 @@ type Node struct {
 	// machine's.
 	Host string `json:"host,omitempty"`
 	Dir  string `json:"dir,omitempty"`
-	// URL is the page of a browser pane, which has no session.
+	// URL is the page of a browser pane, which has no session, and ID
+	// names the pane for good, as a session names a terminal's: Parse
+	// gives one to a browser pane of a layout that has none.
 	URL string `json:"url,omitempty"`
+	ID  string `json:"id,omitempty"`
 	// Kind is "note" for a note pane, which has no session either, and
 	// Note its id, which names the file of its text; a pane of no kind is a terminal or, with a URL, a
 	// browser.

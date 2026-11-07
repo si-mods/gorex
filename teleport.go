@@ -11,24 +11,6 @@ import (
 	"gorex/locales"
 )
 
-// hostAt is the window's host of address addr, an error code and message
-// when it has none connected, or more than one.
-func (a *App) hostAt(addr string) (*hostConn, string, string) {
-	var found []*hostConn
-	for _, h := range a.hosts {
-		if addr != "" && strings.TrimSpace(h.Address) == strings.TrimSpace(addr) && h.current() != nil {
-			found = append(found, h)
-		}
-	}
-	switch len(found) {
-	case 0:
-		return nil, "host_not_found", "no such host connected to the GoRex window"
-	case 1:
-		return found[0], "", ""
-	}
-	return nil, "host_ambiguous", "more than one host of the GoRex window has that address"
-}
-
 // teleportRun is a teleport of a pane under way: the host it goes to,
 // the step it is at, and how to stop it.
 type teleportRun struct {

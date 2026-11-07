@@ -268,17 +268,9 @@ func (p *Pane) stopTransfers() {
 // space, so that the paths of the next drop, or what is typed, are
 // another word.
 func pastedPaths(shell string, paths []string) string {
-	q := rex.QuoterOf(shell)
-	if q == nil {
-		q = rex.QuoterOf("sh")
-	}
 	words := make([]string, len(paths))
 	for i, path := range paths {
-		w, ok := q(path)
-		if !ok {
-			w = path
-		}
-		words[i] = w
+		words[i] = rex.PathWord(shell, path)
 	}
 	return strings.Join(words, " ") + " "
 }

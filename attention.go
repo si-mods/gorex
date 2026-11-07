@@ -70,7 +70,7 @@ func (st *store) visitLocalSIDs(w *Workspace, fn func(sid string)) {
 // known, and a host's sessions there are not counted.
 func (st *store) hiddenNeeds(fn func(w *Workspace, sid string, rank int)) {
 	for _, w := range st.workspaces {
-		if w.app != nil || w.hidden() {
+		if w.app != nil {
 			continue
 		}
 		st.visitLocalSIDs(w, func(sid string) {

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.0
+
+### Features
+
+* **layout:** the session server owns the layout. The server makes every layout change, so clients such as the Rex iPhone app and the `gorex` CLI can open windows, split, rename and close with no GoRex window open. The app follows the server's layout ([#224](https://github.com/si-mods/gorex/pull/224), [#225](https://github.com/si-mods/gorex/pull/225), [#230](https://github.com/si-mods/gorex/pull/230))
+* **rex:** the server owns its panes' lifecycle. It drops the pane of a session that ends, and restores lost sessions after a crash (in the home folder when their folder is gone). It places sessions that no tab shows, finishes teleports, and keeps each pane's folder, size and program current ([#233](https://github.com/si-mods/gorex/pull/233))
+* **tabs:** drag a tab onto another host to teleport it, after asking ([#217](https://github.com/si-mods/gorex/pull/217))
+
+### Bug Fixes
+
+* **rex:** size a tab made in the background by the room it gets, and restore lost sessions in the background so the server answers at once ([#235](https://github.com/si-mods/gorex/pull/235))
+* **tabs:** select the old name when a rename starts ([#235](https://github.com/si-mods/gorex/pull/235))
+* **rex:** `session.set_label` renames the session ([#224](https://github.com/si-mods/gorex/pull/224))
+* **panes:** upload files dropped on a host pane into a temp folder ([#223](https://github.com/si-mods/gorex/pull/223))
+* **cli:** keep the gorex shim pointing at the binary ([#222](https://github.com/si-mods/gorex/pull/222))
+* **remote:** share one tailcat client per machine through the local server ([#220](https://github.com/si-mods/gorex/pull/220))
+
 ## 0.15.0
 
 ### Features

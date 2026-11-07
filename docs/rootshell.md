@@ -29,10 +29,10 @@ Windows a server started from an SSH logon would end with it.
   sessions as it happens, and rootshell shows it at once (a new program
   in a pane, within half a second of its printing; one that prints
   nothing, within 30 seconds). rootshell changes the layout through the
-  GoRex window: new tab, split, close pane, close tab, rename tab or
-  pane, zoom, move or swap a pane, move a divider, and moving tabs go to
-  the window, which makes them as its own buttons do, and rootshell shows
-  them as soon as the window saved them. A new tab opens after the tab
+  session server: new tab, split, close pane, close tab, rename tab or
+  pane, zoom, move or swap a pane, move a divider, and moving tabs the
+  server makes itself, an open GoRex window showing them at once, and
+  rootshell shows them as soon as the server made them. A new tab opens after the tab
   last used in rootshell, in its directory. Closing a pane or a tab ends
   its sessions, as on the desktop.
 - **Size.** One terminal has one size. The tab rootshell shows takes it:
@@ -134,15 +134,13 @@ shim for herdr's sessions, which it answers with none anyway.
 
 ## Limits
 
-- With no GoRex window open on the host, its server makes a change of
-  the layout itself, and the window shows it as it opens. A tab or a
-  space that holds a pane of another host is the window's to close: the
-  server cannot end that host's session, so with no window the close
-  fails with "Open the GoRex window on …" and the panes stay.
-- Closing the window's last tab from rootshell leaves its space empty,
-  the GoRex window open on it; a new tab from rootshell fills it again.
-- Closing a tab from rootshell ends its panes of remote hosts too, which
-  rootshell does not show, as closing it on the desktop does.
+- The host's server makes every change of the layout itself, a GoRex
+  window open or not. Closing a tab or a space that holds a pane of
+  another host drops that pane, which rootshell does not show; the
+  server cannot end that host's session, which goes on there.
+- Closing the window's last tab from rootshell leaves its space empty; a
+  new tab from rootshell fills it again. A GoRex window that showed it
+  shows another space, or closes.
 - Equalizing, workspaces and worktrees fail with "herdr Action Failed"
   (read-only).
 - A pane moves to another tab or a new tab, not to a new workspace: GoRex
@@ -169,7 +167,6 @@ shim for herdr's sessions, which it answers with none anyway.
 | rootshell says herdr is not found or too old | The shim is at `~/.local/opt/herdr-rootshell/bin/herdr` and executable; `GOREX` in it names GoRex's executable. |
 | `not_found`: GoRex is not running | Open GoRex on the host; the bridge does not start the server. |
 | Nothing on Windows, or `'…' is not recognized` | OpenSSH's DefaultShell is Git Bash, and `sshd` was restarted after setting it. |
-| A split, close or zoom from rootshell does nothing | The GoRex window is open on the host: it makes the change. |
 | The tabs are empty | GoRex saves its layout a moment after it changes: open a tab on the host, wait a second, connect again. |
 | The bridge finds another server than the app's | Both use the app's data directory, or `GOREX_DIR` if set: set it the same for the SSH logon, or not at all. |
 | A desktop pane stays at the phone's size | Type in it to take the size back; it comes back by itself within 30 seconds after rootshell leaves. |

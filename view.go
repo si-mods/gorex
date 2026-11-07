@@ -80,7 +80,7 @@ func (a *App) view(c *ui.Context) {
 	t.Accent = k.accent
 	c.SetTheme(&t)
 	rootBackground(c, k.bgBottom) // SetTheme gave the root the theme's
-	if a.saveDue && time.Since(a.lastSave) > time.Second {
+	if a.saveDue && time.Since(a.lastSave) > time.Second && !a.gesturing() {
 		a.save()
 	}
 	// The window's title, which the Window menu and Mission Control show,

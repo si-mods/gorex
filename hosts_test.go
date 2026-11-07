@@ -646,7 +646,7 @@ func TestRestoreRemote(t *testing.T) {
 	b := &App{client: a.client}
 	b.loadHosts()
 	t.Cleanup(b.stopHosts)
-	if !b.restore(l, nil) {
+	if !b.reconcile(l) {
 		t.Fatal("nothing restored")
 	}
 	if len(b.tabs) != 2 {
@@ -742,7 +742,7 @@ func TestAdoptHostSessions(t *testing.T) {
 	b := &App{client: a.client}
 	b.loadHosts()
 	t.Cleanup(b.stopHosts)
-	if !b.restore(savedWorkspaces(t, a.client).Sessions[0].Layout, nil) {
+	if !b.reconcile(savedWorkspaces(t, a.client).Sessions[0].Layout) {
 		t.Fatal("nothing restored")
 	}
 	tb := ui.NewTester(b.view, 1000, 620)
@@ -885,6 +885,11 @@ func TestAdoptHostTabSavedLate(t *testing.T) {
 	}
 	right, err := remote.Create(rex.CreateOptions{Cols: 88, Rows: 28})
 	if err != nil {
+		t.Fatal(err)
+	}
+	// The host's server placed them, with no app there; its layout names
+	// neither again, as one not saved yet.
+	if err := remote.SetLayout(json.RawMessage(`{"version":2,"sessions":[]}`)); err != nil {
 		t.Fatal(err)
 	}
 	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})

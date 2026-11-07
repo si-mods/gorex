@@ -616,6 +616,15 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			shown[sid] = true
 		}
 	}
+	// A teleport under way, which the layout notes before the host starts
+	// its session, shows it in its pane's place.
+	if a.st != nil {
+		for _, tp := range a.st.base.Teleports {
+			if tp.Host == h.ID {
+				shown[tp.SID] = true
+			}
+		}
+	}
 	h.mu.Lock()
 	for _, sid := range h.Kills {
 		shown[sid] = true
@@ -1061,19 +1070,32 @@ func (a *App) removeHost(h *hostConn) {
 		closeHostLayout()
 	}
 	for _, o := range a.peers() {
-		// The window keeps a tab, as it would close with its last.
-		if len(o.tabsOn(h)) == len(o.tabs) {
-			home, _ := os.UserHomeDir()
-			o.newTabOn(nil, home)
-		}
-		for _, t := range slices.Clone(o.tabs) {
-			for _, p := range t.allPanes() {
-				if p.host == h {
-					o.dropPane(p, false)
+		drop := func() {
+			for _, t := range slices.Clone(o.tabs) {
+				for _, p := range t.allPanes() {
+					if p.host == h {
+						o.dropPane(p, false)
+					}
 				}
 			}
+			o.changed()
 		}
-		o.changed()
+		// The window keeps a tab, as it would close with its last: the
+		// host's panes go once the server made it, or could not.
+		if len(o.tabs) > 0 && len(o.tabsOn(h)) == len(o.tabs) {
+			// A window of no space takes a space of its own for it, never
+			// another window's.
+			if o.ws == nil && o.st != nil {
+				w := o.st.addWorkspace()
+				o.ws, w.app = w, o
+			}
+			if o.ws != nil {
+				home, _ := os.UserHomeDir()
+				o.ask(rex.LayoutCommand{Op: "tab.create", Space: o.ws.ID, Dir: home, Focus: true}, func(rex.LayoutCommand) { drop() })
+				continue
+			}
+		}
+		drop()
 	}
 	// Spaces whose kept tabs show the host's panes show from their layout.
 	if a.st != nil {

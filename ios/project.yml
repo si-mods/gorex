@@ -1,0 +1,94 @@
+# XcodeGen spec: `xcodegen generate` writes GoRex.xcodeproj (not committed).
+# Build ios/Frameworks/GhosttyVt.xcframework first: scripts/build-ghostty-vt.sh.
+name: GoRex
+packages:
+  # rootshell's prebuilt Ghostty (Metal renderer, key encoding), at the
+  # version rootshell pins.
+  GhosttyKit:
+    url: https://github.com/kitknox/ghosttykit-rootshell.git
+    exactVersion: 0.2.22
+options:
+  deploymentTarget:
+    iOS: "26.0"
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    MARKETING_VERSION: "1.0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 57QL6YCAH5
+    # The xcframework's simulator library is arm64 only.
+    EXCLUDED_ARCHS[sdk=iphonesimulator*]: x86_64
+targets:
+  GoRex:
+    type: application
+    platform: iOS
+    sources:
+      - GoRex
+      - path: THIRD_PARTY_NOTICES.md
+        buildPhase: resources
+    dependencies:
+      # libghostty-vt reads the snapshot a stream starts with.
+      - framework: Frameworks/GhosttyVt.xcframework
+        embed: false
+      - package: GhosttyKit
+        product: GhosttyKitAppStore
+    settings:
+      base:
+        OTHER_LDFLAGS: -lc++
+        SWIFT_OBJC_BRIDGING_HEADER: GoRex/GoRex-Bridging-Header.h
+        PRODUCT_BUNDLE_IDENTIFIER: dev.gorex.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        TARGETED_DEVICE_FAMILY: "1,2"
+    info:
+      path: GoRex/Info.plist
+      properties:
+        CFBundleDisplayName: Rex Go
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleLocalizations: [en, zh-Hans]
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        # A pointer's clicks come as its own touches, which select.
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        # The local network listener is plain HTTP by design (docs/rex-api.md).
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: GoRex connects to your computers on the local network.
+        NSCameraUsageDescription: Rex Go scans the pairing QR code that GoRex or Rex shows.
+  # Hostless, so that it also runs without xcodebuild:
+  # xcrun simctl spawn booted .../xctest GoRexTests.xctest
+  GoRexTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - GoRexTests
+      - GoRex/Rex
+      - GoRex/Terminal/VTerminal.swift
+      - GoRex/Terminal/KeyEvent.swift
+      - GoRex/Terminal/InputDocument.swift
+      - GoRex/Terminal/TerminalTheme.swift
+      - GoRex/Terminal/TerminalSession.swift
+      - path: ../internal/rexapi/testdata/rex-terminal-stream.bin
+        buildPhase: resources
+    dependencies:
+      - framework: Frameworks/GhosttyVt.xcframework
+        embed: false
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+schemes:
+  GoRex:
+    build:
+      targets:
+        GoRex: all
+    test:
+      targets:
+        - GoRexTests

@@ -1,5 +1,7 @@
 package layout
 
+import "encoding/json"
+
 // IsLeaf tells a pane from a split.
 func (n *Node) IsLeaf() bool { return n != nil && n.A == nil && n.B == nil }
 
@@ -134,4 +136,34 @@ func (s *Store) Space(id string) *Workspace {
 		}
 	}
 	return nil
+}
+
+// Arrangement is the tab as its arrangement: without its revision, a
+// canvas's view (the window's own), and its panes' facts, which the server
+// keeps of their sessions (directory, size, program). Two tabs of the same
+// arrangement encode the same.
+func (t Tab) Arrangement() []byte {
+	t.Rev = 0
+	if t.Canvas != nil {
+		cv := *t.Canvas
+		cv.X, cv.Y, cv.Scale = 0, 0, 0
+		t.Canvas = &cv
+	}
+	var strip func(n *Node) *Node
+	strip = func(n *Node) *Node {
+		if n == nil {
+			return nil
+		}
+		c := *n
+		c.Dir, c.Cols, c.Rows, c.Prog, c.Args, c.AgentSession, c.AgentConfigDir = "", 0, 0, "", nil, "", ""
+		c.A, c.B = strip(n.A), strip(n.B)
+		return &c
+	}
+	t.Root = strip(t.Root)
+	t.Floats = append([]Float(nil), t.Floats...)
+	for i := range t.Floats {
+		t.Floats[i].Pane = strip(t.Floats[i].Pane)
+	}
+	b, _ := json.Marshal(t)
+	return b
 }

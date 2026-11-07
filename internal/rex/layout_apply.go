@@ -14,24 +14,33 @@ import (
 	"gorex/internal/layout"
 )
 
-// applied are the layout commands the server makes itself while no GoRex
-// window takes them (apply), as the window would; the others, actions and
-// teleports, need the window.
+// applied are the layout commands the server makes itself (apply); the
+// others, actions but float.set_state, and config.reload, need the
+// window.
 var applied = map[string]bool{
 	"space.create": true, "space.rename": true, "space.close": true,
 	"tab.create": true, "tab.close": true, "tab.rename": true, "tab.move": true,
 	"pane.split": true, "pane.close": true, "pane.rename": true, "pane.focus": true,
 	"pane.zoom": true, "pane.resize": true, "pane.swap": true, "pane.move": true,
+	"pane.restart": true, "pane.teleporting": true, "pane.teleported": true,
+	"tab.set": true, "windows.set": true, "layout.apply": true,
 }
 
-// apply makes a change of the layout a client asks for with no window to
-// make it: on the layout the server keeps, starting and ending the
-// sessions of its panes here, as the window would. A command that needs
-// the window is answered so.
+// batched are the commands a layout.apply carries: the app's changes of
+// the layout that start no session.
+var batched = map[string]bool{
+	"space.create": true, "space.rename": true, "space.close": true, "windows.set": true,
+	"tab.set": true, "tab.close": true, "pane.close": true,
+}
+
+// applies tells a command the server makes itself.
+func applies(c LayoutCommand) bool {
+	return applied[c.Op] || c.Op == "action" && c.Action == "float.set_state"
+}
+
+// apply makes a change of the layout a client asks for: on the layout the
+// server keeps, starting and ending the sessions of its panes here.
 func (s *Server) apply(c LayoutCommand) LayoutCommand {
-	if !applied[c.Op] && (c.Op != "action" || c.Action != "float.set_state") {
-		return LayoutCommand{ID: c.ID, Code: "desktop_unavailable", Error: "no GoRex window is open"}
-	}
 	a := &applying{s: s}
 	res := s.applyHeld(c, a)
 	// The sessions of the panes it closed end once the layout no longer
@@ -52,11 +61,19 @@ func (s *Server) apply(c LayoutCommand) LayoutCommand {
 // commit: for tests.
 var applyHook func()
 
-// applyHeld makes c under the locks: an upgrade waits for the change, its
-// sessions and its layout alike, and the applies take their turns. A
-// layout another client set meanwhile, as the app's whole layout, makes
-// it again on that one.
+// applyHeld makes c under the locks (change).
 func (s *Server) applyHeld(c LayoutCommand, a *applying) LayoutCommand {
+	res := s.change(a, func(st *layout.Store) LayoutCommand { return s.applyTo(st, c, a) })
+	res.ID = c.ID
+	return res
+}
+
+// change makes f's change of the layout under the locks: an upgrade waits
+// for the change, its sessions and its layout alike, and the changes take
+// their turns. A layout another client set meanwhile, as the app's whole
+// layout, makes it again on that one. What it commits has the facts of
+// the sessions now (stampAll).
+func (s *Server) change(a *applying, f func(st *layout.Store) LayoutCommand) LayoutCommand {
 	s.ops.RLock()
 	defer s.ops.RUnlock()
 	s.applyMu.Lock()
@@ -67,17 +84,20 @@ func (s *Server) applyHeld(c LayoutCommand, a *applying) LayoutCommand {
 		s.mu.Unlock()
 		st := layout.Parse(raw)
 		before := encodeLayout(&st)
-		a.n, a.ends = 0, nil
-		res := s.applyTo(&st, c, a)
-		res.ID = c.ID
+		a.n, a.ends, a.touched = 0, nil, nil
+		res := f(&st)
 		if res.Code != "" {
 			return res
 		}
+		res.Revs = a.countRevs(&st)
 		// A command that changes nothing, as a resize at its bound,
 		// leaves the layout as it was, an older one unmigrated.
 		after := encodeLayout(&st)
 		if bytes.Equal(before, after) {
 			return res
+		}
+		if s.stampAll(&st) {
+			after = encodeLayout(&st)
 		}
 		if applyHook != nil {
 			applyHook()
@@ -86,7 +106,56 @@ func (s *Server) applyHeld(c LayoutCommand, a *applying) LayoutCommand {
 			return res
 		}
 	}
-	return LayoutCommand{ID: c.ID, Code: "layout_conflict", Error: "the layout kept changing; try again"}
+	return LayoutCommand{Code: "layout_conflict", Error: "the layout kept changing; try again"}
+}
+
+// touch notes the tab t as it is, before the change changes it: its
+// revision counts up once the change leaves it otherwise (countRevs). A
+// new tab, of no tab before, is touched by its ID with t nil.
+func (a *applying) touch(id string, t *layout.Tab) {
+	if a.touched == nil {
+		a.touched = map[string]touchedTab{}
+	}
+	if _, ok := a.touched[id]; ok {
+		return
+	}
+	var was touchedTab
+	if t != nil {
+		was = touchedTab{rev: t.Rev, arrangement: t.Arrangement()}
+	}
+	a.touched[id] = was
+}
+
+// touchedTab is a tab as it was before a change: its revision and its
+// arrangement, nil for a tab new to the layout.
+type touchedTab struct {
+	rev         uint64
+	arrangement []byte
+}
+
+// countRevs counts up the revision of each tab the change touched whose
+// arrangement it changed, and returns them.
+func (a *applying) countRevs(st *layout.Store) map[string]uint64 {
+	var revs map[string]uint64
+	for i := range st.Sessions {
+		for j := range st.Sessions[i].Tabs {
+			t := &st.Sessions[i].Tabs[j]
+			was, ok := a.touched[t.ID]
+			if !ok {
+				continue
+			}
+			t.Rev = was.rev
+			if was.arrangement != nil && bytes.Equal(was.arrangement, t.Arrangement()) {
+				continue
+			}
+			t.Rev++
+			if revs == nil {
+				revs = map[string]uint64{}
+			}
+			revs[t.ID] = t.Rev
+		}
+	}
+	return revs
 }
 
 // encodeLayout writes st as the app saves a layout: with the first
@@ -119,7 +188,14 @@ type applying struct {
 	s    *Server
 	made []*layout.Node
 	n    int
-	ends []string
+	// touched are the tabs the change touched, by ID, as they were; batch
+	// tells the changes of a layout.apply, whose sessions are checked
+	// once, on the layout they make together, and before are the sessions
+	// of the layout before it, with their leaves.
+	touched map[string]touchedTab
+	batch   bool
+	before  map[string]*layout.Node
+	ends    []string
 }
 
 // start returns a new pane's leaf, starting its session in the first pass.
@@ -212,38 +288,35 @@ func find(st *layout.Store, space, sid string) (spot, bool) {
 		}
 	}
 	for _, w := range spaces {
-		if p, ok := findIn(w, sid); ok {
+		if p, ok := findIn(w, localLeaf(sid)); ok {
 			return p, true
 		}
 	}
 	return spot{}, false
 }
 
-// findIn is find in one workspace.
-func findIn(w *layout.Workspace, sid string) (spot, bool) {
-	if sid == "" {
-		return spot{}, false
-	}
-	local := func(n *layout.Node) *layout.Node {
-		for _, l := range layout.Leaves(n) {
-			if l.Host == "" && l.SID == sid {
-				return l
-			}
-		}
-		return nil
-	}
+// findIn returns the first leaf of w that match takes.
+func findIn(w *layout.Workspace, match func(*layout.Node) bool) (spot, bool) {
 	for ti := range w.Tabs {
 		t := &w.Tabs[ti]
-		if n := local(t.Root); n != nil {
-			return spot{w, ti, n, -1}, true
-		}
-		for fi, f := range t.Floats {
-			if n := local(f.Pane); n != nil {
-				return spot{w, ti, n, fi}, true
+		for fi := -1; fi < len(t.Floats); fi++ {
+			r := t.Root
+			if fi >= 0 {
+				r = t.Floats[fi].Pane
+			}
+			for _, l := range layout.Leaves(r) {
+				if match(l) {
+					return spot{w, ti, l, fi}, true
+				}
 			}
 		}
 	}
 	return spot{}, false
+}
+
+// localLeaf matches the leaf of this machine's session sid; none for "".
+func localLeaf(sid string) func(*layout.Node) bool {
+	return func(n *layout.Node) bool { return sid != "" && n.Host == "" && n.SID == sid }
 }
 
 // tabHost is the host of a tab, its first pane's: "" for this machine.
@@ -254,19 +327,6 @@ func tabHost(t *layout.Tab) string {
 		}
 	}
 	return ""
-}
-
-// hasRemote tells a tab with a pane of another host's session: the server
-// cannot end that session, and does not close the tab with no window.
-func hasRemote(t *layout.Tab) bool {
-	for _, r := range t.Roots() {
-		for _, l := range layout.Leaves(r) {
-			if l.Host != "" && l.SID != "" {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 // hasLocal tells a tab with a session of this machine's, which the
@@ -411,6 +471,21 @@ func unlink(p spot, target string) bool {
 	return false
 }
 
+// focused is the focused pane of t, and its place among the floats, -1
+// for a tiled one; nil for none.
+func focused(t *layout.Tab) (*layout.Node, int) {
+	if f := t.FocusFloat; f > 0 && f <= len(t.Floats) {
+		return t.Floats[f-1].Pane, f - 1
+	}
+	if leaves := layout.Leaves(t.Root); len(leaves) > 0 {
+		return leaves[min(max(t.Focus, 0), len(leaves)-1)], -1
+	}
+	if n := len(t.Floats); n > 0 {
+		return t.Floats[n-1].Pane, n - 1
+	}
+	return nil, -1
+}
+
 // topFloat is the place, from 1, of the topmost float of t in sight, else
 // of its first, as the window's focus goes when it has no tiled pane; 0
 // with no float.
@@ -486,7 +561,12 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 	}
 	switch c.Op {
 	case "space.create":
-		res.Space = newSpace(st, c.Name).ID
+		w := newSpace(st, c.Name)
+		if c.Space != "" && st.Space(c.Space) == nil {
+			w.ID = c.Space
+		}
+		setColor(w, c.Color)
+		res.Space = w.ID
 		return res
 	case "space.rename":
 		w := st.Space(c.Space)
@@ -496,17 +576,29 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		if name := layout.Label(c.Name); name != "" {
 			w.Name = name
 		}
+		setColor(w, c.Color)
 		return res
+	case "windows.set":
+		var ids []string
+		for _, id := range c.Spaces {
+			if st.Space(id) == nil {
+				return fail("space_not_found", "no such space in the GoRex layout")
+			}
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+		st.Windows = ids
+		return res
+	case "tab.set":
+		return s.setTab(st, c, a)
 	case "space.close":
 		w := st.Space(c.Space)
 		if w == nil {
 			return fail("space_not_found", "no such space in the GoRex layout")
 		}
-		for i := range w.Tabs {
-			if hasRemote(&w.Tabs[i]) {
-				return fail("desktop_unavailable", "the space has panes of another host, which the GoRex window ends")
-			}
-		}
+		// Another host's sessions are the app's to end, as its user closes
+		// them: the server drops their panes.
 		for _, t := range w.Tabs {
 			for _, r := range t.Roots() {
 				a.end(r)
@@ -518,11 +610,19 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 	case "tab.create":
 		return s.createTab(st, c, a)
 	case "action":
-		return floatState(st, c)
+		return floatState(st, c, a)
+	case "layout.apply":
+		return s.applyBatch(st, c, a)
+	case "pane.teleporting":
+		return s.teleporting(st, c)
+	case "pane.teleported":
+		return s.teleported(st, c, a)
 	}
 	isTab := strings.HasPrefix(c.Op, "tab.")
 	p, ok := find(st, c.Space, c.SID)
-	if c.Tab != "" && isTab {
+	// A tab of its ID; a split by the tab, as of a pane of no session,
+	// splits its focused pane.
+	if c.Tab != "" && (isTab || c.Op == "pane.split" && c.SID == "") {
 		ok = false
 		for i := range st.Sessions {
 			w := &st.Sessions[i]
@@ -531,7 +631,8 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 			}
 			for ti := range w.Tabs {
 				if w.Tabs[ti].ID == c.Tab {
-					p, ok = spot{w: w, ti: ti, fi: -1}, true
+					n, fi := focused(&w.Tabs[ti])
+					p, ok = spot{w, ti, n, fi}, n != nil || isTab
 				}
 			}
 		}
@@ -543,11 +644,17 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		return fail("pane_not_found", "no such pane in the GoRex layout")
 	}
 	t := p.tab()
+	// A pane.close of the tab the app names, built on it as it was: one
+	// whose pane went to another tab meanwhile changes nothing.
+	if c.Op == "pane.close" && c.Tab != "" && t.ID != c.Tab {
+		return fail("conflict", "the pane is in another tab now")
+	}
+	if c.Base != 0 && t.Rev != c.Base && (isTab || c.Op == "pane.close") {
+		return fail("conflict", "the tab changed meanwhile")
+	}
+	a.touch(t.ID, t)
 	switch c.Op {
 	case "tab.close":
-		if hasRemote(t) {
-			return fail("desktop_unavailable", "the tab has panes of another host, which the GoRex window ends")
-		}
 		for _, r := range t.Roots() {
 			a.end(r)
 		}
@@ -561,6 +668,8 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		res.Name = p.n.Name
 	case "pane.split":
 		return s.split(p, c, a)
+	case "pane.restart":
+		return s.restart(p, c, a)
 	case "pane.close":
 		a.end(p.n)
 		if unlink(p, c.Target) {
@@ -591,7 +700,7 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 	case "pane.resize":
 		res.Changed, res.Reason = resize(p, c.Direction, c.Amount)
 	case "pane.swap":
-		q, ok := findIn(p.w, c.Target)
+		q, ok := findIn(p.w, localLeaf(c.Target))
 		switch {
 		case !ok:
 			res.Reason = "not_found"
@@ -607,7 +716,7 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 			res.Changed = true
 		}
 	case "pane.move":
-		return movePane(p, c)
+		return movePane(p, c, a)
 	default:
 		return fail("unknown_op", "GoRex does not know "+c.Op)
 	}
@@ -649,7 +758,7 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 		w = newSpace(st, "")
 	}
 	dir, at := c.Dir, -1
-	if p, ok := findIn(w, c.After); ok {
+	if p, ok := findIn(w, localLeaf(c.After)); ok {
 		at = p.ti + 1
 		if dir == "" {
 			if in, ok := s.sessionOf(p.n); ok {
@@ -659,27 +768,17 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 		}
 	}
 	if at < 0 {
-		at = 0
-		for i := range w.Tabs {
-			if tabHost(&w.Tabs[i]) == "" {
-				at = i + 1
-			}
-		}
+		at = afterLocal(w)
 	}
-	// The size of the pane the window shows, the active tab's focused one.
+	// The room of the tab the window shows, all its tiled panes', so that
+	// a tab made in the background does not start at a narrow split's size
+	// and wrap what it prints; else the largest pane of the space.
 	var cols, rows int
 	if w.Active >= 0 && w.Active < len(w.Tabs) {
-		t := &w.Tabs[w.Active]
-		focused := layout.FirstLeaf(t.Root)
-		if leaves := layout.Leaves(t.Root); t.Focus >= 0 && t.Focus < len(leaves) {
-			focused = leaves[t.Focus]
-		}
-		if f := t.FocusFloat; f > 0 && f <= len(t.Floats) {
-			focused = t.Floats[f-1].Pane
-		}
-		if in, ok := s.sessionOf(focused); ok {
-			cols, rows = in.Cols, in.Rows
-		}
+		cols, rows = s.area(w.Tabs[w.Active].Root)
+	}
+	if cols <= 0 || rows <= 0 {
+		cols, rows = s.largest(w)
 	}
 	n, err := a.start(dir, cols, rows, c.Command)
 	if err != nil {
@@ -687,9 +786,71 @@ func (s *Server) createTab(st *layout.Store, c LayoutCommand, a *applying) Layou
 		return res
 	}
 	t := layout.Tab{ID: layout.NewTabID(), Name: layout.Label(c.Name), Root: n}
+	a.touch(t.ID, nil)
 	insertTab(w, min(at, len(w.Tabs)), t, c.Focus)
 	res.New, res.Tab = n.SID, t.ID
 	return res
+}
+
+// splitCost is what a split takes of its room, in cells, as the window
+// lays it out at its font: the gap between the sides and their padding,
+// and below the lower side's header too; 135 columns split into 65 and 65,
+// 33 rows into 14 and 14.
+const splitCost = 5
+
+// area is the size, in cells, of the room of the tiled panes under n, as
+// the window lays them out: a split's sides, side by side or one above
+// the other, with what the split takes between them (splitCost); 0, 0
+// when no pane under n has a size.
+func (s *Server) area(n *layout.Node) (cols, rows int) {
+	if n == nil {
+		return 0, 0
+	}
+	if n.IsLeaf() {
+		return s.sizeOf(n)
+	}
+	ac, ar := s.area(n.A)
+	bc, br := s.area(n.B)
+	switch {
+	case ac <= 0 || ar <= 0:
+		return bc, br
+	case bc <= 0 || br <= 0:
+		return ac, ar
+	case n.Vertical:
+		return max(ac, bc), ar + br + splitCost
+	}
+	return ac + bc + splitCost, max(ar, br)
+}
+
+// sizeOf is the size of leaf n: its session's, else the one the layout
+// keeps, as of another host's pane; 0, 0 for none, as a page's.
+func (s *Server) sizeOf(n *layout.Node) (cols, rows int) {
+	if n.Host == "" && n.SID != "" {
+		s.mu.Lock()
+		ss := s.sessions[n.SID]
+		s.mu.Unlock()
+		if ss != nil {
+			ss.mu.Lock()
+			defer ss.mu.Unlock()
+			return ss.cols, ss.rows
+		}
+	}
+	return n.Cols, n.Rows
+}
+
+// largest is the size of the largest pane of w, tiled or floating; 0, 0
+// for none.
+func (s *Server) largest(w *layout.Workspace) (cols, rows int) {
+	for _, t := range w.Tabs {
+		for _, r := range t.Roots() {
+			for _, l := range layout.Leaves(r) {
+				if c, r := s.sizeOf(l); c*r > cols*rows {
+					cols, rows = c, r
+				}
+			}
+		}
+	}
+	return cols, rows
 }
 
 // split makes pane.split: a new session beside the pane, in its split of
@@ -699,7 +860,7 @@ func (s *Server) split(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	var res LayoutCommand
 	t := p.tab()
 	anchor, canvas := p.n, p.fi >= 0 && t.Canvas != nil
-	if p.fi >= 0 && !canvas {
+	if p.fi >= 0 && !canvas && !c.Float {
 		leaves := layout.Leaves(t.Root)
 		if len(leaves) == 0 {
 			res.Code, res.Error = "create_failed", "GoRex cannot split the pane now"
@@ -721,7 +882,7 @@ func (s *Server) split(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	switch {
 	case cols <= 0 || rows <= 0:
 		cols, rows = 80, 24
-	case canvas:
+	case canvas || c.Float:
 	case c.Vertical:
 		rows = max(rows/2, 2)
 	default:
@@ -733,13 +894,42 @@ func (s *Server) split(p spot, c LayoutCommand, a *applying) LayoutCommand {
 		return res
 	}
 	n.Name = layout.PaneName(c.Name)
-	if canvas {
+	switch {
+	case canvas:
 		placeOnCanvas(t, t.Floats[p.fi], n, c.Vertical)
-	} else {
+	case c.Float:
+		// Over the tab's tiled panes, each new float offset from the last,
+		// as the window opens one.
+		d := float32(len(t.Floats)) * 0.03
+		t.Floats = append(t.Floats, layout.Float{Pane: n, X: min(0.15+d, 0.3), Y: min(0.12+d, 0.28), W: 0.7, H: 0.72})
+		t.FocusFloat = len(t.Floats)
+	default:
 		t.Replace(anchor, &layout.Node{Vertical: c.Vertical, Ratio: 0.5, A: anchor, B: n})
 		t.Zoom, t.FocusFloat = false, 0
 		t.Focus = indexOf(t.Root, n)
 	}
+	res.New = n.SID
+	return res
+}
+
+// restart makes pane.restart: a new session, of the user's shell unless
+// Command says, takes the place of the pane's, in its directory and at its
+// size, with the focus; the pane's own ends.
+func (s *Server) restart(p spot, c LayoutCommand, a *applying) LayoutCommand {
+	var res LayoutCommand
+	dir, cols, rows := c.Dir, p.n.Cols, p.n.Rows
+	if in, ok := s.sessionOf(p.n); ok {
+		dir, cols, rows = cmp.Or(dir, in.Dir), in.Cols, in.Rows
+	}
+	n, err := a.start(cmp.Or(dir, p.n.Dir), cols, rows, c.Command)
+	if err != nil {
+		res.Code, res.Error = "create_failed", err.Error()
+		return res
+	}
+	a.end(p.n)
+	n.Name = p.n.Name
+	*p.n = *n
+	focusOn(p.tab(), n.SID)
 	res.New = n.SID
 	return res
 }
@@ -836,7 +1026,7 @@ func moveTab(w *layout.Workspace, ti, index int) int {
 
 // movePane makes pane.move: the pane goes into a tab of its own after its
 // tab, or beside the pane of Target, its session going on.
-func movePane(p spot, c LayoutCommand) LayoutCommand {
+func movePane(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	var res LayoutCommand
 	w, src := p.w, p.tab()
 	if src.Zoom {
@@ -849,6 +1039,7 @@ func movePane(p spot, c LayoutCommand) LayoutCommand {
 	if c.NewTab {
 		empty := unlink(p, "")
 		t := layout.Tab{ID: layout.NewTabID(), Name: layout.PaneName(c.Name), Root: &leaf}
+		a.touch(t.ID, nil)
 		at := p.ti + 1
 		insertTab(w, at, t, false)
 		if empty {
@@ -861,7 +1052,7 @@ func movePane(p spot, c LayoutCommand) LayoutCommand {
 		res.Changed = true
 		return res
 	}
-	q, ok := findIn(w, c.Target)
+	q, ok := findIn(w, localLeaf(c.Target))
 	switch {
 	case !ok || q.fi >= 0:
 		res.Reason = "not_found"
@@ -879,6 +1070,7 @@ func movePane(p spot, c LayoutCommand) LayoutCommand {
 	}
 	ratio = min(max(ratio, 0.1), 0.9)
 	dst := q.tab()
+	a.touch(dst.ID, dst)
 	empty := unlink(p, "")
 	dst.Replace(q.n, &layout.Node{Vertical: c.Direction == "down", Ratio: ratio, A: q.n, B: &leaf})
 	dst.Zoom, dst.FocusFloat = false, 0
@@ -899,7 +1091,7 @@ func movePane(p spot, c LayoutCommand) LayoutCommand {
 
 // floatState makes the action float.set_state: a float shows, "normal",
 // with the focus when asked, or hides, "minimized".
-func floatState(st *layout.Store, c LayoutCommand) LayoutCommand {
+func floatState(st *layout.Store, c LayoutCommand, ap *applying) LayoutCommand {
 	var res LayoutCommand
 	var a struct {
 		SID   string `json:"sid"`
@@ -922,6 +1114,7 @@ func floatState(st *layout.Store, c LayoutCommand) LayoutCommand {
 		return res
 	}
 	t := p.tab()
+	ap.touch(t.ID, t)
 	f := &t.Floats[p.fi]
 	if a.State == "minimized" {
 		if f.Hidden {
@@ -946,4 +1139,358 @@ func floatState(st *layout.Store, c LayoutCommand) LayoutCommand {
 	reveal(t, p.fi)
 	p.w.Active = p.ti
 	return res
+}
+
+// setColor gives w the color of a command: "default" for the default
+// look, "" for the one it has.
+func setColor(w *layout.Workspace, color string) {
+	switch color = strings.TrimSpace(color); color {
+	case "":
+	case "default":
+		w.Color = ""
+	default:
+		w.Color = color
+	}
+}
+
+// localSIDs are the sessions of this machine the layout's leaves have,
+// each with its leaf.
+func localSIDs(st *layout.Store) map[string]*layout.Node {
+	out := map[string]*layout.Node{}
+	for _, w := range st.Sessions {
+		for _, t := range w.Tabs {
+			for _, r := range t.Roots() {
+				for _, l := range layout.Leaves(r) {
+					if l.Host == "" && l.SID != "" {
+						out[l.SID] = l
+					}
+				}
+			}
+		}
+	}
+	return out
+}
+
+// live tells a session of this machine the server runs, not exited.
+func (s *Server) live(sid string) bool {
+	in, ok := s.sessionOf(&layout.Node{SID: sid})
+	return ok && !in.Exited
+}
+
+// wellFormed tells a tree whose every node is a leaf or a split of two.
+func wellFormed(n *layout.Node) bool {
+	if n == nil || n.IsLeaf() {
+		return true
+	}
+	return n.A != nil && n.B != nil && wellFormed(n.A) && wellFormed(n.B)
+}
+
+// setTab makes tab.set: the tab of TabLayout's ID goes in place of the one
+// of that ID, wherever it is, else in as a new one, in Space at Index, the
+// active one with Focus or when it was. It arranges what the layout has:
+// a session another tab has, this machine's or another host's, moves from
+// there, and one that ended goes. It starts, ends and places none: a
+// running session the tab leaves out, a session twice, or one no pane has
+// is a conflict. Another host's panes, and those of no session, are the
+// app's. The facts of a pane of this machine, its directory, size and
+// program, are the server's.
+func (s *Server) setTab(st *layout.Store, c LayoutCommand, a *applying) LayoutCommand {
+	var res LayoutCommand
+	fail := func(code, msg string) LayoutCommand {
+		res.Code, res.Error = code, msg
+		return res
+	}
+	if c.TabLayout == nil || c.TabLayout.ID == "" {
+		return fail("bad_args", "tab.set needs a tab with an ID")
+	}
+	t := *c.TabLayout
+	t.Rev = 0
+	if t.Root == nil && len(t.Floats) == 0 {
+		return fail("bad_args", "tab.set needs a tab with a pane; tab.close closes one")
+	}
+	for _, r := range t.Roots() {
+		if !wellFormed(r) {
+			return fail("bad_args", "a split of the tab lacks a side")
+		}
+	}
+	w := defaultSpace(st)
+	if c.Space != "" {
+		if w = st.Space(c.Space); w == nil {
+			return fail("space_not_found", "no such space in the GoRex layout")
+		}
+	}
+	if w == nil {
+		w = newSpace(st, "")
+	}
+	// A batch's tab may take a session another of its tab.sets left out.
+	before := a.before
+	if !a.batch {
+		before = localSIDs(st)
+	}
+	focus, at := c.Focus, -1
+	// ahead are the tabs before the one replaced, by ID: the unlinks of
+	// the sessions it takes may close one.
+	var ahead []string
+	for i := range st.Sessions {
+		o := &st.Sessions[i]
+		if ti := slices.IndexFunc(o.Tabs, func(x layout.Tab) bool { return x.ID == t.ID }); ti >= 0 {
+			if c.Base != 0 && o.Tabs[ti].Rev != c.Base {
+				return fail("conflict", "the tab changed meanwhile")
+			}
+			a.touch(t.ID, &o.Tabs[ti])
+			t.Rev = o.Tabs[ti].Rev
+			if o == w {
+				for _, x := range o.Tabs[:ti] {
+					ahead = append(ahead, x.ID)
+				}
+				at, focus = ti, focus || o.Active == ti
+			}
+			removeTab(o, ti)
+		}
+	}
+	a.touch(t.ID, nil)
+	mine := map[string]bool{}
+	for _, r := range t.Roots() {
+		for _, l := range layout.Leaves(r) {
+			if l.SID == "" {
+				continue
+			}
+			// Another host's session moves here too, as one the app placed
+			// as the server did.
+			if l.Host != "" {
+				if p, ok := findLeaf(st, hostLeaf(l.Host, l.SID)); ok {
+					a.touch(p.tab().ID, p.tab())
+					if unlink(p, "") {
+						removeTab(p.w, p.ti)
+					}
+				}
+				continue
+			}
+			sid := l.SID
+			if mine[sid] {
+				return fail("conflict", "the tab has a session twice")
+			}
+			mine[sid] = true
+			was, had := before[sid]
+			if !had {
+				return fail("conflict", "no pane has the session; the server places its sessions")
+			}
+			if p, ok := find(st, "", sid); ok {
+				a.touch(p.tab().ID, p.tab())
+				if unlink(p, "") {
+					removeTab(p.w, p.ti)
+				}
+			}
+			s.stamp(l, was)
+		}
+	}
+	// A batch's sessions are checked on the layout it makes (applyBatch).
+	for sid := range before {
+		if !a.batch && !mine[sid] && s.live(sid) {
+			if _, ok := find(st, "", sid); !ok {
+				return fail("conflict", "the tab leaves out a session that runs; pane.close ends one")
+			}
+		}
+	}
+	t.Focus = max(t.Focus, 0)
+	t.FocusFloat = min(max(t.FocusFloat, 0), len(t.Floats))
+	if at >= 0 {
+		at = 0
+		for _, id := range ahead {
+			if i := slices.IndexFunc(w.Tabs, func(x layout.Tab) bool { return x.ID == id }); i >= 0 {
+				at = i + 1
+			}
+		}
+	}
+	// After the tab of After; with none there, where it was, a new one
+	// after this machine's tabs; with no After, at Index.
+	switch i := slices.IndexFunc(w.Tabs, func(x layout.Tab) bool { return x.ID == c.After }); {
+	case c.After == "":
+		at = c.Index
+	case i >= 0:
+		at = i + 1
+	case at < 0:
+		at = afterLocal(w)
+	}
+	insertTab(w, min(max(at, 0), len(w.Tabs)), t, focus)
+	res.Tab = t.ID
+	return res
+}
+
+// stamp gives leaf n of this machine the facts the server has of its
+// session, else those its leaf had, was, when not nil: its directory, its
+// size, and the program in its foreground, not the shell at its prompt,
+// as the session last sampled them (session.facts): a stamp inspects no
+// process. A shell that ran nothing yet, as one started again after a
+// crash, keeps the program the pane ran, which the window offers to run
+// again.
+func (s *Server) stamp(n, was *layout.Node) {
+	if was != nil {
+		n.Dir, n.Cols, n.Rows = was.Dir, was.Cols, was.Rows
+		n.Prog, n.Args, n.AgentSession, n.AgentConfigDir = was.Prog, was.Args, was.AgentSession, was.AgentConfigDir
+	}
+	if n.Host != "" || n.SID == "" {
+		return
+	}
+	s.mu.Lock()
+	ss := s.sessions[n.SID]
+	s.mu.Unlock()
+	if ss == nil {
+		return
+	}
+	in, sampled := ss.facts()
+	if in.Exited {
+		return
+	}
+	if in.Cols > 0 && in.Rows > 0 {
+		n.Cols, n.Rows = in.Cols, in.Rows
+	}
+	if !sampled {
+		return
+	}
+	n.Dir = cmp.Or(in.Dir, n.Dir)
+	if in.Idle && !in.ran {
+		return
+	}
+	n.Prog, n.Args, n.AgentSession, n.AgentConfigDir = "", nil, "", ""
+	if !in.Idle && (len(in.Args) > 0 || in.Program != "") {
+		n.Prog, n.Args = in.Program, in.Args
+		n.AgentSession, n.AgentConfigDir = in.AgentSession, in.AgentConfigDir
+	}
+}
+
+// stampAll stamps every leaf of this machine in st with its session's
+// facts (stamp), and reports whether any changed.
+func (s *Server) stampAll(st *layout.Store) bool {
+	changed := false
+	for _, n := range localSIDs(st) {
+		was := *n
+		s.stamp(n, nil)
+		if n.Dir != was.Dir || n.Cols != was.Cols || n.Rows != was.Rows || n.Prog != was.Prog ||
+			!slices.Equal(n.Args, was.Args) || n.AgentSession != was.AgentSession || n.AgentConfigDir != was.AgentConfigDir {
+			changed = true
+		}
+	}
+	return changed
+}
+
+// applyBatch makes layout.apply: the changes of Batch, of the app's, all
+// of them or none. Each is built on its tab as the layout had it before
+// the batch (Base); the sessions they leave are checked once, on the
+// layout they make together: none twice, and none that runs gone but
+// those the batch closes.
+func (s *Server) applyBatch(st *layout.Store, c LayoutCommand, a *applying) LayoutCommand {
+	var res LayoutCommand
+	fail := func(code, msg string) LayoutCommand {
+		res.Code, res.Error = code, msg
+		return res
+	}
+	revs := map[string]uint64{}
+	for _, w := range st.Sessions {
+		for _, t := range w.Tabs {
+			revs[t.ID] = t.Rev
+		}
+	}
+	before := localSIDs(st)
+	a.batch, a.before = true, before
+	defer func() { a.batch, a.before = false, nil }()
+	for _, x := range c.Batch {
+		if !batched[x.Op] {
+			return fail("bad_args", x.Op+" is not of a layout.apply")
+		}
+		// The close of what another client closed first is made already.
+		if x.Op == "tab.close" && !hasTab(st, x.Tab) {
+			continue
+		}
+		if _, ok := find(st, "", x.SID); x.Op == "pane.close" && !ok {
+			continue
+		}
+		if id := batchTab(x); x.Base != 0 && revs[id] != x.Base {
+			return fail("conflict", "the tab changed meanwhile")
+		}
+		x.Base = 0 // checked
+		if r := s.applyTo(st, x, a); r.Code != "" {
+			return r
+		}
+	}
+	ended := map[string]bool{}
+	for _, sid := range a.ends {
+		ended[sid] = true
+	}
+	seen := map[string]bool{}
+	for _, w := range st.Sessions {
+		for _, t := range w.Tabs {
+			for _, r := range t.Roots() {
+				for _, l := range layout.Leaves(r) {
+					if l.Host != "" || l.SID == "" {
+						continue
+					}
+					if seen[l.SID] {
+						return fail("conflict", "a session is in two panes")
+					}
+					seen[l.SID] = true
+				}
+			}
+		}
+	}
+	for sid := range before {
+		if !seen[sid] && !ended[sid] && s.live(sid) {
+			return fail("conflict", "the change leaves out a session that runs")
+		}
+	}
+	return res
+}
+
+// hasTab tells a tab of the ID in st.
+func hasTab(st *layout.Store, id string) bool {
+	for _, w := range st.Sessions {
+		if slices.ContainsFunc(w.Tabs, func(t layout.Tab) bool { return t.ID == id }) {
+			return true
+		}
+	}
+	return false
+}
+
+// batchTab is the tab a change of a batch is built on.
+func batchTab(x LayoutCommand) string {
+	if x.Op == "tab.set" && x.TabLayout != nil {
+		return x.TabLayout.ID
+	}
+	return x.Tab
+}
+
+// countSetRevs is the whole layout l a client sets, with the revisions of
+// its tabs the server's: that of the tab of its ID in was, the layout
+// before, counted up for a tab whose arrangement l changes; a client's
+// own are ignored. A layout whose revisions need no change, as one of
+// tabs of no IDs, is kept as it is; another goes as parsed.
+func countSetRevs(was, l json.RawMessage) json.RawMessage {
+	old := map[string]layout.Tab{}
+	for _, w := range layout.Parse(was).Sessions {
+		for _, t := range w.Tabs {
+			old[t.ID] = t
+		}
+	}
+	now := layout.Parse(l)
+	changed := false
+	for i := range now.Sessions {
+		for j := range now.Sessions[i].Tabs {
+			t := &now.Sessions[i].Tabs[j]
+			if t.ID == "" {
+				continue // of no ID a change names it by
+			}
+			o, had := old[t.ID]
+			rev := o.Rev
+			if !had || !bytes.Equal(o.Arrangement(), t.Arrangement()) {
+				rev++
+			}
+			if rev != t.Rev {
+				t.Rev, changed = rev, true
+			}
+		}
+	}
+	if !changed {
+		return bytes.Clone(l)
+	}
+	return encodeLayout(&now)
 }

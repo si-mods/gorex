@@ -256,7 +256,7 @@ func TestCanvasLayoutRoundTrip(t *testing.T) {
 		}
 	}
 	b := &App{client: a.client}
-	if !b.restore(l, nil) {
+	if !b.reconcile(l) {
 		t.Fatal("nothing restored")
 	}
 	bt := b.tabs[0]
@@ -278,7 +278,7 @@ func TestCanvasLayoutRoundTrip(t *testing.T) {
 	// With the setting off, the saved canvas docks.
 	prefs.Canvas = false
 	c := &App{client: a.client}
-	if !c.restore(l, nil) {
+	if !c.reconcile(l) {
 		t.Fatal("nothing restored with the canvas off")
 	}
 	if ct := c.tabs[0]; ct.canvas != nil || len(ct.Floats) != 0 || len(ct.panes()) != 2 {
