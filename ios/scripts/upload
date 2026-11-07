@@ -39,7 +39,7 @@ for try in 0 1 2; do
     CURRENT_PROJECT_VERSION="$B" CODE_SIGNING_ALLOWED=NO archive > build/archive.log 2>&1 || { grep -E "error" build/archive.log | tail -15; exit 1; }
   echo ARCHIVED
   xcodebuild -exportArchive -archivePath build/GoRex.xcarchive -exportOptionsPlist build/export.plist -exportPath build/export "${A[@]}" > build/export.log 2>&1 && break
-  grep -E "error|Error" build/export.log | tail -15
+  grep -iE "error" build/export.log | tail -15 || true
   [[ $try -lt 2 ]] && grep -qiE "redundant binary upload|already (been )?(used|uploaded)|must be higher than the previously" build/export.log || exit 1
   B=$((B + 1))
 done
