@@ -17,7 +17,7 @@ extension TerminalView: UIScrollViewDelegate {
         scroller.isUserInteractionEnabled = false
         scroller.alwaysBounceVertical = true
         scroller.contentInsetAdjustmentBehavior = .never
-        // The bar above stays clear: no blur at the top edge.
+        // The bar floats over the terminal clear, without a blur at its edge.
         scroller.topEdgeEffect.isHidden = true
         scroller.panGestureRecognizer.maximumNumberOfTouches = 1
         // A trackpad's two fingers scroll; a pointer's drag selects instead.

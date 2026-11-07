@@ -8,7 +8,7 @@ struct TerminalTarget: Hashable {
     let title: String
 }
 
-/// A window's terminal, full screen, below a clear navigation bar.
+/// A window's terminal, full screen, under a clear navigation bar.
 struct TerminalScreen: View {
     let target: TerminalTarget
     let host: Host
@@ -37,9 +37,10 @@ struct TerminalScreen: View {
         // bar and the key bar too; the bar and the text on it take its scheme.
         let bg = session?.background ?? .black
         let scheme: ColorScheme = 0.299 * Double(bg.r) + 0.587 * Double(bg.g) + 0.114 * Double(bg.b) < 128 ? .dark : .light
-        // The terminal starts below the bar, which never covers it. The
-        // keyboard goes over the terminal, which leaves room for it.
+        // The terminal goes up under the clear bar, which it leaves room for
+        // while it can, as the keyboard goes over it.
         Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab) } else { Color.clear } }
+            .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)
             .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p) } }
             .background { Color(cgColor: bg.cgColor).ignoresSafeArea() }
