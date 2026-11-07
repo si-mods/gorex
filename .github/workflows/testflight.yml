@@ -6,7 +6,7 @@ name: TestFlight
 on:
   workflow_dispatch:
   push:
-    branches: [main, ci/ios-testflight]
+    branches: [main]
     paths:
       - ios/**
       - internal/rexapi/**
