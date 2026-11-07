@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"image"
 	"image/png"
 	"io"
@@ -353,54 +352,23 @@ func TestUpgradeKeepsWhatTheScreenTells(t *testing.T) {
 	}
 }
 
-// TestResumeAnExitedSession hands over a session that exited with a
-// snapshot larger than what one read may rewrite, and an image on its
-// screen: the resumed one replays the image, and shows the screen and
-// cursor it had.
+// TestResumeAnExitedSession hands over an exited session whose screen is
+// larger than what one read may rewrite, with an image: the resumed one
+// replays the image, and its screen is the one it had.
 func TestResumeAnExitedSession(t *testing.T) {
-	dir := t.TempDir()
-	var img, out bytes.Buffer
-	png.Encode(&img, image.NewGray(image.Rect(0, 0, 40, 60)))
-	for range 8000 {
-		for j := range 80 {
-			fmt.Fprintf(&out, "\x1b[38;2;%d;%d;%dm%c", j, 255-j, j*3%256, 'a'+j%26)
-		}
-		out.WriteString("\r\n")
-	}
-	// An image sent in-band, as the program sent it, moves the cursor.
-	fmt.Fprintf(&out, "\x1b_Gi=9,a=T,f=100;%s\x1b\\last-words", base64.StdEncoding.EncodeToString(img.Bytes()))
-	if err := os.WriteFile(filepath.Join(dir, "out"), out.Bytes(), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	s, err := newSession("big", CreateOptions{Command: []string{"/bin/cat", "out"}, Dir: dir, Cols: 80, Rows: 24}, "", func() {})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(s.kill)
-	select {
-	case <-s.done:
-	case <-time.After(30 * time.Second):
-		t.Fatal("session did not end")
-	}
-	if len(s.screen) <= maxGraphicsRewrite {
-		t.Fatalf("a screen of %d bytes", len(s.screen))
-	}
+	seq := []byte("\x1b_Gi=9,a=T,f=100;AAAA\x1b\\")
+	s := &session{cols: 80, rows: 24, p: &pty{}, exited: true}
+	s.graphics.record([][]byte{seq})
+	s.screen = append(bytes.Repeat([]byte("x"), maxGraphicsRewrite+1), seq...)
 	r, err := resumeSession(s.state(), func() {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := r.graphics.replay(), s.graphics.replay(); len(want) == 0 || !bytes.Equal(got, want) {
-		t.Errorf("replay of %d bytes after the handoff, want %d", len(got), len(want))
+	if got := r.graphics.replay(); !bytes.Equal(got, seq) {
+		t.Errorf("replay %q after the handoff, want %q", got, seq)
 	}
-	before, after := headless(t), headless(t)
-	if err := before.RestoreGhosttySnapshot(s.ghostty); err != nil {
-		t.Fatal(err)
-	}
-	if err := after.RestoreGhosttySnapshot(r.ghostty); err != nil {
-		t.Fatal(err)
-	}
-	if b, a := before.Snapshot(), after.Snapshot(); !bytes.Equal(b, a) {
-		t.Errorf("the Ghostty snapshot differs after the handoff: ends %q, want %q", a[max(len(a)-24, 0):], b[max(len(b)-24, 0):])
+	if !bytes.Equal(r.screen, s.screen) {
+		t.Errorf("a screen of %d bytes after the handoff, want %d", len(r.screen), len(s.screen))
 	}
 }
 

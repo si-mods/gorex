@@ -67,10 +67,10 @@ type sessionState struct {
 	Master int `json:"master"`
 	Cols   int `json:"cols"`
 	Rows   int `json:"rows"`
-	// Screen is the emulator's snapshot followed by Images, the graphics
-	// sequences the session replays on attach, and Title its title. The
-	// modes are read again from the snapshot. A handoff of a build before
-	// Images has the replay in Screen alone.
+	// Screen is the emulator's snapshot, from which the modes are read
+	// again, Images the graphics sequences the session replays on attach,
+	// and Title its title. A handoff of a build before Images has the
+	// replay at the end of Screen.
 	Screen     []byte    `json:"screen,omitempty"`
 	Images     [][]byte  `json:"images,omitempty"`
 	Title      string    `json:"title,omitempty"`
@@ -243,6 +243,7 @@ func (s *session) state() sessionState {
 		Statuses: s.status.list(), Images: s.graphics.history,
 	}
 	st.Screen, st.Title = s.view()
+	st.Screen = bytes.TrimSuffix(st.Screen, s.graphics.replay())
 	select {
 	case <-s.readEnd:
 		// Its output ended: once its process did too, it exited.
@@ -334,16 +335,15 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 	// emulator, which the snapshot left as it was: a placement moves the
 	// cursor.
 	s.graphics.record(st.Images)
-	screen := bytes.TrimSuffix(st.Screen, bytes.Join(st.Images, nil))
 	if st.Title != "" {
 		s.vt.Feed([]byte("\x1b]2;" + st.Title + "\x07"))
 	}
-	s.vt.Feed(screen)
-	s.modes.feed(screen)
+	s.vt.Feed(st.Screen)
+	s.modes.feed(st.Screen)
 	if st.Exited || st.Master < 0 {
 		s.p = &pty{proc: st.PID}
 		s.reaped, s.exited, s.code = true, true, st.Code
-		s.screen, s.title = st.Screen, st.Title
+		s.screen, s.title = append(st.Screen, s.graphics.replay()...), st.Title
 		s.ghostty, _ = s.vt.GhosttySnapshot()
 		s.text = s.vt.Text()
 		s.reading, s.readEnd = make(chan struct{}), make(chan struct{})
@@ -362,9 +362,7 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		return nil, err
 	}
 	s.p = p
-	if s.modes.synchronized() {
-		s.batchEnd = make(chan struct{})
-	}
+	s.graphics.cut = true
 	s.bells.Store(st.Bells)
 	wait := p.wait
 	if st.Reaped {

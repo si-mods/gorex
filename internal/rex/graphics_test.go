@@ -221,15 +221,28 @@ func TestGraphicsLeavesOversizeFile(t *testing.T) {
 }
 
 // TestGraphicsRecordsNoOrphanChunks: the rest of a transfer whose start
-// went before, as across an upgrade, is no image to replay.
+// went before the session read, as across an upgrade, is no image to
+// replay; the rest of one the session read the start of stays as it was.
 func TestGraphicsRecordsNoOrphanChunks(t *testing.T) {
-	var g graphics
-	out, recs := g.filter([]byte("\x1b_Gm=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
+	g := graphics{cut: true}
+	out, recs := g.filter([]byte("\x1b_Gm=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
 	if len(recs) != 0 || !bytes.Contains(out, []byte("m=0;AAAA")) {
 		t.Fatalf("recorded %q, passed %q", recs, out)
 	}
 	_, recs = g.filter([]byte("\x1b_Ga=T,f=100,m=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
 	if len(recs) != 1 || !bytes.HasPrefix(recs[0], []byte("\x1b_Ga=T")) {
 		t.Fatalf("a whole transfer recorded %q", recs)
+	}
+
+	// A file image's first chunk is rewritten whole; its last chunk is
+	// recorded after it, as without a cut.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "image.png"), append(append([]byte(nil), pngHeader...), "pixels"...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	g = graphics{}
+	_, recs = g.filter([]byte("\x1b_Ga=T,t=f,m=1;image.png\x1b\\\x1b_Gm=0;\x1b\\"), dir)
+	if len(recs) != 2 || !bytes.Contains(recs[0], []byte("t=d")) || string(recs[1]) != "\x1b_Gm=0;\x1b\\" {
+		t.Fatalf("a chunked file image recorded %q", recs)
 	}
 }
