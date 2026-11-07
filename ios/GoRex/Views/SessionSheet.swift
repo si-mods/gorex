@@ -8,6 +8,8 @@ struct SessionSheet: View {
     let go: (TerminalTarget?) -> Void
     let newTab: () -> Void
     @Environment(\.dismiss) private var dismiss
+    /// How tall the sheet's content is, for a sheet as tall as it.
+    @State private var height: CGFloat = 0
 
     var body: some View {
         let session = host.sessions.first { $0.id == target.session }
@@ -46,11 +48,12 @@ struct SessionSheet: View {
                     .background(Color.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
                 .padding(20)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
             }
             .toolbar(.hidden, for: .navigationBar)
         }
         .buttonStyle(.plain)
-        .presentationDetents([.medium, .large])
+        .presentationDetents([height > 0 ? .height(height) : .medium, .large])
         .presentationDragIndicator(.hidden)
     }
 
