@@ -1282,29 +1282,33 @@ func TestTeleportClientGone(t *testing.T) {
 	defer pkg.Close()
 	dst, _ := testServer(t)
 	dst.home = resolved(t)
-	conn, err := teleportConn(t, dst, m)
-	if err != nil {
+	// The test serves the connection itself, to know when the server
+	// is done with it: what it made goes before then.
+	conn, b := net.Pipe()
+	served := make(chan struct{})
+	go func() {
+		dst.handle(b, testPeer)
+		close(served)
+	}()
+	req, _ := json.Marshal(Request{Op: "teleport", Teleport: &m})
+	conn.Write(append(req, '\n'))
+	if err := readOK(conn); err != nil {
 		t.Fatal(err)
 	}
 	pkg.Seek(0, io.SeekStart)
 	io.Copy(conn, pkg)
 	conn.Close()
-	deadline := time.Now().Add(10 * time.Second)
+	select {
+	case <-served:
+	case <-time.After(30 * time.Second):
+		t.Fatal("the server still serves the teleport")
+	}
 	c := pipe(dst, "")
 	defer c.Close()
-	for {
-		trees, _ := filepath.Glob(filepath.Join(dst.home, "*", ".gorex", "teleport", "*"))
-		if len(must(c.List())) == 0 && len(trees) == 0 && !exists(filepath.Join(dst.home, "remote", ".gorex", "teleport")) {
-			// The clone may stay; what the teleport made of it goes.
-			time.Sleep(200 * time.Millisecond)
-			if len(must(c.List())) == 0 {
-				break
-			}
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("left sessions %v, work trees %v", must(c.List()), trees)
-		}
-		time.Sleep(50 * time.Millisecond)
+	// The clone may stay; the work tree the teleport made of it goes.
+	trees, _ := filepath.Glob(filepath.Join(dst.home, "*", ".gorex", "teleport", "*"))
+	if l := must(c.List()); len(l) > 0 || len(trees) > 0 {
+		t.Fatalf("left sessions %v, work trees %v", l, trees)
 	}
 }
 

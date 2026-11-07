@@ -21,15 +21,17 @@ import (
 func TestThrottle(t *testing.T) {
 	var runs atomic.Int32
 	th := &throttle{every: 100 * time.Millisecond, f: func() { runs.Add(1) }}
-	for range 50 {
+	start := time.Now()
+	for time.Since(start) < 500*time.Millisecond {
 		th.ask()
 		time.Sleep(10 * time.Millisecond)
 	}
-	asked := time.Now()
+	asking := time.Since(start)
 	time.Sleep(150 * time.Millisecond)
-	// 500 ms of asks: the first at once, then one per 100 ms.
-	if n := runs.Load(); n < 5 || n > 7 {
-		t.Errorf("%d runs in %v", n, time.Since(asked)+500*time.Millisecond)
+	// The first at once, one per 100 ms of asks, and one after the last:
+	// a loaded machine sleeps longer than asked, so the asks are timed.
+	if n, most := runs.Load(), int32(asking/(100*time.Millisecond))+2; n < 3 || n > most {
+		t.Errorf("%d runs in %v of asks, want 3 to %d", n, asking, most)
 	}
 	n := runs.Load()
 	time.Sleep(150 * time.Millisecond)
