@@ -278,7 +278,7 @@ private struct TerminalSettings: View {
                     row(Maple.family, Maple.family)
                         .swipeActions { Button("Delete", role: .destructive) { maple.delete() } }
                 } else {
-                    download
+                    download.swipeActions { if !maple.saved.isEmpty { Button("Delete", role: .destructive) { maple.delete() } } }
                 }
             }
         }
@@ -299,8 +299,8 @@ private struct TerminalSettings: View {
         .listRowBackground(Color.card)
     }
 
-    /// Maple Mono, not downloaded: its size and a download, or the
-    /// download's progress and a stop.
+    /// Maple Mono, not downloaded: what's left to fetch and a download, or
+    /// the download's progress and a stop.
     private var download: some View {
         Button { maple.progress == nil ? maple.download() : maple.cancel() } label: {
             VStack(alignment: .leading, spacing: 4) {
@@ -311,7 +311,7 @@ private struct TerminalSettings: View {
                         ProgressView(value: p).frame(width: 64)
                         Image(systemName: "stop.circle").accessibilityLabel("Cancel")
                     } else {
-                        Text(Maple.size.formatted(.byteCount(style: .file))).foregroundStyle(.secondary)
+                        Text(maple.remaining.formatted(.byteCount(style: .file))).foregroundStyle(.secondary)
                         Image(systemName: "arrow.down.circle").accessibilityLabel("Download")
                     }
                 }

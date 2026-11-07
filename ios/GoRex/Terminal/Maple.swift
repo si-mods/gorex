@@ -10,18 +10,22 @@ import zlib
     static let shared = Maple()
     /// The family Ghostty and iOS find it by.
     static let family = "Maple Mono NF CN"
-    /// What the four faces weigh in the zip.
-    static let size: Int64 = 40_488_942
     /// The pinned release and its zip's length: GitHub serves ranges, not
     /// a range of the last bytes.
     private static let release = URL(string: "https://github.com/subframe7536/maple-font/releases/download/v7.9/MapleMono-NF-CN.zip")!
     private static let length = 159_498_447
-    /// The faces Ghostty draws with: regular, bold, italic and bold italic.
-    private static let names = ["Regular", "Bold", "Italic", "BoldItalic"].map { "MapleMono-NF-CN-\($0).ttf" }
+    /// The faces Ghostty draws with, regular, bold, italic and bold italic,
+    /// and what each weighs in the zip.
+    private static let faces = [("Regular", 9_684_600), ("Bold", 9_788_184), ("Italic", 10_439_155), ("BoldItalic", 10_577_003)]
+        .map { (name: "MapleMono-NF-CN-\($0).ttf", size: $1) }
     private static let dir = URL.applicationSupportDirectory.appending(path: "Fonts")
-    private static var files: [URL] { names.map { dir.appending(path: $0) } }
+    private static var files: [URL] { faces.map { dir.appending(path: $0.name) } }
 
-    private(set) var installed = Maple.files.allSatisfy { FileManager.default.fileExists(atPath: $0.path) }
+    /// The faces on disk: all of them, or what a download left.
+    private(set) var saved = Set(Maple.faces.map(\.name).filter { FileManager.default.fileExists(atPath: Maple.dir.appending(path: $0).path) })
+    var installed: Bool { saved.count == Self.faces.count }
+    /// What the faces not on disk weigh.
+    var remaining: Int64 { Int64(Self.faces.filter { !saved.contains($0.name) }.reduce(0) { $0 + $1.size }) }
     /// How much of a download is done; nil when none runs.
     private(set) var progress: Double?
     private(set) var error: String?
@@ -41,7 +45,6 @@ import zlib
         task = Task {
             do {
                 try await fetch()
-                installed = true
                 register()
             } catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
@@ -52,11 +55,13 @@ import zlib
 
     func cancel() { task?.cancel() }
 
-    /// Removes the faces; a terminal that had them gets Ghostty's own.
+    /// Removes the faces, or what a download left; a terminal that had
+    /// them gets Ghostty's own.
     func delete() {
+        task?.cancel()
         CTFontManagerUnregisterFontURLs(Self.files as CFArray, .process, nil)
         try? FileManager.default.removeItem(at: Self.dir)
-        installed = false
+        saved = []
         if UserDefaults.standard.string(forKey: "fontFamily") == Self.family { UserDefaults.standard.removeObject(forKey: "fontFamily") }
     }
 
@@ -71,13 +76,13 @@ import zlib
         url = Self.release
         let tail = Self.length - 65536
         let entries = try Zip.entries(try await get(tail..<Self.length), at: tail)
-        let todo = try zip(Self.names, Self.files).filter { !FileManager.default.fileExists(atPath: $1.path) }.map {
+        let todo = try Self.faces.map(\.name).filter { !saved.contains($0) }.map {
             guard let e = entries[$0] else { throw URLError(.cannotDecodeContentData) }
-            return (e, $1)
+            return (e, $0)
         }
         let total = todo.reduce(0) { $0 + $1.0.compressed }
         var done = 0
-        for (e, file) in todo {
+        for (e, name) in todo {
             let start = e.offset + (try Zip.dataOffset(try await get(e.offset..<e.offset + 30)))
             var data = Data(capacity: e.compressed)
             while data.count < e.compressed {
@@ -86,7 +91,8 @@ import zlib
                 done += n
                 progress = Double(done) / Double(total)
             }
-            try await Zip.inflate(data, e).write(to: file, options: .atomic)
+            try await Zip.inflate(data, e).write(to: Self.dir.appending(path: name), options: .atomic)
+            saved.insert(name)
         }
     }
 
@@ -94,7 +100,12 @@ import zlib
         var req = URLRequest(url: url)
         req.setValue("bytes=\(r.lowerBound)-\(r.upperBound - 1)", forHTTPHeaderField: "Range")
         let (data, res) = try await URLSession.shared.data(for: req)
-        guard (res as? HTTPURLResponse)?.statusCode == 206, data.count == r.count else { throw URLError(.badServerResponse) }
+        guard (res as? HTTPURLResponse)?.statusCode == 206, data.count == r.count else {
+            // The signed URL expires: sign it again, once.
+            guard url != Self.release else { throw URLError(.badServerResponse) }
+            url = Self.release
+            return try await get(r)
+        }
         url = res.url ?? url
         return data
     }
