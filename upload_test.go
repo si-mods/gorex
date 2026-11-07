@@ -321,16 +321,22 @@ func TestDropOnOldHost(t *testing.T) {
 }
 
 // TestDropOnLocalPane keeps a drop on a pane of this machine the terminal's:
-// the path is pasted, nothing is sent.
+// the path is pasted, nothing is sent. A space follows it, so that a second
+// drop's path does not join it (#204).
 func TestDropOnLocalPane(t *testing.T) {
 	a, tt := newTestApp(t)
 	p := a.tab().Focus
 	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
-	paths := dropped(t, "here.txt", "x")
-	if !tt.DropFiles(500, 300, paths...) {
-		t.Fatal("no element took the drop")
+	paths := dropped(t, "here.txt", "x", "there.txt", "y")
+	for _, path := range paths {
+		if !tt.DropFiles(500, 300, path) {
+			t.Fatal("no element took the drop")
+		}
+		tt.Frame()
 	}
-	waitFor(t, tt, "the path", func() bool { return strings.Contains(p.term.Text(), "here.txt") })
+	waitFor(t, tt, "the paths", func() bool {
+		return strings.Contains(strings.ReplaceAll(p.term.Text(), "\n", ""), "here.txt "+paths[1])
+	})
 	if len(p.transfers) != 0 || p.uploading != nil {
 		t.Errorf("a local drop uploads: %v", p.transfers)
 	}
