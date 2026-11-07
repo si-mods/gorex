@@ -502,9 +502,9 @@ final class TerminalView: UIView, TerminalOutput {
 }
 
 /// The bar over the soft keyboard: three capsules of Liquid Glass, dark as
-/// the keyboard is. ⌘ opens a menu of the rarer keys and Paste; the middle
-/// one pages from Esc, the modifiers and Tab to the punctuation a shell
-/// wants and Backspace; the last holds a stick that sends arrows the way it
+/// the keyboard is. ⌘ opens a menu of Paste, and Add Photo and Add File to
+/// come; the middle one pages from Esc, the modifiers and Tab to the
+/// punctuation a shell wants and Backspace; the last holds a stick that sends arrows the way it
 /// is dragged, and the key that hides the keyboard.
 final class KeyBar: UIView {
     let ctrl = KeyBar.button("control", String(localized: "Control"), size: KeyBar.small)
@@ -557,17 +557,12 @@ final class KeyBar: UIView {
         alt.addAction(UIAction { [weak target] _ in target?.alt.toggle() }, for: .touchUpInside)
         shift.addAction(UIAction { [weak target] _ in target?.shift.toggle() }, for: .touchUpInside)
 
-        let more = Self.button("command", String(localized: "More Keys"))
-        func item(_ title: String, _ name: String) -> UIAction {
-            UIAction(title: title) { [weak target] _ in target?.send(name) }
-        }
+        let more = Self.button("command", String(localized: "More"))
+        // Adding a photo or a file is to come; their places are kept.
         more.menu = UIMenu(children: [
-            item(String(localized: "Esc"), "escape"),
             UIAction(title: String(localized: "Paste"), image: UIImage(systemName: "doc.on.clipboard")) { [weak target] _ in target?.paste(nil) },
-            UIMenu(options: .displayInline, children: [
-                item(String(localized: "Home"), "home"), item(String(localized: "End"), "end"),
-                item(String(localized: "Page Up"), "page_up"), item(String(localized: "Page Down"), "page_down"),
-            ]),
+            UIAction(title: String(localized: "Add Photo"), image: UIImage(systemName: "photo"), attributes: .disabled) { _ in },
+            UIAction(title: String(localized: "Add File"), image: UIImage(systemName: "folder"), attributes: .disabled) { _ in },
         ])
         more.showsMenuAsPrimaryAction = true
 
