@@ -459,7 +459,7 @@ func TestSessionChip(t *testing.T) {
 	// Change Space… lists the workspaces by name.
 	a.openSessionPalette()
 	tt.Frame()
-	if !tt.HasText("icy-ridge") || !a.paletteSessions {
+	if !tt.HasText("icy-ridge") || a.paletteList != listSessions {
 		t.Fatalf("no workspaces in the palette; texts %q", tt.Texts())
 	}
 	tt.Type("icy")

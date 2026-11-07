@@ -500,6 +500,8 @@ type App struct {
 	paletteOpen   bool
 	paletteQuery  string
 	paletteSel    int
+	paletteSelID  any
+	paletteList   paletteList
 	hostOpen      bool
 	renaming      *Tab
 	renameText    string
@@ -533,15 +535,14 @@ type App struct {
 	focusSampled time.Time
 
 	// The workspace's popover, the field that renames it, Close
-	// Session's question, and the palette listing the workspaces.
+	// Session's question.
 	wsOpen        bool
 	wsRenaming    bool
 	wsRenameText  string
 	wsRenameFocus bool
 	// wsColorText is the color the popover's custom field holds.
-	wsColorText     string
-	wsConfirm       bool
-	paletteSessions bool
+	wsColorText string
+	wsConfirm   bool
 	// teleportAsk is the question after a tab was dropped on another
 	// host's place in the tabs.
 	teleportAsk teleportAsk

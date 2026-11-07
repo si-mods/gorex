@@ -150,6 +150,7 @@ a build whose modification time is not newer than the server's. See
 | ⇧⌘O | Ctrl+Shift+O | Change session |
 | ⌃⌘] ⌃⌘[ | Ctrl+Shift+PageDown/PageUp | Next / previous session |
 | ⌘J | Ctrl+Shift+J | Jump to the pane that needs you |
+| ⇧⌘J | | List what needs you, by state, across windows and hosts |
 | ⌃⌘S | Ctrl+Shift+S | Hide or show the tabs' sidebar |
 | ⇧⌘P, ⌘P | Ctrl+Shift+P | Command palette |
 | ⌘K | Ctrl+Shift+K | Clear |
