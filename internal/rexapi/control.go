@@ -528,8 +528,8 @@ func (c *control) sendChanges(chs []change) {
 		var payload any
 		if ch.server {
 			payload = ch.payload
-			if st, ok := payload.(tailscaleStatus); ok {
-				payload = transformResult(c.rev, ch.typ, st.over(c.transport))
+			if ch.typ == "tailscale_status_changed" {
+				payload = transformResult(c.rev, ch.typ, payload)
 			}
 			payload = innerEvent{Type: ch.typ, Payload: payload}
 		} else {

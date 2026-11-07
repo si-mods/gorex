@@ -123,10 +123,8 @@ allow.
    GoRex rexapi tailscale on
    ```
 
-   The first time, it prints a sign-in link: open it and sign in. The
-   link is shown only over the local socket, since whoever opens it first
-   claims the device: a client over the local network or the tailnet gets
-   the status without it. Or sign in without a browser with an auth key:
+   The first time, it prints a sign-in link: open it and sign in. Or sign
+   in without a browser with an auth key:
    `GoRex rexapi tailscale on --auth-key-file key.txt` (the key is used
    once, and never saved or logged). A tailnet run by your own control
    server, such as Headscale, takes its URL:
@@ -192,6 +190,13 @@ meets:
   without it. Closing a window or session that holds a pane of another
   host drops that pane; its session, on the other host, goes on.
 - Tabs and panes of remote hosts are left out.
+- Built-in Tailscale's sign-in link, `auth_url`, goes only to the local
+  socket: whoever opens it first claims the device. Over the local
+  network or the tailnet, `server.status`, `session.bootstrap`'s
+  `server_status` and `tailscale_status_changed` leave it out, so such a
+  client sees `needs_login` with no link, and a new link alone sends it
+  no event. Get the link on this machine, from
+  `GoRex rexapi tailscale status` or `GoRex rexapi tailscale login`.
 - Revision 8's `data_tickets` on `session.bootstrap` is served: a client
   that asks for the terminal blocks gets a ticket for each one, and opens
   its terminals without a `data.connect` round trip each. Only terminals
