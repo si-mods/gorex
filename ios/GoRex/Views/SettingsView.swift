@@ -224,14 +224,14 @@ private struct Preview: View {
     @AppStorage("fontFamily") private var family = ""
 
     var body: some View {
-        let fg = color(17), prompt = Text("~/gorex ").foregroundStyle(color(4)) // blue
+        // Palette 4 is blue, 2 green, 1 red; 17 the foreground, 18 the cursor.
         VStack(alignment: .leading, spacing: 2) {
-            Text("\(prompt)\(Text("ls").foregroundStyle(fg))")
-            Text("\(Text("docs  src  ").foregroundStyle(color(4)))\(Text("build.sh  ").foregroundStyle(color(2)))\(Text("README.md").foregroundStyle(fg))")
-            Text("\(prompt)\(Text("git status -s").foregroundStyle(fg))")
-            Text("\(Text(" M ").foregroundStyle(color(1)))\(Text("main.go").foregroundStyle(fg))")
-            Text("\(Text("?? ").foregroundStyle(color(1)))\(Text("notes.txt").foregroundStyle(fg))")
-            Text("\(prompt)\(Text("█").foregroundStyle(color(18)))")
+            line(("~/gorex ", 4), ("ls", 17))
+            line(("docs  src  ", 4), ("build.sh  ", 2), ("README.md", 17))
+            line(("~/gorex ", 4), ("git status -s", 17))
+            line((" M ", 1), ("main.go", 17))
+            line(("?? ", 1), ("notes.txt", 17))
+            line(("~/gorex ", 4), ("█", 18))
         }
         .font(Fonts.face(family, size: 13))
         .lineLimit(1)
@@ -241,6 +241,11 @@ private struct Preview: View {
     }
 
     private func color(_ i: Int) -> Color { Color(rgb: UInt32(theme.colors[i])) }
+
+    /// A line of runs, each in a theme color; shell text, not localized.
+    private func line(_ runs: (String, Int)...) -> Text {
+        Text(runs.reduce(into: AttributedString()) { $0 += AttributedString($1.0, attributes: AttributeContainer().foregroundColor(color($1.1))) })
+    }
 }
 
 /// The terminal's fonts: Ghostty's own, then the monospaced ones iOS has,

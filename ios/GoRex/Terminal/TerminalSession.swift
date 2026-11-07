@@ -241,7 +241,8 @@ final class TerminalSession {
             case .message(let m):
                 switch m["type"] as? String {
                 case "theme":
-                    apply(theme: m)
+                    // A chosen theme stays over the host's colors.
+                    apply(theme: TerminalTheme.chosen?.message ?? m)
                 case "child_exited":
                     state = .exited(m["exit_code"] as? Int ?? 0)
                 default:

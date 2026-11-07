@@ -74,6 +74,13 @@ nonisolated final class ThemeTests: XCTestCase {
         XCTAssertEqual(TerminalTheme.name, "Nord")
     }
 
+    /// The default is one of the themes the app ships.
+    @MainActor func testStandardShips() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appending(path: "../GoRex/ghostty-themes.json")
+        let all = try JSONDecoder().decode([TerminalTheme].self, from: Data(contentsOf: url))
+        XCTAssertTrue(all.contains { $0.name == TerminalTheme.standard })
+    }
+
     @MainActor func testLight() {
         XCTAssertTrue(VTerminal.RGB(0xfbf1c7).light)
         XCTAssertFalse(VTerminal.RGB(0x282828).light)
