@@ -341,13 +341,28 @@ final class Host: Identifiable {
 
     /// Opens a new window running the shell, and returns its block.
     func newWindow(in session: String) async throws -> String? {
+        let r = try await live().call("session.new_window", [
+            "session_id": session, "focus": false, "layout": ["block": shell],
+        ]).payload
+        return (r["block_ids"] as? [Any])?.first as? String
+    }
+
+    /// Makes a session, named by the server, with a window running the
+    /// shell, and returns the session and the window's block.
+    func newSession() async throws -> (String, String)? {
+        let r = try await live().call("session.create", ["initial_windows": [["layout": ["block": shell]]]]).payload
+        guard let s = r["session_id"] as? String,
+              let w = (r["initial_windows"] as? [[String: Any]])?.first,
+              let b = (w["block_ids"] as? [Any])?.first as? String else { return nil }
+        return (s, b)
+    }
+
+    /// The block a new window runs: the shell, or the command of the host.
+    private var shell: [String: Any] {
         var block: [String: Any] = ["flavor": "com.superlogical.terminal.shell"]
         let argv = HostConfig.argv(config.command ?? "")
         if !argv.isEmpty { block["options"] = ["command": argv] }
-        let r = try await live().call("session.new_window", [
-            "session_id": session, "focus": false, "layout": ["block": block],
-        ]).payload
-        return (r["block_ids"] as? [Any])?.first as? String
+        return block
     }
 
     /// Names a window; an empty name gives back its default.
