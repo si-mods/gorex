@@ -272,11 +272,11 @@ final class TerminalView: UIView, TerminalOutput {
     /// the keyboard instead, its bottom rows and the cursor above it, its
     /// top under the bar.
     @objc private func keyboard(_ n: Notification) {
-        guard let window, let superview, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+        guard let window, let superview = superview as? TerminalHost, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
         let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
-        // Measured without the slide: center and bounds do not take it.
-        let covered = max(0, center.y + bounds.height / 2 - window.screen.coordinateSpace.convert(end, to: superview).minY)
+        // Measured on the host, which does not slide.
+        let covered = max(0, superview.bounds.maxY - window.screen.coordinateSpace.convert(end, to: superview).minY)
         scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: covered, left: 0, bottom: covered, right: 0)
         UIView.animate(withDuration: duration, delay: 0, options: [UIView.AnimationOptions(rawValue: curve << 16), .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: -covered)
@@ -520,6 +520,27 @@ final class TerminalView: UIView, TerminalOutput {
         .keyboardF6: "f6", .keyboardF7: "f7", .keyboardF8: "f8", .keyboardF9: "f9", .keyboardF10: "f10",
         .keyboardF11: "f11", .keyboardF12: "f12",
     ]
+}
+
+/// Holds a TerminalView for SwiftUI, which sets its views' frames and so
+/// would undo the slide: the host sets the terminal's bounds and center,
+/// which keep it.
+final class TerminalHost: UIView {
+    let terminal: TerminalView
+
+    init(_ terminal: TerminalView) {
+        self.terminal = terminal
+        super.init(frame: .zero)
+        addSubview(terminal)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        terminal.bounds = CGRect(origin: .zero, size: bounds.size)
+        terminal.center = CGPoint(x: bounds.midX, y: bounds.midY)
+    }
 }
 
 /// The bar over the soft keyboard: three capsules of Liquid Glass, dark as
