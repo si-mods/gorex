@@ -8,8 +8,9 @@ import UIKit
 /// and the wheel comes back out of it, for the session to write to the
 /// program. The soft keyboard comes with a bar of the keys it lacks (Esc,
 /// Tab, Ctrl, Alt, Shift, arrows), after rootshell's KeyboardAccessoryView;
-/// the modifiers hold for the next key. Input methods compose at the cursor
-/// (TerminalView+TextInput). A vertical drag scrolls back, or turns a
+/// the modifiers hold for the next key. An iPad's keyboard has its own bar
+/// of shortcuts, which takes the keys instead. Input methods compose at the
+/// cursor (TerminalView+TextInput). A vertical drag scrolls back, or turns a
 /// full-screen program's wheel, with UIKit's physics (TerminalView+Scroll);
 /// a pinch sizes the font (TerminalView+Zoom). A long press selects
 /// (TerminalView+Selection); a tap clears the selection, else clicks for a
@@ -112,6 +113,8 @@ final class TerminalView: UIView, TerminalOutput {
         for name in [Notification.Name.GCKeyboardDidConnect, .GCKeyboardDidDisconnect] {
             NotificationCenter.default.addObserver(self, selector: #selector(reloadInputViews), name: name, object: nil)
         }
+        // An iPad's bar of shortcuts has the keys from the start.
+        if UIDevice.current.userInterfaceIdiom == .pad { _ = bar }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -361,8 +364,11 @@ final class TerminalView: UIView, TerminalOutput {
         }
     }
 
-    /// The bar is for the soft keyboard, which a hardware one keeps away.
-    override var inputAccessoryView: UIView? { GCKeyboard.coalesced == nil ? bar : nil }
+    /// The bar is for the soft keyboard, which a hardware one keeps away,
+    /// and for a phone's: an iPad's keys are in its bar of shortcuts.
+    override var inputAccessoryView: UIView? {
+        GCKeyboard.coalesced == nil && UIDevice.current.userInterfaceIdiom != .pad ? bar : nil
+    }
 
     var autocorrectionType: UITextAutocorrectionType = .no
     var autocapitalizationType: UITextAutocapitalizationType = .none
@@ -595,7 +601,10 @@ final class TerminalHost: UIView {
 /// spins while a file goes up; the middle one pages from Esc, the modifiers
 /// and Tab to the punctuation a shell wants and Backspace; the last holds a
 /// stick that sends arrows the way it is dragged, and the key that hides
-/// the keyboard.
+/// the keyboard. On an iPad the keys go in the keyboard's bar of shortcuts,
+/// which shows with a hardware keyboard too: ⌘, Esc, the modifiers and Tab
+/// before its middle, the punctuation and four arrows after it. Its
+/// keyboard has keys of its own to hide it and for Backspace.
 final class KeyBar: UIView {
     let ctrl = KeyBar.button("control", String(localized: "Control"), size: KeyBar.small)
     let alt = KeyBar.button("option", String(localized: "Option"), size: KeyBar.small)
@@ -607,8 +616,8 @@ final class KeyBar: UIView {
     /// Repeats the arrow the stick points to, with the modifiers held
     /// until the stick is let go.
     private var repeating: Task<Void, Never>?
-    /// Repeats Backspace while it is held.
-    private var deleting: Task<Void, Never>?
+    /// Repeats Backspace, or an iPad's arrow, while it is held.
+    private var pressing: Task<Void, Never>?
     private var steered = false
     private var arrow: String? { didSet { pad.arrow = arrow } }
     /// What the stick turns into while held.
@@ -630,22 +639,29 @@ final class KeyBar: UIView {
             b.addAction(UIAction { [weak target] _ in target?.type(t) }, for: .touchUpInside)
             return b
         }
-        // Backspace goes on touch down and repeats while held, as the
-        // keyboard's does: after 400 ms, every 50 ms.
-        let delete = Self.button("delete.left", String(localized: "Delete"), size: Self.small)
-        delete.addAction(UIAction { [weak self, weak target, tick] _ in
-            self?.deleting?.cancel()
-            self?.deleting = Task {
-                var delay = 0.4
-                repeat {
-                    target?.send("backspace")
-                    tick.impactOccurred(intensity: 0.5)
-                    try? await Task.sleep(for: .seconds(delay))
-                    delay = 0.05
-                } while !Task.isCancelled
-            }
-        }, for: .touchDown)
-        delete.addAction(UIAction { [weak self] _ in self?.deleting?.cancel() }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        // Backspace and an iPad's arrows go on touch down and repeat while
+        // held, as the keyboard's Backspace does: after 400 ms, every 50 ms.
+        // The modifiers hold until the key is let go.
+        func repeating(_ face: String, _ label: String, _ name: String) -> UIButton {
+            let b = Self.button(face, label, size: Self.small)
+            b.addAction(UIAction { [weak self, weak target, tick] _ in
+                self?.pressing?.cancel()
+                self?.pressing = Task {
+                    var delay = 0.4
+                    repeat {
+                        target?.send(name, holding: true)
+                        tick.impactOccurred(intensity: 0.5)
+                        try? await Task.sleep(for: .seconds(delay))
+                        delay = 0.05
+                    } while !Task.isCancelled
+                }
+            }, for: .touchDown)
+            b.addAction(UIAction { [weak self, weak target] _ in
+                self?.pressing?.cancel()
+                target?.release()
+            }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
+            return b
+        }
         ctrl.addAction(UIAction { [weak target] _ in target?.ctrl.toggle() }, for: .touchUpInside)
         alt.addAction(UIAction { [weak target] _ in target?.alt.toggle() }, for: .touchUpInside)
         shift.addAction(UIAction { [weak target] _ in target?.shift.toggle() }, for: .touchUpInside)
@@ -668,13 +684,39 @@ final class KeyBar: UIView {
             b.configuration?.showsActivityIndicator = (self?.uploading ?? 0) > 0
         }
 
+        let first = [key("escape", String(localized: "Esc"), "escape"), ctrl, alt, shift,
+                     key("arrow.right.to.line", String(localized: "Tab"), "tab")]
+        let second = [text("~"), text("|"), text("/"), text("-")]
+        // Every key taps the hand as it goes down, as the keyboard's do.
+        // Backspace, the arrows and the stick tap on their own as they repeat.
+        for b in [more] + first + second {
+            b.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
+        }
+
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            let arrows = [
+                repeating("arrow.left", String(localized: "Left Arrow"), "arrow_left"),
+                repeating("arrow.up", String(localized: "Up Arrow"), "arrow_up"),
+                repeating("arrow.down", String(localized: "Down Arrow"), "arrow_down"),
+                repeating("arrow.right", String(localized: "Right Arrow"), "arrow_right"),
+            ]
+            // Each key as wide as the bar's own, which its face alone is not.
+            func group(_ keys: [UIButton]) -> UIBarButtonItemGroup {
+                UIBarButtonItemGroup(barButtonItems: keys.map { k in
+                    let item = UIBarButtonItem(customView: k)
+                    item.width = 36
+                    return item
+                }, representativeItem: nil)
+            }
+            target.inputAssistantItem.leadingBarButtonGroups = [group([more] + first)]
+            target.inputAssistantItem.trailingBarButtonGroups = [group(second + arrows)]
+            return
+        }
+        let delete = repeating("delete.left", String(localized: "Delete"), "backspace")
+
         // Two pages of five keys in even slots, inset from the capsule's
         // ends, each page as wide as the capsule.
-        let pages = UIStackView(arrangedSubviews: [
-            [key("escape", String(localized: "Esc"), "escape"), ctrl, alt, shift,
-             key("arrow.right.to.line", String(localized: "Tab"), "tab")],
-            [text("~"), text("|"), text("/"), text("-"), delete],
-        ].map { keys in
+        let pages = UIStackView(arrangedSubviews: [first, second + [delete]].map { keys in
             let page = UIStackView(arrangedSubviews: keys)
             page.distribution = .fillEqually
             page.isLayoutMarginsRelativeArrangement = true
@@ -701,6 +743,7 @@ final class KeyBar: UIView {
         stick.addGestureRecognizer(drag)
         let hide = Self.button("keyboard.chevron.compact.down", String(localized: "Hide Keyboard"))
         hide.addAction(UIAction { [weak target] _ in target?.resignFirstResponder() }, for: .touchUpInside)
+        hide.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
 
         let middle = Self.capsule(scroll)
         // The middle capsule takes the room the others leave.
@@ -716,12 +759,6 @@ final class KeyBar: UIView {
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         addSubview(pad)
-        // Every key taps the hand as it goes down, as the keyboard's do.
-        // Backspace and the stick tap on their own as they repeat.
-        let keys = pages.arrangedSubviews.flatMap { ($0 as? UIStackView)?.arrangedSubviews ?? [] }
-        for case let b as UIButton in keys + [more, hide] where b !== delete {
-            b.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
-        }
         // The width of a phone's bar at most, in the middle of a wider one.
         let fill = row.widthAnchor.constraint(equalTo: widthAnchor, constant: -32)
         fill.priority = .defaultHigh
