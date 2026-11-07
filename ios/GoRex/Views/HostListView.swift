@@ -131,26 +131,37 @@ private struct HostSection: View {
     var body: some View {
         let key = host.id.uuidString
         let isCollapsed = collapsed.contains(key)
-        VStack(alignment: .leading, spacing: 18) {
-            // The whole row folds the host's sessions away, but its menu.
+        VStack(alignment: .leading, spacing: 12) {
+            // The whole row folds the host's sessions away, but its buttons:
+            // glass, as they float over the page.
             HStack(spacing: 10) {
                 Image(systemName: host.config.desktop ? "desktopcomputer" : "laptopcomputer")
                     .font(.title3)
-                Text(host.config.name).font(.system(size: 24, weight: .bold)).lineLimit(1)
+                    .foregroundStyle(.secondary)
+                Text(host.config.name).font(.title.bold()).lineLimit(1)
                 Spacer()
-                Menu {
-                    Button("New Session", systemImage: "plus.rectangle.on.rectangle") { newSession() }
+                GlassEffectContainer {
+                    HStack(spacing: 8) {
+                        Button { newSession() } label: {
+                            Group {
+                                if creating { ProgressView() } else { Image(systemName: "plus") }
+                            }
+                            .frame(width: 30, height: 30)
+                        }
                         .disabled(creating)
-                    Button("Reconnect", systemImage: "arrow.clockwise") { host.reconnectIfNeeded() }
-                    Button("Remove", systemImage: "trash", role: .destructive) { store.remove(host.id) }
-                } label: {
-                    Group {
-                        if creating { ProgressView() } else { Image(systemName: "ellipsis").font(.title3) }
+                        .accessibilityLabel("New Session")
+                        Menu {
+                            Button("Reconnect", systemImage: "arrow.clockwise") { host.reconnectIfNeeded() }
+                            Button("Remove", systemImage: "trash", role: .destructive) { store.remove(host.id) }
+                        } label: {
+                            Image(systemName: "ellipsis").frame(width: 30, height: 30)
+                        }
+                        .accessibilityLabel("Host Menu")
                     }
-                    .frame(width: 36, height: 36).contentShape(.circle)
+                    .font(.body.weight(.semibold))
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
                 }
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Host Menu")
             }
             .foregroundStyle(.primary)
             .contentShape(.rect)
@@ -279,35 +290,41 @@ private struct HostSection: View {
         // The room of the tiles of the window with the most, so that the titles line up.
         let tiles = ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
         let isCollapsed = collapsed.contains(s.id)
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(s.label).font(.title3.weight(.semibold)).foregroundStyle(.gray)
-                Spacer()
+        // The session is one card: its header, then its windows.
+        VStack(spacing: 0) {
+            HStack(spacing: 4) {
+                Text(s.label).font(.headline).foregroundStyle(.primary).lineLimit(1)
+                Spacer(minLength: 8)
                 // Plain ghost buttons: glass is for what floats over the page.
-                HStack(spacing: 4) {
-                    Button {
-                        newWindow(s)
-                    } label: {
-                        Group {
-                            if opening.contains(s.id) { ProgressView() } else { Image(systemName: "plus") }
-                        }
-                        .frame(width: 36, height: 36).contentShape(.circle)
+                Button {
+                    newWindow(s)
+                } label: {
+                    Group {
+                        if opening.contains(s.id) { ProgressView() } else { Image(systemName: "plus") }
                     }
-                    .disabled(opening.contains(s.id))
-                    .accessibilityLabel("New Window")
-                    Button {
-                        withAnimation(.snappy) { if isCollapsed { collapsed.remove(s.id) } else { collapsed.insert(s.id) } }
-                    } label: {
-                        Image(systemName: "chevron.down").rotationEffect(.degrees(isCollapsed ? -90 : 0)).frame(width: 36, height: 36).contentShape(.circle)
-                    }
-                    .accessibilityLabel(isCollapsed ? "Expand" : "Collapse")
+                    .frame(width: 36, height: 36).contentShape(.circle)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                .disabled(opening.contains(s.id))
+                .accessibilityLabel("New Window")
+                Button {
+                    withAnimation(.snappy) { if isCollapsed { collapsed.remove(s.id) } else { collapsed.insert(s.id) } }
+                } label: {
+                    Image(systemName: "chevron.down").rotationEffect(.degrees(isCollapsed ? -90 : 0)).frame(width: 36, height: 36).contentShape(.circle)
+                }
+                .accessibilityLabel(isCollapsed ? "Expand" : "Collapse")
             }
+            .buttonStyle(.plain)
             .font(.body.weight(.semibold))
-            .foregroundStyle(.primary)
+            .foregroundStyle(.secondary)
+            .padding(.leading, 16)
+            .padding(.trailing, 6)
+            .frame(minHeight: 50)
             .contentShape(.rect)
+            .overlay(alignment: .bottom) {
+                if !isCollapsed && !windows.isEmpty {
+                    Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1 / 3).padding(.leading, 16)
+                }
+            }
             .contextMenu {
                 Button("Rename Session…", systemImage: "pencil") {
                     name = s.label
@@ -323,25 +340,23 @@ private struct HostSection: View {
             } message: { s in
                 Text("Close \(s.label) and every window in it?")
             }
-            if !isCollapsed && !windows.isEmpty {
-                VStack(spacing: 0) {
-                    ForEach(Array(windows.enumerated()), id: \.element.window.window_id) { i, w in
-                        let title = host.title(w.window)
-                        Button {
-                            open(TerminalTarget(host: host.id, session: s.id, block: w.block, title: title))
-                        } label: {
-                            WindowRow(host: host, block: w.block, window: w.window, tiles: tiles, divider: i < windows.count - 1) {
-                                Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
-                            }
+            if !isCollapsed {
+                ForEach(Array(windows.enumerated()), id: \.element.window.window_id) { i, w in
+                    let title = host.title(w.window)
+                    Button {
+                        open(TerminalTarget(host: host.id, session: s.id, block: w.block, title: title))
+                    } label: {
+                        WindowRow(host: host, block: w.block, window: w.window, tiles: tiles, divider: i < windows.count - 1) {
+                            Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
                         }
-                        .buttonStyle(.plain)
-                        .hoverEffect(.highlight)
-                        .contextMenu { menu(s, w.window, title: title, shown: windows.map(\.window.window_id)) }
                     }
+                    .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                    .contextMenu { menu(s, w.window, title: title, shown: windows.map(\.window.window_id)) }
                 }
-                .background(Color.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             }
         }
+        .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
