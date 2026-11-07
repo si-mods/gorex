@@ -108,11 +108,9 @@ func main() {
 			st.reopen()
 		}
 	})
-	// A click on a notification shows its pane. What the user comes
-	// back to the app for leaves Notification Center, and the
-	// notifications MyGo keeps for their clicks go with it.
+	// A click on a notification shows its pane, also one that launched
+	// the app.
 	mygo.App.OnNotificationClick(st.notificationClicked)
-	mygo.App.OnDidBecomeActive(mygo.ClearNotifications)
 	mygo.App.OnWindowAllClosed(func() {
 		if runtime.GOOS != "darwin" {
 			mygo.App.Quit()

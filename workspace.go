@@ -133,6 +133,12 @@ type store struct {
 	// session's done or error record was seen.
 	infos map[string]rex.SessionInfo
 	seen  map[string]time.Time
+	// shown close the notifications shown of each session, by notifyKey,
+	// till its pane is seen; clicked is the ID of the notification the
+	// user clicked last that found no pane yet, as of clickedAt.
+	shown     map[string][]func()
+	clicked   string
+	clickedAt time.Time
 	// apps are the open windows, the most recently focused first.
 	apps []*App
 	// lastClosed is the workspace of the last window, once it closed: it

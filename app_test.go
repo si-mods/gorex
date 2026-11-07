@@ -89,7 +89,7 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 	t.Cleanup(func() { setBadge, badgeSupported = oldBadge, oldSupported })
 	// No notification shows from a test.
 	oldNotify := showNotification
-	showNotification = func(mygo.NotificationOptions) {}
+	showNotification = func(mygo.NotificationOptions) func() { return func() {} }
 	t.Cleanup(func() { showNotification = oldNotify })
 	// The app's windows are views without a window, as this one.
 	old := newWindow
