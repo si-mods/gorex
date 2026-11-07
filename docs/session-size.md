@@ -26,7 +26,10 @@ authority in this order:
 3. Otherwise, the client that **attached last**.
 
 The authority also answers the program's terminal queries (cursor
-position, colors). Only one terminal's answers reach the program.
+position, colors), unless its terminal answers none, as the Rex API
+gateway's attach: then the client that typed or attached last of the
+others answers, and with none, the server's emulator. Only one
+terminal's answers reach the program.
 
 Every attached client records the size of its own terminal: the size it
 attached at, then each resize it sends.

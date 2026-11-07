@@ -141,6 +141,10 @@ type attached struct {
 	// client is the id its attach gave (Attach.Client), "" for none,
 	// which SessionInfo.SizedBy names the authority by.
 	client string
+	// mute tells a client whose terminal answers no query: one taking the
+	// screen as GHOSTSNP (Attach.Snapshot), as the rexapi gateway, types
+	// through the input ops, whose answers are removed.
+	mute bool
 }
 
 // The most chunks of output that may wait for a client, and bytes for a
@@ -253,10 +257,10 @@ func newSession(id string, o CreateOptions, owner string, changed func()) (*sess
 
 // newVT gives the session its emulator, at the session's size.
 func (s *session) newVT() error {
-	// The emulator's Conn reads nothing, and what it would answer programs
-	// is dropped: the windows' terminals answer them.
+	// The emulator's Conn reads nothing, and what it answers programs is
+	// typed only while no client's terminal answers them.
 	pr, pw := io.Pipe()
-	vt, err := terminal.New(terminal.Options{Conn: discard{pr}, Scrollback: scrollback, OnBell: func() { s.bells.Add(1) }})
+	vt, err := terminal.New(terminal.Options{Conn: vtConn{discard{pr}, s}, Scrollback: scrollback, OnBell: func() { s.bells.Add(1) }})
 	if err != nil {
 		return err
 	}
@@ -457,7 +461,7 @@ func (s *session) read() {
 // it attached through (Attach.Conn), if any; o.History, o.Framed and
 // o.Snapshot shape the snapshot.
 func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may func() bool, typed []byte) {
-	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != "", client: o.Client}
+	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != "", client: o.Client, mute: o.Snapshot == SnapshotGhostty}
 	if o.Cols > 0 && o.Rows > 0 {
 		a.cols, a.rows = o.Cols, o.Rows
 	}
@@ -604,8 +608,8 @@ func (s *session) paste(text string) error {
 
 // admit returns what of p, which client a sends, the program gets. Every
 // terminal attached answers the program's queries, and the program would
-// read each answer once per client: only the authority's answers reach
-// it (authorityLocked).
+// read each answer once per client: only one client's answers reach
+// it (answererLocked).
 // What the server types itself, a nil client's, goes as it is.
 func (s *session) admit(a *attached, p []byte) []byte {
 	typed := dropReplies(p)
@@ -614,7 +618,7 @@ func (s *session) admit(a *attached, p []byte) []byte {
 	if a != nil && len(dropFocusReports(typed)) > 0 {
 		s.typist = a
 	}
-	if a != nil && s.authorityLocked() != a {
+	if a != nil && s.answererLocked() != a {
 		p = typed
 	}
 	pty, cols, rows := false, 0, 0
@@ -662,10 +666,11 @@ func (s *session) followAuthorityLocked(prev *attached) (pty bool, cols, rows in
 	return pty, s.cols, s.rows
 }
 
-// authorityLocked returns the client whose terminal answers the program's
-// queries: one attached through the control connection that holds the
-// size, whose size the program draws for, else the client that typed
-// last, else the one attached last; s.mu is held.
+// authorityLocked returns the client whose size the program draws for,
+// whose terminal answers its queries unless it answers none
+// (answererLocked): one attached through the control connection that
+// holds the size, else the client that typed last, else the one attached
+// last; s.mu is held.
 func (s *session) authorityLocked() *attached {
 	var newest *attached
 	for a := range s.clients {
@@ -677,6 +682,27 @@ func (s *session) authorityLocked() *attached {
 		}
 	}
 	if _, ok := s.clients[s.typist]; ok {
+		return s.typist
+	}
+	return newest
+}
+
+// answererLocked returns the client whose terminal answers the program's
+// queries: the authority, else, when it is mute, the client that typed
+// last or attached last of those that are not; nil when none is, and the
+// server's emulator answers. s.mu is held.
+func (s *session) answererLocked() *attached {
+	a := s.authorityLocked()
+	if a == nil || !a.mute {
+		return a
+	}
+	var newest *attached
+	for c := range s.clients {
+		if !c.mute && (newest == nil || c.seq > newest.seq) {
+			newest = c
+		}
+	}
+	if _, ok := s.clients[s.typist]; ok && !s.typist.mute {
 		return s.typist
 	}
 	return newest
@@ -1425,10 +1451,28 @@ func (s *session) notify() {
 	}
 }
 
-// discard is the Conn of a session's emulator: it reads from a pipe that
-// closes with the session, and drops what it writes.
+// discard is a Conn for an emulator: it reads from a pipe that closes
+// with the session, and drops what it writes.
 type discard struct{ r *io.PipeReader }
 
 func (d discard) Read(p []byte) (int, error)  { return d.r.Read(p) }
 func (d discard) Write(p []byte) (int, error) { return len(p), nil }
 func (d discard) Close() error                { return d.r.Close() }
+
+// vtConn is the Conn of a session's emulator: what the emulator answers
+// it types while no client's terminal answers (answererLocked), and drops
+// else.
+type vtConn struct {
+	discard
+	s *session
+}
+
+func (c vtConn) Write(p []byte) (int, error) {
+	c.s.mu.Lock()
+	answers := !c.s.exited && c.s.answererLocked() == nil
+	c.s.mu.Unlock()
+	if answers {
+		c.s.write(p)
+	}
+	return len(p), nil
+}
