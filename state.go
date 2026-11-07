@@ -1010,10 +1010,11 @@ func (a *App) attach(p *Pane, cols, rows int) {
 		update(func() { a.ring(p) })
 	}
 	opts.OnNotify = func(title, body string) {
-		if title == "" {
-			title = "GoRex"
-		}
-		mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
+		update(func() {
+			if !a.shows(p) {
+				a.notifyPane(p, cmp.Or(title, "GoRex"), body)
+			}
+		})
 	}
 	opts.OnSearch = func(s terminal.SearchStatus) {
 		update(func() {
@@ -1321,10 +1322,17 @@ func (nopConn) Write(p []byte) (int, error) { return len(p), nil }
 func (nopConn) Close() error                { return nil }
 
 func (a *App) ring(p *Pane) {
-	if t := a.tab(); t == nil || t.Focus != p || p.Tab != t || !a.focusedWin {
+	if !a.shows(p) {
 		p.askAttention()
 		a.syncBadge()
 	}
+}
+
+// shows tells that the user looks at pane p: the focused pane of the
+// window's tab, while the window has the focus.
+func (a *App) shows(p *Pane) bool {
+	t := a.tab()
+	return t != nil && t.Focus == p && p.Tab == t && a.focusedWin
 }
 
 // askAttention marks the pane as asking for attention: its dots pop as it
@@ -3302,7 +3310,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 				p.see()
 			} else if r := entered(was, in); r != nil && time.Since(p.notified) > 10*time.Second {
 				p.notified = time.Now()
-				a.notifyStatus(h, t, p, r)
+				a.notifyStatus(p, r)
 			}
 			// A program that ran a while and finished out of sight
 			// asks for attention. One that reports its status was
@@ -3314,11 +3322,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 				statuses := len(was.Statuses) > 0 || len(in.Statuses) > 0
 				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second && !statuses {
 					prog := programOf(was.ProgramName())
-					n := mygo.NewNotification(mygo.NotificationOptions{
-						Title: locales.NotifyFinished(prog.Name),
-						Body:  locales.NotifyIn(shortDir(in.Dir)),
-					})
-					n.Show()
+					a.notifyPane(p, locales.NotifyFinished(prog.Name), locales.NotifyIn(shortDir(in.Dir)))
 				}
 			}
 		}
@@ -3405,13 +3409,12 @@ func entered(was, in rex.SessionInfo) *rex.ProgramStatus {
 	return rex.MostUrgent(news, time.Time{})
 }
 
-// notifyStatus tells, with a notification, that a program of pane p, on
-// host h, reported r.
-func (a *App) notifyStatus(h *hostConn, t *Tab, p *Pane, r *rex.ProgramStatus) {
-	name, _ := p.label()
+// notifyStatus tells, with a notification, that a program of pane p
+// reported r.
+func (a *App) notifyStatus(p *Pane, r *rex.ProgramStatus) {
 	prog := r.App
 	if prog == "" {
-		prog = name
+		prog, _ = p.label()
 	}
 	title := locales.NotifyFinished(prog)
 	switch r.State {
@@ -3420,18 +3423,40 @@ func (a *App) notifyStatus(h *hostConn, t *Tab, p *Pane, r *rex.ProgramStatus) {
 	case "error":
 		title = locales.NotifyFailed(prog)
 	}
-	src := name
-	if tn, _ := t.label(); tn != name {
-		src = tn + " · " + name
+	a.notifyPane(p, title, cmp.Or(r.Message(), r.Title))
+}
+
+// showNotification shows a notification, and calls click on the main
+// thread when the user clicks it; tests, which run no app, take its
+// place.
+var showNotification = func(o mygo.NotificationOptions, click func()) {
+	n := mygo.NewNotification(o)
+	n.OnClick(click)
+	n.Show()
+}
+
+// notifyPane shows a notification of pane p: under the title, the names
+// of its tab and pane and of its host; the notifications of a session
+// stack together, and a click brings the pane to the front.
+func (a *App) notifyPane(p *Pane, title, body string) {
+	name, _ := p.label()
+	src, group := name, p.SID
+	if p.Tab != nil {
+		if tn, _ := p.Tab.label(); tn != name {
+			src = tn + " · " + name
+		}
 	}
-	if h != nil {
-		src = locales.NotifyOnHost(src, a.hostName(h))
+	if p.host != nil {
+		src = locales.NotifyOnHost(src, a.hostName(p.host))
+		group = p.host.ID + " " + p.SID
 	}
-	body := src
-	if msg := cmp.Or(r.Message(), r.Title); msg != "" {
-		body = msg + "\n" + src
-	}
-	mygo.NewNotification(mygo.NotificationOptions{Title: title, Body: body}).Show()
+	showNotification(mygo.NotificationOptions{Title: title, Subtitle: src, Body: body, Group: group}, func() {
+		if p.closed {
+			return
+		}
+		a.front()
+		a.focusNeedy(needy{app: a, tab: p.Tab, pane: p})
+	})
 }
 
 // laterService queues a menu action without keeping a build context.

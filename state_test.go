@@ -7,6 +7,9 @@ import (
 	"time"
 
 	"gorex/internal/rex"
+	"gorex/locales"
+
+	"github.com/egoist/mygo"
 )
 
 // TestPaneStopped keeps the pane of a session whose stream ended while the
@@ -90,5 +93,44 @@ func TestPaneProgram(t *testing.T) {
 	}}
 	if got := claude.program().Name; got != "Claude Code" {
 		t.Errorf("a mirror of Claude Code shows as %q", got)
+	}
+}
+
+// TestNotifyPane: a status notification names the program in its title,
+// tells the record's message, else what a done program did last, and
+// under the title the pane's tab and name. A session's notifications
+// stack together, a click brings the pane back, and no program's own
+// notification shows for the pane the user looks at.
+func TestNotifyPane(t *testing.T) {
+	a, _ := newTestApp(t)
+	var got []mygo.NotificationOptions
+	var click func()
+	showNotification = func(o mygo.NotificationOptions, c func()) { got, click = append(got, o), c }
+	t1 := a.tab()
+	t1.Name = "work"
+	p := t1.Focus
+	name, _ := p.label()
+	a.newTab(t.TempDir())
+	a.notifyStatus(p, &rex.ProgramStatus{State: "blocked", App: "claude", Msg: "Allow edit?"})
+	a.notifyStatus(p, &rex.ProgramStatus{State: "done", App: "claude", LastMsg: "Fixed the test"})
+	want := []mygo.NotificationOptions{
+		{Title: locales.NotifyBlocked("claude"), Subtitle: "work · " + name, Body: "Allow edit?", Group: p.SID},
+		{Title: locales.NotifyFinished("claude"), Subtitle: "work · " + name, Body: "Fixed the test", Group: p.SID},
+	}
+	text := func(o mygo.NotificationOptions) [4]string { return [4]string{o.Title, o.Subtitle, o.Body, o.Group} }
+	if len(got) != len(want) || text(got[0]) != text(want[0]) || text(got[1]) != text(want[1]) {
+		t.Fatalf("notifications %+v, want %+v", got, want)
+	}
+	a.focusedWin = true
+	if a.tab() == t1 || a.shows(p) {
+		t.Fatal("the pane shows from another tab")
+	}
+	click()
+	if a.tab() != t1 || t1.Focus != p || !a.shows(p) {
+		t.Fatalf("the click went to tab %d", a.active)
+	}
+	a.focusedWin = false
+	if a.shows(p) {
+		t.Fatal("the pane shows in a window without the focus")
 	}
 }
