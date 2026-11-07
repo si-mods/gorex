@@ -37,13 +37,16 @@ struct TerminalScreen: View {
         // bar and the key bar too; the bar and the text on it take its scheme.
         let bg = session?.background ?? .black
         let scheme: ColorScheme = 0.299 * Double(bg.r) + 0.587 * Double(bg.g) + 0.114 * Double(bg.b) < 128 ? .dark : .light
-        // The terminal goes up under the clear bar, which it leaves room for
-        // while it can, as the keyboard goes over it.
+        // The terminal goes up under the clear bar and the status bar, which
+        // it leaves room for while it can, as the keyboard goes over it.
         Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab) } else { Color.clear } }
             .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)
             .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p) } }
             .background { Color(cgColor: bg.cgColor).ignoresSafeArea() }
+            // What goes up under the status bar blurs and fades into the
+            // background, for the clock over it.
+            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: Self.statusBar + 10) }
             .overlay { status }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
@@ -116,6 +119,11 @@ struct TerminalScreen: View {
             }
     }
 
+    /// The height of the status bar, the window's top inset.
+    private static var statusBar: CGFloat {
+        UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
+    }
+
     /// The session of the window open, as the host has it.
     private var hostSession: Host.Session? {
         host.sessions.first { $0.id == target.session }
@@ -184,6 +192,31 @@ struct TerminalScreen: View {
 
     private func label(_ s: String) -> some View {
         Text(s).font(.callout).padding(12).glassEffect(.regular, in: .rect(cornerRadius: 14))
+    }
+}
+
+/// A soft edge at the top of the page: blurred and in the background's
+/// color at the top, clear below.
+private struct TopEdge: View {
+    let color: Color
+    /// How far down from the top of the screen it reaches.
+    let height: CGFloat
+
+    var body: some View {
+        let fade = LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.35), .init(color: .clear, location: 1)],
+                                  startPoint: .top, endPoint: .bottom)
+        // From the top of the screen, height down.
+        VStack(spacing: 0) {
+            ZStack {
+                Rectangle().fill(.ultraThinMaterial)
+                color.opacity(0.75)
+            }
+            .mask(fade)
+            .frame(height: height)
+            Spacer(minLength: 0)
+        }
+        .ignoresSafeArea(.container, edges: .top)
+        .allowsHitTesting(false)
     }
 }
 

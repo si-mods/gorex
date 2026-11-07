@@ -41,8 +41,8 @@ final class TerminalView: UIView, TerminalOutput {
     lazy var editMenu = UIEditMenuInteraction(delegate: self)
     var showsSelection = false
     lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
-    /// How far down the clear bar reaches over the terminal, and whether a
-    /// slide waits for the output to be drawn.
+    /// How far down the status bar and the clear bar reach over the
+    /// terminal, and whether a slide waits for the output to be drawn.
     var inset: CGFloat = 0 { didSet { if inset != oldValue { slide(duration: 0) } } }
     var slideWaits = false
     /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
@@ -560,7 +560,7 @@ final class TerminalView: UIView, TerminalOutput {
 
 /// Holds a TerminalView for SwiftUI, which sets its views' frames and so
 /// would undo the slide: the host sets the terminal's bounds and center,
-/// which keep it. The terminal starts below the status bar, under the bar.
+/// which keep it. The bars over it are its inset.
 final class TerminalHost: UIView {
     let terminal: TerminalView
 
@@ -574,10 +574,9 @@ final class TerminalHost: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let top = window?.safeAreaInsets.top ?? 0, height = bounds.height - top
-        terminal.bounds = CGRect(x: 0, y: 0, width: bounds.width, height: height)
-        terminal.center = CGPoint(x: bounds.midX, y: top + height / 2)
-        terminal.inset = max(0, safeAreaInsets.top - top)
+        terminal.bounds = CGRect(origin: .zero, size: bounds.size)
+        terminal.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        terminal.inset = safeAreaInsets.top
     }
 
     override func safeAreaInsetsDidChange() {
