@@ -1279,7 +1279,8 @@ func (a *App) moveTabToNewWindow(t *Tab) {
 		return
 	}
 	l := savedLayout{Tabs: []savedTab{a.savedTab(t)}}
-	for _, p := range t.allPanes() {
+	panes := t.allPanes()
+	for _, p := range panes {
 		p.end()
 		p.browser.destroy()
 	}
@@ -1287,5 +1288,8 @@ func (a *App) moveTabToNewWindow(t *Tab) {
 	w := st.addWorkspace()
 	w.layout = l
 	st.openWindow(w)
+	for _, p := range panes {
+		a.handTransfers(p)
+	}
 	st.save()
 }

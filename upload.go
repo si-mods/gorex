@@ -89,7 +89,7 @@ func (a *App) upload(p *Pane, paths []string) {
 	}
 	h, offline, shell := p.host, locales.HostsNotConnectedTo(p.host.Name), p.info.Shell
 	temp := h.hello.Can(rex.CapabilityFileTemp)
-	update := a.updater()
+	update := a.paneUpdater(p)
 	prev, done := p.uploading, make(chan struct{})
 	p.uploading = done
 	go func() {
@@ -115,8 +115,8 @@ func (a *App) upload(p *Pane, paths []string) {
 			}
 		}
 		update(func() {
-			if len(pasted) > 0 && !p.closed && p.term != nil {
-				p.term.Paste(pastedPaths(shell, pasted))
+			if _, q := a.paneNow(p); len(pasted) > 0 && !q.closed && q.term != nil {
+				q.term.Paste(pastedPaths(shell, pasted))
 			}
 		})
 	}()
@@ -210,7 +210,7 @@ func (a *App) download(p *Pane, link string) bool {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	x.cancel = cancel
-	c, sid, update := p.host.current(), p.SID, a.updater()
+	c, sid, update := p.host.current(), p.SID, a.paneUpdater(p)
 	go func() {
 		defer cancel()
 		var last time.Time
@@ -257,6 +257,39 @@ func hostPath(dir, path string) string {
 func uploadID(sid, path string, fi os.FileInfo) string {
 	sum := sha256.Sum256(fmt.Appendf(nil, "%s\x00%s\x00%d\x00%d", sid, path, fi.Size(), fi.ModTime().UnixNano()))
 	return hex.EncodeToString(sum[:8])
+}
+
+// paneNow returns p and a, its window, or, p having moved to another
+// window, the pane that shows its session there and that window.
+func (a *App) paneNow(p *Pane) (*App, *Pane) {
+	if p.closed && a.st != nil && p.host != nil {
+		if n, ok := a.st.needyOf(p.host.ID, p.SID); ok && n.pane != nil {
+			return n.app, n.pane
+		}
+	}
+	return a, p
+}
+
+// paneUpdater is a.updater for p's transfers: each change draws the window
+// that shows p's session now.
+func (a *App) paneUpdater(p *Pane) func(func()) {
+	update := a.updater()
+	return func(fn func()) {
+		update(func() {
+			fn()
+			if o, _ := a.paneNow(p); o != a && o.win != nil {
+				o.win.Update(func() {})
+			}
+		})
+	}
+}
+
+// handTransfers gives p's transfers to the pane that shows its session
+// now, p having moved to another window.
+func (a *App) handTransfers(p *Pane) {
+	if _, q := a.paneNow(p); q != p {
+		q.transfers, q.uploading = p.transfers, p.uploading
+	}
 }
 
 // stopTransfers cancels the pane's transfers, as it closes.

@@ -3857,7 +3857,7 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		np.Name = p.Name
 		np.browser.auto = false
 	} else {
-		np = &Pane{ID: target.id(), SID: p.SID, Name: p.Name, info: p.info, title: p.title, startDir: p.startDir, host: h}
+		np = &Pane{ID: target.id(), SID: p.SID, Name: p.Name, info: p.info, title: p.title, startDir: p.startDir, host: h, transfers: p.transfers, uploading: p.uploading}
 		target.attach(np, cols, rows)
 	}
 	targetPane := t.tiledTarget()
