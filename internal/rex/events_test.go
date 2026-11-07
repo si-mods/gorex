@@ -486,3 +486,29 @@ func TestFilterLayoutDropsNotes(t *testing.T) {
 		t.Fatalf("leaked the note pane: %s", got)
 	}
 }
+
+// TestHelloPairURL checks that only a remote peer's hello asks for the
+// pairing address: the gateway's own hello must not wait on the gateway.
+func TestHelloPairURL(t *testing.T) {
+	asked := 0
+	defer func(f func() string) { RexPairURL = f }(RexPairURL)
+	RexPairURL = func() string { asked++; return "https://pair.example" }
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	h, err := local.Hello()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if asked != 0 || h.RexPairURL != "" {
+		t.Fatalf("a local hello asked for the pairing address: %d times, %q", asked, h.RexPairURL)
+	}
+	remote := pipe(s, "peer-key")
+	defer remote.Close()
+	if h, err = remote.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	if asked != 1 || h.RexPairURL != "https://pair.example" {
+		t.Fatalf("a remote hello: asked %d times, %q", asked, h.RexPairURL)
+	}
+}
