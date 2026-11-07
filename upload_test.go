@@ -116,8 +116,9 @@ func waitUploaded(t *testing.T, tt *ui.Tester, p *Pane) {
 // TestDropUploadsToHost drops files on a pane of a host: they go into a
 // temporary folder there, not the directory of its shell, going on from
 // what an earlier try left, one of a name taken renamed, and their paths
-// there are pasted, quoted, as a drop here pastes paths. A file gone
-// pastes nothing.
+// there are pasted, quoted, a space after each, as a drop here pastes
+// paths, so that what is typed next is another word. A file gone pastes
+// nothing.
 func TestDropUploadsToHost(t *testing.T) {
 	if testShell.path == "cmd.exe" {
 		t.Skip("POSIX quoting")
@@ -168,6 +169,11 @@ func TestDropUploadsToHost(t *testing.T) {
 	if !tt.HasText("Done") || !tt.HasText("no such file or directory") {
 		t.Errorf("texts %q", tt.Texts())
 	}
+	// What is typed next follows the space after the last path.
+	if err := c.Input(p.SID, []byte("next")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, tt, "the typing", func() bool { return strings.Contains(p.term.Text(), `/b (1).txt' next`) })
 	tt.Advance(transferShown)
 	tt.Frame()
 	if len(p.transfers) != 1 || tt.HasText("Done") || !tt.HasText("gone.txt") {

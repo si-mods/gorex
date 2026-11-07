@@ -26,10 +26,10 @@ import (
 // Files dropped on a pane of a host go there: each is sent into a
 // temporary folder of the host's, not to litter the directory the pane
 // works in (into that directory, of a host before CapabilityFileTemp),
-// and its path there is pasted, as a drop on a pane of this
-// machine pastes the paths here. A drop on a pane of this machine is the
-// terminal's own. A file path
-// Command-clicked in a pane of a host comes here, into Downloads.
+// and its path there is pasted, a space after each, as a drop on a pane
+// of this machine pastes the paths here. A drop on a pane of this machine
+// is the terminal's own. A file path Command-clicked in a pane of a host
+// comes here, into Downloads.
 
 // fileTransfer is a file on its way to or from a pane's machine, as the
 // pane's transfer list shows it.
