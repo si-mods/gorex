@@ -595,3 +595,79 @@ func TestHostPath(t *testing.T) {
 		}
 	}
 }
+
+// gateUploads holds each upload's open until the returned func is called.
+func gateUploads(t *testing.T) (release func()) {
+	t.Helper()
+	gate := make(chan struct{})
+	old := openUpload
+	openUpload = func(path string) (uploadFile, error) {
+		<-gate
+		return os.Open(path)
+	}
+	t.Cleanup(func() { openUpload = old })
+	return sync.OnceFunc(func() { close(gate) })
+}
+
+// movedPane is the pane of sid in b, nil when none.
+func movedPane(b *App, sid string) *Pane {
+	for _, t := range b.tabs {
+		for _, q := range t.allPanes() {
+			if q.SID == sid {
+				return q
+			}
+		}
+	}
+	return nil
+}
+
+// TestUploadMovesWithItsTab moves a tab to a new window while a file
+// dropped on its pane goes to the host: the new window's pane lists the
+// transfer and gets its path pasted, and a later drop on it waits for it.
+func TestUploadMovesWithItsTab(t *testing.T) {
+	dropsDir(t)
+	a, tt := newTestApp(t)
+	_, _, p := remotePane(t, a, tt, t.TempDir())
+	release := gateUploads(t)
+	defer release()
+	a.upload(p, dropped(t, "moved.txt", "x"))
+	sid, x := p.SID, p.transfers[0]
+	a.moveTabToNewWindow(p.Tab)
+	b := a.st.apps[0]
+	q := movedPane(b, sid)
+	if b == a || q == nil || q.term == nil {
+		t.Fatal("the tab did not move")
+	}
+	if !slices.Contains(q.transfers, x) || q.uploading != p.uploading {
+		t.Fatalf("the moved pane's transfers %v", q.transfers)
+	}
+	release()
+	waitFor(t, tt, "the path there", func() bool { return strings.Contains(q.term.Text(), "moved.txt") })
+	if !x.ok {
+		t.Errorf("the upload: %+v", x)
+	}
+}
+
+// TestUploadMovesWithItsPane is TestUploadMovesWithItsTab for a pane moved
+// into another window's tab.
+func TestUploadMovesWithItsPane(t *testing.T) {
+	dropsDir(t)
+	a, tt := newTestApp(t)
+	h, _, p := remotePane(t, a, tt, t.TempDir())
+	b := a.st.openWindow(a.st.addWorkspace())
+	b.newTabOn(h, t.TempDir())
+	release := gateUploads(t)
+	defer release()
+	a.upload(p, dropped(t, "moved.txt", "x"))
+	sid, x := p.SID, p.transfers[0]
+	a.movePaneToWindow(p, b)
+	q := movedPane(b, sid)
+	if q == nil || q.term == nil {
+		t.Fatal("the pane did not move")
+	}
+	if !slices.Contains(q.transfers, x) || q.uploading != p.uploading {
+		t.Fatalf("the moved pane's transfers %v", q.transfers)
+	}
+	release()
+	waitFor(t, tt, "the path there", func() bool { return strings.Contains(q.term.Text(), "moved.txt") })
+}
