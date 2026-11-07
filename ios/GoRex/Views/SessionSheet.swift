@@ -24,9 +24,10 @@ struct SessionSheet: View {
                         .lineLimit(1)
                         Spacer()
                         Button { dismiss() } label: {
-                            Image(systemName: "xmark").font(.title3.weight(.medium)).frame(width: 48, height: 48)
+                            Image(systemName: "xmark").font(.title3.weight(.medium)).frame(width: 38, height: 38)
                         }
-                        .glassEffect(.regular.interactive(), in: .circle)
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
                         .accessibilityLabel("Close")
                     }
                     .padding(.bottom, 8)
@@ -37,7 +38,7 @@ struct SessionSheet: View {
                     } label: {
                         Row(icon: "plus", title: Text("New Tab"), divider: false) {}
                     }
-                    .background(Color.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                     NavigationLink {
                         sessions
                     } label: {
@@ -45,12 +46,13 @@ struct SessionSheet: View {
                             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
                         }
                     }
-                    .background(Color.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
                 }
                 .padding(20)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
             }
             .toolbar(.hidden, for: .navigationBar)
+            .containerBackground(.clear, for: .navigation)
         }
         .buttonStyle(.plain)
         .presentationDetents([height > 0 ? .height(height) : .medium, .large])
@@ -76,7 +78,7 @@ struct SessionSheet: View {
                 }
             }
         }
-        .background(Color.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     /// The host's sessions; another one goes to its first window.
@@ -97,12 +99,13 @@ struct SessionSheet: View {
                     .disabled(first == nil)
                 }
             }
-            .background(Color.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .padding(20)
         }
         .navigationTitle("Switch Session")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
+        .containerBackground(.clear, for: .navigation)
     }
 }
 

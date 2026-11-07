@@ -115,7 +115,9 @@ struct TerminalScreen: View {
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
-            .sheet(isPresented: $sheet) { SessionSheet(target: target, host: host, go: go, newTab: newTab) }
+            // The sheet takes the terminal's scheme as the bar does; the
+            // one below does not reach it under a dark system.
+            .sheet(isPresented: $sheet) { SessionSheet(target: target, host: host, go: go, newTab: newTab).environment(\.colorScheme, scheme) }
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
             .toolbarColorScheme(scheme, for: .navigationBar)
             .environment(\.colorScheme, scheme)
