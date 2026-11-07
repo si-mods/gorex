@@ -83,8 +83,8 @@ struct TerminalScreen: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // The title floats in a capsule of glass, with the tile of
-                // the window's program, as its row in the list shows it, and
-                // the session's name below; a tap opens the session's sheet.
+                // the window's program, as its row in the list shows it; a
+                // tap opens the session's sheet.
                 ToolbarItem(placement: .principal) {
                     // As tall as the back button beside it.
                     Button { sheet = true } label: {
@@ -94,16 +94,7 @@ struct TerminalScreen: View {
                                 .frame(width: 21 * k, height: 16 * k)
                                 .scaleEffect(small)
                                 .frame(width: 21 * k * small, height: 16 * k * small)
-                            VStack(alignment: .leading, spacing: 0) {
-                                Text(title).font(.body.weight(.semibold))
-                                HStack(spacing: 3) {
-                                    Text(sessionLabel)
-                                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
-                                }
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                            }
-                            .lineLimit(1)
+                            Text(title).font(.body.weight(.semibold)).lineLimit(1)
                         }
                         .padding(.leading, 12)
                         .padding(.trailing, 18)
@@ -114,6 +105,11 @@ struct TerminalScreen: View {
                     .buttonStyle(.plain)
                 }
                 .sharedBackgroundVisibility(.hidden)
+                // Holds the place of a menu to come; the bar's glass draws it.
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {} label: { Image(systemName: "ellipsis") }
+                        .accessibilityLabel("More")
+                }
             }
             // The sheet takes the terminal's scheme as the bar does; the
             // one below does not reach it under a dark system.
