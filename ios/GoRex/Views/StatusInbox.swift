@@ -108,7 +108,7 @@ private struct StatusRow: View {
         .padding(.leading, 14)
         .padding(.trailing, 18)
         .frame(minHeight: 70)
-        .background(Color.card, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 
