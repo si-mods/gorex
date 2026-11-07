@@ -7,6 +7,7 @@ import (
 
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
+	"gorex/internal/testrex"
 	"gorex/locales"
 )
 
@@ -102,5 +103,72 @@ func TestRemoteLANCard(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText("Not listening: address already in use") {
 		t.Errorf("no error state in %q", tt.Texts())
+	}
+}
+
+// TestPairURLOffRender: drawing the Remote page does not wait on the
+// gateway, even when its socket answers no one. At most one look reaches
+// it, in the background, and the frames are drawn while that look still
+// waits: a frame that waited would have given up on it and closed it.
+func TestPairURLOffRender(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Setenv("GOREX_DIR", t.TempDir())
+	section, remote := settingsUI.section, remoteUI
+	t.Cleanup(func() { settingsUI.section, remoteUI = section, remote })
+	gw := testrex.NewStalled(t)
+	t.Setenv("GOREX_REXAPI_SOCKET", gw.Path)
+	// The look ends before the socket goes.
+	t.Cleanup(func() {
+		waitForThat(t, func() bool { _, open := gw.Counts(); return open == 0 }, "the look to give up")
+	})
+
+	a := &App{}
+	settingsUI.section = "remote"
+	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
+	remoteUI.lan, remoteUI.lanStatus = rexapi.LANConfig{}, rexapi.LANStatus{}
+	tt := ui.NewTester(a.settingsView, 780, 1400)
+	for range 3 {
+		tt.Frame()
+	}
+	if dials, open := gw.Counts(); dials > 1 || open != dials {
+		t.Fatalf("drawing dialed the gateway %d times, %d given up", dials, dials-open)
+	}
+}
+
+// TestLocalPairQRCloses: this machine's code stays open while its
+// address works, and closes once the listener it names goes away.
+func TestLocalPairQRCloses(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Setenv("GOREX_DIR", t.TempDir())
+	section, remote, qr := settingsUI.section, remoteUI, hostsPairQR
+	t.Cleanup(func() { settingsUI.section, remoteUI, hostsPairQR = section, remote, qr })
+	gw := testrex.NewStalled(t)
+	t.Setenv("GOREX_REXAPI_SOCKET", gw.Path)
+	t.Cleanup(func() {
+		waitForThat(t, func() bool { _, open := gw.Counts(); return open == 0 }, "the look to give up")
+	})
+
+	a := &App{}
+	settingsUI.section = "remote"
+	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
+	remoteUI.lan = rexapi.LANConfig{Enabled: true, Listen: "192.168.1.20:7297", Allow: []string{"192.168.1.0/24"}}
+	remoteUI.lanStatus = rexapi.LANStatus{Running: true, Listening: "192.168.1.20:7297"}
+	tt := ui.NewTester(a.settingsView, 780, 1400)
+	tt.Frame()
+	if !tt.HasText(locales.HostsRexQR()) {
+		t.Fatalf("no QR button for the listener: %q", tt.Texts())
+	}
+	a.openLocalPairQR()
+	tt.Frame()
+	tt.Frame()
+	if hostsPairQR == nil || hostsPairQR.address != "http://192.168.1.20:7297" {
+		t.Fatalf("the code: %+v", hostsPairQR)
+	}
+	remoteUI.lanStatus = rexapi.LANStatus{Running: true}
+	tt.Frame()
+	if hostsPairQR != nil {
+		t.Errorf("the code stayed for a listener that went away")
 	}
 }

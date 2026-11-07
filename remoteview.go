@@ -232,7 +232,7 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 			if page.lanErr != "" {
 				rowError(c, k, page.lanErr)
 			}
-			if a.localRexPairURL() != "" {
+			if tailnet, lan := localRexPairs(); tailnet != "" || lan != "" {
 				if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
 					a.openLocalPairQR()
 				}
@@ -829,7 +829,7 @@ func (a *App) remoteThisMachine(c *ui.Context, k *colors, st rex.RemoteStatus) {
 					// Rex pairs by this machine's QR code, from the key
 					// above; until remote access serves, the way to set it up
 					// is the local network group below.
-					if a.localRexPairURL() != "" {
+					if tailnet, lan := localRexPairs(); tailnet != "" || lan != "" {
 						if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
 							a.openLocalPairQR()
 						}

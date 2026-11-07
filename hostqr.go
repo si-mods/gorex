@@ -29,29 +29,29 @@ type hostPairQR struct {
 
 var hostsPairQR *hostPairQR
 
-// localRexPair is this computer's Rex pairing address: the gateway's
-// tailnet HTTPS address, as "gorex rexapi pair" shows it, else the local
+// localRexPairs are this computer's Rex pairing addresses: the gateway's
+// tailnet HTTPS address, as "gorex rexapi pair" shows it, and the local
 // network listener's, for a phone on the same network. The code holds the
-// address only.
-func (a *App) localRexPair() (string, bool) {
-	if url := rexapi.PairURL(); url != "" {
-		return url, true
-	}
-	dir := rexapi.TailnetDir()
-	conf, err := rexapi.LoadLAN(dir)
-	if err != nil {
-		return "", false
-	}
-	return conf.PairURL(rexapi.LoadLANStatus(dir)), false
-}
-
-func (a *App) localRexPairURL() string {
-	url, _ := a.localRexPair()
-	return url
+// address only. Neither waits, so the Remote page draws them every frame:
+// the tailnet's is the gateway's last answer (rexapi.CachedPairURL), and
+// a new one draws the window again; the listener's comes from the
+// settings the page's poll reads.
+func localRexPairs() (tailnet, lan string) {
+	win := settingsUI.win
+	tailnet = rexapi.CachedPairURL(func() {
+		if win != nil {
+			win.Update(func() {})
+		}
+	})
+	return tailnet, remoteUI.lan.PairURL(remoteUI.lanStatus)
 }
 
 func (a *App) openLocalPairQR() {
-	address, tailnet := a.localRexPair()
+	address, lan := localRexPairs()
+	tailnet := address != ""
+	if !tailnet {
+		address = lan
+	}
 	_, image := mobilePairQR(address)
 	if image != nil {
 		name, _, _ := a.hostIdentity()
