@@ -41,6 +41,10 @@ final class TerminalView: UIView, TerminalOutput {
     lazy var editMenu = UIEditMenuInteraction(delegate: self)
     var showsSelection = false
     lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
+    /// How far down the screen's bar reaches over the terminal, and whether
+    /// a check of the cursor under it waits for the output to be drawn.
+    var cover: CGFloat = 0 { didSet { if cover != oldValue { checkCover() } } }
+    var coverCheck = false
     /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
     var newTab: (() -> Void)?
     var closeTab: (() -> Void)?
@@ -200,6 +204,7 @@ final class TerminalView: UIView, TerminalOutput {
     func write(_ bytes: Data) {
         let fd = output
         guard fd >= 0, !bytes.isEmpty else { return }
+        laterCheckCover()
         writes.async {
             bytes.withUnsafeBytes { p in
                 var at = 0
@@ -263,6 +268,7 @@ final class TerminalView: UIView, TerminalOutput {
         scroller.frame = bounds
         syncing = false
         syncScroll()
+        checkCover()
     }
 
     /// The keyboard covers the bottom of the terminal, which stays its size:

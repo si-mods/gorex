@@ -1,8 +1,8 @@
 import UIKit
 
 /// A hardware keyboard's ⌘ keys, which the ⌘ held lists: the tab's, the
-/// font's, and the clear. Copy, Paste and Select All are the system's Edit
-/// menu's, which call the view's own. None of them reaches the program:
+/// uploads', the font's, and the clear. Copy, Paste and Select All are the
+/// system's Edit menu's, which call the view's own. None of them reaches the program:
 /// pressesBegan leaves ⌘ with a letter, digit or sign to UIKit.
 extension TerminalView {
     override var keyCommands: [UIKeyCommand]? {
@@ -12,6 +12,9 @@ extension TerminalView {
         return [
             UIKeyCommand(title: String(localized: "New Tab"), action: #selector(newTabKey), input: "t", modifierFlags: .command),
             UIKeyCommand(title: String(localized: "Close Tab"), action: #selector(closeTabKey), input: "w", modifierFlags: .command),
+            // The key bar's uploads, which a hardware keyboard keeps away.
+            UIKeyCommand(title: String(localized: "Add File"), action: #selector(addFileKey), input: "o", modifierFlags: .command),
+            UIKeyCommand(title: String(localized: "Add Photo"), action: #selector(addPhotoKey), input: "o", modifierFlags: [.command, .shift]),
             UIKeyCommand(title: String(localized: "Clear Screen and Scrollback"), action: #selector(clear), input: "k", modifierFlags: .command),
             UIKeyCommand(title: String(localized: "Bigger Text"), action: #selector(bigger), input: "=", modifierFlags: .command),
             plus,
@@ -22,6 +25,8 @@ extension TerminalView {
 
     @objc private func newTabKey() { newTab?() }
     @objc private func closeTabKey() { closeTab?() }
+    @objc private func addFileKey() { if session.host.canUpload { addFile() } }
+    @objc private func addPhotoKey() { if session.host.canUpload { addPhoto() } }
 
     /// Clears the screen and the scrollback on the server, which sends the
     /// screen again, as the desktop's ⌘K.

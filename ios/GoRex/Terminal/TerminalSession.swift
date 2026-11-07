@@ -34,6 +34,8 @@ final class TerminalSession {
     private(set) var background: VTerminal.RGB?
     /// The progress a program reports (OSC 9;4), nil without one.
     var progress: Progress?
+    /// Whether the cursor is under the screen's bar, which then steps aside.
+    var covered = false
 
     struct Progress: Equatable {
         /// Done of the whole, nil while the program can't tell.

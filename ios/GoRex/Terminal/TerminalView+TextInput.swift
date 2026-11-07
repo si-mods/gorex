@@ -108,7 +108,7 @@ extension TerminalView: UITextInput {
 
     /// Ghostty gives the cursor cell's middle and bottom, and its height, in
     /// points, and the composition's width in pixels.
-    private func cursor(width: CGFloat?) -> CGRect {
+    func cursor(width: CGFloat?) -> CGRect {
         guard let s = surface else { return CGRect(x: 0, y: 0, width: 2, height: 20) }
         var x = 0.0, y = 0.0, w = 0.0, h = 0.0
         ghostty_surface_ime_point(s, &x, &y, &w, &h)
