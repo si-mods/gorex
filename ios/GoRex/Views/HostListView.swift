@@ -132,8 +132,8 @@ private struct HostSection: View {
         let key = host.id.uuidString
         let isCollapsed = collapsed.contains(key)
         VStack(alignment: .leading, spacing: 12) {
-            // The whole row folds the host's sessions away, but its buttons:
-            // glass, as they float over the page.
+            // The whole row folds the host's sessions away, but its menu:
+            // glass, as it floats over the page.
             HStack(spacing: 10) {
                 Image(systemName: host.config.desktop ? "desktopcomputer" : "laptopcomputer")
                     .font(.title3)
@@ -350,7 +350,9 @@ private struct HostSection: View {
                 }
             }
         }
-        .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(.fill.quaternary)
+        // The rows' highlights keep to the card's corners.
+        .clipShape(.rect(cornerRadius: 22, style: .continuous))
     }
 }
 
