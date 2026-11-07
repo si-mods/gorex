@@ -381,12 +381,16 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 		Padding(top, right, bottom, left)
 	// Where the pane rests, not where it shows on the way there: moving
 	// the focus goes by the layout, not by a spring.
-	p.bounds = ui.Rect{
+	rest := ui.Rect{
 		X: bounds.X + s.x*bounds.W + left,
 		Y: bounds.Y + s.y*bounds.H + top,
 		W: s.w*bounds.W - left - right,
 		H: s.h*bounds.H - top - bottom,
 	}
+	// The cell starts to move in the frame its place changes, which
+	// Transitioning tells of only in the frame after.
+	starts := tr != nil && tr.Size && rest != p.bounds
+	p.bounds = rest
 	if tr != nil {
 		cell.Transition(*tr)
 	}
@@ -395,7 +399,7 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	// would otherwise lay the program's output out at every width it
 	// passed through, which the program, told of one size at the end,
 	// never wrapped, and its frames would draw over rows.
-	held := a.dividerHeld || tr != nil && (cell.Transitioning() || a.sidebarMoving)
+	held := a.dividerHeld || tr != nil && (starts || cell.Transitioning() || a.sidebarMoving)
 	// The size a drag's hold leaves to take follows it by a frame, which
 	// the count tells (syncSize): a hold that ends at the size it began
 	// takes none.

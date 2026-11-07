@@ -142,11 +142,16 @@ func TestTerminalHoldsSizeWhileMoving(t *testing.T) {
 					tt.Frame()
 					record()
 				}
+				// The view asks the session for the size it rests at from
+				// a goroutine, which a loaded machine runs late: the
+				// terminal takes it once the stream has it.
+				waitFor(t, tt, what+": the terminal to take its size at rest", func() bool {
+					record()
+					c, r := p.term.Size()
+					return [2]int{c, r} != start
+				})
 				c, r = p.term.Size()
 				end := [2]int{c, r}
-				if end == start {
-					t.Fatalf("%s: the terminal did not resize (%v)", what, end)
-				}
 				if len(seen) > 2 {
 					t.Errorf("%s: the terminal took %d sizes while moving: %v", what, len(seen), seen)
 				}
@@ -173,8 +178,12 @@ func TestTerminalHoldsSizeWhileMoving(t *testing.T) {
 		p := a.tab().Focus
 		start, _ := p.term.Size()
 		a.toggleZoom()
-		tt.Frame()
-		tt.Frame()
+		// At once: with the clock standing still, as the size reaches the
+		// stream from a goroutine.
+		waitFor(t, tt, "the terminal to resize", func() bool {
+			c, _ := p.term.Size()
+			return c != start
+		})
 		atOnce, _ := p.term.Size()
 		settle(tt)
 		rest, _ := p.term.Size()
