@@ -125,6 +125,14 @@ type Gateway struct {
 	// themes are the default colors a client set for a block.
 	themes map[string]theme
 
+	// uploads are the terminal upload reservations, by their ref, and
+	// uploadBatches the batches their files belong to, by batch ID. An
+	// aborted batch's ID stays refused, so that a client starts a new
+	// batch with a new ID.
+	uploads        map[string]*uploadReservation
+	uploadBatches  map[string]*uploadBatch
+	abortedBatches map[string]time.Time
+
 	// generation counts the loads the configuration file had, which
 	// server.config_reload makes; keymapHash names the file's contents.
 	generation int
@@ -156,28 +164,31 @@ func New(opt Options) (*Gateway, error) {
 		name, _ = os.Hostname()
 	}
 	g := &Gateway{
-		opt:           opt,
-		started:       time.Now(),
-		hello:         hello,
-		host:          hostID(name, hello.Host.User),
-		user:          currentUser(),
-		instanceID:    randomUUID(),
-		helloWait:     helloWait,
-		reconnectWait: reconnectWait,
-		mapper:        newMapper(),
-		conns:         map[*control]struct{}{},
-		clients:       map[string]*clientRecord{},
-		tokens:        map[string]*clientRecord{},
-		tickets:       map[string]*ticket{},
-		streams:       map[string]*stream{},
-		stokens:       map[string]*stream{},
-		owners:        map[string]*blockOwner{},
-		locks:         map[string]string{},
-		blobs:         map[int]blob{},
-		themes:        map[string]theme{},
-		generation:    1,
-		canLock:       hello.Keepalive > 0 && hello.Conn != "",
-		done:          make(chan struct{}),
+		opt:            opt,
+		started:        time.Now(),
+		hello:          hello,
+		host:           hostID(name, hello.Host.User),
+		user:           currentUser(),
+		instanceID:     randomUUID(),
+		helloWait:      helloWait,
+		reconnectWait:  reconnectWait,
+		mapper:         newMapper(),
+		conns:          map[*control]struct{}{},
+		clients:        map[string]*clientRecord{},
+		tokens:         map[string]*clientRecord{},
+		tickets:        map[string]*ticket{},
+		streams:        map[string]*stream{},
+		stokens:        map[string]*stream{},
+		owners:         map[string]*blockOwner{},
+		locks:          map[string]string{},
+		blobs:          map[int]blob{},
+		themes:         map[string]theme{},
+		uploads:        map[string]*uploadReservation{},
+		uploadBatches:  map[string]*uploadBatch{},
+		abortedBatches: map[string]time.Time{},
+		generation:     1,
+		canLock:        hello.Keepalive > 0 && hello.Conn != "",
+		done:           make(chan struct{}),
 	}
 	if opt.TailnetDir != "" {
 		g.lan = newLANListener(g, opt.TailnetDir)
@@ -811,7 +822,7 @@ func (g *Gateway) takeTicket(id, subprotocol string) (*ticket, byte) {
 	if t.subprotocol != "" && t.subprotocol != subprotocol {
 		return nil, 0x07
 	}
-	if t.dataRef != dataTerminal {
+	if t.dataRef != dataTerminal && t.subprotocol != bytesProtocol {
 		return t, 0x03
 	}
 	return t, 0
