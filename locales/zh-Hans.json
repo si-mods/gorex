@@ -330,6 +330,7 @@
   "paneUploadFolder": "暂不支持上传文件夹",
   "paneDownloadFolder": "暂不支持下载文件夹",
   "paneTransferProgress": "{done} / {size}",
+  "paneUploadNotPasted": "已上传，未粘贴：Shell 无法接受这个文件名",
   "paneTransferDone": "完成",
   "paneTransferCancel": "取消",
   "hostsPairRejected": "{host} 未批准本机：请求被拒绝，或配对窗口已关闭。请重试。",

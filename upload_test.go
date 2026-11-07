@@ -21,6 +21,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
+	"gorex/locales"
 )
 
 // remotePane opens a tab on a host, through a proxy, in dir there, and
@@ -433,10 +434,46 @@ func TestPastedPaths(t *testing.T) {
 
 // TestRefusedPathNotPasted leaves out of a drop's paste a path the shell's
 // quoting refuses: cmd.exe would expand its % and run what follows its &.
+// Nothing pastes when no path is left.
 func TestRefusedPathNotPasted(t *testing.T) {
 	cmd := `C:\Windows\System32\cmd.exe`
 	if got := pastedPaths(cmd, []string{`C:\t\a.txt`, `C:\t\a&b%c%.txt`, `C:\t\b c.txt`}); !strings.HasPrefix(got, `"C:\t\a.txt" "C:\t\b c.txt"`) || strings.Contains(got, "%") {
 		t.Errorf("pasted %q", got)
+	}
+	if got := pastedPaths(cmd, []string{`C:\t\a%b%.txt`}); got != "" {
+		t.Errorf("pasted %q for a refused path alone", got)
+	}
+}
+
+// TestDropNameForShell drops a file whose name the pane's shell cannot
+// take on a host: into its temporary folder it goes by a name the shell
+// takes, which is pasted; into the shell's directory, of a host before
+// temporary folders, it keeps its name and the list says why it was not
+// pasted.
+func TestDropNameForShell(t *testing.T) {
+	if testShell.path == "cmd.exe" {
+		t.Skip("POSIX shell")
+	}
+	there := dropsDir(t)
+	a, tt := newTestApp(t)
+	cwd := t.TempDir()
+	h, _, p := remotePane(t, a, tt, cwd)
+	p.info.Shell = `C:\Windows\System32\cmd.exe` // as the quoting goes
+	a.upload(p, dropped(t, "50%!.txt", "x"))
+	waitUploaded(t, tt, p)
+	waitFor(t, tt, "the path there", func() bool { return strings.Contains(p.term.Text(), "50__.txt") })
+	if _, err := os.Stat(filepath.Join(there, "50__.txt")); err != nil {
+		t.Error(err)
+	}
+	h.hello.Capabilities = slices.DeleteFunc(slices.Clone(h.hello.Capabilities), func(c string) bool { return c == rex.CapabilityFileTemp })
+	a.upload(p, dropped(t, "50%!.txt", "x"))
+	x := p.transfers[len(p.transfers)-1]
+	waitUploaded(t, tt, p)
+	if _, err := os.Stat(filepath.Join(cwd, "50%!.txt")); err != nil {
+		t.Error(err)
+	}
+	if x.err != locales.PaneUploadNotPasted() {
+		t.Errorf("the row: %+v", x)
 	}
 }
 

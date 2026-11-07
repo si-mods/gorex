@@ -97,3 +97,20 @@ func TestPathWord(t *testing.T) {
 		}
 	}
 }
+
+// TestPasteableName names a file for the shell: what its quoting refuses
+// becomes _, as a file dropped into a host's temporary folder is named.
+func TestPasteableName(t *testing.T) {
+	cmd := `C:\Windows\System32\cmd.exe`
+	if got := PasteableName(cmd, "50%!\"x\r\n.txt"); got != "50___x__.txt" {
+		t.Errorf("cmd: %q", got)
+	}
+	for _, name := range []string{"a b&c.txt", "日本.txt"} {
+		if got := PasteableName(cmd, name); got != name {
+			t.Errorf("cmd: %q became %q", name, got)
+		}
+	}
+	if got := PasteableName("/bin/zsh", "50%!.txt"); got != "50%!.txt" {
+		t.Errorf("zsh: %q", got)
+	}
+}
