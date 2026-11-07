@@ -272,8 +272,10 @@ final class TerminalView: UIView, TerminalOutput {
     /// The keyboard never resizes the grid: a resize makes a program that
     /// draws in the scrollback, as an agent does, draw again, and what the
     /// terminal reflowed meanwhile leaves gaps. The terminal slides up under
-    /// the bar instead, as far as the cursor's row needs to show above the
-    /// keyboard, and no farther than the keyboard is tall.
+    /// the bar instead, no farther than the keyboard is tall: as far as the
+    /// cursor's row and the lines drawn under it, as an agent's box and
+    /// status, need to show above the keyboard, but not the cursor under the
+    /// bar.
     @objc private func keyboard(_ n: Notification) {
         guard let window, let superview = superview as? TerminalHost, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
@@ -283,13 +285,14 @@ final class TerminalView: UIView, TerminalOutput {
         slide(duration: duration, options: UIView.AnimationOptions(rawValue: curve << 16))
     }
 
-    /// Slides the terminal to show the cursor's row above the keyboard.
+    /// Slides the terminal to show the cursor and what is under it above
+    /// the keyboard.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         var shift: CGFloat = 0
-        if covered > 0, let s = surface {
-            var x = 0.0, y = 0.0, w = 0.0, h = 0.0
-            ghostty_surface_ime_point(s, &x, &y, &w, &h)
-            shift = min(covered, max(0, y - (bounds.height - covered)))
+        if covered > 0 {
+            let c = cursor(width: nil)
+            let needed = drawnBottom(under: c) - (bounds.height - covered)
+            shift = max(0, min(covered, needed, c.minY - cover))
         }
         guard transform.ty != -shift else { return }
         scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: shift, left: 0, bottom: covered - shift, right: 0)
@@ -297,6 +300,25 @@ final class TerminalView: UIView, TerminalOutput {
             self.transform = CGAffineTransform(translationX: 0, y: -shift)
         }
         checkCover()
+    }
+
+    /// The bottom of the last line of the screen with text under the
+    /// cursor's, else the cursor's. Lines count from the cursor's: Ghostty
+    /// reads text at points of another origin than the cursor's.
+    private func drawnBottom(under c: CGRect) -> CGFloat {
+        guard let s = surface else { return c.maxY }
+        let z = ghostty_surface_size(s), h = cell.height
+        guard z.rows > 0, z.columns > 0, h > 0 else { return c.maxY }
+        let at = Int((c.minY / h).rounded())
+        for row in stride(from: Int(z.rows) - 1, to: at, by: -1) {
+            let point = { (x: Int) in ghostty_point_s(tag: GHOSTTY_POINT_ACTIVE, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(x), y: UInt32(row)) }
+            var t = ghostty_text_s()
+            guard ghostty_surface_read_text(s, ghostty_selection_s(top_left: point(0), bottom_right: point(Int(z.columns) - 1), rectangle: false), &t) else { continue }
+            defer { ghostty_surface_free_text(s, &t) }
+            let text = t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
+            if !text.allSatisfy(\.isWhitespace) { return c.maxY + CGFloat(row - at) * h }
+        }
+        return c.maxY
     }
 
     /// Ghostty settled on a grid for the view's size: the block takes it.
