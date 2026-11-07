@@ -128,7 +128,8 @@ runs (`graphics.filter`, `imageDir`). Images up to 4 MiB are rewritten;
 one read adds at most 6 MiB. The server records the graphics sequences,
 the last 8 MiB of them (`graphics.record`), and sends them after every
 snapshot (`graphics.replay`): the snapshot carries the cells, not the
-images. This history is not handed over in an upgrade (Limits).
+images. An upgrade hands this history over beside the screen
+(`sessionState.Images`).
 
 ### After a resize
 
@@ -206,8 +207,8 @@ When the process ends, the server reads the rest of its output, then
 keeps what the emulator showed (`run`): the screen as escape sequences
 with the Kitty graphics, as GHOSTSNP, as text, and the title. It closes
 the emulator. An attach, `capture` or `format` after that gets the kept
-screen. After an upgrade an exited session keeps only the escape
-sequences and the title (Limits).
+screen. After an upgrade, the new server makes the GHOSTSNP and the text
+again from the escape sequences (`resumeSession`).
 
 ### In-place upgrade (macOS, Linux)
 
@@ -224,13 +225,13 @@ executable in the same process (`upgrade_unix.go`):
    of the listener, the lock and every PTY.
 
 A session's handoff (`sessionState`) carries: the PID and PTY
-descriptor, the size, the screen as escape sequences (`view`: the
-emulator's snapshot and the graphics replay) and the title, the output
-and bell counters, the last input and output times, the exit state, and
-the status records. The new server makes a new emulator, feeds it the
-title and the screen (`resumeSession`), and reads the PTY again. The
-programs keep running and their screens come back, but some of the
-session's own state starts over (Limits).
+descriptor, the directory it started in, the size, the screen as the
+emulator's snapshot, the graphics history and the title, the output and
+bell counters, the last input and output times, the exit state, and the
+status records. The new server makes a new emulator, feeds it the title
+and the screen (`resumeSession`), reads the program's modes from the
+screen again (`decModes`), and reads the PTY again. The programs keep
+running, and their screens, modes and images come back.
 
 The handoff takes the escape-sequence form, not GHOSTSNP: the plugin's
 documentation gives GHOSTSNP no compatibility guarantee across versions
@@ -286,21 +287,11 @@ emulator before the program's first output (`CreateOptions.prelude`). See
   authority, as Shift+F3 (`CSI 1;2R`, a CPR's shape) (`dropReplies`).
 - **Screens survive an upgrade, not a restart.** On Windows, every update
   of the server is a restart.
-- **Kitty images after an upgrade.** The screen handed over carries the
-  graphics replay, fed into the new emulator, but the new session's
-  graphics history starts empty (`resumeSession` sets none) and the
-  emulator's snapshot carries no images. An attach after an upgrade
-  replays no image the program showed before it.
-- **Other state an upgrade does not hand over** (`sessionState`,
-  `resumeSession`): the modes tracker (`decModes`) starts empty, so
-  `paste` writes unbracketed and `modes` reports nothing until the program
-  sets its modes again; the session's directory is empty, so a Kitty file
-  path resolves against the foreground process's directory alone
-  (`imageDir`); a synchronized update in progress is not known.
-- **An exited session loses forms in an upgrade.** Only its escape
-  sequences and title are handed over: `format` text comes back empty,
-  and a `ghostty` attach gets the escape sequences instead, which the
-  rexapi gateway refuses.
+- **A sequence half read at an upgrade is lost.** What the server before
+  read of a sequence a read cut, the modes tracker's (`decModes`), the
+  graphics filter's (`graphics.pending`) and the emulator's, does not
+  reach the new server. The rest of a Kitty transfer whose start it read
+  is passed on, not recorded (`graphics.cut`).
 - **GHOSTSNP is tied to one libghostty-vt.** The iOS app's
   `GhosttyVt.xcframework` must be built at the commit the server's MyGo
   binds.
