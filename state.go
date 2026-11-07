@@ -549,9 +549,11 @@ type App struct {
 	// shows it first poses it where it comes in from.
 	paletteFresh bool
 
-	// The sidebar: the tab last scrolled into view, and a drag of its
-	// edge, from the width it began at.
+	// The sidebar: the tab last scrolled into view, the tab last chosen
+	// on each host by hostKey, and a drag of its edge, from the width it
+	// began at.
 	revealed  *Tab
+	chosenOn  map[string]*Tab
 	edgeDrag  bool
 	edgeFrom  float32
 	edgeMoved float32

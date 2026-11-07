@@ -1108,6 +1108,10 @@ func (a *App) removeHost(h *hostConn) {
 		}
 	}
 	a.hosts = slices.DeleteFunc(slices.Clone(a.hosts), func(o *hostConn) bool { return o == h })
+	if slices.Contains(prefs.FoldedHosts, h.ID) {
+		prefs.FoldedHosts = slices.DeleteFunc(prefs.FoldedHosts, func(s string) bool { return s == h.ID })
+		saveSettings()
+	}
 	a.syncHosts()
 	h.close()
 	a.saveHosts()
@@ -1251,6 +1255,15 @@ func (a *App) hostName(h *hostConn) string {
 		return thisMachine()
 	}
 	return h.Name
+}
+
+// hostKey names a host where the app keeps something of it: its id, or
+// "local" for this machine, nil.
+func hostKey(h *hostConn) string {
+	if h == nil {
+		return "local"
+	}
+	return h.ID
 }
 
 // hostStatus says what a host's connection is doing: a label, a detail,
