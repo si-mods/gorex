@@ -120,8 +120,12 @@ type store struct {
 	hello  rex.Hello
 	errMsg func(locales.Messages) string
 	hosts  []*hostConn
-	// hostsUp tells that the hosts were read and are connected to.
-	hostsUp bool
+	// hostsUp tells that the hosts were read and are connected to;
+	// hostsLost that hosts.json would not read.
+	hostsUp, hostsLost bool
+	// killsTaken are the kills of the server's layout the app took, until
+	// the layout no longer has them (takeKills).
+	killsTaken map[layout.Kill]bool
 
 	workspaces []*Workspace
 	// badge is the count the app icon shows.
@@ -339,28 +343,66 @@ func (st *store) takeLayout(ls rex.LayoutState) bool {
 	if !same {
 		st.reconcile(s)
 	}
-	st.takeKills()
+	if len(st.apps) > 0 {
+		st.takeKills(st.apps[0])
+	}
 	return true
 }
 
 // takeKills ends the sessions of other hosts the server's layout names
-// (layout.Store.Kills), each as the app ends one its user closes
-// (hostConn.kill), and tells the server it took them. One of a host the
-// app no longer has goes on there, as the host's sessions do once it is
-// removed. Call it on the main thread, once the hosts are loaded.
-func (st *store) takeKills() {
+// (layout.Store.Kills), as the app ends those its user closes (kill): it
+// keeps each to end, saves the hosts once, and ends each host's through
+// its client. It tells the server it took those it saved, and those of a
+// host the app does not have, whose sessions go on there as a removed
+// host's do, unless hosts.json would not read. A kill it took, it takes
+// no more while a layout still has it, as an older one may. Call it on
+// the main thread, with a window of the store.
+func (st *store) takeKills(a *App) {
 	kills := st.base.Kills
+	for k := range st.killsTaken {
+		if !slices.Contains(kills, k) {
+			delete(st.killsTaken, k)
+		}
+	}
 	if len(kills) == 0 || !st.hostsUp {
 		return
 	}
+	var taken, kept []layout.Kill
+	sids := map[*hostConn][]string{}
 	for _, k := range kills {
-		for _, h := range st.hosts {
-			if h.ID == k.Host {
-				h.kill(k.SID)
-			}
+		switch h := a.hostByID(k.Host); {
+		case st.killsTaken[k]:
+		case h != nil:
+			sids[h] = append(sids[h], k.SID)
+			kept = append(kept, k)
+		case !st.hostsLost:
+			taken = append(taken, k)
 		}
 	}
-	st.out.add(rex.LayoutCommand{Op: "kills.taken", Kills: kills}, nil)
+	if len(sids) > 0 {
+		var run []func()
+		for h, ids := range sids {
+			if c := h.keepKills(ids); c != nil {
+				run = append(run, func() { h.runKills(c) })
+			}
+		}
+		if a.saveHosts() == nil {
+			taken = append(taken, kept...)
+		}
+		for _, f := range run {
+			go f()
+		}
+	}
+	if len(taken) == 0 {
+		return
+	}
+	if st.killsTaken == nil {
+		st.killsTaken = map[layout.Kill]bool{}
+	}
+	for _, k := range taken {
+		st.killsTaken[k] = true
+	}
+	st.out.add(rex.LayoutCommand{Op: "kills.taken", Kills: taken}, nil)
 	st.out.kick()
 }
 
@@ -849,7 +891,6 @@ func (st *store) start() {
 	for _, w := range open {
 		st.openWindow(w)
 	}
-	st.takeKills()
 	st.save()
 }
 

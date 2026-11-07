@@ -1470,3 +1470,67 @@ func TestTakeKills(t *testing.T) {
 		return len(h.Kills) == 0
 	})
 }
+
+// TestTakeKillsOnce takes the layout's kills with no server to tell: the
+// app keeps them to end once its hosts are read (3), all of a host's in
+// one save of hosts.json (4); it tells the server of one of a host it does
+// not have only when hosts.json read (2), and of one of its hosts only
+// once saved (2); and an older layout that still has a kill taken takes
+// it no more (1).
+func TestTakeKillsOnce(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
+	st := &store{}
+	a := &App{st: st}
+	st.apps = []*App{a}
+	acks := func() [][]layout.Kill {
+		var out [][]layout.Kill
+		for _, x := range st.out.queue {
+			if x.cmd.Op == "kills.taken" {
+				out = append(out, x.cmd.Kills)
+			}
+		}
+		return out
+	}
+	k1, k2, gone := layout.Kill{Host: "h1", SID: "s1"}, layout.Kill{Host: "h1", SID: "s2"}, layout.Kill{Host: "h9", SID: "s9"}
+	st.base.Kills = []layout.Kill{k1, k2, gone}
+	st.takeKills(a)
+	if len(acks()) != 0 {
+		t.Fatal("kills taken before the hosts were read")
+	}
+	h := newHostConn(savedHost{ID: "h1", Name: "studio", Address: "/nowhere"})
+	a.hosts = []*hostConn{h}
+	a.syncHosts()
+	if hs, _ := loadHosts(); len(hs) != 1 || !slices.Equal(hs[0].Kills, []string{"s1", "s2"}) {
+		t.Fatalf("hosts.json has %+v", hs)
+	}
+	if got := acks(); len(got) != 1 || !slices.Equal(got[0], []layout.Kill{gone, k1, k2}) {
+		t.Fatalf("told %+v", got)
+	}
+	// The host ended them; a layout read before the server forgot them
+	// takes none again.
+	h.mu.Lock()
+	h.Kills = nil
+	h.mu.Unlock()
+	st.takeKills(a)
+	if len(acks()) != 1 || len(h.saved().Kills) != 0 {
+		t.Fatalf("taken again: told %+v, host keeps %v", acks(), h.saved().Kills)
+	}
+	// Once a layout no longer has them, they are forgotten.
+	st.out.queue = nil
+	st.base.Kills = nil
+	st.takeKills(a)
+	if len(st.killsTaken) != 0 {
+		t.Fatalf("still taken: %v", st.killsTaken)
+	}
+	// hosts.json would not read, nor be written: the kills are kept to end,
+	// and the server is told of none.
+	st.hostsLost = true
+	if err := os.WriteFile(hostsPath(), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st.base.Kills = []layout.Kill{k1, gone}
+	st.takeKills(a)
+	if len(acks()) != 0 || !slices.Contains(h.saved().Kills, "s1") {
+		t.Errorf("told %+v, host keeps %v", acks(), h.saved().Kills)
+	}
+}
