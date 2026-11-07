@@ -45,17 +45,18 @@ struct TerminalScreen: View {
                 // The title floats in a capsule of glass, with the tile of
                 // the window's program, as its row in the list shows it.
                 ToolbarItem(placement: .principal) {
-                    HStack(spacing: 8) {
-                        let k = ProgramTiles.scale, small = 0.75
+                    // As tall as the back button beside it.
+                    HStack(spacing: 10) {
+                        let k = ProgramTiles.scale, small = 0.85
                         ProgramTile(program: .of(host.programs[target.block]))
                             .frame(width: 21 * k, height: 16 * k)
                             .scaleEffect(small)
                             .frame(width: 21 * k * small, height: 16 * k * small)
-                        Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        Text(title).font(.body.weight(.semibold)).lineLimit(1)
                     }
-                    .padding(.leading, 8)
-                    .padding(.trailing, 14)
-                    .padding(.vertical, 7)
+                    .padding(.leading, 12)
+                    .padding(.trailing, 18)
+                    .frame(height: 44)
                     .glassEffect(.regular, in: .capsule)
                 }
                 .sharedBackgroundVisibility(.hidden)
