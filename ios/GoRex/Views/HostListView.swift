@@ -140,28 +140,22 @@ private struct HostSection: View {
                     .foregroundStyle(.secondary)
                 Text(host.config.name).font(.title.bold()).lineLimit(1)
                 Spacer()
-                GlassEffectContainer {
-                    HStack(spacing: 8) {
-                        Button { newSession() } label: {
-                            Group {
-                                if creating { ProgressView() } else { Image(systemName: "plus") }
-                            }
-                            .frame(width: 30, height: 30)
-                        }
+                // One + per card: the host's new session is in its menu.
+                Menu {
+                    Button("New Session", systemImage: "plus.rectangle.on.rectangle") { newSession() }
                         .disabled(creating)
-                        .accessibilityLabel("New Session")
-                        Menu {
-                            Button("Reconnect", systemImage: "arrow.clockwise") { host.reconnectIfNeeded() }
-                            Button("Remove", systemImage: "trash", role: .destructive) { store.remove(host.id) }
-                        } label: {
-                            Image(systemName: "ellipsis").frame(width: 30, height: 30)
-                        }
-                        .accessibilityLabel("Host Menu")
+                    Button("Reconnect", systemImage: "arrow.clockwise") { host.reconnectIfNeeded() }
+                    Button("Remove", systemImage: "trash", role: .destructive) { store.remove(host.id) }
+                } label: {
+                    Group {
+                        if creating { ProgressView() } else { Image(systemName: "ellipsis") }
                     }
-                    .font(.body.weight(.semibold))
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.circle)
+                    .frame(width: 30, height: 30)
                 }
+                .font(.body.weight(.semibold))
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("Host Menu")
             }
             .foregroundStyle(.primary)
             .contentShape(.rect)
