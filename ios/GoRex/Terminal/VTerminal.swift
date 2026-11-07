@@ -108,6 +108,9 @@ extension VTerminal.RGB {
 
     var packed: Int { Int(r) << 16 | Int(g) << 8 | Int(b) }
 
+    /// Whether it is light, by its luma: dark text goes on it.
+    var light: Bool { 0.299 * Double(r) + 0.587 * Double(g) + 0.114 * Double(b) >= 128 }
+
     init(_ packed: Int) { self.init(r: UInt8(packed >> 16 & 0xff), g: UInt8(packed >> 8 & 0xff), b: UInt8(packed & 0xff)) }
 
     /// A theme message's color: RRGGBB or #RRGGBB.

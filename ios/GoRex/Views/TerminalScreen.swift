@@ -38,7 +38,7 @@ struct TerminalScreen: View {
         // The terminal's background fills the page edge to edge, under the
         // bar and the key bar too; the bar and the text on it take its scheme.
         let bg = session?.background ?? .black
-        let scheme: ColorScheme = 0.299 * Double(bg.r) + 0.587 * Double(bg.g) + 0.114 * Double(bg.b) < 128 ? .dark : .light
+        let scheme: ColorScheme = bg.light ? .light : .dark
         // The terminal goes up under the clear bar and the status bar, which
         // it leaves room for while it can, as the keyboard goes over it.
         Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab) } else { Color.clear } }

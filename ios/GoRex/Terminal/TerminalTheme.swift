@@ -11,11 +11,20 @@ struct TerminalTheme: Decodable {
         .flatMap { try? Data(contentsOf: $0) }
         .flatMap { try? JSONDecoder().decode([TerminalTheme].self, from: $0) } ?? []
 
-    /// The theme chosen in Settings; nil keeps the terminal's own colors.
+    /// The theme until one is chosen.
+    static let standard = "Gruvbox Dark"
+
+    /// The name of the theme chosen in Settings; "" keeps the host's colors.
+    static var name: String { UserDefaults.standard.string(forKey: "theme") ?? standard }
+
+    /// The theme chosen in Settings; nil keeps the host's colors.
     static var chosen: TerminalTheme? {
-        let name = UserDefaults.standard.string(forKey: "theme") ?? ""
+        let name = name
         return name.isEmpty ? nil : all.first { $0.name == name }
     }
+
+    /// Whether its background is light.
+    var light: Bool { VTerminal.RGB(colors[16]).light }
 
     /// The theme as a stream's theme message, for TerminalView.setTheme. A
     /// theme message from the server replaces it, as each one replaces the last.

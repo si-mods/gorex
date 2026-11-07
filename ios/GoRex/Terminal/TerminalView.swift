@@ -24,6 +24,8 @@ final class TerminalView: UIView, TerminalOutput {
         let v = UserDefaults.standard.double(forKey: "fontSize")
         return v > 0 ? v : 12
     }
+    /// The font family chosen in Settings; "" is Ghostty's own, JetBrains Mono.
+    static var fontFamily: String { UserDefaults.standard.string(forKey: "fontFamily") ?? "" }
     var ctrl = false { didSet { bar.ctrl.isSelected = ctrl } }
     var alt = false { didSet { bar.alt.isSelected = alt } }
     var shift = false { didSet { bar.shift.isSelected = shift } }
@@ -220,11 +222,12 @@ final class TerminalView: UIView, TerminalOutput {
         }
     }
 
-    /// Sets the default colors, and the font size, through Ghostty's config.
+    /// Sets the default colors, and the font, through Ghostty's config.
     func setTheme(_ theme: [String: Any]) {
         guard let s = surface else { return }
         func hex(_ c: VTerminal.RGB) -> String { String(format: "#%06x", c.packed) }
         var lines = ["font-size = \(Self.fontSize)"]
+        if !Self.fontFamily.isEmpty { lines.append("font-family = \"\(Self.fontFamily)\"") }
         for (key, name) in [("background", "background"), ("foreground", "foreground"), ("cursor", "cursor-color")] {
             if let c = (theme[key] as? String).flatMap(VTerminal.RGB.init(hex:)) { lines.append("\(name) = \(hex(c))") }
         }
