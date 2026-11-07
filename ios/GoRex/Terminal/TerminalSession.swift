@@ -32,6 +32,14 @@ final class TerminalSession {
     /// the stream gives one it is the last one seen on this host with this
     /// theme, else the theme's, so that the page opens in its color.
     private(set) var background: VTerminal.RGB?
+    /// The progress a program reports (OSC 9;4), nil without one.
+    var progress: Progress?
+
+    struct Progress: Equatable {
+        /// Done of the whole, nil while the program can't tell.
+        var fraction: Double?
+        var failed = false
+    }
 
     /// The view, once it shows the session; what comes before waits for it.
     @ObservationIgnored weak var output: TerminalOutput? {

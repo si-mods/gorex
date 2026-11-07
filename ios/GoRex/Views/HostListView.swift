@@ -5,6 +5,10 @@ extension Color {
         ? UIColor(red: 0x22 / 255, green: 0x25 / 255, blue: 0x2F / 255, alpha: 1) : .systemGroupedBackground })
     static let card = Color(UIColor { $0.userInterfaceStyle == .dark
         ? UIColor(red: 0x36 / 255, green: 0x3A / 255, blue: 0x47 / 255, alpha: 1) : .secondarySystemGroupedBackground })
+    /// The desktop's dot of a program that waits for the user.
+    static let attention = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255, alpha: 1)
+        : UIColor(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255, alpha: 1) })
 }
 
 /// Every host, its sessions, and their windows, as Rex's iPhone app lists
@@ -53,6 +57,12 @@ struct HostListView: View {
                 if let host = store.host(t.host) { TerminalScreen(target: t, host: host) }
             }
             .sheet(isPresented: $settings) { SettingsView() }
+        }
+        // A tapped notification opens its terminal.
+        .onChange(of: Notifier.shared.opening, initial: true) { _, t in
+            guard let t else { return }
+            path = [t]
+            Notifier.shared.opening = nil
         }
     }
 
@@ -181,12 +191,12 @@ private struct HostSection: View {
     }
 
     @ViewBuilder private func session(_ s: Host.Session) -> some View {
-        let windows = (s.view?.windows ?? []).compactMap { w -> (String, String, String?, [String?], SessionView.Window)? in
+        let windows = (s.view?.windows ?? []).compactMap { w -> (String, String, String?, [String?], SessionView.Window, Host.ProgramStatus?)? in
             guard let b = w.block else { return nil }
             // As the desktop names a tab: its name when it has one, else its terminal's title.
             let title = w.name ?? host.titles[b].flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
             let back = w.tiled.filter { $0 != b }.map { host.programs[$0] }
-            return filter(title, host.programs[b]) ? (b, title, host.programs[b], back, w) : nil
+            return filter(title, host.programs[b]) ? (b, title, host.programs[b], back, w, host.status([b] + w.tiled)) : nil
         }
         // The room of the tiles of the window with the most, so that the titles line up.
         let tiles = ProgramTiles.width(behind: windows.map(\.3.count).max() ?? 0)
@@ -225,7 +235,7 @@ private struct HostSection: View {
                         Button {
                             open(TerminalTarget(host: host.id, session: s.id, block: w.0, title: w.1))
                         } label: {
-                            WindowRow(title: w.1, program: w.2, back: w.3, tiles: tiles, divider: i < windows.count - 1)
+                            WindowRow(title: w.1, program: w.2, back: w.3, status: w.5, tiles: tiles, divider: i < windows.count - 1)
                         }
                         .buttonStyle(.plain)
                         .contextMenu { menu(s, w.4, title: w.1, shown: windows.map(\.4.window_id)) }
@@ -241,6 +251,7 @@ private struct WindowRow: View {
     let title: String
     let program: String?
     let back: [String?]
+    let status: Host.ProgramStatus?
     let tiles: CGFloat
     let divider: Bool
 
@@ -253,6 +264,18 @@ private struct WindowRow: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
+            // As the desktop's tab: a dot while the program waits for the
+            // user, else its progress when it tells one.
+            if status?.state == "blocked" {
+                Circle().fill(Color.attention).frame(width: 7, height: 7).accessibilityLabel("Needs Input")
+            } else if let p = status?.progress {
+                Circle().trim(from: 0, to: CGFloat(p) / 100)
+                    .stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .background(Circle().stroke(.quaternary, lineWidth: 2))
+                    .frame(width: 12, height: 12)
+                    .accessibilityLabel(Text(verbatim: "\(p)%"))
+            }
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
         }
         .padding(.horizontal, 16)

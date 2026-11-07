@@ -62,8 +62,9 @@ enum Ghostty {
     }
 
     /// The actions a view takes: the grid size Ghostty settled on, the
-    /// background a program set, a selection that changed, and the
-    /// scrollback that moved or grew.
+    /// background a program set, a selection that changed, the scrollback
+    /// that moved or grew, and what a program tells the user: a bell, a
+    /// notification, its progress and a long command's end.
     nonisolated private static func action(_ target: ghostty_target_s, _ action: ghostty_action_s) -> Bool {
         guard target.tag == GHOSTTY_TARGET_SURFACE, let s = target.target.surface else { return false }
         let key = Int(bitPattern: s)
@@ -95,8 +96,57 @@ enum Ghostty {
                 }
             }
             return true
+        case GHOSTTY_ACTION_RING_BELL:
+            DispatchQueue.main.async { MainActor.assumeIsolated { bell() } }
+            return true
+        case GHOSTTY_ACTION_DESKTOP_NOTIFICATION:
+            let n = action.action.desktop_notification
+            let title = n.title.map { String(cString: $0) } ?? "", body = n.body.map { String(cString: $0) } ?? ""
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { views[key]?.view.map { notify(title, body, $0.session) } }
+            }
+            return true
+        case GHOSTTY_ACTION_PROGRESS_REPORT:
+            let r = action.action.progress_report
+            let fraction = r.progress < 0 ? nil : Double(r.progress) / 100
+            let p: TerminalSession.Progress? = switch r.state {
+            case GHOSTTY_PROGRESS_STATE_REMOVE: nil
+            case GHOSTTY_PROGRESS_STATE_INDETERMINATE: .init()
+            case GHOSTTY_PROGRESS_STATE_ERROR: .init(fraction: fraction, failed: true)
+            default: .init(fraction: fraction)
+            }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { views[key]?.view?.session.progress = p }
+            }
+            return true
+        case GHOSTTY_ACTION_COMMAND_FINISHED:
+            // Only a long one, told while the user is away.
+            let f = action.action.command_finished
+            guard f.duration > 10_000_000_000 else { return true }
+            let code = Int(f.exit_code)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard UIApplication.shared.applicationState != .active, let v = views[key]?.view else { return }
+                    notify(String(localized: "Command finished"), code > 0 ? String(localized: "Exit code \(code)") : "", v.session)
+                }
+            }
+            return true
         default:
             return false
         }
+    }
+
+    private static func notify(_ title: String, _ body: String, _ s: TerminalSession) {
+        Notifier.shared.post(title, body, host: s.host, session: s.session, block: s.block)
+    }
+
+    /// A light tap for a bell, at most one each half second.
+    private static let haptic = UIImpactFeedbackGenerator(style: .light)
+    private static var rang = ContinuousClock.now - .seconds(1)
+
+    private static func bell() {
+        guard rang.duration(to: .now) >= .milliseconds(500) else { return }
+        rang = .now
+        haptic.impactOccurred()
     }
 }
