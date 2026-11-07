@@ -11,7 +11,9 @@ struct StatusInbox: View {
 
     var body: some View {
         let groups = Inbox.groups(store.hosts.flatMap(\.inbox).filter { $0.matches(query) })
-        if groups.isEmpty {
+        // Hosts not online may need the user too: the inbox can't tell.
+        let away = store.hosts.filter { $0.status != .online }
+        if groups.isEmpty && away.isEmpty && !store.hosts.isEmpty {
             Text("Nothing needs you").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.top, 40)
         }
         // The times go on as the minutes do.
@@ -19,6 +21,19 @@ struct StatusInbox: View {
             VStack(alignment: .leading, spacing: 30) {
                 ForEach(groups, id: \.state) { g in
                     section(g.state, g.items, now: tl.date)
+                }
+                if !away.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(away) { h in
+                            Label {
+                                Text(verbatim: h.config.name + " · " + (h.status == .connecting ? String(localized: "Connecting…") : String(localized: "Offline")))
+                            } icon: {
+                                Image(systemName: "wifi.slash")
+                            }
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
                 }
             }
         }
@@ -83,7 +98,7 @@ private struct StatusRow: View {
                 HStack(spacing: 8) {
                     Text(item.detail.isEmpty ? " " : item.detail).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 4)
-                    if let t = item.status.updated { Text(Self.ago(t, now: now)).foregroundStyle(.tertiary) }
+                    if let t = item.status.updated { Text(Inbox.ago(t, now: now)).foregroundStyle(.tertiary) }
                 }
                 .font(.subheadline)
             }
@@ -124,14 +139,5 @@ private struct StatusRow: View {
             Circle().fill(Color.attention).frame(width: 8, height: 8)
                 .accessibilityLabel(item.status.state == "blocked" ? "Needs Input" : "Done")
         }
-    }
-
-    /// How long ago, as Rex tells it: now, else 5m, 3h or 2d.
-    static func ago(_ t: Date, now: Date) -> String {
-        let s = Int(now.timeIntervalSince(t))
-        if s < 60 { return String(localized: "now") }
-        if s < 3600 { return "\(s / 60)m" }
-        if s < 86400 { return "\(s / 3600)h" }
-        return "\(s / 86400)d"
     }
 }

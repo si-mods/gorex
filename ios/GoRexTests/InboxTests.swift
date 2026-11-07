@@ -20,15 +20,42 @@ nonisolated final class InboxTests: XCTestCase {
     }
 
     /// The most urgent record wins, the latest of those alike; done and
-    /// error records of before seen don't count, others do.
+    /// error records the user saw don't count, others do.
     @MainActor func testMostUrgent() {
         let rs = [record("a", "working", at: 10), record("b", "done", at: 20), record("c", "done", at: 30), record("d", "idle", at: 40)]
-        XCTAssertEqual(Host.ProgramStatus.mostUrgent(rs, seen: nil)?.id, "c")
-        XCTAssertEqual(Host.ProgramStatus.mostUrgent(rs, seen: Date(timeIntervalSince1970: 25))?.id, "c")
-        XCTAssertEqual(Host.ProgramStatus.mostUrgent(rs, seen: Date(timeIntervalSince1970: 30))?.id, "a")
-        XCTAssertEqual(Host.ProgramStatus.mostUrgent(rs + [record("e", "blocked", at: 1)], seen: .now)?.id, "e")
-        XCTAssertEqual(Host.ProgramStatus.mostUrgent([record("f", "error", at: 5)], seen: .now)?.id, nil)
-        XCTAssertNil(Host.ProgramStatus.mostUrgent([], seen: nil))
+        XCTAssertEqual(Host.ProgramStatus.mostUrgent(rs, seen: [])?.id, "c")
+        XCTAssertEqual(Host.ProgramStatus.mostUrgent(rs, seen: [rs[2].seenKey])?.id, "b")
+        XCTAssertEqual(Host.ProgramStatus.mostUrgent(rs, seen: [rs[1].seenKey, rs[2].seenKey])?.id, "a")
+        let blocked = record("e", "blocked", at: 1)
+        XCTAssertEqual(Host.ProgramStatus.mostUrgent(rs + [blocked], seen: [blocked.seenKey])?.id, "e")
+        XCTAssertNil(Host.ProgramStatus.mostUrgent([], seen: []))
+    }
+
+    /// A record seen working, then done in the same second, is news: the
+    /// time alone, of whole seconds, would hide it.
+    @MainActor func testSameSecondDoneIsNew() {
+        let working = record("x", "working", at: 100), done = record("x", "done", at: 100)
+        XCTAssertEqual(Host.ProgramStatus.mostUrgent([done], seen: [working.seenKey])?.state, "done")
+        XCTAssertNil(Host.ProgramStatus.mostUrgent([done], seen: [done.seenKey]))
+    }
+
+    /// A done record with no time goes once seen.
+    @MainActor func testUntimedDoneGoesOnceSeen() {
+        let done = record("x", "done")
+        XCTAssertEqual(Host.ProgramStatus.mostUrgent([done], seen: [])?.id, "x")
+        XCTAssertNil(Host.ProgramStatus.mostUrgent([done], seen: [done.seenKey]))
+    }
+
+    /// How long ago, in the locale's narrow units.
+    @MainActor func testAgo() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        func ago(_ s: TimeInterval, _ l: String) -> String { Inbox.ago(now - s, now: now, locale: Locale(identifier: l)) }
+        XCTAssertEqual(ago(59, "en"), "now")
+        XCTAssertEqual(ago(5 * 60 + 59, "en"), "5m")
+        XCTAssertEqual(ago(3 * 3600 + 3599, "en"), "3h")
+        XCTAssertEqual(ago(2 * 86400 + 5, "en"), "2d")
+        print("ago zh-Hans:", ago(300, "zh-Hans"), ago(3 * 3600, "zh-Hans"), ago(2 * 86400, "zh-Hans"))
+        XCTAssertNotEqual(ago(300, "zh-Hans"), "5m")
     }
 
     /// Groups go blocked, error, done, working, the newest first in each.
@@ -63,7 +90,8 @@ nonisolated final class InboxTests: XCTestCase {
     }
 
     /// A host lists its windows by their tiled blocks' records, leaves out
-    /// idle ones, and drops a done one once the user saw its window.
+    /// idle ones, opens the block whose record it shows, and drops a done
+    /// one once the user saw that block.
     @MainActor func testHostInbox() async throws {
         let rex = try FakeRex()
         defer { rex.stop() }
@@ -91,8 +119,49 @@ nonisolated final class InboxTests: XCTestCase {
         await until("read") { h.status == .online && h.statuses.count == 3 }
         XCTAssertEqual(h.inbox.map(\.title), ["One"])
         XCTAssertEqual(h.inbox.first?.status.state, "done")
-        XCTAssertEqual(h.inbox.first?.block, "a")
+        XCTAssertEqual(h.inbox.first?.block, "b")
         h.see("a")
+        XCTAssertEqual(h.inbox.first?.status.state, "done")
+        h.see("b")
         XCTAssertEqual(h.inbox.first?.status.state, "working")
+        XCTAssertEqual(h.inbox.first?.block, "a")
+    }
+
+    /// A block on screen sees its records as they come.
+    @MainActor func testShownBlockSeesNews() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let view: [String: Any] = ["revision": 1, "session_id": "s", "label": "s", "windows": [
+            ["window_id": "w", "label": "W", "layers": [["blocks": [["block_id": "b"]]]]],
+        ]]
+        rex.respond = { m, _ in
+            switch m {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": [["session_id": "s", "label": "s"]]], "selected_session": ["view": view]]
+            case "com.superlogical.terminal.program_status":
+                ["records": [["id": "x", "state": "working"]]]
+            default: [:]
+            }
+        }
+        var shown = true
+        Host.shown = { _, b in shown && b == "b" }
+        defer { Host.shown = nil }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("read") { h.status == .online && h.statuses["b"] != nil }
+        func done(_ at: String) {
+            rex.event(["type": "session_event", "payload": ["session_id": "s", "event": [
+                "type": "block_event", "payload": ["block_id": "b", "name": "program_status_changed", "payload": [
+                    "records": [["id": "x", "state": "done", "updated_at": at]]]],
+            ]]])
+        }
+        done("2026-11-07T10:00:00Z")
+        await until("done") { h.statuses["b"]?.first?.state == "done" }
+        XCTAssertTrue(h.inbox.isEmpty)
+        shown = false
+        done("2026-11-07T10:01:00Z")
+        await until("done again") { h.statuses["b"]?.first?.updated == Date(timeIntervalSince1970: 1_794_045_660) }
+        XCTAssertEqual(h.inbox.first?.status.state, "done")
     }
 }

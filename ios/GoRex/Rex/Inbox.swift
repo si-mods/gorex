@@ -1,16 +1,24 @@
 import Foundation
 
 extension Host.ProgramStatus {
+    /// What the user saw of a done or error record: the record as it was
+    /// then. Its time alone would not do: updated_at has whole seconds, and
+    /// a record may have none.
+    var seenKey: String { "\(id)|\(state)|\(updated?.timeIntervalSince1970 ?? -1)" }
+
+    /// Whether it needs the user more than another, or as much and later.
+    func outranks(_ o: Self) -> Bool {
+        rank > o.rank || rank == o.rank && (updated ?? .distantPast) > (o.updated ?? .distantPast)
+    }
+
     /// The record that most needs the user, the latest of those alike, nil
     /// without one, as the desktop's MostUrgent picks it. Done and error
-    /// records updated by seen were seen, and do not count; with no seen,
-    /// nothing was.
-    static func mostUrgent(_ rs: [Self], seen: Date?) -> Self? {
+    /// records the user saw do not count.
+    static func mostUrgent(_ rs: [Self], seen: Set<String>) -> Self? {
         var best: Self?
         for r in rs {
-            if let seen, r.state == "done" || r.state == "error", (r.updated ?? .distantPast) <= seen { continue }
-            guard let b = best else { best = r; continue }
-            if r.rank > b.rank || r.rank == b.rank && (r.updated ?? .distantPast) > (b.updated ?? .distantPast) { best = r }
+            if r.state == "done" || r.state == "error", seen.contains(r.seenKey) { continue }
+            if best.map(r.outranks) ?? true { best = r }
         }
         return best
     }
@@ -57,6 +65,16 @@ enum Inbox {
             return some.isEmpty ? nil : (state, some)
         }
     }
+
+    /// How long ago, as Rex tells it: now under a minute, else in the
+    /// largest whole unit of minutes, hours and days, narrow, in the
+    /// locale's words.
+    static func ago(_ t: Date, now: Date, locale: Locale = .autoupdatingCurrent) -> String {
+        let s = Int(now.timeIntervalSince(t))
+        if s < 60 { return String(localized: "now") }
+        let (unit, n): (Duration.UnitsFormatStyle.Unit, Int) = s < 3600 ? (.minutes, s / 60 * 60) : s < 86400 ? (.hours, s / 3600 * 3600) : (.days, s / 86400 * 86400)
+        return Duration.seconds(n).formatted(.units(allowed: [unit], width: .narrow).locale(locale))
+    }
 }
 
 extension Host {
@@ -67,21 +85,18 @@ extension Host {
         return sessions.flatMap { s in
             (s.view?.windows ?? []).compactMap { w -> InboxItem? in
                 guard let b = w.block else { return nil }
-                let picks = ([b] + w.tiled.filter { $0 != b }).compactMap { ProgramStatus.mostUrgent(statuses[$0] ?? [], seen: seen[$0]) }
-                guard let r = ProgramStatus.mostUrgent(picks, seen: nil), Inbox.states.contains(r.state) else { return nil }
+                // The block whose program needs the user most, which the row opens.
+                var pick: (block: String, status: ProgramStatus)?
+                for x in [b] + w.tiled.filter({ $0 != b }) {
+                    if let r = ProgramStatus.mostUrgent(statuses[x] ?? [], seen: seen[x] ?? []), pick.map({ r.outranks($0.status) }) ?? true {
+                        pick = (x, r)
+                    }
+                }
+                guard let pick, Inbox.states.contains(pick.status.state) else { return nil }
                 // As the list names a window.
                 let title = w.name ?? titles[b].flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
-                return InboxItem(host: id, session: s.id, block: b, title: title, program: programs[b], status: r)
+                return InboxItem(host: id, session: s.id, block: pick.block, title: title, program: programs[pick.block], status: pick.status)
             }
-        }
-    }
-
-    /// Marks what a window shows as seen, as the desktop's pane does: the
-    /// done and error records of its blocks, until they change.
-    func see(_ block: String) {
-        let w = sessions.lazy.compactMap(\.view).flatMap { $0.windows ?? [] }.first { $0.block == block || $0.tiled.contains(block) }
-        for b in Set([block] + (w?.tiled ?? [])) {
-            if let t = statuses[b]?.compactMap(\.updated).max(), t > seen[b] ?? .distantPast { seen[b] = t }
         }
     }
 }
