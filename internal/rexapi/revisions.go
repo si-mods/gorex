@@ -84,6 +84,10 @@ var methodSince = map[string]int{
 	"server.stop":                     4,
 	"server.apple.privacy_status":     5,
 	"session.set_layer_state":         9,
+	// Revision 11 adds terminal uploads: com.superlogical.terminal
+	// .upload_begin reserves a file and the rex.data.bytes.v1 stream
+	// carries its bytes.
+	"com.superlogical.terminal.upload_begin": 11,
 }
 
 // methodAvailable tells whether a client at revision rev may call method.

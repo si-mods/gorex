@@ -1,6 +1,7 @@
 package rexapi
 
 import (
+	"encoding/json"
 	"runtime"
 	"strings"
 	"testing"
@@ -280,4 +281,96 @@ func TestKeysArriveInOrder(t *testing.T) {
 	waitFor(t, "the typed text", func() bool {
 		return strings.Contains(screenText(t, c, sid, block), "order")
 	})
+}
+
+// rawArgs turns a map into a method's arguments.
+func rawArgs(t *testing.T, m map[string]any) args {
+	t.Helper()
+	a := args{}
+	for k, v := range m {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a[k] = raw
+	}
+	return a
+}
+
+// TestWheelDeltas: a revision 11 wheel's deltas become the discrete
+// wheel events a program's mouse modes know, and a direction still
+// makes the single event it always did.
+func TestWheelDeltas(t *testing.T) {
+	t.Run("lines", func(t *testing.T) {
+		ms, aerr := wheelInput(rawArgs(t, map[string]any{
+			"delta_mode": "line", "delta_y": -2, "delta_x": 1, "column": 3, "row": 4,
+		}))
+		if aerr != nil {
+			t.Fatal(aerr)
+		}
+		if len(ms) != 3 {
+			t.Fatalf("%d events, want 3: %v", len(ms), ms)
+		}
+		for i, m := range ms[:2] {
+			if m.Button != "wheel_up" || m.Col != 3 || m.Row != 4 {
+				t.Errorf("event %d: %+v", i, m)
+			}
+		}
+		if ms[2].Button != "wheel_right" {
+			t.Errorf("delta_x event: %+v", ms[2])
+		}
+	})
+	t.Run("pixels and pages", func(t *testing.T) {
+		ms, _ := wheelInput(rawArgs(t, map[string]any{"delta_mode": "pixel", "delta_y": 40}))
+		if len(ms) != 1 || ms[0].Button != "wheel_down" {
+			t.Errorf("40 pixels: %v", ms)
+		}
+		ms, _ = wheelInput(rawArgs(t, map[string]any{"delta_mode": "page", "delta_y": 0.5}))
+		if len(ms) != 5 || ms[0].Button != "wheel_down" {
+			t.Errorf("half a page: %d events", len(ms))
+		}
+		ms, _ = wheelInput(rawArgs(t, map[string]any{"delta_mode": "line", "delta_y": 0}))
+		if len(ms) != 0 {
+			t.Errorf("no delta: %v", ms)
+		}
+	})
+	t.Run("a bad mode and unknown fields fail", func(t *testing.T) {
+		if _, aerr := wheelInput(rawArgs(t, map[string]any{"delta_mode": "furlong", "delta_y": 1})); aerr == nil {
+			t.Error("furlong")
+		}
+		if _, aerr := wheelInput(rawArgs(t, map[string]any{"direction": "up", "pixel": map[string]any{"x": -1}})); aerr == nil {
+			t.Error("a negative pixel")
+		}
+	})
+	t.Run("a direction is one event", func(t *testing.T) {
+		ms, aerr := wheelInput(rawArgs(t, map[string]any{"direction": "up", "column": 1, "row": 2}))
+		if aerr != nil || len(ms) != 1 || ms[0].Button != "up" {
+			t.Errorf("direction: %v %v", ms, aerr)
+		}
+	})
+}
+
+// TestMousePixelButtons: revision 11's pixel position and held buttons
+// are accepted, and the first held button becomes the event's button.
+func TestMousePixelButtons(t *testing.T) {
+	m, aerr := mouseInput(rawArgs(t, map[string]any{
+		"action": "motion", "buttons": []string{"left"}, "column": 5, "row": 6,
+		"pixel": map[string]any{"x": 40, "y": 80},
+	}))
+	if aerr != nil {
+		t.Fatal(aerr)
+	}
+	if m.Action != "motion" || m.Button != "left" || m.Col != 5 || m.Row != 6 {
+		t.Errorf("event: %+v", m)
+	}
+	if _, aerr := mouseInput(rawArgs(t, map[string]any{
+		"action": "motion", "buttons": []string{"wheel_up"},
+	})); aerr == nil {
+		t.Error("a wheel button among the held buttons")
+	}
+	if _, aerr := mouseInput(rawArgs(t, map[string]any{
+		"action": "press", "pixel": map[string]any{"x": 1, "z": 2},
+	})); aerr == nil {
+		t.Error("a third axis in the pixel position")
+	}
 }
