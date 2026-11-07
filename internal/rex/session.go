@@ -49,8 +49,12 @@ type session struct {
 	// vt is the session's screen, kept by the terminal emulator of the
 	// app's terminals without a view: a window attaching gets a snapshot
 	// of it at its size, as the session shows it now.
-	vt         *terminal.Terminal
-	vtIn       *io.PipeWriter
+	vt   *terminal.Terminal
+	vtIn *io.PipeWriter
+	// vtAnswers is whether the emulator's answers to the output fed last
+	// reach the program (answerLocked).
+	vtAnswers bool
+
 	graphics   graphics
 	output     uint64
 	bells      atomic.Int64
@@ -141,9 +145,7 @@ type attached struct {
 	// client is the id its attach gave (Attach.Client), "" for none,
 	// which SessionInfo.SizedBy names the authority by.
 	client string
-	// mute tells a client whose terminal answers no query: one taking the
-	// screen as GHOSTSNP (Attach.Snapshot), as the rexapi gateway, types
-	// through the input ops, whose answers are removed.
+	// mute tells that its terminal answers no query (Attach.Mute).
 	mute bool
 }
 
@@ -260,12 +262,12 @@ func (s *session) newVT() error {
 	// The emulator's Conn reads nothing, and what it answers programs is
 	// typed only while no client's terminal answers them.
 	pr, pw := io.Pipe()
-	vt, err := terminal.New(terminal.Options{Conn: vtConn{discard{pr}, s}, Scrollback: scrollback, OnBell: func() { s.bells.Add(1) }})
+	vt, err := terminal.New(terminal.Options{Conn: &vtConn{r: pr, s: s}, Scrollback: scrollback, OnBell: func() { s.bells.Add(1) }})
 	if err != nil {
 		return err
 	}
 	vt.Resize(s.cols, s.rows)
-	s.vt, s.vtIn = vt, pw
+	s.vt, s.vtIn, s.vtAnswers = vt, pw, false
 	return nil
 }
 
@@ -415,6 +417,7 @@ func (s *session) read() {
 			data, graphics := s.graphics.filter(data, cwd)
 			s.mu.Lock()
 			s.graphics.record(graphics)
+			s.answerLocked()
 			s.vt.Feed(data)
 			s.modes.feed(data)
 			s.batch(data)
@@ -461,7 +464,7 @@ func (s *session) read() {
 // it attached through (Attach.Conn), if any; o.History, o.Framed and
 // o.Snapshot shape the snapshot.
 func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may func() bool, typed []byte) {
-	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != "", client: o.Client, mute: o.Snapshot == SnapshotGhostty}
+	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != "", client: o.Client, mute: o.Mute}
 	if o.Cols > 0 && o.Rows > 0 {
 		a.cols, a.rows = o.Cols, o.Rows
 	}
@@ -667,10 +670,9 @@ func (s *session) followAuthorityLocked(prev *attached) (pty bool, cols, rows in
 }
 
 // authorityLocked returns the client whose size the program draws for,
-// whose terminal answers its queries unless it answers none
-// (answererLocked): one attached through the control connection that
-// holds the size, else the client that typed last, else the one attached
-// last; s.mu is held.
+// whose terminal answers its queries unless it is mute (answererLocked):
+// one attached through the control connection that holds the size, else
+// the client that typed last, else the one attached last; s.mu is held.
 func (s *session) authorityLocked() *attached {
 	var newest *attached
 	for a := range s.clients {
@@ -688,24 +690,29 @@ func (s *session) authorityLocked() *attached {
 }
 
 // answererLocked returns the client whose terminal answers the program's
-// queries: the authority, else, when it is mute, the client that typed
-// last or attached last of those that are not; nil when none is, and the
-// server's emulator answers. s.mu is held.
+// queries: the authority, unless it is mute; nil when there is none, and
+// the server's emulator answers, at the session's size. s.mu is held.
 func (s *session) answererLocked() *attached {
-	a := s.authorityLocked()
-	if a == nil || !a.mute {
+	if a := s.authorityLocked(); a != nil && !a.mute {
 		return a
 	}
-	var newest *attached
-	for c := range s.clients {
-		if !c.mute && (newest == nil || c.seq > newest.seq) {
-			newest = c
+	return nil
+}
+
+// answerLocked tells the emulator's Conn, in order with what the emulator
+// writes, whether its answers to the output fed next reach the program:
+// as the output is fed, not as the answers are written, so that a client
+// attaching or leaving in between makes no answer twice or none. s.mu is
+// held.
+func (s *session) answerLocked() {
+	if on := s.answererLocked() == nil; on != s.vtAnswers {
+		s.vtAnswers = on
+		mark := vtOff
+		if on {
+			mark = vtOn
 		}
+		s.vt.Send(mark)
 	}
-	if _, ok := s.clients[s.typist]; ok && !s.typist.mute {
-		return s.typist
-	}
-	return newest
 }
 
 // dropReplies returns p without the terminal's answers to queries in it:
@@ -1451,28 +1458,36 @@ func (s *session) notify() {
 	}
 }
 
-// discard is a Conn for an emulator: it reads from a pipe that closes
-// with the session, and drops what it writes.
-type discard struct{ r *io.PipeReader }
-
-func (d discard) Read(p []byte) (int, error)  { return d.r.Read(p) }
-func (d discard) Write(p []byte) (int, error) { return len(p), nil }
-func (d discard) Close() error                { return d.r.Close() }
-
-// vtConn is the Conn of a session's emulator: what the emulator answers
-// it types while no client's terminal answers (answererLocked), and drops
-// else.
+// vtConn is the Conn of a session's emulator: it reads from a pipe that
+// closes with the session, and types what the emulator answers between
+// vtOn and vtOff (answerLocked), else drops it. Colors it does not
+// answer: the emulator's theme is not the windows'.
 type vtConn struct {
-	discard
-	s *session
+	r  *io.PipeReader
+	s  *session
+	on bool
 }
 
-func (c vtConn) Write(p []byte) (int, error) {
-	c.s.mu.Lock()
-	answers := !c.s.exited && c.s.answererLocked() == nil
-	c.s.mu.Unlock()
-	if answers {
+// vtOn and vtOff mark where the emulator's answers start and stop
+// reaching the program; no answer starts with NUL.
+var vtOn, vtOff = []byte("\x00on"), []byte("\x00off")
+
+func (c *vtConn) Read(p []byte) (int, error) { return c.r.Read(p) }
+func (c *vtConn) Close() error               { return c.r.Close() }
+
+// Write is called once per answer, on the emulator's input goroutine.
+func (c *vtConn) Write(p []byte) (int, error) {
+	switch {
+	case bytes.Equal(p, vtOn), bytes.Equal(p, vtOff):
+		c.on = bytes.Equal(p, vtOn)
+	case c.on && !colorReply(p):
 		c.s.write(p)
 	}
 	return len(p), nil
+}
+
+// colorReply tells an answer about colors: a palette's or a theme's (OSC),
+// or the color scheme's (CSI ? 997).
+func colorReply(p []byte) bool {
+	return bytes.HasPrefix(p, []byte("\x1b]")) || bytes.HasPrefix(p, []byte("\x1b[?997;"))
 }

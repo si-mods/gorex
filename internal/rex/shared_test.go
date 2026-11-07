@@ -252,7 +252,7 @@ func TestBatchWait(t *testing.T) {
 func TestTrimSnapshot(t *testing.T) {
 	vt := func() *terminal.Terminal {
 		pr, _ := io.Pipe()
-		v, err := terminal.New(terminal.Options{Conn: discard{pr}, Scrollback: scrollback})
+		v, err := terminal.New(terminal.Options{Conn: &vtConn{r: pr}, Scrollback: scrollback})
 		if err != nil {
 			t.Fatal(err)
 		}

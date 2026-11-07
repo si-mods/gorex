@@ -26,10 +26,15 @@ authority in this order:
 3. Otherwise, the client that **attached last**.
 
 The authority also answers the program's terminal queries (cursor
-position, colors), unless its terminal answers none, as the Rex API
-gateway's attach: then the client that typed or attached last of the
-others answers, and with none, the server's emulator. Only one
-terminal's answers reach the program.
+position, colors). Only one terminal's answers reach the program. An
+attach that answers none (`Attach.Mute`, the Rex API gateway's) leaves
+them to the server's emulator while it is the authority, as does a
+session with no client attached: the emulator is at the session's size,
+so its cursor and size answers fit what the program draws for. Its
+theme is not the windows', so it does not answer colors (OSC 4, 10, 11,
+the color scheme): a program asking them then waits for its own
+timeout. Which terminal answers is decided as the query is read, not as
+the answer is written.
 
 Every attached client records the size of its own terminal: the size it
 attached at, then each resize it sends.
