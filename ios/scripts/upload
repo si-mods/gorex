@@ -6,10 +6,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 K=${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_6GG554C43Y.p8}
 A=(-allowProvisioningUpdates -authenticationKeyPath "$K" -authenticationKeyID 6GG554C43Y -authenticationKeyIssuerID 1b9ef96d-c5b4-49a9-8c8d-4f0b999da4d6)
+# Builds count up from 1 for each version, as TestFlight shows them: 1.1 (3).
+# The count is kept on the Mac that uploads; BUILD sets it.
+N=$HOME/.gorex-ios-build
+V=$(sed -n 's/ *MARKETING_VERSION: "\(.*\)"/\1/p' project.yml)
+B=${BUILD:-$(( $(grep -s "^$V " "$N" | cut -d' ' -f2 || echo 0) + 1 ))}
 rm -rf build/GoRex.xcarchive build/export; mkdir -p build
 /opt/homebrew/bin/xcodegen generate -q
 xcodebuild -scheme GoRex -destination generic/platform=iOS -archivePath build/GoRex.xcarchive \
-  CURRENT_PROJECT_VERSION="$(date +%Y%m%d%H%M)" CODE_SIGNING_ALLOWED=NO archive > build/archive.log 2>&1 || { grep -E "error" build/archive.log | tail -15; exit 1; }
+  CURRENT_PROJECT_VERSION="$B" CODE_SIGNING_ALLOWED=NO archive > build/archive.log 2>&1 || { grep -E "error" build/archive.log | tail -15; exit 1; }
 echo ARCHIVED
 cat > build/export.plist <<P
 <?xml version="1.0" encoding="UTF-8"?>
@@ -24,3 +29,5 @@ cat > build/export.plist <<P
 P
 xcodebuild -exportArchive -archivePath build/GoRex.xcarchive -exportOptionsPlist build/export.plist -exportPath build/export "${A[@]}" > build/export.log 2>&1 || { grep -E "error|Error" build/export.log | tail -15; exit 1; }
 tail -3 build/export.log
+echo "$V $B" > "$N"
+echo "UPLOADED $V ($B)"
