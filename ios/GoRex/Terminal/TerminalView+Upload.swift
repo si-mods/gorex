@@ -10,7 +10,11 @@ import UniformTypeIdentifiers
 /// failed.
 extension TerminalView: UIDocumentPickerDelegate {
     func addPhoto() {
-        guard present(PhotoPicker { [weak self] providers in
+        // Once: the picker may be up, or going.
+        guard shown?.presentedViewController == nil else { return }
+        // The keyboard goes, or it covers the sheet's lower half.
+        resignFirstResponder()
+        present(PhotoPicker { [weak self] providers in
             guard let self else { return }
             becomeFirstResponder()
             if providers.isEmpty { return }
@@ -21,9 +25,7 @@ extension TerminalView: UIDocumentPickerDelegate {
                 }
                 return files
             }
-        }) else { return }
-        // The keyboard goes, or it covers the sheet's lower half.
-        resignFirstResponder()
+        })
     }
 
     func addFile() {
@@ -96,13 +98,17 @@ extension TerminalView: UIDocumentPickerDelegate {
         present(a)
     }
 
-    /// Presents a view controller over the one that shows the terminal;
-    /// false when it can't, as when something is up already.
-    @discardableResult private func present(_ vc: UIViewController) -> Bool {
-        let shown = sequence(first: self as UIResponder, next: \.next).lazy.compactMap { $0 as? UIViewController }.first
-        guard let shown, shown.presentedViewController == nil else { return false }
-        shown.present(vc, animated: true)
-        return true
+    /// The view controller that shows the terminal.
+    private var shown: UIViewController? {
+        sequence(first: self as UIResponder, next: \.next).lazy.compactMap { $0 as? UIViewController }.first
+    }
+
+    /// Presents a view controller over the topmost one, so an alert shows
+    /// over a sheet that is up.
+    private func present(_ vc: UIViewController) {
+        var top = shown
+        while let p = top?.presentedViewController { top = p }
+        top?.present(vc, animated: true)
     }
 }
 
