@@ -6,7 +6,7 @@ struct SettingsView: View {
     @Environment(HostStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @AppStorage("scheme") private var scheme = "dark"
-    @AppStorage("theme") private var theme = ""
+    @AppStorage("theme") private var theme = TerminalTheme.standard
     @AppStorage("clientLabel") private var label = ""
     @State private var query = ""
 
@@ -27,9 +27,8 @@ struct SettingsView: View {
             [Item(title: "Interface", icon: tile("circle.lefthalf.filled", .indigo),
                   value: String(localized: Self.schemes.first { $0.0 == scheme }?.1 ?? "Dark"),
                   page: AnyView(Choices(title: "Interface", options: Self.schemes.map { ($0.0, String(localized: $0.1)) }, selection: $scheme))),
-             Item(title: "Themes", icon: tile("paintpalette.fill", .pink), value: theme.isEmpty ? String(localized: "Default") : theme,
-                  page: AnyView(Choices(title: "Themes", options: [("", String(localized: "Default"))] + TerminalTheme.all.map { ($0.name, $0.name) },
-                                        selection: $theme)))],
+             Item(title: "Themes", icon: tile("paintpalette.fill", .pink), value: theme.isEmpty ? String(localized: "Host Colors") : theme,
+                  page: AnyView(Themes(selection: $theme)))],
             [Item(title: "Terminal", icon: tile("apple.terminal.fill", .gray), page: AnyView(TerminalSettings())),
              Item(title: "Remote Hosts", icon: tile("globe", .orange), page: AnyView(RemoteHostsView()))],
             [Item(title: "About", icon: tile("info.circle.fill", .gray),
@@ -121,16 +120,14 @@ private struct SettingsRow<Trailing: View>: View {
     }
 }
 
-/// A list to pick one of options in, with a search when they are many.
+/// A list to pick one of options in.
 private struct Choices: View {
     let title: LocalizedStringResource
     let options: [(id: String, name: String)]
     @Binding var selection: String
-    @State private var query = ""
 
     var body: some View {
-        let shown = options.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
-        let list = List(shown, id: \.id) { o in
+        List(options, id: \.id) { o in
             Button { selection = o.id } label: {
                 HStack {
                     Text(o.name).foregroundStyle(.primary)
@@ -144,17 +141,124 @@ private struct Choices: View {
         .background(Color.page)
         .navigationTitle(Text(title))
         .navigationBarTitleDisplayMode(.inline)
-        if options.count > 10 {
-            list.searchable(text: $query)
-        } else {
-            list
-        }
     }
 }
 
-/// The terminal's options: its font size.
+/// The terminal's themes, after rootshell's ThemeSettingsView: a preview
+/// of the one chosen, a filter by its background, a search, and a swatch of
+/// each one's colors. "" keeps the host's colors.
+private struct Themes: View {
+    @Binding var selection: String
+    @State private var query = ""
+    /// Light themes, dark ones, or all of them.
+    @State private var light: Bool?
+
+    var body: some View {
+        let shown = TerminalTheme.all.filter {
+            (light == nil || $0.light == light) && (query.isEmpty || $0.name.localizedCaseInsensitiveContains(query))
+        }
+        List {
+            if light == nil, query.isEmpty {
+                row(nil)
+            }
+            ForEach(shown, id: \.name) { row($0) }
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.page)
+        .safeAreaInset(edge: .top) {
+            VStack(spacing: 12) {
+                if let t = TerminalTheme.all.first(where: { $0.name == selection }) { Preview(theme: t) }
+                Picker("Filter", selection: $light) {
+                    Text("All").tag(Bool?.none)
+                    Text("Dark").tag(Bool?.some(false))
+                    Text("Light").tag(Bool?.some(true))
+                }
+                .pickerStyle(.segmented)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
+            .background(Color.page)
+        }
+        .searchable(text: $query)
+        .navigationTitle("Themes")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(_ t: TerminalTheme?) -> some View {
+        let id = t?.name ?? ""
+        return Button { selection = id } label: {
+            HStack(spacing: 12) {
+                Swatch(theme: t)
+                Text(t?.name ?? String(localized: "Host Colors")).foregroundStyle(.primary)
+                Spacer()
+                if id == selection { Image(systemName: "checkmark").fontWeight(.semibold) }
+            }
+        }
+        .listRowBackground(Color.card)
+    }
+}
+
+/// A theme's background with a few of its colors on it; the host's colors,
+/// unknown here, as a computer.
+private struct Swatch: View {
+    let theme: TerminalTheme?
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if let theme {
+                ForEach([1, 2, 3, 4, 5], id: \.self) { Circle().fill(Color(rgb: UInt32(theme.colors[$0]))).frame(width: 7, height: 7) }
+            } else {
+                Image(systemName: "desktopcomputer").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .frame(width: 56, height: 22)
+        .background(theme.map { Color(rgb: UInt32($0.colors[16])) } ?? Color.page, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(.secondary.opacity(0.3), lineWidth: 0.5))
+    }
+}
+
+/// A few lines of a shell in a theme's colors and the terminal's font,
+/// after rootshell's TerminalSnippetView.
+private struct Preview: View {
+    let theme: TerminalTheme
+    @AppStorage("fontFamily") private var family = ""
+
+    var body: some View {
+        let fg = color(17), prompt = Text("~/gorex ").foregroundStyle(color(4)) // blue
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(prompt)\(Text("ls").foregroundStyle(fg))")
+            Text("\(Text("docs  src  ").foregroundStyle(color(4)))\(Text("build.sh  ").foregroundStyle(color(2)))\(Text("README.md").foregroundStyle(fg))")
+            Text("\(prompt)\(Text("git status -s").foregroundStyle(fg))")
+            Text("\(Text(" M ").foregroundStyle(color(1)))\(Text("main.go").foregroundStyle(fg))")
+            Text("\(Text("?? ").foregroundStyle(color(1)))\(Text("notes.txt").foregroundStyle(fg))")
+            Text("\(prompt)\(Text("█").foregroundStyle(color(18)))")
+        }
+        .font(Fonts.face(family, size: 13))
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(color(16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func color(_ i: Int) -> Color { Color(rgb: UInt32(theme.colors[i])) }
+}
+
+/// The terminal's fonts: Ghostty's own, then the monospaced ones iOS has,
+/// by the family names Ghostty finds them by.
+private enum Fonts {
+    static let all: [(family: String, name: String)] = [("", "JetBrains Mono"), ("Menlo", "Menlo"), ("Courier New", "Courier New")]
+
+    /// A family's face, for a preview. Ghostty's own is not iOS's: the
+    /// system's monospaced face stands in for it.
+    static func face(_ family: String, size: CGFloat) -> Font {
+        family.isEmpty ? .system(size: size, design: .monospaced) : .custom(family, size: size)
+    }
+}
+
+/// The terminal's options: its font and font size.
 private struct TerminalSettings: View {
     @AppStorage("fontSize") private var fontSize = 12.0
+    @AppStorage("fontFamily") private var family = ""
 
     var body: some View {
         List {
@@ -162,6 +266,18 @@ private struct TerminalSettings: View {
                 LabeledContent("Font Size", value: String(localized: "\(Int(fontSize)) pt"))
             }
             .listRowBackground(Color.card)
+            Section("Font") {
+                ForEach(Fonts.all, id: \.family) { f in
+                    Button { family = f.family } label: {
+                        HStack {
+                            Text(f.name).font(Fonts.face(f.family, size: 17)).foregroundStyle(.primary)
+                            Spacer()
+                            if f.family == family { Image(systemName: "checkmark").fontWeight(.semibold) }
+                        }
+                    }
+                    .listRowBackground(Color.card)
+                }
+            }
         }
         .scrollContentBackground(.hidden)
         .background(Color.page)

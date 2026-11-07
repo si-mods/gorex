@@ -78,7 +78,7 @@ final class TerminalSession {
             ?? TerminalTheme.chosen.map { VTerminal.RGB($0.colors[16]) }
     }
 
-    private var backgroundKey: String { "\(host.id) \(UserDefaults.standard.string(forKey: "theme") ?? "")" }
+    private var backgroundKey: String { "\(host.id) \(TerminalTheme.name)" }
 
     /// Notes the background the view shows, for the page and the next opening.
     func drew(background b: VTerminal.RGB) {

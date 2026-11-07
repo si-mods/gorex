@@ -82,6 +82,16 @@
         }
       }
     },
+    "All": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部"
+          }
+        }
+      }
+    },
     "Allow camera access in Settings, or set up the host manually.": {
       "localizations": {
         "zh-Hans": {
@@ -332,16 +342,6 @@
         }
       }
     },
-    "Default": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "默认"
-          }
-        }
-      }
-    },
     "Default login shell": {
       "localizations": {
         "zh-Hans": {
@@ -492,6 +492,26 @@
         }
       }
     },
+    "Filter": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "筛选"
+          }
+        }
+      }
+    },
+    "Font": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "字体"
+          }
+        }
+      }
+    },
     "Font Size": {
       "localizations": {
         "zh-Hans": {
@@ -508,6 +528,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "收起键盘"
+          }
+        }
+      }
+    },
+    "Host Colors": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随主机"
           }
         }
       }

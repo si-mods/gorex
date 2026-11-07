@@ -60,4 +60,22 @@ nonisolated final class ThemeTests: XCTestCase {
         XCTAssertEqual(palette.first, "0=000000")
         XCTAssertEqual(palette.last, "15=ffffff")
     }
+
+    /// Gruvbox Dark until a theme is chosen; the host's colors once chosen.
+    @MainActor func testName() {
+        let d = UserDefaults.standard, saved = d.object(forKey: "theme")
+        defer { d.set(saved, forKey: "theme") }
+        d.removeObject(forKey: "theme")
+        XCTAssertEqual(TerminalTheme.name, "Gruvbox Dark")
+        d.set("", forKey: "theme")
+        XCTAssertEqual(TerminalTheme.name, "")
+        XCTAssertNil(TerminalTheme.chosen)
+        d.set("Nord", forKey: "theme")
+        XCTAssertEqual(TerminalTheme.name, "Nord")
+    }
+
+    @MainActor func testLight() {
+        XCTAssertTrue(VTerminal.RGB(0xfbf1c7).light)
+        XCTAssertFalse(VTerminal.RGB(0x282828).light)
+    }
 }
