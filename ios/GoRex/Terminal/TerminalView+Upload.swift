@@ -8,25 +8,22 @@ import UniformTypeIdentifiers
 /// files dropped on a pane of a host. The keyboard comes back as the picker
 /// closes; ⌘ spins while the files go up, and an alert tells of one that
 /// failed.
-extension TerminalView: PHPickerViewControllerDelegate, UIDocumentPickerDelegate {
+extension TerminalView: UIDocumentPickerDelegate {
     func addPhoto() {
-        var c = PHPickerConfiguration()
-        c.filter = .images
-        // The file as the library keeps it: HEIC stays HEIC.
-        c.preferredAssetRepresentationMode = .current
-        c.selectionLimit = 0
-        let p = PHPickerViewController(configuration: c)
-        p.delegate = self
-        // Half the screen, the terminal above undimmed; the grabber pulls it
-        // up. The keyboard goes, or it covers the sheet's lower half.
-        if let s = p.sheetPresentationController {
-            s.detents = [.medium(), .large()]
-            s.prefersGrabberVisible = true
-            s.prefersScrollingExpandsWhenScrolledToEdge = false
-            s.largestUndimmedDetentIdentifier = .medium
-        }
+        // The keyboard goes, or it covers the sheet's lower half.
         resignFirstResponder()
-        present(p)
+        present(PhotoPicker { [weak self] providers in
+            guard let self else { return }
+            becomeFirstResponder()
+            if providers.isEmpty { return }
+            upload { dir in
+                var files: [URL] = []
+                for (i, p) in providers.enumerated() {
+                    files.append(try await Self.photo(p, into: dir.appending(path: String(i))))
+                }
+                return files
+            }
+        })
     }
 
     func addFile() {
@@ -34,19 +31,6 @@ extension TerminalView: PHPickerViewControllerDelegate, UIDocumentPickerDelegate
         p.allowsMultipleSelection = true
         p.delegate = self
         present(p)
-    }
-
-    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picker.dismiss(animated: true) { [weak self] in self?.becomeFirstResponder() }
-        let providers = results.map(\.itemProvider)
-        if providers.isEmpty { return }
-        upload { dir in
-            var files: [URL] = []
-            for (i, p) in providers.enumerated() {
-                files.append(try await Self.photo(p, into: dir.appending(path: String(i))))
-            }
-            return files
-        }
     }
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
@@ -116,5 +100,61 @@ extension TerminalView: PHPickerViewControllerDelegate, UIDocumentPickerDelegate
     private func present(_ vc: UIViewController) {
         let shown = sequence(first: self as UIResponder, next: \.next).lazy.compactMap { $0 as? UIViewController }.first
         shown?.present(vc, animated: true)
+    }
+}
+
+/// The photo picker, half the screen with the terminal above undimmed, in a
+/// navigation bar of its own: at half height the picker hides its bar, and
+/// with it its Cancel and Add. Close, or a swipe down, picks nothing.
+private final class PhotoPicker: UINavigationController, PHPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
+    private let closed: ([NSItemProvider]) -> Void
+    private var picked: [PHPickerResult] = []
+    private let add = UIBarButtonItem()
+
+    init(closed: @escaping ([NSItemProvider]) -> Void) {
+        self.closed = closed
+        var c = PHPickerConfiguration()
+        c.filter = .images
+        // The file as the library keeps it: HEIC stays HEIC.
+        c.preferredAssetRepresentationMode = .current
+        c.selectionLimit = 0
+        // Each change of the selection comes to the delegate, and the
+        // picker's own buttons go for ours.
+        c.selection = .continuous
+        c.disabledCapabilities = [.selectionActions]
+        let p = PHPickerViewController(configuration: c)
+        super.init(rootViewController: p)
+        p.delegate = self
+        p.navigationItem.title = String(localized: "Add Photo")
+        let close = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [unowned self] _ in finish([]) })
+        close.accessibilityLabel = String(localized: "Close")
+        p.navigationItem.leftBarButtonItem = close
+        add.primaryAction = UIAction(title: String(localized: "Add")) { [unowned self] _ in finish(picked) }
+        add.style = .prominent
+        add.isEnabled = false
+        p.navigationItem.rightBarButtonItem = add
+        presentationController?.delegate = self
+        // The grabber pulls it up.
+        if let s = sheetPresentationController {
+            s.detents = [.medium(), .large()]
+            s.prefersGrabberVisible = true
+            s.prefersScrollingExpandsWhenScrolledToEdge = false
+            s.largestUndimmedDetentIdentifier = .medium
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
+
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picked = results
+        add.isEnabled = !results.isEmpty
+    }
+
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        closed([])
+    }
+
+    private func finish(_ results: [PHPickerResult]) {
+        dismiss(animated: true) { [closed] in closed(results.map(\.itemProvider)) }
     }
 }
