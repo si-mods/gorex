@@ -42,30 +42,25 @@ extension TerminalView: UIScrollViewDelegate {
         scroller.contentSize = CGSize(width: bounds.width, height: end + bounds.height)
         if row != Int(b.offset) || y > end { scroller.contentOffset.y = min(CGFloat(b.offset) * h + y - CGFloat(row) * h, end) }
         syncing = false
-        checkCover()
     }
 
-    /// Tells the session whether the cursor is under the bar, at the end of
-    /// the scrollback, where the bar would hide what is typed; scrolled back,
-    /// it is not.
-    func checkCover() {
-        guard let s = surface else { return }
-        var b = ghostty_action_scrollbar_s()
-        let live = !ghostty_surface_display_scrollbar(s, &b) || b.offset + b.len >= b.total
-        // On the screen: the terminal slides up over the keyboard.
-        let under = live && cover > 0 && cursor(width: nil).minY + transform.ty < cover
-        if session.covered != under { session.covered = under }
-    }
-
-    /// Slides and checks again once Ghostty has drawn the output that came,
-    /// which moves the cursor: a tick later, once for a burst.
-    func laterCheckCover() {
-        guard !coverCheck else { return }
-        coverCheck = true
+    /// Slides again once Ghostty has drawn the output that came, which moves
+    /// the cursor, a tick later, once for a burst; and moves the terminal
+    /// below the bars as a program takes the alternate screen, or back.
+    func laterSlide() {
+        guard !slideWaits else { return }
+        slideWaits = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.coverCheck = false
-            self?.slide(duration: 0.15)
-            self?.checkCover()
+            guard let self else { return }
+            slideWaits = false
+            guard let s = surface else { return }
+            drawn = true
+            let a = ghostty_surface_is_alternate_active(s)
+            if a != alternate {
+                alternate = a
+                superview?.setNeedsLayout()
+            }
+            slide(duration: 0.15)
         }
     }
 
@@ -109,7 +104,6 @@ extension TerminalView: UIScrollViewDelegate {
             let row = Int(at / h)
             ghostty_surface_scroll_to_row_smooth(s, UInt(row), (at - CGFloat(row) * h) * scale)
         }
-        checkCover()
     }
 
     func scrollViewDidEndDragging(_ v: UIScrollView, willDecelerate: Bool) {

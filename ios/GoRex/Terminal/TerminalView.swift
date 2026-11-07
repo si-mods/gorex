@@ -41,10 +41,13 @@ final class TerminalView: UIView, TerminalOutput {
     lazy var editMenu = UIEditMenuInteraction(delegate: self)
     var showsSelection = false
     lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
-    /// How far down the screen's bar reaches over the terminal, and whether
-    /// a check of the cursor under it waits for the output to be drawn.
-    var cover: CGFloat = 0 { didSet { if cover != oldValue { checkCover() } } }
-    var coverCheck = false
+    /// How far down the status bar and the clear bar reach over the
+    /// terminal; whether a slide waits for the output to be drawn, and
+    /// whether any was; whether a program has the alternate screen.
+    var inset: CGFloat = 0 { didSet { if inset != oldValue { setNeedsLayout() } } }
+    var slideWaits = false
+    var drawn = false
+    var alternate = false
     /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
     var newTab: (() -> Void)?
     var closeTab: (() -> Void)?
@@ -202,7 +205,7 @@ final class TerminalView: UIView, TerminalOutput {
     func write(_ bytes: Data) {
         let fd = output
         guard fd >= 0, !bytes.isEmpty else { return }
-        laterCheckCover()
+        laterSlide()
         writes.async {
             bytes.withUnsafeBytes { p in
                 var at = 0
@@ -266,16 +269,12 @@ final class TerminalView: UIView, TerminalOutput {
         scroller.frame = bounds
         syncing = false
         syncScroll()
-        checkCover()
+        slide(duration: 0)
     }
 
     /// The keyboard never resizes the grid: a resize makes a program that
     /// draws in the scrollback, as an agent does, draw again, and what the
-    /// terminal reflowed meanwhile leaves gaps. The terminal slides up under
-    /// the bar instead, no farther than the keyboard is tall: as far as the
-    /// cursor's row and the lines drawn under it, as an agent's box and
-    /// status, need to show above the keyboard, but not the cursor under the
-    /// bar.
+    /// terminal reflowed meanwhile leaves gaps. The terminal slides instead.
     @objc private func keyboard(_ n: Notification) {
         guard let window, let superview = superview as? TerminalHost, let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
         let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
@@ -285,21 +284,22 @@ final class TerminalView: UIView, TerminalOutput {
         slide(duration: duration, options: UIView.AnimationOptions(rawValue: curve << 16))
     }
 
-    /// Slides the terminal to show the cursor and what is under it above
-    /// the keyboard.
+    /// Slides the terminal, as a scroll view with the bars as its inset: down
+    /// below them while the lines drawn leave room, as in a new terminal,
+    /// and the lines go on under them as they fill the screen; up over the
+    /// keyboard, no farther than it is tall, as far as the cursor's row and
+    /// the lines drawn under it, as an agent's box and status, need, but not
+    /// the cursor under the bar.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
-        var shift: CGFloat = 0
-        if covered > 0 {
-            let c = cursor(width: nil)
-            let needed = drawnBottom(under: c) - (bounds.height - covered)
-            shift = max(0, min(covered, needed, c.minY - cover))
-        }
-        guard transform.ty != -shift else { return }
-        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: shift, left: 0, bottom: covered - shift, right: 0)
+        guard surface != nil, drawn else { return }
+        let c = cursor(width: nil)
+        let room = bounds.height - covered - drawnBottom(under: c)
+        let y = max(min(inset, room), min(0, inset - c.minY), -covered)
+        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: max(0, inset - y), left: 0, bottom: max(0, covered + y), right: 0)
+        guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
-            self.transform = CGAffineTransform(translationX: 0, y: -shift)
+            self.transform = CGAffineTransform(translationX: 0, y: y)
         }
-        checkCover()
     }
 
     /// The bottom of the last line of the screen with text under the
@@ -326,6 +326,7 @@ final class TerminalView: UIView, TerminalOutput {
         guard cols > 0, rows > 0 else { return }
         session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows)
         if sizeLabel.alpha > 0 { showSize() }
+        slide(duration: 0)
     }
 
     // MARK: Touch
@@ -562,7 +563,8 @@ final class TerminalView: UIView, TerminalOutput {
 
 /// Holds a TerminalView for SwiftUI, which sets its views' frames and so
 /// would undo the slide: the host sets the terminal's bounds and center,
-/// which keep it.
+/// which keep it. The bars over it are its inset, but a program on the
+/// alternate screen, which fills it, has the terminal start below them.
 final class TerminalHost: UIView {
     let terminal: TerminalView
 
@@ -576,8 +578,15 @@ final class TerminalHost: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        terminal.bounds = CGRect(origin: .zero, size: bounds.size)
-        terminal.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        let top = terminal.alternate ? safeAreaInsets.top : 0, height = bounds.height - top
+        terminal.bounds = CGRect(x: 0, y: 0, width: bounds.width, height: height)
+        terminal.center = CGPoint(x: bounds.midX, y: top + height / 2)
+        terminal.inset = safeAreaInsets.top - top
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        setNeedsLayout()
     }
 }
 
