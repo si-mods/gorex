@@ -212,7 +212,8 @@ type LayoutCommand struct {
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
 	// "pane.swap", "pane.move", "pane.restart", "tab.set", "windows.set",
-	// "layout.apply", "pane.teleporting" or "pane.teleported".
+	// "layout.apply", "pane.teleporting", "pane.teleported" or
+	// "kills.taken".
 	// pane.restart starts a new shell in the place of the pane of SID.
 	// pane.teleported, a local client's only, tells of the teleport of the
 	// pane of SID to the host of address Host (hosts.json), the session
@@ -220,8 +221,10 @@ type LayoutCommand struct {
 	// place, a tab of the host's. pane.teleporting, before the host starts
 	// it, notes it in the layout (layout.Store.Teleports), so that the
 	// window opens no tab of its own for it; with no Target, it drops the
-	// note of a teleport that failed. tab.set, windows.set and layout.apply
-	// are a local client's only too. The server makes its own changes too:
+	// note of a teleport that failed. kills.taken tells that the app took
+	// Kills, the layout's sessions of other hosts to end
+	// (layout.Store.Kills). tab.set, windows.set, layout.apply and
+	// kills.taken are a local client's only too. The server makes its own changes too:
 	// the pane of a session that ends goes, a session a remote client
 	// starts here gets a tab, and so does one no pane has as the app opens;
 	// the panes' facts follow their sessions.
@@ -276,6 +279,9 @@ type LayoutCommand struct {
 	// the sessions the layout has; it neither starts nor ends one
 	// (CapabilityLayoutServer).
 	TabLayout *layout.Tab `json:"tabLayout,omitempty"`
+	// Kills are the kills of the layout the app took (kills.taken), which
+	// the server forgets.
+	Kills []layout.Kill `json:"kills,omitempty"`
 	// Spaces are the spaces windows.set says the windows show, in the
 	// order of their places.
 	Spaces []string `json:"spaces,omitempty"`

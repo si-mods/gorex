@@ -14,6 +14,10 @@ type Store struct {
 	// session each starts on a host, which the app opens as no tab of its
 	// own; the server shows it in the pane's place once it runs.
 	Teleports []Teleport `json:"teleports,omitempty"`
+	// Kills are the sessions of other hosts whose panes a client of the
+	// server closed: the app ends each on its host, as it ends those its
+	// user closes, and the server forgets it then (kills.taken).
+	Kills []Kill `json:"kills,omitempty"`
 	// The first window's tabs, for a GoRex from before workspaces.
 	Layout
 	// Named tells that Parse gave a browser pane an ID: the layout read is
@@ -27,6 +31,12 @@ type Teleport struct {
 	Host string `json:"host"`
 	SID  string `json:"sid"`
 	From string `json:"from"`
+}
+
+// Kill is the session SID to end on host Host, by the host's ID.
+type Kill struct {
+	Host string `json:"host"`
+	SID  string `json:"sid"`
 }
 
 // Workspace is a workspace as the layout keeps it.

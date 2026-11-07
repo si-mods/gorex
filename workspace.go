@@ -339,7 +339,29 @@ func (st *store) takeLayout(ls rex.LayoutState) bool {
 	if !same {
 		st.reconcile(s)
 	}
+	st.takeKills()
 	return true
+}
+
+// takeKills ends the sessions of other hosts the server's layout names
+// (layout.Store.Kills), each as the app ends one its user closes
+// (hostConn.kill), and tells the server it took them. One of a host the
+// app no longer has goes on there, as the host's sessions do once it is
+// removed. Call it on the main thread, once the hosts are loaded.
+func (st *store) takeKills() {
+	kills := st.base.Kills
+	if len(kills) == 0 || !st.hostsUp {
+		return
+	}
+	for _, k := range kills {
+		for _, h := range st.hosts {
+			if h.ID == k.Host {
+				h.kill(k.SID)
+			}
+		}
+	}
+	st.out.add(rex.LayoutCommand{Op: "kills.taken", Kills: kills}, nil)
+	st.out.kick()
 }
 
 // reconcile makes the workspaces those of s, in its order, keeping the
@@ -827,6 +849,7 @@ func (st *store) start() {
 	for _, w := range open {
 		st.openWindow(w)
 	}
+	st.takeKills()
 	st.save()
 }
 

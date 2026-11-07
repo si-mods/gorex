@@ -362,11 +362,20 @@ func hostLeaf(host, sid string) func(*layout.Node) bool {
 	return func(n *layout.Node) bool { return n.Host == host && n.SID == sid }
 }
 
-// hostAt is the ID of the app's host of address addr (savedHosts); an
-// error code and its message when it has none, or more than one.
+// hostAt is the ID of the app's host of address addr, from hosts.json,
+// which the app keeps and the server only reads; an error code and its
+// message when it has none, or more than one.
 func (s *Server) hostAt(addr string) (id, code, msg string) {
+	var f struct {
+		Hosts []struct {
+			ID      string `json:"id"`
+			Address string `json:"address"`
+		} `json:"hosts"`
+	}
+	b, _ := os.ReadFile(filepath.Join(cmp.Or(s.dir, Dir()), "hosts.json"))
+	json.Unmarshal(b, &f)
 	var found []string
-	for _, h := range s.savedHosts() {
+	for _, h := range f.Hosts {
 		if addr = strings.TrimSpace(addr); addr != "" && h.ID != "" && strings.TrimSpace(h.Address) == addr {
 			found = append(found, h.ID)
 		}
@@ -378,21 +387,4 @@ func (s *Server) hostAt(addr string) (id, code, msg string) {
 		return found[0], "", ""
 	}
 	return "", "host_ambiguous", "more than one host of the GoRex window has that address"
-}
-
-// savedHost is a host of the app's, as hosts.json keeps it.
-type savedHost struct {
-	ID      string `json:"id"`
-	Address string `json:"address"`
-}
-
-// savedHosts are the app's hosts, from hosts.json, which the app keeps
-// and the server only reads.
-func (s *Server) savedHosts() []savedHost {
-	var f struct {
-		Hosts []savedHost `json:"hosts"`
-	}
-	b, _ := os.ReadFile(filepath.Join(cmp.Or(s.dir, Dir()), "hosts.json"))
-	json.Unmarshal(b, &f)
-	return f.Hosts
 }

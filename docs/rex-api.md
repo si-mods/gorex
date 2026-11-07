@@ -188,9 +188,9 @@ meets:
   desktop the space goes with its last tab instead.
 - An app action still needs the GoRex window, and fails with `conflict`
   without it. Closing a window or session that holds a pane of another
-  host ends that pane's session on the other host too, as the desktop
-  does; a host the server cannot reach keeps it, and the server's log
-  tells it.
+  host drops that pane, and the GoRex app ends its session on that host,
+  as it ends one its user closes: at once, or once the app runs and the
+  host is connected again.
 - Tabs and panes of remote hosts are left out.
 - Revision 8's `data_tickets` on `session.bootstrap` is served: a client
   that asks for the terminal blocks gets a ticket for each one, and opens

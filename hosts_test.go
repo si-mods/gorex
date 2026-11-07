@@ -1445,3 +1445,28 @@ func TestLayoutLines(t *testing.T) {
 		t.Fatalf("tab %q", got)
 	}
 }
+
+// TestTakeKills closes a host's tab from another client: the server notes
+// its session in the layout, and the app ends it on the host as its
+// user's close does, and tells the server, which forgets it.
+func TestTakeKills(t *testing.T) {
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, remote := startHostServer(t)
+	t.Cleanup(a.stopHosts)
+	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	rt := a.newTabOn(h, "")
+	sid := rt.Focus.SID
+	other := followApp(t, a)
+	if res, err := other.Command(rex.LayoutCommand{Op: "tab.close", Tab: rt.UID}); err != nil || res.Code != "" {
+		t.Fatalf("tab.close: %+v %v", res, err)
+	}
+	waitFor(t, tt, "the session to end on the host", func() bool { return !slices.Contains(sessionIDs(t, remote), sid) })
+	waitFor(t, tt, "the server to forget the kill", func() bool { return len(savedWorkspaces(t, other).Kills) == 0 })
+	waitFor(t, tt, "the kill to be done", func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return len(h.Kills) == 0
+	})
+}
