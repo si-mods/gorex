@@ -51,7 +51,7 @@ nonisolated final class HostTests: XCTestCase {
     @MainActor func testProgramStatusParses() throws {
         let r = try XCTUnwrap(Host.ProgramStatus(json: [
             "id": "claude", "state": "blocked", "kind": "question", "progress": 40,
-            "app": "", "effective_app": "claude", "title": "", "msg": "Allow?", "updated_at": "",
+            "app": "", "effective_app": "claude", "title": "", "msg": "Allow?", "last_msg": "", "updated_at": "",
         ]))
         XCTAssertEqual(r.id, "claude")
         XCTAssertEqual(r.state, "blocked")
@@ -60,6 +60,8 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(r.app, "claude")
         XCTAssertNil(r.title)
         XCTAssertEqual(r.msg, "Allow?")
+        XCTAssertNil(r.lastMsg)
+        XCTAssertEqual(Host.ProgramStatus(json: ["state": "done", "last_msg": "Testing"])?.lastMsg, "Testing")
         XCTAssertNil(Host.ProgramStatus(json: ["id": "x"]))
     }
 

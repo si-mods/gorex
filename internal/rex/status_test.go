@@ -23,14 +23,14 @@ func TestStatusReports(t *testing.T) {
 		{"BEL", "\x1b]7501;state=done\x07", &ProgramStatus{State: "done", Progress: -1}},
 		{"in text", "ab" + osc("state=idle") + "cd", &ProgramStatus{State: "idle", Progress: -1}},
 		{"blocked", osc(" state = blocked :kind=question:msg=" + b64("Allow rm?") + ":title=" + strings.TrimRight(b64("Fix"), "=")),
-			&ProgramStatus{State: "blocked", Kind: "question", Progress: -1, Title: "Fix", Msg: "Allow rm?"}},
+			&ProgramStatus{State: "blocked", Kind: "question", Progress: -1, Title: "Fix", Msg: "Allow rm?", LastMsg: "Allow rm?"}},
 		{"unknown kind", osc("state=blocked:kind=nope"), &ProgramStatus{State: "blocked", Progress: -1}},
 		{"kind only blocked", osc("state=working:kind=auth"), &ProgramStatus{State: "working", Progress: -1}},
 		{"progress range", osc("state=working:progress=101"), &ProgramStatus{State: "working", Progress: -1}},
 		{"progress only working", osc("state=done:progress=5"), &ProgramStatus{State: "done", Progress: -1}},
 		{"last wins", osc("state=idle:state=error"), &ProgramStatus{State: "error", Progress: -1}},
 		{"malformed pair", osc("state=done:bad:X=1:foo=a b"), &ProgramStatus{State: "done", Progress: -1}},
-		{"bidi dropped", osc("state=done:msg=" + b64("a‮b")), &ProgramStatus{State: "done", Progress: -1, Msg: "ab"}},
+		{"bidi dropped", osc("state=done:msg=" + b64("a‮b")), &ProgramStatus{State: "done", Progress: -1, Msg: "ab", LastMsg: "ab"}},
 		{"unknown state", osc("state=sleeping"), nil},
 		{"no state", osc("app=x"), nil},
 		{"bad base64", osc("state=done:msg=a"), nil},
@@ -106,6 +106,38 @@ func TestStatusRecords(t *testing.T) {
 	}
 	if len(st.records) != maxStatusRecords || st.records["r0"] != nil || st.records["r1"] == nil {
 		t.Fatalf("cap: %d records, r0 kept: %v", len(st.records), st.records["r0"] != nil)
+	}
+}
+
+// A record keeps the last message a report carried when a later one
+// carries none, as Claude Code reports done without one.
+func TestStatusLastMsg(t *testing.T) {
+	var st programStatus
+	last := func(id string) string {
+		if r := st.records[id]; r != nil {
+			return r.LastMsg
+		}
+		return "<none>"
+	}
+	st.feed([]byte(osc("state=working:msg="+b64("Testing")) + osc("state=working:id=x:msg="+b64("Other"))))
+	st.feed([]byte(osc("state=done")))
+	if got := st.records[""]; got.Msg != "" || got.LastMsg != "Testing" {
+		t.Fatalf("done without msg: %+v, want last msg Testing", got.ProgramStatus)
+	}
+	st.feed([]byte(osc("state=working:msg=" + b64("Uploading"))))
+	if got := last(""); got != "Uploading" {
+		t.Fatalf("new msg: last %q, want Uploading", got)
+	}
+	if got := last("x"); got != "Other" {
+		t.Fatalf("other id: last %q, want Other", got)
+	}
+	st.feed([]byte(osc("state=clear:id=x") + osc("state=done:id=x")))
+	if got := last("x"); got != "" {
+		t.Fatalf("after clear: last %q, want none", got)
+	}
+	st.feed([]byte(osc("state=clear") + osc("state=done")))
+	if got := last(""); got != "" {
+		t.Fatalf("after clear all: last %q, want none", got)
 	}
 }
 

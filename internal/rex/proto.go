@@ -672,6 +672,9 @@ type ProgramStatus struct {
 	Title   string    `json:"title,omitempty"`
 	Msg     string    `json:"msg,omitempty"`
 	Updated time.Time `json:"updated"`
+	// LastMsg is the last message a report for the record carried, kept
+	// when a later one carries none.
+	LastMsg string `json:"last_msg,omitempty"`
 }
 
 // Hello is the server's answer to "hello".

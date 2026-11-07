@@ -39,16 +39,16 @@ struct InboxItem: Identifiable {
 
     /// The first line: the record's title, else the window's.
     var heading: String { status.title ?? title }
-    /// The second line: the record's message, else the window's title;
-    /// empty when that only repeats the first.
+    /// The second line: the record's message, else its last one, else
+    /// the window's title; empty when that only repeats the first.
     var detail: String {
-        let d = status.msg ?? title
+        let d = status.msg ?? status.lastMsg ?? title
         return d == heading ? "" : d
     }
 
     /// Whether a search matches it.
     func matches(_ query: String) -> Bool {
-        query.isEmpty || [status.title, status.msg, title].contains { $0?.localizedCaseInsensitiveContains(query) == true }
+        query.isEmpty || [status.title, status.msg, status.lastMsg, title].contains { $0?.localizedCaseInsensitiveContains(query) == true }
     }
 }
 

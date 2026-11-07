@@ -200,6 +200,10 @@ func (st *programStatus) report(body string) {
 		}
 		delete(st.records, oldestID)
 	}
+	r.LastMsg = r.Msg
+	if old := st.records[id]; old != nil && r.Msg == "" {
+		r.LastMsg = old.LastMsg
+	}
 	st.updates++
 	st.records[id] = &statusRecord{r, st.updates}
 }

@@ -87,6 +87,15 @@ nonisolated final class InboxTests: XCTestCase {
         XCTAssertEqual(c.detail, "")
         XCTAssertTrue(a.matches("allow") && a.matches("ZSH") && a.matches(""))
         XCTAssertFalse(a.matches("edit"))
+        // A record done without a message shows the last one it carried.
+        var d = record("x", "done")
+        d.lastMsg = "Testing"
+        let e = InboxItem(host: UUID(), session: "s", block: "b", title: "zsh", program: nil, status: d)
+        XCTAssertEqual(e.detail, "Testing")
+        XCTAssertTrue(e.matches("test"))
+        d.msg = "Uploading"
+        let f = InboxItem(host: UUID(), session: "s", block: "b", title: "zsh", program: nil, status: d)
+        XCTAssertEqual(f.detail, "Uploading")
     }
 
     /// A host lists its windows by their tiled blocks' records, leaves out
