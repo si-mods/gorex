@@ -5,7 +5,10 @@ package rex
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"encoding/json"
+	"errors"
+	"log"
 	"math"
 	"slices"
 	"strings"
@@ -54,6 +57,9 @@ func (s *Server) apply(c LayoutCommand) LayoutCommand {
 		}
 	}
 	s.endAll(ends)
+	if res.Code == "" {
+		s.endOnHosts(a.hostEnds)
+	}
 	return res
 }
 
@@ -84,7 +90,7 @@ func (s *Server) change(a *applying, f func(st *layout.Store) LayoutCommand) Lay
 		s.mu.Unlock()
 		st := layout.Parse(raw)
 		before := encodeLayout(&st)
-		a.n, a.ends, a.touched = 0, nil, nil
+		a.n, a.ends, a.hostEnds, a.touched = 0, nil, nil, nil
 		res := f(&st)
 		if res.Code != "" {
 			return res
@@ -196,6 +202,9 @@ type applying struct {
 	batch   bool
 	before  map[string]*layout.Node
 	ends    []string
+
+	// hostEnds are the sessions of other hosts' panes the pass closed.
+	hostEnds []layout.Node
 }
 
 // start returns a new pane's leaf, starting its session in the first pass.
@@ -215,12 +224,17 @@ func (a *applying) start(dir string, cols, rows int, command []string) (*layout.
 	return &c, nil
 }
 
-// end ends the sessions of this machine's panes under n, once the layout
-// is saved without them.
+// end ends the sessions of the panes under n, once the layout is saved
+// without them: this machine's here, another host's on that host, but in
+// a batch, the app's, which ends those itself as its user closes them.
 func (a *applying) end(n *layout.Node) {
 	for _, l := range layout.Leaves(n) {
-		if l.Host == "" && l.SID != "" {
+		switch {
+		case l.SID == "":
+		case l.Host == "":
 			a.ends = append(a.ends, l.SID)
+		case !a.batch:
+			a.hostEnds = append(a.hostEnds, *l)
 		}
 	}
 }
@@ -597,8 +611,6 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		if w == nil {
 			return fail("space_not_found", "no such space in the GoRex layout")
 		}
-		// Another host's sessions are the app's to end, as its user closes
-		// them: the server drops their panes.
 		for _, t := range w.Tabs {
 			for _, r := range t.Roots() {
 				a.end(r)
@@ -1493,4 +1505,46 @@ func countSetRevs(was, l json.RawMessage) json.RawMessage {
 		return bytes.Clone(l)
 	}
 	return encodeLayout(&now)
+}
+
+// hostDial connects to the server of a host at its address, as the app's
+// dialHost does; tests replace it.
+var hostDial = ConnectRemote
+
+// endOnHosts ends sessions of other hosts, each on its host, which the
+// app's hosts.json names, as the app ends those its user closes: in the
+// background, as a host may take a while to answer. A host it cannot
+// reach keeps the session, which the log tells.
+func (s *Server) endOnHosts(leaves []layout.Node) {
+	for _, l := range leaves {
+		go func() {
+			if err := s.endOnHost(l.Host, l.SID); err != nil {
+				log.Printf("rex: ending session %s of host %s: %v", l.SID, l.Host, err)
+			}
+		}()
+	}
+}
+
+// endOnHost ends session sid on the host of ID id, as a kill there does.
+func (s *Server) endOnHost(id, sid string) error {
+	addr := ""
+	for _, h := range s.savedHosts() {
+		if h.ID == id {
+			addr = h.Address
+		}
+	}
+	if addr == "" {
+		return errors.New("no such host of the GoRex window's")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), tailcatRedial)
+	defer cancel()
+	c, err := hostDial(ctx, addr)
+	if err != nil {
+		return errors.New(scrub(err.Error(), addr))
+	}
+	defer c.Close()
+	if err := c.Kill(sid); err != nil {
+		return errors.New(scrub(err.Error(), addr))
+	}
+	return nil
 }

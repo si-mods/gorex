@@ -4,7 +4,9 @@ package rex
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -361,9 +363,9 @@ func TestApplyNoChange(t *testing.T) {
 	}
 }
 
-// TestApplyDropsRemotePanes closes a tab that has a pane of another host:
-// the server ends this machine's session and drops the host's pane, whose
-// session is the app's to end.
+// TestApplyDropsRemotePanes closes a tab that has a pane of another host
+// it cannot reach: the server ends this machine's session and drops the
+// host's pane.
 func TestApplyDropsRemotePanes(t *testing.T) {
 	_, c := applyFixture(t)
 	cmd, dir := testShell()
@@ -375,6 +377,77 @@ func TestApplyDropsRemotePanes(t *testing.T) {
 	command(t, c, LayoutCommand{Op: "tab.close", Tab: "mixed"})
 	if _, ok := liveSession(t, c, in.ID); ok || len(storeOf(t, c).Sessions[0].Tabs) != 0 {
 		t.Error("the tab or its session stays")
+	}
+}
+
+// TestCloseEndsHostSessions closes tabs and a space of another host's
+// panes, as the API does: the server ends their sessions on that host,
+// reached at its address in hosts.json. Of a host it cannot reach, the
+// pane goes, and its session on. A layout.apply, the app's, ends none:
+// the app ends those its user closes.
+func TestCloseEndsHostSessions(t *testing.T) {
+	host, _ := testServer(t)
+	hc := pipe(host, "")
+	t.Cleanup(func() {
+		infos, _ := hc.List()
+		for _, in := range infos {
+			hc.Kill(in.ID)
+		}
+		hc.Close()
+	})
+	s, c := applyFixture(t)
+	hosts := `{"hosts":[{"id":"h1","address":"tcHOST"},{"id":"h2","address":"tcGONE"}]}`
+	if err := os.WriteFile(filepath.Join(s.dir, "hosts.json"), []byte(hosts), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := hostDial
+	hostDial = func(ctx context.Context, addr string) (*Client, error) {
+		if addr == "tcHOST" {
+			return pipe(host, ""), nil
+		}
+		return nil, errors.New("rex: connecting to the remote server: unreachable")
+	}
+	t.Cleanup(func() { hostDial = old })
+	cmd, dir := testShell()
+	far := func() *layout.Node {
+		in, err := hc.Create(CreateOptions{Command: cmd, Dir: dir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &layout.Node{SID: in.ID, Host: "h1"}
+	}
+	ends := func(n *layout.Node) bool {
+		for range 200 {
+			if _, ok := liveSession(t, hc, n.SID); !ok {
+				return true
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return false
+	}
+	closed, kept := far(), far()
+	split := &layout.Node{Ratio: 0.5, A: far(), B: far()}
+	seed(t, c,
+		layout.Tab{ID: "closed", Root: closed},
+		layout.Tab{ID: "kept", Root: kept},
+		layout.Tab{ID: "gone", Root: &layout.Node{SID: "x", Host: "h2"}},
+		layout.Tab{ID: "split", Root: split},
+	)
+	command(t, c, LayoutCommand{Op: "tab.close", Tab: "closed"})
+	if !ends(closed) {
+		t.Error("tab.close: the host's session runs")
+	}
+	command(t, c, LayoutCommand{Op: "layout.apply", Batch: []LayoutCommand{{Op: "tab.close", Tab: "kept"}}})
+	command(t, c, LayoutCommand{Op: "tab.close", Tab: "gone"})
+	command(t, c, LayoutCommand{Op: "space.close", Space: "w"})
+	if !ends(split.A) || !ends(split.B) {
+		t.Error("space.close: the host's sessions run")
+	}
+	if _, ok := liveSession(t, hc, kept.SID); !ok {
+		t.Error("layout.apply ended the host's session")
+	}
+	if len(storeOf(t, c).Sessions) != 0 {
+		t.Error("the space stays")
 	}
 }
 
