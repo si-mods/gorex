@@ -2,6 +2,16 @@
   "sourceLanguage": "en",
   "version": "1.0",
   "strings": {
+    "%@ needs input": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 需要输入"
+          }
+        }
+      }
+    },
     "%lld pt": {
       "localizations": {
         "zh-Hans": {
@@ -202,6 +212,16 @@
         }
       }
     },
+    "Command finished": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "命令已结束"
+          }
+        }
+      }
+    },
     "Connect to Remote Host": {
       "localizations": {
         "zh-Hans": {
@@ -362,6 +382,16 @@
         }
       }
     },
+    "Exit code %lld": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出码 %lld"
+          }
+        }
+      }
+    },
     "Expand": {
       "localizations": {
         "zh-Hans": {
@@ -508,6 +538,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "名称"
+          }
+        }
+      }
+    },
+    "Needs Input": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "需要输入"
           }
         }
       }

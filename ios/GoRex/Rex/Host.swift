@@ -79,6 +79,38 @@ final class Host: Identifiable {
         var view: SessionView?
     }
 
+    /// A record a program in a terminal reported (OSC 7501), as
+    /// program_status_changed and com.superlogical.terminal.program_status
+    /// give it: its state is idle, working, blocked, done or error.
+    struct ProgramStatus: Equatable {
+        let id: String
+        var state: String
+        var kind: String?
+        var progress: Int?
+        var app: String?
+        var title: String?
+        var msg: String?
+
+        init?(json: Any) {
+            guard let j = json as? [String: Any], let state = j["state"] as? String else { return nil }
+            func text(_ k: String) -> String? { (j[k] as? String).flatMap { $0.isEmpty ? nil : $0 } }
+            id = j["id"] as? String ?? ""
+            self.state = state
+            kind = text("kind")
+            progress = j["progress"] as? Int
+            app = text("effective_app") ?? text("app")
+            title = text("title")
+            msg = text("msg")
+        }
+
+        /// How much the record needs the user, as the desktop orders them.
+        var rank: Int { ["idle": 1, "working": 2, "done": 3, "error": 4, "blocked": 5][state] ?? 0 }
+    }
+
+    /// Called when a program turns blocked, as it waits for the user: the
+    /// host, the session, the block and the record.
+    static var blocked: ((Host, String, String, ProgramStatus) -> Void)?
+
     var config: HostConfig
     var id: UUID { config.id }
     private(set) var status = Status.connecting
@@ -86,6 +118,8 @@ final class Host: Identifiable {
     /// Terminal titles and foreground programs, by block.
     private(set) var titles: [String: String] = [:]
     private(set) var programs: [String: String] = [:]
+    /// What the programs in each block reported, by block.
+    private(set) var statuses: [String: [ProgramStatus]] = [:]
     private(set) var control: ControlConnection?
 
     @ObservationIgnored private var gate = EventGate()
@@ -164,6 +198,7 @@ final class Host: Identifiable {
         let all = (r["attach_all"] as? [String: Any])?["sessions"] as? [[String: Any]] ?? []
         titles = [:]
         programs = [:]
+        statuses = [:]
         sessions = all.compactMap { s in
             (s["session_id"] as? String).map { Session(id: $0, label: s["label"] as? String ?? "") }
         }
@@ -207,11 +242,27 @@ final class Host: Identifiable {
             switch e.payload["name"] as? String {
             case "title_changed": titles[block] = p["title"] as? String
             case "process_changed": programs[block] = Self.program(p["foreground"])
+            case "program_status_changed":
+                let was = statuses[block] ?? []
+                let now = (p["records"] as? [Any] ?? []).compactMap(ProgramStatus.init)
+                statuses[block] = now
+                for r in now where r.state == "blocked" && !was.contains(where: { $0.id == r.id && $0.state == "blocked" }) {
+                    if let s = e.sessionID { Self.blocked?(self, s, block, r) }
+                }
+            case "program_status_removed":
+                let ids = p["ids"] as? [String] ?? []
+                statuses[block]?.removeAll { ids.contains($0.id) }
             default: break
             }
         default:
             break
         }
+    }
+
+    /// The record of blocks that most needs the user, as the desktop's dot
+    /// shows it: one blocked first.
+    func status(_ blocks: [String]) -> ProgramStatus? {
+        blocks.flatMap { statuses[$0] ?? [] }.max { $0.rank < $1.rank }
     }
 
     private func revision(_ id: String) -> Int {
@@ -245,7 +296,8 @@ final class Host: Identifiable {
         }
     }
 
-    /// Reads a block's title and program, which its events keep up to date.
+    /// Reads a block's title, program and status, which its events keep up
+    /// to date.
     private func describe(session: String, block: String) {
         titles[block] = ""
         Task {
@@ -255,6 +307,10 @@ final class Host: Identifiable {
             }
             if let p = try? await c.callBlock("process", session: session, block: block), programs[block] == nil {
                 programs[block] = Self.program(p["foreground"])
+            }
+            if let r = try? await c.callBlock("program_status", session: session, block: block)["records"] as? [Any],
+               statuses[block] == nil {
+                statuses[block] = r.compactMap(ProgramStatus.init)
             }
         }
     }

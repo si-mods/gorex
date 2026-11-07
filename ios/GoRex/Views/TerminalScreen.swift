@@ -34,6 +34,7 @@ struct TerminalScreen: View {
             .ignoresSafeArea(.keyboard)
             .background(Color(cgColor: bg.cgColor).ignoresSafeArea())
             .overlay { status }
+            .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p) } }
             .navigationTitle(target.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -48,8 +49,12 @@ struct TerminalScreen: View {
                 let s = session ?? TerminalSession(host: host, session: target.session, block: target.block)
                 session = s
                 s.start()
+                Notifier.shared.onScreen = target
             }
-            .onDisappear { session?.close() }
+            .onDisappear {
+                session?.close()
+                if Notifier.shared.onScreen == target { Notifier.shared.onScreen = nil }
+            }
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
@@ -81,6 +86,24 @@ struct TerminalScreen: View {
 
     private func label(_ s: String) -> some View {
         Text(s).font(.callout).padding(12).glassEffect(.regular, in: .rect(cornerRadius: 14))
+    }
+}
+
+/// The progress a program reports, as a thin line under the bar: its
+/// share, or all of it faint while it can't tell, red on an error.
+private struct ProgressLine: View {
+    let progress: TerminalSession.Progress
+
+    var body: some View {
+        GeometryReader { g in
+            Rectangle()
+                .fill(progress.failed ? Color.red : Color.accentColor)
+                .opacity(progress.fraction == nil ? 0.4 : 1)
+                .frame(width: g.size.width * (progress.fraction ?? 1))
+                .animation(.default, value: progress)
+        }
+        .frame(height: 2)
+        .allowsHitTesting(false)
     }
 }
 
