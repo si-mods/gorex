@@ -10,9 +10,7 @@ import UniformTypeIdentifiers
 /// failed.
 extension TerminalView: UIDocumentPickerDelegate {
     func addPhoto() {
-        // The keyboard goes, or it covers the sheet's lower half.
-        resignFirstResponder()
-        present(PhotoPicker { [weak self] providers in
+        guard present(PhotoPicker { [weak self] providers in
             guard let self else { return }
             becomeFirstResponder()
             if providers.isEmpty { return }
@@ -23,7 +21,9 @@ extension TerminalView: UIDocumentPickerDelegate {
                 }
                 return files
             }
-        })
+        }) else { return }
+        // The keyboard goes, or it covers the sheet's lower half.
+        resignFirstResponder()
     }
 
     func addFile() {
@@ -96,10 +96,13 @@ extension TerminalView: UIDocumentPickerDelegate {
         present(a)
     }
 
-    /// Presents a view controller over the one that shows the terminal.
-    private func present(_ vc: UIViewController) {
+    /// Presents a view controller over the one that shows the terminal;
+    /// false when it can't, as when something is up already.
+    @discardableResult private func present(_ vc: UIViewController) -> Bool {
         let shown = sequence(first: self as UIResponder, next: \.next).lazy.compactMap { $0 as? UIViewController }.first
-        shown?.present(vc, animated: true)
+        guard let shown, shown.presentedViewController == nil else { return false }
+        shown.present(vc, animated: true)
+        return true
     }
 }
 
@@ -108,7 +111,9 @@ extension TerminalView: UIDocumentPickerDelegate {
 /// with it its Cancel and Add. Close, or a swipe down, picks nothing.
 private final class PhotoPicker: UINavigationController, PHPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
     private let closed: ([NSItemProvider]) -> Void
-    private var picked: [PHPickerResult] = []
+    private var picked: [NSItemProvider] = []
+    /// Whether Close or Add went: the sheet takes a moment to go.
+    private var done = false
     private let add = UIBarButtonItem()
 
     init(closed: @escaping ([NSItemProvider]) -> Void) {
@@ -126,9 +131,7 @@ private final class PhotoPicker: UINavigationController, PHPickerViewControllerD
         super.init(rootViewController: p)
         p.delegate = self
         p.navigationItem.title = String(localized: "Add Photo")
-        let close = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [unowned self] _ in finish([]) })
-        close.accessibilityLabel = String(localized: "Close")
-        p.navigationItem.leftBarButtonItem = close
+        p.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [unowned self] _ in finish([]) })
         add.primaryAction = UIAction(title: String(localized: "Add")) { [unowned self] _ in finish(picked) }
         add.style = .prominent
         add.isEnabled = false
@@ -146,7 +149,7 @@ private final class PhotoPicker: UINavigationController, PHPickerViewControllerD
     required init?(coder: NSCoder) { fatalError() }
 
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-        picked = results
+        picked = results.map(\.itemProvider)
         add.isEnabled = !results.isEmpty
     }
 
@@ -154,7 +157,9 @@ private final class PhotoPicker: UINavigationController, PHPickerViewControllerD
         closed([])
     }
 
-    private func finish(_ results: [PHPickerResult]) {
-        dismiss(animated: true) { [closed] in closed(results.map(\.itemProvider)) }
+    private func finish(_ providers: [NSItemProvider]) {
+        guard !done else { return }
+        done = true
+        dismiss(animated: true) { [closed] in closed(providers) }
     }
 }
