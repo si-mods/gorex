@@ -129,12 +129,16 @@ allow.
    once, and never saved or logged). A tailnet run by your own control
    server, such as Headscale, takes its URL:
    `GoRex rexapi tailscale on --control-url https://headscale.example.com`,
-   or in Settings › Network's Tailscale card. The URL must be `https`,
-   since the device's keys and network map cross it: `http` is accepted
-   only for `localhost` or a loopback, private (RFC 1918, `fc00::/7`) or
-   link-local IP address, judged as written and not resolved, so a name
-   such as `http://headscale.lan` and the CGNAT range `100.64.0.0/10`
-   need `https`. Turn it off first to switch
+   or in Settings › Network's Tailscale card. The URL must be `https`:
+   the control traffic itself is encrypted, but the device fetches the
+   server's key over the URL unauthenticated, so over `http` anyone on
+   the path could swap the key. `http` is accepted only for `localhost`
+   or a loopback, private (RFC 1918, `fc00::/7`) or link-local IP
+   address, judged as written and not resolved; a name such as
+   `http://headscale.lan` and Tailscale's own ranges (`100.64.0.0/10`,
+   `fd7a:115c:a1e0::/48`) need `https`. A saved `http` URL that is
+   refused keeps the device off, and `GoRex rexapi tailscale status` and
+   Settings say why. Turn it off first to switch
    servers; an explicit empty `control_url`
    (`GoRex rexapi call server.tailscale.enable '{"allow_tailnet_members":false,"control_url":""}'`)
    or an empty field in Settings returns the device to Tailscale's own.

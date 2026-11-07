@@ -551,13 +551,15 @@ func TestControlURLCleartext(t *testing.T) {
 		"https://203.0.113.7",
 		"https://[2001:db8::1]:8443",
 		"http://localhost:8080",
+		"http://LocalHost",
+		"http://localhost.:8080",
 		"http://127.0.0.1",
 		"http://[::1]:8080",
 		"http://10.0.0.1:8080",
 		"http://172.16.5.4",
 		"http://192.168.1.10",
 		"http://169.254.1.1",
-		"http://[fd7a:115c:a1e0::1]",
+		"http://[fd00::1]",
 		"http://[fe80::1%25en0]:8080",
 		"http://[::ffff:192.168.1.10]",
 	} {
@@ -571,6 +573,8 @@ func TestControlURLCleartext(t *testing.T) {
 		"http://[2001:db8::1]:8080",
 		"http://[::ffff:203.0.113.7]",
 		"http://100.64.0.1",
+		"http://[fd7a:115c:a1e0::1]",
+		"https://:8443",
 		"http://0.0.0.0",
 		"http://headscale",
 		"http://headscale.local",
@@ -602,6 +606,33 @@ func TestTailscaleControlURLFromFile(t *testing.T) {
 	}
 	if ts["control_url"] != "https://headscale.example.com" {
 		t.Errorf("status control_url %v", ts["control_url"])
+	}
+}
+
+// TestTailscaleResumeRefused: a device that was on comes back off when its
+// saved control server is now refused, and the status tells why.
+func TestTailscaleResumeRefused(t *testing.T) {
+	f := startTailnetFixture(t)
+	f.g.tailnet.conf = TailscaleConfig{Enabled: true, ControlURL: "http://203.0.113.7"}
+	if err := writeJSON(tailscaleConfPath(f.dir), f.g.tailnet.conf); err != nil {
+		t.Fatal(err)
+	}
+	f.g.tailnet.resume()
+	st := f.g.tailnet.status()
+	if st.State != "disabled" || !strings.Contains(st.Error, "http://203.0.113.7") {
+		t.Errorf("status %+v, want disabled with the refused control server", st)
+	}
+}
+
+// TestSetTailnetEnabledRefusesControlURL: without a gateway, turning
+// Tailscale on writes no control server that a gateway would refuse.
+func TestSetTailnetEnabledRefusesControlURL(t *testing.T) {
+	dir := t.TempDir()
+	if err := setTailnetEnabled(dir, map[string]any{"control_url": "http://203.0.113.7"}); err == nil {
+		t.Error("a cleartext public control server was accepted")
+	}
+	if got, _ := LoadTailscale(dir); got.Enabled || got.ControlURL != "" {
+		t.Errorf("wrote %+v", got)
 	}
 }
 
