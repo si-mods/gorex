@@ -44,19 +44,15 @@ func (a *App) hostButton(c *ui.Context, k *colors) {
 	name, _, glyph := a.hostIdentity()
 	label := locales.HostLabel(name)
 	var bad *hostConn
-	n := 0
-	for _, h := range a.hosts {
-		if h.state == hostConnected || h.state == hostConnecting {
-			continue
-		}
-		n++
+	away := a.awayHosts()
+	for _, h := range away {
 		if bad == nil || (h.state == hostFailed && bad.state != hostFailed) {
 			bad = h
 		}
 	}
 	if bad != nil {
 		status, _, _ := hostStatus(bad)
-		label = locales.HostLabelIssue(name, a.hostName(bad), status, n-1)
+		label = locales.HostLabelIssue(name, a.hostName(bad), status, len(away)-1)
 	}
 	b := iconButtonWith(c, k, glyph, label, 30, 16, a.hostOpen, func() {
 		if bad != nil {
@@ -67,6 +63,17 @@ func (a *App) hostButton(c *ui.Context, k *colors) {
 		a.hostOpen = !a.hostOpen
 	}
 	a.hostPopover(c, k, b, name, glyph)
+}
+
+// awayHosts is the remote hosts that are not connected, but for those
+// making their first attempt.
+func (a *App) awayHosts() (away []*hostConn) {
+	for _, h := range a.hosts {
+		if h.state != hostConnected && h.state != hostConnecting {
+			away = append(away, h)
+		}
+	}
+	return
 }
 
 // hostIdentity is this machine's name, model, and the icon that stands
@@ -104,7 +111,7 @@ func (a *App) hostPopover(c *ui.Context, k *colors, anchor ui.Element, name, gly
 		}
 		glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(room).Width(300).Padding(14).Radius(14), k.panel).Border(1, k.panelBorder).
 			Shadow(0, 12, 32, 0, k.shadowFocused)
-		// A short window or many hosts scroll the panel's body.
+		// A short window scrolls the panel's body.
 		ui.Scroll(c).MinHeight(0).Children(func() {
 			ui.Column(c).Gap(12).Children(func() { a.hostPanel(c, k, name, glyph) })
 		})
@@ -142,9 +149,39 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 		row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
 		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
 	})
+	ui.Divider(c)
 	a.hostsInPanel(c, k)
 	ui.Text(c, locales.HostNote()).
 		FontSize(11.5).TextColor(k.textFaint).LineHeight(1.35)
+}
+
+// hostsInPanel leads, from the host's panel, to the remote hosts: it
+// names those the host button flags, with a button to the Remote Hosts
+// settings, or, with no hosts saved, a button that adds one.
+func (a *App) hostsInPanel(c *ui.Context, k *colors) {
+	away := a.awayHosts()
+	for _, h := range away {
+		status, _, _ := hostStatus(h)
+		ui.Row(c.Key(hostKey(h))).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(7, 7).Radius(4).Background(hostDot(k, h)).Shrink(0)
+			ui.Text(c, a.hostName(h)).FontSize(12.5).FontWeight(600).TextColor(k.text).MinWidth(0).SingleLine().Ellipsis("…")
+			ui.Text(c, status).FontSize(12.5).TextColor(k.textFaint).Shrink(0)
+		})
+	}
+	label := locales.HostsManage()
+	switch {
+	case len(a.hosts) == 0:
+		label = locales.HostsAdd()
+	case len(away) == 0:
+		return
+	}
+	if ui.Button(c, label).Clicked() {
+		a.hostOpen = false
+		a.openSettingsAt("remote")
+		if len(a.hosts) == 0 {
+			a.openAddHost()
+		}
+	}
 }
 
 // hostFacts tells the machine h's facts to row, each as its label and
@@ -183,49 +220,6 @@ func roundDur(d time.Duration) string {
 		return locales.HostDurHoursMinutes(int(d.Hours()), int(d.Minutes())%60)
 	}
 	return locales.HostDurDays(int(d.Hours() / 24))
-}
-
-// hostsInPanel lists, in the host's panel, this machine and the remote
-// hosts with their state, each with a button that opens a tab there, and
-// a button to the Remote Hosts settings.
-func (a *App) hostsInPanel(c *ui.Context, k *colors) {
-	ui.Divider(c)
-	if len(a.hosts) > 0 {
-		ui.Text(c, locales.SettingsHosts()).FontSize(12).FontWeight(600).TextColor(k.textFaint)
-		ui.Column(c).Gap(2).Children(func() {
-			for _, h := range a.allHosts() {
-				name, label, dot := a.hostName(h), locales.HostsConnected(), k.busy
-				if h != nil {
-					label, _, _ = hostStatus(h)
-					dot = hostDot(k, h)
-				}
-				sessions := a.sessionsOn(h)
-				ui.Row(c.Key(hostKey(h))).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
-					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
-						ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
-						ui.Text(c, label+" · "+locales.HostsSessions(sessions)).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
-					})
-					newTab := locales.CmdNewTabOn(name)
-					if iconButton(c, k, "plus", newTab, 26, 15).Tooltip(newTab).Clicked() {
-						a.hostOpen = false
-						a.newTabOn(h, a.dirOn(h))
-					}
-				})
-			}
-		})
-	}
-	label := locales.HostsManage()
-	if len(a.hosts) == 0 {
-		label = locales.HostsAdd()
-	}
-	if ui.Button(c, label).Clicked() {
-		a.hostOpen = false
-		a.openSettingsAt("remote")
-		if len(a.hosts) == 0 {
-			a.openAddHost()
-		}
-	}
 }
 
 // thisMachine names the machine the app runs on, as its system does.

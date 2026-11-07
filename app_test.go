@@ -849,6 +849,10 @@ func TestSidebarHostButton(t *testing.T) {
 	if panel.Y < 0 || panel.Y+panel.H > btn.Y {
 		t.Errorf("the panel's row is at %v, over the button at %v or out of the window", panel, btn)
 	}
+	// With no hosts saved, it adds one; it notes where sessions live.
+	if !tt.HasText(locales.HostsAdd()) || tt.HasText(locales.HostsManage()) || !tt.HasText(locales.HostNote()) {
+		t.Errorf("with no hosts the panel has no add button or no note; texts %q", tt.Texts())
+	}
 
 	// A host that is not connected shows in the label, in the worst's name.
 	a.hostOpen = false
@@ -887,8 +891,28 @@ func TestSidebarHostButton(t *testing.T) {
 	if h, ok := tt.Find("Testbook"); !ok || h.Y < 14 {
 		t.Errorf("in a short window the panel's top row is at %v: the panel goes past the window's top", h)
 	}
-	if !tt.HasText(locales.SettingsHosts()) {
-		t.Errorf("the hosts' list is out of reach; texts %q", tt.Texts())
+	// The panel tells this machine and its server, not the remote hosts:
+	// they are on the Remote page alone, but for one not connected, which
+	// the button flags, and a way to that page. The sidebar names the
+	// hosts too: the panel's own are the more with it open.
+	inPanel := func(text string) int {
+		count := func() int { return len(slices.DeleteFunc(tt.Texts(), func(s string) bool { return s != text })) }
+		n := count()
+		a.hostOpen = false
+		tt.Frame()
+		defer func() { a.hostOpen = true; tt.Frame() }()
+		return n - count()
+	}
+	if slices.Contains(tt.Texts(), locales.SettingsHosts()) || tt.HasText(locales.CmdNewTabOn("office")) || tt.HasText(locales.HostsAdd()) {
+		t.Errorf("the panel lists the remote hosts; texts %q", tt.Texts())
+	}
+	if inPanel("office") != 1 || !tt.HasText(status) || !tt.HasText(locales.HostsManage()) || !tt.HasText(locales.HostNote()) {
+		t.Errorf("the panel does not tell the failed host or lead to the Remote page; texts %q", tt.Texts())
+	}
+	a.hosts = []*hostConn{{savedHost: savedHost{ID: "3", Name: "fine"}, state: hostConnected}}
+	tt.Frame()
+	if inPanel("fine") != 0 || tt.HasText(locales.CmdNewTabOn("fine")) || tt.HasText(locales.HostsManage()) || tt.HasText(locales.HostsAdd()) {
+		t.Errorf("with its hosts connected the panel lists them or has a hosts button; texts %q", tt.Texts())
 	}
 }
 
