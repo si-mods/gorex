@@ -102,14 +102,22 @@ func (a *App) upload(p *Pane, paths []string) {
 				pasted = append(pasted, it.path)
 				continue
 			}
-			it.put.Temp = temp
+			// Into the temporary folder a file goes by a name the shell
+			// takes, whose path pastes.
+			if it.put.Temp = temp; temp {
+				it.put.Name = rex.PasteableName(shell, it.put.Name)
+			}
 			c := h.current()
 			if c == nil {
 				it.x.cancel()
 				update(func() { it.x.err = offline })
 				continue
 			}
-			if path, err := putFile(it.ctx, c, it.put, it.path, it.x, update); err == nil {
+			path, err := putFile(it.ctx, c, it.put, it.path, it.x, update)
+			if _, ok := rex.PathWord(shell, path); err == nil && !ok {
+				// Kept its name, in the shell's directory, it is not typed.
+				update(func() { it.x.ok, it.x.err = false, locales.PaneUploadNotPasted() })
+			} else if err == nil {
 				pasted = append(pasted, path)
 			}
 		}
@@ -268,9 +276,15 @@ func (p *Pane) stopTransfers() {
 // space, so that the paths of the next drop, or what is typed, are
 // another word.
 func pastedPaths(shell string, paths []string) string {
-	words := make([]string, len(paths))
-	for i, path := range paths {
-		words[i] = rex.PathWord(shell, path)
+	var words []string
+	for _, path := range paths {
+		// A path the shell's quoting refuses is left out.
+		if w, ok := rex.PathWord(shell, path); ok {
+			words = append(words, w)
+		}
+	}
+	if len(words) == 0 {
+		return ""
 	}
 	return strings.Join(words, " ") + " "
 }

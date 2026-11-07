@@ -63,16 +63,30 @@ func QuoterOf(shell string) func(string) (string, bool) {
 
 // PathWord is path as a word of the shell at shell, as a file's path is
 // pasted into a terminal: quoted as sh quotes it for a shell the quoting
-// does not know, and as it is when it cannot be quoted.
-func PathWord(shell, path string) string {
+// does not know. It reports false for a path the quoting refuses, which is
+// not to be pasted.
+func PathWord(shell, path string) (string, bool) {
 	q := QuoterOf(shell)
 	if q == nil {
 		q = posixWord
 	}
-	if w, ok := q(path); ok {
-		return w
+	return q(path)
+}
+
+// PasteableName is name, a file's, with each character the quoting of the
+// shell at shell refuses replaced by _: its path then pastes, as a file
+// dropped into a host's temporary folder is named.
+func PasteableName(shell, name string) string {
+	q := QuoterOf(shell)
+	if q == nil {
+		q = posixWord
 	}
-	return path
+	return strings.Map(func(r rune) rune {
+		if _, ok := q(string(r)); !ok {
+			return '_'
+		}
+		return r
+	}, name)
 }
 
 // plainWord tells whether s reads as one word of every shell here: letters,

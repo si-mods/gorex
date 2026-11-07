@@ -82,7 +82,8 @@ func (g *Gateway) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, aerr.Status, aerr.Message)
 		return
 	}
-	put := rex.FilePut{SID: b.sid, Name: name, Size: r.ContentLength, ID: fmt.Sprintf("%x", randomBytes(8)), Conflict: "rename", Temp: true}
+	// The file goes by a name the block's shell takes, whose path pastes.
+	put := rex.FilePut{SID: b.sid, Name: rex.PasteableName(info.Shell, name), Size: r.ContentLength, ID: fmt.Sprintf("%x", randomBytes(8)), Conflict: "rename", Temp: true}
 	// A client that goes away cancels the put, which removes what the
 	// server has of the file.
 	path, _, err := g.opt.Client.PutFile(r.Context(), put, &streamAt{r: r.Body}, nil)
@@ -90,8 +91,15 @@ func (g *Gateway) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, strings.TrimPrefix(err.Error(), "rex: "))
 		return
 	}
+	// A temporary folder of a path the shell refuses is not pasted: the
+	// error says so.
+	word, ok := rex.PathWord(info.Shell, path)
+	if !ok {
+		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("%s is uploaded, but its path cannot be typed into the shell", path))
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(uploadResult{Path: path, Word: rex.PathWord(info.Shell, path)})
+	json.NewEncoder(w).Encode(uploadResult{Path: path, Word: word})
 }
 
 // streamAt reads a stream as an io.ReaderAt read from the start, in order,
