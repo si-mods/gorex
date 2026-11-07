@@ -672,9 +672,20 @@ type ProgramStatus struct {
 	Title   string    `json:"title,omitempty"`
 	Msg     string    `json:"msg,omitempty"`
 	Updated time.Time `json:"updated"`
-	// LastMsg is the last message a report for the record carried, kept
-	// when a later one carries none.
+	// LastMsg is the last message a working report for the record
+	// carried: what the program did last, kept when a later report
+	// carries none, as Claude Code reports done without one.
 	LastMsg string `json:"last_msg,omitempty"`
+}
+
+// Message is what a record tells: its message, else, once it is done
+// or failed, what it did last. A working or blocked record without one
+// tells nothing: its last message is of an earlier step.
+func (s *ProgramStatus) Message() string {
+	if s.Msg != "" || s.State != "done" && s.State != "error" {
+		return s.Msg
+	}
+	return s.LastMsg
 }
 
 // Hello is the server's answer to "hello".

@@ -23,14 +23,14 @@ func TestStatusReports(t *testing.T) {
 		{"BEL", "\x1b]7501;state=done\x07", &ProgramStatus{State: "done", Progress: -1}},
 		{"in text", "ab" + osc("state=idle") + "cd", &ProgramStatus{State: "idle", Progress: -1}},
 		{"blocked", osc(" state = blocked :kind=question:msg=" + b64("Allow rm?") + ":title=" + strings.TrimRight(b64("Fix"), "=")),
-			&ProgramStatus{State: "blocked", Kind: "question", Progress: -1, Title: "Fix", Msg: "Allow rm?", LastMsg: "Allow rm?"}},
+			&ProgramStatus{State: "blocked", Kind: "question", Progress: -1, Title: "Fix", Msg: "Allow rm?"}},
 		{"unknown kind", osc("state=blocked:kind=nope"), &ProgramStatus{State: "blocked", Progress: -1}},
 		{"kind only blocked", osc("state=working:kind=auth"), &ProgramStatus{State: "working", Progress: -1}},
 		{"progress range", osc("state=working:progress=101"), &ProgramStatus{State: "working", Progress: -1}},
 		{"progress only working", osc("state=done:progress=5"), &ProgramStatus{State: "done", Progress: -1}},
 		{"last wins", osc("state=idle:state=error"), &ProgramStatus{State: "error", Progress: -1}},
 		{"malformed pair", osc("state=done:bad:X=1:foo=a b"), &ProgramStatus{State: "done", Progress: -1}},
-		{"bidi dropped", osc("state=done:msg=" + b64("a‮b")), &ProgramStatus{State: "done", Progress: -1, Msg: "ab", LastMsg: "ab"}},
+		{"bidi dropped", osc("state=done:msg=" + b64("a‮b")), &ProgramStatus{State: "done", Progress: -1, Msg: "ab"}},
 		{"unknown state", osc("state=sleeping"), nil},
 		{"no state", osc("app=x"), nil},
 		{"bad base64", osc("state=done:msg=a"), nil},
@@ -123,6 +123,14 @@ func TestStatusLastMsg(t *testing.T) {
 	st.feed([]byte(osc("state=done")))
 	if got := st.records[""]; got.Msg != "" || got.LastMsg != "Testing" {
 		t.Fatalf("done without msg: %+v, want last msg Testing", got.ProgramStatus)
+	}
+	// A blocked question is no step of the work: done after it tells the work's.
+	st.feed([]byte(osc("state=blocked:kind=question:msg="+b64("Allow rm?")) + osc("state=working") + osc("state=done")))
+	if got := st.records[""]; got.LastMsg != "Testing" || got.Message() != "Testing" {
+		t.Fatalf("after a question: last %q, message %q, want Testing", got.LastMsg, got.Message())
+	}
+	if w := (ProgramStatus{State: "working", LastMsg: "Testing"}); w.Message() != "" {
+		t.Fatalf("working without msg tells %q, want none", w.Message())
 	}
 	st.feed([]byte(osc("state=working:msg=" + b64("Uploading"))))
 	if got := last(""); got != "Uploading" {

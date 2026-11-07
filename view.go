@@ -1522,7 +1522,7 @@ func statusTip(s *rex.ProgramStatus) string {
 		state += fmt.Sprintf(", %d%%", s.Progress)
 	}
 	var parts []string
-	for _, p := range []string{s.App, state, s.Title, cmp.Or(s.Msg, s.LastMsg)} {
+	for _, p := range []string{s.App, state, s.Title, s.Message()} {
 		if p != "" {
 			parts = append(parts, p)
 		}
