@@ -224,7 +224,8 @@ func (a *App) settingsView(c *ui.Context) {
 		})
 	})
 	if page := hostsPairQR; page != nil {
-		if page.local && page.address != a.localRexPairURL() {
+		// A code of this machine closes once its address no longer works.
+		if tailnet, lan := localRexPairs(); page.local && page.address != tailnet && page.address != lan {
 			hostsPairQR = nil
 		} else {
 			hostPairQRSheet(c, k, page)

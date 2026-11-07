@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"gorex/internal/rex"
@@ -32,13 +34,14 @@ type gatewayWelcome struct {
 // callGateway calls one method of the gateway serving the socket at
 // path, as a Rex client does, and returns its payload.
 func callGateway(path, method string, payload any) (json.RawMessage, error) {
-	out, _, err := callGatewayWelcome(path, method, payload)
+	out, _, err := callGatewayWelcome(path, method, payload, 20*time.Second)
 	return out, err
 }
 
-// callGatewayWelcome is callGateway, with the gateway's welcome.
-func callGatewayWelcome(path, method string, payload any) (json.RawMessage, gatewayWelcome, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+// callGatewayWelcome is callGateway, with the gateway's welcome, given
+// up after within.
+func callGatewayWelcome(path, method string, payload any, within time.Duration) (json.RawMessage, gatewayWelcome, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), within)
 	defer cancel()
 	httpc := &http.Client{Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
@@ -116,7 +119,7 @@ type GatewayInfo struct {
 // GatewayVersion asks the gateway that runs on this machine, failing
 // when none does.
 func GatewayVersion() (GatewayInfo, error) {
-	raw, wel, err := callGatewayWelcome(SocketPath(), "server.version", nil)
+	raw, wel, err := callGatewayWelcome(SocketPath(), "server.version", nil, 20*time.Second)
 	if err != nil {
 		return GatewayInfo{}, err
 	}
@@ -492,34 +495,83 @@ func pairURL(st *tailscaleStatus) (string, error) {
 // device is not signed in, or its HTTPS address is not ready.
 //
 // A hello asks for it, so the answer is kept for a moment: the address
-// changes only when the gateway's Tailscale mode does.
-var pairURLNow = struct {
+// changes only when the gateway's Tailscale mode does. When the last
+// look is older than that, PairURL waits for a new one, at most two
+// seconds; the UI thread asks CachedPairURL instead.
+func PairURL() string {
+	return pairURLWith(true, nil)
+}
+
+// CachedPairURL is PairURL without the wait: what the last look found.
+// When that is old, it starts a new look in the background, and calls
+// changed if the look changes the address.
+func CachedPairURL(changed func()) string {
+	return pairURLWith(false, changed)
+}
+
+// pairNow is what the last look at the gateway's address found.
+var pairNow struct {
 	sync.Mutex
 	at  time.Time
 	url string
-}{}
+	// done is closed when the look that runs ends; nil while none runs.
+	done chan struct{}
+	// changed is called when a look changes url.
+	changed func()
+}
 
-const pairURLFor = 5 * time.Second
+const pairFor = 5 * time.Second
 
-func PairURL() string {
-	pairURLNow.Lock()
-	defer pairURLNow.Unlock()
-	if time.Since(pairURLNow.at) < pairURLFor {
-		return pairURLNow.url
+func pairURLWith(wait bool, changed func()) string {
+	pairNow.Lock()
+	stale := time.Since(pairNow.at) >= pairFor
+	if stale && pairNow.done == nil {
+		pairNow.done = make(chan struct{})
+		go lookPairURL(pairNow.done)
 	}
-	url := ""
-	if out, err := callGateway(SocketPath(), "server.status", nil); err == nil {
+	if changed != nil {
+		pairNow.changed = changed
+	}
+	done := pairNow.done
+	pairNow.Unlock()
+	if wait && stale {
+		<-done
+	}
+	pairNow.Lock()
+	defer pairNow.Unlock()
+	return pairNow.url
+}
+
+// lookPairURL asks the gateway for its address. Only an answer, or a
+// gateway that is not there, sets it; a look that fails otherwise keeps
+// the address the last one found.
+func lookPairURL(done chan struct{}) {
+	url, known := "", false
+	path := SocketPath()
+	out, _, err := callGatewayWelcome(path, "server.status", nil, 2*time.Second)
+	if err == nil {
 		var res struct {
 			Tailscale *tailscaleStatus `json:"tailscale"`
 		}
 		if json.Unmarshal(out, &res) == nil {
-			if u, err := pairURL(res.Tailscale); err == nil {
-				url = u
-			}
+			url, _ = pairURL(res.Tailscale)
+			known = true
 		}
+	} else if _, serr := os.Stat(path); errors.Is(serr, fs.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
+		known = true
 	}
-	pairURLNow.at, pairURLNow.url = time.Now(), url
-	return url
+	pairNow.Lock()
+	changed := known && url != pairNow.url
+	if known {
+		pairNow.url = url
+	}
+	pairNow.at, pairNow.done = time.Now(), nil
+	wake := pairNow.changed
+	pairNow.Unlock()
+	close(done)
+	if changed && wake != nil {
+		wake()
+	}
 }
 
 // renderQR draws a QR code in a terminal, two rows a line with half

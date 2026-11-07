@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+
+	"gorex/internal/testrex"
 	"rsc.io/qr"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/ipn/ipnstate"
@@ -766,5 +768,120 @@ func TestAuthURLOnlyLocal(t *testing.T) {
 		if ev := serverEvent(t, c.conn, "tailscale_status_changed"); ev["state"] != "running" || ev["auth_url"] != nil {
 			t.Errorf("%s event: %v", c.name, ev)
 		}
+	}
+}
+
+// setPairNow makes the last look at the gateway's address find url, age
+// ago, once no look runs, and puts back none after the test. The test's
+// own GoRex directory keeps the looks from this machine's gateway.
+func setPairNow(t *testing.T, url string, age time.Duration) {
+	t.Helper()
+	if os.Getenv("GOREX_DIR") == "" {
+		t.Setenv("GOREX_DIR", t.TempDir())
+	}
+	reset := func(url string, at time.Time) {
+		waitFor(t, "the look", func() bool { return !pairLooking() })
+		pairNow.Lock()
+		pairNow.at, pairNow.url, pairNow.changed = at, url, nil
+		pairNow.Unlock()
+	}
+	reset(url, time.Now().Add(-age))
+	t.Cleanup(func() { reset("", time.Time{}) })
+}
+
+func pairLooking() bool {
+	pairNow.Lock()
+	defer pairNow.Unlock()
+	return pairNow.done != nil
+}
+
+// TestPairURLStalledGateway: with a gateway that answers no one,
+// CachedPairURL answers the last address at once and looks once in the
+// background; the look keeps the address when it fails, and PairURL
+// waits for it no longer than two seconds.
+func TestPairURLStalledGateway(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
+	gw := testrex.NewStalled(t)
+	t.Setenv("GOREX_REXAPI_SOCKET", gw.Path)
+	setPairNow(t, "https://dev.example.ts.net", time.Hour)
+	for range 3 {
+		if url := CachedPairURL(nil); url != "https://dev.example.ts.net" {
+			t.Fatalf("pair URL while the gateway stalls: %q", url)
+		}
+	}
+	if !pairLooking() {
+		t.Fatal("CachedPairURL answered after its look ended: it waited for the gateway")
+	}
+	waitFor(t, "the look to give up", func() bool { _, open := gw.Counts(); return !pairLooking() && open == 0 })
+	if dials, _ := gw.Counts(); dials != 1 {
+		t.Errorf("%d looks", dials)
+	}
+	if url := CachedPairURL(nil); url != "https://dev.example.ts.net" {
+		t.Errorf("a failed look replaced the address with %q", url)
+	}
+
+	setPairNow(t, "https://dev.example.ts.net", time.Hour)
+	if url := PairURL(); url != "https://dev.example.ts.net" {
+		t.Errorf("PairURL after a failed look: %q", url)
+	}
+	waitFor(t, "the look's connection to close", func() bool { _, open := gw.Counts(); return open == 0 })
+	if dials, _ := gw.Counts(); dials != 2 {
+		t.Errorf("PairURL: %d looks", dials)
+	}
+}
+
+// TestPairURLLooks: PairURL waits for the gateway's answer, and
+// CachedPairURL tells of a new address; a gateway that is not there, or
+// refuses the connection, has none.
+func TestPairURLLooks(t *testing.T) {
+	f := startTailnetFixture(t)
+	f.node.state = "Running"
+	close(f.node.ready)
+	f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false, "hostname": "dev"})
+	waitFor(t, "https", func() bool {
+		h, _ := tailscaleOf(t, f.mustCall("server.status", nil))["https"].(map[string]any)
+		return h["state"] == "available"
+	})
+	t.Setenv("GOREX_REXAPI_SOCKET", f.sock)
+	setPairNow(t, "", time.Hour)
+	if url := PairURL(); url != "https://dev.example.ts.net" {
+		t.Errorf("PairURL: %q", url)
+	}
+	setPairNow(t, "", time.Hour)
+	changed := make(chan struct{}, 1)
+	if url := CachedPairURL(func() { changed <- struct{}{} }); url != "" {
+		t.Errorf("CachedPairURL before its look: %q", url)
+	}
+	select {
+	case <-changed:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no word of the new address")
+	}
+	if url := CachedPairURL(nil); url != "https://dev.example.ts.net" {
+		t.Errorf("CachedPairURL after its look: %q", url)
+	}
+
+	t.Setenv("GOREX_REXAPI_SOCKET", filepath.Join(t.TempDir(), "none.sock"))
+	setPairNow(t, "https://dev.example.ts.net", time.Hour)
+	if url := PairURL(); url != "" {
+		t.Errorf("PairURL with no gateway: %q", url)
+	}
+
+	sdir, err := os.MkdirTemp("", "rx")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(sdir)
+	sock := filepath.Join(sdir, "g.sock")
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln.SetUnlinkOnClose(false)
+	ln.Close()
+	t.Setenv("GOREX_REXAPI_SOCKET", sock)
+	setPairNow(t, "https://dev.example.ts.net", time.Hour)
+	if url := PairURL(); url != "" {
+		t.Errorf("PairURL from a socket that refuses: %q", url)
 	}
 }
