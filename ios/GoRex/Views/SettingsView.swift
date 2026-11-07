@@ -300,7 +300,7 @@ private struct AboutView: View {
     @Environment(HostStore.self) private var store
     /// Each host's Rex version, as server.version tells it.
     @State private var versions: [UUID: String] = [:]
-    /// The text last copied, for its row to say so a moment.
+    /// The row last copied, by its icon, for it to say so a moment.
     @State private var copied: String?
 
     private let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String ?? "Rex Go"
@@ -396,10 +396,10 @@ private struct AboutView: View {
     private func copy(_ title: LocalizedStringKey, icon: String, _ text: String) -> some View {
         Button {
             UIPasteboard.general.string = text
-            copied = text
+            copied = icon
         } label: {
             LabeledContent {
-                if copied == text { Text("Copied") }
+                if copied == icon { Text("Copied") }
             } label: {
                 Label(title, systemImage: icon)
             }
