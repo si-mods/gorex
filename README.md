@@ -123,7 +123,9 @@ a build whose modification time is not newer than the server's. See
   zooms, so its terminal keeps its columns and rows. Turning it off docks
   every box back into the tab's splits. It may change or go away.
 - **Host chip** with the machine's name and model; its popover shows the
-  chip, memory, OS and the session server.
+  chip, memory, OS and the session server, and a remote host that is not
+  connected with a button to Settings › Remote (Add Remote Host… while
+  none is saved).
 - **Command palette** (⇧⌘P, Ctrl+Shift+P, or the ⌘ button): every command, and every pane
   to jump to, fuzzy-matched.
 - Light and dark appearances (View ▸ Appearance), text size (⌘+ ⌘− ⌘0),

@@ -318,6 +318,7 @@
   "hostsRemove": "移除",
   "hostsRemoveAsk": "移除 {host}？其会话会继续在远程服务器上运行；此窗口会关闭它们的标签页。",
   "hostsNotConnectedTo": "未连接到 {host}。",
+  "hostsManage": "远程主机…",
   "hostsSessions": "{n, plural, =0 {没有终端} other {# 个终端}}",
   "cmdNewTabOn": "在 {host} 上新建标签页",
   "paneReconnecting": "正在重新连接 {host}…",

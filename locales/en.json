@@ -1453,6 +1453,10 @@
       }
     }
   },
+  "hostsManage": "Remote Hosts…",
+  "@hostsManage": {
+    "description": "Host panel button, while a remote host is not connected: open the Remote Hosts settings."
+  },
   "hostsSessions": "{n, plural, =0 {No terminals} one {# terminal} other {# terminals}}",
   "@hostsSessions": {
     "description": "Remote page: how many terminals (panes) a host has in the window.",
