@@ -37,7 +37,8 @@ func (g *Gateway) features() []string {
 type uploadResult struct {
 	// Path is where the file is, absolute.
 	Path string `json:"path"`
-	// Word is Path as a word of the block's shell.
+	// Word is Path as a word of the block's shell, "" when its quoting
+	// refuses Path, which is not to be pasted.
 	Word string `json:"word"`
 }
 
@@ -91,7 +92,8 @@ func (g *Gateway) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(uploadResult{Path: path, Word: rex.PathWord(info.Shell, path)})
+	word, _ := rex.PathWord(info.Shell, path)
+	json.NewEncoder(w).Encode(uploadResult{Path: path, Word: word})
 }
 
 // streamAt reads a stream as an io.ReaderAt read from the start, in order,

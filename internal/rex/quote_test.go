@@ -77,3 +77,23 @@ func TestShellName(t *testing.T) {
 		}
 	}
 }
+
+// TestPathWord quotes a path for the shell, as sh for one it does not
+// know, and refuses one the shell's quoting refuses: cmd.exe would expand
+// its % or run what follows a newline.
+func TestPathWord(t *testing.T) {
+	for _, c := range []struct {
+		shell, path, want string
+		ok                bool
+	}{
+		{"/bin/zsh", "/tmp/a b", "'/tmp/a b'", true},
+		{"", "/tmp/a b", "'/tmp/a b'", true},
+		{`C:\Windows\System32\cmd.exe`, `C:\a b.txt`, `"C:\a b.txt"`, true},
+		{`C:\Windows\System32\cmd.exe`, `C:\a&b%c%.txt`, "", false},
+		{`C:\Windows\System32\cmd.exe`, "C:\\a\r\nb.txt", "", false},
+	} {
+		if w, ok := PathWord(c.shell, c.path); w != c.want || ok != c.ok {
+			t.Errorf("PathWord(%q, %q) = %q, %v, want %q, %v", c.shell, c.path, w, ok, c.want, c.ok)
+		}
+	}
+}

@@ -431,6 +431,15 @@ func TestPastedPaths(t *testing.T) {
 	}
 }
 
+// TestRefusedPathNotPasted leaves out of a drop's paste a path the shell's
+// quoting refuses: cmd.exe would expand its % and run what follows its &.
+func TestRefusedPathNotPasted(t *testing.T) {
+	cmd := `C:\Windows\System32\cmd.exe`
+	if got := pastedPaths(cmd, []string{`C:\t\a.txt`, `C:\t\a&b%c%.txt`, `C:\t\b c.txt`}); !strings.HasPrefix(got, `"C:\t\a.txt" "C:\t\b c.txt"`) || strings.Contains(got, "%") {
+		t.Errorf("pasted %q", got)
+	}
+}
+
 // downloadsHere makes Command-clicked files of hosts go into a new
 // directory, which it returns.
 func downloadsHere(t *testing.T) string {
