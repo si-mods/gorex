@@ -45,13 +45,22 @@ extension TerminalView: UIScrollViewDelegate {
     }
 
     /// Slides again once Ghostty has drawn the output that came, which moves
-    /// the cursor: a tick later, once for a burst.
+    /// the cursor, a tick later, once for a burst; and moves the terminal
+    /// below the bars as a program takes the alternate screen, or back.
     func laterSlide() {
         guard !slideWaits else { return }
         slideWaits = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-            self?.slideWaits = false
-            self?.slide(duration: 0.15)
+            guard let self else { return }
+            slideWaits = false
+            guard let s = surface else { return }
+            drawn = true
+            let a = ghostty_surface_is_alternate_active(s)
+            if a != alternate {
+                alternate = a
+                superview?.setNeedsLayout()
+            }
+            slide(duration: 0.15)
         }
     }
 

@@ -42,9 +42,12 @@ final class TerminalView: UIView, TerminalOutput {
     var showsSelection = false
     lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
     /// How far down the status bar and the clear bar reach over the
-    /// terminal, and whether a slide waits for the output to be drawn.
-    var inset: CGFloat = 0 { didSet { if inset != oldValue { slide(duration: 0) } } }
+    /// terminal; whether a slide waits for the output to be drawn, and
+    /// whether any was; whether a program has the alternate screen.
+    var inset: CGFloat = 0 { didSet { if inset != oldValue { setNeedsLayout() } } }
     var slideWaits = false
+    var drawn = false
+    var alternate = false
     /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
     var newTab: (() -> Void)?
     var closeTab: (() -> Void)?
@@ -266,6 +269,7 @@ final class TerminalView: UIView, TerminalOutput {
         scroller.frame = bounds
         syncing = false
         syncScroll()
+        slide(duration: 0)
     }
 
     /// The keyboard never resizes the grid: a resize makes a program that
@@ -280,21 +284,19 @@ final class TerminalView: UIView, TerminalOutput {
         slide(duration: duration, options: UIView.AnimationOptions(rawValue: curve << 16))
     }
 
-    /// Slides the terminal, as a scroll view with the bar as its inset: down
-    /// below the bar while the lines drawn leave room, as in a new terminal,
-    /// else not, and the lines go on under the clear bar; up over the
+    /// Slides the terminal, as a scroll view with the bars as its inset: down
+    /// below them while the lines drawn leave room, as in a new terminal,
+    /// and the lines go on under them as they fill the screen; up over the
     /// keyboard, no farther than it is tall, as far as the cursor's row and
     /// the lines drawn under it, as an agent's box and status, need, but not
     /// the cursor under the bar.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
-        var y: CGFloat = 0
-        let c = cursor(width: nil), below = inset - c.minY
-        if covered > 0 || below > 0 {
-            let room = bounds.height - covered - drawnBottom(under: c)
-            y = max(min(max(0, below), room), min(0, below), -covered)
-        }
-        guard transform.ty != y else { return }
+        guard surface != nil, drawn else { return }
+        let c = cursor(width: nil)
+        let room = bounds.height - covered - drawnBottom(under: c)
+        let y = max(min(inset, room), min(0, inset - c.minY), -covered)
         scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: max(0, inset - y), left: 0, bottom: max(0, covered + y), right: 0)
+        guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: y)
         }
@@ -324,6 +326,7 @@ final class TerminalView: UIView, TerminalOutput {
         guard cols > 0, rows > 0 else { return }
         session.fit(cols: cols, rows: rows, cellWidth: width / cols, cellHeight: height / rows)
         if sizeLabel.alpha > 0 { showSize() }
+        slide(duration: 0)
     }
 
     // MARK: Touch
@@ -560,7 +563,8 @@ final class TerminalView: UIView, TerminalOutput {
 
 /// Holds a TerminalView for SwiftUI, which sets its views' frames and so
 /// would undo the slide: the host sets the terminal's bounds and center,
-/// which keep it. The bars over it are its inset.
+/// which keep it. The bars over it are its inset, but a program on the
+/// alternate screen, which fills it, has the terminal start below them.
 final class TerminalHost: UIView {
     let terminal: TerminalView
 
@@ -574,9 +578,10 @@ final class TerminalHost: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        terminal.bounds = CGRect(origin: .zero, size: bounds.size)
-        terminal.center = CGPoint(x: bounds.midX, y: bounds.midY)
-        terminal.inset = safeAreaInsets.top
+        let top = terminal.alternate ? safeAreaInsets.top : 0, height = bounds.height - top
+        terminal.bounds = CGRect(x: 0, y: 0, width: bounds.width, height: height)
+        terminal.center = CGPoint(x: bounds.midX, y: top + height / 2)
+        terminal.inset = safeAreaInsets.top - top
     }
 
     override func safeAreaInsetsDidChange() {

@@ -25,6 +25,8 @@ struct TerminalScreen: View {
     @State private var failure: (title: LocalizedStringKey, why: String)?
     /// Whether the session's sheet is open, as the title opens it.
     @State private var sheet = false
+    /// The height of the status bar.
+    @State private var statusBar: CGFloat = 0
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
@@ -42,11 +44,16 @@ struct TerminalScreen: View {
         Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab) } else { Color.clear } }
             .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)
-            .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p) } }
-            .background { Color(cgColor: bg.cgColor).ignoresSafeArea() }
+            .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p).padding(.top, statusBar).ignoresSafeArea(.container, edges: .top) } }
+            .background {
+                // The status bar is the window's inset, read as the page's changes.
+                Color(cgColor: bg.cgColor)
+                    .ignoresSafeArea()
+                    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { _ in statusBar = Self.statusBar }
+            }
             // What goes up under the status bar blurs and fades into the
             // background, for the clock over it.
-            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: Self.statusBar + 10) }
+            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: statusBar + 10) }
             .overlay { status }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
