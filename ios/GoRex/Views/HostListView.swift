@@ -179,13 +179,6 @@ private struct HostSection: View {
                 change("Can't Rename the Session") { try await host.renameSession(s.id, to: name) }
             }
         }
-        .confirmationDialog("Close Session", isPresented: Binding { closing != nil } set: { if !$0 { closing = nil } }, presenting: closing) { s in
-            Button("Close Session", role: .destructive) {
-                change("Can't Close the Session") { try await host.closeSession(s.id) }
-            }
-        } message: { s in
-            Text("Close \(s.label) and every window in it?")
-        }
     }
 
     /// The host's sessions, or why there are none.
@@ -321,6 +314,14 @@ private struct HostSection: View {
                     renamingSession = s
                 }
                 Button("Close Session", systemImage: "xmark", role: .destructive) { closing = s }
+            }
+            // On the header, for the question to point at the session.
+            .confirmationDialog("Close Session", isPresented: Binding { closing?.id == s.id } set: { if !$0 { closing = nil } }, presenting: closing) { s in
+                Button("Close Session", role: .destructive) {
+                    change("Can't Close the Session") { try await host.closeSession(s.id) }
+                }
+            } message: { s in
+                Text("Close \(s.label) and every window in it?")
             }
             if !isCollapsed && !windows.isEmpty {
                 VStack(spacing: 0) {
