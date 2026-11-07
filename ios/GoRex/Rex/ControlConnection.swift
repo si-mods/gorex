@@ -1,4 +1,5 @@
 import Foundation
+import os
 import UIKit
 
 /// A failed call, as the response's error names it.
@@ -196,7 +197,14 @@ final class ControlConnection {
                 try await Task.sleep(for: pongWait)
                 self?.fail(RexError(code: "timeout", message: "no pong"))
             }
-            let error = await withCheckedContinuation { c in task.sendPing { c.resume(returning: $0) } }
+            // sendPing can call back twice, as when the connection ends
+            // while a ping waits; the continuation takes the first.
+            let error = await withCheckedContinuation { c in
+                let resumed = OSAllocatedUnfairLock(initialState: false)
+                task.sendPing { e in
+                    if resumed.withLock({ let first = !$0; $0 = true; return first }) { c.resume(returning: e) }
+                }
+            }
             deadline.cancel()
             if let error { fail(error) }
         }
