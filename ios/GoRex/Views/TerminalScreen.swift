@@ -37,6 +37,9 @@ struct TerminalScreen: View {
             .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)
             .background(Color(cgColor: bg.cgColor).ignoresSafeArea())
+            // As the list's edge under its bar: what scrolls up under the
+            // status bar and the bar blurs and fades into the background.
+            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: top + 56) }
             .overlay { status }
             .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p).padding(.top, top).ignoresSafeArea(.container, edges: .top) } }
             .navigationTitle(title)
@@ -116,6 +119,26 @@ struct TerminalScreen: View {
 
     private func label(_ s: String) -> some View {
         Text(s).font(.callout).padding(12).glassEffect(.regular, in: .rect(cornerRadius: 14))
+    }
+}
+
+/// A soft edge at the top of the page: blurred and in the background's
+/// color at the top, clear below.
+private struct TopEdge: View {
+    let color: Color
+    let height: CGFloat
+
+    var body: some View {
+        let fade = LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.35), .init(color: .clear, location: 1)],
+                                  startPoint: .top, endPoint: .bottom)
+        ZStack {
+            Rectangle().fill(.ultraThinMaterial)
+            color.opacity(0.75)
+        }
+        .mask(fade)
+        .frame(height: height)
+        .ignoresSafeArea(.container, edges: .top)
+        .allowsHitTesting(false)
     }
 }
 
