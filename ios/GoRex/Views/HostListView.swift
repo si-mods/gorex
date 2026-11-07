@@ -124,6 +124,9 @@ private struct HostSection: View {
     /// The window being renamed, and the name being typed.
     @State private var renaming: (session: String, window: String, title: String)?
     @State private var name = ""
+    /// The session being renamed, and the one whose close waits for a yes.
+    @State private var renamingSession: Host.Session?
+    @State private var closing: Host.Session?
 
     var body: some View {
         let key = host.id.uuidString
@@ -167,6 +170,13 @@ private struct HostSection: View {
             Button("Cancel", role: .cancel) {}
             Button("Save") {
                 change("Can't Rename the Tab") { try await host.renameWindow(r.window, in: r.session, to: name) }
+            }
+        }
+        .alert("Rename Session", isPresented: Binding { renamingSession != nil } set: { if !$0 { renamingSession = nil } }, presenting: renamingSession) { s in
+            TextField(s.label, text: $name)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") {
+                change("Can't Rename the Session") { try await host.renameSession(s.id, to: name) }
             }
         }
     }
@@ -297,6 +307,22 @@ private struct HostSection: View {
             }
             .font(.body.weight(.semibold))
             .foregroundStyle(.primary)
+            .contentShape(.rect)
+            .contextMenu {
+                Button("Rename Session…", systemImage: "pencil") {
+                    name = s.label
+                    renamingSession = s
+                }
+                Button("Close Session", systemImage: "xmark", role: .destructive) { closing = s }
+            }
+            // On the header, for the question to point at the session.
+            .confirmationDialog("Close Session", isPresented: Binding { closing?.id == s.id } set: { if !$0 { closing = nil } }, presenting: closing) { s in
+                Button("Close Session", role: .destructive) {
+                    change("Can't Close the Session") { try await host.closeSession(s.id) }
+                }
+            } message: { s in
+                Text("Close \(s.label) and every window in it?")
+            }
             if !isCollapsed && !windows.isEmpty {
                 VStack(spacing: 0) {
                     ForEach(Array(windows.enumerated()), id: \.element.window.window_id) { i, w in
