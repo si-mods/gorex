@@ -15,9 +15,11 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// The terminal a tapped notification opens, for the list to go to.
     var opening: TerminalTarget?
 
-    /// Takes the taps and the hosts' blocked programs.
+    /// Takes the taps and the hosts' blocked programs, and tells the hosts
+    /// which terminal is on screen.
     func start() {
         UNUserNotificationCenter.current().delegate = self
+        Host.shown = { host, block in Notifier.shared.onScreen?.host == host.id && Notifier.shared.onScreen?.block == block }
         Host.blocked = { host, session, block, r in
             let name = r.app ?? host.programs[block] ?? host.config.name
             Notifier.shared.post(String(localized: "\(name) needs input"), r.msg ?? r.title ?? "",

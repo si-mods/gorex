@@ -90,6 +90,8 @@ final class Host: Identifiable {
         var app: String?
         var title: String?
         var msg: String?
+        /// When it last changed; nil when the server doesn't say.
+        var updated: Date?
 
         init?(json: Any) {
             guard let j = json as? [String: Any], let state = j["state"] as? String else { return nil }
@@ -101,6 +103,8 @@ final class Host: Identifiable {
             app = text("effective_app") ?? text("app")
             title = text("title")
             msg = text("msg")
+            // The server writes Go's zero time for none.
+            updated = text("updated_at").flatMap { try? Date($0, strategy: .iso8601) }.flatMap { $0.timeIntervalSince1970 > 0 ? $0 : nil }
         }
 
         /// How much the record needs the user, as the desktop orders them.
@@ -110,6 +114,9 @@ final class Host: Identifiable {
     /// Called when a program turns blocked, as it waits for the user: the
     /// host, the session, the block and the record.
     static var blocked: ((Host, String, String, ProgramStatus) -> Void)?
+    /// Whether a block of the host is on screen, where the user sees its
+    /// records as they come.
+    static var shown: ((Host, String) -> Bool)?
 
     var config: HostConfig
     var id: UUID { config.id }
@@ -120,6 +127,9 @@ final class Host: Identifiable {
     private(set) var programs: [String: String] = [:]
     /// What the programs in each block reported, by block.
     private(set) var statuses: [String: [ProgramStatus]] = [:]
+    /// The done and error records the user saw, by block, as their keys
+    /// (Inbox.swift).
+    private(set) var seen: [String: Set<String>] = [:]
     private(set) var control: ControlConnection?
 
     @ObservationIgnored private var gate = EventGate()
@@ -246,6 +256,7 @@ final class Host: Identifiable {
                 let was = statuses[block] ?? []
                 let now = (p["records"] as? [Any] ?? []).compactMap(ProgramStatus.init)
                 statuses[block] = now
+                if Self.shown?(self, block) == true { see(block) }
                 for r in now where r.state == "blocked" && !was.contains(where: { $0.id == r.id && $0.state == "blocked" }) {
                     if let s = e.sessionID { Self.blocked?(self, s, block, r) }
                 }
@@ -269,6 +280,13 @@ final class Host: Identifiable {
     /// shows it: one blocked first.
     func status(_ blocks: [String]) -> ProgramStatus? {
         blocks.flatMap { statuses[$0] ?? [] }.max { $0.rank < $1.rank }
+    }
+
+    /// Marks a block's done and error records seen, as the desktop's pane
+    /// does when it shows.
+    func see(_ block: String) {
+        let keys = (statuses[block] ?? []).filter { $0.state == "done" || $0.state == "error" }.map(\.seenKey)
+        if !keys.isEmpty { seen[block, default: []].formUnion(keys) }
     }
 
     private func revision(_ id: String) -> Int {
@@ -317,6 +335,7 @@ final class Host: Identifiable {
             if let r = try? await c.callBlock("program_status", session: session, block: block)["records"] as? [Any],
                statuses[block] == nil {
                 statuses[block] = r.compactMap(ProgramStatus.init)
+                if Self.shown?(self, block) == true { see(block) }
             }
         }
     }
