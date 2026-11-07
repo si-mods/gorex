@@ -260,11 +260,14 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 					return
 				}
 				// With remote hosts, the tabs go under their host's name,
-				// this machine's first.
+				// this machine's first. A folded host shows only the chosen
+				// tab.
 				for _, h := range a.allHosts() {
-					a.hostSection(c, k, h)
+					folded := a.hostSection(c, k, h)
 					for _, t := range a.tabsOn(h) {
-						a.sidebarTab(c, k, slices.Index(tabs, t), t, reserve)
+						if !folded || t == a.tab() {
+							a.sidebarTab(c, k, slices.Index(tabs, t), t, reserve)
+						}
 					}
 				}
 			})
@@ -355,13 +358,27 @@ func tilesReserve(tabs []*Tab) float32 {
 }
 
 // hostSection is the label over a host's tabs in the sidebar: its name,
-// its state, and under the pointer a button that opens a tab there.
-func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) {
-	name, key := a.hostName(h), "host"
+// its state, under the pointer a button that opens a tab there, and a
+// chevron. A click folds the host's tabs away, or back; it reports
+// whether they are folded.
+func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
+	name, key, fold := a.hostName(h), "host", "local"
 	if h != nil {
 		key += "-" + h.ID
+		fold = h.ID
 	}
-	row := ui.Row(c.Key(key)).Height(26).Shrink(0).Padding(6, 2, 0, 8).Gap(6).AlignItems(ui.Center)
+	folded := slices.Contains(prefs.FoldedHosts, fold)
+	row := ui.Row(c.Key(key)).Height(26).Shrink(0).Padding(6, 2, 0, 8).Gap(6).AlignItems(ui.Center).
+		Role(ui.RoleButton).Expanded(!folded)
+	if row.Clicked() {
+		if folded {
+			prefs.FoldedHosts = slices.DeleteFunc(prefs.FoldedHosts, func(s string) bool { return s == fold })
+		} else {
+			prefs.FoldedHosts = append(prefs.FoldedHosts, fold)
+		}
+		folded = !folded
+		saveSettings()
+	}
 	// It slides with the tabs as those above it open and close.
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true})
@@ -386,5 +403,12 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) {
 				a.newTabOn(h, a.dirOn(h))
 			}
 		}
+		chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
+		turn := float32(0)
+		if folded {
+			turn = -90
+		}
+		chevron.Rotate(animated(c, chevron, "fold", turn))
 	})
+	return folded
 }

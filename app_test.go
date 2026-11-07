@@ -706,6 +706,60 @@ func TestSidebarReveals(t *testing.T) {
 	}
 }
 
+// TestSidebarFoldsHost: a click on a host's name folds its tabs away but
+// the chosen one, and keeps the fold in the settings; another brings them
+// back. The host's new-tab button does not fold it.
+func TestSidebarFoldsHost(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left", Animation: "off"}
+	a.hosts = []*hostConn{{savedHost: savedHost{ID: "1", Name: "office"}, state: hostConnected}}
+	a.tabs[0].Name = "Other"
+	a.newTab(os.TempDir()).Name = "Chosen"
+	tt.Frame()
+	if !tt.HasText("Other ") || !tt.HasText("Chosen ") {
+		t.Fatalf("the host's tabs do not show; texts %q", tt.Texts())
+	}
+	if err := tt.Click(thisMachine()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText("Other ") || !tt.HasText("Chosen ") {
+		t.Errorf("a folded host shows %q; want only its chosen tab", tt.Texts())
+	}
+	b, err := os.ReadFile(settingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved settings
+	json.Unmarshal(b, &saved)
+	if !slices.Equal(saved.FoldedHosts, []string{"local"}) {
+		t.Errorf("the settings keep the folded hosts %q, want [local]", saved.FoldedHosts)
+	}
+
+	// Its new-tab button opens a tab on it, folded or not.
+	r, _ := tt.Find(thisMachine())
+	tt.Move(r.X+r.W/2, r.Y+r.H/2)
+	tt.Frame()
+	n := len(a.tabs)
+	if err := tt.Click(locales.CmdNewTabOn(thisMachine())); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.tabs) != n+1 || !slices.Contains(prefs.FoldedHosts, "local") {
+		t.Errorf("the new-tab button made %d tabs and left the folds %q", len(a.tabs)-n, prefs.FoldedHosts)
+	}
+
+	if err := tt.Click(thisMachine()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Other ") || len(prefs.FoldedHosts) != 0 {
+		t.Errorf("an unfolded host shows %q, folds %q", tt.Texts(), prefs.FoldedHosts)
+	}
+}
+
 // TestSidebarHostButton: the left sidebar has no host chip at its top; an
 // icon at its foot opens the host's panel, beside it and inside the window,
 // and says in its label which remote host is not connected.
