@@ -619,3 +619,85 @@ func TestTailscaleControlURLKeptByGatewayWrites(t *testing.T) {
 		t.Errorf("device made at %q", f.node.control)
 	}
 }
+
+// TestAuthURLOnlyLocal: the sign-in link lets whoever opens it first
+// claim the device, so server.status, session.bootstrap's server_status
+// and tailscale_status_changed carry it only over the local socket; a
+// new link alone sends the other transports no event.
+func TestAuthURLOnlyLocal(t *testing.T) {
+	f := startTailnetFixture(t)
+	f.node.state, f.node.authURL = "NeedsLogin", "https://login.example/abc"
+	f.mustCall("server.tailscale.enable", map[string]any{"allow_tailnet_members": false})
+	waitFor(t, "the device's watch", func() bool {
+		f.node.mu.Lock()
+		defer f.node.mu.Unlock()
+		return f.node.changed != nil
+	})
+	if f.g.lan == nil {
+		f.g.lan = newLANListener(f.g, t.TempDir())
+	}
+	f.g.lan.apply(LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}})
+	t.Cleanup(f.g.lan.close)
+
+	dial := func(url string, httpc *http.Client) *testConn {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		ws, _, err := websocket.Dial(ctx, url, &websocket.DialOptions{HTTPClient: httpc, Subprotocols: []string{controlProtocol}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { ws.CloseNow() })
+		c := newTestConn(t, ws)
+		c.hello(apiRevision)
+		return c
+	}
+	local := dial("ws://localhost/api/control", &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", f.sock)
+		},
+	}})
+	f.g.lan.mu.Lock()
+	lanAddr := f.g.lan.ln.Addr().String()
+	f.g.lan.mu.Unlock()
+	lan := dial("ws://"+lanAddr+"/api/control", nil)
+	tcp := f.dialControl()
+	tcp.hello(apiRevision)
+
+	authURL := func(ts any) any {
+		m, _ := ts.(map[string]any)
+		if m["state"] != "needs_login" {
+			t.Fatalf("tailscale: %v", ts)
+		}
+		return m["auth_url"]
+	}
+	conns := []struct {
+		name string
+		conn *testConn
+		want any
+	}{{"local", local, "https://login.example/abc"}, {"lan", lan, nil}, {"tcp", tcp, nil}}
+	for _, c := range conns {
+		st := callChecked(t, c.conn, "server.status", nil)
+		if got := authURL(st["tailscale"]); got != c.want {
+			t.Errorf("%s server.status auth_url: %v", c.name, got)
+		}
+		boot := callChecked(t, c.conn, "session.bootstrap", map[string]any{"event_scope": "all"})
+		ss, _ := boot["server_status"].(map[string]any)
+		if got := authURL(ss["tailscale"]); got != c.want {
+			t.Errorf("%s session.bootstrap auth_url: %v", c.name, got)
+		}
+	}
+
+	// A new link tells the local socket; the device signing in then tells
+	// everyone, and is the first event the others get.
+	f.node.set("NeedsLogin", "https://login.example/def")
+	if got := authURL(serverEvent(t, local, "tailscale_status_changed")); got != "https://login.example/def" {
+		t.Errorf("local event auth_url: %v", got)
+	}
+	f.node.set("Running", "")
+	for _, c := range conns {
+		if ev := serverEvent(t, c.conn, "tailscale_status_changed"); ev["state"] != "running" || ev["auth_url"] != nil {
+			t.Errorf("%s event: %v", c.name, ev)
+		}
+	}
+}

@@ -142,15 +142,17 @@ type tailnet struct {
 	// otherwise refer back to the table of methods.
 	serve func(net.Listener, string) error
 
-	mu      sync.Mutex
-	conf    TailscaleConfig
-	node    tailnetNode
-	ln      *trackedListener
-	https   bool
-	err     string
-	cancel  context.CancelFunc
-	last    string
-	closing bool
+	mu     sync.Mutex
+	conf   TailscaleConfig
+	node   tailnetNode
+	ln     *trackedListener
+	https  bool
+	err    string
+	cancel context.CancelFunc
+	// last and lastRemote are the status last sent to the local socket
+	// and to the other transports.
+	last, lastRemote string
+	closing          bool
 }
 
 func newTailnet(g *Gateway, dir string, newNode newNodeFunc) *tailnet {
@@ -526,6 +528,16 @@ func (t *tailnet) status() tailscaleStatus {
 	return statusOf(st, control, allow, https)
 }
 
+// over is a status as a connection over transport sees it. The sign-in
+// link binds the device to whoever opens it first, so, like the
+// server.tailscale methods, it is for the local socket only.
+func (st tailscaleStatus) over(transport string) tailscaleStatus {
+	if transport != transportUnix {
+		st.AuthURL = ""
+	}
+	return st
+}
+
 // statusOf maps a Tailscale device's status to Rex's, with the control
 // server the device uses when it is not Tailscale's own.
 func statusOf(st *ipnstate.Status, control string, allow, https bool) tailscaleStatus {
@@ -561,17 +573,27 @@ func statusOf(st *ipnstate.Status, control string, allow, https bool) tailscaleS
 	return out
 }
 
-// changed tells the gateway's connections of a new status, when it is.
+// changed tells the gateway's connections of a new status, when it is
+// new as their transport sees it: a new sign-in link alone tells only the
+// local socket.
 func (t *tailnet) changed() {
-	st := t.status()
-	b, _ := json.Marshal(st)
+	local := t.status()
+	remote := local.over(transportTCP)
+	lb, _ := json.Marshal(local)
+	rb, _ := json.Marshal(remote)
 	t.mu.Lock()
-	same := string(b) == t.last
-	t.last = string(b)
+	sameLocal, sameRemote := string(lb) == t.last, string(rb) == t.lastRemote
+	t.last, t.lastRemote = string(lb), string(rb)
 	t.mu.Unlock()
-	if !same {
-		t.g.emitServerEvent("tailscale_status_changed", st)
-	}
+	t.g.emitServerEventOver("tailscale_status_changed", func(transport string) any {
+		switch {
+		case transport == transportUnix && !sameLocal:
+			return local
+		case transport != transportUnix && !sameRemote:
+			return remote
+		}
+		return nil
+	})
 }
 
 var errNotAllowed = errors.New("this server lets in only the Tailscale user who signed it in")

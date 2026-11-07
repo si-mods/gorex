@@ -696,6 +696,12 @@ func (g *Gateway) emitClientEvent(rec *clientRecord, sid, typ string) {
 // emitServerEvent sends a server event to the connections that asked for
 // every event.
 func (g *Gateway) emitServerEvent(typ string, payload any) {
+	g.emitServerEventOver(typ, func(string) any { return payload })
+}
+
+// emitServerEventOver is emitServerEvent with each connection's payload
+// as its transport sees it; a nil payload sends that connection none.
+func (g *Gateway) emitServerEventOver(typ string, payload func(transport string) any) {
 	g.mu.Lock()
 	conns := make([]*control, 0, len(g.conns))
 	for c := range g.conns {
@@ -703,7 +709,9 @@ func (g *Gateway) emitServerEvent(typ string, payload any) {
 	}
 	g.mu.Unlock()
 	for _, c := range conns {
-		c.sendChanges([]change{{server: true, typ: typ, payload: payload}})
+		if p := payload(c.transport); p != nil {
+			c.sendChanges([]change{{server: true, typ: typ, payload: p}})
+		}
 	}
 }
 

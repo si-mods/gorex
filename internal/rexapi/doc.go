@@ -75,6 +75,7 @@
 // | server.config_reload | no configuration file: counts a generation and sends keymap_changed |
 // | hosts.list | an empty list; hosts.put and hosts.remove fail with not_supported |
 // | server.tailscale.* | built-in Tailscale is tsnet, a device of the gateway's own named <hostname>-gorex; the methods are for the local Unix socket only (403 elsewhere), as Rex's are; on Windows, where the socket gives no credentials, its file's permissions are the boundary |
+// | server.status, session.bootstrap (server_status), tailscale_status_changed | tailscale.auth_url only over the local Unix socket: the sign-in link binds the device to whoever opens it first, and a new link alone sends the other transports no tailscale_status_changed |
 // | session.own_block, session.disown_block, session.create | need the GoRex server to keep the gateway's connection alive, which the size locks take; otherwise not_supported |
 // | welcome (features), /api/upload | GoRex's own, which Rex has not: a POST of a file (application/octet-stream, with a Content-Length) to /api/upload?block_id=…&name=… puts it into the GoRex server user's temporary folder, as the app puts a file dropped on a pane of a host, and answers its path and the path as a word of the block's shell; the welcome lists the feature gorex.upload when the server takes such files |
 //

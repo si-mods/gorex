@@ -299,7 +299,7 @@ type configResult struct {
 	Hash       string `json:"hash"`
 }
 
-func (g *Gateway) status() statusResult {
+func (g *Gateway) status(transport string) statusResult {
 	m := g.modelNow()
 	if fresh, err := g.current(); err == nil {
 		m = fresh
@@ -314,21 +314,21 @@ func (g *Gateway) status() statusResult {
 		SessionCount: len(m.sessions),
 		APIRevision:  apiRevision,
 		Config:       configResult{Generation: generation, Hash: hash},
-		Tailscale:    g.tailscaleStatus(),
+		Tailscale:    g.tailscaleStatus(transport),
 	}
 }
 
-// tailscaleStatus is server.status's tailscale, nil when the gateway
-// cannot run built-in Tailscale.
-func (g *Gateway) tailscaleStatus() any {
+// tailscaleStatus is server.status's tailscale as a connection over
+// transport sees it, nil when the gateway cannot run built-in Tailscale.
+func (g *Gateway) tailscaleStatus(transport string) any {
 	if g.tailnet == nil {
 		return nil
 	}
-	return g.tailnet.status()
+	return g.tailnet.status().over(transport)
 }
 
 func methodServerStatus(c *control, _ args) (any, *apiError) {
-	return c.g.status(), nil
+	return c.g.status(c.transport), nil
 }
 
 // whoamiResult is server.whoami's result.
@@ -590,7 +590,7 @@ func methodSessionBootstrap(c *control, a args) (any, *apiError) {
 	c.rec.setAll(scope)
 	res := bootstrapResult{
 		ClientID:     c.rec.id,
-		ServerStatus: c.g.status(),
+		ServerStatus: c.g.status(c.transport),
 		AttachAll:    bootstrapAttachAll{Sessions: m.list()},
 	}
 	attach := func(s *mSession) attachedSession {
