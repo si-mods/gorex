@@ -980,9 +980,11 @@ func TestCommandSpaces(t *testing.T) {
 	if w == nil || w.Name != "work" || w.app != nil {
 		t.Fatalf("the new space: %+v", w)
 	}
+	// The program outlives the checks: the server takes the tab of one
+	// that ended out of the layout at once.
 	res = clientCommand(a, rex.LayoutCommand{
 		Op: "tab.create", Space: space, Name: "editor", Dir: os.TempDir(),
-		Command: []string{"/bin/sh", "-c", "echo made"}, Focus: true,
+		Command: []string{"/bin/sh", "-c", "echo made; exec sleep 60"}, Focus: true,
 	})
 	if res.Code != "" || res.New == "" {
 		t.Fatalf("tab.create in a space: %+v", res)
