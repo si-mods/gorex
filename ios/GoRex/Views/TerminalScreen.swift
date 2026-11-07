@@ -31,6 +31,9 @@ struct TerminalScreen: View {
     @State private var failure: (title: LocalizedStringKey, why: String)?
     /// Whether the session's sheet is open, as the title opens it.
     @State private var sheet = false
+    /// Whether the window is being renamed, and the name being typed.
+    @State private var renaming = false
+    @State private var name = ""
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
@@ -105,10 +108,16 @@ struct TerminalScreen: View {
                     .buttonStyle(.plain)
                 }
                 .sharedBackgroundVisibility(.hidden)
-                // Holds the place of a menu to come; the bar's glass draws it.
+                // The window's menu, as its row's in the list, but the moves:
+                // there is no order to see here. The bar's glass draws it.
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {} label: { Image(systemName: "ellipsis") }
-                        .accessibilityLabel("More")
+                    Menu {
+                        if let w = window { menu(w) }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                    }
+                    .disabled(window == nil)
+                    .accessibilityLabel("More")
                 }
             }
             // The sheet takes the terminal's scheme as the bar does; the
@@ -132,6 +141,14 @@ struct TerminalScreen: View {
             .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
             } message: {
                 Text(failure?.why ?? "")
+            }
+            .alert("Rename Tab", isPresented: $renaming) {
+                TextField(title, text: $name)
+                Button("Cancel", role: .cancel) {}
+                Button("Save") {
+                    guard let w = window else { return }
+                    change("Can't Rename the Tab") { try await host.renameWindow(w.window_id, in: target.session, to: name) }
+                }
             }
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
@@ -199,6 +216,38 @@ struct TerminalScreen: View {
                 failure = ("Can't Close the Tab", error.localizedDescription)
             }
         }
+    }
+
+    /// Runs a change to the session's windows, and tells why when it fails.
+    private func change(_ title: LocalizedStringKey, _ body: @escaping () async throws -> Void) {
+        Task {
+            do { try await body() } catch { failure = (title, error.localizedDescription) }
+        }
+    }
+
+    /// The window's menu, as its row's in the list. Close Other Tabs closes
+    /// the windows the list shows, those with a block.
+    @ViewBuilder private func menu(_ w: SessionView.Window) -> some View {
+        let id = w.window_id
+        let others = (hostSession?.view?.windows ?? []).filter { $0.block != nil && $0.window_id != id }.map(\.window_id)
+        Button("Rename Tab…", systemImage: "pencil") {
+            name = w.name ?? ""
+            renaming = true
+        }
+        if w.name != nil {
+            Button("Reset Name", systemImage: "arrow.uturn.backward") {
+                change("Can't Rename the Tab") { try await host.renameWindow(id, in: target.session, to: "") }
+            }
+        }
+        Divider()
+        Button("New Tab", systemImage: "plus") { newTab() }
+        Button("Close Tab", systemImage: "xmark", role: .destructive) { closeTab() }
+        Button("Close Other Tabs", systemImage: "xmark.square", role: .destructive) {
+            change("Can't Close the Tab") {
+                for o in others { try await host.closeWindow(o, in: target.session) }
+            }
+        }
+        .disabled(others.isEmpty)
     }
 
     @ViewBuilder private var status: some View {
