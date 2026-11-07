@@ -804,6 +804,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 					p.see()
 				}
 			}
+			progressLine(c, k, p, top)
 			a.reconnecting(c, k, p)
 			a.fileDrop(c, k, p, card, tv)
 			a.transfers(c, k, p)
@@ -1379,6 +1380,31 @@ func (a *App) reconnecting(c *ui.Context, k *colors, p *Pane) {
 				}
 			})
 		})
+	})
+}
+
+// progressLine shows the progress of pane p's program as a thin line
+// across the top of its terminal, as Ghostty's and the iOS app's: its
+// share, or all of it faint while the program cannot tell, red for an
+// error.
+func progressLine(c *ui.Context, k *colors, p *Pane, top float32) {
+	v, failed, ok := p.shownProgress()
+	if !ok {
+		return
+	}
+	ui.Row(c).Absolute().Top(top).Left(5).Right(5).PassThrough().Children(func() {
+		line := ui.Box(c.Key("progress")).Height(2).Background(k.accent).Role(ui.RoleProgress).Range(0, 1, v)
+		if failed {
+			line.Background(k.danger)
+		}
+		if v < 0 {
+			line.WidthPercent(100).Opacity(0.4)
+		} else {
+			line.WidthPercent(float32(v) * 100)
+		}
+		if anim := motion(c); anim != nil {
+			line.Transition(ui.ElementTransition{Animation: anim, Width: true, Colors: true})
+		}
 	})
 }
 

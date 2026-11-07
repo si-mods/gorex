@@ -302,6 +302,10 @@ type Pane struct {
 	info rex.SessionInfo
 	// title is the last title the program set.
 	title string
+	// progress is the program's last progress report (OSC 9;4): its
+	// state, 0 for none, and its percent, as terminal.Options.OnProgress
+	// tells them.
+	progress [2]int
 	// lastData is when the session last printed, in Unix nanoseconds.
 	lastData atomic.Int64
 	// attention marks a pane that rang the bell or whose program finished
@@ -1008,6 +1012,9 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	}
 	opts.OnBell = func() {
 		update(func() { a.ring(p) })
+	}
+	opts.OnProgress = func(state, percent int) {
+		update(func() { p.progress = [2]int{state, percent} })
 	}
 	opts.OnNotify = func(title, body string) {
 		if title == "" {
@@ -3384,6 +3391,27 @@ func (p *Pane) see() {
 // status is the record of the pane's program that most needs the user,
 // nil for none.
 func (p *Pane) status() *rex.ProgramStatus { return rex.MostUrgent(p.info.Statuses, p.seen) }
+
+// shownProgress is how far the pane's program is, from 0 to 1, or -1
+// while it cannot tell; failed for an error, and ok false when it tells
+// nothing. Its report (OSC 9;4) goes first, then the percent of its
+// record while it works.
+func (p *Pane) shownProgress() (v float64, failed, ok bool) {
+	switch state, n := p.progress[0], p.progress[1]; state {
+	case 1, 2, 4: // set, error, paused
+		v = -1
+		if n >= 0 {
+			v = float64(n) / 100
+		}
+		return v, state == 2, true
+	case 3: // indeterminate
+		return -1, false, true
+	}
+	if s := p.status(); s != nil && s.State == "working" && s.Progress >= 0 {
+		return float64(s.Progress) / 100, false, true
+	}
+	return 0, false, false
+}
 
 // entered returns the most urgent record that went blocked, done or error
 // between two infos of a session, nil for none. An info of a pane not
