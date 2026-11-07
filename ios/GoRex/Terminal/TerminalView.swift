@@ -291,7 +291,7 @@ final class TerminalView: UIView, TerminalOutput {
         var shift: CGFloat = 0
         if covered > 0 {
             let c = cursor(width: nil)
-            let needed = max(c.maxY, drawnBottom(under: c.maxY)) - (bounds.height - covered)
+            let needed = drawnBottom(under: c) - (bounds.height - covered)
             shift = max(0, min(covered, needed, c.minY - cover))
         }
         guard transform.ty != -shift else { return }
@@ -302,22 +302,23 @@ final class TerminalView: UIView, TerminalOutput {
         checkCover()
     }
 
-    /// The bottom of the last line of the screen with text, below y; else y.
-    private func drawnBottom(under y: CGFloat) -> CGFloat {
-        guard let s = surface else { return y }
+    /// The bottom of the last line of the screen with text under the
+    /// cursor's, else the cursor's. Lines count from the cursor's: Ghostty
+    /// reads text at points of another origin than the cursor's.
+    private func drawnBottom(under c: CGRect) -> CGFloat {
+        guard let s = surface else { return c.maxY }
         let z = ghostty_surface_size(s), h = cell.height
-        guard z.rows > 0, z.columns > 0, h > 0 else { return y }
-        for row in stride(from: UInt32(z.rows) - 1, through: 0, by: -1) {
-            let at = { (x: UInt32) in ghostty_point_s(tag: GHOSTTY_POINT_ACTIVE, coord: GHOSTTY_POINT_COORD_EXACT, x: x, y: row) }
+        guard z.rows > 0, z.columns > 0, h > 0 else { return c.maxY }
+        let at = Int((c.minY / h).rounded())
+        for row in stride(from: Int(z.rows) - 1, to: at, by: -1) {
+            let point = { (x: Int) in ghostty_point_s(tag: GHOSTTY_POINT_ACTIVE, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(x), y: UInt32(row)) }
             var t = ghostty_text_s()
-            guard ghostty_surface_read_text(s, ghostty_selection_s(top_left: at(0), bottom_right: at(UInt32(z.columns) - 1), rectangle: false), &t) else { continue }
+            guard ghostty_surface_read_text(s, ghostty_selection_s(top_left: point(0), bottom_right: point(Int(z.columns) - 1), rectangle: false), &t) else { continue }
             defer { ghostty_surface_free_text(s, &t) }
-            let bottom = t.tl_px_y + h
-            if bottom <= y { return y }
             let text = t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
-            if !text.allSatisfy(\.isWhitespace) { return bottom }
+            if !text.allSatisfy(\.isWhitespace) { return c.maxY + CGFloat(row - at) * h }
         }
-        return y
+        return c.maxY
     }
 
     /// Ghostty settled on a grid for the view's size: the block takes it.
