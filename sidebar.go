@@ -260,11 +260,20 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 					return
 				}
 				// With remote hosts, the tabs go under their host's name,
-				// this machine's first.
+				// this machine's first. A folded host shows the tab last
+				// chosen on it, and those that need the user.
+				if t := a.tab(); t != nil {
+					if a.chosenOn == nil {
+						a.chosenOn = map[string]*Tab{}
+					}
+					a.chosenOn[hostKey(t.host())] = t
+				}
 				for _, h := range a.allHosts() {
-					a.hostSection(c, k, h)
+					folded := a.hostSection(c, k, h)
 					for _, t := range a.tabsOn(h) {
-						a.sidebarTab(c, k, slices.Index(tabs, t), t, reserve)
+						if !folded || t == a.chosenOn[hostKey(h)] || slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.needsYou() > 0 }) {
+							a.sidebarTab(c, k, slices.Index(tabs, t), t, reserve)
+						}
 					}
 				}
 			})
@@ -354,14 +363,14 @@ func tilesReserve(tabs []*Tab) float32 {
 	return float32(tileW + tileStep*(most-1) + 2)
 }
 
-// hostSection is the label over a host's tabs in the sidebar: its name,
-// its state, and under the pointer a button that opens a tab there.
-func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) {
-	name, key := a.hostName(h), "host"
-	if h != nil {
-		key += "-" + h.ID
-	}
-	row := ui.Row(c.Key(key)).Height(26).Shrink(0).Padding(6, 2, 0, 8).Gap(6).AlignItems(ui.Center)
+// hostSection is the label over a host's tabs in the sidebar: a button
+// of its state, its name and a chevron, which folds the host's tabs away
+// or back, and under the pointer a button that opens a tab there. It
+// reports whether the tabs are folded.
+func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
+	name, key := a.hostName(h), hostKey(h)
+	folded := slices.Contains(prefs.FoldedHosts, key)
+	row := ui.Row(c.Key("host-"+key)).Height(26).Shrink(0).Padding(6, 2, 0, 8).Gap(6).AlignItems(ui.Center)
 	// It slides with the tabs as those above it open and close.
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true})
@@ -375,16 +384,38 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) {
 	}
 	hovered := row.Hovered()
 	row.Children(func() {
-		if h != nil {
-			label, _, _ := hostStatus(h)
-			ui.Box(c).Size(6, 6).Radius(3).Background(hostDot(k, h)).Shrink(0).Tooltip(label)
-		}
-		ui.Text(c, name).FontSize(11.5).FontWeight(600).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-		if hovered {
-			label := locales.CmdNewTabOn(name)
-			if iconButton(c, k, "plus", label, 20, 13).Tooltip(label).Clicked() {
-				a.newTabOn(h, a.dirOn(h))
+		fold := ui.Row(c).Grow(1).MinWidth(0).Height(26).Gap(6).AlignItems(ui.Center).Role(ui.RoleDisclosure).Label(name)
+		if fold.Clicked() {
+			if folded {
+				prefs.FoldedHosts = slices.DeleteFunc(prefs.FoldedHosts, func(s string) bool { return s == key })
+			} else {
+				prefs.FoldedHosts = append(prefs.FoldedHosts, key)
 			}
+			folded = !folded
+			saveSettings()
+		}
+		fold.Expanded(!folded).Children(func() {
+			if h != nil {
+				label, _, _ := hostStatus(h)
+				ui.Box(c).Size(6, 6).Radius(3).Background(hostDot(k, h)).Shrink(0).Tooltip(label)
+			}
+			ui.Text(c, name).FontSize(11.5).FontWeight(600).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
+			turn := float32(0)
+			if folded {
+				turn = -90
+			}
+			chevron.Rotate(animated(c, chevron, "fold", turn))
+		})
+		// The button's room is kept, so that the chevron stays in place.
+		if !hovered {
+			ui.Box(c).Size(20, 20).Shrink(0)
+			return
+		}
+		label := locales.CmdNewTabOn(name)
+		if iconButton(c, k, "plus", label, 20, 13).Tooltip(label).Clicked() {
+			a.newTabOn(h, a.dirOn(h))
 		}
 	})
+	return folded
 }

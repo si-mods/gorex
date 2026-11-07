@@ -706,6 +706,104 @@ func TestSidebarReveals(t *testing.T) {
 	}
 }
 
+// TestSidebarFoldsHost: a click on a host's name folds its tabs away but
+// the one last chosen on it and those that need the user, and keeps the
+// fold in the settings; another brings them back. Choosing a tab of
+// another host leaves a folded host's rows as they are, the host's
+// new-tab button does not fold it, and removing a host forgets its fold.
+func TestSidebarFoldsHost(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left", Animation: "off"}
+	h := newHostConn(savedHost{ID: "1", Name: "office"})
+	h.state = hostConnected
+	a.hosts = []*hostConn{h}
+	a.tabs[0].Name = "Other"
+	a.newTab(os.TempDir()).Name = "Needy"
+	a.newTab(os.TempDir()).Name = "Chosen"
+	// A tab of the remote host's.
+	rp := &Pane{ID: a.id(), SID: "far", host: h, info: rex.SessionInfo{ID: "far"}}
+	rt := a.makeTab("")
+	rt.Name, rt.Root = "Far", &Node{ID: a.id(), Pane: rp}
+	rp.Tab, rp.Node = rt, rt.Root
+	rt.setFocus(rp)
+	a.tabs = append(a.tabs, rt)
+	tt.Frame()
+	for _, name := range []string{"Other ", "Needy ", "Chosen ", "Far "} {
+		if !tt.HasText(name) {
+			t.Fatalf("the tab %q does not show; texts %q", name, tt.Texts())
+		}
+	}
+	if err := tt.Click(thisMachine()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if tt.HasText("Other ") || tt.HasText("Needy ") || !tt.HasText("Chosen ") {
+		t.Errorf("a folded host shows %q; want only its chosen tab", tt.Texts())
+	}
+	b, err := os.ReadFile(settingsPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved settings
+	if err := json.Unmarshal(b, &saved); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(saved.FoldedHosts, []string{"local"}) {
+		t.Errorf("the settings keep the folded hosts %q, want [local]", saved.FoldedHosts)
+	}
+
+	// A tab that needs the user shows in a folded host.
+	a.tabs[1].Focus.attention = true
+	tt.Frame()
+	if !tt.HasText("Needy ") {
+		t.Errorf("a folded host hides the tab that needs the user; texts %q", tt.Texts())
+	}
+	a.tabs[1].Focus.attention = false
+
+	// Choosing the other host's tab keeps the folded host's chosen tab.
+	a.selectTab(slices.Index(a.tabs, rt))
+	tt.Frame()
+	if !tt.HasText("Chosen ") || tt.HasText("Other ") {
+		t.Errorf("choosing another host's tab changed the folded host's rows: %q", tt.Texts())
+	}
+
+	// Its new-tab button opens a tab on it, folded or not.
+	r, _ := tt.Find(thisMachine())
+	tt.Move(r.X+r.W/2, r.Y+r.H/2)
+	tt.Frame()
+	n := len(a.tabs)
+	if err := tt.Click(locales.CmdNewTabOn(thisMachine())); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if len(a.tabs) != n+1 || !slices.Contains(prefs.FoldedHosts, "local") {
+		t.Errorf("the new-tab button made %d tabs and left the folds %q", len(a.tabs)-n, prefs.FoldedHosts)
+	}
+
+	if err := tt.Click(thisMachine()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !tt.HasText("Other ") || len(prefs.FoldedHosts) != 0 {
+		t.Errorf("an unfolded host shows %q, folds %q", tt.Texts(), prefs.FoldedHosts)
+	}
+
+	// Removing a folded host forgets its fold.
+	if err := tt.Click("office"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if !slices.Equal(prefs.FoldedHosts, []string{"1"}) {
+		t.Fatalf("the folds are %q, want [1]", prefs.FoldedHosts)
+	}
+	a.removeHost(h)
+	if len(prefs.FoldedHosts) != 0 {
+		t.Errorf("removing the host kept its fold: %q", prefs.FoldedHosts)
+	}
+}
+
 // TestSidebarHostButton: the left sidebar has no host chip at its top; an
 // icon at its foot opens the host's panel, beside it and inside the window,
 // and says in its label which remote host is not connected.

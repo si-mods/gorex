@@ -200,11 +200,7 @@ func (a *App) hostsInPanel(c *ui.Context, k *colors) {
 					dot = hostDot(k, h)
 				}
 				sessions := a.sessionsOn(h)
-				key := "local"
-				if h != nil {
-					key = h.ID
-				}
-				ui.Row(c.Key(key)).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Row(c.Key(hostKey(h))).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.Box(c).Size(7, 7).Radius(4).Background(dot).Shrink(0)
 					ui.Column(c).Grow(1).MinWidth(0).Children(func() {
 						ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")

@@ -35,6 +35,9 @@ type settings struct {
 	// HideDockBadge turns off the count of the panes that need the user on
 	// the app icon.
 	HideDockBadge bool `json:"hideDockBadge,omitempty"`
+	// FoldedHosts are the hosts whose tabs the sidebar folds under their
+	// name: "local" for this machine, else a host's id.
+	FoldedHosts []string `json:"foldedHosts,omitempty"`
 	// Animation is how the panes and the sidebar move: "" springs snappily,
 	// "natural" more softly, and "off" not at all.
 	Animation string `json:"animation,omitempty"`
