@@ -140,6 +140,9 @@ final class Host: Identifiable {
     @ObservationIgnored private var token: String?
     @ObservationIgnored private var retry: Task<Void, Never>?
     @ObservationIgnored private var refreshing: Set<String> = []
+    /// Sessions whose read titles, programs and records are being read
+    /// again, as after a reconnect.
+    @ObservationIgnored private var reread: Set<String> = []
     @ObservationIgnored private var wanted: [String: Int] = [:]
     @ObservationIgnored private var stopped = false
 
@@ -210,12 +213,12 @@ final class Host: Identifiable {
     private func bootstrap(_ c: ControlConnection) async throws {
         let (seq, r) = try await c.call("session.bootstrap", ["event_scope": "all"])
         let all = (r["attach_all"] as? [String: Any])?["sessions"] as? [[String: Any]] ?? []
-        titles = [:]
-        programs = [:]
-        statuses = [:]
         sessions = all.compactMap { s in
             (s["session_id"] as? String).map { Session(id: $0, label: s["label"] as? String ?? "") }
         }
+        // What was read before keeps showing, as after a reconnect from
+        // the background; each session's view reads it again in place.
+        reread = Set(sessions.map(\.id))
         if let selected = r["selected_session"] as? [String: Any], let v = selected["view"] {
             setView(try SessionView(json: v))
         }
@@ -242,6 +245,7 @@ final class Host: Identifiable {
         case "session_destroyed":
             let id = e.payload["session_id"] as? String ?? e.sessionID
             sessions.removeAll { $0.id == id }
+            id.map { reread.remove($0) }
         case "session_label_changed":
             if let i = sessions.firstIndex(where: { $0.id == e.sessionID }) {
                 sessions[i].label = e.payload["label"] as? String ?? sessions[i].label
@@ -319,27 +323,39 @@ final class Host: Identifiable {
         if let old = sessions[i].view, old.revision >= v.revision { return }
         sessions[i].view = v
         if let label = v.label { sessions[i].label = label }
+        let again = reread.remove(v.session_id) != nil
         for w in v.windows ?? [] {
-            for b in [w.block].compactMap(\.self) + w.tiled where titles[b] == nil { describe(session: v.session_id, block: b) }
+            for b in [w.block].compactMap(\.self) + w.tiled where titles[b] == nil || again { describe(session: v.session_id, block: b) }
         }
     }
 
     /// Reads a block's title, program and status, which its events keep up
-    /// to date.
+    /// to date. When the block's values were read before, as after a
+    /// reconnect, they keep showing and this read refreshes them in place:
+    /// an answer applies when nothing has changed what it read since, so
+    /// an event that arrived while it was in flight wins.
     private func describe(session: String, block: String) {
-        titles[block] = ""
+        let hadTitle = titles[block]
+        let hadProgram = programs[block]
+        let hadRecords = statuses[block]
+        if hadTitle == nil { titles[block] = "" }
         Task {
             guard let c = control else { return }
-            if let t = try? await c.callBlock("title", session: session, block: block)["title"] as? String, titles[block] == "" {
+            if let t = try? await c.callBlock("title", session: session, block: block)["title"] as? String,
+               titles[block] == "" || titles[block] == hadTitle {
                 titles[block] = t
             }
-            if let p = try? await c.callBlock("process", session: session, block: block), programs[block] == nil {
-                programs[block] = Self.program(p["foreground"])
+            if let p = try? await c.callBlock("process", session: session, block: block) {
+                let program = Self.program(p["foreground"])
+                if let program, programs[block] == nil || programs[block] == hadProgram {
+                    programs[block] = program
+                }
             }
-            if let r = try? await c.callBlock("program_status", session: session, block: block)["records"] as? [Any],
-               statuses[block] == nil {
-                statuses[block] = r.compactMap(ProgramStatus.init)
-                if Self.shown?(self, block) == true { see(block) }
+            if let r = try? await c.callBlock("program_status", session: session, block: block)["records"] as? [Any] {
+                if statuses[block] == nil || statuses[block] == hadRecords {
+                    statuses[block] = r.compactMap(ProgramStatus.init)
+                    if Self.shown?(self, block) == true { see(block) }
+                }
             }
         }
     }

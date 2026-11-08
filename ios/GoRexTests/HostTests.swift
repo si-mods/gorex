@@ -169,4 +169,55 @@ nonisolated final class HostTests: XCTestCase {
         await until("read") { h.status(["b"])?.state == "blocked" }
         XCTAssertEqual(told, 0)
     }
+
+    /// A reconnect, as after the background, keeps the titles and programs
+    /// it had, and reads them again in place: nothing blanks while the
+    /// reads run, and what changed while away arrives.
+    @MainActor func testReconnectKeepsTitles() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let view: [String: Any] = ["revision": 1, "session_id": "s", "label": "s", "windows": [
+            ["window_id": "w", "layers": [["blocks": [["block_id": "b"], ["block_id": "c"]]]]],
+        ]]
+        // Block b's title changes while away; block c's second read
+        // answers without a title, so what the reconnect kept is what the
+        // test still sees.
+        var title = "First"
+        var serveC = true
+        rex.respond = { m, p in
+            switch m {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": [["session_id": "s", "label": "s"]]], "selected_session": ["view": view]]
+            case "com.superlogical.terminal.title":
+                switch p["block_id"] as? String {
+                case "b": ["title": title]
+                case "c": serveC ? ["title": title] : [:]
+                default: [:]
+                }
+            case "com.superlogical.terminal.process":
+                ["foreground": ["name": "zsh"]]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("read") { h.titles["b"] == "First" && h.titles["c"] == "First" && h.programs["b"] == "zsh" }
+        let asked = rex.count("com.superlogical.terminal.title")
+
+        // The app goes to the background and back: the connection dies,
+        // and the host connects anew.
+        FakeRex.close(rex.controls[0], .protocolCode(.goingAway))
+        await until("offline") { h.control == nil }
+        title = "Second"
+        serveC = false
+        h.reconnectIfNeeded()
+        await until("online again") { h.status == .online }
+        await until("read again") { h.titles["b"] == "Second" }
+        await until("asked again") { rex.count("com.superlogical.terminal.title") > asked }
+        // What the first read brought still shows for the block whose
+        // second read hasn't answered.
+        XCTAssertEqual(h.titles["c"], "First")
+        XCTAssertEqual(h.programs["b"], "zsh")
+    }
 }
