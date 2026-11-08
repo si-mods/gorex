@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.17.0
+
+### Features
+
+* **palette:** list what needs you, by state, across windows and hosts ([#272](https://github.com/si-mods/gorex/pull/272))
+* **notify:** name the tab and pane in a notification's subtitle, stack a session's notifications, focus the pane on a click, and show the program's tile as the image ([#271](https://github.com/si-mods/gorex/pull/271), [#297](https://github.com/si-mods/gorex/pull/297))
+* **sidebar:** a click on a host's name folds its tabs, and GoRex remembers it; a folded host still shows its last chosen tab and the tabs that need you ([#270](https://github.com/si-mods/gorex/pull/270))
+* **ui:** the host panel tells this machine and its server, and shows a remote host only when it is not connected, with a Remote Hosts… button ([#216](https://github.com/si-mods/gorex/pull/216))
+* **rexapi:** `POST /api/upload` puts a file in the host's temporary folder and answers its path, quoted for the session's shell, so Rex's iPhone app can add photos and files ([#242](https://github.com/si-mods/gorex/pull/242))
+* **rex:** a status record keeps its last message as `last_msg`, so a finished program's row and notification still say what it did ([#257](https://github.com/si-mods/gorex/pull/257))
+
+### Bug Fixes
+
+* **drop:** an upload's transfers belong to its session, so moving the pane, switching spaces or closing the window keeps the transfer list and the paste ([#285](https://github.com/si-mods/gorex/pull/285))
+* **drop:** a drop on a host that is reconnecting waits for the host, at most one minute, and resumes the upload ([#293](https://github.com/si-mods/gorex/pull/293))
+* **drop:** name a dropped file so its path pastes, and never paste a path the host's shell cannot quote ([#298](https://github.com/si-mods/gorex/pull/298))
+* **drop:** end every drop's pasted paths with a space, in host and local panes, so two drops in a row do not run together ([#227](https://github.com/si-mods/gorex/pull/227), [#295](https://github.com/si-mods/gorex/pull/295))
+* **panes:** Command-click opens a bare directory name such as `docs/`, and a local pane links a path only when it exists ([#295](https://github.com/si-mods/gorex/pull/295))
+* **drop:** the transfer list, the palette and the drop card show their border with glass off, and the progress track shows on a light panel ([#299](https://github.com/si-mods/gorex/pull/299))
+* **rex:** closing a tab or a space through the API ends the sessions of its host panes too, through the app's kill queue ([#286](https://github.com/si-mods/gorex/pull/286))
+* **space:** a client's new tab with the focus brings its hidden space into the last focused window ([#296](https://github.com/si-mods/gorex/pull/296))
+* **rex:** the server's emulator answers terminal queries when the Rex API gateway is the session's authority, so programs no longer wait for their timeout ([#278](https://github.com/si-mods/gorex/pull/278))
+* **rex:** an upgrade hands over a session's terminal modes, images and an exited session's screen ([#273](https://github.com/si-mods/gorex/pull/273))
+* **view:** a pane's terminal keeps its size from the first frame of a move, so zoom no longer resizes the session in between ([#302](https://github.com/si-mods/gorex/pull/302))
+* **control:** a split's new pane has the focus in its tab before rootshell hears the layout ([#307](https://github.com/si-mods/gorex/pull/307))
+* **rexapi:** a stalled gateway no longer freezes the settings window, and an upload from the iPhone no longer times out on hello ([#246](https://github.com/si-mods/gorex/pull/246), [#294](https://github.com/si-mods/gorex/pull/294))
+* **rexapi:** built-in Tailscale's control server needs https unless its address is local or private ([#290](https://github.com/si-mods/gorex/pull/290))
+* **rexapi:** show Tailscale's sign-in link only over the local socket, so a LAN or tailnet client cannot claim the device ([#289](https://github.com/si-mods/gorex/pull/289))
+* **rex:** remove tailcat IPv6 addresses from errors ([#291](https://github.com/si-mods/gorex/pull/291))
+
+### Dependencies
+
+* **mygo:** bump to si-mods/mygo 34886fc for the space after a local drop's paths and links to bare directories ([#295](https://github.com/si-mods/gorex/pull/295))
+
 ## 0.16.0
 
 ### Features
