@@ -65,6 +65,8 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// The keyboard's height over the terminal.
     private var covered: CGFloat = 0
+    /// Whether the mouse is over a link, as Ghostty last told.
+    var overLink = false
 
     /// The grid's size, shown while pinching.
     lazy var sizeLabel: UILabel = {
@@ -338,19 +340,34 @@ final class TerminalView: UIView, TerminalOutput {
     // MARK: Touch
 
     /// A tap that clears no selection clicks for a program that has the
-    /// mouse, and keeps the keyboard.
+    /// mouse, else opens the link under it, and keeps the keyboard.
     @objc private func tap(_ g: UITapGestureRecognizer) {
         let p = g.location(in: self)
         if deselect(at: p) { return }
-        if let s = surface, ghostty_surface_mouse_captured(s) { click(at: p) }
+        if let s = surface, ghostty_surface_mouse_captured(s) { click(at: p) } else { openLink(at: p) }
         if !isFirstResponder { becomeFirstResponder() }
     }
 
-    /// A plain left click at a point, as a mouse makes it.
-    func click(at p: CGPoint) {
+    /// A left click at a point, as a mouse makes it, plain unless keys are
+    /// held.
+    func click(at p: CGPoint, mods: ghostty_input_mods_e = GHOSTTY_MODS_NONE) {
         guard let s = surface else { return }
-        ghostty_surface_mouse_pos(s, p.x, p.y, GHOSTTY_MODS_NONE)
-        for state in [GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RELEASE] { _ = ghostty_surface_mouse_button(s, state, GHOSTTY_MOUSE_LEFT, GHOSTTY_MODS_NONE) }
+        ghostty_surface_mouse_pos(s, p.x, p.y, mods)
+        for state in [GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_RELEASE] { _ = ghostty_surface_mouse_button(s, state, GHOSTTY_MOUSE_LEFT, mods) }
+    }
+
+    /// Clicks a link at a point with Super, with which Ghostty opens links,
+    /// if the mouse over it with Super finds one: a click on no link would
+    /// move a prompt's cursor. Ghostty looks again only where it has not
+    /// looked, and keeps a link lit while the mouse stays on it, so the
+    /// mouse leaves the view before and after.
+    private func openLink(at p: CGPoint) {
+        guard let s = surface else { return }
+        overLink = false
+        ghostty_surface_mouse_pos(s, -1, -1, GHOSTTY_MODS_NONE)
+        ghostty_surface_mouse_pos(s, p.x, p.y, GHOSTTY_MODS_SUPER)
+        if overLink { click(at: p, mods: GHOSTTY_MODS_SUPER) }
+        ghostty_surface_mouse_pos(s, -1, -1, GHOSTTY_MODS_NONE)
     }
 
     // MARK: Keyboard
