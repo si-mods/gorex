@@ -4,7 +4,7 @@
 
 The terminal is a Ghostty surface: the app links GhosttyKit, rootshell's
 build of Ghostty, from the binary Swift package
-https://github.com/kitknox/ghosttykit-rootshell (0.2.22, from
+https://github.com/kitknox/ghosttykit-rootshell (0.2.23, from
 https://github.com/kitknox/ghostty-rootshell). It also links
 libghostty-vt, built from Ghostty's sources by
 `scripts/build-ghostty-vt.sh`, which reads the snapshot a terminal stream
