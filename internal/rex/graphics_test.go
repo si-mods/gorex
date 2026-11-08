@@ -186,8 +186,8 @@ func TestGraphicsGroupsInBandChunks(t *testing.T) {
 		t.Fatalf("first %q recs %d", out, len(recs))
 	}
 	out, recs = g.filter(second, "")
-	if !bytes.Equal(out, second) || len(recs) != 1 || !bytes.Equal(recs[0], append(first, second...)) {
-		t.Fatalf("second %q recs %q", out, recs)
+	if !bytes.Equal(out, second) || len(recs) != 1 || !bytes.Equal(recs[0].seq, append(first, second...)) {
+		t.Fatalf("second %q recs %+v", out, recs)
 	}
 	g.record(recs)
 	if !bytes.Equal(g.replay(), append(first, second...)) {
@@ -198,7 +198,7 @@ func TestGraphicsGroupsInBandChunks(t *testing.T) {
 func TestGraphicsHistoryCopies(t *testing.T) {
 	seq := []byte("\x1b_Gi=13,a=d\x1b\\")
 	var g graphics
-	g.record([][]byte{seq})
+	g.restore([][]byte{seq})
 	for i := range seq {
 		seq[i] = 'x'
 	}
@@ -228,11 +228,11 @@ func TestGraphicsRecordsNoOrphanChunks(t *testing.T) {
 	g := graphics{cut: true}
 	out, recs := g.filter([]byte("\x1b_Gm=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
 	if len(recs) != 0 || !bytes.Contains(out, []byte("m=0;AAAA")) {
-		t.Fatalf("recorded %q, passed %q", recs, out)
+		t.Fatalf("recorded %+v, passed %q", recs, out)
 	}
 	_, recs = g.filter([]byte("\x1b_Ga=T,f=100,m=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
-	if len(recs) != 1 || !bytes.HasPrefix(recs[0], []byte("\x1b_Ga=T")) {
-		t.Fatalf("a whole transfer recorded %q", recs)
+	if len(recs) != 1 || !bytes.HasPrefix(recs[0].seq, []byte("\x1b_Ga=T")) {
+		t.Fatalf("a whole transfer recorded %+v", recs)
 	}
 
 	// A file image's first chunk is rewritten whole; its last chunk is
@@ -243,8 +243,8 @@ func TestGraphicsRecordsNoOrphanChunks(t *testing.T) {
 	}
 	g = graphics{}
 	_, recs = g.filter([]byte("\x1b_Ga=T,t=f,m=1;image.png\x1b\\\x1b_Gm=0;\x1b\\"), dir)
-	if len(recs) != 2 || !bytes.Contains(recs[0], []byte("t=d")) || string(recs[1]) != "\x1b_Gm=0;\x1b\\" {
-		t.Fatalf("a chunked file image recorded %q", recs)
+	if len(recs) != 2 || !bytes.Contains(recs[0].seq, []byte("t=d")) || string(recs[1].seq) != "\x1b_Gm=0;\x1b\\" {
+		t.Fatalf("a chunked file image recorded %+v", recs)
 	}
 }
 
@@ -299,6 +299,52 @@ func TestGraphicsHistoryKeepsImagesAsTheyAre(t *testing.T) {
 	number := "\x1b_Ga=T,f=100,I=3;AAAA\x1b\\"
 	if got, want := recorded(noID, noID, number, number), noID+noID+number+number; got != want {
 		t.Errorf("images with no id replay\n%q, want\n%q", got, want)
+	}
+}
+
+// TestGraphicsHistoryReplacesByID: an id is a number however spelled; a
+// transmit too large to keep still replaces what the history had of its
+// image; what does not transmit or free an image by its id leaves it.
+func TestGraphicsHistoryReplacesByID(t *testing.T) {
+	image := func(id, payload string) string {
+		return "\x1b_Ga=T,f=100,i=" + id + ",q=2;" + payload + "\x1b\\"
+	}
+	if got, want := recorded(image("7", "AAAA"), image("07", "BBBB")), image("07", "BBBB"); got != want {
+		t.Errorf("after i=7 then i=07 the replay is\n%q, want\n%q", got, want)
+	}
+
+	// Too large for one read's rewrite, for the history in chunks, and
+	// for the history whole.
+	big := strings.Repeat("A", maxGraphicsRewrite+4)
+	chunk := strings.Repeat("A", 3<<20)
+	before := []string{image("7", "AAAA"), image("8", "BBBB")}
+	for name, out := range map[string][]string{
+		"in one read": {image("7", big)},
+		"in chunks": {"\x1b_Ga=T,f=100,i=7,q=2,m=1;" + chunk + "\x1b\\", "\x1b_Gm=1;" + chunk + "\x1b\\",
+			"\x1b_Gm=1;" + chunk + "\x1b\\", "\x1b_Gm=0;AAAA\x1b\\"},
+	} {
+		if got := recorded(append(before, out...)...); got != image("8", "BBBB") {
+			t.Errorf("after a transmit of image 7 too large to keep %s, the replay is %.80q", name, got)
+		}
+	}
+	var g graphics
+	g.record([]graphicsSeq{{seq: []byte(before[0]), id: 7, op: graphicsTransmit}})
+	g.record([]graphicsSeq{{seq: []byte(image("7", strings.Repeat("A", maxGraphicsHistory))), id: 7, op: graphicsTransmit}})
+	if len(g.history) != 0 {
+		t.Errorf("after a transmit of image 7 too large for the history, it has %d sequences", len(g.history))
+	}
+
+	// A free that frees nothing recorded, as of an image sent by number,
+	// stays; a header with no a=d, or a transmit with no payload, does
+	// nothing to the image.
+	for _, out := range [][]string{
+		{"\x1b_Ga=T,f=100,I=5;AAAA\x1b\\", "\x1b_Ga=d,d=I,i=5,q=2\x1b\\"},
+		{image("7", "AAAA"), "\x1b_Gd=I,i=7\x1b\\"},
+		{image("7", "AAAA"), "\x1b_Ga=T,i=7;\x1b\\"},
+	} {
+		if got, want := recorded(out...), strings.Join(out, ""); got != want {
+			t.Errorf("the replay is\n%q, want\n%q", got, want)
+		}
 	}
 }
 

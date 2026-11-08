@@ -358,7 +358,7 @@ func TestUpgradeKeepsWhatTheScreenTells(t *testing.T) {
 func TestResumeAnExitedSession(t *testing.T) {
 	seq := []byte("\x1b_Gi=9,a=T,f=100;AAAA\x1b\\")
 	s := &session{cols: 80, rows: 24, p: &pty{}, exited: true}
-	s.graphics.record([][]byte{seq})
+	s.graphics.restore([][]byte{seq})
 	s.screen = append(bytes.Repeat([]byte("x"), maxGraphicsRewrite+1), seq...)
 	r, err := resumeSession(s.state(), func() {})
 	if err != nil {
@@ -385,7 +385,7 @@ func TestResumeKeepsTheCursor(t *testing.T) {
 	}
 	defer s.vt.Close()
 	s.vt.Feed(append([]byte("hello\r\n"), seq...))
-	s.graphics.record([][]byte{seq})
+	s.graphics.restore([][]byte{seq})
 	s.screen = append(s.vt.Snapshot(), s.graphics.replay()...)
 	s.ghostty, _ = s.vt.GhosttySnapshot()
 	r, err := resumeSession(s.state(), func() {})

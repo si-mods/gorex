@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -42,18 +43,42 @@ type graphics struct {
 	chunks     [][]byte
 	chunkBytes int
 	chunkSkip  bool
-	history    [][]byte
-	kept       int
+	// chunkHead is what the first chunk of the group in chunks does.
+	chunkHead graphicsSeq
+	history   []graphicsSeq
+	kept      int
 	// cut tells that a transfer may have started before the session read
 	// its output, as across an upgrade, until the next sequence.
 	cut bool
 }
 
+// graphicsSeq is a graphics sequence to replay, with the image it names by
+// id, 0 for none, and what it does to that image. One without its bytes,
+// as a transmit too large to keep, does only that.
+type graphicsSeq struct {
+	seq []byte
+	id  uint32
+	op  graphicsOp
+}
+
+// graphicsOp is what a sequence does to the image it names by id.
+type graphicsOp uint8
+
+const (
+	graphicsOther graphicsOp = iota
+	// graphicsTransmit replaces the image and its placements, as a
+	// terminal does when an id is sent again.
+	graphicsTransmit
+	// graphicsFree deletes all the image's placements, and the image (d=I
+	// with no placement).
+	graphicsFree
+)
+
 // filter returns p with its file-medium Kitty images rewritten, and the
 // complete graphics sequences to record for replay. cwd resolves relative
 // paths. It runs outside the session's lock: opening a file must not hold
 // up the session.
-func (g *graphics) filter(p []byte, cwd string) ([]byte, [][]byte) {
+func (g *graphics) filter(p []byte, cwd string) ([]byte, []graphicsSeq) {
 	if len(g.pending) > 0 {
 		p = append(g.pending, p...)
 		g.pending = nil
@@ -67,7 +92,7 @@ func (g *graphics) filter(p []byte, cwd string) ([]byte, [][]byte) {
 		return p, nil
 	}
 	var out []byte
-	var records [][]byte
+	var records []graphicsSeq
 	for {
 		i := bytes.Index(p, apcGraphicsStart)
 		if i < 0 {
@@ -94,12 +119,12 @@ func (g *graphics) filter(p []byte, cwd string) ([]byte, [][]byte) {
 		seq := rest[:j+len(apcEnd)]
 		if len(out) >= maxGraphicsRewrite {
 			out = append(out, seq...)
-			g.skipChunks(seq)
+			records = append(records, g.skipChunks(seq)...)
 		} else {
 			part, recs := g.sequence(seq, cwd)
 			if len(out)+len(part) > maxGraphicsRewrite {
 				out = append(out, seq...)
-				g.skipChunks(seq)
+				records = append(records, g.skipChunks(seq)...)
 			} else {
 				out = append(out, part...)
 				records = append(records, recs...)
@@ -122,15 +147,52 @@ func graphicsPrefix(p []byte) int {
 	return 0
 }
 
+// graphicsParams returns the keys of a Kitty sequence's header and its
+// payload; ok is false without one.
+func graphicsParams(seq []byte) (params []string, payload string, ok bool) {
+	body := bytes.TrimSuffix(bytes.TrimPrefix(seq, apcGraphicsStart), apcEnd)
+	header, payload, ok := strings.Cut(string(body), ";")
+	return strings.Split(header, ","), payload, ok
+}
+
+// graphicsHead returns what a sequence of these header keys and payload
+// does to the image it names by id.
+func graphicsHead(params []string, payload string) graphicsSeq {
+	var h graphicsSeq
+	action, del, placement := "t", "a", uint64(0)
+	for _, p := range params {
+		key, value, _ := strings.Cut(p, "=")
+		switch key {
+		case "a":
+			action = value
+		case "d":
+			del = value
+		case "i":
+			id, _ := strconv.ParseUint(value, 10, 32)
+			h.id = uint32(id)
+		case "p":
+			placement, _ = strconv.ParseUint(value, 10, 32)
+		}
+	}
+	switch {
+	case h.id == 0:
+	case (action == "t" || action == "T") && (payload != "" || graphicsMore(params)):
+		h.op = graphicsTransmit
+	case action == "d" && del == "I" && placement == 0:
+		h.op = graphicsFree
+	}
+	return h
+}
+
 // sequence returns the Kitty sequence seq, rewritten when it transmits a
 // file, and the sequences to record for replay.
-func (g *graphics) sequence(seq []byte, cwd string) ([]byte, [][]byte) {
-	body := seq[len(apcGraphicsStart) : len(seq)-len(apcEnd)]
-	header, payload, ok := strings.Cut(string(body), ";")
+func (g *graphics) sequence(seq []byte, cwd string) ([]byte, []graphicsSeq) {
+	params, payload, ok := graphicsParams(seq)
+	head := graphicsHead(params, payload)
+	head.seq = seq
 	if !ok {
-		return seq, [][]byte{seq}
+		return seq, []graphicsSeq{head}
 	}
-	params := strings.Split(header, ",")
 	isFile := false
 	for _, p := range params {
 		if strings.HasPrefix(p, "t=f") {
@@ -155,28 +217,31 @@ func (g *graphics) sequence(seq []byte, cwd string) ([]byte, [][]byte) {
 	}
 	if !isFile || payload == "" {
 		if graphicsMore(params) {
-			if g.chunkBytes+len(seq) > maxGraphicsHistory {
-				g.chunks, g.chunkBytes, g.chunkSkip = nil, 0, true
-			} else {
-				g.chunks = append(g.chunks, seq)
-				g.chunkBytes += len(seq)
+			if len(g.chunks) == 0 {
+				g.chunkHead = head
 			}
+			if g.chunkBytes+len(seq) > maxGraphicsHistory {
+				// Too large to keep: it replaces the image all the same.
+				g.chunks, g.chunkBytes, g.chunkSkip = nil, 0, true
+				return seq, []graphicsSeq{{id: g.chunkHead.id, op: g.chunkHead.op}}
+			}
+			g.chunks = append(g.chunks, seq)
+			g.chunkBytes += len(seq)
 			return seq, nil
 		}
 		if len(g.chunks) > 0 {
-			group := append(g.chunks, seq)
+			head = g.chunkHead
+			head.seq = bytes.Join(append(g.chunks, seq), nil)
 			g.chunks, g.chunkBytes = nil, 0
-			return seq, [][]byte{bytes.Join(group, nil)}
 		}
-		return seq, [][]byte{seq}
+		return seq, []graphicsSeq{head}
 	}
 	data, ok := readImageFile(payload, cwd)
 	if !ok {
 		return seq, nil
 	}
-	out := rewriteFileImage(params, data)
-	joined := bytes.Join(out, nil)
-	return joined, [][]byte{joined}
+	head.seq = bytes.Join(rewriteFileImage(params, data), nil)
+	return head.seq, []graphicsSeq{head}
 }
 
 // readImageFile reads the file payload, resolved against cwd, at most
@@ -213,18 +278,22 @@ func readImageFile(payload, cwd string) ([]byte, bool) {
 // its placement parameters. A PNG keeps its format; without one, the
 // image is sent as a PNG only when its bytes are.
 // skipChunks drops the chunk group seq continues, when the rewrite budget
-// keeps it from being parsed.
-func (g *graphics) skipChunks(seq []byte) {
-	body := seq[len(apcGraphicsStart) : len(seq)-len(apcEnd)]
-	header, _, ok := strings.Cut(string(body), ";")
-	if !ok {
-		return
+// keeps it from being parsed, and returns what seq, or the group it
+// belongs to, does to an image, which the terminal does all the same.
+func (g *graphics) skipChunks(seq []byte) []graphicsSeq {
+	params, payload, ok := graphicsParams(seq)
+	head := graphicsHead(params, payload)
+	if len(g.chunks) > 0 || g.chunkSkip {
+		head = g.chunkHead
 	}
-	if graphicsMore(strings.Split(header, ",")) {
-		g.chunks, g.chunkBytes, g.chunkSkip = nil, 0, true
-		return
+	head.seq = nil
+	if ok {
+		g.chunks, g.chunkBytes, g.chunkSkip = nil, 0, graphicsMore(params)
 	}
-	g.chunks, g.chunkBytes, g.chunkSkip = nil, 0, false
+	if head.op == graphicsOther {
+		return nil
+	}
+	return []graphicsSeq{head}
 }
 
 // graphicsMore reports whether params say more chunks follow.
@@ -296,75 +365,63 @@ func rewriteFileImage(params []string, data []byte) [][]byte {
 // record adds sequences for replay, keeping the most recent
 // maxGraphicsHistory bytes. It keeps the images as they are, not each
 // sequence sent: a transmit by id replaces the image and its placements,
-// as in the terminal, so what the history had of that id goes; a delete
-// that frees an image by its id (d=I, all its placements) takes it out
-// and is not kept. The session holds its lock.
-func (g *graphics) record(seqs [][]byte) {
-	for _, seq := range seqs {
-		if len(seq) > maxGraphicsHistory {
-			continue
-		}
-		if id, replaces, frees := graphicsImage(seq); replaces || frees {
-			g.history = slices.DeleteFunc(g.history, func(h []byte) bool {
-				if old, _, _ := graphicsImage(h); old == id {
-					g.kept -= len(h)
+// as in the terminal, so what the history had of that id goes, even when
+// the transmit is too large to keep; a delete that frees an image by its
+// id (d=I, all its placements) takes it out and, when it did, is not
+// kept. The session holds its lock.
+func (g *graphics) record(seqs []graphicsSeq) {
+	for _, r := range seqs {
+		if r.op != graphicsOther {
+			n := len(g.history)
+			g.history = slices.DeleteFunc(g.history, func(h graphicsSeq) bool {
+				if h.id == r.id {
+					g.kept -= len(h.seq)
 					return true
 				}
 				return false
 			})
-			if frees {
+			if r.op == graphicsFree && len(g.history) < n {
 				continue
 			}
 		}
-		seq = append([]byte(nil), seq...)
-		g.history = append(g.history, seq)
-		g.kept += len(seq)
+		if r.seq == nil || len(r.seq) > maxGraphicsHistory {
+			continue
+		}
+		r.seq = append([]byte(nil), r.seq...)
+		g.history = append(g.history, r)
+		g.kept += len(r.seq)
 		for g.kept > maxGraphicsHistory && len(g.history) > 0 {
-			g.kept -= len(g.history[0])
+			g.kept -= len(g.history[0].seq)
 			g.history = g.history[1:]
 		}
 	}
 }
 
-// graphicsImage returns the image id a recorded sequence names, from its
-// first header, and whether it transmits that image, which replaces it,
-// or deletes it with all its placements, freeing it. An image named by
-// number (I) is not one: a transmit of a number makes another image.
-func graphicsImage(seq []byte) (id string, replaces, frees bool) {
-	body, ok := bytes.CutPrefix(seq, apcGraphicsStart)
-	if !ok {
-		return "", false, false
+// restore records the sequences a handoff has, as sequences returns them.
+func (g *graphics) restore(seqs [][]byte) {
+	for _, seq := range seqs {
+		params, payload, _ := graphicsParams(seq)
+		head := graphicsHead(params, payload)
+		head.seq = seq
+		g.record([]graphicsSeq{head})
 	}
-	if end := bytes.IndexAny(body, ";\x1b"); end >= 0 {
-		body = body[:end]
+}
+
+// sequences returns the sequences replay sends, one by one.
+func (g *graphics) sequences() [][]byte {
+	out := make([][]byte, len(g.history))
+	for i, h := range g.history {
+		out[i] = h.seq
 	}
-	action, del, placement := "t", "a", ""
-	for _, p := range strings.Split(string(body), ",") {
-		key, value, _ := strings.Cut(p, "=")
-		switch key {
-		case "a":
-			action = value
-		case "d":
-			del = value
-		case "i":
-			id = value
-		case "p":
-			placement = value
-		}
-	}
-	if id == "" || id == "0" {
-		return "", false, false
-	}
-	frees = action == "d" && del == "I" && (placement == "" || placement == "0")
-	return id, action == "t" || action == "T", frees
+	return out
 }
 
 // replay returns the graphics sequences an attaching window needs to show
 // the images the session showed.
 func (g *graphics) replay() []byte {
 	var b bytes.Buffer
-	for _, seq := range g.history {
-		b.Write(seq)
+	for _, h := range g.history {
+		b.Write(h.seq)
 	}
 	return b.Bytes()
 }
