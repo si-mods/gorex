@@ -342,6 +342,15 @@ func TestWheelDeltas(t *testing.T) {
 			t.Error("a negative pixel")
 		}
 	})
+	t.Run("a huge delta is capped", func(t *testing.T) {
+		ms, aerr := wheelInput(rawArgs(t, map[string]any{"delta_mode": "line", "delta_y": 1e9}))
+		if aerr != nil {
+			t.Fatal(aerr)
+		}
+		if len(ms) != maxWheelEvents {
+			t.Errorf("%d events from delta_y 1e9, want %d", len(ms), maxWheelEvents)
+		}
+	})
 	t.Run("a direction is one event", func(t *testing.T) {
 		ms, aerr := wheelInput(rawArgs(t, map[string]any{"direction": "up", "column": 1, "row": 2}))
 		if aerr != nil || len(ms) != 1 || ms[0].Button != "up" {

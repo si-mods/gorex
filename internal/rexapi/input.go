@@ -399,8 +399,13 @@ func deltaWheelInput(o args, mode string) ([]rex.MouseInput, *apiError) {
 	return out, nil
 }
 
+// maxWheelEvents is the most events one axis's delta may become, so a
+// huge delta cannot make the server build an unbounded slice.
+const maxWheelEvents = 64
+
 // wheelLines turns one axis's delta into a signed count of wheel events.
-// A nonzero delta is at least one event.
+// A nonzero delta is at least one event, and no delta makes more than
+// maxWheelEvents.
 func wheelLines(delta float64, present bool, mode string) int {
 	if !present || delta == 0 {
 		return 0
@@ -414,6 +419,9 @@ func wheelLines(delta float64, present bool, mode string) int {
 	n := int(math.Round(math.Abs(delta)))
 	if n < 1 {
 		n = 1
+	}
+	if n > maxWheelEvents {
+		n = maxWheelEvents
 	}
 	if delta < 0 {
 		n = -n
