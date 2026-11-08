@@ -351,11 +351,6 @@ type Pane struct {
 	// session's screen mends. A hold that ends at the size it began takes
 	// no size, and asks for no screen.
 	held int
-	// transfers are the files on their way to or from the pane's machine,
-	// as its list shows them; uploading closes once the last drop's are
-	// sent.
-	transfers []*fileTransfer
-	uploading chan struct{}
 }
 
 // end lets the pane go from its window: its terminal closes. Its
@@ -368,10 +363,10 @@ func (p *Pane) end() {
 }
 
 // close ends the pane for good, as its session ends or another pane takes
-// its place: its transfers stop too.
+// its place. Its session's transfers stop as the session is ended
+// (hostConn.kill), not with the pane: another may show it.
 func (p *Pane) close() {
 	p.end()
-	p.stopTransfers()
 }
 
 // browserPane is a pane that shows a web page in a web view of its

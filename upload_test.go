@@ -108,7 +108,7 @@ func waitUploaded(t *testing.T, tt *ui.Tester, p *Pane) {
 	t.Helper()
 	waitFor(t, tt, "the uploads", func() bool {
 		select {
-		case <-p.uploading:
+		case <-uploadingOf(p):
 			return true
 		default:
 			return false
@@ -150,8 +150,8 @@ func TestDropUploadsToHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	a.upload(p, append(paths, gone))
-	if len(p.transfers) != 3 {
-		t.Fatalf("transfers %v", p.transfers)
+	if len(listOf(p)) != 3 {
+		t.Fatalf("transfers %v", listOf(p))
 	}
 	waitUploaded(t, tt, p)
 	waitFor(t, tt, "the paths there", func() bool { return strings.Contains(p.term.Text(), `b (1).txt`) })
@@ -182,8 +182,8 @@ func TestDropUploadsToHost(t *testing.T) {
 	})
 	tt.Advance(transferShown)
 	tt.Frame()
-	if len(p.transfers) != 1 || tt.HasText("Done") || !tt.HasText("gone.txt") {
-		t.Errorf("transfers after a while: %v", p.transfers)
+	if len(listOf(p)) != 1 || tt.HasText("Done") || !tt.HasText("gone.txt") {
+		t.Errorf("transfers after a while: %v", listOf(p))
 	}
 }
 
@@ -203,8 +203,8 @@ func TestDropFolderOnHost(t *testing.T) {
 	if err := tt.Click("Folders are not uploaded yet"); err != nil {
 		t.Fatal(err)
 	}
-	if len(p.transfers) != 0 {
-		t.Errorf("the failure stays after a click: %v", p.transfers)
+	if len(listOf(p)) != 0 {
+		t.Errorf("the failure stays after a click: %v", listOf(p))
 	}
 }
 
@@ -250,30 +250,70 @@ func TestClosePaneMidUpload(t *testing.T) {
 	if _, err := os.Stat(part); err != nil {
 		t.Fatalf("no partial under way: %v", err)
 	}
+	done := uploadingOf(p)
 	a.closePane(p)
 	waitFor(t, tt, "the session to end", func() bool { return !slices.Contains(sessionIDs(t, remote), sid) })
 	close(held.release)
-	waitUploaded(t, tt, p)
+	waitFor(t, tt, "the upload", func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	})
 	if _, err := os.Stat(part); err == nil {
 		t.Error("the partial stays")
 	}
 }
 
-// TestPaneEndStopsUploads stops a pane's uploads as it closes for good,
-// and not as it moves to another window, its session going on.
+// TestPaneEndStopsUploads stops a session's uploads as the session is
+// ended with its pane, and not as the pane moves to another window, nor
+// as it goes with the session going on, as its host's removal drops it.
 func TestPaneEndStopsUploads(t *testing.T) {
 	a, _ := newTestApp(t)
+	a.split(false) // the tab stays
 	p := a.tab().Focus
-	ctx, cancel := context.WithCancel(context.Background())
-	p.transfers = []*fileTransfer{{name: "d.bin", cancel: cancel}}
+	p.host = newHostConn(savedHost{ID: "h1", Name: "office-mac"})
+	ctx := p.host.transfersOf(p.SID).ctx
 	p.end()
-	if ctx.Err() != nil {
-		t.Fatal("moving the pane stops its upload")
-	}
 	p.closed = false
 	a.dropPane(p, false)
+	if ctx.Err() != nil {
+		t.Fatal("a pane gone, its session going on, stops its upload")
+	}
+	q := a.tab().Focus
+	q.host = p.host
+	ctx = q.host.transfersOf(q.SID).ctx
+	a.closePane(q)
 	if ctx.Err() == nil {
-		t.Error("closing the pane leaves its upload")
+		t.Error("ending the session leaves its upload")
+	}
+}
+
+// TestPasteWaitsForHost drops a folder, whose path here is pasted, on a
+// pane of a host while it reconnects: the paste waits for the host. One
+// that waits too long says why on the list.
+func TestPasteWaitsForHost(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, proxy, p := remotePane(t, a, tt, t.TempDir())
+	folder := t.TempDir()
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil })
+	a.upload(p, []string{folder})
+	proxy.setDown(false)
+	h.poke()
+	waitFor(t, tt, "the folder's path", func() bool { return strings.Contains(p.term.Text(), filepath.Base(folder)) })
+	waitUploaded(t, tt, p) // nothing reads hostWait now
+
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil })
+	hostWait = 100 * time.Millisecond
+	t.Cleanup(func() { hostWait = time.Minute })
+	a.upload(p, []string{folder})
+	waitUploaded(t, tt, p)
+	if l := listOf(p); l[len(l)-1].err != "Not connected to office-mac." {
+		t.Errorf("the list: %+v", l[len(l)-1])
 	}
 }
 
@@ -327,8 +367,8 @@ func TestDropOnOldHost(t *testing.T) {
 		t.Fatal("no element took the drop")
 	}
 	waitFor(t, tt, "the path here", func() bool { return strings.Contains(p.term.Text(), "old.txt") })
-	if len(p.transfers) != 0 || p.uploading != nil {
-		t.Errorf("an upload to a host that takes none: %v", p.transfers)
+	if len(listOf(p)) != 0 || uploadingOf(p) != nil {
+		t.Errorf("an upload to a host that takes none: %v", listOf(p))
 	}
 }
 
@@ -344,8 +384,8 @@ func TestDropOnLocalPane(t *testing.T) {
 		t.Fatal("no element took the drop")
 	}
 	waitFor(t, tt, "the path", func() bool { return strings.Contains(p.term.Text(), "here.txt") })
-	if len(p.transfers) != 0 || p.uploading != nil {
-		t.Errorf("a local drop uploads: %v", p.transfers)
+	if len(listOf(p)) != 0 || uploadingOf(p) != nil {
+		t.Errorf("a local drop uploads: %v", listOf(p))
 	}
 	// The shell, a plain sh, echoes what the drop pasted, quoted: as the
 	// path is only when nothing in it needs quoting.
@@ -369,7 +409,9 @@ func TestTransferList(t *testing.T) {
 	p := a.tab().Focus
 	ctx, cancel := context.WithCancel(context.Background())
 	active := &fileTransfer{name: "big.bin", size: 4_800_000, done: 1_200_000, cancel: cancel}
-	p.transfers = []*fileTransfer{
+	p.host = newHostConn(savedHost{ID: "h1", Name: "office-mac"})
+	ts := p.host.transfersOf(p.SID)
+	ts.list = []*fileTransfer{
 		active,
 		{name: "small.txt", size: 10, done: 10, ok: true},
 		{name: "bad.txt", size: 10, err: "disk full"},
@@ -379,7 +421,7 @@ func TestTransferList(t *testing.T) {
 	if !tt.HasText("…") || tt.HasText("0 B of 0 B") {
 		t.Errorf("a download of no size yet: texts %q", tt.Texts())
 	}
-	p.transfers = p.transfers[:3]
+	ts.list = ts.list[:3]
 	tt.Frame()
 	for _, s := range []string{"big.bin", "1.2 MB of 4.8 MB", "small.txt", "Done", "bad.txt", "disk full"} {
 		if !tt.HasText(s) {
@@ -406,8 +448,8 @@ func TestTransferList(t *testing.T) {
 		t.Fatal(err)
 	}
 	tt.Frame()
-	if len(p.transfers) != 0 || tt.HasText("bad.txt") {
-		t.Errorf("the list stays: %v", p.transfers)
+	if len(listOf(p)) != 0 || tt.HasText("bad.txt") {
+		t.Errorf("the list stays: %v", listOf(p))
 	}
 }
 
@@ -467,7 +509,7 @@ func TestDropNameForShell(t *testing.T) {
 	}
 	h.hello.Capabilities = slices.DeleteFunc(slices.Clone(h.hello.Capabilities), func(c string) bool { return c == rex.CapabilityFileTemp })
 	a.upload(p, dropped(t, "50%!.txt", "x"))
-	x := p.transfers[len(p.transfers)-1]
+	x := listOf(p)[len(listOf(p))-1]
 	waitUploaded(t, tt, p)
 	if _, err := os.Stat(filepath.Join(cwd, "50%!.txt")); err != nil {
 		t.Error(err)
@@ -479,7 +521,7 @@ func TestDropNameForShell(t *testing.T) {
 	}
 	tt.Advance(transferShown)
 	tt.Frame()
-	if slices.Contains(p.transfers, x) {
+	if slices.Contains(listOf(p), x) {
 		t.Error("the row stays")
 	}
 }
@@ -502,7 +544,7 @@ func clicked(t *testing.T, a *App, tt *ui.Tester, p *Pane, link string) *fileTra
 	if !a.openLink(p, link) {
 		t.Fatalf("%s not taken", link)
 	}
-	x := p.transfers[len(p.transfers)-1]
+	x := listOf(p)[len(listOf(p))-1]
 	waitFor(t, tt, link, func() bool { return x.ok || x.err != "" })
 	return x
 }
@@ -576,8 +618,8 @@ func TestDownloadFromHost(t *testing.T) {
 	if err := tt.Click("Folders are not downloaded yet"); err != nil {
 		t.Fatal(err)
 	}
-	if len(p.transfers) != 2 {
-		t.Errorf("transfers after a click: %v", p.transfers)
+	if len(listOf(p)) != 2 {
+		t.Errorf("transfers after a click: %v", listOf(p))
 	}
 	if left, _ := filepath.Glob(filepath.Join(downloads, ".gorex-*.partial")); len(left) > 0 {
 		t.Errorf("partials left: %v", left)
@@ -600,19 +642,20 @@ func TestDownloadCancelled(t *testing.T) {
 	if !a.openLink(p, "big.bin") || !a.openLink(p, "big.bin:3") {
 		t.Fatal("the link not taken")
 	}
-	if len(p.transfers) != 1 {
-		t.Fatalf("transfers %v", p.transfers)
+	if len(listOf(p)) != 1 {
+		t.Fatalf("transfers %v", listOf(p))
 	}
 	// The same name printed in another directory is another file.
 	dir := p.info.Dir
 	p.info.Dir = filepath.Join(dir, "other")
 	a.openLink(p, "big.bin")
 	p.info.Dir = dir
-	if len(p.transfers) != 2 {
-		t.Fatalf("transfers %v", p.transfers)
+	if len(listOf(p)) != 2 {
+		t.Fatalf("transfers %v", listOf(p))
 	}
-	p.close()
-	for _, x := range p.transfers {
+	list := listOf(p)
+	a.closePane(p)
+	for _, x := range list {
 		waitFor(t, tt, "the download to stop", func() bool { return x.err != "" })
 	}
 	if _, err := os.Stat(part); err == nil {
@@ -634,8 +677,8 @@ func TestOpenLinkOnlyFromHostsTaking(t *testing.T) {
 	local := a.tab().Focus
 	downloads := downloadsHere(t)
 	here := dropped(t, "here.txt", "x")[0]
-	if !a.openLink(local, here) || !slices.Equal(tt.OpenedURLs(), []string{fileURL(here)}) || len(local.transfers) != 0 {
-		t.Errorf("a local link: opened %q, transfers %v", tt.OpenedURLs(), local.transfers)
+	if !a.openLink(local, here) || !slices.Equal(tt.OpenedURLs(), []string{fileURL(here)}) || len(listOf(local)) != 0 {
+		t.Errorf("a local link: opened %q, transfers %v", tt.OpenedURLs(), listOf(local))
 	}
 	there := testDir(t)
 	t.Cleanup(func() { os.RemoveAll(there) })
@@ -643,13 +686,13 @@ func TestOpenLinkOnlyFromHostsTaking(t *testing.T) {
 	h, proxy, p := remotePane(t, a, tt, there)
 	caps := h.hello.Capabilities
 	h.hello.Capabilities = nil
-	if a.openLink(p, "f.txt") || len(p.transfers) != 0 {
+	if a.openLink(p, "f.txt") || len(listOf(p)) != 0 {
 		t.Error("a download from a host that transfers no files")
 	}
 	h.hello.Capabilities = caps
 	proxy.setDown(true)
 	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil })
-	if a.openLink(p, "f.txt") || len(p.transfers) != 0 {
+	if a.openLink(p, "f.txt") || len(listOf(p)) != 0 {
 		t.Error("a download from a host not connected")
 	}
 	if entries, _ := os.ReadDir(downloads); len(entries) != 0 || len(tt.OpenedURLs()) != 1 {
@@ -682,7 +725,8 @@ func TestTransferListContrast(t *testing.T) {
 	prefs.NoGlass = true
 	t.Cleanup(func() { prefs.NoGlass = old })
 	p := a.tab().Focus
-	p.transfers = []*fileTransfer{{name: "big.bin", size: 100, cancel: func() {}}}
+	p.host = newHostConn(savedHost{ID: "h1", Name: "office-mac"})
+	p.host.transfersOf(p.SID).list = []*fileTransfer{{name: "big.bin", size: 100, cancel: func() {}}}
 	// spread is how far apart in brightness, of 255, the pixels of img
 	// from x0, y0 to x1, y1 are.
 	spread := func(img image.Image, x0, y0, x1, y1 int) float64 {
@@ -714,5 +758,126 @@ func TestTransferListContrast(t *testing.T) {
 		if track < 12 || edge < 12 {
 			t.Errorf("dark %v: the track differs from the panel by %.1f, the edge by %.1f, of 255", dark, track, edge)
 		}
+	}
+}
+
+// listOf is the transfer list of p's session.
+func listOf(p *Pane) []*fileTransfer {
+	if p.host == nil || p.host.transfers[p.SID] == nil {
+		return nil
+	}
+	return p.host.transfers[p.SID].list
+}
+
+// uploadingOf closes once the uploads into p's session end.
+func uploadingOf(p *Pane) chan struct{} {
+	if p.host == nil || p.host.transfers[p.SID] == nil {
+		return nil
+	}
+	return p.host.transfers[p.SID].uploading
+}
+
+// gateUploads holds each upload's open until the returned func is called.
+func gateUploads(t *testing.T) (release func()) {
+	t.Helper()
+	gate := make(chan struct{})
+	old := openUpload
+	openUpload = func(path string) (uploadFile, error) {
+		<-gate
+		return os.Open(path)
+	}
+	t.Cleanup(func() { openUpload = old })
+	return sync.OnceFunc(func() { close(gate) })
+}
+
+// movedPane is the pane of sid in b, nil when none.
+func movedPane(b *App, sid string) *Pane {
+	for _, t := range b.tabs {
+		for _, q := range t.allPanes() {
+			if q.SID == sid {
+				return q
+			}
+		}
+	}
+	return nil
+}
+
+// TestUploadMovesWithItsTab moves a tab to a new window while a file
+// dropped on its pane goes to the host, and closes the window it was
+// dropped in: the new window's pane lists the transfer and gets its path
+// pasted.
+func TestUploadMovesWithItsTab(t *testing.T) {
+	dropsDir(t)
+	a, tt := newTestApp(t)
+	_, _, p := remotePane(t, a, tt, t.TempDir())
+	release := gateUploads(t)
+	defer release()
+	a.upload(p, dropped(t, "moved.txt", "x"))
+	sid, x := p.SID, listOf(p)[0]
+	a.moveTabToNewWindow(p.Tab)
+	b := a.st.apps[0]
+	q := movedPane(b, sid)
+	if b == a || q == nil || q.term == nil {
+		t.Fatal("the tab did not move")
+	}
+	if !slices.Contains(listOf(q), x) {
+		t.Fatalf("the moved pane's transfers %v", listOf(q))
+	}
+	a.st.closed(a)
+	release()
+	waitFor(t, tt, "the path there", func() bool { return strings.Contains(q.term.Text(), "moved.txt") })
+	waitFor(t, tt, "the upload", func() bool { return x.ok })
+}
+
+// TestUploadMovesWithItsPane is TestUploadMovesWithItsTab for a pane moved
+// into another window's tab.
+func TestUploadMovesWithItsPane(t *testing.T) {
+	dropsDir(t)
+	a, tt := newTestApp(t)
+	h, _, p := remotePane(t, a, tt, t.TempDir())
+	b := a.st.openWindow(a.st.addWorkspace())
+	b.newTabOn(h, t.TempDir())
+	release := gateUploads(t)
+	defer release()
+	a.upload(p, dropped(t, "moved.txt", "x"))
+	sid, x := p.SID, listOf(p)[0]
+	a.movePaneToWindow(p, b)
+	q := movedPane(b, sid)
+	if q == nil || q.term == nil {
+		t.Fatal("the pane did not move")
+	}
+	if !slices.Contains(listOf(q), x) {
+		t.Fatalf("the moved pane's transfers %v", listOf(q))
+	}
+	release()
+	waitFor(t, tt, "the path there", func() bool { return strings.Contains(q.term.Text(), "moved.txt") })
+}
+
+// TestClosedPaneDropsItsPaste closes a pane while a file dropped on it
+// waits to go: the upload stops and its session's list goes with it.
+func TestClosedPaneDropsItsPaste(t *testing.T) {
+	dropsDir(t)
+	a, tt := newTestApp(t)
+	h, _, p := remotePane(t, a, tt, t.TempDir())
+	a.split(false) // the tab stays
+	release := gateUploads(t)
+	defer release()
+	a.upload(p, dropped(t, "closed.txt", "x"))
+	x, done := listOf(p)[0], uploadingOf(p)
+	a.closePane(p)
+	if h.transfers[p.SID] != nil {
+		t.Error("the closed pane's session keeps its transfers")
+	}
+	release()
+	waitFor(t, tt, "the upload to stop", func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	if x.ok {
+		t.Error("the upload went on")
 	}
 }

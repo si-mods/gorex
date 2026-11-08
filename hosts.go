@@ -143,15 +143,19 @@ type hostConn struct {
 	closed        map[string]bool
 	tailnetOnline bool
 	openOnConnect *App
+	// transfers are those of the host's sessions, by session.
+	transfers map[string]*sessionTransfers
 
-	// mu guards client, Kills of savedHost, and expect, the sessions a
-	// teleport starts here, which adopt leaves for their pane.
+	// mu guards client, changed, Kills of savedHost, and expect, the
+	// sessions a teleport starts here, which adopt leaves for their pane.
 	mu     sync.Mutex
 	client *rex.Client // nil while not connected
-	expect map[string]bool
-	retry  chan struct{}
-	stop   chan struct{}
-	once   sync.Once
+	// changed closes as client changes (setClient).
+	changed chan struct{}
+	expect  map[string]bool
+	retry   chan struct{}
+	stop    chan struct{}
+	once    sync.Once
 	// update runs a change on the main thread, and persist saves the
 	// hosts there; startHost sets them.
 	update  func(func())
@@ -201,10 +205,45 @@ func (h *hostConn) close() {
 	h.once.Do(func() { close(h.stop) })
 	h.mu.Lock()
 	c := h.client
-	h.client = nil
+	h.setClient(nil)
 	h.mu.Unlock()
 	if c != nil {
 		c.Close()
+	}
+}
+
+// setClient makes c the host's client, and tells those waiting for one
+// (next). h.mu is held.
+func (h *hostConn) setClient(c *rex.Client) {
+	h.client = c
+	if h.changed != nil {
+		close(h.changed)
+	}
+	h.changed = make(chan struct{})
+}
+
+// next waits, until ctx is done or for d at most, for a client of the host
+// other than c, nil for any; nil when none comes.
+func (h *hostConn) next(ctx context.Context, c *rex.Client, d time.Duration) *rex.Client {
+	timeout := time.NewTimer(d)
+	defer timeout.Stop()
+	for {
+		h.mu.Lock()
+		if h.changed == nil {
+			h.changed = make(chan struct{})
+		}
+		n, changed := h.client, h.changed
+		h.mu.Unlock()
+		if n != nil && n != c {
+			return n
+		}
+		select {
+		case <-changed:
+		case <-ctx.Done():
+			return nil
+		case <-timeout.C:
+			return nil
+		}
 	}
 }
 
@@ -236,6 +275,9 @@ func (h *hostConn) kill(sid string) {
 func (h *hostConn) keepKills(sids []string) *rex.Client {
 	if h.closed == nil {
 		h.closed = map[string]bool{}
+	}
+	for _, sid := range sids {
+		h.stopTransfers(sid)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -409,7 +451,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 				return
 			default:
 			}
-			h.client = c
+			h.setClient(c)
 			h.mu.Unlock()
 			logged.log(name, nil)
 			update(func() { h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil })
@@ -418,7 +460,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			a.watchHost(h, c, update)
 			h.mu.Lock()
 			if h.client == c {
-				h.client = nil
+				h.setClient(nil)
 			}
 			h.mu.Unlock()
 			c.Close()
