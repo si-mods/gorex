@@ -1809,9 +1809,25 @@ func (a *App) removeTab(t *Tab) {
 	if i < 0 {
 		return
 	}
+	chosen := a.active == i
 	a.tabs = slices.Delete(a.tabs, i, i+1)
 	if a.active > i || a.active >= len(a.tabs) {
 		a.active = max(a.active-1, 0)
+	}
+	// The chosen tab gives way to the next tab of its host, or the one
+	// before: one of another host's would show in that host's fold.
+	if chosen {
+		same := func(o *Tab) bool { return o.host() == t.host() }
+		if j := slices.IndexFunc(a.tabs[i:], same); j >= 0 {
+			a.active = i + j
+		} else {
+			for j, o := range slices.Backward(a.tabs[:i]) {
+				if same(o) {
+					a.active = j
+					break
+				}
+			}
+		}
 	}
 	if a.renaming == t {
 		a.renaming = nil
