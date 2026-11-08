@@ -63,8 +63,9 @@ enum Ghostty {
 
     /// The actions a view takes: the grid size Ghostty settled on, the
     /// background a program set, a selection that changed, the scrollback
-    /// that moved or grew, and what a program tells the user: a bell, a
-    /// notification, its progress and a long command's end.
+    /// that moved or grew, a link under the mouse or clicked, and what a
+    /// program tells the user: a bell, a notification, its progress and a
+    /// long command's end.
     nonisolated private static func action(_ target: ghostty_target_s, _ action: ghostty_action_s) -> Bool {
         guard target.tag == GHOSTTY_TARGET_SURFACE, let s = target.target.surface else { return false }
         let key = Int(bitPattern: s)
@@ -95,6 +96,21 @@ enum Ghostty {
                     views[key]?.view?.syncScroll()
                 }
             }
+            return true
+        case GHOSTTY_ACTION_MOUSE_OVER_LINK:
+            // Told during the view's own move of the mouse, on the main
+            // thread, which reads it right after.
+            let l = action.action.mouse_over_link
+            guard Thread.isMainThread else { return true }
+            MainActor.assumeIsolated { views[key]?.view?.overLink = l.url != nil && l.len > 0 }
+            return true
+        case GHOSTTY_ACTION_OPEN_URL:
+            // The URL lives only for the call.
+            let o = action.action.open_url
+            guard let u = o.url else { return true }
+            let text = String(decoding: UnsafeRawBufferPointer(start: u, count: Int(o.len)), as: UTF8.self)
+            let matched = o.kind != GHOSTTY_ACTION_OPEN_URL_KIND_OSC8
+            DispatchQueue.main.async { MainActor.assumeIsolated { open(text, matched: matched) } }
             return true
         case GHOSTTY_ACTION_RING_BELL:
             DispatchQueue.main.async { MainActor.assumeIsolated { bell() } }
@@ -134,6 +150,13 @@ enum Ghostty {
         default:
             return false
         }
+    }
+
+    /// Opens a web or mail link; a program's link to a file or another
+    /// app stays shut.
+    private static func open(_ text: String, matched: Bool) {
+        guard let url = WebLink.url(text, matched: matched) else { return }
+        UIApplication.shared.open(url)
     }
 
     private static func notify(_ title: String, _ body: String, _ s: TerminalSession) {

@@ -81,6 +81,7 @@ targets:
       - GoRex/Terminal/TerminalTheme.swift
       - GoRex/Terminal/TerminalSession.swift
       - GoRex/Terminal/Maple.swift
+      - GoRex/Terminal/WebLink.swift
       - path: ../internal/rexapi/testdata/rex-terminal-stream.bin
         buildPhase: resources
     dependencies:
