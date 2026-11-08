@@ -694,6 +694,22 @@ func (c *Client) PutFile(ctx context.Context, f FilePut, src io.ReaderAt, progre
 	return a.Path, a.Skipped, ctxErr(ctx, err)
 }
 
+// PutForShell sends src as PutFile does, for a pane or a block whose
+// shell is at shell: into the temporary folder (f.Temp) by a name the
+// shell takes (PasteableName). It returns where the file is, and that
+// path as a word of the shell, "" when the shell takes no such path, as
+// one of a folder it refuses.
+func (c *Client) PutForShell(ctx context.Context, shell string, f FilePut, src io.ReaderAt, progress func(done int64)) (path, word string, err error) {
+	if f.Temp {
+		f.Name = PasteableName(shell, f.Name)
+	}
+	if path, _, err = c.PutFile(ctx, f, src, progress); err != nil {
+		return "", "", err
+	}
+	word, _ = PathWord(shell, path)
+	return path, word, nil
+}
+
 // AbortFile removes what a put of f left in the session's directory: the
 // partial of f.Name for f.ID in f.Dir, once no transfer writes it, waiting
 // for one stopping to let it go until ctx is done. With f.Dir absolute,

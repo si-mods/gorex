@@ -39,9 +39,10 @@ type fileTransfer struct {
 	// directory is known, "" for an upload.
 	from       string
 	size, done int64
-	// ok tells that the file is there, and err why it is not.
-	ok  bool
-	err string
+	// ok tells that the file is there, and err why it is not; note says
+	// what else of one there is to know, shown in place of Done.
+	ok        bool
+	err, note string
 	// ended is when the list first showed the file there.
 	ended  time.Time
 	cancel context.CancelFunc
@@ -102,22 +103,14 @@ func (a *App) upload(p *Pane, paths []string) {
 				pasted = append(pasted, it.path)
 				continue
 			}
-			// Into the temporary folder a file goes by a name the shell
-			// takes, whose path pastes.
-			if it.put.Temp = temp; temp {
-				it.put.Name = rex.PasteableName(shell, it.put.Name)
-			}
+			it.put.Temp = temp
 			c := h.current()
 			if c == nil {
 				it.x.cancel()
 				update(func() { it.x.err = offline })
 				continue
 			}
-			path, err := putFile(it.ctx, c, it.put, it.path, it.x, update)
-			if _, ok := rex.PathWord(shell, path); err == nil && !ok {
-				// Kept its name, in the shell's directory, it is not typed.
-				update(func() { it.x.ok, it.x.err = false, locales.PaneUploadNotPasted() })
-			} else if err == nil {
+			if path, word, err := putFile(it.ctx, c, shell, it.put, it.path, it.x, update); err == nil && word != "" {
 				pasted = append(pasted, path)
 			}
 		}
@@ -138,18 +131,18 @@ type uploadFile interface {
 // openUpload opens the file at path to send it.
 var openUpload = func(path string) (uploadFile, error) { return os.Open(path) }
 
-// putFile sends the file at path as f says, x telling how it goes, and
-// returns its path there. Cancelled under way, PutFile removes what the
-// host has of the file.
-func putFile(ctx context.Context, c *rex.Client, f rex.FilePut, path string, x *fileTransfer, update func(func())) (string, error) {
+// putFile sends the file at path as f says, for a pane whose shell is at
+// shell (PutForShell), x telling how it goes, and returns its path there
+// and that path as a word of the shell, "" when not to be pasted.
+// Cancelled under way, PutFile removes what the host has of the file.
+func putFile(ctx context.Context, c *rex.Client, shell string, f rex.FilePut, path string, x *fileTransfer, update func(func())) (there, word string, err error) {
 	defer x.cancel()
-	var there string
-	err := ctx.Err()
+	err = ctx.Err()
 	if err == nil {
 		var src uploadFile
 		if src, err = openUpload(path); err == nil {
 			var last time.Time
-			there, _, err = c.PutFile(ctx, f, src, func(done int64) {
+			there, word, err = c.PutForShell(ctx, shell, f, src, func(done int64) {
 				if now := time.Now(); now.Sub(last) >= transferEvery {
 					last = now
 					update(func() { x.done = done })
@@ -162,13 +155,17 @@ func putFile(ctx context.Context, c *rex.Client, f rex.FilePut, path string, x *
 		}
 	}
 	update(func() {
-		if err == nil {
-			x.done, x.ok = x.size, true
-		} else {
+		switch {
+		case err != nil:
 			x.err = strings.TrimPrefix(err.Error(), "rex: ")
+		case word == "":
+			// There, in a folder or by a name the shell refuses: not typed.
+			x.done, x.ok, x.note = x.size, true, locales.PaneUploadNotPasted()
+		default:
+			x.done, x.ok = x.size, true
 		}
 	})
-	return there, err
+	return there, word, err
 }
 
 // downloadsDir is where a file Command-clicked in a pane of a host goes.
@@ -431,7 +428,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 				case failed:
 					text, col = x.err, k.danger
 				case x.ok:
-					text = locales.PaneTransferDone()
+					text = cmp.Or(x.note, locales.PaneTransferDone())
 				case x.size == 0:
 					text = "…"
 				}

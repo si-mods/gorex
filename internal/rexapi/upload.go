@@ -37,8 +37,10 @@ func (g *Gateway) features() []string {
 type uploadResult struct {
 	// Path is where the file is, absolute.
 	Path string `json:"path"`
-	// Word is Path as a word of the block's shell.
-	Word string `json:"word"`
+	// Word is Path as a word of the block's shell, "" when the shell
+	// takes no such path; Reason then says why it is not to be pasted.
+	Word   string `json:"word"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // handleUpload takes an upload into the temporary folder.
@@ -83,23 +85,20 @@ func (g *Gateway) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// The file goes by a name the block's shell takes, whose path pastes.
-	put := rex.FilePut{SID: b.sid, Name: rex.PasteableName(info.Shell, name), Size: r.ContentLength, ID: fmt.Sprintf("%x", randomBytes(8)), Conflict: "rename", Temp: true}
 	// A client that goes away cancels the put, which removes what the
 	// server has of the file.
-	path, _, err := g.opt.Client.PutFile(r.Context(), put, &streamAt{r: r.Body}, nil)
+	put := rex.FilePut{SID: b.sid, Name: name, Size: r.ContentLength, ID: fmt.Sprintf("%x", randomBytes(8)), Conflict: "rename", Temp: true}
+	path, word, err := g.opt.Client.PutForShell(r.Context(), info.Shell, put, &streamAt{r: r.Body}, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, strings.TrimPrefix(err.Error(), "rex: "))
 		return
 	}
-	// A temporary folder of a path the shell refuses is not pasted: the
-	// error says so.
-	word, ok := rex.PathWord(info.Shell, path)
-	if !ok {
-		writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("%s is uploaded, but its path cannot be typed into the shell", path))
-		return
+	res := uploadResult{Path: path, Word: word}
+	if word == "" {
+		res.Reason = fmt.Sprintf("%s is uploaded, but the shell can't take this path", path)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(uploadResult{Path: path, Word: word})
+	json.NewEncoder(w).Encode(res)
 }
 
 // streamAt reads a stream as an io.ReaderAt read from the start, in order,

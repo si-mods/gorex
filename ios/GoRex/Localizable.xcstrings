@@ -1152,6 +1152,16 @@
         }
       }
     },
+    "Uploaded, Not Pasted": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已上传，未粘贴"
+          }
+        }
+      }
+    },
     "Version": {
       "localizations": {
         "zh-Hans": {

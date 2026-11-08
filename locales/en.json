@@ -1551,9 +1551,9 @@
       }
     }
   },
-  "paneUploadNotPasted": "Uploaded, not pasted: the shell cannot take this name",
+  "paneUploadNotPasted": "Done, not pasted: the shell can't take this path",
   "@paneUploadNotPasted": {
-    "description": "Transfer list of a pane: a file dropped on a pane of a host went into the shell's directory by a name the shell's quoting refuses (as % in cmd.exe), so its path was not pasted."
+    "description": "Transfer list of a pane, in place of Done: a file dropped on a pane of a host is there, but its path, of a folder or a name the shell's quoting refuses (as % in cmd.exe), was not pasted."
   },
   "paneTransferDone": "Done",
   "@paneTransferDone": {

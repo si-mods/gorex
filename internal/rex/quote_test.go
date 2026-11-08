@@ -99,7 +99,8 @@ func TestPathWord(t *testing.T) {
 }
 
 // TestPasteableName names a file for the shell: what its quoting refuses
-// becomes _, as a file dropped into a host's temporary folder is named.
+// becomes _, as a file dropped into a host's temporary folder is named, and
+// the rest stays byte for byte.
 func TestPasteableName(t *testing.T) {
 	cmd := `C:\Windows\System32\cmd.exe`
 	if got := PasteableName(cmd, "50%!\"x\r\n.txt"); got != "50___x__.txt" {
@@ -112,5 +113,12 @@ func TestPasteableName(t *testing.T) {
 	}
 	if got := PasteableName("/bin/zsh", "50%!.txt"); got != "50%!.txt" {
 		t.Errorf("zsh: %q", got)
+	}
+	// A name of bytes not UTF-8 keeps them: only what is refused goes.
+	if got := PasteableName("/bin/zsh", "a\xffb.txt"); got != "a\xffb.txt" {
+		t.Errorf("zsh: %q", got)
+	}
+	if got := PasteableName(cmd, "a\xffb%.txt"); got != "a\xffb_.txt" {
+		t.Errorf("cmd: %q", got)
 	}
 }

@@ -448,8 +448,8 @@ func TestRefusedPathNotPasted(t *testing.T) {
 // TestDropNameForShell drops a file whose name the pane's shell cannot
 // take on a host: into its temporary folder it goes by a name the shell
 // takes, which is pasted; into the shell's directory, of a host before
-// temporary folders, it keeps its name and the list says why it was not
-// pasted.
+// temporary folders, it keeps its name, and the list says, as it says a
+// file is done, why it was not pasted.
 func TestDropNameForShell(t *testing.T) {
 	if testShell.path == "cmd.exe" {
 		t.Skip("POSIX shell")
@@ -472,8 +472,15 @@ func TestDropNameForShell(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(cwd, "50%!.txt")); err != nil {
 		t.Error(err)
 	}
-	if x.err != locales.PaneUploadNotPasted() {
+	// The row is of a file there, with why it was not pasted; it goes as
+	// one done does.
+	if !x.ok || x.err != "" || x.note != locales.PaneUploadNotPasted() || !tt.HasText(x.note) {
 		t.Errorf("the row: %+v", x)
+	}
+	tt.Advance(transferShown)
+	tt.Frame()
+	if slices.Contains(p.transfers, x) {
+		t.Error("the row stays")
 	}
 }
 
