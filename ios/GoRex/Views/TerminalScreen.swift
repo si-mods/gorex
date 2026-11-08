@@ -39,8 +39,8 @@ struct TerminalScreen: View {
         // bar and the key bar too; the bar and the text on it take its scheme.
         let bg = session?.background ?? .black
         let scheme: ColorScheme = bg.light ? .light : .dark
-        // The terminal goes up under the clear bar and the status bar, which
-        // it leaves room for while it can, as the keyboard goes over it.
+        // The terminal goes up under the clear bar and the status bar: its
+        // grid starts below them, and its scrollback fills the band.
         Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab) } else { Color.clear } }
             .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)

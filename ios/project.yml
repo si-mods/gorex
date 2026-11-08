@@ -6,7 +6,7 @@ packages:
   # version rootshell pins.
   GhosttyKit:
     url: https://github.com/kitknox/ghosttykit-rootshell.git
-    exactVersion: 0.2.22
+    exactVersion: 0.2.23
 options:
   deploymentTarget:
     iOS: "26.0"
