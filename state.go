@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"errors"
 	"fmt"
+	"image/png"
 	"log"
 	"math"
 	"net/url"
@@ -3328,7 +3330,7 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 				statuses := len(was.Statuses) > 0 || len(in.Statuses) > 0
 				if !a.focusedWin && time.Since(was.LastInput) > 8*time.Second && !statuses && p.notifyDue(false) {
 					prog := programOf(was.ProgramName())
-					a.notifyPane(p, prog.Name, locales.NotifyFinished(prog.Name), locales.NotifyIn(shortDir(in.Dir)))
+					a.notifyPane(p, prog.Name, prog, locales.NotifyFinished(prog.Name), locales.NotifyIn(shortDir(in.Dir)))
 				}
 			}
 		}
@@ -3421,9 +3423,11 @@ func entered(was, in rex.SessionInfo) *rex.ProgramStatus {
 // notifyStatus tells, with a notification, that a program of pane p
 // reported r.
 func (a *App) notifyStatus(p *Pane, r *rex.ProgramStatus) {
-	prog := r.App
+	prog, icon := r.App, p.program()
 	if prog == "" {
 		prog, _ = p.label()
+	} else {
+		icon = programOf(prog)
 	}
 	title := locales.NotifyFinished(prog)
 	switch r.State {
@@ -3432,7 +3436,7 @@ func (a *App) notifyStatus(p *Pane, r *rex.ProgramStatus) {
 	case "error":
 		title = locales.NotifyFailed(prog)
 	}
-	a.notifyPane(p, prog, title, cmp.Or(r.Message(), r.Title))
+	a.notifyPane(p, prog, icon, title, cmp.Or(r.Message(), r.Title))
 }
 
 // notifyDue tells whether a notification of the pane may show, and if so
@@ -3455,7 +3459,7 @@ func (p *Pane) notifyDue(own bool) bool {
 // and 777), unless the pane is gone or the user looks at it.
 func (a *App) notifyProgram(p *Pane, title, body string) {
 	if !p.closed && !a.shows(p) && p.notifyDue(true) {
-		a.notifyPane(p, "", cmp.Or(title, "GoRex"), body)
+		a.notifyPane(p, "", p.program(), cmp.Or(title, "GoRex"), body)
 	}
 }
 
@@ -3484,8 +3488,11 @@ var showNotification = func(o mygo.NotificationOptions) (close func()) {
 // session stack together till its pane is seen, and the store's
 // notificationClicked brings the pane of one clicked to the front, from
 // its ID. With no body, the names take its place: Windows and Linux put
-// them on a line of the body.
-func (a *App) notifyPane(p *Pane, prog, title, body string) {
+// them on a line of the body. Its image is the tile of icon (tileImage):
+// of the program that finished, of the program a status names or else
+// the pane's, and of the pane's program for one a program sent; none for
+// a shell.
+func (a *App) notifyPane(p *Pane, prog string, icon program, title, body string) {
 	var parts []string
 	add := func(s string) {
 		if s != "" && s != prog && !slices.Contains(parts, s) {
@@ -3516,6 +3523,7 @@ func (a *App) notifyPane(p *Pane, prog, title, body string) {
 		Subtitle: src,
 		Body:     body,
 		Group:    key,
+		Image:    tileImage(icon, appearanceDark()),
 	})
 	if a.st != nil {
 		if a.st.shown == nil {
@@ -3524,6 +3532,74 @@ func (a *App) notifyPane(p *Pane, prog, title, body string) {
 		a.st.shown[key] = append(a.st.shown[key], close)
 	}
 }
+
+// tileImage is the tile of prog, as tabs show it in the dark appearance
+// or the light, as a PNG of 72 pixels square; nil for a shell, which has
+// no program to show. Each tile is drawn once, in a frame of its own,
+// which ui.Render draws on the main thread: call it there, out of a frame
+// the windows build, as the updates that notify are. One MyGo refuses to
+// draw gives none, and is drawn again the next time.
+func tileImage(prog program, dark bool) []byte {
+	if prog.Name == "" || prog.Shell {
+		return nil
+	}
+	key := tileKey{prog.Glyph, prog.TileGlyph, prog.TileBg, prog.TileFg, prog.TileBorder, dark}
+	if b, ok := tileImages[key]; ok {
+		return b
+	}
+	b := drawTileImage(prog, dark)
+	if b == nil {
+		return nil
+	}
+	if len(tileImages) >= 512 {
+		clear(tileImages)
+	}
+	tileImages[key] = b
+	return b
+}
+
+// drawTileImage draws the tile of tileImage on a window of no background:
+// the tile's corners stay clear. A view MyGo refuses to draw, as its
+// headless runtime panics, gives none.
+func drawTileImage(prog program, dark bool) (out []byte) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("gorex: drawing the tile of %s: %v", prog.Name, r)
+			out = nil
+		}
+	}()
+	k := &lightColors
+	if dark {
+		k = &darkColors
+	}
+	img := ui.Render(func(c *ui.Context) {
+		t := *c.Theme()
+		t.Background = ui.RGBA(0, 0, 0, 0)
+		c.SetTheme(&t)
+		ui.Box(c).Size(24, 24).Draw(func(p *ui.Painter, r ui.Rect) {
+			drawTile(p, k, ui.Rect{X: r.X + (r.W-tileW)/2, Y: r.Y + (r.H-tileH)/2, W: tileW, H: tileH}, prog, true)
+		})
+	}, 24, 24, 3)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		return nil
+	}
+	return buf.Bytes()
+}
+
+// tileKey is what a tile shows: its glyphs and colors, and the appearance.
+type tileKey struct {
+	glyph, tileGlyph string
+	bg, fg           ui.Color
+	border, dark     bool
+}
+
+// tileImages are the PNGs of tileImage, 512 at most.
+var tileImages = map[tileKey][]byte{}
+
+// appearanceDark tells whether the app shows its dark appearance; tests,
+// which run no app, take its place.
+var appearanceDark = mygo.Theme.IsDark
 
 // closeNotifications removes the notifications of a session, by its
 // notifyKey, as its pane is seen.
