@@ -45,9 +45,11 @@ extension TerminalView: UIScrollViewDelegate {
     }
 
     /// Slides again once Ghostty has drawn the output that came, which moves
-    /// the cursor, a tick later, once for a burst.
+    /// the cursor, a tick later: at most once a tick while output streams,
+    /// and once more a tick after the last of it, which Ghostty may not have
+    /// drawn yet when the tick before came.
     func laterSlide() {
-        guard !slideWaits else { return }
+        guard !slideWaits else { return slideAgain = true }
         slideWaits = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
@@ -55,6 +57,10 @@ extension TerminalView: UIScrollViewDelegate {
             guard surface != nil else { return }
             drawn = true
             slide(duration: 0.15)
+            if slideAgain {
+                slideAgain = false
+                laterSlide()
+            }
         }
     }
 

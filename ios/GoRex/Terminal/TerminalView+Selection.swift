@@ -93,6 +93,7 @@ extension TerminalView: UIEditMenuInteractionDelegate {
         loupe = nil
         guard let s = surface, ghostty_surface_has_selection(s) else { return hideSelection() }
         showsSelection = true
+        selectionStart = nil
         placeHandles()
         let box = ends()?.box ?? bounds
         editMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: CGPoint(x: box.midX, y: box.minY)))
@@ -116,6 +117,7 @@ extension TerminalView: UIEditMenuInteractionDelegate {
         guard showsSelection, let s = surface else { return }
         guard ghostty_surface_has_selection(s) else { return hideSelection() }
         placeHandles()
+        editMenu.updateVisibleMenuPosition(animated: false)
     }
 
     /// Clears the selection with a click, as Ghostty clears it. False when
@@ -145,8 +147,9 @@ extension TerminalView: UIEditMenuInteractionDelegate {
     }
 
     /// The selection's ends: the first cell's top left and the last cell's
-    /// top right, whether each is in view, and the box of the lines between
-    /// them in view, else the middle of the view.
+    /// top right, whether each is in view or in the band under the bars,
+    /// and the box of the lines between them in view, else the middle of
+    /// the view.
     private func ends() -> (first: CGPoint, last: CGPoint, shown: (start: Bool, end: Bool), box: CGRect)? {
         guard let s = surface else { return nil }
         var t = ghostty_text_s()
@@ -167,7 +170,22 @@ extension TerminalView: UIEditMenuInteractionDelegate {
         func corner(_ i: Int, right: Bool) -> CGPoint {
             CGPoint(x: origin.x + CGFloat(i % cols + (right ? 1 : 0)) * c.width, y: origin.y + CGFloat(i / cols) * c.height)
         }
-        let first = corner(a, right: false), last = corner(a + Int(t.offset_len), right: true)
+        var first = corner(a, right: false)
+        let last = corner(a + Int(t.offset_len), right: true)
+        // A start above the grid shows in the band under the bars while it
+        // is no more lines up than the band holds: Ghostty gives the grid's
+        // first cell for it, and its row is the one seen last.
+        var b = ghostty_action_scrollbar_s()
+        _ = ghostty_surface_display_scrollbar(s, &b)
+        if shown.start {
+            selectionStart = (Int(b.offset) + a / cols, a % cols)
+        } else if let start = selectionStart {
+            let k = Int(b.offset) - start.row
+            if k > 0, CGFloat(k) <= (inset / c.height).rounded(.up) {
+                first = CGPoint(x: origin.x + CGFloat(start.col) * c.width, y: origin.y - CGFloat(k) * c.height)
+                shown.start = true
+            }
+        }
         let box = first.y == last.y
             ? CGRect(x: first.x, y: first.y, width: last.x - first.x, height: c.height)
             : CGRect(x: 0, y: first.y, width: bounds.width, height: last.y + c.height - first.y)

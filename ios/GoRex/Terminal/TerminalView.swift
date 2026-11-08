@@ -43,12 +43,17 @@ final class TerminalView: UIView, TerminalOutput {
     var loupe: UITextLoupeSession?
     lazy var editMenu = UIEditMenuInteraction(delegate: self)
     var showsSelection = false
+    /// Where the selection starts, its row in the scrollback and its
+    /// column, as last seen in view: Ghostty tells no more of a start that
+    /// scrolled above the grid, into the band under the bars.
+    var selectionStart: (row: Int, col: Int)?
     lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
     /// How far down the status bar and the clear bar reach over the
-    /// terminal; whether a slide waits for the output to be drawn, and
-    /// whether any was.
+    /// terminal; whether a slide waits for the output to be drawn, whether
+    /// more came meanwhile, and whether any was drawn.
     var inset: CGFloat = 0 { didSet { if inset != oldValue { setNeedsLayout() } } }
     var slideWaits = false
+    var slideAgain = false
     var drawn = false
     /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
     var newTab: (() -> Void)?
