@@ -811,6 +811,41 @@ func TestSidebarFoldsHost(t *testing.T) {
 	}
 }
 
+// TestCloseTabStaysOnHost: closing the chosen tab chooses the next tab of
+// its host, or the one before, not another host's: that tab would show in
+// the other host's fold.
+func TestCloseTabStaysOnHost(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left", Animation: "off", FoldedHosts: []string{"1"}}
+	h := newHostConn(savedHost{ID: "1", Name: "office"})
+	h.state = hostConnected
+	a.hosts = []*hostConn{h}
+	a.tabs[0].Name = "Near"
+	a.newTab(os.TempDir()).Name = "Closed"
+	for _, name := range []string{"Far", "Chosen"} {
+		rp := &Pane{ID: a.id(), SID: name, host: h, info: rex.SessionInfo{ID: name}}
+		rt := a.makeTab("")
+		rt.Name, rt.Root = name, &Node{ID: a.id(), Pane: rp}
+		rp.Tab, rp.Node = rt, rt.Root
+		rt.setFocus(rp)
+		a.tabs = append(a.tabs, rt)
+	}
+	a.selectTab(3)
+	tt.Frame()
+	a.selectTab(1)
+	tt.Frame()
+	a.closeTab(a.tabs[1])
+	tt.Frame()
+	if got := a.tab().Name; got != "Near" {
+		t.Errorf("closing the chosen tab chose %q, want Near", got)
+	}
+	if tt.HasText("Far ") || !tt.HasText("Chosen ") {
+		t.Errorf("the folded host shows %q", tt.Texts())
+	}
+}
+
 // TestSidebarHostButton: the left sidebar has no host chip at its top; an
 // icon at its foot opens the host's panel, beside it and inside the window,
 // and says in its label which remote host is not connected.
