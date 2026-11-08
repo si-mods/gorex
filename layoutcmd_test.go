@@ -1027,9 +1027,10 @@ func TestCommandSpaces(t *testing.T) {
 func TestCommandSplitRunsCommand(t *testing.T) {
 	a, _ := newTestApp(t)
 	first := a.tab().Focus
+	// The program outlives the checks, as in TestCommandSpaces.
 	res := clientCommand(a, rex.LayoutCommand{
 		Op: "pane.split", SID: first.SID, Dir: os.TempDir(), Vertical: true,
-		Command: []string{"/bin/sh", "-c", "echo split"},
+		Command: []string{"/bin/sh", "-c", "echo split; exec sleep 60"},
 	})
 	if res.Code != "" || res.New == "" {
 		t.Fatalf("pane.split: %+v", res)
