@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"image"
-	"image/png"
 	"io"
 	"log"
 	"os"
@@ -289,7 +287,7 @@ func TestUpgradeKeepsWhatTheScreenTells(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	app.Hello()
 	work := t.TempDir()
-	if err := os.WriteFile(filepath.Join(work, "image.png"), append(append([]byte(nil), pngHeader...), "pixels"...), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(work, "image.png"), tinyPNG(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	live, err := c.Create(CreateOptions{
@@ -332,7 +330,7 @@ func TestUpgradeKeepsWhatTheScreenTells(t *testing.T) {
 			t.Errorf("mode %s set %v after the upgrade, want %v", md.Name, md.Set, want)
 		}
 	}
-	if res, err := c.Capture(live.ID, 0); err != nil || !bytes.Contains(res.Screen, []byte("\x1b_Gi=9,")) {
+	if res, err := c.Capture(live.ID, 0); err != nil || transmits(res.Screen, 9) != 1 {
 		t.Errorf("the image is gone after the upgrade: %q %v", res.Screen, err)
 	}
 	if err := c.Paste(live.ID, "hello\n"); err != nil {
@@ -354,18 +352,23 @@ func TestUpgradeKeepsWhatTheScreenTells(t *testing.T) {
 
 // TestResumeAnExitedSession hands over an exited session whose screen is
 // larger than what one read may rewrite, with an image: the resumed one
-// replays the image, and its screen is the one it had.
+// keeps both.
 func TestResumeAnExitedSession(t *testing.T) {
-	seq := []byte("\x1b_Gi=9,a=T,f=100;AAAA\x1b\\")
 	s := &session{cols: 80, rows: 24, p: &pty{}, exited: true}
-	s.graphics.record([][]byte{seq})
-	s.screen = append(bytes.Repeat([]byte("x"), maxGraphicsRewrite+1), seq...)
+	if err := s.newVT(); err != nil {
+		t.Fatal(err)
+	}
+	s.vt.Feed(bytes.Repeat([]byte("x"), maxGraphicsRewrite+1))
+	s.vt.Feed([]byte(kittyRGBA(9, 4, 4, ",C=1")))
+	s.images = s.vt.Images()
+	s.screen = append(s.vt.Snapshot(), s.images...)
+	s.vt.Close()
 	r, err := resumeSession(s.state(), func() {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := r.graphics.replay(); !bytes.Equal(got, seq) {
-		t.Errorf("replay %q after the handoff, want %q", got, seq)
+	if !bytes.Equal(r.images, s.images) || transmits(r.images, 9) != 1 {
+		t.Errorf("images %q after the handoff, want %q", r.images, s.images)
 	}
 	if !bytes.Equal(r.screen, s.screen) {
 		t.Errorf("a screen of %d bytes after the handoff, want %d", len(r.screen), len(s.screen))
@@ -374,19 +377,16 @@ func TestResumeAnExitedSession(t *testing.T) {
 
 // TestResumeKeepsTheCursor hands over an exited session whose last image
 // moved the cursor: the resumed one's cursor is where it was, not moved
-// again by the image's replay.
+// again by the image's placement.
 func TestResumeKeepsTheCursor(t *testing.T) {
-	var img bytes.Buffer
-	png.Encode(&img, image.NewGray(image.Rect(0, 0, 40, 60)))
-	seq := []byte("\x1b_Gi=9,a=T,f=100;" + base64.StdEncoding.EncodeToString(img.Bytes()) + "\x1b\\")
 	s := &session{cols: 40, rows: 10, p: &pty{}, exited: true}
 	if err := s.newVT(); err != nil {
 		t.Fatal(err)
 	}
 	defer s.vt.Close()
-	s.vt.Feed(append([]byte("hello\r\n"), seq...))
-	s.graphics.record([][]byte{seq})
-	s.screen = append(s.vt.Snapshot(), s.graphics.replay()...)
+	s.vt.Feed([]byte("hello\r\n" + kittyRGBA(9, 40, 60, "")))
+	s.images = s.vt.Images()
+	s.screen = append(s.vt.Snapshot(), s.images...)
 	s.ghostty, _ = s.vt.GhosttySnapshot()
 	r, err := resumeSession(s.state(), func() {})
 	if err != nil {
@@ -403,6 +403,33 @@ func TestResumeKeepsTheCursor(t *testing.T) {
 	}
 	if b, a := before.Snapshot(), after.Snapshot(); !bytes.Equal(b, a) {
 		t.Errorf("after the handoff the screen ends %q, want %q", a[max(len(a)-12, 0):], b[max(len(b)-12, 0):])
+	}
+	if !bytes.Equal(after.Images(), before.Images()) || transmits(r.images, 9) != 1 {
+		t.Errorf("after the handoff the images are %q, want %q", after.Images(), before.Images())
+	}
+}
+
+// TestResumeAnOlderHandoffsImages resumes a session of a handoff of a
+// build before, which has the graphics sequences the program sent apart
+// from its screen: the emulator takes them, the cursor where it was.
+func TestResumeAnOlderHandoffsImages(t *testing.T) {
+	screen := []byte("\x1b[Hhello\x1b[3;5H")
+	st := sessionState{
+		ID: "s1", Master: -1, Cols: 40, Rows: 10, Reaped: true, Exited: true, Screen: screen,
+		Images: [][]byte{[]byte(kittyRGBA(9, 4, 4, "")), []byte(kittyRGBA(8, 4, 4, "") + "\x1b_Ga=d,d=I,i=8,q=2\x1b\\"), []byte(kittyRGBA(9, 4, 4, ""))},
+	}
+	r, err := resumeSession(st, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transmits(r.images, 9) != 1 || transmits(r.images, 8) != 0 {
+		t.Errorf("images after the handoff %q, want image 9 alone", r.images)
+	}
+	w := headless(t)
+	w.Resize(40, 10)
+	w.Feed(screen)
+	if want := w.Snapshot(); !bytes.Equal(r.screen, append(want, r.images...)) {
+		t.Errorf("screen after the handoff %q, want %q and the images", r.screen, want)
 	}
 }
 

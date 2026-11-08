@@ -84,12 +84,13 @@ type session struct {
 	exited bool
 	code   int
 	// screen and title are what the session showed as it exited, its
-	// emulator closed; ghostty is that screen in Ghostty's binary
-	// snapshot format, which an attach asking for one sends; text is the
-	// same screen as plain text, for a block query after the program
-	// ended.
+	// emulator closed, its images (Kitty graphics) at the end; ghostty is
+	// that screen in Ghostty's binary snapshot format, which an attach
+	// asking for one sends, followed by images; text is the same screen
+	// as plain text, for a block query after the program ended.
 	screen     []byte
 	ghostty    []byte
+	images     []byte
 	text       string
 	title      string
 	cols, rows int
@@ -295,7 +296,8 @@ func (s *session) run(wait func() int) {
 		s.hold.RLock()
 		defer s.hold.RUnlock()
 		s.mu.Lock()
-		s.screen = append(s.vt.Snapshot(), s.graphics.replay()...)
+		s.images = s.vt.Images()
+		s.screen = append(s.vt.Snapshot(), s.images...)
 		// When it cannot be taken, the escape sequences stay the only form
 		// the session's screen survives in.
 		s.ghostty, _ = s.vt.GhosttySnapshot()
@@ -417,9 +419,8 @@ func (s *session) read() {
 			if bytes.Contains(data, []byte("t=f")) {
 				cwd = s.imageDir()
 			}
-			data, graphics := s.graphics.filter(data, cwd)
+			data = s.graphics.filter(data, cwd)
 			s.mu.Lock()
-			s.graphics.record(graphics)
 			s.answerLocked()
 			s.vt.Feed(data)
 			s.modes.feed(data)
@@ -1216,13 +1217,13 @@ func (s *session) capture(history int) CaptureResult {
 	return CaptureResult{Screen: snap, Title: title, Cols: s.cols, Rows: s.rows, Truncated: cut}
 }
 
-// view returns the session's screen, as escape sequences, and its
-// title; s.mu is held.
+// view returns the session's screen, as escape sequences, with the
+// images it shows now, and its title; s.mu is held.
 func (s *session) view() ([]byte, string) {
 	if s.exited {
 		return s.screen, s.title
 	}
-	return append(s.vt.Snapshot(), s.graphics.replay()...), s.vt.Title()
+	return append(s.vt.Snapshot(), s.vt.Images()...), s.vt.Title()
 }
 
 // snapshotLocked returns what a client attaching with o gets first: the
@@ -1263,11 +1264,13 @@ func (s *session) snapshotLocked(o Attach) []byte {
 }
 
 // ghosttyView returns the session's screen in Ghostty's binary snapshot
-// format, and the title and Kitty graphics an attach sends after it, which
-// that format does not carry; ok is false when the session has none, as an
-// exited one whose terminal took none. s.mu is held.
+// format, and the title and Kitty graphics an attach sends after it: the
+// format carries no title, and a client that turns it into escape
+// sequences, as the iOS app does, loses its images. ok is false when the
+// session has none, as an exited one whose terminal took none. s.mu is
+// held.
 func (s *session) ghosttyView() (snap, after []byte, ok bool) {
-	title := s.title
+	title, images := s.title, s.images
 	if s.exited {
 		if s.ghostty == nil {
 			return nil, nil, false
@@ -1278,12 +1281,12 @@ func (s *session) ghosttyView() (snap, after []byte, ok bool) {
 		if err != nil {
 			return nil, nil, false
 		}
-		snap, title = b, s.vt.Title()
+		snap, title, images = b, s.vt.Title(), s.vt.Images()
 	}
 	if title != "" {
 		after = append(after, "\x1b]2;"+title+"\x07"...)
 	}
-	return snap, append(after, s.graphics.replay()...), true
+	return snap, append(after, images...), true
 }
 
 // imageDir resolves a file a program names relative to where it runs: its

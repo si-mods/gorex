@@ -63,7 +63,7 @@ into the escape sequences that draw the same screen. See
               program (shell, vim, claude …)
                    │ PTY (forkpty, or ConPTY on Windows)
                    ▼
-   session.read ── graphics.filter: Kitty file images → in-band, recorded
+   session.read ── graphics.filter: Kitty file images → in-band
                    │
                    ├─► vt.Feed           screen + ~8 MiB scrollback
                    ├─► modes, batch      bracketed paste; mode 2026
@@ -125,11 +125,19 @@ A program may name an image by its file path. The window cannot read that
 path when the session runs on another host, so the server rewrites
 file-medium images to in-band chunks, reading the file where the program
 runs (`graphics.filter`, `imageDir`). Images up to 4 MiB are rewritten;
-one read adds at most 6 MiB. The server records the graphics sequences,
-the last 8 MiB of them (`graphics.record`), and sends them after every
-snapshot (`graphics.replay`): the snapshot carries the cells, not the
-images. An upgrade hands this history over beside the screen
-(`sessionState.Images`).
+one read adds at most 6 MiB.
+
+The escape-sequence snapshot carries the cells, not the images, and the
+iOS app, which turns GHOSTSNP into escape sequences, loses them. So every
+snapshot is followed by the images the emulator shows now (`vt.Images`):
+each placed image's pixels once, and its placements with the ids the
+program gave them, so that what it sends next acts on them. An image the
+program sent again, as at each resize, goes once; one it deleted or
+replaced does not go. A direct placement is placed at its cell, the
+cursor saved around it; one whose top scrolled into the scrollback is
+left out, as Kitty places an image only at the cursor. Virtual placements
+(Unicode placeholders) need no cell. Only the screen that shows has its
+images sent, and an image transmitted but never placed is not sent.
 
 ### After a resize
 
@@ -214,7 +222,7 @@ When the process ends, the server reads the rest of its output, then
 keeps what the emulator showed (`run`): the screen as escape sequences
 with the Kitty graphics, as GHOSTSNP, as text, and the title. It closes
 the emulator. An attach, `capture` or `format` after that gets the kept
-screen. After an upgrade, the new server makes the GHOSTSNP and the text
+screen, its images after it. After an upgrade, the new server makes the GHOSTSNP and the text
 again from the escape sequences (`resumeSession`).
 
 ### In-place upgrade (macOS, Linux)
@@ -233,8 +241,8 @@ executable in the same process (`upgrade_unix.go`):
 
 A session's handoff (`sessionState`) carries: the PID and PTY
 descriptor, the directory it started in, the size, the screen as the
-emulator's snapshot, the graphics history and the title, the output and
-bell counters, the last input and output times, the exit state, and the
+emulator's snapshot followed by its images (`vt.Images`), the title, the
+output and bell counters, the last input and output times, the exit state, and the
 status records. The new server makes a new emulator, feeds it the title
 and the screen (`resumeSession`), reads the program's modes from the
 screen again (`decModes`), and reads the PTY again. The programs keep
@@ -272,7 +280,7 @@ emulator before the program's first output (`CreateOptions.prelude`). See
 ## Limits
 
 - **The scrollback is about 8 MiB of output** per session
-  (`scrollback`), and the graphics replay 8 MiB.
+  (`scrollback`).
 - **Two emulators per window.** A window's terminal and the server's
   emulator each parse the output. They agree because both are the same
   libghostty-vt at the same size. When they drift, the server mends the
@@ -294,8 +302,7 @@ emulator before the program's first output (`CreateOptions.prelude`). See
 - **A sequence half read at an upgrade is lost.** What the server before
   read of a sequence a read cut, the modes tracker's (`decModes`), the
   graphics filter's (`graphics.pending`) and the emulator's, does not
-  reach the new server. The rest of a Kitty transfer whose start it read
-  is passed on, not recorded (`graphics.cut`).
+  reach the new server.
 - **GHOSTSNP is tied to one libghostty-vt.** The iOS app's
   `GhosttyVt.xcframework` must be built at the commit the server's MyGo
   binds.

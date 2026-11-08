@@ -68,9 +68,10 @@ type sessionState struct {
 	Cols   int `json:"cols"`
 	Rows   int `json:"rows"`
 	// Screen is the emulator's snapshot, from which the modes are read
-	// again, Images the graphics sequences the session replays on attach,
-	// and Title its title. A handoff of a build before Images has the
-	// replay at the end of Screen.
+	// again, followed by the images it shows (Kitty graphics), and Title
+	// its title. Images is what a handoff of a build before has of them:
+	// the graphics sequences the program sent, which that build replayed
+	// on attach.
 	Screen     []byte    `json:"screen,omitempty"`
 	Images     [][]byte  `json:"images,omitempty"`
 	Title      string    `json:"title,omitempty"`
@@ -240,10 +241,9 @@ func (s *session) state() sessionState {
 		Cols: s.cols, Rows: s.rows,
 		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
-		Statuses: s.status.list(), Images: s.graphics.history,
+		Statuses: s.status.list(),
 	}
 	st.Screen, st.Title = s.view()
-	st.Screen = bytes.TrimSuffix(st.Screen, s.graphics.replay())
 	select {
 	case <-s.readEnd:
 		// Its output ended: once its process did too, it exited.
@@ -331,19 +331,21 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		s.status.updates++
 		s.status.records[r.ID] = &statusRecord{r, s.status.updates}
 	}
-	// The images go to the history the attaches replay, not to the
-	// emulator, which the snapshot left as it was: a placement moves the
-	// cursor.
-	s.graphics.record(st.Images)
 	if st.Title != "" {
 		s.vt.Feed([]byte("\x1b]2;" + st.Title + "\x07"))
 	}
 	s.vt.Feed(st.Screen)
 	s.modes.feed(st.Screen)
+	if len(st.Images) > 0 {
+		// An older build's: the emulator takes them as the program sent
+		// them, the cursor, which a placement moves, saved around them.
+		s.vt.Feed(append(append([]byte("\x1b7"), bytes.Join(st.Images, nil)...), "\x1b8"...))
+	}
 	if st.Exited || st.Master < 0 {
 		s.p = &pty{proc: st.PID}
 		s.reaped, s.exited, s.code = true, true, st.Code
-		s.screen, s.title = append(st.Screen, s.graphics.replay()...), st.Title
+		s.images, s.title = s.vt.Images(), st.Title
+		s.screen = append(s.vt.Snapshot(), s.images...)
 		s.ghostty, _ = s.vt.GhosttySnapshot()
 		s.text = s.vt.Text()
 		s.reading, s.readEnd = make(chan struct{}), make(chan struct{})
@@ -362,7 +364,6 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 		return nil, err
 	}
 	s.p = p
-	s.graphics.cut = true
 	s.bells.Store(st.Bells)
 	wait := p.wait
 	if st.Reaped {

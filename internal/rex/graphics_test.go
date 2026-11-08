@@ -5,14 +5,14 @@ package rex
 import (
 	"bytes"
 	"encoding/base64"
-	"net"
+	"fmt"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/egoist/mygo/plugins/terminal"
 )
 
 func TestGraphicsRewritesFileImage(t *testing.T) {
@@ -24,29 +24,20 @@ func TestGraphicsRewritesFileImage(t *testing.T) {
 	}
 	seq := "\x1b_Gi=1,a=T,t=f;image.png\x1b\\"
 	var g graphics
-	got, recs := g.filter([]byte(seq), dir)
-	g.record(recs)
+	got := g.filter([]byte(seq), dir)
 	if bytes.Contains(got, []byte("t=f")) || !bytes.Contains(got, []byte("t=d")) || !bytes.Contains(got, []byte("f=100")) {
 		t.Fatalf("rewritten: %q", got)
 	}
 	if got := decodeChunks(t, got); !bytes.Equal(got, data) {
 		t.Fatalf("decoded %d bytes, want %d", len(got), len(data))
 	}
-	if len(g.history) < 1 || len(g.replay()) == 0 {
-		t.Fatalf("history %d", len(g.history))
-	}
 }
 
 func TestGraphicsLeavesInBandAlone(t *testing.T) {
 	in := []byte("before\x1b_Gi=2,a=T,t=d;AAAA\x1b\\after")
 	var g graphics
-	if got, recs := g.filter(in, ""); !bytes.Equal(got, in) {
+	if got := g.filter(in, ""); !bytes.Equal(got, in) {
 		t.Fatalf("changed: %q", got)
-	} else {
-		g.record(recs)
-	}
-	if !bytes.Equal(g.replay(), in[6:len(in)-5]) {
-		t.Fatalf("replay %q", g.replay())
 	}
 }
 
@@ -61,9 +52,7 @@ func TestGraphicsKeepsSplitSequence(t *testing.T) {
 	var g graphics
 	var out []byte
 	for _, p := range [][]byte{seq[:4], seq[4:20], seq[20:]} {
-		part, recs := g.filter(p, dir)
-		out = append(out, part...)
-		g.record(recs)
+		out = append(out, g.filter(p, dir)...)
 	}
 	if bytes.Contains(out, []byte("t=f")) || out[0] != 'x' || out[len(out)-1] != 'y' {
 		t.Fatalf("split output: %q", out)
@@ -76,18 +65,15 @@ func TestGraphicsKeepsSplitSequence(t *testing.T) {
 func TestGraphicsMissingFileLeavesSequence(t *testing.T) {
 	seq := []byte("\x1b_Gi=4,a=T,t=f;missing.png\x1b\\")
 	var g graphics
-	if got, _ := g.filter(seq, t.TempDir()); !bytes.Equal(got, seq) {
+	if got := g.filter(seq, t.TempDir()); !bytes.Equal(got, seq) {
 		t.Fatalf("missing file changed: %q", got)
-	}
-	if len(g.history) != 0 {
-		t.Fatal("missing file recorded")
 	}
 }
 
 func TestGraphicsFastPath(t *testing.T) {
 	var g graphics
 	in := []byte("plain output\n")
-	if got, recs := g.filter(in, ""); !bytes.Equal(got, in) || len(recs) != 0 {
+	if got := g.filter(in, ""); !bytes.Equal(got, in) {
 		t.Fatal("plain output changed")
 	}
 }
@@ -120,10 +106,43 @@ func decodeChunks(t *testing.T, out []byte) []byte {
 	return pixels
 }
 
+// kittyRGBA returns the Kitty graphics sequence that transmits a w×h
+// image of one byte value, as RGBA, with more keys.
+func kittyRGBA(id, w, h int, keys string) string {
+	px := bytes.Repeat([]byte{byte(id), 0x40, 0x80, 0xff}, w*h)
+	return fmt.Sprintf("\x1b_Ga=T,f=32,s=%d,v=%d,i=%d,q=2%s;%s\x1b\\", w, h, id, keys, base64.StdEncoding.EncodeToString(px))
+}
+
+// transmits counts the sequences in b that start sending image id's
+// pixels.
+func transmits(b []byte, id int) int {
+	n := 0
+	for {
+		i := bytes.Index(b, apcGraphicsStart)
+		if i < 0 {
+			return n
+		}
+		b = b[i+len(apcGraphicsStart):]
+		header, _, _ := strings.Cut(string(b[:max(bytes.Index(b, apcEnd), 0)]), ";")
+		keys := "," + header + ","
+		if (strings.Contains(keys, ",a=t,") || strings.Contains(keys, ",a=T,")) && strings.Contains(keys, fmt.Sprintf(",i=%d,", id)) {
+			n++
+		}
+	}
+}
+
+// tinyPNG returns a PNG of 4×4 gray pixels.
+func tinyPNG() []byte {
+	var b bytes.Buffer
+	png.Encode(&b, image.NewGray(image.Rect(0, 0, 4, 4)))
+	return b.Bytes()
+}
+
+// TestSessionRewritesFileImage: an image a program names by its file
+// reaches the session's emulator, which the attaches take it from.
 func TestSessionRewritesFileImage(t *testing.T) {
 	dir := t.TempDir()
-	data := append(append([]byte(nil), pngHeader...), []byte("pixels")...)
-	if err := os.WriteFile(filepath.Join(dir, "image.png"), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "image.png"), tinyPNG(), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	s, err := newSession("gfx", CreateOptions{
@@ -140,69 +159,10 @@ func TestSessionRewritesFileImage(t *testing.T) {
 		t.Fatal("session did not end")
 	}
 	s.mu.Lock()
-	history := s.graphics.replay()
+	screen, images := s.screen, s.images
 	s.mu.Unlock()
-	if bytes.Contains(history, []byte("t=f")) || !bytes.Contains(history, []byte("t=d")) || len(history) == 0 {
-		t.Fatalf("session history: %q", history)
-	}
-}
-
-func TestSessionViewReplaysImages(t *testing.T) {
-	dir := t.TempDir()
-	data := append(append([]byte(nil), pngHeader...), []byte("pixels")...)
-	if err := os.WriteFile(filepath.Join(dir, "image.png"), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	client, server := net.Pipe()
-	defer client.Close()
-	defer server.Close()
-	term, err := terminal.New(terminal.Options{Conn: client})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer term.Close()
-	term.Resize(40, 6)
-	var g graphics
-	rewritten, recs := g.filter([]byte("\x1b_Gi=11,a=T,t=f;image.png\x1b\\"), dir)
-	g.record(recs)
-	if bytes.Contains(rewritten, []byte("t=f")) {
-		t.Fatal("not rewritten")
-	}
-	term.Feed(rewritten)
-	s := &session{vt: term, graphics: g, cols: 40, rows: 6}
-	snap, _ := s.view()
-	if !bytes.Contains(snap, rewritten) {
-		t.Fatalf("snapshot lost image: %q", snap)
-	}
-}
-
-func TestGraphicsGroupsInBandChunks(t *testing.T) {
-	var g graphics
-	first := []byte("\x1b_Gi=12,a=T,t=d,m=1;AAAA\x1b\\")
-	second := []byte("\x1b_Gm=0;BBBB\x1b\\")
-	out, recs := g.filter(first, "")
-	if !bytes.Equal(out, first) || len(recs) != 0 {
-		t.Fatalf("first %q recs %d", out, len(recs))
-	}
-	out, recs = g.filter(second, "")
-	if !bytes.Equal(out, second) || len(recs) != 1 || !bytes.Equal(recs[0], append(first, second...)) {
-		t.Fatalf("second %q recs %q", out, recs)
-	}
-	g.record(recs)
-	if !bytes.Equal(g.replay(), append(first, second...)) {
-		t.Fatal("replay lost the chunk group")
-	}
-}
-
-func TestGraphicsHistoryCopies(t *testing.T) {
-	seq := []byte("\x1b_Gi=13,a=d\x1b\\")
-	var g graphics
-	g.record([][]byte{seq})
-	for i := range seq {
-		seq[i] = 'x'
-	}
-	if !bytes.Equal(g.replay(), []byte("\x1b_Gi=13,a=d\x1b\\")) {
-		t.Fatal("history aliases its source")
+	if transmits(images, 9) != 1 || !bytes.HasSuffix(screen, images) {
+		t.Fatalf("the exited session's images %q, its screen ends %q", images, screen[max(len(screen)-40, 0):])
 	}
 }
 
@@ -214,35 +174,7 @@ func TestGraphicsLeavesOversizeFile(t *testing.T) {
 	}
 	seq := []byte("\x1b_Gi=14,a=T,t=f;big.png\x1b\\")
 	var g graphics
-	out, recs := g.filter(seq, dir)
-	if !bytes.Equal(out, seq) || len(recs) != 0 {
+	if out := g.filter(seq, dir); !bytes.Equal(out, seq) {
 		t.Fatal("rewrote an oversize file")
-	}
-}
-
-// TestGraphicsRecordsNoOrphanChunks: the rest of a transfer whose start
-// went before the session read, as across an upgrade, is no image to
-// replay; the rest of one the session read the start of stays as it was.
-func TestGraphicsRecordsNoOrphanChunks(t *testing.T) {
-	g := graphics{cut: true}
-	out, recs := g.filter([]byte("\x1b_Gm=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
-	if len(recs) != 0 || !bytes.Contains(out, []byte("m=0;AAAA")) {
-		t.Fatalf("recorded %q, passed %q", recs, out)
-	}
-	_, recs = g.filter([]byte("\x1b_Ga=T,f=100,m=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
-	if len(recs) != 1 || !bytes.HasPrefix(recs[0], []byte("\x1b_Ga=T")) {
-		t.Fatalf("a whole transfer recorded %q", recs)
-	}
-
-	// A file image's first chunk is rewritten whole; its last chunk is
-	// recorded after it, as without a cut.
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "image.png"), append(append([]byte(nil), pngHeader...), "pixels"...), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	g = graphics{}
-	_, recs = g.filter([]byte("\x1b_Ga=T,t=f,m=1;image.png\x1b\\\x1b_Gm=0;\x1b\\"), dir)
-	if len(recs) != 2 || !bytes.Contains(recs[0], []byte("t=d")) || string(recs[1]) != "\x1b_Gm=0;\x1b\\" {
-		t.Fatalf("a chunked file image recorded %q", recs)
 	}
 }
