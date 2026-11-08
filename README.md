@@ -511,6 +511,12 @@ go run ./tools/mkicon  # redraw resources/icon.png
 `go get -tool github.com/egoist/mygo/cmd/mygo@latest` updates MyGo and its
 CLI together.
 
+`go tool mygo build` signs the app with the Developer ID that
+`macos.signingIdentity` names, so macOS keeps its privacy answers (such as
+media library access, which programs in the terminal ask for as GoRex)
+from one build to the next; an ad-hoc signature changes with every build.
+Without that identity, pass `-sign -`.
+
 ### Release
 
 Releases update installed apps, signed with a key that only the

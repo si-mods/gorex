@@ -35,7 +35,9 @@ jobs:
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
-        run: go tool mygo build -platform darwin/arm64,linux/amd64,linux/arm64 -upload
+        # The runner has no Developer ID (mygo.json's signingIdentity): sign
+        # ad hoc, as releases always have been.
+        run: go tool mygo build -sign - -platform darwin/arm64,linux/amd64,linux/arm64 -upload
 
   windows:
     needs: unix
