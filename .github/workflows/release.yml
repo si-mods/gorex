@@ -31,13 +31,40 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # A keychain of the run's own holds the Developer ID that mygo.json's
+      # signingIdentity names, and the notary credentials: the App Store
+      # Connect API key that TestFlight uploads use. mygo then notarizes the
+      # disk image, so Gatekeeper opens the app, and macOS keeps its privacy
+      # answers across updates, as the signature stays the same.
+      - name: signing keychain
+        env:
+          P12: ${{ secrets.MACOS_DEVELOPER_ID_P12 }}
+          P12_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_P12_PASSWORD }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          [[ -n $P12 && -n $P12_PASSWORD && -n $ASC_KEY_P8 ]] || { echo "::error::Set MACOS_DEVELOPER_ID_P12 (base64), MACOS_DEVELOPER_ID_P12_PASSWORD and ASC_KEY_P8"; exit 1; }
+          kc="$RUNNER_TEMP/signing.keychain-db" pw=$(uuidgen)
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          (umask 077; printf '%s' "$P12" | base64 -D > "$RUNNER_TEMP/id.p12"; printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8")
+          security import "$RUNNER_TEMP/id.p12" -k "$kc" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$pw" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          xcrun notarytool store-credentials gorex-notary --keychain "$kc" \
+            --key "$RUNNER_TEMP/AuthKey.p8" --key-id 6GG554C43Y --issuer 1b9ef96d-c5b4-49a9-8c8d-4f0b999da4d6
+          rm -f "$RUNNER_TEMP/id.p12" "$RUNNER_TEMP/AuthKey.p8"
+          jq --arg kc "$kc" '.macos.notarize = {keychainProfile: "gorex-notary", keychain: $kc}' mygo.json > "$RUNNER_TEMP/mygo.json"
+          mv "$RUNNER_TEMP/mygo.json" mygo.json
       - name: build and upload
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
-        # The runner has no Developer ID (mygo.json's signingIdentity): sign
-        # ad hoc, as releases always have been.
-        run: go tool mygo build -sign - -platform darwin/arm64,linux/amd64,linux/arm64 -upload
+        run: go tool mygo build -platform darwin/arm64,linux/amd64,linux/arm64 -upload
+      - if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/id.p12" "$RUNNER_TEMP/AuthKey.p8"
 
   windows:
     needs: unix

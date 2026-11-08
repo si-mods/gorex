@@ -515,7 +515,10 @@ CLI together.
 `macos.signingIdentity` names, so macOS keeps its privacy answers (such as
 media library access, which programs in the terminal ask for as GoRex)
 from one build to the next; an ad-hoc signature changes with every build.
-Without that identity, pass `-sign -`.
+Without that identity, pass `-sign -`. The Release workflow signs with the
+same identity, from the secrets `MACOS_DEVELOPER_ID_P12` (the identity's
+.p12, base64) and `MACOS_DEVELOPER_ID_P12_PASSWORD`, and notarizes the disk
+image with the App Store Connect API key `ASC_KEY_P8`.
 
 ### Release
 
