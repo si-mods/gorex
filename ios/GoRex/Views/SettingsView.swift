@@ -31,7 +31,8 @@ struct SettingsView: View {
                   page: AnyView(Themes(selection: $theme)))],
             [Item(title: "Terminal", icon: tile("apple.terminal.fill", .gray), page: AnyView(TerminalSettings())),
              Item(title: "Remote Hosts", icon: tile("globe", .orange), page: AnyView(RemoteHostsView()))],
-            [Item(title: "About", icon: tile("info.circle.fill", .gray),
+            [Item(title: "Features", icon: tile("sparkles", .blue), page: AnyView(FeaturesView())),
+             Item(title: "About", icon: tile("info.circle.fill", .gray),
                   value: "\(version) (\(build))", page: AnyView(AboutView(version: version, build: build)))],
         ]
     }
