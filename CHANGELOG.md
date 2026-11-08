@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.18.0
+
+### Features
+
+* **rexapi:** serve Rex's API revision 11: Rex's iPhone app uploads files into a terminal, and its wheel and pointer events carry deltas and buttons ([#305](https://github.com/si-mods/gorex/pull/305), [#315](https://github.com/si-mods/gorex/pull/315))
+
+### Build
+
+* **macos:** GoRex is signed with a Developer ID and notarized, so macOS keeps its privacy answers, such as media library access, across updates, and opens the app without a warning; the first update asks once more ([#312](https://github.com/si-mods/gorex/pull/312), [#316](https://github.com/si-mods/gorex/pull/316))
+
 ## 0.17.0
 
 ### Features
