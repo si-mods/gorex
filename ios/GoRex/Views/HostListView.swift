@@ -12,7 +12,8 @@ extension Color {
 }
 
 /// Every host, its sessions, and their windows, as Rex's iPhone app lists
-/// them. The eye lists instead the windows by what their programs need.
+/// them, in rows or, as Safari's tab overview, in a grid of cards. The eye
+/// lists instead the windows by what their programs need.
 /// A wide window shows the list beside the terminal open; a narrow one
 /// pushes the terminal over the list.
 struct HostListView: View {
@@ -22,6 +23,7 @@ struct HostListView: View {
     @State private var path: [TerminalTarget] = []
     @State private var collapsed: Set<String> = []
     @State private var inbox = false
+    @AppStorage("grid") private var grid = false
     @State private var query = ""
     @State private var settings = false
 
@@ -74,7 +76,7 @@ struct HostListView: View {
                     StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
                 } else {
                     ForEach(store.hosts) { host in
-                        HostSection(host: host, collapsed: $collapsed, filter: filter, open: { go($0) })
+                        HostSection(host: host, grid: grid, collapsed: $collapsed, filter: filter, open: { go($0) })
                     }
                 }
             }
@@ -92,6 +94,10 @@ struct HostListView: View {
                 Button(inbox ? "Show All Windows" : "Show Activity", systemImage: inbox ? "eye.slash" : "eye") {
                     inbox.toggle()
                 }
+                Button(grid ? "Show List" : "Show Grid", systemImage: grid ? "list.bullet" : "square.grid.2x2") {
+                    withAnimation(.snappy) { grid.toggle() }
+                }
+                .disabled(inbox)
             }
             ToolbarSpacer(.flexible, placement: .bottomBar)
             DefaultToolbarItem(kind: .search, placement: .bottomBar)
@@ -111,6 +117,8 @@ struct HostListView: View {
 
 private struct HostSection: View {
     let host: Host
+    /// Whether the windows show as cards, not rows.
+    let grid: Bool
     @Binding var collapsed: Set<String>
     let filter: (String, String?) -> Bool
     let open: (TerminalTarget) -> Void
@@ -288,7 +296,8 @@ private struct HostSection: View {
         // The room of the tiles of the window with the most, so that the titles line up.
         let tiles = ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
         let isCollapsed = collapsed.contains(s.id)
-        // The session is one card: its header, then its windows.
+        // The session is one card: its header, then its windows' rows. Their
+        // cards go below it instead, on the page as Safari's tabs are.
         VStack(spacing: 0) {
             HStack(spacing: 4) {
                 Text(s.label).font(.headline).foregroundStyle(.primary).lineLimit(1)
@@ -319,7 +328,7 @@ private struct HostSection: View {
             .frame(minHeight: 50)
             .contentShape(.rect)
             .overlay(alignment: .bottom) {
-                if !isCollapsed && !windows.isEmpty {
+                if !isCollapsed && !grid && !windows.isEmpty {
                     Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1 / 3).padding(.leading, 16)
                 }
             }
@@ -338,7 +347,7 @@ private struct HostSection: View {
             } message: { s in
                 Text("Close \(s.label) and every window in it?")
             }
-            if !isCollapsed {
+            if !isCollapsed && !grid {
                 ForEach(Array(windows.enumerated()), id: \.element.window.window_id) { i, w in
                     let title = host.title(w.window)
                     Button {
@@ -357,6 +366,38 @@ private struct HostSection: View {
         .background(.fill.quaternary)
         // The rows' highlights keep to the card's corners.
         .clipShape(.rect(cornerRadius: 22, style: .continuous))
+        if !isCollapsed && grid && !windows.isEmpty {
+            // Two columns on a phone, more as there is room.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 16) {
+                ForEach(windows, id: \.window.window_id) { w in
+                    Button {
+                        open(TerminalTarget(host: host.id, session: s.id, block: w.block, title: host.title(w.window)))
+                    } label: {
+                        WindowCard(host: host, block: w.block, window: w.window)
+                    }
+                    .buttonStyle(.plain)
+                    // Over the button, not in it, for its own taps.
+                    .overlay(alignment: .topTrailing) {
+                        Button {
+                            change("Can't Close the Tab") {
+                                try await host.closeWindow(w.window.window_id, in: s.id)
+                                Thumbnails.shared.drop(host: host.id, block: w.block)
+                            }
+                        } label: {
+                            Image(systemName: "xmark").font(.footnote.weight(.bold)).frame(width: 22, height: 22)
+                        }
+                        .buttonStyle(.glass)
+                        .buttonBorderShape(.circle)
+                        .accessibilityLabel("Close Tab")
+                        .padding(8)
+                    }
+                    .contentShape(.contextMenuPreview, .rect(cornerRadius: 22, style: .continuous))
+                    .contextMenu { menu(s, w.window, shown: windows.map(\.window.window_id)) }
+                }
+            }
+            // Room before the next session, as the title rows end flat.
+            .padding(.bottom, 12)
+        }
     }
 }
 
@@ -398,18 +439,7 @@ struct WindowRow<Mark: View>: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
-            // As the desktop's tab: a dot while the program waits for the
-            // user, else its progress when it tells one.
-            if status?.state == "blocked" {
-                Circle().fill(Color.attention).frame(width: 7, height: 7).accessibilityLabel("Needs Input")
-            } else if let p = status?.progress {
-                Circle().trim(from: 0, to: CGFloat(p) / 100)
-                    .stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .background(Circle().stroke(.quaternary, lineWidth: 2))
-                    .frame(width: 12, height: 12)
-                    .accessibilityLabel(Text(verbatim: "\(p)%"))
-            }
+            StatusMark(status: status)
             mark
         }
         .padding(.horizontal, 16)
@@ -421,5 +451,66 @@ struct WindowRow<Mark: View>: View {
                 Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1 / 3).padding(.leading, 16 + tiles + 14)
             }
         }
+    }
+}
+
+/// A window's mark, as the desktop's tab has it: a dot while the program
+/// waits for the user, else its progress when it tells one.
+struct StatusMark: View {
+    let status: Host.ProgramStatus?
+
+    var body: some View {
+        if status?.state == "blocked" {
+            Circle().fill(Color.attention).frame(width: 7, height: 7).accessibilityLabel("Needs Input")
+        } else if let p = status?.progress {
+            Circle().trim(from: 0, to: CGFloat(p) / 100)
+                .stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .background(Circle().stroke(.quaternary, lineWidth: 2))
+                .frame(width: 12, height: 12)
+                .accessibilityLabel(Text(verbatim: "\(p)%"))
+        }
+    }
+}
+
+/// A window's card in the grid: how its terminal looked when it was last
+/// left, else its background with its program's tile, then the tile, the
+/// title and the mark of its row.
+struct WindowCard: View {
+    let host: Host
+    let block: String
+    let window: SessionView.Window
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        let program = Program.of(host.programs[block])
+        let title = host.title(window)
+        VStack(alignment: .leading, spacing: 8) {
+            // Shorter than the phone: the top of the terminal, filled across.
+            Color.clear
+                .aspectRatio(3 / 4, contentMode: .fit)
+                .overlay(alignment: .top) {
+                    if let i = Thumbnails.shared.image(host: host.id, block: block) {
+                        Image(uiImage: i).resizable().scaledToFill()
+                    } else {
+                        Color(cgColor: (TerminalSession.background(on: host.id) ?? .black).cgColor)
+                            .overlay { ProgramTile(program: program, scale: 3).frame(width: 63, height: 48) }
+                    }
+                }
+                .clipShape(shape)
+                .overlay { shape.strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5) }
+            HStack(spacing: 8) {
+                ProgramTile(program: program, scale: 1).frame(width: 21, height: 16)
+                Text(title.isEmpty ? " " : title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+                StatusMark(status: host.status([block] + window.tiled))
+            }
+            .padding(.horizontal, 4)
+        }
+        .contentShape(.rect)
     }
 }

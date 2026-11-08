@@ -74,18 +74,23 @@ final class TerminalSession {
         self.session = session
         self.block = block
         data = DataConnection(base: host.config.url)
-        background = (UserDefaults.standard.dictionary(forKey: "backgrounds")?[backgroundKey] as? Int).map(VTerminal.RGB.init)
+        background = Self.background(on: host.id)
+    }
+
+    /// The last background seen on a host with this theme, else the theme's.
+    static func background(on host: UUID) -> VTerminal.RGB? {
+        (UserDefaults.standard.dictionary(forKey: "backgrounds")?[backgroundKey(host)] as? Int).map(VTerminal.RGB.init)
             ?? TerminalTheme.chosen.map { VTerminal.RGB($0.colors[16]) }
     }
 
-    private var backgroundKey: String { "\(host.id) \(TerminalTheme.name)" }
+    private static func backgroundKey(_ host: UUID) -> String { "\(host) \(TerminalTheme.name)" }
 
     /// Notes the background the view shows, for the page and the next opening.
     func drew(background b: VTerminal.RGB) {
         guard b != background else { return }
         background = b
         var all = UserDefaults.standard.dictionary(forKey: "backgrounds") ?? [:]
-        all[backgroundKey] = b.packed
+        all[Self.backgroundKey(host.id)] = b.packed
         UserDefaults.standard.set(all, forKey: "backgrounds")
     }
 

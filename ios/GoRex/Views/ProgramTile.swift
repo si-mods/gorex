@@ -148,14 +148,16 @@ struct ProgramTiles: View {
 }
 
 /// A program's tile: a rounded card of its color with a light rim and a
-/// sheen along the top, and its glyph when it is in front.
+/// sheen along the top, and its glyph when it is in front. It is 21×16
+/// times its scale.
 struct ProgramTile: View {
     let program: Program
     var glyph = true
+    var scale = ProgramTiles.scale
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let k = ProgramTiles.scale
+        let k = scale
         let card = RoundedRectangle(cornerRadius: 4.5 * k)
         card.fill(Color(rgb: program.tileBg))
             .overlay {

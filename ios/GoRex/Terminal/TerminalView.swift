@@ -256,6 +256,27 @@ final class TerminalView: UIView, TerminalOutput {
     @objc private func hide() { if let surface { ghostty_surface_set_occlusion(surface, false) } }
     @objc private func show() { if let surface { ghostty_surface_set_occlusion(surface, true) } }
 
+    /// As it leaves the window, the terminal keeps how it looks, for its
+    /// card in the list's grid.
+    override func willMove(toWindow newWindow: UIWindow?) {
+        super.willMove(toWindow: newWindow)
+        if newWindow == nil, window != nil, surface != nil, drawn {
+            Thumbnails.shared.keep(snapshot(), host: session.host.id, block: session.block)
+        }
+    }
+
+    /// The grid as drawn, without the band under the bars, at the
+    /// thumbnails' width. The render server's copy of the screen has
+    /// what the renderer's layer shows, which drawing the layers would not.
+    private func snapshot() -> UIImage {
+        let f = UIGraphicsImageRendererFormat()
+        f.scale = Thumbnails.width / bounds.width
+        f.opaque = true
+        return UIGraphicsImageRenderer(bounds: CGRect(x: 0, y: inset, width: bounds.width, height: bounds.height - inset), format: f).image { _ in
+            drawHierarchy(in: bounds, afterScreenUpdates: false)
+        }
+    }
+
     // MARK: Size
 
     override func layoutSubviews() {
