@@ -109,6 +109,9 @@ func blockCreatorAPI() map[string]any {
 			methods[m.Name] = entry
 		}
 	}
+	// upload_begin postdates the snapshot the method list comes from;
+	// describe_block reports it like block_creator.list does.
+	methods["upload_begin"] = uploadBeginEntry
 	return map[string]any{"methods": methods, "events": blockEventSchemas}
 }
 

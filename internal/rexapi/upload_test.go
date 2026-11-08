@@ -337,6 +337,52 @@ func TestUploadBatch(t *testing.T) {
 	}
 }
 
+// TestUploadDisconnect: a client that reserves and goes away leaves
+// nothing behind — the reservation and its batch are gone, and another
+// client may take the ref.
+func TestUploadDisconnect(t *testing.T) {
+	f := startFixture(t)
+	session, block, _ := inputSession(t, f)
+	c := f.dialControl()
+	c.hello(apiRevision)
+	callChecked(t, c, "session.attach", map[string]any{"session_id": session})
+
+	ref := newUploadRef(t)
+	batch := "gone-" + hex.EncodeToString(randomBytes(4))
+	uploadBegin(t, c, session, block, map[string]any{
+		"ref": ref, "name": "gone.txt", "size": 1, "batch": batch, "index": 0, "count": 2,
+	})
+	// The client goes away without opening the stream.
+	c.ws.Close(websocket.StatusNormalClosure, "")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		g := f.g
+		g.mu.Lock()
+		_, live := g.uploads[ref]
+		g.mu.Unlock()
+		if !live {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the reservation outlived the client")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Another client takes the ref, and a fresh batch, without conflict.
+	c2 := f.dialControl()
+	c2.hello(apiRevision)
+	callChecked(t, c2, "session.attach", map[string]any{"session_id": session})
+	uploadBegin(t, c2, session, block, map[string]any{"ref": ref, "name": "gone.txt", "size": 1})
+	e := failure(t, c2.request("aborted", "com.superlogical.terminal.upload_begin", map[string]any{
+		"session_id": session, "block_id": block,
+		"args": map[string]any{"ref": newUploadRef(t), "name": "b.txt", "size": 1, "batch": batch, "index": 1, "count": 2},
+	}))
+	if e["code"] != "conflict" {
+		t.Errorf("the dropped batch: %v", e)
+	}
+}
+
 // TestUploadRefused: an upload that is not a POST of
 // application/octet-stream, or names no block, is refused.
 func TestUploadRefused(t *testing.T) {

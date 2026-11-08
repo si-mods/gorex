@@ -584,6 +584,7 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 	g.emitClientEvent(rec, "", "client_left")
 	g.cancelStreams(rec.id)
 	g.dropTickets(rec.id, "")
+	g.dropUploads(rec.id, "")
 	g.refresh()
 }
 
@@ -610,6 +611,7 @@ func (g *Gateway) expireClient(rec *clientRecord) {
 	g.emitClientEvent(rec, "", "client_left")
 	g.cancelStreams(rec.id)
 	g.dropTickets(rec.id, "")
+	g.dropUploads(rec.id, "")
 	g.refresh()
 }
 

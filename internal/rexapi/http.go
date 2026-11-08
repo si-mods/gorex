@@ -84,8 +84,9 @@ arrived, the terminal types their paths as if the user had pasted them.
 
 The result has ` + "`ticket`" + ` and ` + "`expires_in_ms`" + `, as data.connect's does. Open a data stream with the
 ` + "`rex.data.bytes.v1`" + ` subprotocol and that ticket, send the file's bytes as binary messages, and half-close the
-stream with one empty binary message. The terminal ends each stream with a close code: 1000 when the
-batch's paths were typed. Reserving a
+stream with one empty binary message. The terminal ends each stream with a close code: 1000 once its file is
+whole — the stream of the batch's last file is the one whose close follows the batch's paths being typed.
+Reserving a
 file that is already reserved, or more than the terminal allows at once, fails with ` + "`conflict`" + `; a file
 or batch over the server's limits fails with ` + "`too_large`" + `. A batch a file of which failed is aborted,
 and its reservations are gone, so start a new batch with a new ID.

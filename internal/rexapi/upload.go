@@ -52,11 +52,13 @@ const (
 // whose ticket names the reservation's ref, and when every file of its
 // batch has arrived, the terminal types their paths.
 type uploadReservation struct {
-	ref     string // the call's ref: upload:<uuid>
-	name    string
-	size    int64
-	record  string // the client that reserved it
-	sid     string // the block's GoRex session
+	ref    string // the call's ref: upload:<uuid>
+	name   string
+	size   int64
+	record string // the client that reserved it
+	sid    string // the block's GoRex session
+	// session is the API session the call named, which detach is given.
+	session string
 	block   string // the block's ID
 	batch   string // the batch's ID, "" when the file stands alone
 	index   int
@@ -72,6 +74,7 @@ type uploadBatch struct {
 	count   int
 	size    int64
 	filled  map[int]string // index → ref, for the files already reserved
+	arrived int            // how many files' streams have carried all their bytes
 	expires time.Time
 }
 
@@ -197,12 +200,12 @@ func (g *Gateway) reserveUpload(u *uploadReservation, count int, now time.Time) 
 	}
 	live := 0
 	for _, old := range g.uploads {
-		if old.sid == u.sid {
+		if old.block == u.block {
 			live++
 		}
 	}
 	if live >= maxUploadsPerBlock {
-		return errConflict("the terminal has %d uploads reserved, more than the %d it allows at once", live, maxUploadsPerBlock)
+		return errConflict("the block has %d uploads reserved, more than the %d it allows at once", live, maxUploadsPerBlock)
 	}
 	if g.uploads[u.ref] != nil {
 		return errConflict("upload %s is already reserved", u.ref)
@@ -314,7 +317,7 @@ func blockUploadBegin(c *control, s *mSession, b *mBlock, a args) (any, *apiErro
 	now := time.Now()
 	if aerr := g.reserveUpload(&uploadReservation{
 		ref: ref, name: name, size: int64(size),
-		record: c.rec.id, sid: b.sid, block: b.id,
+		record: c.rec.id, sid: b.sid, session: s.id, block: b.id,
 		batch: batch, index: index,
 	}, count, now); aerr != nil {
 		return nil, aerr
@@ -391,11 +394,14 @@ func (g *Gateway) startUploadStream(ws *websocket.Conn, t *ticket) {
 		typ, msg, err := ws.Read(readCtx)
 		readCancel()
 		if err != nil {
-			// The connection ended without the file's end, which is the
-			// same for the put, whose pipe error cancels it.
+			// The connection ended without the file's end. Cancel the
+			// put before the pipe ends it, so its abort removes what
+			// the server has of the file.
+			cancel()
 			break
 		}
 		if typ != websocket.MessageBinary {
+			cancel()
 			g.failUpload(ws, pw, u, websocket.StatusPolicyViolation, "an upload stream carries binary messages")
 			return
 		}
@@ -409,13 +415,22 @@ func (g *Gateway) startUploadStream(ws *websocket.Conn, t *ticket) {
 		}
 		count.add(len(msg))
 		if _, err := pw.Write(msg); err != nil {
+			// The put already ended, and failed: make sure its abort
+			// removes the partial.
+			cancel()
 			break
 		}
 	}
 	if over {
+		cancel()
 		g.failUpload(ws, pw, u, websocket.StatusPolicyViolation,
 			fmt.Sprintf("upload sent %d bytes, more than its %d", count.received(), u.size))
 		return
+	}
+	// A half-close that arrives before the file is whole is a failed
+	// upload, whose partial the put aborts.
+	if count.received() != u.size {
+		cancel()
 	}
 	pw.Close()
 	if err := <-putDone; err != nil {
@@ -428,28 +443,28 @@ func (g *Gateway) startUploadStream(ws *websocket.Conn, t *ticket) {
 	}
 	// The file is on the terminal's machine. Type the paths of the
 	// batch, which is the file alone when it has no batch, once every
-	// file has arrived.
+	// file has arrived. A member of a batch stays reserved until the
+	// batch completes, so that the last stream can name every path.
 	g.mu.Lock()
-	delete(g.uploads, u.ref)
 	var paths []string
 	if u.batch == "" {
+		delete(g.uploads, u.ref)
 		paths = []string{u.path}
 	} else {
 		batch := g.uploadBatches[u.batch]
 		if batch != nil {
-			batch.size -= u.size
-			if batch.size == 0 {
+			batch.arrived++
+			if batch.arrived == batch.count {
 				delete(g.uploadBatches, u.batch)
 				paths = make([]string, 0, batch.count)
 				for i := range batch.count {
 					ref := batch.filled[i]
-					if ref == u.ref {
-						paths = append(paths, u.path)
-						continue
-					}
 					if other := g.uploads[ref]; other != nil {
 						paths = append(paths, other.path)
 					}
+				}
+				for i := range batch.count {
+					delete(g.uploads, batch.filled[i])
 				}
 			}
 		}
@@ -517,6 +532,33 @@ func (g *Gateway) typeUploadPaths(sid string, paths []string) *apiError {
 		return errInternal("typing: %v", err)
 	}
 	return nil
+}
+
+// dropUploads forgets the upload reservations a client holds, for one
+// API session when session is set and for all of them when it is not,
+// as dropTickets does: with the ticket gone, the reservation can never
+// be used, and a batch missing its file must not complete.
+func (g *Gateway) dropUploads(record, session string) {
+	g.mu.Lock()
+	var dropped []*uploadReservation
+	for ref, u := range g.uploads {
+		if u.record == record && (session == "" || u.session == session) {
+			delete(g.uploads, ref)
+			dropped = append(dropped, u)
+		}
+	}
+	for _, u := range dropped {
+		if u.batch != "" {
+			if batch := g.uploadBatches[u.batch]; batch != nil {
+				for _, r := range batch.filled {
+					delete(g.uploads, r)
+				}
+				delete(g.uploadBatches, u.batch)
+			}
+			g.abortedBatches[u.batch] = time.Now().Add(uploadWait)
+		}
+	}
+	g.mu.Unlock()
 }
 
 // failUpload ends a stream whose bytes were wrong, and drops its
