@@ -1,10 +1,12 @@
 package rexapi
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -198,12 +200,45 @@ func TestLANAllowsOnlyItsNetworks(t *testing.T) {
 		t.Fatalf("refused: status %d, body %s", resp.StatusCode, body)
 	}
 
+	// A caller connected as the listener goes off, its connection kept
+	// alive after an answer.
+	kept, err := net.Dial("tcp", s.Listening)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer kept.Close()
+	fmt.Fprintf(kept, "GET /api/help HTTP/1.1\r\nHost: %s\r\n\r\n", s.Listening)
+	r := bufio.NewReader(kept)
+	resp, err = http.ReadResponse(r, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.Close {
+		t.Fatal("the server closes the connection after its answer: nothing is kept alive")
+	}
+	g.lan.mu.Lock()
+	ln := g.lan.ln
+	g.lan.mu.Unlock()
+
 	g.lan.apply(LANConfig{Enabled: false, Listen: "127.0.0.1:0", Allow: []string{"10.0.0.0/8"}})
 	if s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening == "" }); s.Error != "" {
 		t.Fatalf("off: %+v", s)
 	}
-	if _, err := http.Get(url + "/api/help"); err == nil {
-		t.Error("the listener still answers once off")
+	// The listener itself is asked, not the port: another program
+	// listening on the port on every address answers on 127.0.0.1 once
+	// the listener lets it go.
+	ln.Listener.(*net.TCPListener).SetDeadline(time.Now().Add(time.Second))
+	if c, err := ln.Accept(); err == nil || os.IsTimeout(err) {
+		if c != nil {
+			c.Close()
+		}
+		t.Error("the listener still accepts once off")
+	}
+	kept.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := r.ReadByte(); err == nil || os.IsTimeout(err) {
+		t.Errorf("a connection kept alive stays once off: %v", err)
 	}
 }
 
