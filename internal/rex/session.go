@@ -353,9 +353,6 @@ func serverEnv() []string {
 func sessionEnv(id string, extra []string, local bool) []string {
 	var env []string
 	hasLang := false
-	// imagesTold is whether the server's environment already tells the
-	// image protocol, which stands.
-	imagesTold := false
 	for _, kv := range os.Environ() {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
@@ -371,25 +368,19 @@ func sessionEnv(id string, extra []string, local bool) []string {
 			continue
 		case k == "LANG" || k == "LC_ALL" || k == "LC_CTYPE":
 			hasLang = true
-		case k == "PI_FORCE_IMAGE_PROTOCOL":
-			imagesTold = true
 		}
 		env = append(env, kv)
 	}
 	env = append(env,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
-		"TERM_PROGRAM=GoRex",
-		"TERM_PROGRAM_VERSION=0.2.0",
+		// Every client of a session draws it with Ghostty, and programs
+		// pick features by this name, as omp its Kitty image placeholders.
+		// The version is that of the libghostty GoRex embeds.
+		"TERM_PROGRAM=ghostty",
+		"TERM_PROGRAM_VERSION=1.4.1-dev",
 		"GOREX_SESSION="+id,
 	)
-	// omp shows its images only for a terminal it knows takes Kitty
-	// graphics, by a name GoRex is not among. Every client of a session is
-	// Ghostty, which draws them, so a session says so, unless the server's
-	// environment or the caller already did.
-	if !imagesTold {
-		env = append(env, "PI_FORCE_IMAGE_PROTOCOL=kitty")
-	}
 	if local {
 		bin := CLIDir()
 		path := bin
