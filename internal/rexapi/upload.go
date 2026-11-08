@@ -376,8 +376,15 @@ func (g *Gateway) startUploadStream(ws *websocket.Conn, t *ticket) {
 	pr, pw := io.Pipe()
 	putDone := make(chan error, 1)
 	go func() {
+		// The file goes by a name the block's shell takes, whose path
+		// pastes, as the private upload's does.
+		info, aerr := g.blockInfo(&mBlock{id: u.block, sid: u.sid})
+		if aerr != nil {
+			putDone <- errors.New(aerr.Message)
+			return
+		}
 		put := rex.FilePut{SID: u.sid, Name: u.name, Size: u.size, ID: fmt.Sprintf("%x", randomBytes(8)), Conflict: "rename", Temp: true}
-		path, _, err := g.opt.Client.PutFile(ctx, put, &streamAt{r: pr}, nil)
+		path, _, err := g.opt.Client.PutForShell(ctx, info.Shell, put, &streamAt{r: pr}, nil)
 		if err == nil {
 			g.mu.Lock()
 			u.path = path
@@ -518,15 +525,21 @@ func (g *Gateway) pingUpload(ws *websocket.Conn, done chan struct{}) {
 }
 
 // typeUploadPaths types a batch's paths into the block's shell, as if
-// the user had pasted them.
+// the user had pasted them. A path the shell's quoting refuses is never
+// pasted; when no path pastes, the call fails.
 func (g *Gateway) typeUploadPaths(sid string, paths []string) *apiError {
 	info, err := g.sessionInfo(sid)
 	if err != nil {
 		return errNotFound("block %s has no session", sid)
 	}
-	words := make([]string, len(paths))
-	for i, p := range paths {
-		words[i] = rex.PathWord(info.Shell, p)
+	var words []string
+	for _, p := range paths {
+		if w, ok := rex.PathWord(info.Shell, p); ok {
+			words = append(words, w)
+		}
+	}
+	if len(words) == 0 {
+		return errInternal("no path pastes in this shell")
 	}
 	if err := g.opt.Client.Input(sid, []byte(strings.Join(words, " "))); err != nil {
 		return errInternal("typing: %v", err)
