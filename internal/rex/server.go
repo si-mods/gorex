@@ -82,6 +82,10 @@ type Server struct {
 	// peer of each, until it is finished or aborted: an abort after the
 	// session ended takes only these.
 	puts sync.Map
+	// finished are the puts of this run that finished lately, by the path
+	// of their partial (finishedPut): a try again of the same drop, whose
+	// answer was lost, learns where its file went.
+	finished sync.Map
 	// linksFile is teleports.json, in Dir when "", and home the home
 	// directory, the user's when "": a test's servers, in one process,
 	// keep one each. dir is the directory the server keeps its layout in,
