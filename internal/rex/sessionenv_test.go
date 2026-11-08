@@ -84,6 +84,20 @@ func TestSessionEnvDropsStarterMarkers(t *testing.T) {
 	}
 }
 
+func TestSessionEnvTellsKittyImages(t *testing.T) {
+	// TestSessionEnvTellsKittyImages: a session tells omp its terminal
+	// takes Kitty graphics, so it shows its images, unless the server's
+	// environment says otherwise.
+	got := envMap(sessionEnv("abc", nil, true))
+	if got["PI_FORCE_IMAGE_PROTOCOL"] != "kitty" {
+		t.Errorf("PI_FORCE_IMAGE_PROTOCOL = %q, want kitty", got["PI_FORCE_IMAGE_PROTOCOL"])
+	}
+	t.Setenv("PI_FORCE_IMAGE_PROTOCOL", "off")
+	if got := envMap(sessionEnv("abc", nil, true)); got["PI_FORCE_IMAGE_PROTOCOL"] != "off" {
+		t.Errorf("PI_FORCE_IMAGE_PROTOCOL = %q, want the server's off", got["PI_FORCE_IMAGE_PROTOCOL"])
+	}
+}
+
 func TestServerEnvDropsStarterMarkers(t *testing.T) {
 	setMarkerEnv(t)
 	got := envMap(serverEnv())
