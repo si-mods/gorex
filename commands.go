@@ -1369,7 +1369,7 @@ func (a *App) palette(c *ui.Context, k *colors) {
 		backdrop.Justify(ui.Start).Padding(78, 0, 0, 0).Background(k.backdrop)
 		// Under the glass setting the panel is Liquid Glass over the
 		// dimmed window, as the other floating layers are.
-		panel.Width(560).MaxHeight(440).Radius(paletteR).Border(1, k.panelBorder)
+		panel.Width(560).MaxHeight(440).Radius(paletteR)
 		frostPanel(panel, k, paletteR)
 		panel.Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).Shadow(0, 2, 6, 0, ui.RGBA(0, 0, 0, 0.06)).Clip()
 		if anim != nil {

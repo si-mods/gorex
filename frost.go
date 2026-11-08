@@ -35,11 +35,15 @@ func paintFrost(p *ui.Painter, r ui.Rect, blur, radius float32, tint, flat ui.Co
 }
 
 // frostPanel gives panel, a floating panel whose corners are rounded by
-// radius, its face, as the palette's: the system's glass under the glass
-// setting, frosted glass without it.
+// radius, its face and its border, as the palette's: the system's glass
+// under the glass setting, frosted glass without it. The frost is painted
+// with Draw, after the element's own border: the border goes over it.
 func frostPanel(panel ui.Element, k *colors, radius float32) ui.Element {
 	if glassOn() {
-		return glassPanel(panel, k.panel)
+		return glassPanel(panel.Border(1, k.panelBorder), k.panel)
 	}
-	return panel.Draw(func(p *ui.Painter, r ui.Rect) { paintFrost(p, r, 24, radius, k.panelGlass, k.panel) })
+	return panel.Draw(func(p *ui.Painter, r ui.Rect) {
+		paintFrost(p, r, 24, radius, k.panelGlass, k.panel)
+		p.Stroke(r, k.panelBorder, radius, 1)
+	})
 }

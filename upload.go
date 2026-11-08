@@ -329,7 +329,7 @@ func (a *App) fileDrop(c *ui.Context, k *colors, p *Pane, card, tv ui.Element) {
 	// What it says lets the drag through, to the terminal under it.
 	ui.Column(c.Key("file-drop")).Absolute().Top(0).Left(0).Right(0).Bottom(0).Justify(ui.Center).AlignItems(ui.Center).PassThrough().Children(func() {
 		const r = 12
-		frostPanel(ui.Row(c).Padding(8, 14).Radius(r).Border(1, k.panelBorder).Shadow(0, 8, 24, 0, k.shadowFocused).MaxWidth(420).PassThrough(), k, r).
+		frostPanel(ui.Row(c).Padding(8, 14).Radius(r).Shadow(0, 8, 24, 0, k.shadowFocused).MaxWidth(420).PassThrough(), k, r).
 			Children(func() {
 				ui.Text(c, label).FontSize(12.5).TextColor(k.text).PassThrough()
 			})
@@ -365,7 +365,7 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 	}
 	r := concentric(cardR, edge)
 	list := ui.Column(c.Key("transfers")).Absolute().Right(inset).Bottom(inset).Width(260).Padding(pad).Gap(2).
-		Radius(r).Border(1, k.panelBorder).Shadow(0, 8, 24, 0, k.shadowFocused)
+		Radius(r).Shadow(0, 8, 24, 0, k.shadowFocused)
 	frostPanel(list, k, r)
 	anim := motion(c)
 	if anim != nil {
@@ -402,7 +402,9 @@ func (a *App) transfers(c *ui.Context, k *colors, p *Pane) {
 					}
 				})
 				if !failed && !x.ok {
-					ui.Box(c).Height(3).Radius(1.5).Background(k.track).Draw(func(pt *ui.Painter, b ui.Rect) {
+					// The track is a pressed face of the panel's: k.track is
+					// the window background's, white on a light panel.
+					ui.Box(c).Height(3).Radius(1.5).Background(k.pressed).Draw(func(pt *ui.Painter, b ui.Rect) {
 						// A download's size is not known before it begins.
 						if x.size > 0 {
 							b.W *= float32(x.done) / float32(x.size)
