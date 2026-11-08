@@ -1,6 +1,7 @@
 package rexapi
 
 import (
+	"math"
 	"strings"
 	"unicode/utf8"
 
@@ -199,12 +200,14 @@ func methodBlockEvent(c *control, a args) (any, *apiError) {
 			return nil, errInternal("sending the pointer event: %v", err)
 		}
 	case "wheel":
-		m, aerr := wheelInput(payload)
+		ms, aerr := wheelInput(payload)
 		if aerr != nil {
 			return nil, aerr
 		}
-		if err := client.SendMouse(b.sid, m); err != nil {
-			return nil, errInternal("sending the wheel event: %v", err)
+		for _, m := range ms {
+			if err := client.SendMouse(b.sid, m); err != nil {
+				return nil, errInternal("sending the wheel event: %v", err)
+			}
 		}
 	case "focus":
 		action, aerr := payload.reqStr("action")
@@ -229,18 +232,21 @@ func methodBlockEvent(c *control, a args) (any, *apiError) {
 	return struct{}{}, nil
 }
 
-// mouseInput reads a pointer event's payload: its action, button, mods and
-// cell.
+// mouseInput reads a pointer event's payload: its action, button, mods
+// and cell, and revision 11's pixel position and held buttons.
 func mouseInput(o args) (rex.MouseInput, *apiError) {
 	var m rex.MouseInput
 	for name := range o {
 		switch name {
-		case "action", "button", "mods", "column", "row", "col":
+		case "action", "button", "mods", "column", "row", "col", "pixel", "buttons":
 		default:
 			return m, errBadRequest("a mouse event has no field %q", name)
 		}
 	}
 	var aerr *apiError
+	if aerr = acceptPixel(o); aerr != nil {
+		return m, aerr
+	}
 	if m.Action, _, aerr = o.str("action"); aerr != nil {
 		return m, aerr
 	}
@@ -249,6 +255,27 @@ func mouseInput(o args) (rex.MouseInput, *apiError) {
 	}
 	if m.Button, _, aerr = o.str("button"); aerr != nil {
 		return m, aerr
+	}
+	// Revision 11 names the buttons held after the event, which a drag
+	// is when the event is a motion; the first one is the button the
+	// program's mouse modes know.
+	buttons, hasButtons, aerr := o.strs("buttons")
+	if aerr != nil {
+		return m, aerr
+	}
+	if hasButtons {
+		if m.Button == "" || m.Button == "none" {
+			for _, b := range buttons {
+				switch b {
+				case "left", "right", "middle":
+					if m.Button == "" || m.Button == "none" {
+						m.Button = b
+					}
+				default:
+					return m, errBadRequest("a mouse event's buttons are left, right or middle")
+				}
+			}
+		}
 	}
 	if aerr := checkMouseButton(m.Button, false); aerr != nil {
 		return m, aerr
@@ -280,56 +307,185 @@ func mouseInput(o args) (rex.MouseInput, *apiError) {
 	return m, nil
 }
 
-// wheelInput reads a wheel event's payload: its direction, mods and cell.
-func wheelInput(o args) (rex.MouseInput, *apiError) {
+// wheelInput reads a wheel event's payload: its deltas or direction,
+// mods and cell. Revision 11's wheel carries delta_mode, delta_x,
+// delta_y and delta_z, which the terminal turns into its discrete wheel
+// events; older clients send direction, which Rex's revision 11 schema
+// no longer lists.
+func wheelInput(o args) ([]rex.MouseInput, *apiError) {
 	var m rex.MouseInput
 	for name := range o {
 		switch name {
-		case "direction", "button", "mods", "column", "row", "col":
+		case "direction", "button", "mods", "column", "row", "col",
+			"delta_mode", "delta_x", "delta_y", "delta_z", "pixel":
 		default:
-			return m, errBadRequest("a wheel event has no field %q", name)
+			return nil, errBadRequest("a wheel event has no field %q", name)
 		}
 	}
 	var aerr *apiError
+	if aerr = acceptPixel(o); aerr != nil {
+		return nil, aerr
+	}
+	mode, hasMode, aerr := o.str("delta_mode")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if hasMode && mode != "" {
+		return deltaWheelInput(o, mode)
+	}
 	dir, ok, aerr := o.str("direction")
 	if aerr != nil {
-		return m, aerr
+		return nil, aerr
 	}
 	if !ok || dir == "" {
 		dir, _, aerr = o.str("button")
 		if aerr != nil {
-			return m, aerr
+			return nil, aerr
 		}
 	}
 	if aerr := checkMouseButton(dir, true); aerr != nil {
-		return m, aerr
+		return nil, aerr
 	}
 	m.Button, m.Action = dir, "press"
-	if m.Mods, _, aerr = o.str("mods"); aerr != nil {
-		return m, aerr
+	if m.Mods, m.Col, m.Row, aerr = wheelModsCell(o); aerr != nil {
+		return nil, aerr
 	}
-	if aerr := checkMods("mods", m.Mods); aerr != nil {
-		return m, aerr
+	return []rex.MouseInput{m}, nil
+}
+
+// deltaWheelInput turns a revision 11 wheel's deltas into the discrete
+// wheel events a program's mouse modes know, one per line. A page is 10
+// lines and a pixel is a 40th of one, which stand in for the sizes
+// GoRex does not keep; delta_z has no axis.
+func deltaWheelInput(o args, mode string) ([]rex.MouseInput, *apiError) {
+	var m rex.MouseInput
+	switch mode {
+	case "pixel", "line", "page":
+	default:
+		return nil, errBadRequest("a wheel event's delta_mode is pixel, line or page")
 	}
-	col, ok, aerr := o.int("column")
+	dx, hasX, aerr := o.number("delta_x")
 	if aerr != nil {
-		return m, aerr
+		return nil, aerr
+	}
+	dy, hasY, aerr := o.number("delta_y")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if _, _, aerr := o.number("delta_z"); aerr != nil {
+		return nil, aerr
+	}
+	if m.Mods, m.Col, m.Row, aerr = wheelModsCell(o); aerr != nil {
+		return nil, aerr
+	}
+	m.Action = "press"
+	linesX := wheelLines(dx, hasX, mode)
+	linesY := wheelLines(dy, hasY, mode)
+	var out []rex.MouseInput
+	for range max(linesY, -linesY) {
+		m.Button = "wheel_down"
+		if linesY < 0 {
+			m.Button = "wheel_up"
+		}
+		out = append(out, m)
+	}
+	for range max(linesX, -linesX) {
+		m.Button = "wheel_right"
+		if linesX < 0 {
+			m.Button = "wheel_left"
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+// maxWheelEvents is the most events one axis's delta may become, so a
+// huge delta cannot make the server build an unbounded slice.
+const maxWheelEvents = 64
+
+// wheelLines turns one axis's delta into a signed count of wheel events.
+// A nonzero delta is at least one event, and no delta makes more than
+// maxWheelEvents.
+func wheelLines(delta float64, present bool, mode string) int {
+	if !present || delta == 0 {
+		return 0
+	}
+	switch mode {
+	case "pixel":
+		delta /= 40
+	case "page":
+		delta *= 10
+	}
+	n := int(math.Round(math.Abs(delta)))
+	if n < 1 {
+		n = 1
+	}
+	if n > maxWheelEvents {
+		n = maxWheelEvents
+	}
+	if delta < 0 {
+		n = -n
+	}
+	return n
+}
+
+// wheelModsCell reads the mods and cell a wheel event carries.
+func wheelModsCell(o args) (mods string, col, row int, aerr *apiError) {
+	mods, _, aerr = o.str("mods")
+	if aerr != nil {
+		return
+	}
+	if aerr = checkMods("mods", mods); aerr != nil {
+		return
+	}
+	col, ok, err := o.int("column")
+	if err != nil {
+		return "", 0, 0, err
 	}
 	if !ok {
-		col, _, aerr = o.int("col")
-		if aerr != nil {
-			return m, aerr
+		col, _, err = o.int("col")
+		if err != nil {
+			return "", 0, 0, err
 		}
 	}
-	row, _, aerr := o.int("row")
-	if aerr != nil {
-		return m, aerr
+	row, _, err = o.int("row")
+	if err != nil {
+		return "", 0, 0, err
 	}
 	if col < 0 || row < 0 {
-		return m, errBadRequest("column and row count from zero")
+		return "", 0, 0, errBadRequest("column and row count from zero")
 	}
-	m.Col, m.Row = col, row
-	return m, nil
+	return mods, col, row, nil
+}
+
+// acceptPixel validates a revision 11 event's pixel position, which a
+// payload carries beside its cell. GoRex keeps no pixel size for a cell,
+// so the cell stays authoritative and the position itself is not used.
+func acceptPixel(o args) *apiError {
+	pixel, ok, aerr := o.obj("pixel")
+	if aerr != nil {
+		return aerr
+	}
+	if !ok {
+		return nil
+	}
+	for _, axis := range []string{"x", "y"} {
+		n, present, err := pixel.number(axis)
+		if err != nil {
+			return err
+		}
+		if present && n < 0 {
+			return errBadRequest("pixel counts from the block's top-left corner")
+		}
+	}
+	for name := range pixel {
+		switch name {
+		case "x", "y":
+		default:
+			return errBadRequest("pixel takes no %s", name)
+		}
+	}
+	return nil
 }
 
 // checkMouseAction checks a pointer event's action.

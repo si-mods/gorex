@@ -13,13 +13,19 @@ const (
 	controlProtocol = "rex.control.v1"
 	// terminalProtocol is the subprotocol of a terminal's data connection.
 	terminalProtocol = "rex.data.terminal.v1"
+	// bytesProtocol is the subprotocol of the data connection that
+	// carries a file's bytes to com.superlogical.terminal.upload_begin's
+	// reservation.
+	bytesProtocol = "rex.data.bytes.v1"
 	// dataTerminal is the data_ref_id of a terminal block's stream.
 	dataTerminal = "terminal"
 	// apiRevision is the newest revision of Rex's API this package serves:
 	// revision 8 adds session.bootstrap's data_tickets, revision 9
-	// session.set_layer_state and a layer's state, and revision 10
-	// built-in Tailscale's control_url.
-	apiRevision = 10
+	// session.set_layer_state and a layer's state, revision 10 built-in
+	// Tailscale's control_url, and revision 11 com.superlogical.terminal
+	// .upload_begin and the rex.data.bytes.v1 data stream that carries
+	// its file.
+	apiRevision = 11
 	// apiMinRevision is the oldest revision it serves. A client that
 	// negotiates an older revision gets that revision's shape: requests
 	// are translated up and results back down by revisions.go.

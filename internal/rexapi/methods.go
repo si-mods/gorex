@@ -414,6 +414,7 @@ func methodSessionDetach(c *control, a args) (any, *apiError) {
 	}
 	if c.rec.detach(sid) {
 		c.g.dropTickets(c.rec.id, sid)
+		c.g.dropUploads(c.rec.id, sid)
 		c.g.emitClientEvent(c.rec, sid, "client_disconnected")
 		if m, err := c.g.current(); err == nil {
 			if s := m.byID[sid]; s != nil {
