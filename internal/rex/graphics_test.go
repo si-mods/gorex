@@ -5,6 +5,7 @@ package rex
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -185,8 +186,8 @@ func TestGraphicsGroupsInBandChunks(t *testing.T) {
 		t.Fatalf("first %q recs %d", out, len(recs))
 	}
 	out, recs = g.filter(second, "")
-	if !bytes.Equal(out, second) || len(recs) != 1 || !bytes.Equal(recs[0], append(first, second...)) {
-		t.Fatalf("second %q recs %q", out, recs)
+	if !bytes.Equal(out, second) || len(recs) != 1 || !bytes.Equal(recs[0].seq, append(first, second...)) {
+		t.Fatalf("second %q recs %+v", out, recs)
 	}
 	g.record(recs)
 	if !bytes.Equal(g.replay(), append(first, second...)) {
@@ -197,7 +198,7 @@ func TestGraphicsGroupsInBandChunks(t *testing.T) {
 func TestGraphicsHistoryCopies(t *testing.T) {
 	seq := []byte("\x1b_Gi=13,a=d\x1b\\")
 	var g graphics
-	g.record([][]byte{seq})
+	g.restore([][]byte{seq})
 	for i := range seq {
 		seq[i] = 'x'
 	}
@@ -227,11 +228,11 @@ func TestGraphicsRecordsNoOrphanChunks(t *testing.T) {
 	g := graphics{cut: true}
 	out, recs := g.filter([]byte("\x1b_Gm=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
 	if len(recs) != 0 || !bytes.Contains(out, []byte("m=0;AAAA")) {
-		t.Fatalf("recorded %q, passed %q", recs, out)
+		t.Fatalf("recorded %+v, passed %q", recs, out)
 	}
 	_, recs = g.filter([]byte("\x1b_Ga=T,f=100,m=1;AAAA\x1b\\\x1b_Gm=0;AAAA\x1b\\"), "")
-	if len(recs) != 1 || !bytes.HasPrefix(recs[0], []byte("\x1b_Ga=T")) {
-		t.Fatalf("a whole transfer recorded %q", recs)
+	if len(recs) != 1 || !bytes.HasPrefix(recs[0].seq, []byte("\x1b_Ga=T")) {
+		t.Fatalf("a whole transfer recorded %+v", recs)
 	}
 
 	// A file image's first chunk is rewritten whole; its last chunk is
@@ -242,7 +243,135 @@ func TestGraphicsRecordsNoOrphanChunks(t *testing.T) {
 	}
 	g = graphics{}
 	_, recs = g.filter([]byte("\x1b_Ga=T,t=f,m=1;image.png\x1b\\\x1b_Gm=0;\x1b\\"), dir)
-	if len(recs) != 2 || !bytes.Contains(recs[0], []byte("t=d")) || string(recs[1]) != "\x1b_Gm=0;\x1b\\" {
-		t.Fatalf("a chunked file image recorded %q", recs)
+	if len(recs) != 2 || !bytes.Contains(recs[0].seq, []byte("t=d")) || string(recs[1].seq) != "\x1b_Gm=0;\x1b\\" {
+		t.Fatalf("a chunked file image recorded %+v", recs)
+	}
+}
+
+// recorded feeds the output of a program to a session's graphics, as its
+// reads do, and returns what an attach replays.
+func recorded(out ...string) string {
+	var g graphics
+	for _, p := range out {
+		_, recs := g.filter([]byte(p), "")
+		g.record(recs)
+	}
+	return string(g.replay())
+}
+
+// TestGraphicsHistoryKeepsImagesAsTheyAre: an image a program sends again
+// by its id, as omp does at each resize, replays once, the last one; one
+// it deleted, with its data, does not replay; what names no image by its
+// id stays as it was sent.
+func TestGraphicsHistoryKeepsImagesAsTheyAre(t *testing.T) {
+	image := func(id int, payload string) string {
+		return fmt.Sprintf("\x1b_Ga=T,f=100,i=%d,q=2;%s\x1b\\", id, payload)
+	}
+	var out []string
+	for n := range 20 {
+		out = append(out, image(7, fmt.Sprint("AAA", n)))
+	}
+	out = append(out, image(8, "BBBB"))
+	if got, want := recorded(out...), image(7, "AAA19")+image(8, "BBBB"); got != want {
+		t.Errorf("after 20 transmits of image 7 the replay is\n%q, want\n%q", got, want)
+	}
+
+	place := "\x1b_Ga=p,i=7,p=2,q=2\x1b\\"
+	unplace := "\x1b_Ga=d,d=i,i=7,p=2,q=2\x1b\\"
+	free := "\x1b_Ga=d,d=I,i=7,q=2\x1b\\"
+	if got, want := recorded(image(7, "AAAA"), place, unplace, image(8, "BBBB"), free), image(8, "BBBB"); got != want {
+		t.Errorf("after image 7 was deleted the replay is\n%q, want\n%q", got, want)
+	}
+	// A delete of one placement leaves the image: it stays recorded.
+	freeOne := "\x1b_Ga=d,d=I,i=7,p=2,q=2\x1b\\"
+	if got, want := recorded(image(7, "AAAA"), place, freeOne), image(7, "AAAA")+place+freeOne; got != want {
+		t.Errorf("after a placement of image 7 was deleted the replay is\n%q, want\n%q", got, want)
+	}
+
+	// A transfer in chunks, sent again, replays once, whole.
+	chunked := "\x1b_Ga=T,f=100,i=9,q=2,m=1;AAAA\x1b\\\x1b_Gm=1;BBBB\x1b\\\x1b_Gm=0;CCCC\x1b\\"
+	if got := recorded(chunked, chunked, chunked); got != chunked {
+		t.Errorf("after a chunked image sent 3 times the replay is\n%q, want\n%q", got, chunked)
+	}
+
+	// No id, or a number, which makes another image each time: as sent.
+	noID := "\x1b_Ga=T,f=100;AAAA\x1b\\"
+	number := "\x1b_Ga=T,f=100,I=3;AAAA\x1b\\"
+	if got, want := recorded(noID, noID, number, number), noID+noID+number+number; got != want {
+		t.Errorf("images with no id replay\n%q, want\n%q", got, want)
+	}
+}
+
+// TestGraphicsHistoryReplacesByID: an id is a number however spelled; a
+// transmit too large to keep still replaces what the history had of its
+// image; what does not transmit or free an image by its id leaves it.
+func TestGraphicsHistoryReplacesByID(t *testing.T) {
+	image := func(id, payload string) string {
+		return "\x1b_Ga=T,f=100,i=" + id + ",q=2;" + payload + "\x1b\\"
+	}
+	if got, want := recorded(image("7", "AAAA"), image("07", "BBBB")), image("07", "BBBB"); got != want {
+		t.Errorf("after i=7 then i=07 the replay is\n%q, want\n%q", got, want)
+	}
+
+	// Too large for one read's rewrite, for the history in chunks, and
+	// for the history whole.
+	big := strings.Repeat("A", maxGraphicsRewrite+4)
+	chunk := strings.Repeat("A", 3<<20)
+	before := []string{image("7", "AAAA"), image("8", "BBBB")}
+	for name, out := range map[string][]string{
+		"in one read": {image("7", big)},
+		"in chunks": {"\x1b_Ga=T,f=100,i=7,q=2,m=1;" + chunk + "\x1b\\", "\x1b_Gm=1;" + chunk + "\x1b\\",
+			"\x1b_Gm=1;" + chunk + "\x1b\\", "\x1b_Gm=0;AAAA\x1b\\"},
+	} {
+		if got := recorded(append(before, out...)...); got != image("8", "BBBB") {
+			t.Errorf("after a transmit of image 7 too large to keep %s, the replay is %.80q", name, got)
+		}
+	}
+	var g graphics
+	g.record([]graphicsSeq{{seq: []byte(before[0]), id: 7, op: graphicsTransmit}})
+	g.record([]graphicsSeq{{seq: []byte(image("7", strings.Repeat("A", maxGraphicsHistory))), id: 7, op: graphicsTransmit}})
+	if len(g.history) != 0 {
+		t.Errorf("after a transmit of image 7 too large for the history, it has %d sequences", len(g.history))
+	}
+
+	// A free that frees nothing recorded, as of an image sent by number,
+	// stays; a header with no a=d, or a transmit with no payload, does
+	// nothing to the image.
+	for _, out := range [][]string{
+		{"\x1b_Ga=T,f=100,I=5;AAAA\x1b\\", "\x1b_Ga=d,d=I,i=5,q=2\x1b\\"},
+		{image("7", "AAAA"), "\x1b_Gd=I,i=7\x1b\\"},
+		{image("7", "AAAA"), "\x1b_Ga=T,i=7;\x1b\\"},
+	} {
+		if got, want := recorded(out...), strings.Join(out, ""); got != want {
+			t.Errorf("the replay is\n%q, want\n%q", got, want)
+		}
+	}
+}
+
+// TestSessionReplaysImageOnce: a window attaching to a session whose
+// program sent its image twenty times gets it once.
+func TestSessionReplaysImageOnce(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "image.png"), append(append([]byte(nil), pngHeader...), "pixels"...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := newSession("gfx", CreateOptions{
+		Command: []string{"/bin/sh", "-c", "for n in $(seq 20); do printf '\\033_Gi=7,a=T,t=f;image.png\\033\\\\'; done; sleep 0.1"},
+		Dir:     dir, Cols: 40, Rows: 6,
+	}, "", func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(s.kill)
+	select {
+	case <-s.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("session did not end")
+	}
+	s.mu.Lock()
+	snap, _ := s.view()
+	s.mu.Unlock()
+	if n := bytes.Count(snap, []byte("\x1b_Gi=7,")); n != 1 {
+		t.Errorf("the attach sends image 7 %d times, want once", n)
 	}
 }

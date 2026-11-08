@@ -240,7 +240,7 @@ func (s *session) state() sessionState {
 		Cols: s.cols, Rows: s.rows,
 		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
 		Reaped: s.reaped, Exited: s.exited, Code: s.code,
-		Statuses: s.status.list(), Images: s.graphics.history,
+		Statuses: s.status.list(), Images: s.graphics.sequences(),
 	}
 	st.Screen, st.Title = s.view()
 	st.Screen = bytes.TrimSuffix(st.Screen, s.graphics.replay())
@@ -334,7 +334,7 @@ func resumeSession(st sessionState, changed func()) (*session, error) {
 	// The images go to the history the attaches replay, not to the
 	// emulator, which the snapshot left as it was: a placement moves the
 	// cursor.
-	s.graphics.record(st.Images)
+	s.graphics.restore(st.Images)
 	if st.Title != "" {
 		s.vt.Feed([]byte("\x1b]2;" + st.Title + "\x07"))
 	}
