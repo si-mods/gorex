@@ -1,6 +1,5 @@
 {
   "sourceLanguage": "en",
-  "version": "1.0",
   "strings": {
     "%@ needs input": {
       "localizations": {
@@ -8,6 +7,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ 需要输入"
+          }
+        }
+      }
+    },
+    "%@ · Full Catalog": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · 完整功能目录"
+          }
+        }
+      }
+    },
+    "%lld Features and Details": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 项功能与细节"
           }
         }
       }
@@ -22,12 +41,178 @@
         }
       }
     },
+    "861 Ghostty themes, each with a swatch, a filter of All, Dark and Light, and a search. A preview shows the chosen one in the terminal's font.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "861 款 Ghostty 主题，每款都有色板，可按全部、深色、浅色筛选，也能搜索。预览以终端字体展示所选主题。"
+          }
+        }
+      }
+    },
+    "A Ghostty terminal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ghostty 终端"
+          }
+        }
+      }
+    },
+    "A bell gives a light tap, at most two a second.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "响铃时轻微震动，每秒最多两次。"
+          }
+        }
+      }
+    },
+    "A drag follows the finger, a flick coasts and slows, and the ends bounce. Full-screen programs and those that use the mouse get the scroll as wheel events.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖动跟手，轻扫后惯性减速，到头会回弹。全屏程序和使用鼠标的程序收到的是滚轮事件。"
+          }
+        }
+      }
+    },
+    "A font with Chinese and Nerd Font glyphs, to download. Only its four faces download, about 40 MB; stop it or delete it at any time.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "一款含中文和 Nerd Font 图标的可下载字体。只下载四种字形，约 40 MB，可随时停止或删除。"
+          }
+        }
+      }
+    },
+    "A half-height photo picker": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "半屏照片选择器"
+          }
+        }
+      }
+    },
+    "A key bar over the keyboard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "键盘上方的按键栏"
+          }
+        }
+      }
+    },
+    "A label for this device": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本设备的标签"
+          }
+        }
+      }
+    },
+    "A line of progress": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进度条"
+          }
+        }
+      }
+    },
+    "A long press selects the word under the finger, with the loupe. Drag to select more; past the top or bottom the terminal scrolls on.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长按选中手指下的单词，并显示放大镜。拖动可扩大选区，拖到顶部或底部时终端会继续滚动。"
+          }
+        }
+      }
+    },
+    "A notification opens its terminal. The terminal on screen sends none.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点通知会打开对应的终端。正在查看的终端不会发通知。"
+          }
+        }
+      }
+    },
+    "A program that uses the mouse gets a tap as a click, and the keyboard stays up.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用鼠标的程序会把轻点当作点击，键盘保持弹出。"
+          }
+        }
+      }
+    },
+    "A program's progress (OSC 9;4) shows as a thin line at the top, red on an error.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程序报告的进度（OSC 9;4）显示为顶部的一条细线，出错时变红。"
+          }
+        }
+      }
+    },
+    "A terminal opens in the background last seen on its host, so it does not flash.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端以该主机上次的背景色打开，不会闪烁。"
+          }
+        }
+      }
+    },
     "About": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "关于"
+          }
+        }
+      }
+    },
+    "About System": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统"
+          }
+        }
+      }
+    },
+    "Activity under the eye": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "眼睛图标下的动态"
           }
         }
       }
@@ -102,12 +287,72 @@
         }
       }
     },
+    "An arrow stick": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "方向摇杆"
+          }
+        }
+      }
+    },
+    "Appearance": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外观"
+          }
+        }
+      }
+    },
     "Arrow Keys": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "方向键"
+          }
+        }
+      }
+    },
+    "Back from the background, the terminal connects again and every title stays. A dropped connection tries again by itself.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "从后台返回时终端自动重连，所有标题都保留。连接中断时会自动重试。"
+          }
+        }
+      }
+    },
+    "Back where you left it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "回来时一切如旧"
+          }
+        }
+      }
+    },
+    "Backspace on the key bar repeats while held, as the keyboard's does.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按住按键栏上的退格会连续删除，与系统键盘一样。"
+          }
+        }
+      }
+    },
+    "Bells": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "响铃"
           }
         }
       }
@@ -128,6 +373,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法使用相机"
+          }
+        }
+      }
+    },
+    "Can't Close the Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法关闭会话"
           }
         }
       }
@@ -172,6 +427,16 @@
         }
       }
     },
+    "Can't Rename the Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法重命名会话"
+          }
+        }
+      }
+    },
     "Can't Rename the Tab": {
       "localizations": {
         "zh-Hans": {
@@ -202,6 +467,16 @@
         }
       }
     },
+    "Chinese and other input methods": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中文等输入法"
+          }
+        }
+      }
+    },
     "Choose a window in the list.": {
       "localizations": {
         "zh-Hans": {
@@ -218,6 +493,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "清除屏幕和回滚缓冲区"
+          }
+        }
+      }
+    },
+    "Click and drag to select as with a mouse, scroll with two fingers, and rows highlight under the pointer.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "像鼠标一样点按拖动来选择，双指滚动，指针悬停的行会高亮。"
           }
         }
       }
@@ -242,6 +527,16 @@
         }
       }
     },
+    "Close %@ and every window in it?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭 %@ 及其中所有窗口？"
+          }
+        }
+      }
+    },
     "Close Other Tabs": {
       "localizations": {
         "zh-Hans": {
@@ -252,12 +547,42 @@
         }
       }
     },
+    "Close Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭会话"
+          }
+        }
+      }
+    },
+    "Close Session asks first, as it closes every window in the session.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭会话会关闭其中所有窗口，所以会先确认。"
+          }
+        }
+      }
+    },
     "Close Tab": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "关闭标签页"
+          }
+        }
+      }
+    },
+    "Code, fonts and themes that ship with Rex Go.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go 附带的代码、字体和主题。"
           }
         }
       }
@@ -278,6 +603,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "命令已结束"
+          }
+        }
+      }
+    },
+    "Commit": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "提交"
           }
         }
       }
@@ -318,6 +653,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Control"
+          }
+        }
+      }
+    },
+    "Copied": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已复制"
+          }
+        }
+      }
+    },
+    "Copy Debug Info": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制调试信息"
+          }
+        }
+      }
+    },
+    "Copy Version Info": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制版本信息"
           }
         }
       }
@@ -392,6 +757,26 @@
         }
       }
     },
+    "Dictate into the terminal. A correction erases what was dictated and types it again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可以直接对终端听写。修正听写内容时会删掉原文并重新输入。"
+          }
+        }
+      }
+    },
+    "Dictation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "听写"
+          }
+        }
+      }
+    },
     "Done": {
       "localizations": {
         "zh-Hans": {
@@ -422,12 +807,72 @@
         }
       }
     },
+    "Drag the stick for arrows, which repeat while you hold it. The modifiers hold with it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拖动摇杆发送方向键，按住不放会连发。修饰键在此期间保持按下。"
+          }
+        }
+      }
+    },
+    "Each host lists its sessions as cards, and each session its windows, with the tiles of the programs in them, as the desktop's tabs show them.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每台主机以卡片列出会话，每个会话列出其窗口，并像桌面版的标签页一样显示其中程序的图块。"
+          }
+        }
+      }
+    },
+    "Each step is one point with a light tap, and the grid's columns and rows show for a moment. The size stays for every terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每一级 1 pt，伴随轻微震动，并短暂显示行列数。字号对所有终端生效并保留。"
+          }
+        }
+      }
+    },
+    "Edge to edge": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全屏铺满"
+          }
+        }
+      }
+    },
     "Edit Host": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "编辑主机"
+          }
+        }
+      }
+    },
+    "Edit the list to delete or reorder hosts, and ⓘ for a host's details.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "编辑列表可删除或重新排序主机，轻点 ⓘ 查看主机详情。"
+          }
+        }
+      }
+    },
+    "Enter a server's address, its name, and a laptop or desktop icon.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入服务器地址、名称，并选择笔记本或台式机图标。"
           }
         }
       }
@@ -448,6 +893,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Esc"
+          }
+        }
+      }
+    },
+    "Every host in one list": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "所有主机，一个列表"
+          }
+        }
+      }
+    },
+    "Every key on the bar gives a light tap as you press it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按下按键栏上的每个键都有轻微震动。"
           }
         }
       }
@@ -492,12 +957,52 @@
         }
       }
     },
+    "Features": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "功能与细节"
+          }
+        }
+      }
+    },
+    "Files & Photos": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "文件与照片"
+          }
+        }
+      }
+    },
+    "Files from the Files app go to the host the same way, and their paths are pasted.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“文件”App 中的文件以同样方式上传到主机，并粘贴路径。"
+          }
+        }
+      }
+    },
     "Filter": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "筛选"
+          }
+        }
+      }
+    },
+    "Fold hosts and sessions": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "折叠主机和会话"
           }
         }
       }
@@ -522,12 +1027,72 @@
         }
       }
     },
+    "Fonts and sizes": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "字体与字号"
+          }
+        }
+      }
+    },
+    "Ghostty draws each window with Metal and encodes its keys, as Ghostty does on the Mac.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每个窗口都由 Ghostty 用 Metal 绘制，按键也由 Ghostty 编码，与 Mac 上的 Ghostty 一致。"
+          }
+        }
+      }
+    },
+    "Hardware keyboards": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外接键盘"
+          }
+        }
+      }
+    },
     "Hide Keyboard": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "收起键盘"
+          }
+        }
+      }
+    },
+    "Hold Backspace to repeat": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按住退格连续删除"
+          }
+        }
+      }
+    },
+    "Hold the spacebar and slide to move the cursor, one arrow for each cell.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按住空格键滑动即可移动光标，每经过一格发送一个方向键。"
+          }
+        }
+      }
+    },
+    "Home & Hosts": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "首页与主机"
           }
         }
       }
@@ -572,12 +1137,82 @@
         }
       }
     },
+    "Hosts & Pairing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机与配对"
+          }
+        }
+      }
+    },
+    "Include version info when you report a problem. Debug info also describes the network and the hosts.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "报告问题时请附上版本信息。调试信息还会描述网络和主机。"
+          }
+        }
+      }
+    },
     "Interface": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "界面"
+          }
+        }
+      }
+    },
+    "JetBrains Mono, Menlo or Courier New, from 8 to 24 points.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JetBrains Mono、Menlo 或 Courier New，字号 8 至 24 pt。"
+          }
+        }
+      }
+    },
+    "Keep the colors of the host's terminal in place of a theme.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "沿用主机终端的配色，而不使用主题。"
+          }
+        }
+      }
+    },
+    "Keyboard & Input": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "键盘与输入"
+          }
+        }
+      }
+    },
+    "Keys in the shortcuts bar": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按键位于快捷键栏"
+          }
+        }
+      }
+    },
+    "Keys that tap back": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按键震动反馈"
           }
         }
       }
@@ -622,6 +1257,66 @@
         }
       }
     },
+    "Liquid Glass": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "液态玻璃"
+          }
+        }
+      }
+    },
+    "Long-press a session to rename or close it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长按会话以重命名或关闭"
+          }
+        }
+      }
+    },
+    "Long-press a window for its menu": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长按窗口打开菜单"
+          }
+        }
+      }
+    },
+    "Long-press to select": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "长按选择"
+          }
+        }
+      }
+    },
+    "Maple Mono NF CN": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maple Mono NF CN"
+          }
+        }
+      }
+    },
+    "Modifiers for the next key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "修饰键作用于下一个键"
+          }
+        }
+      }
+    },
     "More": {
       "localizations": {
         "zh-Hans": {
@@ -652,12 +1347,32 @@
         }
       }
     },
+    "Move the cursor with the spacebar": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用空格键移动光标"
+          }
+        }
+      }
+    },
     "Name": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "名称"
+          }
+        }
+      }
+    },
+    "Name this device in Settings. Hosts see the label when it connects.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在设置里为本设备命名，连接时主机会看到这个标签。"
           }
         }
       }
@@ -702,6 +1417,26 @@
         }
       }
     },
+    "New sessions and windows": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新建会话和窗口"
+          }
+        }
+      }
+    },
+    "No Window Open": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未打开窗口"
+          }
+        }
+      }
+    },
     "No hosts yet. Add one in Settings.": {
       "localizations": {
         "zh-Hans": {
@@ -718,16 +1453,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "没有会话"
-          }
-        }
-      }
-    },
-    "No Window Open": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未打开窗口"
           }
         }
       }
@@ -752,12 +1477,32 @@
         }
       }
     },
-    "now": {
+    "Notifications": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "刚刚"
+            "value": "通知"
+          }
+        }
+      }
+    },
+    "Notifications that programs send with OSC 9 or OSC 777 show as the system's, grouped by window.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程序用 OSC 9 或 OSC 777 发出的通知以系统通知显示，并按窗口分组。"
+          }
+        }
+      }
+    },
+    "OK": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "好"
           }
         }
       }
@@ -782,12 +1527,42 @@
         }
       }
     },
-    "OK": {
+    "On iPad and in wide windows, the list stays beside the terminal that is open.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "好"
+            "value": "在 iPad 和宽窗口中，列表始终显示在打开的终端旁边。"
+          }
+        }
+      }
+    },
+    "Open Source": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开源"
+          }
+        }
+      }
+    },
+    "Open source": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开源"
+          }
+        }
+      }
+    },
+    "Opens in its own colors": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以自己的颜色打开"
           }
         }
       }
@@ -802,12 +1577,32 @@
         }
       }
     },
+    "Option is Alt, chords with Control, Shift or Option reach the program, and held keys repeat.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Option 作为 Alt，Control、Shift、Option 组合键都能传给程序，按住的键会连发。"
+          }
+        }
+      }
+    },
     "Pair automatically via Tailscale, or enter your Rex server details manually.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "通过 Tailscale 自动配对，或手动输入 Rex 服务器信息。"
+          }
+        }
+      }
+    },
+    "Pair by QR code": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扫码配对"
           }
         }
       }
@@ -828,6 +1623,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "粘贴"
+          }
+        }
+      }
+    },
+    "Paste from the ⌘ menu on the key bar, from the selection's menu, or with ⌘V.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可从按键栏的 ⌘ 菜单、选区菜单粘贴，或按 ⌘V。"
+          }
+        }
+      }
+    },
+    "Pasted paths are quoted for the shell and end with a space. A name the shell cannot take is not pasted, and an alert says why.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "粘贴的路径已按 shell 规则加引号，并以空格结尾。shell 无法接受的文件名不会粘贴，并会提示原因。"
+          }
+        }
+      }
+    },
+    "Paths ready for the shell": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接可用的路径"
+          }
+        }
+      }
+    },
+    "Photos go to the host's temporary folder as their original files, and their paths are pasted into the terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照片以原始文件上传到主机的临时文件夹，并把路径粘贴到终端。"
+          }
+        }
+      }
+    },
+    "Pinch to size the text": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "双指捏合调整字号"
+          }
+        }
+      }
+    },
+    "Pinyin and other input methods compose at the cursor, with their candidates beside it, and send the text once it is done.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "拼音等输入法在光标处显示输入中的文字，候选词就在旁边，选定后一次性发送。"
+          }
+        }
+      }
+    },
+    "Pointer and trackpad": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "指针与触控板"
+          }
+        }
+      }
+    },
+    "Programs' notifications": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程序发出的通知"
           }
         }
       }
@@ -862,12 +1737,42 @@
         }
       }
     },
+    "Rename Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名会话"
+          }
+        }
+      }
+    },
+    "Rename Session…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名会话…"
+          }
+        }
+      }
+    },
     "Rename Tab": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "重命名标签页"
+          }
+        }
+      }
+    },
+    "Rename Tab, Reset Name, Move Up, Move Down, New Tab, Close Tab and Close Other Tabs, as on the desktop.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重命名标签页、重置名称、上移、下移、新建标签页、关闭标签页和关闭其他标签页，与桌面版一致。"
           }
         }
       }
@@ -902,6 +1807,16 @@
         }
       }
     },
+    "Rex Go puts the terminals of your computers on your iPhone and iPad: a Ghostty terminal with a key bar, selection, scrolling and input made for touch.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go 把你电脑上的终端带到 iPhone 和 iPad：基于 Ghostty 的终端，按键栏、选择、滚动和输入都为触控而设计。"
+          }
+        }
+      }
+    },
     "Right Arrow": {
       "localizations": {
         "zh-Hans": {
@@ -932,6 +1847,36 @@
         }
       }
     },
+    "Scan the Rex QR code that GoRex or Rex shows to add a host. A host you have already opens instead.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "扫描 GoRex 或 Rex 显示的 Rex 二维码即可添加主机。已添加的主机会直接打开。"
+          }
+        }
+      }
+    },
+    "Scroll with the system's physics": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "系统原生的滚动手感"
+          }
+        }
+      }
+    },
+    "Search Features and Details": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索功能与细节"
+          }
+        }
+      }
+    },
     "Search Settings": {
       "localizations": {
         "zh-Hans": {
@@ -948,6 +1893,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "搜索窗口"
+          }
+        }
+      }
+    },
+    "Select over the mouse": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程序占用鼠标时也能选择"
+          }
+        }
+      }
+    },
+    "Selection & Links": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择与链接"
+          }
+        }
+      }
+    },
+    "Selection handles": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选区手柄"
+          }
+        }
+      }
+    },
+    "Selection works while a program uses the mouse, and the program does not get those touches.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程序使用鼠标时依然可以选择文字，这些触摸不会传给程序。"
           }
         }
       }
@@ -972,12 +1957,32 @@
         }
       }
     },
+    "Set up a host by hand": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手动添加主机"
+          }
+        }
+      }
+    },
     "Settings": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "设置"
+          }
+        }
+      }
+    },
+    "Settings & About": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置与关于"
           }
         }
       }
@@ -1032,12 +2037,42 @@
         }
       }
     },
+    "Swipe the middle capsule from Esc, Control, Option, Shift and Tab to ~ | / - and Backspace.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "左右滑动中间的胶囊，在 Esc、Control、Option、Shift、Tab 与 ~ | / - 和退格之间切换。"
+          }
+        }
+      }
+    },
+    "Switch Session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切换会话"
+          }
+        }
+      }
+    },
     "System": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "跟随系统"
+          }
+        }
+      }
+    },
+    "System, Dark or Light": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跟随系统、深色或浅色"
           }
         }
       }
@@ -1052,12 +2087,82 @@
         }
       }
     },
+    "Tap Control, Option or Shift, then a key, for a chord. They let go after that key.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先点 Control、Option 或 Shift，再按一个键即可组合。按完后修饰键自动松开。"
+          }
+        }
+      }
+    },
+    "Tap a host's name to fold its sessions away, or a session's chevron to fold its windows.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点主机名折叠其会话，轻点会话的箭头折叠其窗口。"
+          }
+        }
+      }
+    },
+    "Tap a link to open it": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点打开链接"
+          }
+        }
+      }
+    },
+    "Tap to click": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点即点击"
+          }
+        }
+      }
+    },
+    "Tap to open the terminal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点通知打开终端"
+          }
+        }
+      }
+    },
     "Terminal": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "终端"
+          }
+        }
+      }
+    },
+    "The + on a session's card opens a new window in it. The host's ⋯ menu has New Session, Reconnect and Remove.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "会话卡片上的 + 在其中打开新窗口。主机的 ⋯ 菜单里有新建会话、重新连接和移除。"
+          }
+        }
+      }
+    },
+    "The command new terminals on a host run in place of its login shell.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "该主机上新终端运行的命令，用来代替登录 shell。"
           }
         }
       }
@@ -1072,12 +2177,112 @@
         }
       }
     },
+    "The eye lists the windows of every host by what their programs need: waiting for input first, then failed, done and working, with how long ago.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "眼睛图标按程序的状态列出所有主机的窗口：等待输入的在前，然后是失败、完成和运行中，并显示距今多久。"
+          }
+        }
+      }
+    },
+    "The interface follows the system, or stays dark or light.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "界面可跟随系统，也可固定为深色或浅色。"
+          }
+        }
+      }
+    },
+    "The key bar's keys and four repeating arrows go in the keyboard's shortcuts bar, which shows with a hardware keyboard too and gives a Magic Keyboard its Esc.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按键栏的按键和四个可连发的方向键放在键盘的快捷键栏里，接外接键盘时也会显示，让妙控键盘也有 Esc。"
+          }
+        }
+      }
+    },
+    "The keyboard slides the terminal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "键盘推起终端"
+          }
+        }
+      }
+    },
+    "The licenses of the code, fonts and themes the app ships, and its source on GitHub.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App 自带的代码、字体和主题的许可，以及 GitHub 上的源代码。"
+          }
+        }
+      }
+    },
+    "The list beside the terminal": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "列表与终端并排"
+          }
+        }
+      }
+    },
+    "The list, the buttons, the sheets and the key bar use the system's Liquid Glass.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "列表、按钮、弹出面板和按键栏都采用系统的液态玻璃。"
+          }
+        }
+      }
+    },
+    "The photo picker opens at half the screen, with the terminal above it. Pull it up for the full screen.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照片选择器以半屏打开，上方仍能看到终端。向上拉即可全屏。"
+          }
+        }
+      }
+    },
     "The program exited with code %lld.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "程序已退出，退出码 %lld。"
+          }
+        }
+      }
+    },
+    "The search at the bottom filters the windows by title, in the list and under the eye.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "底部的搜索按标题筛选窗口，列表和动态视图都适用。"
+          }
+        }
+      }
+    },
+    "The search at the bottom of Settings filters its rows.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置底部的搜索可筛选设置项。"
           }
         }
       }
@@ -1092,12 +2297,62 @@
         }
       }
     },
+    "The terminal does not resize as the keyboard comes and goes. It slides up only as far as the cursor and the lines under it need.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "键盘弹出或收起时终端不改变尺寸，只上移到刚好露出光标及其下方的行。"
+          }
+        }
+      }
+    },
+    "The terminal's background fills the screen. Text under the status bar blurs and fades, so the clock stays legible.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端背景铺满整个屏幕。状态栏下的文字会模糊淡出，时间依然清晰可读。"
+          }
+        }
+      }
+    },
     "The terminal's snapshot could not be read.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "无法读取终端快照。"
+          }
+        }
+      }
+    },
+    "The title opens the session": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点标题打开会话"
+          }
+        }
+      }
+    },
+    "The title shows the window's program and title. Tap it for the session's windows, New Tab and Switch Session.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "标题显示窗口的程序和标题。轻点可查看会话的窗口、新建标签页和切换会话。"
+          }
+        }
+      }
+    },
+    "The version, the device, iOS and each host's Rex version. Copy version or debug info for a problem report.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示版本、设备、iOS 版本和每台主机的 Rex 版本。报告问题时可拷贝版本信息或调试信息。"
           }
         }
       }
@@ -1122,12 +2377,52 @@
         }
       }
     },
+    "Themes with a preview": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "带预览的主题"
+          }
+        }
+      }
+    },
     "Third-Party Notices": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "第三方声明"
+          }
+        }
+      }
+    },
+    "Three glass capsules: ⌘, a row of keys, and an arrow stick with the key that hides the keyboard.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "三个玻璃胶囊：⌘、一排按键，以及方向摇杆和收起键盘键。"
+          }
+        }
+      }
+    },
+    "Two handles move the ends of the selection, and a menu has Copy, Paste and Select All.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两个手柄调整选区的两端，菜单里有拷贝、粘贴和全选。"
+          }
+        }
+      }
+    },
+    "Two pages of keys": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "两页按键"
           }
         }
       }
@@ -1152,6 +2447,16 @@
         }
       }
     },
+    "Upload progress": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上传进度"
+          }
+        }
+      }
+    },
     "Uploaded, Not Pasted": {
       "localizations": {
         "zh-Hans": {
@@ -1168,86 +2473,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "版本"
-          }
-        }
-      }
-    },
-    "Switch Session": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "切换会话"
-          }
-        }
-      }
-    },
-    "Working": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "进行中"
-          }
-        }
-      }
-    },
-    "Rename Session": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "重命名会话"
-          }
-        }
-      }
-    },
-    "Rename Session…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "重命名会话…"
-          }
-        }
-      }
-    },
-    "Close Session": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭会话"
-          }
-        }
-      }
-    },
-    "Can't Rename the Session": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法重命名会话"
-          }
-        }
-      }
-    },
-    "Can't Close the Session": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法关闭会话"
-          }
-        }
-      }
-    },
-    "Close %@ and every window in it?": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "关闭 %@ 及其中所有窗口？"
           }
         }
       }
@@ -1272,12 +2497,52 @@
         }
       }
     },
-    "Commit": {
+    "Web and mail links in the output open with a tap, as do links a program marks with OSC 8. A link followed by Chinese ends where its address does.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "提交"
+            "value": "输出中的网页和邮件链接轻点即可打开，程序用 OSC 8 标记的链接也一样。链接后紧跟中文时，链接在地址结束处截止。"
+          }
+        }
+      }
+    },
+    "When a program needs input": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程序需要输入时提醒"
+          }
+        }
+      }
+    },
+    "When an agent such as Claude Code waits for you, a notification says so, while the app is open or soon after you leave it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claude Code 等代理在等你操作时会发来通知，App 在前台或刚切到后台时都有效。"
+          }
+        }
+      }
+    },
+    "Working": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进行中"
+          }
+        }
+      }
+    },
+    "iPad": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iPad"
           }
         }
       }
@@ -1292,81 +2557,46 @@
         }
       }
     },
-    "Copy Version Info": {
+    "now": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "复制版本信息"
+            "value": "刚刚"
           }
         }
       }
     },
-    "Copy Debug Info": {
+    "⌘ on the key bar spins while files go up, and an alert tells of an upload that failed.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "复制调试信息"
+            "value": "上传文件时按键栏上的 ⌘ 会转圈，上传失败会弹窗提示。"
           }
         }
       }
     },
-    "Include version info when you report a problem. Debug info also describes the network and the hosts.": {
+    "⌘ shortcuts": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "报告问题时请附上版本信息。调试信息还会描述网络和主机。"
+            "value": "⌘ 快捷键"
           }
         }
       }
     },
-    "Open Source": {
+    "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "开源"
-          }
-        }
-      }
-    },
-    "Code, fonts and themes that ship with Rex Go.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rex Go 附带的代码、字体和主题。"
-          }
-        }
-      }
-    },
-    "Copied": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已复制"
-          }
-        }
-      }
-    },
-    "About System": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "System"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "系统"
+            "value": "⌘T 新建标签页，⌘W 关闭，⌘O 添加文件，⇧⌘O 添加照片，⌘K 清除屏幕和回滚，⌘+、⌘- 和 ⌘0 调整字号。按住 ⌘ 可查看全部。"
           }
         }
       }
     }
-  }
+  },
+  "version": "1.0"
 }
