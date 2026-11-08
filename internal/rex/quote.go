@@ -2,6 +2,7 @@ package rex
 
 import (
 	"strings"
+	"unicode/utf8"
 )
 
 // ClaudeResume is the command that resumes Claude Code's conversation id,
@@ -63,16 +64,41 @@ func QuoterOf(shell string) func(string) (string, bool) {
 
 // PathWord is path as a word of the shell at shell, as a file's path is
 // pasted into a terminal: quoted as sh quotes it for a shell the quoting
-// does not know, and as it is when it cannot be quoted.
-func PathWord(shell, path string) string {
-	q := QuoterOf(shell)
-	if q == nil {
-		q = posixWord
+// does not know. It reports false for a path the quoting refuses, which is
+// not to be pasted.
+func PathWord(shell, path string) (string, bool) {
+	return pathQuoter(shell)(path)
+}
+
+// pathQuoter is the quoting of the shell at shell that a path pastes in:
+// sh's for a shell the quoting does not know.
+func pathQuoter(shell string) func(string) (string, bool) {
+	if q := QuoterOf(shell); q != nil {
+		return q
 	}
-	if w, ok := q(path); ok {
-		return w
+	return posixWord
+}
+
+// PasteableName is name, a file's, with each character the quoting of the
+// shell at shell refuses replaced by _, and byte for byte as it is
+// otherwise: its path then pastes, as a file put into the temporary
+// folder is named (PutForShell).
+func PasteableName(shell, name string) string {
+	q := pathQuoter(shell)
+	if _, ok := q(name); ok {
+		return name
 	}
-	return path
+	var b strings.Builder
+	for i := 0; i < len(name); {
+		_, n := utf8.DecodeRuneInString(name[i:])
+		if _, ok := q(name[i : i+n]); ok {
+			b.WriteString(name[i : i+n])
+		} else {
+			b.WriteByte('_')
+		}
+		i += n
+	}
+	return b.String()
 }
 
 // plainWord tells whether s reads as one word of every shell here: letters,

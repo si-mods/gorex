@@ -61,7 +61,12 @@ extension TerminalView: UIDocumentPickerDelegate {
             var words: [String] = []
             do {
                 for f in try await files(dir) {
-                    words.append(try await session.host.upload(f, block: session.block))
+                    // One sent but not to be pasted says why; the others go on.
+                    do {
+                        words.append(try await session.host.upload(f, block: session.block))
+                    } catch let e as RexError where e.code == Upload.notPasted {
+                        failed(e)
+                    }
                 }
             } catch {
                 failed(error)
@@ -95,7 +100,8 @@ extension TerminalView: UIDocumentPickerDelegate {
     }
 
     private func failed(_ error: Error) {
-        let a = UIAlertController(title: String(localized: "Can't Upload"), message: error.localizedDescription, preferredStyle: .alert)
+        let title = (error as? RexError)?.code == Upload.notPasted ? String(localized: "Uploaded, Not Pasted") : String(localized: "Can't Upload")
+        let a = UIAlertController(title: title, message: error.localizedDescription, preferredStyle: .alert)
         a.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { [weak self] _ in self?.becomeFirstResponder() })
         present(a)
     }

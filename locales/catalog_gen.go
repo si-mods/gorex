@@ -4638,6 +4638,24 @@ func (msgs Messages) PaneTransferProgress(done string, size string) string {
 	return Catalog.Format(msgs.locale, "paneTransferProgress", map[string]any{"done": done, "size": size})
 }
 
+// PaneUploadNotPasted says "Done, not pasted: the shell can't take this path"
+// in the language the app shows.
+//
+// Transfer list of a pane, in place of Done: a file dropped on a pane of a
+// host is there, but its path, of a folder or a name the shell's quoting
+// refuses (as % in cmd.exe), was not pasted.
+func PaneUploadNotPasted() string { return In(i18n.Locale()).PaneUploadNotPasted() }
+
+// PaneUploadNotPasted says "Done, not pasted: the shell can't take this path"
+// in the language of msgs.
+//
+// Transfer list of a pane, in place of Done: a file dropped on a pane of a
+// host is there, but its path, of a folder or a name the shell's quoting
+// refuses (as % in cmd.exe), was not pasted.
+func (msgs Messages) PaneUploadNotPasted() string {
+	return Catalog.Format(msgs.locale, "paneUploadNotPasted", nil)
+}
+
 // PaneTransferDone says "Done"
 // in the language the app shows.
 //

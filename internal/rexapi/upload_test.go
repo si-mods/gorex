@@ -102,3 +102,36 @@ func TestUploadRefused(t *testing.T) {
 		t.Errorf("GET: %s", resp.Status)
 	}
 }
+
+// TestUploadForShell posts files for a block whose shell is cmd.exe (a
+// program of its name): a name it cannot take is changed so its path
+// pastes; a temporary folder whose path it cannot take keeps the file,
+// answered with no word and why.
+func TestUploadForShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the session runs /bin/sh")
+	}
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	cmd := filepath.Join(t.TempDir(), "cmd")
+	if err := os.Symlink("/bin/sh", cmd); err != nil {
+		t.Fatal(err)
+	}
+	f := startFixture(t)
+	_, _, block := f.sessionWith(t, rex.CreateOptions{Command: []string{cmd, "-i"}})
+	status, res := postUpload(t, f, block, "50%!.txt", "application/octet-stream", []byte("x"))
+	if status != http.StatusOK || filepath.Base(res["path"]) != "50__.txt" || res["word"] == "" || res["reason"] != "" {
+		t.Fatalf("upload: %d %v", status, res)
+	}
+
+	odd := filepath.Join(tmp, "a%b")
+	os.Mkdir(odd, 0o755)
+	t.Setenv("TMPDIR", odd)
+	status, res = postUpload(t, f, block, "c.txt", "application/octet-stream", []byte("x"))
+	if status != http.StatusOK || res["word"] != "" || !strings.Contains(res["reason"], "can't take this path") {
+		t.Fatalf("upload into a folder the shell refuses: %d %v", status, res)
+	}
+	if _, err := os.Stat(res["path"]); err != nil {
+		t.Errorf("the file there: %v", err)
+	}
+}

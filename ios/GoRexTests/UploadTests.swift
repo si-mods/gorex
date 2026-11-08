@@ -61,6 +61,22 @@ nonisolated final class UploadTests: XCTestCase {
         XCTAssertEqual(r.body, bytes)
     }
 
+    /// A file sent whose path the block's shell cannot take is not pasted:
+    /// the error says the server's reason.
+    @MainActor func testUploadNotPastedTellsWhy() async throws {
+        let http = try FakeHTTP()
+        defer { http.stop() }
+        http.respond = { _ in (200, ["path": "/tmp/a%b/c.txt", "word": "", "reason": "/tmp/a%b/c.txt is uploaded, but the shell can't take this path"]) }
+        let f = try file("c.txt", Data("hi".utf8))
+        do {
+            _ = try await Upload.send(f, name: "c.txt", block: "block:1", to: try await http.url())
+            XCTFail("an empty word was returned")
+        } catch let e as RexError {
+            XCTAssertEqual(e.code, Upload.notPasted)
+            XCTAssertEqual(e.message, "/tmp/a%b/c.txt is uploaded, but the shell can't take this path")
+        }
+    }
+
     /// A refused upload fails with the server's reason.
     @MainActor func testUploadFailureTellsWhy() async throws {
         let http = try FakeHTTP()

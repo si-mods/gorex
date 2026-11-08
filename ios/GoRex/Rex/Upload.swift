@@ -9,6 +9,11 @@ enum Upload {
     /// The welcome's feature of a server that takes uploads.
     static let feature = "gorex.upload"
 
+    /// The code of the error of a file sent whose path is not to be
+    /// pasted: the block's shell cannot take it. Its message is the
+    /// server's reason.
+    nonisolated static let notPasted = "upload.notPasted"
+
     /// Sends the file at file as name, for block, to the server at base,
     /// streamed from the disk, and returns the word to paste.
     nonisolated static func send(_ file: URL, name: String, block: String, to base: URL) async throws -> String {
@@ -26,6 +31,9 @@ enum Upload {
         guard status == 200, let word = answer?["word"] as? String else {
             throw RexError(code: "upload", message: answer?["error"] as? String
                 ?? HTTPURLResponse.localizedString(forStatusCode: status))
+        }
+        if word.isEmpty {
+            throw RexError(code: notPasted, message: answer?["reason"] as? String ?? "")
         }
         return word
     }
