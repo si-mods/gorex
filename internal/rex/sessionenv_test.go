@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/egoist/mygo/plugins/terminal"
 )
 
 var testMarkers = []string{
@@ -86,11 +88,16 @@ func TestSessionEnvDropsStarterMarkers(t *testing.T) {
 
 func TestSessionEnvNamesGhostty(t *testing.T) {
 	// TestSessionEnvNamesGhostty: a session names its terminal Ghostty, which
-	// draws it, not the terminal the server started from.
+	// draws it, at the version GoRex binds, not the terminal the server
+	// started from.
 	t.Setenv("TERM_PROGRAM", "iTerm.app")
+	t.Setenv("TERM_PROGRAM_VERSION", "3.5.0")
 	got := envMap(sessionEnv("abc", nil, true))
 	if got["TERM_PROGRAM"] != "ghostty" {
 		t.Errorf("TERM_PROGRAM = %q, want ghostty", got["TERM_PROGRAM"])
+	}
+	if got["TERM_PROGRAM_VERSION"] != terminal.GhosttyVersion {
+		t.Errorf("TERM_PROGRAM_VERSION = %q, want %q", got["TERM_PROGRAM_VERSION"], terminal.GhosttyVersion)
 	}
 }
 
