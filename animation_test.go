@@ -118,6 +118,27 @@ func TestTerminalHoldsSizeWhileMoving(t *testing.T) {
 			if p == nil || p.term == nil {
 				t.Fatal("no focused terminal")
 			}
+			// rest runs frames, the clock standing still, until the
+			// terminal keeps a size other than from, the stream's: the
+			// view asks the session for the size it rests at from a
+			// goroutine, which a loaded machine runs late. Each frame
+			// calls each.
+			rest := func(what string, from [2]int, each func()) {
+				t.Helper()
+				var last [2]int
+				steady := 0
+				waitFor(t, tt, what, func() bool {
+					each()
+					c, r := p.term.Size()
+					ac, ar := p.askedSize()
+					if now := [2]int{c, r}; now != last || c != ac || r != ar {
+						last, steady = now, 0
+					} else {
+						steady++
+					}
+					return last != from && steady >= 10
+				})
+			}
 			// check changes the layout, and records each size the
 			// terminal takes as the panes move and come to rest.
 			check := func(what string, change func()) {
@@ -142,14 +163,7 @@ func TestTerminalHoldsSizeWhileMoving(t *testing.T) {
 					tt.Frame()
 					record()
 				}
-				// The view asks the session for the size it rests at from
-				// a goroutine, which a loaded machine runs late: the
-				// terminal takes it once the stream has it.
-				waitFor(t, tt, what+": the terminal to take its size at rest", func() bool {
-					record()
-					c, r := p.term.Size()
-					return [2]int{c, r} != start
-				})
+				rest(what+": the terminal to rest at a new size", start, record)
 				c, r = p.term.Size()
 				end := [2]int{c, r}
 				if len(seen) > 2 {
@@ -165,6 +179,14 @@ func TestTerminalHoldsSizeWhileMoving(t *testing.T) {
 			check("zoom", a.toggleZoom)
 			check("unzoom", a.toggleZoom)
 			check("sidebar", a.toggleSidebar)
+			c, r := p.term.Size()
+			if !a.floatPane(p) {
+				t.Fatal("the pane did not float")
+			}
+			settle(tt)
+			rest("the floating terminal to rest", [2]int{c, r}, func() {})
+			check("float zoom", a.toggleZoom)
+			check("float unzoom", a.toggleZoom)
 		})
 	}
 	t.Run("off", func(t *testing.T) {
