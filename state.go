@@ -363,12 +363,10 @@ func (p *Pane) end() {
 }
 
 // close ends the pane for good, as its session ends or another pane takes
-// its place: its session's transfers stop too.
+// its place. Its session's transfers stop as the session is ended
+// (hostConn.kill), not with the pane: another may show it.
 func (p *Pane) close() {
 	p.end()
-	if p.host != nil {
-		p.host.stopTransfers(p.SID)
-	}
 }
 
 // browserPane is a pane that shows a web page in a web view of its

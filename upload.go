@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -60,8 +59,8 @@ const (
 // host, as the transfer list of a pane that shows it lists them: they
 // are the session's, not a pane's, and go on as its pane moves to
 // another window or its window closes. uploading closes once the last
-// drop's are sent; ctx is done once a pane of the session closes for
-// good, which stops them.
+// drop's are sent; ctx is done once the session is ended, which stops
+// them.
 type sessionTransfers struct {
 	list      []*fileTransfer
 	uploading chan struct{}
@@ -84,14 +83,18 @@ func (h *hostConn) transfersOf(sid string) *sessionTransfers {
 	return ts
 }
 
-// stopTransfers stops the transfers of session sid of the host, as a pane
-// of it closes for good: what they would paste is not pasted.
+// stopTransfers stops the transfers of session sid of the host, as the
+// session is ended: what they would paste is not pasted.
 func (h *hostConn) stopTransfers(sid string) {
 	if ts := h.transfers[sid]; ts != nil {
 		ts.stop()
 		delete(h.transfers, sid)
 	}
 }
+
+// hostWait is how long the paste of an upload waits for its host to come
+// back.
+var hostWait = time.Minute
 
 // upload sends the files dropped on p, a pane of a host, one after another,
 // after those of the drops before, then pastes their paths there into its
@@ -139,10 +142,10 @@ func (a *App) upload(p *Pane, paths []string) {
 		if prev != nil {
 			<-prev
 		}
-		var pasted []string
+		var pasted, names []string
 		for _, it := range items {
 			if it.x == nil {
-				pasted = append(pasted, it.path)
+				pasted, names = append(pasted, it.path), append(names, filepath.Base(it.path))
 				continue
 			}
 			it.put.Temp = temp
@@ -153,13 +156,22 @@ func (a *App) upload(p *Pane, paths []string) {
 				continue
 			}
 			if path, word, err := putFile(it.ctx, c, shell, it.put, it.path, it.x, update); err == nil && word != "" {
-				pasted = append(pasted, path)
+				pasted, names = append(pasted, path), append(names, it.x.name)
 			}
 		}
-		if c := h.current(); c != nil && len(pasted) > 0 && ts.ctx.Err() == nil {
-			if err := c.Paste(sid, pastedPaths(shell, pasted)); err != nil {
-				log.Printf("upload: pasting into %s: %v", sid, err)
-			}
+		// The paste waits for the host too, and says why when it does not
+		// go; a session ended takes none.
+		if len(pasted) == 0 {
+			return
+		}
+		err := errors.New(offline)
+		if c := h.next(ts.ctx, nil, hostWait); c != nil {
+			err = c.Paste(sid, pastedPaths(shell, pasted))
+		}
+		if err != nil && ts.ctx.Err() == nil {
+			update(func() {
+				ts.list = append(ts.list, &fileTransfer{name: strings.Join(names, ", "), err: strings.TrimPrefix(err.Error(), "rex: ")})
+			})
 		}
 	}()
 }

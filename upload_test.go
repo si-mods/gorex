@@ -267,21 +267,53 @@ func TestClosePaneMidUpload(t *testing.T) {
 	}
 }
 
-// TestPaneEndStopsUploads stops a pane's uploads as it closes for good,
-// and not as it moves to another window, its session going on.
+// TestPaneEndStopsUploads stops a session's uploads as the session is
+// ended with its pane, and not as the pane moves to another window, nor
+// as it goes with the session going on, as its host's removal drops it.
 func TestPaneEndStopsUploads(t *testing.T) {
 	a, _ := newTestApp(t)
+	a.split(false) // the tab stays
 	p := a.tab().Focus
 	p.host = newHostConn(savedHost{ID: "h1", Name: "office-mac"})
 	ctx := p.host.transfersOf(p.SID).ctx
 	p.end()
-	if ctx.Err() != nil {
-		t.Fatal("moving the pane stops its upload")
-	}
 	p.closed = false
 	a.dropPane(p, false)
+	if ctx.Err() != nil {
+		t.Fatal("a pane gone, its session going on, stops its upload")
+	}
+	q := a.tab().Focus
+	q.host = p.host
+	ctx = q.host.transfersOf(q.SID).ctx
+	a.closePane(q)
 	if ctx.Err() == nil {
-		t.Error("closing the pane leaves its upload")
+		t.Error("ending the session leaves its upload")
+	}
+}
+
+// TestPasteWaitsForHost drops a folder, whose path here is pasted, on a
+// pane of a host while it reconnects: the paste waits for the host. One
+// that waits too long says why on the list.
+func TestPasteWaitsForHost(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, proxy, p := remotePane(t, a, tt, t.TempDir())
+	folder := t.TempDir()
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil })
+	a.upload(p, []string{folder})
+	proxy.setDown(false)
+	h.poke()
+	waitFor(t, tt, "the folder's path", func() bool { return strings.Contains(p.term.Text(), filepath.Base(folder)) })
+	waitUploaded(t, tt, p) // nothing reads hostWait now
+
+	proxy.setDown(true)
+	waitFor(t, tt, "the host to go", func() bool { return h.current() == nil })
+	hostWait = 100 * time.Millisecond
+	t.Cleanup(func() { hostWait = time.Minute })
+	a.upload(p, []string{folder})
+	waitUploaded(t, tt, p)
+	if l := listOf(p); l[len(l)-1].err != "Not connected to office-mac." {
+		t.Errorf("the list: %+v", l[len(l)-1])
 	}
 }
 
@@ -477,7 +509,7 @@ func TestDropNameForShell(t *testing.T) {
 	}
 	h.hello.Capabilities = slices.DeleteFunc(slices.Clone(h.hello.Capabilities), func(c string) bool { return c == rex.CapabilityFileTemp })
 	a.upload(p, dropped(t, "50%!.txt", "x"))
-	x := p.transfers[len(p.transfers)-1]
+	x := listOf(p)[len(listOf(p))-1]
 	waitUploaded(t, tt, p)
 	if _, err := os.Stat(filepath.Join(cwd, "50%!.txt")); err != nil {
 		t.Error(err)
@@ -489,7 +521,7 @@ func TestDropNameForShell(t *testing.T) {
 	}
 	tt.Advance(transferShown)
 	tt.Frame()
-	if slices.Contains(p.transfers, x) {
+	if slices.Contains(listOf(p), x) {
 		t.Error("the row stays")
 	}
 }
@@ -622,7 +654,7 @@ func TestDownloadCancelled(t *testing.T) {
 		t.Fatalf("transfers %v", listOf(p))
 	}
 	list := listOf(p)
-	p.close()
+	a.closePane(p)
 	for _, x := range list {
 		waitFor(t, tt, "the download to stop", func() bool { return x.err != "" })
 	}
