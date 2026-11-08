@@ -128,7 +128,10 @@ runs (`graphics.filter`, `imageDir`). Images up to 4 MiB are rewritten;
 one read adds at most 6 MiB. The server records the graphics sequences,
 the last 8 MiB of them (`graphics.record`), and sends them after every
 snapshot (`graphics.replay`): the snapshot carries the cells, not the
-images. An upgrade hands this history over beside the screen
+images. The record keeps the images as they are: a transmit by id drops
+what it had of that id, as the terminal replaces the image and its
+placements, and a delete that frees an image by id (`d=I`, no placement)
+drops it and is not kept. An upgrade hands this history over beside the screen
 (`sessionState.Images`).
 
 ### After a resize

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -293,11 +294,27 @@ func rewriteFileImage(params []string, data []byte) [][]byte {
 }
 
 // record adds sequences for replay, keeping the most recent
-// maxGraphicsHistory bytes. The session holds its lock.
+// maxGraphicsHistory bytes. It keeps the images as they are, not each
+// sequence sent: a transmit by id replaces the image and its placements,
+// as in the terminal, so what the history had of that id goes; a delete
+// that frees an image by its id (d=I, all its placements) takes it out
+// and is not kept. The session holds its lock.
 func (g *graphics) record(seqs [][]byte) {
 	for _, seq := range seqs {
 		if len(seq) > maxGraphicsHistory {
 			continue
+		}
+		if id, replaces, frees := graphicsImage(seq); replaces || frees {
+			g.history = slices.DeleteFunc(g.history, func(h []byte) bool {
+				if old, _, _ := graphicsImage(h); old == id {
+					g.kept -= len(h)
+					return true
+				}
+				return false
+			})
+			if frees {
+				continue
+			}
 		}
 		seq = append([]byte(nil), seq...)
 		g.history = append(g.history, seq)
@@ -307,6 +324,39 @@ func (g *graphics) record(seqs [][]byte) {
 			g.history = g.history[1:]
 		}
 	}
+}
+
+// graphicsImage returns the image id a recorded sequence names, from its
+// first header, and whether it transmits that image, which replaces it,
+// or deletes it with all its placements, freeing it. An image named by
+// number (I) is not one: a transmit of a number makes another image.
+func graphicsImage(seq []byte) (id string, replaces, frees bool) {
+	body, ok := bytes.CutPrefix(seq, apcGraphicsStart)
+	if !ok {
+		return "", false, false
+	}
+	if end := bytes.IndexAny(body, ";\x1b"); end >= 0 {
+		body = body[:end]
+	}
+	action, del, placement := "t", "a", ""
+	for _, p := range strings.Split(string(body), ",") {
+		key, value, _ := strings.Cut(p, "=")
+		switch key {
+		case "a":
+			action = value
+		case "d":
+			del = value
+		case "i":
+			id = value
+		case "p":
+			placement = value
+		}
+	}
+	if id == "" || id == "0" {
+		return "", false, false
+	}
+	frees = action == "d" && del == "I" && (placement == "" || placement == "0")
+	return id, action == "t" || action == "T", frees
 }
 
 // replay returns the graphics sequences an attaching window needs to show
