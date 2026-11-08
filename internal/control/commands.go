@@ -194,6 +194,7 @@ func (b *bridge) ask(req request, p params) (any, error) {
 	b.quiet(j.sids, true)
 	select {
 	case b.jobs <- j:
+		b.asking++
 		return nil, later
 	default:
 		b.quiet(j.sids, false)
@@ -260,6 +261,7 @@ func (b *bridge) work() {
 // finish answers a change the app did not make, and waits to see one it
 // made (check).
 func (b *bridge) finish(j *job) {
+	b.asking--
 	if j.err == nil && j.res.Code == "" {
 		// A change the app did not make, as a pane that cannot resize,
 		// needs no wait for the layout.
@@ -336,6 +338,7 @@ func (b *bridge) complete(j *job) {
 	}
 	if err != nil {
 		b.quiet(j.sids, false)
+		b.tell() // what changed meanwhile
 		b.answer(j.req, nil, err)
 		return
 	}

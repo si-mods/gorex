@@ -70,9 +70,11 @@ type bridge struct {
 	anchor string
 	// jobs are the layout commands for the app, one at a time (work), and
 	// done those it answered, to finish (finish); waiting is the one the
-	// app made that the bridge waits to see (check).
+	// app made that the bridge waits to see (check). asking counts those
+	// asked and not answered yet.
 	jobs, done chan *job
 	waiting    *job
+	asking     int
 	// subscribed tells that the server tells of its changes.
 	subscribed bool
 }
@@ -400,6 +402,12 @@ func (b *bridge) topology() string {
 // which it asks for the session again; else the tabs' controllers and
 // layouts.
 func (b *bridge) tell() {
+	// A change the app makes may land before its answer, which tells
+	// what rootshell hears of it, as the new pane's focus: the layouts
+	// wait for it.
+	if b.asking > 0 {
+		return
+	}
 	if shape := b.topology(); shape != b.shape {
 		b.shape = shape
 		b.send(map[string]any{"type": "events.gap", "dropped": 0, "resume_sequence": 0})
