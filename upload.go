@@ -3,6 +3,7 @@ package main
 import (
 	"cmp"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -92,9 +93,18 @@ func (h *hostConn) stopTransfers(sid string) {
 	}
 }
 
-// hostWait is how long the paste of an upload waits for its host to come
-// back.
+// hostWait is how long an upload, and its paste, wait for its host to come
+// back, and for the host to let go of the file of a try whose connection
+// was lost: it notices within its writeTimeout.
 var hostWait = time.Minute
+
+// putTries is how many times at most a put is tried, as its connection
+// is lost.
+const putTries = 3
+
+// errHostAway is the error of a put or a paste whose host did not come
+// back in time.
+var errHostAway = errors.New("the host is away")
 
 // upload sends the files dropped on p, a pane of a host, one after another,
 // after those of the drops before, then pastes their paths there into its
@@ -127,12 +137,12 @@ func (a *App) upload(p *Pane, paths []string) {
 			items = append(items, item{path: path})
 		default:
 			x.size = fi.Size()
-			it := item{path: path, x: x, put: rex.FilePut{SID: sid, Name: x.name, Size: x.size, ID: uploadID(sid, path, fi), Conflict: "rename"}}
+			it := item{path: path, x: x, put: rex.FilePut{SID: sid, Name: x.name, Size: x.size, ID: uploadID(sid, path, fi), Drop: rand.Text(), Conflict: "rename"}}
 			it.ctx, x.cancel = context.WithCancel(ts.ctx)
 			items = append(items, it)
 		}
 	}
-	offline, shell := locales.HostsNotConnectedTo(h.Name), p.info.Shell
+	shell := p.info.Shell
 	temp := h.hello.Can(rex.CapabilityFileTemp)
 	update := h.update
 	prev, done := ts.uploading, make(chan struct{})
@@ -149,13 +159,7 @@ func (a *App) upload(p *Pane, paths []string) {
 				continue
 			}
 			it.put.Temp = temp
-			c := h.current()
-			if c == nil {
-				it.x.cancel()
-				update(func() { it.x.err = offline })
-				continue
-			}
-			if path, word, err := putFile(it.ctx, c, shell, it.put, it.path, it.x, update); err == nil && word != "" {
+			if path, word, err := putFile(it.ctx, h, shell, it.put, it.path, it.x, update); err == nil && word != "" {
 				pasted, names = append(pasted, path), append(names, it.x.name)
 			}
 		}
@@ -164,13 +168,13 @@ func (a *App) upload(p *Pane, paths []string) {
 		if len(pasted) == 0 {
 			return
 		}
-		err := errors.New(offline)
+		err := errHostAway
 		if c := h.next(ts.ctx, nil, hostWait); c != nil {
 			err = c.Paste(sid, pastedPaths(shell, pasted))
 		}
 		if err != nil && ts.ctx.Err() == nil {
 			update(func() {
-				ts.list = append(ts.list, &fileTransfer{name: strings.Join(names, ", "), err: strings.TrimPrefix(err.Error(), "rex: ")})
+				ts.list = append(ts.list, &fileTransfer{name: strings.Join(names, ", "), err: transferError(h, err)})
 			})
 		}
 	}()
@@ -185,16 +189,32 @@ type uploadFile interface {
 // openUpload opens the file at path to send it.
 var openUpload = func(path string) (uploadFile, error) { return os.Open(path) }
 
-// putFile sends the file at path as f says, for a pane whose shell is at
-// shell (PutForShell), x telling how it goes, and returns its path there
-// and that path as a word of the shell, "" when not to be pasted.
-// Cancelled under way, PutFile removes what the host has of the file.
-func putFile(ctx context.Context, c *rex.Client, shell string, f rex.FilePut, path string, x *fileTransfer, update func(func())) (there, word string, err error) {
+// putFile sends the file at path to h as f says, for a pane whose shell
+// is at shell (PutForShell), x telling how it goes, and returns its path
+// there and that path as a word of the shell, "" when not to be pasted. A
+// host not connected is waited for, hostWait at most. A put whose
+// connection is lost is tried again, putTries at most, through the client
+// of then, going on from what the host has of the file (f.ID), or learning
+// where it went when only the answer was lost (f.Drop). Cancelled under
+// way, PutFile removes what the host has of the file.
+func putFile(ctx context.Context, h *hostConn, shell string, f rex.FilePut, path string, x *fileTransfer, update func(func())) (there, word string, err error) {
 	defer x.cancel()
+	var c *rex.Client
 	err = ctx.Err()
-	if err == nil {
-		var src uploadFile
-		if src, err = openUpload(path); err == nil {
+	for try := 0; err == nil; try++ {
+		// The try again goes through the same client, unless it closed.
+		if lost := c; c == nil || closed(c) {
+			c = h.next(ctx, lost, hostWait)
+		}
+		if c == nil {
+			err = cmp.Or(ctx.Err(), errHostAway)
+			break
+		}
+		for since := time.Now(); ; {
+			var src uploadFile
+			if src, err = openUpload(path); err != nil {
+				break
+			}
 			var last time.Time
 			there, word, err = c.PutForShell(ctx, shell, f, src, func(done int64) {
 				if now := time.Now(); now.Sub(last) >= transferEvery {
@@ -203,15 +223,24 @@ func putFile(ctx context.Context, c *rex.Client, shell string, f rex.FilePut, pa
 				}
 			})
 			src.Close()
+			// The host holds the file of a try lost until it notices.
+			if !rex.Transferring(err) || time.Since(since) > hostWait || sleepCtx(ctx, time.Second) != nil {
+				break
+			}
 		}
 		if err != nil && ctx.Err() != nil {
 			err = ctx.Err()
 		}
+		// A refusal of the host's stands; a connection lost is tried again.
+		if err == nil || ctx.Err() != nil || !rex.Lost(err) || try+1 == putTries {
+			break
+		}
+		err = nil
 	}
 	update(func() {
 		switch {
 		case err != nil:
-			x.err = strings.TrimPrefix(err.Error(), "rex: ")
+			x.err = transferError(h, err)
 		case word == "":
 			// There, in a folder or by a name the shell refuses: not typed.
 			x.done, x.ok, x.note = x.size, true, locales.PaneUploadNotPasted()
@@ -220,6 +249,37 @@ func putFile(ctx context.Context, c *rex.Client, shell string, f rex.FilePut, pa
 		}
 	})
 	return there, word, err
+}
+
+// transferError is err of a transfer with h as the list says it: one of a
+// host that did not come back says why it is not connected, as its status
+// does. Call it on the main thread.
+func transferError(h *hostConn, err error) string {
+	if err == errHostAway {
+		_, why, _ := hostStatus(h)
+		return cmp.Or(why, locales.HostsNotConnectedTo(h.Name))
+	}
+	return strings.TrimPrefix(err.Error(), "rex: ")
+}
+
+// closed tells whether c's connection closed.
+func closed(c *rex.Client) bool {
+	select {
+	case <-c.Closed():
+		return true
+	default:
+		return false
+	}
+}
+
+// sleepCtx waits d, or until ctx is done, whose error it returns.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
+	}
 }
 
 // downloadsDir is where a file Command-clicked in a pane of a host goes.
@@ -248,6 +308,10 @@ func (a *App) download(p *Pane, link string) bool {
 	if !ok || !transfersFiles(p) {
 		return false
 	}
+	c := p.host.current()
+	if c == nil {
+		return false
+	}
 	path = hostPath(p.info.Dir, path)
 	ts := p.host.transfersOf(p.SID)
 	for _, x := range ts.list {
@@ -265,7 +329,7 @@ func (a *App) download(p *Pane, link string) bool {
 	}
 	ctx, cancel := context.WithCancel(ts.ctx)
 	x.cancel = cancel
-	c, sid, update := p.host.current(), p.SID, p.host.update
+	sid, update := p.SID, p.host.update
 	go func() {
 		defer cancel()
 		var last time.Time
@@ -346,10 +410,11 @@ func byteSize(n int64) string {
 }
 
 // transfersFiles tells whether p's host takes files dropped on p and gives
-// those Command-clicked in it: a host connected now that transfers them.
+// those Command-clicked in it, as it last said connecting (hello): it may
+// be coming back, which a drop waits for and a Command-click does not.
 func transfersFiles(p *Pane) bool {
 	h := p.host
-	return h != nil && h.current() != nil && h.hello.Can(rex.CapabilityFileTransfer)
+	return h != nil && h.hello.Can(rex.CapabilityFileTransfer)
 }
 
 // fileDrops are what the card of a pane of a host takes: files, copied.

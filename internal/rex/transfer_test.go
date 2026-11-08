@@ -797,3 +797,44 @@ func TestDropDirRefuses(t *testing.T) {
 		t.Error("took a file")
 	}
 }
+
+// TestFilePutAgain puts a file again by the transfer id and the drop of a
+// put that finished, as a client whose answer was lost does: it learns
+// where the file went, and no copy is made. Another drop of the same file
+// is another file. A put of a file another put writes is refused as such.
+func TestFilePutAgain(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	dir := t.TempDir()
+	sid := transferSession(t, local, local, dir)
+	data := []byte("kept")
+	putDrop := func(drop string) (string, error) {
+		path, _, err := local.PutFile(context.Background(), FilePut{SID: sid, Dir: dir, Name: "k.txt", Size: int64(len(data)), ID: "k1", Drop: drop}, bytes.NewReader(data), nil)
+		return path, err
+	}
+	first, err := putDrop("d1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again, err := putDrop("d1"); err != nil || again != first {
+		t.Errorf("put again: %q %v, want %q", again, err, first)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Errorf("the dir has %v", entries)
+	}
+	if other, err := putDrop("d2"); err != nil || other == first {
+		t.Errorf("another drop: %q %v", other, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reached := make(chan struct{})
+	var once sync.Once
+	src := stalled{n: 64 << 10, ctx: ctx, once: func() { once.Do(func() { close(reached) }) }}
+	go local.PutFile(ctx, FilePut{SID: sid, Dir: dir, Name: "b.bin", Size: 1 << 20, ID: "b1"}, src, nil)
+	<-reached
+	if _, _, _, err := put(local, sid, dir, "b.bin", "b1", "", make([]byte, 1<<20)); !Transferring(err) {
+		t.Errorf("a put of a file being put: %v", err)
+	}
+}

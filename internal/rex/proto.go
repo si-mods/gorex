@@ -826,6 +826,11 @@ type FilePut struct {
 	// temporary directory instead of Dir (CapabilityFileTemp). A server
 	// before it ignores it and uses Dir.
 	Temp bool `json:"temp,omitempty"`
+	// Drop is the client's id of this sending of the file, the same for
+	// each of its tries, which ID is not: a try of a Drop the server
+	// finished lately, whose answer was lost, answers where its file went,
+	// Skipped, and takes no file. A server before it takes the file again.
+	Drop string `json:"drop,omitempty"`
 }
 
 // FileGet is the first line of a connection that takes a file from a

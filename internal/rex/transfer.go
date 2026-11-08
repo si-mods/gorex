@@ -20,6 +20,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 	"unicode"
 )
@@ -32,6 +33,22 @@ var errNoFileTransfer = errors.New("rex: the server does not transfer files; upd
 // errTransferring is the error of a transfer of a file another transfer
 // writes yet.
 var errTransferring = errors.New("rex: the file is being transferred already")
+
+// Lost reports whether err is of a connection lost, which a try again may
+// get past, and not an answer of the server's.
+func Lost(err error) bool {
+	var ne net.Error
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.ErrClosedPipe) ||
+		errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) ||
+		errors.As(err, &ne) || err != nil && strings.HasSuffix(err.Error(), "connection to the server lost")
+}
+
+// Transferring reports whether err is the server refusing a transfer of a
+// file another transfer writes yet, as one whose connection was lost
+// does until the server notices (the error arrives as text).
+func Transferring(err error) bool {
+	return err != nil && err.Error() == errTransferring.Error()
+}
 
 // abortTimeout is how long a put cancelled tries to remove what the server
 // has of its file.
@@ -187,6 +204,14 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		answer(FileAnswer{OK: true, Skipped: true, Path: target})
 		return nil
 	}
+	// A try again of a drop that finished, whose answer was lost, learns
+	// where its file went.
+	if path, ok := s.finishedPut(filepath.Join(dir, partialName(req.Name, req.ID)), peer, req.Drop, req.Size); ok {
+		t.Path, t.State = path, "skipped"
+		s.transferred(t, ss)
+		answer(FileAnswer{OK: true, Skipped: true, Path: path})
+		return nil
+	}
 	p, err := openPartial(dir, req.Name, req.ID)
 	if err != nil {
 		return err
@@ -233,6 +258,9 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	}
 	if err == nil {
 		s.puts.Delete(p.path)
+		if req.Drop != "" {
+			s.finished.Store(p.path, finishedPut{peer, req.Drop, t.Path, time.Now()})
+		}
 	}
 	if err != nil {
 		t.State = "failed"
@@ -378,6 +406,43 @@ func (w progressWriter) Write(b []byte) (int, error) {
 	*w.done += int64(len(b))
 	w.f(*w.done)
 	return len(b), nil
+}
+
+// finishedPut is a put that finished: the peer that sent it, its drop,
+// where its file went, and when.
+type finishedPut struct {
+	peer, drop, path string
+	at               time.Time
+}
+
+// finishedFor is how long a finished put answers a try again of its drop.
+const finishedFor = 2 * time.Minute
+
+// finishedPut returns where the file of the put of partial, of drop by
+// peer and of size bytes, went, when that drop finished lately and its
+// file is there, and no partial of it is being written again. It forgets
+// the puts finished longer ago, and one of partial another put now
+// writes.
+func (s *Server) finishedPut(partial, peer, drop string, size int64) (string, bool) {
+	s.finished.Range(func(k, v any) bool {
+		if time.Since(v.(finishedPut).at) > finishedFor {
+			s.finished.Delete(k)
+		}
+		return true
+	})
+	v, ok := s.finished.Load(partial)
+	if !ok {
+		return "", false
+	}
+	f := v.(finishedPut)
+	if f.peer != peer || f.drop != drop || drop == "" || exists(partial) {
+		s.finished.Delete(partial)
+		return "", false
+	}
+	if st, err := os.Stat(f.path); err != nil || st.Size() != size {
+		return "", false
+	}
+	return f.path, true
 }
 
 // partials are the partial files being written, which one transfer at a
@@ -725,7 +790,7 @@ func (c *Client) AbortFile(ctx context.Context, f FilePut) error {
 		if err == nil {
 			return fc.Close()
 		}
-		if err.Error() != errTransferring.Error() {
+		if !Transferring(err) {
 			return err
 		}
 		select {
