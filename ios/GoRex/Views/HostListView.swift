@@ -230,6 +230,17 @@ private struct HostSection: View {
         }
     }
 
+    /// Closes windows of a session, and forgets how their terminals looked.
+    private func close(_ ids: [String], in s: Host.Session) {
+        let blocks = Dictionary((s.view?.windows ?? []).map { ($0.window_id, $0.block) }) { a, _ in a }
+        change("Can't Close the Tab") {
+            for id in ids {
+                try await host.closeWindow(id, in: s.id)
+                if let b = blocks[id] ?? nil { Thumbnails.shared.drop(host: host.id, block: b) }
+            }
+        }
+    }
+
     /// Opens a new window in a session, and goes to it.
     private func newWindow(_ s: Host.Session) {
         opening.insert(s.id)
@@ -276,13 +287,9 @@ private struct HostSection: View {
             .disabled(i >= shown.count - 1)
             Divider()
             Button("New Tab", systemImage: "plus") { newWindow(s) }
-            Button("Close Tab", systemImage: "xmark", role: .destructive) {
-                change("Can't Close the Tab") { try await host.closeWindow(id, in: s.id) }
-            }
+            Button("Close Tab", systemImage: "xmark", role: .destructive) { close([id], in: s) }
             Button("Close Other Tabs", systemImage: "xmark.square", role: .destructive) {
-                change("Can't Close the Tab") {
-                    for o in shown where o != id { try await host.closeWindow(o, in: s.id) }
-                }
+                close(shown.filter { $0 != id }, in: s)
             }
             .disabled(shown.count < 2)
         }
@@ -379,10 +386,7 @@ private struct HostSection: View {
                     // Over the button, not in it, for its own taps.
                     .overlay(alignment: .topTrailing) {
                         Button {
-                            change("Can't Close the Tab") {
-                                try await host.closeWindow(w.window.window_id, in: s.id)
-                                Thumbnails.shared.drop(host: host.id, block: w.block)
-                            }
+                            close([w.window.window_id], in: s)
                         } label: {
                             Image(systemName: "xmark").font(.footnote.weight(.bold)).frame(width: 22, height: 22)
                         }

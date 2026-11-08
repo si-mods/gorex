@@ -266,13 +266,18 @@ final class TerminalView: UIView, TerminalOutput {
     }
 
     /// The grid as drawn, without the band under the bars, at the
-    /// thumbnails' width. The render server's copy of the screen has
-    /// what the renderer's layer shows, which drawing the layers would not.
+    /// thumbnails' width, with a margin of its background for the card's
+    /// round corners. The render server's copy of the screen has what the
+    /// renderer's layer shows, which drawing the layers would not.
     private func snapshot() -> UIImage {
+        let m: CGFloat = 12
         let f = UIGraphicsImageRendererFormat()
-        f.scale = Thumbnails.width / bounds.width
+        f.scale = Thumbnails.width / (bounds.width + 2 * m)
         f.opaque = true
-        return UIGraphicsImageRenderer(bounds: CGRect(x: 0, y: inset, width: bounds.width, height: bounds.height - inset), format: f).image { _ in
+        let r = CGRect(x: -m, y: inset - m, width: bounds.width + 2 * m, height: bounds.height - inset + m)
+        return UIGraphicsImageRenderer(bounds: r, format: f).image { c in
+            c.cgContext.setFillColor((session.background ?? .black).cgColor)
+            c.fill(r)
             drawHierarchy(in: bounds, afterScreenUpdates: false)
         }
     }
