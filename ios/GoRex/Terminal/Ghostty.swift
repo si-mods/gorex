@@ -109,7 +109,8 @@ enum Ghostty {
             let o = action.action.open_url
             guard let u = o.url else { return true }
             let text = String(decoding: UnsafeRawBufferPointer(start: u, count: Int(o.len)), as: UTF8.self)
-            DispatchQueue.main.async { MainActor.assumeIsolated { open(text) } }
+            let matched = o.kind != GHOSTTY_ACTION_OPEN_URL_KIND_OSC8
+            DispatchQueue.main.async { MainActor.assumeIsolated { open(text, matched: matched) } }
             return true
         case GHOSTTY_ACTION_RING_BELL:
             DispatchQueue.main.async { MainActor.assumeIsolated { bell() } }
@@ -153,8 +154,8 @@ enum Ghostty {
 
     /// Opens a web or mail link; a program's link to a file or another
     /// app stays shut.
-    private static func open(_ text: String) {
-        guard let url = URL(string: text), let scheme = url.scheme?.lowercased(), ["http", "https", "mailto"].contains(scheme) else { return }
+    private static func open(_ text: String, matched: Bool) {
+        guard let url = WebLink.url(text, matched: matched) else { return }
         UIApplication.shared.open(url)
     }
 
