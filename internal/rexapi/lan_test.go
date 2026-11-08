@@ -209,11 +209,14 @@ func TestLANAllowsOnlyItsNetworks(t *testing.T) {
 	defer kept.Close()
 	fmt.Fprintf(kept, "GET /api/help HTTP/1.1\r\nHost: %s\r\n\r\n", s.Listening)
 	r := bufio.NewReader(kept)
-	if resp, err := http.ReadResponse(r, nil); err != nil {
+	resp, err = http.ReadResponse(r, nil)
+	if err != nil {
 		t.Fatal(err)
-	} else {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if resp.Close {
+		t.Fatal("the server closes the connection after its answer: nothing is kept alive")
 	}
 	g.lan.mu.Lock()
 	ln := g.lan.ln
@@ -234,7 +237,7 @@ func TestLANAllowsOnlyItsNetworks(t *testing.T) {
 		t.Error("the listener still accepts once off")
 	}
 	kept.SetReadDeadline(time.Now().Add(5 * time.Second))
-	if _, err := r.ReadByte(); err != io.EOF {
+	if _, err := r.ReadByte(); err == nil || os.IsTimeout(err) {
 		t.Errorf("a connection kept alive stays once off: %v", err)
 	}
 }
