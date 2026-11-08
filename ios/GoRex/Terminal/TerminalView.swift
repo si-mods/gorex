@@ -303,7 +303,7 @@ final class TerminalView: UIView, TerminalOutput {
         guard surface != nil, drawn else { return }
         let c = cursor(width: nil)
         let room = bounds.height - covered - drawnBottom(under: c)
-        let y = max(min(0, room), min(0, inset - c.minY), -covered)
+        let y = min(0, max(room, inset - c.minY, -covered))
         scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: covered + y, right: 0)
         guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
@@ -339,6 +339,16 @@ final class TerminalView: UIView, TerminalOutput {
     }
 
     // MARK: Touch
+
+    /// A tap, a long press or a pointer's click starts nowhere in the band
+    /// under the bars: Ghostty takes a point there for the grid's first row,
+    /// though the line drawn there is the scrollback's. On an iPhone the
+    /// status bar and the bar take every touch there; any that gets through
+    /// does nothing.
+    override func gestureRecognizerShouldBegin(_ g: UIGestureRecognizer) -> Bool {
+        guard g.view === self, g !== scroller.panGestureRecognizer, !(g is UIPinchGestureRecognizer) else { return true }
+        return g.location(in: self).y >= inset
+    }
 
     /// A tap that clears no selection clicks for a program that has the
     /// mouse, else opens the link under it, and keeps the keyboard.
