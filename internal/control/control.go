@@ -120,7 +120,7 @@ func Run(c *rex.Client, in io.Reader, out io.Writer) int {
 			}
 		}
 	}()
-	go b.work()
+	go b.work(answered)
 	every := pollEvery
 	if b.subscribed {
 		every = safetyEvery

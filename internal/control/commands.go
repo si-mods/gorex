@@ -45,6 +45,9 @@ type job struct {
 	// beforeTab the tab of the pane a move moves.
 	before    string
 	beforeTab string
+	// split is the tab a pane.split splits, and splitFrom its panes then.
+	split     string
+	splitFrom []string
 }
 
 // ask asks the app for the change of the layout req asks for, which
@@ -68,9 +71,11 @@ func (b *bridge) ask(req request, p params) (any, error) {
 			j.cmd.Dir = cmp.Or(p.Cwd, b.infos[t.focus].Dir)
 		}
 	case "pane.split":
-		if _, err := paneTab(p.Pane); err != nil {
+		t, err := paneTab(p.Pane)
+		if err != nil {
 			return nil, err
 		}
+		j.split, j.splitFrom = t.id, t.root.sids()
 		j.cmd.Vertical, j.cmd.Dir = p.Dir == "down", p.Cwd
 	case "pane.close", "pane.zoom":
 		if _, err := paneTab(p.PaneID); err != nil {
@@ -194,6 +199,7 @@ func (b *bridge) ask(req request, p params) (any, error) {
 	b.quiet(j.sids, true)
 	select {
 	case b.jobs <- j:
+		b.asked = append(b.asked, j)
 		return nil, later
 	default:
 		b.quiet(j.sids, false)
@@ -233,9 +239,15 @@ func (b *bridge) moveAnswer(t *tab, sid, reason string) map[string]any {
 	}}
 }
 
+// answered runs once the app answered j, before the bridge takes the
+// answer: a test holds it there, as a loaded machine may. Each bridge
+// takes it as it starts (work).
+var answered = func(*job) {}
+
 // work asks the app for each change in turn: one finishes before the next
-// starts, as a new tab goes after the one before.
-func (b *bridge) work() {
+// starts, as a new tab goes after the one before. It runs answered once
+// the app answered each.
+func (b *bridge) work(answered func(*job)) {
 	for {
 		var j *job
 		select {
@@ -244,6 +256,7 @@ func (b *bridge) work() {
 			return
 		}
 		j.res, j.err = b.c.Command(j.cmd)
+		answered(j)
 		select {
 		case b.done <- j:
 		case <-b.quit:
@@ -260,6 +273,7 @@ func (b *bridge) work() {
 // finish answers a change the app did not make, and waits to see one it
 // made (check).
 func (b *bridge) finish(j *job) {
+	b.asked = slices.DeleteFunc(b.asked, func(x *job) bool { return x == j })
 	if j.err == nil && j.res.Code == "" {
 		// A change the app did not make, as a pane that cannot resize,
 		// needs no wait for the layout.

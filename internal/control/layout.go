@@ -73,6 +73,8 @@ type bridge struct {
 	// app made that the bridge waits to see (check).
 	jobs, done chan *job
 	waiting    *job
+	// asked are the jobs asked of the app and not answered yet.
+	asked []*job
 	// subscribed tells that the server tells of its changes.
 	subscribed bool
 }
@@ -284,6 +286,12 @@ func (b *bridge) build() {
 		if sid := b.picked[t.id]; !t.zoom && slices.Contains(root.sids(), sid) {
 			t.focus = sid
 		}
+		// A split asked of the app may land before its answer names the
+		// new pane, which has rootshell's focus: the one pane new to the
+		// tab it splits is that one.
+		if sid := b.splitting(t); sid != "" && !t.zoom {
+			t.focus = sid
+		}
 		tabs = append(tabs, t)
 		if i == l.Active {
 			active = t.id
@@ -293,6 +301,26 @@ func (b *bridge) build() {
 		active = tabs[0].id
 	}
 	b.tabs, b.active = tabs, active
+}
+
+// splitting returns the pane a split not answered yet made in t, "" for
+// none: the one pane new to the tab since the split was asked.
+func (b *bridge) splitting(t *tab) string {
+	for _, j := range b.asked {
+		if j.split != t.id {
+			continue
+		}
+		var made []string
+		for _, sid := range t.root.sids() {
+			if !slices.Contains(j.splitFrom, sid) {
+				made = append(made, sid)
+			}
+		}
+		if len(made) == 1 {
+			return made[0]
+		}
+	}
+	return ""
 }
 
 func overlap(a, b *tab) int {

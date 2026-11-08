@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -81,6 +82,76 @@ func TestBridgePushed(t *testing.T) {
 	}
 	if l := res["tab"].(map[string]any)["label"]; l != "c" {
 		t.Errorf("renamed %v", res)
+	}
+}
+
+// holdAnswers has the bridge take the app's answer to each command hold
+// takes only once hold returns, as a loaded machine may.
+func holdAnswers(t *testing.T, hold func(j *job)) {
+	t.Helper()
+	was := answered
+	answered = hold
+	t.Cleanup(func() { answered = was })
+}
+
+// TestSplitLandsBeforeAnswer checks that a split that lands before the
+// bridge has its answer shows rootshell the new pane focused, as the
+// answer makes it, and never the pane split first.
+func TestSplitLandsBeforeAnswer(t *testing.T) {
+	setIntervals(t, time.Hour, time.Hour, settle)
+	desk := serve(t)
+	oneTab(t, desk)
+	holdAnswers(t, func(j *job) {
+		if j.cmd.Op == "pane.split" {
+			time.Sleep(300 * time.Millisecond) // the server tells of the split meanwhile
+		}
+	})
+	r, _ := start(t)
+	r.next("control.open", func(m map[string]any) bool { return m["id"] == "control.open" })
+	snap := result(t, r.call("session.snapshot", map[string]any{}))["snapshot"].(map[string]any)
+	split := snap["panes"].([]any)[0].(map[string]any)["pane_id"].(string)
+	r.call("pane.focus", map[string]any{"pane_id": split})
+	r.send("split", "pane.split", map[string]any{"target_pane_id": split, "direction": "right", "focus": true})
+	var focused []any
+	r.next("pane.split's answer", func(m map[string]any) bool {
+		if l, ok := m["layout"].(map[string]any); ok && m["type"] == "tab.layout" && len(l["panes"].([]any)) == 2 {
+			focused = append(focused, l["focused_pane_id"])
+		}
+		return m["id"] == "split"
+	})
+	if len(focused) == 0 || slices.Contains(focused, any(split)) {
+		t.Errorf("focused %v before the answer, want the new pane only", focused)
+	}
+}
+
+// TestQueuedChangeHoldsNoLayout checks that a change asked behind
+// another, which the app holds, does not hold back what rootshell hears
+// of the first before its answer.
+func TestQueuedChangeHoldsNoLayout(t *testing.T) {
+	setIntervals(t, time.Hour, time.Hour, settle)
+	desk := serve(t)
+	oneTab(t, desk)
+	release := make(chan struct{})
+	holdAnswers(t, func(j *job) {
+		if j.cmd.Op == "pane.split" {
+			<-release
+		}
+	})
+	r, _ := start(t)
+	t.Cleanup(func() { close(release) })
+	r.next("control.open", func(m map[string]any) bool { return m["id"] == "control.open" })
+	snap := result(t, r.call("session.snapshot", map[string]any{}))["snapshot"].(map[string]any)
+	tabID := snap["tabs"].([]any)[0].(map[string]any)["tab_id"].(string)
+	pane := snap["panes"].([]any)[0].(map[string]any)["pane_id"].(string)
+	r.send("rename", "tab.rename", map[string]any{"tab_id": tabID, "label": "b"})
+	r.send("split", "pane.split", map[string]any{"target_pane_id": pane, "direction": "right"})
+	told := false
+	m := r.next("tab.rename's answer", func(m map[string]any) bool {
+		told = told || m["type"] == "events.gap"
+		return m["id"] == "rename"
+	})
+	if !told {
+		t.Errorf("tab.rename answered %v before rootshell heard of the rename", m)
 	}
 }
 
