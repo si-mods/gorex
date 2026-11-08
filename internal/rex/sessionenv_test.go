@@ -84,6 +84,16 @@ func TestSessionEnvDropsStarterMarkers(t *testing.T) {
 	}
 }
 
+func TestSessionEnvNamesGhostty(t *testing.T) {
+	// TestSessionEnvNamesGhostty: a session names its terminal Ghostty, which
+	// draws it, not the terminal the server started from.
+	t.Setenv("TERM_PROGRAM", "iTerm.app")
+	got := envMap(sessionEnv("abc", nil, true))
+	if got["TERM_PROGRAM"] != "ghostty" {
+		t.Errorf("TERM_PROGRAM = %q, want ghostty", got["TERM_PROGRAM"])
+	}
+}
+
 func TestServerEnvDropsStarterMarkers(t *testing.T) {
 	setMarkerEnv(t)
 	got := envMap(serverEnv())

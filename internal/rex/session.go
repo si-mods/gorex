@@ -374,8 +374,11 @@ func sessionEnv(id string, extra []string, local bool) []string {
 	env = append(env,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
-		"TERM_PROGRAM=GoRex",
-		"TERM_PROGRAM_VERSION=0.2.0",
+		// Every client of a session draws it with Ghostty, and programs
+		// pick features by this name, as omp its Kitty image placeholders.
+		// The version is that of the libghostty GoRex embeds.
+		"TERM_PROGRAM=ghostty",
+		"TERM_PROGRAM_VERSION=1.4.1-dev",
 		"GOREX_SESSION="+id,
 	)
 	if local {
