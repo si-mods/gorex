@@ -372,6 +372,15 @@ func cellInsets(s share) (top, right, bottom, left float32) {
 	return
 }
 
+// restAt records rest as where pane p rests, and tells whether it rested
+// elsewhere: its cell starts to move in this frame, which Transitioning
+// tells of only in the frame after.
+func (p *Pane) restAt(rest ui.Rect) bool {
+	moved := rest != p.bounds
+	p.bounds = rest
+	return moved
+}
+
 // paneCell places pane p in its share s of the tab's room, which is
 // bounds, half the gap from the panes beside it.
 func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bounds ui.Rect, tr *ui.ElementTransition) {
@@ -381,12 +390,13 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 		Padding(top, right, bottom, left)
 	// Where the pane rests, not where it shows on the way there: moving
 	// the focus goes by the layout, not by a spring.
-	p.bounds = ui.Rect{
+	rest := ui.Rect{
 		X: bounds.X + s.x*bounds.W + left,
 		Y: bounds.Y + s.y*bounds.H + top,
 		W: s.w*bounds.W - left - right,
 		H: s.h*bounds.H - top - bottom,
 	}
+	starts := p.restAt(rest) && tr != nil && tr.Size
 	if tr != nil {
 		cell.Transition(*tr)
 	}
@@ -395,7 +405,7 @@ func (a *App) paneCell(c *ui.Context, k *colors, t *Tab, p *Pane, s share, bound
 	// would otherwise lay the program's output out at every width it
 	// passed through, which the program, told of one size at the end,
 	// never wrapped, and its frames would draw over rows.
-	held := a.dividerHeld || tr != nil && (cell.Transitioning() || a.sidebarMoving)
+	held := a.dividerHeld || tr != nil && (starts || cell.Transitioning() || a.sidebarMoving)
 	// The size a drag's hold leaves to take follows it by a frame, which
 	// the count tells (syncSize): a hold that ends at the size it began
 	// takes none.
@@ -571,12 +581,12 @@ func (a *App) floatCell(c *ui.Context, k *colors, t *Tab, f *Float, bounds ui.Re
 	// It moves from the frame its box changes, as from its place among
 	// the tiled panes, until it rests.
 	// Gliding, it moves too.
-	moving := f.gliding || moves && (rest != p.bounds || cell.Transitioning())
-	p.bounds = rest
+	starts := p.restAt(rest) && moves
+	moving := f.gliding || starts || moves && cell.Transitioning()
 	// While the pointer resizes it or it eases to a new size, the terminal
 	// keeps the size it rested at, and the program hears of the new one
 	// once: else a shell redraws its prompt at every step, over itself.
-	held := f.dragging || f.gliding || cell.Transitioning()
+	held := f.dragging || f.gliding || starts || cell.Transitioning()
 	cell.Children(func() {
 		// Moving, the card goes with the cell, its colors not fading: an
 		// element of a Transition of its own would be laid out where the
