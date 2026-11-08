@@ -245,6 +245,7 @@ final class Host: Identifiable {
         case "session_destroyed":
             let id = e.payload["session_id"] as? String ?? e.sessionID
             sessions.removeAll { $0.id == id }
+            id.map { reread.remove($0) }
         case "session_label_changed":
             if let i = sessions.firstIndex(where: { $0.id == e.sessionID }) {
                 sessions[i].label = e.payload["label"] as? String ?? sessions[i].label
