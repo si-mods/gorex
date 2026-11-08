@@ -53,14 +53,13 @@ extension TerminalView: UIScrollViewDelegate {
         slideWaits = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
+            let again = slideAgain
             slideWaits = false
+            slideAgain = false
             guard surface != nil else { return }
             drawn = true
             slide(duration: 0.15)
-            if slideAgain {
-                slideAgain = false
-                laterSlide()
-            }
+            if again { laterSlide() }
         }
     }
 
