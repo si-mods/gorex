@@ -160,9 +160,10 @@ extension TerminalView: UIEditMenuInteractionDelegate {
         // viewport's top left, and the length to the last. It gives the
         // first cell's left in points, whence the grid's, but the baseline
         // of its text, not its top: the grid's top is the cursor's, a whole
-        // number of lines up.
+        // number of lines up, below the band under the bars.
         let a = Int(t.offset_start)
-        let origin = CGPoint(x: t.tl_px_x - CGFloat(a % cols) * c.width, y: cursor(width: nil).minY.truncatingRemainder(dividingBy: c.height))
+        let top = inset + (cursor(width: nil).minY - inset).truncatingRemainder(dividingBy: c.height)
+        let origin = CGPoint(x: t.tl_px_x - CGFloat(a % cols) * c.width, y: top)
         func corner(_ i: Int, right: Bool) -> CGPoint {
             CGPoint(x: origin.x + CGFloat(i % cols + (right ? 1 : 0)) * c.width, y: origin.y + CGFloat(i / cols) * c.height)
         }

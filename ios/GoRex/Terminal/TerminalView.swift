@@ -45,10 +45,9 @@ final class TerminalView: UIView, TerminalOutput {
     var showsSelection = false
     lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(hold))
     /// How far down the status bar and the clear bar reach over the
-    /// terminal, and the inset Ghostty last took for it, in pixels; whether
-    /// a slide waits for the output to be drawn, and whether any was.
+    /// terminal; whether a slide waits for the output to be drawn, and
+    /// whether any was.
     var inset: CGFloat = 0 { didSet { if inset != oldValue { setNeedsLayout() } } }
-    private var insetPixels = -1.0
     var slideWaits = false
     var drawn = false
     /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
@@ -273,12 +272,10 @@ final class TerminalView: UIView, TerminalOutput {
         CATransaction.commit()
         ghostty_surface_set_content_scale(s, scale, scale)
         // The grid starts below the bars, on either screen, and the lines
-        // above it in the scrollback fill the band under them.
-        let top = (inset * scale).rounded()
-        if top != insetPixels {
-            insetPixels = top
-            ghostty_surface_set_top_inset(s, top)
-        }
+        // above it in the scrollback fill the band under them. The terminal
+        // takes the two as one resize: Ghostty's IO thread waits 25 ms for
+        // the last.
+        ghostty_surface_set_top_inset(s, inset * scale)
         ghostty_surface_set_size(s, UInt32(bounds.width * scale), UInt32(bounds.height * scale))
         syncing = true
         scroller.frame = bounds
@@ -307,7 +304,7 @@ final class TerminalView: UIView, TerminalOutput {
         let c = cursor(width: nil)
         let room = bounds.height - covered - drawnBottom(under: c)
         let y = max(min(0, room), min(0, inset - c.minY), -covered)
-        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: max(0, inset - y), left: 0, bottom: max(0, covered + y), right: 0)
+        scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: covered + y, right: 0)
         guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: y)
@@ -321,7 +318,7 @@ final class TerminalView: UIView, TerminalOutput {
         guard let s = surface else { return c.maxY }
         let z = ghostty_surface_size(s), h = cell.height
         guard z.rows > 0, z.columns > 0, h > 0 else { return c.maxY }
-        let at = Int((c.minY / h).rounded())
+        let at = Int(((c.minY - inset) / h).rounded())
         for row in stride(from: Int(z.rows) - 1, to: at, by: -1) {
             let point = { (x: Int) in ghostty_point_s(tag: GHOSTTY_POINT_ACTIVE, coord: GHOSTTY_POINT_COORD_EXACT, x: UInt32(x), y: UInt32(row)) }
             var t = ghostty_text_s()
