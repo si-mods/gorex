@@ -1238,18 +1238,21 @@ func TestManifestCheck(t *testing.T) {
 	}
 }
 
-// teleportConn sends a teleport of m and the package pkg to s, as a
-// remote client, and returns what s answered first, and its connection.
-func teleportConn(t *testing.T, s *Server, m TeleportManifest) (net.Conn, error) {
+// teleportConn sends a teleport of m to s, as a remote client, and
+// returns its connection, a channel closed once s is done serving it, and
+// what s answered first.
+func teleportConn(t *testing.T, s *Server, m TeleportManifest) (net.Conn, <-chan struct{}, error) {
 	t.Helper()
-	conn, err := pipe(s, testPeer).dial()
-	if err != nil {
-		t.Fatal(err)
-	}
+	conn, b := net.Pipe()
+	served := make(chan struct{})
+	go func() {
+		s.handle(b, testPeer)
+		close(served)
+	}()
 	t.Cleanup(func() { conn.Close() })
 	req, _ := json.Marshal(Request{Op: "teleport", Teleport: &m})
 	conn.Write(append(req, '\n'))
-	return conn, readOK(conn)
+	return conn, served, readOK(conn)
 }
 
 // TestTeleportShellRefused checks that Claude Code does not go to a host
@@ -1263,7 +1266,7 @@ func TestTeleportShellRefused(t *testing.T) {
 	s.home = resolved(t)
 	m := TeleportManifest{Version: teleportVersion, Program: "claude", Session: convID, Head: strings.Repeat("a", 40),
 		Remotes: []string{"https://example.com/x.git"}, Link: "0123456789ab"}
-	if _, err := teleportConn(t, s, m); err == nil || !strings.Contains(err.Error(), "nu") {
+	if _, _, err := teleportConn(t, s, m); err == nil || !strings.Contains(err.Error(), "nu") {
 		t.Errorf("answered %v", err)
 	}
 }
@@ -1282,22 +1285,14 @@ func TestTeleportClientGone(t *testing.T) {
 	defer pkg.Close()
 	dst, _ := testServer(t)
 	dst.home = resolved(t)
-	// The test serves the connection itself, to know when the server
-	// is done with it: what it made goes before then.
-	conn, b := net.Pipe()
-	served := make(chan struct{})
-	go func() {
-		dst.handle(b, testPeer)
-		close(served)
-	}()
-	req, _ := json.Marshal(Request{Op: "teleport", Teleport: &m})
-	conn.Write(append(req, '\n'))
-	if err := readOK(conn); err != nil {
+	conn, served, err := teleportConn(t, dst, m)
+	if err != nil {
 		t.Fatal(err)
 	}
 	pkg.Seek(0, io.SeekStart)
 	io.Copy(conn, pkg)
 	conn.Close()
+	// What the server made goes before it is done with the connection.
 	select {
 	case <-served:
 	case <-time.After(30 * time.Second):
@@ -1305,10 +1300,14 @@ func TestTeleportClientGone(t *testing.T) {
 	}
 	c := pipe(dst, "")
 	defer c.Close()
-	// The clone may stay; the work tree the teleport made of it goes.
-	trees, _ := filepath.Glob(filepath.Join(dst.home, "*", ".gorex", "teleport", "*"))
-	if l := must(c.List()); len(l) > 0 || len(trees) > 0 {
-		t.Fatalf("left sessions %v, work trees %v", l, trees)
+	if l := must(c.List()); len(l) > 0 {
+		t.Errorf("left sessions %v", l)
+	}
+	// The clone may stay, and the directory of its teleports, empty: the
+	// work tree the teleport made goes.
+	trees, err := os.ReadDir(filepath.Join(dst.home, "remote", ".gorex", "teleport"))
+	if err != nil || len(trees) > 0 {
+		t.Errorf("the clone's teleports: %v, %v", trees, err)
 	}
 }
 

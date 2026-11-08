@@ -9,7 +9,7 @@ import (
 	"net"
 	"runtime"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,26 +17,43 @@ import (
 )
 
 // TestThrottle asks a throttle many times quickly: it runs once per
-// period, and once after the last ask.
+// period, and once after the last ask, after which nothing is due.
 func TestThrottle(t *testing.T) {
-	var runs atomic.Int32
-	th := &throttle{every: 100 * time.Millisecond, f: func() { runs.Add(1) }}
-	start := time.Now()
-	for time.Since(start) < 500*time.Millisecond {
+	const every = 100 * time.Millisecond
+	var mu sync.Mutex
+	var runs []time.Time
+	th := &throttle{every: every, f: func() {
+		mu.Lock()
+		runs = append(runs, time.Now())
+		mu.Unlock()
+	}}
+	asks := 0
+	var last time.Time
+	for start := time.Now(); time.Since(start) < 5*every; asks++ {
+		last = time.Now()
 		th.ask()
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(every / 10)
 	}
-	asking := time.Since(start)
-	time.Sleep(150 * time.Millisecond)
-	// The first at once, one per 100 ms of asks, and one after the last:
-	// a loaded machine sleeps longer than asked, so the asks are timed.
-	if n, most := runs.Load(), int32(asking/(100*time.Millisecond))+2; n < 3 || n > most {
-		t.Errorf("%d runs in %v of asks, want 3 to %d", n, asking, most)
+	// Asked, the throttle runs once more, and then has nothing due: no
+	// timer is left to run it without an ask.
+	settled := waitUntil(5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		th.mu.Lock()
+		defer th.mu.Unlock()
+		return !th.due && len(runs) > 0 && runs[len(runs)-1].After(last)
+	})
+	if !settled {
+		t.Fatal("no run after the last ask, or one still due")
 	}
-	n := runs.Load()
-	time.Sleep(150 * time.Millisecond)
-	if runs.Load() != n {
-		t.Error("ran with no ask")
+	mu.Lock()
+	defer mu.Unlock()
+	// The first ask runs at once and the last once more; between them
+	// the runs are a period apart at least, however late a loaded
+	// machine runs them.
+	asking := last.Sub(runs[0])
+	if n, least, most := len(runs), min(asks, 2), int(asking/every)+2; n < least || n > most {
+		t.Errorf("%d runs for %d asks over %v, want %d to %d", n, asks, asking, least, most)
 	}
 }
 
