@@ -2,16 +2,14 @@ import Foundation
 
 /// How the list groups windows: Settings › Grouping.
 enum Grouping: String, CaseIterable {
-    /// As the desktop groups them: each host lists its sessions, and a
-    /// desktop's space also lists its windows on the other hosts the app
-    /// connects to, which leave their own host's list.
+    /// As the desktop's sidebar: one space at a time, chosen from the
+    /// strip of every host's spaces, its windows grouped by host, with
+    /// those of the other hosts the app connects to that it holds.
     case spaces
     /// Each host lists its own windows only.
     case hosts
 
     static let key = "grouping"
-    /// Spaces: until a desktop tells of a space across hosts it shows
-    /// what grouping by host shows.
     static let standard = Grouping.spaces
 
     init(stored: String?) {
@@ -132,6 +130,12 @@ struct CrossHost {
     /// Whether a host's window shows in another host's session instead.
     func isMoved(_ host: UUID, _ session: String, _ window: String) -> Bool {
         moved.contains(Row(host: host, session: session, window: window))
+    }
+
+    /// Whether a host's session is no space of its own: every window of
+    /// it shows in another host's space, and it holds none of another's.
+    func isGone(_ host: UUID, _ session: String, windows: [String]) -> Bool {
+        !windows.isEmpty && rows(host, session).isEmpty && windows.allSatisfy { isMoved(host, session, $0) }
     }
 }
 
