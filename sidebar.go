@@ -273,7 +273,9 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 				a.windowControls(c, k)
 			}
 		})
-		if a.ws != nil {
+		// The host view lists the spaces under their hosts: the chip would
+		// say it twice.
+		if a.ws != nil && !a.hostView() {
 			ui.Row(c).Shrink(0).Padding(0, 6, 4, 6).Children(func() { a.workspaceChip(c, k, true) })
 		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6, 6, 6).Children(func() {
@@ -295,6 +297,9 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 					}
 					a.chosenOn[hostKey(t.host())] = t
 				}
+				// The host view's first row of the window's space holds
+				// its popover and the field that renames it.
+				anchored := false
 				for _, h := range a.allHosts() {
 					folded := a.hostSection(c, k, h)
 					on := a.tabsOn(h)
@@ -305,12 +310,17 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 						}
 					}
 					if a.hostView() {
-						a.hostSessions(c, k, h, folded, len(on), shown, tabs, reserve)
+						a.hostSessions(c, k, h, folded, len(on), shown, tabs, reserve, &anchored)
 						continue
 					}
 					for _, t := range shown {
 						a.sidebarTab(c, k, slices.Index(tabs, t), t, reserve)
 					}
+				}
+				// Without a row to hold them, the popover and the field
+				// close rather than stay open unseen.
+				if a.hostView() && !anchored {
+					a.wsOpen, a.wsRenaming = false, false
 				}
 			})
 		})
@@ -468,12 +478,12 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 // host keeps, as of its tabs, the window's session when it has tabs to
 // show, and the sessions that need the user there. own is how many tabs
 // the window's session has on the host.
-func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, own int, shown []*Tab, tabs []*Tab, reserve float32) {
+func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, own int, shown []*Tab, tabs []*Tab, reserve float32, anchored *bool) {
 	key := hostKey(h)
 	for _, w := range a.st.workspaces {
 		if w != a.ws {
 			if n := spaceTabsOn(w, h); n > 0 && (!folded || a.st.needsOn(w, h)) {
-				if a.sessionRow(c, k, h, w, n, false) {
+				if a.sessionRow(c, k, h, w, n, false, false) {
 					a.later(c, func() { a.showSessionOn(w, h) })
 				}
 			}
@@ -483,7 +493,9 @@ func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, o
 			continue
 		}
 		open := !a.ownClosed[key]
-		if a.sessionRow(c, k, h, w, own, open) {
+		anchor := !*anchored
+		*anchored = true
+		if a.sessionRow(c, k, h, w, own, open, anchor) {
 			if a.ownClosed == nil {
 				a.ownClosed = map[string]bool{}
 			}
@@ -502,14 +514,17 @@ func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, o
 
 // sessionRow is a session under a host in the host view: a chevron, its
 // color, its name and how many tabs it has on the host, and what needs
-// the user there. The window's own opens and closes on its tabs; another
-// is a button that shows it, faded when another window shows it, as its
-// dot in the strip. It reports whether it was clicked.
-func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n int, open bool) bool {
+// the user there. The window's own opens and closes on its tabs, and a
+// right click renames it, colors it or closes it; as the anchor, the
+// first, it holds the space's popover and the field that renames it.
+// Another is a button that shows it, faded when another window shows it,
+// as its dot in the strip. It reports whether it was clicked.
+func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n int, open, anchor bool) bool {
 	row := ui.Row(c.Key("space-"+hostKey(h)+"-"+w.ID)).Height(28).Shrink(0).Padding(0, 8, 0, 8).Gap(6).AlignItems(ui.Center).
 		Radius(pillRadius(28, 9)).Cursor(ui.CursorPointer).Label(w.Name + ", " + workspaceDetail(w, a, n))
 	if w == a.ws {
 		row.Role(ui.RoleDisclosure).Expanded(open)
+		row.ContextMenu(func(m *ui.Menu) { a.spaceMenu(m, true) })
 	} else {
 		row.Role(ui.RoleButton)
 	}
@@ -530,12 +545,22 @@ func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n 
 		}
 		chevron.Rotate(animated(c, chevron, "fold", turn))
 		spaceDot(c, k, w)
+		if anchor && a.wsRenaming {
+			a.workspaceRenameField(c, k, w.Name)
+			return
+		}
 		ui.Text(c, w.Name).FontSize(13).FontWeight(500).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if s := a.st.statusOn(w, h); s != nil && s.State != "idle" {
 			statusDot(c, k, s, 7).Label(statusTip(s))
 		}
 		ui.Text(c, fmt.Sprint(n)).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
 	})
+	if anchor {
+		a.workspacePopover(c, k, row)
+		if a.wsRenaming {
+			return false
+		}
+	}
 	return row.Clicked()
 }
 

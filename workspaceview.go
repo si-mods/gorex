@@ -105,16 +105,26 @@ func (a *App) askCloseWorkspace() {
 // its rows' corners are concentric with.
 const popR, popPad = 14, 6
 
-// workspacePopover lists the workspaces under the chip: their tabs, the
-// window's checked, and those other windows show; then New Session,
-// Rename and Close.
+// workspacePopover lists the workspaces under the chip, or the host
+// view's row of the window's space: their tabs, the window's checked, and
+// those other windows show; then New Session, Rename and Close. Opened by
+// the host view's Color…, it shows only the colors.
 func (a *App) workspacePopover(c *ui.Context, k *colors, anchor ui.Element) {
+	if !a.wsOpen {
+		a.wsColorOnly = false
+	}
 	ui.PopoverBase(c, anchor, &a.wsOpen, func(panel ui.Element) {
 		_, winH := c.Size()
 		glassPanel(panel.Margin(8, 0, 0, 0).MaxHeight(winH-24-titleH).Width(280).Padding(popPad).Radius(popR), k.panel).Border(1, k.panelBorder).
 			Shadow(0, 12, 32, 0, k.shadowFocused)
 		ui.Scroll(c).MinHeight(0).Children(func() {
-			ui.Column(c).Gap(2).Children(func() { a.workspaceList(c, k) })
+			ui.Column(c).Gap(2).Children(func() {
+				if a.wsColorOnly {
+					a.spaceColorPicker(c, k)
+					return
+				}
+				a.workspaceList(c, k)
+			})
 		})
 	})
 }
@@ -286,16 +296,23 @@ func (a *App) spaceDotButton(c *ui.Context, k *colors, i int, w *Workspace) {
 		a.later(c, func() { a.showWorkspace(w) })
 	}
 	if w == a.ws {
-		b.ContextMenu(func(m *ui.Menu) {
-			if m.Item(cmdRenameSession.Title()).Chosen() {
-				a.startWorkspaceRename()
-			}
-			if m.Item(cmdCloseSession.Title()).Chosen() {
-				a.askCloseWorkspace()
-			}
-		})
+		b.ContextMenu(func(m *ui.Menu) { a.spaceMenu(m, false) })
 	}
 	b.Children(func() { spaceDotMark(c, k, w, w == a.ws) })
+}
+
+// spaceMenu is the right click menu of the window's own space: rename
+// it, color it where no chip does, or close it.
+func (a *App) spaceMenu(m *ui.Menu, color bool) {
+	if m.Item(cmdRenameSession.Title()).Chosen() {
+		a.startWorkspaceRename()
+	}
+	if color && m.Item(locales.SpaceColor()+"…").Chosen() {
+		a.wsOpen, a.wsColorOnly = true, true
+	}
+	if m.Item(cmdCloseSession.Title()).Chosen() {
+		a.askCloseWorkspace()
+	}
 }
 
 // spaceDotMark is a space's color in the strip: a dot of its base color,
