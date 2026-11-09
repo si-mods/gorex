@@ -3007,7 +3007,13 @@ func (a *App) reconcile(l savedLayout) bool {
 				if h == nil || s.SID == "" {
 					return nil
 				}
-				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, host: h, info: rex.SessionInfo{ID: s.SID, Dir: s.Dir}, startDir: s.Dir}
+				// What the host's last list says of it, as this machine's
+				// panes start from theirs, lest the next poll read it as news.
+				in, ok := h.listed(s.SID)
+				if !ok {
+					in = rex.SessionInfo{ID: s.SID, Dir: s.Dir}
+				}
+				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, host: h, info: in, startDir: s.Dir}
 				a.attach(p, s.Cols, s.Rows)
 			case isLive && !used[s.SID]:
 				used[s.SID] = true
@@ -3664,7 +3670,7 @@ func (st *store) retryClick() {
 }
 
 // needyOf finds session sid of host, "" for this machine: its pane in a
-// window, else, of this machine, a space no window shows that has it.
+// window, else a space no window shows that has it.
 func (st *store) needyOf(host, sid string) (needy, bool) {
 	for _, o := range st.apps {
 		for _, t := range o.tabs {
@@ -3675,13 +3681,21 @@ func (st *store) needyOf(host, sid string) (needy, bool) {
 			}
 		}
 	}
+	var h *hostConn
+	if host != "" {
+		i := slices.IndexFunc(st.hosts, func(h *hostConn) bool { return h.ID == host })
+		if i < 0 {
+			return needy{}, false
+		}
+		h = st.hosts[i]
+	}
 	for _, w := range st.workspaces {
 		found := false
-		if w.app == nil && host == "" {
-			st.visitLocalSIDs(w, func(s string) { found = found || s == sid })
+		if w.app == nil {
+			st.visitSIDs(w, host, func(s string) { found = found || s == sid })
 		}
 		if found {
-			return needy{ws: w, sid: sid}, true
+			return needy{ws: w, sid: sid, host: h}, true
 		}
 	}
 	return needy{}, false

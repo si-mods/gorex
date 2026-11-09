@@ -48,11 +48,13 @@ func (st *store) debugHook(a *App) {
 var debugMain = mygo.RunOnMain
 
 // debugState is what "state" writes: the windows in the order of their
-// places, every workspace, and the app's process.
+// places, every workspace, the app's process, and the count the app icon
+// was given last (syncBadge).
 type debugState struct {
 	PID      int            `json:"pid"`
 	Windows  []debugWindow  `json:"windows"`
 	Sessions []debugSession `json:"sessions"`
+	Badge    int            `json:"badge"`
 }
 
 // debugWindow is a window as "state" describes it.
@@ -113,7 +115,7 @@ func (st *store) byPlace() []*App {
 // state describes the windows and the workspaces. Call it on the main
 // thread.
 func (st *store) state() debugState {
-	s := debugState{PID: os.Getpid(), Windows: []debugWindow{}, Sessions: []debugSession{}}
+	s := debugState{PID: os.Getpid(), Windows: []debugWindow{}, Sessions: []debugSession{}, Badge: st.badge}
 	shown := map[*Workspace]int{}
 	for i, a := range st.byPlace() {
 		w := debugWindow{Index: i + 1, StateKey: stateKey(a.slot), Tabs: []string{}, ActiveTab: a.active + 1, Focused: len(st.apps) > 0 && st.apps[0] == a}

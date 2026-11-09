@@ -375,3 +375,98 @@ func TestNeedSection(t *testing.T) {
 		t.Error("sections misnamed")
 	}
 }
+
+// TestNeedsHiddenRemote: a session of a host's in a space no window shows
+// needs the user by the host's last list. It counts on the badge, which
+// the host's changes count again, and in the Needs You palette, under its
+// host and space, but not once seen nor while the host is not connected.
+// Its row, made before the hosts were read again, shows the space and
+// focuses its pane, which starts from the host's list: it counts once,
+// and the next poll tells nothing new.
+func TestNeedsHiddenRemote(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	h := newHostConn(savedHost{ID: "h1", Name: "mini", Address: "10.0.0.9:7297"})
+	h.state = hostConnected
+	a.hosts = []*hostConn{h}
+	a.st.hosts = a.hosts // as syncHosts shares them
+	w := a.st.addWorkspace()
+	w.Name = "icy-ridge"
+	// Another session of the host's is the one it shows first.
+	w.layout = savedLayout{Tabs: []savedTab{{ID: "r0-tab", Root: &savedNode{SID: "r0", Host: "h1"}}, {ID: "r1-tab", Root: &savedNode{SID: "r1", Host: "h1"}}}}
+	// The host's goroutines change it through its update, as they would.
+	h.update = a.hostUpdate()
+	list := func(s rex.ProgramStatus) {
+		h.update(func() { h.infos = map[string]rex.SessionInfo{"r1": {ID: "r1", Statuses: []rex.ProgramStatus{s}}} })
+	}
+	badge := func() int64 {
+		tt.Frame()
+		return testBadge.Load()
+	}
+	asks := rex.ProgramStatus{ID: "a", State: "blocked", Kind: "question", Msg: "Allow edit?", Updated: time.Now()}
+	list(asks)
+	if n := badge(); n != 1 {
+		t.Fatalf("the badge counts %d, want the host's session", n)
+	}
+
+	// Not connected, its list is old.
+	h.update(func() { h.state = hostFailed })
+	if n := badge(); n != 0 {
+		t.Errorf("the badge counts %d with the host away", n)
+	}
+	h.update(func() { h.state = hostConnected })
+
+	// A done record seen counts no more.
+	done := rex.ProgramStatus{ID: "a", State: "done", Updated: time.Now()}
+	list(done)
+	if n := badge(); n != 1 {
+		t.Fatalf("the badge counts %d for an unseen done record", n)
+	}
+	a.st.recordSeen("r1", done.Updated.Add(time.Second))
+	a.syncBadge() // as a pane's seen does
+	if n := badge(); n != 0 {
+		t.Errorf("the badge counts %d for a seen done record", n)
+	}
+
+	list(asks)
+	tt.Frame()
+	cmdNeeds.Run(a)
+	tt.Frame()
+	var row *paletteItem
+	for _, it := range a.paletteItems() {
+		if it.detail == "Allow edit?" {
+			row = &it
+			if it.aside != "mini · icy-ridge" {
+				t.Errorf("the row is aside %q, want its host and space", it.aside)
+			}
+		}
+	}
+	if row == nil {
+		t.Fatalf("the palette does not list the host's session; texts %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEscape)
+	tt.Frame()
+
+	// The hosts read again are new values of the same hosts.
+	h2 := newHostConn(h.savedHost)
+	h2.state, h2.infos = hostConnected, h.infos
+	a.hosts = []*hostConn{h2}
+	a.st.hosts = a.hosts
+	row.run()
+	tt.Frame()
+	p := a.tab().Focus
+	if a.ws != w || p == nil || p.SID != "r1" || p.host != h2 {
+		t.Fatalf("the row went to space %q, pane %+v", a.ws.Name, p)
+	}
+	// Shown, the session counts from its pane, once, as the host's list
+	// said; the next poll brings nothing new.
+	a.syncBadge()
+	if n := badge(); n != 1 {
+		t.Errorf("the badge counts %d once the space shows", n)
+	}
+	if ev := statusEvents(p, p.info.Statuses, h2.infos["r1"].Statuses); len(ev) > 0 {
+		t.Errorf("the next poll would tell %v", ev)
+	}
+}

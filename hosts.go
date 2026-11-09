@@ -178,6 +178,13 @@ func newHostConn(h savedHost) *hostConn {
 	return c
 }
 
+// listed is what the host's last list says of session sid, while the host
+// is connected: a list of before is old.
+func (h *hostConn) listed(sid string) (rex.SessionInfo, bool) {
+	in, ok := h.infos[sid]
+	return in, ok && h.state == hostConnected
+}
+
 // current returns the host's client, nil while not connected.
 func (h *hostConn) current() *rex.Client {
 	h.mu.Lock()
@@ -398,8 +405,24 @@ func (l *failureLog) log(name string, why func() string) {
 }
 
 // hostUpdate returns how the hosts' goroutines change the state: on the
-// main thread, drawing the windows again. Call it on the main thread.
+// main thread, drawing the windows again, and counting the badge again,
+// as the hosts' lists and states count in it (hiddenNeeds), with no
+// window too. Call it on the main thread.
 func (a *App) hostUpdate() func(func()) {
+	update := a.hostRedraw()
+	if st := a.st; st != nil {
+		return func(fn func()) {
+			update(func() {
+				fn()
+				st.syncBadge()
+			})
+		}
+	}
+	return update
+}
+
+// hostRedraw is hostUpdate but for the badge.
+func (a *App) hostRedraw() func(func()) {
 	win, set := a.win, settingsUI.win
 	if st := a.st; st != nil && (win != nil || set != nil) {
 		// Every window may show the host's tabs, and this one may close

@@ -81,24 +81,29 @@ func (st *store) status(w *Workspace) *rex.ProgramStatus {
 		return rex.MostUrgent(all, time.Time{})
 	}
 	var all []rex.ProgramStatus
-	for _, h := range append([]*hostConn{nil}, st.hosts...) {
+	st.eachHost(func(h *hostConn) {
 		if s := st.hiddenStatus(w, h); s != nil {
 			all = append(all, *s)
 		}
-	}
+	})
 	return rex.MostUrgent(all, time.Time{})
+}
+
+// eachHost calls fn with this machine, nil, then each host.
+func (st *store) eachHost(fn func(h *hostConn)) {
+	fn(nil)
+	for _, h := range st.hosts {
+		fn(h)
+	}
 }
 
 // hiddenStatus is the most urgent status of the sessions of host h, nil
 // for this machine, in the layout of a workspace no window shows: from
 // the machine's last session list, none while a host is not connected.
 func (st *store) hiddenStatus(w *Workspace, h *hostConn) *rex.ProgramStatus {
-	infos, id := st.infos, ""
-	if h != nil {
-		if h.state != hostConnected {
-			return nil
-		}
-		infos, id = h.infos, h.ID
+	infos, id, ok := st.listOf(h)
+	if !ok {
+		return nil
 	}
 	var all []rex.ProgramStatus
 	st.visitSIDs(w, id, func(sid string) {
@@ -107,6 +112,19 @@ func (st *store) hiddenStatus(w *Workspace, h *hostConn) *rex.ProgramStatus {
 		}
 	})
 	return rex.MostUrgent(all, time.Time{})
+}
+
+// listOf is the last session list of host h, nil for this machine, and
+// the id the layouts name the host by; not ok while a host is not
+// connected, whose list is old.
+func (st *store) listOf(h *hostConn) (infos map[string]rex.SessionInfo, id string, ok bool) {
+	if h == nil {
+		return st.infos, "", true
+	}
+	if h.state != hostConnected {
+		return nil, "", false
+	}
+	return h.infos, h.ID, true
 }
 
 // statusOn is the most urgent status of the workspace's sessions on host
@@ -1105,11 +1123,14 @@ func (a *App) show(w *Workspace) {
 		w.kept = nil
 		a.tabs, a.active, a.focusReq, a.renaming = k.tabs, k.active, nil, nil
 		// The panes' infos are from when they left: take the latest, or
-		// the next poll reads what happened away as news. A host's
-		// sessions are not polled into the store; theirs stay.
+		// the next poll reads what happened away as news.
 		for _, t := range k.tabs {
 			for _, p := range t.allPanes() {
-				if in, ok := a.st.infos[p.SID]; ok && p.host == nil {
+				in, ok := a.st.infos[p.SID]
+				if p.host != nil {
+					in, ok = p.host.listed(p.SID)
+				}
+				if ok {
 					p.info = in
 				}
 			}
