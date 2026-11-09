@@ -170,7 +170,8 @@ type enableOptions struct {
 
 var tagRE = regexp.MustCompile(`^tag:[A-Za-z]([A-Za-z0-9-]*[A-Za-z0-9])?$`)
 
-// errControlURL is the error for a control server ValidControlURL refuses.
+// errControlURL is the error for a control server tailnode.ValidControlURL
+// refuses.
 func errControlURL(s string) error {
 	return fmt.Errorf("%q is not a Tailscale control server URL: use https, or http only to localhost or a private address", s)
 }

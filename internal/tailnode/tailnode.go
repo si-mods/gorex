@@ -19,7 +19,8 @@ import (
 	"tailscale.com/tsnet"
 )
 
-// Node is a tsnet device.
+// Node is a tsnet device. Its methods other than Start, ListenTLS and
+// Close need it started.
 type Node struct {
 	srv *tsnet.Server
 	lc  *local.Client
@@ -50,9 +51,7 @@ func New(o Options) *Node {
 	}}
 }
 
-// Server is the underlying tsnet server.
-func (n *Node) Server() *tsnet.Server { return n.srv }
-
+// Start starts the device, which signs in when it can.
 func (n *Node) Start() error {
 	if err := n.srv.Start(); err != nil {
 		return err
@@ -69,6 +68,8 @@ func (n *Node) Status(ctx context.Context) (*ipnstate.Status, error) {
 	return n.lc.StatusWithoutPeers(ctx)
 }
 
+// Watch calls changed each time the device's state may have changed,
+// until ctx ends.
 func (n *Node) Watch(ctx context.Context, changed func()) {
 	for ctx.Err() == nil {
 		w, err := n.lc.WatchIPNBus(ctx, ipn.NotifyInitialState)
@@ -90,6 +91,8 @@ func (n *Node) Watch(ctx context.Context, changed func()) {
 	}
 }
 
+// ListenTLS listens for HTTPS on port 443 of the tailnet. It blocks
+// until the device runs.
 func (n *Node) ListenTLS() (net.Listener, error) { return n.srv.ListenTLS("tcp", ":443") }
 
 func (n *Node) WhoIs(ctx context.Context, addr string) (*apitype.WhoIsResponse, error) {
