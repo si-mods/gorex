@@ -8,9 +8,10 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    # Only the app's changes; a change to this file alone uploads nothing
+    # (start it by hand to try one).
     paths:
       - ios/**
-      - .github/workflows/testflight.yml
 
 permissions:
   contents: read
