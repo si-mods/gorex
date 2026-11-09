@@ -2944,6 +2944,70 @@ func (msgs Messages) SettingsCopyOnSelectHint() string {
 	return Catalog.Format(msgs.locale, "settingsCopyOnSelectHint", nil)
 }
 
+// SettingsMinContrast says "Minimum contrast"
+// in the language the app shows.
+//
+// Setting: the least contrast ratio terminal text keeps with its
+// background.
+func SettingsMinContrast() string { return In(i18n.Locale()).SettingsMinContrast() }
+
+// SettingsMinContrast says "Minimum contrast"
+// in the language of msgs.
+//
+// Setting: the least contrast ratio terminal text keeps with its
+// background.
+func (msgs Messages) SettingsMinContrast() string {
+	return Catalog.Format(msgs.locale, "settingsMinContrast", nil)
+}
+
+// SettingsMinContrastHint says "Lightens or darkens text too close to its background, colors programs set (ANSI, 256 and RGB) too, in local and remot…"
+// in the language the app shows.
+//
+// Hint under the Minimum contrast setting. Off is the option of the next
+// message.
+func SettingsMinContrastHint() string { return In(i18n.Locale()).SettingsMinContrastHint() }
+
+// SettingsMinContrastHint says "Lightens or darkens text too close to its background, colors programs set (ANSI, 256 and RGB) too, in local and remot…"
+// in the language of msgs.
+//
+// Hint under the Minimum contrast setting. Off is the option of the next
+// message.
+func (msgs Messages) SettingsMinContrastHint() string {
+	return Catalog.Format(msgs.locale, "settingsMinContrastHint", nil)
+}
+
+// SettingsContrastOff says "Off"
+// in the language the app shows.
+//
+// Minimum contrast option: no correction of text colors.
+func SettingsContrastOff() string { return In(i18n.Locale()).SettingsContrastOff() }
+
+// SettingsContrastOff says "Off"
+// in the language of msgs.
+//
+// Minimum contrast option: no correction of text colors.
+func (msgs Messages) SettingsContrastOff() string {
+	return Catalog.Format(msgs.locale, "settingsContrastOff", nil)
+}
+
+// SettingsFollowGhosttyValue says "Follow Ghostty config ({value})"
+// in the language the app shows.
+//
+// Minimum contrast option: set nothing, so that Ghostty's configuration
+// (else GoRex's default) applies; value is what that is, as 3 or Off.
+func SettingsFollowGhosttyValue(value string) string {
+	return In(i18n.Locale()).SettingsFollowGhosttyValue(value)
+}
+
+// SettingsFollowGhosttyValue says "Follow Ghostty config ({value})"
+// in the language of msgs.
+//
+// Minimum contrast option: set nothing, so that Ghostty's configuration
+// (else GoRex's default) applies; value is what that is, as 3 or Off.
+func (msgs Messages) SettingsFollowGhosttyValue(value string) string {
+	return Catalog.Format(msgs.locale, "settingsFollowGhosttyValue", map[string]any{"value": value})
+}
+
 // SettingsUseGhostty says "Use Ghostty config"
 // in the language the app shows.
 //

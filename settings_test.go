@@ -44,6 +44,7 @@ func TestWithPrefsPrecedence(t *testing.T) {
 	raw := ghosttyConfig{
 		Families: []string{"Fira Code"}, Theme: "Dracula", Background: &bg,
 		Cursor: terminal.CursorBar, NoBlink: true, CopyOnSelect: terminal.CopyOnSelectClipboard,
+		MinimumContrast: 4.5,
 	}
 	// No choices: Ghostty's config as it is.
 	if got := raw.withPrefs(settings{}); !reflect.DeepEqual(got, raw) {
@@ -104,6 +105,42 @@ func TestReloadKeepsPrefs(t *testing.T) {
 	a.setPref(func(s *settings) { s.Font = "" })
 	if !strings.HasPrefix(termFont.Family, "Hack") {
 		t.Errorf("font %q: clearing the pref did not follow Ghostty", termFont.Family)
+	}
+}
+
+// TestMinimumContrastPrecedence checks that the user's minimum contrast
+// wins over Ghostty's, which wins over GoRex's default, and that 1 stays
+// off.
+func TestMinimumContrastPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		ghostty, pref, want float32
+	}{
+		{0, 0, defaultMinContrast},
+		{7, 0, 7},
+		{7, 2, 2},
+		{0, 1, 1},
+		{1, 0, 1},
+	} {
+		got := ghosttyConfig{MinimumContrast: tc.ghostty}.withPrefs(settings{MinimumContrast: tc.pref})
+		if got.MinimumContrast != tc.want {
+			t.Errorf("ghostty %v, pref %v: %v, want %v", tc.ghostty, tc.pref, got.MinimumContrast, tc.want)
+		}
+	}
+	// A ratio out of range in settings.json counts as none.
+	isolateSettings(t, "")
+	for _, raw := range []string{`{"minimumContrast": 0.5}`, `{"minimumContrast": 22}`} {
+		os.WriteFile(settingsPath(), []byte(raw), 0o600)
+		prefs = settings{}
+		loadSettings()
+		if prefs.MinimumContrast != 0 || ghostty.MinimumContrast != defaultMinContrast {
+			t.Errorf("%s: kept %v, applied %v", raw, prefs.MinimumContrast, ghostty.MinimumContrast)
+		}
+	}
+	os.WriteFile(settingsPath(), []byte(`{"minimumContrast": 1}`), 0o600)
+	prefs = settings{}
+	loadSettings()
+	if ghostty.MinimumContrast != 1 {
+		t.Errorf("off applied as %v", ghostty.MinimumContrast)
 	}
 }
 

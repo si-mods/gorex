@@ -43,7 +43,7 @@ type ghosttyConfig struct {
 	Padding           *terminal.Padding
 	PaddingColor      *terminal.PaddingColor
 	ImageLimit        *int64
-	MinimumContrast   float32
+	MinimumContrast   float32 // 0 when unset; withPrefs fills in the default
 	Keybinds          []terminal.Keybind
 	NoDefaultKeybinds bool
 	// Unknown are options GoRex has no mapping for, said by config check.

@@ -170,7 +170,7 @@ Settings… (⌘, on macOS, Ctrl+, elsewhere; Shell menu and command palette)
 opens a window of its own with a sidebar of sections: Appearance (light,
 dark or system; tab placement; pane headers; animation style; text size;
 language), Terminal (font, cursor style and blink, copy on
-selection), Theme (any of Ghostty's themes, or follow the config),
+selection, minimum contrast), Theme (any of Ghostty's themes, or follow the config),
 Keyboard (GoRex's shortcuts, read only), Remote (see
 [Remote access](#remote-access) and [Remote hosts](#remote-hosts)),
 Network (see [Remote hosts](#remote-hosts) and [System Tailscale](#system-tailscale-desktop))
@@ -229,6 +229,12 @@ dark or light by it, as Ghostty's `window-theme = auto` does (not with
 (command palette, View menu) applies fonts, themes, `copy-on-select`,
 and `minimum-contrast` to open panes; the other options apply to new
 panes.
+
+`minimum-contrast` is 3 unless Ghostty's config or Settings ▸ Terminal
+▸ Minimum contrast (`minimumContrast` in settings.json) sets it: text
+closer than that to its background, colors programs set too (ANSI, 256
+and RGB), turns lighter or darker in its hue, in local and remote panes
+alike; box drawing keeps its colors. 1 turns the correction off.
 
 Options GoRex maps fully: the colors and fonts above, `cursor-style`,
 `cursor-style-blink`, `scrollback-limit`, `macos-option-as-alt`,

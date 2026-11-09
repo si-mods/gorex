@@ -3,6 +3,7 @@ package main
 import (
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -634,11 +635,14 @@ func (a *App) terminalSettings(c *ui.Context, k *colors) {
 		groupRow(c, k, nil).Children(func() { a.fontPreview(c, k) })
 	})
 	settingsGroup(c, k, "", "", "", func() { a.cursorSettings(c, k) })
+	settingsGroup(c, k, "", "", "", func() { a.contrastSettings(c, k) })
 	settingsGroup(c, k, "", "", "", func() {
 		groupRow(c, k, nil).Children(func() {
 			rowLine(c, k, locales.SettingsUseGhosttyHint(), func() {
 				if ui.Button(c, locales.SettingsUseGhostty()).Clicked() {
-					a.setCursor(func(s *settings) { s.Font, s.Cursor, s.CursorBlink, s.CopyOnSelect = "", "", nil, nil })
+					a.setCursor(func(s *settings) {
+						s.Font, s.Cursor, s.CursorBlink, s.CopyOnSelect, s.MinimumContrast = "", "", nil, nil, 0
+					})
 				}
 			})
 		})
@@ -664,6 +668,53 @@ func (a *App) cursorSettings(c *ui.Context, k *colors) {
 	settingRow(c, k, locales.SettingsCopyOnSelect(), locales.SettingsCopyOnSelectHint(), func() {
 		if ui.Switch(c, &copyOn).Label(locales.SettingsCopyOnSelect()).Changed() {
 			a.setPref(func(s *settings) { s.CopyOnSelect = &copyOn })
+		}
+	})
+}
+
+// contrastChoices are the minimum contrast picker's values: 0 follows
+// Ghostty, 1 turns the correction off.
+var contrastChoices = []float32{0, 1, 2, 3, 4.5, 7}
+
+// contrastName names a minimum contrast in the picker.
+func contrastName(v float32) string {
+	switch v {
+	case 1:
+		return locales.SettingsContrastOff()
+	case 4.5:
+		return "4.5 (WCAG AA)"
+	case 7:
+		return "7 (WCAG AAA)"
+	}
+	return strconv.FormatFloat(float64(v), 'f', -1, 32)
+}
+
+// contrastSettings is the Terminal page's group of the minimum contrast:
+// Ghostty's (else GoRex's default), off, or a ratio. A ratio of
+// settings.json that the picker lacks is added to it, as a font is.
+func (a *App) contrastSettings(c *ui.Context, k *colors) {
+	follow := ghosttyRaw.MinimumContrast
+	if follow == 0 {
+		follow = defaultMinContrast
+	}
+	values := contrastChoices
+	if !slices.Contains(values, prefs.MinimumContrast) {
+		values = append(slices.Clone(values), prefs.MinimumContrast)
+	}
+	names := make([]string, len(values))
+	for i, v := range values {
+		names[i] = contrastName(v)
+	}
+	plain := locales.SettingsContrastOff()
+	if follow != 1 {
+		plain = strconv.FormatFloat(float64(follow), 'f', -1, 32)
+	}
+	names[0] = locales.SettingsFollowGhosttyValue(plain)
+	name := names[slices.Index(values, prefs.MinimumContrast)]
+	settingRow(c, k, locales.SettingsMinContrast(), locales.SettingsMinContrastHint(), func() {
+		if ui.Select(c, &name, names).Label(locales.SettingsMinContrast()).Width(220).Changed() {
+			v := values[slices.Index(names, name)]
+			a.setPref(func(s *settings) { s.MinimumContrast = v })
 		}
 	})
 }
