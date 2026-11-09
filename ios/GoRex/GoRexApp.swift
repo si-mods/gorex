@@ -28,6 +28,9 @@ struct GoRexApp: App {
                 .onChange(of: phase) { _, p in
                     if p == .active { store.hosts.forEach { $0.reconnectIfNeeded() } }
                 }
+                #if DEBUG
+                .task { await TailnetEngine.shared.debugStart(store) }
+                #endif
         }
     }
 }

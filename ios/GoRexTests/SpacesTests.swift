@@ -157,7 +157,7 @@ nonisolated final class SpacesTests: XCTestCase {
         defer { h.stop() }
         var calls = 0
         var first: CheckedContinuation<Void, Never>?
-        h.spacesReader = { _ in
+        h.spacesReader = { _, _ in
             calls += 1
             if calls == 1 {
                 await withCheckedContinuation { first = $0 }
@@ -181,7 +181,7 @@ nonisolated final class SpacesTests: XCTestCase {
         r.features = [Spaces.feature]
         let h = Host(HostConfig(name: "mac", url: try await r.url()))
         defer { h.stop() }
-        h.spacesReader = { _ in try self.answer("M") }
+        h.spacesReader = { _, _ in try self.answer("M") }
         h.connect()
         await until("the spaces") { h.machine == "M" }
         r.stop()

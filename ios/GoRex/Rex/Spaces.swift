@@ -46,11 +46,11 @@ enum Spaces {
         }
     }
 
-    /// Reads the spaces of the server at base.
-    static func read(from base: URL) async throws -> Answer {
+    /// Reads the spaces of the server at base, through session.
+    static func read(from base: URL, session: URLSession = .shared) async throws -> Answer {
         var r = URLRequest(url: base.apiURL("/api/spaces"))
         r.timeoutInterval = 10
-        let (data, response) = try await URLSession.shared.data(for: r)
+        let (data, response) = try await session.data(for: r)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200 else {
             throw RexError(code: "spaces", message: HTTPURLResponse.localizedString(forStatusCode: status))

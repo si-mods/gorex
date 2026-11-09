@@ -108,6 +108,15 @@ func (n *Node) SetHostname(ctx context.Context, name string) error {
 	return err
 }
 
+// Loopback starts a SOCKS5 proxy into the tailnet on a loopback port,
+// for the process's own connections, and returns its address and
+// password; the user name is "tsnet". The port also serves the device's
+// LocalAPI, behind a credential that stays here.
+func (n *Node) Loopback() (addr, password string, err error) {
+	addr, password, _, err = n.srv.Loopback()
+	return addr, password, err
+}
+
 func (n *Node) Close() error { return n.srv.Close() }
 
 var hostnameRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)

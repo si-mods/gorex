@@ -149,8 +149,12 @@ final class DataConnection {
     private var received: UInt64 = 0
     private var task: URLSessionWebSocketTask?
     private let base: URL
+    private let session: URLSession
 
-    init(base: URL) { self.base = base }
+    init(base: URL, session: URLSession = .shared) {
+        self.base = base
+        self.session = session
+    }
 
     /// Opens the stream with a ticket.
     func open(ticket: String) async throws {
@@ -178,7 +182,7 @@ final class DataConnection {
 
     private func connect(_ first: Data) async throws {
         task?.cancel()
-        let t = URLSession.shared.webSocketTask(with: URLRequest(url: base.rexURL("/api/data")).withSubprotocol("rex.data.terminal.v1"))
+        let t = session.webSocketTask(with: URLRequest(url: base.rexURL("/api/data")).withSubprotocol("rex.data.terminal.v1"))
         t.maximumMessageSize = 1 << 20
         task = t
         t.resume()

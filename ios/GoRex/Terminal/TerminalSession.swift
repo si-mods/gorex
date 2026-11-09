@@ -111,7 +111,7 @@ final class TerminalSession {
                 ]).payload["ticket"] as? String ?? ""
                 guard g == generation else { return }
                 // What ends this generation closes the connection it opens.
-                let d = DataConnection(base: host.config.url)
+                let d = DataConnection(base: host.config.url, session: try host.session())
                 data = d
                 wire(d)
                 try await d.open(ticket: t)

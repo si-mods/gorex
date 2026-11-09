@@ -231,4 +231,17 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(Host.before("a", onto: "c", shown: shown, all: all), "d")
         XCTAssertNil(Host.before("a", onto: "e", shown: shown, all: all))
     }
+
+    /// A host list saved before hosts had a transport still decodes, each
+    /// host through the system; one saved with it keeps it.
+    @MainActor func testHostsSavedWithoutTransportDecode() throws {
+        let old = #"[{"id":"8C1F2D3E-4A5B-4C6D-8E7F-9A0B1C2D3E4F","name":"mac","url":"https:\/\/mac-gorex.example.ts.net","desktop":false}]"#
+        let hosts = try JSONDecoder().decode([HostConfig].self, from: Data(old.utf8))
+        XCTAssertEqual(hosts.map(\.name), ["mac"])
+        XCTAssertNil(hosts[0].transport)
+        var h = hosts[0]
+        h.transport = .tailnet
+        let again = try JSONDecoder().decode(HostConfig.self, from: JSONEncoder().encode(h))
+        XCTAssertEqual(again.transport, .tailnet)
+    }
 }
