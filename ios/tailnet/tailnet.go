@@ -50,6 +50,7 @@ func parseConfig(s string) (config, error) {
 var (
 	mu     sync.Mutex
 	node   *tailnode.Node
+	prox   *proxy
 	cancel context.CancelFunc
 )
 
@@ -69,9 +70,14 @@ func Start(configJSON, stateDir string, cb Callback) error {
 		n.Close()
 		return err
 	}
+	p, err := startProxy(n.StatusWithPeers, n.Dial)
+	if err != nil {
+		n.Close()
+		return err
+	}
 	ctx, stop := context.WithCancel(context.Background())
 	mu.Lock()
-	node, cancel = n, stop
+	node, prox, cancel = n, p, stop
 	mu.Unlock()
 	if cb != nil {
 		go n.Watch(ctx, func() { cb.Changed(status(ctx, n)) })
@@ -180,29 +186,28 @@ func encode(v any) string {
 	return string(b)
 }
 
-// Proxy is the device's SOCKS5 proxy as JSON: its address, as
-// 127.0.0.1:port, and its password; the user name is "tsnet". Each
+// Proxy is the device's SOCKS5 proxy (proxy.go) as JSON: its address,
+// as 127.0.0.1:port, and its password; the user name is "tsnet". Each
 // start of the device has a new port and password.
 func Proxy() (string, error) {
-	n, err := running()
-	if err != nil {
-		return "", err
+	mu.Lock()
+	p := prox
+	mu.Unlock()
+	if p == nil {
+		return "", errors.New("tailnet not started")
 	}
-	addr, password, err := n.Loopback()
-	if err != nil {
-		return "", err
-	}
-	return encode(map[string]string{"address": addr, "password": password}), nil
+	return encode(map[string]string{"address": p.ln.Addr().String(), "password": p.password}), nil
 }
 
 // Stop stops the device and its proxy.
 func Stop() {
 	mu.Lock()
-	n, stop := node, cancel
-	node, cancel = nil, nil
+	n, p, stop := node, prox, cancel
+	node, prox, cancel = nil, nil, nil
 	mu.Unlock()
 	if n != nil {
 		stop()
+		p.close()
 		n.Close()
 	}
 }

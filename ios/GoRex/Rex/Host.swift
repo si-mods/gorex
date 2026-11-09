@@ -181,9 +181,9 @@ final class Host: Identifiable {
     @ObservationIgnored private var spacesAgain = false
     /// Reads a server's spaces; tests replace it.
     @ObservationIgnored var spacesReader: (URL, URLSession) async throws -> Spaces.Answer = Spaces.read
-    /// The built-in Tailscale's proxy of the moment for a host's name or
-    /// address; nil while it can't reach it. The app sets it.
-    static var tailnetProxy: (String) -> LoopbackProxy? = { _ in nil }
+    /// The built-in Tailscale's proxy of the moment; nil while it isn't
+    /// running. The app sets it.
+    static var tailnetProxy: () -> LoopbackProxy? = { nil }
     @ObservationIgnored private var tailnetSession: (proxy: LoopbackProxy, session: URLSession)?
 
     init(_ config: HostConfig) {
@@ -195,7 +195,7 @@ final class Host: Identifiable {
     /// for each run of it.
     func session() throws -> URLSession {
         guard config.transport == .tailnet else { return .shared }
-        guard let p = Self.tailnetProxy(config.url.host() ?? "") else {
+        guard let p = Self.tailnetProxy() else {
             throw RexError(code: "offline", message: String(localized: "Tailscale is not running"))
         }
         if let s = tailnetSession, s.proxy == p { return s.session }

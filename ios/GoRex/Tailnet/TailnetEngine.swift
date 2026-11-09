@@ -17,14 +17,7 @@ final class TailnetEngine {
         var name: String?
         var ips: [String]?
         var suffix: String?
-        var peers: [Peer]?
         var error: String?
-
-        struct Peer: Decodable, Equatable {
-            var name: String
-            var ips: [String]
-            var online: Bool
-        }
     }
 
     private(set) var status = Status(state: "Stopped")
@@ -32,15 +25,12 @@ final class TailnetEngine {
     private(set) var proxy: LoopbackProxy?
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
 
-    /// A host reaches the proxy once the device runs and has the host
-    /// among its peers: before, the proxy would dial the host's address
-    /// through the system, off the tailnet.
+    /// Hosts reach the proxy once the device runs. Until it has the
+    /// network map, the proxy refuses them, and they try again.
     private init() {
-        Host.tailnetProxy = { host in
+        Host.tailnetProxy = {
             let e = TailnetEngine.shared
-            let h = host.lowercased().trimmingCharacters(in: ["[", "]", "."])
-            let known = e.status.peers?.contains { $0.name.lowercased() == h || $0.ips.contains(h) } == true
-            return e.status.state == "Running" && known ? e.proxy : nil
+            return e.status.state == "Running" ? e.proxy : nil
         }
     }
 
@@ -71,8 +61,7 @@ final class TailnetEngine {
     fileprivate func changed(_ json: String) {
         guard let s = try? JSONDecoder().decode(Status.self, from: Data(json.utf8)), s != status else { return }
         status = s
-        let peers = (s.peers ?? []).map { "\($0.name)\($0.online ? "" : " (offline)")" }
-        log.notice("status \(s.state, privacy: .public) \(s.auth_url ?? "", privacy: .public) \(s.name ?? "", privacy: .public) \(s.ips ?? [], privacy: .public) peers: \(peers, privacy: .public)")
+        log.notice("status \(s.state, privacy: .public) \(s.auth_url ?? "", privacy: .public) \(s.name ?? "", privacy: .public) \(s.ips ?? [], privacy: .public)")
     }
 
     /// Where the device's state lives: Application Support, out of backups.
@@ -120,49 +109,6 @@ extension TailnetEngine {
         } else {
             config.transport = .tailnet
             store.add(config)
-        }
-        if let probe = env["GOREX_TAILNET_PROBE"].flatMap(URL.init(string:)) { await self.probe(probe) }
-    }
-
-    /// Settles whether URLSession hands the proxy a host's name: a plain
-    /// request and a WebSocket to base, a name the system's DNS doesn't
-    /// know, such as a MagicDNS short name, through the proxy. Each logs
-    /// the server certificate it met, if any, and how it ended.
-    private func probe(_ base: URL) async {
-        while proxy == nil || status.peers?.isEmpty != false { try? await Task.sleep(for: .seconds(1)) }
-        guard let proxy else { return }
-        let session = URLSession(configuration: proxy.session().configuration, delegate: ProbeDelegate(), delegateQueue: nil)
-        var r = URLRequest(url: base.apiURL("/api/spaces"))
-        r.timeoutInterval = 15
-        do {
-            let (_, response) = try await session.data(for: r)
-            log.notice("probe http: status \((response as? HTTPURLResponse)?.statusCode ?? 0)")
-        } catch {
-            log.notice("probe http: \((error as NSError).code) \(error.localizedDescription, privacy: .public)")
-        }
-        let ws = session.webSocketTask(with: URLRequest(url: base.rexURL("/api/control")).withSubprotocol("rex.control.v1"))
-        ws.resume()
-        do {
-            try await ws.send(.string("{}"))
-            _ = try await ws.receive()
-            log.notice("probe ws: open")
-        } catch {
-            log.notice("probe ws: \((error as NSError).code) \(error.localizedDescription, privacy: .public)")
-        }
-        ws.cancel()
-    }
-
-    /// Logs the server certificate a probe met, then lets the system judge it.
-    nonisolated private final class ProbeDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-        func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge) async
-            -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-            if let trust = challenge.protectionSpace.serverTrust,
-               let cert = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first {
-                let name = SecCertificateCopySubjectSummary(cert) as String? ?? ""
-                Logger(subsystem: "dev.gorex.ios", category: "tailnet")
-                    .notice("probe \(task is URLSessionWebSocketTask ? "ws" : "http", privacy: .public) met certificate \(name, privacy: .public) for \(challenge.protectionSpace.host, privacy: .public)")
-            }
-            return (.performDefaultHandling, nil)
         }
     }
 }
