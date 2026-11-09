@@ -288,3 +288,120 @@ func TestSessionListClients(t *testing.T) {
 		t.Errorf("client: %v", client)
 	}
 }
+
+// waitOwnerEvent waits for a block_owner_changed event with a reason, and
+// returns its payload.
+func waitOwnerEvent(t *testing.T, c *testConn, reason string) map[string]any {
+	t.Helper()
+	for {
+		if ev := waitEvent(t, c, "block_owner_changed"); ev["reason"] == reason {
+			return ev
+		}
+	}
+}
+
+// ownedAt sets up a session whose block a client took and sized to
+// 100x30, and a connection that hears of every event.
+func ownedAt(t *testing.T, f *fixture) (c, obs *testConn, sid, block, goSID string) {
+	t.Helper()
+	c, sid, block = f.sessionWith(t, rex.CreateOptions{Command: []string{"/bin/sh", "-c", "sleep 60"}, Cols: 80, Rows: 24})
+	goSID = f.firstSID(t, sid)
+	obs = f.dialControl()
+	obs.hello(apiRevision)
+	callChecked(t, obs, "session.attach_all", map[string]any{"event_scope": "all"})
+	callChecked(t, c, "session.own_block", map[string]any{
+		"session_id": sid, "block_ids": []string{block}, "mode": "take",
+	})
+	blockCall(t, c, sid, block, "resize", map[string]any{"columns": 100, "rows": 30})
+	waitFor(t, "the owner's size", func() bool {
+		info := sessionInfoOf(t, f, goSID)
+		return info.Cols == 100 && info.Rows == 30
+	})
+	return
+}
+
+// takeSizeFromDesktop does what a desktop pane does when it types into a
+// locked session (App.takeSize), and then renews the gateway's locks.
+func takeSizeFromDesktop(t *testing.T, f *fixture, goSID string) {
+	t.Helper()
+	if err := f.g.opt.Client.UnlockSize(goSID, "", 90, 20); err != nil {
+		t.Fatal(err)
+	}
+	f.g.renewOwned()
+}
+
+// TestOwnershipYieldsToDesktop: when a desktop pane takes the size, the
+// gateway lets the block go at its next renewal rather than locking it
+// again, and the client takes it back when it types.
+func TestOwnershipYieldsToDesktop(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test's program is a Unix one")
+	}
+	f := startFixture(t)
+	c, obs, sid, block, goSID := ownedAt(t, f)
+	c1 := welcomeID(t, c.welcome)
+
+	takeSizeFromDesktop(t, f, goSID)
+	if ev := waitOwnerEvent(t, obs, "taken"); ev["owner"] != nil || ev["previous"] != c1 || ev["block_id"] != block {
+		t.Errorf("taken event: %v", ev)
+	}
+	if info := sessionInfoOf(t, f, goSID); info.SizeLock != "" || info.Cols != 90 || info.Rows != 20 {
+		t.Fatalf("after the desktop took it: lock %q, %dx%d", info.SizeLock, info.Cols, info.Rows)
+	}
+	if owner := ownerOfBlock(t, c, sid, block); owner != "" {
+		t.Errorf("owner after the desktop took it: %q", owner)
+	}
+	// Renewing again keeps the desktop's size.
+	f.g.renewOwned()
+	if info := sessionInfoOf(t, f, goSID); info.SizeLock != "" {
+		t.Errorf("locked again: %q", info.SizeLock)
+	}
+
+	// The client types: the block is its again, at its size.
+	blockCall(t, c, sid, block, "write", map[string]any{"data": "x"})
+	if ev := waitOwnerEvent(t, obs, "input"); ev["owner"] != c1 || ev["block_id"] != block {
+		t.Errorf("input event: %v", ev)
+	}
+	if info := sessionInfoOf(t, f, goSID); info.SizeLock != c1 || info.Cols != 100 || info.Rows != 30 {
+		t.Errorf("after typing: lock %q, %dx%d", info.SizeLock, info.Cols, info.Rows)
+	}
+	if owner := ownerOfBlock(t, c, sid, block); owner != c1 {
+		t.Errorf("owner after typing: %q", owner)
+	}
+}
+
+// TestOwnershipInputWithoutTake: a client that only requested a block,
+// or never claimed it, does not take the size by typing.
+func TestOwnershipInputWithoutTake(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test's program is a Unix one")
+	}
+	f := startFixture(t)
+	_, obs, sid, block, goSID := ownedAt(t, f)
+	c2 := f.dialControl()
+	c2.hello(apiRevision)
+	callChecked(t, c2, "session.attach", map[string]any{"session_id": sid})
+	callChecked(t, c2, "session.own_block", map[string]any{
+		"session_id": sid, "block_ids": []string{block}, "mode": "request",
+	})
+	blockCall(t, c2, sid, block, "resize", map[string]any{"columns": 120, "rows": 40})
+	c3 := f.dialControl()
+	c3.hello(apiRevision)
+	callChecked(t, c3, "session.attach", map[string]any{"session_id": sid})
+
+	takeSizeFromDesktop(t, f, goSID)
+	waitOwnerEvent(t, obs, "taken")
+	for _, c := range []*testConn{c2, c3} {
+		blockCall(t, c, sid, block, "write", map[string]any{"data": "x"})
+		callChecked(t, c, "block.event", map[string]any{
+			"session_id": sid, "block_id": block,
+			"event": map[string]any{"type": "paste", "payload": map[string]any{"text": "y"}},
+		})
+	}
+	if info := sessionInfoOf(t, f, goSID); info.SizeLock != "" || info.Cols != 90 || info.Rows != 20 {
+		t.Errorf("after typing without a take: lock %q, %dx%d", info.SizeLock, info.Cols, info.Rows)
+	}
+	if owner := ownerOfBlock(t, c2, sid, block); owner != "" {
+		t.Errorf("owner after typing without a take: %q", owner)
+	}
+}
