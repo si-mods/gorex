@@ -173,7 +173,10 @@ struct HostListView: View {
             .scrollIndicators(.hidden)
             // The glass's edges show past the page's margins.
             .scrollClipDisabled()
-            .onChange(of: space, initial: true) { _, p in withAnimation { proxy.scrollTo(p) } }
+            // At once when the list shows, animated as the space changes.
+            .onChange(of: space, initial: true) { old, p in
+                if old == p { proxy.scrollTo(p) } else { withAnimation { proxy.scrollTo(p) } }
+            }
         }
     }
 
@@ -196,10 +199,12 @@ private struct HostSection: View {
     @Environment(HostStore.self) private var store
     /// The sessions whose new window is on its way.
     @State private var opening: Set<String> = []
-    /// The row being dragged, with its session's rows as they were, and
-    /// their order as it goes: the rows make way as it passes over them.
-    @State private var drag: (entry: Entry, from: [String])?
+    /// The row being dragged, and its session's rows in the order it moves
+    /// them to: they make way as it passes over them.
+    @State private var drag: Drag?
     @State private var order: [String] = []
+    /// Each lift, for its feel.
+    @State private var lifts = 0
     /// Whether a new session is on its way.
     @State private var creating = false
     /// What failed last, and why, as the server says it.
@@ -248,9 +253,18 @@ private struct HostSection: View {
         }
         // A row dropped in the section, off the rows, stays where it is.
         .onDrop(of: [.text], isTargeted: nil) { _ in drop() }
-        // The server's order, once it comes, replaces the drag's.
-        .onChange(of: host.sessions.map { ($0.view?.windows ?? []).map(\.window_id) }) { drag = nil }
-        .sensoryFeedback(.selection, trigger: order)
+        // The dragged session's server order: a dropped row waits for it to
+        // change; a drag ends when its window goes.
+        .onChange(of: drag.map { d in host.sessions.first { $0.id == d.session.id }?.view?.windows?.map(\.window_id) ?? [] }) { _, ids in
+            guard let d = drag, let ids else { return }
+            if d.dropped ? ids != d.from : !ids.contains(d.window) { drag = nil }
+        }
+        // A drag let go of with no drop.
+        .onReceive(NotificationCenter.default.publisher(for: Lifted.ended)) { n in
+            if let d = drag, !d.dropped, n.object as? UUID == d.token { drag = nil }
+        }
+        .modifier(DragEnd { if drag?.dropped == false { drag = nil } })
+        .sensoryFeedback(.selection, trigger: lifts)
         .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
         } message: {
             Text(failure?.why ?? "")
@@ -373,46 +387,68 @@ private struct HostSection: View {
         let before = Host.before(id, onto: target, shown: shown, all: (s.view?.windows ?? []).map(\.window_id))
         change("Can't Move the Tab") { [host] in
             do { try await host.moveWindow(id, in: s.id, before: before) } catch {
-                // The rows go back to the server's order.
-                drag = nil
+                // The dropped row goes back to the server's order.
+                if drag?.dropped == true { drag = nil }
                 throw error
             }
         }
     }
 
-    /// Lifts a row: its session's rows take the order it moves them to.
+    /// A row's drag: its session's rows as they showed when it lifted, and
+    /// the item the system holds until the drag ends. Dropped, it waits for
+    /// the server's order.
+    private struct Drag {
+        let session: Host.Session
+        let window: String
+        let from: [String]
+        let token = UUID()
+        weak var item: Lifted?
+        var dropped = false
+    }
+
+    /// Lifts a row, from the order the rows show.
     private func lift(_ w: Entry, shown: [String]) -> NSItemProvider {
-        // The system asks again while the rows move: the first ask holds.
-        if drag?.entry.id != w.id {
-            drag = (w, shown)
-            order = shown
-        }
-        return NSItemProvider(object: w.id as NSString)
+        // The system asks again as the rows move: the same drag goes on.
+        if let d = drag, !d.dropped, d.window == w.window.window_id, let item = d.item { return item }
+        let item = Lifted(object: w.id as NSString)
+        var d = Drag(session: w.session, window: w.window.window_id, from: shown)
+        item.token = d.token
+        d.item = item
+        drag = d
+        order = shown
+        lifts += 1
+        return item
     }
 
     /// Makes way for the dragged row at another row of its session.
     private func pass(over w: Entry) {
-        guard let d = drag?.entry, d.session.id == w.session.id,
-              let from = order.firstIndex(of: d.window.window_id), let to = order.firstIndex(of: w.window.window_id), from != to
+        guard let d = drag, !d.dropped, d.session.id == w.session.id,
+              let from = order.firstIndex(of: d.window), let to = order.firstIndex(of: w.window.window_id), from != to
         else { return }
         withAnimation(.snappy) { order.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to) }
     }
 
     /// Moves the dropped row on the server to where the drag left it.
     private func drop() -> Bool {
-        guard let d = drag?.entry, let from = drag?.from else { return false }
-        let id = d.window.window_id
-        guard let i = order.firstIndex(of: id), let j = from.firstIndex(of: id), i != j else {
+        guard var d = drag, !d.dropped else { return false }
+        guard let i = order.firstIndex(of: d.window), let j = d.from.firstIndex(of: d.window), i != j else {
             drag = nil
             return true
         }
-        move(id, in: d.session, onto: from[i], shown: from)
+        d.dropped = true
+        drag = d
+        move(d.window, in: d.session, onto: d.from[i], shown: d.from)
+        // Should the server's order not change, the rows go back to it.
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            if drag?.token == d.token { drag = nil }
+        }
         return true
     }
 
     /// A card's rows in the order a drag of one of them leaves.
     private func arranged(_ windows: [Entry]) -> [Entry] {
-        guard let d = drag?.entry, windows.allSatisfy({ $0.session.id == d.session.id }) else { return windows }
+        guard let d = drag, windows.allSatisfy({ $0.session.id == d.session.id }) else { return windows }
         return windows.sorted { (order.firstIndex(of: $0.window.window_id) ?? .max) < (order.firstIndex(of: $1.window.window_id) ?? .max) }
     }
 
@@ -469,13 +505,13 @@ private struct HostSection: View {
             // The menu and the drag change the windows of the space's own
             // host only.
             if space.map({ $0.host == host.id }) ?? true {
-                // The server's order, not the drag's.
-                let shown = entries.filter { $0.session.id == w.session.id }.map(\.window.window_id)
+                // The order the rows show, a drag's while it lasts.
+                let shown = windows.filter { $0.session.id == w.session.id }.map(\.window.window_id)
+                let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false
                 row.onDrag { lift(w, shown: shown) }
                     .contextMenu { menu(w.session, w.window, shown: shown) }
                     .onDrop(of: [.text], delegate: RowDrop(pass: { pass(over: w) }, drop: drop))
-                    .opacity(drag?.entry.id == w.id ? 0.4 : 1)
-                    .modifier(DragEnd { drag = nil })
+                    .opacity(lifted ? 0.4 : 1)
             } else {
                 row
             }
@@ -595,17 +631,30 @@ private struct RowDrop: DropDelegate {
     func performDrop(info: DropInfo) -> Bool { drop() }
 }
 
-/// Tells when a drag from the view ends with no drop, where the system
-/// says so (iOS 27); before, the server's next order clears the drag.
+/// Tells when a drag from the view ends, where the system says so (iOS
+/// 27).
 private struct DragEnd: ViewModifier {
-    let cancelled: () -> Void
+    let ended: () -> Void
 
     func body(content: Content) -> some View {
         if #available(iOS 27, *) {
-            content.onDragSessionUpdated { if case .ended(.cancel) = $0.phase { cancelled() } }
+            content.onDragSessionUpdated { if case .ended = $0.phase { ended() } }
         } else {
             content
         }
+    }
+}
+
+/// A dragged row's item. The system lets go of it once it is done with
+/// the drag, which, after a cancelled one, can be late: it tells so then,
+/// by its drag's token.
+nonisolated private final class Lifted: NSItemProvider, @unchecked Sendable {
+    static let ended = Notification.Name("GoRex.Lifted.ended")
+    var token: UUID?
+
+    deinit {
+        let token = token
+        DispatchQueue.main.async { NotificationCenter.default.post(name: Lifted.ended, object: token) }
     }
 }
 
