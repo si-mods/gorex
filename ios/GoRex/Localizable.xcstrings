@@ -402,12 +402,12 @@
         }
       }
     },
-    "Desktop Spaces lists a desktop's windows on your other hosts in its spaces, as the desktop groups them. Only hosts you added here and that are online show.": {
+    "Desktop Spaces shows one space at a time, as the desktop's sidebar: switch spaces at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "「桌面空间」按桌面端的分组，把桌面上位于其他主机的窗口列在它所属的空间里。只显示你在这里添加且在线的主机。"
+            "value": "「桌面空间」像桌面端侧边栏一样一次显示一个空间：在顶部切换空间，每个空间按主机列出它的窗口，包括位于其他主机上的窗口。「按主机」列出每个主机的会话。"
           }
         }
       }

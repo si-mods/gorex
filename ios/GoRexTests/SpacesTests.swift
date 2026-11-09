@@ -74,6 +74,25 @@ nonisolated final class SpacesTests: XCTestCase {
         XCTAssertEqual(c.rows(studio, "desk"), [])
     }
 
+    /// A session is no space when every window of it is in another
+    /// host's space; one with a window left, one with none, or one that
+    /// holds another host's windows stays.
+    @MainActor func testSessionGone() throws {
+        let c = CrossHost(try sources())
+        XCTAssertTrue(c.isGone(studio, "desk", windows: ["d1", "d3"]))
+        XCTAssertFalse(c.isGone(studio, "desk", windows: ["d1", "d2", "d3"]))
+        XCTAssertFalse(c.isGone(studio, "empty", windows: []))
+        XCTAssertFalse(c.isGone(mac, "work", windows: ["w1"]))
+        // Its own window in another host's space, but it holds studio's.
+        var s = try sources()
+        s.append(CrossHost.Source(host: other, machine: "O", sessions: [
+            .init(id: "o", view: try view("o", []), remote: [member("M", "b1")]),
+        ]))
+        let moved = CrossHost(s)
+        XCTAssertTrue(moved.isMoved(mac, "work", "w1"))
+        XCTAssertFalse(moved.isGone(mac, "work", windows: ["w1"]))
+    }
+
     /// Without a host the app added and reaches, nothing of it shows, and
     /// nothing moves: the desktop's answer alone opens nothing.
     @MainActor func testOnlyHostsTheAppReaches() throws {

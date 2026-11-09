@@ -38,7 +38,7 @@ struct SettingsView: View {
              Item(title: "Grouping", icon: tile("rectangle.3.group.fill", .teal),
                   value: String(localized: Self.groupings.first { $0.0 == Grouping(stored: grouping).rawValue }?.1 ?? "Desktop Spaces"),
                   page: AnyView(Choices(title: "Grouping", options: Self.groupings.map { ($0.0, String(localized: $0.1)) }, selection: $grouping,
-                                        footer: "Desktop Spaces lists a desktop's windows on your other hosts in its spaces, as the desktop groups them. Only hosts you added here and that are online show.")))],
+                                        footer: "Desktop Spaces shows one space at a time, as the desktop's sidebar: switch spaces at the top, and each lists its windows by host, those on your other hosts too. By Host lists each host's sessions.")))],
             [Item(title: "Features", icon: tile("sparkles", .blue), page: AnyView(FeaturesView())),
              Item(title: "About", icon: tile("info.circle.fill", .gray),
                   value: "\(version) (\(build))", page: AnyView(AboutView(version: version, build: build)))],
