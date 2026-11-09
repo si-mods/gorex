@@ -16,7 +16,6 @@ final class TailnetEngine {
         var auth_url: String?
         var name: String?
         var ips: [String]?
-        var online: Bool?
         var suffix: String?
         var peers: [Peer]?
         var error: String?
@@ -33,13 +32,15 @@ final class TailnetEngine {
     private(set) var proxy: LoopbackProxy?
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
 
-    /// Hosts reach the proxy once the device runs and has the network
-    /// map: before, it knows no peer, and would dial the tailnet's
-    /// addresses through the system.
+    /// A host reaches the proxy once the device runs and has the host
+    /// among its peers: before, the proxy would dial the host's address
+    /// through the system, off the tailnet.
     private init() {
-        Host.tailnetProxy = {
+        Host.tailnetProxy = { host in
             let e = TailnetEngine.shared
-            return e.status.state == "Running" && e.status.online == true ? e.proxy : nil
+            let h = host.lowercased().trimmingCharacters(in: ["[", "]", "."])
+            let known = e.status.peers?.contains { $0.name.lowercased() == h || $0.ips.contains(h) } == true
+            return e.status.state == "Running" && known ? e.proxy : nil
         }
     }
 
@@ -71,7 +72,7 @@ final class TailnetEngine {
         guard let s = try? JSONDecoder().decode(Status.self, from: Data(json.utf8)), s != status else { return }
         status = s
         let peers = (s.peers ?? []).map { "\($0.name)\($0.online ? "" : " (offline)")" }
-        log.notice("status \(s.state, privacy: .public)\(s.online == true ? " online" : "", privacy: .public) \(s.auth_url ?? "", privacy: .public) \(s.name ?? "", privacy: .public) \(s.ips ?? [], privacy: .public) peers: \(peers, privacy: .public)")
+        log.notice("status \(s.state, privacy: .public) \(s.auth_url ?? "", privacy: .public) \(s.name ?? "", privacy: .public) \(s.ips ?? [], privacy: .public) peers: \(peers, privacy: .public)")
     }
 
     /// Where the device's state lives: Application Support, out of backups.
