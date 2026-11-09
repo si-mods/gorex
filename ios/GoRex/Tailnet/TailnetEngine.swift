@@ -121,6 +121,49 @@ extension TailnetEngine {
             config.transport = .tailnet
             store.add(config)
         }
+        if let probe = env["GOREX_TAILNET_PROBE"].flatMap(URL.init(string:)) { await self.probe(probe) }
+    }
+
+    /// Settles whether URLSession hands the proxy a host's name: a plain
+    /// request and a WebSocket to base, a name the system's DNS doesn't
+    /// know, such as a MagicDNS short name, through the proxy. Each logs
+    /// the server certificate it met, if any, and how it ended.
+    private func probe(_ base: URL) async {
+        while proxy == nil || status.peers?.isEmpty != false { try? await Task.sleep(for: .seconds(1)) }
+        guard let proxy else { return }
+        let session = URLSession(configuration: proxy.session().configuration, delegate: ProbeDelegate(), delegateQueue: nil)
+        var r = URLRequest(url: base.apiURL("/api/spaces"))
+        r.timeoutInterval = 15
+        do {
+            let (_, response) = try await session.data(for: r)
+            log.notice("probe http: status \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        } catch {
+            log.notice("probe http: \((error as NSError).code) \(error.localizedDescription, privacy: .public)")
+        }
+        let ws = session.webSocketTask(with: URLRequest(url: base.rexURL("/api/control")).withSubprotocol("rex.control.v1"))
+        ws.resume()
+        do {
+            try await ws.send(.string("{}"))
+            _ = try await ws.receive()
+            log.notice("probe ws: open")
+        } catch {
+            log.notice("probe ws: \((error as NSError).code) \(error.localizedDescription, privacy: .public)")
+        }
+        ws.cancel()
+    }
+
+    /// Logs the server certificate a probe met, then lets the system judge it.
+    nonisolated private final class ProbeDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+        func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge) async
+            -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+            if let trust = challenge.protectionSpace.serverTrust,
+               let cert = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first {
+                let name = SecCertificateCopySubjectSummary(cert) as String? ?? ""
+                Logger(subsystem: "dev.gorex.ios", category: "tailnet")
+                    .notice("probe \(task is URLSessionWebSocketTask ? "ws" : "http", privacy: .public) met certificate \(name, privacy: .public) for \(challenge.protectionSpace.host, privacy: .public)")
+            }
+            return (.performDefaultHandling, nil)
+        }
     }
 }
 #endif
