@@ -5,6 +5,11 @@ Status: proposal. Not implemented. Answers part of
 
 ## Problem
 
+Away from the local network, Rex's own iPhone app reaches a server only
+through the Tailscale app: without that app installed, signed in and its
+VPN on, it reaches nothing. That dependency is the pain this design
+removes. Rex Go inherited it, as it speaks Rex's API.
+
 Rex Go reaches a GoRex machine in one of two ways today:
 
 - **The tailnet.** The QR code holds `https://<machine>-gorex.<tailnet>.ts.net`,
