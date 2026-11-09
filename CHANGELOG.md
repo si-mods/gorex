@@ -5,6 +5,9 @@
 ### Features
 
 * **sidebar:** a host view, switched in Settings › Appearance › Sidebar view or with the palette's Toggle Sidebar View, lists under each host the sessions with tabs there ([#333](https://github.com/si-mods/gorex/pull/333))
+* **ios:** Rex Go groups terminals by the desktop's Spaces across the hosts it is paired with, chosen in Settings › Grouping; the Mac's gateway serves `GET /api/spaces` ([#335](https://github.com/si-mods/gorex/pull/335))
+* **attention:** the Dock badge, Needs You and notification clicks count the sessions of a remote host in a space no window shows ([#343](https://github.com/si-mods/gorex/pull/343))
+* **remote:** a server shares its sessions with every paired client by default; `gorex remote share off` turns it off and is kept ([#335](https://github.com/si-mods/gorex/pull/335))
 * **rex:** a session's `TERM_PROGRAM_VERSION` is the version of the Ghostty GoRex binds, not one set by hand ([#320](https://github.com/si-mods/gorex/pull/320))
 
 ### Bug Fixes
@@ -13,6 +16,8 @@
 * **panes:** a URL printed as text ends at its first character that is not ASCII, so CJK text after it does not join it ([#319](https://github.com/si-mods/gorex/pull/319))
 * **paste:** pasting an image into a pane of a host sends the image to the host and pastes its path, when the program there cannot read this machine's clipboard ([#338](https://github.com/si-mods/gorex/pull/338))
 * **rex:** a window that attaches gets each image of the session's graphics once, not once per redraw ([#324](https://github.com/si-mods/gorex/pull/324))
+* **pty:** a session's shell no longer inherits the server's descriptors, so a tab opened from the iPhone does not start with `too many open files` ([#344](https://github.com/si-mods/gorex/pull/344))
+* **rexapi:** a desktop pane that types into a session the iPhone sized takes the size, and the phone takes it back on its own input ([#342](https://github.com/si-mods/gorex/pull/342))
 * **windows:** symbols with text presentation, such as `⏺`, draw in the text's color, not as emoji ([#332](https://github.com/si-mods/gorex/pull/332))
 
 ## 0.18.0
