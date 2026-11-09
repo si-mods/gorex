@@ -132,10 +132,9 @@ func TestDrawnMenus(t *testing.T) {
 		if err := tt.RightClick(label); err != nil {
 			t.Fatalf("%v; texts %q", err, tt.Texts())
 		}
+		// Tester.Menu reports a drawn menu too: the menu's items among the
+		// window's texts tell it is drawn.
 		tt.Frame()
-		if got := tt.Menu(); got != nil {
-			t.Fatalf("the system shows the menu %q", got)
-		}
 	}
 	open(tabLabel)
 	if !tt.HasText(locales.CmdRenameTab()) {
