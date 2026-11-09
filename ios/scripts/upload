@@ -32,6 +32,14 @@ cat > build/export.plist <<P
 <key>manageAppVersionAndBuildNumber</key><false/>
 </dict></plist>
 P
+# The packages, GhosttyKit's binaries from GitHub among them, before the
+# archive: a download GitHub fails (a 504 at times) is tried again.
+for n in 1 2 3; do
+  xcodebuild -resolvePackageDependencies -scheme GoRex > build/resolve.log 2>&1 && break
+  grep -E "error|failed" build/resolve.log | tail -5 || true
+  [[ $n -lt 3 ]] || exit 1
+  sleep $((n * 30))
+done
 # Another upload can take the build number between the query and ours: then
 # take the next one, twice at most.
 for try in 0 1 2; do
