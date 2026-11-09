@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -111,8 +112,8 @@ func Logout() error {
 }
 
 // Status is the device's status as JSON: its backend state, the URL of
-// a login it waits for, its name and addresses, and the tailnet's
-// MagicDNS suffix. Not started, the state is "Stopped"; an error is in
+// a login it waits for, its name and addresses, the tailnet's MagicDNS
+// suffix and the peers. Not started, the state is "Stopped"; an error is in
 // "error".
 func Status() string {
 	n, err := running()
@@ -130,11 +131,20 @@ type statusJSON struct {
 	Name    string   `json:"name,omitempty"`
 	IPs     []string `json:"ips,omitempty"`
 	Suffix  string   `json:"suffix,omitempty"`
+	Peers   []peer   `json:"peers,omitempty"`
 	Error   string   `json:"error,omitempty"`
 }
 
+// peer is a device the node can reach: its MagicDNS name and addresses,
+// and whether it is online.
+type peer struct {
+	Name   string   `json:"name"`
+	IPs    []string `json:"ips"`
+	Online bool     `json:"online"`
+}
+
 func status(ctx context.Context, n *tailnode.Node) string {
-	st, err := n.Status(ctx)
+	st, err := n.StatusWithPeers(ctx)
 	if err != nil {
 		return encode(statusJSON{State: "Unknown", Error: err.Error()})
 	}
@@ -146,11 +156,21 @@ func fromStatus(st *ipnstate.Status) statusJSON {
 	if st.Self != nil {
 		s.Name = strings.TrimSuffix(st.Self.DNSName, ".")
 	}
-	for _, ip := range st.TailscaleIPs {
-		s.IPs = append(s.IPs, ip.String())
+	s.IPs = addrs(st.TailscaleIPs)
+	for _, k := range st.Peers() {
+		p := st.Peer[k]
+		s.Peers = append(s.Peers, peer{Name: strings.TrimSuffix(p.DNSName, "."), IPs: addrs(p.TailscaleIPs), Online: p.Online})
 	}
 	if st.CurrentTailnet != nil {
 		s.Suffix = st.CurrentTailnet.MagicDNSSuffix
+	}
+	return s
+}
+
+func addrs(ips []netip.Addr) []string {
+	var s []string
+	for _, ip := range ips {
+		s = append(s, ip.String())
 	}
 	return s
 }

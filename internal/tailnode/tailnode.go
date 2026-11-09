@@ -68,6 +68,11 @@ func (n *Node) Status(ctx context.Context) (*ipnstate.Status, error) {
 	return n.lc.StatusWithoutPeers(ctx)
 }
 
+// StatusWithPeers is Status with the devices the node can reach.
+func (n *Node) StatusWithPeers(ctx context.Context) (*ipnstate.Status, error) {
+	return n.lc.Status(ctx)
+}
+
 // Watch calls changed each time the device's state may have changed,
 // until ctx ends.
 func (n *Node) Watch(ctx context.Context, changed func()) {
