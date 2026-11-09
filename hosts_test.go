@@ -1339,6 +1339,44 @@ func TestRenameHost(t *testing.T) {
 	if h.current() != c || h.state != hostConnected {
 		t.Error("renaming the host reconnected it")
 	}
+
+	// An alias another host goes by keeps the field open, and says so.
+	a.addHost(savedHost{ID: "h2", Name: "studio", Address: f.path})
+	tt.Frame()
+	// The Rename button of a row, as far below its name as the first's.
+	first, _ := tt.Find(locales.HostsRename())
+	n1, _ := tt.Find("ws-01")
+	rename("Studio", ui.KeyEnter)
+	if h.Alias != "" || hostsUI.renaming != h.ID || !tt.HasText(locales.HostsNameTaken()) {
+		t.Fatalf("a taken alias: %+v, editing %q; texts %q", h.savedHost, hostsUI.renaming, tt.Texts())
+	}
+
+	// Rename on another host keeps the alias being edited, as moving the
+	// focus away does, and edits the other's.
+	tt.Key(ui.Super, ui.KeyA)
+	tt.Type("build box")
+	tt.Frame()
+	if tt.HasText(locales.HostsNameTaken()) {
+		t.Error("the hint stays as another alias is typed")
+	}
+	n2, _ := tt.Find("studio")
+	tt.ClickAt(first.X+first.W/2, n2.Y+first.Y+first.H/2-n1.Y)
+	tt.Frame()
+	if h.Alias != "build box" || hostsUI.renaming != "h2" || tt.HasText(locales.HostsNameTaken()) {
+		t.Fatalf("switching: %+v, editing %q; texts %q", h.savedHost, hostsUI.renaming, tt.Texts())
+	}
+
+	// Removing the host, or closing the page, forgets its edit.
+	a.removeHost(a.hostByID("h2"))
+	if hostsUI.renaming != "" {
+		t.Errorf("the removed host is still edited: %q", hostsUI.renaming)
+	}
+	hostsUI.renaming, hostsUI.alias = h.ID, "abandoned"
+	closeHostRename()
+	tt.Frame()
+	if h.Alias != "build box" || hostsUI.alias != "" {
+		t.Errorf("an abandoned edit was kept: %+v", h.savedHost)
+	}
 }
 
 // TestHostDropsBackOff checks that a host that greets and drops at once is
@@ -1529,8 +1567,26 @@ func TestHostAlias(t *testing.T) {
 	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Name != "ws-02" || hs[0].Alias != "build box" {
 		t.Fatalf("hosts.json: %+v", hs)
 	}
-	if validateHost("/tmp/other", "Build Box", "me", a.hosts) != locales.HostsNameTaken() {
-		t.Error("the alias is not taken as the host's name")
+	// A new host takes neither name nor alias of another.
+	for _, name := range []string{"Build Box", "WS-02"} {
+		if validateHost("/tmp/other", name, "me", a.hosts) != locales.HostsNameTaken() {
+			t.Errorf("%q is not taken", name)
+		}
+	}
+	// Nor does an alias: another host's name or alias is refused.
+	other := a.addHost(savedHost{ID: "m1", Name: "studio", Address: "/tmp/nowhere"})
+	for _, alias := range []string{"WS-02", "build box"} {
+		if a.setHostAlias(other, alias) || other.Alias != "" {
+			t.Errorf("alias %q taken: %+v", alias, other.savedHost)
+		}
+	}
+	// An alias that does not change saves nothing.
+	os.Remove(hostsPath())
+	if !a.setHostAlias(h, "build box") {
+		t.Error("the same alias is refused")
+	}
+	if _, err := os.Stat(hostsPath()); err == nil {
+		t.Error("the same alias saved the hosts")
 	}
 	for _, alias := range []string{"", "ws-02"} {
 		a.setHostAlias(h, "x")

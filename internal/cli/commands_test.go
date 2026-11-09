@@ -242,7 +242,7 @@ func TestHostsList(t *testing.T) {
 }
 
 // TestServerAlias: -S finds a saved host by its alias as by its name, and
-// hosts lists it by its alias.
+// hosts lists both.
 func TestServerAlias(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
@@ -256,8 +256,12 @@ func TestServerAlias(t *testing.T) {
 		t.Fatalf("-S by alias: %d %v %q", code, handled, errOut)
 	}
 	code, _, out, errOut := runMain(t, "hosts")
-	if code != ExitOK || !strings.Contains(out, "Build Box") || strings.Contains(out, "ws-01") {
+	if code != ExitOK || !strings.Contains(out, "ALIAS") || !strings.Contains(out, "ws-01") || !strings.Contains(out, "Build Box") {
 		t.Fatalf("hosts: %d %q %s", code, out, errOut)
+	}
+	code, _, out, errOut = runMain(t, "hosts", "--json")
+	if code != ExitOK || !strings.Contains(out, `"name": "ws-01"`) || !strings.Contains(out, `"alias": "Build Box"`) || strings.Count(out, `"alias"`) != 1 {
+		t.Fatalf("hosts JSON: %d %q %s", code, out, errOut)
 	}
 }
 

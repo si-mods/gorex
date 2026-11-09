@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
@@ -35,6 +35,7 @@ var hostsUI struct {
 	renaming              string             // the id of the host whose alias is edited
 	alias                 string             // the alias as it is typed
 	aliasFocus            bool               // the alias field had the focus
+	aliasTaken            string             // the alias refused, another host's
 	layoutOpen            bool
 	layoutHost            *hostConn
 	layout                savedStore
@@ -117,12 +118,18 @@ func validateHost(address, name, pairAs string, hosts []*hostConn) string {
 			return locales.HostsAlreadySaved()
 		}
 	}
-	for _, h := range hosts {
-		if strings.EqualFold(h.label(), name) {
-			return locales.HostsNameTaken()
-		}
+	if nameTaken(name, nil, hosts) {
+		return locales.HostsNameTaken()
 	}
 	return ""
+}
+
+// nameTaken tells whether a host of hosts but h goes by name, as its name
+// or its alias.
+func nameTaken(name string, h *hostConn, hosts []*hostConn) bool {
+	return slices.ContainsFunc(hosts, func(o *hostConn) bool {
+		return o != h && (strings.EqualFold(o.Name, name) || o.Alias != "" && strings.EqualFold(o.Alias, name))
+	})
 }
 
 // submitHost checks the sheet's fields, and tries the host: it is saved
@@ -319,8 +326,11 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 			} else if !tailnet && !up && ui.Button(c.Key("retry"), locales.HostsRetry()).Clicked() {
 				h.poke()
 			}
-			if ui.Button(c.Key("rename"), locales.HostsRename()).Disabled(page.renaming == h.ID).Clicked() {
-				page.renaming, page.alias, page.aliasFocus = h.ID, h.label(), false
+			// Another host's alias, being edited, is kept first, as
+			// moving the focus away keeps it.
+			if ui.Button(c.Key("rename"), locales.HostsRename()).Disabled(page.renaming == h.ID).Clicked() &&
+				(page.renaming == "" || a.commitHostRename()) {
+				page.renaming, page.alias = h.ID, h.label()
 			}
 			// A host of the network comes back with its next
 			// directory; removing it here would only make it return.
@@ -328,6 +338,10 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 				page.removing = h.ID
 			}
 		})
+		// Said until the alias is typed again.
+		if page.renaming == h.ID && page.aliasTaken != "" && page.alias == page.aliasTaken {
+			ui.Text(c, locales.HostsNameTaken()).FontSize(12).TextColor(k.danger).LineHeight(1.3)
+		}
 		rowHint(c, k, detail)
 		if page.removing != h.ID {
 			return
@@ -349,45 +363,60 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 
 // hostAliasField edits the name h shows by here, as tabs are renamed:
 // Enter or moving the focus away keeps it, Escape goes back, and an empty
-// alias, or the host's own name, shows that name again.
+// alias, or the host's own name, shows that name again. An alias another
+// host goes by keeps the field open, and says so.
 func (a *App) hostAliasField(c *ui.Context, k *colors, h *hostConn) {
 	page := &hostsUI
 	in := textField(c, k, &page.alias, fieldCompact).Placeholder(h.Name).WidthPercent(100).AutoFocus()
-	done := func(keep bool) {
+	renameKeys(in, page.alias, &page.aliasFocus, func(keep bool) {
 		if keep {
-			a.setHostAlias(h, page.alias)
+			a.commitHostRename()
+		} else {
+			closeHostRename()
 		}
-		page.renaming, page.aliasFocus = "", false
+	})
+}
+
+// commitHostRename keeps the alias being edited, and closes its field;
+// one another host goes by keeps the field open, and is false.
+func (a *App) commitHostRename() bool {
+	page := &hostsUI
+	if h := a.hostByID(page.renaming); h != nil && !a.setHostAlias(h, page.alias) {
+		page.aliasTaken, page.aliasFocus = page.alias, false
+		return false
 	}
-	switch {
-	case in.Shortcut(0, ui.KeyEscape):
-		done(false)
-	case in.Submitted():
-		done(true)
-	case in.Focused():
-		if !page.aliasFocus {
-			in.SetTextSelection(0, utf8.RuneCountInString(page.alias))
-		}
-		page.aliasFocus = true
-	case page.aliasFocus:
-		done(true) // the focus went elsewhere
-	}
+	closeHostRename()
+	return true
+}
+
+// closeHostRename closes the alias field, keeping nothing of it.
+func closeHostRename() {
+	page := &hostsUI
+	page.renaming, page.alias, page.aliasFocus, page.aliasTaken = "", "", false, ""
 }
 
 // setHostAlias gives h the alias it shows by in every window; its
-// connection and its terminals stay.
-func (a *App) setHostAlias(h *hostConn, alias string) {
+// connection and its terminals stay. An alias another host goes by is
+// refused, and false.
+func (a *App) setHostAlias(h *hostConn, alias string) bool {
 	alias = strings.TrimSpace(alias)
-	h.mu.Lock()
 	if alias == h.Name {
 		alias = ""
 	}
+	if alias == h.Alias {
+		return true
+	}
+	if alias != "" && nameTaken(alias, h, a.hosts) {
+		return false
+	}
+	h.mu.Lock()
 	h.Alias = alias
 	h.mu.Unlock()
 	a.saveHosts()
 	if a.st != nil {
 		a.st.redraw()
 	}
+	return true
 }
 
 // openHostLayout shows h's layout read-only.

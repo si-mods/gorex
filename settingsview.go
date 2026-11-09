@@ -132,6 +132,7 @@ func (a *App) openSettings() {
 		stopServerInfoPoll()
 		closeAddHost()
 		closeHostLayout()
+		closeHostRename()
 		hostsPairQR = nil
 		shortcutsUI = shortcutsState{}
 		if a.st != nil && a.st.recording {

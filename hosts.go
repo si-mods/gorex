@@ -471,7 +471,7 @@ func (a *App) startHost(h *hostConn) {
 // greets and drops is not dialed in a loop.
 func (a *App) runHost(h *hostConn, update func(func())) {
 	h.mu.Lock()
-	name := h.label()
+	name := h.Name
 	h.mu.Unlock()
 	attempt := 0
 	var logged failureLog
@@ -1180,6 +1180,9 @@ func (a *App) removeHost(h *hostConn) {
 	}
 	if hostsUI.layoutHost == h {
 		closeHostLayout()
+	}
+	if hostsUI.renaming == h.ID {
+		closeHostRename()
 	}
 	for _, o := range a.peers() {
 		drop := func() {
