@@ -57,6 +57,7 @@ func startPTY(path string, argv []string, dir string, env []string, cols, rows i
 	// A session of its own whose controlling terminal is the slave, so that
 	// the terminal's signals reach the process group in the foreground.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
+	closeOnExecAll()
 	if err := cmd.Start(); err != nil {
 		master.Close()
 		return nil, err
