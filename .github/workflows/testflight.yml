@@ -32,7 +32,10 @@ defaults:
 jobs:
   upload:
     if: github.ref == 'refs/heads/main'
-    runs-on: macos-26
+    # Intel: GitHub's arm64 macOS runners were out of capacity for hours
+    # (2026-11-09), and a job no runner takes fails after 15 minutes. The
+    # Intel image has the same Xcode 26.
+    runs-on: macos-26-intel
     steps:
       # The history, for What to Test.
       - uses: actions/checkout@v4
