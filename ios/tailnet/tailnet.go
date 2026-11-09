@@ -112,8 +112,9 @@ func Logout() error {
 }
 
 // Status is the device's status as JSON: its backend state, the URL of
-// a login it waits for, its name and addresses, the tailnet's MagicDNS
-// suffix and the peers. Not started, the state is "Stopped"; an error is in
+// a login it waits for, its name and addresses, whether it is online
+// (polling the control server for the network map), the tailnet's
+// MagicDNS suffix and the peers. Not started, the state is "Stopped"; an error is in
 // "error".
 func Status() string {
 	n, err := running()
@@ -130,6 +131,7 @@ type statusJSON struct {
 	AuthURL string   `json:"auth_url,omitempty"`
 	Name    string   `json:"name,omitempty"`
 	IPs     []string `json:"ips,omitempty"`
+	Online  bool     `json:"online,omitempty"`
 	Suffix  string   `json:"suffix,omitempty"`
 	Peers   []peer   `json:"peers,omitempty"`
 	Error   string   `json:"error,omitempty"`
@@ -155,6 +157,7 @@ func fromStatus(st *ipnstate.Status) statusJSON {
 	s := statusJSON{State: st.BackendState, AuthURL: st.AuthURL}
 	if st.Self != nil {
 		s.Name = strings.TrimSuffix(st.Self.DNSName, ".")
+		s.Online = st.Self.Online
 	}
 	s.IPs = addrs(st.TailscaleIPs)
 	for _, k := range st.Peers() {

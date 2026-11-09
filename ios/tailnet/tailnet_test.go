@@ -33,14 +33,14 @@ func TestFromStatus(t *testing.T) {
 	st := &ipnstate.Status{
 		BackendState:   "Running",
 		TailscaleIPs:   []netip.Addr{netip.MustParseAddr("100.64.0.7")},
-		Self:           &ipnstate.PeerStatus{DNSName: "rexgo-kqzt.example.ts.net."},
+		Self:           &ipnstate.PeerStatus{DNSName: "rexgo-kqzt.example.ts.net.", Online: true},
 		CurrentTailnet: &ipnstate.TailnetStatus{MagicDNSSuffix: "example.ts.net"},
 	}
 	st.Peer = map[key.NodePublic]*ipnstate.PeerStatus{
 		{}: {DNSName: "mac-gorex.example.ts.net.", TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.8")}, Online: true},
 	}
 	b, _ := json.Marshal(fromStatus(st))
-	want := `{"state":"Running","name":"rexgo-kqzt.example.ts.net","ips":["100.64.0.7"],"suffix":"example.ts.net",` +
+	want := `{"state":"Running","name":"rexgo-kqzt.example.ts.net","ips":["100.64.0.7"],"online":true,"suffix":"example.ts.net",` +
 		`"peers":[{"name":"mac-gorex.example.ts.net","ips":["100.64.0.8"],"online":true}]}`
 	if string(b) != want {
 		t.Errorf("got %s, want %s", b, want)

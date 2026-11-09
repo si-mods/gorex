@@ -16,6 +16,7 @@ final class TailnetEngine {
         var auth_url: String?
         var name: String?
         var ips: [String]?
+        var online: Bool?
         var suffix: String?
         var peers: [Peer]?
         var error: String?
@@ -32,12 +33,13 @@ final class TailnetEngine {
     private(set) var proxy: LoopbackProxy?
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
 
-    /// Hosts reach the proxy once the device runs: before, it knows no
-    /// peer, and dials the tailnet's addresses through the system.
+    /// Hosts reach the proxy once the device runs and has the network
+    /// map: before, it knows no peer, and would dial the tailnet's
+    /// addresses through the system.
     private init() {
         Host.tailnetProxy = {
             let e = TailnetEngine.shared
-            return e.status.state == "Running" ? e.proxy : nil
+            return e.status.state == "Running" && e.status.online == true ? e.proxy : nil
         }
     }
 
@@ -69,7 +71,7 @@ final class TailnetEngine {
         guard let s = try? JSONDecoder().decode(Status.self, from: Data(json.utf8)), s != status else { return }
         status = s
         let peers = (s.peers ?? []).map { "\($0.name)\($0.online ? "" : " (offline)")" }
-        log.notice("status \(s.state, privacy: .public) \(s.auth_url ?? "", privacy: .public) \(s.name ?? "", privacy: .public) \(s.ips ?? [], privacy: .public) peers: \(peers, privacy: .public)")
+        log.notice("status \(s.state, privacy: .public)\(s.online == true ? " online" : "", privacy: .public) \(s.auth_url ?? "", privacy: .public) \(s.name ?? "", privacy: .public) \(s.ips ?? [], privacy: .public) peers: \(peers, privacy: .public)")
     }
 
     /// Where the device's state lives: Application Support, out of backups.
