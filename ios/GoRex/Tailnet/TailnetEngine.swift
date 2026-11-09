@@ -22,7 +22,7 @@ final class TailnetEngine {
 
     private(set) var status = Status(state: "Stopped")
     /// The proxy of the engine's current run; nil while it isn't running.
-    private(set) var proxy: TailnetProxy?
+    private(set) var proxy: LoopbackProxy?
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
 
     private init() {
@@ -48,7 +48,7 @@ final class TailnetEngine {
         guard let a = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
               let port = a["address"]?.split(separator: ":").last.flatMap({ Int($0) }), let password = a["password"]
         else { throw RexError(code: "tailnet", message: "no proxy") }
-        proxy = TailnetProxy(port: port, password: password)
+        proxy = LoopbackProxy(port: port, password: password)
         log.notice("proxy on 127.0.0.1:\(port)")
     }
 

@@ -26,7 +26,7 @@ struct HostConfig: Codable, Identifiable, Hashable {
 
 /// The built-in Tailscale's SOCKS5 proxy on loopback, of one run of the
 /// engine: user name "tsnet" and a password of that run.
-struct TailnetProxy: Equatable {
+struct LoopbackProxy: Equatable {
     let port: Int
     let password: String
 
@@ -183,8 +183,8 @@ final class Host: Identifiable {
     @ObservationIgnored var spacesReader: (URL, URLSession) async throws -> Spaces.Answer = Spaces.read
     /// The built-in Tailscale's proxy of the moment; nil while it isn't
     /// running. The app sets it.
-    static var tailnetProxy: () -> TailnetProxy? = { nil }
-    @ObservationIgnored private var tailnetSession: (proxy: TailnetProxy, session: URLSession)?
+    static var tailnetProxy: () -> LoopbackProxy? = { nil }
+    @ObservationIgnored private var tailnetSession: (proxy: LoopbackProxy, session: URLSession)?
 
     init(_ config: HostConfig) {
         self.config = config
