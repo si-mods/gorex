@@ -32,8 +32,10 @@ Rex Go joins the tailnet itself, inside the app, as rootshell's
 userspace network stack, and only the app's own connections go through
 it. No system VPN, no Tailscale app.
 
-The scope is the iOS app alone: `ios/` and its build. The GoRex
-server and its gateway stay as they are.
+The phone and the gateway share one implementation of built-in
+Tailscale: one `tailscale.com`, one wrapper of `tsnet`, one check of a
+control URL. The gateway's behavior stays as it is; its code only moves
+into a package both use (Shared package, below).
 
 That covers #330's first need, **no VPN on the phone**, on Wi-Fi or
 cellular, for a GoRex machine whose built-in Tailscale is on. The
@@ -53,8 +55,8 @@ allows, and through Tailscale's DERP relays when it doesn't.
 - **A direct connection with no control server.** The data path between
   two public addresses is direct, but keys still go through a control
   server: Tailscale's or the user's Headscale.
-- **Server changes.** Everything the phone needs from the gateway is
-  there already (Server, below).
+- **Changing what the gateway does.** Everything the phone needs from
+  it is there already (Server, below).
 - **Headscale, for now.** Rex Go takes a control URL, as the server
   does, so the phone can join a Headscale tailnet. But the gateway
   serves only HTTPS on the tailnet, and Headscale issues no
@@ -72,29 +74,51 @@ allows, and through Tailscale's DERP relays when it doesn't.
 
 ### Engine
 
-A small Go module of its own, `ios/tailnet`, so the whole change stays
-under `ios/`. It pins `tailscale.com` itself, at the server's version
-when it's made; the two needn't move together, as any Tailscale client
-talks to any other. It wraps `tsnet.Server` and exports a narrow API for
-`gomobile bind`:
+A Go package, `ios/tailnet`, in GoRex's own module (no `go.mod` of its
+own), so it uses the server's `tailscale.com` and may import
+`internal/tailnode`. It adds only what the phone needs on top, and
+exports a narrow API for `gomobile bind`:
 
 | Call | Does |
 | --- | --- |
 | `Start(configJSON, stateDir, callback)` | starts the node: hostname, control URL, optional one-time auth key |
 | `Login()` / `Logout()` | interactive login; the auth URL arrives through the callback |
 | `Status() string` | JSON: backend state, auth URL, the node's name and addresses, peers |
-| `ProxyStart() string` | starts the SOCKS5 proxy (below); returns port, user, password |
+| `Proxy() string` | the SOCKS5 proxy (below): address and password |
 | `DefaultInterfaceChanged(name)` | the path monitor's news of a network change |
 | `ResetSockets()` | rebinds the UDP sockets iOS reclaimed while suspended |
-| `Stop()` | stops the proxy and the node |
-| `ValidControlURL(url) bool` | the check of a control URL, for Settings |
+| `Stop()` | stops the node and its proxy |
+| `ValidControlURL(url) bool` | `internal/tailnode`'s check, for Settings |
 
 rootshell's `iosbridge/tailnet*.go` (kitknox/trzsz-ssh-rootshell, MIT)
 is the reference for the iOS-specific parts: the interface monitor
 `tsnet` lacks on iOS, the socket reset after a suspension and its
-watchdog. We write our own rather than depend on rootshell's
-`TrzszSSH.xcframework`: that one carries all of trzsz-ssh (a 60 MB
-download) and pins a Tailscale we don't choose.
+watchdog.
+
+Two ready-made engines were weighed and set aside:
+
+- rootshell's `TrzszSSH.xcframework` carries all of trzsz-ssh (a 60 MB
+  download) and pins a Tailscale we don't choose.
+- Tailscale's own TailscaleKit (`tailscale/libtailscale`, Swift over C
+  over Go) has no hook for either iOS-specific part: its C API is
+  new/start/up/close, listen, dial, loopback and status. Adding them
+  means forking three layers. It has no releases either, so it is built
+  from source with Go all the same, and it pins its own `tailscale.com`.
+  Its `URLSession` extension is the model for ours (Transport).
+
+### Shared package
+
+`internal/tailnode` takes from `internal/rexapi/tailnet.go` what isn't
+the gateway's own:
+
+- the node: `tsnet.Server` with its local client (start, status, watch,
+  login, logout, set hostname, close), behind the interface the gateway's
+  tests fake;
+- `ValidControlURL` and the device name check.
+
+The gateway keeps its listener, `identify`, its settings and its
+methods, and imports the rest. The move changes no behavior;
+`tailnet_test.go` passes unchanged but for imports.
 
 The node's state lives in the app's Application Support directory,
 excluded from backups, with `NSFileProtectionCompleteUntilFirstUnlock`.
@@ -115,18 +139,21 @@ proxy:
 ```swift
 let c = URLSessionConfiguration.default
 var proxy = ProxyConfiguration(socksv5Proxy: .hostPort(host: "127.0.0.1", port: port))
-proxy.applyCredential(username: user, password: pass)
+proxy.applyCredential(username: "tsnet", password: password)
 c.proxyConfigurations = [proxy]
 ```
 
-The proxy listens on loopback only, with a random user and password per
-start, so another app on the phone can't use it. It resolves the name
-itself: MagicDNS names and tailnet addresses go through the tailnet, and
-anything else is refused (not dialed directly). TLS is end to end:
-`URLSession` still verifies the gateway's `*.ts.net` certificate.
+This is TailscaleKit's `URLSessionConfiguration.proxyVia`, and the proxy
+is the one `tsnet` already has: `Server.Loopback()`, on loopback, with a
+random password per run, so another app on the phone can't use it. It
+resolves MagicDNS names itself and dials through the tailnet; it would
+dial an address off the tailnet directly, but only tailnet hosts are
+sent to it. The same port serves `tsnet`'s LocalAPI behind a second
+credential, which never leaves Go. TLS is end to end: `URLSession`
+still verifies the gateway's `*.ts.net` certificate.
 
-Each `ProxyStart` makes a new port, user and password, and a
-`URLSession`'s configuration is fixed when it's made. So the proxy's
+Each engine run has a new port and password, and a `URLSession`'s
+configuration is fixed when it's made. So the proxy's
 address belongs to the engine's current run: when the engine starts
 again, every `tailnet` host drops its session, makes a new one and
 reconnects.
@@ -170,11 +197,9 @@ Settings › Tailscale, like the desktop's Tailscale card:
 
 - **Built-in Tailscale** on or off.
 - **Control server**: empty for Tailscale's own, or a URL such as
-  `https://headscale.example.com`. The engine's `ValidControlURL`
-  applies the server's rule (`https`, or `http` only for a loopback,
-  private or link-local address). It is a copy, since `ios/tailnet` can't
-  import the server's `internal/rexapi`; it runs the same test cases as
-  the server's, so a drift shows.
+  `https://headscale.example.com`. Checked by `internal/tailnode`'s
+  `ValidControlURL`, the gateway's own rule (`https`, or `http` only for
+  a loopback, private or link-local address).
 - **Device name**: `rexgo-xxxx` by default, as above.
 - **Sign in**: opens the auth URL in `ASWebAuthenticationSession`; or an
   auth key, used once and never saved.
@@ -198,7 +223,7 @@ Settings › Tailscale, like the desktop's Tailscale card:
 
 ### Server
 
-No change, and none in scope. The gateway already serves HTTPS on the
+No change in behavior. The gateway already serves HTTPS on the
 tailnet, checks each caller with `WhoIs`, and takes a control URL.
 
 Who gets in is the gateway's `identify`: without
@@ -213,9 +238,11 @@ access rules. Settings says so when the gateway refuses the phone.
 `gomobile bind -target ios,iossimulator` builds `Tailnet.xcframework`
 from `ios/tailnet`, by a script in `ios/scripts/`. The TestFlight
 workflow sets up Go and runs it before `xcodegen`; the result is cached
-by the hash of `ios/tailnet` (its `go.mod`, `go.sum` and sources). Its
-`paths`, `ios/**`, already take in an engine fix or a `tailscale.com`
-bump. `gomobile` is pinned as a Go tool in `ios/tailnet/go.mod`. The framework is not checked in.
+by the hash of `go.mod`, `go.sum`, `ios/tailnet` and
+`internal/tailnode`. Its `paths` add `go.mod`, `go.sum` and
+`internal/tailnode/**`, so a `tailscale.com` bump or a fix there reaches
+TestFlight like an `ios/` change. `gomobile` is pinned as a Go tool in
+`go.mod`. The framework is not checked in.
 
 Size, measured with `tsnet` at the version `go.mod` pins, linked into an
 arm64 iOS executable with `-s -w` and stripped:
@@ -236,8 +263,8 @@ On-Demand Resources can't hold any.
 
 ## Test plan
 
-- Go unit tests for the proxy: the credentials, refusing names off the
-  tailnet, and closing both sides.
+- `internal/rexapi`'s tests pass after the move.
+- Go unit tests for the engine's API with a fake node.
 - The engine runs in the simulator (no network extension involved), so
   the end-to-end test runs on the Mac mini: a simulator with no
   Tailscale reaches a GoRex machine's `*-gorex` device, opens a terminal,
@@ -249,11 +276,14 @@ On-Demand Resources can't hold any.
 
 ## Phases
 
-1. **Engine and transport spike**: `ios/tailnet`, the build script,
+1. **Shared package**: `internal/tailnode` out of the gateway, no
+   change in behavior.
+2. **Engine and transport spike**: `ios/tailnet`, the build script,
    and one host connected through the proxy in the simulator, which
    settles both transport risks.
-2. **Settings and hosts**: the Tailscale settings, sign-in, the device
+3. **Settings and hosts**: the Tailscale settings, sign-in, the device
    name, the host's `transport`, the QR flow.
-3. **Lifecycle**: path monitor, socket reset, forced reconnect, engine
+4. **Lifecycle**: path monitor, socket reset, forced reconnect, engine
    restart.
-4. **CI**: the framework built in the TestFlight workflow.
+5. **CI**: the framework built in the TestFlight workflow, and its
+   `paths`.
