@@ -650,6 +650,10 @@ type SessionInfo struct {
 	// when known.
 	Owner     string `json:"owner,omitempty"`
 	OwnerName string `json:"ownerName,omitempty"`
+	// OwnerShared tells that the server shares every session with Owner
+	// (mayUse): the user's own device, as the user decided by sharing.
+	// Only list says it; false from a server before it.
+	OwnerShared bool `json:"ownerShared,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
 	// said nothing.
@@ -703,6 +707,9 @@ type Hello struct {
 	PID     int       `json:"pid"`
 	Started time.Time `json:"started"`
 	Host    HostInfo  `json:"host"`
+	// Machine names the server's machine for good (MachineID), "" from a
+	// server before it.
+	Machine string `json:"machine,omitempty"`
 	// Exe is the server's executable, and ExeTime when it was modified
 	// last as the server started: the app compares them with its own, to
 	// upgrade a server of an older build.

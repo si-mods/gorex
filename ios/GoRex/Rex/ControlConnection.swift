@@ -226,9 +226,16 @@ final class ControlConnection {
 
 extension URL {
     /// The WebSocket URL of path on the server at this http(s) address.
-    func rexURL(_ path: String) -> URL {
-        var c = URLComponents(url: self, resolvingAgainstBaseURL: false)!
+    nonisolated func rexURL(_ path: String) -> URL {
+        var c = URLComponents(url: apiURL(path), resolvingAgainstBaseURL: false)!
         c.scheme = c.scheme == "https" ? "wss" : "ws"
+        return c.url!
+    }
+
+    /// The server's HTTP endpoint at path, as /api/upload and /api/spaces:
+    /// this base's scheme, host and port.
+    nonisolated func apiURL(_ path: String) -> URL {
+        var c = URLComponents(url: self, resolvingAgainstBaseURL: false)!
         c.path = path
         return c.url!
     }

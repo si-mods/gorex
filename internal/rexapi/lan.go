@@ -31,8 +31,6 @@ type LANConfig struct {
 	// Allow are the networks let in, as CIDRs; a bare address stands for
 	// itself alone.
 	Allow []string `json:"allow,omitempty"`
-	// ShowDesktopSessions includes desktop Tailscale sessions outside the host layout.
-	ShowDesktopSessions bool `json:"showDesktopSessions,omitempty"`
 }
 
 // LANStatus is what the gateway did with its LANConfig, kept in
@@ -378,13 +376,7 @@ func (l *lanListener) apply(c LANConfig) {
 }
 
 func sameLAN(a, b LANConfig) bool {
-	return a.Enabled == b.Enabled && a.Listen == b.Listen && a.ShowDesktopSessions == b.ShowDesktopSessions && slices.Equal(a.Allow, b.Allow)
-}
-
-func (l *lanListener) showDesktopSessions() bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.ln != nil && l.conf.ShowDesktopSessions
+	return a.Enabled == b.Enabled && a.Listen == b.Listen && slices.Equal(a.Allow, b.Allow)
 }
 
 func (l *lanListener) closeLocked() {

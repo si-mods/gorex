@@ -17,8 +17,7 @@ enum Upload {
     /// Sends the file at file as name, for block, to the server at base,
     /// streamed from the disk, and returns the word to paste.
     nonisolated static func send(_ file: URL, name: String, block: String, to base: URL) async throws -> String {
-        var c = URLComponents(url: base, resolvingAgainstBaseURL: false)!
-        c.path = "/api/upload"
+        var c = URLComponents(url: base.apiURL("/api/upload"), resolvingAgainstBaseURL: false)!
         c.queryItems = [URLQueryItem(name: "block_id", value: block), URLQueryItem(name: "name", value: name)]
         // A query reads "+" as a space.
         c.percentEncodedQuery = c.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")

@@ -24,6 +24,7 @@ struct HostListView: View {
     @State private var inbox = false
     @State private var query = ""
     @State private var settings = false
+    @AppStorage(Grouping.key) private var grouping = Grouping.standard
 
     var body: some View {
         Group {
@@ -73,8 +74,9 @@ struct HostListView: View {
                 if inbox {
                     StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
                 } else {
+                    let cross = grouping == .spaces ? CrossHost(store.hosts.compactMap(\.crossHost)) : CrossHost()
                     ForEach(store.hosts) { host in
-                        HostSection(host: host, collapsed: $collapsed, filter: filter, open: { go($0) })
+                        HostSection(host: host, cross: cross, collapsed: $collapsed, filter: filter, open: { go($0) })
                     }
                 }
             }
@@ -111,6 +113,8 @@ struct HostListView: View {
 
 private struct HostSection: View {
     let host: Host
+    /// Where each window shows, grouped by the desktop's spaces.
+    let cross: CrossHost
     @Binding var collapsed: Set<String>
     let filter: (String, String?) -> Bool
     let open: (TerminalTarget) -> Void
@@ -195,8 +199,11 @@ private struct HostSection: View {
             Label(why.isEmpty ? String(localized: "Offline") : String(localized: "Offline: \(why)"), systemImage: "wifi.slash")
                 .foregroundStyle(.secondary)
         default:
-            if host.sessions.isEmpty { Text("No sessions").foregroundStyle(.secondary) }
-            ForEach(host.sessions) { s in session(s) }
+            // A host whose every session shows in a desktop's spaces has
+            // none left to show here.
+            let shown = host.sessions.filter { !gone($0) }
+            if shown.isEmpty { Text("No sessions").foregroundStyle(.secondary) }
+            ForEach(shown) { s in session(s) }
         }
     }
 
@@ -281,10 +288,43 @@ private struct HostSection: View {
         .equatable()
     }
 
-    @ViewBuilder private func session(_ s: Host.Session) -> some View {
-        let windows = (s.view?.windows ?? []).compactMap { w in
-            w.block.flatMap { filter(host.title(w), host.programs[$0]) ? (block: $0, window: w) : nil }
+    /// Whether a session shows no card: every window of it shows in
+    /// another host's space, and it shows none of another host's.
+    private func gone(_ s: Host.Session) -> Bool {
+        let all = s.view?.windows ?? []
+        return !all.isEmpty && cross.rows(host.id, s.id).isEmpty
+            && all.allSatisfy { cross.isMoved(host.id, s.id, $0.window_id) }
+    }
+
+    /// A window's row in a session's card: of this host, or of another
+    /// one its space holds.
+    private struct Entry {
+        let host: Host
+        let session: String
+        let block: String
+        let window: SessionView.Window
+        var id: String { host.id.uuidString + "/" + window.window_id }
+    }
+
+    /// The rows of a session's card that the search keeps: its windows
+    /// that show here, then those of other hosts its space holds.
+    private func entries(_ s: Host.Session) -> (own: [Entry], joined: [Entry]) {
+        func entry(_ h: Host, _ session: String, _ w: SessionView.Window) -> Entry? {
+            w.block.flatMap { filter(h.title(w), h.programs[$0]) ? Entry(host: h, session: session, block: $0, window: w) : nil }
         }
+        let own = (s.view?.windows ?? []).filter { !cross.isMoved(host.id, s.id, $0.window_id) }.compactMap { entry(host, s.id, $0) }
+        let joined = cross.rows(host.id, s.id).compactMap { r -> Entry? in
+            guard let h = store.host(r.host),
+                  let w = h.sessions.first(where: { $0.id == r.session })?.view?.windows?.first(where: { $0.window_id == r.window })
+            else { return nil }
+            return entry(h, r.session, w)
+        }
+        return (own, joined)
+    }
+
+    @ViewBuilder private func session(_ s: Host.Session) -> some View {
+        let (own, joined) = entries(s)
+        let windows = own + joined
         // The room of the tiles of the window with the most, so that the titles line up.
         let tiles = ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
         let isCollapsed = collapsed.contains(s.id)
@@ -339,18 +379,26 @@ private struct HostSection: View {
                 Text("Close \(s.label) and every window in it?")
             }
             if !isCollapsed {
-                ForEach(Array(windows.enumerated()), id: \.element.window.window_id) { i, w in
-                    let title = host.title(w.window)
-                    Button {
-                        open(TerminalTarget(host: host.id, session: s.id, block: w.block, title: title))
+                ForEach(Array(windows.enumerated()), id: \.element.id) { i, w in
+                    let row = Button {
+                        open(TerminalTarget(host: w.host.id, session: w.session, block: w.block, title: w.host.title(w.window)))
                     } label: {
-                        WindowRow(host: host, block: w.block, window: w.window, tiles: tiles, divider: i < windows.count - 1) {
+                        WindowRow(host: w.host, block: w.block, window: w.window, tiles: tiles, divider: i < windows.count - 1) {
+                            // Another host's window tells which host it runs on.
+                            if w.host !== host {
+                                Text(w.host.config.name).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                            }
                             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
                         }
                     }
                     .buttonStyle(.plain)
                     .hoverEffect(.highlight)
-                    .contextMenu { menu(s, w.window, shown: windows.map(\.window.window_id)) }
+                    // The menu changes this host's windows only.
+                    if w.host === host {
+                        row.contextMenu { menu(s, w.window, shown: own.map(\.window.window_id)) }
+                    } else {
+                        row
+                    }
                 }
             }
         }
