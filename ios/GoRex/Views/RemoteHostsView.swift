@@ -7,13 +7,14 @@ struct RemoteHostsView: View {
     @State private var sheet: Sheet?
 
     private enum Sheet: Identifiable {
-        case connect, manual, scan, details(HostConfig)
+        case connect, manual, scan, details(HostConfig), pair(DevicePairing)
         var id: String {
             switch self {
             case .connect: "connect"
             case .manual: "manual"
             case .scan: "scan"
             case .details(let c): c.id.uuidString
+            case .pair: "pair"
             }
         }
     }
@@ -58,12 +59,15 @@ struct RemoteHostsView: View {
                 QRScanner(onScan: pair)
             case .details(let c):
                 HostForm(config: c)
+            case .pair(let invitation):
+                HostForm(config: store.host(at: invitation.base)?.config, invitation: invitation)
             }
         }
     }
 
     /// Adds the host of a scanned code, or shows it when it's there already.
     private func pair(_ code: String) -> String? {
+        if let invitation = DevicePairing(code) { sheet = .pair(invitation); return nil }
         guard let c = HostConfig(pairing: code) else {
             return String(localized: "Not a Rex pairing code. Scan the Rex QR code that GoRex or Rex shows.")
         }
@@ -143,10 +147,14 @@ private struct HostForm: View {
     @State private var name: String
     @State private var command: String
     @State private var deleting = false
+    @State private var pairingCode: String
+    @State private var saving = false
+    @State private var problem: String?
 
-    init(config: HostConfig?) {
+    init(config: HostConfig?, invitation: DevicePairing? = nil) {
         self.config = config
-        _address = State(initialValue: config?.url.absoluteString ?? "")
+        _address = State(initialValue: invitation?.base.absoluteString ?? config?.url.absoluteString ?? "")
+        _pairingCode = State(initialValue: invitation?.code ?? "")
         _desktop = State(initialValue: config?.desktop ?? false)
         _name = State(initialValue: config?.name ?? "")
         _command = State(initialValue: config?.command ?? "")
@@ -155,9 +163,9 @@ private struct HostForm: View {
     /// The host as entered, if its address reads as a pairing code does;
     /// a bare host gets http://.
     private var entered: HostConfig? {
-        let s = address.trimmingCharacters(in: .whitespaces)
+        let s = DevicePairing(address)?.base.absoluteString ?? address.trimmingCharacters(in: .whitespaces)
         guard var c = HostConfig(pairing: s.contains("://") ? s : "http://" + s) else { return nil }
-        if let config { c.id = config.id }
+        if let config { c.id = config.id; c.transport = config.transport }
         let n = name.trimmingCharacters(in: .whitespaces)
         if !n.isEmpty { c.name = n }
         c.desktop = desktop
@@ -185,6 +193,16 @@ private struct HostForm: View {
                     }
                 }
                 .listRowBackground(Color.card)
+                if c?.url.scheme == "https" {
+                    Section {
+                        SecureField("Pairing code (optional)", text: $pairingCode)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    } footer: {
+                        Text("For public access without VPN, enter the code from GoRex on your computer. Leave empty for an existing connection or Tailscale.")
+                    }
+                    .listRowBackground(Color.card)
+                }
                 Section("Host details") {
                     HStack(spacing: 12) {
                         Menu {
@@ -237,17 +255,33 @@ private struct HostForm: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", systemImage: "xmark", role: .cancel) { dismiss() }
+                        .disabled(saving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(config == nil ? "Add" : "Save", systemImage: "checkmark", role: .confirm) {
                         guard let c else { return }
-                        if config == nil { store.add(c) } else { store.update(c) }
-                        dismiss()
+                        saving = true
+                        Task {
+                            do {
+                                let code = DevicePairing(address)?.code ?? pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !code.isEmpty { try await DeviceAccess.pair(base: c.url, code: code, name: ControlConnection.label) }
+                                if config == nil { store.add(c) } else {
+                                    store.update(c)
+                                    if !code.isEmpty { store.host(c.id)?.reconnect() }
+                                }
+                                dismiss()
+                            } catch { problem = error.localizedDescription }
+                            saving = false
+                        }
                     }
-                    .disabled(c == nil || c == config)
+                    .disabled(saving || c == nil || (c == config && pairingCode.isEmpty))
                 }
             }
         }
+        .interactiveDismissDisabled(saving)
+        .alert("Connection failed", isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
+            Button("OK") { problem = nil }
+        } message: { Text(problem ?? "") }
         .presentationDetents([.large])
     }
 }

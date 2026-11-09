@@ -65,15 +65,30 @@ func (l *trackedListener) Close() error {
 	l.conns = map[net.Conn]struct{}{}
 	l.mu.Unlock()
 	for c := range conns {
-		c.(*trackedConn).Conn.Close()
+		c.Close()
 	}
 	return err
 }
 
 type trackedConn struct {
 	net.Conn
-	l    *trackedListener
-	once sync.Once
+	l      *trackedListener
+	once   sync.Once
+	mu     sync.Mutex
+	closed bool
+	hooks  []func()
+	err    error
+}
+
+func (c *trackedConn) onClose(fn func()) {
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		fn()
+		return
+	}
+	c.hooks = append(c.hooks, fn)
+	c.mu.Unlock()
 }
 
 func (c *trackedConn) Close() error {
@@ -81,8 +96,17 @@ func (c *trackedConn) Close() error {
 		c.l.mu.Lock()
 		delete(c.l.conns, c)
 		c.l.mu.Unlock()
+		c.err = c.Conn.Close()
+		c.mu.Lock()
+		c.closed = true
+		hooks := c.hooks
+		c.hooks = nil
+		c.mu.Unlock()
+		for _, fn := range hooks {
+			fn()
+		}
 	})
-	return c.Conn.Close()
+	return c.err
 }
 
 // underlying returns the connection a tracked one wraps, which peer
@@ -149,6 +173,15 @@ func (g *Gateway) HandlerFor(transport string) http.Handler {
 			var err error
 			if p, err = g.tailnet.identify(r.Context(), r.RemoteAddr); err != nil {
 				writeRefusal(w, err.Error())
+				return
+			}
+		case transportPublic:
+			if g.public == nil {
+				writeRefusal(w, "public access is unavailable")
+				return
+			}
+			var ok bool
+			if p, ok = g.public.admit(w, r); !ok {
 				return
 			}
 		default:

@@ -109,6 +109,10 @@ them from every other client.
 
 ## Built-in Tailscale
 
+For independently authenticated HTTPS access without a VPN, see
+[Public access](public-access.md). That listener uses device pairing and
+revocation rather than the LAN listener's source-IP allowlist or tailnet identity.
+
 Like a Rex server, the gateway joins your tailnet as a device of its own,
 with a copy of Tailscale inside it: the machine needs no Tailscale
 installed, and the device does not clash with a Rex server's. Its name is

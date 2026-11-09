@@ -47,8 +47,8 @@ enum Spaces {
     }
 
     /// Reads the spaces of the server at base, through session.
-    static func read(from base: URL, session: URLSession = .shared) async throws -> Answer {
-        var r = URLRequest(url: base.apiURL("/api/spaces"))
+    static func read(from base: URL, session: URLSession = DeviceAccess.session) async throws -> Answer {
+        var r = URLRequest(url: base.apiURL("/api/spaces")).withDeviceCredential(for: base)
         r.timeoutInterval = 10
         let (data, response) = try await session.data(for: r)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0

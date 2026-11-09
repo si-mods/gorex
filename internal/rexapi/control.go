@@ -112,7 +112,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	var rec *clientRecord
 	resumed := false
 	if hello.reconnectToken != "" {
-		rec, resumed = g.resumeControl(c, hello.reconnectToken)
+		rec, resumed = g.resumeControl(c, hello.reconnectToken, principalOf(r))
 	}
 	if rec == nil {
 		rec = g.addControl(c, hello.client, principalOf(r))
@@ -439,6 +439,12 @@ func (c *control) handle(req *request) {
 	}()
 	if c.hold != nil {
 		c.hold(req.ID)
+	}
+	if c.rec.principal["transport"] == transportPublic {
+		if c.g.public == nil || !c.g.public.validDevice(c.rec.deviceID) {
+			c.closeWith(1008, "device credential revoked")
+			return
+		}
 	}
 	if !methodAvailable(c.rev, req.Method) {
 		c.respond(req, nil, errMethodNotFound("%s is not a method of revision %d", req.Method, c.rev))

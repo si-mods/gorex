@@ -63,9 +63,9 @@ func (g *Gateway) handleData(w http.ResponseWriter, r *http.Request) {
 	}
 	switch msg[0] {
 	case 0x01:
-		g.dataHello(ws, msg[1:])
+		g.dataHello(ws, msg[1:], principalOf(r))
 	case 0x02:
-		g.dataResume(ws, msg[1:])
+		g.dataResume(ws, msg[1:], principalOf(r))
 	default:
 		rejectData(ws, rejectMalformed)
 	}
@@ -93,7 +93,7 @@ func rejectData(ws *websocket.Conn, reason byte) {
 }
 
 // dataHello opens the stream a ticket names.
-func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
+func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte, principal map[string]any) {
 	if len(rest) < 16 {
 		rejectData(ws, rejectMalformed)
 		return
@@ -101,6 +101,10 @@ func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
 	t, reason := g.takeTicket(base64url(rest[:16]), ws.Subprotocol())
 	if t == nil || reason == rejectTicket || reason == rejectProtocol {
 		rejectData(ws, reason)
+		return
+	}
+	if !g.recordAllows(t.record, principal) {
+		rejectData(ws, rejectTicket)
 		return
 	}
 	switch {
@@ -246,7 +250,7 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 }
 
 // dataResume continues a stream whose connection dropped.
-func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte) {
+func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte, principal map[string]any) {
 	if len(rest) < 24 {
 		rejectData(ws, rejectMalformed)
 		return
@@ -254,7 +258,7 @@ func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte) {
 	token := string(rest[:16])
 	count := binary.LittleEndian.Uint64(rest[16:24])
 	s := g.streamFor(token)
-	if s == nil {
+	if s == nil || !g.recordAllows(s.record, principal) {
 		rejectData(ws, rejectTicket)
 		return
 	}

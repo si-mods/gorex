@@ -37,7 +37,7 @@ struct LoopbackProxy: Equatable {
         var p = ProxyConfiguration(socksv5Proxy: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: UInt16(port))))
         p.applyCredential(username: "tsnet", password: password)
         c.proxyConfigurations = [p]
-        return URLSession(configuration: c)
+        return DeviceAccess.makeSession(configuration: c)
     }
 }
 
@@ -194,7 +194,7 @@ final class Host: Identifiable {
     /// one through the built-in Tailscale's proxy of the moment, made anew
     /// for each run of it.
     func session() throws -> URLSession {
-        guard config.transport == .tailnet else { return .shared }
+        guard config.transport == .tailnet else { return DeviceAccess.session }
         guard let p = Self.tailnetProxy() else {
             throw RexError(code: "offline", message: String(localized: "Tailscale is not running"))
         }
@@ -578,7 +578,12 @@ final class HostStore {
     }
 
     func remove(_ id: UUID) {
-        hosts.first { $0.id == id }?.stop()
+        if let h = hosts.first(where: { $0.id == id }) {
+            h.stop()
+            if !hosts.contains(where: { $0.id != id && DeviceAccess.sameOrigin($0.config.url, h.config.url) }) {
+                DeviceAccess.remove(for: h.config.url)
+            }
+        }
         hosts.removeAll { $0.id == id }
         save()
     }
@@ -587,7 +592,11 @@ final class HostStore {
     /// again. The host stays the same, for the terminals open on it.
     func update(_ config: HostConfig) {
         guard let h = host(config.id) else { return }
-        let moved = h.config.url != config.url || h.config.transport != config.transport
+        let changedAddress = h.config.url != config.url
+        let moved = changedAddress || h.config.transport != config.transport
+        if changedAddress && !hosts.contains(where: { $0.id != config.id && DeviceAccess.sameOrigin($0.config.url, h.config.url) }) {
+            DeviceAccess.remove(for: h.config.url)
+        }
         h.config = config
         if moved { h.reconnect() }
         save()

@@ -494,6 +494,9 @@ rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 
 ## Rex's iPhone app
 
+Rex Go also supports [authenticated public HTTPS access](docs/public-access.md)
+without a system VPN, using single-use pairing codes and revocable device credentials.
+
 Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
 server: the GoRex server serves Rex's API (revision 11), on the local
 network to the networks you allow (Settings › Remote), and on the tailnet
