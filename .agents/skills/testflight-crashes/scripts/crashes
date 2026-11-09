@@ -1,0 +1,31 @@
+#!/bin/bash
+# crashes: list Rex Go's TestFlight crash submissions, newest first, with the
+# version each came from: ID  DATE  X.Y (n)  DEVICE  iOS  COMMENT.
+# crashes log ID: print one submission's crash log.
+set -euo pipefail
+PATH=$PATH:/opt/homebrew/bin
+APP=6831210589
+if [[ ${1:-} == log ]]; then
+  # Apple adds the log some time after the submission; until then it is not there.
+  j=$(asc api GET "/v1/betaFeedbackCrashSubmissions/${2:?usage: crashes log ID}/crashLog" 2>&1) ||
+    { echo "no crash log for $2 yet: $j" >&2; exit 2; }
+  python3 -I -c 'import sys,json; print(json.load(sys.stdin)["data"]["attributes"]["logText"])' <<<"$j"
+  exit
+fi
+asc testflight crashes list --app $APP --include build --limit "${1:-20}" --output json |
+  python3 -I -c '
+import sys, json, subprocess
+d = json.load(sys.stdin)
+builds = {b["id"]: b["attributes"]["version"] for b in d.get("included", []) if b["type"] == "builds"}
+versions = {}
+def version(bid):
+    if bid not in versions:
+        r = subprocess.run(["asc", "api", "GET", f"/v1/builds/{bid}/preReleaseVersion"], capture_output=True, text=True)
+        versions[bid] = json.loads(r.stdout)["data"]["attributes"]["version"] if r.returncode == 0 else "?"
+    return versions[bid]
+for s in d["data"]:
+    a = s["attributes"]
+    bid = ((s.get("relationships", {}).get("build") or {}).get("data") or {}).get("id")
+    v = f"{version(bid)} ({builds.get(bid)})" if bid else "?"
+    print(s["id"], a["createdDate"][:16], v, a.get("deviceModel"), a.get("osVersion"), (a.get("comment") or "").replace("\n", " "), sep="\t")
+'

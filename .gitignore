@@ -1,5 +1,6 @@
 /build/
 /.mygo/
-/.claude/
+/.claude/*
+!/.claude/skills/
 mygo_windows_*.syso
 /gorex
