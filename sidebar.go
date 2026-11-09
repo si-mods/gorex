@@ -26,10 +26,14 @@ const (
 var sidebarViews = []string{"", "host"}
 
 // hostView tells whether the sidebar lists every session under the hosts
-// it has tabs on: as the user chose, while there are hosts besides this
-// machine. Without them the sessions would only repeat the strip's dots.
-func (a *App) hostView() bool {
-	return prefs.SidebarView == "host" && len(a.hosts) > 0 && a.st != nil
+// it has tabs on: as the user chose, where it can (hostViewable).
+func (a *App) hostView() bool { return prefs.SidebarView == "host" && a.hostViewable() }
+
+// hostViewable tells whether the sidebar can list the sessions by host: in
+// a sidebar, with hosts besides this machine. Without them the sessions
+// would only repeat the strip's dots.
+func (a *App) hostViewable() bool {
+	return prefs.TabPlacement != "" && len(a.hosts) > 0 && a.st != nil
 }
 
 // toggleSidebarView switches the sidebar between its views.
@@ -293,14 +297,15 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 				}
 				for _, h := range a.allHosts() {
 					folded := a.hostSection(c, k, h)
+					on := a.tabsOn(h)
 					var shown []*Tab
-					for _, t := range a.tabsOn(h) {
+					for _, t := range on {
 						if !folded || t == a.chosenOn[hostKey(h)] || slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.needsYou() > 0 }) {
 							shown = append(shown, t)
 						}
 					}
 					if a.hostView() {
-						a.hostSessions(c, k, h, folded, shown, tabs, reserve)
+						a.hostSessions(c, k, h, folded, len(on), shown, tabs, reserve)
 						continue
 					}
 					for _, t := range shown {
@@ -460,12 +465,14 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 // hostSessions lists under host h the sessions with tabs on it, in their
 // order. The window's own opens on its tabs there, shown as they are of
 // the host; the others are closed, and opening one shows it. A folded
-// host keeps only the window's session, when it has tabs to show.
-func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, shown []*Tab, tabs []*Tab, reserve float32) {
+// host keeps, as of its tabs, the window's session when it has tabs to
+// show, and the sessions that need the user there. own is how many tabs
+// the window's session has on the host.
+func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, own int, shown []*Tab, tabs []*Tab, reserve float32) {
 	key := hostKey(h)
 	for _, w := range a.st.workspaces {
 		if w != a.ws {
-			if n := spaceTabsOn(w, h); n > 0 && !folded {
+			if n := spaceTabsOn(w, h); n > 0 && (!folded || a.st.needsOn(w, h)) {
 				if a.sessionRow(c, k, h, w, n, false) {
 					a.later(c, func() { a.showSessionOn(w, h) })
 				}
@@ -476,7 +483,7 @@ func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, s
 			continue
 		}
 		open := !a.ownClosed[key]
-		if a.sessionRow(c, k, h, w, len(a.tabsOn(h)), open) {
+		if a.sessionRow(c, k, h, w, own, open) {
 			if a.ownClosed == nil {
 				a.ownClosed = map[string]bool{}
 			}
@@ -495,23 +502,24 @@ func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, s
 
 // sessionRow is a session under a host in the host view: a chevron, its
 // color, its name and how many tabs it has on the host, and what needs
-// the user there. A session another window shows is faded, as its dot in
-// the strip. It reports whether it was clicked.
+// the user there. The window's own opens and closes on its tabs; another
+// is a button that shows it, faded when another window shows it, as its
+// dot in the strip. It reports whether it was clicked.
 func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n int, open bool) bool {
-	label := w.Name + ", " + locales.SessionTabs(n)
-	elsewhere := w.app != nil && w != a.ws
-	if elsewhere {
-		label += " · " + locales.SessionElsewhere()
-	}
 	row := ui.Row(c.Key("space-"+hostKey(h)+"-"+w.ID)).Height(28).Shrink(0).Padding(0, 8, 0, 8).Gap(6).AlignItems(ui.Center).
-		Radius(pillRadius(28, 9)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Label(label).Expanded(open)
+		Radius(pillRadius(28, 9)).Cursor(ui.CursorPointer).Label(w.Name + ", " + workspaceDetail(w, a, n))
+	if w == a.ws {
+		row.Role(ui.RoleDisclosure).Expanded(open)
+	} else {
+		row.Role(ui.RoleButton)
+	}
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
 	}
 	if row.Hovered() {
 		row.Background(hoverFace(k))
 	}
-	if elsewhere {
+	if w.app != nil && w != a.ws {
 		row.Opacity(0.5)
 	}
 	row.Children(func() {
@@ -532,27 +540,33 @@ func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n 
 }
 
 // showSessionOn shows session w, here or in the window that shows it, on
-// its tab of host h last chosen there, else its first there.
+// its tab of host h last chosen there, else its first there. The window
+// that shows it chooses the tab, in its own update; selectTab saves the
+// choice (changed).
 func (a *App) showSessionOn(w *Workspace, h *hostConn) {
 	a.showWorkspace(w)
 	o := w.app
 	if o == nil {
 		return
 	}
-	if t := o.tab(); t != nil && t.host() == h {
-		return
+	pick := func() {
+		if t := o.tab(); t != nil && t.host() == h {
+			return
+		}
+		on := o.tabsOn(h)
+		if len(on) == 0 {
+			return
+		}
+		t := on[0]
+		if chosen := o.chosenOn[hostKey(h)]; slices.Contains(on, chosen) {
+			t = chosen
+		}
+		o.selectTab(slices.Index(o.tabs, t))
 	}
-	on := o.tabsOn(h)
-	if len(on) == 0 {
-		return
-	}
-	t := on[0]
-	if chosen := o.chosenOn[hostKey(h)]; slices.Contains(on, chosen) {
-		t = chosen
-	}
-	o.selectTab(slices.Index(o.tabs, t))
-	if o != a {
-		o.do(func() {})
+	if o == a {
+		pick()
+	} else {
+		o.do(pick)
 	}
 }
 

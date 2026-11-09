@@ -112,6 +112,21 @@ func (st *store) statusOn(w *Workspace, h *hostConn) *rex.ProgramStatus {
 	return rex.MostUrgent(all, time.Time{})
 }
 
+// needsOn tells whether the workspace's sessions on host h need the user,
+// as a folded host's tabs tell: by a pane's attention or status, or,
+// hidden, by its sessions' last status (statusOn).
+func (st *store) needsOn(w *Workspace, h *hostConn) bool {
+	if w.app == nil {
+		return needsUser(st.statusOn(w, h))
+	}
+	for _, t := range w.app.tabsOn(h) {
+		if slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.needsYou() > 0 }) {
+			return true
+		}
+	}
+	return false
+}
+
 // recordSeen notes that a session's status was seen.
 func (st *store) recordSeen(sid string, at time.Time) {
 	if sid == "" || at.IsZero() {

@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+	"time"
 
 	"gorex/internal/rex"
 	"gorex/locales"
 )
 
 // TestSidebarViewSetting: the command toggles the sidebar's view and keeps
-// it in the settings; the palette offers it only with a sidebar.
+// it in the settings; it is there only with a sidebar and remote hosts,
+// where the view shows.
 func TestSidebarViewSetting(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
@@ -28,6 +30,19 @@ func TestSidebarViewSetting(t *testing.T) {
 		}
 		return s.SidebarView
 	}
+	lists := func() bool {
+		for _, it := range a.paletteItems() {
+			if it.title == cmdSidebarView.Title() {
+				return true
+			}
+		}
+		return false
+	}
+	// Without remote hosts the view would show as the spaces' one.
+	if lists() || cmdSidebarView.invoke(a, nil) == nil || prefs.SidebarView != "" {
+		t.Fatalf("without hosts the command shows (%v) or runs (view %q)", lists(), prefs.SidebarView)
+	}
+	a.hosts = []*hostConn{newHostConn(savedHost{ID: "1", Name: "office"})}
 	if err := cmdSidebarView.invoke(a, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -39,14 +54,6 @@ func TestSidebarViewSetting(t *testing.T) {
 		t.Fatalf("toggled back the view is %q, saved %q; want the default", prefs.SidebarView, saved())
 	}
 
-	lists := func() bool {
-		for _, it := range a.paletteItems() {
-			if it.title == cmdSidebarView.Title() {
-				return true
-			}
-		}
-		return false
-	}
 	if !lists() {
 		t.Error("the palette does not offer the view beside a sidebar")
 	}
@@ -129,6 +136,26 @@ func TestSidebarHostView(t *testing.T) {
 	if !tt.HasText("Here ") {
 		t.Errorf("opening the space again shows %q", tt.Texts())
 	}
+
+	// Folded, this machine keeps another space only while it needs the user.
+	if err := tt.Click(thisMachine()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if _, ok := tt.Find("icy-ridge, " + locales.SessionTabs(2)); ok {
+		t.Errorf("a folded host shows another space; texts %q", tt.Texts())
+	}
+	sid := second.layout.Tabs[0].Root.SID
+	a.st.infos = map[string]rex.SessionInfo{sid: {ID: sid, Statuses: []rex.ProgramStatus{{ID: "a", State: "error", Updated: time.Now().Add(time.Second)}}}}
+	tt.Frame()
+	if _, ok := tt.Find("icy-ridge, " + locales.SessionTabs(2)); !ok {
+		t.Errorf("a folded host hides the space that needs the user; texts %q", tt.Texts())
+	}
+	a.st.infos = nil
+	if err := tt.Click(thisMachine()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 
 	// A click on the second space under the host shows it, on that tab.
 	if err := tt.Click("icy-ridge, " + locales.SessionTabs(1)); err != nil {

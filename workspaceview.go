@@ -125,7 +125,7 @@ func (a *App) workspaceList(c *ui.Context, k *colors) {
 	ui.Text(c, locales.SessionListTitle()).FontSize(12).FontWeight(600).TextColor(k.textFaint).Padding(6, 8, 4, 8)
 	for _, w := range a.st.workspaces {
 		current := w == a.ws
-		detail := workspaceDetail(w, a)
+		detail := workspaceDetail(w, a, w.tabCount())
 		row := ui.Row(c.Key(w.ID)).Height(40).Padding(0, 8).Gap(9).Radius(concentric(popR, 1+popPad)).AlignItems(ui.Center).Cursor(ui.CursorPointer).
 			Role(ui.RoleButton).Label(w.Name + ", " + detail)
 		if row.Hovered() {
@@ -316,13 +316,13 @@ func spaceDotMark(c *ui.Context, k *colors, w *Workspace, own bool) {
 	ui.Box(c).Size(18, 18).Radius(9).Border(2, k.text).Center().Children(func() { dot(14) })
 }
 
-// workspaceDetail says of a workspace how many tabs it has, and when
-// another window than a's shows it.
-func workspaceDetail(w *Workspace, a *App) string {
+// workspaceDetail says of a workspace its n tabs, and when another window
+// than a's shows it.
+func workspaceDetail(w *Workspace, a *App, n int) string {
 	if w.app != nil && w.app != a {
-		return locales.SessionTabsElsewhere(w.tabCount())
+		return locales.SessionTabsElsewhere(n)
 	}
-	return locales.SessionTabs(w.tabCount())
+	return locales.SessionTabs(n)
 }
 
 // sessionItems are the rows of the palette listing the workspaces: the
@@ -343,7 +343,7 @@ func (a *App) sessionItems(match func(string) bool) []paletteItem {
 		case w.app != nil:
 			glyph = "app-window"
 		}
-		it := paletteItem{title: w.Name, detail: workspaceDetail(w, a), glyph: glyph, status: a.st.status(w), run: func() { a.showWorkspace(w) }}
+		it := paletteItem{title: w.Name, detail: workspaceDetail(w, a, w.tabCount()), glyph: glyph, status: a.st.status(w), run: func() { a.showWorkspace(w) }}
 		if hex, ok := spaceColorHex(w.Color); ok {
 			it.dot, it.hasDot = ui.Hex(hex), true
 		}
