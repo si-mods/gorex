@@ -20,7 +20,8 @@ The server (`internal/rex/session.go`, `authorityLocked`) picks the
 authority in this order:
 
 1. The client holding the **size lock** (`lockSize`): a device that took
-   the size explicitly, such as the layout sheet.
+   the size explicitly, such as the layout sheet or the iPhone app (see
+   *A Rex API client: the iPhone*).
 2. The client that **typed last**, or that claimed **focus** last (see
    below).
 3. Otherwise, the client that **attached last**.
@@ -104,6 +105,70 @@ Typing claims the size whatever the idle time is: typing is presence.
   window claims again, and the Mac's size returns at once.
 - **The app restarts.** Its window gains the focus while the user is
   present, so its panes claim, and no key press is needed.
+
+## A Rex API client: the iPhone
+
+The iPhone app (`ios/`) does not attach as a window. It talks to the
+Rex API gateway (`internal/rexapi`), which holds the session's size for
+it with a **size lock**. So the iPhone is not an authority among the
+windows: it is above them.
+
+- **Ownership.** The gateway keeps an owner for each block (a pane's
+  session), `owners.go`. When a block's terminal opens, or its stream
+  comes back after a drop, the phone calls `session.own_block` with mode
+  `take` (`TerminalSession.claim`). A `take` makes the phone the owner at
+  once, even when another client owns the block. The gateway then takes
+  the size lock (`lockSize`) for the phone, with the size it asked for
+  last, and renews it every 5 seconds (`renewEvery`; the lease is 30
+  seconds, `sizeLease`).
+- **Resizes.** The phone sends `resize` with its grid once its size holds
+  for 100 ms (`TerminalSession.fit`): after a rotation, a pinch that
+  changes the font, or a new layout. The gateway records each client's
+  size (`desired`). It applies the size at once when the client owns the
+  block or no client does (`resizeBlock`, `LockedResize`). Otherwise the
+  size waits until that client becomes the owner.
+- **The phone never follows another size.** The keyboard does not
+  resize the grid, and the phone ignores the `resize` messages of its
+  stream: its grid is always its own view's, whatever size the session
+  has.
+- **The windows while the phone owns the block.** The lock overrides
+  focus claims and resizes from windows (`followAuthorityLocked`). The
+  window shows the session at the phone's grid, clipped or with empty
+  space around it (see *What a window shows*). `SessionInfo.SizedBy` is
+  empty and `SizeLock` names the phone's client.
+- **A window takes the size back by typing.** A key or a paste in a
+  local pane whose session is locked unlocks it at the pane's size
+  (`App.takeSize`, `UnlockSize(sid, "", cols, rows)`), whoever holds the
+  lock. Panes that see a lock end resend their size (`ResendSize`). Only
+  a pane of the server's own machine does this: a pane of a remote host
+  (`p.host != nil`) does not unlock, so a desktop that views the session
+  as a remote host gets the size back only when the lock ends.
+- **The gateway locks again.** The gateway does not learn of that
+  unlock. Its next renewal (within 5 seconds, `renewOwned`) fails, and it
+  takes the lock again for the phone with no size (`LockSize(sid, owner,
+  0, 0)`). The session keeps the window's size, but the windows' resizes
+  are ignored again. The size changes next when the phone sends a resize
+  (it opens the terminal, reconnects, rotates or pinches), or when a
+  window types again.
+- **The end of the lock.** The phone gives up the block when its
+  terminal closes (`session.disown_block`). When its connection drops,
+  as when iOS suspends the app in the background, the gateway lets go of
+  its blocks (`releaseBlocks`, reason `lost`) and remembers them. If the
+  phone reconnects in time and no one took a block meanwhile, the block
+  is the phone's again (`restoreBlocks`), and the phone sends its size.
+  When another API client is in line, the newest `take` gets the block,
+  else the newest `request`, with the size it asked for (`electLocked`).
+  A lock that ends without a next owner unlocks with no size
+  (`UnlockSize(sid, "", 0, 0)`); the windows' panes then resend their
+  sizes, and the authority's size applies.
+
+So with the phone and a desktop window on the same pane, the size goes
+to the phone each time it opens the terminal or comes back from the
+background, and to the desktop each time the desktop types. Both
+terminals show one grid, the size of the last of these: the program in
+the session draws for one size. The phone does not follow the desktop's
+size, so while the desktop's size holds, the phone lays out a program's
+output that was drawn for a different grid.
 
 ## What a window shows
 
