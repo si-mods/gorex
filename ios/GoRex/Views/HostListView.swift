@@ -81,14 +81,8 @@ struct HostListView: View {
                     let all = spaces(cross)
                     let space = (all.first { key($0.place) == chosen } ?? all.first)?.place
                     if !all.isEmpty { strip(all, space) }
-                    // The space's host first, then the hosts it holds
-                    // windows of, and those that tell why they show none
-                    // or have no space, for their menu.
-                    ForEach(store.hosts.filter { $0.id == space?.host } + store.hosts.filter { $0.id != space?.host }) { host in
-                        if host.status != .online || !all.contains(where: { $0.host === host })
-                            || space.map({ s in s.host == host.id || cross.rows(s.host, s.session).contains { $0.host == host.id } }) == true {
-                            HostSection(host: host, cross: cross, space: space, collapsed: $collapsed, filter: filter, open: { go($0) })
-                        }
+                    ForEach(sections(cross, all, space)) { host in
+                        HostSection(host: host, cross: cross, space: space, collapsed: $collapsed, filter: filter, open: { go($0) })
                     }
                 } else {
                     ForEach(store.hosts) { host in
@@ -134,6 +128,19 @@ struct HostListView: View {
         store.hosts.filter { if case .offline = $0.status { false } else { true } }.flatMap { h in
             h.sessions.filter { !cross.isGone(h.id, $0.id, windows: ($0.view?.windows ?? []).map(\.window_id)) }
                 .map { Space(host: h, session: $0) }
+        }
+    }
+
+    /// The hosts a space lists: its host first, then the hosts it holds
+    /// windows of, and those that tell why they show none or have no
+    /// space, for their menu. A function of its own, as Xcode 26 cannot
+    /// type-check it inside the view in time.
+    private func sections(_ cross: CrossHost, _ all: [Space], _ space: CrossHost.Place?) -> [Host] {
+        let ordered = store.hosts.filter { $0.id == space?.host } + store.hosts.filter { $0.id != space?.host }
+        return ordered.filter { host in
+            if host.status != .online || !all.contains(where: { $0.host === host }) { return true }
+            guard let s = space else { return false }
+            return s.host == host.id || cross.rows(s.host, s.session).contains { $0.host == host.id }
         }
     }
 
