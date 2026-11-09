@@ -163,7 +163,22 @@ workflow sets up Go and runs it before `xcodegen`; the result is cached
 by the hash of `go.sum` and the package. `gomobile` is pinned as a Go
 tool in `go.mod`. The framework is not checked in.
 
-Expected cost: about 20–30 MB more app size, mostly Tailscale.
+Size, measured with `tsnet` at the version `go.mod` pins, linked into an
+arm64 iOS executable with `-s -w` and stripped:
+
+| Build | Installed | Compressed (gzip -9, near the download) |
+| --- | --- | --- |
+| all features | 18.5 MB | 7.1 MB |
+| `ts_omit_*` for every feature `tsnet` can do without | 15.8 MB | 6.0 MB |
+
+The `ts_omit_*` tags kept off are `netstack`, `serve`, `acme`, `dns`,
+`logtail`, `tailscaledhttps`, `cachenetmap` and `ssh`; `tsnet` doesn't
+build without them. The simulator slice never reaches the App Store.
+
+The engine can't be downloaded later instead. iOS runs only code
+signed into the app's bundle (a downloaded library fails to load), and
+App Review Guideline 2.5.2 forbids downloading executable code;
+On-Demand Resources can't hold any.
 
 ## Test plan
 
