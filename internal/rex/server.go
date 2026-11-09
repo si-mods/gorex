@@ -34,6 +34,7 @@ type Server struct {
 	layoutFile sync.Mutex
 	started    time.Time
 	host       HostInfo
+	machine    string
 	hostDone   chan struct{}
 	ln         net.Listener
 	lock       *os.File
@@ -362,6 +363,7 @@ func (s *Server) serve() error {
 	ln, sock := s.ln, SocketPath()
 	go func() {
 		s.host = hostInfo()
+		s.machine = MachineID()
 		close(s.hostDone)
 	}()
 	go s.watchIdle()
@@ -797,7 +799,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		case <-s.hostDone:
 		case <-time.After(3 * time.Second):
 		}
-		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
+		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Machine: s.machine, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
 		// The pairing address is for a remote peer's QR code. A local
 		// client never shows it, and asking the gateway for it would wait
 		// on the gateway's own requests when the gateway says hello.

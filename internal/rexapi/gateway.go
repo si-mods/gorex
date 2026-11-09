@@ -76,11 +76,14 @@ type Options struct {
 
 // Gateway serves Rex's API over one GoRex server.
 type Gateway struct {
-	opt        Options
-	started    time.Time
-	hello      rex.Hello
-	host       string
-	user       string
+	opt     Options
+	started time.Time
+	hello   rex.Hello
+	host    string
+	user    string
+	// machines reads the machines of the app's remote hosts, by host ID
+	// (rex.HostMachines); tests replace it.
+	machines   func() map[string]string
 	instanceID string
 	// helloWait is how long a connection may take to send its hello;
 	// tests shorten it on a gateway of their own.
@@ -168,6 +171,7 @@ func New(opt Options) (*Gateway, error) {
 		started:        time.Now(),
 		hello:          hello,
 		host:           hostID(name, hello.Host.User),
+		machines:       func() map[string]string { return rex.HostMachines(rex.Dir()) },
 		user:           currentUser(),
 		instanceID:     randomUUID(),
 		helloWait:      helloWait,
@@ -305,13 +309,11 @@ func (g *Gateway) refresh() (*model, error) {
 	if err != nil {
 		return g.modelNow(), err
 	}
-	var desktop []rex.SessionInfo
-	if g.lan != nil && g.lan.showDesktopSessions() {
-		desktop, err = g.opt.Client.List()
-		if err != nil {
-			return g.modelNow(), err
-		}
+	desktop, err := g.opt.Client.List()
+	if err != nil {
+		return g.modelNow(), err
 	}
+	g.mapper.machines = g.machines()
 	m, err := g.mapper.build(raw, g.host, g.ownersNow(), desktop...)
 	if err != nil {
 		return g.modelNow(), err

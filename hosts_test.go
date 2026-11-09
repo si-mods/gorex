@@ -337,6 +337,16 @@ func TestRemoteHost(t *testing.T) {
 	}
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
 
+	// The machine the host says it is is kept, for the Rex API to name
+	// its panes by.
+	hello, err := remote.Hello()
+	if err != nil || hello.Machine == "" {
+		t.Fatalf("the host's hello names no machine: %+v, %v", hello, err)
+	}
+	waitFor(t, tt, "the host's machine to be kept", func() bool {
+		return rex.HostMachines(filepath.Dir(hostsPath()))["h1"] == hello.Machine
+	})
+
 	// A tab on the host, from the active local tab, goes last, under the
 	// host's name in the sidebar.
 	local := a.tab()

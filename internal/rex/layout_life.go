@@ -362,6 +362,28 @@ func hostLeaf(host, sid string) func(*layout.Node) bool {
 	return func(n *layout.Node) bool { return n.Host == host && n.SID == sid }
 }
 
+// HostMachines maps the app's hosts, by the ID the layout names each by
+// (layout.Node.Host), to the machine each is (Hello.Machine), from
+// hosts.json in dir, which the app keeps and others only read. A host the
+// app has not connected to since it kept machines is left out.
+func HostMachines(dir string) map[string]string {
+	var f struct {
+		Hosts []struct {
+			ID      string `json:"id"`
+			Machine string `json:"machine"`
+		} `json:"hosts"`
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "hosts.json"))
+	json.Unmarshal(b, &f)
+	out := map[string]string{}
+	for _, h := range f.Hosts {
+		if h.ID != "" && h.Machine != "" {
+			out[h.ID] = h.Machine
+		}
+	}
+	return out
+}
+
 // hostAt is the ID of the app's host of address addr, from hosts.json,
 // which the app keeps and the server only reads; an error code and its
 // message when it has none, or more than one.

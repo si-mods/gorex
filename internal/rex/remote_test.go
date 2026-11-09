@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"strings"
@@ -949,5 +950,37 @@ func TestRemoteControlGatesActions(t *testing.T) {
 	defer local.Kill(info.ID)
 	if _, err := c.Action(info.ID, "tab.rename", nil); err == nil || !strings.Contains(err.Error(), "not shared") {
 		t.Fatalf("action on a session the peer may not use: %v", err)
+	}
+}
+
+// TestMachineID checks that the machine's ID lasts, comes from its client
+// key, and tells nothing of the key.
+func TestMachineID(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
+	id := MachineID()
+	if len(id) != 32 || id != MachineID() {
+		t.Fatalf("machine id %q, then %q", id, MachineID())
+	}
+	key := ClientPublicKey()
+	if key == "" || strings.Contains(key, id) || strings.Contains(id, strings.TrimPrefix(key, "nodekey:")[:8]) {
+		t.Errorf("machine id %q and key %q", id, key)
+	}
+	t.Setenv("GOREX_DIR", t.TempDir())
+	if MachineID() == id {
+		t.Error("another machine has the same id")
+	}
+}
+
+// TestHostMachines checks that hosts.json's machines are read by host ID,
+// and that hosts without one are left out.
+func TestHostMachines(t *testing.T) {
+	dir := t.TempDir()
+	if got := HostMachines(dir); len(got) != 0 {
+		t.Errorf("no file: %v", got)
+	}
+	os.WriteFile(filepath.Join(dir, "hosts.json"), []byte(`{"hosts":[
+		{"id":"a","address":"secret","machine":"m-a"},{"id":"b","address":"secret"},{"machine":"m-c"}]}`), 0o600)
+	if got := HostMachines(dir); !reflect.DeepEqual(got, map[string]string{"a": "m-a"}) {
+		t.Errorf("machines: %v", got)
 	}
 }

@@ -5,6 +5,8 @@ package rex
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -972,6 +974,19 @@ func ClientPublicKey() string {
 		return ""
 	}
 	return k.Public().String()
+}
+
+// MachineID names this machine for good, whichever way an app reaches
+// it: a hash of its key as a remote client (ClientPublicKey), which the
+// machine keeps from the first time and no one renames. The hash tells
+// nothing of the key. "" when the key cannot be read nor made.
+func MachineID() string {
+	k := ClientPublicKey()
+	if k == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("gorex machine\x00" + k))
+	return hex.EncodeToString(sum[:16])
 }
 
 // ConnectRemote connects to the server at a tailcat address, as the

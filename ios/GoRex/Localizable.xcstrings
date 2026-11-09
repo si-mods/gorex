@@ -122,6 +122,16 @@
         }
       }
     },
+    "By Host": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按主机"
+          }
+        }
+      }
+    },
     "Camera Unavailable": {
       "localizations": {
         "zh-Hans": {
@@ -382,6 +392,26 @@
         }
       }
     },
+    "Desktop Spaces": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "桌面空间"
+          }
+        }
+      }
+    },
+    "Desktop Spaces lists a desktop's windows on your other hosts in its spaces, as the desktop groups them. Only hosts you added here and that are online show.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "「桌面空间」按桌面端的分组，把桌面上位于其他主机的窗口列在它所属的空间里。只显示你在这里添加且在线的主机。"
+          }
+        }
+      }
+    },
     "Device": {
       "localizations": {
         "zh-Hans": {
@@ -518,6 +548,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "字号"
+          }
+        }
+      }
+    },
+    "Grouping": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分组"
           }
         }
       }

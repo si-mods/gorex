@@ -95,11 +95,9 @@ listener's address instead, `http://<address>:7297`, for a device on the
 same network: the listener below is unchanged, and Rex can also add it
 by hand.
 
-A headless server can set `showDesktopSessions` to `true` in
-`rexapi/lan.json`. Rex then shows live sessions created by desktop
-Tailscale peers under **Desktop terminals** if they are absent from the
-server's desktop layout. Opening a terminal there attaches to the
-existing process.
+A session that a GoRex desktop made on this machine (one of its remote
+hosts' panes) and that no local tab shows is under **Desktop terminals**.
+Opening a terminal there attaches to the existing process.
 
 ## Built-in Tailscale
 
@@ -204,7 +202,8 @@ meets:
   host drops that pane, and the GoRex app ends its session on that host,
   as it ends one its user closes: at once, or once the app runs and the
   host is connected again.
-- Tabs and panes of remote hosts are left out.
+- Tabs and panes of remote hosts are left out of the views. GoRex's
+  own `GET /api/spaces` tells which they are (below).
 - Built-in Tailscale's sign-in link, `auth_url`, goes only to the local
   socket: whoever opens it first claims the device. Over the local
   network or the tailnet, `server.status`, `session.bootstrap`'s
@@ -216,6 +215,37 @@ meets:
   that asks for the terminal blocks gets a ticket for each one, and opens
   its terminals without a `data.connect` round trip each. Only terminals
   have tickets, since every GoRex block is a terminal.
+
+## Spaces across hosts
+
+A GoRex space may hold panes of this machine and of remote hosts. Each
+host's gateway shows its own terminals only, and Rex Go connects to each
+host apart. To show the desktop's spaces as they are, the gateway tells
+its own clients, at `GET /api/spaces`, which panes of other hosts each
+space holds, named as those hosts' own gateways name them:
+
+```json
+{"machine_id": "9c63…", "sessions": [{"session_id": "session:…", "revision": 4,
+  "remote_blocks": [{"machine": "f4b7…", "block_id": "block:…"}]}]}
+```
+
+- `machine_id` is a machine's lasting ID: a hash of its GoRex client key,
+  the same whichever address reaches it, and no user-editable name. The
+  desktop learns each host's from the host's hello, and keeps it in
+  `hosts.json` as `machine`.
+- A client shows a remote block only through its own connection to that
+  machine's gateway, which it was let into there. The answer holds no
+  address, key nor name of a host, and opens nothing: a block of a
+  machine the client does not reach is of no use to it.
+- The welcome lists the feature `gorex.spaces` when the gateway serves
+  it. Rex's views are unchanged, but a change of a space's remote blocks
+  is a new revision of its session, so a client reads them again on
+  `session_view_changed`.
+
+Rex Go groups windows by these spaces by default (Settings › Grouping):
+a desktop's space lists its windows on other hosts too, which leave
+their own host's list. Those of a host it has not added, or that is
+offline, are left out.
 
 ## Troubleshooting
 

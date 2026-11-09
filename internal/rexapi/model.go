@@ -42,6 +42,8 @@ type mSession struct {
 	revision uint64
 	// space is the GoRex workspace the session is.
 	space string
+	// remote are the space's panes of other hosts, in layout order.
+	remote []remoteBlock
 	// sig names everything the session's view shows, so that a later
 	// build can tell whether the view changed.
 	sig string
@@ -186,6 +188,9 @@ type mapper struct {
 	// session by ID.
 	revs map[string]uint64
 	sigs map[string]string
+	// machines are the machines of the app's remote hosts, by the host
+	// ID a pane names (rex.HostMachines).
+	machines map[string]string
 }
 
 func newMapper() *mapper {
@@ -221,8 +226,21 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 			s.label = "Session " + shortID(s.id)
 		}
 		perTab := make([]string, len(ws.Tabs))
+		seen := map[remoteBlock]bool{}
 		for ti := range ws.Tabs {
 			tab := &ws.Tabs[ti]
+			for _, r := range tab.Roots() {
+				for _, n := range leavesOf(r) {
+					machine := mp.machines[n.Host]
+					if n.Host == "" || machine == "" || n.SID == "" || n.Unavailable {
+						continue
+					}
+					if rb := (remoteBlock{Machine: machine, BlockID: blockID(n.SID)}); !seen[rb] {
+						seen[rb] = true
+						s.remote = append(s.remote, rb)
+					}
+				}
+			}
 			if tab.Root == nil {
 				continue
 			}
@@ -301,7 +319,10 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 			s.active = s.windows[0].id
 		}
 		v := s.view(host)
-		s.sig = viewSignature(v)
+		// The space's panes of other hosts are no part of the view, but a
+		// change of them is a new revision too: a client that shows them
+		// (/api/spaces) reads them again as the view changes.
+		s.sig = viewSignature(v) + remoteSignature(s.remote)
 		if old, ok := mp.sigs[s.id]; ok && old == s.sig {
 			s.revision = mp.revs[s.id]
 		} else if ok {
@@ -322,8 +343,11 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 	return m, nil
 }
 
-// desktopWorkspace projects live desktop-created sessions that have no
-// local tab. It only changes the Rex view, never the saved GoRex layout.
+// desktopWorkspace projects the live sessions that a desktop made here
+// (a remote client: its tailcat key or a system Tailscale peer) and that
+// have no local tab, so that a client can open them, as one of the
+// desktop's spaces too (remoteBlock). It only changes the Rex view, never
+// the saved GoRex layout.
 func desktopWorkspace(spaces []layout.Workspace, sessions []rex.SessionInfo) layout.Workspace {
 	ws := layout.Workspace{ID: "gorex-desktop-terminals", Name: "Desktop terminals"}
 	if len(sessions) == 0 {
@@ -349,7 +373,7 @@ func desktopWorkspace(spaces []layout.Workspace, sessions []rex.SessionInfo) lay
 		}
 	}
 	for _, s := range sessions {
-		if s.ID == "" || s.Exited || placed[s.ID] || !rex.IsTailnetTarget(s.Owner) {
+		if s.ID == "" || s.Exited || placed[s.ID] || s.Owner == "" {
 			continue
 		}
 		placed[s.ID] = true

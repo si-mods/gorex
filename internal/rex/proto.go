@@ -703,6 +703,9 @@ type Hello struct {
 	PID     int       `json:"pid"`
 	Started time.Time `json:"started"`
 	Host    HostInfo  `json:"host"`
+	// Machine names the server's machine for good (MachineID), "" from a
+	// server before it.
+	Machine string `json:"machine,omitempty"`
 	// Exe is the server's executable, and ExeTime when it was modified
 	// last as the server started: the app compares them with its own, to
 	// upgrade a server of an older build.

@@ -134,6 +134,11 @@ final class Host: Identifiable {
     /// The done and error records the user saw, by block, as their keys
     /// (Inbox.swift).
     private(set) var seen: [String: Set<String>] = [:]
+    /// The machine the host is, and the panes of other hosts in each of
+    /// its sessions' spaces, by session, as /api/spaces tells (Spaces);
+    /// nil and none from a server that doesn't.
+    private(set) var machine: String?
+    private(set) var remote: [String: [Spaces.Member]] = [:]
     private(set) var control: ControlConnection?
 
     @ObservationIgnored private var gate = EventGate()
@@ -145,6 +150,8 @@ final class Host: Identifiable {
     @ObservationIgnored private var reread: Set<String> = []
     @ObservationIgnored private var wanted: [String: Int] = [:]
     @ObservationIgnored private var stopped = false
+    @ObservationIgnored private var readingSpaces = false
+    @ObservationIgnored private var spacesAgain = false
 
     init(_ config: HostConfig) {
         self.config = config
@@ -224,6 +231,46 @@ final class Host: Identifiable {
         }
         for e in gate.open(at: seq) { apply(e) }
         for s in sessions where s.view == nil { attach(s.id) }
+        readSpaces()
+    }
+
+    /// Reads the host's spaces again; one read at a time, repeated when
+    /// asked again meanwhile, as a session's view changed.
+    private func readSpaces() {
+        guard let c = control, c.features.contains(Spaces.feature) else {
+            take(nil)
+            return
+        }
+        guard !readingSpaces else {
+            spacesAgain = true
+            return
+        }
+        readingSpaces = true
+        Task {
+            defer { readingSpaces = false }
+            repeat {
+                spacesAgain = false
+                // A read that fails keeps what was read before.
+                if let a = try? await Spaces.read(from: config.url), c === control { take(a) }
+            } while spacesAgain && c === control
+        }
+    }
+
+    /// Keeps what /api/spaces answered; nil for a server that doesn't.
+    func take(_ a: Spaces.Answer?) {
+        let m = a.flatMap { $0.machine_id.isEmpty ? nil : $0.machine_id }
+        let r = Dictionary((a?.sessions ?? []).map { ($0.session_id, $0.remote_blocks) }) { first, _ in first }
+        if machine != m { machine = m }
+        if remote != r { remote = r }
+    }
+
+    /// The host as grouping by the desktop's spaces reads it; nil while
+    /// offline, when the list shows none of its sessions.
+    var crossHost: CrossHost.Source? {
+        if case .offline = status { return nil }
+        return CrossHost.Source(host: id, machine: machine, sessions: sessions.map {
+            .init(id: $0.id, view: $0.view, remote: remote[$0.id] ?? [])
+        })
     }
 
     private func attach(_ id: String) {
@@ -241,6 +288,7 @@ final class Host: Identifiable {
                !sessions.contains(where: { $0.id == id }) {
                 sessions.append(Session(id: id, label: s["label"] as? String ?? ""))
                 attach(id)
+                readSpaces()
             }
         case "session_destroyed":
             let id = e.payload["session_id"] as? String ?? e.sessionID
@@ -254,6 +302,7 @@ final class Host: Identifiable {
             if let id = e.sessionID, let rev = e.payload["revision"] as? Int, rev > revision(id) {
                 wanted[id] = max(wanted[id] ?? 0, rev)
                 refresh(id)
+                readSpaces()
             }
         case "block_event":
             guard let block = e.payload["block_id"] as? String, let p = e.payload["payload"] as? [String: Any] else { return }

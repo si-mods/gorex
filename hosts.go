@@ -38,6 +38,10 @@ type savedHost struct {
 	// and goes with that directory, not by hand.
 	Network       bool `json:"network,omitempty"`
 	TailnetOpened bool `json:"tailnetOpened,omitempty"`
+	// Machine is the machine the host is (rex.Hello.Machine), as it said
+	// when it last connected: the Rex API names the host's panes by it,
+	// for a phone that connects to that machine too.
+	Machine string `json:"machine,omitempty"`
 	// Kills are the sessions closed here while the host was away, to end
 	// there once connected again, though GoRex quit meanwhile.
 	Kills []string `json:"kills,omitempty"`
@@ -454,7 +458,18 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			h.setClient(c)
 			h.mu.Unlock()
 			logged.log(name, nil)
-			update(func() { h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil })
+			update(func() {
+				h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil
+				h.mu.Lock()
+				learned := hello.Machine != "" && hello.Machine != h.Machine
+				if learned {
+					h.Machine = hello.Machine
+				}
+				h.mu.Unlock()
+				if learned && h.persist != nil {
+					h.persist()
+				}
+			})
 			since := time.Now()
 			h.runKills(c)
 			a.watchHost(h, c, update)
