@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -31,8 +32,11 @@ import (
 
 // savedHost is a remote host as hosts.json keeps it.
 type savedHost struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Alias is the name the user gave the host here, "" for none: the
+	// directory and the tailnet set Name, never this.
+	Alias   string `json:"alias,omitempty"`
 	Address string `json:"address"`
 	// Network marks a host the coordinator's directory made: it comes
 	// and goes with that directory, not by hand.
@@ -46,6 +50,9 @@ type savedHost struct {
 	// there once connected again, though GoRex quit meanwhile.
 	Kills []string `json:"kills,omitempty"`
 }
+
+// label is the name the host shows by: its alias, else its name.
+func (s savedHost) label() string { return cmp.Or(s.Alias, s.Name) }
 
 func hostsPath() string { return filepath.Join(rex.Dir(), "hosts.json") }
 
@@ -464,7 +471,7 @@ func (a *App) startHost(h *hostConn) {
 // greets and drops is not dialed in a loop.
 func (a *App) runHost(h *hostConn, update func(func())) {
 	h.mu.Lock()
-	name := h.Name
+	name := h.label()
 	h.mu.Unlock()
 	attempt := 0
 	var logged failureLog
@@ -1233,13 +1240,16 @@ func networkHostID(publicKey string) string { return "net:" + publicKey }
 func (a *App) reconcileNetwork(n *rex.NetworkStatus) {
 	for _, m := range n.Members {
 		id := networkHostID(m.PublicKey)
+		alias := ""
 		if h := a.hostByID(id); h != nil {
 			if h.Address == m.Address && h.Name == m.Name {
 				continue
 			}
 			if h.Address != m.Address {
 				// A member that regenerated its address: a fresh
-				// connection, so remove and add again below.
+				// connection, so remove and add again below, with
+				// the alias it was given.
+				alias = h.Alias
 				a.removeHost(h)
 			} else {
 				h.Name = m.Name
@@ -1247,7 +1257,7 @@ func (a *App) reconcileNetwork(n *rex.NetworkStatus) {
 				continue
 			}
 		}
-		a.addHost(savedHost{ID: id, Name: m.Name, Address: m.Address, Network: true})
+		a.addHost(savedHost{ID: id, Name: m.Name, Alias: alias, Address: m.Address, Network: true})
 	}
 	for _, h := range slices.Clone(a.hosts) {
 		if !h.Network {
@@ -1359,7 +1369,7 @@ func (a *App) hostName(h *hostConn) string {
 	if h == nil {
 		return thisMachine()
 	}
-	return h.Name
+	return h.label()
 }
 
 // hostKey names a host where the app keeps something of it: its id, or

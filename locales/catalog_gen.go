@@ -4562,6 +4562,22 @@ func (msgs Messages) HostsRemove() string {
 	return Catalog.Format(msgs.locale, "hostsRemove", nil)
 }
 
+// HostsRename says "Rename"
+// in the language the app shows.
+//
+// Button: edit the name a remote host shows by in this app (its alias). An
+// empty name goes back to the host's own.
+func HostsRename() string { return In(i18n.Locale()).HostsRename() }
+
+// HostsRename says "Rename"
+// in the language of msgs.
+//
+// Button: edit the name a remote host shows by in this app (its alias). An
+// empty name goes back to the host's own.
+func (msgs Messages) HostsRename() string {
+	return Catalog.Format(msgs.locale, "hostsRename", nil)
+}
+
 // HostsRemoveAsk says "Remove {host}? Its sessions keep running on the remote server; this window closes their tabs."
 // in the language the app shows.
 //

@@ -325,6 +325,7 @@
   "hostsFingerprint": "指纹",
   "hostsRetry": "重试",
   "hostsRemove": "移除",
+  "hostsRename": "重命名",
   "hostsRemoveAsk": "移除 {host}？其会话会继续在远程服务器上运行；此窗口会关闭它们的标签页。",
   "hostsNotConnectedTo": "未连接到 {host}。",
   "hostsManage": "远程主机…",

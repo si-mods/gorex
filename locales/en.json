@@ -1475,6 +1475,10 @@
   "@hostsRemove": {
     "description": "Button: forget a remote host."
   },
+  "hostsRename": "Rename",
+  "@hostsRename": {
+    "description": "Button: edit the name a remote host shows by in this app (its alias). An empty name goes back to the host's own."
+  },
   "hostsRemoveAsk": "Remove {host}? Its sessions keep running on the remote server; this window closes their tabs.",
   "@hostsRemoveAsk": {
     "description": "Asks before removing a host.",

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -196,7 +197,7 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 	{
 		var manual, network []savedHost
 		for _, h := range f.Hosts {
-			if h.ID == "" || h.Address == "" || !strings.EqualFold(h.Name, serverTarget) {
+			if h.ID == "" || h.Address == "" || !strings.EqualFold(h.Name, serverTarget) && !strings.EqualFold(h.Alias, serverTarget) {
 				continue
 			}
 			if h.Network || rex.IsTailnetTarget(h.Address) {
@@ -727,9 +728,13 @@ func (c *nopConn) Close() error {
 type savedHost struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
+	Alias   string `json:"alias,omitempty"`
 	Address string `json:"address"`
 	Network bool   `json:"network,omitempty"`
 }
+
+// label is the name the host shows by: its alias, else its name.
+func (h savedHost) label() string { return cmp.Or(h.Alias, h.Name) }
 
 type hostsFile struct {
 	Hosts []savedHost `json:"hosts"`
@@ -767,7 +772,7 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 		shownHosts := make([]shown, 0, len(hosts))
 		for _, h := range hosts {
-			shownHosts = append(shownHosts, shown{ID: h.ID, Name: h.Name, Network: h.Network})
+			shownHosts = append(shownHosts, shown{ID: h.ID, Name: h.label(), Network: h.Network})
 		}
 		WriteJSON(out, shownHosts)
 		return ExitOK, true
@@ -775,7 +780,7 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	fmt.Fprintln(tw, "NAME\tNETWORK\tID")
 	for _, h := range hosts {
-		fmt.Fprintf(tw, "%s\t%v\t%s\n", printable(h.Name), h.Network, h.ID)
+		fmt.Fprintf(tw, "%s\t%v\t%s\n", printable(h.label()), h.Network, h.ID)
 	}
 	tw.Flush()
 	return ExitOK, true

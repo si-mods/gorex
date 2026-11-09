@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
@@ -31,6 +32,9 @@ var hostsUI struct {
 	fingerprint           string             // this machine's, while the host is asked to approve it
 	cancel                context.CancelFunc // stops the attempt under way
 	removing              string             // the id of the host Remove asks about
+	renaming              string             // the id of the host whose alias is edited
+	alias                 string             // the alias as it is typed
+	aliasFocus            bool               // the alias field had the focus
 	layoutOpen            bool
 	layoutHost            *hostConn
 	layout                savedStore
@@ -114,7 +118,7 @@ func validateHost(address, name, pairAs string, hosts []*hostConn) string {
 		}
 	}
 	for _, h := range hosts {
-		if strings.EqualFold(h.Name, name) {
+		if strings.EqualFold(h.label(), name) {
 			return locales.HostsNameTaken()
 		}
 	}
@@ -287,7 +291,11 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			glyphIcon(c, "server", 18, k.textMuted).Shrink(0)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-				ui.Text(c, h.Name).FontSize(13).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
+				if page.renaming == h.ID {
+					a.hostAliasField(c, k, h)
+				} else {
+					ui.Text(c, h.label()).FontSize(13).FontWeight(600).TextColor(k.text).SingleLine().Ellipsis("…")
+				}
 				ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 					ui.Box(c).Size(7, 7).Radius(4).Background(hostDot(k, h)).Shrink(0)
 					ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(k.textMuted)
@@ -311,6 +319,9 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 			} else if !tailnet && !up && ui.Button(c.Key("retry"), locales.HostsRetry()).Clicked() {
 				h.poke()
 			}
+			if ui.Button(c.Key("rename"), locales.HostsRename()).Disabled(page.renaming == h.ID).Clicked() {
+				page.renaming, page.alias, page.aliasFocus = h.ID, h.label(), false
+			}
 			// A host of the network comes back with its next
 			// directory; removing it here would only make it return.
 			if !h.Network && !tailnet && ui.Button(c.Key("remove"), locales.HostsRemove()).Disabled(page.removing == h.ID).Clicked() {
@@ -322,7 +333,7 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 			return
 		}
 		ui.Column(c).Gap(8).Padding(8, 10).Radius(10).Background(k.hover).Children(func() {
-			ui.Text(c, locales.HostsRemoveAsk(h.Name)).FontSize(12).TextColor(k.text).LineHeight(1.4)
+			ui.Text(c, locales.HostsRemoveAsk(h.label())).FontSize(12).TextColor(k.text).LineHeight(1.4)
 			ui.Row(c).Gap(8).Children(func() {
 				if ui.Button(c.Key("remove-yes"), locales.HostsRemove()).Clicked() {
 					page.removing = ""
@@ -334,6 +345,49 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 			})
 		})
 	})
+}
+
+// hostAliasField edits the name h shows by here, as tabs are renamed:
+// Enter or moving the focus away keeps it, Escape goes back, and an empty
+// alias, or the host's own name, shows that name again.
+func (a *App) hostAliasField(c *ui.Context, k *colors, h *hostConn) {
+	page := &hostsUI
+	in := textField(c, k, &page.alias, fieldCompact).Placeholder(h.Name).WidthPercent(100).AutoFocus()
+	done := func(keep bool) {
+		if keep {
+			a.setHostAlias(h, page.alias)
+		}
+		page.renaming, page.aliasFocus = "", false
+	}
+	switch {
+	case in.Shortcut(0, ui.KeyEscape):
+		done(false)
+	case in.Submitted():
+		done(true)
+	case in.Focused():
+		if !page.aliasFocus {
+			in.SetTextSelection(0, utf8.RuneCountInString(page.alias))
+		}
+		page.aliasFocus = true
+	case page.aliasFocus:
+		done(true) // the focus went elsewhere
+	}
+}
+
+// setHostAlias gives h the alias it shows by in every window; its
+// connection and its terminals stay.
+func (a *App) setHostAlias(h *hostConn, alias string) {
+	alias = strings.TrimSpace(alias)
+	h.mu.Lock()
+	if alias == h.Name {
+		alias = ""
+	}
+	h.Alias = alias
+	h.mu.Unlock()
+	a.saveHosts()
+	if a.st != nil {
+		a.st.redraw()
+	}
 }
 
 // openHostLayout shows h's layout read-only.
@@ -390,7 +444,7 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, locales.HostsLayoutTitle()).FontSize(15).FontWeight(700).TextColor(k.text)
 			if page.layoutHost != nil {
-				ui.Text(c, page.layoutHost.Name).FontSize(12.5).TextColor(k.textFaint)
+				ui.Text(c, page.layoutHost.label()).FontSize(12.5).TextColor(k.textFaint)
 			}
 			ui.Spacer(c)
 			if page.layoutHost != nil && ui.Button(c, locales.HostsLayoutNewTab()).Clicked() {
