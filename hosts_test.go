@@ -1426,6 +1426,15 @@ func TestReconcileNetwork(t *testing.T) {
 		t.Fatalf("hosts.json: %+v, %v", saved, err)
 	}
 
+	// A member at a new address is a new host: the machine its old
+	// address said is not kept.
+	a.hosts[0].learnMachine("m-old")
+	bob.Address += "-moved"
+	a.reconcileNetwork(&rex.NetworkStatus{Members: []rex.NetworkMember{bob}})
+	if len(a.hosts) != 1 || a.hosts[0].Address != bob.Address || a.hosts[0].saved().Machine != "" {
+		t.Fatalf("the moved member: %+v", a.hosts)
+	}
+
 	// A renamed member keeps its host; a new one adds; one gone goes.
 	bob.Name = "bobby"
 	a.reconcileNetwork(&rex.NetworkStatus{Members: []rex.NetworkMember{bob}})
@@ -1542,5 +1551,20 @@ func TestTakeKillsOnce(t *testing.T) {
 	st.takeKills(a)
 	if len(acks()) != 0 || !slices.Contains(h.saved().Kills, "s1") {
 		t.Errorf("told %+v, host keeps %v", acks(), h.saved().Kills)
+	}
+}
+
+// TestLearnMachine checks that a host keeps the machine its last hello
+// named, and none after a hello that names none.
+func TestLearnMachine(t *testing.T) {
+	h := newHostConn(savedHost{ID: "h", Address: "a"})
+	if !h.learnMachine("m1") || h.saved().Machine != "m1" {
+		t.Fatalf("learned %q", h.saved().Machine)
+	}
+	if h.learnMachine("m1") {
+		t.Error("the same machine changed it")
+	}
+	if !h.learnMachine("") || h.saved().Machine != "" {
+		t.Errorf("a hello with no machine kept %q", h.saved().Machine)
 	}
 }

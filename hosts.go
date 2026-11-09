@@ -251,6 +251,19 @@ func (h *hostConn) next(ctx context.Context, c *rex.Client, d time.Duration) *re
 	}
 }
 
+// learnMachine keeps the machine the host's hello named, none from a
+// server before machines, and tells whether it changed. A host whose
+// address changes is a new savedHost, with no machine until it connects.
+func (h *hostConn) learnMachine(machine string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.Machine == machine {
+		return false
+	}
+	h.Machine = machine
+	return true
+}
+
 // saved returns the host as hosts.json keeps it.
 func (h *hostConn) saved() savedHost {
 	h.mu.Lock()
@@ -460,13 +473,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			logged.log(name, nil)
 			update(func() {
 				h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil
-				h.mu.Lock()
-				learned := hello.Machine != "" && hello.Machine != h.Machine
-				if learned {
-					h.Machine = hello.Machine
-				}
-				h.mu.Unlock()
-				if learned && h.persist != nil {
+				if h.learnMachine(hello.Machine) && h.persist != nil {
 					h.persist()
 				}
 			})

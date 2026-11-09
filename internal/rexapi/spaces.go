@@ -5,6 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
+	"time"
+
+	"gorex/internal/rex"
 )
 
 // Spaces across hosts: a GoRex space may hold panes of this machine and
@@ -79,4 +84,26 @@ func remoteSignature(rbs []remoteBlock) string {
 	b, _ := json.Marshal(rbs)
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// hostMachines is rex.HostMachines of dir, read again only when
+// hosts.json's modification time or size changed. One goroutine uses it
+// at a time, under the gateway's refresh lock.
+type hostMachines struct {
+	dir  string
+	read bool
+	mod  time.Time
+	size int64
+	m    map[string]string
+}
+
+func (h *hostMachines) get() map[string]string {
+	mod, size := time.Time{}, int64(-1)
+	if fi, err := os.Stat(filepath.Join(h.dir, "hosts.json")); err == nil {
+		mod, size = fi.ModTime(), fi.Size()
+	}
+	if !h.read || !mod.Equal(h.mod) || size != h.size {
+		h.read, h.mod, h.size, h.m = true, mod, size, rex.HostMachines(h.dir)
+	}
+	return h.m
 }

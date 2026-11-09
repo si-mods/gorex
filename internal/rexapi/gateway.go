@@ -82,8 +82,10 @@ type Gateway struct {
 	host    string
 	user    string
 	// machines reads the machines of the app's remote hosts, by host ID
-	// (rex.HostMachines); tests replace it.
+	// (rex.HostMachines); tests replace it. refresh calls it, and keeps
+	// desktop, the last sessions listed, under refreshMu.
 	machines   func() map[string]string
+	desktop    []rex.SessionInfo
 	instanceID string
 	// helloWait is how long a connection may take to send its hello;
 	// tests shorten it on a gateway of their own.
@@ -171,7 +173,7 @@ func New(opt Options) (*Gateway, error) {
 		started:        time.Now(),
 		hello:          hello,
 		host:           hostID(name, hello.Host.User),
-		machines:       func() map[string]string { return rex.HostMachines(rex.Dir()) },
+		machines:       (&hostMachines{dir: rex.Dir()}).get,
 		user:           currentUser(),
 		instanceID:     randomUUID(),
 		helloWait:      helloWait,
@@ -309,12 +311,15 @@ func (g *Gateway) refresh() (*model, error) {
 	if err != nil {
 		return g.modelNow(), err
 	}
-	desktop, err := g.opt.Client.List()
-	if err != nil {
-		return g.modelNow(), err
+	// The sessions only add the desktop's terminals: a list that fails
+	// keeps the last one, and the layout's model still changes.
+	if desktop, err := g.opt.Client.List(); err == nil {
+		g.desktop = desktop
+	} else {
+		tracef("listing the sessions: %v", err)
 	}
 	g.mapper.machines = g.machines()
-	m, err := g.mapper.build(raw, g.host, g.ownersNow(), desktop...)
+	m, err := g.mapper.build(raw, g.host, g.ownersNow(), g.desktop...)
 	if err != nil {
 		return g.modelNow(), err
 	}

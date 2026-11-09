@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
@@ -201,5 +202,39 @@ func TestSpacesEndpointRefused(t *testing.T) {
 	f.g.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/spaces", nil))
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("status %d", rec.Code)
+	}
+}
+
+// TestHostMachinesCached checks that hosts.json is read again only once
+// its modification time or size changed.
+func TestHostMachinesCached(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts.json")
+	h := &hostMachines{dir: dir}
+	if got := h.get(); len(got) != 0 {
+		t.Fatalf("no file: %v", got)
+	}
+	write := func(machine string, at time.Time) {
+		t.Helper()
+		os.WriteFile(path, []byte(`{"hosts":[{"id":"h1","machine":"`+machine+`"}]}`), 0o600)
+		os.Chtimes(path, at, at)
+	}
+	at := time.Now().Add(-time.Hour).Truncate(time.Second)
+	write("m-one", at)
+	if got := h.get()["h1"]; got != "m-one" {
+		t.Fatalf("first read: %q", got)
+	}
+	// The same time and size: the map read before.
+	write("m-two", at)
+	if got := h.get()["h1"]; got != "m-one" {
+		t.Errorf("read again though unchanged: %q", got)
+	}
+	write("m-two", at.Add(time.Second))
+	if got := h.get()["h1"]; got != "m-two" {
+		t.Errorf("not read again after a change: %q", got)
+	}
+	os.Remove(path)
+	if got := h.get(); len(got) != 0 {
+		t.Errorf("after removal: %v", got)
 	}
 }
