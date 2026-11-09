@@ -375,3 +375,80 @@ func TestNeedSection(t *testing.T) {
 		t.Error("sections misnamed")
 	}
 }
+
+// TestNeedsHiddenRemote: a session of a host's in a space no window shows
+// needs the user by the host's last list. It counts on the badge and in
+// the Needs You palette, under its host and space, but not once seen nor
+// while the host is not connected; going there shows the space and
+// focuses its pane, which then counts once.
+func TestNeedsHiddenRemote(t *testing.T) {
+	a, tt := newTestApp(t)
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	prefs = settings{}
+	h := newHostConn(savedHost{ID: "h1", Name: "mini", Address: "10.0.0.9:7297"})
+	h.state = hostConnected
+	a.hosts = []*hostConn{h}
+	a.st.hosts = a.hosts // as syncHosts shares them
+	w := a.st.addWorkspace()
+	w.Name = "icy-ridge"
+	// Another session of the host's is the one it shows first.
+	w.layout = savedLayout{Tabs: []savedTab{{ID: "r0-tab", Root: &savedNode{SID: "r0", Host: "h1"}}, {ID: "r1-tab", Root: &savedNode{SID: "r1", Host: "h1"}}}}
+	list := func(s rex.ProgramStatus) {
+		h.infos = map[string]rex.SessionInfo{"r1": {ID: "r1", Statuses: []rex.ProgramStatus{s}}}
+	}
+	badge := func() int64 {
+		a.syncBadge()
+		return testBadge.Load()
+	}
+	asks := rex.ProgramStatus{ID: "a", State: "blocked", Kind: "question", Msg: "Allow edit?", Updated: time.Now()}
+	list(asks)
+	if n := badge(); n != 1 {
+		t.Fatalf("the badge counts %d, want the host's session", n)
+	}
+
+	// Not connected, its list is old.
+	h.state = hostFailed
+	if n := badge(); n != 0 {
+		t.Errorf("the badge counts %d with the host away", n)
+	}
+	h.state = hostConnected
+
+	// A done record seen counts no more.
+	done := rex.ProgramStatus{ID: "a", State: "done", Updated: time.Now()}
+	list(done)
+	if n := badge(); n != 1 {
+		t.Fatalf("the badge counts %d for an unseen done record", n)
+	}
+	a.st.recordSeen("r1", done.Updated.Add(time.Second))
+	if n := badge(); n != 0 {
+		t.Errorf("the badge counts %d for a seen done record", n)
+	}
+
+	list(asks)
+	cmdNeeds.Run(a)
+	tt.Frame()
+	row := -1
+	for i, it := range a.paletteItems() {
+		if it.detail == "Allow edit?" {
+			row = i
+			if it.aside != "mini · icy-ridge" {
+				t.Errorf("the row is aside %q, want its host and space", it.aside)
+			}
+		}
+	}
+	if row < 0 {
+		t.Fatalf("the palette does not list the host's session; texts %q", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	p := a.tab().Focus
+	if a.ws != w || p == nil || p.SID != "r1" || p.host != h {
+		t.Fatalf("the row went to space %q, pane %+v", a.ws.Name, p)
+	}
+	// Shown, the session counts from its pane, once.
+	p.info = h.infos["r1"]
+	if n := badge(); n != 1 {
+		t.Errorf("the badge counts %d once the space shows", n)
+	}
+}

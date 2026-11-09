@@ -36,20 +36,16 @@ type needy struct {
 	app  *App
 	tab  *Tab
 	pane *Pane
-	// ws and sid stand for a local session of a space no window shows; it
-	// has no pane till a window shows the space.
-	ws  *Workspace
-	sid string
+	// ws and sid stand for a session of a space no window shows, of host,
+	// nil for this machine; it has no pane till a window shows the space.
+	ws   *Workspace
+	sid  string
+	host *hostConn
 	// rank is how much it needs the user, and ord its place among all the
 	// panes, which holds while the windows come forward: by window place,
 	// tab and pane.
 	rank, ord int
 }
-
-// visitLocalSIDs calls fn with the sessions of this machine in the layout
-// of a space no window shows. Those of a host are left out: their ids are
-// the host's own, and this machine's list knows nothing of them.
-func (st *store) visitLocalSIDs(w *Workspace, fn func(sid string)) { st.visitSIDs(w, "", fn) }
 
 // visitSIDs calls fn with the sessions of the host of id host, "" for this
 // machine, in the layout of a space no window shows.
@@ -72,19 +68,25 @@ func (st *store) visitSIDs(w *Workspace, host string, fn func(sid string)) {
 	}
 }
 
-// hiddenNeeds calls fn for each local session of the spaces no window
-// shows that needs the user, by its last status. Their attention is not
-// known, and a host's sessions there are not counted.
-func (st *store) hiddenNeeds(fn func(w *Workspace, sid string, rank int)) {
+// hiddenNeeds calls fn for each session of the spaces no window shows
+// that needs the user, by its last status: this machine's, nil, and the
+// connected hosts'. Their attention is not known.
+func (st *store) hiddenNeeds(fn func(w *Workspace, h *hostConn, sid string, rank int)) {
 	for _, w := range st.workspaces {
 		if w.app != nil {
 			continue
 		}
-		st.visitLocalSIDs(w, func(sid string) {
-			if s := rex.MostUrgent(st.infos[sid].Statuses, st.seen[sid]); needsUser(s) {
-				fn(w, sid, rex.StatusRank(s.State))
+		for _, h := range append([]*hostConn{nil}, st.hosts...) {
+			infos, id, ok := st.listOf(h)
+			if !ok {
+				continue
 			}
-		})
+			st.visitSIDs(w, id, func(sid string) {
+				if s := rex.MostUrgent(infos[sid].Statuses, st.seen[sid]); needsUser(s) {
+					fn(w, h, sid, rex.StatusRank(s.State))
+				}
+			})
+		}
 	}
 }
 
@@ -100,7 +102,7 @@ func (st *store) needCount() int {
 			}
 		}
 	}
-	st.hiddenNeeds(func(*Workspace, string, int) { n++ })
+	st.hiddenNeeds(func(*Workspace, *hostConn, string, int) { n++ })
 	return n
 }
 
@@ -127,8 +129,8 @@ func (a *App) needing(mark *Pane) (out []needy, ord int) {
 		}
 	}
 	if a.st != nil {
-		a.st.hiddenNeeds(func(w *Workspace, sid string, rank int) {
-			out = append(out, needy{ws: w, sid: sid, rank: rank, ord: n})
+		a.st.hiddenNeeds(func(w *Workspace, h *hostConn, sid string, rank int) {
+			out = append(out, needy{ws: w, sid: sid, host: h, rank: rank, ord: n})
 			n++
 		})
 	}
@@ -192,7 +194,7 @@ func (a *App) focusNeedy(n needy) *Pane {
 		a.showWorkspace(n.ws)
 		for _, t := range a.tabs {
 			for _, p := range t.allPanes() {
-				if p.SID == n.sid && p.host == nil {
+				if p.SID == n.sid && p.host == n.host {
 					n.app, n.tab, n.pane = a, t, p
 				}
 			}
@@ -288,9 +290,13 @@ func (a *App) needItem(n needy) (it paletteItem, dir string) {
 	p, id := n.pane, any(n.pane)
 	if p == nil {
 		// A session of a space no window shows has no pane: it is named
-		// as its pane would be, from what this machine knows of it.
-		p, id = &Pane{info: a.st.infos[n.sid]}, n.sid
+		// as its pane would be, from what its machine's list says of it.
+		infos, _, _ := a.st.listOf(n.host)
+		p, id = &Pane{info: infos[n.sid], host: n.host}, n.sid
 		p.seen = a.st.seen[n.sid]
+		if n.host != nil {
+			id = hostKey(n.host) + "/" + n.sid
+		}
 	}
 	name, dir := p.label()
 	s := p.status()
@@ -300,6 +306,8 @@ func (a *App) needItem(n needy) (it paletteItem, dir string) {
 	}
 	it = paletteItem{title: name, detail: detail, glyph: paneProgram(p).Glyph, status: s, id: id}
 	switch {
+	case p.host != nil && n.ws != nil:
+		it.aside = p.host.Name + " · " + n.ws.Name
 	case p.host != nil:
 		it.aside = p.host.Name
 	case n.ws != nil:

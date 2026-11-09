@@ -93,12 +93,9 @@ func (st *store) status(w *Workspace) *rex.ProgramStatus {
 // for this machine, in the layout of a workspace no window shows: from
 // the machine's last session list, none while a host is not connected.
 func (st *store) hiddenStatus(w *Workspace, h *hostConn) *rex.ProgramStatus {
-	infos, id := st.infos, ""
-	if h != nil {
-		if h.state != hostConnected {
-			return nil
-		}
-		infos, id = h.infos, h.ID
+	infos, id, ok := st.listOf(h)
+	if !ok {
+		return nil
 	}
 	var all []rex.ProgramStatus
 	st.visitSIDs(w, id, func(sid string) {
@@ -107,6 +104,19 @@ func (st *store) hiddenStatus(w *Workspace, h *hostConn) *rex.ProgramStatus {
 		}
 	})
 	return rex.MostUrgent(all, time.Time{})
+}
+
+// listOf is the last session list of host h, nil for this machine, and
+// the id the layouts name the host by; not ok while a host is not
+// connected, whose list is old.
+func (st *store) listOf(h *hostConn) (infos map[string]rex.SessionInfo, id string, ok bool) {
+	if h == nil {
+		return st.infos, "", true
+	}
+	if h.state != hostConnected {
+		return nil, "", false
+	}
+	return h.infos, h.ID, true
 }
 
 // statusOn is the most urgent status of the workspace's sessions on host
