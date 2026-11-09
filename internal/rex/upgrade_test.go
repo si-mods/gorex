@@ -471,3 +471,28 @@ func TestSpeaksProtocol(t *testing.T) {
 		}
 	}
 }
+
+// TestSpeaksProtocolOnce: a build is probed once, until its file changes.
+func TestSpeaksProtocolOnce(t *testing.T) {
+	probes := 0
+	defer func(p func(string) bool) { probeProtocol = p }(probeProtocol)
+	probeProtocol = func(string) bool { probes++; return true }
+	exe := filepath.Join(t.TempDir(), "GoRex.exe")
+	if err := os.WriteFile(exe, []byte("a"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for range 3 {
+		SpeaksProtocol(exe)
+	}
+	if probes != 1 {
+		t.Errorf("%d probes of the same build, want 1", probes)
+	}
+	later := time.Now().Add(time.Minute)
+	if err := os.Chtimes(exe, later, later); err != nil {
+		t.Fatal(err)
+	}
+	SpeaksProtocol(exe)
+	if probes != 2 {
+		t.Errorf("%d probes after an update, want 2", probes)
+	}
+}

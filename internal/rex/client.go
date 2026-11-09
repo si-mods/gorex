@@ -160,8 +160,28 @@ func executable(exe string) (string, time.Time) {
 // SpeaksProtocol reports whether the executable exe serves this build's
 // protocol, as it says with -server -protocol-version. A build of before
 // the flag tries to serve instead, fails as a server runs, and says
-// nothing: it does not.
+// nothing: it does not. The answer is kept for exe's path and time of
+// modification, so that a build is probed once.
 func SpeaksProtocol(exe string) bool {
+	path, at := executable(exe)
+	spoke.Lock()
+	defer spoke.Unlock()
+	if at.IsZero() || path != spoke.exe || !at.Equal(spoke.at) {
+		spoke.exe, spoke.at, spoke.ok = path, at, probeProtocol(path)
+	}
+	return spoke.ok
+}
+
+// spoke is the last answer of SpeaksProtocol.
+var spoke struct {
+	sync.Mutex
+	exe string
+	at  time.Time
+	ok  bool
+}
+
+// probeProtocol asks exe for its protocol. Replaced by tests.
+var probeProtocol = func(exe string) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, exe, "-server", "-protocol-version")
