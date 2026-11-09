@@ -65,9 +65,10 @@ From the Rex Beta bundle (build 1887):
 
 Not goals:
 
-- Windows. Its server cannot upgrade in place (`upgrade_windows.go`); a
-  restart there ends the programs in the panes. Windows keeps today's
-  flow.
+- Keeping the programs in the panes running through a server update on
+  Windows in the first phase. Its server cannot upgrade in place; see
+  [Windows](#windows) for what it gets, and for the later phase that keeps
+  them.
 - Shipping the server as a separate product or on its own release
   schedule.
 
@@ -165,11 +166,105 @@ current server and does not upgrade it again.
 
 ### 5. Windows and old servers
 
-- Windows: no change. The new app asks, then restarts the server.
+- Windows: see [Windows](#windows).
 - A server that cannot upgrade (`Hello.Upgrade` false): no change; the new
   app handles it at relaunch.
 - A server started from the app bundle by an older build: the first
   upgrade moves it to a versioned copy (step 1). No migration is needed.
+
+## Windows
+
+### What differs
+
+- **The server cannot upgrade in place.** A ConPTY console belongs to the
+  process that made it (`CreatePseudoConsole`). When the server exits, its
+  consoles close and the programs in the panes end. There is no `exec`
+  that keeps the process. So a server update on Windows is a restart:
+  the next server starts the layout's sessions again as new shells
+  (`CapabilityShutdownRestart`), and what they printed is lost.
+- **The new build is in place at once.** `Install` swaps the files in the
+  executable's directory (`swapFiles` in MyGo): the running `GoRex.exe`
+  is renamed to `.GoRex.exe.old-<pid>` and the new one takes its name.
+  Windows lets a running executable be renamed, so the app and the server
+  keep running the old image, and `GoRex.exe` is the new build while the
+  old app is still open. macOS needs a server copy for this (design step
+  1); Windows does not.
+- **The server already outlives the app.** The app starts it with
+  `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP`, and with
+  `CREATE_BREAKAWAY_FROM_JOB` when the app's job allows it
+  (`detached` in `server_windows.go`).
+
+Seen on pc024 on 2026-11-09: `Stop-Process` on the app ended the server
+too. That app was started by a one-shot `schtasks /IT` task. Task
+Scheduler runs a task in a job object, and if that job does not allow
+breakaway, the server stays in it and ends with the task. This is likely,
+not confirmed. An app started from Explorer or the Start menu is not in
+such a job.
+
+### Phase W1: keep the app, restart the server
+
+The app stays open; the server restarts on the new build. The programs in
+the panes end, as they do today, but the user no longer loses the windows
+and decides when the restart happens.
+
+1. After `Install`, the running app checks the new `GoRex.exe` (its time
+   is newer than the server's `ExeTime`) and the protocol (design step
+   3).
+2. The app asks as today (`ServerRestartAsk*`): restart the server now or
+   later. "Later" shows a quiet notice in the app, as Rex's "A newer
+   server is available", with a button to restart.
+3. On restart the app calls `Client.Restart`. `Connect` starts the new
+   server from `rex.Executable()`. Check that `os.Executable` on Windows
+   gives `GoRex.exe` and not the renamed `.old` file; if not, use the
+   updater's start path, as MyGo does (`startExe`).
+4. `store.watch` and `adopt` attach the windows to the new sessions. Each
+   pane shows its new shell at the directory it was in.
+5. Optional, as Rex's `AutomaticRestartPolicy`: restart without asking
+   when the server is idle. Idle here means every session's foreground
+   process is its shell (`proc_windows.go` can tell), no remote client is
+   attached, and no transfer runs. Then nothing the user runs is lost.
+
+The app relaunches into its new build as in design step 4. The relaunch
+must not take the server:
+
+- Confirm that a server started by an app from Explorer outlives an app
+  ended by `Stop-Process`, `taskkill /F` and a normal quit.
+- When the app's job does not allow breakaway (Task Scheduler, some
+  remote tools), start the server outside the job: through WMI
+  (`Win32_Process.Create`), whose processes are children of the WMI
+  service, not of the app. Or record that the server lives only as long
+  as such an app, and say so in the log.
+
+`cleanUpdateLeftovers` removes the `.old` files at the next start. While
+an old server still runs from its `.old` image, that file cannot be
+removed; the cleanup must skip it and try again later, not fail.
+
+### Phase W2: keep the programs (later)
+
+Keeping the programs needs a process that holds the consoles and never
+updates with the server:
+
+- A small **PTY host** (`GoRex.exe -ptyhost`) owns the ConPTYs, the
+  programs' processes and the pipes. It reads the output and writes the
+  input, and nothing else.
+- The server talks to it over a local named pipe, with a small, rarely
+  changing protocol: create, resize, write, read, close, list.
+- A server update replaces only the server. The new server reads
+  `handoff.json` for the screens, as the Unix upgrade does, and attaches
+  to the host's sessions. The programs keep running.
+- The host updates only when its own protocol changes, by a restart that
+  asks the user, as W1 does.
+- The host runs from a copy of its own (as design step 1), so an update
+  can rename the files under it.
+
+Not chosen: passing the ConPTY to the new server with `DuplicateHandle`.
+The pipes can be duplicated, but `HPCON` is an opaque value tied to the
+process that made it, and `ResizePseudoConsole` needs it. Moving it
+depends on undocumented internals of `conhost`.
+
+W2 costs much more than the macOS work: a second process, a second
+protocol, one more hop for every byte of output, and its own tests. Do it
+only if restarts on Windows turn out to hurt in practice.
 
 ## Order of work
 
@@ -178,6 +273,9 @@ current server and does not upgrade it again.
 3. `updater.OnInstalled` in MyGo, and the early server upgrade in GoRex,
    guarded by the protocol check.
 4. Automatic relaunch when hidden, in MyGo's updater plugin.
+5. Windows W1: the early restart from the running app, and a check that
+   the server outlives the app.
+6. Windows W2, only if needed.
 
 Steps 1 to 3 already give "the server updates, the app stays". Step 4
 only finishes the app's own update.
@@ -195,6 +293,11 @@ only finishes the app's own update.
   upgraded a second time.
 - Linux: `gorex update` already upgrades the server in place; add a test
   that a running app reconnects to it.
+- Windows (YIBO-PC or pc024, real desktop session, not Session 0): install
+  an update with the app open; check that the windows stay, the server
+  restarts on the new `GoRex.exe`, and the panes get new shells. End the
+  app with `Stop-Process` and check that the server keeps running, for an
+  app started from Explorer and one started by `schtasks`.
 
 ## Risks
 
