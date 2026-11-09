@@ -36,9 +36,7 @@ enum Ghostty {
 
     /// A config of Ghostty's lines over its defaults: a remote terminal's,
     /// whose keys all go to the program and whose pastes are not questioned,
-    /// with the desktop's minimum contrast (defaultMinContrast): text too
-    /// close to its background, colors programs set too, turns lighter or
-    /// darker in its hue.
+    /// with the minimum contrast chosen in Settings.
     static func config(_ lines: String) -> ghostty_config_t? {
         let text = """
         keybind = clear
@@ -46,7 +44,7 @@ enum Ghostty {
         clipboard-read = deny
         confirm-close-surface = false
         macos-option-as-alt = true
-        minimum-contrast = 3
+        minimum-contrast = \(TerminalView.minimumContrast)
         \(lines)
         """
         guard let c = ghostty_config_new() else { return nil }

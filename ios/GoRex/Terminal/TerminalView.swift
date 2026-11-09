@@ -26,6 +26,14 @@ final class TerminalView: UIView, TerminalOutput {
     }
     /// The font family chosen in Settings; "" is Ghostty's own, JetBrains Mono.
     static var fontFamily: String { UserDefaults.standard.string(forKey: "fontFamily") ?? "" }
+    /// The least contrast of text with its background chosen in Settings,
+    /// as Ghostty's minimum-contrast: 1 corrects nothing; unset, 3, as the
+    /// desktop's default, which lifts text too close to its background,
+    /// colors programs set too, in its hue.
+    static var minimumContrast: Double {
+        let v = UserDefaults.standard.double(forKey: "minimumContrast")
+        return v > 0 ? min(max(v, 1), 21) : 3
+    }
     var ctrl = false { didSet { bar.ctrl.isSelected = ctrl } }
     var alt = false { didSet { bar.alt.isSelected = alt } }
     var shift = false { didSet { bar.shift.isSelected = shift } }
@@ -86,6 +94,10 @@ final class TerminalView: UIView, TerminalOutput {
     private var config: ghostty_config_t?
     /// The lines the config was made of, which a theme message repeats.
     private var configured: String?
+    /// The theme last set, and the minimum contrast it was set with, set
+    /// again when Settings change the contrast.
+    private var theme: [String: Any]?
+    private var contrast: Double?
     /// The surface's terminal takes the program's output here, in order on
     /// the queue: a write waits while Ghostty catches up.
     private var output: Int32 = -1
@@ -114,6 +126,7 @@ final class TerminalView: UIView, TerminalOutput {
         NotificationCenter.default.addObserver(self, selector: #selector(hide), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(show), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboard), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged), name: UserDefaults.didChangeNotification, object: nil)
         for name in [Notification.Name.GCKeyboardDidConnect, .GCKeyboardDidDisconnect] {
             NotificationCenter.default.addObserver(self, selector: #selector(reloadInputViews), name: name, object: nil)
         }
@@ -227,8 +240,10 @@ final class TerminalView: UIView, TerminalOutput {
     /// Sets the default colors, and the font, through Ghostty's config.
     func setTheme(_ theme: [String: Any]) {
         guard let s = surface else { return }
+        self.theme = theme
+        contrast = Self.minimumContrast
         func hex(_ c: VTerminal.RGB) -> String { String(format: "#%06x", c.packed) }
-        var lines = ["font-size = \(Self.fontSize)"]
+        var lines = ["font-size = \(Self.fontSize)", "minimum-contrast = \(Self.minimumContrast)"]
         if !Self.fontFamily.isEmpty { lines.append("font-family = \"\(Self.fontFamily)\"") }
         for (key, name) in [("background", "background"), ("foreground", "foreground"), ("cursor", "cursor-color")] {
             if let c = (theme[key] as? String).flatMap(VTerminal.RGB.init(hex:)) { lines.append("\(name) = \(hex(c))") }
@@ -251,6 +266,14 @@ final class TerminalView: UIView, TerminalOutput {
             let rgb = VTerminal.RGB(r: bg.r, g: bg.g, b: bg.b)
             backgroundColor = UIColor(cgColor: rgb.cgColor)
             session.drew(background: rgb)
+        }
+    }
+
+    /// Settings changed: the theme again if the minimum contrast did, so
+    /// open terminals take it at once.
+    @objc private func settingsChanged() {
+        DispatchQueue.main.async { [weak self] in
+            if let self, let theme = self.theme, self.contrast != Self.minimumContrast { self.setTheme(theme) }
         }
     }
 

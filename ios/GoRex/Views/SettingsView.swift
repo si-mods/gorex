@@ -276,10 +276,16 @@ private enum Fonts {
     }
 }
 
-/// The terminal's options: its font and font size.
+/// The terminal's options: its font, font size and minimum contrast.
 private struct TerminalSettings: View {
     @AppStorage("fontSize") private var fontSize = 12.0
     @AppStorage("fontFamily") private var family = ""
+    @AppStorage("minimumContrast") private var contrast = 0.0
+
+    /// The minimum contrasts offered; 0 is the default, 3.
+    private static let contrasts: [(Double, LocalizedStringResource)] = [
+        (1, "Off"), (2, "2"), (0, "3 (Default)"), (4.5, "4.5 (WCAG AA)"), (7, "7 (WCAG AAA)"),
+    ]
     private let maple = Maple.shared
 
     var body: some View {
@@ -296,6 +302,22 @@ private struct TerminalSettings: View {
                 } else {
                     download.swipeActions { if !maple.saved.isEmpty { Button("Delete", role: .destructive) { maple.delete() } } }
                 }
+            }
+            Section {
+                ForEach(Self.contrasts, id: \.0) { value, name in
+                    Button { contrast = value } label: {
+                        HStack {
+                            Text(name).foregroundStyle(.primary)
+                            Spacer()
+                            if value == contrast || (contrast == 3 && value == 0) { Image(systemName: "checkmark").fontWeight(.semibold) }
+                        }
+                    }
+                    .listRowBackground(Color.card)
+                }
+            } header: {
+                Text("Minimum Contrast")
+            } footer: {
+                Text("Lightens or darkens text too close to its background, colors programs set too. The hue stays, so errors and warnings keep apart; box drawing keeps its colors. Off shows programs' colors as they are.")
             }
         }
         .scrollContentBackground(.hidden)
