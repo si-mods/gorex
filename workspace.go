@@ -80,15 +80,66 @@ func (st *store) status(w *Workspace) *rex.ProgramStatus {
 		}
 		return rex.MostUrgent(all, time.Time{})
 	}
-	var best *rex.ProgramStatus
-	st.visitLocalSIDs(w, func(sid string) {
-		s := rex.MostUrgent(st.infos[sid].Statuses, st.seen[sid])
-		if s != nil && (best == nil || rex.StatusRank(s.State) > rex.StatusRank(best.State) ||
-			rex.StatusRank(s.State) == rex.StatusRank(best.State) && s.Updated.After(best.Updated)) {
-			best = s
+	var all []rex.ProgramStatus
+	for _, h := range append([]*hostConn{nil}, st.hosts...) {
+		if s := st.hiddenStatus(w, h); s != nil {
+			all = append(all, *s)
+		}
+	}
+	return rex.MostUrgent(all, time.Time{})
+}
+
+// hiddenStatus is the most urgent status of the sessions of host h, nil
+// for this machine, in the layout of a workspace no window shows: from
+// the machine's last session list, none while a host is not connected.
+func (st *store) hiddenStatus(w *Workspace, h *hostConn) *rex.ProgramStatus {
+	infos, id := st.infos, ""
+	if h != nil {
+		if h.state != hostConnected {
+			return nil
+		}
+		infos, id = h.infos, h.ID
+	}
+	var all []rex.ProgramStatus
+	st.visitSIDs(w, id, func(sid string) {
+		if s := rex.MostUrgent(infos[sid].Statuses, st.seen[sid]); s != nil {
+			all = append(all, *s)
 		}
 	})
-	return best
+	return rex.MostUrgent(all, time.Time{})
+}
+
+// statusOn is the most urgent status of the workspace's sessions on host
+// h, from the window that shows it or, hidden, from the host's last
+// session list.
+func (st *store) statusOn(w *Workspace, h *hostConn) *rex.ProgramStatus {
+	if w.app == nil {
+		return st.hiddenStatus(w, h)
+	}
+	var all []rex.ProgramStatus
+	for _, t := range w.app.tabsOn(h) {
+		for _, p := range t.allPanes() {
+			if s := p.status(); s != nil {
+				all = append(all, *s)
+			}
+		}
+	}
+	return rex.MostUrgent(all, time.Time{})
+}
+
+// needsOn tells whether the workspace's sessions on host h need the user,
+// as a folded host's tabs tell: by a pane's attention or status, or,
+// hidden, by its sessions' last status (statusOn).
+func (st *store) needsOn(w *Workspace, h *hostConn) bool {
+	if w.app == nil {
+		return needsUser(st.statusOn(w, h))
+	}
+	for _, t := range w.app.tabsOn(h) {
+		if slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.needsYou() > 0 }) {
+			return true
+		}
+	}
+	return false
 }
 
 // recordSeen notes that a session's status was seen.

@@ -156,6 +156,10 @@ type hostConn struct {
 	retry   chan struct{}
 	stop    chan struct{}
 	once    sync.Once
+	// infos are the host's sessions, as its last list had them, for the
+	// status of the spaces no window shows (store.hiddenStatus); changed
+	// on the main thread.
+	infos map[string]rex.SessionInfo
 	// update runs a change on the main thread, and persist saves the
 	// hosts there; startHost sets them.
 	update  func(func())
@@ -587,6 +591,7 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 		}
 		layout := l
 		update(func() {
+			h.infos = byID
 			for _, o := range a.peers() {
 				o.apply(h, byID, layout)
 			}

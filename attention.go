@@ -49,13 +49,17 @@ type needy struct {
 // visitLocalSIDs calls fn with the sessions of this machine in the layout
 // of a space no window shows. Those of a host are left out: their ids are
 // the host's own, and this machine's list knows nothing of them.
-func (st *store) visitLocalSIDs(w *Workspace, fn func(sid string)) {
+func (st *store) visitLocalSIDs(w *Workspace, fn func(sid string)) { st.visitSIDs(w, "", fn) }
+
+// visitSIDs calls fn with the sessions of the host of id host, "" for this
+// machine, in the layout of a space no window shows.
+func (st *store) visitSIDs(w *Workspace, host string, fn func(sid string)) {
 	var walk func(n *layout.Node)
 	walk = func(n *layout.Node) {
 		if n == nil {
 			return
 		}
-		if n.SID != "" && n.Host == "" {
+		if n.SID != "" && n.Host == host {
 			fn(n.SID)
 		}
 		walk(n.A)

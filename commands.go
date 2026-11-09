@@ -442,6 +442,12 @@ var (
 		Run:       func(a *App) { a.nudgeFloat(0, 0.05) },
 		Available: func(a *App) bool { return a.focusedFloat() != nil },
 	}
+	cmdSidebarView = command{
+		ID: "sidebar.view.toggle", Name: locales.Messages.CmdToggleSidebarView,
+		Run:       func(a *App) { a.toggleSidebarView() },
+		Available: func(a *App) bool { return a.hostViewable() },
+	}
+
 	cmdNextTab   = command{ID: "tab.next", Name: locales.Messages.CmdNextTab, Accel: "CmdOrCtrl+Shift+]", Keys: "⇧⌘]", Other: shortcut{ui.Ctrl, ui.KeyPageDown}, Run: func(a *App) { a.cycleTab(1) }}
 	cmdPrevTab   = command{ID: "tab.previous", Name: locales.Messages.CmdPreviousTab, Accel: "CmdOrCtrl+Shift+[", Keys: "⇧⌘[", Other: shortcut{ui.Ctrl, ui.KeyPageUp}, Run: func(a *App) { a.cycleTab(-1) }}
 	cmdJumpNeedy = command{ID: "pane.jump_needy", Name: locales.Messages.CmdJumpToNeedy, Accel: "CmdOrCtrl+J", Keys: "⌘J", Other: ctrlShift(ui.KeyJ), Run: func(a *App) { a.jumpToNeedy() }}
@@ -653,7 +659,7 @@ var paletteCommands = []*command{
 	&cmdNewTab, &cmdNewBrowser, &cmdNewNote, &cmdSplitRight, &cmdSplitDown, &cmdSplitBrowser, &cmdSplitNote, &cmdNotePreview, &cmdZoom, &cmdEqualize, &cmdResetCanvas, &cmdPaneToNewTab, &cmdClosePane, &cmdCloseTab,
 	&cmdFloatPane, &cmdNewFloat, &cmdToggleFloat, &cmdHideFloats, &cmdFloatState, &cmdRaiseFloat, &cmdLowerFloat, &cmdCycleFloat,
 	&cmdFloatMove, &cmdFloatResize, &cmdMoveFloatLeft, &cmdMoveFloatRight, &cmdMoveFloatUp, &cmdMoveFloatDown,
-	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdNeeds, &cmdRenameTab, &cmdSidebar,
+	&cmdNextTab, &cmdPrevTab, &cmdJumpNeedy, &cmdNeeds, &cmdRenameTab, &cmdSidebar, &cmdSidebarView,
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
@@ -1239,7 +1245,7 @@ func (a *App) paletteItems() []paletteItem {
 		})
 	}
 	for _, cmd := range paletteCommands {
-		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" ||
+		if cmd.Hidden || cmd == &cmdUpdates && !mygo.Updater.Enabled() || cmd == &cmdSidebar && prefs.TabPlacement == "" || cmd == &cmdSidebarView && !a.hostViewable() ||
 			a.st == nil && slices.Contains(sessionCommands, cmd) || !match(cmd.Title()) && !match(cmd.English()) {
 			continue
 		}

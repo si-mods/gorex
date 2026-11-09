@@ -114,7 +114,7 @@ func TestSettingsPersist(t *testing.T) {
 	}
 	yes := true
 	want := settings{Appearance: "dark", FontSize: 14, Font: "Hack", Theme: "Nord", Cursor: "bar", CursorBlink: &yes,
-		TabPlacement: "left", SidebarWidth: 280, SidebarHidden: true, HidePaneHeaders: true, Animation: "natural"}
+		TabPlacement: "left", SidebarWidth: 280, SidebarHidden: true, HidePaneHeaders: true, SidebarView: "host", Animation: "natural"}
 	prefs = want
 	saveSettings()
 	prefs = settings{}
@@ -154,11 +154,11 @@ func TestTabPlacementSettings(t *testing.T) {
 	if !paneHeaders() {
 		t.Error("pane headers hidden by default")
 	}
-	os.WriteFile(settingsPath(), []byte(`{"tabPlacement": "bottom", "sidebarWidth": 9999}`), 0o600)
+	os.WriteFile(settingsPath(), []byte(`{"tabPlacement": "bottom", "sidebarWidth": 9999, "sidebarView": "tree"}`), 0o600)
 	prefs = settings{}
 	loadSettings()
-	if prefs.TabPlacement != "" || prefs.SidebarWidth != 0 {
-		t.Errorf("kept placement %q, width %v", prefs.TabPlacement, prefs.SidebarWidth)
+	if prefs.TabPlacement != "" || prefs.SidebarWidth != 0 || prefs.SidebarView != "" {
+		t.Errorf("kept placement %q, width %v, view %q", prefs.TabPlacement, prefs.SidebarWidth, prefs.SidebarView)
 	}
 	// Coming back to a sidebar from above shows it; moving it does not.
 	prefs = settings{SidebarHidden: true}
