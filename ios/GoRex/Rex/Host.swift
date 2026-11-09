@@ -478,6 +478,16 @@ final class Host: Identifiable {
         try await live().call("session.move_window", p)
     }
 
+    /// The window to move a window before, for it to take the place of
+    /// another row shown: before that row when it is above, else just
+    /// after it, before the next window in the server's order, nil at the
+    /// end. The server's order also has windows the list leaves out.
+    static func before(_ window: String, onto target: String, shown: [String], all: [String]) -> String? {
+        guard let from = shown.firstIndex(of: window), let to = shown.firstIndex(of: target), to > from else { return target }
+        let after = all.firstIndex(of: target).map { $0 + 1 } ?? all.count
+        return after < all.count ? all[after] : nil
+    }
+
     /// Names a session; an empty name gives back its default.
     func renameSession(_ session: String, to label: String) async throws {
         try await live().call("session.set_label", ["session_id": session, "label": label])
