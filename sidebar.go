@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"slices"
 
 	"github.com/egoist/mygo"
@@ -19,6 +20,28 @@ const (
 	// panesMinW is the room the panes keep beside the sidebar.
 	panesMinW = 320
 )
+
+// sidebarViews are the values of SidebarView, in the order of the
+// settings' control: the window's session, every session by host.
+var sidebarViews = []string{"", "host"}
+
+// hostView tells whether the sidebar lists every session under the hosts
+// it has tabs on: as the user chose, while there are hosts besides this
+// machine. Without them the sessions would only repeat the strip's dots.
+func (a *App) hostView() bool {
+	return prefs.SidebarView == "host" && len(a.hosts) > 0 && a.st != nil
+}
+
+// toggleSidebarView switches the sidebar between its views.
+func (a *App) toggleSidebarView() {
+	a.setWindowPref(func(s *settings) {
+		if s.SidebarView == "" {
+			s.SidebarView = "host"
+		} else {
+			s.SidebarView = ""
+		}
+	})
+}
 
 // placements are the values of TabPlacement, in the order of the settings'
 // control: above, the left side, the right side.
@@ -270,10 +293,18 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 				}
 				for _, h := range a.allHosts() {
 					folded := a.hostSection(c, k, h)
+					var shown []*Tab
 					for _, t := range a.tabsOn(h) {
 						if !folded || t == a.chosenOn[hostKey(h)] || slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.needsYou() > 0 }) {
-							a.sidebarTab(c, k, slices.Index(tabs, t), t, reserve)
+							shown = append(shown, t)
 						}
+					}
+					if a.hostView() {
+						a.hostSessions(c, k, h, folded, shown, tabs, reserve)
+						continue
+					}
+					for _, t := range shown {
+						a.sidebarTab(c, k, slices.Index(tabs, t), t, reserve)
 					}
 				}
 			})
@@ -282,7 +313,13 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 			if iconButton(c, k, "settings-2", locales.SidebarSettings(), 30, 16).Tooltip(tip(locales.SidebarSettings(), &cmdSettings)).Clicked() {
 				a.openSettings()
 			}
-			a.spaceStrip(c, k)
+			// The host view lists the sessions: their strip would say it
+			// twice.
+			if a.hostView() {
+				ui.Spacer(c)
+			} else {
+				a.spaceStrip(c, k)
+			}
 			a.hostButton(c, k)
 		})
 	})
@@ -418,4 +455,134 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 		}
 	})
 	return folded
+}
+
+// hostSessions lists under host h the sessions with tabs on it, in their
+// order. The window's own opens on its tabs there, shown as they are of
+// the host; the others are closed, and opening one shows it. A folded
+// host keeps only the window's session, when it has tabs to show.
+func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, shown []*Tab, tabs []*Tab, reserve float32) {
+	key := hostKey(h)
+	for _, w := range a.st.workspaces {
+		if w != a.ws {
+			if n := spaceTabsOn(w, h); n > 0 && !folded {
+				if a.sessionRow(c, k, h, w, n, false) {
+					a.later(c, func() { a.showSessionOn(w, h) })
+				}
+			}
+			continue
+		}
+		if len(shown) == 0 {
+			continue
+		}
+		open := !a.ownClosed[key]
+		if a.sessionRow(c, k, h, w, len(a.tabsOn(h)), open) {
+			if a.ownClosed == nil {
+				a.ownClosed = map[string]bool{}
+			}
+			a.ownClosed[key] = open
+		}
+		if !open {
+			continue
+		}
+		ui.Column(c.Key("space-tabs-"+key)).Gap(2).Padding(0, 0, 0, 12).Children(func() {
+			for _, t := range shown {
+				a.sidebarTab(c, k, slices.Index(tabs, t), t, reserve)
+			}
+		})
+	}
+}
+
+// sessionRow is a session under a host in the host view: a chevron, its
+// color, its name and how many tabs it has on the host, and what needs
+// the user there. A session another window shows is faded, as its dot in
+// the strip. It reports whether it was clicked.
+func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n int, open bool) bool {
+	label := w.Name + ", " + locales.SessionTabs(n)
+	elsewhere := w.app != nil && w != a.ws
+	if elsewhere {
+		label += " · " + locales.SessionElsewhere()
+	}
+	row := ui.Row(c.Key("space-"+hostKey(h)+"-"+w.ID)).Height(28).Shrink(0).Padding(0, 8, 0, 8).Gap(6).AlignItems(ui.Center).
+		Radius(pillRadius(28, 9)).Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Label(label).Expanded(open)
+	if anim := motion(c); anim != nil {
+		row.Transition(ui.ElementTransition{Animation: anim, Position: true, Enter: tabMotion, Exit: tabMotion})
+	}
+	if row.Hovered() {
+		row.Background(hoverFace(k))
+	}
+	if elsewhere {
+		row.Opacity(0.5)
+	}
+	row.Children(func() {
+		chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
+		turn := float32(0)
+		if !open {
+			turn = -90
+		}
+		chevron.Rotate(animated(c, chevron, "fold", turn))
+		spaceDot(c, k, w)
+		ui.Text(c, w.Name).FontSize(13).FontWeight(500).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		if s := a.st.statusOn(w, h); s != nil && s.State != "idle" {
+			statusDot(c, k, s, 7)
+		}
+		ui.Text(c, fmt.Sprint(n)).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
+	})
+	return row.Clicked()
+}
+
+// showSessionOn shows session w, here or in the window that shows it, on
+// its tab of host h last chosen there, else its first there.
+func (a *App) showSessionOn(w *Workspace, h *hostConn) {
+	a.showWorkspace(w)
+	o := w.app
+	if o == nil {
+		return
+	}
+	if t := o.tab(); t != nil && t.host() == h {
+		return
+	}
+	on := o.tabsOn(h)
+	if len(on) == 0 {
+		return
+	}
+	t := on[0]
+	if chosen := o.chosenOn[hostKey(h)]; slices.Contains(on, chosen) {
+		t = chosen
+	}
+	o.selectTab(slices.Index(o.tabs, t))
+	if o != a {
+		o.do(func() {})
+	}
+}
+
+// spaceTabsOn counts the tabs session w has on host h: those of the window
+// that shows it, else those of its layout.
+func spaceTabsOn(w *Workspace, h *hostConn) int {
+	if w.app != nil {
+		return len(w.app.tabsOn(h))
+	}
+	id := ""
+	if h != nil {
+		id = h.ID
+	}
+	n := 0
+	for _, t := range w.layout.Tabs {
+		if savedTabHost(t) == id {
+			n++
+		}
+	}
+	return n
+}
+
+// savedTabHost is the host id of a saved tab's first pane, as Tab.host
+// takes its first pane's: "" for this machine.
+func savedTabHost(t savedTab) string {
+	for _, n := range t.Roots() {
+		for n.A != nil {
+			n = n.A
+		}
+		return n.Host
+	}
+	return ""
 }

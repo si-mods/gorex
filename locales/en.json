@@ -160,6 +160,10 @@
   "@cmdToggleSidebar": {
     "description": "Command: show or hide the sidebar of vertical tabs."
   },
+  "cmdToggleSidebarView": "Toggle Sidebar View",
+  "@cmdToggleSidebarView": {
+    "description": "Command: switch the sidebar between listing this window's space and listing every space by host."
+  },
   "cmdRenameTab": "Rename Tab…",
   "@cmdRenameTab": {
     "description": "Command: rename the active tab. Also in a tab's context menu."
@@ -822,6 +826,22 @@
   "settingsPaneHeadersHint": "Pane headers are always shown when the vertical sidebar is hidden or positioned on the right.",
   "@settingsPaneHeadersHint": {
     "description": "Hint under the Show pane headers setting."
+  },
+  "settingsSidebarView": "Sidebar view",
+  "@settingsSidebarView": {
+    "description": "Setting: what the sidebar of vertical tabs lists."
+  },
+  "settingsSidebarViewHint": "Spaces lists this window's tabs. Hosts lists every space under each host it has tabs on, once a remote host is added.",
+  "@settingsSidebarViewHint": {
+    "description": "Hint under the Sidebar view setting. Its options are the next two messages."
+  },
+  "settingsSidebarSpaces": "Spaces",
+  "@settingsSidebarSpaces": {
+    "description": "Sidebar view option: this window's space, its tabs grouped by host."
+  },
+  "settingsSidebarHosts": "Hosts",
+  "@settingsSidebarHosts": {
+    "description": "Sidebar view option: every space listed under each host it has tabs on."
   },
   "settingsDockBadge": "Dock badge",
   "@settingsDockBadge": {

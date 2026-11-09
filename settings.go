@@ -32,6 +32,10 @@ type settings struct {
 	SidebarWidth    float32 `json:"sidebarWidth,omitempty"`
 	SidebarHidden   bool    `json:"sidebarHidden,omitempty"`
 	HidePaneHeaders bool    `json:"hidePaneHeaders,omitempty"`
+	// SidebarView is what the sidebar lists: "" the window's session's
+	// tabs under their hosts, "host" every session under the hosts it has
+	// tabs on.
+	SidebarView string `json:"sidebarView,omitempty"`
 	// HideDockBadge turns off the count of the panes that need the user on
 	// the app icon.
 	HideDockBadge bool `json:"hideDockBadge,omitempty"`
@@ -82,6 +86,9 @@ func loadSettings() {
 	}
 	if !slices.Contains(placements, prefs.TabPlacement) {
 		prefs.TabPlacement = ""
+	}
+	if !slices.Contains(sidebarViews, prefs.SidebarView) {
+		prefs.SidebarView = ""
 	}
 	if !slices.Contains(animations, prefs.Animation) {
 		prefs.Animation = ""

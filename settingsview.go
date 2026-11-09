@@ -527,6 +527,15 @@ func (a *App) appearanceWindow(c *ui.Context, k *colors) {
 			a.setWindowPref(func(s *settings) { setTabPlacement(s, placements[place]) })
 		}
 	})
+	// What the sidebar lists, only while there is one.
+	if prefs.TabPlacement != "" {
+		view := max(slices.Index(sidebarViews, prefs.SidebarView), 0)
+		settingRow(c, k, locales.SettingsSidebarView(), locales.SettingsSidebarViewHint(), func() {
+			if ui.Segmented(c, &view, locales.SettingsSidebarSpaces(), locales.SettingsSidebarHosts()).Label(locales.SettingsSidebarView()).Changed() {
+				a.setWindowPref(func(s *settings) { s.SidebarView = sidebarViews[view] })
+			}
+		})
+	}
 	headers := !prefs.HidePaneHeaders
 	settingRow(c, k, locales.SettingsPaneHeaders(), locales.SettingsPaneHeadersHint(), func() {
 		if ui.Switch(c, &headers).Label(locales.SettingsPaneHeaders()).Changed() {

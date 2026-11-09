@@ -616,6 +616,22 @@ func (msgs Messages) CmdToggleSidebar() string {
 	return Catalog.Format(msgs.locale, "cmdToggleSidebar", nil)
 }
 
+// CmdToggleSidebarView says "Toggle Sidebar View"
+// in the language the app shows.
+//
+// Command: switch the sidebar between listing this window's space and
+// listing every space by host.
+func CmdToggleSidebarView() string { return In(i18n.Locale()).CmdToggleSidebarView() }
+
+// CmdToggleSidebarView says "Toggle Sidebar View"
+// in the language of msgs.
+//
+// Command: switch the sidebar between listing this window's space and
+// listing every space by host.
+func (msgs Messages) CmdToggleSidebarView() string {
+	return Catalog.Format(msgs.locale, "cmdToggleSidebarView", nil)
+}
+
 // CmdRenameTab says "Rename Tab…"
 // in the language the app shows.
 //
@@ -2448,6 +2464,64 @@ func SettingsPaneHeadersHint() string { return In(i18n.Locale()).SettingsPaneHea
 // Hint under the Show pane headers setting.
 func (msgs Messages) SettingsPaneHeadersHint() string {
 	return Catalog.Format(msgs.locale, "settingsPaneHeadersHint", nil)
+}
+
+// SettingsSidebarView says "Sidebar view"
+// in the language the app shows.
+//
+// Setting: what the sidebar of vertical tabs lists.
+func SettingsSidebarView() string { return In(i18n.Locale()).SettingsSidebarView() }
+
+// SettingsSidebarView says "Sidebar view"
+// in the language of msgs.
+//
+// Setting: what the sidebar of vertical tabs lists.
+func (msgs Messages) SettingsSidebarView() string {
+	return Catalog.Format(msgs.locale, "settingsSidebarView", nil)
+}
+
+// SettingsSidebarViewHint says "Spaces lists this window's tabs. Hosts lists every space under each host it has tabs on, once a remote host is added."
+// in the language the app shows.
+//
+// Hint under the Sidebar view setting. Its options are the next two
+// messages.
+func SettingsSidebarViewHint() string { return In(i18n.Locale()).SettingsSidebarViewHint() }
+
+// SettingsSidebarViewHint says "Spaces lists this window's tabs. Hosts lists every space under each host it has tabs on, once a remote host is added."
+// in the language of msgs.
+//
+// Hint under the Sidebar view setting. Its options are the next two
+// messages.
+func (msgs Messages) SettingsSidebarViewHint() string {
+	return Catalog.Format(msgs.locale, "settingsSidebarViewHint", nil)
+}
+
+// SettingsSidebarSpaces says "Spaces"
+// in the language the app shows.
+//
+// Sidebar view option: this window's space, its tabs grouped by host.
+func SettingsSidebarSpaces() string { return In(i18n.Locale()).SettingsSidebarSpaces() }
+
+// SettingsSidebarSpaces says "Spaces"
+// in the language of msgs.
+//
+// Sidebar view option: this window's space, its tabs grouped by host.
+func (msgs Messages) SettingsSidebarSpaces() string {
+	return Catalog.Format(msgs.locale, "settingsSidebarSpaces", nil)
+}
+
+// SettingsSidebarHosts says "Hosts"
+// in the language the app shows.
+//
+// Sidebar view option: every space listed under each host it has tabs on.
+func SettingsSidebarHosts() string { return In(i18n.Locale()).SettingsSidebarHosts() }
+
+// SettingsSidebarHosts says "Hosts"
+// in the language of msgs.
+//
+// Sidebar view option: every space listed under each host it has tabs on.
+func (msgs Messages) SettingsSidebarHosts() string {
+	return Catalog.Format(msgs.locale, "settingsSidebarHosts", nil)
 }
 
 // SettingsDockBadge says "Dock badge"

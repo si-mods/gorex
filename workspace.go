@@ -91,6 +91,27 @@ func (st *store) status(w *Workspace) *rex.ProgramStatus {
 	return best
 }
 
+// statusOn is the most urgent status of the workspace's sessions on host
+// h, from the window that shows it or, hidden, this machine's from the
+// last session list: a hidden workspace's sessions of a host tell none.
+func (st *store) statusOn(w *Workspace, h *hostConn) *rex.ProgramStatus {
+	if w.app == nil {
+		if h != nil {
+			return nil
+		}
+		return st.status(w)
+	}
+	var all []rex.ProgramStatus
+	for _, t := range w.app.tabsOn(h) {
+		for _, p := range t.allPanes() {
+			if s := p.status(); s != nil {
+				all = append(all, *s)
+			}
+		}
+	}
+	return rex.MostUrgent(all, time.Time{})
+}
+
 // recordSeen notes that a session's status was seen.
 func (st *store) recordSeen(sid string, at time.Time) {
 	if sid == "" || at.IsZero() {
