@@ -17,7 +17,14 @@ final class TailnetEngine {
         var name: String?
         var ips: [String]?
         var suffix: String?
+        var peers: [Peer]?
         var error: String?
+
+        struct Peer: Decodable, Equatable {
+            var name: String
+            var ips: [String]
+            var online: Bool
+        }
     }
 
     private(set) var status = Status(state: "Stopped")
@@ -25,8 +32,13 @@ final class TailnetEngine {
     private(set) var proxy: LoopbackProxy?
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
 
+    /// Hosts reach the proxy once the device runs: before, it knows no
+    /// peer, and dials the tailnet's addresses through the system.
     private init() {
-        Host.tailnetProxy = { TailnetEngine.shared.proxy }
+        Host.tailnetProxy = {
+            let e = TailnetEngine.shared
+            return e.status.state == "Running" ? e.proxy : nil
+        }
     }
 
     /// Starts the engine as the device hostname, of the control server at
@@ -56,7 +68,8 @@ final class TailnetEngine {
     fileprivate func changed(_ json: String) {
         guard let s = try? JSONDecoder().decode(Status.self, from: Data(json.utf8)), s != status else { return }
         status = s
-        log.notice("status \(json, privacy: .public)")
+        let peers = (s.peers ?? []).map { "\($0.name)\($0.online ? "" : " (offline)")" }
+        log.notice("status \(s.state, privacy: .public) \(s.auth_url ?? "", privacy: .public) \(s.name ?? "", privacy: .public) \(s.ips ?? [], privacy: .public) peers: \(peers, privacy: .public)")
     }
 
     /// Where the device's state lives: Application Support, out of backups.
