@@ -34,6 +34,22 @@ func ownDir(st os.FileInfo) bool {
 // app's.
 func detached() *syscall.SysProcAttr { return &syscall.SysProcAttr{Setsid: true} }
 
+// closeOnExecAll keeps every descriptor past stderr from the programs
+// this process runs: code it does not own, as the routing sockets of the
+// network monitor and Metal's caches, opens descriptors without the flag,
+// and each shell got them all, a hundred, of its 256.
+func closeOnExecAll() {
+	ents, err := os.ReadDir("/dev/fd")
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if fd, err := strconv.Atoi(e.Name()); err == nil && fd > 2 {
+			unix.CloseOnExec(fd)
+		}
+	}
+}
+
 // hideConsole keeps a command the server runs from showing a window: none
 // does here.
 func hideConsole(*exec.Cmd) {}

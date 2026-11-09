@@ -157,6 +157,7 @@ func (s *Server) upgrade(exe string) error {
 	log.Printf("rex: upgrading to %s", exe)
 	// No process starts meanwhile, which would get the descriptors.
 	syscall.ForkLock.Lock()
+	closeOnExecAll()
 	for _, fd := range fds {
 		unix.FcntlInt(uintptr(fd), unix.F_SETFD, 0)
 	}
