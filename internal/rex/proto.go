@@ -650,6 +650,10 @@ type SessionInfo struct {
 	// when known.
 	Owner     string `json:"owner,omitempty"`
 	OwnerName string `json:"ownerName,omitempty"`
+	// OwnerShared tells that the server shares every session with Owner
+	// (mayUse): the user's own device, as the user decided by sharing.
+	// Only list says it; false from a server before it.
+	OwnerShared bool `json:"ownerShared,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
 	// said nothing.

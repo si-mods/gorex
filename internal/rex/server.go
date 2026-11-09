@@ -34,16 +34,17 @@ type Server struct {
 	layoutFile sync.Mutex
 	started    time.Time
 	host       HostInfo
-	machine    string
-	hostDone   chan struct{}
-	ln         net.Listener
-	lock       *os.File
-	exe        string
-	exeTime    time.Time
-	controls   int
-	idleFrom   time.Time
-	quit       chan struct{}
-	quitOnce   sync.Once
+	// machine is MachineID, set before the server serves.
+	machine  string
+	hostDone chan struct{}
+	ln       net.Listener
+	lock     *os.File
+	exe      string
+	exeTime  time.Time
+	controls int
+	idleFrom time.Time
+	quit     chan struct{}
+	quitOnce sync.Once
 	// stopReason is why the server stops, as the journal records it; "" is
 	// a run that did not stop, a crash.
 	stopReason string
@@ -355,6 +356,9 @@ func newServer(ln net.Listener, lock *os.File) *Server {
 		layoutRev: 1, hostDone: make(chan struct{}), idleFrom: time.Now(), quit: make(chan struct{}), dir: Dir(),
 	}
 	s.exe, s.exeTime = Executable()
+	// Before any connection, and never changed: every hello names the
+	// machine. A hash of a small key file, made once.
+	s.machine = MachineID()
 	return s
 }
 
@@ -363,7 +367,6 @@ func (s *Server) serve() error {
 	ln, sock := s.ln, SocketPath()
 	go func() {
 		s.host = hostInfo()
-		s.machine = MachineID()
 		close(s.hostDone)
 	}()
 	go s.watchIdle()
@@ -751,9 +754,13 @@ func NotShared(err error) bool {
 // connection, may see and use ss: a local one always, a remote one the
 // sessions it created, and any while the server shares them.
 func (s *Server) mayUse(peer string, ss *session) bool {
-	if peer == "" || ss.owner == peer {
-		return true
-	}
+	return peer == "" || ss.owner == peer || s.sharesSessions(peer)
+}
+
+// sharesSessions tells whether the server shares every session with
+// peer, a remote client's key: all of them while it shares them with
+// every client, else as the client's allowlist entry says.
+func (s *Server) sharesSessions(peer string) bool {
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
 	if s.rem.cfg.ShareSessions {
@@ -825,7 +832,9 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		infos := make([]SessionInfo, 0, len(all))
 		for _, ss := range all {
 			if s.mayUse(peer, ss) {
-				infos = append(infos, s.info(ss))
+				in := s.info(ss)
+				in.OwnerShared = in.Owner != "" && s.sharesSessions(in.Owner)
+				infos = append(infos, in)
 			}
 		}
 		return infos, nil

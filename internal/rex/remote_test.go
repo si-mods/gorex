@@ -984,3 +984,60 @@ func TestHostMachines(t *testing.T) {
 		t.Errorf("machines: %v", got)
 	}
 }
+
+// TestListTellsOwnerShared checks that list tells which sessions' owners
+// the server shares every session with, as mayUse decides: per client,
+// then for all, and never for a local session.
+func TestListTellsOwnerShared(t *testing.T) {
+	s, _ := testServer(t)
+	local := pipe(s, "")
+	defer local.Close()
+	alice, bob := key.NewNode().Public().String(), key.NewNode().Public().String()
+	ac, bc := pipe(s, alice), pipe(s, bob)
+	defer ac.Close()
+	defer bc.Close()
+	cmd, dir := testShell()
+	create := func(c *Client) string {
+		t.Helper()
+		info, err := c.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { local.Kill(info.ID) })
+		return info.ID
+	}
+	ls, as, bs := create(local), create(ac), create(bc)
+	shared := func() map[string]bool {
+		t.Helper()
+		list, err := local.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]bool{}
+		for _, in := range list {
+			out[in.ID] = in.OwnerShared
+		}
+		return out
+	}
+	s.rem.mu.Lock()
+	s.rem.cfg.Allowed = []RemoteClient{{PublicKey: alice, ShareSessions: true}, {PublicKey: bob}}
+	s.rem.mu.Unlock()
+	if got := shared(); got[ls] || !got[as] || got[bs] {
+		t.Errorf("shared with alice only: %v (local %s, alice %s, bob %s)", got, ls, as, bs)
+	}
+	s.rem.mu.Lock()
+	s.rem.cfg.ShareSessions = true
+	s.rem.mu.Unlock()
+	if got := shared(); got[ls] || !got[as] || !got[bs] {
+		t.Errorf("shared with all: %v", got)
+	}
+}
+
+// TestServerKnowsItsMachine checks that a server knows its machine before
+// it serves, so that no hello names none.
+func TestServerKnowsItsMachine(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
+	if s := newServer(nil, nil); s.machine == "" || s.machine != MachineID() {
+		t.Errorf("machine %q, want %q", s.machine, MachineID())
+	}
+}

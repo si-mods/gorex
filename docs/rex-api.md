@@ -95,9 +95,14 @@ listener's address instead, `http://<address>:7297`, for a device on the
 same network: the listener below is unchanged, and Rex can also add it
 by hand.
 
-A session that a GoRex desktop made on this machine (one of its remote
-hosts' panes) and that no local tab shows is under **Desktop terminals**.
-Opening a terminal there attaches to the existing process.
+A session that a GoRex desktop of yours made on this machine (one of its
+remote hosts' panes) and that no local tab shows is under **Desktop
+terminals**. Opening a terminal there attaches to the existing process.
+A desktop counts as yours when it reached this machine over system
+Tailscale, which lets in only your own Tailscale user, or when this
+machine shares its sessions with it (`gorex remote share`, for every
+client or for that one). The sessions of another client paired here stay
+its own, as the server keeps them from every other client.
 
 ## Built-in Tailscale
 
