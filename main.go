@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/plugins/updater/native"
 
 	"gorex/internal/cli"
@@ -101,6 +102,13 @@ func main() {
 	mygo.App.WhenReady(func() {
 		mygo.App.SetMenu(st.menu())
 		st.start()
+		// On Windows an update replaces GoRex.exe while the app runs: the
+		// server can restart on it at once, keeping the windows open.
+		updater.OnInstalled(func() {
+			if st.serverBehind() {
+				st.restartServer()
+			}
+		})
 	})
 	mygo.App.OnSecondInstance(func([]string, string) { st.secondInstance() })
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {

@@ -910,8 +910,9 @@ type SnapshotHeader struct {
 // ServerMain runs the server when args, the program's arguments, ask
 // for it, and tells whether they did: -server serves, -server -resume
 // PATH serves the sessions a server upgrading to this executable handed
-// it (Resume), and -server -handoff-version prints the version of the
-// handoffs it reads, which an upgrading server asks first.
+// it (Resume), -server -handoff-version prints the version of the
+// handoffs it reads, which an upgrading server asks first, and -server
+// -protocol-version prints ProtocolVersion (SpeaksProtocol).
 func ServerMain(args []string) (bool, error) {
 	if len(args) == 0 || args[0] != "-server" {
 		return false, nil
@@ -920,6 +921,9 @@ func ServerMain(args []string) (bool, error) {
 	switch {
 	case len(args) > 1 && args[1] == "-handoff-version":
 		fmt.Println(handoffVersion)
+		return true, nil
+	case len(args) > 1 && args[1] == "-protocol-version":
+		fmt.Println(ProtocolVersion)
 		return true, nil
 	case len(args) > 2 && args[1] == "-resume":
 		return true, Resume(args[2])

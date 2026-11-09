@@ -64,6 +64,7 @@
   "cmdAppearanceSystem": "外观：系统",
   "cmdSettings": "设置…",
   "cmdCheckForUpdates": "检查更新…",
+  "cmdRestartServer": "重启会话服务器",
   "cmdQuitAndEndAll": "退出并结束所有会话",
   "menuShell": "Shell",
   "menuEdit": "编辑",

@@ -456,3 +456,18 @@ func copyFile(from, to string) error {
 	}
 	return w.Close()
 }
+
+// TestSpeaksProtocol probes this build, which prints ProtocolVersion, and
+// programs that do not.
+func TestSpeaksProtocol(t *testing.T) {
+	if !SpeaksProtocol(os.Args[0]) {
+		t.Error("this build does not speak its own protocol")
+	}
+	// echo prints its arguments, as a build of before the flag prints
+	// nothing it can read; false fails, as one that tried to serve.
+	for _, exe := range []string{"/bin/echo", "/usr/bin/false", filepath.Join(t.TempDir(), "missing")} {
+		if SpeaksProtocol(exe) {
+			t.Errorf("%s speaks the protocol", exe)
+		}
+	}
+}

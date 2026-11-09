@@ -954,6 +954,22 @@ func (msgs Messages) CmdCheckForUpdates() string {
 	return Catalog.Format(msgs.locale, "cmdCheckForUpdates", nil)
 }
 
+// CmdRestartServer says "Restart Session Server"
+// in the language the app shows.
+//
+// Command (Windows): restart the session server on the GoRex an update
+// installed, ending the programs in the panes.
+func CmdRestartServer() string { return In(i18n.Locale()).CmdRestartServer() }
+
+// CmdRestartServer says "Restart Session Server"
+// in the language of msgs.
+//
+// Command (Windows): restart the session server on the GoRex an update
+// installed, ending the programs in the panes.
+func (msgs Messages) CmdRestartServer() string {
+	return Catalog.Format(msgs.locale, "cmdRestartServer", nil)
+}
+
 // CmdQuitAndEndAll says "Quit and End All Sessions"
 // in the language the app shows.
 //

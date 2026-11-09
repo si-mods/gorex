@@ -256,6 +256,10 @@
   "@cmdCheckForUpdates": {
     "description": "Command: look for a newer version of the app."
   },
+  "cmdRestartServer": "Restart Session Server",
+  "@cmdRestartServer": {
+    "description": "Command (Windows): restart the session server on the GoRex an update installed, ending the programs in the panes."
+  },
   "cmdQuitAndEndAll": "Quit and End All Sessions",
   "@cmdQuitAndEndAll": {
     "description": "Command: quit the app and end every session running in the server."

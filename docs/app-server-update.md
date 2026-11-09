@@ -1,6 +1,6 @@
 # Updating the server without restarting the app
 
-Status: design, not built.
+Status: Windows phase W1 built; the rest is design.
 
 An update of GoRex today restarts the app before the session server gets
 the new build. This design lets the server move to a new build while the
@@ -111,8 +111,9 @@ Start with a copy of `GoRex.app`.
 ### 2. Upgrade the server from the running app
 
 Add a hook to the updater plugin that runs when an update is installed
-(or staged), for example `updater.OnInstalled(func(dir string))`, with the
-path of the new bundle or executable.
+(or staged). W1 added `updater.OnInstalled(func())` (MyGo's fork), which
+needs no path on Windows and Linux; macOS needs the staged bundle's path,
+which the hook or the updater must give then.
 
 GoRex uses it in the app:
 
@@ -203,41 +204,52 @@ such a job.
 
 ### Phase W1: keep the app, restart the server
 
-The app stays open; the server restarts on the new build. The programs in
-the panes end, as they do today, but the user no longer loses the windows
-and decides when the restart happens.
+Built. The app stays open; the server restarts on the new build. The
+programs in the panes end, as they do today, but the user no longer loses
+the windows and decides when the restart happens.
 
-1. After `Install`, the running app checks the new `GoRex.exe` (its time
-   is newer than the server's `ExeTime`) and the protocol (design step
-   3).
-2. The app asks as today (`ServerRestartAsk*`): restart the server now or
-   later. "Later" shows a quiet notice in the app, as Rex's "A newer
-   server is available", with a button to restart.
-3. On restart the app calls `Client.Restart`. `Connect` starts the new
-   server from `rex.Executable()`. Check that `os.Executable` on Windows
-   gives `GoRex.exe` and not the renamed `.old` file; if not, use the
-   updater's start path, as MyGo does (`startExe`).
-4. `store.watch` and `adopt` attach the windows to the new sessions. Each
-   pane shows its new shell at the directory it was in.
-5. Optional, as Rex's `AutomaticRestartPolicy`: restart without asking
-   when the server is idle. Idle here means every session's foreground
-   process is its shell (`proc_windows.go` can tell), no remote client is
-   attached, and no transfer runs. Then nothing the user runs is lost.
+1. MyGo's updater plugin calls `updater.OnInstalled` once an update is
+   installed, by the user or in the background. GoRex registers it.
+2. The hook checks `serverBehind` (`workspace.go`): Windows, the server
+   has `CapabilityShutdownRestart`, `GoRex.exe` is newer than the server's
+   `ExeTime`, and `GoRex.exe -server -protocol-version` prints this app's
+   `ProtocolVersion` (`rex.SpeaksProtocol`). A build of before the flag
+   tries to serve, fails as a server runs, and prints nothing: no restart.
+3. It asks with the dialog of `adopt` (`ServerRestartAsk*`). Restart calls
+   `Client.Restart` and `adopt` takes the next server, as at launch; both
+   share `askRestart`. `adopt` checks `serverBehind` too.
+4. Later keeps the old server. The palette's **Restart Session Server**
+   (`server.restart`, Windows only, refused from clients) asks again while
+   the server is behind; the next launch asks too, as before.
+5. Not built: the quiet notice, and the restart without asking when the
+   server is idle (Rex's `AutomaticRestartPolicy`).
 
-The app relaunches into its new build as in design step 4. The relaunch
-must not take the server:
+Checked on YIBO-PC (Windows 11) with two builds of a test app (its own
+name, data directory and update key) and a local update feed: the real
+updater installed the new build 10 s after launch.
 
-- Confirm that a server started by an app from Explorer outlives an app
-  ended by `Stop-Process`, `taskkill /F` and a normal quit.
-- When the app's job does not allow breakaway (Task Scheduler, some
-  remote tools), start the server outside the job: through WMI
-  (`Win32_Process.Create`), whose processes are children of the WMI
-  service, not of the app. Or record that the server lives only as long
-  as such an app, and say so in the log.
-
-`cleanUpdateLeftovers` removes the `.old` files at the next start. While
-an old server still runs from its `.old` image, that file cannot be
-removed; the cleanup must skip it and try again later, not fail.
+- `os.Executable` gives `GoRex.exe`, not the renamed `.old` file, after
+  `swapFiles`: Windows keeps the path the process started from. `Spawn`
+  starts the new build without a change.
+- After Restart: the server's PID changed, its image is the new
+  `GoRex.exe` (by hash) while the app runs from `.GoRex.exe.old-<pid>`,
+  the window stayed (same handle), the pane attached again with a new
+  shell in its directory, and took input. `server.log` shows one
+  `serving on` line per server.
+- `cleanUpdateLeftovers` ignores a file it cannot remove: with an old
+  server still running from `.GoRex.exe.old-<pid>` (and its
+  `ghostty-vt.dll`), the new app starts, and the files go at the next
+  launch after that server ended.
+- The server outlived the app in every case: an app started from
+  Explorer, ended by `Stop-Process`, `taskkill /F` and Alt+F4; and an
+  app started by a task (`Register-ScheduledTask`, `schtasks /create /it`
+  with the app as the action), ended by `Stop-Process` and by
+  `schtasks /end`. An app started from Explorer is in a job that allows
+  breakaway (the server is in no job); a task's job does not, and the
+  server stays in it, but ending the app or the task does not end it.
+  pc024's lost server (above) is not explained by Task Scheduler alone;
+  `Stop-Process -Name GoRex` would end both processes, which share the
+  name. No WMI start is needed for now.
 
 ### Phase W2: keep the programs (later)
 
@@ -274,7 +286,7 @@ only if restarts on Windows turn out to hurt in practice.
    guarded by the protocol check.
 4. Automatic relaunch when hidden, in MyGo's updater plugin.
 5. Windows W1: the early restart from the running app, and a check that
-   the server outlives the app.
+   the server outlives the app. Built.
 6. Windows W2, only if needed.
 
 Steps 1 to 3 already give "the server updates, the app stays". Step 4
