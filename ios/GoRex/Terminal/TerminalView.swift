@@ -258,7 +258,7 @@ final class TerminalView: UIView, TerminalOutput {
         guard let s = surface else { return }
         let ratio = Self.minimumContrast
         guard text != configured || ratio != contrast, let c = Ghostty.config(text + "\nminimum-contrast = \(ratio)") else { return }
-        configured, contrast = text, ratio
+        (configured, contrast) = (text, ratio)
         ghostty_surface_update_config(s, c)
         if let config { ghostty_config_free(config) }
         config = c
