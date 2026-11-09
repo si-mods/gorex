@@ -79,7 +79,7 @@ func tabWidth(c *ui.Context, t *Tab) float32 {
 	// A host's badge takes room of its own, past the label's widest.
 	badge := float32(0)
 	if h := t.host(); h != nil {
-		bw, _ := c.MeasureText(0, ui.Span{Text: h.Name, Size: badgeSize, Weight: 600})
+		bw, _ := c.MeasureText(0, ui.Span{Text: h.label(), Size: badgeSize, Weight: 600})
 		badge = min(bw, badgeMaxW) + 12 + 6
 	}
 	return min(max(9+tiles+6+w+6+18+10, tabMinW), tabMaxW) + badge
@@ -93,7 +93,7 @@ const (
 
 // hostBadge names a tab's host, above, where tabs of every host mix.
 func hostBadge(c *ui.Context, k *colors, h *hostConn) {
-	ui.Text(c, h.Name).FontSize(badgeSize).FontWeight(600).TextColor(k.textMuted).Padding(1, 6).Radius(6).
+	ui.Text(c, h.label()).FontSize(badgeSize).FontWeight(600).TextColor(k.textMuted).Padding(1, 6).Radius(6).
 		Background(k.hover).SingleLine().Ellipsis("…").MaxWidth(badgeMaxW + 12).Shrink(0)
 }
 
@@ -355,21 +355,7 @@ func (a *App) renameField(c *ui.Context, k *colors, t *Tab, name string) {
 		a.renaming, a.renameFocus = nil, false
 		a.focusReq = t.Focus
 	}
-	switch {
-	case in.Shortcut(0, ui.KeyEscape):
-		done(false)
-	case in.Submitted():
-		done(true)
-	case in.Focused():
-		// The old name, selected as the field takes the focus, goes as
-		// the new one is typed, as macOS's rename fields do.
-		if !a.renameFocus {
-			in.SetTextSelection(0, utf8.RuneCountInString(a.renameText))
-		}
-		a.renameFocus = true
-	case a.renameFocus:
-		done(true) // the focus went elsewhere
-	}
+	renameKeys(in, a.renameText, &a.renameFocus, done)
 }
 
 func (t *Tab) attention() bool {

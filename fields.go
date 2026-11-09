@@ -1,6 +1,10 @@
 package main
 
-import "github.com/egoist/mygo/ui"
+import (
+	"unicode/utf8"
+
+	"github.com/egoist/mygo/ui"
+)
 
 // fieldSize is how tall a text field is: compact where a name is edited in
 // place, in a row with what it names, and regular in a form or a popover.
@@ -27,6 +31,28 @@ func textField(c *ui.Context, k *colors, value *string, size fieldSize) ui.Eleme
 		in.Height(28).FontSize(13).PaddingX(8)
 	}
 	return in
+}
+
+// renameKeys ends the rename field in as macOS's rename fields do: the old
+// text is selected as the field takes the focus, Enter or the focus going
+// elsewhere keeps the new one, and Escape goes back. focused remembers
+// that the field had the focus.
+func renameKeys(in ui.Element, text string, focused *bool, done func(keep bool)) {
+	switch {
+	case in.Shortcut(0, ui.KeyEscape):
+		done(false)
+	case in.Submitted():
+		done(true)
+	case in.Focused():
+		// The old name, selected as the field takes the focus, goes as
+		// the new one is typed.
+		if !*focused {
+			in.SetTextSelection(0, utf8.RuneCountInString(text))
+		}
+		*focused = true
+	case *focused:
+		done(true) // the focus went elsewhere
+	}
 }
 
 // styledField makes a text control with make, in the app's look: the

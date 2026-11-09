@@ -775,7 +775,7 @@ func (a *App) offline(h *hostConn) bool {
 	if h == nil || h.current() != nil {
 		return false
 	}
-	name := h.Name
+	name := h.label()
 	a.err, a.errMsg = "", func(m locales.Messages) string { return m.HostsNotConnectedTo(name) }
 	return true
 }

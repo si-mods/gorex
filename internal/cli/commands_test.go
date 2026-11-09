@@ -241,6 +241,30 @@ func TestHostsList(t *testing.T) {
 	}
 }
 
+// TestServerAlias: -S finds a saved host by its alias as by its name, and
+// hosts lists both.
+func TestServerAlias(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("GOREX_DIR", dir)
+	// The one host's alias is the other's name: -S names both.
+	body := `{"hosts":[{"id":"abc","name":"ws-01","alias":"Build Box","address":"not-an-address"},{"id":"def","name":"build box","address":"not-an-address"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "hosts.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, handled, _, errOut := runMain(t, "-S", "BUILD BOX", "ls")
+	if code != ExitTarget || !handled || !strings.Contains(errOut, "ambiguous") {
+		t.Fatalf("-S by alias: %d %v %q", code, handled, errOut)
+	}
+	code, _, out, errOut := runMain(t, "hosts")
+	if code != ExitOK || !strings.Contains(out, "ALIAS") || !strings.Contains(out, "ws-01") || !strings.Contains(out, "Build Box") {
+		t.Fatalf("hosts: %d %q %s", code, out, errOut)
+	}
+	code, _, out, errOut = runMain(t, "hosts", "--json")
+	if code != ExitOK || !strings.Contains(out, `"name": "ws-01"`) || !strings.Contains(out, `"alias": "Build Box"`) || strings.Count(out, `"alias"`) != 1 {
+		t.Fatalf("hosts JSON: %d %q %s", code, out, errOut)
+	}
+}
+
 func TestTargetResolution(t *testing.T) {
 	c := startServer(t)
 	one, err := c.Create(rex.CreateOptions{Dir: t.TempDir(), Cols: 80, Rows: 24})

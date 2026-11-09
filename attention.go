@@ -277,11 +277,11 @@ func (a *App) needItems(match func(string) bool) []paletteItem {
 	}
 	for _, h := range a.hosts {
 		// A host of the tailnet not yet opened is not connected to.
-		if h.state == hostConnected || rex.IsTailnetTarget(h.Address) && !h.TailnetOpened || !match(h.Name) {
+		if h.state == hostConnected || rex.IsTailnetTarget(h.Address) && !h.TailnetOpened || !match(h.label()) {
 			continue
 		}
 		label, _, _ := hostStatus(h)
-		items = append(items, paletteItem{title: h.Name, detail: label, glyph: "server", disabled: true, id: h})
+		items = append(items, paletteItem{title: h.label(), detail: label, glyph: "server", disabled: true, id: h})
 	}
 	return items
 }
@@ -311,9 +311,9 @@ func (a *App) needItem(n needy) (it paletteItem, dir string) {
 	it = paletteItem{title: name, detail: detail, glyph: paneProgram(p).Glyph, status: s, id: id}
 	switch {
 	case p.host != nil && n.ws != nil:
-		it.aside = p.host.Name + " · " + n.ws.Name
+		it.aside = p.host.label() + " · " + n.ws.Name
 	case p.host != nil:
-		it.aside = p.host.Name
+		it.aside = p.host.label()
 	case n.ws != nil:
 		it.aside = n.ws.Name
 	}

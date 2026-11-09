@@ -261,7 +261,7 @@ func TestHostsFile(t *testing.T) {
 	if hs, err := loadHosts(); err != nil || len(hs) != 0 {
 		t.Fatalf("no file: %v, %v", hs, err)
 	}
-	want := []savedHost{{ID: "a1", Name: "office-mac", Address: "tcSECRET"}, {ID: "b2", Name: "studio", Address: "tcOTHER"}}
+	want := []savedHost{{ID: "a1", Name: "office-mac", Address: "tcSECRET"}, {ID: "b2", Name: "studio", Alias: "build box", Address: "tcOTHER"}}
 	if err := saveHosts(want); err != nil {
 		t.Fatal(err)
 	}
@@ -1296,6 +1296,89 @@ func TestHostFailures(t *testing.T) {
 	})
 }
 
+// TestRenameHost renames a saved host in its row: Enter keeps the alias,
+// Escape goes back, and an empty one shows the host's name again; the
+// host stays as it was.
+func TestRenameHost(t *testing.T) {
+	a, tt := hostsPage(t)
+	f := newFakeHost(t, fakeApproved)
+	h := a.addHost(savedHost{ID: "h1", Name: "ws-01", Address: f.path})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	c := h.current()
+	rename := func(text string, key ui.Key) {
+		t.Helper()
+		if err := tt.Click(locales.HostsRename()); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		tt.Frame()
+		// The old name is selected, and goes.
+		if text == "" {
+			tt.Key(0, ui.KeyBackspace)
+		} else {
+			tt.Type(text)
+		}
+		tt.Key(0, key)
+		tt.Frame()
+	}
+	rename("build box", ui.KeyEnter)
+	if !tt.HasText("build box") || tt.HasText("ws-01") || h.Name != "ws-01" {
+		t.Fatalf("renamed: %+v; texts %q", h.savedHost, tt.Texts())
+	}
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Alias != "build box" {
+		t.Fatalf("hosts.json: %+v", hs)
+	}
+	rename("other", ui.KeyEscape)
+	if h.Alias != "build box" || tt.HasText("other") {
+		t.Fatalf("Escape kept %q", h.Alias)
+	}
+	rename("", ui.KeyEnter)
+	if h.Alias != "" || !tt.HasText("ws-01") {
+		t.Fatalf("cleared: %+v; texts %q", h.savedHost, tt.Texts())
+	}
+	if h.current() != c || h.state != hostConnected {
+		t.Error("renaming the host reconnected it")
+	}
+
+	// An alias another host goes by keeps the field open, and says so.
+	a.addHost(savedHost{ID: "h2", Name: "studio", Address: f.path})
+	tt.Frame()
+	// The Rename button of a row, as far below its name as the first's.
+	first, _ := tt.Find(locales.HostsRename())
+	n1, _ := tt.Find("ws-01")
+	rename("Studio", ui.KeyEnter)
+	if h.Alias != "" || hostsUI.renaming != h.ID || !tt.HasText(locales.HostsNameTaken()) {
+		t.Fatalf("a taken alias: %+v, editing %q; texts %q", h.savedHost, hostsUI.renaming, tt.Texts())
+	}
+
+	// Rename on another host keeps the alias being edited, as moving the
+	// focus away does, and edits the other's.
+	tt.Key(ui.Super, ui.KeyA)
+	tt.Type("build box")
+	tt.Frame()
+	if tt.HasText(locales.HostsNameTaken()) {
+		t.Error("the hint stays as another alias is typed")
+	}
+	n2, _ := tt.Find("studio")
+	tt.ClickAt(first.X+first.W/2, n2.Y+first.Y+first.H/2-n1.Y)
+	tt.Frame()
+	if h.Alias != "build box" || hostsUI.renaming != "h2" || tt.HasText(locales.HostsNameTaken()) {
+		t.Fatalf("switching: %+v, editing %q; texts %q", h.savedHost, hostsUI.renaming, tt.Texts())
+	}
+
+	// Removing the host, or closing the page, forgets its edit.
+	a.removeHost(a.hostByID("h2"))
+	if hostsUI.renaming != "" {
+		t.Errorf("the removed host is still edited: %q", hostsUI.renaming)
+	}
+	hostsUI.renaming, hostsUI.alias = h.ID, "abandoned"
+	closeHostRename()
+	tt.Frame()
+	if h.Alias != "build box" || hostsUI.alias != "" {
+		t.Errorf("an abandoned edit was kept: %+v", h.savedHost)
+	}
+}
+
 // TestHostDropsBackOff checks that a host that greets and drops at once is
 // not dialed in a loop: the failures wait longer each time.
 func TestHostDropsBackOff(t *testing.T) {
@@ -1427,19 +1510,24 @@ func TestReconcileNetwork(t *testing.T) {
 	}
 
 	// A member at a new address is a new host: the machine its old
-	// address said is not kept.
+	// address said is not kept, the alias the user gave it is.
 	a.hosts[0].learnMachine("m-old")
+	a.setHostAlias(a.hosts[0], "build box")
 	bob.Address += "-moved"
 	a.reconcileNetwork(&rex.NetworkStatus{Members: []rex.NetworkMember{bob}})
-	if len(a.hosts) != 1 || a.hosts[0].Address != bob.Address || a.hosts[0].saved().Machine != "" {
+	if len(a.hosts) != 1 || a.hosts[0].Address != bob.Address || a.hosts[0].saved().Machine != "" || a.hosts[0].label() != "build box" {
 		t.Fatalf("the moved member: %+v", a.hosts)
 	}
 
-	// A renamed member keeps its host; a new one adds; one gone goes.
+	// A renamed member keeps its host and its alias; a new one adds; one
+	// gone goes.
 	bob.Name = "bobby"
 	a.reconcileNetwork(&rex.NetworkStatus{Members: []rex.NetworkMember{bob}})
-	if len(a.hosts) != 1 || a.hosts[0].Name != "bobby" {
+	if len(a.hosts) != 1 || a.hosts[0].Name != "bobby" || a.hosts[0].label() != "build box" {
 		t.Fatalf("the renamed member: %+v", a.hosts)
+	}
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Alias != "build box" || hs[0].Name != "bobby" {
+		t.Fatalf("hosts.json after the rename: %+v", hs)
 	}
 	a.reconcileNetwork(&rex.NetworkStatus{Members: []rex.NetworkMember{carol}})
 	if len(a.hosts) != 1 || a.hosts[0].ID != networkHostID(carol.PublicKey) {
@@ -1451,6 +1539,61 @@ func TestReconcileNetwork(t *testing.T) {
 	a.reconcileNetwork(&rex.NetworkStatus{})
 	if len(a.hosts) != 1 || a.hosts[0].ID != "m1" || manual == nil {
 		t.Fatalf("the manual host: %+v", a.hosts)
+	}
+}
+
+// TestHostAlias: the alias the user gives a host is what it shows by,
+// the tailnet's names go on changing Name under it, and clearing it, or
+// typing the host's own name, shows that name again.
+func TestHostAlias(t *testing.T) {
+	a, _ := newTestApp(t)
+	fakeHosts(t)
+	t.Cleanup(a.stopHosts)
+	peer := rex.TailnetHost{Target: "tailscale:nfake", Name: "ws-01"}
+	a.reconcileTailnet(&rex.TailnetStatus{Running: true, Hosts: []rex.TailnetHost{peer}})
+	if len(a.hosts) != 1 {
+		t.Fatalf("the peer became %+v", a.hosts)
+	}
+	h := a.hosts[0]
+	a.setHostAlias(h, "  build box ")
+	if a.hostName(h) != "build box" || h.Name != "ws-01" {
+		t.Fatalf("alias %q, name %q", a.hostName(h), h.Name)
+	}
+	peer.Name = "ws-02"
+	a.reconcileTailnet(&rex.TailnetStatus{Running: true, Hosts: []rex.TailnetHost{peer}})
+	if h.Name != "ws-02" || h.Alias != "build box" {
+		t.Fatalf("after the tailnet renamed it: %+v", h.savedHost)
+	}
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Name != "ws-02" || hs[0].Alias != "build box" {
+		t.Fatalf("hosts.json: %+v", hs)
+	}
+	// A new host takes neither name nor alias of another.
+	for _, name := range []string{"Build Box", "WS-02"} {
+		if validateHost("/tmp/other", name, "me", a.hosts) != locales.HostsNameTaken() {
+			t.Errorf("%q is not taken", name)
+		}
+	}
+	// Nor does an alias: another host's name or alias is refused.
+	other := a.addHost(savedHost{ID: "m1", Name: "studio", Address: "/tmp/nowhere"})
+	for _, alias := range []string{"WS-02", "build box"} {
+		if a.setHostAlias(other, alias) || other.Alias != "" {
+			t.Errorf("alias %q taken: %+v", alias, other.savedHost)
+		}
+	}
+	// An alias that does not change saves nothing.
+	os.Remove(hostsPath())
+	if !a.setHostAlias(h, "build box") {
+		t.Error("the same alias is refused")
+	}
+	if _, err := os.Stat(hostsPath()); err == nil {
+		t.Error("the same alias saved the hosts")
+	}
+	for _, alias := range []string{"", "ws-02"} {
+		a.setHostAlias(h, "x")
+		a.setHostAlias(h, alias)
+		if h.Alias != "" || a.hostName(h) != "ws-02" {
+			t.Errorf("alias %q: %+v", alias, h.savedHost)
+		}
 	}
 }
 

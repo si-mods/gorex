@@ -296,7 +296,7 @@ func putFile(ctx context.Context, h *hostConn, shell string, f rex.FilePut, open
 func transferError(h *hostConn, err error) string {
 	if err == errHostAway {
 		_, why, _ := hostStatus(h)
-		return cmp.Or(why, locales.HostsNotConnectedTo(h.Name))
+		return cmp.Or(why, locales.HostsNotConnectedTo(h.label()))
 	}
 	return strings.TrimPrefix(err.Error(), "rex: ")
 }
@@ -475,14 +475,14 @@ func (a *App) fileDrop(c *ui.Context, k *colors, p *Pane, card, tv ui.Element) {
 			}
 		}
 		if _, over := ui.DataDragOver(card, fileDrops); over {
-			label = locales.PaneDropUpload(cmp.Or(p.info.Dir, "~"), h.Name)
+			label = locales.PaneDropUpload(cmp.Or(p.info.Dir, "~"), h.label())
 			if h.hello.Can(rex.CapabilityFileTemp) {
-				label = locales.PaneDropUploadTemp(h.Name)
+				label = locales.PaneDropUploadTemp(h.label())
 			}
 			drawPaneDrop(card, k, dropCenter)
 		}
 	case h != nil && h.current() != nil && tv.FileDragOver():
-		label = locales.PaneDropUpdate(h.Name)
+		label = locales.PaneDropUpdate(h.label())
 	}
 	if label == "" {
 		return

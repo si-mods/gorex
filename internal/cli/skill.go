@@ -115,8 +115,8 @@ gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION
 - ` + "`action run`" + ` runs a built-in action by its ID. Values after the action
   are strings; the CLI does not guess types.
 - ` + "`layout`" + ` prints the window layout as JSON; ` + "`clients`" + ` lists attachments.
-- ` + "`-S HOST`" + ` before a command uses a saved remote host instead of this
-  machine's server. Local-only and window-only commands do not apply remotely.
+- ` + "`-S HOST`" + ` before a command uses a saved remote host, by its name or
+  alias, instead of this machine's server. Local-only and window-only commands do not apply remotely.
 
 ## Common requests
 

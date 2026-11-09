@@ -1372,7 +1372,7 @@ func (a *App) reconnecting(c *ui.Context, k *colors, p *Pane) {
 	var title, detail string
 	switch {
 	case h.state != hostConnected:
-		title, detail = locales.PaneReconnecting(h.Name), locales.PaneConnectionDropped()
+		title, detail = locales.PaneReconnecting(h.label()), locales.PaneConnectionDropped()
 	case p.remote != nil && p.remote.Detached():
 		title = locales.PaneStreamInterrupted()
 	default:

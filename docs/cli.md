@@ -3,8 +3,8 @@
 `gorex` is the same binary as the app. From a terminal it drives sessions
 without opening a window; with no arguments it starts the app.
 
-`-S HOST` before a command uses a saved remote host from `hosts.json`, or
-an address, instead of this machine's server. Local-only commands (`hosts`,
+`-S HOST` before a command uses a saved remote host from `hosts.json`, by
+its name or its alias, or an address, instead of this machine's server. Local-only commands (`hosts`,
 `remote`, `server`, `update`) and window-only commands (`split`, `close`) do
 not apply remotely. `action` applies remotely when the host turns Remote
 Control on; `layout` reads a host's layout when it turns Share Layout on.
@@ -74,7 +74,8 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   host that shares its layout, it subscribes to that host's layout too.
 - `clients` prints the principal, peer key, whether it is remote, through a
   kept connection, and how many seconds it has been attached.
-- `hosts` lists saved remote hosts; addresses stay hidden.
+- `hosts` lists saved remote hosts, each by its name and the alias it was
+  given in GoRex, if any; addresses stay hidden.
 - `remote status` shows the local server's remote access without its
   address; `remote control on|off` lets paired clients run app actions
   through the window. It applies to every paired client and every member

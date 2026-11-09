@@ -51,7 +51,7 @@ func (a *App) teleportHosts() (hosts []*hostConn, why []string) {
 		}
 		reason := ""
 		if !h.hello.Can(rex.CapabilityTeleport) {
-			reason = locales.TeleportTooOld(h.Name)
+			reason = locales.TeleportTooOld(h.label())
 		}
 		hosts, why = append(hosts, h), append(why, reason)
 	}
@@ -71,7 +71,7 @@ func (a *App) teleportMenu(m *ui.Menu, p *Pane) {
 		return
 	}
 	for i, h := range hosts {
-		label := h.Name
+		label := h.label()
 		if why[i] != "" {
 			label = why[i]
 		}
@@ -93,8 +93,8 @@ func (a *App) teleportItems(match func(string) bool) []paletteItem {
 	reason := teleportBlocked(p)
 	var items []paletteItem
 	for i, h := range hosts {
-		title := locales.CmdTeleportTo(h.Name)
-		if !match(title) && !match(locales.In("en").CmdTeleportTo(h.Name)) {
+		title := locales.CmdTeleportTo(h.label())
+		if !match(title) && !match(locales.In("en").CmdTeleportTo(h.label())) {
 			continue
 		}
 		detail := reason
@@ -152,7 +152,7 @@ func (a *App) teleport(p *Pane, h *hostConn) {
 			case !cancelled:
 				// A banner as the others, until dismissed or the pane's
 				// next teleport goes.
-				p.teleportErr = locales.TeleportFailed(h.Name, strings.TrimPrefix(strings.TrimPrefix(err.Error(), "rex: "), "teleport: "))
+				p.teleportErr = locales.TeleportFailed(h.label(), strings.TrimPrefix(strings.TrimPrefix(err.Error(), "rex: "), "teleport: "))
 				a.err, a.errMsg = p.teleportErr, nil
 			}
 			if expected != "" {
@@ -205,11 +205,11 @@ func (a *App) teleportOverlay(c *ui.Context, k *colors, p *Pane) {
 	step := locales.TeleportPackingStep()
 	switch run.step {
 	case rex.TeleportSending:
-		step = locales.TeleportSendingStep(run.host.Name)
+		step = locales.TeleportSendingStep(run.host.label())
 	case rex.TeleportStarting:
-		step = locales.TeleportStartingStep(run.host.Name)
+		step = locales.TeleportStartingStep(run.host.label())
 	}
-	title := locales.TeleportTitle(run.host.Name)
+	title := locales.TeleportTitle(run.host.label())
 	ui.Column(c.Key("teleport")).Absolute().Top(0).Left(0).Right(0).Bottom(0).Justify(ui.Center).AlignItems(ui.Center).Gap(8).
 		Draw(func(pt *ui.Painter, r ui.Rect) { paintFrost(pt, r, 16, 0, k.panelGlass, k.panel) }).Label(title).Children(func() {
 		ui.Text(c, title).FontSize(14).FontWeight(600).TextColor(k.text)

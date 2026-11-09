@@ -64,7 +64,7 @@ func openHostPairQR(h *hostConn) {
 	if win == nil {
 		return
 	}
-	page := &hostPairQR{host: h.Name, open: true, loading: true}
+	page := &hostPairQR{host: h.label(), open: true, loading: true}
 	hostsPairQR = page
 	target := h.Address
 	go func() {

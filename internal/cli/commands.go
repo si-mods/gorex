@@ -196,7 +196,7 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 	{
 		var manual, network []savedHost
 		for _, h := range f.Hosts {
-			if h.ID == "" || h.Address == "" || !strings.EqualFold(h.Name, serverTarget) {
+			if h.ID == "" || h.Address == "" || !strings.EqualFold(h.Name, serverTarget) && !strings.EqualFold(h.Alias, serverTarget) {
 				continue
 			}
 			if h.Network || rex.IsTailnetTarget(h.Address) {
@@ -727,6 +727,7 @@ func (c *nopConn) Close() error {
 type savedHost struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
+	Alias   string `json:"alias,omitempty"`
 	Address string `json:"address"`
 	Network bool   `json:"network,omitempty"`
 }
@@ -763,19 +764,20 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 		type shown struct {
 			ID      string `json:"id"`
 			Name    string `json:"name"`
+			Alias   string `json:"alias,omitempty"`
 			Network bool   `json:"network,omitempty"`
 		}
 		shownHosts := make([]shown, 0, len(hosts))
 		for _, h := range hosts {
-			shownHosts = append(shownHosts, shown{ID: h.ID, Name: h.Name, Network: h.Network})
+			shownHosts = append(shownHosts, shown{ID: h.ID, Name: h.Name, Alias: h.Alias, Network: h.Network})
 		}
 		WriteJSON(out, shownHosts)
 		return ExitOK, true
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tNETWORK\tID")
+	fmt.Fprintln(tw, "NAME\tALIAS\tNETWORK\tID")
 	for _, h := range hosts {
-		fmt.Fprintf(tw, "%s\t%v\t%s\n", printable(h.Name), h.Network, h.ID)
+		fmt.Fprintf(tw, "%s\t%s\t%v\t%s\n", printable(h.Name), printable(h.Alias), h.Network, h.ID)
 	}
 	tw.Flush()
 	return ExitOK, true
