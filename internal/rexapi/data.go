@@ -63,9 +63,9 @@ func (g *Gateway) handleData(w http.ResponseWriter, r *http.Request) {
 	}
 	switch msg[0] {
 	case 0x01:
-		g.dataHello(ws, msg[1:])
+		g.dataHello(ws, msg[1:], principalOf(r))
 	case 0x02:
-		g.dataResume(ws, msg[1:])
+		g.dataResume(ws, msg[1:], principalOf(r))
 	default:
 		rejectData(ws, rejectMalformed)
 	}
@@ -93,7 +93,7 @@ func rejectData(ws *websocket.Conn, reason byte) {
 }
 
 // dataHello opens the stream a ticket names.
-func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
+func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte, principal map[string]any) {
 	if len(rest) < 16 {
 		rejectData(ws, rejectMalformed)
 		return
@@ -101,6 +101,10 @@ func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
 	t, reason := g.takeTicket(base64url(rest[:16]), ws.Subprotocol())
 	if t == nil || reason == rejectTicket || reason == rejectProtocol {
 		rejectData(ws, reason)
+		return
+	}
+	if !g.recordAllows(t.record, principal) {
+		rejectData(ws, rejectTicket)
 		return
 	}
 	switch {
@@ -112,11 +116,11 @@ func (g *Gateway) dataHello(ws *websocket.Conn, rest []byte) {
 			return
 		}
 		g.startUploadStream(ws, t)
-	case t.subprotocol != "" && t.subprotocol != terminalProtocol:
+	case t.subprotocol != "" && t.subprotocol != terminalProtocol && t.subprotocol != terminalVTProtocol:
 		g.welcomeThenClose(ws, 1008, "data provider unavailable")
-	case ws.Subprotocol() != terminalProtocol:
+	case ws.Subprotocol() != terminalProtocol && ws.Subprotocol() != terminalVTProtocol:
 		g.welcomeThenClose(ws, 1008, "data provider unavailable")
-	case !g.hello.Can(rex.CapabilitySnapshotGhostty):
+	case ws.Subprotocol() == terminalProtocol && !g.hello.Can(rex.CapabilitySnapshotGhostty):
 		// A stream starts with a Ghostty snapshot, which the server has
 		// not taken before this capability.
 		g.welcomeThenClose(ws, 1008, "data provider unavailable")
@@ -177,7 +181,11 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		case <-time.After(5 * time.Second):
 		}
 	}
-	conn, err := g.opt.Client.AttachConn(rex.Attach{SID: t.sid, Snapshot: rex.SnapshotGhostty, Framed: true, Mute: true})
+	format := rex.SnapshotGhostty
+	if ws.Subprotocol() == terminalVTProtocol {
+		format = ""
+	}
+	conn, err := g.opt.Client.AttachConn(rex.Attach{SID: t.sid, Snapshot: format, Framed: true, Mute: true})
 	if err != nil {
 		rejectData(ws, rejectUnavailable)
 		return
@@ -189,7 +197,7 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 	if err == nil {
 		err = json.Unmarshal(line, &head)
 	}
-	if err == nil && head.Format != rex.SnapshotGhostty {
+	if err == nil && head.Format != format {
 		// The server fell back to escape sequences, which a Rex stream
 		// cannot start with: it carries a binary snapshot.
 		conn.Close()
@@ -210,7 +218,7 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 	nonce := nonzeroNonce()
 	s := &stream{
 		g: g, key: key, record: t.record, sid: t.sid,
-		subprotocol: terminalProtocol, nonce: nonce,
+		subprotocol: ws.Subprotocol(), nonce: nonce,
 		conn: conn, rd: br,
 		chunks: make(chan []byte, 32), resumes: make(chan *resumeCall),
 		goners: make(chan gone, 8), msgs: make(chan any, 8), done: make(chan struct{}),
@@ -229,6 +237,10 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		owner = o
 	}
 	resize := resizeMessage(head.Cols, head.Rows, owner)
+	if s.subprotocol == terminalVTProtocol {
+		s.buf = append(s.buf, apcMessage(nonce, map[string]any{"type": "snapshot", "cols": head.Cols, "rows": head.Rows})...)
+		s.buf = append(s.buf, []byte("\x1bc")...)
+	}
 	s.buf = append(s.buf, snap...)
 	s.buf = append(s.buf, apcMessage(nonce, resize)...)
 	if th, ok := g.themeOf(t.block); ok {
@@ -236,17 +248,18 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 	}
 	s.total = int64(len(s.buf))
 	welcome := welcomeBytes(token, nonce)
-	if !writeData(ws, welcome) || writeStream(ws, s.buf) != nil {
+	go s.watch(ws)
+	if !writeData(ws, welcome) || s.writeOutput(ws, s.buf) != nil {
+		ws.CloseNow()
 		s.discard()
 		return
 	}
 	go s.run()
-	go s.watch(ws)
 	s.startPing(ws, s.wsDone())
 }
 
 // dataResume continues a stream whose connection dropped.
-func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte) {
+func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte, principal map[string]any) {
 	if len(rest) < 24 {
 		rejectData(ws, rejectMalformed)
 		return
@@ -254,7 +267,7 @@ func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte) {
 	token := string(rest[:16])
 	count := binary.LittleEndian.Uint64(rest[16:24])
 	s := g.streamFor(token)
-	if s == nil {
+	if s == nil || !g.recordAllows(s.record, principal) {
 		rejectData(ws, rejectTicket)
 		return
 	}
@@ -274,7 +287,9 @@ func (g *Gateway) dataResume(ws *websocket.Conn, rest []byte) {
 		rejectData(ws, rejectReason(err))
 		return
 	}
-	go s.watch(ws)
+	if s.subprotocol != terminalVTProtocol {
+		go s.watch(ws)
+	}
 	s.startPing(ws, s.wsDone())
 }
 
@@ -311,6 +326,7 @@ type stream struct {
 	mu     sync.Mutex
 	ws     *websocket.Conn
 	wsdone chan struct{}
+	flow   *renderFlow
 
 	chunks  chan []byte
 	resumes chan *resumeCall
@@ -364,6 +380,12 @@ func (s *stream) currentWS() *websocket.Conn {
 // setWS makes ws the stream's connection.
 func (s *stream) setWS(ws *websocket.Conn) {
 	s.mu.Lock()
+	if s.flow != nil {
+		s.flow.close()
+	}
+	if s.subprotocol == terminalVTProtocol {
+		s.flow = newRenderFlow()
+	}
 	if s.wsdone != nil {
 		close(s.wsdone)
 	}
@@ -388,6 +410,9 @@ func (s *stream) clearWS(ws *websocket.Conn) bool {
 		return false
 	}
 	s.ws = nil
+	if s.flow != nil {
+		s.flow.close()
+	}
 	if s.wsdone != nil {
 		close(s.wsdone)
 		s.wsdone = nil
@@ -472,7 +497,7 @@ func (s *stream) appendBytes(p []byte) {
 	s.buf = append(s.buf, p...)
 	s.total += int64(len(p))
 	if ws := s.currentWS(); ws != nil {
-		if err := writeStream(ws, p); err != nil {
+		if err := s.writeOutput(ws, p); err != nil {
 			if s.clearWS(ws) {
 				ws.Close(1013, "data reconnect required")
 				s.startResumeTimer()
@@ -600,6 +625,9 @@ func (s *stream) resumeStream(call *resumeCall) {
 		old.Close(1000, "stream moved")
 	}
 	s.setWS(call.ws)
+	if s.subprotocol == terminalVTProtocol {
+		go s.watch(call.ws)
+	}
 	token := s.g.rotateStreamToken(s)
 	s.stopResumeTimer()
 	if !writeData(call.ws, welcomeBytes(token, s.nonce)) {
@@ -609,7 +637,7 @@ func (s *stream) resumeStream(call *resumeCall) {
 	}
 	call.reply <- nil
 	from := int64(call.count) - s.base
-	if err := writeStream(call.ws, s.buf[from:]); err != nil {
+	if err := s.writeOutput(call.ws, s.buf[from:]); err != nil {
 		if s.clearWS(call.ws) {
 			call.ws.Close(1013, "data reconnect required")
 			s.startResumeTimer()
@@ -741,6 +769,9 @@ func (s *stream) closeWith(status websocket.StatusCode, reason string) {
 		s.mu.Lock()
 		ws := s.ws
 		s.ws = nil
+		if s.flow != nil {
+			s.flow.close()
+		}
 		if s.wsdone != nil {
 			close(s.wsdone)
 			s.wsdone = nil
@@ -753,11 +784,24 @@ func (s *stream) closeWith(status websocket.StatusCode, reason string) {
 	})
 }
 
-// watch reads the connection, which the client only writes nothing on,
-// so that its end is noticed.
+// watch notices disconnects and accepts render acknowledgements on VT streams.
 func (s *stream) watch(ws *websocket.Conn) {
+	s.mu.Lock()
+	var flow *renderFlow
+	if s.ws == ws {
+		flow = s.flow
+	}
+	s.mu.Unlock()
+	if flow != nil {
+		defer flow.close()
+	}
 	for {
-		if _, _, err := ws.Read(context.Background()); err != nil {
+		typ, data, err := ws.Read(context.Background())
+		if err == nil && flow != nil && (typ != websocket.MessageBinary || len(data) != 8 || !flow.ack(binary.LittleEndian.Uint64(data))) {
+			ws.Close(websocket.StatusPolicyViolation, "invalid render acknowledgement")
+			err = errors.New("invalid render acknowledgement")
+		}
+		if err != nil {
 			status := websocket.CloseStatus(err)
 			select {
 			case s.goners <- gone{ws: ws, status: status}:

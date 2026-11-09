@@ -2687,6 +2687,36 @@
           }
         }
       }
+    },
+    "Connection failed": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接失败"
+          }
+        }
+      }
+    },
+    "Pairing code (optional)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对码（可选）"
+          }
+        }
+      }
+    },
+    "For public access without VPN, enter the code from GoRex on your computer. Leave empty for an existing connection or Tailscale.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过公网免 VPN 连接时，输入电脑上 GoRex 生成的配对码。已有授权或使用 Tailscale 时可留空。"
+          }
+        }
+      }
     }
   }
 }

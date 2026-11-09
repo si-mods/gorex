@@ -46,7 +46,7 @@ func TestAccessRefusal(t *testing.T) {
 	f.g.opt.Access = AccessFunc(func(*http.Request) error { return errors.New("not allowed here") })
 	srv := httptest.NewServer(f.g.Handler())
 	defer srv.Close()
-	for _, path := range []string{"/api/control", "/api/data", "/api/upload", "/api/help", "/llms.txt", "/elsewhere"} {
+	for _, path := range []string{"/api/control", "/api/data", "/api/upload", "/api/access/pair", "/api/help", "/llms.txt", "/elsewhere"} {
 		resp, err := http.Get(srv.URL + path)
 		if err != nil {
 			t.Fatal(err)

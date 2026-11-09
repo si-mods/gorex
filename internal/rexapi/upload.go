@@ -81,7 +81,7 @@ type uploadBatch struct {
 // features are the welcome's features: GoRex's own, which Rex's clients
 // ignore, as they ignore every name they do not know.
 func (g *Gateway) features() []string {
-	features := []string{featureSpaces}
+	features := []string{featureSpaces, featureWeb}
 	if g.hello.Can(rex.CapabilityFileTemp) {
 		features = append(features, featureUpload)
 	}

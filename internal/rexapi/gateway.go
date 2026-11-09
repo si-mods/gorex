@@ -94,7 +94,8 @@ type Gateway struct {
 	tailnet *tailnet
 	// lan is the listener on the local network, nil without a state
 	// directory.
-	lan *lanListener
+	lan    *lanListener
+	public *publicAccess
 	// reconnectWait is how long a dropped client, or a data stream, waits
 	// to be resumed; tests shorten it before making a gateway of their own.
 	reconnectWait time.Duration
@@ -197,6 +198,11 @@ func New(opt Options) (*Gateway, error) {
 		done:           make(chan struct{}),
 	}
 	if opt.TailnetDir != "" {
+		var err error
+		g.public, err = newPublicAccess(g, opt.TailnetDir)
+		if err != nil {
+			return nil, err
+		}
 		g.lan = newLANListener(g, opt.TailnetDir)
 		g.tailnet = newTailnet(g, opt.TailnetDir, newTsnetNode)
 		g.tailnet.serve = g.serveOn
@@ -247,6 +253,9 @@ func (g *Gateway) Close() error {
 		}
 		if g.lan != nil {
 			g.lan.close()
+		}
+		if g.public != nil {
+			g.public.close()
 		}
 		for _, c := range conns {
 			c.closeWith(1001, "data provider canceled")
@@ -389,9 +398,11 @@ func (g *Gateway) modelNow() *model {
 // clientRecord is one Rex client across its connections: it keeps its ID
 // and attachments when a connection drops, for a reconnect.
 type clientRecord struct {
-	id          string
-	info        *clientInfo
-	principal   map[string]any
+	id        string
+	info      *clientInfo
+	principal map[string]any
+	// deviceID is authentication state, kept outside Rex's principal schema.
+	deviceID    string
 	connectedAt time.Time
 	order       uint64
 
@@ -472,10 +483,15 @@ func connectedAtString(t time.Time) string { return t.UTC().Format(time.RFC3339)
 // addControl registers a connection's client. A welcome's token is made
 // here, and the record is what a reconnect continues.
 func (g *Gateway) addControl(c *control, info *clientInfo, principal map[string]any) *clientRecord {
+	deviceID, _ := principal["device_id"].(string)
+	if principal["transport"] == transportPublic {
+		principal = map[string]any{"kind": principal["kind"], "transport": transportPublic, "display": principal["display"]}
+	}
 	rec := &clientRecord{
 		id:          newID("client"),
 		info:        info,
 		principal:   principal,
+		deviceID:    deviceID,
 		connectedAt: time.Now(),
 		attached:    map[string]bool{},
 		conn:        c,
@@ -492,11 +508,11 @@ func (g *Gateway) addControl(c *control, info *clientInfo, principal map[string]
 
 // resumeControl continues the client of token, if it is waiting to
 // reconnect, and reports whether it did.
-func (g *Gateway) resumeControl(c *control, token string) (*clientRecord, bool) {
+func (g *Gateway) resumeControl(c *control, token string, principal map[string]any) (*clientRecord, bool) {
 	g.mu.Lock()
 	rec := g.tokens[token]
 	g.mu.Unlock()
-	if rec == nil {
+	if rec == nil || !sameDevice(rec.principal, rec.deviceID, principal) {
 		return nil, false
 	}
 	rec.mu.Lock()

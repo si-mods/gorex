@@ -47,6 +47,8 @@ func Main(args []string) int {
 			return callMain(args[1:])
 		case "lan":
 			return lanMain(args[1:])
+		case "public":
+			return publicMain(args[1:])
 		}
 	}
 	return serveMain(args)
@@ -179,6 +181,17 @@ func run(c *rex.Client, o runOptions) error {
 	}
 	w.changed()
 	applyLAN()
+	pw := &confWatch{path: publicConfPath(o.dir)}
+	applyPublic := func() {
+		conf, err := LoadPublic(o.dir)
+		if err != nil {
+			logf("public access configuration: %v", err)
+			conf = PublicConfig{}
+		}
+		g.public.apply(conf)
+	}
+	pw.changed()
+	applyPublic()
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	for {
@@ -192,6 +205,9 @@ func run(c *rex.Client, o runOptions) error {
 		case <-tick.C:
 			if w.changed() {
 				applyLAN()
+			}
+			if pw.changed() {
+				applyPublic()
 			}
 		}
 	}
@@ -219,6 +235,9 @@ func (w *confWatch) changed() bool {
 // its local socket: the local network listener or built-in Tailscale is
 // on. The GoRex server runs it only then.
 func Wanted(dir string) bool {
+	if c, err := LoadPublic(dir); err == nil && c.Enabled {
+		return true
+	}
 	if c, err := LoadLAN(dir); err == nil && c.Enabled {
 		return true
 	}

@@ -492,7 +492,20 @@ already open. The layout stays the desktop's: rootshell shows it, and
 changes it through the GoRex window. Setup on macOS and Windows hosts, the steps in
 rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 
+## Browser terminals
+
+Open GoRex's HTTPS address in a browser to continue its running terminals.
+The embedded Web client supports device pairing, spaces, terminal tabs and pane
+selection, new terminals, clipboard actions, and reconnecting without restarting
+the shell. Desktop and phone browsers use the same gateway; no system VPN is
+needed when the HTTPS address is reachable.
+
+Setup and limits: [Public access](docs/public-access.md#pair-a-browser).
+
 ## Rex's iPhone app
+
+Rex Go also supports [authenticated public HTTPS access](docs/public-access.md)
+without a system VPN, using single-use pairing codes and revocable device credentials.
 
 Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
 server: the GoRex server serves Rex's API (revision 11), on the local

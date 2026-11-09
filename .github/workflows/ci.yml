@@ -21,6 +21,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Web protocol tests
+        run: node --test internal/rexapi/web/core.test.js
       - name: gofmt
         run: |
           unformatted=$(gofmt -l $(git ls-files '*.go'))

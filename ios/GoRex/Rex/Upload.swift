@@ -18,12 +18,12 @@ enum Upload {
     /// through session, streamed from the disk, and returns the word to
     /// paste.
     nonisolated static func send(_ file: URL, name: String, block: String, to base: URL,
-                                 session: URLSession = .shared) async throws -> String {
+                                 session: URLSession = DeviceAccess.session) async throws -> String {
         var c = URLComponents(url: base.apiURL("/api/upload"), resolvingAgainstBaseURL: false)!
         c.queryItems = [URLQueryItem(name: "block_id", value: block), URLQueryItem(name: "name", value: name)]
         // A query reads "+" as a space.
         c.percentEncodedQuery = c.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
-        var r = URLRequest(url: c.url!)
+        var r = URLRequest(url: c.url!).withDeviceCredential(for: base)
         r.httpMethod = "POST"
         r.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await session.upload(for: r, fromFile: file)
