@@ -189,6 +189,12 @@ func (p *publicAccess) redeem(code, name string) (publicDevice, string, error) {
 }
 
 func (p *publicAccess) revoke(id string) error {
+	return p.revokeExcept(id, nil)
+}
+
+// A logout response must clear its cookie before its own HTTP connection
+// closes. Other connections of the device are closed immediately.
+func (p *publicAccess) revokeExcept(id string, keep *trackedConn) error {
 	p.mu.Lock()
 	next, found := publicState{Pairings: p.state.Pairings}, false
 	for _, d := range p.state.Devices {
@@ -208,7 +214,7 @@ func (p *publicAccess) revoke(id string) error {
 	}
 	var conns []*trackedConn
 	for c, device := range p.conns {
-		if device == id {
+		if device == id && c != keep {
 			conns = append(conns, c)
 		}
 	}
@@ -233,7 +239,7 @@ func (p *publicAccess) admit(w http.ResponseWriter, r *http.Request) (map[string
 		writeRefusal(w, "origin is not this gateway")
 		return nil, false
 	}
-	if r.URL.Path == "/api/access/pair" {
+	if r.URL.Path == "/api/access/pair" || isWebAsset(r.URL.Path) && (r.Method == "GET" || r.Method == "HEAD") {
 		// Pairing needs an invitation rather than an existing credential.
 		// Dispatch through Handler so the gateway's Access rule still applies.
 		return map[string]any{"kind": "anonymous", "transport": transportPublic, "display": "pairing"}, true

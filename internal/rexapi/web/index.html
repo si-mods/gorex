@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="dark" />
+    <title>GoRex Web</title>
+    <link rel="stylesheet" href="/web/vendor/xterm.css" />
+    <link rel="stylesheet" href="/web/app.css" />
+    <script defer src="/web/vendor/xterm.js"></script>
+    <script defer src="/web/vendor/addon-fit.js"></script>
+    <script defer src="/web/vendor/addon-unicode11.js"></script>
+    <script type="module" src="/web/app.js"></script>
+  </head>
+  <body>
+    <header class="app-header">
+      <button
+        id="sidebar-toggle"
+        class="icon-button mobile-only"
+        aria-label="Toggle spaces"
+        aria-expanded="false"
+      >
+        ☰
+      </button>
+      <a class="brand" href="/" aria-label="GoRex Web"
+        ><span class="brand-mark">&gt;_</span
+        ><span>GoRex <small>WEB</small></span></a
+      >
+      <span id="connection" role="status" class="connection"
+        ><i></i><span>Connecting…</span></span
+      >
+      <div class="header-actions">
+        <button id="reconnect" hidden data-i18n="retry">Retry</button>
+        <button id="language" class="quiet-button" aria-label="Change language">
+          中文
+        </button>
+        <button id="logout" class="quiet-button" hidden data-i18n="unpair">
+          Unpair browser
+        </button>
+      </div>
+    </header>
+
+    <main id="pair-panel" class="pair-page" hidden>
+      <section class="pair-card">
+        <div class="pair-symbol" aria-hidden="true">&gt;_</div>
+        <p class="eyebrow">YOUR TERMINALS, WITH YOU</p>
+        <h1 data-i18n="pairTitle">Connect to your terminals.</h1>
+        <p class="pair-description" data-i18n="pairDescription">
+          Pair this browser to continue the sessions running on your computer.
+        </p>
+        <form id="pair-form">
+          <label for="pair-code" data-i18n="pairCode">Pairing code</label>
+          <input
+            id="pair-code"
+            type="password"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            required
+            pattern="[A-Za-z0-9_-]{43}"
+          />
+          <label for="device-name" data-i18n="deviceName">Browser name</label>
+          <input
+            id="device-name"
+            type="text"
+            autocomplete="off"
+            maxlength="60"
+            required
+          />
+          <p id="pair-error" class="error" role="alert" hidden></p>
+          <button
+            id="pair-submit"
+            class="primary-button"
+            type="submit"
+            data-i18n="pair"
+          >
+            Pair this browser
+          </button>
+        </form>
+        <div class="pair-help">
+          <span data-i18n="pairHelp">On your computer, get a code with</span
+          ><code>gorex rexapi public pair</code
+          ><small data-i18n="pairExpiry"
+            >Codes work once and expire after five minutes.</small
+          >
+        </div>
+      </section>
+      <p class="pair-footer" data-i18n="privateConnection">
+        A direct connection to your computer.
+      </p>
+    </main>
+
+    <main id="workspace" class="workspace" hidden>
+      <aside id="sidebar" class="sidebar" aria-label="Spaces">
+        <div class="host-card">
+          <span class="host-icon" aria-hidden="true">▣</span>
+          <div>
+            <strong id="host-name"></strong
+            ><small data-i18n="thisComputer">This computer</small>
+          </div>
+          <i class="online-dot"></i>
+        </div>
+        <div class="section-heading">
+          <span data-i18n="spaces">Spaces</span><span id="space-count"></span>
+        </div>
+        <nav id="spaces" aria-label="Spaces"></nav>
+        <div class="sidebar-foot">
+          <span class="retained-icon">↗</span>
+          <p data-i18n="sessionsStay">
+            Your sessions keep running when you close this page.
+          </p>
+        </div>
+      </aside>
+      <section class="main-area">
+        <div class="space-bar">
+          <div>
+            <p class="eyebrow" data-i18n="terminalWorkspace">
+              TERMINAL WORKSPACE
+            </p>
+            <h1 id="space-title"></h1>
+          </div>
+          <button id="new-terminal" class="new-button">
+            <span aria-hidden="true">＋</span
+            ><span data-i18n="newTerminal">New terminal</span>
+          </button>
+        </div>
+        <nav
+          id="tabs"
+          class="tabs"
+          role="tablist"
+          aria-label="Terminal tabs"
+        ></nav>
+        <nav id="panes" class="panes" aria-label="Panes" hidden></nav>
+        <div class="terminal-shell">
+          <div id="terminal" class="terminal-host"></div>
+          <div id="empty" class="empty-state" hidden>
+            <span aria-hidden="true">&gt;_</span>
+            <h2 data-i18n="emptyTitle">A little room to work.</h2>
+            <p data-i18n="emptyDescription">
+              Open a terminal to start, or choose another space.
+            </p>
+            <button
+              id="empty-new"
+              class="primary-button"
+              data-i18n="newTerminal"
+            >
+              New terminal
+            </button>
+          </div>
+          <div id="recovering" class="recovering" hidden>
+            <span class="spinner" aria-hidden="true"></span
+            ><span data-i18n="reconnecting">Reconnecting…</span>
+          </div>
+        </div>
+        <footer class="terminal-footer">
+          <span id="terminal-state" class="terminal-state"></span
+          ><span id="geometry" class="geometry"></span>
+          <div class="terminal-tools">
+            <button id="take-control" class="quiet-button" data-i18n="fit">
+              Fit to window
+            </button>
+            <button
+              id="interrupt"
+              class="quiet-button"
+              aria-label="Interrupt program (Ctrl+C)"
+            >
+              Ctrl+C
+            </button>
+            <button id="copy" class="quiet-button" data-i18n="copy">
+              Copy
+            </button>
+            <button id="paste" class="quiet-button" data-i18n="paste">
+              Paste
+            </button>
+            <button
+              id="font-minus"
+              class="icon-button font-button"
+              aria-label="Smaller text"
+            >
+              A−
+            </button>
+            <button
+              id="font-plus"
+              class="icon-button font-button"
+              aria-label="Larger text"
+            >
+              A+
+            </button>
+            <button
+              id="bottom"
+              class="icon-button"
+              aria-label="Scroll to bottom"
+            >
+              ↓
+            </button>
+          </div>
+        </footer>
+      </section>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

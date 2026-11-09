@@ -13,6 +13,10 @@ const (
 	controlProtocol = "rex.control.v1"
 	// terminalProtocol is the subprotocol of a terminal's data connection.
 	terminalProtocol = "rex.data.terminal.v1"
+	// The browser uses a VT snapshot, plus render acknowledgements, instead
+	// of Ghostty's binary snapshot. Rex's existing stream stays unchanged.
+	terminalVTProtocol = "gorex.data.terminal.vt.v1"
+	featureWeb         = "gorex.web"
 	// bytesProtocol is the subprotocol of the data connection that
 	// carries a file's bytes to com.superlogical.terminal.upload_begin's
 	// reservation.

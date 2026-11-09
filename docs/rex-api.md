@@ -19,10 +19,13 @@ it to Rex clients in Rex's terms:
 | floating layer | floating pane |
 | owner of a block | the client that holds the session's size |
 
-- **Terminals** stream as Ghostty snapshots (GHOSTSNP), then what the
+- **Terminals** in native Rex clients stream as Ghostty snapshots (GHOSTSNP), then what the
   program prints, as on a Rex server. The GoRex server takes the snapshot
   from the emulator it keeps for each session, so a full-screen program
   comes back exactly.
+- **Browsers** use the GoRex-specific `gorex.data.terminal.vt.v1` extension:
+  a VT snapshot followed by output from the same session. The embedded client
+  and its device pairing are described in [Public access](public-access.md).
 - **Typing** goes through the server, which encodes each key, the pointer
   and the focus with the modes the program set (cursor keys, the Kitty
   keyboard protocol, bracketed paste, mouse reports).
@@ -227,6 +230,30 @@ meets:
   that asks for the terminal blocks gets a ticket for each one, and opens
   its terminals without a `data.connect` round trip each. Only terminals
   have tickets, since every GoRex block is a terminal.
+
+## Browser VT stream extension
+
+The welcome feature `gorex.web` advertises GoRex's embedded browser client and
+`gorex.data.terminal.vt.v1` data subprotocol. Native `rex.data.terminal.v1` clients
+continue to receive Ghostty snapshots and send no render acknowledgements.
+
+Request `data.connect` with the VT subprotocol and `data_ref_id: "terminal"`.
+The data socket uses Rex's binary HELLO/WELCOME and RESUME handshake, including
+the device-bound ticket, rotated resume token, and 64-bit nonce. A fresh stream
+starts with a nonce-bound APC message of type `snapshot` containing `cols` and
+`rows`, a terminal reset (`ESC c`), the server's VT snapshot, and an APC `resize`
+message. Subsequent output and APC metadata share the same stream. APC metadata
+has the framing `ESC _ rex1;<decimal nonce>;<JSON> ESC \\`; clients must preserve
+partial escape sequences and UTF-8 across WebSocket frames.
+
+After processing output, the VT client sends an 8-byte little-endian unsigned
+counter of bytes rendered on this WebSocket connection. Exclude WELCOME and
+include all following stream bytes, even metadata. The counter resets to zero
+on each connection, including RESUME. RESUME's separate byte count still counts
+the whole stream since its initial snapshot. ACKs may repeat or advance, but
+must not decrease or exceed bytes sent. A connection can have at most 256 KiB
+sent without render confirmation. A viewer that stops acknowledging times out;
+this does not pause the underlying terminal process or other viewers.
 
 ## Spaces across hosts
 

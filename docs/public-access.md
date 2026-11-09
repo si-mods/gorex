@@ -1,9 +1,9 @@
 # Public access without a VPN
 
 GoRex can expose its Rex API over HTTPS with device credentials, independently
-of Tailscale. Rex Go can use this listener over ordinary Wi-Fi or cellular data.
-The same authentication boundary supports a future Web client; this change does
-not add a browser terminal UI or a reverse tunnel for hosts behind NAT.
+of Tailscale. Rex Go and the built-in Web terminal can use this listener over
+ordinary Wi-Fi or cellular data. A reverse tunnel for hosts behind NAT is not
+included.
 
 The listener is off by default. It reaches the same running sessions as the
 existing gateway. Disconnecting or revoking a client does not stop its shells.
@@ -25,13 +25,52 @@ For a host with a public address, choose either of the following:
 The URL must be an HTTPS origin, without a path or credentials. A plaintext
 listener can bind only to a literal loopback IP. Do not forward the existing
 unauthenticated LAN listener as a substitute: the public listener checks device
-credentials on every endpoint, including both WebSocket handshakes.
+credentials on API endpoints, including both WebSocket handshakes. Only the
+pairing endpoint and the static browser shell are available before pairing.
 
 The GoRex session server starts and supervises this gateway automatically, as
 for LAN and built-in Tailscale. `gorex rexapi public status` shows its configuration
 and last reported listener status. `gorex rexapi public off` closes public
 connections and retains device authorizations for the next time it is enabled.
 No existing LAN, desktop Tailscale, or tailcat configuration needs to change.
+
+## Pair a browser
+
+1. Enable the HTTPS entry point above, then run `gorex rexapi public pair`
+   on the target computer.
+2. Open its printed invitation URL in a desktop or phone browser. Alternatively,
+   open the HTTPS address and paste the pairing code into the page.
+3. Name the browser and choose **Pair this browser**. Choose a space and terminal
+   tab; a tab with multiple panes offers a pane selector. **New terminal** adds a
+   terminal to the current space, or creates a space if none exists.
+
+The Web client is embedded in the Go binary, including xterm.js: it needs no
+separate Web hosting, build step, or CDN at runtime. Serve it from the gateway's
+own origin, with both `/api/control` and `/api/data` WebSocket upgrades forwarded
+by the reverse proxy. The page removes an invitation's fragment immediately.
+
+Browser authorization uses a Secure, HttpOnly, SameSite=Strict cookie. Device
+credentials are not stored in JavaScript storage. Refreshing or closing the page
+keeps the terminal process running; refreshing restores its screen and available
+history. Brief output interruptions resume the stream, or take a fresh snapshot
+when the retained output has expired. Unconfirmed keyboard input is never
+automatically retried. Very fast producers may require a fresh snapshot; input
+still uses its separate control socket, including the **Ctrl+C** button.
+
+**Fit to window** takes the terminal's size for this browser. Another client can
+take it back; click the terminal or **Fit to window** to claim it again. Use the
+toolbar to copy selected text, paste, or interrupt a program. Hold Shift to select
+text while a program captures the mouse. Clipboard access requires browser
+permission; normal keyboard copy/paste remains available.
+
+**Unpair browser** revokes this browser on the server, clears its cookie and
+closes its connections. Other paired devices and running shells remain intact.
+The server's `public revoke` command below has the same effect for a lost device.
+
+This first Web client shows one terminal at a time on one host. It does not
+reproduce the desktop's split geometry, browser/editor panes, uploads, or remote
+host aggregation. It requires a modern browser with WebSocket and BigInt support;
+real iPhone/Safari keyboard and IME behavior still needs device testing.
 
 ## Pair Rex Go
 
@@ -77,9 +116,29 @@ The local-only administration endpoints are `POST /api/access/pairing`,
 `GET /api/access/devices`, and `POST /api/access/revoke` with `{"id":"…"}`.
 They are GoRex extensions outside the Rex control protocol.
 
+`GET /api/web/session` returns the authenticated host and transport for the Web
+shell. `POST /api/access/logout` revokes the current public device and expires
+the browser cookie. Neither accepts anonymous callers. Static files under the
+explicit `/web/` allowlist and `/` can be loaded before pairing; source tests,
+dependency metadata, and arbitrary paths are not served.
+
+## Web development
+
+The runtime assets live under `internal/rexapi/web/`. Go builds embed the checked-in
+assets. To update dependencies, use the pinned lockfile with `npm ci`, then
+`npm run vendor` in that directory; commit the copied bundles and MIT license
+files together. No bundler or runtime package manager is required.
+
+Run `node --test internal/rexapi/web/core.test.js` for byte framing, Unicode and
+selection checks, and `go test ./internal/rexapi` for authorization, VT attach,
+resume and flow control. The opt-in `TestWebBrowserPreview` fixture can serve
+disposable sessions on localhost for browser QA; its HTTP-only localhost setup
+is confined to tests and does not relax the production HTTPS requirement.
+
 ## Scope
 
-This supplies the authenticated direct-connection foundation of #330 and #331.
+This supplies single-host browser access and the authenticated direct-connection
+path for #330 and #331.
 A self-hosted relay still needs an outbound connector on the target machine,
 authenticated host routing, and an explicit transport trust model. The existing
 `gcoord` is a device directory, not a terminal traffic relay.
