@@ -76,6 +76,7 @@ func TestSidebarHostView(t *testing.T) {
 	h := newHostConn(savedHost{ID: "1", Name: "office"})
 	h.state = hostConnected
 	a.hosts = []*hostConn{h}
+	a.st.hosts = a.hosts // as syncHosts shares them
 	far := func(name, sid string) *Tab {
 		rp := &Pane{ID: a.id(), SID: sid, host: h, info: rex.SessionInfo{ID: sid}}
 		rt := a.makeTab("")
@@ -153,6 +154,30 @@ func TestSidebarHostView(t *testing.T) {
 	}
 	a.st.infos = nil
 	if err := tt.Click(thisMachine()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+
+	// A session of the host's, in the hidden space, needs the user: the
+	// host's last list tells, and the space's row under the host shows it,
+	// folded too; the strip's status counts it.
+	waits := rex.ProgramStatus{ID: "a", State: "blocked", Kind: "question", Updated: time.Now()}
+	h.infos = map[string]rex.SessionInfo{"far2": {ID: "far2", Statuses: []rex.ProgramStatus{waits}}}
+	if err := tt.Click("office"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if _, ok := tt.Find("icy-ridge, " + locales.SessionTabs(1)); !ok {
+		t.Errorf("a folded host hides the space whose session there needs the user; texts %q", tt.Texts())
+	}
+	if _, ok := tt.Find(statusTip(&waits)); !ok {
+		t.Errorf("no status dot for the host's session; texts %q", tt.Texts())
+	}
+	if s := a.st.status(second); s == nil || s.State != "blocked" {
+		t.Errorf("the space's status is %v, want the host's session's", s)
+	}
+	h.infos = nil
+	if err := tt.Click("office"); err != nil {
 		t.Fatal(err)
 	}
 	tt.Frame()

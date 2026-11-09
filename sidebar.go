@@ -532,7 +532,7 @@ func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n 
 		spaceDot(c, k, w)
 		ui.Text(c, w.Name).FontSize(13).FontWeight(500).TextColor(k.text.Alpha(0.85)).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		if s := a.st.statusOn(w, h); s != nil && s.State != "idle" {
-			statusDot(c, k, s, 7)
+			statusDot(c, k, s, 7).Label(statusTip(s))
 		}
 		ui.Text(c, fmt.Sprint(n)).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
 	})
