@@ -199,8 +199,11 @@ private struct HostSection: View {
             Label(why.isEmpty ? String(localized: "Offline") : String(localized: "Offline: \(why)"), systemImage: "wifi.slash")
                 .foregroundStyle(.secondary)
         default:
-            if host.sessions.isEmpty { Text("No sessions").foregroundStyle(.secondary) }
-            ForEach(host.sessions.filter { !gone($0) }) { s in session(s) }
+            // A host whose every session shows in a desktop's spaces has
+            // none left to show here.
+            let shown = host.sessions.filter { !gone($0) }
+            if shown.isEmpty { Text("No sessions").foregroundStyle(.secondary) }
+            ForEach(shown) { s in session(s) }
         }
     }
 

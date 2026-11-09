@@ -152,6 +152,8 @@ final class Host: Identifiable {
     @ObservationIgnored private var stopped = false
     @ObservationIgnored private var readingSpaces = false
     @ObservationIgnored private var spacesAgain = false
+    /// Reads a server's spaces; tests replace it.
+    @ObservationIgnored var spacesReader: (URL) async throws -> Spaces.Answer = Spaces.read
 
     init(_ config: HostConfig) {
         self.config = config
@@ -172,6 +174,8 @@ final class Host: Identifiable {
         c.onClose = { [weak self, weak c] error in
             guard let self, c === self.control else { return }
             self.control = nil
+            // What the connection said of the spaces goes with it.
+            self.take(nil)
             self.status = .offline(error?.localizedDescription ?? "")
             self.scheduleRetry()
         }
@@ -235,12 +239,10 @@ final class Host: Identifiable {
     }
 
     /// Reads the host's spaces again; one read at a time, repeated when
-    /// asked again meanwhile, as a session's view changed.
+    /// asked again meanwhile, as a session's view changed or a new
+    /// connection opened. Each read is of the connection of the moment,
+    /// and an answer applies only while that connection lasts.
     private func readSpaces() {
-        guard let c = control, c.features.contains(Spaces.feature) else {
-            take(nil)
-            return
-        }
         guard !readingSpaces else {
             spacesAgain = true
             return
@@ -250,9 +252,14 @@ final class Host: Identifiable {
             defer { readingSpaces = false }
             repeat {
                 spacesAgain = false
+                guard let c = control else { break }
+                if !c.features.contains(Spaces.feature) {
+                    take(nil)
                 // A read that fails keeps what was read before.
-                if let a = try? await Spaces.read(from: config.url), c === control { take(a) }
-            } while spacesAgain && c === control
+                } else if let a = try? await spacesReader(config.url), c === control {
+                    take(a)
+                }
+            } while spacesAgain
         }
     }
 

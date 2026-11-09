@@ -122,4 +122,52 @@ nonisolated final class SpacesTests: XCTestCase {
         XCTAssertNil(h.machine)
         XCTAssertTrue(h.remote.isEmpty)
     }
+
+    @MainActor private func answer(_ machine: String) throws -> Spaces.Answer {
+        try Spaces.Answer(json: Data(#"{"machine_id":"\#(machine)","sessions":[]}"#.utf8))
+    }
+
+    /// A read under way as the connection drops does not take the new
+    /// connection's read with it: its answer is dropped, and the new
+    /// connection is read again.
+    @MainActor func testReadFollowsNewConnection() async throws {
+        let r = try FakeRex()
+        defer { r.stop() }
+        r.features = [Spaces.feature]
+        let h = Host(HostConfig(name: "mac", url: try await r.url()))
+        defer { h.stop() }
+        var calls = 0
+        var first: CheckedContinuation<Void, Never>?
+        h.spacesReader = { _ in
+            calls += 1
+            if calls == 1 {
+                await withCheckedContinuation { first = $0 }
+                return try self.answer("OLD")
+            }
+            return try self.answer("NEW")
+        }
+        h.connect()
+        await until("the first read") { first != nil }
+        h.reconnect()
+        XCTAssertNil(h.machine)
+        await until("online again") { h.status == .online }
+        first?.resume()
+        await until("the new connection's spaces") { h.machine == "NEW" }
+        XCTAssertEqual(calls, 2)
+    }
+
+    /// A connection that closes takes what it said of the spaces with it.
+    @MainActor func testCloseForgetsSpaces() async throws {
+        let r = try FakeRex()
+        r.features = [Spaces.feature]
+        let h = Host(HostConfig(name: "mac", url: try await r.url()))
+        defer { h.stop() }
+        h.spacesReader = { _ in try self.answer("M") }
+        h.connect()
+        await until("the spaces") { h.machine == "M" }
+        r.stop()
+        await until("the close") { h.control == nil }
+        XCTAssertNil(h.machine)
+        XCTAssertNil(h.crossHost)
+    }
 }

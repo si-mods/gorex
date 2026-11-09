@@ -50,9 +50,7 @@ enum Spaces {
 
     /// Reads the spaces of the server at base.
     static func read(from base: URL) async throws -> Answer {
-        var c = URLComponents(url: base, resolvingAgainstBaseURL: false)!
-        c.path = "/api/spaces"
-        var r = URLRequest(url: c.url!)
+        var r = URLRequest(url: base.apiURL("/api/spaces"))
         r.timeoutInterval = 10
         let (data, response) = try await URLSession.shared.data(for: r)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
