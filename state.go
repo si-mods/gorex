@@ -963,37 +963,20 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// them: a program that reads the clipboard itself (Kitty's paste
 	// events) takes them even over SSH or on a host, where a path of this
 	// machine means nothing. The terminal then reads every format the
-	// clipboard holds, as it does in a pane of this machine. Who types last
-	// takes the session's size back from a device that holds it (SizeLock):
-	// the session gets the pane's size again.
+	// clipboard holds, as it does in a pane of this machine. In a pane of a
+	// host whose program does not (mode 5522), or a ConPTY, an image goes
+	// there as a dropped file does and its path there is pasted: the
+	// program, as Claude Code, would read the host's clipboard, which does
+	// not hold it (pasteToHost). Who types last takes the session's size
+	// back from a device that holds it (SizeLock): the session gets the
+	// pane's size again.
 	opts.OnPaste = func(d transfer.Data) bool {
 		if p.host == nil {
 			a.takeSize(p)
 		}
 		p.claimSize()
-		// An image pasted into a pane of a host whose program does not
-		// read the clipboard itself goes there as a dropped file does,
-		// its path there pasted: the program, as Claude Code, would read
-		// the host's clipboard, which does not hold it. A console that
-		// drops the terminal's paste event, a ConPTY, never reads it.
-		if mime, path, ok := pastedImage(d); ok && transfersFiles(p) && (p.info.ConPTY || p.term == nil || !p.term.ReadsClipboard()) {
-			if path != "" {
-				a.upload(p, []string{path})
-				return true
-			}
-			// The clipboard's image goes as a file written for it, removed
-			// once the uploads of the session have sent it.
-			path, err := writePastedImage(d, mime)
-			if err == nil {
-				a.upload(p, []string{path})
-				done := p.host.transfersOf(p.SID).uploading
-				go func() {
-					<-done
-					os.RemoveAll(filepath.Dir(path))
-				}()
-				return true
-			}
-			log.Printf("paste: writing the clipboard's image: %v", err)
+		if a.pasteToHost(p, d) {
+			return true
 		}
 		// A console that drops the terminal's paste event, a ConPTY on
 		// Windows, takes the text as a paste the session's server writes:

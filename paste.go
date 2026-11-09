@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net/http"
@@ -41,12 +42,10 @@ var errPasteImage = errors.New("gorex: not an image a paste offers")
 // offered as the image, and keeps the text, which a shell, or a program
 // that wants a file to open, still gets.
 func pasteImageData(d transfer.Data) (transfer.Data, bool) {
-	for _, f := range d.Formats() {
-		if slices.Contains(pasteImageTypes, string(f)) {
-			// The clipboard holds the image itself, as a browser's copy
-			// of one does: nothing to add.
-			return d, false
-		}
+	if _, ok := clipboardImage(d); ok {
+		// The clipboard holds the image itself, as a browser's copy of
+		// one does: nothing to add.
+		return d, false
 	}
 	mime, path, ok := pasteImage(d)
 	if !ok {
@@ -70,55 +69,73 @@ func pasteImageData(d transfer.Data) (transfer.Data, bool) {
 	return transfer.New(transfer.NewItem(reps...)), true
 }
 
-// pastedImage returns the image of a paste that a pane of a host sends
-// there as a file, its path there pasted, as a drop of it would be: the
-// first image of the files it lists, or the clipboard's own image, of
-// type mime and no path, when the clipboard holds no text. Text, one path
-// to an image or along with an image as a copy from a browser or an
-// office program holds, pastes as text.
-func pastedImage(d transfer.Data) (mime, path string, ok bool) {
-	if paths, err := d.Files(); err == nil {
-		for _, path := range paths {
-			if mime, ok := sniffPasteImage(path); ok {
-				return mime, path, true
-			}
-		}
+// pasteToHost sends what of a paste into p, a pane of a host whose program
+// does not read the clipboard itself, the program cannot reach otherwise,
+// as files dropped on p are sent, their paths there pasted, and reports
+// whether it took the paste. A console that drops the terminal's paste
+// event, a ConPTY, never reads the clipboard.
+func (a *App) pasteToHost(p *Pane, d transfer.Data) bool {
+	if !transfersFiles(p) || !p.info.ConPTY && p.term != nil && p.term.ReadsClipboard() {
+		return false
 	}
-	for _, f := range d.Formats() {
-		if slices.Contains(pasteImageTypes, string(f)) {
-			if text, _ := d.Read(transfer.Text); len(text) > 0 {
-				return "", "", false
-			}
-			return string(f), "", true
-		}
+	paths, name, img := pasteUpload(d)
+	switch {
+	case len(paths) > 0:
+		a.upload(p, paths)
+	case img != nil:
+		a.uploadData(p, name, img)
+	default:
+		return false
 	}
-	return "", "", false
+	return true
 }
 
-// writePastedImage writes the clipboard's image, of type mime, into a new
-// temporary folder, named for when it was pasted, and returns its path.
-// Remove the folder once the image is sent.
-func writePastedImage(d transfer.Data, mime string) (string, error) {
-	b, err := d.Read(transfer.Format(mime))
-	if err != nil {
-		return "", err
+// pasteUpload returns what of a paste a pane of a host sends there: the
+// files of a copied file list that holds an image, or the clipboard's own
+// image, img, to send as name, when the clipboard holds no text but
+// space. Text, one path to an image or along with an image as a copy from
+// a browser or an office program holds, pastes as text, as does text that
+// cannot be read.
+func pasteUpload(d transfer.Data) (paths []string, name string, img []byte) {
+	if files, err := d.Files(); err == nil {
+		if _, _, ok := firstImage(files); ok {
+			return files, "", nil
+		}
 	}
-	dir, err := os.MkdirTemp("", "gorex-paste-")
-	if err != nil {
-		return "", err
+	f, ok := clipboardImage(d)
+	if !ok {
+		return nil, "", nil
 	}
-	path := filepath.Join(dir, "pasted-image-"+time.Now().Format("20060102-150405")+"."+strings.TrimPrefix(mime, "image/"))
-	if err := os.WriteFile(path, b, 0o600); err != nil {
-		os.RemoveAll(dir)
-		return "", err
+	text, err := d.Read(transfer.Text)
+	if err != nil && !errors.Is(err, transfer.ErrFormat) || len(bytes.TrimSpace(text)) > 0 {
+		return nil, "", nil
 	}
-	return path, nil
+	if img, err = d.Read(f); err != nil || len(img) == 0 {
+		return nil, "", nil
+	}
+	return nil, "pasted-image-" + time.Now().Format("20060102-150405") + "." + strings.TrimPrefix(string(f), "image/"), img
+}
+
+// clipboardImage returns the format of the first image the clipboard
+// holds itself, of those a paste offers.
+func clipboardImage(d transfer.Data) (transfer.Format, bool) {
+	for _, f := range d.Formats() {
+		if slices.Contains(pasteImageTypes, string(f)) {
+			return f, true
+		}
+	}
+	return "", false
 }
 
 // pasteImage returns the type and path of the first image the paste
 // holds: of the files it lists, or of the one path it is.
 func pasteImage(d transfer.Data) (mime, path string, ok bool) {
-	for _, path := range pasteFiles(d) {
+	return firstImage(pasteFiles(d))
+}
+
+// firstImage returns the type and path of the first image of paths.
+func firstImage(paths []string) (mime, path string, ok bool) {
+	for _, path := range paths {
 		if mime, ok := sniffPasteImage(path); ok {
 			return mime, path, true
 		}

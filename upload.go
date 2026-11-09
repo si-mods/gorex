@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/rand"
@@ -112,15 +113,9 @@ var errHostAway = errors.New("the host is away")
 // whichever window, shows them. A folder is not sent: its path here is
 // pasted, as before.
 func (a *App) upload(p *Pane, paths []string) {
-	h, sid := p.host, p.SID
-	ts := h.transfersOf(sid)
-	type item struct {
-		path string
-		x    *fileTransfer
-		put  rex.FilePut
-		ctx  context.Context
-	}
-	var items []item
+	sid := p.SID
+	ts := p.host.transfersOf(sid)
+	var items []uploadItem
 	for _, path := range paths {
 		x := &fileTransfer{name: filepath.Base(path)}
 		ts.list = append(ts.list, x)
@@ -134,14 +129,53 @@ func (a *App) upload(p *Pane, paths []string) {
 			x.err = err.Error()
 		case fi.IsDir():
 			x.err = locales.PaneUploadFolder()
-			items = append(items, item{path: path})
+			items = append(items, uploadItem{path: path})
 		default:
 			x.size = fi.Size()
-			it := item{path: path, x: x, put: rex.FilePut{SID: sid, Name: x.name, Size: x.size, ID: uploadID(sid, path, fi), Drop: rand.Text(), Conflict: "rename"}}
-			it.ctx, x.cancel = context.WithCancel(ts.ctx)
-			items = append(items, it)
+			items = append(items, ts.item(sid, x, uploadID(sid, path, fi), func() (uploadFile, error) { return openUpload(path) }))
 		}
 	}
+	a.send(p, items)
+}
+
+// uploadData sends data to the host of p as a file named name, as upload
+// sends a file dropped on p, and pastes its path there: an image pasted
+// from the clipboard, which no file here holds.
+func (a *App) uploadData(p *Pane, name string, data []byte) {
+	sid := p.SID
+	ts := p.host.transfersOf(sid)
+	x := &fileTransfer{name: name, size: int64(len(data))}
+	ts.list = append(ts.list, x)
+	// The same for each try of the same paste.
+	sum := sha256.Sum256(append([]byte(sid+"\x00"), data...))
+	a.send(p, []uploadItem{ts.item(sid, x, hex.EncodeToString(sum[:8]), func() (uploadFile, error) {
+		return memUpload{bytes.NewReader(data)}, nil
+	})})
+}
+
+// uploadItem is a file an upload sends, x telling how it goes, opened by
+// open; with no x, a folder whose path here is pasted.
+type uploadItem struct {
+	path string
+	open func() (uploadFile, error)
+	x    *fileTransfer
+	put  rex.FilePut
+	ctx  context.Context
+}
+
+// item is the upload into session sid of the file x lists, of transfer
+// id id, opened by open.
+func (ts *sessionTransfers) item(sid string, x *fileTransfer, id string, open func() (uploadFile, error)) uploadItem {
+	it := uploadItem{open: open, x: x, put: rex.FilePut{SID: sid, Name: x.name, Size: x.size, ID: id, Drop: rand.Text(), Conflict: "rename"}}
+	it.ctx, x.cancel = context.WithCancel(ts.ctx)
+	return it
+}
+
+// send sends items to the host of p, after those of the uploads before,
+// then pastes their paths there into its session.
+func (a *App) send(p *Pane, items []uploadItem) {
+	h, sid := p.host, p.SID
+	ts := h.transfersOf(sid)
 	shell := p.info.Shell
 	temp := h.hello.Can(rex.CapabilityFileTemp)
 	update := h.update
@@ -159,7 +193,7 @@ func (a *App) upload(p *Pane, paths []string) {
 				continue
 			}
 			it.put.Temp = temp
-			if path, word, err := putFile(it.ctx, h, shell, it.put, it.path, it.x, update); err == nil && word != "" {
+			if path, word, err := putFile(it.ctx, h, shell, it.put, it.open, it.x, update); err == nil && word != "" {
 				pasted, names = append(pasted, path), append(names, it.x.name)
 			}
 		}
@@ -189,7 +223,12 @@ type uploadFile interface {
 // openUpload opens the file at path to send it.
 var openUpload = func(path string) (uploadFile, error) { return os.Open(path) }
 
-// putFile sends the file at path to h as f says, for a pane whose shell
+// memUpload is data an upload sends from memory.
+type memUpload struct{ *bytes.Reader }
+
+func (memUpload) Close() error { return nil }
+
+// putFile sends the file open opens to h as f says, for a pane whose shell
 // is at shell (PutForShell), x telling how it goes, and returns its path
 // there and that path as a word of the shell, "" when not to be pasted. A
 // host not connected is waited for, hostWait at most. A put whose
@@ -197,7 +236,7 @@ var openUpload = func(path string) (uploadFile, error) { return os.Open(path) }
 // of then, going on from what the host has of the file (f.ID), or learning
 // where it went when only the answer was lost (f.Drop). Cancelled under
 // way, PutFile removes what the host has of the file.
-func putFile(ctx context.Context, h *hostConn, shell string, f rex.FilePut, path string, x *fileTransfer, update func(func())) (there, word string, err error) {
+func putFile(ctx context.Context, h *hostConn, shell string, f rex.FilePut, open func() (uploadFile, error), x *fileTransfer, update func(func())) (there, word string, err error) {
 	defer x.cancel()
 	var c *rex.Client
 	err = ctx.Err()
@@ -212,7 +251,7 @@ func putFile(ctx context.Context, h *hostConn, shell string, f rex.FilePut, path
 		}
 		for since := time.Now(); ; {
 			var src uploadFile
-			if src, err = openUpload(path); err != nil {
+			if src, err = open(); err != nil {
 				break
 			}
 			var last time.Time
