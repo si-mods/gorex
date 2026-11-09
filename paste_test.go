@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -339,5 +341,202 @@ func TestPasteToAConPTYGoesThroughTheServer(t *testing.T) {
 	b := read("\x1b[201~")
 	if want := "\x1b[200~HELLO-CONPTY\n\x1b[201~"; !strings.Contains(string(b), want) {
 		t.Errorf("the program read %q, want the paste %q", b, want)
+	}
+}
+
+// pasteKey presses the paste key in the window of tt.
+func pasteKey(tt *ui.Tester) {
+	key := ui.Modifiers(ui.Super)
+	if runtime.GOOS != "darwin" {
+		key = ui.Ctrl | ui.Shift
+	}
+	tt.Key(key, ui.KeyV)
+}
+
+// catOnHost opens a pane of a host whose program is cat, the dropped files'
+// folder there pointed at a new one, and returns the pane, that folder and
+// a client of the host's server.
+func catOnHost(t *testing.T, a *App, tt *ui.Tester, first string) (*Pane, string) {
+	t.Helper()
+	there := dropsDir(t)
+	_, _, p, c := remotePaneOf(t, a, tt, t.TempDir())
+	if err := c.Input(p.SID, []byte(first+"exec cat\r")); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, tt, "cat", func() bool { return p.info.Program == "cat" })
+	return p, there
+}
+
+// TestPasteClipboardImageGoesToHost: the clipboard's own image, as a
+// screenshot, pasted into a pane of a host whose program does not read the
+// clipboard itself goes there as a file, its path there pasted.
+func TestPasteClipboardImageGoesToHost(t *testing.T) {
+	if testShell.path == "cmd.exe" {
+		t.Skip("POSIX shell")
+	}
+	a, tt := newTestApp(t)
+	p, there := catOnHost(t, a, tt, "")
+	_, img := writeImage(t, t.TempDir(), "shot.png", true)
+	tt.SetClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, img))))
+	tt.Frame()
+	pasteKey(tt)
+	if len(listOf(p)) != 1 || !strings.HasPrefix(listOf(p)[0].name, "pasted-image-") || !strings.HasSuffix(listOf(p)[0].name, ".png") {
+		t.Fatalf("transfers %v", listOf(p))
+	}
+	name := listOf(p)[0].name
+	waitUploaded(t, tt, p)
+	waitFor(t, tt, "the path there", func() bool { return strings.Contains(p.term.Text(), name) })
+	if b, err := os.ReadFile(filepath.Join(there, name)); err != nil || !bytes.Equal(b, img) {
+		t.Errorf("%s there: %d bytes, %v", name, len(b), err)
+	}
+}
+
+// TestPasteFileListGoesToHost: copied files, an image among them, pasted
+// into a pane of a host all go there, as a drop of them does, their paths
+// there pasted in place of the paths here.
+func TestPasteFileListGoesToHost(t *testing.T) {
+	if testShell.path == "cmd.exe" {
+		t.Skip("POSIX shell")
+	}
+	a, tt := newTestApp(t)
+	p, there := catOnHost(t, a, tt, "")
+	dir := t.TempDir()
+	notes := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(notes, []byte("notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path, img := writeImage(t, dir, "shot.png", true)
+	tt.SetClipboardData(fileData(t, notes, path))
+	tt.Frame()
+	pasteKey(tt)
+	if len(listOf(p)) != 2 {
+		t.Fatalf("transfers %v", listOf(p))
+	}
+	waitUploaded(t, tt, p)
+	waitFor(t, tt, "the paths there", func() bool {
+		text := p.term.Text()
+		return strings.Contains(text, "notes.txt") && strings.Contains(text, "shot.png")
+	})
+	for name, want := range map[string][]byte{"notes.txt": []byte("notes"), "shot.png": img} {
+		if b, err := os.ReadFile(filepath.Join(there, name)); err != nil || !bytes.Equal(b, want) {
+			t.Errorf("%s there: %d bytes, %v", name, len(b), err)
+		}
+	}
+	if strings.Contains(strings.ReplaceAll(p.term.Text(), "\n", ""), dir) {
+		t.Errorf("pasted a path here: %q", p.term.Text())
+	}
+}
+
+// TestPasteTextWithImageOnHost: text along with an image, as a copy from a
+// browser holds, pastes as text into a pane of a host; nothing is sent.
+func TestPasteTextWithImageOnHost(t *testing.T) {
+	a, tt := newTestApp(t)
+	p, _ := catOnHost(t, a, tt, "")
+	_, img := writeImage(t, t.TempDir(), "shot.png", true)
+	tt.SetClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, img), transfer.Bytes(transfer.Text, []byte("CAPTION")))))
+	tt.Frame()
+	pasteKey(tt)
+	waitFor(t, tt, "the text", func() bool { return strings.Contains(p.term.Text(), "CAPTION") })
+	if len(listOf(p)) != 0 {
+		t.Errorf("transfers %v", listOf(p))
+	}
+}
+
+// TestPasteImageToHostProgramReadingClipboard: a program of a host that
+// reads the clipboard itself (mode 5522) is offered the image as before,
+// and nothing is sent.
+func TestPasteImageToHostProgramReadingClipboard(t *testing.T) {
+	if testShell.path == "cmd.exe" {
+		t.Skip("POSIX shell")
+	}
+	a, tt := newTestApp(t)
+	p, _ := catOnHost(t, a, tt, `printf '\033[?5522h'; `)
+	waitFor(t, tt, "the mode", func() bool { return p.term.ReadsClipboard() })
+	_, img := writeImage(t, t.TempDir(), "shot.png", true)
+	tt.SetClipboardData(transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, img))))
+	tt.Frame()
+	pasteKey(tt)
+	// The tty echoes the paste event cat is sent.
+	waitFor(t, tt, "the paste event", func() bool { return strings.Contains(p.term.Text(), "5522;") })
+	if len(listOf(p)) != 0 {
+		t.Errorf("transfers %v", listOf(p))
+	}
+}
+
+// TestPasteImageToConPTYHost: a ConPTY, which drops the paste event, gets
+// the image sent even when its program reads the clipboard itself.
+func TestPasteImageToConPTYHost(t *testing.T) {
+	if testShell.path == "cmd.exe" {
+		t.Skip("POSIX shell")
+	}
+	a, tt := newTestApp(t)
+	p, there := catOnHost(t, a, tt, `printf '\033[?5522h'; `)
+	waitFor(t, tt, "the mode", func() bool { return p.term.ReadsClipboard() })
+	_, img := writeImage(t, t.TempDir(), "shot.png", true)
+	// What the server of a Windows session says of it, read with no frame
+	// between, which could apply another word of the server's.
+	p.info.ConPTY = true
+	if !a.pasteToHost(p, transfer.New(transfer.NewItem(transfer.Bytes(transfer.PNG, img)))) {
+		t.Fatal("the paste was not sent")
+	}
+	if len(listOf(p)) != 1 {
+		t.Fatalf("transfers %v", listOf(p))
+	}
+	name := listOf(p)[0].name
+	waitUploaded(t, tt, p)
+	if b, err := os.ReadFile(filepath.Join(there, name)); err != nil || !bytes.Equal(b, img) {
+		t.Errorf("%s there: %d bytes, %v", name, len(b), err)
+	}
+}
+
+// TestPasteUpload: what of a paste a pane of a host sends there. The
+// clipboard's own image goes with no text, or only space beside it, as an
+// office program adds; text it holds or cannot read pastes; a file list
+// with an image goes whole.
+func TestPasteUpload(t *testing.T) {
+	dir := t.TempDir()
+	path, img := writeImage(t, dir, "shot.png", true)
+	notes := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(notes, []byte("notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	png := transfer.Bytes(transfer.PNG, img)
+	unread := transfer.Lazy(transfer.Text, func() ([]byte, error) { return nil, errors.New("too large") })
+	for _, c := range []struct {
+		name  string
+		d     transfer.Data
+		paths []string
+		image bool
+	}{
+		{"an image", transfer.New(transfer.NewItem(png)), nil, true},
+		{"an image and space", transfer.New(transfer.NewItem(png, transfer.Bytes(transfer.Text, []byte("\r\n")))), nil, true},
+		{"an image and text", transfer.New(transfer.NewItem(png, transfer.Bytes(transfer.Text, []byte("caption")))), nil, false},
+		{"an image and text not read", transfer.New(transfer.NewItem(png, unread)), nil, false},
+		{"a path to an image", transfer.TextData(path), nil, false},
+		{"files with an image", fileData(t, notes, path), []string{notes, path}, false},
+		{"files without one", fileData(t, notes), nil, false},
+	} {
+		paths, name, got := pasteUpload(c.d)
+		if !slices.Equal(paths, c.paths) {
+			t.Errorf("%s: files %q, want %q", c.name, paths, c.paths)
+		}
+		if c.image != (got != nil) || c.image && (!bytes.Equal(got, img) || !strings.HasPrefix(name, "pasted-image-") || !strings.HasSuffix(name, ".png")) {
+			t.Errorf("%s: image %q of %d bytes, want one: %v", c.name, name, len(got), c.image)
+		}
+	}
+}
+
+// TestPastePathTextOnHost: text that is one path to an image here pastes
+// as text into a pane of a host, which a user may want; nothing is sent.
+func TestPastePathTextOnHost(t *testing.T) {
+	a, tt := newTestApp(t)
+	p, _ := catOnHost(t, a, tt, "")
+	path, _ := writeImage(t, t.TempDir(), "shot.png", true)
+	tt.SetClipboardData(transfer.TextData(path))
+	tt.Frame()
+	pasteKey(tt)
+	waitFor(t, tt, "the path", func() bool { return strings.Contains(strings.ReplaceAll(p.term.Text(), "\n", ""), "shot.png") })
+	if len(listOf(p)) != 0 {
+		t.Errorf("transfers %v", listOf(p))
 	}
 }

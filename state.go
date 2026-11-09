@@ -963,14 +963,21 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// them: a program that reads the clipboard itself (Kitty's paste
 	// events) takes them even over SSH or on a host, where a path of this
 	// machine means nothing. The terminal then reads every format the
-	// clipboard holds, as it does in a pane of this machine. Who types last
-	// takes the session's size back from a device that holds it (SizeLock):
-	// the session gets the pane's size again.
+	// clipboard holds, as it does in a pane of this machine. In a pane of a
+	// host whose program does not (mode 5522), or a ConPTY, an image goes
+	// there as a dropped file does and its path there is pasted: the
+	// program, as Claude Code, would read the host's clipboard, which does
+	// not hold it (pasteToHost). Who types last takes the session's size
+	// back from a device that holds it (SizeLock): the session gets the
+	// pane's size again.
 	opts.OnPaste = func(d transfer.Data) bool {
 		if p.host == nil {
 			a.takeSize(p)
 		}
 		p.claimSize()
+		if a.pasteToHost(p, d) {
+			return true
+		}
 		// A console that drops the terminal's paste event, a ConPTY on
 		// Windows, takes the text as a paste the session's server writes:
 		// the event is an OSC, which such a console throws away. An image
