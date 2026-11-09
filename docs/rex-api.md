@@ -29,7 +29,9 @@ it to Rex clients in Rex's terms:
 - **Size.** A client that owns a block sizes its terminal, through the
   server's size lock: the desktop shows the pane at that size meanwhile.
   The lock is renewed while the client stays, and given back when it
-  leaves.
+  leaves. A desktop pane that types takes the size back: the block then
+  has no owner (`block_owner_changed`, reason `taken`) until the client
+  that took it types again (reason `input`).
 - **Layout changes** (new window, split, close, rename, focus, zoom, swap,
   move, resize) the GoRex server makes itself, as for rootshell; an open
   window shows them at once.

@@ -349,6 +349,16 @@ func hasClaim(claims []claim, client string) bool {
 	return false
 }
 
+// hasTake tells whether client is in line for a block with a take.
+func hasTake(claims []claim, client string) bool {
+	for _, c := range claims {
+		if c.client == client && c.mode == "take" {
+			return true
+		}
+	}
+	return false
+}
+
 // resizeBlock applies a client's size to a block: at once when it owns
 // the block or nobody does, and otherwise when it becomes the owner.
 func (g *Gateway) resizeBlock(rec *clientRecord, b *mBlock, cols, rows int) {
@@ -417,24 +427,44 @@ func (g *Gateway) blockSize(block string, info *rex.SessionInfo) sizeResult {
 }
 
 // renewOwned renews the leases of the size locks the gateway holds, as a
-// window that keeps a size does.
+// window that keeps a size does. A lock that went, as when a desktop pane
+// typed and took the size back, or a lease that ran out, is let go: its
+// blocks have no owner, and the claims stay, so that the client takes the
+// size again when it types (takeOnInput).
 func (g *Gateway) renewOwned() {
 	g.ownMu.Lock()
-	defer g.ownMu.Unlock()
+	var changes []ownerChange
 	for sid, owner := range g.locks {
 		if err := g.opt.Client.RenewSize(sid, owner); err == nil {
 			continue
 		}
-		// The lease went while nothing renewed it: take it again.
-		if err := g.opt.Client.LockSize(sid, owner, 0, 0); err != nil {
-			delete(g.locks, sid)
-			for _, o := range g.owners {
-				if o.owner == owner {
-					o.owner = ""
-				}
+		delete(g.locks, sid)
+		for id, o := range g.owners {
+			if o.owner == owner && g.sidOfBlock(id) == sid {
+				o.owner = ""
+				changes = append(changes, ownerChange{block: id, previous: owner, reason: "taken"})
 			}
 		}
 	}
+	g.ownMu.Unlock()
+	sort.Slice(changes, func(i, j int) bool { return changes[i].block < changes[j].block })
+	g.emitOwnerChanges(changes)
+}
+
+// takeOnInput gives a block back to a client that types into it, when the
+// client took it (own_block mode take) and lost it since, as renewOwned
+// lets go: the session takes the size the client asked for last. A client
+// that only requested the block does not take it by typing.
+func (g *Gateway) takeOnInput(rec *clientRecord, s *mSession, b *mBlock) {
+	g.ownMu.Lock()
+	o := g.owners[b.id]
+	take := o != nil && o.owner != rec.id && hasTake(o.claims, rec.id)
+	g.ownMu.Unlock()
+	if !take {
+		return
+	}
+	_, changes := g.claimBlocks(rec, s, []string{b.id}, "take", "input")
+	g.emitOwnerChanges(changes)
 }
 
 // pruneOwners forgets the blocks a model no longer has, and the locks of

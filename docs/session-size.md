@@ -143,13 +143,18 @@ windows: it is above them.
   a pane of the server's own machine does this: a pane of a remote host
   (`p.host != nil`) does not unlock, so a desktop that views the session
   as a remote host gets the size back only when the lock ends.
-- **The gateway locks again.** The gateway does not learn of that
-  unlock. Its next renewal (within 5 seconds, `renewOwned`) fails, and it
-  takes the lock again for the phone with no size (`LockSize(sid, owner,
-  0, 0)`). The session keeps the window's size, but the windows' resizes
-  are ignored again. The size changes next when the phone sends a resize
-  (it opens the terminal, reconnects, rotates or pinches), or when a
-  window types again.
+- **The gateway lets go.** The gateway does not learn of that unlock
+  at once. Its next renewal (within 5 seconds, `renewOwned`) fails, and
+  it lets the lock go: the block has no owner, and a
+  `block_owner_changed` event with reason `taken` says so. The phone's
+  `take` claim stays. A lease that ran out, when renewals stopped for 30
+  seconds, ends the same way. The windows' resizes apply again.
+- **The phone takes the size back by typing.** When a client that took a
+  block (mode `take`) and lost it writes to it (`write`, or a key or a
+  paste through `block.event` or `client.key`), the gateway takes the
+  block for it again before the input (`takeOnInput`, reason `input`),
+  with the size it asked for last. A client that only requested the
+  block, or never claimed it, does not take the size by typing.
 - **The end of the lock.** The phone gives up the block when its
   terminal closes (`session.disown_block`). When its connection drops,
   as when iOS suspends the app in the background, the gateway lets go of
@@ -162,13 +167,14 @@ windows: it is above them.
   (`UnlockSize(sid, "", 0, 0)`); the windows' panes then resend their
   sizes, and the authority's size applies.
 
-So with the phone and a desktop window on the same pane, the size goes
-to the phone each time it opens the terminal or comes back from the
-background, and to the desktop each time the desktop types. Both
-terminals show one grid, the size of the last of these: the program in
-the session draws for one size. The phone does not follow the desktop's
-size, so while the desktop's size holds, the phone lays out a program's
-output that was drawn for a different grid.
+So with the phone and a desktop window on the same pane, whoever types
+last holds the size: it goes to the phone each time it opens the
+terminal, comes back from the background or types, and to the desktop
+each time the desktop types. Both terminals show one grid, the size of
+the last of these: the program in the session draws for one size. The
+phone does not follow the desktop's size, so while the desktop's size
+holds, the phone lays out a program's output that was drawn for a
+different grid.
 
 ## What a window shows
 
