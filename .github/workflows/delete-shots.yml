@@ -1,0 +1,27 @@
+name: Delete shots
+
+# A merged PR's screenshots branch, shots/pr-<number>, is deleted: the repo
+# is public, and the shots are for the review. A PR without one is a no-op.
+# pull_request_target runs from main and checks nothing out.
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  delete:
+    if: github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REF: heads/shots/pr-${{ github.event.pull_request.number }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/$REF" --silent 2>/dev/null; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/$REF"
+            echo "Deleted $REF" >> "$GITHUB_STEP_SUMMARY"
+          fi
