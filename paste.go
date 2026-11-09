@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/transfer"
 )
@@ -67,6 +68,51 @@ func pasteImageData(d transfer.Data) (transfer.Data, bool) {
 		}
 	}
 	return transfer.New(transfer.NewItem(reps...)), true
+}
+
+// pastedImage returns the image of a paste that a pane of a host sends
+// there as a file, its path there pasted, as a drop of it would be: the
+// first image of the files it lists, or the clipboard's own image, of
+// type mime and no path, when the clipboard holds no text. Text, one path
+// to an image or along with an image as a copy from a browser or an
+// office program holds, pastes as text.
+func pastedImage(d transfer.Data) (mime, path string, ok bool) {
+	if paths, err := d.Files(); err == nil {
+		for _, path := range paths {
+			if mime, ok := sniffPasteImage(path); ok {
+				return mime, path, true
+			}
+		}
+	}
+	for _, f := range d.Formats() {
+		if slices.Contains(pasteImageTypes, string(f)) {
+			if text, _ := d.Read(transfer.Text); len(text) > 0 {
+				return "", "", false
+			}
+			return string(f), "", true
+		}
+	}
+	return "", "", false
+}
+
+// writePastedImage writes the clipboard's image, of type mime, into a new
+// temporary folder, named for when it was pasted, and returns its path.
+// Remove the folder once the image is sent.
+func writePastedImage(d transfer.Data, mime string) (string, error) {
+	b, err := d.Read(transfer.Format(mime))
+	if err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp("", "gorex-paste-")
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "pasted-image-"+time.Now().Format("20060102-150405")+"."+strings.TrimPrefix(mime, "image/"))
+	if err := os.WriteFile(path, b, 0o600); err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	return path, nil
 }
 
 // pasteImage returns the type and path of the first image the paste

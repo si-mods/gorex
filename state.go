@@ -971,6 +971,30 @@ func (a *App) attach(p *Pane, cols, rows int) {
 			a.takeSize(p)
 		}
 		p.claimSize()
+		// An image pasted into a pane of a host whose program does not
+		// read the clipboard itself goes there as a dropped file does,
+		// its path there pasted: the program, as Claude Code, would read
+		// the host's clipboard, which does not hold it. A console that
+		// drops the terminal's paste event, a ConPTY, never reads it.
+		if mime, path, ok := pastedImage(d); ok && transfersFiles(p) && (p.info.ConPTY || p.term == nil || !p.term.ReadsClipboard()) {
+			if path != "" {
+				a.upload(p, []string{path})
+				return true
+			}
+			// The clipboard's image goes as a file written for it, removed
+			// once the uploads of the session have sent it.
+			path, err := writePastedImage(d, mime)
+			if err == nil {
+				a.upload(p, []string{path})
+				done := p.host.transfersOf(p.SID).uploading
+				go func() {
+					<-done
+					os.RemoveAll(filepath.Dir(path))
+				}()
+				return true
+			}
+			log.Printf("paste: writing the clipboard's image: %v", err)
+		}
 		// A console that drops the terminal's paste event, a ConPTY on
 		// Windows, takes the text as a paste the session's server writes:
 		// the event is an OSC, which such a console throws away. An image
