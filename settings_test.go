@@ -44,8 +44,10 @@ func TestWithPrefsPrecedence(t *testing.T) {
 	raw := ghosttyConfig{
 		Families: []string{"Fira Code"}, Theme: "Dracula", Background: &bg,
 		Cursor: terminal.CursorBar, NoBlink: true, CopyOnSelect: terminal.CopyOnSelectClipboard,
+		MinimumContrast: 4.5,
 	}
-	// No choices: Ghostty's config as it is.
+	// No choices: Ghostty's config as it is (here with a minimum contrast,
+	// which GoRex's default would fill in otherwise).
 	if got := raw.withPrefs(settings{}); !reflect.DeepEqual(got, raw) {
 		t.Errorf("no prefs changed the config: %+v", got)
 	}
@@ -104,6 +106,43 @@ func TestReloadKeepsPrefs(t *testing.T) {
 	a.setPref(func(s *settings) { s.Font = "" })
 	if !strings.HasPrefix(termFont.Family, "Hack") {
 		t.Errorf("font %q: clearing the pref did not follow Ghostty", termFont.Family)
+	}
+}
+
+// TestMinimumContrastPrecedence checks that the user's minimum contrast
+// wins over Ghostty's, which wins over GoRex's default, and that 1 stays
+// off.
+func TestMinimumContrastPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		ghostty, pref, want float32
+	}{
+		{0, 0, defaultMinContrast},
+		{7, 0, 7},
+		{7, 2, 2},
+		{0, 1, 1},
+		{1, 0, 1},
+	} {
+		got := ghosttyConfig{MinimumContrast: tc.ghostty}.withPrefs(settings{MinimumContrast: tc.pref})
+		if got.MinimumContrast != tc.want {
+			t.Errorf("ghostty %v, pref %v: %v, want %v", tc.ghostty, tc.pref, got.MinimumContrast, tc.want)
+		}
+	}
+	// A ratio out of range in settings.json is clamped, as Ghostty's is.
+	isolateSettings(t, "")
+	if err := os.MkdirAll(filepath.Dir(settingsPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for raw, want := range map[string]float32{
+		`{"minimumContrast": 0.5}`: 1, `{"minimumContrast": 22}`: 21, `{"minimumContrast": 1}`: 1, `{}`: defaultMinContrast,
+	} {
+		if err := os.WriteFile(settingsPath(), []byte(raw), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		prefs = settings{}
+		loadSettings()
+		if ghostty.MinimumContrast != want {
+			t.Errorf("%s: applied %v, want %v", raw, ghostty.MinimumContrast, want)
+		}
 	}
 }
 

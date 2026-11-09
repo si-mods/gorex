@@ -62,7 +62,18 @@ type settings struct {
 	Cursor       string `json:"cursor,omitempty"` // "block", "bar" or "underline"
 	CursorBlink  *bool  `json:"cursorBlink,omitempty"`
 	CopyOnSelect *bool  `json:"copyOnSelect,omitempty"`
+	// MinimumContrast is the least contrast of text with its background,
+	// from 1 (no correction) to 21; 0 follows Ghostty's minimum-contrast,
+	// else defaultMinContrast.
+	MinimumContrast float32 `json:"minimumContrast,omitempty"`
 }
+
+// defaultMinContrast is the minimum contrast when neither the user nor
+// Ghostty sets one. 3 lifts only text that is hard to read, as light
+// themes' yellow and white at about 2:1 or dark themes' black at about
+// 1:1, where 4.5 would recolor most light palettes. The correction keeps
+// the hue, so a program's colors still tell errors from warnings.
+const defaultMinContrast = 3
 
 const defaultFontSize = 11.6
 
@@ -95,6 +106,12 @@ func loadSettings() {
 	}
 	if prefs.TermOpacity < minTermOpacity || prefs.TermOpacity > maxTermOpacity {
 		prefs.TermOpacity = 0
+	}
+	// A ratio is clamped to 1–21 as Ghostty's is; 0 (or NaN) follows Ghostty.
+	if c := prefs.MinimumContrast; c != c {
+		prefs.MinimumContrast = 0
+	} else if c != 0 {
+		prefs.MinimumContrast = min(max(c, 1), 21)
 	}
 	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
 		prefs.SidebarWidth = 0
@@ -147,8 +164,9 @@ var cursorStyles = map[string]terminal.CursorStyle{
 	"block": terminal.CursorBlock, "bar": terminal.CursorBar, "underline": terminal.CursorUnderline,
 }
 
-// withPrefs returns the configuration with the user's choices over it. The
-// configuration is Ghostty's as it was read, so a reload does not lose them.
+// withPrefs returns the configuration with the user's choices over it, and
+// GoRex's defaults where neither sets one. The configuration is Ghostty's
+// as it was read, so a reload does not lose them.
 // A theme of the user's replaces the configuration's colors too, as they
 // were meant for the other theme.
 func (c ghosttyConfig) withPrefs(p settings) ghosttyConfig {
@@ -171,6 +189,12 @@ func (c ghosttyConfig) withPrefs(p settings) ghosttyConfig {
 		if *p.CopyOnSelect {
 			c.CopyOnSelect = terminal.CopyOnSelectClipboard
 		}
+	}
+	if p.MinimumContrast != 0 {
+		c.MinimumContrast = p.MinimumContrast
+	}
+	if c.MinimumContrast == 0 {
+		c.MinimumContrast = defaultMinContrast
 	}
 	return c
 }
