@@ -276,10 +276,21 @@ private enum Fonts {
     }
 }
 
-/// The terminal's options: its font and font size.
+/// The terminal's options: its font, font size and minimum contrast.
 private struct TerminalSettings: View {
     @AppStorage("fontSize") private var fontSize = 12.0
     @AppStorage("fontFamily") private var family = ""
+    @AppStorage("minimumContrast") private var contrast = 0.0
+
+    /// The minimum contrasts offered, 0 the default, off; a stored one not
+    /// among them, by its number.
+    private var contrasts: [(Double, String)] {
+        var all = [(0.0, String(localized: "Off (Default)")), (2, "2"), (3, "3"),
+                   (4.5, String(localized: "4.5 (WCAG AA)")), (7, String(localized: "7 (WCAG AAA)"))]
+        let current = TerminalView.minimumContrast
+        if ![1, 2, 3, 4.5, 7].contains(current) { all.append((contrast, current.formatted())) }
+        return all
+    }
     private let maple = Maple.shared
 
     var body: some View {
@@ -296,6 +307,25 @@ private struct TerminalSettings: View {
                 } else {
                     download.swipeActions { if !maple.saved.isEmpty { Button("Delete", role: .destructive) { maple.delete() } } }
                 }
+            }
+            Section {
+                ForEach(contrasts, id: \.0) { value, name in
+                    Button {
+                        contrast = value
+                        NotificationCenter.default.post(name: .minimumContrast, object: nil)
+                    } label: {
+                        HStack {
+                            Text(verbatim: name).foregroundStyle(.primary)
+                            Spacer()
+                            if value == contrast || (value == 0 && TerminalView.minimumContrast == 1) { Image(systemName: "checkmark").fontWeight(.semibold) }
+                        }
+                    }
+                    .listRowBackground(Color.card)
+                }
+            } header: {
+                Text("Minimum Contrast")
+            } footer: {
+                Text("Turns text too close to its background black or white, colors programs set too, so it reads; its color is lost, so errors and warnings may look alike. Box drawing keeps its colors. Off shows programs' colors as they are.")
             }
         }
         .scrollContentBackground(.hidden)

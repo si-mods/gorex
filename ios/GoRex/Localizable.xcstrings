@@ -2637,6 +2637,56 @@
           }
         }
       }
+    },
+    "4.5 (WCAG AA)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "4.5（WCAG AA）"
+          }
+        }
+      }
+    },
+    "7 (WCAG AAA)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "7（WCAG AAA）"
+          }
+        }
+      }
+    },
+    "Minimum Contrast": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最低对比度"
+          }
+        }
+      }
+    },
+    "Off (Default)": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭（默认）"
+          }
+        }
+      }
+    },
+    "Turns text too close to its background black or white, colors programs set too, so it reads; its color is lost, so errors and warnings may look alike. Box drawing keeps its colors. Off shows programs' colors as they are.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "把与背景太接近的文字换成黑色或白色，包括程序设置的颜色，以便阅读；原来的颜色会丢失，错误、警告等可能看起来一样。框线字符保持原色。关闭后按程序的颜色原样显示。"
+          }
+        }
+      }
     }
   }
 }

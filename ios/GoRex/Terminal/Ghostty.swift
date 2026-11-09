@@ -7,7 +7,7 @@ import UIKit
 /// there.
 enum Ghostty {
     static let app: ghostty_app_t? = {
-        guard ghostty_init(0, nil) == 0, let config = config("") else { return nil }
+        guard ghostty_init(0, nil) == 0, let config = config("minimum-contrast = \(TerminalView.minimumContrast)") else { return nil }
         var runtime = ghostty_runtime_config_s(
             userdata: nil,
             supports_selection_clipboard: false,
