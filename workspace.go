@@ -821,7 +821,8 @@ func (st *store) adopt(client *rex.Client) bool {
 		// Only for a newer build: two copies of the app would take the
 		// server from each other at every launch. One that cannot upgrade
 		// is under mygo dev restarted, and on Windows by a newer build
-		// once the user agrees: the next server starts its sessions again.
+		// once the user agrees (serverBehind): the next server starts its
+		// sessions again.
 		// Otherwise it is kept.
 		var next *rex.Client
 		if st.hello.Upgrade {
@@ -836,23 +837,8 @@ func (st *store) adopt(client *rex.Client) bool {
 			// A restart stops the server so that the next one starts the
 			// sessions of the layout again (Restart sends restart:true).
 			next, err = client.Restart(st.hello.PID)
-		} else if runtime.GOOS == "windows" && st.hello.Can(rex.CapabilityShutdownRestart) {
-			// Windows servers cannot upgrade in place: a newer build
-			// restarts one that brings its sessions back, once the user
-			// agrees to end the programs in its panes.
-			if _, at := rex.Executable(); at.After(st.hello.ExeTime) {
-				res, derr := mygo.Dialog.Message(mygo.MessageOptions{
-					Type:          mygo.MessageWarning,
-					Message:       locales.ServerRestartAskTitle(),
-					Detail:        locales.ServerRestartAskDetail(),
-					Buttons:       []string{locales.ServerRestartAskRestart(), locales.ServerRestartAskLater()},
-					DefaultButton: 0,
-					CancelButton:  1,
-				})
-				if derr == nil && res.Button == 0 {
-					next, err = client.Restart(st.hello.PID)
-				}
-			}
+		} else if st.serverBehind() {
+			next, err = st.askRestart()
 		}
 		if err != nil {
 			log.Print(err)
@@ -925,6 +911,55 @@ func (st *store) adopt(client *rex.Client) bool {
 	}
 	go st.watch(st.client)
 	return true
+}
+
+// serverBehind reports whether the server runs an older build than the
+// app's executable and can restart on it, on Windows, where servers cannot
+// upgrade in place: one that brings its sessions back, as a newer build
+// starts it, which speaks this app's protocol. An update replaces the
+// executable while the app runs.
+func (st *store) serverBehind() bool {
+	if runtime.GOOS != "windows" || st.client == nil || !st.hello.Can(rex.CapabilityShutdownRestart) {
+		return false
+	}
+	exe, at := rex.Executable()
+	return at.After(st.hello.ExeTime) && rex.SpeaksProtocol(exe)
+}
+
+// askRestart restarts the server on the app's executable once the user
+// agrees to end the programs in its panes, and returns the next server's
+// client; nil when they chose later.
+func (st *store) askRestart() (*rex.Client, error) {
+	res, err := mygo.Dialog.Message(mygo.MessageOptions{
+		Type:          mygo.MessageWarning,
+		Message:       locales.ServerRestartAskTitle(),
+		Detail:        locales.ServerRestartAskDetail(),
+		Buttons:       []string{locales.ServerRestartAskRestart(), locales.ServerRestartAskLater()},
+		DefaultButton: 0,
+		CancelButton:  1,
+	})
+	if err != nil || res.Button != 0 {
+		return nil, nil
+	}
+	return st.client.Restart(st.hello.PID)
+}
+
+func init() { cmdRestartServer.Run = func(a *App) { a.st.restartServer() } }
+
+// restartServer offers to restart a server that is behind the app's
+// executable (serverBehind), as after an update, and takes the next one:
+// the windows stay, attached to the new sessions. On an error, watch
+// connects again.
+func (st *store) restartServer() {
+	next, err := st.askRestart()
+	if err != nil {
+		log.Print(err)
+		mygo.Dialog.Error(locales.ErrorServerRestart(), err.Error())
+		return
+	}
+	if next != nil {
+		st.adopt(next)
+	}
 }
 
 // watch connects again when the connection to c closes. A server that goes

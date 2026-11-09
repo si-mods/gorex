@@ -58,7 +58,7 @@ type command struct {
 // clientBlockedActions are actions a client may not run, even when it may
 // reach the action channel.
 var clientBlockedActions = map[string]bool{
-	"app.quit": true, "app.updates": true, "config.reload": true,
+	"app.quit": true, "app.updates": true, "server.restart": true, "config.reload": true,
 	"session.close": true, "tab.close": true, "pane.close": true, "pane.restart": true,
 	"screen.clear": true, "scrollback.clear": true, "tab.move_window": true,
 	"mode.enter": true, "mode.exit": true, "mode.exit_all": true,
@@ -538,7 +538,11 @@ var (
 	cmdSystem   = command{ID: "appearance.system", Name: locales.Messages.CmdAppearanceSystem, Run: func(a *App) { a.setAppearance("") }}
 	cmdSettings = command{ID: "app.settings", Name: locales.Messages.CmdSettings, Accel: "CmdOrCtrl+,", Keys: "⌘,", Other: shortcut{ui.Ctrl, ui.KeyComma}}
 	cmdUpdates  = command{ID: "app.updates", Name: locales.Messages.CmdCheckForUpdates, Run: func(a *App) { updater.CheckForUpdates() }}
-	cmdEndAll   = command{ID: "app.quit", Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
+	// cmdRestartServer restarts a server an update left behind on Windows,
+	// when the user chose Later (store.restartServer).
+	cmdRestartServer = command{ID: "server.restart", Name: locales.Messages.CmdRestartServer, Hidden: runtime.GOOS != "windows",
+		Available: func(a *App) bool { return a.st != nil && a.st.serverBehind() }}
+	cmdEndAll = command{ID: "app.quit", Name: locales.Messages.CmdQuitAndEndAll, Accel: "CmdOrCtrl+Alt+Q", Keys: "⌥⌘Q", Run: func(a *App) { a.quitAndEnd() }}
 
 	cmdNewWindow     = command{ID: "window.new", Name: locales.Messages.CmdNewWindow, Accel: "CmdOrCtrl+N", Keys: "⌘N", Other: ctrlShift(ui.KeyN)}
 	cmdNewSession    = command{ID: "session.new", Name: locales.Messages.CmdNewSession, Accel: "CmdOrCtrl+Shift+N", Keys: "⇧⌘N", Run: func(a *App) { a.newWorkspace() }}
@@ -663,7 +667,7 @@ var paletteCommands = []*command{
 	&cmdFocusLeft, &cmdFocusRight, &cmdFocusUp, &cmdFocusDown,
 	&cmdGrowLeft, &cmdGrowRight, &cmdGrowUp, &cmdGrowDown,
 	&cmdBigger, &cmdSmaller, &cmdActualSize, &cmdLight, &cmdDark, &cmdSystem,
-	&cmdGhostty, &cmdClearScroll, &cmdFind, &cmdFindNext, &cmdFindPrev, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdEndAll,
+	&cmdGhostty, &cmdClearScroll, &cmdFind, &cmdFindNext, &cmdFindPrev, &cmdRestart, &cmdSettings, &cmdUpdates, &cmdRestartServer, &cmdEndAll,
 	&cmdNewWindow, &cmdNewSession, &cmdImportRex, &cmdChangeSession, &cmdNextSession, &cmdPrevSession,
 	&cmdRenameSession, &cmdCloseSession, &cmdMoveTabWindow,
 }

@@ -156,3 +156,22 @@ func TestImportRexCommand(t *testing.T) {
 		t.Error("rex.import does nothing")
 	}
 }
+
+// TestRestartServerCommand: the command restarts the server an update
+// left behind on Windows only, and never for a client, as it ends the
+// programs in the panes.
+func TestRestartServerCommand(t *testing.T) {
+	if !blockedFromClient(cmdRestartServer.ID) {
+		t.Error("a client may restart the server")
+	}
+	if runtime.GOOS == "windows" {
+		return
+	}
+	if !cmdRestartServer.Hidden {
+		t.Error("the palette lists Restart Session Server outside Windows")
+	}
+	a := &App{st: &store{}}
+	if err := cmdRestartServer.invoke(a, nil); err == nil {
+		t.Error("Restart Session Server ran outside Windows")
+	}
+}
