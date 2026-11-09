@@ -286,16 +286,24 @@ func (a *App) spaceDotButton(c *ui.Context, k *colors, i int, w *Workspace) {
 		a.later(c, func() { a.showWorkspace(w) })
 	}
 	if w == a.ws {
-		b.ContextMenu(func(m *ui.Menu) {
-			if m.Item(cmdRenameSession.Title()).Chosen() {
-				a.startWorkspaceRename()
-			}
-			if m.Item(cmdCloseSession.Title()).Chosen() {
-				a.askCloseWorkspace()
-			}
-		})
+		b.ContextMenu(func(m *ui.Menu) { a.spaceMenu(m, "") })
 	}
 	b.Children(func() { spaceDotMark(c, k, w, w == a.ws) })
+}
+
+// spaceMenu is the right click menu of the window's own space: rename
+// it, open its popover for its color, by the host view's row of host
+// anchor, or close it.
+func (a *App) spaceMenu(m *ui.Menu, anchor string) {
+	if m.Item(cmdRenameSession.Title()).Chosen() {
+		a.startWorkspaceRename()
+	}
+	if m.Item(locales.SpaceColor() + "…").Chosen() {
+		a.wsOpen, a.wsAnchor = true, anchor
+	}
+	if m.Item(cmdCloseSession.Title()).Chosen() {
+		a.askCloseWorkspace()
+	}
 }
 
 // spaceDotMark is a space's color in the strip: a dot of its base color,

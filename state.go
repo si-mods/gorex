@@ -537,8 +537,11 @@ type App struct {
 
 	// The workspace's popover, the field that renames it, Close
 	// Session's question.
-	wsOpen        bool
-	wsRenaming    bool
+	wsOpen     bool
+	wsRenaming bool
+	// wsAnchor is the host whose row of the window's space holds the
+	// popover in the host view, which has no chip.
+	wsAnchor      string
 	wsRenameText  string
 	wsRenameFocus bool
 	// wsColorText is the color the popover's custom field holds.

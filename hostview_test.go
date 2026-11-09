@@ -66,8 +66,9 @@ func TestSidebarViewSetting(t *testing.T) {
 // TestSidebarHostView lists every space under the hosts it has tabs on: a
 // space with tabs on two hosts shows under both, with its count of each;
 // the window's space shows its tabs, another space is closed, and a click
-// on it shows it on its tab of that host. The strip of spaces goes, and
-// without remote hosts the sidebar is the spaces' view again.
+// on it shows it on its tab of that host. The strip and the chip of the
+// space go, and without remote hosts the sidebar is the spaces' view
+// again.
 func TestSidebarHostView(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
@@ -121,6 +122,31 @@ func TestSidebarHostView(t *testing.T) {
 	if _, ok := tt.Find(cmdNewSession.Title()); ok {
 		t.Error("the strip of spaces shows in the host view")
 	}
+	if _, ok := tt.Find(locales.SessionLabel(first.Name)); ok {
+		t.Error("the space's chip shows in the host view")
+	}
+	// Renamed, the space shows its field in the chip's place.
+	a.startWorkspaceRename()
+	tt.Frame()
+	if _, ok := tt.Find(locales.SessionLabel(first.Name)); !ok {
+		t.Error("renaming the space shows no field in the host view")
+	}
+	a.wsRenaming = false
+	tt.Frame()
+	// Its right click opens its popover by its row, for its color.
+	if err := tt.RightClick("calm-fern, " + locales.SessionTabs(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem(locales.SpaceColor() + "…"); err != nil {
+		t.Fatalf("%v; menu %q", err, tt.Menu())
+	}
+	tt.Frame()
+	tt.Frame()
+	if _, ok := tt.Find("Rose"); !ok {
+		t.Errorf("no color popover from the space's menu; texts %q", tt.Texts())
+	}
+	a.wsOpen = false
+	tt.Frame()
 
 	// The window's space closes under a host, and opens again.
 	if err := tt.Click("calm-fern, " + locales.SessionTabs(1)); err != nil {
@@ -203,5 +229,8 @@ func TestSidebarHostView(t *testing.T) {
 	tt.Frame()
 	if _, ok := tt.Find(cmdNewSession.Title()); !ok {
 		t.Errorf("no strip of spaces without hosts; texts %q", tt.Texts())
+	}
+	if _, ok := tt.Find(locales.SessionLabel(a.ws.Name)); !ok {
+		t.Errorf("no chip of the space without hosts; texts %q", tt.Texts())
 	}
 }

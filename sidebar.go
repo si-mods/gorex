@@ -273,7 +273,9 @@ func (a *App) sidebar(c *ui.Context, k *colors, right bool) {
 				a.windowControls(c, k)
 			}
 		})
-		if a.ws != nil {
+		// The host view lists the spaces under their hosts: the chip would
+		// say it twice, but for its field while the space is renamed.
+		if a.ws != nil && (!a.hostView() || a.wsRenaming) {
 			ui.Row(c).Shrink(0).Padding(0, 6, 4, 6).Children(func() { a.workspaceChip(c, k, true) })
 		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Padding(2, 6, 6, 6).Children(func() {
@@ -502,7 +504,8 @@ func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, o
 
 // sessionRow is a session under a host in the host view: a chevron, its
 // color, its name and how many tabs it has on the host, and what needs
-// the user there. The window's own opens and closes on its tabs; another
+// the user there. The window's own opens and closes on its tabs, and a
+// right click renames it, colors it in its popover or closes it; another
 // is a button that shows it, faded when another window shows it, as its
 // dot in the strip. It reports whether it was clicked.
 func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n int, open bool) bool {
@@ -510,6 +513,7 @@ func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n 
 		Radius(pillRadius(28, 9)).Cursor(ui.CursorPointer).Label(w.Name + ", " + workspaceDetail(w, a, n))
 	if w == a.ws {
 		row.Role(ui.RoleDisclosure).Expanded(open)
+		row.ContextMenu(func(m *ui.Menu) { a.spaceMenu(m, hostKey(h)) })
 	} else {
 		row.Role(ui.RoleButton)
 	}
@@ -536,6 +540,9 @@ func (a *App) sessionRow(c *ui.Context, k *colors, h *hostConn, w *Workspace, n 
 		}
 		ui.Text(c, fmt.Sprint(n)).FontSize(11.5).TextColor(k.textFaint).Shrink(0)
 	})
+	if w == a.ws && a.wsAnchor == hostKey(h) {
+		a.workspacePopover(c, k, row)
+	}
 	return row.Clicked()
 }
 
