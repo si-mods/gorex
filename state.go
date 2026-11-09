@@ -539,9 +539,9 @@ type App struct {
 	// Session's question.
 	wsOpen     bool
 	wsRenaming bool
-	// wsAnchor is the host whose row of the window's space holds the
-	// popover in the host view, which has no chip.
-	wsAnchor      string
+	// wsColorOnly keeps the popover to the space's colors, as the host
+	// view's Color… opens it.
+	wsColorOnly   bool
 	wsRenameText  string
 	wsRenameFocus bool
 	// wsColorText is the color the popover's custom field holds.
