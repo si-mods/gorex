@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"gorex/internal/rex"
+	"gorex/internal/tailnode"
 
 	"github.com/coder/websocket"
 	"rsc.io/qr"
@@ -286,7 +287,7 @@ func setTailnetEnabled(dir string, payload any) error {
 			t.Hostname = h
 		}
 		if u, ok := p["control_url"].(string); ok && u != "" {
-			if !ValidControlURL(u) {
+			if !tailnode.ValidControlURL(u) {
 				return errControlURL(u)
 			}
 			t.ControlURL = u

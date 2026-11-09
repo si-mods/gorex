@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/netip"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,12 +14,11 @@ import (
 	"sync"
 	"time"
 
-	"tailscale.com/client/local"
+	"gorex/internal/tailnode"
+
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
-	"tailscale.com/net/tsaddr"
-	"tailscale.com/tsnet"
 )
 
 // tailnetNode is the Tailscale device the gateway runs: tsnet's, or a
@@ -47,78 +44,12 @@ type tailnetNode interface {
 // to the control server at controlURL when it is not empty.
 type newNodeFunc func(dir, hostname, authKey, controlURL string, tags []string) tailnetNode
 
-// tsnetNode is a tailnetNode of tsnet: a copy of Tailscale in the
-// process, joining the tailnet as a device of its own.
-type tsnetNode struct {
-	srv *tsnet.Server
-	lc  *local.Client
-}
-
+// newTsnetNode makes the tailnetNode of tsnet.
 func newTsnetNode(dir, hostname, authKey, controlURL string, tags []string) tailnetNode {
-	return &tsnetNode{srv: &tsnet.Server{
-		Dir:           dir,
-		Hostname:      hostname,
-		AuthKey:       authKey,
-		ControlURL:    controlURL,
-		AdvertiseTags: tags,
-		UserLogf:      logf,
-		Logf:          func(string, ...any) {},
-	}}
+	return tailnode.New(tailnode.Options{Dir: dir, Hostname: hostname, AuthKey: authKey, ControlURL: controlURL, Tags: tags, Logf: logf})
 }
 
-func (n *tsnetNode) Start() error {
-	if err := n.srv.Start(); err != nil {
-		return err
-	}
-	lc, err := n.srv.LocalClient()
-	if err != nil {
-		return err
-	}
-	n.lc = lc
-	return nil
-}
-
-func (n *tsnetNode) Status(ctx context.Context) (*ipnstate.Status, error) {
-	return n.lc.StatusWithoutPeers(ctx)
-}
-
-func (n *tsnetNode) Watch(ctx context.Context, changed func()) {
-	for ctx.Err() == nil {
-		w, err := n.lc.WatchIPNBus(ctx, ipn.NotifyInitialState)
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(time.Second):
-				continue
-			}
-		}
-		for {
-			if _, err := w.Next(); err != nil {
-				break
-			}
-			changed()
-		}
-		w.Close()
-	}
-}
-
-func (n *tsnetNode) ListenTLS() (net.Listener, error) { return n.srv.ListenTLS("tcp", ":443") }
-
-func (n *tsnetNode) WhoIs(ctx context.Context, addr string) (*apitype.WhoIsResponse, error) {
-	return n.lc.WhoIs(ctx, addr)
-}
-
-func (n *tsnetNode) StartLogin(ctx context.Context) error { return n.lc.StartLoginInteractive(ctx) }
-
-func (n *tsnetNode) Logout(ctx context.Context) error { return n.lc.Logout(ctx) }
-
-func (n *tsnetNode) SetHostname(ctx context.Context, name string) error {
-	_, err := n.lc.EditPrefs(ctx, &ipn.MaskedPrefs{Prefs: ipn.Prefs{Hostname: name}, HostnameSet: true})
-	return err
-}
-
-func (n *tsnetNode) Close() error { return n.srv.Close() }
+var _ tailnetNode = (*tailnode.Node)(nil)
 
 // TailscaleConfig is what the gateway keeps of built-in Tailscale between
 // runs: whether it is on, the device's name, its control server, and who
@@ -193,7 +124,7 @@ func LoadTailscale(dir string) (TailscaleConfig, error) {
 // as it is. A gateway reads the control server when built-in Tailscale is
 // next turned on, so a change takes effect then.
 func SaveTailscale(dir string, c TailscaleConfig) error {
-	if c.ControlURL != "" && !ValidControlURL(c.ControlURL) {
+	if c.ControlURL != "" && !tailnode.ValidControlURL(c.ControlURL) {
 		return errControlURL(c.ControlURL)
 	}
 	saved, err := LoadTailscale(dir)
@@ -237,40 +168,7 @@ type enableOptions struct {
 	tags         []string
 }
 
-var (
-	hostnameRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
-	tagRE      = regexp.MustCompile(`^tag:[A-Za-z]([A-Za-z0-9-]*[A-Za-z0-9])?$`)
-)
-
-// validHostname tells a Tailscale device name: 1 to 63 ASCII letters,
-// digits and hyphens, not starting or ending with a hyphen.
-func validHostname(s string) bool { return hostnameRE.MatchString(s) }
-
-// ValidControlURL tells a Tailscale control server's URL: an https URL
-// with a host, such as https://headscale.example.com. An http URL is one
-// only when its host is localhost or a loopback, private or link-local IP
-// address outside Tailscale's own ranges: the device fetches the server's
-// key over it unauthenticated, so anyone on the path could swap the key.
-// The host is judged as written; a name is not resolved.
-func ValidControlURL(s string) bool {
-	u, err := url.Parse(s)
-	if err != nil || u.Hostname() == "" || u.User != nil {
-		return false
-	}
-	switch u.Scheme {
-	case "https":
-		return true
-	case "http":
-		if strings.EqualFold(strings.TrimSuffix(u.Hostname(), "."), "localhost") {
-			return true
-		}
-		ip, err := netip.ParseAddr(u.Hostname())
-		ip = ip.Unmap()
-		return err == nil && (ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) &&
-			!tsaddr.TailscaleULARange().Contains(ip)
-	}
-	return false
-}
+var tagRE = regexp.MustCompile(`^tag:[A-Za-z]([A-Za-z0-9-]*[A-Za-z0-9])?$`)
 
 // errControlURL is the error for a control server ValidControlURL refuses.
 func errControlURL(s string) error {
@@ -343,7 +241,7 @@ func (t *tailnet) enable(o enableOptions) (tailscaleStatus, *apiError) {
 	if name == "" {
 		name = defaultHostname()
 	}
-	if !validHostname(name) {
+	if !tailnode.ValidHostname(name) {
 		t.mu.Unlock()
 		return tailscaleStatus{}, errBadRequest("%q is not a Tailscale device name", name)
 	}
@@ -351,7 +249,7 @@ func (t *tailnet) enable(o enableOptions) (tailscaleStatus, *apiError) {
 	if o.controlSet {
 		control = o.controlURL
 	}
-	if control != "" && !ValidControlURL(control) {
+	if control != "" && !tailnode.ValidControlURL(control) {
 		t.mu.Unlock()
 		return tailscaleStatus{}, errBadRequest("%v", errControlURL(control))
 	}
@@ -500,7 +398,7 @@ func (t *tailnet) logout() (tailscaleStatus, *apiError) {
 }
 
 func (t *tailnet) rename(name string) (tailscaleStatus, *apiError) {
-	if !validHostname(name) {
+	if !tailnode.ValidHostname(name) {
 		return tailscaleStatus{}, errBadRequest("%q is not a Tailscale device name", name)
 	}
 	node := t.running()
