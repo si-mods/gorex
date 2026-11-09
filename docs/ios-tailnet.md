@@ -117,8 +117,8 @@ the gateway's own:
 - `ValidControlURL` and the device name check.
 
 The gateway keeps its listener, `identify`, its settings and its
-methods, and imports the rest. The move changes no behavior;
-`tailnet_test.go` passes unchanged but for imports.
+methods, and imports the rest. The move changes no behavior; the tests
+of what moved move with it.
 
 The node's state lives in the app's Application Support directory,
 excluded from backups, with `NSFileProtectionCompleteUntilFirstUnlock`.

@@ -13,6 +13,7 @@ import (
 	"gorex/internal/coordproto"
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
+	"gorex/internal/tailnode"
 	"gorex/locales"
 )
 
@@ -585,7 +586,7 @@ func (a *App) remoteTailscale(c *ui.Context, k *colors) {
 				}
 				if ui.Button(c.Key("ts-save"), locales.RemoteLanSave()).Disabled(!page.tsEdited).Clicked() {
 					url := strings.TrimSpace(page.tsURL)
-					if url != "" && !rexapi.ValidControlURL(url) {
+					if url != "" && !tailnode.ValidControlURL(url) {
 						page.tsErr = locales.RemoteTailscaleInvalid()
 						return
 					}
@@ -602,7 +603,7 @@ func (a *App) remoteTailscale(c *ui.Context, k *colors) {
 			// cleartext one from before it, keeps the device off.
 			if page.tsErr != "" {
 				rowError(c, k, page.tsErr)
-			} else if !page.tsEdited && conf.ControlURL != "" && !rexapi.ValidControlURL(conf.ControlURL) {
+			} else if !page.tsEdited && conf.ControlURL != "" && !tailnode.ValidControlURL(conf.ControlURL) {
 				rowError(c, k, locales.RemoteTailscaleInvalid())
 			}
 		})
