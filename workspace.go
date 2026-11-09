@@ -81,12 +81,20 @@ func (st *store) status(w *Workspace) *rex.ProgramStatus {
 		return rex.MostUrgent(all, time.Time{})
 	}
 	var all []rex.ProgramStatus
-	for _, h := range append([]*hostConn{nil}, st.hosts...) {
+	st.eachHost(func(h *hostConn) {
 		if s := st.hiddenStatus(w, h); s != nil {
 			all = append(all, *s)
 		}
-	}
+	})
 	return rex.MostUrgent(all, time.Time{})
+}
+
+// eachHost calls fn with this machine, nil, then each host.
+func (st *store) eachHost(fn func(h *hostConn)) {
+	fn(nil)
+	for _, h := range st.hosts {
+		fn(h)
+	}
 }
 
 // hiddenStatus is the most urgent status of the sessions of host h, nil
@@ -1115,11 +1123,14 @@ func (a *App) show(w *Workspace) {
 		w.kept = nil
 		a.tabs, a.active, a.focusReq, a.renaming = k.tabs, k.active, nil, nil
 		// The panes' infos are from when they left: take the latest, or
-		// the next poll reads what happened away as news. A host's
-		// sessions are not polled into the store; theirs stay.
+		// the next poll reads what happened away as news.
 		for _, t := range k.tabs {
 			for _, p := range t.allPanes() {
-				if in, ok := a.st.infos[p.SID]; ok && p.host == nil {
+				in, ok := a.st.infos[p.SID]
+				if p.host != nil {
+					in, ok = p.host.listed(p.SID)
+				}
+				if ok {
 					p.info = in
 				}
 			}

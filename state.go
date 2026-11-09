@@ -3007,7 +3007,13 @@ func (a *App) reconcile(l savedLayout) bool {
 				if h == nil || s.SID == "" {
 					return nil
 				}
-				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, host: h, info: rex.SessionInfo{ID: s.SID, Dir: s.Dir}, startDir: s.Dir}
+				// What the host's last list says of it, as this machine's
+				// panes start from theirs, lest the next poll read it as news.
+				in, ok := h.listed(s.SID)
+				if !ok {
+					in = rex.SessionInfo{ID: s.SID, Dir: s.Dir}
+				}
+				p = &Pane{ID: a.id(), SID: s.SID, Name: s.Name, host: h, info: in, startDir: s.Dir}
 				a.attach(p, s.Cols, s.Rows)
 			case isLive && !used[s.SID]:
 				used[s.SID] = true

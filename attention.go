@@ -76,17 +76,17 @@ func (st *store) hiddenNeeds(fn func(w *Workspace, h *hostConn, sid string, rank
 		if w.app != nil {
 			continue
 		}
-		for _, h := range append([]*hostConn{nil}, st.hosts...) {
+		st.eachHost(func(h *hostConn) {
 			infos, id, ok := st.listOf(h)
 			if !ok {
-				continue
+				return
 			}
 			st.visitSIDs(w, id, func(sid string) {
 				if s := rex.MostUrgent(infos[sid].Statuses, st.seen[sid]); needsUser(s) {
 					fn(w, h, sid, rex.StatusRank(s.State))
 				}
 			})
-		}
+		})
 	}
 }
 
@@ -190,12 +190,16 @@ func (a *App) jumpToNeedy() {
 // space first, and returns it, nil when it could not.
 func (a *App) focusNeedy(n needy) *Pane {
 	if n.pane == nil {
-		// A space no window shows: its session has a pane once it shows.
+		// A space no window shows: its session has a pane once it shows,
+		// the first in the order of needing. The host is told by its key:
+		// a reload of the hosts makes their values anew.
 		a.showWorkspace(n.ws)
+	find:
 		for _, t := range a.tabs {
 			for _, p := range t.allPanes() {
-				if p.SID == n.sid && p.host == n.host {
+				if p.SID == n.sid && hostKey(p.host) == hostKey(n.host) {
 					n.app, n.tab, n.pane = a, t, p
+					break find
 				}
 			}
 		}
@@ -345,15 +349,23 @@ var setBadge = func(n int) { mygo.App.SetBadgeCount(n) }
 // none when the setting is off, once it changed. Call it on the main
 // thread where the statuses, the attention or the seen change.
 func (a *App) syncBadge() {
-	if a.st == nil || !badgeSupported {
+	if a.st != nil {
+		a.st.syncBadge()
+	}
+}
+
+// syncBadge is the app's syncBadge, which a host's change calls with no
+// window too.
+func (st *store) syncBadge() {
+	if !badgeSupported {
 		return
 	}
 	n := 0
 	if !prefs.HideDockBadge {
-		n = a.st.needCount()
+		n = st.needCount()
 	}
-	if n != a.st.badge {
-		a.st.badge = n
+	if n != st.badge {
+		st.badge = n
 		setBadge(n)
 	}
 }
