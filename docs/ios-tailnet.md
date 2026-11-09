@@ -34,7 +34,9 @@ That covers two of #330's cases:
   a Headscale control server and a DERP relay. Peers connect directly
   when NAT allows and through DERP when it doesn't. The GoRex server
   already accepts a control URL (`gorex rexapi tailscale on
-  --control-url`), and Rex Go gets the same field.
+  --control-url`), and Rex Go gets the same field. Headscale issues no
+  HTTPS certificates, so the gateway needs a change for it (Server,
+  below).
 
 ## Non-goals
 
@@ -72,6 +74,7 @@ narrow API for `gomobile bind`:
 | `DefaultInterfaceChanged(name)` | the path monitor's news of a network change |
 | `ResetSockets()` | rebinds the UDP sockets iOS reclaimed while suspended |
 | `Stop()` | stops the proxy and the node |
+| `ValidControlURL(url) bool` | the server's own check of a control URL, for Settings |
 
 rootshell's `iosbridge/tailnet*.go` (kitknox/trzsz-ssh-rootshell, MIT)
 is the reference for the iOS-specific parts: the interface monitor
@@ -82,8 +85,12 @@ download) and pins a Tailscale we don't choose.
 
 The node's state lives in the app's Application Support directory,
 excluded from backups, with `NSFileProtectionCompleteUntilFirstUnlock`.
-Its name is the phone's with `-rexgo`, such as `iphone-rexgo`, so it
-never clashes with the Tailscale app's device for the same phone.
+Its name defaults to `rexgo-` and four random letters, such as
+`rexgo-kqzt`, and the user can change it in Settings (the engine applies
+it as the server's `SetHostname` does). The phone's own name is not
+used: since iOS 16 `UIDevice.name` returns only the model ("iPhone")
+without an entitlement Apple grants case by case, so two phones would
+show the same name, and one could be revoked for the other.
 
 ### Transport
 
@@ -102,26 +109,50 @@ c.proxyConfigurations = [proxy]
 The proxy listens on loopback only, with a random user and password per
 start, so another app on the phone can't use it. It resolves the name
 itself: MagicDNS names and tailnet addresses go through the tailnet, and
-anything else is refused (not dialed directly). TLS is end to end:
-`URLSession` still verifies the `*.ts.net` certificate the gateway
-serves.
+anything else is refused (not dialed directly). Over HTTPS,
+`URLSession` still verifies the gateway's `*.ts.net` certificate. Over a
+Headscale tailnet the URL is `http://`: WireGuard already encrypts it end
+to end, and the gateway knows the caller by its tailnet address
+(Server, below).
+
+Each `ProxyStart` makes a new port, user and password, and a
+`URLSession`'s configuration is fixed when it's made. So the proxy's
+address belongs to the engine's current run: when the engine starts
+again, every `tailnet` host drops its session, makes a new one and
+reconnects.
 
 The protocol code (`ControlConnection`, `DataStream`, `Spaces`,
 `Upload`) changes only to take the host's session instead of
 `URLSession.shared`.
 
-Risk: that `URLSessionWebSocketTask` honours `proxyConfigurations` with
-SOCKS5. Phase 1 proves it first. If it doesn't, the fallback is the
+Risks, which phase 1 proves first:
+
+- that `URLSessionWebSocketTask` honours `proxyConfigurations` with
+  SOCKS5;
+- that `URLSession` hands the proxy the host's name (SOCKS5 `DOMAINNAME`)
+  rather than resolving it first through the phone's DNS, which knows no
+  MagicDNS name without the Tailscale VPN. Plain requests and WebSockets
+  both.
+ If it doesn't, the fallback is the
 engine's `DialTCP`, handing Swift a socket file descriptor, with the
 WebSocket on `NWConnection`. That one touches the protocol code more.
 
 ### Hosts
 
-`HostConfig` gets a `transport`: `system` (today's, the default) or
-`tailnet`. A scanned `https://*.ts.net` code while built-in Tailscale is
-on, and a host added by hand with that switch on, use `tailnet`. The
-host's details show the switch, so a user who also runs the Tailscale
-app can choose either way.
+`HostConfig` gets `transport: Transport?`: `nil` or `.system` is
+today's way, `.tailnet` the engine's. It is optional because
+`HostConfig`'s synthesized `Decodable` ignores default values: a new
+required key would fail to decode every saved list, and `HostStore`'s
+`try?` would turn that into no hosts at all. A test decodes a list saved
+by the current version.
+
+A host uses `tailnet` when built-in Tailscale is on and its name is
+under the tailnet's MagicDNS suffix (from the engine's status: `ts.net`
+or Headscale's `base_domain`) or its address is in the tailnet's ranges:
+a scanned code, or one added by hand. The host's details show the
+switch, so a user who also runs the Tailscale app can choose either
+way. `HostStore.update` reconnects a host whose transport changed, as it
+does one whose address changed.
 
 ### Settings
 
@@ -129,9 +160,11 @@ Settings › Tailscale, like the desktop's Tailscale card:
 
 - **Built-in Tailscale** on or off.
 - **Control server**: empty for Tailscale's own, or a URL such as
-  `https://headscale.example.com`. The same rule as the server's
-  `ValidControlURL`: `https`, or `http` only for a loopback, private or
-  link-local address.
+  `https://headscale.example.com`. Checked by the engine's
+  `ValidControlURL`, the server's own rule (`https`, or `http` only for a
+  loopback, private or link-local address), not a Swift copy of it. The
+  check moves out of `internal/rexapi` into a small package both import.
+- **Device name**: `rexgo-xxxx` by default, as above.
 - **Sign in**: opens the auth URL in `ASWebAuthenticationSession`; or an
   auth key, used once and never saved.
 - **Status**: signed in as whom, this device's name and address, and
@@ -145,23 +178,44 @@ Settings › Tailscale, like the desktop's Tailscale card:
 - `NWPathMonitor` reports each change of the default interface to the
   engine, so it rebinds when the phone moves between Wi-Fi and cellular.
 - Back in the foreground after more than 5 s away, the app calls
-  `ResetSockets` first, then reconnects the hosts. A reset that doesn't
-  finish restarts the engine. The hosts reconnect as they do now, with
-  their reconnect token, so the sessions on the server go on.
+  `ResetSockets` first, then reconnects every `tailnet` host with
+  `reconnect()`, not `reconnectIfNeeded()`: the WebSocket to the
+  loopback proxy can look open while its tailnet side died in the
+  suspension. A reset that doesn't finish restarts the engine, and the
+  hosts make new sessions for the new proxy (Transport). They reconnect
+  with their reconnect token, so the sessions on the server go on.
 
 ### Server
 
-No change. The gateway already serves HTTPS on the tailnet, checks the
-caller with `WhoIs`, and takes a control URL. The phone's node signed in
-as the same Tailscale user is let in by default.
+The gateway already checks each caller with `WhoIs` and takes a
+control URL. One change:
+
+- **Plain HTTP on the tailnet when there is no certificate.** Today
+  `listen` takes only `ListenTLS` on :443, and its failure turns built-in
+  Tailscale off. Headscale issues no certificates, so it always fails
+  there. The gateway also listens on :80 of the tailnet, and keeps
+  running when the certificate fails; the identity check is the same
+  `WhoIs`, which needs no TLS. Status, the QR code and `rexapi pair` give
+  `http://<name>` when there is no HTTPS. :80 serves only tailnet peers
+  and is safe for the same reason: WireGuard encrypts and authenticates
+  each packet.
+
+Who gets in stays as it is (`identify`). Without
+`--allow-tailnet-members`, the gateway lets in only an untagged device of
+the user who signed the gateway's device in, and only when the gateway's
+device is untagged itself. So Rex Go signs in as that user, not with a
+tagged auth key; a tagged setup needs `--allow-tailnet-members` and the
+tailnet's access rules.
 
 ## Build
 
 `gomobile bind -target ios,iossimulator` builds `Tailnet.xcframework`
 from `mobile/tailnet`, by a script in `ios/scripts/`. The TestFlight
 workflow sets up Go and runs it before `xcodegen`; the result is cached
-by the hash of `go.sum` and the package. `gomobile` is pinned as a Go
-tool in `go.mod`. The framework is not checked in.
+by the hash of `go.mod`, `go.sum` and the package. The workflow's
+`paths` add `mobile/**`, `go.mod` and `go.sum`, so an engine fix or a
+`tailscale.com` bump reaches TestFlight like an `ios/` change.
+`gomobile` is pinned as a Go tool in `go.mod`. The framework is not checked in.
 
 Size, measured with `tsnet` at the version `go.mod` pins, linked into an
 arm64 iOS executable with `-s -w` and stripped:
@@ -188,6 +242,10 @@ On-Demand Resources can't hold any.
   the end-to-end test runs on the Mac mini: a simulator with no
   Tailscale reaches a GoRex machine's `*-gorex` device, opens a terminal,
   and keeps it through a background and foreground.
+- Rex Go's host list saved by the current version decodes after the
+  update, and a transport change reconnects the host.
+- The gateway over Headscale: `ListenTLS` fails, :80 serves, and a
+  tailnet caller of another user is refused.
 - On a phone: Tailscale app off, cellular only; switch Wi-Fi ↔ cellular
   with a terminal open; then the same against Headscale with a DERP
   relay of its own.
@@ -196,8 +254,13 @@ On-Demand Resources can't hold any.
 
 1. **Engine and transport spike**: `mobile/tailnet`, the build script,
    and one host connected through the proxy in the simulator, which
-   settles the WebSocket-over-SOCKS question.
-2. **Settings and hosts**: the Tailscale settings, sign-in, the host's
-   `transport`, the QR flow.
-3. **Lifecycle**: path monitor, socket reset, engine restart.
-4. **CI**: the framework built in the TestFlight workflow.
+   settles both transport risks.
+2. **Server**: the gateway's plain HTTP on the tailnet without a
+   certificate, and the control URL check in its own package. It helps
+   any Headscale client, so it can ship before the app.
+3. **Settings and hosts**: the Tailscale settings, sign-in, the device
+   name, the host's `transport`, the QR flow.
+4. **Lifecycle**: path monitor, socket reset, forced reconnect, engine
+   restart.
+5. **CI**: the framework built in the TestFlight workflow, and its
+   `paths`.
