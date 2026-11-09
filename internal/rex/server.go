@@ -356,6 +356,7 @@ func newServer(ln net.Listener, lock *os.File) *Server {
 		layoutRev: 1, hostDone: make(chan struct{}), idleFrom: time.Now(), quit: make(chan struct{}), dir: Dir(),
 	}
 	s.exe, s.exeTime = Executable()
+	s.rem.cfg = defaultRemoteConfig()
 	// Before any connection, and never changed: every hello names the
 	// machine. A hash of a small key file, made once.
 	s.machine = MachineID()

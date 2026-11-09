@@ -529,8 +529,13 @@ func TestShareSessions(t *testing.T) {
 	ac, bc := pipe(s, alice), pipe(s, bob)
 	defer ac.Close()
 	defer bc.Close()
+	// Off, as the user turned it: sharing is on by default
+	// (TestShareSessionsDefault).
+	if err := local.ShareSessions(false); err != nil {
+		t.Fatal(err)
+	}
 	if st, err := local.RemoteStatus(); err != nil || st.ShareSessions {
-		t.Fatalf("shared by default: %+v %v", st, err)
+		t.Fatalf("shared though off: %+v %v", st, err)
 	}
 	cmd, dir := testShell()
 	create := func(c *Client) string {
@@ -1039,5 +1044,82 @@ func TestServerKnowsItsMachine(t *testing.T) {
 	t.Setenv("GOREX_DIR", t.TempDir())
 	if s := newServer(nil, nil); s.machine == "" || s.machine != MachineID() {
 		t.Errorf("machine %q, want %q", s.machine, MachineID())
+	}
+}
+
+// TestShareSessionsDefault checks that sessions are shared by default: a
+// remote.json that does not exist, or says nothing of sharing as one from
+// before did while off, shares them; one that says on stays on; and an off
+// the user chose is written and read again so.
+func TestShareSessionsDefault(t *testing.T) {
+	s, _ := testServer(t)
+	s.remoteLoad()
+	local := pipe(s, "")
+	defer local.Close()
+	bob := key.NewNode().Public().String()
+	bc := pipe(s, bob)
+	defer bc.Close()
+	if st, err := local.RemoteStatus(); err != nil || !st.ShareSessions || !s.sharesSessions(bob) {
+		t.Fatalf("no remote.json: not shared: %+v %v", st, err)
+	}
+	// A session another client made is the user's to see, as shared.
+	cmd, dir := testShell()
+	info, err := bc.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { local.Kill(info.ID) })
+	ownerShared := func() bool {
+		t.Helper()
+		list, err := local.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, in := range list {
+			if in.ID == info.ID {
+				return in.OwnerShared
+			}
+		}
+		t.Fatalf("%s not listed", info.ID)
+		return false
+	}
+	if !ownerShared() {
+		t.Error("shared by default, but its owner is not said shared")
+	}
+
+	load := func(file string) bool {
+		t.Helper()
+		if err := os.WriteFile(remotePath(), []byte(file), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		s.remoteLoad()
+		s.rem.mu.Lock()
+		defer s.rem.mu.Unlock()
+		return s.rem.cfg.ShareSessions
+	}
+	if !load(`{"enabled":false,"allowed":[]}`) {
+		t.Error("a remote.json that says nothing of sharing: off")
+	}
+	if !load(`{"enabled":false,"allowed":[],"shareSessions":true}`) {
+		t.Error("shareSessions true: off")
+	}
+
+	// Turned off, it is written so, and read again so.
+	if err := local.ShareSessions(false); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(remotePath()); !strings.Contains(string(b), `"shareSessions": false`) {
+		t.Errorf("off not written: %s", b)
+	}
+	s.remoteLoad()
+	if st, _ := local.RemoteStatus(); st.ShareSessions || s.sharesSessions(bob) || ownerShared() {
+		t.Errorf("off not kept across a reload: %+v", st)
+	}
+	if err := local.ShareSessions(true); err != nil {
+		t.Fatal(err)
+	}
+	s.remoteLoad()
+	if !s.sharesSessions(bob) {
+		t.Error("on not kept across a reload")
 	}
 }

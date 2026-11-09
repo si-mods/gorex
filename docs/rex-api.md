@@ -100,9 +100,10 @@ remote hosts' panes) and that no local tab shows is under **Desktop
 terminals**. Opening a terminal there attaches to the existing process.
 A desktop counts as yours when it reached this machine over system
 Tailscale, which lets in only your own Tailscale user, or when this
-machine shares its sessions with it (`gorex remote share`, for every
-client or for that one). The sessions of another client paired here stay
-its own, as the server keeps them from every other client.
+machine shares its sessions with it: by default, for every client, or
+for that one after `gorex remote share off`. With sharing off, the
+sessions of another client paired here stay its own, as the server keeps
+them from every other client.
 
 ## Built-in Tailscale
 

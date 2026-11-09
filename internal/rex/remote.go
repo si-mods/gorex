@@ -57,7 +57,10 @@ type RemoteConfig struct {
 	// ShareSessions lets remote clients see and use every session; off,
 	// each sees and uses only the sessions it created, unless its
 	// allowlist entry shares them.
-	ShareSessions bool `json:"shareSessions,omitempty"`
+	// On by default: remote.json writes it always, and one that says
+	// nothing of it, as before it was written off, reads as on
+	// (UnmarshalJSON).
+	ShareSessions bool `json:"shareSessions"`
 	// ShareLayout lets remote clients read the layout and subscribe to
 	// its changes; off by default.
 	ShareLayout bool `json:"shareLayout,omitempty"`
@@ -78,6 +81,23 @@ const (
 )
 
 func remotePath() string { return filepath.Join(Dir(), "remote.json") }
+
+// defaultRemoteConfig is the configuration of a machine whose remote.json
+// does not exist or says nothing: off, sharing sessions once on.
+func defaultRemoteConfig() RemoteConfig { return RemoteConfig{ShareSessions: true} }
+
+// UnmarshalJSON reads remote.json over the defaults, so that a field it
+// leaves out keeps its default: ShareSessions, on, which an older file
+// wrote only when on.
+func (c *RemoteConfig) UnmarshalJSON(b []byte) error {
+	type plain RemoteConfig
+	p := plain(defaultRemoteConfig())
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*c = RemoteConfig(p)
+	return nil
+}
 
 // writeJSON writes v to path, readable by the user only, atomically.
 func writeJSON(path string, v any) error {
@@ -341,9 +361,10 @@ func (s *Server) remoteLoad() {
 	r := &s.rem
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.cfg = defaultRemoteConfig()
 	if err := readJSON(remotePath(), &r.cfg); err != nil {
 		log.Printf("rex: remote access stays off: %v", err)
-		r.cfg, r.lastErr = RemoteConfig{}, err.Error()
+		r.cfg, r.lastErr = defaultRemoteConfig(), err.Error()
 		return
 	}
 	// Allowlists saved before identities had times get them now.
