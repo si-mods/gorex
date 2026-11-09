@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.19.0
+
+### Features
+
+* **sidebar:** a host view, switched in Settings › Appearance › Sidebar view or with the palette's Toggle Sidebar View, lists under each host the sessions with tabs there ([#333](https://github.com/si-mods/gorex/pull/333))
+* **rex:** a session's `TERM_PROGRAM_VERSION` is the version of the Ghostty GoRex binds, not one set by hand ([#320](https://github.com/si-mods/gorex/pull/320))
+
+### Bug Fixes
+
+* **panes:** a file path or URL printed before full-width punctuation, such as `。` or `，`, no longer takes it into the link, so a Command-click opens or downloads the file ([#336](https://github.com/si-mods/gorex/pull/336))
+* **panes:** a URL printed as text ends at its first character that is not ASCII, so CJK text after it does not join it ([#319](https://github.com/si-mods/gorex/pull/319))
+* **paste:** pasting an image into a pane of a host sends the image to the host and pastes its path, when the program there cannot read this machine's clipboard ([#338](https://github.com/si-mods/gorex/pull/338))
+* **rex:** a window that attaches gets each image of the session's graphics once, not once per redraw ([#324](https://github.com/si-mods/gorex/pull/324))
+* **windows:** symbols with text presentation, such as `⏺`, draw in the text's color, not as emoji ([#332](https://github.com/si-mods/gorex/pull/332))
+
 ## 0.18.0
 
 ### Features
