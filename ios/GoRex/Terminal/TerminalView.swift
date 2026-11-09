@@ -92,11 +92,9 @@ final class TerminalView: UIView, TerminalOutput {
 
     private(set) var surface: ghostty_surface_t?
     private var config: ghostty_config_t?
-    /// The lines the config was made of, which a theme message repeats.
+    /// The lines the config was made of, which a theme message repeats,
+    /// and the minimum contrast it was made with.
     private var configured: String?
-    /// The theme last set, and the minimum contrast it was set with, set
-    /// again when Settings change the contrast.
-    private var theme: [String: Any]?
     private var contrast: Double?
     /// The surface's terminal takes the program's output here, in order on
     /// the queue: a write waits while Ghostty catches up.
@@ -126,7 +124,7 @@ final class TerminalView: UIView, TerminalOutput {
         NotificationCenter.default.addObserver(self, selector: #selector(hide), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(show), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboard), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(settingsChanged), name: UserDefaults.didChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(contrastChanged), name: .minimumContrast, object: nil)
         for name in [Notification.Name.GCKeyboardDidConnect, .GCKeyboardDidDisconnect] {
             NotificationCenter.default.addObserver(self, selector: #selector(reloadInputViews), name: name, object: nil)
         }
@@ -239,11 +237,8 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// Sets the default colors, and the font, through Ghostty's config.
     func setTheme(_ theme: [String: Any]) {
-        guard let s = surface else { return }
-        self.theme = theme
-        contrast = Self.minimumContrast
         func hex(_ c: VTerminal.RGB) -> String { String(format: "#%06x", c.packed) }
-        var lines = ["font-size = \(Self.fontSize)", "minimum-contrast = \(Self.minimumContrast)"]
+        var lines = ["font-size = \(Self.fontSize)"]
         if !Self.fontFamily.isEmpty { lines.append("font-family = \"\(Self.fontFamily)\"") }
         for (key, name) in [("background", "background"), ("foreground", "foreground"), ("cursor", "cursor-color")] {
             if let c = (theme[key] as? String).flatMap(VTerminal.RGB.init(hex:)) { lines.append("\(name) = \(hex(c))") }
@@ -254,9 +249,16 @@ final class TerminalView: UIView, TerminalOutput {
                 lines.append("palette = \(i)=\(hex(c))")
             }
         }
-        let text = lines.joined(separator: "\n")
-        guard text != configured, let c = Ghostty.config(text) else { return }
-        configured = text
+        configure(lines.joined(separator: "\n"))
+    }
+
+    /// Makes the config of the lines and the minimum contrast chosen in
+    /// Settings current, unless it is already.
+    private func configure(_ text: String) {
+        guard let s = surface else { return }
+        let ratio = Self.minimumContrast
+        guard text != configured || ratio != contrast, let c = Ghostty.config(text + "\nminimum-contrast = \(ratio)") else { return }
+        configured, contrast = text, ratio
         ghostty_surface_update_config(s, c)
         if let config { ghostty_config_free(config) }
         config = c
@@ -269,12 +271,11 @@ final class TerminalView: UIView, TerminalOutput {
         }
     }
 
-    /// Settings changed: the theme again if the minimum contrast did, so
-    /// open terminals take it at once.
-    @objc private func settingsChanged() {
-        DispatchQueue.main.async { [weak self] in
-            if let self, let theme = self.theme, self.contrast != Self.minimumContrast { self.setTheme(theme) }
-        }
+    /// Settings changed the minimum contrast: the same lines again, so the
+    /// font stays as it is, with the new contrast. A terminal not yet
+    /// configured takes it with its theme.
+    @objc private func contrastChanged() {
+        if let configured { configure(configured) }
     }
 
     @objc private func hide() { if let surface { ghostty_surface_set_occlusion(surface, false) } }
@@ -975,4 +976,9 @@ final class StickPad: UIView {
         UIColor(white: 0.13, alpha: 1).setFill()
         UIBezierPath(arcCenter: c, radius: 8, startAngle: 0, endAngle: 2 * .pi, clockwise: true).fill()
     }
+}
+
+extension Notification.Name {
+    /// Settings changed the minimum contrast, posted on the main thread.
+    static let minimumContrast = Notification.Name("minimumContrast")
 }

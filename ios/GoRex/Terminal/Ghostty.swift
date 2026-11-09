@@ -7,7 +7,7 @@ import UIKit
 /// there.
 enum Ghostty {
     static let app: ghostty_app_t? = {
-        guard ghostty_init(0, nil) == 0, let config = config("") else { return nil }
+        guard ghostty_init(0, nil) == 0, let config = config("minimum-contrast = \(TerminalView.minimumContrast)") else { return nil }
         var runtime = ghostty_runtime_config_s(
             userdata: nil,
             supports_selection_clipboard: false,
@@ -35,8 +35,7 @@ enum Ghostty {
     }
 
     /// A config of Ghostty's lines over its defaults: a remote terminal's,
-    /// whose keys all go to the program and whose pastes are not questioned,
-    /// with the minimum contrast chosen in Settings.
+    /// whose keys all go to the program and whose pastes are not questioned.
     static func config(_ lines: String) -> ghostty_config_t? {
         let text = """
         keybind = clear
@@ -44,7 +43,6 @@ enum Ghostty {
         clipboard-read = deny
         confirm-close-surface = false
         macos-option-as-alt = true
-        minimum-contrast = \(TerminalView.minimumContrast)
         \(lines)
         """
         guard let c = ghostty_config_new() else { return nil }

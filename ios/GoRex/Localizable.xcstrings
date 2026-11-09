@@ -2697,16 +2697,6 @@
           }
         }
       }
-    },
-    "2": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "2"
-          }
-        }
-      }
     }
   }
 }

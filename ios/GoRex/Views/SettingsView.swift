@@ -282,10 +282,15 @@ private struct TerminalSettings: View {
     @AppStorage("fontFamily") private var family = ""
     @AppStorage("minimumContrast") private var contrast = 0.0
 
-    /// The minimum contrasts offered; 0 is the default, 3.
-    private static let contrasts: [(Double, LocalizedStringResource)] = [
-        (1, "Off"), (2, "2"), (0, "3 (Default)"), (4.5, "4.5 (WCAG AA)"), (7, "7 (WCAG AAA)"),
-    ]
+    /// The minimum contrasts offered, 0 the default, 3; a stored one not
+    /// among them, by its number.
+    private var contrasts: [(Double, String)] {
+        var all = [(1.0, String(localized: "Off")), (2, "2"), (0, String(localized: "3 (Default)")),
+                   (4.5, String(localized: "4.5 (WCAG AA)")), (7, String(localized: "7 (WCAG AAA)"))]
+        let current = TerminalView.minimumContrast
+        if ![1, 2, 3, 4.5, 7].contains(current) { all.append((contrast, current.formatted())) }
+        return all
+    }
     private let maple = Maple.shared
 
     var body: some View {
@@ -304,12 +309,15 @@ private struct TerminalSettings: View {
                 }
             }
             Section {
-                ForEach(Self.contrasts, id: \.0) { value, name in
-                    Button { contrast = value } label: {
+                ForEach(contrasts, id: \.0) { value, name in
+                    Button {
+                        contrast = value
+                        NotificationCenter.default.post(name: .minimumContrast, object: nil)
+                    } label: {
                         HStack {
-                            Text(name).foregroundStyle(.primary)
+                            Text(verbatim: name).foregroundStyle(.primary)
                             Spacer()
-                            if value == contrast || (contrast == 3 && value == 0) { Image(systemName: "checkmark").fontWeight(.semibold) }
+                            if value == contrast || (value == 0 && TerminalView.minimumContrast == 3) { Image(systemName: "checkmark").fontWeight(.semibold) }
                         }
                     }
                     .listRowBackground(Color.card)
