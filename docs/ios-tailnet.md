@@ -251,8 +251,8 @@ access rules. Settings says so when the gateway refuses the phone.
 `gomobile bind -target ios,iossimulator` builds `Tailnet.xcframework`
 from `ios/tailnet`, by a script in `ios/scripts/`. The TestFlight
 workflow sets up Go and runs it before `xcodegen`; the result is cached
-by the hash of `go.mod`, `go.sum`, `ios/tailnet` and
-`internal/tailnode`. Its `paths` add `go.mod`, `go.sum` and
+by the hash of `go.mod`, `go.sum`, `ios/tailnet`, `internal/tailnode`
+and the script. Its `paths` add `go.mod`, `go.sum` and
 `internal/tailnode/**`, so a `tailscale.com` bump or a fix there reaches
 TestFlight like an `ios/` change. `gomobile` is pinned as a Go tool in
 `go.mod`. The framework is not checked in.

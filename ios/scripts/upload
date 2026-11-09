@@ -1,8 +1,9 @@
 #!/bin/bash
 # upload: archive Rex Go and upload it to TestFlight. Run on a Mac with Xcode,
-# asc and xcodegen, from ios/, after scripts/build-ghostty-vt.sh. Signing is
-# cloud-managed, by the App Store Connect API key: ASC_KEY_PATH, ASC_KEY_ID
-# and ASC_ISSUER_ID, by default the key in ~/.appstoreconnect/private_keys.
+# asc and xcodegen, from ios/, after scripts/build-ghostty-vt.sh and
+# scripts/build-tailnet. Signing is cloud-managed, by the App Store Connect
+# API key: ASC_KEY_PATH, ASC_KEY_ID and ASC_ISSUER_ID, by default the key in
+# ~/.appstoreconnect/private_keys.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 # Homebrew's tools, when ssh gives no login PATH.
