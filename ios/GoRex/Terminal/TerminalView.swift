@@ -27,12 +27,13 @@ final class TerminalView: UIView, TerminalOutput {
     /// The font family chosen in Settings; "" is Ghostty's own, JetBrains Mono.
     static var fontFamily: String { UserDefaults.standard.string(forKey: "fontFamily") ?? "" }
     /// The least contrast of text with its background chosen in Settings,
-    /// as Ghostty's minimum-contrast: 1 corrects nothing; unset, 3, as the
-    /// desktop's default, which lifts text too close to its background,
-    /// colors programs set too, in its hue.
+    /// as Ghostty's minimum-contrast: 1, unset, corrects nothing. Ghostty
+    /// turns text short of it black or white, not a shade of its hue as
+    /// the desktop does, so it is off until chosen: on by default, a light
+    /// theme's green and cyan would turn black as well.
     static var minimumContrast: Double {
         let v = UserDefaults.standard.double(forKey: "minimumContrast")
-        return v > 0 ? min(max(v, 1), 21) : 3
+        return v > 0 ? min(max(v, 1), 21) : 1
     }
     var ctrl = false { didSet { bar.ctrl.isSelected = ctrl } }
     var alt = false { didSet { bar.alt.isSelected = alt } }

@@ -282,10 +282,10 @@ private struct TerminalSettings: View {
     @AppStorage("fontFamily") private var family = ""
     @AppStorage("minimumContrast") private var contrast = 0.0
 
-    /// The minimum contrasts offered, 0 the default, 3; a stored one not
+    /// The minimum contrasts offered, 0 the default, off; a stored one not
     /// among them, by its number.
     private var contrasts: [(Double, String)] {
-        var all = [(1.0, String(localized: "Off")), (2, "2"), (0, String(localized: "3 (Default)")),
+        var all = [(0.0, String(localized: "Off (Default)")), (2, "2"), (3, "3"),
                    (4.5, String(localized: "4.5 (WCAG AA)")), (7, String(localized: "7 (WCAG AAA)"))]
         let current = TerminalView.minimumContrast
         if ![1, 2, 3, 4.5, 7].contains(current) { all.append((contrast, current.formatted())) }
@@ -317,7 +317,7 @@ private struct TerminalSettings: View {
                         HStack {
                             Text(verbatim: name).foregroundStyle(.primary)
                             Spacer()
-                            if value == contrast || (value == 0 && TerminalView.minimumContrast == 3) { Image(systemName: "checkmark").fontWeight(.semibold) }
+                            if value == contrast || (value == 0 && TerminalView.minimumContrast == 1) { Image(systemName: "checkmark").fontWeight(.semibold) }
                         }
                     }
                     .listRowBackground(Color.card)
@@ -325,7 +325,7 @@ private struct TerminalSettings: View {
             } header: {
                 Text("Minimum Contrast")
             } footer: {
-                Text("Lightens or darkens text too close to its background, colors programs set too. The hue stays, so errors and warnings keep apart; box drawing keeps its colors. Off shows programs' colors as they are.")
+                Text("Turns text too close to its background black or white, colors programs set too, so it reads; its color is lost, so errors and warnings may look alike. Box drawing keeps its colors. Off shows programs' colors as they are.")
             }
         }
         .scrollContentBackground(.hidden)
