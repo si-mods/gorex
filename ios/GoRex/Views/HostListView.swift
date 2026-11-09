@@ -639,16 +639,21 @@ private struct RowDrop: DropDelegate {
 }
 
 /// Tells when a drag from the view ends, where the system says so (iOS
-/// 27).
+/// 27). Only the iOS 27 SDK (Swift 6.4, Xcode 27) has the call; built
+/// with an older one, the item's release alone tells.
 private struct DragEnd: ViewModifier {
     let ended: () -> Void
 
     func body(content: Content) -> some View {
+        #if compiler(>=6.4)
         if #available(iOS 27, *) {
             content.onDragSessionUpdated { if case .ended = $0.phase { ended() } }
         } else {
             content
         }
+        #else
+        content
+        #endif
     }
 }
 
