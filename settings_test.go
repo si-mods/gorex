@@ -46,7 +46,8 @@ func TestWithPrefsPrecedence(t *testing.T) {
 		Cursor: terminal.CursorBar, NoBlink: true, CopyOnSelect: terminal.CopyOnSelectClipboard,
 		MinimumContrast: 4.5,
 	}
-	// No choices: Ghostty's config as it is.
+	// No choices: Ghostty's config as it is (here with a minimum contrast,
+	// which GoRex's default would fill in otherwise).
 	if got := raw.withPrefs(settings{}); !reflect.DeepEqual(got, raw) {
 		t.Errorf("no prefs changed the config: %+v", got)
 	}
@@ -126,21 +127,22 @@ func TestMinimumContrastPrecedence(t *testing.T) {
 			t.Errorf("ghostty %v, pref %v: %v, want %v", tc.ghostty, tc.pref, got.MinimumContrast, tc.want)
 		}
 	}
-	// A ratio out of range in settings.json counts as none.
+	// A ratio out of range in settings.json is clamped, as Ghostty's is.
 	isolateSettings(t, "")
-	for _, raw := range []string{`{"minimumContrast": 0.5}`, `{"minimumContrast": 22}`} {
-		os.WriteFile(settingsPath(), []byte(raw), 0o600)
+	if err := os.MkdirAll(filepath.Dir(settingsPath()), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for raw, want := range map[string]float32{
+		`{"minimumContrast": 0.5}`: 1, `{"minimumContrast": 22}`: 21, `{"minimumContrast": 1}`: 1, `{}`: defaultMinContrast,
+	} {
+		if err := os.WriteFile(settingsPath(), []byte(raw), 0o600); err != nil {
+			t.Fatal(err)
+		}
 		prefs = settings{}
 		loadSettings()
-		if prefs.MinimumContrast != 0 || ghostty.MinimumContrast != defaultMinContrast {
-			t.Errorf("%s: kept %v, applied %v", raw, prefs.MinimumContrast, ghostty.MinimumContrast)
+		if ghostty.MinimumContrast != want {
+			t.Errorf("%s: applied %v, want %v", raw, ghostty.MinimumContrast, want)
 		}
-	}
-	os.WriteFile(settingsPath(), []byte(`{"minimumContrast": 1}`), 0o600)
-	prefs = settings{}
-	loadSettings()
-	if ghostty.MinimumContrast != 1 {
-		t.Errorf("off applied as %v", ghostty.MinimumContrast)
 	}
 }
 

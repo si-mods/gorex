@@ -107,8 +107,11 @@ func loadSettings() {
 	if prefs.TermOpacity < minTermOpacity || prefs.TermOpacity > maxTermOpacity {
 		prefs.TermOpacity = 0
 	}
-	if !(prefs.MinimumContrast >= 1 && prefs.MinimumContrast <= 21) {
+	// A ratio is clamped to 1–21 as Ghostty's is; 0 (or NaN) follows Ghostty.
+	if c := prefs.MinimumContrast; c != c {
 		prefs.MinimumContrast = 0
+	} else if c != 0 {
+		prefs.MinimumContrast = min(max(c, 1), 21)
 	}
 	if prefs.SidebarWidth < sidebarMinW || prefs.SidebarWidth > sidebarMaxW {
 		prefs.SidebarWidth = 0

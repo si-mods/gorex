@@ -693,10 +693,7 @@ func contrastName(v float32) string {
 // Ghostty's (else GoRex's default), off, or a ratio. A ratio of
 // settings.json that the picker lacks is added to it, as a font is.
 func (a *App) contrastSettings(c *ui.Context, k *colors) {
-	follow := ghosttyRaw.MinimumContrast
-	if follow == 0 {
-		follow = defaultMinContrast
-	}
+	follow := ghosttyRaw.withPrefs(settings{}).MinimumContrast
 	values := contrastChoices
 	if !slices.Contains(values, prefs.MinimumContrast) {
 		values = append(slices.Clone(values), prefs.MinimumContrast)

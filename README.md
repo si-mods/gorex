@@ -234,7 +234,8 @@ panes.
 ▸ Minimum contrast (`minimumContrast` in settings.json) sets it: text
 closer than that to its background, colors programs set too (ANSI, 256
 and RGB), turns lighter or darker in its hue, in local and remote panes
-alike; box drawing keeps its colors. 1 turns the correction off.
+alike; box drawing keeps its colors. 1 turns the correction off. Unset,
+Ghostty's is 1, so GoRex corrects colors where Ghostty would not.
 
 Options GoRex maps fully: the colors and fonts above, `cursor-style`,
 `cursor-style-blink`, `scrollback-limit`, `macos-option-as-alt`,
