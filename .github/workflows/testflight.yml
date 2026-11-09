@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # the last upload's commit, for What to Test
 
 concurrency:
   group: testflight
@@ -28,7 +29,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: macos-26
     steps:
+      # The history, for What to Test.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       # The deployment target is iOS 26: the newest Xcode 26.
       - run: sudo xcode-select -s "$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
       - run: brew install asc xcodegen
@@ -48,12 +52,18 @@ jobs:
       - name: upload
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           [[ -n $ASC_KEY_P8 ]] || { echo "::error::The ASC_KEY_P8 secret is empty: set it to the App Store Connect API key (.p8)"; exit 1; }
           export ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
           (umask 077; printf '%s\n' "$ASC_KEY_P8" > "$ASC_KEY_PATH")
           ios/scripts/upload | tee "$RUNNER_TEMP/upload.log"
           sed -n 's/^UPLOADED /Uploaded Rex Go /p' "$RUNNER_TEMP/upload.log" >> "$GITHUB_STEP_SUMMARY"
+          # What to Test: the app's commits since the last run that uploaded.
+          # Notes that fail leave the upload as it is.
+          read -r V B < <(sed -n 's/^UPLOADED \([0-9.]*\) (\([0-9]*\))$/\1 \2/p' "$RUNNER_TEMP/upload.log") || true
+          FROM=$(gh run list -R "$GITHUB_REPOSITORY" --workflow testflight.yml --branch main --status success -L 1 --json headSha -q '.[0].headSha' || true)
+          ios/scripts/test-notes "${V:-}" "${B:-}" "${FROM:-HEAD~1}" || echo "::warning::What to Test was not set for ${V:-?} (${B:-?})"
       - if: always()
         run: rm -f "$RUNNER_TEMP/AuthKey.p8"
       - if: failure()
