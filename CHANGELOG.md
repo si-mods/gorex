@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.20.0
+
+### Features
+
+* **terminal:** panes keep text at a contrast of at least 3 against its background unless Ghostty's `minimum-contrast` sets one; Settings › Terminal › Minimum contrast chooses it ([#346](https://github.com/si-mods/gorex/pull/346))
+
+### Bug Fixes
+
+* **sidebar:** the host view drops the space chip, as it lists the spaces under their hosts; a right click on the window's space renames it in place, colors it or closes it ([#352](https://github.com/si-mods/gorex/pull/352))
+
 ## 0.19.0
 
 ### Features
