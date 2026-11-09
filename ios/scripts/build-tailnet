@@ -1,0 +1,43 @@
+#!/bin/bash
+# Build Rex Go's built-in Tailscale (ios/tailnet) as an iOS (device +
+# simulator) xcframework, ios/Frameworks/Tailnet.xcframework (gitignored),
+# with gomobile at the version go.mod pins as a tool. Needs Xcode and Go.
+# The app links it, so run this before xcodegen and xcodebuild.
+#
+# Usage: ios/scripts/build-tailnet
+set -euo pipefail
+
+IOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$IOS_DIR/.."
+
+# Tailscale's features the engine does without (docs/ios-tailnet.md, Size).
+# Kept: netstack, serve, acme, dns, logtail, tailscaledhttps, cachenetmap
+# and ssh, which tsnet needs; ipnbus, for the status the app watches;
+# portmapper, for direct connections; tailnetlock, for tailnets that lock.
+OMIT=(
+    ace advertiseexitnode advertiseroutes androidbin androiddns appconnectors
+    aws bakedroots bird c2n captiveportal capture cli cliconndiag
+    clientmetrics clientupdate cloud colorable completion conn25 connreject
+    dbus debug debugeventbus debugportmapper dnsresolvecache doctor drive
+    favorites flashappliance gro health hujsonconf identityfederation
+    iptables kube linkspeed linuxdnsfight listenrawdisco netlog
+    networkmanager oauthkey osrouter outboundproxy peerapiclient
+    peerapiserver portlist posture qrcodes relayserver remoteconfig resolved
+    routecheck runtimemetrics sdnotify serviceclientprefs synology syslog
+    syspolicy systray taildrop tap tpm tundevstats unixsocketidentity
+    useexitnode useproxy usermetrics useroutes wakeonlan webbrowser webclient
+)
+TAGS=$(printf 'ts_omit_%s,' "${OMIT[@]}")
+
+# gomobile finds gobind on PATH; both at go.mod's version.
+BIN="$IOS_DIR/build/gomobile-bin"
+mkdir -p "$BIN"
+go build -o "$BIN/gomobile" golang.org/x/mobile/cmd/gomobile
+go build -o "$BIN/gobind" golang.org/x/mobile/cmd/gobind
+export PATH="$BIN:$PATH"
+
+OUT="$IOS_DIR/Frameworks/Tailnet.xcframework"
+rm -rf "$OUT"
+gomobile bind -target ios,iossimulator -iosversion 26.0 -ldflags='-s -w' \
+    -tags "${TAGS%,}" -o "$OUT" ./ios/tailnet
+echo "built $OUT"

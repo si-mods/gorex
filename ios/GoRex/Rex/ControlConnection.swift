@@ -90,10 +90,10 @@ final class ControlConnection {
     }
     private var closed = false
 
-    init(base: URL) {
+    init(base: URL, session: URLSession = .shared) {
         var request = URLRequest(url: base.rexURL("/api/control"))
         request.timeoutInterval = 10
-        task = URLSession.shared.webSocketTask(with: request.withSubprotocol("rex.control.v1"))
+        task = session.webSocketTask(with: request.withSubprotocol("rex.control.v1"))
         task.maximumMessageSize = 1 << 20
     }
 

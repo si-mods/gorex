@@ -1,5 +1,6 @@
 # XcodeGen spec: `xcodegen generate` writes GoRex.xcodeproj (not committed).
 # Build ios/Frameworks/GhosttyVt.xcframework first: scripts/build-ghostty-vt.sh.
+# And ios/Frameworks/Tailnet.xcframework: scripts/build-tailnet.
 name: GoRex
 packages:
   # rootshell's prebuilt Ghostty (Metal renderer, key encoding), at the
@@ -33,6 +34,9 @@ targets:
     dependencies:
       # libghostty-vt reads the snapshot a stream starts with.
       - framework: Frameworks/GhosttyVt.xcframework
+        embed: false
+      # Built-in Tailscale (ios/tailnet), a static library.
+      - framework: Frameworks/Tailnet.xcframework
         embed: false
       - package: GhosttyKit
         product: GhosttyKitAppStore

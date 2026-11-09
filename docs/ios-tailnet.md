@@ -84,7 +84,7 @@ exports a narrow API for `gomobile bind`:
 | `Start(configJSON, stateDir, callback)` | starts the node: hostname, control URL, optional one-time auth key |
 | `Login()` / `Logout()` | interactive login; the auth URL arrives through the callback |
 | `Status() string` | JSON: backend state, auth URL, the node's name and addresses, peers |
-| `Proxy() string` | the SOCKS5 proxy (below): address and password |
+| `Proxy() string` | the SOCKS5 proxy (Transport): address and password |
 | `DefaultInterfaceChanged(name)` | the path monitor's news of a network change |
 | `ResetSockets()` | rebinds the UDP sockets iOS reclaimed while suspended |
 | `Stop()` | stops the node and its proxy |
@@ -143,14 +143,24 @@ proxy.applyCredential(username: "tsnet", password: password)
 c.proxyConfigurations = [proxy]
 ```
 
-This is TailscaleKit's `URLSessionConfiguration.proxyVia`, and the proxy
-is the one `tsnet` already has: `Server.Loopback()`, on loopback, with a
-random password per run, so another app on the phone can't use it. It
-resolves MagicDNS names itself and dials through the tailnet; it would
-dial an address off the tailnet directly, but only tailnet hosts are
-sent to it. The same port serves `tsnet`'s LocalAPI behind a second
-credential, which never leaves Go. TLS is end to end: `URLSession`
-still verifies the gateway's `*.ts.net` certificate.
+This is TailscaleKit's `URLSessionConfiguration.proxyVia`. The proxy is
+the engine's own (`ios/tailnet/proxy.go`): `tailscale.com/net/socks5` on
+loopback, user `tsnet` and a random password per run, so another app on
+the phone can't use it. It dials only the tailnet's devices: it takes
+the target's MagicDNS name (full or short) or address, looks it up among
+the node's current peers, and dials that peer's Tailscale address
+through the node. Anything else is refused: an unknown name, an address
+off the tailnet, or any address before the network map arrives. TLS is
+end to end: `URLSession` still verifies the gateway's `*.ts.net`
+certificate.
+
+`tsnet`'s own proxy, `Server.Loopback()`, is not used. It dials any
+address that isn't a known peer through the phone's network, as every
+tailnet address is in the second or so after a start before the network
+map arrives. The spike saw exactly that: the first connections went to
+the gateway over the home network, which happened to route the tailnet,
+not through Tailscale. Its port also serves the LocalAPI; the engine's
+proxy exposes no LocalAPI on any port.
 
 Each engine run has a new port and password, and a `URLSession`'s
 configuration is fixed when it's made. So the proxy's
@@ -162,7 +172,7 @@ The protocol code (`ControlConnection`, `DataStream`, `Spaces`,
 `Upload`) changes only to take the host's session instead of
 `URLSession.shared`.
 
-Risks, which phase 1 proves first:
+Two risks, which phase 2 settled in the simulator; both hold:
 
 - that `URLSessionWebSocketTask` honours `proxyConfigurations` with
   SOCKS5;
@@ -170,9 +180,12 @@ Risks, which phase 1 proves first:
   rather than resolving it first through the phone's DNS, which knows no
   MagicDNS name without the Tailscale VPN. Plain requests and WebSockets
   both.
- If it doesn't, the fallback is the
-engine's `DialTCP`, handing Swift a socket file descriptor, with the
-WebSocket on `NWConnection`. That one touches the protocol code more.
+
+For the second, a request and a WebSocket to a MagicDNS short name, which
+the Mac mini's DNS could not resolve, reached the gateway through the
+proxy and met its certificate. Had either risk failed, the fallback was
+the engine's `DialTCP`, handing Swift a socket file descriptor, with the
+WebSocket on `NWConnection`.
 
 ### Hosts
 
@@ -238,8 +251,8 @@ access rules. Settings says so when the gateway refuses the phone.
 `gomobile bind -target ios,iossimulator` builds `Tailnet.xcframework`
 from `ios/tailnet`, by a script in `ios/scripts/`. The TestFlight
 workflow sets up Go and runs it before `xcodegen`; the result is cached
-by the hash of `go.mod`, `go.sum`, `ios/tailnet` and
-`internal/tailnode`. Its `paths` add `go.mod`, `go.sum` and
+by the hash of `go.mod`, `go.sum`, `ios/tailnet`, `internal/tailnode`
+and the script. Its `paths` add `go.mod`, `go.sum` and
 `internal/tailnode/**`, so a `tailscale.com` bump or a fix there reaches
 TestFlight like an `ios/` change. `gomobile` is pinned as a Go tool in
 `go.mod`. The framework is not checked in.
@@ -251,10 +264,23 @@ arm64 iOS executable with `-s -w` and stripped:
 | --- | --- | --- |
 | all features | 18.5 MB | 7.1 MB |
 | `ts_omit_*` for every feature `tsnet` can do without | 15.8 MB | 6.0 MB |
+| the engine as built (`ios/scripts/build-tailnet`), in Rex Go's Release binary | 17.8 MB | 6.8 MB |
+
+The last row is measured: Rex Go's Release device binary, stripped, with
+and without the engine linked; it includes `gomobile`'s runtime and the
+three features below.
 
 The `ts_omit_*` tags kept off are `netstack`, `serve`, `acme`, `dns`,
 `logtail`, `tailscaledhttps`, `cachenetmap` and `ssh`; `tsnet` doesn't
-build without them. The simulator slice never reaches the App Store.
+build without them. The engine also keeps three it could do without:
+
+- `ipnbus`: the status the app watches (`Node.Watch`) comes over it.
+- `portmapper`: UPnP, NAT-PMP and PCP open a port on the router, so a
+  phone reaches more machines directly instead of through DERP.
+- `tailnetlock`: a tailnet with Tailnet Lock needs the device to verify
+  its signatures.
+
+The simulator slice never reaches the App Store.
 
 The engine can't be downloaded later instead. iOS runs only code
 signed into the app's bundle (a downloaded library fails to load), and

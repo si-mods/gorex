@@ -8,10 +8,14 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    # Only the app's changes; a change to this file alone uploads nothing
-    # (start it by hand to try one).
+    # Only the app's changes, with the Go its built-in Tailscale builds
+    # from; a change to this file alone uploads nothing (start it by hand
+    # to try one).
     paths:
       - ios/**
+      - go.mod
+      - go.sum
+      - internal/tailnode/**
 
 permissions:
   contents: read
@@ -50,6 +54,23 @@ jobs:
         with:
           path: ios/Frameworks/GhosttyVt.xcframework
           key: ${{ steps.ghostty-vt.outputs.cache-primary-key }}
+      # Built-in Tailscale (ios/tailnet), with the Go and gomobile go.mod pins.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/cache/restore@v4
+        id: tailnet
+        with:
+          path: ios/Frameworks/Tailnet.xcframework
+          key: tailnet-${{ hashFiles('go.mod', 'go.sum', 'ios/tailnet/**', 'internal/tailnode/**', 'ios/scripts/build-tailnet') }}
+      - if: steps.tailnet.outputs.cache-hit != 'true'
+        run: ios/scripts/build-tailnet
+      - if: steps.tailnet.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ios/Frameworks/Tailnet.xcframework
+          key: ${{ steps.tailnet.outputs.cache-primary-key }}
       - name: upload
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}

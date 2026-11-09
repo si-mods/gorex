@@ -68,6 +68,11 @@ func (n *Node) Status(ctx context.Context) (*ipnstate.Status, error) {
 	return n.lc.StatusWithoutPeers(ctx)
 }
 
+// StatusWithPeers is Status with the devices the node can reach.
+func (n *Node) StatusWithPeers(ctx context.Context) (*ipnstate.Status, error) {
+	return n.lc.Status(ctx)
+}
+
 // Watch calls changed each time the device's state may have changed,
 // until ctx ends.
 func (n *Node) Watch(ctx context.Context, changed func()) {
@@ -106,6 +111,13 @@ func (n *Node) Logout(ctx context.Context) error { return n.lc.Logout(ctx) }
 func (n *Node) SetHostname(ctx context.Context, name string) error {
 	_, err := n.lc.EditPrefs(ctx, &ipn.MaskedPrefs{Prefs: ipn.Prefs{Hostname: name}, HostnameSet: true})
 	return err
+}
+
+// Dial connects to addr on the tailnet, once the device runs. An
+// address that is not a known peer's is dialed through the system's
+// network instead, so callers check it first.
+func (n *Node) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	return n.srv.Dial(ctx, network, addr)
 }
 
 func (n *Node) Close() error { return n.srv.Close() }

@@ -12,6 +12,33 @@ struct HostConfig: Codable, Identifiable, Hashable {
     /// The program and arguments new windows run, as typed; nil or empty
     /// runs the host's login shell.
     var command: String?
+    /// How the app reaches the host; nil is through the system. Optional,
+    /// as a list saved without it must still decode.
+    var transport: Transport?
+
+    enum Transport: String, Codable {
+        /// The phone's own network, or the Tailscale app's VPN.
+        case system
+        /// The built-in Tailscale's proxy (docs/ios-tailnet.md).
+        case tailnet
+    }
+}
+
+/// The built-in Tailscale's SOCKS5 proxy on loopback, of one run of the
+/// engine: user name "tsnet" and a password of that run.
+struct LoopbackProxy: Equatable {
+    let port: Int
+    let password: String
+
+    /// A session whose connections go through the proxy, which resolves
+    /// the hosts' names on the tailnet itself.
+    func session() -> URLSession {
+        let c = URLSessionConfiguration.default
+        var p = ProxyConfiguration(socksv5Proxy: .hostPort(host: "127.0.0.1", port: NWEndpoint.Port(integerLiteral: UInt16(port))))
+        p.applyCredential(username: "tsnet", password: password)
+        c.proxyConfigurations = [p]
+        return URLSession(configuration: c)
+    }
 }
 
 extension HostConfig {
@@ -153,10 +180,29 @@ final class Host: Identifiable {
     @ObservationIgnored private var readingSpaces = false
     @ObservationIgnored private var spacesAgain = false
     /// Reads a server's spaces; tests replace it.
-    @ObservationIgnored var spacesReader: (URL) async throws -> Spaces.Answer = Spaces.read
+    @ObservationIgnored var spacesReader: (URL, URLSession) async throws -> Spaces.Answer = Spaces.read
+    /// The built-in Tailscale's proxy of the moment; nil while it isn't
+    /// running. The app sets it.
+    static var tailnetProxy: () -> LoopbackProxy? = { nil }
+    @ObservationIgnored private var tailnetSession: (proxy: LoopbackProxy, session: URLSession)?
 
     init(_ config: HostConfig) {
         self.config = config
+    }
+
+    /// The session the host's connections go through: the system's, or
+    /// one through the built-in Tailscale's proxy of the moment, made anew
+    /// for each run of it.
+    func session() throws -> URLSession {
+        guard config.transport == .tailnet else { return .shared }
+        guard let p = Self.tailnetProxy() else {
+            throw RexError(code: "offline", message: String(localized: "Tailscale is not running"))
+        }
+        if let s = tailnetSession, s.proxy == p { return s.session }
+        tailnetSession?.session.invalidateAndCancel()
+        let s = p.session()
+        tailnetSession = (p, s)
+        return s
     }
 
     /// Connects, unless connected or connecting.
@@ -164,7 +210,15 @@ final class Host: Identifiable {
         guard control == nil, !stopped else { return }
         retry?.cancel()
         status = .connecting
-        let c = ControlConnection(base: config.url)
+        let session: URLSession
+        do {
+            session = try self.session()
+        } catch {
+            status = .offline(error.localizedDescription)
+            scheduleRetry()
+            return
+        }
+        let c = ControlConnection(base: config.url, session: session)
         control = c
         gate = EventGate()
         c.onEvent = { [weak self, weak c] e in
@@ -256,7 +310,7 @@ final class Host: Identifiable {
                 if !c.features.contains(Spaces.feature) {
                     take(nil)
                 // A read that fails keeps what was read before.
-                } else if let a = try? await spacesReader(config.url), c === control {
+                } else if let s = try? session(), let a = try? await spacesReader(config.url, s), c === control {
                     take(a)
                 }
             } while spacesAgain
@@ -431,7 +485,7 @@ final class Host: Identifiable {
     /// block, and returns its path there as a word of the block's shell.
     func upload(_ file: URL, block: String) async throws -> String {
         _ = try live()
-        return try await Upload.send(file, name: file.lastPathComponent, block: block, to: config.url)
+        return try await Upload.send(file, name: file.lastPathComponent, block: block, to: config.url, session: try session())
     }
 
     /// The control connection; offline, an error to tell.
@@ -529,11 +583,11 @@ final class HostStore {
         save()
     }
 
-    /// Changes a host; one with a new address connects again. The host
-    /// stays the same, for the terminals open on it.
+    /// Changes a host; one with a new address or transport connects
+    /// again. The host stays the same, for the terminals open on it.
     func update(_ config: HostConfig) {
         guard let h = host(config.id) else { return }
-        let moved = h.config.url != config.url
+        let moved = h.config.url != config.url || h.config.transport != config.transport
         h.config = config
         if moved { h.reconnect() }
         save()

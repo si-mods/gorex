@@ -14,9 +14,11 @@ enum Upload {
     /// server's reason.
     nonisolated static let notPasted = "upload.notPasted"
 
-    /// Sends the file at file as name, for block, to the server at base,
-    /// streamed from the disk, and returns the word to paste.
-    nonisolated static func send(_ file: URL, name: String, block: String, to base: URL) async throws -> String {
+    /// Sends the file at file as name, for block, to the server at base
+    /// through session, streamed from the disk, and returns the word to
+    /// paste.
+    nonisolated static func send(_ file: URL, name: String, block: String, to base: URL,
+                                 session: URLSession = .shared) async throws -> String {
         var c = URLComponents(url: base.apiURL("/api/upload"), resolvingAgainstBaseURL: false)!
         c.queryItems = [URLQueryItem(name: "block_id", value: block), URLQueryItem(name: "name", value: name)]
         // A query reads "+" as a space.
@@ -24,7 +26,7 @@ enum Upload {
         var r = URLRequest(url: c.url!)
         r.httpMethod = "POST"
         r.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await URLSession.shared.upload(for: r, fromFile: file)
+        let (data, response) = try await session.upload(for: r, fromFile: file)
         let answer = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard status == 200, let word = answer?["word"] as? String else {
