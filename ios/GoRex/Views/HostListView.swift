@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 extension Color {
     static let page = Color(UIColor { $0.userInterfaceStyle == .dark
@@ -28,6 +29,8 @@ struct HostListView: View {
     @AppStorage(Grouping.key) private var grouping = Grouping.standard
     /// The space chosen, by its host and session.
     @AppStorage("space") private var chosen = ""
+    /// The chosen space's glass, which slides to the next one chosen.
+    @Namespace private var glass
 
     var body: some View {
         Group {
@@ -139,34 +142,39 @@ struct HostListView: View {
 
     private func key(_ p: CrossHost.Place) -> String { p.host.uuidString + "/" + p.session }
 
-    /// The strip of spaces, as the desktop's: the chosen one has a dot, and
-    /// each has its session's menu. A label two spaces share also names the
-    /// host.
+    /// The strip of spaces, as the desktop's: the chosen one's glass has
+    /// the accent's tint, and slides to the next one chosen. Each has its
+    /// session's menu. A label two spaces share also names the host.
     private func strip(_ all: [Space], _ space: CrossHost.Place?) -> some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(all, id: \.place) { s in
-                    let label = s.session.label
-                    let title = all.count { $0.session.label == label } > 1 ? "\(label) · \(s.host.config.name)" : label
-                    Button { chosen = key(s.place) } label: {
-                        HStack(spacing: 6) {
-                            Text(verbatim: title).lineLimit(1)
-                            if s.place == space { Circle().frame(width: 6, height: 6) }
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                GlassEffectContainer(spacing: 8) {
+                    HStack(spacing: 8) {
+                        ForEach(all, id: \.place) { s in
+                            let label = s.session.label
+                            let title = all.count { $0.session.label == label } > 1 ? "\(label) · \(s.host.config.name)" : label
+                            let isChosen = s.place == space
+                            Button { withAnimation(.snappy) { chosen = key(s.place) } } label: {
+                                Text(verbatim: title).lineLimit(1)
+                                    .foregroundStyle(isChosen ? Color(.systemBackground) : .primary)
+                                    .padding(.horizontal, 16)
+                                    .frame(height: 42)
+                                    .glassEffect(isChosen ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
+                                    .glassEffectID(isChosen ? "chosen" : key(s.place), in: glass)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(isChosen ? .isSelected : [])
+                            .modifier(SessionMenu(host: s.host, session: s.session, open: { go($0) }))
                         }
-                        .foregroundStyle(s.place == space ? .primary : .secondary)
-                        .padding(.horizontal, 4)
-                        .frame(height: 30)
                     }
-                    .accessibilityAddTraits(s.place == space ? .isSelected : [])
-                    .modifier(SessionMenu(host: s.host, session: s.session, open: { go($0) }))
+                    .font(.subheadline.weight(.semibold))
                 }
             }
-            .font(.subheadline.weight(.semibold))
-            .buttonStyle(.glass)
+            .scrollIndicators(.hidden)
+            // The glass's edges show past the page's margins.
+            .scrollClipDisabled()
+            .onChange(of: space, initial: true) { _, p in withAnimation { proxy.scrollTo(p) } }
         }
-        .scrollIndicators(.hidden)
-        // The glass's edges show past the page's margins.
-        .scrollClipDisabled()
     }
 
     /// Whether a window's row shows, by the search.
@@ -188,6 +196,10 @@ private struct HostSection: View {
     @Environment(HostStore.self) private var store
     /// The sessions whose new window is on its way.
     @State private var opening: Set<String> = []
+    /// The row being dragged, with its session's rows as they were, and
+    /// their order as it goes: the rows make way as it passes over them.
+    @State private var drag: (entry: Entry, from: [String])?
+    @State private var order: [String] = []
     /// Whether a new session is on its way.
     @State private var creating = false
     /// What failed last, and why, as the server says it.
@@ -234,6 +246,11 @@ private struct HostSection: View {
             .accessibilityHint(isCollapsed ? "Expand" : "Collapse")
             if !isCollapsed { sessions }
         }
+        // A row dropped in the section, off the rows, stays where it is.
+        .onDrop(of: [.text], isTargeted: nil) { _ in drop() }
+        // The server's order, once it comes, replaces the drag's.
+        .onChange(of: host.sessions.map { ($0.view?.windows ?? []).map(\.window_id) }) { drag = nil }
+        .sensoryFeedback(.selection, trigger: order)
         .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
         } message: {
             Text(failure?.why ?? "")
@@ -332,16 +349,10 @@ private struct HostSection: View {
                 }
             }
             Divider()
-            Button("Move Up", systemImage: "arrow.up") {
-                change("Can't Move the Tab") { try await host.moveWindow(id, in: s.id, before: shown[i - 1]) }
-            }
-            .disabled(i <= 0)
-            Button("Move Down", systemImage: "arrow.down") {
-                // Just after the next row: before the window after it, if any.
-                let after = all.firstIndex(of: shown[i + 1]).map { $0 + 1 } ?? all.count
-                change("Can't Move the Tab") { try await host.moveWindow(id, in: s.id, before: after < all.count ? all[after] : nil) }
-            }
-            .disabled(i >= shown.count - 1)
+            Button("Move Up", systemImage: "arrow.up") { move(id, in: s, onto: shown[i - 1], shown: shown) }
+                .disabled(i <= 0)
+            Button("Move Down", systemImage: "arrow.down") { move(id, in: s, onto: shown[i + 1], shown: shown) }
+                .disabled(i >= shown.count - 1)
             Divider()
             Button("New Tab", systemImage: "plus") { newWindow(s) }
             Button("Close Tab", systemImage: "xmark", role: .destructive) {
@@ -355,6 +366,54 @@ private struct HostSection: View {
             .disabled(shown.count < 2)
         }
         .equatable()
+    }
+
+    /// Moves a window of a session to the place of another row shown.
+    private func move(_ id: String, in s: Host.Session, onto target: String, shown: [String]) {
+        let before = Host.before(id, onto: target, shown: shown, all: (s.view?.windows ?? []).map(\.window_id))
+        change("Can't Move the Tab") { [host] in
+            do { try await host.moveWindow(id, in: s.id, before: before) } catch {
+                // The rows go back to the server's order.
+                drag = nil
+                throw error
+            }
+        }
+    }
+
+    /// Lifts a row: its session's rows take the order it moves them to.
+    private func lift(_ w: Entry, shown: [String]) -> NSItemProvider {
+        // The system asks again while the rows move: the first ask holds.
+        if drag?.entry.id != w.id {
+            drag = (w, shown)
+            order = shown
+        }
+        return NSItemProvider(object: w.id as NSString)
+    }
+
+    /// Makes way for the dragged row at another row of its session.
+    private func pass(over w: Entry) {
+        guard let d = drag?.entry, d.session.id == w.session.id,
+              let from = order.firstIndex(of: d.window.window_id), let to = order.firstIndex(of: w.window.window_id), from != to
+        else { return }
+        withAnimation(.snappy) { order.move(fromOffsets: [from], toOffset: to > from ? to + 1 : to) }
+    }
+
+    /// Moves the dropped row on the server to where the drag left it.
+    private func drop() -> Bool {
+        guard let d = drag?.entry, let from = drag?.from else { return false }
+        let id = d.window.window_id
+        guard let i = order.firstIndex(of: id), let j = from.firstIndex(of: id), i != j else {
+            drag = nil
+            return true
+        }
+        move(id, in: d.session, onto: from[i], shown: from)
+        return true
+    }
+
+    /// A card's rows in the order a drag of one of them leaves.
+    private func arranged(_ windows: [Entry]) -> [Entry] {
+        guard let d = drag?.entry, windows.allSatisfy({ $0.session.id == d.session.id }) else { return windows }
+        return windows.sorted { (order.firstIndex(of: $0.window.window_id) ?? .max) < (order.firstIndex(of: $1.window.window_id) ?? .max) }
     }
 
     /// The windows of this host a space holds, in its order, with their
@@ -391,8 +450,10 @@ private struct HostSection: View {
             .clipShape(.rect(cornerRadius: 22, style: .continuous))
     }
 
-    /// The rows of a card, each with its window's menu.
-    private func rows(_ windows: [Entry]) -> some View {
+    /// The rows of a card, each with its window's menu, and dragged onto
+    /// another of its session to move there.
+    private func rows(_ entries: [Entry]) -> some View {
+        let windows = arranged(entries)
         // The room of the tiles of the window with the most, so that the titles line up.
         let tiles = ProgramTiles.width(behind: windows.map(\.window.back.count).max() ?? 0)
         return ForEach(Array(windows.enumerated()), id: \.element.id) { i, w in
@@ -405,9 +466,16 @@ private struct HostSection: View {
             }
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
-            // The menu changes the windows of the space's own host only.
+            // The menu and the drag change the windows of the space's own
+            // host only.
             if space.map({ $0.host == host.id }) ?? true {
-                row.contextMenu { menu(w.session, w.window, shown: windows.filter { $0.session.id == w.session.id }.map(\.window.window_id)) }
+                // The server's order, not the drag's.
+                let shown = entries.filter { $0.session.id == w.session.id }.map(\.window.window_id)
+                row.onDrag { lift(w, shown: shown) }
+                    .contextMenu { menu(w.session, w.window, shown: shown) }
+                    .onDrop(of: [.text], delegate: RowDrop(pass: { pass(over: w) }, drop: drop))
+                    .opacity(drag?.entry.id == w.id ? 0.4 : 1)
+                    .modifier(DragEnd { drag = nil })
             } else {
                 row
             }
@@ -512,6 +580,31 @@ private struct SessionMenu: ViewModifier {
     private func change(_ title: LocalizedStringKey, _ body: @escaping () async throws -> Void) {
         Task {
             do { try await body() } catch { failure = (title, error.localizedDescription) }
+        }
+    }
+}
+
+/// A row as a drop target: the dragged row makes way at it, and lands on
+/// the drop.
+private struct RowDrop: DropDelegate {
+    let pass: () -> Void
+    let drop: () -> Bool
+
+    func dropEntered(info: DropInfo) { pass() }
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func performDrop(info: DropInfo) -> Bool { drop() }
+}
+
+/// Tells when a drag from the view ends with no drop, where the system
+/// says so (iOS 27); before, the server's next order clears the drag.
+private struct DragEnd: ViewModifier {
+    let cancelled: () -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 27, *) {
+            content.onDragSessionUpdated { if case .ended(.cancel) = $0.phase { cancelled() } }
+        } else {
+            content
         }
     }
 }

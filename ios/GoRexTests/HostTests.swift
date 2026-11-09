@@ -220,4 +220,15 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(h.titles["c"], "First")
         XCTAssertEqual(h.programs["b"], "zsh")
     }
+
+    /// A row moved onto another lands where it is: before a row above,
+    /// after a row below, past the windows the list leaves out.
+    @MainActor func testMoveBefore() {
+        // b and d are left out of the list.
+        let all = ["a", "b", "c", "d", "e"], shown = ["a", "c", "e"]
+        XCTAssertEqual(Host.before("e", onto: "a", shown: shown, all: all), "a")
+        XCTAssertEqual(Host.before("c", onto: "a", shown: shown, all: all), "a")
+        XCTAssertEqual(Host.before("a", onto: "c", shown: shown, all: all), "d")
+        XCTAssertNil(Host.before("a", onto: "e", shown: shown, all: all))
+    }
 }
