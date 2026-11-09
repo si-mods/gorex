@@ -265,6 +265,9 @@ A newer app asks the user, then restarts the server (`adopt` in
 `workspace.go`); the sessions come back as new shells, as after a
 restart.
 
+[app-server-update.md](app-server-update.md) designs upgrading the server
+while the app stays open.
+
 ### Teleport
 
 A teleport packs the pane's text (`format` text, its last MiB) as
