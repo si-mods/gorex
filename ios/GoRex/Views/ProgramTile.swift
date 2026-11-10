@@ -161,15 +161,25 @@ struct ProgramTile: View {
             .overlay {
                 if program.tileBorder { card.strokeBorder(.black.opacity(0.12), lineWidth: 0.5 * k) }
             }
+            // Lit from above, as Rex's tiles: a sheen along the top that
+            // darkens a little to the foot, and a lit inner edge, brightest
+            // at the top.
             .overlay {
-                card.fill(LinearGradient(stops: [.init(color: .white.opacity(0.18), location: 0), .init(color: .white.opacity(0), location: 0.6)],
+                card.fill(LinearGradient(stops: [.init(color: .white.opacity(0.18), location: 0), .init(color: .white.opacity(0), location: 0.5),
+                                                 .init(color: .black.opacity(0.06), location: 1)],
                                          startPoint: .top, endPoint: .bottom))
+            }
+            .overlay {
+                card.strokeBorder(LinearGradient(colors: [.white.opacity(0.45), .white.opacity(0.15)], startPoint: .top, endPoint: .bottom),
+                                  lineWidth: 0.5)
             }
             .overlay {
                 if glyph { glyphImage.foregroundStyle(Color(rgb: program.tileFg)).frame(width: 11 * k, height: 11 * k) }
             }
             .background {
-                RoundedRectangle(cornerRadius: 5.5 * k).fill(.white.opacity(scheme == .dark ? 0.22 : 0.95)).padding(-k)
+                // A dark rim on a dark page, a light one on a light page.
+                RoundedRectangle(cornerRadius: 4.5 * k + 0.75).fill(scheme == .dark ? .black.opacity(0.7) : .white.opacity(0.95))
+                    .padding(scheme == .dark ? -0.75 : -k)
             }
             .shadow(color: .black.opacity(0.18), radius: 0.75 * k, y: 0.5 * k)
     }
