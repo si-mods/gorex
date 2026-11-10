@@ -202,14 +202,18 @@ session goes through it.
 
 There is one `tailcat.Client` per address, not per host id: two clients
 of one key take each other's packets (#212), as a machine added twice
-or paired while listed would have.
+would have. As `internal/rex`'s pool, it counts its open connections and
+closes after 3 minutes with none, so an idle phone holds no DERP
+connection. Pairing a machine not listed yet uses a client of its own,
+for that request only.
 
 The client key is passed in from the Keychain at start, never written
 by Go.
 
-A tailcat dial has its own bounds, as `internal/rex`'s: 15 s in all, a
-first try of 3 s. The SOCKS server's 5 s would cut a client's first
-dial, which connects to DERP and shakes hands.
+A tailcat dial has its own bounds, as `internal/rex`'s: 15 s in all,
+and 3 s for a try of a client that connected before. The SOCKS server's
+5 s would cut a client's first dial, which connects to DERP and shakes
+hands.
 
 tailcat's `createEngine` turns `netns` off for the whole process, so
 once a tailcat client starts the tailnet node no longer binds its
@@ -244,9 +248,11 @@ the server.
 A machine whose server restarted, as on an upgrade, forgot the client,
 and the client still trusts its old direct path and WireGuard session:
 left alone, it waits for WireGuard's rekey, 15 s and more. So a dial
-that fails pings the server, resets the client's sockets, expires the
-server's WireGuard keypair and tries once more, in about 3 s.
-(`internal/rex` makes a new client instead.)
+does as `internal/rex`'s: a client that connected before and fails its
+try pings the server and tries once more; failing again, with no other
+connection on it, it is dropped and a new client dials, within the
+15 s. The socket resets of a suspension run side by side, one per
+client and the node's, so a stuck one holds up no other.
 
 ## Size
 
