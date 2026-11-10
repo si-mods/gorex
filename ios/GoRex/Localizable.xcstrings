@@ -2738,22 +2738,12 @@
         }
       }
     },
-    "On": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "开"
-          }
-        }
-      }
-    },
     "Off": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "关"
+            "value": "关闭"
           }
         }
       }
@@ -2784,16 +2774,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "状态"
-          }
-        }
-      }
-    },
-    "Address": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "地址"
           }
         }
       }
@@ -2898,56 +2878,6 @@
         }
       }
     },
-    "Signed In": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已登录"
-          }
-        }
-      }
-    },
-    "Not Signed In": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未登录"
-          }
-        }
-      }
-    },
-    "Waiting for Approval": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "等待批准"
-          }
-        }
-      }
-    },
-    "Stopped": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "已停止"
-          }
-        }
-      }
-    },
-    "Starting…": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "正在启动…"
-          }
-        }
-      }
-    },
     "Direct": {
       "localizations": {
         "zh-Hans": {
@@ -3004,6 +2934,96 @@
           "stringUnit": {
             "state": "translated",
             "value": "新名称将在下次启动时生效：%@"
+          }
+        }
+      }
+    },
+    "Tailscale off": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 已关闭"
+          }
+        }
+      }
+    },
+    "Tailscale couldn't start": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 无法启动"
+          }
+        }
+      }
+    },
+    "Tailscale connected": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 已连接"
+          }
+        }
+      }
+    },
+    "Tailscale needs sign-in": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 需要登录"
+          }
+        }
+      }
+    },
+    "Tailscale waiting for approval": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 正在等待批准"
+          }
+        }
+      }
+    },
+    "Tailscale connecting…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 连接中…"
+          }
+        }
+      }
+    },
+    "Tailscale inside Rex Go, no VPN": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailscale 在 Rex Go 内运行，无 VPN"
+          }
+        }
+      }
+    },
+    "On · Rex Go Only": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启 · 仅 Rex Go"
+          }
+        }
+      }
+    },
+    "Sign out of Tailscale?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "要退出登录 Tailscale 吗？"
           }
         }
       }

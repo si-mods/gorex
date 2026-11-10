@@ -208,7 +208,7 @@ does one whose address changed.
 
 ### Settings
 
-Settings › Tailscale, like the desktop's Tailscale card:
+Settings › Tailscale, after rootshell's VPN settings: a status card on top (the Tailscale tile with a state dot, a title and a subtitle) with the switch:
 
 - **Built-in Tailscale** on or off.
 - **Control server**: empty for Tailscale's own, or a URL such as
