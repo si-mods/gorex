@@ -1,5 +1,6 @@
 import AuthenticationServices
 import Foundation
+import Network
 import Observation
 import os
 import Tailnet
@@ -55,6 +56,7 @@ final class TailnetEngine {
     @ObservationIgnored private var chain: Task<Void, Never>?
     /// The run whose status counts; a stopped run's late news doesn't.
     @ObservationIgnored private var run = 0
+    @ObservationIgnored private let paths = PathMonitor()
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
 
     /// Hosts reach the proxy once the device runs. Until it has the
@@ -89,6 +91,25 @@ final class TailnetEngine {
         }
     }
 
+    /// Back from a suspension, which reclaims the engine's sockets: opens
+    /// them anew, or, when that fails, starts the engine anew, with a new
+    /// proxy (docs/ios-tailnet.md, Lifecycle).
+    func resume() async {
+        await serial {
+            guard TailnetSettings.isOn else { return }
+            do {
+                try await Task.detached {
+                    var error: NSError?
+                    guard TailnetResetSockets(&error) else { throw error ?? RexError(code: "tailnet", message: "reset") }
+                }.value
+                self.log.notice("sockets reset")
+            } catch {
+                self.log.error("reset: \(error.localizedDescription, privacy: .public); starting anew")
+                await self.applyNow()
+            }
+        }
+    }
+
     /// Runs op once the operations before it end.
     private func serial(_ op: @escaping @MainActor () async -> Void) async {
         let before = chain
@@ -111,6 +132,7 @@ final class TailnetEngine {
             renameFailure = nil
             try await start(hostname: TailnetSettings.name, controlURL: TailnetSettings.controlURL, authKey: authKey)
         } catch {
+            paths.stop()
             failure = error.localizedDescription
             log.error("start: \(error.localizedDescription, privacy: .public)")
         }
@@ -141,12 +163,14 @@ final class TailnetEngine {
               let port = a["address"]?.split(separator: ":").last.flatMap({ Int($0) }), let password = a["password"]
         else { throw RexError(code: "tailnet", message: "no proxy") }
         proxy = LoopbackProxy(port: port, password: password)
+        paths.start()
         log.notice("proxy on 127.0.0.1:\(port)")
     }
 
     private func stopNow() async {
         run += 1
         proxy = nil
+        paths.stop()
         status = Status(state: "Stopped")
         cancelLogin()
         await Task.detached { TailnetStop() }.value
@@ -265,6 +289,44 @@ final class TailnetEngine {
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             let s = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
             return s?.keyWindow ?? s?.windows.first
+        }
+    }
+
+    /// Tells the engine each change of the interface that carries the
+    /// phone's network, as Wi-Fi to cellular, or of none; iOS lets it
+    /// watch none itself.
+    nonisolated private final class PathMonitor: @unchecked Sendable {
+        private let queue = DispatchQueue(label: "dev.gorex.ios.tailnet.path")
+        // On queue.
+        private var monitor: NWPathMonitor?
+        private var told: String?
+
+        func start() {
+            queue.async { [self] in
+                guard monitor == nil else { return }
+                let m = NWPathMonitor(prohibitedInterfaceTypes: [.other, .loopback])
+                m.pathUpdateHandler = { [weak self] in self?.update($0) }
+                monitor = m
+                m.start(queue: queue)
+            }
+        }
+
+        func stop() {
+            queue.async { [self] in
+                monitor?.cancel()
+                monitor = nil
+                told = nil
+            }
+        }
+
+        private func update(_ path: NWPath) {
+            let name = path.status == .satisfied
+                ? path.availableInterfaces.first { [.wifi, .wiredEthernet, .cellular].contains($0.type) }?.name ?? ""
+                : ""
+            guard name != told else { return }
+            told = name
+            Logger(subsystem: "dev.gorex.ios", category: "tailnet").notice("interface \(name.isEmpty ? "none" : name, privacy: .public)")
+            TailnetDefaultInterfaceChanged(name)
         }
     }
 

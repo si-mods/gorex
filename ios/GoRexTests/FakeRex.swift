@@ -16,6 +16,9 @@ import XCTest
     private(set) var calls: [String] = []
     private(set) var payloads: [[String: Any]] = []
     private(set) var controls: [NWConnection] = []
+    /// The reconnect token of each hello, in order; each welcome gives
+    /// "t" and its connection's number.
+    private(set) var tokens: [String?] = []
 
     private let listener: NWListener
     private var seq = 0
@@ -104,7 +107,9 @@ import XCTest
         switch m["type"] as? String {
         case "hello":
             controls.append(c)
-            Self.send(c, json: ["type": "welcome", "protocol": "rex.control.v1", "client": ["id": "c\(controls.count)"],
+            tokens.append(m["reconnect_token"] as? String)
+            Self.send(c, json: ["type": "welcome", "protocol": "rex.control.v1",
+                                "client": ["id": "c\(controls.count)", "reconnect_token": "t\(controls.count)"],
                                 "features": features])
         case "request":
             let method = m["method"] as? String ?? ""

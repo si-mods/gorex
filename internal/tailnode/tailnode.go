@@ -16,6 +16,7 @@ import (
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/tsaddr"
+	"tailscale.com/tsd"
 	"tailscale.com/tsnet"
 )
 
@@ -121,6 +122,10 @@ func (n *Node) Dial(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
 func (n *Node) Close() error { return n.srv.Close() }
+
+// Sys is the started device's subsystems, as tsnet's Server.Sys, which
+// is not a stable API.
+func (n *Node) Sys() *tsd.System { return n.srv.Sys() }
 
 var hostnameRE = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$`)
 

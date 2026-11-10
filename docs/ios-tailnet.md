@@ -1,6 +1,6 @@
 # Rex Go: built-in Tailscale
 
-Status: proposal. Not implemented. Answers part of
+Status: implemented, in phases #369, #371, #375, #381 and this one's PR. Answers part of
 [#330](https://github.com/si-mods/gorex/issues/330).
 
 ## Problem
@@ -226,15 +226,25 @@ Settings › Tailscale, after rootshell's VPN settings: a status card on top (th
 
 - At launch, with built-in Tailscale on, the engine starts before the
   hosts connect; a host on `tailnet` waits for the node to run.
-- `NWPathMonitor` reports each change of the default interface to the
-  engine, so it rebinds when the phone moves between Wi-Fi and cellular.
+- While the engine runs, `NWPathMonitor` reports each change of the
+  default interface to the engine, so it rebinds when the phone moves
+  between Wi-Fi and cellular. The engine hands the name to `netmon`, as
+  Tailscale's own app does, and has it check the network again.
 - Back in the foreground after more than 5 s away, the app calls
   `ResetSockets` first, then reconnects every `tailnet` host with
-  `reconnect()`, not `reconnectIfNeeded()`: the WebSocket to the
+  `resume()`, not `reconnectIfNeeded()`: the WebSocket to the
   loopback proxy can look open while its tailnet side died in the
-  suspension. A reset that doesn't finish restarts the engine, and the
-  hosts make new sessions for the new proxy (Transport). They reconnect
-  with their reconnect token, so the sessions on the server go on.
+  suspension. A reset that fails or doesn't finish (10 s a step)
+  restarts the engine, and the hosts make new sessions for the new proxy
+  (Transport) once it runs. Unlike `reconnect()`, `resume()` keeps the
+  reconnect token, so the sessions on the server go on.
+- The reset closes WireGuard's bind, has `magicsock` open new sockets
+  and opens the bind on them, which starts the receive loops that ended
+  on the reclaimed sockets; a `magicsock` rebind alone leaves them ended,
+  and every peer on DERP. `tsnet` exports none of this: the engine reaches
+  its subsystems through `Server.Sys`, not a stable API, and WireGuard's
+  device and `magicsock`'s sockets through unexported fields, as
+  rootshell does. Its tests fail when a `tailscale.com` update moves them.
 
 ### Server
 

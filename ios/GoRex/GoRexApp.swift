@@ -5,6 +5,8 @@ struct GoRexApp: App {
     @State private var store = HostStore()
     @Environment(\.scenePhase) private var phase
     @AppStorage("scheme") private var scheme = "dark"
+    /// When the app went to the background.
+    @State private var away: Date?
 
     /// Ghostty starts with the app, as in rootshell, not in a terminal's
     /// push; the notifications too, for a tap that launches it. A
@@ -28,7 +30,11 @@ struct GoRexApp: App {
                 .environment(store)
                 .preferredColorScheme(Self.colorScheme(scheme))
                 .onChange(of: phase) { _, p in
-                    if p == .active { store.hosts.forEach { $0.reconnectIfNeeded() } }
+                    if p == .background { away = .now }
+                    guard p == .active else { return }
+                    let suspended = HostStore.suspended(since: away)
+                    away = nil
+                    Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }
                 }
                 // Hosts the gateway refused try again as the engine runs anew.
                 .onChange(of: TailnetEngine.shared.status.state) { _, s in
