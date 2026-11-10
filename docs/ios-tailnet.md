@@ -83,12 +83,14 @@ exports a narrow API for `gomobile bind`:
 | --- | --- |
 | `Start(configJSON, stateDir, callback)` | starts the node: hostname, control URL, optional one-time auth key |
 | `Login()` / `Logout()` | interactive login; the auth URL arrives through the callback |
-| `Status() string` | JSON: backend state, auth URL, the node's name and addresses, peers |
+| `Status() string` | JSON: backend state, auth URL, the node's name and addresses, peers and how each is reached |
+| `SetHostname(name)` | renames the running node, as the gateway's `SetHostname` |
 | `Proxy() string` | the SOCKS5 proxy (Transport): address and password |
 | `DefaultInterfaceChanged(name)` | the path monitor's news of a network change |
 | `ResetSockets()` | rebinds the UDP sockets iOS reclaimed while suspended |
 | `Stop()` | stops the node and its proxy |
 | `ValidControlURL(url) bool` | `internal/tailnode`'s check, for Settings |
+| `ValidHostname(name) bool` | `internal/tailnode`'s device name check, for Settings |
 
 rootshell's `iosbridge/tailnet*.go` (kitknox/trzsz-ssh-rootshell, MIT)
 is the reference for the iOS-specific parts: the interface monitor

@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("theme") private var theme = TerminalTheme.standard
     @AppStorage("clientLabel") private var label = ""
     @AppStorage(Grouping.key) private var grouping = Grouping.standard.rawValue
+    @AppStorage(TailnetSettings.onKey) private var tailnet = false
     @State private var query = ""
 
     private struct Item: Identifiable {
@@ -35,6 +36,8 @@ struct SettingsView: View {
                   page: AnyView(Themes(selection: $theme)))],
             [Item(title: "Terminal", icon: tile("apple.terminal.fill", .gray), page: AnyView(TerminalSettings())),
              Item(title: "Remote Hosts", icon: tile("globe", .orange), page: AnyView(RemoteHostsView())),
+             Item(title: "Tailscale", icon: tile("point.3.connected.trianglepath.dotted", .blue),
+                  value: String(localized: tailnet ? "On" : "Off"), page: AnyView(TailscaleView())),
              Item(title: "Grouping", icon: tile("rectangle.3.group.fill", .teal),
                   value: String(localized: Self.groupings.first { $0.0 == Grouping(stored: grouping).rawValue }?.1 ?? "Desktop Spaces"),
                   page: AnyView(Choices(title: "Grouping", options: Self.groupings.map { ($0.0, String(localized: $0.1)) }, selection: $grouping,

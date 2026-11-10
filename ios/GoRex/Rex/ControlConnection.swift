@@ -114,8 +114,15 @@ final class ControlConnection {
                        "label": Self.label],
         ]
         hello["reconnect_token"] = token
-        try await task.send(.string(String(decoding: try JSONSerialization.data(withJSONObject: hello), as: UTF8.self)))
-        guard case .string(let s) = try await task.receive(),
+        let message: URLSessionWebSocketTask.Message
+        do {
+            try await task.send(.string(String(decoding: try JSONSerialization.data(withJSONObject: hello), as: UTF8.self)))
+            message = try await task.receive()
+        } catch _ where (task.response as? HTTPURLResponse)?.statusCode == 403 {
+            // The gateway refused the caller.
+            throw RexError(code: "refused", message: String(localized: "The server refused this device."))
+        }
+        guard case .string(let s) = message,
               let welcome = try JSONSerialization.jsonObject(with: Data(s.utf8)) as? [String: Any],
               welcome["type"] as? String == "welcome", welcome["protocol"] as? String == "rex.control.v1"
         else { throw RexError(code: "protocol", message: "no welcome") }

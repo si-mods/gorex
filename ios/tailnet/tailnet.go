@@ -106,6 +106,20 @@ func Login() error {
 	return n.StartLogin(ctx)
 }
 
+// SetHostname renames the running device, as the gateway does.
+func SetHostname(name string) error {
+	if !tailnode.ValidHostname(name) {
+		return errors.New("invalid device name")
+	}
+	n, err := running()
+	if err != nil {
+		return err
+	}
+	ctx, done := context.WithTimeout(context.Background(), 10*time.Second)
+	defer done()
+	return n.SetHostname(ctx, name)
+}
+
 // Logout signs the device out.
 func Logout() error {
 	n, err := running()
@@ -142,11 +156,13 @@ type statusJSON struct {
 }
 
 // peer is a device the node can reach: its MagicDNS name and addresses,
-// and whether it is online.
+// whether it is online, and, while the node talks to it, how: "direct",
+// "derp" or "peer-relay", as tailscale status tells.
 type peer struct {
 	Name   string   `json:"name"`
 	IPs    []string `json:"ips"`
 	Online bool     `json:"online"`
+	Path   string   `json:"path,omitempty"`
 }
 
 func status(ctx context.Context, n *tailnode.Node) string {
@@ -165,12 +181,28 @@ func fromStatus(st *ipnstate.Status) statusJSON {
 	s.IPs = addrs(st.TailscaleIPs)
 	for _, k := range st.Peers() {
 		p := st.Peer[k]
-		s.Peers = append(s.Peers, peer{Name: strings.TrimSuffix(p.DNSName, "."), IPs: addrs(p.TailscaleIPs), Online: p.Online})
+		s.Peers = append(s.Peers, peer{Name: strings.TrimSuffix(p.DNSName, "."), IPs: addrs(p.TailscaleIPs), Online: p.Online, Path: path(p)})
 	}
 	if st.CurrentTailnet != nil {
 		s.Suffix = st.CurrentTailnet.MagicDNSSuffix
 	}
 	return s
+}
+
+// path is how the node reaches an active peer, as tailscale status
+// tells; empty for an idle one.
+func path(p *ipnstate.PeerStatus) string {
+	switch {
+	case !p.Active:
+		return ""
+	case p.CurAddr != "":
+		return "direct"
+	case p.PeerRelay != "":
+		return "peer-relay"
+	case p.Relay != "":
+		return "derp"
+	}
+	return ""
 }
 
 func addrs(ips []netip.Addr) []string {
@@ -214,3 +246,6 @@ func Stop() {
 
 // ValidControlURL tells a control server's URL, as the gateway does.
 func ValidControlURL(s string) bool { return tailnode.ValidControlURL(s) }
+
+// ValidHostname tells a device name, as the gateway does.
+func ValidHostname(s string) bool { return tailnode.ValidHostname(s) }

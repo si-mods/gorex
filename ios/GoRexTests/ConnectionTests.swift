@@ -21,6 +21,21 @@ nonisolated final class ConnectionTests: XCTestCase {
         }
     }
 
+    /// A gateway that refuses the caller, as one on the tailnet refuses
+    /// another Tailscale user, is told from a connection that failed.
+    @MainActor func testRefused() async throws {
+        let http = try FakeHTTP()
+        defer { http.stop() }
+        http.respond = { _ in (403, ["error": "this server lets in only the Tailscale user who signed it in"]) }
+        let c = ControlConnection(base: try await http.url())
+        do {
+            try await c.open(token: nil)
+            XCTFail("opened")
+        } catch let e as RexError {
+            XCTAssertEqual(e.code, "refused")
+        }
+    }
+
     /// A view announced for a session the host doesn't have is read once,
     /// not again and again.
     @MainActor func testViewOfUnknownSessionIsNotReadForever() async throws {
