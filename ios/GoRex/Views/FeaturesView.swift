@@ -77,7 +77,7 @@ struct FeaturesView: View {
         ]),
         ("Hosts & Pairing", [
             ("Pair by QR code", "Scan the Rex QR code that GoRex or Rex shows to add a host. A host you have already opens instead."),
-            ("Set up a host by hand", "Enter a server's address, its name, and a laptop or desktop icon."),
+            ("Set up a host by hand", "Enter a server's address, its name, and its icon."),
             ("Startup command", "The command new terminals on a host run in place of its login shell."),
             ("Remote Hosts", "Edit the list to delete or reorder hosts, and ⓘ for a host's details."),
             ("A label for this device", "Name this device in Settings. Hosts see the label when it connects."),

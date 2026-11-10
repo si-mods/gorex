@@ -632,16 +632,6 @@
         }
       }
     },
-    "Laptop": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "笔记本"
-          }
-        }
-      }
-    },
     "Left Arrow": {
       "localizations": {
         "zh-Hans": {
@@ -1748,12 +1738,12 @@
         }
       }
     },
-    "Enter a server's address, its name, and a laptop or desktop icon.": {
+    "Enter a server's address, its name, and its icon.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "输入服务器地址、名称，并选择笔记本或台式机图标。"
+            "value": "输入服务器地址、名称，并选择图标。"
           }
         }
       }
@@ -3034,6 +3024,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "在线"
+          }
+        }
+      }
+    },
+    "Globe": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "地球"
+          }
+        }
+      }
+    },
+    "Server": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "服务器"
+          }
+        }
+      }
+    },
+    "Cloud": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "云"
           }
         }
       }

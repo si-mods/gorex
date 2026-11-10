@@ -245,6 +245,19 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(again.transport, .tailnet)
     }
 
+    /// A host saved before icons keeps its laptop or desktop; one saved
+    /// with an icon keeps it.
+    @MainActor func testHostIcon() throws {
+        func decode(_ s: String) throws -> HostConfig {
+            try JSONDecoder().decode(HostConfig.self, from: Data(#"{"id":"8C1F2D3E-4A5B-4C6D-8E7F-9A0B1C2D3E4F","name":"mac","url":"http:\/\/mac:7297",\#(s)}"#.utf8))
+        }
+        XCTAssertEqual(try decode(#""desktop":false"#).symbol, "laptopcomputer")
+        XCTAssertEqual(try decode(#""desktop":true"#).symbol, "desktopcomputer")
+        var h = try decode(#""desktop":false"#)
+        h.icon = "macmini"
+        XCTAssertEqual(try JSONDecoder().decode(HostConfig.self, from: JSONEncoder().encode(h)).symbol, "macmini")
+    }
+
     /// A host added with the built-in Tailscale on goes through it when
     /// its name is under the tailnet's suffix or its address is
     /// Tailscale's; with it off, every host goes the system's way.

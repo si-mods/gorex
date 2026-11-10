@@ -227,7 +227,7 @@ private struct HostSection: View {
             // The whole row folds the host's sessions away, but its menu:
             // glass, as it floats over the page.
             HStack(spacing: 10) {
-                Image(systemName: host.config.desktop ? "desktopcomputer" : "laptopcomputer")
+                Image(systemName: host.config.symbol)
                     .font(.title3)
                     .foregroundStyle(.secondary)
                 Text(host.config.name).font(.title.bold()).lineLimit(1)
