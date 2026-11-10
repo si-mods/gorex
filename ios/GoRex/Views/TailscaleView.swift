@@ -17,14 +17,18 @@ struct TailscaleView: View {
 
     var body: some View {
         let s = engine.status
+        let error = on ? engine.failure ?? s.error : nil
         List {
             Section {
-                header(s)
+                header(s, error: error)
                 Toggle("Built-in Tailscale", isOn: $on)
-                if on, s.state == "Running", let n = s.name {
-                    LabeledContent(String(n.prefix { $0 != "." })) { Text(s.ips?.first ?? "").monospaced() }
+                // Waiting for approval too: the admin approves it by this name.
+                if on, let n = s.name {
+                    LabeledContent(String(n.prefix { $0 != "." })) {
+                        if let ip = s.ips?.first { Text(ip).monospaced() }
+                    }
                 }
-                if on, let e = engine.failure ?? s.error { Text(e).font(.footnote).foregroundStyle(.red) }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
             } header: {
                 Text("Status")
             } footer: {
@@ -32,7 +36,7 @@ struct TailscaleView: View {
             }
             .listRowBackground(Color.card)
             if on {
-                if s.state != "Running" {
+                if !s.isRunning {
                     Section {
                         Button { Task { await engine.signIn() } } label: {
                             HStack {
@@ -60,6 +64,7 @@ struct TailscaleView: View {
                         ForEach(machines, id: \.name) { p in
                             HStack {
                                 Image(systemName: "circle.fill").font(.caption2).foregroundStyle(p.online ? .green : .secondary)
+                                    .accessibilityLabel(p.online ? Text("Online") : Text("Offline"))
                                 Text(HostConfig.name(p.name))
                                 Spacer(minLength: 8)
                                 Text(path(p)).foregroundStyle(.secondary)
@@ -99,6 +104,7 @@ struct TailscaleView: View {
                     Text("Device")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
+                        if let e = engine.renameFailure { Text(e).foregroundStyle(.red) }
                         if !TailnetEngine.validName(name) {
                             Text("A device name has letters, digits and hyphens, not at either end.").foregroundStyle(.red)
                         }
@@ -109,8 +115,7 @@ struct TailscaleView: View {
                     }
                 }
                 .listRowBackground(Color.card)
-                // A device with state of its own, signed in or waiting for approval.
-                if s.name != nil || !["NeedsLogin", "Stopped", "Starting", "NoState"].contains(s.state) {
+                if s.hasDevice {
                     Section {
                         Button("Sign Out", role: .destructive) { confirmSignOut = true }
                             .confirmationDialog("Sign out of Tailscale?", isPresented: $confirmSignOut, titleVisibility: .visible) {
@@ -149,21 +154,17 @@ struct TailscaleView: View {
 
     /// The status card, after rootshell's VPNStatusRow: Tailscale's tile
     /// with a dot of the state, what it is doing, and where it runs.
-    private func header(_ s: TailnetEngine.Status) -> some View {
-        let failed = on && engine.failure != nil
-        let (title, dot): (LocalizedStringResource, Color) =
-            if !on { ("Tailscale off", .gray) }
-            else if failed { ("Tailscale couldn't start", .red) }
-            else {
-                switch s.state {
-                case "Running": ("Tailscale connected", .green)
-                case "NeedsLogin": ("Tailscale needs sign-in", .orange)
-                case "NeedsMachineAuth": ("Tailscale waiting for approval", .orange)
-                default: ("Tailscale connecting…", .orange)
-                }
-            }
+    private func header(_ s: TailnetEngine.Status, error: String?) -> some View {
+        // A device that runs stays green; an error shows below the card.
+        let (title, dot, busy): (LocalizedStringResource, Color, Bool) =
+            if !on { ("Tailscale off", .gray, false) }
+            else if s.isRunning { ("Tailscale connected", .green, false) }
+            else if error != nil { ("Tailscale couldn't start", .red, false) }
+            else if s.needsLogin { ("Tailscale needs sign-in", .orange, false) }
+            else if s.awaitingApproval { ("Tailscale waiting for approval", .orange, false) }
+            else { ("Tailscale connecting…", .orange, true) }
         return HStack(spacing: 12) {
-            TailscaleTile(size: 44)
+            TailscaleGlyph.tile(size: 44)
                 .overlay(alignment: .bottomTrailing) {
                     Circle().fill(dot).frame(width: 12, height: 12)
                         .overlay(Circle().stroke(Color.card, lineWidth: 2))
@@ -174,7 +175,7 @@ struct TailscaleView: View {
                 Text("Tailscale inside Rex Go, no VPN").font(.subheadline).foregroundStyle(.secondary)
             }
             Spacer()
-            if on, !failed, !["Running", "NeedsLogin", "NeedsMachineAuth"].contains(s.state) {
+            if busy {
                 Image(systemName: "arrow.trianglehead.2.clockwise")
                     .symbolEffect(.rotate, isActive: true)
                     .foregroundStyle(.orange)
@@ -215,15 +216,11 @@ struct TailscaleGlyph: View {
     }
 }
 
-/// Tailscale's mark on a dark tile, as Settings draws a row's icon.
-struct TailscaleTile: View {
-    var size: CGFloat = 30
-
-    var body: some View {
-        TailscaleGlyph()
-            .frame(width: size * 0.55, height: size * 0.55)
-            .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: size * 0.24, style: .continuous))
+extension TailscaleGlyph {
+    /// The mark on a Settings tile of Tailscale's dark.
+    static func tile(size: CGFloat = 30) -> some View {
+        SettingsTile(color: Color(white: 0.12), size: size) {
+            TailscaleGlyph().frame(width: size * 0.55, height: size * 0.55)
+        }
     }
 }

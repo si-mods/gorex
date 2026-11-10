@@ -36,7 +36,7 @@ struct SettingsView: View {
                   page: AnyView(Themes(selection: $theme)))],
             [Item(title: "Terminal", icon: tile("apple.terminal.fill", .gray), page: AnyView(TerminalSettings())),
              Item(title: "Remote Hosts", icon: tile("globe", .orange), page: AnyView(RemoteHostsView())),
-             Item(title: "Tailscale", icon: AnyView(TailscaleTile()),
+             Item(title: "Tailscale", icon: AnyView(TailscaleGlyph.tile()),
                   value: String(localized: tailnet ? "On · Rex Go Only" : "Off"), page: AnyView(TailscaleView())),
              Item(title: "Grouping", icon: tile("rectangle.3.group.fill", .teal),
                   value: String(localized: Self.groupings.first { $0.0 == Grouping(stored: grouping).rawValue }?.1 ?? "Desktop Spaces"),
@@ -107,12 +107,22 @@ struct SettingsView: View {
         }
     }
 
-    /// A row's icon as the Settings app draws one: a white symbol on a
-    /// tile of a system color.
     private func tile(_ symbol: String, _ color: Color) -> AnyView {
-        AnyView(Image(systemName: symbol).font(.system(size: 17, weight: .medium)).foregroundStyle(.white)
-            .frame(width: 30, height: 30)
-            .background(color, in: RoundedRectangle(cornerRadius: 7, style: .continuous)))
+        AnyView(SettingsTile(color: color) { Image(systemName: symbol).font(.system(size: 17, weight: .medium)) })
+    }
+}
+
+/// A row's icon as the Settings app draws one: white content on a tile of
+/// a color, 30 points, or larger with the corners in proportion.
+struct SettingsTile<Content: View>: View {
+    let color: Color
+    var size: CGFloat = 30
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content.foregroundStyle(.white)
+            .frame(width: size, height: size)
+            .background(color, in: RoundedRectangle(cornerRadius: size * 7 / 30, style: .continuous))
     }
 }
 

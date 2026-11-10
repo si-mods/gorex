@@ -3027,6 +3027,16 @@
           }
         }
       }
+    },
+    "Online": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在线"
+          }
+        }
+      }
     }
   }
 }
