@@ -698,8 +698,9 @@ struct WindowRow<Mark: View>: View {
         HStack(spacing: 14) {
             ProgramTiles(front: host.programs[block], back: window.back.map { host.programs[$0] }).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
             Text(title.isEmpty ? " " : title)
-                .font(.body.weight(.medium))
-                .foregroundStyle(.primary)
+                // Regular and a little dimmed, as Rex sets a window's title.
+                .font(.body)
+                .foregroundStyle(.primary.opacity(0.8))
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
