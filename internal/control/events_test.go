@@ -43,7 +43,7 @@ func oneTab(t *testing.T, desk *rex.Client) func(name string) {
 
 // TestBridgePushed checks that the bridge, polling never, tells rootshell
 // of a change of the layout at once, and answers a layout command as soon
-// as the desktop saved it.
+// as the server made it.
 func TestBridgePushed(t *testing.T) {
 	setIntervals(t, time.Hour, time.Hour, settle)
 	desk := serve(t)
@@ -64,17 +64,7 @@ func TestBridgePushed(t *testing.T) {
 		t.Errorf("label %v", l)
 	}
 
-	// The desktop makes the rename, as the app does.
-	go func() {
-		cmd, err := desk.TakeCommand()
-		if err != nil || cmd == nil {
-			t.Errorf("take: %v %v", cmd, err)
-			return
-		}
-		name(cmd.Name)
-		desk.CommandDone(rex.LayoutCommand{ID: cmd.ID})
-	}()
-	time.Sleep(50 * time.Millisecond) // the take waits
+	// The server makes the rename itself: no window takes it.
 	began = time.Now()
 	res := result(t, r.call("tab.rename", map[string]any{"tab_id": tabID, "label": "c"}))
 	if d := time.Since(began); d > 250*time.Millisecond {
