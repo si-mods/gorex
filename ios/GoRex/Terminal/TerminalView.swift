@@ -445,7 +445,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// unless they hold on, as for the stick's repeats. Backspace is the
     /// keyboard's, which edits the composition first.
     func send(_ key: String, holding: Bool = false) {
-        guard key != "backspace" else { return changing { deleteBackward() } }
+        guard key != "backspace" else { return changing { apply(document.deleteBackward(chord: ctrl || alt)) } }
         forget()
         press([.named(key, shift: shift, ctrl: ctrl, alt: alt)])
         if !holding { release() }
@@ -490,8 +490,9 @@ final class TerminalView: UIView, TerminalOutput {
         changing { document.reset() }
     }
 
-    /// Tells the keyboard of a change it did not make.
-    private func changing(_ change: () -> Void) {
+    /// Tells the keyboard of a change it did not make, or not as it
+    /// predicted.
+    func changing(_ change: () -> Void) {
         inputDelegate?.textWillChange(self)
         inputDelegate?.selectionWillChange(self)
         change()
