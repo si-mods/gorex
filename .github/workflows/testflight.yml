@@ -32,18 +32,23 @@ defaults:
 jobs:
   upload:
     if: github.ref == 'refs/heads/main'
-    # Intel: GitHub's arm64 macOS runners were out of capacity for hours
-    # (2026-11-09), and a job no runner takes fails after 15 minutes. The
-    # Intel image has the same Xcode 26.
-    runs-on: macos-26-intel
+    # The Mac mini's own runner (~/actions-runner-gorex): GitHub's arm64
+    # macOS runners went hours without capacity, and its Intel ones are slow.
+    runs-on: gorex-testflight
     steps:
       # The history, for What to Test.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # The deployment target is iOS 26: the newest Xcode 26.
-      - run: sudo xcode-select -s "$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
-      - run: brew install asc xcodegen
+      # The deployment target is iOS 26: the newest Xcode_26*, as GitHub's
+      # images name them, else the Mac's own; DEVELOPER_DIR, as xcode-select
+      # needs sudo.
+      - run: |
+          shopt -s nullglob
+          x=$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)
+          [[ -z $x ]] || echo "DEVELOPER_DIR=$x/Contents/Developer" >> "$GITHUB_ENV"
+      - run: xcodebuild -version
+      - run: command -v asc xcodegen || brew install asc xcodegen
       # The script pins Ghostty's commit and Zig's version.
       - uses: actions/cache/restore@v4
         id: ghostty-vt
