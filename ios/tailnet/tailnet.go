@@ -218,7 +218,7 @@ func encode(v any) string {
 }
 
 // The proxy (proxy.go), one per process, started by the first call of
-// Proxy.
+// Proxy, and again by the first after it died.
 var (
 	proxMu sync.Mutex
 	prox   *proxy
@@ -227,11 +227,13 @@ var (
 // Proxy is the SOCKS5 proxy (proxy.go) as JSON: its address, as
 // 127.0.0.1:port, and its password; the user name is "tsnet". It serves
 // the tailnet while the device runs and the tailcat hosts, and keeps its
-// port and password for the process.
+// port and password until it dies, as when iOS reclaims its listener in a
+// suspension: then the next call starts a new one, of a new port and
+// password.
 func Proxy() (string, error) {
 	proxMu.Lock()
 	defer proxMu.Unlock()
-	if prox == nil {
+	if prox == nil || prox.dead() {
 		p, err := startProxy(dial)
 		if err != nil {
 			return "", err

@@ -28,8 +28,9 @@ struct HostConfig: Codable, Identifiable, Hashable {
     }
 }
 
-/// The built-in Tailscale's SOCKS5 proxy on loopback, of one run of the
-/// engine: user name "tsnet" and a password of that run.
+/// The built-in Tailscale's SOCKS5 proxy on loopback: user name "tsnet"
+/// and a password of its own. It lasts until iOS reclaims its listener in
+/// a suspension; then the engine has a new one (TailnetEngine.resume).
 struct LoopbackProxy: Equatable {
     let port: Int
     let password: String

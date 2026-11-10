@@ -94,3 +94,31 @@ func TestNotStarted(t *testing.T) {
 	}
 	Stop()
 }
+
+// A proxy whose listener died, as iOS reclaims a suspended app's, is
+// replaced by a new one that works.
+func TestProxyHeals(t *testing.T) {
+	j1, err := Proxy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxMu.Lock()
+	old := prox
+	proxMu.Unlock()
+	old.ln.Close()
+	<-old.done
+	j2, err := Proxy()
+	if err != nil || j2 == j1 {
+		t.Fatalf("Proxy() after its listener died = %s, %v; want a new one", j2, err)
+	}
+	var p struct{ Address, Password string }
+	json.Unmarshal([]byte(j2), &p)
+	// It speaks SOCKS5 and takes its password: a target off the tailnet
+	// is refused, not the credentials.
+	if _, err := socksConnect(p.Address, "tsnet", p.Password, "example.com", 80); err == nil || err.Error() != "connect refused" {
+		t.Errorf("the new proxy: %v; want the target refused", err)
+	}
+	if j3, _ := Proxy(); j3 != j2 {
+		t.Error("a live proxy was replaced")
+	}
+}

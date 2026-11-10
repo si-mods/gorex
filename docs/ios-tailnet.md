@@ -166,6 +166,10 @@ proxy exposes no LocalAPI on any port.
 The proxy keeps its port and password for the process, but its tailnet
 connections end with the engine's run: when the engine starts again,
 every `tailnet` host drops its session, makes a new one and reconnects.
+iOS can also reclaim a suspended app's listening socket (TN2277): a proxy
+whose listener died is replaced by the next `Proxy()`, of a new port and
+password, which `resume()` reads after the socket reset; the hosts'
+next session then goes through it.
 
 The protocol code (`ControlConnection`, `DataStream`, `Spaces`,
 `Upload`) changes only to take the host's session instead of

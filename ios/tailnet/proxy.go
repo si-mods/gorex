@@ -24,6 +24,9 @@ import (
 type proxy struct {
 	ln       net.Listener
 	password string
+	// done closes once the proxy stops serving: closed, or its listener
+	// reclaimed, as iOS may a suspended app's (Apple TN2277).
+	done chan struct{}
 }
 
 // startProxy serves the proxy, which connects through dial.
@@ -36,7 +39,7 @@ func startProxy(dial func(ctx context.Context, addr string) (net.Conn, error)) (
 	if err != nil {
 		return nil, err
 	}
-	p := &proxy{ln: ln, password: hex.EncodeToString(b[:])}
+	p := &proxy{ln: ln, password: hex.EncodeToString(b[:]), done: make(chan struct{})}
 	s := &socks5.Server{
 		Logf:     func(string, ...any) {},
 		Username: "tsnet",
@@ -48,11 +51,24 @@ func startProxy(dial func(ctx context.Context, addr string) (net.Conn, error)) (
 			return dial(ctx, addr)
 		},
 	}
-	go s.Serve(ln)
+	go func() {
+		s.Serve(ln)
+		close(p.done)
+	}()
 	return p, nil
 }
 
 func (p *proxy) close() { p.ln.Close() }
+
+// dead tells whether the proxy stopped serving.
+func (p *proxy) dead() bool {
+	select {
+	case <-p.done:
+		return true
+	default:
+		return false
+	}
+}
 
 // dial is the proxy's: a tailcat host by its name, else a device on the
 // running tailnet.
