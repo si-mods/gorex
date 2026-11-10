@@ -1,7 +1,7 @@
 # Rex's apps
 
 Rex's own apps, the iPhone one among them, connect to GoRex as they
-connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 11, from
+connect to a Rex server. `GoRex rexapi` serves Rex's API, revision 12, from
 the session server the GoRex app runs: the same WebSocket endpoints, the
 same messages, the same errors. Rex's apps need no change.
 
@@ -223,6 +223,13 @@ meets:
   that asks for the terminal blocks gets a ticket for each one, and opens
   its terminals without a `data.connect` round trip each. Only terminals
   have tickets, since every GoRex block is a terminal.
+- Revision 12's `listeners` on `server.status`, and on
+  `session.bootstrap`'s `server_status`, lists the local socket first, as
+  the primary endpoint (`peer_credentials`; on Windows its admission is
+  left out), then `--listen`'s port and the local network's listener
+  while it listens (`anonymous`), each with the address it is bound to.
+  Built-in Tailscale is not in the list, as on a Rex server: `tailscale`
+  describes it.
 
 ## Spaces across hosts
 

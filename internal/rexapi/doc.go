@@ -5,13 +5,16 @@
 // The wire is Rex's own. A control connection at /api/control carries
 // JSON messages, a data connection at /api/data streams a block's output,
 // and /api/help, /llms.txt and /llms.html describe the API. The package
-// speaks revision 10, the revision of the documentation in testdata:
-// revision 8 added session.bootstrap's data_tickets, which hands a client
-// the tickets data.connect would issue, so a terminal opens without a
-// round trip first; revision 9 added session.set_layer_state and a
-// layer's state, so a floating layer can be minimized; and revision 10
-// added built-in Tailscale's control_url, for a control server such as
-// Headscale.
+// speaks revision 12; the documentation in testdata is revision 10's, and
+// /llms.txt appends what revisions 11 and 12 add. Revision 8 added
+// session.bootstrap's data_tickets, which hands a client the tickets
+// data.connect would issue, so a terminal opens without a round trip
+// first; revision 9 added session.set_layer_state and a layer's state, so
+// a floating layer can be minimized; revision 10 added built-in
+// Tailscale's control_url, for a control server such as Headscale;
+// revision 11 added terminal uploads; and revision 12 added
+// server.status's listeners, the endpoints the server accepts
+// connections on.
 //
 // The server reads the layout from the GoRex server the app keeps
 // (internal/rex), maps it, and tells its clients of the changes it sees.
@@ -75,6 +78,7 @@
 // | server.config_reload | no configuration file: counts a generation and sends keymap_changed |
 // | hosts.list | an empty list; hosts.put and hosts.remove fail with not_supported |
 // | server.tailscale.* | built-in Tailscale is tsnet, a device of the gateway's own named <hostname>-gorex; the methods are for the local Unix socket only (403 elsewhere), as Rex's are; on Windows, where the socket gives no credentials, its file's permissions are the boundary |
+// | server.status, session.bootstrap (server_status) listeners | the local socket (primary), --listen's address, and the local network's while it listens; on Windows the socket's admission is left out, since its file's permissions, not credentials, are the boundary. A gateway that serves no listener of its own, as in tests, leaves the list out. The help document is revision 10's: help.all and session.help add the list's schema for a client at revision 12 or later; /api/help serves the revision 10 document as it is |
 // | server.status, session.bootstrap (server_status), tailscale_status_changed | tailscale.auth_url only over the local Unix socket: the sign-in link binds the device to whoever opens it first, and a new link alone sends the other transports no tailscale_status_changed |
 // | block_owner_changed | two reasons of GoRex's own: taken (a desktop pane took the session's size, or the lock's lease ran out, so the block has no owner) and input (a client that took the block typed into it, and took it again) |
 // | session.own_block, session.disown_block, session.create | need the GoRex server to keep the gateway's connection alive, which the size locks take; otherwise not_supported |

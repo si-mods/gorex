@@ -26,7 +26,11 @@ func schemaFor(t *testing.T, method string) *jsonschema.Schema {
 			} `json:"methods"`
 		} `json:"block_types"`
 	}
-	if err := json.Unmarshal(helpJSON, &doc); err != nil {
+	served, err := json.Marshal(helpAllDocument(apiRevision))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(served, &doc); err != nil {
 		t.Fatal(err)
 	}
 	output := json.RawMessage(nil)

@@ -181,3 +181,34 @@ func TestStatusHidesRevisionsOverWire(t *testing.T) {
 		t.Fatalf("revision 2 api_revision = %v", status["api_revision"])
 	}
 }
+
+// TestHelpListenersFollowRevision checks that help.all documents
+// server.status's listeners only to a client at revision 12 or later,
+// as only such a client is sent them.
+func TestHelpListenersFollowRevision(t *testing.T) {
+	documents := func(rev int) bool {
+		var methods []struct {
+			Name   string `json:"name"`
+			Output struct {
+				Properties map[string]json.RawMessage `json:"properties"`
+			} `json:"output_schema"`
+		}
+		if err := json.Unmarshal(helpAllDocument(rev)["methods"], &methods); err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range methods {
+			if m.Name == "server.status" {
+				_, ok := m.Output.Properties["listeners"]
+				return ok
+			}
+		}
+		t.Fatal("no server.status in help.all")
+		return false
+	}
+	if documents(11) {
+		t.Error("revision 11 is told of listeners")
+	}
+	if !documents(12) {
+		t.Error("revision 12 is not told of listeners")
+	}
+}

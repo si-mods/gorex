@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -292,6 +293,48 @@ type statusResult struct {
 	APIRevision    int          `json:"api_revision,omitempty"`
 	APIMinRevision int          `json:"api_min_revision,omitempty"`
 	Config         configResult `json:"config"`
+	// Listeners are the endpoints the gateway accepts connections on,
+	// primary first, as revision 12 reports them. Built-in Tailscale is
+	// not among them: tailscale describes it.
+	Listeners []listenerStatus `json:"listeners,omitempty"`
+}
+
+// listenerStatus is one endpoint of server.status's listeners: what it
+// was configured with, where it is bound, and whom it lets in.
+type listenerStatus struct {
+	Endpoint  string   `json:"endpoint"`
+	Addresses []string `json:"addresses,omitempty"`
+	Transport string   `json:"transport"`
+	Admission string   `json:"admission,omitempty"`
+	Primary   bool     `json:"primary,omitempty"`
+}
+
+// How a listener lets callers in, as revision 12 names it.
+const (
+	admissionPeer      = "peer_credentials"
+	admissionAnonymous = "anonymous"
+)
+
+// addListener adds a listener that serves until the gateway stops to
+// those server.status lists, after the ones added before it.
+func (g *Gateway) addListener(l listenerStatus) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.listeners = append(g.listeners, l)
+}
+
+// listenersNow returns the listeners the gateway serves on: the ones
+// added, then the local network's while it listens.
+func (g *Gateway) listenersNow() []listenerStatus {
+	g.mu.Lock()
+	out := slices.Clone(g.listeners)
+	g.mu.Unlock()
+	if g.lan != nil {
+		if l, ok := g.lan.listener(); ok {
+			out = append(out, l)
+		}
+	}
+	return out
 }
 
 type configResult struct {
@@ -315,6 +358,7 @@ func (g *Gateway) status(transport string) statusResult {
 		APIRevision:  apiRevision,
 		Config:       configResult{Generation: generation, Hash: hash},
 		Tailscale:    g.tailscaleStatus(transport),
+		Listeners:    g.listenersNow(),
 	}
 }
 

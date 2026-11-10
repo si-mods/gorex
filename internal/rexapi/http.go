@@ -55,11 +55,13 @@ func serveHelp(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveLLMs serves the API documentation as Markdown, with the revision
-// 11 supplement appended, since the embedded document is revision 10's.
+// 11 and 12 supplements appended, since the embedded document is
+// revision 10's.
 func serveLLMs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write(llmsText)
 	w.Write(llmsRev11)
+	w.Write(llmsRev12)
 }
 
 // llmsRev11 documents what revision 11 adds, which the revision 10
@@ -68,7 +70,7 @@ var llmsRev11 = []byte(`
 
 ## Revision 11: Terminal Uploads
 
-Revision 11 adds terminal uploads. The server speaks API revisions 0 through 11.
+Revision 11 adds terminal uploads.
 
 ### com.superlogical.terminal.upload_begin
 
@@ -101,11 +103,46 @@ block's top-left corner, or null when only the cell is known, and ` + "`buttons`
 after the event, whose motion with a button held is a drag.
 `)
 
+// llmsRev12 documents what revision 12 adds. Its prose comes from Rex
+// 0.1.0-preview.14's revision note and schema.
+var llmsRev12 = []byte(`
+## Revision 12: Server Listeners
+
+Revision 12 adds the endpoints the server accepts connections on. The server speaks API revisions 0 through 12.
+
+### server.status listeners
+
+The result of ` + "`server.status`" + ` has a new member, ` + "`listeners`" + `: each endpoint the server accepts connections
+on, the primary endpoint first, then the extra listeners in the order they were configured. The
+` + "`server_status`" + ` member of the ` + "`session.bootstrap`" + ` result is the same object, so it has the list too. The list
+doesn't include built-in Tailscale, which can start and stop while the server runs; the ` + "`tailscale`" + `
+member describes it. Servers older than API revision 12 leave the list out, and a missing list means
+unknown; a client of an older revision doesn't get it.
+
+- ` + "`endpoint`" + ` (string, required): The endpoint the listener was configured with, such as
+  ` + "`unix:///run/rex.sock`" + `, ` + "`127.0.0.1:7297`" + `, or ` + "`tailnet://:7297`" + `.
+- ` + "`addresses`" + ` (array of strings): The addresses the listener is bound to, such as a socket path or
+  ` + "`127.0.0.1:54321`" + `. They show the port that an endpoint like ` + "`127.0.0.1:0`" + ` got. Left out when the server can't tell.
+- ` + "`transport`" + ` (string, required): How the listener identifies its callers: ` + "`unix`" + `, ` + "`named_pipe`" + `, ` + "`tcp`" + `, or
+  ` + "`tailscale`" + `. Show a value you don't know as it is.
+- ` + "`admission`" + ` (string): Which callers the listener lets in: ` + "`peer_credentials`" + `, ` + "`anonymous`" + `,
+  ` + "`tailscale_owner`" + `, ` + "`tailscale_identified`" + `, or ` + "`login_server`" + `. Left out when the server can't tell. Show a
+  value you don't know as it is. A TCP listener whose admission is ` + "`anonymous`" + ` gives full access to anyone
+  who can reach it.
+- ` + "`primary`" + ` (boolean): True for the server's primary endpoint, where commands such as ` + "`rex server status`" + ` and
+  ` + "`rex server stop`" + ` look for the server. Left out for the other listeners. Exactly one listener is primary.
+
+Example:
+
+    "listeners": [{"endpoint": "unix:///run/user/1000/rex/server.sock", "addresses": ["/run/user/1000/rex/server.sock"], "transport": "unix", "admission": "peer_credentials", "primary": true}, {"endpoint": "127.0.0.1:0", "addresses": ["127.0.0.1:52061"], "transport": "tcp", "admission": "anonymous"}]
+`)
+
 // serveLLMsHTML serves the documentation in a simple HTML wrapper.
 func serveLLMsHTML(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	io.WriteString(w, "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Rex API</title>\n<pre>")
 	io.WriteString(w, html.EscapeString(string(llmsText)))
 	io.WriteString(w, html.EscapeString(string(llmsRev11)))
+	io.WriteString(w, html.EscapeString(string(llmsRev12)))
 	io.WriteString(w, "</pre>\n")
 }

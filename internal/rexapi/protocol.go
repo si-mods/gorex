@@ -22,10 +22,10 @@ const (
 	// apiRevision is the newest revision of Rex's API this package serves:
 	// revision 8 adds session.bootstrap's data_tickets, revision 9
 	// session.set_layer_state and a layer's state, revision 10 built-in
-	// Tailscale's control_url, and revision 11 com.superlogical.terminal
+	// Tailscale's control_url, revision 11 com.superlogical.terminal
 	// .upload_begin and the rex.data.bytes.v1 data stream that carries
-	// its file.
-	apiRevision = 11
+	// its file, and revision 12 server.status's listeners.
+	apiRevision = 12
 	// apiMinRevision is the oldest revision it serves. A client that
 	// negotiates an older revision gets that revision's shape: requests
 	// are translated up and results back down by revisions.go.

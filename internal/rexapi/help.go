@@ -177,6 +177,71 @@ var uploadBeginEntry = map[string]any{
 	},
 }
 
+// listenersSchema is revision 12's listeners member of server.status,
+// which the revision 10 document predates. Its descriptions come from
+// Rex 0.1.0-preview.14's schema.
+var listenersSchema = map[string]any{
+	"type":        "array",
+	"description": "Each endpoint the server accepts connections on, primary first. Servers older than API revision 12 leave it out. Doesn't include built-in Tailscale, which the tailscale member describes.",
+	"items": map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"endpoint": map[string]any{
+				"type":        "string",
+				"description": "The endpoint the listener was configured with, such as unix:///run/rex.sock, 127.0.0.1:7297, or tailnet://:7297.",
+			},
+			"addresses": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "The addresses the listener is bound to, such as a socket path or 127.0.0.1:54321. They show the port that an endpoint like 127.0.0.1:0 got. Left out when the server can't tell.",
+			},
+			"transport": map[string]any{
+				"type":        "string",
+				"description": "How the listener identifies its callers: 'unix', 'named_pipe', 'tcp', or 'tailscale'. Show a value you don't know as it is.",
+			},
+			"admission": map[string]any{
+				"type":        "string",
+				"description": "Which callers the listener lets in: 'peer_credentials', 'anonymous', 'tailscale_owner', 'tailscale_identified', or 'login_server'. Left out when the server can't tell. Show a value you don't know as it is.",
+			},
+			"primary": map[string]any{
+				"type":        "boolean",
+				"description": "True for the server's primary endpoint, where commands such as rex server status and rex server stop look for the server. Left out for the other listeners.",
+			},
+		},
+		"required": []any{"endpoint", "transport"},
+	},
+}
+
+// laterSchema returns a method's entry of the help document as a client
+// at rev sees it: from revision 12, server.status's result, and
+// session.bootstrap's server_status, have listenersSchema, which the
+// revision 10 document predates. Other entries are returned as they are.
+func laterSchema(rev int, name string, raw json.RawMessage) json.RawMessage {
+	if rev < 12 || name != "server.status" && name != "session.bootstrap" {
+		return raw
+	}
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil {
+		return raw
+	}
+	out, _ := m["output_schema"].(map[string]any)
+	if name == "session.bootstrap" {
+		props, _ := out["properties"].(map[string]any)
+		out, _ = props["server_status"].(map[string]any)
+	}
+	props, ok := out["properties"].(map[string]any)
+	if !ok {
+		return raw
+	}
+	props["listeners"] = listenersSchema
+	b, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return b
+}
+
 // methodBlockCreatorList lists the creators GoRex can make blocks with:
 // Rex's terminal, as Rex describes it. A method or option it lists that
 // GoRex lacks fails when it is called, with the code doc.go gives.
@@ -222,7 +287,7 @@ func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 		if !implementedMethods[m.Name] || !methodAvailable(rev, m.Name) {
 			continue
 		}
-		kept = append(kept, raw)
+		kept = append(kept, laterSchema(rev, m.Name, raw))
 	}
 	doc["methods"], _ = json.Marshal(kept)
 	var blocks []json.RawMessage
@@ -265,7 +330,7 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 		if json.Unmarshal(raw, &m) != nil || !methodAvailable(rev, m.Name) {
 			continue
 		}
-		kept = append(kept, raw)
+		kept = append(kept, laterSchema(rev, m.Name, raw))
 	}
 	doc["methods"], _ = json.Marshal(kept)
 	var blocks []json.RawMessage

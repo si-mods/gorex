@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -149,6 +150,10 @@ func run(c *rex.Client, o runOptions) error {
 	}
 	defer os.Remove(o.socket)
 	defer unixLn.Close()
+	g.addListener(listenerStatus{
+		Endpoint: unixEndpoint(o.socket), Addresses: []string{o.socket},
+		Transport: transportUnix, Admission: unixAdmission, Primary: true,
+	})
 	go func() { serveErr <- g.serveOn(unixLn, transportUnix) }()
 	if o.announce {
 		fmt.Printf("rexapi: listening on unix://%s\n", o.socket)
@@ -160,6 +165,10 @@ func run(c *rex.Client, o runOptions) error {
 		}
 		tl := newTrackedListener(ln)
 		defer tl.Close()
+		g.addListener(listenerStatus{
+			Endpoint: o.listen, Addresses: []string{ln.Addr().String()},
+			Transport: transportTCP, Admission: admissionAnonymous,
+		})
 		go func() { serveErr <- g.serveOn(tl, transportTCP) }()
 		if o.announce {
 			fmt.Printf("rexapi: listening on http://%s\n", ln.Addr())
@@ -315,4 +324,17 @@ func listenUnix(path string) (*trackedListener, error) {
 	}
 	os.Chmod(path, 0o600)
 	return newTrackedListener(ln), nil
+}
+
+// unixEndpoint is the unix:// URL of the socket at path, absolute and
+// with forward slashes, so that a Windows path reads unix:///C:/...
+func unixEndpoint(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	path = filepath.ToSlash(path)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return "unix://" + path
 }
