@@ -141,6 +141,12 @@ nonisolated final class HostTests: XCTestCase {
         await until("removed") { h.statuses["b"]?.isEmpty == true }
         XCTAssertNil(h.status(["b"]))
         XCTAssertEqual(told.count, 2)
+
+        // Done shows until the user sees it.
+        records(["id": "claude", "state": "done", "app": "claude"])
+        await until("done") { h.status(["b"])?.state == "done" }
+        h.see("b")
+        XCTAssertNil(h.status(["b"]))
     }
 
     /// A window's records are read as it shows, without telling: the

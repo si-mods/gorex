@@ -464,9 +464,9 @@ final class Host: Identifiable {
     }
 
     /// The record of blocks that most needs the user, as the desktop's dot
-    /// shows it: one blocked first.
+    /// shows it: one blocked first; done and error records seen do not count.
     func status(_ blocks: [String]) -> ProgramStatus? {
-        blocks.flatMap { statuses[$0] ?? [] }.max { $0.rank < $1.rank }
+        blocks.compactMap { ProgramStatus.mostUrgent(statuses[$0] ?? [], seen: seen[$0] ?? []) }.max { $0.rank < $1.rank }
     }
 
     /// Marks a block's done and error records seen, as the desktop's pane
