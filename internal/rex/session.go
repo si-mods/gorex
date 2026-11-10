@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -334,47 +335,76 @@ var starterMarkers = map[string]bool{
 	"__PI_NATIVE_VARIANT_CACHE": true,
 }
 
+// rexMarkers are the starterMarkers that Rex itself sets. A Rex session
+// has them, but it is not an agent's, so they are no proof of an agent.
+var rexMarkers = map[string]bool{
+	"REX_SESSION": true, "REX_BLOCK": true, "REX_SERVER": true, "REX_BIN_DIR": true,
+}
+
 func starterMarker(k string) bool { return starterMarkers[k] }
 
-// agentEnvVars are the variables an agent's tool shell sets so its commands
-// never wait for a person: no color, no pager, no editor, no prompt. A
-// terminal of a person needs none of them. cleanEnv drops them only when an
-// agent started this process, so a user's own NO_COLOR stays. User
-// configuration such as npm_config_cache stays too.
-var agentEnvVars = map[string]bool{
-	"NO_COLOR": true, "CI": true, "AGENT": true,
-	"PAGER": true, "GIT_PAGER": true, "GH_PAGER": true, "MANPAGER": true, "BAT_PAGER": true,
-	"DELTA_PAGER": true, "GLAB_PAGER": true, "HOMEBREW_PAGER": true, "MYSQL_PAGER": true,
-	"PSQL_PAGER": true, "SYSTEMD_PAGER": true, "AWS_PAGER": true,
-	"EDITOR": true, "VISUAL": true, "GIT_EDITOR": true, "GIT_SEQUENCE_EDITOR": true,
-	"GIT_TERMINAL_PROMPT": true, "GCM_INTERACTIVE": true, "GH_PROMPT_DISABLED": true,
-	"GPG_TTY": true, "SSH_ASKPASS": true, "DEBIAN_FRONTEND": true,
-	"CLOUDSDK_CORE_DISABLE_PROMPTS": true, "COMPOSER_NO_INTERACTION": true,
-	"TF_INPUT": true, "TF_IN_AUTOMATION": true, "PIP_NO_INPUT": true,
-	"PIP_DISABLE_PIP_VERSION_CHECK": true, "npm_config_yes": true, "npm_config_progress": true,
-	"npm_config_audit": true, "npm_config_fund": true, "npm_config_update_notifier": true,
-	"YARN_ENABLE_PROGRESS_BARS": true, "YARN_ENABLE_TELEMETRY": true,
-	"PNPM_DISABLE_SELF_UPDATE_CHECK": true, "PNPM_UPDATE_NOTIFIER": true,
-	"CARGO_TERM_PROGRESS_WHEN": true,
+// agentMarker reports a marker that only an agent sets.
+func agentMarker(k string) bool { return starterMarkers[k] && !rexMarkers[k] }
+
+// anyValue in agentEnvVars means the variable goes whatever its value.
+var anyValue []string
+
+// agentEnvVars are the variables an agent's tool shell sets, with the
+// values it sets, so its commands never wait for a person: no color, no
+// pager, no editor, no prompt. A terminal of a person needs none of them.
+// cleanEnv drops one only when an agent started this process and the value
+// is the agent's, so a user's own EDITOR=nvim or PAGER=less stays. User
+// configuration such as npm_config_cache stays too. Names are upper case;
+// see foldName.
+var agentEnvVars = map[string][]string{
+	"NO_COLOR": anyValue, "CI": {"true", "1"}, "AGENT": {"1"},
+	"PAGER": {"cat"}, "GIT_PAGER": {"cat"}, "GH_PAGER": {"cat"}, "MANPAGER": {"cat"},
+	"BAT_PAGER": {"cat"}, "DELTA_PAGER": {"cat"}, "GLAB_PAGER": {"cat"},
+	"HOMEBREW_PAGER": {"cat"}, "MYSQL_PAGER": {"cat"}, "PSQL_PAGER": {"cat"},
+	"SYSTEMD_PAGER": {"cat"}, "AWS_PAGER": {""},
+	"EDITOR": {"true"}, "VISUAL": {"true"}, "GIT_EDITOR": {"true"}, "GIT_SEQUENCE_EDITOR": {"true"},
+	"GIT_TERMINAL_PROMPT": {"0"}, "GCM_INTERACTIVE": {"never"}, "GH_PROMPT_DISABLED": {"1"},
+	"GPG_TTY": {"not a tty"}, "SSH_ASKPASS": {"false"}, "DEBIAN_FRONTEND": {"noninteractive"},
+	"CLOUDSDK_CORE_DISABLE_PROMPTS": {"1"}, "COMPOSER_NO_INTERACTION": {"1"},
+	"TF_INPUT": {"0"}, "TF_IN_AUTOMATION": {"1"}, "PIP_NO_INPUT": {"1"},
+	"PIP_DISABLE_PIP_VERSION_CHECK": {"1"}, "NPM_CONFIG_YES": {"true"}, "NPM_CONFIG_PROGRESS": {"false"},
+	"NPM_CONFIG_AUDIT": {"false"}, "NPM_CONFIG_FUND": {"false"}, "NPM_CONFIG_UPDATE_NOTIFIER": {"false"},
+	"YARN_ENABLE_PROGRESS_BARS": {"0"}, "YARN_ENABLE_TELEMETRY": {"0"},
+	"PNPM_DISABLE_SELF_UPDATE_CHECK": {"true"}, "PNPM_UPDATE_NOTIFIER": {"false"},
+	"CARGO_TERM_PROGRESS_WHEN": {"never"},
+}
+
+// foldName upper-cases the names that match without case: all on Windows,
+// and npm_config_* everywhere, as npm reads both cases on every platform.
+func foldName(k string) string {
+	if runtime.GOOS == "windows" || strings.HasPrefix(strings.ToLower(k), "npm_config_") {
+		return strings.ToUpper(k)
+	}
+	return k
 }
 
 // cleanEnv returns environ without starter markers. When an agent started
-// this process (a marker is present, or AGENT is set), it also drops the
-// agent's non-interactive variables. It must run where the markers are
-// still visible, so the server gets the cleaned environment and its
-// sessions inherit it. Names match exactly, also on Windows.
+// this process (an agent marker is present, or AGENT=1), it also drops the
+// agent's non-interactive variables that still have the agent's value. It
+// must run where the markers are still visible, so the server gets the
+// cleaned environment and its sessions inherit it. A server cleaned
+// before AGENT=1 stayed has no markers, but AGENT=1 still marks it, so an
+// upgrade cleans it too.
 func cleanEnv(environ []string) []string {
 	agent := false
 	for _, kv := range environ {
-		if k, _, _ := strings.Cut(kv, "="); starterMarker(k) || k == "AGENT" {
+		if k, v, _ := strings.Cut(kv, "="); agentMarker(k) || foldName(k) == "AGENT" && v == "1" {
 			agent = true
 			break
 		}
 	}
 	var env []string
 	for _, kv := range environ {
-		k, _, _ := strings.Cut(kv, "=")
-		if starterMarker(k) || agent && agentEnvVars[k] {
+		k, v, _ := strings.Cut(kv, "=")
+		if starterMarker(k) {
+			continue
+		}
+		if vals, ok := agentEnvVars[foldName(k)]; agent && ok && (vals == nil || slices.Contains(vals, v)) {
 			continue
 		}
 		env = append(env, kv)
@@ -394,6 +424,8 @@ func serverEnv() []string { return cleanEnv(os.Environ()) }
 func sessionEnv(id string, extra []string, local bool) []string {
 	var env []string
 	hasLang := false
+	// The server's environment is clean already (serverEnv). cleanEnv here
+	// only guards a server run by hand with AGENT=1 or a marker.
 	for _, kv := range cleanEnv(os.Environ()) {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
@@ -404,8 +436,7 @@ func sessionEnv(id string, extra []string, local bool) []string {
 			k == "COLUMNS", k == "LINES", k == "SHLVL", k == "OLDPWD", k == "PWD", k == "_",
 			strings.HasPrefix(k, "ITERM_"), strings.HasPrefix(k, "GHOSTTY_"), strings.HasPrefix(k, "KITTY_"),
 			strings.HasPrefix(k, "VSCODE_"), strings.HasPrefix(k, "WEZTERM_"), strings.HasPrefix(k, "ALACRITTY_"),
-			strings.HasPrefix(k, "GOREX_"), strings.HasPrefix(k, "MYGO_"),
-			starterMarker(k):
+			strings.HasPrefix(k, "GOREX_"), strings.HasPrefix(k, "MYGO_"):
 			continue
 		case k == "LANG" || k == "LC_ALL" || k == "LC_CTYPE":
 			hasLang = true

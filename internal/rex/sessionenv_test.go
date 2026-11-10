@@ -2,6 +2,7 @@ package rex
 
 import (
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -140,15 +141,52 @@ func TestCleanEnv(t *testing.T) {
 			keep: []string{"FOO"},
 		},
 		{
-			name: "AGENT alone counts as an agent",
+			name: "AGENT=1 alone counts as an agent",
 			in:   []string{"AGENT=1", "NO_COLOR=1", "CI=true", "FOO=bar"},
 			drop: []string{"AGENT", "NO_COLOR", "CI"},
 			keep: []string{"FOO"},
 		},
 		{
+			name: "bare AGENT is no evidence",
+			in:   []string{"AGENT=other", "NO_COLOR=1", "PAGER=cat"},
+			keep: []string{"AGENT", "NO_COLOR", "PAGER"},
+		},
+		{
+			name: "rex markers are no evidence but are dropped",
+			in:   []string{"REX_SESSION=a", "REX_BLOCK=b", "REX_SERVER=c", "REX_BIN_DIR=d", "NO_COLOR=1", "PAGER=cat", "CI=true"},
+			drop: []string{"REX_SESSION", "REX_BLOCK", "REX_SERVER", "REX_BIN_DIR"},
+			keep: []string{"NO_COLOR", "PAGER", "CI"},
+		},
+		{
 			name: "normal environment keeps user variables",
 			in:   []string{"NO_COLOR=1", "CI=true", "PAGER=less", "EDITOR=vim", "CLAUDE_CONFIG_DIR=/cfg"},
 			keep: []string{"NO_COLOR", "CI", "PAGER", "EDITOR", "CLAUDE_CONFIG_DIR"},
+		},
+		{
+			name: "user values stay through an agent",
+			in:   []string{"CLAUDECODE=1", "EDITOR=nvim", "PAGER=less", "CI=false", "GIT_EDITOR=code --wait", "EDITOR2=x"},
+			drop: []string{"CLAUDECODE"},
+			keep: []string{"EDITOR", "PAGER", "CI", "GIT_EDITOR", "EDITOR2"},
+		},
+		{
+			name: "values the agent sets are dropped",
+			in:   []string{"CLAUDECODE=1", "CI=1", "AWS_PAGER=", "GPG_TTY=not a tty", "EDITOR=true", "NO_COLOR=whatever"},
+			drop: []string{"CI", "AWS_PAGER", "GPG_TTY", "EDITOR", "NO_COLOR"},
+		},
+		{
+			name: "npm_config names match in any case",
+			in:   []string{"CLAUDECODE=1", "NPM_CONFIG_YES=true", "NPM_CONFIG_AUDIT=false", "npm_config_fund=false", "NPM_CONFIG_CACHE=/c"},
+			drop: []string{"NPM_CONFIG_YES", "NPM_CONFIG_AUDIT", "npm_config_fund"},
+			keep: []string{"NPM_CONFIG_CACHE"},
+		},
+		{
+			// A server cleaned before this fix has no markers, but still
+			// has AGENT=1 and the agent's values. The upgrade re-exec
+			// runs serverEnv in it.
+			name: "tainted server without markers is cleaned on upgrade",
+			in:   []string{"AGENT=1", "NO_COLOR=1", "CI=true", "PAGER=cat", "GIT_PAGER=cat", "EDITOR=true", "PATH=/bin", "HOME=/h"},
+			drop: []string{"AGENT", "NO_COLOR", "CI", "PAGER", "GIT_PAGER", "EDITOR"},
+			keep: []string{"PATH", "HOME"},
 		},
 	}
 	for _, tt := range tests {
@@ -168,19 +206,44 @@ func TestCleanEnv(t *testing.T) {
 	}
 }
 
-func TestSessionEnvDropsAgentVariables(t *testing.T) {
-	t.Setenv("OMPCODE", "1")
-	t.Setenv("NO_COLOR", "1")
-	t.Setenv("CI", "true")
-	t.Setenv("PAGER", "cat")
-	t.Setenv("CLAUDE_CONFIG_DIR", "/cfg")
+func TestCleanEnvFoldsWindowsNames(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("names are case-sensitive here")
+	}
+	got := envMap(cleanEnv([]string{"CLAUDECODE=1", "Pager=cat", "no_color=1"}))
+	for _, k := range []string{"Pager", "no_color"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("%s was kept", k)
+		}
+	}
+}
+
+// TestSessionEnvAfterServerEnv follows the real path: an agent starts the
+// server, serverEnv cleans the environment, the server runs with it, and
+// sessionEnv builds a session from it. The server itself never has a marker.
+func TestSessionEnvAfterServerEnv(t *testing.T) {
+	agent := []string{
+		"CLAUDECODE=1", "AGENT=1", "NO_COLOR=1", "CI=true", "GIT_PAGER=cat",
+		"PAGER=less", "EDITOR=nvim", "CLAUDE_CONFIG_DIR=/cfg",
+	}
+	names := []string{"CLAUDECODE", "AGENT", "NO_COLOR", "CI", "GIT_PAGER", "PAGER", "EDITOR", "CLAUDE_CONFIG_DIR"}
+	for _, k := range names { // restore the real values after the test
+		t.Setenv(k, "")
+		os.Unsetenv(k)
+	}
+	for _, kv := range cleanEnv(agent) {
+		k, v, _ := strings.Cut(kv, "=")
+		t.Setenv(k, v)
+	}
 	got := envMap(sessionEnv("abc", nil, true))
-	for _, k := range []string{"OMPCODE", "NO_COLOR", "CI", "PAGER"} {
+	for _, k := range []string{"CLAUDECODE", "AGENT", "NO_COLOR", "CI", "GIT_PAGER"} {
 		if _, ok := got[k]; ok {
 			t.Errorf("%s leaked into the session environment", k)
 		}
 	}
-	if got["CLAUDE_CONFIG_DIR"] != "/cfg" {
-		t.Errorf("CLAUDE_CONFIG_DIR = %q, want /cfg", got["CLAUDE_CONFIG_DIR"])
+	for k, want := range map[string]string{"PAGER": "less", "EDITOR": "nvim", "CLAUDE_CONFIG_DIR": "/cfg"} {
+		if got[k] != want {
+			t.Errorf("%s = %q, want %q", k, got[k], want)
+		}
 	}
 }
