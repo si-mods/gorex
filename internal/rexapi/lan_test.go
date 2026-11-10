@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -495,4 +496,16 @@ func nilIfEmpty(s string) any {
 		return nil
 	}
 	return s
+}
+
+// TestUnixEndpointEscapes checks that the primary endpoint is written as
+// Rex writes its own, with a space in the path escaped.
+func TestUnixEndpointEscapes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a Unix path")
+	}
+	got := unixEndpoint("/Users/me/Library/Application Support/GoRex/rexapi.sock")
+	if want := "unix:///Users/me/Library/Application%20Support/GoRex/rexapi.sock"; got != want {
+		t.Errorf("got %s, want %s", got, want)
+	}
 }

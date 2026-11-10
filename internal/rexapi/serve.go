@@ -327,7 +327,9 @@ func listenUnix(path string) (*trackedListener, error) {
 }
 
 // unixEndpoint is the unix:// URL of the socket at path, absolute and
-// with forward slashes, so that a Windows path reads unix:///C:/...
+// with forward slashes, escaped as Rex writes it: a space is %20, as in
+// unix:///Users/me/Library/Application%20Support/rex/server.sock, and a
+// Windows path reads unix:///C:/...
 func unixEndpoint(path string) string {
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
@@ -336,5 +338,5 @@ func unixEndpoint(path string) string {
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
-	return "unix://" + path
+	return (&url.URL{Scheme: "unix", Path: path}).String()
 }
