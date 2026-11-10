@@ -44,6 +44,17 @@ nonisolated final class WebLinkTests: XCTestCase {
         XCTAssertNotNil(opens("https://example.com/你好", matched: false))
     }
 
+    /// A selection opens only when it is the link alone, the spaces round
+    /// it and the text a matched link drops aside.
+    func testSelected() {
+        for text in ["https://example.com/a", " https://example.com/a\n", "https://example.com/a。", "https://example.com/a的说明"] {
+            XCTAssertEqual(WebLink.selected(text)?.absoluteString, "https://example.com/a", text)
+        }
+        for text in ["https://example.com/a and more", "https://example.com/a\nnext line", "see https://example.com/a", "https://example.com/a\u{3000}的"] {
+            XCTAssertNil(WebLink.selected(text), text)
+        }
+    }
+
     /// Only web and mail links open.
     func testSchemes() {
         for text in ["file:///etc/hosts", "javascript:alert(1)", "ssh://host", "tel:123", "myapp://x", "/usr/bin", "example.com"] {

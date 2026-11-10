@@ -1372,6 +1372,16 @@
         }
       }
     },
+    "Open in Browser": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在浏览器中打开"
+          }
+        }
+      }
+    },
     "Code, fonts and themes that ship with Rex Go.": {
       "localizations": {
         "zh-Hans": {

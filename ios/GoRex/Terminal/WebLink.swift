@@ -10,6 +10,14 @@ nonisolated enum WebLink {
         return url
     }
 
+    /// The link a selection is, when it is one word: the spaces round it
+    /// go, and the text after the URL goes as a matched link's does.
+    static func selected(_ text: String) -> URL? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.contains(where: \.isWhitespace) else { return nil }
+        return url(t, matched: true)
+    }
+
     /// A matched URL without the text after it. Ghostty takes CJK letters
     /// for a URL's, so it ends at the first character that is not ASCII, as
     /// a URL sends them encoded, and at a space; then without the
