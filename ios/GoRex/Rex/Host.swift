@@ -520,9 +520,14 @@ final class Host: Identifiable {
     }
 
     /// The name of a foreground process, from process or process_changed.
-    private static func program(_ p: Any?) -> String? {
+    /// argv0 is a path by / or, from a Windows host, by \ with .exe.
+    static func program(_ p: Any?) -> String? {
         guard let p = p as? [String: Any] else { return nil }
-        let argv0 = (p["argv0"] as? String).map { ($0 as NSString).lastPathComponent }
+        let argv0 = (p["argv0"] as? String).map { a in
+            var name = String(a[(a.lastIndex { $0 == "/" || $0 == "\\" }.map(a.index(after:)) ?? a.startIndex)...])
+            if name.lowercased().hasSuffix(".exe") { name.removeLast(4) }
+            return name
+        }
         return [argv0, p["name"] as? String].compactMap { $0 }.first { !$0.isEmpty }
     }
 
