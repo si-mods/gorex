@@ -116,6 +116,9 @@ type Request struct {
 	// TailcatAddress is the address of remote.tailcatDial: the server
 	// connects to it with its tailcat client, and relays the connection.
 	TailcatAddress string `json:"tailcatAddress,omitempty"`
+	// Relay is the relay of remote.relaySet: a DERP server's host, "" for
+	// tailcat's own.
+	Relay string `json:"relay,omitempty"`
 	// Exe is the executable the server runs in its place on "upgrade".
 	Exe string `json:"exe,omitempty"`
 	// Keepalive, on "hello", asks the server to drop the connection once
@@ -459,6 +462,9 @@ type RemoteStatus struct {
 	Address   string         `json:"address,omitempty"`
 	Allowed   []RemoteClient `json:"allowed"`
 	LastError string         `json:"lastError,omitempty"`
+	// Relay is the DERP relay of one's own the address names, "" for
+	// tailcat's.
+	Relay string `json:"relay,omitempty"`
 	// Pairing is the pairing window, Pending the requests made in it.
 	Pairing RemotePairing   `json:"pairing"`
 	Pending []RemotePending `json:"pending,omitempty"`

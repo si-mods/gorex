@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -28,6 +29,7 @@ import (
 	"tailscale.com/envknob"
 	"tailscale.com/tailcfg"
 	"tailscale.com/types/key"
+	"tailscale.com/util/dnsname"
 )
 
 // Remote access: the server also listens on a tailcat address (WireGuard
@@ -41,6 +43,10 @@ import (
 // RemotePort is the port the server listens on at its tailcat address.
 const RemotePort = 7464
 
+// RexAPIPort is Rex's API port, which the server's tailcat address serves
+// too: its connections go to the Rex API gateway (remote.tailcatAccept).
+const RexAPIPort = 7297
+
 // RemoteConfig is the server's remote access, kept in Dir()/remote.json.
 type RemoteConfig struct {
 	Enabled bool `json:"enabled"`
@@ -52,7 +58,11 @@ type RemoteConfig struct {
 	PresharedKey tailcat.PresharedKey `json:"presharedKey,omitzero"`
 	// Region is the DERP region picked the first time, kept so that the
 	// address stays the same.
-	Region  int            `json:"region,omitempty"`
+	Region int `json:"region,omitempty"`
+	// Relay is a DERP relay of the user's own, as derp.example.com, in
+	// place of tailcat's: the address then names it, and Region waits for
+	// it to be cleared.
+	Relay   string         `json:"relay,omitempty"`
 	Allowed []RemoteClient `json:"allowed"`
 	// ShareSessions lets remote clients see and use every session; off,
 	// each sees and uses only the sessions it created, unless its
@@ -169,6 +179,47 @@ func scrub(s string, addrs ...string) string {
 // looks like a part of one or of a key, for an error to show or log.
 func Scrub(s string, addrs ...string) string { return scrub(s, addrs...) }
 
+// NormalizeRelay checks a relay of one's own, a DERP server's host name
+// or address with its port when not 443, and returns it trimmed; "" is
+// tailcat's own relays.
+func NormalizeRelay(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", nil
+	}
+	host := s
+	if h, p, err := net.SplitHostPort(s); err == nil {
+		if n, err := strconv.Atoi(p); err != nil || n < 1 || n > 65535 {
+			return "", errBadRelay
+		}
+		host = h
+	}
+	if _, err := netip.ParseAddr(host); err != nil && dnsname.ValidHostname(host) != nil {
+		return "", errBadRelay
+	}
+	return s, nil
+}
+
+var errBadRelay = errors.New("rex: a relay is a host name, as derp.example.com, with :PORT when not 443, and no https://")
+
+// relayInsecure lets a relay serve a certificate of no authority, for
+// tests' relays on the loopback.
+var relayInsecure = false
+
+// relayRegion is the DERP region of a relay of one's own: the one node,
+// on its DERP port (443 unless given) and STUN's 3478, as derper serves.
+func relayRegion(relay string) *tailcfg.DERPRegion {
+	host, port := relay, 0
+	if h, p, err := net.SplitHostPort(relay); err == nil {
+		host = h
+		port, _ = strconv.Atoi(p)
+	}
+	return &tailcfg.DERPRegion{
+		RegionID: 900, RegionCode: "own",
+		Nodes: []*tailcfg.DERPNode{{Name: "900a", RegionID: 900, HostName: host, DERPPort: port, InsecureForTests: relayInsecure}},
+	}
+}
+
 // ValidRemoteAddress tells whether s reads as a tailcat address.
 func ValidRemoteAddress(s string) bool {
 	_, err := tailcat.ParseAddr(tailcat.Addr(strings.TrimSpace(s)))
@@ -220,6 +271,10 @@ type remote struct {
 	cancel  context.CancelFunc // non-nil while starting or running
 	ts      *tailcat.Server    // non-nil while running
 	ln      net.Listener
+	api     net.Listener // RexAPIPort, beside ln
+	// gateway is where the gateway's accepts wait (remote.tailcatAccept)
+	// for the connections to api; made at first use.
+	gateway chan gatewayAccept
 	addr    tailcat.Addr
 	lastErr string
 	conns   map[net.Conn]string // the remote connections, by their peer's key
@@ -263,17 +318,20 @@ func (r *remote) pairOpenLocked() bool {
 	return !r.pairUntil.IsZero()
 }
 
-// remoteListen starts ts and listens on RemotePort, picking a region when
-// region is 0; tests replace it to stay off the network.
+// remoteListen starts ts and listens on RemotePort, in ts.Region when set
+// (a relay of one's own), else in region, picking one when region is 0;
+// tests replace it to stay off the network.
 var remoteListen = func(ctx context.Context, ts *tailcat.Server, region int) (net.Listener, tailcat.Addr, int, error) {
-	if region == 0 {
+	switch {
+	case ts.Region != nil:
+	case region == 0:
 		ci := tailcat.ConnInfo{RegionID: -1}
 		if err := ci.Expand(ctx, tailcat.ExpandForServer); err != nil {
 			return nil, "", 0, err
 		}
 		ts.Region = ci.Region[0]
 		region = int(ts.Region.RegionID)
-	} else {
+	default:
 		ts.RegionID = tailcfg.DERPRegionID(region)
 	}
 	ln, err := ts.Listen(ctx, "tcp", ":"+strconv.Itoa(RemotePort))
@@ -281,6 +339,12 @@ var remoteListen = func(ctx context.Context, ts *tailcat.Server, region int) (ne
 		return nil, "", 0, err
 	}
 	return ln, ts.TailcatAddr(), region, nil
+}
+
+// remoteAPIListen listens on RexAPIPort of ts, which remoteListen
+// started; tests replace it.
+var remoteAPIListen = func(ts *tailcat.Server) (net.Listener, error) {
+	return ts.Listen(context.Background(), "tcp", ":"+strconv.Itoa(RexAPIPort))
 }
 
 // remoteControlEnabled tells whether remote clients may run app actions.
@@ -389,6 +453,13 @@ func (s *Server) remoteLoad() {
 	}
 }
 
+// RemoteOn tells whether remote access is on, as remote.json says: the
+// gateway then takes the connections to RexAPIPort.
+func RemoteOn() bool {
+	var c RemoteConfig
+	return readJSON(remotePath(), &c) == nil && c.Enabled
+}
+
 // remoteEnabled tells whether a remote client may connect: the tailcat
 // listener runs, or one of the system tailnet's links is open. The
 // tailnet broker alone does not count, so that a server with no sessions
@@ -425,12 +496,13 @@ func (s *Server) remoteStopLocked() func() {
 		r.cancel()
 		r.cancel = nil
 	}
-	ts, ln, conns := r.ts, r.ln, r.conns
-	r.ts, r.ln, r.addr, r.conns = nil, nil, "", nil
+	ts, ln, api, conns := r.ts, r.ln, r.api, r.conns
+	r.ts, r.ln, r.api, r.addr, r.conns = nil, nil, nil, "", nil
 	r.pairUntil, r.pending = time.Time{}, nil
 	return func() {
 		if ln != nil {
 			ln.Close()
+			api.Close()
 		}
 		for c := range conns {
 			c.Close()
@@ -459,19 +531,30 @@ func (s *Server) remoteStartLocked() {
 				Key: cfg.NodeKey, PresharedKey: cfg.PresharedKey,
 				Logf: func(string, ...any) {}, // it logs keys
 			}
+			if cfg.Relay != "" {
+				ts.Region = relayRegion(cfg.Relay)
+			}
 			ln, addr, region, err := remoteListen(ctx, ts, cfg.Region)
+			var api net.Listener
+			if err == nil {
+				if api, err = remoteAPIListen(ts); err != nil {
+					ln.Close()
+					ln = nil
+				}
+			}
 			r.mu.Lock()
 			if r.gen != gen {
 				r.mu.Unlock()
 				if ln != nil {
 					ln.Close()
+					api.Close()
 				}
 				ts.Close()
 				return
 			}
 			if err == nil {
-				r.ts, r.ln, r.addr, r.conns, r.lastErr = ts, ln, addr, map[net.Conn]string{}, ""
-				if r.cfg.Region == 0 {
+				r.ts, r.ln, r.api, r.addr, r.conns, r.lastErr = ts, ln, api, addr, map[net.Conn]string{}, ""
+				if r.cfg.Region == 0 && region != 0 {
 					r.cfg.Region = region
 					if err := writeJSON(remotePath(), r.cfg); err != nil {
 						log.Printf("rex: saving the remote region: %v", err)
@@ -479,6 +562,7 @@ func (s *Server) remoteStartLocked() {
 				}
 				r.mu.Unlock()
 				log.Printf("rex: remote access on")
+				go s.remoteAccept(ts, api)
 				aerr := s.remoteAccept(ts, ln)
 				// Accepting failed, not stopped: say so, and start again as
 				// after any failure, so that nothing claims to listen
@@ -493,9 +577,10 @@ func (s *Server) remoteStartLocked() {
 				done := func() {}
 				if r.ln == ln {
 					ts, ln, conns := r.ts, r.ln, r.conns
-					r.ts, r.ln, r.addr, r.conns = nil, nil, "", nil
+					r.ts, r.ln, r.api, r.addr, r.conns = nil, nil, nil, "", nil
 					done = func() {
 						ln.Close()
+						api.Close()
 						for c := range conns {
 							c.Close()
 						}
@@ -561,11 +646,12 @@ var remoteRetry = 30 * time.Second
 
 var errRemoteStopped = errors.New("rex: remote access stopped")
 
-// remoteAccept serves the remote connections until accepting fails: it
-// returns that error, or errRemoteStopped when the listener was replaced.
-// A connection of an allowed client is served marked remote; one of
-// another client may only ask to pair, while the window is open; any
-// other is closed, unlogged.
+// remoteAccept serves the remote connections of ln, RemotePort's or
+// RexAPIPort's, until accepting fails: it returns that error, or
+// errRemoteStopped when the listener was replaced. A connection of an
+// allowed client is served marked remote, or goes to the gateway on
+// RexAPIPort; one of another client may only ask to pair, on RemotePort
+// while the window is open; any other is closed, unlogged.
 func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 	r := &s.rem
 	for {
@@ -574,7 +660,7 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			return err
 		}
 		r.mu.Lock()
-		stopped := r.ln != ln
+		stopped := r.ln != ln && r.api != ln
 		r.mu.Unlock()
 		if stopped {
 			c.Close()
@@ -585,7 +671,9 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			// Checked and kept under the lock, so that a revoke drops it.
 			r.mu.Lock()
 			allowed := r.allowedLocked(k) || r.netMemberLocked(k)
-			if r.ln != ln {
+			api := r.api == ln
+			// Stopped, or for the gateway and not allowed: no answer.
+			if r.ln != ln && !api || api && !allowed {
 				r.mu.Unlock()
 				c.Close()
 				return
@@ -597,10 +685,14 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			}
 			r.conns[c] = k
 			r.mu.Unlock()
-			if allowed {
+			switch {
+			case api:
+				s.remoteSeen(k)
+				s.toGateway(c, k)
+			case allowed:
 				s.remoteSeen(k)
 				s.handle(c, k)
-			} else {
+			default:
 				s.pairConn(c, k)
 			}
 			c.Close()
@@ -609,6 +701,109 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			r.mu.Unlock()
 		}()
 	}
+}
+
+// gatewayWait is how long a connection to RexAPIPort waits for the
+// gateway to take it, as while the gateway starts, before it closes.
+var gatewayWait = 10 * time.Second
+
+// gatewayAccept is an accept of the gateway's, waiting on the local
+// socket: its connection, and what it sends once taken.
+type gatewayAccept struct {
+	local net.Conn
+	input io.Reader
+}
+
+// gatewayQueue is where the gateway's accepts wait.
+func (s *Server) gatewayQueue() chan gatewayAccept {
+	r := &s.rem
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.gateway == nil {
+		r.gateway = make(chan gatewayAccept)
+	}
+	return r.gateway
+}
+
+// toGateway hands c, a connection of the allowed client k to RexAPIPort,
+// to an accept of the gateway's: a line that names the client, then the
+// bytes both ways. With none taking it within gatewayWait, as when no
+// gateway runs, c closes.
+func (s *Server) toGateway(c net.Conn, k string) {
+	t := time.NewTimer(gatewayWait)
+	defer t.Stop()
+	var g gatewayAccept
+	select {
+	case g = <-s.gatewayQueue():
+	case <-t.C:
+		return
+	}
+	peer := RemoteClient{PublicKey: k}
+	if rc := s.remoteClientFor(k); rc != nil {
+		peer.Name = rc.Name
+	}
+	b, _ := json.Marshal(peer)
+	if _, err := g.local.Write(append(b, '\n')); err != nil {
+		g.local.Close()
+		return
+	}
+	splice(g.local, g.input, c)
+}
+
+// tailcatAccept is reached through the local socket, after the gateway
+// asks to accept: the connection waits for one to RexAPIPort (toGateway)
+// until the gateway closes it.
+func (s *Server) tailcatAccept(local net.Conn, input *bufio.Reader) {
+	// The gateway says nothing before the line: what it reads first is
+	// its close.
+	gone := make(chan struct{})
+	go func() {
+		input.Peek(1)
+		close(gone)
+	}()
+	select {
+	case s.gatewayQueue() <- gatewayAccept{local, waitReader{gone, input}}:
+	case <-gone:
+		local.Close()
+	case <-s.quit:
+		local.Close()
+	}
+}
+
+// AcceptTailcat waits on the local server for a remote client's
+// connection to RexAPIPort, as the gateway takes them, and returns it
+// with its client: one of the allowlist or of the network, as the server
+// let in. ctx bounds the wait.
+func AcceptTailcat(ctx context.Context) (net.Conn, RemoteClient, error) {
+	c, err := dialSocket()
+	if err != nil {
+		return nil, RemoteClient{}, err
+	}
+	stop := context.AfterFunc(ctx, func() { c.Close() })
+	b, _ := json.Marshal(Request{Op: "remote.tailcatAccept"})
+	var line []byte
+	if _, err = c.Write(append(b, '\n')); err == nil {
+		// A byte at a time: what follows the line is the client's.
+		line, err = readByteLine(c)
+	}
+	if !stop() {
+		err = ctx.Err()
+	}
+	var peer struct {
+		RemoteClient
+		Error string `json:"error"`
+	}
+	if err == nil && json.Unmarshal(line, &peer) == nil && peer.PublicKey != "" {
+		return c, peer.RemoteClient, nil
+	}
+	c.Close()
+	switch {
+	case err != nil:
+		return nil, RemoteClient{}, err
+	case peer.Error != "":
+		return nil, RemoteClient{}, errors.New(peer.Error)
+	}
+	return nil, RemoteClient{}, errors.New("rex: the local server answered something else")
 }
 
 // refuseRemote tells a client it does not allow so, unprompted, and closes
@@ -695,7 +890,7 @@ func (s *Server) remotePair(k, name string) (string, error) {
 func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 	r := &s.rem
 	st := RemoteStatus{
-		Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr),
+		Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr), Relay: r.cfg.Relay,
 		Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
 		ShareSessions: r.cfg.ShareSessions, ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
 	}
@@ -873,6 +1068,12 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		revoked = k
 	case "remote.regenerate":
 		cfg.NodeKey, cfg.PresharedKey = key.NewNode(), tailcat.NewPresharedKey()
+	case "remote.relaySet":
+		relay, err := NormalizeRelay(req.Relay)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Relay = relay
 	case "remote.clientLayoutSet":
 		k, err := reqKey()
 		if err != nil {
@@ -912,6 +1113,7 @@ func (s *Server) remoteDo(req Request) (any, error) {
 	if err := writeJSON(remotePath(), cfg); err != nil {
 		return nil, err
 	}
+	relayWas := r.cfg.Relay
 	r.cfg = cfg
 	if approved >= 0 {
 		r.pending = slices.Delete(r.pending, approved, approved+1)
@@ -928,9 +1130,10 @@ func (s *Server) remoteDo(req Request) (any, error) {
 				done = append(done, func() { c.Close() })
 			}
 		}
-	case req.Op == "remote.regenerate", req.Op == "remote.enable" && r.cancel == nil:
-		// New keys, or off until now: start again, which drops the
-		// connections.
+	case req.Op == "remote.regenerate", req.Op == "remote.relaySet" && relayWas != cfg.Relay,
+		req.Op == "remote.enable" && r.cancel == nil:
+		// New keys, a new relay, or off until now: start again, which
+		// makes the address anew and drops the connections.
 		done = append(done, s.remoteStopLocked())
 		s.remoteStartLocked()
 	}

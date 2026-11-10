@@ -21,6 +21,9 @@ const (
 	// transportLAN is the listener on the local network, whose callers
 	// Rex sees as plain TCP ones.
 	transportLAN = "lan"
+	// transportTailcat is the session server's tailcat address, whose
+	// callers are the remote clients it allows.
+	transportTailcat = "tailcat"
 )
 
 type connKey struct{}
@@ -149,6 +152,12 @@ func (g *Gateway) HandlerFor(transport string) http.Handler {
 			var err error
 			if p, err = g.tailnet.identify(r.Context(), r.RemoteAddr); err != nil {
 				writeRefusal(w, err.Error())
+				return
+			}
+		case transportTailcat:
+			var ok bool
+			if p, ok = tailcatPrincipal(r); !ok {
+				writeRefusal(w, "this connection did not come over tailcat")
 				return
 			}
 		default:

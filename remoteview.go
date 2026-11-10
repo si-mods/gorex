@@ -58,6 +58,11 @@ var remoteUI struct {
 	tsURL    string
 	tsEdited bool
 	tsErr    string
+	// relay is what is typed in the relay field, relayErr what was wrong
+	// with it.
+	relay       string
+	relayEdited bool
+	relayErr    string
 	// addingKey and joining show the forms that add a client by its key
 	// and join a network, in place of the buttons that open them.
 	addingKey, joining bool
@@ -97,6 +102,7 @@ func stopRemotePoll() {
 	page.addingKey, page.joining = false, false
 	page.focusLAN = false
 	page.ts, page.tsURL, page.tsEdited, page.tsErr = rexapi.TailscaleConfig{}, "", false, ""
+	page.relay, page.relayEdited, page.relayErr = "", false, ""
 }
 
 // remoteAsk runs work off the UI thread, with the app's client of the
@@ -318,6 +324,9 @@ func (a *App) fetchRemote() {
 					st.Address = "" // hidden since the ask
 				}
 				remoteUI.st, remoteUI.loaded = st, true
+				if !remoteUI.relayEdited {
+					remoteUI.relay = st.Relay
+				}
 			}
 		}
 	})
@@ -817,6 +826,7 @@ func (a *App) remoteThisMachine(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		if st.Running {
 			a.remoteAddress(c, k)
 		}
+		a.remoteRelay(c, k)
 		groupRow(c, k, nil).Children(func() {
 			ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
@@ -899,6 +909,33 @@ func (a *App) remoteAddress(c *ui.Context, k *colors) {
 				page.confirm = false
 			}
 		})
+	})
+}
+
+// remoteRelay is the relay row: the DERP relay the address names,
+// tailcat's unless one of one's own is saved.
+func (a *App) remoteRelay(c *ui.Context, k *colors) {
+	page := &remoteUI
+	groupRow(c, k, nil).Children(func() {
+		rowLine(c, k, locales.RemoteRelay(), func() {
+			if ui.TextInput(c.Key("relay"), &page.relay).Placeholder(locales.RemoteRelayPlaceholder()).
+				Label(locales.RemoteRelay()).Font(monoFamily()).Width(220).Changed() {
+				page.relayEdited, page.relayErr = true, ""
+			}
+			if ui.Button(c.Key("relay-save"), locales.RemoteLanSave()).Disabled(!page.relayEdited || page.busy).Clicked() {
+				relay, err := rex.NormalizeRelay(page.relay)
+				if err != nil {
+					page.relayErr = locales.RemoteRelayInvalid()
+					return
+				}
+				a.remoteDo(func(srv *rex.Client) error { return srv.SetRelay(relay) },
+					func() { page.relay, page.relayEdited = relay, false })
+			}
+		})
+		if page.relayErr != "" {
+			rowError(c, k, page.relayErr)
+		}
+		rowHint(c, k, locales.RemoteRelayNote())
 	})
 }
 

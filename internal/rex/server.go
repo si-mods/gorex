@@ -470,6 +470,10 @@ func (s *Server) handle(conn net.Conn, peer string) {
 			s.relayTailcat(conn, r, req.TailcatAddress)
 			return
 		}
+		if err == nil && req.Op == "remote.tailcatAccept" {
+			s.tailcatAccept(conn, r)
+			return
+		}
 	}
 	var a Attach
 	if json.Unmarshal(first, &a) == nil && a.Op == "attach" {

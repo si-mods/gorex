@@ -6,6 +6,8 @@
 //	remotectl pubkey                  print this machine's key as a remote client
 //	remotectl allow NAME PUBLICKEY    allow a client of the running server
 //	remotectl enable | disable | status | regenerate
+//	remotectl relay [HOST]            a DERP relay of one's own in the address,
+//	                                  as derp.example.com; none for tailcat's
 //	remotectl pairstart | pairstop    open or close the pairing window
 //	remotectl pending                 list the pairing requests, with fingerprints
 //	remotectl approve | reject PUBLICKEY
@@ -29,7 +31,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: remotectl serve|pubkey|allow|enable|disable|status|regenerate|pairstart|pairstop|pending|approve|reject|join|leave|pair|probe")
+		fmt.Fprintln(os.Stderr, "usage: remotectl serve|pubkey|allow|enable|disable|status|regenerate|relay|pairstart|pairstop|pending|approve|reject|join|leave|pair|probe")
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
@@ -91,6 +93,11 @@ func main() {
 			fail(c.LeaveNetwork())
 		case "regenerate":
 			fail(c.RegenerateRemote())
+		case "relay":
+			if len(args) > 1 {
+				fail(fmt.Errorf("relay [HOST]"))
+			}
+			fail(c.SetRelay(strings.Join(args, "")))
 		case "pairstart":
 			fail(c.StartPairing())
 		case "pairstop":
