@@ -124,6 +124,9 @@ extension Color {
 struct ProgramTiles: View {
     let front: String?
     let back: [String?]
+    /// Whether the front program is done and the user has not seen it, as
+    /// Rex's dot on the tile's corner tells.
+    var done = false
 
     /// Points to a DIP of the desktop's tiles, which are 21×16.
     static let scale: CGFloat = 1.5
@@ -141,6 +144,9 @@ struct ProgramTiles: View {
                     .offset(x: CGFloat(5 * (i + 1)) * k)
             }
             ProgramTile(program: .of(front)).frame(width: 21 * k, height: 16 * k)
+                .overlay(alignment: .topTrailing) {
+                    if done { DoneDot().offset(x: 2.5, y: -2.5) }
+                }
         }
         .padding(.leading, k)
         .accessibilityHidden(true)
@@ -193,5 +199,21 @@ struct ProgramTile: View {
         } else {
             Image("Brands/" + g.replacingOccurrences(of: "brand:", with: "")).resizable().scaledToFit()
         }
+    }
+}
+
+/// Rex's dot of a program done and unseen, on its tile's corner: lit from
+/// above, in a rim as the tile's.
+private struct DoneDot: View {
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Circle()
+            .fill(LinearGradient(colors: [.white.opacity(0.3), .white.opacity(0)], startPoint: .top, endPoint: .center))
+            .background(Circle().fill(Color.done))
+            .frame(width: 7, height: 7)
+            .padding(0.75)
+            .background(Circle().fill(scheme == .dark ? .black.opacity(0.85) : .white.opacity(0.95)))
+            .accessibilityLabel("Done")
     }
 }

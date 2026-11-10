@@ -10,6 +10,8 @@ extension Color {
     static let attention = Color(UIColor { $0.userInterfaceStyle == .dark
         ? UIColor(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255, alpha: 1)
         : UIColor(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255, alpha: 1) })
+    /// Rex's dot of a program done that the user has not seen.
+    static let done = Color(red: 0x7A / 255, green: 0xA0 / 255, blue: 0xC2 / 255)
 }
 
 /// Every host, its sessions, and their windows, as Rex's iPhone app lists
@@ -696,7 +698,7 @@ struct WindowRow<Mark: View>: View {
         let title = host.title(window)
         let status = host.status([block] + window.tiled)
         HStack(spacing: 14) {
-            ProgramTiles(front: host.programs[block], back: window.back.map { host.programs[$0] }).frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
+            ProgramTiles(front: host.programs[block], back: window.back.map { host.programs[$0] }, done: status?.state == "done").frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
             Text(title.isEmpty ? " " : title)
                 // Regular and a little dimmed, as Rex sets a window's title.
                 .font(.body)
