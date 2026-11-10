@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Settings › Tailscale, as the desktop's Tailscale card: the built-in
-/// Tailscale on or off, signing in and out, how it reaches the GoRex
-/// machines, the device's name and the control server.
+/// Settings › Tailscale, after rootshell's Tailscale settings: a status
+/// card, the built-in Tailscale on or off, signing in, how it reaches the
+/// GoRex machines, the device's name and control server, signing out.
 struct TailscaleView: View {
     @Environment(HostStore.self) private var store
     @AppStorage(TailnetSettings.onKey) private var on = false
@@ -12,33 +12,31 @@ struct TailscaleView: View {
     @State private var controlText = TailnetSettings.controlURL
     /// Used once to sign in, never kept.
     @State private var authKey = ""
+    @State private var confirmSignOut = false
     private let engine = TailnetEngine.shared
 
     var body: some View {
         let s = engine.status
+        let error = on ? engine.failure ?? s.error : nil
         List {
             Section {
+                header(s, error: error)
                 Toggle("Built-in Tailscale", isOn: $on)
+                // Waiting for approval too: the admin approves it by this name.
+                if on, let n = s.name {
+                    LabeledContent(String(n.prefix { $0 != "." })) {
+                        if let ip = s.ips?.first { Text(ip).monospaced() }
+                    }
+                }
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+            } header: {
+                Text("Status")
             } footer: {
                 Text("Rex Go joins your tailnet itself, with no Tailscale app or VPN. Hosts on the tailnet go through it.")
             }
             .listRowBackground(Color.card)
             if on {
-                Section {
-                    LabeledContent("Status", value: state(s.state))
-                    if let n = s.name { LabeledContent("Device", value: String(n.prefix { $0 != "." })) }
-                    if let ip = s.ips?.first { LabeledContent("Address") { Text(ip).monospaced() } }
-                    if let e = engine.failure ?? s.error { Text(e).font(.footnote).foregroundStyle(.red) }
-                }
-                .listRowBackground(Color.card)
-                let machines = (s.peers ?? []).filter { $0.name.prefix { $0 != "." }.contains("-gorex") }
-                if !machines.isEmpty {
-                    Section("GoRex Machines") {
-                        ForEach(machines, id: \.name) { p in LabeledContent(HostConfig.name(p.name), value: path(p)) }
-                    }
-                    .listRowBackground(Color.card)
-                }
-                if s.state != "Running" {
+                if !s.isRunning {
                     Section {
                         Button { Task { await engine.signIn() } } label: {
                             HStack {
@@ -60,10 +58,18 @@ struct TailscaleView: View {
                     }
                     .listRowBackground(Color.card)
                 }
-                // A device with state of its own, signed in or waiting for approval.
-                if s.name != nil || !["NeedsLogin", "Stopped", "Starting", "NoState"].contains(s.state) {
-                    Section {
-                        Button("Sign Out", role: .destructive) { Task { await engine.signOut() } }
+                let machines = (s.peers ?? []).filter { $0.name.prefix { $0 != "." }.contains("-gorex") }
+                if !machines.isEmpty {
+                    Section("GoRex Machines") {
+                        ForEach(machines, id: \.name) { p in
+                            HStack {
+                                Image(systemName: "circle.fill").font(.caption2).foregroundStyle(p.online ? .green : .secondary)
+                                    .accessibilityLabel(p.online ? Text("Online") : Text("Offline"))
+                                Text(HostConfig.name(p.name))
+                                Spacer(minLength: 8)
+                                Text(path(p)).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     .listRowBackground(Color.card)
                 }
@@ -94,8 +100,11 @@ struct TailscaleView: View {
                                 reconnectTailnetHosts()
                             }
                     }
+                } header: {
+                    Text("Device")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
+                        if let e = engine.renameFailure { Text(e).foregroundStyle(.red) }
                         if !TailnetEngine.validName(name) {
                             Text("A device name has letters, digits and hyphens, not at either end.").foregroundStyle(.red)
                         }
@@ -106,6 +115,15 @@ struct TailscaleView: View {
                     }
                 }
                 .listRowBackground(Color.card)
+                if s.hasDevice {
+                    Section {
+                        Button("Sign Out", role: .destructive) { confirmSignOut = true }
+                            .confirmationDialog("Sign out of Tailscale?", isPresented: $confirmSignOut, titleVisibility: .visible) {
+                                Button("Sign Out", role: .destructive) { Task { await engine.signOut() } }
+                            }
+                    }
+                    .listRowBackground(Color.card)
+                }
             }
         }
         .scrollContentBackground(.hidden)
@@ -134,14 +152,36 @@ struct TailscaleView: View {
         store.hosts.filter { $0.config.transport == .tailnet }.forEach { $0.reconnect() }
     }
 
-    private func state(_ s: String) -> String {
-        switch s {
-        case "Running": String(localized: "Signed In")
-        case "NeedsLogin": String(localized: "Not Signed In")
-        case "NeedsMachineAuth": String(localized: "Waiting for Approval")
-        case "Stopped": String(localized: "Stopped")
-        default: String(localized: "Starting…")
+    /// The status card, after rootshell's VPNStatusRow: Tailscale's tile
+    /// with a dot of the state, what it is doing, and where it runs.
+    private func header(_ s: TailnetEngine.Status, error: String?) -> some View {
+        // A device that runs stays green; an error shows below the card.
+        let (title, dot, busy): (LocalizedStringResource, Color, Bool) =
+            if !on { ("Tailscale off", .gray, false) }
+            else if s.isRunning { ("Tailscale connected", .green, false) }
+            else if error != nil { ("Tailscale couldn't start", .red, false) }
+            else if s.needsLogin { ("Tailscale needs sign-in", .orange, false) }
+            else if s.awaitingApproval { ("Tailscale waiting for approval", .orange, false) }
+            else { ("Tailscale connecting…", .orange, true) }
+        return HStack(spacing: 12) {
+            TailscaleGlyph.tile(size: 44)
+                .overlay(alignment: .bottomTrailing) {
+                    Circle().fill(dot).frame(width: 12, height: 12)
+                        .overlay(Circle().stroke(Color.card, lineWidth: 2))
+                        .offset(x: 3, y: 3)
+                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                Text("Tailscale inside Rex Go, no VPN").font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if busy {
+                Image(systemName: "arrow.trianglehead.2.clockwise")
+                    .symbolEffect(.rotate, isActive: true)
+                    .foregroundStyle(.orange)
+            }
         }
+        .padding(.vertical, 4)
     }
 
     /// How the device reaches a machine, as tailscale status tells.
@@ -151,6 +191,36 @@ struct TailscaleView: View {
         case "derp": String(localized: "DERP Relay")
         case "peer-relay": String(localized: "Peer Relay")
         default: p.online ? String(localized: "Idle") : String(localized: "Offline")
+        }
+    }
+}
+
+/// Tailscale's mark, drawn as rootshell's TailscaleLogo: nine dots, the
+/// middle row and the bottom one in the middle solid, the rest faint.
+struct TailscaleGlyph: View {
+    var body: some View {
+        Canvas { c, size in
+            let d = size.width / 4
+            for row in 0..<3 {
+                for col in 0..<3 {
+                    var c = c
+                    if !(row == 1 || (row == 2 && col == 1)) { c.opacity = 0.2 }
+                    let r = CGRect(x: (0.125 + 0.375 * CGFloat(col)) * size.width - d / 2,
+                                   y: (0.125 + 0.375 * CGFloat(row)) * size.height - d / 2, width: d, height: d)
+                    c.fill(Path(ellipseIn: r), with: .foreground)
+                }
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .accessibilityHidden(true)
+    }
+}
+
+extension TailscaleGlyph {
+    /// The mark on a Settings tile of Tailscale's dark.
+    static func tile(size: CGFloat = 30) -> some View {
+        SettingsTile(color: Color(white: 0.12), size: size) {
+            TailscaleGlyph().frame(width: size * 0.55, height: size * 0.55)
         }
     }
 }

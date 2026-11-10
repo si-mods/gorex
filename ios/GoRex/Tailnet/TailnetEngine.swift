@@ -20,6 +20,12 @@ final class TailnetEngine {
         var suffix: String?
         var peers: [Peer]?
         var error: String?
+
+        var isRunning: Bool { state == "Running" }
+        var needsLogin: Bool { state == "NeedsLogin" }
+        var awaitingApproval: Bool { state == "NeedsMachineAuth" }
+        /// A device with state of its own, signed in or waiting for approval.
+        var hasDevice: Bool { name != nil || isRunning || awaitingApproval }
     }
 
     /// A device on the tailnet; path is "direct", "derp" or "peer-relay"
@@ -36,6 +42,8 @@ final class TailnetEngine {
     private(set) var proxy: LoopbackProxy?
     /// Why the engine last failed to start.
     private(set) var failure: String?
+    /// Why the device's last rename failed.
+    private(set) var renameFailure: String?
     /// Whether the login page shows, or will once the engine has one.
     private(set) var signingIn = false
     @ObservationIgnored private var login: ASWebAuthenticationSession?
@@ -54,7 +62,7 @@ final class TailnetEngine {
     private init() {
         Host.tailnetProxy = {
             let e = TailnetEngine.shared
-            return e.status.state == "Running" ? e.proxy : nil
+            return e.status.isRunning ? e.proxy : nil
         }
     }
 
@@ -100,6 +108,7 @@ final class TailnetEngine {
         }
         do {
             failure = nil
+            renameFailure = nil
             try await start(hostname: TailnetSettings.name, controlURL: TailnetSettings.controlURL, authKey: authKey)
         } catch {
             failure = error.localizedDescription
@@ -155,14 +164,14 @@ final class TailnetEngine {
     /// Renames the running device; the name is kept for the next start.
     func setHostname(_ name: String) async {
         guard proxy != nil else { return }
-        failure = nil
+        renameFailure = nil
         do {
             try await Task.detached {
                 var error: NSError?
                 guard TailnetSetHostname(name, &error) else { throw error ?? RexError(code: "tailnet", message: "rename") }
             }.value
         } catch {
-            failure = String(localized: "The new name applies at the next start: \(error.localizedDescription)")
+            renameFailure = String(localized: "The new name applies at the next start: \(error.localizedDescription)")
             log.error("rename: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -201,7 +210,7 @@ final class TailnetEngine {
               let s = try? JSONDecoder().decode(Status.self, from: Data(json.utf8)), s != status else { return }
         status = s
         log.notice("status \(s.state, privacy: .public) \(s.name ?? "", privacy: .public) \(s.ips ?? [], privacy: .public)")
-        if s.state == "Running" { cancelLogin() } else { present() }
+        if s.isRunning { cancelLogin() } else { present() }
     }
 
     /// Shows the login page while signing in. Tailscale's page never calls
