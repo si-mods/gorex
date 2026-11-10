@@ -336,8 +336,8 @@ nonisolated final class HostTests: XCTestCase {
     }
 
     /// Back after a suspension, the hosts on the built-in Tailscale connect
-    /// anew once it resumes; the others only reconnect if needed. Back
-    /// sooner, nothing resumes.
+    /// anew once it resumes on its proxy, and not when it started anew; the
+    /// others only reconnect if needed. Back sooner, nothing resumes.
     @MainActor func testForeground() async throws {
         let d = UserDefaults.standard
         let (hosts, on, proxy) = (d.data(forKey: "hosts"), d.object(forKey: TailnetSettings.onKey), Host.tailnetProxy)
@@ -348,9 +348,14 @@ nonisolated final class HostTests: XCTestCase {
         }
         d.removeObject(forKey: "hosts")
         d.set(true, forKey: TailnetSettings.onKey)
-        // Each connection the tailnet host tries asks for the proxy.
+        // Each connection the tailnet host tries asks for the proxy; only
+        // those of foreground count, not its retries.
         var order: [String] = []
-        Host.tailnetProxy = { order.append("tailnet"); return nil }
+        var counting = false
+        Host.tailnetProxy = {
+            if counting { order.append("tailnet") }
+            return nil
+        }
         let rex = try FakeRex()
         defer { rex.stop() }
         rex.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] }
@@ -362,12 +367,19 @@ nonisolated final class HostTests: XCTestCase {
         defer { store.remove(system.id); store.remove(tailnet.id) }
         await until("online") { store.host(system.id)?.status == .online }
 
-        order = []
-        await store.foreground(suspended: false) { order.append("resume") }
-        XCTAssertEqual(order, ["tailnet"])
-        order = []
-        await store.foreground(suspended: true) { order.append("resume") }
-        XCTAssertEqual(order, ["resume", "tailnet"])
+        func foreground(suspended: Bool, kept: Bool) async -> [String] {
+            order = []
+            counting = true
+            await store.foreground(suspended: suspended) { order.append("resume"); return kept }
+            counting = false
+            return order
+        }
+        let shortly = await foreground(suspended: false, kept: true)
+        XCTAssertEqual(shortly, ["tailnet"])
+        let resumed = await foreground(suspended: true, kept: true)
+        XCTAssertEqual(resumed, ["resume", "tailnet"])
+        let restarted = await foreground(suspended: true, kept: false)
+        XCTAssertEqual(restarted, ["resume"])
         XCTAssertEqual(rex.controls.count, 1, "the system host connected anew")
     }
 }

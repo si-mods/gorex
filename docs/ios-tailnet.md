@@ -226,18 +226,29 @@ Settings › Tailscale, after rootshell's VPN settings: a status card on top (th
 
 - At launch, with built-in Tailscale on, the engine starts before the
   hosts connect; a host on `tailnet` waits for the node to run.
-- While the engine runs, `NWPathMonitor` reports each change of the
-  default interface to the engine, so it rebinds when the phone moves
-  between Wi-Fi and cellular. The engine hands the name to `netmon`, as
-  Tailscale's own app does, and has it check the network again.
-- Back in the foreground after more than 5 s away, the app calls
-  `ResetSockets` first, then reconnects every `tailnet` host with
-  `resume()`, not `reconnectIfNeeded()`: the WebSocket to the
-  loopback proxy can look open while its tailnet side died in the
-  suspension. A reset that fails or doesn't finish (10 s a step)
-  restarts the engine, and the hosts make new sessions for the new proxy
-  (Transport) once it runs. Unlike `reconnect()`, `resume()` keeps the
-  reconnect token, so the sessions on the server go on.
+- While the engine runs, and before each start, `NWPathMonitor` reports
+  each change of the phone's network to the engine: of the interface,
+  so it rebinds when the phone moves between Wi-Fi and cellular, and of
+  the gateways, as from one Wi-Fi to another. The engine hands the
+  interface's name to `netmon`, as Tailscale's own app does, and has it
+  check the network again.
+- Back in the foreground after more than 5 s away, with the engine
+  running, the app calls `ResetSockets` first, then reconnects every
+  `tailnet` host with `resume()`, not `reconnectIfNeeded()`: the
+  WebSocket to the loopback proxy can look open while its tailnet side
+  died in the suspension. Unlike `reconnect()`, `resume()` keeps the
+  reconnect token, so the sessions on the server go on. An engine that
+  is signing in has nothing to reset, and one that failed to start
+  starts again.
+- A reset that fails or doesn't finish (10 s a step) restarts the
+  engine. The old proxy's connections end with it, and the hosts make
+  new sessions for the new proxy (Transport) once it runs, as at launch.
+  A reset that didn't finish holds WireGuard's lock, and closing the old
+  device would wait for it, so the old device closes in the background,
+  as far as it gets. Its control client stops before its WireGuard device
+  does, so the new device, on the same state, is the only one that
+  control sees. Should the close stop earlier, both talk to control
+  under one key until the app quits; control serves the newer.
 - The reset closes WireGuard's bind, has `magicsock` open new sockets
   and opens the bind on them, which starts the receive loops that ended
   on the reclaimed sockets; a `magicsock` rebind alone leaves them ended,

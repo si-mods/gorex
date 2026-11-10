@@ -1,11 +1,14 @@
 package tailnet
 
 import (
+	"errors"
 	"reflect"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"gorex/internal/tailnode"
 
 	"tailscale.com/tsd"
 	"tailscale.com/wgengine"
@@ -32,25 +35,74 @@ func TestIfName(t *testing.T) {
 func TestAwait(t *testing.T) {
 	defer func(w, e time.Duration) { resetWait, unstickEvery = w, e }(resetWait, unstickEvery)
 	resetWait, unstickEvery = 200*time.Millisecond, 10*time.Millisecond
-	if !await(func() {}, nil) {
-		t.Error("await of a step that returns: false")
+	if err := await(func() error { return nil }, nil); err != nil {
+		t.Errorf("await of a step that returns: %v", err)
+	}
+	if err := await(func() error { return errors.New("x") }, nil); err == nil || err.Error() != "x" {
+		t.Errorf("await of a step that fails: %v", err)
 	}
 	// A step that waits for the unstick returns.
 	free := make(chan struct{})
-	if !await(func() { <-free }, func() {
+	if err := await(func() error { <-free; return nil }, func() {
 		select {
 		case <-free:
 		default:
 			close(free)
 		}
-	}) {
-		t.Error("await of a step its unstick frees: false")
+	}); err != nil {
+		t.Errorf("await of a step its unstick frees: %v", err)
 	}
 	stuck := make(chan struct{})
 	defer close(stuck)
-	if await(func() { <-stuck }, func() {}) {
-		t.Error("await of a stuck step: true")
+	if err := await(func() error { <-stuck; return nil }, func() {}); err != errStuck {
+		t.Errorf("await of a stuck step: %v", err)
 	}
+}
+
+// A device stuck in a socket reset doesn't hold up the next start: its
+// close, which would wait for the reset, is left to run by itself. One
+// not stuck closes before Stop returns.
+func TestStuckDeviceDoesNotHoldStart(t *testing.T) {
+	defer func(f func(*tailnode.Node)) { closeNode = f }(closeNode)
+	wedged := make(chan struct{})
+	defer close(wedged)
+	closeNode = func(*tailnode.Node) { <-wedged }
+	fake := func(s bool) {
+		p, err := startProxy(nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mu.Lock()
+		node, prox, cancel, stuck = tailnode.New(tailnode.Options{}), p, func() {}, s
+		mu.Unlock()
+	}
+
+	fake(false)
+	done := make(chan struct{})
+	go func() { Stop(); close(done) }()
+	select {
+	case <-done:
+		t.Fatal("Stop returned before the device closed")
+	case <-time.After(100 * time.Millisecond):
+	}
+	wedged <- struct{}{}
+	<-done
+
+	fake(true)
+	started := make(chan error, 1)
+	go func() {
+		started <- Start(`{"hostname":"rexgo-test","control_url":"http://127.0.0.1:1"}`, t.TempDir(), nil)
+	}()
+	select {
+	case err := <-started:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Start waited for the stuck device")
+	}
+	closeNode = func(n *tailnode.Node) { n.Close() }
+	Stop()
 }
 
 // fakeSystem is a system with a WireGuard engine of a fake tun, which

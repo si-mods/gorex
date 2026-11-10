@@ -57,7 +57,7 @@ var (
 // receive loops end on the read error, and Tailscale never starts them
 // again, leaving every peer on DERP. Open connections go on. It fails when
 // the device isn't running or the reset didn't finish in time; the device
-// then needs a new start.
+// then needs a new start, which leaves a stuck one to close by itself.
 func ResetSockets() error {
 	n, err := running()
 	if err != nil {
@@ -66,8 +66,21 @@ func ResetSockets() error {
 	ctx, done := context.WithTimeout(context.Background(), 5*time.Second)
 	st, _ := n.StatusWithPeers(ctx)
 	done()
-	return resetSockets(n.Sys(), st)
+	err = resetSockets(n.Sys(), st)
+	if errors.Is(err, errStuck) {
+		mu.Lock()
+		if node == n {
+			stuck = true
+		}
+		mu.Unlock()
+	}
+	return err
 }
+
+// errStuck is a reset that didn't finish: a goroutine still waits on
+// WireGuard's bind, holding its lock, and closing the device would wait
+// for it too.
+var errStuck = errors.New("socket reset is stuck")
 
 // resetSockets closes WireGuard's bind, has magicsock open new sockets and
 // opens the bind on them, which starts new receive loops; an update alone
@@ -95,46 +108,41 @@ func resetSockets(sys *tsd.System, st *ipnstate.Status) error {
 	// racing rebind (a link change) handed it, or waiting for a buffer
 	// that packets staged for a peer with no session hold, never sees it:
 	// close the sockets again and drop the staged packets until it does.
-	if !await(func() { dev.BindClose() }, func() {
+	if err := await(func() error { dev.BindClose(); return nil }, func() {
 		closeSockets(mc)
 		for _, p := range peers {
 			p.FlushStagedPackets()
 		}
-	}) {
-		return errors.New("socket reset is stuck")
+	}); err != nil {
+		return err
 	}
 	mc.Rebind()
-	if !await(func() { err = dev.BindUpdate() }, nil) {
-		return errors.New("socket reset is stuck")
-	}
-	if err != nil {
+	if err := await(dev.BindUpdate, nil); err != nil {
 		return err
 	}
 	mc.ReSTUN("rexgo-foreground")
 	return nil
 }
 
-// await runs fn and tells whether it returned within resetWait, calling
-// unstick, when given, every unstickEvery meanwhile.
-func await(fn, unstick func()) bool {
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		fn()
-	}()
+// await runs fn and returns its error, or errStuck when it doesn't return
+// within resetWait, calling unstick, when given, every unstickEvery
+// meanwhile.
+func await(fn func() error, unstick func()) error {
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
 	tick := time.NewTicker(unstickEvery)
 	defer tick.Stop()
 	deadline := time.After(resetWait)
 	for {
 		select {
-		case <-done:
-			return true
+		case err := <-done:
+			return err
 		case <-tick.C:
 			if unstick != nil {
 				unstick()
 			}
 		case <-deadline:
-			return false
+			return errStuck
 		}
 	}
 }
