@@ -118,3 +118,69 @@ func TestServerEnvDropsStarterMarkers(t *testing.T) {
 		t.Error("PATH was dropped")
 	}
 }
+
+func TestCleanEnv(t *testing.T) {
+	agentVars := []string{"NO_COLOR=1", "CI=true", "PAGER=cat", "GIT_TERMINAL_PROMPT=0", "npm_config_yes=true"}
+	tests := []struct {
+		name string
+		in   []string
+		drop []string
+		keep []string
+	}{
+		{
+			name: "omp marker drops agent variables",
+			in:   append([]string{"OMPCODE=1", "PI_SESSION_ID=x", "CLAUDE_CONFIG_DIR=/cfg", "npm_config_cache=/c"}, agentVars...),
+			drop: []string{"OMPCODE", "PI_SESSION_ID", "NO_COLOR", "CI", "PAGER", "GIT_TERMINAL_PROMPT", "npm_config_yes"},
+			keep: []string{"CLAUDE_CONFIG_DIR", "npm_config_cache"},
+		},
+		{
+			name: "claude marker drops agent variables",
+			in:   append([]string{"CLAUDECODE=1", "FOO=bar"}, agentVars...),
+			drop: []string{"CLAUDECODE", "NO_COLOR", "CI", "PAGER"},
+			keep: []string{"FOO"},
+		},
+		{
+			name: "AGENT alone counts as an agent",
+			in:   []string{"AGENT=1", "NO_COLOR=1", "CI=true", "FOO=bar"},
+			drop: []string{"AGENT", "NO_COLOR", "CI"},
+			keep: []string{"FOO"},
+		},
+		{
+			name: "normal environment keeps user variables",
+			in:   []string{"NO_COLOR=1", "CI=true", "PAGER=less", "EDITOR=vim", "CLAUDE_CONFIG_DIR=/cfg"},
+			keep: []string{"NO_COLOR", "CI", "PAGER", "EDITOR", "CLAUDE_CONFIG_DIR"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := envMap(cleanEnv(tt.in))
+			for _, k := range tt.drop {
+				if _, ok := got[k]; ok {
+					t.Errorf("%s was kept", k)
+				}
+			}
+			for _, k := range tt.keep {
+				if _, ok := got[k]; !ok {
+					t.Errorf("%s was dropped", k)
+				}
+			}
+		})
+	}
+}
+
+func TestSessionEnvDropsAgentVariables(t *testing.T) {
+	t.Setenv("OMPCODE", "1")
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("CI", "true")
+	t.Setenv("PAGER", "cat")
+	t.Setenv("CLAUDE_CONFIG_DIR", "/cfg")
+	got := envMap(sessionEnv("abc", nil, true))
+	for _, k := range []string{"OMPCODE", "NO_COLOR", "CI", "PAGER"} {
+		if _, ok := got[k]; ok {
+			t.Errorf("%s leaked into the session environment", k)
+		}
+	}
+	if got["CLAUDE_CONFIG_DIR"] != "/cfg" {
+		t.Errorf("CLAUDE_CONFIG_DIR = %q, want /cfg", got["CLAUDE_CONFIG_DIR"])
+	}
+}

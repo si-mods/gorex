@@ -330,21 +330,62 @@ var starterMarkers = map[string]bool{
 	"CLAUDE_PROJECT_DIR": true, "CLAUDE_ENV_FILE": true, "AI_AGENT": true,
 	"CODEX_SANDBOX": true, "CODEX_SANDBOX_NETWORK_DISABLED": true, "CODEX_THREAD_ID": true,
 	"REX_SESSION": true, "REX_BLOCK": true, "REX_SERVER": true, "REX_BIN_DIR": true,
+	"OMPCODE": true, "PI_SESSION_FILE": true, "PI_SESSION_ID": true, "PI_TOOL_CALL_ID": true,
+	"__PI_NATIVE_VARIANT_CACHE": true,
 }
 
 func starterMarker(k string) bool { return starterMarkers[k] }
 
-// serverEnv returns the environment for a server process: the current one
-// without starter markers, so a secret never lives in the server.
-func serverEnv() []string {
-	var env []string
-	for _, kv := range os.Environ() {
-		if k, _, _ := strings.Cut(kv, "="); !starterMarker(k) {
-			env = append(env, kv)
+// agentEnvVars are the variables an agent's tool shell sets so its commands
+// never wait for a person: no color, no pager, no editor, no prompt. A
+// terminal of a person needs none of them. cleanEnv drops them only when an
+// agent started this process, so a user's own NO_COLOR stays. User
+// configuration such as npm_config_cache stays too.
+var agentEnvVars = map[string]bool{
+	"NO_COLOR": true, "CI": true, "AGENT": true,
+	"PAGER": true, "GIT_PAGER": true, "GH_PAGER": true, "MANPAGER": true, "BAT_PAGER": true,
+	"DELTA_PAGER": true, "GLAB_PAGER": true, "HOMEBREW_PAGER": true, "MYSQL_PAGER": true,
+	"PSQL_PAGER": true, "SYSTEMD_PAGER": true, "AWS_PAGER": true,
+	"EDITOR": true, "VISUAL": true, "GIT_EDITOR": true, "GIT_SEQUENCE_EDITOR": true,
+	"GIT_TERMINAL_PROMPT": true, "GCM_INTERACTIVE": true, "GH_PROMPT_DISABLED": true,
+	"GPG_TTY": true, "SSH_ASKPASS": true, "DEBIAN_FRONTEND": true,
+	"CLOUDSDK_CORE_DISABLE_PROMPTS": true, "COMPOSER_NO_INTERACTION": true,
+	"TF_INPUT": true, "TF_IN_AUTOMATION": true, "PIP_NO_INPUT": true,
+	"PIP_DISABLE_PIP_VERSION_CHECK": true, "npm_config_yes": true, "npm_config_progress": true,
+	"npm_config_audit": true, "npm_config_fund": true, "npm_config_update_notifier": true,
+	"YARN_ENABLE_PROGRESS_BARS": true, "YARN_ENABLE_TELEMETRY": true,
+	"PNPM_DISABLE_SELF_UPDATE_CHECK": true, "PNPM_UPDATE_NOTIFIER": true,
+	"CARGO_TERM_PROGRESS_WHEN": true,
+}
+
+// cleanEnv returns environ without starter markers. When an agent started
+// this process (a marker is present, or AGENT is set), it also drops the
+// agent's non-interactive variables. It must run where the markers are
+// still visible, so the server gets the cleaned environment and its
+// sessions inherit it. Names match exactly, also on Windows.
+func cleanEnv(environ []string) []string {
+	agent := false
+	for _, kv := range environ {
+		if k, _, _ := strings.Cut(kv, "="); starterMarker(k) || k == "AGENT" {
+			agent = true
+			break
 		}
+	}
+	var env []string
+	for _, kv := range environ {
+		k, _, _ := strings.Cut(kv, "=")
+		if starterMarker(k) || agent && agentEnvVars[k] {
+			continue
+		}
+		env = append(env, kv)
 	}
 	return env
 }
+
+// serverEnv returns the environment for a server process: the current one
+// without starter markers, so a secret never lives in the server, and
+// without an agent's non-interactive variables.
+func serverEnv() []string { return cleanEnv(os.Environ()) }
 
 // sessionEnv returns the environment of a session's shell: the server's,
 // without what other terminals set, and what terminal apps set. A local
@@ -353,7 +394,7 @@ func serverEnv() []string {
 func sessionEnv(id string, extra []string, local bool) []string {
 	var env []string
 	hasLang := false
-	for _, kv := range os.Environ() {
+	for _, kv := range cleanEnv(os.Environ()) {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
 		case k == "PATH" && local:
