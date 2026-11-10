@@ -1,6 +1,6 @@
 # Rex Go over tailcat
 
-Status: proposed. Answers the rest of
+Status: phase 1 (Spike) done in this PR; phases 2–4 proposed. Answers the rest of
 [#330](https://github.com/si-mods/gorex/issues/330), after
 [built-in Tailscale](ios-tailnet.md).
 
@@ -187,14 +187,36 @@ Transport): a name under `.tailcat.invalid` dials that host's tailcat
 address on port 7297 with `tailcat.Client.DialTCPPort`; tailnet names
 dial the tailnet as today; anything else is refused.
 
+The proxy is one per process, not per run of the tailnet node, so it
+serves tailcat hosts with the node stopped. iOS can reclaim a suspended
+app's listening socket (TN2277); a proxy whose listener died is replaced
+by the next `Proxy()`, of a new port and password, and the hosts' next
+session goes through it.
+
 | Call | Does |
 | --- | --- |
-| `SetTailcatHosts(json)` | the paired hosts: id, address; one `tailcat.Client` each |
+| `SetTailcatKey(key)` / `NewTailcatKey() string` | the client key from the Keychain; a new one for it |
+| `SetTailcatHosts(json)` | the paired hosts: id, address |
 | `TailcatPair(address, name) string` | the pairing request; returns the fingerprint |
 | `TailcatKey() string` | this phone's public key, for Settings |
 
+There is one `tailcat.Client` per address, not per host id: two clients
+of one key take each other's packets (#212), as a machine added twice
+or paired while listed would have.
+
 The client key is passed in from the Keychain at start, never written
 by Go.
+
+A tailcat dial has its own bounds, as `internal/rex`'s: 15 s in all, a
+first try of 3 s. The SOCKS server's 5 s would cut a client's first
+dial, which connects to DERP and shakes hands.
+
+tailcat's `createEngine` turns `netns` off for the whole process, so
+once a tailcat client starts the tailnet node no longer binds its
+sockets to the default interface: the system's routes pick. That is
+harmless without a VPN; with a system VPN on (the Tailscale app, say),
+the node's traffic could enter it. Unverified; an upstream ask could
+make it optional.
 
 `URLSession` reaches a tailcat host at `http://<id>.tailcat.invalid`:
 plain HTTP inside WireGuard, like the gateway's own streams. Rex Go
@@ -212,17 +234,25 @@ tailcat address uses it, whether or not built-in Tailscale is on.
 The tailcat client is `magicsock`, so the phone's network and
 suspension hit it as they hit the tailnet node (ios-tailnet.md,
 Lifecycle): the path monitor's news goes to it too, and the socket
-reset after a suspension rebinds it. The reset reaches the WireGuard
-device and `magicsock` sockets through unexported fields today; for
-tailcat the fields differ, so the first phase measures whether the
-reset carries over or tailcat needs a hook upstream (tailcat is
-Tailscale's, open to one). Then `Host.resume()`, which keeps the
-sessions on the server.
+reset after a suspension rebinds it. The reset carries over with no
+hook upstream: a tailcat client's `lb.sys` is the same `tsd.System` as
+tsnet's `Server.Sys()`, reached the same way, through unexported fields
+whose tests fail when they move. Should they, the smallest upstream ask
+is `(*Client).Sys()`. Then `Host.resume()`, which keeps the sessions on
+the server.
+
+A machine whose server restarted, as on an upgrade, forgot the client,
+and the client still trusts its old direct path and WireGuard session:
+left alone, it waits for WireGuard's rekey, 15 s and more. So a dial
+that fails pings the server, resets the client's sockets, expires the
+server's WireGuard keypair and tries once more, in about 3 s.
+(`internal/rex` makes a new client instead.)
 
 ## Size
 
 tailcat links `magicsock`, WireGuard and `netstack`, which the engine
-has already. Phase 1 measures the Release binary with and without it.
+has already. Measured on Rex Go's Release device binary, stripped, with
+and without it: +0.26 MB installed, +0.11 MB compressed (gzip -9).
 
 ## Test plan
 
@@ -239,9 +269,9 @@ has already. Phase 1 measures the Release binary with and without it.
 
 ## Phases
 
-1. **Spike**: a tailcat client in the engine, a host reached through
-   the proxy in the simulator, the socket reset after a suspension, the
-   size.
+1. **Spike** (done): a tailcat client in the engine, a host reached
+   through the proxy (Go tests, against a local DERP; not yet in the
+   simulator), the socket reset after a suspension, the size.
 2. **Server**: port 7297 on the tailcat address, `remote.tailcatAccept`,
    the gateway's tailcat streams, the relay setting.
 3. **Rex Go**: the `.tailcat` transport, the `rexgo://tailcat` code,
