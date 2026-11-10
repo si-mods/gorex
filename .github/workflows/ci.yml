@@ -33,8 +33,9 @@ jobs:
           fi
       - name: vet
         run: go vet ./...
+      # The Intel runner is slower: the root package alone takes near 10 minutes.
       - name: test
-        run: go test ./... -count=1 -timeout 10m
+        run: go test ./... -count=1 -timeout 25m
 
   build:
     runs-on: ubuntu-latest
