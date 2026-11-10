@@ -110,16 +110,20 @@ protocol.
 The session server's tailcat server listens on a second port, Rex's
 API port 7297, beside `RemotePort` (7464). The allowlist is the
 server's, so an unknown key gets nothing on either port; pairing stays
-on `RemotePort`.
+on `RemotePort`. Rex's API commands the layout, so 7297 lets in only the
+clients that may command it on `RemotePort` (`remoteMayCommand`): an
+allowed key or a network member with the sessions shared with it, by
+Share open terminals or its own switch. Sharing turned off for a client
+closes its 7297 connections, as Remove does.
 
 The gateway is a separate process and keeps no tailcat of its own: one
 address per machine. It takes these connections from the session server
 the way a client's dial already goes through it (`remote.tailcatDial`,
-`relayTailcat`), in the other direction: the gateway asks the session
-server, on its socket, to accept for port 7297
-(`remote.tailcatAccept`), and gets each connection as a stream on its
-local socket, first a line with the peer's key and name, then the
-bytes. The local socket is this user's only, so the line can be trusted.
+`relayTailcat`), in the other direction: the gateway listens on a
+socket of its own, `rexapi-tailcat.sock` in the data directory, and the
+session server dials it for each connection to 7297, writes a line with
+the peer's key and name, then splices the bytes. The socket is this
+user's only, so the line can be trusted.
 
 The gateway serves these streams with its usual handler, and
 `identify` gives:
@@ -132,18 +136,17 @@ The gateway serves these streams with its usual handler, and
 The key stays out of it: Rex's principal allows no member for it, and a
 client that decodes one strictly would refuse it.
 
-The gateway keeps one accept waiting while it runs (`net/http` asks for
-the next as soon as one is taken). A connection that finds none within
-10 seconds, as while the gateway starts or when none runs, is closed and
-its client dials again. `server.status` leaves this listener out: its
-address is a secret.
+With no gateway on the socket, as while it starts, the connection closes
+at once and its client dials again. `server.status` leaves this
+listener out: its address is a secret.
 
 What a paired client may do on the gateway is Rex's API, layout
 included, as the Tailscale user who signed the gateway in may. That is
 more than a desktop may do on `RemotePort` (sessions only, no layout).
 A desktop already has the same trust in practice (an allowed key runs
 any program as this user, README), so the line is a convention, not a
-boundary; but it moves. Settings shows which clients are phones.
+boundary; it is drawn where a desktop may command the layout over
+`RemotePort`, with the sessions shared with it.
 
 The gateway runs while remote access is on, as it does while the local
 network listener or built-in Tailscale is.
@@ -153,8 +156,10 @@ network listener or built-in Tailscale is.
 Remote access picks a region of tailcat's default DERP map once, and
 keeps it (`remote.json`, `region`). It has a setting, **Relay**: default
 (tailcat's), or a host of one's own, `derp.example.com`, with `:PORT`
-when not 443 (Settings › Remote, `gorex remote relay HOST|default`,
-`remotectl relay [HOST]`; `remote.relaySet` on the local socket). Given
+when not 443, by name and not IP address, as `derper --hostname` serves
+a certificate for a name (Settings › Remote, `gorex remote relay
+HOST|default`, `remotectl relay HOST|default`; `remote.relaySet` on the
+local socket). Given
 one, the session server sets `Server.Region` to a region of that one
 node (DERP on its port, STUN on 3478), and the address embeds it:
 clients need no setting and never fetch a DERP map. The picked region
@@ -275,9 +280,10 @@ and without it: +0.26 MB installed, +0.11 MB compressed (gzip -9).
 
 ## Test plan
 
-- `internal/rex`: port 7297 accepts allowed keys only; `remote.tailcatAccept`
-  hands a stream with the right key; Remove closes a phone's gateway
-  stream; the relay setting puts the region in the address.
+- `internal/rex`: port 7297 accepts allowed keys with the sessions
+  shared only; the gateway's socket gets a stream with the right key;
+  unsharing, Remove and remote off close a phone's gateway stream; the
+  relay setting puts the region in the address.
 - `internal/rexapi`: a tailcat stream's `identify`; a refused key gets
   nothing.
 - End to end on the Mac mini: Rex Go in the simulator scans the code,
@@ -291,9 +297,8 @@ and without it: +0.26 MB installed, +0.11 MB compressed (gzip -9).
 1. **Spike** (done): a tailcat client in the engine, a host reached
    through the proxy (Go tests, against a local DERP; not yet in the
    simulator), the socket reset after a suspension, the size.
-2. **Server** (done): port 7297 on the tailcat address,
-   `remote.tailcatAccept`, the gateway's tailcat streams, the relay
-   setting.
+2. **Server** (done): port 7297 on the tailcat address, the gateway's
+   socket for its streams, the relay setting.
 3. **Rex Go**: the `.tailcat` transport, the `rexgo://tailcat` code,
    pairing, the client key, lifecycle.
 4. **Docs**: `docs/rex-api.md` and the README's Remote access: Rex Go

@@ -128,20 +128,21 @@ Rex Go reaches the machine over tailcat, at the address of GoRex's
 remote access (README, Remote access): WireGuard end to end, directly or
 through a DERP relay, with no Tailscale account and no VPN on the phone.
 The gateway keeps no tailcat of its own. The session server listens on
-port 7297 of its address beside 7464, lets in the keys of its allowlist
-and its network only (an unknown key gets nothing; pairing stays on
-7464), and hands each connection to the gateway over its local socket
-(`remote.tailcatAccept`): first a line with the client's key and name,
-then the bytes. The gateway keeps one such accept waiting; a connection
-that finds none within 10 seconds, as while the gateway starts, is
-closed, and its client tries again.
+port 7297 of its address beside 7464, and lets in only the clients that
+may command its layout over 7464: the keys of its allowlist and its
+network with its sessions shared with them (an unknown key, or one not
+shared with, gets nothing; pairing stays on 7464). For each, it dials
+the gateway's socket, `rexapi-tailcat.sock` in GoRex's data directory
+(this user only), and writes a line with the client's key and name, then
+the bytes. With no gateway there, the connection closes and the client
+dials again.
 
 A client over tailcat is identified as
 `{"kind": "device", "transport": "tailcat", "display": "<client name>", "path": ["tailcat"]}`.
 It gets Rex's API as the owner does over built-in Tailscale, layout
 included, but not `server.tailscale.*`. Remove in Settings › Remote, a
-coordinator's kick, or turning remote access off closes its
-connections. `server.status` does not list this listener: its address is
+coordinator's kick, its sessions no longer shared, or turning remote
+access off closes its connections. `server.status` does not list this listener: its address is
 a secret.
 
 ## Set up
