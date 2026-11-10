@@ -531,7 +531,7 @@ private struct HostSection: View {
         // The session's header on the page, then its windows in a card.
         VStack(spacing: 4) {
             HStack(spacing: 4) {
-                Text(s.label).font(.headline).foregroundStyle(.primary).lineLimit(1)
+                Text(s.label).font(.headline).lineLimit(1)
                 Spacer(minLength: 8)
                 // Plain ghost buttons: glass is for what floats over the page.
                 Button {
