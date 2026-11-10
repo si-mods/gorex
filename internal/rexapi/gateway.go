@@ -95,6 +95,9 @@ type Gateway struct {
 	// lan is the listener on the local network, nil without a state
 	// directory.
 	lan *lanListener
+	// listeners are the listeners that serve until the gateway stops,
+	// primary first, which server.status lists; under mu.
+	listeners []listenerStatus
 	// reconnectWait is how long a dropped client, or a data stream, waits
 	// to be resumed; tests shorten it before making a gateway of their own.
 	reconnectWait time.Duration

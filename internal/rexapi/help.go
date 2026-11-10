@@ -1,6 +1,7 @@
 package rexapi
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 )
@@ -175,6 +176,75 @@ var uploadBeginEntry = map[string]any{
 		},
 		"required": []any{"ticket", "expires_in_ms"},
 	},
+}
+
+// listenersSchema is revision 12's listeners member of server.status,
+// which the revision 10 document predates. Its descriptions come from
+// Rex 0.1.0-preview.14's schema.
+var listenersSchema = map[string]any{
+	"type":        "array",
+	"description": "Each endpoint the server accepts connections on, primary first. Servers older than API revision 12 leave it out. Doesn't include built-in Tailscale, which the tailscale member describes.",
+	"items": map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"endpoint": map[string]any{
+				"type":        "string",
+				"description": "The endpoint the listener was configured with, such as unix:///run/rex.sock, 127.0.0.1:7297, or tailnet://:7297.",
+			},
+			"addresses": map[string]any{
+				"type":        "array",
+				"items":       map[string]any{"type": "string"},
+				"description": "The addresses the listener is bound to, such as a socket path or 127.0.0.1:54321. They show the port that an endpoint like 127.0.0.1:0 got. Left out when the server can't tell.",
+			},
+			"transport": map[string]any{
+				"type":        "string",
+				"description": "How the listener identifies its callers: 'unix', 'named_pipe', 'tcp', or 'tailscale'. Show a value you don't know as it is.",
+			},
+			"admission": map[string]any{
+				"type":        "string",
+				"description": "Which callers the listener lets in: 'peer_credentials', 'anonymous', 'tailscale_owner', 'tailscale_identified', or 'login_server'. Left out when the server can't tell. Show a value you don't know as it is.",
+			},
+			"primary": map[string]any{
+				"type":        "boolean",
+				"description": "True for the server's primary endpoint, where commands such as rex server status and rex server stop look for the server. Left out for the other listeners.",
+			},
+		},
+		"required": []any{"endpoint", "transport"},
+	},
+}
+
+// withListenersSchema adds listenersSchema to the help document's
+// server status: server.status's result and session.bootstrap's
+// server_status. A document it cannot read is returned as it is.
+func withListenersSchema(raw []byte) []byte {
+	var doc map[string]any
+	if json.Unmarshal(raw, &doc) != nil {
+		return raw
+	}
+	methods, _ := doc["methods"].([]any)
+	for _, m := range methods {
+		m, _ := m.(map[string]any)
+		out, _ := m["output_schema"].(map[string]any)
+		switch m["name"] {
+		case "server.status":
+		case "session.bootstrap":
+			props, _ := out["properties"].(map[string]any)
+			out, _ = props["server_status"].(map[string]any)
+		default:
+			continue
+		}
+		if props, ok := out["properties"].(map[string]any); ok {
+			props["listeners"] = listenersSchema
+		}
+	}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(doc) != nil {
+		return raw
+	}
+	return b.Bytes()
 }
 
 // methodBlockCreatorList lists the creators GoRex can make blocks with:

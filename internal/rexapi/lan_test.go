@@ -372,3 +372,127 @@ func TestServerRunsGateway(t *testing.T) {
 	c.Shutdown()
 	<-served
 }
+
+// TestStatusListsListeners checks revision 12's listeners: the local
+// socket first and alone primary, then --listen's port with the port it
+// got, then the local network's listener while it listens; a revision 11
+// client sees no list in server.status or session.bootstrap.
+func TestStatusListsListeners(t *testing.T) {
+	startFixture(t)
+	dir := t.TempDir()
+	c, err := rex.ConnectSocketKeepalive(rex.SocketPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sock := shortSocket(t)
+	stop := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- run(c, runOptions{socket: sock, dir: dir, listen: "127.0.0.1:0", stop: stop})
+	}()
+	defer func() {
+		close(stop)
+		<-done
+	}()
+	waitFor(t, "the local socket", func() bool {
+		conn, err := net.Dial("unix", sock)
+		if err == nil {
+			conn.Close()
+		}
+		return err == nil
+	})
+	dial := func(rev int) *testConn {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		httpc := &http.Client{Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", sock)
+			},
+		}}
+		ws, _, err := websocket.Dial(ctx, "ws://localhost/api/control", &websocket.DialOptions{HTTPClient: httpc, Subprotocols: []string{controlProtocol}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { ws.CloseNow() })
+		conn := newTestConn(t, ws)
+		conn.hello(rev)
+		return conn
+	}
+	listeners := func(conn *testConn) []map[string]any {
+		t.Helper()
+		var out []map[string]any
+		st := result(t, conn.request("s", "server.status", nil))
+		checkResult(t, "server.status", st)
+		for _, l := range st["listeners"].([]any) {
+			out = append(out, l.(map[string]any))
+		}
+		return out
+	}
+
+	cur := dial(apiRevision)
+	got := listeners(cur)
+	if len(got) != 2 {
+		t.Fatalf("listeners = %v, want the socket and --listen's", got)
+	}
+	if got[0]["endpoint"] != "unix://"+sock || got[0]["transport"] != "unix" || got[0]["primary"] != true ||
+		got[0]["addresses"].([]any)[0] != sock || got[0]["admission"] != nilIfEmpty(unixAdmission) {
+		t.Errorf("primary = %v", got[0])
+	}
+	tcpAddr, _ := got[1]["addresses"].([]any)[0].(string)
+	if got[1]["endpoint"] != "127.0.0.1:0" || got[1]["transport"] != "tcp" || got[1]["admission"] != "anonymous" ||
+		got[1]["primary"] != nil || tcpAddr == "127.0.0.1:0" || !strings.HasPrefix(tcpAddr, "127.0.0.1:") {
+		t.Errorf("--listen = %v", got[1])
+	}
+
+	if err := SaveLAN(dir, LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}}); err != nil {
+		t.Fatal(err)
+	}
+	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
+	got = listeners(cur)
+	if len(got) != 3 || got[2]["endpoint"] != "127.0.0.1:0" || got[2]["addresses"].([]any)[0] != s.Listening ||
+		got[2]["transport"] != "tcp" || got[2]["admission"] != "anonymous" || got[2]["primary"] != nil {
+		t.Fatalf("listeners with the local network = %v, want it third at %s", got, s.Listening)
+	}
+	primaries := 0
+	for _, l := range got {
+		if l["primary"] == true {
+			primaries++
+		}
+	}
+	if primaries != 1 {
+		t.Errorf("%d primaries in %v", primaries, got)
+	}
+	boot := result(t, cur.request("b", "session.bootstrap", map[string]any{"event_scope": "all"}))
+	checkResult(t, "session.bootstrap", boot)
+	if l, _ := boot["server_status"].(map[string]any)["listeners"].([]any); len(l) != 3 {
+		t.Errorf("bootstrap's listeners = %v", l)
+	}
+
+	old := dial(11)
+	if st := result(t, old.request("s", "server.status", nil)); st["listeners"] != nil {
+		t.Errorf("revision 11 sees server.status's listeners: %v", st["listeners"])
+	}
+	boot = result(t, old.request("b", "session.bootstrap", map[string]any{"event_scope": "all"}))
+	if ss := boot["server_status"].(map[string]any); ss["listeners"] != nil || ss["pid"] == nil {
+		t.Errorf("revision 11 bootstrap's server_status = %v", ss)
+	}
+
+	time.Sleep(20 * time.Millisecond) // a new modification time
+	if err := SaveLAN(dir, LANConfig{Enabled: false, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}}); err != nil {
+		t.Fatal(err)
+	}
+	waitLAN(t, dir, func(s LANStatus) bool { return s.Running && s.Listening == "" })
+	if got := listeners(cur); len(got) != 2 {
+		t.Errorf("listeners once the local network is off = %v", got)
+	}
+}
+
+// nilIfEmpty is how JSON decodes a member omitempty left out.
+func nilIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}

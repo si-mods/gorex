@@ -14,7 +14,8 @@ import (
 //	r6 hides terminal format's paging fields from clients that predate them;
 //	r8 hides session.bootstrap's data_tickets from clients that predate it;
 //	r9 hides a layer's state from clients that predate minimized layers;
-//	r10 hides Tailscale's control_url from clients that predate it.
+//	r10 hides Tailscale's control_url from clients that predate it;
+//	r12 hides server.status's listeners from clients that predate them.
 //
 // A client that speaks revision R sees the shape that was current at R:
 // requests are translated up to the shape this server implements, and
@@ -68,6 +69,10 @@ var revisionChanges = []revisionChange{
 		"/server_status/tailscale/control_url",
 	}},
 	{at: 10, kind: "hide", method: "tailscale_status_changed", paths: []string{"/control_url"}},
+	// Revision 12 adds the listeners server.status lists, which
+	// session.bootstrap's server_status has too.
+	{at: 12, kind: "hide", method: "server.status", paths: []string{"/listeners"}},
+	{at: 12, kind: "hide", method: "session.bootstrap", paths: []string{"/server_status/listeners"}},
 }
 
 // creatorSince is when a block creator first appeared. A client that

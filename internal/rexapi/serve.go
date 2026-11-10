@@ -149,6 +149,10 @@ func run(c *rex.Client, o runOptions) error {
 	}
 	defer os.Remove(o.socket)
 	defer unixLn.Close()
+	g.addListener(listenerStatus{
+		Endpoint: "unix://" + o.socket, Addresses: []string{o.socket},
+		Transport: transportUnix, Admission: unixAdmission, Primary: true,
+	})
 	go func() { serveErr <- g.serveOn(unixLn, transportUnix) }()
 	if o.announce {
 		fmt.Printf("rexapi: listening on unix://%s\n", o.socket)
@@ -160,6 +164,10 @@ func run(c *rex.Client, o runOptions) error {
 		}
 		tl := newTrackedListener(ln)
 		defer tl.Close()
+		g.addListener(listenerStatus{
+			Endpoint: o.listen, Addresses: []string{ln.Addr().String()},
+			Transport: transportTCP, Admission: admissionAnonymous,
+		})
 		go func() { serveErr <- g.serveOn(tl, transportTCP) }()
 		if o.announce {
 			fmt.Printf("rexapi: listening on http://%s\n", ln.Addr())

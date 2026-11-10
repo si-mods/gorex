@@ -375,6 +375,22 @@ func (l *lanListener) apply(c LANConfig) {
 	l.reportLocked()
 }
 
+// listener is the listener as server.status lists it, while it
+// listens. Its callers are anonymous TCP ones, from the networks allowed.
+func (l *lanListener) listener() (listenerStatus, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.ln == nil {
+		return listenerStatus{}, false
+	}
+	return listenerStatus{
+		Endpoint:  l.conf.Listen,
+		Addresses: []string{l.ln.Addr().String()},
+		Transport: transportTCP,
+		Admission: admissionAnonymous,
+	}, true
+}
+
 func sameLAN(a, b LANConfig) bool {
 	return a.Enabled == b.Enabled && a.Listen == b.Listen && slices.Equal(a.Allow, b.Allow)
 }
