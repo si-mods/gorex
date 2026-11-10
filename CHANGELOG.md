@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.2
+
+### Bug Fixes
+
+* **rex:** a session server started from a coding agent's shell no longer passes the agent's non-interactive variables (`NO_COLOR`, `CI=true`, `PAGER=cat`, `EDITOR=true` and the like) to its panes, so programs there draw in color again; a user's own values stay ([#379](https://github.com/si-mods/gorex/pull/379))
+
 ## 0.20.1
 
 ### Features
