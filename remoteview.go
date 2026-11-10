@@ -928,8 +928,7 @@ func (a *App) remoteRelay(c *ui.Context, k *colors) {
 					page.relayErr = locales.RemoteRelayInvalid()
 					return
 				}
-				a.remoteDo(func(srv *rex.Client) error { return srv.SetRelay(relay) },
-					func() { page.relay, page.relayEdited = relay, false })
+				a.saveRelay(relay)
 			}
 		})
 		if page.relayErr != "" {
@@ -937,6 +936,31 @@ func (a *App) remoteRelay(c *ui.Context, k *colors) {
 		}
 		rowHint(c, k, locales.RemoteRelayNote())
 	})
+}
+
+// saveRelay sets the server's relay, saying under the field what went
+// wrong, as the field keeps what was typed.
+func (a *App) saveRelay(relay string) {
+	page := &remoteUI
+	if page.busy {
+		return
+	}
+	page.busy, page.relayErr = true, ""
+	started := a.remoteAsk(func(srv *rex.Client) func() {
+		err := srv.SetRelay(relay)
+		return func() {
+			page.busy = false
+			if err != nil {
+				page.relayErr = serverMessage(err)
+			} else {
+				page.relay, page.relayEdited = relay, false
+			}
+			a.fetchRemote()
+		}
+	})
+	if !started {
+		page.busy, page.relayErr = false, locales.RemoteNotConnected()
+	}
 }
 
 // validateNetwork returns what is wrong with a network to join, "" if

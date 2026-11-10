@@ -44,7 +44,7 @@ import (
 const RemotePort = 7464
 
 // RexAPIPort is Rex's API port, which the server's tailcat address serves
-// too: its connections go to the Rex API gateway (remote.tailcatAccept).
+// too: its connections go to the Rex API gateway (toGateway).
 const RexAPIPort = 7297
 
 // RemoteConfig is the server's remote access, kept in Dir()/remote.json.
@@ -180,8 +180,9 @@ func scrub(s string, addrs ...string) string {
 func Scrub(s string, addrs ...string) string { return scrub(s, addrs...) }
 
 // NormalizeRelay checks a relay of one's own, a DERP server's host name
-// or address with its port when not 443, and returns it trimmed; "" is
-// tailcat's own relays.
+// with its port when not 443, and returns it trimmed; "" is tailcat's own
+// relays. An IP address is refused: derper --hostname serves a
+// certificate for a name, which TLS to an address would not match.
 func NormalizeRelay(s string) (string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -194,13 +195,13 @@ func NormalizeRelay(s string) (string, error) {
 		}
 		host = h
 	}
-	if _, err := netip.ParseAddr(host); err != nil && dnsname.ValidHostname(host) != nil {
+	if _, err := netip.ParseAddr(host); err == nil || dnsname.ValidHostname(host) != nil {
 		return "", errBadRelay
 	}
 	return s, nil
 }
 
-var errBadRelay = errors.New("rex: a relay is a host name, as derp.example.com, with :PORT when not 443, and no https://")
+var errBadRelay = errors.New("rex: a relay is a host name, as derp.example.com, with :PORT when not 443: no IP address, no https://")
 
 // relayInsecure lets a relay serve a certificate of no authority, for
 // tests' relays on the loopback.
@@ -272,12 +273,10 @@ type remote struct {
 	ts      *tailcat.Server    // non-nil while running
 	ln      net.Listener
 	api     net.Listener // RexAPIPort, beside ln
-	// gateway is where the gateway's accepts wait (remote.tailcatAccept)
-	// for the connections to api; made at first use.
-	gateway chan gatewayAccept
 	addr    tailcat.Addr
 	lastErr string
 	conns   map[net.Conn]string // the remote connections, by their peer's key
+	gw      map[net.Conn]bool   // those of conns that go to the gateway
 	// pairUntil is when the pairing window closes, zero while closed;
 	// pending holds the requests made in it, never saved.
 	pairUntil time.Time
@@ -453,13 +452,6 @@ func (s *Server) remoteLoad() {
 	}
 }
 
-// RemoteOn tells whether remote access is on, as remote.json says: the
-// gateway then takes the connections to RexAPIPort.
-func RemoteOn() bool {
-	var c RemoteConfig
-	return readJSON(remotePath(), &c) == nil && c.Enabled
-}
-
 // remoteEnabled tells whether a remote client may connect: the tailcat
 // listener runs, or one of the system tailnet's links is open. The
 // tailnet broker alone does not count, so that a server with no sessions
@@ -497,7 +489,7 @@ func (s *Server) remoteStopLocked() func() {
 		r.cancel = nil
 	}
 	ts, ln, api, conns := r.ts, r.ln, r.api, r.conns
-	r.ts, r.ln, r.api, r.addr, r.conns = nil, nil, nil, "", nil
+	r.ts, r.ln, r.api, r.addr, r.conns, r.gw = nil, nil, nil, "", nil, nil
 	r.pairUntil, r.pending = time.Time{}, nil
 	return func() {
 		if ln != nil {
@@ -553,7 +545,8 @@ func (s *Server) remoteStartLocked() {
 				return
 			}
 			if err == nil {
-				r.ts, r.ln, r.api, r.addr, r.conns, r.lastErr = ts, ln, api, addr, map[net.Conn]string{}, ""
+				r.ts, r.ln, r.api, r.addr, r.lastErr = ts, ln, api, addr, ""
+				r.conns, r.gw = map[net.Conn]string{}, map[net.Conn]bool{}
 				if r.cfg.Region == 0 && region != 0 {
 					r.cfg.Region = region
 					if err := writeJSON(remotePath(), r.cfg); err != nil {
@@ -562,8 +555,11 @@ func (s *Server) remoteStartLocked() {
 				}
 				r.mu.Unlock()
 				log.Printf("rex: remote access on")
-				go s.remoteAccept(ts, api)
-				aerr := s.remoteAccept(ts, ln)
+				// Either listener failing starts both again.
+				errs := make(chan error, 2)
+				go func() { errs <- s.remoteAccept(ts, api) }()
+				go func() { errs <- s.remoteAccept(ts, ln) }()
+				aerr := <-errs
 				// Accepting failed, not stopped: say so, and start again as
 				// after any failure, so that nothing claims to listen
 				// while nothing accepts.
@@ -577,7 +573,7 @@ func (s *Server) remoteStartLocked() {
 				done := func() {}
 				if r.ln == ln {
 					ts, ln, conns := r.ts, r.ln, r.conns
-					r.ts, r.ln, r.api, r.addr, r.conns = nil, nil, nil, "", nil
+					r.ts, r.ln, r.api, r.addr, r.conns, r.gw = nil, nil, nil, "", nil, nil
 					done = func() {
 						ln.Close()
 						api.Close()
@@ -672,8 +668,9 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			r.mu.Lock()
 			allowed := r.allowedLocked(k) || r.netMemberLocked(k)
 			api := r.api == ln
-			// Stopped, or for the gateway and not allowed: no answer.
-			if r.ln != ln && !api || api && !allowed {
+			// Stopped, or for the gateway and not allowed to command the
+			// layout (remoteMayCommand): no answer.
+			if r.ln != ln && !api || api && !(allowed && r.sharesLocked(k)) {
 				r.mu.Unlock()
 				c.Close()
 				return
@@ -684,6 +681,9 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 				return
 			}
 			r.conns[c] = k
+			if api {
+				r.gw[c] = true
+			}
 			r.mu.Unlock()
 			switch {
 			case api:
@@ -698,44 +698,19 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			c.Close()
 			r.mu.Lock()
 			delete(r.conns, c)
+			delete(r.gw, c)
 			r.mu.Unlock()
 		}()
 	}
 }
 
-// gatewayWait is how long a connection to RexAPIPort waits for the
-// gateway to take it, as while the gateway starts, before it closes.
-var gatewayWait = 10 * time.Second
-
-// gatewayAccept is an accept of the gateway's, waiting on the local
-// socket: its connection, and what it sends once taken.
-type gatewayAccept struct {
-	local net.Conn
-	input io.Reader
-}
-
-// gatewayQueue is where the gateway's accepts wait.
-func (s *Server) gatewayQueue() chan gatewayAccept {
-	r := &s.rem
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.gateway == nil {
-		r.gateway = make(chan gatewayAccept)
-	}
-	return r.gateway
-}
-
 // toGateway hands c, a connection of the allowed client k to RexAPIPort,
-// to an accept of the gateway's: a line that names the client, then the
-// bytes both ways. With none taking it within gatewayWait, as when no
-// gateway runs, c closes.
+// to the Rex API gateway on its socket: a line that names the client, then
+// the bytes both ways. With no gateway there, c closes, and its client
+// dials again.
 func (s *Server) toGateway(c net.Conn, k string) {
-	t := time.NewTimer(gatewayWait)
-	defer t.Stop()
-	var g gatewayAccept
-	select {
-	case g = <-s.gatewayQueue():
-	case <-t.C:
+	g, err := net.DialTimeout("unix", GatewaySocketPath(), 5*time.Second)
+	if err != nil {
 		return
 	}
 	peer := RemoteClient{PublicKey: k}
@@ -743,67 +718,11 @@ func (s *Server) toGateway(c net.Conn, k string) {
 		peer.Name = rc.Name
 	}
 	b, _ := json.Marshal(peer)
-	if _, err := g.local.Write(append(b, '\n')); err != nil {
-		g.local.Close()
+	if _, err := g.Write(append(b, '\n')); err != nil {
+		g.Close()
 		return
 	}
-	splice(g.local, g.input, c)
-}
-
-// tailcatAccept is reached through the local socket, after the gateway
-// asks to accept: the connection waits for one to RexAPIPort (toGateway)
-// until the gateway closes it.
-func (s *Server) tailcatAccept(local net.Conn, input *bufio.Reader) {
-	// The gateway says nothing before the line: what it reads first is
-	// its close.
-	gone := make(chan struct{})
-	go func() {
-		input.Peek(1)
-		close(gone)
-	}()
-	select {
-	case s.gatewayQueue() <- gatewayAccept{local, waitReader{gone, input}}:
-	case <-gone:
-		local.Close()
-	case <-s.quit:
-		local.Close()
-	}
-}
-
-// AcceptTailcat waits on the local server for a remote client's
-// connection to RexAPIPort, as the gateway takes them, and returns it
-// with its client: one of the allowlist or of the network, as the server
-// let in. ctx bounds the wait.
-func AcceptTailcat(ctx context.Context) (net.Conn, RemoteClient, error) {
-	c, err := dialSocket()
-	if err != nil {
-		return nil, RemoteClient{}, err
-	}
-	stop := context.AfterFunc(ctx, func() { c.Close() })
-	b, _ := json.Marshal(Request{Op: "remote.tailcatAccept"})
-	var line []byte
-	if _, err = c.Write(append(b, '\n')); err == nil {
-		// A byte at a time: what follows the line is the client's.
-		line, err = readByteLine(c)
-	}
-	if !stop() {
-		err = ctx.Err()
-	}
-	var peer struct {
-		RemoteClient
-		Error string `json:"error"`
-	}
-	if err == nil && json.Unmarshal(line, &peer) == nil && peer.PublicKey != "" {
-		return c, peer.RemoteClient, nil
-	}
-	c.Close()
-	switch {
-	case err != nil:
-		return nil, RemoteClient{}, err
-	case peer.Error != "":
-		return nil, RemoteClient{}, errors.New(peer.Error)
-	}
-	return nil, RemoteClient{}, errors.New("rex: the local server answered something else")
+	splice(g, g, c)
 }
 
 // refuseRemote tells a client it does not allow so, unprompted, and closes

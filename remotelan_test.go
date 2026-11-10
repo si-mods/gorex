@@ -199,4 +199,14 @@ func TestRemoteRelayRow(t *testing.T) {
 	if remoteUI.relayErr != locales.RemoteRelayInvalid() || !tt.HasText(locales.RemoteRelayInvalid()) {
 		t.Errorf("a URL saved: %q", remoteUI.relayErr)
 	}
+
+	// A save the server does not take says why under the field, which
+	// keeps what was typed.
+	remoteUI.relay = "derp.example.com"
+	tt.Frame()
+	tt.ClickAt(save.X+save.W/2, save.Y+save.H/2)
+	tt.Frame()
+	if remoteUI.relayErr != locales.RemoteNotConnected() || !tt.HasText(remoteUI.relayErr) || !remoteUI.relayEdited || remoteUI.err != nil {
+		t.Errorf("a failed save: %q, edited %v, page error %v", remoteUI.relayErr, remoteUI.relayEdited, remoteUI.err != nil)
+	}
 }

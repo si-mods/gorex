@@ -5,11 +5,14 @@ package rex
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -23,8 +26,8 @@ func TestNormalizeRelay(t *testing.T) {
 		"  derp.example.com ":       "derp.example.com",
 		"derp.example.com:8443":     "derp.example.com:8443",
 		"localhost":                 "localhost",
-		"203.0.113.7":               "203.0.113.7",
-		"[2001:db8::1]:443":         "[2001:db8::1]:443",
+		"203.0.113.7":               "!",
+		"[2001:db8::1]:443":         "!",
 		"https://derp.example.com":  "!",
 		"derp.example.com/":         "!",
 		"derp.example.com:":         "!",
@@ -54,21 +57,37 @@ func TestNormalizeRelay(t *testing.T) {
 	}
 }
 
-// accepted is what an accept of the gateway's got.
-type accepted struct {
+// gatewayConn is a connection the server made to the gateway's socket,
+// and the client its first line names.
+type gatewayConn struct {
 	c    net.Conn
+	r    *bufio.Reader
 	peer RemoteClient
-	err  error
 }
 
-// gatewayAccepts waits on the local socket as the gateway does, once.
-func gatewayAccepts(ctx context.Context) <-chan accepted {
-	ch := make(chan accepted, 1)
+// fakeGateway listens on the gateway's socket, as the gateway does.
+func fakeGateway(t *testing.T) (net.Listener, <-chan gatewayConn) {
+	t.Helper()
+	ln, err := net.Listen("unix", GatewaySocketPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	ch := make(chan gatewayConn, 4)
 	go func() {
-		c, peer, err := AcceptTailcat(ctx)
-		ch <- accepted{c, peer, err}
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			r := bufio.NewReader(c)
+			line, _ := r.ReadBytes('\n')
+			var peer RemoteClient
+			json.Unmarshal(line, &peer)
+			ch <- gatewayConn{c, r, peer}
+		}
 	}()
-	return ch
+	return ln, ch
 }
 
 // wantEOF checks that c closes within d.
@@ -81,26 +100,30 @@ func wantEOF(t *testing.T, c net.Conn, d time.Duration, what string) {
 }
 
 // TestRemoteGateway: through a relay of its own (an in-process DERP), the
-// tailcat address puts the relay in itself, serves RexAPIPort to allowed
-// clients only, and hands their connections to the gateway's accept, with
-// their key and name; a revoke and remote access off close them, and
-// clearing the relay goes back to tailcat's.
+// tailcat address puts the relay in itself, and serves RexAPIPort to the
+// clients that may command the layout only (remoteMayCommand), handing
+// their connections to the gateway's socket with their key and name. A
+// change of sharing, a revoke and remote access off close them; clearing
+// the relay goes back to tailcat's.
 func TestRemoteGateway(t *testing.T) {
 	reg := tailcatEnv(t)
 	s, _ := testServer(t)
-	localRelay(t, s, "")
 	relayInsecure = true
-	oldWait := gatewayWait
-	gatewayWait = 2 * time.Second
-	t.Cleanup(func() { relayInsecure, gatewayWait = false, oldWait })
+	t.Cleanup(func() { relayInsecure = false })
+	gwLn, gw := fakeGateway(t)
 	c := pipe(s, "")
 	defer c.Close()
 
-	if err := c.SetRelay("https://derp.example.com"); err == nil {
-		t.Error("took a URL for a relay")
+	for _, bad := range []string{"https://derp.example.com", fmt.Sprintf("127.0.0.1:%d", reg.Nodes[0].DERPPort)} {
+		if err := c.SetRelay(bad); err == nil {
+			t.Errorf("took %q for a relay", bad)
+		}
 	}
-	relay := fmt.Sprintf("127.0.0.1:%d", reg.Nodes[0].DERPPort)
+	relay := fmt.Sprintf("localhost:%d", reg.Nodes[0].DERPPort)
 	if err := c.SetRelay(relay); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.ShareSessions(false); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.EnableRemote(); err != nil {
@@ -115,12 +138,13 @@ func TestRemoteGateway(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(ci.Region) != 1 || len(ci.Region[0].Nodes) != 1 ||
-		ci.Region[0].Nodes[0].HostName != "127.0.0.1" || ci.Region[0].Nodes[0].DERPPort != reg.Nodes[0].DERPPort {
+		ci.Region[0].Nodes[0].HostName != "localhost" || ci.Region[0].Nodes[0].DERPPort != reg.Nodes[0].DERPPort {
 		t.Fatalf("the address's relay: %+v", ci.Region)
 	}
 
 	phoneKey := key.NewNode()
-	if err := c.AllowRemote("phone", phoneKey.Public().String()); err != nil {
+	phoneID := phoneKey.Public().String()
+	if err := c.AllowRemote("phone", phoneID); err != nil {
 		t.Fatal(err)
 	}
 	client := func(k key.NodePrivate) *tailcat.Client {
@@ -140,65 +164,95 @@ func TestRemoteGateway(t *testing.T) {
 		t.Cleanup(func() { conn.Close() })
 		return conn
 	}
+	noGateway := func(what string) {
+		t.Helper()
+		select {
+		case g := <-gw:
+			t.Fatalf("%s: the gateway got a connection of %+v", what, g.peer)
+		default:
+		}
+	}
+	// reaches dials as the phone and returns the gateway's side.
+	reaches := func() gatewayConn {
+		t.Helper()
+		pc := dial(phone)
+		pc.Write([]byte("ping\n"))
+		var g gatewayConn
+		select {
+		case g = <-gw:
+		case <-time.After(30 * time.Second):
+			t.Fatal("the gateway got nothing")
+		}
+		t.Cleanup(func() { g.c.Close() })
+		if g.peer.PublicKey != phoneID || g.peer.Name != "phone" {
+			t.Errorf("peer %+v", g.peer)
+		}
+		if line, err := g.r.ReadString('\n'); line != "ping\n" {
+			t.Fatalf("the gateway read %q, %v", line, err)
+		}
+		g.c.Write([]byte("pong\n"))
+		if line, err := bufio.NewReader(pc).ReadString('\n'); line != "pong\n" {
+			t.Fatalf("the phone read %q, %v", line, err)
+		}
+		return g
+	}
 
-	// A stranger gets nothing, and the gateway sees nothing of it.
-	acc := gatewayAccepts(ctx)
+	// A stranger gets nothing, nor an allowed client whose sessions are
+	// not shared with it.
 	sc := dial(stranger)
 	sc.Write([]byte("GET / HTTP/1.1\r\n\r\n"))
 	wantEOF(t, sc, 10*time.Second, "a stranger's connection")
-	select {
-	case a := <-acc:
-		t.Fatalf("the gateway took a stranger's connection: %+v", a)
-	default:
-	}
+	wantEOF(t, dial(phone), 10*time.Second, "a client not sharing")
+	noGateway("refused")
 
-	// An allowed client reaches the gateway, named.
-	pc := dial(phone)
-	pc.Write([]byte("ping\n"))
-	a := <-acc
-	if a.err != nil {
-		t.Fatal(a.err)
+	// Shared with it, it reaches the gateway, named; unsharing closes it.
+	if err := c.ShareClientSessions(phoneID, true); err != nil {
+		t.Fatal(err)
 	}
-	defer a.c.Close()
-	if a.peer.PublicKey != phoneKey.Public().String() || a.peer.Name != "phone" {
-		t.Errorf("peer %+v", a.peer)
+	g := reaches()
+	if err := c.ShareClientSessions(phoneID, false); err != nil {
+		t.Fatal(err)
 	}
-	r := bufio.NewReader(a.c)
-	if line, err := r.ReadString('\n'); line != "ping\n" {
-		t.Fatalf("the gateway read %q, %v", line, err)
+	wantEOF(t, g.c, 5*time.Second, "unshared")
+
+	// Shared with every client, the same; turning that off closes it.
+	if err := c.ShareSessions(true); err != nil {
+		t.Fatal(err)
 	}
-	a.c.Write([]byte("pong\n"))
-	if line, err := bufio.NewReader(pc).ReadString('\n'); line != "pong\n" {
-		t.Fatalf("the phone read %q, %v", line, err)
+	g = reaches()
+	if err := c.ShareSessions(false); err != nil {
+		t.Fatal(err)
 	}
+	wantEOF(t, g.c, 5*time.Second, "sharing off")
 
 	// Remove closes it.
-	if err := c.RevokeRemote(phoneKey.Public().String()); err != nil {
+	if err := c.ShareSessions(true); err != nil {
 		t.Fatal(err)
 	}
-	wantEOF(t, a.c, 5*time.Second, "revoked")
+	g = reaches()
+	if err := c.RevokeRemote(phoneID); err != nil {
+		t.Fatal(err)
+	}
+	wantEOF(t, g.c, 5*time.Second, "revoked")
 
-	// With no accept waiting, a connection closes after gatewayWait.
-	if err := c.AllowRemote("phone", phoneKey.Public().String()); err != nil {
+	// With no gateway, the connection closes at once.
+	if err := c.AllowRemote("phone", phoneID); err != nil {
 		t.Fatal(err)
 	}
+	gwLn.Close()
 	t0 := time.Now()
 	wantEOF(t, dial(phone), 10*time.Second, "no gateway")
-	if d := time.Since(t0); d < gatewayWait/2 {
-		t.Errorf("closed after %v, before the gateway could take it", d)
+	if d := time.Since(t0); d > 3*time.Second {
+		t.Errorf("closed after %v with no gateway", d)
 	}
 
 	// Remote access off closes it.
-	acc = gatewayAccepts(ctx)
-	dial(phone).Write([]byte("ping\n"))
-	if a = <-acc; a.err != nil {
-		t.Fatal(a.err)
-	}
-	defer a.c.Close()
+	_, gw = fakeGateway(t)
+	g = reaches()
 	if err := c.DisableRemote(); err != nil {
 		t.Fatal(err)
 	}
-	wantEOF(t, a.c, 5*time.Second, "remote access off")
+	wantEOF(t, g.c, 5*time.Second, "remote access off")
 
 	// Clearing the relay goes back to tailcat's relays (the loopback here).
 	if err := c.EnableRemote(); err != nil {
@@ -217,13 +271,41 @@ func TestRemoteGateway(t *testing.T) {
 	}
 }
 
-// TestTailcatAcceptLocalOnly: a remote client cannot wait for the
-// gateway's connections.
-func TestTailcatAcceptLocalOnly(t *testing.T) {
+// TestRemoteAPIAcceptFails: a failing RexAPIPort listener says so in the
+// status, and starts again, as RemotePort's does.
+func TestRemoteAPIAcceptFails(t *testing.T) {
 	s, _ := testServer(t)
-	rc := pipe(s, testPeer)
-	defer rc.Close()
-	if err := rc.call(Request{Op: "remote.tailcatAccept"}, nil); err == nil {
-		t.Error("a remote client asked to accept")
+	oldRetry, oldAPI := remoteRetry, remoteAPIListen
+	remoteRetry = 400 * time.Millisecond
+	defer func() { remoteRetry, remoteAPIListen = oldRetry, oldAPI }()
+	var calls atomic.Int32
+	remoteAPIListen = func(ts *tailcat.Server) (net.Listener, error) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if calls.Add(1) == 1 {
+			ln = failAccept{ln}
+		}
+		return ln, err
+	}
+	c := pipe(s, "")
+	defer c.Close()
+	if err := c.EnableRemote(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		st, err := c.RemoteStatus()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !st.Running && strings.Contains(st.LastError, "boom") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no error state: %+v", st)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if st := waitRunning(t, c, true); st.LastError != "" || calls.Load() != 2 {
+		t.Errorf("after the restart: %+v, %d listens", st, calls.Load())
 	}
 }

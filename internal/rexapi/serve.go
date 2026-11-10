@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -130,7 +131,8 @@ func lockGateway(dir string) (*os.File, error) {
 // on its local socket, on the tailnet while built-in Tailscale is on, on
 // the local network while lan.json says so, which it reads again each
 // second it changes, and on the server's tailcat address, whose
-// connections the server hands over while remote access is on.
+// connections the server hands over on the gateway's socket while remote
+// access is on.
 func run(c *rex.Client, o runOptions) error {
 	lock, err := lockGateway(o.dir)
 	if err != nil {
@@ -160,9 +162,13 @@ func run(c *rex.Client, o runOptions) error {
 	if o.announce {
 		fmt.Printf("rexapi: listening on unix://%s\n", o.socket)
 	}
-	tc := newTrackedListener(newTailcatListener())
-	defer tc.Close()
-	go func() { serveErr <- g.serveOn(tc, transportTailcat) }()
+	tcLn, err := listenUnix(rex.GatewaySocketPath())
+	if err != nil {
+		return err
+	}
+	defer os.Remove(rex.GatewaySocketPath())
+	defer tcLn.Close()
+	go func() { serveErr <- g.serveOn(tailcatListener{tcLn}, transportTailcat) }()
 	if o.listen != "" {
 		ln, err := net.Listen("tcp", o.listen)
 		if err != nil {
@@ -233,7 +239,7 @@ func (w *confWatch) changed() bool {
 // its local socket: remote access, the local network listener or
 // built-in Tailscale is on. The GoRex server runs it only then.
 func Wanted(dir string) bool {
-	if rex.RemoteOn() {
+	if remoteOn(dir) {
 		return true
 	}
 	if c, err := LoadLAN(dir); err == nil && c.Enabled {
@@ -244,6 +250,40 @@ func Wanted(dir string) bool {
 		return true
 	}
 	return false
+}
+
+// remoteWatches remember, by its path, whether remote.json says remote
+// access is on, read again only when the file changes.
+var (
+	remoteMu      sync.Mutex
+	remoteWatches = map[string]*remoteWatch{}
+)
+
+type remoteWatch struct {
+	confWatch
+	on bool
+}
+
+// remoteOn tells whether remote access is on, as remote.json in the data
+// directory that holds dir says. The file holds the server's keys: only
+// its switch is decoded, and only when the file changed.
+func remoteOn(dir string) bool {
+	path := filepath.Join(filepath.Dir(dir), "remote.json")
+	remoteMu.Lock()
+	defer remoteMu.Unlock()
+	w := remoteWatches[path]
+	if w == nil {
+		w = &remoteWatch{confWatch: confWatch{path: path}}
+		remoteWatches[path] = w
+	}
+	if w.changed() {
+		var c struct {
+			Enabled bool `json:"enabled"`
+		}
+		b, err := os.ReadFile(path)
+		w.on = err == nil && json.Unmarshal(b, &c) == nil && c.Enabled
+	}
+	return w.on
 }
 
 // retryEvery is how long Supervise waits to start the gateway again after

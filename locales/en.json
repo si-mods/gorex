@@ -2002,11 +2002,11 @@
   "@remoteRelayPlaceholder": {
     "description": "Placeholder of the empty relay field: left empty, tailcat's own free relays are used."
   },
-  "remoteRelayNote": "A DERP server of your own, such as derp.example.com, in place of tailcat's relays. The address names it, so changing it makes a new address; the keys stay.",
+  "remoteRelayNote": "A DERP server of your own, by its host name, such as derp.example.com, in place of tailcat's relays. The address names it, so changing it makes a new address; the keys stay.",
   "@remoteRelayNote": {
     "description": "Hint under the relay field."
   },
-  "remoteRelayInvalid": "Enter a host name, such as derp.example.com, with :port when not 443, and no https://. Leave it empty for tailcat's relays.",
+  "remoteRelayInvalid": "Enter a host name, such as derp.example.com, with :port when not 443: not an IP address, and no https://. Leave it empty for tailcat's relays.",
   "@remoteRelayInvalid": {
     "description": "Error under the relay field when what was typed is not a host name or address with an optional port."
   },

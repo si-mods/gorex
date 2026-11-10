@@ -6,8 +6,8 @@
 //	remotectl pubkey                  print this machine's key as a remote client
 //	remotectl allow NAME PUBLICKEY    allow a client of the running server
 //	remotectl enable | disable | status | regenerate
-//	remotectl relay [HOST]            a DERP relay of one's own in the address,
-//	                                  as derp.example.com; none for tailcat's
+//	remotectl relay HOST|default      a DERP relay of one's own in the address,
+//	                                  as derp.example.com; default for tailcat's
 //	remotectl pairstart | pairstop    open or close the pairing window
 //	remotectl pending                 list the pairing requests, with fingerprints
 //	remotectl approve | reject PUBLICKEY
@@ -94,10 +94,14 @@ func main() {
 		case "regenerate":
 			fail(c.RegenerateRemote())
 		case "relay":
-			if len(args) > 1 {
-				fail(fmt.Errorf("relay [HOST]"))
+			if len(args) != 1 {
+				fail(fmt.Errorf("relay HOST|default"))
 			}
-			fail(c.SetRelay(strings.Join(args, "")))
+			relay := args[0]
+			if relay == "default" {
+				relay = ""
+			}
+			fail(c.SetRelay(relay))
 		case "pairstart":
 			fail(c.StartPairing())
 		case "pairstop":

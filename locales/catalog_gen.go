@@ -6038,13 +6038,13 @@ func (msgs Messages) RemoteRelayPlaceholder() string {
 	return Catalog.Format(msgs.locale, "remoteRelayPlaceholder", nil)
 }
 
-// RemoteRelayNote says "A DERP server of your own, such as derp.example.com, in place of tailcat's relays. The address names it, so changing …"
+// RemoteRelayNote says "A DERP server of your own, by its host name, such as derp.example.com, in place of tailcat's relays. The address name…"
 // in the language the app shows.
 //
 // Hint under the relay field.
 func RemoteRelayNote() string { return In(i18n.Locale()).RemoteRelayNote() }
 
-// RemoteRelayNote says "A DERP server of your own, such as derp.example.com, in place of tailcat's relays. The address names it, so changing …"
+// RemoteRelayNote says "A DERP server of your own, by its host name, such as derp.example.com, in place of tailcat's relays. The address name…"
 // in the language of msgs.
 //
 // Hint under the relay field.
@@ -6052,14 +6052,14 @@ func (msgs Messages) RemoteRelayNote() string {
 	return Catalog.Format(msgs.locale, "remoteRelayNote", nil)
 }
 
-// RemoteRelayInvalid says "Enter a host name, such as derp.example.com, with :port when not 443, and no https://. Leave it empty for tailcat's r…"
+// RemoteRelayInvalid says "Enter a host name, such as derp.example.com, with :port when not 443: not an IP address, and no https://. Leave it em…"
 // in the language the app shows.
 //
 // Error under the relay field when what was typed is not a host name or
 // address with an optional port.
 func RemoteRelayInvalid() string { return In(i18n.Locale()).RemoteRelayInvalid() }
 
-// RemoteRelayInvalid says "Enter a host name, such as derp.example.com, with :port when not 443, and no https://. Leave it empty for tailcat's r…"
+// RemoteRelayInvalid says "Enter a host name, such as derp.example.com, with :port when not 443: not an IP address, and no https://. Leave it em…"
 // in the language of msgs.
 //
 // Error under the relay field when what was typed is not a host name or
