@@ -103,6 +103,16 @@ extension TerminalView: UIEditMenuInteractionDelegate {
         ends()?.box.insetBy(dx: 0, dy: -SelectionHandle.knob) ?? CGRect(origin: configuration.sourcePoint, size: .zero)
     }
 
+    /// The system's menu, and first in it the link the selection is, if
+    /// that is all it is: a tap opens a link, a selection has to say so.
+    func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
+        guard let t = selectedText, let url = WebLink.url(t, matched: true) else { return nil }
+        let open = UIAction(title: String(localized: "Open in Browser"), image: UIImage(systemName: "safari")) { _ in
+            UIApplication.shared.open(url)
+        }
+        return UIMenu(children: [open] + suggestedActions)
+    }
+
     /// Takes the handles and the menu away; the selection stays in Ghostty.
     func hideSelection() {
         showsSelection = false
