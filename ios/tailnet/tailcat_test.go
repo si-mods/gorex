@@ -274,6 +274,17 @@ func TestTailcatPair(t *testing.T) {
 	if _, err := TailcatPair("not an address", "rexgo-kqzt"); err == nil {
 		t.Error("paired with no address")
 	}
+	// A listed machine's pooled client pairs, and stays.
+	setHosts(t, tailcatHost{ID: "mac", Address: addr})
+	if fp, err := TailcatPair(addr, "rexgo-kqzt"); err != nil || fp != rex.Fingerprint(TailcatKey()) {
+		t.Errorf("TailcatPair with a listed machine = %q, %v", fp, err)
+	}
+	tcMu.Lock()
+	p := tcClients[addr]
+	tcMu.Unlock()
+	if p == nil || !p.used {
+		t.Error("pairing a listed machine didn't use its client")
+	}
 }
 
 // The fields tailcatSystem reaches; it gives nil for any it doesn't find.
@@ -330,7 +341,7 @@ func TestTailcatReset(t *testing.T) {
 	tcMu.Lock()
 	c := tcClients[addr]
 	tcMu.Unlock()
-	sys := tailcatSystem(c)
+	sys := tailcatSystem(c.tc)
 	if sys == nil {
 		t.Fatal("a started client has no system")
 	}
@@ -379,7 +390,48 @@ func TestTailcatServerRestart(t *testing.T) {
 	if got, err := get(hc, "http://mac.tailcat.invalid:7297/"); err != nil || got != "again" {
 		t.Fatalf("GET after the restart = %q, %v", got, err)
 	}
-	if d := time.Since(start); d > tailcatTry+5*time.Second {
+	if d := time.Since(start); d > tailcatDial {
 		t.Errorf("reached again in %v", d)
 	}
+}
+
+// A client with no connection for tailcatIdle closes; one with an open
+// connection stays, as does one whose dial to a closed port failed while
+// another connection uses it.
+func TestTailcatIdle(t *testing.T) {
+	defer func(d time.Duration) { tailcatIdle = d }(tailcatIdle)
+	tailcatIdle = 200 * time.Millisecond
+	Stop()
+	tailcatEnv(t)
+	m := newMachine(t)
+	addr := string(m.ts.TailcatAddr())
+	setHosts(t, tailcatHost{ID: "mac", Address: addr})
+	pooled := func() *pooledTailcat {
+		tcMu.Lock()
+		defer tcMu.Unlock()
+		return tcClients[addr]
+	}
+	j, _ := Proxy()
+	var p struct{ Address, Password string }
+	json.Unmarshal([]byte(j), &p)
+	echo, err := socksConnect(p.Address, "tsnet", p.Password, "mac.tailcat.invalid", 7465)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := pooled()
+	if _, err := socksConnect(p.Address, "tsnet", p.Password, "mac.tailcat.invalid", 1); err == nil {
+		t.Error("a port nothing listens on connected")
+	}
+	time.Sleep(3 * tailcatIdle)
+	if pooled() != c {
+		t.Fatal("a client with an open connection went")
+	}
+	echo.Close()
+	for range 50 {
+		if pooled() == nil {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Error("an idle client stayed")
 }

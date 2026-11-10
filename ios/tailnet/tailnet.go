@@ -233,7 +233,10 @@ var (
 func Proxy() (string, error) {
 	proxMu.Lock()
 	defer proxMu.Unlock()
-	if prox == nil || prox.dead() {
+	if prox == nil || !prox.alive() {
+		if prox != nil {
+			prox.close()
+		}
 		p, err := startProxy(dial)
 		if err != nil {
 			return "", err

@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
@@ -60,14 +61,20 @@ func startProxy(dial func(ctx context.Context, addr string) (net.Conn, error)) (
 
 func (p *proxy) close() { p.ln.Close() }
 
-// dead tells whether the proxy stopped serving.
-func (p *proxy) dead() bool {
+// alive tells whether the proxy serves: Serve hasn't returned, and its
+// listener takes a connection now, as Serve may not have seen it die yet.
+func (p *proxy) alive() bool {
 	select {
 	case <-p.done:
-		return true
+		return false
 	default:
+	}
+	c, err := net.DialTimeout("tcp", p.ln.Addr().String(), 200*time.Millisecond)
+	if err != nil {
 		return false
 	}
+	c.Close()
+	return true
 }
 
 // dial is the proxy's: a tailcat host by its name, else a device on the

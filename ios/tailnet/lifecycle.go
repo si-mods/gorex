@@ -63,12 +63,14 @@ var (
 // clients anew, for the app back from the background: iOS reclaims a
 // suspended app's sockets, WireGuard's receive loops end on the read
 // error, and Tailscale never starts them again, leaving every peer on
-// DERP. Open connections go on. A tailcat client whose reset doesn't
-// finish is replaced by a new one. It fails when the device runs and its
-// reset didn't finish in time; the device then needs a new start, which
-// leaves a stuck one to close by itself.
+// DERP. Open connections go on. The resets run side by side: a tailcat
+// client whose reset doesn't finish is dropped, and the next dial makes
+// a new one. It fails when the device runs and its reset didn't finish in
+// time; the device then needs a new start, which leaves a stuck one to
+// close by itself.
 func ResetSockets() error {
-	resetTailcat()
+	tailcatDone := resetTailcat()
+	defer tailcatDone()
 	n, err := running()
 	if err != nil {
 		return nil // no device to reset
@@ -191,24 +193,30 @@ func closeSockets(mc *magicsock.Conn) {
 // systemPeers is an engine's subsystems and its peers.
 type systemPeers struct {
 	addr  string
-	c     *tailcat.Client
+	p     *pooledTailcat
 	sys   *tsd.System
 	peers []key.NodePublic
 }
 
-// resetTailcat resets the sockets of each started tailcat client. One
-// stuck leaves the pool and closes by itself; the next dial makes another.
-func resetTailcat() {
+// resetTailcat starts resetting the sockets of each started tailcat
+// client, each on its own, and returns a function that waits for them.
+// One stuck leaves the pool and closes by itself; the next dial makes
+// another.
+func resetTailcat() (wait func()) {
+	var wg sync.WaitGroup
 	for _, s := range tailcatSystems() {
-		if errors.Is(resetSockets(s.sys, s.peers), errStuck) {
-			tcMu.Lock()
-			if tcClients[s.addr] == s.c {
-				delete(tcClients, s.addr)
+		wg.Go(func() {
+			if errors.Is(resetSockets(s.sys, s.peers), errStuck) {
+				tcMu.Lock()
+				if tcClients[s.addr] == s.p {
+					delete(tcClients, s.addr)
+				}
+				tcMu.Unlock()
+				go s.p.tc.Close()
 			}
-			tcMu.Unlock()
-			go s.c.Close()
-		}
+		})
 	}
+	return wg.Wait
 }
 
 // tailcatSystems is the subsystems of each started tailcat client, with
@@ -218,12 +226,12 @@ func tailcatSystems() []systemPeers {
 	clients := maps.Clone(tcClients)
 	tcMu.Unlock()
 	var systems []systemPeers
-	for addr, c := range clients {
-		sys := tailcatSystem(c)
+	for addr, p := range clients {
+		sys := tailcatSystem(p.tc)
 		if sys == nil {
 			continue
 		}
-		s := systemPeers{addr: addr, c: c, sys: sys}
+		s := systemPeers{addr: addr, p: p, sys: sys}
 		if ci, err := tailcat.ParseAddr(tailcat.Addr(addr)); err == nil {
 			s.peers = []key.NodePublic{ci.ServerPublic.NodePublic}
 		}
@@ -258,28 +266,4 @@ func tailcatSystem(c *tailcat.Client) *tsd.System {
 		return nil
 	}
 	return (*tsd.System)(unsafe.Add(p, sf.Offset))
-}
-
-// forgetPath has a started tailcat client forget its path to its server
-// at addr: the direct address magicsock trusts for a few seconds more
-// (resetSockets, as after a suspension) and the WireGuard session, so
-// that the next packet shakes hands anew.
-func forgetPath(c *tailcat.Client, addr string) {
-	sys := tailcatSystem(c)
-	ci, err := tailcat.ParseAddr(tailcat.Addr(addr))
-	if sys == nil || err != nil {
-		return
-	}
-	resetSockets(sys, []key.NodePublic{ci.ServerPublic.NodePublic})
-	e, ok := sys.Engine.GetOK()
-	if !ok {
-		return
-	}
-	dev, err := wireguardDevice(e)
-	if err != nil {
-		return
-	}
-	if p := dev.LookupPeer(device.NoisePublicKey(ci.ServerPublic.Raw32())); p != nil {
-		p.ExpireCurrentKeypairs()
-	}
 }

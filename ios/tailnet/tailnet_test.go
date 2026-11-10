@@ -105,8 +105,8 @@ func TestProxyHeals(t *testing.T) {
 	proxMu.Lock()
 	old := prox
 	proxMu.Unlock()
+	// At once, before Serve may have seen it.
 	old.ln.Close()
-	<-old.done
 	j2, err := Proxy()
 	if err != nil || j2 == j1 {
 		t.Fatalf("Proxy() after its listener died = %s, %v; want a new one", j2, err)
