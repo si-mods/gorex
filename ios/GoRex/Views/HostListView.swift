@@ -528,8 +528,8 @@ private struct HostSection: View {
     @ViewBuilder private func session(_ s: Host.Session) -> some View {
         let windows = entries((s.view?.windows ?? []).map { (s, $0) })
         let isCollapsed = collapsed.contains(s.id)
-        // The session is one card: its header, then its windows.
-        card {
+        // The session's header on the page, then its windows in a card.
+        VStack(spacing: 4) {
             HStack(spacing: 4) {
                 Text(s.label).font(.headline).foregroundStyle(.primary).lineLimit(1)
                 Spacer(minLength: 8)
@@ -558,13 +558,8 @@ private struct HostSection: View {
             .padding(.trailing, 6)
             .frame(minHeight: 50)
             .contentShape(.rect)
-            .overlay(alignment: .bottom) {
-                if !isCollapsed && !windows.isEmpty {
-                    Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1 / 3).padding(.leading, 16)
-                }
-            }
             .modifier(SessionMenu(host: host, session: s))
-            if !isCollapsed { rows(windows) }
+            if !isCollapsed && !windows.isEmpty { card { rows(windows) } }
         }
     }
 }
