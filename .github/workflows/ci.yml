@@ -14,7 +14,9 @@ concurrency:
 
 jobs:
   test:
-    runs-on: macos-latest
+    # Intel, as TestFlight: arm64 macOS runners had no capacity for hours
+    # (2026-11-09), and a job no runner takes fails after 15 minutes.
+    runs-on: macos-26-intel
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
