@@ -134,13 +134,13 @@ struct HostListView: View {
         }
     }
 
-    /// The hosts a space lists: its host first, then the hosts it holds
-    /// windows of, and those that tell why they show none or have no
-    /// space, for their menu. A function of its own, as Xcode 26 cannot
-    /// type-check it inside the view in time.
+    /// The hosts a space lists, in the hosts' order, so that they stay in
+    /// place as the space changes: its host, the hosts it holds windows
+    /// of, and those that tell why they show none or have no space, for
+    /// their menu. A function of its own, as Xcode 26 cannot type-check it
+    /// inside the view in time.
     private func sections(_ cross: CrossHost, _ all: [Space], _ space: CrossHost.Place?) -> [Host] {
-        let ordered = store.hosts.filter { $0.id == space?.host } + store.hosts.filter { $0.id != space?.host }
-        return ordered.filter { host in
+        store.hosts.filter { host in
             if host.status != .online || !all.contains(where: { $0.host === host }) { return true }
             guard let s = space else { return false }
             return s.host == host.id || cross.rows(s.host, s.session).contains { $0.host == host.id }
