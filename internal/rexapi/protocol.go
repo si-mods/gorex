@@ -118,10 +118,7 @@ var orderedMethods = map[string]bool{
 // /llms.html, and described by help.all.
 var (
 	//go:embed testdata/rex-api-help.json
-	helpJSONRev10 []byte
-	// helpJSON is the help document with what later revisions add to
-	// its schemas (help.go).
-	helpJSON = withListenersSchema(helpJSONRev10)
+	helpJSON []byte
 	//go:embed testdata/rex-llms.txt
 	llmsText []byte
 )

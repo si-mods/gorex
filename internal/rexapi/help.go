@@ -1,7 +1,6 @@
 package rexapi
 
 import (
-	"bytes"
 	_ "embed"
 	"encoding/json"
 )
@@ -214,37 +213,33 @@ var listenersSchema = map[string]any{
 	},
 }
 
-// withListenersSchema adds listenersSchema to the help document's
-// server status: server.status's result and session.bootstrap's
-// server_status. A document it cannot read is returned as it is.
-func withListenersSchema(raw []byte) []byte {
-	var doc map[string]any
-	if json.Unmarshal(raw, &doc) != nil {
+// laterSchema returns a method's entry of the help document as a client
+// at rev sees it: from revision 12, server.status's result, and
+// session.bootstrap's server_status, have listenersSchema, which the
+// revision 10 document predates. Other entries are returned as they are.
+func laterSchema(rev int, name string, raw json.RawMessage) json.RawMessage {
+	if rev < 12 || name != "server.status" && name != "session.bootstrap" {
 		return raw
 	}
-	methods, _ := doc["methods"].([]any)
-	for _, m := range methods {
-		m, _ := m.(map[string]any)
-		out, _ := m["output_schema"].(map[string]any)
-		switch m["name"] {
-		case "server.status":
-		case "session.bootstrap":
-			props, _ := out["properties"].(map[string]any)
-			out, _ = props["server_status"].(map[string]any)
-		default:
-			continue
-		}
-		if props, ok := out["properties"].(map[string]any); ok {
-			props["listeners"] = listenersSchema
-		}
-	}
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	if enc.Encode(doc) != nil {
+	var m map[string]any
+	if json.Unmarshal(raw, &m) != nil {
 		return raw
 	}
-	return b.Bytes()
+	out, _ := m["output_schema"].(map[string]any)
+	if name == "session.bootstrap" {
+		props, _ := out["properties"].(map[string]any)
+		out, _ = props["server_status"].(map[string]any)
+	}
+	props, ok := out["properties"].(map[string]any)
+	if !ok {
+		return raw
+	}
+	props["listeners"] = listenersSchema
+	b, err := json.Marshal(m)
+	if err != nil {
+		return raw
+	}
+	return b
 }
 
 // methodBlockCreatorList lists the creators GoRex can make blocks with:
@@ -292,7 +287,7 @@ func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 		if !implementedMethods[m.Name] || !methodAvailable(rev, m.Name) {
 			continue
 		}
-		kept = append(kept, raw)
+		kept = append(kept, laterSchema(rev, m.Name, raw))
 	}
 	doc["methods"], _ = json.Marshal(kept)
 	var blocks []json.RawMessage
@@ -335,7 +330,7 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 		if json.Unmarshal(raw, &m) != nil || !methodAvailable(rev, m.Name) {
 			continue
 		}
-		kept = append(kept, raw)
+		kept = append(kept, laterSchema(rev, m.Name, raw))
 	}
 	doc["methods"], _ = json.Marshal(kept)
 	var blocks []json.RawMessage
