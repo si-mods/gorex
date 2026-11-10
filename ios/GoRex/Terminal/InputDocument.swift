@@ -27,17 +27,29 @@ struct InputDocument {
     private(set) var marked: String?
     private(set) var selected = NSRange(location: 0, length: 0)
 
+    /// The program's line before what was typed: always there, never seen,
+    /// so Backspace always has something to erase. Without it, the keyboard
+    /// predicts an empty line after a Backspace and stops a held one's
+    /// repeat.
+    private static let anchor = "\u{200B}"
+    private static let a = anchor.utf16.count
+
     /// The whole text, in UTF-16 units as UIKit counts them.
-    var count: Int { typed.utf16.count + (marked?.utf16.count ?? 0) }
-    var text: String { typed + (marked ?? "") }
+    var count: Int { text.utf16.count }
+    var text: String { Self.anchor + typed + (marked ?? "") }
     /// The composed text's range in the whole.
-    var markedRange: NSRange? { marked.map { NSRange(location: typed.utf16.count, length: $0.utf16.count) } }
+    var markedRange: NSRange? { marked.map { NSRange(location: Self.a + typed.utf16.count, length: $0.utf16.count) } }
     /// The caret: in the composed text where its selection is, else at the end.
     var selection: NSRange {
         guard let m = marked else { return NSRange(location: count, length: 0) }
         let at = min(selected.location, m.utf16.count)
-        return NSRange(location: typed.utf16.count + at, length: min(selected.length, m.utf16.count - at))
+        return NSRange(location: Self.a + typed.utf16.count + at, length: min(selected.length, m.utf16.count - at))
     }
+
+    /// Whether a Backspace now erases what the keyboard does not see: the
+    /// line before the typed text, or more, as a chord. The keyboard
+    /// believes it erased the anchor, which stays.
+    func erasesUnseen(chord: Bool) -> Bool { marked == nil && (typed.isEmpty || chord) }
 
     /// An input method composes: show the text at the cursor.
     mutating func mark(_ text: String?, selected range: NSRange) -> [Edit] {
@@ -87,8 +99,10 @@ struct InputDocument {
     /// Text in place of a range, as dictation corrects what it typed: a
     /// range in the composition commits the composition so corrected, and
     /// a range in the typed text is erased back to its start and typed
-    /// again. A range outside the text changes nothing.
+    /// again. A range outside the text, or on the anchor, changes nothing.
     mutating func replace(_ range: NSRange, with text: String) -> [Edit] {
+        guard range.location >= Self.a else { return [] }
+        let range = NSRange(location: range.location - Self.a, length: range.length)
         let n = typed.utf16.count
         if let m = marked, range.location >= n {
             guard let r = Range(NSRange(location: range.location - n, length: range.length), in: m) else { return [] }

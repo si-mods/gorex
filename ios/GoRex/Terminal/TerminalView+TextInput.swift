@@ -11,7 +11,17 @@ extension TerminalView: UITextInput {
 
     func insertText(_ text: String) { apply(document.insert(text, chord: ctrl || alt)) }
 
-    func deleteBackward() { apply(document.deleteBackward(chord: ctrl || alt)) }
+    /// The keyboard predicts its own edits, and a Backspace past the typed
+    /// text breaks the prediction: the anchor it believes erased stays. It
+    /// is told, or it takes the line for empty and stops a held Backspace.
+    func deleteBackward() {
+        let chord = ctrl || alt
+        if document.erasesUnseen(chord: chord) {
+            changing { apply(document.deleteBackward(chord: chord)) }
+        } else {
+            apply(document.deleteBackward(chord: chord))
+        }
+    }
 
     func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
         apply(document.mark(markedText, selected: selectedRange))
