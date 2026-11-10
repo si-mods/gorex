@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.20.1
+
+### Features
+
+* **hosts:** a remote host takes a display alias, set in Settings › Remote Hosts › Rename; discovery keeps it ([#367](https://github.com/si-mods/gorex/pull/367))
+* **windows:** once an update is installed, the app offers to restart the session server on the new build, keeping the windows open ([#366](https://github.com/si-mods/gorex/pull/366))
+
+### Bug Fixes
+
+* **terminal:** Command+C (Control+Shift+C elsewhere) reaches a program in the pane when the pane has no selection, so Codex CLI copies its own mouse selection ([#370](https://github.com/si-mods/gorex/pull/370))
+
 ## 0.20.0
 
 ### Features
