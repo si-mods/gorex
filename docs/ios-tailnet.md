@@ -62,7 +62,7 @@ allows, and through Tailscale's DERP relays when it doesn't.
   serves only HTTPS on the tailnet, and Headscale issues no
   certificates, so a GoRex machine on Headscale has nothing for the
   phone to reach. That needs the gateway to serve the tailnet without a
-  certificate: server work for its own document. #330's self-hosted
+  certificate: [self-hosted-tailnet.md](self-hosted-tailnet.md). #330's self-hosted
   relay case waits for it.
 - **Running in the background.** iOS suspends the app, and the engine
   with it. Rex Go is a foreground terminal; its sessions live on the
