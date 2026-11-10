@@ -79,13 +79,15 @@ func TestValidHostname(t *testing.T) {
 }
 
 // Before Start, the calls that need the device fail, and Status says
-// it is stopped.
+// it is stopped. The proxy serves without it, the same for the process.
 func TestNotStarted(t *testing.T) {
 	if Status() != `{"state":"Stopped"}` {
 		t.Errorf("Status() = %s", Status())
 	}
-	if _, err := Proxy(); err == nil {
-		t.Error("Proxy() did not fail")
+	p1, err := Proxy()
+	p2, _ := Proxy()
+	if err != nil || p1 != p2 {
+		t.Errorf("Proxy() = %s, %v, then %s; want one proxy", p1, err, p2)
 	}
 	if Login() == nil || Logout() == nil || SetHostname("rexgo-kqzt") == nil {
 		t.Error("Login, Logout or SetHostname did not fail")
