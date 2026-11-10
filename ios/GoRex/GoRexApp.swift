@@ -8,11 +8,13 @@ struct GoRexApp: App {
 
     /// Ghostty starts with the app, as in rootshell, not in a terminal's
     /// push; the notifications too, for a tap that launches it. A
-    /// downloaded font is known before.
+    /// downloaded font is known before. So does the built-in Tailscale,
+    /// when on: the hosts on it wait for it to run.
     init() {
         Maple.shared.register()
         _ = Ghostty.app
         Notifier.shared.start()
+        Task { await TailnetEngine.shared.apply() }
     }
 
     /// The color scheme of Settings › Interface; nil follows the system.
@@ -28,9 +30,10 @@ struct GoRexApp: App {
                 .onChange(of: phase) { _, p in
                     if p == .active { store.hosts.forEach { $0.reconnectIfNeeded() } }
                 }
-                #if DEBUG
-                .task { await TailnetEngine.shared.debugStart(store) }
-                #endif
+                // Hosts the gateway refused try again as the engine runs anew.
+                .onChange(of: TailnetEngine.shared.status.state) { _, s in
+                    if s == "Running" { store.hosts.forEach { $0.reconnectIfNeeded() } }
+                }
         }
     }
 }

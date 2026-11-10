@@ -51,6 +51,33 @@ func TestFromStatus(t *testing.T) {
 	}
 }
 
+func TestPath(t *testing.T) {
+	for _, tc := range []struct {
+		p    ipnstate.PeerStatus
+		want string
+	}{
+		{ipnstate.PeerStatus{Relay: "fra"}, ""},
+		{ipnstate.PeerStatus{Active: true, Relay: "fra", CurAddr: "203.0.113.5:41641"}, "direct"},
+		{ipnstate.PeerStatus{Active: true, Relay: "fra", PeerRelay: "198.51.100.2:7000:1"}, "peer-relay"},
+		{ipnstate.PeerStatus{Active: true, Relay: "fra"}, "derp"},
+	} {
+		if got := path(&tc.p); got != tc.want {
+			t.Errorf("path(%+v) = %q, want %q", tc.p, got, tc.want)
+		}
+	}
+}
+
+func TestValidHostname(t *testing.T) {
+	for s, ok := range map[string]bool{"rexgo-kqzt": true, "a": true, "": false, "-rexgo": false, "rexgo-": false, "rex go": false, "rex.go": false} {
+		if ValidHostname(s) != ok {
+			t.Errorf("ValidHostname(%q) = %v", s, !ok)
+		}
+	}
+	if SetHostname("rex go") == nil {
+		t.Error("SetHostname took an invalid name")
+	}
+}
+
 // Before Start, the calls that need the device fail, and Status says
 // it is stopped.
 func TestNotStarted(t *testing.T) {
@@ -60,8 +87,8 @@ func TestNotStarted(t *testing.T) {
 	if _, err := Proxy(); err == nil {
 		t.Error("Proxy() did not fail")
 	}
-	if Login() == nil || Logout() == nil {
-		t.Error("Login or Logout did not fail")
+	if Login() == nil || Logout() == nil || SetHostname("rexgo-kqzt") == nil {
+		t.Error("Login, Logout or SetHostname did not fail")
 	}
 	Stop()
 }

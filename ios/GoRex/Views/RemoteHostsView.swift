@@ -64,12 +64,13 @@ struct RemoteHostsView: View {
 
     /// Adds the host of a scanned code, or shows it when it's there already.
     private func pair(_ code: String) -> String? {
-        guard let c = HostConfig(pairing: code) else {
+        guard var c = HostConfig(pairing: code) else {
             return String(localized: "Not a Rex pairing code. Scan the Rex QR code that GoRex or Rex shows.")
         }
         if let h = store.host(at: c.url) {
             sheet = .details(h.config)
         } else {
+            c.transport = TailnetEngine.shared.transport(of: c.url)
             store.add(c)
             sheet = nil
         }
@@ -142,7 +143,12 @@ private struct HostForm: View {
     @State private var desktop: Bool
     @State private var name: String
     @State private var command: String
+    /// Whether the host goes through the built-in Tailscale, as switched;
+    /// nil keeps the host's way, or, for a new one or a new address, takes
+    /// it by the address.
+    @State private var tailnet: Bool?
     @State private var deleting = false
+    @AppStorage(TailnetSettings.onKey) private var tailnetOn = false
 
     init(config: HostConfig?) {
         self.config = config
@@ -163,6 +169,7 @@ private struct HostForm: View {
         c.desktop = desktop
         let cmd = command.trimmingCharacters(in: .whitespaces)
         c.command = cmd.isEmpty ? nil : cmd
+        c.transport = HostConfig.transport(switched: tailnet, was: config, at: c.url, rule: TailnetEngine.shared.transport(of: c.url))
         return c
     }
 
@@ -216,6 +223,14 @@ private struct HostForm: View {
                     Text("Executable and arguments for new terminals on this host. Use quotes to group arguments. Leave empty to use the host's default login shell.")
                 }
                 .listRowBackground(Color.card)
+                if tailnetOn || c?.transport == .tailnet {
+                    Section {
+                        Toggle("Built-in Tailscale", isOn: Binding { c?.transport == .tailnet } set: { tailnet = $0 })
+                    } footer: {
+                        Text("Reach this host through Rex Go's own Tailscale, not the phone's network or the Tailscale app. With built-in Tailscale off, it goes the phone's way.")
+                    }
+                    .listRowBackground(Color.card)
+                }
                 if let config {
                     Section {
                         Button("Delete Host", role: .destructive) { deleting = true }

@@ -172,7 +172,8 @@ import XCTest
                 if let d { got.append(d) }
                 if let end = got.range(of: Data("\r\n\r\n".utf8)) {
                     let r = Request(head: String(decoding: got[..<end.lowerBound], as: UTF8.self), body: Data(got[end.upperBound...]))
-                    guard let length = r.header("Content-Length").flatMap({ Int($0) }) else {
+                    // A GET, as a WebSocket's upgrade, has no body.
+                    guard let length = r.header("Content-Length").flatMap({ Int($0) }) ?? (r.head.hasPrefix("GET ") ? 0 : nil) else {
                         return self.answer(c, 411, ["error": "an upload has a Content-Length"])
                     }
                     if r.body.count >= length {

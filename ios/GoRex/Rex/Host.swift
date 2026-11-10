@@ -42,6 +42,41 @@ struct LoopbackProxy: Equatable {
 }
 
 extension HostConfig {
+    /// The transport of a host as entered: as switched, else the host's
+    /// own while its address stays, else by its address (rule).
+    static func transport(switched: Bool?, was old: HostConfig?, at url: URL, rule: @autoclosure () -> Transport?) -> Transport? {
+        if let switched { return switched ? .tailnet : .system }
+        if let old, old.url == url { return old.transport }
+        return rule()
+    }
+
+    /// How the app reaches the host: through the built-in Tailscale when
+    /// the host is on it and it is on, else the system's way, as through
+    /// the Tailscale app.
+    func reach(tailnetOn: Bool) -> Transport {
+        transport == .tailnet && tailnetOn ? .tailnet : .system
+    }
+
+    /// The transport of a host added now: .tailnet while the built-in
+    /// Tailscale is on, for a name under the tailnet's MagicDNS suffix or
+    /// an address of Tailscale's, in 100.64.0.0/10 or fd7a:115c:a1e0::/48;
+    /// else nil, the system's way.
+    static func transport(of url: URL, tailnetOn: Bool, suffix: String?) -> Transport? {
+        guard tailnetOn, let host = url.host()?.lowercased().trimmingCharacters(in: ["[", "]"]) else { return nil }
+        if let s = suffix?.lowercased().trimmingCharacters(in: ["."]), !s.isEmpty,
+           host.trimmingCharacters(in: ["."]).hasSuffix("." + s) { return .tailnet }
+        if let a = IPv4Address(host) {
+            let b = [UInt8](a.rawValue)
+            return b[0] == 100 && b[1] & 0xC0 == 64 ? .tailnet : nil
+        }
+        if let a = IPv6Address(host) {
+            return [UInt8](a.rawValue).starts(with: [0xFD, 0x7A, 0x11, 0x5C, 0xA1, 0xE0]) ? .tailnet : nil
+        }
+        return nil
+    }
+}
+
+extension HostConfig {
     /// The host of a pairing QR code. GoRex and Rex show a plain address,
     /// http(s)://host[:port], with no path, query or user; nil for anything else.
     init?(pairing code: String) {
@@ -190,11 +225,14 @@ final class Host: Identifiable {
         self.config = config
     }
 
+    /// Whether the host's connections go through the built-in Tailscale.
+    var viaTailnet: Bool { config.reach(tailnetOn: TailnetSettings.isOn) == .tailnet }
+
     /// The session the host's connections go through: the system's, or
     /// one through the built-in Tailscale's proxy of the moment, made anew
     /// for each run of it.
     func session() throws -> URLSession {
-        guard config.transport == .tailnet else { return .shared }
+        guard viaTailnet else { return .shared }
         guard let p = Self.tailnetProxy() else {
             throw RexError(code: "offline", message: String(localized: "Tailscale is not running"))
         }
@@ -231,7 +269,9 @@ final class Host: Identifiable {
             // What the connection said of the spaces goes with it.
             self.take(nil)
             self.status = .offline(error?.localizedDescription ?? "")
-            self.scheduleRetry()
+            // Refused, it waits for a change: the engine running again, as
+            // after a sign-in, or the app back in the foreground.
+            if (error as? RexError)?.code != "refused" { self.scheduleRetry() }
         }
         Task {
             do {
@@ -239,6 +279,9 @@ final class Host: Identifiable {
                 token = c.reconnectToken
                 try await bootstrap(c)
                 status = .online
+            } catch let e as RexError where e.code == "refused" && viaTailnet {
+                // The gateway lets in only whom it says (docs/ios-tailnet.md, Server).
+                c.close(RexError(code: e.code, message: String(localized: "Refused: sign Rex Go in as the Tailscale user who signed in the GoRex machine, not with a tagged key, or turn on --allow-tailnet-members there.")))
             } catch {
                 c.close(error)
             }
