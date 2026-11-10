@@ -42,6 +42,14 @@ struct LoopbackProxy: Equatable {
 }
 
 extension HostConfig {
+    /// The transport of a host as entered: as switched, else the host's
+    /// own while its address stays, else by its address (rule).
+    static func transport(switched: Bool?, was old: HostConfig?, at url: URL, rule: @autoclosure () -> Transport?) -> Transport? {
+        if let switched { return switched ? .tailnet : .system }
+        if let old, old.url == url { return old.transport }
+        return rule()
+    }
+
     /// How the app reaches the host: through the built-in Tailscale when
     /// the host is on it and it is on, else the system's way, as through
     /// the Tailscale app.
@@ -261,7 +269,9 @@ final class Host: Identifiable {
             // What the connection said of the spaces goes with it.
             self.take(nil)
             self.status = .offline(error?.localizedDescription ?? "")
-            self.scheduleRetry()
+            // Refused, it waits for a change: the engine running again, as
+            // after a sign-in, or the app back in the foreground.
+            if (error as? RexError)?.code != "refused" { self.scheduleRetry() }
         }
         Task {
             do {

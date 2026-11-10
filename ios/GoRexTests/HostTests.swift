@@ -279,6 +279,19 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(h.reach(tailnetOn: false), .system)
     }
 
+    /// An edited host keeps its transport while its address stays; a new
+    /// address takes the rule's, and the switch wins over both.
+    @MainActor func testEnteredTransport() throws {
+        var old = try XCTUnwrap(HostConfig(pairing: "http://192.168.1.2:7297"))
+        old.transport = .system
+        let same = old.url, moved = URL(string: "http://100.64.0.9:7297")!
+        XCTAssertEqual(HostConfig.transport(switched: nil, was: old, at: same, rule: .tailnet), .system)
+        XCTAssertEqual(HostConfig.transport(switched: nil, was: old, at: moved, rule: .tailnet), .tailnet)
+        XCTAssertNil(HostConfig.transport(switched: nil, was: nil, at: same, rule: nil))
+        XCTAssertEqual(HostConfig.transport(switched: true, was: old, at: same, rule: nil), .tailnet)
+        XCTAssertEqual(HostConfig.transport(switched: false, was: nil, at: moved, rule: .tailnet), .system)
+    }
+
     /// The device's default name is rexgo- and four lowercase letters,
     /// made once and kept.
     @MainActor func testDeviceName() {
@@ -288,9 +301,12 @@ nonisolated final class HostTests: XCTestCase {
         let d = UserDefaults.standard, saved = d.string(forKey: TailnetSettings.nameKey)
         defer { d.set(saved, forKey: TailnetSettings.nameKey) }
         d.removeObject(forKey: TailnetSettings.nameKey)
+        XCTAssertEqual(TailnetSettings.name, "")
+        XCTAssertNil(d.string(forKey: TailnetSettings.nameKey))
+        TailnetSettings.makeName()
         let n = TailnetSettings.name
         XCTAssertNotNil(n.wholeMatch(of: /rexgo-[a-z]{4}/))
+        TailnetSettings.makeName()
         XCTAssertEqual(TailnetSettings.name, n)
-        XCTAssertEqual(d.string(forKey: TailnetSettings.nameKey), n)
     }
 }

@@ -7,6 +7,7 @@ struct TailscaleView: View {
     @Environment(HostStore.self) private var store
     @AppStorage(TailnetSettings.onKey) private var on = false
     @AppStorage(TailnetSettings.controlKey) private var control = ""
+    @AppStorage(TailnetSettings.nameKey) private var savedName = ""
     @State private var name = TailnetSettings.name
     @State private var controlText = TailnetSettings.controlURL
     /// Used once to sign in, never kept.
@@ -37,12 +38,7 @@ struct TailscaleView: View {
                     }
                     .listRowBackground(Color.card)
                 }
-                if s.state == "Running" {
-                    Section {
-                        Button("Sign Out", role: .destructive) { Task { await engine.signOut() } }
-                    }
-                    .listRowBackground(Color.card)
-                } else {
+                if s.state != "Running" {
                     Section {
                         Button { Task { await engine.signIn() } } label: {
                             HStack {
@@ -64,15 +60,22 @@ struct TailscaleView: View {
                     }
                     .listRowBackground(Color.card)
                 }
+                // A device with state of its own, signed in or waiting for approval.
+                if s.name != nil || !["NeedsLogin", "Stopped", "Starting", "NoState"].contains(s.state) {
+                    Section {
+                        Button("Sign Out", role: .destructive) { Task { await engine.signOut() } }
+                    }
+                    .listRowBackground(Color.card)
+                }
                 Section {
                     LabeledContent("Device Name") {
-                        TextField(TailnetSettings.name, text: $name)
+                        TextField(savedName, text: $name)
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(.secondary)
                             .submitLabel(.done)
                             .onSubmit {
-                                guard TailnetEngine.validName(name), name != TailnetSettings.name else { return }
-                                UserDefaults.standard.set(name, forKey: TailnetSettings.nameKey)
+                                guard TailnetEngine.validName(name), name != savedName else { return }
+                                savedName = name
                                 Task { await engine.setHostname(name) }
                             }
                     }
@@ -86,7 +89,9 @@ struct TailscaleView: View {
                                 let c = controlText.trimmingCharacters(in: .whitespaces)
                                 guard TailnetEngine.validControlURL(c), c != control else { return }
                                 control = c
-                                Task { await engine.apply() }
+                                // A device belongs to one control server: a new one starts anew.
+                                Task { await engine.signOut() }
+                                reconnectTailnetHosts()
                             }
                     }
                 } footer: {
@@ -112,8 +117,10 @@ struct TailscaleView: View {
         // Hosts on the tailnet switch ways as it turns on or off.
         .onChange(of: on) {
             Task { await engine.apply() }
-            store.hosts.filter { $0.config.transport == .tailnet }.forEach { $0.reconnect() }
+            reconnectTailnetHosts()
         }
+        // The default name, made as the engine applies.
+        .onChange(of: savedName) { if name.isEmpty { name = savedName } }
         // How each peer is reached changes unannounced.
         .task(id: on) {
             while on, !Task.isCancelled {
@@ -121,6 +128,10 @@ struct TailscaleView: View {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+    }
+
+    private func reconnectTailnetHosts() {
+        store.hosts.filter { $0.config.transport == .tailnet }.forEach { $0.reconnect() }
     }
 
     private func state(_ s: String) -> String {

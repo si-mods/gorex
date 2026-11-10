@@ -2987,6 +2987,16 @@
           }
         }
       }
+    },
+    "The new name applies at the next start: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新名称将在下次启动时生效：%@"
+          }
+        }
+      }
     }
   }
 }

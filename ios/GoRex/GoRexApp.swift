@@ -30,6 +30,10 @@ struct GoRexApp: App {
                 .onChange(of: phase) { _, p in
                     if p == .active { store.hosts.forEach { $0.reconnectIfNeeded() } }
                 }
+                // Hosts the gateway refused try again as the engine runs anew.
+                .onChange(of: TailnetEngine.shared.status.state) { _, s in
+                    if s == "Running" { store.hosts.forEach { $0.reconnectIfNeeded() } }
+                }
         }
     }
 }

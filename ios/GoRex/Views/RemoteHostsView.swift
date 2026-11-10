@@ -144,7 +144,8 @@ private struct HostForm: View {
     @State private var name: String
     @State private var command: String
     /// Whether the host goes through the built-in Tailscale, as switched;
-    /// nil keeps the host's way, or, for a new one, takes it by its address.
+    /// nil keeps the host's way, or, for a new one or a new address, takes
+    /// it by the address.
     @State private var tailnet: Bool?
     @State private var deleting = false
     @AppStorage(TailnetSettings.onKey) private var tailnetOn = false
@@ -168,7 +169,7 @@ private struct HostForm: View {
         c.desktop = desktop
         let cmd = command.trimmingCharacters(in: .whitespaces)
         c.command = cmd.isEmpty ? nil : cmd
-        c.transport = tailnet.map { $0 ? HostConfig.Transport.tailnet : .system } ?? config.map(\.transport) ?? TailnetEngine.shared.transport(of: c.url)
+        c.transport = HostConfig.transport(switched: tailnet, was: config, at: c.url, rule: TailnetEngine.shared.transport(of: c.url))
         return c
     }
 

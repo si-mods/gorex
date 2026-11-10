@@ -39,7 +39,12 @@ final class TailnetEngine {
     /// Whether the login page shows, or will once the engine has one.
     private(set) var signingIn = false
     @ObservationIgnored private var login: ASWebAuthenticationSession?
-    @ObservationIgnored private let anchor = Anchor()
+    /// The login page's window, kept while it shows: the session holds it weakly.
+    @ObservationIgnored private var anchor: Anchor?
+    /// The login page last shown, not shown again by itself.
+    @ObservationIgnored private var shown: String?
+    /// The engine's operations, one at a time: each waits for the one before.
+    @ObservationIgnored private var chain: Task<Void, Never>?
     /// The run whose status counts; a stopped run's late news doesn't.
     @ObservationIgnored private var run = 0
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
@@ -56,7 +61,43 @@ final class TailnetEngine {
     /// Starts the engine as Settings › Tailscale has it, signing in with
     /// authKey when given; stops it when off.
     func apply(authKey: String = "") async {
-        guard TailnetSettings.isOn else { return await stop() }
+        await serial { await self.applyNow(authKey: authKey) }
+    }
+
+    /// Stops the engine and its proxy.
+    func stop() async {
+        await serial { await self.stopNow() }
+    }
+
+    /// Signs the device out and forgets it: its state goes. Still on, the
+    /// engine starts again as a new device, to sign in anew, as after a
+    /// change of control server.
+    func signOut() async {
+        await serial {
+            _ = await Task.detached { TailnetLogout(nil) }.value
+            await self.stopNow()
+            if let dir = try? Self.stateDir() { try? FileManager.default.removeItem(at: dir) }
+            await self.applyNow()
+        }
+    }
+
+    /// Runs op once the operations before it end.
+    private func serial(_ op: @escaping @MainActor () async -> Void) async {
+        let before = chain
+        let t = Task {
+            await before?.value
+            await op()
+        }
+        chain = t
+        await t.value
+    }
+
+    private func applyNow(authKey: String = "") async {
+        TailnetSettings.makeName()
+        guard TailnetSettings.isOn else {
+            if proxy != nil || status.state != "Stopped" { await stopNow() }
+            return
+        }
         do {
             failure = nil
             try await start(hostname: TailnetSettings.name, controlURL: TailnetSettings.controlURL, authKey: authKey)
@@ -69,13 +110,14 @@ final class TailnetEngine {
     /// Starts the engine as the device hostname, of the control server at
     /// controlURL (empty for Tailscale's own), signing in with authKey
     /// when given. A new run has a new proxy.
-    func start(hostname: String, controlURL: String = "", authKey: String = "") async throws {
+    private func start(hostname: String, controlURL: String, authKey: String) async throws {
         let config = String(decoding: try JSONSerialization.data(withJSONObject: [
             "hostname": hostname, "control_url": controlURL, "auth_key": authKey,
         ]), as: UTF8.self)
         let dir = try Self.stateDir()
         run += 1
-        let watcher = Watcher(run: run)
+        let r = run
+        let watcher = Watcher(run: r)
         proxy = nil
         status = Status(state: "Starting")
         // Starting reads the state and the network; off the main thread.
@@ -84,6 +126,8 @@ final class TailnetEngine {
             guard TailnetStart(config, dir.path, watcher, &error) else { throw error ?? RexError(code: "tailnet", message: "start") }
             return TailnetProxy(&error)
         }.value
+        // Stopped meanwhile.
+        guard r == run else { return }
         guard let a = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
               let port = a["address"]?.split(separator: ":").last.flatMap({ Int($0) }), let password = a["password"]
         else { throw RexError(code: "tailnet", message: "no proxy") }
@@ -91,8 +135,7 @@ final class TailnetEngine {
         log.notice("proxy on 127.0.0.1:\(port)")
     }
 
-    /// Stops the engine and its proxy.
-    func stop() async {
+    private func stopNow() async {
         run += 1
         proxy = nil
         status = Status(state: "Stopped")
@@ -112,12 +155,14 @@ final class TailnetEngine {
     /// Renames the running device; the name is kept for the next start.
     func setHostname(_ name: String) async {
         guard proxy != nil else { return }
+        failure = nil
         do {
             try await Task.detached {
                 var error: NSError?
                 guard TailnetSetHostname(name, &error) else { throw error ?? RexError(code: "tailnet", message: "rename") }
             }.value
         } catch {
+            failure = String(localized: "The new name applies at the next start: \(error.localizedDescription)")
             log.error("rename: \(error.localizedDescription, privacy: .public)")
         }
     }
@@ -128,21 +173,16 @@ final class TailnetEngine {
         signingIn = true
         if proxy == nil { await apply() }
         guard proxy != nil else { signingIn = false; return }
-        if status.auth_url == nil {
+        if status.auth_url == nil || status.auth_url == shown {
             // The engine asks for a login at its start; this one is for a
-            // page that expired or was closed.
+            // page shown before. Tailscale keeps that page while control
+            // holds it valid, else asks control for a new one, which comes
+            // as the status changes.
             _ = await Task.detached { TailnetLogin(nil) }.value
+            await refresh()
+            if status.auth_url == shown { shown = nil }
         }
         present()
-    }
-
-    /// Signs the device out and forgets it: its state goes. Still on, the
-    /// engine starts again as a new device, to sign in anew.
-    func signOut() async {
-        _ = await Task.detached { TailnetLogout(nil) }.value
-        await stop()
-        if let dir = try? Self.stateDir() { try? FileManager.default.removeItem(at: dir) }
-        await apply()
     }
 
     /// The transport of a host added now (HostConfig.transport(of:)).
@@ -167,15 +207,20 @@ final class TailnetEngine {
     /// Shows the login page while signing in. Tailscale's page never calls
     /// back: the device running closes it, or the user does.
     private func present() {
-        guard signingIn, login == nil, let s = status.auth_url, let url = URL(string: s) else { return }
+        guard signingIn, login == nil, let s = status.auth_url, s != shown, let url = URL(string: s) else { return }
+        guard let window = Anchor.window() else { signingIn = false; return }
+        shown = s
         let session = ASWebAuthenticationSession(url: url, callback: .customScheme("rexgo")) { [weak self] _, _ in
             self?.login = nil
+            self?.anchor = nil
             self?.signingIn = false
         }
+        anchor = Anchor(window)
         session.presentationContextProvider = anchor
         login = session
         if !session.start() {
             login = nil
+            anchor = nil
             signingIn = false
         }
     }
@@ -184,6 +229,7 @@ final class TailnetEngine {
         signingIn = false
         login?.cancel()
         login = nil
+        anchor = nil
     }
 
     /// Where the device's state lives: Application Support, out of backups,
@@ -200,9 +246,16 @@ final class TailnetEngine {
 
     /// The window the login page shows over.
     private final class Anchor: NSObject, ASWebAuthenticationPresentationContextProviding {
-        func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-            let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first!
-            return scene.keyWindow ?? UIWindow(windowScene: scene)
+        let window: UIWindow
+        init(_ window: UIWindow) { self.window = window }
+
+        func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { window }
+
+        /// The key window of the scene in front, else of any; nil with none.
+        static func window() -> UIWindow? {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            let s = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+            return s?.keyWindow ?? s?.windows.first
         }
     }
 
