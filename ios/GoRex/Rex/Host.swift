@@ -8,7 +8,11 @@ struct HostConfig: Codable, Identifiable, Hashable {
     var id = UUID()
     var name: String
     var url: URL
+    /// Set with the icon, for a list saved before the icon to read.
     var desktop = false
+    /// The SF Symbol that stands for the host, one of Icon.all; nil is
+    /// the laptop or desktop of a list saved before it.
+    var icon: String?
     /// The program and arguments new windows run, as typed; nil or empty
     /// runs the host's login shell.
     var command: String?
@@ -39,6 +43,22 @@ struct LoopbackProxy: Equatable {
         c.proxyConfigurations = [p]
         return URLSession(configuration: c)
     }
+}
+
+extension HostConfig {
+    /// The icons a host can take, as Rex offers them.
+    static let icons: [(name: LocalizedStringKey, symbol: String)] = [
+        ("Globe", "globe"),
+        ("Server", "server.rack"),
+        ("Cloud", "cloud"),
+        ("MacBook", "laptopcomputer"),
+        ("Mac mini", "macmini"),
+        ("Mac Studio", "macstudio"),
+        ("Desktop", "desktopcomputer"),
+    ]
+
+    /// The SF Symbol of the host's icon.
+    var symbol: String { icon ?? (desktop ? "desktopcomputer" : "laptopcomputer") }
 }
 
 extension HostConfig {

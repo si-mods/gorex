@@ -84,7 +84,7 @@ private struct HostRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: host.config.desktop ? "desktopcomputer" : "laptopcomputer")
+            Image(systemName: host.config.symbol)
                 .font(.title3).frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text(host.config.name).foregroundStyle(.primary).lineLimit(1)
@@ -140,7 +140,7 @@ private struct HostForm: View {
     @Environment(\.dismiss) private var dismiss
     let config: HostConfig?
     @State private var address: String
-    @State private var desktop: Bool
+    @State private var symbol: String
     @State private var name: String
     @State private var command: String
     /// Whether the host goes through the built-in Tailscale, as switched;
@@ -153,7 +153,7 @@ private struct HostForm: View {
     init(config: HostConfig?) {
         self.config = config
         _address = State(initialValue: config?.url.absoluteString ?? "")
-        _desktop = State(initialValue: config?.desktop ?? false)
+        _symbol = State(initialValue: config?.symbol ?? "laptopcomputer")
         _name = State(initialValue: config?.name ?? "")
         _command = State(initialValue: config?.command ?? "")
     }
@@ -166,7 +166,8 @@ private struct HostForm: View {
         if let config { c.id = config.id }
         let n = name.trimmingCharacters(in: .whitespaces)
         if !n.isEmpty { c.name = n }
-        c.desktop = desktop
+        c.icon = symbol
+        c.desktop = symbol == "desktopcomputer"
         let cmd = command.trimmingCharacters(in: .whitespaces)
         c.command = cmd.isEmpty ? nil : cmd
         c.transport = HostConfig.transport(switched: tailnet, was: config, at: c.url, rule: TailnetEngine.shared.transport(of: c.url))
@@ -195,13 +196,12 @@ private struct HostForm: View {
                 Section("Host details") {
                     HStack(spacing: 12) {
                         Menu {
-                            Picker("Device", selection: $desktop) {
-                                Label("Laptop", systemImage: "laptopcomputer").tag(false)
-                                Label("Desktop", systemImage: "desktopcomputer").tag(true)
+                            Picker("Device", selection: $symbol) {
+                                ForEach(HostConfig.icons, id: \.symbol) { Label($0.name, systemImage: $0.symbol).tag($0.symbol) }
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: desktop ? "desktopcomputer" : "laptopcomputer")
+                                Image(systemName: symbol)
                                 Image(systemName: "chevron.up.chevron.down").font(.caption2.weight(.semibold))
                             }
                             .foregroundStyle(.primary)
