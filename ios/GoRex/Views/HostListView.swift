@@ -230,7 +230,7 @@ private struct HostSection: View {
                 Image(systemName: host.config.symbol)
                     .font(.title3)
                     .foregroundStyle(.secondary)
-                Text(host.config.name).font(.title.bold()).lineLimit(1)
+                Text(host.config.name).font(.title3.bold()).lineLimit(1)
                 Spacer()
                 // One + per card: the host's new session is in its menu.
                 Menu {
