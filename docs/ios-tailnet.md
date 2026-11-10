@@ -1,6 +1,6 @@
 # Rex Go: built-in Tailscale
 
-Status: implemented, in phases #369, #371, #375, #381 and this one's PR. Answers part of
+Status: implemented, in phases #369, #371, #375, #381 and #382. Answers part of
 [#330](https://github.com/si-mods/gorex/issues/330).
 
 ## Problem
