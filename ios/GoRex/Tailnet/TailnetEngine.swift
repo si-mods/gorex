@@ -110,7 +110,8 @@ final class TailnetEngine {
                     guard TailnetResetSockets(&error) else { throw error ?? RexError(code: "tailnet", message: "reset") }
                 }.value
                 self.log.notice("sockets reset")
-                let p = try await Task.detached { try Self.readProxy() }.value
+                let run = self.run
+                let p = try await Task.detached { try Self.readProxy(run: run) }.value
                 if p != self.proxy {
                     self.log.notice("proxy on 127.0.0.1:\(p.port), the old one gone")
                     self.proxy = p
@@ -154,7 +155,7 @@ final class TailnetEngine {
 
     /// Starts the engine as the device hostname, of the control server at
     /// controlURL (empty for Tailscale's own), signing in with authKey
-    /// when given. A new run has a new proxy.
+    /// when given. A new run has a new proxy value (LoopbackProxy.run).
     private func start(hostname: String, controlURL: String, authKey: String) async throws {
         let config = String(decoding: try JSONSerialization.data(withJSONObject: [
             "hostname": hostname, "control_url": controlURL, "auth_key": authKey,
@@ -168,10 +169,12 @@ final class TailnetEngine {
         // The phone's network, before the engine's first look at it.
         await paths.start()
         // Starting reads the state and the network; off the main thread.
+        // The proxy first: one that fails leaves no node running.
         let p = try await Task.detached {
+            let p = try Self.readProxy(run: r)
             var error: NSError?
             guard TailnetStart(config, dir.path, watcher, &error) else { throw error ?? RexError(code: "tailnet", message: "start") }
-            return try Self.readProxy()
+            return p
         }.value
         // Stopped meanwhile.
         guard r == run else { return }
@@ -179,14 +182,15 @@ final class TailnetEngine {
         log.notice("proxy on 127.0.0.1:\(p.port)")
     }
 
-    /// The engine's proxy of the moment: a new one when the last died.
-    nonisolated private static func readProxy() throws -> LoopbackProxy {
+    /// The engine's proxy of the moment, for run: a new one when the last
+    /// died.
+    nonisolated private static func readProxy(run: Int) throws -> LoopbackProxy {
         var error: NSError?
         let json = TailnetProxy(&error)
         guard error == nil, let a = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: String],
               let port = a["address"]?.split(separator: ":").last.flatMap({ Int($0) }), let password = a["password"]
         else { throw error ?? RexError(code: "tailnet", message: "no proxy") }
-        return LoopbackProxy(port: port, password: password)
+        return LoopbackProxy(port: port, password: password, run: run)
     }
 
     private func stopNow() async {

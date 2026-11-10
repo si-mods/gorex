@@ -28,12 +28,16 @@ struct HostConfig: Codable, Identifiable, Hashable {
     }
 }
 
-/// The built-in Tailscale's SOCKS5 proxy on loopback: user name "tsnet"
-/// and a password of its own. It lasts until iOS reclaims its listener in
-/// a suspension; then the engine has a new one (TailnetEngine.resume).
+/// The built-in Tailscale's SOCKS5 proxy on loopback, as one run of the
+/// engine uses it: user name "tsnet" and a password of its own. The
+/// proxy lasts until iOS reclaims its listener in a suspension, when the
+/// engine reads a new one (TailnetEngine.resume); its tailnet connections
+/// end with the run, so another run is another value, even on the same
+/// port.
 struct LoopbackProxy: Equatable {
     let port: Int
     let password: String
+    let run: Int
 
     /// A session whose connections go through the proxy, which resolves
     /// the hosts' names on the tailnet itself.
@@ -251,7 +255,7 @@ final class Host: Identifiable {
 
     /// The session the host's connections go through: the system's, or
     /// one through the built-in Tailscale's proxy of the moment, made anew
-    /// for each run of it.
+    /// for each run of the engine and each new proxy.
     func session() throws -> URLSession {
         guard viaTailnet else { return .shared }
         guard let p = Self.tailnetProxy() else {
@@ -672,8 +676,8 @@ final class HostStore {
     /// gets the built-in Tailscale going again first; while it runs on as
     /// before, the hosts on it then connect anew, as their connections to
     /// its proxy can look open while their tailnet side died. Started anew,
-    /// its old proxy's connections end with it, and the hosts connect once
-    /// it runs (docs/ios-tailnet.md, Lifecycle). The others reconnect if
+    /// its old run's connections end with it, and the hosts connect, on a
+    /// new session, once it runs (docs/ios-tailnet.md, Lifecycle). The others reconnect if
     /// needed, at once.
     func foreground(suspended: Bool, resume: () async -> Bool) async {
         let forced = { (h: Host) in suspended && h.viaTailnet }
