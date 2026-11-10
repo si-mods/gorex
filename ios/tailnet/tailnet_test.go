@@ -79,16 +79,46 @@ func TestValidHostname(t *testing.T) {
 }
 
 // Before Start, the calls that need the device fail, and Status says
-// it is stopped.
+// it is stopped. The proxy serves without it, the same for the process.
 func TestNotStarted(t *testing.T) {
 	if Status() != `{"state":"Stopped"}` {
 		t.Errorf("Status() = %s", Status())
 	}
-	if _, err := Proxy(); err == nil {
-		t.Error("Proxy() did not fail")
+	p1, err := Proxy()
+	p2, _ := Proxy()
+	if err != nil || p1 != p2 {
+		t.Errorf("Proxy() = %s, %v, then %s; want one proxy", p1, err, p2)
 	}
 	if Login() == nil || Logout() == nil || SetHostname("rexgo-kqzt") == nil {
 		t.Error("Login, Logout or SetHostname did not fail")
 	}
 	Stop()
+}
+
+// A proxy whose listener died, as iOS reclaims a suspended app's, is
+// replaced by a new one that works.
+func TestProxyHeals(t *testing.T) {
+	j1, err := Proxy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxMu.Lock()
+	old := prox
+	proxMu.Unlock()
+	// At once, before Serve may have seen it.
+	old.ln.Close()
+	j2, err := Proxy()
+	if err != nil || j2 == j1 {
+		t.Fatalf("Proxy() after its listener died = %s, %v; want a new one", j2, err)
+	}
+	var p struct{ Address, Password string }
+	json.Unmarshal([]byte(j2), &p)
+	// It speaks SOCKS5 and takes its password: a target off the tailnet
+	// is refused, not the credentials.
+	if _, err := socksConnect(p.Address, "tsnet", p.Password, "example.com", 80); err == nil || err.Error() != "connect refused" {
+		t.Errorf("the new proxy: %v; want the target refused", err)
+	}
+	if j3, _ := Proxy(); j3 != j2 {
+		t.Error("a live proxy was replaced")
+	}
 }

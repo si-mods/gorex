@@ -1,8 +1,9 @@
 // Package tailnet is Rex Go's built-in Tailscale: a device of its own on
-// the user's tailnet, in the app's process, with a SOCKS5 proxy on
-// loopback through which the app reaches hosts on the tailnet. No system
-// VPN is involved. gomobile binds it for Swift (ios/scripts/build-tailnet);
-// docs/ios-tailnet.md has the design.
+// the user's tailnet, in the app's process, and tailcat clients of GoRex
+// machines (tailcat.go), with a SOCKS5 proxy on loopback through which the
+// app reaches hosts by either. No system VPN is involved. gomobile binds
+// it for Swift (ios/scripts/build-tailnet); docs/ios-tailnet.md and
+// docs/ios-tailcat.md have the design.
 package tailnet
 
 import (
@@ -50,7 +51,6 @@ func parseConfig(s string) (config, error) {
 var (
 	mu     sync.Mutex
 	node   *tailnode.Node
-	prox   *proxy
 	cancel context.CancelFunc
 	// stuck is a node whose socket reset didn't finish (ResetSockets).
 	stuck bool
@@ -74,14 +74,9 @@ func Start(configJSON, stateDir string, cb Callback) error {
 		n.Close()
 		return err
 	}
-	p, err := startProxy(n.StatusWithPeers, n.Dial)
-	if err != nil {
-		n.Close()
-		return err
-	}
 	ctx, stop := context.WithCancel(context.Background())
 	mu.Lock()
-	node, prox, cancel = n, p, stop
+	node, cancel = n, stop
 	mu.Unlock()
 	if cb != nil {
 		go n.Watch(ctx, func() { cb.Changed(status(ctx, n)) })
@@ -222,33 +217,48 @@ func encode(v any) string {
 	return string(b)
 }
 
-// Proxy is the device's SOCKS5 proxy (proxy.go) as JSON: its address,
-// as 127.0.0.1:port, and its password; the user name is "tsnet". Each
-// start of the device has a new port and password.
+// The proxy (proxy.go), one per process, started by the first call of
+// Proxy, and again by the first after it died.
+var (
+	proxMu sync.Mutex
+	prox   *proxy
+)
+
+// Proxy is the SOCKS5 proxy (proxy.go) as JSON: its address, as
+// 127.0.0.1:port, and its password; the user name is "tsnet". It serves
+// the tailnet while the device runs and the tailcat hosts, and keeps its
+// port and password until it dies, as when iOS reclaims its listener in a
+// suspension: then the next call starts a new one, of a new port and
+// password.
 func Proxy() (string, error) {
-	mu.Lock()
-	p := prox
-	mu.Unlock()
-	if p == nil {
-		return "", errors.New("tailnet not started")
+	proxMu.Lock()
+	defer proxMu.Unlock()
+	if prox == nil || !prox.alive() {
+		if prox != nil {
+			prox.close()
+		}
+		p, err := startProxy(dial)
+		if err != nil {
+			return "", err
+		}
+		prox = p
 	}
-	return encode(map[string]string{"address": p.ln.Addr().String(), "password": p.password}), nil
+	return encode(map[string]string{"address": prox.ln.Addr().String(), "password": prox.password}), nil
 }
 
-// Stop stops the device and its proxy. A device stuck in a socket reset
+// Stop stops the device. A device stuck in a socket reset
 // closes in the background, as far as it can: its control client stops
 // before its WireGuard device, which waits for the reset, so a new start
 // on the same state is the only device that control sees.
 func Stop() {
 	mu.Lock()
-	n, p, stop, s := node, prox, cancel, stuck
-	node, prox, cancel, stuck = nil, nil, nil, false
+	n, stop, s := node, cancel, stuck
+	node, cancel, stuck = nil, nil, false
 	mu.Unlock()
 	if n == nil {
 		return
 	}
 	stop()
-	p.close()
 	if s {
 		go closeNode(n)
 	} else {

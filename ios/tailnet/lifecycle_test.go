@@ -17,8 +17,8 @@ import (
 
 func TestNotRunning(t *testing.T) {
 	Stop()
-	if err := ResetSockets(); err == nil {
-		t.Error("ResetSockets with no device: no error")
+	if err := ResetSockets(); err != nil {
+		t.Errorf("ResetSockets with nothing running: %v", err)
 	}
 	DefaultInterfaceChanged("en0")
 	DefaultInterfaceChanged("")
@@ -68,12 +68,8 @@ func TestStuckDeviceDoesNotHoldStart(t *testing.T) {
 	defer close(wedged)
 	closeNode = func(*tailnode.Node) { <-wedged }
 	fake := func(s bool) {
-		p, err := startProxy(nil, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
 		mu.Lock()
-		node, prox, cancel, stuck = tailnode.New(tailnode.Options{}), p, func() {}, s
+		node, cancel, stuck = tailnode.New(tailnode.Options{}), func() {}, s
 		mu.Unlock()
 	}
 

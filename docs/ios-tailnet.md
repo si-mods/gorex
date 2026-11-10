@@ -84,10 +84,10 @@ exports a narrow API for `gomobile bind`:
 | `Login()` / `Logout()` | interactive login; the auth URL arrives through the callback |
 | `Status() string` | JSON: backend state, auth URL, the node's name and addresses, peers and how each is reached |
 | `SetHostname(name)` | renames the running node, as the gateway's `SetHostname` |
-| `Proxy() string` | the SOCKS5 proxy (Transport): address and password |
+| `Proxy() string` | the SOCKS5 proxy (Transport): address and password, one per process |
 | `DefaultInterfaceChanged(name)` | the path monitor's news of a network change |
 | `ResetSockets()` | rebinds the UDP sockets iOS reclaimed while suspended |
-| `Stop()` | stops the node and its proxy |
+| `Stop()` | stops the node |
 | `ValidControlURL(url) bool` | `internal/tailnode`'s check, for Settings |
 | `ValidHostname(name) bool` | `internal/tailnode`'s device name check, for Settings |
 
@@ -146,7 +146,7 @@ c.proxyConfigurations = [proxy]
 
 This is TailscaleKit's `URLSessionConfiguration.proxyVia`. The proxy is
 the engine's own (`ios/tailnet/proxy.go`): `tailscale.com/net/socks5` on
-loopback, user `tsnet` and a random password per run, so another app on
+loopback, user `tsnet` and a random password per process, so another app on
 the phone can't use it. It dials only the tailnet's devices: it takes
 the target's MagicDNS name (full or short) or address, looks it up among
 the node's current peers, and dials that peer's Tailscale address
@@ -163,11 +163,13 @@ the gateway over the home network, which happened to route the tailnet,
 not through Tailscale. Its port also serves the LocalAPI; the engine's
 proxy exposes no LocalAPI on any port.
 
-Each engine run has a new port and password, and a `URLSession`'s
-configuration is fixed when it's made. So the proxy's
-address belongs to the engine's current run: when the engine starts
-again, every `tailnet` host drops its session, makes a new one and
-reconnects.
+The proxy keeps its port and password for the process, but its tailnet
+connections end with the engine's run: when the engine starts again,
+every `tailnet` host drops its session, makes a new one and reconnects.
+iOS can also reclaim a suspended app's listening socket (TN2277): a proxy
+whose listener died is replaced by the next `Proxy()`, of a new port and
+password, which `resume()` reads after the socket reset; the hosts'
+next session then goes through it.
 
 The protocol code (`ControlConnection`, `DataStream`, `Spaces`,
 `Upload`) changes only to take the host's session instead of

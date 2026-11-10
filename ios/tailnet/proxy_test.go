@@ -70,9 +70,20 @@ func socksConnect(addr, user, password, host string, port uint16) (net.Conn, err
 	if _, err := c.Write(req); err != nil {
 		return fail(err)
 	}
-	reply := make([]byte, 10)
+	// The reply ends with the bound address, of its type, and port.
+	reply := make([]byte, 4)
 	if _, err := io.ReadFull(c, reply); err != nil || reply[1] != 0 {
 		return fail(errors.New("connect refused"))
+	}
+	n := map[byte]int{1: 4, 4: 16}[reply[3]]
+	if reply[3] == 3 {
+		if _, err := io.ReadFull(c, reply[:1]); err != nil {
+			return fail(err)
+		}
+		n = int(reply[0])
+	}
+	if _, err := io.ReadFull(c, make([]byte, n+2)); err != nil {
+		return fail(err)
 	}
 	return c, nil
 }
@@ -94,11 +105,13 @@ func TestProxy(t *testing.T) {
 		}
 	}()
 	var dialed []string
-	p, err := startProxy(func(context.Context) (*ipnstate.Status, error) { return tailnet("Running"), nil },
-		func(ctx context.Context, network, addr string) (net.Conn, error) {
-			dialed = append(dialed, addr)
-			return new(net.Dialer).DialContext(ctx, network, echo.Addr().String())
-		})
+	p, err := startProxy(func(ctx context.Context, addr string) (net.Conn, error) {
+		return dialTailnet(ctx, func(context.Context) (*ipnstate.Status, error) { return tailnet("Running"), nil },
+			func(ctx context.Context, network, addr string) (net.Conn, error) {
+				dialed = append(dialed, addr)
+				return new(net.Dialer).DialContext(ctx, network, echo.Addr().String())
+			}, addr)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

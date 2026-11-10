@@ -9,26 +9,29 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/socks5"
 )
 
-// proxy is the app's way into the tailnet: a SOCKS5 server on loopback,
-// user name "tsnet" and a random password per run, that dials only the
-// tailnet's devices. tsnet's own (Server.Loopback) dials any address that
-// isn't a known peer through the phone's network, as every tailnet address
-// is before the network map arrives, and serves the LocalAPI on its port.
+// proxy is the app's way to its hosts: a SOCKS5 server on loopback, user
+// name "tsnet" and a random password per process, that dials only a
+// tailcat host (tailcat.go) or a device on the tailnet. tsnet's own
+// (Server.Loopback) dials any address that isn't a known peer through the
+// phone's network, as every tailnet address is before the network map
+// arrives, and serves the LocalAPI on its port.
 type proxy struct {
 	ln       net.Listener
 	password string
+	// done closes once the proxy stops serving: closed, or its listener
+	// reclaimed, as iOS may a suspended app's (Apple TN2277).
+	done chan struct{}
 }
 
-// startProxy serves the proxy; status gives the node's peers and dial
-// dials through the node.
-func startProxy(status func(context.Context) (*ipnstate.Status, error),
-	dial func(ctx context.Context, network, addr string) (net.Conn, error)) (*proxy, error) {
+// startProxy serves the proxy, which connects through dial.
+func startProxy(dial func(ctx context.Context, addr string) (net.Conn, error)) (*proxy, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return nil, err
@@ -37,7 +40,7 @@ func startProxy(status func(context.Context) (*ipnstate.Status, error),
 	if err != nil {
 		return nil, err
 	}
-	p := &proxy{ln: ln, password: hex.EncodeToString(b[:])}
+	p := &proxy{ln: ln, password: hex.EncodeToString(b[:]), done: make(chan struct{})}
 	s := &socks5.Server{
 		Logf:     func(string, ...any) {},
 		Username: "tsnet",
@@ -46,22 +49,61 @@ func startProxy(status func(context.Context) (*ipnstate.Status, error),
 			if network != "tcp" {
 				return nil, errors.New("tcp only")
 			}
-			st, err := status(ctx)
-			if err != nil {
-				return nil, err
-			}
-			to, err := peerAddr(st, addr)
-			if err != nil {
-				return nil, err
-			}
-			return dial(ctx, "tcp", to.String())
+			return dial(ctx, addr)
 		},
 	}
-	go s.Serve(ln)
+	go func() {
+		s.Serve(ln)
+		close(p.done)
+	}()
 	return p, nil
 }
 
 func (p *proxy) close() { p.ln.Close() }
+
+// alive tells whether the proxy serves: Serve hasn't returned, and its
+// listener takes a connection now, as Serve may not have seen it die yet.
+func (p *proxy) alive() bool {
+	select {
+	case <-p.done:
+		return false
+	default:
+	}
+	c, err := net.DialTimeout("tcp", p.ln.Addr().String(), 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	c.Close()
+	return true
+}
+
+// dial is the proxy's: a tailcat host by its name, else a device on the
+// running tailnet.
+func dial(ctx context.Context, addr string) (net.Conn, error) {
+	if id, port, ok := tailcatTarget(addr); ok {
+		return dialTailcat(ctx, id, port)
+	}
+	n, err := running()
+	if err != nil {
+		return nil, err
+	}
+	return dialTailnet(ctx, n.StatusWithPeers, n.Dial, addr)
+}
+
+// dialTailnet dials the device addr names through the node: status gives
+// its peers and dial dials through it.
+func dialTailnet(ctx context.Context, status func(context.Context) (*ipnstate.Status, error),
+	dial func(ctx context.Context, network, addr string) (net.Conn, error), addr string) (net.Conn, error) {
+	st, err := status(ctx)
+	if err != nil {
+		return nil, err
+	}
+	to, err := peerAddr(st, addr)
+	if err != nil {
+		return nil, err
+	}
+	return dial(ctx, "tcp", to.String())
+}
 
 // peerAddr is the Tailscale address of the device addr names, as
 // host:port: a peer's IP address, its MagicDNS name, or its name short of

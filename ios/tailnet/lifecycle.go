@@ -4,19 +4,22 @@ package tailnet
 // phone's network, and open its sockets again after a suspension. After
 // rootshell (kitknox/trzsz-ssh-rootshell, iosbridge/tailnet.go and
 // vpntunnel/tsengine/sockets.go, MIT). Both reach into tsnet's
-// subsystems (Server.Sys), which are not a stable API; the tests catch a
-// change.
+// subsystems (Server.Sys), and into a tailcat client's (tailcatSystem),
+// which are not a stable API; the tests catch a change.
 
 import (
 	"context"
 	"errors"
+	"maps"
 	"reflect"
+	"sync"
 	"time"
 	"unsafe"
 
+	"github.com/tailscale/tailcat"
 	"github.com/tailscale/wireguard-go/device"
-	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/tsd"
+	"tailscale.com/types/key"
 	"tailscale.com/wgengine"
 	"tailscale.com/wgengine/magicsock"
 )
@@ -31,8 +34,12 @@ const noInterface = "rexgo-none"
 // network that is gone.
 func DefaultInterfaceChanged(name string) {
 	setDefaultInterface(ifName(name))
+	systems := tailcatSystems()
 	if n, err := running(); err == nil {
-		if m, ok := n.Sys().NetMon.GetOK(); ok {
+		systems = append(systems, systemPeers{sys: n.Sys()})
+	}
+	for _, s := range systems {
+		if m, ok := s.sys.NetMon.GetOK(); ok {
 			m.InjectEvent()
 		}
 	}
@@ -52,21 +59,30 @@ var (
 	unstickEvery = 250 * time.Millisecond
 )
 
-// ResetSockets opens the device's UDP sockets anew, for the app back from
-// the background: iOS reclaims a suspended app's sockets, WireGuard's
-// receive loops end on the read error, and Tailscale never starts them
-// again, leaving every peer on DERP. Open connections go on. It fails when
-// the device isn't running or the reset didn't finish in time; the device
-// then needs a new start, which leaves a stuck one to close by itself.
+// ResetSockets opens the UDP sockets of the device and of the tailcat
+// clients anew, for the app back from the background: iOS reclaims a
+// suspended app's sockets, WireGuard's receive loops end on the read
+// error, and Tailscale never starts them again, leaving every peer on
+// DERP. Open connections go on. The resets run side by side: a tailcat
+// client whose reset doesn't finish is dropped, and the next dial makes
+// a new one. It fails when the device runs and its reset didn't finish in
+// time; the device then needs a new start, which leaves a stuck one to
+// close by itself.
 func ResetSockets() error {
+	tailcatDone := resetTailcat()
+	defer tailcatDone()
 	n, err := running()
 	if err != nil {
-		return err
+		return nil // no device to reset
 	}
 	ctx, done := context.WithTimeout(context.Background(), 5*time.Second)
 	st, _ := n.StatusWithPeers(ctx)
 	done()
-	err = resetSockets(n.Sys(), st)
+	var peers []key.NodePublic
+	if st != nil {
+		peers = st.Peers()
+	}
+	err = resetSockets(n.Sys(), peers)
 	if errors.Is(err, errStuck) {
 		mu.Lock()
 		if node == n {
@@ -85,8 +101,8 @@ var errStuck = errors.New("socket reset is stuck")
 // resetSockets closes WireGuard's bind, has magicsock open new sockets and
 // opens the bind on them, which starts new receive loops; an update alone
 // would read the old sockets. Only the bind restarts: the peers keep their
-// sessions. st gives the peers whose staged packets may be dropped.
-func resetSockets(sys *tsd.System, st *ipnstate.Status) error {
+// sessions. Staged packets for peers may be dropped.
+func resetSockets(sys *tsd.System, peers []key.NodePublic) error {
 	mc, ok := sys.MagicSock.GetOK()
 	e, ok2 := sys.Engine.GetOK()
 	if !ok || !ok2 {
@@ -96,12 +112,10 @@ func resetSockets(sys *tsd.System, st *ipnstate.Status) error {
 	if err != nil {
 		return err
 	}
-	var peers []*device.Peer
-	if st != nil {
-		for _, k := range st.Peers() {
-			if p := dev.LookupPeer(device.NoisePublicKey(k.Raw32())); p != nil {
-				peers = append(peers, p)
-			}
+	var staged []*device.Peer
+	for _, k := range peers {
+		if p := dev.LookupPeer(device.NoisePublicKey(k.Raw32())); p != nil {
+			staged = append(staged, p)
 		}
 	}
 	// The close waits for the receive loops. One reading a socket a
@@ -110,7 +124,7 @@ func resetSockets(sys *tsd.System, st *ipnstate.Status) error {
 	// close the sockets again and drop the staged packets until it does.
 	if err := await(func() error { dev.BindClose(); return nil }, func() {
 		closeSockets(mc)
-		for _, p := range peers {
+		for _, p := range staged {
 			p.FlushStagedPackets()
 		}
 	}); err != nil {
@@ -174,4 +188,82 @@ func closeSockets(mc *magicsock.Conn) {
 			(*magicsock.RebindingUDPConn)(unsafe.Pointer(f.UnsafeAddr())).Close()
 		}
 	}
+}
+
+// systemPeers is an engine's subsystems and its peers.
+type systemPeers struct {
+	addr  string
+	p     *pooledTailcat
+	sys   *tsd.System
+	peers []key.NodePublic
+}
+
+// resetTailcat starts resetting the sockets of each started tailcat
+// client, each on its own, and returns a function that waits for them.
+// One stuck leaves the pool and closes by itself; the next dial makes
+// another.
+func resetTailcat() (wait func()) {
+	var wg sync.WaitGroup
+	for _, s := range tailcatSystems() {
+		wg.Go(func() {
+			if errors.Is(resetSockets(s.sys, s.peers), errStuck) {
+				tcMu.Lock()
+				if tcClients[s.addr] == s.p {
+					delete(tcClients, s.addr)
+				}
+				tcMu.Unlock()
+				go s.p.tc.Close()
+			}
+		})
+	}
+	return wg.Wait
+}
+
+// tailcatSystems is the subsystems of each started tailcat client, with
+// its server as its peer.
+func tailcatSystems() []systemPeers {
+	tcMu.Lock()
+	clients := maps.Clone(tcClients)
+	tcMu.Unlock()
+	var systems []systemPeers
+	for addr, p := range clients {
+		sys := tailcatSystem(p.tc)
+		if sys == nil {
+			continue
+		}
+		s := systemPeers{addr: addr, p: p, sys: sys}
+		if ci, err := tailcat.ParseAddr(tailcat.Addr(addr)); err == nil {
+			s.peers = []key.NodePublic{ci.ServerPublic.NodePublic}
+		}
+		systems = append(systems, s)
+	}
+	return systems
+}
+
+// tailcatSystem is a started tailcat client's subsystems, unexported:
+// Client.lb.sys, read once Client.started says Client.lb is set. nil for a
+// client not started, or starting now, whose sockets are new.
+func tailcatSystem(c *tailcat.Client) *tsd.System {
+	v := reflect.ValueOf(c).Elem()
+	mu, started, lb := v.FieldByName("startMu"), v.FieldByName("started"), v.FieldByName("lb")
+	if !mu.IsValid() || mu.Type() != reflect.TypeFor[sync.Mutex]() ||
+		!started.IsValid() || started.Kind() != reflect.Bool ||
+		!lb.IsValid() || lb.Kind() != reflect.Pointer || lb.Type().Elem().Kind() != reflect.Struct {
+		return nil
+	}
+	sf, ok := lb.Type().Elem().FieldByName("sys")
+	if !ok || sf.Type != reflect.TypeFor[tsd.System]() {
+		return nil
+	}
+	m := (*sync.Mutex)(unsafe.Pointer(mu.UnsafeAddr()))
+	if !m.TryLock() {
+		return nil
+	}
+	on := *(*bool)(unsafe.Pointer(started.UnsafeAddr()))
+	p := *(*unsafe.Pointer)(unsafe.Pointer(lb.UnsafeAddr()))
+	m.Unlock()
+	if !on || p == nil {
+		return nil
+	}
+	return (*tsd.System)(unsafe.Add(p, sf.Offset))
 }
