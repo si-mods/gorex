@@ -1,6 +1,6 @@
 # Rex Go over tailcat
 
-Status: phase 1 (Spike) done in this PR; phases 2–4 proposed. Answers the rest of
+Status: phases 1 (Spike) and 2 (Server) done; phases 3–4 proposed. Answers the rest of
 [#330](https://github.com/si-mods/gorex/issues/330), after
 [built-in Tailscale](ios-tailnet.md).
 
@@ -126,8 +126,17 @@ The gateway serves these streams with its usual handler, and
 
 ```go
 {"kind": "device", "transport": "tailcat", "display": "<client name>",
- "device": "<key>", "path": ["tailcat"]}
+ "path": ["tailcat"]}
 ```
+
+The key stays out of it: Rex's principal allows no member for it, and a
+client that decodes one strictly would refuse it.
+
+The gateway keeps one accept waiting while it runs (`net/http` asks for
+the next as soon as one is taken). A connection that finds none within
+10 seconds, as while the gateway starts or when none runs, is closed and
+its client dials again. `server.status` leaves this listener out: its
+address is a secret.
 
 What a paired client may do on the gateway is Rex's API, layout
 included, as the Tailscale user who signed the gateway in may. That is
@@ -141,13 +150,17 @@ network listener or built-in Tailscale is.
 
 ### Server: the relay in the address
 
-Remote access today picks a region of tailcat's default DERP map. It
-gets a setting, **Relay**: default (tailcat's), or a host of one's own,
-`derp.example.com`. Given one, the session server sets `Server.Region`
-to a region of that one node, and the address embeds it: clients need
-no setting and never fetch a DERP map. Changing the relay changes the
-address (the keys stay), so paired clients take the new one from a new
-QR code.
+Remote access picks a region of tailcat's default DERP map once, and
+keeps it (`remote.json`, `region`). It has a setting, **Relay**: default
+(tailcat's), or a host of one's own, `derp.example.com`, with `:PORT`
+when not 443 (Settings › Remote, `gorex remote relay HOST|default`,
+`remotectl relay [HOST]`; `remote.relaySet` on the local socket). Given
+one, the session server sets `Server.Region` to a region of that one
+node (DERP on its port, STUN on 3478), and the address embeds it:
+clients need no setting and never fetch a DERP map. The picked region
+stays saved, so clearing the relay gives the old address back. Changing
+the relay changes the address (the keys stay), so paired clients take
+the new one from a new QR code.
 
 Self-hosting is then `derper --hostname=derp.example.com` on any VPS,
 with 443/TCP and 3478/UDP open. The relay sees keys and ciphertext only.
@@ -278,9 +291,11 @@ and without it: +0.26 MB installed, +0.11 MB compressed (gzip -9).
 1. **Spike** (done): a tailcat client in the engine, a host reached
    through the proxy (Go tests, against a local DERP; not yet in the
    simulator), the socket reset after a suspension, the size.
-2. **Server**: port 7297 on the tailcat address, `remote.tailcatAccept`,
-   the gateway's tailcat streams, the relay setting.
+2. **Server** (done): port 7297 on the tailcat address,
+   `remote.tailcatAccept`, the gateway's tailcat streams, the relay
+   setting.
 3. **Rex Go**: the `.tailcat` transport, the `rexgo://tailcat` code,
    pairing, the client key, lifecycle.
 4. **Docs**: `docs/rex-api.md` and the README's Remote access: Rex Go
-   over tailcat, and a `derper` of one's own.
+   over tailcat, and a `derper` of one's own. The server's side and the
+   relay are written with phase 2; Rex Go's steps follow phase 3.

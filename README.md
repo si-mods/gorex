@@ -328,6 +328,32 @@ What to know before turning it on:
 - Every connection is limited: a line of requests of at most 1 MiB, a
   terminal of 1 to 1000 columns and rows, and 8 kills at once.
 
+The same address also serves Rex's API on its port, 7297, for Rex Go
+(see [docs/ios-tailcat.md](docs/ios-tailcat.md)). The allowlist is the
+same: an unknown key gets nothing there, and pairing stays on 7464. The
+session server hands each connection to the Rex API gateway, which it
+runs while remote access is on; the gateway serves an allowed client
+Rex's API as it serves its owner over built-in Tailscale, layout
+included. So an allowed key is trusted there as on 7464, and Remove,
+a coordinator's kick, or turning remote access off closes these
+connections too.
+
+The address names the DERP relay where clients meet the server when
+they cannot connect directly: by default one of tailcat's free relays,
+picked once. A relay of one's own takes its place: **Relay** in Settings
+› Remote, or `gorex remote relay derp.example.com` (`gorex remote relay
+default` goes back; `remotectl relay HOST` does the same without the
+app). Give a host name, or an address, with `:PORT` when not 443. The
+relay is Tailscale's `derper`, on any machine clients can reach:
+
+```sh
+derper --hostname=derp.example.com
+```
+
+with 443/TCP and 3478/UDP open. It sees
+keys and ciphertext only. Changing the relay changes the address (the
+keys stay), so clients need the new one; it is kept in `remote.json`.
+
 ### The coordinator
 
 Pairing every machine with every other does not scale, so a

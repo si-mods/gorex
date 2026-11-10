@@ -36,12 +36,12 @@ it to Rex clients in Rex's terms:
   move, resize) the GoRex server makes itself, as for rootshell; an open
   window shows them at once.
 
-The GoRex server runs the gateway itself while the local network
-listener or built-in Tailscale is on, and again after it restarts or
-upgrades: nothing else needs to run. `GoRex rexapi` runs one of its own,
+The GoRex server runs the gateway itself while remote access, the local
+network listener or built-in Tailscale is on, and again after it
+restarts or upgrades: nothing else needs to run. `GoRex rexapi` runs one of its own,
 for development; the two never run on the same data directory at once.
 
-The gateway listens on four places:
+The gateway listens on five places:
 
 - its local socket, `rexapi.sock` in GoRex's data directory, for this
   user only. The Rex CLI reaches it with `rex -S unix://PATH`, and the
@@ -50,6 +50,8 @@ The gateway listens on four places:
 - the local network, over plain HTTP, while that listener is on: only
   the networks it allows get in (below);
 - the tailnet, over HTTPS, while built-in Tailscale is on;
+- the session server's tailcat address, on Rex's port 7297, while remote
+  access is on (below);
 - with `GoRex rexapi --listen http://127.0.0.1:PORT`, a TCP port that lets
   everyone in unauthenticated: for tests on this machine only.
 
@@ -120,6 +122,28 @@ user who signed the device in; every other caller gets 403.
 `--allow-tailnet-members` lets in everyone the tailnet's access rules
 allow.
 
+## Tailcat
+
+Rex Go reaches the machine over tailcat, at the address of GoRex's
+remote access (README, Remote access): WireGuard end to end, directly or
+through a DERP relay, with no Tailscale account and no VPN on the phone.
+The gateway keeps no tailcat of its own. The session server listens on
+port 7297 of its address beside 7464, lets in the keys of its allowlist
+and its network only (an unknown key gets nothing; pairing stays on
+7464), and hands each connection to the gateway over its local socket
+(`remote.tailcatAccept`): first a line with the client's key and name,
+then the bytes. The gateway keeps one such accept waiting; a connection
+that finds none within 10 seconds, as while the gateway starts, is
+closed, and its client tries again.
+
+A client over tailcat is identified as
+`{"kind": "device", "transport": "tailcat", "display": "<client name>", "path": ["tailcat"]}`.
+It gets Rex's API as the owner does over built-in Tailscale, layout
+included, but not `server.tailscale.*`. Remove in Settings › Remote, a
+coordinator's kick, or turning remote access off closes its
+connections. `server.status` does not list this listener: its address is
+a secret.
+
 ## Set up
 
 1. Open GoRex.
@@ -166,7 +190,7 @@ device out; `tailscale rename NAME` renames it.
 
 | Command | What it does |
 | --- | --- |
-| `GoRex rexapi [--listen URL] [--socket PATH] [--tailnet-dir DIR]` | a gateway of its own, for development; the server runs one while the local network or built-in Tailscale is on |
+| `GoRex rexapi [--listen URL] [--socket PATH] [--tailnet-dir DIR]` | a gateway of its own, for development; the server runs one while remote access, the local network or built-in Tailscale is on |
 | `GoRex rexapi lan on \| off \| status` | the listener on the local network |
 | `GoRex rexapi lan listen HOST:PORT` | the address it listens on |
 | `GoRex rexapi lan allow NETWORK` / `deny NETWORK` | the networks let in: a CIDR, or an address alone |
