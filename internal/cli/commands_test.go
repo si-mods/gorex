@@ -100,6 +100,22 @@ func TestCLI(t *testing.T) {
 	if code != ExitOK || !strings.Contains(out, `"remoteControl": true`) {
 		t.Fatalf("remote status: %d %q %s", code, out, errOut)
 	}
+	if code, _, _, _ = runMain(t, "remote", "relay", "https://derp.example.com"); code != ExitUsage {
+		t.Errorf("remote relay with a URL: %d", code)
+	}
+	code, _, _, errOut = runMain(t, "remote", "relay", "derp.example.com")
+	if code != ExitOK {
+		t.Fatalf("remote relay: %d %s", code, errOut)
+	}
+	code, _, out, _ = runMain(t, "remote", "status")
+	if !strings.Contains(out, "relay=derp.example.com") {
+		t.Errorf("remote status: %q", out)
+	}
+	runMain(t, "remote", "relay", "default")
+	code, _, out, _ = runMain(t, "remote", "status")
+	if !strings.Contains(out, "relay=default") {
+		t.Errorf("remote status after relay default: %q", out)
+	}
 	code, _, out, errOut = runMain(t, "ls", "--json")
 	if code != ExitOK || !strings.Contains(out, info.ID) {
 		t.Fatalf("ls: %d %q %s", code, out, errOut)

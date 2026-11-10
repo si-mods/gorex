@@ -172,3 +172,41 @@ func TestLocalPairQRCloses(t *testing.T) {
 		t.Errorf("the code stayed for a listener that went away")
 	}
 }
+
+// TestRemoteRelayRow draws the relay field, and refuses a URL in it.
+func TestRemoteRelayRow(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Setenv("GOREX_DIR", t.TempDir())
+	t.Cleanup(stopRemotePoll)
+	a := &App{}
+	settingsUI.section = "remote"
+	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{Relay: "derp.example.com"}
+	remoteUI.relay, remoteUI.relayEdited, remoteUI.relayErr = "https://derp.example.com", true, ""
+	tt := ui.NewTester(a.settingsView, 780, 1400)
+	tt.Frame()
+	for _, s := range []string{locales.RemoteRelay(), locales.RemoteRelayNote()} {
+		if !tt.HasText(s) {
+			t.Fatalf("no %q in %q", s, tt.Texts())
+		}
+	}
+	save, ok := tt.Find(locales.RemoteLanSave())
+	if !ok {
+		t.Fatalf("no Save in %q", tt.Texts())
+	}
+	tt.ClickAt(save.X+save.W/2, save.Y+save.H/2)
+	tt.Frame()
+	if remoteUI.relayErr != locales.RemoteRelayInvalid() || !tt.HasText(locales.RemoteRelayInvalid()) {
+		t.Errorf("a URL saved: %q", remoteUI.relayErr)
+	}
+
+	// A save the server does not take says why under the field, which
+	// keeps what was typed.
+	remoteUI.relay = "derp.example.com"
+	tt.Frame()
+	tt.ClickAt(save.X+save.W/2, save.Y+save.H/2)
+	tt.Frame()
+	if remoteUI.relayErr != locales.RemoteNotConnected() || !tt.HasText(remoteUI.relayErr) || !remoteUI.relayEdited || remoteUI.err != nil {
+		t.Errorf("a failed save: %q, edited %v, page error %v", remoteUI.relayErr, remoteUI.relayEdited, remoteUI.err != nil)
+	}
+}

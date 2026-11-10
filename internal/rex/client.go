@@ -788,6 +788,13 @@ func (c *Client) RemoteStatus() (s RemoteStatus, err error) {
 // background: see RemoteStatus.
 func (c *Client) EnableRemote() error { return c.call(Request{Op: "remote.enable"}, nil) }
 
+// SetRelay sets the DERP relay of the server's address: a host of one's
+// own, as derp.example.com, or "" for tailcat's. A change makes a new
+// address; the keys stay.
+func (c *Client) SetRelay(relay string) error {
+	return c.call(Request{Op: "remote.relaySet", Relay: relay}, nil)
+}
+
 // DisableRemote turns remote access off.
 func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }
 

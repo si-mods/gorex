@@ -1994,6 +1994,22 @@
   "@remoteTailscaleInvalid": {
     "description": "Error under the control server field when what was typed is not a URL, or is a cleartext http URL to a public host or a name."
   },
+  "remoteRelay": "Relay",
+  "@remoteRelay": {
+    "description": "Label of the field that holds the DERP relay of one's own that remote access meets clients at."
+  },
+  "remoteRelayPlaceholder": "tailcat's relays",
+  "@remoteRelayPlaceholder": {
+    "description": "Placeholder of the empty relay field: left empty, tailcat's own free relays are used."
+  },
+  "remoteRelayNote": "A DERP server of your own, by its host name, such as derp.example.com, in place of tailcat's relays. The address names it, so changing it makes a new address; the keys stay.",
+  "@remoteRelayNote": {
+    "description": "Hint under the relay field."
+  },
+  "remoteRelayInvalid": "Enter a host name, such as derp.example.com, with :port when not 443: not an IP address, and no https://. Leave it empty for tailcat's relays.",
+  "@remoteRelayInvalid": {
+    "description": "Error under the relay field when what was typed is not a host name or address with an optional port."
+  },
   "remoteLanTitle": "Rex apps on the local network",
   "@remoteLanTitle": {
     "description": "Title of the card that lets Rex's apps, such as Rex on an iPhone, connect over the local network."

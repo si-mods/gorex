@@ -116,6 +116,9 @@ type Request struct {
 	// TailcatAddress is the address of remote.tailcatDial: the server
 	// connects to it with its tailcat client, and relays the connection.
 	TailcatAddress string `json:"tailcatAddress,omitempty"`
+	// Relay is the relay of remote.relaySet: a DERP server's host, "" for
+	// tailcat's own.
+	Relay string `json:"relay,omitempty"`
 	// Exe is the executable the server runs in its place on "upgrade".
 	Exe string `json:"exe,omitempty"`
 	// Keepalive, on "hello", asks the server to drop the connection once
@@ -459,6 +462,9 @@ type RemoteStatus struct {
 	Address   string         `json:"address,omitempty"`
 	Allowed   []RemoteClient `json:"allowed"`
 	LastError string         `json:"lastError,omitempty"`
+	// Relay is the DERP relay of one's own the address names, "" for
+	// tailcat's.
+	Relay string `json:"relay,omitempty"`
 	// Pairing is the pairing window, Pending the requests made in it.
 	Pairing RemotePairing   `json:"pairing"`
 	Pending []RemotePending `json:"pending,omitempty"`
@@ -945,14 +951,23 @@ func Dir() string {
 
 // SocketPath returns the path of the server's socket: in Dir, unless that
 // is too long a path for a socket, then in the temporary directory.
-func SocketPath() string {
-	p := filepath.Join(Dir(), "server.sock")
+func SocketPath() string { return dirSocket("server.sock") }
+
+// GatewaySocketPath returns the path of the Rex API gateway's socket for
+// the connections to RexAPIPort, which the server dials (toGateway): as
+// SocketPath's, in Dir or the temporary directory.
+func GatewaySocketPath() string { return dirSocket("rexapi-tailcat.sock") }
+
+// dirSocket is the socket name in Dir, or in the temporary directory, by
+// a hash of that path, when it is too long a path for a socket.
+func dirSocket(name string) string {
+	p := filepath.Join(Dir(), name)
 	if len(p) < 100 {
 		return p
 	}
 	h := fnv.New32a()
 	h.Write([]byte(p))
-	name := fmt.Sprintf("gorex-%x.sock", h.Sum32())
+	name = fmt.Sprintf("gorex-%x.sock", h.Sum32())
 	if uid := os.Getuid(); uid >= 0 { // Windows has none, and a temporary directory per user
 		name = fmt.Sprintf("gorex-%d-%x.sock", uid, h.Sum32())
 	}

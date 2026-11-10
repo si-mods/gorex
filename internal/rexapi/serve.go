@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -34,8 +35,9 @@ func TailnetDir() string { return filepath.Join(rex.Dir(), "rexapi") }
 
 // Main runs "GoRex rexapi": with no command, the Rex API gateway, which
 // connects to the GoRex server that runs (it starts none) and serves
-// Rex's API on its local socket, on --listen if given, and on the
-// tailnet while built-in Tailscale is on; "pair", "tailscale" and "call"
+// Rex's API on its local socket, on --listen if given, on the tailnet
+// while built-in Tailscale is on, and on the server's tailcat address
+// while remote access is on; "pair", "tailscale" and "call"
 // talk to a gateway that runs. It returns the process's exit status.
 func Main(args []string) int {
 	if len(args) > 0 {
@@ -105,7 +107,7 @@ type runOptions struct {
 }
 
 // errGatewayRuns is what a second gateway on the same state gets.
-var errGatewayRuns = errors.New("another Rex API gateway runs on this data directory: the GoRex server's, while the local network or built-in Tailscale is on, or a gorex rexapi")
+var errGatewayRuns = errors.New("another Rex API gateway runs on this data directory: the GoRex server's, while remote access, the local network or built-in Tailscale is on, or a gorex rexapi")
 
 // lockGateway takes the gateway's lock on its state, which one gateway
 // holds at a time: two would serve the same socket, port and tailnet
@@ -126,9 +128,11 @@ func lockGateway(dir string) (*os.File, error) {
 }
 
 // run serves the gateway of c until stop closes or the GoRex server goes:
-// on its local socket, on the tailnet while built-in Tailscale is on, and
-// on the local network while lan.json says so, which it reads again each
-// second it changes.
+// on its local socket, on the tailnet while built-in Tailscale is on, on
+// the local network while lan.json says so, which it reads again each
+// second it changes, and on the server's tailcat address, whose
+// connections the server hands over on the gateway's socket while remote
+// access is on.
 func run(c *rex.Client, o runOptions) error {
 	lock, err := lockGateway(o.dir)
 	if err != nil {
@@ -143,7 +147,7 @@ func run(c *rex.Client, o runOptions) error {
 	}
 	defer g.Close()
 
-	serveErr := make(chan error, 2)
+	serveErr := make(chan error, 3)
 	unixLn, err := listenUnix(o.socket)
 	if err != nil {
 		return err
@@ -158,6 +162,13 @@ func run(c *rex.Client, o runOptions) error {
 	if o.announce {
 		fmt.Printf("rexapi: listening on unix://%s\n", o.socket)
 	}
+	tcLn, err := listenUnix(rex.GatewaySocketPath())
+	if err != nil {
+		return err
+	}
+	defer os.Remove(rex.GatewaySocketPath())
+	defer tcLn.Close()
+	go func() { serveErr <- g.serveOn(tailcatListener{tcLn}, transportTailcat) }()
 	if o.listen != "" {
 		ln, err := net.Listen("tcp", o.listen)
 		if err != nil {
@@ -225,9 +236,12 @@ func (w *confWatch) changed() bool {
 }
 
 // Wanted reports whether the gateway in dir has anything to serve beyond
-// its local socket: the local network listener or built-in Tailscale is
-// on. The GoRex server runs it only then.
+// its local socket: remote access, the local network listener or
+// built-in Tailscale is on. The GoRex server runs it only then.
 func Wanted(dir string) bool {
+	if remoteOn(dir) {
+		return true
+	}
 	if c, err := LoadLAN(dir); err == nil && c.Enabled {
 		return true
 	}
@@ -238,6 +252,40 @@ func Wanted(dir string) bool {
 	return false
 }
 
+// remoteWatches remember, by its path, whether remote.json says remote
+// access is on, read again only when the file changes.
+var (
+	remoteMu      sync.Mutex
+	remoteWatches = map[string]*remoteWatch{}
+)
+
+type remoteWatch struct {
+	confWatch
+	on bool
+}
+
+// remoteOn tells whether remote access is on, as remote.json in the data
+// directory that holds dir says. The file holds the server's keys: only
+// its switch is decoded, and only when the file changed.
+func remoteOn(dir string) bool {
+	path := filepath.Join(filepath.Dir(dir), "remote.json")
+	remoteMu.Lock()
+	defer remoteMu.Unlock()
+	w := remoteWatches[path]
+	if w == nil {
+		w = &remoteWatch{confWatch: confWatch{path: path}}
+		remoteWatches[path] = w
+	}
+	if w.changed() {
+		var c struct {
+			Enabled bool `json:"enabled"`
+		}
+		b, err := os.ReadFile(path)
+		w.on = err == nil && json.Unmarshal(b, &c) == nil && c.Enabled
+	}
+	return w.on
+}
+
 // retryEvery is how long Supervise waits to start the gateway again after
 // a start failed: the server was not reachable, or the gateway of the
 // server it replaced still held the lock, which it lets go of moments
@@ -245,10 +293,10 @@ func Wanted(dir string) bool {
 const retryEvery = time.Second
 
 // Supervise runs in the GoRex server (rex.OnServe) until stop closes: it
-// runs the gateway while Wanted says so, and stops it when neither the
-// local network nor built-in Tailscale is on, so that a server with
-// nothing to serve stays as it was. A gorex rexapi of its own holds the
-// gateway's lock meanwhile: the server's waits for it to go.
+// runs the gateway while Wanted says so, and stops it when none of
+// remote access, the local network and built-in Tailscale is on, so that
+// a server with nothing to serve stays as it was. A gorex rexapi of its
+// own holds the gateway's lock meanwhile: the server's waits for it to go.
 func Supervise(stop <-chan struct{}) {
 	dir := TailnetDir()
 	var runStop chan struct{}

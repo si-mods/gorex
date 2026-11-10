@@ -24,12 +24,16 @@ import (
 )
 
 // testServer is a server on its own directory, not listening; remote
-// access listens on the loopback instead of tailcat.
+// access listens on the loopback instead of tailcat, but through a relay
+// of its own (runDERP's), offline.
 func testServer(t *testing.T) (*Server, *atomic.Int32) {
 	t.Setenv("GOREX_DIR", t.TempDir())
 	var listens atomic.Int32
-	old, oldKey := remoteListen, remotePeerKey
-	remotePeerKey = func(_ *tailcat.Server, c net.Conn) string {
+	old, oldKey, oldAPI := remoteListen, remotePeerKey, remoteAPIListen
+	remotePeerKey = func(ts *tailcat.Server, c net.Conn) string {
+		if ts.Region != nil {
+			return oldKey(ts, c)
+		}
 		for range 200 {
 			if k, ok := testPeers.Load(c.RemoteAddr().String()); ok {
 				return k.(string)
@@ -40,8 +44,17 @@ func testServer(t *testing.T) (*Server, *atomic.Int32) {
 	}
 	remoteListen = func(ctx context.Context, ts *tailcat.Server, region int) (net.Listener, tailcat.Addr, int, error) {
 		listens.Add(1)
+		if ts.Region != nil {
+			return old(ctx, ts, region)
+		}
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		return ln, "tcFAKE", 7, err
+	}
+	remoteAPIListen = func(ts *tailcat.Server) (net.Listener, error) {
+		if ts.Region != nil {
+			return oldAPI(ts)
+		}
+		return net.Listen("tcp", "127.0.0.1:0")
 	}
 	hostDone := make(chan struct{})
 	close(hostDone)
@@ -49,7 +62,7 @@ func testServer(t *testing.T) (*Server, *atomic.Int32) {
 		linksFile: filepath.Join(os.Getenv("GOREX_DIR"), "teleports.json"), dir: os.Getenv("GOREX_DIR")}
 	t.Cleanup(func() {
 		s.remoteClose()
-		remoteListen, remotePeerKey = old, oldKey
+		remoteListen, remotePeerKey, remoteAPIListen = old, oldKey, oldAPI
 		// The server stops with the test, as one that shuts down: what it
 		// does after, as a refresh or a session's end, writes no layout
 		// into a directory the test removes; those under way finish first.

@@ -764,10 +764,15 @@ func (s *Server) mayUse(peer string, ss *session) bool {
 func (s *Server) sharesSessions(peer string) bool {
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	if s.rem.cfg.ShareSessions {
+	return s.rem.sharesLocked(peer)
+}
+
+// sharesLocked is sharesSessions with the remote lock held.
+func (r *remote) sharesLocked(peer string) bool {
+	if r.cfg.ShareSessions {
 		return true
 	}
-	return slices.ContainsFunc(s.rem.cfg.Allowed, func(c RemoteClient) bool {
+	return slices.ContainsFunc(r.cfg.Allowed, func(c RemoteClient) bool {
 		return c.PublicKey == peer && c.ShareSessions
 	})
 }
@@ -782,8 +787,22 @@ func (s *Server) use(id, peer string) (*session, error) {
 }
 
 // dropUnshared detaches the remote windows from the sessions their client
-// may no longer use, as sharing turns off.
+// may no longer use, as sharing turns off, and closes the gateway's
+// connections of the clients it no longer shares them with.
 func (s *Server) dropUnshared() {
+	r := &s.rem
+	r.mu.Lock()
+	var gw []net.Conn
+	for c := range r.gw {
+		if !r.sharesLocked(r.conns[c]) {
+			delete(r.gw, c)
+			gw = append(gw, c)
+		}
+	}
+	r.mu.Unlock()
+	for _, c := range gw {
+		c.Close()
+	}
 	s.mu.Lock()
 	all := make([]*session, 0, len(s.sessions))
 	for _, ss := range s.sessions {
