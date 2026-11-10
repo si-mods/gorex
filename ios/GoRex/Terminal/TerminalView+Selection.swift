@@ -106,7 +106,7 @@ extension TerminalView: UIEditMenuInteractionDelegate {
     /// The system's menu, and first in it the link the selection is, if
     /// that is all it is: a tap opens a link, a selection has to say so.
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
-        guard let t = selectedText, let url = WebLink.url(t, matched: true) else { return nil }
+        guard let t = selectedText, let url = WebLink.selected(t) else { return nil }
         let open = UIAction(title: String(localized: "Open in Browser"), image: UIImage(systemName: "safari")) { _ in
             UIApplication.shared.open(url)
         }
