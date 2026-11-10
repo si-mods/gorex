@@ -299,6 +299,12 @@ final class Host: Identifiable {
     /// client end.
     func reconnect() {
         token = nil
+        resume()
+    }
+
+    /// Connects anew, continuing the client, as after a suspension: the
+    /// connection can look open while its path died.
+    func resume() {
         control?.close()
         connect()
     }
@@ -634,6 +640,27 @@ final class HostStore {
         h.config = config
         if moved { h.reconnect() }
         save()
+    }
+
+    /// Back in the foreground. After a suspension (suspended), resume
+    /// gets the built-in Tailscale going again first; while it runs on as
+    /// before, the hosts on it then connect anew, as their connections to
+    /// its proxy can look open while their tailnet side died. Started anew,
+    /// its old proxy's connections end with it, and the hosts connect once
+    /// it runs (docs/ios-tailnet.md, Lifecycle). The others reconnect if
+    /// needed, at once.
+    func foreground(suspended: Bool, resume: () async -> Bool) async {
+        let forced = { (h: Host) in suspended && h.viaTailnet }
+        hosts.filter { !forced($0) }.forEach { $0.reconnectIfNeeded() }
+        guard suspended else { return }
+        let tailnet = hosts.filter(forced)
+        if await resume() { tailnet.forEach { $0.resume() } }
+    }
+
+    /// Whether the app, in the background since away, was likely
+    /// suspended: more than 5 s ago.
+    static func suspended(since away: Date?, now: Date = .now) -> Bool {
+        away.map { now.timeIntervalSince($0) > 5 } ?? false
     }
 
     func move(from source: IndexSet, to destination: Int) {

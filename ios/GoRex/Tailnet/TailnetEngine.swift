@@ -1,5 +1,6 @@
 import AuthenticationServices
 import Foundation
+import Network
 import Observation
 import os
 import Tailnet
@@ -55,6 +56,7 @@ final class TailnetEngine {
     @ObservationIgnored private var chain: Task<Void, Never>?
     /// The run whose status counts; a stopped run's late news doesn't.
     @ObservationIgnored private var run = 0
+    @ObservationIgnored private let paths = PathMonitor()
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
 
     /// Hosts reach the proxy once the device runs. Until it has the
@@ -89,6 +91,33 @@ final class TailnetEngine {
         }
     }
 
+    /// Back from a suspension, which reclaims the engine's sockets: opens
+    /// them anew while it runs, or, when that fails, starts it anew, with
+    /// a new proxy (docs/ios-tailnet.md, Lifecycle). One that is on but
+    /// failed to start starts again. Tells whether the engine runs on its
+    /// proxy as before.
+    func resume() async -> Bool {
+        var kept = false
+        await serial {
+            guard TailnetSettings.isOn else { return }
+            // In the chain, no proxy is a start that failed.
+            guard self.proxy != nil else { return await self.applyNow() }
+            guard self.status.isRunning else { return }
+            do {
+                try await Task.detached {
+                    var error: NSError?
+                    guard TailnetResetSockets(&error) else { throw error ?? RexError(code: "tailnet", message: "reset") }
+                }.value
+                self.log.notice("sockets reset")
+                kept = true
+            } catch {
+                self.log.error("reset: \(error.localizedDescription, privacy: .public); starting anew")
+                await self.applyNow()
+            }
+        }
+        return kept
+    }
+
     /// Runs op once the operations before it end.
     private func serial(_ op: @escaping @MainActor () async -> Void) async {
         let before = chain
@@ -111,6 +140,7 @@ final class TailnetEngine {
             renameFailure = nil
             try await start(hostname: TailnetSettings.name, controlURL: TailnetSettings.controlURL, authKey: authKey)
         } catch {
+            paths.stop()
             failure = error.localizedDescription
             log.error("start: \(error.localizedDescription, privacy: .public)")
         }
@@ -129,6 +159,8 @@ final class TailnetEngine {
         let watcher = Watcher(run: r)
         proxy = nil
         status = Status(state: "Starting")
+        // The phone's network, before the engine's first look at it.
+        await paths.start()
         // Starting reads the state and the network; off the main thread.
         let json = try await Task.detached {
             var error: NSError?
@@ -147,6 +179,7 @@ final class TailnetEngine {
     private func stopNow() async {
         run += 1
         proxy = nil
+        paths.stop()
         status = Status(state: "Stopped")
         cancelLogin()
         await Task.detached { TailnetStop() }.value
@@ -265,6 +298,60 @@ final class TailnetEngine {
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             let s = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
             return s?.keyWindow ?? s?.windows.first
+        }
+    }
+
+    /// Tells the engine each change of the phone's network: the interface
+    /// that carries it, as Wi-Fi to cellular, or none, and its gateways,
+    /// as from one Wi-Fi to another; iOS lets it watch none itself.
+    nonisolated private final class PathMonitor: @unchecked Sendable {
+        private static let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
+        private let queue = DispatchQueue(label: "dev.gorex.ios.tailnet.path")
+        // On queue.
+        private var monitor: NWPathMonitor?
+        private var told: String?
+        private var waiting: CheckedContinuation<Void, Never>?
+
+        /// Starts watching; returns once the network is told, or after a
+        /// second without news.
+        func start() async {
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                queue.async { [self] in
+                    guard monitor == nil else { return c.resume() }
+                    waiting = c
+                    let m = NWPathMonitor(prohibitedInterfaceTypes: [.other, .loopback])
+                    m.pathUpdateHandler = { [weak self] in self?.update($0) }
+                    monitor = m
+                    m.start(queue: queue)
+                    queue.asyncAfter(deadline: .now() + 1) { [self] in ready() }
+                }
+            }
+        }
+
+        func stop() {
+            queue.async { [self] in
+                monitor?.cancel()
+                monitor = nil
+                told = nil
+                ready()
+            }
+        }
+
+        private func update(_ path: NWPath) {
+            defer { ready() }
+            let name = path.status == .satisfied
+                ? path.availableInterfaces.first { [.wifi, .wiredEthernet, .cellular].contains($0.type) }?.name ?? ""
+                : ""
+            let network = "\(name) \(name.isEmpty ? [] : path.gateways)"
+            guard network != told else { return }
+            told = network
+            Self.log.notice("network \(name.isEmpty ? "none" : name, privacy: .public)")
+            TailnetDefaultInterfaceChanged(name)
+        }
+
+        private func ready() {
+            waiting?.resume()
+            waiting = nil
         }
     }
 

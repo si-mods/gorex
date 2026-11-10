@@ -309,4 +309,77 @@ nonisolated final class HostTests: XCTestCase {
         TailnetSettings.makeName()
         XCTAssertEqual(TailnetSettings.name, n)
     }
+
+    /// A resumed host connects anew though its connection looks open,
+    /// continuing its client; a reconnect starts a new one.
+    @MainActor func testResumeKeepsTheClient() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        rex.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("online") { h.status == .online }
+        h.resume()
+        await until("resumed") { rex.controls.count == 2 && h.status == .online }
+        h.reconnect()
+        await until("reconnected") { rex.controls.count == 3 && h.status == .online }
+        XCTAssertEqual(rex.tokens, [nil, "t1", nil])
+    }
+
+    /// Away more than 5 s, the app was likely suspended.
+    @MainActor func testSuspended() {
+        let now = Date()
+        XCTAssertFalse(HostStore.suspended(since: nil, now: now))
+        XCTAssertFalse(HostStore.suspended(since: now.addingTimeInterval(-5), now: now))
+        XCTAssertTrue(HostStore.suspended(since: now.addingTimeInterval(-6), now: now))
+    }
+
+    /// Back after a suspension, the hosts on the built-in Tailscale connect
+    /// anew once it resumes on its proxy, and not when it started anew; the
+    /// others only reconnect if needed. Back sooner, nothing resumes.
+    @MainActor func testForeground() async throws {
+        let d = UserDefaults.standard
+        let (hosts, on, proxy) = (d.data(forKey: "hosts"), d.object(forKey: TailnetSettings.onKey), Host.tailnetProxy)
+        defer {
+            d.set(hosts, forKey: "hosts")
+            d.set(on, forKey: TailnetSettings.onKey)
+            Host.tailnetProxy = proxy
+        }
+        d.removeObject(forKey: "hosts")
+        d.set(true, forKey: TailnetSettings.onKey)
+        // Each connection the tailnet host tries asks for the proxy; only
+        // those of foreground count, not its retries.
+        var order: [String] = []
+        var counting = false
+        Host.tailnetProxy = {
+            if counting { order.append("tailnet") }
+            return nil
+        }
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        rex.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] }
+        let store = HostStore()
+        let system = HostConfig(name: "system", url: try await rex.url())
+        let tailnet = HostConfig(name: "tailnet", url: try await rex.url(), transport: .tailnet)
+        store.add(system)
+        store.add(tailnet)
+        defer { store.remove(system.id); store.remove(tailnet.id) }
+        await until("online") { store.host(system.id)?.status == .online }
+
+        func foreground(suspended: Bool, kept: Bool) async -> [String] {
+            order = []
+            counting = true
+            await store.foreground(suspended: suspended) { order.append("resume"); return kept }
+            counting = false
+            return order
+        }
+        let shortly = await foreground(suspended: false, kept: true)
+        XCTAssertEqual(shortly, ["tailnet"])
+        let resumed = await foreground(suspended: true, kept: true)
+        XCTAssertEqual(resumed, ["resume", "tailnet"])
+        let restarted = await foreground(suspended: true, kept: false)
+        XCTAssertEqual(restarted, ["resume"])
+        XCTAssertEqual(rex.controls.count, 1, "the system host connected anew")
+    }
 }

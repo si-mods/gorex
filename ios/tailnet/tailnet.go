@@ -52,6 +52,10 @@ var (
 	node   *tailnode.Node
 	prox   *proxy
 	cancel context.CancelFunc
+	// stuck is a node whose socket reset didn't finish (ResetSockets).
+	stuck bool
+	// closeNode closes a node; tests replace it.
+	closeNode = func(n *tailnode.Node) { n.Close() }
 )
 
 // Start starts the device with configJSON, keeping its state in
@@ -231,16 +235,24 @@ func Proxy() (string, error) {
 	return encode(map[string]string{"address": p.ln.Addr().String(), "password": p.password}), nil
 }
 
-// Stop stops the device and its proxy.
+// Stop stops the device and its proxy. A device stuck in a socket reset
+// closes in the background, as far as it can: its control client stops
+// before its WireGuard device, which waits for the reset, so a new start
+// on the same state is the only device that control sees.
 func Stop() {
 	mu.Lock()
-	n, p, stop := node, prox, cancel
-	node, prox, cancel = nil, nil, nil
+	n, p, stop, s := node, prox, cancel, stuck
+	node, prox, cancel, stuck = nil, nil, nil, false
 	mu.Unlock()
-	if n != nil {
-		stop()
-		p.close()
-		n.Close()
+	if n == nil {
+		return
+	}
+	stop()
+	p.close()
+	if s {
+		go closeNode(n)
+	} else {
+		closeNode(n)
 	}
 }
 
