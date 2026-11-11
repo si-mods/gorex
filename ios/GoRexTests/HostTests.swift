@@ -267,6 +267,73 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(h.blocks["b"]?.program, "zsh")
     }
 
+    /// Blocks no window holds are forgotten: when a window closes, and when
+    /// a session is destroyed. Nothing is forgotten while a session has no
+    /// view, as after a reconnect, and a block's own changes still tell
+    /// only its readers.
+    @MainActor func testBlocksForgottenWhenGone() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        func view(_ session: String, _ revision: Int, _ windows: [[String]]) -> [String: Any] {
+            ["revision": revision, "session_id": session, "label": session, "windows": windows.enumerated().map { i, bs in
+                ["window_id": "\(session)w\(i)", "layers": [["blocks": bs.map { ["block_id": $0] }]]]
+            }]
+        }
+        var s = view("s", 1, [["a", "b"], ["c"]])
+        var attachT = false
+        rex.respond = { m, p in
+            switch m {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": [["session_id": "s", "label": "s"], ["session_id": "t", "label": "t"]]], "selected_session": ["view": s]]
+            case "session.attach":
+                attachT ? ["view": view("t", 1, [["d"]])] : nil
+            case "session.view":
+                s
+            case "com.superlogical.terminal.title":
+                ["title": p["block_id"] as? String ?? ""]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("s read") { ["a", "b", "c"].allSatisfy { h.blocks[$0]?.title == $0 } }
+
+        // Session t has no view yet: its block, known by an event, stays
+        // through s's view and through a reconnect.
+        rex.event(["type": "session_event", "payload": ["session_id": "t", "event": [
+            "type": "block_event", "payload": ["block_id": "d", "name": "title_changed", "payload": ["title": "D"]],
+        ]]])
+        await until("d") { h.blocks["d"]?.title == "D" }
+        FakeRex.close(rex.controls[0], .protocolCode(.goingAway))
+        await until("offline") { h.control == nil }
+        h.reconnectIfNeeded()
+        await until("online again") { h.status == .online }
+        await until("asked") { rex.count("session.attach") > 0 }
+        XCTAssertEqual(Set(h.blocks.keys), ["a", "b", "c", "d"])
+        XCTAssertEqual(h.blocks["d"]?.title, "D")
+
+        // Both views in: the window that closed takes its blocks.
+        attachT = true
+        h.reconnect()
+        await until("both views") { h.sessions.allSatisfy { $0.view != nil } }
+        let fired = Fired()
+        let a = try XCTUnwrap(h.blocks["a"])
+        withObservationTracking { _ = a.title } onChange: { fired.names.insert("a") }
+        s = view("s", 2, [["a", "b"]])
+        rex.event(["type": "session_event", "payload": ["session_id": "s", "event": [
+            "type": "session_view_changed", "payload": ["revision": 2],
+        ]]])
+        await until("c gone") { h.blocks["c"] == nil }
+        XCTAssertEqual(Set(h.blocks.keys), ["a", "b", "d"])
+        XCTAssertTrue(fired.names.isEmpty)
+
+        // A destroyed session takes its blocks.
+        rex.event(["type": "session_event", "payload": ["session_id": "t", "event": ["type": "session_destroyed", "payload": ["session_id": "t"]]]])
+        await until("d gone") { h.blocks["d"] == nil }
+        XCTAssertEqual(Set(h.blocks.keys), ["a", "b"])
+    }
+
     /// A row moved onto another lands where it is: before a row above,
     /// after a row below, past the windows the list leaves out.
     @MainActor func testMoveBefore() {
