@@ -1,5 +1,7 @@
 package rexapi
 
+import "encoding/json"
+
 // change is one event a model change makes, and the session it belongs
 // to. A server-level event, such as session_created, has server set.
 type change struct {
@@ -7,6 +9,9 @@ type change struct {
 	session string
 	typ     string
 	payload any
+	// body is the event as the connections get it but for its seq,
+	// encoded by the first one that sends it.
+	body json.RawMessage
 }
 
 // diffModels describes what changed between two models as the events the

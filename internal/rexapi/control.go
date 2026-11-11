@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -490,33 +491,20 @@ func (c *control) respond(req *request, payload any, err *apiError) {
 	if c.rec != nil {
 		requester = c.rec.id
 	}
-	if err != nil {
-		c.enqueue(response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester, Error: err})
-		return
+	res := response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester, Error: err}
+	if err == nil {
+		if payload == nil {
+			payload = struct{}{}
+		}
+		res.Payload = transformResult(c.rev, req.Method, payload)
 	}
-	if payload == nil {
-		payload = struct{}{}
-	}
-	payload = transformResult(c.rev, req.Method, payload)
-	res := response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester, Payload: payload}
 	data, merr := json.Marshal(res)
-	if merr == nil && len(data) > maxMessage {
-		res = response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester,
-			Error: errTooLarge("the result is larger than %d bytes", maxMessage)}
-	}
-	c.enqueue(res)
-}
-
-// enqueue queues a message, and closes the connection when the writer
-// cannot keep up.
-func (c *control) enqueue(v any) {
-	data, err := json.Marshal(v)
-	if err != nil {
+	if merr != nil {
 		return
 	}
 	if len(data) > maxMessage {
-		data, _ = json.Marshal(response{Type: "response",
-			Error: errTooLarge("the result is larger than %d bytes", maxMessage)})
+		res.Payload, res.Error = nil, errTooLarge("the result is larger than %d bytes", maxMessage)
+		data, _ = json.Marshal(res)
 	}
 	select {
 	case c.out <- outMsg{data: data}:
@@ -525,35 +513,46 @@ func (c *control) enqueue(v any) {
 }
 
 // sendChanges sends the events this connection wants, with the next seq.
+// It keeps each event's encoding in chs for the next connection.
 func (c *control) sendChanges(chs []change) {
-	for _, ch := range chs {
-		if !c.wants(ch) {
+	for i := range chs {
+		ch := &chs[i]
+		if !c.wants(*ch) {
 			continue
 		}
-		var payload any
-		if ch.server {
-			payload = ch.payload
-			if ch.typ == "tailscale_status_changed" {
-				payload = transformResult(c.rev, ch.typ, payload)
+		body := ch.body
+		if body == nil {
+			var payload any
+			if ch.server {
+				payload = ch.payload
+				if ch.typ == "tailscale_status_changed" {
+					payload = transformResult(c.rev, ch.typ, payload)
+				}
+				payload = innerEvent{Type: ch.typ, Payload: payload}
+			} else {
+				payload = sessionEvent{
+					Type: "session_event",
+					Payload: eventBody{
+						SessionID: ch.session,
+						Event:     innerEvent{Type: ch.typ, Payload: ch.payload},
+					},
+				}
 			}
-			payload = innerEvent{Type: ch.typ, Payload: payload}
-		} else {
-			payload = sessionEvent{
-				Type: "session_event",
-				Payload: eventBody{
-					SessionID: ch.session,
-					Event:     innerEvent{Type: ch.typ, Payload: ch.payload},
-				},
+			var err error
+			if body, err = json.Marshal(payload); err != nil {
+				continue
+			}
+			// The Tailscale status reads differently at older revisions.
+			if ch.typ != "tailscale_status_changed" {
+				ch.body = body
 			}
 		}
 		c.mu.Lock()
 		c.seq++
-		msg := eventMessage{Type: "event", Seq: c.seq, Payload: payload}
-		data, err := json.Marshal(msg)
-		if err != nil {
-			c.mu.Unlock()
-			continue
-		}
+		// Only the seq differs between connections: the envelope is
+		// written by hand, as json.Marshal would write it.
+		data := strconv.AppendUint(append(make([]byte, 0, len(body)+48), `{"type":"event","seq":`...), c.seq, 10)
+		data = append(append(append(data, `,"payload":`...), body...), '}')
 		if len(data) > maxMessage {
 			c.mu.Unlock()
 			c.closeWith(1009, "event exceeds message limit")

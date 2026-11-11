@@ -273,3 +273,87 @@ func TestStalledClientHoldsNoOne(t *testing.T) {
 		t.Errorf("a request waited %v for another client's close", d)
 	}
 }
+
+// TestControlFrames checks the bytes a control connection queues for
+// responses and events, which clients parse: key order, omitted fields,
+// escaping and the older revisions' shapes.
+func TestControlFrames(t *testing.T) {
+	rec := &clientRecord{id: "c1", all: true, scope: "all", attached: map[string]bool{}}
+	conn := func(rev int) *control {
+		return &control{rec: rec, rev: rev, out: make(chan outMsg, 16), done: make(chan struct{})}
+	}
+	type entry struct {
+		Name string `json:"name"`
+		Note string `json:"note,omitempty"`
+		HTML string `json:"html"`
+	}
+	payload := map[string]any{"z": 1, "a": entry{Name: "x", HTML: "<b>&"}, "m": nil}
+	tailscale := map[string]any{"state": "running", "control_url": "https://c.example"}
+	c, old := conn(apiRevision), conn(9)
+	c.respond(&request{ID: "r1", seq: 3}, payload, nil)
+	c.respond(&request{ID: "r2", Method: "server.version"}, nil, nil)
+	c.respond(&request{ID: "r3"}, nil, errMethodNotFound("%s is not a method", "x.y"))
+	c.respond(&request{ID: "r4", seq: 1}, strings.Repeat("x", maxMessage), nil)
+	old.respond(&request{ID: "r5", Method: "server.status"}, map[string]any{"tailscale": tailscale}, nil)
+	chs := []change{
+		{session: "S1", typ: "tab_renamed", payload: payload},
+		{session: "S1", typ: "session_created"},
+		{server: true, typ: "client_joined", payload: map[string]any{"client_id": "c2"}},
+		{server: true, typ: "tailscale_status_changed", payload: tailscale},
+	}
+	c.sendChanges(chs)
+	old.sendChanges(chs)
+	want := []string{
+		`{"type":"response","id":"r1","seq":3,"requester":"c1","payload":{"a":{"name":"x","html":"\u003cb\u003e\u0026"},"m":null,"z":1}}`,
+		`{"type":"response","id":"r2","seq":0,"requester":"c1","payload":{}}`,
+		`{"type":"response","id":"r3","seq":0,"requester":"c1","error":{"code":"method_not_found","message":"x.y is not a method","status":404}}`,
+		`{"type":"response","id":"r4","seq":1,"requester":"c1","error":{"code":"too_large","message":"the result is larger than 1048576 bytes","status":413}}`,
+		`{"type":"event","seq":1,"payload":{"type":"session_event","payload":{"session_id":"S1","event":{"type":"tab_renamed","payload":{"a":{"name":"x","html":"\u003cb\u003e\u0026"},"m":null,"z":1}}}}}`,
+		`{"type":"event","seq":2,"payload":{"type":"session_event","payload":{"session_id":"S1","event":{"type":"session_created"}}}}`,
+		`{"type":"event","seq":3,"payload":{"type":"client_joined","payload":{"client_id":"c2"}}}`,
+		`{"type":"event","seq":4,"payload":{"type":"tailscale_status_changed","payload":{"control_url":"https://c.example","state":"running"}}}`,
+		`{"type":"response","id":"r5","seq":0,"requester":"c1","payload":{"tailscale":{"state":"running"}}}`,
+		`{"type":"event","seq":1,"payload":{"type":"session_event","payload":{"session_id":"S1","event":{"type":"tab_renamed","payload":{"a":{"name":"x","html":"\u003cb\u003e\u0026"},"m":null,"z":1}}}}}`,
+		`{"type":"event","seq":2,"payload":{"type":"session_event","payload":{"session_id":"S1","event":{"type":"session_created"}}}}`,
+		`{"type":"event","seq":3,"payload":{"type":"client_joined","payload":{"client_id":"c2"}}}`,
+		`{"type":"event","seq":4,"payload":{"type":"tailscale_status_changed","payload":{"state":"running"}}}`,
+	}
+	var got []string
+	for _, out := range []chan outMsg{c.out, old.out} {
+		for len(out) > 0 {
+			got = append(got, string((<-out).data))
+		}
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d frames, want %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("frame %d:\n got %s\nwant %s", i, got[i], want[i])
+		}
+	}
+}
+
+// BenchmarkEventFanout sends one changed view's events to many
+// connections, as refresh does.
+func BenchmarkEventFanout(b *testing.B) {
+	rec := &clientRecord{id: "c1", all: true, scope: "all", attached: map[string]bool{}}
+	conns := make([]*control, 64)
+	for i := range conns {
+		conns[i] = &control{rec: rec, rev: apiRevision, out: make(chan outMsg, 16), done: make(chan struct{})}
+	}
+	b.ReportAllocs()
+	for b.Loop() {
+		events := []change{
+			{session: "S1", typ: "window_label_changed", payload: windowPayload{WindowID: "W1", Label: "editor"}},
+			{session: "S1", typ: "session_view_changed", payload: revisionPayload{Revision: 42}},
+		}
+		for _, c := range conns {
+			c.sendChanges(events)
+			for len(c.out) > 0 {
+				<-c.out
+			}
+			c.queued = 0
+		}
+	}
+}

@@ -797,8 +797,9 @@ func (g *Gateway) emitSession(sid, typ string, payload any) {
 		conns = append(conns, c)
 	}
 	g.mu.Unlock()
+	chs := []change{{session: sid, typ: typ, payload: payload}}
 	for _, c := range conns {
-		c.sendChanges([]change{{session: sid, typ: typ, payload: payload}})
+		c.sendChanges(chs)
 	}
 }
 
