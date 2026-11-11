@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
+	"golang.org/x/net/publicsuffix"
 	"gorex/locales"
 )
 
@@ -158,7 +159,7 @@ func (a *App) isLink(p *Pane, link string, update func(func())) bool {
 	}
 	dir := strings.HasSuffix(path, "/")
 	if p.host != nil {
-		return !dir
+		return !dir && !webPath(path)
 	}
 	path, ok = resolvePath(p, path)
 	if !ok {
@@ -194,6 +195,18 @@ func linkPath(link string) (string, bool) {
 		return m[1], true
 	}
 	return link, true
+}
+
+// webPath reports whether path, printed in a pane of a host, where no stat
+// can tell, reads as a URL without its scheme, as support.github.com/tickets:
+// a relative path whose first part is a host name under a public suffix.
+func webPath(path string) bool {
+	name, _, ok := strings.Cut(path, "/")
+	if !ok || !strings.Contains(name, ".") {
+		return false
+	}
+	suffix, icann := publicsuffix.PublicSuffix(strings.ToLower(name))
+	return icann && suffix != strings.ToLower(name)
 }
 
 // panePath turns a printed file link into a path, resolving a relative one

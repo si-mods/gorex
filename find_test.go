@@ -87,7 +87,7 @@ func TestIsLink(t *testing.T) {
 		}
 	}
 	a, host := &App{}, &Pane{info: p.info, host: &hostConn{}}
-	for link, want := range map[string]bool{"docs/": false, "docs/:12": false, "w/": false, "and/or": true, "notes.txt": true} {
+	for link, want := range map[string]bool{"docs/": false, "docs/:12": false, "w/": false, "and/or": true, "notes.txt": true, "support.github.com/tickets": false, "github.com/si-mods/gorex:12": false, "src.old/main.go": true, "v1.2/notes": true} {
 		if got := a.isLink(host, link, update); got != want {
 			t.Errorf("isLink(%q) in a pane of a host = %v, want %v", link, got, want)
 		}
