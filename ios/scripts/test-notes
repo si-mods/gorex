@@ -8,18 +8,17 @@
 # for 20 minutes.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-PATH=$PATH:/opt/homebrew/bin
-export ASC_KEY_ID=${ASC_KEY_ID:-6GG554C43Y} ASC_ISSUER_ID=${ASC_ISSUER_ID:-1b9ef96d-c5b4-49a9-8c8d-4f0b999da4d6}
-export ASC_PRIVATE_KEY_PATH=${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8}
+. scripts/asc-env
+export ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_PATH
 V=${1:?version} B=${2:?build} FROM=${3:?from} TO=${4:-HEAD}
 notes=$(git log --no-merges --format='%s' "$FROM..$TO" -- . |
   sed -nE 's/^(feat|fix|perf)\(ios(-[a-z0-9-]+)?\)!?: (.*)$/- \3/p')
 notes=${notes:-"- No changes to the app since the last build."}
 notes=$(printf '%s\n\n%s' "$notes" "Commit $(git rev-parse --short=7 "$TO")" | head -c 4000)
 for _ in $(seq 40); do
-  if ASC_TIMEOUT=60s asc builds test-notes update --app 6831210589 --build-number "$B" --platform IOS --version "$V" \
+  if ASC_TIMEOUT=60s asc builds test-notes update --app "$APP" --build-number "$B" --platform IOS --version "$V" \
     --locale en-US --whats-new "$notes" --output json > /dev/null 2>&1 ||
-    ASC_TIMEOUT=60s asc builds test-notes create --app 6831210589 --build-number "$B" --platform IOS --version "$V" \
+    ASC_TIMEOUT=60s asc builds test-notes create --app "$APP" --build-number "$B" --platform IOS --version "$V" \
     --locale en-US --whats-new "$notes" --output json > /dev/null 2>&1; then
     printf 'NOTES %s (%s)\n%s\n' "$V" "$B" "$notes"
     exit 0

@@ -1,0 +1,11 @@
+# shellcheck shell=bash disable=SC2034
+# asc-env: what upload, test-notes and testflight share, sourced by them. The
+# IDs name Rex Go and its App Store Connect API key; they are not secrets.
+# The key itself is ASC_KEY_PATH, by default the one in
+# ~/.appstoreconnect/private_keys.
+# Homebrew's tools, when ssh gives no login PATH.
+PATH=$PATH:/opt/homebrew/bin
+APP=${REXGO_APP_ID:-6831210589}
+ASC_KEY_ID=${ASC_KEY_ID:-6GG554C43Y}
+ASC_ISSUER_ID=${ASC_ISSUER_ID:-1b9ef96d-c5b4-49a9-8c8d-4f0b999da4d6}
+ASC_PRIVATE_KEY_PATH=${ASC_KEY_PATH:-$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8}
