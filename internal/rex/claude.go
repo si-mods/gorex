@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // claudeSession returns the conversation Claude Code's process pid has
@@ -91,6 +92,13 @@ func samePath(a, b string) bool {
 		return strings.EqualFold(a, b)
 	}
 	return a == b
+}
+
+// envReader returns a lookup in the environment read gives, NAME=value
+// strings, which it reads once, at the first lookup.
+func envReader(read func() []string) func(name string) string {
+	env := sync.OnceValue(read)
+	return func(name string) string { return envValue(env(), name) }
 }
 
 // envValue returns the variable name of env, NAME=value strings.

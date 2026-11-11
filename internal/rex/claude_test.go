@@ -97,3 +97,32 @@ func TestClaudeSession(t *testing.T) {
 		t.Errorf("in another dir: claudeSession = %q", gotID)
 	}
 }
+
+// TestEnvReader checks that a lookup reads the environment at its first
+// call only, and not at all when none is made.
+func TestEnvReader(t *testing.T) {
+	reads := 0
+	get := envReader(func() []string {
+		reads++
+		return []string{"HOME=/home/x", "PI_PROFILE=work"}
+	})
+	if reads != 0 {
+		t.Fatalf("read before a lookup: %d", reads)
+	}
+	if get("PI_PROFILE") != "work" || get("HOME") != "/home/x" || get("OMP_PROFILE") != "" {
+		t.Error("wrong values")
+	}
+	if reads != 1 {
+		t.Errorf("reads = %d, want 1", reads)
+	}
+	// A whole look at an omp process takes one read.
+	reads = 0
+	get = envReader(func() []string {
+		reads++
+		return []string{"HOME=" + t.TempDir(), "PI_PROFILE=work", "XDG_DATA_HOME=/x"}
+	})
+	ompSession(get, t.TempDir(), nil, "/dev/ttys042")
+	if reads != 1 {
+		t.Errorf("reads for ompSession = %d, want 1", reads)
+	}
+}
