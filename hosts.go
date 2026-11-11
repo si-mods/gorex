@@ -274,8 +274,8 @@ func (h *hostConn) next(ctx context.Context, c *rex.Client, d time.Duration) *re
 }
 
 // learn keeps the machine the host's hello named, none from a server
-// before machines, and the icon of the machine it described, and tells
-// whether either changed. A host whose address changes is a new
+// before machines, and the icon of the machine it described, if it did,
+// and tells whether either changed. A host whose address changes is a new
 // savedHost, with neither until it connects.
 func (h *hostConn) learn(hello rex.Hello) bool {
 	glyph := ""
@@ -284,6 +284,9 @@ func (h *hostConn) learn(hello rex.Hello) bool {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	// A server that had not read its machine yet describes none: the icon
+	// learned before stays.
+	glyph = cmp.Or(glyph, h.Glyph)
 	if h.Machine == hello.Machine && h.Glyph == glyph {
 		return false
 	}

@@ -415,8 +415,8 @@ func tilesReserve(tabs []*Tab) float32 {
 	return float32(tileW + tileStep*(most-1) + 2)
 }
 
-// hostSection is the label over a host's tabs in the sidebar: a button
-// of its state, its name and a chevron, which folds the host's tabs away
+// hostSection is the label over a host's tabs in the sidebar: the icon of
+// its machine, its name and a chevron, which folds the host's tabs away
 // or back, and under the pointer a button that opens a tab there. It
 // reports whether the tabs are folded.
 func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
@@ -471,7 +471,8 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 
 // hostSectionIcon is the icon of a host's machine before its name in the
 // sidebar, as the iOS app's spaces show it. A remote host that is not
-// connected has a dot of its state on it, which tells the state.
+// connected has a dot of its state on it, as on the host's button: not
+// while it makes its first attempt, as every launch does.
 func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 	glyph := ""
 	if h == nil {
@@ -481,7 +482,7 @@ func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
 	}
 	box := ui.Box(c).Size(15, 15).Shrink(0).Children(func() {
 		glyphIcon(c, glyph, 15, k.textMuted)
-		if h != nil && h.state != hostConnected {
+		if h != nil && h.state != hostConnected && h.state != hostConnecting {
 			ui.Box(c).Absolute().Right(-2).Bottom(-2).Size(7, 7).Radius(4).Background(hostDot(k, h))
 		}
 	})

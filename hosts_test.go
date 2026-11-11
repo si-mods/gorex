@@ -1693,4 +1693,7 @@ func TestLearnGlyph(t *testing.T) {
 			t.Errorf("%+v: %q, saved %q, want %q", c.host, h.remoteGlyph(), h.saved().Glyph, c.want)
 		}
 	}
+	if h.learn(rex.Hello{}) || h.remoteGlyph() != "laptop" {
+		t.Errorf("a hello that describes no machine changed the icon to %q", h.remoteGlyph())
+	}
 }
