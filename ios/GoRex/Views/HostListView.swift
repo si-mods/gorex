@@ -28,6 +28,8 @@ struct HostListView: View {
     @State private var inbox = false
     @State private var query = ""
     @State private var settings = false
+    /// The GoRex machine of a Rex Go code opened from outside, to pair with.
+    @State private var pairing: HostConfig?
     @AppStorage(Grouping.key) private var grouping = Grouping.standard
     /// The space chosen, by its host and session.
     @AppStorage("space") private var chosen = ""
@@ -66,6 +68,14 @@ struct HostListView: View {
             go(t)
             Notifier.shared.opening = nil
         }
+        // A Rex Go code opened from the camera pairs, in place of Settings.
+        .onOpenURL { url in
+            guard let c = HostConfig(tailcat: url.absoluteString),
+                  let t = c.tailcat, store.host(tailcat: t.address) == nil else { return }
+            settings = false
+            pairing = c
+        }
+        .sheet(item: $pairing) { TailcatPairSheet(code: $0) }
     }
 
     /// Opens a terminal, in place of the one open; nil goes back to the list.

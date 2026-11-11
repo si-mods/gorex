@@ -3057,6 +3057,106 @@
           }
         }
       }
+    },
+    "Rex Go's connection to GoRex is not ready": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go 与 GoRex 的连接尚未就绪"
+          }
+        }
+      }
+    },
+    "This phone's key for GoRex's remote access: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本机用于 GoRex 远程访问的密钥：%@"
+          }
+        }
+      }
+    },
+    "GoRex remote access": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GoRex 远程访问"
+          }
+        }
+      }
+    },
+    "Paired by GoRex's Rex Go code. Deleting the host here doesn't revoke this phone: remove it from Devices in GoRex's Settings › Remote.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过 GoRex 的 Rex Go 二维码配对。在这里删除主机不会撤销本机的授权：请在 GoRex 的 设置 › 远程 › 设备 中移除它。"
+          }
+        }
+      }
+    },
+    "Pair with %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与 %@ 配对"
+          }
+        }
+      }
+    },
+    "Paired. Rex Go is connected.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已配对，Rex Go 已连接。"
+          }
+        }
+      }
+    },
+    "On %@, approve %@ in Settings › Remote › Devices only if its fingerprint is this one.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在 %1$@ 的 设置 › 远程 › 设备 中，仅当指纹与此一致时批准 %2$@。"
+          }
+        }
+      }
+    },
+    "Asking %@ to pair…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在请求与 %@ 配对…"
+          }
+        }
+      }
+    },
+    "Not approved in time. Show Rex Go QR… on the machine again and scan it anew.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未在时限内获得批准。请在那台电脑上再次打开“Rex Go 二维码…”并重新扫描。"
+          }
+        }
+      }
+    },
+    "Couldn't pair: %@": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法配对：%@"
+          }
+        }
+      }
     }
   }
 }

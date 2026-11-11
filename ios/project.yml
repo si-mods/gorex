@@ -71,6 +71,12 @@ targets:
           NSAllowsArbitraryLoads: true
         NSLocalNetworkUsageDescription: GoRex connects to your computers on the local network.
         NSCameraUsageDescription: Rex Go scans the pairing QR code that GoRex or Rex shows.
+        # rexgo://tailcat?a=…&n=…, GoRex's Rex Go QR…, opened from the
+        # camera app. The Tailscale login's callback (TailnetEngine) is the
+        # same scheme; its session takes that one itself.
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.gorex.ios
+            CFBundleURLSchemes: [rexgo]
   # Hostless, so that it also runs without xcodebuild:
   # xcrun simctl spawn booted .../xctest GoRexTests.xctest
   GoRexTests:

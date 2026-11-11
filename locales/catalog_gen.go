@@ -6412,6 +6412,66 @@ func (msgs Messages) RemotePairNew() string {
 	return Catalog.Format(msgs.locale, "remotePairNew", nil)
 }
 
+// RemoteRexGoQR says "Rex Go QR…"
+// in the language the app shows.
+//
+// Remote page button: opens the pairing window and shows the QR code that
+// Rex Go, the iPhone app, scans to pair.
+func RemoteRexGoQR() string { return In(i18n.Locale()).RemoteRexGoQR() }
+
+// RemoteRexGoQR says "Rex Go QR…"
+// in the language of msgs.
+//
+// Remote page button: opens the pairing window and shows the QR code that
+// Rex Go, the iPhone app, scans to pair.
+func (msgs Messages) RemoteRexGoQR() string {
+	return Catalog.Format(msgs.locale, "remoteRexGoQR", nil)
+}
+
+// RemoteRexGoQRTitle says "Connect Rex Go to {host}"
+// in the language the app shows.
+//
+// Title of the dialog with the QR code for Rex Go. {host} is this machine's
+// name.
+func RemoteRexGoQRTitle(host string) string { return In(i18n.Locale()).RemoteRexGoQRTitle(host) }
+
+// RemoteRexGoQRTitle says "Connect Rex Go to {host}"
+// in the language of msgs.
+//
+// Title of the dialog with the QR code for Rex Go. {host} is this machine's
+// name.
+func (msgs Messages) RemoteRexGoQRTitle(host string) string {
+	return Catalog.Format(msgs.locale, "remoteRexGoQRTitle", map[string]any{"host": host})
+}
+
+// RemoteRexGoQRHint says "Scan this code in Rex Go, then approve its request under Devices if the fingerprint matches. The code holds this mach…"
+// in the language the app shows.
+//
+// Text over the QR code for Rex Go.
+func RemoteRexGoQRHint() string { return In(i18n.Locale()).RemoteRexGoQRHint() }
+
+// RemoteRexGoQRHint says "Scan this code in Rex Go, then approve its request under Devices if the fingerprint matches. The code holds this mach…"
+// in the language of msgs.
+//
+// Text over the QR code for Rex Go.
+func (msgs Messages) RemoteRexGoQRHint() string {
+	return Catalog.Format(msgs.locale, "remoteRexGoQRHint", nil)
+}
+
+// RemoteRexGoQRUnavailable says "Remote access has no address yet. Try again once it is listening."
+// in the language the app shows.
+//
+// Shown in place of the QR code for Rex Go when the server has no address.
+func RemoteRexGoQRUnavailable() string { return In(i18n.Locale()).RemoteRexGoQRUnavailable() }
+
+// RemoteRexGoQRUnavailable says "Remote access has no address yet. Try again once it is listening."
+// in the language of msgs.
+//
+// Shown in place of the QR code for Rex Go when the server has no address.
+func (msgs Messages) RemoteRexGoQRUnavailable() string {
+	return Catalog.Format(msgs.locale, "remoteRexGoQRUnavailable", nil)
+}
+
 // RemoteAddByKeyAsk says "Add by Key…"
 // in the language the app shows.
 //

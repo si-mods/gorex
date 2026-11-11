@@ -23,6 +23,33 @@ nonisolated final class PairingTests: XCTestCase {
         }
     }
 
+    /// A Rex Go code names a tailcat host: its address and machine, at a
+    /// URL of its own under tailcat.invalid; anything else is none.
+    @MainActor func testTailcatCodes() throws {
+        let c = try XCTUnwrap(HostConfig(tailcat: "rexgo://tailcat?a=tcAbC-_09&n=Yibo%27s%20Mac%20%26%20mini\n"))
+        XCTAssertEqual(c.tailcat, HostConfig.Tailcat(address: "tcAbC-_09", machine: "Yibo's Mac & mini"))
+        XCTAssertEqual(c.name, "Yibo's Mac & mini")
+        XCTAssertEqual(c.url.absoluteString, "http://\(c.id.uuidString.lowercased()).tailcat.invalid:7297")
+        XCTAssertEqual(HostConfig.tailcatID(c.id), c.url.host()?.split(separator: ".").first.map(String.init))
+        XCTAssertNil(c.transport)
+
+        XCTAssertEqual(HostConfig(tailcat: "REXGO://TAILCAT?n=mac&a=tcx")?.tailcat?.address, "tcx")
+        XCTAssertEqual(HostConfig(tailcat: "rexgo://tailcat?a=tcx")?.name, "GoRex")
+        XCTAssertEqual(HostConfig(tailcat: "rexgo://tailcat?a=tcx&n=%20")?.name, "GoRex")
+        XCTAssertNotEqual(HostConfig(tailcat: "rexgo://tailcat?a=tcx")?.id, HostConfig(tailcat: "rexgo://tailcat?a=tcx")?.id)
+
+        for bad in ["", "rexgo://tailcat", "rexgo://tailcat?n=mac", "rexgo://tailcat?a=", "rexgo://tailcat?a=tc",
+                    "rexgo://tailcat?a=xy123", "rexgo://tailcat?a=tc%2B1", "rexgo://tailcat?a=tc+1", "rexgo://tailcat?a=tc%20x",
+                    "rexgo://other?a=tcx", "rexgo://tailcat/x?a=tcx", "rexgo://tailcat/?a=tcx", "rexgo://tailcat:1?a=tcx",
+                    "rexgo://u@tailcat?a=tcx", "rexgo://tailcat?a=tcx#f", "https://tailcat?a=tcx", "http://192.168.1.2:7297",
+                    "tailcat?a=tcx"] {
+            XCTAssertNil(HostConfig(tailcat: bad), bad)
+        }
+        // A Rex Go code is no Rex pairing code, nor the other way round.
+        XCTAssertNil(HostConfig(pairing: "rexgo://tailcat?a=tcx"))
+        XCTAssertNil(HostConfig(tailcat: "https://mac-gorex.example.ts.net"))
+    }
+
     @MainActor func testNames() {
         XCTAssertEqual(HostConfig.name("yibo-macbook-gorex.tail1234.ts.net"), "yibo-macbook")
         XCTAssertEqual(HostConfig.name("studio.tail1234.ts.net"), "studio")

@@ -2,7 +2,7 @@ import SwiftUI
 
 @main
 struct GoRexApp: App {
-    @State private var store = HostStore()
+    @State private var store: HostStore
     @Environment(\.scenePhase) private var phase
     @AppStorage("scheme") private var scheme = "dark"
     /// When the app went to the background.
@@ -11,12 +11,15 @@ struct GoRexApp: App {
     /// Ghostty starts with the app, as in rootshell, not in a terminal's
     /// push; the notifications too, for a tap that launches it. A
     /// downloaded font is known before. So does the built-in Tailscale,
-    /// when on: the hosts on it wait for it to run.
+    /// when on: the hosts on it wait for it to run. The engine comes
+    /// before the hosts, which tell it those paired over tailcat.
     init() {
         Maple.shared.register()
         _ = Ghostty.app
         Notifier.shared.start()
-        Task { await TailnetEngine.shared.apply() }
+        let engine = TailnetEngine.shared
+        _store = State(initialValue: HostStore())
+        Task { await engine.apply() }
     }
 
     /// The color scheme of Settings › Interface; nil follows the system.

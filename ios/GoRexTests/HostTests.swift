@@ -249,6 +249,19 @@ nonisolated final class HostTests: XCTestCase {
         h.transport = .tailnet
         let again = try JSONDecoder().decode(HostConfig.self, from: JSONEncoder().encode(h))
         XCTAssertEqual(again.transport, .tailnet)
+        XCTAssertNil(again.tailcat)
+    }
+
+    /// A tailcat host keeps its address and machine through a save; one
+    /// saved before tailcat has none.
+    @MainActor func testTailcatHostDecodes() throws {
+        let saved = #"[{"id":"8C1F2D3E-4A5B-4C6D-8E7F-9A0B1C2D3E4F","name":"mac","url":"http:\/\/8c1f2d3e-4a5b-4c6d-8e7f-9a0b1c2d3e4f.tailcat.invalid:7297","desktop":false,"tailcat":{"address":"tcx","machine":"mac"}}]"#
+        let hosts = try JSONDecoder().decode([HostConfig].self, from: Data(saved.utf8))
+        XCTAssertEqual(hosts[0].tailcat, HostConfig.Tailcat(address: "tcx", machine: "mac"))
+        XCTAssertEqual(try JSONDecoder().decode([HostConfig].self, from: JSONEncoder().encode(hosts)), hosts)
+        // A tailcat entry that doesn't read fails the host, as any other
+        // field would; the list is only ever written by the app.
+        XCTAssertThrowsError(try JSONDecoder().decode(HostConfig.self, from: Data(#"{"id":"8C1F2D3E-4A5B-4C6D-8E7F-9A0B1C2D3E4F","name":"mac","url":"http:\/\/mac","tailcat":{"address":"tcx"}}"#.utf8)))
     }
 
     /// A host saved before icons keeps its laptop or desktop; one saved
@@ -296,6 +309,14 @@ nonisolated final class HostTests: XCTestCase {
         h.transport = .tailnet
         XCTAssertEqual(h.reach(tailnetOn: true), .tailnet)
         XCTAssertEqual(h.reach(tailnetOn: false), .system)
+
+        // A host with a tailcat address goes over it, built-in Tailscale
+        // on or off, whatever its transport says.
+        var t = try XCTUnwrap(HostConfig(tailcat: "rexgo://tailcat?a=tcx&n=mac"))
+        XCTAssertEqual(t.reach(tailnetOn: false), .tailcat)
+        XCTAssertEqual(t.reach(tailnetOn: true), .tailcat)
+        t.transport = .tailnet
+        XCTAssertEqual(t.reach(tailnetOn: true), .tailcat)
     }
 
     /// An edited host keeps its transport while its address stays; a new
@@ -346,6 +367,29 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(rex.tokens, [nil, "t1", nil])
     }
 
+    /// The engine hears of the hosts as their list changes, as it loads
+    /// and as one is added or removed.
+    @MainActor func testTailcatHostsTold() throws {
+        let d = UserDefaults.standard
+        let (hosts, hook) = (d.data(forKey: "hosts"), Host.tailcatHosts)
+        defer {
+            d.set(hosts, forKey: "hosts")
+            Host.tailcatHosts = hook
+        }
+        d.removeObject(forKey: "hosts")
+        var told: [[HostConfig]] = []
+        Host.tailcatHosts = { told.append($0) }
+        let store = HostStore()
+        XCTAssertEqual(told, [[]])
+        let t = try XCTUnwrap(HostConfig(tailcat: "rexgo://tailcat?a=tcx&n=mac"))
+        store.add(t)
+        XCTAssertEqual(told.last?.compactMap(\.tailcat), [HostConfig.Tailcat(address: "tcx", machine: "mac")])
+        XCTAssertEqual(store.host(tailcat: "tcx")?.id, t.id)
+        store.remove(t.id)
+        XCTAssertEqual(told.last, [])
+        XCTAssertNil(store.host(tailcat: "tcx"))
+    }
+
     /// Away more than 5 s, the app was likely suspended.
     @MainActor func testSuspended() {
         let now = Date()
@@ -356,14 +400,16 @@ nonisolated final class HostTests: XCTestCase {
 
     /// Back after a suspension, the hosts on the built-in Tailscale connect
     /// anew once it resumes on its proxy, and not when it started anew; the
-    /// others only reconnect if needed. Back sooner, nothing resumes.
+    /// tailcat hosts connect anew either way; the others only reconnect if
+    /// needed. Back sooner, nothing resumes.
     @MainActor func testForeground() async throws {
         let d = UserDefaults.standard
-        let (hosts, on, proxy) = (d.data(forKey: "hosts"), d.object(forKey: TailnetSettings.onKey), Host.tailnetProxy)
+        let (hosts, on, proxy, catProxy) = (d.data(forKey: "hosts"), d.object(forKey: TailnetSettings.onKey), Host.tailnetProxy, Host.tailcatProxy)
         defer {
             d.set(hosts, forKey: "hosts")
             d.set(on, forKey: TailnetSettings.onKey)
             Host.tailnetProxy = proxy
+            Host.tailcatProxy = catProxy
         }
         d.removeObject(forKey: "hosts")
         d.set(true, forKey: TailnetSettings.onKey)
@@ -375,15 +421,21 @@ nonisolated final class HostTests: XCTestCase {
             if counting { order.append("tailnet") }
             return nil
         }
+        Host.tailcatProxy = {
+            if counting { order.append("tailcat") }
+            return nil
+        }
         let rex = try FakeRex()
         defer { rex.stop() }
         rex.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] }
         let store = HostStore()
         let system = HostConfig(name: "system", url: try await rex.url())
         let tailnet = HostConfig(name: "tailnet", url: try await rex.url(), transport: .tailnet)
+        let tailcat = try XCTUnwrap(HostConfig(tailcat: "rexgo://tailcat?a=tcx&n=mac"))
         store.add(system)
         store.add(tailnet)
-        defer { store.remove(system.id); store.remove(tailnet.id) }
+        store.add(tailcat)
+        defer { store.remove(system.id); store.remove(tailnet.id); store.remove(tailcat.id) }
         await until("online") { store.host(system.id)?.status == .online }
 
         func foreground(suspended: Bool, kept: Bool) async -> [String] {
@@ -394,11 +446,11 @@ nonisolated final class HostTests: XCTestCase {
             return order
         }
         let shortly = await foreground(suspended: false, kept: true)
-        XCTAssertEqual(shortly, ["tailnet"])
+        XCTAssertEqual(shortly, ["tailnet", "tailcat"])
         let resumed = await foreground(suspended: true, kept: true)
-        XCTAssertEqual(resumed, ["resume", "tailnet"])
+        XCTAssertEqual(resumed, ["resume", "tailnet", "tailcat"])
         let restarted = await foreground(suspended: true, kept: false)
-        XCTAssertEqual(restarted, ["resume"])
+        XCTAssertEqual(restarted, ["resume", "tailcat"])
         XCTAssertEqual(rex.controls.count, 1, "the system host connected anew")
     }
 

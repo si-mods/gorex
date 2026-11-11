@@ -7,13 +7,14 @@ struct RemoteHostsView: View {
     @State private var sheet: Sheet?
 
     private enum Sheet: Identifiable {
-        case connect, manual, scan, details(HostConfig)
+        case connect, manual, scan, details(HostConfig), pair(HostConfig)
         var id: String {
             switch self {
             case .connect: "connect"
             case .manual: "manual"
             case .scan: "scan"
             case .details(let c): c.id.uuidString
+            case .pair(let c): "pair " + c.id.uuidString
             }
         }
     }
@@ -41,6 +42,12 @@ struct RemoteHostsView: View {
                 }
                 .foregroundStyle(.primary)
                 .listRowBackground(Color.card)
+            } footer: {
+                // The key GoRex's Devices list shows for this phone, once paired.
+                let key = TailnetEngine.shared.tailcatKey
+                if !key.isEmpty {
+                    Text("This phone's key for GoRex's remote access: \(key)").textSelection(.enabled)
+                }
             }
         }
         .scrollContentBackground(.hidden)
@@ -58,12 +65,23 @@ struct RemoteHostsView: View {
                 QRScanner(onScan: pair)
             case .details(let c):
                 HostForm(config: c)
+            case .pair(let c):
+                TailcatPairSheet(code: c)
             }
         }
     }
 
-    /// Adds the host of a scanned code, or shows it when it's there already.
+    /// Adds the host of a scanned code, or shows it when it's there
+    /// already; a Rex Go code pairs first.
     private func pair(_ code: String) -> String? {
+        if let c = HostConfig(tailcat: code) {
+            if let h = c.tailcat.flatMap({ store.host(tailcat: $0.address) }) {
+                sheet = .details(h.config)
+            } else {
+                sheet = .pair(c)
+            }
+            return nil
+        }
         guard var c = HostConfig(pairing: code) else {
             return String(localized: "Not a Rex pairing code. Scan the Rex QR code that GoRex or Rex shows.")
         }
@@ -88,7 +106,9 @@ private struct HostRow: View {
                 .font(.title3).frame(width: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text(host.config.name).foregroundStyle(.primary).lineLimit(1)
-                Text(host.config.url.absoluteString).font(.footnote).foregroundStyle(.gray)
+                // A tailcat host's address is a secret, and its URL the proxy's.
+                Text(host.config.tailcat == nil ? host.config.url.absoluteString : String(localized: "GoRex remote access"))
+                    .font(.footnote).foregroundStyle(.gray)
                     .lineLimit(1)
             }
             .layoutPriority(1)
@@ -159,18 +179,24 @@ private struct HostForm: View {
     }
 
     /// The host as entered, if its address reads as a pairing code does;
-    /// a bare host gets http://.
+    /// a bare host gets http://. A tailcat host keeps its address.
     private var entered: HostConfig? {
-        let s = address.trimmingCharacters(in: .whitespaces)
-        guard var c = HostConfig(pairing: s.contains("://") ? s : "http://" + s) else { return nil }
-        if let config { c.id = config.id }
+        var c: HostConfig
+        if let config, config.tailcat != nil {
+            c = config
+        } else {
+            let s = address.trimmingCharacters(in: .whitespaces)
+            guard let p = HostConfig(pairing: s.contains("://") ? s : "http://" + s) else { return nil }
+            c = p
+            if let config { c.id = config.id }
+            c.transport = HostConfig.transport(switched: tailnet, was: config, at: c.url, rule: TailnetEngine.shared.transport(of: c.url))
+        }
         let n = name.trimmingCharacters(in: .whitespaces)
-        if !n.isEmpty { c.name = n }
+        if !n.isEmpty { c.name = n } else if let m = c.tailcat?.machine, !m.isEmpty { c.name = m }
         c.icon = symbol
         c.desktop = symbol == "desktopcomputer"
         let cmd = command.trimmingCharacters(in: .whitespaces)
         c.command = cmd.isEmpty ? nil : cmd
-        c.transport = HostConfig.transport(switched: tailnet, was: config, at: c.url, rule: TailnetEngine.shared.transport(of: c.url))
         return c
     }
 
@@ -178,21 +204,30 @@ private struct HostForm: View {
         let c = entered
         NavigationStack {
             Form {
-                Section {
-                    TextField("http://192.168.1.2:7297", text: $address)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .accessibilityIdentifier("address")
-                } header: {
-                    VStack(spacing: 20) {
-                        Text(config == nil ? "Enter the details of your Rex server." : "Update the details for this remote host.")
-                            .font(.body).textCase(nil)
-                            .frame(maxWidth: .infinity).multilineTextAlignment(.center)
-                        Text("Server address").frame(maxWidth: .infinity, alignment: .leading)
+                if let t = config?.tailcat {
+                    Section {
+                        LabeledContent("GoRex remote access", value: t.machine)
+                    } footer: {
+                        Text("Paired by GoRex's Rex Go code. Deleting the host here doesn't revoke this phone: remove it from Devices in GoRex's Settings › Remote.")
                     }
+                    .listRowBackground(Color.card)
+                } else {
+                    Section {
+                        TextField("http://192.168.1.2:7297", text: $address)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityIdentifier("address")
+                    } header: {
+                        VStack(spacing: 20) {
+                            Text(config == nil ? "Enter the details of your Rex server." : "Update the details for this remote host.")
+                                .font(.body).textCase(nil)
+                                .frame(maxWidth: .infinity).multilineTextAlignment(.center)
+                            Text("Server address").frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .listRowBackground(Color.card)
                 }
-                .listRowBackground(Color.card)
                 Section("Host details") {
                     HStack(spacing: 12) {
                         Menu {
@@ -207,7 +242,7 @@ private struct HostForm: View {
                             .foregroundStyle(.primary)
                         }
                         .accessibilityLabel("Device")
-                        TextField(c.map { HostConfig.name($0.url.host() ?? "") } ?? String(localized: "Name"), text: $name)
+                        TextField(c.map { $0.tailcat?.machine ?? HostConfig.name($0.url.host() ?? "") } ?? String(localized: "Name"), text: $name)
                             .autocorrectionDisabled()
                     }
                 }
@@ -223,7 +258,7 @@ private struct HostForm: View {
                     Text("Executable and arguments for new terminals on this host. Use quotes to group arguments. Leave empty to use the host's default login shell.")
                 }
                 .listRowBackground(Color.card)
-                if tailnetOn || c?.transport == .tailnet {
+                if (tailnetOn || c?.transport == .tailnet) && config?.tailcat == nil {
                     Section {
                         Toggle("Built-in Tailscale", isOn: Binding { c?.transport == .tailnet } set: { tailnet = $0 })
                     } footer: {
@@ -264,5 +299,82 @@ private struct HostForm: View {
             }
         }
         .presentationDetents([.large])
+    }
+}
+
+/// Pairs with a GoRex machine by its Rex Go code (docs/ios-tailcat.md,
+/// Pairing a phone): asks it to allow this phone, shows the fingerprint to
+/// compare with the one GoRex shows by the request, and adds the host,
+/// which connects once the request is approved there.
+struct TailcatPairSheet: View {
+    let code: HostConfig
+    @Environment(HostStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var fingerprint: String?
+    @State private var problem: String?
+
+    /// How long the approval may take: GoRex's pairing window.
+    private static let wait = Duration.seconds(5 * 60)
+
+    private var online: Bool { store.host(code.id)?.status == .online }
+    /// Added, and waiting for the approval.
+    private var waiting: Bool { fingerprint != nil && problem == nil && !online }
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Pair with \(code.name)").font(.title2.bold())
+            if let problem {
+                Text(problem).foregroundStyle(.secondary)
+            } else if let fingerprint {
+                if online {
+                    Text("Paired. Rex Go is connected.").foregroundStyle(.secondary)
+                } else {
+                    Text("On \(code.name), approve \(TailnetSettings.name) in Settings › Remote › Devices only if its fingerprint is this one.")
+                        .foregroundStyle(.secondary)
+                }
+                Text(fingerprint).font(.title3.monospaced().bold()).textSelection(.enabled)
+                if !online { ProgressView() }
+            } else {
+                Text("Asking \(code.name) to pair…").foregroundStyle(.secondary)
+                ProgressView()
+            }
+            Spacer(minLength: 12)
+            Button(waiting || fingerprint == nil && problem == nil ? "Cancel" : "Done") { finish() }
+                .buttonStyle(.glass)
+                .font(.headline)
+                .controlSize(.extraLarge)
+        }
+        .multilineTextAlignment(.center)
+        .padding(24)
+        .presentationDetents([.medium])
+        .interactiveDismissDisabled(waiting)
+        .task { await pair() }
+        .onChange(of: online) { _, on in
+            if on { Task { try? await Task.sleep(for: .seconds(1)); dismiss() } }
+        }
+    }
+
+    private func pair() async {
+        guard let address = code.tailcat?.address else { return }
+        do {
+            let f = try await TailnetEngine.shared.pair(address: address)
+            try Task.checkCancellation()
+            fingerprint = f
+            store.add(code)
+            try await Task.sleep(for: Self.wait)
+            guard !online else { return }
+            store.remove(code.id)
+            problem = String(localized: "Not approved in time. Show Rex Go QR… on the machine again and scan it anew.")
+        } catch is CancellationError {
+        } catch {
+            problem = String(localized: "Couldn't pair: \(error.localizedDescription)")
+        }
+    }
+
+    /// Cancel takes back a host not approved yet; it stays pending on the
+    /// machine until its pairing window closes.
+    private func finish() {
+        if waiting { store.remove(code.id) }
+        dismiss()
     }
 }
