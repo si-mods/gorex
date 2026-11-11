@@ -204,6 +204,50 @@
   .divider.column::after { width: 3px; height: 36px; transform: translate(-50%, -50%); }
   .divider.row::after { width: 36px; height: 3px; transform: translate(-50%, -50%); }
   .divider:hover::after, .divider.held::after { opacity: 0.6; }
+  /* The host list (hosts.ts): the chosen host atop the sidebar, and a glass panel as the theme picker's. */
+  #hosts { padding: 0 0 4px; }
+  .host-button {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 12px; border: 0; border-radius: 999px;
+    background: none; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+  }
+  .host-button:hover, .host-button[aria-expanded="true"] { background: var(--hover); }
+  .host-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .host-chevron { color: var(--muted); line-height: 1; }
+  .host-panel { top: 52px; bottom: auto; }
+  .host-title { padding: 2px 4px 4px; font-weight: 600; }
+  .host-row { display: flex; align-items: center; gap: 2px; }
+  .host-row .theme-row { flex: 1; min-width: 0; }
+  .host-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .host-text .theme-name { flex: none; }
+  .host-url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11.5px; }
+  .host-form { display: flex; flex-direction: column; gap: 8px; }
+  .host-field { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+  .host-field .theme-search { color: var(--text); font-size: 13px; }
+  .host-field select.theme-search { appearance: none; border-radius: 10px; }
+  .host-error { color: #ff6b6b; font-size: 12px; }
+  .host-error:empty { display: none; }
+  .host-note { color: var(--muted); font-size: 12px; }
+  .host-buttons { display: flex; gap: 6px; justify-content: flex-end; }
+  .host-add {
+    padding: 6px 14px; border: 1px solid var(--panel-edge); border-radius: 999px; background: var(--hover);
+    color: var(--text); font: inherit; cursor: pointer;
+  }
+  .host-add:hover { background: var(--pill); }
+  .host-add.primary { background: var(--text); color: var(--page); border-color: transparent; }
+  .host-add.danger { margin-right: auto; color: #ff6b6b; }
+  .command { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-radius: 10px; background: var(--hover); }
+  .command code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 12px/1.5 var(--mono); user-select: all; }
+  .command-copy { flex: none; padding: 3px 10px; border: 0; border-radius: 999px; background: var(--pill); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+  /* What is wrong with the host, or how to add one, over the empty stage. */
+  #notice { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 16px; }
+  #notice[hidden] { display: none; }
+  .notice-card {
+    display: flex; flex-direction: column; gap: 12px; width: min(520px, 100%); padding: 20px; border-radius: 16px;
+    background: var(--panel); border: 1px solid var(--panel-edge); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  }
+  .notice-card h1 { margin: 0; font-size: 17px; }
+  .notice-card p { margin: 0; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
+  .notice-card .host-add { align-self: flex-start; }
   #status { padding: 4px 8px 6px; color: var(--muted); font-size: 12px; }
   @media (max-width: 640px) {
     body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
@@ -213,8 +257,8 @@
 </style>
 </head>
 <body>
-<aside id="sessions"><div id="list"></div><div id="themes"></div></aside>
-<main id="stage"></main>
+<aside id="sessions"><div id="hosts"></div><div id="list"></div><div id="themes"></div></aside>
+<main id="stage"><div id="notice" hidden></div></main>
 <footer id="status"></footer>
 <script type="module" src="app.js"></script>
 </body>

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-// Builds GoRex's web client into internal/webui/dist, which the gateway
-// embeds and serves at /: libghostty-vt as WebAssembly, from Ghostty's
-// sources at the commit GoRex's terminal binding uses, with the Zig that
-// Ghostty asks for (fetched into a cache when ZIG is not set), and the
-// TypeScript client, bundled by esbuild.
+// Builds GoRex's web client, a standalone page that GoRex does not ship,
+// into web/dist: libghostty-vt as WebAssembly, from Ghostty's sources at
+// the commit GoRex's terminal binding uses, with the Zig that Ghostty
+// asks for (fetched into a cache when ZIG is not set), and the
+// TypeScript client, bundled by esbuild. web/dist is what Cloudflare
+// serves (wrangler.jsonc) and what the dev server serves (dev.mjs).
 //
 // Usage: node web/build.mjs [--ghostty-source <path>] [--rebuild-wasm]
 //
@@ -22,7 +23,7 @@ const ZIG_VERSION = "0.17.0";
 
 const web = dirname(fileURLToPath(import.meta.url));
 const root = dirname(web);
-const dist = join(root, "internal", "webui", "dist");
+export const dist = join(web, "dist");
 const cache = process.env.GOREX_WEB_CACHE || join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "gorex-web");
 const args = process.argv.slice(2);
 const windows = process.platform === "win32";
@@ -88,17 +89,8 @@ async function wasm() {
   return out;
 }
 
-const wasmFile = await wasm();
-if (!existsSync(join(web, "node_modules"))) {
-  console.log("> npm ci");
-  execSync("npm ci --no-audit --no-fund", { cwd: web, stdio: "inherit" });
-}
-run(process.execPath, [join(web, "node_modules", "typescript", "bin", "tsc"), "--noEmit", "-p", web]);
-
-// Everything in dist but its README is the build's.
-for (const f of readdirSync(dist)) if (f !== "README") rmSync(join(dist, f), { recursive: true, force: true });
-const { build } = await import(pathToFileURL(join(web, "node_modules", "esbuild", "lib", "main.js")).href);
-await build({
+/** esbuild's options for the client's bundle, which dev.mjs rebuilds too. */
+export const appOptions = {
   entryPoints: [join(web, "src", "main.ts")],
   bundle: true,
   format: "esm",
@@ -106,17 +98,41 @@ await build({
   minify: true,
   outfile: join(dist, "app.js"),
   logLevel: "info",
-});
-copyFileSync(join(web, "index.html"), join(dist, "index.html"));
-copyFileSync(wasmFile, join(dist, "ghostty-vt.wasm"));
-// The Ghostty themes the iOS app ships, not copied into the repo twice.
-copyFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"), join(dist, "ghostty-themes.json"));
-// The desktop's terminal font, which GoRex embeds too, with its licence.
-mkdirSync(join(dist, "fonts"));
-for (const f of readdirSync(join(root, "assets", "fonts"))) copyFileSync(join(root, "assets", "fonts", f), join(dist, "fonts", f));
-// The glyphs of the program tiles: the repo's lucide icons and brand marks, which the desktop embeds too.
-for (const d of ["icons", "brands"]) {
-  mkdirSync(join(dist, d));
-  for (const f of readdirSync(join(root, "assets", d))) copyFileSync(join(root, "assets", d, f), join(dist, d, f));
+};
+
+/** esbuild, from web/node_modules. */
+export async function esbuild() {
+  return import(pathToFileURL(join(web, "node_modules", "esbuild", "lib", "main.js")).href);
 }
-console.log(`built ${dist}`);
+
+async function main() {
+  const wasmFile = await wasm();
+  if (!existsSync(join(web, "node_modules"))) {
+    console.log("> npm ci");
+    execSync("npm ci --no-audit --no-fund", { cwd: web, stdio: "inherit" });
+  }
+  run(process.execPath, [join(web, "node_modules", "typescript", "bin", "tsc"), "--noEmit", "-p", web]);
+
+  rmSync(dist, { recursive: true, force: true });
+  mkdirSync(dist);
+  const { build } = await esbuild();
+  await build(appOptions);
+  copyFileSync(join(web, "index.html"), join(dist, "index.html"));
+  // Cloudflare's headers for the files (cache, CSP); see docs/web-client.md.
+  copyFileSync(join(web, "_headers"), join(dist, "_headers"));
+  copyFileSync(wasmFile, join(dist, "ghostty-vt.wasm"));
+  // The Ghostty themes the iOS app ships, not copied into the repo twice.
+  copyFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"), join(dist, "ghostty-themes.json"));
+  // The desktop's terminal font, which GoRex embeds too, with its licence.
+  mkdirSync(join(dist, "fonts"));
+  for (const f of readdirSync(join(root, "assets", "fonts"))) copyFileSync(join(root, "assets", "fonts", f), join(dist, "fonts", f));
+  // The glyphs of the program tiles: the repo's lucide icons and brand marks, which the desktop embeds too.
+  for (const d of ["icons", "brands"]) {
+    mkdirSync(join(dist, d));
+    for (const f of readdirSync(join(root, "assets", d))) copyFileSync(join(root, "assets", d, f), join(dist, d, f));
+  }
+  console.log(`built ${dist}`);
+}
+
+// Run as a script, not when dev.mjs imports the options.
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) await main();

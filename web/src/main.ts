@@ -1,10 +1,12 @@
-// GoRex's web client: the sessions the gateway serves, and a window's
-// panes, live, over the same API the iOS app speaks.
+// GoRex's web client: the sessions a host's gateway serves, and a window's
+// panes, live, over the same API the iOS app speaks. The page is hosted on
+// its own; the host is one the user added (hosts.ts).
 import { Ghostty } from "./ghostty";
+import { commandBox, diagnose, Host, HostList, hostURL, mixedContent, Problem } from "./hosts";
 import { shortcut } from "./keys";
 import { describe } from "./pane";
 import { mostUrgent, programName, programOf, rank, seenKey, Status, statusOf, tiles, tilesWidth } from "./programs";
-import { Control } from "./rex";
+import { Control, setHost } from "./rex";
 import { desktopTheme, Theme } from "./terminal";
 import { chosenName, isLight, loadThemes, mountPicker, ThemeEntry, themeColours } from "./themes";
 import { borderLeaf, layoutOf, leavesOf, WindowHost, WindowView } from "./window";
@@ -16,6 +18,12 @@ const shell = { flavor: "com.superlogical.terminal.shell" };
 let g: Ghostty;
 let control: Control | undefined;
 let token: string | undefined;
+/** The host connected to, or connecting; one at a time. */
+let current: Host | undefined;
+/** Counts the hosts chosen, so that a connection to one chosen before ends. */
+let generation = 0;
+let retry: ReturnType<typeof setTimeout> | undefined;
+let hostList: HostList;
 /** The theme chosen in this browser, over the desktop's colours; none keeps the host's. */
 let chosen: Theme | undefined;
 
@@ -100,20 +108,102 @@ async function main() {
     status(`Could not load libghostty-vt: ${describe(e)}`);
     return;
   }
-  connect();
+  hostList = new HostList($("hosts"), { choose, close: () => shown?.focusKeys() });
+  // A quick link: ?host=URL adds the host, or chooses it, and leaves the address bar.
+  const linked = new URLSearchParams(location.search).get("host");
+  if (linked) {
+    const r = hostURL(linked);
+    if ("url" in r) hostList.addLink(r.url);
+    history.replaceState(null, "", location.pathname);
+  }
+  choose(hostList.chosen);
 }
 
-/** Opens the control connection, again after it drops. */
-async function connect() {
-  status("Connecting…");
+/** Shows what is wrong with the host, or nothing. */
+function notice(p?: Problem, action?: { label: string; run: () => void }) {
+  const box = $("notice");
+  box.hidden = !p;
+  if (!p) return;
+  const card = document.createElement("div");
+  card.className = "notice-card";
+  const h = document.createElement("h1");
+  h.textContent = p.title;
+  const t = document.createElement("p");
+  t.textContent = p.text;
+  card.append(h, t);
+  if (p.command) card.append(commandBox(p.command));
+  if (action) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "host-add primary";
+    b.textContent = action.label;
+    b.onclick = action.run;
+    card.append(b);
+  }
+  box.replaceChildren(card);
+}
+
+/** Leaves the host connected to, and connects to h. Only the chosen host is connected. */
+function choose(h: Host | undefined) {
+  generation++;
+  clearTimeout(retry);
+  const c = control;
+  control = undefined;
+  c?.close();
+  hide();
+  token = undefined;
+  wantWindow = undefined;
+  for (const m of [sessions, titles, programs, statuses, seen]) m.clear();
+  described.clear();
+  current = h;
+  sidebar();
+  if (!h) {
+    status("");
+    notice(
+      {
+        title: "Add a GoRex host",
+        text:
+          "This page connects to GoRex's Rex API gateway on your machines: the tailnet address of built-in Tailscale " +
+          "(https://<machine>-gorex.<tailnet>.ts.net), or the local network listener (http://192.168.1.2:7297). " +
+          "Each host must trust this page's origin first. On the host, run:",
+        command: `gorex rexapi web allow ${location.origin}`,
+      },
+      { label: "Add Host", run: () => hostList.open("new") },
+    );
+    return;
+  }
+  setHost(h.url);
+  const blocked = mixedContent(h.url);
+  if (blocked) {
+    status(`${h.name}: blocked`);
+    notice(blocked, { label: "Edit Host", run: () => hostList.open(h) });
+    return;
+  }
+  notice();
+  connect(generation);
+}
+
+/** Opens the control connection to the chosen host, again after it drops. */
+async function connect(gen: number) {
+  const h = current!;
+  status(`Connecting to ${h.name}…`);
   let c: Control;
   try {
     c = await Control.open(token);
   } catch (e) {
-    status(`Could not connect: ${describe(e)}. Trying again…`);
-    setTimeout(connect, 3000);
+    if (gen !== generation) return;
+    const p = await diagnose(h.url);
+    if (gen !== generation) return;
+    notice(p, { label: "Edit Host", run: () => hostList.open(h) });
+    status(`${h.name}: ${p.title}. Trying again…`);
+    retry = setTimeout(() => connect(gen), 4000);
     return;
   }
+  if (gen !== generation) {
+    c.close();
+    return;
+  }
+  notice();
   control = c;
   described.clear();
   token = c.reconnectToken;
@@ -121,13 +211,13 @@ async function connect() {
   c.onClose = (reason) => {
     if (control !== c) return;
     control = undefined;
-    status(`Disconnected (${reason}). Reconnecting…`);
-    setTimeout(connect, 3000);
+    status(`${h.name}: disconnected (${reason}). Reconnecting…`);
+    retry = setTimeout(() => connect(gen), 3000);
   };
   try {
     await c.call("session.bootstrap", { event_scope: "all" });
     await list();
-    status("Connected");
+    status(`Connected to ${h.name}`);
     for (const p of shown?.panes.values() ?? []) p.start();
   } catch (e) {
     status(`Connected, but the sessions could not be read: ${describe(e)}`);
@@ -405,7 +495,7 @@ function sidebar() {
       nav.append(row);
     }
   }
-  if (!nav.children.length) nav.textContent = sessions.size ? "" : "No sessions on this machine.";
+  if (!nav.children.length) nav.textContent = !current || !control ? "" : sessions.size ? "" : "No sessions on this host.";
   $("list").replaceChildren(nav);
 }
 

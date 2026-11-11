@@ -1,0 +1,27 @@
+# Cloudflare Workers static assets: headers for web/dist (build.mjs copies
+# this file there); see docs/web-client.md. The file names carry no hash,
+# so the page, its script and the wasm are revalidated (ETag) on every
+# load, and only the fonts, icons and themes are kept for a day. A path
+# that two rules match gets both rules' headers, so the rules below set
+# different headers or match different paths.
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' http: https: ws: wss:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/app.js
+  Cache-Control: no-cache
+/ghostty-vt.wasm
+  Cache-Control: no-cache
+/ghostty-themes.json
+  Cache-Control: public, max-age=86400
+/fonts/*
+  Cache-Control: public, max-age=86400
+/icons/*
+  Cache-Control: public, max-age=86400
+/brands/*
+  Cache-Control: public, max-age=86400

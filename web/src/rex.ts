@@ -22,9 +22,26 @@ export interface RexEvent {
 const revision = 10;
 const callWait = 30_000;
 
-/** The WebSocket URL of path on the page's own server. */
+/**
+ * The host the connections go to, as http(s)://host[:port]. The page is
+ * hosted on its own, so no URL is the page's: every one is built from it.
+ */
+let base = "";
+
+/** Points every new connection at a host's gateway. */
+export function setHost(url: string) {
+  base = url;
+}
+
+/** The URL of path on the host's gateway. */
+export function apiURL(path: string): string {
+  if (!base) throw new RexError("offline", "no host is chosen");
+  return new URL(path, base).href;
+}
+
+/** The WebSocket URL of path on the host's gateway. */
 function wsURL(path: string): string {
-  const u = new URL(path, location.href);
+  const u = new URL(apiURL(path));
   u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
   return u.href;
 }
@@ -47,6 +64,7 @@ export class Control {
   /** Opens the connection and says hello. */
   static open(token?: string): Promise<Control> {
     return new Promise((resolve, reject) => {
+      // The constructor throws for a URL the page may not open (mixed content).
       const ws = new WebSocket(wsURL("/api/control"), "rex.control.v1");
       const c = new Control(ws);
       let welcomed = false;

@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "node build.mjs",
+    "dev": "node dev.mjs",
+    "deploy": "node build.mjs && npx --yes wrangler@4.152.0 deploy"
   },
   "devDependencies": {
     "esbuild": "0.25.12",
