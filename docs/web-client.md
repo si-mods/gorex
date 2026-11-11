@@ -1,16 +1,19 @@
 # Web client
 
-The Rex API gateway (`internal/rexapi`) serves a browser client at `/`.
-It runs on the same origin as `/api/control` and `/api/data`. It lists
-the sessions the gateway shows and their windows, shows a window's panes
-live, as the desktop lays them out, and sends what you type. The terminal emulator is libghostty-vt, compiled to WebAssembly from
-the Ghostty commit that GoRex's terminal binding uses. The client draws
-the emulator's render state on a canvas.
+GoRex's web client is a standalone web page (`web/`) that connects to
+GoRex hosts through their Rex API gateway. GoRex does not ship it: the
+desktop app and its gateway serve no page. The client is hosted on its
+own, on Cloudflare or from a local dev server (see Hosting). It lists the
+sessions of the chosen host and their windows, shows a window's panes
+live, as the desktop lays them out, and sends what you type. The terminal
+emulator is libghostty-vt, compiled to WebAssembly from the Ghostty
+commit that GoRex's terminal binding uses. The client draws the
+emulator's render state on a canvas.
 
 This is phase 1, a prototype: one window at a time, with its split panes
-(see Split panes). Its one setting is the theme (see Themes). It has no
-uploads, no paste, no selection and no mouse. The wheel scrolls the
-scrollback.
+(see Split panes). Its settings are the hosts (see Hosts) and the theme
+(see Themes). It has no uploads, no paste, no selection and no mouse. The
+wheel scrolls the scrollback.
 
 ## Design: a remote client only
 
@@ -20,7 +23,9 @@ local session server. It is a remote client, like Rex's iPhone app:
 
 - Every terminal it shows lives on a GoRex host, in that host's session
   server. The client reaches it through the host's gateway over
-  WebSocket (`/api/control` and `/api/data`).
+  WebSocket (`/api/control` and `/api/data`), at the address the user
+  added. No URL is the page's own: every API URL is built from the
+  host's address (`setHost` and `apiURL` in `web/src/rex.ts`).
 - It keeps no state that a host needs. Closing the tab detaches; the
   sessions and their programs keep running on the host.
 - The terminal emulator in the page (libghostty-vt in wasm) only mirrors
@@ -28,11 +33,202 @@ local session server. It is a remote client, like Rex's iPhone app:
 - Nothing in the client calls `internal/rex`, the PTY layer or anything
   else that needs an operating system. Features that need one belong on
   the host, behind the gateway's API.
+- The page's own files (the script, the wasm, the fonts, the icons and
+  the themes) come from where the page is hosted, never from a host.
 
-Phase 1 connects only to the host that served the page, because the
-gateway refuses web pages of another origin (see Origins). Connecting one
-page to several hosts needs the hosts to trust that page's origin; that
-is not designed yet.
+## Hosts
+
+The page has a list of hosts, as the iOS app has
+(`ios/GoRex/Rex/Host.swift`): a name, the gateway's address
+(`http(s)://host[:port]`, nothing else) and an icon. The list and the
+chosen host are in `localStorage` (`gorex.hosts`, `gorex.host`), per
+browser. Without storage the page works, and the list lasts until the
+page closes. The button at the top of the sidebar shows the chosen host
+and opens the list: choose a host, add one, or edit or remove one (the
+pencil). `?host=URL` in the page's address is a quick link: it adds that
+host, or chooses it when the list has it, and is then taken out of the
+address bar.
+
+Only the chosen host is connected. Choosing another one closes the
+connection and the panes, forgets the first host's sessions, and connects
+to the other. The first host's sessions keep running. One connection at
+a time keeps one sidebar and one set of shortcuts, as before; several
+hosts at once, as iOS shows them, is for later.
+
+With no host, the page says how to add one, with the command that makes
+a host trust this page: `gorex rexapi web allow <origin>`, with the page's
+own `location.origin`. When a host does not connect, the page tells why,
+and tries again every few seconds, so it connects once the cause is gone:
+
+- **The host doesn't trust this page.** The gateway refused the page's
+  origin (see Trusting a page). The page shows the command to run on the
+  host.
+- **The host refused this browser.** The page is trusted, but the
+  gateway's access rule is not met: the local network listener lets in
+  only the networks it allows, built-in Tailscale only your user. The page
+  shows the gateway's message.
+- **The host can't be reached.** Nothing answered: a wrong address, no
+  gateway listening there, or the browser stopped the request (see Local
+  Network Access).
+- **Mixed content.** An https page cannot open `http://` or `ws://`
+  connections (see Mixed content).
+
+A WebSocket that fails tells the page nothing of why, so the page asks
+the gateway's `/api/help` twice (`diagnose` in `web/src/hosts.ts`): as a
+CORS request, which a gateway that trusts the page answers (a refusal of
+the access rule comes with its message), and as a `no-cors` request,
+which any server that is there answers without the page reading it.
+Answered only the second way, the gateway refused the page's origin;
+answered neither way, it was not reached.
+
+## Trusting a page
+
+A browser sends a page's origin (`scheme://host[:port]`) with every
+request it makes for the page, WebSockets included. Native clients (Rex's
+apps, the GoRex desktop, the CLI) send none. The gateway
+(`checkOrigin` in `internal/rexapi/web.go`) serves a request:
+
+- without an `Origin`, as before, for native clients;
+- with an `Origin` in the host's list of trusted origins.
+
+It refuses any other with 403 on every path, before its access rule,
+`Origin: null` included. A trusted page still meets the access rule: the
+networks of the local network listener, your user on built-in Tailscale.
+Without this check any web page open in a browser on an allowed network
+could use the API as that browser, since the access rule judges the
+caller's address, not the page.
+
+The list is empty by default. Set it on the host:
+
+```sh
+gorex rexapi web allow https://gorex-web.<account>.workers.dev
+gorex rexapi web allow http://127.0.0.1:5173    # the local dev server
+gorex rexapi web deny http://127.0.0.1:5173
+gorex rexapi web status
+```
+
+An origin is `http` or `https`, a host and maybe a port, nothing else: no
+path, wildcard, query or user name. The command writes it as browsers
+send it: lower case, without the scheme's default port
+(`https://Example.com:443/` is `https://example.com`). The list is in
+`rexapi/web.json` in GoRex's data directory, as `{"origins": [...]}`. The
+gateway reads it again within a second of a change, without a restart.
+Every listener of the gateway uses the same list. The commands change
+the file only, as `gorex rexapi lan` does, so they work with no gateway
+running; the gateway has no control method for the list.
+
+For a trusted page, the gateway's plain HTTP answers carry
+`Access-Control-Allow-Origin` with the page's origin, and
+`Vary: Origin`, so that the page can read them (a refusal's message, an
+upload's answer). The gateway answers such a page's CORS preflight
+(`OPTIONS` with `Access-Control-Request-Method`, after the access rule):
+it allows `GET` and `POST` and the `Content-Type` header, which an upload
+(`POST /api/upload` of `application/octet-stream`) needs. It answers no
+preflight of any other page.
+
+Trust only pages you control. A trusted page can do anything the API can,
+as anyone who opens it in a browser that the access rule lets in.
+
+## Mixed content
+
+A page loaded over https may open only https and `wss://` connections:
+browsers block `http://` and `ws://` from it as mixed content. So:
+
+- The hosted page (Cloudflare, https) reaches a host by its tailnet
+  address, `https://<machine>-gorex.<tailnet>.ts.net`, from built-in
+  Tailscale.
+- A gateway's local network listener is plain http
+  (`http://192.168.1.2:7297`). Reach it from an http page: the local dev
+  server.
+- Chrome's Local Network Access (below) lets an https page open `ws://`
+  to a private or loopback IP address, `localhost` or a `.local` name,
+  once the user allows it. Other browsers may still block it. The page
+  tries such an address; it does not try any other `http://` host from an
+  https page, and shows the mixed content message at once.
+
+## Local Network Access
+
+Chrome asks the user before a public website reaches the local network or
+the loopback address (Local Network Access). It replaced Private Network
+Access and its `Access-Control-Allow-Private-Network` preflights, so the
+gateway does not answer those. Confirmed from Chrome's documentation
+(<https://developer.chrome.com/blog/local-network-access>,
+<https://developer.chrome.com/docs/modern-web-guidance/guides/security/local-network-access>):
+
+- The prompt launched in Chrome 142, for `fetch`, subresources and
+  frames. The guide says that it now governs WebSockets too, and that
+  `ws://` from an https page to a recognizably local host (a private or
+  loopback IP address, `localhost`, `.local`) is exempt from mixed content
+  blocking behind the prompt. Which Chrome version added WebSockets is not
+  confirmed from Chrome's own release notes.
+- Local addresses are RFC 1918's, link-local and IPv6 unique local ones;
+  loopback is `127.0.0.0/8`, `::1` and `localhost`. A page served from
+  loopback (the dev server on `127.0.0.1`) is not public, so its
+  connections to the local network are not gated.
+- The permission is refused at once to an insecure (http) top-level page.
+
+Not confirmed: how Chrome classifies Tailscale's `100.64.0.0/10`
+addresses, which a `*.ts.net` name resolves to. If Chrome counts them as
+local, the hosted page asks for the permission before it reaches a
+tailnet host; allow it.
+
+## Hosting
+
+The page is static files: `web/dist`, which `npm run build` (that is,
+`node build.mjs`) writes. `web/dist` is not in the repository
+(`web/.gitignore`).
+
+### Cloudflare Workers
+
+`web/wrangler.jsonc` deploys `web/dist` as a Worker with static assets
+only, no Worker code, named `gorex-web`, at
+`https://gorex-web.<account>.workers.dev`. From `web/`:
+
+```sh
+npm run deploy    # node build.mjs, then wrangler deploy
+```
+
+`npm run deploy` runs Wrangler 4.152.0 with `npx`, which asks you to sign
+in to Cloudflare the first time. Wrangler is not a dependency of the
+page, so `npm ci` in a build does not fetch it and its runtime. Then
+trust the page's origin on each host:
+`gorex rexapi web allow https://gorex-web.<account>.workers.dev`.
+
+`web/_headers`, which the build copies into `dist`, sets the files'
+headers on Cloudflare:
+
+- `Content-Security-Policy`: `default-src 'none'`; the page's own
+  scripts (`script-src 'self'`, with `'wasm-unsafe-eval'` for
+  libghostty-vt), fonts and images (and `data:` for the empty favicon);
+  its inline `<style>` (`style-src 'self' 'unsafe-inline'`; the styles
+  the script sets go through the CSSOM, which the policy does not
+  restrict); no `<base>`, no forms, no framing elsewhere. `connect-src`
+  is `'self' http: https: ws: wss:`: the hosts are the user's, added in
+  the page, so the policy cannot name them. The policy's defence is that
+  no script but the page's own runs; a narrower `connect-src` would need
+  the hosts at build time.
+- `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
+- The file names carry no hash. So `/`, `index.html`, `app.js` and the
+  wasm are `no-cache` (revalidated, with Cloudflare's ETag, on every
+  load), and the fonts, icons, brand marks and themes are kept for a day.
+  Cloudflare gives a path that two rules match both rules' headers, so no
+  two rules set the same header on one path.
+
+### Local dev server
+
+```sh
+cd web
+npm run dev                  # http://127.0.0.1:5173
+npm run dev -- --port 7478   # another port; --host ADDR to listen elsewhere
+```
+
+`web/dev.mjs` builds `web/dist` once (`build.mjs`, with its type check),
+then serves it with esbuild. It bundles `src/` again on every change (not
+minified, with a source map), without the type check, and copies
+`index.html` again when it changes. It prints the command that makes a
+host trust it. It is plain http on loopback, so it reaches both kinds of
+gateway: `http://` on the local network and `https://` on the tailnet. It
+sends none of `_headers`' headers.
 
 ## Program tiles
 
@@ -51,11 +247,12 @@ symbols by 0.85, the desktop its SVGs by 1); a row has no status inbox.
 
 ## Build
 
-You need Node 22 or later, Git and Go. The script gets Zig itself.
+You need Node 22 or later and Git. The script gets Zig itself. Go is not
+needed.
 
 ```sh
-node web/build.mjs      # Windows: the same, from PowerShell or Git Bash
-go build .              # embeds what the script wrote
+cd web
+npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Bash
 ```
 
 `web/build.mjs` does these steps:
@@ -68,44 +265,17 @@ go build .              # embeds what the script wrote
    `zig build -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall`.
    It keeps `ghostty-vt.wasm` (about 850 KB) in the cache, so the next
    build skips this step. `--rebuild-wasm` builds it again.
-4. It runs `npm ci` in `web/` if `web/node_modules` is missing, then type-checks
-   the client (`tsc --noEmit`) and bundles it with esbuild.
-5. It writes `index.html`, `app.js` and `ghostty-vt.wasm` into
-   `internal/webui/dist`, copies `ios/GoRex/ghostty-themes.json` there (the
-   repo keeps one copy of the themes), and the JetBrains Mono fonts from `assets/fonts`
-   (with their licence) into `internal/webui/dist/fonts`.
-   It also copies `assets/icons` and `assets/brands` into `dist/icons` and
-   `dist/brands`, the glyphs of the program tiles.
+4. It runs `npm ci` in `web/` if `web/node_modules` is missing, then
+   type-checks the client (`tsc --noEmit`) and bundles it with esbuild.
+5. It empties `web/dist` and writes `index.html`, `app.js`, `_headers` and
+   `ghostty-vt.wasm` there, copies `ios/GoRex/ghostty-themes.json` (the
+   repo keeps one copy of the themes), and the JetBrains Mono fonts from
+   `assets/fonts` (with their licence) into `dist/fonts`. It also copies
+   `assets/icons` and `assets/brands` into `dist/icons` and
+   `dist/brands`, the glyphs of the program tiles and of the hosts.
 
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
-`~/.cache/gorex-web`.
-
-`internal/webui/dist` is in `.gitignore`, except for a README. With that
-README, `go:embed` has something to embed on a checkout that never ran the
-script. Such a build serves a short page at `/` that says how to build the
-client. `go build ./...` and the tests need no web build.
-
-## Open it
-
-Every listener of the gateway serves the client: the local network
-listener, built-in Tailscale (HTTPS) and `--listen`. For development:
-
-```sh
-GoRex rexapi --listen http://127.0.0.1:7391
-```
-
-Then open `http://127.0.0.1:7391/`. The gateway applies its usual access
-rules to the page. The local network listener lets in only the networks it
-allows. Built-in Tailscale lets in only your own user.
-
-## Origins
-
-Native clients send no `Origin` header. They connect as before. A request
-that has an `Origin` gets through only if its scheme, host and port are
-those of the gateway that the request came to. Any other web page gets
-403 on every path (`internal/rexapi/sameorigin.go`). Without this check,
-any web page open in a browser on an allowed network could use the API
-as that browser.
+`~/.cache/gorex-web`. `go build ./...` and the Go tests need no web build.
 
 ## How it works
 
@@ -127,8 +297,10 @@ as that browser.
   separators, drawn as shapes, ported from MyGo's `plugins/terminal/box.go`.
 - `web/src/themes.ts`: the Ghostty themes list, the choice kept in the
   browser, and the picker.
-- `web/src/main.ts`: the connection, the sessions and their views, the
-  sidebar, and the window's commands.
+- `web/src/hosts.ts`: the hosts, kept in the browser; their list and
+  form; why a host does not connect (see Hosts).
+- `web/src/main.ts`: the chosen host's connection, the sessions and their
+  views, the sidebar, and the window's commands.
 - `web/src/window.ts`: a window's layout tree, its panes and dividers,
   and the focus (see Split panes).
 - `web/src/pane.ts`: one pane: its stream, its terminal and its canvas.

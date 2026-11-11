@@ -55,8 +55,12 @@ The gateway listens on five places:
 - with `GoRex rexapi --listen http://127.0.0.1:PORT`, a TCP port that lets
   everyone in unauthenticated: for tests on this machine only.
 
-Each one also serves a browser client at `/` (docs/web-client.md). A
-request from another origin's web page is refused on every path.
+None serves a web page. A browser's request carries its page's origin,
+and the gateway refuses it on every path, with 403 before the access
+rule, unless the origin is one the host trusts (`gorex rexapi web allow
+ORIGIN`, empty by default). This is how the standalone web client
+(docs/web-client.md), hosted elsewhere, reaches a host. Native clients
+send no origin and are not affected.
 
 ## Local network
 
@@ -194,6 +198,8 @@ device out; `tailscale rename NAME` renames it.
 | `GoRex rexapi lan on \| off \| status` | the listener on the local network |
 | `GoRex rexapi lan listen HOST:PORT` | the address it listens on |
 | `GoRex rexapi lan allow NETWORK` / `deny NETWORK` | the networks let in: a CIDR, or an address alone |
+| `GoRex rexapi web allow ORIGIN` / `deny ORIGIN` | the web pages trusted, by origin, such as `https://gorex-web.example.workers.dev`: `http(s)://host[:port]`, no path or wildcard; in `rexapi/web.json`, followed within a second (docs/web-client.md) |
+| `GoRex rexapi web status` | the web pages trusted |
 | `GoRex rexapi tailscale on [--hostname NAME] [--control-url URL] [--allow-tailnet-members] [--auth-key-file FILE]` | turn built-in Tailscale on |
 | `GoRex rexapi tailscale off \| login \| logout \| rename NAME \| status` | the rest of `server.tailscale.*`, and its status |
 | `GoRex rexapi pair [--json]` | the tailnet address as a QR code |
