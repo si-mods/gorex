@@ -462,7 +462,7 @@ final class Host: Identifiable {
     /// session.bootstrap for every session, then session.attach for those
     /// it didn't attach, so that every window can be opened.
     private func bootstrap(_ c: ControlConnection) async throws {
-        let (seq, r) = try await c.call("session.bootstrap", ["event_scope": "all"])
+        let (seq, r, raw) = try await c.call("session.bootstrap", ["event_scope": "all"])
         let all = (r["attach_all"] as? [String: Any])?["sessions"] as? [[String: Any]] ?? []
         sessions = all.compactMap { s in
             (s["session_id"] as? String).map { Session(id: $0, label: s["label"] as? String ?? "") }
@@ -470,8 +470,8 @@ final class Host: Identifiable {
         // What was read before keeps showing, as after a reconnect from
         // the background; each session's view reads it again in place.
         reread = Set(sessions.map(\.id))
-        if let selected = r["selected_session"] as? [String: Any], let v = selected["view"] {
-            setView(try SessionView(json: v))
+        if let view = try SessionView.selected(response: raw) {
+            setView(view)
         }
         for e in gate.open(at: seq) { apply(e) }
         for s in sessions where s.view == nil { attach(s.id) }
@@ -522,8 +522,8 @@ final class Host: Identifiable {
 
     private func attach(_ id: String) {
         Task {
-            guard let r = try? await control?.call("session.attach", ["session_id": id]).payload,
-                  let v = r["view"], let view = try? SessionView(json: v) else { return }
+            guard let raw = try? await control?.call("session.attach", ["session_id": id]).raw,
+                  let view = try? SessionView.attached(response: raw) else { return }
             setView(view)
         }
     }
@@ -616,8 +616,8 @@ final class Host: Identifiable {
         Task {
             defer { refreshing.remove(id) }
             while let want = wanted[id], want > revision(id),
-                  let r = try? await control?.call("session.view", ["session_id": id]).payload,
-                  let view = try? SessionView(json: r) {
+                  let raw = try? await control?.call("session.view", ["session_id": id]).raw,
+                  let view = try? SessionView(response: raw) {
                 let had = revision(id)
                 setView(view)
                 if revision(id) == had { break }

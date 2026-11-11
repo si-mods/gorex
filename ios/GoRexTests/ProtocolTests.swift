@@ -170,6 +170,20 @@ nonisolated final class EventTests: XCTestCase {
         XCTAssertEqual(v.windows?.first?.block, "block:7")
     }
 
+    @MainActor func testSessionViewFromResponse() throws {
+        let view = #""revision":3,"session_id":"session:1","future":{"x":[1]},"windows":[{"window_id":"window:1","layers":[{"blocks":[{"block_id":"block:7"}]}]}]"#
+        let direct = try SessionView(response: Data(#"{"type":"response","seq":9,"payload":{\#(view)}}"#.utf8))
+        XCTAssertEqual(direct.revision, 3)
+        XCTAssertEqual(direct.windows?.first?.block, "block:7")
+        let attached = try SessionView.attached(response: Data(#"{"payload":{"view":{\#(view)}}}"#.utf8))
+        XCTAssertEqual(attached.session_id, "session:1")
+        let boot = Data(#"{"payload":{"selected_session":{"view":{\#(view)}}}}"#.utf8)
+        XCTAssertEqual(try SessionView.selected(response: boot)?.revision, 3)
+        XCTAssertNil(try SessionView.selected(response: Data(#"{"payload":{"attach_all":{}}}"#.utf8)))
+        XCTAssertThrowsError(try SessionView(response: Data(#"{"payload":{"revision":"x"}}"#.utf8)))
+        XCTAssertThrowsError(try SessionView.attached(response: Data(#"{"payload":{}}"#.utf8)))
+    }
+
     @MainActor func testWindowName() throws {
         let v = try SessionView(json: [
             "revision": 1, "session_id": "session:1",
@@ -257,5 +271,12 @@ nonisolated final class KeyTests: XCTestCase {
         XCTAssertEqual(KeyEvent.typing("1", shift: true).first?.text, "1")
         XCTAssertEqual(KeyEvent.named("tab", shift: true), KeyEvent(code: 0x30, mods: .shift))
         XCTAssertEqual(KeyEvent.named("arrow_up", shift: true, ctrl: true, alt: true).mods, [.shift, .ctrl, .alt])
+    }
+}
+
+extension SessionView {
+    /// A view from a parsed dictionary.
+    init(json: Any) throws {
+        self = try JSONDecoder().decode(Self.self, from: JSONSerialization.data(withJSONObject: json))
     }
 }

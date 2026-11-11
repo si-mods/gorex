@@ -23,8 +23,24 @@ struct SessionView: Decodable {
     let label: String?
     let windows: [Window]?
 
-    init(json: Any) throws {
-        self = try JSONDecoder().decode(Self.self, from: JSONSerialization.data(withJSONObject: json))
+    private struct Payload<T: Decodable>: Decodable { let payload: T }
+
+    /// The view that session.view answers with, read from the bytes of its response.
+    init(response: Data) throws {
+        self = try JSONDecoder().decode(Payload<Self>.self, from: response).payload
+    }
+
+    /// The view that session.attach answers with.
+    static func attached(response: Data) throws -> Self {
+        struct Attached: Decodable { let view: SessionView }
+        return try JSONDecoder().decode(Payload<Attached>.self, from: response).payload.view
+    }
+
+    /// The view of the selected session in a session.bootstrap response, if any.
+    static func selected(response: Data) throws -> Self? {
+        struct Bootstrap: Decodable { let selected_session: Attached? }
+        struct Attached: Decodable { let view: SessionView? }
+        return try JSONDecoder().decode(Payload<Bootstrap>.self, from: response).payload.selected_session?.view
     }
 }
 
