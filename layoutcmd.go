@@ -232,18 +232,6 @@ func coerceArgs(cmd *command, args map[string]any) map[string]any {
 	return args
 }
 
-// localTabs returns the tabs with a pane of this machine, in order: those
-// the server's other clients see.
-func (a *App) localTabs() []*Tab {
-	var tabs []*Tab
-	for _, t := range a.tabs {
-		if slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.host == nil && p.SID != "" && !p.closed }) {
-			tabs = append(tabs, t)
-		}
-	}
-	return tabs
-}
-
 // localPane returns the pane of this machine's session sid, nil for none.
 func (a *App) localPane(sid string) *Pane {
 	for _, t := range a.tabs {

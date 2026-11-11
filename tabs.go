@@ -473,15 +473,13 @@ func (a *App) tiles(c *ui.Context, k *colors, t *Tab) {
 		for i := len(back) - 1; i >= 0; i-- {
 			x := r.X + 1 + float32(tileStep*(i+1))
 			inset := float32(i+1) * 0.8
-			drawTile(p, k, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, paneProgram(back[i]), false)
+			drawTile(p, k, ui.Rect{X: x, Y: y + inset, W: tileW, H: tileH - 2*inset}, back[i].program(), false)
 		}
 		if front != nil {
-			drawTile(p, k, ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}, paneProgram(front), true)
+			drawTile(p, k, ui.Rect{X: r.X + 1, Y: y, W: tileW, H: tileH}, front.program(), true)
 		}
 	})
 }
-
-func paneProgram(p *Pane) program { return p.program() }
 
 // drawTile draws a program's tile: a rounded card of its color with a
 // light rim, and its glyph when it is in front.

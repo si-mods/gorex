@@ -15,7 +15,7 @@ import (
 // says so rather than drawing nothing.
 func TestSFSymbolsOfTheIcons(t *testing.T) {
 	for _, name := range []string{"xmark", "gearshape", "sidebar.leading", "rectangle.split.2x1", "terminal"} {
-		src, ok := sfGlyph(name, 48, ui.Hex("#ffffff"))
+		src, ok := sfGlyphAt(name, 48, ui.Hex("#ffffff"), false)
 		if !ok {
 			t.Fatalf("%s: the system draws no such symbol", name)
 		}
@@ -23,7 +23,7 @@ func TestSFSymbolsOfTheIcons(t *testing.T) {
 			t.Fatalf("%s: %dx%d pixels, want 48x48", name, w, h)
 		}
 	}
-	if _, ok := sfGlyph("no.symbol.of.that.name", 48, ui.Hex("#ffffff")); ok {
+	if _, ok := sfGlyphAt("no.symbol.of.that.name", 48, ui.Hex("#ffffff"), false); ok {
 		t.Fatal("a name the system has not drew as a symbol")
 	}
 }

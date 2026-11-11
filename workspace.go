@@ -1343,10 +1343,10 @@ func (a *App) closeWorkspace() {
 	}
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
-			p.close()
+			p.end()
 			p.browser.destroy()
 			p.note.destroy()
-			a.killOn(p.host, p.SID)
+			killOn(p.host, p.SID)
 		}
 	}
 	a.tabs = nil

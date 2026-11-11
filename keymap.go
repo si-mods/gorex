@@ -227,14 +227,6 @@ func (d *keyDispatcher) reset() {
 	}
 }
 
-// pendingKeys returns the keys waiting for the rest of a sequence.
-func (d *keyDispatcher) pendingKeys() []keyChord {
-	if d == nil {
-		return nil
-	}
-	return append([]keyChord(nil), d.pending...)
-}
-
 func (d *keyDispatcher) sequenceTimeout() time.Duration {
 	if d.timeout > 0 {
 		return d.timeout

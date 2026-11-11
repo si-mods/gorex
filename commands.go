@@ -1070,8 +1070,8 @@ func (a *App) restartFocused() {
 		f.Pane = p
 		p.float = f
 	}
-	old.close()
-	a.killOn(old.host, old.SID)
+	old.end()
+	killOn(old.host, old.SID)
 	if t.Zoom == old {
 		t.Zoom = p
 	}
@@ -1125,7 +1125,7 @@ func (a *App) shortcuts(c *ui.Context) {
 	}
 	for i := 1; i <= 9; i++ {
 		k := showSpaceKey(i)
-		if a.st != nil && a.st.noAccel[keyChord{Mods: k.Mods, Key: k.Key}.String()] {
+		if a.st != nil && a.st.noAccel[keyChord(k).String()] {
 			continue
 		}
 		if c.Shortcut(k.Mods, k.Key) {
@@ -1148,7 +1148,7 @@ func (a *App) shortcuts(c *ui.Context) {
 	}
 	for i := 1; i <= 9; i++ {
 		k := showTabKey(i)
-		if a.st != nil && a.st.noAccel[keyChord{Mods: k.Mods, Key: k.Key}.String()] {
+		if a.st != nil && a.st.noAccel[keyChord(k).String()] {
 			continue
 		}
 		if c.Shortcut(k.Mods, k.Key) {
@@ -1227,7 +1227,7 @@ func (a *App) paletteItems() []paletteItem {
 				detail = cmp.Or(s.Message(), s.Title, detail)
 			}
 			items = append(items, paletteItem{
-				title: name, detail: detail, glyph: paneProgram(p).Glyph,
+				title: name, detail: detail, glyph: p.program().Glyph,
 				keys: locales.PaletteTabKeys(ti + 1), status: s,
 				run: func() {
 					a.selectTab(ti)
