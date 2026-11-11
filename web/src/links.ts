@@ -2,8 +2,10 @@
 // plugins/terminal/links.go and view.go's linkAt, with GoRex's find.go):
 // a hyperlink (OSC 8), a URL printed as text, and a web address printed
 // without its scheme, as support.github.com/tickets, which opens over
-// https. The desktop's other file paths are not links here: the browser
-// has no way to fetch a host's file. docs/web-client.md has the rules.
+// https. On a host whose gateway sends files (gorex.download), a file path
+// printed in the pane and a file:// hyperlink are links too, as the
+// desktop's in a host's pane (find.go isLink, upload.go download); files.ts
+// opens them. docs/web-client.md and docs/web-open-files.md have the rules.
 
 /** A row's text: its characters (code points) and the column each is in. */
 export interface RowText {
@@ -27,6 +29,8 @@ export interface Link {
   row: number;
   x0: number;
   x1: number;
+  /** For a link to a file on the host, the path to ask the gateway for. */
+  path?: string;
 }
 
 // urlPattern finds the URLs programs print as text. A URL sends what is not
@@ -284,14 +288,37 @@ export function webPath(path: string): boolean {
   return !(labels.length === 2 && tld.length === 2 && registryNames.has(labels[0]));
 }
 
-/** The https URL a printed path names when it is a web address without its scheme (webPath), :line:col trimmed. */
-export function webURL(link: string): string | undefined {
+/** The file path a printed link names, :line:col trimmed, as the desktop's linkPath; undefined for a URL. */
+export function linkPath(link: string): string | undefined {
   if (link.includes("://")) return undefined;
-  const path = linkLine.exec(link)?.[1] ?? link;
-  return webPath(path) ? `https://${path}` : undefined;
+  return linkLine.exec(link)?.[1] ?? link;
 }
 
-/** Whether the page opens a URL: http, https, ftp and mailto. A file:// URL names a file on the host, which a browser cannot reach. */
+/** The https URL a printed path names when it is a web address without its scheme (webPath), :line:col trimmed. */
+export function webURL(link: string): string | undefined {
+  const path = linkPath(link);
+  return path !== undefined && webPath(path) ? `https://${path}` : undefined;
+}
+
+/**
+ * The path a file:// URL names on the host, as the desktop's download
+ * reads it: the host ignored, the path percent-decoded, and a Windows
+ * drive's leading slash taken off (file:///C:/x is C:/x). Undefined for
+ * another URL, or one without a path.
+ */
+export function fileURLPath(url: string): string | undefined {
+  if (!/^file:\/\//i.test(url)) return undefined;
+  let path: string;
+  try {
+    path = decodeURIComponent(new URL(url).pathname);
+  } catch {
+    return undefined;
+  }
+  if (path.length > 2 && path[2] === ":") path = path.slice(1);
+  return path === "" || path === "/" ? undefined : path;
+}
+
+/** Whether the page opens a URL: http, https, ftp and mailto. A file:// URL names a file on the host, which only the gateway sends (fileURLPath). */
 export function opens(url: string): boolean {
   return /^(?:https?|ftp):\/\//i.test(url) || /^mailto:/i.test(url);
 }
@@ -339,9 +366,12 @@ function autolink(g: LinkGrid, url: string, row: number, t: RowText, x0: number,
 /**
  * The link at a cell, as the desktop's linkAt: a hyperlink (OSC 8), a URL
  * printed as text, or a web address printed without its scheme; none for
- * one the page does not open (opens).
+ * one the page does not open (opens). With files (the host sends files), a
+ * file:// URL and a printed file path are links to the host's file, with
+ * its path: as the desktop's isLink in a host's pane, any path but a
+ * folder's (a trailing /), and none written with backslashes (C:\dir\x).
  */
-export function linkAt(g: LinkGrid, col: number, row: number): Link | undefined {
+export function linkAt(g: LinkGrid, col: number, row: number, files = false): Link | undefined {
   const found = ((): Link | undefined => {
     const url = g.hyperlinkAt(col, row);
     if (url !== "") {
@@ -357,9 +387,22 @@ export function linkAt(g: LinkGrid, col: number, row: number): Link | undefined 
     const u = urlAt(t.text, t.cols, col);
     if (u) return { ...u, row };
     const p = pathAt(t.text, t.cols, col);
-    const web = p && webURL(p.path);
-    if (p && web) return { url: web, row, x0: p.x0, x1: p.x1 };
+    if (!p) return undefined;
+    const web = webURL(p.path);
+    if (web) return { url: web, row, x0: p.x0, x1: p.x1 };
+    const path = linkPath(p.path);
+    if (files && path && !path.endsWith("/") && !backslashed(t, p.path, p.x0, p.x1)) return { url: p.path, row, x0: p.x0, x1: p.x1, path };
     return undefined;
   })();
-  return found && opens(found.url) ? found : undefined;
+  if (!found) return undefined;
+  if (found.path !== undefined || opens(found.url)) return found;
+  const path = files ? fileURLPath(found.url) : undefined;
+  return path !== undefined ? { ...found, path } : undefined;
+}
+
+/** Whether a path printed at columns x0 up to x1 of a row is part of one written with backslashes, as the x.txt of C:\dir\x.txt. */
+function backslashed(t: RowText, path: string, x0: number, x1: number): boolean {
+  if (path.includes("\\")) return true;
+  const i = t.cols.indexOf(x0), j = t.cols.indexOf(x1);
+  return (i > 0 && t.text[i - 1] === "\\") || (j >= 0 && t.text[j] === "\\");
 }

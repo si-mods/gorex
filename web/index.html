@@ -423,6 +423,30 @@
   .settings-row > .host-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
   .settings-row > .host-add .pane-icon { width: 14px; height: 14px; }
   .settings-row > .host-form .host-title { display: none; }
+  /* The image viewer (viewer.ts), as the Settings dialog: a frosted panel over a backdrop that only dims
+     (DESIGN.md). The head holds the name, the size and the lucide buttons; the stage the image, which it
+     places itself (translate and size), and takes drags and pinches itself. */
+  dialog.viewer {
+    width: calc(100vw - 32px); height: calc(100dvh - 32px); max-width: none; max-height: none;
+    padding: 0; border: 1px solid var(--panel-edge); border-radius: 16px; overflow: hidden;
+    background: var(--panel); color: var(--text); font: inherit;
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+  }
+  dialog.viewer[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+  dialog.viewer::backdrop { background: rgba(0, 0, 0, 0.35); }
+  .viewer-head { display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 16px; border-bottom: 1px solid var(--sep); }
+  .viewer-title { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
+  .viewer-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .viewer-info, .viewer-zoom { flex: none; color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .viewer-buttons { display: flex; align-items: center; gap: 2px; flex: none; }
+  .viewer-zoom { min-width: 40px; margin-right: 4px; text-align: right; }
+  .viewer-button:disabled { opacity: 0.4; cursor: default; background: none; }
+  .viewer-stage { position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .viewer-stage.pans { cursor: grab; }
+  .viewer-stage.pans:active { cursor: grabbing; }
+  .viewer-image { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; image-rendering: auto; }
+  .viewer-image[hidden], .viewer-note[hidden] { display: none; }
+  .viewer-note { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; color: var(--muted); text-align: center; }
   @media (max-width: 640px) {
     body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
     #sessions { grid-row: auto; max-height: 36vh; }
@@ -439,6 +463,10 @@
     .settings-scroll { padding: 4px 16px 16px; }
     .settings-line { flex-wrap: wrap; row-gap: 8px; }
     .settings-control { flex-wrap: wrap; }
+    /* The viewer fills the screen too; its name keeps the head's room. */
+    dialog.viewer { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
+    .viewer-head { padding-left: 12px; }
+    .viewer-info, .viewer-zoom { display: none; }
   }
 </style>
 </head>

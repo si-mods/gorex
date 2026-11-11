@@ -8,7 +8,8 @@
 // program that tracks the mouse gets the clicks, drags, motion and wheel,
 // encoded for its modes; Shift then selects instead, and is not reported.
 // Ctrl (Cmd on the Mac) over a link underlines it, and a click opens it,
-// as on the desktop (links.ts).
+// as on the desktop (links.ts): a URL in a new tab, a host's file with
+// files.ts.
 import { Mods } from "./ghostty";
 import { icon } from "./hosts";
 import { mac } from "./keys";
@@ -28,6 +29,10 @@ export interface PointerHost {
   /** Writes bytes to the program, as typed keys go. */
   send(b: Uint8Array): void;
   status(s: string): void;
+  /** Whether the host sends files (gorex.download): its file paths are links. */
+  files(): boolean;
+  /** Opens a file of the host, a link's path. */
+  openFile(path: string): void;
 }
 
 /** A long press is a finger held this long without moving more than slop, as UIKit's. */
@@ -239,7 +244,7 @@ export class PointerInput {
   private linkUnder(t: Terminal): Link | undefined {
     if (!linkHeld || !this.over || (this.down && this.down.kind !== "link")) return undefined;
     const p = this.at(this.over, t);
-    return t.linkAt(p.col, p.row);
+    return t.linkAt(p.col, p.row, this.host.files());
   }
 
   /**
@@ -293,7 +298,8 @@ export class PointerInput {
       if (link || t.hyperlinkAt(p.col, p.row) !== "") {
         this.canvas.setPointerCapture(e.pointerId);
         this.down = { id: e.pointerId, button, kind: "link" };
-        if (link) window.open(link.url, "_blank", "noopener,noreferrer");
+        if (link?.path !== undefined) this.host.openFile(link.path);
+        else if (link) window.open(link.url, "_blank", "noopener,noreferrer");
         return;
       }
     }

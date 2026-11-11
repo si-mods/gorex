@@ -1,5 +1,6 @@
 // One pane of a window: a block's terminal, its stream fed to
 // libghostty-vt, drawn on its own canvas, the keys typed written back.
+import { openFile } from "./files";
 import { Ghostty } from "./ghostty";
 import { shortcut } from "./keys";
 import { PointerInput } from "./pointer";
@@ -139,6 +140,15 @@ export class TerminalView {
       },
       send: (b) => this.type(b),
       status: (s) => this.app.status(s),
+      files: () => !!this.app.control()?.features.has("gorex.download"),
+      openFile: (path) =>
+        openFile(this.session, this.block, path, {
+          control: () => this.app.control(),
+          status: (s) => this.app.status(s),
+          back: () => {
+            if (!this.closed) this.el.focus({ preventScroll: true });
+          },
+        }),
     });
     this.el.addEventListener("keydown", (e) => this.key(e));
     this.body.addEventListener("wheel", (e) => this.pointer.wheel(e), { passive: false });

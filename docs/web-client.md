@@ -201,14 +201,16 @@ headers on Cloudflare:
 
 - `Content-Security-Policy`: `default-src 'none'`; the page's own
   scripts (`script-src 'self'`, with `'wasm-unsafe-eval'` for
-  libghostty-vt), fonts and images (and `data:` for the empty favicon);
+  libghostty-vt), fonts and images (and `data:` for the empty favicon,
+  `blob:` for the image viewer's checked images, for images only);
   its inline `<style>` (`style-src 'self' 'unsafe-inline'`; the styles
   the script sets go through the CSSOM, which the policy does not
   restrict); no `<base>`, no forms, no framing elsewhere. `connect-src`
   is `'self' http: https: ws: wss:`: the hosts are the user's, added in
   the page, so the policy cannot name them. The policy's defence is that
   no script but the page's own runs; a narrower `connect-src` would need
-  the hosts at build time.
+  the hosts at build time. `frame-src http: https:` lets the hidden frame
+  that takes a host's download (docs/web-open-files.md) load it.
 - `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
 - The file names carry no hash. So `/`, `index.html`, `app.js` and the
   wasm are `no-cache` (revalidated, with Cloudflare's ETag, on every
@@ -508,17 +510,57 @@ program gets.
     text is found on one row only, as on the desktop;
   - a web address printed without its scheme, as
     `support.github.com/tickets`, found as the desktop finds a file path
-    and opened over https, `:line:col` trimmed.
+    and opened over https, `:line:col` trimmed;
+  - on a host whose welcome lists `gorex.download`, a file path printed in
+    the pane (the ported `pathAt`): as the desktop's `isLink` in a host's
+    pane, any path but a folder's (one ending in `/`), not checked on the
+    host, so a missing one answers "No such file" when it is opened. A path
+    written with backslashes (`C:\dir\x`) is not a link, as on the desktop.
 
-  The page opens only `http`, `https`, `ftp` and `mailto:` links. A
-  `file://` URL names a file on the host, which a browser cannot reach, so
-  it is not a link here. No modifier on a touch screen: a finger does not
-  open links.
+  The page opens `http`, `https`, `ftp` and `mailto:` links in a new tab.
+  On a host with `gorex.download`, a `file://` URL (a hyperlink, as
+  `ls --hyperlink` prints, or printed as text) is a link to the host's
+  file, as the desktop's `download` reads it: its host ignored, its path
+  percent-decoded, and `file:///C:/dir/x` read as `C:/dir/x`; elsewhere it
+  is not a link. Without `gorex.download` file paths are not links. No
+  modifier on a touch screen: a finger does not open links.
 
-  Differences from the desktop: file paths are not links. The desktop opens
-  a path printed in a local pane and downloads one printed in a host's pane
-  over the peer protocol (`upload.go` `download`); the gateway has no
-  download API for the browser. docs/web-open-files.md proposes one. The desktop tells a web address by the
+  A click on a file link opens the host's file (`web/src/files.ts`, the
+  design in docs/web-open-files.md): the page asks for a ticket with
+  `com.superlogical.terminal.download_begin` (the path with `:line:col`
+  trimmed), and a second click on the same path while one is under way
+  does nothing. An image (`png`, `jpg`/`jpeg`, `gif`, `webp`, `avif`,
+  `bmp`, `ico`, `svg`, by the type the gateway answers) of at most 50 MiB
+  is fetched from `/api/download?ticket=…`; when its first bytes are that
+  image's signature (for SVG, `<svg` after a byte order mark, white space
+  and the XML prolog), it shows in the viewer from a blob of that image
+  type only. Any other file, a larger image, or one whose bytes do not
+  match is the browser's own download: the page navigates a hidden link to
+  `/api/download?ticket=…` (a new ticket after a mismatch), which the
+  gateway answers as an attachment, so no blob of it exists on the page.
+  Errors show in the status line: "No such file", "A folder is not
+  downloaded", "Not a regular file", "Permission denied", "Too large",
+  "The host does not send files", else the gateway's message.
+
+  The viewer (`web/src/viewer.ts`) is a dialog over the window, as the
+  Settings dialog: a frosted panel over a backdrop that only dims. It shows
+  the image fitted to the window at first (never above its actual size),
+  its name, pixel size and file size, and lucide buttons: zoom out
+  (`zoom-out`), zoom in (`zoom-in`), actual size (`scan`), download
+  (`download`, a new ticket and the browser's download) and close (`x`).
+  Ctrl+wheel and a trackpad's pinch, which arrives as Ctrl+wheel, zoom at
+  the pointer, with a listener that is not passive so that the page does
+  not zoom; a plain wheel and a drag pan an image larger than the window;
+  two fingers zoom on a touch screen. Escape, a click outside the panel or
+  a click beside the image closes it, and the keyboard returns to the
+  pane. An image larger than 100 megapixels is not decoded; the viewer
+  offers the download instead. The blob URL is revoked when the viewer
+  closes.
+
+  Differences from the desktop: the desktop downloads a host's file into
+  the Downloads folder, resumes it and opens it with the system, and shows
+  transfers in a list; the web client hands any file but an image it shows
+  to the browser's download and shows only errors. The desktop tells a web address by the
   public suffix list (`golang.org/x/net/publicsuffix`); the page does not
   ship that list and takes a host name whose last label is a two-letter
   country code (every one the list has) or one of about a hundred common

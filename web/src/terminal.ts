@@ -745,8 +745,8 @@ export class Terminal {
     return { text, cols };
   }
 
-  /** The link at a viewport cell (links.ts linkAt), if any. */
-  linkAt(col: number, row: number): Link | undefined {
+  /** The link at a viewport cell (links.ts linkAt), if any; with files, the host's file paths too. */
+  linkAt(col: number, row: number, files = false): Link | undefined {
     return linkAt(
       {
         cols: this.columns(),
@@ -757,6 +757,7 @@ export class Terminal {
       },
       col,
       row,
+      files,
     );
   }
 
