@@ -101,7 +101,7 @@ func newTestApp(t *testing.T) (*App, *ui.Tester) {
 	st := &store{client: client, started: true}
 	// The server's changes show at once, on the test's goroutine.
 	st.use(client, nil)
-	a := &App{st: st, client: client, stop: make(chan struct{})}
+	a := &App{st: st, client: client}
 	w := st.addWorkspace()
 	a.ws, w.app, st.apps = w, a, []*App{a}
 	a.newTab(os.TempDir())

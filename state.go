@@ -449,12 +449,10 @@ type App struct {
 	// machine, which isLink answers from; the main thread's.
 	pathStats map[string]pathStat
 	// st is the app's store of workspaces, ws the one the window shows,
-	// and slot the window's place among the windows. stop closes with the
-	// window.
+	// and slot the window's place among the windows.
 	st     *store
 	ws     *Workspace
 	slot   int
-	stop   chan struct{}
 	client *rex.Client
 	hello  rex.Hello
 	// keys matches key presses to actions; it runs before the terminal
@@ -3159,53 +3157,66 @@ func sortedInfos(m map[string]rex.SessionInfo) []rex.SessionInfo {
 	return out
 }
 
-// poll asks the server what runs in each session, every half second,
-// until the window closes. Less often it refreshes the remote host lists.
-func (a *App) poll(win *mygo.Window, client *rex.Client) {
+// poll asks this machine's server what runs in each session, every half
+// second, for every window, until stop closes or the connection does;
+// update runs a change on the main thread. The windows draw again as the
+// list changes (its ETag). Less often it refreshes the remote host lists.
+func (st *store) poll(client *rex.Client, stop chan struct{}, update func(func())) {
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
-	rounds := 0
+	rounds, etag := 0, ""
 	for {
 		select {
-		case <-a.stop:
+		case <-stop:
 			return
 		case <-client.Closed():
-			win.Update(func() {
-				// Not once the window took a new connection.
-				if !a.quitting && a.client == client {
-					a.errMsg = locales.Messages.ErrorConnectionLost
+			update(func() {
+				for _, a := range st.apps {
+					// Not once the window took a new connection.
+					if !a.quitting && a.client == client {
+						a.errMsg = locales.Messages.ErrorConnectionLost
+					}
 				}
+				st.redraw()
 			})
 			return
 		case <-tick.C:
 		}
 		rounds++
+		var tailnet *rex.TailnetStatus
 		if rounds%30 == 1 {
-			if st, err := client.RemoteStatus(); err == nil {
-				win.Update(func() {
-					if a.win != win {
-						return
-					}
-					if st.Tailnet != nil {
-						a.reconcileTailnet(st.Tailnet)
-					}
-				})
+			if s, err := client.RemoteStatus(); err == nil {
+				tailnet = s.Tailnet
 			}
 		}
-		infos, err := client.List()
+		infos, next, changed, err := client.ListSince(etag)
 		if err != nil {
 			continue
 		}
+		etag = next
 		byID := make(map[string]rex.SessionInfo, len(infos))
 		for _, in := range infos {
 			byID[in.ID] = in
 		}
-		win.Update(func() {
-			if a.win == win {
-				if a.st != nil {
-					a.st.infos = byID
-				}
-				a.apply(nil, byID, hostLayout{})
+		update(func() {
+			// A list on its way as the last window closed, or the
+			// connection was replaced.
+			if st.polling != stop {
+				return
+			}
+			if tailnet != nil {
+				st.apps[0].reconcileTailnet(tailnet)
+			}
+			if changed {
+				st.infos = byID
+			}
+			// The same list too: apply also saves a layout changed a
+			// while ago, and retries a notification's click.
+			for _, a := range st.apps {
+				a.apply(nil, st.infos, hostLayout{})
+			}
+			if changed || tailnet != nil {
+				st.redraw()
 			}
 		})
 	}

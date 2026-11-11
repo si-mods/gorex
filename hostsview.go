@@ -549,7 +549,9 @@ func (a *App) hostLayoutSheet(c *ui.Context, k *colors) {
 				}
 			})
 		})
+		// The sheet reads the layout again each second while it shows.
 		a.refreshHostLayout()
+		c.After(time.Second)
 	})
 	if was && !page.layoutOpen {
 		closeHostLayout()

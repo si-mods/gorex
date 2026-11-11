@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -562,45 +563,50 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 const hostLayoutGrace = 2
 
 // watchHost asks a host what runs in its sessions every second, until its
-// connection closes, an ask fails, or the host is closed.
+// connection closes, an ask fails, or the host is closed. The windows take
+// the list, and draw again, as it changes (its ETag), and while a session
+// waits for the host's layout.
 func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	round := 0
-	first := map[string]int{}    // the poll each session first appeared in
-	prev := map[string]bool{}    // the sessions of the poll before
-	var l hostLayout             // the host's layout, as last read
-	shared, read := false, false // the host shares its layout, and it was read
+	first := map[string]int{}            // the poll each session first appeared in
+	prev := map[string]rex.SessionInfo{} // the sessions of the poll before
+	var l hostLayout                     // the host's layout, as last read
+	shared, read := false, false         // the host shares its layout, and it was read
+	etag, held := "", false              // of the last list, and whether it held a session
 	for {
 		select {
 		case <-c.Closed():
 			return
 		case <-h.stop:
 			return
-		case <-h.retry: // connected: nothing to retry
+		case <-h.retry: // connected: the next list is taken all the same (openTailnetHost)
+			etag = ""
 			continue
 		case <-tick.C:
 		}
 		round++
-		infos, err := c.List()
+		infos, next, changed, err := c.ListSince(etag)
 		if err != nil {
 			// A connection that stopped answering is as good as dropped.
 			return
 		}
+		if etag = next; !changed {
+			infos = slices.Collect(maps.Values(prev))
+		}
 		byID := make(map[string]rex.SessionInfo, len(infos))
-		next := make(map[string]bool, len(infos))
 		fresh := false
 		for _, in := range infos {
 			byID[in.ID] = in
-			next[in.ID] = true
-			if !prev[in.ID] {
+			if _, ok := prev[in.ID]; !ok {
 				fresh = true
 			}
 			if _, ok := first[in.ID]; !ok {
 				first[in.ID] = round
 			}
 		}
-		prev = next
+		prev = byID
 		// A session may be adopted in the tab the host's shared layout
 		// shows it in, with its splits. The layout is read when it was not
 		// yet, when a session appears, and while one the layout does not
@@ -653,6 +659,11 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 				l.hold[id] = true
 			}
 		}
+		// A session the layout stops holding opens in the round after.
+		if !changed && l.hold == nil && !held {
+			continue
+		}
+		held = l.hold != nil
 		layout := l
 		update(func() {
 			h.infos = byID

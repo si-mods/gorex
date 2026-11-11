@@ -214,6 +214,9 @@ type store struct {
 	clickedAt time.Time
 	// apps are the open windows, the most recently focused first.
 	apps []*App
+	// polling stops the poll of this machine's server, which runs while
+	// a window is open; nil while none runs.
+	polling chan struct{}
 	// lastClosed is the workspace of the last window, once it closed: it
 	// opens again with the app, or as the app is activated (macOS).
 	lastClosed *Workspace
@@ -766,9 +769,7 @@ func stateKey(slot int) string {
 // redraw draws every window again.
 func (st *store) redraw() {
 	for _, a := range st.apps {
-		if a.win != nil {
-			a.win.Update(func() {})
-		}
+		a.updater()(func() {})
 	}
 	if w := settingsUI.win; w != nil {
 		w.Update(func() {})
@@ -865,10 +866,8 @@ func (st *store) adopt(client *rex.Client) bool {
 			shown[a] = w
 			a.detach()
 		}
-		if a.win != nil {
-			go a.poll(a.win, st.client)
-		}
 	}
+	st.repoll()
 	// A server with no layout, as one that stopped for good, lost it:
 	// the windows keep theirs.
 	// takeShow acts on the layout read here, never the last connection's.
@@ -1089,7 +1088,7 @@ var newWindow = func(a *App) *mygo.Window {
 
 // openWindow opens a window that shows w.
 func (st *store) openWindow(w *Workspace) *App {
-	a := &App{st: st, client: st.client, hello: st.hello, errMsg: st.errMsg, slot: st.freeSlot(), stop: make(chan struct{}), keys: newKeyDispatcher()}
+	a := &App{st: st, client: st.client, hello: st.hello, errMsg: st.errMsg, slot: st.freeSlot(), keys: newKeyDispatcher()}
 	a.win = newWindow(a)
 	if err := a.loadLuaConfig(); err != nil {
 		a.err = err.Error()
@@ -1102,7 +1101,9 @@ func (st *store) openWindow(w *Workspace) *App {
 	}
 	a.show(w)
 	if win := a.win; win != nil {
-		go a.poll(win, st.client)
+		if st.polling == nil {
+			st.repoll()
+		}
 		win.OnFocus(func() { st.raise(a) })
 		win.OnClosed(func() { st.closed(a) })
 		if !st.debugging {
@@ -1113,17 +1114,32 @@ func (st *store) openWindow(w *Workspace) *App {
 	return a
 }
 
+// repoll has one poll of this machine's server, st.client's, run for the
+// windows, in place of the one that ran: none without a window.
+func (st *store) repoll() {
+	if st.polling != nil {
+		close(st.polling)
+		st.polling = nil
+	}
+	if slices.ContainsFunc(st.apps, func(a *App) bool { return a.win != nil }) {
+		st.polling = make(chan struct{})
+		go st.poll(st.client, st.polling, mygo.RunOnMain)
+	}
+}
+
 // closed forgets a window that closed; its workspace goes on, its
 // terminals detached. The hosts stay connected for the next window, as
 // the app stays without windows on macOS.
 func (st *store) closed(a *App) {
-	close(a.stop)
 	a.quitting = true
 	w := a.ws
 	a.detach()
 	st.unkeepAll(a)
 	a.win = nil
 	st.apps = slices.DeleteFunc(st.apps, func(o *App) bool { return o == a })
+	if len(st.apps) == 0 {
+		st.repoll()
+	}
 	if len(st.apps) == 0 && w != nil {
 		st.lastClosed = w
 	}
