@@ -401,11 +401,9 @@ func (a *App) dropOnCanvas(t *Tab, p *Pane, x, y float32) {
 	if t.Focus != nil && t.Focus.float != nil {
 		w, h = t.Focus.float.W, t.Focus.float.H
 	}
-	f := &Float{Pane: p, X: (cv.X + x/cv.Scale) / cv.W, Y: (cv.Y + y/cv.Scale) / cv.H, W: w, H: h}
 	// A float of a canvas's tab is free: its box stays where it is put.
-	p.Tab, p.Node, p.float = t, &Node{ID: a.id(), Pane: p}, f
-	f.clamp()
-	t.Floats = append(t.Floats, f)
+	p.Tab = t
+	a.floatOver(t, p, savedFloat{X: (cv.X + x/cv.Scale) / cv.W, Y: (cv.Y + y/cv.Scale) / cv.H, W: w, H: h})
 	t.setFocus(p)
 	if a.tab() == t {
 		a.focusReq = p

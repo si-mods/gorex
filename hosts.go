@@ -930,16 +930,6 @@ func (a *App) adoptPane(h *hostConn, t *Tab, in rex.SessionInfo, name string) *P
 	return p
 }
 
-// floatOver makes pane p float over tab t, at the box of the saved float sf.
-func (a *App) floatOver(t *Tab, p *Pane, sf savedFloat) *Float {
-	f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
-	f.clamp()
-	p.Node = &Node{ID: a.id(), Pane: p}
-	p.float = f
-	t.Floats = append(t.Floats, f)
-	return f
-}
-
 // splitNode puts pane p beside node n of tab t, after it (right or below)
 // when after, else before it, with ratio as the first side's share. The
 // tab shows all its tiled panes, as no pane fills it; its focus stays.
