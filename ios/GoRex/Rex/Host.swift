@@ -712,7 +712,7 @@ extension String {
     /// text by default but may be an emoji, as the "✳" Claude Code puts
     /// in its title, gets U+FE0E unless it chose a presentation already;
     /// iOS would draw it as an emoji.
-    var asText: String {
+    nonisolated var asText: String {
         var out = String.UnicodeScalarView()
         let scalars = Array(unicodeScalars)
         for (i, c) in scalars.enumerated() {
