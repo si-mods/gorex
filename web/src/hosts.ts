@@ -192,6 +192,13 @@ export function icon(name: string): HTMLElement {
   return i;
 }
 
+/** The check column of a picker row: a check mark when chosen, else the same width empty. */
+export function check(on: boolean): HTMLElement {
+  const c = el("span", "theme-check");
+  if (on) c.append(icon("check"));
+  return c;
+}
+
 /** A command in a box, with a button that copies it. */
 export function commandBox(command: string): HTMLElement {
   const box = el("div", "command");
@@ -268,7 +275,9 @@ export class HostList {
 
   private drawButton() {
     const h = this.chosen;
-    this.button.replaceChildren(icon(h?.icon ?? "plus"), el("span", "host-name", h?.name ?? "Add a Host"), el("span", "host-chevron", "⌄"));
+    const chevron = el("span", "host-chevron");
+    chevron.append(icon("chevron-down"));
+    this.button.replaceChildren(icon(h?.icon ?? "plus"), el("span", "host-name", h?.name ?? "Add a Host"), chevron);
     this.button.title = h ? h.url : "Add a GoRex host";
   }
 
@@ -301,7 +310,7 @@ export class HostList {
       pick.type = "button";
       const text = el("span", "host-text");
       text.append(el("span", "theme-name", h.name), el("span", "host-url", h.url));
-      pick.append(icon(h.icon), text, el("span", "theme-check", h.id === this.chosen?.id ? "✓" : ""));
+      pick.append(icon(h.icon), text, check(h.id === this.chosen?.id));
       pick.onclick = () => {
         this.hide();
         if (h.id !== this.chosen?.id) this.choose(h);

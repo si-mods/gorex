@@ -1,5 +1,6 @@
 // Ghostty themes: the list GoRex's iOS app ships (ios/GoRex/ghostty-themes.json,
 // copied into the build), the choice kept in the browser, and the picker.
+import { check, icon } from "./hosts";
 import type { RGB } from "./ghostty";
 import type { Theme } from "./terminal";
 
@@ -118,9 +119,9 @@ export function mountPicker(host: HTMLElement, themes: ThemeEntry[], onChoose: (
       }
     } else {
       sw.classList.add("host");
-      sw.textContent = "▭";
+      sw.append(icon("square-terminal"));
     }
-    b.append(sw, el("span", "theme-name", t?.name ?? "Host Colors"), el("span", "theme-check", name === selected ? "✓" : ""));
+    b.append(sw, el("span", "theme-name", t?.name ?? "Host Colors"), check(name === selected));
     b.onclick = () => {
       selected = name;
       remember(name);

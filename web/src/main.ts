@@ -2,7 +2,7 @@
 // panes, live, over the same API the iOS app speaks. The page is hosted on
 // its own; the host is one the user added (hosts.ts).
 import { Ghostty } from "./ghostty";
-import { commandBox, diagnose, Host, HostList, hostURL, mixedContent, Problem } from "./hosts";
+import { commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
 import { shortcut } from "./keys";
 import { describe } from "./pane";
 import { mostUrgent, programName, programOf, rank, seenKey, Status, statusOf, tiles, tilesWidth } from "./programs";
@@ -441,7 +441,7 @@ function sidebar() {
     const add = document.createElement("button");
     add.className = "icon";
     add.type = "button";
-    add.textContent = "+";
+    add.append(icon("plus"));
     add.title = "New Window";
     add.onclick = () => newWindow(s.id);
     h.append(name, add);
@@ -488,7 +488,7 @@ function sidebar() {
       const x = document.createElement("button");
       x.className = "icon close";
       x.type = "button";
-      x.textContent = "✕";
+      x.append(icon("x"));
       x.title = "Close Window";
       x.onclick = () => closeWindow(s.id, w.window_id);
       row.append(b, x);
