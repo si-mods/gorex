@@ -704,6 +704,8 @@ func TestAdoptHostSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The host's tabs open in the space here of their space's name there.
+	a.ws.Name = savedWorkspaces(t, remote).Sessions[0].Name
 	tabsOf := func(app *App, sid string) []*Tab {
 		var out []*Tab
 		for _, t := range app.tabs {
@@ -844,6 +846,8 @@ func TestAdoptHostTabSplits(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// The host's tabs open in the space here of their space's name there.
+	a.ws.Name = "studio"
 	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
 	tabsOn := func() []*Tab { return a.tabsOn(h) }
@@ -901,6 +905,8 @@ func TestAdoptHostTabSavedLate(t *testing.T) {
 	if err := remote.SetLayout(json.RawMessage(`{"version":2,"sessions":[]}`)); err != nil {
 		t.Fatal(err)
 	}
+	// The host's tabs open in the space here of their space's name there.
+	a.ws.Name = "studio"
 	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
 	// The first polls see the sessions and a layout that names neither,
@@ -976,6 +982,8 @@ func TestAdoptHostTabSplitLater(t *testing.T) {
 	}
 	first := create()
 	share(&savedNode{SID: first})
+	// The host's tabs open in the space here of their space's name there.
+	a.ws.Name = "studio"
 	h = a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
 	waitFor(t, tt, "the host's tab", func() bool { return len(a.tabsOn(h)) == 1 })
@@ -1061,6 +1069,8 @@ func TestAdoptHostTabSplitZoomed(t *testing.T) {
 	}
 	first, second := create(), create()
 	share(&savedNode{Ratio: 0.5, A: &savedNode{SID: first}, B: &savedNode{SID: second}}, true)
+	// The host's tabs open in the space here of their space's name there.
+	a.ws.Name = "studio"
 	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
 	waitFor(t, tt, "the host's tab", func() bool { return len(a.tabsOn(h)) == 1 })

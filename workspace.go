@@ -684,6 +684,19 @@ func (st *store) taken(name string) bool {
 	return slices.ContainsFunc(st.workspaces, func(w *Workspace) bool { return strings.EqualFold(w.Name, name) })
 }
 
+// workspaceNamed returns the workspace with the name, as taken compares
+// them; nil for none or "".
+func (st *store) workspaceNamed(name string) *Workspace {
+	if name == "" {
+		return nil
+	}
+	i := slices.IndexFunc(st.workspaces, func(w *Workspace) bool { return strings.EqualFold(w.Name, name) })
+	if i < 0 {
+		return nil
+	}
+	return st.workspaces[i]
+}
+
 // remove forgets a workspace, and the window that shows it shows none.
 func (st *store) remove(w *Workspace) {
 	st.workspaces = slices.DeleteFunc(st.workspaces, func(o *Workspace) bool { return o == w })
