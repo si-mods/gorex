@@ -82,7 +82,8 @@ func startHostServer(t *testing.T) (string, *rex.Client) {
 // close, as over a slow network; held counts those waiting. blackhole is
 // a network gone without a word: nothing passes and nothing closes, new
 // connections are accepted and dead too, and the flows of then stay dead
-// once it heals, as a NAT that forgot them.
+// once it heals, as a NAT that forgot them. While slow is set, what passes
+// either way waits for it to close.
 type hostProxy struct {
 	path, to string
 	ln       net.Listener
@@ -93,6 +94,21 @@ type hostProxy struct {
 	gen      int // of the network: a flow of an older one is dead
 	gate     chan struct{}
 	held     atomic.Int32
+	slow     chan struct{}
+}
+
+// hold holds what passes either way, as a slow network, till release.
+func (p *hostProxy) hold() (release func()) {
+	g := make(chan struct{})
+	p.mu.Lock()
+	p.slow = g
+	p.mu.Unlock()
+	return sync.OnceFunc(func() {
+		p.mu.Lock()
+		p.slow = nil
+		p.mu.Unlock()
+		close(g)
+	})
 }
 
 func (p *hostProxy) blackhole() {
@@ -121,6 +137,12 @@ func (p *hostProxy) pump(gen int, dst, src net.Conn) {
 	buf := make([]byte, 32<<10)
 	for {
 		n, err := src.Read(buf)
+		p.mu.Lock()
+		slow := p.slow
+		p.mu.Unlock()
+		if slow != nil {
+			<-slow
+		}
 		alive := p.alive(gen)
 		if n > 0 && alive {
 			dst.Write(buf[:n])
@@ -232,6 +254,16 @@ func sessionIDs(t *testing.T, c *rex.Client) []string {
 		}
 	}
 	return ids
+}
+
+// hostTab opens a tab on host h in dir there, and returns it once the host
+// made its session and the window shows it.
+func hostTab(t *testing.T, a *App, tt *ui.Tester, h *hostConn, dir string) *Tab {
+	t.Helper()
+	n := len(a.tabsOn(h))
+	a.newTabOn(h, dir)
+	waitFor(t, tt, "the tab on the host", func() bool { return len(a.tabsOn(h)) > n })
+	return a.tab()
 }
 
 func TestValidateHost(t *testing.T) {
@@ -350,7 +382,7 @@ func TestRemoteHost(t *testing.T) {
 	// host's name in the sidebar.
 	local := a.tab()
 	a.selectTab(0)
-	rt := a.newTabOn(h, "")
+	rt := hostTab(t, a, tt, h, "")
 	if rt == nil || a.tab() != rt || a.tabs[len(a.tabs)-1] != rt || rt.host() != h {
 		t.Fatalf("the remote tab is %v, active %d", rt, a.active)
 	}
@@ -379,17 +411,19 @@ func TestRemoteHost(t *testing.T) {
 	p.term.Send([]byte("echo REMOTE_$((6*7))\r"))
 	waitFor(t, tt, "the remote echo", func() bool { return strings.Contains(p.term.Text(), "REMOTE_42") })
 	a.split(false)
+	waitFor(t, tt, "the split", func() bool { return len(rt.panes()) == 2 })
 	q := rt.Focus
 	if q == p || q.host != h || !slices.Contains(sessionIDs(t, remote), q.SID) {
 		t.Fatalf("the split is on %v", q.host)
 	}
 	a.closePane(q)
 	waitFor(t, tt, "the split's session to end on the host", func() bool { return !slices.Contains(sessionIDs(t, remote), q.SID) })
-	nt := a.newTab(a.currentDir())
-	if nt == nil || nt.host() != h {
+	a.newTab(a.currentDir())
+	waitFor(t, tt, "New Tab from the remote tab", func() bool { return len(a.tabsOn(h)) == 2 })
+	if nt := a.tab(); nt.host() != h || nt == rt {
 		t.Fatal("New Tab from a remote tab did not open on its host")
 	}
-	a.closeTab(nt)
+	a.closeTab(a.tab())
 	if !slices.ContainsFunc(a.paletteItems(), func(it paletteItem) bool { return it.title == "New Tab on office-mac" }) {
 		t.Error("the palette has no New Tab on office-mac")
 	}
@@ -444,7 +478,7 @@ func TestRemoteHost(t *testing.T) {
 
 	// A session that ends on the host closes its pane.
 	a.selectTab(0)
-	gone := a.newTabOn(h, "")
+	gone := hostTab(t, a, tt, h, "")
 	waitFor(t, tt, "the shell", func() bool {
 		return gone.Focus.term != nil && strings.Contains(gone.Focus.term.Text(), testShell.prompt)
 	})
@@ -462,6 +496,84 @@ func TestRemoteHost(t *testing.T) {
 	}
 	if hs, _ := loadHosts(); len(hs) != 0 {
 		t.Errorf("hosts.json keeps %v", hs)
+	}
+}
+
+// TestHostCreateHoldsNothing opens panes on a host that answers late: the
+// window goes on meanwhile, without them, and they show as it answers, in
+// the order asked: a split, then two tabs after the active one.
+func TestHostCreateHoldsNothing(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, proxy, p := remotePane(t, a, tt, t.TempDir())
+	tab := p.Tab
+	release := proxy.hold()
+	defer release()
+	late := time.AfterFunc(3*time.Second, release) // were the window held
+	defer late.Stop()
+	start := time.Now()
+	a.split(false)
+	if d := time.Since(start); d > time.Second {
+		t.Fatalf("the split held the window %v", d)
+	}
+	time.Sleep(200 * time.Millisecond)
+	tt.Frame()
+	if len(tab.panes()) != 1 || tab.Focus != p {
+		t.Fatal("the split showed before the host answered")
+	}
+	release()
+	waitFor(t, tt, "the split", func() bool { return len(tab.panes()) == 2 })
+	if q := tab.Focus; q == p || q.host != h || q.SID == "" || q.term == nil {
+		t.Fatalf("the split is %+v", q)
+	}
+
+	release = proxy.hold()
+	a.newTabOn(h, "")
+	a.newTabOn(h, "")
+	if len(a.tabsOn(h)) != 1 {
+		t.Fatal("a tab showed before the host answered")
+	}
+	release()
+	waitFor(t, tt, "the two tabs", func() bool { return len(a.tabsOn(h)) == 3 })
+	tabs := a.tabsOn(h)
+	if tabs[0] != tab || tabs[1].Focus.ID > tabs[2].Focus.ID || a.tab() != tabs[2] {
+		t.Errorf("the tabs are not in the order asked: panes %d, %d; active %v", tabs[1].Focus.ID, tabs[2].Focus.ID, a.tab() == tabs[2])
+	}
+}
+
+// TestHostCreateIntoClosedTab splits a host's pane, then closes its tab
+// before the host answers: the new session ends, and no tab comes back
+// for it.
+func TestHostCreateIntoClosedTab(t *testing.T) {
+	a, tt := newTestApp(t)
+	h, proxy, p, remote := remotePaneOf(t, a, tt, t.TempDir())
+	release := proxy.hold()
+	defer release()
+	a.split(false)
+	a.closeTab(p.Tab)
+	release()
+	waitFor(t, tt, "the split's session to end", func() bool {
+		return len(h.closed) == 2 && len(sessionIDs(t, remote)) == 0
+	})
+	time.Sleep(1500 * time.Millisecond) // a list or two of the host
+	tt.Frame()
+	if len(a.tabsOn(h)) != 0 {
+		t.Error("a tab of the host came back")
+	}
+}
+
+// TestHostCreateFails splits a host's pane while the host does not
+// answer: the error shows once the client gives up, and the tab is as it
+// was.
+func TestHostCreateFails(t *testing.T) {
+	a, tt := newTestApp(t)
+	_, proxy, p := remotePane(t, a, tt, t.TempDir())
+	tab := p.Tab
+	defer rex.SetTimeoutsForTest(30*time.Second, 500*time.Millisecond)()
+	proxy.blackhole()
+	a.split(false)
+	waitFor(t, tt, "the error", func() bool { return strings.Contains(a.err, "create timed out") })
+	if len(tab.panes()) != 1 || tab.Focus != p || len(a.tabs) != 2 {
+		t.Errorf("the tab changed: %d panes, %d tabs", len(tab.panes()), len(a.tabs))
 	}
 }
 
@@ -638,8 +750,9 @@ func TestRestoreRemote(t *testing.T) {
 	t.Cleanup(a.stopHosts)
 	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
-	rt := a.newTabOn(h, "")
+	rt := hostTab(t, a, tt, h, "")
 	a.split(true)
+	waitFor(t, tt, "the split", func() bool { return len(rt.panes()) == 2 })
 	sids := []string{rt.panes()[0].SID, rt.panes()[1].SID}
 	a.saveNow()
 	// The layout, plus a tab of a host forgotten since.
@@ -1434,7 +1547,7 @@ func TestPendingKills(t *testing.T) {
 	t.Cleanup(a.stopHosts)
 	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: proxy.path})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
-	rt := a.newTabOn(h, "")
+	rt := hostTab(t, a, tt, h, "")
 	sid := rt.Focus.SID
 	proxy.setDown(true)
 	waitFor(t, tt, "the host to drop", func() bool { return h.state != hostConnected && h.current() == nil })
@@ -1588,7 +1701,7 @@ func TestTakeKills(t *testing.T) {
 	t.Cleanup(a.stopHosts)
 	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
-	rt := a.newTabOn(h, "")
+	rt := hostTab(t, a, tt, h, "")
 	sid := rt.Focus.SID
 	other := followApp(t, a)
 	if res, err := other.Command(rex.LayoutCommand{Op: "tab.close", Tab: rt.UID}); err != nil || res.Code != "" {

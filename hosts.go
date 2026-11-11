@@ -155,6 +155,9 @@ type hostConn struct {
 	openOnConnect *App
 	// transfers are those of the host's sessions, by session.
 	transfers map[string]*sessionTransfers
+	// creating closes once the pane of the session asked of the host last
+	// is placed, or would have been (newPaneRun).
+	creating chan struct{}
 
 	// mu guards client, changed, Kills of savedHost, and expect, the
 	// sessions a teleport starts here, which adopt leaves for their pane.
