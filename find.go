@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/plugins/terminal"
+	"golang.org/x/net/publicsuffix"
 	"gorex/locales"
 )
 
@@ -114,14 +115,24 @@ var linkLine = regexp.MustCompile(`^(.*?)(:\d+)(?::\d+)?$`)
 // openLink opens a link the terminal hands over: a URL goes to the system
 // as the terminal would; a file path, with :line:col trimmed, resolves
 // against the pane's program directory and opens with the system. One
-// printed in a pane of a host is downloaded first (download).
+// printed in a pane of a host is downloaded first (download). A web address
+// without its scheme (webURL) opens over https, unless this machine has
+// the file.
 func (a *App) openLink(p *Pane, link string) bool {
+	web, isWeb := webURL(link)
 	if p != nil && p.host != nil {
+		if isWeb {
+			a.services.OpenURL(web)
+			return true
+		}
 		return a.download(p, link)
 	}
 	path, ok := panePath(p, link)
 	if !ok {
-		return false
+		if isWeb {
+			a.services.OpenURL(web)
+		}
+		return isWeb
 	}
 	a.services.OpenURL(fileURL(path))
 	return true
@@ -145,7 +156,8 @@ const (
 
 // isLink reports whether link, a file path printed in the pane, is one the
 // terminal shows as a link: in a pane of this machine, one that is there,
-// so that prose such as and/or or w/ is none; in a pane of a host, any but
+// so that prose such as and/or or w/ is none, or a web address without its
+// scheme (webPath), which opens over https; in a pane of a host, any but
 // a directory, as a folder is not downloaded. It runs on every frame of a
 // Command hover with the terminal locked, so it never waits on the disk,
 // which a dead mount can hang: it answers from App.pathStats and on a miss
@@ -156,7 +168,7 @@ func (a *App) isLink(p *Pane, link string, update func(func())) bool {
 	if !ok || p == nil {
 		return false
 	}
-	dir := strings.HasSuffix(path, "/")
+	dir, web := strings.HasSuffix(path, "/"), webPath(path)
 	if p.host != nil {
 		return !dir
 	}
@@ -173,7 +185,7 @@ func (a *App) isLink(p *Pane, link string, update func(func())) bool {
 			update(func() { a.setPathStat(path, found) })
 		}()
 	}
-	return s.there && (!dir || s.dir)
+	return s.there && (!dir || s.dir) || web
 }
 
 // setPathStat records s of path, starting over once App.pathStats is full.
@@ -194,6 +206,27 @@ func linkPath(link string) (string, bool) {
 		return m[1], true
 	}
 	return link, true
+}
+
+// webURL is the https URL a printed link names when it is a web address
+// without its scheme, as support.github.com/tickets (webPath).
+func webURL(link string) (string, bool) {
+	path, ok := linkPath(link)
+	if !ok || !webPath(path) {
+		return "", false
+	}
+	return "https://" + path, true
+}
+
+// webPath reports whether path reads as a web address without its scheme:
+// a relative path whose first part is a host name under a public suffix.
+func webPath(path string) bool {
+	name, _, ok := strings.Cut(path, "/")
+	if !ok || !strings.Contains(name, ".") {
+		return false
+	}
+	suffix, icann := publicsuffix.PublicSuffix(strings.ToLower(name))
+	return icann && suffix != strings.ToLower(name)
 }
 
 // panePath turns a printed file link into a path, resolving a relative one

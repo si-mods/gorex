@@ -87,13 +87,32 @@ func TestIsLink(t *testing.T) {
 		}
 	}
 	a, host := &App{}, &Pane{info: p.info, host: &hostConn{}}
-	for link, want := range map[string]bool{"docs/": false, "docs/:12": false, "w/": false, "and/or": true, "notes.txt": true} {
+	for link, want := range map[string]bool{"docs/": false, "docs/:12": false, "w/": false, "and/or": true, "notes.txt": true, "support.github.com/tickets": true, "src.old/main.go": true} {
 		if got := a.isLink(host, link, update); got != want {
 			t.Errorf("isLink(%q) in a pane of a host = %v, want %v", link, got, want)
 		}
 	}
 	if len(found) > 0 {
 		t.Error("a pane of a host stats its paths here")
+	}
+	if !a.isLink(p, "support.github.com/tickets", update) {
+		t.Error("a web address without its scheme is no link before a stat")
+	}
+}
+
+func TestWebURL(t *testing.T) {
+	for link, want := range map[string]string{
+		"support.github.com/tickets":  "https://support.github.com/tickets",
+		"github.com/si-mods/gorex:12": "https://github.com/si-mods/gorex",
+		"src.old/main.go":             "",
+		"v1.2/notes":                  "",
+		"notes.txt":                   "",
+		"github.com":                  "",
+		"https://github.com/x":        "",
+	} {
+		if got, _ := webURL(link); got != want {
+			t.Errorf("webURL(%q) = %q, want %q", link, got, want)
+		}
 	}
 }
 
