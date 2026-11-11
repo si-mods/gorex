@@ -76,6 +76,9 @@ func rexImportCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	for _, s := range res.Imported {
 		fmt.Fprintf(out, "imported %q: space %s, %d windows, %d blocks\n", s.Label, s.Space, s.Windows, s.Blocks)
+		for _, id := range s.Missing {
+			fmt.Fprintf(out, "  left out block %s: its window's layer does not have it\n", id)
+		}
 	}
 	if len(res.Imported) == 0 && len(res.Skipped) == 0 {
 		fmt.Fprintln(out, "no sessions to import")
