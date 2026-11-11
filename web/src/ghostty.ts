@@ -30,7 +30,7 @@ const functions = [
   "ghostty_key_encoder_new", "ghostty_key_encoder_free", "ghostty_key_encoder_setopt_from_terminal", "ghostty_key_encoder_encode",
   "ghostty_key_event_new", "ghostty_key_event_free", "ghostty_key_event_set_action", "ghostty_key_event_set_key",
   "ghostty_key_event_set_mods", "ghostty_key_event_set_consumed_mods", "ghostty_key_event_set_utf8",
-  "ghostty_key_event_set_unshifted_codepoint",
+  "ghostty_key_event_set_unshifted_codepoint", "ghostty_terminal_get", "ghostty_terminal_scroll_viewport",
 ] as const;
 
 type Exports = { memory: WebAssembly.Memory } & Record<(typeof functions)[number], (...a: number[]) => number>;
@@ -41,7 +41,14 @@ const layouts: Record<string, Record<string, number>> = {
   GhosttyRenderStateCursor: {
     size: 4, viewport_has_value: 1, viewport_x: 2, viewport_y: 2, wide_tail: 1, visible: 1, blinking: 1, visual_style: 4,
   },
-  GhosttyStyle: { size: 4, bold: 1, italic: 1, faint: 1, inverse: 1, invisible: 1, strikethrough: 1, underline: 4 },
+  GhosttyStyle: {
+    size: 4, bold: 1, italic: 1, faint: 1, inverse: 1, invisible: 1, strikethrough: 1, overline: 1, underline: 4,
+    underline_color: 16,
+  },
+  GhosttyStyleColor: { tag: 4, value: 8 },
+  GhosttyStyleColorValue: { palette: 1, rgb: 3 },
+  GhosttyTerminalScrollViewport: { tag: 4, value: 16 },
+  GhosttyTerminalScrollViewportValue: { delta: 4 },
   GhosttyColorRgb: { r: 1, g: 1, b: 1 },
 };
 
@@ -55,7 +62,12 @@ const enums: Record<string, string[]> = {
   GhosttyRenderStateCursorVisualStyle: ["BAR", "BLOCK", "UNDERLINE", "BLOCK_HOLLOW"],
   GhosttyCellWide: ["WIDE", "SPACER_TAIL", "SPACER_HEAD"],
   GhosttyKeyAction: ["PRESS", "REPEAT"],
-  GhosttyKey: ["UNIDENTIFIED", "A", "ENTER", "ARROW_UP"],
+  GhosttyKey: ["UNIDENTIFIED", "A", "ENTER", "ARROW_UP", "ARROW_DOWN"],
+  GhosttyTerminalData: ["ACTIVE_SCREEN", "MOUSE_TRACKING", "VIEWPORT_ACTIVE"],
+  GhosttyTerminalScreen: ["ALTERNATE"],
+  GhosttyTerminalScrollViewportTag: ["BOTTOM", "DELTA"],
+  GhosttyStyleColorTag: ["NONE", "PALETTE", "RGB"],
+  GhosttySgrUnderline: ["NONE", "SINGLE", "DOUBLE", "CURLY", "DOTTED", "DASHED"],
   GhosttyTerminalOption: ["COLOR_FOREGROUND", "COLOR_BACKGROUND", "COLOR_CURSOR", "COLOR_PALETTE"],
 };
 

@@ -109,4 +109,7 @@ await build({
 });
 copyFileSync(join(web, "index.html"), join(dist, "index.html"));
 copyFileSync(wasmFile, join(dist, "ghostty-vt.wasm"));
+// The desktop's terminal font, which GoRex embeds too, with its licence.
+mkdirSync(join(dist, "fonts"));
+for (const f of readdirSync(join(root, "assets", "fonts"))) copyFileSync(join(root, "assets", "fonts", f), join(dist, "fonts", f));
 console.log(`built ${dist}`);

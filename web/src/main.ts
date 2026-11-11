@@ -2,12 +2,21 @@
 // at a time, live, over the same API the iOS app speaks.
 import { Ghostty } from "./ghostty";
 import { Control, DataStream, RexError, TerminalStream } from "./rex";
-import { Font, Terminal, themeOf } from "./terminal";
+import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
 
 const $ = (id: string) => document.getElementById(id)!;
 const canvas = $("screen") as HTMLCanvasElement;
 const pane = $("pane");
 const ctx = canvas.getContext("2d", { alpha: false })!;
+
+/** The desktop's terminal font (style.go, settings.go): its family, size in CSS pixels and line height. */
+const fontFamily = getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "monospace";
+const fontSize = 11.6;
+const lineHeight = 1;
+/** The padding around the grid, in CSS pixels, as the desktop's (MyGo's padX, padY). */
+const padX = 6, padY = 4;
+/** The cursor blinks every 600 ms while the terminal has the focus, as on the desktop. */
+const blinkPeriod = 600;
 
 let g: Ghostty;
 let control: Control | undefined;
@@ -25,7 +34,9 @@ function describe(e: unknown): string {
 async function main() {
   status("Loading libghostty-vt…");
   try {
-    g = await Ghostty.load("ghostty-vt.wasm");
+    // The font too: the cells are measured from it.
+    const faces = ["400", "700", "italic 400", "italic 700"].map((v) => document.fonts.load(`${v} 12px "JetBrains Mono"`));
+    [g] = await Promise.all([Ghostty.load("ghostty-vt.wasm"), Promise.allSettled(faces)]);
   } catch (e) {
     status(`Could not load libghostty-vt: ${describe(e)}`);
     return;
@@ -137,6 +148,19 @@ class TerminalView {
   private closed = false;
   private generation = 0;
   private font!: Font;
+  /** Set when the fonts loaded since the font was measured. */
+  fontStale = false;
+  /** The grid's top left on the canvas, in device pixels. */
+  private ox = 0;
+  private oy = 0;
+  /** The colours of the stream's last theme message, over the desktop's. */
+  private theme: Theme = {};
+  /** Wheel scrolling not yet a whole row. */
+  private scrolled = 0;
+  private blinkStart = performance.now();
+  private blinkTimer?: number;
+  /** The background the canvas was filled with last. */
+  private painted = "";
   private fitted?: { cols: number; rows: number };
   private sizing?: number;
   private frame?: number;
@@ -200,6 +224,8 @@ class TerminalView {
           // Drawn at this view's size, which the block takes next, as the
           // iOS app does: the program's repaint after the resize then lands
           // on a screen of its size.
+          this.term.setTheme(desktopTheme());
+          this.term.setTheme(this.theme);
           if (this.fitted) this.term.resize(this.fitted.cols, this.fitted.rows, this.font.w, this.font.h);
           this.full = true;
           this.claim();
@@ -218,7 +244,10 @@ class TerminalView {
   private message(m: any) {
     switch (m.type) {
       case "theme":
-        this.term?.setTheme(themeOf(m));
+        // Each message replaces the last one's colours, over the desktop's.
+        this.theme = themeOf(m);
+        this.term?.setTheme(desktopTheme());
+        this.term?.setTheme(this.theme);
         this.full = true;
         break;
       case "resize":
@@ -262,18 +291,26 @@ class TerminalView {
     }
   }
 
-  /** Sizes the canvas to the pane, and the terminal to the canvas. */
-  layout() {
+  /**
+   * Sizes the canvas to the pane in whole device pixels, and the terminal
+   * to the canvas less its padding, at the device's pixel ratio.
+   */
+  layout(device?: { width: number; height: number }) {
     const scale = window.devicePixelRatio || 1;
     const r = pane.getBoundingClientRect();
-    canvas.width = Math.max(1, Math.floor(r.width * scale));
-    canvas.height = Math.max(1, Math.floor(r.height * scale));
-    canvas.style.width = `${r.width}px`;
-    canvas.style.height = `${r.height}px`;
-    this.font = new Font(getComputedStyle(document.body).getPropertyValue("--mono").trim() || "monospace", 14, scale);
+    canvas.width = Math.max(1, device?.width ?? Math.round(r.width * scale));
+    canvas.height = Math.max(1, device?.height ?? Math.round(r.height * scale));
+    canvas.style.width = `${canvas.width / scale}px`;
+    canvas.style.height = `${canvas.height / scale}px`;
+    if (this.font?.scale !== scale || this.fontStale) {
+      this.font = new Font(fontFamily, fontSize, scale, lineHeight);
+      this.fontStale = false;
+    }
+    this.ox = Math.round(padX * scale);
+    this.oy = Math.round(padY * scale);
     this.full = true;
-    const cols = Math.max(2, Math.floor(canvas.width / this.font.w));
-    const rows = Math.max(1, Math.floor(canvas.height / this.font.h));
+    const cols = Math.max(2, Math.floor((canvas.width - 2 * this.ox) / this.font.w));
+    const rows = Math.max(1, Math.floor((canvas.height - 2 * this.oy) / this.font.h));
     if (this.fitted?.cols !== cols || this.fitted?.rows !== rows) {
       this.fitted = { cols, rows };
       this.term?.resize(cols, rows, this.font.w, this.font.h);
@@ -293,20 +330,61 @@ class TerminalView {
       .catch((e) => console.warn("resize", e));
   }
 
+  /** Draws on the next frame what changed since the last. */
   redraw() {
     if (this.frame !== undefined) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = undefined;
       if (!this.term || this.closed) return;
-      const bg = this.term.background();
-      if (this.full) {
-        ctx.fillStyle = `rgb(${bg.join(",")})`;
+      const focused = document.activeElement === pane && document.hasFocus();
+      // The padding takes the background too, as a program may change it (OSC 11).
+      const bg = `rgb(${this.term.background().join(",")})`;
+      if (this.full || bg !== this.painted) {
+        this.full = true;
+        this.painted = ctx.fillStyle = pane.style.background = bg;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        pane.style.background = ctx.fillStyle;
       }
-      this.term.draw(ctx, this.font, this.full, document.activeElement === pane);
+      const since = performance.now() - this.blinkStart;
+      this.term.draw(ctx, {
+        font: this.font, ox: this.ox, oy: this.oy, full: this.full, focused,
+        blinkOff: since % (2 * blinkPeriod) >= blinkPeriod,
+      });
       this.full = false;
+      // The next phase of the blink.
+      clearTimeout(this.blinkTimer);
+      if (focused && this.term.blinking) this.blinkTimer = window.setTimeout(() => this.redraw(), blinkPeriod - (since % blinkPeriod));
     });
+  }
+
+  /** Restarts the blink with the cursor on, as typing and the focus do. */
+  wake() {
+    this.blinkStart = performance.now();
+    this.redraw();
+  }
+
+  /**
+   * Scrolls as the desktop's wheel does: the scrollback, or the arrow keys
+   * in a full-screen program (alternate scroll). A program that takes the
+   * mouse gets nothing, as this client reports no mouse yet.
+   */
+  wheel(e: WheelEvent) {
+    const t = this.term;
+    if (!t || e.ctrlKey) return;
+    e.preventDefault();
+    const rowPx = this.font.h / this.font.scale;
+    const dy = e.deltaMode === 1 ? e.deltaY * rowPx : e.deltaMode === 2 ? e.deltaY * pane.clientHeight : e.deltaY;
+    this.scrolled += dy / rowPx;
+    const rows = Math.trunc(this.scrolled);
+    this.scrolled -= rows;
+    if (rows === 0 || t.mouseTracking()) return;
+    if (t.altScreen()) {
+      const key = rows < 0 ? "ArrowUp" : "ArrowDown";
+      const b = t.encodeKey(new KeyboardEvent("keydown", { code: key, key }));
+      if (b) for (let i = 0; i < Math.abs(rows); i++) this.type(b);
+      return;
+    }
+    t.scrollBy(rows);
+    this.redraw();
   }
 
   key(e: KeyboardEvent) {
@@ -314,6 +392,9 @@ class TerminalView {
     const b = this.term.encodeKey(e);
     if (!b) return;
     e.preventDefault();
+    // Typing shows the screen again, as on the desktop.
+    if (!this.term.atBottom()) this.term.scrollBy("bottom");
+    this.wake();
     this.type(b);
   }
 
@@ -348,6 +429,7 @@ class TerminalView {
     this.generation++;
     this.data?.close();
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
+    clearTimeout(this.blinkTimer);
     this.term?.free();
     this.term = undefined;
     control?.call("session.disown_block", { session_id: this.session, block_ids: [this.block] }).catch(() => {});
@@ -355,8 +437,30 @@ class TerminalView {
 }
 
 pane.addEventListener("keydown", (e) => open?.key(e));
-pane.addEventListener("focus", () => open?.redraw());
-pane.addEventListener("blur", () => open?.redraw());
-new ResizeObserver(() => open?.layout()).observe(pane);
+pane.addEventListener("wheel", (e) => open?.wheel(e), { passive: false });
+for (const t of [pane, window]) {
+  t.addEventListener("focus", () => open?.wake());
+  t.addEventListener("blur", () => open?.redraw());
+}
+// The canvas takes the pane's size in device pixels where the browser tells it.
+new ResizeObserver((entries) => {
+  const d = entries[0].devicePixelContentBoxSize?.[0];
+  open?.layout(d && { width: d.inlineSize, height: d.blockSize });
+}).observe(pane, { box: "device-pixel-content-box" });
+// A change of the pixel ratio, as when the window moves to another display,
+// may leave the pane's CSS size as it was.
+(function watchScale() {
+  const q = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+  q.addEventListener("change", () => {
+    open?.layout();
+    watchScale();
+  }, { once: true });
+})();
+// A font that loads late changes the cells.
+document.fonts.addEventListener("loadingdone", () => {
+  if (!open) return;
+  open.fontStale = true;
+  open.layout();
+});
 
 main();

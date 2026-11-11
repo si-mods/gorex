@@ -8,7 +8,8 @@ the Ghostty commit that GoRex's terminal binding uses. The client draws
 the emulator's render state on a canvas.
 
 This is phase 1, a prototype: one terminal at a time. It has no settings,
-no uploads, no paste, no selection, no scrollback and no mouse.
+no uploads, no paste, no selection and no mouse. The wheel scrolls the
+scrollback.
 
 ## Design: a remote client only
 
@@ -54,7 +55,8 @@ go build .              # embeds what the script wrote
 4. It runs `npm ci` in `web/` if `web/node_modules` is missing, then type-checks
    the client (`tsc --noEmit`) and bundles it with esbuild.
 5. It writes `index.html`, `app.js` and `ghostty-vt.wasm` into
-   `internal/webui/dist`.
+   `internal/webui/dist`, and the JetBrains Mono fonts from `assets/fonts`
+   (with their licence) into `internal/webui/dist/fonts`.
 
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
 `~/.cache/gorex-web`.
@@ -99,9 +101,47 @@ as that browser.
   enum values come from that manifest. The `GHOSTTY_MODS_*` bits are
   `#define`s that the manifest does not have, so they are hard-coded.
 - `web/src/terminal.ts`: decodes the snapshot into a terminal, then feeds
-  it the output. It draws only the dirty rows and the cursor, and encodes
-  keys with the libghostty-vt key encoder, set from the terminal's modes.
+  it the output. It draws only the dirty rows and the cursor's, once per
+  animation frame, and encodes keys with the libghostty-vt key encoder,
+  set from the terminal's modes.
+- `web/src/box.ts`: box drawing, block elements, sextants and Powerline's
+  separators, drawn as shapes, ported from MyGo's `plugins/terminal/box.go`.
 - `web/src/main.ts`: the list and the view. Typed bytes go to
   `com.superlogical.terminal.write`, one write at a time. The view takes the
   block (`session.own_block`) and sizes it to the canvas
   (`com.superlogical.terminal.resize`).
+
+## Drawing, as the desktop draws
+
+The terminal draws as the desktop's (MyGo's `plugins/terminal/paint.go`)
+with GoRex's defaults and no Ghostty configuration:
+
+- Font: JetBrains Mono, served with the client, then `SF Mono`, `Menlo`,
+  `monospace` (`defaultFontFamily`), at 11.6 CSS pixels (`defaultFontSize`).
+  A cell is the widest ASCII advance wide and the font's ascent and descent
+  high, each rounded up to whole device pixels, with 6 by 4 CSS pixels of
+  padding. The canvas follows `devicePixelRatio` and lays out again when it
+  changes (zoom, another display). Bold is weight 700.
+- Text: a run of narrow characters in one style is one `fillText`,
+  stretched from the font's advance to the cells, so the font's ligatures
+  show as on the desktop (letter spacing would turn them off). Wide
+  characters, emoji and graphemes with marks are centred in their cells,
+  smaller when too wide. Faint text is at half opacity.
+- Lines: underlines (single, double, curly, dotted, dashed) in the
+  underline colour, strikethrough and overline, at the desktop's places and
+  thickness.
+- Colours: GoRex's dark terminal theme (`darkTerm` in `style.go`) over
+  xterm's 256 colours, and the desktop's minimum contrast of 3 for text
+  (not for box drawing and blocks). A stream's `theme` message (from
+  `set_theme`) goes over it. No API gives the host's own theme, so a host
+  with a Ghostty theme still shows GoRex's colours here.
+- Cursor: block, bar or underline from the terminal (DECSCUSR), a hollow
+  block while the page does not have the focus, blinking every 600 ms when
+  the terminal asks for it.
+- Scrolling: the wheel scrolls the scrollback; in a full-screen program it
+  sends the arrow keys (alternate scroll), and to a program that takes the
+  mouse it sends nothing yet. Typing scrolls back to the screen.
+
+What differs: the desktop's panes are the window's glass, which a page
+cannot show, so the pane here is the theme's background. There is no
+scroll bar, selection or link underline.
