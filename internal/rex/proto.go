@@ -512,8 +512,8 @@ type Response struct {
 
 // Event is a line a subscribed connection gets, with no ID. Kind is the
 // change: "layout", as setLayout changes it, "sessions", as one starts,
-// ends, or changes its size, size lock, title or foreground program, or
-// "transfer", as a file transfer goes on.
+// ends, rings its bell, or changes its size, size lock, title or
+// foreground program, or "transfer", as a file transfer goes on.
 type Event struct {
 	Kind string `json:"event,omitempty"`
 	// Revision, on a layout event, is the layout's revision after the

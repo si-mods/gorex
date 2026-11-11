@@ -83,9 +83,13 @@ type Gateway struct {
 	user    string
 	// machines reads the machines of the app's remote hosts, by host ID
 	// (rex.HostMachines); tests replace it. refresh calls it, and keeps
-	// desktop, the last sessions listed, under refreshMu.
+	// under refreshMu the last layout read (raw), sessions listed (desktop,
+	// etag) and block events' states (watches).
 	machines   func() map[string]string
+	raw        []byte
 	desktop    []rex.SessionInfo
+	etag       string
+	watches    map[string]*blockWatch
 	instanceID string
 	// helloWait is how long a connection may take to send its hello;
 	// tests shorten it on a gateway of their own.
@@ -188,6 +192,7 @@ func New(opt Options) (*Gateway, error) {
 		tickets:        map[string]*ticket{},
 		streams:        map[string]*stream{},
 		stokens:        map[string]*stream{},
+		watches:        map[string]*blockWatch{},
 		owners:         map[string]*blockOwner{},
 		locks:          map[string]string{},
 		blobs:          map[int]blob{},
@@ -208,8 +213,6 @@ func New(opt Options) (*Gateway, error) {
 	go g.pump()
 	g.wg.Add(1)
 	go g.renewLocks()
-	g.wg.Add(1)
-	go g.watchBlocks()
 	return g, nil
 }
 
@@ -276,21 +279,24 @@ func (g *Gateway) pump() {
 	defer ticker.Stop()
 	var burst *time.Timer
 	var due <-chan time.Time
+	layout := false // a layout event came in the burst
 	for {
 		select {
 		case <-g.done:
 			return
-		case _, ok := <-g.opt.Client.Events():
+		case ev, ok := <-g.opt.Client.Events():
 			if !ok {
 				return
 			}
+			layout = layout || ev.Kind == "layout"
 			if subscribed && burst == nil {
 				burst = time.NewTimer(settle)
 				due = burst.C
 			}
 		case <-due:
 			burst = nil
-			g.refresh()
+			g.reread(layout)
+			layout = false
 		case <-ticker.C:
 			g.refresh()
 		case <-g.opt.Client.Closed():
@@ -307,22 +313,23 @@ func (g *Gateway) current() (*model, error) {
 // refresh reads the layout, builds the model, tells the connections what
 // changed, and returns the new model. A read that fails leaves the last
 // model in place.
-func (g *Gateway) refresh() (*model, error) {
+func (g *Gateway) refresh() (*model, error) { return g.reread(true) }
+
+// reread is refresh, which reads the layout again only when layout says
+// it changed: a change of the sessions alone leaves it.
+func (g *Gateway) reread(layout bool) (*model, error) {
 	g.refreshMu.Lock()
 	defer g.refreshMu.Unlock()
-	raw, err := g.opt.Client.Layout()
-	if err != nil {
-		return g.modelNow(), err
+	if layout || g.raw == nil {
+		raw, err := g.opt.Client.Layout()
+		if err != nil {
+			return g.modelNow(), err
+		}
+		g.raw = raw
 	}
-	// The sessions only add the desktop's terminals: a list that fails
-	// keeps the last one, and the layout's model still changes.
-	if desktop, err := g.opt.Client.List(); err == nil {
-		g.desktop = desktop
-	} else {
-		tracef("listing the sessions: %v", err)
-	}
+	g.listSessions()
 	g.mapper.machines = g.machines()
-	m, err := g.mapper.build(raw, g.host, g.ownersNow(), g.desktop...)
+	m, err := g.mapper.build(g.raw, g.host, g.ownersNow(), g.desktop...)
 	if err != nil {
 		return g.modelNow(), err
 	}
@@ -342,7 +349,41 @@ func (g *Gateway) refresh() (*model, error) {
 			c.sendChanges(events)
 		}
 	}
+	g.watchBlocks(m)
 	return m, nil
+}
+
+// listSessions reads the session list, under refreshMu, when it changed
+// since it read it last, and hands it to the data streams. The sessions
+// only add the desktop's terminals to the model: a list that fails keeps
+// the last one, and the layout's model still changes.
+func (g *Gateway) listSessions() {
+	list, etag, changed, err := g.opt.Client.ListSince(g.etag)
+	if err != nil {
+		tracef("listing the sessions: %v", err)
+		return
+	}
+	if !changed {
+		return
+	}
+	g.desktop, g.etag = list, etag
+	g.mu.Lock()
+	for _, s := range g.streams {
+		select { // the newest list, in place of one not taken yet
+		case <-s.lists:
+		default:
+		}
+		s.lists <- list
+	}
+	g.mu.Unlock()
+}
+
+// sessionsNow returns the session list as it is now.
+func (g *Gateway) sessionsNow() []rex.SessionInfo {
+	g.refreshMu.Lock()
+	defer g.refreshMu.Unlock()
+	g.listSessions()
+	return g.desktop
 }
 
 // pruneAttachments forgets the sessions a client attached to that the
