@@ -1227,7 +1227,7 @@ func (a *App) resyncPane(p *Pane, cols, rows int) {
 	if p.SID == "" || p.closed || p.term == nil {
 		return
 	}
-	sid, win, term := p.SID, a.win, p.term
+	sid, update, term := p.SID, a.updater(), p.term
 	var client *rex.Client
 	if p.host != nil {
 		client = p.host.current()
@@ -1263,11 +1263,7 @@ func (a *App) resyncPane(p *Pane, cols, rows int) {
 			// screen takes its place.
 			term.Feed(append([]byte(screenReset), res.Screen...))
 		}
-		if win != nil {
-			win.Update(fn)
-		} else {
-			a.post(fn)
-		}
+		update(fn)
 	}()
 }
 

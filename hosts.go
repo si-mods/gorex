@@ -109,16 +109,7 @@ func saveHosts(hosts []savedHost) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	os.Remove(tmp)
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return writeFileAtomic(path, b, 0o600)
 }
 
 func newHostID() string {

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -287,5 +288,32 @@ func TestThemeNames(t *testing.T) {
 	}
 	if got := themeNames(all, ""); len(got) != len(all) {
 		t.Errorf("an empty query listed %v", got)
+	}
+}
+
+func TestWriteFileAtomic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f.json")
+	os.WriteFile(path, []byte("old"), 0o600)
+	if err := writeFileAtomic(path, []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "new" {
+		t.Errorf("file has %q, want new", b)
+	}
+	if es, _ := os.ReadDir(dir); len(es) != 1 {
+		t.Errorf("dir has %d files, want the one", len(es))
+	}
+	if runtime.GOOS == "windows" {
+		return // a directory's mode does not stop a write there
+	}
+	// A write that fails leaves the old content.
+	os.Chmod(dir, 0o500)
+	defer os.Chmod(dir, 0o700)
+	if writeFileAtomic(path, []byte("newer"), 0o644) == nil {
+		t.Skip("the directory is writable all the same (root)")
+	}
+	if b, _ := os.ReadFile(path); string(b) != "new" {
+		t.Errorf("a failed write left %q, want new", b)
 	}
 }

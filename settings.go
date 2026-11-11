@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"slices"
@@ -132,7 +133,32 @@ func loadSettings() {
 func saveSettings() {
 	b, _ := json.MarshalIndent(prefs, "", "  ")
 	os.MkdirAll(rex.Dir(), 0o700)
-	os.WriteFile(settingsPath(), b, 0o600)
+	if err := writeFileAtomic(settingsPath(), b, 0o600); err != nil {
+		log.Printf("gorex settings: %v", err)
+	}
+}
+
+// writeFileAtomic writes data to path through a file beside it, renamed
+// over it: a crash leaves the old content or the new, never part of it.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err == nil {
+		err = os.Chmod(f.Name(), perm)
+	}
+	if err == nil {
+		err = os.Rename(f.Name(), path)
+	}
+	if err != nil {
+		os.Remove(f.Name())
+	}
+	return err
 }
 
 // setThemeSource sets the windows' theme; tests, which run no windows, take
