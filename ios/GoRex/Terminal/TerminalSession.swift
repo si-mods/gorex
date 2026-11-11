@@ -110,7 +110,7 @@ final class TerminalSession {
             let began = ContinuousClock.now
             var d: DataConnection?
             do {
-                let t = try await host.live().call("data.connect", [
+                let t = try await host.online().call("data.connect", [
                     "session_id": session, "block_id": block,
                     "data_ref_id": "terminal", "subprotocol": "rex.data.terminal.v1",
                 ]).payload["ticket"] as? String ?? ""
@@ -170,7 +170,7 @@ final class TerminalSession {
     /// block keeps its size, and its stream goes on.
     private func claim() async {
         do {
-            try await host.live().call("session.own_block", ["session_id": session, "block_ids": [block], "mode": "take"])
+            try await host.online().call("session.own_block", ["session_id": session, "block_ids": [block], "mode": "take"])
             sendSize()
         } catch {
             log.error("could not own \(self.block, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -328,7 +328,7 @@ final class TerminalSession {
         let (session, block) = (session, block)
         Task {
             do {
-                try await host.live().callBlock("write", session: session, block: block, ["data": text])
+                try await host.online().callBlock("write", session: session, block: block, ["data": text])
                 typed = Data(typed.dropFirst(n))
             } catch let e as RexError where e.code == "offline" {
                 try? await Task.sleep(for: .seconds(1))

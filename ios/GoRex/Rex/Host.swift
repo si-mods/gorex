@@ -270,6 +270,8 @@ final class Host: Identifiable {
     @ObservationIgnored private var gate = EventGate()
     @ObservationIgnored private var token: String?
     @ObservationIgnored private var retry: Task<Void, Never>?
+    /// Those waiting for the host to be online.
+    @ObservationIgnored private var waiters: [CheckedContinuation<ControlConnection, Error>] = []
     @ObservationIgnored private var refreshing: Set<String> = []
     /// Sessions whose read titles, programs and records are being read
     /// again, as after a reconnect.
@@ -355,7 +357,11 @@ final class Host: Identifiable {
             self.status = .offline(error?.localizedDescription ?? "")
             // Refused, it waits for a change: the engine running again, as
             // after a sign-in, or the app back in the foreground.
-            if (error as? RexError)?.code != "refused" { self.scheduleRetry() }
+            if let error, (error as? RexError)?.code == "refused" {
+                self.settle(.failure(error))
+            } else {
+                self.scheduleRetry()
+            }
         }
         let began = ContinuousClock.now
         ConnectionLog.note("\(name): opening via \(config.reach(tailnetOn: TailnetSettings.isOn).rawValue)")
@@ -365,6 +371,7 @@ final class Host: Identifiable {
                 token = c.reconnectToken
                 try await bootstrap(c)
                 status = .online
+                settle(.success(c))
                 ConnectionLog.note("\(name): online, \(began.duration(to: .now).ms)")
             } catch let e as RexError where e.code == "refused" && viaTailnet {
                 // The gateway lets in only whom it says (docs/ios-tailnet.md, Server).
@@ -380,6 +387,7 @@ final class Host: Identifiable {
         stopped = true
         retry?.cancel()
         control?.close()
+        settle(.failure(CancellationError()))
     }
 
     /// Connects anew, as to a new address: the old connection and its
@@ -407,6 +415,22 @@ final class Host: Identifiable {
             try? await Task.sleep(for: .seconds(3))
             if !Task.isCancelled { connect() }
         }
+    }
+
+    /// The control connection, once the host is online: bootstrapped, so
+    /// that its blocks can be opened. It waits while the host connects or
+    /// is offline, and fails when the host is removed or refused.
+    func online() async throws -> ControlConnection {
+        if status == .online, let control { return control }
+        if stopped { throw CancellationError() }
+        return try await withCheckedThrowingContinuation { waiters.append($0) }
+    }
+
+    /// Resumes those waiting for the host to be online.
+    private func settle(_ r: Result<ControlConnection, Error>) {
+        let w = waiters
+        waiters = []
+        w.forEach { $0.resume(with: r) }
     }
 
     /// session.bootstrap for every session, then session.attach for those
