@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/coder/websocket"
 
@@ -268,8 +267,9 @@ func blockUploadBegin(c *control, s *mSession, b *mBlock, a args) (any, *apiErro
 	if aerr != nil {
 		return nil, aerr
 	}
-	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) ||
-		!utf8.ValidString(name) || strings.ContainsFunc(name, isControl) {
+	// The name the server's put refuses is refused here, before any byte
+	// is sent.
+	if rex.CheckName(name) != nil {
 		return nil, errBadRequest("upload name %q is not a file name", name)
 	}
 	size, ok, aerr := a.int("size")
