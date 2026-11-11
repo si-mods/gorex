@@ -592,9 +592,6 @@ func TestWindowsSet(t *testing.T) {
 func TestLayoutServerRemote(t *testing.T) {
 	s, c := applyFixture(t)
 	seed(t, c, layout.Tab{ID: "far", Root: &layout.Node{SID: "x", Host: "h"}})
-	if err := c.ShareSessions(true); err != nil {
-		t.Fatal(err)
-	}
 	h, err := c.Hello()
 	if err != nil || !h.Can(CapabilityLayoutServer) {
 		t.Errorf("hello %+v %v", h, err)

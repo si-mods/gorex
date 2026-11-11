@@ -136,8 +136,8 @@ type Request struct {
 	// ignores it.
 	Restart bool `json:"restart,omitempty"`
 
-	// On is the setting of remote.shareSet, remote.shareLayoutSet,
-	// remote.controlSet and remote.tailnetSet.
+	// On is the setting of remote.shareLayoutSet, remote.controlSet and
+	// remote.tailnetSet.
 	On bool `json:"on,omitempty"`
 
 	// Owner is the size lock's owner, of lockSize, lockedResize,
@@ -466,9 +466,6 @@ type RemoteStatus struct {
 	// Pairing is the pairing window, Pending the requests made in it.
 	Pairing RemotePairing   `json:"pairing"`
 	Pending []RemotePending `json:"pending,omitempty"`
-	// ShareSessions tells that remote clients see and use every session;
-	// off, each only those it created.
-	ShareSessions bool `json:"shareSessions"`
 	// ShareLayout tells that remote clients may read this machine's layout
 	// and subscribe to its changes.
 	ShareLayout bool `json:"shareLayout"`
@@ -654,10 +651,6 @@ type SessionInfo struct {
 	// when known.
 	Owner     string `json:"owner,omitempty"`
 	OwnerName string `json:"ownerName,omitempty"`
-	// OwnerShared tells that the server shares every session with Owner
-	// (mayUse): the user's own device, as the user decided by sharing.
-	// Only list says it; false from a server before it.
-	OwnerShared bool `json:"ownerShared,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
 	// said nothing.

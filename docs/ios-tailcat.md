@@ -110,11 +110,9 @@ protocol.
 The session server's tailcat server listens on a second port, Rex's
 API port 7297, beside `RemotePort` (7464). The allowlist is the
 server's, so an unknown key gets nothing on either port; pairing stays
-on `RemotePort`. Rex's API commands the layout, so 7297 lets in only the
-clients that may command it on `RemotePort` (`remoteMayCommand`): an
-allowed key or a network member with the sessions shared with it, by
-Share open terminals or its own switch. Sharing turned off for a client
-closes its 7297 connections, as Remove does.
+on `RemotePort`. Rex's API commands the layout, as a client may on
+`RemotePort` too, so 7297 lets in an allowed key or a network member.
+Remove closes its 7297 connections.
 
 The gateway is a separate process and keeps no tailcat of its own: one
 address per machine. It takes these connections from the session server
@@ -146,7 +144,7 @@ more than a desktop may do on `RemotePort` (sessions only, no layout).
 A desktop already has the same trust in practice (an allowed key runs
 any program as this user, README), so the line is a convention, not a
 boundary; it is drawn where a desktop may command the layout over
-`RemotePort`, with the sessions shared with it.
+`RemotePort`.
 
 The gateway runs while remote access is on, as it does while the local
 network listener or built-in Tailscale is.
@@ -280,9 +278,9 @@ and without it: +0.26 MB installed, +0.11 MB compressed (gzip -9).
 
 ## Test plan
 
-- `internal/rex`: port 7297 accepts allowed keys with the sessions
-  shared only; the gateway's socket gets a stream with the right key;
-  unsharing, Remove and remote off close a phone's gateway stream; the
+- `internal/rex`: port 7297 accepts allowed keys only; the gateway's
+  socket gets a stream with the right key; Remove and remote off close a
+  phone's gateway stream; the
   relay setting puts the region in the address.
 - `internal/rexapi`: a tailcat stream's `identify`; a refused key gets
   nothing.

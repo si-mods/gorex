@@ -74,7 +74,7 @@ func (s *Server) transfer(conn net.Conn, r *bufio.Reader, first []byte, op, peer
 		conn.Write(append(b, '\n'))
 	}
 	if op == "file.get" {
-		if err := s.fileGet(conn, first, peer, touch, answer); err != nil {
+		if err := s.fileGet(conn, first, touch, answer); err != nil {
 			answer(FileAnswer{Error: err.Error()})
 		}
 		return
@@ -104,26 +104,26 @@ const (
 	resumeRate   = 10 << 20 // bytes a second
 )
 
-// fileSession is the session sid, for peer (mayUse), and the path dir
-// names in it: absolute, of the home directory of this user when it is
-// "~" or starts with "~/", or relative to the directory of the program in
-// the foreground (SessionInfo.Dir), which it is when "".
-func (s *Server) fileSession(sid, peer, dir string) (*session, string, error) {
-	ss, err := s.use(sid, peer)
+// filePath is the path dir names in the session sid: absolute, of the
+// home directory of this user when it is "~" or starts with "~/", or
+// relative to the directory of the program in the foreground
+// (SessionInfo.Dir), which it is when "".
+func (s *Server) filePath(sid, dir string) (string, error) {
+	ss, err := s.session(sid)
 	if err != nil {
-		return nil, "", err
+		return "", err
 	}
 	if rest, ok := strings.CutPrefix(dir, "~"); ok && (rest == "" || rest[0] == '/') {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return nil, "", err
+			return "", err
 		}
-		return ss, filepath.Join(home, rest), nil
+		return filepath.Join(home, rest), nil
 	}
 	if filepath.IsAbs(dir) {
-		return ss, filepath.Clean(dir), nil
+		return filepath.Clean(dir), nil
 	}
-	return ss, filepath.Join(ss.imageDir(), dir), nil
+	return filepath.Join(ss.imageDir(), dir), nil
 }
 
 // dropDir is this user's folder in the temporary directory, where a put
@@ -169,14 +169,14 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	if req.Size < 0 {
 		return errors.New("rex: a negative size")
 	}
-	ss, dir, err := s.fileSession(req.SID, peer, req.Dir)
+	dir, err := s.filePath(req.SID, req.Dir)
 	if err != nil {
 		// An abort names the directory absolute, as the put's first answer
 		// told it, and needs no session: the session of a pane closing
 		// ends as its uploads stop. It is taken only for a partial a put of
 		// the same peer opened in this run of the server, and touches no
 		// other file; after a restart the sweep removes the partial.
-		if !req.Abort || !filepath.IsAbs(req.Dir) || errors.Is(err, errNotShared) {
+		if !req.Abort || !filepath.IsAbs(req.Dir) {
 			return err
 		}
 		path := filepath.Join(filepath.Clean(req.Dir), partialName(req.Name, req.ID))
@@ -200,7 +200,7 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	t := Transfer{ID: req.ID, SID: req.SID, Name: req.Name, Direction: "in", Size: req.Size, State: "active"}
 	if target := filepath.Join(dir, req.Name); req.Conflict == "skip" && exists(target) {
 		t.Path, t.State = target, "skipped"
-		s.transferred(t, ss)
+		s.transferred(t)
 		answer(FileAnswer{OK: true, Skipped: true, Path: target})
 		return nil
 	}
@@ -208,7 +208,7 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	// where its file went.
 	if path, ok := s.finishedPut(filepath.Join(dir, partialName(req.Name, req.ID)), peer, req.Drop, req.Size); ok {
 		t.Path, t.State = path, "skipped"
-		s.transferred(t, ss)
+		s.transferred(t)
 		answer(FileAnswer{OK: true, Skipped: true, Path: path})
 		return nil
 	}
@@ -242,14 +242,14 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		return errors.New("rex: the offset is neither 0 nor the server's")
 	}
 	t.Done = from.Offset
-	s.transferred(t, ss)
+	s.transferred(t)
 	last := time.Now()
 	err = p.receive(r, from.Offset, req.Size, func(done int64) {
 		touch()
 		t.Done = done
 		if time.Since(last) >= transferEvery {
 			last = time.Now()
-			s.transferred(t, ss)
+			s.transferred(t)
 		}
 	})
 	var skipped bool
@@ -264,19 +264,19 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	}
 	if err != nil {
 		t.State = "failed"
-		s.transferred(t, ss)
+		s.transferred(t)
 		return err
 	}
 	t.State = "done"
 	if skipped {
 		t.State = "skipped"
 	}
-	s.transferred(t, ss)
+	s.transferred(t)
 	answer(FileAnswer{OK: true, Path: t.Path, Skipped: skipped})
 	return nil
 }
 
-func (s *Server) fileGet(conn net.Conn, first []byte, peer string, touch func(), answer func(FileAnswer)) error {
+func (s *Server) fileGet(conn net.Conn, first []byte, touch func(), answer func(FileAnswer)) error {
 	var req FileGet
 	if err := json.Unmarshal(first, &req); err != nil {
 		return err
@@ -289,7 +289,7 @@ func (s *Server) fileGet(conn net.Conn, first []byte, peer string, touch func(),
 	if req.Path == "" {
 		return errors.New("rex: no path")
 	}
-	ss, path, err := s.fileSession(req.SID, peer, req.Path)
+	path, err := s.filePath(req.SID, req.Path)
 	if err != nil {
 		return err
 	}
@@ -317,21 +317,21 @@ func (s *Server) fileGet(conn net.Conn, first []byte, peer string, touch func(),
 	}
 	answer(FileAnswer{OK: true, Size: size, Name: filepath.Base(path), MTime: st.ModTime()})
 	t := Transfer{ID: req.ID, SID: req.SID, Name: filepath.Base(path), Path: path, Direction: "out", Size: size, Done: req.Offset, State: "active"}
-	s.transferred(t, ss)
+	s.transferred(t)
 	last := time.Now()
 	err = copyN(conn, f, req.Offset, size, func(done int64) {
 		touch()
 		t.Done = done
 		if time.Since(last) >= transferEvery {
 			last = time.Now()
-			s.transferred(t, ss)
+			s.transferred(t)
 		}
 	})
 	t.State = "done"
 	if err != nil {
 		t.State = "failed"
 	}
-	s.transferred(t, ss)
+	s.transferred(t)
 	return nil // the connection carries no answer after the bytes
 }
 

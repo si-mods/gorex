@@ -136,7 +136,7 @@ Usage:
   gorex events
   gorex hosts [ls] [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
-  gorex remote status [--json] | tailscale on|off | address | relay HOST|default | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
+  gorex remote status [--json] | tailscale on|off | address | relay HOST|default | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
   gorex server restart | upgrade
   gorex update (Linux)
   gorex config path | config check [FILE] | config reload
@@ -959,7 +959,7 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitUsage, true
 	}
 	usage := func() (int, bool) {
-		fmt.Fprintln(errOut, "gorex remote: status | tailscale on|off | address | relay HOST|default | enable | disable | control on|off | share on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY")
+		fmt.Fprintln(errOut, "gorex remote: status | tailscale on|off | address | relay HOST|default | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY")
 		return ExitUsage, true
 	}
 	if len(args) == 0 {
@@ -1026,12 +1026,6 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitUsage, true
 		}
 		run = func(c *rex.Client) error { return c.RemoteControl(on) }
-	case "share":
-		on, ok := onOff("share")
-		if !ok {
-			return ExitUsage, true
-		}
-		run = func(c *rex.Client) error { return c.ShareSessions(on) }
 	case "layout":
 		on, ok := onOff("layout")
 		if !ok {
@@ -1087,14 +1081,13 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		shown := struct {
 			Enabled       bool               `json:"enabled"`
 			Running       bool               `json:"running"`
-			ShareSessions bool               `json:"shareSessions"`
 			ShareLayout   bool               `json:"shareLayout"`
 			RemoteControl bool               `json:"remoteControl"`
 			Allowed       int                `json:"allowed"`
 			Network       bool               `json:"network"`
 			Relay         string             `json:"relay"`
 			Tailnet       *rex.TailnetStatus `json:"tailnet,omitempty"`
-		}{st.Enabled, st.Running, st.ShareSessions, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Network != nil, st.Relay, st.Tailnet}
+		}{st.Enabled, st.Running, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Network != nil, st.Relay, st.Tailnet}
 		if asJSON {
 			WriteJSON(out, shown)
 			return ExitOK, true
@@ -1103,8 +1096,8 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		if relay == "" {
 			relay = "default"
 		}
-		fmt.Fprintf(out, "enabled=%v running=%v share=%v layout=%v control=%v allowed=%d network=%v relay=%s\n",
-			shown.Enabled, shown.Running, shown.ShareSessions, shown.ShareLayout, shown.RemoteControl, shown.Allowed, shown.Network, relay)
+		fmt.Fprintf(out, "enabled=%v running=%v layout=%v control=%v allowed=%d network=%v relay=%s\n",
+			shown.Enabled, shown.Running, shown.ShareLayout, shown.RemoteControl, shown.Allowed, shown.Network, relay)
 		if st.Tailnet != nil {
 			fmt.Fprintf(out, "tailscale=%v running=%v hosts=%d\n", st.Tailnet.Enabled, st.Tailnet.Running, len(st.Tailnet.Hosts))
 			if st.Tailnet.Error != "" {
@@ -1484,7 +1477,7 @@ func codeFor(err error) int {
 	if err == nil {
 		return ExitOK
 	}
-	if rex.NotShared(err) || errors.Is(err, errNoSession) || errors.Is(err, errAmbiguous) ||
+	if errors.Is(err, errNoSession) || errors.Is(err, errAmbiguous) ||
 		strings.Contains(err.Error(), "no session") || strings.Contains(err.Error(), "session has ended") {
 		return ExitTarget
 	}

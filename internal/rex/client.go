@@ -825,12 +825,6 @@ func (c *Client) RemoteControl(on bool) error {
 	return c.call(Request{Op: "remote.controlSet", On: on}, nil)
 }
 
-// ShareSessions sets whether remote clients see and use every session;
-// off, each only those it created, and those attached to another's detach.
-func (c *Client) ShareSessions(on bool) error {
-	return c.call(Request{Op: "remote.shareSet", On: on}, nil)
-}
-
 // ShareLayout sets whether remote clients may read the layout and
 // subscribe to its changes.
 func (c *Client) ShareLayout(on bool) error {

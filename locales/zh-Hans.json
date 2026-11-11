@@ -244,8 +244,6 @@
   "tailnetAvailable": "可通过 Tailscale 连接",
   "tailnetOffline": "离线",
   "remoteAllow": "允许远程客户端",
-  "remoteShare": "共享已打开的终端",
-  "remoteShareNote": "已允许的客户端可以查看并使用此设备上打开的终端。关闭时，每个客户端只能看到自己打开的终端。",
   "remoteUnreachable": "无法连接服务器",
   "remoteUnreachableHint": "GoRex 每两秒重试一次。",
   "remoteListening": "正在监听",

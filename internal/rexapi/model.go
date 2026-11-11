@@ -343,9 +343,10 @@ func (mp *mapper) build(raw json.RawMessage, host string, owners map[string]stri
 	return m, nil
 }
 
-// desktopWorkspace projects the live sessions that a desktop of this
-// machine's user made here (desktopOfUser) and that have no local tab,
-// so that a client can open them, as one of the desktop's spaces too
+// desktopWorkspace projects the live sessions that a remote desktop made
+// here (rex.SessionInfo.Owner: a system Tailscale peer of this machine's
+// Tailscale user, or a paired tailcat client, which see every session)
+// and that have no local tab, so that a client can open them, as one of the desktop's spaces too
 // (remoteBlock). It only changes the Rex view, never the saved GoRex
 // layout.
 func desktopWorkspace(spaces []layout.Workspace, sessions []rex.SessionInfo) layout.Workspace {
@@ -373,7 +374,7 @@ func desktopWorkspace(spaces []layout.Workspace, sessions []rex.SessionInfo) lay
 		}
 	}
 	for _, s := range sessions {
-		if s.ID == "" || s.Exited || placed[s.ID] || !desktopOfUser(s) {
+		if s.ID == "" || s.Exited || placed[s.ID] || s.Owner == "" {
 			continue
 		}
 		placed[s.ID] = true
@@ -389,18 +390,6 @@ func desktopWorkspace(spaces []layout.Workspace, sessions []rex.SessionInfo) lay
 		})
 	}
 	return ws
-}
-
-// desktopOfUser tells whether a session was made by a desktop of this
-// machine's user, which every Rex client of this machine may see: a
-// system Tailscale peer, which the server lets in only as the same
-// Tailscale user, untagged and unshared; or a tailcat client the server
-// shares every session with (rex.SessionInfo.OwnerShared: "gorex remote
-// share", for all clients or that one), as it would with the user's own
-// machine. Another paired client's sessions stay its own, as the server
-// keeps them from every other client.
-func desktopOfUser(s rex.SessionInfo) bool {
-	return rex.IsTailnetTarget(s.Owner) || s.Owner != "" && s.OwnerShared
 }
 
 // windowIDOf names the window of a space's tab ti: by the tab's lasting

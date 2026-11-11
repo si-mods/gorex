@@ -103,11 +103,8 @@ A session that a GoRex desktop of yours made on this machine (one of its
 remote hosts' panes) and that no local tab shows is under **Desktop
 terminals**. Opening a terminal there attaches to the existing process.
 A desktop counts as yours when it reached this machine over system
-Tailscale, which lets in only your own Tailscale user, or when this
-machine shares its sessions with it: by default, for every client, or
-for that one after `gorex remote share off`. With sharing off, the
-sessions of another client paired here stay its own, as the server keeps
-them from every other client.
+Tailscale, which lets in only your own Tailscale user, or paired with it
+over tailcat: every paired client sees every session.
 
 ## Built-in Tailscale
 
@@ -130,8 +127,7 @@ through a DERP relay, with no Tailscale account and no VPN on the phone.
 The gateway keeps no tailcat of its own. The session server listens on
 port 7297 of its address beside 7464, and lets in only the clients that
 may command its layout over 7464: the keys of its allowlist and its
-network with its sessions shared with them (an unknown key, or one not
-shared with, gets nothing; pairing stays on 7464). For each, it dials
+network (an unknown key gets nothing; pairing stays on 7464). For each, it dials
 the gateway's socket, `rexapi-tailcat.sock` in GoRex's data directory
 (this user only), and writes a line with the client's key and name, then
 the bytes. With no gateway there, the connection closes and the client

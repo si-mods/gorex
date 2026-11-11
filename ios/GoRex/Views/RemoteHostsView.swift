@@ -372,10 +372,9 @@ struct TailcatPairSheet: View {
             store.add(code)
             try await Task.sleep(for: Self.wait)
             guard !online else { return }
-            // Approved, it may still be connecting, or refused for sessions
-            // not shared with it: it stays, and tries on.
+            // Not approved yet, or still connecting: it stays, and tries on.
             kept = true
-            problem = String(localized: "Not connected yet. Rex Go keeps trying: approve this phone on the machine, and share its sessions with this device.")
+            problem = String(localized: "Not connected yet. Rex Go keeps trying: approve this phone on the machine.")
         } catch is CancellationError {
         } catch {
             problem = String(localized: "Couldn't pair: \(error.localizedDescription)")

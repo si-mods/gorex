@@ -758,11 +758,6 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		if !remoteServes(st) {
 			return
 		}
-		// Whether remote clients see the sessions open here.
-		share := st.ShareSessions
-		if remoteSwitch(c, k, "share", locales.RemoteShare(), locales.RemoteShareNote(), &share, page.unreachable || page.busy) {
-			a.remoteDo(func(srv *rex.Client) error { return srv.ShareSessions(share) }, nil)
-		}
 		// Whether remote clients read the layout and follow it.
 		layoutShare := st.ShareLayout
 		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy) {

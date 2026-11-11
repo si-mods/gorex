@@ -179,7 +179,7 @@ The choices go to `settings.json`, as do the sidebar's width and whether
 it is hidden.
 
 Remote turns the server's remote access on and off, and manages it:
-whether allowed clients share the sessions open here, pairing a new device (Start pairing opens a five-minute window; each
+pairing a new device (Start pairing opens a five-minute window; each
 request shows its name and fingerprint, to Approve or Reject), the list
 of allowed clients (revoke one, or add one by name and public key), this
 machine's own key and its fingerprint, and, while listening, the address,
@@ -265,8 +265,7 @@ connection's device identity with the local Tailscale client.
 Turn **Tailscale discovery and connections** on in Settings → Remote, or
 use `gorex remote tailscale on`. The mode is off by default and waits
 when Tailscale is unavailable. `gorex remote status --json` reports the
-local mode and the hosts it has discovered. The existing **Share open
-terminals** setting controls access to sessions created by other clients.
+local mode and the hosts it has discovered.
 
 ### Tailcat
 
@@ -308,17 +307,11 @@ What to know before turning it on:
   compare fingerprints, and regenerate a leaked address anyway.
 - An allowed key means running commands as this user: a client may
   start any program with any environment. From a shell there it can
-  reach the local socket, and so change the layout, remote access, and
-  sharing itself. Trust it as you would an SSH key.
-- Share open terminals (Settings › Server, off by default, kept in
-  `remote.json`) decides what else a client sees. Off, each client lists,
-  attaches to, resizes and kills only the sessions it created; the others
-  (this machine's window's, other clients') are refused. On, every allowed
-  client sees and uses every session. Turning it off detaches clients
-  from the sessions they did not create. The server remembers which key
-  created a session, in memory, and keeps it across an in-place upgrade;
-  a session survives a revoke and approval of the same key as its own.
-  Local connections always see every session. A session a client opens
+  reach the local socket, and so change the layout and remote access
+  itself. Trust it as you would an SSH key.
+- Every allowed client sees and uses every session: this machine's
+  window's and other clients'. The server remembers which key created a
+  session, in memory, and keeps it across an in-place upgrade. A session a client opens
   here gets a tab in this window too, last among this machine's tabs and
   without taking the focus, rather than running unseen.
 - Over the connection itself, a remote client may list, create, kill,
@@ -330,16 +323,14 @@ What to know before turning it on:
 
 The same address also serves Rex's API on its port, 7297, for Rex Go
 (see [docs/ios-tailcat.md](docs/ios-tailcat.md)). Rex's API commands
-the layout, so a client gets it only where it may command the layout
-over 7464 too: an allowed key, or a network member, with this machine's
-sessions shared with it (Share open terminals, or the client's own All
-sessions switch); any other gets nothing there, and pairing stays on
+the layout, as a client may over 7464 too: an allowed key, or a network
+member, gets it; any other gets nothing there, and pairing stays on
 7464. The session server hands each such connection to the Rex API
 gateway, which it runs while remote access is on, on the gateway's
 socket (`rexapi-tailcat.sock`, this user's only); with no gateway there,
 the connection closes and the client dials again. Remove, a
-coordinator's kick, sharing turned off for that client, or remote
-access turned off closes these connections.
+coordinator's kick, or remote access turned off closes these
+connections.
 
 The address names the DERP relay where clients meet the server when
 they cannot connect directly: by default one of tailcat's free relays,
@@ -441,13 +432,11 @@ attaches again by itself; one whose session ended there closes. The
 window's layout keeps the host of each pane, so a host's tabs come back
 when GoRex opens again, attached once the host answers. Sessions the host
 lists that no tab shows (opened in the host's own window, or by another
-client, while the host shares its sessions) open last among the host's:
+client) open last among the host's:
 one tab for each session, or, while the host shares its layout, one tab
 for each tab that layout shows, with its splits, so two panes side by
 side there are not two tabs here; a tab closed here ends its session as
-any other and does not come back. When the host stops sharing, the tabs
-of sessions this machine did not create close here and their sessions go
-on there.
+any other and does not come back.
 `go run ./tools/remotectl pair ADDRESS NAME` asks to pair from a machine
 without the app.
 

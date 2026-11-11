@@ -99,56 +99,6 @@ func TestPairingLeft(t *testing.T) {
 	}
 }
 
-// TestShareSwitch checks the Remote page's Share open terminals switch: it
-// follows the server, changes nothing by itself as the server's answers
-// come, and asks the server once toggled.
-func TestShareSwitch(t *testing.T) {
-	isolateSettings(t, "")
-	registerFonts()
-	t.Cleanup(stopRemotePoll)
-	a := &App{}
-	settingsUI.section = "server"
-	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{Enabled: true}
-	tt := ui.NewTester(a.settingsView, 780, 900)
-	tt.Frame()
-	if !tt.HasText("Share open terminals") || !tt.HasText("Allowed clients see and use the terminals open on this machine. Off: each sees only its own.") {
-		t.Fatalf("texts %q", tt.Texts())
-	}
-	// The server's answers flip it, and the other switch: no call.
-	for _, st := range []rex.RemoteStatus{{ShareSessions: true}, {Enabled: true, ShareSessions: true}, {Enabled: true}} {
-		remoteUI.st = st
-		tt.Frame()
-		tt.Frame()
-		if remoteUI.err != nil || remoteUI.busy {
-			t.Fatalf("a change without input, at %+v", st)
-		}
-	}
-	// Toggled, it calls the server: none here, which it says. The switch
-	// is at the right of its row's title, on the title's line.
-	title, _ := tt.Find("Share open terminals")
-	toggle := func() bool {
-		y := title.Y + title.H/2
-		for x := float32(750); x > max(title.X+60, 600); x -= 6 {
-			tt.ClickAt(x, y)
-			tt.Frame()
-			if remoteUI.err != nil {
-				return true
-			}
-		}
-		return false
-	}
-	remoteUI.unreachable = true
-	tt.Frame()
-	if toggle() {
-		t.Error("toggled while the server is not reachable")
-	}
-	remoteUI.unreachable = false
-	tt.Frame()
-	if !toggle() || remoteUI.err() != locales.RemoteNotConnected() {
-		t.Error("toggling did not ask the server")
-	}
-}
-
 func TestServerMessage(t *testing.T) {
 	if got := serverMessage(errors.New("rex: that client is allowed already")); got != "That client is allowed already" {
 		t.Errorf("serverMessage = %q", got)
@@ -289,7 +239,7 @@ func TestRemoteOff(t *testing.T) {
 			t.Errorf("off: no %q in %q", s, tt.Texts())
 		}
 	}
-	for _, s := range []string{locales.RemoteShare(), locales.RemoteShareLayout(), locales.RemoteDevices(), "bob-desktop",
+	for _, s := range []string{locales.RemoteShareLayout(), locales.RemoteDevices(), "bob-desktop",
 		locales.RemoteShowDetails(), locales.RemoteMyKey(), locales.HostsNone(), locales.RemoteApiTitle()} {
 		if tt.HasText(s) {
 			t.Errorf("off: %q shows; texts %q", s, tt.Texts())
@@ -307,14 +257,14 @@ func TestRemoteOff(t *testing.T) {
 	// Tailscale's discovery running serves too.
 	remoteUI.st.Tailnet.Running = true
 	tt.Frame()
-	if !tt.HasText(locales.RemoteShare()) || !tt.HasText("bob-desktop") {
+	if !tt.HasText(locales.RemoteShareLayout()) || !tt.HasText("bob-desktop") {
 		t.Errorf("discovery running: texts %q", tt.Texts())
 	}
 
 	// On, the details open and close.
 	remoteUI.st = rex.RemoteStatus{Enabled: true}
 	tt.Frame()
-	if !tt.HasText(locales.RemoteDevices()) || !tt.HasText(locales.RemoteShare()) || tt.HasText(locales.RemoteOffNote()) {
+	if !tt.HasText(locales.RemoteDevices()) || !tt.HasText(locales.RemoteShareLayout()) || tt.HasText(locales.RemoteOffNote()) {
 		t.Fatalf("on: texts %q", tt.Texts())
 	}
 	if tt.HasText(locales.RemoteMyKey()) {

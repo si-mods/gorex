@@ -276,7 +276,7 @@ func TestStatusEvent(t *testing.T) {
 }
 
 func TestShareLayoutGate(t *testing.T) {
-	s := &Server{layout: []byte(`{"tabs":[]}`), rem: remote{cfg: RemoteConfig{ShareSessions: true}}}
+	s := &Server{layout: []byte(`{"tabs":[]}`)}
 	req := Request{ID: 1, Op: "getLayout"}
 	if res := s.request(req, "peer", nil); res.Error == "" {
 		t.Fatal("layout shared while off")
@@ -291,7 +291,7 @@ func TestShareLayoutGate(t *testing.T) {
 func TestFilterLayout(t *testing.T) {
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","active":0,"tabs":[{"root":{"a":{"sid":"a"},"b":{"sid":"b"}},"focus":0},{"root":{"sid":"h","host":"other"}}]}],"windows":["w"]}`)
 	s := &Server{
-		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "other"}},
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}},
 		rem:      remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "p"}}}},
 	}
 	got, err := s.filterLayout(raw, "p")
@@ -350,11 +350,11 @@ func TestFilterLayoutFocusAcrossBrowser(t *testing.T) {
 }
 
 func TestFilterLayoutFocusPastUnavailable(t *testing.T) {
-	// The focused terminal is after one the peer may not use: its place
+	// The focused terminal is after one of no session here: its place
 	// counts the sessions left, as the peer's own count does.
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"a":{"sid":"a"},"b":{"a":{"sid":"b"},"b":{"sid":"c"}}},"focus":2}]}],"windows":["w"]}`)
 	s := &Server{
-		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "other"}, "c": {id: "c", owner: "p"}},
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "c": {id: "c", owner: "p"}},
 		rem:      remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "p"}}}},
 	}
 	got, err := s.filterLayout(raw, "p")
@@ -371,12 +371,12 @@ func TestFilterLayoutFocusPastUnavailable(t *testing.T) {
 	}
 }
 
-// TestFilterLayoutFloats checks that a peer's layout keeps the floats it
-// may use, drops those it cannot, and moves the focus over them.
+// TestFilterLayoutFloats checks that a peer's layout keeps the floats of
+// sessions here, drops the others, and moves the focus over them.
 func TestFilterLayoutFloats(t *testing.T) {
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"sid":"a"},"focus":0,"floats":[{"pane":{"sid":"a"},"x":0.1},{"pane":null},{"pane":{"sid":"b"}}],"focusFloat":2}]}],"windows":["w"]}`)
 	s := &Server{
-		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "other"}},
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}},
 		rem:      remote{cfg: RemoteConfig{Allowed: []RemoteClient{{PublicKey: "p"}}}},
 	}
 	got, err := s.filterLayout(raw, "p")
@@ -395,7 +395,7 @@ func TestFilterLayoutFloats(t *testing.T) {
 		t.Errorf("first float %+v", tab.Floats[0])
 	}
 	if !tab.Floats[1].Pane.Unavailable {
-		t.Errorf("a pane of another's float is not unavailable: %+v", tab.Floats[1])
+		t.Errorf("a float of no session here is not unavailable: %+v", tab.Floats[1])
 	}
 	if tab.FocusFloat != 0 {
 		t.Errorf("focus float %d, want 0 after the focused float went", tab.FocusFloat)
@@ -446,7 +446,7 @@ func TestFilterLayoutFloatsTakeRoot(t *testing.T) {
 func TestFilterLayoutMirror(t *testing.T) {
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","tabs":[{"root":{"sid":"a"}}]}],"windows":["w"],"tabs":[{"root":{"sid":"a"}},{"root":{"sid":"b"}}]}`)
 	s := &Server{
-		sessions: map[string]*session{"a": {id: "a", owner: "p"}, "b": {id: "b", owner: "other"}},
+		sessions: map[string]*session{"a": {id: "a", owner: "p"}},
 		rem:      remote{},
 	}
 	got, err := s.filterLayout(raw, "p")

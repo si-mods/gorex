@@ -64,12 +64,6 @@ type RemoteConfig struct {
 	// it to be cleared.
 	Relay   string         `json:"relay,omitempty"`
 	Allowed []RemoteClient `json:"allowed"`
-	// ShareSessions lets remote clients see and use every session; off,
-	// each sees and uses only the sessions it created.
-	// On by default: remote.json writes it always, and one that says
-	// nothing of it, as before it was written off, reads as on
-	// (UnmarshalJSON).
-	ShareSessions bool `json:"shareSessions"`
 	// ShareLayout lets remote clients read the layout and subscribe to
 	// its changes; off by default.
 	ShareLayout bool `json:"shareLayout,omitempty"`
@@ -90,23 +84,6 @@ const (
 )
 
 func remotePath() string { return filepath.Join(Dir(), "remote.json") }
-
-// defaultRemoteConfig is the configuration of a machine whose remote.json
-// does not exist or says nothing: off, sharing sessions once on.
-func defaultRemoteConfig() RemoteConfig { return RemoteConfig{ShareSessions: true} }
-
-// UnmarshalJSON reads remote.json over the defaults, so that a field it
-// leaves out keeps its default: ShareSessions, on, which an older file
-// wrote only when on.
-func (c *RemoteConfig) UnmarshalJSON(b []byte) error {
-	type plain RemoteConfig
-	p := plain(defaultRemoteConfig())
-	if err := json.Unmarshal(b, &p); err != nil {
-		return err
-	}
-	*c = RemoteConfig(p)
-	return nil
-}
 
 // writeJSON writes v to path, readable by the user only, atomically.
 func writeJSON(path string, v any) error {
@@ -275,7 +252,6 @@ type remote struct {
 	addr    tailcat.Addr
 	lastErr string
 	conns   map[net.Conn]string // the remote connections, by their peer's key
-	gw      map[net.Conn]bool   // those of conns that go to the gateway
 	// pairUntil is when the pairing window closes, zero while closed;
 	// pending holds the requests made in it, never saved.
 	pairUntil time.Time
@@ -396,18 +372,12 @@ func (s *Server) remoteShareLayout() bool {
 	return s.rem.cfg.ShareLayout
 }
 
-// remoteMayCommand tells whether peer may ask the app for layout changes:
-// the sessions sharing it has, not the read-only layout.
-func (s *Server) remoteMayCommand() bool {
-	return s.sharesSessions()
-}
-
 // remoteAllowed tells the ops a remote connection may make; it may also
 // attach to sessions.
 func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "paste", "capture", "clients",
-		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset":
+		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command":
 		return true
 	}
 	return false
@@ -418,10 +388,10 @@ func (s *Server) remoteLoad() {
 	r := &s.rem
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.cfg = defaultRemoteConfig()
+	r.cfg = RemoteConfig{}
 	if err := readJSON(remotePath(), &r.cfg); err != nil {
 		log.Printf("rex: remote access stays off: %v", err)
-		r.cfg, r.lastErr = defaultRemoteConfig(), err.Error()
+		r.cfg, r.lastErr = RemoteConfig{}, err.Error()
 		return
 	}
 	// Allowlists saved before identities had times get them now.
@@ -483,7 +453,7 @@ func (s *Server) remoteStopLocked() func() {
 		r.cancel = nil
 	}
 	ts, ln, api, conns := r.ts, r.ln, r.api, r.conns
-	r.ts, r.ln, r.api, r.addr, r.conns, r.gw = nil, nil, nil, "", nil, nil
+	r.ts, r.ln, r.api, r.addr, r.conns = nil, nil, nil, "", nil
 	r.pairUntil, r.pending = time.Time{}, nil
 	return func() {
 		if ln != nil {
@@ -540,7 +510,7 @@ func (s *Server) remoteStartLocked() {
 			}
 			if err == nil {
 				r.ts, r.ln, r.api, r.addr, r.lastErr = ts, ln, api, addr, ""
-				r.conns, r.gw = map[net.Conn]string{}, map[net.Conn]bool{}
+				r.conns = map[net.Conn]string{}
 				if r.cfg.Region == 0 && region != 0 {
 					r.cfg.Region = region
 					if err := writeJSON(remotePath(), r.cfg); err != nil {
@@ -567,7 +537,7 @@ func (s *Server) remoteStartLocked() {
 				done := func() {}
 				if r.ln == ln {
 					ts, ln, conns := r.ts, r.ln, r.conns
-					r.ts, r.ln, r.api, r.addr, r.conns, r.gw = nil, nil, nil, "", nil, nil
+					r.ts, r.ln, r.api, r.addr, r.conns = nil, nil, nil, "", nil
 					done = func() {
 						ln.Close()
 						api.Close()
@@ -662,9 +632,8 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			r.mu.Lock()
 			allowed := r.allowedLocked(k) || r.netMemberLocked(k)
 			api := r.api == ln
-			// Stopped, or for the gateway and not allowed to command the
-			// layout (remoteMayCommand): no answer.
-			if r.ln != ln && !api || api && !(allowed && r.sharesLocked()) {
+			// Stopped, or for the gateway and not allowed: no answer.
+			if r.ln != ln && !api || api && !allowed {
 				r.mu.Unlock()
 				c.Close()
 				return
@@ -675,9 +644,6 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 				return
 			}
 			r.conns[c] = k
-			if api {
-				r.gw[c] = true
-			}
 			r.mu.Unlock()
 			switch {
 			case api:
@@ -692,7 +658,6 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			c.Close()
 			r.mu.Lock()
 			delete(r.conns, c)
-			delete(r.gw, c)
 			r.mu.Unlock()
 		}()
 	}
@@ -805,7 +770,7 @@ func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 	st := RemoteStatus{
 		Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr), Relay: r.cfg.Relay,
 		Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
-		ShareSessions: r.cfg.ShareSessions, ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
+		ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
 	}
 	if r.pairOpenLocked() {
 		st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
@@ -991,12 +956,6 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		cfg.ShareLayout = req.On
 	case "remote.controlSet":
 		cfg.RemoteControl = req.On
-	case "remote.shareSet":
-		cfg.ShareSessions = req.On
-		if !req.On {
-			// Run once r.cfg says so: an attach checks it as it joins.
-			done = append(done, s.dropUnshared)
-		}
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}
