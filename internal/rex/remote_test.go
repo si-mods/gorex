@@ -26,7 +26,7 @@ import (
 // testServer is a server on its own directory, not listening; remote
 // access listens on the loopback instead of tailcat, but through a relay
 // of its own (runDERP's), offline.
-func testServer(t *testing.T) (*Server, *atomic.Int32) {
+func testServer(t testing.TB) (*Server, *atomic.Int32) {
 	t.Setenv("GOREX_DIR", t.TempDir())
 	var listens atomic.Int32
 	old, oldKey, oldAPI := remoteListen, remotePeerKey, remoteAPIListen

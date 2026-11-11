@@ -8,7 +8,7 @@ import (
 )
 
 // inspect returns the name, arguments and working directory of a process.
-func inspect(pid int) (p procInfo) {
+var inspect = func(pid int) (p procInfo) {
 	if pid <= 0 {
 		return
 	}

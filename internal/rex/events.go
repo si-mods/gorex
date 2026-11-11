@@ -124,18 +124,22 @@ func (s *Server) transferred(t Transfer) {
 }
 
 // eventSessions is what an Event says of the sessions: their IDs and the
-// status records that answered the status protocol.
+// status records that answered the status protocol. It looks at no
+// session's foreground: the looks that saw a program end dropped its
+// records (see).
 func (s *Server) eventSessions() []EventSession {
 	all := s.all()
 	slices.SortFunc(all, func(a, b *session) int { return strings.Compare(a.id, b.id) })
 	out := make([]EventSession, 0, len(all))
 	for _, ss := range all {
-		in := s.info(ss)
-		if len(in.Statuses) == 0 {
-			out = append(out, EventSession{ID: in.ID})
+		ss.mu.Lock()
+		statuses := ss.status.list()
+		ss.mu.Unlock()
+		if len(statuses) == 0 {
+			out = append(out, EventSession{ID: ss.id})
 			continue
 		}
-		out = append(out, EventSession{ID: in.ID, Status: in.Status, Statuses: in.Statuses})
+		out = append(out, EventSession{ID: ss.id, Status: MostUrgent(statuses, time.Time{}), Statuses: statuses})
 	}
 	return out
 }
