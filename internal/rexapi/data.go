@@ -215,6 +215,7 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		chunks: make(chan []byte, 32), resumes: make(chan *resumeCall),
 		goners: make(chan gone, 8), msgs: make(chan any, 8), done: make(chan struct{}),
 		finished: make(chan struct{}),
+		lists:    make(chan []rex.SessionInfo, 1),
 		cols:     head.Cols, rows: head.Rows, block: t.block,
 	}
 	token := g.rotateStreamToken(s)
@@ -320,6 +321,8 @@ type stream struct {
 	done     chan struct{}
 	once     sync.Once
 	finished chan struct{}
+	// lists carries the gateway's newest session list (listSessions).
+	lists chan []rex.SessionInfo
 
 	// The run goroutine owns these.
 	buf          []byte
@@ -402,8 +405,7 @@ func (s *stream) run() {
 	defer s.g.removeStream(s)
 	defer s.conn.Close()
 	go s.readOutput()
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+	s.poll(s.g.sessionsNow())
 	for {
 		select {
 		case p := <-s.chunks:
@@ -425,8 +427,8 @@ func (s *stream) run() {
 				return
 			}
 			s.startResumeTimer()
-		case <-ticker.C:
-			s.poll()
+		case list := <-s.lists:
+			s.poll(list)
 		case <-s.resumeWait():
 			s.closeWith(1000, "")
 			return
@@ -645,12 +647,9 @@ func (s *stream) resumeWait() <-chan time.Time {
 	return s.resume.C
 }
 
-// poll sends the block's new size, its exit, and whether it closed.
-func (s *stream) poll() {
-	list, err := s.g.opt.Client.List()
-	if err != nil {
-		return
-	}
+// poll sends the block's new size, its exit, and whether it closed, as
+// list tells.
+func (s *stream) poll(list []rex.SessionInfo) {
 	var info *rex.SessionInfo
 	for i := range list {
 		if list[i].ID == s.sid {
@@ -689,14 +688,11 @@ func (s *stream) inject(payload any) {
 
 // outputEnded handles the end of the GoRex session's output.
 func (s *stream) outputEnded() {
-	list, err := s.g.opt.Client.List()
 	exited, found, code := false, false, 0
-	if err == nil {
-		for _, info := range list {
-			if info.ID == s.sid {
-				found, exited, code = true, info.Exited, info.ExitCode
-				break
-			}
+	for _, info := range s.g.sessionsNow() {
+		if info.ID == s.sid {
+			found, exited, code = true, info.Exited, info.ExitCode
+			break
 		}
 	}
 	switch {

@@ -11,10 +11,6 @@ import (
 	"gorex/internal/rex"
 )
 
-// blockPollEvery is how often the gateway reads the sessions' records for
-// the events blocks send.
-var blockPollEvery = 500 * time.Millisecond
-
 // blockWatch is what the gateway saw last of a block's session, for the
 // events only a change tells of.
 type blockWatch struct {
@@ -31,81 +27,66 @@ type blockWatch struct {
 	code       int
 }
 
-// watchBlocks tells of the events blocks send: a title, a bell, the
+// watchBlocks tells of the events blocks of m send: a title, a bell, the
 // programs' status, and the end of the program, which the sessions'
-// records hold and no event of the layout does.
-func (g *Gateway) watchBlocks() {
-	defer g.wg.Done()
-	ticker := time.NewTicker(blockPollEvery)
-	defer ticker.Stop()
-	watches := map[string]*blockWatch{}
-	for {
-		select {
-		case <-g.done:
-			return
-		case <-ticker.C:
-		}
-		list, err := g.opt.Client.List()
-		if err != nil {
+// records hold and no event of the layout does. refresh calls it, under
+// refreshMu, with the sessions it listed last.
+func (g *Gateway) watchBlocks(m *model) {
+	live := map[string]bool{}
+	for _, info := range g.desktop {
+		b := m.blockBySID(info.ID)
+		if b == nil {
 			continue
 		}
-		m := g.modelNow()
-		live := map[string]bool{}
-		for _, info := range list {
-			b := m.blockBySID(info.ID)
-			if b == nil {
-				continue
-			}
-			live[b.id] = true
-			w := watches[b.id]
-			if w == nil {
-				w = &blockWatch{}
-				watches[b.id] = w
-			}
-			if !w.seen {
-				*w = blockWatch{seen: true, title: info.Title, bells: info.Bells, status: statusSignature(info.Statuses),
-					statusIDs: statusIDs(info.Statuses), dir: info.Dir, foreground: info.Foreground, program: info.Program,
-					exited: info.Exited, code: info.ExitCode}
-				continue
-			}
-			if info.Title != w.title {
-				g.emitBlockEvent(b, "title_changed", map[string]any{"title": info.Title})
-				w.title = info.Title
-			}
-			if info.Bells > w.bells {
-				g.emitBlockEvent(b, "bell", nil)
-				w.bells = info.Bells
-			}
-			if info.Dir != w.dir {
-				g.emitBlockEvent(b, "pwd_changed", map[string]any{"pwd": fileURL(info.Dir), "owner": eventOwner(&info)})
-				w.dir = info.Dir
-			}
-			if info.Foreground != w.foreground || info.Program != w.program {
-				w.generation++
-				g.emitBlockEvent(b, "process_changed", map[string]any{
-					"generation": w.generation,
-					"foreground": map[string]any{"name": info.Program, "pid": info.Foreground, "cwd": info.Dir},
-					"ancestors":  []any{},
-				})
-				w.foreground, w.program = info.Foreground, info.Program
-			}
-			if sig := statusSignature(info.Statuses); sig != w.status {
-				g.emitBlockEvent(b, "program_status_changed", map[string]any{"records": statusRecords(&info)})
-				if removed := removedStatusIDs(w.statusIDs, info.Statuses); len(removed) > 0 {
-					g.emitBlockEvent(b, "program_status_removed", map[string]any{"ids": removed, "reason": "removed"})
-				}
-				w.status = sig
-				w.statusIDs = statusIDs(info.Statuses)
-			}
-			if info.Exited && !w.exited {
-				g.emitBlockEvent(b, "child_exited", map[string]any{"exit_code": info.ExitCode})
-			}
-			w.exited, w.code = info.Exited, info.ExitCode
+		live[b.id] = true
+		w := g.watches[b.id]
+		if w == nil {
+			w = &blockWatch{}
+			g.watches[b.id] = w
 		}
-		for id := range watches {
-			if !live[id] {
-				delete(watches, id)
+		if !w.seen {
+			*w = blockWatch{seen: true, title: info.Title, bells: info.Bells, status: statusSignature(info.Statuses),
+				statusIDs: statusIDs(info.Statuses), dir: info.Dir, foreground: info.Foreground, program: info.Program,
+				exited: info.Exited, code: info.ExitCode}
+			continue
+		}
+		if info.Title != w.title {
+			g.emitBlockEvent(b, "title_changed", map[string]any{"title": info.Title})
+			w.title = info.Title
+		}
+		if info.Bells > w.bells {
+			g.emitBlockEvent(b, "bell", nil)
+			w.bells = info.Bells
+		}
+		if info.Dir != w.dir {
+			g.emitBlockEvent(b, "pwd_changed", map[string]any{"pwd": fileURL(info.Dir), "owner": eventOwner(&info)})
+			w.dir = info.Dir
+		}
+		if info.Foreground != w.foreground || info.Program != w.program {
+			w.generation++
+			g.emitBlockEvent(b, "process_changed", map[string]any{
+				"generation": w.generation,
+				"foreground": map[string]any{"name": info.Program, "pid": info.Foreground, "cwd": info.Dir},
+				"ancestors":  []any{},
+			})
+			w.foreground, w.program = info.Foreground, info.Program
+		}
+		if sig := statusSignature(info.Statuses); sig != w.status {
+			g.emitBlockEvent(b, "program_status_changed", map[string]any{"records": statusRecords(&info)})
+			if removed := removedStatusIDs(w.statusIDs, info.Statuses); len(removed) > 0 {
+				g.emitBlockEvent(b, "program_status_removed", map[string]any{"ids": removed, "reason": "removed"})
 			}
+			w.status = sig
+			w.statusIDs = statusIDs(info.Statuses)
+		}
+		if info.Exited && !w.exited {
+			g.emitBlockEvent(b, "child_exited", map[string]any{"exit_code": info.ExitCode})
+		}
+		w.exited, w.code = info.Exited, info.ExitCode
+	}
+	for id := range g.watches {
+		if !live[id] {
+			delete(g.watches, id)
 		}
 	}
 }

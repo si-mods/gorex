@@ -26,7 +26,11 @@ type fixture struct {
 
 // startFixture starts a GoRex server in a directory of its own, connects
 // a gateway to it, and serves the gateway on an HTTP test server.
-func startFixture(t *testing.T) *fixture {
+func startFixture(t *testing.T) *fixture { return startFixtureVia(t, nil) }
+
+// startFixtureVia is startFixture with the gateway reaching the GoRex
+// server's socket through the one via returns, when via is set.
+func startFixtureVia(t *testing.T, via func(socket string) string) *fixture {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
@@ -43,7 +47,11 @@ func startFixture(t *testing.T) *fixture {
 	}
 	// The gateway holds the blocks' size locks through its connection, so
 	// the server must keep it alive.
-	c, err := rex.ConnectSocketKeepalive(rex.SocketPath())
+	socket := rex.SocketPath()
+	if via != nil {
+		socket = via(socket)
+	}
+	c, err := rex.ConnectSocketKeepalive(socket)
 	if err != nil {
 		desk.Shutdown()
 		t.Fatal(err)
