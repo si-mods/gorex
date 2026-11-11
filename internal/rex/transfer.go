@@ -293,21 +293,11 @@ func (s *Server) fileGet(conn net.Conn, first []byte, touch func(), answer func(
 	if err != nil {
 		return err
 	}
-	f, err := os.Open(path)
+	f, st, err := openToSend(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	if st.IsDir() {
-		return fmt.Errorf("rex: %s %s", path, isFolder)
-	}
-	if !st.Mode().IsRegular() {
-		return fmt.Errorf("rex: %s is not a regular file", path)
-	}
 	size := st.Size()
 	if req.Offset < 0 || req.Offset > size {
 		return errors.New("rex: the offset is past the end of the file")
@@ -805,6 +795,27 @@ func (c *Client) AbortFile(ctx context.Context, f FilePut) error {
 // gives.
 const isFolder = "is a folder, which is not sent"
 
+// notRegular ends the error of a get of what is neither a folder nor a
+// regular file: a FIFO, a device, a socket.
+const notRegular = "is not a regular file"
+
+// checkRegular refuses st, of path, unless it is a regular file.
+func checkRegular(path string, st fs.FileInfo) error {
+	if st.IsDir() {
+		return fmt.Errorf("rex: %s %s", path, isFolder)
+	}
+	if !st.Mode().IsRegular() {
+		return fmt.Errorf("rex: %s %s", path, notRegular)
+	}
+	return nil
+}
+
+// NotRegular reports whether err is the server refusing to send what is
+// not a regular file (the error arrives as text).
+func NotRegular(err error) bool {
+	return err != nil && strings.HasSuffix(err.Error(), notRegular)
+}
+
 // Folder reports whether err is the server refusing to send a folder (the
 // error arrives as text).
 func Folder(err error) bool {
@@ -887,3 +898,26 @@ func DownloadID(sid, path string) string {
 	sum := sha256.Sum256([]byte(sid + "\x00" + path))
 	return hex.EncodeToString(sum[:8])
 }
+
+// GetFile opens the file at path of the session sid to read, as
+// DownloadFile takes it (FileGet.Path): its answer tells the file's size,
+// name and time, and the reader gives its bytes from the start. It
+// fails at once when the server refuses the file: a folder (Folder),
+// what is not a regular file (NotRegular), one missing or denied. The
+// caller closes the reader, which ends the get; so does ctx ending.
+func (c *Client) GetFile(ctx context.Context, sid, path string) (io.ReadCloser, FileAnswer, error) {
+	if err := c.canTransfer(); err != nil {
+		return nil, FileAnswer{}, err
+	}
+	fc, a, err := c.openFile(ctx, FileGet{Op: "file.get", SID: sid, Path: path})
+	if err != nil {
+		return nil, a, err
+	}
+	return fileReader{fc}, a, nil
+}
+
+// fileReader reads the bytes of a get, after its answer.
+type fileReader struct{ fc fileConn }
+
+func (r fileReader) Read(b []byte) (int, error) { return r.fc.r.Read(b) }
+func (r fileReader) Close() error               { return r.fc.Close() }
