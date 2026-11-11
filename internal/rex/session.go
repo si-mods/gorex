@@ -535,8 +535,10 @@ func (s *session) read() {
 	}
 }
 
-// attach attaches a connection: it gets a snapshot of the session's
-// screen and scrollback, at the size the server gave the session for it
+// attach attaches a connection: it is answered once it is one of the
+// session's clients, whose resizes on its control connection are then
+// its own (resizeFrom); it gets a snapshot of the session's screen and
+// scrollback, at the size the server gave the session for it
 // (resizeForAttach), then what the session prints, and what it sends is
 // typed, typed first, what the server read past the attach's line. via
 // is the control connection it attached through (Attach.Conn), if any;
@@ -567,6 +569,7 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, typ
 		pty, cols, rows = s.followAuthorityLocked(prev)
 	}
 	s.mu.Unlock()
+	conn.Write([]byte(`{"ok":true}` + "\n"))
 	go a.writer()
 	if pty {
 		s.resizeTerminal(cols, rows)

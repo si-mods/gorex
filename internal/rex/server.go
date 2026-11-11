@@ -508,7 +508,6 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		if a.Cols > 0 && a.Rows > 0 {
 			ss.resizeForAttach(a.Cols, a.Rows)
 		}
-		conn.Write([]byte(`{"ok":true}` + "\n"))
 		// What the reader buffered past the first line is input.
 		var typed []byte
 		if n := r.Buffered(); n > 0 {
