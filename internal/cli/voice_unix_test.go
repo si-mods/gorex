@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -55,22 +54,27 @@ func TestRealTool(t *testing.T) {
 	}
 }
 
-// A rec handed over to takes no other: the other may be another GoRex's,
-// which would hand it back. The real one is handed the mark.
-func TestRealToolHandedOver(t *testing.T) {
-	other := t.TempDir()
-	if err := os.WriteFile(filepath.Join(other, "rec"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+// Another GoRex's links, which have gorex beside them as the same file,
+// are not the real SoX either: the two would run each other forever.
+func TestRealToolPastAnotherGoRex(t *testing.T) {
+	other, real := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "gorex"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("gorex", filepath.Join(other, "rec")); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", linkSelf(t, "rec")+string(os.PathListSeparator)+other)
-	t.Setenv(handedOver, "")
-	env := handOverEnv()
-	if !slices.Contains(env, handedOver+"=1") {
-		t.Fatalf("the real rec is not marked: %v", env)
-	}
-	t.Setenv(handedOver, "1")
 	if got := realTool("rec"); got != "" {
-		t.Errorf("a rec handed over to took %q", got)
+		t.Errorf("took another GoRex's rec, %q", got)
+	}
+	want := filepath.Join(real, "rec")
+	if err := os.WriteFile(want, []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", os.Getenv("PATH")+string(os.PathListSeparator)+real)
+	if got := realTool("rec"); got != want {
+		t.Errorf("the real rec past another GoRex's: %q, want %q", got, want)
 	}
 }
 

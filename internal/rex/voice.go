@@ -190,6 +190,12 @@ func (s *Server) voiceGet(conn net.Conn, sid string, answer func(FileAnswer)) {
 		}
 		s.voiceMu.Unlock()
 	}()
+	// The client sends nothing: its connection ends as it goes.
+	gone := make(chan struct{})
+	go func() {
+		io.Copy(io.Discard, conn)
+		close(gone)
+	}()
 	for v == nil {
 		s.voiceMu.Lock()
 		if old := s.voices[sid]; old != nil && !old.taken {
@@ -206,18 +212,14 @@ func (s *Server) voiceGet(conn net.Conn, sid string, answer func(FileAnswer)) {
 		}
 		select {
 		case <-wake:
+		case <-gone:
+			return
 		case <-timeout.C:
 			answer(FileAnswer{Error: errNoVoice.Error()})
 			return
 		}
 	}
 	answer(FileAnswer{OK: true})
-	// The client sends nothing: its connection ends as it goes.
-	gone := make(chan struct{})
-	go func() {
-		io.Copy(io.Discard, conn)
-		close(gone)
-	}()
 	for {
 		b, ended, wake := v.next()
 		if len(b) > 0 {

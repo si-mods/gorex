@@ -42,7 +42,7 @@ func Voice(args []string, out, errOut io.Writer) (code int, handled bool) {
 		}
 	}
 	if real != "" {
-		err := syscall.Exec(real, append([]string{real}, args...), handOverEnv())
+		err := syscall.Exec(real, append([]string{real}, args...), os.Environ())
 		fmt.Fprintf(errOut, "%s: %v\n", name, err)
 		return ExitFailed, true
 	}
@@ -88,21 +88,12 @@ func claudeRec(args []string) bool {
 	return raw && slices.Contains(args, "-")
 }
 
-// handedOver marks the environment of the rec or sox this one execs: it
-// may be another GoRex's link, as with two GoRex bin directories on PATH,
-// which would take this one for the real SoX, and back again forever. So
-// a rec or sox handed over to takes no other.
-const handedOver = "GOREX_SOX_HANDED_OVER"
-
-// handOverEnv is the environment of the real SoX: this one's, marked.
-func handOverEnv() []string { return append(os.Environ(), handedOver+"=1") }
-
-// realTool finds name on PATH past this executable's links: the real
-// SoX's, "" when there is none, or when this one was handed over to.
+// realTool finds name on PATH past GoRex's links: the real SoX's, ""
+// when there is none. A link is this executable's, or another GoRex's,
+// as with two GoRex bin directories on PATH, which has gorex beside it
+// as the same file: each would take the other for the real SoX, and
+// back again forever.
 func realTool(name string) string {
-	if os.Getenv(handedOver) != "" {
-		return ""
-	}
 	self, err := os.Executable()
 	if err != nil {
 		return ""
@@ -118,6 +109,9 @@ func realTool(name string) string {
 		path := filepath.Join(dir, name)
 		st, err := os.Stat(path)
 		if err != nil || st.IsDir() || st.Mode()&0o111 == 0 || os.SameFile(st, me) {
+			continue
+		}
+		if gorex, err := os.Stat(filepath.Join(dir, "gorex")); err == nil && os.SameFile(st, gorex) {
 			continue
 		}
 		return path

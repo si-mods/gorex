@@ -117,8 +117,10 @@ final class VoiceStream {
         let watched: [(Notification.Name, AnyObject)] = [(AVAudioSession.interruptionNotification, audio),
                                                         (.AVAudioEngineConfigurationChange, engine)]
         observers = watched.map { name, object in
-            NotificationCenter.default.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.interrupted() }
+            NotificationCenter.default.addObserver(forName: name, object: object, queue: .main) { [weak self] n in
+                // An interruption's end, as of one before the hold, is none.
+                let ended = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt == AVAudioSession.InterruptionType.ended.rawValue
+                MainActor.assumeIsolated { if !ended { self?.interrupted() } }
             }
         }
         task.resume()
