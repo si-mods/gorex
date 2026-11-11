@@ -541,6 +541,7 @@ final class Host: Identifiable {
             let id = e.payload["session_id"] as? String ?? e.sessionID
             sessions.removeAll { $0.id == id }
             id.map { reread.remove($0) }
+            prune()
         case "session_label_changed":
             if let i = sessions.firstIndex(where: { $0.id == e.sessionID }) {
                 sessions[i].label = e.payload["label"] as? String ?? sessions[i].label
@@ -634,6 +635,16 @@ final class Host: Identifiable {
         for w in v.windows ?? [] {
             for b in [w.block].compactMap(\.self) + w.tiled where blocks[b]?.title == nil || again { describe(session: v.session_id, block: b) }
         }
+        prune()
+    }
+
+    /// Forgets the blocks no window holds, as after a tab closes or a
+    /// session ends. Not while a session has no view, as after a
+    /// reconnect: its blocks would look gone.
+    private func prune() {
+        guard sessions.allSatisfy({ $0.view != nil }) else { return }
+        let held = Set(sessions.flatMap { $0.view?.windows ?? [] }.flatMap { [$0.block].compactMap(\.self) + $0.tiled })
+        for id in blocks.keys where !held.contains(id) { blocks[id] = nil }
     }
 
     /// Reads a block's title, program and status, which its events keep up
