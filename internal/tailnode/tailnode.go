@@ -16,6 +16,7 @@ import (
 	"tailscale.com/ipn"
 	"tailscale.com/ipn/ipnstate"
 	"tailscale.com/net/tsaddr"
+	"tailscale.com/tailcfg"
 	"tailscale.com/tsd"
 	"tailscale.com/tsnet"
 )
@@ -119,6 +120,12 @@ func (n *Node) SetHostname(ctx context.Context, name string) error {
 // network instead, so callers check it first.
 func (n *Node) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	return n.srv.Dial(ctx, network, addr)
+}
+
+// Ping sends a disco ping of size bytes to the peer at ip, as tailscale
+// ping does, over the path the node would use: direct or through DERP.
+func (n *Node) Ping(ctx context.Context, ip netip.Addr, size int) (*ipnstate.PingResult, error) {
+	return n.lc.PingWithOpts(ctx, ip, tailcfg.PingDisco, local.PingOpts{Size: size})
 }
 
 func (n *Node) Close() error { return n.srv.Close() }

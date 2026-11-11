@@ -60,16 +60,22 @@ struct TailscaleView: View {
                 }
                 let machines = (s.peers ?? []).filter { $0.name.prefix { $0 != "." }.contains("-gorex") }
                 if !machines.isEmpty {
-                    Section("GoRex Machines") {
+                    Section {
                         ForEach(machines, id: \.name) { p in
-                            HStack {
-                                Image(systemName: "circle.fill").font(.caption2).foregroundStyle(p.online ? .green : .secondary)
-                                    .accessibilityLabel(p.online ? Text("Online") : Text("Offline"))
-                                Text(HostConfig.name(p.name))
-                                Spacer(minLength: 8)
-                                Text(path(p)).foregroundStyle(.secondary)
+                            NavigationLink { DiagnosticsView(address: p.name) } label: {
+                                HStack {
+                                    Image(systemName: "circle.fill").font(.caption2).foregroundStyle(p.online ? .green : .secondary)
+                                        .accessibilityLabel(p.online ? Text("Online") : Text("Offline"))
+                                    Text(HostConfig.name(p.name))
+                                    Spacer(minLength: 8)
+                                    Text(path(p)).foregroundStyle(.secondary)
+                                }
                             }
                         }
+                    } header: {
+                        Text("GoRex Machines")
+                    } footer: {
+                        Text("Tap a machine to test the connection to it.")
                     }
                     .listRowBackground(Color.card)
                 }

@@ -144,6 +144,8 @@ final class DataConnection {
     var onDrop: (Int) -> Void = { _ in }
 
     private(set) var nonce: UInt64 = 0
+    /// What the last connect waited for, or waits for, for diagnostics.
+    private(set) var stage = ""
     private var token = Data()
     /// The stream bytes passed to onBytes, across connections.
     private var received: UInt64 = 0
@@ -182,21 +184,34 @@ final class DataConnection {
 
     private func connect(_ first: Data) async throws {
         task?.cancel()
-        let t = session.webSocketTask(with: URLRequest(url: base.rexURL("/api/data")).withSubprotocol("rex.data.terminal.v1"))
+        var request = URLRequest(url: base.rexURL("/api/data"))
+        // As the control connection's: a path that carries nothing fails
+        // in seconds, not URLSession's minute.
+        request.timeoutInterval = 15
+        let t = session.webSocketTask(with: request.withSubprotocol("rex.data.terminal.v1"))
         t.maximumMessageSize = 1 << 20
         task = t
+        let began = ContinuousClock.now
+        let hello = first.first == 0x01 ? "HELLO" : "RESUME"
+        ConnectionLog.note("\(name): socket started")
+        stage = "the WebSocket upgrade, to send \(hello)"
         t.resume()
         do {
             try await t.send(.data(first))
+            ConnectionLog.note("\(name): \(hello) sent, \(began.duration(to: .now).ms)")
+            stage = "the answer to \(hello)"
             guard case .data(let d) = try await t.receive(), let answer = DataHandshake(d) else { throw Failure.malformed }
             switch answer {
             case .reject(let r):
                 throw Failure.rejected(r)
             case .welcome(let tok, _, let n):
+                ConnectionLog.note("\(name): WELCOME, \(began.duration(to: .now).ms)")
                 token = tok
                 nonce = n
             }
         } catch {
+            let http = (t.response as? HTTPURLResponse).map { ", HTTP \($0.statusCode)" } ?? ""
+            ConnectionLog.note("\(name): failed waiting for \(stage), \(began.duration(to: .now).ms)\(http): \(error.diagnosis)")
             // A handshake that failed leaves no socket open.
             t.cancel()
             if task === t { task = nil }
@@ -204,6 +219,9 @@ final class DataConnection {
         }
         Task { await read(t) }
     }
+
+    /// The connection as the log names it.
+    private var name: String { "data \(base.host() ?? "")" }
 
     private func read(_ t: URLSessionWebSocketTask) async {
         do {
@@ -216,6 +234,7 @@ final class DataConnection {
         } catch {
             if t === task {
                 task = nil
+                ConnectionLog.note("\(name): dropped, close code \(t.closeCode.rawValue): \(error.diagnosis)")
                 onDrop(t.closeCode.rawValue)
             }
         }
