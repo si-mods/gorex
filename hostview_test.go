@@ -338,6 +338,84 @@ func TestSidebarHostView(t *testing.T) {
 	}
 }
 
+// TestSidebarHostViewSwitchKeepsRows: in the host view, as the window goes
+// to show another space, from a row under another host, from a tab of a
+// space it keeps, and from one of a layout, the tab rows stay where they
+// are: none opens or closes again.
+func TestSidebarHostViewSwitchKeepsRows(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left", SidebarView: "host"}
+	h := newHostConn(savedHost{ID: "1", Name: "office"})
+	h.state = hostConnected
+	a.hosts = []*hostConn{h}
+	a.st.hosts = a.hosts
+	far := func(name, sid string) {
+		rp := &Pane{ID: a.id(), SID: sid, host: h, info: rex.SessionInfo{ID: sid}}
+		rt := a.makeTab("")
+		rt.Name, rt.Root = name, &Node{ID: a.id(), Pane: rp}
+		rp.Tab, rp.Node = rt, rt.Root
+		rt.setFocus(rp)
+		a.tabs = append(a.tabs, rt)
+	}
+	first := a.ws
+	first.Name = "calm-fern"
+	a.tabs[0].Name = "Here"
+	far("Far", "far1")
+	a.newWorkspace()
+	second := a.ws
+	second.Name = "icy-ridge"
+	a.tabs[0].Name = "Home"
+	far("Away", "far2")
+	a.showWorkspace(first)
+	tt.Frame()
+	settle(tt)
+
+	rows := []string{"Here ", "Far ", "Home ", "Away "}
+	at := map[string]ui.Rect{}
+	for _, label := range rows {
+		r, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("no row %q; texts %q", label, tt.Texts())
+		}
+		at[label] = r
+	}
+	// still checks the rows on the frames right after the switch, while
+	// a row that opened or closed again would be moving.
+	still := func(what string, want *Workspace) {
+		t.Helper()
+		for i := range 12 {
+			tt.Advance(16 * time.Millisecond)
+			tt.Frame()
+			for _, label := range rows {
+				if r, ok := tt.Find(label); !ok || r != at[label] {
+					t.Fatalf("%s: frame %d: row %q at %v (found %v), was at %v", what, i, label, r, ok, at[label])
+				}
+			}
+		}
+		if a.ws != want {
+			t.Fatalf("%s: the window shows %v", what, a.ws.Name)
+		}
+		settle(tt)
+	}
+	if err := tt.Click("icy-ridge, " + locales.SessionTabs(1)); err != nil {
+		t.Fatal(err)
+	}
+	still("a space's row under the host", second)
+	if err := tt.Click("Here "); err != nil {
+		t.Fatal(err)
+	}
+	still("a tab the window keeps", first)
+	second.unkeep()
+	tt.Frame()
+	settle(tt)
+	if err := tt.Click("Home "); err != nil {
+		t.Fatal(err)
+	}
+	still("a tab of a layout", second)
+}
+
 // TestSidebarHostIcon chooses a host's icon from its name's right click in
 // the sidebar.
 func TestSidebarHostIcon(t *testing.T) {

@@ -380,7 +380,10 @@ func (a *App) sidebarEdge(c *ui.Context, k *colors, right bool) {
 // its name and detail, and its close button or activity.
 func (a *App) sidebarTab(c *ui.Context, k *colors, i int, t *Tab, reserve float32) {
 	active := i == a.active
-	e := ui.Row(c.Key(t.ID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, 9).Gap(6).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
+	// Keyed by the tab's lasting ID, as spaceTab keys it: as the window
+	// goes to show another space, the rows of both stay, not close and
+	// open again.
+	e := ui.Row(c.Key("tab-"+t.UID)).Height(sideRowH).Shrink(0).Padding(0, 6, 0, 9).Gap(6).AlignItems(ui.Center).Radius(pillRadius(sideRowH, 9)).
 		Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
@@ -620,7 +623,7 @@ func (a *App) spaceTabs(c *ui.Context, k *colors, h *hostConn, w *Workspace, res
 			reserve = max(reserve, tilesReserve(live))
 			for _, t := range live {
 				name, detail := t.label()
-				row(fmt.Sprint(t.ID), name, detail, func() { a.tiles(c, k, t) })
+				row(t.UID, name, detail, func() { a.tiles(c, k, t) })
 			}
 			return
 		}
