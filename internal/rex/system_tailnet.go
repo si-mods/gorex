@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/netip"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -493,7 +492,17 @@ send:
 	t.hosts = hosts
 }
 
-func tailnetGreeting() string { return tailnetReady + strconv.Itoa(ProtocolVersion) + "\n" }
+// tailnetGreeting answers a verified probe or relay. Its number stays 3,
+// whatever ProtocolVersion is: servers up to 0.21 take no other, and the
+// Hello that follows tells the version.
+func tailnetGreeting() string { return tailnetReady + "3\n" }
+
+// tailnetGreeted reads a greeting, of any version, a byte at a time: what
+// follows it is the server's.
+func tailnetGreeted(c net.Conn) bool {
+	line, err := readByteLine(c)
+	return err == nil && strings.HasPrefix(string(line), tailnetReady)
+}
 
 func (t *systemTailnet) dial(ctx context.Context, snap *tailnetSnapshot, p tailnetPeer, hello string) (net.Conn, error) {
 	addr := netip.AddrPortFrom(p.ip, tailnetPort).String()
@@ -508,19 +517,14 @@ func (t *systemTailnet) dial(ctx context.Context, snap *tailnetSnapshot, p tailn
 	}
 	deadline, _ := ctx.Deadline()
 	c.SetDeadline(deadline)
-	want := tailnetGreeting()
-	reply := make([]byte, len(want))
-	if _, err := io.WriteString(c, hello); err == nil {
-		_, err = io.ReadFull(c, reply)
-		if err == nil && string(reply) == want {
-			if hello != tailnetConnect {
-				return c, nil
-			}
-			actual, err := t.api.WhoIs(ctx, c.RemoteAddr().String())
-			if err == nil && snap.verifies(p, actual) {
-				c.SetDeadline(time.Time{})
-				return c, nil
-			}
+	if _, err := io.WriteString(c, hello); err == nil && tailnetGreeted(c) {
+		if hello != tailnetConnect {
+			return c, nil
+		}
+		actual, err := t.api.WhoIs(ctx, c.RemoteAddr().String())
+		if err == nil && snap.verifies(p, actual) {
+			c.SetDeadline(time.Time{})
+			return c, nil
 		}
 	}
 	c.Close()
@@ -669,13 +673,8 @@ func connectTailnet(ctx context.Context, target string) (*Client, error) {
 		defer stop()
 		b, _ := json.Marshal(Request{Op: "remote.tailnetDial", TailnetTarget: target})
 		b = append(b, '\n')
-		want := tailnetGreeting()
-		reply := make([]byte, len(want))
-		if _, err := c.Write(b); err == nil {
-			_, err = io.ReadFull(c, reply)
-			if err == nil && string(reply) == want && stop() {
-				return c, nil
-			}
+		if _, err := c.Write(b); err == nil && tailnetGreeted(c) && stop() {
+			return c, nil
 		}
 		c.Close()
 		return nil, errTailnetUnavailable

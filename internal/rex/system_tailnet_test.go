@@ -1,6 +1,7 @@
 package rex
 
 import (
+	"bufio"
 	"context"
 	"io"
 	"net"
@@ -122,5 +123,46 @@ func TestRemoteEnabledIgnoresAnIdleBroker(t *testing.T) {
 	s.rem.tailnet.links[remote] = tailnetLink{}
 	if !s.remoteEnabled() {
 		t.Fatal("an attached tailnet client did not keep the server")
+	}
+}
+
+// TestConnectTailnetTakesAnyVersion takes a greeting of another protocol
+// version, which the Hello that follows tells, and refuses what is none.
+// Its own stays the one that servers up to 0.21 take.
+func TestConnectTailnetTakesAnyVersion(t *testing.T) {
+	if g := tailnetGreeting(); g != "gorex-tailnet/1 ok 3\n" {
+		t.Fatalf("greeting %q: servers up to 0.21 refuse it", g)
+	}
+	t.Setenv("GOREX_DIR", t.TempDir())
+	ln, err := net.Listen("unix", SocketPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	for greeting, want := range map[string]bool{
+		tailnetReady + "3\n":            true,
+		tailnetReady + "4\n":            true,
+		"gorex-tailnet/1 no 3\n":        false,
+		`{"error":"unknown op"}` + "\n": false,
+	} {
+		go func() {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			defer c.Close()
+			bufio.NewReader(c).ReadString('\n')
+			io.WriteString(c, greeting)
+			io.Copy(io.Discard, c)
+		}()
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		c, err := connectTailnet(ctx, "node")
+		cancel()
+		if (err == nil) != want {
+			t.Errorf("greeting %q: %v; want accepted %v", greeting, err, want)
+		}
+		if c != nil {
+			c.Close()
+		}
 	}
 }
