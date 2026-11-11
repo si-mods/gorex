@@ -83,9 +83,9 @@ struct TerminalScreen: View {
                     .buttonStyle(.plain)
                 }
                 .sharedBackgroundVisibility(.hidden)
-                // The window's menu, or for a host that takes voice the
-                // mic, New Tab being in the session's sheet and on ⌘T; the
-                // bar's glass draws it.
+                // The window's menu, or for Claude Code on a host that
+                // takes voice the mic, New Tab being in the session's sheet
+                // and on ⌘T; the bar's glass draws it.
                 ToolbarItem(placement: .topBarTrailing) {
                     if canVoice {
                         Mic { terminal }
@@ -154,11 +154,14 @@ struct TerminalScreen: View {
     /// The terminal showing the session.
     private var terminal: TerminalView? { session?.output as? TerminalView }
 
-    /// Whether the host takes voice. Its welcome's features are not
-    /// observed; its status, which turns online after the welcome, is.
+    /// Whether the mic shows: the host takes voice, and the window's
+    /// program is Claude Code, whose /voice the held Space is for; another
+    /// program would take the spaces as typed. The welcome's features are
+    /// not observed; the host's status, which turns online after the
+    /// welcome, is.
     private var canVoice: Bool {
         _ = host.status
-        return host.canVoice
+        return host.canVoice && Program.of(host.programs[target.block]).name == Program.of("claude").name
     }
 
     /// The session of the window open, as the host has it.
@@ -235,10 +238,11 @@ struct TerminalScreen: View {
     }
 }
 
-/// The mic, for a host that takes voice: while it is held, the host hears
-/// the phone's microphone as its own, and Space is held (TerminalView.talk).
-/// It lets go as the finger does, as the touch is cancelled, and as it goes
-/// away, with the screen or the host's voice.
+/// The mic, for Claude Code on a host that takes voice: while it is held,
+/// the host hears the phone's microphone as its own, and Space is held
+/// (TerminalView.talk). It lets go as the finger does, as the touch is
+/// cancelled, and as it goes away, with the screen, the host's voice or
+/// Claude Code.
 private struct Mic: View {
     let terminal: () -> TerminalView?
     @GestureState private var held = false

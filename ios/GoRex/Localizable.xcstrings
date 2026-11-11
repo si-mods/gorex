@@ -592,12 +592,12 @@
         }
       }
     },
-    "Hold the mic at the top right of the terminal to speak to Claude Code's /voice on a host that has no microphone. It shows for hosts that take voice, in place of the ⋯ menu.": {
+    "Hold the mic at the top right of the terminal to speak to Claude Code's /voice on a host that has no microphone. It shows while Claude Code runs on a host that takes voice, in place of the ⋯ menu.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "按住终端右上角的麦克风，即可对没有麦克风的主机上 Claude Code 的 /voice 说话。支持语音的主机才显示它，取代 ⋯ 菜单。"
+            "value": "按住终端右上角的麦克风，即可对没有麦克风的主机上 Claude Code 的 /voice 说话。主机支持语音且正在运行 Claude Code 时才显示它，取代 ⋯ 菜单。"
           }
         }
       }
