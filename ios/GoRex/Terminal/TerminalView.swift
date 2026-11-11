@@ -411,16 +411,6 @@ final class TerminalView: UIView, TerminalOutput {
 
     override var canBecomeFirstResponder: Bool { true }
 
-    /// Brings up the keyboard once the push that shows the view ends: one
-    /// that comes up during the push stalls it.
-    func focus() {
-        let push = sequence(first: self as UIResponder, next: \.next).lazy.compactMap { $0 as? UIViewController }.first?.transitionCoordinator
-        guard let push else { becomeFirstResponder(); return }
-        push.animate(alongsideTransition: nil) { [weak self] c in
-            if !c.isCancelled { self?.becomeFirstResponder() }
-        }
-    }
-
     /// The bar is for the soft keyboard, which a hardware one keeps away,
     /// and for a phone's: an iPad's keys are in its bar of shortcuts.
     override var inputAccessoryView: UIView? {

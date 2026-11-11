@@ -250,11 +250,11 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let newTab: () -> Void
     let closeTab: () -> Void
 
+    /// The view lands without the keyboard: a tap gives it focus, as one
+    /// does in the terminal.
     func makeUIView(context: Context) -> TerminalHost {
-        let v = TerminalView(session: session)
-        let host = TerminalHost(v)
+        let host = TerminalHost(TerminalView(session: session))
         updateUIView(host, context: context)
-        DispatchQueue.main.async { v.focus() }
         return host
     }
 
