@@ -401,4 +401,11 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(restarted, ["resume"])
         XCTAssertEqual(rex.controls.count, 1, "the system host connected anew")
     }
+
+    /// A title's symbols show as text: iOS draws "✳" as an emoji without U+FE0E.
+    func testTitleSymbolsAsText() {
+        XCTAssertEqual("✳ sioux/jnj".asText, "✳\u{FE0E} sioux/jnj")
+        XCTAssertEqual("✳\u{FE0F} ok".asText, "✳\u{FE0F} ok", "an emoji chosen stays")
+        XCTAssertEqual("#1 * 😀 中文".asText, "#1 * 😀 中文", "ASCII and emoji stay")
+    }
 }

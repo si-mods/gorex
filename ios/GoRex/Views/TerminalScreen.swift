@@ -55,7 +55,7 @@ struct TerminalScreen: View {
             // background, for the clock over it.
             .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: statusBar + 10) }
             .overlay { status }
-            .navigationTitle(title)
+            .navigationTitle(title.asText)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // The title floats in a capsule of glass, with the tile of
@@ -70,7 +70,7 @@ struct TerminalScreen: View {
                                 .frame(width: 21 * k, height: 16 * k)
                                 .scaleEffect(small)
                                 .frame(width: 21 * k * small, height: 16 * k * small)
-                            Text(title).font(.body.weight(.semibold)).lineLimit(1)
+                            Text(title.asText).font(.body.weight(.semibold)).lineLimit(1)
                         }
                         .padding(.leading, 12)
                         .padding(.trailing, 18)

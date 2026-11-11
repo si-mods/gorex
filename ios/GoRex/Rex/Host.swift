@@ -706,3 +706,23 @@ final class HostStore {
         UserDefaults.standard.set(try? JSONEncoder().encode(hosts.map(\.config)), forKey: "hosts")
     }
 }
+
+extension String {
+    /// The string as text to show, its symbols as text: a symbol that is
+    /// text by default but may be an emoji, as the "✳" Claude Code puts
+    /// in its title, gets U+FE0E unless it chose a presentation already;
+    /// iOS would draw it as an emoji.
+    var asText: String {
+        var out = String.UnicodeScalarView()
+        let scalars = Array(unicodeScalars)
+        for (i, c) in scalars.enumerated() {
+            out.append(c)
+            let next = i + 1 < scalars.count ? scalars[i + 1].value : 0
+            if c.properties.isEmoji, !c.properties.isEmojiPresentation, c.value > 0x7F,
+               next != 0xFE0E, next != 0xFE0F, next != 0x20E3 {
+                out.append("\u{FE0E}")
+            }
+        }
+        return String(out)
+    }
+}
