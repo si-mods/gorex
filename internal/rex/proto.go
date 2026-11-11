@@ -506,24 +506,18 @@ type Response struct {
 	// ETag names the answer to "list": when it is the request's, Data is
 	// left out, the list unchanged.
 	ETag string `json:"etag,omitempty"`
-	// Event, on a line of no ID, tells a connection that subscribed of a
-	// change: "layout", as setLayout changes it, "sessions", as one
-	// starts, ends, or changes its size, size lock, title or foreground
-	// program, or "transfer", as a file transfer goes on.
-	Event string `json:"event,omitempty"`
-	// Revision, on a layout event, is the layout's revision after the
-	// change (LayoutState); Sessions, on a sessions event, the sessions
-	// and their status records; Transfer, on a transfer event, the
-	// transfer.
-	Revision uint64         `json:"revision,omitempty"`
-	Sessions []EventSession `json:"sessions,omitempty"`
-	Transfer *Transfer      `json:"transfer,omitempty"`
+	// Event, on a line of no ID, is one a subscribed connection gets.
+	Event
 }
 
-// Event is a line a subscribed connection gets, with no ID: the change
-// it tells of, and the layout's revision for a layout change.
+// Event is a line a subscribed connection gets, with no ID. Kind is the
+// change: "layout", as setLayout changes it, "sessions", as one starts,
+// ends, or changes its size, size lock, title or foreground program, or
+// "transfer", as a file transfer goes on.
 type Event struct {
-	Kind     string `json:"event"`
+	Kind string `json:"event,omitempty"`
+	// Revision, on a layout event, is the layout's revision after the
+	// change (LayoutState).
 	Revision uint64 `json:"revision,omitempty"`
 	// Sessions carries what the session list changed to, with the status
 	// records of each session that reported some.

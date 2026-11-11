@@ -88,11 +88,10 @@ func TestSubscribe(t *testing.T) {
 		t.Helper()
 		for {
 			select {
-			case <-sub.Changed():
+			case <-sub.Events():
 				continue
 			case <-time.After(sampleEvery + 200*time.Millisecond):
 			}
-			sub.Changes()
 			return
 		}
 	}
@@ -101,12 +100,12 @@ func TestSubscribe(t *testing.T) {
 		timeout := time.After(3 * time.Second)
 		for {
 			select {
-			case <-sub.Changed():
+			case ev := <-sub.Events():
+				if ev.Kind == kind {
+					return
+				}
 			case <-timeout:
 				t.Errorf("%s: no %s event", what, kind)
-				return
-			}
-			if layout, sessions := sub.Changes(); kind == "layout" && layout || kind == "sessions" && sessions {
 				return
 			}
 		}
@@ -114,9 +113,8 @@ func TestSubscribe(t *testing.T) {
 	none := func(what string) {
 		t.Helper()
 		select {
-		case <-sub.Changed():
-			l, ss := sub.Changes()
-			t.Errorf("%s: told of a change: layout %v, sessions %v", what, l, ss)
+		case ev := <-sub.Events():
+			t.Errorf("%s: told of a change: %s", what, ev.Kind)
 		case <-time.After(200 * time.Millisecond):
 		}
 	}
