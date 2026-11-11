@@ -13,25 +13,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The Mac mini's runner: si-mods runs no job on GitHub's runners. Not
+  # for forks' pull requests: their code would run on the Mac mini.
   test:
-    # GitHub's arm64 macOS runner. A job no runner takes fails after
-    # 15 minutes (2026-11-09); test-macmini then runs the tests instead.
-    runs-on: macos-latest
-    timeout-minutes: 15
-    outputs:
-      started: ${{ steps.started.outputs.started }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 20
     steps:
-      - id: started
-        run: echo started=true >> "$GITHUB_OUTPUT"
-      - &checkout
-        uses: actions/checkout@v4
-      - &setup-go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
-      - &gofmt
-        name: gofmt
+      - name: gofmt
         run: |
           unformatted=$(gofmt -l $(git ls-files '*.go'))
           if [ -n "$unformatted" ]; then
@@ -39,31 +33,14 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
-      - &vet
-        name: vet
+      - name: vet
         run: go vet ./...
-      - &test
-        name: test
+      - name: test
         run: go test ./... -count=1 -timeout 15m
 
-  # The Mac mini's own runner, when no arm64 runner took the test job.
-  # Not for forks' pull requests: their code would run on the Mac mini.
-  test-macmini:
-    needs: test
-    if: >-
-      !cancelled() && needs.test.result == 'failure' && needs.test.outputs.started != 'true' &&
-      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: gorex-testflight
-    timeout-minutes: 15
-    steps:
-      - *checkout
-      - *setup-go
-      - *gofmt
-      - *vet
-      - *test
-
   build:
-    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, macmini]
     strategy:
       fail-fast: false
       matrix:

@@ -15,7 +15,7 @@ permissions:
 jobs:
   delete:
     if: github.event.pull_request.merged
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, macmini]
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}

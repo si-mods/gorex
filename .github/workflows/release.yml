@@ -1,10 +1,10 @@
 name: Release
 
 # Builds and signs every platform's app of mygo.json's version and uploads
-# them to that version's draft GitHub release. macOS builds the Unix apps,
-# whose archives keep the executable bit that a Windows file system loses;
-# Windows builds its own, with the NSIS installer. The jobs run one after
-# the other, as each merges its checksums into the release's SHA256SUMS.
+# them to that version's draft GitHub release, on the Mac mini's runner:
+# si-mods runs no job on GitHub's runners. macOS builds the Windows apps
+# too, NSIS installers with Homebrew's makensis. The jobs run one after the
+# other, as each merges its checksums into the release's SHA256SUMS.
 on:
   workflow_dispatch:
     inputs:
@@ -24,7 +24,7 @@ concurrency:
 jobs:
   unix:
     if: github.ref == 'refs/heads/main' && inputs.target != 'windows'
-    runs-on: macos-latest
+    runs-on: [self-hosted, macmini]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -68,21 +68,17 @@ jobs:
 
   windows:
     needs: unix
-    if: always() && inputs.target != 'unix' && (needs.unix.result == 'success' || needs.unix.result == 'skipped')
-    runs-on: windows-latest
+    if: always() && github.ref == 'refs/heads/main' && inputs.target != 'unix' && (needs.unix.result == 'success' || needs.unix.result == 'skipped')
+    runs-on: [self-hosted, macmini]
     steps:
-      # Keep LF in the files the app embeds, as the other platforms do.
-      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
+      - run: command -v makensis || brew install makensis
       - name: build and upload
-        shell: bash
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
-          MSYS2_ENV_CONV_EXCL: MYGO_UPDATER_PRIVATE_KEY
-          MSYS_NO_PATHCONV: "1"
           GH_TOKEN: ${{ github.token }}
         run: go tool mygo build -platform windows/amd64,windows/arm64 -upload
