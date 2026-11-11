@@ -362,13 +362,6 @@ func (p *Pane) end() {
 	}
 }
 
-// close ends the pane for good, as its session ends or another pane takes
-// its place. Its session's transfers stop as the session is ended
-// (hostConn.kill), not with the pane: another may show it.
-func (p *Pane) close() {
-	p.end()
-}
-
 // browserPane is a pane that shows a web page in a web view of its
 // window, with an address field in its header.
 type browserPane struct {
@@ -763,7 +756,7 @@ func (a *App) clientOf(h *hostConn) *rex.Client {
 
 // killOn ends a session of a host; one of this machine, for nil, the
 // server ends as the layout no longer has it (diffLayout).
-func (a *App) killOn(h *hostConn, sid string) {
+func killOn(h *hostConn, sid string) {
 	if h != nil && sid != "" {
 		h.kill(sid)
 	}
@@ -1743,11 +1736,11 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	if a.findPane == p {
 		a.closeFind()
 	}
-	p.close()
+	p.end()
 	p.browser.destroy()
 	p.note.destroy()
 	if kill {
-		a.killOn(p.host, p.SID)
+		killOn(p.host, p.SID)
 	}
 	t := p.Tab
 	if t.Zoom == p {
@@ -1903,10 +1896,10 @@ func (a *App) tabByUID(id string) *Tab {
 // closeTab closes a tab and ends the sessions of its panes.
 func (a *App) closeTab(t *Tab) {
 	for _, p := range t.allPanes() {
-		p.close()
+		p.end()
 		p.browser.destroy()
 		p.note.destroy()
-		a.killOn(p.host, p.SID)
+		killOn(p.host, p.SID)
 	}
 	a.removeTab(t)
 }
@@ -2029,81 +2022,6 @@ func (a *App) setSplitRatio(ratio float32) {
 	}
 	t.Focus.Node.Parent.Ratio = min(max(ratio, 0.1), 0.9)
 	a.changed()
-}
-
-// resizePane moves the divider on p's direction edge by amount, a share
-// of the split as pane.resize has it. It reports whether the
-// split moved.
-func (a *App) resizePane(p *Pane, direction string, amount float32) (bool, string) {
-	if p == nil {
-		return false, "unchanged"
-	}
-	vertical := direction == "up" || direction == "down"
-	if direction != "left" && direction != "right" && !vertical {
-		return false, "unchanged"
-	}
-	amount = abs(amount)
-	if amount == 0 || float32IsBad(amount) {
-		amount = 0.05
-	}
-	amount = min(amount, 0.5)
-	if f := p.float; f != nil {
-		// A float resizes as the focused one does: left and up shrink its
-		// sides, right and down grow them.
-		var dx, dy float32
-		switch direction {
-		case "left":
-			dx = -1
-		case "right":
-			dx = 1
-		case "up":
-			dy = -1
-		case "down":
-			dy = 1
-		}
-		a.resizeFloat(f, dx*amount, dy*amount)
-		return true, ""
-	}
-	if p.Node == nil {
-		return false, "unchanged"
-	}
-	if direction == "left" || direction == "up" {
-		amount = -amount
-	}
-	// The split a pane's direction edge belongs to is the one that has
-	// the pane on that side: A's right edge, or B's left edge. Walk out
-	// to it, keeping the nearest same-axis split for an outer edge, which
-	// moves that one.
-	var nearest *Node
-	grows := direction == "right" || direction == "down"
-	for n := p.Node; n.Parent != nil; n = n.Parent {
-		split := n.Parent
-		if split.Vertical != vertical {
-			continue
-		}
-		if nearest == nil {
-			nearest = split
-		}
-		if (split.A == n) == grows {
-			return a.shiftSplit(split, amount)
-		}
-	}
-	if nearest != nil {
-		return a.shiftSplit(nearest, amount)
-	}
-	return false, "unchanged"
-}
-
-// shiftSplit moves split's ratio by amount, within the bounds the
-// desktop's own divider drags use.
-func (a *App) shiftSplit(split *Node, amount float32) (bool, string) {
-	old := split.Ratio
-	split.Ratio = min(max(old+amount, 0.1), 0.9)
-	if split.Ratio == old {
-		return false, "unchanged"
-	}
-	a.changed()
-	return true, ""
 }
 
 // swapPanes puts p and q in each other's places, in their tab, and gives
@@ -2407,8 +2325,7 @@ func (f *Float) resizeEdges(e int, dx, dy float32) {
 	}
 }
 
-// moveFloatPx moves f by pixels over room, and resizeFloatPx resizes it by
-// pixels there.
+// moveFloatPx moves f by pixels over room.
 func (a *App) moveFloatPx(f *Float, dx, dy float32, room ui.Rect) {
 	if room.W <= 0 || room.H <= 0 {
 		return
@@ -2422,13 +2339,6 @@ func (a *App) moveFloatPx(f *Float, dx, dy float32, room ui.Rect) {
 	x, y := f.X+f.overX+dx/room.W, f.Y+f.overY+dy/room.H
 	a.moveFloat(f, x-f.X, y-f.Y)
 	f.overX, f.overY = x-f.X, y-f.Y
-}
-
-func (a *App) resizeFloatPx(f *Float, dx, dy float32, room ui.Rect) {
-	if room.W <= 0 || room.H <= 0 {
-		return
-	}
-	a.resizeFloat(f, dx/room.W, dy/room.H)
 }
 
 // hideFloat hides f without closing its session, and gives the focus to a

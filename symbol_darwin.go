@@ -7,7 +7,7 @@ package main
 // pixels. Nothing of Apple's artwork is in the app or its build.
 //
 // The name of a symbol that this macOS does not have draws nothing, and
-// sfGlyph says so, so that the callers fall back to assets/icons.
+// sfGlyphAt says so, so that the callers fall back to assets/icons.
 
 import (
 	"image"
@@ -86,15 +86,10 @@ var (
 	sfCache = map[sfKey]*ui.Bitmap{}
 )
 
-// sfGlyph draws the SF Symbol named name, px pixels square, in col, and
+// sfGlyphAt draws the SF Symbol named name, px pixels square, in col, and
 // returns it as an image source, or false when this macOS has no such
-// symbol, or AppKit is not here to draw it.
-func sfGlyph(name string, px int, col ui.Color) (ui.ImageSource, bool) {
-	return sfGlyphAt(name, px, col, false)
-}
-
-// sfGlyphAt draws it as sfGlyph does, or with natural, at the size the
-// symbol has beside the others of the same point size.
+// symbol, or AppKit is not here to draw it. With natural, it has the size
+// the symbol has beside the others of the same point size.
 func sfGlyphAt(name string, px int, col ui.Color, natural bool) (ui.ImageSource, bool) {
 	if !loadCG() {
 		return nil, false

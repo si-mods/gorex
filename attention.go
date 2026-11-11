@@ -308,7 +308,7 @@ func (a *App) needItem(n needy) (it paletteItem, dir string) {
 	if s != nil && s.State != "idle" {
 		detail = cmp.Or(s.Message(), s.Title, detail)
 	}
-	it = paletteItem{title: name, detail: detail, glyph: paneProgram(p).Glyph, status: s, id: id}
+	it = paletteItem{title: name, detail: detail, glyph: p.program().Glyph, status: s, id: id}
 	switch {
 	case p.host != nil && n.ws != nil:
 		it.aside = p.host.label() + " · " + n.ws.Name
