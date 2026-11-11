@@ -587,9 +587,5 @@ image reaches a program as a file it opens, not as clipboard data.
 | `internal/rexpeer`, `internal/reximp` | Rex's API as a client, and importing a Rex session into GoRex as spaces, tabs and panes that mirror its blocks |
 | `internal/testrex` | a Rex server for tests, over GoRex's own session server, so the client and the importer have one to talk to |
 
-Rex's connections to servers on other machines are only half there: the
-server side exists (remote access, above), but the window cannot open
-remote hosts yet.
-
 Icons: [Lucide](https://lucide.dev) (ISC) and [Simple Icons](https://simpleicons.org)
 (CC0). Font: [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (OFL).
