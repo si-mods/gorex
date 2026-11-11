@@ -161,7 +161,7 @@ struct TerminalScreen: View {
     /// welcome, is.
     private var canVoice: Bool {
         _ = host.status
-        return host.canVoice && Program.of(host.programs[target.block]).name == Program.of("claude").name
+        return host.canVoice && Program.of(host.blocks[target.block]?.program).name == Program.of("claude").name
     }
 
     /// The session of the window open, as the host has it.
