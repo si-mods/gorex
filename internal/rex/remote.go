@@ -70,9 +70,6 @@ type RemoteConfig struct {
 	// RemoteControl lets remote clients run app actions through this
 	// window; off by default.
 	RemoteControl bool `json:"remoteControl,omitempty"`
-	// Network is the coordinator network this machine joined, if any;
-	// its members are served beside Allowed, and kept in memory only.
-	Network *NetworkConfig `json:"network,omitempty"`
 }
 
 // The pairing window: how long it stays open, how many requests it
@@ -256,15 +253,6 @@ type remote struct {
 	// pending holds the requests made in it, never saved.
 	pairUntil time.Time
 	pending   []RemotePending
-	// The network, when this machine joined one: netCancel stops the
-	// loop that follows it, netC is its coordinator, netMembers the
-	// members beside the allowlist, netErr what the coordinator last
-	// said wrong, netJoined the address last joined with.
-	netCancel  context.CancelFunc
-	netC       netClient
-	netMembers []NetworkMember
-	netErr     string
-	netJoined  string
 }
 
 // remotePeerKey returns the key of the peer of a connection accepted by
@@ -329,7 +317,7 @@ func (s *Server) remoteControlEnabled() bool {
 }
 
 // remoteClientFor is what a connected peer is, for its Hello: its label,
-// key and times. A network member has no saved times.
+// key and times.
 func (s *Server) remoteClientFor(peer string) *RemoteClient {
 	r := &s.rem
 	r.mu.Lock()
@@ -341,11 +329,6 @@ func (s *Server) remoteClientFor(peer string) *RemoteClient {
 		if c.PublicKey == peer {
 			c := c
 			return &c
-		}
-	}
-	for _, m := range r.netMembers {
-		if m.PublicKey == peer {
-			return &RemoteClient{Name: m.Name, PublicKey: m.PublicKey}
 		}
 	}
 	return nil
@@ -410,7 +393,6 @@ func (s *Server) remoteLoad() {
 	if r.cfg.Enabled {
 		s.remoteStartLocked()
 	}
-	s.networkStartLocked()
 	if r.cfg.Tailnet {
 		s.tailnetStartLocked()
 	}
@@ -436,11 +418,9 @@ func (s *Server) remoteEnabled() bool {
 func (s *Server) remoteClose() {
 	s.rem.mu.Lock()
 	s.tailnetStopLocked()
-	netDrop := s.networkStopLocked()
 	done := s.remoteStopLocked()
 	s.rem.mu.Unlock()
 	done()
-	netDrop()
 }
 
 // remoteStopLocked stops the listener; the function it returns closes it
@@ -630,7 +610,7 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			k := remotePeerKey(ts, c)
 			// Checked and kept under the lock, so that a revoke drops it.
 			r.mu.Lock()
-			allowed := r.allowedLocked(k) || r.netMemberLocked(k)
+			allowed := r.allowedLocked(k)
 			api := r.api == ln
 			// Stopped, or for the gateway and not allowed: no answer.
 			if r.ln != ln && !api || api && !allowed {
@@ -776,15 +756,6 @@ func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 		st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
 		st.Pending = slices.Clone(r.pending)
 	}
-	if r.cfg.Network != nil {
-		st.Network = &NetworkStatus{
-			Name:        r.cfg.Network.Name,
-			Coordinator: coordinatorHost(r.cfg.Network.URL),
-			Members:     slices.Clone(r.netMembers),
-			Revision:    r.cfg.Network.Revision,
-			LastError:   r.netErr,
-		}
-	}
 	st.Tailnet = tailnet
 	return st
 }
@@ -855,40 +826,6 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			return nil, errors.New("rex: no such request")
 		}
 		r.pending = slices.Delete(r.pending, i, i+1)
-		log.Printf("rex: %s", req.Op)
-		return nil, nil
-	case "remote.join":
-		if req.Network == nil {
-			return nil, errors.New("rex: remote.join needs a network")
-		}
-		drop, err := s.networkJoin(req.Network)
-		if err != nil {
-			return nil, err
-		}
-		done = append(done, drop)
-		return nil, nil
-	case "remote.leave":
-		drop, err := s.networkLeave()
-		if err != nil {
-			return nil, err
-		}
-		done = append(done, drop)
-		return nil, nil
-	case "remote.kick":
-		name, nodeKey := "", ""
-		if req.Remote != nil {
-			name, nodeKey = networkName(req.Remote.Name), strings.TrimSpace(req.Remote.PublicKey)
-			if nodeKey != "" {
-				k, err := parsePublicKey(nodeKey)
-				if err != nil {
-					return nil, err
-				}
-				nodeKey = k.String()
-			}
-		}
-		if err := s.networkKick(name, nodeKey); err != nil {
-			return nil, err
-		}
 		log.Printf("rex: %s", req.Op)
 		return nil, nil
 	}

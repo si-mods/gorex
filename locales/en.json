@@ -1781,59 +1781,6 @@
   "@spaceColorCustom": {
     "description": "Space popover: placeholder of the field that takes a custom color of the space, as #0090ff."
   },
-  "remoteNetNote": "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way Tailscale does: join once with the network key, and every member trusts and finds every other.",
-  "@remoteNetNote": {
-    "description": "Note under the title."
-  },
-  "remoteNetTurnOn": "Turn remote access on to join a network.",
-  "@remoteNetTurnOn": {
-    "description": "Said while remote access is off."
-  },
-  "remoteNetURLLabel": "Join URL",
-  "@remoteNetURLLabel": {
-    "description": "Field label."
-  },
-  "remoteNetKeyLabel": "Network key",
-  "@remoteNetKeyLabel": {
-    "description": "Field label."
-  },
-  "remoteNetNameLabel": "Name this machine joins by",
-  "@remoteNetNameLabel": {
-    "description": "Field label."
-  },
-  "remoteNetKeyPlaceholder": "the key gcoord init printed",
-  "@remoteNetKeyPlaceholder": {
-    "description": "Placeholder of the network key field."
-  },
-  "remoteNetJoin": "Join",
-  "remoteNetURL": "Paste the join URL the coordinator printed.",
-  "remoteNetBadURL": "The join URL reads “https://host/<fingerprint>”.",
-  "remoteNetKey": "Paste the network key.",
-  "remoteNetName": "Name this machine to join.",
-  "remoteNetJoined": "Network: {name}",
-  "@remoteNetJoined": {
-    "description": "Card title: the network joined, name this machine's member name.",
-    "placeholders": {
-      "name": {}
-    }
-  },
-  "remoteNetCoordinator": "Members come from the coordinator at {host}, and change with it.",
-  "@remoteNetCoordinator": {
-    "description": "Note under the title: host the coordinator's address.",
-    "placeholders": {
-      "host": {}
-    }
-  },
-  "remoteNetNoMembers": "No other machine has joined yet.",
-  "remoteNetKick": "Remove",
-  "remoteNetLeave": "Leave the network",
-  "remoteNetError": "The coordinator: {error}",
-  "@remoteNetError": {
-    "description": "error is the coordinator's last word.",
-    "placeholders": {
-      "error": {}
-    }
-  },
   "paneRename": "Rename Pane…",
   "@paneRename": {
     "description": "Context menu item for a pane."
@@ -2146,18 +2093,6 @@
   "remoteAddByKeyAsk": "Add by Key…",
   "@remoteAddByKeyAsk": {
     "description": "Remote page button: shows the fields that allow a client by its public key."
-  },
-  "remoteNetGroup": "Network",
-  "@remoteNetGroup": {
-    "description": "Remote page: the group of the coordinator network this machine joins."
-  },
-  "remoteNetNone": "Not in a network",
-  "@remoteNetNone": {
-    "description": "Remote page: this machine has joined no coordinator network."
-  },
-  "remoteNetJoinAsk": "Join a Network…",
-  "@remoteNetJoinAsk": {
-    "description": "Remote page button: shows the fields to join a coordinator network."
   },
   "remoteLanListenOn": "Listen on",
   "@remoteLanListenOn": {

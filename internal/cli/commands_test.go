@@ -245,7 +245,7 @@ func TestHostsList(t *testing.T) {
 	if code != ExitOK || !handled {
 		t.Fatalf("hosts: %d %v %s", code, handled, errOut)
 	}
-	if !strings.Contains(out, `"name": "studio"`) || !strings.Contains(out, `"network": true`) {
+	if !strings.Contains(out, `"name": "studio"`) || strings.Contains(out, "network") {
 		t.Fatalf("hosts JSON %q", out)
 	}
 	if strings.Contains(out, "secret-address") {

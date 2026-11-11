@@ -194,22 +194,22 @@ func connect(errOut io.Writer) (*rex.Client, int) {
 		return nil, ExitFailed
 	}
 	{
-		var manual, network []savedHost
+		var manual, tailnet []savedHost
 		for _, h := range f.Hosts {
 			if h.ID == "" || h.Address == "" || !strings.EqualFold(h.Name, serverTarget) && !strings.EqualFold(h.Alias, serverTarget) {
 				continue
 			}
-			if h.Network || rex.IsTailnetTarget(h.Address) {
-				network = append(network, h)
+			if rex.IsTailnetTarget(h.Address) {
+				tailnet = append(tailnet, h)
 			} else {
 				manual = append(manual, h)
 			}
 		}
-		// A host added by hand wins over one the directory brought; if
-		// there is none, a directory host must still be unique.
+		// A host added by hand wins over one the tailnet brought; if
+		// there is none, a tailnet host must still be unique.
 		found := manual
 		if len(found) == 0 {
-			found = network
+			found = tailnet
 		}
 		if len(found) > 1 {
 			fmt.Fprintf(errOut, "gorex: host %q is ambiguous\n", serverTarget)
@@ -729,7 +729,6 @@ type savedHost struct {
 	Name    string `json:"name"`
 	Alias   string `json:"alias,omitempty"`
 	Address string `json:"address"`
-	Network bool   `json:"network,omitempty"`
 }
 
 type hostsFile struct {
@@ -762,22 +761,21 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	if *asJSON {
 		type shown struct {
-			ID      string `json:"id"`
-			Name    string `json:"name"`
-			Alias   string `json:"alias,omitempty"`
-			Network bool   `json:"network,omitempty"`
+			ID    string `json:"id"`
+			Name  string `json:"name"`
+			Alias string `json:"alias,omitempty"`
 		}
 		shownHosts := make([]shown, 0, len(hosts))
 		for _, h := range hosts {
-			shownHosts = append(shownHosts, shown{ID: h.ID, Name: h.Name, Alias: h.Alias, Network: h.Network})
+			shownHosts = append(shownHosts, shown{ID: h.ID, Name: h.Name, Alias: h.Alias})
 		}
 		WriteJSON(out, shownHosts)
 		return ExitOK, true
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "NAME\tALIAS\tNETWORK\tID")
+	fmt.Fprintln(tw, "NAME\tALIAS\tID")
 	for _, h := range hosts {
-		fmt.Fprintf(tw, "%s\t%s\t%v\t%s\n", printable(h.Name), printable(h.Alias), h.Network, h.ID)
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", printable(h.Name), printable(h.Alias), h.ID)
 	}
 	tw.Flush()
 	return ExitOK, true
@@ -1084,10 +1082,9 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			ShareLayout   bool               `json:"shareLayout"`
 			RemoteControl bool               `json:"remoteControl"`
 			Allowed       int                `json:"allowed"`
-			Network       bool               `json:"network"`
 			Relay         string             `json:"relay"`
 			Tailnet       *rex.TailnetStatus `json:"tailnet,omitempty"`
-		}{st.Enabled, st.Running, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Network != nil, st.Relay, st.Tailnet}
+		}{st.Enabled, st.Running, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Relay, st.Tailnet}
 		if asJSON {
 			WriteJSON(out, shown)
 			return ExitOK, true
@@ -1096,8 +1093,8 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		if relay == "" {
 			relay = "default"
 		}
-		fmt.Fprintf(out, "enabled=%v running=%v layout=%v control=%v allowed=%d network=%v relay=%s\n",
-			shown.Enabled, shown.Running, shown.ShareLayout, shown.RemoteControl, shown.Allowed, shown.Network, relay)
+		fmt.Fprintf(out, "enabled=%v running=%v layout=%v control=%v allowed=%d relay=%s\n",
+			shown.Enabled, shown.Running, shown.ShareLayout, shown.RemoteControl, shown.Allowed, relay)
 		if st.Tailnet != nil {
 			fmt.Fprintf(out, "tailscale=%v running=%v hosts=%d\n", st.Tailnet.Enabled, st.Tailnet.Running, len(st.Tailnet.Hosts))
 			if st.Tailnet.Error != "" {

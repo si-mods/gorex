@@ -10,7 +10,6 @@ import (
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 
-	"gorex/internal/coordproto"
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
 	"gorex/internal/tailnode"
@@ -39,10 +38,6 @@ var remoteUI struct {
 	copied    string // what was copied just now
 	name, key string // the client to add
 	addErr    bool   // the client to add is not valid: its reason shows
-	// The network to join, as typed: its URL, key and the name this
-	// machine joins by.
-	netURL, netKey, netName string
-	netErr                  bool // what was typed does not read
 	// lan is the gateway's listener on the local network, as its files
 	// say (rexapi.LoadLAN, LoadLANStatus); lanListen and lanAdd are what
 	// is typed in its fields, and lanErr what was wrong with the last.
@@ -65,9 +60,9 @@ var remoteUI struct {
 	relay       string
 	relayEdited bool
 	relayErr    string
-	// addingKey and joining show the forms that add a client by its key
-	// and join a network, in place of the buttons that open them.
-	addingKey, joining bool
+	// addingKey shows the form that adds a client by its key, in place
+	// of the button that opens it.
+	addingKey bool
 	// details shows this machine's key and address under the devices.
 	details bool
 }
@@ -101,8 +96,7 @@ func stopRemotePoll() {
 	page := &remoteUI
 	page.stop, page.st, page.loaded, page.busy = nil, rex.RemoteStatus{}, false, false
 	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, nil, false, "", ""
-	page.netURL, page.netKey, page.netName, page.netErr = "", "", "", false
-	page.addingKey, page.joining, page.details = false, false, false
+	page.addingKey, page.details = false, false
 	page.focusLAN = false
 	page.ts, page.tsURL, page.tsEdited, page.tsErr = rexapi.TailscaleConfig{}, "", false, ""
 	page.relay, page.relayEdited, page.relayErr = "", false, ""
@@ -649,23 +643,6 @@ func remoteServes(st rex.RemoteStatus) bool {
 	return st.Enabled || st.Tailnet != nil && st.Tailnet.Running
 }
 
-// networkSettings is the Network page: the coordinator network this
-// machine joins, and built-in Tailscale's control server, which the
-// remote access and Rex share.
-func (a *App) networkSettings(c *ui.Context, k *colors) {
-	page := &remoteUI
-	if !page.loaded {
-		label := locales.RemoteAsking()
-		if page.unreachable {
-			label, _, _ = remoteState(rex.RemoteStatus{}, true)
-		}
-		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
-	} else {
-		a.remoteNetwork(c, k, page.st)
-	}
-	a.remoteTailscale(c, k)
-}
-
 // remoteTailscale is the group of built-in Tailscale's control server:
 // the field that sets it, saved to the gateway's settings.
 func (a *App) remoteTailscale(c *ui.Context, k *colors) {
@@ -1066,123 +1043,4 @@ func (a *App) saveRelay(relay string) {
 	if !started {
 		page.busy, page.relayErr = false, locales.RemoteNotConnected()
 	}
-}
-
-// validateNetwork returns what is wrong with a network to join, "" if
-// nothing: the join URL reads, the key and the name are there.
-func validateNetwork(url, key, name string) string {
-	if strings.TrimSpace(url) == "" {
-		return locales.RemoteNetURL()
-	}
-	if _, _, err := coordproto.SplitJoinURL(url); err != nil {
-		return locales.RemoteNetBadURL()
-	}
-	if strings.TrimSpace(key) == "" {
-		return locales.RemoteNetKey()
-	}
-	if strings.TrimSpace(name) == "" {
-		return locales.RemoteNetName()
-	}
-	return ""
-}
-
-// remoteNetwork is the group of the coordinator network: the network
-// joined and its members, or the button that shows the fields to join
-// one.
-func (a *App) remoteNetwork(c *ui.Context, k *colors, st rex.RemoteStatus) {
-	page := &remoteUI
-	settingsGroup(c, k, locales.RemoteNetGroup(), "", locales.RemoteNetNote(), func() {
-		if st.Network == nil {
-			if st.Enabled && page.joining {
-				a.joinNetwork(c, k)
-				return
-			}
-			groupRow(c, k, nil).Children(func() {
-				var under, control func()
-				if !st.Enabled {
-					under = func() { ui.Text(c, locales.RemoteNetTurnOn()).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4) }
-				} else {
-					control = func() {
-						if ui.Button(c.Key("netjoin-ask"), locales.RemoteNetJoinAsk()).Clicked() {
-							page.joining = true
-						}
-					}
-				}
-				tileLine(c, k, "globe", locales.RemoteNetNone(), under, control)
-			})
-			return
-		}
-		net := st.Network
-		groupRow(c, k, nil).Children(func() {
-			tileLine(c, k, "globe", locales.RemoteNetJoined(net.Name), func() {
-				ui.Text(c, locales.RemoteNetCoordinator(net.Coordinator)).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
-			}, func() {
-				if ui.Button(c.Key("netleave"), locales.RemoteNetLeave()).Disabled(page.busy).Clicked() {
-					a.remoteDo((*rex.Client).LeaveNetwork, nil)
-				}
-			})
-			if net.LastError != "" {
-				rowError(c, k, locales.RemoteNetError(net.LastError))
-			}
-		})
-		if len(net.Members) == 0 {
-			groupRow(c, k, nil).Children(func() {
-				ui.Text(c, locales.RemoteNetNoMembers()).FontSize(13).TextColor(k.textFaint)
-			})
-		}
-		for _, m := range net.Members {
-			groupRow(c, k, m.PublicKey).Children(func() {
-				tileLine(c, k, "laptop", m.Name, func() {
-					ui.Text(c, rex.Fingerprint(m.PublicKey)).Font(monoFamily()).FontSize(11.5).TextColor(k.textMuted).SingleLine().
-						Ellipsis("…").Tooltip(m.PublicKey)
-				}, func() {
-					if ui.Button(c.Key("r"), locales.RemoteNetKick()).Disabled(page.busy).Clicked() {
-						a.remoteDo(func(srv *rex.Client) error { return srv.KickNetworkMember(m.Name, m.PublicKey) }, nil)
-					}
-				})
-			})
-		}
-	})
-}
-
-// joinNetwork is the row of the fields to join a network: its URL, its key
-// and this machine's name in it, Join, and Cancel, which hides them.
-func (a *App) joinNetwork(c *ui.Context, k *colors) {
-	page := &remoteUI
-	groupRow(c, k, nil).Gap(8).Children(func() {
-		if page.netName == "" {
-			page.netName = a.localName()
-		}
-		if ti := ui.TextInput(c.Key("neturl"), &page.netURL).Placeholder("https://host/0123456789abcdef").
-			Label(locales.RemoteNetURLLabel()); ti.Changed() {
-			page.netErr = false
-		}
-		if ti := ui.TextInput(c.Key("netkey"), &page.netKey).Placeholder(locales.RemoteNetKeyPlaceholder()).
-			Label(locales.RemoteNetKeyLabel()); ti.Changed() {
-			page.netErr = false
-		}
-		if ti := ui.TextInput(c.Key("netname"), &page.netName).Placeholder("yibo-macbook").
-			Label(locales.RemoteNetNameLabel()); ti.Changed() {
-			page.netErr = false
-		}
-		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-			if ui.Button(c.Key("netjoin-cancel"), locales.RemoteCancel()).Clicked() {
-				page.joining, page.netErr = false, false
-			}
-			if ui.PrimaryButton(c.Key("netjoin"), locales.RemoteNetJoin()).Disabled(page.busy).Clicked() {
-				if msg := validateNetwork(page.netURL, page.netKey, page.netName); msg != "" {
-					page.netErr = true
-					remoteUI.err = func() string { return msg }
-				} else {
-					url, key := strings.TrimSpace(page.netURL), strings.TrimSpace(page.netKey)
-					name := page.netName
-					a.remoteDo(func(srv *rex.Client) error { return srv.JoinNetwork(url, key, name) },
-						func() { page.netURL, page.netKey, page.netErr, page.joining = "", "", false, false })
-				}
-			}
-		})
-		if page.netErr {
-			rowError(c, k, validateNetwork(page.netURL, page.netKey, page.netName))
-		}
-	})
 }

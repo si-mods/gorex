@@ -136,8 +136,8 @@ dials again.
 A client over tailcat is identified as
 `{"kind": "device", "transport": "tailcat", "display": "<client name>", "path": ["tailcat"]}`.
 It gets Rex's API as the owner does over built-in Tailscale, layout
-included, but not `server.tailscale.*`. Remove in Settings › Remote, a
-coordinator's kick, its sessions no longer shared, or turning remote
+included, but not `server.tailscale.*`. Remove in Settings › Remote,
+its sessions no longer shared, or turning remote
 access off closes its connections. `server.status` does not list this listener: its address is
 a secret.
 

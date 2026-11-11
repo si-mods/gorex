@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -1489,56 +1488,18 @@ func TestHostMessagesInChinese(t *testing.T) {
 	}
 }
 
-func TestReconcileNetwork(t *testing.T) {
-	a, _ := newTestApp(t)
-	fakeHosts(t)
-	t.Cleanup(a.stopHosts)
-
-	mk := func(i int, name string) rex.NetworkMember {
-		return rex.NetworkMember{Name: name, PublicKey: fmt.Sprintf("nodekey:%064x", i), Address: "tcfake" + name}
+// TestNetworkHostsLoad: a host a coordinator network once brought, kept
+// in hosts.json with "network": true, loads as an ordinary host, which
+// the user can remove.
+func TestNetworkHostsLoad(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
+	old := `{"hosts": [{"id": "net:nodekey:01", "name": "bob", "address": "tcBOB", "network": true}]}`
+	if err := os.WriteFile(hostsPath(), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	bob, carol := mk(1, "bob"), mk(2, "carol")
-
-	// Members become hosts of their own, flagged as the network's.
-	a.reconcileNetwork(&rex.NetworkStatus{Name: "alice", Members: []rex.NetworkMember{bob}})
-	if len(a.hosts) != 1 || !a.hosts[0].Network || a.hosts[0].ID != networkHostID(bob.PublicKey) {
-		t.Fatalf("the member became %+v", a.hosts)
-	}
-	saved, err := loadHosts()
-	if err != nil || len(saved) != 1 || !saved[0].Network || saved[0].ID != networkHostID(bob.PublicKey) {
-		t.Fatalf("hosts.json: %+v, %v", saved, err)
-	}
-
-	// A member at a new address is a new host: the machine its old
-	// address said is not kept, the alias the user gave it is.
-	a.hosts[0].learnMachine("m-old")
-	a.setHostAlias(a.hosts[0], "build box")
-	bob.Address += "-moved"
-	a.reconcileNetwork(&rex.NetworkStatus{Members: []rex.NetworkMember{bob}})
-	if len(a.hosts) != 1 || a.hosts[0].Address != bob.Address || a.hosts[0].saved().Machine != "" || a.hosts[0].label() != "build box" {
-		t.Fatalf("the moved member: %+v", a.hosts)
-	}
-
-	// A renamed member keeps its host and its alias; a new one adds; one
-	// gone goes.
-	bob.Name = "bobby"
-	a.reconcileNetwork(&rex.NetworkStatus{Members: []rex.NetworkMember{bob}})
-	if len(a.hosts) != 1 || a.hosts[0].Name != "bobby" || a.hosts[0].label() != "build box" {
-		t.Fatalf("the renamed member: %+v", a.hosts)
-	}
-	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Alias != "build box" || hs[0].Name != "bobby" {
-		t.Fatalf("hosts.json after the rename: %+v", hs)
-	}
-	a.reconcileNetwork(&rex.NetworkStatus{Members: []rex.NetworkMember{carol}})
-	if len(a.hosts) != 1 || a.hosts[0].ID != networkHostID(carol.PublicKey) {
-		t.Fatalf("the member changed: %+v", a.hosts)
-	}
-
-	// A host added by hand stays whatever the directory says.
-	manual := a.addHost(savedHost{ID: "m1", Name: "manual", Address: "/tmp/nowhere"})
-	a.reconcileNetwork(&rex.NetworkStatus{})
-	if len(a.hosts) != 1 || a.hosts[0].ID != "m1" || manual == nil {
-		t.Fatalf("the manual host: %+v", a.hosts)
+	want := []savedHost{{ID: "net:nodekey:01", Name: "bob", Address: "tcBOB"}}
+	if got, err := loadHosts(); err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("loaded %+v, %v", got, err)
 	}
 }
 

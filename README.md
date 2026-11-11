@@ -323,14 +323,12 @@ What to know before turning it on:
 
 The same address also serves Rex's API on its port, 7297, for Rex Go
 (see [docs/ios-tailcat.md](docs/ios-tailcat.md)). Rex's API commands
-the layout, as a client may over 7464 too: an allowed key, or a network
-member, gets it; any other gets nothing there, and pairing stays on
-7464. The session server hands each such connection to the Rex API
+the layout, as a client may over 7464 too: an allowed key gets it; any
+other gets nothing there, and pairing stays on 7464. The session server hands each such connection to the Rex API
 gateway, which it runs while remote access is on, on the gateway's
 socket (`rexapi-tailcat.sock`, this user's only); with no gateway there,
-the connection closes and the client dials again. Remove, a
-coordinator's kick, or remote access turned off closes these
-connections.
+the connection closes and the client dials again. Remove, or remote
+access turned off, closes these connections.
 
 The address names the DERP relay where clients meet the server when
 they cannot connect directly: by default one of tailcat's free relays,
@@ -348,35 +346,6 @@ derper --hostname=derp.example.com
 with 443/TCP and 3478/UDP open. It sees
 keys and ciphertext only. Changing the relay changes the address (the
 keys stay), so clients need the new one; it is kept in `remote.json`.
-
-### The coordinator
-
-Pairing every machine with every other does not scale, so a
-coordinator can turn remote access into a network, the way Tailscale
-does: each machine joins **once** with a network key held by a small
-always-on service (`gcoord`, see docs/coord.md), which keeps the
-directory of members and their addresses. Every member then trusts and
-finds every other member through it, without pairing windows or
-addresses copied by hand; the terminal traffic itself still goes peer
-to peer over tailcat, and the coordinator down does not break machines
-that already know each other. Whoever holds the network key may run
-commands on every machine in it, so it is treated like the addresses
-themselves: never logged, never written anywhere wider than the
-member's own state.
-
-Joining is manual, for any coordinator a user runs themselves: in
-Settings › Network (remote access on), paste the join URL the
-coordinator printed and its network key (`remotectl join URL KEY
-[NAME]` does the same without the app). The server then asks the
-coordinator every half minute: members come and go with its directory,
-their addresses become this machine's remote hosts by themselves
-(Settings › Remote › Remote Hosts shows them without Remove, for the directory,
-not a hand, decides), and a member removed there — `gcoord kick` on
-the coordinator, or Remove on the network card — loses its
-connections on every machine within its next ask. Leaving the network
-(Leave, or `remotectl leave`) drops the members and tells the
-coordinator best effort. Pairing stays for those who run no
-coordinator; a machine in a network never needs it.
 
 ### Remote hosts
 
@@ -623,8 +592,7 @@ image reaches a program as a file it opens, not as clipboard data.
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
 | `settingsview.go`, `remoteview.go` | the Settings window, and its Remote page |
 | `locales` | the messages of the interface, `en.json` and `zh-Hans.json`, and `catalog_gen.go` (written by `go tool mygo generate`; commit it with the catalogs) |
-| `tools/remotectl` | runs and probes the session server without the app: allow, enable, join a coordinator network, probe over tailcat |
-| `internal/coord`, `tools/gcoord` | the network coordinator, a mini control plane members join once instead of pairing machine by machine (docs/coord.md) |
+| `tools/remotectl` | runs and probes the session server without the app: allow, enable, pair, probe over tailcat |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 | `internal/control`, `tools/rootshell` | `GoRex control`, the bridge rootshell drives as herdr, and the `herdr` shim that runs it |

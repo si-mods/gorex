@@ -953,3 +953,17 @@ func TestRemoteConfigShareSessions(t *testing.T) {
 		t.Errorf("not loaded: %q %+v", s.rem.lastErr, s.rem.cfg)
 	}
 }
+
+// TestRemoteConfigOldNetwork: a remote.json from when a machine could
+// join a coordinator network, with its "network" member, still loads.
+func TestRemoteConfigOldNetwork(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "remote.json")
+	old := `{"enabled": true, "allowed": [{"name": "bob", "publicKey": "nodekey:01"}], "network": {"url": "https://c/ff", "key": "k", "name": "alice", "revision": 3}}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var cfg RemoteConfig
+	if err := readJSON(path, &cfg); err != nil || !cfg.Enabled || len(cfg.Allowed) != 1 || cfg.Allowed[0].Name != "bob" {
+		t.Fatalf("loaded %+v, %v", cfg, err)
+	}
+}

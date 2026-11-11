@@ -3273,13 +3273,9 @@ func (a *App) poll(win *mygo.Window, client *rex.Client) {
 		rounds++
 		if rounds%30 == 1 {
 			if st, err := client.RemoteStatus(); err == nil {
-				coordinatorPoll := rounds%32 == 1
 				win.Update(func() {
 					if a.win != win {
 						return
-					}
-					if coordinatorPoll && st.Network != nil {
-						a.reconcileNetwork(st.Network)
 					}
 					if st.Tailnet != nil {
 						a.reconcileTailnet(st.Tailnet)

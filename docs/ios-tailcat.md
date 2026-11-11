@@ -59,7 +59,6 @@ address (README, Remote access), with:
 - pairing: a five-minute window, a request with a name, a fingerprint
   compared on both screens, Approve;
 - revocation: Remove closes that key's connections at once;
-- the coordinator (`gcoord`) for many machines;
 - the free tailcat DERP relays, or the user's own.
 
 The desktop apps reach each other this way today. Rex Go is just one
@@ -98,9 +97,6 @@ protocol.
   tailnet, and for Rex servers, which have no tailcat address.
 - **Rex's own iPhone app.** It knows no tailcat; it keeps the local
   network and the tailnet.
-- **Joining the coordinator's network from the phone.** A phone pairs
-  with each machine. Being a member could come later; nothing here
-  stands in its way.
 - **A relay of GoRex's own.** `derper` is the relay.
 
 ## Design
@@ -111,7 +107,7 @@ The session server's tailcat server listens on a second port, Rex's
 API port 7297, beside `RemotePort` (7464). The allowlist is the
 server's, so an unknown key gets nothing on either port; pairing stays
 on `RemotePort`. Rex's API commands the layout, as a client may on
-`RemotePort` too, so 7297 lets in an allowed key or a network member.
+`RemotePort` too, so 7297 lets in an allowed key.
 Remove closes its 7297 connections.
 
 The gateway is a separate process and keeps no tailcat of its own: one

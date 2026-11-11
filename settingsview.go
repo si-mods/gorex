@@ -216,7 +216,7 @@ func (a *App) settingsView(c *ui.Context) {
 					case "hosts":
 						a.hostsSettings(c, k)
 					case "network":
-						a.networkSettings(c, k)
+						a.remoteTailscale(c, k)
 					case "about":
 						a.aboutSettings(c, k)
 					default:
