@@ -130,9 +130,9 @@ Usage:
   gorex [-S HOST] ls [--json]
   gorex clients [--json]
   gorex [-S HOST] layout [--json]
-  gorex split [-s SESSION] [--down] [--dir DIR] [-- COMMAND...]
-  gorex close [-s SESSION] [--tab]
-  gorex rename [-s SESSION] NAME
+  gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
+  gorex close [-s SESSION] [--tab] [--json]
+  gorex rename [-s SESSION] [--json] NAME
   gorex new [--dir DIR] [--json] [-- COMMAND...]
   gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--json] TEXT...
   gorex paste [-s SESSION] [-w TAB] [-b PANE] [--json] TEXT...
@@ -149,10 +149,11 @@ Usage:
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
   gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
   gorex teleport [--json] PANE HOST
-  gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--json]
-  gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH]
+  gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--resize] [--json]
+  gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH] [--resize]
   gorex version [--json]
 
+-S HOST before a command uses a saved remote host's server, not this machine's.
 Targets: -s SESSION, -w TAB or -b PANE; -b wins, then -w, then -s.
 The session defaults to GOREX_SESSION, set in every terminal GoRex opens.
 Codes: 0 ok, 1 failed, 2 usage, 3 no such session or target, 4 server

@@ -5,8 +5,7 @@ without opening a window; with no arguments it starts the app.
 
 `-S HOST` before a command uses a saved remote host from `hosts.json`, by
 its name or its alias, or an address, instead of this machine's server. Local-only commands (`hosts`,
-`remote`, `server`, `update`) and window-only commands (`split`, `close`) do
-not apply remotely. `action` applies remotely when the host turns Remote
+`remote`, `server`, `update`) do not apply remotely. `action` applies remotely when the host turns Remote
 Control on; `layout` reads a host's layout when it turns Share Layout on.
 
 Every local terminal GoRex opens gets:
@@ -31,17 +30,18 @@ gorex ls [--json]
 gorex clients [--json]
 gorex [-S HOST] layout [--json]
 gorex new [--dir DIR] [--json] [-- COMMAND...]
-gorex split [-s SESSION] [--down] [--dir DIR] [-- COMMAND...]
-gorex close [-s SESSION] [--tab]
-gorex rename [-s SESSION] NAME
+gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
+gorex close [-s SESSION] [--tab] [--json]
+gorex rename [-s SESSION] [--json] NAME
 gorex send [-s SESSION] [--enter] [--json] TEXT...
+gorex paste [-s SESSION] [--json] TEXT...
 gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
 gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains TEXT) [--timeout D]
 gorex run [--json] [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
-gorex remote status [--json] | remote control on|off
+gorex remote status [--json] | tailscale on|off | address | relay HOST|default | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
 gorex server restart | upgrade
 gorex update
 gorex config path | config check [FILE] | config reload
@@ -59,7 +59,8 @@ in `ls` (1 is the first), or the end of an ID (at least four characters).
 wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
 
 - `new` creates a session and prints its ID.
-- `send` types without attaching; `--enter` presses Return.
+- `send` types without attaching; `--enter` presses Return. `paste` uses
+  the terminal's paste path, which programs can handle differently.
 - `capture` prints the screen as text, or the escape sequences with
   `--raw`.
 - `wait --exit` exits with the program's status; the other conditions
@@ -78,8 +79,7 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   given in GoRex, if any; addresses stay hidden.
 - `remote status` shows the local server's remote access without its
   address; `remote control on|off` lets paired clients run app actions
-  through the window. It applies to every paired client and every member
-  of a joined network, and persists even while remote access is off.
+  through the window. It applies to every paired client, and persists even while remote access is off.
   Destructive actions stay refused.
 - `server restart` stops the local server, and the next one starts the
   sessions of the layout again, as one after a crash does: new shells at
@@ -194,4 +194,4 @@ is not valid JSON is reported as a conflict instead of rewritten.
   commands the installed files run and are not part of the documented
   command line.
 
-Host add/remove and remote `split`/`close` are not part of this slice.
+Host add/remove are not part of this slice.

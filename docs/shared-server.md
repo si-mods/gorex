@@ -57,8 +57,8 @@ them. Layout sharing is separate, and filtered to the sessions here.
 
 ## Limits
 
-- The server app is the only layout writer; layout commands require the
-  app window to be open.
+- `action`, `float` and `config reload` need the app window to be open;
+  the server makes the other layout changes itself.
 - Tailscale identity/ACL is not part of this mode: pairing is the
   identity, with tailcat keys.
 - The session server and its programs share one OS account, one
