@@ -85,8 +85,8 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 }
 
 // commandApp is the window of the first workspace of the server's layout,
-// whose tabs it keeps for clients of one window, as rootshell's bridge:
-// that of the first place; nil without windows.
+// whose tabs it keeps for clients of one window: that of the first place;
+// nil without windows.
 func (st *store) commandApp() *App {
 	var first *App
 	for _, a := range st.apps {

@@ -197,8 +197,8 @@ const (
 	AppCommandTimeout = CommandTimeout / 2
 )
 
-// LayoutCommand is a change of the layout that a client, as rootshell's
-// bridge or the app itself, asks for ("command"): the server makes it, on
+// LayoutCommand is a change of the layout that a client, as the CLI, the
+// Rex API gateway or the app itself, asks for ("command"): the server makes it, on
 // the layout it keeps, starting and ending the sessions of its panes. An
 // action, but float.set_state, and config.reload are the window's: the app takes those in order ("command.take"), makes them and
 // answers each ("command.done"). Panes are named by their session, and

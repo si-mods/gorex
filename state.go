@@ -2031,7 +2031,7 @@ func (a *App) setSplitRatio(ratio float32) {
 }
 
 // resizePane moves the divider on p's direction edge by amount, a share
-// of the split as herdr's pane.resize has it. It reports whether the
+// of the split as pane.resize has it. It reports whether the
 // split moved.
 func (a *App) resizePane(p *Pane, direction string, amount float32) (bool, string) {
 	if p == nil {
@@ -2072,7 +2072,7 @@ func (a *App) resizePane(p *Pane, direction string, amount float32) (bool, strin
 	// The split a pane's direction edge belongs to is the one that has
 	// the pane on that side: A's right edge, or B's left edge. Walk out
 	// to it, keeping the nearest same-axis split for an outer edge, which
-	// moves that one as herdr does.
+	// moves that one.
 	var nearest *Node
 	grows := direction == "right" || direction == "down"
 	for n := p.Node; n.Parent != nil; n = n.Parent {
@@ -2106,7 +2106,7 @@ func (a *App) shiftSplit(split *Node, amount float32) (bool, string) {
 }
 
 // swapPanes puts p and q in each other's places, in their tab, and gives
-// the focus to p as herdr's pane.swap does.
+// the focus to p as pane.swap does.
 func (a *App) swapPanes(p, q *Pane) {
 	if p == nil || q == nil || p == q || p.Tab == nil || p.Tab != q.Tab || p.Node == nil || q.Node == nil ||
 		p.float != nil || q.float != nil {
@@ -3784,7 +3784,7 @@ func (a *App) mergeTab(src, dst *Tab) {
 func (a *App) movePaneToPane(p, target *Pane) { a.movePaneBeside(p, target, false, false, 0.5) }
 
 // movePaneBeside moves pane p beside target in target's tab, in a split
-// of the given orientation and ratio, herdr's pane.move; the session
+// of the given orientation and ratio, pane.move; the session
 // keeps running. With before, p goes left of or above target, and ratio is
 // p's share.
 func (a *App) movePaneBeside(p, target *Pane, vertical, before bool, ratio float32) {
