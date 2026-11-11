@@ -6,10 +6,12 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"io"
 	"net"
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -272,6 +274,111 @@ func TestStatusEvent(t *testing.T) {
 			in := sessionInfo(t, c, in.ID)
 			t.Fatalf("no blocked event; statuses %+v", in.Statuses)
 		}
+	}
+}
+
+// countInspects counts the processes inspected until the test ends.
+func countInspects(t testing.TB) *atomic.Int64 {
+	var n atomic.Int64
+	old := inspect
+	inspect = func(pid int) procInfo {
+		n.Add(1)
+		return old(pid)
+	}
+	t.Cleanup(func() { inspect = old })
+	return &n
+}
+
+// eventServer is a test server with n shells, which printed what they
+// print as they start.
+func eventServer(t testing.TB, n int) *Server {
+	s, _ := testServer(t)
+	cmd, dir := testShell()
+	for range n {
+		ss, err := s.create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24}, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { s.end(ss) })
+	}
+	for _, ss := range s.all() {
+		waitUntil(5*time.Second, func() bool { _, sampled := ss.facts(); return sampled })
+	}
+	time.Sleep(sampleEvery + 200*time.Millisecond)
+	return s
+}
+
+// TestEventSessionsInspectsNone checks that a sessions event looks at no
+// session's foreground program: the sampler does, as sessions print.
+func TestEventSessionsInspectsNone(t *testing.T) {
+	n := countInspects(t)
+	s := eventServer(t, 3)
+	before := n.Load()
+	if got := s.eventSessions(); len(got) != 3 {
+		t.Fatalf("sessions %+v", got)
+	}
+	if d := n.Load() - before; d != 0 {
+		t.Fatalf("a sessions event inspected %d processes", d)
+	}
+}
+
+// TestStatusDroppedWhenIdle checks that the records of a program that
+// went back to the shell are dropped: the event after it says no status,
+// and neither does the list.
+func TestStatusDroppedWhenIdle(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("printf")
+	}
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	defer c.Close()
+	if _, err := c.Hello(); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Subscribe(); err != nil {
+		t.Fatal(err)
+	}
+	in, err := c.Create(CreateOptions{Command: []string{"/bin/sh"}, Dir: "/tmp", Cols: 80, Rows: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := c.Stream(in.ID, 80, 24)
+	defer st.Close()
+	go io.Copy(io.Discard, st)
+	st.Write([]byte("sh -c \"printf '\\033]7501;state=working\\007'; sleep 1\"\n"))
+	working := false
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case ev := <-c.Events():
+			if ev.Kind != "sessions" {
+				continue
+			}
+			for _, es := range ev.Sessions {
+				if es.ID != in.ID {
+					continue
+				}
+				if es.Status != nil && es.Status.State == "working" {
+					working = true
+				} else if working && es.Status == nil && len(es.Statuses) == 0 {
+					if got := sessionInfo(t, c, in.ID); got.Status != nil || len(got.Statuses) != 0 {
+						t.Fatalf("listed statuses %+v", got.Statuses)
+					}
+					return
+				}
+			}
+		case <-deadline:
+			t.Fatalf("working seen %v; statuses %+v", working, sessionInfo(t, c, in.ID).Statuses)
+		}
+	}
+}
+
+// BenchmarkEventSessions tells the sessions of 20 shells.
+func BenchmarkEventSessions(b *testing.B) {
+	s := eventServer(b, 20)
+	b.ResetTimer()
+	for range b.N {
+		s.eventSessions()
 	}
 }
 

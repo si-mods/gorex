@@ -74,10 +74,9 @@ type session struct {
 	pendingResize *time.Timer
 	pendingCols   int
 	pendingRows   int
-	// status is what the program reported of itself; busy, that the last
-	// info found a program in the foreground, and ran that one did.
+	// status is what the program reported of itself; ran, that a look
+	// found a program in the foreground.
 	status programStatus
-	busy   bool
 	ran    bool
 	// reaped tells that the process ended, with code; exited, that what
 	// it printed was read too.
@@ -1400,15 +1399,6 @@ func (s *session) info() SessionInfo {
 		s.foreground(&in)
 	}
 	s.mu.Lock()
-	// A program that went back to the shell is no longer working nor
-	// blocked. Only the change counts: a session whose process is the
-	// program is idle all along.
-	beforeStatus := s.status.updates
-	if in.Idle && s.busy {
-		s.status.drop()
-	}
-	statusChanged := s.status.updates != beforeStatus
-	s.busy = !in.Exited && !in.Idle
 	// What it saw is the latest look, as a conversation Claude Code
 	// names only after it started, which no output tells.
 	if !in.Exited {
@@ -1417,9 +1407,6 @@ func (s *session) info() SessionInfo {
 	}
 	in.Statuses = s.status.list()
 	s.mu.Unlock()
-	if statusChanged {
-		s.notify()
-	}
 	in.Status = MostUrgent(in.Statuses, time.Time{})
 	return in
 }
@@ -1478,6 +1465,12 @@ func (s *session) see(now SessionInfo) {
 	was := s.seen
 	s.seen = now
 	s.ran = s.ran || !now.Idle
+	// A program that went back to the shell is no longer working nor
+	// blocked. Only the change counts: a session whose process is the
+	// program is idle all along.
+	if now.Idle && was.PID != 0 && !was.Idle {
+		s.status.drop()
+	}
 	if now.Title != was.Title || now.Program != was.Program || now.Dir != was.Dir || now.Idle != was.Idle || !slices.Equal(now.Args, was.Args) ||
 		now.AgentSession != was.AgentSession || now.AgentConfigDir != was.AgentConfigDir {
 		s.notify()
