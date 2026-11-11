@@ -1,6 +1,8 @@
 // One pane of a window: a block's terminal, its stream fed to
 // libghostty-vt, drawn on its own canvas, the keys typed written back.
 import { Ghostty } from "./ghostty";
+import { shortcut } from "./keys";
+import { PointerInput } from "./pointer";
 import { contrastRatio, cursorSeq, fontFamily, textSize } from "./prefs";
 import { Program, smallTile } from "./programs";
 import { Control, DataStream, RexError, TerminalStream } from "./rex";
@@ -76,8 +78,8 @@ export class TerminalView {
   private host: Theme = {};
   /** The colours over the desktop's: the chosen theme, until a theme message replaces it. */
   private theme: Theme;
-  /** Wheel scrolling not yet a whole row. */
-  private scrolled = 0;
+  /** The pointer over the grid: selecting, the wheel, and the mouse a program tracks. */
+  private readonly pointer: PointerInput;
   private blinkStart = performance.now();
   private blinkTimer?: number;
   /** The background the canvas was filled with last. */
@@ -119,8 +121,19 @@ export class TerminalView {
     head.append(this.tile, this.title, buttons);
     this.body.append(this.canvas);
     this.el.append(head, this.body);
+    this.pointer = new PointerInput(this.canvas, this.body, {
+      term: () => this.term,
+      grid: () => ({ w: this.font.w, h: this.font.h, ox: this.ox, oy: this.oy, scale: this.font.scale }),
+      focused: () => this.el.contains(document.activeElement),
+      redraw: (full) => {
+        if (full) this.full = true;
+        this.redraw();
+      },
+      send: (b) => this.type(b),
+      status: (s) => this.app.status(s),
+    });
     this.el.addEventListener("keydown", (e) => this.key(e));
-    this.el.addEventListener("wheel", (e) => this.wheel(e), { passive: false });
+    this.body.addEventListener("wheel", (e) => this.pointer.wheel(e), { passive: false });
     this.el.addEventListener("focus", () => {
       this.app.focused(this);
       this.wake();
@@ -182,6 +195,7 @@ export class TerminalView {
     for (const item of this.stream!.feed(bytes)) {
       switch (item.kind) {
         case "snapshot":
+          this.pointer.reset();
           this.term?.free();
           try {
             this.term = Terminal.fromSnapshot(this.app.g, item.data);
@@ -369,8 +383,10 @@ export class TerminalView {
       this.term.draw(ctx, {
         font: this.font, ox: this.ox, oy: this.oy, full: this.full, focused,
         blinkOff: since % (2 * blinkPeriod) >= blinkPeriod, minContrast: contrastRatio(),
+        selection: this.theme.selection, selectionText: this.theme.selectionText,
       });
       this.full = false;
+      this.pointer.drawn();
       // The next phase of the blink.
       clearTimeout(this.blinkTimer);
       if (focused && this.term.blinking) this.blinkTimer = window.setTimeout(() => this.redraw(), blinkPeriod - (since % blinkPeriod));
@@ -383,36 +399,22 @@ export class TerminalView {
     this.redraw();
   }
 
-  /**
-   * Scrolls as the desktop's wheel does: the scrollback, or the arrow keys
-   * in a full-screen program (alternate scroll). A program that takes the
-   * mouse gets nothing, as this client reports no mouse yet.
-   */
-  private wheel(e: WheelEvent) {
-    const t = this.term;
-    if (!t || e.ctrlKey) return;
-    e.preventDefault();
-    const rowPx = this.font.h / this.font.scale;
-    const dy = e.deltaMode === 1 ? e.deltaY * rowPx : e.deltaMode === 2 ? e.deltaY * this.body.clientHeight : e.deltaY;
-    this.scrolled += dy / rowPx;
-    const rows = Math.trunc(this.scrolled);
-    this.scrolled -= rows;
-    if (rows === 0 || t.mouseTracking()) return;
-    if (t.altScreen()) {
-      const key = rows < 0 ? "ArrowUp" : "ArrowDown";
-      const b = t.encodeKey(new KeyboardEvent("keydown", { code: key, key }));
-      if (b) for (let i = 0; i < Math.abs(rows); i++) this.type(b);
-      return;
-    }
-    t.scrollBy(rows);
-    this.redraw();
-  }
-
   private key(e: KeyboardEvent) {
     if (!this.term || e.isComposing || e.defaultPrevented) return;
+    this.pointer.hideMenu();
+    // Copy (Ctrl+Shift+C, or Cmd+C on the Mac) copies the selection. It
+    // never reaches the program, selection or not, so that it cannot
+    // interrupt one as Ctrl+C would.
+    if (shortcut(e) === "copy") {
+      e.preventDefault();
+      this.pointer.copy();
+      return;
+    }
     const b = this.term.encodeKey(e);
     if (!b) return;
     e.preventDefault();
+    // Typing takes the selection away, as Ghostty's selection-clear-on-typing.
+    this.pointer.typed();
     // Typing shows the screen again, as on the desktop.
     if (!this.term.atBottom()) this.term.scrollBy("bottom");
     this.wake();
@@ -457,6 +459,7 @@ export class TerminalView {
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     clearTimeout(this.blinkTimer);
     clearTimeout(this.sizing);
+    this.pointer.reset();
     this.term?.free();
     this.term = undefined;
     this.el.remove();

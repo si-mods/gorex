@@ -29,11 +29,14 @@ export async function loadThemes(): Promise<ThemeEntry[]> {
 /** The name chosen in this browser; "" keeps the host's colours. */
 export const chosenName = () => prefs.theme;
 
-/** The theme as a stream's theme message gives one: the colours and the 16 palette entries. */
+/** The theme as a stream's theme message gives one: the colours and the 16 palette entries, with the selection's colours, which a message has not. */
 export function themeColours(t: ThemeEntry): Theme {
   const palette = new Map<number, RGB>();
   for (let i = 0; i < 16; i++) palette.set(i, rgb(t.colors[i]));
-  return { background: rgb(t.colors[16]), foreground: rgb(t.colors[17]), cursor: rgb(t.colors[18]), palette };
+  return {
+    background: rgb(t.colors[16]), foreground: rgb(t.colors[17]), cursor: rgb(t.colors[18]), palette,
+    selection: rgb(t.colors[20]), selectionText: rgb(t.colors[21]),
+  };
 }
 
 /** Whether a background is light, by its luma, as the iOS app tells. */

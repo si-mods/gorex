@@ -9,6 +9,9 @@ export interface Theme {
   foreground?: RGB;
   cursor?: RGB;
   palette?: Map<number, RGB>;
+  /** A Ghostty theme's selection-background and selection-foreground; without them the selection inverts its cells, as Ghostty's does. */
+  selection?: RGB;
+  selectionText?: RGB;
 }
 
 /** A theme message's colour: RRGGBB or #RRGGBB. */
@@ -116,7 +119,63 @@ export interface Frame {
   blinkOff: boolean;
   /** The least contrast of text with its background (the Minimum contrast setting), 1 for none. */
   minContrast: number;
+  /** The selection's colours (Theme.selection, selectionText); none inverts. */
+  selection?: RGB;
+  selectionText?: RGB;
 }
+
+/** A pointer over the grid: the viewport cell under it, clamped to the grid, and where it is on the canvas, in device pixels. */
+export interface Pointer {
+  col: number;
+  row: number;
+  x: number;
+  y: number;
+}
+
+/** What a selection's drag needs of the canvas, as GhosttySelectionGestureGeometry: in device pixels. */
+export interface Geometry {
+  cols: number;
+  cellW: number;
+  padLeft: number;
+  height: number;
+}
+
+/** Whether a drag past an edge wants the viewport to scroll, and which way. */
+export type Autoscroll = "none" | "up" | "down";
+
+/** The scratch of the selection calls: a surface position, a geometry, two u64s, a f64, a coordinate, a point, an out value. */
+const sx = { pos: 0, geo: 16, time: 32, interval: 40, distance: 48, coord: 56, point: 64, out: 88, mpos: 96, flag: 104, size: 112 };
+
+/** What the mouse encoder needs of the canvas, as GhosttyMouseEncoderSize: in device pixels. */
+export interface MouseSize {
+  width: number;
+  height: number;
+  cellW: number;
+  cellH: number;
+  padTop: number;
+  padBottom: number;
+  padLeft: number;
+  padRight: number;
+}
+
+/**
+ * A mouse event for the program: an action, a button (Ghostty's: 1 left,
+ * 2 right, 3 middle, 4 and 5 the wheel; 0 none), modifiers (Mods) and
+ * where on the canvas, in device pixels.
+ */
+export interface MouseReport {
+  action: "PRESS" | "RELEASE" | "MOTION";
+  button: number;
+  mods: number;
+  x: number;
+  y: number;
+  /** Whether a button is held, this event's own too. */
+  held: boolean;
+}
+/** Room for one encoded mouse event. */
+const mouseCap = 64;
+/** Ghostty's click-repeat-interval: presses this close make a double or a triple click. */
+const clickInterval = 500;
 
 /** Whether a cell's text goes with its neighbours in one run, in the primary font. */
 const simple = (c: Cell) => c.span === 1 && c.text.length === 1 && c.cp >= 0x20 && c.cp < 0x2000 && !(c.cp >= 0x300 && c.cp < 0x370);
@@ -142,6 +201,19 @@ export class Terminal {
   private ratio = minimumContrast;
   /** Whether the cursor blinks, as of the last draw. */
   blinking = false;
+  /** Selecting: Ghostty's gesture and its events, a grid ref, two selections, a row's range and scratch. */
+  private gesture: number;
+  private ev: { press: number; release: number; drag: number; tick: number };
+  private ref: number;
+  private sel: number;
+  private sel2: number;
+  private rowSel: number;
+  private sx: number;
+  /** Reporting the mouse: Ghostty's encoder, an event, its size and the bytes it writes. */
+  private mouseEnc: number;
+  private mouseEv: number;
+  private mouseSize: number;
+  private mouseOut: number;
 
   private constructor(private g: Ghostty, private t: number) {
     const x = g.x;
@@ -154,6 +226,24 @@ export class Terminal {
     this.cursor = g.sized("GhosttyRenderStateCursor");
     this.scroll = g.alloc(g.size("GhosttyTerminalScrollViewport"));
     this.scratch = g.alloc(16);
+    this.gesture = g.make("selection gesture", (s) => x.ghostty_selection_gesture_new(0, s));
+    const event = (type: string) =>
+      g.make("selection event", (s) => x.ghostty_selection_gesture_event_new(0, s, g.e("GhosttySelectionGestureEventType", type)));
+    this.ev = { press: event("PRESS"), release: event("RELEASE"), drag: event("DRAG"), tick: event("AUTOSCROLL_TICK") };
+    this.ref = g.sized("GhosttyGridRef");
+    this.sel = g.sized("GhosttySelection");
+    this.sel2 = g.sized("GhosttySelection");
+    this.rowSel = g.sized("GhosttyRenderStateRowSelection");
+    this.sx = g.alloc(sx.size);
+    g.view.setBigUint64(this.sx + sx.interval, BigInt(clickInterval * 1e6), true);
+    this.opt(this.ev.press, "REPEAT_INTERVAL_NS", this.sx + sx.interval);
+    this.mouseEnc = g.make("mouse encoder", (s) => x.ghostty_mouse_encoder_new(0, s));
+    this.mouseEv = g.make("mouse event", (s) => x.ghostty_mouse_event_new(0, s));
+    this.mouseSize = g.sized("GhosttyMouseEncoderSize");
+    this.mouseOut = g.alloc(mouseCap);
+    // Motion is reported once a cell, not once a pixel.
+    g.bytes[this.sx + sx.flag] = 1;
+    x.ghostty_mouse_encoder_setopt(this.mouseEnc, g.e("GhosttyMouseEncoderOption", "TRACK_LAST_CELL"), this.sx + sx.flag);
   }
 
   /** Decodes a complete GHOSTSNP snapshot into a terminal. */
@@ -182,6 +272,17 @@ export class Terminal {
     g.free(this.scroll, g.size("GhosttyTerminalScrollViewport"));
     g.free(this.scratch, 16);
     if (this.graphemes) g.free(this.graphemes, this.graphemesCap * 4);
+    g.x.ghostty_selection_gesture_free(this.gesture, this.t);
+    for (const e of Object.values(this.ev)) g.x.ghostty_selection_gesture_event_free(e);
+    g.free(this.ref, g.size("GhosttyGridRef"));
+    g.free(this.sel, g.size("GhosttySelection"));
+    g.free(this.sel2, g.size("GhosttySelection"));
+    g.free(this.rowSel, g.size("GhosttyRenderStateRowSelection"));
+    g.free(this.sx, sx.size);
+    g.x.ghostty_mouse_event_free(this.mouseEv);
+    g.x.ghostty_mouse_encoder_free(this.mouseEnc);
+    g.free(this.mouseSize, g.size("GhosttyMouseEncoderSize"));
+    g.free(this.mouseOut, mouseCap);
     g.x.ghostty_key_encoder_free(this.encoder);
     g.x.ghostty_render_state_row_cells_free(this.cells);
     g.x.ghostty_render_state_row_iterator_free(this.rows);
@@ -283,6 +384,300 @@ export class Terminal {
     g.x.ghostty_terminal_scroll_viewport(this.t, p);
   }
 
+  /** A terminal mode (DEC private unless ansi), as the program set it. */
+  mode(value: number, ansi = false): boolean {
+    const { g } = this;
+    const t = "GhosttyTerminalModeConfig";
+    const p = this.sx + sx.out;
+    g.bytes.fill(0, p, p + 8);
+    g.view.setUint16(p + g.off(t, "mode"), (value & 0x7fff) | (ansi ? 0x8000 : 0), true);
+    if (g.x.ghostty_terminal_get(this.t, g.e("GhosttyTerminalData", "MODE"), p) !== 0) return false;
+    return g.bytes[p + g.off(t, "value")] !== 0;
+  }
+
+  /**
+   * The bytes a mouse event sends the program, as its mouse modes ask
+   * (X10 9, normal 1000, button 1002, any 1003) in its format (X10, UTF-8
+   * 1005, SGR 1006, urxvt 1015, SGR pixels 1016), by Ghostty's encoder:
+   * none for an event the modes leave out, for motion within the cell
+   * reported last, or outside the grid with no button held.
+   */
+  encodeMouse(m: MouseReport, size: MouseSize): Uint8Array | undefined {
+    const { g } = this;
+    const x = g.x;
+    const v = g.view;
+    const enc = this.mouseEnc;
+    const opt = (n: string, p: number) => x.ghostty_mouse_encoder_setopt(enc, g.e("GhosttyMouseEncoderOption", n), p);
+    x.ghostty_mouse_encoder_setopt_from_terminal(enc, this.t);
+    const t = "GhosttyMouseEncoderSize";
+    const s = this.mouseSize;
+    const field = (k: string, n: number) => v.setUint32(s + g.off(t, k), Math.max(0, Math.round(n)), true);
+    v.setUint32(s + g.off(t, "size"), g.size(t), true);
+    field("screen_width", size.width);
+    field("screen_height", size.height);
+    field("cell_width", Math.max(1, size.cellW));
+    field("cell_height", Math.max(1, size.cellH));
+    field("padding_top", size.padTop);
+    field("padding_bottom", size.padBottom);
+    field("padding_left", size.padLeft);
+    field("padding_right", size.padRight);
+    opt("SIZE", s);
+    g.bytes[this.sx + sx.flag] = m.held ? 1 : 0;
+    opt("ANY_BUTTON_PRESSED", this.sx + sx.flag);
+    const ev = this.mouseEv;
+    x.ghostty_mouse_event_set_action(ev, g.e("GhosttyMouseAction", m.action));
+    if (m.button) x.ghostty_mouse_event_set_button(ev, m.button);
+    else x.ghostty_mouse_event_clear_button(ev);
+    x.ghostty_mouse_event_set_mods(ev, m.mods);
+    const pos = this.sx + sx.mpos;
+    v.setFloat32(pos + g.off("GhosttyMousePosition", "x"), m.x, true);
+    v.setFloat32(pos + g.off("GhosttyMousePosition", "y"), m.y, true);
+    x.ghostty_mouse_event_set_position(ev, pos);
+    const out = this.sx + sx.out;
+    v.setUint32(out, 0, true);
+    if (x.ghostty_mouse_encoder_encode(enc, ev, this.mouseOut, mouseCap, out) !== 0) return undefined;
+    const n = v.getUint32(out, true);
+    return n > 0 ? g.bytes.slice(this.mouseOut, this.mouseOut + n) : undefined;
+  }
+
+  /** Forgets the cell motion was reported in last, as when the pointer leaves. */
+  resetMouse() {
+    this.g.x.ghostty_mouse_encoder_reset(this.mouseEnc);
+  }
+
+  // Selecting, with libghostty-vt's own selection (selection.h): its
+  // gesture turns presses and drags into a selection by cell, word or line,
+  // as Ghostty's mouse does, and scrolls on past an edge; the terminal
+  // keeps the selection, tracked, so that it follows the text as output
+  // comes and the scrollback moves, and clears it as Ghostty does.
+
+  private opt(ev: number, name: string, p: number) {
+    this.g.x.ghostty_selection_gesture_event_set(ev, this.g.e("GhosttySelectionGestureEventOption", name), p);
+  }
+
+  /** Points this.ref at a viewport cell; false when there is none. */
+  private refAt(col: number, row: number): boolean {
+    const { g } = this;
+    const v = g.view;
+    const pt = this.sx + sx.point;
+    g.bytes.fill(0, pt, pt + g.size("GhosttyPoint"));
+    v.setInt32(pt + g.off("GhosttyPoint", "tag"), g.e("GhosttyPointTag", "VIEWPORT"), true);
+    const c = pt + g.off("GhosttyPoint", "value");
+    v.setUint16(c + g.off("GhosttyPointCoordinate", "x"), col, true);
+    v.setUint32(c + g.off("GhosttyPointCoordinate", "y"), row, true);
+    v.setUint32(this.ref + g.off("GhosttyGridRef", "size"), g.size("GhosttyGridRef"), true);
+    return g.x.ghostty_terminal_grid_ref(this.t, pt, this.ref) === 0;
+  }
+
+  /** Writes a pointer's position and the geometry into the scratch, and sets them on an event. */
+  private placed(ev: number, p: Pointer, geo?: Geometry) {
+    const { g } = this;
+    const v = g.view;
+    const pos = this.sx + sx.pos;
+    v.setFloat64(pos + g.off("GhosttySurfacePosition", "x"), p.x, true);
+    v.setFloat64(pos + g.off("GhosttySurfacePosition", "y"), p.y, true);
+    this.opt(ev, "POSITION", pos);
+    if (!geo) return;
+    const gp = this.sx + sx.geo;
+    const field = (k: string, n: number) => v.setUint32(gp + g.off("GhosttySelectionGestureGeometry", k), Math.max(0, Math.round(n)), true);
+    field("columns", geo.cols);
+    field("cell_width", geo.cellW);
+    field("padding_left", geo.padLeft);
+    field("screen_height", geo.height);
+    this.opt(ev, "GEOMETRY", gp);
+  }
+
+  /** Runs a gesture event; on success this.sel holds the selection it makes. */
+  private run(ev: number, out = true): number {
+    const { g } = this;
+    if (out) g.view.setUint32(this.sel + g.off("GhosttySelection", "size"), g.size("GhosttySelection"), true);
+    return g.x.ghostty_selection_gesture_event(this.gesture, this.t, ev, out ? this.sel : 0);
+  }
+
+  /** Sets the terminal's selection to p, or clears it (0). */
+  private select(p: number) {
+    this.g.x.ghostty_terminal_set(this.t, this.g.e("GhosttyTerminalOption", "SELECTION"), p);
+  }
+
+  /** A gesture's datum: the click count (a byte) or the autoscroll (an enum). */
+  private gestureDatum(name: "CLICK_COUNT" | "AUTOSCROLL"): number {
+    const { g } = this;
+    const out = this.sx + sx.out;
+    g.view.setUint32(out, 0, true);
+    if (g.x.ghostty_selection_gesture_get(this.gesture, this.t, g.e("GhosttySelectionGestureData", name), out) !== 0) return 0;
+    return name === "CLICK_COUNT" ? g.bytes[out] : g.view.getInt32(out, true);
+  }
+
+  private autoscroll(): Autoscroll {
+    const a = this.gestureDatum("AUTOSCROLL");
+    const e = (n: string) => this.g.e("GhosttySelectionGestureAutoscroll", n);
+    return a === e("UP") ? "up" : a === e("DOWN") ? "down" : "none";
+  }
+
+  /**
+   * A press of the pointer, at a time in milliseconds, which Ghostty counts
+   * into a double or triple click when close to the last in time and in
+   * distance (pixels). A single press clears the selection; a double
+   * selects the word, a triple the line.
+   */
+  press(p: Pointer, timeMs: number, distance: number) {
+    const { g } = this;
+    if (!this.refAt(p.col, p.row)) return;
+    const ev = this.ev.press;
+    this.opt(ev, "REF", this.ref);
+    this.placed(ev, p);
+    g.view.setBigUint64(this.sx + sx.time, BigInt(Math.max(0, Math.round(timeMs * 1e6))), true);
+    this.opt(ev, "TIME_NS", this.sx + sx.time);
+    g.view.setFloat64(this.sx + sx.distance, distance, true);
+    this.opt(ev, "REPEAT_DISTANCE", this.sx + sx.distance);
+    const r = this.run(ev);
+    if (r === 0) this.select(this.sel);
+    else if (r === g.e("GhosttyResult", "NO_VALUE") && this.gestureDatum("CLICK_COUNT") === 1) this.select(0);
+  }
+
+  /** A long press, as iOS's: a double click that stays down, so that the word is selected and a drag extends it by words. */
+  longPress(p: Pointer, timeMs: number, distance: number) {
+    this.press(p, timeMs, distance);
+    this.release(p);
+    this.press(p, timeMs, distance);
+  }
+
+  /** A drag of the pressed pointer: the selection from the press to it, by the press's unit. Returns where it wants to scroll. */
+  drag(p: Pointer, geo: Geometry): Autoscroll {
+    if (!this.refAt(p.col, p.row)) return this.autoscroll();
+    const ev = this.ev.drag;
+    this.opt(ev, "REF", this.ref);
+    this.placed(ev, p, geo);
+    this.settle(this.run(ev));
+    return this.autoscroll();
+  }
+
+  /** One step of the scroll a drag past an edge asks for: a row, the selection extended to the row then under the pointer. */
+  autoscrollTick(p: Pointer, geo: Geometry): Autoscroll {
+    const { g } = this;
+    if (this.gestureDatum("CLICK_COUNT") === 0) return "none";
+    const ev = this.ev.tick;
+    const c = this.sx + sx.coord;
+    g.view.setUint16(c + g.off("GhosttyPointCoordinate", "x"), p.col, true);
+    g.view.setUint32(c + g.off("GhosttyPointCoordinate", "y"), p.row, true);
+    this.opt(ev, "VIEWPORT", c);
+    this.placed(ev, p, geo);
+    const r = this.run(ev);
+    if (this.gestureDatum("CLICK_COUNT") !== 0) this.settle(r);
+    return this.autoscroll();
+  }
+
+  /** A drag's result, as Ghostty's Surface takes it: the selection, or none. */
+  private settle(r: number) {
+    if (r === 0) this.select(this.sel);
+    else if (r === this.g.e("GhosttyResult", "NO_VALUE")) this.select(0);
+  }
+
+  /** The pointer let go, where it is if over the grid. The click count stays, for a double click. */
+  release(p?: Pointer) {
+    const ev = this.ev.release;
+    this.opt(ev, "REF", p && this.refAt(p.col, p.row) ? this.ref : 0);
+    this.run(ev, false);
+  }
+
+  /** Abandons the gesture, as when the pointer is lost: the next press is a single click. */
+  resetGesture() {
+    this.g.x.ghostty_selection_gesture_reset(this.gesture, this.t);
+  }
+
+  /** Reads the terminal's selection into p; false when there is none. */
+  private current(p: number): boolean {
+    const { g } = this;
+    g.view.setUint32(p + g.off("GhosttySelection", "size"), g.size("GhosttySelection"), true);
+    return g.x.ghostty_terminal_get(this.t, g.e("GhosttyTerminalData", "SELECTION"), p) === 0;
+  }
+
+  hasSelection(): boolean {
+    return this.current(this.sel2);
+  }
+
+  clearSelection() {
+    this.select(0);
+  }
+
+  /** The selected text as Ghostty copies it (Screen.selectionString): plain, wrapped lines joined, trailing spaces trimmed. */
+  selectionText(): string | undefined {
+    const { g } = this;
+    const x = g.x;
+    const t = "GhosttyTerminalSelectionFormatOptions";
+    const opts = g.sized(t);
+    const out = this.sx + sx.out;
+    try {
+      g.view.setInt32(opts + g.off(t, "emit"), g.e("GhosttyFormatterFormat", "PLAIN"), true);
+      g.bytes[opts + g.off(t, "unwrap")] = 1;
+      g.bytes[opts + g.off(t, "trim")] = 1;
+      // No selection given: the terminal's own.
+      g.view.setUint32(out, 0, true);
+      const r = x.ghostty_terminal_selection_format_buf(this.t, opts, 0, 0, out);
+      if (r === 0) return "";
+      if (r !== g.e("GhosttyResult", "OUT_OF_SPACE")) return undefined;
+      const n = g.view.getUint32(out, true);
+      const buf = g.alloc(n);
+      try {
+        if (x.ghostty_terminal_selection_format_buf(this.t, opts, buf, n, out) !== 0) return undefined;
+        return new TextDecoder().decode(g.bytes.slice(buf, buf + g.view.getUint32(out, true)));
+      } finally {
+        g.free(buf, n);
+      }
+    } finally {
+      g.free(opts, g.size(t));
+    }
+  }
+
+  /** A grid ref's place in the screen (scrollback and all): column and row. */
+  private screenPoint(ref: number): { x: number; y: number } | undefined {
+    const { g } = this;
+    const c = this.sx + sx.coord;
+    if (g.x.ghostty_terminal_point_from_grid_ref(this.t, ref, g.e("GhosttyPointTag", "SCREEN"), c) !== 0) return undefined;
+    return { x: g.view.getUint16(c + g.off("GhosttyPointCoordinate", "x"), true), y: g.view.getUint32(c + g.off("GhosttyPointCoordinate", "y"), true) };
+  }
+
+  /**
+   * The selection's first and last cells, in viewport cells: a row above
+   * the viewport is negative, one below it is rows or more. None without a
+   * selection.
+   */
+  selectionEnds(): { start: { x: number; y: number }; end: { x: number; y: number } } | undefined {
+    const { g } = this;
+    if (!this.current(this.sel2)) return undefined;
+    g.view.setUint32(this.sel + g.off("GhosttySelection", "size"), g.size("GhosttySelection"), true);
+    if (g.x.ghostty_terminal_selection_ordered(this.t, this.sel2, g.e("GhosttySelectionOrder", "FORWARD"), this.sel) !== 0) return undefined;
+    const start = this.screenPoint(this.sel + g.off("GhosttySelection", "start"));
+    const end = this.screenPoint(this.sel + g.off("GhosttySelection", "end"));
+    const top = this.refAt(0, 0) ? this.screenPoint(this.ref) : undefined;
+    if (!start || !end || !top) return undefined;
+    return { start: { x: start.x, y: start.y - top.y }, end: { x: end.x, y: end.y - top.y } };
+  }
+
+  /**
+   * Starts moving one end of the selection, as a handle does: the other end
+   * becomes the selection's start, which stays, and the moving one its end.
+   * False without a selection.
+   */
+  beginMoveEnd(first: boolean): boolean {
+    const { g } = this;
+    if (!this.current(this.sel2)) return false;
+    g.view.setUint32(this.sel + g.off("GhosttySelection", "size"), g.size("GhosttySelection"), true);
+    const order = g.e("GhosttySelectionOrder", first ? "REVERSE" : "FORWARD");
+    if (g.x.ghostty_terminal_selection_ordered(this.t, this.sel2, order, this.sel) !== 0) return false;
+    this.select(this.sel);
+    return true;
+  }
+
+  /** Moves the selection's end (beginMoveEnd's) to a viewport cell. */
+  moveEnd(col: number, row: number) {
+    const { g } = this;
+    if (!this.current(this.sel2) || !this.refAt(col, row)) return;
+    const end = this.sel2 + g.off("GhosttySelection", "end");
+    g.bytes.copyWithin(end, this.ref, this.ref + g.size("GhosttyGridRef"));
+    this.select(this.sel2);
+  }
+
   private contrasted(fg: RGB, bg: RGB): RGB {
     const k = `${fg}|${bg}`;
     let c = this.contrasts.get(k);
@@ -368,6 +763,13 @@ export class Terminal {
       x.ghostty_render_state_row_get(this.rows, rowData("CELLS"), this.scratch);
       const cells = this.cells;
       const ry = oy + y * h;
+      // The row's selected columns, sa to sb, as Ghostty's render state has them.
+      let sa = -1, sb = -2;
+      v.setUint32(this.rowSel + g.off("GhosttyRenderStateRowSelection", "size"), g.size("GhosttyRenderStateRowSelection"), true);
+      if (x.ghostty_render_state_row_get(this.rows, rowData("SELECTION"), this.rowSel) === 0) {
+        sa = v.getUint16(this.rowSel + g.off("GhosttyRenderStateRowSelection", "start_x"), true);
+        sb = v.getUint16(this.rowSel + g.off("GhosttyRenderStateRowSelection", "end_x"), true);
+      }
       const bgs: { x0: number; x1: number; c: RGB }[] = [];
       const decos: Deco[] = [];
       const row: Cell[] = [];
@@ -403,6 +805,17 @@ export class Terminal {
           underline = v.getInt32(styleOff("underline"), true);
           ul = this.styleColor(styleOff("underline_color"), palette);
           if (b[styleOff("inverse")]) {
+            const was = cfg;
+            cfg = cbg ?? bg;
+            cbg = was;
+          }
+        }
+        // A selected cell: the theme's selection colours, else its own inverted, as Ghostty draws it.
+        if (col <= sb && col + span - 1 >= sa) {
+          if (f.selection) {
+            cbg = f.selection;
+            if (f.selectionText) cfg = f.selectionText;
+          } else {
             const was = cfg;
             cfg = cbg ?? bg;
             cbg = was;

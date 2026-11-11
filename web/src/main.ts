@@ -690,7 +690,8 @@ window.addEventListener(
   (e) => {
     const t = e.target as HTMLElement;
     const name = shortcut(e);
-    if (!name) return;
+    // Copy is the focused pane's own: it copies its selection (pane.ts).
+    if (!name || name === "copy") return;
     // Settings opens and closes from anywhere; the rest only from the window.
     if (name === "settings" && settings) {
       e.preventDefault();

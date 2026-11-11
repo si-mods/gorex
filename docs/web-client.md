@@ -13,8 +13,9 @@ emulator's render state on a canvas.
 This is phase 1, a prototype: one window at a time, with its split panes
 (see Split panes). Its settings are in one Settings dialog (see
 Settings): the hosts, the theme, the page's appearance and the terminal's
-font, cursor and contrast. It has no uploads, no paste, no selection and no mouse. The
-wheel scrolls the scrollback.
+font, cursor and contrast. It selects and copies text, and reports the
+mouse to programs that track it (see Selection and the mouse). It has no
+uploads and no paste. The wheel scrolls the scrollback.
 
 ## Design: a remote client only
 
@@ -310,6 +311,9 @@ The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
   its canvas (`com.superlogical.terminal.resize`); a pane that closes
   while its block stays gives it back (`session.disown_block`).
 - `web/src/keys.ts`: the shortcuts (see Shortcuts).
+- `web/src/pointer.ts`: the pointer over a pane's grid: selecting, the
+  handles and the Copy menu, the wheel and a finger's swipe, and the mouse
+  events a program gets (see Selection and the mouse).
 
 ## Split panes
 
@@ -370,6 +374,7 @@ to the terminal.
 | Close the window (desktop: ⇧⌘W) | ⌥⇧Q | Alt+Shift+Q |
 | Next, previous window (desktop: Ctrl+Tab, Ctrl+Shift+Tab) | ⌥⇧] and ⌥⇧[ | Alt+Shift+] and Alt+Shift+[ |
 | Settings | ⌘, | Ctrl+, |
+| Copy the selection | ⌘C | Ctrl+Shift+C |
 
 A key moves the divider of the nearest split of that direction around the
 focused pane by 5%. As on the desktop on Windows and Linux, Alt and an
@@ -415,9 +420,73 @@ with GoRex's defaults and no Ghostty configuration:
 - Cursor: block, bar or underline from the terminal (DECSCUSR), a hollow
   block while the page does not have the focus, blinking every 600 ms when
   the terminal asks for it.
-- Scrolling: the wheel scrolls the scrollback; in a full-screen program it
-  sends the arrow keys (alternate scroll), and to a program that takes the
-  mouse it sends nothing yet. Typing scrolls back to the screen.
+- Scrolling: as Ghostty's wheel (see Selection and the mouse). Typing
+  scrolls back to the screen.
+- Selection: the selected cells in the theme's selection colours
+  (`selection-background` and `selection-foreground`), else inverted, as
+  Ghostty draws them when the colours are unset. The host's colours have
+  none, so they invert. (The desktop draws its foreground at 0.3 over
+  them instead.)
+
+## Selection and the mouse
+
+As the iOS app (`TerminalView+Selection.swift`) and Ghostty. libghostty-vt
+does the work: its selection gesture (`ghostty_selection_gesture_*` in
+`selection.h`) turns presses and drags into a selection by cell, word or
+line, the terminal keeps it (`GHOSTTY_TERMINAL_OPT_SELECTION`) as tracked
+references, so that it follows the text as output comes and the scrollback
+moves, the render state gives each row's selected columns
+(`GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION`), and
+`ghostty_terminal_selection_format_buf` gives the text as Ghostty copies
+it (plain, wrapped lines joined, trailing spaces trimmed). Its mouse
+encoder (`ghostty_mouse_encoder_*` in `mouse/encoder.h`) encodes what a
+program gets.
+
+- **Mouse.** A press and drag selects by cell; a double click selects a
+  word and the drag extends it by words; a triple click a line, by lines
+  (Ghostty's 500 ms and one cell between clicks). A drag past the top or
+  bottom edge scrolls the scrollback a row every 15 ms and extends the
+  selection. A single click clears it.
+- **Finger.** A long press (500 ms, within 10 CSS pixels) selects the word
+  under the finger, as iOS's, and the drag that follows extends it by
+  words, scrolling on past an edge. Two handles stand at the ends, a stem a
+  line high with a knob, and drag each end; a menu with Copy shows above
+  the selection. A tap elsewhere clears it. A one-finger swipe scrolls as
+  the wheel does; two fingers zoom the page.
+- **Copy.** ⌘C on a Mac, Ctrl+Shift+C elsewhere, copies the selection.
+  The key never goes to the program, so that it does not interrupt one as
+  Ctrl+C would. A right click shows the menu with Copy (greyed with no
+  selection). Copy on selection (Settings, Terminal; off by default)
+  copies a selection when the button or finger lets go. The page writes
+  with `navigator.clipboard.writeText`; where there is none, as on a LAN
+  page over http, which is not a secure context, it copies a hidden text
+  area with `document.execCommand("copy")` within the same click or key.
+  If both fail the status line says so.
+- **Clearing.** Typing a key that goes to the program clears the
+  selection, as Ghostty's `selection-clear-on-typing`; so does the wheel
+  while a program tracks the mouse. Ghostty clears it too when the text
+  under it goes.
+- **A program that tracks the mouse** (modes 9, 1000, 1002, 1003, in
+  X10, UTF-8 1005, SGR 1006, urxvt 1015 or SGR pixels 1016, as the
+  encoder reads them from the terminal): presses and releases of the left,
+  middle and right buttons, with Ctrl, Alt and Meta, go to it, written as
+  typed keys are. Motion goes too when the mode asks (1002 with a button
+  held, 1003 always), once a cell, over the grid, or outside it while a
+  button is held; a release always goes. Shift selects instead, and is not
+  reported, as on iOS; the right button with Shift shows the menu. A tap
+  of a finger is a left click; a long press still selects.
+- **Focus.** A click into a pane that does not have the keyboard only
+  gives it the keyboard: a program that tracks the mouse does not get it,
+  as Ghostty's macOS app consumes the click that moves the focus between
+  splits. A click that selects selects at once.
+- **Wheel.** With Shift it always scrolls the scrollback. Else, to a
+  program that tracks the mouse, a wheel button (4 up, 5 down) a row at
+  the pointer; on the alternate screen with alternate scroll (1007, on by
+  default) the arrow keys; else the scrollback.
+- Not in the web client: Shift+click to extend a selection, block
+  (rectangle) selection, horizontal wheel buttons (6, 7), middle-click
+  paste, scrolling on while a handle is dragged past an edge, Select All,
+  and the loupe.
 
 ## Themes
 
@@ -449,12 +518,12 @@ the list.
   `web/index.html`). This follows the terminal's background as drawn, so a
   host theme or a program's OSC 11 change it too. The Window setting
   (see Settings), Light or Dark, overrides it.
-- Not in the web client: the theme's cursor text and selection colours (the
-  client has no selection).
+- The theme's selection colours colour the selection (see Drawing). Not
+  in the web client: the theme's cursor text colour.
 
 What differs: the desktop's panes are the window's glass, which a page
 cannot show, so the pane here is the theme's background. There is no
-scroll bar, selection or link underline.
+scroll bar or link underline.
 
 ## Settings
 
@@ -477,7 +546,7 @@ page and every open pane.
 |---|---|
 | Host (the card) | The chosen host, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
 | Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 CSS pixels, 11.6 (the desktop's) until set, with Reset. |
-| Terminal | Font: JetBrains Mono, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours. Cursor style (Block, Bar, Underline) and Cursor blink. Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor and contrast. |
+| Terminal | Font: JetBrains Mono, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours. Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
 | Theme | The theme picker (see Themes). |
 | Keyboard | The shortcuts (see Shortcuts), with this system's keys. |
 | Hosts | The hosts: choose one, add one, edit its address, name and icon, or remove it, with the same form as the host list's. |
@@ -493,5 +562,4 @@ cannot show the desktop through it), the Dock badge, Tab placement and
 Sidebar view (the page has one sidebar and one window), Animation style
 (the page does not animate the panes), Language (the page is in English),
 updates and the settings file (the page is what its host serves, and
-keeps `localStorage`), Copy on selection (no selection yet), and
-recording shortcuts.
+keeps `localStorage`), and recording shortcuts.

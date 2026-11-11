@@ -38,6 +38,8 @@ function table(): [Chord, string][] {
   t.push([{ alt: true, shift: true, code: "KeyQ" }, "close-window"]);
   t.push([{ alt: true, shift: true, code: "BracketRight" }, "next-window"]);
   t.push([{ alt: true, shift: true, code: "BracketLeft" }, "previous-window"]);
+  // Copy, as Ghostty's: Cmd+C on the Mac, Ctrl+Shift+C elsewhere. The pane runs it (pane.ts).
+  t.push([mac ? { meta: true, code: "KeyC" } : { ctrl: true, shift: true, code: "KeyC" }, "copy"]);
   // Settings, as the desktop's Accel+, (cmdSettings).
   t.push([mac ? { meta: true, code: "Comma" } : { ctrl: true, code: "Comma" }, "settings"]);
   return t;
@@ -95,6 +97,7 @@ export function shortcutGroups(): { label: string; rows: [title: string, keys: s
         ["Move Divider", "resize"],
       ]),
     },
+    { label: "Terminal", rows: rows([["Copy", "copy"]]) },
     {
       label: "Windows",
       rows: rows([

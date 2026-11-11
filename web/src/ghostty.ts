@@ -31,6 +31,14 @@ const functions = [
   "ghostty_key_event_new", "ghostty_key_event_free", "ghostty_key_event_set_action", "ghostty_key_event_set_key",
   "ghostty_key_event_set_mods", "ghostty_key_event_set_consumed_mods", "ghostty_key_event_set_utf8",
   "ghostty_key_event_set_unshifted_codepoint", "ghostty_terminal_get", "ghostty_terminal_scroll_viewport",
+  "ghostty_terminal_grid_ref", "ghostty_terminal_point_from_grid_ref", "ghostty_terminal_selection_format_buf",
+  "ghostty_terminal_selection_ordered", "ghostty_selection_gesture_new", "ghostty_selection_gesture_free",
+  "ghostty_selection_gesture_reset", "ghostty_selection_gesture_get", "ghostty_selection_gesture_event",
+  "ghostty_selection_gesture_event_new", "ghostty_selection_gesture_event_free", "ghostty_selection_gesture_event_set",
+  "ghostty_mouse_encoder_new", "ghostty_mouse_encoder_free", "ghostty_mouse_encoder_setopt",
+  "ghostty_mouse_encoder_setopt_from_terminal", "ghostty_mouse_encoder_reset", "ghostty_mouse_encoder_encode",
+  "ghostty_mouse_event_new", "ghostty_mouse_event_free", "ghostty_mouse_event_set_action", "ghostty_mouse_event_set_button",
+  "ghostty_mouse_event_clear_button", "ghostty_mouse_event_set_mods", "ghostty_mouse_event_set_position",
 ] as const;
 
 type Exports = { memory: WebAssembly.Memory } & Record<(typeof functions)[number], (...a: number[]) => number>;
@@ -50,25 +58,49 @@ const layouts: Record<string, Record<string, number>> = {
   GhosttyTerminalScrollViewport: { tag: 4, value: 16 },
   GhosttyTerminalScrollViewportValue: { delta: 4 },
   GhosttyColorRgb: { r: 1, g: 1, b: 1 },
+  GhosttyRenderStateRowSelection: { size: 4, start_x: 2, end_x: 2 },
+  GhosttyGridRef: { size: 4 },
+  GhosttySelection: { size: 4, start: 12, end: 12 },
+  GhosttyPoint: { tag: 4, value: 16 },
+  GhosttyPointCoordinate: { x: 2, y: 4 },
+  GhosttySurfacePosition: { x: 8, y: 8 },
+  GhosttySelectionGestureGeometry: { columns: 4, cell_width: 4, padding_left: 4, screen_height: 4 },
+  GhosttyTerminalSelectionFormatOptions: { size: 4, emit: 4, unwrap: 1, trim: 1, selection: 4 },
+  GhosttyMouseEncoderSize: {
+    size: 4, screen_width: 4, screen_height: 4, cell_width: 4, cell_height: 4,
+    padding_top: 4, padding_bottom: 4, padding_right: 4, padding_left: 4,
+  },
+  GhosttyMousePosition: { x: 4, y: 4 },
+  GhosttyTerminalModeConfig: { mode: 2, value: 1 },
 };
 
 /** The enum values this binding uses. */
 const enums: Record<string, string[]> = {
-  GhosttyResult: ["SUCCESS"],
+  GhosttyResult: ["SUCCESS", "NO_VALUE", "OUT_OF_SPACE"],
   GhosttyRenderStateData: ["COLS", "ROWS", "DIRTY", "ROW_ITERATOR", "CURSOR", "COLORS"],
-  GhosttyRenderStateRowData: ["DIRTY", "CELLS"],
+  GhosttyRenderStateRowData: ["DIRTY", "CELLS", "SELECTION"],
   GhosttyRenderStateRowCellsData: ["RAW", "STYLE", "GRAPHEMES_LEN", "GRAPHEMES_BUF", "BG_COLOR", "FG_COLOR", "HAS_STYLING"],
   GhosttyRenderStateDirty: ["FALSE", "FULL"],
   GhosttyRenderStateCursorVisualStyle: ["BAR", "BLOCK", "UNDERLINE", "BLOCK_HOLLOW"],
   GhosttyCellWide: ["WIDE", "SPACER_TAIL", "SPACER_HEAD"],
   GhosttyKeyAction: ["PRESS", "REPEAT"],
   GhosttyKey: ["UNIDENTIFIED", "A", "ENTER", "ARROW_UP", "ARROW_DOWN"],
-  GhosttyTerminalData: ["ACTIVE_SCREEN", "MOUSE_TRACKING", "VIEWPORT_ACTIVE"],
+  GhosttyTerminalData: ["ACTIVE_SCREEN", "MOUSE_TRACKING", "VIEWPORT_ACTIVE", "SELECTION", "MODE"],
   GhosttyTerminalScreen: ["ALTERNATE"],
   GhosttyTerminalScrollViewportTag: ["BOTTOM", "DELTA"],
   GhosttyStyleColorTag: ["NONE", "PALETTE", "RGB"],
   GhosttySgrUnderline: ["NONE", "SINGLE", "DOUBLE", "CURLY", "DOTTED", "DASHED"],
-  GhosttyTerminalOption: ["COLOR_FOREGROUND", "COLOR_BACKGROUND", "COLOR_CURSOR", "COLOR_PALETTE"],
+  GhosttyTerminalOption: ["COLOR_FOREGROUND", "COLOR_BACKGROUND", "COLOR_CURSOR", "COLOR_PALETTE", "SELECTION"],
+  GhosttyPointTag: ["VIEWPORT", "SCREEN"],
+  GhosttySelectionOrder: ["FORWARD", "REVERSE"],
+  GhosttyFormatterFormat: ["PLAIN"],
+  GhosttySelectionGestureEventType: ["PRESS", "RELEASE", "DRAG", "AUTOSCROLL_TICK"],
+  GhosttySelectionGestureEventOption: ["REF", "POSITION", "REPEAT_DISTANCE", "TIME_NS", "REPEAT_INTERVAL_NS", "GEOMETRY", "VIEWPORT"],
+  GhosttySelectionGestureData: ["CLICK_COUNT", "AUTOSCROLL"],
+  GhosttySelectionGestureAutoscroll: ["NONE", "UP", "DOWN"],
+  GhosttyMouseAction: ["PRESS", "RELEASE", "MOTION"],
+  GhosttyMouseButton: ["LEFT", "RIGHT", "MIDDLE", "FOUR", "FIVE"],
+  GhosttyMouseEncoderOption: ["SIZE", "ANY_BUTTON_PRESSED", "TRACK_LAST_CELL"],
 };
 
 /** Ghostty's modifier bits (key/event.h, GHOSTTY_MODS_*): defines, not in the manifest. */

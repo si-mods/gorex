@@ -453,6 +453,11 @@ export class Settings {
       }),
     );
 
+    row(
+      group(this.page), "Copy on selection", "Copies the text you select to the clipboard.",
+      toggle("Copy on selection", prefs.copyOnSelect, (on) => setPrefs({ copyOnSelect: on })),
+    );
+
     const values = contrastChoices.includes(prefs.minimumContrast) ? contrastChoices : [...contrastChoices, prefs.minimumContrast];
     row(
       group(this.page), "Minimum contrast",
@@ -466,14 +471,14 @@ export class Settings {
 
     const reset = button("Reset to Defaults");
     reset.onclick = () => {
-      const was: Partial<Prefs> = { font: "", cursor: undefined, cursorBlink: undefined, minimumContrast: 0 };
+      const was: Partial<Prefs> = { font: "", cursor: undefined, cursorBlink: undefined, copyOnSelect: false, minimumContrast: 0 };
       setPrefs(was);
       this.app.apply("font");
       this.app.apply("contrast");
       this.app.apply("cursor", true);
       this.drawPage();
     };
-    row(group(this.page), "Forgets the font, cursor and contrast chosen here, so the defaults apply.", "", reset);
+    row(group(this.page), "Forgets the font, cursor, copy on selection and contrast chosen here, so the defaults apply.", "", reset);
   }
 
   /** The chosen theme's colours, else GoRex's, for the font's preview. */

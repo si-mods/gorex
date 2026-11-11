@@ -24,6 +24,8 @@ export interface Prefs {
   minimumContrast: number;
   /** A Ghostty theme's name, "" for the host's colours. */
   theme: string;
+  /** Copies a selection to the clipboard as it is made, as the desktop's Copy on selection. */
+  copyOnSelect: boolean;
 }
 
 /** The desktop's text size (settings.go, defaultFontSize), and the stepper's range (settingsview.go). */
@@ -45,6 +47,7 @@ const defaults = (): Prefs => ({
   font: "",
   minimumContrast: 0,
   theme: standardTheme,
+  copyOnSelect: false,
 });
 
 /** Reads the choices, taking the theme kept under gorex.theme once; out of range values count as none, as loadSettings does. */
@@ -64,6 +67,7 @@ function load(): Prefs {
         p.minimumContrast = j.minimumContrast === 0 ? 0 : Math.max(1, j.minimumContrast);
       }
       if (typeof j.theme === "string") p.theme = j.theme;
+      p.copyOnSelect = j.copyOnSelect === true;
     } else {
       const old = localStorage.getItem(oldThemeKey);
       if (old !== null) {
