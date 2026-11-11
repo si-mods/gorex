@@ -152,7 +152,7 @@ keeps it (`remote.json`, `region`). It has a setting, **Relay**: default
 (tailcat's), or a host of one's own, `derp.example.com`, with `:PORT`
 when not 443, by name and not IP address, as `derper --hostname` serves
 a certificate for a name (Settings › Server › Show Details, `gorex remote relay
-HOST|default`, `remotectl relay HOST|default`; `remote.relaySet` on the
+HOST|default`; `remote.relaySet` on the
 local socket). Given
 one, the session server sets `Server.Region` to a region of that one
 node (DERP on its port, STUN on 3478), and the address embeds it:
