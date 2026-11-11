@@ -1,6 +1,9 @@
 # Opening a host's files from the web client
 
-Status: proposed, revised after review. Nothing here is built yet.
+Status: revised after review. The gateway's and the server's half is
+built (`internal/rexapi/download.go`, `host.go`, `internal/rex`
+`openToSend`, `Client.GetFile`); the web client's is not yet. Where the
+build differs from this text, see "As built" at the end.
 
 The desktop opens a file path printed in a pane with Command+click
 (Control elsewhere). In a pane of a host it first downloads the file over
@@ -260,3 +263,32 @@ Web client (ego lite against a trial gateway):
 - Whether the `Host` check needs names for a gateway behind a proxy, and
   whether it ships with this change or on its own first, as it touches
   every path.
+
+## As built
+
+- `download_begin` is a block method, so its parameters follow
+  `upload_begin`'s: `{"session_id", "block_id", "args": {"path"}}`, not
+  `{"block_id", "path"}`.
+- A server without `CapabilityFileTransfer` answers `not_supported`,
+  Rex's code that `upload_begin` uses too, not `unsupported`.
+- A fifth ticket on one control connection answers `conflict`.
+  `bad_request` covers a missing path or an unknown argument.
+- The status of each code: `is_folder` and `not_regular` 409, `no_file`
+  404, `denied` 403, `too_large` 413.
+- `mtime` is RFC 3339 in UTC, to the second, left out when the server
+  sends none. `type` takes a fixed table first (the images the web
+  client shows, PDF, text, JSON, HTML), then the system's, so that it
+  is the same on every system.
+- A ticket that has been used is no longer the control connection's:
+  closing the connection does not stop a download under way.
+- The `Host` check runs on the local network, the tailnet and
+  `--listen`, before the transport's own check. The local socket and
+  tailcat are not checked: no browser reaches either, and Rex Go names a
+  tailcat host `<id>.tailcat.invalid`. The listener's own address needs
+  no rule of its own, as every listener is bound to an IP address.
+  Built-in Tailscale's names are its MagicDNS name and that name's first
+  label. The command is `gorex rexapi web host add NAME` / `host remove
+  NAME`, and `web status` lists the names.
+- On Windows, the server refuses a `\\.\`, `\\?\pipe\` or
+  `\\?\GLOBALROOT` path before it looks, then stats, opens and stats
+  the open file again. The denied case is tested on Unix only.

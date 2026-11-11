@@ -19,6 +19,7 @@ func (g *Gateway) Handler() http.Handler {
 	mux.HandleFunc("/api/control", g.handleControl)
 	mux.HandleFunc("/api/data", g.handleData)
 	mux.HandleFunc("/api/upload", g.handleUpload)
+	mux.HandleFunc("/api/download", g.handleDownload)
 	mux.HandleFunc("/api/spaces", g.handleSpaces)
 	mux.HandleFunc("/api/help", serveHelp)
 	mux.HandleFunc("/llms.txt", serveLLMs)

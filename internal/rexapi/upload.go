@@ -85,6 +85,9 @@ func (g *Gateway) features() []string {
 	if g.hello.Can(rex.CapabilityFileTemp) {
 		features = append(features, featureUpload)
 	}
+	if g.hello.Can(rex.CapabilityFileTransfer) {
+		features = append(features, featureDownload)
+	}
 	return features
 }
 

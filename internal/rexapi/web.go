@@ -28,6 +28,11 @@ type WebConfig struct {
 	// Origins are the pages let in, normalized by NormalizeOrigin:
 	// scheme://host[:port], lower case, without a default port.
 	Origins []string `json:"origins,omitempty"`
+	// Hosts are the names, besides the gateway's own, that a request may
+	// name in its Host header (hostAllowed), normalized by NormalizeHost:
+	// a name the gateway is reached by that it can't know, such as one a
+	// reverse proxy in front of it serves.
+	Hosts []string `json:"hosts,omitempty"`
 }
 
 func webConfPath(dir string) string { return filepath.Join(dir, "web.json") }
@@ -58,7 +63,25 @@ func SaveWeb(dir string, c WebConfig) error {
 			return fmt.Errorf("origin %q is not normalized (%s)", o, n)
 		}
 	}
+	for _, h := range c.Hosts {
+		if n, err := NormalizeHost(h); err != nil {
+			return err
+		} else if n != h {
+			return fmt.Errorf("host %q is not normalized (%s)", h, n)
+		}
+	}
 	return writeJSON(webConfPath(dir), c)
+}
+
+// NormalizeHost reads a host name as a user types it for the Host check:
+// a DNS name, without a port, a scheme or a wildcard. It returns it in
+// lower case, without a trailing dot.
+func NormalizeHost(s string) (string, error) {
+	h := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(s)), ".")
+	if !validHostname(h) {
+		return "", fmt.Errorf("%q is not a host name such as gorex.example.com: no port, scheme or wildcard", s)
+	}
+	return h, nil
 }
 
 // NormalizeOrigin reads a web page's origin, as a browser sends it in
@@ -146,6 +169,7 @@ type webOrigins struct {
 	checked time.Time
 	watch   confWatch
 	set     map[string]bool
+	hosts   map[string]bool
 }
 
 func newWebOrigins(dir string) *webOrigins {
@@ -164,22 +188,47 @@ func (o *webOrigins) allowed(origin string) bool {
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	if time.Since(o.checked) >= time.Second {
-		o.checked = time.Now()
-		if o.watch.changed() {
-			c, err := LoadWeb(o.dir)
-			if err != nil {
-				logf("web: %v", err)
-			}
-			o.set = map[string]bool{}
-			for _, s := range c.Origins {
-				if n, err := NormalizeOrigin(s); err == nil {
-					o.set[n] = true
-				}
-			}
+	o.loadLocked()
+	return o.set[n]
+}
+
+// host reports whether web.json lists the host name h, normalized.
+func (o *webOrigins) host(h string) bool {
+	if o == nil {
+		return false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.loadLocked()
+	return o.hosts[h]
+}
+
+// loadLocked reads web.json again when it changed, at most once a
+// second. o.mu is held.
+func (o *webOrigins) loadLocked() {
+	if time.Since(o.checked) < time.Second {
+		return
+	}
+	o.checked = time.Now()
+	if !o.watch.changed() {
+		return
+	}
+	c, err := LoadWeb(o.dir)
+	if err != nil {
+		logf("web: %v", err)
+	}
+	o.set = map[string]bool{}
+	for _, s := range c.Origins {
+		if n, err := NormalizeOrigin(s); err == nil {
+			o.set[n] = true
 		}
 	}
-	return o.set[n]
+	o.hosts = map[string]bool{}
+	for _, s := range c.Hosts {
+		if n, err := NormalizeHost(s); err == nil {
+			o.hosts[n] = true
+		}
+	}
 }
 
 // checkOrigin lets a request go on as far as its Origin header tells.
@@ -223,11 +272,12 @@ func preflight(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// webMain is "gorex rexapi web allow ORIGIN | deny ORIGIN | status": the
-// web pages the gateway trusts. The gateway reads web.json again within
-// a second; nothing needs to restart.
+// webMain is "gorex rexapi web allow ORIGIN | deny ORIGIN | host add
+// NAME | host remove NAME | status": the web pages the gateway trusts,
+// and the host names it answers besides its own. The gateway reads
+// web.json again within a second; nothing needs to restart.
 func webMain(args []string) int {
-	usage := "usage: gorex rexapi web allow ORIGIN | deny ORIGIN | status"
+	usage := "usage: gorex rexapi web allow ORIGIN | deny ORIGIN | host add NAME | host remove NAME | status"
 	dir := TailnetDir()
 	conf, err := LoadWeb(dir)
 	if err != nil {
@@ -256,6 +306,26 @@ func webMain(args []string) int {
 			fmt.Fprintf(os.Stderr, "gorex rexapi web: %v\n", err)
 			return 1
 		}
+	case len(args) == 3 && args[0] == "host" && (args[1] == "add" || args[1] == "remove"):
+		h, err := NormalizeHost(args[2])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gorex rexapi web: %v\n", err)
+			return 2
+		}
+		if args[1] == "add" {
+			if !slices.Contains(conf.Hosts, h) {
+				conf.Hosts = append(conf.Hosts, h)
+			}
+		} else {
+			conf.Hosts = slices.DeleteFunc(conf.Hosts, func(s string) bool {
+				n, err := NormalizeHost(s)
+				return err != nil || n == h
+			})
+		}
+		if err := SaveWeb(dir, conf); err != nil {
+			fmt.Fprintf(os.Stderr, "gorex rexapi web: %v\n", err)
+			return 1
+		}
 	default:
 		fmt.Fprintln(os.Stderr, usage)
 		return 2
@@ -266,6 +336,13 @@ func webMain(args []string) int {
 	}
 	for _, o := range conf.Origins {
 		fmt.Printf("  %s\n", o)
+	}
+	fmt.Println("host names answered besides localhost, IP addresses and the tailnet's:")
+	if len(conf.Hosts) == 0 {
+		fmt.Println("  none")
+	}
+	for _, h := range conf.Hosts {
+		fmt.Printf("  %s\n", h)
 	}
 	return 0
 }

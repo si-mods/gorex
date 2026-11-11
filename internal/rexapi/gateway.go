@@ -144,6 +144,10 @@ type Gateway struct {
 	uploadBatches  map[string]*uploadBatch
 	abortedBatches map[string]time.Time
 
+	// downloads are the files download_begin opened, by their ticket,
+	// until GET /api/download takes one or it lapses.
+	downloads map[string]*download
+
 	// generation counts the loads the configuration file had, which
 	// server.config_reload makes; keymapHash names the file's contents.
 	generation int
@@ -198,6 +202,7 @@ func New(opt Options) (*Gateway, error) {
 		uploads:        map[string]*uploadReservation{},
 		uploadBatches:  map[string]*uploadBatch{},
 		abortedBatches: map[string]time.Time{},
+		downloads:      map[string]*download{},
 		generation:     1,
 		canLock:        hello.Keepalive > 0 && hello.Conn != "",
 		done:           make(chan struct{}),
@@ -261,6 +266,7 @@ func (g *Gateway) Close() error {
 		for _, s := range streams {
 			s.closeWith(1001, "data provider canceled")
 		}
+		g.dropDownloads(nil)
 		g.opt.Client.Close()
 		g.wg.Wait()
 	})
@@ -557,6 +563,7 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 	g.mu.Lock()
 	delete(g.conns, c)
 	g.mu.Unlock()
+	g.dropDownloads(c)
 	rec := c.rec
 	if rec == nil {
 		return
