@@ -83,8 +83,6 @@ func (a *App) showSection(id string) {
 	if id == "server" {
 		fetchLAN()
 		a.startRemotePoll()
-	}
-	if id == "server" {
 		startServerInfoPoll()
 	}
 }
@@ -630,6 +628,9 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 			label, _, _ = remoteState(rex.RemoteStatus{}, true)
 		}
 		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
+		// The control server is the gateway's file, not the server's: it
+		// can be set, a bad one fixed, while the server does not answer.
+		settingsGroup(c, k, "", "", "", func() { a.remoteControlServer(c, k) })
 		return
 	}
 	a.remoteHeader(c, k, page.st)
@@ -759,6 +760,9 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	on := remoteServes(st)
 	if !on && len(st.Pending) == 0 {
+		// Off, this machine's key, relay and Rex's code stay at hand, for
+		// the other way: this machine connecting to hosts.
+		settingsGroup(c, k, "", "", "", func() { a.remoteDetails(c, k, st) })
 		return
 	}
 	settingsGroup(c, k, locales.RemoteDevices(), locales.RemoteClientsNote(), locales.RemotePairNote(), func() {

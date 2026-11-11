@@ -234,13 +234,15 @@ func TestRemoteOff(t *testing.T) {
 	remoteUI.st = rex.RemoteStatus{Tailnet: &rex.TailnetStatus{}, Allowed: []rex.RemoteClient{{Name: "bob-desktop", PublicKey: testKey}}}
 	tt := ui.NewTester(a.settingsView, 780, 1400)
 	tt.Frame()
-	for _, s := range []string{locales.TailcatMode(), locales.RemoteOff(), locales.RemoteOffNote(), locales.TailnetMode()} {
+	// Off, Show Details stays, for this machine's key: the other way in.
+	for _, s := range []string{locales.TailcatMode(), locales.RemoteOff(), locales.RemoteOffNote(), locales.TailnetMode(),
+		locales.RemoteShowDetails()} {
 		if !tt.HasText(s) {
 			t.Errorf("off: no %q in %q", s, tt.Texts())
 		}
 	}
 	for _, s := range []string{locales.RemoteShareLayout(), locales.RemoteDevices(), "bob-desktop",
-		locales.RemoteShowDetails(), locales.RemoteMyKey(), locales.HostsNone()} {
+		locales.RemoteMyKey(), locales.HostsNone()} {
 		if tt.HasText(s) {
 			t.Errorf("off: %q shows; texts %q", s, tt.Texts())
 		}
@@ -444,5 +446,11 @@ func TestControlServerUnderTailscale(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText(locales.RemoteTailscaleControl()) {
 		t.Errorf("on: no control server in %q", tt.Texts())
+	}
+	// The server not answering, the field is still there to fix.
+	remoteUI.loaded, remoteUI.unreachable = false, true
+	tt.Frame()
+	if !tt.HasText(locales.RemoteTailscaleControl()) {
+		t.Errorf("unreachable: no control server in %q", tt.Texts())
 	}
 }

@@ -1489,16 +1489,15 @@ func TestHostMessagesInChinese(t *testing.T) {
 }
 
 // TestNetworkHostsLoad: a host a coordinator network once brought, kept
-// in hosts.json with "network": true, loads as an ordinary host, which
-// the user can remove.
+// in hosts.json with "network": true, is dropped as it loads: no machine
+// admits it as a member any more.
 func TestNetworkHostsLoad(t *testing.T) {
 	t.Setenv("GOREX_DIR", t.TempDir())
 	old := `{"hosts": [{"id": "net:nodekey:01", "name": "bob", "address": "tcBOB", "network": true}]}`
 	if err := os.WriteFile(hostsPath(), []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	want := []savedHost{{ID: "net:nodekey:01", Name: "bob", Address: "tcBOB"}}
-	if got, err := loadHosts(); err != nil || !reflect.DeepEqual(got, want) {
+	if got, err := loadHosts(); err != nil || len(got) != 0 {
 		t.Errorf("loaded %+v, %v", got, err)
 	}
 }

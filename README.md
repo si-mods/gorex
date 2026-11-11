@@ -367,7 +367,7 @@ For a Linux service shared by several paired clients, see
 [docs/shared-server.md](docs/shared-server.md). Per-user isolation and
 PAM login are a separate proposal: [docs/login-server-rfc.md](docs/login-server-rfc.md).
 
-Settings › Remote › Remote Hosts connects this machine to other machines' session
+Settings › Remote Hosts connects this machine to other machines' session
 servers, whose sessions then open in tabs of the window beside its own.
 Add Remote Host… asks for the host's address (the one its Settings ›
 Remote shows; the field hides it), a name for it, and the name this
@@ -590,7 +590,7 @@ image reaches a program as a file it opens, not as clipboard data.
 | `view.go`, `tabs.go`, `sidebar.go`, `host.go`, `commands.go` | the interface: title bar, tabs and their sidebar, panes, host popover, menus and palette |
 | `programs.go` | how programs show: names, glyphs, tile colors |
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
-| `settingsview.go`, `remoteview.go` | the Settings window, and its Remote page |
+| `settingsview.go`, `remoteview.go` | the Settings window, and its Server page's remote access |
 | `locales` | the messages of the interface, `en.json` and `zh-Hans.json`, and `catalog_gen.go` (written by `go tool mygo generate`; commit it with the catalogs) |
 | `tools/remotectl` | runs and probes the session server without the app: allow, enable, pair, probe over tailcat |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |

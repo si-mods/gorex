@@ -78,7 +78,11 @@ func loadHosts() ([]savedHost, error) {
 		os.Chmod(bad, 0o600)
 		return nil, fmt.Errorf("gorex: hosts.json is not valid: moved aside to %s", filepath.Base(bad))
 	}
-	return slices.DeleteFunc(f.Hosts, func(h savedHost) bool { return h.ID == "" || h.Address == "" }), nil
+	// A host a coordinator network brought ("net:" and its key) went with
+	// the networks: no machine admits it as a member any more.
+	return slices.DeleteFunc(f.Hosts, func(h savedHost) bool {
+		return h.ID == "" || h.Address == "" || strings.HasPrefix(h.ID, "net:")
+	}), nil
 }
 
 // saveHosts writes the hosts, readable by the user only, atomically. It

@@ -59,7 +59,7 @@ The gateway listens on five places:
 
 When the phone reaches this machine by its address on the local network,
 directly or through a VPN to it, Rex's app connects without Tailscale.
-Settings › Remote › Rex apps on the local network turns the listener on.
+Settings › Server › Local API › Serve Rex apps on the local network turns the listener on.
 It listens on this machine's private address with Rex's port, such as
 `192.168.88.119:7297`, and lets in that address's network, such as
 `192.168.88.0/24`; change either there. In Rex's app, add the host
@@ -89,7 +89,7 @@ Mind what this listener is:
 
 The settings live in `rexapi/lan.json` in GoRex's data directory; the
 server's gateway follows a change within a second, without a restart.
-**Settings › Remote › Remote Hosts → Rex QR…** shows this gateway's pairing
+**Settings › Server › Local API → Rex QR…** shows this gateway's pairing
 address as a code for Rex to scan, as `gorex rexapi pair` does: the
 built-in Tailscale address, `https://<machine>-gorex.<tailnet>.ts.net`.
 The code holds the address only, not a credential, and the device that
@@ -136,7 +136,7 @@ dials again.
 A client over tailcat is identified as
 `{"kind": "device", "transport": "tailcat", "display": "<client name>", "path": ["tailcat"]}`.
 It gets Rex's API as the owner does over built-in Tailscale, layout
-included, but not `server.tailscale.*`. Remove in Settings › Remote,
+included, but not `server.tailscale.*`. Remove in Settings › Server › Devices,
 its sessions no longer shared, or turning remote
 access off closes its connections. `server.status` does not list this listener: its address is
 a secret.
