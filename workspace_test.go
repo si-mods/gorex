@@ -375,10 +375,11 @@ func TestMoveTabToSpace(t *testing.T) {
 	if len(b.tabs) != 1 || b.tab().Focus.SID != sid {
 		t.Fatalf("the space's window has %q", sidsOf(b))
 	}
-	last := a.tab().Focus.SID
-	a.moveTabToSpace(a.tab(), hidden)
-	if len(b.tabs) != 2 || b.tabs[1].Focus.SID != last {
-		t.Fatalf("the shown space has %q, want %s then %s", sidsOf(b), sid, last)
+	lastTab := a.tab()
+	last, uid := lastTab.Focus.SID, lastTab.UID
+	a.moveTabToSpace(lastTab, hidden)
+	if len(b.tabs) != 2 || b.tabs[1].Focus.SID != last || b.tabs[1].UID != uid {
+		t.Fatalf("the shown space has %q, want %s then %s, of tab ID %s", sidsOf(b), sid, last, uid)
 	}
 	if slices.Contains(st.workspaces, first) || !slices.Contains(liveSIDs(t, a.client), last) {
 		t.Errorf("after its last tab moved, the space stays or the session ended")
