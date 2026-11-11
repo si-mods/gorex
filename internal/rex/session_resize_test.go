@@ -121,8 +121,8 @@ func TestSessionResizeNowCancelsPending(t *testing.T) {
 
 // TestSessionUnlockKeepsPendingResize: an unlock that takes no size leaves
 // another window's size waiting to land. A caller releasing a lock it no
-// longer holds, as the control bridge does when the desktop took the size
-// back, must not drop the resize the desktop made.
+// longer holds, as when the desktop took the size back, must not drop the
+// resize the desktop made.
 func TestSessionUnlockKeepsPendingResize(t *testing.T) {
 	settleFor(t, 50*time.Millisecond)
 	s := newResizeSession(t)

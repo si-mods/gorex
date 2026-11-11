@@ -33,8 +33,8 @@ it to Rex clients in Rex's terms:
   has no owner (`block_owner_changed`, reason `taken`) until the client
   that took it types again (reason `input`).
 - **Layout changes** (new window, split, close, rename, focus, zoom, swap,
-  move, resize) the GoRex server makes itself, as for rootshell; an open
-  window shows them at once.
+  move, resize) the GoRex server makes itself; an open window shows them
+  at once.
 
 The GoRex server runs the gateway itself while remote access, the local
 network listener or built-in Tailscale is on, and again after it

@@ -5,7 +5,6 @@
 //
 //	go tool mygo dev    the app, rebuilt as the code changes
 //	go run . -server    the session server alone, in the foreground
-//	go run . control    the bridge rootshell drives as herdr (internal/control)
 package main
 
 import (
@@ -20,7 +19,6 @@ import (
 	"github.com/egoist/mygo/plugins/updater/native"
 
 	"gorex/internal/cli"
-	"gorex/internal/control"
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
 	"gorex/locales"
@@ -67,11 +65,6 @@ func main() {
 	// stay as they were.
 	if devBuild() {
 		mygo.App.SetName("GoRex SF")
-	}
-	// control bridges rootshell to the server the app runs, in the same
-	// directory (internal/control).
-	if len(os.Args) > 1 && os.Args[1] == "control" {
-		os.Exit(control.Main())
 	}
 	// rexapi serves Rex's API to Rex clients, from the server the app runs
 	// (internal/rexapi).

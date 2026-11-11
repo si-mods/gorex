@@ -79,7 +79,7 @@ func Connect() (*Client, error) {
 func dialSocket() (net.Conn, error) { return net.Dial("unix", SocketPath()) }
 
 // ConnectExisting connects to the server that runs, starting none: one a
-// bridge started from an SSH session would end with the session, as
+// client started from an SSH session would end with the session, as
 // Windows ends what the session's job runs. The connection is kept alive
 // (Hello), so that the sizes it locks unlock as it goes.
 func ConnectExisting() (*Client, error) {

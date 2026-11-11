@@ -24,7 +24,7 @@ moving a pane to another machine in [teleport.md](teleport.md).
   server takes it from the same emulator (`GhosttySnapshot`).
 - **Questions about a session need a screen.** `capture`, `format` (the
   screen as text or as escape sequences), `clear` and `reset` read or
-  change the emulator; so do the CLI, rootshell's bridge and teleport's
+  change the emulator; so do the CLI and teleport's
   `scrollback.txt`. `modes` is answered from a separate tracker of the
   output (`decModes` in `paste.go`), not from the emulator.
 
@@ -54,8 +54,7 @@ surface (rootshell's prebuilt package, Metal renderer; `ios/project.yml`,
 so the app also links libghostty-vt (`GhosttyVt.xcframework`, built by
 `ios/scripts/build-ghostty-vt.sh` at the commit GoRex's binding uses):
 `VTerminal.swift` decodes the GHOSTSNP a stream starts with and turns it
-into the escape sequences that draw the same screen. See
-[rootshell.md](rootshell.md) for rootshell itself.
+into the escape sequences that draw the same screen.
 
 ## Data flow
 
@@ -116,7 +115,6 @@ The clients:
 |---|---|
 | A window of this app | `rex.Stream` (`client.go`), the `Conn` of the pane's terminal: escape sequences, not framed. The terminal lays the bytes out at the session's size (`ResizeByConn`). |
 | GoRex on another host | the same, over the remote listener (`hosts.go`, `hostStream`); the queue and the writes have limits there. |
-| rootshell, through `GoRex control` | framed, with `History` (`internal/control/attach.go`). |
 | Rex's apps, through `internal/rexapi` | framed GHOSTSNP (`startStream` in `data.go`). The gateway refuses a stream from a server without `snapshot.ghostty`, or one that fell back to escape sequences. |
 
 ### Kitty graphics

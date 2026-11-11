@@ -34,7 +34,7 @@ var (
 	// reconnect, and the same wait for a data stream's resume.
 	reconnectWait = 60 * time.Second
 	// renewEvery is how often the gateway renews the size locks it
-	// holds, as internal/control renews the tabs rootshell holds.
+	// holds.
 	renewEvery = 5 * time.Second
 	// commandWait is the longest the gateway waits to see a layout
 	// change, a second more than the server waits for the app: the

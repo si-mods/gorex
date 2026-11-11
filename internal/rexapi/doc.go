@@ -18,9 +18,9 @@
 //
 // The server reads the layout from the GoRex server the app keeps
 // (internal/rex), maps it, and tells its clients of the changes it sees.
-// A method that changes the layout asks the server for it, as
-// internal/control does (rex.LayoutCommand through the server's "command"
-// op), which makes it, and answers once the layout shows the change.
+// A method that changes the layout asks the server for it
+// (rex.LayoutCommand through the server's "command" op), which makes it,
+// and answers once the layout shows the change.
 //
 // Input reaches a block through the server's new input ops: "key" encodes
 // a W3C key event with the session's modes (terminal.Terminal.EncodeKey),
