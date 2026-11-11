@@ -802,7 +802,7 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 		}
 		w.unkeep()
 		w.layout.Tabs = append(w.layout.Tabs, a.savedTab(at))
-		closePanes([]*Tab{at})
+		a.closePanes([]*Tab{at})
 		a.st.save()
 	}
 	// A session the layout does not name, as of a host that shares no
