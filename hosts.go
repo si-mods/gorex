@@ -109,16 +109,7 @@ func saveHosts(hosts []savedHost) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	os.Remove(tmp)
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return writeFileAtomic(path, b, 0o600)
 }
 
 func newHostID() string {
@@ -633,8 +624,12 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 					l.tabs = append(l.tabs, w.Tabs...)
 				}
 				for _, t := range l.tabs {
-					for _, n := range t.Roots() {
-						namedSIDs(n, l.named)
+					for _, r := range t.Roots() {
+						for _, n := range layout.Leaves(r) {
+							if n.SID != "" {
+								l.named[n.SID] = true
+							}
+						}
 					}
 				}
 			} else {
@@ -685,18 +680,6 @@ type hostLayout struct {
 	tabs  []savedTab
 	named map[string]bool
 	hold  map[string]bool
-}
-
-// namedSIDs adds the sessions n's panes are to out.
-func namedSIDs(n *savedNode, out map[string]bool) {
-	if n == nil {
-		return
-	}
-	if n.SID != "" {
-		out[n.SID] = true
-	}
-	namedSIDs(n.A, out)
-	namedSIDs(n.B, out)
 }
 
 // adopt opens a tab for each live session of host h that no pane here
@@ -928,16 +911,6 @@ func (a *App) adoptPane(h *hostConn, t *Tab, in rex.SessionInfo, name string) *P
 	a.attach(p, in.Cols, in.Rows)
 	p.Tab = t
 	return p
-}
-
-// floatOver makes pane p float over tab t, at the box of the saved float sf.
-func (a *App) floatOver(t *Tab, p *Pane, sf savedFloat) *Float {
-	f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
-	f.clamp()
-	p.Node = &Node{ID: a.id(), Pane: p}
-	p.float = f
-	t.Floats = append(t.Floats, f)
-	return f
 }
 
 // splitNode puts pane p beside node n of tab t, after it (right or below)

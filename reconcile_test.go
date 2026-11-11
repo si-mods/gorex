@@ -749,7 +749,7 @@ func TestRemoveHostKeepsWindow(t *testing.T) {
 	waitFor(t, tt, "a tab of this machine", func() bool {
 		return len(a.tabs) == 1 && a.tabs[0].Focus != nil && a.tabs[0].Focus.host == nil && a.tabs[0].Focus.SID != ""
 	})
-	if a.ws != ws || a.st.workspaceByID(ws.ID) == nil {
+	if a.ws != ws || a.st.byID(ws.ID) == nil {
 		t.Errorf("the window left its space: %v", a.ws)
 	}
 	caughtUp(t, a, tt)

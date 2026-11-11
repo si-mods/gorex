@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"gorex/internal/layout"
 	"gorex/locales"
 )
 
@@ -671,12 +672,8 @@ func spaceTab(c *ui.Context, k *colors, key, name, detail string, reserve float3
 // pane's, else the program that ran there.
 func savedTabLabel(t savedTab) (string, program) {
 	var n savedNode
-	for _, r := range t.Roots() {
-		for r.A != nil {
-			r = r.A
-		}
-		n = *r
-		break
+	if r := t.Roots(); len(r) > 0 {
+		n = *layout.FirstLeaf(r[0])
 	}
 	prog := shellTile
 	switch {
@@ -810,11 +807,8 @@ func spaceTabsOn(w *Workspace, h *hostConn) int {
 // savedTabHost is the host id of a saved tab's first pane, as Tab.host
 // takes its first pane's: "" for this machine.
 func savedTabHost(t savedTab) string {
-	for _, n := range t.Roots() {
-		for n.A != nil {
-			n = n.A
-		}
-		return n.Host
+	if r := t.Roots(); len(r) > 0 {
+		return layout.FirstLeaf(r[0]).Host
 	}
 	return ""
 }

@@ -664,24 +664,9 @@ func (st *store) byID(id string) *Workspace {
 // window shows name.
 func (st *store) hostSIDs(h *hostConn) map[string]bool {
 	out := map[string]bool{}
-	var walk func(n *savedNode)
-	walk = func(n *savedNode) {
-		if n == nil {
-			return
-		}
-		if n.Host == h.ID && n.SID != "" {
-			out[n.SID] = true
-		}
-		walk(n.A)
-		walk(n.B)
-	}
 	for _, w := range st.workspaces {
 		if w.app == nil {
-			for _, t := range w.layout.Tabs {
-				for _, n := range t.Roots() {
-					walk(n)
-				}
-			}
+			st.visitSIDs(w, h.ID, func(sid string) { out[sid] = true })
 		}
 	}
 	return out
@@ -692,16 +677,6 @@ func (st *store) addWorkspace() *Workspace {
 	w := &Workspace{ID: layout.NewSpaceID(), Name: layout.SpaceName(st.taken), Color: st.nextSpaceColor()}
 	st.workspaces = append(st.workspaces, w)
 	return w
-}
-
-// workspaceByID returns the workspace with the ID, nil for none.
-func (st *store) workspaceByID(id string) *Workspace {
-	for _, w := range st.workspaces {
-		if w.ID == id {
-			return w
-		}
-	}
-	return nil
 }
 
 // taken tells whether a workspace has the name.

@@ -1227,7 +1227,7 @@ func (a *App) resyncPane(p *Pane, cols, rows int) {
 	if p.SID == "" || p.closed || p.term == nil {
 		return
 	}
-	sid, win, term := p.SID, a.win, p.term
+	sid, update, term := p.SID, a.updater(), p.term
 	var client *rex.Client
 	if p.host != nil {
 		client = p.host.current()
@@ -1263,11 +1263,7 @@ func (a *App) resyncPane(p *Pane, cols, rows int) {
 			// screen takes its place.
 			term.Feed(append([]byte(screenReset), res.Screen...))
 		}
-		if win != nil {
-			win.Update(fn)
-		} else {
-			a.post(fn)
-		}
+		update(fn)
 	}()
 }
 
@@ -2132,6 +2128,16 @@ func floatBox(n int) (x, y, w, h float32) {
 	return 0.15 + d, 0.12 + d, 0.7, 0.72
 }
 
+// floatOver makes pane p float over tab t, at the box of the saved float sf.
+func (a *App) floatOver(t *Tab, p *Pane, sf savedFloat) *Float {
+	f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
+	f.clamp()
+	p.Node = &Node{ID: a.id(), Pane: p}
+	p.float = f
+	t.Floats = append(t.Floats, f)
+	return f
+}
+
 // floatPane makes a tiled pane of the tab float over its others. It does
 // nothing for a pane that floats, or for the tab's only tiled pane.
 func (a *App) floatPane(p *Pane) bool {
@@ -2146,12 +2152,8 @@ func (a *App) floatPane(p *Pane) bool {
 	if t.Zoom == p {
 		t.Zoom = nil
 	}
-	p.Node = &Node{ID: a.id(), Pane: p}
 	x, y, w, h := floatBox(len(t.Floats))
-	f := &Float{Pane: p, X: x, Y: y, W: w, H: h}
-	f.clamp()
-	t.Floats = append(t.Floats, f)
-	p.float = f
+	a.floatOver(t, p, savedFloat{X: x, Y: y, W: w, H: h})
 	t.setFocus(p)
 	if a.tab() == t {
 		a.focusReq = p
@@ -2209,13 +2211,8 @@ func (a *App) newFloatThen(command []string, then func(*Pane)) *Pane {
 	}
 	p := a.newPaneRun(h, a.currentDir(), cols, rows, command)
 	p.Tab = t
-	p.Node = &Node{ID: a.id(), Pane: p}
 	x, y, w, hh := floatBox(len(t.Floats))
-	f := &Float{Pane: p, X: x, Y: y, W: w, H: hh}
-	f.clamp()
-	t.Floats = append(t.Floats, f)
-	p.float = f
-	a.revealFloat(t, f)
+	a.revealFloat(t, a.floatOver(t, p, savedFloat{X: x, Y: y, W: w, H: hh}))
 	t.setFocus(p)
 	if a.tab() == t {
 		a.focusReq = p

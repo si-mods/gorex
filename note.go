@@ -242,20 +242,7 @@ func (n *notePane) save() {
 		log.Printf("note pane: %v", err)
 		return
 	}
-	f, err := os.CreateTemp(noteDir(), n.id+".*.tmp")
-	if err != nil {
-		log.Printf("note pane: %v", err)
-		return
-	}
-	_, err = f.WriteString(n.text)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err == nil {
-		err = os.Rename(f.Name(), n.path())
-	}
-	if err != nil {
-		os.Remove(f.Name())
+	if err := writeFileAtomic(n.path(), []byte(n.text), 0o600); err != nil {
 		log.Printf("note pane: %v", err)
 	}
 }
