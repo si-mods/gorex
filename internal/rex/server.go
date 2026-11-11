@@ -743,11 +743,13 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 	}
 	switch req.Op {
 	case "hello":
+		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Machine: s.machine, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
+		// A machine not read yet is none: hostInfo may still be writing it.
 		select {
 		case <-s.hostDone:
+			h.Host = s.host
 		case <-time.After(3 * time.Second):
 		}
-		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Machine: s.machine, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
 		// The pairing address is for a remote peer's QR code. A local
 		// client never shows it, and asking the gateway for it would wait
 		// on the gateway's own requests when the gateway says hello.
