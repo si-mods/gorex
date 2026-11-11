@@ -13,18 +13,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # The Mac mini's runner: si-mods runs no job on GitHub's runners. Not
-  # for forks' pull requests: their code would run on the Mac mini.
+  # The Mac mini's runner: si-mods runs no job on GitHub's runners. Forks'
+  # pull requests skip it, but a fork's pull request runs its own copy of
+  # this file: what bars its code from the Mac mini is the approval each
+  # outside contributor's run needs. Read a fork's .github changes before
+  # approving its run.
   test:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macmini]
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          # The runner keeps Go's caches between runs.
+          cache: false
       - name: gofmt
         run: |
           unformatted=$(gofmt -l $(git ls-files '*.go'))
@@ -38,30 +42,23 @@ jobs:
       - name: test
         run: go test ./... -count=1 -timeout 15m
 
+  # One job, as the runner takes one at a time.
   build:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macmini]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: windows
-            goarch: amd64
-          - goos: darwin
-            goarch: arm64
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
-      - name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+          cache: false
+      - name: build
         env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
-        run: go build ./...
+        run: |
+          for t in linux/amd64 linux/arm64 windows/amd64 darwin/arm64; do
+            echo "::group::$t"
+            GOOS=${t%/*} GOARCH=${t#*/} go build ./...
+            echo "::endgroup::"
+          done

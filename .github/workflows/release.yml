@@ -26,12 +26,16 @@ jobs:
   unix:
     if: github.ref == 'refs/heads/main' && inputs.target != 'windows'
     runs-on: [self-hosted, macmini]
+    timeout-minutes: 60
     steps:
+      # -upload uploads with gh.
+      - run: gh --version
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          # The runner keeps Go's caches between runs.
+          cache: false
       # A keychain of the run's own holds the Developer ID that mygo.json's
       # signingIdentity names, and the notary credentials: the App Store
       # Connect API key that TestFlight uploads use. mygo then notarizes the
@@ -71,14 +75,17 @@ jobs:
     needs: unix
     if: always() && github.ref == 'refs/heads/main' && inputs.target != 'unix' && (needs.unix.result == 'success' || needs.unix.result == 'skipped')
     runs-on: [self-hosted, yibo-pc]
+    timeout-minutes: 60
     steps:
+      - run: gh --version
       # Keep LF in the files the app embeds, as the other platforms do.
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          # The runner keeps Go's caches between runs.
+          cache: false
       # PowerShell: a bare bash on Windows can be WSL's.
       - name: build and upload
         shell: powershell
