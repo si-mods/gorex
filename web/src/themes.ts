@@ -1,7 +1,9 @@
 // Ghostty themes: the list GoRex's iOS app ships (ios/GoRex/ghostty-themes.json,
-// copied into the build), the choice kept in the browser, and the picker.
+// copied into the build), and the picker of the Settings dialog's Theme
+// section. The choice is a setting (prefs.ts, theme).
 import { check, icon } from "./hosts";
 import type { RGB } from "./ghostty";
+import { prefs, setPrefs } from "./prefs";
 import type { Theme } from "./terminal";
 
 /** A Ghostty theme as ios/scripts/ghostty-themes writes it: 16 palette colours, then background, foreground, cursor, cursor text, selection, selection text, as 0xRRGGBB. */
@@ -9,10 +11,6 @@ export interface ThemeEntry {
   name: string;
   colors: number[];
 }
-
-/** The theme until one is chosen, as on iOS. */
-export const standard = "Gruvbox Dark";
-const key = "gorex.theme";
 
 const rgb = (v: number): RGB => [v >> 16, (v >> 8) & 0xff, v & 0xff];
 
@@ -29,21 +27,7 @@ export async function loadThemes(): Promise<ThemeEntry[]> {
 }
 
 /** The name chosen in this browser; "" keeps the host's colours. */
-export function chosenName(): string {
-  try {
-    return localStorage.getItem(key) ?? standard;
-  } catch {
-    return standard;
-  }
-}
-
-function remember(name: string) {
-  try {
-    localStorage.setItem(key, name);
-  } catch {
-    // Without storage the choice lasts until the page closes.
-  }
-}
+export const chosenName = () => prefs.theme;
 
 /** The theme as a stream's theme message gives one: the colours and the 16 palette entries. */
 export function themeColours(t: ThemeEntry): Theme {
@@ -65,21 +49,17 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 /**
- * The picker: a button and the panel it opens, in `host`. `onChoose` gets
- * the chosen theme, or undefined for the host's colours.
+ * The picker, as the iOS app's Themes settings: a preview of the chosen
+ * theme, a filter, a search and the list. `onChoose` gets the chosen
+ * theme, or undefined for the host's colours. The list shows once
+ * `show` is called, as the section opens.
  */
-export function mountPicker(host: HTMLElement, themes: ThemeEntry[], onChoose: (t?: ThemeEntry) => void, onClose: () => void) {
+export function themePicker(themes: ThemeEntry[], onChoose: (t?: ThemeEntry) => void): { el: HTMLElement; show(): void } {
   let selected = chosenName();
   let filter: "all" | "dark" | "light" = "all";
   let query = "";
 
-  const button = el("button", "theme-button", "Theme");
-  button.type = "button";
-  button.setAttribute("aria-haspopup", "dialog");
-  const panel = el("div", "theme-panel");
-  panel.hidden = true;
-  panel.setAttribute("role", "dialog");
-  panel.setAttribute("aria-label", "Terminal theme");
+  const panel = el("div", "theme-picker");
   const preview = el("div", "theme-preview");
   const seg = el("div", "theme-filter");
   const search = el("input", "theme-search");
@@ -89,7 +69,6 @@ export function mountPicker(host: HTMLElement, themes: ThemeEntry[], onChoose: (
   const list = el("div", "theme-list");
   list.setAttribute("role", "listbox");
   panel.append(preview, seg, search, list);
-  host.append(button, panel);
 
   const segButtons = (["all", "dark", "light"] as const).map((f) => {
     const b = el("button", "", f[0].toUpperCase() + f.slice(1));
@@ -124,7 +103,7 @@ export function mountPicker(host: HTMLElement, themes: ThemeEntry[], onChoose: (
     b.append(sw, el("span", "theme-name", t?.name ?? "Host Colors"), check(name === selected));
     b.onclick = () => {
       selected = name;
-      remember(name);
+      setPrefs({ theme: name });
       onChoose(t);
       render();
       // The list was drawn again: the keyboard stays on the row.
@@ -177,33 +156,18 @@ export function mountPicker(host: HTMLElement, themes: ThemeEntry[], onChoose: (
 
   const rowsOf = () => [...list.querySelectorAll<HTMLButtonElement>("button.theme-row")];
 
-  function open() {
-    panel.hidden = false;
-    button.setAttribute("aria-expanded", "true");
+  function show() {
+    selected = chosenName();
     render();
-    list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "center" });
-    search.focus();
+    // The chosen row in sight, within the list only: the page keeps its scroll.
+    const row = list.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (row) list.scrollTop = row.offsetTop - (list.clientHeight - row.offsetHeight) / 2;
   }
 
-  function close(refocus = true) {
-    if (panel.hidden) return;
-    panel.hidden = true;
-    button.setAttribute("aria-expanded", "false");
-    if (refocus) onClose();
-  }
-
-  button.onclick = () => (panel.hidden ? open() : close());
   search.oninput = () => {
     query = search.value;
     render();
   };
-  // Escape closes it wherever the focus is.
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !panel.hidden) {
-      e.preventDefault();
-      close();
-    }
-  });
   panel.addEventListener("keydown", (e) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
     const rows = rowsOf();
@@ -214,8 +178,5 @@ export function mountPicker(host: HTMLElement, themes: ThemeEntry[], onChoose: (
     else rows[Math.min(next, rows.length - 1)].focus();
     e.preventDefault();
   });
-  // A click elsewhere closes the panel, and the page's own focus stays where it went.
-  document.addEventListener("pointerdown", (e) => {
-    if (!panel.hidden && !host.contains(e.target as Node)) close(false);
-  });
+  return { el: panel, show };
 }

@@ -1,6 +1,7 @@
 // One pane of a window: a block's terminal, its stream fed to
 // libghostty-vt, drawn on its own canvas, the keys typed written back.
 import { Ghostty } from "./ghostty";
+import { contrastRatio, cursorSeq, fontFamily, textSize } from "./prefs";
 import { Program, smallTile } from "./programs";
 import { Control, DataStream, RexError, TerminalStream } from "./rex";
 import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
@@ -23,9 +24,7 @@ export interface PaneHost {
   action(p: TerminalView, name: string): void;
 }
 
-/** The desktop's terminal font (style.go, settings.go): its family, size in CSS pixels and line height. */
-const fontFamily = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "monospace";
-const fontSize = 11.6;
+/** The terminal's line height, as the desktop's; its family and size are the settings' (prefs.ts). */
 const lineHeight = 1;
 /** The padding around the grid, in CSS pixels, as the desktop's (MyGo's padX, padY). */
 const padX = 6, padY = 4;
@@ -196,6 +195,7 @@ export class TerminalView {
           // on a screen of its size.
           this.term.setTheme(desktopTheme());
           this.term.setTheme(this.theme);
+          this.applyCursor();
           if (this.fitted) this.term.resize(this.fitted.cols, this.fitted.rows, this.font.w, this.font.h);
           this.full = true;
           this.claim();
@@ -244,6 +244,25 @@ export class TerminalView {
     this.term?.setTheme(this.theme);
     this.full = true;
     this.redraw();
+  }
+
+  /**
+   * Sets the cursor the settings choose, as the desktop's setCursor does:
+   * with the sequence a program would send, so that a program can still
+   * set its own after it. None while the settings choose none; reset
+   * sets the terminal's default again (DECSCUSR 0).
+   */
+  applyCursor(reset = false) {
+    const seq = cursorSeq() ?? (reset ? "\x1b[0 q" : undefined);
+    if (!seq || !this.term) return;
+    this.term.write(new TextEncoder().encode(seq));
+    this.wake();
+  }
+
+  /** The settings' font, size or contrast changed: measure the font again and draw it all. */
+  restyle() {
+    this.fontStale = true;
+    this.layout();
   }
 
   /** A theme chosen now, or the host's colours (none), as a theme message from the stream would be. */
@@ -301,7 +320,7 @@ export class TerminalView {
     // Resizing cleared the canvas to black: fill it before the browser paints.
     this.paintBlank();
     if (this.font?.scale !== scale || this.fontStale) {
-      this.font = new Font(fontFamily(), fontSize, scale, lineHeight);
+      this.font = new Font(fontFamily(), textSize(), scale, lineHeight);
       this.fontStale = false;
     }
     this.ox = Math.round(padX * scale);
@@ -349,7 +368,7 @@ export class TerminalView {
       const since = performance.now() - this.blinkStart;
       this.term.draw(ctx, {
         font: this.font, ox: this.ox, oy: this.oy, full: this.full, focused,
-        blinkOff: since % (2 * blinkPeriod) >= blinkPeriod,
+        blinkOff: since % (2 * blinkPeriod) >= blinkPeriod, minContrast: contrastRatio(),
       });
       this.full = false;
       // The next phase of the blink.

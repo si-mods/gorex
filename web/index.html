@@ -23,6 +23,14 @@
     --dot-rim: rgba(0, 0, 0, 0.85);
     --done: #7aa0c2;
     --attention: #fbbf24;
+    /* The connection's dot (settings.ts): connected, connecting, unreachable; the accent of the chosen section. */
+    --ok: #30d158;
+    --danger: #ff6b6b;
+    --accent: #0a84ff;
+    /* The Settings dialog's cards and their hairlines, as the desktop's k.card, k.cardBorder and k.tabSep. */
+    --card: rgba(255, 255, 255, 0.06);
+    --card-edge: rgba(255, 255, 255, 0.08);
+    --sep: rgba(255, 255, 255, 0.10);
     /* The desktop terminals' family (style.go, defaultFontFamily). */
     --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
   }
@@ -37,7 +45,7 @@
     font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   :root { --edge: rgba(255, 255, 255, 0.05); --edge-focus: rgba(255, 255, 255, 0.14); --panel: rgba(44, 44, 48, 0.78); --panel-edge: rgba(255, 255, 255, 0.12); --shadow: rgba(0, 0, 0, 0.25); --shadow-focus: rgba(0, 0, 0, 0.4); }
-  /* The light scheme, for a light terminal background (main.ts sets data-scheme from it). */
+  /* The light scheme, for a light terminal background or the Window setting (main.ts sets data-scheme). */
   :root[data-scheme="light"] {
     color-scheme: light;
     --page: #ececf0;
@@ -49,6 +57,12 @@
     --tile-rim-w: 1px;
     --dot-rim: rgba(255, 255, 255, 0.95);
     --attention: #f59e0b;
+    --ok: #28a745;
+    --danger: #e5484d;
+    --accent: #007aff;
+    --card: rgba(255, 255, 255, 0.72);
+    --card-edge: rgba(0, 0, 0, 0.08);
+    --sep: rgba(0, 0, 0, 0.10);
     --edge: rgba(0, 0, 0, 0.10);
     --edge-focus: rgba(0, 0, 0, 0.28);
     --panel: rgba(250, 250, 252, 0.82);
@@ -58,13 +72,14 @@
   }
   #sessions { grid-row: 1 / 3; display: flex; flex-direction: column; min-height: 0; padding: 12px 8px 8px; position: relative; }
   #list { flex: 1; overflow-y: auto; min-height: 0; }
-  #themes { padding-top: 8px; }
+  #foot { padding-top: 8px; }
+  /* The sidebar's Settings button, as the desktop's sidebarSettings. */
   .theme-button {
-    padding: 5px 12px; border: 0; border-radius: 999px; background: none; color: var(--muted);
-    font: inherit; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 0; border-radius: 999px;
+    background: none; color: var(--muted); font: inherit; cursor: pointer;
   }
-  .theme-button:hover, .theme-button[aria-expanded="true"] { background: var(--hover); color: var(--text); }
-  /* The picker is a glass panel over the page, as the desktop's popovers: blur 24, radius 16. */
+  .theme-button:hover { background: var(--hover); color: var(--text); }
+  /* The host list is a glass panel over the page, as the desktop's popovers: blur 24, radius 16. */
   .theme-panel {
     position: fixed; left: 8px; bottom: 44px; z-index: 10; width: 320px; max-width: calc(100vw - 16px);
     max-height: min(600px, calc(100vh - 64px)); display: flex; flex-direction: column; gap: 8px; padding: 12px;
@@ -83,7 +98,7 @@
     background: var(--hover); color: var(--text); font: inherit; outline: none;
   }
   .theme-search:focus { border-color: var(--muted); }
-  .theme-list { overflow-y: auto; min-height: 120px; }
+  .theme-list { position: relative; overflow-y: auto; min-height: 120px; }
   .theme-row {
     display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; border: 0; border-radius: 8px;
     background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
@@ -199,6 +214,8 @@
   .pane.zoomed .pane-action[data-action="zoom"] { --icon: url(icons/minimize-2.svg); }
   .pane-action[data-action="close"] { --icon: url(icons/x.svg); }
   .pane-body { position: relative; flex: 1; min-height: 0; }
+  /* The Show pane headers setting off: the terminal takes the whole pane. */
+  .no-pane-headers .pane-head { display: none; }
   .screen { position: absolute; inset: 0; display: block; }
   /* A divider: the gap between two panes, a grip on hover, as view.go's divider. */
   .divider { position: absolute; z-index: 1; touch-action: none; }
@@ -228,7 +245,14 @@
   .host-form { display: flex; flex-direction: column; gap: 8px; }
   .host-field { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
   .host-field .theme-search { color: var(--text); font-size: 13px; }
-  .host-field select.theme-search { appearance: none; border-radius: 10px; }
+  /* The host's icon: a segmented row of the icons. */
+  .icon-pick { display: flex; gap: 2px; padding: 2px; align-self: flex-start; border-radius: 999px; background: var(--hover); }
+  .icon-choice {
+    display: grid; place-items: center; width: 36px; height: 28px; padding: 0; border: 0; border-radius: 999px;
+    background: none; color: var(--muted); cursor: pointer;
+  }
+  .icon-choice:hover { color: var(--text); }
+  .icon-choice[aria-checked="true"] { background: var(--pill); color: var(--text); }
   .host-error { color: #ff6b6b; font-size: 12px; }
   .host-error:empty { display: none; }
   .host-note { color: var(--muted); font-size: 12px; }
@@ -254,15 +278,142 @@
   .notice-card p { margin: 0; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
   .notice-card .host-add { align-self: flex-start; }
   #status { padding: 4px 8px 6px; color: var(--muted); font-size: 12px; }
+  /* The Settings dialog (settings.ts), as the desktop's settings window (settingsview.go): the sections at the
+     left, the chosen one's groups at the right. A frosted panel, as the palette's (blur 24, radius 16), over a
+     backdrop that only dims, as DESIGN.md has it: a blur over the whole window reads as a smeared window. */
+  dialog.settings {
+    width: min(920px, calc(100vw - 32px)); height: min(640px, calc(100dvh - 32px)); max-width: none; max-height: none;
+    padding: 0; border: 1px solid var(--panel-edge); border-radius: 16px; overflow: hidden;
+    background: var(--panel); color: var(--text); font: inherit;
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 24px 80px rgba(0, 0, 0, 0.4);
+  }
+  dialog.settings[open] { display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+  dialog.settings::backdrop { background: rgba(0, 0, 0, 0.35); }
+  .settings-nav {
+    display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; padding: 12px 10px 10px;
+    border-right: 1px solid var(--sep);
+  }
+  /* The host's card, as serverCard: its icon on a 34px face, its name, and its state's dot. */
+  .settings-host {
+    display: flex; align-items: center; gap: 10px; flex: none; margin-bottom: 8px; padding: 8px 10px; border-radius: 14px;
+    background: var(--card); border: 1px solid var(--card-edge); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  }
+  .settings-host:hover, .settings-host[aria-selected="true"] { background: var(--pill); }
+  .settings-host[aria-selected="true"] { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+  .settings-host-icon { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--hover); }
+  .settings-host-icon .pane-icon { width: 19px; height: 19px; }
+  .settings-host-icon.small { width: 30px; height: 30px; border-radius: 8px; }
+  .settings-host-icon.small .pane-icon { width: 17px; height: 17px; }
+  .settings-host-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .settings-host-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .settings-host-state { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; }
+  .state-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .state-dot.connected { background: var(--ok); }
+  .state-dot.connecting { background: var(--attention); }
+  .state-dot.unreachable { background: var(--danger); }
+  /* A section's item, as sidebarItem: 32px, a capsule, a white glyph on its 22px tile; the chosen one in the pill and the accent. */
+  .settings-item {
+    display: flex; align-items: center; gap: 9px; flex: none; height: 32px; padding: 0 10px; border: 0; border-radius: 999px;
+    background: none; color: var(--text); font: inherit; font-weight: 500; text-align: left; cursor: pointer; white-space: nowrap;
+  }
+  .settings-item:hover { background: var(--hover); }
+  .settings-item[aria-selected="true"] { background: var(--pill); color: var(--accent); }
+  .settings-tile { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; color: #fff; }
+  .settings-tile .pane-icon { width: 14px; height: 14px; }
+  .settings-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .settings-head { display: flex; align-items: center; gap: 14px; flex: none; height: 52px; padding: 0 10px 0 28px; }
+  .settings-title { flex: 1; min-width: 0; margin: 0; font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .settings-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 28px 28px; }
+  .settings-page { display: flex; flex-direction: column; gap: 18px; max-width: 720px; }
+  /* A group, as settingsGroup: a label and note above, a card of rows (radius 14, hairlines), a footnote under. */
+  .settings-group { display: flex; flex-direction: column; gap: 6px; }
+  .settings-group-head { display: flex; flex-direction: column; gap: 2px; padding: 0 14px; }
+  .settings-group-label { font-size: 12px; font-weight: 600; }
+  .settings-card {
+    display: flex; flex-direction: column; border-radius: 14px; overflow: hidden;
+    background: var(--card); border: 1px solid var(--card-edge); box-shadow: 0 1px 2px var(--shadow);
+  }
+  .settings-foot, .settings-note { padding: 0 14px; }
+  /* A row, as groupRow: 44px at least, a hairline above but the first, inset 14px at the left. */
+  .settings-row { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 44px; padding: 11px 14px; }
+  .settings-row.compact { min-height: 40px; padding: 7px 14px; }
+  .settings-row + .settings-row::before { content: ""; position: absolute; top: 0; left: 14px; right: 0; height: 1px; background: var(--sep); transform: scaleY(0.5); }
+  .settings-line { display: flex; align-items: center; gap: 16px; }
+  .settings-label { flex: 1; min-width: 0; font-weight: 500; }
+  .settings-control { display: flex; align-items: center; gap: 8px; flex: none; max-width: 100%; }
+  .settings-hint { max-width: 560px; color: var(--muted); font-size: 11.5px; line-height: 1.4; overflow-wrap: anywhere; }
+  .settings-value { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text; }
+  .settings-seg { flex: none; }
+  .settings-seg button { flex: none; padding: 4px 12px; }
+  .settings-select {
+    max-width: 220px; padding: 5px 10px; border: 1px solid var(--panel-edge); border-radius: 8px;
+    background: var(--hover); color: var(--text); font: inherit;
+  }
+  .settings-select option { background: var(--page); color: var(--text); }
+  /* A switch, as the desktop's: a capsule with a knob, green on. */
+  .settings-switch {
+    appearance: none; position: relative; flex: none; width: 38px; height: 22px; margin: 0; border-radius: 999px;
+    background: var(--pill); cursor: pointer; transition: background 0.16s;
+  }
+  .settings-switch::after {
+    content: ""; position: absolute; left: 2px; top: 2px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: transform 0.16s;
+  }
+  .settings-switch:checked { background: var(--ok); }
+  .settings-switch:checked::after { transform: translateX(16px); }
+  .settings-switch:focus-visible, .settings-item:focus-visible, .settings-host:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .settings-stepper { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--hover); }
+  .settings-step:disabled, .host-add:disabled { opacity: 0.4; cursor: default; }
+  .settings-keys { padding: 2px 9px; border-radius: 10px; background: var(--hover); color: var(--muted); font: 12px system-ui, -apple-system, "Segoe UI", sans-serif; white-space: nowrap; }
+  .settings-preview { padding: 12px 14px; border-radius: 10px; border: 1px solid var(--card-edge); font-family: var(--mono); line-height: 1.3; white-space: pre; overflow: hidden; }
+  .settings-themes .theme-picker { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+  /* The theme page scrolls only its list, which takes the height the page leaves. */
+  .settings-scroll:has(.settings-themes) { display: flex; flex-direction: column; overflow: hidden; }
+  .settings-page:has(.settings-themes), .settings-page:has(.settings-themes) > .settings-group { flex: 1; min-height: 0; }
+  .settings-themes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .settings-themes .theme-picker { flex: 1; min-height: 0; }
+  .settings-themes .theme-list { flex: 1; }
+  /* The host page's card, as serverGroup: the host's icon, name and address, and its state in a chip. */
+  .settings-hero { flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; }
+  .settings-hero-icon { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--hover); }
+  .settings-hero-icon .pane-icon { width: 26px; height: 26px; }
+  .settings-hero-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .settings-hero-name { font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .settings-chip { display: flex; align-items: center; gap: 6px; flex: none; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; background: var(--hover); }
+  .settings-chip.connected { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+  .settings-chip.connecting { background: color-mix(in srgb, var(--attention) 14%, transparent); }
+  .settings-chip.unreachable { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+  .settings-host-row { flex-direction: row; align-items: center; justify-content: flex-start; gap: 4px; padding: 6px 8px 6px 6px; }
+  .settings-host-pick {
+    display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; padding: 4px 8px; border: 0; border-radius: 10px;
+    background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  }
+  .settings-host-pick:hover { background: var(--hover); }
+  .settings-row > .host-buttons { justify-content: flex-start; flex-wrap: wrap; }
+  .settings-row > .host-add { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; }
+  .settings-row > .host-add .pane-icon { width: 14px; height: 14px; }
+  .settings-row > .host-form .host-title { display: none; }
   @media (max-width: 640px) {
     body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
     #sessions { grid-row: auto; max-height: 36vh; }
     #stage { margin: 0 8px; }
+    /* Settings fills the screen; the sections go in a row above the page. */
+    dialog.settings { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
+    dialog.settings[open] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .settings-nav {
+      flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; padding: 10px 16px;
+      border-right: 0; border-bottom: 1px solid var(--sep); scrollbar-width: none;
+    }
+    .settings-host { margin: 0 6px 0 0; max-width: 200px; }
+    .settings-head { padding: 0 6px 0 16px; }
+    .settings-scroll { padding: 4px 16px 16px; }
+    .settings-line { flex-wrap: wrap; row-gap: 8px; }
+    .settings-control { flex-wrap: wrap; }
   }
 </style>
 </head>
 <body>
-<aside id="sessions"><div id="hosts"></div><div id="list"></div><div id="themes"></div></aside>
+<aside id="sessions"><div id="hosts"></div><div id="list"></div><div id="foot"><button type="button" class="theme-button" id="open-settings" title="Settings">Settings</button></div></aside>
 <main id="stage"><div id="notice" hidden></div></main>
 <footer id="status"></footer>
 <script type="module" src="app.js"></script>

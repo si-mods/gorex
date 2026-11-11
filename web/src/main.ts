@@ -5,10 +5,12 @@ import { Ghostty } from "./ghostty";
 import { commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
 import { shortcut } from "./keys";
 import { describe } from "./pane";
+import { fontFamily, prefs } from "./prefs";
 import { mostUrgent, programName, programOf, rank, seenKey, Status, statusOf, tiles, tilesWidth } from "./programs";
 import { Control, setHost } from "./rex";
+import { LinkState, Settings } from "./settings";
 import { desktopTheme, Theme } from "./terminal";
-import { chosenName, isLight, loadThemes, mountPicker, ThemeEntry, themeColours } from "./themes";
+import { chosenName, isLight, loadThemes, ThemeEntry, themeColours } from "./themes";
 import { borderLeaf, layoutOf, leavesOf, WindowHost, WindowView } from "./window";
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -24,6 +26,10 @@ let current: Host | undefined;
 let generation = 0;
 let retry: ReturnType<typeof setTimeout> | undefined;
 let hostList: HostList;
+let settings: Settings | undefined;
+/** The chosen host's connection, and what is wrong with it, for the Settings dialog's host card. */
+let link: LinkState = "none";
+let problem: Problem | undefined;
 /** The theme chosen in this browser, over the desktop's colours; none keeps the host's. */
 let chosen: Theme | undefined;
 
@@ -51,9 +57,44 @@ const described = new Set<string>();
 /** The window this page shows. */
 let shown: WindowView | undefined;
 
-/** The page's chrome follows the terminal's background: light for a light one. */
+/** The terminal background the page's chrome follows. */
+let lastBg: [number, number, number] = desktopTheme().background!;
+
+/** The page's chrome: the Window setting, else the terminal's background (light for a light one). */
 function scheme(bg: [number, number, number]) {
-  document.documentElement.dataset.scheme = isLight(bg) ? "light" : "dark";
+  lastBg = bg;
+  document.documentElement.dataset.scheme = prefs.appearance || (isLight(bg) ? "light" : "dark");
+}
+
+/** Sets the connection's state, and shows it in the Settings dialog. */
+function setLink(s: LinkState, p?: Problem) {
+  link = s;
+  problem = p;
+  settings?.update();
+}
+
+/** Applies a changed setting to the page and to every open pane, as the desktop's applyPrefs. */
+function applyPrefs(what: "appearance" | "headers" | "font" | "cursor" | "contrast", reset = false) {
+  const panes = [...(shown?.panes.values() ?? [])];
+  switch (what) {
+    case "appearance":
+      scheme(lastBg);
+      break;
+    case "headers":
+      document.body.classList.toggle("no-pane-headers", prefs.hidePaneHeaders);
+      break;
+    case "font":
+      // The previews and command boxes take the family too.
+      document.documentElement.style.setProperty("--mono", fontFamily());
+      panes.forEach((p) => p.restyle());
+      break;
+    case "contrast":
+      panes.forEach((p) => p.redraw());
+      break;
+    case "cursor":
+      panes.forEach((p) => p.applyCursor(reset));
+      break;
+  }
 }
 
 function status(s: string) {
@@ -103,12 +144,23 @@ async function main() {
       for (const p of shown?.panes.values() ?? []) p.setChosen(chosen);
     };
     pick(themes.find((t) => t.name === chosenName()));
-    if (themes.length) mountPicker($("themes"), themes, pick, () => shown?.focusKeys());
+    for (const what of ["headers", "font"] as const) applyPrefs(what);
+    hostList = new HostList($("hosts"), { choose, close: () => shown?.focusKeys(), changed: () => settings?.update() });
+    settings = new Settings({
+      hosts: hostList,
+      link: () => ({ host: current, state: link, problem }),
+      themes,
+      chooseTheme: pick,
+      apply: applyPrefs,
+      closed: () => shown?.focusKeys(),
+    });
+    const open = $("open-settings");
+    open.prepend(icon("settings-2"));
+    open.onclick = () => settings!.toggle();
   } catch (e) {
     status(`Could not load libghostty-vt: ${describe(e)}`);
     return;
   }
-  hostList = new HostList($("hosts"), { choose, close: () => shown?.focusKeys() });
   // A quick link: ?host=URL adds the host, or chooses it, and leaves the address bar.
   const linked = new URLSearchParams(location.search).get("host");
   if (linked) {
@@ -159,6 +211,7 @@ function choose(h: Host | undefined) {
   sidebar();
   if (!h) {
     status("");
+    setLink("none");
     notice(
       {
         title: "Add a GoRex host",
@@ -176,10 +229,12 @@ function choose(h: Host | undefined) {
   const blocked = mixedContent(h.url);
   if (blocked) {
     status(`${h.name}: blocked`);
+    setLink("unreachable", blocked);
     notice(blocked, { label: "Edit Host", run: () => hostList.open(h) });
     return;
   }
   notice();
+  setLink("connecting");
   connect(generation);
 }
 
@@ -187,6 +242,7 @@ function choose(h: Host | undefined) {
 async function connect(gen: number) {
   const h = current!;
   status(`Connecting to ${h.name}…`);
+  if (link !== "unreachable") setLink("connecting");
   let c: Control;
   try {
     c = await Control.open(token);
@@ -195,6 +251,7 @@ async function connect(gen: number) {
     const p = await diagnose(h.url);
     if (gen !== generation) return;
     notice(p, { label: "Edit Host", run: () => hostList.open(h) });
+    setLink("unreachable", p);
     status(`${h.name}: ${p.title}. Trying again…`);
     retry = setTimeout(() => connect(gen), 4000);
     return;
@@ -204,6 +261,7 @@ async function connect(gen: number) {
     return;
   }
   notice();
+  setLink("connected");
   control = c;
   described.clear();
   token = c.reconnectToken;
@@ -211,6 +269,7 @@ async function connect(gen: number) {
   c.onClose = (reason) => {
     if (control !== c) return;
     control = undefined;
+    setLink("connecting");
     status(`${h.name}: disconnected (${reason}). Reconnecting…`);
     retry = setTimeout(() => connect(gen), 3000);
   };
@@ -630,9 +689,16 @@ window.addEventListener(
   "keydown",
   (e) => {
     const t = e.target as HTMLElement;
-    if (t.closest?.("input, textarea, .theme-panel")) return;
     const name = shortcut(e);
     if (!name) return;
+    // Settings opens and closes from anywhere; the rest only from the window.
+    if (name === "settings" && settings) {
+      e.preventDefault();
+      e.stopPropagation();
+      settings.toggle();
+      return;
+    }
+    if (t.closest?.("input, textarea, select, .theme-panel, dialog")) return;
     e.preventDefault();
     e.stopPropagation();
     run(name);

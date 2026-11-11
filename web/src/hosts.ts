@@ -225,11 +225,14 @@ export interface HostsApp {
   choose(h: Host | undefined): void;
   /** The keyboard goes back to the terminal. */
   close(): void;
+  /** The list changed: a host added, edited or removed. */
+  changed(): void;
 }
 
 /**
  * The host list: a button at the top of the sidebar with the chosen host,
- * and a glass panel to choose, add, edit and remove hosts.
+ * and a glass panel to choose, add, edit and remove hosts. The Settings
+ * dialog's Hosts section lists the same hosts, with the same form.
  */
 export class HostList {
   hosts = loadHosts();
@@ -284,7 +287,7 @@ export class HostList {
   open(form?: Host | "new") {
     this.panel.hidden = false;
     this.button.setAttribute("aria-expanded", "true");
-    if (form) this.form(form === "new" ? undefined : form);
+    if (form) this.formIn(form === "new" ? undefined : form);
     else this.list();
   }
 
@@ -295,7 +298,8 @@ export class HostList {
     if (keys) this.app.close();
   }
 
-  private choose(h: Host | undefined) {
+  /** Chooses a host, which the page connects to. */
+  choose(h: Host | undefined) {
     this.chosen = h;
     rememberHost(h?.id ?? "");
     this.drawButton();
@@ -320,23 +324,34 @@ export class HostList {
       edit.title = "Edit";
       edit.setAttribute("aria-label", `Edit ${h.name}`);
       edit.append(icon("pencil"));
-      edit.onclick = () => this.form(h);
+      edit.onclick = () => this.formIn(h);
       row.append(pick, edit);
       rows.append(row);
     }
     if (!this.hosts.length) rows.append(el("div", "theme-empty", "No hosts yet."));
     const add = el("button", "host-add", "Add Host");
     add.type = "button";
-    add.onclick = () => this.form(undefined);
+    add.onclick = () => this.formIn(undefined);
     this.panel.replaceChildren(el("div", "host-title", "Hosts"), rows, add);
     (rows.querySelector("button") ?? add).focus();
   }
 
-  /** The form to add a host, or to edit or remove one. */
-  private form(h: Host | undefined) {
+  /** The form in the panel: a saved host closes it, else the list shows again. */
+  private formIn(h: Host | undefined) {
+    const form = this.form(h, (how) => (how === "save" ? this.hide() : this.list()));
+    this.panel.replaceChildren(form);
+    form.querySelector("input")?.focus();
+  }
+
+  /**
+   * The form to add a host, or to edit or remove one. `done` tells how it
+   * ended, after the list took the change.
+   */
+  form(h: Host | undefined, done: (how: "cancel" | "remove" | "save") => void): HTMLFormElement {
     const form = el("form", "host-form");
-    const field = (label: string, input: HTMLElement) => {
-      const l = el("label", "host-field");
+    // A div for the icons: a label would pass its clicks to the first one.
+    const field = (label: string, input: HTMLElement, tag: "label" | "div" = "label") => {
+      const l = el(tag, "host-field");
       l.append(el("span", "", label), input);
       return l;
     };
@@ -349,19 +364,31 @@ export class HostList {
     const name = el("input", "theme-search");
     name.placeholder = "Name";
     name.value = h?.name ?? "";
-    const pick = el("select", "theme-search");
-    for (const [v, label] of icons) {
-      const o = el("option", "", label);
-      o.value = v;
-      pick.append(o);
-    }
-    pick.value = h?.icon ?? "laptop";
+    // The icon: a segmented row of the icons, as iOS's picker.
+    let chosenIcon = h?.icon ?? "laptop";
+    const pick = el("div", "icon-pick");
+    pick.setAttribute("role", "radiogroup");
+    const iconButtons = icons.map(([v, label]) => {
+      const b = el("button", "icon-choice");
+      b.type = "button";
+      b.title = label;
+      b.setAttribute("role", "radio");
+      b.setAttribute("aria-label", label);
+      b.append(icon(v));
+      b.onclick = () => {
+        chosenIcon = v;
+        iconButtons.forEach((x, i) => x.setAttribute("aria-checked", String(icons[i][0] === v)));
+      };
+      b.setAttribute("aria-checked", String(v === chosenIcon));
+      pick.append(b);
+      return b;
+    });
     const error = el("div", "host-error");
     const note = el("div", "host-note", "The host must trust this page. On the host, run:");
     const buttons = el("div", "host-buttons");
     const cancel = el("button", "host-add", "Cancel");
     cancel.type = "button";
-    cancel.onclick = () => this.list();
+    cancel.onclick = () => done("cancel");
     const save = el("button", "host-add primary", h ? "Save" : "Add");
     save.type = "submit";
     if (h) {
@@ -372,7 +399,8 @@ export class HostList {
         this.hosts = this.hosts.filter((x) => x.id !== h.id);
         saveHosts(this.hosts);
         if (this.chosen?.id === h.id) this.choose(this.hosts[0]);
-        this.list();
+        this.app.changed();
+        done("remove");
       };
       buttons.append(remove);
     }
@@ -387,10 +415,10 @@ export class HostList {
       }
       const label = name.value.trim() || defaultName(r.url);
       const changed = !h || h.url !== r.url;
-      const next: Host = { id: h?.id ?? newID(), name: label, url: r.url, icon: pick.value };
+      const next: Host = { id: h?.id ?? newID(), name: label, url: r.url, icon: chosenIcon };
       this.hosts = h ? this.hosts.map((x) => (x.id === h.id ? next : x)) : [...this.hosts, next];
       saveHosts(this.hosts);
-      this.hide();
+      done("save");
       if (!h || this.chosen?.id === h.id) {
         // A new host is chosen at once; the chosen one connects again when its address changed.
         if (changed) this.choose(next);
@@ -399,18 +427,18 @@ export class HostList {
           this.drawButton();
         }
       }
+      this.app.changed();
     };
     form.append(
       el("div", "host-title", h ? "Edit Host" : "Add Host"),
       field("Address", url),
       field("Name", name),
-      field("Icon", pick),
+      field("Icon", pick, "div"),
       error,
       note,
       commandBox(allowCommand()),
       buttons,
     );
-    this.panel.replaceChildren(form);
-    url.focus();
+    return form;
   }
 }

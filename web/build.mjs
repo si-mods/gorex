@@ -89,7 +89,17 @@ async function wasm() {
   return out;
 }
 
-/** esbuild's options for the client's bundle, which dev.mjs rebuilds too. */
+/** The client's commit, short, with "-dirty" for uncommitted changes; "" outside a checkout. */
+function commit() {
+  try {
+    const git = (...a) => execFileSync("git", ["-C", root, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return git("rev-parse", "--short", "HEAD") + (git("status", "--porcelain", "--untracked-files=no") ? "-dirty" : "");
+  } catch {
+    return "";
+  }
+}
+
+/** esbuild's options for the client's bundle, which dev.mjs rebuilds too. The About section shows the defines. */
 export const appOptions = {
   entryPoints: [join(web, "src", "main.ts")],
   bundle: true,
@@ -98,6 +108,11 @@ export const appOptions = {
   minify: true,
   outfile: join(dist, "app.js"),
   logLevel: "info",
+  define: {
+    __GOREX_COMMIT__: JSON.stringify(commit()),
+    __GOREX_BUILT__: JSON.stringify(new Date().toISOString().slice(0, 10)),
+    __GHOSTTY_COMMIT__: JSON.stringify(COMMIT),
+  },
 };
 
 /** esbuild, from web/node_modules. */

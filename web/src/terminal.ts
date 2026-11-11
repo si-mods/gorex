@@ -114,6 +114,8 @@ export interface Frame {
   focused: boolean;
   /** The cursor is in the off phase of its blink. */
   blinkOff: boolean;
+  /** The least contrast of text with its background (the Minimum contrast setting), 1 for none. */
+  minContrast: number;
 }
 
 /** Whether a cell's text goes with its neighbours in one run, in the primary font. */
@@ -136,6 +138,8 @@ export class Terminal {
   /** The row the cursor was drawn on last, which must draw again when it moves. */
   private cursorRow = -1;
   private contrasts = new Map<string, RGB>();
+  /** The ratio the contrasts were corrected to. */
+  private ratio = minimumContrast;
   /** Whether the cursor blinks, as of the last draw. */
   blinking = false;
 
@@ -284,7 +288,7 @@ export class Terminal {
     let c = this.contrasts.get(k);
     if (!c) {
       if (this.contrasts.size > 4096) this.contrasts.clear();
-      c = contrasted(fg, bg, minimumContrast);
+      c = contrasted(fg, bg, this.ratio);
       this.contrasts.set(k, c);
     }
     return c;
@@ -310,8 +314,13 @@ export class Terminal {
     const { g } = this;
     const x = g.x;
     if (!this.update()) return;
-    const v = g.view;
     let full = f.full;
+    if (f.minContrast !== this.ratio) {
+      this.ratio = f.minContrast;
+      this.contrasts.clear();
+      full = true;
+    }
+    const v = g.view;
     x.ghostty_render_state_get(this.rs, g.e("GhosttyRenderStateData", "DIRTY"), this.scratch);
     if (v.getInt32(this.scratch, true) === g.e("GhosttyRenderStateDirty", "FULL")) full = true;
     const co = (k: string) => this.colors + g.off("GhosttyRenderStateColors", k);

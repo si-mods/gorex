@@ -11,8 +11,9 @@ commit that GoRex's terminal binding uses. The client draws the
 emulator's render state on a canvas.
 
 This is phase 1, a prototype: one window at a time, with its split panes
-(see Split panes). Its settings are the hosts (see Hosts) and the theme
-(see Themes). It has no uploads, no paste, no selection and no mouse. The
+(see Split panes). Its settings are in one Settings dialog (see
+Settings): the hosts, the theme, the page's appearance and the terminal's
+font, cursor and contrast. It has no uploads, no paste, no selection and no mouse. The
 wheel scrolls the scrollback.
 
 ## Design: a remote client only
@@ -368,6 +369,7 @@ to the terminal.
 | New window (desktop: ⌘T, Ctrl+Shift+T) | ⌥⇧T | Alt+Shift+T |
 | Close the window (desktop: ⇧⌘W) | ⌥⇧Q | Alt+Shift+Q |
 | Next, previous window (desktop: Ctrl+Tab, Ctrl+Shift+Tab) | ⌥⇧] and ⌥⇧[ | Alt+Shift+] and Alt+Shift+[ |
+| Settings | ⌘, | Ctrl+, |
 
 A key moves the divider of the nearest split of that direction around the
 focused pane by 5%. As on the desktop on Windows and Linux, Alt and an
@@ -390,6 +392,7 @@ with GoRex's defaults and no Ghostty configuration:
 
 - Font: JetBrains Mono, served with the client, then `SF Mono`, `Menlo`,
   `monospace` (`defaultFontFamily`), at 11.6 CSS pixels (`defaultFontSize`).
+  Settings can choose another family and size (see Settings).
   A cell is the widest ASCII advance wide and the font's ascent and descent
   high, each rounded up to whole device pixels, with 6 by 4 CSS pixels of
   padding. The canvas follows `devicePixelRatio` and lays out again when it
@@ -403,7 +406,8 @@ with GoRex's defaults and no Ghostty configuration:
   underline colour, strikethrough and overline, at the desktop's places and
   thickness.
 - Colours: GoRex's dark terminal theme (`darkTerm` in `style.go`) over
-  xterm's 256 colours, and the desktop's minimum contrast of 3 for text
+  xterm's 256 colours, and the desktop's minimum contrast of 3 (Settings can
+  change it) for text
   (not for box drawing and blocks). A stream's `theme` message (from
   `set_theme`) goes over it. No API gives the host's own theme, so a host
   with a Ghostty theme still shows GoRex's colours here, unless you choose a
@@ -417,36 +421,77 @@ with GoRex's defaults and no Ghostty configuration:
 
 ## Themes
 
-The Theme button at the bottom of the sidebar opens a picker for the
-terminal's colours, as the iOS app's Themes settings does. It lists the 861
+The Theme section of Settings has a picker for the terminal's colours,
+as the iOS app's Themes settings does. It lists the 861
 Ghostty themes of `ios/GoRex/ghostty-themes.json` (`web/build.mjs` copies
 the file into the build; `ios/scripts/ghostty-themes` makes it). The picker has
 a preview of the chosen theme, an All, Dark and Light filter (by the
 background's luma, as iOS tells it), a search by name, and a row for each
 theme with a swatch (its background with colours 1 to 5) and a check mark on
-the chosen one. A click applies the theme at once. Escape closes the
-picker; the arrow keys move in the list.
+the chosen one. A click applies the theme at once. The arrow keys move in
+the list.
 
 - The first row, Host Colors, keeps what the host's stream sends. This is
   GoRex's colours when the host sends none.
 - The default is Gruvbox Dark, as on iOS. The choice is in `localStorage`
-  (`gorex.theme`, "" for Host Colors) and is per browser. Without storage
-  the page works and the choice lasts until it closes.
+  (`theme` in `gorex.settings`, "" for Host Colors) and is per browser.
+  Without storage the page works and the choice lasts until it closes.
 - A chosen theme acts as a stream `theme` message: it goes over GoRex's
   colours, and a later `theme` message from the host replaces it. Choosing
   Host Colors goes back to the host's last message.
 - The page loads the list while it loads the wasm, and the first frame has
   the chosen colours. If the list does not load, the client keeps GoRex's
-  colours and shows no Theme button.
-- The minimum contrast of 3 stays for every theme.
+  colours, and the Theme section says so.
+- The minimum contrast (3 by default) applies to every theme.
 - The pane and its padding take the terminal's background. When that is
   light (by the same luma), the page's own colours (sidebar, status, frame
   and picker) change to a light set (`data-scheme="light"` in
   `web/index.html`). This follows the terminal's background as drawn, so a
-  host theme or a program's OSC 11 change it too.
+  host theme or a program's OSC 11 change it too. The Window setting
+  (see Settings), Light or Dark, overrides it.
 - Not in the web client: the theme's cursor text and selection colours (the
   client has no selection).
 
 What differs: the desktop's panes are the window's glass, which a page
 cannot show, so the pane here is the theme's background. There is no
 scroll bar, selection or link underline.
+
+## Settings
+
+The Settings button at the bottom of the sidebar, or Ctrl+, (⌘, on a
+Mac), opens the Settings dialog (`web/src/settings.ts`), as the desktop's
+settings window (`settingsview.go`): the chosen host's card and the
+sections at the left, each with its tile of colour, and the chosen
+section's settings at the right, in grouped cards. It is a modal dialog
+(`<dialog>`), a frosted panel over a dimmed page. The × button, Escape,
+the same keys again or a click outside close it, and the keyboard goes
+back to the terminal. On a phone's width the sections go in a row above
+the page.
+
+The choices are one object in `localStorage`, `gorex.settings`
+(`web/src/prefs.ts`), per browser; the theme chosen before it
+(`gorex.theme`) moves into it once. Each change applies at once to the
+page and every open pane.
+
+| Section | Settings |
+|---|---|
+| Host (the card) | The chosen host, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
+| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 CSS pixels, 11.6 (the desktop's) until set, with Reset. |
+| Terminal | Font: JetBrains Mono, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours. Cursor style (Block, Bar, Underline) and Cursor blink. Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor and contrast. |
+| Theme | The theme picker (see Themes). |
+| Keyboard | The shortcuts (see Shortcuts), with this system's keys. |
+| Hosts | The hosts: choose one, add one, edit its address, name and icon, or remove it, with the same form as the host list's. |
+| About | The client's commit and build date and the Ghostty commit of the wasm (`web/build.mjs` writes them in), and Reset All Settings, which forgets every `gorex.*` key of the page in this browser and reloads it. |
+
+The cursor is set as the desktop sets it (`setCursor`): with the
+sequence a program would send (DECSCUSR), into each pane's terminal when
+it changes and after each snapshot, so that a program can still set its
+own. Until a cursor is chosen, the pane keeps the host's.
+
+Not in the web client: the desktop's Glass and Terminal opacity (a page
+cannot show the desktop through it), the Dock badge, Tab placement and
+Sidebar view (the page has one sidebar and one window), Animation style
+(the page does not animate the panes), Language (the page is in English),
+updates and the settings file (the page is what its host serves, and
+keeps `localStorage`), Copy on selection (no selection yet), and
+recording shortcuts.

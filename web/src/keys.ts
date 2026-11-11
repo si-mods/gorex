@@ -2,9 +2,9 @@
 // a page have them, and Alt+Shift chords for the ones it keeps (Ctrl/Cmd+W,
 // Ctrl/Cmd+T, Ctrl+Tab). Keys are matched by their place (code), so that
 // a layout or Option's characters do not change them. docs/web-client.md
-// lists them.
+// lists them, and the Settings dialog's Keyboard section (shortcutGroups).
 
-const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+export const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
 /** A chord: the modifiers held, exactly, and the key's code. */
 type Chord = { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean; code: string };
@@ -38,6 +38,8 @@ function table(): [Chord, string][] {
   t.push([{ alt: true, shift: true, code: "KeyQ" }, "close-window"]);
   t.push([{ alt: true, shift: true, code: "BracketRight" }, "next-window"]);
   t.push([{ alt: true, shift: true, code: "BracketLeft" }, "previous-window"]);
+  // Settings, as the desktop's Accel+, (cmdSettings).
+  t.push([mac ? { meta: true, code: "Comma" } : { ctrl: true, code: "Comma" }, "settings"]);
   return t;
 }
 
@@ -52,4 +54,56 @@ export function shortcut(e: KeyboardEvent): string | undefined {
     ) return name;
   }
   return undefined;
+}
+
+/** A key's name in a shortcut, as the desktop's menus show it. */
+function keyName(code: string): string {
+  if (code.startsWith("Key")) return code.slice(3);
+  const names: Record<string, string> = {
+    Enter: mac ? "↩" : "Enter", ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓",
+    BracketLeft: "[", BracketRight: "]", Comma: ",",
+  };
+  return names[code] ?? code;
+}
+
+/** A chord as this system writes it: ⌃⌥⇧⌘D on the Mac, Ctrl+Alt+Shift+D elsewhere. */
+function chordName(c: Chord, key = keyName(c.code)): string {
+  if (mac) return (c.ctrl ? "⌃" : "") + (c.alt ? "⌥" : "") + (c.shift ? "⇧" : "") + (c.meta ? "⌘" : "") + key;
+  return [c.ctrl && "Ctrl", c.alt && "Alt", c.shift && "Shift", c.meta && "Meta", key].filter(Boolean).join("+");
+}
+
+/** The keys of a command, or of a command in four directions (name-left, -right, -up, -down) as one: the modifiers and the arrows. */
+function keysOf(name: string): string {
+  const one = chords.find(([, n]) => n === name);
+  if (one) return chordName(one[0]);
+  const left = chords.find(([, n]) => n === `${name}-left`);
+  return left ? chordName(left[0], "←→↑↓") : "";
+}
+
+/** The shortcuts by group, with their titles and this system's keys, for the Keyboard section. */
+export function shortcutGroups(): { label: string; rows: [title: string, keys: string][] }[] {
+  const rows = (list: [string, string][]) => list.map(([title, name]) => [title, keysOf(name)] as [string, string]);
+  return [
+    {
+      label: "Panes",
+      rows: rows([
+        ["Split Right", "split-right"],
+        ["Split Down", "split-down"],
+        ["Zoom", "zoom"],
+        ["Close Pane", "close"],
+        ["Focus Pane Left, Right, Up, Down", "focus"],
+        ["Move Divider", "resize"],
+      ]),
+    },
+    {
+      label: "Windows",
+      rows: rows([
+        ["New Window", "new-window"],
+        ["Close Window", "close-window"],
+        ["Next Window", "next-window"],
+        ["Previous Window", "previous-window"],
+      ]),
+    },
+    { label: "GoRex", rows: rows([["Settings", "settings"]]) },
+  ];
 }
