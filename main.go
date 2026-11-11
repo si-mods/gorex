@@ -25,6 +25,11 @@ import (
 )
 
 func main() {
+	// Run as rec or sox, by the links beside the gorex shim, this is SoX's
+	// stand-in for Claude Code's /voice (cli.Voice), and nothing else.
+	if code, handled := cli.Voice(os.Args, os.Stdout, os.Stderr); handled {
+		os.Exit(code)
+	}
 	// -server runs the session server (rex.ServerMain); other arguments
 	// are AppKit's, as -NSWindowResizeTime, which it reads itself.
 	// The server runs the Rex API gateway while the local network or

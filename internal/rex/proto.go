@@ -52,6 +52,9 @@ import (
 // makes every change of the layout itself, and takes the app's
 // arrangement of a tab ("tab.set") and of its windows ("windows.set"),
 // with the LayoutCommand fields TabLayout, Spaces, Color and Float.
+// Still within 3, the capability "voice": "voice.put" and "voice.get",
+// each on a connection of its own, which carry a phone's microphone to
+// the rec a session runs (Voice).
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one

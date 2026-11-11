@@ -98,6 +98,11 @@ type Server struct {
 	// closing once it tried.
 	refreshDue atomic.Bool
 	restoring  map[string]chan struct{}
+	// voices are the sessions' voices (Voice), by session; voiceWake
+	// closes as one begins.
+	voiceMu   sync.Mutex
+	voices    map[string]*voice
+	voiceWake chan struct{}
 }
 
 // layoutCmd is a command waiting for the app's answer, done.
@@ -518,6 +523,10 @@ func (s *Server) handle(conn net.Conn, peer string) {
 	// Only this machine packs one.
 	if a.Op == "teleport" || a.Op == "teleport.pack" && peer == "" {
 		s.teleport(conn, r, first, a.Op, peer)
+		return
+	}
+	if (a.Op == "voice.put" || a.Op == "voice.get") && peer == "" {
+		s.voiceConn(conn, r, first, a.Op)
 		return
 	}
 	s.control(conn, r, first, peer)
