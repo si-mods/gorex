@@ -88,11 +88,13 @@ func methodClientSetLabel(c *control, a args) (any, *apiError) {
 	}
 	rec := c.rec
 	rec.mu.Lock()
-	if rec.info == nil {
-		rec.info = &clientInfo{}
+	var info clientInfo
+	if rec.info != nil {
+		info = *rec.info
 	}
-	changed := rec.info.Label != label
-	rec.info.Label = label
+	changed := info.Label != label
+	info.Label = label
+	rec.info = &info
 	rec.mu.Unlock()
 	if changed {
 		c.g.emitServerEvent("client_changed", map[string]any{"client": rec.view()})

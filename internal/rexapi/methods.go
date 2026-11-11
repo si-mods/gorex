@@ -718,7 +718,7 @@ func (r *clientRecord) view() clientView {
 	lost, lostAt := r.state()
 	v := clientView{
 		ClientID:    r.id,
-		Info:        r.info.json(),
+		Info:        r.clientInfo().json(),
 		Principal:   r.principal,
 		ConnectedAt: connectedAtString(r.connectedAt),
 	}
@@ -769,7 +769,7 @@ func methodClientList(c *control, a args) (any, *apiError) {
 			continue
 		}
 		if hasKinds {
-			if r.info == nil || r.info.Kind == "" || !wanted[r.info.Kind] {
+			if info := r.clientInfo(); info == nil || info.Kind == "" || !wanted[info.Kind] {
 				continue
 			}
 		}
