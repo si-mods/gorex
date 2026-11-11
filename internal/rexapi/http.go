@@ -9,6 +9,14 @@ import (
 
 // Handler returns the gateway's HTTP endpoints: the control and data
 // connections, uploads, the help document, and this API's own pages.
+//
+// It refuses every request that has an Origin header. Native clients,
+// such as Rex's iPhone app and Rex Go, send none, while a browser sends
+// one with each WebSocket handshake and each cross-origin request. The
+// listeners admit a caller by its address or device, not by the page it
+// runs, so without this any web page opened on an admitted device could
+// use the API. The documents stay readable in a browser, which sends no
+// Origin when it opens a page.
 func (g *Gateway) Handler() http.Handler {
 	if relay := relayHandler(); relay != nil {
 		return relay
@@ -21,20 +29,17 @@ func (g *Gateway) Handler() http.Handler {
 	mux.HandleFunc("/api/help", serveHelp)
 	mux.HandleFunc("/llms.txt", serveLLMs)
 	mux.HandleFunc("/llms.html", serveLLMsHTML)
-	if g.opt.Access == nil {
-		return traceRequests(mux)
-	}
 	return traceRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := g.opt.Access.Allow(r); err != nil {
-			tracef("refused %s: %v", r.URL.Path, err)
-			writeRefusal(w, err.Error())
+		if r.Header.Get("Origin") != "" {
+			tracef("refused %s: Origin %s", r.URL.Path, r.Header.Get("Origin"))
+			writeRefusal(w, "GoRex does not let web pages use this API")
 			return
 		}
 		mux.ServeHTTP(w, r)
 	}))
 }
 
-// writeRefusal answers a request the access rules refuse, as Rex does.
+// writeRefusal answers a request the gateway refuses, as Rex does.
 func writeRefusal(w http.ResponseWriter, message string) {
 	writeError(w, http.StatusForbidden, message)
 }

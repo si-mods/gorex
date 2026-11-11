@@ -2,14 +2,14 @@ package rexapi
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 // TestRexCLIIntegration runs the Rex CLI against a gateway when the
@@ -39,23 +39,50 @@ func TestRexCLIIntegration(t *testing.T) {
 	}
 }
 
-// TestAccessRefusal checks that a refusing access rule answers with
-// status 403 and a JSON error, on every endpoint.
-func TestAccessRefusal(t *testing.T) {
+// TestOriginRefused checks that a request with an Origin header, which
+// a browser sends and a native client does not, is answered with status
+// 403 and a JSON error on every endpoint, and that the same requests
+// without it go on.
+func TestOriginRefused(t *testing.T) {
 	f := startFixture(t)
-	f.g.opt.Access = AccessFunc(func(*http.Request) error { return errors.New("not allowed here") })
-	srv := httptest.NewServer(f.g.Handler())
-	defer srv.Close()
-	for _, path := range []string{"/api/control", "/api/data", "/api/upload", "/api/help", "/llms.txt", "/elsewhere"} {
-		resp, err := http.Get(srv.URL + path)
-		if err != nil {
-			t.Fatal(err)
+	f.setLayout(standardLayout())
+	const origin = "https://example.com"
+	for _, path := range []string{"/api/control", "/api/data", "/api/upload", "/api/spaces", "/api/help", "/llms.txt", "/elsewhere"} {
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			req, _ := http.NewRequest(method, f.srv.URL+path, strings.NewReader("x"))
+			req.Header.Set("Content-Type", "application/octet-stream")
+			req.Header.Set("Origin", origin)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusForbidden || !strings.Contains(string(body), `"error":`) {
+				t.Errorf("%s %s: %v %s", method, path, resp.Status, body)
+			}
 		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode != 403 || !strings.Contains(string(body), `"error":"not allowed here"`) {
-			t.Errorf("%s: %v %s", path, resp.Status, body)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for path, protocol := range map[string]string{"/api/control": controlProtocol, "/api/data": terminalProtocol} {
+		ws, resp, err := websocket.Dial(ctx, f.srv.URL+path, &websocket.DialOptions{
+			Subprotocols: []string{protocol},
+			HTTPHeader:   http.Header{"Origin": {origin}},
+		})
+		if err == nil {
+			ws.CloseNow()
+			t.Errorf("%s: a WebSocket with an Origin was accepted", path)
+		} else if resp == nil || resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s: %v", path, err)
 		}
+	}
+
+	// Without an Origin, the same connections and upload go on.
+	f.dialControl().hello(apiRevision)
+	f.dial("/api/data", terminalProtocol)
+	if status, res := postUpload(t, f, "block:nope", "a.txt", "application/octet-stream", []byte("x")); status != http.StatusNotFound {
+		t.Errorf("upload without Origin: %d %v", status, res)
 	}
 }
 

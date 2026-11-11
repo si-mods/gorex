@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -190,18 +189,6 @@ func TestSpacesEndpoint(t *testing.T) {
 	post.Body.Close()
 	if post.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST: %d", post.StatusCode)
-	}
-}
-
-// TestSpacesEndpointRefused checks that the access rules guard
-// /api/spaces as they guard the control connection.
-func TestSpacesEndpointRefused(t *testing.T) {
-	f := startFixture(t)
-	f.g.opt.Access = AccessFunc(func(*http.Request) error { return errNoClient })
-	rec := httptest.NewRecorder()
-	f.g.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/spaces", nil))
-	if rec.Code != http.StatusForbidden {
-		t.Errorf("status %d", rec.Code)
 	}
 }
 

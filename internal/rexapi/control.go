@@ -53,9 +53,9 @@ type control struct {
 // handleControl upgrades a request to a control connection and serves it
 // until it closes.
 func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
-	// Native clients send no Origin, and the access rule is the boundary
-	// that decides who may connect, so the WebSocket origin check is
-	// left to it.
+	// Handler refuses every request that has an Origin, so a request
+	// here is a native client's, and the WebSocket origin check, made
+	// for browsers, has nothing to judge.
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		Subprotocols:       []string{controlProtocol},
 		InsecureSkipVerify: true,

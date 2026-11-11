@@ -39,7 +39,7 @@ const (
 // handshake.
 func (g *Gateway) handleData(w http.ResponseWriter, r *http.Request) {
 	offered := offeredProtocols(r)
-	// As on the control connection, the access rule decides who connects.
+	// As on the control connection, Handler has refused browsers.
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		Subprotocols:       offered,
 		InsecureSkipVerify: true,

@@ -2,7 +2,6 @@ package rexapi
 
 import (
 	"log"
-	"net/http"
 	"os"
 	"os/user"
 	"runtime"
@@ -47,26 +46,11 @@ var (
 	resumeBytes = 8 << 20
 )
 
-// Access decides whether a request may use the API. Rex answers requests
-// it refuses with status 403 and a JSON body, such as {"error": "..."}.
-type Access interface {
-	// Allow returns nil to let the request in, or an error whose text
-	// answers it with status 403.
-	Allow(r *http.Request) error
-}
-
-// AccessFunc is an Access made from a function.
-type AccessFunc func(r *http.Request) error
-
-func (f AccessFunc) Allow(r *http.Request) error { return f(r) }
-
 // Options configure a Gateway.
 type Options struct {
 	// Client is the connection to the GoRex server, which the gateway
 	// keeps for as long as it serves. Required.
 	Client *rex.Client
-	// Access decides who may use the API. A nil Access allows everyone.
-	Access Access
 	// TailnetDir, when set, is where built-in Tailscale keeps its device
 	// and settings: the gateway can then serve the API on the tailnet,
 	// and turns it on again if it was on when it last stopped. Without
