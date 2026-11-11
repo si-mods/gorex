@@ -555,12 +555,12 @@ type App struct {
 	paletteFresh bool
 
 	// The sidebar: the tab last scrolled into view, the tab last chosen
-	// on each host by hostKey, the hosts by hostKey under which the host
-	// view closes the window's session, and a drag of its edge, from the
-	// width it began at.
+	// on each host by hostKey, the sessions under each host the host view
+	// opened or closed, by spaceKey (spaceIsOpen), and a drag of its edge,
+	// from the width it began at.
 	revealed  *Tab
 	chosenOn  map[string]*Tab
-	ownClosed map[string]bool
+	spaceOpen map[string]bool
 	edgeDrag  bool
 	edgeFrom  float32
 	edgeMoved float32

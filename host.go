@@ -1,12 +1,14 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"runtime"
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
@@ -85,16 +87,88 @@ func (a *App) hostIdentity() (name, model, glyph string) {
 		name, _ = os.Hostname()
 		name = strings.TrimSuffix(name, ".local")
 	}
-	glyph = "mac-studio"
+	return name, model, hostGlyph(h, runtime.GOOS == "windows")
+}
+
+// hostGlyph is the icon that stands for a machine the server described,
+// windows telling that it runs Windows.
+func hostGlyph(h rex.HostInfo, windows bool) string {
 	switch {
-	case strings.Contains(model, "MacBook"), h.Portable:
-		glyph = "laptop"
-	case strings.Contains(model, "iMac"), runtime.GOOS == "windows":
-		glyph = "monitor"
-	case model == "Linux":
-		glyph = "server"
+	case strings.Contains(h.Model, "MacBook"), h.Portable:
+		return "laptop"
+	case strings.Contains(h.Model, "iMac"), windows:
+		return "monitor"
+	case strings.Contains(h.Model, "Mac mini"):
+		return "mac-mini"
+	case h.Model == "Linux":
+		return "server"
 	}
-	return
+	return "mac-studio"
+}
+
+// remoteGlyph is the icon of a remote host: the one the user chose, else
+// as its last hello described it, kept while it is away; a server, before
+// it ever connected or when it said nothing of its machine.
+func (h *hostConn) remoteGlyph() string {
+	return cmp.Or(h.Icon, h.Glyph, "server")
+}
+
+// hostIcons are the icons the user can give a remote host, as the iOS app
+// offers them, with their names.
+var hostIcons = []struct {
+	glyph string
+	name  func() string
+}{
+	{"globe", locales.HostIconGlobe},
+	{"server", locales.HostIconServer},
+	{"cloud", locales.HostIconCloud},
+	{"laptop", func() string { return "MacBook" }},
+	{"mac-mini", func() string { return "Mac mini" }},
+	{"mac-studio", func() string { return "Mac Studio" }},
+	{"monitor", locales.HostIconDesktop},
+}
+
+// hostIconMenu fills a menu with the icons h can take, the one it has
+// checked: Automatic, which follows its machine, and those of hostIcons.
+func (a *App) hostIconMenu(m *ui.Menu, h *hostConn) {
+	if m.Item(locales.HostIconAutomatic()).Icon(menuIcon(cmp.Or(h.Glyph, "server"))).Checked(h.Icon == "").Chosen() {
+		a.setHostIcon(h, "")
+	}
+	m.Separator()
+	for _, it := range hostIcons {
+		if m.Item(it.name()).Icon(menuIcon(it.glyph)).Checked(h.Icon == it.glyph).Chosen() {
+			a.setHostIcon(h, it.glyph)
+		}
+	}
+}
+
+// setHostIcon gives h the icon it shows by in every window, "" for its
+// machine's.
+func (a *App) setHostIcon(h *hostConn, glyph string) {
+	h.mu.Lock()
+	h.Icon = glyph
+	h.mu.Unlock()
+	a.saveHosts()
+	if a.st != nil {
+		a.st.redraw()
+	}
+}
+
+// menuIcons are the icons of menu items, by glyph, each made once.
+var menuIcons = map[string]*mygo.MenuIcon{}
+
+// menuIcon is the menu items' icon of the SVG named name, in the color of
+// their text.
+func menuIcon(name string) *mygo.MenuIcon {
+	if m, ok := menuIcons[name]; ok {
+		return m
+	}
+	m, err := mygo.NewMenuIconSVG(icon(name), true)
+	if err != nil {
+		panic(err)
+	}
+	menuIcons[name] = m
+	return m
 }
 
 // hostPopover opens the host's panel from its anchor, a margin below it,

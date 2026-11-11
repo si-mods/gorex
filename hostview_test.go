@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -67,10 +68,11 @@ func TestSidebarViewSetting(t *testing.T) {
 
 // TestSidebarHostView lists every space under the hosts it has tabs on: a
 // space with tabs on two hosts shows under both, with its count of each;
-// the window's space shows its tabs, another space is closed, and a click
-// on it shows it on its tab of that host. The strip and the chip of the
-// space go, and without remote hosts the sidebar is the spaces' view
-// again.
+// the window's space shows its tabs, and so does another the window
+// showed, until closed, while one never opened is closed; a click on
+// another shows it on its tab of that host, and the space left stays
+// open. The strip and the chip of the space go, and without remote hosts
+// the sidebar is the spaces' view again.
 func TestSidebarHostView(t *testing.T) {
 	old := prefs
 	t.Cleanup(func() { prefs = old })
@@ -118,9 +120,46 @@ func TestSidebarHostView(t *testing.T) {
 	if !tt.HasText("Here ") || !tt.HasText("Far ") {
 		t.Errorf("the window's space does not show its tabs; texts %q", tt.Texts())
 	}
-	if tt.HasText("Home ") || tt.HasText("Away ") {
-		t.Errorf("another space shows its tabs; texts %q", tt.Texts())
+	if !tt.HasText("Home ") || !tt.HasText("Home2 ") || !tt.HasText("Away ") {
+		t.Errorf("the space the window left does not stay open; texts %q", tt.Texts())
 	}
+	// Its chevron under this machine closes it there alone, and opens it
+	// again.
+	chevron := func(label string) {
+		t.Helper()
+		r, ok := tt.Find(label)
+		if !ok {
+			t.Fatalf("no row %q; texts %q", label, tt.Texts())
+		}
+		tt.ClickAt(r.X+10, r.Y+r.H/2)
+		tt.Frame()
+		tt.Frame()
+	}
+	chevron("icy-ridge, " + locales.SessionTabs(2))
+	if a.ws != first || tt.HasText("Home ") || !tt.HasText("Away ") || !tt.HasText("Here ") || !tt.HasText("Far ") {
+		t.Errorf("closing the other space under this machine: window on %v, texts %q", a.ws.Name, tt.Texts())
+	}
+	chevron("icy-ridge, " + locales.SessionTabs(2))
+	if !tt.HasText("Home ") {
+		t.Errorf("opening the other space again shows %q", tt.Texts())
+	}
+	// A space the window never showed is closed, and opens on the tabs of
+	// its layout.
+	third := &Workspace{ID: "w3", Name: "side", layout: savedLayout{Tabs: []savedTab{
+		{ID: "t1", Name: "notes", Root: &savedNode{SID: "n1"}},
+		{ID: "t2", Root: &savedNode{SID: "n2", Prog: "vim"}},
+	}}}
+	a.st.workspaces = append(a.st.workspaces, third)
+	tt.Frame()
+	if tt.HasText("notes ") {
+		t.Errorf("a space never opened shows its tabs; texts %q", tt.Texts())
+	}
+	chevron("side, " + locales.SessionTabs(2))
+	if a.ws != first || !tt.HasText("notes ") || !tt.HasText("Vim ") || !tt.HasText("Home ") {
+		t.Errorf("opening a space of a layout: window on %v, texts %q", a.ws.Name, tt.Texts())
+	}
+	a.st.workspaces = slices.DeleteFunc(a.st.workspaces, func(w *Workspace) bool { return w == third })
+	tt.Frame()
 	if _, ok := tt.Find(cmdNewSession.Title()); ok {
 		t.Error("the strip of spaces shows in the host view")
 	}
@@ -244,8 +283,29 @@ func TestSidebarHostView(t *testing.T) {
 	if got := a.tab(); got == nil || got.Name != "Away" {
 		t.Errorf("the window chose %v, want its tab on the host", got)
 	}
-	if !tt.HasText("Away ") || !tt.HasText("Home ") || tt.HasText("Far ") {
+	if !tt.HasText("Away ") || !tt.HasText("Home ") || !tt.HasText("Far ") || !tt.HasText("Here ") {
 		t.Errorf("after the switch the sidebar shows %q", tt.Texts())
+	}
+
+	// A click on a tab of the space left, which the window keeps, shows
+	// it on that tab; one of a space shown from its layout too.
+	if err := tt.Click("Here "); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	tt.Frame()
+	if got := a.tab(); a.ws != first || got == nil || got.Name != "Here" {
+		t.Fatalf("a click on a tab of the space left shows %v on %v", a.ws.Name, got)
+	}
+	second.unkeep()
+	tt.Frame()
+	if err := tt.Click("Home2 "); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	tt.Frame()
+	if got := a.tab(); a.ws != second || got == nil || got.Name != "Home2" {
+		t.Errorf("a click on a tab of a layout shows %v on %v", a.ws.Name, got)
 	}
 
 	// Without remote hosts, the spaces' view.
@@ -256,5 +316,31 @@ func TestSidebarHostView(t *testing.T) {
 	}
 	if _, ok := tt.Find(locales.SessionLabel(a.ws.Name)); !ok {
 		t.Errorf("no chip of the space without hosts; texts %q", tt.Texts())
+	}
+}
+
+// TestSidebarHostIcon chooses a host's icon from its name's right click in
+// the sidebar.
+func TestSidebarHostIcon(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	a, tt := newTestApp(t)
+	prefs = settings{TabPlacement: "left", Animation: "off"}
+	h := newHostConn(savedHost{ID: "1", Name: "studio", Address: "/tmp/nowhere"})
+	a.hosts = []*hostConn{h}
+	a.st.hosts = a.hosts
+	tt.Frame()
+	if err := tt.RightClick("studio"); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem(locales.HostsIcon(), "Mac mini"); err != nil {
+		t.Fatalf("%v; menu %q", err, tt.Menu())
+	}
+	tt.Frame()
+	if g := h.remoteGlyph(); g != "mac-mini" {
+		t.Errorf("chose the Mac mini, shows %q", g)
+	}
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Icon != "mac-mini" {
+		t.Errorf("hosts.json: %+v", hs)
 	}
 }

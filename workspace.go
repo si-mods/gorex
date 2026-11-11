@@ -1150,6 +1150,7 @@ func (st *store) closed(a *App) {
 // tabs again, as they were; another window's kept tabs close, and the
 // space shows from its layout.
 func (a *App) show(w *Workspace) {
+	a.keepSpacesOpen(w)
 	if old := a.ws; old != nil && old != w {
 		a.park()
 	}

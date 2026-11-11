@@ -1661,13 +1661,84 @@ func TestTakeKillsOnce(t *testing.T) {
 // named, and none after a hello that names none.
 func TestLearnMachine(t *testing.T) {
 	h := newHostConn(savedHost{ID: "h", Address: "a"})
-	if !h.learnMachine("m1") || h.saved().Machine != "m1" {
+	if !h.learn(rex.Hello{Machine: "m1"}) || h.saved().Machine != "m1" {
 		t.Fatalf("learned %q", h.saved().Machine)
 	}
-	if h.learnMachine("m1") {
+	if h.learn(rex.Hello{Machine: "m1"}) {
 		t.Error("the same machine changed it")
 	}
-	if !h.learnMachine("") || h.saved().Machine != "" {
+	if !h.learn(rex.Hello{}) || h.saved().Machine != "" {
 		t.Errorf("a hello with no machine kept %q", h.saved().Machine)
+	}
+}
+
+// TestLearnGlyph checks that a host keeps the icon of the machine its
+// last hello described, and shows a server before one did.
+func TestLearnGlyph(t *testing.T) {
+	h := newHostConn(savedHost{ID: "h", Address: "a"})
+	if g := h.remoteGlyph(); g != "server" {
+		t.Errorf("before a hello: %q", g)
+	}
+	for _, c := range []struct {
+		host rex.HostInfo
+		want string
+	}{
+		{rex.HostInfo{Model: "MacBook Pro", OS: "macOS 26.1"}, "laptop"},
+		{rex.HostInfo{Model: "Mac mini", OS: "macOS 26.1"}, "mac-mini"},
+		{rex.HostInfo{Model: "Mac Studio", OS: "macOS 26.1"}, "mac-studio"},
+		{rex.HostInfo{Model: "Linux", OS: "Debian GNU/Linux 13"}, "server"},
+		{rex.HostInfo{Model: "Z790", OS: "Windows 11 Pro"}, "monitor"},
+		{rex.HostInfo{Model: "Z790", OS: "Windows 11 Pro", Portable: true}, "laptop"},
+	} {
+		if !h.learn(rex.Hello{Host: c.host}) || h.remoteGlyph() != c.want || h.saved().Glyph != c.want {
+			t.Errorf("%+v: %q, saved %q, want %q", c.host, h.remoteGlyph(), h.saved().Glyph, c.want)
+		}
+	}
+	if h.learn(rex.Hello{}) || h.remoteGlyph() != "laptop" {
+		t.Errorf("a hello that describes no machine changed the icon to %q", h.remoteGlyph())
+	}
+}
+
+// TestHostIcon chooses a host's icon from its row in Settings › Hosts:
+// the choice goes before the icon its machine has, is kept in hosts.json
+// through hellos and a restart, and Automatic follows the machine again.
+func TestHostIcon(t *testing.T) {
+	a, tt := hostsPage(t)
+	h := a.addHost(savedHost{ID: "h1", Name: "build-box", Address: "/tmp/nowhere"})
+	h.learn(rex.Hello{Host: rex.HostInfo{Model: "Mac mini", OS: "macOS 26.1"}})
+	tt.Frame()
+	choose := func(item string) {
+		t.Helper()
+		if err := tt.Click(locales.HostsIcon()); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if err := tt.ChooseMenuItem(item); err != nil {
+			t.Fatalf("%v; menu %q", err, tt.Menu())
+		}
+		tt.Frame()
+	}
+	choose(locales.HostIconCloud())
+	if g := h.remoteGlyph(); g != "cloud" {
+		t.Fatalf("chose the cloud, shows %q", g)
+	}
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Icon != "cloud" || hs[0].Glyph != "mac-mini" {
+		t.Fatalf("hosts.json: %+v", hs)
+	}
+	// A hello of another machine changes what Automatic shows, not the
+	// choice.
+	if !h.learn(rex.Hello{Host: rex.HostInfo{Model: "MacBook Pro", OS: "macOS 26.1"}}) || h.remoteGlyph() != "cloud" {
+		t.Errorf("after a hello the host shows %q", h.remoteGlyph())
+	}
+	hs, _ := loadHosts()
+	if g := newHostConn(hs[0]).remoteGlyph(); g != "cloud" {
+		t.Errorf("read again, the host shows %q", g)
+	}
+	choose(locales.HostIconAutomatic())
+	if g := h.remoteGlyph(); g != "laptop" || h.Icon != "" {
+		t.Errorf("Automatic shows %q, chose %q", g, h.Icon)
+	}
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Icon != "" {
+		t.Errorf("hosts.json after Automatic: %+v", hs)
 	}
 }
