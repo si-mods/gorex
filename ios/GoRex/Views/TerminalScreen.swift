@@ -68,7 +68,7 @@ struct TerminalScreen: View {
                     Button { sheet = true } label: {
                         HStack(spacing: 10) {
                             let k = ProgramTiles.scale, small = 0.85
-                            ProgramTile(program: .of(host.programs[target.block]))
+                            ProgramTile(program: .of(host.blocks[target.block]?.program))
                                 .frame(width: 21 * k, height: 16 * k)
                                 .scaleEffect(small)
                                 .frame(width: 21 * k * small, height: 16 * k * small)

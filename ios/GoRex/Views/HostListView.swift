@@ -209,9 +209,10 @@ struct HostListView: View {
         }
     }
 
-    /// Whether a window's row shows, by the search.
-    private func filter(_ title: String, _ program: String?) -> Bool {
-        query.isEmpty || title.localizedCaseInsensitiveContains(query)
+    /// Whether a window's row shows, by the search. The title is read only
+    /// while searching: read, its change would redraw the host's rows.
+    private func filter(_ host: Host, _ w: SessionView.Window) -> Bool {
+        query.isEmpty || host.title(w).localizedCaseInsensitiveContains(query)
     }
 }
 
@@ -223,7 +224,7 @@ private struct HostSection: View {
     /// it the space holds.
     let space: CrossHost.Place?
     @Binding var collapsed: Set<String>
-    let filter: (String, String?) -> Bool
+    let filter: (Host, SessionView.Window) -> Bool
     let open: (TerminalTarget) -> Void
     @Environment(HostStore.self) private var store
     /// The sessions whose new window is on its way.
@@ -376,39 +377,35 @@ private struct HostSection: View {
     /// A window's menu, as the desktop's tab menu. It moves a window past
     /// the rows shown, and closes only those: the server's order also has
     /// windows the list leaves out.
-    private func menu(_ s: Host.Session, _ w: SessionView.Window, shown: [String]) -> some View {
-        let all = (s.view?.windows ?? []).map(\.window_id)
+    @ViewBuilder private func menu(_ s: Host.Session, _ w: SessionView.Window, shown: [String]) -> some View {
         let id = w.window_id
         let i = shown.firstIndex(of: id) ?? 0
         // The title changes while the menu is open: it's read on the tap.
-        return Unchanged([s.id, s.label, id, w.name, shown, all]) {
-            Button("Rename Tab…", systemImage: "pencil") {
-                name = w.name ?? ""
-                renaming = (s.id, id, host.title(w))
-            }
-            if w.name != nil {
-                Button("Reset Name", systemImage: "arrow.uturn.backward") {
-                    change("Can't Rename the Tab") { try await host.renameWindow(id, in: s.id, to: "") }
-                }
-            }
-            Divider()
-            Button("Move Up", systemImage: "arrow.up") { move(id, in: s, onto: shown[i - 1], shown: shown) }
-                .disabled(i <= 0)
-            Button("Move Down", systemImage: "arrow.down") { move(id, in: s, onto: shown[i + 1], shown: shown) }
-                .disabled(i >= shown.count - 1)
-            Divider()
-            Button("New Tab", systemImage: "plus") { newWindow(s) }
-            Button("Close Tab", systemImage: "xmark", role: .destructive) {
-                change("Can't Close the Tab") { try await host.closeWindow(id, in: s.id) }
-            }
-            Button("Close Other Tabs", systemImage: "xmark.square", role: .destructive) {
-                change("Can't Close the Tab") {
-                    for o in shown where o != id { try await host.closeWindow(o, in: s.id) }
-                }
-            }
-            .disabled(shown.count < 2)
+        Button("Rename Tab…", systemImage: "pencil") {
+            name = w.name ?? ""
+            renaming = (s.id, id, host.title(w))
         }
-        .equatable()
+        if w.name != nil {
+            Button("Reset Name", systemImage: "arrow.uturn.backward") {
+                change("Can't Rename the Tab") { try await host.renameWindow(id, in: s.id, to: "") }
+            }
+        }
+        Divider()
+        Button("Move Up", systemImage: "arrow.up") { move(id, in: s, onto: shown[i - 1], shown: shown) }
+            .disabled(i <= 0)
+        Button("Move Down", systemImage: "arrow.down") { move(id, in: s, onto: shown[i + 1], shown: shown) }
+            .disabled(i >= shown.count - 1)
+        Divider()
+        Button("New Tab", systemImage: "plus") { newWindow(s) }
+        Button("Close Tab", systemImage: "xmark", role: .destructive) {
+            change("Can't Close the Tab") { try await host.closeWindow(id, in: s.id) }
+        }
+        Button("Close Other Tabs", systemImage: "xmark.square", role: .destructive) {
+            change("Can't Close the Tab") {
+                for o in shown where o != id { try await host.closeWindow(o, in: s.id) }
+            }
+        }
+        .disabled(shown.count < 2)
     }
 
     /// Moves a window of a session to the place of another row shown.
@@ -504,7 +501,7 @@ private struct HostSection: View {
     /// The rows the search keeps.
     private func entries(_ windows: [(Host.Session, SessionView.Window)]) -> [Entry] {
         windows.compactMap { s, w in
-            w.block.flatMap { filter(host.title(w), host.programs[$0]) ? Entry(session: s, block: $0, window: w) : nil }
+            w.block.flatMap { filter(host, w) ? Entry(session: s, block: $0, window: w) : nil }
         }
     }
 
@@ -687,23 +684,6 @@ nonisolated private final class Lifted: NSItemProvider, @unchecked Sendable {
     }
 }
 
-/// A menu's items, built again only when what they show changes. The
-/// host changes many times a second, as titles spin, and an open menu
-/// whose items are built again draws itself again.
-private struct Unchanged<Content: View>: View, Equatable {
-    let key: [AnyHashable]
-    @ViewBuilder let content: () -> Content
-
-    init(_ key: [AnyHashable], @ViewBuilder content: @escaping () -> Content) {
-        self.key = key
-        self.content = content
-    }
-
-    var body: some View { content() }
-
-    static func == (a: Self, b: Self) -> Bool { a.key == b.key }
-}
-
 /// A window's row: the tiles of its programs, its title, and a mark at
 /// the end.
 struct WindowRow<Mark: View>: View {
@@ -718,7 +698,7 @@ struct WindowRow<Mark: View>: View {
         let title = host.title(window)
         let status = host.status([block] + window.tiled)
         HStack(spacing: 14) {
-            ProgramTiles(front: host.programs[block], back: window.back.map { host.programs[$0] }, done: status?.state == "done").frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
+            ProgramTiles(front: host.blocks[block]?.program, back: window.back.map { host.blocks[$0]?.program }, done: status?.state == "done").frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
             Text(title.isEmpty ? " " : title.asText)
                 // Regular and a little dimmed, as Rex sets a window's title.
                 .font(.body)
