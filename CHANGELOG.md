@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.20.4
+
+### Features
+
+* **sidebar:** each host shows its machine's icon, learned from the host or chosen in Settings › Hosts or from a remote host's context menu, with a dot for a host that is not connected; in the host view each space opens and closes on its own, and an open space of no window lists its tabs ([#411](https://github.com/si-mods/gorex/pull/411))
+
 ## 0.20.3
 
 ### Features
