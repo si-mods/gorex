@@ -324,12 +324,16 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// Slides the terminal up over the keyboard, no farther than it is tall,
     /// as far as the cursor's row and the lines drawn under it, as an
-    /// agent's box and status, need, but not the cursor under the bar.
+    /// agent's box and status, need, but not the cursor under the bar. With
+    /// no keyboard over it, it rests at 0 and reads nothing.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         guard surface != nil, drawn else { return }
-        let c = cursor(width: nil)
-        let room = bounds.height - covered - drawnBottom(under: c)
-        let y = min(0, max(room, inset - c.minY, -covered))
+        var y: CGFloat = 0
+        if covered > 0 {
+            let c = cursor(width: nil)
+            let room = bounds.height - covered - drawnBottom(under: c)
+            y = min(0, max(room, inset - c.minY, -covered))
+        }
         scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: covered + y, right: 0)
         guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
