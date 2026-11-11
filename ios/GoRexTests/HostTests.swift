@@ -367,6 +367,93 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(rex.tokens, [nil, "t1", nil])
     }
 
+    /// A terminal opened as its host connects, as from a notification on a
+    /// cold start, asks for its stream once the host is bootstrapped, even
+    /// when that takes a reconnect.
+    @MainActor func testTerminalWaitsForOnline() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        var answer = false
+        rex.respond = { m, _ in m == "session.bootstrap" ? (answer ? ["attach_all": ["sessions": []]] : nil) : [:] }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        await until("bootstrapping") { rex.count("session.bootstrap") == 1 }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(rex.count("data.connect"), 0)
+        answer = true
+        FakeRex.close(rex.controls[0], .protocolCode(.goingAway))
+        await until("asked for the stream") { rex.count("data.connect") == 1 }
+        XCTAssertEqual(h.status, .online)
+        XCTAssertLessThan(try XCTUnwrap(rex.calls.lastIndex(of: "session.bootstrap")), try XCTUnwrap(rex.calls.firstIndex(of: "data.connect")))
+        s.close()
+    }
+
+    /// What waits for the host to be online fails when the host is removed.
+    @MainActor func testOnlineFailsWhenStopped() async {
+        let h = Host(HostConfig(name: "test", url: URL(string: "http://127.0.0.1:1")!))
+        h.connect()
+        let waiting = Task { try await h.online() }
+        try? await Task.sleep(for: .milliseconds(100))
+        h.stop()
+        do {
+            _ = try await waiting.value
+            XCTFail("online")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        do {
+            _ = try await h.online()
+            XCTFail("online after stop")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
+
+    /// What waits for the host to be online fails when the server refuses
+    /// the device, as the host then waits for a change.
+    @MainActor func testOnlineFailsWhenRefused() async throws {
+        let http = try FakeHTTP()
+        defer { http.stop() }
+        http.respond = { _ in (403, ["error": "refused"]) }
+        let h = Host(HostConfig(name: "test", url: try await http.url()))
+        defer { h.stop() }
+        let waiting = Task { try await h.online() }
+        h.connect()
+        do {
+            _ = try await waiting.value
+            XCTFail("online")
+        } catch {
+            XCTAssertEqual((error as? RexError)?.code, "refused")
+        }
+    }
+
+    /// A host that can't be reached tries again sooner first, then every
+    /// ten seconds, as long as it takes, and shows offline meanwhile.
+    @MainActor func testRetryBacksOff() async throws {
+        XCTAssertEqual(Host.backoff(after: 1), .milliseconds(500))
+        XCTAssertEqual(Host.backoff(after: 2), .seconds(1))
+        XCTAssertEqual(Host.backoff(after: 6), .seconds(10))
+        XCTAssertEqual(Host.backoff(after: 100), .seconds(10))
+        let http = try FakeHTTP()
+        defer { http.stop() }
+        http.respond = { _ in (500, [:]) }
+        let h = Host(HostConfig(name: "test", url: try await http.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("offline") { if case .offline = h.status { true } else { false } }
+        let end = ContinuousClock.now + .seconds(2.2)
+        while .now < end {
+            XCTAssertNotEqual(h.status, .connecting)
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        // At once, then after 0.5 s and 1 s; the next waits 2 s.
+        XCTAssertGreaterThanOrEqual(http.requests.count, 3)
+        XCTAssertLessThanOrEqual(http.requests.count, 4)
+    }
+
     /// The engine hears of the hosts as their list changes, as it loads
     /// and as one is added or removed; of one added, before it connects.
     @MainActor func testTailcatHostsTold() throws {
