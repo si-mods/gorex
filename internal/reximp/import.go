@@ -58,6 +58,9 @@ type Imported struct {
 	Space   string `json:"space"`
 	Windows int    `json:"windows"`
 	Blocks  int    `json:"blocks"`
+	// Missing are the blocks a window's layout names that its layer does
+	// not have: they are left out.
+	Missing []string `json:"missing,omitempty"`
 }
 
 // Skipped is one session left as it was.
@@ -154,13 +157,14 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 		for _, b := range layer.Blocks {
 			blocks[b.BlockID] = b
 		}
+		tree := prune(layer.Layout, blocks, &out.Missing)
+		if tree == nil {
+			continue
+		}
 		// pane makes c, the tab or a split, of a leaf's block.
 		pane := func(c rex.LayoutCommand, leaf *rexpeer.Layout) (string, error) {
 			c.Space = spaceID
 			if c.Op != "pane.resize" {
-				if leaf == nil || blocks[leaf.BlockID].BlockID == "" {
-					return "", fmt.Errorf("the window's layout names a block it does not have")
-				}
 				b := blocks[leaf.BlockID]
 				var err error
 				if c.Command, c.Dir, err = paneCommand(ctx, peer, s.SessionID, b, opt); err != nil {
@@ -180,12 +184,9 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 			}
 			return res.New, nil
 		}
-		first := layer.Layout
-		for first != nil && first.Split != nil {
+		first := tree
+		for first.Split != nil {
 			first = first.Split.Before
-		}
-		if first == nil || first.BlockID == "" {
-			continue
 		}
 		sid, err := pane(rex.LayoutCommand{Op: "tab.create", Name: tabName(w)}, first)
 		if err != nil {
@@ -204,7 +205,7 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 				return fail(err)
 			}
 		}
-		if _, err := rex.SplitTree(layer.Layout, sid, split, pane); err != nil {
+		if _, err := rex.SplitTree(tree, sid, split, pane); err != nil {
 			return fail(err)
 		}
 		if out.Blocks > before {
@@ -280,6 +281,36 @@ func tiledLayer(w rexpeer.Window) *rexpeer.Layer {
 		}
 	}
 	return nil
+}
+
+// prune returns a layout without the blocks it names that are not in
+// blocks, nil when none is left; a split left with one side is that side.
+// It appends the missing blocks' IDs to missing.
+func prune(l *rexpeer.Layout, blocks map[string]rexpeer.Block, missing *[]string) *rexpeer.Layout {
+	if l == nil {
+		return nil
+	}
+	if l.Split == nil {
+		if _, ok := blocks[l.BlockID]; ok {
+			return l
+		}
+		if l.BlockID != "" {
+			*missing = append(*missing, l.BlockID)
+		}
+		return nil
+	}
+	before, after := prune(l.Split.Before, blocks, missing), prune(l.Split.After, blocks, missing)
+	if before == nil || after == nil {
+		if before == nil {
+			return after
+		}
+		return before
+	}
+	s := *l.Split
+	s.Before, s.After = before, after
+	pruned := *l
+	pruned.Split = &s
+	return &pruned
 }
 
 // split reads a Rex layout for rex.SplitTree.

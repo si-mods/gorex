@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -48,27 +49,7 @@ func TestNames(t *testing.T) {
 // TestNestedLayoutShape: a Rex window whose splits nest either way is
 // imported as a tab of the same shape, with the same ratios.
 func TestNestedLayoutShape(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the test's panes run a Unix shell")
-	}
-	dir, err := os.MkdirTemp("/tmp", "reximp")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
-	t.Setenv("GOREX_DIR", dir)
-	go rex.Serve()
-	for range 500 {
-		if _, err := os.Stat(rex.SocketPath()); err == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	g, err := rex.Connect()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { g.Shutdown() })
+	g, dir := startGoRex(t)
 
 	pane := func() *layout.Node {
 		info, err := g.Create(rex.CreateOptions{Command: []string{"/bin/sh"}, Cols: 80, Rows: 24})
@@ -101,26 +82,9 @@ func TestNestedLayoutShape(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	api, err := testrex.New(testrex.Options{Socket: rex.SocketPath(), Version: "test"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(api.Close)
-	sock := filepath.Join(dir, "api.sock")
-	ln, err := net.Listen("unix", sock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := &http.Server{Handler: api.Handler()}
-	go srv.Serve(ln)
-	t.Cleanup(func() { srv.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	peer, err := rexpeer.Dial(ctx, sock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer peer.Close()
+	peer := dialPeer(t, ctx, dir)
 	res, err := Run(ctx, g, peer, Options{Shell: true})
 	if err != nil {
 		t.Fatal(err)
@@ -143,6 +107,134 @@ func TestNestedLayoutShape(t *testing.T) {
 			t.Errorf("%s: imported %s", imp.Label, got)
 		}
 	}
+}
+
+// startGoRex serves a GoRex layout server in a new directory and connects.
+func startGoRex(t *testing.T) (*rex.Client, string) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test's panes run a Unix shell")
+	}
+	dir, err := os.MkdirTemp("/tmp", "reximp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	t.Setenv("GOREX_DIR", dir)
+	go rex.Serve()
+	for range 500 {
+		if _, err := os.Stat(rex.SocketPath()); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	g, err := rex.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { g.Shutdown() })
+
+	return g, dir
+}
+
+// dialPeer connects a Rex client to a test Rex server in dir.
+func dialPeer(t *testing.T, ctx context.Context, dir string) *rexpeer.Client {
+	api, err := testrex.New(testrex.Options{Socket: rex.SocketPath(), Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(api.Close)
+	sock := filepath.Join(dir, "api.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: api.Handler()}
+	go srv.Serve(ln)
+	t.Cleanup(func() { srv.Close() })
+	peer, err := rexpeer.Dial(ctx, sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { peer.Close() })
+	return peer
+}
+
+// TestMissingBlock: a block the window's layout names and its layer does
+// not have is left out and reported, and the rest of the window keeps its
+// shape and ratios.
+func TestMissingBlock(t *testing.T) {
+	g, dir := startGoRex(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	peer := dialPeer(t, ctx, dir)
+
+	leaf := func(id string) *rexpeer.Layout { return &rexpeer.Layout{BlockID: id} }
+	node := func(dir string, r float64, a, b *rexpeer.Layout) *rexpeer.Layout {
+		return &rexpeer.Layout{Split: &rexpeer.Split{Direction: dir, Ratio: r, Before: a, After: b}}
+	}
+	for _, c := range []struct {
+		name    string
+		tree    *rexpeer.Layout
+		missing []string
+		want    *layout.Node // nil: no tab
+	}{
+		{"b of V{H{a,b},c}", node("vertical", 0.7, node("horizontal", 0.3, leaf("a"), leaf("b")), leaf("c")),
+			[]string{"b"}, &layout.Node{Vertical: true, Ratio: 0.7, A: &layout.Node{SID: "a"}, B: &layout.Node{SID: "c"}}},
+		{"first leaf of V{H{a,b},c}", node("vertical", 0.7, node("horizontal", 0.3, leaf("a"), leaf("b")), leaf("c")),
+			[]string{"a"}, &layout.Node{Vertical: true, Ratio: 0.7, A: &layout.Node{SID: "b"}, B: &layout.Node{SID: "c"}}},
+		{"the inner side keeps its ratios", node("horizontal", 0.5, leaf("a"), node("vertical", 0.4, leaf("b"), node("horizontal", 0.6, leaf("c"), leaf("d")))),
+			[]string{"b"}, &layout.Node{Ratio: 0.5, A: &layout.Node{SID: "a"}, B: &layout.Node{Ratio: 0.6, A: &layout.Node{SID: "c"}, B: &layout.Node{SID: "d"}}}},
+		{"every block", node("vertical", 0.5, leaf("a"), node("horizontal", 0.5, leaf("b"), leaf("c"))),
+			[]string{"a", "b", "c"}, nil},
+	} {
+		var have []rexpeer.Block
+		var wantMissing = map[string]bool{}
+		for _, id := range c.missing {
+			wantMissing[id] = true
+		}
+		for _, id := range []string{"a", "b", "c", "d"} {
+			if !wantMissing[id] {
+				have = append(have, rexpeer.Block{BlockID: id})
+			}
+		}
+		view := rexpeer.View{Windows: []rexpeer.Window{{WindowID: "w", Layers: []rexpeer.Layer{{Kind: "tiled", Layout: c.tree, Blocks: have}}}}}
+		imp, err := importSession(ctx, g, peer, rexpeer.Session{SessionID: "s", Label: c.name}, view, Options{Shell: true})
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if strings.Join(imp.Missing, ",") != strings.Join(c.missing, ",") {
+			t.Errorf("%s: left out %v, want %v", c.name, imp.Missing, c.missing)
+		}
+		raw, err := g.Layout()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var tabs []layout.Tab
+		for _, w := range layout.Parse(raw).Sessions {
+			if w.ID == imp.Space {
+				tabs = w.Tabs
+			}
+		}
+		if c.want == nil {
+			if len(tabs) != 0 || imp.Windows != 0 || imp.Blocks != 0 {
+				t.Errorf("%s: imported %d windows, %d blocks, tabs %v", c.name, imp.Windows, imp.Blocks, tabs)
+			}
+			continue
+		}
+		if len(tabs) != 1 || !sameShape(tabs[0].Root, c.want) || imp.Windows != 1 || imp.Blocks != leaves(c.want) {
+			got, _ := json.Marshal(tabs)
+			t.Errorf("%s: imported %s, %d windows, %d blocks", c.name, got, imp.Windows, imp.Blocks)
+		}
+	}
+}
+
+// leaves counts a tree's panes.
+func leaves(n *layout.Node) int {
+	if n.IsLeaf() {
+		return 1
+	}
+	return leaves(n.A) + leaves(n.B)
 }
 
 // sameShape tells whether two trees have the same splits, in the same
