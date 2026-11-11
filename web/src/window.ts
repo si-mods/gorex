@@ -154,6 +154,7 @@ export class WindowView {
         this.stage.append(p.el);
         place(p.el, this.zoomed ? [0, 0, 1, 1] : rect);
         p.setTitle(this.app.titleOf(block));
+        p.setProgram(this.app.programOf(block));
         p.start();
       }
       const shown = !this.zoomed || this.zoomed === block;
@@ -363,7 +364,10 @@ export class WindowView {
 
   /** The title of each pane again, after a title changed. */
   retitle() {
-    for (const [b, p] of this.panes) p.setTitle(this.app.titleOf(b));
+    for (const [b, p] of this.panes) {
+      p.setTitle(this.app.titleOf(b));
+      p.setProgram(this.app.programOf(b));
+    }
   }
 
   close() {

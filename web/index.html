@@ -17,6 +17,12 @@
     --muted: #8e8e93;
     --hover: rgba(255, 255, 255, 0.10);
     --pill: rgba(255, 255, 255, 0.16);
+    /* The tiles' outer rim, dark on a dark page and light on a light one; the dot of a program done. */
+    --tile-rim: rgba(0, 0, 0, 0.7);
+    --tile-rim-w: 0.75px;
+    --dot-rim: rgba(0, 0, 0, 0.85);
+    --done: #7aa0c2;
+    --attention: #fbbf24;
     /* The desktop terminals' family (style.go, defaultFontFamily). */
     --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
   }
@@ -39,6 +45,10 @@
     --muted: #6c6c70;
     --hover: rgba(0, 0, 0, 0.07);
     --pill: rgba(0, 0, 0, 0.12);
+    --tile-rim: rgba(255, 255, 255, 0.95);
+    --tile-rim-w: 1.5px;
+    --dot-rim: rgba(255, 255, 255, 0.95);
+    --attention: #f59e0b;
     --edge: rgba(0, 0, 0, 0.10);
     --edge-focus: rgba(0, 0, 0, 0.28);
     --panel: rgba(250, 250, 252, 0.82);
@@ -104,9 +114,44 @@
   .window .close { visibility: hidden; margin-right: 4px; font-size: 10px; }
   .window:hover .close, .window.open .close { visibility: visible; }
   button.block {
-    display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding: 6px 4px 6px 12px; border: 0;
+    display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 6px 4px 6px 12px; border: 0;
     background: none; color: var(--text); font: inherit; text-align: left;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+  }
+  /* The tiles of a window's programs (programs.ts), as iOS's ProgramTiles: 21x16 DIPs at 1.5, up to two behind the front one. */
+  .tiles { position: relative; flex: none; height: 28px; }
+  .tile {
+    position: absolute; width: 31.5px; height: 24px; border-radius: 6.75px; background: var(--tile-bg);
+    box-shadow: 0 0 0 var(--tile-rim-w) var(--tile-rim), 0 0.75px 1.5px 0.75px rgba(0, 0, 0, 0.18);
+  }
+  .tile.bordered { box-shadow: inset 0 0 0 0.75px rgba(0, 0, 0, 0.12), 0 0 0 var(--tile-rim-w) var(--tile-rim), 0 0.75px 1.5px 0.75px rgba(0, 0, 0, 0.18); }
+  /* Lit from above: a sheen along the top that darkens a little to the foot, and a lit inner edge, brightest at the top. */
+  .tile::before, .tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
+  .tile::before { background: linear-gradient(rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.06)); }
+  .tile::after {
+    padding: 0.5px; background: linear-gradient(rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.15));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  }
+  /* The glyph is a mask of the SVG, in the tile's foreground, as a template image. */
+  .tile-glyph {
+    position: absolute; left: 7.5px; top: 3.75px; width: 16.5px; height: 16.5px; background: var(--tile-fg);
+    -webkit-mask: var(--glyph) center / contain no-repeat; mask: var(--glyph) center / contain no-repeat;
+  }
+  /* The tile of a pane's header, 0.85 of its size as iOS's terminal title has it. */
+  .pane-tile { display: flex; flex: none; }
+  .pane-tile .tile { position: relative; zoom: 0.85; }
+  /* The dot of a program done and not seen, on the tile's corner: lit from above, in a rim. */
+  .done-dot {
+    position: absolute; right: -2.5px; top: -2.5px; width: 8.5px; height: 8.5px; border-radius: 50%; z-index: 1;
+    background: linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 50%) content-box, linear-gradient(var(--done), var(--done)) content-box, linear-gradient(var(--dot-rim), var(--dot-rim));
+    padding: 0.75px;
+  }
+  .attention-dot { flex: none; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--attention); }
+  .progress-ring {
+    flex: none; width: 12px; height: 12px; margin-right: 6px; border-radius: 50%;
+    background: conic-gradient(var(--muted) calc(var(--p) * 1%), var(--pill) 0);
+    -webkit-mask: radial-gradient(circle, transparent 3.5px, #000 4px); mask: radial-gradient(circle, transparent 3.5px, #000 4px);
   }
   button.block .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   button.block .count { margin-left: auto; color: var(--muted); font-size: 11px; }

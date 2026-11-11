@@ -34,6 +34,21 @@ gateway refuses web pages of another origin (see Origins). Connecting one
 page to several hosts needs the hosts to trust that page's origin; that
 is not designed yet.
 
+## Program tiles
+
+The sidebar's window rows and the pane headers show the program tiles of
+the iOS app (`ios/GoRex/Views/ProgramTile.swift`), drawn in CSS by
+`web/src/programs.ts`: its table of programs, the lookup by process name
+(basename, a leading `-` dropped, a hash colour for an unknown program),
+the stack of up to three tiles of a window, and the dot of a program done
+and not yet seen. The page reads each block's program as the app does:
+`com.superlogical.terminal.process` once, then `process_changed`; and its
+records (OSC 7501) with `program_status`, `program_status_changed` and
+`program_status_removed`. A window row also shows the blocked dot and the
+progress ring of iOS's `WindowRow`. Differences from iOS: the SF Symbols
+are the lucide SVGs of `assets/icons`, drawn at full size (iOS scales its
+symbols by 0.85, the desktop its SVGs by 1); a row has no status inbox.
+
 ## Build
 
 You need Node 22 or later, Git and Go. The script gets Zig itself.
@@ -59,6 +74,8 @@ go build .              # embeds what the script wrote
    `internal/webui/dist`, copies `ios/GoRex/ghostty-themes.json` there (the
    repo keeps one copy of the themes), and the JetBrains Mono fonts from `assets/fonts`
    (with their licence) into `internal/webui/dist/fonts`.
+   It also copies `assets/icons` and `assets/brands` into `dist/icons` and
+   `dist/brands`, the glyphs of the program tiles.
 
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
 `~/.cache/gorex-web`.

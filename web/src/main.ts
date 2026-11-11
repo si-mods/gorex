@@ -3,6 +3,7 @@
 import { Ghostty } from "./ghostty";
 import { shortcut } from "./keys";
 import { describe } from "./pane";
+import { mostUrgent, programName, programOf, rank, seenKey, Status, statusOf, tiles, tilesWidth } from "./programs";
 import { Control } from "./rex";
 import { desktopTheme, Theme } from "./terminal";
 import { chosenName, isLight, loadThemes, mountPicker, ThemeEntry, themeColours } from "./themes";
@@ -31,6 +32,14 @@ interface Session {
 const sessions = new Map<string, Session>();
 /** The terminals' titles, by block, kept up by title_changed. */
 const titles = new Map<string, string>();
+/** The foreground programs' names, by block, kept up by process_changed. */
+const programs = new Map<string, string | undefined>();
+/** What the programs in each block reported (OSC 7501), by block. */
+const statuses = new Map<string, Status[]>();
+/** The done and error records the user saw, by block, as their keys. */
+const seen = new Map<string, Set<string>>();
+/** The blocks whose program and records were read; read again after a reconnect. */
+const described = new Set<string>();
 /** The window this page shows. */
 let shown: WindowView | undefined;
 
@@ -53,6 +62,7 @@ const host: WindowHost = {
   status,
   scheme,
   titleOf: (b) => titles.get(b) || "Terminal",
+  programOf: (b) => programOf(programs.get(b)),
   action: (p, name) => {
     shown?.setFocus(p.block, true);
     run(name);
@@ -105,6 +115,7 @@ async function connect() {
     return;
   }
   control = c;
+  described.clear();
   token = c.reconnectToken;
   c.onEvent = (e) => event(e.type, e.sessionID, e.payload);
   c.onClose = (reason) => {
@@ -163,6 +174,18 @@ function event(type: string, sid: string | undefined, p: any) {
         titles.set(p.block_id, p.payload?.title ?? "");
         sidebar();
         shown?.retitle();
+      } else if (p.name === "process_changed" && p.block_id) {
+        programs.set(p.block_id, programName(p.payload?.foreground));
+        sidebar();
+        shown?.retitle();
+      } else if (p.name === "program_status_changed" && p.block_id) {
+        statuses.set(p.block_id, recordsOf(p.payload?.records));
+        see(p.block_id);
+        sidebar();
+      } else if (p.name === "program_status_removed" && p.block_id) {
+        const ids: string[] = p.payload?.ids ?? [];
+        statuses.set(p.block_id, (statuses.get(p.block_id) ?? []).filter((r) => !ids.includes(r.id)));
+        sidebar();
       }
       break;
   }
@@ -222,6 +245,10 @@ function apply(s: Session, v: any) {
   if (v.label) s.label = v.label;
   for (const w of v.windows ?? []) {
     for (const b of leavesOf(layoutOf(w))) {
+      if (!described.has(b)) {
+        described.add(b);
+        readProgram(s.id, b);
+      }
       if (titles.has(b)) continue;
       titles.set(b, "");
       readTitle(s.id, b, 3);
@@ -260,6 +287,50 @@ function readTitle(session: string, b: string, tries: number) {
   );
 }
 
+function recordsOf(j: any): Status[] {
+  return (Array.isArray(j) ? j : []).map(statusOf).filter((r): r is Status => !!r);
+}
+
+/** Marks a shown block's done and error records seen, as the desktop's pane does when it shows. */
+function see(block: string) {
+  if (!shown?.panes.has(block) || document.visibilityState !== "visible") return;
+  const keys = (statuses.get(block) ?? []).filter((r) => r.state === "done" || r.state === "error").map(seenKey);
+  if (!keys.length) return;
+  const had = seen.get(block) ?? new Set<string>();
+  seen.set(block, new Set([...had, ...keys]));
+}
+
+/**
+ * Reads a block's foreground program and records, which process_changed
+ * and program_status_changed keep up to date. An answer applies when no
+ * event changed what it read while it was in flight.
+ */
+function readProgram(session: string, block: string) {
+  const c = control;
+  if (!c) return;
+  const hadProgram = programs.get(block), hadRecords = statuses.get(block);
+  c.callBlock("process", session, block).then(
+    (r) => {
+      if (!programs.has(block) || programs.get(block) === hadProgram) {
+        programs.set(block, programName(r.foreground));
+        sidebar();
+        shown?.retitle();
+      }
+    },
+    () => described.delete(block),
+  );
+  c.callBlock("program_status", session, block).then(
+    (r) => {
+      if (!statuses.has(block) || statuses.get(block) === hadRecords) {
+        statuses.set(block, recordsOf(r.records));
+        see(block);
+        sidebar();
+      }
+    },
+    () => {},
+  );
+}
+
 /** A window's title, as the desktop names a tab: its terminal's title, else its label. */
 function windowTitle(w: any): string {
   const blocks = leavesOf(layoutOf(w));
@@ -269,6 +340,7 @@ function windowTitle(w: any): string {
 
 /** The sidebar: each session, and a row for each of its windows. */
 function sidebar() {
+  for (const b of shown?.panes.keys() ?? []) see(b);
   const nav = document.createElement("nav");
   for (const s of sessions.values()) {
     const v = s.view;
@@ -284,6 +356,8 @@ function sidebar() {
     add.onclick = () => newWindow(s.id);
     h.append(name, add);
     nav.append(h);
+    // The room of the tiles of the window with the most, so that the titles line up.
+    const room = tilesWidth(Math.max(0, ...(v.windows ?? []).map((w: any) => leavesOf(layoutOf(w)).length - 1)));
     for (const w of v.windows ?? []) {
       const row = document.createElement("div");
       row.className = "window";
@@ -295,8 +369,25 @@ function sidebar() {
       const title = document.createElement("span");
       title.className = "title";
       title.textContent = windowTitle(w);
-      b.append(title);
-      const n = leavesOf(layoutOf(w)).length;
+      const blocks = leavesOf(layoutOf(w));
+      const front = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
+      const urgent = blocks
+        .map((x) => mostUrgent(statuses.get(x) ?? [], seen.get(x) ?? new Set()))
+        .reduce<Status | undefined>((a, r) => (r && (!a || rank(r) > rank(a)) ? r : a), undefined);
+      b.append(tiles(front ? programs.get(front) : undefined, blocks.filter((x) => x !== front).map((x) => programs.get(x)), urgent?.state === "done", room), title);
+      if (urgent?.state === "blocked") {
+        const dot = document.createElement("i");
+        dot.className = "attention-dot";
+        dot.title = "Needs Input";
+        b.append(dot);
+      } else if (urgent?.progress !== undefined) {
+        const ring = document.createElement("i");
+        ring.className = "progress-ring";
+        ring.style.setProperty("--p", String(urgent.progress));
+        ring.title = `${urgent.progress}%`;
+        b.append(ring);
+      }
+      const n = blocks.length;
       if (n > 1) {
         const count = document.createElement("span");
         count.className = "count";

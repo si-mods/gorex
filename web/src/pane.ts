@@ -1,6 +1,7 @@
 // One pane of a window: a block's terminal, its stream fed to
 // libghostty-vt, drawn on its own canvas, the keys typed written back.
 import { Ghostty } from "./ghostty";
+import { Program, smallTile } from "./programs";
 import { Control, DataStream, RexError, TerminalStream } from "./rex";
 import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
 
@@ -16,6 +17,8 @@ export interface PaneHost {
   focused(p: TerminalView): void;
   /** Whether the pane is the window's focused one. */
   isFocused(p: TerminalView): boolean;
+  /** How the block's program shows: its tile heads the pane. */
+  programOf(block: string): Program;
   /** Runs one of the pane's header buttons. */
   action(p: TerminalView, name: string): void;
 }
@@ -51,6 +54,8 @@ const actions: [name: string, label: string, glyph: string][] = [
 export class TerminalView {
   /** The pane: its header and its body, with the canvas. */
   readonly el = el("div", "pane");
+  private readonly tile = el("span", "pane-tile");
+  private shownProgram = "";
   private readonly title = el("span", "pane-title");
   private readonly body = el("div", "pane-body");
   private readonly canvas = el("canvas", "screen");
@@ -110,7 +115,7 @@ export class TerminalView {
       };
       buttons.append(b);
     }
-    head.append(this.title, buttons);
+    head.append(this.tile, this.title, buttons);
     this.body.append(this.canvas);
     this.el.append(head, this.body);
     this.el.addEventListener("keydown", (e) => this.key(e));
@@ -126,6 +131,14 @@ export class TerminalView {
       if (!this.held) this.layout(d && { width: d.inlineSize, height: d.blockSize });
     });
     this.observer.observe(this.body, { box: "device-pixel-content-box" });
+  }
+
+  /** The tile of the pane's program, as the title of iOS's terminal screen has it. */
+  setProgram(p: Program) {
+    const key = JSON.stringify(p);
+    if (key === this.shownProgram) return;
+    this.shownProgram = key;
+    this.tile.replaceChildren(smallTile(p));
   }
 
   setTitle(s: string) {

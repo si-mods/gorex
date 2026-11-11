@@ -114,4 +114,9 @@ copyFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"), join(dist, "ghos
 // The desktop's terminal font, which GoRex embeds too, with its licence.
 mkdirSync(join(dist, "fonts"));
 for (const f of readdirSync(join(root, "assets", "fonts"))) copyFileSync(join(root, "assets", "fonts", f), join(dist, "fonts", f));
+// The glyphs of the program tiles: the repo's lucide icons and brand marks, which the desktop embeds too.
+for (const d of ["icons", "brands"]) {
+  mkdirSync(join(dist, d));
+  for (const f of readdirSync(join(root, "assets", d))) copyFileSync(join(root, "assets", d, f), join(dist, d, f));
+}
 console.log(`built ${dist}`);
