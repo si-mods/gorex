@@ -480,10 +480,14 @@ func (s *stream) appendBytes(p []byte) {
 		}
 	}
 	// A stream that waited too long keeps only its newest bytes, which a
-	// resume counted too far back cannot use.
-	if drop := len(s.buf) - resumeBytes; drop > 0 {
-		s.buf = append([]byte(nil), s.buf[drop:]...)
-		s.base += int64(drop)
+	// resume counted too far back cannot use. The buffer holds up to twice
+	// that before it moves them to its front, so that bytes are copied
+	// once per resumeBytes rather than once per chunk.
+	if len(s.buf) > resumeBytes {
+		s.base = s.total - int64(resumeBytes)
+		if len(s.buf) > 2*resumeBytes {
+			s.buf = s.buf[:copy(s.buf, s.buf[len(s.buf)-resumeBytes:])]
+		}
 	}
 }
 
@@ -608,7 +612,7 @@ func (s *stream) resumeStream(call *resumeCall) {
 		return
 	}
 	call.reply <- nil
-	from := int64(call.count) - s.base
+	from := int64(call.count) - (s.total - int64(len(s.buf)))
 	if err := writeStream(call.ws, s.buf[from:]); err != nil {
 		if s.clearWS(call.ws) {
 			call.ws.Close(1013, "data reconnect required")

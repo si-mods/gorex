@@ -20,7 +20,6 @@ import (
 type outMsg struct {
 	data  []byte
 	event bool
-	size  int
 }
 
 // control is one control connection.
@@ -188,10 +187,10 @@ func readHello(ws *websocket.Conn, wait time.Duration) (*hello, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	typ, data, err := ws.Read(ctx)
-	if err == nil {
-		tracef("control <- %s", clip(data))
-	} else {
+	if err != nil {
 		tracef("control hello read: %v", err)
+	} else if tracing {
+		tracef("control <- %s", clip(data))
 	}
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -319,7 +318,9 @@ func (c *control) writeSync(v any) error {
 	if err != nil {
 		return err
 	}
-	tracef("control -> %s", clip(data))
+	if tracing {
+		tracef("control -> %s", clip(data))
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return c.ws.Write(ctx, websocket.MessageText, data)
@@ -330,13 +331,15 @@ func (c *control) writeLoop() {
 	for {
 		select {
 		case m := <-c.out:
-			tracef("control -> %s", clip(m.data))
+			if tracing {
+				tracef("control -> %s", clip(m.data))
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			err := c.ws.Write(ctx, websocket.MessageText, m.data)
 			cancel()
 			if m.event {
 				c.mu.Lock()
-				c.queued -= m.size
+				c.queued -= len(m.data)
 				c.mu.Unlock()
 			}
 			if err != nil {
@@ -365,7 +368,9 @@ func (c *control) readLoop() {
 			c.closeWith(websocket.StatusNormalClosure, "")
 			return
 		}
-		tracef("control <- %s", clip(data))
+		if tracing {
+			tracef("control <- %s", clip(data))
+		}
 		if typ == websocket.MessageBinary {
 			c.closeWith(1003, "protocol error")
 			return
@@ -514,7 +519,7 @@ func (c *control) enqueue(v any) {
 			Error: errTooLarge("the result is larger than %d bytes", maxMessage)})
 	}
 	select {
-	case c.out <- outMsg{data: data, size: len(data)}:
+	case c.out <- outMsg{data: data}:
 	case <-c.done:
 	}
 }
@@ -562,7 +567,7 @@ func (c *control) sendChanges(chs []change) {
 		c.queued += len(data)
 		c.mu.Unlock()
 		select {
-		case c.out <- outMsg{data: data, event: true, size: len(data)}:
+		case c.out <- outMsg{data: data, event: true}:
 		case <-c.done:
 			c.mu.Lock()
 			c.queued -= len(data)
