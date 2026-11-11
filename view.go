@@ -1201,7 +1201,7 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		if t.Zoom == p || p.float != nil && p.float.Zoom {
 			zoom, label = "minimize-2", locales.PaneUnzoom()
 		}
-		if iconButton(c, k, zoom, locales.PaneZoom(), 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
+		if iconButton(c, k, zoom, label, 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
 			t.setFocus(p)
 			a.toggleZoom()
 		}

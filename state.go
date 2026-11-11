@@ -1069,13 +1069,14 @@ func (a *App) pasteText(p *Pane, text string) {
 	if text == "" {
 		return
 	}
+	client, sid, host, remote := a.client, p.SID, p.host, p.remote
 	go func() {
 		var err error
 		switch {
-		case p.host == nil:
-			err = a.client.Paste(p.SID, text)
-		case p.remote != nil:
-			err = p.remote.Paste(text)
+		case host == nil:
+			err = client.Paste(sid, text)
+		case remote != nil:
+			err = remote.Paste(text)
 		}
 		if err != nil {
 			log.Printf("paste: %v", err)
@@ -3880,7 +3881,7 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 	if a.tab() == src && src.Focus != nil {
 		a.focusReq = src.Focus
 	}
-	if len(src.panes()) == 0 {
+	if len(src.allPanes()) == 0 {
 		a.removeTab(src)
 	}
 	var np *Pane
@@ -3925,7 +3926,7 @@ func (a *App) movePaneToNewTab(p *Pane, label string) bool {
 	if i := slices.Index(a.tabs, cur); cur != nil && i >= 0 {
 		a.active = i
 	}
-	if len(src.panes()) == 0 {
+	if len(src.allPanes()) == 0 {
 		a.removeTab(src)
 		if wasActive {
 			a.active = max(slices.Index(a.tabs, t), 0)
