@@ -35,6 +35,13 @@ func (p procInfo) programName() string {
 			name = base
 		}
 	}
+	// An update that replaces the running image renames it out of the
+	// way, as omp's leaves omp.exe.<millis>.<pid>.<n>.bak on Windows:
+	// the program is omp still, whichever of the image and the
+	// arguments named it above.
+	if i := indexFold(name, ".exe."); i > 0 {
+		name = name[:i]
+	}
 	if interpreters[name] && len(p.args) > 1 {
 		for _, a := range p.args[1:] {
 			if strings.HasPrefix(a, "-") {
@@ -54,4 +61,14 @@ func (p procInfo) programName() string {
 		}
 	}
 	return name
+}
+
+// indexFold is strings.Index, ignoring case.
+func indexFold(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if strings.EqualFold(s[i:i+len(sub)], sub) {
+			return i
+		}
+	}
+	return -1
 }
