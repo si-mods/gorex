@@ -10,6 +10,28 @@ the emulator's render state on a canvas.
 This is phase 1, a prototype: one terminal at a time. It has no settings,
 no uploads, no paste, no selection, no scrollback and no mouse.
 
+## Design: a remote client only
+
+The web client runs entirely in the browser. A browser cannot start a
+process or open a PTY, so the client has no shell of its own and no
+local session server. It is a remote client, like Rex's iPhone app:
+
+- Every terminal it shows lives on a GoRex host, in that host's session
+  server. The client reaches it through the host's gateway over
+  WebSocket (`/api/control` and `/api/data`).
+- It keeps no state that a host needs. Closing the tab detaches; the
+  sessions and their programs keep running on the host.
+- The terminal emulator in the page (libghostty-vt in wasm) only mirrors
+  the host's terminal from its snapshot and stream. It runs no program.
+- Nothing in the client calls `internal/rex`, the PTY layer or anything
+  else that needs an operating system. Features that need one belong on
+  the host, behind the gateway's API.
+
+Phase 1 connects only to the host that served the page, because the
+gateway refuses web pages of another origin (see Origins). Connecting one
+page to several hosts needs the hosts to trust that page's origin; that
+is not designed yet.
+
 ## Build
 
 You need Node 22 or later, Git and Go. The script gets Zig itself.
