@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.20.3
+
+### Features
+
+* **sidebar:** a tab's context menu moves it to another space, Move to Space, its sessions going on; it joins the window that shows that space, and the window's last tab leaves its space as a closed last tab does ([#401](https://github.com/si-mods/gorex/pull/401), [#402](https://github.com/si-mods/gorex/pull/402))
+* **remote:** the tailcat address serves Rex's API on port 7297 to the clients that may command the layout, for Rex Go with no VPN; a relay of one's own is set with `gorex remote relay HOST` or in Settings › Remote ([#398](https://github.com/si-mods/gorex/pull/398))
+* **rexapi:** Rex's API revision 12: `server.status` lists the listeners ([#388](https://github.com/si-mods/gorex/pull/388))
+
+### Bug Fixes
+
+* **rexapi:** the primary listener's `unix://` endpoint is escaped as Rex escapes it ([#389](https://github.com/si-mods/gorex/pull/389))
+
 ## 0.20.2
 
 ### Bug Fixes
