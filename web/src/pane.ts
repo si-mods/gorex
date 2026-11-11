@@ -371,6 +371,8 @@ export class TerminalView {
       // The cursor is solid in the window's focused pane while the page has the focus.
       const focused = this.app.isFocused(this) && document.hasFocus() && this.el.contains(document.activeElement);
       const ctx = this.ctx;
+      // The link under the mouse, found again as the text under it changes: its row draws again.
+      if (this.pointer.hover(false)) this.full = true;
       // The padding takes the background too, as a program may change it (OSC 11).
       const bg = `rgb(${this.term.background().join(",")})`;
       if (this.full || bg !== this.painted) {
@@ -383,7 +385,7 @@ export class TerminalView {
       this.term.draw(ctx, {
         font: this.font, ox: this.ox, oy: this.oy, full: this.full, focused,
         blinkOff: since % (2 * blinkPeriod) >= blinkPeriod, minContrast: contrastRatio(),
-        selection: this.theme.selection, selectionText: this.theme.selectionText,
+        selection: this.theme.selection, selectionText: this.theme.selectionText, link: this.pointer.linkShown(),
       });
       this.full = false;
       this.pointer.drawn();
@@ -459,7 +461,7 @@ export class TerminalView {
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     clearTimeout(this.blinkTimer);
     clearTimeout(this.sizing);
-    this.pointer.reset();
+    this.pointer.dispose();
     this.term?.free();
     this.term = undefined;
     this.el.remove();

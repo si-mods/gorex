@@ -483,6 +483,46 @@ program gets.
   program that tracks the mouse, a wheel button (4 up, 5 down) a row at
   the pointer; on the alternate screen with alternate scroll (1007, on by
   default) the arrow keys; else the scrollback.
+- **Links.** Hold Ctrl (⌘ on a Mac) with the mouse over a link: the
+  link's cells are underlined in its text's colour and the pointer is a
+  hand; pressing or letting go of the key with the mouse still adds or
+  takes away the underline. A click with the key held opens the link in a
+  new tab (`window.open` with `noopener,noreferrer`). That press is the
+  link's: it does not select, a program that tracks the mouse does not get
+  it, and its moves and release go to no one. Ctrl+click (⌘-click) on
+  anything else selects or goes to the program as before. As the desktop's
+  terminal (MyGo's `links.go`, `view.go` `linkAt`) and GoRex's
+  `find.go`, `web/src/links.ts` finds, in this order:
+  - a hyperlink (OSC 8), read with `ghostty_grid_ref_hyperlink_uri`; its
+    cells are the cells around the pointer with the same URI on the row.
+    A hyperlink whose cells print its URL followed by prose a program took
+    into it (a Markdown autolink, as `https://x.y/a。工单`) underlines and
+    opens only the URL, also on the row it wraps onto. A press with the key
+    over a hyperlink's cells with no link to open goes to no one either;
+  - a URL printed as text (`http`, `https`, `ftp`, `file`, `mailto:`),
+    ended at the first character that is not ASCII, with the sentence's
+    punctuation and the brackets it did not open trimmed. A URL printed as
+    text is found on one row only, as on the desktop;
+  - a web address printed without its scheme, as
+    `support.github.com/tickets`, found as the desktop finds a file path
+    and opened over https, `:line:col` trimmed.
+
+  The page opens only `http`, `https`, `ftp` and `mailto:` links. A
+  `file://` URL names a file on the host, which a browser cannot reach, so
+  it is not a link here. No modifier on a touch screen: a finger does not
+  open links.
+
+  Differences from the desktop: file paths are not links. The desktop opens
+  a path printed in a local pane and downloads one printed in a host's pane
+  over the peer protocol (`upload.go` `download`); the gateway has no
+  download API for the browser. The desktop tells a web address by the
+  public suffix list (`golang.org/x/net/publicsuffix`); the page does not
+  ship that list and takes a host name whose last label is a two-letter
+  country code (every one the list has) or one of about a hundred common
+  generic top-level domains, such as `com`, `org`, `net`, `dev` and
+  `app`, and not a registry's own name such as `co.uk`. So an address under
+  a rarer generic domain is not a link here, and one under a private
+  suffix (`user.github.io/x`), which the desktop leaves out, is.
 - Not in the web client: Shift+click to extend a selection, block
   (rectangle) selection, horizontal wheel buttons (6, 7), middle-click
   paste, scrolling on while a handle is dragged past an edge, Select All,
@@ -523,7 +563,7 @@ the list.
 
 What differs: the desktop's panes are the window's glass, which a page
 cannot show, so the pane here is the theme's background. There is no
-scroll bar or link underline.
+scroll bar.
 
 ## Settings
 

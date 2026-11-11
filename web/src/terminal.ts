@@ -3,6 +3,7 @@
 // render state, and encoding the keys typed for the program's modes.
 import { drawBox, drawn, noMinContrast } from "./box";
 import { Ghostty, Mods, RGB } from "./ghostty";
+import { Link, linkAt, RowText } from "./links";
 
 export interface Theme {
   background?: RGB;
@@ -122,6 +123,8 @@ export interface Frame {
   /** The selection's colours (Theme.selection, selectionText); none inverts. */
   selection?: RGB;
   selectionText?: RGB;
+  /** The link the modifier is held over (pointer.ts), underlined. */
+  link?: { row: number; x0: number; x1: number };
 }
 
 /** A pointer over the grid: the viewport cell under it, clamped to the grid, and where it is on the canvas, in device pixels. */
@@ -214,6 +217,9 @@ export class Terminal {
   private mouseEv: number;
   private mouseSize: number;
   private mouseOut: number;
+  /** A hyperlink's URI, read into a buffer grown as one needs. */
+  private uri = 0;
+  private uriCap = 0;
 
   private constructor(private g: Ghostty, private t: number) {
     const x = g.x;
@@ -283,6 +289,7 @@ export class Terminal {
     g.x.ghostty_mouse_encoder_free(this.mouseEnc);
     g.free(this.mouseSize, g.size("GhosttyMouseEncoderSize"));
     g.free(this.mouseOut, mouseCap);
+    if (this.uri) g.free(this.uri, this.uriCap);
     g.x.ghostty_key_encoder_free(this.encoder);
     g.x.ghostty_render_state_row_cells_free(this.cells);
     g.x.ghostty_render_state_row_iterator_free(this.rows);
@@ -356,6 +363,11 @@ export class Terminal {
     g.view.setUint32(this.scratch, 0, true);
     if (g.x.ghostty_terminal_get(this.t, g.e("GhosttyTerminalData", name), this.scratch) !== 0) return 0;
     return bytes === 1 ? g.bytes[this.scratch] : g.view.getInt32(this.scratch, true);
+  }
+
+  /** The terminal's width in cells, as of now: the render state's (size) is as of the last draw. A u16, read as 4 bytes zeroed first. */
+  private columns(): number {
+    return this.datum("COLS", 4) & 0xffff;
   }
 
   /** Whether the program takes the mouse, and so the wheel. */
@@ -678,6 +690,80 @@ export class Terminal {
     this.select(this.sel2);
   }
 
+  // Links (links.ts), as the desktop's view reads them (vt's RowText and
+  // Hyperlink): a row's text and a cell's hyperlink, through grid refs.
+
+  /** The URL of the hyperlink (OSC 8) at a viewport cell, or "". */
+  hyperlinkAt(col: number, row: number): string {
+    const { g } = this;
+    if (!this.refAt(col, row)) return "";
+    const out = this.sx + sx.out;
+    for (let tries = 0; tries < 2; tries++) {
+      g.view.setUint32(out, 0, true);
+      const r = g.x.ghostty_grid_ref_hyperlink_uri(this.ref, this.uri, this.uriCap, out);
+      const n = g.view.getUint32(out, true);
+      if (r === 0) return n > 0 ? new TextDecoder().decode(g.bytes.slice(this.uri, this.uri + n)) : "";
+      if (r !== g.e("GhosttyResult", "OUT_OF_SPACE") || n === 0) return "";
+      if (this.uri) g.free(this.uri, this.uriCap);
+      this.uriCap = Math.max(n, 256);
+      this.uri = g.alloc(this.uriCap);
+    }
+    return "";
+  }
+
+  /** A viewport row's text: each cell's characters with its column, a blank cell a space, the spacer of a wide one left out. */
+  rowText(row: number): RowText {
+    const { g } = this;
+    const x = g.x;
+    const v = g.view;
+    const wide = g.cellBits("wide");
+    const SPACER_TAIL = g.e("GhosttyCellWide", "SPACER_TAIL");
+    const SPACER_HEAD = g.e("GhosttyCellWide", "SPACER_HEAD");
+    // Room for a cell's grapheme, as the desktop's: 16 code points.
+    if (this.graphemesCap < 16) {
+      if (this.graphemes) g.free(this.graphemes, this.graphemesCap * 4);
+      this.graphemesCap = 16;
+      this.graphemes = g.alloc(this.graphemesCap * 4);
+    }
+    const out = this.sx + sx.out;
+    const text: string[] = [], cols: number[] = [];
+    const n = this.columns();
+    for (let col = 0; col < n; col++) {
+      if (!this.refAt(col, row)) break;
+      if (x.ghostty_grid_ref_cell(this.ref, this.scratch) === 0) {
+        const kind = Number((v.getBigUint64(this.scratch, true) >> BigInt(wide.lsb)) & BigInt((1 << wide.width) - 1));
+        if (kind === SPACER_TAIL || kind === SPACER_HEAD) continue;
+      }
+      v.setUint32(out, 0, true);
+      const len = x.ghostty_grid_ref_graphemes(this.ref, this.graphemes, this.graphemesCap, out) === 0 ? v.getUint32(out, true) : 0;
+      if (len === 0) {
+        text.push(" ");
+        cols.push(col);
+        continue;
+      }
+      for (let i = 0; i < len; i++) {
+        text.push(String.fromCodePoint(v.getUint32(this.graphemes + i * 4, true)));
+        cols.push(col);
+      }
+    }
+    return { text, cols };
+  }
+
+  /** The link at a viewport cell (links.ts linkAt), if any. */
+  linkAt(col: number, row: number): Link | undefined {
+    return linkAt(
+      {
+        cols: this.columns(),
+        rowText: (r) => this.rowText(r),
+        hyperlinkAt: (c, r) => this.hyperlinkAt(c, r),
+        // Scrolled back: the viewport's first row has rows above it.
+        scrolledBack: () => (this.refAt(0, 0) && (this.screenPoint(this.ref)?.y ?? 0) > 0) || false,
+      },
+      col,
+      row,
+    );
+  }
+
   private contrasted(fg: RGB, bg: RGB): RGB {
     const k = `${fg}|${bg}`;
     let c = this.contrasts.get(k);
@@ -866,6 +952,12 @@ export class Terminal {
       }
       this.text(ctx, font, row, ox, ry);
       for (const d of decos) drawDeco(ctx, font, d, ox, ry);
+      // The link the modifier is held over: a single underline in its text's colour, as the desktop's linkColor.
+      const link = f.link;
+      if (link && link.row === y) {
+        const c = row.find((c) => c.col >= link.x0 && c.col < link.x1)?.fg ?? fg;
+        drawDeco(ctx, font, { x0: link.x0, x1: link.x1, kind: 1, c }, ox, ry);
+      }
       if (showCursor && y === cy) {
         ctx.fillStyle = css(cursorColor);
         const px = Math.max(Math.round(1.5 * font.scale), 1);

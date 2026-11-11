@@ -7,8 +7,12 @@
 // press, drag, autoscrollTick...), as Ghostty's own gesture does. A
 // program that tracks the mouse gets the clicks, drags, motion and wheel,
 // encoded for its modes; Shift then selects instead, and is not reported.
+// Ctrl (Cmd on the Mac) over a link underlines it, and a click opens it,
+// as on the desktop (links.ts).
 import { Mods } from "./ghostty";
 import { icon } from "./hosts";
+import { mac } from "./keys";
+import { Link } from "./links";
 import { prefs } from "./prefs";
 import { Autoscroll, Geometry, MouseReport, MouseSize, Pointer, Terminal } from "./terminal";
 
@@ -45,6 +49,28 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
 function modsOf(e: { shiftKey: boolean; ctrlKey: boolean; altKey: boolean; metaKey: boolean }): number {
   return (e.shiftKey ? Mods.shift : 0) | (e.ctrlKey ? Mods.ctrl : 0) | (e.altKey ? Mods.alt : 0) | (e.metaKey ? Mods.super : 0);
 }
+
+/** Whether an event holds the key that opens links: Cmd on the Mac, Ctrl elsewhere, as the desktop's ui.Cmd. */
+const linkKey = (e: { ctrlKey: boolean; metaKey: boolean }) => (mac ? e.metaKey : e.ctrlKey);
+
+/**
+ * Whether the link key is held, as the last key or mouse event had it, and
+ * the panes the mouse is over: pressing or letting go of the key with the
+ * pointer still underlines a link or takes the underline away, as on the
+ * desktop.
+ */
+let linkHeld = false;
+const hovered = new Set<PointerInput>();
+
+function holdLinkKey(held: boolean) {
+  if (held === linkHeld) return;
+  linkHeld = held;
+  for (const p of hovered) p.hover(true);
+}
+
+window.addEventListener("keydown", (e) => holdLinkKey(linkKey(e)), { capture: true });
+window.addEventListener("keyup", (e) => holdLinkKey(linkKey(e)), { capture: true });
+window.addEventListener("blur", () => holdLinkKey(false));
 
 /** A DOM button (0 left, 1 middle, 2 right) as Ghostty's (1 left, 3 middle, 2 right); 0 for others. */
 const buttonOf = (b: number) => ({ 0: 1, 1: 3, 2: 2 } as Record<number, number>)[b] ?? 0;
@@ -101,8 +127,16 @@ export class PointerInput {
   private readonly menu = el("div", "select-menu");
   private readonly copyButton = el("button", "select-menu-item");
   private readonly handles = { start: el("div", "select-handle start"), end: el("div", "select-handle end") };
-  /** The mouse button down, and what it does: selects, or goes to the program (report), or only focused the pane. */
-  private down?: { id: number; button: number; kind: "select" | "report" | "focus" };
+  /**
+   * The mouse button down, and what it does: selects, or goes to the
+   * program (report), or only focused the pane, or opened a link (link),
+   * whose moves and release then go to no one.
+   */
+  private down?: { id: number; button: number; kind: "select" | "report" | "focus" | "link" };
+  /** Where the mouse is over the canvas, in client pixels; none while it is elsewhere. */
+  private over?: { clientX: number; clientY: number };
+  /** The link the link key is held over, underlined, which a click opens. */
+  private link?: Link;
   private touch?: Touch;
   /** A handle being dragged: which, and where the finger took it from the stem's middle, in CSS pixels. */
   private steering?: { id: number; first: boolean; dx: number; dy: number };
@@ -142,7 +176,13 @@ export class PointerInput {
     canvas.addEventListener("pointermove", (e) => this.pointerMove(e));
     canvas.addEventListener("pointerup", (e) => this.pointerUp(e));
     canvas.addEventListener("pointercancel", (e) => this.pointerCancel(e));
-    canvas.addEventListener("pointerleave", () => this.host.term()?.resetMouse());
+    canvas.addEventListener("pointerleave", (e) => {
+      this.host.term()?.resetMouse();
+      if (e.pointerType === "touch") return;
+      this.over = undefined;
+      hovered.delete(this);
+      this.hover(true);
+    });
     canvas.addEventListener("contextmenu", (e) => this.contextMenu(e));
     // A press anywhere else takes the menu away.
     document.addEventListener("pointerdown", (e) => {
@@ -192,6 +232,44 @@ export class PointerInput {
     return !t.mouseTracking() || e.shiftKey;
   }
 
+  // Links: the link key held over one underlines it (the pane draws
+  // linkShown), with a hand for the pointer.
+
+  /** The link under the mouse, as the desktop's linkUnder: none without the link key, or while a press selects or goes to the program. */
+  private linkUnder(t: Terminal): Link | undefined {
+    if (!linkHeld || !this.over || (this.down && this.down.kind !== "link")) return undefined;
+    const p = this.at(this.over, t);
+    return t.linkAt(p.col, p.row);
+  }
+
+  /**
+   * Finds the link under the mouse again, as the key, the mouse or the text
+   * under it changed; draws again when it is another (redraw), and reports
+   * whether it is.
+   */
+  hover(redraw: boolean): boolean {
+    const t = this.host.term();
+    const l = t && this.linkUnder(t);
+    const was = this.link;
+    if (l?.url === was?.url && l?.row === was?.row && l?.x0 === was?.x0 && l?.x1 === was?.x1) return false;
+    this.link = l;
+    this.canvas.style.cursor = l ? "pointer" : "";
+    if (redraw) this.host.redraw(true);
+    return true;
+  }
+
+  /** The cells to underline: the link the key is held over. */
+  linkShown(): Link | undefined {
+    return this.link;
+  }
+
+  /** Where the mouse is, and the link key, from a mouse event over the canvas. */
+  private track(e: PointerEvent) {
+    this.over = { clientX: e.clientX, clientY: e.clientY };
+    hovered.add(this);
+    holdLinkKey(linkKey(e));
+  }
+
   // The mouse (and a pen).
 
   private pointerDown(e: PointerEvent) {
@@ -201,8 +279,24 @@ export class PointerInput {
     if (!t || this.down) return;
     this.hideMenu();
     this.hideHandles();
+    this.track(e);
     const p = this.at(e, t);
     const button = buttonOf(e.button);
+    // The link key and the primary button over a link: it opens, and the
+    // press is the link's, before a program that tracks the mouse sees it.
+    // Over a hyperlink's cells with no link to open (a program's autolink
+    // over prose, or a scheme the page does not open), the press goes to no
+    // one either, as on the desktop.
+    if (e.button === 0 && linkKey(e)) {
+      this.hover(true);
+      const link = this.link;
+      if (link || t.hyperlinkAt(p.col, p.row) !== "") {
+        this.canvas.setPointerCapture(e.pointerId);
+        this.down = { id: e.pointerId, button, kind: "link" };
+        if (link) window.open(link.url, "_blank", "noopener,noreferrer");
+        return;
+      }
+    }
     // A click into a pane without the keyboard only gives it the
     // keyboard, as Ghostty's split focus does: the program gets nothing.
     const focusOnly = !this.host.focused();
@@ -225,6 +319,8 @@ export class PointerInput {
     if (e.pointerType === "touch") return this.touchMove(e);
     const t = this.host.term();
     if (!t) return;
+    this.track(e);
+    this.hover(true);
     const p = this.at(e, t);
     const d = this.down;
     if (d?.id === e.pointerId && d.kind === "select") {
@@ -233,7 +329,7 @@ export class PointerInput {
       this.host.redraw(true);
       return;
     }
-    if (d?.kind === "focus") return;
+    if (d?.kind === "focus" || d?.kind === "link") return;
     // Motion, with the button held or not: the encoder keeps what the
     // modes ask (1002 with a button, 1003 always), once a cell.
     if (!t.mouseTracking() || (!d && e.shiftKey)) return;
@@ -582,5 +678,13 @@ export class PointerInput {
     this.down = undefined;
     this.steering = undefined;
     this.hideHandles();
+    this.link = undefined;
+    this.canvas.style.cursor = "";
+  }
+
+  /** The pane closed: it no longer follows the link key. */
+  dispose() {
+    this.reset();
+    hovered.delete(this);
   }
 }

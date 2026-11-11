@@ -39,6 +39,7 @@ const functions = [
   "ghostty_mouse_encoder_setopt_from_terminal", "ghostty_mouse_encoder_reset", "ghostty_mouse_encoder_encode",
   "ghostty_mouse_event_new", "ghostty_mouse_event_free", "ghostty_mouse_event_set_action", "ghostty_mouse_event_set_button",
   "ghostty_mouse_event_clear_button", "ghostty_mouse_event_set_mods", "ghostty_mouse_event_set_position",
+  "ghostty_grid_ref_cell", "ghostty_grid_ref_graphemes", "ghostty_grid_ref_hyperlink_uri",
 ] as const;
 
 type Exports = { memory: WebAssembly.Memory } & Record<(typeof functions)[number], (...a: number[]) => number>;
@@ -85,7 +86,7 @@ const enums: Record<string, string[]> = {
   GhosttyCellWide: ["WIDE", "SPACER_TAIL", "SPACER_HEAD"],
   GhosttyKeyAction: ["PRESS", "REPEAT"],
   GhosttyKey: ["UNIDENTIFIED", "A", "ENTER", "ARROW_UP", "ARROW_DOWN"],
-  GhosttyTerminalData: ["ACTIVE_SCREEN", "MOUSE_TRACKING", "VIEWPORT_ACTIVE", "SELECTION", "MODE"],
+  GhosttyTerminalData: ["ACTIVE_SCREEN", "MOUSE_TRACKING", "VIEWPORT_ACTIVE", "SELECTION", "MODE", "COLS"],
   GhosttyTerminalScreen: ["ALTERNATE"],
   GhosttyTerminalScrollViewportTag: ["BOTTOM", "DELTA"],
   GhosttyStyleColorTag: ["NONE", "PALETTE", "RGB"],
