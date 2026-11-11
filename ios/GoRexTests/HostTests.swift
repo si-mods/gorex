@@ -430,6 +430,30 @@ nonisolated final class HostTests: XCTestCase {
         }
     }
 
+    /// A host that can't be reached tries again sooner first, then every
+    /// ten seconds, as long as it takes, and shows offline meanwhile.
+    @MainActor func testRetryBacksOff() async throws {
+        XCTAssertEqual(Host.backoff(after: 1), .milliseconds(500))
+        XCTAssertEqual(Host.backoff(after: 2), .seconds(1))
+        XCTAssertEqual(Host.backoff(after: 6), .seconds(10))
+        XCTAssertEqual(Host.backoff(after: 100), .seconds(10))
+        let http = try FakeHTTP()
+        defer { http.stop() }
+        http.respond = { _ in (500, [:]) }
+        let h = Host(HostConfig(name: "test", url: try await http.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("offline") { if case .offline = h.status { true } else { false } }
+        let end = ContinuousClock.now + .seconds(2.2)
+        while .now < end {
+            XCTAssertNotEqual(h.status, .connecting)
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        // At once, then after 0.5 s and 1 s; the next waits 2 s.
+        XCTAssertGreaterThanOrEqual(http.requests.count, 3)
+        XCTAssertLessThanOrEqual(http.requests.count, 4)
+    }
+
     /// The engine hears of the hosts as their list changes, as it loads
     /// and as one is added or removed; of one added, before it connects.
     @MainActor func testTailcatHostsTold() throws {
