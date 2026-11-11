@@ -1378,6 +1378,30 @@ func (a *App) emptied() bool {
 	return true
 }
 
+// moveTabToSpace moves a tab to the end of space w, its sessions going
+// on: into the window that shows w, or into w's layout. The tab is in w
+// before it leaves the window, so that the layout the window's last tab
+// leaves with, as a closed last tab does, has it there.
+func (a *App) moveTabToSpace(t *Tab, w *Workspace) {
+	st := a.st
+	if st == nil || t == nil || w == nil || w == a.ws || !slices.Contains(a.tabs, t) {
+		return
+	}
+	s := a.savedTab(t)
+	closePanes([]*Tab{t})
+	if o := w.app; o != nil {
+		l := o.snapshot()
+		l.Tabs = append(l.Tabs, s)
+		o.reconcile(l)
+		o.changed()
+	} else {
+		w.unkeep()
+		w.layout.Tabs = append(w.layout.Tabs, s)
+	}
+	a.removeTab(t)
+	st.save()
+}
+
 // moveTabToNewWindow moves a tab to a new workspace, in a window of its
 // own, its sessions going on. The last tab stays.
 func (a *App) moveTabToNewWindow(t *Tab) {
