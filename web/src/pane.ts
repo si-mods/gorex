@@ -43,12 +43,12 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
   return e;
 }
 
-/** The header's buttons, as the desktop's (paneActions): split right, split down, zoom and close. */
-const actions: [name: string, label: string, glyph: string][] = [
-  ["split-right", "Split Right", "◫"],
-  ["split-down", "Split Down", "⊟"],
-  ["zoom", "Zoom", "⤢"],
-  ["close", "Close Pane", "✕"],
+/** The header's buttons, as the desktop's (view.go paneActions), with its lucide icons: split right, split down, zoom and close. */
+const actions: [name: string, label: string][] = [
+  ["split-right", "Split Right"],
+  ["split-down", "Split Down"],
+  ["zoom", "Zoom"],
+  ["close", "Close Pane"],
 ];
 
 export class TerminalView {
@@ -101,8 +101,9 @@ export class TerminalView {
     this.el.dataset.block = block;
     const head = el("div", "pane-head");
     const buttons = el("span", "pane-actions");
-    for (const [name, label, glyph] of actions) {
-      const b = el("button", "pane-action", glyph);
+    for (const [name, label] of actions) {
+      const b = el("button", "pane-action");
+      b.append(el("span", "pane-icon"));
       b.type = "button";
       b.title = label;
       b.setAttribute("aria-label", label);

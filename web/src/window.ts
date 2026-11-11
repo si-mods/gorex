@@ -159,6 +159,8 @@ export class WindowView {
       }
       const shown = !this.zoomed || this.zoomed === block;
       p.el.hidden = !shown;
+      // A zoomed pane's zoom button shows minimize-2, as the desktop's.
+      p.el.classList.toggle("zoomed", this.zoomed === block);
       if (shown) place(p.el, this.zoomed ? [0, 0, 1, 1] : rect);
     }
     // The dividers, one for each split, when no pane is zoomed.

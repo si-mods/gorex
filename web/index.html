@@ -179,11 +179,21 @@
   /* As the desktop's paneActions: shown on the focused or hovered pane. */
   .pane-actions { display: flex; gap: 1px; opacity: 0; transition: opacity 0.16s; }
   .pane.focused .pane-actions, .pane:hover .pane-actions { opacity: 1; }
+  /* As view.go's iconButton(…, 26, 16): a 26px button, radius 26/2.6, a 16px lucide icon in the muted colour. */
   .pane-action {
-    width: 26px; height: 26px; padding: 0; border: 0; border-radius: 7px; background: none;
-    color: var(--muted); font: 14px/26px system-ui, sans-serif; cursor: pointer;
+    display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 10px;
+    background: none; color: var(--muted); cursor: pointer;
   }
   .pane-action:hover { background: var(--hover); color: var(--text); }
+  .pane-icon {
+    width: 16px; height: 16px; background: currentColor;
+    -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat;
+  }
+  .pane-action[data-action="split-right"] { --icon: url(icons/columns-2.svg); }
+  .pane-action[data-action="split-down"] { --icon: url(icons/rows-2.svg); }
+  .pane-action[data-action="zoom"] { --icon: url(icons/maximize-2.svg); }
+  .pane.zoomed .pane-action[data-action="zoom"] { --icon: url(icons/minimize-2.svg); }
+  .pane-action[data-action="close"] { --icon: url(icons/x.svg); }
   .pane-body { position: relative; flex: 1; min-height: 0; }
   .screen { position: absolute; inset: 0; display: block; }
   /* A divider: the gap between two panes, a grip on hover, as view.go's divider. */
