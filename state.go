@@ -771,40 +771,64 @@ func (a *App) offline(h *hostConn) bool {
 	return true
 }
 
-// newPane makes a pane with a new session in dir, on host h.
-func (a *App) newPane(h *hostConn, dir string, cols, rows int) *Pane {
-	return a.newPaneRun(h, dir, cols, rows, nil)
-}
-
-// newPaneRun is newPane for a pane that runs command instead of the login
-// shell, as a Rex client asks for.
-func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []string) *Pane {
+// newPaneRun makes a pane with a new session in dir on host h, that runs
+// command instead of the login shell when given, as a Rex client asks for.
+// The host answers in its time, up to the client's timeout, and the window
+// goes on meanwhile: place puts the pane on the main thread once the host
+// made its session, after the panes asked of the host before it, and
+// reports whether the pane has a place still; the session of one that has
+// not ends. One the host does not make shows its error, and no pane.
+func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []string, place func(*Pane) bool) {
 	if cols <= 0 {
 		cols, rows = 80, 24
 	}
-	var info rex.SessionInfo
 	id := a.id()
-	env := []string{"GOREX_PANE=" + strconv.Itoa(id)}
-	if h != nil {
-		env = append(env, "GOREX_HOST="+h.Name)
-	} else if a.hello.Host.Name != "" {
-		env = append(env, "GOREX_CLIENT="+a.hello.Host.Name)
+	env := []string{"GOREX_PANE=" + strconv.Itoa(id), "GOREX_HOST=" + h.Name}
+	c := a.clientOf(h)
+	update := h.update
+	if update == nil {
+		update = a.updater()
 	}
-	err := errors.New("rex: connection to the server lost")
-	if c := a.clientOf(h); c != nil {
-		info, err = c.Create(rex.CreateOptions{Command: command, Dir: dir, Cols: cols, Rows: rows, Env: env})
-	}
-	if err != nil {
-		log.Printf("creating a session: %v", err)
-		a.err, a.errMsg = err.Error(), nil
-		info = rex.SessionInfo{ID: "", Exited: true}
-	}
-	p := &Pane{ID: id, SID: info.ID, info: info, startDir: dir, host: h}
-	if p.info.Dir == "" {
-		p.info.Dir = dir
-	}
-	a.attach(p, cols, rows)
-	return p
+	prev, done := h.creating, make(chan struct{})
+	h.creating = done
+	go func() {
+		defer close(done)
+		var info rex.SessionInfo
+		err := errors.New("rex: connection to the server lost")
+		if c != nil {
+			info, err = c.Create(rex.CreateOptions{Command: command, Dir: dir, Cols: cols, Rows: rows, Env: env})
+		}
+		if err == nil {
+			// The host's next list may have it before its pane: adopt
+			// leaves it for the pane.
+			h.expecting(info.ID, true)
+		}
+		if prev != nil {
+			<-prev
+		}
+		update(func() {
+			if err != nil {
+				log.Printf("creating a session: %v", err)
+				a.err, a.errMsg = err.Error(), nil
+				return
+			}
+			h.expecting(info.ID, false)
+			// A window closed, or a host removed, meanwhile: the session
+			// goes on there, as their others do.
+			if a.quitting || !slices.Contains(a.hosts, h) {
+				return
+			}
+			p := &Pane{ID: id, SID: info.ID, info: info, startDir: dir, host: h}
+			if p.info.Dir == "" {
+				p.info.Dir = dir
+			}
+			a.attach(p, cols, rows)
+			if !place(p) {
+				p.end()
+				killOn(h, p.SID)
+			}
+		})
+	}()
 }
 
 // newBrowserPane makes a pane that shows url in a web view of the
@@ -1369,7 +1393,7 @@ func (a *App) newTabOn(h *hostConn, dir string) *Tab {
 
 // newTabAfter opens a tab with a shell in dir on host h: after tab after,
 // or last of the host's tabs when after is another host's. It opens none
-// while the host is not connected. The active tab stays.
+// while the host is not connected.
 func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
 	return a.newTabAfterRun(h, dir, after, nil)
 }
@@ -1377,7 +1401,8 @@ func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
 // newTabAfterRun is newTabAfter for a tab whose first pane runs command
 // instead of the login shell. One of this machine the server makes, the
 // active tab, and returns once the window shows it, as tests have it, else
-// nil.
+// nil. One of a host shows as the host made its session, after the tab
+// active then, as a tab of the host asked for before it is.
 func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []string) *Tab {
 	if a.offline(h) {
 		return nil
@@ -1394,23 +1419,23 @@ func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []stri
 		a.ask(c, func(res rex.LayoutCommand) { t = a.tabByUID(res.Tab) })
 		return t
 	}
-	t := a.makeTab("")
-	p := a.newPaneRun(h, dir, 0, 0, command)
-	t.Root = &Node{ID: a.id(), Pane: p}
-	p.Tab, p.Node = t, t.Root
-	t.setFocus(p)
-	at := len(a.tabs)
-	if i := slices.Index(a.tabs, after); i >= 0 && after.host() == h {
-		at = i + 1
-	}
-	cur := a.tab()
-	a.tabs = slices.Insert(a.tabs, at, t)
-	if cur != nil {
-		a.active = slices.Index(a.tabs, cur)
-	}
-	a.groupTabs()
-	a.changed()
-	return t
+	a.newPaneRun(h, dir, 0, 0, command, func(p *Pane) bool {
+		t := a.makeTab("")
+		t.Root = &Node{ID: a.id(), Pane: p}
+		p.Tab, p.Node = t, t.Root
+		t.setFocus(p)
+		at := len(a.tabs)
+		if after := a.tab(); after != nil && after.host() == h {
+			at = a.active + 1
+		}
+		a.tabs = slices.Insert(a.tabs, at, t)
+		a.groupTabs()
+		a.active = slices.Index(a.tabs, t)
+		a.focusReq = p
+		a.changed()
+		return true
+	})
+	return nil
 }
 
 // newBrowserTab opens a tab of a browser pane after the active tab, and
@@ -1487,7 +1512,8 @@ func (a *App) splitPane(old *Pane, vertical bool, dir string) *Pane {
 
 // splitPaneRun is splitPane for a pane that runs command instead of the
 // login shell. One of this machine the server makes; it returns once the
-// window shows it, as tests have it, else nil.
+// window shows it, as tests have it, else nil. One of a host shows as the
+// host made its session, unless old closed meanwhile.
 func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []string) *Pane {
 	if a.offline(old.host) {
 		return nil
@@ -1514,9 +1540,17 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 	default:
 		cols = max(cols/2, 10)
 	}
-	p := a.newPaneRun(old.host, dir, cols, rows, command)
-	a.splitWith(old, p, vertical)
-	return p
+	a.newPaneRun(old.host, dir, cols, rows, command, func(p *Pane) bool {
+		if old.closed {
+			return false
+		}
+		a.splitWith(old, p, vertical)
+		if a.tab() == old.Tab {
+			a.focusReq = p
+		}
+		return true
+	})
+	return nil
 }
 
 // splitBrowser splits the focused pane with a browser pane, right of it or
@@ -2185,7 +2219,8 @@ func (a *App) newFloat(command []string) *Pane { return a.newFloatThen(command, 
 
 // newFloatThen is newFloat, then runs then with the float once the window
 // shows it: of this machine, the server makes it, and it returns it only
-// as tests have it, at once.
+// as tests have it, at once; of a host, it shows as the host made its
+// session, unless the tab closed meanwhile.
 func (a *App) newFloatThen(command []string, then func(*Pane)) *Pane {
 	t := a.tab()
 	if t == nil {
@@ -2207,19 +2242,24 @@ func (a *App) newFloatThen(command []string, then func(*Pane)) *Pane {
 	if cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	p := a.newPaneRun(h, a.currentDir(), cols, rows, command)
-	p.Tab = t
-	x, y, w, hh := floatBox(len(t.Floats))
-	a.revealFloat(t, a.floatOver(t, p, savedFloat{X: x, Y: y, W: w, H: hh}))
-	t.setFocus(p)
-	if a.tab() == t {
-		a.focusReq = p
-	}
-	a.changed()
-	if then != nil {
-		then(p)
-	}
-	return p
+	a.newPaneRun(h, a.currentDir(), cols, rows, command, func(p *Pane) bool {
+		if !slices.Contains(a.tabs, t) {
+			return false
+		}
+		p.Tab = t
+		x, y, w, hh := floatBox(len(t.Floats))
+		a.revealFloat(t, a.floatOver(t, p, savedFloat{X: x, Y: y, W: w, H: hh}))
+		t.setFocus(p)
+		if a.tab() == t {
+			a.focusReq = p
+		}
+		a.changed()
+		if then != nil {
+			then(p)
+		}
+		return true
+	})
+	return nil
 }
 
 // raiseFloat puts f above the tab's other floats, and lowerFloat below

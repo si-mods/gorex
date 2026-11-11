@@ -560,10 +560,12 @@ func TestRestartFocusedOnHost(t *testing.T) {
 	t.Cleanup(a.stopHosts)
 	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
-	tab := a.newTabOn(h, "")
+	tab := hostTab(t, a, tt, h, "")
 	a.split(true)
+	waitFor(t, tt, "the split", func() bool { return len(tab.panes()) == 2 })
 	p1, old := tab.panes()[0], tab.Focus
 	a.restartFocused()
+	waitFor(t, tt, "the restarted pane", func() bool { return tab.Focus != old })
 	p := tab.Focus
 	if p == old || tab.panes()[1] != p || !old.closed {
 		t.Fatal("the restarted pane did not take the old one's place, focused")

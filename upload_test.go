@@ -42,11 +42,7 @@ func remotePaneOf(t *testing.T, a *App, tt *ui.Tester, dir string) (*hostConn, *
 	t.Cleanup(a.stopHosts)
 	h := a.addHost(savedHost{ID: "h1", Name: "office-mac", Address: proxy.path})
 	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
-	rt := a.newTabOn(h, dir)
-	if rt == nil {
-		t.Fatal("no tab on the host")
-	}
-	p := rt.Focus
+	p := hostTab(t, a, tt, h, dir).Focus
 	waitFor(t, tt, "the remote shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
 	return h, proxy, p, remote
 }
@@ -240,6 +236,7 @@ func TestClosePaneMidUpload(t *testing.T) {
 	a, tt := newTestApp(t)
 	_, _, p, remote := remotePaneOf(t, a, tt, t.TempDir())
 	a.split(false) // the tab stays
+	waitFor(t, tt, "the split", func() bool { return len(p.Tab.panes()) == 2 })
 	sid := p.SID
 	path := dropped(t, "big.bin", strings.Repeat("x", 256<<10))[0]
 	held := heldFile{size: 256 << 10, reached: make(chan struct{}), release: make(chan struct{}), reaching: new(sync.Once)}
@@ -842,6 +839,7 @@ func TestUploadMovesWithItsPane(t *testing.T) {
 	h, _, p := remotePane(t, a, tt, t.TempDir())
 	b := a.st.openWindow(a.st.addWorkspace())
 	b.newTabOn(h, t.TempDir())
+	waitFor(t, tt, "the tab on the host", func() bool { return len(b.tabsOn(h)) == 1 })
 	release := gateUploads(t)
 	defer release()
 	a.upload(p, dropped(t, "moved.txt", "x"))
@@ -865,6 +863,7 @@ func TestClosedPaneDropsItsPaste(t *testing.T) {
 	a, tt := newTestApp(t)
 	h, _, p := remotePane(t, a, tt, t.TempDir())
 	a.split(false) // the tab stays
+	waitFor(t, tt, "the split", func() bool { return len(p.Tab.panes()) == 2 })
 	release := gateUploads(t)
 	defer release()
 	a.upload(p, dropped(t, "closed.txt", "x"))
