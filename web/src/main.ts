@@ -1,30 +1,38 @@
-// GoRex's web client: the sessions the gateway serves, and one terminal
-// at a time, live, over the same API the iOS app speaks.
+// GoRex's web client: the sessions the gateway serves, and a window's
+// panes, live, over the same API the iOS app speaks.
 import { Ghostty } from "./ghostty";
-import { Control, DataStream, RexError, TerminalStream } from "./rex";
-import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
+import { shortcut } from "./keys";
+import { describe } from "./pane";
+import { Control } from "./rex";
+import { desktopTheme, Theme } from "./terminal";
 import { chosenName, isLight, loadThemes, mountPicker, ThemeEntry, themeColours } from "./themes";
+import { borderLeaf, layoutOf, leavesOf, WindowHost, WindowView } from "./window";
 
 const $ = (id: string) => document.getElementById(id)!;
-const canvas = $("screen") as HTMLCanvasElement;
-const pane = $("pane");
-const ctx = canvas.getContext("2d", { alpha: false })!;
-
-/** The desktop's terminal font (style.go, settings.go): its family, size in CSS pixels and line height. */
-const fontFamily = getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "monospace";
-const fontSize = 11.6;
-const lineHeight = 1;
-/** The padding around the grid, in CSS pixels, as the desktop's (MyGo's padX, padY). */
-const padX = 6, padY = 4;
-/** The cursor blinks every 600 ms while the terminal has the focus, as on the desktop. */
-const blinkPeriod = 600;
+const stage = $("stage");
+const shell = { flavor: "com.superlogical.terminal.shell" };
 
 let g: Ghostty;
 let control: Control | undefined;
 let token: string | undefined;
-let open: TerminalView | undefined;
 /** The theme chosen in this browser, over the desktop's colours; none keeps the host's. */
 let chosen: Theme | undefined;
+
+/** A session the gateway serves, and its last view. */
+interface Session {
+  id: string;
+  label: string;
+  view?: any;
+  reading?: boolean;
+  again?: boolean;
+}
+
+/** The sessions, in the order the host lists them. */
+const sessions = new Map<string, Session>();
+/** The terminals' titles, by block, kept up by title_changed. */
+const titles = new Map<string, string>();
+/** The window this page shows. */
+let shown: WindowView | undefined;
 
 /** The page's chrome follows the terminal's background: light for a light one. */
 function scheme(bg: [number, number, number]) {
@@ -35,9 +43,33 @@ function status(s: string) {
   $("status").textContent = s;
 }
 
-function describe(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
+/** What a window and its panes need of the page. */
+const host: WindowHost = {
+  control: () => control,
+  get g() {
+    return g;
+  },
+  chosen: () => chosen,
+  status,
+  scheme,
+  titleOf: (b) => titles.get(b) || "Terminal",
+  action: (p, name) => {
+    shown?.setFocus(p.block, true);
+    run(name);
+  },
+  focusBlock: (w, block) => {
+    control?.call("session.focus_block", { session_id: w.session, block_id: block }).catch((e) => console.warn("focus", e));
+  },
+  resizeSplit: (w, s, ratio) => {
+    const before = borderLeaf(s.before, s.direction, true), after = borderLeaf(s.after, s.direction, false);
+    control
+      ?.call("session.resize_pane", { session_id: w.session, direction: s.direction, before_block_id: before, after_block_id: after, ratio })
+      .catch((e) => {
+        status(`Could not move the divider: ${describe(e)}`);
+        refresh(w.session, true);
+      });
+  },
+};
 
 async function main() {
   status("Loading libghostty-vt…");
@@ -50,10 +82,10 @@ async function main() {
     const pick = (t?: ThemeEntry) => {
       chosen = t && themeColours(t);
       scheme(chosen?.background ?? desktopTheme().background!);
-      open?.setChosen(chosen);
+      for (const p of shown?.panes.values() ?? []) p.setChosen(chosen);
     };
     pick(themes.find((t) => t.name === chosenName()));
-    if (themes.length) mountPicker($("themes"), themes, pick, () => pane.focus());
+    if (themes.length) mountPicker($("themes"), themes, pick, () => shown?.focusKeys());
   } catch (e) {
     status(`Could not load libghostty-vt: ${describe(e)}`);
     return;
@@ -74,9 +106,7 @@ async function connect() {
   }
   control = c;
   token = c.reconnectToken;
-  c.onEvent = (e) => {
-    if (["session_created", "session_destroyed", "session_view_changed", "session_label_changed"].includes(e.type)) relist();
-  };
+  c.onEvent = (e) => event(e.type, e.sessionID, e.payload);
   c.onClose = (reason) => {
     if (control !== c) return;
     control = undefined;
@@ -87,411 +117,364 @@ async function connect() {
     await c.call("session.bootstrap", { event_scope: "all" });
     await list();
     status("Connected");
-    open?.start();
+    for (const p of shown?.panes.values() ?? []) p.start();
   } catch (e) {
     status(`Connected, but the sessions could not be read: ${describe(e)}`);
   }
 }
 
-let listing: Promise<void> | undefined;
-let listAgain = false;
-
-/** Reads the sessions again: one read at a time, repeated when asked meanwhile. */
-function relist() {
-  if (listing) {
-    listAgain = true;
-    return;
-  }
-  listing = list().finally(() => {
-    listing = undefined;
-    if (listAgain) {
-      listAgain = false;
-      relist();
+/**
+ * Follows the host: a session made or gone, a view changed (a split, a
+ * closed pane, a ratio, a window), a title. Only what changed is read again.
+ */
+function event(type: string, sid: string | undefined, p: any) {
+  switch (type) {
+    case "session_created": {
+      const id = p.session?.session_id;
+      if (id && !sessions.has(id)) {
+        sessions.set(id, { id, label: p.session.label ?? "" });
+        refresh(id, true);
+      }
+      break;
     }
-  });
+    case "session_destroyed": {
+      const id = p.session_id ?? sid;
+      if (!id) break;
+      sessions.delete(id);
+      if (shown?.session === id) hide();
+      sidebar();
+      break;
+    }
+    case "session_label_changed": {
+      const s = sid && sessions.get(sid);
+      if (s) {
+        s.label = p.label ?? s.label;
+        sidebar();
+      }
+      break;
+    }
+    case "session_view_changed": {
+      const s = sid && sessions.get(sid);
+      if (s && (p.revision ?? Infinity) > (s.view?.revision ?? -1)) refresh(s.id);
+      break;
+    }
+    case "block_event":
+      if (p.name === "title_changed" && p.block_id) {
+        titles.set(p.block_id, p.payload?.title ?? "");
+        sidebar();
+        shown?.retitle();
+      }
+      break;
+  }
 }
 
-/** Lists each session's windows, and each window's terminals. */
+/** Lists the sessions and reads each one's view. */
 async function list() {
   const c = control;
   if (!c) return;
-  const sessions: any[] = (await c.call("session.list")).payload.sessions ?? [];
-  const nav = document.createElement("nav");
-  for (const s of sessions) {
-    let v: any;
-    try {
-      v = (await c.call("session.attach", { session_id: s.session_id })).payload.view;
-    } catch {
-      continue;
-    }
-    const h = document.createElement("h2");
-    h.textContent = s.label || v.label || "Session";
-    nav.append(h);
-    for (const w of v.windows ?? []) {
-      const blocks: string[] = (w.layers ?? []).flatMap((l: any) => (l.blocks ?? []).map((b: any) => b.block_id));
-      blocks.forEach((block, i) => {
-        const b = document.createElement("button");
-        b.className = "block";
-        b.dataset.block = block;
-        b.textContent = (w.label || "Window") + (blocks.length > 1 ? ` · ${i + 1}` : "");
-        if (open?.block === block) b.classList.add("open");
-        b.onclick = () => show(s.session_id, block);
-        nav.append(b);
-        c.callBlock("title", s.session_id, block).then(
-          (r) => r.title && (b.textContent = r.title + (blocks.length > 1 ? ` · ${i + 1}` : "")),
-          () => {},
-        );
-      });
+  const listed: any[] = (await c.call("session.list")).payload.sessions ?? [];
+  const ids = new Set(listed.map((s) => s.session_id));
+  for (const id of sessions.keys()) if (!ids.has(id)) sessions.delete(id);
+  for (const s of listed) {
+    const had = sessions.get(s.session_id);
+    if (had) had.label = s.label ?? had.label;
+    else sessions.set(s.session_id, { id: s.session_id, label: s.label ?? "" });
+  }
+  if (shown && !sessions.has(shown.session)) hide();
+  await Promise.all(listed.map((s) => refresh(s.session_id, true)));
+  sidebar();
+}
+
+/**
+ * Reads a session's view: attached first, as data connections and the
+ * layout methods need. One read at a time; a change meanwhile reads again.
+ */
+async function refresh(id: string, attach = false) {
+  const s = sessions.get(id);
+  const c = control;
+  if (!s || !c) return;
+  if (s.reading) {
+    s.again = true;
+    return;
+  }
+  s.reading = true;
+  try {
+    do {
+      s.again = false;
+      const fresh = attach;
+      const v = attach
+        ? (await c.call("session.attach", { session_id: id })).payload.view
+        : (await c.call("session.view", { session_id: id })).payload;
+      attach = false;
+      if (sessions.get(id) !== s) return;
+      if (fresh || !s.view || v.revision > s.view.revision) apply(s, v);
+    } while (s.again);
+  } catch (e) {
+    console.warn("session view", id, e);
+  } finally {
+    s.reading = false;
+  }
+}
+
+/** Takes a session's new view: the sidebar, titles of new blocks, and the shown window. */
+function apply(s: Session, v: any) {
+  s.view = v;
+  if (v.label) s.label = v.label;
+  for (const w of v.windows ?? []) {
+    for (const b of leavesOf(layoutOf(w))) {
+      if (titles.has(b)) continue;
+      titles.set(b, "");
+      readTitle(s.id, b, 3);
     }
   }
-  if (!nav.children.length) nav.textContent = "No sessions on this machine.";
+  if (shown?.session === s.id) {
+    const w = (v.windows ?? []).find((w: any) => w.window_id === shown!.window);
+    if (w) shown.update(w);
+    else {
+      // The window closed: show the session's active one, as the desktop does.
+      const next = v.active_window_id ?? v.windows?.[0]?.window_id;
+      hide();
+      if (next) show(s.id, next, false);
+    }
+  }
+  sidebar();
+  showWanted();
+}
+
+/**
+ * Reads a block's title. A new block's shell may set it only after this
+ * read and before the gateway first looks, which then tells no
+ * title_changed: an empty title is read again a few times.
+ */
+function readTitle(session: string, b: string, tries: number) {
+  control?.callBlock("title", session, b).then(
+    (r) => {
+      if (titles.get(b)) return;
+      if (r.title) {
+        titles.set(b, r.title);
+        sidebar();
+        shown?.retitle();
+      } else if (tries > 1) setTimeout(() => readTitle(session, b, tries - 1), 1000);
+    },
+    () => {},
+  );
+}
+
+/** A window's title, as the desktop names a tab: its terminal's title, else its label. */
+function windowTitle(w: any): string {
+  const blocks = leavesOf(layoutOf(w));
+  const focused = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
+  return (focused && titles.get(focused)) || w.label || "Window";
+}
+
+/** The sidebar: each session, and a row for each of its windows. */
+function sidebar() {
+  const nav = document.createElement("nav");
+  for (const s of sessions.values()) {
+    const v = s.view;
+    if (!v) continue;
+    const h = document.createElement("h2");
+    const name = document.createElement("span");
+    name.textContent = s.label || v.label || "Session";
+    const add = document.createElement("button");
+    add.className = "icon";
+    add.type = "button";
+    add.textContent = "+";
+    add.title = "New Window";
+    add.onclick = () => newWindow(s.id);
+    h.append(name, add);
+    nav.append(h);
+    for (const w of v.windows ?? []) {
+      const row = document.createElement("div");
+      row.className = "window";
+      row.dataset.window = w.window_id;
+      if (shown?.window === w.window_id) row.classList.add("open");
+      const b = document.createElement("button");
+      b.className = "block";
+      b.type = "button";
+      const title = document.createElement("span");
+      title.className = "title";
+      title.textContent = windowTitle(w);
+      b.append(title);
+      const n = leavesOf(layoutOf(w)).length;
+      if (n > 1) {
+        const count = document.createElement("span");
+        count.className = "count";
+        count.textContent = String(n);
+        b.append(count);
+      }
+      b.onclick = () => show(s.id, w.window_id, true);
+      const x = document.createElement("button");
+      x.className = "icon close";
+      x.type = "button";
+      x.textContent = "✕";
+      x.title = "Close Window";
+      x.onclick = () => closeWindow(s.id, w.window_id);
+      row.append(b, x);
+      nav.append(row);
+    }
+  }
+  if (!nav.children.length) nav.textContent = sessions.size ? "" : "No sessions on this machine.";
   $("list").replaceChildren(nav);
 }
 
-function show(session: string, block: string) {
-  if (open?.block === block) return pane.focus();
-  open?.close();
-  open = new TerminalView(session, block);
-  for (const b of document.querySelectorAll<HTMLElement>("button.block")) b.classList.toggle("open", b.dataset.block === block);
-  open.start();
-  pane.focus();
+/** Shows a session's window, its panes live. */
+function show(session: string, window: string, keys: boolean) {
+  if (shown?.session === session && shown.window === window) {
+    if (keys) shown.focusKeys();
+    return;
+  }
+  const w = sessions.get(session)?.view?.windows?.find((w: any) => w.window_id === window);
+  if (!w) return;
+  hide();
+  shown = new WindowView(session, window, stage, host);
+  shown.update(w);
+  if (keys) shown.focusKeys();
+  sidebar();
 }
 
-/** One block's terminal: its stream fed to libghostty-vt, drawn on the canvas, the keys typed written back. */
-class TerminalView {
-  private term?: Terminal;
-  private data?: DataStream;
-  private stream?: TerminalStream;
-  private closed = false;
-  private generation = 0;
-  private font!: Font;
-  /** Set when the fonts loaded since the font was measured. */
-  fontStale = false;
-  /** The grid's top left on the canvas, in device pixels. */
-  private ox = 0;
-  private oy = 0;
-  /** The colours of the stream's last theme message. */
-  private host: Theme = {};
-  /** The colours over the desktop's: the chosen theme, until a theme message replaces it. */
-  private theme: Theme = chosen ?? {};
-  /** Wheel scrolling not yet a whole row. */
-  private scrolled = 0;
-  private blinkStart = performance.now();
-  private blinkTimer?: number;
-  /** The background the canvas was filled with last. */
-  private painted = "";
-  private fitted?: { cols: number; rows: number };
-  private sizing?: number;
-  private frame?: number;
-  private full = true;
-  private typed: Uint8Array[] = [];
-  private typing = false;
-  /** Whether this view's claim of the block waits for its resize message, and a message it held meanwhile. */
-  private claiming = false;
-  private stale?: { cols: number; rows: number };
+function hide() {
+  shown?.close();
+  shown = undefined;
+}
 
-  constructor(readonly session: string, readonly block: string) {
-    this.layout();
+/** A window made here, to show when the session's view has it. */
+let wantWindow: { session: string; window: string } | undefined;
+
+function showWanted() {
+  const w = wantWindow;
+  if (w && sessions.get(w.session)?.view?.windows?.some((x: any) => x.window_id === w.window)) {
+    wantWindow = undefined;
+    show(w.session, w.window, true);
   }
+}
 
-  /** Opens the stream from the start: a ticket, a HELLO, a new snapshot. */
-  async start() {
-    const c = control;
-    if (!c || this.closed) return;
-    const gen = ++this.generation;
-    this.data?.close();
-    status("Opening the terminal…");
-    try {
-      const ticket = (
-        await c.call("data.connect", {
-          session_id: this.session, block_id: this.block, data_ref_id: "terminal", subprotocol: "rex.data.terminal.v1",
-        })
-      ).payload.ticket;
-      if (gen !== this.generation) return;
-      const d = new DataStream();
-      this.data = d;
-      d.onBytes = (b) => d === this.data && this.receive(b);
-      d.onDrop = (code) => {
-        if (d !== this.data || this.closed) return;
-        if (code === 4000) status("The window closed.");
-        else {
-          status(`The terminal's connection dropped (${code}). Reopening…`);
-          setTimeout(() => gen === this.generation && this.start(), 1000);
+async function newWindow(session: string) {
+  try {
+    const r = (await control!.call("session.new_window", { session_id: session, focus: false, layout: { block: shell } })).payload;
+    // Shown once a view has it: this read's, or one already on its way.
+    wantWindow = r.window_id && { session, window: r.window_id };
+    await refresh(session);
+    showWanted();
+  } catch (e) {
+    status(`Could not open a window: ${describe(e)}`);
+  }
+}
+
+function closeWindow(session: string, window: string) {
+  control?.call("session.close_window", { session_id: session, window_id: window }).catch((e) => status(`Could not close the window: ${describe(e)}`));
+}
+
+/** The windows in the sidebar's order. */
+function windows(): [string, string][] {
+  return [...sessions.values()].flatMap((s) => (s.view?.windows ?? []).map((w: any) => [s.id, w.window_id] as [string, string]));
+}
+
+/** Runs one of the window's commands, from a shortcut or a pane's button. */
+function run(name: string) {
+  const w = shown;
+  if (name === "next-window" || name === "previous-window") {
+    const all = windows();
+    if (!all.length) return;
+    const at = w ? all.findIndex(([, id]) => id === w.window) : -1;
+    const n = all.length;
+    const [s, id] = all[name === "next-window" ? (at + 1) % n : at < 0 ? n - 1 : (at - 1 + n) % n];
+    show(s, id, true);
+    return;
+  }
+  if (!w) return;
+  const block = w.focus;
+  const c = control;
+  if (!c) return;
+  const fail = (what: string) => (e: unknown) => status(`Could not ${what}: ${describe(e)}`);
+  switch (name) {
+    case "split-right":
+    case "split-down":
+      if (!block) return;
+      c.call("session.new_split", {
+        session_id: w.session, anchor_id: block, direction: name === "split-right" ? "horizontal" : "vertical",
+        side: "after", focus: true, layout: { block: shell },
+      }).then((r) => {
+        const id = r.payload.block_ids?.[0];
+        if (id && shown === w) {
+          w.want = id;
+          // Where the keyboard is in the window, it goes to the new pane.
+          if (w.panes.has(id)) w.setFocus(id, false);
         }
-      };
-      await d.open(ticket);
-      if (gen !== this.generation) return d.close();
-      this.stream = new TerminalStream(d.nonce);
-      status("Connected");
-    } catch (e) {
-      if (gen === this.generation) status(`Could not open the terminal: ${describe(e)}`);
-    }
-  }
-
-  private receive(bytes: Uint8Array) {
-    for (const item of this.stream!.feed(bytes)) {
-      switch (item.kind) {
-        case "snapshot":
-          this.term?.free();
-          try {
-            this.term = Terminal.fromSnapshot(g, item.data);
-          } catch (e) {
-            this.term = undefined;
-            status(`The terminal's snapshot could not be read: ${describe(e)}`);
-            return;
-          }
-          // Drawn at this view's size, which the block takes next, as the
-          // iOS app does: the program's repaint after the resize then lands
-          // on a screen of its size.
-          this.term.setTheme(desktopTheme());
-          this.term.setTheme(this.theme);
-          if (this.fitted) this.term.resize(this.fitted.cols, this.fitted.rows, this.font.w, this.font.h);
-          this.full = true;
-          this.claim();
-          break;
-        case "output":
-          this.term?.write(item.data);
-          break;
-        case "message":
-          this.message(item.message);
-          break;
+      }, fail("split the pane"));
+      break;
+    case "close":
+      if (block) c.call("block.close", { session_id: w.session, block_id: block }).catch(fail("close the pane"));
+      break;
+    case "zoom":
+      if (block) c.call("session.zoom_block", { session_id: w.session, block_id: block, zoom: w.zoomedBlock !== block }).catch(fail("zoom the pane"));
+      break;
+    case "new-window":
+      newWindow(w.session);
+      break;
+    case "close-window":
+      closeWindow(w.session, w.window);
+      break;
+    case "focus-left":
+    case "focus-right":
+    case "focus-up":
+    case "focus-down": {
+      const [dx, dy] = { "focus-left": [-1, 0], "focus-right": [1, 0], "focus-up": [0, -1], "focus-down": [0, 1] }[name];
+      const b = w.neighbour(dx, dy);
+      if (b) {
+        w.setFocus(b, true);
+        w.focusKeys();
       }
+      break;
     }
-    this.redraw();
-  }
-
-  private message(m: any) {
-    switch (m.type) {
-      case "theme":
-        // Each message replaces the last one's colours, the chosen theme's too.
-        this.host = this.theme = themeOf(m);
-        this.applyTheme();
-        break;
-      case "resize":
-        // The server polls the size, so a message may follow the program's
-        // repaint for it. This view's own size it has already; until the
-        // message with this view as owner comes, one with the block's old
-        // size is stale, and held in case the claim fails. Another owner's
-        // size, as when the desktop took the block back, applies.
-        if (m.owner === control?.clientID) {
-          this.claiming = false;
-          this.stale = undefined;
-        } else if (this.claiming) {
-          this.stale = m;
-        } else {
-          this.resizeTo(m);
-        }
-        break;
-      case "child_exited":
-        status(`The program exited (${m.exit_code ?? 0}).`);
-        break;
+    case "resize-left":
+    case "resize-right":
+    case "resize-up":
+    case "resize-down": {
+      // The nearest split of that orientation moves its divider a step, as the desktop's keys do.
+      const vertical = name === "resize-up" || name === "resize-down";
+      const s = w.splitAround(vertical);
+      if (!s) return;
+      const step = name === "resize-left" || name === "resize-up" ? -0.05 : 0.05;
+      w.setRatio(s, s.ratio + step);
+      host.resizeSplit(w, s, s.ratio);
+      break;
     }
-  }
-
-  private applyTheme() {
-    this.term?.setTheme(desktopTheme());
-    this.term?.setTheme(this.theme);
-    this.full = true;
-    this.redraw();
-  }
-
-  /** A theme chosen now, or the host's colours (none), as a theme message from the stream would be. */
-  setChosen(t?: Theme) {
-    this.theme = t ?? this.host;
-    this.applyTheme();
-  }
-
-  private resizeTo(m: { cols: number; rows: number }) {
-    this.term?.resize(m.cols, m.rows, this.font.w, this.font.h);
-    this.full = true;
-  }
-
-  /** Owns the block, so that it takes this view's size. */
-  private async claim() {
-    this.claiming = true;
-    try {
-      await control?.call("session.own_block", { session_id: this.session, block_ids: [this.block], mode: "take" });
-      this.sendSize();
-    } catch (e) {
-      console.warn("could not own the block", e);
-      // Not owned, the block keeps its size: draw at it.
-      this.claiming = false;
-      if (this.stale) this.resizeTo(this.stale);
-      this.stale = undefined;
-    }
-  }
-
-  /**
-   * Sizes the canvas to the pane in whole device pixels, and the terminal
-   * to the canvas less its padding, at the device's pixel ratio.
-   */
-  layout(device?: { width: number; height: number }) {
-    const scale = window.devicePixelRatio || 1;
-    const r = pane.getBoundingClientRect();
-    canvas.width = Math.max(1, device?.width ?? Math.round(r.width * scale));
-    canvas.height = Math.max(1, device?.height ?? Math.round(r.height * scale));
-    canvas.style.width = `${canvas.width / scale}px`;
-    canvas.style.height = `${canvas.height / scale}px`;
-    if (this.font?.scale !== scale || this.fontStale) {
-      this.font = new Font(fontFamily, fontSize, scale, lineHeight);
-      this.fontStale = false;
-    }
-    this.ox = Math.round(padX * scale);
-    this.oy = Math.round(padY * scale);
-    this.full = true;
-    const cols = Math.max(2, Math.floor((canvas.width - 2 * this.ox) / this.font.w));
-    const rows = Math.max(1, Math.floor((canvas.height - 2 * this.oy) / this.font.h));
-    if (this.fitted?.cols !== cols || this.fitted?.rows !== rows) {
-      this.fitted = { cols, rows };
-      this.term?.resize(cols, rows, this.font.w, this.font.h);
-      clearTimeout(this.sizing);
-      this.sizing = window.setTimeout(() => this.sendSize(), 100);
-    }
-    this.redraw();
-  }
-
-  private sendSize() {
-    const s = this.fitted;
-    if (!s || !this.term || this.closed) return;
-    control
-      ?.callBlock("resize", this.session, this.block, {
-        columns: s.cols, rows: s.rows, cell_width_px: this.font.w, cell_height_px: this.font.h,
-      })
-      .catch((e) => console.warn("resize", e));
-  }
-
-  /** Draws on the next frame what changed since the last. */
-  redraw() {
-    if (this.frame !== undefined) return;
-    this.frame = requestAnimationFrame(() => {
-      this.frame = undefined;
-      if (!this.term || this.closed) return;
-      const focused = document.activeElement === pane && document.hasFocus();
-      // The padding takes the background too, as a program may change it (OSC 11).
-      const bg = `rgb(${this.term.background().join(",")})`;
-      if (this.full || bg !== this.painted) {
-        this.full = true;
-        this.painted = ctx.fillStyle = pane.style.background = bg;
-        scheme(this.term.background());
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
-      const since = performance.now() - this.blinkStart;
-      this.term.draw(ctx, {
-        font: this.font, ox: this.ox, oy: this.oy, full: this.full, focused,
-        blinkOff: since % (2 * blinkPeriod) >= blinkPeriod,
-      });
-      this.full = false;
-      // The next phase of the blink.
-      clearTimeout(this.blinkTimer);
-      if (focused && this.term.blinking) this.blinkTimer = window.setTimeout(() => this.redraw(), blinkPeriod - (since % blinkPeriod));
-    });
-  }
-
-  /** Restarts the blink with the cursor on, as typing and the focus do. */
-  wake() {
-    this.blinkStart = performance.now();
-    this.redraw();
-  }
-
-  /**
-   * Scrolls as the desktop's wheel does: the scrollback, or the arrow keys
-   * in a full-screen program (alternate scroll). A program that takes the
-   * mouse gets nothing, as this client reports no mouse yet.
-   */
-  wheel(e: WheelEvent) {
-    const t = this.term;
-    if (!t || e.ctrlKey) return;
-    e.preventDefault();
-    const rowPx = this.font.h / this.font.scale;
-    const dy = e.deltaMode === 1 ? e.deltaY * rowPx : e.deltaMode === 2 ? e.deltaY * pane.clientHeight : e.deltaY;
-    this.scrolled += dy / rowPx;
-    const rows = Math.trunc(this.scrolled);
-    this.scrolled -= rows;
-    if (rows === 0 || t.mouseTracking()) return;
-    if (t.altScreen()) {
-      const key = rows < 0 ? "ArrowUp" : "ArrowDown";
-      const b = t.encodeKey(new KeyboardEvent("keydown", { code: key, key }));
-      if (b) for (let i = 0; i < Math.abs(rows); i++) this.type(b);
-      return;
-    }
-    t.scrollBy(rows);
-    this.redraw();
-  }
-
-  key(e: KeyboardEvent) {
-    if (!this.term || e.isComposing) return;
-    const b = this.term.encodeKey(e);
-    if (!b) return;
-    e.preventDefault();
-    // Typing shows the screen again, as on the desktop.
-    if (!this.term.atBottom()) this.term.scrollBy("bottom");
-    this.wake();
-    this.type(b);
-  }
-
-  /**
-   * Writes what was typed: one write at a time, as the server runs writes
-   * in any order, and what comes meanwhile goes together next.
-   */
-  private type(b: Uint8Array) {
-    this.typed.push(b);
-    this.write();
-  }
-
-  private async write() {
-    if (this.typing || this.closed || !this.typed.length) return;
-    const all = new Uint8Array(this.typed.reduce((n, b) => n + b.length, 0));
-    let at = 0;
-    for (const b of this.typed) all.set(b, (at += b.length) - b.length);
-    this.typed = [];
-    this.typing = true;
-    try {
-      await control?.callBlock("write", this.session, this.block, { data: new TextDecoder().decode(all) });
-    } catch (e) {
-      if (e instanceof RexError && e.code === "offline") this.typed.unshift(all);
-      else console.warn("dropped a write", e);
-    }
-    this.typing = false;
-    this.write();
-  }
-
-  close() {
-    this.closed = true;
-    this.generation++;
-    this.data?.close();
-    if (this.frame !== undefined) cancelAnimationFrame(this.frame);
-    clearTimeout(this.blinkTimer);
-    this.term?.free();
-    this.term = undefined;
-    control?.call("session.disown_block", { session_id: this.session, block_ids: [this.block] }).catch(() => {});
   }
 }
 
-pane.addEventListener("keydown", (e) => open?.key(e));
-pane.addEventListener("wheel", (e) => open?.wheel(e), { passive: false });
-for (const t of [pane, window]) {
-  t.addEventListener("focus", () => open?.wake());
-  t.addEventListener("blur", () => open?.redraw());
-}
-// The canvas takes the pane's size in device pixels where the browser tells it.
-new ResizeObserver((entries) => {
-  const d = entries[0].devicePixelContentBoxSize?.[0];
-  open?.layout(d && { width: d.inlineSize, height: d.blockSize });
-}).observe(pane, { box: "device-pixel-content-box" });
+// The window's shortcuts, before a pane's terminal sees the keys. Only
+// the chords below are taken; every other key goes to the terminal.
+window.addEventListener(
+  "keydown",
+  (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest?.("input, textarea, .theme-panel")) return;
+    const name = shortcut(e);
+    if (!name) return;
+    e.preventDefault();
+    e.stopPropagation();
+    run(name);
+  },
+  { capture: true },
+);
+window.addEventListener("focus", () => shown?.panes.forEach((p) => p.wake()));
+window.addEventListener("blur", () => shown?.panes.forEach((p) => p.redraw()));
 // A change of the pixel ratio, as when the window moves to another display,
-// may leave the pane's CSS size as it was.
+// may leave the panes' CSS size as it was.
 (function watchScale() {
   const q = matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
   q.addEventListener("change", () => {
-    open?.layout();
+    shown?.panes.forEach((p) => p.layout());
     watchScale();
   }, { once: true });
 })();
 // A font that loads late changes the cells.
 document.fonts.addEventListener("loadingdone", () => {
-  if (!open) return;
-  open.fontStale = true;
-  open.layout();
+  shown?.panes.forEach((p) => {
+    p.fontStale = true;
+    p.layout();
+  });
 });
 
 main();

@@ -2,13 +2,14 @@
 
 The Rex API gateway (`internal/rexapi`) serves a browser client at `/`.
 It runs on the same origin as `/api/control` and `/api/data`. It lists
-the sessions the gateway shows, opens one terminal live and sends what you
-type. The terminal emulator is libghostty-vt, compiled to WebAssembly from
+the sessions the gateway shows and their windows, shows a window's panes
+live, as the desktop lays them out, and sends what you type. The terminal emulator is libghostty-vt, compiled to WebAssembly from
 the Ghostty commit that GoRex's terminal binding uses. The client draws
 the emulator's render state on a canvas.
 
-This is phase 1, a prototype: one terminal at a time. Its one setting is the
-theme (see Themes). It has no uploads, no paste, no selection and no mouse. The wheel scrolls the
+This is phase 1, a prototype: one window at a time, with its split panes
+(see Split panes). Its one setting is the theme (see Themes). It has no
+uploads, no paste, no selection and no mouse. The wheel scrolls the
 scrollback.
 
 ## Design: a remote client only
@@ -109,10 +110,89 @@ as that browser.
   separators, drawn as shapes, ported from MyGo's `plugins/terminal/box.go`.
 - `web/src/themes.ts`: the Ghostty themes list, the choice kept in the
   browser, and the picker.
-- `web/src/main.ts`: the list and the view. Typed bytes go to
-  `com.superlogical.terminal.write`, one write at a time. The view takes the
-  block (`session.own_block`) and sizes it to the canvas
-  (`com.superlogical.terminal.resize`).
+- `web/src/main.ts`: the connection, the sessions and their views, the
+  sidebar, and the window's commands.
+- `web/src/window.ts`: a window's layout tree, its panes and dividers,
+  and the focus (see Split panes).
+- `web/src/pane.ts`: one pane: its stream, its terminal and its canvas.
+  Typed bytes go to `com.superlogical.terminal.write`, one write at a
+  time. The pane takes its block (`session.own_block`) and sizes it to
+  its canvas (`com.superlogical.terminal.resize`); a pane that closes
+  while its block stays gives it back (`session.disown_block`).
+- `web/src/keys.ts`: the shortcuts (see Shortcuts).
+
+## Split panes
+
+The sidebar has a heading for each session (with a + button for a new
+window) and a row for each window: the window's terminal title, else its
+label, and its count of panes when it has more than one. Its close button
+shows on hover. A click shows the window.
+
+- **Layout.** The page draws the tiled layer's layout tree from
+  `session.view`: each `split` divides its room by its `ratio`,
+  `horizontal` side by side and `vertical` one above the other. The panes
+  are 8px apart, as the desktop's (`gap` in `view.go`), with the desktop's
+  pane border and shadow. A zoomed block (`zoomed_block_id`) fills the
+  window alone.
+- **Panes.** Each pane has its own data stream, its own libghostty-vt
+  terminal and canvas, and owns and sizes its own block. It has a header,
+  as the desktop's: the terminal's title, and on the focused or hovered
+  pane the buttons Split Right, Split Down, Zoom and Close.
+- **Focus.** A click or a shortcut focuses a pane: the keys go to it, its
+  border and shadow are the focused ones, and its cursor is solid (hollow
+  in the others). The desktop does not dim panes that are not focused, so
+  this page does not either. The page tells the host
+  (`session.focus_block`), and follows the host when the host's focused
+  block of the window changes.
+- **Live.** The page follows `session_view_changed` and reads only the
+  changed session's view again (`session.view`). Panes whose blocks stay
+  keep their streams; new blocks get panes and streams; panes of closed
+  blocks end. A closed window shows the session's active one. Sessions
+  made or destroyed elsewhere come and go in the sidebar. Titles follow
+  `title_changed`.
+- **Dividers.** Drag the gap between two panes to move it. The panes move
+  at once; their terminals keep their sizes until the drag ends, as on the
+  desktop. Then the page sends the ratio (`session.resize_pane`, with the
+  two blocks beside the border, as GoRex moves a border by a block beside
+  it). A double click sets the ratio to one half.
+- **Commands.** Split right and down (`session.new_split`, a shell block,
+  after the focused one, focused), close the pane (`block.close`), zoom
+  (`session.zoom_block`), new window (`session.new_window`, not focused on
+  the host) and close window (`session.close_window`).
+
+### Shortcuts
+
+The desktop's shortcuts (`commands.go`) where a browser lets a page have
+them. A browser keeps Ctrl/Cmd+W, Ctrl/Cmd+T, Ctrl/Cmd+N and Ctrl+Tab for
+itself, so those commands take Alt+Shift chords (Option+Shift on a Mac).
+Keys are matched by place (`KeyboardEvent.code`). Every other key goes
+to the terminal.
+
+| Command | macOS | Windows, Linux |
+|---|---|---|
+| Split right | ⌘D | Ctrl+Shift+D |
+| Split down | ⇧⌘D | Ctrl+Shift+E |
+| Zoom | ⇧⌘↩ | Ctrl+Shift+Enter |
+| Focus the pane left, right, up, down | ⌥⌘ and an arrow | Alt and an arrow |
+| Move the divider | ⌃⌘ and an arrow | Alt+Shift and an arrow |
+| Close the pane (desktop: ⌘W, Ctrl+Shift+W) | ⌥⇧W | Alt+Shift+W |
+| New window (desktop: ⌘T, Ctrl+Shift+T) | ⌥⇧T | Alt+Shift+T |
+| Close the window (desktop: ⇧⌘W) | ⌥⇧Q | Alt+Shift+Q |
+| Next, previous window (desktop: Ctrl+Tab, Ctrl+Shift+Tab) | ⌥⇧] and ⌥⇧[ | Alt+Shift+] and Alt+Shift+[ |
+
+A key moves the divider of the nearest split of that direction around the
+focused pane by 5%. As on the desktop on Windows and Linux, Alt and an
+arrow (word movement in some shells) is the focus's there, not the
+terminal's.
+
+### Not in the web client
+
+- Floating layers (floats): only the tiled layer shows. A block that is
+  only in a float has no pane here.
+- Dragging a pane to another place, swapping panes, renaming windows and
+  sessions, moving windows, and making or closing sessions.
+- The desktop's pane animations, the pane's program icon and its
+  activity badge.
 
 ## Drawing, as the desktop draws
 
