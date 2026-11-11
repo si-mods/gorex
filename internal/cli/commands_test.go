@@ -311,10 +311,24 @@ func TestTargetResolution(t *testing.T) {
 }
 
 func TestLayoutLabels(t *testing.T) {
-	raw := json.RawMessage(`{"sessions":[{"name":"work","active":0,"tabs":[{"name":"build","focus":1,"root":{"a":{"sid":"one"},"b":{"sid":"two"}}}]}]}`)
-	labels := sessionLabels(raw)
-	if labels["work"] != "two" || labels["build"] != "two" {
-		t.Fatalf("labels %v", labels)
+	note := `{"url":"https://example.com"}`
+	for _, c := range []struct {
+		name  string
+		tab   string
+		label string
+		want  string
+	}{
+		{"focus after a browser pane", `"focus":2,"root":{"a":` + note + `,"b":{"a":{"sid":"AAA"},"b":{"sid":"BBB"}}}`, "t", "BBB"},
+		{"focus on the first session", `"focus":1,"root":{"a":` + note + `,"b":{"a":{"sid":"AAA"},"b":{"sid":"BBB"}}}`, "t", "AAA"},
+		{"focus on the browser pane", `"focus":0,"root":{"a":` + note + `,"b":{"a":{"sid":"AAA"},"b":{"sid":"BBB"}}}`, "t", ""},
+		{"focus out of range", `"focus":9,"root":{"a":{"sid":"AAA"},"b":{"sid":"BBB"}}`, "t", "AAA"},
+		{"focus on a remote pane", `"focus":1,"root":{"a":{"sid":"AAA"},"b":{"sid":"BBB","host":"h1"}}`, "t", ""},
+		{"the workspace's label", `"focus":1,"root":{"a":` + note + `,"b":{"sid":"BBB"}}`, "w", "BBB"},
+	} {
+		raw := json.RawMessage(`{"version":2,"sessions":[{"id":"s1","name":"w","active":0,"tabs":[{"name":"t",` + c.tab + `}]}]}`)
+		if got := sessionLabels(raw)[c.label]; got != c.want {
+			t.Errorf("%s: %q resolves to %q, want %q", c.name, c.label, got, c.want)
+		}
 	}
 }
 

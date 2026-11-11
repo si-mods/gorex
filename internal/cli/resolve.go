@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"gorex/internal/layout"
 	"gorex/internal/rex"
 )
 
@@ -59,44 +60,10 @@ func resolveTarget(c *rex.Client, target string) (string, error) {
 	return "", errNoSession
 }
 
-// layoutStore is the part of the app's saved layout the CLI reads.
-type layoutStore struct {
-	Sessions []layoutWorkspace `json:"sessions"`
-}
-
-type layoutWorkspace struct {
-	Name   string      `json:"name"`
-	Tabs   []layoutTab `json:"tabs"`
-	Active int         `json:"active"`
-}
-
-type layoutTab struct {
-	Name   string        `json:"name"`
-	Focus  int           `json:"focus"`
-	Root   *layoutNode   `json:"root"`
-	Floats []layoutFloat `json:"floats"`
-}
-
-// layoutFloat is a pane over the tab's tiled panes.
-type layoutFloat struct {
-	Pane *layoutNode `json:"pane"`
-}
-
-type layoutNode struct {
-	SID  string      `json:"sid"`
-	Name string      `json:"name,omitempty"`
-	Host string      `json:"host,omitempty"`
-	A    *layoutNode `json:"a"`
-	B    *layoutNode `json:"b"`
-}
-
 // sessionLabels maps a workspace's name and its tabs' names to the session
 // of the focused pane.
 func sessionLabels(raw json.RawMessage) map[string]string {
-	var st layoutStore
-	if json.Unmarshal(raw, &st) != nil {
-		return nil
-	}
+	st := layout.Parse(raw)
 	out := map[string]string{}
 	add := func(label, sid string) {
 		if label == "" || sid == "" {
@@ -125,7 +92,7 @@ func sessionLabels(raw json.RawMessage) map[string]string {
 	return out
 }
 
-func addNodeNames(n *layoutNode, add func(string, string)) {
+func addNodeNames(n *layout.Node, add func(string, string)) {
 	if n == nil {
 		return
 	}
@@ -136,25 +103,20 @@ func addNodeNames(n *layoutNode, add func(string, string)) {
 	addNodeNames(n.B, add)
 }
 
-func tabSession(t layoutTab) string {
-	var panes []string
-	var walk func(*layoutNode)
-	walk = func(n *layoutNode) {
-		if n == nil {
-			return
-		}
-		if n.SID != "" {
-			panes = append(panes, n.SID)
-		}
-		walk(n.A)
-		walk(n.B)
+// tabSession is the session of the tab's focused pane, the first of its
+// tiled panes when Focus names none; "" when that pane has no session of
+// this machine, as a browser pane or a remote host's.
+func tabSession(t layout.Tab) string {
+	panes := layout.Leaves(t.Root)
+	if len(panes) == 0 {
+		return ""
 	}
-	walk(t.Root)
+	n := panes[0]
 	if t.Focus >= 0 && t.Focus < len(panes) {
-		return panes[t.Focus]
+		n = panes[t.Focus]
 	}
-	if len(panes) > 0 {
-		return panes[0]
+	if n.Host != "" {
+		return ""
 	}
-	return ""
+	return n.SID
 }
