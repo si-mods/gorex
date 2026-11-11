@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
+	"gorex/internal/rexapi"
 	"gorex/locales"
 )
 
@@ -105,15 +107,15 @@ func TestShareSwitch(t *testing.T) {
 	registerFonts()
 	t.Cleanup(stopRemotePoll)
 	a := &App{}
-	settingsUI.section = "remote"
-	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
+	settingsUI.section = "server"
+	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{Enabled: true}
 	tt := ui.NewTester(a.settingsView, 780, 900)
 	tt.Frame()
 	if !tt.HasText("Share open terminals") || !tt.HasText("Allowed clients see and use the terminals open on this machine. Off: each sees only its own.") {
 		t.Fatalf("texts %q", tt.Texts())
 	}
 	// The server's answers flip it, and the other switch: no call.
-	for _, st := range []rex.RemoteStatus{{ShareSessions: true}, {Enabled: true, ShareSessions: true}, {}} {
+	for _, st := range []rex.RemoteStatus{{ShareSessions: true}, {Enabled: true, ShareSessions: true}, {Enabled: true}} {
 		remoteUI.st = st
 		tt.Frame()
 		tt.Frame()
@@ -162,7 +164,7 @@ func TestDevicesButtons(t *testing.T) {
 	registerFonts()
 	t.Cleanup(stopRemotePoll)
 	a := &App{}
-	settingsUI.section = "remote"
+	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st, remoteUI.err = true, rex.RemoteStatus{Enabled: true}, nil
 	tt := ui.NewTester(a.settingsView, 780, 1400)
 	tt.Frame()
@@ -225,7 +227,7 @@ func TestRexGoQR(t *testing.T) {
 	qr := hostsPairQR
 	t.Cleanup(func() { hostsPairQR = qr })
 	a := &App{}
-	settingsUI.section = "remote"
+	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st, remoteUI.err = true, rex.RemoteStatus{Enabled: true}, nil
 	tt := ui.NewTester(a.settingsView, 780, 1400)
 	tt.Frame()
@@ -265,5 +267,194 @@ func TestRexGoQR(t *testing.T) {
 	tt.Frame()
 	if hostsPairQR != nil {
 		t.Error("the code stayed once remote access stopped")
+	}
+}
+
+// TestRemoteOff checks the Remote page with remote access off: the
+// switches alone, with a hint, and Tailscale's discovery as a way in; the
+// devices only for a request still waiting. On, the devices show, with
+// this machine's details behind Show Details.
+func TestRemoteOff(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Cleanup(stopRemotePoll)
+	a := &App{}
+	settingsUI.section = "server"
+	remoteUI.loaded, remoteUI.err = true, nil
+	remoteUI.st = rex.RemoteStatus{Tailnet: &rex.TailnetStatus{}, Allowed: []rex.RemoteClient{{Name: "bob-desktop", PublicKey: testKey}}}
+	tt := ui.NewTester(a.settingsView, 780, 1400)
+	tt.Frame()
+	for _, s := range []string{locales.TailcatMode(), locales.RemoteOff(), locales.RemoteOffNote(), locales.TailnetMode()} {
+		if !tt.HasText(s) {
+			t.Errorf("off: no %q in %q", s, tt.Texts())
+		}
+	}
+	for _, s := range []string{locales.RemoteShare(), locales.RemoteShareLayout(), locales.RemoteDevices(), "bob-desktop",
+		locales.RemoteShowDetails(), locales.RemoteMyKey(), locales.HostsNone(), locales.RemoteApiTitle()} {
+		if tt.HasText(s) {
+			t.Errorf("off: %q shows; texts %q", s, tt.Texts())
+		}
+	}
+
+	// A request still waiting shows, alone.
+	remoteUI.st.Pending = []rex.RemotePending{{Name: "alice-laptop", PublicKey: testKey}}
+	tt.Frame()
+	if !tt.HasText("alice-laptop") || tt.HasText("bob-desktop") || tt.HasText(locales.RemoteAddByKeyAsk()) {
+		t.Errorf("off with a request: texts %q", tt.Texts())
+	}
+	remoteUI.st.Pending = nil
+
+	// Tailscale's discovery running serves too.
+	remoteUI.st.Tailnet.Running = true
+	tt.Frame()
+	if !tt.HasText(locales.RemoteShare()) || !tt.HasText("bob-desktop") {
+		t.Errorf("discovery running: texts %q", tt.Texts())
+	}
+
+	// On, the details open and close.
+	remoteUI.st = rex.RemoteStatus{Enabled: true}
+	tt.Frame()
+	if !tt.HasText(locales.RemoteDevices()) || !tt.HasText(locales.RemoteShare()) || tt.HasText(locales.RemoteOffNote()) {
+		t.Fatalf("on: texts %q", tt.Texts())
+	}
+	if tt.HasText(locales.RemoteMyKey()) {
+		t.Fatal("the details show before Show Details is clicked")
+	}
+	if err := tt.Click(locales.RemoteShowDetails()); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if !tt.HasText(locales.RemoteMyKey()) || !tt.HasText(locales.RemoteMyKeyNote()) || !tt.HasText(locales.RemoteHideDetails()) {
+		t.Fatalf("details: texts %q", tt.Texts())
+	}
+	if err := tt.Click(locales.RemoteHideDetails()); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if tt.HasText(locales.RemoteMyKey()) {
+		t.Error("Hide Details did not hide them")
+	}
+}
+
+// TestRemoteHostsPage checks that the hosts this machine connects to have
+// a page of their own, and are no longer on the Remote page.
+func TestRemoteHostsPage(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Cleanup(stopRemotePoll)
+	a := &App{}
+	settingsUI.section = "hosts"
+	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{Enabled: true}
+	tt := ui.NewTester(a.settingsView, 780, 900)
+	tt.Frame()
+	for _, s := range []string{locales.HostsNote(), locales.HostsNone(), locales.HostsAdd()} {
+		if !tt.HasText(s) {
+			t.Errorf("hosts: no %q in %q", s, tt.Texts())
+		}
+	}
+	if tt.HasText(locales.TailcatMode()) {
+		t.Errorf("hosts: the Remote page shows; texts %q", tt.Texts())
+	}
+	settingsUI.section = "server"
+	tt.Frame()
+	if tt.HasText(locales.HostsAdd()) || tt.HasText(locales.HostsNote()) {
+		t.Errorf("remote: the hosts show; texts %q", tt.Texts())
+	}
+}
+
+// TestLocalAPIGroup draws the Developer page's Local API group: the
+// primary endpoint's URL, then each other listener's address and whom it
+// lets in, then the local network's listener with its controls, once and
+// not again among the others; the gateway off, its row says so, and the
+// local network's row shows still.
+func TestLocalAPIGroup(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Setenv("GOREX_DIR", t.TempDir())
+	t.Cleanup(stopRemotePoll)
+	t.Cleanup(stopServerInfoPoll)
+	a := &App{}
+	settingsUI.section = "developer"
+	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
+	remoteUI.lan = rexapi.LANConfig{Enabled: true, Listen: "192.0.2.10:7297", Allow: []string{"192.0.2.0/24"}}
+	remoteUI.lanStatus = rexapi.LANStatus{Running: true, Listening: "192.0.2.10:7297"}
+	remoteUI.lanListen, remoteUI.lanEdited = "", true
+	settingsUI.apiLoaded, settingsUI.apiErr = true, ""
+	settingsUI.apiInfo = rexapi.GatewayInfo{Listeners: []rexapi.Listener{
+		{Endpoint: "unix:///tmp/a%20b/rexapi.sock", Addresses: []string{"/tmp/a b/rexapi.sock"}, Transport: "unix", Admission: rexapi.AdmissionPeer, Primary: true},
+		{Endpoint: "127.0.0.1:0", Addresses: []string{"127.0.0.1:52061"}, Transport: "tcp", Admission: rexapi.AdmissionAnonymous},
+		{Endpoint: "192.0.2.10:7297", Addresses: []string{"192.0.2.10:7297"}, Transport: "tcp", Admission: rexapi.AdmissionAnonymous},
+		{Endpoint: "198.51.100.1:7297", Transport: "tcp", Admission: "login_server"},
+	}}
+	tt := ui.NewTester(a.settingsView, 780, 1400)
+	tt.Frame()
+	for _, s := range []string{
+		locales.SettingsDeveloper(), locales.RemoteApiTitle(), locales.RemoteApiUrl(), "unix:///tmp/a%20b/rexapi.sock",
+		"127.0.0.1:52061", locales.RemoteApiAnyone(),
+		"198.51.100.1:7297", "login_server", locales.RemoteApiNote(),
+		locales.RemoteLanSwitch(), "Listening on http://192.0.2.10:7297", locales.RemoteLanNetworks(), "192.0.2.0/24", locales.RemoteLanNote(),
+	} {
+		if !tt.HasText(s) {
+			t.Errorf("no %q in %q", s, tt.Texts())
+		}
+	}
+	if tt.HasText(locales.RemoteApiPeer()) {
+		t.Error("the primary endpoint's row says whom it lets in, which Rex's does not")
+	}
+	if slices.Contains(tt.Texts(), "192.0.2.10:7297") {
+		t.Error("the local network's listener is listed among the others too")
+	}
+	if tt.HasText(locales.TailcatMode()) {
+		t.Error("the Remote page's header shows on the Developer page")
+	}
+
+	// Off, the local network's row shows still, so that it can be turned on,
+	// and a listener at its address is --listen's, marked.
+	remoteUI.lan.Enabled, remoteUI.lanStatus = false, rexapi.LANStatus{}
+	tt.Frame()
+	if !tt.HasText(locales.RemoteLanSwitch()) || !tt.HasText(locales.RemoteLanOff()) || !slices.Contains(tt.Texts(), "192.0.2.10:7297") {
+		t.Errorf("local network off: texts %q", tt.Texts())
+	}
+
+	settingsUI.apiErr = "no gateway"
+	settingsUI.apiInfo = rexapi.GatewayInfo{}
+	tt.Frame()
+	if !tt.HasText(locales.RemoteApiUrl()) || !tt.HasText(locales.HostApiOff()) || tt.HasText("127.0.0.1:52061") || !tt.HasText(locales.RemoteLanSwitch()) {
+		t.Errorf("gateway off: texts %q", tt.Texts())
+	}
+}
+
+func TestAdmissionLabel(t *testing.T) {
+	for _, c := range []struct {
+		l     rexapi.Listener
+		label string
+		open  bool
+	}{
+		{rexapi.Listener{Transport: "unix", Admission: rexapi.AdmissionPeer}, locales.RemoteApiPeer(), false},
+		{rexapi.Listener{Endpoint: "0.0.0.0:7297", Transport: "tcp", Admission: rexapi.AdmissionAnonymous}, locales.RemoteApiAnyone(), true},
+		{rexapi.Listener{Transport: "unix", Admission: rexapi.AdmissionAnonymous}, locales.RemoteApiAnyone(), false},
+		{rexapi.Listener{Transport: "tcp", Admission: "tailscale_owner"}, "tailscale_owner", false},
+		{rexapi.Listener{Transport: "tcp"}, "", false},
+	} {
+		if label, open := admissionLabel(c.l); label != c.label || open != c.open {
+			t.Errorf("admissionLabel(%+v) = %q, %v; want %q, %v", c.l, label, open, c.label, c.open)
+		}
+	}
+}
+
+func TestLanListener(t *testing.T) {
+	lan := rexapi.LANConfig{Enabled: true, Listen: "192.0.2.10:7297"}
+	at := rexapi.Listener{Endpoint: "192.0.2.10:7297", Transport: "tcp", Admission: rexapi.AdmissionAnonymous}
+	if !lanListener(at, lan) {
+		t.Error("the local network's listener is not told")
+	}
+	other := at
+	other.Endpoint = "0.0.0.0:7297"
+	if lanListener(other, lan) {
+		t.Error("another listener is the local network's")
+	}
+	// Turned off, a listener at its address is --listen's.
+	if lanListener(at, rexapi.LANConfig{Listen: "192.0.2.10:7297"}) {
+		t.Error("a listener at a turned-off LAN's address is the LAN's")
 	}
 }

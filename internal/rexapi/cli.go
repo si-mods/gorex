@@ -115,6 +115,10 @@ type GatewayInfo struct {
 	APIRevision, ServerRevision int
 	// MinRevision is the oldest the gateway serves.
 	MinRevision int
+	// Listeners are the endpoints the gateway accepts connections on,
+	// primary first: GatewayStatus's, not GatewayVersion's, and none
+	// from a gateway older than revision 12.
+	Listeners []Listener
 }
 
 // GatewayVersion asks the gateway that runs on this machine, failing
@@ -136,6 +140,25 @@ func GatewayVersion() (GatewayInfo, error) {
 		APIRevision:    wel.APIRevision,
 		ServerRevision: wel.APIServerRevision,
 		MinRevision:    v.APIMinRevision,
+	}, nil
+}
+
+// GatewayStatus asks the gateway that runs on this machine for its
+// revisions and listeners, but not its version, failing when none runs.
+func GatewayStatus() (GatewayInfo, error) {
+	raw, wel, err := callGatewayWelcome(SocketPath(), "server.status", nil, 20*time.Second)
+	if err != nil {
+		return GatewayInfo{}, err
+	}
+	var st statusResult
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return GatewayInfo{}, err
+	}
+	return GatewayInfo{
+		APIRevision:    wel.APIRevision,
+		ServerRevision: wel.APIServerRevision,
+		MinRevision:    st.APIMinRevision,
+		Listeners:      st.Listeners,
 	}, nil
 }
 

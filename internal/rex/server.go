@@ -589,7 +589,7 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 				kept = s.keep(conn, peer)
 			}
 			// Before the answer: no change after it goes untold.
-			if req.Op == "subscribe" && (!remote || s.remoteShareLayout(peer)) && sub == nil {
+			if req.Op == "subscribe" && (!remote || s.remoteShareLayout()) && sub == nil {
 				sub = s.subscribe(write, remote, peer, req.Transfers)
 			}
 			// Kills wait for the session to end, layout commands for the
@@ -688,8 +688,8 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	var data any
 	var err error
 	remote := peer != ""
-	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe") && s.remoteShareLayout(peer)
-	command := remote && req.Op == "command" && s.remoteMayCommand(peer)
+	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe") && s.remoteShareLayout()
+	command := remote && req.Op == "command" && s.remoteMayCommand()
 	if remote && req.Op == "command" && req.Command != nil && req.Command.Op == "action" && !s.remoteControlEnabled() {
 		err = errors.New("rex: remote control is off")
 	} else if remote && req.Op == "command" && req.Command != nil && strings.HasPrefix(req.Command.Op, "pane.teleport") {
@@ -755,26 +755,20 @@ func NotShared(err error) bool {
 // connection, may see and use ss: a local one always, a remote one the
 // sessions it created, and any while the server shares them.
 func (s *Server) mayUse(peer string, ss *session) bool {
-	return peer == "" || ss.owner == peer || s.sharesSessions(peer)
+	return peer == "" || ss.owner == peer || s.sharesSessions()
 }
 
 // sharesSessions tells whether the server shares every session with
-// peer, a remote client's key: all of them while it shares them with
-// every client, else as the client's allowlist entry says.
-func (s *Server) sharesSessions(peer string) bool {
+// every remote client.
+func (s *Server) sharesSessions() bool {
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	return s.rem.sharesLocked(peer)
+	return s.rem.sharesLocked()
 }
 
 // sharesLocked is sharesSessions with the remote lock held.
-func (r *remote) sharesLocked(peer string) bool {
-	if r.cfg.ShareSessions {
-		return true
-	}
-	return slices.ContainsFunc(r.cfg.Allowed, func(c RemoteClient) bool {
-		return c.PublicKey == peer && c.ShareSessions
-	})
+func (r *remote) sharesLocked() bool {
+	return r.cfg.ShareSessions
 }
 
 // use returns the session id for peer (mayUse).
@@ -794,7 +788,7 @@ func (s *Server) dropUnshared() {
 	r.mu.Lock()
 	var gw []net.Conn
 	for c := range r.gw {
-		if !r.sharesLocked(r.conns[c]) {
+		if !r.sharesLocked() {
 			delete(r.gw, c)
 			gw = append(gw, c)
 		}
@@ -853,7 +847,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		for _, ss := range all {
 			if s.mayUse(peer, ss) {
 				in := s.info(ss)
-				in.OwnerShared = in.Owner != "" && s.sharesSessions(in.Owner)
+				in.OwnerShared = in.Owner != "" && s.sharesSessions()
 				infos = append(infos, in)
 			}
 		}

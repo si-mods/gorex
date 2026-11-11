@@ -265,7 +265,7 @@ func pairHost(ctx context.Context, s savedHost, pairAs string, report func(func(
 
 func (a *App) hostsSettings(c *ui.Context, k *colors) {
 	page := &hostsUI
-	settingsGroup(c, k, locales.SettingsHosts(), locales.HostsNote(), "", func() {
+	settingsGroup(c, k, "", locales.HostsNote(), "", func() {
 		if len(a.hosts) == 0 {
 			groupRow(c, k, nil).Children(func() {
 				ui.Text(c, locales.HostsNone()).FontSize(13).TextColor(k.textFaint)

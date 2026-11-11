@@ -124,7 +124,7 @@ a build whose modification time is not newer than the server's. See
   every box back into the tab's splits. It may change or go away.
 - **Host chip** with the machine's name and model; its popover shows the
   chip, memory, OS and the session server, and a remote host that is not
-  connected with a button to Settings › Remote (Add Remote Host… while
+  connected with a button to Settings › Remote Hosts (Add Remote Host… while
   none is saved).
 - **Command palette** (⇧⌘P, Ctrl+Shift+P, or the ⌘ button): every command, and every pane
   to jump to, fuzzy-matched.
@@ -310,7 +310,7 @@ What to know before turning it on:
   start any program with any environment. From a shell there it can
   reach the local socket, and so change the layout, remote access, and
   sharing itself. Trust it as you would an SSH key.
-- Share open terminals (Settings › Remote, off by default, kept in
+- Share open terminals (Settings › Server, off by default, kept in
   `remote.json`) decides what else a client sees. Off, each client lists,
   attaches to, resizes and kills only the sessions it created; the others
   (this machine's window's, other clients') are refused. On, every allowed
@@ -374,7 +374,7 @@ themselves: never logged, never written anywhere wider than the
 member's own state.
 
 Joining is manual, for any coordinator a user runs themselves: in
-Settings › Remote (remote access on), paste the join URL the
+Settings › Network (remote access on), paste the join URL the
 coordinator printed and its network key (`remotectl join URL KEY
 [NAME]` does the same without the app). The server then asks the
 coordinator every half minute: members come and go with its directory,
@@ -392,11 +392,10 @@ coordinator; a machine in a network never needs it.
 Remote clients pair by name and keep their key and created/last-seen
 times; a client's hello names its principal, `gorex clients` lists the
 live attachments with their principal and age, and `gorex ls` shows the
-principal that owns each session. Settings › Remote
-Hosts can share this window's layout read-only, and each allowed client
-can be given all sessions, and the layout with them, or only the
-sessions it opened; the shared layout is filtered to sessions that client
-may use; panes it may not use are shown as unavailable placeholders, and
+principal that owns each session. Settings › Server can share this
+window's layout read-only, and give the allowed clients all sessions or
+each only the sessions it opened; the shared layout is filtered to
+sessions that client may use; panes it may not use are shown as unavailable placeholders, and
 panes of other hosts are left out; `gorex -S HOST layout`
 reads it and `events` follows changes.
 
@@ -526,7 +525,7 @@ rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 
 Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
 server: the GoRex server serves Rex's API (revision 12), on the local
-network to the networks you allow (Settings › Remote), and on the tailnet
+network to the networks you allow (Settings › Developer), and on the tailnet
 through a Tailscale device of its own. A space is
 a Rex session, a tab a window, a pane a block, and a floating pane a
 floating layer; terminals stream as Ghostty snapshots, as Rex's do. Setup,

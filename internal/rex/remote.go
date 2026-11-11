@@ -65,8 +65,7 @@ type RemoteConfig struct {
 	Relay   string         `json:"relay,omitempty"`
 	Allowed []RemoteClient `json:"allowed"`
 	// ShareSessions lets remote clients see and use every session; off,
-	// each sees and uses only the sessions it created, unless its
-	// allowlist entry shares them.
+	// each sees and uses only the sessions it created.
 	// On by default: remote.json writes it always, and one that says
 	// nothing of it, as before it was written off, reads as on
 	// (UnmarshalJSON).
@@ -391,21 +390,16 @@ func (s *Server) remoteSeen(peer string) {
 
 // remoteShareLayout tells whether remote clients may read and subscribe
 // to the layout.
-func (s *Server) remoteShareLayout(peer string) bool {
+func (s *Server) remoteShareLayout() bool {
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	if s.rem.cfg.ShareLayout {
-		return true
-	}
-	return slices.ContainsFunc(s.rem.cfg.Allowed, func(c RemoteClient) bool {
-		return c.PublicKey == peer && c.ShareLayout
-	})
+	return s.rem.cfg.ShareLayout
 }
 
 // remoteMayCommand tells whether peer may ask the app for layout changes:
 // the sessions sharing it has, not the read-only layout.
-func (s *Server) remoteMayCommand(peer string) bool {
-	return s.sharesSessions(peer)
+func (s *Server) remoteMayCommand() bool {
+	return s.sharesSessions()
 }
 
 // remoteAllowed tells the ops a remote connection may make; it may also
@@ -670,7 +664,7 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			api := r.api == ln
 			// Stopped, or for the gateway and not allowed to command the
 			// layout (remoteMayCommand): no answer.
-			if r.ln != ln && !api || api && !(allowed && r.sharesLocked(k)) {
+			if r.ln != ln && !api || api && !(allowed && r.sharesLocked()) {
 				r.mu.Unlock()
 				c.Close()
 				return
@@ -993,29 +987,6 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			return nil, err
 		}
 		cfg.Relay = relay
-	case "remote.clientLayoutSet":
-		k, err := reqKey()
-		if err != nil {
-			return nil, err
-		}
-		i := slices.IndexFunc(cfg.Allowed, func(c RemoteClient) bool { return c.PublicKey == k })
-		if i < 0 {
-			return nil, errors.New("rex: no such client")
-		}
-		cfg.Allowed[i].ShareLayout = req.On
-	case "remote.clientShareSet":
-		k, err := reqKey()
-		if err != nil {
-			return nil, err
-		}
-		i := slices.IndexFunc(cfg.Allowed, func(c RemoteClient) bool { return c.PublicKey == k })
-		if i < 0 {
-			return nil, errors.New("rex: no such client")
-		}
-		cfg.Allowed[i].ShareSessions = req.On
-		if !req.On {
-			done = append(done, s.dropUnshared)
-		}
 	case "remote.shareLayoutSet":
 		cfg.ShareLayout = req.On
 	case "remote.controlSet":

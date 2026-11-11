@@ -296,12 +296,12 @@ type statusResult struct {
 	// Listeners are the endpoints the gateway accepts connections on,
 	// primary first, as revision 12 reports them. Built-in Tailscale is
 	// not among them: tailscale describes it.
-	Listeners []listenerStatus `json:"listeners,omitempty"`
+	Listeners []Listener `json:"listeners,omitempty"`
 }
 
-// listenerStatus is one endpoint of server.status's listeners: what it
+// Listener is one endpoint of server.status's listeners: what it
 // was configured with, where it is bound, and whom it lets in.
-type listenerStatus struct {
+type Listener struct {
 	Endpoint  string   `json:"endpoint"`
 	Addresses []string `json:"addresses,omitempty"`
 	Transport string   `json:"transport"`
@@ -311,13 +311,13 @@ type listenerStatus struct {
 
 // How a listener lets callers in, as revision 12 names it.
 const (
-	admissionPeer      = "peer_credentials"
-	admissionAnonymous = "anonymous"
+	AdmissionPeer      = "peer_credentials"
+	AdmissionAnonymous = "anonymous"
 )
 
 // addListener adds a listener that serves until the gateway stops to
 // those server.status lists, after the ones added before it.
-func (g *Gateway) addListener(l listenerStatus) {
+func (g *Gateway) addListener(l Listener) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.listeners = append(g.listeners, l)
@@ -325,7 +325,7 @@ func (g *Gateway) addListener(l listenerStatus) {
 
 // listenersNow returns the listeners the gateway serves on: the ones
 // added, then the local network's while it listens.
-func (g *Gateway) listenersNow() []listenerStatus {
+func (g *Gateway) listenersNow() []Listener {
 	g.mu.Lock()
 	out := slices.Clone(g.listeners)
 	g.mu.Unlock()

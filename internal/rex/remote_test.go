@@ -1004,8 +1004,8 @@ func TestHostMachines(t *testing.T) {
 }
 
 // TestListTellsOwnerShared checks that list tells which sessions' owners
-// the server shares every session with, as mayUse decides: per client,
-// then for all, and never for a local session.
+// the server shares every session with, as mayUse decides: all or none,
+// and never a local session.
 func TestListTellsOwnerShared(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
@@ -1038,10 +1038,10 @@ func TestListTellsOwnerShared(t *testing.T) {
 		return out
 	}
 	s.rem.mu.Lock()
-	s.rem.cfg.Allowed = []RemoteClient{{PublicKey: alice, ShareSessions: true}, {PublicKey: bob}}
+	s.rem.cfg.ShareSessions = false
 	s.rem.mu.Unlock()
-	if got := shared(); got[ls] || !got[as] || got[bs] {
-		t.Errorf("shared with alice only: %v (local %s, alice %s, bob %s)", got, ls, as, bs)
+	if got := shared(); got[ls] || got[as] || got[bs] {
+		t.Errorf("shared with none: %v (local %s, alice %s, bob %s)", got, ls, as, bs)
 	}
 	s.rem.mu.Lock()
 	s.rem.cfg.ShareSessions = true
@@ -1072,7 +1072,7 @@ func TestShareSessionsDefault(t *testing.T) {
 	bob := key.NewNode().Public().String()
 	bc := pipe(s, bob)
 	defer bc.Close()
-	if st, err := local.RemoteStatus(); err != nil || !st.ShareSessions || !s.sharesSessions(bob) {
+	if st, err := local.RemoteStatus(); err != nil || !st.ShareSessions || !s.sharesSessions() {
 		t.Fatalf("no remote.json: not shared: %+v %v", st, err)
 	}
 	// A session another client made is the user's to see, as shared.
@@ -1125,14 +1125,14 @@ func TestShareSessionsDefault(t *testing.T) {
 		t.Errorf("off not written: %s", b)
 	}
 	s.remoteLoad()
-	if st, _ := local.RemoteStatus(); st.ShareSessions || s.sharesSessions(bob) || ownerShared() {
+	if st, _ := local.RemoteStatus(); st.ShareSessions || s.sharesSessions() || ownerShared() {
 		t.Errorf("off not kept across a reload: %+v", st)
 	}
 	if err := local.ShareSessions(true); err != nil {
 		t.Fatal(err)
 	}
 	s.remoteLoad()
-	if !s.sharesSessions(bob) {
+	if !s.sharesSessions() {
 		t.Error("on not kept across a reload")
 	}
 }

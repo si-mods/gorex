@@ -1172,7 +1172,7 @@ func (f *fakeHost) serve(c net.Conn) {
 	}
 }
 
-// hostsPage is the Remote page, its hosts, of an app with no terminal window.
+// hostsPage is the Remote Hosts page of an app with no terminal window.
 func hostsPage(t *testing.T) (*App, *ui.Tester) {
 	isolateSettings(t, "")
 	t.Setenv("GOREX_DIR", t.TempDir())
@@ -1180,7 +1180,7 @@ func hostsPage(t *testing.T) (*App, *ui.Tester) {
 	a := &App{}
 	t.Cleanup(a.stopHosts)
 	t.Cleanup(closeAddHost)
-	settingsUI.section = "remote"
+	settingsUI.section = "hosts"
 	tt := ui.NewTester(a.settingsView, 780, 540)
 	tt.Frame()
 	return a, tt

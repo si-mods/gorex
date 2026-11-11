@@ -205,21 +205,11 @@ func TestRemoteGateway(t *testing.T) {
 	wantEOF(t, dial(phone), 10*time.Second, "a client not sharing")
 	noGateway("refused")
 
-	// Shared with it, it reaches the gateway, named; unsharing closes it.
-	if err := c.ShareClientSessions(phoneID, true); err != nil {
-		t.Fatal(err)
-	}
-	g := reaches()
-	if err := c.ShareClientSessions(phoneID, false); err != nil {
-		t.Fatal(err)
-	}
-	wantEOF(t, g.c, 5*time.Second, "unshared")
-
-	// Shared with every client, the same; turning that off closes it.
+	// Shared, it reaches the gateway, named; turning sharing off closes it.
 	if err := c.ShareSessions(true); err != nil {
 		t.Fatal(err)
 	}
-	g = reaches()
+	g := reaches()
 	if err := c.ShareSessions(false); err != nil {
 		t.Fatal(err)
 	}

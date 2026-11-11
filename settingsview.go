@@ -34,8 +34,9 @@ var settingsUI struct {
 	// All are made once the window opens.
 	fontOptions, langTags, langNames []string
 	// apiInfo is the Rex API gateway's version, for the server page's
-	// rows, fetched while that page shows: apiLoaded when it has been
-	// asked once, apiErr when no gateway answered.
+	// rows, or its listeners, for the Developer page's, fetched while that
+	// page shows: apiLoaded when it has been asked once, apiErr when no
+	// gateway answered.
 	apiStop   chan struct{}
 	apiInfo   rexapi.GatewayInfo
 	apiErr    string
@@ -45,11 +46,12 @@ var settingsUI struct {
 // Run is set here: the window's view lists the commands, which list this one.
 func init() { cmdSettings.Run = func(a *App) { a.openSettings() } }
 
-// startServerInfoPoll asks the Rex API gateway for its version every ten
-// seconds while the server page shows. Each ask is a control connection
-// that every Rex client hears of, and the build cannot change while the
-// gateway runs: only whether it runs is worth asking about.
-func startServerInfoPoll() {
+// startServerInfoPoll asks the Rex API gateway with ask every ten seconds
+// while the server or the Developer page shows. Each ask is a control
+// connection that every Rex client hears of, and the build cannot change
+// while the gateway runs: only whether it runs, and on the Developer page
+// what it listens on, is worth asking about.
+func startServerInfoPoll(ask func() (rexapi.GatewayInfo, error)) {
 	win := settingsUI.win
 	if settingsUI.apiStop != nil || win == nil {
 		return
@@ -60,7 +62,7 @@ func startServerInfoPoll() {
 		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
 		for {
-			info, err := rexapi.GatewayVersion()
+			info, err := ask()
 			win.Update(func() {
 				if settingsUI.apiStop != stop {
 					return
@@ -152,8 +154,9 @@ var sections = []struct {
 	{"terminal", "square-terminal", locales.Messages.SettingsTerminal},
 	{"theme", "sparkles", locales.Messages.SettingsTheme},
 	{"keyboard", "keyboard", locales.Messages.SettingsKeyboard},
-	{"remote", "globe", locales.Messages.SettingsRemote},
+	{"hosts", "monitor", locales.Messages.SettingsHosts},
 	{"network", "network", locales.Messages.SettingsNetwork},
+	{"developer", "file-code", locales.Messages.SettingsDeveloper},
 	{"about", "hexagon", locales.Messages.SettingsAbout},
 }
 
@@ -212,10 +215,12 @@ func (a *App) settingsView(c *ui.Context) {
 						a.themeSettings(c, k)
 					case "keyboard":
 						a.keyboardSettings(c, k)
-					case "remote":
-						a.remoteSettings(c, k)
+					case "hosts":
+						a.hostsSettings(c, k)
 					case "network":
 						a.networkSettings(c, k)
+					case "developer":
+						a.localAPI(c, k)
 					case "about":
 						a.aboutSettings(c, k)
 					default:
@@ -374,6 +379,9 @@ func (a *App) serverSettings(c *ui.Context, k *colors) {
 		sub = locales.HostConnected(sub)
 	}
 	a.serverGroup(c, k, name, glyph, sub, label, dot, h)
+	// Remote access is the server's: who may connect to it, under what
+	// it is.
+	a.remoteSettings(c, k)
 }
 
 // serverGroup is the server page's card: the machine, its state, and the

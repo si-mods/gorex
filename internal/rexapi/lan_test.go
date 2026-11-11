@@ -446,6 +446,11 @@ func TestStatusListsListeners(t *testing.T) {
 		got[1]["primary"] != nil || tcpAddr == "127.0.0.1:0" || !strings.HasPrefix(tcpAddr, "127.0.0.1:") {
 		t.Errorf("--listen = %v", got[1])
 	}
+	t.Setenv("GOREX_REXAPI_SOCKET", sock)
+	if info, err := GatewayStatus(); err != nil || len(info.Listeners) != 2 || !info.Listeners[0].Primary ||
+		info.Listeners[1].Addresses[0] != tcpAddr || info.APIRevision != apiRevision {
+		t.Errorf("GatewayStatus = %+v, %v", info, err)
+	}
 
 	if err := SaveLAN(dir, LANConfig{Enabled: true, Listen: "127.0.0.1:0", Allow: []string{"127.0.0.1"}}); err != nil {
 		t.Fatal(err)

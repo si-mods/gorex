@@ -59,7 +59,7 @@ func (s *Server) subscribe(write func([]byte), remote bool, peer string, transfe
 					continue
 				}
 				if sub.remote {
-					if kind == "sessions" || !s.remoteShareLayout(sub.peer) {
+					if kind == "sessions" || !s.remoteShareLayout() {
 						continue
 					}
 				}

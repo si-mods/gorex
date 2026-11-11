@@ -288,23 +288,6 @@ func TestShareLayoutGate(t *testing.T) {
 	}
 }
 
-func TestClientShareSessions(t *testing.T) {
-	s := &Server{rem: remote{cfg: RemoteConfig{Allowed: []RemoteClient{
-		{PublicKey: "a", ShareSessions: true, ShareLayout: true},
-		{PublicKey: "b"},
-	}}}}
-	ss := &session{owner: "c"}
-	if !s.remoteShareLayout("a") || s.remoteShareLayout("b") {
-		t.Error("per-client layout sharing")
-	}
-	if !s.mayUse("a", ss) {
-		t.Error("a client that shares them does not see another's session")
-	}
-	if s.mayUse("b", ss) || s.mayUse("d", ss) {
-		t.Error("a client that does not share them sees another's session")
-	}
-}
-
 func TestFilterLayout(t *testing.T) {
 	raw := []byte(`{"version":2,"sessions":[{"id":"w","name":"w","active":0,"tabs":[{"root":{"a":{"sid":"a"},"b":{"sid":"b"}},"focus":0},{"root":{"sid":"h","host":"other"}}]}],"windows":["w"]}`)
 	s := &Server{
