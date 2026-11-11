@@ -126,12 +126,7 @@ func (s *Server) transferred(t Transfer) {
 // eventSessions is what an Event says of the sessions: their IDs and the
 // status records that answered the status protocol.
 func (s *Server) eventSessions() []EventSession {
-	s.mu.Lock()
-	all := make([]*session, 0, len(s.sessions))
-	for _, ss := range s.sessions {
-		all = append(all, ss)
-	}
-	s.mu.Unlock()
+	all := s.all()
 	slices.SortFunc(all, func(a, b *session) int { return strings.Compare(a.id, b.id) })
 	out := make([]EventSession, 0, len(all))
 	for _, ss := range all {

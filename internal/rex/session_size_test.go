@@ -459,6 +459,34 @@ func TestInfoNamesTheAuthority(t *testing.T) {
 	}
 }
 
+// TestDroppedClientGivesSizeBack: the authority dropped for falling
+// behind passes the size on at once, as one leaving does: its leave, which
+// follows, finds it gone already.
+func TestDroppedClientGivesSizeBack(t *testing.T) {
+	settleFor(t, 30*time.Millisecond)
+	s := newResizeSession(t)
+	deskVia, phoneVia := net.Pipe()
+	defer deskVia.Close()
+	defer phoneVia.Close()
+	desk := addAttached(s, 1, deskVia, 100, 30)
+	desk.client = "desk"
+	s.resizeForAttach(100, 30)
+	waitApplied(t, s, 100, 30)
+	s.admit(desk, []byte("ls\r"))
+	phone := addAttached(s, 2, phoneVia, 150, 55)
+	s.admit(phone, []byte("x"))
+	waitApplied(t, s, 150, 55)
+	// The phone stops reading: the next output finds its queue full.
+	for len(phone.out) < cap(phone.out) {
+		phone.out <- nil
+	}
+	s.write([]byte("echo hi\r"))
+	waitApplied(t, s, 100, 30)
+	if got := s.info().SizedBy; got != "desk" {
+		t.Fatalf("sizedBy %q, want the desk left", got)
+	}
+}
+
 // TestSizeLockEndGivesSizeBack: a device that held the size and lets go
 // without a size of its own, as the phone leaving its terminal does, gives
 // the session the size of the window that is left, though that window
