@@ -769,7 +769,8 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		if st.Enabled && st.Pairing.Open {
 			groupRow(c, k, nil).Children(func() {
 				tileLine(c, k, "plus", locales.RemotePairTitle(), func() {
-					statusLine(c, k, k.attention, locales.RemotePairWaiting(pairingLeft(st.Pairing.ExpiresAt, time.Now())))
+					statusLine(c, k, k.attention, locales.RemotePairWaiting(pairingLeft(st.Pairing.ExpiresAt, c.Now())))
+					c.After(time.Second)
 				}, func() {
 					if ui.Button(c.Key("pair-stop"), locales.RemotePairStop()).Disabled(page.busy).Clicked() {
 						a.remoteDo((*rex.Client).StopPairing, nil)

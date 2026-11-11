@@ -405,7 +405,7 @@ func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label stri
 		})
 		row := func(label, value string) { factRow(c, k, label, value) }
 		if a.hello.PID > 0 {
-			row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
+			row(locales.HostServer(), a.serverUp(c))
 		}
 		sessions, running := a.sessionCounts()
 		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))

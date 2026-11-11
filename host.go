@@ -232,7 +232,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 	ui.Divider(c)
 	sessions, running := a.sessionCounts()
 	ui.Column(c).Gap(7).Children(func() {
-		row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
+		row(locales.HostServer(), a.serverUp(c))
 		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
 	})
 	ui.Divider(c)
@@ -294,6 +294,13 @@ func (a *App) sessionCounts() (sessions, running int) {
 		}
 	}
 	return
+}
+
+// serverUp says how long this machine's server has run, as of the frame,
+// which comes again in a second.
+func (a *App) serverUp(c *ui.Context) string {
+	c.After(time.Second)
+	return locales.HostServerUp(a.hello.PID, roundDur(c.Now().Sub(a.hello.Started)))
 }
 
 func roundDur(d time.Duration) string {

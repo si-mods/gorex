@@ -1,16 +1,21 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"fmt"
 	"image"
 	"image/png"
+	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1386,5 +1391,149 @@ func TestReopenReadsServerChanges(t *testing.T) {
 		t.Errorf("a reload that failed: %v, workspaces %v, were %v", err, st.workspaces, before)
 	}
 	st.client = live
+	quit(st)
+}
+
+// countLists connects to the test's server through a socket of its own,
+// which counts the lists asked through it.
+func countLists(t *testing.T) (*rex.Client, *atomic.Int32) {
+	t.Helper()
+	dir := testDir(t)
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	path := filepath.Join(dir, "p.sock")
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	var lists atomic.Int32
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			s, err := net.Dial("unix", rex.SocketPath())
+			if err != nil {
+				c.Close()
+				continue
+			}
+			go func() { io.Copy(c, s); c.Close() }()
+			go func() {
+				r := bufio.NewReaderSize(c, 1<<20)
+				for {
+					line, err := r.ReadBytes('\n')
+					if bytes.Contains(line, []byte(`"op":"list"`)) {
+						lists.Add(1)
+					}
+					if _, werr := s.Write(line); err != nil || werr != nil {
+						s.Close()
+						return
+					}
+				}
+			}()
+		}
+	}()
+	c, err := rex.ConnectSocket(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	return c, &lists
+}
+
+// TestPollServesEveryWindow checks that one poll of this machine's server
+// serves every window: a round asks for the list once, and both windows
+// take it. A round of the same list draws no window again, one of a new
+// list draws each. With one window closed the other is still served, and
+// with the last closed the poll stops.
+func TestPollServesEveryWindow(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	b := st.openWindow(st.addWorkspace())
+	client, lists := countLists(t)
+	stop := make(chan struct{})
+	st.polling = stop
+	rounds, done := make(chan func()), make(chan struct{})
+	go func() {
+		defer close(done)
+		st.poll(client, stop, func(fn func()) {
+			select {
+			case rounds <- fn:
+			case <-stop:
+			}
+		})
+	}()
+	posted := func(a *App) int {
+		a.postMu.Lock()
+		defer a.postMu.Unlock()
+		return len(a.posted)
+	}
+	// round runs the next round, and tells whether it drew the windows.
+	n := 0
+	round := func() (drew bool) {
+		t.Helper()
+		select {
+		case fn := <-rounds:
+			n++
+			was := posted(a)
+			fn()
+			if got := lists.Load(); got != int32(n) {
+				t.Fatalf("%d lists asked in %d rounds", got, n)
+			}
+			return posted(a) != was
+		case <-time.After(5 * time.Second):
+			t.Fatal("no round")
+		}
+		return false
+	}
+	pa, pb := a.tab().Focus, b.tab().Focus
+	if !round() || st.infos[pa.SID].ID == "" || pa.info.ID != pa.SID || pb.info.ID != pb.SID {
+		t.Fatalf("the first round drew nothing, or a window took nothing: %q %q", pa.info.ID, pb.info.ID)
+	}
+	// The shells settle at their prompts: the list then stays the same.
+	quiet := func() {
+		t.Helper()
+		for i := 0; round(); i++ {
+			if i == 20 {
+				t.Fatal("every round draws the windows")
+			}
+		}
+	}
+	quiet()
+	typed := func(p *Pane) bool {
+		t.Helper()
+		if err := client.Input(p.SID, []byte(" ")); err != nil {
+			t.Fatal(err)
+		}
+		for range 20 {
+			if round() {
+				return !p.info.LastInput.IsZero()
+			}
+		}
+		t.Fatal("no round drew the windows after a change")
+		return false
+	}
+	if !typed(pa) || !typed(pb) {
+		t.Fatal("a window did not take the new list")
+	}
+	if pa.info.LastInput != st.infos[pa.SID].LastInput || pb.info.LastInput != st.infos[pb.SID].LastInput {
+		t.Error("the windows took another list than the store's")
+	}
+
+	st.closed(b)
+	quiet()
+	if was := pa.info.LastInput; !typed(pa) || !pa.info.LastInput.After(was) {
+		t.Error("the window left does not take the list")
+	}
+	st.closed(a)
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the poll goes on with no window")
+	}
+	if st.polling != nil {
+		t.Error("a poll is still noted")
+	}
 	quit(st)
 }

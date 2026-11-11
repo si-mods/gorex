@@ -224,7 +224,7 @@ func TestFollowNoWindow(t *testing.T) {
 		a.runPosted()
 		return len(w.layout.Tabs) == 2
 	})
-	b := &App{st: st, client: a.client, stop: make(chan struct{})}
+	b := &App{st: st, client: a.client}
 	st.apps = []*App{b}
 	b.show(w)
 	if len(b.tabs) != 2 || b.tabs[1].Name != "away" || b.tabs[1].Focus.SID != res.New || b.tabs[1].Focus.stream == nil {

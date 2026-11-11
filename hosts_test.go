@@ -1765,3 +1765,54 @@ func TestHostIcon(t *testing.T) {
 		t.Error("the icon menu does not open")
 	}
 }
+
+// TestWatchHostTakesChanges checks that a host's rounds of the same list
+// run nothing on the main thread, so draw no window, and that a new list,
+// or a poke while connected (openTailnetHost), is taken.
+func TestWatchHostTakesChanges(t *testing.T) {
+	sock, remote := startHostServer(t)
+	if _, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := rex.ConnectSocket(sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	h := newHostConn(savedHost{ID: "h1", Name: "office-pc", Address: sock})
+	t.Cleanup(h.close)
+	updates := make(chan struct{}, 100)
+	go (&App{}).watchHost(h, c, func(func()) { updates <- struct{}{} })
+	taken := func(what string) {
+		t.Helper()
+		select {
+		case <-updates:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s is not taken", what)
+		}
+	}
+	// The list settles: then rounds go by without a change.
+	quiet := func() {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for {
+			select {
+			case <-updates:
+				if time.Now().After(deadline) {
+					t.Fatal("every round is taken")
+				}
+			case <-time.After(2500 * time.Millisecond):
+				return
+			}
+		}
+	}
+	taken("the first list")
+	quiet()
+	h.poke()
+	taken("the list after a poke")
+	quiet()
+	if _, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24}); err != nil {
+		t.Fatal(err)
+	}
+	taken("a new session")
+}
