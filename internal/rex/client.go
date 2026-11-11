@@ -541,6 +541,53 @@ func (c *Client) Command(cmd LayoutCommand) (res LayoutCommand, err error) {
 	return
 }
 
+// SplitTree makes the panes of a tree of splits in its shape, from first,
+// the pane that stands for the whole tree. A split splits its pane, which
+// goes on standing for its first side and the new one for its second,
+// moves the divider to its ratio, and then makes each side. split reads a
+// tree: a split's direction, ratio and sides, ok false for a pane. do runs
+// c, a pane.split that makes the pane of leaf or a pane.resize, and returns
+// the new pane. SplitTree returns the panes in leaf order.
+func SplitTree[T any](tree T, first string, split func(T) (vertical bool, ratio float64, a, b T, ok bool), do func(c LayoutCommand, leaf T) (string, error)) ([]string, error) {
+	vertical, ratio, a, b, ok := split(tree)
+	if !ok {
+		return []string{first}, nil
+	}
+	leaf := b
+	for {
+		_, _, la, _, ok := split(leaf)
+		if !ok {
+			break
+		}
+		leaf = la
+	}
+	second, err := do(LayoutCommand{Op: "pane.split", SID: first, Vertical: vertical}, leaf)
+	if err != nil {
+		return nil, err
+	}
+	// The new split is at a half. Its divider moves by an edge no split
+	// above it has: the first pane's growing, the second's shrinking.
+	if d := float32(ratio - 0.5); ratio > 0 && ratio < 1 && (d > 0.01 || d < -0.01) {
+		grow, shrink := "right", "left"
+		if vertical {
+			grow, shrink = "down", "up"
+		}
+		c := LayoutCommand{Op: "pane.resize", SID: first, Direction: grow, Amount: d}
+		if d < 0 {
+			c.SID, c.Direction, c.Amount = second, shrink, -d
+		}
+		if _, err := do(c, leaf); err != nil {
+			return nil, err
+		}
+	}
+	panes, err := SplitTree(a, first, split, do)
+	if err != nil {
+		return nil, err
+	}
+	more, err := SplitTree(b, second, split, do)
+	return append(panes, more...), err
+}
+
 // TakeCommand returns the next layout command for the app to make, after
 // waiting a while for one: nil when none came.
 func (c *Client) TakeCommand() (cmd *LayoutCommand, err error) {

@@ -167,12 +167,12 @@ func cmpOr(a, b string) string {
 
 // applyShellOptions applies the options that act on a running block:
 // its size, its colors and the text typed into it first.
-func (g *Gateway) applyShellOptions(sids []string, leaves []specLeaf) {
+func (g *Gateway) applyShellOptions(sids []string, leaves []*specTree) {
 	for i, sid := range sids {
 		if i >= len(leaves) || sid == "" {
 			continue
 		}
-		so := leaves[i].tree.shell
+		so := leaves[i].shell
 		if so.cols > 0 && so.rows > 0 {
 			g.opt.Client.Resize(sid, so.cols, so.rows)
 		}

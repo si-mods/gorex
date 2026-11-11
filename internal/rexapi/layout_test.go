@@ -2,6 +2,7 @@ package rexapi
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 
@@ -432,8 +433,7 @@ func TestResizePaneBorders(t *testing.T) {
 	f.setLayout(emptyStore())
 	c := f.dialControl()
 	c.hello(apiRevision)
-	// ((A h B) h (C h D)) is built as A h (B h (C h D)): the blocks are
-	// in order, the splits nest to the right.
+	// ((A h B) h (C h D)), built in its own shape.
 	nested := map[string]any{"split": map[string]any{
 		"direction": "horizontal",
 		"before":    splitLayout("horizontal", 0.5),
@@ -452,19 +452,91 @@ func TestResizePaneBorders(t *testing.T) {
 	if len(ids) != 4 {
 		t.Fatalf("blocks: %v", ids)
 	}
-	// The first two blocks share the top split.
+	// The first two blocks share the left split.
 	callChecked(t, c, "session.resize_pane", map[string]any{
 		"session_id": sid, "direction": "horizontal", "ratio": 0.3,
 		"before_block_id": ids[0], "after_block_id": ids[1],
 	})
-	// The second and the third share a split below it.
+	// The second and the third share the top split.
 	callChecked(t, c, "session.resize_pane", map[string]any{
 		"session_id": sid, "direction": "horizontal", "ratio": 0.6,
 		"before_block_id": ids[1], "after_block_id": ids[2],
 	})
-	// The first and the last share the top split, which moves as well.
+	// The first and the last share the top split too.
 	callChecked(t, c, "session.resize_pane", map[string]any{
 		"session_id": sid, "direction": "horizontal", "ratio": 0.3,
 		"before_block_id": ids[0], "after_block_id": ids[3],
 	})
+}
+
+// nestedLayouts are layouts whose splits nest in both directions, with
+// uneven ratios.
+func nestedLayouts() map[string]map[string]any {
+	split := func(direction string, ratio float64, before, after map[string]any) map[string]any {
+		return map[string]any{"split": map[string]any{"direction": direction, "ratio": ratio, "before": before, "after": after}}
+	}
+	b := blockLayout
+	return map[string]map[string]any{
+		"V{H{a,b},c}":      split("vertical", 0.5, split("horizontal", 0.5, b(), b()), b()),
+		"H{V{a,b},c}":      split("horizontal", 0.5, split("vertical", 0.5, b(), b()), b()),
+		"H{a,V{b,c}}":      split("horizontal", 0.5, b(), split("vertical", 0.5, b(), b())),
+		"H{H{a,b},H{c,d}}": split("horizontal", 0.5, split("horizontal", 0.5, b(), b()), split("horizontal", 0.5, b(), b())),
+		"V{H{a,V{b,c}},d}": split("vertical", 0.5, split("horizontal", 0.5, b(), split("vertical", 0.5, b(), b())), b()),
+		"uneven":           split("vertical", 0.7, split("horizontal", 0.25, b(), split("vertical", 0.6, b(), b())), split("horizontal", 0.35, b(), b())),
+		"uneven same way":  split("horizontal", 0.3, b(), split("horizontal", 0.8, b(), b())),
+	}
+}
+
+// sameShape tells whether a GoRex tree has a layout node's splits, in
+// their directions and with their ratios.
+func sameShape(n *layout.Node, want map[string]any) bool {
+	s, ok := want["split"].(map[string]any)
+	if !ok || n.IsLeaf() {
+		return !ok && n.IsLeaf()
+	}
+	return n.Vertical == (s["direction"] == "vertical") && math.Abs(float64(n.Ratio)-s["ratio"].(float64)) < 0.01 &&
+		sameShape(n.A, s["before"].(map[string]any)) && sameShape(n.B, s["after"].(map[string]any))
+}
+
+// tabRoot returns the tree of a session's last tab, as GoRex keeps it.
+func (f *fixture) tabRoot(t *testing.T, sid string) *layout.Node {
+	t.Helper()
+	raw, err := f.desk.Layout()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range layout.Parse(raw).Sessions {
+		if sessionID(w.ID) == sid && len(w.Tabs) > 0 {
+			return w.Tabs[len(w.Tabs)-1].Root
+		}
+	}
+	t.Fatalf("no tab of %s", sid)
+	return nil
+}
+
+// TestNestedLayoutShape: a layout of splits nested either way is built in
+// its own shape, in a new window and beside a block.
+func TestNestedLayoutShape(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(emptyStore())
+	c := f.dialControl()
+	c.hello(apiRevision)
+	for name, tree := range nestedLayouts() {
+		created := callChecked(t, c, "session.create", map[string]any{
+			"initial_windows": []any{map[string]any{"layout": tree}},
+		})
+		sid := created["session_id"].(string)
+		callChecked(t, c, "session.attach", map[string]any{"session_id": sid})
+		if root := f.tabRoot(t, sid); !sameShape(root, tree) {
+			t.Errorf("session.create %s: built %s", name, mustJSON(root))
+		}
+		callChecked(t, c, "session.new_window", map[string]any{"session_id": sid, "layout": blockLayout()})
+		callChecked(t, c, "session.new_split", map[string]any{
+			"session_id": sid, "direction": "horizontal", "ratio": 0.4, "side": "after", "layout": tree,
+		})
+		beside := map[string]any{"split": map[string]any{"direction": "horizontal", "ratio": 0.4, "before": blockLayout(), "after": tree}}
+		if root := f.tabRoot(t, sid); !sameShape(root, beside) {
+			t.Errorf("session.new_split %s: built %s", name, mustJSON(root))
+		}
+	}
 }
