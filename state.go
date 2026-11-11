@@ -3326,7 +3326,10 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			events = append(events, statusEvents(p, was.Statuses, in.Statuses)...)
 			// While another device holds the session's size, the pane's
 			// resizes are ignored, and the session keeps that size; once
-			// it lets go, the pane gives the session its own.
+			// it lets go, the pane gives the session its own. A server
+			// of now takes its authority's size itself as the lock
+			// ends; one before does not, and outlives the app: a
+			// Windows server never upgrades in place.
 			if was.SizeLock != "" && in.SizeLock == "" && p.stream != nil {
 				go func(st *rex.Stream) {
 					if err := st.ResendSize(); err != nil {

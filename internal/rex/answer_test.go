@@ -28,7 +28,9 @@ var (
 // TestOneAnswerPerQuery checks that a program's query gets one answer,
 // whichever clients are attached: the authority's terminal answers, and
 // the server's emulator, at the session's size, when the authority is
-// mute, as the gateway's attach, or when no client is attached.
+// mute, as the gateway's attach, or when no client is attached. The
+// gateway's attach gives no size, so a window beside it is the
+// authority, unless the gateway holds the size.
 func TestOneAnswerPerQuery(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -39,7 +41,7 @@ func TestOneAnswerPerQuery(t *testing.T) {
 		{"a window", []string{"window"}, true, "^[[8;24;80t"},
 		{"no client", nil, false, "^[[8;24;80t"},
 		{"the gateway", []string{"gateway"}, false, "^[[8;24;80t"},
-		{"a window, then the gateway", []string{"window", "gateway"}, false, "^[[8;24;80t"},
+		{"a window, then the gateway", []string{"window", "gateway"}, true, "^[[8;24;80t"},
 		{"the gateway holding the size", []string{"wide window", "gateway lock"}, false, "^[[8;20;60t"},
 		{"two windows", []string{"window", "window"}, true, "^[[8;24;80t"},
 	} {

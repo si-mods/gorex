@@ -458,3 +458,77 @@ func TestInfoNamesTheAuthority(t *testing.T) {
 		t.Fatalf("sizedBy %q, want the desk left", got)
 	}
 }
+
+// TestSizeLockEndGivesSizeBack: a device that held the size and lets go
+// without a size of its own, as the phone leaving its terminal does, gives
+// the session the size of the window that is left, though that window
+// resized while the lock held and sends no size again: a window of
+// another host, or of another machine, never does.
+func TestSizeLockEndGivesSizeBack(t *testing.T) {
+	ends := map[string]func(s *session, via net.Conn){
+		"unlock":  func(s *session, _ net.Conn) { s.unlockSize("", 0, 0) },
+		"release": func(s *session, via net.Conn) { s.releaseSize(via) },
+		"lease":   func(*session, net.Conn) {},
+	}
+	for name, end := range ends {
+		t.Run(name, func(t *testing.T) {
+			settleFor(t, 30*time.Millisecond)
+			lease := time.Minute
+			if name == "lease" {
+				lease = 300 * time.Millisecond
+			}
+			defer sizeLease.set(sizeLease.set(lease))
+			s := newResizeSession(t)
+			deskVia, phoneVia := net.Pipe()
+			defer deskVia.Close()
+			defer phoneVia.Close()
+			desk := addAttached(s, 1, deskVia, 100, 30)
+			s.resizeForAttach(100, 30)
+			waitApplied(t, s, 100, 30)
+			s.admit(desk, []byte("ls\r"))
+			// The phone's stream attaches with no size, and its device
+			// takes the session's size.
+			phone := addAttached(s, 2, phoneVia, 0, 0)
+			phone.mute = true
+			s.lockSize("phone", 40, 50, phoneVia)
+			waitApplied(t, s, 40, 50)
+			// The window resizes while the phone holds the size.
+			s.resizeFrom(deskVia, "", 110, 32)
+			settled()
+			// The phone leaves: its stream first, then its lock.
+			s.leave(phone)
+			end(s, phoneVia)
+			waitApplied(t, s, 110, 32)
+		})
+	}
+}
+
+// TestSizelessClientIsNoAuthority: a client that never gave a size, as
+// the phone's stream waiting for its app to come back, does not take the
+// size from a window that has one: the session follows the window once
+// the phone's lock ends, and the window's resizes are taken.
+func TestSizelessClientIsNoAuthority(t *testing.T) {
+	settleFor(t, 30*time.Millisecond)
+	s := newResizeSession(t)
+	deskVia, phoneVia := net.Pipe()
+	defer deskVia.Close()
+	defer phoneVia.Close()
+	// A window that never typed, as one attached while its user was
+	// away.
+	desk := addAttached(s, 1, deskVia, 100, 30)
+	s.resizeForAttach(100, 30)
+	waitApplied(t, s, 100, 30)
+	phone := addAttached(s, 2, phoneVia, 0, 0)
+	phone.mute = true
+	s.lockSize("phone", 40, 50, phoneVia)
+	waitApplied(t, s, 40, 50)
+	// The phone's app goes to the background: its lock ends, its stream
+	// stays attached for a resume.
+	s.unlockSize("", 0, 0)
+	if a := authorityOf(t, s); a != desk {
+		t.Fatal("a client with no size is the session's authority")
+	}
+	waitApplied(t, s, 100, 30)
+	s.resizeFrom(deskVia, "", 110, 32)
+	waitApplied(t, s, 110, 32)
+}
