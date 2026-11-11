@@ -144,17 +144,19 @@ func (a *App) openSettings() {
 	})
 }
 
-// sections are the sidebar's items.
+// sections are the sidebar's items, each with the color of its tile, as
+// System Settings has: macOS's system colors, a hue per kind of setting.
 var sections = []struct {
 	id, glyph string
+	tile      ui.Color
 	label     func(locales.Messages) string
 }{
-	{"appearance", "settings-2", locales.Messages.SettingsAppearance},
-	{"terminal", "square-terminal", locales.Messages.SettingsTerminal},
-	{"theme", "sparkles", locales.Messages.SettingsTheme},
-	{"keyboard", "keyboard", locales.Messages.SettingsKeyboard},
-	{"hosts", "monitor", locales.Messages.SettingsHosts},
-	{"about", "hexagon", locales.Messages.SettingsAbout},
+	{"appearance", "settings-2", ui.RGB(0, 122, 255), locales.Messages.SettingsAppearance}, // blue
+	{"terminal", "square-terminal", ui.RGB(58, 58, 60), locales.Messages.SettingsTerminal}, // graphite
+	{"theme", "sparkles", ui.RGB(175, 82, 222), locales.Messages.SettingsTheme},            // purple
+	{"keyboard", "keyboard", ui.RGB(142, 142, 147), locales.Messages.SettingsKeyboard},     // gray
+	{"hosts", "monitor", ui.RGB(52, 199, 89), locales.Messages.SettingsHosts},              // green
+	{"about", "hexagon", ui.RGB(142, 142, 147), locales.Messages.SettingsAbout},            // gray
 }
 
 // The settings window's layout: the sidebar's width, the height of the
@@ -194,7 +196,7 @@ func (a *App) settingsView(c *ui.Context) {
 				a.serverCard(c, k)
 				ui.Box(c).Height(8).Shrink(0)
 				for _, s := range sections {
-					a.sidebarItem(c, k, s.id, s.glyph, say(s.label))
+					a.sidebarItem(c, k, s.id, s.glyph, s.tile, say(s.label))
 				}
 			})
 		})
@@ -282,7 +284,7 @@ const sidebarItemH = 32
 
 // sidebarItem is a section's chip, as a tab's: the chosen one has the
 // active tab's face, and its icon and label in the accent.
-func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
+func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Color, label string) {
 	active := settingsUI.section == id
 	e := ui.Row(c.Key(id)).Height(sidebarItemH).Padding(0, 10).Gap(9).AlignItems(ui.Center).Radius(pillRadius(sidebarItemH, 10)).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(label)
@@ -295,12 +297,16 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
 	if e.Clicked() {
 		a.showSection(id)
 	}
-	icon, text := k.iconMuted, k.text
+	text := k.text
 	if active {
-		icon, text = k.accent, k.accent
+		text = k.accent
 	}
 	e.Children(func() {
-		glyphIcon(c, glyph, 16, icon)
+		// A white glyph on the section's color, whether it is chosen or
+		// not: the glass pill says which one is.
+		ui.Box(c).Size(22, 22).Radius(6).Background(tile).Center().Shrink(0).Children(func() {
+			glyphIcon(c, glyph, 14, ui.RGB(255, 255, 255))
+		})
 		ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(text).SingleLine()
 	})
 }
