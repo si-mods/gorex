@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -54,6 +55,42 @@ func TestRealTool(t *testing.T) {
 	}
 }
 
+// A rec handed over to takes no other: the other may be another GoRex's,
+// which would hand it back. The real one is handed the mark.
+func TestRealToolHandedOver(t *testing.T) {
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "rec"), []byte("#!/bin/sh\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", linkSelf(t, "rec")+string(os.PathListSeparator)+other)
+	t.Setenv(handedOver, "")
+	env := handOverEnv()
+	if !slices.Contains(env, handedOver+"=1") {
+		t.Fatalf("the real rec is not marked: %v", env)
+	}
+	t.Setenv(handedOver, "1")
+	if got := realTool("rec"); got != "" {
+		t.Errorf("a rec handed over to took %q", got)
+	}
+}
+
+// rec takes the voice only for raw audio to stdout, as Claude Code asks.
+func TestClaudeRec(t *testing.T) {
+	for args, want := range map[string]bool{
+		"-q --buffer 1024 -t raw -r 16000 -e signed -b 16 -c 1 -":                           true,
+		"-q --buffer 1024 -t raw -r 16000 -e signed -b 16 -c 1 - silence 1 0.1 3% 1 2.0 3%": true,
+		"out.wav":        false,
+		"-t raw out.raw": false,
+		"-t wav -":       false,
+		"--version":      false,
+		"":               false,
+	} {
+		if got := claudeRec(strings.Fields(args)); got != want {
+			t.Errorf("rec %s: %v, want %v", args, got, want)
+		}
+	}
+}
+
 // Without SoX, rec and sox say a version, and refuse the rest; another
 // name is not theirs.
 func TestVoiceWithoutSoX(t *testing.T) {
@@ -92,6 +129,10 @@ func TestRecVoice(t *testing.T) {
 	// The voice begins before rec runs, and ends once rec read it.
 	pcm := bytes.Repeat([]byte{1, 2, 3, 4}, 8000)
 	feed.Write(pcm)
+	// A recording to a file is not Claude's, and leaves the voice.
+	if code, _, out, _ := runVoice(t, "rec", "out.wav"); code != ExitFailed || out != "" {
+		t.Errorf("rec out.wav: %d %q", code, out)
+	}
 	r, w := io.Pipe()
 	code := make(chan int, 1)
 	go func() {

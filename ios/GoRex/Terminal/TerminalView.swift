@@ -107,6 +107,9 @@ final class TerminalView: UIView, TerminalOutput {
     private let reading = DispatchGroup()
     /// The hardware key held, and its repeat.
     private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
+    /// The microphone streaming while the mic is held, and the Space it
+    /// holds meanwhile (talk).
+    private var talking: (voice: VoiceStream, spaces: Task<Void, Never>)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -199,6 +202,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// Frees the surface, once its last output is written.
     func close() {
         held?.task.cancel()
+        stopTalking()
         guard let s = surface else { return }
         surface = nil
         output = -1
@@ -497,6 +501,61 @@ final class TerminalView: UIView, TerminalOutput {
         shift = false
     }
 
+    /// Holds the mic: the microphone streams to the host for the block,
+    /// and Space is held, as Claude Code's /voice listens while it is: a
+    /// space now, and one each 30 ms until stopTalking. The spaces go to
+    /// Ghostty as keys, which the keyboard did not type. A first press asks
+    /// for the microphone, and does no more. The tap comes first: iOS mutes
+    /// it while it records.
+    func talk() {
+        guard talking == nil else { return }
+        Self.tick.impactOccurred()
+        switch AVAudioApplication.shared.recordPermission {
+        case .undetermined:
+            AVAudioApplication.requestRecordPermission { @Sendable _ in }
+            return
+        case .denied:
+            return alert(String(localized: "No Access to the Microphone"),
+                         String(localized: "Allow Rex Go to use the microphone in Settings."))
+        default:
+            break
+        }
+        let voice: VoiceStream
+        do {
+            voice = try session.host.voice(block: session.block)
+            voice.onFail = { [weak self] e in self?.talkFailed(e) }
+            try voice.start()
+        } catch {
+            return talkFailed(error)
+        }
+        talking = (voice, Task { [weak self] in
+            while !Task.isCancelled, let self {
+                forget()
+                press(KeyEvent.typing(" "))
+                try? await Task.sleep(for: .milliseconds(30))
+            }
+        })
+    }
+
+    /// Lets go of the mic: Space goes up, and the stream sends what is
+    /// left and ends.
+    func stopTalking() {
+        guard let t = talking else { return }
+        talking = nil
+        t.spaces.cancel()
+        t.voice.stop()
+    }
+
+    /// The stream failed, or could not open: Space goes up, and an alert
+    /// tells why.
+    private func talkFailed(_ error: Error) {
+        stopTalking()
+        alert(String(localized: "Can't Send Voice"), error.localizedDescription)
+    }
+
+    /// The mic's tap, as the key bar's keys give.
+    private static let tick = UIImpactFeedbackGenerator(style: .light)
+
     /// Has Ghostty encode keys, each pressed and let go, for the program's
     /// keyboard modes.
     func press(_ keys: [KeyEvent]) {
@@ -649,15 +708,13 @@ final class TerminalHost: UIView {
 
 /// The bar over the soft keyboard: three capsules of Liquid Glass, dark as
 /// the keyboard is. ⌘ opens a menu of Paste, Add Photo and Add File, and
-/// spins while a file goes up; beside it, for a host that takes voice, the
-/// mic key holds Space and streams the microphone to the host while held
-/// (Voice). The middle one pages from Esc, the modifiers and Tab to the
-/// punctuation a shell wants and Backspace; the last holds a stick that
-/// sends arrows the way it is dragged, and the key that hides the
-/// keyboard. On an iPad the keys go in the keyboard's bar of shortcuts,
-/// which shows with a hardware keyboard too: ⌘, the mic, Esc, the
-/// modifiers and Tab before its middle, the punctuation and four arrows
-/// after it. Its keyboard has keys of its own to hide it and for Backspace.
+/// spins while a file goes up; the middle one pages from Esc, the modifiers
+/// and Tab to the punctuation a shell wants and Backspace; the last holds a
+/// stick that sends arrows the way it is dragged, and the key that hides
+/// the keyboard. On an iPad the keys go in the keyboard's bar of shortcuts,
+/// which shows with a hardware keyboard too: ⌘, Esc, the modifiers and Tab
+/// before its middle, the punctuation and four arrows after it. Its
+/// keyboard has keys of its own to hide it and for Backspace.
 final class KeyBar: UIView {
     let ctrl = KeyBar.button("control", String(localized: "Control"), size: KeyBar.small)
     let alt = KeyBar.button("option", String(localized: "Option"), size: KeyBar.small)
@@ -666,14 +723,6 @@ final class KeyBar: UIView {
     private let more = KeyBar.button("command", String(localized: "More"))
     /// The files going up; ⌘ spins while there are any.
     var uploading = 0 { didSet { more.setNeedsUpdateConfiguration() } }
-    private let mic = KeyBar.button("mic", String(localized: "Voice"))
-    /// The mic key's place in an iPad's bar, and the width of a phone's
-    /// first capsule, which hold it only for a host that takes voice.
-    private var micItem: UIBarButtonItem?
-    private var leading: NSLayoutConstraint?
-    /// The microphone streaming while the mic key is held, and the Space
-    /// it holds meanwhile.
-    private var talking: (voice: VoiceStream, spaces: Task<Void, Never>)?
     /// Repeats the arrow the stick points to, with the modifiers held
     /// until the stick is let go.
     private var repeating: Task<Void, Never>?
@@ -690,7 +739,6 @@ final class KeyBar: UIView {
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 52))
         autoresizingMask = .flexibleHeight
         overrideUserInterfaceStyle = .dark
-        defer { watchVoice() }
         func key(_ face: String, _ label: String?, _ name: String) -> UIButton {
             let b = Self.button(face, label, size: Self.small)
             b.addAction(UIAction { [weak target] _ in target?.send(name) }, for: .touchUpInside)
@@ -746,19 +794,12 @@ final class KeyBar: UIView {
             b.configuration?.showsActivityIndicator = (self?.uploading ?? 0) > 0
         }
 
-        mic.accessibilityHint = String(localized: "Hold to speak; the host hears it as its microphone.")
-        mic.configurationUpdateHandler = { b in
-            b.configuration = Self.config(b.isSelected ? "mic.fill" : "mic", text: false, size: 17, held: b.isSelected)
-        }
-        mic.addAction(UIAction { [weak self] _ in self?.talk() }, for: .touchDown)
-        mic.addAction(UIAction { [weak self] _ in self?.stopTalking() }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
-
         let first = [key("escape", String(localized: "Esc"), "escape"), ctrl, alt, shift,
                      key("arrow.right.to.line", String(localized: "Tab"), "tab")]
         let second = [text("~"), text("|"), text("/"), text("-")]
         // Every key taps the hand as it goes down, as the keyboard's do.
         // Backspace, the arrows and the stick tap on their own as they repeat.
-        for b in [more, mic] + first + second {
+        for b in [more] + first + second {
             b.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
         }
 
@@ -777,9 +818,7 @@ final class KeyBar: UIView {
                     return item
                 }, representativeItem: nil)
             }
-            let lead = group([more, mic] + first)
-            micItem = lead.barButtonItems[1]
-            target.inputAssistantItem.leadingBarButtonGroups = [lead]
+            target.inputAssistantItem.leadingBarButtonGroups = [group([more] + first)]
             target.inputAssistantItem.trailingBarButtonGroups = [group(second + arrows)]
             return
         }
@@ -821,13 +860,9 @@ final class KeyBar: UIView {
         middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let right = UIStackView(arrangedSubviews: [stick, hide])
         right.distribution = .fillEqually
-        let lead = UIStackView(arrangedSubviews: [more, mic])
-        lead.distribution = .fillEqually
-        let left = Self.capsule(lead), last = Self.capsule(right)
-        // As in the bar this one copies: ⌘ 56pt wide, the stick and Hide
-        // 100, and ⌘ and the mic as wide as they.
-        leading = left.widthAnchor.constraint(equalToConstant: 56)
-        leading?.isActive = true
+        let left = Self.capsule(more), last = Self.capsule(right)
+        // As in the bar this one copies: ⌘ 56pt wide, the stick and Hide 100.
+        left.widthAnchor.constraint(equalToConstant: 56).isActive = true
         last.widthAnchor.constraint(equalToConstant: 100).isActive = true
         let row = UIStackView(arrangedSubviews: [left, middle, last])
         row.spacing = 8
@@ -849,75 +884,6 @@ final class KeyBar: UIView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 52) }
-
-    /// Shows the mic key while the host takes voice, as its connection
-    /// comes and goes. The welcome's features are not observed; the host's
-    /// status, which turns online after the welcome, is.
-    private func watchVoice() {
-        guard let host = target?.session.host else { return }
-        let on = withObservationTracking {
-            _ = host.status
-            return host.canVoice
-        } onChange: { [weak self] in
-            Task { @MainActor in self?.watchVoice() }
-        }
-        mic.isHidden = !on
-        micItem?.isHidden = !on
-        leading?.constant = on ? 100 : 56
-        if !on { stopTalking() }
-    }
-
-    /// Holds the mic key: the microphone streams to the host for the
-    /// terminal's block, and Space is held, as Claude Code's /voice listens
-    /// while it is: a space now, and one each 30 ms until the key is let
-    /// go. The spaces go to Ghostty as keys, which the keyboard did not
-    /// type. A first press asks for the microphone, and does no more.
-    private func talk() {
-        guard let target, talking == nil else { return }
-        switch AVAudioApplication.shared.recordPermission {
-        case .undetermined:
-            AVAudioApplication.requestRecordPermission { @Sendable _ in }
-            return
-        case .denied:
-            return target.alert(String(localized: "No Access to the Microphone"),
-                                String(localized: "Allow Rex Go to use the microphone in Settings."))
-        default:
-            break
-        }
-        let voice: VoiceStream
-        do {
-            voice = try target.session.host.voice(block: target.session.block)
-            voice.onFail = { [weak self] e in self?.failed(e) }
-            try voice.start()
-        } catch {
-            return failed(error)
-        }
-        mic.isSelected = true
-        talking = (voice, Task { [weak target] in
-            repeat {
-                target?.forget()
-                target?.press(KeyEvent.typing(" "))
-                try? await Task.sleep(for: .milliseconds(30))
-            } while !Task.isCancelled
-        })
-    }
-
-    /// Lets go of the mic key: Space goes up, and the stream sends what is
-    /// left and ends.
-    private func stopTalking() {
-        guard let t = talking else { return }
-        talking = nil
-        mic.isSelected = false
-        t.spaces.cancel()
-        t.voice.stop()
-    }
-
-    /// The stream failed, or could not open: Space goes up, and an alert
-    /// tells why.
-    private func failed(_ error: Error) {
-        stopTalking()
-        target?.alert(String(localized: "Can't Send Voice"), error.localizedDescription)
-    }
 
     /// Points the stick: past a dead zone, the arrow of the drag's main
     /// axis goes at once, then repeats while held, as a held key does. Each

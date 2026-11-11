@@ -75,6 +75,9 @@ final class VoiceStream {
     private let out: AsyncStream<Data>.Continuation
     private var pcm: OSAllocatedUnfairLock<Voice.PCM>?
     private var running = false
+    /// What tells that the microphone went: a call took it, or a new route
+    /// stopped the engine.
+    private var observers: [NSObjectProtocol] = []
 
     init(block: String, to base: URL, session: URLSession = .shared) {
         var c = URLComponents(url: base.rexURL("/api/voice"), resolvingAgainstBaseURL: false)!
@@ -110,6 +113,14 @@ final class VoiceStream {
             stop()
             throw error
         }
+        // The host would hear silence: the stream fails instead.
+        let watched: [(Notification.Name, AnyObject)] = [(AVAudioSession.interruptionNotification, audio),
+                                                        (.AVAudioEngineConfigurationChange, engine)]
+        observers = watched.map { name, object in
+            NotificationCenter.default.addObserver(forName: name, object: object, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.interrupted() }
+            }
+        }
         task.resume()
         Task { [weak self, task, chunks] in
             do {
@@ -123,10 +134,19 @@ final class VoiceStream {
         }
     }
 
+    /// The microphone went while the stream ran.
+    private func interrupted() {
+        guard running else { return }
+        stop()
+        onFail(RexError(code: "voice", message: String(localized: "The microphone was interrupted.")))
+    }
+
     /// Stops the microphone, sends what is left, and closes once it has gone.
     func stop() {
         guard running else { return }
         running = false
+        for o in observers { NotificationCenter.default.removeObserver(o) }
+        observers = []
         engine.stop()
         engine.inputNode.removeTap(onBus: 0)
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)

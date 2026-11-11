@@ -83,14 +83,20 @@ struct TerminalScreen: View {
                     .buttonStyle(.plain)
                 }
                 .sharedBackgroundVisibility(.hidden)
-                // The window's menu; the bar's glass draws it.
+                // The window's menu, or for a host that takes voice the
+                // mic, New Tab being in the session's sheet and on ⌘T; the
+                // bar's glass draws it.
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button("New Tab", systemImage: "plus") { newTab() }
-                    } label: {
-                        Image(systemName: "ellipsis")
+                    if canVoice {
+                        Mic { terminal }
+                    } else {
+                        Menu {
+                            Button("New Tab", systemImage: "plus") { newTab() }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                        }
+                        .accessibilityLabel("More")
                     }
-                    .accessibilityLabel("More")
                 }
             }
             // The sheet takes the terminal's scheme as the bar does; the
@@ -129,6 +135,7 @@ struct TerminalScreen: View {
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
+                    terminal?.stopTalking()
                     session?.suspend()
                     suspended = true
                 }
@@ -142,6 +149,16 @@ struct TerminalScreen: View {
     /// The height of the status bar, the window's top inset.
     private static var statusBar: CGFloat {
         UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
+    }
+
+    /// The terminal showing the session.
+    private var terminal: TerminalView? { session?.output as? TerminalView }
+
+    /// Whether the host takes voice. Its welcome's features are not
+    /// observed; its status, which turns online after the welcome, is.
+    private var canVoice: Bool {
+        _ = host.status
+        return host.canVoice
     }
 
     /// The session of the window open, as the host has it.
@@ -215,6 +232,30 @@ struct TerminalScreen: View {
 
     private func label(_ s: String) -> some View {
         Text(s).font(.callout).padding(12).glassEffect(.regular, in: .rect(cornerRadius: 14))
+    }
+}
+
+/// The mic, for a host that takes voice: while it is held, the host hears
+/// the phone's microphone as its own, and Space is held (TerminalView.talk).
+/// It lets go as the finger does, as the touch is cancelled, and as it goes
+/// away, with the screen or the host's voice.
+private struct Mic: View {
+    let terminal: () -> TerminalView?
+    @GestureState private var held = false
+
+    var body: some View {
+        // Held, it is filled in the accent, as a held key of the key bar.
+        Image(systemName: held ? "mic.fill" : "mic")
+            .foregroundStyle(held ? AnyShapeStyle(Color.page) : AnyShapeStyle(.primary))
+            .frame(width: 36, height: 36)
+            .background { Circle().fill(held ? AnyShapeStyle(.tint) : AnyShapeStyle(.clear)) }
+            .contentShape(.circle)
+            .gesture(DragGesture(minimumDistance: 0).updating($held) { _, held, _ in held = true })
+            .onChange(of: held) { _, held in held ? terminal()?.talk() : terminal()?.stopTalking() }
+            .onDisappear { terminal()?.stopTalking() }
+            .accessibilityLabel("Voice")
+            .accessibilityHint("Hold to speak; the host hears it as its microphone.")
+            .accessibilityAddTraits(.isButton)
     }
 }
 

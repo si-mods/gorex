@@ -45,11 +45,13 @@ type Voice struct {
 }
 
 // voiceWait is how long a get waits for a voice to begin: the phone's may
-// come a moment after the program started rec. maxVoiceBytes is the most
+// come a moment after the program started rec, as it opens a connection
+// of its own, maybe through a relay, while the Spaces that start rec go
+// out at once on the one already open. maxVoiceBytes is the most
 // of a voice the server keeps that no get sent yet, ten seconds of it;
 // the oldest bytes go.
 const (
-	voiceWait     = 1500 * time.Millisecond
+	voiceWait     = 3 * time.Second
 	maxVoiceBytes = 10 * 16000 * 2
 )
 
@@ -232,11 +234,9 @@ func (c *Client) canVoice() error {
 
 // FeedVoice begins the voice of the session sid (Voice): what is written
 // to it, the rec of the session reads, and closing it ends the voice, as
-// ctx being done does.
+// ctx being done does. The caller knows the server takes voices
+// (CapabilityVoice), as the gateway does from its hello.
 func (c *Client) FeedVoice(ctx context.Context, sid string) (io.WriteCloser, error) {
-	if err := c.canVoice(); err != nil {
-		return nil, err
-	}
 	fc, _, err := c.openFile(ctx, Voice{Op: "voice.put", SID: sid})
 	if err != nil {
 		return nil, err
