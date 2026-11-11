@@ -393,12 +393,13 @@ func (g *Gateway) modelNow() *model {
 // and attachments when a connection drops, for a reconnect.
 type clientRecord struct {
 	id          string
-	info        *clientInfo
 	principal   map[string]any
 	connectedAt time.Time
 	order       uint64
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// info is replaced, never changed in place: read it with clientInfo.
+	info     *clientInfo
 	token    string
 	conn     *control
 	attached map[string]bool
@@ -439,6 +440,14 @@ func (r *clientRecord) clearOwned() {
 	r.mu.Lock()
 	r.owned = nil
 	r.mu.Unlock()
+}
+
+// clientInfo returns what the client says about itself, nil when it
+// said nothing. The info it points to does not change.
+func (r *clientRecord) clientInfo() *clientInfo {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.info
 }
 
 // clientInfo is what a client says about itself.
