@@ -99,8 +99,16 @@ func procArgs(pid int, withEnv bool) (args, env []string) {
 // procEnv returns the variable name of a process's environment, "" when
 // it has none or does not tell.
 func procEnv(pid int, name string) string {
-	_, env := procArgs(pid, true)
-	return envValue(env, name)
+	return procEnvOf(pid)(name)
+}
+
+// procEnvOf returns procEnv for a process, which reads its environment
+// once, at the first call.
+func procEnvOf(pid int) func(name string) string {
+	return envReader(func() []string {
+		_, env := procArgs(pid, true)
+		return env
+	})
 }
 
 // parentPID returns the parent of a process, 0 when unknown.

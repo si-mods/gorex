@@ -25,11 +25,19 @@ func inspect(pid int) (p procInfo) {
 // procEnv returns the variable name of a process's environment, "" when
 // it has none or does not tell.
 func procEnv(pid int, name string) string {
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
-	if err != nil {
-		return ""
-	}
-	return envValue(strings.Split(string(b), "\x00"), name)
+	return procEnvOf(pid)(name)
+}
+
+// procEnvOf returns procEnv for a process, which reads its environment
+// once, at the first call.
+func procEnvOf(pid int) func(name string) string {
+	return envReader(func() []string {
+		b, err := os.ReadFile(fmt.Sprintf("/proc/%d/environ", pid))
+		if err != nil {
+			return nil
+		}
+		return strings.Split(string(b), "\x00")
+	})
 }
 
 // parentPID returns the parent of a process, 0 when unknown.

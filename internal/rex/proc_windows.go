@@ -113,38 +113,56 @@ func processParams(h windows.Handle) (params uintptr, read func(addr uintptr, p 
 // procEnv returns the variable name of a process's environment, "" when
 // it has none or does not tell.
 func procEnv(pid int, name string) string {
+	return procEnvOf(pid)(name)
+}
+
+// procEnvOf returns procEnv for a process, which reads its environment
+// once, at the first call.
+func procEnvOf(pid int) func(name string) string {
+	env := sync.OnceValue(func() []string { return procEnviron(pid) })
+	return func(name string) string {
+		for _, kv := range env() {
+			// Names take no case.
+			if k, v, ok := strings.Cut(kv, "="); ok && k != "" && strings.EqualFold(k, name) {
+				return v
+			}
+		}
+		return ""
+	}
+}
+
+// procEnviron returns the NAME=value strings of a process's environment,
+// nil when it has none or does not tell.
+func procEnviron(pid int) (env []string) {
 	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION|windows.PROCESS_VM_READ, false, uint32(pid))
 	if err != nil {
-		return ""
+		return nil
 	}
 	defer windows.CloseHandle(h)
 	params, read := processParams(h)
 	if params == 0 {
-		return ""
+		return nil
 	}
-	var env, size uintptr
-	if !read(params+unsafe.Offsetof(windows.RTL_USER_PROCESS_PARAMETERS{}.Environment), unsafe.Pointer(&env), unsafe.Sizeof(env)) ||
+	var start, size uintptr
+	if !read(params+unsafe.Offsetof(windows.RTL_USER_PROCESS_PARAMETERS{}.Environment), unsafe.Pointer(&start), unsafe.Sizeof(start)) ||
 		!read(params+unsafe.Offsetof(windows.RTL_USER_PROCESS_PARAMETERS{}.EnvironmentSize), unsafe.Pointer(&size), unsafe.Sizeof(size)) ||
-		env == 0 || size < 2 || size > 1<<20 {
-		return ""
+		start == 0 || size < 2 || size > 1<<20 {
+		return nil
 	}
 	block := make([]uint16, size/2)
-	if !read(env, unsafe.Pointer(&block[0]), uintptr(len(block))*2) {
-		return ""
+	if !read(start, unsafe.Pointer(&block[0]), uintptr(len(block))*2) {
+		return nil
 	}
-	// NAME=value strings, each ending in a NUL; names take no case.
+	// NAME=value strings, each ending in a NUL.
 	for len(block) > 0 && block[0] != 0 {
 		i := 0
 		for i < len(block) && block[i] != 0 {
 			i++
 		}
-		kv := windows.UTF16ToString(block[:i])
-		if k, v, ok := strings.Cut(kv, "="); ok && k != "" && strings.EqualFold(k, name) {
-			return v
-		}
+		env = append(env, windows.UTF16ToString(block[:i]))
 		block = block[min(i+1, len(block)):]
 	}
-	return ""
+	return env
 }
 
 // processDir returns the working directory of a process, from its
