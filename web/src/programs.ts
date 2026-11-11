@@ -130,7 +130,7 @@ function glyphUrl(g: string): string {
   return g.startsWith("brand:") ? `brands/${g.slice(6)}.svg` : `icons/${g}.svg`;
 }
 
-/** A program's tile, 21×16 DIPs at the iOS scale; its glyph only when it is in front. */
+/** A program's tile, 21×16 DIPs, as the desktop's; its glyph only when it is in front. */
 export function tile(program: Program, glyph = true): HTMLElement {
   const t = document.createElement("span");
   t.className = "tile" + (program.tileBorder ? " bordered" : "");
@@ -146,8 +146,8 @@ export function tile(program: Program, glyph = true): HTMLElement {
   return t;
 }
 
-/** The scale of a DIP of the desktop's tiles, in CSS pixels, and the width of tiles with this many behind. */
-const k = 1.5;
+/** A CSS pixel is a desktop DIP, so the tiles are drawn at scale 1; tilesWidth is the width of tiles with this many behind. */
+const k = 1;
 export const tilesWidth = (behind: number) => (21 + 5 * Math.min(behind, 2) + 2) * k;
 
 /** The tiles of a window's programs: the focused block's in front, up to two others peeking out behind it. */

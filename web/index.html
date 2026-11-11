@@ -19,7 +19,7 @@
     --pill: rgba(255, 255, 255, 0.16);
     /* The tiles' outer rim, dark on a dark page and light on a light one; the dot of a program done. */
     --tile-rim: rgba(0, 0, 0, 0.7);
-    --tile-rim-w: 0.75px;
+    --tile-rim-w: 0.5px;
     --dot-rim: rgba(0, 0, 0, 0.85);
     --done: #7aa0c2;
     --attention: #fbbf24;
@@ -46,7 +46,7 @@
     --hover: rgba(0, 0, 0, 0.07);
     --pill: rgba(0, 0, 0, 0.12);
     --tile-rim: rgba(255, 255, 255, 0.95);
-    --tile-rim-w: 1.5px;
+    --tile-rim-w: 1px;
     --dot-rim: rgba(255, 255, 255, 0.95);
     --attention: #f59e0b;
     --edge: rgba(0, 0, 0, 0.10);
@@ -122,13 +122,13 @@
     background: none; color: var(--text); font: inherit; text-align: left;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
   }
-  /* The tiles of a window's programs (programs.ts), as iOS's ProgramTiles: 21x16 DIPs at 1.5, up to two behind the front one. */
-  .tiles { position: relative; flex: none; height: 28px; }
+  /* The tiles of a window's programs (programs.ts), as the desktop's: 21x16 DIPs, up to two behind the front one. */
+  .tiles { position: relative; flex: none; height: 20px; }
   .tile {
-    position: absolute; width: 31.5px; height: 24px; border-radius: 6.75px; background: var(--tile-bg);
-    box-shadow: 0 0 0 var(--tile-rim-w) var(--tile-rim), 0 0.75px 1.5px 0.75px rgba(0, 0, 0, 0.18);
+    position: absolute; width: 21px; height: 16px; border-radius: 4.5px; background: var(--tile-bg);
+    box-shadow: 0 0 0 var(--tile-rim-w) var(--tile-rim), 0 0.5px 1.5px 0 rgba(0, 0, 0, 0.18);
   }
-  .tile.bordered { box-shadow: inset 0 0 0 0.75px rgba(0, 0, 0, 0.12), 0 0 0 var(--tile-rim-w) var(--tile-rim), 0 0.75px 1.5px 0.75px rgba(0, 0, 0, 0.18); }
+  .tile.bordered { box-shadow: inset 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 0 0 var(--tile-rim-w) var(--tile-rim), 0 0.5px 1.5px 0 rgba(0, 0, 0, 0.18); }
   /* Lit from above: a sheen along the top that darkens a little to the foot, and a lit inner edge, brightest at the top. */
   .tile::before, .tile::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; }
   .tile::before { background: linear-gradient(rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, 0.06)); }
@@ -139,7 +139,7 @@
   }
   /* The glyph is a mask of the SVG, in the tile's foreground, as a template image. */
   .tile-glyph {
-    position: absolute; left: 7.5px; top: 3.75px; width: 16.5px; height: 16.5px; background: var(--tile-fg);
+    position: absolute; left: 5px; top: 2.5px; width: 11px; height: 11px; background: var(--tile-fg);
     -webkit-mask: var(--glyph) center / contain no-repeat; mask: var(--glyph) center / contain no-repeat;
   }
   /* The tile of a pane's header, 0.85 of its size as iOS's terminal title has it. */
@@ -147,9 +147,9 @@
   .pane-tile .tile { position: relative; zoom: 0.85; }
   /* The dot of a program done and not seen, on the tile's corner: lit from above, in a rim. */
   .done-dot {
-    position: absolute; right: -2.5px; top: -2.5px; width: 8.5px; height: 8.5px; border-radius: 50%; z-index: 1;
+    position: absolute; right: -1.67px; top: -1.67px; width: 5.67px; height: 5.67px; border-radius: 50%; z-index: 1;
     background: linear-gradient(rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 50%) content-box, linear-gradient(var(--done), var(--done)) content-box, linear-gradient(var(--dot-rim), var(--dot-rim));
-    padding: 0.75px;
+    padding: 0.5px;
   }
   .attention-dot { flex: none; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--attention); }
   .progress-ring {
