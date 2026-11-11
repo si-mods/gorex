@@ -38,7 +38,7 @@ func init() {
 // before. A get waits voiceWait for a voice no other get took to begin,
 // then the server sends what the voice carried since it began, and what
 // it carries after, and closes the connection once it ended. A voice no
-// get took as it ends is dropped.
+// get took or waits for as it ends is dropped.
 type Voice struct {
 	Op  string `json:"op"` // "voice.put" or "voice.get"
 	SID string `json:"sid"`
@@ -89,6 +89,13 @@ func (v *voice) end() {
 		v.ended = true
 		close(v.wake)
 	}
+}
+
+// over tells whether the voice ended.
+func (v *voice) over() bool {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.ended
 }
 
 // next takes the bytes kept, and tells whether the voice ended and what
@@ -151,8 +158,9 @@ func (s *Server) voicePut(sid string, r io.Reader, answer func(FileAnswer)) {
 		}
 	}
 	v.end()
+	// A get that waits takes it yet, though it ended.
 	s.voiceMu.Lock()
-	if s.voices[sid] == v && !v.taken {
+	if s.voices[sid] == v && !v.taken && s.voiceGets[sid] == 0 {
 		delete(s.voices, sid)
 	}
 	s.voiceMu.Unlock()
@@ -164,6 +172,24 @@ func (s *Server) voiceGet(conn net.Conn, sid string, answer func(FileAnswer)) {
 	timeout := time.NewTimer(voiceWait)
 	defer timeout.Stop()
 	var v *voice
+	s.voiceMu.Lock()
+	if s.voiceGets == nil {
+		s.voiceGets = map[string]int{}
+	}
+	s.voiceGets[sid]++
+	s.voiceMu.Unlock()
+	// As the get goes, so does the voice it took, and one that ended
+	// which no get waits for.
+	defer func() {
+		s.voiceMu.Lock()
+		if s.voiceGets[sid]--; s.voiceGets[sid] == 0 {
+			delete(s.voiceGets, sid)
+		}
+		if cur := s.voices[sid]; cur != nil && (cur == v || s.voiceGets[sid] == 0 && cur.over()) {
+			delete(s.voices, sid)
+		}
+		s.voiceMu.Unlock()
+	}()
 	for v == nil {
 		s.voiceMu.Lock()
 		if old := s.voices[sid]; old != nil && !old.taken {
@@ -185,13 +211,6 @@ func (s *Server) voiceGet(conn net.Conn, sid string, answer func(FileAnswer)) {
 			return
 		}
 	}
-	defer func() {
-		s.voiceMu.Lock()
-		if s.voices[sid] == v {
-			delete(s.voices, sid)
-		}
-		s.voiceMu.Unlock()
-	}()
 	answer(FileAnswer{OK: true})
 	// The client sends nothing: its connection ends as it goes.
 	gone := make(chan struct{})

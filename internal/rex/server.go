@@ -99,10 +99,12 @@ type Server struct {
 	refreshDue atomic.Bool
 	restoring  map[string]chan struct{}
 	// voices are the sessions' voices (Voice), by session; voiceWake
-	// closes as one begins.
+	// closes as one begins, and voiceGets counts the gets of a session
+	// that wait for one or send it.
 	voiceMu   sync.Mutex
 	voices    map[string]*voice
 	voiceWake chan struct{}
+	voiceGets map[string]int
 }
 
 // layoutCmd is a command waiting for the app's answer, done.
