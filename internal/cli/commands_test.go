@@ -311,10 +311,24 @@ func TestTargetResolution(t *testing.T) {
 }
 
 func TestLayoutLabels(t *testing.T) {
-	raw := json.RawMessage(`{"sessions":[{"name":"work","active":0,"tabs":[{"name":"build","focus":1,"root":{"a":{"sid":"one"},"b":{"sid":"two"}}}]}]}`)
-	labels := sessionLabels(raw)
-	if labels["work"] != "two" || labels["build"] != "two" {
-		t.Fatalf("labels %v", labels)
+	note := `{"url":"https://example.com"}`
+	for _, c := range []struct {
+		name  string
+		tab   string
+		label string
+		want  string
+	}{
+		{"focus after a browser pane", `"focus":2,"root":{"a":` + note + `,"b":{"a":{"sid":"AAA"},"b":{"sid":"BBB"}}}`, "t", "BBB"},
+		{"focus on the first session", `"focus":1,"root":{"a":` + note + `,"b":{"a":{"sid":"AAA"},"b":{"sid":"BBB"}}}`, "t", "AAA"},
+		{"focus on the browser pane", `"focus":0,"root":{"a":` + note + `,"b":{"a":{"sid":"AAA"},"b":{"sid":"BBB"}}}`, "t", ""},
+		{"focus out of range", `"focus":9,"root":{"a":{"sid":"AAA"},"b":{"sid":"BBB"}}`, "t", "AAA"},
+		{"focus on a remote pane", `"focus":1,"root":{"a":{"sid":"AAA"},"b":{"sid":"BBB","host":"h1"}}`, "t", ""},
+		{"the workspace's label", `"focus":1,"root":{"a":` + note + `,"b":{"sid":"BBB"}}`, "w", "BBB"},
+	} {
+		raw := json.RawMessage(`{"version":2,"sessions":[{"id":"s1","name":"w","active":0,"tabs":[{"name":"t",` + c.tab + `}]}]}`)
+		if got := sessionLabels(raw)[c.label]; got != c.want {
+			t.Errorf("%s: %q resolves to %q, want %q", c.name, c.label, got, c.want)
+		}
 	}
 }
 
@@ -413,5 +427,59 @@ func TestLayoutWithoutWindow(t *testing.T) {
 	}
 	if tab := read(); tab.Root.SID != in.ID {
 		t.Errorf("after the close: %+v", tab.Root)
+	}
+}
+
+// TestRunKillsItsSessionOnInterrupt checks that `gorex run` ends its session
+// when it gets a signal, which Go would otherwise exit on with no defer run.
+func TestRunKillsItsSessionOnInterrupt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh and a signal")
+	}
+	c := startServer(t)
+	type result struct {
+		code int
+		out  string
+	}
+	done := make(chan result, 1)
+	go func() {
+		code, _, _, errOut := runMain(t, "run", "--", "sleep", "60")
+		done <- result{code, errOut}
+	}()
+	for i := 0; ; i++ {
+		infos, err := c.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(infos) == 1 {
+			break
+		}
+		if i > 200 {
+			t.Fatal("run started no session")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond) // let run wait for the exit
+	p, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.code != ExitInterrupted {
+			t.Fatalf("run exited %d (%s), want %d", r.code, r.out, ExitInterrupted)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run ignored the signal")
+	}
+	infos, err := c.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 0 {
+		t.Fatalf("sessions left after the signal: %v", infos)
 	}
 }
