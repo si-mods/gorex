@@ -1953,7 +1953,7 @@ func methodSessionListClients(c *control, a args) (any, *apiError) {
 		}
 		v := clientViewResult{
 			ClientID: r.id, Principal: r.principal,
-			Info: r.info.json(), ConnectedAt: connectedAtString(r.connectedAt),
+			Info: r.clientInfo().json(), ConnectedAt: connectedAtString(r.connectedAt),
 		}
 		if lost, at := r.state(); lost {
 			v.ConnectionState = "lost"

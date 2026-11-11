@@ -302,10 +302,10 @@ func (g *Gateway) clientCandidates(ts *targetSearch) []candidate {
 			continue
 		}
 		label, where, kind := "", "", ""
-		if r.info != nil {
-			label = r.info.Label
-			kind = r.info.Kind
-			where = joinNonEmpty(r.info.Name, r.info.Version)
+		if info := r.clientInfo(); info != nil {
+			label = info.Label
+			kind = info.Kind
+			where = joinNonEmpty(info.Name, info.Version)
 		}
 		out = append(out, candidate{
 			kind: "client",
