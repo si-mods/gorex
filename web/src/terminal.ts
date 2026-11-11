@@ -417,14 +417,13 @@ export class Terminal {
   encodeMouse(m: MouseReport, size: MouseSize): Uint8Array | undefined {
     const { g } = this;
     const x = g.x;
-    const v = g.view;
     const enc = this.mouseEnc;
     const opt = (n: string, p: number) => x.ghostty_mouse_encoder_setopt(enc, g.e("GhosttyMouseEncoderOption", n), p);
     x.ghostty_mouse_encoder_setopt_from_terminal(enc, this.t);
     const t = "GhosttyMouseEncoderSize";
     const s = this.mouseSize;
-    const field = (k: string, n: number) => v.setUint32(s + g.off(t, k), Math.max(0, Math.round(n)), true);
-    v.setUint32(s + g.off(t, "size"), g.size(t), true);
+    const field = (k: string, n: number) => g.view.setUint32(s + g.off(t, k), Math.max(0, Math.round(n)), true);
+    g.view.setUint32(s + g.off(t, "size"), g.size(t), true);
     field("screen_width", size.width);
     field("screen_height", size.height);
     field("cell_width", Math.max(1, size.cellW));
@@ -442,13 +441,13 @@ export class Terminal {
     else x.ghostty_mouse_event_clear_button(ev);
     x.ghostty_mouse_event_set_mods(ev, m.mods);
     const pos = this.sx + sx.mpos;
-    v.setFloat32(pos + g.off("GhosttyMousePosition", "x"), m.x, true);
-    v.setFloat32(pos + g.off("GhosttyMousePosition", "y"), m.y, true);
+    g.view.setFloat32(pos + g.off("GhosttyMousePosition", "x"), m.x, true);
+    g.view.setFloat32(pos + g.off("GhosttyMousePosition", "y"), m.y, true);
     x.ghostty_mouse_event_set_position(ev, pos);
     const out = this.sx + sx.out;
-    v.setUint32(out, 0, true);
+    g.view.setUint32(out, 0, true);
     if (x.ghostty_mouse_encoder_encode(enc, ev, this.mouseOut, mouseCap, out) !== 0) return undefined;
-    const n = v.getUint32(out, true);
+    const n = g.view.getUint32(out, true);
     return n > 0 ? g.bytes.slice(this.mouseOut, this.mouseOut + n) : undefined;
   }
 
@@ -470,28 +469,26 @@ export class Terminal {
   /** Points this.ref at a viewport cell; false when there is none. */
   private refAt(col: number, row: number): boolean {
     const { g } = this;
-    const v = g.view;
     const pt = this.sx + sx.point;
     g.bytes.fill(0, pt, pt + g.size("GhosttyPoint"));
-    v.setInt32(pt + g.off("GhosttyPoint", "tag"), g.e("GhosttyPointTag", "VIEWPORT"), true);
+    g.view.setInt32(pt + g.off("GhosttyPoint", "tag"), g.e("GhosttyPointTag", "VIEWPORT"), true);
     const c = pt + g.off("GhosttyPoint", "value");
-    v.setUint16(c + g.off("GhosttyPointCoordinate", "x"), col, true);
-    v.setUint32(c + g.off("GhosttyPointCoordinate", "y"), row, true);
-    v.setUint32(this.ref + g.off("GhosttyGridRef", "size"), g.size("GhosttyGridRef"), true);
+    g.view.setUint16(c + g.off("GhosttyPointCoordinate", "x"), col, true);
+    g.view.setUint32(c + g.off("GhosttyPointCoordinate", "y"), row, true);
+    g.view.setUint32(this.ref + g.off("GhosttyGridRef", "size"), g.size("GhosttyGridRef"), true);
     return g.x.ghostty_terminal_grid_ref(this.t, pt, this.ref) === 0;
   }
 
   /** Writes a pointer's position and the geometry into the scratch, and sets them on an event. */
   private placed(ev: number, p: Pointer, geo?: Geometry) {
     const { g } = this;
-    const v = g.view;
     const pos = this.sx + sx.pos;
-    v.setFloat64(pos + g.off("GhosttySurfacePosition", "x"), p.x, true);
-    v.setFloat64(pos + g.off("GhosttySurfacePosition", "y"), p.y, true);
+    g.view.setFloat64(pos + g.off("GhosttySurfacePosition", "x"), p.x, true);
+    g.view.setFloat64(pos + g.off("GhosttySurfacePosition", "y"), p.y, true);
     this.opt(ev, "POSITION", pos);
     if (!geo) return;
     const gp = this.sx + sx.geo;
-    const field = (k: string, n: number) => v.setUint32(gp + g.off("GhosttySelectionGestureGeometry", k), Math.max(0, Math.round(n)), true);
+    const field = (k: string, n: number) => g.view.setUint32(gp + g.off("GhosttySelectionGestureGeometry", k), Math.max(0, Math.round(n)), true);
     field("columns", geo.cols);
     field("cell_width", geo.cellW);
     field("padding_left", geo.padLeft);
@@ -715,7 +712,6 @@ export class Terminal {
   rowText(row: number): RowText {
     const { g } = this;
     const x = g.x;
-    const v = g.view;
     const wide = g.cellBits("wide");
     const SPACER_TAIL = g.e("GhosttyCellWide", "SPACER_TAIL");
     const SPACER_HEAD = g.e("GhosttyCellWide", "SPACER_HEAD");
@@ -731,18 +727,18 @@ export class Terminal {
     for (let col = 0; col < n; col++) {
       if (!this.refAt(col, row)) break;
       if (x.ghostty_grid_ref_cell(this.ref, this.scratch) === 0) {
-        const kind = Number((v.getBigUint64(this.scratch, true) >> BigInt(wide.lsb)) & BigInt((1 << wide.width) - 1));
+        const kind = Number((g.view.getBigUint64(this.scratch, true) >> BigInt(wide.lsb)) & BigInt((1 << wide.width) - 1));
         if (kind === SPACER_TAIL || kind === SPACER_HEAD) continue;
       }
-      v.setUint32(out, 0, true);
-      const len = x.ghostty_grid_ref_graphemes(this.ref, this.graphemes, this.graphemesCap, out) === 0 ? v.getUint32(out, true) : 0;
+      g.view.setUint32(out, 0, true);
+      const len = x.ghostty_grid_ref_graphemes(this.ref, this.graphemes, this.graphemesCap, out) === 0 ? g.view.getUint32(out, true) : 0;
       if (len === 0) {
         text.push(" ");
         cols.push(col);
         continue;
       }
       for (let i = 0; i < len; i++) {
-        text.push(String.fromCodePoint(v.getUint32(this.graphemes + i * 4, true)));
+        text.push(String.fromCodePoint(g.view.getUint32(this.graphemes + i * 4, true)));
         cols.push(col);
       }
     }
@@ -801,9 +797,8 @@ export class Terminal {
       this.contrasts.clear();
       full = true;
     }
-    const v = g.view;
     x.ghostty_render_state_get(this.rs, g.e("GhosttyRenderStateData", "DIRTY"), this.scratch);
-    if (v.getInt32(this.scratch, true) === g.e("GhosttyRenderStateDirty", "FULL")) full = true;
+    if (g.view.getInt32(this.scratch, true) === g.e("GhosttyRenderStateDirty", "FULL")) full = true;
     const co = (k: string) => this.colors + g.off("GhosttyRenderStateColors", k);
     const bg = g.rgb(co("background"));
     const fg = g.rgb(co("foreground"));
@@ -813,11 +808,11 @@ export class Terminal {
     this.blinking = g.bytes[cu("blinking")] !== 0;
     const cursorIn = g.bytes[cu("viewport_has_value")] !== 0 && g.bytes[cu("visible")] !== 0;
     const showCursor = cursorIn && !(f.focused && this.blinking && f.blinkOff);
-    let cx = v.getUint16(cu("viewport_x"), true);
-    const cy = cursorIn ? v.getUint16(cu("viewport_y"), true) : -1;
+    let cx = g.view.getUint16(cu("viewport_x"), true);
+    const cy = cursorIn ? g.view.getUint16(cu("viewport_y"), true) : -1;
     if (g.bytes[cu("wide_tail")] && cx > 0) cx--;
     const st = (s: string) => g.e("GhosttyRenderStateCursorVisualStyle", s);
-    let cursorStyle = v.getInt32(cu("visual_style"), true);
+    let cursorStyle = g.view.getInt32(cu("visual_style"), true);
     if (!f.focused && cursorStyle === st("BLOCK")) cursorStyle = st("BLOCK_HOLLOW");
     const block = showCursor && cursorStyle === st("BLOCK");
     const { cols } = this.size();
@@ -837,7 +832,7 @@ export class Terminal {
 
     ctx.textBaseline = "alphabetic";
     // ROW_ITERATOR and CELLS fill the handle their out pointer points at.
-    v.setUint32(this.scratch, this.rows, true);
+    g.view.setUint32(this.scratch, this.rows, true);
     x.ghostty_render_state_get(this.rs, g.e("GhosttyRenderStateData", "ROW_ITERATOR"), this.scratch);
     let y = -1;
     while (x.ghostty_render_state_row_iterator_next(this.rows)) {
@@ -845,16 +840,16 @@ export class Terminal {
       x.ghostty_render_state_row_get(this.rows, rowData("DIRTY"), this.scratch);
       const dirty = g.bytes[this.scratch] !== 0;
       if (!full && !dirty && y !== cy && y !== lastCursorRow) continue;
-      v.setUint32(this.scratch, this.cells, true);
+      g.view.setUint32(this.scratch, this.cells, true);
       x.ghostty_render_state_row_get(this.rows, rowData("CELLS"), this.scratch);
       const cells = this.cells;
       const ry = oy + y * h;
       // The row's selected columns, sa to sb, as Ghostty's render state has them.
       let sa = -1, sb = -2;
-      v.setUint32(this.rowSel + g.off("GhosttyRenderStateRowSelection", "size"), g.size("GhosttyRenderStateRowSelection"), true);
+      g.view.setUint32(this.rowSel + g.off("GhosttyRenderStateRowSelection", "size"), g.size("GhosttyRenderStateRowSelection"), true);
       if (x.ghostty_render_state_row_get(this.rows, rowData("SELECTION"), this.rowSel) === 0) {
-        sa = v.getUint16(this.rowSel + g.off("GhosttyRenderStateRowSelection", "start_x"), true);
-        sb = v.getUint16(this.rowSel + g.off("GhosttyRenderStateRowSelection", "end_x"), true);
+        sa = g.view.getUint16(this.rowSel + g.off("GhosttyRenderStateRowSelection", "start_x"), true);
+        sb = g.view.getUint16(this.rowSel + g.off("GhosttyRenderStateRowSelection", "end_x"), true);
       }
       const bgs: { x0: number; x1: number; c: RGB }[] = [];
       const decos: Deco[] = [];
@@ -868,7 +863,7 @@ export class Terminal {
       while (x.ghostty_render_state_row_cells_next(cells)) {
         col++;
         x.ghostty_render_state_row_cells_get(cells, cellData("RAW"), this.scratch);
-        const kind = wideOf(v.getBigUint64(this.scratch, true));
+        const kind = wideOf(g.view.getBigUint64(this.scratch, true));
         if (kind === SPACER_TAIL || kind === SPACER_HEAD) continue;
         const span = kind === WIDE ? 2 : 1;
         let cfg = fg;
@@ -879,7 +874,7 @@ export class Terminal {
         let ul: RGB | undefined;
         x.ghostty_render_state_row_cells_get(cells, cellData("HAS_STYLING"), this.scratch);
         if (g.bytes[this.scratch]) {
-          v.setUint32(styleOff("size"), g.size("GhosttyStyle"), true);
+          g.view.setUint32(styleOff("size"), g.size("GhosttyStyle"), true);
           x.ghostty_render_state_row_cells_get(cells, cellData("STYLE"), this.style);
           const b = g.bytes;
           if (b[styleOff("bold")]) variant |= 1;
@@ -888,7 +883,7 @@ export class Terminal {
           strike = b[styleOff("strikethrough")] !== 0;
           overline = b[styleOff("overline")] !== 0;
           invisible = b[styleOff("invisible")] !== 0;
-          underline = v.getInt32(styleOff("underline"), true);
+          underline = g.view.getInt32(styleOff("underline"), true);
           ul = this.styleColor(styleOff("underline_color"), palette);
           if (b[styleOff("inverse")]) {
             const was = cfg;
@@ -913,7 +908,7 @@ export class Terminal {
           else bgs.push({ x0: col, x1: col + span, c: cbg });
         }
         x.ghostty_render_state_row_cells_get(cells, cellData("GRAPHEMES_LEN"), this.scratch);
-        const n = v.getUint32(this.scratch, true);
+        const n = g.view.getUint32(this.scratch, true);
         let text = "";
         let cp = 0;
         if (n > 0 && !invisible) {
@@ -923,8 +918,8 @@ export class Terminal {
             this.graphemes = g.alloc(this.graphemesCap * 4);
           }
           x.ghostty_render_state_row_cells_get(cells, cellData("GRAPHEMES_BUF"), this.graphemes);
-          cp = v.getUint32(this.graphemes, true);
-          for (let i = 0; i < n; i++) text += String.fromCodePoint(v.getUint32(this.graphemes + i * 4, true));
+          cp = g.view.getUint32(this.graphemes, true);
+          for (let i = 0; i < n; i++) text += String.fromCodePoint(g.view.getUint32(this.graphemes + i * 4, true));
         }
         const tfg = noMinContrast(cp) ? cfg : this.contrasted(cfg, cbg ?? bg);
         if (underline) deco(col, col + span, underline, ul ?? tfg);

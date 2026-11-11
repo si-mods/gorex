@@ -11,6 +11,8 @@ import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
 /** What a pane needs of the page: the connection, the module, the chosen theme and the status line. */
 export interface PaneHost {
   control(): Control | undefined;
+  /** The connection once its sessions were read again (attached) after it opened, for writes. */
+  live(): Control | undefined;
   g: Ghostty;
   chosen(): Theme | undefined;
   status(s: string): void;
@@ -32,6 +34,8 @@ const lineHeight = 1;
 const padX = 6, padY = 4;
 /** The cursor blinks every 600 ms while the terminal has the focus, as on the desktop. */
 const blinkPeriod = 600;
+/** The most typed bytes that wait to be written while offline, as the iOS app's 4 MB. */
+const maxTyped = 4 << 20;
 
 export function describe(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -85,11 +89,15 @@ export class TerminalView {
   /** The background the canvas was filled with last. */
   private painted = "";
   private fitted?: { cols: number; rows: number };
+  /** Set when a layout found the pane hidden or without a size: the next one sends its size. */
+  private unsized = false;
   private sizing?: number;
   private frame?: number;
   private full = true;
   private typed: Uint8Array[] = [];
   private typing = false;
+  /** While offline, the wait before the typed bytes go again. */
+  private writeRetry?: number;
   /** Whether this view's claim of the block waits for its resize message, and a message it held meanwhile. */
   private claiming = false;
   private stale?: { cols: number; rows: number };
@@ -325,24 +333,34 @@ export class TerminalView {
   layout(device?: { width: number; height: number }) {
     if (this.closed) return;
     const scale = window.devicePixelRatio || 1;
-    const r = this.body.getBoundingClientRect();
-    const canvas = this.canvas;
-    canvas.width = Math.max(1, device?.width ?? Math.round(r.width * scale));
-    canvas.height = Math.max(1, device?.height ?? Math.round(r.height * scale));
-    canvas.style.width = `${canvas.width / scale}px`;
-    canvas.style.height = `${canvas.height / scale}px`;
-    // Resizing cleared the canvas to black: fill it before the browser paints.
-    this.paintBlank();
     if (this.font?.scale !== scale || this.fontStale) {
       this.font = new Font(fontFamily(), textSize(), scale, lineHeight);
       this.fontStale = false;
     }
+    const r = this.body.getBoundingClientRect();
+    const width = device?.width ?? Math.round(r.width * scale);
+    const height = device?.height ?? Math.round(r.height * scale);
+    // A hidden pane, as another one is zoomed, has no size: it keeps the
+    // one it had, and the block keeps it too. Shown again, it lays out and
+    // sends its size once more.
+    if (this.el.hidden || width <= 0 || height <= 0) {
+      this.unsized = true;
+      return;
+    }
+    const canvas = this.canvas;
+    canvas.width = width;
+    canvas.height = height;
+    canvas.style.width = `${canvas.width / scale}px`;
+    canvas.style.height = `${canvas.height / scale}px`;
+    // Resizing cleared the canvas to black: fill it before the browser paints.
+    this.paintBlank();
     this.ox = Math.round(padX * scale);
     this.oy = Math.round(padY * scale);
     this.full = true;
     const cols = Math.max(2, Math.floor((canvas.width - 2 * this.ox) / this.font.w));
     const rows = Math.max(1, Math.floor((canvas.height - 2 * this.oy) / this.font.h));
-    if (this.fitted?.cols !== cols || this.fitted?.rows !== rows) {
+    if (this.fitted?.cols !== cols || this.fitted?.rows !== rows || this.unsized) {
+      this.unsized = false;
       this.fitted = { cols, rows };
       this.term?.resize(cols, rows, this.font.w, this.font.h);
       clearTimeout(this.sizing);
@@ -425,27 +443,58 @@ export class TerminalView {
 
   /**
    * Writes what was typed: one write at a time, as the server runs writes
-   * in any order, and what comes meanwhile goes together next.
+   * in any order, and what comes meanwhile goes together next. What was
+   * not sent, offline, goes again a second later or when the connection
+   * is back (resume); what was sent but not answered is dropped, as the
+   * server may have run it. What is typed past a bound meanwhile is lost,
+   * as in the iOS app (TerminalSession.type).
    */
   private type(b: Uint8Array) {
+    const waiting = this.typed.reduce((n, x) => n + x.length, 0);
+    if (waiting + b.length > maxTyped) {
+      this.app.status(`Dropped ${b.length} typed bytes: ${waiting} wait to be written.`);
+      return;
+    }
     this.typed.push(b);
     this.write();
   }
 
+  /** The connection is back: what waits to be written goes now. */
+  resume() {
+    if (this.writeRetry === undefined) return;
+    clearTimeout(this.writeRetry);
+    this.writeRetry = undefined;
+    this.write();
+  }
+
   private async write() {
-    if (this.typing || this.closed || !this.typed.length) return;
+    if (this.typing || this.closed || !this.typed.length || this.writeRetry !== undefined) return;
     const all = new Uint8Array(this.typed.reduce((n, b) => n + b.length, 0));
     let at = 0;
     for (const b of this.typed) all.set(b, (at += b.length) - b.length);
     this.typed = [];
-    this.typing = true;
-    try {
-      await this.app.control()?.callBlock("write", this.session, this.block, { data: new TextDecoder().decode(all) });
-    } catch (e) {
-      if (e instanceof RexError && e.code === "offline") this.typed.unshift(all);
-      else console.warn("dropped a write", e);
+    const c = this.app.live();
+    let offline = !c;
+    if (c) {
+      this.typing = true;
+      try {
+        await c.callBlock("write", this.session, this.block, { data: new TextDecoder().decode(all) });
+      } catch (e) {
+        if (e instanceof RexError && e.code === "offline") offline = true;
+        else console.warn("dropped a write", e);
+      }
+      this.typing = false;
     }
-    this.typing = false;
+    if (this.closed) return;
+    if (offline) {
+      // First, before what was typed meanwhile; tried again in a second, not at once.
+      this.typed.unshift(all);
+      this.writeRetry = window.setTimeout(() => {
+        this.writeRetry = undefined;
+        this.write();
+      }, 1000);
+      return;
+    }
     this.write();
   }
 
@@ -461,6 +510,7 @@ export class TerminalView {
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     clearTimeout(this.blinkTimer);
     clearTimeout(this.sizing);
+    clearTimeout(this.writeRetry);
     this.pointer.dispose();
     this.term?.free();
     this.term = undefined;

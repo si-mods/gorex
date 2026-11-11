@@ -141,12 +141,30 @@ export class Ghostty {
     return this.m.types[type].size;
   }
 
+  // Views of the module's memory, made again when it grows: growing
+  // detaches the old buffer, so a view must not be held across a call that
+  // may allocate. These getters are cheap enough to read at each use.
+  private buf?: ArrayBuffer;
+  private dv!: DataView;
+  private u8!: Uint8Array;
+
+  private sync() {
+    const b = this.x.memory.buffer;
+    if (b !== this.buf) {
+      this.buf = b;
+      this.dv = new DataView(b);
+      this.u8 = new Uint8Array(b);
+    }
+  }
+
   get view(): DataView {
-    return new DataView(this.x.memory.buffer);
+    this.sync();
+    return this.dv;
   }
 
   get bytes(): Uint8Array {
-    return new Uint8Array(this.x.memory.buffer);
+    this.sync();
+    return this.u8;
   }
 
   alloc(n: number): number {

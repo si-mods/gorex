@@ -307,9 +307,11 @@ The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
   and the focus (see Split panes).
 - `web/src/pane.ts`: one pane: its stream, its terminal and its canvas.
   Typed bytes go to `com.superlogical.terminal.write`, one write at a
-  time. The pane takes its block (`session.own_block`) and sizes it to
-  its canvas (`com.superlogical.terminal.resize`); a pane that closes
-  while its block stays gives it back (`session.disown_block`).
+  time. Bytes typed while the connection is down wait (up to 4 MB, as in
+  the iOS app) and go a second later or when it is back. The pane takes
+  its block (`session.own_block`) and sizes it to its canvas
+  (`com.superlogical.terminal.resize`); a pane that closes while its
+  block stays gives it back (`session.disown_block`).
 - `web/src/keys.ts`: the shortcuts (see Shortcuts).
 - `web/src/pointer.ts`: the pointer over a pane's grid: selecting, the
   handles and the Copy menu, the wheel and a finger's swipe, and the mouse
@@ -327,7 +329,8 @@ shows on hover. A click shows the window.
   `horizontal` side by side and `vertical` one above the other. The panes
   are 8px apart, as the desktop's (`gap` in `view.go`), with the desktop's
   pane border and shadow. A zoomed block (`zoomed_block_id`) fills the
-  window alone.
+  window alone; the hidden panes keep their blocks' sizes, and send them
+  again when they show.
 - **Panes.** Each pane has its own data stream, its own libghostty-vt
   terminal and canvas, and owns and sizes its own block. It has a header,
   as the desktop's: the terminal's title, and on the focused or hovered

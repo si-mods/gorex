@@ -2,7 +2,7 @@
 // panes, live, over the same API the iOS app speaks. The page is hosted on
 // its own; the host is one the user added (hosts.ts).
 import { Ghostty } from "./ghostty";
-import { commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
+import { allowCommand, commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
 import { shortcut } from "./keys";
 import { describe } from "./pane";
 import { fontFamily, prefs } from "./prefs";
@@ -19,6 +19,8 @@ const shell = { flavor: "com.superlogical.terminal.shell" };
 
 let g: Ghostty;
 let control: Control | undefined;
+/** Whether control's sessions were read (attached) since it opened: panes write only then. */
+let live = false;
 let token: string | undefined;
 /** The host connected to, or connecting; one at a time. */
 let current: Host | undefined;
@@ -38,8 +40,11 @@ interface Session {
   id: string;
   label: string;
   view?: any;
-  reading?: boolean;
+  /** The connection a read of the view is on its way over. */
+  reading?: Control;
+  /** A read asked for while one was on its way, and whether it asked to attach. */
   again?: boolean;
+  attach?: boolean;
 }
 
 /** The sessions, in the order the host lists them. */
@@ -104,6 +109,7 @@ function status(s: string) {
 /** What a window and its panes need of the page. */
 const host: WindowHost = {
   control: () => control,
+  live: () => (live ? control : undefined),
   get g() {
     return g;
   },
@@ -201,6 +207,7 @@ function choose(h: Host | undefined) {
   clearTimeout(retry);
   const c = control;
   control = undefined;
+  live = false;
   c?.close();
   hide();
   token = undefined;
@@ -219,7 +226,7 @@ function choose(h: Host | undefined) {
           "This page connects to GoRex's Rex API gateway on your machines: the tailnet address of built-in Tailscale " +
           "(https://<machine>-gorex.<tailnet>.ts.net), or the local network listener (http://192.168.1.2:7297). " +
           "Each host must trust this page's origin first. On the host, run:",
-        command: `gorex rexapi web allow ${location.origin}`,
+        command: allowCommand(),
       },
       { label: "Add Host", run: () => hostList.open("new") },
     );
@@ -263,12 +270,14 @@ async function connect(gen: number) {
   notice();
   setLink("connected");
   control = c;
+  live = false;
   described.clear();
   token = c.reconnectToken;
   c.onEvent = (e) => event(e.type, e.sessionID, e.payload);
   c.onClose = (reason) => {
     if (control !== c) return;
     control = undefined;
+    live = false;
     setLink("connecting");
     status(`${h.name}: disconnected (${reason}). Reconnecting…`);
     retry = setTimeout(() => connect(gen), 3000);
@@ -281,6 +290,10 @@ async function connect(gen: number) {
   } catch (e) {
     status(`Connected, but the sessions could not be read: ${describe(e)}`);
   }
+  if (control !== c) return;
+  // What was typed while offline goes now.
+  live = true;
+  for (const p of shown?.panes.values() ?? []) p.resume();
 }
 
 /**
@@ -321,20 +334,20 @@ function event(type: string, sid: string | undefined, p: any) {
     case "block_event":
       if (p.name === "title_changed" && p.block_id) {
         titles.set(p.block_id, p.payload?.title ?? "");
-        sidebar();
+        sidebarBlock(p.block_id);
         shown?.retitle();
       } else if (p.name === "process_changed" && p.block_id) {
         programs.set(p.block_id, programName(p.payload?.foreground));
-        sidebar();
+        sidebarBlock(p.block_id);
         shown?.retitle();
       } else if (p.name === "program_status_changed" && p.block_id) {
         statuses.set(p.block_id, recordsOf(p.payload?.records));
         see(p.block_id);
-        sidebar();
+        sidebarBlock(p.block_id);
       } else if (p.name === "program_status_removed" && p.block_id) {
         const ids: string[] = p.payload?.ids ?? [];
         statuses.set(p.block_id, (statuses.get(p.block_id) ?? []).filter((r) => !ids.includes(r.id)));
-        sidebar();
+        sidebarBlock(p.block_id);
       }
       break;
   }
@@ -359,32 +372,40 @@ async function list() {
 
 /**
  * Reads a session's view: attached first, as data connections and the
- * layout methods need. One read at a time; a change meanwhile reads again.
+ * layout methods need. One read at a time on a connection; a change
+ * meanwhile reads again, attaching if any of the reads asked for it. A
+ * read on a connection that was replaced stops, and the new one reads.
  */
 async function refresh(id: string, attach = false) {
   const s = sessions.get(id);
   const c = control;
   if (!s || !c) return;
-  if (s.reading) {
-    s.again = true;
-    return;
-  }
-  s.reading = true;
+  s.again = true;
+  if (attach) s.attach = true;
+  if (s.reading === c) return;
+  s.reading = c;
   try {
-    do {
+    while (s.again && s.reading === c) {
       s.again = false;
-      const fresh = attach;
-      const v = attach
-        ? (await c.call("session.attach", { session_id: id })).payload.view
-        : (await c.call("session.view", { session_id: id })).payload;
-      attach = false;
-      if (sessions.get(id) !== s) return;
+      const fresh = !!s.attach;
+      s.attach = false;
+      let v: any;
+      try {
+        v = fresh
+          ? (await c.call("session.attach", { session_id: id })).payload.view
+          : (await c.call("session.view", { session_id: id })).payload;
+      } catch (e) {
+        // The next read attaches in its place.
+        if (fresh && s.reading === c) s.attach = true;
+        throw e;
+      }
+      if (sessions.get(id) !== s || s.reading !== c) return;
       if (fresh || !s.view || v.revision > s.view.revision) apply(s, v);
-    } while (s.again);
+    }
   } catch (e) {
     console.warn("session view", id, e);
   } finally {
-    s.reading = false;
+    if (s.reading === c) s.reading = undefined;
   }
 }
 
@@ -428,7 +449,7 @@ function readTitle(session: string, b: string, tries: number) {
       if (titles.get(b)) return;
       if (r.title) {
         titles.set(b, r.title);
-        sidebar();
+        sidebarBlock(b);
         shown?.retitle();
       } else if (tries > 1) setTimeout(() => readTitle(session, b, tries - 1), 1000);
     },
@@ -462,7 +483,7 @@ function readProgram(session: string, block: string) {
     (r) => {
       if (!programs.has(block) || programs.get(block) === hadProgram) {
         programs.set(block, programName(r.foreground));
-        sidebar();
+        sidebarBlock(block);
         shown?.retitle();
       }
     },
@@ -473,7 +494,7 @@ function readProgram(session: string, block: string) {
       if (!statuses.has(block) || statuses.get(block) === hadRecords) {
         statuses.set(block, recordsOf(r.records));
         see(block);
-        sidebar();
+        sidebarBlock(block);
       }
     },
     () => {},
@@ -485,6 +506,67 @@ function windowTitle(w: any): string {
   const blocks = leavesOf(layoutOf(w));
   const focused = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
   return (focused && titles.get(focused)) || w.label || "Window";
+}
+
+/** The room of the tiles of a session's window with the most, so that the titles line up. */
+function tilesRoom(v: any): number {
+  return tilesWidth(Math.max(0, ...(v.windows ?? []).map((w: any) => leavesOf(layoutOf(w)).length - 1)));
+}
+
+/** A window row's button: its programs' tiles, its title, its most urgent record and its count of panes. */
+function fillWindow(b: HTMLElement, w: any, room: number) {
+  const title = document.createElement("span");
+  title.className = "title";
+  title.textContent = windowTitle(w);
+  const blocks = leavesOf(layoutOf(w));
+  const front = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
+  const urgent = blocks
+    .map((x) => mostUrgent(statuses.get(x) ?? [], seen.get(x) ?? new Set()))
+    .reduce<Status | undefined>((a, r) => (r && (!a || rank(r) > rank(a)) ? r : a), undefined);
+  b.replaceChildren(
+    tiles(front ? programs.get(front) : undefined, blocks.filter((x) => x !== front).map((x) => programs.get(x)), urgent?.state === "done", room),
+    title,
+  );
+  if (urgent?.state === "blocked") {
+    const dot = document.createElement("i");
+    dot.className = "attention-dot";
+    dot.title = "Needs Input";
+    b.append(dot);
+  } else if (urgent?.progress !== undefined) {
+    const ring = document.createElement("i");
+    ring.className = "progress-ring";
+    ring.style.setProperty("--p", String(urgent.progress));
+    ring.title = `${urgent.progress}%`;
+    b.append(ring);
+  }
+  const n = blocks.length;
+  if (n > 1) {
+    const count = document.createElement("span");
+    count.className = "count";
+    count.textContent = String(n);
+    b.append(count);
+  }
+}
+
+/**
+ * Updates the sidebar's rows of the windows that show a block, after its
+ * title, program or records changed: only their buttons' contents, so
+ * that the rows keep the pointer's hover and the focus. Without a row,
+ * the whole sidebar is made again.
+ */
+function sidebarBlock(block: string) {
+  for (const b of shown?.panes.keys() ?? []) see(b);
+  const list = $("list");
+  for (const s of sessions.values()) {
+    const v = s.view;
+    if (!v) continue;
+    for (const w of v.windows ?? []) {
+      if (!leavesOf(layoutOf(w)).includes(block)) continue;
+      const b = list.querySelector<HTMLElement>(`.window[data-window="${CSS.escape(w.window_id)}"] > .block`);
+      if (!b) return sidebar();
+      fillWindow(b, w, tilesRoom(v));
+    }
+  }
 }
 
 /** The sidebar: each session, and a row for each of its windows. */
@@ -505,8 +587,7 @@ function sidebar() {
     add.onclick = () => newWindow(s.id);
     h.append(name, add);
     nav.append(h);
-    // The room of the tiles of the window with the most, so that the titles line up.
-    const room = tilesWidth(Math.max(0, ...(v.windows ?? []).map((w: any) => leavesOf(layoutOf(w)).length - 1)));
+    const room = tilesRoom(v);
     for (const w of v.windows ?? []) {
       const row = document.createElement("div");
       row.className = "window";
@@ -515,34 +596,7 @@ function sidebar() {
       const b = document.createElement("button");
       b.className = "block";
       b.type = "button";
-      const title = document.createElement("span");
-      title.className = "title";
-      title.textContent = windowTitle(w);
-      const blocks = leavesOf(layoutOf(w));
-      const front = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
-      const urgent = blocks
-        .map((x) => mostUrgent(statuses.get(x) ?? [], seen.get(x) ?? new Set()))
-        .reduce<Status | undefined>((a, r) => (r && (!a || rank(r) > rank(a)) ? r : a), undefined);
-      b.append(tiles(front ? programs.get(front) : undefined, blocks.filter((x) => x !== front).map((x) => programs.get(x)), urgent?.state === "done", room), title);
-      if (urgent?.state === "blocked") {
-        const dot = document.createElement("i");
-        dot.className = "attention-dot";
-        dot.title = "Needs Input";
-        b.append(dot);
-      } else if (urgent?.progress !== undefined) {
-        const ring = document.createElement("i");
-        ring.className = "progress-ring";
-        ring.style.setProperty("--p", String(urgent.progress));
-        ring.title = `${urgent.progress}%`;
-        b.append(ring);
-      }
-      const n = blocks.length;
-      if (n > 1) {
-        const count = document.createElement("span");
-        count.className = "count";
-        count.textContent = String(n);
-        b.append(count);
-      }
+      fillWindow(b, w, room);
       b.onclick = () => show(s.id, w.window_id, true);
       const x = document.createElement("button");
       x.className = "icon close";

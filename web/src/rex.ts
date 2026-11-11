@@ -231,74 +231,106 @@ export type StreamItem =
 const marker = new TextEncoder().encode("\x1b_rex1;");
 const maxMessage = 1 << 20;
 
-function indexOf(b: Uint8Array, pat: Uint8Array, from = 0): number {
-  outer: for (let i = from; i <= b.length - pat.length; i++) {
+/** The first index of pat in b[from, end), or -1. */
+function indexOf(b: Uint8Array, pat: Uint8Array, from: number, end: number): number {
+  outer: for (let i = from; i <= end - pat.length; i++) {
     for (let j = 0; j < pat.length; j++) if (b[i + j] !== pat[j]) continue outer;
     return i;
   }
   return -1;
 }
 
-function concat(a: Uint8Array, b: Uint8Array): Uint8Array {
-  if (a.length === 0) return b;
-  const out = new Uint8Array(a.length + b.length);
-  out.set(a);
-  out.set(b, a.length);
-  return out;
-}
-
 /**
  * Splits a terminal stream into the Ghostty snapshot it starts with, the
  * program's output, and Rex's own messages, `ESC _ rex1;<nonce>;<json> ESC \`,
- * in order. Bytes may arrive split anywhere.
+ * in order. Bytes may arrive split anywhere. The bytes wait in a buffer
+ * that doubles as it fills, and the parse goes on where it stopped, so
+ * that each byte is read a bounded number of times, a large snapshot too.
  */
 export class TerminalStream {
+  /** The bytes not yet taken are buf[head, len). */
   private buf: Uint8Array = new Uint8Array(0);
+  private head = 0;
+  private len = 0;
   private snapshotDone = false;
+  /** The snapshot's next record, from head: the envelope is 10 bytes. */
+  private snapAt = 10;
+  /** While a message waits for its end, where to look for it next, from head; -1 for none. */
+  private endAt = -1;
 
   constructor(private nonce: bigint) {}
 
+  private append(data: Uint8Array) {
+    const live = this.len - this.head;
+    if (this.len + data.length > this.buf.length) {
+      if (live + data.length <= this.buf.length) {
+        this.buf.copyWithin(0, this.head, this.len);
+      } else {
+        const grown = new Uint8Array(Math.max(2 * this.buf.length, live + data.length, 4096));
+        grown.set(this.buf.subarray(this.head, this.len));
+        this.buf = grown;
+      }
+      this.head = 0;
+      this.len = live;
+    }
+    this.buf.set(data, this.len);
+    this.len += data.length;
+  }
+
   feed(data: Uint8Array): StreamItem[] {
-    this.buf = concat(this.buf, data);
+    this.append(data);
     const items: StreamItem[] = [];
     if (!this.snapshotDone) {
-      const n = snapshotLength(this.buf);
+      const n = this.snapshotLength();
       if (n === undefined) return items;
-      items.push({ kind: "snapshot", data: this.buf.slice(0, n) });
-      this.buf = this.buf.slice(n);
+      items.push({ kind: "snapshot", data: this.buf.slice(this.head, this.head + n) });
+      this.head += n;
       this.snapshotDone = true;
     }
-    while (this.buf.length > 0) {
-      const start = indexOf(this.buf, marker);
-      if (start < 0) {
-        // Keep a tail that could begin the marker.
-        const keep = partialMarker(this.buf);
-        if (this.buf.length > keep) items.push({ kind: "output", data: this.buf.slice(0, this.buf.length - keep) });
-        this.buf = this.buf.slice(this.buf.length - keep);
-        break;
+    const b = this.buf, end = this.len;
+    while (this.head < end) {
+      let start: number, from: number;
+      if (this.endAt >= 0) {
+        // A message's start waits at head: look on for its end.
+        start = this.head;
+        from = this.head + this.endAt;
+        this.endAt = -1;
+      } else {
+        start = indexOf(b, marker, this.head, end);
+        if (start < 0) {
+          // Keep a tail that could begin the marker.
+          const keep = partialMarker(b, this.head, end);
+          if (end - this.head > keep) items.push({ kind: "output", data: b.slice(this.head, end - keep) });
+          this.head = end - keep;
+          break;
+        }
+        if (start > this.head) items.push({ kind: "output", data: b.slice(this.head, start) });
+        from = start + marker.length;
       }
-      if (start > 0) items.push({ kind: "output", data: this.buf.slice(0, start) });
       const body = start + marker.length;
       let stop = -1;
-      for (let i = body; i + 1 < this.buf.length; i++) {
-        if (this.buf[i] === 0x1b && this.buf[i + 1] === 0x5c) {
+      for (let i = from; i + 1 < end; i++) {
+        if (b[i] === 0x1b && b[i + 1] === 0x5c) {
           stop = i;
           break;
         }
       }
       if (stop < 0) {
-        if (this.buf.length - start > maxMessage) {
-          items.push({ kind: "output", data: this.buf.slice(start) });
-          this.buf = new Uint8Array(0);
+        if (end - start > maxMessage) {
+          items.push({ kind: "output", data: b.slice(start, end) });
+          this.head = end;
         } else {
-          this.buf = this.buf.slice(start);
+          this.head = start;
+          // The last byte may be the end's ESC: look again from it.
+          this.endAt = Math.max(body, end - 1) - start;
         }
         break;
       }
-      const m = this.message(this.buf.subarray(body, stop));
+      const m = this.message(b.subarray(body, stop));
       if (m) items.push({ kind: "message", message: m });
-      this.buf = this.buf.slice(stop + 2);
+      this.head = stop + 2;
     }
+    if (this.head === this.len) this.head = this.len = 0;
     return items;
   }
 
@@ -313,12 +345,30 @@ export class TerminalStream {
       return undefined;
     }
   }
+
+  /** snapshotLength of the bytes waiting, going on from the record it stopped at. */
+  private snapshotLength(): number | undefined {
+    const n = this.len - this.head;
+    if (n < 10) return undefined;
+    const v = new DataView(this.buf.buffer, this.buf.byteOffset + this.head, n);
+    let at = this.snapAt;
+    while (n - at >= 10) {
+      const tag = v.getUint16(at, true);
+      const next = at + 10 + v.getUint32(at + 2, true);
+      if (next > n) break;
+      if (tag === 6) return next; // FINISH
+      at = next;
+    }
+    this.snapAt = at;
+    return undefined;
+  }
 }
 
-function partialMarker(b: Uint8Array): number {
-  for (let n = Math.min(marker.length - 1, b.length); n > 0; n--) {
+/** The length of the longest tail of b[from, end) that begins the marker. */
+function partialMarker(b: Uint8Array, from: number, end: number): number {
+  for (let n = Math.min(marker.length - 1, end - from); n > 0; n--) {
     let ok = true;
-    for (let i = 0; i < n; i++) if (b[b.length - n + i] !== marker[i]) ok = false;
+    for (let i = 0; i < n; i++) if (b[end - n + i] !== marker[i]) ok = false;
     if (ok) return n;
   }
   return 0;
