@@ -644,12 +644,15 @@ func (c *control) keepalive() {
 	}
 }
 
-// closeWith closes the connection with a status and a reason, once.
+// closeWith closes the connection with a status and a reason, once. The
+// close handshake waits up to 10 s for a client that stopped reading, so
+// it runs on its own: a caller may hold refreshMu, which every request
+// of every connection takes.
 func (c *control) closeWith(status websocket.StatusCode, reason string) {
 	c.closeOnce.Do(func() {
 		tracef("control close %d %q", status, reason)
 		c.ours.Store(true)
 		close(c.done)
-		c.ws.Close(status, reason)
+		go c.ws.Close(status, reason)
 	})
 }

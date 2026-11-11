@@ -231,3 +231,45 @@ func controlLoops() int {
 	}
 	return strings.Count(string(buf), "(*control).writeLoop") + strings.Count(string(buf), "(*control).keepalive")
 }
+
+// TestStalledClientHoldsNoOne checks that dropping a client whose events
+// back up does not hold up another client's requests while its close
+// handshake waits.
+func TestStalledClientHoldsNoOne(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(standardLayout())
+	other := f.dialControl()
+	other.hello(apiRevision)
+	result(t, other.request("l1", "session.list", nil))
+	// This client reads nothing, so it never answers a close frame.
+	openControl(t, f)
+	var stalled *control
+	waitFor(t, "the second connection", func() bool {
+		f.g.mu.Lock()
+		defer f.g.mu.Unlock()
+		for c := range f.g.conns {
+			if c.rec.id != welcomeID(t, other.welcome) {
+				stalled = c
+			}
+		}
+		return stalled != nil
+	})
+	stalled.rec.mu.Lock()
+	stalled.rec.all = true
+	stalled.rec.mu.Unlock()
+	stalled.mu.Lock()
+	stalled.queued = eventBacklog
+	stalled.mu.Unlock()
+	f.setLayout(layoutWithTabName(t, "work", "renamed"))
+	go f.g.refresh()
+	select {
+	case <-stalled.done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stalled client was not dropped")
+	}
+	start := time.Now()
+	result(t, other.request("l2", "session.list", nil))
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("a request waited %v for another client's close", d)
+	}
+}
