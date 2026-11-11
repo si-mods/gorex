@@ -30,7 +30,62 @@
     color: var(--text);
     font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  #sessions { grid-row: 1 / 3; overflow-y: auto; padding: 12px 8px; }
+  :root { --edge: rgba(255, 255, 255, 0.05); --edge-focus: rgba(255, 255, 255, 0.14); --panel: rgba(44, 44, 48, 0.78); --panel-edge: rgba(255, 255, 255, 0.12); }
+  /* The light scheme, for a light terminal background (main.ts sets data-scheme from it). */
+  :root[data-scheme="light"] {
+    color-scheme: light;
+    --page: #ececf0;
+    --text: #1c1c1e;
+    --muted: #6c6c70;
+    --hover: rgba(0, 0, 0, 0.07);
+    --pill: rgba(0, 0, 0, 0.12);
+    --edge: rgba(0, 0, 0, 0.10);
+    --edge-focus: rgba(0, 0, 0, 0.28);
+    --panel: rgba(250, 250, 252, 0.82);
+    --panel-edge: rgba(0, 0, 0, 0.12);
+  }
+  #sessions { grid-row: 1 / 3; display: flex; flex-direction: column; min-height: 0; padding: 12px 8px 8px; position: relative; }
+  #list { flex: 1; overflow-y: auto; min-height: 0; }
+  #themes { padding-top: 8px; }
+  .theme-button {
+    padding: 5px 12px; border: 0; border-radius: 999px; background: none; color: var(--muted);
+    font: inherit; cursor: pointer;
+  }
+  .theme-button:hover, .theme-button[aria-expanded="true"] { background: var(--hover); color: var(--text); }
+  /* The picker is a glass panel over the page, as the desktop's popovers: blur 24, radius 16. */
+  .theme-panel {
+    position: fixed; left: 8px; bottom: 44px; z-index: 10; width: 320px; max-width: calc(100vw - 16px);
+    max-height: min(600px, calc(100vh - 64px)); display: flex; flex-direction: column; gap: 8px; padding: 12px;
+    border-radius: 16px; background: var(--panel); border: 1px solid var(--panel-edge);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+  .theme-panel[hidden] { display: none; }
+  .theme-preview { padding: 10px 12px; border-radius: 10px; font: 12px/1.3 var(--mono); white-space: pre; overflow: hidden; flex: none; }
+  .theme-preview[hidden] { display: none; }
+  .theme-filter { display: flex; gap: 2px; padding: 2px; border-radius: 999px; background: var(--hover); flex: none; }
+  .theme-filter button { flex: 1; padding: 4px 0; border: 0; border-radius: 999px; background: none; color: var(--text); font: inherit; cursor: pointer; }
+  .theme-filter button.on { background: var(--pill); }
+  .theme-search {
+    flex: none; padding: 6px 12px; border: 1px solid var(--panel-edge); border-radius: 999px;
+    background: var(--hover); color: var(--text); font: inherit; outline: none;
+  }
+  .theme-search:focus { border-color: var(--muted); }
+  .theme-list { overflow-y: auto; min-height: 120px; }
+  .theme-row {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 8px; border: 0; border-radius: 8px;
+    background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  }
+  .theme-row:hover, .theme-row:focus-visible { background: var(--hover); outline: none; }
+  .theme-swatch {
+    display: flex; align-items: center; justify-content: center; gap: 3px; width: 56px; height: 22px; flex: none;
+    border-radius: 5px; box-shadow: inset 0 0 0 0.5px var(--panel-edge);
+  }
+  .theme-swatch i { width: 7px; height: 7px; border-radius: 50%; }
+  .theme-swatch.host { color: var(--muted); }
+  .theme-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .theme-check { width: 1.2em; text-align: center; font-weight: 600; }
+  .theme-empty { padding: 12px; color: var(--muted); text-align: center; }
   #sessions h2 { margin: 12px 8px 4px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
   #sessions nav { color: var(--muted); }
   button.block {
@@ -48,20 +103,20 @@
   }
   #pane::after {
     content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 0 0 1px var(--edge);
   }
-  #pane:focus::after { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); }
+  #pane:focus::after { box-shadow: inset 0 0 0 1px var(--edge-focus); }
   #screen { position: absolute; inset: 0; display: block; }
   #status { padding: 4px 8px 6px; color: var(--muted); font-size: 12px; }
   @media (max-width: 640px) {
     body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
-    #sessions { grid-row: auto; max-height: 30vh; }
+    #sessions { grid-row: auto; max-height: 36vh; }
     #pane { margin: 0 8px; }
   }
 </style>
 </head>
 <body>
-<aside id="sessions"></aside>
+<aside id="sessions"><div id="list"></div><div id="themes"></div></aside>
 <main id="pane" tabindex="0"><canvas id="screen"></canvas></main>
 <footer id="status"></footer>
 <script type="module" src="app.js"></script>

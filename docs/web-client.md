@@ -7,8 +7,8 @@ type. The terminal emulator is libghostty-vt, compiled to WebAssembly from
 the Ghostty commit that GoRex's terminal binding uses. The client draws
 the emulator's render state on a canvas.
 
-This is phase 1, a prototype: one terminal at a time. It has no settings,
-no uploads, no paste, no selection and no mouse. The wheel scrolls the
+This is phase 1, a prototype: one terminal at a time. Its one setting is the
+theme (see Themes). It has no uploads, no paste, no selection and no mouse. The wheel scrolls the
 scrollback.
 
 ## Design: a remote client only
@@ -55,7 +55,8 @@ go build .              # embeds what the script wrote
 4. It runs `npm ci` in `web/` if `web/node_modules` is missing, then type-checks
    the client (`tsc --noEmit`) and bundles it with esbuild.
 5. It writes `index.html`, `app.js` and `ghostty-vt.wasm` into
-   `internal/webui/dist`, and the JetBrains Mono fonts from `assets/fonts`
+   `internal/webui/dist`, copies `ios/GoRex/ghostty-themes.json` there (the
+   repo keeps one copy of the themes), and the JetBrains Mono fonts from `assets/fonts`
    (with their licence) into `internal/webui/dist/fonts`.
 
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
@@ -106,6 +107,8 @@ as that browser.
   set from the terminal's modes.
 - `web/src/box.ts`: box drawing, block elements, sextants and Powerline's
   separators, drawn as shapes, ported from MyGo's `plugins/terminal/box.go`.
+- `web/src/themes.ts`: the Ghostty themes list, the choice kept in the
+  browser, and the picker.
 - `web/src/main.ts`: the list and the view. Typed bytes go to
   `com.superlogical.terminal.write`, one write at a time. The view takes the
   block (`session.own_block`) and sizes it to the canvas
@@ -134,13 +137,46 @@ with GoRex's defaults and no Ghostty configuration:
   xterm's 256 colours, and the desktop's minimum contrast of 3 for text
   (not for box drawing and blocks). A stream's `theme` message (from
   `set_theme`) goes over it. No API gives the host's own theme, so a host
-  with a Ghostty theme still shows GoRex's colours here.
+  with a Ghostty theme still shows GoRex's colours here, unless you choose a
+  theme (see Themes).
 - Cursor: block, bar or underline from the terminal (DECSCUSR), a hollow
   block while the page does not have the focus, blinking every 600 ms when
   the terminal asks for it.
 - Scrolling: the wheel scrolls the scrollback; in a full-screen program it
   sends the arrow keys (alternate scroll), and to a program that takes the
   mouse it sends nothing yet. Typing scrolls back to the screen.
+
+## Themes
+
+The Theme button at the bottom of the sidebar opens a picker for the
+terminal's colours, as the iOS app's Themes settings does. It lists the 861
+Ghostty themes of `ios/GoRex/ghostty-themes.json` (`web/build.mjs` copies
+the file into the build; `ios/scripts/ghostty-themes` makes it). The picker has
+a preview of the chosen theme, an All, Dark and Light filter (by the
+background's luma, as iOS tells it), a search by name, and a row for each
+theme with a swatch (its background with colours 1 to 5) and a check mark on
+the chosen one. A click applies the theme at once. Escape closes the
+picker; the arrow keys move in the list.
+
+- The first row, Host Colors, keeps what the host's stream sends. This is
+  GoRex's colours when the host sends none.
+- The default is Gruvbox Dark, as on iOS. The choice is in `localStorage`
+  (`gorex.theme`, "" for Host Colors) and is per browser. Without storage
+  the page works and the choice lasts until it closes.
+- A chosen theme acts as a stream `theme` message: it goes over GoRex's
+  colours, and a later `theme` message from the host replaces it. Choosing
+  Host Colors goes back to the host's last message.
+- The page loads the list while it loads the wasm, and the first frame has
+  the chosen colours. If the list does not load, the client keeps GoRex's
+  colours and shows no Theme button.
+- The minimum contrast of 3 stays for every theme.
+- The pane and its padding take the terminal's background. When that is
+  light (by the same luma), the page's own colours (sidebar, status, frame
+  and picker) change to a light set (`data-scheme="light"` in
+  `web/index.html`). This follows the terminal's background as drawn, so a
+  host theme or a program's OSC 11 change it too.
+- Not in the web client: the theme's cursor text and selection colours (the
+  client has no selection).
 
 What differs: the desktop's panes are the window's glass, which a page
 cannot show, so the pane here is the theme's background. There is no

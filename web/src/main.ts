@@ -3,6 +3,7 @@
 import { Ghostty } from "./ghostty";
 import { Control, DataStream, RexError, TerminalStream } from "./rex";
 import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
+import { chosenName, isLight, loadThemes, mountPicker, ThemeEntry, themeColours } from "./themes";
 
 const $ = (id: string) => document.getElementById(id)!;
 const canvas = $("screen") as HTMLCanvasElement;
@@ -22,6 +23,13 @@ let g: Ghostty;
 let control: Control | undefined;
 let token: string | undefined;
 let open: TerminalView | undefined;
+/** The theme chosen in this browser, over the desktop's colours; none keeps the host's. */
+let chosen: Theme | undefined;
+
+/** The page's chrome follows the terminal's background: light for a light one. */
+function scheme(bg: [number, number, number]) {
+  document.documentElement.dataset.scheme = isLight(bg) ? "light" : "dark";
+}
 
 function status(s: string) {
   $("status").textContent = s;
@@ -36,7 +44,16 @@ async function main() {
   try {
     // The font too: the cells are measured from it.
     const faces = ["400", "700", "italic 400", "italic 700"].map((v) => document.fonts.load(`${v} 12px "JetBrains Mono"`));
-    [g] = await Promise.all([Ghostty.load("ghostty-vt.wasm"), Promise.allSettled(faces)]);
+    // The themes load with it, so that the first frame has the chosen colours.
+    let themes: ThemeEntry[];
+    [g, themes] = await Promise.all([Ghostty.load("ghostty-vt.wasm"), loadThemes(), Promise.allSettled(faces)]).then((r) => [r[0], r[1]]);
+    const pick = (t?: ThemeEntry) => {
+      chosen = t && themeColours(t);
+      scheme(chosen?.background ?? desktopTheme().background!);
+      open?.setChosen(chosen);
+    };
+    pick(themes.find((t) => t.name === chosenName()));
+    if (themes.length) mountPicker($("themes"), themes, pick, () => pane.focus());
   } catch (e) {
     status(`Could not load libghostty-vt: ${describe(e)}`);
     return;
@@ -128,7 +145,7 @@ async function list() {
     }
   }
   if (!nav.children.length) nav.textContent = "No sessions on this machine.";
-  $("sessions").replaceChildren(nav);
+  $("list").replaceChildren(nav);
 }
 
 function show(session: string, block: string) {
@@ -153,8 +170,10 @@ class TerminalView {
   /** The grid's top left on the canvas, in device pixels. */
   private ox = 0;
   private oy = 0;
-  /** The colours of the stream's last theme message, over the desktop's. */
-  private theme: Theme = {};
+  /** The colours of the stream's last theme message. */
+  private host: Theme = {};
+  /** The colours over the desktop's: the chosen theme, until a theme message replaces it. */
+  private theme: Theme = chosen ?? {};
   /** Wheel scrolling not yet a whole row. */
   private scrolled = 0;
   private blinkStart = performance.now();
@@ -244,11 +263,9 @@ class TerminalView {
   private message(m: any) {
     switch (m.type) {
       case "theme":
-        // Each message replaces the last one's colours, over the desktop's.
-        this.theme = themeOf(m);
-        this.term?.setTheme(desktopTheme());
-        this.term?.setTheme(this.theme);
-        this.full = true;
+        // Each message replaces the last one's colours, the chosen theme's too.
+        this.host = this.theme = themeOf(m);
+        this.applyTheme();
         break;
       case "resize":
         // The server polls the size, so a message may follow the program's
@@ -269,6 +286,19 @@ class TerminalView {
         status(`The program exited (${m.exit_code ?? 0}).`);
         break;
     }
+  }
+
+  private applyTheme() {
+    this.term?.setTheme(desktopTheme());
+    this.term?.setTheme(this.theme);
+    this.full = true;
+    this.redraw();
+  }
+
+  /** A theme chosen now, or the host's colours (none), as a theme message from the stream would be. */
+  setChosen(t?: Theme) {
+    this.theme = t ?? this.host;
+    this.applyTheme();
   }
 
   private resizeTo(m: { cols: number; rows: number }) {
@@ -342,6 +372,7 @@ class TerminalView {
       if (this.full || bg !== this.painted) {
         this.full = true;
         this.painted = ctx.fillStyle = pane.style.background = bg;
+        scheme(this.term.background());
         ctx.fillRect(0, 0, canvas.width, canvas.height);
       }
       const since = performance.now() - this.blinkStart;
