@@ -80,7 +80,7 @@ func (a *App) showSection(id string) {
 	hostsPairQR = nil
 	settingsUI.section = id
 	stopServerInfoPoll()
-	if id == "server" || id == "network" {
+	if id == "server" {
 		fetchLAN()
 		a.startRemotePoll()
 	}
@@ -643,41 +643,41 @@ func remoteServes(st rex.RemoteStatus) bool {
 	return st.Enabled || st.Tailnet != nil && st.Tailnet.Running
 }
 
-// remoteTailscale is the group of built-in Tailscale's control server:
-// the field that sets it, saved to the gateway's settings.
-func (a *App) remoteTailscale(c *ui.Context, k *colors) {
+// remoteControlServer is the row of built-in Tailscale's control server,
+// under its switch: the field that sets it, saved to the gateway's
+// settings, as the Tailscale the switch turns on registers with it.
+func (a *App) remoteControlServer(c *ui.Context, k *colors) {
 	page := &remoteUI
 	conf := page.ts
-	settingsGroup(c, k, locales.RemoteTailscaleTitle(), "", locales.RemoteTailscaleNote(), func() {
-		groupRow(c, k, nil).Children(func() {
-			rowLine(c, k, locales.RemoteTailscaleControl(), func() {
-				if ui.TextInput(c.Key("ts-url"), &page.tsURL).Placeholder(locales.RemoteTailscalePlaceholder()).
-					Label(locales.RemoteTailscaleControl()).Font(monoFamily()).Width(260).Changed() {
-					page.tsEdited, page.tsErr = true, ""
+	groupRow(c, k, nil).Children(func() {
+		rowLine(c, k, locales.RemoteTailscaleControl(), func() {
+			if ui.TextInput(c.Key("ts-url"), &page.tsURL).Placeholder(locales.RemoteTailscalePlaceholder()).
+				Label(locales.RemoteTailscaleControl()).Font(monoFamily()).Width(260).Changed() {
+				page.tsEdited, page.tsErr = true, ""
+			}
+			if ui.Button(c.Key("ts-save"), locales.RemoteLanSave()).Disabled(!page.tsEdited).Clicked() {
+				url := strings.TrimSpace(page.tsURL)
+				if url != "" && !tailnode.ValidControlURL(url) {
+					page.tsErr = locales.RemoteTailscaleInvalid()
+					return
 				}
-				if ui.Button(c.Key("ts-save"), locales.RemoteLanSave()).Disabled(!page.tsEdited).Clicked() {
-					url := strings.TrimSpace(page.tsURL)
-					if url != "" && !tailnode.ValidControlURL(url) {
-						page.tsErr = locales.RemoteTailscaleInvalid()
-						return
-					}
-					next := conf
-					next.ControlURL = url
-					if err := rexapi.SaveTailscale(rexapi.TailnetDir(), next); err != nil {
-						page.tsErr = err.Error()
-						return
-					}
-					page.ts, page.tsErr, page.tsEdited = next, "", false
+				next := conf
+				next.ControlURL = url
+				if err := rexapi.SaveTailscale(rexapi.TailnetDir(), next); err != nil {
+					page.tsErr = err.Error()
+					return
 				}
-			})
-			// A saved control server this version refuses, such as a
-			// cleartext one from before it, keeps the device off.
-			if page.tsErr != "" {
-				rowError(c, k, page.tsErr)
-			} else if !page.tsEdited && conf.ControlURL != "" && !tailnode.ValidControlURL(conf.ControlURL) {
-				rowError(c, k, locales.RemoteTailscaleInvalid())
+				page.ts, page.tsErr, page.tsEdited = next, "", false
 			}
 		})
+		rowHint(c, k, locales.RemoteTailscaleNote())
+		// A saved control server this version refuses, such as a
+		// cleartext one from before it, keeps the device off.
+		if page.tsErr != "" {
+			rowError(c, k, page.tsErr)
+		} else if !page.tsEdited && conf.ControlURL != "" && !tailnode.ValidControlURL(conf.ControlURL) {
+			rowError(c, k, locales.RemoteTailscaleInvalid())
+		}
 	})
 }
 
@@ -732,6 +732,7 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				groupRow(c, k, nil).Children(func() { rowHint(c, k, hint) })
 			}
 		}
+		a.remoteControlServer(c, k)
 		if !remoteServes(st) {
 			return
 		}

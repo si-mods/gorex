@@ -2318,16 +2318,6 @@ func (msgs Messages) SettingsKeyboard() string {
 	return Catalog.Format(msgs.locale, "settingsKeyboard", nil)
 }
 
-// SettingsNetwork says "Network"
-// in the language the app shows.
-func SettingsNetwork() string { return In(i18n.Locale()).SettingsNetwork() }
-
-// SettingsNetwork says "Network"
-// in the language of msgs.
-func (msgs Messages) SettingsNetwork() string {
-	return Catalog.Format(msgs.locale, "settingsNetwork", nil)
-}
-
 // SettingsAbout says "About"
 // in the language the app shows.
 //
@@ -5718,20 +5708,6 @@ func (msgs Messages) RexImportFailed(error string) string {
 	return Catalog.Format(msgs.locale, "rexImportFailed", map[string]any{"error": error})
 }
 
-// RemoteTailscaleTitle says "Tailscale"
-// in the language the app shows.
-//
-// Title of the card that sets the control server of built-in Tailscale.
-func RemoteTailscaleTitle() string { return In(i18n.Locale()).RemoteTailscaleTitle() }
-
-// RemoteTailscaleTitle says "Tailscale"
-// in the language of msgs.
-//
-// Title of the card that sets the control server of built-in Tailscale.
-func (msgs Messages) RemoteTailscaleTitle() string {
-	return Catalog.Format(msgs.locale, "remoteTailscaleTitle", nil)
-}
-
 // RemoteTailscaleNote says "The control server built-in Tailscale registers with, such as Headscale. A change applies the next time Tailscale is …"
 // in the language the app shows.
 //
@@ -5920,13 +5896,13 @@ func (msgs Messages) RemoteApiAnyone() string {
 	return Catalog.Format(msgs.locale, "remoteApiAnyone", nil)
 }
 
-// RemoteApiNote says "Where Rex's API takes connections on this machine. Built-in Tailscale is not listed: see the Network page."
+// RemoteApiNote says "Where Rex's API takes connections on this machine. Built-in Tailscale is not listed: its switch is below."
 // in the language the app shows.
 //
 // Footnote of the Local API card.
 func RemoteApiNote() string { return In(i18n.Locale()).RemoteApiNote() }
 
-// RemoteApiNote says "Where Rex's API takes connections on this machine. Built-in Tailscale is not listed: see the Network page."
+// RemoteApiNote says "Where Rex's API takes connections on this machine. Built-in Tailscale is not listed: its switch is below."
 // in the language of msgs.
 //
 // Footnote of the Local API card.

@@ -159,7 +159,6 @@
   "settingsTerminal": "终端",
   "settingsTheme": "主题",
   "settingsKeyboard": "键盘",
-  "settingsNetwork": "网络",
   "settingsAbout": "关于",
   "settingsWindow": "窗口",
   "settingsWindowHint": "“系统”会跟随系统外观，或使用主题的颜色。",
@@ -521,7 +520,6 @@
       }
     }
   },
-  "remoteTailscaleTitle": "Tailscale",
   "remoteTailscaleNote": "内置 Tailscale 注册的控制服务器，例如 Headscale。改动在下次开启 Tailscale 时生效。",
   "remoteTailscaleControl": "控制服务器",
   "remoteTailscalePlaceholder": "Tailscale 官方",
@@ -534,7 +532,7 @@
   "remoteApiUrl": "本地 API 地址",
   "remoteApiPeer": "仅本用户",
   "remoteApiAnyone": "任何能连上的人",
-  "remoteApiNote": "Rex API 在本机接受连接的地址。内置 Tailscale 不在此列，见“网络”页。",
+  "remoteApiNote": "Rex API 在本机接受连接的地址。内置 Tailscale 不在此列，其开关在下方。",
   "remoteLanNote": "Rex 的客户端（包括 iPhone 上的 Rex）通过普通 HTTP 连接这个地址。这里没有密码：允许的网络里任何设备都能拿到完整的 shell，键入的内容在局域网上不加密传输。请尽量只允许必要的范围，比如你手机的地址。",
   "remoteLanSwitch": "在局域网上为 Rex 客户端提供服务",
   "remoteLanListening": "正在监听 {url}",

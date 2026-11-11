@@ -156,7 +156,7 @@ a secret.
    once, and never saved or logged). A tailnet run by your own control
    server, such as Headscale, takes its URL:
    `GoRex rexapi tailscale on --control-url https://headscale.example.com`,
-   or in Settings › Network's Tailscale card. The URL must be `https`:
+   or in Settings › Server, under the Tailscale switch. The URL must be `https`:
    the control traffic itself is encrypted, but the device fetches the
    server's key over the URL unauthenticated, so over `http` anyone on
    the path could swap the key. `http` is accepted only for `localhost`

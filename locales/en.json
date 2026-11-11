@@ -786,7 +786,6 @@
   "@settingsKeyboard": {
     "description": "Settings section: the keyboard shortcuts."
   },
-  "settingsNetwork": "Network",
   "settingsAbout": "About",
   "@settingsAbout": {
     "description": "Settings section: version and files."
@@ -1917,10 +1916,6 @@
       }
     }
   },
-  "remoteTailscaleTitle": "Tailscale",
-  "@remoteTailscaleTitle": {
-    "description": "Title of the card that sets the control server of built-in Tailscale."
-  },
   "remoteTailscaleNote": "The control server built-in Tailscale registers with, such as Headscale. A change applies the next time Tailscale is turned on.",
   "@remoteTailscaleNote": {
     "description": "Note under the title of the Tailscale card."
@@ -1969,7 +1964,7 @@
   "@remoteApiAnyone": {
     "description": "Local API card: an endpoint with no check at all; anyone who can connect to its address gets in. Shown as a warning."
   },
-  "remoteApiNote": "Where Rex's API takes connections on this machine. Built-in Tailscale is not listed: see the Network page.",
+  "remoteApiNote": "Where Rex's API takes connections on this machine. Built-in Tailscale is not listed: its switch is below.",
   "@remoteApiNote": {
     "description": "Footnote of the Local API card."
   },

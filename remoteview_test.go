@@ -416,3 +416,33 @@ func TestLanListener(t *testing.T) {
 		t.Error("a listener at a turned-off LAN's address is the LAN's")
 	}
 }
+
+// TestControlServerUnderTailscale checks that built-in Tailscale's
+// control server is set on the Server page, under its switch, whether or
+// not remote access is on.
+func TestControlServerUnderTailscale(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Cleanup(stopRemotePoll)
+	a := &App{}
+	settingsUI.section = "server"
+	remoteUI.loaded, remoteUI.err = true, nil
+	remoteUI.st = rex.RemoteStatus{Tailnet: &rex.TailnetStatus{}}
+	tt := ui.NewTester(a.settingsView, 780, 1600)
+	tt.Frame()
+	for _, s := range []string{locales.TailnetMode(), locales.RemoteTailscaleControl(), locales.RemoteTailscaleNote()} {
+		if !tt.HasText(s) {
+			t.Errorf("off: no %q in %q", s, tt.Texts())
+		}
+	}
+	sw, _ := tt.Find(locales.TailnetMode())
+	field, _ := tt.Find(locales.RemoteTailscaleControl())
+	if field.Y <= sw.Y {
+		t.Errorf("the control server (y %v) is not under the switch (y %v)", field.Y, sw.Y)
+	}
+	remoteUI.st.Enabled = true
+	tt.Frame()
+	if !tt.HasText(locales.RemoteTailscaleControl()) {
+		t.Errorf("on: no control server in %q", tt.Texts())
+	}
+}
