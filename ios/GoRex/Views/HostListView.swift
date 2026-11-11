@@ -258,7 +258,7 @@ private struct HostSection: View {
                 Menu {
                     Button("New Session", systemImage: "plus.rectangle.on.rectangle") { newSession() }
                         .disabled(creating)
-                    Button("Reconnect", systemImage: "arrow.clockwise") { host.reconnectIfNeeded() }
+                    Button("Reconnect", systemImage: "arrow.clockwise") { host.resume() }
                     Button("Remove", systemImage: "trash", role: .destructive) { store.remove(host.id) }
                 } label: {
                     Group {
