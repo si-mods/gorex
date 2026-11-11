@@ -1384,15 +1384,22 @@ func (a *App) emptied() bool {
 // leaves with, as a closed last tab does, has it there.
 func (a *App) moveTabToSpace(t *Tab, w *Workspace) {
 	st := a.st
-	if st == nil || t == nil || w == nil || w == a.ws || !slices.Contains(a.tabs, t) {
+	if st == nil || t == nil || w == nil || w == a.ws || !slices.Contains(a.tabs, t) || !slices.Contains(st.workspaces, w) {
 		return
+	}
+	if f := a.findPane; f != nil && f.Tab == t {
+		a.closeFind()
 	}
 	s := a.savedTab(t)
 	closePanes([]*Tab{t})
 	if o := w.app; o != nil {
 		l := o.snapshot()
 		l.Tabs = append(l.Tabs, s)
+		// The tab keeps its ID there: this window's no longer has it.
+		tabs := a.tabs
+		a.tabs = slices.DeleteFunc(slices.Clone(tabs), func(x *Tab) bool { return x == t })
 		o.reconcile(l)
+		a.tabs = tabs
 		o.changed()
 	} else {
 		w.unkeep()
@@ -1408,6 +1415,9 @@ func (a *App) moveTabToNewWindow(t *Tab) {
 	st := a.st
 	if st == nil || t == nil || len(a.tabs) < 2 {
 		return
+	}
+	if f := a.findPane; f != nil && f.Tab == t {
+		a.closeFind()
 	}
 	l := savedLayout{Tabs: []savedTab{a.savedTab(t)}}
 	for _, p := range t.allPanes() {
