@@ -85,12 +85,12 @@ func TestProtocolV3(t *testing.T) {
 		t.Fatal(err)
 	}
 	select {
-	case <-sub.Changed():
+	case ev := <-sub.Events():
+		if ev.Kind != "layout" {
+			t.Fatalf("the event was not a layout change: %s", ev.Kind)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("no layout event")
-	}
-	if layout, _ := sub.Changes(); !layout {
-		t.Fatal("the event was not a layout change")
 	}
 	if got := sub.Revision(); got != 4 {
 		t.Fatalf("event revision %d, want 4", got)

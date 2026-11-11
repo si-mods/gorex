@@ -46,12 +46,8 @@ type Client struct {
 	lost      bool // the attached were closed
 	pinging   sync.Once
 
-	// changes are the kinds of change the server told of (Subscribe) and
-	// Changes did not take yet; changed is signaled as one comes.
-	changes map[string]bool
-	changed chan struct{}
-	// events are the changes themselves, for a client that prints them;
-	// eventsOnce closes the channel when the connection ends.
+	// events are the changes the server told of (Subscribe); eventsOnce
+	// closes the channel when the connection ends.
 	events     chan Event
 	eventsOnce sync.Once
 	// revision is the last layout revision the server told of.
@@ -129,7 +125,7 @@ func dialUntil(deadline time.Time) (net.Conn, error) {
 
 func newClient(conn net.Conn, dial func() (net.Conn, error)) *Client {
 	c := &Client{conn: conn, dial: dial, pending: map[int64]chan Response{}, closed: make(chan struct{}),
-		changes: map[string]bool{}, changed: make(chan struct{}, 1), events: make(chan Event, 256)}
+		events: make(chan Event, 256)}
 	go c.read()
 	return c
 }
@@ -287,19 +283,14 @@ func (c *Client) read() {
 			continue
 		}
 		c.mu.Lock()
-		if res.ID == 0 && res.Event != "" {
-			c.changes[res.Event] = true
+		if res.ID == 0 && res.Kind != "" {
 			if res.Revision > 0 {
 				c.revision = res.Revision
 			}
 			c.mu.Unlock()
 			select {
-			case c.events <- Event{Kind: res.Event, Revision: res.Revision, Sessions: res.Sessions, Transfer: res.Transfer}:
+			case c.events <- res.Event:
 			default: // a reader that stopped reading does not hold the client
-			}
-			select {
-			case c.changed <- struct{}{}:
-			default:
 			}
 			continue
 		}
@@ -447,7 +438,7 @@ func (c *Client) Hello() (h Hello, err error) {
 }
 
 // Subscribe asks the server to tell this connection of the changes of
-// the layout and the sessions as they come (Changed). A server before it
+// the layout and the sessions as they come (Events). A server before it
 // answers an error: poll it then.
 func (c *Client) Subscribe() error { return c.call(Request{Op: "subscribe"}, nil) }
 
@@ -461,20 +452,6 @@ func (c *Client) SubscribeTransfers() error {
 // Events returns the changes the server tells of, in order, while the
 // connection lasts; the channel closes with it.
 func (c *Client) Events() <-chan Event { return c.events }
-
-// Changed is signaled once the server told of a change, which Changes
-// takes: a burst of them signals it once.
-func (c *Client) Changed() <-chan struct{} { return c.changed }
-
-// Changes returns whether the layout and the sessions changed since it
-// was called last, as the server told.
-func (c *Client) Changes() (layout, sessions bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	layout, sessions = c.changes["layout"], c.changes["sessions"]
-	clear(c.changes)
-	return
-}
 
 func (c *Client) List() (s []SessionInfo, err error) {
 	err = c.call(Request{Op: "list"}, &s)
