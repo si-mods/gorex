@@ -96,3 +96,14 @@ func TestProtocolV3(t *testing.T) {
 		t.Fatalf("event revision %d, want 4", got)
 	}
 }
+
+// TestHelloBeforeHost answers a hello with no machine while hostInfo, as a
+// slow system_profiler, has not finished: never what it is writing.
+func TestHelloBeforeHost(t *testing.T) {
+	s := &Server{hostDone: make(chan struct{})}
+	go func() { s.host = HostInfo{Name: "slow"} }()
+	h, err := s.do(Request{Op: "hello"}, "", nil)
+	if err != nil || h.(Hello).Host != (HostInfo{}) {
+		t.Fatalf("hello = %+v, %v; want no host", h, err)
+	}
+}
