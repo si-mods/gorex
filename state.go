@@ -1727,19 +1727,22 @@ func (a *App) endKept(w *Workspace, p *Pane) {
 	a.changed()
 }
 
-// dropPane closes a pane, and ends its session when kill is set.
-func (a *App) dropPane(p *Pane, kill bool) {
-	if p.closed {
-		return
-	}
+// disposePane lets a pane go from the window: its terminal and web view
+// close, and its find bar, label field, zoom and place in its tab's order
+// of use go with it. kill ends its session and deletes its note, for a
+// pane closed rather than moved or gone from the layout.
+func (a *App) disposePane(p *Pane, kill bool) {
 	p.closed = true
 	if a.findPane == p {
 		a.closeFind()
 	}
+	if a.paneRenaming == p {
+		a.paneRenaming, a.paneNameFocus = nil, false
+	}
 	p.end()
 	p.browser.destroy()
-	p.note.destroy()
 	if kill {
+		p.note.destroy()
 		killOn(p.host, p.SID)
 	}
 	t := p.Tab
@@ -1747,6 +1750,15 @@ func (a *App) dropPane(p *Pane, kill bool) {
 		t.Zoom = nil
 	}
 	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
+}
+
+// dropPane closes a pane, and ends its session when kill is set.
+func (a *App) dropPane(p *Pane, kill bool) {
+	if p.closed {
+		return
+	}
+	a.disposePane(p, kill)
+	t := p.Tab
 	if f := p.float; f != nil {
 		t.removeFloat(f)
 		if t.Root == nil && len(t.Floats) == 0 {
@@ -1896,10 +1908,7 @@ func (a *App) tabByUID(id string) *Tab {
 // closeTab closes a tab and ends the sessions of its panes.
 func (a *App) closeTab(t *Tab) {
 	for _, p := range t.allPanes() {
-		p.end()
-		p.browser.destroy()
-		p.note.destroy()
-		killOn(p.host, p.SID)
+		a.disposePane(p, true)
 	}
 	a.removeTab(t)
 }
@@ -3077,20 +3086,12 @@ func (a *App) reconcile(l savedLayout) bool {
 	}
 	// What l no longer has closes; the sessions go on.
 	for _, p := range before {
-		if kept[p] {
-			continue
+		if !kept[p] {
+			a.disposePane(p, false)
 		}
-		if a.findPane == p {
-			a.closeFind()
-		}
-		p.end()
-		p.browser.destroy()
 	}
 	if a.renaming != nil && !slices.Contains(a.tabs, a.renaming) {
 		a.renaming = nil
-	}
-	if a.paneRenaming != nil && a.paneRenaming.closed {
-		a.paneRenaming, a.paneNameFocus = nil, false
 	}
 	if a.focusReq != nil && a.focusReq.closed {
 		a.focusReq = nil
@@ -3782,12 +3783,8 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		pageURL = p.browser.url
 	}
 	src := p.Tab
-	if a.findPane == p {
-		a.closeFind()
-	}
+	a.disposePane(p, false)
 	a.detachPane(p)
-	p.end()
-	p.browser.destroy()
 	if a.tab() == src && src.Focus != nil {
 		a.focusReq = src.Focus
 	}

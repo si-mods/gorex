@@ -49,7 +49,7 @@ type keptTabs struct {
 func (w *Workspace) unkeep() {
 	if k := w.kept; k != nil {
 		w.kept = nil
-		closePanes(k.tabs)
+		k.app.closePanes(k.tabs)
 	}
 }
 
@@ -533,7 +533,7 @@ func (st *store) reconcile(s savedStore) {
 	st.workspaces = next
 	for _, w := range gone {
 		if a := w.app; a != nil {
-			closePanes(a.leave())
+			a.closePanes(a.leave())
 			homeless = append(homeless, a)
 		}
 		st.remove(w)
@@ -1188,7 +1188,7 @@ func (a *App) show(w *Workspace) {
 
 // detach closes the window's terminals, keeping their sessions, and its
 // tabs in its workspace's layout.
-func (a *App) detach() { closePanes(a.leave()) }
+func (a *App) detach() { a.closePanes(a.leave()) }
 
 // park takes the window off its workspace as detach does, but keeps its
 // tabs live in the workspace, terminals attached and pages loaded, for the
@@ -1197,7 +1197,7 @@ func (a *App) park() {
 	w, active := a.ws, a.active
 	tabs := a.leave()
 	if w == nil || len(tabs) == 0 {
-		closePanes(tabs)
+		a.closePanes(tabs)
 		return
 	}
 	for _, t := range tabs {
@@ -1227,11 +1227,10 @@ func (a *App) leave() []*Tab {
 
 // closePanes closes the tabs' terminals and web views, keeping their
 // sessions.
-func closePanes(tabs []*Tab) {
+func (a *App) closePanes(tabs []*Tab) {
 	for _, t := range tabs {
 		for _, p := range t.allPanes() {
-			p.end()
-			p.browser.destroy()
+			a.disposePane(p, false)
 		}
 	}
 }
@@ -1343,10 +1342,7 @@ func (a *App) closeWorkspace() {
 	}
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
-			p.end()
-			p.browser.destroy()
-			p.note.destroy()
-			killOn(p.host, p.SID)
+			a.disposePane(p, true)
 		}
 	}
 	a.tabs = nil
@@ -1388,11 +1384,8 @@ func (a *App) moveTabToSpace(t *Tab, w *Workspace) {
 	if st == nil || t == nil || w == nil || w == a.ws || !slices.Contains(a.tabs, t) || !slices.Contains(st.workspaces, w) {
 		return
 	}
-	if f := a.findPane; f != nil && f.Tab == t {
-		a.closeFind()
-	}
 	s := a.savedTab(t)
-	closePanes([]*Tab{t})
+	a.closePanes([]*Tab{t})
 	if o := w.app; o != nil {
 		l := o.snapshot()
 		l.Tabs = append(l.Tabs, s)
@@ -1417,14 +1410,8 @@ func (a *App) moveTabToNewWindow(t *Tab) {
 	if st == nil || t == nil || len(a.tabs) < 2 {
 		return
 	}
-	if f := a.findPane; f != nil && f.Tab == t {
-		a.closeFind()
-	}
 	l := savedLayout{Tabs: []savedTab{a.savedTab(t)}}
-	for _, p := range t.allPanes() {
-		p.end()
-		p.browser.destroy()
-	}
+	a.closePanes([]*Tab{t})
 	a.removeTab(t)
 	w := st.addWorkspace()
 	w.layout = l
