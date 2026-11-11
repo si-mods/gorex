@@ -130,7 +130,7 @@ nonisolated final class InboxTests: XCTestCase {
         let h = Host(HostConfig(name: "test", url: try await rex.url()))
         h.connect()
         defer { h.stop() }
-        await until("read") { h.status == .online && h.statuses.count == 3 }
+        await until("read") { h.status == .online && h.blocks.values.filter { $0.statuses != nil }.count == 3 }
         XCTAssertEqual(h.inbox.map(\.title), ["One"])
         XCTAssertEqual(h.inbox.first?.status.state, "done")
         XCTAssertEqual(h.inbox.first?.block, "b")
@@ -163,7 +163,7 @@ nonisolated final class InboxTests: XCTestCase {
         let h = Host(HostConfig(name: "test", url: try await rex.url()))
         h.connect()
         defer { h.stop() }
-        await until("read") { h.status == .online && h.statuses["b"] != nil }
+        await until("read") { h.status == .online && h.blocks["b"]?.statuses != nil }
         func done(_ at: String) {
             rex.event(["type": "session_event", "payload": ["session_id": "s", "event": [
                 "type": "block_event", "payload": ["block_id": "b", "name": "program_status_changed", "payload": [
@@ -171,11 +171,11 @@ nonisolated final class InboxTests: XCTestCase {
             ]]])
         }
         done("2026-11-07T10:00:00Z")
-        await until("done") { h.statuses["b"]?.first?.state == "done" }
+        await until("done") { h.blocks["b"]?.statuses?.first?.state == "done" }
         XCTAssertTrue(h.inbox.isEmpty)
         shown = false
         done("2026-11-07T10:01:00Z")
-        await until("done again") { h.statuses["b"]?.first?.updated == Date(timeIntervalSince1970: 1_794_045_660) }
+        await until("done again") { h.blocks["b"]?.statuses?.first?.updated == Date(timeIntervalSince1970: 1_794_045_660) }
         XCTAssertEqual(h.inbox.first?.status.state, "done")
     }
 }

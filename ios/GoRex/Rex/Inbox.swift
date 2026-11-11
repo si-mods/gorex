@@ -90,12 +90,12 @@ extension Host {
                 // The block whose program needs the user most, which the row opens.
                 var pick: (block: String, status: ProgramStatus)?
                 for x in [b] + w.tiled.filter({ $0 != b }) {
-                    if let r = ProgramStatus.mostUrgent(statuses[x] ?? [], seen: seen[x] ?? []), pick.map({ r.outranks($0.status) }) ?? true {
+                    if let r = blocks[x].flatMap({ ProgramStatus.mostUrgent($0.statuses ?? [], seen: $0.seen) }), pick.map({ r.outranks($0.status) }) ?? true {
                         pick = (x, r)
                     }
                 }
                 guard let pick, Inbox.states.contains(pick.status.state) else { return nil }
-                return InboxItem(host: id, session: s.id, block: pick.block, title: title(w), program: programs[pick.block], status: pick.status)
+                return InboxItem(host: id, session: s.id, block: pick.block, title: title(w), program: blocks[pick.block]?.program, status: pick.status)
             }
         }
     }

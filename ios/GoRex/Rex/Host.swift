@@ -252,14 +252,22 @@ final class Host: Identifiable {
     var id: UUID { config.id }
     private(set) var status = Status.connecting
     private(set) var sessions: [Session] = []
-    /// Terminal titles and foreground programs, by block.
-    private(set) var titles: [String: String] = [:]
-    private(set) var programs: [String: String] = [:]
-    /// What the programs in each block reported, by block.
-    private(set) var statuses: [String: [ProgramStatus]] = [:]
-    /// The done and error records the user saw, by block, as their keys
-    /// (Inbox.swift).
-    private(set) var seen: [String: Set<String>] = [:]
+    /// What each block shows, by block. The dictionary changes only as
+    /// blocks come; a block's own changes redraw only the views that read
+    /// that block, as titles spin many times a second.
+    private(set) var blocks: [String: Block] = [:]
+
+    @Observable
+    final class Block {
+        /// Its terminal's title and foreground program.
+        var title: String?
+        var program: String?
+        /// What its programs reported.
+        var statuses: [ProgramStatus]?
+        /// The done and error records the user saw, as their keys
+        /// (Inbox.swift).
+        var seen: Set<String> = []
+    }
     /// The machine the host is, and the panes of other hosts in each of
     /// its sessions' spaces, by session, as /api/spaces tells (Spaces);
     /// nil and none from a server that doesn't.
@@ -545,20 +553,22 @@ final class Host: Identifiable {
             }
         case "block_event":
             guard let block = e.payload["block_id"] as? String, let p = e.payload["payload"] as? [String: Any] else { return }
+            // Observation skips a value set again unchanged.
             switch e.payload["name"] as? String {
-            case "title_changed": titles[block] = p["title"] as? String
-            case "process_changed": programs[block] = Self.program(p["foreground"])
+            case "title_changed": self.block(block).title = p["title"] as? String
+            case "process_changed": self.block(block).program = Self.program(p["foreground"])
             case "program_status_changed":
-                let was = statuses[block] ?? []
+                let b = self.block(block)
+                let was = b.statuses ?? []
                 let now = (p["records"] as? [Any] ?? []).compactMap(ProgramStatus.init)
-                statuses[block] = now
+                b.statuses = now
                 if Self.shown?(self, block) == true { see(block) }
                 for r in now where r.state == "blocked" && !was.contains(where: { $0.id == r.id && $0.state == "blocked" }) {
                     if let s = e.sessionID { Self.blocked?(self, s, block, r) }
                 }
             case "program_status_removed":
                 let ids = p["ids"] as? [String] ?? []
-                statuses[block]?.removeAll { ids.contains($0.id) }
+                if let b = blocks[block] { b.statuses = b.statuses?.filter { !ids.contains($0.id) } }
             default: break
             }
         default:
@@ -569,20 +579,29 @@ final class Host: Identifiable {
     /// A window's title, as the desktop names a tab: its name when it has
     /// one, else its terminal's title.
     func title(_ w: SessionView.Window) -> String {
-        w.name ?? w.block.flatMap { titles[$0] }.flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
+        w.name ?? w.block.flatMap { blocks[$0]?.title }.flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
     }
 
     /// The record of blocks that most needs the user, as the desktop's dot
     /// shows it: one blocked first; done and error records seen do not count.
     func status(_ blocks: [String]) -> ProgramStatus? {
-        blocks.compactMap { ProgramStatus.mostUrgent(statuses[$0] ?? [], seen: seen[$0] ?? []) }.max { $0.rank < $1.rank }
+        blocks.compactMap { self.blocks[$0].flatMap { ProgramStatus.mostUrgent($0.statuses ?? [], seen: $0.seen) } }.max { $0.rank < $1.rank }
     }
 
     /// Marks a block's done and error records seen, as the desktop's pane
     /// does when it shows.
     func see(_ block: String) {
-        let keys = (statuses[block] ?? []).filter { $0.state == "done" || $0.state == "error" }.map(\.seenKey)
-        if !keys.isEmpty { seen[block, default: []].formUnion(keys) }
+        guard let b = blocks[block] else { return }
+        let keys = (b.statuses ?? []).filter { $0.state == "done" || $0.state == "error" }.map(\.seenKey)
+        if !b.seen.isSuperset(of: keys) { b.seen.formUnion(keys) }
+    }
+
+    /// A block's values, made as the block first comes.
+    private func block(_ id: String) -> Block {
+        if let b = blocks[id] { return b }
+        let b = Block()
+        blocks[id] = b
+        return b
     }
 
     private func revision(_ id: String) -> Int {
@@ -613,7 +632,7 @@ final class Host: Identifiable {
         if let label = v.label { sessions[i].label = label }
         let again = reread.remove(v.session_id) != nil
         for w in v.windows ?? [] {
-            for b in [w.block].compactMap(\.self) + w.tiled where titles[b] == nil || again { describe(session: v.session_id, block: b) }
+            for b in [w.block].compactMap(\.self) + w.tiled where blocks[b]?.title == nil || again { describe(session: v.session_id, block: b) }
         }
     }
 
@@ -623,25 +642,26 @@ final class Host: Identifiable {
     /// an answer applies when nothing has changed what it read since, so
     /// an event that arrived while it was in flight wins.
     private func describe(session: String, block: String) {
-        let hadTitle = titles[block]
-        let hadProgram = programs[block]
-        let hadRecords = statuses[block]
-        if hadTitle == nil { titles[block] = "" }
+        let b = self.block(block)
+        let hadTitle = b.title
+        let hadProgram = b.program
+        let hadRecords = b.statuses
+        if hadTitle == nil { b.title = "" }
         Task {
             guard let c = control else { return }
             if let t = try? await c.callBlock("title", session: session, block: block)["title"] as? String,
-               titles[block] == "" || titles[block] == hadTitle {
-                titles[block] = t
+               b.title == "" || b.title == hadTitle {
+                b.title = t
             }
             if let p = try? await c.callBlock("process", session: session, block: block) {
                 let program = Self.program(p["foreground"])
-                if let program, programs[block] == nil || programs[block] == hadProgram {
-                    programs[block] = program
+                if let program, b.program == nil || b.program == hadProgram {
+                    b.program = program
                 }
             }
             if let r = try? await c.callBlock("program_status", session: session, block: block)["records"] as? [Any] {
-                if statuses[block] == nil || statuses[block] == hadRecords {
-                    statuses[block] = r.compactMap(ProgramStatus.init)
+                if b.statuses == nil || b.statuses == hadRecords {
+                    b.statuses = r.compactMap(ProgramStatus.init)
                     if Self.shown?(self, block) == true { see(block) }
                 }
             }

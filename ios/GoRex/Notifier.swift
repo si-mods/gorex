@@ -21,7 +21,7 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().delegate = self
         Host.shown = { host, block in Notifier.shared.onScreen?.host == host.id && Notifier.shared.onScreen?.block == block }
         Host.blocked = { host, session, block, r in
-            let name = r.app ?? host.programs[block] ?? host.config.name
+            let name = r.app ?? host.blocks[block]?.program ?? host.config.name
             Notifier.shared.post(String(localized: "\(name) needs input"), r.msg ?? r.title ?? "",
                                  host: host, session: session, block: block)
         }
@@ -31,9 +31,9 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
     /// at that terminal. Permission is asked the first time.
     func post(_ title: String, _ body: String, host: Host, session: String, block: String) {
         if UIApplication.shared.applicationState == .active, onScreen?.host == host.id, onScreen?.block == block { return }
-        let window = host.titles[block].flatMap { $0.isEmpty ? nil : $0 }
+        let window = host.blocks[block]?.title.flatMap { $0.isEmpty ? nil : $0 }
         let c = UNMutableNotificationContent()
-        c.title = (title.isEmpty ? host.programs[block] ?? window ?? host.config.name : title).asText
+        c.title = (title.isEmpty ? host.blocks[block]?.program ?? window ?? host.config.name : title).asText
         c.subtitle = [window, host.config.name].compactMap(\.self).joined(separator: " · ").asText
         c.body = body
         c.sound = .default
