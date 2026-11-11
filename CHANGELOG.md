@@ -7,10 +7,13 @@
 * **sidebar:** a tab's context menu moves it to another space, Move to Space, its sessions going on; it joins the window that shows that space, and the window's last tab leaves its space as a closed last tab does ([#401](https://github.com/si-mods/gorex/pull/401), [#402](https://github.com/si-mods/gorex/pull/402))
 * **remote:** the tailcat address serves Rex's API on port 7297 to the clients that may command the layout, for Rex Go with no VPN; a relay of one's own is set with `gorex remote relay HOST` or in Settings › Remote ([#398](https://github.com/si-mods/gorex/pull/398))
 * **rexapi:** Rex's API revision 12: `server.status` lists the listeners ([#388](https://github.com/si-mods/gorex/pull/388))
+* **settings:** remote access and the Local API move onto the Server page, the first in the sidebar, and remote clients always share this machine's sessions ([#390](https://github.com/si-mods/gorex/pull/390))
 
 ### Bug Fixes
 
 * **rexapi:** the primary listener's `unix://` endpoint is escaped as Rex escapes it ([#389](https://github.com/si-mods/gorex/pull/389))
+* **terminal:** an autolinked URL ends before the CJK prose after it ([#404](https://github.com/si-mods/gorex/pull/404))
+* **links:** a web address printed without its scheme, as `example.com/path`, opens over https instead of as a file ([#407](https://github.com/si-mods/gorex/pull/407))
 
 ## 0.20.2
 
