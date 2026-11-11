@@ -97,6 +97,7 @@ export class TerminalView {
   constructor(readonly session: string, readonly block: string, private readonly app: PaneHost) {
     this.theme = app.chosen() ?? {};
     this.ctx = this.canvas.getContext("2d", { alpha: false })!;
+    this.paintBlank();
     this.el.tabIndex = 0;
     this.el.dataset.block = block;
     const head = el("div", "pane-head");
@@ -271,6 +272,19 @@ export class TerminalView {
     }
   }
 
+  /** The background to show: the last painted, else the chosen theme's, else the default. */
+  private blank(): string {
+    const b = this.theme.background;
+    return this.painted || (b ? `rgb(${b.join(",")})` : "#1e1e22");
+  }
+
+  /** Fills the canvas and the pane with the blank background, until the terminal draws. */
+  private paintBlank() {
+    const bg = (this.el.style.background = this.blank());
+    this.ctx.fillStyle = bg;
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  }
+
   /**
    * Sizes the canvas to the body in whole device pixels, and the terminal
    * to the canvas less its padding, at the device's pixel ratio.
@@ -284,6 +298,8 @@ export class TerminalView {
     canvas.height = Math.max(1, device?.height ?? Math.round(r.height * scale));
     canvas.style.width = `${canvas.width / scale}px`;
     canvas.style.height = `${canvas.height / scale}px`;
+    // Resizing cleared the canvas to black: fill it before the browser paints.
+    this.paintBlank();
     if (this.font?.scale !== scale || this.fontStale) {
       this.font = new Font(fontFamily(), fontSize, scale, lineHeight);
       this.fontStale = false;
