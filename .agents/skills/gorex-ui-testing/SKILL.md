@@ -1,11 +1,11 @@
 ---
 name: gorex-ui-testing
-description: Test GoRex's UI and session server without a human clicking — headless MyGo view tests (ui.NewTester), screenshots of the real window via the GOREX_DEBUG hook, macOS window captures with traffic lights, and driving the session server over its Unix socket. Use when adding or changing UI in GoRex (tabs, sidebar, panes, settings, palette, menus), when asked to "verify the UI", "take screenshots", "UI 自动化测试", "截图验证", "compare with Rex", or to check session-server behavior end to end (upgrade, attach, output continuity).
+description: Test GoRex's UI and session server without a human clicking — headless MyGo view tests (ui.NewTester), screenshots of the real window via the GOREX_DEBUG hook, macOS window captures with traffic lights, iOS screens in the simulator (headless screenshots, XCUITest touches), and driving the session server over its Unix socket. Use when adding or changing UI in GoRex (tabs, sidebar, panes, settings, palette, menus) or in the iOS app, when asked to "verify the UI", "take screenshots", "UI 自动化测试", "截图验证", "compare with Rex", "iOS 端验证", or to check session-server behavior end to end (upgrade, attach, output continuity).
 ---
 
 # GoRex UI testing
 
-Four layers, cheapest first. Use the lowest layer that can prove the behavior; screenshots are for what only eyes can judge (alignment, spacing, colors, clipping).
+Five layers, cheapest first. Use the lowest layer that can prove the behavior; screenshots are for what only eyes can judge (alignment, spacing, colors, clipping).
 
 | Layer | Proves | Runs in CI |
 |---|---|---|
@@ -13,6 +13,7 @@ Four layers, cheapest first. Use the lowest layer that can prove the behavior; s
 | 2. `GOREX_DEBUG` hook screenshots | Real rendering of the window's content, light/dark | no |
 | 3. macOS window capture | Window chrome: traffic lights, title bar, full window | no |
 | 4. Session server over its socket | Sessions, attach, input/output, upgrade, PIDs | partly |
+| 5. iOS simulator (XCUITest + `simctl`) | The app's screens, keyboard, sheets, navigation | no |
 
 ## Safety rules (always)
 
@@ -115,8 +116,80 @@ For output continuity across restarts or upgrades, run `while :; do date +%s | t
 
 Server-side behavior that needs a real process, such as exec, PIDs and fds, belongs in `internal/rex` tests that spawn the test binary as the server (see `TestMain`/`TestUpgrade` on `feat/server-live-upgrade`).
 
+## 5. iOS screens in the simulator (headless)
+
+For `ios/`: the simulator needs no window and no hands. `xcrun simctl` boots a device and reads its framebuffer; a throwaway XCUITest target sends real touches through the accessibility protocol and asserts on what UIKit sees (the keyboard, alerts, elements), which is what a pixel click on a window cannot prove. Prefer this to clicking a Simulator window with an automation driver: since Xcode 27 the simulator's UI is Device Hub, which shows only some booted devices, so the window for your device may not exist, and guessed coordinates prove nothing.
+
+Build, install, and use a device of your own; never reuse one that someone else has booted (`xcrun simctl list devices booted`). With `ios/Frameworks` empty, build the two frameworks the project links first: `scripts/build-ghostty-vt.sh` (needs Zig) and `scripts/build-tailnet` (needs Go and gomobile).
+
+```sh
+cd ios && xcodegen generate
+xcodebuild -scheme GoRex -destination "generic/platform=iOS Simulator" \
+  -derivedDataPath /tmp/gorex-dd CODE_SIGNING_ALLOWED=NO build
+xcrun simctl boot <UDID> && xcrun simctl bootstatus <UDID> -b
+xcrun simctl install <UDID> /tmp/gorex-dd/Build/Products/Debug-iphonesimulator/GoRex.app
+```
+
+A screen with no window at all: `xcrun simctl io <UDID> screenshot /tmp/s.png`. It works while a test drives the app too, so keep the test running and shoot between its steps.
+
+Feed the app a host without typing. Terminate it, then write the `hosts` default, a JSON array of `HostConfig` (`id`, `name`, `url`, `transport`…), as hex data (`python3 -c 'print(json.dumps([…]).encode().hex())'`):
+
+```sh
+xcrun simctl spawn <UDID> defaults write dev.gorex.ios hosts -data <hex>
+```
+
+Point `url` at a Rex server you started yourself, on the same Mac if you like: `gorex rexapi lan on`, then `curl -i http://127.0.0.1:<port>/api/control` answers 426 on the right API (a 404 is another server). The simulator shares the Mac's network, so the Mac's own LAN address works as it is.
+
+The test target goes in a copy of the project only; do not commit it. Patch `ios/project.yml`, regenerate, and revert afterwards:
+
+```yaml
+  GoRexUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - GoRexUITests
+    dependencies:
+      - target: GoRex
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: true
+        # The app's targets run MainActor by default; XCTestCase's inits are
+        # nonisolated and would not override.
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+```
+
+Add `GoRexUITests` under the scheme's `test.targets` too. The test names rows by their text and taps by coordinate, and screenshots carry the proof:
+
+```swift
+let app = XCUIApplication()
+app.launch()
+XCTAssertTrue(app.staticTexts["yibo@host:~"].waitForExistence(timeout: 30))
+app.staticTexts["yibo@host:~"].tap()
+XCTAssertTrue(app.navigationBars["yibo@host:~"].waitForExistence(timeout: 15))
+sleep(3)
+XCTAssertFalse(app.keyboards.element.exists)                       // the keyboard is a query
+app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)).tap()
+XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: 10))
+let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+shot.name = "terminal-with-keyboard"
+shot.lifetime = .keepAlways
+add(shot)
+```
+
+```sh
+xcodebuild test -scheme GoRex -destination "platform=iOS Simulator,id=<UDID>" \
+  -derivedDataPath /tmp/gorex-dd -resultBundlePath /tmp/t.xcresult \
+  -only-testing:GoRexUITests/TerminalKeyboardTests
+xcrun xcresulttool export attachments --path /tmp/t.xcresult --output-path /tmp/att
+```
+
+`manifest.json` there maps each attachment's file name to its `suggestedHumanReadableName`; read the PNGs with the Read tool. Other queries worth knowing: `app.alerts`, `app.sheets`, `app.textFields`, `app.buttons`. If a tap should raise the software keyboard and does not, disconnect the simulator's hardware keyboard (its I/O menu), which suppresses it.
+
+Clean up: `xcrun simctl shutdown <UDID>` and `xcrun simctl uninstall <UDID> dev.gorex.ios`, then delete the derived data, result bundle and the patched `project.yml`. Never `simctl erase` or delete a device to get a clean state; `uninstall` and `defaults delete` are enough.
+
 ## Limits, so you say them in the report
 
 - Native AppKit menus in the real menu bar (item enabled state, for example) and real hover can't be checked headlessly or with `CapturePage`. Say they were checked through code only, or use layer 3 and look.
 - Windows and Linux: compile and vet only, unless a machine is available.
+- iOS: the simulator's screens and software keyboard are real; haptics, notification delivery, StoreKit, and the hardware keyboard are not, and a simulator keychain is a fresh one.
 - Screenshots are judged by eye. There is no golden-image diff, so say what you looked at.
