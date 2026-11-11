@@ -333,8 +333,7 @@ The address names the DERP relay where clients meet the server when
 they cannot connect directly: by default one of tailcat's free relays,
 picked once. A relay of one's own takes its place: **Relay** in Settings
 › Remote, or `gorex remote relay derp.example.com` (`gorex remote relay
-default` goes back; `remotectl relay HOST|default` does the same
-without the app). Give a host name, with `:PORT` when not 443, and not
+default` goes back). Give a host name, with `:PORT` when not 443, and not
 an IP address: `derper` serves a certificate for its host name. The
 relay is Tailscale's `derper`, on any machine clients can reach:
 
@@ -581,7 +580,7 @@ image reaches a program as a file it opens, not as clipboard data.
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
 | `settingsview.go`, `remoteview.go` | the Settings window, and its Server page's remote access |
 | `locales` | the messages of the interface, `en.json` and `zh-Hans.json`, and `catalog_gen.go` (written by `go tool mygo generate`; commit it with the catalogs) |
-| `tools/remotectl` | runs and probes the session server without the app: allow, enable, pair, probe over tailcat |
+| `tools/remotectl` | acts as a remote client without the app: pubkey, regenerate, pair, probe over tailcat |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 | `internal/rexapi` | `GoRex rexapi`, the gateway that serves Rex's API to Rex clients from the server the app runs |
