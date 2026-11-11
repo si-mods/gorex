@@ -631,6 +631,9 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 				l = hostLayout{named: map[string]bool{}}
 				for _, w := range layout.Parse(raw).Sessions {
 					l.tabs = append(l.tabs, w.Tabs...)
+					for range w.Tabs {
+						l.spaces = append(l.spaces, layout.Workspace{Name: w.Name, Color: w.Color})
+					}
 				}
 				for _, t := range l.tabs {
 					for _, n := range t.Roots() {
@@ -682,9 +685,12 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 // adopt: the sessions in its tabs, and those seen too lately for the host
 // to have saved them there yet.
 type hostLayout struct {
-	tabs  []savedTab
-	named map[string]bool
-	hold  map[string]bool
+	tabs []savedTab
+	// spaces are the name and color of the host's space each of tabs is
+	// in, by index.
+	spaces []layout.Workspace
+	named  map[string]bool
+	hold   map[string]bool
 }
 
 // namedSIDs adds the sessions n's panes are to out.
@@ -712,7 +718,8 @@ func namedSIDs(n *savedNode, out map[string]bool) {
 //
 // With windows of workspaces, the window focused last opens them, and a
 // session shows already when a tab of any workspace has it, shown in a
-// window or not.
+// window or not. A tab of the host's layout opens in the space of the
+// name of the host's space it is in.
 func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) {
 	// A list on its way as the host was removed, or the window closed.
 	if a.quitting || !slices.Contains(a.hosts, h) {
@@ -770,16 +777,50 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 		return
 	}
 	added := false
-	for _, t := range l.tabs {
+	for i, t := range l.tabs {
 		// A tab here that shows panes of t already takes its new ones,
 		// as when the host splits a pane of it.
 		if a.adoptInto(h, t, free, where) {
 			added = true
 		}
-		if at := a.adoptTab(h, t, free); at != nil {
-			a.tabs = append(a.tabs, at)
-			added = true
+		// A new tab goes to the space here of the name of the host's
+		// space it is in, so that the two group it alike: into the window
+		// that shows that space, or into its layout, made last when no
+		// space has the name.
+		var sp layout.Workspace
+		var w *Workspace
+		if a.st != nil && i < len(l.spaces) {
+			sp = l.spaces[i]
+			w = a.st.workspaceNamed(sp.Name)
 		}
+		o := a
+		if w != nil && w.app != nil {
+			o = w.app
+		}
+		at := o.adoptTab(h, t, free)
+		if at == nil {
+			continue
+		}
+		added = true
+		if sp.Name == "" || w != nil && w.app != nil {
+			o.tabs = append(o.tabs, at)
+			if o != a {
+				o.groupTabs()
+				o.changed()
+			}
+			continue
+		}
+		if w == nil {
+			w = a.st.addWorkspace()
+			w.Name = sp.Name
+			if _, ok := spaceColorHex(sp.Color); ok {
+				w.Color = sp.Color
+			}
+		}
+		w.unkeep()
+		w.layout.Tabs = append(w.layout.Tabs, a.savedTab(at))
+		closePanes([]*Tab{at})
+		a.st.save()
 	}
 	// A session the layout does not name, as of a host that shares no
 	// layout, gets a tab of its own.

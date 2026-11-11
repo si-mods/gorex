@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **hosts:** a remote host's new tab opens in the space here of the name of the host's space it is in, made with the host's color when none has it, rather than in the window focused last: the desktop groups a host's tabs as the host and Rex Go do
+
 ## 0.21.0
 
 ### ⚠ BREAKING CHANGES

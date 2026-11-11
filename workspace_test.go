@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -1007,6 +1008,104 @@ func TestAdoptAcrossWorkspaces(t *testing.T) {
 		t.Error("a session of a hidden workspace opened again")
 	}
 	quit(st)
+}
+
+// TestAdoptIntoHostSpace checks that a new tab of a host's layout opens in
+// the space here of the name of the host's space it is in, the case aside:
+// into its layout when no window shows it, in the window that does, in a
+// new space of that name and color when none has it; and in the front
+// window as before when that is its space, the host's space has no name,
+// or the host shares no layout.
+func TestAdoptIntoHostSpace(t *testing.T) {
+	setup := func(t *testing.T) (*App, *hostConn) {
+		a, _ := newTestApp(t)
+		h := newHostConn(savedHost{ID: "h1", Name: "studio"})
+		a.hosts = []*hostConn{h}
+		a.syncHosts()
+		return a, h
+	}
+	byID := map[string]rex.SessionInfo{"r1": {ID: "r1"}}
+	in := func(name, color string) hostLayout {
+		return hostLayout{
+			tabs:   []savedTab{{ID: "r1-tab", Root: &savedNode{SID: "r1"}}},
+			spaces: []layout.Workspace{{Name: name, Color: color}},
+			named:  map[string]bool{"r1": true},
+		}
+	}
+	t.Run("unshown", func(t *testing.T) {
+		a, h := setup(t)
+		st := a.st
+		x := st.addWorkspace()
+		x.Name = "GoRex Web"
+		for range 2 {
+			a.adopt(h, byID, in("gorex web", ""))
+		}
+		if len(x.layout.Tabs) != 1 || x.layout.Tabs[0].Root.SID != "r1" || x.layout.Tabs[0].Root.Host != "h1" {
+			t.Fatalf("the space has %+v, want r1 of h1 once", x.layout.Tabs)
+		}
+		if slices.Contains(sidsOf(a), "r1") {
+			t.Error("the tab opened in the front window too")
+		}
+		quit(st)
+	})
+	t.Run("other window", func(t *testing.T) {
+		a, h := setup(t)
+		st := a.st
+		x := st.addWorkspace()
+		x.Name = "GoRex Web"
+		b := st.openWindow(x)
+		st.raise(a)
+		a.adopt(h, byID, in("GoRex Web", ""))
+		if !slices.Contains(sidsOf(b), "r1") || slices.Contains(sidsOf(a), "r1") {
+			t.Errorf("the space's window has %q, the front one %q", sidsOf(b), sidsOf(a))
+		}
+		quit(st)
+	})
+	t.Run("new space", func(t *testing.T) {
+		for _, c := range []struct{ color, want string }{
+			{layout.Palette[3].ID, layout.Palette[3].ID},
+			{"#12ab34", "#12ab34"},
+			{"nope", ""},
+		} {
+			a, h := setup(t)
+			st := a.st
+			n := len(st.workspaces)
+			a.adopt(h, byID, in("GoRex Web", c.color))
+			if len(st.workspaces) != n+1 {
+				t.Fatalf("%d spaces, want %d", len(st.workspaces), n+1)
+			}
+			w := st.workspaces[n]
+			if w.Name != "GoRex Web" || w.app != nil || len(w.layout.Tabs) != 1 || w.layout.Tabs[0].Root.SID != "r1" {
+				t.Errorf("the new space is %q, shown by %v, with %+v", w.Name, w.app, w.layout.Tabs)
+			}
+			if _, ok := spaceColorHex(w.Color); !ok || c.want != "" && w.Color != c.want {
+				t.Errorf("host color %q: the space has %q, want %q", c.color, w.Color, cmp.Or(c.want, "a preset"))
+			}
+			if slices.Contains(sidsOf(a), "r1") {
+				t.Error("the tab opened in the front window too")
+			}
+			quit(st)
+		}
+	})
+	t.Run("as before", func(t *testing.T) {
+		for _, c := range []struct {
+			name string
+			l    func(a *App) hostLayout
+		}{
+			{"this space", func(a *App) hostLayout { return in(strings.ToUpper(a.ws.Name), "") }},
+			{"no name", func(*App) hostLayout { return in("", "") }},
+			{"no layout", func(*App) hostLayout { return hostLayout{} }},
+		} {
+			a, h := setup(t)
+			st := a.st
+			n := len(st.workspaces)
+			a.adopt(h, byID, c.l(a))
+			if !slices.Contains(sidsOf(a), "r1") || len(st.workspaces) != n {
+				t.Errorf("%s: the front window has %q, %d spaces of %d", c.name, sidsOf(a), len(st.workspaces), n)
+			}
+			quit(st)
+		}
+	})
 }
 
 // TestDebugVerbs checks the debug hook's verbs of windows and workspaces:
