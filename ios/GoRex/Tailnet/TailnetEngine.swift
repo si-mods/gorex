@@ -346,6 +346,18 @@ final class TailnetEngine {
         present()
     }
 
+    /// How the device reaches host, a tailnet name or address, as JSON
+    /// (PeerPath), for the diagnostics.
+    static func path(to host: String) async -> String {
+        await Task.detached { TailnetPeerPath(host) }.value
+    }
+
+    /// A disco ping of host of size bytes, as JSON (Ping), for the
+    /// diagnostics.
+    static func ping(_ host: String, size: Int) async -> String {
+        await Task.detached { TailnetPing(host, size) }.value
+    }
+
     /// The transport of a host added now (HostConfig.transport(of:)).
     func transport(of url: URL) -> HostConfig.Transport? {
         HostConfig.transport(of: url, tailnetOn: TailnetSettings.isOn, suffix: status.suffix)

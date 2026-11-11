@@ -28,6 +28,9 @@ final class TerminalSession {
     let session: String
     let block: String
     private(set) var state = State.connecting
+    /// What the last open waited for when it failed, how long it took and
+    /// the error, for the diagnostics sheet.
+    private(set) var diagnosis: String?
     /// The terminal's default background, for the page around it. Until
     /// the stream gives one it is the last one seen on this host with this
     /// theme, else the theme's, so that the page opens in its color.
@@ -104,24 +107,30 @@ final class TerminalSession {
         let g = generation
         data.close()
         Task {
+            let began = ContinuousClock.now
+            var d: DataConnection?
             do {
                 let t = try await host.live().call("data.connect", [
                     "session_id": session, "block_id": block,
                     "data_ref_id": "terminal", "subprotocol": "rex.data.terminal.v1",
                 ]).payload["ticket"] as? String ?? ""
                 guard g == generation else { return }
+                ConnectionLog.note("terminal \(block): ticket, \(began.duration(to: .now).ms)")
                 // What ends this generation closes the connection it opens.
-                let d = DataConnection(base: host.config.url, session: try host.session())
-                data = d
-                wire(d)
-                try await d.open(ticket: t)
+                let c = DataConnection(base: host.config.url, session: try host.session())
+                d = c
+                data = c
+                wire(c)
+                try await c.open(ticket: t)
                 guard g == generation else { return }
                 log.info("opened \(self.block, privacy: .public)")
                 opened = .now
-                stream = TerminalStream(nonce: d.nonce)
+                stream = TerminalStream(nonce: c.nonce)
                 await claim()
             } catch {
                 guard g == generation else { return }
+                diagnosis = "Waiting for \(d?.stage ?? "the ticket (data.connect)"), \(began.duration(to: .now).ms): \(error.diagnosis)"
+                if d == nil { ConnectionLog.note("terminal \(block): no ticket: \(error.diagnosis)") }
                 // Opened by hand, it tells at once; after a drop, it tries again.
                 if drops == 0 { state = .failed(error.localizedDescription) } else { retry(fresh: true) }
             }

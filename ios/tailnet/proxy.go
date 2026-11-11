@@ -106,9 +106,7 @@ func dialTailnet(ctx context.Context, status func(context.Context) (*ipnstate.St
 }
 
 // peerAddr is the Tailscale address of the device addr names, as
-// host:port: a peer's IP address, its MagicDNS name, or its name short of
-// the tailnet's suffix. Anything else is an error, as is any address
-// before the node runs with its network map.
+// host:port (findPeer).
 func peerAddr(st *ipnstate.Status, addr string) (netip.AddrPort, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -118,8 +116,20 @@ func peerAddr(st *ipnstate.Status, addr string) (netip.AddrPort, error) {
 	if err != nil {
 		return netip.AddrPort{}, err
 	}
+	_, ip, err := findPeer(st, host)
+	if err != nil {
+		return netip.AddrPort{}, err
+	}
+	return netip.AddrPortFrom(ip, uint16(pn)), nil
+}
+
+// findPeer is the device host names and its Tailscale address: a peer's
+// IP address, its MagicDNS name, or its name short of the tailnet's
+// suffix. Anything else is an error, as is any host before the node runs
+// with its network map.
+func findPeer(st *ipnstate.Status, host string) (*ipnstate.PeerStatus, netip.Addr, error) {
 	if st == nil || st.BackendState != ipn.Running.String() || len(st.Peer) == 0 {
-		return netip.AddrPort{}, errors.New("tailnet not ready")
+		return nil, netip.Addr{}, errors.New("tailnet not ready")
 	}
 	ip, ipErr := netip.ParseAddr(host)
 	name := strings.ToLower(strings.TrimSuffix(host, "."))
@@ -131,7 +141,7 @@ func peerAddr(st *ipnstate.Status, addr string) (netip.AddrPort, error) {
 		if ipErr == nil {
 			for _, a := range ps.TailscaleIPs {
 				if a == ip.Unmap() {
-					return netip.AddrPortFrom(a, uint16(pn)), nil
+					return ps, a, nil
 				}
 			}
 			continue
@@ -139,8 +149,8 @@ func peerAddr(st *ipnstate.Status, addr string) (netip.AddrPort, error) {
 		full := strings.ToLower(strings.TrimSuffix(ps.DNSName, "."))
 		short, _, _ := strings.Cut(full, ".")
 		if name == full || name == short {
-			return netip.AddrPortFrom(ps.TailscaleIPs[0], uint16(pn)), nil
+			return ps, ps.TailscaleIPs[0], nil
 		}
 	}
-	return netip.AddrPort{}, errors.New("not a device on the tailnet: " + host)
+	return nil, netip.Addr{}, errors.New("not a device on the tailnet: " + host)
 }

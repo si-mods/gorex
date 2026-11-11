@@ -25,6 +25,8 @@ struct TerminalScreen: View {
     @State private var failure: (title: LocalizedStringKey, why: String)?
     /// Whether the session's sheet is open, as the title opens it.
     @State private var sheet = false
+    /// Whether the diagnostics of a failed terminal show.
+    @State private var diagnostics = false
     /// The height of the status bar.
     @State private var statusBar: CGFloat = 0
 
@@ -94,6 +96,17 @@ struct TerminalScreen: View {
             // The sheet takes the terminal's scheme as the bar does; the
             // one below does not reach it under a dark system.
             .sheet(isPresented: $sheet) { SessionSheet(target: target, host: host, go: go, newTab: newTab).environment(\.colorScheme, scheme) }
+            .sheet(isPresented: $diagnostics) {
+                NavigationStack {
+                    DiagnosticsView(address: host.config.url.host() ?? "", host: host.config, failure: session?.diagnosis)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Close", systemImage: "xmark", role: .close) { diagnostics = false }
+                            }
+                        }
+                }
+                .environment(\.colorScheme, scheme)
+            }
             .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
             .toolbarColorScheme(scheme, for: .navigationBar)
             .environment(\.colorScheme, scheme)
@@ -192,7 +205,10 @@ struct TerminalScreen: View {
         case .failed(let why):
             VStack(spacing: 12) {
                 label(why)
-                Button("Retry") { session?.start() }.buttonStyle(.glassProminent).foregroundStyle(Color.page)
+                HStack {
+                    Button("Diagnostics") { diagnostics = true }.buttonStyle(.glass)
+                    Button("Retry") { session?.start() }.buttonStyle(.glassProminent).foregroundStyle(Color.page)
+                }
             }
         }
     }

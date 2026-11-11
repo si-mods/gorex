@@ -3157,6 +3157,96 @@
           }
         }
       }
+    },
+    "Diagnostics": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "诊断"
+          }
+        }
+      }
+    },
+    "Failure": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "失败原因"
+          }
+        }
+      }
+    },
+    "Host": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主机"
+          }
+        }
+      }
+    },
+    "Tailnet Path": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tailnet 路径"
+          }
+        }
+      }
+    },
+    "Ping": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ping"
+          }
+        }
+      }
+    },
+    "Log": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "日志"
+          }
+        }
+      }
+    },
+    "Copy": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "复制"
+          }
+        }
+      }
+    },
+    "Tap a machine to test the connection to it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点一台电脑，测试与它的连接。"
+          }
+        }
+      }
+    },
+    "A terminal that can't connect offers Diagnostics: where it stopped, the path to the host, pings of three sizes and the recent log, to copy into a report. A GoRex machine in Settings › Tailscale opens the same.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连不上的终端提供“诊断”：卡在哪一步、到主机的路径、三种大小的 ping 和最近的日志，可复制到问题报告里。在“设置 › Tailscale”中轻点一台 GoRex 电脑也能打开。"
+          }
+        }
+      }
     }
   }
 }

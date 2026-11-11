@@ -329,10 +329,12 @@ final class Host: Identifiable {
         guard control == nil, !stopped else { return }
         retry?.cancel()
         status = .connecting
+        let name = "control \(config.url.host() ?? "")"
         let session: URLSession
         do {
             session = try self.session()
         } catch {
+            ConnectionLog.note("\(name): \(error.diagnosis)")
             status = .offline(error.localizedDescription)
             scheduleRetry()
             return
@@ -346,6 +348,7 @@ final class Host: Identifiable {
         }
         c.onClose = { [weak self, weak c] error in
             guard let self, c === self.control else { return }
+            ConnectionLog.note("\(name): closed: \(error?.diagnosis ?? "by the app")")
             self.control = nil
             // What the connection said of the spaces goes with it.
             self.take(nil)
@@ -354,12 +357,15 @@ final class Host: Identifiable {
             // after a sign-in, or the app back in the foreground.
             if (error as? RexError)?.code != "refused" { self.scheduleRetry() }
         }
+        let began = ContinuousClock.now
+        ConnectionLog.note("\(name): opening via \(config.reach(tailnetOn: TailnetSettings.isOn).rawValue)")
         Task {
             do {
                 try await c.open(token: token)
                 token = c.reconnectToken
                 try await bootstrap(c)
                 status = .online
+                ConnectionLog.note("\(name): online, \(began.duration(to: .now).ms)")
             } catch let e as RexError where e.code == "refused" && viaTailnet {
                 // The gateway lets in only whom it says (docs/ios-tailnet.md, Server).
                 c.close(RexError(code: e.code, message: String(localized: "Refused: sign Rex Go in as the Tailscale user who signed in the GoRex machine, not with a tagged key, or turn on --allow-tailnet-members there.")))

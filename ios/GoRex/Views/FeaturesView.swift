@@ -28,6 +28,7 @@ struct FeaturesView: View {
             ("The title opens the session", "The title shows the window's program and title. Tap it for the session's windows, New Tab and Switch Session."),
             ("A line of progress", "A program's progress (OSC 9;4) shows as a thin line at the top, red on an error."),
             ("Back where you left it", "Back from the background, the terminal connects again and every title stays. A dropped connection tries again by itself."),
+            ("Diagnostics", "A terminal that can't connect offers Diagnostics: where it stopped, the path to the host, pings of three sizes and the recent log, to copy into a report. A GoRex machine in Settings › Tailscale opens the same."),
             ("Opens in its own colors", "A terminal opens in the background last seen on its host, so it does not flash."),
         ]),
         ("Keyboard & Input", [
