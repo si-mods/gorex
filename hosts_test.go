@@ -1661,13 +1661,36 @@ func TestTakeKillsOnce(t *testing.T) {
 // named, and none after a hello that names none.
 func TestLearnMachine(t *testing.T) {
 	h := newHostConn(savedHost{ID: "h", Address: "a"})
-	if !h.learnMachine("m1") || h.saved().Machine != "m1" {
+	if !h.learn(rex.Hello{Machine: "m1"}) || h.saved().Machine != "m1" {
 		t.Fatalf("learned %q", h.saved().Machine)
 	}
-	if h.learnMachine("m1") {
+	if h.learn(rex.Hello{Machine: "m1"}) {
 		t.Error("the same machine changed it")
 	}
-	if !h.learnMachine("") || h.saved().Machine != "" {
+	if !h.learn(rex.Hello{}) || h.saved().Machine != "" {
 		t.Errorf("a hello with no machine kept %q", h.saved().Machine)
+	}
+}
+
+// TestLearnGlyph checks that a host keeps the icon of the machine its
+// last hello described, and shows a server before one did.
+func TestLearnGlyph(t *testing.T) {
+	h := newHostConn(savedHost{ID: "h", Address: "a"})
+	if g := h.remoteGlyph(); g != "server" {
+		t.Errorf("before a hello: %q", g)
+	}
+	for _, c := range []struct {
+		host rex.HostInfo
+		want string
+	}{
+		{rex.HostInfo{Model: "MacBook Pro", OS: "macOS 26.1"}, "laptop"},
+		{rex.HostInfo{Model: "Mac mini", OS: "macOS 26.1"}, "mac-studio"},
+		{rex.HostInfo{Model: "Linux", OS: "Debian GNU/Linux 13"}, "server"},
+		{rex.HostInfo{Model: "Z790", OS: "Windows 11 Pro"}, "monitor"},
+		{rex.HostInfo{Model: "Z790", OS: "Windows 11 Pro", Portable: true}, "laptop"},
+	} {
+		if !h.learn(rex.Hello{Host: c.host}) || h.remoteGlyph() != c.want || h.saved().Glyph != c.want {
+			t.Errorf("%+v: %q, saved %q, want %q", c.host, h.remoteGlyph(), h.saved().Glyph, c.want)
+		}
 	}
 }

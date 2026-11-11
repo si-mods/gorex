@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"runtime"
@@ -85,16 +86,28 @@ func (a *App) hostIdentity() (name, model, glyph string) {
 		name, _ = os.Hostname()
 		name = strings.TrimSuffix(name, ".local")
 	}
-	glyph = "mac-studio"
+	return name, model, hostGlyph(h, runtime.GOOS == "windows")
+}
+
+// hostGlyph is the icon that stands for a machine the server described,
+// windows telling that it runs Windows.
+func hostGlyph(h rex.HostInfo, windows bool) string {
 	switch {
-	case strings.Contains(model, "MacBook"), h.Portable:
-		glyph = "laptop"
-	case strings.Contains(model, "iMac"), runtime.GOOS == "windows":
-		glyph = "monitor"
-	case model == "Linux":
-		glyph = "server"
+	case strings.Contains(h.Model, "MacBook"), h.Portable:
+		return "laptop"
+	case strings.Contains(h.Model, "iMac"), windows:
+		return "monitor"
+	case h.Model == "Linux":
+		return "server"
 	}
-	return
+	return "mac-studio"
+}
+
+// remoteGlyph is the icon of a remote host: as its last hello described
+// it, kept while it is away; a server, before it ever connected or when
+// it said nothing of its machine.
+func (h *hostConn) remoteGlyph() string {
+	return cmp.Or(h.Glyph, "server")
 }
 
 // hostPopover opens the host's panel from its anchor, a margin below it,

@@ -43,6 +43,9 @@ type savedHost struct {
 	// when it last connected: the Rex API names the host's panes by it,
 	// for a phone that connects to that machine too.
 	Machine string `json:"machine,omitempty"`
+	// Glyph is the icon of the machine, as its last hello described it,
+	// "" before (hostConn.remoteGlyph).
+	Glyph string `json:"glyph,omitempty"`
 	// Kills are the sessions closed here while the host was away, to end
 	// there once connected again, though GoRex quit meanwhile.
 	Kills []string `json:"kills,omitempty"`
@@ -270,16 +273,21 @@ func (h *hostConn) next(ctx context.Context, c *rex.Client, d time.Duration) *re
 	}
 }
 
-// learnMachine keeps the machine the host's hello named, none from a
-// server before machines, and tells whether it changed. A host whose
-// address changes is a new savedHost, with no machine until it connects.
-func (h *hostConn) learnMachine(machine string) bool {
+// learn keeps the machine the host's hello named, none from a server
+// before machines, and the icon of the machine it described, and tells
+// whether either changed. A host whose address changes is a new
+// savedHost, with neither until it connects.
+func (h *hostConn) learn(hello rex.Hello) bool {
+	glyph := ""
+	if m := hello.Host; m.Model != "" || m.OS != "" {
+		glyph = hostGlyph(m, strings.HasPrefix(m.OS, "Windows"))
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.Machine == machine {
+	if h.Machine == hello.Machine && h.Glyph == glyph {
 		return false
 	}
-	h.Machine = machine
+	h.Machine, h.Glyph = hello.Machine, glyph
 	return true
 }
 
@@ -507,7 +515,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			logged.log(name, nil)
 			update(func() {
 				h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil
-				if h.learnMachine(hello.Machine) && h.persist != nil {
+				if h.learn(hello) && h.persist != nil {
 					h.persist()
 				}
 			})

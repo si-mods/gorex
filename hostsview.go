@@ -296,7 +296,7 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 	sessions := a.sessionsOn(h)
 	groupRow(c, k, h.ID).Gap(8).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			glyphIcon(c, "server", 18, k.textMuted).Shrink(0)
+			glyphIcon(c, h.remoteGlyph(), 18, k.textMuted).Shrink(0)
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 				if page.renaming == h.ID {
 					a.hostAliasField(c, k, h)

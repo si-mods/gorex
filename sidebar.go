@@ -422,7 +422,7 @@ func tilesReserve(tabs []*Tab) float32 {
 func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 	name, key := a.hostName(h), hostKey(h)
 	folded := slices.Contains(prefs.FoldedHosts, key)
-	row := ui.Row(c.Key("host-"+key)).Height(26).Shrink(0).Padding(6, 2, 0, 8).Gap(6).AlignItems(ui.Center)
+	row := ui.Row(c.Key("host-"+key)).Height(26).Shrink(0).Padding(6, 2, 0, 9).Gap(6).AlignItems(ui.Center)
 	// It slides with the tabs as those above it open and close.
 	if anim := motion(c); anim != nil {
 		row.Transition(ui.ElementTransition{Animation: anim, Position: true})
@@ -436,7 +436,7 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 	}
 	hovered := row.Hovered()
 	row.Children(func() {
-		fold := ui.Row(c).Grow(1).MinWidth(0).Height(26).Gap(6).AlignItems(ui.Center).Role(ui.RoleDisclosure).Label(name)
+		fold := ui.Row(c).Grow(1).MinWidth(0).Height(26).Gap(8).AlignItems(ui.Center).Role(ui.RoleDisclosure).Label(name)
 		if fold.Clicked() {
 			if folded {
 				prefs.FoldedHosts = slices.DeleteFunc(prefs.FoldedHosts, func(s string) bool { return s == key })
@@ -447,11 +447,8 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 			saveSettings()
 		}
 		fold.Expanded(!folded).Children(func() {
-			if h != nil {
-				label, _, _ := hostStatus(h)
-				ui.Box(c).Size(6, 6).Radius(3).Background(hostDot(k, h)).Shrink(0).Tooltip(label)
-			}
-			ui.Text(c, name).FontSize(11.5).FontWeight(600).TextColor(k.textFaint).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			a.hostSectionIcon(c, k, h)
+			ui.Text(c, name).FontSize(12).FontWeight(600).TextColor(k.textMuted).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 			chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.textFaint).Shrink(0)
 			turn := float32(0)
 			if folded {
@@ -470,6 +467,28 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 		}
 	})
 	return folded
+}
+
+// hostSectionIcon is the icon of a host's machine before its name in the
+// sidebar, as the iOS app's spaces show it. A remote host that is not
+// connected has a dot of its state on it, which tells the state.
+func (a *App) hostSectionIcon(c *ui.Context, k *colors, h *hostConn) {
+	glyph := ""
+	if h == nil {
+		_, _, glyph = a.hostIdentity()
+	} else {
+		glyph = h.remoteGlyph()
+	}
+	box := ui.Box(c).Size(15, 15).Shrink(0).Children(func() {
+		glyphIcon(c, glyph, 15, k.textMuted)
+		if h != nil && h.state != hostConnected {
+			ui.Box(c).Absolute().Right(-2).Bottom(-2).Size(7, 7).Radius(4).Background(hostDot(k, h))
+		}
+	})
+	if h != nil {
+		label, _, _ := hostStatus(h)
+		box.Tooltip(label)
+	}
 }
 
 // hostSessions lists under host h the sessions with tabs on it, in their
