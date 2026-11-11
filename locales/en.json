@@ -1482,6 +1482,30 @@
   "@hostsRename": {
     "description": "Button: edit the name a remote host shows by in this app (its alias). An empty name goes back to the host's own."
   },
+  "hostsIcon": "Icon",
+  "@hostsIcon": {
+    "description": "Menu button of a remote host, in Settings › Hosts, and submenu of its name in the sidebar: choose the icon the host shows by."
+  },
+  "hostIconAutomatic": "Automatic",
+  "@hostIconAutomatic": {
+    "description": "Icon menu of a remote host: the icon follows the host's machine, as it describes itself."
+  },
+  "hostIconGlobe": "Globe",
+  "@hostIconGlobe": {
+    "description": "Icon menu of a remote host: a globe."
+  },
+  "hostIconServer": "Server",
+  "@hostIconServer": {
+    "description": "Icon menu of a remote host: a server rack."
+  },
+  "hostIconCloud": "Cloud",
+  "@hostIconCloud": {
+    "description": "Icon menu of a remote host: a cloud."
+  },
+  "hostIconDesktop": "Desktop",
+  "@hostIconDesktop": {
+    "description": "Icon menu of a remote host: a desktop computer, a monitor."
+  },
   "hostsRemoveAsk": "Remove {host}? Its sessions keep running on the remote server; this window closes their tabs.",
   "@hostsRemoveAsk": {
     "description": "Asks before removing a host.",

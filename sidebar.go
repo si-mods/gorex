@@ -417,8 +417,9 @@ func tilesReserve(tabs []*Tab) float32 {
 
 // hostSection is the label over a host's tabs in the sidebar: the icon of
 // its machine, its name and a chevron, which folds the host's tabs away
-// or back, and under the pointer a button that opens a tab there. It
-// reports whether the tabs are folded.
+// or back, and under the pointer a button that opens a tab there; a
+// remote host's right click chooses its icon. It reports whether the tabs
+// are folded.
 func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 	name, key := a.hostName(h), hostKey(h)
 	folded := slices.Contains(prefs.FoldedHosts, key)
@@ -437,6 +438,11 @@ func (a *App) hostSection(c *ui.Context, k *colors, h *hostConn) bool {
 	hovered := row.Hovered()
 	row.Children(func() {
 		fold := ui.Row(c).Grow(1).MinWidth(0).Height(26).Gap(8).AlignItems(ui.Center).Role(ui.RoleDisclosure).Label(name)
+		if h != nil {
+			fold.ContextMenu(func(m *ui.Menu) {
+				m.Submenu(locales.HostsIcon(), func(m *ui.Menu) { a.hostIconMenu(m, h) })
+			})
+		}
 		if fold.Clicked() {
 			if folded {
 				prefs.FoldedHosts = slices.DeleteFunc(prefs.FoldedHosts, func(s string) bool { return s == key })

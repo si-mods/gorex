@@ -4590,6 +4590,94 @@ func (msgs Messages) HostsRename() string {
 	return Catalog.Format(msgs.locale, "hostsRename", nil)
 }
 
+// HostsIcon says "Icon"
+// in the language the app shows.
+//
+// Menu button of a remote host, in Settings › Hosts, and submenu of its
+// name in the sidebar: choose the icon the host shows by.
+func HostsIcon() string { return In(i18n.Locale()).HostsIcon() }
+
+// HostsIcon says "Icon"
+// in the language of msgs.
+//
+// Menu button of a remote host, in Settings › Hosts, and submenu of its
+// name in the sidebar: choose the icon the host shows by.
+func (msgs Messages) HostsIcon() string {
+	return Catalog.Format(msgs.locale, "hostsIcon", nil)
+}
+
+// HostIconAutomatic says "Automatic"
+// in the language the app shows.
+//
+// Icon menu of a remote host: the icon follows the host's machine, as it
+// describes itself.
+func HostIconAutomatic() string { return In(i18n.Locale()).HostIconAutomatic() }
+
+// HostIconAutomatic says "Automatic"
+// in the language of msgs.
+//
+// Icon menu of a remote host: the icon follows the host's machine, as it
+// describes itself.
+func (msgs Messages) HostIconAutomatic() string {
+	return Catalog.Format(msgs.locale, "hostIconAutomatic", nil)
+}
+
+// HostIconGlobe says "Globe"
+// in the language the app shows.
+//
+// Icon menu of a remote host: a globe.
+func HostIconGlobe() string { return In(i18n.Locale()).HostIconGlobe() }
+
+// HostIconGlobe says "Globe"
+// in the language of msgs.
+//
+// Icon menu of a remote host: a globe.
+func (msgs Messages) HostIconGlobe() string {
+	return Catalog.Format(msgs.locale, "hostIconGlobe", nil)
+}
+
+// HostIconServer says "Server"
+// in the language the app shows.
+//
+// Icon menu of a remote host: a server rack.
+func HostIconServer() string { return In(i18n.Locale()).HostIconServer() }
+
+// HostIconServer says "Server"
+// in the language of msgs.
+//
+// Icon menu of a remote host: a server rack.
+func (msgs Messages) HostIconServer() string {
+	return Catalog.Format(msgs.locale, "hostIconServer", nil)
+}
+
+// HostIconCloud says "Cloud"
+// in the language the app shows.
+//
+// Icon menu of a remote host: a cloud.
+func HostIconCloud() string { return In(i18n.Locale()).HostIconCloud() }
+
+// HostIconCloud says "Cloud"
+// in the language of msgs.
+//
+// Icon menu of a remote host: a cloud.
+func (msgs Messages) HostIconCloud() string {
+	return Catalog.Format(msgs.locale, "hostIconCloud", nil)
+}
+
+// HostIconDesktop says "Desktop"
+// in the language the app shows.
+//
+// Icon menu of a remote host: a desktop computer, a monitor.
+func HostIconDesktop() string { return In(i18n.Locale()).HostIconDesktop() }
+
+// HostIconDesktop says "Desktop"
+// in the language of msgs.
+//
+// Icon menu of a remote host: a desktop computer, a monitor.
+func (msgs Messages) HostIconDesktop() string {
+	return Catalog.Format(msgs.locale, "hostIconDesktop", nil)
+}
+
 // HostsRemoveAsk says "Remove {host}? Its sessions keep running on the remote server; this window closes their tabs."
 // in the language the app shows.
 //

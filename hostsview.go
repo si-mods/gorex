@@ -288,15 +288,17 @@ func (a *App) hostsSettings(c *ui.Context, k *colors) {
 	}
 }
 
-// hostRow is a saved host: its state, Retry while it is not connected, and
-// Remove, which asks first.
+// hostRow is a saved host: its icon, a menu that chooses it, its state,
+// Retry while it is not connected, and Remove, which asks first.
 func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 	page := &hostsUI
 	label, detail, up := hostStatus(h)
 	sessions := a.sessionsOn(h)
 	groupRow(c, k, h.ID).Gap(8).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
-			glyphIcon(c, h.remoteGlyph(), 18, k.textMuted).Shrink(0)
+			// Its icon is the menu that chooses it.
+			iconButton(c.Key("icon"), k, h.remoteGlyph(), locales.HostsIcon(), 28, 18).Shrink(0).Tooltip(locales.HostsIcon()).
+				Menu(func(m *ui.Menu) { a.hostIconMenu(m, h) })
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 				if page.renaming == h.ID {
 					a.hostAliasField(c, k, h)

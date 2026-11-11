@@ -46,6 +46,9 @@ type savedHost struct {
 	// Glyph is the icon of the machine, as its last hello described it,
 	// "" before (hostConn.remoteGlyph).
 	Glyph string `json:"glyph,omitempty"`
+	// Icon is the icon the user chose for the host (hostIcons), "" to
+	// follow its machine's, Glyph.
+	Icon string `json:"icon,omitempty"`
 	// Kills are the sessions closed here while the host was away, to end
 	// there once connected again, though GoRex quit meanwhile.
 	Kills []string `json:"kills,omitempty"`

@@ -1684,7 +1684,8 @@ func TestLearnGlyph(t *testing.T) {
 		want string
 	}{
 		{rex.HostInfo{Model: "MacBook Pro", OS: "macOS 26.1"}, "laptop"},
-		{rex.HostInfo{Model: "Mac mini", OS: "macOS 26.1"}, "mac-studio"},
+		{rex.HostInfo{Model: "Mac mini", OS: "macOS 26.1"}, "mac-mini"},
+		{rex.HostInfo{Model: "Mac Studio", OS: "macOS 26.1"}, "mac-studio"},
 		{rex.HostInfo{Model: "Linux", OS: "Debian GNU/Linux 13"}, "server"},
 		{rex.HostInfo{Model: "Z790", OS: "Windows 11 Pro"}, "monitor"},
 		{rex.HostInfo{Model: "Z790", OS: "Windows 11 Pro", Portable: true}, "laptop"},
@@ -1695,5 +1696,49 @@ func TestLearnGlyph(t *testing.T) {
 	}
 	if h.learn(rex.Hello{}) || h.remoteGlyph() != "laptop" {
 		t.Errorf("a hello that describes no machine changed the icon to %q", h.remoteGlyph())
+	}
+}
+
+// TestHostIcon chooses a host's icon from its row in Settings › Hosts:
+// the choice goes before the icon its machine has, is kept in hosts.json
+// through hellos and a restart, and Automatic follows the machine again.
+func TestHostIcon(t *testing.T) {
+	a, tt := hostsPage(t)
+	h := a.addHost(savedHost{ID: "h1", Name: "build-box", Address: "/tmp/nowhere"})
+	h.learn(rex.Hello{Host: rex.HostInfo{Model: "Mac mini", OS: "macOS 26.1"}})
+	tt.Frame()
+	choose := func(item string) {
+		t.Helper()
+		if err := tt.Click(locales.HostsIcon()); err != nil {
+			t.Fatal(err)
+		}
+		tt.Frame()
+		if err := tt.ChooseMenuItem(item); err != nil {
+			t.Fatalf("%v; menu %q", err, tt.Menu())
+		}
+		tt.Frame()
+	}
+	choose(locales.HostIconCloud())
+	if g := h.remoteGlyph(); g != "cloud" {
+		t.Fatalf("chose the cloud, shows %q", g)
+	}
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Icon != "cloud" || hs[0].Glyph != "mac-mini" {
+		t.Fatalf("hosts.json: %+v", hs)
+	}
+	// A hello of another machine changes what Automatic shows, not the
+	// choice.
+	if !h.learn(rex.Hello{Host: rex.HostInfo{Model: "MacBook Pro", OS: "macOS 26.1"}}) || h.remoteGlyph() != "cloud" {
+		t.Errorf("after a hello the host shows %q", h.remoteGlyph())
+	}
+	hs, _ := loadHosts()
+	if g := newHostConn(hs[0]).remoteGlyph(); g != "cloud" {
+		t.Errorf("read again, the host shows %q", g)
+	}
+	choose(locales.HostIconAutomatic())
+	if g := h.remoteGlyph(); g != "laptop" || h.Icon != "" {
+		t.Errorf("Automatic shows %q, chose %q", g, h.Icon)
+	}
+	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Icon != "" {
+		t.Errorf("hosts.json after Automatic: %+v", hs)
 	}
 }
