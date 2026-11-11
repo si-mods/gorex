@@ -240,7 +240,7 @@ func TestRemoteOff(t *testing.T) {
 		}
 	}
 	for _, s := range []string{locales.RemoteShareLayout(), locales.RemoteDevices(), "bob-desktop",
-		locales.RemoteShowDetails(), locales.RemoteMyKey(), locales.HostsNone(), locales.RemoteApiTitle()} {
+		locales.RemoteShowDetails(), locales.RemoteMyKey(), locales.HostsNone()} {
 		if tt.HasText(s) {
 			t.Errorf("off: %q shows; texts %q", s, tt.Texts())
 		}
@@ -312,11 +312,11 @@ func TestRemoteHostsPage(t *testing.T) {
 	}
 }
 
-// TestLocalAPIGroup draws the Developer page's Local API group: the
-// primary endpoint's URL, then each other listener's address and whom it
-// lets in, then the local network's listener with its controls, once and
-// not again among the others; the gateway off, its row says so, and the
-// local network's row shows still.
+// TestLocalAPIGroup draws the server page's Local API group: the
+// gateway's revisions and version, the primary endpoint's URL, then each
+// other listener's address and whom it lets in, then the local network's
+// listener with its controls, once and not again among the others; the
+// gateway off, one row says so, and the local network's row shows still.
 func TestLocalAPIGroup(t *testing.T) {
 	isolateSettings(t, "")
 	registerFonts()
@@ -324,13 +324,13 @@ func TestLocalAPIGroup(t *testing.T) {
 	t.Cleanup(stopRemotePoll)
 	t.Cleanup(stopServerInfoPoll)
 	a := &App{}
-	settingsUI.section = "developer"
+	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
 	remoteUI.lan = rexapi.LANConfig{Enabled: true, Listen: "192.0.2.10:7297", Allow: []string{"192.0.2.0/24"}}
 	remoteUI.lanStatus = rexapi.LANStatus{Running: true, Listening: "192.0.2.10:7297"}
 	remoteUI.lanListen, remoteUI.lanEdited = "", true
 	settingsUI.apiLoaded, settingsUI.apiErr = true, ""
-	settingsUI.apiInfo = rexapi.GatewayInfo{Listeners: []rexapi.Listener{
+	settingsUI.apiInfo = rexapi.GatewayInfo{RexVersion: "1.2.3-test", APIRevision: 12, ServerRevision: 13, MinRevision: 1, Listeners: []rexapi.Listener{
 		{Endpoint: "unix:///tmp/a%20b/rexapi.sock", Addresses: []string{"/tmp/a b/rexapi.sock"}, Transport: "unix", Admission: rexapi.AdmissionPeer, Primary: true},
 		{Endpoint: "127.0.0.1:0", Addresses: []string{"127.0.0.1:52061"}, Transport: "tcp", Admission: rexapi.AdmissionAnonymous},
 		{Endpoint: "192.0.2.10:7297", Addresses: []string{"192.0.2.10:7297"}, Transport: "tcp", Admission: rexapi.AdmissionAnonymous},
@@ -339,7 +339,8 @@ func TestLocalAPIGroup(t *testing.T) {
 	tt := ui.NewTester(a.settingsView, 780, 1400)
 	tt.Frame()
 	for _, s := range []string{
-		locales.SettingsDeveloper(), locales.RemoteApiTitle(), locales.RemoteApiUrl(), "unix:///tmp/a%20b/rexapi.sock",
+		locales.RemoteApiTitle(), locales.HostApiTitle(), locales.HostApiRevisions(12, 13, 1), locales.HostApiVersion(), "1.2.3-test",
+		locales.RemoteApiUrl(), "unix:///tmp/a%20b/rexapi.sock",
 		"127.0.0.1:52061", locales.RemoteApiAnyone(),
 		"198.51.100.1:7297", "login_server", locales.RemoteApiNote(),
 		locales.RemoteLanSwitch(), "Listening on http://192.0.2.10:7297", locales.RemoteLanNetworks(), "192.0.2.0/24", locales.RemoteLanNote(),
@@ -354,9 +355,6 @@ func TestLocalAPIGroup(t *testing.T) {
 	if slices.Contains(tt.Texts(), "192.0.2.10:7297") {
 		t.Error("the local network's listener is listed among the others too")
 	}
-	if tt.HasText(locales.TailcatMode()) {
-		t.Error("the Remote page's header shows on the Developer page")
-	}
 
 	// Off, the local network's row shows still, so that it can be turned on,
 	// and a listener at its address is --listen's, marked.
@@ -369,8 +367,18 @@ func TestLocalAPIGroup(t *testing.T) {
 	settingsUI.apiErr = "no gateway"
 	settingsUI.apiInfo = rexapi.GatewayInfo{}
 	tt.Frame()
-	if !tt.HasText(locales.RemoteApiUrl()) || !tt.HasText(locales.HostApiOff()) || tt.HasText("127.0.0.1:52061") || !tt.HasText(locales.RemoteLanSwitch()) {
+	if !tt.HasText(locales.RemoteApiUrl()) || !tt.HasText(locales.HostApiOff()) || tt.HasText("127.0.0.1:52061") || !tt.HasText(locales.RemoteLanSwitch()) ||
+		tt.HasText(locales.HostApiVersion()) {
 		t.Errorf("gateway off: texts %q", tt.Texts())
+	}
+	off := 0
+	for _, s := range tt.Texts() {
+		if s == locales.HostApiOff() {
+			off++
+		}
+	}
+	if off != 1 {
+		t.Errorf("the gateway is said off %d times", off)
 	}
 }
 

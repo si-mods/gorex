@@ -526,11 +526,11 @@
   },
   "hostApiTitle": "Rex API",
   "@hostApiTitle": {
-    "description": "Host panel: label of the row that shows the Rex API revision."
+    "description": "Local API group: label of the row that shows the Rex API revision."
   },
   "hostApiRevisions": "revision {revision} · server {server} · min {min}",
   "@hostApiRevisions": {
-    "description": "Host panel: the Rex API revision this app negotiated, the newest the gateway serves, and the oldest it serves.",
+    "description": "Local API group: the Rex API revision this app negotiated, the newest the gateway serves, and the oldest it serves.",
     "placeholders": {
       "revision": {
         "type": "int",
@@ -548,11 +548,11 @@
   },
   "hostApiOff": "gateway off",
   "@hostApiOff": {
-    "description": "Host panel: the Rex API gateway is not running, so it reports no revision."
+    "description": "Local API group: the Rex API gateway is not running, so it reports no address or revision."
   },
   "hostApiVersion": "Rex API version",
   "@hostApiVersion": {
-    "description": "Host panel: label of the row that shows the gateway's version string."
+    "description": "Local API group: label of the row that shows the gateway's version string."
   },
   "hostServerUp": "pid {pid, number, ::group-off} · up {uptime}",
   "@hostServerUp": {
@@ -787,10 +787,6 @@
     "description": "Settings section: the keyboard shortcuts."
   },
   "settingsNetwork": "Network",
-  "settingsDeveloper": "Developer",
-  "@settingsDeveloper": {
-    "description": "Settings section: the Local API, Rex's API on this machine, and its local network listener, as Rex's Developer page. The sidebar item."
-  },
   "settingsAbout": "About",
   "@settingsAbout": {
     "description": "Settings section: version and files."
@@ -2012,7 +2008,7 @@
   },
   "remoteApiTitle": "Local API",
   "@remoteApiTitle": {
-    "description": "Title of the Developer page's card that lists where Rex's API takes connections on this machine, as Rex's Developer page's Local API."
+    "description": "Title of the server page's group that tells Rex's API gateway's revisions and version and lists where it takes connections on this machine, as Rex's Developer page's Local API."
   },
   "remoteApiUrl": "Local API URL",
   "@remoteApiUrl": {

@@ -35,13 +35,23 @@ type gatewayWelcome struct {
 // callGateway calls one method of the gateway serving the socket at
 // path, as a Rex client does, and returns its payload.
 func callGateway(path, method string, payload any) (json.RawMessage, error) {
-	out, _, err := callGatewayWelcome(path, method, payload, 20*time.Second)
-	return out, err
+	out, _, err := callGatewayWelcome(path, 20*time.Second, gatewayCall{method, payload})
+	if err != nil {
+		return nil, err
+	}
+	return out[0], nil
 }
 
-// callGatewayWelcome is callGateway, with the gateway's welcome, given
-// up after within.
-func callGatewayWelcome(path, method string, payload any, within time.Duration) (json.RawMessage, gatewayWelcome, error) {
+// gatewayCall is a method of the gateway to call, with its payload.
+type gatewayCall struct {
+	method  string
+	payload any
+}
+
+// callGatewayWelcome is callGateway for each of calls, on one connection,
+// with the gateway's welcome, given up after within: the payloads, in the
+// order of calls.
+func callGatewayWelcome(path string, within time.Duration, calls ...gatewayCall) ([]json.RawMessage, gatewayWelcome, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), within)
 	defer cancel()
 	httpc := &http.Client{Transport: &http.Transport{
@@ -74,15 +84,18 @@ func callGatewayWelcome(path, method string, payload any, within time.Duration) 
 	} else if json.Unmarshal(b, &wel); wel.Type != "welcome" {
 		return nil, gatewayWelcome{}, fmt.Errorf("the gateway answered %s", b)
 	}
-	req := map[string]any{"type": "request", "id": "cli-1", "method": method}
-	if payload != nil {
-		req["payload"] = payload
+	for i, call := range calls {
+		req := map[string]any{"type": "request", "id": "cli-" + strconv.Itoa(i+1), "method": call.method}
+		if call.payload != nil {
+			req["payload"] = call.payload
+		}
+		b, _ := json.Marshal(req)
+		if err := ws.Write(ctx, websocket.MessageText, b); err != nil {
+			return nil, gatewayWelcome{}, err
+		}
 	}
-	b, _ := json.Marshal(req)
-	if err := ws.Write(ctx, websocket.MessageText, b); err != nil {
-		return nil, gatewayWelcome{}, err
-	}
-	for {
+	out := make([]json.RawMessage, len(calls))
+	for left := len(calls); left > 0; {
 		_, b, err := ws.Read(ctx)
 		if err != nil {
 			return nil, gatewayWelcome{}, err
@@ -93,20 +106,28 @@ func callGatewayWelcome(path, method string, payload any, within time.Duration) 
 			Payload json.RawMessage `json:"payload"`
 			Error   *apiError       `json:"error"`
 		}
-		if json.Unmarshal(b, &resp) != nil || resp.Type != "response" || resp.ID != "cli-1" {
+		if json.Unmarshal(b, &resp) != nil || resp.Type != "response" {
 			continue
 		}
-		ws.Close(websocket.StatusNormalClosure, "")
+		n, ok := strings.CutPrefix(resp.ID, "cli-")
+		i, err := strconv.Atoi(n)
+		if !ok || err != nil || i < 1 || i > len(calls) || out[i-1] != nil {
+			continue
+		}
 		if resp.Error != nil {
 			return nil, gatewayWelcome{}, fmt.Errorf("%s: %s", resp.Error.Code, resp.Error.Message)
 		}
-		return resp.Payload, wel.gatewayWelcome, nil
+		out[i-1] = resp.Payload
+		if out[i-1] == nil {
+			out[i-1] = json.RawMessage("null")
+		}
+		left--
 	}
+	ws.Close(websocket.StatusNormalClosure, "")
+	return out, wel.gatewayWelcome, nil
 }
 
-// GatewayInfo is a gateway's API revision as it welcomes this build, and
-// its version: what the app shows to tell a client and a server apart
-// when one is too old.
+// GatewayInfo is what the settings window shows of the Rex API gateway.
 type GatewayInfo struct {
 	// RexVersion is the version string the gateway reports.
 	RexVersion string
@@ -116,45 +137,30 @@ type GatewayInfo struct {
 	// MinRevision is the oldest the gateway serves.
 	MinRevision int
 	// Listeners are the endpoints the gateway accepts connections on,
-	// primary first: GatewayStatus's, not GatewayVersion's, and none
-	// from a gateway older than revision 12.
+	// primary first; none from a gateway older than revision 12.
 	Listeners []Listener
 }
 
-// GatewayVersion asks the gateway that runs on this machine, failing
-// when none does.
-func GatewayVersion() (GatewayInfo, error) {
-	raw, wel, err := callGatewayWelcome(SocketPath(), "server.version", nil, 20*time.Second)
-	if err != nil {
-		return GatewayInfo{}, err
-	}
-	var v struct {
-		RexVersion     string `json:"rex_version"`
-		APIMinRevision int    `json:"api_min_revision"`
-	}
-	if err := json.Unmarshal(raw, &v); err != nil {
-		return GatewayInfo{}, err
-	}
-	return GatewayInfo{
-		RexVersion:     v.RexVersion,
-		APIRevision:    wel.APIRevision,
-		ServerRevision: wel.APIServerRevision,
-		MinRevision:    v.APIMinRevision,
-	}, nil
-}
-
 // GatewayStatus asks the gateway that runs on this machine for its
-// revisions and listeners, but not its version, failing when none runs.
+// version, revisions and listeners, on one connection, failing when none
+// runs.
 func GatewayStatus() (GatewayInfo, error) {
-	raw, wel, err := callGatewayWelcome(SocketPath(), "server.status", nil, 20*time.Second)
+	raw, wel, err := callGatewayWelcome(SocketPath(), 20*time.Second, gatewayCall{method: "server.status"}, gatewayCall{method: "server.version"})
 	if err != nil {
 		return GatewayInfo{}, err
 	}
 	var st statusResult
-	if err := json.Unmarshal(raw, &st); err != nil {
+	var v struct {
+		RexVersion string `json:"rex_version"`
+	}
+	if err := json.Unmarshal(raw[0], &st); err != nil {
+		return GatewayInfo{}, err
+	}
+	if err := json.Unmarshal(raw[1], &v); err != nil {
 		return GatewayInfo{}, err
 	}
 	return GatewayInfo{
+		RexVersion:     v.RexVersion,
 		APIRevision:    wel.APIRevision,
 		ServerRevision: wel.APIServerRevision,
 		MinRevision:    st.APIMinRevision,
@@ -572,12 +578,12 @@ func pairURLWith(wait bool, changed func()) string {
 func lookPairURL(done chan struct{}) {
 	url, known := "", false
 	path := SocketPath()
-	out, _, err := callGatewayWelcome(path, "server.status", nil, 2*time.Second)
+	out, _, err := callGatewayWelcome(path, 2*time.Second, gatewayCall{method: "server.status"})
 	if err == nil {
 		var res struct {
 			Tailscale *tailscaleStatus `json:"tailscale"`
 		}
-		if json.Unmarshal(out, &res) == nil {
+		if json.Unmarshal(out[0], &res) == nil {
 			url, _ = pairURL(res.Tailscale)
 			known = true
 		}

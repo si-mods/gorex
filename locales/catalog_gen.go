@@ -1709,13 +1709,13 @@ func (msgs Messages) HostSessions() string {
 // HostApiTitle says "Rex API"
 // in the language the app shows.
 //
-// Host panel: label of the row that shows the Rex API revision.
+// Local API group: label of the row that shows the Rex API revision.
 func HostApiTitle() string { return In(i18n.Locale()).HostApiTitle() }
 
 // HostApiTitle says "Rex API"
 // in the language of msgs.
 //
-// Host panel: label of the row that shows the Rex API revision.
+// Local API group: label of the row that shows the Rex API revision.
 func (msgs Messages) HostApiTitle() string {
 	return Catalog.Format(msgs.locale, "hostApiTitle", nil)
 }
@@ -1723,7 +1723,7 @@ func (msgs Messages) HostApiTitle() string {
 // HostApiRevisions says "revision {revision} · server {server} · min {min}"
 // in the language the app shows.
 //
-// Host panel: the Rex API revision this app negotiated, the newest the
+// Local API group: the Rex API revision this app negotiated, the newest the
 // gateway serves, and the oldest it serves.
 func HostApiRevisions(revision int, server int, min int) string {
 	return In(i18n.Locale()).HostApiRevisions(revision, server, min)
@@ -1732,7 +1732,7 @@ func HostApiRevisions(revision int, server int, min int) string {
 // HostApiRevisions says "revision {revision} · server {server} · min {min}"
 // in the language of msgs.
 //
-// Host panel: the Rex API revision this app negotiated, the newest the
+// Local API group: the Rex API revision this app negotiated, the newest the
 // gateway serves, and the oldest it serves.
 func (msgs Messages) HostApiRevisions(revision int, server int, min int) string {
 	return Catalog.Format(msgs.locale, "hostApiRevisions", map[string]any{"revision": revision, "server": server, "min": min})
@@ -1741,15 +1741,15 @@ func (msgs Messages) HostApiRevisions(revision int, server int, min int) string 
 // HostApiOff says "gateway off"
 // in the language the app shows.
 //
-// Host panel: the Rex API gateway is not running, so it reports no
-// revision.
+// Local API group: the Rex API gateway is not running, so it reports no
+// address or revision.
 func HostApiOff() string { return In(i18n.Locale()).HostApiOff() }
 
 // HostApiOff says "gateway off"
 // in the language of msgs.
 //
-// Host panel: the Rex API gateway is not running, so it reports no
-// revision.
+// Local API group: the Rex API gateway is not running, so it reports no
+// address or revision.
 func (msgs Messages) HostApiOff() string {
 	return Catalog.Format(msgs.locale, "hostApiOff", nil)
 }
@@ -1757,13 +1757,15 @@ func (msgs Messages) HostApiOff() string {
 // HostApiVersion says "Rex API version"
 // in the language the app shows.
 //
-// Host panel: label of the row that shows the gateway's version string.
+// Local API group: label of the row that shows the gateway's version
+// string.
 func HostApiVersion() string { return In(i18n.Locale()).HostApiVersion() }
 
 // HostApiVersion says "Rex API version"
 // in the language of msgs.
 //
-// Host panel: label of the row that shows the gateway's version string.
+// Local API group: label of the row that shows the gateway's version
+// string.
 func (msgs Messages) HostApiVersion() string {
 	return Catalog.Format(msgs.locale, "hostApiVersion", nil)
 }
@@ -2324,22 +2326,6 @@ func SettingsNetwork() string { return In(i18n.Locale()).SettingsNetwork() }
 // in the language of msgs.
 func (msgs Messages) SettingsNetwork() string {
 	return Catalog.Format(msgs.locale, "settingsNetwork", nil)
-}
-
-// SettingsDeveloper says "Developer"
-// in the language the app shows.
-//
-// Settings section: the Local API, Rex's API on this machine, and its local
-// network listener, as Rex's Developer page. The sidebar item.
-func SettingsDeveloper() string { return In(i18n.Locale()).SettingsDeveloper() }
-
-// SettingsDeveloper says "Developer"
-// in the language of msgs.
-//
-// Settings section: the Local API, Rex's API on this machine, and its local
-// network listener, as Rex's Developer page. The sidebar item.
-func (msgs Messages) SettingsDeveloper() string {
-	return Catalog.Format(msgs.locale, "settingsDeveloper", nil)
 }
 
 // SettingsAbout says "About"
@@ -6077,15 +6063,17 @@ func (msgs Messages) RemoteRelayInvalid() string {
 // RemoteApiTitle says "Local API"
 // in the language the app shows.
 //
-// Title of the Developer page's card that lists where Rex's API takes
-// connections on this machine, as Rex's Developer page's Local API.
+// Title of the server page's group that tells Rex's API gateway's revisions
+// and version and lists where it takes connections on this machine, as
+// Rex's Developer page's Local API.
 func RemoteApiTitle() string { return In(i18n.Locale()).RemoteApiTitle() }
 
 // RemoteApiTitle says "Local API"
 // in the language of msgs.
 //
-// Title of the Developer page's card that lists where Rex's API takes
-// connections on this machine, as Rex's Developer page's Local API.
+// Title of the server page's group that tells Rex's API gateway's revisions
+// and version and lists where it takes connections on this machine, as
+// Rex's Developer page's Local API.
 func (msgs Messages) RemoteApiTitle() string {
 	return Catalog.Format(msgs.locale, "remoteApiTitle", nil)
 }

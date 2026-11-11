@@ -11,7 +11,7 @@ import (
 	"gorex/locales"
 )
 
-// TestRemoteLANCard draws the Developer page's row of Rex's apps on the
+// TestRemoteLANCard draws the server page's row of Rex's apps on the
 // local network, turns it on, adds and removes a network, all saved in the gateway's
 // state for the server's gateway to follow.
 func TestRemoteLANCard(t *testing.T) {
@@ -20,7 +20,7 @@ func TestRemoteLANCard(t *testing.T) {
 	t.Setenv("GOREX_DIR", t.TempDir())
 	t.Cleanup(stopRemotePoll)
 	a := &App{}
-	settingsUI.section = "developer"
+	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
 	remoteUI.lan, remoteUI.lanStatus, remoteUI.lanErr, remoteUI.lanAdd = rexapi.LANConfig{}, rexapi.LANStatus{}, "", ""
 	tt := ui.NewTester(a.settingsView, 780, 1400)
@@ -106,7 +106,7 @@ func TestRemoteLANCard(t *testing.T) {
 	}
 }
 
-// TestPairURLOffRender: drawing the Developer page does not wait on the
+// TestPairURLOffRender: drawing the server page does not wait on the
 // gateway, even when its socket answers no one. At most one look reaches
 // it, in the background, and the frames are drawn while that look still
 // waits: a frame that waited would have given up on it and closed it.
@@ -124,7 +124,7 @@ func TestPairURLOffRender(t *testing.T) {
 	})
 
 	a := &App{}
-	settingsUI.section = "developer"
+	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
 	remoteUI.lan, remoteUI.lanStatus = rexapi.LANConfig{}, rexapi.LANStatus{}
 	tt := ui.NewTester(a.settingsView, 780, 1400)
@@ -151,7 +151,7 @@ func TestLocalPairQRCloses(t *testing.T) {
 	})
 
 	a := &App{}
-	settingsUI.section = "developer"
+	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st = true, rex.RemoteStatus{}
 	remoteUI.lan = rexapi.LANConfig{Enabled: true, Listen: "192.168.1.20:7297", Allow: []string{"192.168.1.0/24"}}
 	remoteUI.lanStatus = rexapi.LANStatus{Running: true, Listening: "192.168.1.20:7297"}
@@ -190,12 +190,15 @@ func TestRemoteRelayRow(t *testing.T) {
 			t.Fatalf("no %q in %q", s, tt.Texts())
 		}
 	}
-	save, ok := tt.Find(locales.RemoteLanSave())
-	if !ok {
-		t.Fatalf("no Save in %q", tt.Texts())
+	// The relay's Save is at the right of its row's title, on its line;
+	// the local network's Save comes first on the page.
+	title, _ := tt.Find(locales.RemoteRelay())
+	saveX, saveY := float32(0), title.Y+title.H/2
+	for x := float32(770); x > title.X+title.W && remoteUI.relayErr == ""; x -= 4 {
+		tt.ClickAt(x, saveY)
+		tt.Frame()
+		saveX = x
 	}
-	tt.ClickAt(save.X+save.W/2, save.Y+save.H/2)
-	tt.Frame()
 	if remoteUI.relayErr != locales.RemoteRelayInvalid() || !tt.HasText(locales.RemoteRelayInvalid()) {
 		t.Errorf("a URL saved: %q", remoteUI.relayErr)
 	}
@@ -204,7 +207,7 @@ func TestRemoteRelayRow(t *testing.T) {
 	// keeps what was typed.
 	remoteUI.relay = "derp.example.com"
 	tt.Frame()
-	tt.ClickAt(save.X+save.W/2, save.Y+save.H/2)
+	tt.ClickAt(saveX, saveY)
 	tt.Frame()
 	if remoteUI.relayErr != locales.RemoteNotConnected() || !tt.HasText(remoteUI.relayErr) || !remoteUI.relayEdited || remoteUI.err != nil {
 		t.Errorf("a failed save: %q, edited %v, page error %v", remoteUI.relayErr, remoteUI.relayEdited, remoteUI.err != nil)

@@ -448,7 +448,7 @@ func TestStatusListsListeners(t *testing.T) {
 	}
 	t.Setenv("GOREX_REXAPI_SOCKET", sock)
 	if info, err := GatewayStatus(); err != nil || len(info.Listeners) != 2 || !info.Listeners[0].Primary ||
-		info.Listeners[1].Addresses[0] != tcpAddr || info.APIRevision != apiRevision {
+		info.Listeners[1].Addresses[0] != tcpAddr || info.APIRevision != apiRevision || info.RexVersion == "" {
 		t.Errorf("GatewayStatus = %+v, %v", info, err)
 	}
 

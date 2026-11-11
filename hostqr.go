@@ -37,8 +37,8 @@ var hostsPairQR *hostPairQR
 // localRexPairs are this computer's Rex pairing addresses: the gateway's
 // tailnet HTTPS address, as "gorex rexapi pair" shows it, and the local
 // network listener's, for a phone on the same network. The code holds the
-// address only. Neither waits, so the Remote and Developer pages draw them
-// every frame: the tailnet's is the gateway's last answer
+// address only. Neither waits, so the server page draws them every
+// frame: the tailnet's is the gateway's last answer
 // (rexapi.CachedPairURL), and a new one draws the window again; the
 // listener's comes from the settings the page's poll reads.
 func localRexPairs() (tailnet, lan string) {

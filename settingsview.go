@@ -33,10 +33,10 @@ var settingsUI struct {
 	// and langNames are the language control's, "" and its label first.
 	// All are made once the window opens.
 	fontOptions, langTags, langNames []string
-	// apiInfo is the Rex API gateway's version, for the server page's
-	// rows, or its listeners, for the Developer page's, fetched while that
-	// page shows: apiLoaded when it has been asked once, apiErr when no
-	// gateway answered.
+	// apiInfo is the Rex API gateway's version and listeners, for the
+	// server page's Local API group, fetched while that page shows:
+	// apiLoaded when it has been asked once, apiErr when no gateway
+	// answered.
 	apiStop   chan struct{}
 	apiInfo   rexapi.GatewayInfo
 	apiErr    string
@@ -46,12 +46,11 @@ var settingsUI struct {
 // Run is set here: the window's view lists the commands, which list this one.
 func init() { cmdSettings.Run = func(a *App) { a.openSettings() } }
 
-// startServerInfoPoll asks the Rex API gateway with ask every ten seconds
-// while the server or the Developer page shows. Each ask is a control
-// connection that every Rex client hears of, and the build cannot change
-// while the gateway runs: only whether it runs, and on the Developer page
-// what it listens on, is worth asking about.
-func startServerInfoPoll(ask func() (rexapi.GatewayInfo, error)) {
+// startServerInfoPoll asks the Rex API gateway every ten seconds while the
+// server page shows. Each ask is a control connection that every Rex
+// client hears of, and the build cannot change while the gateway runs:
+// only whether it runs, and what it listens on, is worth asking about.
+func startServerInfoPoll() {
 	win := settingsUI.win
 	if settingsUI.apiStop != nil || win == nil {
 		return
@@ -62,7 +61,7 @@ func startServerInfoPoll(ask func() (rexapi.GatewayInfo, error)) {
 		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
 		for {
-			info, err := ask()
+			info, err := rexapi.GatewayStatus()
 			win.Update(func() {
 				if settingsUI.apiStop != stop {
 					return
@@ -156,7 +155,6 @@ var sections = []struct {
 	{"keyboard", "keyboard", locales.Messages.SettingsKeyboard},
 	{"hosts", "monitor", locales.Messages.SettingsHosts},
 	{"network", "network", locales.Messages.SettingsNetwork},
-	{"developer", "file-code", locales.Messages.SettingsDeveloper},
 	{"about", "hexagon", locales.Messages.SettingsAbout},
 }
 
@@ -219,8 +217,6 @@ func (a *App) settingsView(c *ui.Context) {
 						a.hostsSettings(c, k)
 					case "network":
 						a.networkSettings(c, k)
-					case "developer":
-						a.localAPI(c, k)
 					case "about":
 						a.aboutSettings(c, k)
 					default:
@@ -379,8 +375,9 @@ func (a *App) serverSettings(c *ui.Context, k *colors) {
 		sub = locales.HostConnected(sub)
 	}
 	a.serverGroup(c, k, name, glyph, sub, label, dot, h)
-	// Remote access is the server's: who may connect to it, under what
-	// it is.
+	// Where this machine's programs reach the server's API, then who may
+	// connect to it from elsewhere.
+	a.localAPI(c, k)
 	a.remoteSettings(c, k)
 }
 
@@ -403,32 +400,27 @@ func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label stri
 				})
 			})
 		})
-		row := func(label, value string) {
-			if value == "" {
-				return
-			}
-			groupRow(c, k, label).Children(func() {
-				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.text).Shrink(0)
-					ui.Text(c, value).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0).TextAlign(ui.End).SingleLine().Ellipsis("…").Selectable()
-				})
-			})
-		}
+		row := func(label, value string) { factRow(c, k, label, value) }
 		if a.hello.PID > 0 {
 			row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
-		}
-		if settingsUI.apiLoaded {
-			if settingsUI.apiErr != "" {
-				row(locales.HostApiTitle(), locales.HostApiOff())
-			} else {
-				api := settingsUI.apiInfo
-				row(locales.HostApiTitle(), locales.HostApiRevisions(api.APIRevision, api.ServerRevision, api.MinRevision))
-				row(locales.HostApiVersion(), api.RexVersion)
-			}
 		}
 		sessions, running := a.sessionCounts()
 		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
 		hostFacts(h, row)
+	})
+}
+
+// factRow is a group's row of a fact: its label, and its value at the
+// right; none when the value is "".
+func factRow(c *ui.Context, k *colors, label, value string) {
+	if value == "" {
+		return
+	}
+	groupRow(c, k, label).Children(func() {
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.text).Shrink(0)
+			ui.Text(c, value).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0).TextAlign(ui.End).SingleLine().Ellipsis("…").Selectable()
+		})
 	})
 }
 

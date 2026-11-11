@@ -19,7 +19,7 @@ import (
 
 // The Remote page of the settings window: the server's remote access, as
 // the server tells it, inbound only; the hosts this machine connects to
-// have a page of their own, and the Local API is on the Developer page.
+// have a page of their own.
 // Every call to the server runs off the UI thread.
 
 // remoteUI is the page's state; the main thread owns it.
@@ -84,16 +84,13 @@ func (a *App) showSection(id string) {
 	stopRemotePoll()
 	hostsPairQR = nil
 	settingsUI.section = id
-	if id == "server" || id == "network" || id == "developer" {
+	stopServerInfoPoll()
+	if id == "server" || id == "network" {
 		fetchLAN()
 		a.startRemotePoll()
 	}
-	stopServerInfoPoll()
-	switch id {
-	case "server":
-		startServerInfoPoll(rexapi.GatewayVersion)
-	case "developer":
-		startServerInfoPoll(rexapi.GatewayStatus)
+	if id == "server" {
+		startServerInfoPoll()
 	}
 }
 
@@ -202,9 +199,9 @@ func saveLAN(c rexapi.LANConfig) bool {
 	return true
 }
 
-// localAPI is the Developer page's group, as Rex's Local API: the primary
-// endpoint's URL to copy, each other listener's address and whom it lets
-// in, then the listener of Rex's apps on the local network with its
+// localAPI is the server page's group of Rex's Local API: the gateway's
+// revisions and version, the primary endpoint's URL to copy, each other
+// listener's address and whom it lets in, then the listener of Rex's apps on the local network with its
 // controls, which shows off too and is not listed again among the others.
 func (a *App) localAPI(c *ui.Context, k *colors) {
 	info, lan := settingsUI.apiInfo, remoteUI.lan
@@ -213,6 +210,9 @@ func (a *App) localAPI(c *ui.Context, k *colors) {
 			apiRow(c, k, locales.RemoteApiUrl(), false, func() {
 				ui.Text(c, locales.HostApiOff()).FontSize(11.5).TextColor(k.textFaint)
 			}, nil)
+		} else if settingsUI.apiLoaded {
+			factRow(c, k, locales.HostApiTitle(), locales.HostApiRevisions(info.APIRevision, info.ServerRevision, info.MinRevision))
+			factRow(c, k, locales.HostApiVersion(), info.RexVersion)
 		}
 		for _, l := range info.Listeners {
 			if lanListener(l, lan) {
@@ -948,13 +948,12 @@ func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 			ui.Row(c).Gap(8).Shrink(0).Children(func() {
 				// Rex pairs by this machine's QR code; until an address
 				// serves it, the way to set it up is the local network's
-				// listener, on the Developer page.
+				// listener, in the Local API group above.
 				if tailnet, lan := localRexPairs(); tailnet != "" || lan != "" {
 					if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
 						a.openLocalPairQR()
 					}
 				} else if ui.Button(c.Key("setup-rex"), locales.HostsSetUpRex()).Clicked() {
-					a.showSection("developer")
 					remoteUI.focusLAN = true
 				}
 				if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
