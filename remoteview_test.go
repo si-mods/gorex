@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -195,5 +196,74 @@ func TestDevicesButtons(t *testing.T) {
 	tt.Frame()
 	if tt.HasText(locales.RemotePairNew()) || !tt.HasText(locales.RemotePairStop()) {
 		t.Errorf("pairing open: texts %q", tt.Texts())
+	}
+}
+
+// TestRexGoPairURL: Rex Go's code carries the address and the machine's
+// name, a space as %20, which Rex Go reads.
+func TestRexGoPairURL(t *testing.T) {
+	s := rexGoPairURL("tcAbc-_9", "Yibo's Mac & mini+")
+	if strings.Contains(s, "+") {
+		t.Errorf("a + in %s", s)
+	}
+	u, err := url.Parse(s)
+	if err != nil || u.Scheme != "rexgo" || u.Host != "tailcat" || u.Path != "" {
+		t.Fatalf("%s: %v %+v", s, err, u)
+	}
+	if q := u.Query(); q.Get("a") != "tcAbc-_9" || q.Get("n") != "Yibo's Mac & mini+" {
+		t.Errorf("%s reads as %v", s, q)
+	}
+}
+
+// TestRexGoQR: Rex Go QR… shows while remote access listens; its code
+// shows neither the address nor Copy, and closes once remote access
+// stops.
+func TestRexGoQR(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Cleanup(stopRemotePoll)
+	qr := hostsPairQR
+	t.Cleanup(func() { hostsPairQR = qr })
+	a := &App{}
+	settingsUI.section = "remote"
+	remoteUI.loaded, remoteUI.st, remoteUI.err = true, rex.RemoteStatus{Enabled: true}, nil
+	tt := ui.NewTester(a.settingsView, 780, 1400)
+	tt.Frame()
+	if tt.HasText(locales.RemoteRexGoQR()) {
+		t.Fatal("Rex Go QR… shows before remote access listens")
+	}
+	remoteUI.st.Running = true
+	tt.Frame()
+	// No server here: the call says so.
+	if err := tt.Click(locales.RemoteRexGoQR()); err != nil {
+		t.Fatalf("%v; texts %q", err, tt.Texts())
+	}
+	tt.Frame()
+	if remoteUI.err == nil || remoteUI.err() != locales.RemoteNotConnected() || hostsPairQR != nil {
+		t.Error("Rex Go QR… did not ask the server")
+	}
+	// While a change is on its way, it waits, as every change does.
+	remoteUI.busy, remoteUI.err = true, nil
+	a.openRexGoQR()
+	if remoteUI.err != nil {
+		t.Error("Rex Go QR… asked while busy")
+	}
+	remoteUI.busy = false
+
+	const secret = "tcSECRETADDRESS"
+	hostsPairQR = &hostPairQR{host: "mac", image: qrImage(rexGoPairURL(secret, "mac")), open: true, rexGo: true}
+	tt.Frame()
+	if !tt.HasText(locales.RemoteRexGoQRHint()) {
+		t.Fatalf("no hint in %q", tt.Texts())
+	}
+	for _, s := range tt.Texts() {
+		if strings.Contains(s, secret) || s == locales.HostsRexQRCopy() {
+			t.Errorf("the dialog shows %q", s)
+		}
+	}
+	remoteUI.st.Running = false
+	tt.Frame()
+	if hostsPairQR != nil {
+		t.Error("the code stayed once remote access stopped")
 	}
 }

@@ -774,6 +774,11 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				if ui.Button(c.Key("add-key"), locales.RemoteAddByKeyAsk()).Clicked() {
 					page.addingKey = true
 				}
+				// Rex Go pairs by a code of the address, which opens the
+				// window too.
+				if st.Running && ui.Button(c.Key("rexgo-qr"), locales.RemoteRexGoQR()).Disabled(page.busy).Clicked() {
+					a.openRexGoQR()
+				}
 				if st.Enabled && !st.Pairing.Open {
 					if ui.PrimaryButton(c.Key("pair-start"), locales.RemotePairNew()).Disabled(page.busy).Clicked() {
 						a.remoteDo((*rex.Client).StartPairing, nil)

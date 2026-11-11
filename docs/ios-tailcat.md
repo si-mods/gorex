@@ -1,6 +1,6 @@
 # Rex Go over tailcat
 
-Status: phases 1 (Spike) and 2 (Server) done; phases 3–4 proposed. Answers the rest of
+Status: phases 1 (Spike), 2 (Server) and 3 (Rex Go) done; phase 4 proposed. Answers the rest of
 [#330](https://github.com/si-mods/gorex/issues/330), after
 [built-in Tailscale](ios-tailnet.md).
 
@@ -172,8 +172,8 @@ with 443/TCP and 3478/UDP open. The relay sees keys and ciphertext only.
 
 ### Pairing a phone
 
-Settings › Remote › Remote Hosts › **Rex QR…** shows, while remote
-access is on, the tailcat address in a `rexgo://` code and opens the
+Settings › Remote › Devices › **Rex Go QR…** shows, while remote
+access listens, the tailcat address in a `rexgo://` code and opens the
 pairing window:
 
 ```
@@ -299,8 +299,28 @@ and without it: +0.26 MB installed, +0.11 MB compressed (gzip -9).
    simulator), the socket reset after a suspension, the size.
 2. **Server** (done): port 7297 on the tailcat address, the gateway's
    socket for its streams, the relay setting.
-3. **Rex Go**: the `.tailcat` transport, the `rexgo://tailcat` code,
-   pairing, the client key, lifecycle.
+3. **Rex Go** (done): the `.tailcat` transport, the `rexgo://tailcat`
+   code, pairing, the client key, lifecycle. Findings:
+   - The button sits in Devices, beside Pair New Device…, as Rex QR…
+     already names the tailnet's and the local network's code. Its
+     dialog shows the image only: no address, no Copy.
+   - Rex Go registered no URL scheme before; it now registers `rexgo`.
+     The Tailscale login's `ASWebAuthenticationSession` keeps its own
+     callback, which its page never calls.
+   - A host's URL is `http://<id>.tailcat.invalid:7297`, the id its
+     UUID; the port is Rex's API's, as the proxy dials the port asked.
+   - The paired host is added at once and retries every 3 s until the
+     key is allowed, for 5 minutes, the pairing window; Cancel takes it
+     back.
+   - With built-in Tailscale off, the path monitor runs while a host is
+     paired over tailcat, and the foreground's socket reset runs too.
+   - The address is kept in the app's UserDefaults with the host: it
+     lets in nothing the machine has not approved, and the client key,
+     which it has, is in the Keychain.
+   - End to end in the simulator on the Mac mini, through tailcat's
+     relays: pair, approve, sessions listed, background and foreground,
+     revoke. Not yet: opening a terminal, a `derper` of one's own, a
+     phone.
 4. **Docs**: `docs/rex-api.md` and the README's Remote access: Rex Go
    over tailcat, and a `derper` of one's own. The server's side and the
    relay are written with phase 2; Rex Go's steps follow phase 3.

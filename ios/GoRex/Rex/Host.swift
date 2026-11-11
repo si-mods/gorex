@@ -19,12 +19,25 @@ struct HostConfig: Codable, Identifiable, Hashable {
     /// How the app reaches the host; nil is through the system. Optional,
     /// as a list saved without it must still decode.
     var transport: Transport?
+    /// The GoRex machine's tailcat address, for a host paired by its Rex
+    /// Go code; optional as transport is.
+    var tailcat: Tailcat?
 
     enum Transport: String, Codable {
         /// The phone's own network, or the Tailscale app's VPN.
         case system
         /// The built-in Tailscale's proxy (docs/ios-tailnet.md).
         case tailnet
+        /// The engine's tailcat client, through the same proxy
+        /// (docs/ios-tailcat.md).
+        case tailcat
+    }
+
+    /// A GoRex machine as its Rex Go code names it: its tailcat address, a
+    /// secret, and its name.
+    struct Tailcat: Codable, Hashable {
+        var address: String
+        var machine: String
     }
 }
 
@@ -75,11 +88,13 @@ extension HostConfig {
         return rule()
     }
 
-    /// How the app reaches the host: through the built-in Tailscale when
-    /// the host is on it and it is on, else the system's way, as through
-    /// the Tailscale app.
+    /// How the app reaches the host: over tailcat when it has a tailcat
+    /// address, whether or not the built-in Tailscale is on; through the
+    /// built-in Tailscale when the host is on it and it is on; else the
+    /// system's way, as through the Tailscale app.
     func reach(tailnetOn: Bool) -> Transport {
-        transport == .tailnet && tailnetOn ? .tailnet : .system
+        if tailcat != nil { return .tailcat }
+        return transport == .tailnet && tailnetOn ? .tailnet : .system
     }
 
     /// The transport of a host added now: .tailnet while the built-in
@@ -114,6 +129,30 @@ extension HostConfig {
         guard let url = c.url else { return nil }
         self.init(name: Self.name(host), url: url)
     }
+
+    /// The host of a Rex Go code, rexgo://tailcat?a=<address>&n=<machine>,
+    /// as GoRex's Rex Go QR… shows it; nil for anything else. The engine
+    /// checks the address in full as it pairs.
+    init?(tailcat code: String) {
+        guard let c = URLComponents(string: code.trimmingCharacters(in: .whitespacesAndNewlines)),
+              c.scheme?.lowercased() == "rexgo", c.host?.lowercased() == "tailcat", c.path.isEmpty,
+              c.user == nil, c.password == nil, c.port == nil, c.fragment == nil,
+              let a = c.queryItems?.first(where: { $0.name == "a" })?.value,
+              a.wholeMatch(of: /tc[A-Za-z0-9_-]+/) != nil
+        else { return nil }
+        let n = c.queryItems?.first { $0.name == "n" }?.value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let id = UUID()
+        self.init(id: id, name: n.isEmpty ? "GoRex" : n, url: Self.tailcatURL(id), tailcat: Tailcat(address: a, machine: n))
+    }
+
+    /// Where the engine's proxy reaches a tailcat host: Rex's API port at
+    /// <id>.tailcat.invalid, a name that resolves nowhere else.
+    static func tailcatURL(_ id: UUID) -> URL {
+        URL(string: "http://\(tailcatID(id)).tailcat.invalid:7297")!
+    }
+
+    /// The host's name to the engine (SetTailcatHosts), a DNS label.
+    static func tailcatID(_ id: UUID) -> String { id.uuidString.lowercased() }
 
     /// A host's name by its address, as Rex's API tells no machine name: an
     /// IP address as is, else the first label of the DNS name, less the
@@ -244,7 +283,13 @@ final class Host: Identifiable {
     /// The built-in Tailscale's proxy of the moment; nil while it isn't
     /// running. The app sets it.
     static var tailnetProxy: () -> LoopbackProxy? = { nil }
-    @ObservationIgnored private var tailnetSession: (proxy: LoopbackProxy, session: URLSession)?
+    /// The proxy the tailcat hosts go through, the same one whether or not
+    /// the built-in Tailscale runs; nil when there is none. The app sets it.
+    static var tailcatProxy: () -> LoopbackProxy? = { nil }
+    /// Tells the engine the hosts, as their list changes, for it to reach
+    /// those with a tailcat address. The app sets it.
+    static var tailcatHosts: ([HostConfig]) -> Void = { _ in }
+    @ObservationIgnored private var proxySession: (proxy: LoopbackProxy, session: URLSession)?
 
     init(_ config: HostConfig) {
         self.config = config
@@ -254,17 +299,28 @@ final class Host: Identifiable {
     var viaTailnet: Bool { config.reach(tailnetOn: TailnetSettings.isOn) == .tailnet }
 
     /// The session the host's connections go through: the system's, or
-    /// one through the built-in Tailscale's proxy of the moment, made anew
-    /// for each run of the engine and each new proxy.
+    /// one through the engine's proxy of the moment, made anew for each
+    /// run of the built-in Tailscale and each new proxy.
     func session() throws -> URLSession {
-        guard viaTailnet else { return .shared }
-        guard let p = Self.tailnetProxy() else {
-            throw RexError(code: "offline", message: String(localized: "Tailscale is not running"))
+        let p: LoopbackProxy
+        switch config.reach(tailnetOn: TailnetSettings.isOn) {
+        case .system:
+            return .shared
+        case .tailnet:
+            guard let t = Self.tailnetProxy() else {
+                throw RexError(code: "offline", message: String(localized: "Tailscale is not running"))
+            }
+            p = t
+        case .tailcat:
+            guard let t = Self.tailcatProxy() else {
+                throw RexError(code: "offline", message: String(localized: "Rex Go's connection to GoRex is not ready"))
+            }
+            p = t
         }
-        if let s = tailnetSession, s.proxy == p { return s.session }
-        tailnetSession?.session.invalidateAndCancel()
+        if let s = proxySession, s.proxy == p { return s.session }
+        proxySession?.session.invalidateAndCancel()
         let s = p.session()
-        tailnetSession = (p, s)
+        proxySession = (p, s)
         return s
     }
 
@@ -646,14 +702,16 @@ final class HostStore {
         let saved = UserDefaults.standard.data(forKey: "hosts")
             .flatMap { try? JSONDecoder().decode([HostConfig].self, from: $0) } ?? []
         hosts = saved.map(Host.init)
+        Host.tailcatHosts(saved)
         hosts.forEach { $0.connect() }
     }
 
+    /// Adds a host; the engine hears of it before it connects.
     func add(_ config: HostConfig) {
         let h = Host(config)
         hosts.append(h)
-        h.connect()
         save()
+        h.connect()
     }
 
     func remove(_ id: UUID) {
@@ -673,18 +731,21 @@ final class HostStore {
     }
 
     /// Back in the foreground. After a suspension (suspended), resume
-    /// gets the built-in Tailscale going again first; while it runs on as
-    /// before, the hosts on it then connect anew, as their connections to
-    /// its proxy can look open while their tailnet side died. Started anew,
-    /// its old run's connections end with it, and the hosts connect, on a
-    /// new session, once it runs (docs/ios-tailnet.md, Lifecycle). The others reconnect if
-    /// needed, at once.
+    /// gets the engine going again first; while the built-in Tailscale
+    /// runs on as before, the hosts on it then connect anew, as their
+    /// connections to its proxy can look open while their tailnet side
+    /// died. Started anew, its old run's connections end with it, and the
+    /// hosts connect, on a new session, once it runs (docs/ios-tailnet.md,
+    /// Lifecycle). The tailcat hosts connect anew either way: their
+    /// clients outlive the tailnet's runs. The others reconnect if needed,
+    /// at once.
     func foreground(suspended: Bool, resume: () async -> Bool) async {
-        let forced = { (h: Host) in suspended && h.viaTailnet }
+        let forced = { (h: Host) in suspended && h.config.reach(tailnetOn: TailnetSettings.isOn) != .system }
         hosts.filter { !forced($0) }.forEach { $0.reconnectIfNeeded() }
         guard suspended else { return }
-        let tailnet = hosts.filter(forced)
-        if await resume() { tailnet.forEach { $0.resume() } }
+        let proxied = hosts.filter(forced)
+        let kept = await resume()
+        proxied.filter { kept || $0.config.tailcat != nil }.forEach { $0.resume() }
     }
 
     /// Whether the app, in the background since away, was likely
@@ -702,7 +763,11 @@ final class HostStore {
 
     func host(at url: URL) -> Host? { hosts.first { $0.config.url == url } }
 
+    /// The host of a GoRex machine's tailcat address.
+    func host(tailcat address: String) -> Host? { hosts.first { $0.config.tailcat?.address == address } }
+
     private func save() {
+        Host.tailcatHosts(hosts.map(\.config))
         UserDefaults.standard.set(try? JSONEncoder().encode(hosts.map(\.config)), forKey: "hosts")
     }
 }

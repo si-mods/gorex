@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -25,6 +26,10 @@ type hostPairQR struct {
 	// the device must be on the same tailnet as; the local network's
 	// needs the same network as the address.
 	tailnet bool
+	// rexGo is this machine's code for Rex Go, of its tailcat address: a
+	// secret, so the page keeps the image only, and shows no address and
+	// no Copy.
+	rexGo bool
 }
 
 var hostsPairQR *hostPairQR
@@ -87,38 +92,83 @@ func openHostPairQR(h *hostConn) {
 	}()
 }
 
+// openRexGoQR opens the pairing window and shows this machine's code for
+// Rex Go (docs/ios-tailcat.md, Pairing a phone). The address is asked for
+// here and goes into the image only: never into the page, a log or the
+// clipboard.
+func (a *App) openRexGoQR() {
+	name, _, _ := a.hostIdentity()
+	// Set off the UI thread, read on it once the change is done.
+	var image ui.ImageSource
+	a.remoteDo(func(srv *rex.Client) error {
+		if err := srv.StartPairing(); err != nil {
+			return err
+		}
+		st, err := srv.RemoteStatus()
+		if err == nil && st.Address != "" {
+			image = qrImage(rexGoPairURL(st.Address, name))
+		}
+		return err
+	}, func() {
+		hostsPairQR = &hostPairQR{host: name, image: image, open: true, rexGo: true}
+	})
+}
+
+// rexGoPairURL is the code Rex Go pairs by: the tailcat address and the
+// machine's name, rexgo://tailcat?a=<address>&n=<name>. A space is %20,
+// as Rex Go reads no + for one.
+func rexGoPairURL(address, name string) string {
+	q := url.Values{"a": {address}, "n": {name}}.Encode()
+	return "rexgo://tailcat?" + strings.ReplaceAll(q, "+", "%20")
+}
+
 func mobilePairQR(address string) (string, ui.ImageSource) {
 	u, err := url.Parse(address)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" ||
 		u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.ForceQuery {
 		return "", nil
 	}
-	code, err := qr.Encode(address, qr.M)
-	if err != nil {
-		return "", nil
-	}
-	img, err := ui.DecodeImage(code.PNG())
-	if err != nil {
+	img := qrImage(address)
+	if img == nil {
 		return "", nil
 	}
 	return address, img
 }
 
+// qrImage is s as a QR code; nil when it doesn't fit one.
+func qrImage(s string) ui.ImageSource {
+	code, err := qr.Encode(s, qr.M)
+	if err != nil {
+		return nil
+	}
+	img, err := ui.DecodeImage(code.PNG())
+	if err != nil {
+		return nil
+	}
+	return img
+}
+
 func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
+	title := locales.HostsRexQRTitle(page.host)
+	if page.rexGo {
+		title = locales.RemoteRexGoQRTitle(page.host)
+	}
 	ui.DialogBase(c, &page.open, func(backdrop, panel ui.Element) {
 		// The backdrop dims the window; the glass is the panel's, as in
 		// the other sheets over the app.
 		backdrop.Background(k.backdrop)
 		glassPanel(panel.Width(380).Padding(20).Gap(12).Radius(16), k.panel).
 			Border(1, k.panelBorder).Shadow(0, 24, 60, -8, ui.RGBA(0, 0, 0, 0.28)).
-			Role(ui.RoleDialog).Label(locales.HostsRexQRTitle(page.host))
-		ui.Text(c, locales.HostsRexQRTitle(page.host)).FontSize(15).FontWeight(700).TextColor(k.text)
+			Role(ui.RoleDialog).Label(title)
+		ui.Text(c, title).FontSize(15).FontWeight(700).TextColor(k.text)
 		switch {
 		case page.loading:
 			ui.Text(c, locales.HostsRexQRLoading()).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
 		case page.image != nil:
 			hint := locales.HostsRexQRHint()
-			if page.local {
+			if page.rexGo {
+				hint = locales.RemoteRexGoQRHint()
+			} else if page.local {
 				hint = locales.HostsLocalRexQRHint()
 				if !page.tailnet {
 					hint = locales.HostsLocalLanRexQRHint()
@@ -129,10 +179,14 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			// inside the panel's corner radius.
 			ui.Row(c).Justify(ui.Center).Margin(2, 0, 2, 0).Children(func() {
 				ui.Column(c).Padding(10).Radius(12).Background(ui.RGB(255, 255, 255)).Children(func() {
-					ui.Image(c, page.image).Size(240, 240).Label(locales.HostsRexQRTitle(page.host))
+					ui.Image(c, page.image).Size(240, 240).Label(title)
 				})
 			})
-			ui.Text(c, page.address).Font(monoFamily()).FontSize(12).TextColor(k.text).SingleLine().Label(page.address)
+			if !page.rexGo {
+				ui.Text(c, page.address).Font(monoFamily()).FontSize(12).TextColor(k.text).SingleLine().Label(page.address)
+			}
+		case page.rexGo:
+			ui.Text(c, locales.RemoteRexGoQRUnavailable()).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)
 		default:
 			ui.Text(c, locales.HostsRexQRUnavailable()).FontSize(12.5).TextColor(k.textMuted).LineHeight(1.35)
 		}
@@ -143,7 +197,7 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			if ui.Button(c.Key("close"), locales.HostsLayoutClose()).Clicked() {
 				page.open = false
 			}
-			if page.image != nil {
+			if page.image != nil && !page.rexGo {
 				label := locales.HostsRexQRCopy()
 				if page.copied {
 					label = locales.HostsRexQRCopied()

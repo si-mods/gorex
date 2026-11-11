@@ -2115,6 +2115,22 @@
   "@remotePairNew": {
     "description": "Remote page button: opens the pairing window, in which a new device can ask to pair."
   },
+  "remoteRexGoQR": "Rex Go QR…",
+  "@remoteRexGoQR": {
+    "description": "Remote page button: opens the pairing window and shows the QR code that Rex Go, the iPhone app, scans to pair."
+  },
+  "remoteRexGoQRTitle": "Connect Rex Go to {host}",
+  "@remoteRexGoQRTitle": {
+    "description": "Title of the dialog with the QR code for Rex Go. {host} is this machine's name."
+  },
+  "remoteRexGoQRHint": "Scan this code in Rex Go, then approve its request under Devices if the fingerprint matches. The code holds this machine's address, a secret: show it only to your own devices.",
+  "@remoteRexGoQRHint": {
+    "description": "Text over the QR code for Rex Go."
+  },
+  "remoteRexGoQRUnavailable": "Remote access has no address yet. Try again once it is listening.",
+  "@remoteRexGoQRUnavailable": {
+    "description": "Shown in place of the QR code for Rex Go when the server has no address."
+  },
   "remoteAddByKeyAsk": "Add by Key…",
   "@remoteAddByKeyAsk": {
     "description": "Remote page button: shows the fields that allow a client by its public key."
