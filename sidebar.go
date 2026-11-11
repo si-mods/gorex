@@ -515,10 +515,12 @@ func (a *App) hostSessions(c *ui.Context, k *colors, h *hostConn, folded bool, o
 			}
 			open := !folded && a.spaceIsOpen(h, w)
 			clicked, toggled := a.sessionRow(c, k, h, w, n, open, false)
+			// Under a folded host its tabs cannot show: the chevron shows
+			// the space, as the row does.
 			switch {
-			case toggled:
+			case toggled && !folded:
 				a.setSpaceOpen(h, w, !open)
-			case clicked:
+			case clicked || toggled:
 				a.setSpaceOpen(h, w, true)
 				a.later(c, func() { a.showSessionOn(w, h, -1) })
 			}
@@ -569,7 +571,8 @@ func (a *App) setSpaceOpen(h *hostConn, w *Workspace, open bool) {
 }
 
 // keepSpacesOpen, as the window goes to show session w, keeps the session
-// it leaves open or closed under each host as it was, and opens w.
+// it leaves open or closed under each host as it was, and opens w where
+// it was never closed: where the user closed it, it stays closed.
 func (a *App) keepSpacesOpen(w *Workspace) {
 	if w == a.ws {
 		return
@@ -578,7 +581,9 @@ func (a *App) keepSpacesOpen(w *Workspace) {
 		if a.ws != nil {
 			a.setSpaceOpen(h, a.ws, a.spaceIsOpen(h, a.ws))
 		}
-		a.setSpaceOpen(h, w, true)
+		if _, ok := a.spaceOpen[spaceKey(h, w)]; !ok {
+			a.setSpaceOpen(h, w, true)
+		}
 	}
 }
 

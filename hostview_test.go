@@ -241,6 +241,13 @@ func TestSidebarHostView(t *testing.T) {
 	if _, ok := tt.Find("icy-ridge, " + locales.SessionTabs(2)); !ok {
 		t.Errorf("a folded host hides the space that needs the user; texts %q", tt.Texts())
 	}
+	// Its tabs cannot show there: its chevron shows the space, as its row.
+	chevron("icy-ridge, " + locales.SessionTabs(2))
+	if a.ws != second {
+		t.Errorf("the chevron of a space under a folded host left the window on %v", a.ws.Name)
+	}
+	a.showWorkspace(first)
+	tt.Frame()
 	a.st.infos = nil
 	if err := tt.Click(thisMachine()); err != nil {
 		t.Fatal(err)
@@ -306,6 +313,18 @@ func TestSidebarHostView(t *testing.T) {
 	tt.Frame()
 	if got := a.tab(); a.ws != second || got == nil || got.Name != "Home2" {
 		t.Errorf("a click on a tab of a layout shows %v on %v", a.ws.Name, got)
+	}
+
+	// A space closed under a host stays closed there as the window goes
+	// to show it; it opens where it was never closed.
+	chevron("calm-fern, " + locales.SessionTabs(1)) // under this machine
+	if tt.HasText("Here ") || !tt.HasText("Far ") {
+		t.Fatalf("closing the space left under this machine shows %q", tt.Texts())
+	}
+	a.showWorkspace(first)
+	tt.Frame()
+	if a.ws != first || tt.HasText("Here ") || !tt.HasText("Far ") {
+		t.Errorf("going back to the space closed under this machine shows %q", tt.Texts())
 	}
 
 	// Without remote hosts, the spaces' view.

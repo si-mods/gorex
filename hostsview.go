@@ -297,7 +297,7 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 	groupRow(c, k, h.ID).Gap(8).Children(func() {
 		ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 			// Its icon is the menu that chooses it.
-			iconButton(c.Key("icon"), k, h.remoteGlyph(), locales.HostsIcon(), 28, 18).Shrink(0).Tooltip(locales.HostsIcon()).
+			iconButton(c.Key("icon"), k, h.remoteGlyph(), locales.HostsIcon()+", "+h.label(), 28, 18).Shrink(0).Tooltip(locales.HostsIcon()).
 				Menu(func(m *ui.Menu) { a.hostIconMenu(m, h) })
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
 				if page.renaming == h.ID {

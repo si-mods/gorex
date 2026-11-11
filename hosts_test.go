@@ -1709,7 +1709,7 @@ func TestHostIcon(t *testing.T) {
 	tt.Frame()
 	choose := func(item string) {
 		t.Helper()
-		if err := tt.Click(locales.HostsIcon()); err != nil {
+		if err := tt.Click(locales.HostsIcon() + ", build-box"); err != nil {
 			t.Fatal(err)
 		}
 		tt.Frame()
@@ -1740,5 +1740,18 @@ func TestHostIcon(t *testing.T) {
 	}
 	if hs, _ := loadHosts(); len(hs) != 1 || hs[0].Icon != "" {
 		t.Errorf("hosts.json after Automatic: %+v", hs)
+	}
+	// An icon this build lacks, from a newer one or an edit, is not drawn.
+	h.Icon, h.Glyph = "rocket", "toaster"
+	if g := h.remoteGlyph(); g != "server" {
+		t.Errorf("unknown icons show %q", g)
+	}
+	tt.Frame()
+	if err := tt.Click(locales.HostsIcon() + ", build-box"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if m := tt.Menu(); len(m) == 0 {
+		t.Error("the icon menu does not open")
 	}
 }

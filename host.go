@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -110,15 +111,26 @@ func hostGlyph(h rex.HostInfo, windows bool) string {
 // as its last hello described it, kept while it is away; a server, before
 // it ever connected or when it said nothing of its machine.
 func (h *hostConn) remoteGlyph() string {
-	return cmp.Or(h.Icon, h.Glyph, "server")
+	return cmp.Or(knownGlyph(h.Icon), knownGlyph(h.Glyph), "server")
+}
+
+// knownGlyph is g if it is one of hostIcons, else "": hosts.json may name
+// an icon this build lacks, from a newer one or a hand's edit.
+func knownGlyph(g string) string {
+	if slices.ContainsFunc(hostIcons, func(i hostIcon) bool { return i.glyph == g }) {
+		return g
+	}
+	return ""
+}
+
+type hostIcon struct {
+	glyph string
+	name  func() string
 }
 
 // hostIcons are the icons the user can give a remote host, as the iOS app
 // offers them, with their names.
-var hostIcons = []struct {
-	glyph string
-	name  func() string
-}{
+var hostIcons = []hostIcon{
 	{"globe", locales.HostIconGlobe},
 	{"server", locales.HostIconServer},
 	{"cloud", locales.HostIconCloud},
@@ -131,7 +143,7 @@ var hostIcons = []struct {
 // hostIconMenu fills a menu with the icons h can take, the one it has
 // checked: Automatic, which follows its machine, and those of hostIcons.
 func (a *App) hostIconMenu(m *ui.Menu, h *hostConn) {
-	if m.Item(locales.HostIconAutomatic()).Icon(menuIcon(cmp.Or(h.Glyph, "server"))).Checked(h.Icon == "").Chosen() {
+	if m.Item(locales.HostIconAutomatic()).Icon(menuIcon(cmp.Or(knownGlyph(h.Glyph), "server"))).Checked(knownGlyph(h.Icon) == "").Chosen() {
 		a.setHostIcon(h, "")
 	}
 	m.Separator()
