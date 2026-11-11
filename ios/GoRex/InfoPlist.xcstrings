@@ -25,13 +25,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "GoRex connects to your computers on the local network."
+            "value": "Rex Go connects to your computers on the local network."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "GoRex 通过本地网络连接你的电脑。"
+            "value": "Rex Go 通过本地网络连接你的电脑。"
           }
         }
       }

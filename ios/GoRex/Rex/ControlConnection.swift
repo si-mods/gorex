@@ -110,7 +110,7 @@ final class ControlConnection {
         task.resume()
         var hello: [String: Any] = [
             "type": "hello", "api_revision": Self.revision,
-            "client": ["kind": "app", "platform": "ios", "name": "GoRex", "version": Bundle.main.version,
+            "client": ["kind": "app", "platform": "ios", "name": "Rex Go", "version": Bundle.main.version,
                        "label": Self.label],
         ]
         hello["reconnect_token"] = token

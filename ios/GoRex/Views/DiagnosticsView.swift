@@ -23,6 +23,10 @@ struct DiagnosticsView: View {
     /// packets.
     private static let sizes = [64, 1200, 1300]
 
+    /// Whether the host is reached through the built-in Tailscale, the
+    /// only one the path and the pings read; Settings › Tailscale has none.
+    private var onTailnet: Bool { host.map { $0.reach(tailnetOn: TailnetSettings.isOn) == .tailnet } ?? true }
+
     // What the sheet shows is for whoever reads the report: not localized,
     // but for its headings.
     private var sections: [(title: LocalizedStringResource, text: String)] {
@@ -36,8 +40,8 @@ struct DiagnosticsView: View {
         let all: [(title: LocalizedStringResource, text: String)?] = [
             failure.map { ("Failure", $0) },
             ("Host", app.joined(separator: "\n")),
-            ("Tailnet Path", "Before pings: \(before ?? "…")\nAfter pings: \(after ?? "…")"),
-            ("Ping", Self.sizes.map { pings[$0] ?? "\($0) B: …" }.joined(separator: "\n")),
+            onTailnet ? ("Tailnet Path", "Before pings: \(before ?? "…")\nAfter pings: \(after ?? "…")") : nil,
+            onTailnet ? ("Ping", Self.sizes.map { pings[$0] ?? "\($0) B: …" }.joined(separator: "\n")) : nil,
             ("Log", ConnectionLog.lines.joined(separator: "\n")),
         ]
         return all.compactMap { $0 }
@@ -80,6 +84,7 @@ struct DiagnosticsView: View {
         before = nil
         after = nil
         pings = [:]
+        guard onTailnet else { return }
         before = Self.path(await TailnetEngine.path(to: address))
         for size in Self.sizes {
             pings[size] = Self.ping(await TailnetEngine.ping(address, size: size))
