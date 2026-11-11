@@ -1,0 +1,4 @@
+# What web/build.mjs writes. Only the README stays, so that go:embed has
+# a directory to embed on a checkout that never built the client.
+/dist/*
+!/dist/README

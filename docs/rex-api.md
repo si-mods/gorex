@@ -55,6 +55,9 @@ The gateway listens on five places:
 - with `GoRex rexapi --listen http://127.0.0.1:PORT`, a TCP port that lets
   everyone in unauthenticated: for tests on this machine only.
 
+Each one also serves a browser client at `/` (docs/web-client.md). A
+request from another origin's web page is refused on every path.
+
 ## Local network
 
 When the phone reaches this machine by its address on the local network,

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GoRex</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    color-scheme: dark;
+    --page: #1c1c1e;
+    --text: #e8e8ea;
+    --muted: #8e8e93;
+    --hover: rgba(255, 255, 255, 0.10);
+    --pill: rgba(255, 255, 255, 0.16);
+    --mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    grid-template-rows: 1fr auto;
+    background: var(--page);
+    color: var(--text);
+    font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  #sessions { grid-row: 1 / 3; overflow-y: auto; padding: 12px 8px; }
+  #sessions h2 { margin: 12px 8px 4px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  #sessions nav { color: var(--muted); }
+  button.block {
+    display: block; width: 100%; padding: 6px 12px; border: 0; border-radius: 999px;
+    background: none; color: var(--text); font: inherit; text-align: left;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+  }
+  button.block:hover { background: var(--hover); }
+  button.block.open { background: var(--pill); }
+  #pane { position: relative; overflow: hidden; outline: none; margin: 8px 8px 0 0; border-radius: 10px; background: #000; }
+  #screen { position: absolute; inset: 0; display: block; }
+  #status { padding: 4px 8px 6px; color: var(--muted); font-size: 12px; }
+  @media (max-width: 640px) {
+    body { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
+    #sessions { grid-row: auto; max-height: 30vh; }
+    #pane { margin: 0 8px; }
+  }
+</style>
+</head>
+<body>
+<aside id="sessions"></aside>
+<main id="pane" tabindex="0"><canvas id="screen"></canvas></main>
+<footer id="status"></footer>
+<script type="module" src="app.js"></script>
+</body>
+</html>
