@@ -102,7 +102,7 @@ func (st *store) commandApp() *App {
 // client of before spaces had it.
 func (st *store) commandAppFor(space, sid string) *App {
 	if space != "" {
-		if w := st.workspaceByID(space); w != nil && w.app != nil {
+		if w := st.byID(space); w != nil && w.app != nil {
 			return w.app
 		}
 	}

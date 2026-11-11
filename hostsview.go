@@ -564,16 +564,12 @@ func closeHostLayout() {
 }
 
 func tabSID(n *savedNode) string {
-	if n == nil {
-		return ""
+	for _, l := range layout.Leaves(n) {
+		if l.SID != "" {
+			return l.SID
+		}
 	}
-	if n.SID != "" {
-		return n.SID
-	}
-	if sid := tabSID(n.A); sid != "" {
-		return sid
-	}
-	return tabSID(n.B)
+	return ""
 }
 
 // hostLayoutCommand asks the host app to change its layout, then reloads

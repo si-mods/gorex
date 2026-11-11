@@ -633,8 +633,12 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 					l.tabs = append(l.tabs, w.Tabs...)
 				}
 				for _, t := range l.tabs {
-					for _, n := range t.Roots() {
-						namedSIDs(n, l.named)
+					for _, r := range t.Roots() {
+						for _, n := range layout.Leaves(r) {
+							if n.SID != "" {
+								l.named[n.SID] = true
+							}
+						}
 					}
 				}
 			} else {
@@ -685,18 +689,6 @@ type hostLayout struct {
 	tabs  []savedTab
 	named map[string]bool
 	hold  map[string]bool
-}
-
-// namedSIDs adds the sessions n's panes are to out.
-func namedSIDs(n *savedNode, out map[string]bool) {
-	if n == nil {
-		return
-	}
-	if n.SID != "" {
-		out[n.SID] = true
-	}
-	namedSIDs(n.A, out)
-	namedSIDs(n.B, out)
 }
 
 // adopt opens a tab for each live session of host h that no pane here

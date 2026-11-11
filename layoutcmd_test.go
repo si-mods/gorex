@@ -770,7 +770,7 @@ func TestCommandSpaces(t *testing.T) {
 		t.Fatalf("space.create: %+v", res)
 	}
 	space := res.Space
-	w := a.st.workspaceByID(space)
+	w := a.st.byID(space)
 	if w == nil || w.Name != "work" || w.app != nil {
 		t.Fatalf("the new space: %+v", w)
 	}
@@ -785,7 +785,7 @@ func TestCommandSpaces(t *testing.T) {
 	}
 	// The space no window showed has the tab, and the window shows it, as
 	// the command asks for the focus.
-	w = a.st.workspaceByID(space)
+	w = a.st.byID(space)
 	if w.app != a || a.ws != w || len(a.tabs) != 1 || a.tab().Name != "editor" || a.tab().Focus.SID != res.New {
 		t.Fatalf("the window shows %s, the space's tabs: %+v", a.ws.ID, w.layout)
 	}
@@ -797,7 +797,7 @@ func TestCommandSpaces(t *testing.T) {
 	if res = clientCommand(a, rex.LayoutCommand{Op: "space.close", Space: space}); res.Code != "" {
 		t.Fatalf("space.close: %+v", res)
 	}
-	if a.st.workspaceByID(space) != nil {
+	if a.st.byID(space) != nil {
 		t.Error("the space stays after space.close")
 	}
 	if a.ws == nil || a.tabs == nil || len(a.tabs) == 0 {
