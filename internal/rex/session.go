@@ -502,13 +502,18 @@ func (s *session) read() {
 			s.output += uint64(n)
 			s.lastOutput = time.Now()
 			s.sampler.ask()
+			resize := false
 			for a := range s.clients {
 				if !a.send(data) {
-					a.finish()
-					delete(s.clients, a)
+					pty, _, _ := s.dropLocked(a)
+					resize = resize || pty
 				}
 			}
+			cols, rows := s.cols, s.rows
 			s.mu.Unlock()
+			if resize {
+				s.resizeTerminal(cols, rows)
+			}
 			if statusChanged {
 				s.notify()
 			}
@@ -589,6 +594,18 @@ func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, typ
 // the authority that is left: the typist, or the newest attaching.
 func (s *session) leave(a *attached) {
 	s.mu.Lock()
+	pty, cols, rows := s.dropLocked(a)
+	s.mu.Unlock()
+	if pty {
+		s.resizeTerminal(cols, rows)
+	}
+}
+
+// dropLocked drops client a, s.mu held, as leave does: a client dropped
+// for falling behind passes the size on too, which its leave, finding it
+// gone, would not. It reports whether to resize the terminal, and to
+// what, which the caller does once it let go of s.mu.
+func (s *session) dropLocked(a *attached) (pty bool, cols, rows int) {
 	prev := s.authorityLocked()
 	if _, ok := s.clients[a]; ok {
 		delete(s.clients, a)
@@ -597,11 +614,7 @@ func (s *session) leave(a *attached) {
 	if s.typist == a {
 		s.typist = nil
 	}
-	pty, cols, rows := s.followAuthorityLocked(prev)
-	s.mu.Unlock()
-	if pty {
-		s.resizeTerminal(cols, rows)
-	}
+	return s.followAuthorityLocked(prev)
 }
 
 // input types what client a sends.
@@ -1245,21 +1258,28 @@ const resyncDelay = 150 * time.Millisecond
 // not mend. Shells' scrollback reflows alike in both and needs nothing.
 func (s *session) resyncScreen() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.exited || len(s.clients) == 0 {
+		s.mu.Unlock()
 		return
 	}
 	snap, _ := s.view()
 	if !bytes.Contains(snap, []byte("\x1b[?1049h")) {
+		s.mu.Unlock()
 		return
 	}
 	// Clear the alternate screen the window shows, then draw it anew.
 	msg := append([]byte("\x1b[?1049h\x1b[H\x1b[2J"), snap...)
+	resize := false
 	for a := range s.clients {
 		if !a.send(msg) {
-			a.finish()
-			delete(s.clients, a)
+			pty, _, _ := s.dropLocked(a)
+			resize = resize || pty
 		}
+	}
+	cols, rows := s.cols, s.rows
+	s.mu.Unlock()
+	if resize {
+		s.resizeTerminal(cols, rows)
 	}
 }
 
