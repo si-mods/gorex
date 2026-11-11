@@ -33,8 +33,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
         if UIApplication.shared.applicationState == .active, onScreen?.host == host.id, onScreen?.block == block { return }
         let window = host.titles[block].flatMap { $0.isEmpty ? nil : $0 }
         let c = UNMutableNotificationContent()
-        c.title = title.isEmpty ? host.programs[block] ?? window ?? host.config.name : title
-        c.subtitle = [window, host.config.name].compactMap(\.self).joined(separator: " · ")
+        c.title = (title.isEmpty ? host.programs[block] ?? window ?? host.config.name : title).asText
+        c.subtitle = [window, host.config.name].compactMap(\.self).joined(separator: " · ").asText
         c.body = body
         c.sound = .default
         // One window's notifications group together.

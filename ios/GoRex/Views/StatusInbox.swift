@@ -91,12 +91,12 @@ private struct StatusRow: View {
                 .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    Text(item.heading.isEmpty ? " " : item.heading).font(.body.weight(.medium)).lineLimit(1)
+                    Text(item.heading.isEmpty ? " " : item.heading.asText).font(.body.weight(.medium)).lineLimit(1)
                     Spacer(minLength: 4)
                     mark
                 }
                 HStack(spacing: 8) {
-                    Text(item.detail.isEmpty ? " " : item.detail).foregroundStyle(.secondary).lineLimit(1)
+                    Text(item.detail.isEmpty ? " " : item.detail.asText).foregroundStyle(.secondary).lineLimit(1)
                     Spacer(minLength: 4)
                     if let t = item.status.updated { Text(Inbox.ago(t, now: now)).foregroundStyle(.tertiary) }
                 }

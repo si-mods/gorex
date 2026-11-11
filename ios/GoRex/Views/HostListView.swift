@@ -699,7 +699,7 @@ struct WindowRow<Mark: View>: View {
         let status = host.status([block] + window.tiled)
         HStack(spacing: 14) {
             ProgramTiles(front: host.programs[block], back: window.back.map { host.programs[$0] }, done: status?.state == "done").frame(width: tiles, height: 16 * ProgramTiles.scale + 4, alignment: .leading)
-            Text(title.isEmpty ? " " : title)
+            Text(title.isEmpty ? " " : title.asText)
                 // Regular and a little dimmed, as Rex sets a window's title.
                 .font(.body)
                 .foregroundStyle(.primary.opacity(0.8))
