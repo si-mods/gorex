@@ -109,8 +109,10 @@ func (g *Gateway) tookOwnership(block, sid, owner string, size *desiredSize) {
 	o.owner = owner
 	c := g.opt.Client
 	if owner == "" {
-		if sid != "" {
-			_ = c.UnlockSize(sid, "", 0, 0)
+		// The lock it holds, not whoever's: another device may have
+		// taken the size since, and its lock is not this one's to end.
+		if held := g.locks[sid]; held != "" {
+			_ = c.UnlockSize(sid, held, 0, 0)
 			delete(g.locks, sid)
 		}
 		return
