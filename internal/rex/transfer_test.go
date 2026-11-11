@@ -114,23 +114,11 @@ func TestFileRoundTrip(t *testing.T) {
 	}
 }
 
-func TestFileNotShared(t *testing.T) {
+func TestFileNoSession(t *testing.T) {
 	s, _ := testServer(t)
-	local := pipe(s, "")
-	defer local.Close()
-	alice, bob := key.NewNode().Public().String(), key.NewNode().Public().String()
-	ac, bc := pipe(s, alice), pipe(s, bob)
-	defer ac.Close()
+	bc := pipe(s, key.NewNode().Public().String())
 	defer bc.Close()
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "x"), []byte("x"), 0o644)
-	sid := transferSession(t, local, ac, dir)
-	if _, _, _, err := put(bc, sid, dir, "a.txt", "id", "", []byte("a")); !NotShared(err) {
-		t.Errorf("put by another client: %v", err)
-	}
-	if _, err := bc.DownloadFile(context.Background(), sid, "x", t.TempDir(), "", nil); !NotShared(err) {
-		t.Errorf("get by another client: %v", err)
-	}
 	if _, _, _, err := put(bc, "nope", dir, "a.txt", "id", "", []byte("a")); err == nil || !strings.Contains(err.Error(), "no session") {
 		t.Errorf("put to no session: %v", err)
 	}

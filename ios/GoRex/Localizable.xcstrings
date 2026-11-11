@@ -3088,12 +3088,12 @@
         }
       }
     },
-    "Paired by GoRex's Rex Go code. Deleting the host here doesn't revoke this phone: remove it from Devices in GoRex's Settings › Remote.": {
+    "Paired by GoRex's Rex Go code. Deleting the host here doesn't revoke this phone: remove it from Devices in GoRex's Settings › Server.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "通过 GoRex 的 Rex Go 二维码配对。在这里删除主机不会撤销本机的授权：请在 GoRex 的 设置 › 远程 › 设备 中移除它。"
+            "value": "通过 GoRex 的 Rex Go 二维码配对。在这里删除主机不会撤销本机的授权：请在 GoRex 的 设置 › 服务器 › 设备 中移除它。"
           }
         }
       }
@@ -3118,12 +3118,12 @@
         }
       }
     },
-    "On %@, approve %@ in Settings › Remote › Devices only if its fingerprint is this one.": {
+    "On %@, approve %@ in Settings › Server › Devices only if its fingerprint is this one.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "请在 %1$@ 的 设置 › 远程 › 设备 中，仅当指纹与此一致时批准 %2$@。"
+            "value": "请在 %1$@ 的 设置 › 服务器 › 设备 中，仅当指纹与此一致时批准 %2$@。"
           }
         }
       }
@@ -3148,12 +3148,12 @@
         }
       }
     },
-    "Not connected yet. Rex Go keeps trying: approve this phone on the machine, and share its sessions with this device.": {
+    "Not connected yet. Rex Go keeps trying: approve this phone on the machine.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "尚未连接。Rex Go 会继续尝试：请在那台电脑上批准本机，并向此设备共享会话。"
+            "value": "尚未连接。Rex Go 会继续尝试：请在那台电脑上批准本机。"
           }
         }
       }

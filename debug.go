@@ -323,11 +323,9 @@ func (a *App) debug(dir, line string) {
 		if w := settingsUI.win; w != nil {
 			w.Update(func() { a.showSection(arg) })
 		}
-	case "remote": // allow NAME KEY, enable, disable, share on|off, regenerate, reveal, confirm: the Remote page's calls
+	case "remote": // allow NAME KEY, enable, disable, regenerate, reveal, confirm: the Server page's remote access calls
 		op, rest, _ := strings.Cut(arg, " ")
 		switch op {
-		case "share":
-			a.client.ShareSessions(rest == "on")
 		case "allow":
 			name, key, _ := strings.Cut(rest, " ")
 			a.client.AllowRemote(name, key)
@@ -340,17 +338,17 @@ func (a *App) debug(dir, line string) {
 		case "reveal", "confirm":
 			if w := settingsUI.win; w != nil {
 				w.Update(func() {
-					remoteUI.reveal, remoteUI.confirm = op == "reveal", op == "confirm"
+					remoteUI.details, remoteUI.reveal, remoteUI.confirm = true, op == "reveal", op == "confirm"
 					remoteUI.st.Address = ""
 					a.fetchRemote()
 				})
 			}
 		}
-	case "hosts": // add NAME ADDRESS [PAIR-AS], retry NAME, remove NAME: the Remote page's hosts
+	case "hosts": // add NAME ADDRESS [PAIR-AS], retry NAME, remove NAME: the Remote Hosts page's
 		op, rest, _ := strings.Cut(arg, " ")
 		win.Update(func() {
 			if op == "add" {
-				a.openSettingsAt("remote")
+				a.openSettingsAt("hosts")
 				a.openAddHost()
 				f := strings.Fields(rest)
 				if len(f) > 0 {

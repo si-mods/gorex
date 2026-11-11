@@ -177,7 +177,7 @@ func (a *App) hostsInPanel(c *ui.Context, k *colors) {
 	}
 	if ui.Button(c, label).Clicked() {
 		a.hostOpen = false
-		a.openSettingsAt("remote")
+		a.openSettingsAt("hosts")
 		if len(a.hosts) == 0 {
 			a.openAddHost()
 		}

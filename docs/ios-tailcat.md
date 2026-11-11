@@ -59,7 +59,6 @@ address (README, Remote access), with:
 - pairing: a five-minute window, a request with a name, a fingerprint
   compared on both screens, Approve;
 - revocation: Remove closes that key's connections at once;
-- the coordinator (`gcoord`) for many machines;
 - the free tailcat DERP relays, or the user's own.
 
 The desktop apps reach each other this way today. Rex Go is just one
@@ -98,9 +97,6 @@ protocol.
   tailnet, and for Rex servers, which have no tailcat address.
 - **Rex's own iPhone app.** It knows no tailcat; it keeps the local
   network and the tailnet.
-- **Joining the coordinator's network from the phone.** A phone pairs
-  with each machine. Being a member could come later; nothing here
-  stands in its way.
 - **A relay of GoRex's own.** `derper` is the relay.
 
 ## Design
@@ -110,11 +106,9 @@ protocol.
 The session server's tailcat server listens on a second port, Rex's
 API port 7297, beside `RemotePort` (7464). The allowlist is the
 server's, so an unknown key gets nothing on either port; pairing stays
-on `RemotePort`. Rex's API commands the layout, so 7297 lets in only the
-clients that may command it on `RemotePort` (`remoteMayCommand`): an
-allowed key or a network member with the sessions shared with it, by
-Share open terminals or its own switch. Sharing turned off for a client
-closes its 7297 connections, as Remove does.
+on `RemotePort`. Rex's API commands the layout, as a client may on
+`RemotePort` too, so 7297 lets in an allowed key.
+Remove closes its 7297 connections.
 
 The gateway is a separate process and keeps no tailcat of its own: one
 address per machine. It takes these connections from the session server
@@ -146,7 +140,7 @@ more than a desktop may do on `RemotePort` (sessions only, no layout).
 A desktop already has the same trust in practice (an allowed key runs
 any program as this user, README), so the line is a convention, not a
 boundary; it is drawn where a desktop may command the layout over
-`RemotePort`, with the sessions shared with it.
+`RemotePort`.
 
 The gateway runs while remote access is on, as it does while the local
 network listener or built-in Tailscale is.
@@ -157,7 +151,7 @@ Remote access picks a region of tailcat's default DERP map once, and
 keeps it (`remote.json`, `region`). It has a setting, **Relay**: default
 (tailcat's), or a host of one's own, `derp.example.com`, with `:PORT`
 when not 443, by name and not IP address, as `derper --hostname` serves
-a certificate for a name (Settings › Remote, `gorex remote relay
+a certificate for a name (Settings › Server › Show Details, `gorex remote relay
 HOST|default`, `remotectl relay HOST|default`; `remote.relaySet` on the
 local socket). Given
 one, the session server sets `Server.Region` to a region of that one
@@ -172,7 +166,7 @@ with 443/TCP and 3478/UDP open. The relay sees keys and ciphertext only.
 
 ### Pairing a phone
 
-Settings › Remote › Devices › **Rex Go QR…** shows, while remote
+Settings › Server › Devices › **Rex Go QR…** shows, while remote
 access listens, the tailcat address in a `rexgo://` code and opens the
 pairing window:
 
@@ -280,9 +274,9 @@ and without it: +0.26 MB installed, +0.11 MB compressed (gzip -9).
 
 ## Test plan
 
-- `internal/rex`: port 7297 accepts allowed keys with the sessions
-  shared only; the gateway's socket gets a stream with the right key;
-  unsharing, Remove and remote off close a phone's gateway stream; the
+- `internal/rex`: port 7297 accepts allowed keys only; the gateway's
+  socket gets a stream with the right key; Remove and remote off close a
+  phone's gateway stream; the
   relay setting puts the region in the address.
 - `internal/rexapi`: a tailcat stream's `identify`; a refused key gets
   nothing.

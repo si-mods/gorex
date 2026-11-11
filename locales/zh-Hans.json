@@ -159,8 +159,6 @@
   "settingsTerminal": "终端",
   "settingsTheme": "主题",
   "settingsKeyboard": "键盘",
-  "settingsNetwork": "网络",
-  "settingsRemote": "远程",
   "settingsAbout": "关于",
   "settingsWindow": "窗口",
   "settingsWindowHint": "“系统”会跟随系统外观，或使用主题的颜色。",
@@ -244,8 +242,6 @@
   "tailnetAvailable": "可通过 Tailscale 连接",
   "tailnetOffline": "离线",
   "remoteAllow": "允许远程客户端",
-  "remoteShare": "共享已打开的终端",
-  "remoteShareNote": "已允许的客户端可以查看并使用此设备上打开的终端。关闭时，每个客户端只能看到自己打开的终端。",
   "remoteUnreachable": "无法连接服务器",
   "remoteUnreachableHint": "GoRex 每两秒重试一次。",
   "remoteListening": "正在监听",
@@ -253,6 +249,7 @@
   "remoteErrorRetry": "{error} 服务器会重试。",
   "remoteStarting": "正在启动…",
   "remoteOff": "关闭",
+  "remoteOffNote": "打开后，可与你的其他电脑配对，让它们在这里打开终端。",
   "remoteNotConnected": "未连接到会话服务器。",
   "remoteSomethingWrong": "出现问题。",
   "remotePasteKey": "请粘贴客户端的公钥。",
@@ -265,6 +262,8 @@
   "remoteCopied": "已拷贝",
   "remoteMyKey": "本机密钥",
   "remoteMyKeyNote": "你配对的设备会显示本机的指纹，以此识别这台机器。",
+  "remoteShowDetails": "显示详情",
+  "remoteHideDetails": "隐藏详情",
   "remoteNoKey": "尚无密钥。",
   "remoteFingerprint": "指纹 {fingerprint}",
   "remotePairTitle": "配对新设备",
@@ -298,7 +297,7 @@
   "hostsNone": "尚无远程主机。",
   "hostsAdd": "添加远程主机…",
   "hostsAddTitle": "添加远程主机",
-  "hostsAddNote": "粘贴另一台机器在“设置 › 远程”中显示的地址（需在那里开启远程访问）。该地址需保密：任何持有它的人都可以请求配对。",
+  "hostsAddNote": "粘贴另一台机器在“设置 › 服务器”中显示的地址（需在那里开启远程访问）。该地址需保密：任何持有它的人都可以请求配对。",
   "hostsAddress": "地址",
   "hostsAddressPlaceholder": "主机地址",
   "hostsName": "名称",
@@ -307,7 +306,7 @@
   "hostsPairAsHint": "主机的列表中显示的本机名称。",
   "hostsEnterName": "请输入主机名称。",
   "hostsEnterAddress": "请粘贴主机地址。",
-  "hostsBadAddress": "这不是 GoRex 远程地址。请从该主机的“设置 › 远程”中拷贝。",
+  "hostsBadAddress": "这不是 GoRex 远程地址。请从该主机的“设置 › 服务器”中拷贝。",
   "hostsEnterPairName": "请输入本机名称。",
   "hostsAlreadySaved": "该远程主机已保存。",
   "hostsNameTaken": "已有同名的远程主机。",
@@ -319,10 +318,10 @@
   "hostsRetryNote": "GoRex 会自动重试。",
   "hostsUnreachable": "无法连接到该主机。请确认那里正在运行 GoRex 并已开启远程访问。",
   "hostsNotAllowed": "该主机不允许本机连接。请移除后重新添加以配对。",
-  "hostsNotPairing": "{host} 未在配对。请在那台机器上打开“设置 › 远程”并点按“配对新设备…”，然后重试。",
+  "hostsNotPairing": "{host} 未在配对。请在那台机器上打开“设置 › 服务器”并点按“配对新设备…”，然后重试。",
   "hostsWaiting": "等待批准…",
   "hostsApprove": "请在 {host} 上批准显示此指纹的请求。",
-  "hostsApproveWhere": "请求显示在“设置 › 远程 › 设备”中。只有指纹一致时才批准。",
+  "hostsApproveWhere": "请求显示在“设置 › 服务器 › 设备”中。只有指纹一致时才批准。",
   "hostsFingerprint": "指纹",
   "hostsRetry": "重试",
   "hostsRemove": "移除",
@@ -385,59 +384,6 @@
   "@spaceColorCustom": {
     "description": "Space popover: placeholder of the field that takes a custom color of the space, as #0090ff."
   },
-  "remoteNetNote": "两两配对没法扩展。协调器把远程访问变成一个网络，像 Tailscale 那样：用网络密钥加入一次，所有成员互信互见。",
-  "@remoteNetNote": {
-    "description": "Note under the title."
-  },
-  "remoteNetTurnOn": "加入网络前先打开远程访问。",
-  "@remoteNetTurnOn": {
-    "description": "Said while remote access is off."
-  },
-  "remoteNetURLLabel": "Join URL",
-  "@remoteNetURLLabel": {
-    "description": "Field label."
-  },
-  "remoteNetKeyLabel": "网络密钥",
-  "@remoteNetKeyLabel": {
-    "description": "Field label."
-  },
-  "remoteNetNameLabel": "本机加入时的名字",
-  "@remoteNetNameLabel": {
-    "description": "Field label."
-  },
-  "remoteNetKeyPlaceholder": "gcoord init 打印的密钥",
-  "@remoteNetKeyPlaceholder": {
-    "description": "Placeholder of the network key field."
-  },
-  "remoteNetJoin": "加入",
-  "remoteNetURL": "粘贴协调器打印的 join URL。",
-  "remoteNetBadURL": "Join URL 的格式是 “https://host/<fingerprint>”。",
-  "remoteNetKey": "粘贴网络密钥。",
-  "remoteNetName": "给这台机器起个名字。",
-  "remoteNetJoined": "网络：{name}",
-  "@remoteNetJoined": {
-    "description": "卡片标题：已加入的网络，name 是本机的成员名。",
-    "placeholders": {
-      "name": {}
-    }
-  },
-  "remoteNetCoordinator": "成员来自 {host} 上的协调器，随它变化。",
-  "@remoteNetCoordinator": {
-    "description": "标题下说明：host 是协调器地址。",
-    "placeholders": {
-      "host": {}
-    }
-  },
-  "remoteNetNoMembers": "还没有其他机器加入。",
-  "remoteNetKick": "移除",
-  "remoteNetLeave": "离开网络",
-  "remoteNetError": "协调器：{error}",
-  "@remoteNetError": {
-    "description": "error 是协调器最近的话。",
-    "placeholders": {
-      "error": {}
-    }
-  },
   "paneRename": "重命名窗格…",
   "@paneRename": {
     "description": "Context menu item for a pane."
@@ -493,14 +439,6 @@
   "remoteShareLayoutNote": "远程客户端可读取此窗口的标签页与分屏，并跟随变化。",
   "@remoteShareLayoutNote": {
     "description": "Remote access: share this window layout with remote clients."
-  },
-  "remoteClientShare": "所有会话",
-  "@remoteClientShare": {
-    "description": "Switch: this remote client may use all sessions."
-  },
-  "remoteClientLayout": "布局",
-  "@remoteClientLayout": {
-    "description": "Switch: this remote client may read the layout."
   },
   "hostsLayout": "布局",
   "@hostsLayout": {
@@ -582,7 +520,6 @@
       }
     }
   },
-  "remoteTailscaleTitle": "Tailscale",
   "remoteTailscaleNote": "内置 Tailscale 注册的控制服务器，例如 Headscale。改动在下次开启 Tailscale 时生效。",
   "remoteTailscaleControl": "控制服务器",
   "remoteTailscalePlaceholder": "Tailscale 官方",
@@ -591,7 +528,11 @@
   "remoteRelayPlaceholder": "tailcat 的中继",
   "remoteRelayNote": "用你自己的 DERP 服务器（填主机名，如 derp.example.com）代替 tailcat 的中继。地址中包含它，所以更改后会得到新地址；密钥不变。",
   "remoteRelayInvalid": "请输入主机名，如 derp.example.com；端口不是 443 时加 :端口；不能用 IP 地址，也不要带 https://。留空则使用 tailcat 的中继。",
-  "remoteLanTitle": "局域网上的 Rex 客户端",
+  "remoteApiTitle": "本地 API",
+  "remoteApiUrl": "本地 API 地址",
+  "remoteApiPeer": "仅本用户",
+  "remoteApiAnyone": "任何能连上的人",
+  "remoteApiNote": "Rex API 在本机接受连接的地址。内置 Tailscale 不在此列，其开关在下方。",
   "remoteLanNote": "Rex 的客户端（包括 iPhone 上的 Rex）通过普通 HTTP 连接这个地址。这里没有密码：允许的网络里任何设备都能拿到完整的 shell，键入的内容在局域网上不加密传输。请尽量只允许必要的范围，比如你手机的地址。",
   "remoteLanSwitch": "在局域网上为 Rex 客户端提供服务",
   "remoteLanListening": "正在监听 {url}",
@@ -638,9 +579,6 @@
   "remoteRexGoQRHint": "用 Rex Go 扫描此二维码，然后在“设备”中核对指纹一致后批准它的请求。二维码含有本机地址，属于机密：只给自己的设备看。",
   "remoteRexGoQRUnavailable": "远程访问还没有地址。请在它开始监听后再试。",
   "remoteAddByKeyAsk": "用公钥添加…",
-  "remoteNetGroup": "网络",
-  "remoteNetNone": "未加入网络",
-  "remoteNetJoinAsk": "加入网络…",
   "remoteLanListenOn": "监听地址",
   "cmdResetCanvasView": "重置画布视图",
   "settingsExperimental": "实验性",

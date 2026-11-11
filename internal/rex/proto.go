@@ -111,8 +111,6 @@ type Request struct {
 	// Remote is the client of remote.allow, remote.revoke,
 	// remote.approve and remote.reject, and the name of remote.pair.
 	Remote *RemoteClient `json:"remote,omitempty"`
-	// Network is the network to join, of remote.join.
-	Network *NetworkJoin `json:"network,omitempty"`
 	// TailcatAddress is the address of remote.tailcatDial: the server
 	// connects to it with its tailcat client, and relays the connection.
 	TailcatAddress string `json:"tailcatAddress,omitempty"`
@@ -136,8 +134,8 @@ type Request struct {
 	// ignores it.
 	Restart bool `json:"restart,omitempty"`
 
-	// On is the setting of remote.shareSet, remote.shareLayoutSet,
-	// remote.controlSet and remote.tailnetSet.
+	// On is the setting of remote.shareLayoutSet, remote.controlSet and
+	// remote.tailnetSet.
 	On bool `json:"on,omitempty"`
 
 	// Owner is the size lock's owner, of lockSize, lockedResize,
@@ -446,12 +444,10 @@ type ActionCall struct {
 // RemoteClient is a client allowed to connect remotely: PublicKey is its
 // tailcat node key, "nodekey:" and 64 hex digits.
 type RemoteClient struct {
-	Name          string    `json:"name"`
-	PublicKey     string    `json:"publicKey"`
-	Created       time.Time `json:"created,omitzero"`
-	LastSeen      time.Time `json:"lastSeen,omitzero"`
-	ShareSessions bool      `json:"shareSessions,omitempty"`
-	ShareLayout   bool      `json:"shareLayout,omitempty"`
+	Name      string    `json:"name"`
+	PublicKey string    `json:"publicKey"`
+	Created   time.Time `json:"created,omitzero"`
+	LastSeen  time.Time `json:"lastSeen,omitzero"`
 }
 
 // RemoteStatus answers remote.status. Address, the tailcat address
@@ -468,19 +464,13 @@ type RemoteStatus struct {
 	// Pairing is the pairing window, Pending the requests made in it.
 	Pairing RemotePairing   `json:"pairing"`
 	Pending []RemotePending `json:"pending,omitempty"`
-	// ShareSessions tells that remote clients see and use every session;
-	// off, each only those it created.
-	ShareSessions bool `json:"shareSessions"`
 	// ShareLayout tells that remote clients may read this machine's layout
 	// and subscribe to its changes.
 	ShareLayout bool `json:"shareLayout"`
 	// RemoteControl tells that remote clients may run app actions through
 	// this window.
-	RemoteControl bool `json:"remoteControl"`
-	// Network is the coordinator network this machine joined, if any;
-	// its Members are served beside Allowed.
-	Network *NetworkStatus `json:"network,omitempty"`
-	Tailnet *TailnetStatus `json:"tailnet,omitempty"`
+	RemoteControl bool           `json:"remoteControl"`
+	Tailnet       *TailnetStatus `json:"tailnet,omitempty"`
 }
 
 // RemotePairing is the pairing window: while open, a client not allowed
@@ -501,36 +491,6 @@ type RemotePending struct {
 // saw, to compare with the one the server shows.
 type PairResult struct {
 	Fingerprint string `json:"fingerprint"`
-}
-
-// NetworkJoin is the network to join, of remote.join: the join URL,
-// which pins the coordinator, the network key, and the name this
-// machine joins by. The URL and the key are secrets.
-type NetworkJoin struct {
-	URL  string `json:"url"`
-	Key  string `json:"key"`
-	Name string `json:"name"`
-}
-
-// NetworkStatus answers the network half of remote.status: the members
-// beside the allowlist, as the coordinator's directory says. The
-// coordinator is the host of the join URL, said without the URL, which
-// is a secret; so is every member's address, and the status itself
-// goes over the local socket only.
-type NetworkStatus struct {
-	Name        string          `json:"name"`
-	Coordinator string          `json:"coordinator"`
-	Members     []NetworkMember `json:"members"`
-	Revision    int             `json:"revision"`
-	LastError   string          `json:"lastError,omitempty"`
-}
-
-// NetworkMember is a member of the network, as the app opens it as a
-// host. Address is its tailcat address, a secret as the server's own.
-type NetworkMember struct {
-	Name      string `json:"name"`
-	PublicKey string `json:"publicKey"`
-	Address   string `json:"address"`
 }
 
 // Response answers the Request with the same ID.
@@ -656,10 +616,6 @@ type SessionInfo struct {
 	// when known.
 	Owner     string `json:"owner,omitempty"`
 	OwnerName string `json:"ownerName,omitempty"`
-	// OwnerShared tells that the server shares every session with Owner
-	// (mayUse): the user's own device, as the user decided by sharing.
-	// Only list says it; false from a server before it.
-	OwnerShared bool `json:"ownerShared,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
 	// said nothing.

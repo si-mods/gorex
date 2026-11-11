@@ -168,10 +168,6 @@ func shortDir(t *testing.T) string {
 // tailcat listener does.
 func serveRemote(t *testing.T, s *Server) string {
 	t.Helper()
-	// The remote client attaches to the local test sessions: the host shares them.
-	s.rem.mu.Lock()
-	s.rem.cfg.ShareSessions = true
-	s.rem.mu.Unlock()
 	sock := filepath.Join(shortDir(t), "s.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {

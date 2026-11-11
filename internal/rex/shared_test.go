@@ -300,8 +300,8 @@ func TestTrimSnapshot(t *testing.T) {
 
 // TestLayoutCommands passes the commands that need the window, actions,
 // from a client to the app that takes them, and back its answers; none
-// without the app, a timeout when it does not answer, and none from
-// remote clients.
+// without the app, a timeout when it does not answer; a remote client's
+// too.
 func TestLayoutCommands(t *testing.T) {
 	defer commandWait.set(commandWait.set(300 * time.Millisecond))
 	s, _ := testServer(t)
@@ -343,8 +343,8 @@ func TestLayoutCommands(t *testing.T) {
 	<-took
 	remote := pipe(s, "nodekey:"+strings.Repeat("0", 64))
 	defer remote.Close()
-	if _, err := remote.Command(LayoutCommand{Op: "tab.create"}); err == nil {
-		t.Error("a remote client asked for a command")
+	if res, err := remote.Command(LayoutCommand{Op: "tab.create"}); err != nil || res.Error != "" {
+		t.Errorf("a remote client's command: %+v %v", res, err)
 	}
 }
 

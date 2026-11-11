@@ -533,23 +533,16 @@ func (s *session) read() {
 // attach attaches a connection: it gets a snapshot of the session's
 // screen and scrollback, at the size the server gave the session for it
 // (resizeForAttach), then what the session prints, and what it sends is
-// typed, typed first, what the server read past the attach's line.
-// may, checked as it joins, tells whether peer may still use the session:
-// detach drops it later when it may not. via is the control connection
-// it attached through (Attach.Conn), if any; o.History, o.Framed and
-// o.Snapshot shape the snapshot.
-func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, may func() bool, typed []byte) {
+// typed, typed first, what the server read past the attach's line. via
+// is the control connection it attached through (Attach.Conn), if any;
+// o.History, o.Framed and o.Snapshot shape the snapshot.
+func (s *session) attach(conn net.Conn, peer string, o Attach, via net.Conn, typed []byte) {
 	a := &attached{conn: conn, via: via, peer: peer, since: time.Now(), out: make(chan []byte, maxQueue), remote: peer != "", client: o.Client, mute: o.Mute}
 	if o.Cols > 0 && o.Rows > 0 {
 		a.cols, a.rows = o.Cols, o.Rows
 	}
 	s.mu.Lock()
 	s.waitBatchLocked()
-	if !may() {
-		s.mu.Unlock()
-		conn.Close()
-		return
-	}
 	snap := s.snapshotLocked(o)
 	a.first = snap
 	prev := s.authorityLocked()
@@ -605,31 +598,6 @@ func (s *session) leave(a *attached) {
 		s.typist = nil
 	}
 	pty, cols, rows := s.followAuthorityLocked(prev)
-	s.mu.Unlock()
-	if pty {
-		s.resizeTerminal(cols, rows)
-	}
-}
-
-// detach drops the windows attached for a peer that drop tells.
-func (s *session) detach(drop func(peer string) bool) {
-	s.mu.Lock()
-	pty := false
-	cols, rows := 0, 0
-	for a := range s.clients {
-		if drop(a.peer) {
-			prev := s.authorityLocked()
-			a.conn.Close() // reads no more of what it types
-			a.finish()
-			delete(s.clients, a)
-			if s.typist == a {
-				s.typist = nil
-			}
-			if p, c, r := s.followAuthorityLocked(prev); p {
-				pty, cols, rows = true, c, r
-			}
-		}
-	}
 	s.mu.Unlock()
 	if pty {
 		s.resizeTerminal(cols, rows)

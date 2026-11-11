@@ -14,7 +14,7 @@ tab of that host's (see The app). The source session ends.
 
 Phase 1 teleports a pane whose foreground is a coding agent GoRex knows,
 Claude Code or omp (oh-my-pi), or a shell at its prompt, inside a Git work tree, between two hosts GoRex already
-connects to (Remote hosts: coord network or system Tailscale), from this
+connects to (paired over tailcat, or system Tailscale), from this
 machine to a host. Anything else is refused with a reason:
 
 - a pane of another host: only this machine's server packs;
@@ -64,8 +64,7 @@ the package's length.
 Limits: the package is refused past 256 MiB, and `untracked.tar` past
 64 MiB, so a stray build output does not cross the network. Secrets in
 untracked files (`.env`) travel; the data plane is WireGuard end to end
-and the target is a host the user trusts with commands already (see
-[coord.md](coord.md), Trust model).
+and the target is a host the user trusts with commands already.
 
 ## Unpacking on the target
 

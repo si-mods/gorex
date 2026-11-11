@@ -35,13 +35,10 @@ type savedHost struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	// Alias is the name the user gave the host here, "" for none: the
-	// directory and the tailnet set Name, never this.
-	Alias   string `json:"alias,omitempty"`
-	Address string `json:"address"`
-	// Network marks a host the coordinator's directory made: it comes
-	// and goes with that directory, not by hand.
-	Network       bool `json:"network,omitempty"`
-	TailnetOpened bool `json:"tailnetOpened,omitempty"`
+	// tailnet sets Name, never this.
+	Alias         string `json:"alias,omitempty"`
+	Address       string `json:"address"`
+	TailnetOpened bool   `json:"tailnetOpened,omitempty"`
 	// Machine is the machine the host is (rex.Hello.Machine), as it said
 	// when it last connected: the Rex API names the host's panes by it,
 	// for a phone that connects to that machine too.
@@ -81,7 +78,11 @@ func loadHosts() ([]savedHost, error) {
 		os.Chmod(bad, 0o600)
 		return nil, fmt.Errorf("gorex: hosts.json is not valid: moved aside to %s", filepath.Base(bad))
 	}
-	return slices.DeleteFunc(f.Hosts, func(h savedHost) bool { return h.ID == "" || h.Address == "" }), nil
+	// A host a coordinator network brought ("net:" and its key) went with
+	// the networks: no machine admits it as a member any more.
+	return slices.DeleteFunc(f.Hosts, func(h savedHost) bool {
+		return h.ID == "" || h.Address == "" || strings.HasPrefix(h.ID, "net:")
+	}), nil
 }
 
 // saveHosts writes the hosts, readable by the user only, atomically. It
@@ -333,8 +334,7 @@ func (h *hostConn) runKills(c *rex.Client) {
 	h.mu.Unlock()
 	var done []string
 	for _, sid := range kills {
-		// A session the host does not share is not this machine's to end: forget it.
-		if err := c.Kill(sid); err == nil || rex.NotShared(err) {
+		if err := c.Kill(sid); err == nil {
 			done = append(done, sid)
 		}
 	}
@@ -1230,48 +1230,6 @@ func (a *App) removeHost(h *hostConn) {
 	a.syncHosts()
 	h.close()
 	a.saveHosts()
-}
-
-// networkHostID is the ID of a host the network makes of a member, so
-// that it is the same one in every file and every window.
-func networkHostID(publicKey string) string { return "net:" + publicKey }
-
-// reconcileNetwork mirrors the members of the network this machine
-// joined into hosts: each member becomes a host of its own, and a member
-// gone goes, its tabs with it. Hosts added by hand stay. It runs on the
-// UI thread.
-func (a *App) reconcileNetwork(n *rex.NetworkStatus) {
-	for _, m := range n.Members {
-		id := networkHostID(m.PublicKey)
-		alias := ""
-		if h := a.hostByID(id); h != nil {
-			if h.Address == m.Address && h.Name == m.Name {
-				continue
-			}
-			if h.Address != m.Address {
-				// A member that regenerated its address: a fresh
-				// connection, so remove and add again below, with
-				// the alias it was given.
-				alias = h.Alias
-				a.removeHost(h)
-			} else {
-				h.Name = m.Name
-				a.saveHosts()
-				continue
-			}
-		}
-		a.addHost(savedHost{ID: id, Name: m.Name, Alias: alias, Address: m.Address, Network: true})
-	}
-	for _, h := range slices.Clone(a.hosts) {
-		if !h.Network {
-			continue
-		}
-		if !slices.ContainsFunc(n.Members, func(m rex.NetworkMember) bool {
-			return networkHostID(m.PublicKey) == h.ID
-		}) {
-			a.removeHost(h)
-		}
-	}
 }
 
 // reconcileTailnet adds proven GoRex hosts without opening terminals. A

@@ -10,7 +10,6 @@ import (
 	"github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 
-	"gorex/internal/coordproto"
 	"gorex/internal/rex"
 	"gorex/internal/rexapi"
 	"gorex/internal/tailnode"
@@ -18,7 +17,9 @@ import (
 )
 
 // The Remote page of the settings window: the server's remote access, as
-// the server tells it. Every call to the server runs off the UI thread.
+// the server tells it, inbound only; the hosts this machine connects to
+// have a page of their own.
+// Every call to the server runs off the UI thread.
 
 // remoteUI is the page's state; the main thread owns it.
 var remoteUI struct {
@@ -37,10 +38,6 @@ var remoteUI struct {
 	copied    string // what was copied just now
 	name, key string // the client to add
 	addErr    bool   // the client to add is not valid: its reason shows
-	// The network to join, as typed: its URL, key and the name this
-	// machine joins by.
-	netURL, netKey, netName string
-	netErr                  bool // what was typed does not read
 	// lan is the gateway's listener on the local network, as its files
 	// say (rexapi.LoadLAN, LoadLANStatus); lanListen and lanAdd are what
 	// is typed in its fields, and lanErr what was wrong with the last.
@@ -63,9 +60,11 @@ var remoteUI struct {
 	relay       string
 	relayEdited bool
 	relayErr    string
-	// addingKey and joining show the forms that add a client by its key
-	// and join a network, in place of the buttons that open them.
-	addingKey, joining bool
+	// addingKey shows the form that adds a client by its key, in place
+	// of the button that opens it.
+	addingKey bool
+	// details shows this machine's key and address under the devices.
+	details bool
 }
 
 // showSection chooses a settings section and refreshes its Rex listener
@@ -80,14 +79,11 @@ func (a *App) showSection(id string) {
 	stopRemotePoll()
 	hostsPairQR = nil
 	settingsUI.section = id
-	if id == "remote" || id == "network" {
+	stopServerInfoPoll()
+	if id == "server" {
 		fetchLAN()
 		a.startRemotePoll()
-	}
-	if id == "server" {
 		startServerInfoPoll()
-	} else {
-		stopServerInfoPoll()
 	}
 }
 
@@ -98,8 +94,7 @@ func stopRemotePoll() {
 	page := &remoteUI
 	page.stop, page.st, page.loaded, page.busy = nil, rex.RemoteStatus{}, false, false
 	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, nil, false, "", ""
-	page.netURL, page.netKey, page.netName, page.netErr = "", "", "", false
-	page.addingKey, page.joining = false, false
+	page.addingKey, page.details = false, false
 	page.focusLAN = false
 	page.ts, page.tsURL, page.tsEdited, page.tsErr = rexapi.TailscaleConfig{}, "", false, ""
 	page.relay, page.relayEdited, page.relayErr = "", false, ""
@@ -196,62 +191,111 @@ func saveLAN(c rexapi.LANConfig) bool {
 	return true
 }
 
-// remoteLAN is the group of Rex's apps on the local network: the switch,
-// its state, the address and the networks let in.
-func (a *App) remoteLAN(c *ui.Context, k *colors) {
+// localAPI is the server page's group of Rex's Local API: the gateway's
+// revisions and version, the primary endpoint's URL to copy, each other
+// listener's address and whom it lets in, then the listener of Rex's apps on the local network with its
+// controls, which shows off too and is not listed again among the others.
+func (a *App) localAPI(c *ui.Context, k *colors) {
+	info, lan := settingsUI.apiInfo, remoteUI.lan
+	settingsGroup(c, k, locales.RemoteApiTitle(), "", locales.RemoteApiNote(), func() {
+		if settingsUI.apiErr != "" {
+			apiRow(c, k, locales.RemoteApiUrl(), false, func() {
+				ui.Text(c, locales.HostApiOff()).FontSize(11.5).TextColor(k.textFaint)
+			}, nil)
+		} else if settingsUI.apiLoaded {
+			factRow(c, k, locales.HostApiTitle(), locales.HostApiRevisions(info.APIRevision, info.ServerRevision, info.MinRevision))
+			factRow(c, k, locales.HostApiVersion(), info.RexVersion)
+		}
+		for _, l := range info.Listeners {
+			if lanListener(l, lan) {
+				continue
+			}
+			if l.Primary {
+				apiRow(c, k, locales.RemoteApiUrl(), false, func() {
+					ui.Text(c, l.Endpoint).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…").
+						Tooltip(l.Endpoint).Selectable()
+				}, func() {
+					if iconButton(c.Key("copy-api"), k, "copy", copyLabel("api"), 26, 15).Tooltip(copyLabel("api")).Clicked() {
+						copyText("api", l.Endpoint)
+					}
+				})
+				continue
+			}
+			addr := l.Endpoint
+			if len(l.Addresses) > 0 {
+				addr = l.Addresses[0]
+			}
+			label, open := admissionLabel(l)
+			apiRow(c, k, addr, true, func() {
+				switch {
+				case open:
+					statusLine(c, k, k.attention, label)
+				case label != "":
+					ui.Text(c, label).FontSize(11.5).TextColor(k.textFaint)
+				}
+			}, nil)
+		}
+		a.lanRow(c, k)
+	})
+}
+
+// lanRow is the Local API group's row of Rex's apps on the local network:
+// the switch and its state, the address it listens on and the networks
+// let in.
+func (a *App) lanRow(c *ui.Context, k *colors) {
 	page := &remoteUI
 	conf, st := page.lan, page.lanStatus
-	settingsGroup(c, k, locales.RemoteLanTitle(), "", locales.RemoteLanNote(), func() {
-		label, dot := locales.RemoteLanOff(), k.exited
-		switch {
-		case conf.Enabled && st.Error != "":
-			label, dot = locales.RemoteLanError(st.Error), k.danger
-		case conf.Enabled && st.Listening != "":
-			label, dot = locales.RemoteLanListening("http://"+st.Listening), k.busy
-		case conf.Enabled:
-			label, dot = locales.RemoteLanWaiting(), k.attention
-		}
-		on := conf.Enabled
-		status := groupRow(c, k, nil)
-		if page.focusLAN {
-			page.focusLAN = false
-			status.ScrollIntoView()
-		}
-		status.Children(func() {
-			tileLine(c, k, "app-window", locales.RemoteLanSwitch(), func() {
-				statusLine(c, k, dot, label).Selectable()
-			}, func() {
-				if ui.Switch(c.Key("lan"), &on).Label(locales.RemoteLanSwitch()).Changed() {
-					next := conf
-					next.Enabled = on
-					if on {
-						next = next.WithDefaults()
-						if next.Listen == "" {
-							page.lanErr = locales.RemoteLanNoAddress()
-							return
-						}
-						page.lanListen, page.lanEdited = next.Listen, false
+	label, dot := locales.RemoteLanOff(), k.exited
+	switch {
+	case conf.Enabled && st.Error != "":
+		label, dot = locales.RemoteLanError(st.Error), k.danger
+	case conf.Enabled && st.Listening != "":
+		label, dot = locales.RemoteLanListening("http://"+st.Listening), k.busy
+	case conf.Enabled:
+		label, dot = locales.RemoteLanWaiting(), k.attention
+	}
+	on := conf.Enabled
+	row := groupRow(c, k, "lan").Gap(10)
+	if page.focusLAN {
+		page.focusLAN = false
+		row.ScrollIntoView()
+	}
+	row.Children(func() {
+		apiLine(c, k, locales.RemoteLanSwitch(), false, func() {
+			statusLine(c, k, dot, label).Selectable()
+		}, func() {
+			if ui.Switch(c.Key("lan"), &on).Label(locales.RemoteLanSwitch()).Changed() {
+				next := conf
+				next.Enabled = on
+				if on {
+					next = next.WithDefaults()
+					if next.Listen == "" {
+						page.lanErr = locales.RemoteLanNoAddress()
+						return
 					}
-					saveLAN(next)
+					page.lanListen, page.lanEdited = next.Listen, false
 				}
-			})
-			// Not in a dimmed row: its color is its meaning.
-			if page.lanErr != "" {
-				rowError(c, k, page.lanErr)
+				saveLAN(next)
 			}
-			if tailnet, lan := localRexPairs(); tailnet != "" || lan != "" {
+		})
+		// Not dimmed: its color is its meaning.
+		if page.lanErr != "" {
+			rowError(c, k, page.lanErr)
+		}
+		if tailnet, lan := localRexPairs(); tailnet != "" || lan != "" {
+			ui.Row(c).Children(func() {
 				if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
 					a.openLocalPairQR()
 				}
-			} else if conf.Enabled && st.Running && st.Error == "" && st.Listening != "" && len(conf.Allow) != 0 {
-				rowHint(c, k, locales.RemoteLanPairAddress())
-			}
-		})
-		listen := groupRow(c, k, nil)
-		if !conf.Enabled {
-			dimmed(listen, 0.5)
+			})
+		} else if conf.Enabled && st.Running && st.Error == "" && st.Listening != "" && len(conf.Allow) != 0 {
+			rowHint(c, k, locales.RemoteLanPairAddress())
 		}
-		listen.Children(func() {
+		more := ui.Column(c).Gap(10)
+		if !conf.Enabled {
+			dimmed(more, 0.5)
+		}
+		more.Children(func() {
 			rowLine(c, k, locales.RemoteLanListenOn(), func() {
 				if ui.TextInput(c.Key("lan-listen"), &page.lanListen).Placeholder("192.168.1.20:7297").
 					Label(locales.RemoteLanAddress()).Font(monoFamily()).Width(200).Changed() {
@@ -265,12 +309,6 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 					}
 				}
 			})
-		})
-		nets := groupRow(c, k, nil).Gap(8)
-		if !conf.Enabled {
-			dimmed(nets, 0.5)
-		}
-		nets.Children(func() {
 			ui.Text(c, locales.RemoteLanNetworks()).FontSize(13).FontWeight(500).TextColor(k.text)
 			if len(conf.Allow) == 0 {
 				rowHint(c, k, locales.RemoteLanNoNetworks())
@@ -303,7 +341,49 @@ func (a *App) remoteLAN(c *ui.Context, k *colors) {
 				}
 			})
 		})
+		rowHint(c, k, locales.RemoteLanNote())
 	})
+}
+
+// apiRow is a row of the Local API group: its line, as apiLine draws it.
+func apiRow(c *ui.Context, k *colors, title string, mono bool, under, control func()) {
+	groupRow(c, k, title).Children(func() { apiLine(c, k, title, mono, under, control) })
+}
+
+// apiLine is a Local API row's first line: its title, in the terminal's
+// font when mono, what under shows below it, and control at the right.
+func apiLine(c *ui.Context, k *colors, title string, mono bool, under, control func()) {
+	ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
+		ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+			t := ui.Text(c, title).FontSize(13).FontWeight(500).TextColor(k.text).SingleLine().Ellipsis("…")
+			if mono {
+				t.Font(monoFamily()).Selectable()
+			}
+			under()
+		})
+		if control != nil {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(control)
+		}
+	})
+}
+
+// lanListener is that l is the local network's listener, which lanRow
+// shows. An anonymous one at its address while it is off is --listen's.
+func lanListener(l rexapi.Listener, lan rexapi.LANConfig) bool {
+	return l.Transport == "tcp" && l.Admission == rexapi.AdmissionAnonymous && lan.Enabled && l.Endpoint == lan.Listen
+}
+
+// admissionLabel says whom a listener lets in, "" when the gateway does
+// not say, and a value it does not know as it is. open is an anonymous
+// TCP listener: one that lets in anyone who reaches it.
+func admissionLabel(l rexapi.Listener) (label string, open bool) {
+	switch l.Admission {
+	case rexapi.AdmissionPeer:
+		return locales.RemoteApiPeer(), false
+	case rexapi.AdmissionAnonymous:
+		return locales.RemoteApiAnyone(), l.Transport == "tcp"
+	}
+	return l.Admission, false
 }
 
 // fetchRemote asks the server for its status; the address comes only
@@ -528,14 +608,10 @@ func tileLine(c *ui.Context, k *colors, glyph, title string, under, control func
 }
 
 // remoteSwitch is a row of the Remote page's first group: a switch of the
-// server's, its title, and its hint under them; dim shows it inactive.
-func remoteSwitch(c *ui.Context, k *colors, key, title, hint string, on *bool, disabled, dim bool) bool {
+// server's, its title, and its hint under them.
+func remoteSwitch(c *ui.Context, k *colors, key, title, hint string, on *bool, disabled bool) bool {
 	changed := false
-	row := groupRow(c, k, nil)
-	if dim {
-		dimmed(row, 0.5)
-	}
-	row.Children(func() {
+	groupRow(c, k, nil).Children(func() {
 		rowLine(c, k, title, func() {
 			changed = ui.Switch(c.Key(key), on).Label(title).Disabled(disabled).Changed()
 		})
@@ -552,78 +628,69 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 			label, _, _ = remoteState(rex.RemoteStatus{}, true)
 		}
 		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
-	} else {
-		st := page.st
-		a.remoteHeader(c, k, st)
-		a.remoteDevices(c, k, st)
-		a.remoteThisMachine(c, k, st)
-		a.remoteLAN(c, k)
+		// The control server is the gateway's file, not the server's: it
+		// can be set, a bad one fixed, while the server does not answer.
+		settingsGroup(c, k, "", "", "", func() { a.remoteControlServer(c, k) })
+		return
 	}
-	// The hosts this machine connects to sit under what it serves: one
-	// page, the two directions of the same remote access.
-	a.hostsSettings(c, k)
+	a.remoteHeader(c, k, page.st)
+	a.remoteDevices(c, k, page.st)
 }
 
-// networkSettings is the Network page: the coordinator network this
-// machine joins, and built-in Tailscale's control server, which the
-// remote access and Rex share.
-func (a *App) networkSettings(c *ui.Context, k *colors) {
-	page := &remoteUI
-	if !page.loaded {
-		label := locales.RemoteAsking()
-		if page.unreachable {
-			label, _, _ = remoteState(rex.RemoteStatus{}, true)
-		}
-		ui.Text(c, label).FontSize(12.5).TextColor(k.textFaint).Padding(0, 0, 0, 14)
-	} else {
-		a.remoteNetwork(c, k, page.st)
-	}
-	a.remoteTailscale(c, k)
+// remoteServes is that remote clients can reach this machine: Tailcat's
+// remote access is on, or Tailscale's discovery runs. Off, the Remote
+// page shows its switches alone.
+func remoteServes(st rex.RemoteStatus) bool {
+	return st.Enabled || st.Tailnet != nil && st.Tailnet.Running
 }
 
-// remoteTailscale is the group of built-in Tailscale's control server:
-// the field that sets it, saved to the gateway's settings.
-func (a *App) remoteTailscale(c *ui.Context, k *colors) {
+// remoteControlServer is the row of built-in Tailscale's control server,
+// under its switch: the field that sets it, saved to the gateway's
+// settings, as the Tailscale the switch turns on registers with it.
+func (a *App) remoteControlServer(c *ui.Context, k *colors) {
 	page := &remoteUI
 	conf := page.ts
-	settingsGroup(c, k, locales.RemoteTailscaleTitle(), "", locales.RemoteTailscaleNote(), func() {
-		groupRow(c, k, nil).Children(func() {
-			rowLine(c, k, locales.RemoteTailscaleControl(), func() {
-				if ui.TextInput(c.Key("ts-url"), &page.tsURL).Placeholder(locales.RemoteTailscalePlaceholder()).
-					Label(locales.RemoteTailscaleControl()).Font(monoFamily()).Width(260).Changed() {
-					page.tsEdited, page.tsErr = true, ""
+	groupRow(c, k, nil).Children(func() {
+		rowLine(c, k, locales.RemoteTailscaleControl(), func() {
+			if ui.TextInput(c.Key("ts-url"), &page.tsURL).Placeholder(locales.RemoteTailscalePlaceholder()).
+				Label(locales.RemoteTailscaleControl()).Font(monoFamily()).Width(260).Changed() {
+				page.tsEdited, page.tsErr = true, ""
+			}
+			if ui.Button(c.Key("ts-save"), locales.RemoteLanSave()).Disabled(!page.tsEdited).Clicked() {
+				url := strings.TrimSpace(page.tsURL)
+				if url != "" && !tailnode.ValidControlURL(url) {
+					page.tsErr = locales.RemoteTailscaleInvalid()
+					return
 				}
-				if ui.Button(c.Key("ts-save"), locales.RemoteLanSave()).Disabled(!page.tsEdited).Clicked() {
-					url := strings.TrimSpace(page.tsURL)
-					if url != "" && !tailnode.ValidControlURL(url) {
-						page.tsErr = locales.RemoteTailscaleInvalid()
-						return
-					}
-					next := conf
-					next.ControlURL = url
-					if err := rexapi.SaveTailscale(rexapi.TailnetDir(), next); err != nil {
-						page.tsErr = err.Error()
-						return
-					}
-					page.ts, page.tsErr, page.tsEdited = next, "", false
+				next := conf
+				next.ControlURL = url
+				if err := rexapi.SaveTailscale(rexapi.TailnetDir(), next); err != nil {
+					page.tsErr = err.Error()
+					return
 				}
-			})
-			// A saved control server this version refuses, such as a
-			// cleartext one from before it, keeps the device off.
-			if page.tsErr != "" {
-				rowError(c, k, page.tsErr)
-			} else if !page.tsEdited && conf.ControlURL != "" && !tailnode.ValidControlURL(conf.ControlURL) {
-				rowError(c, k, locales.RemoteTailscaleInvalid())
+				page.ts, page.tsErr, page.tsEdited = next, "", false
 			}
 		})
+		rowHint(c, k, locales.RemoteTailscaleNote())
+		// A saved control server this version refuses, such as a
+		// cleartext one from before it, keeps the device off.
+		if page.tsErr != "" {
+			rowError(c, k, page.tsErr)
+		} else if !page.tsEdited && conf.ControlURL != "" && !tailnode.ValidControlURL(conf.ControlURL) {
+			rowError(c, k, locales.RemoteTailscaleInvalid())
+		}
 	})
 }
 
 // remoteHeader is the Remote page's first group: remote access, its
-// state and its switch, and what the clients share.
+// state and its switch, Tailscale's discovery, and, while either serves,
+// what the clients share.
 func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	label, detail, kind := remoteState(st, page.unreachable)
+	if kind == remoteOff {
+		detail = locales.RemoteOffNote()
+	}
 	dot := map[remoteKind]ui.Color{
 		remoteOff: k.exited, remoteStarting: k.attention, remoteListening: k.busy, remoteError: k.danger, remoteDown: k.danger,
 	}[kind]
@@ -655,7 +722,7 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		})
 		if st.Tailnet != nil {
 			tailnet := st.Tailnet.Enabled
-			if remoteSwitch(c, k, "system-tailscale", locales.TailnetMode(), locales.TailnetModeNote(), &tailnet, page.unreachable || page.busy, false) {
+			if remoteSwitch(c, k, "system-tailscale", locales.TailnetMode(), locales.TailnetModeNote(), &tailnet, page.unreachable || page.busy) {
 				a.remoteDo(func(srv *rex.Client) error { return srv.SetTailnet(tailnet) }, nil)
 			}
 			if st.Tailnet.Enabled && !st.Tailnet.Running {
@@ -666,14 +733,13 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				groupRow(c, k, nil).Children(func() { rowHint(c, k, hint) })
 			}
 		}
-		// Whether remote clients see the sessions open here.
-		share := st.ShareSessions
-		if remoteSwitch(c, k, "share", locales.RemoteShare(), locales.RemoteShareNote(), &share, page.unreachable || page.busy, !st.Enabled && (st.Tailnet == nil || !st.Tailnet.Running)) {
-			a.remoteDo(func(srv *rex.Client) error { return srv.ShareSessions(share) }, nil)
+		a.remoteControlServer(c, k)
+		if !remoteServes(st) {
+			return
 		}
 		// Whether remote clients read the layout and follow it.
 		layoutShare := st.ShareLayout
-		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy, !st.Enabled && (st.Tailnet == nil || !st.Tailnet.Running)) {
+		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy) {
 			a.remoteDo(func(srv *rex.Client) error { return srv.ShareLayout(layoutShare) }, nil)
 		}
 	})
@@ -686,10 +752,19 @@ func pairingLeft(until, now time.Time) string {
 }
 
 // remoteDevices is the group of the devices: the pairing window and the
-// requests made in it to approve or reject, the clients allowed, and the
-// buttons that pair a new device or add one by its key.
+// requests made in it to approve or reject, the clients allowed, the
+// buttons that pair a new device or add one by its key, and this
+// machine's details. While remote access serves no one, only requests
+// still waiting show.
 func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
+	on := remoteServes(st)
+	if !on && len(st.Pending) == 0 {
+		// Off, this machine's key, relay and Rex's code stay at hand, for
+		// the other way: this machine connecting to hosts.
+		settingsGroup(c, k, "", "", "", func() { a.remoteDetails(c, k, st) })
+		return
+	}
 	settingsGroup(c, k, locales.RemoteDevices(), locales.RemoteClientsNote(), locales.RemotePairNote(), func() {
 		if st.Enabled && st.Pairing.Open {
 			groupRow(c, k, nil).Children(func() {
@@ -720,6 +795,9 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				})
 			})
 		}
+		if !on {
+			return
+		}
 		if len(st.Allowed) == 0 {
 			groupRow(c, k, nil).Children(func() {
 				ui.Text(c, locales.RemoteNoClients()).FontSize(13).TextColor(k.textFaint)
@@ -742,50 +820,35 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 						a.remoteDo(func(srv *rex.Client) error { return srv.RevokeRemote(client.PublicKey) }, nil)
 					}
 				})
-				// The client's shares, on a line of their own under its name,
-				// so that a narrow window keeps the name.
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(4, 0, 0, 42).Children(func() {
-					ui.Text(c, locales.RemoteClientShare()).FontSize(12).TextColor(k.textMuted).Shrink(0)
-					share := client.ShareSessions
-					sw := ui.Switch(c.Key("s"), &share).Label(locales.RemoteClientShare()).Disabled(page.busy)
-					if sw.Changed() {
-						a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientSessions(client.PublicKey, share) }, nil)
-					}
-					ui.Text(c, locales.RemoteClientLayout()).FontSize(12).TextColor(k.textMuted).Shrink(0).Margin(0, 0, 0, 6)
-					layoutShare := client.ShareLayout
-					lsw := ui.Switch(c.Key("l"), &layoutShare).Label(locales.RemoteClientLayout()).Disabled(page.busy)
-					if lsw.Changed() {
-						a.remoteDo(func(srv *rex.Client) error { return srv.ShareClientLayout(client.PublicKey, layoutShare) }, nil)
-					}
-				})
 			})
 		}
 		if page.addingKey {
 			a.addByKey(c, k, st)
-			return
-		}
-		groupRow(c, k, nil).Children(func() {
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				if !st.Enabled {
-					ui.Text(c, locales.RemotePairTurnOn()).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0)
-				} else {
-					ui.Spacer(c)
-				}
-				if ui.Button(c.Key("add-key"), locales.RemoteAddByKeyAsk()).Clicked() {
-					page.addingKey = true
-				}
-				// Rex Go pairs by a code of the address, which opens the
-				// window too.
-				if st.Running && ui.Button(c.Key("rexgo-qr"), locales.RemoteRexGoQR()).Disabled(page.busy).Clicked() {
-					a.openRexGoQR()
-				}
-				if st.Enabled && !st.Pairing.Open {
-					if ui.PrimaryButton(c.Key("pair-start"), locales.RemotePairNew()).Disabled(page.busy).Clicked() {
-						a.remoteDo((*rex.Client).StartPairing, nil)
+		} else {
+			groupRow(c, k, nil).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					if !st.Enabled {
+						ui.Text(c, locales.RemotePairTurnOn()).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0)
+					} else {
+						ui.Spacer(c)
 					}
-				}
+					if ui.Button(c.Key("add-key"), locales.RemoteAddByKeyAsk()).Clicked() {
+						page.addingKey = true
+					}
+					// Rex Go pairs by a code of the address, which opens the
+					// window too.
+					if st.Running && ui.Button(c.Key("rexgo-qr"), locales.RemoteRexGoQR()).Disabled(page.busy).Clicked() {
+						a.openRexGoQR()
+					}
+					if st.Enabled && !st.Pairing.Open {
+						if ui.PrimaryButton(c.Key("pair-start"), locales.RemotePairNew()).Disabled(page.busy).Clicked() {
+							a.remoteDo((*rex.Client).StartPairing, nil)
+						}
+					}
+				})
 			})
-		})
+		}
+		a.remoteDetails(c, k, st)
 	})
 }
 
@@ -819,50 +882,68 @@ func (a *App) addByKey(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	})
 }
 
-// remoteThisMachine is the group of this machine: the address remote
-// clients connect to, while the server listens, and its key.
-func (a *App) remoteThisMachine(c *ui.Context, k *colors, st rex.RemoteStatus) {
+// remoteDetails is the Devices group's last row, as Rex's Show Details:
+// opened, this machine's address, while the server listens, and its key,
+// which a device to pair with asks for. Closing it hides the address.
+func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
-	foot := ""
-	if st.Running {
-		foot = locales.RemoteAddressNote()
+	label := locales.RemoteShowDetails()
+	if page.details {
+		label = locales.RemoteHideDetails()
 	}
-	settingsGroup(c, k, thisMachine(), "", foot, func() {
-		if st.Running {
-			a.remoteAddress(c, k)
-		}
-		a.remoteRelay(c, k)
-		groupRow(c, k, nil).Children(func() {
-			ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-				ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
-					ui.Text(c, locales.RemoteMyKey()).FontSize(13).FontWeight(500).TextColor(k.text)
-					if page.myKey == "" {
-						ui.Text(c, locales.RemoteNoKey()).FontSize(11.5).TextColor(k.textFaint)
-						return
-					}
-					if fp := rex.Fingerprint(page.myKey); fp != "" {
-						ui.Text(c, locales.RemoteFingerprint(fp)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted)
-					}
-					ui.Text(c, page.myKey).Font(monoFamily()).FontSize(10.5).TextColor(k.textFaint).LineHeight(1.4).Selectable()
-				})
-				ui.Row(c).Gap(8).Shrink(0).Children(func() {
-					// Rex pairs by this machine's QR code, from the key
-					// above; until remote access serves, the way to set it up
-					// is the local network group below.
-					if tailnet, lan := localRexPairs(); tailnet != "" || lan != "" {
-						if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
-							a.openLocalPairQR()
-						}
-					} else if ui.Button(c.Key("setup-rex"), locales.HostsSetUpRex()).Clicked() {
-						remoteUI.focusLAN = true
-					}
-					if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
-						copyText("mine", page.myKey)
-					}
-				})
-			})
-			rowHint(c, k, locales.RemoteMyKeyNote())
+	row := groupRow(c, k, "details").Cursor(ui.CursorPointer).Role(ui.RoleDisclosure).Expanded(page.details).Label(label)
+	if row.Clicked() {
+		page.details = !page.details
+		page.reveal, page.confirm, page.st.Address = false, false, ""
+	}
+	row.Children(func() {
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.accent)
+			chevron := glyphIcon(c.Key("chevron"), "chevron-down", 11, k.accent).Shrink(0)
+			turn := float32(-90)
+			if page.details {
+				turn = 0
+			}
+			chevron.Rotate(animated(c, chevron, "fold", turn))
 		})
+	})
+	if !page.details {
+		return
+	}
+	if st.Running {
+		a.remoteAddress(c, k)
+	}
+	a.remoteRelay(c, k)
+	groupRow(c, k, nil).Children(func() {
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
+				ui.Text(c, locales.RemoteMyKey()).FontSize(13).FontWeight(500).TextColor(k.text)
+				if page.myKey == "" {
+					ui.Text(c, locales.RemoteNoKey()).FontSize(11.5).TextColor(k.textFaint)
+					return
+				}
+				if fp := rex.Fingerprint(page.myKey); fp != "" {
+					ui.Text(c, locales.RemoteFingerprint(fp)).Font(monoFamily()).FontSize(12).TextColor(k.textMuted)
+				}
+				ui.Text(c, page.myKey).Font(monoFamily()).FontSize(10.5).TextColor(k.textFaint).LineHeight(1.4).Selectable()
+			})
+			ui.Row(c).Gap(8).Shrink(0).Children(func() {
+				// Rex pairs by this machine's QR code; until an address
+				// serves it, the way to set it up is the local network's
+				// listener, in the Local API group above.
+				if tailnet, lan := localRexPairs(); tailnet != "" || lan != "" {
+					if ui.Button(c.Key("local-rex-qr"), locales.HostsRexQR()).Clicked() {
+						a.openLocalPairQR()
+					}
+				} else if ui.Button(c.Key("setup-rex"), locales.HostsSetUpRex()).Clicked() {
+					remoteUI.focusLAN = true
+				}
+				if ui.Button(c.Key("copy-mine"), copyLabel("mine")).Disabled(page.myKey == "").Clicked() {
+					copyText("mine", page.myKey)
+				}
+			})
+		})
+		rowHint(c, k, locales.RemoteMyKeyNote())
 	})
 }
 
@@ -901,6 +982,7 @@ func (a *App) remoteAddress(c *ui.Context, k *colors) {
 			})
 		})
 		if !page.confirm {
+			rowHint(c, k, locales.RemoteAddressNote())
 			return
 		}
 		ui.Text(c, locales.RemoteRegenerateNote()).
@@ -966,123 +1048,4 @@ func (a *App) saveRelay(relay string) {
 	if !started {
 		page.busy, page.relayErr = false, locales.RemoteNotConnected()
 	}
-}
-
-// validateNetwork returns what is wrong with a network to join, "" if
-// nothing: the join URL reads, the key and the name are there.
-func validateNetwork(url, key, name string) string {
-	if strings.TrimSpace(url) == "" {
-		return locales.RemoteNetURL()
-	}
-	if _, _, err := coordproto.SplitJoinURL(url); err != nil {
-		return locales.RemoteNetBadURL()
-	}
-	if strings.TrimSpace(key) == "" {
-		return locales.RemoteNetKey()
-	}
-	if strings.TrimSpace(name) == "" {
-		return locales.RemoteNetName()
-	}
-	return ""
-}
-
-// remoteNetwork is the group of the coordinator network: the network
-// joined and its members, or the button that shows the fields to join
-// one.
-func (a *App) remoteNetwork(c *ui.Context, k *colors, st rex.RemoteStatus) {
-	page := &remoteUI
-	settingsGroup(c, k, locales.RemoteNetGroup(), "", locales.RemoteNetNote(), func() {
-		if st.Network == nil {
-			if st.Enabled && page.joining {
-				a.joinNetwork(c, k)
-				return
-			}
-			groupRow(c, k, nil).Children(func() {
-				var under, control func()
-				if !st.Enabled {
-					under = func() { ui.Text(c, locales.RemoteNetTurnOn()).FontSize(11.5).TextColor(k.textFaint).LineHeight(1.4) }
-				} else {
-					control = func() {
-						if ui.Button(c.Key("netjoin-ask"), locales.RemoteNetJoinAsk()).Clicked() {
-							page.joining = true
-						}
-					}
-				}
-				tileLine(c, k, "globe", locales.RemoteNetNone(), under, control)
-			})
-			return
-		}
-		net := st.Network
-		groupRow(c, k, nil).Children(func() {
-			tileLine(c, k, "globe", locales.RemoteNetJoined(net.Name), func() {
-				ui.Text(c, locales.RemoteNetCoordinator(net.Coordinator)).FontSize(11.5).TextColor(k.textFaint).SingleLine().Ellipsis("…")
-			}, func() {
-				if ui.Button(c.Key("netleave"), locales.RemoteNetLeave()).Disabled(page.busy).Clicked() {
-					a.remoteDo((*rex.Client).LeaveNetwork, nil)
-				}
-			})
-			if net.LastError != "" {
-				rowError(c, k, locales.RemoteNetError(net.LastError))
-			}
-		})
-		if len(net.Members) == 0 {
-			groupRow(c, k, nil).Children(func() {
-				ui.Text(c, locales.RemoteNetNoMembers()).FontSize(13).TextColor(k.textFaint)
-			})
-		}
-		for _, m := range net.Members {
-			groupRow(c, k, m.PublicKey).Children(func() {
-				tileLine(c, k, "laptop", m.Name, func() {
-					ui.Text(c, rex.Fingerprint(m.PublicKey)).Font(monoFamily()).FontSize(11.5).TextColor(k.textMuted).SingleLine().
-						Ellipsis("…").Tooltip(m.PublicKey)
-				}, func() {
-					if ui.Button(c.Key("r"), locales.RemoteNetKick()).Disabled(page.busy).Clicked() {
-						a.remoteDo(func(srv *rex.Client) error { return srv.KickNetworkMember(m.Name, m.PublicKey) }, nil)
-					}
-				})
-			})
-		}
-	})
-}
-
-// joinNetwork is the row of the fields to join a network: its URL, its key
-// and this machine's name in it, Join, and Cancel, which hides them.
-func (a *App) joinNetwork(c *ui.Context, k *colors) {
-	page := &remoteUI
-	groupRow(c, k, nil).Gap(8).Children(func() {
-		if page.netName == "" {
-			page.netName = a.localName()
-		}
-		if ti := ui.TextInput(c.Key("neturl"), &page.netURL).Placeholder("https://host/0123456789abcdef").
-			Label(locales.RemoteNetURLLabel()); ti.Changed() {
-			page.netErr = false
-		}
-		if ti := ui.TextInput(c.Key("netkey"), &page.netKey).Placeholder(locales.RemoteNetKeyPlaceholder()).
-			Label(locales.RemoteNetKeyLabel()); ti.Changed() {
-			page.netErr = false
-		}
-		if ti := ui.TextInput(c.Key("netname"), &page.netName).Placeholder("yibo-macbook").
-			Label(locales.RemoteNetNameLabel()); ti.Changed() {
-			page.netErr = false
-		}
-		ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-			if ui.Button(c.Key("netjoin-cancel"), locales.RemoteCancel()).Clicked() {
-				page.joining, page.netErr = false, false
-			}
-			if ui.PrimaryButton(c.Key("netjoin"), locales.RemoteNetJoin()).Disabled(page.busy).Clicked() {
-				if msg := validateNetwork(page.netURL, page.netKey, page.netName); msg != "" {
-					page.netErr = true
-					remoteUI.err = func() string { return msg }
-				} else {
-					url, key := strings.TrimSpace(page.netURL), strings.TrimSpace(page.netKey)
-					name := page.netName
-					a.remoteDo(func(srv *rex.Client) error { return srv.JoinNetwork(url, key, name) },
-						func() { page.netURL, page.netKey, page.netErr, page.joining = "", "", false, false })
-				}
-			}
-		})
-		if page.netErr {
-			rowError(c, k, validateNetwork(page.netURL, page.netKey, page.netName))
-		}
-	})
 }

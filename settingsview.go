@@ -33,9 +33,10 @@ var settingsUI struct {
 	// and langNames are the language control's, "" and its label first.
 	// All are made once the window opens.
 	fontOptions, langTags, langNames []string
-	// apiInfo is the Rex API gateway's version, for the server page's
-	// rows, fetched while that page shows: apiLoaded when it has been
-	// asked once, apiErr when no gateway answered.
+	// apiInfo is the Rex API gateway's version and listeners, for the
+	// server page's Local API group, fetched while that page shows:
+	// apiLoaded when it has been asked once, apiErr when no gateway
+	// answered.
 	apiStop   chan struct{}
 	apiInfo   rexapi.GatewayInfo
 	apiErr    string
@@ -45,10 +46,10 @@ var settingsUI struct {
 // Run is set here: the window's view lists the commands, which list this one.
 func init() { cmdSettings.Run = func(a *App) { a.openSettings() } }
 
-// startServerInfoPoll asks the Rex API gateway for its version every ten
-// seconds while the server page shows. Each ask is a control connection
-// that every Rex client hears of, and the build cannot change while the
-// gateway runs: only whether it runs is worth asking about.
+// startServerInfoPoll asks the Rex API gateway every ten seconds while the
+// server page shows. Each ask is a control connection that every Rex
+// client hears of, and the build cannot change while the gateway runs:
+// only whether it runs, and what it listens on, is worth asking about.
 func startServerInfoPoll() {
 	win := settingsUI.win
 	if settingsUI.apiStop != nil || win == nil {
@@ -60,7 +61,7 @@ func startServerInfoPoll() {
 		t := time.NewTicker(10 * time.Second)
 		defer t.Stop()
 		for {
-			info, err := rexapi.GatewayVersion()
+			info, err := rexapi.GatewayStatus()
 			win.Update(func() {
 				if settingsUI.apiStop != stop {
 					return
@@ -143,18 +144,19 @@ func (a *App) openSettings() {
 	})
 }
 
-// sections are the sidebar's items.
+// sections are the sidebar's items, each with the color of its tile, as
+// System Settings has: macOS's system colors, a hue per kind of setting.
 var sections = []struct {
 	id, glyph string
+	tile      ui.Color
 	label     func(locales.Messages) string
 }{
-	{"appearance", "settings-2", locales.Messages.SettingsAppearance},
-	{"terminal", "square-terminal", locales.Messages.SettingsTerminal},
-	{"theme", "sparkles", locales.Messages.SettingsTheme},
-	{"keyboard", "keyboard", locales.Messages.SettingsKeyboard},
-	{"remote", "globe", locales.Messages.SettingsRemote},
-	{"network", "network", locales.Messages.SettingsNetwork},
-	{"about", "hexagon", locales.Messages.SettingsAbout},
+	{"appearance", "contrast", ui.RGB(0, 122, 255), locales.Messages.SettingsAppearance},   // blue
+	{"terminal", "square-terminal", ui.RGB(58, 58, 60), locales.Messages.SettingsTerminal}, // graphite
+	{"theme", "sparkles", ui.RGB(175, 82, 222), locales.Messages.SettingsTheme},            // purple
+	{"keyboard", "keyboard", ui.RGB(142, 142, 147), locales.Messages.SettingsKeyboard},     // gray
+	{"hosts", "monitor", ui.RGB(52, 199, 89), locales.Messages.SettingsHosts},              // green
+	{"about", "info", ui.RGB(142, 142, 147), locales.Messages.SettingsAbout},               // gray
 }
 
 // The settings window's layout: the sidebar's width, the height of the
@@ -194,7 +196,7 @@ func (a *App) settingsView(c *ui.Context) {
 				a.serverCard(c, k)
 				ui.Box(c).Height(8).Shrink(0)
 				for _, s := range sections {
-					a.sidebarItem(c, k, s.id, s.glyph, say(s.label))
+					a.sidebarItem(c, k, s.id, s.glyph, s.tile, say(s.label))
 				}
 			})
 		})
@@ -212,10 +214,8 @@ func (a *App) settingsView(c *ui.Context) {
 						a.themeSettings(c, k)
 					case "keyboard":
 						a.keyboardSettings(c, k)
-					case "remote":
-						a.remoteSettings(c, k)
-					case "network":
-						a.networkSettings(c, k)
+					case "hosts":
+						a.hostsSettings(c, k)
 					case "about":
 						a.aboutSettings(c, k)
 					default:
@@ -284,7 +284,7 @@ const sidebarItemH = 32
 
 // sidebarItem is a section's chip, as a tab's: the chosen one has the
 // active tab's face, and its icon and label in the accent.
-func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
+func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph string, tile ui.Color, label string) {
 	active := settingsUI.section == id
 	e := ui.Row(c.Key(id)).Height(sidebarItemH).Padding(0, 10).Gap(9).AlignItems(ui.Center).Radius(pillRadius(sidebarItemH, 10)).
 		Cursor(ui.CursorPointer).Role(ui.RoleTab).Selected(active).Label(label)
@@ -297,12 +297,16 @@ func (a *App) sidebarItem(c *ui.Context, k *colors, id, glyph, label string) {
 	if e.Clicked() {
 		a.showSection(id)
 	}
-	icon, text := k.iconMuted, k.text
+	text := k.text
 	if active {
-		icon, text = k.accent, k.accent
+		text = k.accent
 	}
 	e.Children(func() {
-		glyphIcon(c, glyph, 16, icon)
+		// A white glyph on the section's color, whether it is chosen or
+		// not: the glass pill says which one is.
+		ui.Box(c).Size(22, 22).Radius(6).Background(tile).Center().Shrink(0).Children(func() {
+			glyphIcon(c, glyph, 14, ui.RGB(255, 255, 255))
+		})
 		ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(text).SingleLine()
 	})
 }
@@ -374,6 +378,10 @@ func (a *App) serverSettings(c *ui.Context, k *colors) {
 		sub = locales.HostConnected(sub)
 	}
 	a.serverGroup(c, k, name, glyph, sub, label, dot, h)
+	// Where this machine's programs reach the server's API, then who may
+	// connect to it from elsewhere.
+	a.localAPI(c, k)
+	a.remoteSettings(c, k)
 }
 
 // serverGroup is the server page's card: the machine, its state, and the
@@ -395,32 +403,27 @@ func (a *App) serverGroup(c *ui.Context, k *colors, name, glyph, sub, label stri
 				})
 			})
 		})
-		row := func(label, value string) {
-			if value == "" {
-				return
-			}
-			groupRow(c, k, label).Children(func() {
-				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-					ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.text).Shrink(0)
-					ui.Text(c, value).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0).TextAlign(ui.End).SingleLine().Ellipsis("…").Selectable()
-				})
-			})
-		}
+		row := func(label, value string) { factRow(c, k, label, value) }
 		if a.hello.PID > 0 {
 			row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
-		}
-		if settingsUI.apiLoaded {
-			if settingsUI.apiErr != "" {
-				row(locales.HostApiTitle(), locales.HostApiOff())
-			} else {
-				api := settingsUI.apiInfo
-				row(locales.HostApiTitle(), locales.HostApiRevisions(api.APIRevision, api.ServerRevision, api.MinRevision))
-				row(locales.HostApiVersion(), api.RexVersion)
-			}
 		}
 		sessions, running := a.sessionCounts()
 		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
 		hostFacts(h, row)
+	})
+}
+
+// factRow is a group's row of a fact: its label, and its value at the
+// right; none when the value is "".
+func factRow(c *ui.Context, k *colors, label, value string) {
+	if value == "" {
+		return
+	}
+	groupRow(c, k, label).Children(func() {
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(k.text).Shrink(0)
+			ui.Text(c, value).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0).TextAlign(ui.End).SingleLine().Ellipsis("…").Selectable()
+		})
 	})
 }
 

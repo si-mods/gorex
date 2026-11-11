@@ -208,7 +208,7 @@ private struct HostForm: View {
                     Section {
                         LabeledContent("GoRex remote access", value: t.machine)
                     } footer: {
-                        Text("Paired by GoRex's Rex Go code. Deleting the host here doesn't revoke this phone: remove it from Devices in GoRex's Settings › Remote.")
+                        Text("Paired by GoRex's Rex Go code. Deleting the host here doesn't revoke this phone: remove it from Devices in GoRex's Settings › Server.")
                     }
                     .listRowBackground(Color.card)
                 } else {
@@ -332,7 +332,7 @@ struct TailcatPairSheet: View {
                 if online {
                     Text("Paired. Rex Go is connected.").foregroundStyle(.secondary)
                 } else {
-                    Text("On \(code.name), approve \(TailnetSettings.name) in Settings › Remote › Devices only if its fingerprint is this one.")
+                    Text("On \(code.name), approve \(TailnetSettings.name) in Settings › Server › Devices only if its fingerprint is this one.")
                         .foregroundStyle(.secondary)
                 }
                 Text(fingerprint).font(.title3.monospaced().bold()).textSelection(.enabled)
@@ -372,10 +372,9 @@ struct TailcatPairSheet: View {
             store.add(code)
             try await Task.sleep(for: Self.wait)
             guard !online else { return }
-            // Approved, it may still be connecting, or refused for sessions
-            // not shared with it: it stays, and tries on.
+            // Not approved yet, or still connecting: it stays, and tries on.
             kept = true
-            problem = String(localized: "Not connected yet. Rex Go keeps trying: approve this phone on the machine, and share its sessions with this device.")
+            problem = String(localized: "Not connected yet. Rex Go keeps trying: approve this phone on the machine.")
         } catch is CancellationError {
         } catch {
             problem = String(localized: "Couldn't pair: \(error.localizedDescription)")

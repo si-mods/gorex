@@ -1709,13 +1709,13 @@ func (msgs Messages) HostSessions() string {
 // HostApiTitle says "Rex API"
 // in the language the app shows.
 //
-// Host panel: label of the row that shows the Rex API revision.
+// Local API group: label of the row that shows the Rex API revision.
 func HostApiTitle() string { return In(i18n.Locale()).HostApiTitle() }
 
 // HostApiTitle says "Rex API"
 // in the language of msgs.
 //
-// Host panel: label of the row that shows the Rex API revision.
+// Local API group: label of the row that shows the Rex API revision.
 func (msgs Messages) HostApiTitle() string {
 	return Catalog.Format(msgs.locale, "hostApiTitle", nil)
 }
@@ -1723,7 +1723,7 @@ func (msgs Messages) HostApiTitle() string {
 // HostApiRevisions says "revision {revision} · server {server} · min {min}"
 // in the language the app shows.
 //
-// Host panel: the Rex API revision this app negotiated, the newest the
+// Local API group: the Rex API revision this app negotiated, the newest the
 // gateway serves, and the oldest it serves.
 func HostApiRevisions(revision int, server int, min int) string {
 	return In(i18n.Locale()).HostApiRevisions(revision, server, min)
@@ -1732,7 +1732,7 @@ func HostApiRevisions(revision int, server int, min int) string {
 // HostApiRevisions says "revision {revision} · server {server} · min {min}"
 // in the language of msgs.
 //
-// Host panel: the Rex API revision this app negotiated, the newest the
+// Local API group: the Rex API revision this app negotiated, the newest the
 // gateway serves, and the oldest it serves.
 func (msgs Messages) HostApiRevisions(revision int, server int, min int) string {
 	return Catalog.Format(msgs.locale, "hostApiRevisions", map[string]any{"revision": revision, "server": server, "min": min})
@@ -1741,15 +1741,15 @@ func (msgs Messages) HostApiRevisions(revision int, server int, min int) string 
 // HostApiOff says "gateway off"
 // in the language the app shows.
 //
-// Host panel: the Rex API gateway is not running, so it reports no
-// revision.
+// Local API group: the Rex API gateway is not running, so it reports no
+// address or revision.
 func HostApiOff() string { return In(i18n.Locale()).HostApiOff() }
 
 // HostApiOff says "gateway off"
 // in the language of msgs.
 //
-// Host panel: the Rex API gateway is not running, so it reports no
-// revision.
+// Local API group: the Rex API gateway is not running, so it reports no
+// address or revision.
 func (msgs Messages) HostApiOff() string {
 	return Catalog.Format(msgs.locale, "hostApiOff", nil)
 }
@@ -1757,13 +1757,15 @@ func (msgs Messages) HostApiOff() string {
 // HostApiVersion says "Rex API version"
 // in the language the app shows.
 //
-// Host panel: label of the row that shows the gateway's version string.
+// Local API group: label of the row that shows the gateway's version
+// string.
 func HostApiVersion() string { return In(i18n.Locale()).HostApiVersion() }
 
 // HostApiVersion says "Rex API version"
 // in the language of msgs.
 //
-// Host panel: label of the row that shows the gateway's version string.
+// Local API group: label of the row that shows the gateway's version
+// string.
 func (msgs Messages) HostApiVersion() string {
 	return Catalog.Format(msgs.locale, "hostApiVersion", nil)
 }
@@ -2314,30 +2316,6 @@ func SettingsKeyboard() string { return In(i18n.Locale()).SettingsKeyboard() }
 // Settings section: the keyboard shortcuts.
 func (msgs Messages) SettingsKeyboard() string {
 	return Catalog.Format(msgs.locale, "settingsKeyboard", nil)
-}
-
-// SettingsNetwork says "Network"
-// in the language the app shows.
-func SettingsNetwork() string { return In(i18n.Locale()).SettingsNetwork() }
-
-// SettingsNetwork says "Network"
-// in the language of msgs.
-func (msgs Messages) SettingsNetwork() string {
-	return Catalog.Format(msgs.locale, "settingsNetwork", nil)
-}
-
-// SettingsRemote says "Remote"
-// in the language the app shows.
-//
-// Settings section: remote access. The sidebar item.
-func SettingsRemote() string { return In(i18n.Locale()).SettingsRemote() }
-
-// SettingsRemote says "Remote"
-// in the language of msgs.
-//
-// Settings section: remote access. The sidebar item.
-func (msgs Messages) SettingsRemote() string {
-	return Catalog.Format(msgs.locale, "settingsRemote", nil)
 }
 
 // SettingsAbout says "About"
@@ -3416,36 +3394,6 @@ func (msgs Messages) RemoteAllow() string {
 	return Catalog.Format(msgs.locale, "remoteAllow", nil)
 }
 
-// RemoteShare says "Share open terminals"
-// in the language the app shows.
-//
-// Setting: whether allowed remote clients see and use every terminal of
-// this machine (the server's sessions), or only those each opened.
-func RemoteShare() string { return In(i18n.Locale()).RemoteShare() }
-
-// RemoteShare says "Share open terminals"
-// in the language of msgs.
-//
-// Setting: whether allowed remote clients see and use every terminal of
-// this machine (the server's sessions), or only those each opened.
-func (msgs Messages) RemoteShare() string {
-	return Catalog.Format(msgs.locale, "remoteShare", nil)
-}
-
-// RemoteShareNote says "Allowed clients see and use the terminals open on this machine. Off: each sees only its own."
-// in the language the app shows.
-//
-// Help under the Share open terminals switch.
-func RemoteShareNote() string { return In(i18n.Locale()).RemoteShareNote() }
-
-// RemoteShareNote says "Allowed clients see and use the terminals open on this machine. Off: each sees only its own."
-// in the language of msgs.
-//
-// Help under the Share open terminals switch.
-func (msgs Messages) RemoteShareNote() string {
-	return Catalog.Format(msgs.locale, "remoteShareNote", nil)
-}
-
 // RemoteUnreachable says "Server not reachable"
 // in the language the app shows.
 //
@@ -3544,6 +3492,22 @@ func RemoteOff() string { return In(i18n.Locale()).RemoteOff() }
 // State: remote access is off.
 func (msgs Messages) RemoteOff() string {
 	return Catalog.Format(msgs.locale, "remoteOff", nil)
+}
+
+// RemoteOffNote says "Turn on to pair your other computers and let them open terminals here."
+// in the language the app shows.
+//
+// Remote page: the hint under the remote access switch while it is off,
+// when the page shows nothing else.
+func RemoteOffNote() string { return In(i18n.Locale()).RemoteOffNote() }
+
+// RemoteOffNote says "Turn on to pair your other computers and let them open terminals here."
+// in the language of msgs.
+//
+// Remote page: the hint under the remote access switch while it is off,
+// when the page shows nothing else.
+func (msgs Messages) RemoteOffNote() string {
+	return Catalog.Format(msgs.locale, "remoteOffNote", nil)
 }
 
 // RemoteNotConnected says "Not connected to the session server."
@@ -3714,6 +3678,36 @@ func RemoteMyKeyNote() string { return In(i18n.Locale()).RemoteMyKeyNote() }
 // Note of that card.
 func (msgs Messages) RemoteMyKeyNote() string {
 	return Catalog.Format(msgs.locale, "remoteMyKeyNote", nil)
+}
+
+// RemoteShowDetails says "Show Details"
+// in the language the app shows.
+//
+// Remote page: the disclosure at the bottom of the Devices card that shows
+// this machine's address and key, as Rex's Show Details.
+func RemoteShowDetails() string { return In(i18n.Locale()).RemoteShowDetails() }
+
+// RemoteShowDetails says "Show Details"
+// in the language of msgs.
+//
+// Remote page: the disclosure at the bottom of the Devices card that shows
+// this machine's address and key, as Rex's Show Details.
+func (msgs Messages) RemoteShowDetails() string {
+	return Catalog.Format(msgs.locale, "remoteShowDetails", nil)
+}
+
+// RemoteHideDetails says "Hide Details"
+// in the language the app shows.
+//
+// Remote page: the same disclosure, open; it hides them again.
+func RemoteHideDetails() string { return In(i18n.Locale()).RemoteHideDetails() }
+
+// RemoteHideDetails says "Hide Details"
+// in the language of msgs.
+//
+// Remote page: the same disclosure, open; it hides them again.
+func (msgs Messages) RemoteHideDetails() string {
+	return Catalog.Format(msgs.locale, "remoteHideDetails", nil)
 }
 
 // RemoteNoKey says "No key yet."
@@ -4113,13 +4107,15 @@ func (msgs Messages) RemoteAdd() string {
 // SettingsHosts says "Remote Hosts"
 // in the language the app shows.
 //
-// The Remote page's group of the remote hosts this machine connects to.
+// Settings section: the remote hosts this machine connects to. The sidebar
+// item and the page's title.
 func SettingsHosts() string { return In(i18n.Locale()).SettingsHosts() }
 
 // SettingsHosts says "Remote Hosts"
 // in the language of msgs.
 //
-// The Remote page's group of the remote hosts this machine connects to.
+// Settings section: the remote hosts this machine connects to. The sidebar
+// item and the page's title.
 func (msgs Messages) SettingsHosts() string {
 	return Catalog.Format(msgs.locale, "settingsHosts", nil)
 }
@@ -4180,17 +4176,17 @@ func (msgs Messages) HostsAddTitle() string {
 	return Catalog.Format(msgs.locale, "hostsAddTitle", nil)
 }
 
-// HostsAddNote says "Paste the address that Settings › Remote shows on the other machine, with remote access on there. The address is a …"
+// HostsAddNote says "Paste the address that Settings › Server shows on the other machine, with remote access on there. The address is a …"
 // in the language the app shows.
 //
-// Note of the add sheet. Settings › Remote names the other machine's
+// Note of the add sheet. Settings › Server names the other machine's
 // settings page.
 func HostsAddNote() string { return In(i18n.Locale()).HostsAddNote() }
 
-// HostsAddNote says "Paste the address that Settings › Remote shows on the other machine, with remote access on there. The address is a …"
+// HostsAddNote says "Paste the address that Settings › Server shows on the other machine, with remote access on there. The address is a …"
 // in the language of msgs.
 //
-// Note of the add sheet. Settings › Remote names the other machine's
+// Note of the add sheet. Settings › Server names the other machine's
 // settings page.
 func (msgs Messages) HostsAddNote() string {
 	return Catalog.Format(msgs.locale, "hostsAddNote", nil)
@@ -4308,13 +4304,13 @@ func (msgs Messages) HostsEnterAddress() string {
 	return Catalog.Format(msgs.locale, "hostsEnterAddress", nil)
 }
 
-// HostsBadAddress says "That is not a GoRex remote address. Copy it from Settings › Remote on the host."
+// HostsBadAddress says "That is not a GoRex remote address. Copy it from Settings › Server on the host."
 // in the language the app shows.
 //
 // Error: the address does not parse.
 func HostsBadAddress() string { return In(i18n.Locale()).HostsBadAddress() }
 
-// HostsBadAddress says "That is not a GoRex remote address. Copy it from Settings › Remote on the host."
+// HostsBadAddress says "That is not a GoRex remote address. Copy it from Settings › Server on the host."
 // in the language of msgs.
 //
 // Error: the address does not parse.
@@ -4478,14 +4474,14 @@ func (msgs Messages) HostsNotAllowed() string {
 	return Catalog.Format(msgs.locale, "hostsNotAllowed", nil)
 }
 
-// HostsNotPairing says "{host} is not pairing. There, open Settings › Remote and choose Pair New Device…, then try again."
+// HostsNotPairing says "{host} is not pairing. There, open Settings › Server and choose Pair New Device…, then try again."
 // in the language the app shows.
 //
 // Error of the add sheet: the host's pairing window is closed. Pair New
 // Device… is remotePairNew.
 func HostsNotPairing(host string) string { return In(i18n.Locale()).HostsNotPairing(host) }
 
-// HostsNotPairing says "{host} is not pairing. There, open Settings › Remote and choose Pair New Device…, then try again."
+// HostsNotPairing says "{host} is not pairing. There, open Settings › Server and choose Pair New Device…, then try again."
 // in the language of msgs.
 //
 // Error of the add sheet: the host's pairing window is closed. Pair New
@@ -4522,13 +4518,13 @@ func (msgs Messages) HostsApprove(host string) string {
 	return Catalog.Format(msgs.locale, "hostsApprove", map[string]any{"host": host})
 }
 
-// HostsApproveWhere says "It shows under Settings › Remote › Devices. Approve it only if the fingerprints match."
+// HostsApproveWhere says "It shows under Settings › Server › Devices. Approve it only if the fingerprints match."
 // in the language the app shows.
 //
 // Add sheet: where the request shows on the host. Devices is remoteDevices.
 func HostsApproveWhere() string { return In(i18n.Locale()).HostsApproveWhere() }
 
-// HostsApproveWhere says "It shows under Settings › Remote › Devices. Approve it only if the fingerprints match."
+// HostsApproveWhere says "It shows under Settings › Server › Devices. Approve it only if the fingerprints match."
 // in the language of msgs.
 //
 // Add sheet: where the request shows on the host. Devices is remoteDevices.
@@ -5290,212 +5286,6 @@ func (msgs Messages) SpaceColorCustom() string {
 	return Catalog.Format(msgs.locale, "spaceColorCustom", nil)
 }
 
-// RemoteNetNote says "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way …"
-// in the language the app shows.
-//
-// Note under the title.
-func RemoteNetNote() string { return In(i18n.Locale()).RemoteNetNote() }
-
-// RemoteNetNote says "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way …"
-// in the language of msgs.
-//
-// Note under the title.
-func (msgs Messages) RemoteNetNote() string {
-	return Catalog.Format(msgs.locale, "remoteNetNote", nil)
-}
-
-// RemoteNetTurnOn says "Turn remote access on to join a network."
-// in the language the app shows.
-//
-// Said while remote access is off.
-func RemoteNetTurnOn() string { return In(i18n.Locale()).RemoteNetTurnOn() }
-
-// RemoteNetTurnOn says "Turn remote access on to join a network."
-// in the language of msgs.
-//
-// Said while remote access is off.
-func (msgs Messages) RemoteNetTurnOn() string {
-	return Catalog.Format(msgs.locale, "remoteNetTurnOn", nil)
-}
-
-// RemoteNetURLLabel says "Join URL"
-// in the language the app shows.
-//
-// Field label.
-func RemoteNetURLLabel() string { return In(i18n.Locale()).RemoteNetURLLabel() }
-
-// RemoteNetURLLabel says "Join URL"
-// in the language of msgs.
-//
-// Field label.
-func (msgs Messages) RemoteNetURLLabel() string {
-	return Catalog.Format(msgs.locale, "remoteNetURLLabel", nil)
-}
-
-// RemoteNetKeyLabel says "Network key"
-// in the language the app shows.
-//
-// Field label.
-func RemoteNetKeyLabel() string { return In(i18n.Locale()).RemoteNetKeyLabel() }
-
-// RemoteNetKeyLabel says "Network key"
-// in the language of msgs.
-//
-// Field label.
-func (msgs Messages) RemoteNetKeyLabel() string {
-	return Catalog.Format(msgs.locale, "remoteNetKeyLabel", nil)
-}
-
-// RemoteNetNameLabel says "Name this machine joins by"
-// in the language the app shows.
-//
-// Field label.
-func RemoteNetNameLabel() string { return In(i18n.Locale()).RemoteNetNameLabel() }
-
-// RemoteNetNameLabel says "Name this machine joins by"
-// in the language of msgs.
-//
-// Field label.
-func (msgs Messages) RemoteNetNameLabel() string {
-	return Catalog.Format(msgs.locale, "remoteNetNameLabel", nil)
-}
-
-// RemoteNetKeyPlaceholder says "the key gcoord init printed"
-// in the language the app shows.
-//
-// Placeholder of the network key field.
-func RemoteNetKeyPlaceholder() string { return In(i18n.Locale()).RemoteNetKeyPlaceholder() }
-
-// RemoteNetKeyPlaceholder says "the key gcoord init printed"
-// in the language of msgs.
-//
-// Placeholder of the network key field.
-func (msgs Messages) RemoteNetKeyPlaceholder() string {
-	return Catalog.Format(msgs.locale, "remoteNetKeyPlaceholder", nil)
-}
-
-// RemoteNetJoin says "Join"
-// in the language the app shows.
-func RemoteNetJoin() string { return In(i18n.Locale()).RemoteNetJoin() }
-
-// RemoteNetJoin says "Join"
-// in the language of msgs.
-func (msgs Messages) RemoteNetJoin() string {
-	return Catalog.Format(msgs.locale, "remoteNetJoin", nil)
-}
-
-// RemoteNetURL says "Paste the join URL the coordinator printed."
-// in the language the app shows.
-func RemoteNetURL() string { return In(i18n.Locale()).RemoteNetURL() }
-
-// RemoteNetURL says "Paste the join URL the coordinator printed."
-// in the language of msgs.
-func (msgs Messages) RemoteNetURL() string {
-	return Catalog.Format(msgs.locale, "remoteNetURL", nil)
-}
-
-// RemoteNetBadURL says "The join URL reads “https://host/<fingerprint>”."
-// in the language the app shows.
-func RemoteNetBadURL() string { return In(i18n.Locale()).RemoteNetBadURL() }
-
-// RemoteNetBadURL says "The join URL reads “https://host/<fingerprint>”."
-// in the language of msgs.
-func (msgs Messages) RemoteNetBadURL() string {
-	return Catalog.Format(msgs.locale, "remoteNetBadURL", nil)
-}
-
-// RemoteNetKey says "Paste the network key."
-// in the language the app shows.
-func RemoteNetKey() string { return In(i18n.Locale()).RemoteNetKey() }
-
-// RemoteNetKey says "Paste the network key."
-// in the language of msgs.
-func (msgs Messages) RemoteNetKey() string {
-	return Catalog.Format(msgs.locale, "remoteNetKey", nil)
-}
-
-// RemoteNetName says "Name this machine to join."
-// in the language the app shows.
-func RemoteNetName() string { return In(i18n.Locale()).RemoteNetName() }
-
-// RemoteNetName says "Name this machine to join."
-// in the language of msgs.
-func (msgs Messages) RemoteNetName() string {
-	return Catalog.Format(msgs.locale, "remoteNetName", nil)
-}
-
-// RemoteNetJoined says "Network: {name}"
-// in the language the app shows.
-//
-// Card title: the network joined, name this machine's member name.
-func RemoteNetJoined(name string) string { return In(i18n.Locale()).RemoteNetJoined(name) }
-
-// RemoteNetJoined says "Network: {name}"
-// in the language of msgs.
-//
-// Card title: the network joined, name this machine's member name.
-func (msgs Messages) RemoteNetJoined(name string) string {
-	return Catalog.Format(msgs.locale, "remoteNetJoined", map[string]any{"name": name})
-}
-
-// RemoteNetCoordinator says "Members come from the coordinator at {host}, and change with it."
-// in the language the app shows.
-//
-// Note under the title: host the coordinator's address.
-func RemoteNetCoordinator(host string) string { return In(i18n.Locale()).RemoteNetCoordinator(host) }
-
-// RemoteNetCoordinator says "Members come from the coordinator at {host}, and change with it."
-// in the language of msgs.
-//
-// Note under the title: host the coordinator's address.
-func (msgs Messages) RemoteNetCoordinator(host string) string {
-	return Catalog.Format(msgs.locale, "remoteNetCoordinator", map[string]any{"host": host})
-}
-
-// RemoteNetNoMembers says "No other machine has joined yet."
-// in the language the app shows.
-func RemoteNetNoMembers() string { return In(i18n.Locale()).RemoteNetNoMembers() }
-
-// RemoteNetNoMembers says "No other machine has joined yet."
-// in the language of msgs.
-func (msgs Messages) RemoteNetNoMembers() string {
-	return Catalog.Format(msgs.locale, "remoteNetNoMembers", nil)
-}
-
-// RemoteNetKick says "Remove"
-// in the language the app shows.
-func RemoteNetKick() string { return In(i18n.Locale()).RemoteNetKick() }
-
-// RemoteNetKick says "Remove"
-// in the language of msgs.
-func (msgs Messages) RemoteNetKick() string {
-	return Catalog.Format(msgs.locale, "remoteNetKick", nil)
-}
-
-// RemoteNetLeave says "Leave the network"
-// in the language the app shows.
-func RemoteNetLeave() string { return In(i18n.Locale()).RemoteNetLeave() }
-
-// RemoteNetLeave says "Leave the network"
-// in the language of msgs.
-func (msgs Messages) RemoteNetLeave() string {
-	return Catalog.Format(msgs.locale, "remoteNetLeave", nil)
-}
-
-// RemoteNetError says "The coordinator: {error}"
-// in the language the app shows.
-//
-// error is the coordinator's last word.
-func RemoteNetError(error string) string { return In(i18n.Locale()).RemoteNetError(error) }
-
-// RemoteNetError says "The coordinator: {error}"
-// in the language of msgs.
-//
-// error is the coordinator's last word.
-func (msgs Messages) RemoteNetError(error string) string {
-	return Catalog.Format(msgs.locale, "remoteNetError", map[string]any{"error": error})
-}
-
 // PaneRename says "Rename Pane…"
 // in the language the app shows.
 //
@@ -5678,34 +5468,6 @@ func RemoteShareLayoutNote() string { return In(i18n.Locale()).RemoteShareLayout
 // Remote access: share this window layout with remote clients.
 func (msgs Messages) RemoteShareLayoutNote() string {
 	return Catalog.Format(msgs.locale, "remoteShareLayoutNote", nil)
-}
-
-// RemoteClientShare says "All sessions"
-// in the language the app shows.
-//
-// Switch: this remote client may use all sessions.
-func RemoteClientShare() string { return In(i18n.Locale()).RemoteClientShare() }
-
-// RemoteClientShare says "All sessions"
-// in the language of msgs.
-//
-// Switch: this remote client may use all sessions.
-func (msgs Messages) RemoteClientShare() string {
-	return Catalog.Format(msgs.locale, "remoteClientShare", nil)
-}
-
-// RemoteClientLayout says "Layout"
-// in the language the app shows.
-//
-// Switch: this remote client may read the layout.
-func RemoteClientLayout() string { return In(i18n.Locale()).RemoteClientLayout() }
-
-// RemoteClientLayout says "Layout"
-// in the language of msgs.
-//
-// Switch: this remote client may read the layout.
-func (msgs Messages) RemoteClientLayout() string {
-	return Catalog.Format(msgs.locale, "remoteClientLayout", nil)
 }
 
 // HostsLayout says "Layout"
@@ -5946,20 +5708,6 @@ func (msgs Messages) RexImportFailed(error string) string {
 	return Catalog.Format(msgs.locale, "rexImportFailed", map[string]any{"error": error})
 }
 
-// RemoteTailscaleTitle says "Tailscale"
-// in the language the app shows.
-//
-// Title of the card that sets the control server of built-in Tailscale.
-func RemoteTailscaleTitle() string { return In(i18n.Locale()).RemoteTailscaleTitle() }
-
-// RemoteTailscaleTitle says "Tailscale"
-// in the language of msgs.
-//
-// Title of the card that sets the control server of built-in Tailscale.
-func (msgs Messages) RemoteTailscaleTitle() string {
-	return Catalog.Format(msgs.locale, "remoteTailscaleTitle", nil)
-}
-
 // RemoteTailscaleNote says "The control server built-in Tailscale registers with, such as Headscale. A change applies the next time Tailscale is …"
 // in the language the app shows.
 //
@@ -6082,32 +5830,96 @@ func (msgs Messages) RemoteRelayInvalid() string {
 	return Catalog.Format(msgs.locale, "remoteRelayInvalid", nil)
 }
 
-// RemoteLanTitle says "Rex apps on the local network"
+// RemoteApiTitle says "Local API"
 // in the language the app shows.
 //
-// Title of the card that lets Rex's apps, such as Rex on an iPhone, connect
-// over the local network.
-func RemoteLanTitle() string { return In(i18n.Locale()).RemoteLanTitle() }
+// Title of the server page's group that tells Rex's API gateway's revisions
+// and version and lists where it takes connections on this machine, as
+// Rex's Developer page's Local API.
+func RemoteApiTitle() string { return In(i18n.Locale()).RemoteApiTitle() }
 
-// RemoteLanTitle says "Rex apps on the local network"
+// RemoteApiTitle says "Local API"
 // in the language of msgs.
 //
-// Title of the card that lets Rex's apps, such as Rex on an iPhone, connect
-// over the local network.
-func (msgs Messages) RemoteLanTitle() string {
-	return Catalog.Format(msgs.locale, "remoteLanTitle", nil)
+// Title of the server page's group that tells Rex's API gateway's revisions
+// and version and lists where it takes connections on this machine, as
+// Rex's Developer page's Local API.
+func (msgs Messages) RemoteApiTitle() string {
+	return Catalog.Format(msgs.locale, "remoteApiTitle", nil)
+}
+
+// RemoteApiUrl says "Local API URL"
+// in the language the app shows.
+//
+// Local API card: label of the row with the API's primary endpoint, a URL
+// to copy, as Rex's.
+func RemoteApiUrl() string { return In(i18n.Locale()).RemoteApiUrl() }
+
+// RemoteApiUrl says "Local API URL"
+// in the language of msgs.
+//
+// Local API card: label of the row with the API's primary endpoint, a URL
+// to copy, as Rex's.
+func (msgs Messages) RemoteApiUrl() string {
+	return Catalog.Format(msgs.locale, "remoteApiUrl", nil)
+}
+
+// RemoteApiPeer says "This user only"
+// in the language the app shows.
+//
+// Local API card: an endpoint that lets in only programs of the user the
+// app runs as.
+func RemoteApiPeer() string { return In(i18n.Locale()).RemoteApiPeer() }
+
+// RemoteApiPeer says "This user only"
+// in the language of msgs.
+//
+// Local API card: an endpoint that lets in only programs of the user the
+// app runs as.
+func (msgs Messages) RemoteApiPeer() string {
+	return Catalog.Format(msgs.locale, "remoteApiPeer", nil)
+}
+
+// RemoteApiAnyone says "Anyone who can reach it"
+// in the language the app shows.
+//
+// Local API card: an endpoint with no check at all; anyone who can connect
+// to its address gets in. Shown as a warning.
+func RemoteApiAnyone() string { return In(i18n.Locale()).RemoteApiAnyone() }
+
+// RemoteApiAnyone says "Anyone who can reach it"
+// in the language of msgs.
+//
+// Local API card: an endpoint with no check at all; anyone who can connect
+// to its address gets in. Shown as a warning.
+func (msgs Messages) RemoteApiAnyone() string {
+	return Catalog.Format(msgs.locale, "remoteApiAnyone", nil)
+}
+
+// RemoteApiNote says "Where Rex's API takes connections on this machine. Built-in Tailscale is not listed: its switch is below."
+// in the language the app shows.
+//
+// Footnote of the Local API card.
+func RemoteApiNote() string { return In(i18n.Locale()).RemoteApiNote() }
+
+// RemoteApiNote says "Where Rex's API takes connections on this machine. Built-in Tailscale is not listed: its switch is below."
+// in the language of msgs.
+//
+// Footnote of the Local API card.
+func (msgs Messages) RemoteApiNote() string {
+	return Catalog.Format(msgs.locale, "remoteApiNote", nil)
 }
 
 // RemoteLanNote says "Rex's apps connect to this address over plain HTTP, Rex on an iPhone among them. There is no password: anyone in a ne…"
 // in the language the app shows.
 //
-// Note under the title of the local network card.
+// Local API card, the local network's row: the warning under its settings.
 func RemoteLanNote() string { return In(i18n.Locale()).RemoteLanNote() }
 
 // RemoteLanNote says "Rex's apps connect to this address over plain HTTP, Rex on an iPhone among them. There is no password: anyone in a ne…"
 // in the language of msgs.
 //
-// Note under the title of the local network card.
+// Local API card, the local network's row: the warning under its settings.
 func (msgs Messages) RemoteLanNote() string {
 	return Catalog.Format(msgs.locale, "remoteLanNote", nil)
 }
@@ -6502,60 +6314,18 @@ func (msgs Messages) RemoteAddByKeyAsk() string {
 	return Catalog.Format(msgs.locale, "remoteAddByKeyAsk", nil)
 }
 
-// RemoteNetGroup says "Network"
-// in the language the app shows.
-//
-// Remote page: the group of the coordinator network this machine joins.
-func RemoteNetGroup() string { return In(i18n.Locale()).RemoteNetGroup() }
-
-// RemoteNetGroup says "Network"
-// in the language of msgs.
-//
-// Remote page: the group of the coordinator network this machine joins.
-func (msgs Messages) RemoteNetGroup() string {
-	return Catalog.Format(msgs.locale, "remoteNetGroup", nil)
-}
-
-// RemoteNetNone says "Not in a network"
-// in the language the app shows.
-//
-// Remote page: this machine has joined no coordinator network.
-func RemoteNetNone() string { return In(i18n.Locale()).RemoteNetNone() }
-
-// RemoteNetNone says "Not in a network"
-// in the language of msgs.
-//
-// Remote page: this machine has joined no coordinator network.
-func (msgs Messages) RemoteNetNone() string {
-	return Catalog.Format(msgs.locale, "remoteNetNone", nil)
-}
-
-// RemoteNetJoinAsk says "Join a Network…"
-// in the language the app shows.
-//
-// Remote page button: shows the fields to join a coordinator network.
-func RemoteNetJoinAsk() string { return In(i18n.Locale()).RemoteNetJoinAsk() }
-
-// RemoteNetJoinAsk says "Join a Network…"
-// in the language of msgs.
-//
-// Remote page button: shows the fields to join a coordinator network.
-func (msgs Messages) RemoteNetJoinAsk() string {
-	return Catalog.Format(msgs.locale, "remoteNetJoinAsk", nil)
-}
-
 // RemoteLanListenOn says "Listen on"
 // in the language the app shows.
 //
-// Remote page row: the address on the local network that Rex's apps connect
-// to.
+// Local API card, the local network's row: the address on the local network
+// that Rex's apps connect to.
 func RemoteLanListenOn() string { return In(i18n.Locale()).RemoteLanListenOn() }
 
 // RemoteLanListenOn says "Listen on"
 // in the language of msgs.
 //
-// Remote page row: the address on the local network that Rex's apps connect
-// to.
+// Local API card, the local network's row: the address on the local network
+// that Rex's apps connect to.
 func (msgs Messages) RemoteLanListenOn() string {
 	return Catalog.Format(msgs.locale, "remoteLanListenOn", nil)
 }

@@ -804,48 +804,15 @@ func (c *Client) SetTailnet(on bool) error {
 	return c.call(Request{Op: "remote.tailnetSet", On: on}, nil)
 }
 
-// JoinNetwork joins the coordinator network of a join URL with its
-// network key, under the name; the server then follows its directory,
-// whose members it serves beside its allowlist.
-func (c *Client) JoinNetwork(url, key, name string) error {
-	return c.call(Request{Op: "remote.join", Network: &NetworkJoin{URL: url, Key: key, Name: name}}, nil)
-}
-
-// LeaveNetwork leaves the network, dropping its members.
-func (c *Client) LeaveNetwork() error { return c.call(Request{Op: "remote.leave"}, nil) }
-
-// KickNetworkMember removes a member from the whole network, by its
-// public key or its name.
-func (c *Client) KickNetworkMember(name, publicKey string) error {
-	return c.call(Request{Op: "remote.kick", Remote: &RemoteClient{Name: name, PublicKey: publicKey}}, nil)
-}
-
 // RemoteControl lets remote clients run app actions through the window.
 func (c *Client) RemoteControl(on bool) error {
 	return c.call(Request{Op: "remote.controlSet", On: on}, nil)
-}
-
-// ShareSessions sets whether remote clients see and use every session;
-// off, each only those it created, and those attached to another's detach.
-func (c *Client) ShareSessions(on bool) error {
-	return c.call(Request{Op: "remote.shareSet", On: on}, nil)
 }
 
 // ShareLayout sets whether remote clients may read the layout and
 // subscribe to its changes.
 func (c *Client) ShareLayout(on bool) error {
 	return c.call(Request{Op: "remote.shareLayoutSet", On: on}, nil)
-}
-
-// ShareClientSessions sets whether one allowed client sees every session
-// or only those it opened.
-func (c *Client) ShareClientSessions(publicKey string, on bool) error {
-	return c.call(Request{Op: "remote.clientShareSet", Remote: &RemoteClient{PublicKey: publicKey}, On: on}, nil)
-}
-
-// ShareClientLayout sets whether one allowed client may read the layout.
-func (c *Client) ShareClientLayout(publicKey string, on bool) error {
-	return c.call(Request{Op: "remote.clientLayoutSet", Remote: &RemoteClient{PublicKey: publicKey}, On: on}, nil)
 }
 
 // StartPairing opens the pairing window for five minutes, or opens it

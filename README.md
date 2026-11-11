@@ -124,7 +124,7 @@ a build whose modification time is not newer than the server's. See
   every box back into the tab's splits. It may change or go away.
 - **Host chip** with the machine's name and model; its popover shows the
   chip, memory, OS and the session server, and a remote host that is not
-  connected with a button to Settings › Remote (Add Remote Host… while
+  connected with a button to Settings › Remote Hosts (Add Remote Host… while
   none is saved).
 - **Command palette** (⇧⌘P, Ctrl+Shift+P, or the ⌘ button): every command, and every pane
   to jump to, fuzzy-matched.
@@ -179,7 +179,7 @@ The choices go to `settings.json`, as do the sidebar's width and whether
 it is hidden.
 
 Remote turns the server's remote access on and off, and manages it:
-whether allowed clients share the sessions open here, pairing a new device (Start pairing opens a five-minute window; each
+pairing a new device (Start pairing opens a five-minute window; each
 request shows its name and fingerprint, to Approve or Reject), the list
 of allowed clients (revoke one, or add one by name and public key), this
 machine's own key and its fingerprint, and, while listening, the address,
@@ -265,8 +265,7 @@ connection's device identity with the local Tailscale client.
 Turn **Tailscale discovery and connections** on in Settings → Remote, or
 use `gorex remote tailscale on`. The mode is off by default and waits
 when Tailscale is unavailable. `gorex remote status --json` reports the
-local mode and the hosts it has discovered. The existing **Share open
-terminals** setting controls access to sessions created by other clients.
+local mode and the hosts it has discovered.
 
 ### Tailcat
 
@@ -308,17 +307,11 @@ What to know before turning it on:
   compare fingerprints, and regenerate a leaked address anyway.
 - An allowed key means running commands as this user: a client may
   start any program with any environment. From a shell there it can
-  reach the local socket, and so change the layout, remote access, and
-  sharing itself. Trust it as you would an SSH key.
-- Share open terminals (Settings › Remote, off by default, kept in
-  `remote.json`) decides what else a client sees. Off, each client lists,
-  attaches to, resizes and kills only the sessions it created; the others
-  (this machine's window's, other clients') are refused. On, every allowed
-  client sees and uses every session. Turning it off detaches clients
-  from the sessions they did not create. The server remembers which key
-  created a session, in memory, and keeps it across an in-place upgrade;
-  a session survives a revoke and approval of the same key as its own.
-  Local connections always see every session. A session a client opens
+  reach the local socket, and so change the layout and remote access
+  itself. Trust it as you would an SSH key.
+- Every allowed client sees and uses every session: this machine's
+  window's and other clients'. The server remembers which key created a
+  session, in memory, and keeps it across an in-place upgrade. A session a client opens
   here gets a tab in this window too, last among this machine's tabs and
   without taking the focus, rather than running unseen.
 - Over the connection itself, a remote client may list, create, kill,
@@ -330,16 +323,12 @@ What to know before turning it on:
 
 The same address also serves Rex's API on its port, 7297, for Rex Go
 (see [docs/ios-tailcat.md](docs/ios-tailcat.md)). Rex's API commands
-the layout, so a client gets it only where it may command the layout
-over 7464 too: an allowed key, or a network member, with this machine's
-sessions shared with it (Share open terminals, or the client's own All
-sessions switch); any other gets nothing there, and pairing stays on
-7464. The session server hands each such connection to the Rex API
+the layout, as a client may over 7464 too: an allowed key gets it; any
+other gets nothing there, and pairing stays on 7464. The session server hands each such connection to the Rex API
 gateway, which it runs while remote access is on, on the gateway's
 socket (`rexapi-tailcat.sock`, this user's only); with no gateway there,
-the connection closes and the client dials again. Remove, a
-coordinator's kick, sharing turned off for that client, or remote
-access turned off closes these connections.
+the connection closes and the client dials again. Remove, or remote
+access turned off, closes these connections.
 
 The address names the DERP relay where clients meet the server when
 they cannot connect directly: by default one of tailcat's free relays,
@@ -358,45 +347,15 @@ with 443/TCP and 3478/UDP open. It sees
 keys and ciphertext only. Changing the relay changes the address (the
 keys stay), so clients need the new one; it is kept in `remote.json`.
 
-### The coordinator
-
-Pairing every machine with every other does not scale, so a
-coordinator can turn remote access into a network, the way Tailscale
-does: each machine joins **once** with a network key held by a small
-always-on service (`gcoord`, see docs/coord.md), which keeps the
-directory of members and their addresses. Every member then trusts and
-finds every other member through it, without pairing windows or
-addresses copied by hand; the terminal traffic itself still goes peer
-to peer over tailcat, and the coordinator down does not break machines
-that already know each other. Whoever holds the network key may run
-commands on every machine in it, so it is treated like the addresses
-themselves: never logged, never written anywhere wider than the
-member's own state.
-
-Joining is manual, for any coordinator a user runs themselves: in
-Settings › Remote (remote access on), paste the join URL the
-coordinator printed and its network key (`remotectl join URL KEY
-[NAME]` does the same without the app). The server then asks the
-coordinator every half minute: members come and go with its directory,
-their addresses become this machine's remote hosts by themselves
-(Settings › Remote › Remote Hosts shows them without Remove, for the directory,
-not a hand, decides), and a member removed there — `gcoord kick` on
-the coordinator, or Remove on the network card — loses its
-connections on every machine within its next ask. Leaving the network
-(Leave, or `remotectl leave`) drops the members and tells the
-coordinator best effort. Pairing stays for those who run no
-coordinator; a machine in a network never needs it.
-
 ### Remote hosts
 
 Remote clients pair by name and keep their key and created/last-seen
 times; a client's hello names its principal, `gorex clients` lists the
 live attachments with their principal and age, and `gorex ls` shows the
-principal that owns each session. Settings › Remote
-Hosts can share this window's layout read-only, and each allowed client
-can be given all sessions, and the layout with them, or only the
-sessions it opened; the shared layout is filtered to sessions that client
-may use; panes it may not use are shown as unavailable placeholders, and
+principal that owns each session. Settings › Server can share this
+window's layout read-only, and give the allowed clients all sessions or
+each only the sessions it opened; the shared layout is filtered to
+sessions that client may use; panes it may not use are shown as unavailable placeholders, and
 panes of other hosts are left out; `gorex -S HOST layout`
 reads it and `events` follows changes.
 
@@ -408,7 +367,7 @@ For a Linux service shared by several paired clients, see
 [docs/shared-server.md](docs/shared-server.md). Per-user isolation and
 PAM login are a separate proposal: [docs/login-server-rfc.md](docs/login-server-rfc.md).
 
-Settings › Remote › Remote Hosts connects this machine to other machines' session
+Settings › Remote Hosts connects this machine to other machines' session
 servers, whose sessions then open in tabs of the window beside its own.
 Add Remote Host… asks for the host's address (the one its Settings ›
 Remote shows; the field hides it), a name for it, and the name this
@@ -442,13 +401,11 @@ attaches again by itself; one whose session ended there closes. The
 window's layout keeps the host of each pane, so a host's tabs come back
 when GoRex opens again, attached once the host answers. Sessions the host
 lists that no tab shows (opened in the host's own window, or by another
-client, while the host shares its sessions) open last among the host's:
+client) open last among the host's:
 one tab for each session, or, while the host shares its layout, one tab
 for each tab that layout shows, with its splits, so two panes side by
 side there are not two tabs here; a tab closed here ends its session as
-any other and does not come back. When the host stops sharing, the tabs
-of sessions this machine did not create close here and their sessions go
-on there.
+any other and does not come back.
 `go run ./tools/remotectl pair ADDRESS NAME` asks to pair from a machine
 without the app.
 
@@ -526,7 +483,7 @@ rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
 
 Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
 server: the GoRex server serves Rex's API (revision 12), on the local
-network to the networks you allow (Settings › Remote), and on the tailnet
+network to the networks you allow (Settings › Server), and on the tailnet
 through a Tailscale device of its own. A space is
 a Rex session, a tab a window, a pane a block, and a floating pane a
 floating layer; terminals stream as Ghostty snapshots, as Rex's do. Setup,
@@ -633,10 +590,9 @@ image reaches a program as a file it opens, not as clipboard data.
 | `view.go`, `tabs.go`, `sidebar.go`, `host.go`, `commands.go` | the interface: title bar, tabs and their sidebar, panes, host popover, menus and palette |
 | `programs.go` | how programs show: names, glyphs, tile colors |
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
-| `settingsview.go`, `remoteview.go` | the Settings window, and its Remote page |
+| `settingsview.go`, `remoteview.go` | the Settings window, and its Server page's remote access |
 | `locales` | the messages of the interface, `en.json` and `zh-Hans.json`, and `catalog_gen.go` (written by `go tool mygo generate`; commit it with the catalogs) |
-| `tools/remotectl` | runs and probes the session server without the app: allow, enable, join a coordinator network, probe over tailcat |
-| `internal/coord`, `tools/gcoord` | the network coordinator, a mini control plane members join once instead of pairing machine by machine (docs/coord.md) |
+| `tools/remotectl` | runs and probes the session server without the app: allow, enable, pair, probe over tailcat |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
 | `internal/control`, `tools/rootshell` | `GoRex control`, the bridge rootshell drives as herdr, and the `herdr` shim that runs it |

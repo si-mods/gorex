@@ -154,7 +154,7 @@ func run(c *rex.Client, o runOptions) error {
 	}
 	defer os.Remove(o.socket)
 	defer unixLn.Close()
-	g.addListener(listenerStatus{
+	g.addListener(Listener{
 		Endpoint: unixEndpoint(o.socket), Addresses: []string{o.socket},
 		Transport: transportUnix, Admission: unixAdmission, Primary: true,
 	})
@@ -176,9 +176,9 @@ func run(c *rex.Client, o runOptions) error {
 		}
 		tl := newTrackedListener(ln)
 		defer tl.Close()
-		g.addListener(listenerStatus{
+		g.addListener(Listener{
 			Endpoint: o.listen, Addresses: []string{ln.Addr().String()},
-			Transport: transportTCP, Admission: admissionAnonymous,
+			Transport: transportTCP, Admission: AdmissionAnonymous,
 		})
 		go func() { serveErr <- g.serveOn(tl, transportTCP) }()
 		if o.announce {

@@ -265,7 +265,7 @@ func pairHost(ctx context.Context, s savedHost, pairAs string, report func(func(
 
 func (a *App) hostsSettings(c *ui.Context, k *colors) {
 	page := &hostsUI
-	settingsGroup(c, k, locales.SettingsHosts(), locales.HostsNote(), "", func() {
+	settingsGroup(c, k, "", locales.HostsNote(), "", func() {
 		if len(a.hosts) == 0 {
 			groupRow(c, k, nil).Children(func() {
 				ui.Text(c, locales.HostsNone()).FontSize(13).TextColor(k.textFaint)
@@ -332,9 +332,7 @@ func (a *App) hostRow(c *ui.Context, k *colors, h *hostConn) {
 				(page.renaming == "" || a.commitHostRename()) {
 				page.renaming, page.alias = h.ID, h.label()
 			}
-			// A host of the network comes back with its next
-			// directory; removing it here would only make it return.
-			if !h.Network && !tailnet && ui.Button(c.Key("remove"), locales.HostsRemove()).Disabled(page.removing == h.ID).Clicked() {
+			if !tailnet && ui.Button(c.Key("remove"), locales.HostsRemove()).Disabled(page.removing == h.ID).Clicked() {
 				page.removing = h.ID
 			}
 		})

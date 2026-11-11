@@ -526,11 +526,11 @@
   },
   "hostApiTitle": "Rex API",
   "@hostApiTitle": {
-    "description": "Host panel: label of the row that shows the Rex API revision."
+    "description": "Local API group: label of the row that shows the Rex API revision."
   },
   "hostApiRevisions": "revision {revision} · server {server} · min {min}",
   "@hostApiRevisions": {
-    "description": "Host panel: the Rex API revision this app negotiated, the newest the gateway serves, and the oldest it serves.",
+    "description": "Local API group: the Rex API revision this app negotiated, the newest the gateway serves, and the oldest it serves.",
     "placeholders": {
       "revision": {
         "type": "int",
@@ -548,11 +548,11 @@
   },
   "hostApiOff": "gateway off",
   "@hostApiOff": {
-    "description": "Host panel: the Rex API gateway is not running, so it reports no revision."
+    "description": "Local API group: the Rex API gateway is not running, so it reports no address or revision."
   },
   "hostApiVersion": "Rex API version",
   "@hostApiVersion": {
-    "description": "Host panel: label of the row that shows the gateway's version string."
+    "description": "Local API group: label of the row that shows the gateway's version string."
   },
   "hostServerUp": "pid {pid, number, ::group-off} · up {uptime}",
   "@hostServerUp": {
@@ -785,11 +785,6 @@
   "settingsKeyboard": "Keyboard",
   "@settingsKeyboard": {
     "description": "Settings section: the keyboard shortcuts."
-  },
-  "settingsNetwork": "Network",
-  "settingsRemote": "Remote",
-  "@settingsRemote": {
-    "description": "Settings section: remote access. The sidebar item."
   },
   "settingsAbout": "About",
   "@settingsAbout": {
@@ -1097,14 +1092,6 @@
   "@remoteAllow": {
     "description": "Setting: whether other machines may connect."
   },
-  "remoteShare": "Share open terminals",
-  "@remoteShare": {
-    "description": "Setting: whether allowed remote clients see and use every terminal of this machine (the server's sessions), or only those each opened."
-  },
-  "remoteShareNote": "Allowed clients see and use the terminals open on this machine. Off: each sees only its own.",
-  "@remoteShareNote": {
-    "description": "Help under the Share open terminals switch."
-  },
   "remoteUnreachable": "Server not reachable",
   "@remoteUnreachable": {
     "description": "State: the session server does not answer."
@@ -1138,6 +1125,10 @@
   "remoteOff": "Off",
   "@remoteOff": {
     "description": "State: remote access is off."
+  },
+  "remoteOffNote": "Turn on to pair your other computers and let them open terminals here.",
+  "@remoteOffNote": {
+    "description": "Remote page: the hint under the remote access switch while it is off, when the page shows nothing else."
   },
   "remoteNotConnected": "Not connected to the session server.",
   "@remoteNotConnected": {
@@ -1198,6 +1189,14 @@
   "remoteMyKeyNote": "Its fingerprint is what a machine you pair with shows for this one.",
   "@remoteMyKeyNote": {
     "description": "Note of that card."
+  },
+  "remoteShowDetails": "Show Details",
+  "@remoteShowDetails": {
+    "description": "Remote page: the disclosure at the bottom of the Devices card that shows this machine's address and key, as Rex's Show Details."
+  },
+  "remoteHideDetails": "Hide Details",
+  "@remoteHideDetails": {
+    "description": "Remote page: the same disclosure, open; it hides them again."
   },
   "remoteNoKey": "No key yet.",
   "@remoteNoKey": {
@@ -1325,7 +1324,7 @@
   },
   "settingsHosts": "Remote Hosts",
   "@settingsHosts": {
-    "description": "The Remote page's group of the remote hosts this machine connects to."
+    "description": "Settings section: the remote hosts this machine connects to. The sidebar item and the page's title."
   },
   "hostsNote": "Add and manage remote GoRex hosts, view connection status, and retry connection failures.",
   "@hostsNote": {
@@ -1343,9 +1342,9 @@
   "@hostsAddTitle": {
     "description": "Title of the sheet that adds a remote host."
   },
-  "hostsAddNote": "Paste the address that Settings › Remote shows on the other machine, with remote access on there. The address is a secret: anyone with it may ask to pair.",
+  "hostsAddNote": "Paste the address that Settings › Server shows on the other machine, with remote access on there. The address is a secret: anyone with it may ask to pair.",
   "@hostsAddNote": {
-    "description": "Note of the add sheet. Settings › Remote names the other machine's settings page."
+    "description": "Note of the add sheet. Settings › Server names the other machine's settings page."
   },
   "hostsAddress": "Address",
   "@hostsAddress": {
@@ -1379,7 +1378,7 @@
   "@hostsEnterAddress": {
     "description": "Error: the address field is empty."
   },
-  "hostsBadAddress": "That is not a GoRex remote address. Copy it from Settings › Remote on the host.",
+  "hostsBadAddress": "That is not a GoRex remote address. Copy it from Settings › Server on the host.",
   "@hostsBadAddress": {
     "description": "Error: the address does not parse."
   },
@@ -1439,7 +1438,7 @@
   "@hostsNotAllowed": {
     "description": "Why a host is not connected: this machine's key is not allowed there."
   },
-  "hostsNotPairing": "{host} is not pairing. There, open Settings › Remote and choose Pair New Device…, then try again.",
+  "hostsNotPairing": "{host} is not pairing. There, open Settings › Server and choose Pair New Device…, then try again.",
   "@hostsNotPairing": {
     "description": "Error of the add sheet: the host's pairing window is closed. Pair New Device… is remotePairNew.",
     "placeholders": {
@@ -1463,7 +1462,7 @@
       }
     }
   },
-  "hostsApproveWhere": "It shows under Settings › Remote › Devices. Approve it only if the fingerprints match.",
+  "hostsApproveWhere": "It shows under Settings › Server › Devices. Approve it only if the fingerprints match.",
   "@hostsApproveWhere": {
     "description": "Add sheet: where the request shows on the host. Devices is remoteDevices."
   },
@@ -1781,59 +1780,6 @@
   "@spaceColorCustom": {
     "description": "Space popover: placeholder of the field that takes a custom color of the space, as #0090ff."
   },
-  "remoteNetNote": "Pairing every machine with every other is no way to scale. A coordinator turns remote access into a network, the way Tailscale does: join once with the network key, and every member trusts and finds every other.",
-  "@remoteNetNote": {
-    "description": "Note under the title."
-  },
-  "remoteNetTurnOn": "Turn remote access on to join a network.",
-  "@remoteNetTurnOn": {
-    "description": "Said while remote access is off."
-  },
-  "remoteNetURLLabel": "Join URL",
-  "@remoteNetURLLabel": {
-    "description": "Field label."
-  },
-  "remoteNetKeyLabel": "Network key",
-  "@remoteNetKeyLabel": {
-    "description": "Field label."
-  },
-  "remoteNetNameLabel": "Name this machine joins by",
-  "@remoteNetNameLabel": {
-    "description": "Field label."
-  },
-  "remoteNetKeyPlaceholder": "the key gcoord init printed",
-  "@remoteNetKeyPlaceholder": {
-    "description": "Placeholder of the network key field."
-  },
-  "remoteNetJoin": "Join",
-  "remoteNetURL": "Paste the join URL the coordinator printed.",
-  "remoteNetBadURL": "The join URL reads “https://host/<fingerprint>”.",
-  "remoteNetKey": "Paste the network key.",
-  "remoteNetName": "Name this machine to join.",
-  "remoteNetJoined": "Network: {name}",
-  "@remoteNetJoined": {
-    "description": "Card title: the network joined, name this machine's member name.",
-    "placeholders": {
-      "name": {}
-    }
-  },
-  "remoteNetCoordinator": "Members come from the coordinator at {host}, and change with it.",
-  "@remoteNetCoordinator": {
-    "description": "Note under the title: host the coordinator's address.",
-    "placeholders": {
-      "host": {}
-    }
-  },
-  "remoteNetNoMembers": "No other machine has joined yet.",
-  "remoteNetKick": "Remove",
-  "remoteNetLeave": "Leave the network",
-  "remoteNetError": "The coordinator: {error}",
-  "@remoteNetError": {
-    "description": "error is the coordinator's last word.",
-    "placeholders": {
-      "error": {}
-    }
-  },
   "paneRename": "Rename Pane…",
   "@paneRename": {
     "description": "Context menu item for a pane."
@@ -1889,14 +1835,6 @@
   "remoteShareLayoutNote": "Remote clients may read this window's tabs and splits, and follow changes.",
   "@remoteShareLayoutNote": {
     "description": "Remote access: share this window layout with remote clients."
-  },
-  "remoteClientShare": "All sessions",
-  "@remoteClientShare": {
-    "description": "Switch: this remote client may use all sessions."
-  },
-  "remoteClientLayout": "Layout",
-  "@remoteClientLayout": {
-    "description": "Switch: this remote client may read the layout."
   },
   "hostsLayout": "Layout",
   "@hostsLayout": {
@@ -1978,10 +1916,6 @@
       }
     }
   },
-  "remoteTailscaleTitle": "Tailscale",
-  "@remoteTailscaleTitle": {
-    "description": "Title of the card that sets the control server of built-in Tailscale."
-  },
   "remoteTailscaleNote": "The control server built-in Tailscale registers with, such as Headscale. A change applies the next time Tailscale is turned on.",
   "@remoteTailscaleNote": {
     "description": "Note under the title of the Tailscale card."
@@ -2014,13 +1948,29 @@
   "@remoteRelayInvalid": {
     "description": "Error under the relay field when what was typed is not a host name or address with an optional port."
   },
-  "remoteLanTitle": "Rex apps on the local network",
-  "@remoteLanTitle": {
-    "description": "Title of the card that lets Rex's apps, such as Rex on an iPhone, connect over the local network."
+  "remoteApiTitle": "Local API",
+  "@remoteApiTitle": {
+    "description": "Title of the server page's group that tells Rex's API gateway's revisions and version and lists where it takes connections on this machine, as Rex's Developer page's Local API."
+  },
+  "remoteApiUrl": "Local API URL",
+  "@remoteApiUrl": {
+    "description": "Local API card: label of the row with the API's primary endpoint, a URL to copy, as Rex's."
+  },
+  "remoteApiPeer": "This user only",
+  "@remoteApiPeer": {
+    "description": "Local API card: an endpoint that lets in only programs of the user the app runs as."
+  },
+  "remoteApiAnyone": "Anyone who can reach it",
+  "@remoteApiAnyone": {
+    "description": "Local API card: an endpoint with no check at all; anyone who can connect to its address gets in. Shown as a warning."
+  },
+  "remoteApiNote": "Where Rex's API takes connections on this machine. Built-in Tailscale is not listed: its switch is below.",
+  "@remoteApiNote": {
+    "description": "Footnote of the Local API card."
   },
   "remoteLanNote": "Rex's apps connect to this address over plain HTTP, Rex on an iPhone among them. There is no password: anyone in a network allowed gets a full shell, and what they type crosses the local network unencrypted. Allow as little as you can, such as your phone's address.",
   "@remoteLanNote": {
-    "description": "Note under the title of the local network card."
+    "description": "Local API card, the local network's row: the warning under its settings."
   },
   "remoteLanSwitch": "Serve Rex apps on the local network",
   "@remoteLanSwitch": {
@@ -2139,21 +2089,9 @@
   "@remoteAddByKeyAsk": {
     "description": "Remote page button: shows the fields that allow a client by its public key."
   },
-  "remoteNetGroup": "Network",
-  "@remoteNetGroup": {
-    "description": "Remote page: the group of the coordinator network this machine joins."
-  },
-  "remoteNetNone": "Not in a network",
-  "@remoteNetNone": {
-    "description": "Remote page: this machine has joined no coordinator network."
-  },
-  "remoteNetJoinAsk": "Join a Network…",
-  "@remoteNetJoinAsk": {
-    "description": "Remote page button: shows the fields to join a coordinator network."
-  },
   "remoteLanListenOn": "Listen on",
   "@remoteLanListenOn": {
-    "description": "Remote page row: the address on the local network that Rex's apps connect to."
+    "description": "Local API card, the local network's row: the address on the local network that Rex's apps connect to."
   },
   "cmdResetCanvasView": "Reset Canvas View",
   "@cmdResetCanvasView": {

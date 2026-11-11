@@ -356,7 +356,6 @@ func newServer(ln net.Listener, lock *os.File) *Server {
 		layoutRev: 1, hostDone: make(chan struct{}), idleFrom: time.Now(), quit: make(chan struct{}), dir: Dir(),
 	}
 	s.exe, s.exeTime = Executable()
-	s.rem.cfg = defaultRemoteConfig()
 	// Before any connection, and never changed: every hello names the
 	// machine. A hash of a small key file, made once.
 	s.machine = MachineID()
@@ -449,8 +448,7 @@ func (s *Server) shutdown(reason string) {
 
 // handle serves a connection: peer is the key of a remote client, "" for
 // a local connection (a remote one always has a key: remoteAccept refuses
-// a peer without). A remote one may make the ops of remoteAllowed only, on
-// the sessions it may use (mayUse).
+// a peer without). A remote one may make the ops of remoteAllowed only.
 func (s *Server) handle(conn net.Conn, peer string) {
 	r := bufio.NewReaderSize(conn, 64<<10)
 	first, err := readLine(r)
@@ -484,11 +482,6 @@ func (s *Server) handle(conn net.Conn, peer string) {
 			conn.Close()
 			return
 		}
-		if !s.mayUse(peer, ss) {
-			conn.Write([]byte(`{"error":"` + errNotShared.Error() + `"}` + "\n"))
-			conn.Close()
-			return
-		}
 		var via net.Conn
 		if a.Conn != "" {
 			k, ok := s.bind(a.Conn, conn, peer)
@@ -514,7 +507,7 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		if n := r.Buffered(); n > 0 {
 			typed, _ = r.Peek(n)
 		}
-		ss.attach(conn, peer, a, via, func() bool { return s.mayUse(peer, ss) }, typed)
+		ss.attach(conn, peer, a, via, typed)
 		return
 	}
 	if a.Op == "file.put" || a.Op == "file.get" {
@@ -589,8 +582,8 @@ func (s *Server) control(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 				kept = s.keep(conn, peer)
 			}
 			// Before the answer: no change after it goes untold.
-			if req.Op == "subscribe" && (!remote || s.remoteShareLayout(peer)) && sub == nil {
-				sub = s.subscribe(write, remote, peer, req.Transfers)
+			if req.Op == "subscribe" && (!remote || s.remoteShareLayout()) && sub == nil {
+				sub = s.subscribe(write, remote, req.Transfers)
 			}
 			// Kills wait for the session to end, layout commands for the
 			// app, and an answer of no window for the server's change:
@@ -688,8 +681,7 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 	var data any
 	var err error
 	remote := peer != ""
-	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe") && s.remoteShareLayout(peer)
-	command := remote && req.Op == "command" && s.remoteMayCommand(peer)
+	layout := remote && (req.Op == "getLayout" || req.Op == "getLayoutState" || req.Op == "subscribe") && s.remoteShareLayout()
 	if remote && req.Op == "command" && req.Command != nil && req.Command.Op == "action" && !s.remoteControlEnabled() {
 		err = errors.New("rex: remote control is off")
 	} else if remote && req.Op == "command" && req.Command != nil && strings.HasPrefix(req.Command.Op, "pane.teleport") {
@@ -698,7 +690,7 @@ func (s *Server) request(req Request, peer string, kept *keptConn) Response {
 		err = fmt.Errorf("rex: %s is this machine's GoRex window's", req.Command.Op)
 	} else if remote && req.Op == "remote.pair" {
 		err = errors.New("rex: this machine is allowed there already")
-	} else if remote && !remoteAllowed(req.Op) && !layout && !command && !(req.Op == "action" && s.remoteControlEnabled()) {
+	} else if remote && !remoteAllowed(req.Op) && !layout && !(req.Op == "action" && s.remoteControlEnabled()) {
 		log.Printf("rex: denied %q to a remote connection", req.Op)
 		err = fmt.Errorf("%s is not allowed remotely", req.Op)
 	} else {
@@ -743,77 +735,6 @@ func (s *Server) session(id string) (*session, error) {
 
 var errSizeUnlocked = errors.New("rex: the session's size is not locked by this owner")
 
-var errNotShared = errors.New("rex: that session is not shared with this machine: the host shares only the sessions each client opened")
-
-// NotShared reports whether err is the host refusing a session it does not share
-// with this client (the error arrives as text).
-func NotShared(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "that session is not shared with this machine")
-}
-
-// mayUse tells whether peer, a remote client's key or "" for a local
-// connection, may see and use ss: a local one always, a remote one the
-// sessions it created, and any while the server shares them.
-func (s *Server) mayUse(peer string, ss *session) bool {
-	return peer == "" || ss.owner == peer || s.sharesSessions(peer)
-}
-
-// sharesSessions tells whether the server shares every session with
-// peer, a remote client's key: all of them while it shares them with
-// every client, else as the client's allowlist entry says.
-func (s *Server) sharesSessions(peer string) bool {
-	s.rem.mu.Lock()
-	defer s.rem.mu.Unlock()
-	return s.rem.sharesLocked(peer)
-}
-
-// sharesLocked is sharesSessions with the remote lock held.
-func (r *remote) sharesLocked(peer string) bool {
-	if r.cfg.ShareSessions {
-		return true
-	}
-	return slices.ContainsFunc(r.cfg.Allowed, func(c RemoteClient) bool {
-		return c.PublicKey == peer && c.ShareSessions
-	})
-}
-
-// use returns the session id for peer (mayUse).
-func (s *Server) use(id, peer string) (*session, error) {
-	ss, err := s.session(id)
-	if err == nil && !s.mayUse(peer, ss) {
-		return nil, errNotShared
-	}
-	return ss, err
-}
-
-// dropUnshared detaches the remote windows from the sessions their client
-// may no longer use, as sharing turns off, and closes the gateway's
-// connections of the clients it no longer shares them with.
-func (s *Server) dropUnshared() {
-	r := &s.rem
-	r.mu.Lock()
-	var gw []net.Conn
-	for c := range r.gw {
-		if !r.sharesLocked(r.conns[c]) {
-			delete(r.gw, c)
-			gw = append(gw, c)
-		}
-	}
-	r.mu.Unlock()
-	for _, c := range gw {
-		c.Close()
-	}
-	s.mu.Lock()
-	all := make([]*session, 0, len(s.sessions))
-	for _, ss := range s.sessions {
-		all = append(all, ss)
-	}
-	s.mu.Unlock()
-	for _, ss := range all {
-		ss.detach(func(peer string) bool { return !s.mayUse(peer, ss) })
-	}
-}
-
 // do serves a request of a control connection, kept alive when kept is
 // not nil.
 func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
@@ -851,11 +772,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		s.mu.Unlock()
 		infos := make([]SessionInfo, 0, len(all))
 		for _, ss := range all {
-			if s.mayUse(peer, ss) {
-				in := s.info(ss)
-				in.OwnerShared = in.Owner != "" && s.sharesSessions(in.Owner)
-				infos = append(infos, in)
-			}
+			infos = append(infos, s.info(ss))
 		}
 		return infos, nil
 	case "create":
@@ -878,14 +795,11 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		return s.info(ss), nil
 	case "kill":
 		s.ops.RLock()
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err == nil {
 			s.end(ss)
 		}
 		s.ops.RUnlock()
-		if err == errNotShared {
-			return nil, err
-		}
 		if err == nil {
 			// Its pane goes before the answer, so that no crash after
 			// it starts the session again.
@@ -901,9 +815,6 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		s.mu.Unlock()
 		out := []ClientInfo{}
 		for _, ss := range all {
-			if !s.mayUse(peer, ss) {
-				continue
-			}
 			ss.mu.Lock()
 			var attached []*attached
 			for a := range ss.clients {
@@ -935,13 +846,13 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		})
 		return out, nil
 	case "input":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
 		return nil, ss.inputProgram(req.Bytes)
 	case "key":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
@@ -950,7 +861,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return nil, ss.Key(*req.Key)
 	case "mouse":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
@@ -959,7 +870,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return nil, ss.Mouse(*req.Mouse)
 	case "focusReport":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
@@ -968,13 +879,13 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return nil, ss.FocusReport(*req.FocusReport)
 	case "modes":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
 		return ss.Modes(), nil
 	case "format":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
@@ -984,33 +895,33 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return ss.Format(o)
 	case "inputMode":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
 		return ss.InputMode()
 	case "clear":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
 		ss.ClearScreen()
 		return nil, nil
 	case "reset":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
 		ss.ResetTerminal()
 		return nil, nil
 	case "paste":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
 		return nil, ss.paste(req.Paste)
 	case "capture":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
@@ -1024,13 +935,13 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			return nil, errors.New("rex: no action")
 		}
 		if req.SID != "" {
-			if _, err := s.use(req.SID, peer); err != nil {
+			if _, err := s.session(req.SID); err != nil {
 				return nil, err
 			}
 		}
 		return s.command(LayoutCommand{Op: "action", SID: req.SID, Action: req.Action.ID, Args: req.Action.Args, Remote: peer != ""}), nil
 	case "focus":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}
@@ -1041,7 +952,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		ss.focusFrom(via, peer)
 		return nil, nil
 	case "resize", "lockSize", "lockedResize", "unlockSize", "renewSize":
-		ss, err := s.use(req.SID, peer)
+		ss, err := s.session(req.SID)
 		if err != nil {
 			return nil, err
 		}

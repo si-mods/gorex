@@ -59,7 +59,7 @@ The gateway listens on five places:
 
 When the phone reaches this machine by its address on the local network,
 directly or through a VPN to it, Rex's app connects without Tailscale.
-Settings › Remote › Rex apps on the local network turns the listener on.
+Settings › Server › Local API › Serve Rex apps on the local network turns the listener on.
 It listens on this machine's private address with Rex's port, such as
 `192.168.88.119:7297`, and lets in that address's network, such as
 `192.168.88.0/24`; change either there. In Rex's app, add the host
@@ -89,7 +89,7 @@ Mind what this listener is:
 
 The settings live in `rexapi/lan.json` in GoRex's data directory; the
 server's gateway follows a change within a second, without a restart.
-**Settings › Remote › Remote Hosts → Rex QR…** shows this gateway's pairing
+**Settings › Server › Local API → Rex QR…** shows this gateway's pairing
 address as a code for Rex to scan, as `gorex rexapi pair` does: the
 built-in Tailscale address, `https://<machine>-gorex.<tailnet>.ts.net`.
 The code holds the address only, not a credential, and the device that
@@ -103,11 +103,8 @@ A session that a GoRex desktop of yours made on this machine (one of its
 remote hosts' panes) and that no local tab shows is under **Desktop
 terminals**. Opening a terminal there attaches to the existing process.
 A desktop counts as yours when it reached this machine over system
-Tailscale, which lets in only your own Tailscale user, or when this
-machine shares its sessions with it: by default, for every client, or
-for that one after `gorex remote share off`. With sharing off, the
-sessions of another client paired here stay its own, as the server keeps
-them from every other client.
+Tailscale, which lets in only your own Tailscale user, or paired with it
+over tailcat: every paired client sees every session.
 
 ## Built-in Tailscale
 
@@ -130,8 +127,7 @@ through a DERP relay, with no Tailscale account and no VPN on the phone.
 The gateway keeps no tailcat of its own. The session server listens on
 port 7297 of its address beside 7464, and lets in only the clients that
 may command its layout over 7464: the keys of its allowlist and its
-network with its sessions shared with them (an unknown key, or one not
-shared with, gets nothing; pairing stays on 7464). For each, it dials
+network (an unknown key gets nothing; pairing stays on 7464). For each, it dials
 the gateway's socket, `rexapi-tailcat.sock` in GoRex's data directory
 (this user only), and writes a line with the client's key and name, then
 the bytes. With no gateway there, the connection closes and the client
@@ -140,8 +136,8 @@ dials again.
 A client over tailcat is identified as
 `{"kind": "device", "transport": "tailcat", "display": "<client name>", "path": ["tailcat"]}`.
 It gets Rex's API as the owner does over built-in Tailscale, layout
-included, but not `server.tailscale.*`. Remove in Settings › Remote, a
-coordinator's kick, its sessions no longer shared, or turning remote
+included, but not `server.tailscale.*`. Remove in Settings › Server › Devices,
+its sessions no longer shared, or turning remote
 access off closes its connections. `server.status` does not list this listener: its address is
 a secret.
 
@@ -160,7 +156,7 @@ a secret.
    once, and never saved or logged). A tailnet run by your own control
    server, such as Headscale, takes its URL:
    `GoRex rexapi tailscale on --control-url https://headscale.example.com`,
-   or in Settings › Network's Tailscale card. The URL must be `https`:
+   or in Settings › Server, under the Tailscale switch. The URL must be `https`:
    the control traffic itself is encrypted, but the device fetches the
    server's key over the URL unauthenticated, so over `http` anyone on
    the path could swap the key. `http` is accepted only for `localhost`

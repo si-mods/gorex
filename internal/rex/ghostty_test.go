@@ -257,9 +257,6 @@ func TestGhosttyAttachExited(t *testing.T) {
 // path carries the snapshot it asks for.
 func TestGhosttyAttachRemote(t *testing.T) {
 	s, _ := testServer(t)
-	s.rem.mu.Lock()
-	s.rem.cfg.ShareSessions = true
-	s.rem.mu.Unlock()
 	local := pipe(s, "")
 	t.Cleanup(func() { local.Close() })
 	info, err := local.Create(CreateOptions{Command: silentCommand(), Dir: os.TempDir(), Cols: 80, Rows: 24})

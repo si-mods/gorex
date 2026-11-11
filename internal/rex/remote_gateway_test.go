@@ -101,10 +101,9 @@ func wantEOF(t *testing.T, c net.Conn, d time.Duration, what string) {
 
 // TestRemoteGateway: through a relay of its own (an in-process DERP), the
 // tailcat address puts the relay in itself, and serves RexAPIPort to the
-// clients that may command the layout only (remoteMayCommand), handing
-// their connections to the gateway's socket with their key and name. A
-// change of sharing, a revoke and remote access off close them; clearing
-// the relay goes back to tailcat's.
+// allowed clients only, handing their connections to the gateway's socket
+// with their key and name. A revoke and remote access off close them;
+// clearing the relay goes back to tailcat's.
 func TestRemoteGateway(t *testing.T) {
 	reg := tailcatEnv(t)
 	s, _ := testServer(t)
@@ -121,9 +120,6 @@ func TestRemoteGateway(t *testing.T) {
 	}
 	relay := fmt.Sprintf("localhost:%d", reg.Nodes[0].DERPPort)
 	if err := c.SetRelay(relay); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.ShareSessions(false); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.EnableRemote(); err != nil {
@@ -197,39 +193,14 @@ func TestRemoteGateway(t *testing.T) {
 		return g
 	}
 
-	// A stranger gets nothing, nor an allowed client whose sessions are
-	// not shared with it.
+	// A stranger gets nothing.
 	sc := dial(stranger)
 	sc.Write([]byte("GET / HTTP/1.1\r\n\r\n"))
 	wantEOF(t, sc, 10*time.Second, "a stranger's connection")
-	wantEOF(t, dial(phone), 10*time.Second, "a client not sharing")
 	noGateway("refused")
 
-	// Shared with it, it reaches the gateway, named; unsharing closes it.
-	if err := c.ShareClientSessions(phoneID, true); err != nil {
-		t.Fatal(err)
-	}
+	// An allowed client reaches the gateway, named; a revoke closes it.
 	g := reaches()
-	if err := c.ShareClientSessions(phoneID, false); err != nil {
-		t.Fatal(err)
-	}
-	wantEOF(t, g.c, 5*time.Second, "unshared")
-
-	// Shared with every client, the same; turning that off closes it.
-	if err := c.ShareSessions(true); err != nil {
-		t.Fatal(err)
-	}
-	g = reaches()
-	if err := c.ShareSessions(false); err != nil {
-		t.Fatal(err)
-	}
-	wantEOF(t, g.c, 5*time.Second, "sharing off")
-
-	// Remove closes it.
-	if err := c.ShareSessions(true); err != nil {
-		t.Fatal(err)
-	}
-	g = reaches()
 	if err := c.RevokeRemote(phoneID); err != nil {
 		t.Fatal(err)
 	}

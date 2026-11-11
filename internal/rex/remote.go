@@ -64,22 +64,12 @@ type RemoteConfig struct {
 	// it to be cleared.
 	Relay   string         `json:"relay,omitempty"`
 	Allowed []RemoteClient `json:"allowed"`
-	// ShareSessions lets remote clients see and use every session; off,
-	// each sees and uses only the sessions it created, unless its
-	// allowlist entry shares them.
-	// On by default: remote.json writes it always, and one that says
-	// nothing of it, as before it was written off, reads as on
-	// (UnmarshalJSON).
-	ShareSessions bool `json:"shareSessions"`
 	// ShareLayout lets remote clients read the layout and subscribe to
 	// its changes; off by default.
 	ShareLayout bool `json:"shareLayout,omitempty"`
 	// RemoteControl lets remote clients run app actions through this
 	// window; off by default.
 	RemoteControl bool `json:"remoteControl,omitempty"`
-	// Network is the coordinator network this machine joined, if any;
-	// its members are served beside Allowed, and kept in memory only.
-	Network *NetworkConfig `json:"network,omitempty"`
 }
 
 // The pairing window: how long it stays open, how many requests it
@@ -91,23 +81,6 @@ const (
 )
 
 func remotePath() string { return filepath.Join(Dir(), "remote.json") }
-
-// defaultRemoteConfig is the configuration of a machine whose remote.json
-// does not exist or says nothing: off, sharing sessions once on.
-func defaultRemoteConfig() RemoteConfig { return RemoteConfig{ShareSessions: true} }
-
-// UnmarshalJSON reads remote.json over the defaults, so that a field it
-// leaves out keeps its default: ShareSessions, on, which an older file
-// wrote only when on.
-func (c *RemoteConfig) UnmarshalJSON(b []byte) error {
-	type plain RemoteConfig
-	p := plain(defaultRemoteConfig())
-	if err := json.Unmarshal(b, &p); err != nil {
-		return err
-	}
-	*c = RemoteConfig(p)
-	return nil
-}
 
 // writeJSON writes v to path, readable by the user only, atomically.
 func writeJSON(path string, v any) error {
@@ -276,20 +249,10 @@ type remote struct {
 	addr    tailcat.Addr
 	lastErr string
 	conns   map[net.Conn]string // the remote connections, by their peer's key
-	gw      map[net.Conn]bool   // those of conns that go to the gateway
 	// pairUntil is when the pairing window closes, zero while closed;
 	// pending holds the requests made in it, never saved.
 	pairUntil time.Time
 	pending   []RemotePending
-	// The network, when this machine joined one: netCancel stops the
-	// loop that follows it, netC is its coordinator, netMembers the
-	// members beside the allowlist, netErr what the coordinator last
-	// said wrong, netJoined the address last joined with.
-	netCancel  context.CancelFunc
-	netC       netClient
-	netMembers []NetworkMember
-	netErr     string
-	netJoined  string
 }
 
 // remotePeerKey returns the key of the peer of a connection accepted by
@@ -354,7 +317,7 @@ func (s *Server) remoteControlEnabled() bool {
 }
 
 // remoteClientFor is what a connected peer is, for its Hello: its label,
-// key and times. A network member has no saved times.
+// key and times.
 func (s *Server) remoteClientFor(peer string) *RemoteClient {
 	r := &s.rem
 	r.mu.Lock()
@@ -366,11 +329,6 @@ func (s *Server) remoteClientFor(peer string) *RemoteClient {
 		if c.PublicKey == peer {
 			c := c
 			return &c
-		}
-	}
-	for _, m := range r.netMembers {
-		if m.PublicKey == peer {
-			return &RemoteClient{Name: m.Name, PublicKey: m.PublicKey}
 		}
 	}
 	return nil
@@ -391,21 +349,10 @@ func (s *Server) remoteSeen(peer string) {
 
 // remoteShareLayout tells whether remote clients may read and subscribe
 // to the layout.
-func (s *Server) remoteShareLayout(peer string) bool {
+func (s *Server) remoteShareLayout() bool {
 	s.rem.mu.Lock()
 	defer s.rem.mu.Unlock()
-	if s.rem.cfg.ShareLayout {
-		return true
-	}
-	return slices.ContainsFunc(s.rem.cfg.Allowed, func(c RemoteClient) bool {
-		return c.PublicKey == peer && c.ShareLayout
-	})
-}
-
-// remoteMayCommand tells whether peer may ask the app for layout changes:
-// the sessions sharing it has, not the read-only layout.
-func (s *Server) remoteMayCommand(peer string) bool {
-	return s.sharesSessions(peer)
+	return s.rem.cfg.ShareLayout
 }
 
 // remoteAllowed tells the ops a remote connection may make; it may also
@@ -413,7 +360,7 @@ func (s *Server) remoteMayCommand(peer string) bool {
 func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "paste", "capture", "clients",
-		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset":
+		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command":
 		return true
 	}
 	return false
@@ -424,10 +371,10 @@ func (s *Server) remoteLoad() {
 	r := &s.rem
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.cfg = defaultRemoteConfig()
+	r.cfg = RemoteConfig{}
 	if err := readJSON(remotePath(), &r.cfg); err != nil {
 		log.Printf("rex: remote access stays off: %v", err)
-		r.cfg, r.lastErr = defaultRemoteConfig(), err.Error()
+		r.cfg, r.lastErr = RemoteConfig{}, err.Error()
 		return
 	}
 	// Allowlists saved before identities had times get them now.
@@ -446,7 +393,6 @@ func (s *Server) remoteLoad() {
 	if r.cfg.Enabled {
 		s.remoteStartLocked()
 	}
-	s.networkStartLocked()
 	if r.cfg.Tailnet {
 		s.tailnetStartLocked()
 	}
@@ -472,11 +418,9 @@ func (s *Server) remoteEnabled() bool {
 func (s *Server) remoteClose() {
 	s.rem.mu.Lock()
 	s.tailnetStopLocked()
-	netDrop := s.networkStopLocked()
 	done := s.remoteStopLocked()
 	s.rem.mu.Unlock()
 	done()
-	netDrop()
 }
 
 // remoteStopLocked stops the listener; the function it returns closes it
@@ -489,7 +433,7 @@ func (s *Server) remoteStopLocked() func() {
 		r.cancel = nil
 	}
 	ts, ln, api, conns := r.ts, r.ln, r.api, r.conns
-	r.ts, r.ln, r.api, r.addr, r.conns, r.gw = nil, nil, nil, "", nil, nil
+	r.ts, r.ln, r.api, r.addr, r.conns = nil, nil, nil, "", nil
 	r.pairUntil, r.pending = time.Time{}, nil
 	return func() {
 		if ln != nil {
@@ -546,7 +490,7 @@ func (s *Server) remoteStartLocked() {
 			}
 			if err == nil {
 				r.ts, r.ln, r.api, r.addr, r.lastErr = ts, ln, api, addr, ""
-				r.conns, r.gw = map[net.Conn]string{}, map[net.Conn]bool{}
+				r.conns = map[net.Conn]string{}
 				if r.cfg.Region == 0 && region != 0 {
 					r.cfg.Region = region
 					if err := writeJSON(remotePath(), r.cfg); err != nil {
@@ -573,7 +517,7 @@ func (s *Server) remoteStartLocked() {
 				done := func() {}
 				if r.ln == ln {
 					ts, ln, conns := r.ts, r.ln, r.conns
-					r.ts, r.ln, r.api, r.addr, r.conns, r.gw = nil, nil, nil, "", nil, nil
+					r.ts, r.ln, r.api, r.addr, r.conns = nil, nil, nil, "", nil
 					done = func() {
 						ln.Close()
 						api.Close()
@@ -666,11 +610,10 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			k := remotePeerKey(ts, c)
 			// Checked and kept under the lock, so that a revoke drops it.
 			r.mu.Lock()
-			allowed := r.allowedLocked(k) || r.netMemberLocked(k)
+			allowed := r.allowedLocked(k)
 			api := r.api == ln
-			// Stopped, or for the gateway and not allowed to command the
-			// layout (remoteMayCommand): no answer.
-			if r.ln != ln && !api || api && !(allowed && r.sharesLocked(k)) {
+			// Stopped, or for the gateway and not allowed: no answer.
+			if r.ln != ln && !api || api && !allowed {
 				r.mu.Unlock()
 				c.Close()
 				return
@@ -681,9 +624,6 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 				return
 			}
 			r.conns[c] = k
-			if api {
-				r.gw[c] = true
-			}
 			r.mu.Unlock()
 			switch {
 			case api:
@@ -698,7 +638,6 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			c.Close()
 			r.mu.Lock()
 			delete(r.conns, c)
-			delete(r.gw, c)
 			r.mu.Unlock()
 		}()
 	}
@@ -811,20 +750,11 @@ func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 	st := RemoteStatus{
 		Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr), Relay: r.cfg.Relay,
 		Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
-		ShareSessions: r.cfg.ShareSessions, ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
+		ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
 	}
 	if r.pairOpenLocked() {
 		st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
 		st.Pending = slices.Clone(r.pending)
-	}
-	if r.cfg.Network != nil {
-		st.Network = &NetworkStatus{
-			Name:        r.cfg.Network.Name,
-			Coordinator: coordinatorHost(r.cfg.Network.URL),
-			Members:     slices.Clone(r.netMembers),
-			Revision:    r.cfg.Network.Revision,
-			LastError:   r.netErr,
-		}
 	}
 	st.Tailnet = tailnet
 	return st
@@ -898,40 +828,6 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		r.pending = slices.Delete(r.pending, i, i+1)
 		log.Printf("rex: %s", req.Op)
 		return nil, nil
-	case "remote.join":
-		if req.Network == nil {
-			return nil, errors.New("rex: remote.join needs a network")
-		}
-		drop, err := s.networkJoin(req.Network)
-		if err != nil {
-			return nil, err
-		}
-		done = append(done, drop)
-		return nil, nil
-	case "remote.leave":
-		drop, err := s.networkLeave()
-		if err != nil {
-			return nil, err
-		}
-		done = append(done, drop)
-		return nil, nil
-	case "remote.kick":
-		name, nodeKey := "", ""
-		if req.Remote != nil {
-			name, nodeKey = networkName(req.Remote.Name), strings.TrimSpace(req.Remote.PublicKey)
-			if nodeKey != "" {
-				k, err := parsePublicKey(nodeKey)
-				if err != nil {
-					return nil, err
-				}
-				nodeKey = k.String()
-			}
-		}
-		if err := s.networkKick(name, nodeKey); err != nil {
-			return nil, err
-		}
-		log.Printf("rex: %s", req.Op)
-		return nil, nil
 	}
 	cfg := r.cfg
 	cfg.Allowed = slices.Clone(cfg.Allowed)
@@ -993,39 +889,10 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			return nil, err
 		}
 		cfg.Relay = relay
-	case "remote.clientLayoutSet":
-		k, err := reqKey()
-		if err != nil {
-			return nil, err
-		}
-		i := slices.IndexFunc(cfg.Allowed, func(c RemoteClient) bool { return c.PublicKey == k })
-		if i < 0 {
-			return nil, errors.New("rex: no such client")
-		}
-		cfg.Allowed[i].ShareLayout = req.On
-	case "remote.clientShareSet":
-		k, err := reqKey()
-		if err != nil {
-			return nil, err
-		}
-		i := slices.IndexFunc(cfg.Allowed, func(c RemoteClient) bool { return c.PublicKey == k })
-		if i < 0 {
-			return nil, errors.New("rex: no such client")
-		}
-		cfg.Allowed[i].ShareSessions = req.On
-		if !req.On {
-			done = append(done, s.dropUnshared)
-		}
 	case "remote.shareLayoutSet":
 		cfg.ShareLayout = req.On
 	case "remote.controlSet":
 		cfg.RemoteControl = req.On
-	case "remote.shareSet":
-		cfg.ShareSessions = req.On
-		if !req.On {
-			// Run once r.cfg says so: an attach checks it as it joins.
-			done = append(done, s.dropUnshared)
-		}
 	default:
 		return nil, fmt.Errorf("unknown op %q", req.Op)
 	}

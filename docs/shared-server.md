@@ -38,14 +38,11 @@ gorex remote address          # the tailcat address clients pair with
 gorex remote pair start       # opens the five-minute pairing window
 gorex remote pending          # the requests, as JSON
 gorex remote approve KEY      # approve one fingerprint
-gorex remote share off        # several people pair here: each keeps its own sessions
 gorex remote layout on        # optional: share the layout read-only
 ```
 
-Sessions are shared by default: every paired client may see and use every
-session, as suits machines that are all yours. On a server where several
-people pair, turn sharing off with `gorex remote share off`; the choice is
-kept in `remote.json` across restarts.
+Every paired client may see and use every session, as suits machines
+that are all yours: pair only devices you trust as you would an SSH key.
 
 A client runs GoRex, adds a remote host with the address, and asks to pair.
 Compare the fingerprint shown by both sides before approving. `gorex
@@ -55,11 +52,8 @@ window; `gorex remote revoke KEY` drops it and its connections.
 ## Ownership
 
 `gorex ls` shows the owner of each session: `local` for one the server
-started itself, or the paired client name. With sharing on, the default,
-a client sees all; after `share off`, it sees only sessions it created.
-Per-client sharing, which matters once sharing is off, is available in Settings › Remote › Remote Hosts, or with the remote admin
-API. Layout sharing is separate and is filtered to sessions the client
-may use.
+started itself, or the paired client name. Every client sees all of
+them. Layout sharing is separate, and filtered to the sessions here.
 
 ## Limits
 

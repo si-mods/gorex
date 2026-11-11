@@ -9,9 +9,9 @@ import (
 	"gorex/internal/layout"
 )
 
-// filterLayout removes from a stored layout the panes peer may not use.
-// A remote peer never sees panes of another host, so access cannot pass
-// through this machine.
+// filterLayout removes from a stored layout, for a remote peer, the panes
+// of no session here. A remote peer never sees panes of another host, so
+// access cannot pass through this machine.
 func (s *Server) filterLayout(raw []byte, peer string) (json.RawMessage, error) {
 	if peer == "" || len(raw) == 0 {
 		return raw, nil
@@ -24,7 +24,7 @@ func (s *Server) filterLayout(raw []byte, peer string) (json.RawMessage, error) 
 	var sessions []layout.Workspace
 	ids := map[string]bool{}
 	for _, w := range st.Sessions {
-		tabs := s.filterLayoutTabs(w.Tabs, peer)
+		tabs := s.filterLayoutTabs(w.Tabs)
 		if len(tabs) == 0 {
 			continue
 		}
@@ -34,12 +34,12 @@ func (s *Server) filterLayout(raw []byte, peer string) (json.RawMessage, error) 
 		ids[w.ID] = true
 	}
 	if len(sessions) == 0 && len(st.Tabs) > 0 {
-		st.Tabs = s.filterLayoutTabs(st.Tabs, peer)
+		st.Tabs = s.filterLayoutTabs(st.Tabs)
 		st.Active = min(max(st.Active, 0), max(len(st.Tabs)-1, 0))
 		st.Sessions, st.Windows = nil, nil
 		return json.Marshal(st)
 	}
-	st.Tabs = s.filterLayoutTabs(st.Tabs, peer)
+	st.Tabs = s.filterLayoutTabs(st.Tabs)
 	st.Active = min(max(st.Active, 0), max(len(st.Tabs)-1, 0))
 	st.Sessions = sessions
 	var windows []string
@@ -52,14 +52,14 @@ func (s *Server) filterLayout(raw []byte, peer string) (json.RawMessage, error) 
 	return json.Marshal(st)
 }
 
-func (s *Server) filterLayoutTabs(tabs []layout.Tab, peer string) []layout.Tab {
+func (s *Server) filterLayoutTabs(tabs []layout.Tab) []layout.Tab {
 	var out []layout.Tab
 	for _, t := range tabs {
 		// The focus names a place among every leaf the host keeps, a
 		// browser pane's among them; the peer adopts it by the sessions it
-		// may use, in order, which is what its own count names.
+		// sees, in order, which is what its own count names.
 		before := leavesOf(t.Root)
-		root := s.filterLayoutNode(t.Root, peer)
+		root := s.filterLayoutNode(t.Root)
 		if root != nil {
 			after := leavesOf(root)
 			var wanted *layout.Node
@@ -87,7 +87,7 @@ func (s *Server) filterLayoutTabs(tabs []layout.Tab, peer string) []layout.Tab {
 		newFocusFloat := 0
 		var floats []layout.Float
 		for i, f := range t.Floats {
-			pane := s.filterLayoutNode(f.Pane, peer)
+			pane := s.filterLayoutNode(f.Pane)
 			if pane == nil {
 				continue
 			}
@@ -134,18 +134,17 @@ func leavesOf(n *layout.Node) []*layout.Node {
 	return append(leavesOf(n.A), leavesOf(n.B)...)
 }
 
-func (s *Server) filterLayoutNode(n *layout.Node, peer string) *layout.Node {
+func (s *Server) filterLayoutNode(n *layout.Node) *layout.Node {
 	if n == nil {
 		return nil
 	}
 	if n.SID != "" {
-		ss, err := s.session(n.SID)
-		if err != nil || !s.mayUse(peer, ss) || n.Host != "" {
+		if _, err := s.session(n.SID); err != nil || n.Host != "" {
 			return &layout.Node{Name: "Unavailable", Unavailable: true}
 		}
 		return n
 	}
-	a, b := s.filterLayoutNode(n.A, peer), s.filterLayoutNode(n.B, peer)
+	a, b := s.filterLayoutNode(n.A), s.filterLayoutNode(n.B)
 	if a == nil {
 		return b
 	}

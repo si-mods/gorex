@@ -485,7 +485,7 @@ func TestRemoteDenied(t *testing.T) {
 	}
 	for _, op := range []string{"shutdown", "setLayout", "getLayout", "remote.status", "remote.enable",
 		"remote.disable", "remote.allow", "remote.revoke", "remote.regenerate", "remote.pairStart",
-		"remote.pairStop", "remote.approve", "remote.reject", "remote.shareSet", "remote.controlSet", "nope"} {
+		"remote.pairStop", "remote.approve", "remote.reject", "remote.controlSet", "nope"} {
 		// On, as a remote client would want sharing.
 		req := Request{Op: op, On: true, Layout: json.RawMessage(`{}`), Remote: &RemoteClient{Name: "x", PublicKey: key.NewNode().Public().String()}}
 		if err := c.call(req, nil); err == nil || !strings.Contains(err.Error(), "not allowed remotely") {
@@ -532,9 +532,10 @@ func readsUntilClosed(st *Stream) <-chan error {
 	return done
 }
 
-// TestShareSessions checks what remote clients see and use of the sessions
-// of others, as the host shares them or not: local connections see all.
-func TestShareSessions(t *testing.T) {
+// TestRemoteSharesSessions checks that every remote client sees and uses
+// every session, another client's and the local ones too, and that a key
+// revoked and allowed again finds them still.
+func TestRemoteSharesSessions(t *testing.T) {
 	s, _ := testServer(t)
 	local := pipe(s, "")
 	defer local.Close()
@@ -542,14 +543,6 @@ func TestShareSessions(t *testing.T) {
 	ac, bc := pipe(s, alice), pipe(s, bob)
 	defer ac.Close()
 	defer bc.Close()
-	// Off, as the user turned it: sharing is on by default
-	// (TestShareSessionsDefault).
-	if err := local.ShareSessions(false); err != nil {
-		t.Fatal(err)
-	}
-	if st, err := local.RemoteStatus(); err != nil || st.ShareSessions {
-		t.Fatalf("shared though off: %+v %v", st, err)
-	}
 	cmd, dir := testShell()
 	create := func(c *Client) string {
 		t.Helper()
@@ -561,107 +554,50 @@ func TestShareSessions(t *testing.T) {
 		return info.ID
 	}
 	ls, as, bs := create(local), create(ac), create(bc)
-	ids := func(c *Client) []string {
+	wantIDs := func(what string, c *Client, want ...string) {
 		t.Helper()
 		list, err := c.List()
 		if err != nil {
 			t.Fatal(err)
 		}
-		var out []string
+		var got []string
 		for _, in := range list {
-			out = append(out, in.ID)
+			got = append(got, in.ID)
 		}
-		return out
-	}
-	wantIDs := func(what string, c *Client, want ...string) {
-		t.Helper()
-		if got := ids(c); !slices.Equal(got, want) {
+		if !slices.Equal(got, want) {
 			t.Errorf("%s lists %v, want %v", what, got, want)
 		}
 	}
-	notShared := func(what string, err error) {
-		t.Helper()
-		if err == nil || !strings.Contains(err.Error(), "not shared") || !NotShared(err) {
-			t.Errorf("%s: %v", what, err)
-		}
-	}
-
-	// Off: each remote client its own; the local one all.
 	wantIDs("local", local, ls, as, bs)
-	wantIDs("alice", ac, as)
-	wantIDs("bob", bc, bs)
-	for _, sid := range []string{ls, bs} {
-		notShared("kill "+sid, ac.Kill(sid))
-		notShared("resize "+sid, ac.Resize(sid, 100, 30))
-		st := ac.Stream(sid, 80, 24)
-		st.Resize(80, 24)
-		notShared("attach "+sid, <-readsUntilClosed(st))
-	}
-	if err := ac.Resize(as, 100, 30); err != nil {
-		t.Error(err)
-	}
-	if err := local.Resize(bs, 100, 30); err != nil {
-		t.Error(err)
-	}
-	wantIDs("local after", local, ls, as, bs)
-
-	// On: every client all, saved.
-	if err := local.ShareSessions(true); err != nil {
-		t.Fatal(err)
-	}
-	if st, _ := local.RemoteStatus(); !st.ShareSessions || !readConfig(t).ShareSessions {
-		t.Errorf("not shared: status %+v", st)
-	}
-	wantIDs("alice shared", ac, ls, as, bs)
+	wantIDs("alice", ac, ls, as, bs)
 	if err := ac.Resize(ls, 90, 30); err != nil {
 		t.Error(err)
 	}
-	theirs, mine := ac.Stream(bs, 80, 24), ac.Stream(as, 80, 24)
-	defer theirs.Close()
-	defer mine.Close()
-	var ends []<-chan error
-	for _, st := range []*Stream{theirs, mine} {
-		st.Resize(80, 24)
-		ends = append(ends, readsUntilClosed(st))
+	if err := ac.Resize(bs, 90, 30); err != nil {
+		t.Error(err)
 	}
-	waitAttached := func(sid string, n int) {
-		t.Helper()
-		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-			s.mu.Lock()
-			ss := s.sessions[sid]
-			s.mu.Unlock()
-			if ss.info().Attached == n {
-				return
-			}
-			if time.Now().After(deadline) {
-				t.Fatalf("%s: not %d attached", sid, n)
-			}
+	theirs := ac.Stream(bs, 80, 24)
+	defer theirs.Close()
+	theirs.Resize(80, 24)
+	end := readsUntilClosed(theirs)
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		s.mu.Lock()
+		ss := s.sessions[bs]
+		s.mu.Unlock()
+		if ss.info().Attached == 1 {
+			break
+		}
+		select {
+		case err := <-end:
+			t.Fatalf("attach to another's session: %v", err)
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("not attached to another's session")
 		}
 	}
-	waitAttached(bs, 1)
-	waitAttached(as, 1)
 
-	// Off again: alice's window on bob's session goes, hers stays.
-	if err := local.ShareSessions(false); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-ends[0]:
-	case <-time.After(3 * time.Second):
-		t.Error("the window on another's session stays")
-	}
-	select {
-	case err := <-ends[1]:
-		t.Errorf("the window on her own session went: %v", err)
-	case <-time.After(200 * time.Millisecond):
-	}
-	waitAttached(as, 1)
-	wantIDs("alice unshared", ac, as)
-	if readConfig(t).ShareSessions {
-		t.Error("saved shared")
-	}
-
-	// Revoked and allowed again, the same key has its sessions still.
+	// Revoked and allowed again, the same key sees them still.
 	if err := local.EnableRemote(); err != nil {
 		t.Fatal(err)
 	}
@@ -669,14 +605,14 @@ func TestShareSessions(t *testing.T) {
 	if err := local.AllowRemote("alice-laptop", alice); err != nil {
 		t.Fatal(err)
 	}
-	wantIDs("alice through the listener", dialAs(t, s, alice), as)
+	wantIDs("alice through the listener", dialAs(t, s, alice), ls, as, bs)
 	if err := local.RevokeRemote(alice); err != nil {
 		t.Fatal(err)
 	}
 	if err := local.AllowRemote("alice-laptop", alice); err != nil {
 		t.Fatal(err)
 	}
-	wantIDs("alice allowed again", dialAs(t, s, alice), as)
+	wantIDs("alice allowed again", dialAs(t, s, alice), ls, as, bs)
 }
 
 func TestLocalAllowed(t *testing.T) {
@@ -960,15 +896,6 @@ func TestRemoteControlGatesActions(t *testing.T) {
 	if res.Code != "desktop_unavailable" {
 		t.Fatalf("action with control on: %+v", res)
 	}
-	cmd, dir := testShell()
-	info, err := local.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer local.Kill(info.ID)
-	if _, err := c.Action(info.ID, "tab.rename", nil); err == nil || !strings.Contains(err.Error(), "not shared") {
-		t.Fatalf("action on a session the peer may not use: %v", err)
-	}
 }
 
 // TestMachineID checks that the machine's ID lasts, comes from its client
@@ -1003,54 +930,6 @@ func TestHostMachines(t *testing.T) {
 	}
 }
 
-// TestListTellsOwnerShared checks that list tells which sessions' owners
-// the server shares every session with, as mayUse decides: per client,
-// then for all, and never for a local session.
-func TestListTellsOwnerShared(t *testing.T) {
-	s, _ := testServer(t)
-	local := pipe(s, "")
-	defer local.Close()
-	alice, bob := key.NewNode().Public().String(), key.NewNode().Public().String()
-	ac, bc := pipe(s, alice), pipe(s, bob)
-	defer ac.Close()
-	defer bc.Close()
-	cmd, dir := testShell()
-	create := func(c *Client) string {
-		t.Helper()
-		info, err := c.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { local.Kill(info.ID) })
-		return info.ID
-	}
-	ls, as, bs := create(local), create(ac), create(bc)
-	shared := func() map[string]bool {
-		t.Helper()
-		list, err := local.List()
-		if err != nil {
-			t.Fatal(err)
-		}
-		out := map[string]bool{}
-		for _, in := range list {
-			out[in.ID] = in.OwnerShared
-		}
-		return out
-	}
-	s.rem.mu.Lock()
-	s.rem.cfg.Allowed = []RemoteClient{{PublicKey: alice, ShareSessions: true}, {PublicKey: bob}}
-	s.rem.mu.Unlock()
-	if got := shared(); got[ls] || !got[as] || got[bs] {
-		t.Errorf("shared with alice only: %v (local %s, alice %s, bob %s)", got, ls, as, bs)
-	}
-	s.rem.mu.Lock()
-	s.rem.cfg.ShareSessions = true
-	s.rem.mu.Unlock()
-	if got := shared(); got[ls] || !got[as] || !got[bs] {
-		t.Errorf("shared with all: %v", got)
-	}
-}
-
 // TestServerKnowsItsMachine checks that a server knows its machine before
 // it serves, so that no hello names none.
 func TestServerKnowsItsMachine(t *testing.T) {
@@ -1060,79 +939,31 @@ func TestServerKnowsItsMachine(t *testing.T) {
 	}
 }
 
-// TestShareSessionsDefault checks that sessions are shared by default: a
-// remote.json that does not exist, or says nothing of sharing as one from
-// before did while off, shares them; one that says on stays on; and an off
-// the user chose is written and read again so.
-func TestShareSessionsDefault(t *testing.T) {
+// TestRemoteConfigShareSessions checks that a remote.json written while
+// sharing was a setting still loads: the field is ignored.
+func TestRemoteConfigShareSessions(t *testing.T) {
 	s, _ := testServer(t)
-	s.remoteLoad()
-	local := pipe(s, "")
-	defer local.Close()
-	bob := key.NewNode().Public().String()
-	bc := pipe(s, bob)
-	defer bc.Close()
-	if st, err := local.RemoteStatus(); err != nil || !st.ShareSessions || !s.sharesSessions(bob) {
-		t.Fatalf("no remote.json: not shared: %+v %v", st, err)
-	}
-	// A session another client made is the user's to see, as shared.
-	cmd, dir := testShell()
-	info, err := bc.Create(CreateOptions{Command: cmd, Dir: dir, Cols: 80, Rows: 24})
-	if err != nil {
+	if err := os.WriteFile(remotePath(), []byte(`{"enabled":false,"allowed":[],"shareSessions":false,"shareLayout":true}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { local.Kill(info.ID) })
-	ownerShared := func() bool {
-		t.Helper()
-		list, err := local.List()
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, in := range list {
-			if in.ID == info.ID {
-				return in.OwnerShared
-			}
-		}
-		t.Fatalf("%s not listed", info.ID)
-		return false
+	s.remoteLoad()
+	s.rem.mu.Lock()
+	defer s.rem.mu.Unlock()
+	if s.rem.lastErr != "" || !s.rem.cfg.ShareLayout {
+		t.Errorf("not loaded: %q %+v", s.rem.lastErr, s.rem.cfg)
 	}
-	if !ownerShared() {
-		t.Error("shared by default, but its owner is not said shared")
-	}
+}
 
-	load := func(file string) bool {
-		t.Helper()
-		if err := os.WriteFile(remotePath(), []byte(file), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		s.remoteLoad()
-		s.rem.mu.Lock()
-		defer s.rem.mu.Unlock()
-		return s.rem.cfg.ShareSessions
-	}
-	if !load(`{"enabled":false,"allowed":[]}`) {
-		t.Error("a remote.json that says nothing of sharing: off")
-	}
-	if !load(`{"enabled":false,"allowed":[],"shareSessions":true}`) {
-		t.Error("shareSessions true: off")
-	}
-
-	// Turned off, it is written so, and read again so.
-	if err := local.ShareSessions(false); err != nil {
+// TestRemoteConfigOldNetwork: a remote.json from when a machine could
+// join a coordinator network, with its "network" member, still loads.
+func TestRemoteConfigOldNetwork(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "remote.json")
+	old := `{"enabled": true, "allowed": [{"name": "bob", "publicKey": "nodekey:01"}], "network": {"url": "https://c/ff", "key": "k", "name": "alice", "revision": 3}}`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(remotePath()); !strings.Contains(string(b), `"shareSessions": false`) {
-		t.Errorf("off not written: %s", b)
-	}
-	s.remoteLoad()
-	if st, _ := local.RemoteStatus(); st.ShareSessions || s.sharesSessions(bob) || ownerShared() {
-		t.Errorf("off not kept across a reload: %+v", st)
-	}
-	if err := local.ShareSessions(true); err != nil {
-		t.Fatal(err)
-	}
-	s.remoteLoad()
-	if !s.sharesSessions(bob) {
-		t.Error("on not kept across a reload")
+	var cfg RemoteConfig
+	if err := readJSON(path, &cfg); err != nil || !cfg.Enabled || len(cfg.Allowed) != 1 || cfg.Allowed[0].Name != "bob" {
+		t.Fatalf("loaded %+v, %v", cfg, err)
 	}
 }
