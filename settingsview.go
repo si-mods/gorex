@@ -151,12 +151,12 @@ var sections = []struct {
 	tile      ui.Color
 	label     func(locales.Messages) string
 }{
-	{"appearance", "settings-2", ui.RGB(0, 122, 255), locales.Messages.SettingsAppearance}, // blue
+	{"appearance", "contrast", ui.RGB(0, 122, 255), locales.Messages.SettingsAppearance},   // blue
 	{"terminal", "square-terminal", ui.RGB(58, 58, 60), locales.Messages.SettingsTerminal}, // graphite
 	{"theme", "sparkles", ui.RGB(175, 82, 222), locales.Messages.SettingsTheme},            // purple
 	{"keyboard", "keyboard", ui.RGB(142, 142, 147), locales.Messages.SettingsKeyboard},     // gray
 	{"hosts", "monitor", ui.RGB(52, 199, 89), locales.Messages.SettingsHosts},              // green
-	{"about", "hexagon", ui.RGB(142, 142, 147), locales.Messages.SettingsAbout},            // gray
+	{"about", "info", ui.RGB(142, 142, 147), locales.Messages.SettingsAbout},               // gray
 }
 
 // The settings window's layout: the sidebar's width, the height of the
