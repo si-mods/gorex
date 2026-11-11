@@ -23,8 +23,11 @@ func TestEnsureCLI(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		exe, _ := os.Executable()
 		exe, _ = executable(exe)
-		if target, err := os.Readlink(path); err != nil || target != exe {
-			t.Fatalf("shim points at %q, want %q: %v", target, exe, err)
+		for _, name := range []string{"gorex", "rec", "sox"} {
+			path := filepath.Join(CLIDir(), name)
+			if target, err := os.Readlink(path); err != nil || target != exe {
+				t.Fatalf("%s points at %q, want %q: %v", name, target, exe, err)
+			}
 		}
 	}
 	if err := EnsureCLI(); err != nil {

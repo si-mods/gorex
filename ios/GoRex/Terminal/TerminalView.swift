@@ -1,3 +1,4 @@
+import AVFoundation
 import GameController
 import GhosttyKit
 import UIKit
@@ -106,6 +107,9 @@ final class TerminalView: UIView, TerminalOutput {
     private let reading = DispatchGroup()
     /// The hardware key held, and its repeat.
     private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
+    /// The microphone streaming while the mic is held, and the Space it
+    /// holds meanwhile (talk).
+    private var talking: (voice: VoiceStream, spaces: Task<Void, Never>)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -198,6 +202,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// Frees the surface, once its last output is written.
     func close() {
         held?.task.cancel()
+        stopTalking()
         guard let s = surface else { return }
         surface = nil
         output = -1
@@ -499,6 +504,61 @@ final class TerminalView: UIView, TerminalOutput {
         alt = false
         shift = false
     }
+
+    /// Holds the mic: the microphone streams to the host for the block,
+    /// and Space is held, as Claude Code's /voice listens while it is: a
+    /// space now, and one each 30 ms until stopTalking. The spaces go to
+    /// Ghostty as keys, which the keyboard did not type. A first press asks
+    /// for the microphone, and does no more. The tap comes first: iOS mutes
+    /// it while it records.
+    func talk() {
+        guard talking == nil else { return }
+        Self.tick.impactOccurred()
+        switch AVAudioApplication.shared.recordPermission {
+        case .undetermined:
+            AVAudioApplication.requestRecordPermission { @Sendable _ in }
+            return
+        case .denied:
+            return alert(String(localized: "No Access to the Microphone"),
+                         String(localized: "Allow Rex Go to use the microphone in Settings."))
+        default:
+            break
+        }
+        let voice: VoiceStream
+        do {
+            voice = try session.host.voice(block: session.block)
+            voice.onFail = { [weak self] e in self?.talkFailed(e) }
+            try voice.start()
+        } catch {
+            return talkFailed(error)
+        }
+        talking = (voice, Task { [weak self] in
+            while !Task.isCancelled, let self {
+                forget()
+                press(KeyEvent.typing(" "))
+                try? await Task.sleep(for: .milliseconds(30))
+            }
+        })
+    }
+
+    /// Lets go of the mic: Space goes up, and the stream sends what is
+    /// left and ends.
+    func stopTalking() {
+        guard let t = talking else { return }
+        talking = nil
+        t.spaces.cancel()
+        t.voice.stop()
+    }
+
+    /// The stream failed, or could not open: Space goes up, and an alert
+    /// tells why.
+    private func talkFailed(_ error: Error) {
+        stopTalking()
+        alert(String(localized: "Can't Send Voice"), error.localizedDescription)
+    }
+
+    /// The mic's tap, as the key bar's keys give.
+    private static let tick = UIImpactFeedbackGenerator(style: .light)
 
     /// Has Ghostty encode keys, each pressed and let go, for the program's
     /// keyboard modes.

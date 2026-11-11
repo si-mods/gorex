@@ -35,6 +35,23 @@
           }
         }
       }
+    },
+    "NSMicrophoneUsageDescription": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "While you hold the mic key, Rex Go sends what you say to the host, as its microphone."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按住麦克风键时，Rex Go 把你说的话发送给主机，当作它的麦克风。"
+          }
+        }
+      }
     }
   }
 }

@@ -102,6 +102,16 @@
         }
       }
     },
+    "Allow Rex Go to use the microphone in Settings.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在“设置”中允许 Rex Go 使用麦克风。"
+          }
+        }
+      }
+    },
     "Arrow Keys": {
       "localizations": {
         "zh-Hans": {
@@ -188,6 +198,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "无法重命名标签页"
+          }
+        }
+      }
+    },
+    "Can't Send Voice": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法发送语音"
           }
         }
       }
@@ -572,6 +592,26 @@
         }
       }
     },
+    "Hold the mic at the top right of the terminal to speak to Claude Code's /voice on a host that has no microphone. It shows while Claude Code runs on a host that takes voice, in place of the ⋯ menu.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按住终端右上角的麦克风，即可对没有麦克风的主机上 Claude Code 的 /voice 说话。主机支持语音且正在运行 Claude Code 时才显示它，取代 ⋯ 菜单。"
+          }
+        }
+      }
+    },
+    "Hold to speak; the host hears it as its microphone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按住说话，主机把它当作自己的麦克风。"
+          }
+        }
+      }
+    },
     "Host Colors": {
       "localizations": {
         "zh-Hans": {
@@ -728,6 +768,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "新建窗口"
+          }
+        }
+      }
+    },
+    "No Access to the Microphone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法使用麦克风"
           }
         }
       }
@@ -1052,6 +1102,16 @@
         }
       }
     },
+    "Speak to a host without a microphone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "对没有麦克风的主机说话"
+          }
+        }
+      }
+    },
     "Startup command": {
       "localizations": {
         "zh-Hans": {
@@ -1098,6 +1158,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接已断开。"
+          }
+        }
+      }
+    },
+    "The microphone was interrupted.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "麦克风被打断了。"
           }
         }
       }
@@ -1162,6 +1232,16 @@
         }
       }
     },
+    "This device has no microphone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此设备没有麦克风。"
+          }
+        }
+      }
+    },
     "Up Arrow": {
       "localizations": {
         "zh-Hans": {
@@ -1208,6 +1288,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "切换会话"
+          }
+        }
+      }
+    },
+    "Voice": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语音"
           }
         }
       }

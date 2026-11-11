@@ -8,7 +8,7 @@ import (
 )
 
 // Handler returns the gateway's HTTP endpoints: the control and data
-// connections, uploads, the help document, and this API's own pages.
+// connections, uploads, voices, the help document, and this API's own pages.
 func (g *Gateway) Handler() http.Handler {
 	if relay := relayHandler(); relay != nil {
 		return relay
@@ -17,6 +17,7 @@ func (g *Gateway) Handler() http.Handler {
 	mux.HandleFunc("/api/control", g.handleControl)
 	mux.HandleFunc("/api/data", g.handleData)
 	mux.HandleFunc("/api/upload", g.handleUpload)
+	mux.HandleFunc("/api/voice", g.handleVoice)
 	mux.HandleFunc("/api/spaces", g.handleSpaces)
 	mux.HandleFunc("/api/help", serveHelp)
 	mux.HandleFunc("/llms.txt", serveLLMs)
