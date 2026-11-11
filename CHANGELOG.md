@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.21.0
+
+### ⚠ BREAKING CHANGES
+
+* **control:** GoRex no longer plays herdr for rootshell: the `control` subcommand, the `herdr` shim and their guide are gone; Rex Go reaches a machine through Rex's API ([#419](https://github.com/si-mods/gorex/pull/419))
+
+### Bug Fixes
+
+* **rex:** a session gets its window's size back when a device that held its size lets go, as Rex Go leaving a terminal or going to the background: a pane of a remote host no longer stays at the phone's size ([#418](https://github.com/si-mods/gorex/pull/418))
+* **sidebar:** tab rows stay in place when the window changes space ([#417](https://github.com/si-mods/gorex/pull/417))
+* **sidebar:** a closed space stays closed, and a host icon this version does not know is ignored ([#414](https://github.com/si-mods/gorex/pull/414))
+* **rex:** a program whose update renamed its running image, as omp on Windows, keeps its name, and can teleport ([#416](https://github.com/si-mods/gorex/pull/416))
+
 ## 0.20.4
 
 ### Features
