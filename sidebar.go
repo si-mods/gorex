@@ -571,7 +571,8 @@ func (a *App) setSpaceOpen(h *hostConn, w *Workspace, open bool) {
 }
 
 // keepSpacesOpen, as the window goes to show session w, keeps the session
-// it leaves open or closed under each host as it was, and opens w.
+// it leaves open or closed under each host as it was, and opens w where
+// it was never closed: where the user closed it, it stays closed.
 func (a *App) keepSpacesOpen(w *Workspace) {
 	if w == a.ws {
 		return
@@ -580,7 +581,9 @@ func (a *App) keepSpacesOpen(w *Workspace) {
 		if a.ws != nil {
 			a.setSpaceOpen(h, a.ws, a.spaceIsOpen(h, a.ws))
 		}
-		a.setSpaceOpen(h, w, true)
+		if _, ok := a.spaceOpen[spaceKey(h, w)]; !ok {
+			a.setSpaceOpen(h, w, true)
+		}
 	}
 }
 
