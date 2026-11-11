@@ -40,6 +40,7 @@ struct FeaturesView: View {
             ("Keys that tap back", "Every key on the bar gives a light tap as you press it."),
             ("Chinese and other input methods", "Pinyin and other input methods compose at the cursor, with their candidates beside it, and send the text once it is done."),
             ("Dictation", "Dictate into the terminal. A correction erases what was dictated and types it again."),
+            ("Speak to a host without a microphone", "Hold the mic key beside ⌘ to speak to Claude Code's /voice on a host that has no microphone. The key shows for hosts that take voice."),
             ("Move the cursor with the spacebar", "Hold the spacebar and slide to move the cursor, one arrow for each cell."),
             ("Hardware keyboards", "Option is Alt, chords with Control, Shift or Option reach the program, and held keys repeat."),
             ("⌘ shortcuts", "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them."),

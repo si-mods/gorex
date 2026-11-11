@@ -629,6 +629,16 @@ final class Host: Identifiable {
         return try await Upload.send(file, name: file.lastPathComponent, block: block, to: config.url, session: try session())
     }
 
+    /// Whether the server takes the phone's microphone for its own (Voice).
+    var canVoice: Bool { control?.features.contains(Voice.feature) == true }
+
+    /// The microphone, to stream to block on the host, through the host's
+    /// connections' path.
+    func voice(block: String) throws -> VoiceStream {
+        _ = try live()
+        return VoiceStream(block: block, to: config.url, session: try session())
+    }
+
     /// The control connection; offline, an error to tell.
     func live() throws -> ControlConnection {
         guard let control else { throw RexError(code: "offline", message: String(localized: "Offline")) }

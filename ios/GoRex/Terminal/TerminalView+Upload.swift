@@ -101,7 +101,12 @@ extension TerminalView: UIDocumentPickerDelegate {
 
     private func failed(_ error: Error) {
         let title = (error as? RexError)?.code == Upload.notPasted ? String(localized: "Uploaded, Not Pasted") : String(localized: "Can't Upload")
-        let a = UIAlertController(title: title, message: error.localizedDescription, preferredStyle: .alert)
+        alert(title, error.localizedDescription)
+    }
+
+    /// Tells of a problem; the keyboard comes back once it is read.
+    func alert(_ title: String, _ message: String) {
+        let a = UIAlertController(title: title, message: message, preferredStyle: .alert)
         a.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { [weak self] _ in self?.becomeFirstResponder() })
         present(a)
     }
