@@ -353,6 +353,39 @@ func TestMoveTabToNewWindow(t *testing.T) {
 	quit(st)
 }
 
+// TestMoveTabToSpace checks that a tab moves to another space, its
+// session going on: into the layout of one no window shows, into the
+// window that shows one, and that the last tab's move leaves the space.
+func TestMoveTabToSpace(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	first := a.ws
+	hidden := st.addWorkspace()
+	a.newTab(testShell.dir)
+	moved := a.tab()
+	sid := moved.Focus.SID
+	a.moveTabToSpace(moved, hidden)
+	if len(a.tabs) != 1 || len(hidden.layout.Tabs) != 1 || hidden.layout.Tabs[0].Root.SID != sid {
+		t.Fatalf("%d tabs left, the hidden space has %+v", len(a.tabs), hidden.layout.Tabs)
+	}
+	if !slices.Contains(liveSIDs(t, a.client), sid) {
+		t.Error("the moved tab's session ended")
+	}
+	b := st.openWindow(hidden)
+	if len(b.tabs) != 1 || b.tab().Focus.SID != sid {
+		t.Fatalf("the space's window has %q", sidsOf(b))
+	}
+	last := a.tab().Focus.SID
+	a.moveTabToSpace(a.tab(), hidden)
+	if len(b.tabs) != 2 || b.tabs[1].Focus.SID != last {
+		t.Fatalf("the shown space has %q, want %s then %s", sidsOf(b), sid, last)
+	}
+	if slices.Contains(st.workspaces, first) || !slices.Contains(liveSIDs(t, a.client), last) {
+		t.Errorf("after its last tab moved, the space stays or the session ended")
+	}
+	quit(st)
+}
+
 // TestWindowsCloseAndReopen checks that a window that closes keeps its
 // workspace, that the last one's is saved as the window to open, and that
 // a second launch opens it then, or else shows the window focused last.

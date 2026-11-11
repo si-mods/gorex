@@ -422,6 +422,15 @@ func (a *App) tabMenu(m *ui.Menu, t *Tab) {
 	if m.Item(forth).Disabled(i >= len(a.tabs)-1).Chosen() {
 		a.moveTab(t, i+1)
 	}
+	if a.st != nil && len(a.st.workspaces) > 1 {
+		m.Submenu(locales.TabMoveSpace(), func(sm *ui.Menu) {
+			for _, w := range slices.Clone(a.st.workspaces) {
+				if w != a.ws && sm.Item(w.Name).Chosen() {
+					a.laterService(func() { a.moveTabToSpace(t, w) })
+				}
+			}
+		})
+	}
 	m.Separator()
 	mods, key := ui.Cmd, ui.KeyT
 	if runtime.GOOS != "darwin" {

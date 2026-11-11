@@ -5538,6 +5538,20 @@ func (msgs Messages) PaneMoveTab() string {
 	return Catalog.Format(msgs.locale, "paneMoveTab", nil)
 }
 
+// TabMoveSpace says "Move to Space"
+// in the language the app shows.
+//
+// Submenu of the spaces a tab moves to.
+func TabMoveSpace() string { return In(i18n.Locale()).TabMoveSpace() }
+
+// TabMoveSpace says "Move to Space"
+// in the language of msgs.
+//
+// Submenu of the spaces a tab moves to.
+func (msgs Messages) TabMoveSpace() string {
+	return Catalog.Format(msgs.locale, "tabMoveSpace", nil)
+}
+
 // PaneMoveWindow says "Move to Window"
 // in the language the app shows.
 //

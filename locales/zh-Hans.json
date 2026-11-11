@@ -450,6 +450,10 @@
   "@paneMoveTab": {
     "description": "Submenu of the tabs a pane moves to."
   },
+  "tabMoveSpace": "移动到空间",
+  "@tabMoveSpace": {
+    "description": "Submenu of the spaces a tab moves to."
+  },
   "paneMoveWindow": "移动到窗口",
   "@paneMoveWindow": {
     "description": "Submenu of the windows a pane moves to."
