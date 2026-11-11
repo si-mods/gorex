@@ -734,6 +734,17 @@ func (s *Server) info(ss *session) SessionInfo {
 	return in
 }
 
+// all returns the sessions, in the order they were created.
+func (s *Server) all() []*session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	all := make([]*session, 0, len(s.order))
+	for _, id := range s.order {
+		all = append(all, s.sessions[id])
+	}
+	return all
+}
+
 func (s *Server) session(id string) (*session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -776,12 +787,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 	case "ping", "subscribe":
 		return nil, nil
 	case "list":
-		s.mu.Lock()
-		all := make([]*session, 0, len(s.order))
-		for _, id := range s.order {
-			all = append(all, s.sessions[id])
-		}
-		s.mu.Unlock()
+		all := s.all()
 		infos := make([]SessionInfo, 0, len(all))
 		for _, ss := range all {
 			infos = append(infos, s.info(ss))
@@ -819,14 +825,8 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return nil, nil // or already gone
 	case "clients":
-		s.mu.Lock()
-		all := make([]*session, 0, len(s.order))
-		for _, id := range s.order {
-			all = append(all, s.sessions[id])
-		}
-		s.mu.Unlock()
 		out := []ClientInfo{}
-		for _, ss := range all {
+		for _, ss := range s.all() {
 			ss.mu.Lock()
 			var attached []*attached
 			for a := range ss.clients {
