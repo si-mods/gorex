@@ -368,21 +368,26 @@ nonisolated final class HostTests: XCTestCase {
     }
 
     /// The engine hears of the hosts as their list changes, as it loads
-    /// and as one is added or removed.
+    /// and as one is added or removed; of one added, before it connects.
     @MainActor func testTailcatHostsTold() throws {
         let d = UserDefaults.standard
-        let (hosts, hook) = (d.data(forKey: "hosts"), Host.tailcatHosts)
+        let (hosts, hook, proxy) = (d.data(forKey: "hosts"), Host.tailcatHosts, Host.tailcatProxy)
         defer {
             d.set(hosts, forKey: "hosts")
             Host.tailcatHosts = hook
+            Host.tailcatProxy = proxy
         }
         d.removeObject(forKey: "hosts")
         var told: [[HostConfig]] = []
-        Host.tailcatHosts = { told.append($0) }
+        var order: [String] = []
+        Host.tailcatHosts = { told.append($0); order.append("told") }
+        Host.tailcatProxy = { order.append("connect"); return nil }
         let store = HostStore()
         XCTAssertEqual(told, [[]])
         let t = try XCTUnwrap(HostConfig(tailcat: "rexgo://tailcat?a=tcx&n=mac"))
+        order = []
         store.add(t)
+        XCTAssertEqual(order, ["told", "connect"])
         XCTAssertEqual(told.last?.compactMap(\.tailcat), [HostConfig.Tailcat(address: "tcx", machine: "mac")])
         XCTAssertEqual(store.host(tailcat: "tcx")?.id, t.id)
         store.remove(t.id)

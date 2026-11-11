@@ -314,6 +314,9 @@ and without it: +0.26 MB installed, +0.11 MB compressed (gzip -9).
      back.
    - With built-in Tailscale off, the path monitor runs while a host is
      paired over tailcat, and the foreground's socket reset runs too.
+   - The address is kept in the app's UserDefaults with the host: it
+     lets in nothing the machine has not approved, and the client key,
+     which it has, is in the Keychain.
    - End to end in the simulator on the Mac mini, through tailcat's
      relays: pair, approve, sessions listed, background and foreground,
      revoke. Not yet: opening a terminal, a `derper` of one's own, a

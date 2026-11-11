@@ -706,11 +706,12 @@ final class HostStore {
         hosts.forEach { $0.connect() }
     }
 
+    /// Adds a host; the engine hears of it before it connects.
     func add(_ config: HostConfig) {
         let h = Host(config)
         hosts.append(h)
-        h.connect()
         save()
+        h.connect()
     }
 
     func remove(_ id: UUID) {

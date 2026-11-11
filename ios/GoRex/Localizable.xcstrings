@@ -3138,22 +3138,22 @@
         }
       }
     },
-    "Not approved in time. Show Rex Go QR… on the machine again and scan it anew.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "未在时限内获得批准。请在那台电脑上再次打开“Rex Go 二维码…”并重新扫描。"
-          }
-        }
-      }
-    },
     "Couldn't pair: %@": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "无法配对：%@"
+          }
+        }
+      }
+    },
+    "Not connected yet. Rex Go keeps trying: approve this phone on the machine, and share its sessions with this device.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未连接。Rex Go 会继续尝试：请在那台电脑上批准本机，并向此设备共享会话。"
           }
         }
       }

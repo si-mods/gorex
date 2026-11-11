@@ -64,6 +64,11 @@ final class TailnetEngine {
     /// Whether a host is paired over tailcat: the path monitor then runs
     /// with the device off too.
     @ObservationIgnored private var hasTailcat = false
+    /// Whether the device is starting, when it waits for the path monitor.
+    @ObservationIgnored private var starting = false
+    /// This phone's tailcat key, as a GoRex machine's Devices list shows
+    /// it; empty before the first pairing.
+    private(set) var tailcatKey = ""
     @ObservationIgnored private let paths = PathMonitor()
     @ObservationIgnored private let log = Logger(subsystem: "dev.gorex.ios", category: "tailnet")
 
@@ -78,6 +83,7 @@ final class TailnetEngine {
         }
         Host.tailcatProxy = { TailnetEngine.shared.tailcatProxyNow() }
         Host.tailcatHosts = { TailnetEngine.shared.setTailcatHosts($0) }
+        _ = try? useTailcatKey(create: false)
     }
 
     /// Starts the engine as Settings › Tailscale has it, signing in with
@@ -113,6 +119,9 @@ final class TailnetEngine {
     func resume() async -> Bool {
         var kept = false
         await serial {
+            // One start at most: a device whose reset failed starts anew
+            // here, as does one that failed to start before.
+            var started = false
             // In the chain, no proxy is a start that failed.
             let device = TailnetSettings.isOn && self.proxy != nil && self.status.isRunning
             do {
@@ -133,12 +142,14 @@ final class TailnetEngine {
             } catch let error where device {
                 self.log.error("reset: \(error.localizedDescription, privacy: .public); starting anew")
                 await self.applyNow()
+                started = true
             } catch {
-                // A device signing in: its next start opens new sockets.
+                // The device's state changed meanwhile; its next start
+                // opens new sockets.
                 self.log.error("reset: \(error.localizedDescription, privacy: .public)")
             }
             self.tailcatProxy = nil
-            if TailnetSettings.isOn && self.proxy == nil { await self.applyNow() }
+            if TailnetSettings.isOn && self.proxy == nil && !started { await self.applyNow() }
         }
         return kept
     }
@@ -150,7 +161,7 @@ final class TailnetEngine {
     func pair(address: String) async throws -> String {
         TailnetSettings.makeName()
         let name = TailnetSettings.name
-        _ = try Self.useTailcatKey(create: true)
+        _ = try useTailcatKey(create: true)
         return try await Task.detached {
             var error: NSError?
             let fingerprint = TailnetTailcatPair(address, name, &error)
@@ -159,17 +170,10 @@ final class TailnetEngine {
         }.value
     }
 
-    /// This phone's tailcat key, as a GoRex machine's Devices list shows
-    /// it; empty before the first pairing.
-    var tailcatKey: String {
-        _ = try? Self.useTailcatKey(create: false)
-        return TailnetTailcatKey()
-    }
-
     /// The proxy for the tailcat hosts; nil while the phone has no key,
     /// as before it paired, or its Keychain is locked.
     private func tailcatProxyNow() -> LoopbackProxy? {
-        guard (try? Self.useTailcatKey(create: false)) == true else { return nil }
+        guard (try? useTailcatKey(create: false)) == true else { return nil }
         if tailcatProxy == nil { tailcatProxy = try? Self.readProxy(run: 0) }
         return tailcatProxy
     }
@@ -186,7 +190,8 @@ final class TailnetEngine {
         hasTailcat = !list.isEmpty
         if hasTailcat {
             Task { await paths.start() }
-        } else if proxy == nil && status.state == "Stopped" {
+        } else if proxy == nil && !starting {
+            // Neither a device that runs nor one starting needs it.
             paths.stop()
         }
     }
@@ -195,7 +200,7 @@ final class TailnetEngine {
     /// once; Go never writes it. With none there, create makes one, kept
     /// on this device only: the machines paired with know the phone by
     /// it. Tells whether the engine has a key.
-    private static func useTailcatKey(create: Bool) throws -> Bool {
+    private func useTailcatKey(create: Bool) throws -> Bool {
         if !TailnetTailcatKey().isEmpty { return true }
         let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword, kSecAttrService: "dev.gorex.ios.tailcat", kSecAttrAccount: "client",
@@ -216,6 +221,7 @@ final class TailnetEngine {
         }
         var error: NSError?
         guard TailnetSetTailcatKey(key, &error) else { throw error ?? RexError(code: "tailcat", message: "key") }
+        tailcatKey = TailnetTailcatKey()
         return true
     }
 
@@ -260,6 +266,8 @@ final class TailnetEngine {
         let watcher = Watcher(run: r)
         proxy = nil
         status = Status(state: "Starting")
+        starting = true
+        defer { starting = false }
         // The phone's network, before the engine's first look at it.
         await paths.start()
         // Starting reads the state and the network; off the main thread.

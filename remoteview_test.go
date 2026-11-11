@@ -242,6 +242,13 @@ func TestRexGoQR(t *testing.T) {
 	if remoteUI.err == nil || remoteUI.err() != locales.RemoteNotConnected() || hostsPairQR != nil {
 		t.Error("Rex Go QR… did not ask the server")
 	}
+	// While a change is on its way, it waits, as every change does.
+	remoteUI.busy, remoteUI.err = true, nil
+	a.openRexGoQR()
+	if remoteUI.err != nil {
+		t.Error("Rex Go QR… asked while busy")
+	}
+	remoteUI.busy = false
 
 	const secret = "tcSECRETADDRESS"
 	hostsPairQR = &hostPairQR{host: "mac", image: qrImage(rexGoPairURL(secret, "mac")), open: true, rexGo: true}

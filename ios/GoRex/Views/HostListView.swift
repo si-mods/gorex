@@ -28,8 +28,10 @@ struct HostListView: View {
     @State private var inbox = false
     @State private var query = ""
     @State private var settings = false
-    /// The GoRex machine of a Rex Go code opened from outside, to pair with.
+    /// The GoRex machine of a Rex Go code opened from outside, to pair with;
+    /// waiting is one that waits for Settings to close first.
     @State private var pairing: HostConfig?
+    @State private var waiting: HostConfig?
     @AppStorage(Grouping.key) private var grouping = Grouping.standard
     /// The space chosen, by its host and session.
     @AppStorage("space") private var chosen = ""
@@ -68,12 +70,17 @@ struct HostListView: View {
             go(t)
             Notifier.shared.opening = nil
         }
-        // A Rex Go code opened from the camera pairs, in place of Settings.
+        // A Rex Go code opened from the camera pairs, once Settings, open
+        // over the list, has closed.
         .onOpenURL { url in
             guard let c = HostConfig(tailcat: url.absoluteString),
                   let t = c.tailcat, store.host(tailcat: t.address) == nil else { return }
-            settings = false
-            pairing = c
+            if settings {
+                waiting = c
+                settings = false
+            } else {
+                pairing = c
+            }
         }
         .sheet(item: $pairing) { TailcatPairSheet(code: $0) }
     }
@@ -127,7 +134,10 @@ struct HostListView: View {
         .searchToolbarBehavior(.minimize)
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
-        .sheet(isPresented: $settings) { SettingsView() }
+        .sheet(isPresented: $settings, onDismiss: {
+            if let c = waiting { pairing = c }
+            waiting = nil
+        }) { SettingsView() }
     }
 
     /// A space to switch to: a session of a host online that is a space

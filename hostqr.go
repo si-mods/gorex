@@ -98,29 +98,20 @@ func openHostPairQR(h *hostConn) {
 // clipboard.
 func (a *App) openRexGoQR() {
 	name, _, _ := a.hostIdentity()
-	started := a.remoteAsk(func(srv *rex.Client) func() {
-		err := srv.StartPairing()
-		var st rex.RemoteStatus
-		if err == nil {
-			st, err = srv.RemoteStatus()
+	// Set off the UI thread, read on it once the change is done.
+	var image ui.ImageSource
+	a.remoteDo(func(srv *rex.Client) error {
+		if err := srv.StartPairing(); err != nil {
+			return err
 		}
-		var image ui.ImageSource
+		st, err := srv.RemoteStatus()
 		if err == nil && st.Address != "" {
 			image = qrImage(rexGoPairURL(st.Address, name))
 		}
-		return func() {
-			if err != nil {
-				msg := serverMessage(err)
-				remoteUI.err = func() string { return msg }
-				return
-			}
-			hostsPairQR = &hostPairQR{host: name, image: image, open: true, rexGo: true}
-			a.fetchRemote()
-		}
+		return err
+	}, func() {
+		hostsPairQR = &hostPairQR{host: name, image: image, open: true, rexGo: true}
 	})
-	if !started {
-		remoteUI.err = locales.RemoteNotConnected
-	}
 }
 
 // rexGoPairURL is the code Rex Go pairs by: the tailcat address and the

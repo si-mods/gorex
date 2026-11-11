@@ -18,6 +18,7 @@ import (
 
 	"github.com/tailscale/tailcat"
 	"github.com/tailscale/wireguard-go/device"
+	"tailscale.com/ipn"
 	"tailscale.com/tsd"
 	"tailscale.com/types/key"
 	"tailscale.com/wgengine"
@@ -65,9 +66,10 @@ var (
 // error, and Tailscale never starts them again, leaving every peer on
 // DERP. Open connections go on. The resets run side by side: a tailcat
 // client whose reset doesn't finish is dropped, and the next dial makes
-// a new one. It fails when the device runs and its reset didn't finish in
-// time; the device then needs a new start, which leaves a stuck one to
-// close by itself.
+// a new one. A device that doesn't run yet, as one signing in, is left
+// alone: its sockets open with its run. It fails when the device runs and
+// its reset didn't finish in time; the device then needs a new start,
+// which leaves a stuck one to close by itself.
 func ResetSockets() error {
 	tailcatDone := resetTailcat()
 	defer tailcatDone()
@@ -78,6 +80,9 @@ func ResetSockets() error {
 	ctx, done := context.WithTimeout(context.Background(), 5*time.Second)
 	st, _ := n.StatusWithPeers(ctx)
 	done()
+	if st != nil && st.BackendState != ipn.Running.String() {
+		return nil
+	}
 	var peers []key.NodePublic
 	if st != nil {
 		peers = st.Peers()

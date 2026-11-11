@@ -312,8 +312,11 @@ struct TailcatPairSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var fingerprint: String?
     @State private var problem: String?
+    /// Whether the host stays: it came online, or waiting timed out while
+    /// it may be approved. Any other way out takes it back.
+    @State private var kept = false
 
-    /// How long the approval may take: GoRex's pairing window.
+    /// How long the sheet waits for the approval: GoRex's pairing window.
     private static let wait = Duration.seconds(5 * 60)
 
     private var online: Bool { store.host(code.id)?.status == .online }
@@ -350,8 +353,14 @@ struct TailcatPairSheet: View {
         .interactiveDismissDisabled(waiting)
         .task { await pair() }
         .onChange(of: online) { _, on in
-            if on { Task { try? await Task.sleep(for: .seconds(1)); dismiss() } }
+            guard on else { return }
+            kept = true
+            Task { try? await Task.sleep(for: .seconds(1)); dismiss() }
         }
+        // Cancel, a new code in its place or Settings closing: a host not
+        // approved goes. It stays pending on the machine until its pairing
+        // window closes.
+        .onDisappear { if !kept && !online { store.remove(code.id) } }
     }
 
     private func pair() async {
@@ -363,18 +372,15 @@ struct TailcatPairSheet: View {
             store.add(code)
             try await Task.sleep(for: Self.wait)
             guard !online else { return }
-            store.remove(code.id)
-            problem = String(localized: "Not approved in time. Show Rex Go QR… on the machine again and scan it anew.")
+            // Approved, it may still be connecting, or refused for sessions
+            // not shared with it: it stays, and tries on.
+            kept = true
+            problem = String(localized: "Not connected yet. Rex Go keeps trying: approve this phone on the machine, and share its sessions with this device.")
         } catch is CancellationError {
         } catch {
             problem = String(localized: "Couldn't pair: \(error.localizedDescription)")
         }
     }
 
-    /// Cancel takes back a host not approved yet; it stays pending on the
-    /// machine until its pairing window closes.
-    private func finish() {
-        if waiting { store.remove(code.id) }
-        dismiss()
-    }
+    private func finish() { dismiss() }
 }
