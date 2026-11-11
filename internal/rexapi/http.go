@@ -5,14 +5,12 @@ import (
 	"html"
 	"io"
 	"net/http"
-
-	"gorex/internal/webui"
 )
 
 // Handler returns the gateway's HTTP endpoints: the control and data
-// connections, uploads, the help document, this API's own pages, and the
-// web client at /. A request from a web page of another origin is
-// refused (sameOrigin).
+// connections, uploads, the help document and this API's own pages. A
+// request from a web page whose origin the gateway does not trust is
+// refused on every path, before the access rule (checkOrigin).
 func (g *Gateway) Handler() http.Handler {
 	if relay := relayHandler(); relay != nil {
 		return relay
@@ -25,11 +23,8 @@ func (g *Gateway) Handler() http.Handler {
 	mux.HandleFunc("/api/help", serveHelp)
 	mux.HandleFunc("/llms.txt", serveLLMs)
 	mux.HandleFunc("/llms.html", serveLLMsHTML)
-	mux.Handle("/", webui.Handler())
 	return traceRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !sameOrigin(r) {
-			tracef("refused %s: origin %s", r.URL.Path, r.Header.Get("Origin"))
-			writeRefusal(w, "this server takes no requests from another origin's web pages")
+		if !g.checkOrigin(w, r) {
 			return
 		}
 		if g.opt.Access != nil {
@@ -38,6 +33,9 @@ func (g *Gateway) Handler() http.Handler {
 				writeRefusal(w, err.Error())
 				return
 			}
+		}
+		if preflight(w, r) {
+			return
 		}
 		mux.ServeHTTP(w, r)
 	}))

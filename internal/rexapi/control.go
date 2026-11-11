@@ -54,7 +54,7 @@ type control struct {
 // until it closes.
 func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	// Native clients send no Origin, which the library's own check would
-	// refuse: Handler has checked it already (sameOrigin), and the access
+	// refuse: Handler has checked it already (checkOrigin), and the access
 	// rule decides who may connect.
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		Subprotocols:       []string{controlProtocol},
