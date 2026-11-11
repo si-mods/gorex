@@ -143,7 +143,7 @@ var hostIcons = []hostIcon{
 // hostIconMenu fills a menu with the icons h can take, the one it has
 // checked: Automatic, which follows its machine, and those of hostIcons.
 func (a *App) hostIconMenu(m *ui.Menu, h *hostConn) {
-	if m.Item(locales.HostIconAutomatic()).Icon(menuIcon(cmp.Or(knownGlyph(h.Glyph), "server"))).Checked(h.Icon == "").Chosen() {
+	if m.Item(locales.HostIconAutomatic()).Icon(menuIcon(cmp.Or(knownGlyph(h.Glyph), "server"))).Checked(knownGlyph(h.Icon) == "").Chosen() {
 		a.setHostIcon(h, "")
 	}
 	m.Separator()
