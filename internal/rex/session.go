@@ -715,9 +715,13 @@ func (s *session) followAuthorityLocked(prev *attached) (pty bool, cols, rows in
 // authorityLocked returns the client whose size the program draws for,
 // whose terminal answers its queries unless it is mute (answererLocked):
 // one attached through the control connection that holds the size, else
-// the client that typed last, else the one attached last; s.mu is held.
+// the client that typed last, else the one attached last that gave a
+// size, else the one attached last; s.mu is held. A client that gave no
+// size, as the rexapi gateway's stream, has none for the program to draw
+// for: were it the authority, the session would keep whatever size it
+// had, and the windows' resizes would be ignored.
 func (s *session) authorityLocked() *attached {
-	var newest *attached
+	var newest, sized *attached
 	for a := range s.clients {
 		if s.sizeLock != "" && a.via != nil && a.via == s.sizeLockConn {
 			return a
@@ -725,9 +729,15 @@ func (s *session) authorityLocked() *attached {
 		if newest == nil || a.seq > newest.seq {
 			newest = a
 		}
+		if a.cols > 0 && (sized == nil || a.seq > sized.seq) {
+			sized = a
+		}
 	}
 	if _, ok := s.clients[s.typist]; ok {
 		return s.typist
+	}
+	if sized != nil {
+		return sized
 	}
 	return newest
 }
@@ -1039,20 +1049,21 @@ func (s *session) lockedResize(owner string, cols, rows int) bool {
 }
 
 // unlockSize gives the size back to the windows, at cols×rows when given,
-// the size of the window unlocking. With an owner, it unlocks only that
-// owner's lock.
+// the size of the window unlocking, else the authority's. With an owner,
+// it unlocks only that owner's lock.
 func (s *session) unlockSize(owner string, cols, rows int) {
 	s.mu.Lock()
 	pty := false
 	if owner == "" || s.sizeLock == owner {
-		s.clearSizeLockLocked()
 		// With a size, it is the window's own and is taken at once,
-		// replacing a size still waiting. Without one, the unlock takes
-		// no size: another window's waiting size is left to land, as a
-		// caller releasing a lock it no longer holds must not drop it.
+		// replacing a size still waiting. Without one, the session takes
+		// the authority's (endSizeLockLocked).
 		if cols > 0 && rows > 0 {
+			s.clearSizeLockLocked()
 			s.clearPendingResizeLocked()
 			pty = s.resizeLocked(cols, rows)
+		} else {
+			pty, _, _ = s.endSizeLockLocked()
 		}
 	}
 	cols, rows = s.cols, s.rows
@@ -1065,9 +1076,13 @@ func (s *session) unlockSize(owner string, cols, rows int) {
 // releaseSize unlocks the lock taken through conn, which closed.
 func (s *session) releaseSize(conn net.Conn) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	pty, cols, rows := false, 0, 0
 	if s.sizeLock != "" && s.sizeLockConn == conn {
-		s.clearSizeLockLocked()
+		pty, cols, rows = s.endSizeLockLocked()
+	}
+	s.mu.Unlock()
+	if pty {
+		s.resizeTerminal(cols, rows)
 	}
 }
 
@@ -1091,10 +1106,14 @@ func (s *session) renewLocked() {
 	}
 	s.sizeLockTimer = time.AfterFunc(lease, func() {
 		s.mu.Lock()
-		defer s.mu.Unlock()
+		pty, cols, rows := false, 0, 0
 		// A renewal may have come as the timer fired.
 		if !s.sizeLockUntil.IsZero() && !time.Now().Before(s.sizeLockUntil) {
-			s.clearSizeLockLocked()
+			pty, cols, rows = s.endSizeLockLocked()
+		}
+		s.mu.Unlock()
+		if pty {
+			s.resizeTerminal(cols, rows)
 		}
 	})
 }
@@ -1107,6 +1126,22 @@ func (s *session) clearPendingResizeLocked() {
 		s.pendingResize = nil
 	}
 	s.pendingCols, s.pendingRows = 0, 0
+}
+
+// endSizeLockLocked ends the size lock, s.mu held, and, when one held,
+// gives the session the size of the authority that is left, as a client
+// leaving does (leave): the windows' sizes, ignored while the lock held,
+// were recorded (resizeFrom), and none waits, as the lock took none. A
+// release of a lock no one holds takes no size, leaving a window's size
+// still waiting to land. It reports whether to resize the terminal, and
+// to what, which the caller does once it let go of s.mu.
+func (s *session) endSizeLockLocked() (pty bool, cols, rows int) {
+	held := s.sizeLock != ""
+	s.clearSizeLockLocked()
+	if !held {
+		return false, 0, 0
+	}
+	return s.followAuthorityLocked(nil)
 }
 
 func (s *session) clearSizeLockLocked() {

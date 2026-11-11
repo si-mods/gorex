@@ -288,8 +288,8 @@ emulator before the program's first output (`CreateOptions.prelude`). See
 - **Colors go unanswered while the server's emulator answers.** A
   program asking the palette, the foreground or background color, or the
   color scheme waits for its own timeout while a Rex app is the
-  authority or no client is attached; a window attached beside the Rex
-  app does not answer for it.
+  authority (it holds the size, or gave one) or no client is attached;
+  a window attached beside the Rex app does not answer for it.
 - **A query goes unanswered when the answering window leaves** before
   its terminal answered: the emulator does not answer a query fed while
   a window was the authority.

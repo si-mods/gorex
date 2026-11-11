@@ -140,10 +140,12 @@ type Request struct {
 
 	// Owner is the size lock's owner, of lockSize, lockedResize,
 	// unlockSize and renewSize: unlockSize without one unlocks whoever
-	// holds it. lockSize takes the lock through this connection, which
-	// must be kept alive: the lock ends as it closes, or 30 seconds after
-	// it was taken or renewed last, and the sessions attached through it
-	// answer the programs' queries meanwhile.
+	// holds it. A lock that ends without a size gives the session the
+	// size of its authority (SessionInfo.SizedBy). lockSize takes the
+	// lock through this connection, which must be kept alive: the lock
+	// ends as it closes, or 30 seconds after it was taken or renewed
+	// last, and the sessions attached through it answer the programs'
+	// queries meanwhile.
 	Owner string `json:"owner,omitempty"`
 	// Bytes is what "input" types into the session.
 	Bytes []byte `json:"bytes,omitempty"`
@@ -607,7 +609,8 @@ type SessionInfo struct {
 	SizeLock string `json:"sizeLock,omitempty"`
 	// SizedBy is the id (Attach.Client) of the client whose terminal the
 	// session's size follows (the authority): the one holding the size
-	// lock, that typed or claimed the focus last, or that attached last.
+	// lock, that typed or claimed the focus last, or that attached last,
+	// one that gave a size before one that gave none.
 	// "" while no client attached with one, as a version 2 client does
 	// not.
 	SizedBy string `json:"sizedBy,omitempty"`
