@@ -429,3 +429,57 @@ func TestLayoutWithoutWindow(t *testing.T) {
 		t.Errorf("after the close: %+v", tab.Root)
 	}
 }
+
+// TestRunKillsItsSessionOnInterrupt checks that `gorex run` ends its session
+// when it gets a signal, which Go would otherwise exit on with no defer run.
+func TestRunKillsItsSessionOnInterrupt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh and a signal")
+	}
+	c := startServer(t)
+	type result struct {
+		code int
+		out  string
+	}
+	done := make(chan result, 1)
+	go func() {
+		code, _, _, errOut := runMain(t, "run", "--", "sleep", "60")
+		done <- result{code, errOut}
+	}()
+	for i := 0; ; i++ {
+		infos, err := c.List()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(infos) == 1 {
+			break
+		}
+		if i > 200 {
+			t.Fatal("run started no session")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond) // let run wait for the exit
+	p, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case r := <-done:
+		if r.code != ExitInterrupted {
+			t.Fatalf("run exited %d (%s), want %d", r.code, r.out, ExitInterrupted)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run ignored the signal")
+	}
+	infos, err := c.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(infos) != 0 {
+		t.Fatalf("sessions left after the signal: %v", infos)
+	}
+}
