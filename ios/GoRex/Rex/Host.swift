@@ -403,6 +403,8 @@ final class Host: Identifiable {
         stopped = true
         retry?.cancel()
         control?.close()
+        proxySession?.session.invalidateAndCancel()
+        proxySession = nil
         settle(.failure(CancellationError()))
     }
 
