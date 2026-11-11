@@ -515,7 +515,7 @@ program gets.
   Differences from the desktop: file paths are not links. The desktop opens
   a path printed in a local pane and downloads one printed in a host's pane
   over the peer protocol (`upload.go` `download`); the gateway has no
-  download API for the browser. The desktop tells a web address by the
+  download API for the browser. docs/web-open-files.md proposes one. The desktop tells a web address by the
   public suffix list (`golang.org/x/net/publicsuffix`); the page does not
   ship that list and takes a host name whose last label is a two-letter
   country code (every one the list has) or one of about a hundred common
