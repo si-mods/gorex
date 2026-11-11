@@ -20,23 +20,18 @@ jobs:
   # approving its run.
   test:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macmini]
+    # Yibo-PC's runner, so that the tests wait for no build of the Mac mini.
+    runs-on: [self-hosted, yibo-pc]
     timeout-minutes: 25
     steps:
+      # Go's files stay as they are in the repository.
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           # The runner keeps Go's caches between runs.
           cache: false
-      - name: gofmt
-        run: |
-          unformatted=$(gofmt -l $(git ls-files '*.go'))
-          if [ -n "$unformatted" ]; then
-            echo "gofmt needed:"
-            echo "$unformatted"
-            exit 1
-          fi
       - name: vet
         run: go vet ./...
       - name: test
@@ -53,6 +48,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed:"
+            echo "$unformatted"
+            exit 1
+          fi
       - name: build
         env:
           CGO_ENABLED: "0"
