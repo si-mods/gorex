@@ -51,6 +51,22 @@ func TestFindBarSearches(t *testing.T) {
 	a.closeFind()
 }
 
+// TestCloseTabClosesFind closes a tab whose pane's find bar is open: the
+// bar goes with it.
+func TestCloseTabClosesFind(t *testing.T) {
+	a, tt := newTestApp(t)
+	tab := a.newTab(os.TempDir())
+	waitFor(t, tt, "the terminal", func() bool { return tab.Focus.term != nil })
+	a.openFind()
+	if a.findPane != tab.Focus {
+		t.Fatal("the find bar did not open on the focused pane")
+	}
+	a.closeTab(tab)
+	if a.findPane != nil {
+		t.Error("the find bar stays on a pane of the closed tab")
+	}
+}
+
 // TestIsLink: a path printed in a pane of this machine is a link only once
 // a stat, on another goroutine, found it there, so that prose such as w/
 // or and/or is none; in a pane of a host every path but a directory is.
