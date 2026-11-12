@@ -265,6 +265,62 @@ func TestMoveWindowOwners(t *testing.T) {
 	}
 }
 
+// TestMoveWindowRestore moves a window whose block a dropped client owned,
+// to a session that client is not attached to: when it reconnects, it does
+// not get the block back.
+func TestMoveWindowRestore(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(emptyStore())
+	c := f.dialControl()
+	c.hello(apiRevision)
+	a := callChecked(t, c, "session.create", map[string]any{"label": "a", "initial_windows": []any{
+		map[string]any{"window_label": "one", "layout": blockLayout()},
+		map[string]any{"window_label": "two", "layout": blockLayout()},
+	}})
+	b := callChecked(t, c, "session.create", map[string]any{"label": "b", "initial_windows": []any{
+		map[string]any{"window_label": "three", "layout": blockLayout()},
+	}})
+	sa, sb := a["session_id"].(string), b["session_id"].(string)
+	one := a["initial_windows"].([]any)[0].(map[string]any)
+	block := one["block_ids"].([]any)[0].(string)
+	callChecked(t, c, "session.attach", map[string]any{"session_id": sa})
+	callChecked(t, c, "session.attach", map[string]any{"session_id": sb})
+	other := f.dialControl()
+	other.hello(apiRevision)
+	c2 := welcomeID(t, other.welcome)
+	token := welcomeToken(t, other.welcome)
+	callChecked(t, other, "session.attach", map[string]any{"session_id": sa})
+	callChecked(t, other, "session.own_block", map[string]any{"session_id": sa, "block_ids": []string{block}})
+	if owner := ownerOfBlock(t, c, sa, block); owner != c2 {
+		t.Fatalf("owner %q, want the other client %q", owner, c2)
+	}
+	// The creator leaves the line, so that no one is next.
+	callChecked(t, c, "session.disown_block", map[string]any{"session_id": sa, "block_ids": []string{block}})
+	// The connection drops without a close frame: the client stays, and
+	// remembers the block for a reconnect.
+	other.ws.CloseNow()
+	waitFor(t, "the released block", func() bool {
+		return ownerOfBlock(t, c, sa, block) == ""
+	})
+
+	callChecked(t, c, "gorex.move_window", map[string]any{
+		"session_id": sa, "window_id": one["window_id"], "to_session_id": sb,
+	})
+
+	again := f.dialControl()
+	again.send(map[string]any{
+		"type": "hello", "api_revision": apiRevision, "reconnect_token": token,
+		"client": map[string]any{"kind": "app", "platform": "ios", "name": "Rex.app"},
+	})
+	welcome := again.nextType("welcome")
+	if welcome["client"].(map[string]any)["id"] != c2 {
+		t.Fatalf("resumed as %v", welcome["client"])
+	}
+	if owner := ownerOfBlock(t, c, sb, block); owner != "" {
+		t.Errorf("owner %q in a session the reconnected client is not attached to, want none", owner)
+	}
+}
+
 // TestMoveWindowHelp checks that session.help, help.all and /llms.txt
 // describe gorex.move_window, and that its result schema compiles.
 func TestMoveWindowHelp(t *testing.T) {
