@@ -1292,6 +1292,26 @@
         }
       }
     },
+    "SSH hosts aren't supported in Rex Go. Enter the address of a Rex server, like http://192.168.1.2:7297.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go 不支持 SSH 主机。请输入 Rex 服务器的地址，例如 http://192.168.1.2:7297。"
+          }
+        }
+      }
+    },
+    "Unsupported address. Enter an http:// or https:// address, like http://192.168.1.2:7297.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不支持的地址。请输入 http:// 或 https:// 地址，例如 http://192.168.1.2:7297。"
+          }
+        }
+      }
+    },
     "Update the details for this remote host.": {
       "localizations": {
         "zh-Hans": {

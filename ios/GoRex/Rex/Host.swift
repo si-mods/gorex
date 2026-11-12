@@ -145,6 +145,19 @@ extension HostConfig {
         self.init(id: id, name: n.isEmpty ? "GoRex" : n, url: Self.tailcatURL(id), tailcat: Tailcat(address: a, machine: n))
     }
 
+    /// Why a typed address is refused, when it names a scheme other than
+    /// http(s); nil for a bare host[:port], which reads as http, and for
+    /// any other fault.
+    static func refusal(of address: String) -> String? {
+        guard let r = address.range(of: "://") else { return nil }
+        let scheme = address[..<r.lowerBound].trimmingCharacters(in: .whitespaces).lowercased()
+        if ["", "http", "https"].contains(scheme) { return nil }
+        if scheme == "ssh" {
+            return String(localized: "SSH hosts aren't supported in Rex Go. Enter the address of a Rex server, like http://192.168.1.2:7297.")
+        }
+        return String(localized: "Unsupported address. Enter an http:// or https:// address, like http://192.168.1.2:7297.")
+    }
+
     /// Where the engine's proxy reaches a tailcat host: Rex's API port at
     /// <id>.tailcat.invalid, a name that resolves nowhere else.
     static func tailcatURL(_ id: UUID) -> URL {
