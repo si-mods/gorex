@@ -1072,6 +1072,16 @@
         }
       }
     },
+    "Show Keyboard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示键盘"
+          }
+        }
+      }
+    },
     "Smaller Text": {
       "localizations": {
         "zh-Hans": {
@@ -1548,12 +1558,12 @@
         }
       }
     },
-    "A key bar over the keyboard": {
+    "A key bar that stays": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "键盘上方的按键栏"
+            "value": "常驻的按键栏"
           }
         }
       }
@@ -2338,12 +2348,12 @@
         }
       }
     },
-    "Swipe the middle capsule from Esc, Control, Option, Shift and Tab to ~ | / - and Backspace.": {
+    "Swipe the middle capsule from Esc, Control, Option and Tab to Shift, / - and Backspace, then to ~ and |.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "左右滑动中间的胶囊，在 Esc、Control、Option、Shift、Tab 与 ~ | / - 和退格之间切换。"
+            "value": "左右滑动中间的胶囊，在 Esc、Control、Option、Tab，Shift、/ - 和退格，以及 ~ 和 | 三页之间切换。"
           }
         }
       }
@@ -2588,12 +2598,12 @@
         }
       }
     },
-    "Three glass capsules: ⌘, a row of keys, and an arrow stick with the key that hides the keyboard.": {
+    "Three glass capsules: ⌘, a row of keys, and an arrow stick, the mic and the key that hides or shows the keyboard. The bar stays at the bottom while the keyboard is hidden.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "三个玻璃胶囊：⌘、一排按键，以及方向摇杆和收起键盘键。"
+            "value": "三个玻璃胶囊：⌘、一排按键，以及方向摇杆、麦克风和收起或显示键盘的键。键盘收起时，按键栏留在屏幕底部。"
           }
         }
       }
@@ -2608,12 +2618,12 @@
         }
       }
     },
-    "Two pages of keys": {
+    "Three pages of keys": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "两页按键"
+            "value": "三页按键"
           }
         }
       }
@@ -3438,12 +3448,12 @@
         }
       }
     },
-    "Tap the mic at the top right of the terminal and speak; tap it again, and what you said is typed at the cursor, not sent. Speech is recognised on this device by SenseVoice, in Chinese, English, Cantonese, Japanese or Korean, with punctuation. Its model, about 240 MB, downloads on the first tap; delete it in Settings › Terminal.": {
+    "Tap the mic on the key bar, or at the top right of the terminal on iPad or with a hardware keyboard, and speak; tap it again, and what you said is typed at the cursor, not sent. Speech is recognised on this device by SenseVoice, in Chinese, English, Cantonese, Japanese or Korean, with punctuation. Its model, about 240 MB, downloads on the first tap; delete it in Settings › Terminal.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "轻点终端右上角的麦克风并说话；再点一下，你说的话就打在光标处，但不发送。语音由 SenseVoice 在本机上识别，支持中文、英语、粤语、日语和韩语，带标点。它的模型约 240 MB，首次轻点时下载；可在“设置 › 终端”中删除。"
+            "value": "轻点按键栏上的麦克风（在 iPad 上或连接硬件键盘时，在终端右上角）并说话；再点一下，你说的话就打在光标处，但不发送。语音由 SenseVoice 在本机上识别，支持中文、英语、粤语、日语和韩语，带标点。它的模型约 240 MB，首次轻点时下载；可在“设置 › 终端”中删除。"
           }
         }
       }

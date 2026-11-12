@@ -8,9 +8,10 @@ import UIKit
 /// renderer, after rootshell's TerminalView. The session's bytes go into
 /// the surface's terminal; what Ghostty encodes for the keys, the pastes
 /// and the wheel comes back out of it, for the session to write to the
-/// program. The soft keyboard comes with a bar of the keys it lacks (Esc,
-/// Tab, Ctrl, Alt, Shift, arrows), after rootshell's KeyboardAccessoryView;
-/// the modifiers hold for the next key. An iPad's keyboard has its own bar
+/// program. A phone's terminal has a bar of the keys the soft keyboard
+/// lacks (Esc, Tab, Ctrl, Alt, Shift, arrows), after rootshell's
+/// KeyboardAccessoryView, which stays as the keyboard hides; the modifiers
+/// hold for the next key. An iPad's keyboard has its own bar
 /// of shortcuts, which takes the keys instead. Input methods compose at the
 /// cursor (TerminalView+TextInput). A vertical drag scrolls back, or turns a
 /// full-screen program's wheel, with UIKit's physics (TerminalView+Scroll);
@@ -41,6 +42,18 @@ final class TerminalView: UIView, TerminalOutput {
     var alt = false { didSet { bar.alt.isSelected = alt } }
     var shift = false { didSet { bar.shift.isSelected = shift } }
     lazy var bar = KeyBar(target: self)
+    /// Whether the soft keyboard is hidden under the bar, as it is when
+    /// the terminal opens.
+    var keyboardHidden = true {
+        didSet {
+            guard keyboardHidden != oldValue else { return }
+            bar.invalidateIntrinsicContentSize()
+            reloadInputViews()
+            bar.keyboard.setNeedsUpdateConfiguration()
+        }
+    }
+    /// What shows in place of the soft keyboard while it is hidden: nothing.
+    private let noKeyboard = UIView()
 
     /// What the keyboard believes it edits.
     var document = InputDocument()
@@ -132,7 +145,7 @@ final class TerminalView: UIView, TerminalOutput {
         NotificationCenter.default.addObserver(self, selector: #selector(keyboard), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(contrastChanged), name: .minimumContrast, object: nil)
         for name in [Notification.Name.GCKeyboardDidConnect, .GCKeyboardDidDisconnect] {
-            NotificationCenter.default.addObserver(self, selector: #selector(reloadInputViews), name: name, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(keepBar), name: name, object: nil)
         }
         // An iPad's bar of shortcuts has the keys from the start.
         if UIDevice.current.userInterfaceIdiom == .pad { _ = bar }
@@ -145,6 +158,7 @@ final class TerminalView: UIView, TerminalOutput {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil, surface == nil { open() }
+        if window != nil { keepBar() }
     }
 
     /// Makes the surface, its terminal fed from outside, and shows the
@@ -334,6 +348,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// no keyboard over it, it rests at 0 and reads nothing.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         guard surface != nil, drawn else { return }
+        let covered = barAlone ?? self.covered
         var y: CGFloat = 0
         if covered > 0 {
             let c = cursor(width: nil)
@@ -345,6 +360,16 @@ final class TerminalView: UIView, TerminalOutput {
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: y)
         }
+    }
+
+    /// How far the bar reaches over the terminal while it shows without the
+    /// keyboard, at its height at the bottom of the screen: iOS tells it as
+    /// the keyboard hides, but not as the bar comes back alone, as the
+    /// screen opens or after a sheet or an alert.
+    private var barAlone: CGFloat? {
+        guard isFirstResponder, inputView != nil, let window, let superview else { return nil }
+        let top = window.screen.coordinateSpace.convert(CGPoint(x: 0, y: window.screen.bounds.maxY - bar.intrinsicContentSize.height), to: superview).y
+        return max(0, superview.bounds.maxY - top)
     }
 
     /// The bottom of the last line of the screen with text under the
@@ -387,11 +412,12 @@ final class TerminalView: UIView, TerminalOutput {
     }
 
     /// A tap that clears no selection clicks for a program that has the
-    /// mouse, else opens the link under it, and keeps the keyboard.
+    /// mouse, else opens the link under it, and shows the keyboard.
     @objc private func tap(_ g: UITapGestureRecognizer) {
         let p = g.location(in: self)
         if deselect(at: p) { return }
         if let s = surface, ghostty_surface_mouse_captured(s) { click(at: p) } else { openLink(at: p) }
+        keyboardHidden = false
         if !isFirstResponder { becomeFirstResponder() }
     }
 
@@ -421,10 +447,30 @@ final class TerminalView: UIView, TerminalOutput {
 
     override var canBecomeFirstResponder: Bool { true }
 
-    /// The bar is for the soft keyboard, which a hardware one keeps away,
-    /// and for a phone's: an iPad's keys are in its bar of shortcuts.
-    override var inputAccessoryView: UIView? {
-        GCKeyboard.coalesced == nil && UIDevice.current.userInterfaceIdiom != .pad ? bar : nil
+    /// Whether the terminal shows the bar: it is for the soft keyboard,
+    /// which a hardware one keeps away, and for a phone's: an iPad's keys
+    /// are in its bar of shortcuts.
+    static var hasBar: Bool {
+        GCKeyboard.coalesced == nil && UIDevice.current.userInterfaceIdiom != .pad
+    }
+
+    override var inputAccessoryView: UIView? { Self.hasBar ? bar : nil }
+    override var inputView: UIView? { Self.hasBar && keyboardHidden ? noKeyboard : nil }
+
+    /// Takes the keys while on screen where the terminal has the bar, so
+    /// that the bar stays, with the keyboard or without it; not under a
+    /// sheet, which gives them back as it goes.
+    @objc private func keepBar() {
+        guard shown?.presentedViewController == nil else { return }
+        reloadInputViews()
+        if window != nil, Self.hasBar { becomeFirstResponder() }
+    }
+
+    /// The bar comes back alone with no word from iOS, as after an alert:
+    /// the terminal slides over it.
+    override func becomeFirstResponder() -> Bool {
+        defer { slide(duration: 0) }
+        return super.becomeFirstResponder()
     }
 
     var autocorrectionType: UITextAutocorrectionType = .no
@@ -509,11 +555,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// Turns the mic on, and tells whether it is: what the microphone hears
     /// is recognised as it comes, and said told what is said so far, and
     /// nil as the mic goes off, by typeDictation or stopDictating. A first
-    /// tap asks for the microphone, and does no more. The tick comes first:
-    /// iOS mutes it while it records.
+    /// tap asks for the microphone, and does no more.
     func dictate(said: @escaping (Dictation.Said?) -> Void) -> Bool {
         guard dictating == nil else { return false }
-        Self.tick.impactOccurred()
         switch AVAudioApplication.shared.recordPermission {
         case .undetermined:
             AVAudioApplication.requestRecordPermission { @Sendable _ in }
@@ -574,9 +618,6 @@ final class TerminalView: UIView, TerminalOutput {
         Dictation.shared.levels = Dictation.shared.levels.map { _ in 0 }
         return d
     }
-
-    /// The mic's tap, as the key bar's keys give.
-    private static let tick = UIImpactFeedbackGenerator(style: .light)
 
     /// Has Ghostty encode keys, each pressed and let go, for the program's
     /// keyboard modes.
@@ -728,19 +769,24 @@ final class TerminalHost: UIView {
     }
 }
 
-/// The bar over the soft keyboard: three capsules of Liquid Glass, dark as
-/// the keyboard is. ⌘ opens a menu of Paste, Add Photo and Add File, and
-/// spins while a file goes up; the middle one pages from Esc, the modifiers
-/// and Tab to the punctuation a shell wants and Backspace; the last holds a
-/// stick that sends arrows the way it is dragged, and the key that hides
-/// the keyboard. On an iPad the keys go in the keyboard's bar of shortcuts,
-/// which shows with a hardware keyboard too: ⌘, Esc, the modifiers and Tab
-/// before its middle, the punctuation and four arrows after it. Its
-/// keyboard has keys of its own to hide it and for Backspace.
+/// The bar over the soft keyboard, which stays at the bottom while the
+/// keyboard is hidden: three capsules of Liquid Glass, dark as the keyboard
+/// is. ⌘ opens a menu of Paste, Add Photo and Add File, and spins while a
+/// file goes up; the middle one pages from Esc, the modifiers and Tab to
+/// the punctuation a shell wants and Backspace; the last holds a stick that
+/// sends arrows the way it is dragged, the screen's mic, and the key that
+/// hides or shows the keyboard. On an iPad the keys go in the keyboard's
+/// bar of shortcuts, which shows with a hardware keyboard too: ⌘, Esc, the
+/// modifiers and Tab before its middle, the punctuation and four arrows
+/// after it. Its keyboard has keys of its own to hide it and for Backspace.
 final class KeyBar: UIView {
     let ctrl = KeyBar.button("control", String(localized: "Control"), size: KeyBar.small)
     let alt = KeyBar.button("option", String(localized: "Option"), size: KeyBar.small)
     let shift = KeyBar.button("shift", String(localized: "Shift"), size: KeyBar.small)
+    /// Where the screen puts its mic.
+    let mic = UIView()
+    /// Hides the keyboard, or shows it while it is hidden.
+    let keyboard = UIButton()
     private weak var target: TerminalView?
     private let more = KeyBar.button("command", String(localized: "More"))
     /// The files going up; ⌘ spins while there are any.
@@ -816,12 +862,14 @@ final class KeyBar: UIView {
             b.configuration?.showsActivityIndicator = (self?.uploading ?? 0) > 0
         }
 
-        let first = [key("escape", String(localized: "Esc"), "escape"), ctrl, alt, shift,
-                     key("arrow.right.to.line", String(localized: "Tab"), "tab")]
-        let second = [text("~"), text("|"), text("/"), text("-")]
+        let escape = key("escape", String(localized: "Esc"), "escape")
+        let tab = key("arrow.right.to.line", String(localized: "Tab"), "tab")
+        let tilde = text("~"), pipe = text("|"), slash = text("/"), dash = text("-")
+        let first = [escape, ctrl, alt, shift, tab]
+        let second = [tilde, pipe, slash, dash]
         // Every key taps the hand as it goes down, as the keyboard's do.
         // Backspace, the arrows and the stick tap on their own as they repeat.
-        for b in [more] + first + second {
+        for b in [more, keyboard] + first + second {
             b.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
         }
 
@@ -846,13 +894,13 @@ final class KeyBar: UIView {
         }
         let delete = repeating("delete.left", String(localized: "Delete"), "backspace")
 
-        // Two pages of five keys in even slots, inset from the capsule's
-        // ends, each page as wide as the capsule.
-        let pages = UIStackView(arrangedSubviews: [first, second + [delete]].map { keys in
-            let page = UIStackView(arrangedSubviews: keys)
+        // Three pages of four slots, the last half empty, inset from the
+        // capsule's ends, each page as wide as the capsule.
+        let pages = UIStackView(arrangedSubviews: [[escape, ctrl, alt, tab], [shift, slash, dash, delete], [tilde, pipe]].map { keys in
+            let page = UIStackView(arrangedSubviews: keys + (keys.count..<4).map { _ in UIView() })
             page.distribution = .fillEqually
             page.isLayoutMarginsRelativeArrangement = true
-            page.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 14)
+            page.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8)
             return page
         })
         let scroll = UIScrollView()
@@ -873,19 +921,23 @@ final class KeyBar: UIView {
         drag.minimumPressDuration = 0
         drag.allowableMovement = .greatestFiniteMagnitude
         stick.addGestureRecognizer(drag)
-        let hide = Self.button("keyboard.chevron.compact.down", String(localized: "Hide Keyboard"))
-        hide.addAction(UIAction { [weak target] _ in target?.resignFirstResponder() }, for: .touchUpInside)
-        hide.addAction(UIAction { [tick] _ in tick.impactOccurred() }, for: .touchDown)
+        keyboard.addAction(UIAction { [weak target] _ in target?.keyboardHidden.toggle() }, for: .touchUpInside)
+        keyboard.configurationUpdateHandler = { [weak target] b in
+            let hidden = target?.keyboardHidden ?? false
+            b.configuration = Self.config(hidden ? "keyboard" : "keyboard.chevron.compact.down", text: false, size: 17, held: false)
+            b.accessibilityLabel = hidden ? String(localized: "Show Keyboard") : String(localized: "Hide Keyboard")
+        }
 
         let middle = Self.capsule(scroll)
         // The middle capsule takes the room the others leave.
         middle.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let right = UIStackView(arrangedSubviews: [stick, hide])
+        let right = UIStackView(arrangedSubviews: [stick, mic, keyboard])
         right.distribution = .fillEqually
         let left = Self.capsule(more), last = Self.capsule(right)
-        // As in the bar this one copies: ⌘ 56pt wide, the stick and Hide 100.
+        // As in the bar this one copies: ⌘ 56pt wide, and 50 for each key
+        // of the last.
         left.widthAnchor.constraint(equalToConstant: 56).isActive = true
-        last.widthAnchor.constraint(equalToConstant: 100).isActive = true
+        last.widthAnchor.constraint(equalToConstant: 150).isActive = true
         let row = UIStackView(arrangedSubviews: [left, middle, last])
         row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -899,13 +951,18 @@ final class KeyBar: UIView {
             row.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
             row.centerXAnchor.constraint(equalTo: centerXAnchor),
             row.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
+            row.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -4),
         ])
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 52) }
+    /// As tall again as the home indicator while the keyboard is hidden,
+    /// which the keys stay above.
+    override var intrinsicContentSize: CGSize {
+        let below = target?.keyboardHidden == true ? target?.window?.safeAreaInsets.bottom ?? 0 : 0
+        return CGSize(width: UIView.noIntrinsicMetric, height: 52 + below)
+    }
 
     /// Points the stick: past a dead zone, the arrow of the drag's main
     /// axis goes at once, then repeats while held, as a held key does. Each

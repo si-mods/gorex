@@ -1,4 +1,5 @@
 import AVFAudio
+import GameController
 import SwiftUI
 
 /// What a window's row opens: the window's block on a host.
@@ -32,6 +33,11 @@ struct TerminalScreen: View {
     @State private var statusBar: CGFloat = 0
     /// What is said while the mic is on.
     @State private var said: Dictation.Said?
+    /// Whether the mic asks to download the speech model, or to stop it.
+    @State private var asking = false
+    @State private var stopping = false
+    /// Whether the terminal has the key bar, which holds the mic.
+    @State private var hasBar = TerminalView.hasBar
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
@@ -46,7 +52,7 @@ struct TerminalScreen: View {
         let scheme: ColorScheme = bg.light ? .light : .dark
         // The terminal goes up under the clear bar and the status bar: its
         // grid starts below them, and its scrollback fills the band.
-        Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab) } else { Color.clear } }
+        Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab, mic: mic) } else { Color.clear } }
             .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)
             .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p).padding(.top, statusBar).ignoresSafeArea(.container, edges: .top) } }
@@ -87,10 +93,11 @@ struct TerminalScreen: View {
                     .buttonStyle(.plain)
                 }
                 .sharedBackgroundVisibility(.hidden)
-                // The mic, and the window's menu, New Tab being in the
-                // session's sheet and on ⌘T; the bar's glass draws them.
+                // The mic where the terminal has no key bar, and the
+                // window's menu, New Tab being in the session's sheet and on
+                // ⌘T; the bar's glass draws them.
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Mic(terminal: { terminal }, said: $said)
+                    if !hasBar { mic }
                     Menu {
                         Button("New Tab", systemImage: "plus") { newTab() }
                     } label: {
@@ -124,6 +131,7 @@ struct TerminalScreen: View {
                 host.see(target.block)
             }
             .onDisappear {
+                terminal?.stopDictating()
                 host.see(target.block)
                 session?.close()
                 if Notifier.shared.onScreen == target { Notifier.shared.onScreen = nil }
@@ -132,6 +140,20 @@ struct TerminalScreen: View {
             } message: {
                 Text(failure?.why ?? "")
             }
+            // The mic's, here, as the one in the key bar can't show them.
+            .alert("Download the Speech Model?", isPresented: $asking) {
+                Button("Download") { Dictation.shared.download() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Speech is recognised on this device, by SenseVoice. Its model, \(Dictation.size.formatted(.byteCount(style: .file))), downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.")
+            }
+            .stopsDownload($stopping)
+            .alert("Can't Download the Speech Model", isPresented: Binding { Dictation.shared.error != nil } set: { if !$0 { Dictation.shared.error = nil } }) {
+            } message: {
+                Text(Dictation.shared.error ?? "")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in terminal?.stopDictating() }
+            .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect).merge(with: NotificationCenter.default.publisher(for: .GCKeyboardDidDisconnect))) { _ in hasBar = TerminalView.hasBar }
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
@@ -150,6 +172,8 @@ struct TerminalScreen: View {
     private static var statusBar: CGFloat {
         UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
     }
+
+    private var mic: Mic { Mic(terminal: { terminal }, said: $said, asking: $asking, stopping: $stopping) }
 
     /// The terminal showing the session.
     private var terminal: TerminalView? { session?.output as? TerminalView }
@@ -232,16 +256,17 @@ struct TerminalScreen: View {
 /// recognised on the phone (Dictation); a tap turns it off and types it
 /// into the terminal, unsent, once it spins as its last phrase is. Its
 /// first tap asks to download the models, and while they download it shows
-/// how far, and a tap asks to stop it. It goes off, typing nothing, as it
-/// goes away with the screen or a call comes.
+/// how far, and a tap asks to stop it. It goes off, typing nothing, as the
+/// screen goes or a call comes. It is on while something is said.
 private struct Mic: View {
     let terminal: () -> TerminalView?
     @Binding var said: Dictation.Said?
-    @State private var on = false
+    @Binding var asking: Bool
+    @Binding var stopping: Bool
     @State private var busy = false
-    @State private var asking = false
-    @State private var stopping = false
+    @GestureState private var pressed = false
     private let dictation = Dictation.shared
+    private var on: Bool { said != nil && !busy }
 
     var body: some View {
         Group {
@@ -269,7 +294,6 @@ private struct Mic: View {
             if dictation.progress != nil {
                 stopping = true
             } else if on {
-                on = false
                 busy = true
                 Task {
                     await terminal()?.typeDictation()
@@ -278,26 +302,13 @@ private struct Mic: View {
             } else if !dictation.installed {
                 asking = true
             } else {
-                on = terminal()?.dictate {
-                    said = $0
-                    if $0 == nil { on = false }
-                } == true
+                _ = terminal()?.dictate { said = $0 }
             }
         }
-        .onDisappear { terminal()?.stopDictating() }
-        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in terminal()?.stopDictating() }
+        // A light tap as the finger goes down, as the key bar's keys give.
+        .simultaneousGesture(DragGesture(minimumDistance: 0).updating($pressed) { _, p, _ in p = true })
+        .sensoryFeedback(.impact(weight: .light), trigger: pressed) { _, p in p }
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
-        .alert("Download the Speech Model?", isPresented: $asking) {
-            Button("Download") { dictation.download() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Speech is recognised on this device, by SenseVoice. Its model, \(Dictation.size.formatted(.byteCount(style: .file))), downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.")
-        }
-        .stopsDownload($stopping)
-        .alert("Can't Download the Speech Model", isPresented: Binding { dictation.error != nil } set: { if !$0 { dictation.error = nil } }) {
-        } message: {
-            Text(dictation.error ?? "")
-        }
     }
 }
 
@@ -397,11 +408,24 @@ private struct TerminalRepresentable: UIViewRepresentable {
     let session: TerminalSession
     let newTab: () -> Void
     let closeTab: () -> Void
+    let mic: Mic
 
-    /// The view lands without the keyboard: a tap gives it focus, as one
-    /// does in the terminal.
+    /// The mic in the key bar.
+    func makeCoordinator() -> UIHostingController<Mic> {
+        let c = UIHostingController(rootView: mic)
+        c.safeAreaRegions = []
+        c.view.backgroundColor = .clear
+        return c
+    }
+
+    /// The view lands without the keyboard, and on a phone with its key
+    /// bar: a tap gives it the keyboard, as one does in the terminal.
     func makeUIView(context: Context) -> TerminalHost {
         let host = TerminalHost(TerminalView(session: session))
+        let mic = context.coordinator.view!
+        mic.frame = host.terminal.bar.mic.bounds
+        mic.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        host.terminal.bar.mic.addSubview(mic)
         updateUIView(host, context: context)
         return host
     }
@@ -409,9 +433,10 @@ private struct TerminalRepresentable: UIViewRepresentable {
     func updateUIView(_ v: TerminalHost, context: Context) {
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
+        context.coordinator.rootView = mic
     }
 
-    static func dismantleUIView(_ v: TerminalHost, coordinator: ()) { v.terminal.close() }
+    static func dismantleUIView(_ v: TerminalHost, coordinator: UIHostingController<Mic>) { v.terminal.close() }
 }
 
 extension View {

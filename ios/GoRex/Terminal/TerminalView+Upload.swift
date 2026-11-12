@@ -112,7 +112,7 @@ extension TerminalView: UIDocumentPickerDelegate {
     }
 
     /// The view controller that shows the terminal.
-    private var shown: UIViewController? {
+    var shown: UIViewController? {
         sequence(first: self as UIResponder, next: \.next).lazy.compactMap { $0 as? UIViewController }.first
     }
 
