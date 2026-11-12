@@ -772,6 +772,10 @@ once.
   views, the sidebar, and the window's commands.
 - `web/src/window.ts`: a window's layout tree, its panes and dividers,
   and the focus (see Split panes).
+- `web/src/manage.ts`: the menus of a right click or a long press, the
+  field that renames in place, Close Space's question, and the drags of
+  a window's row and a pane's header (see Spaces, windows and moves).
+  main.ts says what each item does.
 - `web/src/pane.ts`: one pane: its stream, its terminal and its canvas,
   and the text field that holds its keys (see Typing and paste).
   Typed bytes go to `com.superlogical.terminal.write`, one write at a
@@ -791,9 +795,11 @@ once.
 ## Split panes
 
 The sidebar has a heading for each session (with a + button for a new
-window) and a row for each window: the window's terminal title, else its
-label, and its count of panes when it has more than one. Its close button
-shows on hover. A click shows the window.
+window) and a row for each window: the name the user gave it, else its
+terminal's title, else its label, and its count of panes when it has
+more than one. A label is the user's when it is not the host's default,
+`Window ` and the last 8 characters of the window's ID, as the iOS app
+tells. Its close button shows on hover. A click shows the window.
 
 - **Layout.** The page draws the tiled layer's layout tree from
   `session.view`: each `split` divides its room by its `ratio`,
@@ -828,6 +834,38 @@ shows on hover. A click shows the window.
   (`session.zoom_block`), new window (`session.new_window`, not focused on
   the host) and close window (`session.close_window`).
 
+### Spaces, windows and moves
+
+A session is the desktop's Space, and a window its project tab (GoRex's
+gateway maps them so: `internal/rexapi/doc.go`). The page manages them
+with the desktop's commands, words and entry points (`tabMenu` in
+`tabs.go`, `spaceMenu` and `workspaceConfirm` in `workspaceview.go`,
+`paneMenu` in `view.go`, `panedrop.go`), and the iOS app's calls
+(`ios/GoRex/Rex/Host.swift`). A right click opens a menu, and so does a
+touch held for half a second (`web/src/manage.ts`, `onMenu`). Every
+change goes to the host; the sidebar and the panes follow the session's
+new view (`session_view_changed`, `session_label_changed`), as for a
+change made elsewhere.
+
+| What | Where | Method |
+|---|---|---|
+| New Space: a session with one window running the shell, shown; the host names it | The + at the right of the sidebar's foot (the desktop's space strip has it), Alt+Shift+N | `session.create` with `initial_windows` |
+| Rename Space: a field in the heading; Enter or leaving it keeps the name, Escape goes back, an empty name keeps the one it has | The heading's menu | `session.set_label` |
+| Close Space: asks first, as the desktop does, how many terminals end; the page then shows another session's window | The heading's menu | `session.destroy` |
+| Rename Window: a field in the row; an empty name gives the window its terminal's title again | The row's menu, a second click on the row within half a second (the desktop's double click), Alt+Shift+R for the shown window | `session.set_window_label` |
+| Reset Name | The row's menu, when the window has a name | `session.set_window_label` with `""` |
+| Move a window up or down in its session | The row's menu (Move Up, Move Down); drag the row onto another row of its session: the upper half puts it before, the lower half after, a 2px line shows where | `session.move_window` with `before_window_id`, none for the end |
+| New Window, Close Window, Close Other Windows | The row's menu | `session.new_window`, `session.close_window` |
+| Swap two panes of the window | Drag a pane by its header onto the middle of another (0.2 of its width and height each way of its centre, as `paneDropZone`), which shows the zone | `session.swap_blocks`; the dragged pane has the focus |
+| Move a pane into another window of its session, beside that window's focused pane | The header's menu (Move to Window), or drop the header on that window's row, which shows a ring | `session.move_block`, `horizontal`, `after` |
+
+A move keeps the blocks: their programs go on and their terminals keep
+what they show. A pane that stays in the window keeps its data stream; a
+pane that leaves the shown window closes its stream without giving its
+block back. A dragged row or header is dimmed (grey, 0.4), as the
+desktop's `dimmed`. While a field renames or a row drags, the sidebar
+holds still and is made again after. A failure shows in the status line.
+
 ### Shortcuts
 
 The desktop's shortcuts (`commands.go`) where a browser lets a page have
@@ -847,6 +885,8 @@ to the terminal.
 | New window (desktop: ⌘T, Ctrl+Shift+T) | ⌥⇧T | Alt+Shift+T |
 | Close the window (desktop: ⇧⌘W) | ⌥⇧Q | Alt+Shift+Q |
 | Next, previous window (desktop: Ctrl+Tab, Ctrl+Shift+Tab) | ⌥⇧] and ⌥⇧[ | Alt+Shift+] and Alt+Shift+[ |
+| Rename the window (desktop: ⇧⌘R, Ctrl+Shift+R, which reload the page) | ⌥⇧R | Alt+Shift+R |
+| New Space (desktop: ⇧⌘N, Ctrl+Shift+N, the browser's new window) | ⌥⇧N | Alt+Shift+N |
 | Settings | ⌘, | Ctrl+, |
 | Copy the selection | ⌘C | Ctrl+Shift+C |
 | Paste | ⌘V | Ctrl+Shift+V, Shift+Insert; on Windows also Ctrl+V (see Typing and paste) |
@@ -856,12 +896,27 @@ focused pane by 5%. As on the desktop on Windows and Linux, Alt and an
 arrow (word movement in some shells) is the focus's there, not the
 terminal's.
 
+Two moves need a newer gateway, and the page shows them only when the
+gateway's welcome lists `gorex.move_window` (`gateway` in
+`web/src/main.ts`); GoRex's gateway took both in the same change set:
+
+- Move to Space (the desktop's `moveTabToSpace`), in the window row's menu
+  (Move to Space, a submenu of the other spaces): `gorex.move_window` with
+  `session_id`, `window_id` and `to_session_id`. The source session is
+  destroyed when the move empties it.
+- Dropping a pane on another pane's edge, to go beside it in the same
+  window (the desktop's `movePaneBeside`; `paneDropZone`, `zoneSplit`):
+  `session.move_block` with the target as anchor, a `direction` and a
+  `side` (before or after). Without the feature the edge zones are off and
+  only the middle (swap) takes a drop.
+
 ### Not in the web client
 
 - Floating layers (floats): only the tiled layer shows. A block that is
   only in a float has no pane here.
-- Dragging a pane to another place, swapping panes, renaming windows and
-  sessions, moving windows, and making or closing sessions.
+- Merging two windows (a row dropped on another's middle), moving a pane
+  to a window of its own, renaming a pane, a space's color, and the
+  desktop's space strip and next and previous space.
 - The desktop's pane animations, the pane's program icon and its
   activity badge.
 

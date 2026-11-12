@@ -282,6 +282,76 @@
       }
     }
   },
+  "statusNewSpaceFailed": "Could not make a space: {error}",
+  "@statusNewSpaceFailed": {
+    "description": "Status line when New Space failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusRenameSpaceFailed": "Could not rename the space: {error}",
+  "@statusRenameSpaceFailed": {
+    "description": "Status line when Rename Space failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusCloseSpaceFailed": "Could not close the space: {error}",
+  "@statusCloseSpaceFailed": {
+    "description": "Status line when Close Space failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusRenameWindowFailed": "Could not rename the window: {error}",
+  "@statusRenameWindowFailed": {
+    "description": "Status line when renaming a window, or Reset Name, failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusMoveWindowFailed": "Could not move the window: {error}",
+  "@statusMoveWindowFailed": {
+    "description": "Status line when moving a window in the sidebar failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusMovePaneFailed": "Could not move the pane: {error}",
+  "@statusMovePaneFailed": {
+    "description": "Status line when moving a pane to another window, or beside another pane, failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusSwapPanesFailed": "Could not swap the panes: {error}",
+  "@statusSwapPanesFailed": {
+    "description": "Status line when a pane dropped on another could not swap places with it.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
   "statusClosed": "closed ({code})",
   "@statusClosed": {
     "description": "Why the connection to the host ended, inside statusDisconnected: a WebSocket close code.",
@@ -509,6 +579,78 @@
   "cmdPreviousWindow": "Previous Window",
   "@cmdPreviousWindow": {
     "description": "Settings › Keyboard: show the previous window of the sidebar."
+  },
+  "cmdRenameWindow": "Rename Window…",
+  "@cmdRenameWindow": {
+    "description": "Command: rename a window in place in its sidebar row; an empty name gives back its terminal's title. Window row menu, Settings › Keyboard."
+  },
+  "windowResetName": "Reset Name",
+  "@windowResetName": {
+    "description": "Window row menu: give a renamed window its terminal's title again."
+  },
+  "windowMoveUp": "Move Up",
+  "@windowMoveUp": {
+    "description": "Window row menu: move the window one place up in its session's list."
+  },
+  "windowMoveDown": "Move Down",
+  "@windowMoveDown": {
+    "description": "Window row menu: move the window one place down in its session's list."
+  },
+  "windowMoveSpace": "Move to Space",
+  "@windowMoveSpace": {
+    "description": "Window row menu: a submenu of the other spaces (sessions) to move the window to, where the host can."
+  },
+  "cmdCloseOtherWindows": "Close Other Windows",
+  "@cmdCloseOtherWindows": {
+    "description": "Window row menu: close every other window of the same space (session)."
+  },
+  "paneMoveWindow": "Move to Window",
+  "@paneMoveWindow": {
+    "description": "Pane header menu: a submenu of the other windows of the pane's space to move the pane into, beside their focused pane; its program goes on."
+  },
+  "cmdNewSpace": "New Space",
+  "@cmdNewSpace": {
+    "description": "Command: make a space (a session of the host) with one window, and show it. Sidebar foot + button tooltip, Settings › Keyboard."
+  },
+  "cmdRenameSpace": "Rename Space…",
+  "@cmdRenameSpace": {
+    "description": "Space heading menu: rename the space (session) in place in its heading."
+  },
+  "cmdCloseSpace": "Close Space",
+  "@cmdCloseSpace": {
+    "description": "Space heading menu, and the red button of its question: close the space (session) and end its terminals."
+  },
+  "keysSpaces": "Spaces",
+  "@keysSpaces": {
+    "description": "Settings › Keyboard: the heading of the spaces' shortcuts."
+  },
+  "renameSpaceLabel": "Space name",
+  "@renameSpaceLabel": {
+    "description": "Accessible name of the field that renames a space in its sidebar heading."
+  },
+  "renameWindowLabel": "Window name",
+  "@renameWindowLabel": {
+    "description": "Accessible name of the field that renames a window in its sidebar row."
+  },
+  "spaceCloseTitle": "Close “{name}”?",
+  "@spaceCloseTitle": {
+    "description": "Title of the question Close Space asks.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "icy-ridge"
+      }
+    }
+  },
+  "spaceCloseBody": "{n, plural, one {Its terminal ends, and the program running in it.} other {Its # terminals end, and the programs running in them.}}",
+  "@spaceCloseBody": {
+    "description": "Text of the question Close Space asks: what ends with the space.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "3"
+      }
+    }
   },
   "cmdSettings": "Settings",
   "@cmdSettings": {
