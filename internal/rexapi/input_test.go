@@ -233,8 +233,11 @@ func TestTerminalWrite(t *testing.T) {
 	if res["bytes_written"] != float64(len("héllo\n")) {
 		t.Errorf("bytes_written: %v", res)
 	}
+	// GNU cat -v shows the é's bytes as M-CM-); BSD cat, in a UTF-8
+	// locale, as é.
 	waitFor(t, "the typed text", func() bool {
-		return strings.Contains(screenText(t, c, sid, block), "héllo")
+		s := screenText(t, c, sid, block)
+		return strings.Contains(s, "héllo") || strings.Contains(s, "hM-CM-)llo")
 	})
 	// block.method does the same by a short name.
 	res = result(t, c.request("w2", "block.method", map[string]any{
