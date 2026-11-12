@@ -19,11 +19,11 @@ import (
 // carry raw PCM, signed 16-bit little-endian, 16 kHz, mono, and the client
 // closes it as the user stops, which ends the voice. The server sends
 // nothing but the close: a normal one as the voice ended on the host, as
-// when the program stopped its rec. The welcome lists featureVoice when the gateway
-// takes voices.
-
-// featureVoice is the welcome's feature of a gateway that takes voices.
-const featureVoice = "gorex.voice"
+// when the program stopped its rec. The welcome no longer lists its
+// feature, gorex.voice.
+//
+// Deprecated: nothing on the host reads a voice any more, since
+// GoRex's rec is gone, and the interface will go.
 
 // voiceIdle is how long a voice may go without a message: the phone sends
 // one every tenth of a second.

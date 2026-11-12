@@ -16,14 +16,14 @@ import (
 	"gorex/internal/rex"
 )
 
-// TestVoice: the welcome lists the voice feature, and what a WebSocket on
-// /api/voice carries for a block, the rec of its session reads, until the
-// client closes it.
+// TestVoice: the welcome no longer lists the voice feature, and what a
+// WebSocket on /api/voice carries for a block, its session's voice reads,
+// until the client closes it.
 func TestVoice(t *testing.T) {
 	f := startFixture(t)
 	c, _, block := f.sessionWith(t, rex.CreateOptions{Command: []string{"/bin/sh", "-i"}})
 	features, _ := c.welcome["features"].([]any)
-	if !slices.Contains(features, any(featureVoice)) {
+	if slices.Contains(features, any("gorex.voice")) {
 		t.Fatalf("welcome features: %v", c.welcome["features"])
 	}
 	m, err := f.g.current()

@@ -14,14 +14,19 @@ import (
 
 // A voice is what a phone's microphone hears, for the program of a
 // session that records with rec, as Claude Code's /voice does on a
-// machine with no microphone of its own: rec is a link to this executable
-// (EnsureCLI), and the rec a session runs reads the session's voice. The
-// Rex API gateway feeds it, as raw PCM: signed 16-bit little-endian,
-// 16 kHz, mono, which is what rec writes. Windows' Claude Code records no
-// other way than its own, so only a Unix server says it takes voices.
+// machine with no microphone of its own. The Rex API gateway feeds it, as
+// raw PCM: signed 16-bit little-endian, 16 kHz, mono, which is what rec
+// writes. Windows' Claude Code records no other way than its own, so only
+// a Unix server says it takes voices.
+//
+// Deprecated: nothing on the host reads a voice any more, since
+// GoRex's rec is gone, and the interface will go.
 
 // CapabilityVoice is what a server that carries a voice to a session's rec
 // says it does: the "voice.put" and "voice.get" connections.
+//
+// Deprecated: nothing on the host reads a voice any more, since
+// GoRex's rec is gone, and the interface will go.
 const CapabilityVoice = "voice"
 
 func init() {
@@ -40,6 +45,9 @@ func init() {
 // begin, then the server sends what the voice carried since it began, and
 // what it carries after, and closes the connection once it ended. A voice
 // no get took or waits for as it ends is dropped.
+//
+// Deprecated: nothing on the host reads a voice any more, since
+// GoRex's rec is gone, and the interface will go.
 type Voice struct {
 	Op  string `json:"op"` // "voice.put" or "voice.get"
 	SID string `json:"sid"`
@@ -265,9 +273,12 @@ func (c *Client) canVoice() error {
 }
 
 // FeedVoice begins the voice of the session sid (Voice): what is written
-// to it, the rec of the session reads, and closing it ends the voice, as
-// ctx being done does. The caller knows the server takes voices
-// (CapabilityVoice), as the gateway does from its hello.
+// to it, ReadVoice reads, and closing it ends the voice, as ctx being
+// done does. The caller knows the server takes voices (CapabilityVoice),
+// as the gateway does from its hello.
+//
+// Deprecated: nothing on the host reads a voice any more, since
+// GoRex's rec is gone, and the interface will go.
 func (c *Client) FeedVoice(ctx context.Context, sid string) (io.WriteCloser, error) {
 	fc, _, err := c.openFile(ctx, Voice{Op: "voice.put", SID: sid})
 	if err != nil {
@@ -279,6 +290,9 @@ func (c *Client) FeedVoice(ctx context.Context, sid string) (io.WriteCloser, err
 // ReadVoice reads the voice of the session sid (Voice), waiting a moment
 // for one to begin: what it carried since it began, then what it carries,
 // until it ends.
+//
+// Deprecated: nothing on the host reads a voice any more, since
+// GoRex's rec is gone, and the interface will go.
 func (c *Client) ReadVoice(ctx context.Context, sid string) (io.ReadCloser, error) {
 	if err := c.canVoice(); err != nil {
 		return nil, err
