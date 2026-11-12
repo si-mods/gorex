@@ -1061,6 +1061,8 @@ func TestTeleportRoundTrip(t *testing.T) {
 	// A to B again, B's copy as A's: in W.
 	b, _ := os.ReadFile(filepath.Join(projectP, convID+".jsonl"))
 	os.WriteFile(filepath.Join(cfgB, "projects", claudeSlug(dirW), convID+".jsonl"), b, 0o600)
+	// Output that came since the last wait makes it working again.
+	waitInfo(t, m.aLocal, sidA, "Claude Code quiet again", func(in SessionInfo) bool { return TeleportRefusal(in) == "" })
 	in, err = Teleport(context.Background(), m.aLocal, sidA, m.bPeer, func(string, string) {})
 	if err != nil {
 		t.Fatal(err)
