@@ -112,12 +112,32 @@
         }
       }
     },
+    "API Key": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API 密钥"
+          }
+        }
+      }
+    },
     "Arrow Keys": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "方向键"
+          }
+        }
+      }
+    },
+    "Base URL": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Base URL"
           }
         }
       }
@@ -672,6 +692,16 @@
         }
       }
     },
+    "Model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "模型"
+          }
+        }
+      }
+    },
     "More": {
       "localizations": {
         "zh-Hans": {
@@ -888,6 +918,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "粘贴"
+          }
+        }
+      }
+    },
+    "Polishing": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在润色"
           }
         }
       }
@@ -1158,6 +1198,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接已断开。"
+          }
+        }
+      }
+    },
+    "The mic types what you say into the terminal, without pressing Return; SenseVoice recognises it on this device. Swipe the model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "麦克风把你说的话打进终端，但不按回车；语音由 SenseVoice 在本机上识别。左滑模型可删除它。填了 API 密钥后，你听写的文字和终端屏幕上的单词会发到你在这里设置的服务，由它纠正听错的术语和标点。没有密钥时，什么都不会离开本机。"
           }
         }
       }
@@ -3424,16 +3474,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "语音模型"
-          }
-        }
-      }
-    },
-    "The mic at the top right of the terminal types what you say, recognised on this device by SenseVoice, without sending it. Swipe the model to delete it.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "终端右上角的麦克风把你说的话打进终端，但不发送；语音由 SenseVoice 在本机上识别。左滑模型可删除它。"
           }
         }
       }
