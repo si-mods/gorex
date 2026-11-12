@@ -875,6 +875,17 @@ func (c *Client) RejectPairing(publicKey string) error {
 	return c.call(Request{Op: "remote.reject", Remote: &RemoteClient{PublicKey: publicKey}}, nil)
 }
 
+// ApprovePairingCode allows the client of the one request by address,
+// by its code; with more than one waiting it refuses.
+func (c *Client) ApprovePairingCode(code string) error {
+	return c.call(Request{Op: "remote.approve", Code: code}, nil)
+}
+
+// RejectPairingCode drops a request by address, by its code.
+func (c *Client) RejectPairingCode(code string) error {
+	return c.call(Request{Op: "remote.reject", Code: code}, nil)
+}
+
 // RequestPairing asks the server, connected to with ConnectRemote, to
 // allow this machine by name; it returns the fingerprint of this
 // machine's key, which the server shows next to the request.

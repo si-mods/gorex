@@ -188,7 +188,9 @@ func (s *Server) ownStart(ctx context.Context, cfg RemoteConfig) (*ownLink, erro
 		return nil, err
 	}
 	self := cfg.NodeKey.Public()
-	relay, err := startOwnRelay(ip, func(k key.NodePublic) bool {
+	relay, err := startOwnRelay(ip, func(w http.ResponseWriter, req *http.Request, leaf []byte) {
+		s.pairByAddress(w, req, leaf, self)
+	}, func(k key.NodePublic) bool {
 		r := &s.rem
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -227,7 +229,8 @@ type ownRelay struct {
 	stun   context.CancelFunc // stops the STUN server, nil when there is none
 }
 
-func startOwnRelay(ip netip.Addr, admit func(key.NodePublic) bool) (*ownRelay, error) {
+// pair serves pairing by address, given the certificate's DER.
+func startOwnRelay(ip netip.Addr, pair func(http.ResponseWriter, *http.Request, []byte), admit func(key.NodePublic) bool) (*ownRelay, error) {
 	if !localAddr(ip) {
 		return nil, fmt.Errorf("rex: %s is not an address of this machine", ip)
 	}
@@ -274,6 +277,7 @@ func startOwnRelay(ip netip.Addr, admit func(key.NodePublic) bool) (*ownRelay, e
 	h := derpserver.Handler(o.d)
 	mux.Handle("/derp", h)
 	mux.Handle("/derp/", h) // probe and latency-check, which netcheck asks without STUN
+	mux.HandleFunc(pairPath, func(w http.ResponseWriter, r *http.Request) { pair(w, r, cert.Certificate[0]) })
 	o.hs = &http.Server{
 		Handler: mux,
 		// derpserver sets its own deadlines once a client is its own; the

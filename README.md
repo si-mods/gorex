@@ -405,7 +405,9 @@ for each tab that layout shows, with its splits, so two panes side by
 side there are not two tabs here; a tab closed here ends its session as
 any other and does not come back.
 `go run ./tools/remotectl pair ADDRESS NAME` asks to pair from a machine
-without the app.
+without the app; with the IP address of a host's Reachable at in place of
+ADDRESS, it pairs by address: it prints a code to compare with the
+host's, and the host's addresses once approved.
 
 ### Teleport
 

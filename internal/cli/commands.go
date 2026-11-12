@@ -143,7 +143,7 @@ Usage:
   gorex events
   gorex hosts [ls] [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
-  gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
+  gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
   gorex server restart | upgrade
   gorex update (Linux)
   gorex config path | config check [FILE] | config reload
@@ -965,7 +965,7 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitUsage, true
 	}
 	usage := func() (int, bool) {
-		fmt.Fprintln(errOut, "gorex remote: status | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY")
+		fmt.Fprintln(errOut, "gorex remote: status | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY")
 		return ExitUsage, true
 	}
 	if len(args) == 0 {
@@ -1069,10 +1069,16 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitUsage, true
 		}
 		key := args[1]
-		switch args[0] {
-		case "approve":
+		// Six digits are the code of a request by address; a key is longer.
+		byCode := len(key) == 6 && strings.Trim(key, "0123456789") == ""
+		switch {
+		case args[0] == "approve" && byCode:
+			run = func(c *rex.Client) error { return c.ApprovePairingCode(key) }
+		case args[0] == "approve":
 			run = func(c *rex.Client) error { return c.ApprovePairing(key) }
-		case "reject":
+		case args[0] == "reject" && byCode:
+			run = func(c *rex.Client) error { return c.RejectPairingCode(key) }
+		case args[0] == "reject":
 			run = func(c *rex.Client) error { return c.RejectPairing(key) }
 		default:
 			run = func(c *rex.Client) error { return c.RevokeRemote(key) }
@@ -1153,7 +1159,16 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			fmt.Fprintln(errOut, err)
 			return ExitServer, true
 		}
-		WriteJSON(out, st.Pending)
+		// The requests by address first, each by its code; then those over
+		// tailcat, by key.
+		all := []any{}
+		for _, p := range st.PendingByAddress {
+			all = append(all, p)
+		}
+		for _, p := range st.Pending {
+			all = append(all, p)
+		}
+		WriteJSON(out, all)
 		return ExitOK, true
 	}
 	if err := run(c); err != nil {

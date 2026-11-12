@@ -115,6 +115,9 @@ type Request struct {
 	// Remote is the client of remote.allow, remote.revoke,
 	// remote.approve and remote.reject, and the name of remote.pair.
 	Remote *RemoteClient `json:"remote,omitempty"`
+	// Code names the request by address of remote.approve and
+	// remote.reject, in place of Remote.
+	Code string `json:"code,omitempty"`
 	// TailcatAddress is the address of remote.tailcatDial: the server
 	// connects to it with its tailcat client, and relays the connection.
 	TailcatAddress string `json:"tailcatAddress,omitempty"`
@@ -479,6 +482,9 @@ type RemoteStatus struct {
 	// Pairing is the pairing window, Pending the requests made in it.
 	Pairing RemotePairing   `json:"pairing"`
 	Pending []RemotePending `json:"pending,omitempty"`
+	// PendingByAddress are the requests made by address (pairaddr.go),
+	// apart from Pending: each is approved by its code alone.
+	PendingByAddress []RemoteAddrPending `json:"pendingByAddress,omitempty"`
 	// ShareLayout tells that remote clients may read this machine's layout
 	// and subscribe to its changes.
 	ShareLayout bool `json:"shareLayout"`
@@ -499,6 +505,16 @@ type RemotePairing struct {
 type RemotePending struct {
 	Name        string    `json:"name"`
 	PublicKey   string    `json:"publicKey"`
+	RequestedAt time.Time `json:"requestedAt"`
+}
+
+// RemoteAddrPending is a request to pair by address, waiting for
+// approval while its connection lasts: Code is what both sides show,
+// Source the address it came from.
+type RemoteAddrPending struct {
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Source      string    `json:"source"`
 	RequestedAt time.Time `json:"requestedAt"`
 }
 
