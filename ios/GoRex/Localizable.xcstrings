@@ -1292,6 +1292,26 @@
         }
       }
     },
+    "SSH hosts aren't supported in Rex Go. Enter the address of a Rex server, like http://192.168.1.2:7297.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go 不支持 SSH 主机。请输入 Rex 服务器的地址，例如 http://192.168.1.2:7297。"
+          }
+        }
+      }
+    },
+    "Unsupported address. Enter an http:// or https:// address, like http://192.168.1.2:7297.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "不支持的地址。请输入 http:// 或 https:// 地址，例如 http://192.168.1.2:7297。"
+          }
+        }
+      }
+    },
     "Update the details for this remote host.": {
       "localizations": {
         "zh-Hans": {
@@ -1998,12 +2018,12 @@
         }
       }
     },
-    "JetBrains Mono, Menlo or Courier New, from 8 to 24 points.": {
+    "JetBrains Mono, SF Mono, Menlo or Courier New, from 8 to 24 points.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "JetBrains Mono、Menlo 或 Courier New，字号 8 至 24 pt。"
+            "value": "JetBrains Mono、SF Mono、Menlo 或 Courier New，字号 8 至 24 pt。"
           }
         }
       }
@@ -2278,12 +2298,32 @@
         }
       }
     },
+    "Programs copy to the clipboard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程序可复制到剪贴板"
+          }
+        }
+      }
+    },
     "Programs' notifications": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "程序发出的通知"
+          }
+        }
+      }
+    },
+    "Programs such as Neovim and tmux copy to the clipboard with OSC 52, from the terminal on screen only. They cannot read it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neovim、tmux 等程序可用 OSC 52 复制到剪贴板，仅限屏幕上的终端。程序无法读取剪贴板。"
           }
         }
       }

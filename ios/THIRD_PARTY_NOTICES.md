@@ -42,7 +42,8 @@ SOFTWARE.
 
 ## JetBrains Mono
 
-Ghostty embeds JetBrains Mono, the terminal's default font.
+Ghostty embeds JetBrains Mono, the terminal's default font; the app bundles
+its regular face for the font previews in Settings.
 https://github.com/JetBrains/JetBrainsMono
 
 ```

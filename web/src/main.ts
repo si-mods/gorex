@@ -483,7 +483,8 @@ async function connect(gen: number) {
   try {
     await c.call("session.bootstrap", { event_scope: "all" });
     await list();
-    status(() => t("statusConnected", { host: h.name }));
+    // Connected is the usual state: the status line says nothing, and an earlier problem goes.
+    status("");
     for (const p of shown?.panes.values() ?? []) p.start();
   } catch (e) {
     status(() => t("statusSessionsFailed", { error: describe(e) }));
@@ -943,8 +944,8 @@ window.addEventListener(
   (e) => {
     const t = e.target as HTMLElement;
     const name = shortcut(e);
-    // Copy is the focused pane's own: it copies its selection (pane.ts).
-    if (!name || name === "copy") return;
+    // Copy and paste are the focused pane's own (pane.ts): it copies its selection, and the browser's paste event reaches it.
+    if (!name || name === "copy" || name.startsWith("paste")) return;
     // Settings opens and closes from anywhere; the rest only from the window.
     if (name === "settings" && hostList) {
       e.preventDefault();
@@ -952,7 +953,8 @@ window.addEventListener(
       withSettings((s) => s.toggle());
       return;
     }
-    if (t.closest?.("input, textarea, select, .theme-panel, dialog")) return;
+    // The pane's own text field (pane.ts) holds its keys: they are the window's, not a form's.
+    if (t.closest?.("input, textarea:not(.pane-input), select, .theme-panel, dialog")) return;
     e.preventDefault();
     e.stopPropagation();
     run(name);

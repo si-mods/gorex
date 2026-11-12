@@ -104,6 +104,14 @@ func TestPairByAddress(t *testing.T) {
 		}
 		return pairByAddressAs(ctx, d, addr, name, k)
 	}
+	// ended waits for the window to close after a request that ended
+	// without approval: the server closes it as the request's handler
+	// returns, which may be after the client saw the end. Without the wait
+	// that close could fall into the next subtest's window.
+	ended := func() {
+		t.Helper()
+		status(func(st RemoteStatus) bool { return !st.Pairing.Open })
+	}
 	waiting := func(n int) []RemoteAddrPending {
 		t.Helper()
 		return status(func(st RemoteStatus) bool { return len(st.PendingByAddress) == n }).PendingByAddress
@@ -188,6 +196,7 @@ func TestPairByAddress(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "allowed there already") {
 			t.Errorf("allowed key: %v", err)
 		}
+		ended()
 		k := key.NewNode().Public()
 		if err := c.StartPairing(); err != nil {
 			t.Fatal(err)
@@ -199,6 +208,7 @@ func TestPairByAddress(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "waits there already") {
 			t.Errorf("a key waiting over tailcat: %v", err)
 		}
+		ended()
 		k = key.NewNode().Public()
 		first, err := ask(nil, k, "laptop")
 		if err != nil {
@@ -216,6 +226,7 @@ func TestPairByAddress(t *testing.T) {
 		}
 		first.Close()
 		waiting(0)
+		ended()
 	})
 
 	t.Run("wrong opening", func(t *testing.T) {
@@ -243,6 +254,7 @@ func TestPairByAddress(t *testing.T) {
 			t.Errorf("a wrong opening: %d %v", n, err)
 		}
 		waiting(0)
+		ended()
 	})
 
 	t.Run("two waiting", func(t *testing.T) {
@@ -277,9 +289,7 @@ func TestPairByAddress(t *testing.T) {
 			}
 		}
 		waiting(0)
-		if st, _ := c.RemoteStatus(); st.Pairing.Open {
-			t.Error("the window is open after a rejection")
-		}
+		ended() // a rejection closes the window
 		if len(readConfig(t).Allowed) != 1 {
 			t.Error("a rejected key is allowed")
 		}
@@ -333,6 +343,7 @@ func TestPairByAddress(t *testing.T) {
 		waiting(1)
 		p.Close()
 		waiting(0)
+		ended()
 	})
 
 	t.Run("no confirmation", func(t *testing.T) {
@@ -365,6 +376,7 @@ func TestPairByAddress(t *testing.T) {
 		}
 		p.Close()
 		waiting(0)
+		ended()
 	})
 
 	t.Run("answer not the machine's", func(t *testing.T) {

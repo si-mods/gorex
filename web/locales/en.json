@@ -16,6 +16,10 @@
   "@commonCopy": {
     "description": "Button beside a command box that copies the command; the terminal's selection menu item that copies the selected text."
   },
+  "commonPaste": "Paste",
+  "@commonPaste": {
+    "description": "The terminal's menu item that types the clipboard's text into the program; the shortcut's name in Settings, Keyboard."
+  },
   "commonCopied": "Copied",
   "@commonCopied": {
     "description": "A command box's Copy button, for a moment after it copied."
@@ -215,16 +219,6 @@
       "reason": {
         "type": "String",
         "example": "closed (1006)"
-      }
-    }
-  },
-  "statusConnected": "Connected to {host}",
-  "@statusConnected": {
-    "description": "Status line once the page is connected to the host and has read its sessions.",
-    "placeholders": {
-      "host": {
-        "type": "String",
-        "example": "studio"
       }
     }
   },
@@ -594,6 +588,10 @@
   "@copyFailed": {
     "description": "Status line when copying a terminal selection failed."
   },
+  "pasteFailed": "Could not paste: this browser did not let the page read the clipboard.",
+  "@pasteFailed": {
+    "description": "Status line when the terminal's Paste menu item could not read the clipboard."
+  },
   "hostIconLaptop": "Laptop",
   "@hostIconLaptop": {
     "description": "A host icon choice in the host form."
@@ -950,15 +948,9 @@
   "@settingsTextSize": {
     "description": "Settings › Appearance: the terminals' text size."
   },
-  "settingsTextSizeHint": "The terminals' text, in CSS pixels: {size}, the desktop's default, until set.",
+  "settingsTextSizeHint": "The size of the terminals' text.",
   "@settingsTextSizeHint": {
-    "description": "Hint under Text size; size is the default size.",
-    "placeholders": {
-      "size": {
-        "type": "num",
-        "example": "11.6"
-      }
-    }
+    "description": "Hint under Text size."
   },
   "settingsTextSizeValue": "{size} px",
   "@settingsTextSizeValue": {
@@ -966,7 +958,7 @@
     "placeholders": {
       "size": {
         "type": "num",
-        "example": "12.6"
+        "example": "15"
       }
     }
   },

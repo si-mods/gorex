@@ -51,6 +51,7 @@ struct FeaturesView: View {
             ("Select over the mouse", "Selection works while a program uses the mouse, and the program does not get those touches."),
             ("Tap a link to open it", "Web and mail links in the output open with a tap, as do links a program marks with OSC 8. A link followed by Chinese ends where its address does."),
             ("Paste", "Paste from the ⌘ menu on the key bar, from the selection's menu, or with ⌘V."),
+            ("Programs copy to the clipboard", "Programs such as Neovim and tmux copy to the clipboard with OSC 52, from the terminal on screen only. They cannot read it."),
         ]),
         ("Files & Photos", [
             ("Add Photo", "Photos go to the host's temporary folder as their original files, and their paths are pasted into the terminal."),
@@ -74,7 +75,7 @@ struct FeaturesView: View {
             ("System, Dark or Light", "The interface follows the system, or stays dark or light."),
             ("Themes with a preview", "861 Ghostty themes, each with a swatch, a filter of All, Dark and Light, and a search. A preview shows the chosen one in the terminal's font."),
             ("Host Colors", "Keep the colors of the host's terminal in place of a theme."),
-            ("Fonts and sizes", "JetBrains Mono, Menlo or Courier New, from 8 to 24 points."),
+            ("Fonts and sizes", "JetBrains Mono, SF Mono, Menlo or Courier New, from 8 to 24 points."),
             ("Maple Mono NF CN", "A font with Chinese and Nerd Font glyphs, to download. Only its four faces download, about 40 MB; stop it or delete it at any time."),
         ]),
         ("Hosts & Pairing", [

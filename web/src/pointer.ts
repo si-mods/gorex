@@ -29,6 +29,8 @@ export interface PointerHost {
   redraw(full: boolean): void;
   /** Writes bytes to the program, as typed keys go. */
   send(b: Uint8Array): void;
+  /** Types text pasted from the clipboard, as the program's paste mode asks. */
+  paste(text: string): void;
   status(s: Msg): void;
   /** Whether the host sends files (gorex.download): its file paths are links. */
   files(): boolean;
@@ -132,6 +134,7 @@ type Touch = {
 export class PointerInput {
   private readonly menu = el("div", "select-menu");
   private readonly copyButton = el("button", "select-menu-item");
+  private readonly pasteButton = el("button", "select-menu-item");
   private readonly handles = { start: el("div", "select-handle start"), end: el("div", "select-handle end") };
   /**
    * The mouse button down, and what it does: selects, or goes to the
@@ -165,9 +168,23 @@ export class PointerInput {
       this.copy();
       this.hideMenu();
     });
+    // Paste reads the clipboard, which a page may only in a secure context (and a browser may ask first).
+    const pb = this.pasteButton;
+    pb.type = "button";
+    pb.append(icon("clipboard-paste"), localize(el("span", ""), (e) => (e.textContent = t("commonPaste"))));
+    pb.addEventListener("pointerdown", (e) => e.preventDefault());
+    pb.addEventListener("click", () => {
+      this.hideMenu();
+      navigator.clipboard.readText().then(
+        (text) => this.host.paste(text),
+        () => this.host.status(() => t("pasteFailed")),
+      );
+    });
+    pb.hidden = !navigator.clipboard?.readText;
     this.menu.setAttribute("role", "menu");
     b.setAttribute("role", "menuitem");
-    this.menu.append(b);
+    pb.setAttribute("role", "menuitem");
+    this.menu.append(b, pb);
     this.menu.hidden = true;
     for (const [first, h] of [[true, this.handles.start], [false, this.handles.end]] as const) {
       h.hidden = true;

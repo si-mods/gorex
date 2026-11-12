@@ -245,6 +245,9 @@ type remote struct {
 	// pending holds the requests made in it, never saved.
 	pairUntil time.Time
 	pending   []RemotePending
+	// pairGen counts the windows opened: a request by address closes the
+	// window it came in, not one opened after it.
+	pairGen int
 	// byAddr are the pairings by address on their live connections.
 	byAddr []*addrPending
 	// own is the relay of Reachable at and its tailcat server while
@@ -844,7 +847,9 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		if !r.cfg.Enabled {
 			return nil, errors.New("rex: turn remote access on to pair")
 		}
-		r.pairOpenLocked()
+		if !r.pairOpenLocked() {
+			r.pairGen++
+		}
 		r.pairUntil = time.Now().Add(pairWindow)
 		time.AfterFunc(pairWindow+time.Second, s.ownDropStrangers)
 		log.Printf("rex: %s", req.Op)

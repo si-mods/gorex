@@ -14,8 +14,10 @@ This is phase 1, a prototype: one window at a time, with its split panes
 (see Split panes). Its settings are in one Settings dialog (see
 Settings): the hosts, the theme, the page's appearance and the terminal's
 font, cursor and contrast. It selects and copies text, and reports the
-mouse to programs that track it (see Selection and the mouse). It has no
-uploads and no paste. The wheel scrolls the scrollback.
+mouse to programs that track it (see Selection and the mouse). It types
+what an input method composes and what a soft keyboard gives, and pastes
+text (see Typing and paste). It has no uploads. The wheel scrolls the
+scrollback.
 
 ## Design: a remote client only
 
@@ -360,8 +362,8 @@ window of its own, with its own icon.
   browser's, so in an app window that is not fullscreen they may still
   close the window or open a tab. Escape is never locked, so it exits
   fullscreen at once, as ever, and still closes the page's dialogs. The
-  page's own shortcuts (Ctrl+, for Settings, Ctrl+Shift+C for Copy) are
-  the page's either way. A tab asks for no lock.
+  page's own shortcuts (Ctrl+, for Settings, Ctrl+Shift+C for Copy and
+  Ctrl+Shift+V for Paste) are the page's either way. A tab asks for no lock.
 
 ### Service Worker
 
@@ -770,16 +772,20 @@ once.
   views, the sidebar, and the window's commands.
 - `web/src/window.ts`: a window's layout tree, its panes and dividers,
   and the focus (see Split panes).
-- `web/src/pane.ts`: one pane: its stream, its terminal and its canvas.
+- `web/src/pane.ts`: one pane: its stream, its terminal and its canvas,
+  and the text field that holds its keys (see Typing and paste).
   Typed bytes go to `com.superlogical.terminal.write`, one write at a
-  time. Bytes typed while the connection is down wait (up to 4 MB, as in
-  the iOS app) and go a second later or when it is back. The pane takes
+  time, 128 KB at most in one (the gateway reads 1 MiB a message), so a
+  large paste goes in pieces in order. Bytes typed while the connection is
+  down wait (up to 4 MB, as in the iOS app) and go a second later or when
+  it is back; a paste that would pass that bound is dropped whole, with a
+  status message. The pane takes
   its block (`session.own_block`) and sizes it to its canvas
   (`com.superlogical.terminal.resize`); a pane that closes while its
   block stays gives it back (`session.disown_block`).
 - `web/src/keys.ts`: the shortcuts (see Shortcuts).
 - `web/src/pointer.ts`: the pointer over a pane's grid: selecting, the
-  handles and the Copy menu, the wheel and a finger's swipe, and the mouse
+  handles and the Copy and Paste menu, the wheel and a finger's swipe, and the mouse
   events a program gets (see Selection and the mouse).
 
 ## Split panes
@@ -843,6 +849,7 @@ to the terminal.
 | Next, previous window (desktop: Ctrl+Tab, Ctrl+Shift+Tab) | ⌥⇧] and ⌥⇧[ | Alt+Shift+] and Alt+Shift+[ |
 | Settings | ⌘, | Ctrl+, |
 | Copy the selection | ⌘C | Ctrl+Shift+C |
+| Paste | ⌘V | Ctrl+Shift+V, Shift+Insert; on Windows also Ctrl+V (see Typing and paste) |
 
 A key moves the divider of the nearest split of that direction around the
 focused pane by 5%. As on the desktop on Windows and Linux, Alt and an
@@ -858,13 +865,64 @@ terminal's.
 - The desktop's pane animations, the pane's program icon and its
   activity badge.
 
+## Typing and paste
+
+Each pane has a hidden text field (`textarea.pane-input`, in
+`web/src/pane.ts`) that holds the pane's keyboard focus: a click on the
+pane, or the window's focus following to it, focuses the field. The field
+is transparent, takes no click, is out of the layout (absolute, clipped by
+the pane) and stays empty. After each draw the pane moves it to the
+terminal's cursor cell (`Terminal.cursorCell`), so that an input method's
+candidate window opens at the cursor, and a phone shows its keyboard for
+it. The page's window shortcuts (`main.ts`) still see the keys of this
+field, which is not a form field for them.
+
+- **Keys.** A key still goes through the encoder (`keydown`, as above) and
+  its default action is cancelled, so the field gets nothing from it. A
+  key that an input method took (`isComposing`, or `keyCode` 229 as Safari
+  and soft keyboards report it) is not encoded.
+- **Input methods (pinyin and others).** While composing
+  (`compositionstart`, `compositionupdate`) nothing goes to the program;
+  the page draws what has been composed, underlined, at the cursor (the
+  field itself is transparent). `compositionend` sends the committed text
+  as UTF-8, and clears the field. A cancelled composition has no text and
+  sends nothing. A browser that says the same text again as plain input
+  just after the composition ended (Safari, Firefox) is not sent twice.
+- **Soft keyboards.** Text typed that no key reported (`beforeinput`,
+  `insertText`) goes to the program, a line break as a carriage return
+  and `deleteContentBackward` as Backspace (0x7f). The page cancels every
+  `beforeinput`, so that the field stays empty.
+- **Paste.** Cmd+V on a Mac, Ctrl+Shift+V and Shift+Insert elsewhere, and
+  the browser's own Paste menu send no key: the browser pastes into the
+  field, and the `paste` event's `text/plain` goes to the program. As the
+  desktop's (`internal/rex/paste.go`), lines end with a carriage return;
+  a program that enabled bracketed paste (mode 2004) gets the text between
+  ESC [ 200 ~ and ESC [ 201 ~ with any ESC [ 201 ~ inside it removed, so
+  that it does not run the lines as commands; another program gets the
+  text without control characters other than Tab and the line ends. Paste
+  clears the selection and shows the end of the screen, as typing does.
+- **Ctrl+V.** The desktop's terminal binds Ctrl+Shift+V everywhere and
+  Cmd+V on a Mac, and, on Windows only, Ctrl+V when the clipboard holds
+  text (MyGo's `plugins/terminal/keybind.go`, a performable bind). The
+  page does the same: on Windows Ctrl+V pastes text, and with no text on
+  the clipboard (empty, or an image) the program gets ^V. On a Mac and
+  on Linux Ctrl+V is a key and goes to the program.
+- **Paste in the pane's menu.** The right-click menu (and the menu after a
+  finger's selection) has Paste next to Copy where
+  `navigator.clipboard.readText` exists (a secure context); it reads the
+  clipboard and pastes as above. Where the browser refuses, the status
+  line says so; where there is no `readText`, the item is not shown (the
+  keys still paste).
+
+Not in the web client: pasting images or files.
+
 ## Drawing, as the desktop draws
 
 The terminal draws as the desktop's (MyGo's `plugins/terminal/paint.go`)
 with GoRex's defaults and no Ghostty configuration:
 
 - Font: JetBrains Mono, served with the client (`defaultFontFamily`), then
-  Maple Mono NF CN for CJK (see Fonts), then `monospace`, at 11.6 CSS
+  Maple Mono NF CN for CJK (see Fonts), then `monospace`, at 15 CSS
   pixels (`defaultFontSize`). Settings can choose another family and size
   (see Settings).
   A cell is the widest ASCII advance wide and the font's ascent and descent
@@ -920,12 +978,13 @@ program gets.
   under the finger, as iOS's, and the drag that follows extends it by
   words, scrolling on past an edge. Two handles stand at the ends, a stem a
   line high with a knob, and drag each end; a menu with Copy shows above
-  the selection. A tap elsewhere clears it. A one-finger swipe scrolls as
+  the selection (and Paste, where the browser lets the page read the
+  clipboard). A tap elsewhere clears it. A one-finger swipe scrolls as
   the wheel does; two fingers zoom the page.
 - **Copy.** ⌘C on a Mac, Ctrl+Shift+C elsewhere, copies the selection.
   The key never goes to the program, so that it does not interrupt one as
   Ctrl+C would. A right click shows the menu with Copy (greyed with no
-  selection). Copy on selection (Settings, Terminal; off by default)
+  selection) and Paste (see Typing and paste). Copy on selection (Settings, Terminal; off by default)
   copies a selection when the button or finger lets go. The page writes
   with `navigator.clipboard.writeText`; where there is none, as on a LAN
   page over http, which is not a secure context, it copies a hidden text
@@ -1099,7 +1158,7 @@ page and every open pane.
 | Section | Settings |
 |---|---|
 | Host (the card) | The chosen host, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
-| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 CSS pixels, 11.6 (the desktop's) until set, with Reset. Language: System, English or 简体中文 (see Languages). |
+| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 whole CSS pixels, 15 until set, with Reset. Language: System, English or 简体中文 (see Languages). |
 | Terminal | Font: JetBrains Mono or Maple Mono NF CN, which the page brings, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours; CJK is Maple's in every font (see Fonts). Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
 | Theme | The theme picker (see Themes). |
 | Keyboard | The shortcuts (see Shortcuts), with this system's keys. |

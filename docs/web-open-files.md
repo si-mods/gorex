@@ -34,7 +34,10 @@ any other file downloads.
   device may act on it.
 - The gateway takes files the other way: `POST /api/upload?block_id=…&name=…`
   (`internal/rexapi/upload.go`), listed in the welcome as `gorex.upload`
-  when the server has `CapabilityFileTemp`. It reads a directory
+  when the server has `CapabilityFileTemp`. With it the welcome lists
+  `gorex.upload.deflate-raw`: a body of `Content-Encoding: deflate-raw`
+  inflates as it streams, to exactly the query's `size`, which the
+  file limit holds on. It reads a directory
   (`list_dir`, `blocks.go`), never a file. Uploads are not logged; tracing
   records request URLs (`trace.go`).
 - Order of the checks: the listener's transport admits a request first

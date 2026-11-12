@@ -23,6 +23,18 @@ nonisolated final class PairingTests: XCTestCase {
         }
     }
 
+    /// An address with a scheme other than http(s) says why it is refused;
+    /// a bare host[:port] is none.
+    @MainActor func testRefusals() throws {
+        XCTAssertTrue(try XCTUnwrap(HostConfig.refusal(of: "ssh://host")).contains("SSH"))
+        XCTAssertTrue(try XCTUnwrap(HostConfig.refusal(of: " SSH://user@host:22 ")).contains("SSH"))
+        let other = try XCTUnwrap(HostConfig.refusal(of: "ftp://host"))
+        XCTAssertFalse(other.contains("SSH"))
+        for ok in ["", "myhost:7297", "192.168.1.2", "http://host", "HTTPS://host:7297", "://host"] {
+            XCTAssertNil(HostConfig.refusal(of: ok), ok)
+        }
+    }
+
     /// A Rex Go code names a tailcat host: its address and machine, at a
     /// URL of its own under tailcat.invalid; anything else is none.
     @MainActor func testTailcatCodes() throws {

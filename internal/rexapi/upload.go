@@ -1,6 +1,7 @@
 package rexapi
 
 import (
+	"compress/flate"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -26,9 +28,22 @@ import (
 // holds the file. The answer is the file's path there, and the path as a
 // word of the block's shell, which is what to paste. The welcome lists
 // featureUpload when the gateway takes uploads.
+//
+// The body may come compressed, as Content-Encoding deflate-raw: raw
+// DEFLATE (RFC 1951), with no zlib or gzip wrapper around it. The query's
+// size then names the file's size, which the put needs before its bytes,
+// and the body inflates to exactly that many. The welcome lists
+// featureUploadDeflateRaw with featureUpload; a client sends no such body
+// to a server without it.
 
-// featureUpload is the welcome's feature of a gateway that takes uploads.
-const featureUpload = "gorex.upload"
+const (
+	// featureUpload is the welcome's feature of a gateway that takes
+	// uploads.
+	featureUpload = "gorex.upload"
+	// featureUploadDeflateRaw is the welcome's feature of a gateway that
+	// takes an upload's body as raw DEFLATE.
+	featureUploadDeflateRaw = "gorex.upload.deflate-raw"
+)
 
 // The limits of a terminal upload, which com.superlogical.terminal
 // .upload_begin reserves and a rex.data.bytes.v1 stream carries.
@@ -82,7 +97,7 @@ type uploadBatch struct {
 func (g *Gateway) features() []string {
 	features := []string{featureSpaces}
 	if g.hello.Can(rex.CapabilityFileTemp) {
-		features = append(features, featureUpload)
+		features = append(features, featureUpload, featureUploadDeflateRaw)
 	}
 	if g.hello.Can(rex.CapabilityFileTransfer) {
 		features = append(features, featureDownload)
@@ -127,6 +142,28 @@ func (g *Gateway) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "name is required")
 		return
 	}
+	ctx, cancel := context.WithCancelCause(r.Context())
+	defer cancel(nil)
+	size, body := r.ContentLength, io.Reader(r.Body)
+	switch enc := r.Header.Get("Content-Encoding"); enc {
+	case "", "identity":
+	case "deflate-raw":
+		n, err := strconv.ParseInt(q.Get("size"), 10, 64)
+		if err != nil || n < 0 {
+			writeError(w, http.StatusBadRequest, "a compressed upload names its file's size in size")
+			return
+		}
+		// The limit holds on the inflated bytes, which the reader ends at
+		// the size.
+		if n > maxUploadFileBytes {
+			writeError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("the file is %d bytes, more than the %d a file may hold", n, maxUploadFileBytes))
+			return
+		}
+		size, body = n, &inflated{r: flate.NewReader(r.Body), left: n, cancel: cancel}
+	default:
+		writeError(w, http.StatusUnsupportedMediaType, fmt.Sprintf("an upload's Content-Encoding is deflate-raw or none, not %q", enc))
+		return
+	}
 	m, err := g.current()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("reading the layout: %v", err))
@@ -145,9 +182,14 @@ func (g *Gateway) handleUpload(w http.ResponseWriter, r *http.Request) {
 	// The file goes by a name the block's shell takes, whose path pastes.
 	// A client that goes away cancels the put, which removes what the
 	// server has of the file.
-	put := rex.FilePut{SID: b.sid, Name: name, Size: r.ContentLength, ID: fmt.Sprintf("%x", randomBytes(8)), Conflict: "rename", Temp: true}
-	path, word, err := g.opt.Client.PutForShell(r.Context(), info.Shell, put, &streamAt{r: r.Body}, nil)
+	put := rex.FilePut{SID: b.sid, Name: name, Size: size, ID: fmt.Sprintf("%x", randomBytes(8)), Conflict: "rename", Temp: true}
+	path, word, err := g.opt.Client.PutForShell(ctx, info.Shell, put, &streamAt{r: body}, nil)
 	if err != nil {
+		// A body that does not inflate to its size says so.
+		if bad := context.Cause(ctx); bad != nil && r.Context().Err() == nil {
+			writeError(w, http.StatusBadRequest, bad.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, strings.TrimPrefix(err.Error(), "rex: "))
 		return
 	}
@@ -174,6 +216,44 @@ func (s *streamAt) ReadAt(p []byte, off int64) (int, error) {
 	// put fails on, rather than a file the server writes short.
 	n, err := io.ReadFull(s.r, p)
 	s.off += int64(n)
+	return n, err
+}
+
+// inflated reads a compressed body as the file it inflates to, which is
+// left bytes long. A body that inflates to more fails at that size, so a
+// small body cannot fill the disk; one that inflates to less ends short,
+// which the put fails on. Either way it cancels the put first, with why,
+// so its abort removes what the server has of the file.
+type inflated struct {
+	r      io.Reader
+	left   int64
+	cancel context.CancelCauseFunc
+}
+
+func (f *inflated) Read(p []byte) (int, error) {
+	if int64(len(p)) > f.left {
+		p = p[:f.left]
+	}
+	n, err := f.r.Read(p)
+	f.left -= int64(n)
+	if f.left == 0 && (err == nil || err == io.EOF) {
+		// The file is whole, so the body must end here.
+		var b [1]byte
+		if _, err = io.ReadFull(f.r, b[:]); err == io.EOF {
+			return n, nil
+		}
+		if err == nil {
+			err = errors.New("the body inflates to more than its size")
+		}
+		n = 0
+	}
+	if err != nil {
+		why := err
+		if err == io.EOF {
+			why = errors.New("the body inflates to less than its size")
+		}
+		f.cancel(why)
+	}
 	return n, err
 }
 

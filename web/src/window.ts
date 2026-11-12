@@ -303,7 +303,7 @@ export class WindowView {
     }
     // The keyboard follows the focus while it is in the window.
     const p = this.panes.get(block)!;
-    if (this.stage.contains(document.activeElement) && document.activeElement !== p.el) p.el.focus();
+    if (this.stage.contains(document.activeElement)) p.focusKeys();
     if (tell && block !== this.hostFocus) {
       this.hostFocus = block;
       this.app.focusBlock(this, block);
@@ -313,7 +313,7 @@ export class WindowView {
   /** Puts the keyboard in the focused pane. */
   focusKeys() {
     const p = this.focus && this.panes.get(this.focus);
-    if (p) p.el.focus();
+    if (p) p.focusKeys();
   }
 
   /** The pane beside the focused one in a direction, by where they show. */

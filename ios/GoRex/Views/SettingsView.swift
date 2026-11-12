@@ -280,12 +280,16 @@ private struct Preview: View {
 /// The terminal's fonts: Ghostty's own, then the monospaced ones iOS has,
 /// by the family names Ghostty finds them by; Maple Mono once downloaded.
 private enum Fonts {
-    static let all: [(family: String, name: String)] = [("", "JetBrains Mono"), ("Menlo", "Menlo"), ("Courier New", "Courier New")]
+    /// SF Mono has no family name to type: iOS names it privately, so the
+    /// name is read off the system's monospaced face.
+    static let sfMono = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular).familyName
+    static let all: [(family: String, name: String)] = [("", "JetBrains Mono"), (sfMono, "SF Mono"), ("Menlo", "Menlo"), ("Courier New", "Courier New")]
 
-    /// A family's face, for a preview. Ghostty's own is not iOS's: the
-    /// system's monospaced face stands in for it.
+    /// A family's face, for a preview. Ghostty's own, JetBrains Mono, is
+    /// inside GhosttyKit; the app bundles its own copy of the regular face
+    /// (UIAppFonts) for this.
     static func face(_ family: String, size: CGFloat) -> Font {
-        family.isEmpty ? .system(size: size, design: .monospaced) : .custom(family, size: size)
+        family == sfMono ? .system(size: size, design: .monospaced) : .custom(family.isEmpty ? "JetBrains Mono" : family, size: size)
     }
 }
 
