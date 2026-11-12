@@ -1,11 +1,11 @@
 # Cloudflare Workers static assets: headers for web/dist (build.mjs copies
-# this file there); see docs/web-client.md. The script, the wasm, the
-# themes and the tailnet engine are in /assets under names that carry a hash
-# of their content, so they are kept a year (immutable): a reload takes them
-# from the browser's cache without asking. The page itself (/ and
-# index.html), which names the script, and tailnet.json, which names the
-# engine, are revalidated (ETag) on every load; the fonts, icons and brand
-# marks are kept a day. A path that two rules match gets both rules'
+# this file there); see docs/web-client.md. The script and its code chunks,
+# the wasm, the asset manifest, the themes and the tailnet engine are in
+# /assets under names that carry a hash of their content, so they are kept
+# a year (immutable): a reload takes them from the browser's cache without
+# asking. The page itself (/ and index.html), which names the script, is
+# revalidated (ETag) on every load; the fonts, icons and brand marks are
+# kept a day. A path that two rules match gets both rules'
 # headers, so the rules below set different headers or match different
 # paths. The Tailscale hosts in connect-src are what built-in Tailscale
 # needs (docs/web-tailscale.md, CSP); http: and https: already cover them,
@@ -27,8 +27,6 @@
   Cache-Control: public, max-age=86400
 /brands/*
   Cache-Control: public, max-age=86400
-/tailnet.json
-  Cache-Control: no-cache
 /sw.js
   Cache-Control: no-cache
 /manifest.webmanifest

@@ -4,6 +4,7 @@
 import { drawBox, drawn, noMinContrast } from "./box";
 import { Ghostty, Mods, RGB } from "./ghostty";
 import { Link, linkAt, RowText } from "./links";
+import { ready, textReady } from "./maple";
 
 export interface Theme {
   background?: RGB;
@@ -1003,13 +1004,19 @@ export class Terminal {
         i++;
         continue;
       }
+      // A character whose CJK font chunk has not arrived draws nothing,
+      // rather than in the system's font, until the chunk does (maple.ts).
+      if (!textReady(c.text, c.variant)) {
+        i++;
+        continue;
+      }
       ctx.font = font.css(c.variant);
       if (simple(c)) {
         let j = i + 1;
         let text = c.text;
         while (j < row.length) {
           const d = row[j];
-          if (!simple(d) || d.variant !== c.variant || d.faint !== c.faint || !same(d.fg, c.fg) || drawn(d.cp)) break;
+          if (!simple(d) || d.variant !== c.variant || d.faint !== c.faint || !same(d.fg, c.fg) || drawn(d.cp) || !ready(d.cp, d.variant)) break;
           // Spaces between draw nothing; they join the run.
           text += " ".repeat(d.col - row[j - 1].col - 1) + d.text;
           j++;

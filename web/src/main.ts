@@ -3,20 +3,45 @@
 // its own; the host is one the user added (hosts.ts), or one built-in
 // Tailscale found on the tailnet (tailnet.ts).
 import { onAppChange, startApp } from "./app";
+import { Chunk } from "./chunks";
 import { Ghostty } from "./ghostty";
-import { Guide } from "./guide";
-import { allowCommand, commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
+import type { Guide } from "./guide";
+import { commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
+import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
+import { Asset, loader } from "./loader";
 import { describe } from "./pane";
+import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
 import { mostUrgent, programName, programOf, rank, seenKey, Status, statusOf, tiles, tilesWidth } from "./programs";
 import { Control, directTransport, setHost } from "./rex";
-import { LinkState, Settings } from "./settings";
+import type { LinkState, Settings } from "./settings";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
-import { chosenName, isLight, loadThemes, ThemeEntry, themeColours } from "./themes";
+import { isLight, startTheme, ThemeEntry, themeColours } from "./themes";
+import type { Welcome } from "./welcome";
 import { borderLeaf, layoutOf, leavesOf, WindowHost, WindowView } from "./window";
+
+/**
+ * The asset manifest (loader.ts) and the files the page loads as it
+ * starts, which build.mjs writes into this script: the loader takes those
+ * at once, the rest once it has read the manifest.
+ */
+declare const __ASSET_MANIFEST__: string;
+declare const __BOOT_ASSETS__: Record<string, Asset>;
+loader.configure(
+  typeof __ASSET_MANIFEST__ === "string" ? __ASSET_MANIFEST__ : "",
+  typeof __BOOT_ASSETS__ === "object" ? __BOOT_ASSETS__ : {},
+);
+
+/**
+ * The parts of the page's code loaded when first used (chunks.ts): the
+ * Settings dialog, the Tailscale guide and the first visit's welcome.
+ */
+const settingsCode = new Chunk("settings", () => t("chunkSettings"), () => import("./settings"));
+const guideCode = new Chunk("guide", () => t("chunkGuide"), () => import("./guide"));
+const welcomeCode = new Chunk("welcome", () => t("chunkWelcome"), () => import("./welcome"));
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $("stage");
@@ -37,11 +62,15 @@ let settings: Settings | undefined;
 /** Built-in Tailscale, off until the user turns it on; its engine loads only then. */
 const tailnet = new Tailnet();
 let guide: Guide | undefined;
+/** The first screen, while no host is chosen. */
+let welcome: Welcome | undefined;
 /** The chosen host's connection, and what is wrong with it, for the Settings dialog's host card. */
 let link: LinkState = "none";
 let problem: Problem | undefined;
 /** The theme chosen in this browser, over the desktop's colours; none keeps the host's. */
 let chosen: Theme | undefined;
+/** Its entry, for the Settings dialog's previews. */
+let chosenEntry: ThemeEntry | undefined;
 
 /** A session the gateway serves, and its last view. */
 interface Session {
@@ -103,6 +132,8 @@ function applyPrefs(what: "appearance" | "headers" | "font" | "cursor" | "contra
       // The previews and command boxes take the family too.
       document.documentElement.style.setProperty("--mono", fontFamily());
       panes.forEach((p) => p.restyle());
+      // Maple chosen: its Latin chunks, which the cells are measured with, then measured again.
+      if (prefs.font === mapleFamily) void ensureLatin().then(() => shown?.panes.forEach((p) => p.restyle()));
       break;
     case "contrast":
       panes.forEach((p) => p.redraw());
@@ -113,8 +144,12 @@ function applyPrefs(what: "appearance" | "headers" | "font" | "cursor" | "contra
   }
 }
 
-function status(s: string) {
-  $("status").textContent = s;
+/** What the status line says, kept to say it again after a change of language. */
+let statusText: Msg = "";
+
+function status(s: Msg) {
+  statusText = s;
+  $("status").textContent = msg(s);
 }
 
 /** What a window and its panes need of the page. */
@@ -127,7 +162,7 @@ const host: WindowHost = {
   chosen: () => chosen,
   status,
   scheme,
-  titleOf: (b) => titles.get(b) || "Terminal",
+  titleOf: (b) => titles.get(b) || t("sidebarTerminal"),
   programOf: (b) => programOf(programs.get(b)),
   action: (p, name) => {
     shown?.setFocus(p.block, true);
@@ -141,14 +176,11 @@ const host: WindowHost = {
     control
       ?.call("session.resize_pane", { session_id: w.session, direction: s.direction, before_block_id: before, after_block_id: after, ratio })
       .catch((e) => {
-        status(`Could not move the divider: ${describe(e)}`);
+        status(() => t("statusMoveDividerFailed", { error: describe(e) }));
         refresh(w.session, true);
       });
   },
 };
-
-/** The terminal's wasm in dist/assets, by its hash, and its size (build.mjs). */
-declare const __GHOSTTY_WASM__: { url: string; size: number };
 
 /** How long the page loads before its progress shows: a load from the cache shows none. */
 const progressAfter = 150;
@@ -159,7 +191,11 @@ const progressAfter = 150;
  */
 function bootProgress() {
   const box = $("boot");
-  const view = new ProgressView("the terminal", { download: "Loading the terminal…", start: "Starting…", failed: "The terminal didn't load" }, () => {
+  const view = new ProgressView(() => t("progressTerminal"), {
+    download: () => t("bootLoading"),
+    start: () => t("bootStarting"),
+    failed: () => t("bootFailed"),
+  }, () => {
     box.hidden = true;
     main();
   });
@@ -175,7 +211,7 @@ function bootProgress() {
   };
   return {
     update: (s: LoadState) => view.update(s),
-    fail(message: string) {
+    fail(message: Msg) {
       end();
       view.update({ phase: "failed", message });
       box.hidden = false;
@@ -189,48 +225,45 @@ function bootProgress() {
 }
 
 async function main() {
-  status("Loading libghostty-vt…");
+  status(() => t("statusLoading"));
   const boot = bootProgress();
   try {
     // The font too: the cells are measured from it.
-    const faces = ["400", "700", "italic 400", "italic 700"].map((v) => document.fonts.load(`${v} 12px "JetBrains Mono"`));
-    // The themes load with it, so that the first frame has the chosen colours.
-    let themes: ThemeEntry[];
-    [g, themes] = await Promise.all([Ghostty.load(__GHOSTTY_WASM__.url, __GHOSTTY_WASM__.size, boot.update), loadThemes(), Promise.allSettled(faces)]).then((r) => [r[0], r[1]]);
+    // Maple Mono NF CN's index (maple.ts), and its Latin chunks when it is the chosen font.
+    const faces = [
+      ...["400", "700", "italic 400", "italic 700"].map((v) => document.fonts.load(`${v} 12px "JetBrains Mono"`)),
+      initMaple().then(() => (prefs.font === mapleFamily ? ensureLatin() : undefined)),
+    ];
+    // The chosen theme with it, so that the first frame has its colours (themes.ts: without the list).
+    let theme: ThemeEntry | undefined;
+    [g, theme] = await Promise.all([Ghostty.load(boot.update), startTheme(), Promise.allSettled(faces)]).then((r) => [r[0], r[1]]);
     boot.done();
     const pick = (t?: ThemeEntry) => {
+      chosenEntry = t;
       chosen = t && themeColours(t);
       scheme(chosen?.background ?? desktopTheme().background!);
       for (const p of shown?.panes.values() ?? []) p.setChosen(chosen);
     };
-    pick(themes.find((t) => t.name === chosenName()));
+    pick(theme);
+    chooseTheme = pick;
     for (const what of ["headers", "font"] as const) applyPrefs(what);
-    const openGuide = () => {
-      settings?.close();
-      guide!.open();
-    };
     hostList = new HostList($("hosts"), {
       choose, close: () => shown?.focusKeys(), changed: () => settings?.update(), tailnet, guide: openGuide,
     });
-    settings = new Settings({
-      hosts: hostList,
-      link: () => ({ host: current, state: link, problem }),
-      themes,
-      chooseTheme: pick,
-      apply: applyPrefs,
-      closed: () => shown?.focusKeys(),
-      tailnet,
-      guide: openGuide,
-    });
-    guide = new Guide(tailnet, { connect: (h) => hostList.choose(h), closed: () => shown?.focusKeys() });
     onAppChange(() => settings?.appChanged());
     tailnet.onChange(tailnetChanged);
-    const open = $("open-settings");
-    open.prepend(icon("settings-2"));
-    open.onclick = () => settings!.toggle();
+    $("open-settings").onclick = () => withSettings((s) => s.toggle());
+    // A change of language says the page's words again in it: the dialogs say theirs themselves.
+    onLanguageChange(() => {
+      status(statusText);
+      hostList.relocalize();
+      sidebar();
+      shown?.retitle();
+      if (shownNotice) notice(...shownNotice);
+    });
   } catch (e) {
-    status(`Could not load libghostty-vt: ${describe(e)}`);
-    boot.fail(`${describe(e)}. Check the connection, then try again.`);
+    status(() => t("statusLoadFailed", { error: describe(e) }));
+    boot.fail(() => t("bootFailedText", { error: describe(e) }));
     return;
   }
   // A quick link: ?host=URL adds the host, or chooses it, and leaves the address bar.
@@ -243,6 +276,35 @@ async function main() {
   choose(hostList.chosen);
 }
 
+/** Applies a theme chosen in Settings; set once the page has started. */
+let chooseTheme: (t?: ThemeEntry) => void = () => {};
+
+/** Runs f with the Settings dialog, which is made the first time, once its code is in. */
+function withSettings(f: (s: Settings) => void) {
+  settingsCode.use((m) => {
+    settings ??= new m.Settings({
+      hosts: hostList,
+      link: () => ({ host: current, state: link, problem }),
+      theme: () => chosenEntry,
+      chooseTheme: (t) => chooseTheme(t),
+      apply: applyPrefs,
+      closed: () => shown?.focusKeys(),
+      tailnet,
+      guide: openGuide,
+    });
+    f(settings);
+  });
+}
+
+/** Opens the Tailscale guide, in place of the Settings dialog. */
+function openGuide() {
+  settings?.close();
+  guideCode.use((m) => {
+    guide ??= new m.Guide(tailnet, { connect: (h) => hostList.choose(h), closed: () => shown?.focusKeys() });
+    guide.open();
+  });
+}
+
 /**
  * Built-in Tailscale changed: the host list and Settings show it, and a
  * tailnet host chosen that is gone (signed out, Tailscale off) gives way
@@ -253,28 +315,63 @@ function tailnetChanged() {
   settings?.update();
   if (current?.kind === "tailnet" && tailnet.status() !== "running" && !tailnet.hosts.some((h) => h.id === current!.id)) {
     hostList.choose(hostList.hosts[0]);
-  } else if (!current && tailnet.status() !== noticeFor) {
-    // The notice's Tailscale button follows its state.
-    choose(undefined);
+  } else if (!current) {
+    // The welcome's Tailscale card follows its state.
+    welcome?.update();
   }
 }
 
-/** The Tailscale state the notice of no host was drawn for. */
-let noticeFor = "";
+/** A button of the notice: its words, as a key or said when drawn. */
+type NoticeAction = { label: PlainKey | (() => string); run: () => void; primary?: boolean };
+
+/** The notice shown, drawn again after a change of language. */
+let shownNotice: [Problem | undefined, ...NoticeAction[]] | undefined;
+
+/** Shows the welcome over the empty stage: no host is chosen. Its code loads only then, as on the first visit. */
+function showWelcome() {
+  shownNotice = undefined;
+  const gen = generation;
+  welcomeCode.use((m) => {
+    // A host chosen meanwhile has the stage.
+    if (gen !== generation || current) return;
+    welcome ??= new m.Welcome({ hosts: hostList, tailnet, guide: openGuide });
+    const box = $("notice");
+    welcome.update();
+    if (box.firstElementChild !== welcome.el) box.replaceChildren(welcome.el);
+    box.hidden = false;
+  });
+}
 
 /** Shows what is wrong with the host, or nothing. */
-function notice(p?: Problem, ...actions: { label: string; run: () => void; primary?: boolean }[]) {
+function notice(p?: Problem, ...actions: NoticeAction[]) {
   const box = $("notice");
   box.hidden = !p;
+  shownNotice = p && [p, ...actions];
   if (!p) return;
+  // A retry finds the same problem every few seconds: the card stays, with its focus and its open details.
+  const said = JSON.stringify([generation, document.documentElement.lang, p.title, p.text, p.command, p.details, actions.map((a) => (typeof a.label === "function" ? a.label() : a.label))]);
+  if (box.firstElementChild?.classList.contains("notice-card") && box.dataset.said === said) return;
+  box.dataset.said = said;
   const card = document.createElement("div");
   card.className = "notice-card";
   const h = document.createElement("h1");
   h.textContent = p.title;
-  const t = document.createElement("p");
-  t.textContent = p.text;
-  card.append(h, t);
+  const text = document.createElement("p");
+  text.textContent = p.text;
+  card.append(h, text);
   if (p.command) card.append(commandBox(p.command));
+  if (p.details) {
+    const more = document.createElement("details");
+    more.className = "notice-more";
+    const s = document.createElement("summary");
+    const label = document.createElement("span");
+    label.textContent = t("problemLearnMore");
+    s.append(icon("info"), label);
+    const why = document.createElement("p");
+    why.textContent = p.details;
+    more.append(s, why);
+    card.append(more);
+  }
   if (actions.length) {
     const row = document.createElement("div");
     row.className = "notice-actions";
@@ -282,7 +379,7 @@ function notice(p?: Problem, ...actions: { label: string; run: () => void; prima
       const b = document.createElement("button");
       b.type = "button";
       b.className = a.primary ?? i === 0 ? "host-add primary" : "host-add";
-      b.textContent = a.label;
+      b.textContent = typeof a.label === "function" ? a.label() : t(a.label);
       b.onclick = a.run;
       row.append(b);
     });
@@ -309,23 +406,7 @@ function choose(h: Host | undefined) {
   if (!h) {
     status("");
     setLink("none");
-    const ts = (noticeFor = tailnet.status());
-    notice(
-      {
-        title: "Add a GoRex host",
-        text:
-          "This page connects to GoRex's Rex API gateway on your machines: the tailnet address of built-in Tailscale " +
-          "(https://<machine>-gorex.<tailnet>.ts.net), or the local network listener (http://192.168.1.2:7297). " +
-          "Or sign in to Tailscale here, and the page finds your hosts on your tailnet. " +
-          "Each host must trust this page's origin first. On the host, run:",
-        command: allowCommand(),
-      },
-      { label: "Add Host", run: () => hostList.open("new") },
-      {
-        label: ts === "running" ? "Show Tailscale Hosts" : ts === "off" ? "Sign in with Tailscale" : "Continue with Tailscale",
-        run: () => guide!.open(),
-      },
-    );
+    showWelcome();
     return;
   }
   if (h.kind === "tailnet") {
@@ -339,9 +420,9 @@ function choose(h: Host | undefined) {
   setHost(directTransport(h.url));
   const blocked = mixedContent(h.url);
   if (blocked) {
-    status(`${h.name}: blocked`);
+    status(() => t("statusBlocked", { host: h.name }));
     setLink("unreachable", blocked);
-    notice(blocked, { label: "Edit Host", run: () => hostList.open(h) });
+    notice(blocked, { label: "hostEdit", run: () => hostList.open(h) });
     return;
   }
   notice();
@@ -352,7 +433,7 @@ function choose(h: Host | undefined) {
 /** Opens the control connection to the chosen host, again after it drops. */
 async function connect(gen: number) {
   const h = current!;
-  status(`Connecting to ${h.name}…`);
+  status(() => t("statusConnecting", { host: h.name }));
   if (link !== "unreachable") setLink("connecting");
   let c: Control;
   try {
@@ -361,10 +442,10 @@ async function connect(gen: number) {
     if (gen !== generation) return;
     const p = h.kind === "tailnet" ? await tailnet.diagnose(h as TailnetHost) : await diagnose(h.url);
     if (gen !== generation) return;
-    if (h.kind === "tailnet") notice(p, { label: "Tailscale Settings", run: () => settings?.open("tailscale") });
-    else notice(p, { label: "Edit Host", run: () => hostList.open(h) });
+    if (h.kind === "tailnet") notice(p, { label: "noticeTailscaleSettings", run: () => withSettings((s) => s.open("tailscale")) });
+    else notice(p, { label: "hostEdit", run: () => hostList.open(h) });
     setLink("unreachable", p);
-    status(`${h.name}: ${p.title}. Trying again…`);
+    status(() => t("statusRetrying", { host: h.name, problem: p.title }));
     retry = setTimeout(() => connect(gen), 4000);
     return;
   }
@@ -384,16 +465,16 @@ async function connect(gen: number) {
     control = undefined;
     live = false;
     setLink("connecting");
-    status(`${h.name}: disconnected (${reason}). Reconnecting…`);
+    status(() => t("statusDisconnected", { host: h.name, reason: msg(reason) }));
     retry = setTimeout(() => connect(gen), 3000);
   };
   try {
     await c.call("session.bootstrap", { event_scope: "all" });
     await list();
-    status(`Connected to ${h.name}`);
+    status(() => t("statusConnected", { host: h.name }));
     for (const p of shown?.panes.values() ?? []) p.start();
   } catch (e) {
-    status(`Connected, but the sessions could not be read: ${describe(e)}`);
+    status(() => t("statusSessionsFailed", { error: describe(e) }));
   }
   if (control !== c) return;
   // What was typed while offline goes now.
@@ -610,7 +691,7 @@ function readProgram(session: string, block: string) {
 function windowTitle(w: any): string {
   const blocks = leavesOf(layoutOf(w));
   const focused = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
-  return (focused && titles.get(focused)) || w.label || "Window";
+  return (focused && titles.get(focused)) || w.label || t("sidebarWindow");
 }
 
 /** The room of the tiles of a session's window with the most, so that the titles line up. */
@@ -635,13 +716,13 @@ function fillWindow(b: HTMLElement, w: any, room: number) {
   if (urgent?.state === "blocked") {
     const dot = document.createElement("i");
     dot.className = "attention-dot";
-    dot.title = "Needs Input";
+    dot.title = t("sidebarNeedsInput");
     b.append(dot);
   } else if (urgent?.progress !== undefined) {
     const ring = document.createElement("i");
     ring.className = "progress-ring";
     ring.style.setProperty("--p", String(urgent.progress));
-    ring.title = `${urgent.progress}%`;
+    ring.title = t("percent", { value: urgent.progress });
     b.append(ring);
   }
   const n = blocks.length;
@@ -683,12 +764,12 @@ function sidebar() {
     if (!v) continue;
     const h = document.createElement("h2");
     const name = document.createElement("span");
-    name.textContent = s.label || v.label || "Session";
+    name.textContent = s.label || v.label || t("sidebarSession");
     const add = document.createElement("button");
     add.className = "icon";
     add.type = "button";
     add.append(icon("plus"));
-    add.title = "New Window";
+    add.title = t("cmdNewWindow");
     add.onclick = () => newWindow(s.id);
     h.append(name, add);
     nav.append(h);
@@ -707,13 +788,13 @@ function sidebar() {
       x.className = "icon close";
       x.type = "button";
       x.append(icon("x"));
-      x.title = "Close Window";
+      x.title = t("cmdCloseWindow");
       x.onclick = () => closeWindow(s.id, w.window_id);
       row.append(b, x);
       nav.append(row);
     }
   }
-  if (!nav.children.length) nav.textContent = !current || !control ? "" : sessions.size ? "" : "No sessions on this host.";
+  if (!nav.children.length) nav.textContent = !current || !control ? "" : sessions.size ? "" : t("sidebarNoSessions");
   $("list").replaceChildren(nav);
 }
 
@@ -756,12 +837,12 @@ async function newWindow(session: string) {
     await refresh(session);
     showWanted();
   } catch (e) {
-    status(`Could not open a window: ${describe(e)}`);
+    status(() => t("statusNewWindowFailed", { error: describe(e) }));
   }
 }
 
 function closeWindow(session: string, window: string) {
-  control?.call("session.close_window", { session_id: session, window_id: window }).catch((e) => status(`Could not close the window: ${describe(e)}`));
+  control?.call("session.close_window", { session_id: session, window_id: window }).catch((e) => status(() => t("statusCloseWindowFailed", { error: describe(e) })));
 }
 
 /** The windows in the sidebar's order. */
@@ -785,7 +866,8 @@ function run(name: string) {
   const block = w.focus;
   const c = control;
   if (!c) return;
-  const fail = (what: string) => (e: unknown) => status(`Could not ${what}: ${describe(e)}`);
+  const fail = (what: "statusSplitFailed" | "statusClosePaneFailed" | "statusZoomFailed") => (e: unknown) =>
+    status(() => t(what, { error: describe(e) }));
   switch (name) {
     case "split-right":
     case "split-down":
@@ -800,13 +882,13 @@ function run(name: string) {
           // Where the keyboard is in the window, it goes to the new pane.
           if (w.panes.has(id)) w.setFocus(id, false);
         }
-      }, fail("split the pane"));
+      }, fail("statusSplitFailed"));
       break;
     case "close":
-      if (block) c.call("block.close", { session_id: w.session, block_id: block }).catch(fail("close the pane"));
+      if (block) c.call("block.close", { session_id: w.session, block_id: block }).catch(fail("statusClosePaneFailed"));
       break;
     case "zoom":
-      if (block) c.call("session.zoom_block", { session_id: w.session, block_id: block, zoom: w.zoomedBlock !== block }).catch(fail("zoom the pane"));
+      if (block) c.call("session.zoom_block", { session_id: w.session, block_id: block, zoom: w.zoomedBlock !== block }).catch(fail("statusZoomFailed"));
       break;
     case "new-window":
       newWindow(w.session);
@@ -852,10 +934,10 @@ window.addEventListener(
     // Copy is the focused pane's own: it copies its selection (pane.ts).
     if (!name || name === "copy") return;
     // Settings opens and closes from anywhere; the rest only from the window.
-    if (name === "settings" && settings) {
+    if (name === "settings" && hostList) {
       e.preventDefault();
       e.stopPropagation();
-      settings.toggle();
+      withSettings((s) => s.toggle());
       return;
     }
     if (t.closest?.("input, textarea, select, .theme-panel, dialog")) return;
@@ -876,6 +958,8 @@ window.addEventListener("blur", () => shown?.panes.forEach((p) => p.redraw()));
     watchScale();
   }, { once: true });
 })();
+// A CJK font chunk arrived: the panes draw the characters that waited for it (maple.ts).
+onChunk(() => shown?.panes.forEach((p) => p.repaint()));
 // A font that loads late changes the cells.
 document.fonts.addEventListener("loadingdone", () => {
   shown?.panes.forEach((p) => {
@@ -883,6 +967,17 @@ document.fonts.addEventListener("loadingdone", () => {
     p.layout();
   });
 });
+
+// The Settings button, in the page's language from the start.
+{
+  const open = $("open-settings");
+  const label = document.createElement("span");
+  open.replaceChildren(icon("settings-2"), label);
+  localize(open, () => {
+    label.textContent = t("sidebarSettings");
+    open.title = label.textContent;
+  });
+}
 
 startApp();
 main();

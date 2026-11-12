@@ -7,6 +7,7 @@
 // the pointer, two fingers zoom on a touch screen, and a drag pans an image
 // larger than the window. Escape or a click outside closes it.
 import { icon } from "./hosts";
+import { formatSize, localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 
 /** What a shown image needs of its opener. */
 export interface ViewerHost {
@@ -23,17 +24,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-/** A file's size in words, as 48 KB. */
-export function sizeText(n: number): string {
-  if (n < 1024) return `${n} bytes`;
-  const units = ["KB", "MB", "GB"];
-  let v = n / 1024, u = 0;
-  while (v >= 1024 && u < units.length - 1) {
-    v /= 1024;
-    u++;
-  }
-  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[u]}`;
-}
+/** A file's size in words, in the page's language, as 48 KB. */
+export const sizeText = (n: number): string => formatSize(n, 1024);
 
 /** The most pixels the viewer shows once an image is decoded; a larger image is offered as a download. */
 export const maxViewPixels = 100_000_000;
@@ -64,31 +56,37 @@ export class Viewer {
   /** The pointers down on the stage, where they are, and whether one moved since the first came down. */
   private pointers = new Map<number, { x: number; y: number }>();
   private moved = false;
+  /** The image's name, and what the info and the note say, kept to say them again in another language. */
+  private label = "";
+  private infoText: Msg = "";
+  private noteText: Msg = "";
 
   constructor() {
-    this.dialog.setAttribute("aria-label", "Image");
+    this.dialog.setAttribute("aria-label", t("viewerImage"));
     const head = el("header", "viewer-head");
     const title = el("div", "viewer-title");
     title.append(this.name, this.info);
     const buttons = el("div", "viewer-buttons");
-    const button = (glyph: string, label: string, run: () => void) => {
+    const button = (glyph: string, label: PlainKey, run: () => void) => {
       const b = el("button", "pane-action viewer-button");
       b.type = "button";
-      b.title = label;
-      b.setAttribute("aria-label", label);
+      localize(b, (b) => {
+        b.title = t(label);
+        b.setAttribute("aria-label", b.title);
+      });
       b.append(icon(glyph));
       b.onclick = run;
       buttons.append(b);
       return b;
     };
     this.zoomButtons.push(
-      button("zoom-out", "Zoom Out", () => this.zoomBy(1 / step)),
-      button("zoom-in", "Zoom In", () => this.zoomBy(step)),
-      button("scan", "Actual Size", () => this.zoomTo(1)),
+      button("zoom-out", "viewerZoomOut", () => this.zoomBy(1 / step)),
+      button("zoom-in", "viewerZoomIn", () => this.zoomBy(step)),
+      button("scan", "viewerActualSize", () => this.zoomTo(1)),
     );
     buttons.prepend(this.zoomText);
-    button("download", "Download", () => this.host?.download());
-    button("x", "Close", () => this.close());
+    button("download", "viewerDownload", () => this.host?.download());
+    button("x", "commonClose", () => this.close());
     head.append(title, buttons);
     this.img.alt = "";
     this.img.draggable = false;
@@ -111,6 +109,7 @@ export class Viewer {
     this.stage.addEventListener("pointerup", (e) => this.pointerUp(e));
     this.stage.addEventListener("pointercancel", (e) => this.pointers.delete(e.pointerId));
     window.addEventListener("resize", () => this.dialog.open && this.place());
+    onLanguageChange(() => this.relocalize());
     document.body.append(this.dialog);
   }
 
@@ -120,8 +119,9 @@ export class Viewer {
     this.host = host;
     this.url = URL.createObjectURL(blob);
     this.name.textContent = name;
+    this.label = name;
     this.dialog.setAttribute("aria-label", name);
-    this.info.textContent = sizeText(blob.size);
+    this.setInfo(() => sizeText(blob.size));
     this.zoomText.textContent = "";
     this.shown = false;
     this.img.hidden = true;
@@ -132,19 +132,32 @@ export class Viewer {
     img.onload = () => {
       if (this.url !== url) return;
       const w = img.naturalWidth || defaultW, h = img.naturalHeight || defaultH;
-      if (img.naturalWidth * img.naturalHeight > maxViewPixels) return this.refuse(`This image is too large to show (${w} × ${h}). Download it instead.`);
+      if (img.naturalWidth * img.naturalHeight > maxViewPixels) return this.refuse(() => t("viewerTooLarge", { width: w, height: h }));
       // Decoded before it shows, so that it does not show in parts.
       img.decode().then(
         () => this.url === url && this.display(w, h, blob.size),
-        () => this.url === url && this.refuse("This image could not be shown. Download it instead."),
+        () => this.url === url && this.refuse(() => t("viewerCantShow")),
       );
     };
-    img.onerror = () => this.url === url && this.refuse("This image could not be shown. Download it instead.");
+    img.onerror = () => this.url === url && this.refuse(() => t("viewerCantShow"));
     img.src = url;
   }
 
   close() {
     if (this.dialog.open) this.dialog.close();
+  }
+
+  private setInfo(m: Msg) {
+    this.infoText = m;
+    this.info.textContent = msg(m);
+  }
+
+  /** The language changed: the info, the note and the zoom again in it. */
+  private relocalize() {
+    if (!this.label) this.dialog.setAttribute("aria-label", t("viewerImage"));
+    this.info.textContent = msg(this.infoText);
+    this.note.textContent = msg(this.noteText);
+    if (this.shown) this.place();
   }
 
   /** Shows the image, fitted to the stage. */
@@ -153,17 +166,18 @@ export class Viewer {
     this.h = h;
     this.shown = true;
     this.img.hidden = false;
-    this.info.textContent = `${w} × ${h} · ${sizeText(bytes)}`;
+    this.setInfo(() => t("viewerInfo", { width: w, height: h, size: sizeText(bytes) }));
     this.zoomButtons.forEach((b) => (b.disabled = false));
     this.scale = this.fit();
     this.place(true);
   }
 
   /** In place of the image, a note: it is not shown, and the download is offered. */
-  private refuse(text: string) {
+  private refuse(text: Msg) {
     this.release();
     this.img.hidden = true;
-    this.note.textContent = text;
+    this.noteText = text;
+    this.note.textContent = msg(text);
     this.note.hidden = false;
   }
 
@@ -209,7 +223,7 @@ export class Viewer {
     this.img.style.height = `${h}px`;
     this.img.style.transform = `translate(${this.x}px, ${this.y}px)`;
     this.stage.classList.toggle("pans", w > r.width || h > r.height);
-    this.zoomText.textContent = `${Math.round(this.scale * 100)}%`;
+    this.zoomText.textContent = t("percent", { value: Math.round(this.scale * 100) });
   }
 
   /** Zooms to scale, keeping the stage's point (px, py) still: by default its centre. */

@@ -10,28 +10,40 @@
 // built-in Tailscale.
 //
 // The large files go in dist/assets under names that carry a hash of
-// their content (app-<hash>.js, ghostty-vt-<hash>.wasm,
-// ghostty-themes-<hash>.json, tailnet-<hash>.*), which _headers keeps a
-// year: a reload takes them from the browser's cache. index.html names the
-// script, and the script names the rest (assetDefines).
+// their content (app-<hash>.js and its code chunks, ghostty-vt-<hash>.wasm,
+// manifest-<hash>.json; in assets/lazy, ghostty-themes-<hash>.json,
+// tailnet-<hash>.*, maple-*), which _headers keeps a year: a reload takes
+// them from the browser's cache. index.html names the script, and the
+// script names the asset manifest (assetDefines), which lists every file
+// the page loads by name (src/loader.ts; docs/web-client.md, Loading on
+// demand): the code chunks esbuild cuts at each import(), the terminal's
+// wasm, the themes, the Tailscale engine, and the terminal's CJK font,
+// Maple Mono NF CN, cut into chunks by web/fonts/maple.mjs.
+//
+// Before tsc it checks the catalogs of web/locales and writes
+// src/locales.gen.ts from them (i18n.mjs; docs/web-client.md, Languages):
+// a catalog error fails the build, and so does a missing translation in CI
+// ($CI set, or --ci).
 //
 // It also writes the page's app files (docs/web-client.md, App): the
 // manifest, its icons (web/pwa, drawn by go run ./tools/mkicon -web) and
 // sw.js, the Service Worker, with this build's version and files.
 //
-// Usage: node web/build.mjs [--ghostty-source <path>] [--rebuild-wasm]
+// Usage: node web/build.mjs [--ghostty-source <path>] [--rebuild-wasm] [--ci]
 //
 // $GOREX_WEB_DIST builds into another directory than web/dist, as a check
 // beside a dev server that serves web/dist. The cache is $GOREX_WEB_CACHE, else $XDG_CACHE_HOME/gorex-web, else
 // ~/.cache/gorex-web. See docs/web-client.md.
 import { execFile, execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
+import { faces as mapleFaces, family as mapleFamily, mapleChunks } from "./fonts/maple.mjs";
+import { generateOrFail } from "./i18n.mjs";
 
 // The commit of si-mods/mygo's plugins/terminal/internal/libbuild, as
 // ios/scripts/build-ghostty-vt.sh pins it.
@@ -117,15 +129,13 @@ const extraTags = ["ts_omit_c2n", "ts_omit_dns", "ts_omit_health", "ts_omit_ipnb
 const assetLimit = 25 * 1024 * 1024;
 
 /**
- * Builds the tailnet engine into dir: assets/tailnet-<hash>.wasm.gz (the
- * module, gzipped; only the compressed file is shipped, under Cloudflare's
- * 25 MiB a file, and the page unpacks it with DecompressionStream),
- * assets/tailnet-<hash>.js (Go's wasm_exec.js of the same toolchain) and
- * tailnet.json, which names them for the page and is fetched only when the
- * user turns Tailscale on. Old engine files go. Without Go it writes none
- * of them and returns false; a build that fails throws.
+ * Builds the tailnet engine: the module, gzipped (only the compressed
+ * file is shipped, under Cloudflare's 25 MiB a file, and the page unpacks
+ * it with DecompressionStream), and Go's wasm_exec.js of the same
+ * toolchain, which addTailnet lists in the manifest. Without Go it
+ * returns undefined; a build that fails throws.
  */
-export async function buildTailnet(dir) {
+export async function buildTailnet() {
   const run = promisify(execFile);
   const go = process.env.GO || "go";
   let goroot, version;
@@ -134,7 +144,7 @@ export async function buildTailnet(dir) {
     version = (await run(go, ["env", "GOVERSION"], { cwd: root })).stdout.trim();
   } catch {
     console.warn("tailnet engine: skipped, Go is not installed (the page builds without built-in Tailscale; see docs/web-tailscale.md)");
-    return false;
+    return undefined;
   }
   const started = Date.now();
   const tags = (await run(go, ["run", "./web/tailnet/tags/tags.go"], { cwd: root })).stdout.trim();
@@ -149,18 +159,10 @@ export async function buildTailnet(dir) {
     const raw = readFileSync(out);
     const gz = gzipSync(raw, { level: 9 });
     if (gz.length > assetLimit) throw new Error(`the gzipped tailnet engine is ${gz.length} bytes, over Cloudflare's ${assetLimit}`);
-    const hash = createHash("sha256").update(gz).digest("hex").slice(0, 16);
     const exec = readFileSync(join(goroot, "lib", "wasm", "wasm_exec.js"));
-    const execHash = createHash("sha256").update(exec).digest("hex").slice(0, 16);
-    mkdirSync(join(dir, "assets"), { recursive: true });
-    for (const f of readdirSync(join(dir, "assets"))) if (/^tailnet-[0-9a-f]+\.(wasm\.gz|js)$/.test(f)) rmSync(join(dir, "assets", f));
-    const manifest = { engine: `assets/tailnet-${hash}.wasm.gz`, exec: `assets/tailnet-${execHash}.js`, bytes: gz.length, raw: raw.length, go: version };
-    writeFileSync(join(dir, manifest.engine), gz);
-    writeFileSync(join(dir, manifest.exec), exec);
-    writeFileSync(join(dir, "tailnet.json"), JSON.stringify(manifest) + "\n");
     const mb = (n) => (n / 1e6).toFixed(2) + " MB";
-    console.log(`tailnet engine: ${manifest.engine}, ${mb(gz.length)} gzipped (${mb(raw.length)} raw), ${((Date.now() - started) / 1000).toFixed(1)} s`);
-    return true;
+    console.log(`tailnet engine: ${version}, ${mb(gz.length)} gzipped (${mb(raw.length)} raw), ${((Date.now() - started) / 1000).toFixed(1)} s`);
+    return { engine: gz, exec };
   } catch (e) {
     throw new Error(`tailnet engine: ${e.stderr || e.message}`);
   } finally {
@@ -178,14 +180,39 @@ function commit() {
   }
 }
 
-/** esbuild's options for the client's bundle, which dev.mjs rebuilds too. The About section shows the defines. */
+/**
+ * Lists the tailnet engine (buildTailnet) in the manifest, lazy: the page
+ * loads it only when the user turns Tailscale on (tailnet/engine, the
+ * gzipped module; tailnet/exec, wasm_exec.js). The engine files the
+ * manifest listed before go.
+ */
+export function addTailnet(dir, manifest, tn) {
+  for (const n of ["tailnet/engine", "tailnet/exec"]) {
+    const had = manifest.assets[n];
+    if (had) rmSync(join(dir, had.url), { force: true });
+  }
+  manifest.add(dir, "tailnet/engine", tn.engine, "tailnet", ".wasm.gz", "data", true);
+  manifest.add(dir, "tailnet/exec", tn.exec, "tailnet", ".js", "script", true);
+}
+
+/**
+ * esbuild's options for the client's script, which dev.mjs rebuilds too.
+ * ES modules, split (splitting): each dynamic import() is a chunk of its
+ * own, and the code that chunks share with the script or with each other
+ * is in chunks too, all in dist/assets with esbuild's hash in their
+ * names. The script is assets/app-<hash>.js here, app.js in the dev
+ * server. The About section shows the defines.
+ */
 export const appOptions = {
-  entryPoints: [join(web, "src", "main.ts")],
+  entryPoints: { app: join(web, "src", "main.ts") },
   bundle: true,
   format: "esm",
+  splitting: true,
   target: "es2022",
   minify: true,
-  outfile: join(dist, "app.js"),
+  outdir: dist,
+  entryNames: "assets/[name]-[hash]",
+  chunkNames: "assets/[name]-[hash]",
   logLevel: "info",
   define: {
     __GOREX_COMMIT__: JSON.stringify(commit()),
@@ -201,20 +228,118 @@ function hashedName(content, base, ext) {
   return `assets/${base}-${createHash("sha256").update(content).digest("hex").slice(0, 16)}${ext}`;
 }
 
+/** The theme until one is chosen (src/prefs.ts, standardTheme). */
+const standardTheme = "Gruvbox Dark";
+
+/** The manifest's entries the page loads as it starts, which the script carries (assetDefines). */
+const bootAssets = ["ghostty-vt", "maple/index"];
+
 /**
- * The names of the hashed files in dist/assets that the script loads, as
- * esbuild defines: the terminal's wasm (with its size, the progress bar's
- * total) and the themes.
+ * The esbuild defines that name what the script loads: the asset manifest
+ * of dir, or the one at url, and its entries the page needs as it starts
+ * (bootAssets), which the loader takes before it has read the manifest;
+ * and the standard theme's colours, so that a first visit starts with
+ * them without the theme list (src/themes.ts).
  */
-export function assetDefines(dir) {
-  const files = existsSync(join(dir, "assets")) ? readdirSync(join(dir, "assets")) : [];
-  const find = (re) => files.find((f) => re.test(f));
-  const wasmName = find(/^ghostty-vt-[0-9a-f]+\.wasm$/), themes = find(/^ghostty-themes-[0-9a-f]+\.json$/);
-  if (!wasmName || !themes) throw new Error(`${dir} has no hashed ghostty-vt.wasm or themes: run node build.mjs`);
+export function assetDefines(dir, url) {
+  if (!url) {
+    const files = existsSync(join(dir, "assets")) ? readdirSync(join(dir, "assets")) : [];
+    const name = files.find((f) => /^manifest-[0-9a-f]+\.json$/.test(f));
+    if (!name) throw new Error(`${dir} has no asset manifest: run node build.mjs`);
+    url = `assets/${name}`;
+  }
+  return definesOf(JSON.parse(readFileSync(join(dir, url), "utf8")).assets, url);
+}
+
+/** assetDefines from the manifest's assets and its url. */
+function definesOf(assets, url) {
+  const themes = JSON.parse(readFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"), "utf8"));
   return {
-    __GHOSTTY_WASM__: JSON.stringify({ url: `assets/${wasmName}`, size: statSync(join(dir, "assets", wasmName)).size }),
-    __GHOSTTY_THEMES__: JSON.stringify(`assets/${themes}`),
+    __ASSET_MANIFEST__: JSON.stringify(url),
+    __BOOT_ASSETS__: JSON.stringify(Object.fromEntries(bootAssets.filter((n) => assets[n]).map((n) => [n, assets[n]]))),
+    __STANDARD_THEME__: JSON.stringify(themes.find((t) => t.name === standardTheme)),
   };
+}
+
+/**
+ * The asset manifest: the files of dist/assets the page loads by name
+ * through its loader (src/loader.ts; docs/web-client.md, Loading on
+ * demand), each with its URL, size, the hash its name carries and its
+ * kind. A lazy one, in assets/lazy/, is loaded only when the page needs
+ * it: the Service Worker does not keep it, the loader's cache does once it
+ * is loaded.
+ */
+export class Manifest {
+  assets = {};
+  /** The manifest at url in dir, to change in place (the dev server's engine; dev.mjs). */
+  static read(dir, url) {
+    const m = new Manifest();
+    m.assets = JSON.parse(readFileSync(join(dir, url), "utf8")).assets;
+    return m;
+  }
+  /** Writes it again at url, under the name it had: only the dev server, whose script names it. */
+  rewrite(dir, url) {
+    writeFileSync(join(dir, url), JSON.stringify({ version: 1, assets: this.assets }));
+  }
+  /**
+   * Lists the script's code chunks (esbuild's outputs but the script):
+   * js/<module> for a dynamic import()'s, js/chunk-<hash> for shared code.
+   * Their names carry esbuild's hash; hash is their content's SHA-256's.
+   */
+  addChunks(dir, chunks) {
+    for (const c of chunks) {
+      const url = relative(dir, c.path).split("\\").join("/");
+      this.assets[`js/${c.module ?? basename(url, ".js")}`] = {
+        url, bytes: c.contents.length, hash: createHash("sha256").update(c.contents).digest("hex").slice(0, 16), kind: "script",
+      };
+    }
+  }
+  /** Writes content to dist/assets under a hashed name, and lists it as name. */
+  add(dir, name, content, base, ext, kind, lazy = false) {
+    // The lazy ones in assets/lazy/, which the Service Worker leaves to the loader.
+    const file = hashedName(content, base, ext).replace(/^assets\//, lazy ? "assets/lazy/" : "assets/");
+    mkdirSync(join(dir, dirname(file)), { recursive: true });
+    writeFileSync(join(dir, file), content);
+    this.assets[name] = { url: file, bytes: content.length, hash: file.slice(file.lastIndexOf("-") + 1, -ext.length), kind, ...(lazy ? { lazy } : {}) };
+    return file;
+  }
+  /** Writes the manifest itself, by its hash, which the script names (assetDefines); returns its path. */
+  write(dir) {
+    const json = Buffer.from(JSON.stringify({ version: 1, assets: this.assets }));
+    const name = hashedName(json, "manifest", ".json");
+    writeFileSync(join(dir, name), json);
+    return name;
+  }
+}
+
+/**
+ * Maple Mono NF CN, the terminal's CJK font (web/fonts/maple.mjs), as
+ * lazy chunks in the manifest: maple/<face>/<n> for each face and chunk,
+ * and maple/index, which lists the faces and each chunk's unicode-range.
+ * Its licence goes to fonts/. Without the faces, as offline with nothing
+ * cached, it warns, and the page draws no CJK text (docs/web-client.md,
+ * Fonts).
+ */
+async function addMaple(dir, manifest) {
+  let m;
+  try {
+    m = await mapleChunks(cache);
+  } catch (e) {
+    console.warn(`\nWARNING: built WITHOUT Maple Mono NF CN (${e.message}).\nThe page draws no Chinese, Japanese or other CJK text. Build again with network access.\n`);
+    return;
+  }
+  let bytes = 0;
+  for (const f of mapleFaces) {
+    for (let n = 0; n < m.ranges.length; n++) {
+      const chunk = m.chunk(f.key, n);
+      bytes += chunk.length;
+      manifest.add(dir, `maple/${f.key}/${n}`, chunk, `maple-${f.key}${n}`, ".woff2", "font", true);
+    }
+  }
+  const index = { family: mapleFamily, version: m.version, faces: mapleFaces.map(({ key, weight, style }) => ({ key, weight, style })), ranges: m.ranges };
+  manifest.add(dir, "maple/index", Buffer.from(JSON.stringify(index)), "maple-index", ".json", "json");
+  writeFileSync(join(dir, "fonts", "MapleMono-OFL.txt"), m.license);
+  console.log(`maple: ${mapleFaces.length} faces, ${m.ranges.length} chunks each, ${(bytes / 1e6).toFixed(2)} MB in all`);
 }
 
 /** esbuild, from web/node_modules. */
@@ -232,15 +357,17 @@ function filesOf(dir, at = dir) {
 /**
  * Writes dir/sw.js from web/sw.js with this build's files, which the
  * worker keeps for the page offline: all of dir but the page (which it
- * keeps as the scope's root), _headers, sw.js itself, and built-in
- * Tailscale's engine and tailnet.json, which only a page that turns
- * Tailscale on fetches. Its version is a hash of web/sw.js, the page and
- * those files, so that a build that changes any of them is a new worker,
- * and one that changes none is the same.
+ * keeps as the scope's root), _headers, sw.js itself, and assets/lazy/,
+ * which the page loads on demand and its loader keeps (Manifest): the
+ * themes, built-in Tailscale's engine and Maple's chunks. The code chunks,
+ * small, are all kept, so that every part of the page opens offline. Its
+ * version is a hash of web/sw.js, the page and those files, so that a
+ * build that changes any of them is a new worker, and one that changes
+ * none is the same.
  */
 export function writeWorker(dir) {
   const files = filesOf(dir)
-    .filter((f) => !["index.html", "_headers", "sw.js", "tailnet.json"].includes(f) && !f.startsWith("assets/tailnet-"))
+    .filter((f) => !["index.html", "_headers", "sw.js"].includes(f) && !f.startsWith("assets/lazy/"))
     .sort();
   let sw = readFileSync(join(web, "sw.js"), "utf8");
   const h = createHash("sha256").update(sw);
@@ -253,36 +380,72 @@ export function writeWorker(dir) {
   console.log(`sw.js: version ${version}, ${files.length} files`);
 }
 
+/**
+ * Bundles the client into dist/assets, lists its code chunks in the
+ * manifest and writes the manifest; returns the script's path. The script
+ * names the manifest, which lists the chunks, so esbuild runs twice: once
+ * to learn the chunks, once with the manifest's name. Only src/main.ts
+ * reads that name, and only the script has main.ts, so the chunks are the
+ * same both times (checked).
+ */
+async function buildApp(manifest) {
+  const { build } = await esbuild();
+  const opts = { ...appOptions, absWorkingDir: web, metafile: true, logLevel: "warning" };
+  const define = { ...appOptions.define, __GOREX_SW__: "true" };
+  const first = await build({ ...opts, write: false, define: { ...define, ...definesOf(manifest.assets, "") } });
+  const key = (path) => relative(web, path).split("\\").join("/");
+  const entryOf = (r) => Object.keys(r.metafile.outputs).find((k) => r.metafile.outputs[k].entryPoint === "src/main.ts");
+  const entry1 = entryOf(first);
+  const chunks = first.outputFiles.filter((f) => key(f.path) !== entry1).map((f) => {
+    const out = first.metafile.outputs[key(f.path)];
+    return { path: f.path, contents: f.contents, module: out.entryPoint ? basename(out.entryPoint, ".ts") : undefined };
+  });
+  manifest.addChunks(dist, chunks);
+  const url = manifest.write(dist);
+  const second = await build({ ...opts, define: { ...define, ...assetDefines(dist, url) } });
+  for (const c of chunks) {
+    if (!existsSync(c.path) || Buffer.compare(Buffer.from(c.contents), readFileSync(c.path)) !== 0) {
+      throw new Error(`${c.path} changed with the manifest's name: only src/main.ts may read __ASSET_MANIFEST__`);
+    }
+  }
+  const entry = entryOf(second);
+  const out = second.metafile.outputs[entry];
+  const kb = (n) => (n / 1e3).toFixed(1) + " KB";
+  const boot = out.imports.filter((i) => i.kind === "import-statement").map((i) => i.path);
+  const bootBytes = [entry, ...boot].reduce((n, f) => n + second.metafile.outputs[f].bytes, 0);
+  console.log(`script: ${relative(dist, resolve(web, entry)).split("\\").join("/")}, ${kb(out.bytes)}; at boot with ${boot.length} chunks, ${kb(bootBytes)}; ${chunks.length - boot.length} chunks on demand`);
+  return relative(dist, resolve(web, entry)).split("\\").join("/");
+}
+
 async function main() {
   const wasmFile = await wasm();
   if (!existsSync(join(web, "node_modules"))) {
     console.log("> npm ci");
     execSync("npm ci --no-audit --no-fund", { cwd: web, stdio: "inherit" });
   }
+  await generateOrFail({ ci: args.includes("--ci") || !!process.env.CI });
   run(process.execPath, [join(web, "node_modules", "typescript", "bin", "tsc"), "--noEmit", "-p", web]);
 
   rmSync(dist, { recursive: true, force: true });
   mkdirSync(join(dist, "assets"), { recursive: true });
   // The wasm and the Ghostty themes the iOS app ships (not copied into the
   // repo twice), by their content's hash, which the script names.
-  const ghosttyWasm = readFileSync(wasmFile);
-  writeFileSync(join(dist, hashedName(ghosttyWasm, "ghostty-vt", ".wasm")), ghosttyWasm);
-  const themes = readFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"));
-  writeFileSync(join(dist, hashedName(themes, "ghostty-themes", ".json")), themes);
-  const { build } = await esbuild();
-  await build({ ...appOptions, define: { ...appOptions.define, ...assetDefines(dist), __GOREX_SW__: "true" } });
-  // The script by its hash too, which index.html names.
-  const app = readFileSync(join(dist, "app.js"));
-  const appName = hashedName(app, "app", ".js");
-  writeFileSync(join(dist, appName), app);
-  rmSync(join(dist, "app.js"));
+  const manifest = new Manifest();
+  manifest.add(dist, "ghostty-vt", readFileSync(wasmFile), "ghostty-vt", ".wasm", "wasm");
+  // The themes, 190 KB, load when Settings shows them (src/themes.ts).
+  manifest.add(dist, "ghostty-themes", readFileSync(join(root, "ios", "GoRex", "ghostty-themes.json")), "ghostty-themes", ".json", "json", true);
+  mkdirSync(join(dist, "fonts"));
+  await addMaple(dist, manifest);
+  // Built-in Tailscale's engine, which the page loads only when the user turns it on.
+  const tn = await buildTailnet();
+  if (tn) addTailnet(dist, manifest, tn);
+  const appName = await buildApp(manifest);
   const page = readFileSync(join(web, "index.html"), "utf8");
   if (!page.includes('src="app.js"')) throw new Error('index.html has no <script src="app.js">');
   writeFileSync(join(dist, "index.html"), page.replace('src="app.js"', `src="${appName}"`));
   // Cloudflare's headers for the files (cache, CSP); see docs/web-client.md.
   copyFileSync(join(web, "_headers"), join(dist, "_headers"));
   // The desktop's terminal font, which GoRex embeds too, with its licence.
-  mkdirSync(join(dist, "fonts"));
   for (const f of readdirSync(join(root, "assets", "fonts"))) copyFileSync(join(root, "assets", "fonts", f), join(dist, "fonts", f));
   // The glyphs of the program tiles: the repo's lucide icons and brand marks, which the desktop embeds too.
   for (const d of ["icons", "brands"]) {
@@ -293,8 +456,6 @@ async function main() {
   copyFileSync(join(web, "manifest.webmanifest"), join(dist, "manifest.webmanifest"));
   mkdirSync(join(dist, "pwa"));
   for (const f of readdirSync(join(web, "pwa"))) copyFileSync(join(web, "pwa", f), join(dist, "pwa", f));
-  // Built-in Tailscale's engine, which the page loads only when the user turns it on.
-  await buildTailnet(dist);
   writeWorker(dist);
   console.log(`built ${dist}`);
 }

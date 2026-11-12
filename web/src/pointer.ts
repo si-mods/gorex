@@ -12,6 +12,7 @@
 // files.ts.
 import { Mods } from "./ghostty";
 import { icon } from "./hosts";
+import { localize, Msg, t } from "./i18n";
 import { mac } from "./keys";
 import { Link } from "./links";
 import { prefs } from "./prefs";
@@ -28,7 +29,7 @@ export interface PointerHost {
   redraw(full: boolean): void;
   /** Writes bytes to the program, as typed keys go. */
   send(b: Uint8Array): void;
-  status(s: string): void;
+  status(s: Msg): void;
   /** Whether the host sends files (gorex.download): its file paths are links. */
   files(): boolean;
   /** Opens a file of the host, a link's path. */
@@ -157,7 +158,7 @@ export class PointerInput {
   constructor(private readonly canvas: HTMLCanvasElement, private readonly layer: HTMLElement, private readonly host: PointerHost) {
     const b = this.copyButton;
     b.type = "button";
-    b.append(icon("copy"), el("span", "", "Copy"));
+    b.append(icon("copy"), localize(el("span", ""), (e) => (e.textContent = t("commonCopy"))));
     // The pane keeps the keyboard: a press on the menu does not take it.
     b.addEventListener("pointerdown", (e) => e.preventDefault());
     b.addEventListener("click", () => {
@@ -649,7 +650,7 @@ export class PointerInput {
     const text = this.host.term()?.selectionText();
     if (!text) return false;
     writeClipboard(text).then((ok) => {
-      if (!ok) this.host.status("Could not copy: this browser did not let the page write to the clipboard.");
+      if (!ok) this.host.status(() => t("copyFailed"));
     });
     return true;
   }

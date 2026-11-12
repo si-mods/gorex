@@ -2,6 +2,7 @@
 // splits, each leaf a pane with its own terminal, and the dividers between
 // them. It follows the host's view: a new view keeps the panes whose
 // blocks stay, opens the new ones and closes the gone ones.
+import { localize, t } from "./i18n";
 import { PaneHost, TerminalView } from "./pane";
 
 /** A node of a layer's layout, as session.view gives it. */
@@ -177,7 +178,7 @@ export class WindowView {
       if (!d) {
         d = document.createElement("div");
         d.setAttribute("role", "separator");
-        d.setAttribute("aria-label", "Pane divider");
+        localize(d, (d) => d.setAttribute("aria-label", t("paneDivider")));
         this.drag(d, s.split_id);
         this.dividers.set(s.split_id, d);
         this.stage.append(d);

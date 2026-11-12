@@ -3,6 +3,7 @@
 // the page loads and written on every change. The Settings dialog
 // (settings.ts) changes them; the page applies each change to every open
 // pane at once.
+import { mapleFamily } from "./maple";
 import { minimumContrast } from "./terminal";
 
 export type Appearance = "" | "light" | "dark";
@@ -15,7 +16,7 @@ export interface Prefs {
   hidePaneHeaders: boolean;
   /** The terminals' text size in CSS pixels, 0 for defaultFontSize. */
   fontSize: number;
-  /** A font family, "" for the bundled JetBrains Mono. */
+  /** A font family, "" for the bundled JetBrains Mono; Maple Mono NF CN is bundled too. */
   font: string;
   /** The cursor until a program sets one (DECSCUSR); unset keeps the host's. */
   cursor?: CursorStyle;
@@ -24,10 +25,17 @@ export interface Prefs {
   minimumContrast: number;
   /** A Ghostty theme's name, "" for the host's colours. */
   theme: string;
+  /**
+   * The chosen theme's colours, as its entry in the list (themes.ts), so
+   * that the page starts with them without loading the list.
+   */
+  themeColors?: number[];
   /** Copies a selection to the clipboard as it is made, as the desktop's Copy on selection. */
   copyOnSelect: boolean;
   /** Built-in Tailscale's device name, "" for a new gorex-web-xxxx per tab (tailnet.ts). */
   tailscaleName: string;
+  /** The page's language, as "zh-Hans", or "" for System: the browser's languages (i18n.ts). */
+  language: string;
 }
 
 /** The desktop's text size (settings.go, defaultFontSize), and the stepper's range (settingsview.go). */
@@ -51,6 +59,7 @@ const defaults = (): Prefs => ({
   theme: standardTheme,
   copyOnSelect: false,
   tailscaleName: "",
+  language: "",
 });
 
 /** Reads the choices, taking the theme kept under gorex.theme once; out of range values count as none, as loadSettings does. */
@@ -70,8 +79,12 @@ function load(): Prefs {
         p.minimumContrast = j.minimumContrast === 0 ? 0 : Math.max(1, j.minimumContrast);
       }
       if (typeof j.theme === "string") p.theme = j.theme;
+      if (Array.isArray(j.themeColors) && j.themeColors.length === 22 && j.themeColors.every((c: unknown) => Number.isInteger(c))) {
+        p.themeColors = j.themeColors;
+      }
       p.copyOnSelect = j.copyOnSelect === true;
       if (typeof j.tailscaleName === "string") p.tailscaleName = j.tailscaleName;
+      if (typeof j.language === "string") p.language = j.language;
     } else {
       const old = localStorage.getItem(oldThemeKey);
       if (old !== null) {
@@ -114,11 +127,17 @@ export const textSize = () => prefs.fontSize || defaultFontSize;
 /** The minimum contrast in use: the desktop's default when none is set. */
 export const contrastRatio = () => prefs.minimumContrast || minimumContrast;
 
-/** The bundled family and the desktop's fallbacks (style.go, defaultFontFamily). */
-export const defaultFamily = `"JetBrains Mono", "SF Mono", Menlo, monospace`;
+/** The font until one is chosen, which the page bundles as the desktop does (style.go, defaultFontFamily). */
+export const defaultFont = "JetBrains Mono";
 
-/** The terminals' CSS font family: the chosen one before the default stack. */
-export const fontFamily = () => (prefs.font ? `"${prefs.font.replace(/["\\]/g, "")}", ${defaultFamily}` : defaultFamily);
+/**
+ * The terminals' CSS font family: the chosen font, then Maple Mono NF CN
+ * for what it lacks (CJK; maple.ts), then monospace for what neither has.
+ */
+export function fontFamily(): string {
+  const font = (prefs.font || defaultFont).replace(/["\\]/g, "");
+  return font === mapleFamily ? `"${mapleFamily}", monospace` : `"${font}", "${mapleFamily}", monospace`;
+}
 
 /** The sequence (DECSCUSR) that sets the chosen cursor, as the desktop's cursorSeq; none while neither is chosen. */
 export function cursorSeq(): string | undefined {

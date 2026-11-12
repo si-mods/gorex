@@ -4,6 +4,7 @@
 // user adds each one, and each one must trust this page's origin. Hosts
 // found on the tailnet by built-in Tailscale (tailnet.ts) are listed in a
 // group of their own, and not kept.
+import { localize, PlainKey, t } from "./i18n";
 import type { Tailnet, TailnetHost } from "./tailnet";
 
 /** A host as the user added it, or as built-in Tailscale found it (kind "tailnet"). */
@@ -18,11 +19,11 @@ export interface Host {
 }
 
 /** The icons a host can take, as the iOS app offers them, from the repo's lucide set. */
-export const icons: [name: string, label: string][] = [
-  ["laptop", "Laptop"],
-  ["monitor", "Desktop"],
-  ["server", "Server"],
-  ["globe", "Globe"],
+export const icons: [name: string, label: PlainKey][] = [
+  ["laptop", "hostIconLaptop"],
+  ["monitor", "hostIconDesktop"],
+  ["server", "hostIconServer"],
+  ["globe", "hostIconGlobe"],
 ];
 
 const listKey = "gorex.hosts";
@@ -75,17 +76,17 @@ export function rememberHost(id: string) {
  */
 export function hostURL(typed: string): { url: string } | { error: string } {
   let s = typed.trim();
-  if (!s) return { error: "Enter the gateway's address, such as https://studio-gorex.tail1234.ts.net." };
+  if (!s) return { error: t("hostUrlEmpty") };
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = "http://" + s;
   let u: URL;
   try {
     u = new URL(s);
   } catch {
-    return { error: `${typed.trim()} is not an address.` };
+    return { error: t("hostUrlInvalid", { address: typed.trim() }) };
   }
-  if (u.protocol !== "http:" && u.protocol !== "https:") return { error: "The address starts with http:// or https://." };
-  if (u.username || u.password) return { error: "The address has no user name." };
-  if ((u.pathname !== "/" && u.pathname !== "") || u.search || u.hash) return { error: "The address is the gateway's only, with no path." };
+  if (u.protocol !== "http:" && u.protocol !== "https:") return { error: t("hostUrlScheme") };
+  if (u.username || u.password) return { error: t("hostUrlUser") };
+  if ((u.pathname !== "/" && u.pathname !== "") || u.search || u.hash) return { error: t("hostUrlPath") };
   return { url: u.origin };
 }
 
@@ -117,12 +118,39 @@ function mayBeExempt(hostname: string): boolean {
   return /^f[cd]/.test(h) || h.startsWith("fe80:");
 }
 
-/** What went wrong with a host, for the page to show. */
+/**
+ * What went wrong with a host, for the page to show. Its words are said as
+ * they are read (problem() makes them getters), so that a problem shown
+ * again after a change of language is in the new one.
+ */
 export interface Problem {
-  title: string;
-  text: string;
+  readonly title: string;
+  readonly text: string;
   /** A command to run on the host, shown to copy. */
-  command?: string;
+  readonly command?: string;
+  /** The technical why, behind a Learn more disclosure. */
+  readonly details?: string;
+}
+
+/** A problem whose title, text and details are said in the page's language each time they are read. */
+export function problem(title: () => string, text: () => string, command?: string, details?: () => string): Problem {
+  return {
+    get title() {
+      return title();
+    },
+    get text() {
+      return text();
+    },
+    command,
+    get details() {
+      return details?.();
+    },
+  };
+}
+
+/** A host that answers but does not trust this page: the command that makes it, and why, in plain words. */
+export function untrusted(text: () => string): Problem {
+  return problem(() => t("problemUntrustedTitle"), text, allowCommand(), () => t("problemUntrustedDetails", { origin: location.origin }));
 }
 
 /** Whether a host can never be reached from this page: plain http from an https page. */
@@ -132,13 +160,7 @@ export function mixedContent(url: string): Problem | undefined {
   return mixedProblem;
 }
 
-const mixedProblem: Problem = {
-  title: "This page can't reach a plain http:// host",
-  text:
-    "This page was opened over https, and browsers block its connections to http:// and ws:// addresses (mixed content). " +
-    "Use the host's tailnet address (https://<machine>-gorex.<tailnet>.ts.net, from built-in Tailscale), " +
-    "or open the web client from the local dev server (npm run dev in web/, http://127.0.0.1) to reach a local network gateway.",
-};
+const mixedProblem: Problem = problem(() => t("problemMixedTitle"), () => t("problemMixedText"));
 
 /**
  * Tells why a host's control connection did not open. A WebSocket that
@@ -156,9 +178,11 @@ export async function diagnose(url: string): Promise<Problem> {
       try {
         why = (await r.json()).error ?? "";
       } catch {}
-      return { title: "The host refused this browser", text: why || "The gateway's access rule refused this device." };
+      // The gateway's reason is its own words, in English.
+      return problem(() => t("problemRefusedTitle"), () => why || t("problemRefusedText"));
     }
-    return { title: "The host answered, but the connection failed", text: `The gateway answered ${r.status}. Reconnecting…` };
+    const status = String(r.status);
+    return problem(() => t("problemFailedTitle"), () => t("problemFailedText", { status }));
   } catch {
     // Not trusted, not there, or blocked by the browser.
   }
@@ -167,19 +191,9 @@ export async function diagnose(url: string): Promise<Problem> {
   } catch {
     const u = new URL(url);
     if (location.protocol === "https:" && u.protocol === "http:") return mixedProblem;
-    return {
-      title: "The host can't be reached",
-      text:
-        `Nothing answered at ${url}. Check that the address is right, that GoRex's gateway runs there ` +
-        "(the local network listener or built-in Tailscale is on), and that this device can reach it. " +
-        "A browser may also ask before a page reaches the local network; allow it.",
-    };
+    return problem(() => t("problemUnreachableTitle"), () => t("problemUnreachableText", { url }));
   }
-  return {
-    title: "The host doesn't trust this page",
-    text: `The gateway at ${url} answered, but refuses web pages from ${location.origin}. Run this on the host, then wait a moment:`,
-    command: allowCommand(),
-  };
+  return untrusted(() => t("problemUntrustedText", { url }));
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -189,10 +203,37 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-/** A lucide icon of the repo, drawn in the text's colour. */
+/** A lucide icon of the repo, drawn in the text's colour; "tailscale" is Tailscale's own mark. */
 export function icon(name: string): HTMLElement {
+  if (name === "tailscale") return tailscaleMark();
   const i = el("i", "pane-icon");
   i.style.setProperty("--icon", `url(icons/${name}.svg)`);
+  return i;
+}
+
+/**
+ * Tailscale's mark, from its media kit (tailscale.com/press,
+ * Tailscale_icon_*_rgb.svg): nine dots, the T solid and the rest at 40%,
+ * in the text's colour. Inline, as one colour at two opacities is not a mask.
+ */
+function tailscaleMark(): HTMLElement {
+  const i = el("i", "pane-icon ts-mark");
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 169 169");
+  svg.setAttribute("aria-hidden", "true");
+  const solid = new Set(["0,1", "1,1", "2,1", "1,2"]);
+  for (let col = 0; col < 3; col++)
+    for (let row = 0; row < 3; row++) {
+      const c = document.createElementNS(ns, "circle");
+      c.setAttribute("cx", String(30.5 + 54 * col));
+      c.setAttribute("cy", String(30.5 + 54 * row));
+      c.setAttribute("r", "18");
+      c.setAttribute("fill", "currentColor");
+      if (!solid.has(`${col},${row}`)) c.setAttribute("fill-opacity", "0.4");
+      svg.append(c);
+    }
+  i.append(svg);
   return i;
 }
 
@@ -207,17 +248,18 @@ export function check(on: boolean): HTMLElement {
 export function commandBox(command: string): HTMLElement {
   const box = el("div", "command");
   const code = el("code", "", command);
-  const copy = el("button", "command-copy", "Copy");
+  const copy = el("button", "command-copy");
   copy.type = "button";
+  localize(copy, (b) => (b.textContent = t("commonCopy")));
   copy.onclick = async () => {
     try {
       await navigator.clipboard.writeText(command);
-      copy.textContent = "Copied";
+      copy.textContent = t("commonCopied");
     } catch {
       getSelection()?.selectAllChildren(code);
-      copy.textContent = "Select";
+      copy.textContent = t("commonSelected");
     }
-    setTimeout(() => (copy.textContent = "Copy"), 1500);
+    setTimeout(() => (copy.textContent = t("commonCopy")), 1500);
   };
   box.append(code, copy);
   return box;
@@ -238,10 +280,10 @@ export interface HostsApp {
 }
 
 /** A tailnet host's state, as its dot and words. */
-export const tailnetStates: Record<TailnetHost["state"], [dot: string, text: string]> = {
-  online: ["connected", "Online"],
-  offline: ["none", "Offline"],
-  refused: ["unreachable", "Refuses this browser"],
+export const tailnetStates: Record<TailnetHost["state"], [dot: string, text: PlainKey]> = {
+  online: ["connected", "hostTailnetOnline"],
+  offline: ["none", "hostTailnetOffline"],
+  refused: ["unreachable", "hostTailnetRefused"],
 };
 
 /**
@@ -253,6 +295,8 @@ export class HostList {
   hosts = loadHosts();
   chosen?: Host;
   private button = el("button", "host-button");
+  /** The app's name, in the button's place while there is no host. */
+  private brand = el("div", "host-brand");
   private panel = el("div", "theme-panel host-panel");
   /** Whether the panel shows the list, which redraws as Tailscale's hosts change. */
   private listing = false;
@@ -263,7 +307,7 @@ export class HostList {
     this.button.onclick = () => (this.panel.hidden ? this.open() : this.hide());
     this.panel.hidden = true;
     this.panel.setAttribute("role", "dialog");
-    this.panel.setAttribute("aria-label", "Hosts");
+    localize(this.panel, (p) => p.setAttribute("aria-label", t("hostList")));
     this.panel.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -273,9 +317,21 @@ export class HostList {
     document.addEventListener("pointerdown", (e) => {
       if (!this.panel.hidden && !this.panel.contains(e.target as Node) && !this.button.contains(e.target as Node)) this.hide(false);
     });
-    mount.append(this.button, this.panel);
+    const logo = el("img");
+    logo.src = "pwa/icon-192.png";
+    logo.alt = "";
+    logo.width = logo.height = 20;
+    // GoRex is the app's name, not translated.
+    this.brand.append(logo, el("span", "host-name", "GoRex"));
+    mount.append(this.brand, this.button, this.panel);
     this.chosen = this.hosts.find((h) => h.id === chosenHost()) ?? this.hosts[0];
     this.drawButton();
+  }
+
+  /** The language changed: the button, and the list if it shows; a form being filled says itself again (localize). */
+  relocalize() {
+    this.drawButton();
+    this.refresh();
   }
 
   /** Adds the host of a quick link (?host=URL), or chooses the one with its address. */
@@ -293,12 +349,22 @@ export class HostList {
     this.drawButton();
   }
 
+  /**
+   * The chosen host, as a button that opens the list. With no host at all
+   * (none added, none found on Tailscale) the sidebar shows the app's name
+   * in its place: the welcome over the stage offers the ways to add one.
+   */
   private drawButton() {
     const h = this.chosen;
+    const ts = this.app.tailnet;
+    const none = !h && !this.hosts.length && !(ts.status() === "running" && ts.hosts.length);
+    this.button.hidden = none;
+    this.brand.hidden = !none;
+    if (none) return;
     const chevron = el("span", "host-chevron");
     chevron.append(icon("chevron-down"));
-    this.button.replaceChildren(icon(h?.icon ?? "plus"), el("span", "host-name", h?.name ?? "Add a Host"), chevron);
-    this.button.title = h ? h.url : "Add a GoRex host";
+    this.button.replaceChildren(icon(h?.icon ?? "laptop"), el("span", "host-name", h?.name ?? t("hostChoose")), chevron);
+    this.button.title = h ? h.url : t("hostChoose");
   }
 
   open(form?: Host | "new") {
@@ -308,8 +374,9 @@ export class HostList {
     else this.list();
   }
 
-  /** Draws the list again, if it shows, keeping the focus on the same row. */
+  /** Draws the button and the list again, if it shows, keeping the focus on the same row. */
   refresh() {
+    this.drawButton();
     if (this.panel.hidden || !this.listing) return;
     const key = (document.activeElement as HTMLElement | null)?.dataset?.key;
     this.list(false);
@@ -348,19 +415,19 @@ export class HostList {
       };
       const edit = el("button", "pane-action");
       edit.type = "button";
-      edit.title = "Edit";
-      edit.setAttribute("aria-label", `Edit ${h.name}`);
+      edit.title = t("commonEdit");
+      edit.setAttribute("aria-label", t("hostEditName", { name: h.name }));
       edit.append(icon("pencil"));
       edit.onclick = () => this.formIn(h);
       row.append(pick, edit);
       rows.append(row);
     }
-    if (!this.hosts.length) rows.append(el("div", "theme-empty", "No hosts added."));
+    if (!this.hosts.length) rows.append(el("div", "theme-empty", t("hostNone")));
     rows.append(...this.tailnetGroup());
-    const add = el("button", "host-add", "Add Host");
+    const add = el("button", "host-add", t("hostAdd"));
     add.type = "button";
     add.onclick = () => this.formIn(undefined);
-    this.panel.replaceChildren(el("div", "host-title", "Hosts"), rows, add);
+    this.panel.replaceChildren(el("div", "host-title", t("hostList")), rows, add);
     if (focus) (rows.querySelector("button") ?? add).focus();
   }
 
@@ -370,11 +437,12 @@ export class HostList {
    * doing while it finds none.
    */
   private tailnetGroup(): HTMLElement[] {
-    const t = this.app.tailnet;
-    const status = t.status();
+    const ts = this.app.tailnet;
+    const status = ts.status();
     const head = el("div", "host-group");
-    head.append(icon("network"), el("span", "host-group-name", "Tailscale"));
-    if (status !== "off") head.append(el("span", "host-group-state", t.statusText()));
+    // Tailscale is a product's name, not translated.
+    head.append(icon("tailscale"), el("span", "host-group-name", "Tailscale"));
+    if (status !== "off") head.append(el("span", "host-group-state", ts.statusText()));
     const out: HTMLElement[] = [head];
     const guide = (label: string, glyph: string, key: string) => {
       const b = el("button", "theme-row host-guide");
@@ -388,20 +456,22 @@ export class HostList {
       return b;
     };
     if (status !== "running") {
-      out.push(guide(status === "off" ? "Add Hosts from Tailscale" : "Sign in to Tailscale", "log-in", "ts-guide"));
+      out.push(guide(status === "off" ? t("hostTsAdd") : t("hostTsSignIn"), "log-in", "ts-guide"));
       return out;
     }
-    for (const h of t.hosts) {
+    for (const h of ts.hosts) {
       const pick = el("button", "theme-row");
       pick.type = "button";
       pick.dataset.key = h.id;
       const text = el("span", "host-text");
       const [dot, words] = tailnetStates[h.state];
       const line = el("span", "host-url host-state");
-      line.append(el("i", `state-dot ${dot}`), el("span", "", h.state === "online" ? h.dns : `${words} · ${h.dns}`));
+      line.append(el("i", `state-dot ${dot}`), el("span", "", h.state === "online" ? h.dns : t("hostTailnetLine", { state: t(words), address: h.dns })));
       text.append(el("span", "theme-name", h.name), line);
       pick.append(icon(h.icon), text, check(h.id === this.chosen?.id));
-      pick.title = h.problem ? `${h.problem.title}. ${h.problem.text}${h.problem.command ? " " + h.problem.command : ""}` : h.url;
+      pick.title = h.problem
+        ? t("hostProblemTip", { title: h.problem.title, text: h.problem.text }) + (h.problem.command ? " " + h.problem.command : "")
+        : h.url;
       pick.onclick = () => {
         this.hide();
         if (h.id !== this.chosen?.id) this.choose(h);
@@ -410,8 +480,8 @@ export class HostList {
       row.append(pick);
       out.push(row);
     }
-    if (!t.hosts.length) {
-      out.push(t.searching ? el("div", "theme-empty host-searching", "Looking for GoRex hosts…") : guide("No GoRex hosts found. How to set one up", "circle-alert", "ts-empty"));
+    if (!ts.hosts.length) {
+      out.push(ts.searching ? el("div", "theme-empty host-searching", t("hostSearching")) : guide(t("hostNoneFound"), "circle-alert", "ts-empty"));
     }
     return out;
   }
@@ -431,19 +501,22 @@ export class HostList {
   form(h: Host | undefined, done: (how: "cancel" | "remove" | "save") => void): HTMLFormElement {
     const form = el("form", "host-form");
     // A div for the icons: a label would pass its clicks to the first one.
-    const field = (label: string, input: HTMLElement, tag: "label" | "div" = "label") => {
+    // The form's words say themselves again after a change of language, keeping what was typed.
+    const word = <E extends HTMLElement>(e: E, key: PlainKey) => localize(e, (x) => (x.textContent = t(key)));
+    const field = (label: PlainKey, input: HTMLElement, tag: "label" | "div" = "label") => {
       const l = el(tag, "host-field");
-      l.append(el("span", "", label), input);
+      l.append(word(el("span"), label), input);
       return l;
     };
     const url = el("input", "theme-search");
-    url.placeholder = "https://studio-gorex.tail1234.ts.net";
+    // An example address, as GoRex shows its local network one; not translated.
+    url.placeholder = "192.168.1.20:7297";
     url.value = h?.url ?? "";
     url.required = true;
     url.autocomplete = "off";
     url.spellcheck = false;
     const name = el("input", "theme-search");
-    name.placeholder = "Name";
+    localize(name, (n) => (n.placeholder = t("formName")));
     name.value = h?.name ?? "";
     // The icon: a segmented row of the icons, as iOS's picker.
     let chosenIcon = h?.icon ?? "laptop";
@@ -452,9 +525,11 @@ export class HostList {
     const iconButtons = icons.map(([v, label]) => {
       const b = el("button", "icon-choice");
       b.type = "button";
-      b.title = label;
+      localize(b, (b) => {
+        b.title = t(label);
+        b.setAttribute("aria-label", b.title);
+      });
       b.setAttribute("role", "radio");
-      b.setAttribute("aria-label", label);
       b.append(icon(v));
       b.onclick = () => {
         chosenIcon = v;
@@ -465,18 +540,18 @@ export class HostList {
       return b;
     });
     const error = el("div", "host-error");
-    const note = el("div", "host-note", "The host must trust this page. On the host, run:");
+    const note = word(el("div", "host-note"), "formNote");
     const buttons = el("div", "host-buttons");
-    const cancel = el("button", "host-add", "Cancel");
+    const cancel = word(el("button", "host-add"), "commonCancel");
     cancel.type = "button";
     cancel.onclick = () => done("cancel");
-    const save = el("button", "host-add primary", h ? "Save" : "Add");
+    const save = word(el("button", "host-add primary"), h ? "formSave" : "formAdd");
     save.type = "submit";
     if (h) {
-      const remove = el("button", "host-add danger", "Remove");
+      const remove = word(el("button", "host-add danger"), "formRemove");
       remove.type = "button";
       remove.onclick = () => {
-        if (!confirm(`Remove ${h.name}? Its sessions keep running on the host.`)) return;
+        if (!confirm(t("formRemoveAsk", { name: h.name }))) return;
         this.hosts = this.hosts.filter((x) => x.id !== h.id);
         saveHosts(this.hosts);
         if (this.chosen?.id === h.id) this.choose(this.hosts[0]);
@@ -511,13 +586,12 @@ export class HostList {
       this.app.changed();
     };
     form.append(
-      el("div", "host-title", h ? "Edit Host" : "Add Host"),
-      field("Address", url),
-      field("Name", name),
-      field("Icon", pick, "div"),
+      word(el("div", "host-title"), h ? "hostEdit" : "hostAdd"),
+      field("formAddress", url),
+      field("formName", name),
+      field("formIcon", pick, "div"),
       error,
       note,
-      commandBox(allowCommand()),
       buttons,
     );
     return form;

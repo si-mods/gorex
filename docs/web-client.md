@@ -60,9 +60,15 @@ to the other. The first host's sessions keep running. One connection at
 a time keeps one sidebar and one set of shortcuts, as before; several
 hosts at once, as iOS shows them, is for later.
 
-With no host, the page says how to add one, with the command that makes
-a host trust this page: `gorex rexapi web allow <origin>`, with the page's
-own `location.origin`, and offers to sign in with Tailscale instead.
+With no host, the page shows a welcome (`web/src/welcome.ts`), centred in
+the stage: the app's icon, what the page is, and two ways in. **Sign in
+with Tailscale**, the recommended one, opens the sign-in guide; **Connect
+by Address** shows the host form in the welcome's place. A **What do I
+need?** disclosure lists what a computer needs, in plain words. The
+sidebar shows the app's name in place of the host button until there is
+a host to choose. The welcome does not say how a host trusts the page:
+the page says it when a host refuses it (below), with the command,
+`gorex rexapi web allow <origin>` with the page's own `location.origin`.
 
 The list also has a **Tailscale** group: the GoRex hosts that built-in
 Tailscale found on your tailnet (see Built-in Tailscale), each with a
@@ -74,7 +80,7 @@ and tries again every few seconds, so it connects once the cause is gone:
 
 - **The host doesn't trust this page.** The gateway refused the page's
   origin (see Trusting a page). The page shows the command to run on the
-  host.
+  host, in plain words, and the technical why under **Learn more**.
 - **The host refused this browser.** The page is trusted, but the
   gateway's access rule is not met: the local network listener lets in
   only the networks it allows, built-in Tailscale only your user. The page
@@ -258,7 +264,8 @@ trust the page's origin on each host:
 headers on Cloudflare:
 
 - `Content-Security-Policy`: `default-src 'none'`; the page's own
-  scripts (`script-src 'self'`, with `'wasm-unsafe-eval'` for
+  scripts (`script-src 'self'`, which covers the script's ES module
+  chunks that `import()` loads, with `'wasm-unsafe-eval'` for
   libghostty-vt), fonts and images (and `data:` for the empty favicon,
   `blob:` for the image viewer's checked images, for images only);
   its inline `<style>` (`style-src 'self' 'unsafe-inline'`; the styles
@@ -270,15 +277,17 @@ headers on Cloudflare:
   the hosts at build time. `frame-src http: https:` lets the hidden frame
   that takes a host's download (docs/web-open-files.md) load it.
 - `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
-- The script, the terminal's wasm, the themes and the Tailscale engine
-  are in `/assets` under names that carry a hash of their content
-  (`app-<hash>.js`, `ghostty-vt-<hash>.wasm`,
-  `ghostty-themes-<hash>.json`, `tailnet-<hash>.wasm.gz`,
-  `tailnet-<hash>.js`), kept a year (`public, max-age=31536000,
-  immutable`): after the first visit, a reload takes them from the
-  browser's cache without asking the server. `/` and `index.html`, which
-  names the script, and `tailnet.json`, which names the engine, are
-  `no-cache` (revalidated, with Cloudflare's ETag, on every load). The
+- The script and its code chunks, the terminal's wasm, the themes and
+  the Tailscale engine are in `/assets` under names that carry a hash of
+  their content (`app-<hash>.js`, `<module>-<hash>.js` and
+  `chunk-<hash>.js` with esbuild's hash, `ghostty-vt-<hash>.wasm`,
+  `manifest-<hash>.json`, `maple-index-<hash>.json`, and in `lazy/`
+  `ghostty-themes-<hash>.json`, `maple-<face><n>-<hash>.woff2`,
+  `tailnet-<hash>.wasm.gz`, `tailnet-<hash>.js`), kept a year
+  (`public, max-age=31536000, immutable`): after the first visit, a
+  reload takes them from the browser's cache without asking the server.
+  `/` and `index.html`, which names the script, are `no-cache`
+  (revalidated, with Cloudflare's ETag, on every load). The
   fonts, icons and brand marks are kept for a day. Cloudflare gives a path
   that two rules match both rules' headers, so no two rules set the same
   header on one path.
@@ -302,12 +311,16 @@ npm run dev -- --port 7478   # another port; --host ADDR to listen elsewhere
 
 `web/dev.mjs` builds `web/dist` once (`build.mjs`, with its type check),
 then serves it with esbuild. It bundles `src/` again on every change (not
-minified, with a source map), without the type check, and copies
-`index.html` again when it changes. The script keeps its plain name,
-`app.js`, in the dev server; the wasm and the themes keep their hashed
-names. It builds the Tailscale engine again when a Go file of
-`web/tailnet` changes (a few seconds with Go's build cache); reload the
-page to load it. It prints the command that makes a
+minified, with a source map, split into chunks as the build is), without
+the type check, and copies `index.html` again when it changes. The
+script keeps its plain name, `app.js`, in the dev server; its chunks go
+in `dist/assets` with esbuild's hash, and the other files keep the
+hashed names the build gave them (the manifest's `js/` entries are the
+build's). It builds the Tailscale engine again when a Go file of
+`web/tailnet` changes (a few seconds with Go's build cache) and lists it
+in the asset manifest, written again under the name the script knows;
+reload the page to load it. A change of `build.mjs` or `dev.mjs` needs
+a restart of the dev server. It prints the command that makes a
 host trust it. It is plain http on loopback, so it reaches both kinds of
 gateway: `http://` on the local network and `https://` on the tailnet. It
 sends none of `_headers`' headers. The page registers no Service Worker
@@ -355,19 +368,25 @@ window of its own, with its own icon.
 `web/sw.js` is the page's Service Worker, at the root of its scope. The
 build (`writeWorker` in `build.mjs`) writes into `dist/sw.js` this
 build's version, a hash of `web/sw.js`, the page and its files, and the
-files it keeps: all of `dist` but `index.html`, `_headers`, `sw.js`,
-`tailnet.json` and the Tailscale engine (about 2.5 MB in all). A build
-that changes none of them is the same worker.
+files it keeps: all of `dist` but `index.html`, `_headers`, `sw.js` and
+`assets/lazy/` (the themes, the Tailscale engine and the CJK font's
+chunks; see Loading on demand), about 2.5 MB in all, the page's code
+chunks among them: all of them, about 46 KB that load on demand, so
+that Settings, the guide and the viewer open offline too. A build that
+changes none of them is the same worker.
 
 - **Install**: it fetches the page (the scope's root, checked to name
   this build's script, so that a deploy between the two fetches fails
   the install rather than mixing versions) and the files into a cache of
   its version, `gorex-<version>`. **Activate** deletes the other
-  `gorex-` caches and takes the open pages.
+  `gorex-` caches, but the loader's `gorex-assets-v<n>`, and takes the
+  open pages.
 - **Answers**: the page (a navigation to the root or `index.html`) and
   `/assets` (hashed names) from the cache first; an `/assets` file
-  not kept, as the Tailscale engine, joins the cache when fetched. The
-  rest of the page's origin (fonts, icons, `tailnet.json`) comes from
+  not kept joins the cache when fetched.
+  `/assets/lazy/` it leaves to the page's loader, which keeps those
+  files in its own cache (Loading on demand). The
+  rest of the page's origin (fonts, icons) comes from
   the network, and from the cache when the network fails. So the page
   opens offline, at the version the worker holds.
 - **Leaves alone**: every request to another origin (the GoRex hosts,
@@ -442,37 +461,282 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
    `zig build -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall`.
    It keeps `ghostty-vt.wasm` (about 850 KB) in the cache, so the next
    build skips this step. `--rebuild-wasm` builds it again.
-4. It runs `npm ci` in `web/` if `web/node_modules` is missing, then
-   type-checks the client (`tsc --noEmit`) and bundles it with esbuild.
-5. It empties `web/dist` and writes `index.html`, `_headers`, and in
-   `dist/assets` the script, `ghostty-vt.wasm` and
-   `ios/GoRex/ghostty-themes.json` (the repo keeps one copy of the
-   themes) under hashed names (see Cloudflare Workers). `index.html`
-   names the script; the script names the wasm, with its size, and the
-   themes. It copies the JetBrains Mono fonts from `assets/fonts` (with
-   their licence) into `dist/fonts`, and `assets/icons` and
-   `assets/brands` into `dist/icons` and `dist/brands`, the glyphs of the
-   program tiles and of the hosts.
+4. It runs `npm ci` in `web/` if `web/node_modules` is missing, checks
+   the catalogs and writes `src/locales.gen.ts` (`web/i18n.mjs`; see
+   Languages), then type-checks the client (`tsc --noEmit`).
+5. It empties `web/dist` and writes in `dist/assets`, under hashed
+   names (see Cloudflare Workers), `ghostty-vt.wasm` and, in
+   `dist/assets/lazy`, `ios/GoRex/ghostty-themes.json` (the repo keeps
+   one copy of the themes). It cuts Maple Mono NF CN into chunks (see
+   Fonts) and writes them to `dist/assets/lazy`, its index to
+   `dist/assets` and its licence to `dist/fonts/MapleMono-OFL.txt`.
 6. With Go, it builds the Tailscale engine (`web/tailnet`,
    docs/web-tailscale.md): `GOOS=js GOARCH=wasm`, tsconnect's build tags
    and five more, `GOEXPERIMENT=nojsonv2`, `-trimpath -ldflags "-s -w"`.
-   It writes only the gzipped module, `dist/assets/tailnet-<hash>.wasm.gz`
-   (about 6.1 MB; the raw module, about 26 MB, is not shipped), Go's
-   `wasm_exec.js` as `dist/assets/tailnet-<hash>.js`, and
-   `dist/tailnet.json`, which names them.
+   It writes only the gzipped module, `dist/assets/lazy/tailnet-<hash>.wasm.gz`
+   (about 6.1 MB; the raw module, about 26 MB, is not shipped), and Go's
+   `wasm_exec.js` as `dist/assets/lazy/tailnet-<hash>.js`.
+7. It bundles the client with esbuild into ES modules, split at each
+   `import()` (see Loading on demand), and lists all of these files in
+   the asset manifest, `dist/assets/manifest-<hash>.json`, which the
+   script names. esbuild runs twice: once to learn the chunks, which the
+   manifest lists, then with the manifest's name, which only the script
+   (`src/main.ts`) reads; the build fails if a chunk changed between the
+   two. `index.html`, which it writes with `_headers`, names the script.
+   It copies the JetBrains Mono fonts from `assets/fonts` (with their
+   licence) into `dist/fonts`, and `assets/icons` and `assets/brands`
+   into `dist/icons` and `dist/brands`, the glyphs of the program tiles
+   and of the hosts.
 
 As the page starts, it loads the terminal's wasm (about 870 KB) with a
 progress bar over the window's room: the bytes received of the size the
 build wrote in, then "Starting…" while it compiles. The bar shows only
 when the load takes more than 150 ms, so a load from the cache shows
-none. A failure shows the reason and **Retry**. Served as
-`application/wasm`, the module compiles as it arrives
-(`WebAssembly.instantiateStreaming` on the fetch's own response) while a
-clone of the response counts the bytes. The Tailscale engine's download
+none. A failure shows the reason and **Retry**. The loader fetches it
+(`response`, Loading on demand), so a network error or a 5xx answer is
+tried again first. Served as `application/wasm`, the module compiles as
+it arrives (`WebAssembly.instantiateStreaming` on the fetch's own
+response, which lets Chrome keep the compiled code with the cached file)
+while the loader counts a clone's bytes. The Tailscale engine's download
 in the sign-in guide uses the same bar (`web/src/progress.ts`).
 
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
 `~/.cache/gorex-web`. `go build ./...` and the Go tests need no web build.
+
+## Fonts
+
+The terminal's font is JetBrains Mono, which the page serves from
+`dist/fonts` as the desktop embeds it, or a family Settings chooses. Its
+CJK font is always Maple Mono NF CN
+([subframe7536/maple-font](https://github.com/subframe7536/maple-font),
+SIL Open Font License 1.1, as the iOS app's `Maple.swift` downloads it):
+the font stack is `"<chosen>", "Maple Mono NF CN", monospace`, and the
+system's CJK font never draws. Maple is also a choice of its own in
+Settings, its Latin with its CJK. What neither font has (Hangul, which
+Maple CN lacks; emoji) the system draws.
+
+**Build.** `web/fonts/maple.mjs` (which `build.mjs` runs; `node
+web/fonts/maple.mjs` alone lists the chunks) takes the four faces
+(Regular, Bold, Italic, Bold Italic) of the pinned v7.9 release, by HTTP
+ranges of `MapleMono-NF-CN.zip` (the zip's central directory, then each
+face, inflated and checked against its CRC), checks each face's SHA-256
+against the one pinned in the script, and keeps them, with the release's
+`LICENSE.txt`, in `<cache>/maple-v7.9/`. It cuts them with harfbuzz's
+subsetter (harfbuzzjs) and compresses them to woff2 (wawoff2), both
+pinned in `package.json`, a worker a face (about a minute), into
+`<cache>/maple-v7.9/chunks-<key>/`, `key` a hash of the script, the order
+file, the faces and the tools. A build after the first takes the chunks
+from there, with no network. A build that can neither find the faces nor
+fetch them goes on without Maple, with a warning; that page draws no CJK
+text at all, and Settings says so. Nothing of it is committed but the
+script and `web/fonts/cjk-order.txt`.
+
+**Chunks.** By unicode-range, as Google Fonts cuts its CJK families. The
+same 95 ranges for every face: chunk 0 is U+0000 to U+1FFF (Latin, Greek,
+Cyrillic), the next two the symbols up to U+2E7F, then CJK punctuation,
+kana, Bopomofo and fullwidth forms; then the most frequent CJK
+characters, 200 a chunk, in the order of `cjk-order.txt` (the frequency
+slices of Google Fonts' simplified and traditional Chinese slicing,
+Apache 2.0); then the rest of CJK by code point, 400 a chunk, then the
+Nerd Font icons and what remains. The chunks are not hinted. In all, 32.1
+MB: Regular 7.68 MB, Bold 7.85 MB, Italic 8.22 MB, Bold Italic 8.36 MB;
+a chunk is 5 to 170 KB. A screen of everyday Chinese takes some 6 to 10
+chunks of its face, 300 to 600 KB.
+
+**Loading.** The page reads the chunks' index (`maple/index`, 81 KB) as
+it starts. The browser does not load a font's chunk for canvas text, and
+draws a system font meanwhile, so `web/src/maple.ts` adds each chunk to
+`document.fonts` as a `FontFace` with its range only once it has loaded
+(through the loader), and the terminal draws a character only when the
+chunk of its face (bold text takes the Bold face's) is in: until then its
+cells show nothing, and the chunk is asked for. The chunks a frame asks
+for load together; as they arrive, the panes draw again, once a frame.
+Wide characters keep two cells: Maple's CJK is twice its Latin advance,
+centred in the cells and smaller when the chosen font's cells are
+narrower. When Maple is the chosen font its Latin chunk of every face
+loads before the cells are measured. The Settings preview shows once the
+chunks of its text are in.
+
+## Loading on demand
+
+The page loads at start only what its first frame needs, and the rest
+when it is first used. `web/src/loader.ts` loads both: the files of the
+asset manifest by name, and the page's code chunks.
+
+### What loads when
+
+Sizes are a build's (raw, then brotli, as Cloudflare serves them).
+
+| When | What | Size |
+| --- | --- | --- |
+| Boot | `index.html` (its styles inline) | 49 KB, 9 KB |
+| Boot | The script, `app-<hash>.js`, and the 5 chunks it imports (code it shares with the chunks below) | 198 KB, 59 KB |
+| Boot | The asset manifest | 53 KB, 7 KB |
+| Boot | The terminal's wasm, `ghostty-vt` | 867 KB, 228 KB |
+| Boot | Maple's index, `maple/index` | 81 KB, 17 KB |
+| Boot | JetBrains Mono, four faces (`dist/fonts`, as the CSS asks for them) | 1.1 MB |
+| First visit, no host | The welcome screen, `js/welcome` | 2.5 KB |
+| First open | Settings, `js/settings` | 18 KB, 6 KB |
+| First open of Settings › Theme | The theme list, `ghostty-themes` (lazy) | 189 KB, 56 KB |
+| First open | The Tailscale guide, `js/guide` | 10 KB |
+| Tailscale turned on | `js/tailengine`, then Go's `wasm_exec.js` (`tailnet/exec`, lazy) and the engine (`tailnet/engine`, lazy) | 3 KB, 17 KB, 6.06 MB |
+| First link opened in a pane | `js/files` | 5.6 KB |
+| First image shown | The image viewer, `js/viewer` | 6 KB |
+| Never, unless used | Maple's chunks (lazy), each as the terminal draws its characters | 5 to 170 KB each, 32 MB in all |
+
+Before this, a boot took the script whole (236 KB), the theme list and
+the manifest: 1,425 KB of script, wasm and JSON (373 KB brotli), now
+1,199 KB (311 KB brotli), in 9 requests rather than 5.
+
+### The manifest
+
+`build.mjs` lists the files in one asset manifest,
+`assets/manifest-<hash>.json`, which the script names
+(`__ASSET_MANIFEST__`):
+
+```json
+{ "version": 1, "assets": { "maple/r/12": { "url": "assets/lazy/maple-r12-<hash>.woff2", "bytes": 64496, "hash": "<hash>", "kind": "font", "lazy": true } } }
+```
+
+`hash` is the first 16 hex digits of the file's SHA-256, which its name
+carries (a code chunk's name carries esbuild's hash instead). `kind` is
+`wasm`, `json`, `font`, `script` or `data`. A `lazy` file is under
+`assets/lazy/`. It lists `ghostty-vt`, `maple/index`, the lazy
+`ghostty-themes`, `tailnet/engine`, `tailnet/exec` and
+`maple/<face>/<n>` (`r`, `b`, `i`, `bi`), and the code chunks as
+`js/<module>` (`js/settings`) and `js/chunk-<hash>` (shared code). The
+script also carries the entries it needs at boot (`__BOOT_ASSETS__`:
+`ghostty-vt`, `maple/index`), so the wasm starts to load before the
+manifest is read.
+
+### Code chunks
+
+esbuild bundles the client as ES modules (`<script type="module">`),
+split (`splitting`): each dynamic `import()` is a chunk, in
+`dist/assets` as `<module>-<hash>.js`, and the code that chunks share
+with the script, or with each other, goes in `chunk-<hash>.js`, which the
+script imports at once. `index.html` names only the script; nothing is
+preloaded. The chunks are the Settings dialog, the Tailscale guide, the
+welcome screen, the code that runs only with the Tailscale engine
+(`tailengine.ts`), opening a file (`files.ts`) and the image viewer.
+What every frame uses (the terminal, panes, links and the pointer, the
+host list, the catalogs) stays in the script. `script-src 'self'`
+covers the chunks.
+
+`chunks.ts`'s `Chunk` loads one the first time it is used
+(`loader.module`); later uses run at once, from memory. A load that
+takes more than 150 ms shows a small panel in the corner, "Loading
+Settings…" with a busy bar (`progress.ts`); a failure shows "Couldn't
+load Settings", the reason, **Retry** (which runs what waited, as
+opening the dialog) and ×. Opening a file reports a failure of its chunk
+on the status line, as its other errors.
+
+### The loader
+
+The page's loader is `loader` (devtools and tests: `gorexLoader`):
+
+- `configure(url, boot)`: the manifest's name and the boot entries
+  (`main.ts`); `init()` reads the manifest once.
+- `asset(name)`, `names(prefix)`: the manifest's entries.
+- `load(name, { signal, progress })`: the file's bytes. One request for
+  all its callers at once; a network error or a 5xx answer is tried
+  again after 0.5, 1 and 2 s; each caller's `signal` ends its own wait,
+  and the request stops when no caller waits; `progress(received, total)`
+  hears the bytes (`progress.ts`, as the progress bars do). The bytes
+  stay in memory until `release(name)`.
+- `json(name)`: the same, parsed.
+- `response(name, { progress })`: a boot file's response, for
+  `WebAssembly.instantiateStreaming`, tried again as `load` is; a
+  clone's bytes give the progress.
+- `module(name, importer)`: a code chunk, by its `import()`, once; a
+  failed one is tried again as a file is, and again at the next call.
+  `script(name)`: a classic script of the manifest (`wasm_exec.js`),
+  once.
+- `stats()`: each load (name, bytes, `memory`, `cache` or `network`,
+  milliseconds, tries; a file the page fetched counts as `cache` when
+  its resource timing shows no bytes transferred), the bytes from the
+  network and from the cache, the bytes in memory, the loads under way
+  and the modules in.
+
+### Who caches what
+
+- **The Service Worker** (see App) keeps the page and everything in
+  `dist` but `assets/lazy/`: the script and all its chunks (about 46 KB
+  of them load on demand; all are kept so that every part of the page
+  opens offline), the wasm, the manifest, Maple's index, the fonts and
+  icons. Its cache is per version, `gorex-<version>`.
+- **The loader** keeps the lazy files in Cache Storage,
+  `gorex-assets-v1`, across versions, and reads them there first: the
+  themes, the Tailscale engine and Maple's chunks. A file read there or
+  fetched is checked against its hash (with `crypto.subtle`, in a secure
+  context). `init` deletes the entries the manifest no longer lists and
+  the caches of older numbers. The worker leaves `assets/lazy/` and this
+  cache alone: it would fetch all of them (38 MB) at install and drop
+  them with each version.
+- **The browser's HTTP cache** keeps every `/assets` file a year
+  (`immutable`), and is what keeps the lazy files without Cache Storage
+  (plain `http` on a host other than loopback, as a dev server on a LAN
+  address).
+
+## Languages
+
+The page is in English and Simplified Chinese. Settings › Appearance ›
+Language chooses System, English or 简体中文 (each language by its own
+name), kept as `language` in `gorex.settings`. System takes the first of
+the browser's languages (`navigator.languages`) that the page has: `zh`,
+`zh-CN`, `zh-SG` and `zh-Hans` are Simplified Chinese; `zh-TW`, `zh-HK`
+and `zh-Hant` are not, and get English, as the desktop gives them (MyGo's
+`zh-Hant` falls back to the source language). A change applies at once,
+with no reload: the sidebar, the status line, the open dialogs, the
+guide and the viewer say their words again, and `<html lang>` follows.
+System follows a change of the browser's languages too
+(`languagechange`).
+
+The catalogs are `web/locales/en.json` (the source) and
+`web/locales/zh-Hans.json`, ARB-style JSON as the desktop's `locales/`:
+`"@@locale"`, the messages by camelCase key in ICU MessageFormat
+(`{name}`, `{n, plural, one {…} other {…}}`, `{x, select, … other {…}}`,
+`#` in a plural, apostrophe quoting; `web/src/icu.ts`), and in `en.json`
+an `"@key"` for each with a description of where it shows and its
+placeholders (`String`, `int` or `num`). Both catalogs are in the bundle:
+without the metadata they are about 7 KB gzipped each, less than the
+request a lazy load would cost, and they need no Service Worker change.
+Numbers, sizes, lists and dates go through `Intl` in the page's language
+(`formatNumber`, `formatSize`, `formatList`, `formatDate` in
+`web/src/i18n.ts`). Commands to copy (`gorex rexapi …`), product names
+(GoRex, Tailscale, Ghostty), program and theme names, host and file
+names, the keys of a shortcut, and what a host or the browser says (an
+error's own words) stay as they are.
+
+`web/i18n.mjs` checks the catalogs and writes `web/src/locales.gen.ts`
+(not kept in git): each language's messages and the type of every key's
+arguments, so that `t("key", { … })` with a key `en.json` lacks, or
+without an argument its message uses, fails `tsc`. The build runs it
+before `tsc`, and `npm run dev` again when a catalog changes. It fails on
+a message that does not parse, an `en.json` message whose placeholders
+its `"@key"` does not declare exactly, a key of another language that
+`en.json` lacks, and a translation whose placeholders differ from
+`en.json`'s. A key missing from a translation is a warning, and the page
+says it in English; with `$CI` set, or `--ci`, it fails the build.
+
+To add a string:
+
+1. Add the key and its English to `web/locales/en.json`, with its
+   `"@key"`: where it shows, and each placeholder with its type and an
+   example.
+2. Add its translation to `web/locales/zh-Hans.json`, with the same
+   placeholders. Use the desktop's wording (`locales/zh-Hans.json`) for
+   the same thing.
+3. Say it with `t("key", { … })` from `web/src/i18n.ts`. A string kept
+   to show later (a status line, an error) is a function, `() => t(…)`
+   (`Msg`), so that it is said again in a new language; an element whose
+   words do not change otherwise takes them in `localize(el, …)`.
+
+To add a language: add `web/locales/<tag>.json` (a BCP 47 tag, as
+`zh-Hant` or `de`) with `"@@locale"` and every key of `en.json`, its
+`languageName` in that language, and teach `supported()` in
+`web/src/i18n.ts` which browser languages are it. Settings lists it at
+once.
 
 ## How it works
 
@@ -599,9 +863,10 @@ terminal's.
 The terminal draws as the desktop's (MyGo's `plugins/terminal/paint.go`)
 with GoRex's defaults and no Ghostty configuration:
 
-- Font: JetBrains Mono, served with the client, then `SF Mono`, `Menlo`,
-  `monospace` (`defaultFontFamily`), at 11.6 CSS pixels (`defaultFontSize`).
-  Settings can choose another family and size (see Settings).
+- Font: JetBrains Mono, served with the client (`defaultFontFamily`), then
+  Maple Mono NF CN for CJK (see Fonts), then `monospace`, at 11.6 CSS
+  pixels (`defaultFontSize`). Settings can choose another family and size
+  (see Settings).
   A cell is the widest ASCII advance wide and the font's ascent and descent
   high, each rounded up to whole device pixels, with 6 by 4 CSS pixels of
   padding. The canvas follows `devicePixelRatio` and lays out again when it
@@ -792,9 +1057,14 @@ the list.
 - A chosen theme acts as a stream `theme` message: it goes over GoRex's
   colours, and a later `theme` message from the host replaces it. Choosing
   Host Colors goes back to the host's last message.
-- The page loads the list while it loads the wasm, and the first frame has
-  the chosen colours. If the list does not load, the client keeps GoRex's
-  colours, and the Theme section says so.
+- The list (190 KB) loads on demand, when the Theme section first opens
+  (Loading on demand), with a progress bar after 150 ms and Retry when
+  it fails. The first frame has the chosen colours without it: the
+  standard theme's are in the script (`__STANDARD_THEME__`, from the
+  same file), and a chosen theme's are kept with its name
+  (`themeColors` in `gorex.settings`). Only a choice kept without its
+  colours, by an older version, loads the list as the page starts; if it
+  does not load, the client keeps GoRex's colours.
 - The minimum contrast (3 by default) applies to every theme.
 - The pane and its padding take the terminal's background. When that is
   light (by the same luma), the page's own colours (sidebar, status, frame
@@ -829,8 +1099,8 @@ page and every open pane.
 | Section | Settings |
 |---|---|
 | Host (the card) | The chosen host, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
-| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 CSS pixels, 11.6 (the desktop's) until set, with Reset. |
-| Terminal | Font: JetBrains Mono, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours. Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
+| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 CSS pixels, 11.6 (the desktop's) until set, with Reset. Language: System, English or 简体中文 (see Languages). |
+| Terminal | Font: JetBrains Mono or Maple Mono NF CN, which the page brings, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours; CJK is Maple's in every font (see Fonts). Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
 | Theme | The theme picker (see Themes). |
 | Keyboard | The shortcuts (see Shortcuts), with this system's keys. |
 | Hosts | The hosts: choose one, add one, edit its address, name and icon, or remove it, with the same form as the host list's. |
@@ -845,6 +1115,5 @@ own. Until a cursor is chosen, the pane keeps the host's.
 Not in the web client: the desktop's Glass and Terminal opacity (a page
 cannot show the desktop through it), the Dock badge, Tab placement and
 Sidebar view (the page has one sidebar and one window), Animation style
-(the page does not animate the panes), Language (the page is in English),
-updates and the settings file (the page is what its host serves, and
+(the page does not animate the panes), updates and the settings file (the page is what its host serves, and
 keeps `localStorage`), and recording shortcuts.

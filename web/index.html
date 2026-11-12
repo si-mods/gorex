@@ -43,8 +43,9 @@
   html, body { height: 100%; margin: 0; }
   body {
     display: grid;
-    grid-template-columns: 240px 1fr;
-    grid-template-rows: 1fr auto;
+    /* minmax(0, …): no content widens or lengthens the stage past the window, which would move its centre. */
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
     background: var(--page);
     color: var(--text);
     font: 13px system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -267,6 +268,10 @@
     background: none; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer;
   }
   .host-button:hover, .host-button[aria-expanded="true"] { background: var(--hover); }
+  .host-button[hidden], .host-brand[hidden] { display: none; }
+  /* With no host, the app's name in the button's place: not a control. */
+  .host-brand { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-weight: 600; }
+  .host-brand img { flex: none; border-radius: 5px; }
   .host-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .host-chevron { display: flex; color: var(--muted); }
   .host-chevron .pane-icon { width: 14px; height: 14px; }
@@ -303,7 +308,10 @@
   .command code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 var(--mono); user-select: all; }
   .command-copy { flex: none; padding: 3px 10px; border: 0; border-radius: 999px; background: var(--pill); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
   /* What is wrong with the host, or how to add one, over the empty stage. */
-  #notice { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 16px; }
+  /* Its child takes margin: auto, centred in the stage both ways, and scrolls rather than spilling past the
+     stage's top when it is taller (place-items: center would cut its top off, out of reach). */
+  #notice { position: absolute; inset: 0; z-index: 2; display: flex; overflow: auto; padding: 24px; }
+  #notice > * { margin: auto; flex: none; }
   #notice[hidden] { display: none; }
   .notice-card {
     display: flex; flex-direction: column; gap: 12px; width: min(520px, 100%); padding: 20px; border-radius: 16px;
@@ -312,6 +320,63 @@
   .notice-card h1 { margin: 0; font-size: 17px; }
   .notice-card p { margin: 0; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
   .notice-card .host-add { align-self: flex-start; }
+  /* Learn more: the technical why, under a problem's card. */
+  .notice-more summary, .welcome-needs summary {
+    display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px; margin-left: -4px; border-radius: 6px;
+    color: var(--muted); font-size: 12px; cursor: pointer; list-style: none;
+  }
+  .notice-more summary::-webkit-details-marker, .welcome-needs summary::-webkit-details-marker { display: none; }
+  .notice-more summary:hover, .welcome-needs summary:hover { color: var(--text); }
+  .notice-more summary:focus-visible, .welcome-needs summary:focus-visible, .welcome-choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .notice-more summary .pane-icon, .welcome-needs summary .pane-icon { width: 13px; height: 13px; }
+  .notice-more p { margin: 6px 0 0; font-size: 12px; }
+  /* Settings › Tailscale: closed rows of a card that open to a note, and a command. */
+  .settings-more summary {
+    display: flex; align-items: center; gap: 8px; min-height: 22px; color: var(--text); font-weight: 500; cursor: pointer; list-style: none;
+  }
+  .settings-more summary::-webkit-details-marker { display: none; }
+  .settings-more summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .settings-more summary .pane-icon { width: 14px; height: 14px; color: var(--muted); }
+  .settings-more[open] summary { margin-bottom: 6px; }
+  .settings-more p { margin: 0 0 8px; }
+  /* The first screen (welcome.ts): the app's icon, what it is, and a card for each way in; no panel of its
+     own, it is the page. The recommended way is the primary card: tinted in the accent, as the guide's hero. */
+  .welcome { display: flex; flex-direction: column; width: min(480px, 100%); }
+  .welcome-home { display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .welcome-icon { width: 72px; height: 72px; border-radius: 16px; box-shadow: 0 6px 22px -4px var(--shadow-focus); }
+  .welcome-title { margin: 18px 0 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+  .welcome-text { margin: 8px 0 0; color: var(--muted); font-size: 14px; line-height: 1.45; text-wrap: balance; }
+  .welcome-choices { display: flex; flex-direction: column; gap: 10px; align-self: stretch; margin-top: 24px; }
+  .welcome-choice {
+    display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 14px 14px 16px; border-radius: 14px;
+    background: var(--card); border: 1px solid var(--card-edge); color: var(--text); font: inherit; text-align: left; cursor: pointer;
+  }
+  .welcome-choice:hover { background: var(--hover); }
+  .welcome-choice.primary { background: color-mix(in srgb, var(--accent) 12%, var(--card)); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+  .welcome-choice.primary:hover { background: color-mix(in srgb, var(--accent) 18%, var(--card)); }
+  .welcome-choice-icon {
+    display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 11px;
+    background: var(--hover); color: var(--text);
+  }
+  .welcome-choice.primary .welcome-choice-icon, .welcome-form .welcome-choice-icon { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+  .welcome-choice-icon .pane-icon { width: 20px; height: 20px; }
+  .welcome-choice-text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+  .welcome-choice-title { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 4px; font-size: 14px; font-weight: 600; }
+  .welcome-choice-line { margin: 0; color: var(--muted); line-height: 1.4; }
+  .welcome-badge {
+    padding: 1px 7px; border-radius: 999px; background: var(--accent); color: #fff;
+    font-size: 11px; font-weight: 600; line-height: 1.5;
+  }
+  .welcome-choice-go { display: flex; flex: none; color: var(--muted); }
+  .welcome-choice:hover .welcome-choice-go { color: var(--text); }
+  .welcome-needs { align-self: stretch; margin-top: 18px; color: var(--muted); font-size: 12px; }
+  .welcome-needs ul { margin: 8px auto 0; padding: 12px 14px 12px 30px; border-radius: 12px; background: var(--card); border: 1px solid var(--card-edge); text-align: left; line-height: 1.45; }
+  .welcome-needs li + li { margin-top: 4px; }
+  /* Connect by address: the host form, under the card's head, in the welcome's place. */
+  .welcome-form { display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 16px; background: var(--card); border: 1px solid var(--card-edge); }
+  .welcome-form-head { display: flex; align-items: center; gap: 14px; }
+  .welcome-form-title { margin: 0; font-size: 16px; font-weight: 700; }
+  .welcome-form .host-form > .host-title { display: none; }
   #status { padding: 4px 8px 6px; color: var(--muted); font-size: 12px; }
   /* A new version is ready (app.ts): a small glass panel in the corner, as the host list's, which takes no keys. */
   .update {
@@ -321,6 +386,17 @@
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   }
   .update[hidden] { display: none; }
+  /* A part of the page's code loading on first use (chunks.ts): after 150 ms, a small glass panel in the corner
+     as the update's, above it, with a busy bar; its failure with Retry and ×. */
+  .chunk-loads { position: fixed; right: 16px; bottom: 32px; z-index: 21; display: flex; flex-direction: column; gap: 8px; width: min(320px, calc(100vw - 32px)); }
+  .chunk-loads:empty { display: none; }
+  .chunk-load {
+    display: flex; align-items: flex-start; gap: 8px; padding: 12px 8px 12px 14px; border-radius: 14px;
+    background: var(--panel); border: 1px solid var(--panel-edge); color: var(--text);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  }
+  .chunk-load > .load { flex: 1; min-width: 0; }
+  .chunk-close[hidden] { display: none; }
   .update-text { flex: 1; min-width: 0; }
   .update .host-add { padding: 4px 12px; }
   /* The Settings dialog (settings.ts), as the desktop's settings window (settingsview.go): the sections at the
@@ -363,6 +439,9 @@
   }
   .settings-item:hover { background: var(--hover); }
   .settings-item[aria-selected="true"] { background: var(--pill); color: var(--accent); }
+  /* Tailscale's mark (hosts.ts tailscaleMark), and a tile of it as the media kit's squircle: #1f1e1e, white dots. */
+  .pane-icon.ts-mark { background: none; -webkit-mask: none; mask: none; }
+  .ts-mark svg { display: block; width: 100%; height: 100%; }
   .settings-tile { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; color: #fff; }
   .settings-tile .pane-icon { width: 14px; height: 14px; }
   .settings-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -379,6 +458,9 @@
     background: var(--card); border: 1px solid var(--card-edge); box-shadow: 0 1px 2px var(--shadow);
   }
   .settings-foot, .settings-note { padding: 0 14px; }
+  /* The theme list's load (settings.ts), in the Theme section's card. */
+  .settings-load { padding: 14px; }
+  .settings-load[hidden] { display: none; }
   /* A row, as groupRow: 44px at least, a hairline above but the first, inset 14px at the left. */
   .settings-row { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 44px; padding: 11px 14px; }
   .settings-row.compact { min-height: 40px; padding: 7px 14px; }
@@ -508,6 +590,8 @@
   .ts-hero.busy .ts-hero-icon .pane-icon, .ts-searching .pane-icon { animation: ts-spin 1s linear infinite; }
   @keyframes ts-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .ts-hero.busy .ts-hero-icon .pane-icon, .ts-searching .pane-icon, .load-bar.busy .load-fill { animation: none; } }
+  /* After every tile's own colours, so the squircle wins over them. */
+  .settings-hero-icon.ts-tile, .ts-hero .ts-hero-icon.ts-tile, .welcome-choice .welcome-choice-icon.ts-tile, .welcome-choice.primary .welcome-choice-icon.ts-tile { background: #1f1e1e; color: #fff; }
   .ts-hero-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 2px; }
   .ts-hero-text h2 { margin: 0; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
   .ts-hero-text p, .ts-point p, .ts-empty p, .ts-howto p, .ts-host-why p { margin: 0; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
@@ -589,12 +673,17 @@
     .ts-foot { padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); }
     .ts-foot .host-add { flex: 1; }
     .notice-actions .host-add { flex: 1 1 auto; }
+    /* The welcome and the cards take the screen's width less 16px each side: the overlay reaches past the
+       stage's 8px margins to the screen's edges, so that it clips a card's shadow only there. */
+    #notice { inset: 0 -8px; padding: 16px; }
+    .welcome-title { font-size: 20px; }
     .update { left: 8px; right: 8px; bottom: calc(28px + env(safe-area-inset-bottom)); max-width: none; }
+    .chunk-loads { left: 8px; right: 8px; bottom: calc(28px + env(safe-area-inset-bottom)); width: auto; }
   }
 </style>
 </head>
 <body>
-<aside id="sessions"><div id="hosts"></div><div id="list"></div><div id="foot"><button type="button" class="theme-button" id="open-settings" title="Settings">Settings</button></div></aside>
+<aside id="sessions"><div id="hosts"></div><div id="list"></div><div id="foot"><button type="button" class="theme-button" id="open-settings"></button></div></aside>
 <main id="stage"><div id="notice" hidden></div><div id="boot" hidden></div></main>
 <footer id="status"></footer>
 <script type="module" src="app.js"></script>

@@ -1,9 +1,17 @@
 // Ghostty themes: the list GoRex's iOS app ships (ios/GoRex/ghostty-themes.json,
 // copied into the build), and the picker of the Settings dialog's Theme
-// section. The choice is a setting (prefs.ts, theme).
+// section. The choice is a setting (prefs.ts, theme, with its colours).
+//
+// The list (190 KB) loads on demand (loader.ts, ghostty-themes), when the
+// Theme section opens. The page starts with the chosen theme's colours
+// without it: the standard theme's are in the script (build.mjs,
+// __STANDARD_THEME__), another one's kept with the choice; only a choice
+// kept without them (by an older version) loads the list as it starts.
 import { check, icon } from "./hosts";
 import type { RGB } from "./ghostty";
-import { prefs, setPrefs } from "./prefs";
+import { PlainKey, t as tr } from "./i18n";
+import { loader, LoadOptions } from "./loader";
+import { prefs, setPrefs, standardTheme } from "./prefs";
 import type { Theme } from "./terminal";
 
 /** A Ghostty theme as ios/scripts/ghostty-themes writes it: 16 palette colours, then background, foreground, cursor, cursor text, selection, selection text, as 0xRRGGBB. */
@@ -14,18 +22,34 @@ export interface ThemeEntry {
 
 const rgb = (v: number): RGB => [v >> 16, (v >> 8) & 0xff, v & 0xff];
 
-/** The themes' file in dist/assets, by its hash (build.mjs). */
-declare const __GHOSTTY_THEMES__: string;
+/** The standard theme's entry, which the build writes into the script; none in a build without it. */
+declare const __STANDARD_THEME__: ThemeEntry | undefined;
+const standard = typeof __STANDARD_THEME__ === "object" ? __STANDARD_THEME__ : undefined;
 
-/** The list, empty when it cannot be loaded: the client then keeps the desktop's colours. */
-export async function loadThemes(): Promise<ThemeEntry[]> {
+/** The list, through the loader; it rejects when the list cannot be loaded. */
+export async function loadThemes(opts?: LoadOptions): Promise<ThemeEntry[]> {
+  const list = await loader.json<ThemeEntry[]>("ghostty-themes", opts);
+  // A choice kept without its colours, or with older ones, takes the list's.
+  const t = list.find((x) => x.name === prefs.theme);
+  if (t && String(t.colors) !== String(prefs.themeColors)) setPrefs({ themeColors: t.colors });
+  return list;
+}
+
+/**
+ * The chosen theme as the page starts: none for the host's colours, the
+ * standard one, or the one kept with its colours, all without the list;
+ * else the list's (a choice an older version kept), none if it fails.
+ */
+export async function startTheme(): Promise<ThemeEntry | undefined> {
+  const name = prefs.theme;
+  if (!name) return undefined;
+  if (prefs.themeColors) return { name, colors: prefs.themeColors };
+  if (name === standardTheme && standard?.name === name) return standard;
   try {
-    const r = await fetch(__GHOSTTY_THEMES__);
-    if (!r.ok) throw new Error(String(r.status));
-    return await r.json();
+    return (await loadThemes()).find((t) => t.name === name);
   } catch (e) {
     console.warn("could not load the themes", e);
-    return [];
+    return undefined;
   }
 }
 
@@ -70,14 +94,15 @@ export function themePicker(themes: ThemeEntry[], onChoose: (t?: ThemeEntry) => 
   const seg = el("div", "theme-filter");
   const search = el("input", "theme-search");
   search.type = "search";
-  search.placeholder = "Search themes";
-  search.setAttribute("aria-label", "Search themes");
+  search.placeholder = tr("themeSearch");
+  search.setAttribute("aria-label", search.placeholder);
   const list = el("div", "theme-list");
   list.setAttribute("role", "listbox");
   panel.append(preview, seg, search, list);
 
+  const filterNames: Record<"all" | "dark" | "light", PlainKey> = { all: "themeAll", dark: "appearanceDark", light: "appearanceLight" };
   const segButtons = (["all", "dark", "light"] as const).map((f) => {
-    const b = el("button", "", f[0].toUpperCase() + f.slice(1));
+    const b = el("button", "", tr(filterNames[f]));
     b.type = "button";
     b.onclick = () => {
       filter = f;
@@ -106,10 +131,10 @@ export function themePicker(themes: ThemeEntry[], onChoose: (t?: ThemeEntry) => 
       sw.classList.add("host");
       sw.append(icon("square-terminal"));
     }
-    b.append(sw, el("span", "theme-name", t?.name ?? "Host Colors"), check(name === selected));
+    b.append(sw, el("span", "theme-name", t?.name ?? tr("themeHostColors")), check(name === selected));
     b.onclick = () => {
       selected = name;
-      setPrefs({ theme: name });
+      setPrefs({ theme: name, themeColors: t?.colors });
       onChoose(t);
       render();
       // The list was drawn again: the keyboard stays on the row.
@@ -156,7 +181,7 @@ export function themePicker(themes: ThemeEntry[], onChoose: (t?: ThemeEntry) => 
       if (q && !t.name.toLowerCase().includes(q)) continue;
       rows.push(row(t));
     }
-    if (rows.length === 0) rows.push(el("div", "theme-empty", "No themes match."));
+    if (rows.length === 0) rows.push(el("div", "theme-empty", tr("themeNoMatch")));
     list.replaceChildren(...rows);
   }
 

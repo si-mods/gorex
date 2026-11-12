@@ -5,6 +5,7 @@
 // sign-in in a tab of its own, and the hosts found, with what to do when
 // none are. Escape or Close hides it; a sign-in on its way goes on.
 import { allowCommand, commandBox, Host, icon } from "./hosts";
+import { formatList, onLanguageChange, PlainKey, t } from "./i18n";
 import { ProgressView } from "./progress";
 import { Tailnet, TailnetHost } from "./tailnet";
 
@@ -42,11 +43,11 @@ export interface GuideApp {
 }
 
 type Step = "explain" | "load" | "signin" | "hosts";
-const stepNames: [Step, string][] = [
-  ["explain", "About"],
-  ["load", "Download"],
-  ["signin", "Sign in"],
-  ["hosts", "Hosts"],
+const stepNames: [Step, PlainKey][] = [
+  ["explain", "guideStepAbout"],
+  ["load", "tsDownload"],
+  ["signin", "guideStepSignIn"],
+  ["hosts", "guideStepHosts"],
 ];
 
 export class Guide {
@@ -65,19 +66,28 @@ export class Guide {
   private shownKey = "";
 
   constructor(private tailnet: Tailnet, private app: GuideApp) {
-    this.dialog.setAttribute("aria-label", "Add hosts from Tailscale");
     const close = el("button", "pane-action settings-close");
     close.type = "button";
-    close.title = "Close";
-    close.setAttribute("aria-label", "Close");
     close.append(icon("x"));
     close.onclick = () => this.close();
     const head = el("header", "ts-head");
-    const title = el("h1", "settings-title", "Add Hosts from Tailscale");
+    const title = el("h1", "settings-title");
     title.id = "ts-guide-title";
     this.dialog.setAttribute("aria-labelledby", title.id);
     head.append(title, close);
-    this.steps.setAttribute("aria-label", "Steps");
+    const label = () => {
+      title.textContent = t("hostTsAdd");
+      close.title = t("commonClose");
+      close.setAttribute("aria-label", close.title);
+      this.steps.setAttribute("aria-label", t("guideSteps"));
+    };
+    label();
+    // A change of language draws the step again in it.
+    onLanguageChange(() => {
+      label();
+      this.shownKey = "";
+      this.update();
+    });
     this.body.setAttribute("aria-live", "polite");
     this.dialog.append(head, this.steps, this.body, this.foot);
     this.dialog.addEventListener("click", (e) => {
@@ -118,20 +128,20 @@ export class Guide {
   /** Draws the step again when what it shows changed; a focused control keeps its focus. */
   update() {
     if (!this.dialog.open) return;
-    const t = this.tailnet;
+    const ts = this.tailnet;
     // The sign-in tab goes to the login URL as soon as it comes.
-    if (t.loginURL && this.popup && !this.popup.closed) {
+    if (ts.loginURL && this.popup && !this.popup.closed) {
       try {
-        if (this.popup.location.href === "about:blank") this.popup.location.href = t.loginURL;
+        if (this.popup.location.href === "about:blank") this.popup.location.href = ts.loginURL;
       } catch {
         // Already at Tailscale's page: another origin.
       }
     }
-    if (t.status() === "running" && this.popup) this.popup = null;
+    if (ts.status() === "running" && this.popup) this.popup = null;
     const step = this.step();
     const key = JSON.stringify([
-      step, t.status(), t.load, t.loginURL, t.error, t.signingIn, this.blocked, t.searching, t.account, t.map?.tailnet,
-      t.hosts.map((h) => [h.id, h.state, h.problem?.title]), t.unanswered, t.name,
+      step, ts.status(), ts.load, ts.loginURL, ts.error, ts.signingIn, this.blocked, ts.searching, ts.account, ts.map?.tailnet,
+      ts.hosts.map((h) => [h.id, h.state, h.problem?.title]), ts.unanswered, ts.name,
     ]);
     if (key === this.shownKey) return;
     this.shownKey = key;
@@ -171,7 +181,7 @@ export class Guide {
         const n = el("span", "ts-step-n");
         if (i < at) n.append(icon("check"));
         else n.textContent = String(i + 1);
-        li.append(n, el("span", "ts-step-label", label));
+        li.append(n, el("span", "ts-step-label", t(label)));
         if (i === at) li.setAttribute("aria-current", "step");
         return li;
       }),
@@ -180,7 +190,7 @@ export class Guide {
 
   private hero(glyph: string, title: string, text?: string, kind = "") {
     const h = el("div", `ts-hero ${kind}`);
-    const g = el("span", "ts-hero-icon");
+    const g = el("span", glyph === "tailscale" ? "ts-hero-icon ts-tile" : "ts-hero-icon");
     g.append(icon(glyph));
     const words = el("div", "ts-hero-text");
     words.append(el("h2", "", title));
@@ -198,17 +208,17 @@ export class Guide {
   }
 
   private explain() {
-    const t = this.tailnet;
-    this.hero("network", "Reach your GoRex hosts through Tailscale", "No Tailscale app and no VPN on this device: this page signs in to Tailscale itself.");
+    const ts = this.tailnet;
+    this.hero("tailscale", t("guideExplainTitle"), t("guideExplainText"));
     const list = el("div", "ts-points");
-    this.point("shield-check", `This tab joins your tailnet as a device of its own, named ${t.name}. It reaches your GoRex hosts through Tailscale's encrypted relays.`, list);
-    this.point("log-in", "You sign in on Tailscale's own page, in a new tab, with your tailnet's account. This page never sees your password.", list);
-    this.point("cloud-download", "The page first downloads Tailscale's engine, about 6 MB, from where it is hosted.", list);
-    this.point("lock", "For this tab only: reloading or closing it signs this browser out, and Tailscale removes the device soon after.", list);
+    this.point("shield-check", t("guideExplainDevice", { name: ts.name }), list);
+    this.point("log-in", t("guideExplainSignIn"), list);
+    this.point("cloud-download", t("guideExplainDownload"), list);
+    this.point("lock", t("guideExplainTab"), list);
     this.body.append(list);
-    const cancel = button("Not Now");
+    const cancel = button(t("guideNotNow"));
     cancel.onclick = () => this.close();
-    const go = button("Continue", "host-add primary");
+    const go = button(t("guideContinue"), "host-add primary");
     go.onclick = () => {
       this.explained = true;
       this.tailnet.turnOn();
@@ -220,17 +230,17 @@ export class Guide {
   private load() {
     const l = this.tailnet.load;
     if (l.state === "failed") {
-      this.hero("circle-alert", l.noEngine ? "Tailscale isn't available here" : "Tailscale's engine didn't load", l.message, "bad");
+      this.hero("circle-alert", l.noEngine ? t("guideNoEngineTitle") : t("guideLoadFailedTitle"), l.message, "bad");
       if (l.noEngine) {
-        this.point("info", "Build the page with Go installed (npm run build in web/), which adds the engine, or use a copy of the page that has it.");
+        this.point("info", t("guideNoEngineHint"));
       } else {
-        this.point("info", "Check this device's connection and try again. A content blocker may also stop the download.");
+        this.point("info", t("guideLoadFailedHint"));
       }
-      const cancel = button("Close");
+      const cancel = button(t("commonClose"));
       cancel.onclick = () => this.close();
       this.foot.append(cancel);
       if (!l.noEngine) {
-        const retry = button("Try Again", "host-add primary", "rotate-ccw");
+        const retry = button(t("commonTryAgain"), "host-add primary", "rotate-ccw");
         retry.dataset.key = "retry";
         retry.onclick = () => this.tailnet.turnOn();
         this.foot.append(retry);
@@ -238,12 +248,16 @@ export class Guide {
       return;
     }
     const starting = l.state === "loading" && l.phase === "start";
-    this.hero("cloud-download", starting ? "Starting Tailscale…" : "Downloading Tailscale…", "Once per version: your browser keeps the engine for the next visit.");
+    this.hero("cloud-download", starting ? t("guideStarting") : t("guideDownloading"), t("guideOncePerVersion"));
     // The page's one progress bar (progress.ts), kept across redraws so a screen reader follows it.
-    this.progress ??= new ProgressView("Tailscale", { download: "Downloading", start: "Unpacking and starting…", failed: "Didn't load" });
+    this.progress ??= new ProgressView(() => t("progressTailscale"), {
+      download: () => t("guideProgressDownload"),
+      start: () => t("guideProgressStart"),
+      failed: () => t("tsStateLoadFailed"),
+    });
     this.progress.update(l.state === "loading" && l.phase === "download" ? { phase: "download", received: l.received, total: l.total || undefined } : { phase: "start" });
     this.body.append(this.progress.el);
-    const cancel = button("Cancel");
+    const cancel = button(t("commonCancel"));
     cancel.onclick = () => {
       this.tailnet.turnOff();
       this.close();
@@ -265,8 +279,9 @@ export class Guide {
         // Tailscale's page gets no handle on this one.
         w.opener = null;
         w.document.title = "Tailscale";
+        w.document.documentElement.lang = document.documentElement.lang;
         w.document.body.style.cssText = "font: 15px system-ui, sans-serif; color: #666; display: grid; place-items: center; height: 100vh; margin: 0";
-        w.document.body.textContent = "Opening Tailscale's sign-in page…";
+        w.document.body.textContent = t("guideOpening");
       } catch {}
     }
     this.popup = w;
@@ -284,77 +299,75 @@ export class Guide {
   }
 
   private signin() {
-    const t = this.tailnet;
-    const s = t.status();
-    const signIn = (label = "Sign in with Tailscale") => {
+    const ts = this.tailnet;
+    const s = ts.status();
+    const signIn = (label = t("noticeSignInTailscale")) => {
       const b = button(label, "host-add primary", "log-in");
       b.dataset.key = "signin";
       b.onclick = () => this.startSignIn();
       return b;
     };
-    const close = button("Close");
+    const close = button(t("commonClose"));
     close.onclick = () => this.close();
     if (s === "starting") {
-      this.hero("loader-circle", "Starting Tailscale…", undefined, "busy");
+      this.hero("loader-circle", t("guideStarting"), undefined, "busy");
       this.foot.append(close);
       return;
     }
     if (s === "needs-approval") {
-      this.hero("loader-circle", "Waiting for approval", `Your tailnet approves new devices by hand. An admin must approve ${t.name} in the admin console's Machines page; this page goes on by itself once it is.`, "busy");
-      this.body.append(linkButton("Open the Admin Console", "https://login.tailscale.com/admin/machines"));
+      this.hero("loader-circle", t("tsStateApproval"), t("guideApprovalText", { name: ts.name }), "busy");
+      this.body.append(linkButton(t("guideOpenAdmin"), "https://login.tailscale.com/admin/machines"));
       this.foot.append(close);
       return;
     }
     if (s === "signing-in") {
       const blocked = this.blocked || (this.popup?.closed ?? false);
-      if (!t.loginURL) {
-        this.hero("loader-circle", "Opening Tailscale's sign-in page…", undefined, "busy");
+      if (!ts.loginURL) {
+        this.hero("loader-circle", t("guideOpening"), undefined, "busy");
       } else if (blocked) {
-        this.hero("circle-alert", "Open the sign-in page", "Your browser didn't open a new tab, or it was closed. Open the page with the button below, then come back to this tab.", "warn");
+        this.hero("circle-alert", t("guideOpenSignInTitle"), t("guideBlockedText"), "warn");
       } else {
-        this.hero("loader-circle", "Waiting for you to sign in…", "Finish signing in on the Tailscale tab, then come back here. This page notices by itself.", "busy");
+        this.hero("loader-circle", t("guideWaitingTitle"), t("guideWaitingText"), "busy");
       }
-      if (t.loginURL) {
+      if (ts.loginURL) {
         const row = el("div", "ts-link-row");
-        const open = linkButton(blocked ? "Open the Sign-in Page" : "Open It Again", t.loginURL, blocked ? "host-add primary" : "host-add");
+        const open = linkButton(blocked ? t("guideOpenSignIn") : t("guideOpenAgain"), ts.loginURL, blocked ? "host-add primary" : "host-add");
         open.dataset.key = "open";
         row.append(open);
         this.body.append(row);
-        const url = el("div", "ts-url-note", "Or copy the link into a browser where you are signed in:");
-        this.body.append(url, commandBox(t.loginURL));
+        const url = el("div", "ts-url-note", t("guideCopyLink"));
+        this.body.append(url, commandBox(ts.loginURL));
       }
-      const cancel = button("Cancel");
+      const cancel = button(t("commonCancel"));
       cancel.dataset.key = "cancel";
       cancel.onclick = () => this.cancelSignIn();
       this.foot.append(cancel);
       return;
     }
     if (s === "error") {
-      this.hero("wifi-off", "Can't reach Tailscale", t.error, "bad");
-      this.foot.append(close, signIn("Try Again"));
+      this.hero("wifi-off", t("guideCantReach"), ts.error, "bad");
+      this.foot.append(close, signIn(t("commonTryAgain")));
       return;
     }
     if (s === "expired") {
-      this.hero("log-in", "Your sign-in expired", `Sign in again to reach your hosts. ${t.name} keeps its name.`);
-      this.foot.append(close, signIn("Sign in Again"));
+      this.hero("log-in", t("guideExpiredTitle"), t("guideExpiredText", { name: ts.name }));
+      this.foot.append(close, signIn(t("guideSignInAgain")));
       return;
     }
-    this.hero("log-in", "Sign in to your tailnet", "A new tab opens at login.tailscale.com. Sign in with the account your GoRex hosts use, then come back to this tab.");
-    this.point("info", `This browser joins as ${t.name}, an ephemeral device: Tailscale removes it once this tab closes.`);
+    this.hero("log-in", t("guideSignInTitle"), t("guideSignInText"));
+    this.point("info", t("guideEphemeral", { name: ts.name }));
     this.foot.append(close, signIn());
   }
 
   private hosts() {
-    const t = this.tailnet;
-    if (t.status() === "locked") {
+    const ts = this.tailnet;
+    if (ts.status() === "locked") {
       this.hero(
-        "lock", "Tailnet Lock isn't supported",
-        `Your tailnet uses Tailnet Lock, and this version of the page can't join a locked tailnet: ${t.name} is not signed by a trusted node. Sign out here, and use the Tailscale app on this device instead.`,
-        "bad",
+        "lock", t("guideLockedTitle"), t("guideLockedText", { name: ts.name }), "bad",
       );
-      const out = button("Sign Out", "host-add", "log-out");
-      out.onclick = () => t.signOut();
-      const close = button("Close", "host-add primary");
+      const out = button(t("tsSignOut"), "host-add", "log-out");
+      out.onclick = () => ts.signOut();
+      const close = button(t("commonClose"), "host-add primary");
       close.onclick = () => this.close();
       this.foot.append(out, close);
       return;
@@ -363,32 +376,36 @@ export class Guide {
     const g = el("span", "ts-hero-icon ok");
     g.append(icon("circle-check"));
     const words = el("div", "ts-hero-text");
-    words.append(el("h2", "", `Signed in as ${t.account || "you"}`));
-    const tail = [t.map?.tailnet && `on ${t.map.tailnet}`, `this device is ${t.name}${t.map?.self.address ? ` (${t.map.self.address})` : ""}`].filter(Boolean).join(" · ");
+    words.append(el("h2", "", t("guideSignedInAs", { account: ts.account || t("tsYou") })));
+    const address = ts.map?.self.address;
+    const tail = [
+      ts.map?.tailnet && t("guideOnTailnet", { tailnet: ts.map.tailnet }),
+      address ? t("guideThisDeviceAt", { name: ts.name, address }) : t("guideThisDevice", { name: ts.name }),
+    ].filter(Boolean).join(t("listSeparator"));
     words.append(el("p", "", tail));
     who.append(g, words);
     this.body.append(who);
 
     const head = el("div", "ts-section");
-    head.append(el("h3", "", "GoRex hosts"));
-    if (t.searching) {
+    head.append(el("h3", "", t("tsHosts")));
+    if (ts.searching) {
       const s = el("span", "ts-searching");
-      s.append(icon("loader-circle"), el("span", "", "Looking for GoRex hosts…"));
+      s.append(icon("loader-circle"), el("span", "", t("hostSearching")));
       head.append(s);
     }
     this.body.append(head);
-    if (t.hosts.length) {
+    if (ts.hosts.length) {
       const list = el("div", "ts-hosts");
-      for (const h of t.hosts) list.append(this.hostRow(h));
+      for (const h of ts.hosts) list.append(this.hostRow(h));
       this.body.append(list);
-    } else if (!t.searching) {
+    } else if (!ts.searching) {
       this.empty();
     }
-    const again = button("Search Again", "host-add", "rotate-ccw");
+    const again = button(t("guideSearchAgain"), "host-add", "rotate-ccw");
     again.dataset.key = "again";
-    again.onclick = () => t.searchAgain();
-    again.disabled = t.searching;
-    const done = button("Done", "host-add primary");
+    again.onclick = () => ts.searchAgain();
+    again.disabled = ts.searching;
+    const done = button(t("commonDone"), "host-add primary");
     done.onclick = () => this.close();
     this.foot.append(again, done);
   }
@@ -401,13 +418,13 @@ export class Guide {
     const text = el("span", "settings-host-text");
     const line = el("span", "settings-host-state");
     const dot = h.state === "online" ? "connected" : h.state === "refused" ? "unreachable" : "none";
-    line.append(el("i", `state-dot ${dot}`), el("span", "", h.state === "online" ? h.dns : h.state === "refused" ? "Refuses this browser" : "Offline"));
+    line.append(el("i", `state-dot ${dot}`), el("span", "", h.state === "online" ? h.dns : h.state === "refused" ? t("hostTailnetRefused") : t("hostTailnetOffline")));
     text.append(el("span", "settings-host-name", h.name), line);
     top.append(g, text);
     if (h.state === "online") {
-      const c = button("Connect", "host-add primary");
+      const c = button(t("guideConnect"), "host-add primary");
       c.dataset.key = `connect-${h.id}`;
-      c.setAttribute("aria-label", `Connect to ${h.name}`);
+      c.setAttribute("aria-label", t("settingsHostConnect", { name: h.name }));
       c.onclick = () => {
         this.close();
         this.app.connect(h);
@@ -426,10 +443,10 @@ export class Guide {
 
   /** No hosts: how to set one up, and the devices that looked like one. */
   private empty() {
-    const t = this.tailnet;
+    const ts = this.tailnet;
     const box = el("div", "ts-empty");
-    box.append(el("h3", "", "No GoRex hosts found"));
-    box.append(el("p", "", `The page lists the devices of ${t.account || "your account"} that run GoRex with built-in Tailscale. To add one:`));
+    box.append(el("h3", "", t("guideEmptyTitle")));
+    box.append(el("p", "", t("guideEmptyText", { account: ts.account || t("tsYourAccount") })));
     const steps = el("ol", "ts-howto");
     const item = (text: string, command?: string) => {
       const li = el("li");
@@ -437,14 +454,14 @@ export class Guide {
       if (command) li.append(commandBox(command));
       steps.append(li);
     };
-    item("On the host, open GoRex, then turn on built-in Tailscale and sign it in with this same account:", "gorex rexapi tailscale on");
-    item("Wait until its status shows https: available. MagicDNS and HTTPS must be on in the tailnet's admin console (DNS page).", "gorex rexapi tailscale status");
-    item("Let the host trust this page:", allowCommand());
+    item(t("guideEmptyStep1"), "gorex rexapi tailscale on");
+    item(t("guideEmptyStep2"), "gorex rexapi tailscale status");
+    item(t("guideEmptyStep3"), allowCommand());
     box.append(steps);
-    if (t.unanswered.length) {
-      box.append(el("p", "ts-unanswered", `Found but not answering as GoRex on port 443: ${t.unanswered.join(", ")}. Check the steps above on ${t.unanswered.length > 1 ? "them" : "it"}.`));
+    if (ts.unanswered.length) {
+      box.append(el("p", "ts-unanswered", t("guideUnanswered", { names: formatList(ts.unanswered), n: ts.unanswered.length })));
     }
-    box.append(el("p", "ts-note", "The page finds hosts named <machine>-gorex, built-in Tailscale's default name. A host renamed otherwise isn't found in this version."));
+    box.append(el("p", "ts-note", t("guideNote")));
     this.body.append(box);
   }
 }

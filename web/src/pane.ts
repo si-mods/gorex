@@ -1,12 +1,13 @@
 // One pane of a window: a block's terminal, its stream fed to
 // libghostty-vt, drawn on its own canvas, the keys typed written back.
-import { openFile } from "./files";
 import { Ghostty } from "./ghostty";
 import { shortcut } from "./keys";
+import { loader } from "./loader";
 import { PointerInput } from "./pointer";
 import { contrastRatio, cursorSeq, fontFamily, textSize } from "./prefs";
 import { Program, smallTile } from "./programs";
-import { Control, DataStream, RexError, TerminalStream } from "./rex";
+import { localize, Msg, PlainKey, t } from "./i18n";
+import { Control, DataStream, describe, RexError, TerminalStream } from "./rex";
 import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
 
 /** What a pane needs of the page: the connection, the module, the chosen theme and the status line. */
@@ -16,7 +17,7 @@ export interface PaneHost {
   live(): Control | undefined;
   g: Ghostty;
   chosen(): Theme | undefined;
-  status(s: string): void;
+  status(s: Msg): void;
   /** The page's chrome follows the terminal's background. */
   scheme(bg: [number, number, number]): void;
   /** The pane is now the window's focused one, by the user's click or Tab. */
@@ -38,9 +39,7 @@ const blinkPeriod = 600;
 /** The most typed bytes that wait to be written while offline, as the iOS app's 4 MB. */
 const maxTyped = 4 << 20;
 
-export function describe(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
+export { describe };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -50,11 +49,11 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
 }
 
 /** The header's buttons, as the desktop's (view.go paneActions), with its lucide icons: split right, split down, zoom and close. */
-const actions: [name: string, label: string][] = [
-  ["split-right", "Split Right"],
-  ["split-down", "Split Down"],
-  ["zoom", "Zoom"],
-  ["close", "Close Pane"],
+const actions: [name: string, label: PlainKey][] = [
+  ["split-right", "cmdSplitRight"],
+  ["split-down", "cmdSplitDown"],
+  ["zoom", "cmdZoom"],
+  ["close", "cmdClosePane"],
 ];
 
 export class TerminalView {
@@ -116,8 +115,10 @@ export class TerminalView {
       const b = el("button", "pane-action");
       b.append(el("span", "pane-icon"));
       b.type = "button";
-      b.title = label;
-      b.setAttribute("aria-label", label);
+      localize(b, (b) => {
+        b.title = t(label);
+        b.setAttribute("aria-label", b.title);
+      });
       b.dataset.action = name;
       // The pane keeps the keyboard: a press on a button does not take it.
       b.onpointerdown = (e) => e.preventDefault();
@@ -141,14 +142,19 @@ export class TerminalView {
       send: (b) => this.type(b),
       status: (s) => this.app.status(s),
       files: () => !!this.app.control()?.features.has("gorex.download"),
+      // Opening files (files.ts) is a chunk of its own, loaded with the first link opened.
       openFile: (path) =>
-        openFile(this.session, this.block, path, {
-          control: () => this.app.control(),
-          status: (s) => this.app.status(s),
-          back: () => {
-            if (!this.closed) this.el.focus({ preventScroll: true });
-          },
-        }),
+        void loader.module("js/files", () => import("./files")).then(
+          (m) =>
+            m.openFile(this.session, this.block, path, {
+              control: () => this.app.control(),
+              status: (s) => this.app.status(s),
+              back: () => {
+                if (!this.closed) this.el.focus({ preventScroll: true });
+              },
+            }),
+          (e) => this.app.status(() => t("fileOpenFailed", { path, error: describe(e) })),
+        ),
     });
     this.el.addEventListener("keydown", (e) => this.key(e));
     this.body.addEventListener("wheel", (e) => this.pointer.wheel(e), { passive: false });
@@ -197,7 +203,7 @@ export class TerminalView {
         if (d !== this.data || this.closed) return;
         // 4000: the block closed; the view's next read takes the pane away.
         if (code !== 4000) {
-          this.app.status(`A terminal's connection dropped (${code}). Reopening…`);
+          this.app.status(() => t("paneDropped", { code: String(code) }));
           setTimeout(() => gen === this.generation && this.start(), 1000);
         }
       };
@@ -205,7 +211,7 @@ export class TerminalView {
       if (gen !== this.generation) return d.close();
       this.stream = new TerminalStream(d.nonce);
     } catch (e) {
-      if (gen === this.generation && !this.closed) this.app.status(`Could not open a terminal: ${describe(e)}`);
+      if (gen === this.generation && !this.closed) this.app.status(() => t("paneOpenFailed", { error: describe(e) }));
     }
   }
 
@@ -219,7 +225,7 @@ export class TerminalView {
             this.term = Terminal.fromSnapshot(this.app.g, item.data);
           } catch (e) {
             this.term = undefined;
-            this.app.status(`A terminal's snapshot could not be read: ${describe(e)}`);
+            this.app.status(() => t("paneSnapshotFailed", { error: describe(e) }));
             return;
           }
           // Drawn at this view's size, which the block takes next, as the
@@ -266,7 +272,7 @@ export class TerminalView {
         }
         break;
       case "child_exited":
-        this.app.status(`A program exited (${m.exit_code ?? 0}).`);
+        this.app.status(() => t("paneExited", { code: String(m.exit_code ?? 0) }));
         break;
     }
   }
@@ -295,6 +301,12 @@ export class TerminalView {
   restyle() {
     this.fontStale = true;
     this.layout();
+  }
+
+  /** Draws it all again on the next frame, as when a font chunk arrived. */
+  repaint() {
+    this.full = true;
+    this.redraw();
   }
 
   /** A theme chosen now, or the host's colours (none), as a theme message from the stream would be. */
@@ -462,7 +474,7 @@ export class TerminalView {
   private type(b: Uint8Array) {
     const waiting = this.typed.reduce((n, x) => n + x.length, 0);
     if (waiting + b.length > maxTyped) {
-      this.app.status(`Dropped ${b.length} typed bytes: ${waiting} wait to be written.`);
+      this.app.status(() => t("paneDroppedTyped", { n: b.length, waiting }));
       return;
     }
     this.typed.push(b);

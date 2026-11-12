@@ -7,9 +7,17 @@
 //   the page opens offline, and a new build waits until the user reloads
 //   (main.ts shows "A new version of GoRex is ready").
 // - The page (a navigation to the scope's root) and the files of /assets,
-//   whose names carry their content's hash, come from that cache first.
-//   Other files of the page's own origin (fonts, icons, tailnet.json) come
-//   from the network, and from the cache when the network fails.
+//   whose names carry their content's hash (the script and its code
+//   chunks, the terminal's wasm, the asset manifest, Maple's index), come
+//   from that cache first. Other files of the page's own origin (fonts,
+//   icons) come from the network, and from the cache when the network
+//   fails.
+// - The files of /assets/lazy, which the page loads on demand (the
+//   manifest's lazy files, build.mjs: the themes, the Tailscale engine,
+//   the CJK font's chunks), it leaves to the page's loader
+//   (src/loader.ts), which keeps them in a cache of its own,
+//   gorex-assets-v<n>, across versions; this worker leaves that cache
+//   alone too.
 // - It leaves alone everything else: every request to another origin (the
 //   GoRex hosts, Tailscale's control server and relays), every request
 //   that is not a GET, and /api/. WebSockets never pass through a worker.
@@ -30,7 +38,7 @@ self.addEventListener("install", (e) => {
       const cache = await caches.open(CACHE);
       // The page first, checked to be this build's: it names this build's script.
       const page = await fetch(new Request(scope.href, { cache: "no-cache" }));
-      const script = FILES.find((f) => /^assets\/app-[0-9a-f]+\.js$/.test(f));
+      const script = FILES.find((f) => /^assets\/app-[0-9A-Za-z]+\.js$/.test(f));
       if (!page.ok || page.redirected || (script && !(await page.clone().text()).includes(script))) {
         throw new Error("the server's page is not this version's");
       }
@@ -49,7 +57,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     (async () => {
-      for (const k of await caches.keys()) if (k.startsWith("gorex-") && k !== CACHE) await caches.delete(k);
+      for (const k of await caches.keys()) if (k.startsWith("gorex-") && !k.startsWith("gorex-assets-") && k !== CACHE) await caches.delete(k);
       await self.clients.claim();
     })(),
   );
@@ -78,6 +86,7 @@ self.addEventListener("fetch", (e) => {
     if (path === "" || path === "index.html") e.respondWith(fromCache(scope.href, req));
     return;
   }
+  if (path.startsWith("assets/lazy/")) return;
   if (path.startsWith("assets/")) e.respondWith(fromCache(url.href, req));
   else e.respondWith(fromNetwork(req));
 });

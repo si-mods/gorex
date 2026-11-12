@@ -2,7 +2,10 @@
 // the iOS app's ProgramTile.swift (itself GoRex's programs.go), drawn in
 // CSS. The glyphs are the SVGs of assets/icons and assets/brands, which
 // web/build.mjs copies into dist; a mask paints them in the tile's colour,
-// as iOS draws its template images.
+// as iOS draws its template images. The programs' names are theirs (as
+// on the desktop), not translated.
+
+import { t } from "./i18n";
 
 export interface Program {
   name: string;
@@ -171,7 +174,7 @@ export function tiles(front: string | undefined, back: (string | undefined)[], d
   if (done) {
     const d = document.createElement("i");
     d.className = "done-dot";
-    d.title = "Done";
+    d.title = t("programDone");
     f.append(d);
   }
   box.append(f);
