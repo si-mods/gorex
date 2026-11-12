@@ -228,17 +228,19 @@ final class TerminalView: UIView, TerminalOutput {
         config = nil
     }
 
-    /// Frees a surface and its config on the main thread, after its reader
-    /// stopped and the writes queued before. The surface holds its view
-    /// unretained, which lives until then.
+    /// Frees a surface and its config, after its reader stopped and the
+    /// writes queued before, off the main thread, as rootshell does: the
+    /// renderer, as it stops, sends a pause of its display link to the main
+    /// thread, which a free there runs after the link is gone; a free
+    /// elsewhere waits for the main thread to run it first. The surface
+    /// holds its view unretained, which lives until then and goes on the
+    /// main thread.
     nonisolated private static func free(_ s: ghostty_surface_t, _ c: ghostty_config_t?, of view: TerminalView, after reading: DispatchGroup, _ writes: DispatchQueue) {
-        nonisolated(unsafe) let (surface, config, view) = (s, c, view)
+        nonisolated(unsafe) let (surface, config, view) = (s, c, Unmanaged.passRetained(view))
         reading.notify(queue: writes) {
-            DispatchQueue.main.async {
-                ghostty_surface_free(surface)
-                if let config { ghostty_config_free(config) }
-                withExtendedLifetime(view) {}
-            }
+            ghostty_surface_free(surface)
+            if let config { ghostty_config_free(config) }
+            DispatchQueue.main.async { view.release() }
         }
     }
 
