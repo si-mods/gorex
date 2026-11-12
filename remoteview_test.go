@@ -196,7 +196,7 @@ func TestRexGoQR(t *testing.T) {
 	}
 	// While a change is on its way, it waits, as every change does.
 	remoteUI.busy, remoteUI.err = true, nil
-	a.openRexGoQR()
+	a.openRexGoQR(false)
 	if remoteUI.err != nil {
 		t.Error("Rex Go QR… asked while busy")
 	}

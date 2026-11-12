@@ -417,8 +417,8 @@ Each ships something a user can use.
 
 1. **Spike** (done): the machine as its own relay, with tailcat as it
    is. It holds; see Path for what it found.
-2. **Reachable at** (the server and its CLI, and pairing by address's
-   server and desktop library, are done; Settings and Rex Go are not): the setting, the second address
+2. **Reachable at** (the server, its CLI, pairing by address and the
+   desktop's Settings and Add Remote Host are done; Rex Go is not): the setting, the second address
    and its QR code, and pairing by address. Desktops and Rex Go connect over a local
    network or a VPN of one's own with no relay, from an IP address
    typed in. Docs.

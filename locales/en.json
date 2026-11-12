@@ -1342,7 +1342,7 @@
   "@hostsAddTitle": {
     "description": "Title of the sheet that adds a remote host."
   },
-  "hostsAddNote": "Paste the address that Settings › Server shows on the other machine, with remote access on there. The address is a secret: anyone with it may ask to pair.",
+  "hostsAddNote": "Paste the address that Settings › Server shows on the other machine, with remote access on there, or type its IP address when its Reachable at is on and it is pairing. The address is a secret: anyone with it may ask to pair.",
   "@hostsAddNote": {
     "description": "Note of the add sheet. Settings › Server names the other machine's settings page."
   },
@@ -1350,7 +1350,7 @@
   "@hostsAddress": {
     "description": "Label of the field of the host's address."
   },
-  "hostsAddressPlaceholder": "The host's address",
+  "hostsAddressPlaceholder": "The host's address or IP address",
   "@hostsAddressPlaceholder": {
     "description": "Placeholder of the address field, which hides what it holds."
   },
@@ -1378,7 +1378,7 @@
   "@hostsEnterAddress": {
     "description": "Error: the address field is empty."
   },
-  "hostsBadAddress": "That is not a GoRex remote address. Copy it from Settings › Server on the host.",
+  "hostsBadAddress": "That is not a GoRex remote address or an IP address. Copy it from Settings › Server on the host.",
   "@hostsBadAddress": {
     "description": "Error: the address does not parse."
   },
@@ -1971,6 +1971,94 @@
   "remoteRelayInvalid": "Enter a host name, such as derp.example.com, with :port when not 443: not an IP address, and no https://. Leave it empty for tailcat's relays.",
   "@remoteRelayInvalid": {
     "description": "Error under the relay field when what was typed is not a host name or address with an optional port."
+  },
+  "remoteReachableTitle": "Reachable at",
+  "@remoteReachableTitle": {
+    "description": "Row title: the IP address of this machine at which devices dial it directly."
+  },
+  "remoteReachableNote": "Devices that can reach this address connect straight to this machine, with no relay. It opens port {port} on that address, and the firewall may ask you to allow it. Off, devices connect through the relay only.",
+  "@remoteReachableNote": {
+    "description": "Hint under the Reachable at field. {port} is a port number.",
+    "placeholders": {
+      "port": {
+        "type": "String",
+        "example": "7464"
+      }
+    }
+  },
+  "remoteReachableOff": "Turn Off",
+  "@remoteReachableOff": {
+    "description": "Button: turn Reachable at off."
+  },
+  "remoteReachableInvalid": "Enter one IP address of this machine, such as 192.0.2.10.",
+  "@remoteReachableInvalid": {
+    "description": "Error under the Reachable at field when what was typed is not an IP address."
+  },
+  "remoteDirectAddress": "Direct address",
+  "@remoteDirectAddress": {
+    "description": "Row title: the second tailcat address, for devices that dial this machine directly."
+  },
+  "remoteDirectAddressNote": "For devices that can dial this machine directly, with no relay. It is a secret, like the address above.",
+  "@remoteDirectAddressNote": {
+    "description": "Hint under the direct address."
+  },
+  "remoteDirectQR": "Direct QR…",
+  "@remoteDirectQR": {
+    "description": "Button: shows the QR code of the direct address."
+  },
+  "remoteDirectQRHint": "Scan this code on a device that can dial this machine directly, then approve its request under Devices if the fingerprint matches. The code holds this machine's direct address, a secret: show it only to your own devices.",
+  "@remoteDirectQRHint": {
+    "description": "Text over the QR code of the direct address."
+  },
+  "remotePairAddrFrom": "From {source}",
+  "@remotePairAddrFrom": {
+    "description": "Pairing request by address: the address it came from.",
+    "placeholders": {
+      "source": {
+        "type": "String",
+        "example": "192.0.2.20:51000"
+      }
+    }
+  },
+  "remotePairAddrCompare": "Compare this code with the one the device shows. Approve only if they match.",
+  "@remotePairAddrCompare": {
+    "description": "Pairing request by address: what to do with the code."
+  },
+  "remotePairAddrMany": "More than one device is asking. Reject them all, then ask again from the device.",
+  "@remotePairAddrMany": {
+    "description": "Pairing requests by address: shown when several wait, so that none can be approved."
+  },
+  "hostsCodeIntro": "Compare this code with the one {host} shows. Both must be the same.",
+  "@hostsCodeIntro": {
+    "description": "Add sheet: the pairing code, by IP address.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "hostsCodeMatch": "The codes match",
+  "@hostsCodeMatch": {
+    "description": "Add sheet button: the user says the pairing codes are the same."
+  },
+  "hostsCodeDiffer": "They differ",
+  "@hostsCodeDiffer": {
+    "description": "Add sheet button: the user says the pairing codes differ."
+  },
+  "hostsCodeApprove": "On {host}, open Settings › Server › Devices and approve the request showing this code.",
+  "@hostsCodeApprove": {
+    "description": "Add sheet: what to do on the host once the codes match.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "office-mac"
+      }
+    }
+  },
+  "hostsCode": "Pairing code",
+  "@hostsCode": {
+    "description": "Add sheet: label over the pairing code."
   },
   "remoteApiTitle": "Local API",
   "@remoteApiTitle": {

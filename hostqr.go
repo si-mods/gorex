@@ -30,6 +30,9 @@ type hostPairQR struct {
 	// secret, so the page keeps the image only, and shows no address and
 	// no Copy.
 	rexGo bool
+	// direct is that its address is the second one, for devices that dial
+	// this machine directly (Reachable at).
+	direct bool
 }
 
 var hostsPairQR *hostPairQR
@@ -95,8 +98,8 @@ func openHostPairQR(h *hostConn) {
 // openRexGoQR opens the pairing window and shows this machine's code for
 // Rex Go (docs/ios-tailcat.md, Pairing a phone). The address is asked for
 // here and goes into the image only: never into the page, a log or the
-// clipboard.
-func (a *App) openRexGoQR() {
+// clipboard. With direct it is the second address's, of Reachable at.
+func (a *App) openRexGoQR(direct bool) {
 	name, _, _ := a.hostIdentity()
 	// Set off the UI thread, read on it once the change is done.
 	var image ui.ImageSource
@@ -105,12 +108,16 @@ func (a *App) openRexGoQR() {
 			return err
 		}
 		st, err := srv.RemoteStatus()
-		if err == nil && st.Address != "" {
-			image = qrImage(rexGoPairURL(st.Address, name))
+		addr := st.Address
+		if direct {
+			addr = st.ReachableAddress
+		}
+		if err == nil && addr != "" {
+			image = qrImage(rexGoPairURL(addr, name))
 		}
 		return err
 	}, func() {
-		hostsPairQR = &hostPairQR{host: name, image: image, open: true, rexGo: true}
+		hostsPairQR = &hostPairQR{host: name, image: image, open: true, rexGo: true, direct: direct}
 	})
 }
 
@@ -166,7 +173,9 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 			ui.Text(c, locales.HostsRexQRLoading()).FontSize(13).TextColor(k.textMuted).LineHeight(1.35)
 		case page.image != nil:
 			hint := locales.HostsRexQRHint()
-			if page.rexGo {
+			if page.direct {
+				hint = locales.RemoteDirectQRHint()
+			} else if page.rexGo {
 				hint = locales.RemoteRexGoQRHint()
 			} else if page.local {
 				hint = locales.HostsLocalRexQRHint()

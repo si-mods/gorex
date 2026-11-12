@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"os"
 	"slices"
 	"strconv"
@@ -30,6 +31,8 @@ var hostsUI struct {
 	note                  func() string // why the host is not reached while it is asked to approve
 	stage                 addStage
 	fingerprint           string             // this machine's, while the host is asked to approve it
+	code                  string             // the pairing code of an IP address, to compare with the host's
+	codeAnswer            func(match bool)   // the user's word on the code, while it shows
 	cancel                context.CancelFunc // stops the attempt under way
 	removing              string             // the id of the host Remove asks about
 	renaming              string             // the id of the host whose alias is edited
@@ -50,7 +53,37 @@ const (
 	addForm       addStage = iota // the fields
 	addConnecting                 // trying the address
 	addWaiting                    // the host's user is asked to approve
+	addCode                       // pairing by IP address: the code to compare
+	addApproving                  // pairing by IP address: the codes match, the host's user approves
 )
+
+// addrPairing is a pairing by IP address under way, as rex.AddressPairing.
+type addrPairing interface {
+	Confirm(ctx context.Context) ([]string, error)
+	Mismatch() error
+	Close() error
+}
+
+// pairByAddress starts pairing with the machine at an IP address, and
+// returns the code both sides show; tests replace it.
+var pairByAddress = func(ctx context.Context, addr, name string) (string, addrPairing, error) {
+	p, err := rex.PairByAddress(ctx, addr, name)
+	if err != nil {
+		return "", nil, err
+	}
+	return p.Code, p, nil
+}
+
+// isIPAddress is that s is an IP address, with a port or not: a host to
+// pair with by its code, in place of a pasted tailcat address.
+func isIPAddress(s string) bool {
+	s = strings.TrimSpace(s)
+	if _, err := netip.ParseAddr(s); err == nil {
+		return true
+	}
+	_, err := netip.ParseAddrPort(s)
+	return err == nil
+}
 
 // pairPoll is how often the sheet tries again while the host is asked to
 // approve this machine.
@@ -91,6 +124,7 @@ func cancelAddHost() {
 		page.cancel = nil
 	}
 	page.stage, page.fingerprint, page.note = addForm, "", nil
+	page.code, page.codeAnswer = "", nil
 }
 
 // closeAddHost closes the sheet, forgetting the address.
@@ -108,7 +142,7 @@ func validateHost(address, name, pairAs string, hosts []*hostConn) string {
 		return locales.HostsEnterName()
 	case address == "":
 		return locales.HostsEnterAddress()
-	case !validAddress(address):
+	case !validAddress(address) && !isIPAddress(address):
 		return locales.HostsBadAddress()
 	case strings.TrimSpace(pairAs) == "":
 		return locales.HostsEnterPairName()
@@ -158,11 +192,70 @@ func (a *App) submitHost() {
 			}
 		})
 	}
+	if isIPAddress(address) {
+		go a.pairHostByAddress(ctx, cancel, s, strings.TrimSpace(pairAs), update)
+		return
+	}
 	go pairHost(ctx, s, strings.TrimSpace(pairAs), report, func() {
 		page.cancel = nil
 		cancel()
 		closeAddHost()
 		a.addHost(s)
+	})
+}
+
+// pairHostByAddress pairs with the machine at an IP address: it shows the
+// code, then, once the user says the codes match, waits for the machine's
+// user to approve, and saves the host by the first address it returns. A
+// "they differ", or any error, saves nothing and shows the message, which
+// warns that the machine may have let in an unknown device. Canceling
+// closes the request. update runs a change on the main thread.
+func (a *App) pairHostByAddress(ctx context.Context, cancel context.CancelFunc, s savedHost, pairAs string, update func(func())) {
+	page := &hostsUI
+	// fail goes back to the fields with msg; on the main thread.
+	fail := func(msg string) {
+		if ctx.Err() != nil {
+			return
+		}
+		cancel()
+		page.stage, page.formErr, page.cancel, page.code, page.codeAnswer = addForm, func() string { return msg }, nil, "", nil
+	}
+	code, p, err := pairByAddress(ctx, s.Address, pairAs)
+	if err != nil {
+		update(func() { fail(serverMessage(err)) })
+		return
+	}
+	context.AfterFunc(ctx, func() { p.Close() })
+	update(func() {
+		if ctx.Err() != nil {
+			return
+		}
+		page.stage, page.code = addCode, code
+		page.codeAnswer = func(match bool) {
+			if !match {
+				fail(serverMessage(p.Mismatch()))
+				return
+			}
+			page.stage, page.codeAnswer = addApproving, nil
+			go func() {
+				addrs, err := p.Confirm(ctx)
+				update(func() {
+					switch {
+					case ctx.Err() != nil:
+					case err != nil || len(addrs) == 0:
+						fail(serverMessage(err))
+					default:
+						// shortcut: a host holds one address; the others wait for
+						// hosts that hold several.
+						s.Address = addrs[0]
+						page.cancel = nil
+						cancel()
+						closeAddHost()
+						a.addHost(s)
+					}
+				})
+			}()
+		}
 	})
 }
 
@@ -726,6 +819,20 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 				ui.Box(c).Size(7, 7).Radius(4).Background(k.attention)
 				ui.Text(c, locales.HostsConnectingTo(strings.TrimSpace(page.name))).FontSize(13).TextColor(k.textMuted)
 			})
+		case addCode, addApproving:
+			host := strings.TrimSpace(page.name)
+			ui.Text(c, locales.HostsCodeIntro(host)).FontSize(13).TextColor(k.text).LineHeight(1.35)
+			ui.Column(c).Gap(4).Padding(12).Radius(10).Background(k.hover).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, locales.HostsCode()).FontSize(11.5).FontWeight(600).TextColor(k.textFaint)
+				ui.Text(c, page.code).Font(monoFamily()).FontSize(32).FontWeight(700).TextColor(k.text).Label(page.code)
+			})
+			if page.stage == addApproving {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Box(c).Size(7, 7).Radius(4).Background(k.attention)
+					ui.Text(c, locales.HostsWaiting()).FontSize(12.5).FontWeight(500).TextColor(k.textMuted)
+				})
+				ui.Text(c, locales.HostsCodeApprove(host)).FontSize(12).TextColor(k.textFaint).LineHeight(1.3)
+			}
 		case addWaiting:
 			ui.Text(c, locales.HostsApprove(strings.TrimSpace(page.name))).FontSize(13).TextColor(k.text).LineHeight(1.35)
 			ui.Column(c).Gap(4).Padding(12).Radius(10).Background(k.hover).AlignItems(ui.Center).Children(func() {
@@ -772,6 +879,13 @@ func (a *App) addHostSheet(c *ui.Context, k *colors) {
 			}
 			if page.stage == addForm && ui.Button(c.Key("add"), locales.RemoteAdd()).Clicked() {
 				a.submitHost()
+			}
+			// Neither is the default: the user says what the screens show.
+			if page.stage == addCode && ui.Button(c.Key("differ"), locales.HostsCodeDiffer()).Clicked() {
+				page.codeAnswer(false)
+			}
+			if page.stage == addCode && ui.Button(c.Key("match"), locales.HostsCodeMatch()).Clicked() {
+				page.codeAnswer(true)
 			}
 		})
 	})
