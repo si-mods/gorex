@@ -15,11 +15,16 @@
 // year: a reload takes them from the browser's cache. index.html names the
 // script, and the script names the rest (assetDefines).
 //
+// Before tsc it checks the catalogs of web/locales and writes
+// src/locales.gen.ts from them (i18n.mjs; docs/web-client.md, Languages):
+// a catalog error fails the build, and so does a missing translation in CI
+// ($CI set, or --ci).
+//
 // It also writes the page's app files (docs/web-client.md, App): the
 // manifest, its icons (web/pwa, drawn by go run ./tools/mkicon -web) and
 // sw.js, the Service Worker, with this build's version and files.
 //
-// Usage: node web/build.mjs [--ghostty-source <path>] [--rebuild-wasm]
+// Usage: node web/build.mjs [--ghostty-source <path>] [--rebuild-wasm] [--ci]
 //
 // $GOREX_WEB_DIST builds into another directory than web/dist, as a check
 // beside a dev server that serves web/dist. The cache is $GOREX_WEB_CACHE, else $XDG_CACHE_HOME/gorex-web, else
@@ -32,6 +37,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
+import { generateOrFail } from "./i18n.mjs";
 
 // The commit of si-mods/mygo's plugins/terminal/internal/libbuild, as
 // ios/scripts/build-ghostty-vt.sh pins it.
@@ -259,6 +265,7 @@ async function main() {
     console.log("> npm ci");
     execSync("npm ci --no-audit --no-fund", { cwd: web, stdio: "inherit" });
   }
+  await generateOrFail({ ci: args.includes("--ci") || !!process.env.CI });
   run(process.execPath, [join(web, "node_modules", "typescript", "bin", "tsc"), "--noEmit", "-p", web]);
 
   rmSync(dist, { recursive: true, force: true });

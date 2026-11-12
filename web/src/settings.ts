@@ -2,14 +2,16 @@
 // the host's card and the sections at the left, each with its coloured
 // tile, and the chosen section at the right, its settings in grouped cards
 // (settingsGroup, settingRow). It keeps what a browser has: no glass, no
-// Dock badge, no tab placement, no language and no updates. Each change is
-// kept (prefs.ts) and applied to the open panes at once by the page.
+// Dock badge, no tab placement and no updates. Each change is kept
+// (prefs.ts) and applied to the open panes at once by the page; a change
+// of language draws the dialog again in the new one.
 import { install, installKind } from "./app";
 import { allowCommand, commandBox, Host, HostList, icon, Problem } from "./hosts";
 import { mac, shortcutGroups } from "./keys";
 import {
   Appearance, CursorStyle, defaultFontSize, maxFontSize, minFontSize, prefs, Prefs, setPrefs, textSize, clearAll,
 } from "./prefs";
+import { formatDate, formatList, Language, languages, onLanguageChange, PlainKey, setLanguage, t, tIn } from "./i18n";
 import { formatBytes } from "./progress";
 import { Status, Tailnet, validDeviceName } from "./tailnet";
 import { desktopTheme, minimumContrast, Theme } from "./terminal";
@@ -43,22 +45,24 @@ export interface SettingsApp {
 type Section = "host" | "appearance" | "terminal" | "theme" | "keyboard" | "hosts" | "tailscale" | "about";
 
 /** The sections, each with the colour of its tile, as the desktop's: macOS's system colours, a hue per kind of setting. */
-const sections: [id: Section, glyph: string, tile: string, label: string][] = [
-  ["appearance", "contrast", "rgb(0, 122, 255)", "Appearance"], // blue
-  ["terminal", "square-terminal", "rgb(58, 58, 60)", "Terminal"], // graphite
-  ["theme", "sparkles", "rgb(175, 82, 222)", "Theme"], // purple
-  ["keyboard", "keyboard", "rgb(142, 142, 147)", "Keyboard"], // gray
-  ["hosts", "monitor", "rgb(52, 199, 89)", "Hosts"], // green
-  ["tailscale", "network", "rgb(88, 86, 214)", "Tailscale"], // indigo
-  ["about", "info", "rgb(142, 142, 147)", "About"], // gray
+const sections: [id: Section, glyph: string, tile: string, label: () => string][] = [
+  ["appearance", "contrast", "rgb(0, 122, 255)", () => t("settingsAppearance")], // blue
+  ["terminal", "square-terminal", "rgb(58, 58, 60)", () => t("settingsTerminal")], // graphite
+  ["theme", "sparkles", "rgb(175, 82, 222)", () => t("settingsTheme")], // purple
+  ["keyboard", "keyboard", "rgb(142, 142, 147)", () => t("settingsKeyboard")], // gray
+  ["hosts", "monitor", "rgb(52, 199, 89)", () => t("settingsHosts")], // green
+  // A product's name, not translated.
+  ["tailscale", "network", "rgb(88, 86, 214)", () => "Tailscale"], // indigo
+  ["about", "info", "rgb(142, 142, 147)", () => t("settingsAbout")], // gray
 ];
 
 /** The minimum contrast picker's values, as the desktop's contrastChoices: 0 follows the default, 1 turns the correction off. */
 const contrastChoices = [0, 1, 2, 3, 4.5, 7];
 
 function contrastName(v: number): string {
-  if (v === 0) return `Default (${minimumContrast})`;
-  if (v === 1) return "Off";
+  if (v === 0) return t("contrastDefault", { value: minimumContrast });
+  if (v === 1) return t("contrastOff");
+  // WCAG's levels keep their names.
   if (v === 4.5) return "4.5 (WCAG AA)";
   if (v === 7) return "7 (WCAG AAA)";
   return String(v);
@@ -191,10 +195,10 @@ function tile(glyph: string, colour: string): HTMLElement {
 }
 
 /** Tailscale's state, as a chip's words and dot. */
-const tsLabels: Record<Status, string> = {
-  off: "Off", loading: "Loading", "load-failed": "Didn't load", starting: "Starting", "needs-login": "Not signed in",
-  "signing-in": "Signing in", "needs-approval": "Waiting for approval", running: "Connected", expired: "Expired",
-  locked: "Tailnet Lock", error: "Error",
+const tsLabels: Record<Status, PlainKey> = {
+  off: "tsStateOff", loading: "tsStateLoading", "load-failed": "tsStateLoadFailed", starting: "tsStateStarting",
+  "needs-login": "tsStateNeedsLogin", "signing-in": "tsStateSigningIn", "needs-approval": "tsStateApproval",
+  running: "linkConnected", expired: "tsStateExpired", locked: "tsStateLocked", error: "tsStateError",
 };
 const chipState: Record<Status, LinkState> = {
   off: "none", loading: "connecting", "load-failed": "unreachable", starting: "connecting", "needs-login": "none",
@@ -203,30 +207,31 @@ const chipState: Record<Status, LinkState> = {
 };
 
 /** The words under Tailscale's status. */
-function statusHint(t: Tailnet): string {
-  switch (t.status()) {
+function statusHint(ts: Tailnet): string {
+  switch (ts.status()) {
     case "running":
-      return t.statusText() + ".";
+      return ts.statusText();
     case "load-failed":
-      return t.load.state === "failed" ? t.load.message : "";
+      return ts.load.state === "failed" ? ts.load.message : "";
     case "needs-approval":
-      return `An admin of your tailnet must approve ${t.name} in the admin console.`;
+      return t("tsHintApproval", { name: ts.name });
     case "expired":
-      return "Sign in again to reach your tailnet's hosts.";
+      return t("tsHintExpired");
     case "locked":
-      return "Your tailnet uses Tailnet Lock, which this version of the page can't join.";
+      return t("tsHintLocked");
     case "error":
-      return t.error;
+      return ts.error;
     case "needs-login":
-      return "Sign in to list your GoRex hosts.";
+      return t("tsHintNeedsLogin");
     default:
       return "";
   }
 }
 
-const stateLabels: Record<LinkState, string> = {
-  none: "No host", connecting: "Connecting…", connected: "Connected", unreachable: "Unreachable",
+const stateKeys: Record<LinkState, PlainKey> = {
+  none: "linkNone", connecting: "linkConnecting", connected: "linkConnected", unreachable: "linkUnreachable",
 };
+const stateLabel = (s: LinkState) => t(stateKeys[s]);
 
 export class Settings {
   private dialog = el("dialog", "settings");
@@ -239,11 +244,11 @@ export class Settings {
   private picker?: ReturnType<typeof themePicker>;
 
   constructor(private app: SettingsApp) {
-    this.dialog.setAttribute("aria-label", "Settings");
+    this.dialog.setAttribute("aria-label", t("settingsTitle"));
     const close = el("button", "pane-action settings-close");
     close.type = "button";
-    close.title = "Close";
-    close.setAttribute("aria-label", "Close Settings");
+    this.closeButton = close;
+    this.labelClose();
     close.append(icon("x"));
     close.onclick = () => this.close();
     const head = el("header", "settings-head");
@@ -263,6 +268,30 @@ export class Settings {
     // Escape closes it (the dialog's cancel), and the keyboard goes back to the terminal.
     this.dialog.addEventListener("close", () => this.app.closed());
     document.body.append(this.dialog);
+    onLanguageChange(() => this.relocalize());
+  }
+
+  private closeButton: HTMLButtonElement;
+
+  private labelClose() {
+    this.closeButton.title = t("commonClose");
+    this.closeButton.setAttribute("aria-label", t("settingsClose"));
+  }
+
+  /**
+   * The language changed: the dialog again in it, keeping the focus on the
+   * control that has it (the language picker). A host form being filled
+   * stays, and says itself again (hosts.ts).
+   */
+  private relocalize() {
+    this.picker = undefined;
+    this.labelClose();
+    if (!this.dialog.open) return;
+    const key = (document.activeElement as HTMLElement | null)?.dataset?.key;
+    this.drawNav();
+    if (this.section === "hosts" && this.editing) this.drawTitle();
+    else this.drawPage();
+    if (key) this.page.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)?.focus();
   }
 
   get isOpen() {
@@ -325,7 +354,7 @@ export class Settings {
       b.dataset.section = id;
       b.setAttribute("role", "tab");
       b.setAttribute("aria-selected", String(this.section === id));
-      b.append(tile(glyph, colour), el("span", "", label));
+      b.append(tile(glyph, colour), el("span", "", label()));
       b.onclick = () => this.show(id);
       items.push(b);
     }
@@ -341,22 +370,27 @@ export class Settings {
     b.dataset.section = "host";
     b.setAttribute("role", "tab");
     b.setAttribute("aria-selected", String(this.section === "host"));
-    b.setAttribute("aria-label", `${host?.name ?? "Host"}, ${stateLabels[state]}`);
+    b.setAttribute("aria-label", t("settingsHostLabel", { host: host?.name ?? t("settingsHost"), state: stateLabel(state) }));
     const glyph = el("span", "settings-host-icon");
     glyph.append(icon(host?.icon ?? "server"));
     const text = el("span", "settings-host-text");
     const line = el("span", "settings-host-state");
-    line.append(el("i", `state-dot ${state}`), el("span", "", stateLabels[state]));
-    text.append(el("span", "settings-host-name", host?.name ?? "No Host"), line);
+    line.append(el("i", `state-dot ${state}`), el("span", "", stateLabel(state)));
+    text.append(el("span", "settings-host-name", host?.name ?? t("settingsNoHost")), line);
     b.append(glyph, text);
     b.onclick = () => this.show("host");
     return b;
   }
 
-  private drawPage() {
-    const title = this.section === "host" ? "Host" : sections.find(([id]) => id === this.section)![3];
+  /** The open section's title, atop the page and in the dialog's label. */
+  private drawTitle() {
+    const title = this.section === "host" ? t("settingsHost") : sections.find(([id]) => id === this.section)![3]();
     this.title.textContent = title;
-    this.dialog.setAttribute("aria-label", `Settings, ${title}`);
+    this.dialog.setAttribute("aria-label", t("settingsLabel", { section: title }));
+  }
+
+  private drawPage() {
+    this.drawTitle();
     this.page.replaceChildren();
     switch (this.section) {
       case "host":
@@ -386,32 +420,28 @@ export class Settings {
     const glyph = el("span", "settings-hero-icon");
     glyph.append(icon(host?.icon ?? "server"));
     const text = el("span", "settings-hero-text");
-    text.append(el("span", "settings-hero-name", host?.name ?? "No Host"), el("span", "settings-hint", host?.url ?? "Add a GoRex host to connect to."));
+    text.append(el("span", "settings-hero-name", host?.name ?? t("settingsNoHost")), el("span", "settings-hint", host?.url ?? t("hostPageAddHint")));
     const chip = el("span", `settings-chip ${state}`);
-    chip.append(el("i", `state-dot ${state}`), el("span", "", stateLabels[state]));
+    chip.append(el("i", `state-dot ${state}`), el("span", "", stateLabel(state)));
     top.append(glyph, text, chip);
     card.append(top);
-    if (host) row(card, "Address", "", el("span", "settings-value", host.url));
-    row(card, "This page", "", el("span", "settings-value", location.origin));
+    if (host) row(card, t("formAddress"), "", el("span", "settings-value", host.url));
+    row(card, t("hostPageThisPage"), "", el("span", "settings-value", location.origin));
     if (problem) row(card, problem.title, problem.text);
     const actions = el("div", "host-buttons");
     if (host) {
-      const edit = button("Edit Host");
+      const edit = button(t("hostEdit"));
       edit.onclick = () => this.show("hosts", host);
       actions.append(edit);
     }
-    const all = button(host ? "Choose Another Host" : "Add Host", host ? "host-add" : "host-add primary");
+    const all = button(host ? t("hostPageChoose") : t("hostAdd"), host ? "host-add" : "host-add primary");
     all.onclick = () => this.show("hosts", host ? undefined : "new");
     actions.append(all);
     const buttons = el("div", "settings-row");
     buttons.append(actions);
     card.append(buttons);
 
-    const trust = group(
-      this.page, "Trust this page",
-      "A host's gateway answers only pages it trusts. On each host, run once:",
-      "The command adds this page's origin to the host's list (gorex rexapi web list shows it; remove takes it out).",
-    );
+    const trust = group(this.page, t("trustTitle"), t("trustNote"), t("trustFoot"));
     const r = el("div", "settings-row");
     r.append(commandBox(allowCommand()));
     trust.append(r);
@@ -420,15 +450,20 @@ export class Settings {
   private appearancePage() {
     const win = group(this.page);
     row(
-      win, "Window", "System follows the terminal's background: light for a light theme, dark for a dark one.",
-      segmented<Appearance>("Appearance", [["", "System"], ["light", "Light"], ["dark", "Dark"]], prefs.appearance, (v) => {
-        setPrefs({ appearance: v });
-        this.app.apply("appearance");
-      }),
+      win, t("settingsWindow"), t("settingsWindowHint"),
+      segmented<Appearance>(
+        t("settingsAppearance"),
+        [["", t("appearanceSystem")], ["light", t("appearanceLight")], ["dark", t("appearanceDark")]],
+        prefs.appearance,
+        (v) => {
+          setPrefs({ appearance: v });
+          this.app.apply("appearance");
+        },
+      ),
     );
     row(
-      win, "Show pane headers", "Each pane's title, program and buttons above its terminal.",
-      toggle("Show pane headers", !prefs.hidePaneHeaders, (on) => {
+      win, t("settingsPaneHeaders"), t("settingsPaneHeadersHint"),
+      toggle(t("settingsPaneHeaders"), !prefs.hidePaneHeaders, (on) => {
         setPrefs({ hidePaneHeaders: !on });
         this.app.apply("headers");
       }),
@@ -438,15 +473,15 @@ export class Settings {
     const value = el("span", "settings-value", "");
     const minus = el("button", "pane-action settings-step");
     const plus = el("button", "pane-action settings-step");
-    const reset = button("Reset");
+    const reset = button(t("settingsReset"));
     minus.type = plus.type = "button";
-    minus.setAttribute("aria-label", "Smaller text");
-    plus.setAttribute("aria-label", "Larger text");
+    minus.setAttribute("aria-label", t("settingsSmaller"));
+    plus.setAttribute("aria-label", t("settingsLarger"));
     minus.append(icon("minus"));
     plus.append(icon("plus"));
     const show = () => {
       const size = textSize();
-      value.textContent = `${+size.toFixed(1)} px`;
+      value.textContent = t("settingsTextSizeValue", { size: +size.toFixed(1) });
       minus.disabled = size <= minFontSize;
       plus.disabled = size >= maxFontSize;
       reset.disabled = prefs.fontSize === 0;
@@ -462,12 +497,20 @@ export class Settings {
     show();
     const stepper = el("span", "settings-stepper");
     stepper.append(minus, plus);
-    row(text, "Text size", `The terminals' text, in CSS pixels: ${defaultFontSize}, the desktop's default, until set.`, value, stepper, reset);
+    row(text, t("settingsTextSize"), t("settingsTextSizeHint", { size: defaultFontSize }), value, stepper, reset);
+
+    // The language, as the desktop's: System, then each language by its own name.
+    const choices: [string, string][] = [["", t("settingsLanguageSystem")], ...languages.map((l): [string, string] => [l, tIn(l, "languageName")])];
+    const lang = select(t("settingsLanguage"), choices, (languages as readonly string[]).includes(prefs.language) ? prefs.language : "", (v) =>
+      setLanguage(v as "" | Language),
+    );
+    lang.dataset.key = "language";
+    row(text, t("settingsLanguage"), t("settingsLanguageHint"), lang);
   }
 
   private terminalPage() {
     fontsFound ??= knownFonts.filter(installed);
-    const fonts: [string, string][] = [["", "JetBrains Mono (default)"], ...fontsFound.map((f): [string, string] => [f, f])];
+    const fonts: [string, string][] = [["", t("settingsFontDefault")], ...fontsFound.map((f): [string, string] => [f, f])];
     if (prefs.font && !fontsFound.includes(prefs.font)) fonts.push([prefs.font, prefs.font]);
     const font = group(this.page);
     const preview = el("div", "settings-preview");
@@ -478,11 +521,12 @@ export class Settings {
       preview.style.color = rgb(t.foreground);
       preview.style.fontSize = `${textSize()}px`;
     };
-    preview.append(el("div", "", "The quick brown fox jumps over the lazy dog"), el("div", "", "0123456789 {}[]() => != <= ~/gorex $"));
+    // The second line is code, the same in every language.
+    preview.append(el("div", "", t("settingsFontSample")), el("div", "", "0123456789 {}[]() => != <= ~/gorex $"));
     drawPreview();
     row(
-      font, "Font", "Monospaced families installed on this device. JetBrains Mono comes with the page.",
-      select("Font", fonts, prefs.font, (v) => {
+      font, t("settingsFont"), t("settingsFontHint"),
+      select(t("settingsFont"), fonts, prefs.font, (v) => {
         setPrefs({ font: v });
         this.app.apply("font");
         drawPreview();
@@ -492,39 +536,42 @@ export class Settings {
     p.append(preview);
     font.append(p);
 
-    const cursor = group(this.page, "", "", "Until a program sets its own cursor. Not set, the host's cursor stays.");
+    const cursor = group(this.page, "", "", t("settingsCursorFoot"));
     row(
-      cursor, "Cursor style", "",
-      segmented<CursorStyle>("Cursor style", [["block", "Block"], ["bar", "Bar"], ["underline", "Underline"]], prefs.cursor ?? "block", (v) => {
-        setPrefs({ cursor: v });
-        this.app.apply("cursor");
-      }),
+      cursor, t("settingsCursorStyle"), "",
+      segmented<CursorStyle>(
+        t("settingsCursorStyle"),
+        [["block", t("settingsCursorBlock")], ["bar", t("settingsCursorBar")], ["underline", t("settingsCursorUnderline")]],
+        prefs.cursor ?? "block",
+        (v) => {
+          setPrefs({ cursor: v });
+          this.app.apply("cursor");
+        },
+      ),
     );
     row(
-      cursor, "Cursor blink", "",
-      toggle("Cursor blink", prefs.cursorBlink ?? true, (on) => {
+      cursor, t("settingsCursorBlink"), "",
+      toggle(t("settingsCursorBlink"), prefs.cursorBlink ?? true, (on) => {
         setPrefs({ cursorBlink: on });
         this.app.apply("cursor");
       }),
     );
 
     row(
-      group(this.page), "Copy on selection", "Copies the text you select to the clipboard.",
-      toggle("Copy on selection", prefs.copyOnSelect, (on) => setPrefs({ copyOnSelect: on })),
+      group(this.page), t("settingsCopyOnSelect"), t("settingsCopyOnSelectHint"),
+      toggle(t("settingsCopyOnSelect"), prefs.copyOnSelect, (on) => setPrefs({ copyOnSelect: on })),
     );
 
     const values = contrastChoices.includes(prefs.minimumContrast) ? contrastChoices : [...contrastChoices, prefs.minimumContrast];
     row(
-      group(this.page), "Minimum contrast",
-      "Lightens or darkens text too close to its background, colors programs set (ANSI, 256 and RGB) too. The hue stays, " +
-        "so errors and warnings keep apart; box drawing keeps its colors. Off shows programs' colors as they are.",
-      select("Minimum contrast", values.map((v) => [String(v), contrastName(v)]), String(prefs.minimumContrast), (v) => {
+      group(this.page), t("settingsMinContrast"), t("settingsMinContrastHint"),
+      select(t("settingsMinContrast"), values.map((v) => [String(v), contrastName(v)]), String(prefs.minimumContrast), (v) => {
         setPrefs({ minimumContrast: Number(v) });
         this.app.apply("contrast");
       }),
     );
 
-    const reset = button("Reset to Defaults");
+    const reset = button(t("settingsResetDefaults"));
     reset.onclick = () => {
       const was: Partial<Prefs> = { font: "", cursor: undefined, cursorBlink: undefined, copyOnSelect: false, minimumContrast: 0 };
       setPrefs(was);
@@ -533,7 +580,7 @@ export class Settings {
       this.app.apply("cursor", true);
       this.drawPage();
     };
-    row(group(this.page), "Forgets the font, cursor, copy on selection and contrast chosen here, so the defaults apply.", "", reset);
+    row(group(this.page), t("settingsResetDefaultsHint"), "", reset);
   }
 
   /** The chosen theme's colours, else GoRex's, for the font's preview. */
@@ -544,21 +591,20 @@ export class Settings {
 
   private themePage() {
     if (!this.app.themes.length) {
-      row(group(this.page), "The themes could not be loaded.", "The terminals keep GoRex's colors.");
+      row(group(this.page), t("settingsThemesFailed"), t("settingsThemesFailedHint"));
       return;
     }
     this.picker ??= themePicker(this.app.themes, (t) => this.app.chooseTheme(t));
-    const card = group(this.page, "", "", "A theme goes over the host's colors; Host Colors keeps what the host sends.");
+    const card = group(this.page, "", "", t("settingsThemeFoot"));
     card.classList.add("settings-themes");
     card.append(this.picker.el);
     this.picker.show();
   }
 
   private keyboardPage() {
-    const note = el("div", "settings-hint settings-note",
-      "The web client's shortcuts, which come before the terminal's keys. A browser keeps " +
-        (mac ? "⌘W, ⌘T, ⌘N and ⌃Tab" : "Ctrl+W, Ctrl+T, Ctrl+N and Ctrl+Tab") +
-        " for itself, so their commands take " + (mac ? "⌥⇧" : "Alt+Shift") + " chords here.");
+    // The keys' names are the keyboard's, the same in every language.
+    const keys = formatList(mac ? ["⌘W", "⌘T", "⌘N", "⌃Tab"] : ["Ctrl+W", "Ctrl+T", "Ctrl+N", "Ctrl+Tab"]);
+    const note = el("div", "settings-hint settings-note", t("settingsKeyboardNote", { keys, chord: mac ? "⌥⇧" : "Alt+Shift" }));
     this.page.append(note);
     for (const g of shortcutGroups()) {
       const card = group(this.page, g.label);
@@ -579,7 +625,7 @@ export class Settings {
       form.querySelector("input")?.focus();
       return;
     }
-    const card = group(this.page, "", "The GoRex hosts this browser connects to. Only the chosen one is connected.");
+    const card = group(this.page, "", t("settingsHostsNote"));
     for (const h of hosts.hosts) {
       const r = el("div", "settings-row settings-host-row");
       const pick = el("button", "settings-host-pick");
@@ -596,22 +642,22 @@ export class Settings {
         pick.append(c);
       }
       pick.setAttribute("aria-current", String(chosen));
-      pick.title = chosen ? "Connected to this host" : `Connect to ${h.name}`;
+      pick.title = chosen ? t("settingsHostConnected") : t("settingsHostConnect", { name: h.name });
       pick.onclick = () => {
         if (!chosen) hosts.choose(h);
         this.update();
       };
       const edit = el("button", "pane-action");
       edit.type = "button";
-      edit.title = "Edit";
-      edit.setAttribute("aria-label", `Edit ${h.name}`);
+      edit.title = t("commonEdit");
+      edit.setAttribute("aria-label", t("hostEditName", { name: h.name }));
       edit.append(icon("pencil"));
       edit.onclick = () => this.show("hosts", h);
       r.append(pick, edit);
       card.append(r);
     }
-    if (!hosts.hosts.length) row(card, "No hosts yet.", "Add the address of a GoRex host's gateway.");
-    const add = button("Add Host", "host-add primary");
+    if (!hosts.hosts.length) row(card, t("settingsNoHosts"), t("settingsNoHostsHint"));
+    const add = button(t("hostAdd"), "host-add primary");
     const plus = icon("plus");
     add.prepend(plus);
     add.onclick = () => this.show("hosts", "new");
@@ -626,24 +672,24 @@ export class Settings {
    * long the sign-in lasts in this version.
    */
   private tailscalePage() {
-    const t = this.app.tailnet;
-    const status = t.status();
+    const ts = this.app.tailnet;
+    const status = ts.status();
     const card = group(this.page);
     const top = el("div", "settings-row settings-hero");
     const glyph = el("span", "settings-hero-icon");
     glyph.append(icon("network"));
     const text = el("span", "settings-hero-text");
     const sub =
-      status === "off" ? "Reach your GoRex hosts through Tailscale, with no app on this device."
-      : status === "running" ? `This device: ${t.name}${t.map?.self.address ? ` · ${t.map.self.address}` : ""}`
-      : t.statusText();
-    text.append(el("span", "settings-hero-name", "Built-in Tailscale"), el("span", "settings-hint", sub));
-    const sw = toggle("Built-in Tailscale", status !== "off", (on) => {
+      status === "off" ? t("tsOffNote")
+      : status === "running" ? t("tsThisDevice", { name: ts.name }) + (ts.map?.self.address ? t("listSeparator") + ts.map.self.address : "")
+      : ts.statusText();
+    text.append(el("span", "settings-hero-name", t("tsBuiltIn")), el("span", "settings-hint", sub));
+    const sw = toggle(t("tsBuiltIn"), status !== "off", (on) => {
       if (on) {
-        t.turnOn();
+        ts.turnOn();
         this.app.guide();
       } else {
-        t.turnOff();
+        ts.turnOff();
       }
     });
     sw.dataset.key = "switch";
@@ -651,31 +697,32 @@ export class Settings {
     card.append(top);
     if (status !== "off") {
       const chip = el("span", `settings-chip ${chipState[status]}`);
-      chip.append(el("i", `state-dot ${chipState[status]}`), el("span", "", tsLabels[status]));
-      row(card, "Status", statusHint(t), chip);
+      chip.append(el("i", `state-dot ${chipState[status]}`), el("span", "", t(tsLabels[status])));
+      row(card, t("tsStatus"), statusHint(ts), chip);
       if (status === "running") {
-        row(card, "Account", "", el("span", "settings-value", t.account || "Unknown"));
-        if (t.map?.tailnet) row(card, "Tailnet", "", el("span", "settings-value", t.map.tailnet));
-        const n = t.hosts.length;
-        row(card, "GoRex hosts", "", el("span", "settings-value", n ? `${n} found` : t.searching ? "Looking…" : "None found"));
+        row(card, t("tsAccount"), "", el("span", "settings-value", ts.account || t("tsUnknown")));
+        if (ts.map?.tailnet) row(card, t("tsTailnet"), "", el("span", "settings-value", ts.map.tailnet));
+        const n = ts.hosts.length;
+        row(card, t("tsHosts"), "", el("span", "settings-value", n ? t("tsFound", { n }) : ts.searching ? t("tsLooking") : t("tsNoneFound")));
       }
-      if (t.load.state === "loading" && t.load.total) {
-        row(card, "Download", "", el("span", "settings-value", `${formatBytes(t.load.received)} of ${formatBytes(t.load.total)}`));
+      if (ts.load.state === "loading" && ts.load.total) {
+        const received = formatBytes(ts.load.received), total = formatBytes(ts.load.total);
+        row(card, t("tsDownload"), "", el("span", "settings-value", t("progressOf", { received, total })));
       }
       const actions = el("div", "host-buttons");
       if (status === "running" || status === "locked" || status === "needs-approval") {
-        const out = button("Sign Out", "host-add danger");
+        const out = button(t("tsSignOut"), "host-add danger");
         out.dataset.key = "signout";
         out.prepend(icon("log-out"));
-        out.onclick = () => t.signOut();
+        out.onclick = () => ts.signOut();
         actions.append(out);
       }
-      const label = status === "running" ? "Show Hosts" : status === "load-failed" ? "Try Again" : "Sign In";
+      const label = status === "running" ? t("tsShowHosts") : status === "load-failed" ? t("commonTryAgain") : t("tsSignIn");
       const guide = button(label, status === "running" ? "host-add" : "host-add primary");
       guide.dataset.key = "guide";
       if (status !== "running") guide.prepend(icon(status === "load-failed" ? "rotate-ccw" : "log-in"));
       guide.onclick = () => {
-        if (status === "load-failed") t.turnOn();
+        if (status === "load-failed") ts.turnOn();
         this.app.guide();
       };
       actions.append(guide);
@@ -684,29 +731,26 @@ export class Settings {
       card.append(r);
     }
 
-    const dev = group(this.page, "", "", "The name your tailnet's admin console and other devices show. Letters, digits and hyphens, up to 63.");
+    const dev = group(this.page, "", "", t("tsDeviceFoot"));
     const input = el("input", "theme-search settings-name");
-    input.value = t.name;
+    input.value = ts.name;
     input.spellcheck = false;
     input.autocomplete = "off";
-    input.setAttribute("aria-label", "Device name");
+    input.setAttribute("aria-label", t("tsDeviceName"));
     const error = el("div", "host-error");
     input.onchange = () => {
       const v = input.value.trim();
       if (!validDeviceName(v)) {
-        error.textContent = "Use letters, digits and hyphens, not at the start or end, up to 63.";
+        error.textContent = t("tsDeviceInvalid");
         return;
       }
       error.textContent = "";
-      t.rename(v).catch((e) => (error.textContent = `Could not rename: ${e instanceof Error ? e.message : e}`));
+      ts.rename(v).catch((e) => (error.textContent = t("tsRenameFailed", { error: e instanceof Error ? e.message : String(e) })));
     };
-    row(dev, "Device name", "", input).append(error);
+    row(dev, t("tsDeviceName"), "", input).append(error);
 
-    this.page.append(el("div", "settings-hint settings-note",
-      "Turning it on downloads Tailscale's engine (about 6 MB), and this tab joins your tailnet as a device of its own. " +
-        "It finds your GoRex hosts there (your own devices named <machine>-gorex that answer as GoRex) and reaches them through Tailscale's encrypted relays. " +
-        "In this version the sign-in lasts for this tab only: reloading or closing the tab signs this browser out, and Tailscale removes the device soon after."));
-    const trust = group(this.page, "Trust this page", "Each GoRex host must trust this page's origin. On the host, run once:");
+    this.page.append(el("div", "settings-hint settings-note", t("tsNote")));
+    const trust = group(this.page, t("trustTitle"), t("tsTrustNote"));
     const tr = el("div", "settings-row");
     tr.append(commandBox(allowCommand()));
     trust.append(tr);
@@ -714,27 +758,28 @@ export class Settings {
 
   private aboutPage() {
     const about = group(this.page);
-    const built = __GOREX_BUILT__ ? ` · built ${__GOREX_BUILT__}` : "";
-    row(about, "GoRex Web", `Version ${__GOREX_COMMIT__ || "development build"}${built}`);
-    row(about, "libghostty-vt", "The terminal emulator, compiled to WebAssembly.", el("span", "settings-value", `Ghostty ${__GHOSTTY_COMMIT__.slice(0, 12)}`));
+    const version = __GOREX_COMMIT__ || t("aboutDevBuild");
+    // The product's and the library's names are theirs, not translated.
+    row(about, "GoRex Web", __GOREX_BUILT__ ? t("aboutVersionBuilt", { version, date: formatDate(__GOREX_BUILT__) }) : t("aboutVersion", { version }));
+    row(about, "libghostty-vt", t("aboutGhostty"), el("span", "settings-value", `Ghostty ${__GHOSTTY_COMMIT__.slice(0, 12)}`));
 
     // Install App, where the browser offers it; iOS's Add to Home Screen, by hand; nothing once installed.
     const kind = installKind();
     if (kind === "prompt") {
-      const b = button("Install App", "host-add");
+      const b = button(t("aboutInstallApp"), "host-add");
       b.prepend(icon("app-window"));
       b.onclick = () => void install();
-      row(group(this.page), "Install GoRex", "Opens GoRex in a window of its own, with its own icon.", b);
+      row(group(this.page), t("aboutInstall"), t("aboutInstallHint"), b);
     } else if (kind === "ios") {
-      row(group(this.page), "Add to Home Screen", "To open GoRex as an app: in Safari, tap Share, then Add to Home Screen.");
+      row(group(this.page), t("aboutHomeScreen"), t("aboutHomeScreenHint"));
     }
 
-    const reset = button("Reset All Settings", "host-add danger");
+    const reset = button(t("aboutResetAll"), "host-add danger");
     reset.onclick = () => {
-      if (!confirm("Reset all settings? This forgets the settings, the hosts and the chosen host in this browser, and reloads the page.")) return;
+      if (!confirm(t("aboutResetAllAsk"))) return;
       clearAll();
       location.reload();
     };
-    row(group(this.page), "Reset all settings", "Forgets the settings, the hosts and the chosen host kept in this browser.", reset);
+    row(group(this.page), t("aboutResetAllTitle"), t("aboutResetAllHint"), reset);
   }
 }

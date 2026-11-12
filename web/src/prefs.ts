@@ -28,6 +28,8 @@ export interface Prefs {
   copyOnSelect: boolean;
   /** Built-in Tailscale's device name, "" for a new gorex-web-xxxx per tab (tailnet.ts). */
   tailscaleName: string;
+  /** The page's language, as "zh-Hans", or "" for System: the browser's languages (i18n.ts). */
+  language: string;
 }
 
 /** The desktop's text size (settings.go, defaultFontSize), and the stepper's range (settingsview.go). */
@@ -51,6 +53,7 @@ const defaults = (): Prefs => ({
   theme: standardTheme,
   copyOnSelect: false,
   tailscaleName: "",
+  language: "",
 });
 
 /** Reads the choices, taking the theme kept under gorex.theme once; out of range values count as none, as loadSettings does. */
@@ -72,6 +75,7 @@ function load(): Prefs {
       if (typeof j.theme === "string") p.theme = j.theme;
       p.copyOnSelect = j.copyOnSelect === true;
       if (typeof j.tailscaleName === "string") p.tailscaleName = j.tailscaleName;
+      if (typeof j.language === "string") p.language = j.language;
     } else {
       const old = localStorage.getItem(oldThemeKey);
       if (old !== null) {

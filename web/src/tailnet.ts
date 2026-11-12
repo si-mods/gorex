@@ -7,7 +7,8 @@
 // memory ("This tab only"): reloading or closing the tab ends it, and
 // Tailscale removes the device once it is offline. The node frame of a
 // separate origin, which may keep a node longer, is phase 4.
-import { allowCommand, Host, Problem } from "./hosts";
+import { allowCommand, Host, Problem, problem } from "./hosts";
+import { failure, Msg, msg, t } from "./i18n";
 import { prefs, setPrefs } from "./prefs";
 import { fetchBytes } from "./progress";
 import { SocketLike, Transport } from "./rex";
@@ -119,12 +120,16 @@ function script(src: string): Promise<void> {
     const s = document.createElement("script");
     s.src = src;
     s.onload = () => resolve();
-    s.onerror = () => reject(new Error(`${src} did not load`));
+    s.onerror = () => reject(failure(() => t("loadScriptFailed", { file: src })));
     document.head.append(s);
   });
 }
 
-class NoEngine extends Error {}
+class NoEngine extends Error {
+  get message() {
+    return t("tsNoEngine");
+  }
+}
 
 /**
  * Downloads the engine, reporting the compressed bytes as they come,
@@ -134,8 +139,8 @@ class NoEngine extends Error {}
  */
 async function loadEngine(progress: (received: number, total: number) => void, starting: () => void): Promise<void> {
   const mr = await fetch("tailnet.json", { cache: "no-cache" });
-  if (mr.status === 404) throw new NoEngine("This copy of the page was built without the Tailscale engine.");
-  if (!mr.ok) throw new Error(`tailnet.json: the server answered ${mr.status}`);
+  if (mr.status === 404) throw new NoEngine();
+  if (!mr.ok) throw failure(() => t("loadServerAnswered", { url: "tailnet.json", status: String(mr.status) }));
   const m: Manifest = await mr.json();
   await script(m.exec);
   // Only the gzipped file is shipped (25 MiB is Cloudflare's limit for one
@@ -149,42 +154,37 @@ async function loadEngine(progress: (received: number, total: number) => void, s
   } else if (packed[0] === 0 && packed[1] === 0x61 && packed[2] === 0x73 && packed[3] === 0x6d) {
     module = packed.buffer as ArrayBuffer;
   } else {
-    throw new Error("the download is not the engine");
+    throw failure(() => t("tsNotEngine"));
   }
   packed = new Uint8Array(0);
   const go = new Go();
   // instantiateStreaming would need application/wasm; this is a buffer.
   const { instance } = await WebAssembly.instantiate(module, go.importObject);
   go.run(instance).then(() => console.warn("tailnet: the engine exited"));
-  if (typeof (globalThis as any).gorexTailnet !== "function") throw new Error("the engine did not start");
+  if (typeof (globalThis as any).gorexTailnet !== "function") throw failure(() => t("tsEngineNotStarted"));
 }
 
 /** What a gateway's refusal (writeRefusal's message) means, and what to do. */
 export function refusal(message: string, login: string): Problem {
   if (/does not trust web pages from/.test(message)) {
-    return {
-      title: "The host doesn't trust this page",
-      text: `Its gateway refuses web pages from ${location.origin}. On the host, run this, then wait a moment:`,
-      command: allowCommand(),
-    };
+    return problem(() => t("problemUntrustedTitle"), () => t("tsUntrustedText", { origin: location.origin }), allowCommand());
   }
   if (/lets in only the Tailscale user who signed it in/.test(message)) {
-    return {
-      title: "The host lets in only the account that signed it in",
-      text:
-        `This browser is signed in as ${login || "another account"}. Sign in here with the account that signed in the host, ` +
-        "or let your tailnet's members in (the tailnet's access rules then decide). On the host, run:",
-      command: "gorex rexapi tailscale on --allow-tailnet-members",
-    };
+    return problem(
+      () => t("tsOwnerTitle"),
+      () => t("tsOwnerText", { account: login || t("tsAnotherAccount") }),
+      "gorex rexapi tailscale on --allow-tailnet-members",
+    );
   }
   if (/built-in Tailscale is off/.test(message)) {
-    return { title: "The host's built-in Tailscale is off", text: "On the host, run:", command: "gorex rexapi tailscale on" };
+    return problem(() => t("tsHostOffTitle"), () => t("tsRunOnHost"), "gorex rexapi tailscale on");
   }
-  return { title: "The host refused this browser", text: message || "Its gateway's access rule refused this device." };
+  // The gateway's reason is its own words, in English.
+  return problem(() => t("problemRefusedTitle"), () => message || t("tsRefusedText"));
 }
 
 /** A probe's answer: a gateway that lets this browser in, one that refuses it, or none. */
-type Probe = { kind: "ok" } | { kind: "refused"; message: string } | { kind: "none"; why: string };
+type Probe = { kind: "ok" } | { kind: "refused"; message: string } | { kind: "none"; why: Msg };
 
 /**
  * Built-in Tailscale of this page: one node, its state, and the GoRex
@@ -200,8 +200,14 @@ export class Tailnet {
   loginURL = "";
   /** A sign-in asked for and not finished. */
   signingIn = false;
-  /** Control's message, or why the sign-in did not start. */
-  error = "";
+  /** Control's message, or why the sign-in did not start, in the page's language as it is read. */
+  get error(): string {
+    return msg(this.errorText);
+  }
+  set error(m: Msg) {
+    this.errorText = m;
+  }
+  private errorText: Msg = "";
   map?: NetMap;
   hosts: TailnetHost[] = [];
   /** Devices that look like GoRex hosts but did not answer as one, by name. */
@@ -265,27 +271,29 @@ export class Tailnet {
   statusText(): string {
     switch (this.status()) {
       case "off":
-        return "Off";
+        return t("tsStateOff");
       case "loading":
-        return "Loading Tailscale…";
+        return t("tsStatusLoading");
       case "load-failed":
-        return "Couldn't load Tailscale";
+        return t("tsStatusLoadFailed");
       case "starting":
-        return "Starting…";
+        return t("bootStarting");
       case "needs-login":
-        return "Not signed in";
+        return t("tsStateNeedsLogin");
       case "signing-in":
-        return "Signing in…";
+        return t("tsStatusSigningIn");
       case "needs-approval":
-        return "Waiting for approval";
-      case "running":
-        return `Connected as ${this.account || "you"}${this.map?.tailnet ? ` on ${this.map.tailnet}` : ""}`;
+        return t("tsStateApproval");
+      case "running": {
+        const account = this.account || t("tsYou");
+        return this.map?.tailnet ? t("tsStatusRunningOn", { account, tailnet: this.map.tailnet }) : t("tsStatusRunning", { account });
+      }
       case "expired":
-        return "Sign-in expired";
+        return t("tsStatusExpired");
       case "locked":
-        return "Tailnet Lock not supported";
+        return t("tsStatusLocked");
       case "error":
-        return "Error";
+        return t("tsStateError");
     }
   }
 
@@ -321,10 +329,13 @@ export class Tailnet {
       return true;
     } catch (e) {
       const offline = !navigator.onLine;
+      const why = offline ? () => t("tsDeviceOffline") : () => (e instanceof Error ? e.message : String(e));
       this.load = {
         state: "failed",
         noEngine: e instanceof NoEngine,
-        message: offline ? "This device is offline." : e instanceof Error ? e.message : String(e),
+        get message() {
+          return why();
+        },
       };
       this.changed();
       return false;
@@ -339,8 +350,15 @@ export class Tailnet {
       this.node.start();
     } catch (e) {
       this.node = undefined;
-      this.load = { state: "failed", message: `Tailscale stopped (${e instanceof Error ? e.message : e}). Reload the page to try again.` };
-      engine = Promise.reject(new Error(this.load.message));
+      const error = e instanceof Error ? e.message : String(e);
+      const why = () => t("tsStopped", { error });
+      this.load = {
+        state: "failed",
+        get message() {
+          return why();
+        },
+      };
+      engine = Promise.reject(failure(why));
       engine.catch(() => {});
       this.changed();
     }
@@ -393,9 +411,7 @@ export class Tailnet {
     this.loginTimer = setTimeout(() => {
       if (!this.signingIn || this.loginURL) return;
       this.signingIn = false;
-      this.error = navigator.onLine
-        ? "Tailscale's control server (controlplane.tailscale.com) did not answer. Check the connection, or whether a firewall or VPN blocks it, and try again."
-        : "This device is offline. Connect to the internet and try again.";
+      this.error = navigator.onLine ? () => t("tsControlTimeout") : () => t("tsOfflineConnect");
       this.changed();
     }, loginWait);
     this.node.login();
@@ -548,7 +564,7 @@ export class Tailnet {
   /** Asks a peer for the gateway's help document, as this page (its Origin). */
   private async probe(host: string, wait: number): Promise<Probe> {
     const n = this.node;
-    if (!n) return { kind: "none", why: "stopped" };
+    if (!n) return { kind: "none", why: () => t("tsProbeStopped") };
     try {
       const r = await n.request(host, "GET", "/api/help", "{}", null, location.origin, wait);
       if (r.status === 200) {
@@ -566,7 +582,8 @@ export class Tailnet {
         return { kind: "refused", message };
       }
       r.body.cancel();
-      return { kind: "none", why: `answered ${r.status}` };
+      const status = String(r.status);
+      return { kind: "none", why: () => t("tsAnswered", { status }) };
     } catch (e) {
       return { kind: "none", why: e instanceof Error ? e.message : String(e) };
     }
@@ -580,17 +597,13 @@ export class Tailnet {
   /** Why a host's control connection did not open, as hosts.ts's diagnose tells a direct one's. */
   async diagnose(h: TailnetHost): Promise<Problem> {
     if (this.status() !== "running") {
-      return { title: "Tailscale is not connected", text: `Sign in to Tailscale (${this.statusText()}) to reach ${h.name}.` };
+      return problem(() => t("tsNotConnectedTitle"), () => t("tsNotConnectedText", { status: this.statusText(), host: h.name }));
     }
     const p = await this.probe(h.dns, 8000);
-    if (p.kind === "ok") return { title: "The host answered, but the connection failed", text: "Its gateway answered over the tailnet. Reconnecting…" };
+    if (p.kind === "ok") return problem(() => t("problemFailedTitle"), () => t("tsFailedText"));
     if (p.kind === "refused") return refusal(p.message, this.account);
-    return {
-      title: "The host can't be reached over Tailscale",
-      text:
-        `${h.dns} did not answer on port 443 (${p.why}). Check that GoRex runs there with built-in Tailscale on ` +
-        "(gorex rexapi tailscale status shows https: available), and that it is online.",
-    };
+    const why = p.why;
+    return problem(() => t("tsUnreachableTitle"), () => t("tsUnreachableText", { address: h.dns, why: msg(why) }));
   }
 }
 
@@ -605,7 +618,7 @@ class TailnetSocket implements SocketLike {
 
   constructor(node: EngineNode | undefined, host: string, path: string, protocol: string) {
     if (!node) {
-      queueMicrotask(() => this.onclose?.(new CloseEvent("close", { code: 1006, reason: "Tailscale is off" })));
+      queueMicrotask(() => this.onclose?.(new CloseEvent("close", { code: 1006, reason: t("tsIsOff") })));
       return;
     }
     this.h = node.socket(host, path, protocol, location.origin, (kind, a, b) => queueMicrotask(() => this.event(kind, a, b)));
@@ -648,7 +661,7 @@ export function tailnetTransport(node: () => EngineNode | undefined, host: strin
     socket: (path, protocol) => new TailnetSocket(node(), host, path, protocol),
     async fetch(path, init = {}) {
       const n = node();
-      if (!n) throw new TypeError("Tailscale is off");
+      if (!n) throw new TypeError(t("tsIsOff"));
       const signal = init.signal;
       if (signal?.aborted) throw new DOMException("The request was aborted.", "AbortError");
       const headers: Record<string, string> = {};

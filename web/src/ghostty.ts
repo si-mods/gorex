@@ -6,6 +6,7 @@
 // comes from the manifest itself, so the check is that each one exists,
 // with the size this code reads it at.
 
+import { t } from "./i18n";
 import { countBody, LoadState, readBody } from "./progress";
 
 type Field = { offset: number; size: number; type: string };
@@ -125,7 +126,7 @@ export class Ghostty {
    */
   static async load(url: string, size: number, progress: (s: LoadState) => void): Promise<Ghostty> {
     const res = await fetch(url);
-    if (!res.ok || !res.body) throw new Error(`${url}: the server answered ${res.status}`);
+    if (!res.ok || !res.body) throw new Error(t("loadServerAnswered", { url, status: String(res.status) }));
     const report = (received: number, total?: number) => progress({ phase: "download", received, total });
     let instance: WebAssembly.Instance;
     if ((res.headers.get("content-type") ?? "").split(";")[0].trim() === "application/wasm") {

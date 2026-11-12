@@ -4,6 +4,8 @@
 // a layout or Option's characters do not change them. docs/web-client.md
 // lists them, and the Settings dialog's Keyboard section (shortcutGroups).
 
+import { PlainKey, t } from "./i18n";
+
 export const mac = /Mac|iPhone|iPad/.test(navigator.platform);
 
 /** A chord: the modifiers held, exactly, and the key's code. */
@@ -82,31 +84,36 @@ function keysOf(name: string): string {
   return left ? chordName(left[0], "←→↑↓") : "";
 }
 
-/** The shortcuts by group, with their titles and this system's keys, for the Keyboard section. */
+/**
+ * The shortcuts by group, with their titles in the page's language and
+ * this system's keys, for the Keyboard section. The keys' names (Ctrl,
+ * Shift, ⌘) are the keyboard's own, the same in every language.
+ */
 export function shortcutGroups(): { label: string; rows: [title: string, keys: string][] }[] {
-  const rows = (list: [string, string][]) => list.map(([title, name]) => [title, keysOf(name)] as [string, string]);
+  const rows = (list: [PlainKey, string][]) => list.map(([title, name]) => [t(title), keysOf(name)] as [string, string]);
   return [
     {
-      label: "Panes",
+      label: t("keysPanes"),
       rows: rows([
-        ["Split Right", "split-right"],
-        ["Split Down", "split-down"],
-        ["Zoom", "zoom"],
-        ["Close Pane", "close"],
-        ["Focus Pane Left, Right, Up, Down", "focus"],
-        ["Move Divider", "resize"],
+        ["cmdSplitRight", "split-right"],
+        ["cmdSplitDown", "split-down"],
+        ["cmdZoom", "zoom"],
+        ["cmdClosePane", "close"],
+        ["cmdFocusPane", "focus"],
+        ["cmdMoveDivider", "resize"],
       ]),
     },
-    { label: "Terminal", rows: rows([["Copy", "copy"]]) },
+    { label: t("keysTerminal"), rows: rows([["commonCopy", "copy"]]) },
     {
-      label: "Windows",
+      label: t("keysWindows"),
       rows: rows([
-        ["New Window", "new-window"],
-        ["Close Window", "close-window"],
-        ["Next Window", "next-window"],
-        ["Previous Window", "previous-window"],
+        ["cmdNewWindow", "new-window"],
+        ["cmdCloseWindow", "close-window"],
+        ["cmdNextWindow", "next-window"],
+        ["cmdPreviousWindow", "previous-window"],
       ]),
     },
-    { label: "GoRex", rows: rows([["Settings", "settings"]]) },
+    // The product's name, not translated.
+    { label: "GoRex", rows: rows([["cmdSettings", "settings"]]) },
   ];
 }

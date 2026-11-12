@@ -11,7 +11,8 @@
 // Service Worker (app.ts, streamSave), or, with no worker, holds it in a
 // blob that is saved and let go (docs/web-tailscale.md, Downloads).
 import { streamSave } from "./app";
-import { apiURL, Control, hostTransport, RexError } from "./rex";
+import { failure as fail, formatSize, Msg, PlainKey, t } from "./i18n";
+import { apiURL, Control, describe, hostTransport, RexError } from "./rex";
 import { Viewer } from "./viewer";
 
 /** The images the viewer shows, by the MIME type their blob takes. */
@@ -132,26 +133,22 @@ interface Begun {
 }
 
 /** The status line's words for download_begin's errors (docs/web-open-files.md). */
-const errorText: Record<string, string> = {
-  no_file: "No such file",
-  is_folder: "A folder is not downloaded",
-  not_regular: "Not a regular file",
-  denied: "Permission denied",
-  too_large: "Too large",
-  not_supported: "The host does not send files",
+const errorText: Record<string, PlainKey> = {
+  no_file: "errorNoFile",
+  is_folder: "errorIsFolder",
+  not_regular: "errorNotRegular",
+  denied: "errorDenied",
+  too_large: "errorFileTooLarge",
+  not_supported: "errorNoFiles",
 };
 
 /** An error's words for the status line. */
-export function errorMessage(e: unknown): string {
-  if (e instanceof RexError && errorText[e.code]) return errorText[e.code];
-  if (e instanceof RexError) return e.message || e.code;
-  return e instanceof Error ? e.message : String(e);
-}
+export const errorMessage = (e: unknown): string => describe(e, errorText);
 
 /** What opening a file needs of its pane. */
 export interface FileHost {
   control(): Control | undefined;
-  status(s: string): void;
+  status(s: Msg): void;
   /** The viewer closed: the keyboard goes back to the pane. */
   back(): void;
 }
@@ -161,7 +158,7 @@ const opening = new Set<string>();
 let viewer: Viewer | undefined;
 
 async function begin(c: Control | undefined, session: string, block: string, path: string): Promise<Begun> {
-  if (!c) throw new RexError("offline", "disconnected");
+  if (!c) throw new RexError("offline", () => t("errorOffline"));
   const r = await c.callBlock("download_begin", session, block, { path });
   return { ticket: String(r.ticket ?? ""), name: String(r.name ?? ""), size: Number(r.size ?? 0), type: String(r.type ?? "") };
 }
@@ -196,7 +193,7 @@ async function saveTailnet(f: Begun, host: FileHost) {
   let r: Response;
   try {
     r = await hostTransport().fetch(downloadPath(f.ticket), { cache: "no-store" });
-    if (!r.ok || !r.body) throw new Error(`the host answered ${r.status}`);
+    if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
   } catch (e) {
     save.abort(e instanceof Error ? e.message : String(e));
     throw e;
@@ -207,10 +204,10 @@ async function saveTailnet(f: Begun, host: FileHost) {
     const pct = f.size ? Math.floor((100 * n) / f.size) : -1;
     if (pct !== shown && pct >= 0) {
       shown = pct;
-      host.status(`Downloading ${name}… ${Math.min(pct, 100)}%`);
+      host.status(() => t("fileDownloading", { name, percent: Math.min(pct, 100) }));
     }
   });
-  host.status(how === "done" ? `Downloaded ${name}` : `Cancelled ${name}`);
+  host.status(() => (how === "done" ? t("fileDownloaded", { name }) : t("fileCancelled", { name })));
 }
 
 /**
@@ -219,11 +216,11 @@ async function saveTailnet(f: Begun, host: FileHost) {
  * shown or navigated to, and its URL goes once the save has started.
  */
 async function saveBlob(f: Begun, host: FileHost) {
-  const cap = `over Tailscale the page downloads files up to ${maxBlobBytes >> 20} MB`;
-  if (f.size > maxBlobBytes) throw new Error(`Too large: ${cap}`);
+  const cap = () => formatSize(maxBlobBytes);
+  if (f.size > maxBlobBytes) throw fail(() => t("fileTooLargeTailnet", { size: cap() }));
   const name = f.name || "download";
   const r = await hostTransport().fetch(downloadPath(f.ticket), { cache: "no-store" });
-  if (!r.ok || !r.body) throw new Error(`the host answered ${r.status}`);
+  if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
   const reader = r.body.getReader();
   const chunks: Uint8Array[] = [];
   let n = 0, shown = -1;
@@ -233,11 +230,11 @@ async function saveBlob(f: Begun, host: FileHost) {
       if (done) break;
       chunks.push(value);
       n += value.length;
-      if (n > maxBlobBytes) throw new Error(`the file grew too large: ${cap}`);
+      if (n > maxBlobBytes) throw fail(() => t("fileGrewTailnet", { size: cap() }));
       const pct = f.size ? Math.floor((100 * n) / f.size) : -1;
       if (pct !== shown && pct >= 0) {
         shown = pct;
-        host.status(`Downloading ${name}… ${Math.min(pct, 100)}%`);
+        host.status(() => t("fileDownloading", { name, percent: Math.min(pct, 100) }));
       }
     }
   } catch (e) {
@@ -253,7 +250,7 @@ async function saveBlob(f: Begun, host: FileHost) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
-  host.status(`Downloaded ${name}`);
+  host.status(() => t("fileDownloaded", { name }));
 }
 
 /**
@@ -263,7 +260,7 @@ async function saveBlob(f: Begun, host: FileHost) {
  */
 async function fetchImage(ticket: string, kind: ImageKind): Promise<Blob | undefined> {
   const r = await hostTransport().fetch(downloadPath(ticket), { mode: "cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
-  if (!r.ok || !r.body) throw new Error(`the host answered ${r.status}`);
+  if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
   const reader = r.body.getReader();
   const chunks: Uint8Array[] = [];
   let n = 0, checked = false;
@@ -273,7 +270,7 @@ async function fetchImage(ticket: string, kind: ImageKind): Promise<Blob | undef
       if (value) {
         chunks.push(value);
         n += value.length;
-        if (n > maxViewBytes) throw new Error("the file grew past what the page shows");
+        if (n > maxViewBytes) throw fail(() => t("fileGrewView"));
       }
       if (!checked && (done || n >= sniffBytes)) {
         const head = new Uint8Array(Math.min(n, sniffBytes));
@@ -307,7 +304,7 @@ export async function downloadFile(session: string, block: string, path: string,
     const f = await begin(host.control(), session, block, path);
     await navigate(f, host);
   } catch (e) {
-    host.status(`Could not download ${path}: ${errorMessage(e)}`);
+    host.status(() => t("fileDownloadFailed", { path, error: errorMessage(e) }));
   } finally {
     opening.delete(key);
   }
@@ -341,7 +338,7 @@ export async function openFile(session: string, block: string, path: string, hos
     }
     await navigate(f, host);
   } catch (e) {
-    host.status(`Could not open ${path}: ${errorMessage(e)}`);
+    host.status(() => t("fileOpenFailed", { path, error: errorMessage(e) }));
   } finally {
     opening.delete(key);
   }

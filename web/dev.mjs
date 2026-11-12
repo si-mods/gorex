@@ -8,7 +8,10 @@
 // gorex rexapi web allow http://127.0.0.1:5173
 //
 // It builds the tailnet engine again when a Go file of web/tailnet changes
-// (a few seconds with Go's build cache); reload the page to load it.
+// (a few seconds with Go's build cache); reload the page to load it. A
+// change of a catalog in web/locales writes src/locales.gen.ts again
+// (i18n.mjs), which the watch then bundles; a catalog with errors leaves
+// the last good one and prints them.
 //
 // The page registers no Service Worker here (__GOREX_SW__ is false), and
 // sw.js is one that removes itself and the page's caches: a worker that a
@@ -24,6 +27,7 @@ import { copyFileSync, watch, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appOptions, assetDefines, buildTailnet, dist, esbuild } from "./build.mjs";
+import { generateOrFail } from "./i18n.mjs";
 
 const web = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -78,6 +82,13 @@ watch(join(web, "tailnet"), { recursive: true }, (_, file) => {
   if (!file?.endsWith(".go")) return;
   clearTimeout(timer);
   timer = setTimeout(rebuildTailnet, 300);
+});
+// The catalogs: checked and generated again as they change.
+let i18nTimer;
+watch(join(web, "locales"), (_, file) => {
+  if (!file?.endsWith(".json")) return;
+  clearTimeout(i18nTimer);
+  i18nTimer = setTimeout(() => generateOrFail({ ci: false }).catch((e) => console.error(e.message)), 100);
 });
 const served = await ctx.serve({ servedir: dist, host, port });
 const origin = `http://${served.hosts?.[0] ?? host}:${served.port}`;

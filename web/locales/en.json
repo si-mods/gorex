@@ -1,0 +1,2061 @@
+{
+  "@@locale": "en",
+  "languageName": "English",
+  "@languageName": {
+    "description": "This language's own name, written in the language itself: an option of Settings › Appearance › Language. Each catalog writes its own."
+  },
+  "commonClose": "Close",
+  "@commonClose": {
+    "description": "Button and tooltip that closes a dialog (Settings, the Tailscale guide, the image viewer)."
+  },
+  "commonCancel": "Cancel",
+  "@commonCancel": {
+    "description": "Button that cancels: the host form, the Tailscale download or sign-in."
+  },
+  "commonCopy": "Copy",
+  "@commonCopy": {
+    "description": "Button beside a command box that copies the command; the terminal's selection menu item that copies the selected text."
+  },
+  "commonCopied": "Copied",
+  "@commonCopied": {
+    "description": "A command box's Copy button, for a moment after it copied."
+  },
+  "commonSelected": "Select",
+  "@commonSelected": {
+    "description": "A command box's Copy button, for a moment, when the browser refused the clipboard and the command's text was selected for the user to copy."
+  },
+  "commonEdit": "Edit",
+  "@commonEdit": {
+    "description": "Tooltip of the pencil button beside a host, in the host list and in Settings › Hosts."
+  },
+  "commonTryAgain": "Try Again",
+  "@commonTryAgain": {
+    "description": "Button that tries again after Tailscale failed to load or to reach its server."
+  },
+  "commonRetry": "Retry",
+  "@commonRetry": {
+    "description": "Button under a failed load (the terminal at startup) that loads again."
+  },
+  "commonDone": "Done",
+  "@commonDone": {
+    "description": "Button that closes the Tailscale guide once hosts are listed."
+  },
+  "percent": "{value}%",
+  "@percent": {
+    "description": "A percentage: a sidebar row's progress ring tooltip, the image viewer's zoom.",
+    "placeholders": {
+      "value": {
+        "type": "int",
+        "example": "42"
+      }
+    }
+  },
+  "listSeparator": " · ",
+  "@listSeparator": {
+    "description": "Separator between short facts on one line, as in “on tailnet · this device is …”."
+  },
+  "sizeBytes": "{n, plural, one {# byte} other {# bytes}}",
+  "@sizeBytes": {
+    "description": "A file size under 1 KB: the image viewer's size, download progress.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "512"
+      }
+    }
+  },
+  "sizeKB": "{size} KB",
+  "@sizeKB": {
+    "description": "A size in kilobytes; size is the number, formatted for the language.",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "48"
+      }
+    }
+  },
+  "sizeMB": "{size} MB",
+  "@sizeMB": {
+    "description": "A size in megabytes; size is the number, formatted for the language.",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "6.1"
+      }
+    }
+  },
+  "sizeGB": "{size} GB",
+  "@sizeGB": {
+    "description": "A size in gigabytes; size is the number, formatted for the language.",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "1.2"
+      }
+    }
+  },
+  "progressOf": "{received} of {total}",
+  "@progressOf": {
+    "description": "A download's progress, both sizes: the startup progress bar, Settings › Tailscale's Download row.",
+    "placeholders": {
+      "received": {
+        "type": "String",
+        "example": "2.1 MB"
+      },
+      "total": {
+        "type": "String",
+        "example": "6.0 MB"
+      }
+    }
+  },
+  "bootLoading": "Loading the terminal…",
+  "@bootLoading": {
+    "description": "Title of the startup progress bar while the terminal's WebAssembly downloads."
+  },
+  "bootStarting": "Starting…",
+  "@bootStarting": {
+    "description": "Title of a progress bar once its download is done and the module starts."
+  },
+  "bootFailed": "The terminal didn't load",
+  "@bootFailed": {
+    "description": "Title of the startup card when the terminal's WebAssembly failed to load."
+  },
+  "bootFailedText": "{error}. Check the connection, then try again.",
+  "@bootFailedText": {
+    "description": "Text of the startup card when the terminal failed to load; error is the browser's reason.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "Failed to fetch"
+      }
+    }
+  },
+  "progressTerminal": "Loading the terminal",
+  "@progressTerminal": {
+    "description": "Screen reader label of the startup progress bar."
+  },
+  "progressTailscale": "Loading Tailscale",
+  "@progressTailscale": {
+    "description": "Screen reader label of the Tailscale engine's progress bar, in the Tailscale guide."
+  },
+  "progressConnecting": "Connecting",
+  "@progressConnecting": {
+    "description": "Screen reader value of a progress bar before any byte arrived."
+  },
+  "progressStarting": "Starting",
+  "@progressStarting": {
+    "description": "Screen reader value of a progress bar while the downloaded module starts."
+  },
+  "statusLoading": "Loading libghostty-vt…",
+  "@statusLoading": {
+    "description": "Status line at the bottom of the page while the terminal emulator loads."
+  },
+  "statusLoadFailed": "Could not load libghostty-vt: {error}",
+  "@statusLoadFailed": {
+    "description": "Status line when the terminal emulator failed to load.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "Failed to fetch"
+      }
+    }
+  },
+  "statusMoveDividerFailed": "Could not move the divider: {error}",
+  "@statusMoveDividerFailed": {
+    "description": "Status line when the host refused a dragged pane divider.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "Not connected"
+      }
+    }
+  },
+  "statusBlocked": "{host}: blocked",
+  "@statusBlocked": {
+    "description": "Status line when the browser blocks the chosen host (plain http from an https page).",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "studio"
+      }
+    }
+  },
+  "statusConnecting": "Connecting to {host}…",
+  "@statusConnecting": {
+    "description": "Status line while the page connects to the chosen host.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "studio"
+      }
+    }
+  },
+  "statusRetrying": "{host}: {problem}. Trying again…",
+  "@statusRetrying": {
+    "description": "Status line when a host could not be reached; problem is what went wrong, a title such as “The host can't be reached”.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "studio"
+      },
+      "problem": {
+        "type": "String",
+        "example": "The host can't be reached"
+      }
+    }
+  },
+  "statusDisconnected": "{host}: disconnected ({reason}). Reconnecting…",
+  "@statusDisconnected": {
+    "description": "Status line when the connection to the host dropped.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "studio"
+      },
+      "reason": {
+        "type": "String",
+        "example": "closed (1006)"
+      }
+    }
+  },
+  "statusConnected": "Connected to {host}",
+  "@statusConnected": {
+    "description": "Status line once the page is connected to the host and has read its sessions.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "studio"
+      }
+    }
+  },
+  "statusSessionsFailed": "Connected, but the sessions could not be read: {error}",
+  "@statusSessionsFailed": {
+    "description": "Status line when the host connected but its session list failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusNewWindowFailed": "Could not open a window: {error}",
+  "@statusNewWindowFailed": {
+    "description": "Status line when New Window failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusCloseWindowFailed": "Could not close the window: {error}",
+  "@statusCloseWindowFailed": {
+    "description": "Status line when Close Window failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusSplitFailed": "Could not split the pane: {error}",
+  "@statusSplitFailed": {
+    "description": "Status line when Split Right or Split Down failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusClosePaneFailed": "Could not close the pane: {error}",
+  "@statusClosePaneFailed": {
+    "description": "Status line when Close Pane failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusZoomFailed": "Could not zoom the pane: {error}",
+  "@statusZoomFailed": {
+    "description": "Status line when Zoom failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusClosed": "closed ({code})",
+  "@statusClosed": {
+    "description": "Why the connection to the host ended, inside statusDisconnected: a WebSocket close code.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "1006"
+      }
+    }
+  },
+  "statusClosedReason": "closed ({code}, {reason})",
+  "@statusClosedReason": {
+    "description": "Why the connection to the host ended, with the server's reason in English.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "1011"
+      },
+      "reason": {
+        "type": "String",
+        "example": "server shutting down"
+      }
+    }
+  },
+  "errorWithDetail": "{error}: {detail}",
+  "@errorWithDetail": {
+    "description": "An error the host sent: its meaning in this language, then the host's own words (in English).",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "Not found"
+      },
+      "detail": {
+        "type": "String",
+        "example": "no such block"
+      }
+    }
+  },
+  "errorOffline": "Not connected to the host",
+  "@errorOffline": {
+    "description": "Error when the page is not connected: shown in the status line after “Could not …:”."
+  },
+  "errorNoHost": "No host is chosen",
+  "@errorNoHost": {
+    "description": "Error when no host is chosen: shown in the status line after “Could not …:”."
+  },
+  "errorDisconnected": "The connection dropped",
+  "@errorDisconnected": {
+    "description": "Error of a request whose connection ended before its answer came."
+  },
+  "errorTimeout": "The host did not answer",
+  "@errorTimeout": {
+    "description": "Error of a request the host did not answer in time."
+  },
+  "errorProtocol": "The host answered in a way this page does not understand",
+  "@errorProtocol": {
+    "description": "Error when the host spoke another protocol than the page expects."
+  },
+  "errorServerClosed": "The host closed the connection ({code})",
+  "@errorServerClosed": {
+    "description": "Error when the host closed the control connection before it began.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "1006"
+      }
+    }
+  },
+  "errorDataRefused": "The host refused the terminal's connection ({code})",
+  "@errorDataRefused": {
+    "description": "Error when the host refused a terminal's data connection; code is a hex byte.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "0x02"
+      }
+    }
+  },
+  "errorDataClosed": "The terminal's connection closed ({code})",
+  "@errorDataClosed": {
+    "description": "Error when a terminal's data connection closed before it began.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "1006"
+      }
+    }
+  },
+  "errorBadRequest": "The host did not accept the request",
+  "@errorBadRequest": {
+    "description": "Gateway error bad_request."
+  },
+  "errorNotFound": "Not found",
+  "@errorNotFound": {
+    "description": "Gateway error not_found."
+  },
+  "errorMethodNotFound": "The host does not know this request",
+  "@errorMethodNotFound": {
+    "description": "Gateway error method_not_found: an older or other host."
+  },
+  "errorSessionNotFound": "The session is gone",
+  "@errorSessionNotFound": {
+    "description": "Gateway error session_not_found."
+  },
+  "errorConflict": "The host is busy with a change to it",
+  "@errorConflict": {
+    "description": "Gateway error conflict: the thing changed meanwhile."
+  },
+  "errorNotSupported": "The host does not do this",
+  "@errorNotSupported": {
+    "description": "Gateway error not_supported."
+  },
+  "errorTooLarge": "Too large",
+  "@errorTooLarge": {
+    "description": "Gateway error too_large."
+  },
+  "errorInternal": "The host failed",
+  "@errorInternal": {
+    "description": "Gateway error internal."
+  },
+  "errorClientUnavailable": "The client is not available",
+  "@errorClientUnavailable": {
+    "description": "Gateway error client_unavailable."
+  },
+  "errorNoFile": "No such file",
+  "@errorNoFile": {
+    "description": "Opening a file failed: error no_file."
+  },
+  "errorIsFolder": "A folder is not downloaded",
+  "@errorIsFolder": {
+    "description": "Opening a file failed: it is a folder (is_folder)."
+  },
+  "errorNotRegular": "Not a regular file",
+  "@errorNotRegular": {
+    "description": "Opening a file failed: error not_regular."
+  },
+  "errorDenied": "Permission denied",
+  "@errorDenied": {
+    "description": "Opening a file failed: error denied."
+  },
+  "errorFileTooLarge": "Too large",
+  "@errorFileTooLarge": {
+    "description": "Opening a file failed: error too_large."
+  },
+  "errorNoFiles": "The host does not send files",
+  "@errorNoFiles": {
+    "description": "Opening a file failed: error not_supported, an older host."
+  },
+  "noticeAddTitle": "Add a GoRex host",
+  "@noticeAddTitle": {
+    "description": "Title of the card over the page when no host is added; tooltip of the host button then."
+  },
+  "noticeAddText": "This page connects to GoRex's Rex API gateway on your machines: the tailnet address of built-in Tailscale (https://<machine>-gorex.<tailnet>.ts.net), or the local network listener (http://192.168.1.2:7297). Or sign in to Tailscale here, and the page finds your hosts on your tailnet. Each host must trust this page's origin first. On the host, run:",
+  "@noticeAddText": {
+    "description": "Text of the card over the page when no host is added, above the command to run."
+  },
+  "noticeShowTailscaleHosts": "Show Tailscale Hosts",
+  "@noticeShowTailscaleHosts": {
+    "description": "Button of the no-host card when built-in Tailscale is connected."
+  },
+  "noticeSignInTailscale": "Sign in with Tailscale",
+  "@noticeSignInTailscale": {
+    "description": "Button that starts the Tailscale sign-in: the no-host card, the Tailscale guide."
+  },
+  "noticeContinueTailscale": "Continue with Tailscale",
+  "@noticeContinueTailscale": {
+    "description": "Button of the no-host card when built-in Tailscale is on but not signed in yet."
+  },
+  "noticeTailscaleSettings": "Tailscale Settings",
+  "@noticeTailscaleSettings": {
+    "description": "Button of the card shown when a host found by Tailscale can't be reached: opens Settings › Tailscale."
+  },
+  "sidebarSettings": "Settings",
+  "@sidebarSettings": {
+    "description": "The button at the bottom of the sidebar that opens Settings, and its tooltip."
+  },
+  "sidebarTerminal": "Terminal",
+  "@sidebarTerminal": {
+    "description": "The title of a terminal that set none: a pane's header, a sidebar row."
+  },
+  "sidebarWindow": "Window",
+  "@sidebarWindow": {
+    "description": "The title of a window in the sidebar when its terminal has no title and it has no label."
+  },
+  "sidebarSession": "Session",
+  "@sidebarSession": {
+    "description": "The heading of a session in the sidebar when it has no label."
+  },
+  "sidebarNeedsInput": "Needs Input",
+  "@sidebarNeedsInput": {
+    "description": "Tooltip of the dot on a sidebar row whose program waits for the user."
+  },
+  "sidebarNoSessions": "No sessions on this host.",
+  "@sidebarNoSessions": {
+    "description": "The sidebar when the connected host has no session."
+  },
+  "programDone": "Done",
+  "@programDone": {
+    "description": "Tooltip of the dot on a program's tile in the sidebar when it finished its work."
+  },
+  "cmdSplitRight": "Split Right",
+  "@cmdSplitRight": {
+    "description": "Command: split the focused pane in two, side by side. Pane header button, Settings › Keyboard."
+  },
+  "cmdSplitDown": "Split Down",
+  "@cmdSplitDown": {
+    "description": "Command: split the focused pane in two, one above the other. Pane header button, Settings › Keyboard."
+  },
+  "cmdZoom": "Zoom",
+  "@cmdZoom": {
+    "description": "Command: show the focused pane alone in its window, or back. Pane header button, Settings › Keyboard."
+  },
+  "cmdClosePane": "Close Pane",
+  "@cmdClosePane": {
+    "description": "Command: close the focused pane. Pane header button, Settings › Keyboard."
+  },
+  "cmdFocusPane": "Focus Pane Left, Right, Up, Down",
+  "@cmdFocusPane": {
+    "description": "Settings › Keyboard: the arrow keys that move the focus to the pane in that direction."
+  },
+  "cmdMoveDivider": "Move Divider",
+  "@cmdMoveDivider": {
+    "description": "Settings › Keyboard: the arrow keys that move the divider of the focused pane's split."
+  },
+  "cmdNewWindow": "New Window",
+  "@cmdNewWindow": {
+    "description": "Command: open a window in a session. Sidebar + button tooltip, Settings › Keyboard."
+  },
+  "cmdCloseWindow": "Close Window",
+  "@cmdCloseWindow": {
+    "description": "Command: close a window. Sidebar × button tooltip, Settings › Keyboard."
+  },
+  "cmdNextWindow": "Next Window",
+  "@cmdNextWindow": {
+    "description": "Settings › Keyboard: show the next window of the sidebar."
+  },
+  "cmdPreviousWindow": "Previous Window",
+  "@cmdPreviousWindow": {
+    "description": "Settings › Keyboard: show the previous window of the sidebar."
+  },
+  "cmdSettings": "Settings",
+  "@cmdSettings": {
+    "description": "Settings › Keyboard: open or close Settings."
+  },
+  "keysPanes": "Panes",
+  "@keysPanes": {
+    "description": "Settings › Keyboard: the heading of the panes' shortcuts."
+  },
+  "keysTerminal": "Terminal",
+  "@keysTerminal": {
+    "description": "Settings › Keyboard: the heading of the terminal's shortcuts."
+  },
+  "keysWindows": "Windows",
+  "@keysWindows": {
+    "description": "Settings › Keyboard: the heading of the windows' shortcuts."
+  },
+  "paneDivider": "Pane divider",
+  "@paneDivider": {
+    "description": "Screen reader label of the divider between two panes, which drags."
+  },
+  "paneDropped": "A terminal's connection dropped ({code}). Reopening…",
+  "@paneDropped": {
+    "description": "Status line when a pane's data connection dropped.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "1006"
+      }
+    }
+  },
+  "paneOpenFailed": "Could not open a terminal: {error}",
+  "@paneOpenFailed": {
+    "description": "Status line when a pane's terminal could not be opened.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "paneSnapshotFailed": "A terminal's snapshot could not be read: {error}",
+  "@paneSnapshotFailed": {
+    "description": "Status line when a pane's screen from the host could not be read.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "bad snapshot"
+      }
+    }
+  },
+  "paneExited": "A program exited ({code}).",
+  "@paneExited": {
+    "description": "Status line when a pane's program exited; code is its exit code.",
+    "placeholders": {
+      "code": {
+        "type": "String",
+        "example": "0"
+      }
+    }
+  },
+  "paneDroppedTyped": "Dropped {n, plural, one {# typed byte} other {# typed bytes}}: {waiting} wait to be written.",
+  "@paneDroppedTyped": {
+    "description": "Status line when typing offline went past the limit of what waits.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "12"
+      },
+      "waiting": {
+        "type": "int",
+        "example": "4194304"
+      }
+    }
+  },
+  "copyFailed": "Could not copy: this browser did not let the page write to the clipboard.",
+  "@copyFailed": {
+    "description": "Status line when copying a terminal selection failed."
+  },
+  "hostIconLaptop": "Laptop",
+  "@hostIconLaptop": {
+    "description": "A host icon choice in the host form."
+  },
+  "hostIconDesktop": "Desktop",
+  "@hostIconDesktop": {
+    "description": "A host icon choice in the host form."
+  },
+  "hostIconServer": "Server",
+  "@hostIconServer": {
+    "description": "A host icon choice in the host form."
+  },
+  "hostIconGlobe": "Globe",
+  "@hostIconGlobe": {
+    "description": "A host icon choice in the host form."
+  },
+  "hostUrlEmpty": "Enter the gateway's address, such as https://studio-gorex.tail1234.ts.net.",
+  "@hostUrlEmpty": {
+    "description": "Host form error: the address is empty."
+  },
+  "hostUrlInvalid": "{address} is not an address.",
+  "@hostUrlInvalid": {
+    "description": "Host form error: what was typed is no URL.",
+    "placeholders": {
+      "address": {
+        "type": "String",
+        "example": "studio:abc"
+      }
+    }
+  },
+  "hostUrlScheme": "The address starts with http:// or https://.",
+  "@hostUrlScheme": {
+    "description": "Host form error: another scheme than http or https."
+  },
+  "hostUrlUser": "The address has no user name.",
+  "@hostUrlUser": {
+    "description": "Host form error: the URL has a user name or password."
+  },
+  "hostUrlPath": "The address is the gateway's only, with no path.",
+  "@hostUrlPath": {
+    "description": "Host form error: the URL has a path, query or fragment."
+  },
+  "hostTailnetOnline": "Online",
+  "@hostTailnetOnline": {
+    "description": "A host found by Tailscale: it is online and lets this page in."
+  },
+  "hostTailnetOffline": "Offline",
+  "@hostTailnetOffline": {
+    "description": "A host found by Tailscale: it is offline."
+  },
+  "hostTailnetRefused": "Refuses this browser",
+  "@hostTailnetRefused": {
+    "description": "A host found by Tailscale: it is online but refuses this page."
+  },
+  "hostTailnetLine": "{state} · {address}",
+  "@hostTailnetLine": {
+    "description": "The host list's line under a Tailscale host that is not online: its state, then its DNS name.",
+    "placeholders": {
+      "state": {
+        "type": "String",
+        "example": "Offline"
+      },
+      "address": {
+        "type": "String",
+        "example": "studio-gorex.tail1234.ts.net"
+      }
+    }
+  },
+  "hostProblemTip": "{title}. {text}",
+  "@hostProblemTip": {
+    "description": "Tooltip of a Tailscale host that refuses this page: what is wrong, then what to do.",
+    "placeholders": {
+      "title": {
+        "type": "String",
+        "example": "The host doesn't trust this page"
+      },
+      "text": {
+        "type": "String",
+        "example": "On the host, run:"
+      }
+    }
+  },
+  "hostList": "Hosts",
+  "@hostList": {
+    "description": "Title of the host list panel under the host button, and its screen reader label."
+  },
+  "hostAddAHost": "Add a Host",
+  "@hostAddAHost": {
+    "description": "The host button at the top of the sidebar when no host is added."
+  },
+  "hostAdd": "Add Host",
+  "@hostAdd": {
+    "description": "Button that opens the form to add a host (host list, Settings, the no-host card); the form's title."
+  },
+  "hostEdit": "Edit Host",
+  "@hostEdit": {
+    "description": "Button that edits the chosen host (Settings › Host, the card of an unreachable host); the form's title."
+  },
+  "hostEditName": "Edit {name}",
+  "@hostEditName": {
+    "description": "Screen reader label of the pencil button beside a host.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "studio"
+      }
+    }
+  },
+  "hostNone": "No hosts added.",
+  "@hostNone": {
+    "description": "The host list when no host was added."
+  },
+  "hostTsAdd": "Add Hosts from Tailscale",
+  "@hostTsAdd": {
+    "description": "Host list row that opens the Tailscale guide, while Tailscale is off; the guide's title."
+  },
+  "hostTsSignIn": "Sign in to Tailscale",
+  "@hostTsSignIn": {
+    "description": "Host list row that opens the Tailscale guide, while Tailscale is on but not signed in."
+  },
+  "hostSearching": "Looking for GoRex hosts…",
+  "@hostSearching": {
+    "description": "While Tailscale probes the tailnet's devices for GoRex hosts: host list, Tailscale guide."
+  },
+  "hostNoneFound": "No GoRex hosts found. How to set one up",
+  "@hostNoneFound": {
+    "description": "Host list row when Tailscale found no host; it opens the guide, which tells how to set one up."
+  },
+  "formAddress": "Address",
+  "@formAddress": {
+    "description": "Host form field: the gateway's URL. Settings › Host's row of it."
+  },
+  "formName": "Name",
+  "@formName": {
+    "description": "Host form field and its placeholder: the host's name."
+  },
+  "formIcon": "Icon",
+  "@formIcon": {
+    "description": "Host form field: the host's icon."
+  },
+  "formNote": "The host must trust this page. On the host, run:",
+  "@formNote": {
+    "description": "Host form note above the command that makes the host trust this page."
+  },
+  "formSave": "Save",
+  "@formSave": {
+    "description": "Host form button: save the edited host."
+  },
+  "formAdd": "Add",
+  "@formAdd": {
+    "description": "Host form button: add the new host."
+  },
+  "formRemove": "Remove",
+  "@formRemove": {
+    "description": "Host form button: remove the host."
+  },
+  "formRemoveAsk": "Remove {name}? Its sessions keep running on the host.",
+  "@formRemoveAsk": {
+    "description": "Confirmation before a host is removed.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "studio"
+      }
+    }
+  },
+  "problemMixedTitle": "This page can't reach a plain http:// host",
+  "@problemMixedTitle": {
+    "description": "Card title: an https page cannot open http:// and ws:// connections."
+  },
+  "problemMixedText": "This page was opened over https, and browsers block its connections to http:// and ws:// addresses (mixed content). Use the host's tailnet address (https://<machine>-gorex.<tailnet>.ts.net, from built-in Tailscale), or open the web client from the local dev server (npm run dev in web/, http://127.0.0.1) to reach a local network gateway.",
+  "@problemMixedText": {
+    "description": "Card text under problemMixedTitle."
+  },
+  "problemRefusedTitle": "The host refused this browser",
+  "@problemRefusedTitle": {
+    "description": "Card title: the gateway refused this device."
+  },
+  "problemRefusedText": "The gateway's access rule refused this device.",
+  "@problemRefusedText": {
+    "description": "Card text under problemRefusedTitle, when the gateway gave no reason."
+  },
+  "problemFailedTitle": "The host answered, but the connection failed",
+  "@problemFailedTitle": {
+    "description": "Card title: the gateway answered, yet the connection did not open."
+  },
+  "problemFailedText": "The gateway answered {status}. Reconnecting…",
+  "@problemFailedText": {
+    "description": "Card text under problemFailedTitle; status is an HTTP status code.",
+    "placeholders": {
+      "status": {
+        "type": "String",
+        "example": "502"
+      }
+    }
+  },
+  "problemUnreachableTitle": "The host can't be reached",
+  "@problemUnreachableTitle": {
+    "description": "Card title: nothing answered at the host's address."
+  },
+  "problemUnreachableText": "Nothing answered at {url}. Check that the address is right, that GoRex's gateway runs there (the local network listener or built-in Tailscale is on), and that this device can reach it. A browser may also ask before a page reaches the local network; allow it.",
+  "@problemUnreachableText": {
+    "description": "Card text under problemUnreachableTitle.",
+    "placeholders": {
+      "url": {
+        "type": "String",
+        "example": "http://192.168.1.2:7297"
+      }
+    }
+  },
+  "problemUntrustedTitle": "The host doesn't trust this page",
+  "@problemUntrustedTitle": {
+    "description": "Card title: the gateway answered but refuses this page's origin."
+  },
+  "problemUntrustedText": "The gateway at {url} answered, but refuses web pages from {origin}. Run this on the host, then wait a moment:",
+  "@problemUntrustedText": {
+    "description": "Card text under problemUntrustedTitle, above the command that trusts the page.",
+    "placeholders": {
+      "url": {
+        "type": "String",
+        "example": "http://192.168.1.2:7297"
+      },
+      "origin": {
+        "type": "String",
+        "example": "https://gorex.example.com"
+      }
+    }
+  },
+  "settingsTitle": "Settings",
+  "@settingsTitle": {
+    "description": "Screen reader label of the Settings dialog."
+  },
+  "settingsLabel": "Settings, {section}",
+  "@settingsLabel": {
+    "description": "Screen reader label of the Settings dialog with its open section.",
+    "placeholders": {
+      "section": {
+        "type": "String",
+        "example": "Appearance"
+      }
+    }
+  },
+  "settingsClose": "Close Settings",
+  "@settingsClose": {
+    "description": "Screen reader label of the Settings dialog's close button."
+  },
+  "settingsHost": "Host",
+  "@settingsHost": {
+    "description": "Settings: the page of the chosen host and its connection; the host card's label when no host is chosen."
+  },
+  "settingsAppearance": "Appearance",
+  "@settingsAppearance": {
+    "description": "Settings section: the page's colours, pane headers, text size and language."
+  },
+  "settingsTerminal": "Terminal",
+  "@settingsTerminal": {
+    "description": "Settings section: font, cursor, copy on selection and contrast."
+  },
+  "settingsTheme": "Theme",
+  "@settingsTheme": {
+    "description": "Settings section: the terminal's colour theme."
+  },
+  "settingsKeyboard": "Keyboard",
+  "@settingsKeyboard": {
+    "description": "Settings section: the shortcuts."
+  },
+  "settingsHosts": "Hosts",
+  "@settingsHosts": {
+    "description": "Settings section: the hosts added in this browser."
+  },
+  "settingsAbout": "About",
+  "@settingsAbout": {
+    "description": "Settings section: version, install and reset."
+  },
+  "linkNone": "No host",
+  "@linkNone": {
+    "description": "The host card's state when no host is chosen."
+  },
+  "linkConnecting": "Connecting…",
+  "@linkConnecting": {
+    "description": "The host card's state while the page connects."
+  },
+  "linkConnected": "Connected",
+  "@linkConnected": {
+    "description": "The host card's state when connected; Tailscale's state when signed in."
+  },
+  "linkUnreachable": "Unreachable",
+  "@linkUnreachable": {
+    "description": "The host card's state when the host can't be reached."
+  },
+  "settingsHostLabel": "{host}, {state}",
+  "@settingsHostLabel": {
+    "description": "Screen reader label of Settings' host card: the host's name and its state.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "studio"
+      },
+      "state": {
+        "type": "String",
+        "example": "Connected"
+      }
+    }
+  },
+  "settingsNoHost": "No Host",
+  "@settingsNoHost": {
+    "description": "The host card's name, and Settings › Host's title line, when no host is chosen."
+  },
+  "hostPageAddHint": "Add a GoRex host to connect to.",
+  "@hostPageAddHint": {
+    "description": "Settings › Host, under No Host."
+  },
+  "hostPageThisPage": "This page",
+  "@hostPageThisPage": {
+    "description": "Settings › Host: the row with this page's origin."
+  },
+  "hostPageChoose": "Choose Another Host",
+  "@hostPageChoose": {
+    "description": "Settings › Host: button that shows the list of hosts."
+  },
+  "trustTitle": "Trust this page",
+  "@trustTitle": {
+    "description": "Settings › Host and Tailscale: the heading of the command that makes a host trust this page."
+  },
+  "trustNote": "A host's gateway answers only pages it trusts. On each host, run once:",
+  "@trustNote": {
+    "description": "Settings › Host: above the trust command."
+  },
+  "trustFoot": "The command adds this page's origin to the host's list (gorex rexapi web list shows it; remove takes it out).",
+  "@trustFoot": {
+    "description": "Settings › Host: under the trust command."
+  },
+  "settingsWindow": "Window",
+  "@settingsWindow": {
+    "description": "Settings › Appearance: the page's colours, light or dark."
+  },
+  "settingsWindowHint": "System follows the terminal's background: light for a light theme, dark for a dark one.",
+  "@settingsWindowHint": {
+    "description": "Hint under Settings › Appearance › Window."
+  },
+  "appearanceSystem": "System",
+  "@appearanceSystem": {
+    "description": "Settings › Appearance › Window option: follow the terminal's background."
+  },
+  "appearanceLight": "Light",
+  "@appearanceLight": {
+    "description": "Settings › Appearance › Window option; the theme list's filter of light themes."
+  },
+  "appearanceDark": "Dark",
+  "@appearanceDark": {
+    "description": "Settings › Appearance › Window option; the theme list's filter of dark themes."
+  },
+  "settingsPaneHeaders": "Show pane headers",
+  "@settingsPaneHeaders": {
+    "description": "Settings › Appearance switch: show each pane's header."
+  },
+  "settingsPaneHeadersHint": "Each pane's title, program and buttons above its terminal.",
+  "@settingsPaneHeadersHint": {
+    "description": "Hint under Show pane headers."
+  },
+  "settingsTextSize": "Text size",
+  "@settingsTextSize": {
+    "description": "Settings › Appearance: the terminals' text size."
+  },
+  "settingsTextSizeHint": "The terminals' text, in CSS pixels: {size}, the desktop's default, until set.",
+  "@settingsTextSizeHint": {
+    "description": "Hint under Text size; size is the default size.",
+    "placeholders": {
+      "size": {
+        "type": "num",
+        "example": "11.6"
+      }
+    }
+  },
+  "settingsTextSizeValue": "{size} px",
+  "@settingsTextSizeValue": {
+    "description": "The text size shown beside the stepper.",
+    "placeholders": {
+      "size": {
+        "type": "num",
+        "example": "12.6"
+      }
+    }
+  },
+  "settingsSmaller": "Smaller text",
+  "@settingsSmaller": {
+    "description": "Screen reader label of the text size stepper's minus button."
+  },
+  "settingsLarger": "Larger text",
+  "@settingsLarger": {
+    "description": "Screen reader label of the text size stepper's plus button."
+  },
+  "settingsReset": "Reset",
+  "@settingsReset": {
+    "description": "Button that resets the text size to the default."
+  },
+  "settingsLanguage": "Language",
+  "@settingsLanguage": {
+    "description": "Settings › Appearance: the language of the page."
+  },
+  "settingsLanguageHint": "The language of this page. System follows the browser's languages.",
+  "@settingsLanguageHint": {
+    "description": "Hint under Settings › Appearance › Language."
+  },
+  "settingsLanguageSystem": "System",
+  "@settingsLanguageSystem": {
+    "description": "Settings › Appearance › Language option: follow the browser's languages."
+  },
+  "settingsFont": "Font",
+  "@settingsFont": {
+    "description": "Settings › Terminal: the terminals' font family."
+  },
+  "settingsFontHint": "Monospaced families installed on this device. JetBrains Mono comes with the page.",
+  "@settingsFontHint": {
+    "description": "Hint under Settings › Terminal › Font."
+  },
+  "settingsFontDefault": "JetBrains Mono (default)",
+  "@settingsFontDefault": {
+    "description": "Settings › Terminal › Font option: the font the page brings."
+  },
+  "settingsFontSample": "The quick brown fox jumps over the lazy dog",
+  "@settingsFontSample": {
+    "description": "Settings › Terminal: sample text of the font preview, in the chosen font and theme."
+  },
+  "settingsCursorFoot": "Until a program sets its own cursor. Not set, the host's cursor stays.",
+  "@settingsCursorFoot": {
+    "description": "Note under the cursor settings."
+  },
+  "settingsCursorStyle": "Cursor style",
+  "@settingsCursorStyle": {
+    "description": "Settings › Terminal: the cursor's shape."
+  },
+  "settingsCursorBlock": "Block",
+  "@settingsCursorBlock": {
+    "description": "Cursor style option."
+  },
+  "settingsCursorBar": "Bar",
+  "@settingsCursorBar": {
+    "description": "Cursor style option."
+  },
+  "settingsCursorUnderline": "Underline",
+  "@settingsCursorUnderline": {
+    "description": "Cursor style option."
+  },
+  "settingsCursorBlink": "Cursor blink",
+  "@settingsCursorBlink": {
+    "description": "Settings › Terminal switch: the cursor blinks."
+  },
+  "settingsCopyOnSelect": "Copy on selection",
+  "@settingsCopyOnSelect": {
+    "description": "Settings › Terminal switch: copy selected text to the clipboard."
+  },
+  "settingsCopyOnSelectHint": "Copies the text you select to the clipboard.",
+  "@settingsCopyOnSelectHint": {
+    "description": "Hint under Copy on selection."
+  },
+  "settingsMinContrast": "Minimum contrast",
+  "@settingsMinContrast": {
+    "description": "Settings › Terminal: the least contrast of text with its background."
+  },
+  "settingsMinContrastHint": "Lightens or darkens text too close to its background, colors programs set (ANSI, 256 and RGB) too. The hue stays, so errors and warnings keep apart; box drawing keeps its colors. Off shows programs' colors as they are.",
+  "@settingsMinContrastHint": {
+    "description": "Hint under Minimum contrast."
+  },
+  "contrastDefault": "Default ({value})",
+  "@contrastDefault": {
+    "description": "Minimum contrast option: the default, with its value.",
+    "placeholders": {
+      "value": {
+        "type": "num",
+        "example": "3"
+      }
+    }
+  },
+  "contrastOff": "Off",
+  "@contrastOff": {
+    "description": "Minimum contrast option: no correction."
+  },
+  "settingsResetDefaults": "Reset to Defaults",
+  "@settingsResetDefaults": {
+    "description": "Settings › Terminal: button that forgets the terminal settings."
+  },
+  "settingsResetDefaultsHint": "Forgets the font, cursor, copy on selection and contrast chosen here, so the defaults apply.",
+  "@settingsResetDefaultsHint": {
+    "description": "Settings › Terminal: the text beside Reset to Defaults."
+  },
+  "settingsThemesFailed": "The themes could not be loaded.",
+  "@settingsThemesFailed": {
+    "description": "Settings › Theme when the theme list failed to load."
+  },
+  "settingsThemesFailedHint": "The terminals keep GoRex's colors.",
+  "@settingsThemesFailedHint": {
+    "description": "Under settingsThemesFailed."
+  },
+  "settingsThemeFoot": "A theme goes over the host's colors; Host Colors keeps what the host sends.",
+  "@settingsThemeFoot": {
+    "description": "Note under the theme list."
+  },
+  "themeSearch": "Search themes",
+  "@themeSearch": {
+    "description": "Placeholder and label of the theme list's search field."
+  },
+  "themeAll": "All",
+  "@themeAll": {
+    "description": "The theme list's filter: all themes."
+  },
+  "themeHostColors": "Host Colors",
+  "@themeHostColors": {
+    "description": "The theme list's first row: keep the colours the host sends."
+  },
+  "themeNoMatch": "No themes match.",
+  "@themeNoMatch": {
+    "description": "The theme list when the search matches none."
+  },
+  "settingsKeyboardNote": "The web client's shortcuts, which come before the terminal's keys. A browser keeps {keys} for itself, so their commands take {chord} chords here.",
+  "@settingsKeyboardNote": {
+    "description": "Settings › Keyboard: the note above the shortcuts; keys is a list of browser shortcuts, chord the modifiers used instead.",
+    "placeholders": {
+      "keys": {
+        "type": "String",
+        "example": "Ctrl+W, Ctrl+T, Ctrl+N and Ctrl+Tab"
+      },
+      "chord": {
+        "type": "String",
+        "example": "Alt+Shift"
+      }
+    }
+  },
+  "settingsHostsNote": "The GoRex hosts this browser connects to. Only the chosen one is connected.",
+  "@settingsHostsNote": {
+    "description": "Settings › Hosts: above the list."
+  },
+  "settingsHostConnected": "Connected to this host",
+  "@settingsHostConnected": {
+    "description": "Settings › Hosts: tooltip of the chosen host's row."
+  },
+  "settingsHostConnect": "Connect to {name}",
+  "@settingsHostConnect": {
+    "description": "Tooltip of a host's row in Settings › Hosts; label of a host's Connect button in the Tailscale guide.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "studio"
+      }
+    }
+  },
+  "settingsNoHosts": "No hosts yet.",
+  "@settingsNoHosts": {
+    "description": "Settings › Hosts when no host was added."
+  },
+  "settingsNoHostsHint": "Add the address of a GoRex host's gateway.",
+  "@settingsNoHostsHint": {
+    "description": "Under settingsNoHosts."
+  },
+  "tsBuiltIn": "Built-in Tailscale",
+  "@tsBuiltIn": {
+    "description": "Settings › Tailscale: the title and switch of the page's own Tailscale node."
+  },
+  "tsOffNote": "Reach your GoRex hosts through Tailscale, with no app on this device.",
+  "@tsOffNote": {
+    "description": "Settings › Tailscale, under the title, while it is off."
+  },
+  "tsThisDevice": "This device: {name}",
+  "@tsThisDevice": {
+    "description": "Settings › Tailscale, under the title, while connected: this browser's device name.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "gorex-web-kqzt"
+      }
+    }
+  },
+  "tsStatus": "Status",
+  "@tsStatus": {
+    "description": "Settings › Tailscale: the row of Tailscale's state."
+  },
+  "tsAccount": "Account",
+  "@tsAccount": {
+    "description": "Settings › Tailscale: the signed-in Tailscale account."
+  },
+  "tsUnknown": "Unknown",
+  "@tsUnknown": {
+    "description": "Settings › Tailscale: the account when Tailscale did not name it."
+  },
+  "tsTailnet": "Tailnet",
+  "@tsTailnet": {
+    "description": "Settings › Tailscale: the row of the tailnet's name."
+  },
+  "tsHosts": "GoRex hosts",
+  "@tsHosts": {
+    "description": "Settings › Tailscale: the row with how many hosts were found; the Tailscale guide's heading of the hosts."
+  },
+  "tsFound": "{n, plural, one {# found} other {# found}}",
+  "@tsFound": {
+    "description": "Settings › Tailscale: how many GoRex hosts were found.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "tsLooking": "Looking…",
+  "@tsLooking": {
+    "description": "Settings › Tailscale: while hosts are being looked for."
+  },
+  "tsNoneFound": "None found",
+  "@tsNoneFound": {
+    "description": "Settings › Tailscale: no host was found."
+  },
+  "tsDownload": "Download",
+  "@tsDownload": {
+    "description": "Settings › Tailscale: the row of the engine's download progress; the Tailscale guide's second step."
+  },
+  "tsSignOut": "Sign Out",
+  "@tsSignOut": {
+    "description": "Button that signs this browser out of Tailscale."
+  },
+  "tsShowHosts": "Show Hosts",
+  "@tsShowHosts": {
+    "description": "Settings › Tailscale: button that opens the guide at the hosts found."
+  },
+  "tsSignIn": "Sign In",
+  "@tsSignIn": {
+    "description": "Settings › Tailscale: button that opens the guide to sign in."
+  },
+  "tsDeviceName": "Device name",
+  "@tsDeviceName": {
+    "description": "Settings › Tailscale: this browser's name on the tailnet."
+  },
+  "tsDeviceFoot": "The name your tailnet's admin console and other devices show. Letters, digits and hyphens, up to 63.",
+  "@tsDeviceFoot": {
+    "description": "Note under Device name."
+  },
+  "tsDeviceInvalid": "Use letters, digits and hyphens, not at the start or end, up to 63.",
+  "@tsDeviceInvalid": {
+    "description": "Error under Device name when the name is not valid."
+  },
+  "tsRenameFailed": "Could not rename: {error}",
+  "@tsRenameFailed": {
+    "description": "Error under Device name when Tailscale did not take the name.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "not running"
+      }
+    }
+  },
+  "tsNote": "Turning it on downloads Tailscale's engine (about 6 MB), and this tab joins your tailnet as a device of its own. It finds your GoRex hosts there (your own devices named <machine>-gorex that answer as GoRex) and reaches them through Tailscale's encrypted relays. In this version the sign-in lasts for this tab only: reloading or closing the tab signs this browser out, and Tailscale removes the device soon after.",
+  "@tsNote": {
+    "description": "Settings › Tailscale: the note on how built-in Tailscale works."
+  },
+  "tsTrustNote": "Each GoRex host must trust this page's origin. On the host, run once:",
+  "@tsTrustNote": {
+    "description": "Settings › Tailscale: above the trust command."
+  },
+  "tsYou": "you",
+  "@tsYou": {
+    "description": "Who is signed in, when Tailscale did not name the account: “Connected as you”."
+  },
+  "tsYourAccount": "your account",
+  "@tsYourAccount": {
+    "description": "The account, when Tailscale did not name it, in the guide's empty list text."
+  },
+  "tsAnotherAccount": "another account",
+  "@tsAnotherAccount": {
+    "description": "The account, when Tailscale did not name it, in the text of a host that lets in only its owner."
+  },
+  "tsStateOff": "Off",
+  "@tsStateOff": {
+    "description": "Built-in Tailscale's state: off."
+  },
+  "tsStateLoading": "Loading",
+  "@tsStateLoading": {
+    "description": "Settings › Tailscale state chip: the engine loads."
+  },
+  "tsStateLoadFailed": "Didn't load",
+  "@tsStateLoadFailed": {
+    "description": "Settings › Tailscale state chip: the engine failed to load; the guide's progress title then."
+  },
+  "tsStateStarting": "Starting",
+  "@tsStateStarting": {
+    "description": "Settings › Tailscale state chip: the node starts."
+  },
+  "tsStateNeedsLogin": "Not signed in",
+  "@tsStateNeedsLogin": {
+    "description": "Tailscale's state: not signed in. State chip and status text."
+  },
+  "tsStateSigningIn": "Signing in",
+  "@tsStateSigningIn": {
+    "description": "Settings › Tailscale state chip: a sign-in is on its way."
+  },
+  "tsStateApproval": "Waiting for approval",
+  "@tsStateApproval": {
+    "description": "Tailscale's state: an admin must approve this device. State chip, status text, guide title."
+  },
+  "tsStateExpired": "Expired",
+  "@tsStateExpired": {
+    "description": "Settings › Tailscale state chip: the sign-in expired."
+  },
+  "tsStateLocked": "Tailnet Lock",
+  "@tsStateLocked": {
+    "description": "Settings › Tailscale state chip: the tailnet uses Tailnet Lock (a Tailscale feature's name)."
+  },
+  "tsStateError": "Error",
+  "@tsStateError": {
+    "description": "Tailscale's state: an error. State chip and status text."
+  },
+  "tsStatusLoading": "Loading Tailscale…",
+  "@tsStatusLoading": {
+    "description": "Tailscale's status text while its engine loads: host list, Settings."
+  },
+  "tsStatusLoadFailed": "Couldn't load Tailscale",
+  "@tsStatusLoadFailed": {
+    "description": "Tailscale's status text when its engine failed to load."
+  },
+  "tsStatusSigningIn": "Signing in…",
+  "@tsStatusSigningIn": {
+    "description": "Tailscale's status text while a sign-in is on its way."
+  },
+  "tsStatusRunning": "Connected as {account}",
+  "@tsStatusRunning": {
+    "description": "Tailscale's status text when signed in.",
+    "placeholders": {
+      "account": {
+        "type": "String",
+        "example": "alice@example.com"
+      }
+    }
+  },
+  "tsStatusRunningOn": "Connected as {account} on {tailnet}",
+  "@tsStatusRunningOn": {
+    "description": "Tailscale's status text when signed in, with the tailnet's name.",
+    "placeholders": {
+      "account": {
+        "type": "String",
+        "example": "alice@example.com"
+      },
+      "tailnet": {
+        "type": "String",
+        "example": "example.com"
+      }
+    }
+  },
+  "tsStatusExpired": "Sign-in expired",
+  "@tsStatusExpired": {
+    "description": "Tailscale's status text when the sign-in expired."
+  },
+  "tsStatusLocked": "Tailnet Lock not supported",
+  "@tsStatusLocked": {
+    "description": "Tailscale's status text when the tailnet uses Tailnet Lock."
+  },
+  "tsHintApproval": "An admin of your tailnet must approve {name} in the admin console.",
+  "@tsHintApproval": {
+    "description": "Settings › Tailscale, under the status, while waiting for approval.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "gorex-web-kqzt"
+      }
+    }
+  },
+  "tsHintExpired": "Sign in again to reach your tailnet's hosts.",
+  "@tsHintExpired": {
+    "description": "Settings › Tailscale, under the status, when the sign-in expired."
+  },
+  "tsHintLocked": "Your tailnet uses Tailnet Lock, which this version of the page can't join.",
+  "@tsHintLocked": {
+    "description": "Settings › Tailscale, under the status, with Tailnet Lock."
+  },
+  "tsHintNeedsLogin": "Sign in to list your GoRex hosts.",
+  "@tsHintNeedsLogin": {
+    "description": "Settings › Tailscale, under the status, when not signed in."
+  },
+  "tsNoEngine": "This copy of the page was built without the Tailscale engine.",
+  "@tsNoEngine": {
+    "description": "Why Tailscale did not load: the page has no engine."
+  },
+  "tsDeviceOffline": "This device is offline.",
+  "@tsDeviceOffline": {
+    "description": "Why Tailscale did not load: no network."
+  },
+  "tsStopped": "Tailscale stopped ({error}). Reload the page to try again.",
+  "@tsStopped": {
+    "description": "Why Tailscale failed: its engine stopped.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "exit 2"
+      }
+    }
+  },
+  "tsControlTimeout": "Tailscale's control server (controlplane.tailscale.com) did not answer. Check the connection, or whether a firewall or VPN blocks it, and try again.",
+  "@tsControlTimeout": {
+    "description": "Why the sign-in did not start: no answer from Tailscale."
+  },
+  "tsOfflineConnect": "This device is offline. Connect to the internet and try again.",
+  "@tsOfflineConnect": {
+    "description": "Why the sign-in did not start: no network."
+  },
+  "tsUntrustedText": "Its gateway refuses web pages from {origin}. On the host, run this, then wait a moment:",
+  "@tsUntrustedText": {
+    "description": "A Tailscale host that does not trust this page, under problemUntrustedTitle.",
+    "placeholders": {
+      "origin": {
+        "type": "String",
+        "example": "https://gorex.example.com"
+      }
+    }
+  },
+  "tsOwnerTitle": "The host lets in only the account that signed it in",
+  "@tsOwnerTitle": {
+    "description": "A Tailscale host that lets in only its own account."
+  },
+  "tsOwnerText": "This browser is signed in as {account}. Sign in here with the account that signed in the host, or let your tailnet's members in (the tailnet's access rules then decide). On the host, run:",
+  "@tsOwnerText": {
+    "description": "Under tsOwnerTitle, above a command.",
+    "placeholders": {
+      "account": {
+        "type": "String",
+        "example": "bob@example.com"
+      }
+    }
+  },
+  "tsHostOffTitle": "The host's built-in Tailscale is off",
+  "@tsHostOffTitle": {
+    "description": "A Tailscale host whose built-in Tailscale is off."
+  },
+  "tsRunOnHost": "On the host, run:",
+  "@tsRunOnHost": {
+    "description": "Above a command to run on a host."
+  },
+  "tsRefusedText": "Its gateway's access rule refused this device.",
+  "@tsRefusedText": {
+    "description": "A Tailscale host that refused this device, with no reason given."
+  },
+  "tsNotConnectedTitle": "Tailscale is not connected",
+  "@tsNotConnectedTitle": {
+    "description": "Card title when a Tailscale host is chosen but Tailscale is not signed in."
+  },
+  "tsNotConnectedText": "Sign in to Tailscale ({status}) to reach {host}.",
+  "@tsNotConnectedText": {
+    "description": "Under tsNotConnectedTitle; status is Tailscale's status text.",
+    "placeholders": {
+      "status": {
+        "type": "String",
+        "example": "Not signed in"
+      },
+      "host": {
+        "type": "String",
+        "example": "studio-gorex"
+      }
+    }
+  },
+  "tsFailedText": "Its gateway answered over the tailnet. Reconnecting…",
+  "@tsFailedText": {
+    "description": "Under problemFailedTitle, for a Tailscale host."
+  },
+  "tsUnreachableTitle": "The host can't be reached over Tailscale",
+  "@tsUnreachableTitle": {
+    "description": "Card title when a Tailscale host did not answer."
+  },
+  "tsUnreachableText": "{address} did not answer on port 443 ({why}). Check that GoRex runs there with built-in Tailscale on (gorex rexapi tailscale status shows https: available), and that it is online.",
+  "@tsUnreachableText": {
+    "description": "Under tsUnreachableTitle.",
+    "placeholders": {
+      "address": {
+        "type": "String",
+        "example": "studio-gorex.tail1234.ts.net"
+      },
+      "why": {
+        "type": "String",
+        "example": "timeout"
+      }
+    }
+  },
+  "tsAnswered": "answered {status}",
+  "@tsAnswered": {
+    "description": "Why a Tailscale host did not count as GoRex: the HTTP status it answered.",
+    "placeholders": {
+      "status": {
+        "type": "String",
+        "example": "404"
+      }
+    }
+  },
+  "tsProbeStopped": "Tailscale stopped",
+  "@tsProbeStopped": {
+    "description": "Why a Tailscale host was not asked: Tailscale stopped."
+  },
+  "aboutVersion": "Version {version}",
+  "@aboutVersion": {
+    "description": "Settings › About: the client's version (a commit).",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "c3492e3"
+      }
+    }
+  },
+  "aboutVersionBuilt": "Version {version} · built {date}",
+  "@aboutVersionBuilt": {
+    "description": "Settings › About: the version and the build's date, formatted for the language.",
+    "placeholders": {
+      "version": {
+        "type": "String",
+        "example": "c3492e3"
+      },
+      "date": {
+        "type": "String",
+        "example": "Nov 12, 2026"
+      }
+    }
+  },
+  "aboutDevBuild": "development build",
+  "@aboutDevBuild": {
+    "description": "Settings › About: the version of a build outside a git checkout."
+  },
+  "aboutGhostty": "The terminal emulator, compiled to WebAssembly.",
+  "@aboutGhostty": {
+    "description": "Settings › About, under libghostty-vt."
+  },
+  "aboutInstallApp": "Install App",
+  "@aboutInstallApp": {
+    "description": "Settings › About: button that installs the page as an app."
+  },
+  "aboutInstall": "Install GoRex",
+  "@aboutInstall": {
+    "description": "Settings › About: the row of the install button."
+  },
+  "aboutInstallHint": "Opens GoRex in a window of its own, with its own icon.",
+  "@aboutInstallHint": {
+    "description": "Under Install GoRex."
+  },
+  "aboutHomeScreen": "Add to Home Screen",
+  "@aboutHomeScreen": {
+    "description": "Settings › About on iPhone and iPad."
+  },
+  "aboutHomeScreenHint": "To open GoRex as an app: in Safari, tap Share, then Add to Home Screen.",
+  "@aboutHomeScreenHint": {
+    "description": "Under Add to Home Screen; Share and Add to Home Screen are Safari's own words."
+  },
+  "aboutResetAll": "Reset All Settings",
+  "@aboutResetAll": {
+    "description": "Settings › About: button that forgets everything kept in this browser."
+  },
+  "aboutResetAllTitle": "Reset all settings",
+  "@aboutResetAllTitle": {
+    "description": "Settings › About: the row of Reset All Settings."
+  },
+  "aboutResetAllHint": "Forgets the settings, the hosts and the chosen host kept in this browser.",
+  "@aboutResetAllHint": {
+    "description": "Under Reset all settings."
+  },
+  "aboutResetAllAsk": "Reset all settings? This forgets the settings, the hosts and the chosen host in this browser, and reloads the page.",
+  "@aboutResetAllAsk": {
+    "description": "Confirmation before Reset All Settings."
+  },
+  "updateReady": "A new version of GoRex is ready.",
+  "@updateReady": {
+    "description": "The panel in the corner when a new version is installed and waits."
+  },
+  "updateReload": "Reload",
+  "@updateReload": {
+    "description": "The update panel's button that reloads into the new version."
+  },
+  "updateReloadTip": "Reload into the new version: the terminals reconnect",
+  "@updateReloadTip": {
+    "description": "Tooltip of the update panel's Reload button."
+  },
+  "updateLater": "Later",
+  "@updateLater": {
+    "description": "Tooltip and label of the update panel's close button."
+  },
+  "guideSteps": "Steps",
+  "@guideSteps": {
+    "description": "Screen reader label of the Tailscale guide's list of steps."
+  },
+  "guideStepAbout": "About",
+  "@guideStepAbout": {
+    "description": "The Tailscale guide's first step: what it does."
+  },
+  "guideStepSignIn": "Sign in",
+  "@guideStepSignIn": {
+    "description": "The Tailscale guide's third step."
+  },
+  "guideStepHosts": "Hosts",
+  "@guideStepHosts": {
+    "description": "The Tailscale guide's fourth step."
+  },
+  "guideExplainTitle": "Reach your GoRex hosts through Tailscale",
+  "@guideExplainTitle": {
+    "description": "The Tailscale guide's first step: title."
+  },
+  "guideExplainText": "No Tailscale app and no VPN on this device: this page signs in to Tailscale itself.",
+  "@guideExplainText": {
+    "description": "The Tailscale guide's first step: under the title."
+  },
+  "guideExplainDevice": "This tab joins your tailnet as a device of its own, named {name}. It reaches your GoRex hosts through Tailscale's encrypted relays.",
+  "@guideExplainDevice": {
+    "description": "The Tailscale guide's first step: a point.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "gorex-web-kqzt"
+      }
+    }
+  },
+  "guideExplainSignIn": "You sign in on Tailscale's own page, in a new tab, with your tailnet's account. This page never sees your password.",
+  "@guideExplainSignIn": {
+    "description": "The Tailscale guide's first step: a point."
+  },
+  "guideExplainDownload": "The page first downloads Tailscale's engine, about 6 MB, from where it is hosted.",
+  "@guideExplainDownload": {
+    "description": "The Tailscale guide's first step: a point."
+  },
+  "guideExplainTab": "For this tab only: reloading or closing it signs this browser out, and Tailscale removes the device soon after.",
+  "@guideExplainTab": {
+    "description": "The Tailscale guide's first step: a point."
+  },
+  "guideNotNow": "Not Now",
+  "@guideNotNow": {
+    "description": "The Tailscale guide's first step: button that closes it."
+  },
+  "guideContinue": "Continue",
+  "@guideContinue": {
+    "description": "The Tailscale guide's first step: button that turns Tailscale on."
+  },
+  "guideNoEngineTitle": "Tailscale isn't available here",
+  "@guideNoEngineTitle": {
+    "description": "The Tailscale guide when the page has no engine."
+  },
+  "guideLoadFailedTitle": "Tailscale's engine didn't load",
+  "@guideLoadFailedTitle": {
+    "description": "The Tailscale guide when the engine failed to download."
+  },
+  "guideNoEngineHint": "Build the page with Go installed (npm run build in web/), which adds the engine, or use a copy of the page that has it.",
+  "@guideNoEngineHint": {
+    "description": "The Tailscale guide, under guideNoEngineTitle."
+  },
+  "guideLoadFailedHint": "Check this device's connection and try again. A content blocker may also stop the download.",
+  "@guideLoadFailedHint": {
+    "description": "The Tailscale guide, under guideLoadFailedTitle."
+  },
+  "guideStarting": "Starting Tailscale…",
+  "@guideStarting": {
+    "description": "The Tailscale guide while the engine starts."
+  },
+  "guideDownloading": "Downloading Tailscale…",
+  "@guideDownloading": {
+    "description": "The Tailscale guide while the engine downloads."
+  },
+  "guideOncePerVersion": "Once per version: your browser keeps the engine for the next visit.",
+  "@guideOncePerVersion": {
+    "description": "The Tailscale guide, under the download's title."
+  },
+  "guideProgressDownload": "Downloading",
+  "@guideProgressDownload": {
+    "description": "The Tailscale guide's progress bar title while downloading."
+  },
+  "guideProgressStart": "Unpacking and starting…",
+  "@guideProgressStart": {
+    "description": "The Tailscale guide's progress bar title once downloaded."
+  },
+  "guideOpening": "Opening Tailscale's sign-in page…",
+  "@guideOpening": {
+    "description": "The Tailscale guide while the sign-in page's address comes; the text of the new tab until it loads."
+  },
+  "guideApprovalText": "Your tailnet approves new devices by hand. An admin must approve {name} in the admin console's Machines page; this page goes on by itself once it is.",
+  "@guideApprovalText": {
+    "description": "The Tailscale guide while waiting for approval; Machines is the admin console's page name.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "gorex-web-kqzt"
+      }
+    }
+  },
+  "guideOpenAdmin": "Open the Admin Console",
+  "@guideOpenAdmin": {
+    "description": "The Tailscale guide: link to Tailscale's admin console."
+  },
+  "guideOpenSignInTitle": "Open the sign-in page",
+  "@guideOpenSignInTitle": {
+    "description": "The Tailscale guide when the browser did not open the sign-in tab."
+  },
+  "guideBlockedText": "Your browser didn't open a new tab, or it was closed. Open the page with the button below, then come back to this tab.",
+  "@guideBlockedText": {
+    "description": "Under guideOpenSignInTitle."
+  },
+  "guideWaitingTitle": "Waiting for you to sign in…",
+  "@guideWaitingTitle": {
+    "description": "The Tailscale guide while the user signs in in the other tab."
+  },
+  "guideWaitingText": "Finish signing in on the Tailscale tab, then come back here. This page notices by itself.",
+  "@guideWaitingText": {
+    "description": "Under guideWaitingTitle."
+  },
+  "guideOpenSignIn": "Open the Sign-in Page",
+  "@guideOpenSignIn": {
+    "description": "The Tailscale guide: button that opens the sign-in page, when the tab did not open."
+  },
+  "guideOpenAgain": "Open It Again",
+  "@guideOpenAgain": {
+    "description": "The Tailscale guide: button that opens the sign-in page again."
+  },
+  "guideCopyLink": "Or copy the link into a browser where you are signed in:",
+  "@guideCopyLink": {
+    "description": "The Tailscale guide, above the sign-in link."
+  },
+  "guideCantReach": "Can't reach Tailscale",
+  "@guideCantReach": {
+    "description": "The Tailscale guide when the sign-in failed to start."
+  },
+  "guideExpiredTitle": "Your sign-in expired",
+  "@guideExpiredTitle": {
+    "description": "The Tailscale guide when the sign-in expired."
+  },
+  "guideExpiredText": "Sign in again to reach your hosts. {name} keeps its name.",
+  "@guideExpiredText": {
+    "description": "Under guideExpiredTitle.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "gorex-web-kqzt"
+      }
+    }
+  },
+  "guideSignInAgain": "Sign in Again",
+  "@guideSignInAgain": {
+    "description": "The Tailscale guide: button to sign in after the sign-in expired."
+  },
+  "guideSignInTitle": "Sign in to your tailnet",
+  "@guideSignInTitle": {
+    "description": "The Tailscale guide's sign-in step: title."
+  },
+  "guideSignInText": "A new tab opens at login.tailscale.com. Sign in with the account your GoRex hosts use, then come back to this tab.",
+  "@guideSignInText": {
+    "description": "The Tailscale guide's sign-in step: under the title."
+  },
+  "guideEphemeral": "This browser joins as {name}, an ephemeral device: Tailscale removes it once this tab closes.",
+  "@guideEphemeral": {
+    "description": "The Tailscale guide's sign-in step: a point.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "gorex-web-kqzt"
+      }
+    }
+  },
+  "guideLockedTitle": "Tailnet Lock isn't supported",
+  "@guideLockedTitle": {
+    "description": "The Tailscale guide when the tailnet uses Tailnet Lock."
+  },
+  "guideLockedText": "Your tailnet uses Tailnet Lock, and this version of the page can't join a locked tailnet: {name} is not signed by a trusted node. Sign out here, and use the Tailscale app on this device instead.",
+  "@guideLockedText": {
+    "description": "Under guideLockedTitle.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "gorex-web-kqzt"
+      }
+    }
+  },
+  "guideSignedInAs": "Signed in as {account}",
+  "@guideSignedInAs": {
+    "description": "The Tailscale guide's hosts step: who is signed in.",
+    "placeholders": {
+      "account": {
+        "type": "String",
+        "example": "alice@example.com"
+      }
+    }
+  },
+  "guideOnTailnet": "on {tailnet}",
+  "@guideOnTailnet": {
+    "description": "The Tailscale guide's hosts step: the tailnet, under Signed in as.",
+    "placeholders": {
+      "tailnet": {
+        "type": "String",
+        "example": "example.com"
+      }
+    }
+  },
+  "guideThisDevice": "this device is {name}",
+  "@guideThisDevice": {
+    "description": "The Tailscale guide's hosts step: this browser's device name.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "gorex-web-kqzt"
+      }
+    }
+  },
+  "guideThisDeviceAt": "this device is {name} ({address})",
+  "@guideThisDeviceAt": {
+    "description": "The Tailscale guide's hosts step: this browser's device name and tailnet address.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "gorex-web-kqzt"
+      },
+      "address": {
+        "type": "String",
+        "example": "100.101.102.103"
+      }
+    }
+  },
+  "guideSearchAgain": "Search Again",
+  "@guideSearchAgain": {
+    "description": "The Tailscale guide's hosts step: button that looks for hosts again."
+  },
+  "guideConnect": "Connect",
+  "@guideConnect": {
+    "description": "The Tailscale guide: button that connects to a host found."
+  },
+  "guideEmptyTitle": "No GoRex hosts found",
+  "@guideEmptyTitle": {
+    "description": "The Tailscale guide when no host was found."
+  },
+  "guideEmptyText": "The page lists the devices of {account} that run GoRex with built-in Tailscale. To add one:",
+  "@guideEmptyText": {
+    "description": "Under guideEmptyTitle.",
+    "placeholders": {
+      "account": {
+        "type": "String",
+        "example": "alice@example.com"
+      }
+    }
+  },
+  "guideEmptyStep1": "On the host, open GoRex, then turn on built-in Tailscale and sign it in with this same account:",
+  "@guideEmptyStep1": {
+    "description": "The Tailscale guide's how-to, step 1, above a command."
+  },
+  "guideEmptyStep2": "Wait until its status shows https: available. MagicDNS and HTTPS must be on in the tailnet's admin console (DNS page).",
+  "@guideEmptyStep2": {
+    "description": "The Tailscale guide's how-to, step 2, above a command; https: available is the command's literal output."
+  },
+  "guideEmptyStep3": "Let the host trust this page:",
+  "@guideEmptyStep3": {
+    "description": "The Tailscale guide's how-to, step 3, above a command."
+  },
+  "guideUnanswered": "Found but not answering as GoRex on port 443: {names}. Check the steps above on {n, plural, one {it} other {them}}.",
+  "@guideUnanswered": {
+    "description": "The Tailscale guide: devices named like GoRex hosts that did not answer.",
+    "placeholders": {
+      "names": {
+        "type": "String",
+        "example": "studio-gorex, mini-gorex"
+      },
+      "n": {
+        "type": "int",
+        "example": "2"
+      }
+    }
+  },
+  "guideNote": "The page finds hosts named <machine>-gorex, built-in Tailscale's default name. A host renamed otherwise isn't found in this version.",
+  "@guideNote": {
+    "description": "The Tailscale guide: note under the how-to."
+  },
+  "viewerImage": "Image",
+  "@viewerImage": {
+    "description": "Screen reader label of the image viewer before its image's name is known."
+  },
+  "viewerZoomOut": "Zoom Out",
+  "@viewerZoomOut": {
+    "description": "Image viewer button."
+  },
+  "viewerZoomIn": "Zoom In",
+  "@viewerZoomIn": {
+    "description": "Image viewer button."
+  },
+  "viewerActualSize": "Actual Size",
+  "@viewerActualSize": {
+    "description": "Image viewer button: show the image at 100%."
+  },
+  "viewerDownload": "Download",
+  "@viewerDownload": {
+    "description": "Image viewer button: download the image's file."
+  },
+  "viewerInfo": "{width} × {height} · {size}",
+  "@viewerInfo": {
+    "description": "Image viewer: the image's size in pixels and its file's size.",
+    "placeholders": {
+      "width": {
+        "type": "int",
+        "example": "1920"
+      },
+      "height": {
+        "type": "int",
+        "example": "1080"
+      },
+      "size": {
+        "type": "String",
+        "example": "412 KB"
+      }
+    }
+  },
+  "viewerTooLarge": "This image is too large to show ({width} × {height}). Download it instead.",
+  "@viewerTooLarge": {
+    "description": "Image viewer, in place of an image with too many pixels.",
+    "placeholders": {
+      "width": {
+        "type": "int",
+        "example": "20000"
+      },
+      "height": {
+        "type": "int",
+        "example": "20000"
+      }
+    }
+  },
+  "viewerCantShow": "This image could not be shown. Download it instead.",
+  "@viewerCantShow": {
+    "description": "Image viewer, in place of an image that did not decode."
+  },
+  "fileDownloading": "Downloading {name}… {percent}%",
+  "@fileDownloading": {
+    "description": "Status line while a file of a Tailscale host downloads.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "report.pdf"
+      },
+      "percent": {
+        "type": "int",
+        "example": "42"
+      }
+    }
+  },
+  "fileDownloaded": "Downloaded {name}",
+  "@fileDownloaded": {
+    "description": "Status line when a file of a Tailscale host downloaded.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "report.pdf"
+      }
+    }
+  },
+  "fileCancelled": "Cancelled {name}",
+  "@fileCancelled": {
+    "description": "Status line when the user cancelled a download in the browser.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "report.pdf"
+      }
+    }
+  },
+  "fileTooLargeTailnet": "Too large: over Tailscale the page downloads files up to {size}",
+  "@fileTooLargeTailnet": {
+    "description": "Why a Tailscale host's file did not download.",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "256 MB"
+      }
+    }
+  },
+  "fileGrewTailnet": "The file grew too large: over Tailscale the page downloads files up to {size}",
+  "@fileGrewTailnet": {
+    "description": "Why a Tailscale host's file stopped downloading.",
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "256 MB"
+      }
+    }
+  },
+  "fileHostAnswered": "The host answered {status}",
+  "@fileHostAnswered": {
+    "description": "Why a file did not download: the HTTP status.",
+    "placeholders": {
+      "status": {
+        "type": "String",
+        "example": "404"
+      }
+    }
+  },
+  "fileGrewView": "The file grew past what the page shows",
+  "@fileGrewView": {
+    "description": "Why an image stopped loading."
+  },
+  "fileDownloadFailed": "Could not download {path}: {error}",
+  "@fileDownloadFailed": {
+    "description": "Status line when a file could not be downloaded.",
+    "placeholders": {
+      "path": {
+        "type": "String",
+        "example": "~/report.pdf"
+      },
+      "error": {
+        "type": "String",
+        "example": "No such file"
+      }
+    }
+  },
+  "fileOpenFailed": "Could not open {path}: {error}",
+  "@fileOpenFailed": {
+    "description": "Status line when a file could not be opened.",
+    "placeholders": {
+      "path": {
+        "type": "String",
+        "example": "~/shot.png"
+      },
+      "error": {
+        "type": "String",
+        "example": "No such file"
+      }
+    }
+  },
+  "loadServerAnswered": "{url}: the server answered {status}",
+  "@loadServerAnswered": {
+    "description": "Why a file of the page (the terminal's WebAssembly, Tailscale's engine) did not load: the HTTP status.",
+    "placeholders": {
+      "url": {
+        "type": "String",
+        "example": "assets/ghostty-vt.wasm"
+      },
+      "status": {
+        "type": "String",
+        "example": "404"
+      }
+    }
+  },
+  "loadNoBody": "The server sent no data",
+  "@loadNoBody": {
+    "description": "Why a file of the page did not load: its answer had no body."
+  },
+  "loadScriptFailed": "{file} did not load",
+  "@loadScriptFailed": {
+    "description": "Why Tailscale's engine did not load: a script of the page failed.",
+    "placeholders": {
+      "file": {
+        "type": "String",
+        "example": "assets/tailnet.js"
+      }
+    }
+  },
+  "tsNotEngine": "The download is not Tailscale's engine",
+  "@tsNotEngine": {
+    "description": "Why Tailscale's engine did not load: the file is something else."
+  },
+  "tsEngineNotStarted": "Tailscale's engine did not start",
+  "@tsEngineNotStarted": {
+    "description": "Why Tailscale's engine failed after it loaded."
+  },
+  "tsIsOff": "Tailscale is off",
+  "@tsIsOff": {
+    "description": "Why a connection to a Tailscale host failed: Tailscale was turned off."
+  }
+}

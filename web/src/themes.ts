@@ -3,6 +3,7 @@
 // section. The choice is a setting (prefs.ts, theme).
 import { check, icon } from "./hosts";
 import type { RGB } from "./ghostty";
+import { PlainKey, t as tr } from "./i18n";
 import { prefs, setPrefs } from "./prefs";
 import type { Theme } from "./terminal";
 
@@ -70,14 +71,15 @@ export function themePicker(themes: ThemeEntry[], onChoose: (t?: ThemeEntry) => 
   const seg = el("div", "theme-filter");
   const search = el("input", "theme-search");
   search.type = "search";
-  search.placeholder = "Search themes";
-  search.setAttribute("aria-label", "Search themes");
+  search.placeholder = tr("themeSearch");
+  search.setAttribute("aria-label", search.placeholder);
   const list = el("div", "theme-list");
   list.setAttribute("role", "listbox");
   panel.append(preview, seg, search, list);
 
+  const filterNames: Record<"all" | "dark" | "light", PlainKey> = { all: "themeAll", dark: "appearanceDark", light: "appearanceLight" };
   const segButtons = (["all", "dark", "light"] as const).map((f) => {
-    const b = el("button", "", f[0].toUpperCase() + f.slice(1));
+    const b = el("button", "", tr(filterNames[f]));
     b.type = "button";
     b.onclick = () => {
       filter = f;
@@ -106,7 +108,7 @@ export function themePicker(themes: ThemeEntry[], onChoose: (t?: ThemeEntry) => 
       sw.classList.add("host");
       sw.append(icon("square-terminal"));
     }
-    b.append(sw, el("span", "theme-name", t?.name ?? "Host Colors"), check(name === selected));
+    b.append(sw, el("span", "theme-name", t?.name ?? tr("themeHostColors")), check(name === selected));
     b.onclick = () => {
       selected = name;
       setPrefs({ theme: name });
@@ -156,7 +158,7 @@ export function themePicker(themes: ThemeEntry[], onChoose: (t?: ThemeEntry) => 
       if (q && !t.name.toLowerCase().includes(q)) continue;
       rows.push(row(t));
     }
-    if (rows.length === 0) rows.push(el("div", "theme-empty", "No themes match."));
+    if (rows.length === 0) rows.push(el("div", "theme-empty", tr("themeNoMatch")));
     list.replaceChildren(...rows);
   }
 

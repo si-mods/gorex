@@ -442,8 +442,10 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
    `zig build -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall`.
    It keeps `ghostty-vt.wasm` (about 850 KB) in the cache, so the next
    build skips this step. `--rebuild-wasm` builds it again.
-4. It runs `npm ci` in `web/` if `web/node_modules` is missing, then
-   type-checks the client (`tsc --noEmit`) and bundles it with esbuild.
+4. It runs `npm ci` in `web/` if `web/node_modules` is missing, checks
+   the catalogs and writes `src/locales.gen.ts` (`web/i18n.mjs`; see
+   Languages), then type-checks the client (`tsc --noEmit`) and bundles
+   it with esbuild.
 5. It empties `web/dist` and writes `index.html`, `_headers`, and in
    `dist/assets` the script, `ghostty-vt.wasm` and
    `ios/GoRex/ghostty-themes.json` (the repo keeps one copy of the
@@ -473,6 +475,66 @@ in the sign-in guide uses the same bar (`web/src/progress.ts`).
 
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
 `~/.cache/gorex-web`. `go build ./...` and the Go tests need no web build.
+
+## Languages
+
+The page is in English and Simplified Chinese. Settings › Appearance ›
+Language chooses System, English or 简体中文 (each language by its own
+name), kept as `language` in `gorex.settings`. System takes the first of
+the browser's languages (`navigator.languages`) that the page has: `zh`,
+`zh-CN`, `zh-SG` and `zh-Hans` are Simplified Chinese; `zh-TW`, `zh-HK`
+and `zh-Hant` are not, and get English, as the desktop gives them (MyGo's
+`zh-Hant` falls back to the source language). A change applies at once,
+with no reload: the sidebar, the status line, the open dialogs, the
+guide and the viewer say their words again, and `<html lang>` follows.
+System follows a change of the browser's languages too
+(`languagechange`).
+
+The catalogs are `web/locales/en.json` (the source) and
+`web/locales/zh-Hans.json`, ARB-style JSON as the desktop's `locales/`:
+`"@@locale"`, the messages by camelCase key in ICU MessageFormat
+(`{name}`, `{n, plural, one {…} other {…}}`, `{x, select, … other {…}}`,
+`#` in a plural, apostrophe quoting; `web/src/icu.ts`), and in `en.json`
+an `"@key"` for each with a description of where it shows and its
+placeholders (`String`, `int` or `num`). Both catalogs are in the bundle:
+without the metadata they are about 7 KB gzipped each, less than the
+request a lazy load would cost, and they need no Service Worker change.
+Numbers, sizes, lists and dates go through `Intl` in the page's language
+(`formatNumber`, `formatSize`, `formatList`, `formatDate` in
+`web/src/i18n.ts`). Commands to copy (`gorex rexapi …`), product names
+(GoRex, Tailscale, Ghostty), program and theme names, host and file
+names, the keys of a shortcut, and what a host or the browser says (an
+error's own words) stay as they are.
+
+`web/i18n.mjs` checks the catalogs and writes `web/src/locales.gen.ts`
+(not kept in git): each language's messages and the type of every key's
+arguments, so that `t("key", { … })` with a key `en.json` lacks, or
+without an argument its message uses, fails `tsc`. The build runs it
+before `tsc`, and `npm run dev` again when a catalog changes. It fails on
+a message that does not parse, an `en.json` message whose placeholders
+its `"@key"` does not declare exactly, a key of another language that
+`en.json` lacks, and a translation whose placeholders differ from
+`en.json`'s. A key missing from a translation is a warning, and the page
+says it in English; with `$CI` set, or `--ci`, it fails the build.
+
+To add a string:
+
+1. Add the key and its English to `web/locales/en.json`, with its
+   `"@key"`: where it shows, and each placeholder with its type and an
+   example.
+2. Add its translation to `web/locales/zh-Hans.json`, with the same
+   placeholders. Use the desktop's wording (`locales/zh-Hans.json`) for
+   the same thing.
+3. Say it with `t("key", { … })` from `web/src/i18n.ts`. A string kept
+   to show later (a status line, an error) is a function, `() => t(…)`
+   (`Msg`), so that it is said again in a new language; an element whose
+   words do not change otherwise takes them in `localize(el, …)`.
+
+To add a language: add `web/locales/<tag>.json` (a BCP 47 tag, as
+`zh-Hant` or `de`) with `"@@locale"` and every key of `en.json`, its
+`languageName` in that language, and teach `supported()` in
+`web/src/i18n.ts` which browser languages are it. Settings lists it at
+once.
 
 ## How it works
 
@@ -829,7 +891,7 @@ page and every open pane.
 | Section | Settings |
 |---|---|
 | Host (the card) | The chosen host, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
-| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 CSS pixels, 11.6 (the desktop's) until set, with Reset. |
+| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 CSS pixels, 11.6 (the desktop's) until set, with Reset. Language: System, English or 简体中文 (see Languages). |
 | Terminal | Font: JetBrains Mono, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours. Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
 | Theme | The theme picker (see Themes). |
 | Keyboard | The shortcuts (see Shortcuts), with this system's keys. |
@@ -845,6 +907,5 @@ own. Until a cursor is chosen, the pane keeps the host's.
 Not in the web client: the desktop's Glass and Terminal opacity (a page
 cannot show the desktop through it), the Dock badge, Tab placement and
 Sidebar view (the page has one sidebar and one window), Animation style
-(the page does not animate the panes), Language (the page is in English),
-updates and the settings file (the page is what its host serves, and
+(the page does not animate the panes), updates and the settings file (the page is what its host serves, and
 keeps `localStorage`), and recording shortcuts.

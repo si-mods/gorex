@@ -3,12 +3,52 @@
 // connection's JSON requests, responses and events, and a data stream
 // carrying a terminal's bytes.
 
-/** A failed call, as the response's error names it. */
+import { Msg, PlainKey, t } from "./i18n";
+
+/**
+ * A failed call, as the response's error names it: the host's code and its
+ * words (English), or the page's own, said in the page's language as they
+ * are read (a function), so that a status line drawn again after a change
+ * of language says them in the new one.
+ */
 export class RexError extends Error {
-  constructor(public code: string, message: string) {
-    super(message);
+  constructor(public code: string, message: Msg) {
+    super(typeof message === "string" ? message : "");
+    if (typeof message === "function") Object.defineProperty(this, "message", { get: message });
   }
 }
+
+/** The gateway's error codes (internal/rexapi/protocol.go), in words. */
+const codeKeys: Record<string, PlainKey> = {
+  bad_request: "errorBadRequest",
+  not_found: "errorNotFound",
+  method_not_found: "errorMethodNotFound",
+  session_not_found: "errorSessionNotFound",
+  conflict: "errorConflict",
+  not_supported: "errorNotSupported",
+  too_large: "errorTooLarge",
+  internal: "errorInternal",
+  client_unavailable: "errorClientUnavailable",
+};
+
+/**
+ * An error in words for the status line: a host's error by its code, in
+ * the page's language, with the host's own words after it; the page's own
+ * errors as they say themselves. codes names other words for some codes,
+ * as opening a file has (files.ts).
+ */
+export function describe(e: unknown, codes: Record<string, PlainKey> = {}): string {
+  if (e instanceof RexError && !(e.code in pageCodes)) {
+    const key = codes[e.code] ?? codeKeys[e.code];
+    if (!key) return e.message || e.code;
+    const error = t(key);
+    return e.message && !codes[e.code] ? t("errorWithDetail", { error, detail: e.message }) : error;
+  }
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** The codes of the page's own errors, whose words are already the page's. */
+const pageCodes = { offline: 1, closed: 1, timeout: 1, protocol: 1, rejected: 1 };
 
 /** An event; a session's event is unwrapped, with its session. */
 export interface RexEvent {
@@ -78,13 +118,13 @@ export function setHost(t: Transport | undefined) {
 
 /** The chosen host's transport. */
 export function hostTransport(): Transport {
-  if (!transport) throw new RexError("offline", "no host is chosen");
+  if (!transport) throw new RexError("offline", () => t("errorNoHost"));
   return transport;
 }
 
 /** The URL of path on a direct host's gateway; a tailnet host has none the browser can open. */
 export function apiURL(path: string): string {
-  if (!base) throw new RexError("offline", "no host is chosen");
+  if (!base) throw new RexError("offline", () => t("errorNoHost"));
   return new URL(path, base).href;
 }
 
@@ -92,7 +132,7 @@ export function apiURL(path: string): string {
 export class Control {
   onEvent: (e: RexEvent) => void = () => {};
   /** Called once when the connection ends, by either side. */
-  onClose: (reason: string) => void = () => {};
+  onClose: (reason: Msg) => void = () => {};
   clientID = "";
   reconnectToken?: string;
   features = new Set<string>();
@@ -125,7 +165,7 @@ export class Control {
         if (!welcomed) {
           if (msg.type !== "welcome" || msg.protocol !== "rex.control.v1") {
             ws.close();
-            reject(new RexError("protocol", "no welcome"));
+            reject(new RexError("protocol", () => t("errorProtocol")));
             return;
           }
           welcomed = true;
@@ -138,21 +178,21 @@ export class Control {
         c.receive(msg);
       };
       ws.onclose = (e) => {
-        if (!welcomed) reject(new RexError("closed", `the server closed the connection (${e.code})`));
-        c.finish(`closed (${e.code}${e.reason ? ", " + e.reason : ""})`);
+        if (!welcomed) reject(new RexError("closed", () => t("errorServerClosed", { code: String(e.code) })));
+        c.finish(() => (e.reason ? t("statusClosedReason", { code: String(e.code), reason: e.reason }) : t("statusClosed", { code: String(e.code) })));
       };
     });
   }
 
   /** Calls a method and returns its result with the response's seq. */
   call(method: string, payload?: any): Promise<{ seq: number; payload: any }> {
-    if (this.closed) return Promise.reject(new RexError("offline", "disconnected"));
+    if (this.closed) return Promise.reject(new RexError("offline", () => t("errorOffline")));
     const id = String(++this.nextID);
     const req: any = { type: "request", id, method };
     if (payload !== undefined) req.payload = payload;
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        if (this.pending.delete(id)) reject(new RexError("timeout", "no response"));
+        if (this.pending.delete(id)) reject(new RexError("timeout", () => t("errorTimeout")));
       }, callWait);
       this.pending.set(id, {
         resolve: (v) => (clearTimeout(timer), resolve(v)),
@@ -170,7 +210,7 @@ export class Control {
 
   close() {
     this.ws.close(1000);
-    this.finish("closed");
+    this.finish(() => t("errorDisconnected"));
   }
 
   private receive(m: any) {
@@ -193,21 +233,23 @@ export class Control {
     }
   }
 
-  private finish(reason: string) {
+  private finish(reason: Msg) {
     if (this.closed) return;
     this.closed = true;
-    for (const p of this.pending.values()) p.reject(new RexError("closed", "disconnected"));
+    for (const p of this.pending.values()) p.reject(new RexError("closed", () => t("errorDisconnected")));
     this.pending.clear();
     this.onClose(reason);
   }
 }
+
+const protocolError = () => t("errorProtocol");
 
 /** HELLO: 0x01 and the ticket's 16 bytes, from its base64url form. */
 function helloFrame(ticket: string): Uint8Array {
   let s = ticket.replace(/-/g, "+").replace(/_/g, "/");
   s += "=".repeat((4 - (s.length % 4)) % 4);
   const t = Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-  if (t.length !== 16) throw new RexError("protocol", "bad ticket");
+  if (t.length !== 16) throw new RexError("protocol", protocolError);
   const out = new Uint8Array(17);
   out[0] = 0x01;
   out.set(t, 1);
@@ -246,13 +288,13 @@ export class DataStream {
           welcomed = true;
           resolve();
         } else if (b.length === 2 && b[0] === 0x82) {
-          reject(new RexError("rejected", `data connection refused (0x${b[1].toString(16).padStart(2, "0")})`));
+          reject(new RexError("rejected", () => t("errorDataRefused", { code: `0x${b[1].toString(16).padStart(2, "0")}` })));
         } else {
-          reject(new RexError("protocol", "bad data handshake"));
+          reject(new RexError("protocol", () => t("errorProtocol")));
         }
       };
       ws.onclose = (e) => {
-        if (!welcomed) reject(new RexError("closed", `data connection closed (${e.code})`));
+        if (!welcomed) reject(new RexError("closed", () => t("errorDataClosed", { code: String(e.code) })));
         else if (this.ws === ws) this.onDrop(e.code);
       };
     });

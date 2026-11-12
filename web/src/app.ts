@@ -3,6 +3,7 @@
 // browser's install prompt for Settings, Keyboard Lock in the app's own
 // window, and downloads streamed through the worker (files.ts).
 import { icon } from "./hosts";
+import { localize, t } from "./i18n";
 
 /** Whether this build registers sw.js: build.mjs's yes, the dev server's no (dev.mjs). */
 declare const __GOREX_SW__: boolean;
@@ -109,17 +110,23 @@ function offerUpdate(reg: ServiceWorkerRegistration) {
   box.setAttribute("role", "status");
   const text = document.createElement("span");
   text.className = "update-text";
-  text.textContent = "A new version of GoRex is ready.";
+  localize(text, (e) => (e.textContent = t("updateReady")));
   const reload = document.createElement("button");
   reload.type = "button";
   reload.className = "host-add primary";
-  reload.append(icon("rotate-ccw"), "Reload");
-  reload.title = "Reload into the new version: the terminals reconnect";
+  const label = document.createElement("span");
+  reload.append(icon("rotate-ccw"), label);
+  localize(reload, () => {
+    label.textContent = t("updateReload");
+    reload.title = t("updateReloadTip");
+  });
   const later = document.createElement("button");
   later.type = "button";
   later.className = "icon";
-  later.title = "Later";
-  later.setAttribute("aria-label", "Later");
+  localize(later, (b) => {
+    b.title = t("updateLater");
+    b.setAttribute("aria-label", b.title);
+  });
   later.append(icon("x"));
   later.onclick = () => (box.hidden = true);
   reload.onclick = () => {
