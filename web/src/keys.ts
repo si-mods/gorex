@@ -41,6 +41,9 @@ function table(): [Chord, string][] {
   t.push([{ alt: true, shift: true, code: "KeyQ" }, "close-window"]);
   t.push([{ alt: true, shift: true, code: "BracketRight" }, "next-window"]);
   t.push([{ alt: true, shift: true, code: "BracketLeft" }, "previous-window"]);
+  // Rename Tab (desktop: Shift+Cmd+R, Ctrl+Shift+R, which reload the page) and New Space (Shift+Cmd+N, Ctrl+Shift+N, a new window).
+  t.push([{ alt: true, shift: true, code: "KeyR" }, "rename-window"]);
+  t.push([{ alt: true, shift: true, code: "KeyN" }, "new-space"]);
   // Copy, as Ghostty's: Cmd+C on the Mac, Ctrl+Shift+C elsewhere. The pane runs it (pane.ts).
   t.push([mac ? { meta: true, code: "KeyC" } : { ctrl: true, shift: true, code: "KeyC" }, "copy"]);
   // Paste, as the desktop's (GoRex's terminal binds them): Cmd+V on the Mac, Ctrl+Shift+V and
@@ -127,8 +130,10 @@ export function shortcutGroups(): { label: string; rows: [title: string, keys: s
         ["cmdCloseWindow", "close-window"],
         ["cmdNextWindow", "next-window"],
         ["cmdPreviousWindow", "previous-window"],
+        ["cmdRenameWindow", "rename-window"],
       ]),
     },
+    { label: t("keysSpaces"), rows: rows([["cmdNewSpace", "new-space"]]) },
     // The product's name, not translated.
     { label: "GoRex", rows: rows([["cmdSettings", "settings"]]) },
   ];

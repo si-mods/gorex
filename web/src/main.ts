@@ -11,6 +11,7 @@ import { chosenHost, commandBox, diagnose, Host, HostList, hostURL, icon, loadHo
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
 import { Asset, loader } from "./loader";
+import { closeMenu, confirmDanger, draggable, DropZone, focusRename, MenuItem, onMenu, openMenu, ownDrag, renameField, zoneSplit } from "./manage";
 import { describe } from "./pane";
 import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, prefs } from "./prefs";
@@ -181,6 +182,22 @@ const host: WindowHost = {
         refresh(w.session, true);
       });
   },
+  paneMenu: (w, block, x, y) => openMenu(x, y, paneMenu(w, block), () => shown?.focusKeys()),
+  dropPane,
+  edgeDrops: () => gateway.edgeMoves(),
+};
+
+/**
+ * What the host's gateway does past Rex's API, which turns on the
+ * desktop's moves that it takes; none does yet (docs/web-client.md, Not
+ * in the web client). A check of control.features, or of a method, goes
+ * here.
+ */
+const gateway = {
+  /** session.move_block within a window and before its anchor: a pane dropped on another's edge (panedrop.go). */
+  edgeMoves: (): boolean => false,
+  /** The call that moves a window to another session (moveTabToSpace), undefined while the gateway has none. */
+  moveWindowToSpace: undefined as undefined | ((c: Control, session: string, window: string, to: string) => Promise<unknown>),
 };
 
 /** How long the page loads before its progress shows: a load from the cache shows none. */
@@ -257,6 +274,7 @@ async function main() {
     mountCorner($("corner"), () => withSettings((s) => s.toggle()));
     // A change of language says the page's words again in it: the dialogs say theirs themselves.
     onLanguageChange(() => {
+      closeMenu();
       status(statusText);
       hostList.relocalize();
       sidebar();
@@ -410,6 +428,10 @@ function choose(h: Host | undefined) {
   hide();
   token = undefined;
   wantWindow = undefined;
+  // What the sidebar held still for goes with the host.
+  closeMenu();
+  renaming = undefined;
+  rowDragging = false;
   for (const m of [sessions, titles, programs, statuses, seen]) m.clear();
   described.clear();
   current = h;
@@ -513,7 +535,12 @@ function event(type: string, sid: string | undefined, p: any) {
       const id = p.session_id ?? sid;
       if (!id) break;
       sessions.delete(id);
-      if (shown?.session === id) hide();
+      if (renaming?.session === id) renaming = undefined;
+      if (shown?.session === id) {
+        // The space closed: show another, as the desktop's window does (closeWorkspace).
+        hide();
+        showAny(true);
+      }
       sidebar();
       break;
     }
@@ -700,11 +727,20 @@ function readProgram(session: string, block: string) {
   );
 }
 
-/** A window's title, as the desktop names a tab: its terminal's title, else its label. */
+/**
+ * The name the user gave a window; undefined when its label is the
+ * host's default, "Window " and the end of its ID, as the iOS app tells.
+ */
+function windowName(w: any): string | undefined {
+  const label: string = w.label ?? "";
+  return label && label !== "Window " + String(w.window_id).slice(-8) ? label : undefined;
+}
+
+/** A window's title, as the desktop names a tab (Tab.label): its name, else its terminal's title, else its label. */
 function windowTitle(w: any): string {
   const blocks = leavesOf(layoutOf(w));
   const focused = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
-  return (focused && titles.get(focused)) || w.label || t("sidebarWindow");
+  return windowName(w) || (focused && titles.get(focused)) || w.label || t("sidebarWindow");
 }
 
 /** The room of the tiles of a session's window with the most, so that the titles line up. */
@@ -768,47 +804,352 @@ function sidebarBlock(block: string) {
   }
 }
 
-/** The sidebar: each session, and a row for each of its windows. */
-function sidebar() {
+/** A space or a window being renamed in the sidebar; the sidebar is not made again meanwhile. */
+let renaming: { session: string; window?: string } | undefined;
+/** Whether one of the sidebar's rows drags: the drag would end with its row. */
+let rowDragging = false;
+/** Whether the sidebar waits to be made again, once it no longer holds still. */
+let sidebarStale = false;
+/** A window's row clicked last, and when: a second click soon after renames it, as the desktop's double click. */
+let lastClick: { window: string; at: number } | undefined;
+
+/**
+ * The sidebar: each session, and a row for each of its windows. It holds
+ * still while a field renames or a row drags, which would go with their
+ * elements, and is made once they are done; force makes it now.
+ */
+function sidebar(force = false) {
   for (const b of shown?.panes.keys() ?? []) see(b);
+  if (!force && (renaming || rowDragging)) {
+    sidebarStale = true;
+    return;
+  }
+  sidebarStale = false;
   const nav = document.createElement("nav");
   for (const s of sessions.values()) {
     const v = s.view;
     if (!v) continue;
     const h = document.createElement("h2");
-    const name = document.createElement("span");
-    name.textContent = s.label || v.label || t("sidebarSession");
+    h.dataset.session = s.id;
     const add = document.createElement("button");
     add.className = "icon";
     add.type = "button";
     add.append(icon("plus"));
     add.title = t("cmdNewWindow");
     add.onclick = () => newWindow(s.id);
-    h.append(name, add);
+    if (renaming?.session === s.id && !renaming.window) {
+      h.append(renameField(s.label, spaceName(s), t("renameSpaceLabel"), (name) => renamedSpace(s.id, name)), add);
+    } else {
+      const name = document.createElement("span");
+      name.textContent = spaceName(s);
+      h.append(name, add);
+    }
+    onMenu(h, (x, y) => openMenu(x, y, spaceMenu(s.id), () => shown?.focusKeys()));
     nav.append(h);
     const room = tilesRoom(v);
-    for (const w of v.windows ?? []) {
-      const row = document.createElement("div");
-      row.className = "window";
-      row.dataset.window = w.window_id;
-      if (shown?.window === w.window_id) row.classList.add("open");
-      const b = document.createElement("button");
-      b.className = "block";
-      b.type = "button";
-      fillWindow(b, w, room);
-      b.onclick = () => show(s.id, w.window_id, true);
-      const x = document.createElement("button");
-      x.className = "icon close";
-      x.type = "button";
-      x.append(icon("x"));
-      x.title = t("cmdCloseWindow");
-      x.onclick = () => closeWindow(s.id, w.window_id);
-      row.append(b, x);
-      nav.append(row);
-    }
+    for (const w of v.windows ?? []) nav.append(windowRow(s.id, w, room));
   }
   if (!nav.children.length) nav.textContent = !current || !control ? "" : sessions.size ? "" : t("sidebarNoSessions");
   $("list").replaceChildren(nav);
+}
+
+/** A space's name: its label, else its view's, else a word. */
+function spaceName(s: Session): string {
+  return s.label || s.view?.label || t("sidebarSession");
+}
+
+/**
+ * A window's row: a click shows it, a second click renames it, its menu,
+ * and its drag to another row's place (tabEvents in tabs.go). A pane
+ * dropped on it goes into its window (tabRest's drop, movePaneToTab).
+ */
+function windowRow(session: string, w: any, room: number): HTMLElement {
+  const id: string = w.window_id;
+  const row = document.createElement("div");
+  row.className = "window";
+  row.dataset.window = id;
+  if (shown?.window === id) row.classList.add("open");
+  if (renaming?.session === session && renaming.window === id) {
+    row.classList.add("renaming");
+    row.append(renameField(windowName(w) ?? "", windowTitle(w), t("renameWindowLabel"), (name) => renamedWindow(session, id, name)));
+    return row;
+  }
+  const b = document.createElement("button");
+  b.className = "block";
+  b.type = "button";
+  fillWindow(b, w, room);
+  b.onclick = () => {
+    const now = performance.now();
+    const again = lastClick?.window === id && now - lastClick.at < 500;
+    lastClick = again ? undefined : { window: id, at: now };
+    show(session, id, !again);
+    if (again) startRename(session, id);
+  };
+  const x = document.createElement("button");
+  x.className = "icon close";
+  x.type = "button";
+  x.append(icon("x"));
+  x.title = t("cmdCloseWindow");
+  x.onclick = () => closeWindow(session, id);
+  row.append(b, x);
+  onMenu(row, (x, y) => openMenu(x, y, windowMenu(session, id), () => shown?.focusKeys()));
+  draggable(
+    row,
+    () => {
+      rowDragging = true;
+      return { kind: "window", session, window: id };
+    },
+    () => {
+      rowDragging = false;
+      markDrop(undefined);
+      if (sidebarStale) sidebar();
+    },
+  );
+  // Where a row or a pane dropped here goes: before or after the row, or into its window.
+  const zone = (e: DragEvent): "before" | "after" | "into" | undefined => {
+    const d = ownDrag(e);
+    if (!d || d.session !== session || d.window === id) return undefined;
+    if (d.kind === "pane") return "into";
+    const r = row.getBoundingClientRect();
+    return e.clientY < r.top + r.height / 2 ? "before" : "after";
+  };
+  row.addEventListener("dragover", (e) => {
+    const z = zone(e);
+    markDrop(z && { row, zone: z });
+    if (!z) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = "move";
+  });
+  row.addEventListener("dragleave", (e) => {
+    if (row.dataset.drop && !(e.relatedTarget instanceof Node && row.contains(e.relatedTarget))) markDrop(undefined);
+  });
+  row.addEventListener("drop", (e) => {
+    const d = ownDrag(e);
+    const z = zone(e);
+    markDrop(undefined);
+    if (!d || !z) return;
+    e.preventDefault();
+    if (d.kind === "pane") movePaneToWindow(session, d.block, id);
+    else moveWindowTo(session, d.window, id, z === "before");
+  });
+  return row;
+}
+
+/** The row a drag shows its drop on, and how: a line before or after it, or a ring for a pane going in. */
+function markDrop(at: { row: HTMLElement; zone: "before" | "after" | "into" } | undefined) {
+  for (const r of $("list").querySelectorAll<HTMLElement>(".window[data-drop]")) if (r !== at?.row) delete r.dataset.drop;
+  if (at) at.row.dataset.drop = at.zone;
+}
+
+/** A window of a session's view. */
+function windowOf(session: string, window: string): any {
+  return sessions.get(session)?.view?.windows?.find((w: any) => w.window_id === window);
+}
+
+/** The windows of a session, in the host's order. */
+function windowIDs(session: string): string[] {
+  return (sessions.get(session)?.view?.windows ?? []).map((w: any) => w.window_id);
+}
+
+/** A space heading's menu, as the desktop's spaceMenu (workspaceview.go): rename it, or close it. */
+function spaceMenu(session: string): MenuItem[] {
+  return [
+    { label: t("cmdRenameSpace"), run: () => startRename(session) },
+    { label: t("cmdCloseSpace"), run: () => closeSpace(session) },
+  ];
+}
+
+/**
+ * A window row's menu, as the desktop's tabMenu (tabs.go) in the
+ * sidebar: rename it or give its name back, move it up or down or to
+ * another space, open a window, close it or the others.
+ */
+function windowMenu(session: string, window: string): MenuItem[] {
+  const w = windowOf(session, window);
+  if (!w) return [];
+  const ids = windowIDs(session);
+  const i = ids.indexOf(window);
+  const items: MenuItem[] = [{ label: t("cmdRenameWindow"), run: () => startRename(session, window) }];
+  if (windowName(w)) items.push({ label: t("windowResetName"), run: () => renamedWindow(session, window, "") });
+  items.push(
+    "separator",
+    { label: t("windowMoveUp"), disabled: i <= 0, run: () => moveWindowTo(session, window, ids[i - 1], true) },
+    { label: t("windowMoveDown"), disabled: i >= ids.length - 1, run: () => moveWindowTo(session, window, ids[i + 1], false) },
+  );
+  const move = gateway.moveWindowToSpace;
+  const others = [...sessions.values()].filter((o) => o.id !== session && o.view);
+  if (move && others.length) {
+    items.push({
+      label: t("windowMoveSpace"),
+      submenu: others.map((o) => ({
+        label: spaceName(o),
+        run: () => {
+          if (control) move(control, session, window, o.id).catch((e) => status(() => t("statusMoveWindowFailed", { error: describe(e) })));
+        },
+      })),
+    });
+  }
+  items.push(
+    "separator",
+    { label: t("cmdNewWindow"), run: () => newWindow(session) },
+    { label: t("cmdCloseWindow"), run: () => closeWindow(session, window) },
+    { label: t("cmdCloseOtherWindows"), disabled: ids.length < 2, run: () => ids.filter((o) => o !== window).forEach((o) => closeWindow(session, o)) },
+  );
+  return items;
+}
+
+/** A pane header's menu, as the desktop's paneMenu: move the pane to another window of its session (movePaneToTab). */
+function paneMenu(w: WindowView, block: string): MenuItem[] {
+  const others = (sessions.get(w.session)?.view?.windows ?? []).filter((o: any) => o.window_id !== w.window);
+  if (!others.length) return [];
+  return [
+    {
+      label: t("paneMoveWindow"),
+      submenu: others.map((o: any) => ({ label: windowTitle(o), run: () => movePaneToWindow(w.session, block, o.window_id) })),
+    },
+  ];
+}
+
+/** Opens the field that renames a space in its heading, or a window in its row. */
+function startRename(session: string, window?: string) {
+  if (!sessions.has(session) || (window && !windowOf(session, window))) return;
+  closeMenu();
+  renaming = { session, window };
+  sidebar(true);
+  focusRename($("list"));
+}
+
+/**
+ * A space's new name, from its field: an empty one keeps the name it
+ * has, as the desktop's renameWorkspace (session.set_label).
+ */
+function renamedSpace(session: string, name: string | undefined) {
+  if (renaming?.session === session && !renaming.window) renaming = undefined;
+  const s = sessions.get(session);
+  if (s && name && name !== s.label) {
+    const was = s.label;
+    s.label = name;
+    control?.call("session.set_label", { session_id: session, label: name }).catch((e) => {
+      if (s.label === name) s.label = was;
+      status(() => t("statusRenameSpaceFailed", { error: describe(e) }));
+      sidebar();
+    });
+  }
+  sidebar();
+  // The keyboard goes back to the pane, unless another field took it.
+  if (!renaming) shown?.focusKeys();
+}
+
+/**
+ * A window's new name, from its field or Reset Name: an empty one gives
+ * the window its terminal's title again, as the desktop's renameField
+ * (session.set_window_label).
+ */
+function renamedWindow(session: string, window: string, name: string | undefined) {
+  if (renaming?.window === window) renaming = undefined;
+  const w = windowOf(session, window);
+  if (w && name !== undefined && name !== (windowName(w) ?? "")) {
+    control?.call("session.set_window_label", { session_id: session, window_id: window, label: name }).catch((e) =>
+      status(() => t("statusRenameWindowFailed", { error: describe(e) })),
+    );
+  }
+  sidebar();
+  // The keyboard goes back to the pane, unless another field took it.
+  if (!renaming) shown?.focusKeys();
+}
+
+/**
+ * Moves a window of a session to the place of another: before it, or
+ * after it (session.move_window takes the window it goes before, none
+ * for the end).
+ */
+function moveWindowTo(session: string, window: string, target: string, before: boolean) {
+  const ids = windowIDs(session).filter((id) => id !== window);
+  const at = ids.indexOf(target);
+  if (at < 0) return;
+  const next = before ? target : ids[at + 1];
+  const args: Record<string, string> = { session_id: session, window_id: window };
+  if (next) args.before_window_id = next;
+  control?.call("session.move_window", args).catch((e) => status(() => t("statusMoveWindowFailed", { error: describe(e) })));
+}
+
+/**
+ * Moves a pane into another window of its session, beside the pane that
+ * has its focus, as the desktop's movePaneToTab (session.move_block, side
+ * by side, after it). Its program goes on.
+ */
+function movePaneToWindow(session: string, block: string, window: string) {
+  const w = windowOf(session, window);
+  const blocks = leavesOf(layoutOf(w));
+  const anchor = blocks.includes(w?.focused_block_id) ? w.focused_block_id : blocks[0];
+  if (!anchor) return;
+  control
+    ?.call("session.move_block", { session_id: session, block_id: block, anchor_block_id: anchor, direction: "horizontal", side: "after" })
+    .catch((e) => status(() => t("statusMovePaneFailed", { error: describe(e) })));
+}
+
+/**
+ * A pane dropped on another, as the desktop's dropPaneOn: in its middle
+ * they swap places (session.swap_blocks), and the dragged one has the
+ * focus; on an edge it goes beside it (session.move_block), where the
+ * host takes that.
+ */
+function dropPane(w: WindowView, dragged: string, target: string, zone: DropZone) {
+  const c = control;
+  if (!c) return;
+  const split = zoneSplit(zone);
+  const call = split
+    ? c.call("session.move_block", { session_id: w.session, block_id: dragged, anchor_block_id: target, ...split, ratio: 0.5 })
+    : c.call("session.swap_blocks", { session_id: w.session, block_id: dragged, other_block_id: target });
+  call.then(
+    () => {
+      if (shown === w) w.setFocus(dragged, true);
+    },
+    (e) => status(() => t(split ? "statusMovePaneFailed" : "statusSwapPanesFailed", { error: describe(e) })),
+  );
+}
+
+/**
+ * Makes a space with a window, and shows it, as the iOS app's New
+ * Session and the desktop's New Space (session.create; the host names it).
+ */
+async function newSpace() {
+  const c = control;
+  if (!c) return;
+  try {
+    const r = (await c.call("session.create", { initial_windows: [{ layout: { block: shell } }] })).payload;
+    const window = r.initial_windows?.[0]?.window_id;
+    if (!r.session_id || !window) return;
+    wantWindow = { session: r.session_id, window };
+    if (!sessions.has(r.session_id)) sessions.set(r.session_id, { id: r.session_id, label: "" });
+    await refresh(r.session_id, true);
+    showWanted();
+  } catch (e) {
+    status(() => t("statusNewSpaceFailed", { error: describe(e) }));
+  }
+}
+
+/**
+ * Closes a space once the user says so, as the desktop's Close Space
+ * (workspaceConfirm): its terminals end (session.destroy).
+ */
+async function closeSpace(session: string) {
+  const s = sessions.get(session);
+  if (!s) return;
+  let n = 0;
+  for (const w of s.view?.windows ?? []) for (const l of w.layers ?? []) n += l.blocks?.length ?? 0;
+  const yes = await confirmDanger(t("spaceCloseTitle", { name: spaceName(s) }), t("spaceCloseBody", { n }), t("cmdCloseSpace"));
+  shown?.focusKeys();
+  if (yes) control?.call("session.destroy", { session_id: session }).catch((e) => status(() => t("statusCloseSpaceFailed", { error: describe(e) })));
+}
+
+/** Shows a window when none shows: the active one of the first session that has one. */
+function showAny(keys: boolean) {
+  if (shown) return;
+  for (const s of sessions.values()) {
+    const next = s.view?.active_window_id ?? s.view?.windows?.[0]?.window_id;
+    if (next && windowOf(s.id, next)) return show(s.id, next, keys);
+  }
 }
 
 /** Shows a session's window, its panes live. */
@@ -875,6 +1216,10 @@ function run(name: string) {
     show(s, id, true);
     return;
   }
+  if (name === "new-space") {
+    newSpace();
+    return;
+  }
   if (!w) return;
   const block = w.focus;
   const c = control;
@@ -908,6 +1253,9 @@ function run(name: string) {
       break;
     case "close-window":
       closeWindow(w.session, w.window);
+      break;
+    case "rename-window":
+      startRename(w.session, w.window);
       break;
     case "focus-left":
     case "focus-right":
@@ -954,7 +1302,7 @@ window.addEventListener(
       return;
     }
     // The pane's own text field (pane.ts) holds its keys: they are the window's, not a form's.
-    if (t.closest?.("input, textarea:not(.pane-input), select, .theme-panel, dialog")) return;
+    if (t.closest?.("input, textarea:not(.pane-input), select, .theme-panel, dialog, .context-menu")) return;
     e.preventDefault();
     e.stopPropagation();
     run(name);
@@ -982,7 +1330,9 @@ document.fonts.addEventListener("loadingdone", () => {
   });
 });
 
-// The Settings button, in the page's language from the start.
+// The Settings button, in the page's language from the start; and New
+// Space, at the other end of the sidebar's foot, as the desktop's
+// spaceStrip has its + button.
 {
   const open = $("open-settings");
   const label = document.createElement("span");
@@ -991,6 +1341,17 @@ document.fonts.addEventListener("loadingdone", () => {
     label.textContent = t("sidebarSettings");
     open.title = label.textContent;
   });
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "icon";
+  add.id = "new-space";
+  add.append(icon("plus"));
+  localize(add, () => {
+    add.title = t("cmdNewSpace");
+    add.setAttribute("aria-label", add.title);
+  });
+  add.onclick = () => newSpace();
+  $("foot").append(add);
 }
 
 // No saved host: the first screen has the whole window from the first frame, as before main() has run.

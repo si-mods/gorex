@@ -68,6 +68,8 @@ export class TerminalView {
   private readonly tile = el("span", "pane-tile");
   private shownProgram = "";
   private readonly title = el("span", "pane-title");
+  /** The header: the tile, the title and the buttons; its menu and its drag are the window's (window.ts). */
+  readonly head = el("div", "pane-head");
   private readonly body = el("div", "pane-body");
   private readonly canvas = el("canvas", "screen");
   /**
@@ -129,7 +131,7 @@ export class TerminalView {
     // The pane's focus goes to its text field (below); the pane itself takes the click that gives it.
     this.el.tabIndex = -1;
     this.el.dataset.block = block;
-    const head = el("div", "pane-head");
+    const head = this.head;
     const buttons = el("span", "pane-actions");
     for (const [name, label] of actions) {
       const b = el("button", "pane-action");

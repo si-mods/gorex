@@ -652,7 +652,7 @@ export class Settings {
 
   private keyboardPage() {
     // The keys' names are the keyboard's, the same in every language.
-    const keys = formatList(mac ? ["⌘W", "⌘T", "⌘N", "⌃Tab"] : ["Ctrl+W", "Ctrl+T", "Ctrl+N", "Ctrl+Tab"]);
+    const keys = formatList(mac ? ["⌘W", "⌘T", "⌘N", "⇧⌘N", "⇧⌘R", "⌃Tab"] : ["Ctrl+W", "Ctrl+T", "Ctrl+N", "Ctrl+Shift+N", "Ctrl+Shift+R", "Ctrl+Tab"]);
     const note = el("div", "settings-hint settings-note", t("settingsKeyboardNote", { keys, chord: mac ? "⌥⇧" : "Alt+Shift" }));
     this.page.append(note);
     for (const g of shortcutGroups()) {

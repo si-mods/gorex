@@ -32,6 +32,8 @@
     --ok: #30d158;
     --danger: #ff6b6b;
     --accent: #0a84ff;
+    /* What a drag drops on, as the desktop's k.busy (style.go): a pane's zone, a row's place. */
+    --busy: #4ade80;
     /* The Settings dialog's cards and their hairlines, as the desktop's k.card, k.cardBorder and k.tabSep. */
     --card: rgba(255, 255, 255, 0.06);
     --card-edge: rgba(255, 255, 255, 0.08);
@@ -66,6 +68,7 @@
     --ok: #28a745;
     --danger: #e5484d;
     --accent: #007aff;
+    --busy: #34a853;
     --card: rgba(255, 255, 255, 0.72);
     --card-edge: rgba(0, 0, 0, 0.08);
     --sep: rgba(0, 0, 0, 0.10);
@@ -78,7 +81,8 @@
   }
   #sessions { grid-row: 1 / 3; display: flex; flex-direction: column; min-height: 0; padding: 12px 8px 8px; position: relative; }
   #list { flex: 1; overflow-y: auto; min-height: 0; }
-  #foot { padding-top: 8px; }
+  #foot { padding-top: 8px; display: flex; align-items: center; justify-content: space-between; }
+  #new-space { width: 28px; height: 28px; }
   /* The sidebar's Settings button, as the desktop's sidebarSettings. */
   .theme-button {
     display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 0; border-radius: 999px;
@@ -138,6 +142,26 @@
   .window .close { visibility: hidden; margin-right: 4px; }
   .window .close .pane-icon { width: 12px; height: 12px; }
   .window:hover .close, .window.open .close { visibility: visible; }
+  /* A long press opens the row's menu (manage.ts): no callout or selection of its own. */
+  .window, #sessions h2 { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  /* Dragged, as the desktop's dimmed(e, 0.4): grey and faded. */
+  .window.dragging, .pane-head.dragging { opacity: 0.4; filter: grayscale(1); }
+  /* Where a dragged row goes, as drawTabInsertion: a 2px line at its edge, 7px in; a pane dropped on a row
+     goes into its window: a ring, as the desktop's tab label (k.busy at 0.6, 1.5px). */
+  .window[data-drop] { position: relative; }
+  .window[data-drop="before"]::before, .window[data-drop="after"]::before {
+    content: ""; position: absolute; left: 7px; right: 7px; height: 2px; border-radius: 1px; background: var(--busy); pointer-events: none;
+  }
+  .window[data-drop="before"]::before { top: -1px; }
+  .window[data-drop="after"]::before { bottom: -1px; }
+  .window[data-drop="into"] { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent); }
+  /* Renaming in place (manage.ts), as the desktop's compact field. */
+  .rename-field {
+    flex: 1; min-width: 0; height: 26px; margin: 3px 0; padding: 0 10px; border: 1px solid var(--muted); border-radius: 999px;
+    background: var(--hover); color: var(--text); font: inherit; outline: none;
+  }
+  #sessions h2 .rename-field { height: 22px; margin: 0 4px 0 -4px; font-size: 12px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+  .window.renaming { padding: 0 4px; }
   button.block {
     display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 6px 4px 6px 12px; border: 0;
     background: none; color: var(--text); font: inherit; text-align: left;
@@ -196,6 +220,7 @@
   .pane.focused { box-shadow: 0 1px 2px var(--shadow-focus), 0 6px 22px -2px var(--shadow-focus); }
   .pane.focused::after { box-shadow: inset 0 0 0 1px var(--edge-focus); }
   .pane-head {
+    cursor: grab;
     flex: none; display: flex; align-items: center; gap: 6px; height: 33px; padding: 0 8px 0 12px;
     color: var(--text); font-size: 12.5px; font-weight: 600; user-select: none;
   }
@@ -220,6 +245,45 @@
   .pane.zoomed .pane-action[data-action="zoom"] { --icon: url(icons/minimize-2.svg); }
   .pane-action[data-action="close"] { --icon: url(icons/x.svg); }
   .pane-body { position: relative; flex: 1; min-height: 0; }
+  /* Where a pane dragged over this one goes, as panedrop.go's drawPaneDrop: k.busy at 0.18 and its 1.5px
+     rim at 0.6, 4px in from the pane's edge, its corners concentric; painted over the terminal, not an effect. */
+  .pane-drop {
+    position: absolute; inset: 4px; z-index: 5; border-radius: 4px; pointer-events: none;
+    background: color-mix(in srgb, var(--busy) 18%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--busy) 60%, transparent);
+  }
+  .pane-drop[data-zone="left"] { right: 50%; }
+  .pane-drop[data-zone="right"] { left: 50%; }
+  .pane-drop[data-zone="top"] { bottom: 50%; }
+  .pane-drop[data-zone="bottom"] { top: 50%; }
+  /* A right click's menu (manage.ts), as the corner's: a small glass panel, its rows concentric. */
+  .context-menu {
+    position: fixed; z-index: 30; display: flex; flex-direction: column; min-width: 180px; max-width: 320px; padding: 4px;
+    border-radius: 12px; background: var(--panel); border: 1px solid var(--panel-edge); color: var(--text);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+  .context-menu.sub { position: absolute; }
+  .context-item {
+    display: flex; align-items: center; gap: 12px; padding: 5px 10px; border: 0; border-radius: 8px;
+    background: none; color: var(--text); font: inherit; text-align: left; white-space: nowrap; cursor: pointer;
+  }
+  .context-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .context-item:hover:not(:disabled), .context-item:focus-visible, .context-item[aria-haspopup]:focus { background: var(--hover); outline: none; }
+  .context-item:disabled { color: var(--muted); cursor: default; }
+  .context-item .pane-icon { width: 12px; height: 12px; color: var(--muted); }
+  .context-sep { height: 1px; margin: 4px 6px; background: var(--panel-edge); }
+  /* Close Space's question (manage.ts), as the desktop's workspaceConfirm: a frosted panel, radius 16, over a
+     backdrop that only dims; Cancel and the red button. */
+  dialog.confirm {
+    width: min(380px, calc(100vw - 32px)); padding: 20px; border-radius: 16px; color: var(--text);
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 24px 60px -8px rgba(0, 0, 0, 0.28), 0 2px 6px rgba(0, 0, 0, 0.06);
+  }
+  dialog.confirm::backdrop { background: rgba(0, 0, 0, 0.35); }
+  dialog.confirm h2 { margin: 0; font-size: 15px; font-weight: 700; overflow-wrap: anywhere; }
+  dialog.confirm p { margin: 10px 0 0; color: var(--muted); line-height: 1.35; }
+  .confirm-buttons { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+  .host-add.destroy { background: var(--danger); border-color: transparent; color: #fff; font-weight: 600; }
+  .host-add.destroy:hover { background: color-mix(in srgb, var(--danger) 88%, #000); }
   /* The pane's text field, which holds its keys (pane.ts): put on the cursor by the pane, so that an input
      method opens its window there; invisible, out of the layout, taking no click. 16px keeps iOS from zooming in. */
   .pane-input {
