@@ -4,6 +4,7 @@ package rex
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -48,8 +49,12 @@ const (
 	ownRelayTotal     = 64
 )
 
-// ownRelayPort is the relay's port; tests take any.
-var ownRelayPort = RemotePort
+// ownRelayPort is the relay's port; tests take any. ownRelayIdle is how
+// long a connection may say nothing before it is a relay's client.
+var (
+	ownRelayPort = RemotePort
+	ownRelayIdle = 10 * time.Second
+)
 
 // NormalizeReachable checks the address of Reachable at, one IP address
 // of this machine, and returns it in its canonical form; "" is off.
@@ -95,6 +100,7 @@ func (s *Server) ownStartLocked() {
 	r.ownGen++
 	r.ownErr = ""
 	if !r.cfg.Enabled || r.cfg.ReachableAt == "" {
+		ownRelayHost.Store("")
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -115,6 +121,8 @@ func (s *Server) ownStartLocked() {
 			if err == nil {
 				r.own, r.ownErr = o, ""
 				r.mu.Unlock()
+				// The relay took clients before a revoke could find it.
+				o.relay.dropClients()
 				log.Printf("rex: reachable at %s", cfg.ReachableAt)
 				errs := make(chan error, 2)
 				go func() { errs <- s.remoteAccept(o.ts, o.api) }()
@@ -160,6 +168,18 @@ func (s *Server) ownStopLocked() func() {
 	}
 }
 
+// ownDropStrangers closes the relay's connections once the pairing
+// window is closed, for the keys it let in to be asked again.
+func (s *Server) ownDropStrangers() {
+	r := &s.rem
+	r.mu.Lock()
+	o, open := r.own, r.pairOpenLocked()
+	r.mu.Unlock()
+	if o != nil && !open {
+		o.relay.dropClients()
+	}
+}
+
 // ownStart starts the relay on cfg.ReachableAt and the tailcat server of
 // cfg's keys homed on it, listening on both ports.
 func (s *Server) ownStart(ctx context.Context, cfg RemoteConfig) (*ownLink, error) {
@@ -172,9 +192,9 @@ func (s *Server) ownStart(ctx context.Context, cfg RemoteConfig) (*ownLink, erro
 		r := &s.rem
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		// Pairing by address (next) admits any key here while the window
-		// is open.
-		return k == self || r.allowedLocked(k.String())
+		// Any key while the pairing window is open, to ask through this
+		// address; ownDropStrangers ends it with the window.
+		return k == self || r.allowedLocked(k.String()) || r.pairOpenLocked()
 	})
 	if err != nil {
 		return nil, err
@@ -237,7 +257,14 @@ func startOwnRelay(ip netip.Addr, admit func(key.NodePublic) bool) (*ownRelay, e
 	o.d.SetVerifyClientURL("http://" + vln.Addr().String() + vpath)
 	o.d.SetVerifyClientURLFailOpen(false)
 
-	tln, err := net.Listen("tcp", netip.AddrPortFrom(ip, uint16(ownRelayPort)).String())
+	// A relay just stopped, as on a restart, may still hold the port.
+	var tln net.Listener
+	for i := 0; ; i++ {
+		if tln, err = net.Listen("tcp", netip.AddrPortFrom(ip, uint16(ownRelayPort)).String()); err == nil || i == 10 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 	if err != nil {
 		o.close()
 		return nil, fmt.Errorf("rex: listening on %s: %w", netip.AddrPortFrom(ip, uint16(ownRelayPort)), err)
@@ -248,8 +275,12 @@ func startOwnRelay(ip netip.Addr, admit func(key.NodePublic) bool) (*ownRelay, e
 	mux.Handle("/derp", h)
 	mux.Handle("/derp/", h) // probe and latency-check, which netcheck asks without STUN
 	o.hs = &http.Server{
-		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
+		Handler: mux,
+		// derpserver sets its own deadlines once a client is its own; the
+		// others may not hold one of the few connections in silence.
+		ReadHeaderTimeout: ownRelayIdle,
+		ReadTimeout:       ownRelayIdle,
+		IdleTimeout:       ownRelayIdle,
 		TLSConfig:         &tls.Config{Certificates: []tls.Certificate{cert}},
 		// DERP upgrades an HTTP/1.1 connection: no HTTP/2.
 		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){},
@@ -345,6 +376,15 @@ func ownRelayCert() (tls.Certificate, string, error) {
 		}
 	}
 	k, err := x509.ParsePKCS8PrivateKey(kept.Key)
+	if err == nil {
+		// A certificate of another key would fail every handshake, unseen.
+		var c *x509.Certificate
+		if c, err = x509.ParseCertificate(kept.Cert); err == nil {
+			if pub, ok := c.PublicKey.(*ecdsa.PublicKey); !ok || !pub.Equal(k.(crypto.Signer).Public()) {
+				err = errors.New("the certificate is not of the key")
+			}
+		}
+	}
 	if err != nil {
 		return tls.Certificate{}, "", fmt.Errorf("rex: reading %s: %w", filepath.Base(path), err)
 	}
@@ -436,7 +476,8 @@ func init() {
 // which no proxy should carry.
 func noProxyToOwnRelay(next func(*http.Request) (*url.URL, error)) func(*http.Request) (*url.URL, error) {
 	return func(r *http.Request) (*url.URL, error) {
-		if h, _ := ownRelayHost.Load().(string); h != "" && r.URL.Hostname() == h {
+		// An IPv6 address comes without its brackets.
+		if h, _ := ownRelayHost.Load().(string); h != "" && (r.URL.Hostname() == h || r.URL.Host == h) {
 			return nil, nil
 		}
 		return next(r)

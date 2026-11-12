@@ -843,10 +843,12 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		}
 		r.pairOpenLocked()
 		r.pairUntil = time.Now().Add(pairWindow)
+		time.AfterFunc(pairWindow+time.Second, s.ownDropStrangers)
 		log.Printf("rex: %s", req.Op)
 		return nil, nil
 	case "remote.pairStop":
 		r.pairUntil, r.pending = time.Time{}, nil
+		done = append(done, s.ownDropStrangers)
 		log.Printf("rex: %s", req.Op)
 		return nil, nil
 	case "remote.reject":

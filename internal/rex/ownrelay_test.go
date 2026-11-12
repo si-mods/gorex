@@ -4,7 +4,9 @@ package rex
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -63,9 +65,9 @@ func TestReachableAt(t *testing.T) {
 	reg := tailcatEnv(t)
 	s, _ := testServer(t)
 	relayInsecure = true
-	oldPort := ownRelayPort
-	ownRelayPort = 0
-	t.Cleanup(func() { relayInsecure, ownRelayPort = false, oldPort })
+	oldPort, oldIdle := ownRelayPort, ownRelayIdle
+	ownRelayPort, ownRelayIdle = 0, 500*time.Millisecond
+	t.Cleanup(func() { relayInsecure, ownRelayPort, ownRelayIdle = false, oldPort, oldIdle })
 	c := pipe(s, "")
 	defer c.Close()
 
@@ -144,12 +146,17 @@ func TestReachableAt(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var rc *Client
+	// Kept past its subtest: the ones after it watch it.
+	defer func() {
+		if rc != nil {
+			rc.Close()
+		}
+	}()
 	t.Run("second address", func(t *testing.T) {
 		t0 := time.Now()
 		if rc, err = ConnectRemote(ctx, st.ReachableAddress); err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { rc.Close() })
 		h, err := rc.Hello()
 		if err != nil || h.Client == nil || h.Client.PublicKey != ClientPublicKey() {
 			t.Fatalf("hello %+v %v", h.Client, err)
@@ -199,6 +206,45 @@ func TestReachableAt(t *testing.T) {
 			t.Fatal("the relay serves a key not on the allowlist")
 		}
 	})
+	t.Run("pairing window", func(t *testing.T) {
+		// Open, any key is served, to ask through this address; closed,
+		// its connection ends and a new one is refused.
+		if err := c.StartPairing(); err != nil {
+			t.Fatal(err)
+		}
+		k := key.NewNode()
+		dc, ok := relayAdmits(t, own, k)
+		if !ok {
+			t.Fatal("the relay refuses a new key while the pairing window is open")
+		}
+		if err := c.StopPairing(); err != nil {
+			t.Fatal(err)
+		}
+		for {
+			if _, err := recvWithin(dc, 5*time.Second); err != nil {
+				if strings.HasPrefix(err.Error(), "nothing in") {
+					t.Fatal("a stranger's relay connection is kept after the window")
+				}
+				break
+			}
+		}
+		if _, ok := relayAdmits(t, own, k); ok {
+			t.Fatal("the relay serves a stranger after the window")
+		}
+	})
+	t.Run("silent", func(t *testing.T) {
+		// A connection that asks once and then says nothing is closed.
+		nc, err := tls.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", n.DERPPort), &tls.Config{InsecureSkipVerify: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer nc.Close()
+		fmt.Fprint(nc, "GET /derp/probe HTTP/1.1\r\nHost: x\r\n\r\n")
+		nc.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if _, err := io.Copy(io.Discard, nc); err != nil && strings.Contains(err.Error(), "timeout") {
+			t.Error("a silent connection is kept")
+		}
+	})
 	t.Run("revoke", func(t *testing.T) {
 		k := key.NewNode()
 		if err := c.AllowRemote("phone", k.Public().String()); err != nil {
@@ -223,6 +269,12 @@ func TestReachableAt(t *testing.T) {
 		if _, ok := relayAdmits(t, own, k); ok {
 			t.Fatal("the relay serves a revoked key")
 		}
+		// Another key's revoke leaves this machine's session.
+		if rc != nil {
+			if _, err := rc.Hello(); err != nil {
+				t.Fatalf("a session ended with another key's revoke: %v", err)
+			}
+		}
 		// This machine's session on the second address ends with its key.
 		if rc == nil {
 			t.Skip("no session to revoke")
@@ -237,13 +289,18 @@ func TestReachableAt(t *testing.T) {
 		}
 	})
 	t.Run("limits", func(t *testing.T) {
-		var cut int
+		// All at once: one that says nothing is closed in ownRelayIdle.
+		var ncs []net.Conn
 		for range ownRelayPerSource + 1 {
 			nc, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", n.DERPPort))
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer nc.Close()
+			ncs = append(ncs, nc)
+		}
+		var cut int
+		for _, nc := range ncs {
 			nc.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 			if _, err := nc.Read(make([]byte, 1)); err != nil && !strings.Contains(err.Error(), "timeout") {
 				cut++

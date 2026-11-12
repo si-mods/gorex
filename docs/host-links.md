@@ -195,6 +195,23 @@ And what it found to build around:
 Not yet seen: two machines, a NAT between them, a phone, and what a
 firewall says of the listening port.
 
+As built (`internal/rex/ownrelay.go`, `gorex remote reachable IP|off`):
+
+- A tailcat node listens through one relay only, so the second address
+  has a tailcat server of its own, of the same keys, beside the first.
+  Both feed the same accept path: one allowlist, one pairing window,
+  one revoke.
+- The relay answers STUN on the same port, UDP, and the address names
+  it: that removes the 3 s wait. Without the UDP port it still works.
+- `derpserver` asks a URL whether to admit a key; it is on the
+  loopback, with a random path, served by the same process, and a
+  failure refuses.
+- The relay does not know which connection is which key's, so a revoke
+  and the end of the pairing window close all of its connections; the
+  keys still admitted connect again.
+- `gorex remote address` prints the second address on a second line.
+  `gorex remote status` does not: an address is a secret.
+
 A machine may show several addresses, one per relay, with the same
 keys. A host is one entry by its server key, with the addresses the
 client knows; the client tries them in order. An introduction and a
@@ -355,8 +372,9 @@ Each ships something a user can use.
 
 1. **Spike** (done): the machine as its own relay, with tailcat as it
    is. It holds; see Path for what it found.
-2. **Reachable at**: the setting, the second address and its QR code,
-   and pairing by address. Desktops and Rex Go connect over a local
+2. **Reachable at** (the server and its CLI are done; Settings, Rex
+   Go and pairing by address are not): the setting, the second address
+   and its QR code, and pairing by address. Desktops and Rex Go connect over a local
    network or a VPN of one's own with no relay, from an IP address
    typed in. Docs.
 3. **Settings in the new words**: one switch, Devices, Add a device,
@@ -380,8 +398,6 @@ Each ships something a user can use.
 - **The embedded relay's protocol on a port forward**: DERP rides
   HTTPS, so a forward of one TCP port should do, and the direct route
   needs UDP as well. Not checked.
-- **The 3 s of a cold start.** A STUN answer from the same process may
-  remove the wait; not tried.
 - **The firewall.** Unlike the built-in Tailscale node, this is a
   listening port on the machine's own stack: Windows asks the user the
   first time, and other firewalls may block it silently.
