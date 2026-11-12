@@ -38,7 +38,7 @@ func TailnetDir() string { return filepath.Join(rex.Dir(), "rexapi") }
 // Rex's API on its local socket, on --listen if given, on the tailnet
 // while built-in Tailscale is on, and on the server's tailcat address
 // while remote access is on; "pair", "tailscale" and "call"
-// talk to a gateway that runs. It returns the process's exit status.
+// talk to a gateway that runs; "lan" and "web" change its state. It returns the process's exit status.
 func Main(args []string) int {
 	if len(args) > 0 {
 		switch args[0] {
@@ -50,6 +50,8 @@ func Main(args []string) int {
 			return callMain(args[1:])
 		case "lan":
 			return lanMain(args[1:])
+		case "web":
+			return webMain(args[1:])
 		}
 	}
 	return serveMain(args)

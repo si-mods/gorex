@@ -123,10 +123,15 @@ func isClosed(err error) bool {
 
 // HandlerFor returns the gateway's endpoints for clients that come by
 // transport: each request is identified as Rex identifies it, and one
-// the transport's rules refuse is answered with 403.
+// the transport's rules refuse is answered with 403. First, one whose
+// Host is not the gateway's own gets 421 (hostAllowed).
 func (g *Gateway) HandlerFor(transport string) http.Handler {
 	inner := g.Handler()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if checksHost(transport) && !g.hostAllowed(r) {
+			refuseHost(w, r)
+			return
+		}
 		var p map[string]any
 		switch transport {
 		case transportUnix:
