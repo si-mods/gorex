@@ -240,10 +240,15 @@ func (a *App) pairHostByAddress(ctx context.Context, cancel context.CancelFunc, 
 			go func() {
 				addrs, err := p.Confirm(ctx)
 				update(func() {
+					if err == nil && len(addrs) == 0 {
+						err = errors.New("rex: the machine sent no address")
+					}
 					switch {
 					case ctx.Err() != nil:
-					case err != nil || len(addrs) == 0:
+					case err != nil:
 						fail(serverMessage(err))
+					case slices.ContainsFunc(a.hosts, func(h *hostConn) bool { return h.Address == addrs[0] }):
+						fail(locales.HostsAlreadySaved())
 					default:
 						// shortcut: a host holds one address; the others wait for
 						// hosts that hold several.

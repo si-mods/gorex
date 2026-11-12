@@ -34,11 +34,13 @@ var remoteUI struct {
 	// reveal is that the address is shown. The address is a secret: st
 	// holds it only while reveal is on, and the page asks for it again
 	// to copy it.
-	reveal    bool
-	confirm   bool   // regenerate asks to be sure
-	copied    string // what was copied just now
-	name, key string // the client to add
-	addErr    bool   // the client to add is not valid: its reason shows
+	reveal bool
+	// revealDirect is the same for the second address, of Reachable at.
+	revealDirect bool
+	confirm      bool   // regenerate asks to be sure
+	copied       string // what was copied just now
+	name, key    string // the client to add
+	addErr       bool   // the client to add is not valid: its reason shows
 	// lan is the gateway's listener on the local network, as its files
 	// say (rexapi.LoadLAN, LoadLANStatus); lanListen and lanAdd are what
 	// is typed in its fields, and lanErr what was wrong with the last.
@@ -100,6 +102,7 @@ func stopRemotePoll() {
 	page := &remoteUI
 	page.stop, page.st, page.loaded, page.busy = nil, rex.RemoteStatus{}, false, false
 	page.reveal, page.confirm, page.err, page.addErr, page.name, page.key = false, false, nil, false, "", ""
+	page.revealDirect = false
 	page.addingKey, page.details = false, false
 	page.focusLAN = false
 	page.ts, page.tsURL, page.tsEdited, page.tsErr = rexapi.TailscaleConfig{}, "", false, ""
@@ -112,11 +115,14 @@ func stopRemotePoll() {
 // runs on the UI thread afterwards, unless the page has gone. It reports
 // whether work was started. Call it from the UI thread.
 func (a *App) remoteAsk(work func(srv *rex.Client) (apply func())) bool {
-	srv, stop := a.client, remoteUI.stop
+	win, srv, stop := settingsUI.win, a.client, remoteUI.stop
 	if srv == nil || stop == nil {
 		return false
 	}
-	update := a.settingsUpdate() // no window in tests: the app's posts
+	update := a.post // no window in tests: the app's posts
+	if win != nil {
+		update = func(fn func()) { win.Update(fn) }
+	}
 	go func() {
 		apply := work(srv)
 		update(func() {
@@ -399,17 +405,23 @@ func admissionLabel(l rexapi.Listener) (label string, open bool) {
 func (a *App) fetchRemote() {
 	fetchLAN()
 	fetchTailscale()
-	withAddress := remoteUI.reveal
+	withAddress, withDirect := remoteUI.reveal, remoteUI.revealDirect
 	a.remoteAsk(func(srv *rex.Client) func() {
 		st, err := srv.RemoteStatus()
 		if !withAddress {
-			st.Address, st.ReachableAddress = "", ""
+			st.Address = ""
+		}
+		if !withDirect {
+			st.ReachableAddress = ""
 		}
 		return func() {
 			remoteUI.unreachable = err != nil
 			if err == nil {
 				if !remoteUI.reveal {
-					st.Address, st.ReachableAddress = "", "" // hidden since the ask
+					st.Address = "" // hidden since the ask
+				}
+				if !remoteUI.revealDirect {
+					st.ReachableAddress = ""
 				}
 				remoteUI.st, remoteUI.loaded = st, true
 				if !remoteUI.relayEdited {
@@ -774,7 +786,7 @@ func (a *App) remoteReachable(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				Label(locales.RemoteReachableTitle()).Font(monoFamily()).Width(160).Changed() {
 				page.reachEdited, page.reachErr = true, ""
 			}
-			if ui.Button(c.Key("reach-save"), locales.RemoteLanSave()).Label(locales.RemoteReachableTitle()+": "+locales.RemoteLanSave()).Disabled(!page.reachEdited || page.busy).Clicked() {
+			if ui.Button(c.Key("reach-save"), locales.RemoteLanSave()).Label(locales.RemoteReachableTitle() + ": " + locales.RemoteLanSave()).Disabled(!page.reachEdited || page.busy).Clicked() {
 				ip, err := rex.NormalizeReachable(strings.TrimSpace(page.reach))
 				if err != nil || ip == "" {
 					page.reachErr = locales.RemoteReachableInvalid()
@@ -829,7 +841,7 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 						a.remoteDo((*rex.Client).StopPairing, nil)
 					}
 				})
-				if len(st.Pending) == 0 {
+				if len(st.Pending) == 0 && len(st.PendingByAddress) == 0 {
 					rowHint(c, k, locales.RemotePairNoRequest())
 				}
 			})
@@ -982,6 +994,7 @@ func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	if row.Clicked() {
 		page.details = !page.details
 		page.reveal, page.confirm, page.st.Address, page.st.ReachableAddress = false, false, "", ""
+		page.revealDirect = false
 	}
 	row.Children(func() {
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
@@ -1043,15 +1056,17 @@ func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 // changes with the first, so it has no Regenerate).
 func (a *App) remoteAddress(c *ui.Context, k *colors, direct bool) {
 	page := &remoteUI
-	title, note, addr, copyKey := locales.RemoteAddress(), locales.RemoteAddressNote(), page.st.Address, "addr"
+	title, note, addr, copyKey := locales.RemoteAddress(), locales.RemoteAddressNote(), &page.st.Address, "addr"
+	reveal := &page.reveal // each address is shown by its own button
 	if direct {
-		title, note, addr, copyKey = locales.RemoteDirectAddress(), locales.RemoteDirectAddressNote(), page.st.ReachableAddress, "direct"
+		title, note, addr, copyKey = locales.RemoteDirectAddress(), locales.RemoteDirectAddressNote(), &page.st.ReachableAddress, "direct"
+		reveal = &page.revealDirect
 	}
 	asking := page.confirm && !direct // Regenerate asks to be sure
 	groupRow(c, k, copyKey).Gap(8).Children(func() {
 		shown := maskedAddress
-		if page.reveal && addr != "" {
-			shown = addr
+		if *reveal && *addr != "" {
+			shown = *addr
 		}
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
@@ -1062,12 +1077,12 @@ func (a *App) remoteAddress(c *ui.Context, k *colors, direct bool) {
 				return
 			}
 			ui.Row(c).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
-				if page.reveal {
+				if *reveal {
 					if ui.Button(c.Key("hide-"+copyKey), locales.RemoteHide()).Clicked() {
-						page.reveal, page.st.Address, page.st.ReachableAddress = false, "", ""
+						*reveal, *addr = false, ""
 					}
 				} else if ui.Button(c.Key("show-"+copyKey), locales.RemoteShow()).Clicked() {
-					page.reveal = true
+					*reveal = true
 					a.fetchRemote()
 				}
 				if ui.Button(c.Key("copy-"+copyKey), copyLabel(copyKey)).Clicked() {
@@ -1087,6 +1102,7 @@ func (a *App) remoteAddress(c *ui.Context, k *colors, direct bool) {
 		ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 			if ui.Button(c, locales.RemoteRegenerate()).Disabled(page.busy).Clicked() {
 				page.confirm, page.reveal, page.st.Address, page.st.ReachableAddress = false, false, "", ""
+				page.revealDirect = false
 				a.remoteDo((*rex.Client).RegenerateRemote, nil)
 			}
 			if ui.Button(c, locales.RemoteCancel()).Clicked() {

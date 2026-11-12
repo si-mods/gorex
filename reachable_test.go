@@ -186,6 +186,15 @@ func TestDirectAddress(t *testing.T) {
 			t.Errorf("no %q in %q", s, tt.Texts())
 		}
 	}
+	// Each address is shown by its own button: the first one's leaves the
+	// direct one hidden.
+	remoteUI.reveal = true
+	rs.show(tt, func(st *rex.RemoteStatus) { st.Address, st.ReachableAddress = "tcFIRSTSECRET", "tcDIRECTSECRET" })
+	waitFor(t, tt, "the first address", func() bool { tt.Frame(); return tt.HasText("tcFIRSTSECRET") })
+	if tt.HasText("tcDIRECTSECRET") {
+		t.Error("showing the first address shows the direct one")
+	}
+	remoteUI.reveal = false
 	// A failed relay offers none.
 	rs.show(tt, func(st *rex.RemoteStatus) { st.ReachableError = "it failed" })
 	if tt.HasText(locales.RemoteDirectAddress()) || tt.HasText(locales.RemoteDirectQR()) {
