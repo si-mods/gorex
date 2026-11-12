@@ -282,6 +282,11 @@ headers on Cloudflare:
   fonts, icons and brand marks are kept for a day. Cloudflare gives a path
   that two rules match both rules' headers, so no two rules set the same
   header on one path.
+- `manifest-src 'self'` and `worker-src 'self'`: the app's manifest
+  and its Service Worker (see App). `sw.js` and `manifest.webmanifest`
+  are `no-cache`, so that a new build is found at the next load; the
+  manifest is sent as `application/manifest+json`. The app icons in
+  `/pwa` are kept for a day.
 - `connect-src` names `https://controlplane.tailscale.com`,
   `wss://controlplane.tailscale.com` and `wss://*.tailscale.com` (DERP)
   for built-in Tailscale; `http: https: ws: wss:` already allow them.
@@ -305,7 +310,100 @@ names. It builds the Tailscale engine again when a Go file of
 page to load it. It prints the command that makes a
 host trust it. It is plain http on loopback, so it reaches both kinds of
 gateway: `http://` on the local network and `https://` on the tailnet. It
-sends none of `_headers`' headers.
+sends none of `_headers`' headers. The page registers no Service Worker
+there (see App).
+
+## App
+
+The page is an installable web app (a PWA): Chrome and Edge offer to
+install it, and iOS adds it to the Home Screen. Installed, it opens in a
+window of its own, with its own icon.
+
+- **Manifest**: `web/manifest.webmanifest`, linked from `index.html`:
+  GoRex, `start_url` and `scope` the page's directory, `display:
+  standalone`, and the dark page's colour (`#1c1c1e`) as its theme and
+  background. `main.ts` keeps `<meta name="theme-color">` to the
+  page's scheme (`#1c1c1e` dark, `#ececf0` light), which colours the
+  app window's title bar. There is no `window-controls-overlay`: the
+  page would go under the title bar's buttons, and would need a drag
+  region of its own.
+- **Icons**: `web/pwa`, PNGs committed to the repository and drawn by
+  `go run ./tools/mkicon -web` from the icon's own drawing: the macOS
+  icon at 192 and 512 pixels (`any`), a maskable one whose gradient
+  fills the square and whose panes keep within the middle circle a
+  launcher's mask leaves (192, 512), and iOS's 180-pixel
+  `apple-touch-icon.png`. The build copies them into `dist/pwa`.
+- **Install**: Settings, About, shows Install GoRex with an Install App
+  button when the browser offered its install prompt
+  (`beforeinstallprompt`, Chrome and Edge); the button shows the
+  browser's prompt. In a browser of iOS or iPadOS it shows how to Add to
+  Home Screen instead. Installed, or in a browser that offers neither
+  (Firefox, Safari on the Mac), it shows neither.
+- **Keyboard**: in the app's window (`display-mode: standalone`), the
+  page asks for Keyboard Lock (`navigator.keyboard.lock`, Chrome and
+  Edge) for every key but Escape, so that the browser's own chords
+  (Ctrl+W, Ctrl+T, Ctrl+N, Ctrl+Tab) can reach the terminal. A browser
+  holds the locked keys only in fullscreen; outside it they stay the
+  browser's, so in an app window that is not fullscreen they may still
+  close the window or open a tab. Escape is never locked, so it exits
+  fullscreen at once, as ever, and still closes the page's dialogs. The
+  page's own shortcuts (Ctrl+, for Settings, Ctrl+Shift+C for Copy) are
+  the page's either way. A tab asks for no lock.
+
+### Service Worker
+
+`web/sw.js` is the page's Service Worker, at the root of its scope. The
+build (`writeWorker` in `build.mjs`) writes into `dist/sw.js` this
+build's version, a hash of `web/sw.js`, the page and its files, and the
+files it keeps: all of `dist` but `index.html`, `_headers`, `sw.js`,
+`tailnet.json` and the Tailscale engine (about 2.5 MB in all). A build
+that changes none of them is the same worker.
+
+- **Install**: it fetches the page (the scope's root, checked to name
+  this build's script, so that a deploy between the two fetches fails
+  the install rather than mixing versions) and the files into a cache of
+  its version, `gorex-<version>`. **Activate** deletes the other
+  `gorex-` caches and takes the open pages.
+- **Answers**: the page (a navigation to the root or `index.html`) and
+  `/assets` (hashed names) from the cache first; an `/assets` file
+  not kept, as the Tailscale engine, joins the cache when fetched. The
+  rest of the page's origin (fonts, icons, `tailnet.json`) comes from
+  the network, and from the cache when the network fails. So the page
+  opens offline, at the version the worker holds.
+- **Leaves alone**: every request to another origin (the GoRex hosts,
+  Tailscale's control server and relays), every request that is not a
+  GET, and `/api/`. It answers none of them, so the browser sends them
+  as it would without a worker. WebSockets never pass through a worker.
+- **Updates**: the browser checks `sw.js` (`no-cache`, registered with
+  `updateViaCache: "none"`) at each load, and the page asks again when
+  its tab comes back and hourly. A new version installs beside the
+  running one and waits; the page then shows "A new version of GoRex is
+  ready." with Reload, a glass panel in the corner, as the host list's,
+  that takes no keys. Nothing reloads by itself: a reload ends the
+  terminals' connections and this tab's Tailscale sign-in. Reload asks the
+  waiting worker to take over (`skip-waiting`), and the page reloads
+  once when it has (`controllerchange`). The × hides the panel until
+  the next load. The first worker installed is not a new version and
+  shows nothing.
+- **Downloads over the tailnet** (docs/web-tailscale.md, Downloads): with
+  a worker controlling the page, a tailnet host's file streams to the
+  browser's own download, with no limit of size. The page posts
+  `save` with a random id, the file's name and a `MessagePort`; the
+  worker makes a stream that asks the page for each chunk in turn, and a
+  hidden frame opens `save/<id>`, which the worker answers once, as an
+  attachment (`Content-Disposition` with the name, `nosniff`); a
+  second fetch of it is 404. The page sends `ping` every 10 s while it
+  lasts, which keeps the worker awake. Cancelling in the browser's
+  download list cancels the read from the host. Without a worker (the
+  first load, the dev server) it is the blob of before, capped at
+  256 MiB.
+- **Dev server**: `dev.mjs` builds with `__GOREX_SW__` false, so the
+  page registers no worker, and serves a `sw.js` that removes itself and
+  the `gorex-` caches: a worker a build left on the same origin goes at
+  the next load instead of serving that build's page.
+- **Another directory**: `GOREX_WEB_DIST=<dir> npm run build` builds
+  into `<dir>` rather than `web/dist`, as a check beside a running dev
+  server.
 
 ## Program tiles
 

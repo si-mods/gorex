@@ -10,12 +10,17 @@
 // It builds the tailnet engine again when a Go file of web/tailnet changes
 // (a few seconds with Go's build cache); reload the page to load it.
 //
+// The page registers no Service Worker here (__GOREX_SW__ is false), and
+// sw.js is one that removes itself and the page's caches: a worker that a
+// build served on the same origin installed then goes at the next load,
+// rather than serving that build's page in place of the dev server's.
+//
 // The script keeps its plain name here, app.js, which index.html names as
 // it is; the wasm and the themes keep the hashed names the build gave them.
 //
 // Usage: npm run dev [-- --port N] [-- --host ADDR]
 import { execFileSync } from "node:child_process";
-import { copyFileSync, watch } from "node:fs";
+import { copyFileSync, watch, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appOptions, assetDefines, buildTailnet, dist, esbuild } from "./build.mjs";
@@ -32,6 +37,16 @@ const port = Number(flag("--port", process.env.PORT || "5173"));
 // build.mjs takes the rest (--ghostty-source, --rebuild-wasm).
 const rest = args.filter((a, i) => !["--host", "--port"].includes(a) && !["--host", "--port"].includes(args[i - 1]));
 execFileSync(process.execPath, [join(web, "build.mjs"), ...rest], { stdio: "inherit" });
+writeFileSync(
+  join(dist, "sw.js"),
+  `// The dev server's: it removes itself and the page's caches (dev.mjs).
+self.addEventListener("install", () => self.skipWaiting());
+self.addEventListener("activate", (e) => e.waitUntil((async () => {
+  for (const k of await caches.keys()) if (k.startsWith("gorex-")) await caches.delete(k);
+  await self.registration.unregister();
+})()));
+`,
+);
 
 const { context } = await esbuild();
 const ctx = await context({ ...appOptions, define: { ...appOptions.define, ...assetDefines(dist) }, minify: false, sourcemap: "linked" });

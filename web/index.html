@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GoRex</title>
 <link rel="icon" href="data:,">
+<!-- The app (docs/web-client.md, App): its manifest, iOS's home screen icon and name, and the window's colour, which main.ts keeps to the page's. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="pwa/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="GoRex">
+<meta name="theme-color" content="#1c1c1e">
 <style>
   @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Regular.ttf") format("truetype"); font-weight: 400; font-style: normal; }
   @font-face { font-family: "JetBrains Mono"; src: url("fonts/JetBrainsMono-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; }
@@ -308,6 +313,16 @@
   .notice-card p { margin: 0; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }
   .notice-card .host-add { align-self: flex-start; }
   #status { padding: 4px 8px 6px; color: var(--muted); font-size: 12px; }
+  /* A new version is ready (app.ts): a small glass panel in the corner, as the host list's, which takes no keys. */
+  .update {
+    position: fixed; right: 16px; bottom: 32px; z-index: 20; display: flex; align-items: center; gap: 10px;
+    max-width: calc(100vw - 32px); padding: 8px 8px 8px 14px; border-radius: 14px;
+    background: var(--panel); border: 1px solid var(--panel-edge); color: var(--text);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  }
+  .update[hidden] { display: none; }
+  .update-text { flex: 1; min-width: 0; }
+  .update .host-add { padding: 4px 12px; }
   /* The Settings dialog (settings.ts), as the desktop's settings window (settingsview.go): the sections at the
      left, the chosen one's groups at the right. A frosted panel, as the palette's (blur 24, radius 16), over a
      backdrop that only dims, as DESIGN.md has it: a blur over the whole window reads as a smeared window. */
@@ -574,6 +589,7 @@
     .ts-foot { padding: 12px 16px calc(16px + env(safe-area-inset-bottom)); }
     .ts-foot .host-add { flex: 1; }
     .notice-actions .host-add { flex: 1 1 auto; }
+    .update { left: 8px; right: 8px; bottom: calc(28px + env(safe-area-inset-bottom)); max-width: none; }
   }
 </style>
 </head>

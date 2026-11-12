@@ -4,6 +4,7 @@
 // (settingsGroup, settingRow). It keeps what a browser has: no glass, no
 // Dock badge, no tab placement, no language and no updates. Each change is
 // kept (prefs.ts) and applied to the open panes at once by the page.
+import { install, installKind } from "./app";
 import { allowCommand, commandBox, Host, HostList, icon, Problem } from "./hosts";
 import { mac, shortcutGroups } from "./keys";
 import {
@@ -283,6 +284,11 @@ export class Settings {
   toggle() {
     if (this.dialog.open) this.close();
     else this.open();
+  }
+
+  /** The browser offered to install the page, or it was installed: the About section again. */
+  appChanged() {
+    if (this.dialog.open && this.section === "about") this.drawPage();
   }
 
   /** The host or its connection changed: the card, and the pages that show it, again. A form being filled stays. */
@@ -711,6 +717,17 @@ export class Settings {
     const built = __GOREX_BUILT__ ? ` · built ${__GOREX_BUILT__}` : "";
     row(about, "GoRex Web", `Version ${__GOREX_COMMIT__ || "development build"}${built}`);
     row(about, "libghostty-vt", "The terminal emulator, compiled to WebAssembly.", el("span", "settings-value", `Ghostty ${__GHOSTTY_COMMIT__.slice(0, 12)}`));
+
+    // Install App, where the browser offers it; iOS's Add to Home Screen, by hand; nothing once installed.
+    const kind = installKind();
+    if (kind === "prompt") {
+      const b = button("Install App", "host-add");
+      b.prepend(icon("app-window"));
+      b.onclick = () => void install();
+      row(group(this.page), "Install GoRex", "Opens GoRex in a window of its own, with its own icon.", b);
+    } else if (kind === "ios") {
+      row(group(this.page), "Add to Home Screen", "To open GoRex as an app: in Safari, tap Share, then Add to Home Screen.");
+    }
 
     const reset = button("Reset All Settings", "host-add danger");
     reset.onclick = () => {

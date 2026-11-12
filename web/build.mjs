@@ -15,15 +15,20 @@
 // year: a reload takes them from the browser's cache. index.html names the
 // script, and the script names the rest (assetDefines).
 //
+// It also writes the page's app files (docs/web-client.md, App): the
+// manifest, its icons (web/pwa, drawn by go run ./tools/mkicon -web) and
+// sw.js, the Service Worker, with this build's version and files.
+//
 // Usage: node web/build.mjs [--ghostty-source <path>] [--rebuild-wasm]
 //
-// The cache is $GOREX_WEB_CACHE, else $XDG_CACHE_HOME/gorex-web, else
+// $GOREX_WEB_DIST builds into another directory than web/dist, as a check
+// beside a dev server that serves web/dist. The cache is $GOREX_WEB_CACHE, else $XDG_CACHE_HOME/gorex-web, else
 // ~/.cache/gorex-web. See docs/web-client.md.
 import { execFile, execFileSync, execSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
@@ -35,7 +40,7 @@ const ZIG_VERSION = "0.17.0";
 
 const web = dirname(fileURLToPath(import.meta.url));
 const root = dirname(web);
-export const dist = join(web, "dist");
+export const dist = process.env.GOREX_WEB_DIST ? resolve(process.env.GOREX_WEB_DIST) : join(web, "dist");
 const cache = process.env.GOREX_WEB_CACHE || join(process.env.XDG_CACHE_HOME || join(homedir(), ".cache"), "gorex-web");
 const args = process.argv.slice(2);
 const windows = process.platform === "win32";
@@ -186,6 +191,8 @@ export const appOptions = {
     __GOREX_COMMIT__: JSON.stringify(commit()),
     __GOREX_BUILT__: JSON.stringify(new Date().toISOString().slice(0, 10)),
     __GHOSTTY_COMMIT__: JSON.stringify(COMMIT),
+    // Whether the page registers sw.js: the build's, not the dev server's (dev.mjs).
+    __GOREX_SW__: "false",
   },
 };
 
@@ -215,6 +222,37 @@ export async function esbuild() {
   return import(pathToFileURL(join(web, "node_modules", "esbuild", "lib", "main.js")).href);
 }
 
+/** dir's files, by their paths from dir with forward slashes. */
+function filesOf(dir, at = dir) {
+  return readdirSync(at, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? filesOf(dir, join(at, e.name)) : [relative(dir, join(at, e.name)).split("\\").join("/")],
+  );
+}
+
+/**
+ * Writes dir/sw.js from web/sw.js with this build's files, which the
+ * worker keeps for the page offline: all of dir but the page (which it
+ * keeps as the scope's root), _headers, sw.js itself, and built-in
+ * Tailscale's engine and tailnet.json, which only a page that turns
+ * Tailscale on fetches. Its version is a hash of web/sw.js, the page and
+ * those files, so that a build that changes any of them is a new worker,
+ * and one that changes none is the same.
+ */
+export function writeWorker(dir) {
+  const files = filesOf(dir)
+    .filter((f) => !["index.html", "_headers", "sw.js", "tailnet.json"].includes(f) && !f.startsWith("assets/tailnet-"))
+    .sort();
+  let sw = readFileSync(join(web, "sw.js"), "utf8");
+  const h = createHash("sha256").update(sw);
+  for (const f of ["index.html", ...files]) h.update(f + "\0").update(readFileSync(join(dir, f))).update("\0");
+  const version = h.digest("hex").slice(0, 16);
+  const lines = ['const VERSION = "development";', "const FILES = [];"];
+  if (!lines.every((l) => sw.includes(l))) throw new Error(`web/sw.js has no ${lines.join(" or ")}`);
+  sw = sw.replace(lines[0], `const VERSION = ${JSON.stringify(version)};`).replace(lines[1], `const FILES = ${JSON.stringify(files)};`);
+  writeFileSync(join(dir, "sw.js"), sw);
+  console.log(`sw.js: version ${version}, ${files.length} files`);
+}
+
 async function main() {
   const wasmFile = await wasm();
   if (!existsSync(join(web, "node_modules"))) {
@@ -232,7 +270,7 @@ async function main() {
   const themes = readFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"));
   writeFileSync(join(dist, hashedName(themes, "ghostty-themes", ".json")), themes);
   const { build } = await esbuild();
-  await build({ ...appOptions, define: { ...appOptions.define, ...assetDefines(dist) } });
+  await build({ ...appOptions, define: { ...appOptions.define, ...assetDefines(dist), __GOREX_SW__: "true" } });
   // The script by its hash too, which index.html names.
   const app = readFileSync(join(dist, "app.js"));
   const appName = hashedName(app, "app", ".js");
@@ -251,8 +289,13 @@ async function main() {
     mkdirSync(join(dist, d));
     for (const f of readdirSync(join(root, "assets", d))) copyFileSync(join(root, "assets", d, f), join(dist, d, f));
   }
+  // The app's manifest and icons.
+  copyFileSync(join(web, "manifest.webmanifest"), join(dist, "manifest.webmanifest"));
+  mkdirSync(join(dist, "pwa"));
+  for (const f of readdirSync(join(web, "pwa"))) copyFileSync(join(web, "pwa", f), join(dist, "pwa", f));
   // Built-in Tailscale's engine, which the page loads only when the user turns it on.
   await buildTailnet(dist);
+  writeWorker(dist);
   console.log(`built ${dist}`);
 }
 

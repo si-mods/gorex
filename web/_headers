@@ -10,8 +10,10 @@
 # paths. The Tailscale hosts in connect-src are what built-in Tailscale
 # needs (docs/web-tailscale.md, CSP); http: and https: already cover them,
 # for the hosts the user adds, but they stay named for when that narrows.
+# sw.js, the Service Worker, and the manifest are revalidated on every load
+# too, so that a new build is found; the app icons in /pwa are kept a day.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; frame-src http: https:; connect-src 'self' http: https: ws: wss: https://controlplane.tailscale.com wss://controlplane.tailscale.com wss://*.tailscale.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; frame-src http: https:; connect-src 'self' http: https: ws: wss: https://controlplane.tailscale.com wss://controlplane.tailscale.com wss://*.tailscale.com; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
 
@@ -27,5 +29,12 @@
   Cache-Control: public, max-age=86400
 /tailnet.json
   Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+  Content-Type: application/manifest+json
+/pwa/*
+  Cache-Control: public, max-age=86400
 /assets/*
   Cache-Control: public, max-age=31536000, immutable

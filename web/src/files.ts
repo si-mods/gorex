@@ -6,8 +6,11 @@
 // a blob of that image type only; anything else is the browser's own
 // download, a hidden link navigated to the file, so no blob of the host's
 // data other than a checked image exists on the page. Over the tailnet the
-// browser cannot navigate to the host, so a file downloads into a blob
-// that is saved and let go (docs/web-tailscale.md, Downloads).
+// browser cannot navigate to the host, so the page reads the file through
+// the transport and streams it to the browser's download through the
+// Service Worker (app.ts, streamSave), or, with no worker, holds it in a
+// blob that is saved and let go (docs/web-tailscale.md, Downloads).
+import { streamSave } from "./app";
 import { apiURL, Control, hostTransport, RexError } from "./rex";
 import { Viewer } from "./viewer";
 
@@ -46,7 +49,7 @@ const extKinds: Record<string, ImageKind> = {
 
 /** The largest image the page fetches to show; a larger one downloads. */
 export const maxViewBytes = 50 << 20;
-/** The largest file a tailnet host's download holds in memory, as a blob. */
+/** The largest file a tailnet host's download holds in memory, as a blob (without a Service Worker). */
 export const maxBlobBytes = 256 << 20;
 /** How many of the first bytes the signature check reads. */
 const sniffBytes = 4096;
@@ -169,16 +172,45 @@ const downloadPath = (ticket: string) => `/api/download?ticket=${encodeURICompon
  * Hands a ticket's file to the browser's own download: a hidden frame
  * navigated to it. The answer is an attachment, which the browser saves;
  * an error (a lapsed ticket's 404) lands in the frame, never in the page.
- * A tailnet host's file goes through a blob instead (saveBlob).
+ * A tailnet host's file goes through the worker, or a blob (saveTailnet).
  */
 async function navigate(f: Begun, host: FileHost) {
-  if (hostTransport().kind !== "direct") return saveBlob(f, host);
+  if (hostTransport().kind !== "direct") return saveTailnet(f, host);
   const frame = document.createElement("iframe");
   frame.hidden = true;
   frame.src = apiURL(downloadPath(f.ticket));
   document.body.append(frame);
   // The download goes on without the frame once it has started.
   setTimeout(() => frame.remove(), 60_000);
+}
+
+/**
+ * Downloads a tailnet host's file through the transport, streamed to the
+ * browser's download by the Service Worker, with no limit of size; with no
+ * worker controlling the page, into a blob (saveBlob).
+ */
+async function saveTailnet(f: Begun, host: FileHost) {
+  const name = f.name || "download";
+  const save = await streamSave(name);
+  if (!save) return saveBlob(f, host);
+  let r: Response;
+  try {
+    r = await hostTransport().fetch(downloadPath(f.ticket), { cache: "no-store" });
+    if (!r.ok || !r.body) throw new Error(`the host answered ${r.status}`);
+  } catch (e) {
+    save.abort(e instanceof Error ? e.message : String(e));
+    throw e;
+  }
+  let n = 0, shown = -1;
+  const how = await save.pipe(r.body!.getReader(), (bytes) => {
+    n += bytes;
+    const pct = f.size ? Math.floor((100 * n) / f.size) : -1;
+    if (pct !== shown && pct >= 0) {
+      shown = pct;
+      host.status(`Downloading ${name}… ${Math.min(pct, 100)}%`);
+    }
+  });
+  host.status(how === "done" ? `Downloaded ${name}` : `Cancelled ${name}`);
 }
 
 /**

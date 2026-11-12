@@ -2,6 +2,7 @@
 // panes, live, over the same API the iOS app speaks. The page is hosted on
 // its own; the host is one the user added (hosts.ts), or one built-in
 // Tailscale found on the tailnet (tailnet.ts).
+import { onAppChange, startApp } from "./app";
 import { Ghostty } from "./ghostty";
 import { Guide } from "./guide";
 import { allowCommand, commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
@@ -75,7 +76,10 @@ let lastBg: [number, number, number] = desktopTheme().background!;
 /** The page's chrome: the Window setting, else the terminal's background (light for a light one). */
 function scheme(bg: [number, number, number]) {
   lastBg = bg;
-  document.documentElement.dataset.scheme = prefs.appearance || (isLight(bg) ? "light" : "dark");
+  const s = prefs.appearance || (isLight(bg) ? "light" : "dark");
+  document.documentElement.dataset.scheme = s;
+  // The app window's title bar, and a phone's browser bar, in the page's colour (index.html's --page).
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", s === "light" ? "#ececf0" : "#1c1c1e");
 }
 
 /** Sets the connection's state, and shows it in the Settings dialog. */
@@ -219,6 +223,7 @@ async function main() {
       guide: openGuide,
     });
     guide = new Guide(tailnet, { connect: (h) => hostList.choose(h), closed: () => shown?.focusKeys() });
+    onAppChange(() => settings?.appChanged());
     tailnet.onChange(tailnetChanged);
     const open = $("open-settings");
     open.prepend(icon("settings-2"));
@@ -879,4 +884,5 @@ document.fonts.addEventListener("loadingdone", () => {
   });
 });
 
+startApp();
 main();

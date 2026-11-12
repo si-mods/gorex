@@ -374,9 +374,10 @@ browser saves it as it arrives (docs/web-open-files.md). The browser
 cannot navigate to a tailnet address. So over the tailnet, the page
 fetches the file through the transport into a `Blob` and saves it with
 an `<a download>`. That holds the whole file in memory, so it is capped
-at 256 MiB (`too_large` above that, with the cap in the message). A
-later version can stream larger files through a Service Worker that
-answers a same-origin URL from the frame's stream.
+at 256 MiB (`too_large` above that, with the cap in the message). With
+the page's Service Worker controlling it, the file streams instead, with
+no cap: the worker answers a same-origin URL, `save/<id>`, from the
+transport's stream, chunk by chunk (docs/web-client.md, Service Worker).
 
 This puts the host's bytes on the page's origin as a blob, which the
 direct path avoids. The blob is never shown and never navigated to;
