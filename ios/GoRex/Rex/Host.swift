@@ -713,8 +713,9 @@ final class Host: Identifiable {
     /// Sends a file into the temporary folder of the host's machine, for
     /// block, and returns its path there as a word of the block's shell.
     func upload(_ file: URL, block: String) async throws -> String {
-        _ = try live()
-        return try await Upload.send(file, name: file.lastPathComponent, block: block, to: config.url, session: try session())
+        let compress = try live().features.contains(Upload.deflateRaw)
+        return try await Upload.send(file, name: file.lastPathComponent, block: block, to: config.url,
+                                     compress: compress, session: try session())
     }
 
     /// The control connection; offline, an error to tell.

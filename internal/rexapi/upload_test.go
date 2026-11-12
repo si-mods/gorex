@@ -2,6 +2,7 @@ package rexapi
 
 import (
 	"bytes"
+	"compress/flate"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -454,5 +456,101 @@ func TestUploadForShell(t *testing.T) {
 	}
 	if _, err := os.Stat(res["path"]); err != nil {
 		t.Errorf("the file there: %v", err)
+	}
+}
+
+// postDeflated posts body to /api/upload for block as name, compressed
+// as raw DEFLATE under the encoding enc, with size in the query when it
+// is not "", and returns the status and the decoded answer.
+func postDeflated(t *testing.T, f *fixture, block, name, enc, size string, body []byte) (int, map[string]string) {
+	t.Helper()
+	var z bytes.Buffer
+	w, _ := flate.NewWriter(&z, flate.BestCompression)
+	w.Write(body)
+	w.Close()
+	q := url.Values{"block_id": {block}, "name": {name}}
+	if size != "" {
+		q.Set("size", size)
+	}
+	req, err := http.NewRequest(http.MethodPost, f.srv.URL+"/api/upload?"+q.Encode(), &z)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("Content-Encoding", enc)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	var m map[string]string
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("not JSON: %s %s", resp.Status, data)
+	}
+	return resp.StatusCode, m
+}
+
+// TestUploadDeflateRaw: the welcome lists the compressed upload with the
+// upload; a raw DEFLATE body lands as the bytes it inflates to; a body
+// that inflates past its size, or short of it, fails and leaves nothing
+// in the temporary folder; a size over the limit, no size and an unknown
+// encoding are refused.
+func TestUploadDeflateRaw(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the session runs /bin/sh")
+	}
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	f := startFixture(t)
+	c, _, block := f.sessionWith(t, rex.CreateOptions{Command: []string{"/bin/sh", "-i"}})
+	features, _ := c.welcome["features"].([]any)
+	if !slices.Contains(features, any(featureUploadDeflateRaw)) {
+		t.Fatalf("welcome features: %v", c.welcome["features"])
+	}
+	// files lists the files in the temporary folder, whose uploads go
+	// into a folder of their own there.
+	files := func() []string {
+		var names []string
+		filepath.WalkDir(tmp, func(path string, d os.DirEntry, err error) error {
+			if err == nil && d.Type().IsRegular() {
+				names = append(names, path)
+			}
+			return nil
+		})
+		return names
+	}
+
+	// 64 MiB of zeros compress to some 64 KiB, and name 1 MiB.
+	bomb := make([]byte, 64<<20)
+	status, res := postDeflated(t, f, block, "bomb.log", "deflate-raw", "1048576", bomb)
+	if status != http.StatusBadRequest || !strings.Contains(res["error"], "more than its size") {
+		t.Errorf("a body past its size: %d %v", status, res)
+	}
+	status, res = postDeflated(t, f, block, "short.log", "deflate-raw", "2000", make([]byte, 1000))
+	if status != http.StatusBadRequest || !strings.Contains(res["error"], "less than its size") {
+		t.Errorf("a body short of its size: %d %v", status, res)
+	}
+	if left := files(); len(left) > 0 {
+		t.Errorf("the temporary folder after failed uploads: %v", left)
+	}
+	if status, _ := postDeflated(t, f, block, "big.log", "deflate-raw", strconv.Itoa(maxUploadFileBytes+1), []byte("x")); status != http.StatusRequestEntityTooLarge {
+		t.Errorf("a size over the limit: %d", status)
+	}
+	if status, _ := postDeflated(t, f, block, "a.log", "deflate-raw", "", []byte("x")); status != http.StatusBadRequest {
+		t.Errorf("no size: %d", status)
+	}
+	if status, _ := postDeflated(t, f, block, "a.log", "br", "1", []byte("x")); status != http.StatusUnsupportedMediaType {
+		t.Errorf("an unknown encoding: %d", status)
+	}
+
+	body := bytes.Repeat([]byte("2026-11-12 12:00:00 INFO a line of a log\n"), 50_000)
+	status, res = postDeflated(t, f, block, "app.log", "deflate-raw", strconv.Itoa(len(body)), body)
+	if status != http.StatusOK {
+		t.Fatalf("upload: %d %v", status, res)
+	}
+	got, err := os.ReadFile(res["path"])
+	if err != nil || !bytes.Equal(got, body) {
+		t.Fatalf("the file there: %d bytes, %v", len(got), err)
 	}
 }
