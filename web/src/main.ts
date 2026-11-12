@@ -545,7 +545,8 @@ function event(type: string, sid: string | undefined, p: any) {
       if (shown?.session === id) {
         // The space closed: show another, as the desktop's window does (closeWorkspace).
         hide();
-        showAny(true);
+        // Not the keyboard from a field (a rename elsewhere) or a menu: it commits on blur.
+        showAny(!busyFocus());
       }
       sidebar();
       break;
@@ -1147,6 +1148,12 @@ async function closeSpace(session: string) {
   const yes = await confirmDanger(t("spaceCloseTitle", { name: spaceName(s) }), t("spaceCloseBody", { n }), t("cmdCloseSpace"));
   shown?.focusKeys();
   if (yes) control?.call("session.destroy", { session_id: session }).catch((e) => status(() => t("statusCloseSpaceFailed", { error: describe(e) })));
+}
+
+/** Whether the keyboard is in a field or a menu that is not a pane's own. */
+function busyFocus(): boolean {
+  const a = document.activeElement;
+  return !!a?.closest?.("input, textarea:not(.pane-input), select, dialog, .context-menu, .theme-panel");
 }
 
 /** Shows a window when none shows: the active one of the first session that has one. */

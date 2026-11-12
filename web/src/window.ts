@@ -122,8 +122,11 @@ export class WindowView {
     }
     this.hostFocus = host;
     if (!focus || !blocks.includes(focus)) focus = host && blocks.includes(host) ? host : blocks[0];
+    // A pane that had the keys may go (moved to another window): its successor takes them.
+    const keys = this.stage.contains(document.activeElement);
     this.render();
     this.setFocus(focus, false);
+    if (keys && !this.stage.contains(document.activeElement)) this.focusKeys();
   }
 
   /** Places the panes and dividers; opens the panes of new blocks and closes those of gone ones. */
@@ -230,14 +233,30 @@ export class WindowView {
     // A press on a focusable pane focuses it, and its text field takes
     // the focus on, which keeps Chrome from starting the header's drag:
     // the pane is not focusable while the header is pressed, and a click
-    // focuses it after.
+    // focuses it after. The press ends anywhere (a drag takes the pointer
+    // events, a zoomed window cancels the drag, the pointer may leave the
+    // header), so it is undone on the first end of any kind in the page.
     const focusable = () => {
       p.el.tabIndex = -1;
     };
+    // (blur is the window's own: the press itself blurs the text field, and an element's blur does not bubble.)
+    const ends = ["pointerup", "pointercancel", "dragend", "blur"];
+    const capture = (ev: string) => ev !== "blur";
     p.head.addEventListener("pointerdown", (e) => {
-      if (e.button === 0 && e.pointerType === "mouse" && !(e.target as Element).closest?.("button")) p.el.removeAttribute("tabindex");
+      if (e.button !== 0 || e.pointerType !== "mouse" || (e.target as Element).closest?.("button")) return;
+      p.el.removeAttribute("tabindex");
+      const end = () => {
+        for (const ev of ends) window.removeEventListener(ev, end, capture(ev));
+        focusable();
+      };
+      for (const ev of ends) window.addEventListener(ev, end, capture(ev));
     });
-    for (const ev of ["pointerup", "pointercancel", "dragend"]) p.head.addEventListener(ev, focusable);
+    // The drag took the focus to the page: the keys go back to the window's focused pane (a drop that
+    // moves the focus moves it on, see setFocus).
+    p.head.addEventListener("dragend", () => {
+      focusable();
+      this.focusKeys();
+    });
     p.head.addEventListener("click", (e) => {
       if ((e.target as Element).closest?.("button")) return;
       focusable();

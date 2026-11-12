@@ -163,6 +163,8 @@ function place(el: HTMLElement, x: number, y: number, alt: number) {
  */
 export function onMenu(e: HTMLElement, open: (x: number, y: number) => void) {
   e.addEventListener("contextmenu", (ev) => {
+    // A text field in it (the rename field) has the browser's own menu.
+    if ((ev.target as Element).closest?.("input, textarea")) return;
     ev.preventDefault();
     ev.stopPropagation();
     // The menu key opens it at the element.
@@ -223,7 +225,8 @@ export function renameField(name: string, placeholder: string, label: string, do
   f.addEventListener("keydown", (e) => {
     // The field's keys are its own, not the window's shortcuts.
     e.stopPropagation();
-    if (e.isComposing) return;
+    // A key an input method took (isComposing, or keyCode 229 as Safari reports it) is its own.
+    if (e.isComposing || e.keyCode === 229) return;
     if (e.key === "Enter") {
       e.preventDefault();
       end(true);

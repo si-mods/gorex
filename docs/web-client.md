@@ -896,23 +896,24 @@ focused pane by 5%. As on the desktop on Windows and Linux, Alt and an
 arrow (word movement in some shells) is the focus's there, not the
 terminal's.
 
+Two moves need a newer gateway, and the page shows them only when the
+gateway's welcome lists `gorex.move_window` (`gateway` in
+`web/src/main.ts`); GoRex's gateway took both in the same change set:
+
+- Move to Space (the desktop's `moveTabToSpace`), in the window row's menu
+  (Move to Space, a submenu of the other spaces): `gorex.move_window` with
+  `session_id`, `window_id` and `to_session_id`. The source session is
+  destroyed when the move empties it.
+- Dropping a pane on another pane's edge, to go beside it in the same
+  window (the desktop's `movePaneBeside`; `paneDropZone`, `zoneSplit`):
+  `session.move_block` with the target as anchor, a `direction` and a
+  `side` (before or after). Without the feature the edge zones are off and
+  only the middle (swap) takes a drop.
+
 ### Not in the web client
 
 - Floating layers (floats): only the tiled layer shows. A block that is
   only in a float has no pane here.
-- Dropping a pane on another pane's edge, to go beside it in the same
-  window (the desktop's `movePaneBeside`). GoRex's gateway moves a block
-  only into another window (`internal/rex/layout_apply.go:1080`,
-  `same_tab`, which `session.move_block` answers with `conflict`), and
-  only after its anchor (`internal/rexapi/layout.go:1409`). The page has
-  the edge zones (`paneDropZone`, `zoneSplit`), off until the gateway
-  takes them (`gateway.edgeMoves` in `web/src/main.ts`).
-- Moving a window to another space (the desktop's Move to Space,
-  `moveTabToSpace`): no method moves a window between sessions.
-  `session.move_window` orders the windows of one session
-  (`internal/rexapi/layout.go:1607`), and `session.move` is
-  `not_supported`. The row's menu has the item, off until the gateway has
-  a method (`gateway.moveWindowToSpace`).
 - Merging two windows (a row dropped on another's middle), moving a pane
   to a window of its own, renaming a pane, a space's color, and the
   desktop's space strip and next and previous space.
