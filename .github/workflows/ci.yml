@@ -63,9 +63,10 @@ jobs:
             echo "::endgroup::"
           done
 
-  # Trial: the same tests on Linux, on instabox machines. The root package's
-  # tests run one after another, so three machines take a third each; a
-  # fourth runs the other packages. With build, that is five at a time.
+  # The same tests on Linux, on instabox machines, beside the Mac mini's.
+  # The root package's tests run one after another, so three machines take
+  # a third each; a fourth runs the other packages. With build, that is
+  # five at a time.
   test-linux:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: instabox-medium
