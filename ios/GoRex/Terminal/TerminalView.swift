@@ -107,9 +107,9 @@ final class TerminalView: UIView, TerminalOutput {
     private let reading = DispatchGroup()
     /// The hardware key held, and its repeat.
     private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
-    /// The microphone streaming while the mic is held, and the Space it
-    /// holds meanwhile (talk).
-    private var talking: (voice: VoiceStream, spaces: Task<Void, Never>)?
+    /// The microphone streaming while the mic is on, and what to tell as it
+    /// goes off (talk).
+    private var talking: (voice: VoiceStream, off: () -> Void)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -505,56 +505,57 @@ final class TerminalView: UIView, TerminalOutput {
         shift = false
     }
 
-    /// Holds the mic: the microphone streams to the host for the block,
-    /// and Space is held, as Claude Code's /voice listens while it is: a
-    /// space now, and one each 30 ms until stopTalking. The spaces go to
-    /// Ghostty as keys, which the keyboard did not type. A first press asks
-    /// for the microphone, and does no more. The tap comes first: iOS mutes
-    /// it while it records.
-    func talk() {
-        guard talking == nil else { return }
+    /// Turns the mic on, and tells whether it is: the microphone streams to
+    /// the host for the block, and a Space starts Claude Code's /voice
+    /// recording, in its tap mode. The Space goes to Ghostty as a key, which
+    /// the keyboard did not type. off is called as the mic goes off, by
+    /// stopTalking or as the host ends the recording. A first tap asks for
+    /// the microphone, and does no more. The tick comes first: iOS mutes it
+    /// while it records.
+    func talk(off: @escaping () -> Void) -> Bool {
+        guard talking == nil else { return false }
         Self.tick.impactOccurred()
         switch AVAudioApplication.shared.recordPermission {
         case .undetermined:
             AVAudioApplication.requestRecordPermission { @Sendable _ in }
-            return
+            return false
         case .denied:
-            return alert(String(localized: "No Access to the Microphone"),
-                         String(localized: "Allow Rex Go to use the microphone in Settings."))
+            alert(String(localized: "No Access to the Microphone"),
+                  String(localized: "Allow Rex Go to use the microphone in Settings."))
+            return false
         default:
             break
         }
         let voice: VoiceStream
         do {
             voice = try session.host.voice(block: session.block)
-            voice.onFail = { [weak self] e in self?.talkFailed(e) }
+            voice.onEnd = { [weak self] e in self?.talkEnded(e) }
             try voice.start()
         } catch {
-            return talkFailed(error)
+            talkEnded(error)
+            return false
         }
-        talking = (voice, Task { [weak self] in
-            while !Task.isCancelled, let self {
-                forget()
-                press(KeyEvent.typing(" "))
-                try? await Task.sleep(for: .milliseconds(30))
-            }
-        })
+        talking = (voice, off)
+        forget()
+        press(KeyEvent.typing(" "))
+        return true
     }
 
-    /// Lets go of the mic: Space goes up, and the stream sends what is
-    /// left and ends.
+    /// Turns the mic off: the stream sends what is left and ends, and the
+    /// host's rec with it, on which Claude Code ends the recording and
+    /// sends it.
     func stopTalking() {
         guard let t = talking else { return }
         talking = nil
-        t.spaces.cancel()
         t.voice.stop()
+        t.off()
     }
 
-    /// The stream failed, or could not open: Space goes up, and an alert
-    /// tells why.
-    private func talkFailed(_ error: Error) {
+    /// The stream ended on the host, or failed, or could not open: the mic
+    /// goes off, and an alert tells why it failed.
+    private func talkEnded(_ error: Error?) {
         stopTalking()
-        alert(String(localized: "Can't Send Voice"), error.localizedDescription)
+        if let error { alert(String(localized: "Can't Send Voice"), error.localizedDescription) }
     }
 
     /// The mic's tap, as the key bar's keys give.
