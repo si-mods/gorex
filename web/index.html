@@ -300,7 +300,7 @@
   .host-add.primary { background: var(--text); color: var(--page); border-color: transparent; }
   .host-add.danger { margin-right: auto; color: #ff6b6b; }
   .command { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 12px; border-radius: 10px; background: var(--hover); }
-  .command code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 12px/1.5 var(--mono); user-select: all; }
+  .command code { flex: 1; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 var(--mono); user-select: all; }
   .command-copy { flex: none; padding: 3px 10px; border: 0; border-radius: 999px; background: var(--pill); color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
   /* What is wrong with the host, or how to add one, over the empty stage. */
   #notice { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 16px; }
