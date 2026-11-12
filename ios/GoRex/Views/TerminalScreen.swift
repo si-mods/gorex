@@ -83,20 +83,16 @@ struct TerminalScreen: View {
                     .buttonStyle(.plain)
                 }
                 .sharedBackgroundVisibility(.hidden)
-                // The window's menu, or for Claude Code on a host that
-                // takes voice the mic, New Tab being in the session's sheet
-                // and on ⌘T; the bar's glass draws it.
-                ToolbarItem(placement: .topBarTrailing) {
-                    if canVoice {
-                        Mic { terminal }
-                    } else {
-                        Menu {
-                            Button("New Tab", systemImage: "plus") { newTab() }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                        }
-                        .accessibilityLabel("More")
+                // The mic, and the window's menu, New Tab being in the
+                // session's sheet and on ⌘T; the bar's glass draws them.
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Mic { terminal }
+                    Menu {
+                        Button("New Tab", systemImage: "plus") { newTab() }
+                    } label: {
+                        Image(systemName: "ellipsis")
                     }
+                    .accessibilityLabel("More")
                 }
             }
             // The sheet takes the terminal's scheme as the bar does; the
@@ -135,7 +131,7 @@ struct TerminalScreen: View {
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
-                    terminal?.stopTalking()
+                    terminal?.stopDictating()
                     session?.suspend()
                     suspended = true
                 }
@@ -153,16 +149,6 @@ struct TerminalScreen: View {
 
     /// The terminal showing the session.
     private var terminal: TerminalView? { session?.output as? TerminalView }
-
-    /// Whether the mic shows: the host takes voice, and the window's
-    /// program is Claude Code, whose /voice the mic's Space is for; another
-    /// program would take the space as typed. The welcome's features are
-    /// not observed; the host's status, which turns online after the
-    /// welcome, is.
-    private var canVoice: Bool {
-        _ = host.status
-        return host.canVoice && Program.of(host.blocks[target.block]?.program).name == Program.of("claude").name
-    }
 
     /// The session of the window open, as the host has it.
     private var hostSession: Host.Session? {
@@ -238,27 +224,67 @@ struct TerminalScreen: View {
     }
 }
 
-/// The mic, for Claude Code on a host that takes voice: a tap turns it on,
-/// and the host hears the phone's microphone as its own until a tap turns
-/// it off (TerminalView.talk). It goes off as the host ends the recording,
-/// and as it goes away, with the screen, the host's voice or Claude Code.
+/// The mic: a tap turns it on, and a tap turns it off and types what it
+/// heard into the terminal, recognised on the phone (Dictation), unsent.
+/// It spins while it recognises. Its first tap asks to download the models,
+/// and while they download it shows how far, and a tap stops it. It goes
+/// off, typing nothing, as it goes away with the screen.
 private struct Mic: View {
     let terminal: () -> TerminalView?
     @State private var on = false
+    @State private var busy = false
+    @State private var asking = false
+    private let dictation = Dictation.shared
 
     var body: some View {
-        // On, it is the red dot of a recording.
-        Image(systemName: on ? "record.circle.fill" : "mic")
-            .foregroundStyle(on ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
-            .frame(width: 36, height: 36)
-            .contentShape(.circle)
-            .onTapGesture {
-                if on { terminal()?.stopTalking() } else { on = terminal()?.talk { on = false } == true }
+        Group {
+            if let p = dictation.progress {
+                Circle().stroke(.secondary.opacity(0.3), lineWidth: 2.5)
+                    .overlay { Circle().trim(from: 0, to: p).stroke(.primary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round)).rotationEffect(.degrees(-90)) }
+                    .frame(width: 18, height: 18)
+                    .accessibilityLabel("Downloading the Speech Model")
+                    .accessibilityValue(p.formatted(.percent.precision(.fractionLength(0))))
+                    .accessibilityHint("Tap to stop.")
+            } else if busy {
+                ProgressView().accessibilityLabel("Recognising")
+            } else {
+                // On, it is the red dot of a recording.
+                Image(systemName: on ? "record.circle.fill" : "mic")
+                    .foregroundStyle(on ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
+                    .accessibilityLabel("Dictate")
+                    .accessibilityHint("Tap to speak, and again to type what you said.")
             }
-            .onDisappear { terminal()?.stopTalking() }
-            .accessibilityLabel("Voice")
-            .accessibilityHint("Tap to speak, and again to stop; the host hears it as its microphone.")
-            .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        }
+        .frame(width: 36, height: 36)
+        .contentShape(.circle)
+        .onTapGesture {
+            guard !busy else { return }
+            if dictation.progress != nil {
+                dictation.cancel()
+            } else if on {
+                busy = true
+                Task {
+                    await terminal()?.typeDictation()
+                    busy = false
+                }
+            } else if !dictation.installed {
+                asking = true
+            } else {
+                on = terminal()?.dictate { on = false } == true
+            }
+        }
+        .onDisappear { terminal()?.stopDictating() }
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .alert("Download the Speech Model?", isPresented: $asking) {
+            Button("Download") { dictation.download() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Speech is recognised on this device, by SenseVoice. Its model, \(Dictation.size.formatted(.byteCount(style: .file))), downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.")
+        }
+        .alert("Can't Download the Speech Model", isPresented: Binding { dictation.error != nil } set: { if !$0 { dictation.error = nil } }) {
+        } message: {
+            Text(dictation.error ?? "")
+        }
     }
 }
 

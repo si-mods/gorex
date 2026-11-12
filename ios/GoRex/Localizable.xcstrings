@@ -202,16 +202,6 @@
         }
       }
     },
-    "Can't Send Voice": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "无法发送语音"
-          }
-        }
-      }
-    },
     "Can't Upload": {
       "localizations": {
         "zh-Hans": {
@@ -588,26 +578,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "收起键盘"
-          }
-        }
-      }
-    },
-    "Tap the mic at the top right of the terminal to speak to Claude Code's /voice, in its tap mode, on a host that has no microphone; tap it again to stop, and Claude Code sends what you said. It shows while Claude Code runs on a host that takes voice, in place of the ⋯ menu.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "轻点终端右上角的麦克风，即可对没有麦克风的主机上 Claude Code 的 /voice（tap 模式）说话；再点一下停止，Claude Code 随即发送你说的话。主机支持语音且正在运行 Claude Code 时才显示它，取代 ⋯ 菜单。"
-          }
-        }
-      }
-    },
-    "Tap to speak, and again to stop; the host hears it as its microphone.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "轻点开始说话，再点一下停止；主机把它当作自己的麦克风。"
           }
         }
       }
@@ -1102,16 +1072,6 @@
         }
       }
     },
-    "Speak to a host without a microphone": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "对没有麦克风的主机说话"
-          }
-        }
-      }
-    },
     "Startup command": {
       "localizations": {
         "zh-Hans": {
@@ -1158,16 +1118,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "连接已断开。"
-          }
-        }
-      }
-    },
-    "The microphone was interrupted.": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "麦克风被打断了。"
           }
         }
       }
@@ -1288,16 +1238,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "切换会话"
-          }
-        }
-      }
-    },
-    "Voice": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "语音"
           }
         }
       }
@@ -3334,6 +3274,146 @@
           "stringUnit": {
             "state": "translated",
             "value": "连不上的终端提供“诊断”：卡在哪一步、到主机的路径、三种大小的 ping 和最近的日志，可复制到问题报告里。在“设置 › Tailscale”中轻点一台 GoRex 电脑也能打开。"
+          }
+        }
+      }
+    },
+    "Can't Record": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法录音"
+          }
+        }
+      }
+    },
+    "Can't Recognise Speech": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法识别语音"
+          }
+        }
+      }
+    },
+    "Downloading the Speech Model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在下载语音模型"
+          }
+        }
+      }
+    },
+    "Tap to stop.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点停止。"
+          }
+        }
+      }
+    },
+    "Recognising": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在识别"
+          }
+        }
+      }
+    },
+    "Dictate": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "听写"
+          }
+        }
+      }
+    },
+    "Tap to speak, and again to type what you said.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点开始说话，再点一下把你说的话打进终端。"
+          }
+        }
+      }
+    },
+    "Download the Speech Model?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载语音模型？"
+          }
+        }
+      }
+    },
+    "Speech is recognised on this device, by SenseVoice. Its model, %@, downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语音由 SenseVoice 在本机上识别。它的模型（%@）只需下载一次，来自 Hugging Face；连不上 Hugging Face 时改从 hf-mirror.com 下载，那是第三方运营的镜像。可在“设置 › 终端”中删除。"
+          }
+        }
+      }
+    },
+    "Can't Download the Speech Model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法下载语音模型"
+          }
+        }
+      }
+    },
+    "Speech Model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语音模型"
+          }
+        }
+      }
+    },
+    "The mic at the top right of the terminal types what you say, recognised on this device by SenseVoice, without sending it. Swipe the model to delete it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端右上角的麦克风把你说的话打进终端，但不发送；语音由 SenseVoice 在本机上识别。左滑模型可删除它。"
+          }
+        }
+      }
+    },
+    "Dictate with the mic": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用麦克风听写"
+          }
+        }
+      }
+    },
+    "Tap the mic at the top right of the terminal and speak; tap it again, and what you said is typed at the cursor, not sent. Speech is recognised on this device by SenseVoice, in Chinese, English, Cantonese, Japanese or Korean, with punctuation. Its model, about 240 MB, downloads on the first tap; delete it in Settings › Terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点终端右上角的麦克风并说话；再点一下，你说的话就打在光标处，但不发送。语音由 SenseVoice 在本机上识别，支持中文、英语、粤语、日语和韩语，带标点。它的模型约 240 MB，首次轻点时下载；可在“设置 › 终端”中删除。"
           }
         }
       }
