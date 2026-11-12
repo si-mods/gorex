@@ -58,10 +58,13 @@ type Client struct {
 var callTimeout = newDuration(15 * time.Second)
 
 // Connect connects to the server, starting one in the background when
-// none runs.
+// none runs, but none for a session, whose server is its own.
 func Connect() (*Client, error) {
 	conn, err := dialSocket()
 	if err != nil {
+		if clientSocket() != SocketPath() {
+			return nil, fmt.Errorf("rex: connecting to the session's server: %w", err)
+		}
 		if err := Spawn(); err != nil {
 			return nil, fmt.Errorf("rex: starting the server: %w", err)
 		}
@@ -72,7 +75,16 @@ func Connect() (*Client, error) {
 	return newClient(conn, dialSocket), nil
 }
 
-func dialSocket() (net.Conn, error) { return net.Dial("unix", SocketPath()) }
+func dialSocket() (net.Conn, error) { return net.Dial("unix", clientSocket()) }
+
+// clientSocket is the socket a client dials: in a session, GOREX_SERVER,
+// that of the server that runs it, unless GOREX_DIR names another.
+func clientSocket() string {
+	if s := os.Getenv("GOREX_SERVER"); s != "" && os.Getenv("GOREX_DIR") == "" {
+		return s
+	}
+	return SocketPath()
+}
 
 // ConnectExisting connects to the server that runs, starting none: one a
 // client started from an SSH session would end with the session, as
