@@ -1202,12 +1202,12 @@
         }
       }
     },
-    "The mic types what you say into the terminal, without pressing Return; SenseVoice recognises it on this device. Swipe the model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device.": {
+    "The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "麦克风把你说的话打进终端，但不按回车；语音由 SenseVoice 在本机上识别。左滑模型可删除它。填了 API 密钥后，你听写的文字和终端屏幕上的单词会发到你在这里设置的服务，由它纠正听错的术语和标点。没有密钥时，什么都不会离开本机。"
+            "value": "麦克风把你说的话打进终端，但不按回车；语音由你选的模型在本机上识别。Fun-ASR-Nano 和 Qwen3-ASR 更大、更慢：在 Mac 上要占 2 到 2.6 GB 内存，内存更小的手机可能跑不动。左滑模型可删除它。填了 API 密钥后，你听写的文字和终端屏幕上的单词会发到你在这里设置的服务，由它纠正听错的术语和标点。没有密钥时，什么都不会离开本机。"
           }
         }
       }
@@ -3448,12 +3448,12 @@
         }
       }
     },
-    "Speech is recognised on this device, by SenseVoice. Its model, %@, downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.": {
+    "Speech is recognised on this device, by %@. Its model, %@, downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "语音由 SenseVoice 在本机上识别。它的模型（%@）只需下载一次，来自 Hugging Face；连不上 Hugging Face 时改从 hf-mirror.com 下载，那是第三方运营的镜像。可在“设置 › 终端”中删除。"
+            "value": "语音由 %1$@ 在本机上识别。它的模型（%2$@）只需下载一次，来自 Hugging Face；连不上 Hugging Face 时改从 hf-mirror.com 下载，那是第三方运营的镜像。可在“设置 › 终端”中删除。"
           }
         }
       }
@@ -3468,16 +3468,6 @@
         }
       }
     },
-    "Speech Model": {
-      "localizations": {
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "语音模型"
-          }
-        }
-      }
-    },
     "Dictate with the mic": {
       "localizations": {
         "zh-Hans": {
@@ -3488,12 +3478,12 @@
         }
       }
     },
-    "Tap the mic on the key bar, or at the top right of the terminal on iPad or with a hardware keyboard, and speak; tap it again, and what you said is typed at the cursor, not sent. Speech is recognised on this device by SenseVoice, in Chinese, English, Cantonese, Japanese or Korean, with punctuation. Its model, about 240 MB, downloads on the first tap; delete it in Settings › Terminal.": {
+    "Tap the mic on the key bar, or at the top right of the terminal on iPad or with a hardware keyboard, and speak; tap it again, and what you said is typed at the cursor, not sent. Speech is recognised on this device by SenseVoice, in Chinese, English, Cantonese, Japanese or Korean, with punctuation. Its model, about 240 MB, downloads on the first tap; choose a larger one, or delete it, in Settings › Terminal.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "轻点按键栏上的麦克风（在 iPad 上或连接硬件键盘时，在终端右上角）并说话；再点一下，你说的话就打在光标处，但不发送。语音由 SenseVoice 在本机上识别，支持中文、英语、粤语、日语和韩语，带标点。它的模型约 240 MB，首次轻点时下载；可在“设置 › 终端”中删除。"
+            "value": "轻点按键栏上的麦克风（在 iPad 上或连接硬件键盘时，在终端右上角）并说话；再点一下，你说的话就打在光标处，但不发送。语音由 SenseVoice 在本机上识别，支持中文、英语、粤语、日语和韩语，带标点。它的模型约 240 MB，首次轻点时下载；可在“设置 › 终端”中换用更大的模型，或删除它。"
           }
         }
       }

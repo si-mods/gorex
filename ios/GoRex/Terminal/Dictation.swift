@@ -1,13 +1,56 @@
 import AVFoundation
 import FluidAudio
+import SherpaOnnxC
 import os
 
-/// Dictation, after rootshell's: the mic records, and SenseVoiceSmall
-/// (FunASR's, in Core ML through FluidAudio) recognises it on the phone, in
-/// the language it hears, with punctuation and digits. The app does not
-/// ship the models: the mic's first tap asks, and downloads them.
+/// Dictation, after rootshell's: the mic records, and the model chosen
+/// recognises it on the phone, in the language it hears, with punctuation
+/// and digits: SenseVoiceSmall (FunASR's, in Core ML through FluidAudio), or
+/// a larger one, through sherpa-onnx. The app does not ship the models: the
+/// mic's first tap asks, and downloads the one chosen.
 @Observable final class Dictation {
     static let shared = Dictation()
+
+    /// A speech model, and where it comes from.
+    nonisolated enum Model: String, CaseIterable, Sendable {
+        case senseVoice, funASRNano, qwen3ASR
+
+        var name: String {
+            switch self {
+            case .senseVoice: "SenseVoice Small"
+            case .funASRNano: "Fun-ASR-Nano"
+            case .qwen3ASR: "Qwen3-ASR 0.6B"
+            }
+        }
+
+        /// sherpa-onnx's int8 conversion, in a Hugging Face repo at a
+        /// commit: its files, and what each weighs. SenseVoice's is
+        /// FluidAudio's.
+        var repo: (name: String, commit: String, files: [(path: String, size: Int)])? {
+            switch self {
+            case .senseVoice: nil
+            case .funASRNano: ("csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30", "6f16bd378457e13f36ccf3910df9017f96c346fb",
+                               [("encoder_adaptor.int8.onnx", 237_792_748), ("llm.int8.onnx", 600_356_593), ("embedding.int8.onnx", 155_584_380),
+                                ("Qwen3-0.6B/tokenizer.json", 11_422_654), ("Qwen3-0.6B/vocab.json", 2_776_833), ("Qwen3-0.6B/merges.txt", 1_671_853)])
+            case .qwen3ASR: ("csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25", "68818b2313fe77bd06f6a7c5068ff3ef59d02b8a",
+                             [("conv_frontend.onnx", 44_148_281), ("encoder.int8.onnx", 182_491_662), ("decoder.int8.onnx", 755_914_231),
+                              ("tokenizer/tokenizer_config.json", 12_487), ("tokenizer/vocab.json", 2_776_833), ("tokenizer/merges.txt", 1_671_853)])
+            }
+        }
+
+        /// What it weighs: SenseVoice's preprocessor, encoder, vocabulary
+        /// and VAD; another's files.
+        var size: Int64 {
+            guard let repo else { return Dictation.precision == .fp16 ? 474_000_000 : 241_000_000 }
+            return Int64(repo.files.reduce(0) { $0 + $1.size })
+        }
+
+        /// The longest phrase it takes, in samples. SenseVoice's encoder
+        /// takes 0.2 to 30 s, and Qwen3-ASR as much: a phrase is cut as it
+        /// passes 29 s, its last chunk keeping it under 30. Fun-ASR-Nano
+        /// left words out of 29 s, not of 20.
+        var longest: Int { self == .funASRNano ? 20 * 16_000 : 29 * 16_000 }
+    }
 
     /// The encoder: int8, on the Neural Engine. Off it, as in the
     /// simulator, int8 gives NaN: fp16 there, as this FluidAudio's fp32
@@ -19,9 +62,7 @@ import os
         .int8
         #endif
     }
-    /// What the models weigh: preprocessor, encoder, vocabulary and VAD.
-    static let size: Int64 = precision == .fp16 ? 474_000_000 : 241_000_000
-    /// Where FluidAudio keeps them, out of backups.
+    /// Where FluidAudio keeps its models, and sherpa-onnx's, out of backups.
     nonisolated private static let root = URL.applicationSupportDirectory.appending(path: "FluidAudio")
     nonisolated private static var speechDir: URL { MLModelConfigurationUtils.defaultModelsDirectory(for: .senseVoiceSmall) }
     nonisolated private static var vadModel: URL {
@@ -34,17 +75,27 @@ import os
     /// SenseVoice's text-norm: punctuation and digits (withitn).
     nonisolated private static let textNorm: Int32 = 14
 
+    /// The model the mic uses, as Settings chose it.
+    var model = Model(rawValue: UserDefaults.standard.string(forKey: "dictationModel") ?? "") ?? .senseVoice {
+        didSet {
+            UserDefaults.standard.set(model.rawValue, forKey: "dictationModel")
+            // The one loaded goes; the next listening loads this.
+            models = nil
+        }
+    }
     /// The models on disk, whole.
-    private(set) var installed = Dictation.present()
+    private(set) var installed = Set(Model.allCases.filter(Dictation.present))
     /// The microphone's last levels while the mic is on, 0 to 1, the
     /// newest last.
     var levels = [Float](repeating: 0, count: 5)
     /// How much of a download is done; nil when none runs.
     private(set) var progress: Double?
+    /// The model downloading, or the last downloaded.
+    private(set) var downloading: Model?
     var error: String?
     private var task: Task<Void, Never>?
-    /// The models loaded, and what unloads them once idle.
-    private var models: Task<(SenseVoiceManager, VadManager), Error>?
+    /// The model loaded, and what unloads it once idle.
+    private var models: Task<(any Recogniser, VadManager), Error>?
     private var idle: Task<Void, Never>?
 
     private init() {
@@ -52,37 +103,41 @@ import os
         ModelHub.offlineMode = true
     }
 
-    func download() {
+    func download(_ m: Model) {
         error = nil
         progress = 0
+        downloading = m
         task = Task {
             do {
-                try await Self.fetch { p in Task { @MainActor in if self.progress != nil { self.progress = p.fractionCompleted } } }
+                try await Self.fetch(m) { p in Task { @MainActor in if self.progress != nil { self.progress = p } } }
             } catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
-            installed = Self.present()
+            installed = Set(Model.allCases.filter(Self.present))
             progress = nil
         }
     }
 
     func cancel() { task?.cancel() }
 
-    /// Removes the models, or what a download left.
-    func delete() {
-        task?.cancel()
-        models = nil
-        try? FileManager.default.removeItem(at: Self.root)
-        installed = false
+    /// Removes a model, or what a download of it left; with the last, the
+    /// VAD too.
+    func delete(_ m: Model) {
+        if downloading == m { task?.cancel() }
+        if m == model { models = nil }
+        try? FileManager.default.removeItem(at: Self.dir(m))
+        installed.remove(m)
+        if installed.isEmpty, downloading == m || progress == nil { try? FileManager.default.removeItem(at: Self.root) }
     }
 
-    /// A listening, as the mic goes on. The models load as it starts, what
-    /// it hears waiting for them, and stay loaded a minute after it ends.
+    /// A listening, as the mic goes on. The model loads as it starts, what
+    /// it hears waiting for it, and stays loaded a minute after it ends.
     func listen() -> Listening {
         idle?.cancel()
-        let models = self.models ?? Task { try await Self.load() }
+        let model = self.model
+        let models = self.models ?? Task { try await Self.load(model) }
         self.models = models
-        let listening = Listening(models)
+        let listening = Listening(models, longest: model.longest)
         Task {
             _ = await listening.heard.result
             // A load that failed is tried again by the next.
@@ -148,25 +203,40 @@ import os
         }
     }
 
-    /// Whether the models are whole: FluidAudio's check for SenseVoice; the
-    /// VAD's compiled model, with nothing left half downloaded.
-    nonisolated private static func present() -> Bool {
-        guard SenseVoiceModels.modelsExist(at: speechDir, precision: precision),
-              FileManager.default.fileExists(atPath: vadModel.appending(path: "coremldata.bin").path) else { return false }
-        let files = FileManager.default.enumerator(at: vadModel, includingPropertiesForKeys: nil)
-        return !(files?.contains { ($0 as? URL)?.pathExtension == "partial" } ?? true)
+    nonisolated private static func dir(_ m: Model) -> URL {
+        guard let repo = m.repo else { return speechDir }
+        return root.appending(path: repo.name)
     }
 
-    @concurrent nonisolated private static func load() async throws -> (SenseVoiceManager, VadManager) {
-        let models = try SenseVoiceModels.load(from: speechDir, precision: precision)
-        return (SenseVoiceManager(models: models, language: 0, textNorm: textNorm), try await VadManager())
+    /// Whether a model is whole: the VAD's compiled model, with nothing
+    /// left half downloaded; FluidAudio's check for SenseVoice, and
+    /// another's files.
+    nonisolated private static func present(_ m: Model) -> Bool {
+        guard FileManager.default.fileExists(atPath: vadModel.appending(path: "coremldata.bin").path),
+              !(FileManager.default.enumerator(at: vadModel, includingPropertiesForKeys: nil)?.contains { ($0 as? URL)?.pathExtension == "partial" } ?? true)
+        else { return false }
+        guard let repo = m.repo else { return SenseVoiceModels.modelsExist(at: speechDir, precision: precision) }
+        return whole(repo.files, in: dir(m))
+    }
+
+    /// Whether each file is in dir at its size; one downloading is not
+    /// yet, as get keeps it as .partial.
+    nonisolated static func whole(_ files: [(path: String, size: Int)], in dir: URL) -> Bool {
+        files.allSatisfy { (try? dir.appending(path: $0.path).resourceValues(forKeys: [.fileSizeKey]).fileSize) == $0.size }
+    }
+
+    @concurrent nonisolated private static func load(_ m: Model) async throws -> (any Recogniser, VadManager) {
+        let speech: any Recogniser = m == .senseVoice
+            ? SenseVoiceManager(models: try SenseVoiceModels.load(from: speechDir, precision: precision), language: 0, textNorm: textNorm)
+            : try Sherpa(m, in: dir(m))
+        return (speech, try await VadManager())
     }
 
     /// Downloads what is missing from Hugging Face, and from the mirror
     /// when Hugging Face does not answer in seconds or its download fails.
     /// FluidAudio checks each file against the size its source lists, and
-    /// keeps it as .partial until it is whole.
-    @concurrent nonisolated private static func fetch(_ progress: @escaping ProgressHandler) async throws {
+    /// keeps it as .partial until it is whole; get does the same.
+    @concurrent nonisolated private static func fetch(_ m: Model, _ progress: @escaping @Sendable (Double) -> Void) async throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         var v = URLResourceValues()
         v.isExcludedFromBackup = true
@@ -179,9 +249,62 @@ import os
             ModelRegistry.baseURL = source
             do {
                 try await ModelHub.download(.vad, to: MLModelConfigurationUtils.defaultModelsDirectory())
-                _ = try await SenseVoiceModels.download(precision: precision, progressHandler: progress)
+                if m == .senseVoice {
+                    _ = try await SenseVoiceModels.download(precision: precision) { progress($0.fractionCompleted) }
+                } else {
+                    try await get(m, from: source, progress)
+                }
                 return
             } catch where source != sources.last && !Task.isCancelled {}
+        }
+    }
+
+    /// A sherpa-onnx model's files not yet whole, as Maple gets its faces:
+    /// by ranges, each added to the file's .partial, which goes on from
+    /// what it has and takes its name once whole.
+    @concurrent nonisolated private static func get(_ m: Model, from source: String, _ progress: @Sendable (Double) -> Void) async throws {
+        guard let repo = m.repo else { return }
+        let total = repo.files.reduce(0) { $0 + $1.size }
+        var done = 0
+        for f in repo.files {
+            let file = dir(m).appending(path: f.path)
+            if whole([f], in: dir(m)) {
+                done += f.size
+                continue
+            }
+            let part = file.appendingPathExtension("partial")
+            try FileManager.default.createDirectory(at: part.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if !FileManager.default.fileExists(atPath: part.path) { FileManager.default.createFile(atPath: part.path, contents: nil) }
+            let out = try FileHandle(forWritingTo: part)
+            defer { try? out.close() }
+            var have = Int(try out.seekToEnd())
+            if have > f.size {
+                try out.truncate(atOffset: 0)
+                have = 0
+            }
+            done += have
+            // The file's URL; after the first range, the signed one it
+            // redirects to, signed again as it expires.
+            let resolve = URL(string: "\(source)/\(repo.name)/resolve/\(repo.commit)/\(f.path)")!
+            var url = resolve
+            while have < f.size {
+                let n = min(16 << 20, f.size - have)
+                var req = URLRequest(url: url)
+                req.setValue("bytes=\(have)-\(have + n - 1)", forHTTPHeaderField: "Range")
+                let (data, res) = try await URLSession.shared.data(for: req)
+                guard (res as? HTTPURLResponse)?.statusCode == 206, data.count == n else {
+                    guard url != resolve else { throw URLError(.badServerResponse) }
+                    url = resolve
+                    continue
+                }
+                url = res.url ?? url
+                try out.write(contentsOf: data)
+                have += n
+                done += n
+                progress(Double(done) / Double(total))
+            }
+            try? FileManager.default.removeItem(at: file)
+            try FileManager.default.moveItem(at: part, to: file)
         }
     }
 
@@ -204,12 +327,13 @@ nonisolated final class Listening: Sendable {
     let heard: Task<String, Error>
     private let audio: AsyncStream<[Float]>.Continuation
 
-    init(_ models: Task<(SenseVoiceManager, VadManager), Error>) {
+    /// longest: the longest phrase the model takes, in samples.
+    init(_ models: Task<(any Recogniser, VadManager), Error>, longest: Int) {
         let (said, show) = AsyncStream.makeStream(of: Dictation.Said.self, bufferingPolicy: .bufferingNewest(1))
         let (audio, add) = AsyncStream.makeStream(of: [Float].self)
         self.said = said
         self.audio = add
-        heard = Task { try await Self.run(audio, models, show) }
+        heard = Task { try await Self.run(audio, models, longest, show) }
     }
 
     /// 16 kHz mono samples, in order; from the audio thread too.
@@ -230,11 +354,11 @@ nonisolated final class Listening: Sendable {
 
     /// Hears the audio in the VAD's chunks, one at a time: while it
     /// recognises, the audio waits.
-    @concurrent private static func run(_ audio: AsyncStream<[Float]>, _ models: Task<(SenseVoiceManager, VadManager), Error>,
-                                        _ show: AsyncStream<Dictation.Said>.Continuation) async throws -> String {
+    @concurrent private static func run(_ audio: AsyncStream<[Float]>, _ models: Task<(any Recogniser, VadManager), Error>,
+                                        _ longest: Int, _ show: AsyncStream<Dictation.Said>.Continuation) async throws -> String {
         defer { show.finish() }
         let (speech, vad) = try await models.value
-        var ear = Ear(speech: speech, vad: vad, show: show)
+        var ear = Ear(speech: speech, vad: vad, longest: longest, show: show)
         var pending: [Float] = []
         let chunk = VadManager.chunkSize
         for await samples in audio {
@@ -252,8 +376,10 @@ nonisolated final class Listening: Sendable {
 
     /// The phrase open, and how it is heard.
     private nonisolated struct Ear {
-        let speech: SenseVoiceManager
+        let speech: any Recogniser
         let vad: VadManager
+        /// A phrase is cut as it passes this many samples.
+        let longest: Int
         let show: AsyncStream<Dictation.Said>.Continuation
         var said = Dictation.Said()
         private var state = VadStreamState.initial()
@@ -270,16 +396,14 @@ nonisolated final class Listening: Sendable {
         /// A pause of 0.8 s ends a phrase; speech starts at 0.6 and ends below 0.45.
         private static let pause = VadSegmentationConfig(minSilenceDuration: 0.8, silenceThresholdForSplit: 0.45,
                                                          negativeThreshold: 0.45, negativeThresholdOffset: 0.15)
-        /// SenseVoice's encoder takes 0.2 to 30 s: a phrase is cut as it
-        /// passes 29 s, its last chunk keeping it under 30.
-        private static let longest = 29 * 16_000
         /// Shorter than 0.3 s, a phrase is a noise; a phrase cut goes on
         /// with a word of 0.2 s.
         private static let shortest = 4_800
 
-        init(speech: SenseVoiceManager, vad: VadManager, show: AsyncStream<Dictation.Said>.Continuation) {
+        init(speech: any Recogniser, vad: VadManager, longest: Int, show: AsyncStream<Dictation.Said>.Continuation) {
             self.speech = speech
             self.vad = vad
+            self.longest = longest
             self.show = show
         }
 
@@ -301,7 +425,7 @@ nonisolated final class Listening: Sendable {
             if r.event?.kind == .speechEnd, speaking {
                 speaking = false
                 try await settle(last: true)
-            } else if speaking, phrase.count >= Self.longest {
+            } else if speaking, phrase.count >= longest {
                 try await settle(last: false)
             } else if speaking, heard >= every {
                 await guess()
@@ -315,8 +439,9 @@ nonisolated final class Listening: Sendable {
             try await settle(last: true)
         }
 
-        /// The phrase open, recognised for a guess; less often as that nears
-        /// real time, so audio never piles up.
+        /// The phrase open, recognised for a guess; the slower that is, the
+        /// less often, so it takes a third of the time at most and audio
+        /// never piles up.
         private mutating func guess() async {
             heard = 0
             guard phrase.count >= Self.shortest else { return }
@@ -326,7 +451,7 @@ nonisolated final class Listening: Sendable {
                 show.yield(said)
             }
             let took = (ContinuousClock.now - start) / .seconds(1)
-            every = min(32_000, max(9_600, Int(took * 16_000) * 3))
+            every = max(9_600, Int(took * 16_000) * 3)
         }
 
         /// The phrase open, recognised for good, as it ends or is cut.
@@ -343,13 +468,74 @@ nonisolated final class Listening: Sendable {
         }
 
         private func recognise(_ samples: [Float]) async throws -> String {
-            let r = try await speech.transcribeDetailed(audio: samples)
-            return r.language == "nospeech" ? "" : Dictation.joined([r.text])
+            Dictation.joined([try await speech.recognise(samples)])
         }
     }
 }
 
-/// The microphone while the mic is on: what it hears, as SenseVoice takes
+/// A speech model loaded: what it recognises in a phrase, 16 kHz mono
+/// samples; "" for none.
+nonisolated protocol Recogniser: Sendable {
+    func recognise(_ samples: [Float]) async throws -> String
+}
+
+extension SenseVoiceManager: Recogniser {
+    func recognise(_ samples: [Float]) throws -> String {
+        let r = try transcribeDetailed(audio: samples)
+        return r.language == "nospeech" ? "" : r.text
+    }
+}
+
+/// sherpa-onnx's recogniser, for Fun-ASR-Nano and Qwen3-ASR, on two CPU
+/// cores, as they were measured: greedy, without hotwords.
+actor Sherpa: Recogniser {
+    private nonisolated(unsafe) let recogniser: OpaquePointer
+
+    /// Throws as sherpa-onnx can't load the model in dir.
+    init(_ m: Dictation.Model, in dir: URL) throws {
+        var c = SherpaOnnxOfflineRecognizerConfig()
+        var paths: [UnsafeMutablePointer<CChar>] = []
+        defer { paths.forEach { free($0) } }
+        func path(_ p: String) -> UnsafePointer<CChar> {
+            paths.append(strdup(dir.appending(path: p).path))
+            return UnsafePointer(paths.last!)
+        }
+        c.model_config.num_threads = 2
+        switch m {
+        case .funASRNano:
+            c.model_config.funasr_nano.encoder_adaptor = path("encoder_adaptor.int8.onnx")
+            c.model_config.funasr_nano.llm = path("llm.int8.onnx")
+            c.model_config.funasr_nano.embedding = path("embedding.int8.onnx")
+            c.model_config.funasr_nano.tokenizer = path("Qwen3-0.6B")
+            c.model_config.funasr_nano.itn = 1
+        case .qwen3ASR:
+            c.feat_config.feature_dim = 128
+            c.model_config.qwen3_asr.conv_frontend = path("conv_frontend.onnx")
+            c.model_config.qwen3_asr.encoder = path("encoder.int8.onnx")
+            c.model_config.qwen3_asr.decoder = path("decoder.int8.onnx")
+            c.model_config.qwen3_asr.tokenizer = path("tokenizer")
+            c.model_config.qwen3_asr.max_new_tokens = 256
+        case .senseVoice:
+            break
+        }
+        guard let r = SherpaOnnxCreateOfflineRecognizer(&c) else { throw CocoaError(.fileReadCorruptFile) }
+        recogniser = r
+    }
+
+    deinit { SherpaOnnxDestroyOfflineRecognizer(recogniser) }
+
+    func recognise(_ samples: [Float]) -> String {
+        guard let s = SherpaOnnxCreateOfflineStream(recogniser) else { return "" }
+        defer { SherpaOnnxDestroyOfflineStream(s) }
+        SherpaOnnxAcceptWaveformOffline(s, 16_000, samples, Int32(samples.count))
+        SherpaOnnxDecodeOfflineStream(recogniser, s)
+        guard let r = SherpaOnnxGetOfflineStreamResult(s) else { return "" }
+        defer { SherpaOnnxDestroyOfflineRecognizerResult(r) }
+        return r.pointee.text.map { String(cString: $0) } ?? ""
+    }
+}
+
+/// The microphone while the mic is on: what it hears, as the models take
 /// it, 16 kHz mono floats, given as it comes. A call or a new route stops
 /// it.
 final class Recording {

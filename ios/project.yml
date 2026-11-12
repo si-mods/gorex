@@ -14,6 +14,10 @@ packages:
   FluidAudio:
     url: https://github.com/kitknox/fluidaudio-rootshell.git
     revision: bc3521103941a5e4b395604bc4402274210c68d8
+  # Fun-ASR-Nano and Qwen3-ASR (Dictation): sherpa-onnx 2.0.1's prebuilt
+  # framework, by its checksum.
+  SherpaOnnx:
+    path: SherpaOnnx
 options:
   deploymentTarget:
     iOS: "26.0"
@@ -47,6 +51,8 @@ targets:
       - package: GhosttyKit
         product: GhosttyKitAppStore
       - package: FluidAudio
+      - package: SherpaOnnx
+        product: SherpaOnnxC
     settings:
       base:
         OTHER_LDFLAGS: -lc++
@@ -110,6 +116,8 @@ targets:
       - framework: Frameworks/GhosttyVt.xcframework
         embed: false
       - package: FluidAudio
+      - package: SherpaOnnx
+        product: SherpaOnnxC
     settings:
       base:
         GENERATE_INFOPLIST_FILE: true
