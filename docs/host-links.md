@@ -74,21 +74,30 @@ is what makes it safe:
 
 1. On the machine, **Reachable at** is on and the pairing window is
    open. Only then does its listener answer a pairing request.
-2. The client connects to the address over TLS, and sends its key and
-   name. It has seen the listener's certificate.
-3. Both screens show a **pairing code**: 12 letters and digits, from a
-   hash of the certificate, the server's key and the client's key. Each
-   side computes it from what it holds and what it saw.
+2. The client connects to the address over TLS and has seen the
+   listener's certificate. Three messages follow, the way Bluetooth
+   pairs by comparing numbers:
+   - the client sends a commitment: a hash of its key and a random
+     number of its own;
+   - the server answers with its key and a random number;
+   - the client opens the commitment: its key, its name and its number.
+3. Both screens show a **pairing code** of six digits, from a hash of
+   the certificate, both keys and both numbers. Each side computes it
+   from what it holds and what it saw.
 4. The user compares the codes and approves on the machine, as today.
 5. The machine answers on the same connection with its addresses. The
    client keeps the server's key from then on.
 
-Somebody in the middle shows the client another certificate, so the
-codes differ. The code has 60 bits and the window five minutes, so a
-certificate or key ground to match is out of reach. This replaces
-today's fingerprint for this introduction only: that one covers the
-client's key alone, which is enough where the address already carried
-the server's key, and not here.
+Somebody in the middle shows the client another certificate and has to
+choose every value of its own before it sees the other side's number,
+so it cannot pick them to match: its codes agree by chance once in a
+million, and a mismatch is on both screens. That is why six digits are
+enough, and why the commitment is there: without it a key could be
+ground until a short code matched.
+
+This replaces today's fingerprint for this introduction only: that one
+covers the client's key alone, which is enough where the address
+already carried the server's key, and not here.
 
 What it costs, said plainly: while the window is open, whoever can
 dial the address can ask to pair, where over tailcat they would need
@@ -291,7 +300,7 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
 | --- | --- |
 | A TCP listener with a Noise handshake of the device keys | the fallback if the spike fails. It needs a handshake of GoRex's own (`controlbase` fixes its prologue to Tailscale's), an address that carries the server's key, a second listener and limits before authentication |
 | Pairing by address with today's fingerprint | it covers the client's key only, so somebody in the middle passes it; the code of both keys is what closes that |
-| A six-digit code | short enough to grind a key for in the window, unless both sides commit first: a protocol of its own for six characters saved |
+| A longer code and no commitment | 12 characters from a plain hash of the keys need no exchange, but are too long to compare by eye |
 | Sessions over the tailnet as a second path | a second identity for a network tailcat already covers |
 | A GoRex account server that introduces devices | the coordinator again |
 
