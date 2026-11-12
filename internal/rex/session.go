@@ -428,8 +428,8 @@ func sessionEnv(id string, extra []string, local bool) []string {
 	for _, kv := range cleanEnv(os.Environ()) {
 		k, _, _ := strings.Cut(kv, "=")
 		switch {
-		case k == "PATH" && local:
-			continue // added below, with the gorex directory first
+		case foldName(k) == "PATH" && local:
+			continue // added below, with the gorex directory first; Windows's is Path
 		case k == "TERM", k == "COLORTERM", k == "TERM_PROGRAM", k == "TERM_PROGRAM_VERSION",
 			k == "TERM_SESSION_ID", k == "TMUX", k == "TMUX_PANE", k == "STY", k == "WINDOWID",
 			k == "COLUMNS", k == "LINES", k == "SHLVL", k == "OLDPWD", k == "PWD", k == "_",
