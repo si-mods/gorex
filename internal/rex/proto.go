@@ -54,7 +54,8 @@ import (
 // with the LayoutCommand fields TabLayout, Spaces, Color and Float.
 // Still within 3, the capability "voice": "voice.put" and "voice.get",
 // each on a connection of its own, which carry a phone's microphone to
-// the rec a session runs (Voice).
+// the rec a session runs (Voice); deprecated, as nothing on the host
+// reads a voice any more, and to go.
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
