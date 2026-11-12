@@ -14,10 +14,11 @@ func TestPairByAddressInput(t *testing.T) {
 			t.Errorf("PairByAddress(%q): %v", a, err)
 		}
 	}
-	if _, err := ConfirmAddressPairing(); err == nil {
+	if _, err := ConfirmAddressPairing("123456"); err == nil {
 		t.Error("confirmed with no pairing")
 	}
-	if msg := MismatchAddressPairing(); !strings.HasPrefix(msg, "the pairing did not match") {
+	CancelAddressPairing("123456")
+	if msg := MismatchAddressPairing("123456"); msg != AddressPairingWarning() || !strings.HasPrefix(msg, "the pairing did not match") {
 		t.Errorf("warning %q", msg)
 	}
 }

@@ -70,7 +70,7 @@ struct RemoteHostsView: View {
             case .pair(let c):
                 TailcatPairSheet(code: c)
             case .pairAddress(let address, let c):
-                AddressPairSheet(address: address, host: c)
+                AddressPairSheet(address: address, host: c) { sheet = .details($0) }
             }
         }
     }
@@ -417,11 +417,20 @@ private struct AddressPairSheet: View {
     let address: String
     /// The host as entered: its name, icon and command.
     let host: HostConfig
+    /// Shows the host there is already at the address paired, as a scan does.
+    let existing: (HostConfig) -> Void
     @Environment(HostStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @State private var code: String?
     @State private var matched = false
     @State private var problem: String?
+    /// The wait for the approval, cancelled when the sheet goes.
+    @State private var confirming: Task<Void, Never>?
+
+    /// The pairing did not match, the codes or the machine's answer.
+    private var warning: String {
+        String(localized: "The pairing didn't match. The machine may have let in an unknown device: remove its newest device in its Settings › Server › Devices.")
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -469,7 +478,7 @@ private struct AddressPairSheet: View {
                 let c = try await TailnetEngine.shared.pairByAddress(address)
                 // Left while it asked: the request goes.
                 if Task.isCancelled {
-                    TailnetEngine.shared.cancelAddressPairing()
+                    TailnetEngine.shared.cancelAddressPairing(code: c)
                     return
                 }
                 code = c
@@ -477,14 +486,24 @@ private struct AddressPairSheet: View {
                 problem = String(localized: "Couldn't pair: \(error.localizedDescription)")
             }
         }
-        .onDisappear { TailnetEngine.shared.cancelAddressPairing() }
+        .onDisappear {
+            confirming?.cancel()
+            if let code { TailnetEngine.shared.cancelAddressPairing(code: code) }
+        }
     }
 
     private func confirm() {
+        guard let code else { return }
         matched = true
-        Task {
+        confirming = Task {
             do {
-                let a = try await TailnetEngine.shared.confirmAddressPairing()
+                let a = try await TailnetEngine.shared.confirmAddressPairing(code: code)
+                // The sheet went meanwhile: nothing is saved.
+                guard !Task.isCancelled else { return }
+                if let h = store.host(tailcat: a) {
+                    existing(h.config)
+                    return
+                }
                 var h = host
                 h.url = HostConfig.tailcatURL(h.id)
                 h.transport = nil
@@ -492,15 +511,15 @@ private struct AddressPairSheet: View {
                 store.add(h)
                 dismiss()
             } catch {
-                problem = String(localized: "Couldn't pair: \(error.localizedDescription)")
+                problem = TailnetEngine.shared.isAddressPairingWarning(error)
+                    ? warning : String(localized: "Couldn't pair: \(error.localizedDescription)")
             }
         }
     }
 
     private func differ() {
-        Task {
-            let warning = await TailnetEngine.shared.mismatchAddressPairing()
-            problem = String(localized: "Couldn't pair: \(warning)")
-        }
+        guard let code else { return }
+        problem = warning
+        TailnetEngine.shared.mismatchAddressPairing(code: code)
     }
 }

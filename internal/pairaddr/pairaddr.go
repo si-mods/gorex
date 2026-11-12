@@ -143,13 +143,17 @@ type Pairing struct {
 	pin  string // "sha256-raw:" and the hex SHA-256 of the certificate seen
 }
 
-// Ask asks the machine at addr, an IP address with the port port or
-// IP:PORT, to allow the key kc as name, through its relay of Reachable
+// Ask asks the machine at addr, an IP address with the port port, an
+// IPv6 one in brackets too, or IP:PORT, to allow the key kc as name, through its relay of Reachable
 // at while its pairing window is open, dialing with d. It returns at once
 // with the code; the user then compares it and Confirms.
 func Ask(ctx context.Context, d *net.Dialer, addr string, port uint16, name string, kc key.NodePublic) (*Pairing, error) {
 	ap, err := netip.ParseAddrPort(addr)
-	if ip, ierr := netip.ParseAddr(addr); ierr == nil {
+	bare := addr
+	if strings.HasPrefix(bare, "[") && strings.HasSuffix(bare, "]") {
+		bare = bare[1 : len(bare)-1]
+	}
+	if ip, ierr := netip.ParseAddr(bare); ierr == nil && (bare == addr || ip.Is6()) {
 		ap, err = netip.AddrPortFrom(ip, port), nil
 	}
 	if err != nil {

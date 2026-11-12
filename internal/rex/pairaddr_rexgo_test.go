@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -80,17 +81,26 @@ func TestPairByAddressRexGo(t *testing.T) {
 	}
 
 	t.Run("cancel", func(t *testing.T) {
-		ask()
-		tailnet.CancelAddressPairing()
+		code := ask()
+		// Of another code, as of a sheet gone: the pairing stays.
+		other := fmt.Sprintf("%06d", (atoi(code)+1)%1_000_000)
+		if _, err := tailnet.ConfirmAddressPairing(other); err == nil {
+			t.Error("confirmed with another code")
+		}
+		tailnet.CancelAddressPairing(other)
+		if w := waiting(1); w[0].Code != code {
+			t.Fatalf("waiting %+v", w)
+		}
+		tailnet.CancelAddressPairing(code)
 		waiting(0)
-		if _, err := tailnet.ConfirmAddressPairing(); err == nil {
+		if _, err := tailnet.ConfirmAddressPairing(code); err == nil {
 			t.Error("confirmed a pairing given up")
 		}
 	})
 
 	t.Run("mismatch", func(t *testing.T) {
-		ask()
-		if msg := tailnet.MismatchAddressPairing(); !strings.HasPrefix(msg, "the pairing did not match") {
+		code := ask()
+		if msg := tailnet.MismatchAddressPairing(code); msg != tailnet.AddressPairingWarning() || !strings.HasPrefix(msg, "the pairing did not match") {
 			t.Errorf("warning %q", msg)
 		}
 		waiting(0)
@@ -107,7 +117,7 @@ func TestPairByAddressRexGo(t *testing.T) {
 		}
 		done := make(chan confirmed, 1)
 		go func() {
-			a, err := tailnet.ConfirmAddressPairing()
+			a, err := tailnet.ConfirmAddressPairing(code)
 			done <- confirmed{a, err}
 		}()
 		if err := c.ApprovePairingCode(code); err != nil {
@@ -160,4 +170,9 @@ func TestPairByAddressRexGo(t *testing.T) {
 			t.Errorf("GET through the paired address = %q", r)
 		}
 	})
+}
+
+func atoi(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
 }

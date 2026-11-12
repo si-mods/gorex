@@ -186,26 +186,32 @@ final class TailnetEngine {
         }.value
     }
 
-    /// The user's word that the codes match: waits for the machine's
-    /// approval and returns the tailcat address to keep.
-    func confirmAddressPairing() async throws -> String {
+    /// The user's word that the codes match, for the pairing of code:
+    /// waits for the machine's approval and returns the tailcat address to
+    /// keep.
+    func confirmAddressPairing(code: String) async throws -> String {
         try await Task.detached {
             var error: NSError?
-            let address = TailnetConfirmAddressPairing(&error)
+            let address = TailnetConfirmAddressPairing(code, &error)
             if let error { throw error }
             return address
         }.value
     }
 
-    /// The user's word that the codes differ: ends the pairing and returns
-    /// the warning to show.
-    func mismatchAddressPairing() async -> String {
-        await Task.detached { TailnetMismatchAddressPairing() }.value
+    /// The user's word that the codes differ: ends the pairing of code.
+    func mismatchAddressPairing(code: String) {
+        Task.detached { _ = TailnetMismatchAddressPairing(code) }
     }
 
-    /// Gives the pairing by address under way up.
-    func cancelAddressPairing() {
-        Task.detached { TailnetCancelAddressPairing() }
+    /// Gives the pairing by address of code up; another one stays.
+    func cancelAddressPairing(code: String) {
+        Task.detached { TailnetCancelAddressPairing(code) }
+    }
+
+    /// Whether a pairing by address failed as not matching: the machine
+    /// may have let in another device.
+    func isAddressPairingWarning(_ error: Error) -> Bool {
+        error.localizedDescription == TailnetAddressPairingWarning()
     }
 
     /// The proxy for the tailcat hosts; nil while the phone has no key,

@@ -3338,6 +3338,16 @@
         }
       }
     },
+    "The pairing didn't match. The machine may have let in an unknown device: remove its newest device in its Settings › Server › Devices.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对不一致。那台电脑可能放进了一台未知设备：请在它的 设置 › 服务器 › 设备 中移除最新的设备。"
+          }
+        }
+      }
+    },
     "Diagnostics": {
       "localizations": {
         "zh-Hans": {
