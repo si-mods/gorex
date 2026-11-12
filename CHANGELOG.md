@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.23.0
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** `rec` and `sox` in a session no longer stand in for SoX to take Claude Code's `/voice` from Rex Go, which recognizes speech on the device now; the API's voice interface still works and is deprecated ([#459](https://github.com/si-mods/gorex/pull/459))
+
+### Features
+
+* **rexapi:** a web page reaches a host's API only from an origin in the host's list, which `gorex rexapi web allow ORIGIN`, `deny ORIGIN` and `status` keep; a page of any other origin is refused, where any page in a browser on an allowed network could reach the API ([#410](https://github.com/si-mods/gorex/pull/410))
+
+### Bug Fixes
+
+* **terminal:** Control+click opens a Windows path printed in a pane, as `C:\dir\file.png` or `C:/dir/file.go:12`, and a path that wraps onto the next rows, clicked on any of them ([#466](https://github.com/si-mods/gorex/pull/466), [#480](https://github.com/si-mods/gorex/pull/480))
+* **cli:** a `gorex` command typed in a session reaches that session's own server, not the one of the default data directory ([#469](https://github.com/si-mods/gorex/pull/469))
+* **cli:** on Windows, Ctrl-C interrupts a command, and a command run from a console prints there ([#470](https://github.com/si-mods/gorex/pull/470), [#479](https://github.com/si-mods/gorex/pull/479))
+
 ## 0.22.0
 
 ### Features
