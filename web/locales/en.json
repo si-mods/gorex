@@ -1148,7 +1148,7 @@
   "@tsBuiltIn": {
     "description": "Settings › Tailscale: the title and switch of the page's own Tailscale node."
   },
-  "tsOffNote": "Reach your GoRex hosts through Tailscale, with no app on this device.",
+  "tsOffNote": "Reach your GoRex computers through Tailscale. Nothing to install on this device.",
   "@tsOffNote": {
     "description": "Settings › Tailscale, under the title, while it is off."
   },
@@ -1174,7 +1174,7 @@
   "@tsUnknown": {
     "description": "Settings › Tailscale: the account when Tailscale did not name it."
   },
-  "tsTailnet": "Tailnet",
+  "tsTailnet": "Tailscale network",
   "@tsTailnet": {
     "description": "Settings › Tailscale: the row of the tailnet's name."
   },
@@ -1220,7 +1220,7 @@
   "@tsDeviceName": {
     "description": "Settings › Tailscale: this browser's name on the tailnet."
   },
-  "tsDeviceFoot": "The name your tailnet's admin console and other devices show. Letters, digits and hyphens, up to 63.",
+  "tsDeviceFoot": "How this browser shows up in Tailscale. Use letters, digits and hyphens, up to 63 characters.",
   "@tsDeviceFoot": {
     "description": "Note under Device name."
   },
@@ -1238,13 +1238,25 @@
       }
     }
   },
-  "tsNote": "Turning it on downloads Tailscale's engine (about 6 MB), and this tab joins your tailnet as a device of its own. It finds your GoRex hosts there (your own devices named <machine>-gorex that answer as GoRex) and reaches them through Tailscale's encrypted relays. In this version the sign-in lasts for this tab only: reloading or closing the tab signs this browser out, and Tailscale removes the device soon after.",
+  "tsNote": "Turn it on and sign in to Tailscale, and this browser finds your GoRex computers by itself. You stay signed in only until you close or reload this tab.",
   "@tsNote": {
-    "description": "Settings › Tailscale: the note on how built-in Tailscale works."
+    "description": "Settings › Tailscale: the short note on how built-in Tailscale works."
   },
-  "tsTrustNote": "Each GoRex host must trust this page's origin. On the host, run once:",
+  "tsMoreFind": "Turning it on downloads about 6 MB of Tailscale's code. This tab then joins your Tailscale network as a device of its own. It looks for your own devices that are named like <machine>-gorex and answer as GoRex, and connects to them over Tailscale's encrypted connections.",
+  "@tsMoreFind": {
+    "description": "Settings › Tailscale, in Learn more: what turning it on does and how hosts are found. <machine>-gorex is a literal name pattern."
+  },
+  "tsMoreTab": "For now, signing in lasts only as long as this tab. If you reload or close the tab, this browser signs out, and Tailscale soon removes its device.",
+  "@tsMoreTab": {
+    "description": "Settings › Tailscale, in Learn more: how long the sign-in lasts."
+  },
+  "tsTrustNote": "If GoRex on a computer says it doesn't allow this page yet, run this once in a terminal on that computer:",
   "@tsTrustNote": {
-    "description": "Settings › Tailscale: above the trust command."
+    "description": "Settings › Tailscale, in the closed trust row, above the command."
+  },
+  "tsTrustAsk": "If a computer doesn't allow this page",
+  "@tsTrustAsk": {
+    "description": "Settings › Tailscale: the closed row that opens to the command that makes a host trust this page."
   },
   "tsYou": "you",
   "@tsYou": {
@@ -1342,7 +1354,7 @@
   "@tsStatusLocked": {
     "description": "Tailscale's status text when the tailnet uses Tailnet Lock."
   },
-  "tsHintApproval": "An admin of your tailnet must approve {name} in the admin console.",
+  "tsHintApproval": "Ask an admin of your Tailscale account to approve {name} in the Tailscale admin console.",
   "@tsHintApproval": {
     "description": "Settings › Tailscale, under the status, while waiting for approval.",
     "placeholders": {
@@ -1352,19 +1364,19 @@
       }
     }
   },
-  "tsHintExpired": "Sign in again to reach your tailnet's hosts.",
+  "tsHintExpired": "Sign in again to find your GoRex computers.",
   "@tsHintExpired": {
     "description": "Settings › Tailscale, under the status, when the sign-in expired."
   },
-  "tsHintLocked": "Your tailnet uses Tailnet Lock, which this version of the page can't join.",
+  "tsHintLocked": "Your Tailscale network uses Tailnet Lock, which this page can't join. Use the Tailscale app on this device instead.",
   "@tsHintLocked": {
     "description": "Settings › Tailscale, under the status, with Tailnet Lock."
   },
-  "tsHintNeedsLogin": "Sign in to list your GoRex hosts.",
+  "tsHintNeedsLogin": "Sign in to find your GoRex computers.",
   "@tsHintNeedsLogin": {
     "description": "Settings › Tailscale, under the status, when not signed in."
   },
-  "tsNoEngine": "This copy of the page was built without the Tailscale engine.",
+  "tsNoEngine": "This copy of the page doesn't include Tailscale.",
   "@tsNoEngine": {
     "description": "Why Tailscale did not load: the page has no engine."
   },
@@ -2070,11 +2082,11 @@
   "@chunkWelcome": {
     "description": "The name in chunkLoading and chunkFailed for the first visit's welcome screen; mid-sentence."
   },
-  "tsNotEngine": "The download is not Tailscale's engine",
+  "tsNotEngine": "The downloaded file is not Tailscale",
   "@tsNotEngine": {
     "description": "Why Tailscale's engine did not load: the file is something else."
   },
-  "tsEngineNotStarted": "Tailscale's engine did not start",
+  "tsEngineNotStarted": "Tailscale did not start",
   "@tsEngineNotStarted": {
     "description": "Why Tailscale's engine failed after it loaded."
   },

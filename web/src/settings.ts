@@ -799,10 +799,21 @@ export class Settings {
     row(dev, t("tsDeviceName"), "", input).append(error);
 
     this.page.append(el("div", "settings-hint settings-note", t("tsNote")));
-    const trust = group(this.page, t("trustTitle"), t("tsTrustNote"));
-    const tr = el("div", "settings-row");
-    tr.append(commandBox(allowCommand()));
-    trust.append(tr);
+    // Both extras stay closed: how it works, and the command a computer may ask for.
+    const extra = group(this.page);
+    const more = el("details", "settings-more");
+    const moreHead = el("summary");
+    moreHead.append(icon("info"), el("span", "", t("problemLearnMore")));
+    more.append(moreHead, el("p", "settings-hint", t("tsMoreFind")), el("p", "settings-hint", t("tsMoreTab")));
+    const trust = el("details", "settings-more");
+    const trustHead = el("summary");
+    trustHead.append(icon("shield-check"), el("span", "", t("tsTrustAsk")));
+    trust.append(trustHead, el("p", "settings-hint", t("tsTrustNote")), commandBox(allowCommand()));
+    for (const d of [more, trust]) {
+      const r = el("div", "settings-row");
+      r.append(d);
+      extra.append(r);
+    }
   }
 
   private aboutPage() {
