@@ -84,7 +84,14 @@ func TestPairByAddress(t *testing.T) {
 	addr := fmt.Sprintf("127.0.0.1:%d", second.Region[0].Nodes[0].DERPPort)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
+	// A second source, where the loopback has more than one address: macOS
+	// has 127.0.0.1 only, and tests what needs two on the others.
 	from2 := &net.Dialer{LocalAddr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 2)}}
+	if ln, err := net.Listen("tcp", "127.0.0.2:0"); err != nil {
+		from2 = nil
+	} else {
+		ln.Close()
+	}
 	ask := func(d *net.Dialer, k key.NodePublic, name string) (*AddressPairing, error) {
 		if d == nil {
 			d = &net.Dialer{}
@@ -197,11 +204,13 @@ func TestPairByAddress(t *testing.T) {
 		}
 		defer first.Close()
 		waiting(1)
-		if p, err = ask(from2, k, "laptop"); err == nil {
-			_, err = p.Confirm(ctx)
-		}
-		if err == nil || !strings.Contains(err.Error(), "waits there already") {
-			t.Errorf("a key waiting by address: %v", err)
+		if from2 != nil {
+			if p, err = ask(from2, k, "laptop"); err == nil {
+				_, err = p.Confirm(ctx)
+			}
+			if err == nil || !strings.Contains(err.Error(), "waits there already") {
+				t.Errorf("a key waiting by address: %v", err)
+			}
 		}
 		first.Close()
 		waiting(0)
@@ -235,6 +244,9 @@ func TestPairByAddress(t *testing.T) {
 	})
 
 	t.Run("two waiting", func(t *testing.T) {
+		if from2 == nil {
+			t.Skip("the loopback has one address here")
+		}
 		a, err := ask(nil, key.NewNode().Public(), "one")
 		if err != nil {
 			t.Fatal(err)
