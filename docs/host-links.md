@@ -161,11 +161,39 @@ listener. The relay's listener also answers pairing by address
 It listens on a fixed port by default, so that an address is an IP
 address or a name and no more.
 
-This rests on a spike (Phases): that tailcat's address carries such a
-region, pin included, and that a client meets and goes direct through
-it. If it fails, the fallback is a TCP listener with a Noise handshake
-of the device keys, the address carrying the server's key
-(Alternatives).
+A spike settled this (branch `spike/own-relay`, tests only), on one
+machine:
+
+- The address carries the region whole: the IP address, the port, the
+  pin and no STUN. It is 316 characters, and parses back the same.
+- A client with only that address connects through the relay in the
+  server's process, and a wrong pin connects nothing. The desktop's
+  client code and Rex Go's engine both do, unchanged.
+- No DERP map is fetched, no STUN is asked, and no TCP connection left
+  the machine. The route goes direct at the first ping, by the local
+  interface addresses.
+- The same listener serves a path of GoRex's own beside the relay's,
+  and a client reads the certificate's hash from the TLS connection:
+  what pairing by address needs. HTTP/2 must be off on it, as the relay
+  upgrades an HTTP/1.1 connection.
+
+And what it found to build around:
+
+- **The relay passes packets for anybody** who can dial it, as
+  `derpserver` does by default. It has to admit this machine's key and
+  the keys on the allowlist only, and any key while the pairing window
+  is open; `derpserver` checks a client through a URL, which can be the
+  process's own.
+- **The first connection after the server starts takes 3 s**: with no
+  STUN the server waits that long before it tries its relay. Later ones
+  take some 40 ms.
+- **`gorex remote relay` refuses an IP address** and sets no pin: the
+  region of this address is built apart from it.
+- The relay's client follows the environment's HTTP proxy; a dial to
+  one's own address must not.
+
+Not yet seen: two machines, a NAT between them, a phone, and what a
+firewall says of the listening port.
 
 A machine may show several addresses, one per relay, with the same
 keys. A host is one entry by its server key, with the addresses the
@@ -283,10 +311,12 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
   one by one to every device of an account (Identity). It is off by
   default and never turned on by an update.
 - **A machine that is its own relay opens a port** to whoever can dial
-  the address. It serves the relay's protocol, and pairing by address
-  while the window is open; reaching the session server still needs an
-  allowed key and the address's secret. The listener is limited in
-  connections, per source and in all.
+  the address. It serves the relay's protocol to the keys on the
+  allowlist, and to any key only while the pairing window is open, so
+  it relays for nobody else; and pairing by address while that window
+  is open. Reaching the session server still needs an allowed key and
+  the address's secret. The listener is limited in connections, per
+  source and in all.
 - **Pairing by address rests on the comparison.** A user who approves
   without comparing the code lets in whoever asked. The dialog shows
   the code large, with the name and the address the request came from,
@@ -298,7 +328,7 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
 
 | Option | Why not |
 | --- | --- |
-| A TCP listener with a Noise handshake of the device keys | the fallback if the spike fails. It needs a handshake of GoRex's own (`controlbase` fixes its prologue to Tailscale's), an address that carries the server's key, a second listener and limits before authentication |
+| A TCP listener with a Noise handshake of the device keys | not needed: the spike held. It would need a handshake of GoRex's own (`controlbase` fixes its prologue to Tailscale's), an address that carries the server's key, a second listener and limits before authentication |
 | Pairing by address with today's fingerprint | it covers the client's key only, so somebody in the middle passes it; the code of both keys is what closes that |
 | A longer code and no commitment | 12 characters from a plain hash of the keys need no exchange, but are too long to compare by eye |
 | Sessions over the tailnet as a second path | a second identity for a network tailcat already covers |
@@ -323,11 +353,8 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
 
 Each ships something a user can use.
 
-1. **Spike**: the machine as its own relay, with tailcat as it is: a
-   region with a pinned certificate in the address, a meeting and a
-   direct route with no way out to the internet, from a desktop and
-   from Rex Go's engine. It decides between this design and the
-   fallback.
+1. **Spike** (done): the machine as its own relay, with tailcat as it
+   is. It holds; see Path for what it found.
 2. **Reachable at**: the setting, the second address and its QR code,
    and pairing by address. Desktops and Rex Go connect over a local
    network or a VPN of one's own with no relay, from an IP address
@@ -353,6 +380,11 @@ Each ships something a user can use.
 - **The embedded relay's protocol on a port forward**: DERP rides
   HTTPS, so a forward of one TCP port should do, and the direct route
   needs UDP as well. Not checked.
+- **The 3 s of a cold start.** A STUN answer from the same process may
+  remove the wait; not tried.
+- **The firewall.** Unlike the built-in Tailscale node, this is a
+  listening port on the machine's own stack: Windows asks the user the
+  first time, and other firewalls may block it silently.
 - **The fixed port.** `RemotePort` (7464) on the machine's own stack is
   the candidate. The system Tailscale mode on Linux listens on that
   port of the Tailscale address, so the two meet only if **Reachable
