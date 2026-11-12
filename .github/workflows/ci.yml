@@ -64,8 +64,8 @@ jobs:
           done
 
   # Trial: the same tests on Linux, on instabox machines. The root package's
-  # tests run one after another, so four machines take a quarter each; a
-  # fifth runs the other packages.
+  # tests run one after another, so three machines take a third each; a
+  # fourth runs the other packages. With build, that is five at a time.
   test-linux:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: instabox-medium
@@ -73,7 +73,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [root-0, root-1, root-2, root-3, others]
+        part: [root-0, root-1, root-2, others]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
