@@ -59,12 +59,41 @@ admits a connection by the client's key and nothing else, on every port.
 | Introduction | Approval | Today |
 | --- | --- | --- |
 | Pairing window | the user compares the fingerprint of the client's key | exists (desktop, Rex Go) |
+| Pairing by address | the user compares a code of both keys | new: type `192.168.8.20` |
 | QR code | the scan, then the pairing window | exists (Rex Go) |
 | Tailscale | none: the device is the same Tailscale user's | new, replaces the tailnet's own session path |
 
 Every introduction gives the client the server's address, which holds
-the server's key. A client never talks to a server whose key it did not
-get this way: there is no first contact with an unknown key.
+the server's key. After it, a client talks only to that key, at
+whatever address.
+
+**Pairing by address.** A user who can dial a machine types what they
+know, `192.168.8.20` or a name, and nothing else. The client has no key
+for it yet, so this one introduction is a first contact, and the code
+is what makes it safe:
+
+1. On the machine, **Reachable at** is on and the pairing window is
+   open. Only then does its listener answer a pairing request.
+2. The client connects to the address over TLS, and sends its key and
+   name. It has seen the listener's certificate.
+3. Both screens show a **pairing code**: 12 letters and digits, from a
+   hash of the certificate, the server's key and the client's key. Each
+   side computes it from what it holds and what it saw.
+4. The user compares the codes and approves on the machine, as today.
+5. The machine answers on the same connection with its addresses. The
+   client keeps the server's key from then on.
+
+Somebody in the middle shows the client another certificate, so the
+codes differ. The code has 60 bits and the window five minutes, so a
+certificate or key ground to match is out of reach. This replaces
+today's fingerprint for this introduction only: that one covers the
+client's key alone, which is enough where the address already carried
+the server's key, and not here.
+
+What it costs, said plainly: while the window is open, whoever can
+dial the address can ask to pair, where over tailcat they would need
+the secret address first. A request shows the address it came from,
+one may wait per source, and eight in all, as today.
 
 **The Tailscale rule.** On the tailnet, port 7464, a client sends its
 key and name; the server checks the connection with `WhoIs`, checks the
@@ -116,8 +145,12 @@ the certificate pinned (`tailcfg.DERPNode.CertName`, `sha256-raw:`). A
 client that can dial it meets the server there and goes direct; it
 needs no third party and no way out to the internet. The keys, the
 allowlist, pairing, Remove and both clients' tailcat code are the ones
-of today. Nothing new is designed: no handshake, no first contact, no
-second listener for sessions.
+of today. No handshake is designed and sessions get no second
+listener. The relay's listener also answers pairing by address
+(Identity) while the window is open, and nothing else of GoRex's.
+
+It listens on a fixed port by default, so that an address is an IP
+address or a name and no more.
 
 This rests on a spike (Phases): that tailcat's address carries such a
 region, pin included, and that a client meets and goes direct through
@@ -155,14 +188,17 @@ Under Show Details:
   and QR code for clients that can dial it.
 - **Relay**: default, or a host.
 
-Remote Hosts lists machines. **Add Remote Host** takes an address a
-machine shows. A machine found on the tailnet shows as available;
+Remote Hosts lists machines. **Add Remote Host** takes what the user
+has: an IP address or a name of a machine they can dial, or the long
+address a machine shows. A machine found on the tailnet shows as
+available;
 **Connect** makes the introduction and saves it as a host like any
 other. A host's details say how it is reached now.
 
 The first connection, in order: on the serving machine, turn **Let
 other devices connect** on and open **Add a device**; on the other,
-paste or scan the address; compare the fingerprint; Approve.
+type its IP address (with **Reachable at** on), or paste or scan its
+address; compare the code; Approve.
 
 The words Tailcat and DERP stay in the documentation. The CLI keeps its
 commands (`gorex remote tailscale on|off`, `gorex remote relay`).
@@ -173,7 +209,7 @@ commands (`gorex remote tailscale on|off`, `gorex remote relay`).
 | --- | --- | --- | --- |
 | Speaks | the session protocol, 7464 | Rex's API, 7297 | Rex's API |
 | Device key | `remote-client.json` | Keychain | none today |
-| Paired by | pairing window | QR code, then the window | — |
+| Paired by | pairing window; by address, new | QR code, then the window; by address, new | — |
 | Tailcat | yes | yes (ios-tailcat.md) | not yet |
 | The machine as relay | new, no client change | new, no client change | no: a browser cannot pin a certificate |
 | Tailscale introduction | new | later: its node asks, as a desktop's | — |
@@ -184,6 +220,8 @@ commands (`gorex remote tailscale on|off`, `gorex remote relay`).
 **Rex Go.** It already has the device key, pairing and tailcat, on the
 gateway's port. A machine that is its own relay is one more address in
 a `rexgo://tailcat` code; the engine dials it as any tailcat address.
+Add Host by hand takes an IP address too: the engine makes the request
+and the app shows the code.
 Its built-in Tailscale stays for Rex servers, which have no tailcat,
 and for a GoRex machine reached on 443. Later, its node can ask for an
 introduction as a desktop's does, so a phone on the account needs no
@@ -236,9 +274,14 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
   one by one to every device of an account (Identity). It is off by
   default and never turned on by an update.
 - **A machine that is its own relay opens a port** to whoever can dial
-  the address. It serves the relay's protocol only; reaching the
-  session server still needs an allowed key and the address's secret.
-  The listener is limited in connections, per source and in all.
+  the address. It serves the relay's protocol, and pairing by address
+  while the window is open; reaching the session server still needs an
+  allowed key and the address's secret. The listener is limited in
+  connections, per source and in all.
+- **Pairing by address rests on the comparison.** A user who approves
+  without comparing the code lets in whoever asked. The dialog shows
+  the code large, with the name and the address the request came from,
+  and Approve is not the default button.
 - **Revocation** closes a key's connections on every address at once,
   as today for tailcat's two ports.
 
@@ -247,7 +290,8 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
 | Option | Why not |
 | --- | --- |
 | A TCP listener with a Noise handshake of the device keys | the fallback if the spike fails. It needs a handshake of GoRex's own (`controlbase` fixes its prologue to Tailscale's), an address that carries the server's key, a second listener and limits before authentication |
-| Typing a bare `192.168.8.20` | the client would meet a server whose key it does not know; today's fingerprint covers the client's key only, so a man in the middle passes it |
+| Pairing by address with today's fingerprint | it covers the client's key only, so somebody in the middle passes it; the code of both keys is what closes that |
+| A six-digit code | short enough to grind a key for in the window, unless both sides commit first: a protocol of its own for six characters saved |
 | Sessions over the tailnet as a second path | a second identity for a network tailcat already covers |
 | A GoRex account server that introduces devices | the coordinator again |
 
@@ -275,9 +319,10 @@ Each ships something a user can use.
    direct route with no way out to the internet, from a desktop and
    from Rex Go's engine. It decides between this design and the
    fallback.
-2. **Reachable at**: the setting, the second address and its QR code.
-   Desktops and Rex Go connect over a local network or a VPN of one's
-   own with no relay. Docs.
+2. **Reachable at**: the setting, the second address and its QR code,
+   and pairing by address. Desktops and Rex Go connect over a local
+   network or a VPN of one's own with no relay, from an IP address
+   typed in. Docs.
 3. **Settings in the new words**: one switch, Devices, Add a device,
    Show Details. No change in behavior.
 4. **Tailscale introduction** on the system client (Linux): the
@@ -299,4 +344,8 @@ Each ships something a user can use.
 - **The embedded relay's protocol on a port forward**: DERP rides
   HTTPS, so a forward of one TCP port should do, and the direct route
   needs UDP as well. Not checked.
+- **The fixed port.** `RemotePort` (7464) on the machine's own stack is
+  the candidate. The system Tailscale mode on Linux listens on that
+  port of the Tailscale address, so the two meet only if **Reachable
+  at** is that address or every address.
 - **Linux**: system client or built-in node, as in desktop-tailnet.md.
