@@ -159,6 +159,7 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	}
 	p := &addrPending{RemoteAddrPending: RemoteAddrPending{Source: src.String()}, slot: slot, result: make(chan []string, 1)}
 	r.byAddr = append(r.byAddr, p)
+	gen := r.pairGen
 	r.mu.Unlock()
 	// shown: the client has the server's nonce, and so the code. granted:
 	// the user approved. delivered: the client has the addresses.
@@ -185,7 +186,7 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 		// One code per window: a client that saw its code and left without
 		// the user's approval could ask again until a code matched the one
 		// on another screen.
-		closed := shown && !delivered && r.pairOpenLocked()
+		closed := shown && !delivered && r.pairOpenLocked() && r.pairGen == gen
 		if closed {
 			r.pairUntil, r.pending = time.Time{}, nil
 			log.Print("rex: a pairing by address ended without approval: the pairing window is closed")
