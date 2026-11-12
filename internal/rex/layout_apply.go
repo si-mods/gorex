@@ -1045,7 +1045,10 @@ func moveTab(w *layout.Workspace, ti, index int) int {
 }
 
 // movePane makes pane.move: the pane goes into a tab of its own after its
-// tab, or beside the pane of Target, its session going on.
+// tab, or beside the tiled pane of Target, in its tab or another, its
+// session going on. Direction is the side of Target it goes on: "left"
+// or "up" puts it first, "down" below, else right; Ratio is the first
+// side's share, as the window's movePaneBeside places a dropped pane.
 func movePane(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	var res LayoutCommand
 	w, src := p.w, p.tab()
@@ -1077,8 +1080,8 @@ func movePane(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	case !ok || q.fi >= 0:
 		res.Reason = "not_found"
 		return res
-	case q.ti == p.ti:
-		res.Reason = "same_tab"
+	case q.n == p.n:
+		res.Reason = "same_pane"
 		return res
 	case q.tab().Zoom:
 		res.Reason = "zoomed_tab"
@@ -1091,8 +1094,14 @@ func movePane(p spot, c LayoutCommand, a *applying) LayoutCommand {
 	ratio = min(max(ratio, 0.1), 0.9)
 	dst := q.tab()
 	a.touch(dst.ID, dst)
+	// In its own tab, taking it out leaves q.n where it was, and the tab
+	// keeps a pane: Target's.
 	empty := unlink(p, "")
-	dst.Replace(q.n, &layout.Node{Vertical: c.Direction == "down", Ratio: ratio, A: q.n, B: &leaf})
+	sp := &layout.Node{Vertical: c.Direction == "down" || c.Direction == "up", Ratio: ratio, A: q.n, B: &leaf}
+	if c.Direction == "left" || c.Direction == "up" {
+		sp.A, sp.B = &leaf, q.n
+	}
+	dst.Replace(q.n, sp)
 	dst.Zoom, dst.FocusFloat = false, 0
 	dst.Focus = indexOf(dst.Root, &leaf)
 	if empty {

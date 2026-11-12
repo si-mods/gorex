@@ -1406,14 +1406,23 @@ func methodSessionMoveBlock(c *control, a args) (any, *apiError) {
 	if anchor == nil {
 		return nil, errNotFound("no block %s in %s", anchorID, s.id)
 	}
-	if side == "before" {
-		return nil, errConflict("GoRex cannot move a block before another; use side after")
+	// The app's pane.move takes the side of the anchor the block goes on.
+	dir := "right"
+	switch {
+	case vertical && side == "before":
+		dir = "up"
+	case vertical:
+		dir = "down"
+	case side == "before":
+		dir = "left"
 	}
-	before := s.splitSet()
+	var held string
+	if w := s.windowOf(b); w != nil {
+		held = parentSplit(w.layout, blockID)
+	}
 	res, aerr := c.g.command(rex.LayoutCommand{
 		Op: "pane.move", Space: s.space, SID: b.sid, Target: anchor.sid,
-		Direction: map[bool]string{true: "down", false: "right"}[vertical],
-		Ratio:     float32(ratio),
+		Direction: dir, Ratio: float32(ratio),
 	})
 	if aerr != nil {
 		return nil, aerr
@@ -1422,7 +1431,10 @@ func methodSessionMoveBlock(c *control, a args) (any, *apiError) {
 		switch res.Reason {
 		case "not_found":
 			return nil, errNotFound("one of the blocks is gone")
+		case "same_pane":
+			return nil, errBadRequest("the block and the anchor are the same")
 		case "same_tab":
+			// A GoRex server before same-window moves.
 			return nil, errConflict("the block is already in the window")
 		case "zoomed_tab":
 			return nil, errConflict("a window is zoomed; unzoom it first")
@@ -1430,70 +1442,72 @@ func methodSessionMoveBlock(c *control, a args) (any, *apiError) {
 	}
 	m, aerr := c.g.afterCommand(func(m *model) bool {
 		now := m.byID[s.id]
-		if now == nil {
-			return true
-		}
-		return now.splitSet() != before
+		return now == nil || besideAnchor(now, blockID, anchorID, vertical, side == "before")
 	})
 	if aerr != nil {
 		return nil, aerr
 	}
-	now := m.byID[s.id]
-	created := newSplits(splitSetOf(before), now)
-	removed := removedSplits(splitSetOf(before), now)
 	out := moveResult{Revision: revisionOf(m, s.id)}
-	if len(created) > 0 {
-		out.CreatedSplitID = created[0]
-	} else if w := now.windowOf(now.findBlock(blockID)); w != nil {
+	now := m.byID[s.id]
+	if now == nil {
+		return out, nil
+	}
+	if w := now.windowOf(now.findBlock(blockID)); w != nil {
 		if sp := lowestSplit(w.layout, blockID, anchorID); sp != nil {
 			out.CreatedSplitID = sp.SplitID
 		}
 	}
-	if len(removed) > 0 {
-		out.RemovedSplitID = &removed[0]
+	// The split that held the block is removed when no split of its ID,
+	// which names its shape, is left.
+	if held != "" && !now.hasSplit(held) {
+		out.RemovedSplitID = &held
 	}
 	return out, nil
 }
 
-// splitSet returns every split ID of a session's windows, sorted.
-func (s *mSession) splitSet() string {
-	var ids []string
+// hasSplit tells whether a window of s has the split of an ID.
+func (s *mSession) hasSplit(id string) bool {
 	for _, w := range s.windows {
-		ids = append(ids, splitIDs(w.layout)...)
+		if splitByID(w.layout, id) != nil {
+			return true
+		}
 	}
-	sort.Strings(ids)
-	return strings.Join(ids, ",")
+	return false
 }
 
-// splitSetOf returns a split set as a map.
-func splitSetOf(set string) map[string]bool {
-	out := map[string]bool{}
-	for _, id := range strings.Split(set, ",") {
-		if id != "" {
-			out[id] = true
-		}
+// besideAnchor tells whether a session shows block in a split of its
+// own with anchor, on the side asked.
+func besideAnchor(s *mSession, block, anchor string, vertical, before bool) bool {
+	w := s.windowOf(s.findBlock(block))
+	if w == nil || w != s.windowOf(s.findBlock(anchor)) {
+		return false
 	}
-	return out
+	sp := lowestSplit(w.layout, block, anchor)
+	if sp == nil || (sp.Direction == "vertical") != vertical {
+		return false
+	}
+	first, second := anchor, block
+	if before {
+		first, second = block, anchor
+	}
+	return sp.Before != nil && sp.Before.BlockID == first && sp.After != nil && sp.After.BlockID == second
 }
 
-// removedSplits returns the splits a change removed from a session.
-func removedSplits(before map[string]bool, s *mSession) []string {
-	now := map[string]bool{}
-	if s != nil {
-		for _, w := range s.windows {
-			for _, id := range splitIDs(w.layout) {
-				now[id] = true
-			}
+// parentSplit returns the ID of the split one of whose sides is block,
+// "" when block is a whole layout or not in it.
+func parentSplit(l *layoutView, block string) string {
+	if l == nil || l.Split == nil {
+		return ""
+	}
+	for _, side := range []*layoutView{l.Split.Before, l.Split.After} {
+		if side != nil && side.BlockID == block {
+			return l.Split.SplitID
 		}
 	}
-	var out []string
-	for id := range before {
-		if !now[id] {
-			out = append(out, id)
-		}
+	if id := parentSplit(l.Split.Before, block); id != "" {
+		return id
 	}
-	sort.Strings(out)
-	return out
+	return parentSplit(l.Split.After, block)
 }
 
 // methodSessionResizePane moves the border between two blocks.

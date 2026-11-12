@@ -540,3 +540,174 @@ func TestNestedLayoutShape(t *testing.T) {
 		}
 	}
 }
+
+// moveLayout is a session, work, whose window editor is (s1 | (s2 / s3))
+// with a floating f1, and whose window logs is s4.
+func moveLayout(zoom bool) layout.Store {
+	return layout.Store{Version: layout.Version, Sessions: []layout.Workspace{{
+		ID: "work", Name: "work",
+		Layout: layout.Layout{Active: 0, Tabs: []layout.Tab{
+			{
+				Name:   "editor",
+				Root:   split(pane("s1"), split(pane("s2"), pane("s3"), true, 0.5), false, 0.5),
+				Floats: []layout.Float{{Pane: pane("f1"), X: 0.1, Y: 0.1, W: 0.5, H: 0.5}},
+				Zoom:   zoom,
+			},
+			{Name: "logs", Root: pane("s4")},
+		}},
+	}}}
+}
+
+// viewShape names a view layout's blocks, by the sids of names, and its
+// splits: "(h a b)" side by side, "(v a b)" one above the other.
+func viewShape(l map[string]any, names map[string]string) string {
+	if id, ok := l["block_id"].(string); ok {
+		return names[id]
+	}
+	sp := l["split"].(map[string]any)
+	d := "h"
+	if sp["direction"] == "vertical" {
+		d = "v"
+	}
+	return "(" + d + " " + viewShape(sp["before"].(map[string]any), names) + " " + viewShape(sp["after"].(map[string]any), names) + ")"
+}
+
+// viewSplit returns the split of a view layout that match takes, nil for
+// none.
+func viewSplit(l map[string]any, match func(sp, before, after map[string]any) bool) map[string]any {
+	sp, ok := l["split"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	before, after := sp["before"].(map[string]any), sp["after"].(map[string]any)
+	if match(sp, before, after) {
+		return sp
+	}
+	if s := viewSplit(before, match); s != nil {
+		return s
+	}
+	return viewSplit(after, match)
+}
+
+// tiledLayout returns the layout of a view window's tiled layer.
+func tiledLayout(t *testing.T, view map[string]any, window int) map[string]any {
+	t.Helper()
+	return windowOf(t, view, window)["layers"].([]any)[0].(map[string]any)["layout"].(map[string]any)
+}
+
+// TestMoveBlockSides moves a block to each side of another, in its own
+// window and from another: the block keeps its ID and takes the focus,
+// and the result names the split it made and the one it left.
+func TestMoveBlockSides(t *testing.T) {
+	f := startFixture(t)
+	f.setLayout(moveLayout(false))
+	c := f.dialControl()
+	c.hello(apiRevision)
+	sid := sessionIDs(t, c)["work"]
+	callChecked(t, c, "session.attach", map[string]any{"session_id": sid})
+	names := map[string]string{}
+	for _, s := range []string{"s1", "s2", "s3", "s4", "f1"} {
+		names[blockID(s)] = s
+	}
+	for _, tc := range []struct {
+		name, block, anchor, direction, side string
+		// want is the editor window's shape after; removed tells that the
+		// result names the split that held the block.
+		want    string
+		removed bool
+		windows int
+	}{
+		{name: "right in its window", block: "s1", anchor: "s3", direction: "horizontal", side: "after", want: "(v s2 (h s3 s1))", removed: true, windows: 2},
+		{name: "left in its window", block: "s1", anchor: "s3", direction: "horizontal", side: "before", want: "(v s2 (h s1 s3))", removed: true, windows: 2},
+		{name: "up in its window", block: "s1", anchor: "s3", direction: "vertical", side: "before", want: "(v s2 (v s1 s3))", removed: true, windows: 2},
+		{name: "down in its window", block: "s1", anchor: "s3", direction: "vertical", side: "after", want: "(v s2 (v s3 s1))", removed: true, windows: 2},
+		{name: "the defaults", block: "s1", anchor: "s3", want: "(v s2 (h s3 s1))", removed: true, windows: 2},
+		{name: "before its sibling", block: "s3", anchor: "s2", direction: "vertical", side: "before", want: "(h s1 (v s3 s2))", removed: true, windows: 2},
+		{name: "where it is", block: "s3", anchor: "s2", direction: "vertical", side: "after", want: "(h s1 (v s2 s3))", windows: 2},
+		{name: "after, from another window", block: "s4", anchor: "s1", direction: "horizontal", side: "after", want: "(h (h s1 s4) (v s2 s3))", windows: 1},
+		{name: "before, from another window", block: "s4", anchor: "s1", direction: "horizontal", side: "before", want: "(h (h s4 s1) (v s2 s3))", windows: 1},
+		{name: "above, from another window", block: "s4", anchor: "s2", direction: "vertical", side: "before", want: "(h s1 (v (v s4 s2) s3))", windows: 1},
+		{name: "a floating block", block: "f1", anchor: "s2", direction: "horizontal", side: "before", want: "(h s1 (v (h f1 s2) s3))", windows: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f.setLayout(moveLayout(false))
+			block, anchor := blockID(tc.block), blockID(tc.anchor)
+			var held string
+			if sp := viewSplit(tiledLayout(t, viewOf(t, c, sid), 0), func(_, before, after map[string]any) bool {
+				return before["block_id"] == block || after["block_id"] == block
+			}); sp != nil {
+				held = sp["split_id"].(string)
+			}
+			payload := map[string]any{"session_id": sid, "block_id": block, "anchor_block_id": anchor, "ratio": 0.3}
+			if tc.direction != "" {
+				payload["direction"], payload["side"] = tc.direction, tc.side
+			}
+			res := callChecked(t, c, "session.move_block", payload)
+			view := viewOf(t, c, sid)
+			if n := len(windowIDsOf(t, view)); n != tc.windows {
+				t.Errorf("%d windows, want %d", n, tc.windows)
+			}
+			l := tiledLayout(t, view, 0)
+			if got := viewShape(l, names); got != tc.want {
+				t.Errorf("editor is %s, want %s", got, tc.want)
+			}
+			first, second := anchor, block
+			if tc.side == "before" {
+				first, second = block, anchor
+			}
+			sp := viewSplit(l, func(_, before, after map[string]any) bool {
+				return before["block_id"] == first && after["block_id"] == second
+			})
+			if sp == nil || res["created_split_id"] != sp["split_id"] {
+				t.Fatalf("created_split_id %v, want the split of %s and %s: %v", res["created_split_id"], first, second, sp)
+			}
+			if r, _ := sp["ratio"].(float64); math.Abs(r-0.3) > 0.01 {
+				t.Errorf("the new split's ratio %v, want 0.3 for its before side", sp["ratio"])
+			}
+			want := ""
+			if tc.removed {
+				want = held
+			}
+			if got, _ := res["removed_split_id"].(string); got != want {
+				t.Errorf("removed_split_id %q, want %q", got, want)
+			}
+			if got := windowOf(t, view, 0)["focused_block_id"]; got != block {
+				t.Errorf("focused %v, want %s", got, block)
+			}
+		})
+	}
+
+	// A move tells the attached client of the new view.
+	f.setLayout(moveLayout(false))
+	res := callChecked(t, c, "session.move_block", map[string]any{
+		"session_id": sid, "block_id": blockID("s1"), "anchor_block_id": blockID("s3"), "side": "before",
+	})
+	for {
+		_, ev := nextEvent(t, c)
+		if _, typ, fields := sessionEventOf(t, ev); typ == "session_view_changed" && fields["revision"] == res["revision"] {
+			break
+		}
+	}
+
+	// The errors.
+	for _, tc := range []struct {
+		name    string
+		zoom    bool
+		payload map[string]any
+		code    string
+	}{
+		{"beside itself", false, map[string]any{"block_id": blockID("s2"), "anchor_block_id": blockID("s2")}, "bad_request"},
+		{"a side it does not know", false, map[string]any{"block_id": blockID("s1"), "anchor_block_id": blockID("s2"), "side": "above"}, "bad_request"},
+		{"a direction it does not know", false, map[string]any{"block_id": blockID("s1"), "anchor_block_id": blockID("s2"), "direction": "diagonal"}, "bad_request"},
+		{"beside a floating block", false, map[string]any{"block_id": blockID("s1"), "anchor_block_id": blockID("f1")}, "not_found"},
+		{"beside no block", false, map[string]any{"block_id": blockID("s1"), "anchor_block_id": blockID("nope")}, "not_found"},
+		{"in a zoomed window", true, map[string]any{"block_id": blockID("s1"), "anchor_block_id": blockID("s3"), "side": "before"}, "conflict"},
+		{"into a zoomed window", true, map[string]any{"block_id": blockID("s4"), "anchor_block_id": blockID("s3")}, "conflict"},
+	} {
+		f.setLayout(moveLayout(tc.zoom))
+		tc.payload["session_id"] = sid
+		if got := failure(t, c.request("bad-move", "session.move_block", tc.payload))["code"]; got != tc.code {
+			t.Errorf("%s: %v, want %s", tc.name, got, tc.code)
+		}
+	}
+}

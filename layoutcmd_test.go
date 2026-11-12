@@ -610,10 +610,19 @@ func TestCommandPanes(t *testing.T) {
 		t.Fatal("the moved pane's session ended")
 	}
 
-	// A move into its own tab changes nothing.
-	res = clientCommand(a, rex.LayoutCommand{Op: "pane.move", SID: sid2, Target: sid3})
-	if res.Changed || res.Reason != "same_tab" {
+	// A move in its own tab puts it on the side asked, as a drop does.
+	res = clientCommand(a, rex.LayoutCommand{Op: "pane.move", SID: sid2, Target: sid3, Direction: "left"})
+	if res.Code != "" || !res.Changed {
 		t.Fatalf("same-tab move %+v", res)
+	}
+	if p, q := a.localPane(sid2), a.localPane(sid3); p == nil || q == nil || p.Tab != q.Tab ||
+		p.Node.Parent == nil || p.Node.Parent != q.Node.Parent || p.Node.Parent.A != p.Node || p.Node.Parent.Vertical {
+		t.Fatal("the pane did not go left of its target")
+	}
+	// A move beside itself changes nothing.
+	res = clientCommand(a, rex.LayoutCommand{Op: "pane.move", SID: sid2, Target: sid2})
+	if res.Changed || res.Reason != "same_pane" {
+		t.Fatalf("move beside itself %+v", res)
 	}
 }
 

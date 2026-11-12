@@ -47,7 +47,7 @@
 // | session.help | lists every method this server implements, not only a session's |
 // | session.list_clients | connected_at is when the client connected, not when it attached to this session |
 // | session.new_split | conflict when the anchor names a split (GoRex splits blocks), and when side is before and the layout holds more than one block |
-// | session.move_block | conflict when side is before (the app places a moved block after its anchor) |
+// | session.move_block | conflict when the block's window or the anchor's is zoomed, where Rex ends the zoom; an anchor in a floating layer fails with not_found; the moved block takes the focus of the anchor's window whether or not it had the focus, and that window becomes active only when the move closes the active window the block left; a window whose last tiled block moves away makes its topmost floating layer its tiled one; the new split's ratio is kept between 0.1 and 0.9; a split's ID names the blocks under it, so every split above the block's old and new places gets a new ID too |
 // | session.swap_blocks | conflict across windows: GoRex swaps blocks of one tab |
 // | session.resize_pane | the app keeps a split's ratio between 0.1 and 0.9; the revision is unchanged when the ratio did not move; a border is moved from the block beside it, and one no block's edge reaches fails with conflict |
 // | session.create, session.new_window, session.new_split | a layout's splits are made by dividing the space of the block made before them, so nested splits come out right-nested; the blocks' order, labels and each pair's ratio are kept |
