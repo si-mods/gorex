@@ -289,11 +289,17 @@ private enum Fonts {
     }
 }
 
-/// The terminal's options: its font, font size and minimum contrast.
+/// The terminal's options: its font, font size, dictation and minimum
+/// contrast.
 private struct TerminalSettings: View {
     @AppStorage("fontSize") private var fontSize = 12.0
     @AppStorage("fontFamily") private var family = ""
     @AppStorage("minimumContrast") private var contrast = 0.0
+    /// Polish's service; empty is the default.
+    @AppStorage(Polish.baseKey) private var base = ""
+    @AppStorage(Polish.modelKey) private var model = ""
+    /// Polish's key, as the Keychain keeps it; empty, polish is off.
+    @State private var key = Polish.savedKey ?? ""
 
     /// The minimum contrasts offered, 0 the default, off; a stored one not
     /// among them, by its number.
@@ -325,10 +331,25 @@ private struct TerminalSettings: View {
             }
             Section {
                 speech
+                Group {
+                    LabeledContent("API Key") {
+                        SecureField("Off", text: $key).onChange(of: key) { Polish.savedKey = key }
+                    }
+                    LabeledContent("Base URL") {
+                        TextField(Polish.defaultBase, text: $base).keyboardType(.URL)
+                    }
+                    LabeledContent("Model") {
+                        TextField(Polish.defaultModel, text: $model)
+                    }
+                }
+                .multilineTextAlignment(.trailing)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .listRowBackground(Color.card)
             } header: {
                 Text("Dictation")
             } footer: {
-                Text("The mic at the top right of the terminal types what you say, recognised on this device by SenseVoice, without sending it. Swipe the model to delete it.")
+                Text("The mic types what you say into the terminal, without pressing Return; SenseVoice recognises it on this device. Swipe the model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device.")
             }
             Section {
                 ForEach(contrasts, id: \.0) { value, name in

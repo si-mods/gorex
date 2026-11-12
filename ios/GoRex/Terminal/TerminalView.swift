@@ -121,9 +121,10 @@ final class TerminalView: UIView, TerminalOutput {
     private let reading = DispatchGroup()
     /// The hardware key held, and its repeat.
     private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
-    /// The microphone while the mic is on, what listens to it, and what
-    /// tells what is said (dictate).
-    private var dictating: (recording: Recording, listening: Listening, told: Task<Void, Never>)?
+    /// The microphone while the mic is on, what listens to it, what is
+    /// told what is said, and what tells it (dictate).
+    private var dictating: Dictating?
+    private typealias Dictating = (recording: Recording, listening: Listening, said: (Dictation.Said?) -> Void, told: Task<Void, Never>)
 
     init(session: TerminalSession) {
         self.session = session
@@ -391,6 +392,17 @@ final class TerminalView: UIView, TerminalOutput {
         return c.maxY
     }
 
+    /// The text on the screen, as shown.
+    private var screen: String {
+        guard let s = surface else { return "" }
+        let corner = { (c: ghostty_point_coord_e) in ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: c, x: 0, y: 0) }
+        var t = ghostty_text_s()
+        guard ghostty_surface_read_text(s, ghostty_selection_s(top_left: corner(GHOSTTY_POINT_COORD_TOP_LEFT),
+                                                               bottom_right: corner(GHOSTTY_POINT_COORD_BOTTOM_RIGHT), rectangle: false), &t) else { return "" }
+        defer { ghostty_surface_free_text(s, &t) }
+        return t.text.map { String(decoding: UnsafeRawBufferPointer(start: $0, count: Int(t.text_len)), as: UTF8.self) } ?? ""
+    }
+
     /// Ghostty settled on a grid for the view's size: the block takes it.
     func resized(cols: Int, rows: Int, width: Int, height: Int) {
         guard cols > 0, rows > 0 else { return }
@@ -576,13 +588,15 @@ final class TerminalView: UIView, TerminalOutput {
                 let rms = vDSP.rootMeanSquare(s)
                 Task { @MainActor in Dictation.shared.hear(rms) }
             }
-            dictating = (recording, listening, Task {
+            dictating = (recording, listening, said, Task {
                 for await s in listening.said { said(s) }
                 // Ended with the mic on, it failed.
-                if dictating?.listening === listening, mute() != nil, case .failure(let e) = await listening.heard.result {
-                    alert(String(localized: "Can't Recognise Speech"), e.localizedDescription)
+                if dictating?.listening === listening, mute() != nil {
+                    if case .failure(let e) = await listening.heard.result {
+                        alert(String(localized: "Can't Recognise Speech"), e.localizedDescription)
+                    }
+                    said(nil)
                 }
-                said(nil)
             })
         } catch {
             listening.cancel()
@@ -594,24 +608,36 @@ final class TerminalView: UIView, TerminalOutput {
     }
 
     /// Turns the mic off, and types what was said once its last phrase is
-    /// recognised, as a paste, not sent.
+    /// recognised, polished first with a service set (Polish), as a paste,
+    /// not sent.
     func typeDictation() async {
         guard let d = mute() else { return }
         do {
-            let text = try await d.listening.finish()
+            var text = try await d.listening.finish()
+            await d.told.value
+            if !text.isEmpty, let polish = Polish.saved {
+                d.said(Dictation.Said(phrases: [text], polishing: true))
+                text = await polish.run(text, vocabulary: Polish.words(in: screen, program: session.host.blocks[session.block]?.program))
+            }
             if !text.isEmpty { insert(text) }
         } catch {
             alert(String(localized: "Can't Recognise Speech"), error.localizedDescription)
         }
         await d.told.value
+        d.said(nil)
     }
 
     /// Turns the mic off, typing nothing.
     func stopDictating() {
-        mute()?.listening.cancel()
+        guard let d = mute() else { return }
+        d.listening.cancel()
+        Task {
+            await d.told.value
+            d.said(nil)
+        }
     }
 
-    private func mute() -> (recording: Recording, listening: Listening, told: Task<Void, Never>)? {
+    private func mute() -> Dictating? {
         guard let d = dictating else { return nil }
         dictating = nil
         d.recording.stop()

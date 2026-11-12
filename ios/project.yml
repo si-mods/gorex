@@ -102,6 +102,7 @@ targets:
       - GoRex/Terminal/Maple.swift
       - GoRex/Terminal/WebLink.swift
       - GoRex/Terminal/Dictation.swift
+      - GoRex/Terminal/Polish.swift
       - GoRex/Tailnet/TailnetSettings.swift
       - path: ../internal/rexapi/testdata/rex-terminal-stream.bin
         buildPhase: resources

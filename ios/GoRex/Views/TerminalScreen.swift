@@ -314,17 +314,22 @@ private struct Mic: View {
 
 /// What is said while the mic is on, under the bar, in glass as the
 /// screen's notes are: the microphone's level, then what is for good, and
-/// in grey the phrase still open; three lines at most, the newest.
+/// in grey the phrase still open; three lines at most, the newest. Being
+/// polished, all of it is grey, after a sparkle.
 private struct Heard: View {
     let said: Dictation.Said
 
     var body: some View {
-        let settled = said.settled
+        let settled = said.polishing ? "" : said.settled
         var open = AttributedString(said.text.dropFirst(settled.count))
         open.foregroundColor = .secondary
         let text = Text(AttributedString(settled) + open).font(.callout)
         return HStack(spacing: 10) {
-            Level()
+            if said.polishing {
+                Image(systemName: "sparkles").foregroundStyle(.secondary).symbolEffect(.pulse).frame(height: 18).accessibilityLabel("Polishing")
+            } else {
+                Level()
+            }
             ViewThatFits(in: .vertical) {
                 text
                 ScrollView { text }.defaultScrollAnchor(.bottom).scrollIndicators(.hidden)

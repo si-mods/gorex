@@ -116,6 +116,8 @@ import os
     nonisolated struct Said: Equatable, Sendable {
         var phrases: [String] = []
         var open = ""
+        /// Whether it is being polished (Polish), the mic off.
+        var polishing = false
         /// All of it, written as spoken.
         var text: String { Dictation.joined(phrases + [open]) }
         /// What of text is for good, its beginning.
