@@ -201,6 +201,11 @@ type store struct {
 	upgradeFailed int
 
 	workspaces []*Workspace
+	// placed is, while reconcile takes a layout, the space of each tab ID
+	// the layout has once: a tab another client moved to another space
+	// keeps its ID there, though the window it leaves still has it
+	// (tabUIDTaken).
+	placed map[string]string
 	// badge is the count the app icon shows.
 	badge int
 	// jumped is the pane the jump to the pane that needs you went to last.
@@ -509,6 +514,21 @@ const showFor = 30 * time.Second
 // space s no longer has goes; a window that showed it, or whose space s
 // left with no tabs, shows another no window does, or closes.
 func (st *store) reconcile(s savedStore) {
+	st.placed = map[string]string{}
+	seen := map[string]bool{}
+	for _, sw := range s.Sessions {
+		for _, t := range sw.Tabs {
+			switch {
+			case t.ID == "":
+			case seen[t.ID]:
+				delete(st.placed, t.ID)
+			default:
+				seen[t.ID] = true
+				st.placed[t.ID] = sw.ID
+			}
+		}
+	}
+	defer func() { st.placed = nil }()
 	var next, gone []*Workspace
 	var homeless []*App
 	for _, sw := range s.Sessions {

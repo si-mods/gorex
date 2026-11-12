@@ -25,6 +25,7 @@ var applied = map[string]bool{
 	"pane.zoom": true, "pane.resize": true, "pane.swap": true, "pane.move": true,
 	"pane.restart": true, "pane.teleporting": true, "pane.teleported": true,
 	"tab.set": true, "windows.set": true, "layout.apply": true, "kills.taken": true, "show.taken": true,
+	"tab.to_space": true,
 }
 
 // batched are the commands a layout.apply carries: the app's changes of
@@ -405,6 +406,50 @@ func insertTab(w *layout.Workspace, at int, t layout.Tab, focus bool) {
 	}
 }
 
+// toSpace makes tab.to_space: the tab of p goes, as it is, to the space
+// c.ToSpace, before its tab c.Target, else at its end, as the app's Move
+// to Space does. That space's active tab stays; the space it leaves gives
+// its active tab to the next, and goes once it has no tab. It starts and
+// ends no session.
+func toSpace(st *layout.Store, p spot, c LayoutCommand) LayoutCommand {
+	var res LayoutCommand
+	to := st.Space(c.ToSpace)
+	switch {
+	case to == nil:
+		res.Code, res.Error = "space_not_found", "no such space in the GoRex layout"
+		return res
+	case to == p.w:
+		res.Code, res.Error = "same_space", "the tab is in that space already"
+		return res
+	}
+	at := len(to.Tabs)
+	if c.Target != "" {
+		at = slices.IndexFunc(to.Tabs, func(x layout.Tab) bool { return x.ID == c.Target })
+		if at < 0 {
+			if q, ok := findIn(to, localLeaf(c.Target)); ok {
+				at = q.ti
+			}
+		}
+		if at < 0 {
+			res.Code, res.Error = "tab_not_found", "no such tab in the space"
+			return res
+		}
+	}
+	t := *p.tab()
+	removeTab(p.w, p.ti)
+	insertTab(to, at, t, false)
+	res.Tab = t.ID
+	if len(p.w.Tabs) == 0 {
+		gone := p.w.ID
+		st.Windows = slices.DeleteFunc(st.Windows, func(id string) bool { return id == gone })
+		st.Sessions = slices.DeleteFunc(st.Sessions, func(o layout.Workspace) bool { return o.ID == gone })
+		if st.Show == gone {
+			st.Show, st.ShowAt = "", time.Time{}
+		}
+	}
+	return res
+}
+
 // focusOn gives the focus of tab t to its pane of session sid, tiled or
 // floating; false when it has none.
 func focusOn(t *layout.Tab, sid string) bool {
@@ -680,6 +725,8 @@ func (s *Server) applyTo(st *layout.Store, c LayoutCommand, a *applying) LayoutC
 		t.Name = layout.Label(c.Name)
 	case "tab.move":
 		res.Index = moveTab(p.w, p.ti, c.Index)
+	case "tab.to_space":
+		return toSpace(st, p, c)
 	case "pane.rename":
 		p.n.Name = layout.PaneName(c.Name)
 		res.Name = p.n.Name

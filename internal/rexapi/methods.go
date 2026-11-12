@@ -204,6 +204,8 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"client.list":                   methodClientList,
 	"client.inspect":                methodClientInspect,
 	"data.connect":                  methodDataConnect,
+	// GoRex's own, which Rex's document does not have (movewindow.go).
+	"gorex.move_window": methodGorexMoveWindow,
 }
 
 // blockMethodPrefix is the namespace of the methods every GoRex block

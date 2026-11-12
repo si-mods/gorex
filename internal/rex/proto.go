@@ -52,6 +52,8 @@ import (
 // makes every change of the layout itself, and takes the app's
 // arrangement of a tab ("tab.set") and of its windows ("windows.set"),
 // with the LayoutCommand fields TabLayout, Spaces, Color and Float.
+// Still within 3, the capability "tab.to_space": "tab.to_space", which
+// moves a tab to another space (LayoutCommand.ToSpace).
 // Still within 3, the capability "voice": "voice.put" and "voice.get",
 // each on a connection of its own, which carry a phone's microphone to
 // the rec a session runs (Voice); deprecated, as nothing on the host
@@ -96,9 +98,13 @@ const CapabilityFileTemp = "file.temp"
 // machine's clients.
 const CapabilityLayoutServer = "layout.server"
 
+// CapabilityTabToSpace is what a server that moves a tab to another space
+// says it does: the "tab.to_space" command (LayoutCommand.ToSpace).
+const CapabilityTabToSpace = "tab.to_space"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -225,8 +231,13 @@ type LayoutCommand struct {
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
 	// "pane.swap", "pane.move", "pane.restart", "tab.set", "windows.set",
-	// "layout.apply", "pane.teleporting", "pane.teleported", "kills.taken"
-	// or "show.taken".
+	// "layout.apply", "pane.teleporting", "pane.teleported", "kills.taken",
+	// "show.taken" or "tab.to_space".
+	// tab.to_space moves the tab, with its panes, their sessions, its
+	// floats, focus and zoom as they are, to the space ToSpace, as the
+	// app's Move to Space does: before the tab of Target there, else at
+	// its end. The active tab of ToSpace stays, and a space the move
+	// leaves with no tab goes, as the app's does.
 	// pane.restart starts a new shell in the place of the pane of SID.
 	// pane.teleported, a local client's only, tells of the teleport of the
 	// pane of SID to the host of address Host (hosts.json), the session
@@ -273,8 +284,12 @@ type LayoutCommand struct {
 	// is the other pane of a swap or a move.
 	Direction string  `json:"direction,omitempty"`
 	Amount    float32 `json:"amount,omitempty"`
-	Target    string  `json:"target,omitempty"`
-	Ratio     float32 `json:"ratio,omitempty"`
+	// Of tab.to_space, Target is the tab of ToSpace the tab goes before,
+	// by its ID, else by a session of this machine it has; "" for the end.
+	Target string  `json:"target,omitempty"`
+	Ratio  float32 `json:"ratio,omitempty"`
+	// ToSpace is the space tab.to_space moves the tab to, by ID.
+	ToSpace string `json:"to_space,omitempty"`
 	// Host is a host of the window's, by its address as hosts.json has
 	// it, of the teleport commands, whose Target is the session there.
 	Host string `json:"host,omitempty"`

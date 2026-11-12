@@ -6,7 +6,8 @@
 // JSON messages, a data connection at /api/data streams a block's output,
 // and /api/help, /llms.txt and /llms.html describe the API. The package
 // speaks revision 12; the documentation in testdata is revision 10's, and
-// /llms.txt appends what revisions 11 and 12 add. Revision 8 added
+// /llms.txt appends what revisions 11 and 12 add, then GoRex's own
+// methods (gorex.move_window). Revision 8 added
 // session.bootstrap's data_tickets, which hands a client the tickets
 // data.connect would issue, so a terminal opens without a round trip
 // first; revision 9 added session.set_layer_state and a layer's state, so
@@ -39,7 +40,7 @@
 //
 // | Method | What GoRex does instead |
 // | --- | --- |
-// | session.move | not_supported: sessions are GoRex's workspaces, in the layout's order |
+// | session.move | not_supported: sessions are GoRex's workspaces, in the layout's order; gorex.move_window, GoRex's own, moves a window to another session |
 // | session.bootstrap (data_tickets) | a ticket for each terminal block of the sessions it attaches, since every GoRex block is a terminal; a request that names another creator gets no ticket for it, and the same fallback to data.connect applies |
 // | session.view (layers) | GoRex's floating panes are floating layers of one block each, after the tiled layer; a hidden pane is a minimized layer |
 // | session.set_layer_state | a floating layer is a floating pane: minimizing hides it and gives its focus away, and focus raises it and gives it the focus; the tiled layer cannot be minimized |
@@ -84,6 +85,7 @@
 // | session.own_block, session.disown_block, session.create | need the GoRex server to keep the gateway's connection alive, which the size locks take; otherwise not_supported |
 // | welcome (features), /api/upload | GoRex's own, which Rex has not: a POST of a file (application/octet-stream, with a Content-Length) to /api/upload?block_id=…&name=… puts it into the GoRex server user's temporary folder, as the app puts a file dropped on a pane of a host, and answers its path and the path as a word of the block's shell; the welcome lists the feature gorex.upload when the server takes such files, and with it gorex.upload.deflate-raw: the body may then come as Content-Encoding deflate-raw (raw DEFLATE, RFC 1951, no zlib or gzip wrapper), the file's size in the query's size, which the body must inflate to exactly, and the file limit holds on that size; any other encoding is a 415. Revision 11's com.superlogical.terminal.upload_begin and its rex.data.bytes.v1 stream are implemented (see upload.go) and take the same limits; the upload's file limits, and the conversions of a page (10 lines) and a pixel (a 40th of a line), are GoRex's own, which Rex's document does not name |
 // | welcome (features), /api/voice | GoRex's own, which Rex has not: a WebSocket to /api/voice?block_id=… carries the phone's microphone as binary messages of raw PCM (signed 16-bit little-endian, 16 kHz, mono) to the rec the block's program runs, as Claude Code's /voice does on a host with no microphone, until the client closes it (rex.Voice, voice.go). Deprecated: nothing on the host reads a voice any more, since GoRex's rec is gone, so the welcome no longer lists the feature gorex.voice, and the endpoint will go |
+// | welcome (features), gorex.move_window | GoRex's own, which Rex has not: the welcome lists gorex.move_window when the GoRex server moves a tab to another space (rex.CapabilityTabToSpace), and the method gorex.move_window moves a window (session_id, window_id) to another session (to_session_id), before one of its windows (before_window_id) or at its end, as the desktop's Move to Space does (movewindow.go): the window keeps its ID, label, layout, floating layers, focus and zoom, its blocks their IDs and programs; the other session's active window stays; a session the move empties is destroyed, as the desktop's space goes with its last tab; an owner of a block that is not attached to the session it went to lets it go (block_owner_changed, reason disconnect). The result is the left session's revision (left out once destroyed), to_revision, and session_destroyed. session.help, help.all and /llms.txt describe it after Rex's methods; /api/help does not |
 // | welcome (features), /api/spaces | GoRex's own, which Rex has not: the welcome lists gorex.spaces, and a GET of /api/spaces answers machine_id, this machine's lasting ID (rex.MachineID), and for each session whose space holds panes of other hosts its session_id, revision and remote_blocks, each a machine and the block_id that machine's own gateway gives the pane (spaces.go); no address, key nor name of a host. The views stay Rex's, without those panes, and a change of them is a new revision of the session |
 //
 // block_event events are sent for what the gateway sees change while it
