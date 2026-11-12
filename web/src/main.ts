@@ -483,7 +483,8 @@ async function connect(gen: number) {
   try {
     await c.call("session.bootstrap", { event_scope: "all" });
     await list();
-    status(() => t("statusConnected", { host: h.name }));
+    // Connected is the usual state: the status line says nothing, and an earlier problem goes.
+    status("");
     for (const p of shown?.panes.values() ?? []) p.start();
   } catch (e) {
     status(() => t("statusSessionsFailed", { error: describe(e) }));
