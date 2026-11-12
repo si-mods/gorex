@@ -38,6 +38,12 @@ const padX = 6, padY = 4;
 const blinkPeriod = 600;
 /** The most typed bytes that wait to be written while offline, as the iOS app's 4 MB. */
 const maxTyped = 4 << 20;
+/**
+ * The most bytes one write carries. The gateway reads a message of 1 MiB at
+ * most, with the data as a JSON string (a control character takes up to six
+ * bytes of it), so a paste goes in pieces, which the server runs in order.
+ */
+const maxWrite = 128 << 10;
 
 export { describe };
 
@@ -64,6 +70,19 @@ export class TerminalView {
   private readonly title = el("span", "pane-title");
   private readonly body = el("div", "pane-body");
   private readonly canvas = el("canvas", "screen");
+  /**
+   * The text field that holds the pane's keys: transparent, at the cursor, so
+   * that the input method's window opens there and a phone shows its keyboard.
+   * It stays empty: what is typed into it goes to the program.
+   */
+  private readonly input = el("textarea", "pane-input");
+  /** What an input method has composed so far, drawn at the cursor, as the field itself is transparent. */
+  private readonly preedit = el("div", "pane-preedit");
+  private composing = false;
+  /** The text the last composition ended with, which some browsers say again as plain input. */
+  private committed?: { text: string; at: number };
+  /** When Ctrl+V was pressed (Windows): a paste of no text then sends ^V. */
+  private ctrlV?: number;
   private readonly ctx: CanvasRenderingContext2D;
   private term?: Terminal;
   private data?: DataStream;
@@ -107,7 +126,8 @@ export class TerminalView {
     this.theme = app.chosen() ?? {};
     this.ctx = this.canvas.getContext("2d", { alpha: false })!;
     this.paintBlank();
-    this.el.tabIndex = 0;
+    // The pane's focus goes to its text field (below); the pane itself takes the click that gives it.
+    this.el.tabIndex = -1;
     this.el.dataset.block = block;
     const head = el("div", "pane-head");
     const buttons = el("span", "pane-actions");
@@ -129,7 +149,15 @@ export class TerminalView {
       buttons.append(b);
     }
     head.append(this.tile, this.title, buttons);
-    this.body.append(this.canvas);
+    const input = this.input;
+    input.rows = 1;
+    input.wrap = "off";
+    input.autocomplete = "off";
+    input.autocapitalize = "none";
+    input.spellcheck = false;
+    input.setAttribute("autocorrect", "off");
+    this.preedit.hidden = true;
+    this.body.append(this.canvas, input, this.preedit);
     this.el.append(head, this.body);
     this.pointer = new PointerInput(this.canvas, this.body, {
       term: () => this.term,
@@ -140,6 +168,7 @@ export class TerminalView {
         this.redraw();
       },
       send: (b) => this.type(b),
+      paste: (text) => this.paste(text),
       status: (s) => this.app.status(s),
       files: () => !!this.app.control()?.features.has("gorex.download"),
       // Opening files (files.ts) is a chunk of its own, loaded with the first link opened.
@@ -150,7 +179,7 @@ export class TerminalView {
               control: () => this.app.control(),
               status: (s) => this.app.status(s),
               back: () => {
-                if (!this.closed) this.el.focus({ preventScroll: true });
+                if (!this.closed) this.focusKeys();
               },
             }),
           (e) => this.app.status(() => t("fileOpenFailed", { path, error: describe(e) })),
@@ -158,11 +187,21 @@ export class TerminalView {
     });
     this.el.addEventListener("keydown", (e) => this.key(e));
     this.body.addEventListener("wheel", (e) => this.pointer.wheel(e), { passive: false });
-    this.el.addEventListener("focus", () => {
+    // A click on the pane focuses it (focus does not bubble): its text field takes the focus on.
+    this.el.addEventListener("focus", () => this.input.focus({ preventScroll: true }));
+    this.el.addEventListener("focusin", (e) => {
+      if (e.target === this.el) return;
       this.app.focused(this);
       this.wake();
     });
-    this.el.addEventListener("blur", () => this.redraw());
+    this.el.addEventListener("focusout", () => this.redraw());
+    // What an input method or a soft keyboard types, and the paste, come to the text field, not as keys.
+    input.addEventListener("compositionstart", () => this.compose(true));
+    input.addEventListener("compositionupdate", (e) => this.compose(true, e.data));
+    input.addEventListener("compositionend", (e) => this.compose(false, e.data));
+    input.addEventListener("beforeinput", (e) => this.beforeInput(e));
+    input.addEventListener("paste", (e) => this.pasted(e));
+    input.addEventListener("blur", () => this.composing && this.compose(false));
     // The canvas takes the body's size in device pixels where the browser tells it.
     this.observer = new ResizeObserver((entries) => {
       const d = entries[0].devicePixelContentBoxSize?.[0];
@@ -429,6 +468,7 @@ export class TerminalView {
       });
       this.full = false;
       this.pointer.drawn();
+      this.placeInput();
       // The next phase of the blink.
       clearTimeout(this.blinkTimer);
       if (focused && this.term.blinking) this.blinkTimer = window.setTimeout(() => this.redraw(), blinkPeriod - (since % blinkPeriod));
@@ -441,26 +481,153 @@ export class TerminalView {
     this.redraw();
   }
 
+  /** Gives the pane's text field the keyboard, unless something in the pane has it. */
+  focusKeys() {
+    if (!this.el.contains(document.activeElement)) this.input.focus({ preventScroll: true });
+  }
+
+  /**
+   * Puts the text field, and the composition drawn over it, on the cursor's
+   * cell, so that an input method opens its window there. It spans the rest
+   * of the row, so that a long composition does not scroll in it; it is
+   * transparent and takes no click, and the pane clips it.
+   */
+  private placeInput() {
+    const c = this.term?.cursorCell();
+    if (!c || !this.font) return;
+    const s = this.font.scale;
+    const x = (this.ox + c.x * this.font.w) / s;
+    const h = this.font.h / s;
+    for (const e of [this.input, this.preedit]) {
+      e.style.left = `${x}px`;
+      e.style.top = `${(this.oy + c.y * this.font.h) / s}px`;
+      e.style.height = `${h}px`;
+      e.style.lineHeight = `${h}px`;
+    }
+    this.input.style.width = `${Math.max(this.font.w / s, this.body.clientWidth - x)}px`;
+    this.preedit.style.font = `${this.font.size / s}px/${h}px ${this.font.family}`;
+    this.preedit.style.background = this.painted;
+    this.preedit.style.color = this.theme.foreground ? `rgb(${this.theme.foreground.join(",")})` : "#e6e6ea";
+  }
+
+  /**
+   * An input method composes (it shows what it has so far) or ends: the
+   * text it committed goes to the program, once, and nothing before. A
+   * composition that was cancelled ends with no text.
+   */
+  private compose(on: boolean, data?: string) {
+    this.composing = on;
+    this.preedit.hidden = !on || !data;
+    if (on) {
+      this.preedit.textContent = data ?? "";
+      this.placeInput();
+      return;
+    }
+    this.input.value = "";
+    if (!data) return;
+    this.committed = { text: data, at: performance.now() };
+    this.submitText(data);
+  }
+
+  /**
+   * What the text field is given, before it takes it: a letter from a soft
+   * keyboard, a line break or a backspace the keys did not report. The
+   * field takes none of it, and stays empty. A key that Ghostty's encoder
+   * took (key()) gives no such event; nor does a composition's text, which
+   * compose() has sent at its end.
+   */
+  private beforeInput(e: InputEvent) {
+    if (e.cancelable) e.preventDefault();
+    if (!this.term || e.isComposing || this.composing) return;
+    switch (e.inputType) {
+      case "insertText": {
+        const text = e.data ?? "";
+        // Some browsers give a composition's text again as plain input, just after it ended.
+        const c = this.committed;
+        if (c && c.text === text && performance.now() - c.at < 200) return;
+        if (text) this.submitText(text);
+        break;
+      }
+      case "insertLineBreak":
+      case "insertParagraph":
+        this.submitText("\r");
+        break;
+      case "deleteContentBackward":
+        this.submitText("\x7f");
+        break;
+    }
+  }
+
   private key(e: KeyboardEvent) {
-    if (!this.term || e.isComposing || e.defaultPrevented) return;
+    // A key an input method took (isComposing, or keyCode 229 as Safari and soft keyboards report it) is its own, not the program's.
+    if (!this.term || e.isComposing || e.keyCode === 229 || e.defaultPrevented) return;
     this.pointer.hideMenu();
+    const name = shortcut(e);
     // Copy (Ctrl+Shift+C, or Cmd+C on the Mac) copies the selection. It
     // never reaches the program, selection or not, so that it cannot
     // interrupt one as Ctrl+C would.
-    if (shortcut(e) === "copy") {
+    if (name === "copy") {
       e.preventDefault();
       this.pointer.copy();
+      return;
+    }
+    // Paste is the browser's: its paste event (pasted) has the text. On Windows Ctrl+V pastes only
+    // text, as the desktop's does: with none, pasted sends ^V.
+    if (name === "paste" || name === "paste-or-key") {
+      this.ctrlV = name === "paste-or-key" ? performance.now() : undefined;
       return;
     }
     const b = this.term.encodeKey(e);
     if (!b) return;
     e.preventDefault();
+    this.submit(b);
+  }
+
+  /** Types bytes to the program: the selection goes, the screen shows its end, the cursor shows. */
+  private submit(b: Uint8Array) {
+    if (!this.term) return;
     // Typing takes the selection away, as Ghostty's selection-clear-on-typing.
     this.pointer.typed();
     // Typing shows the screen again, as on the desktop.
     if (!this.term.atBottom()) this.term.scrollBy("bottom");
     this.wake();
     this.type(b);
+  }
+
+  private submitText(text: string) {
+    this.submit(new TextEncoder().encode(text));
+  }
+
+  /** The browser's paste into the text field: Ctrl+V, Cmd+V, Ctrl+Shift+V or its menu. */
+  private pasted(e: ClipboardEvent) {
+    e.preventDefault();
+    const ctrl = this.ctrlV !== undefined && performance.now() - this.ctrlV < 1000;
+    this.ctrlV = undefined;
+    const text = e.clipboardData?.getData("text/plain") ?? "";
+    if (text) this.paste(text);
+    else if (ctrl) this.submit(new Uint8Array([0x16]));
+  }
+
+  /**
+   * Types pasted text, as a terminal pastes it, as the desktop does
+   * (internal/rex/paste.go): lines end with a carriage return. A program
+   * that asked for bracketed paste (mode 2004) gets the text between
+   * ESC [ 200 ~ and ESC [ 201 ~ (so it does not run the lines as
+   * commands), without that end marker inside the text; another program
+   * gets it without the control characters that could run commands.
+   * Past the bound of what waits to be written, all of it is dropped,
+   * with a status message (type).
+   */
+  paste(text: string) {
+    if (!this.term || !text) return;
+    let s = text.replace(/\r\n?|\n/g, "\r");
+    if (this.term.mode(2004)) {
+      for (let p = ""; p !== s; ) s = (p = s).replace(/\x1b\[201~/g, "");
+      s = `\x1b[200~${s}\x1b[201~`;
+    } else {
+      s = s.replace(/[\x00-\x08\x0a-\x0c\x0e-\x1f\x7f]/g, "");
+    }
+    this.submitText(s);
   }
 
   /**
@@ -491,10 +658,15 @@ export class TerminalView {
 
   private async write() {
     if (this.typing || this.closed || !this.typed.length || this.writeRetry !== undefined) return;
-    const all = new Uint8Array(this.typed.reduce((n, b) => n + b.length, 0));
+    const joined = new Uint8Array(this.typed.reduce((n, b) => n + b.length, 0));
     let at = 0;
-    for (const b of this.typed) all.set(b, (at += b.length) - b.length);
-    this.typed = [];
+    for (const b of this.typed) joined.set(b, (at += b.length) - b.length);
+    // One write takes a piece, not cut inside a UTF-8 character; the rest goes next.
+    let n = Math.min(joined.length, maxWrite);
+    while (n < joined.length && n > 0 && (joined[n] & 0xc0) === 0x80) n--;
+    if (n === 0) n = Math.min(joined.length, maxWrite);
+    const all = joined.subarray(0, n);
+    this.typed = n < joined.length ? [joined.subarray(n)] : [];
     const c = this.app.live();
     let offline = !c;
     if (c) {

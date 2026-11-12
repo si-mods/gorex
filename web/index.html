@@ -220,6 +220,17 @@
   .pane.zoomed .pane-action[data-action="zoom"] { --icon: url(icons/minimize-2.svg); }
   .pane-action[data-action="close"] { --icon: url(icons/x.svg); }
   .pane-body { position: relative; flex: 1; min-height: 0; }
+  /* The pane's text field, which holds its keys (pane.ts): put on the cursor by the pane, so that an input
+     method opens its window there; invisible, out of the layout, taking no click. 16px keeps iOS from zooming in. */
+  .pane-input {
+    position: absolute; left: 0; top: 0; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; outline: none;
+    opacity: 0; resize: none; overflow: hidden; white-space: pre; pointer-events: none;
+    background: transparent; color: transparent; caret-color: transparent; font-size: 16px;
+    -webkit-user-select: text; user-select: text;
+  }
+  /* What an input method has composed, at the cursor, underlined, until it commits. */
+  .pane-preedit { position: absolute; z-index: 1; white-space: pre; pointer-events: none; text-decoration: underline; }
+  .pane-preedit[hidden] { display: none; }
   /* The Show pane headers setting off: the terminal takes the whole pane. */
   .no-pane-headers .pane-head { display: none; }
   /* The canvas takes one-finger drags itself (scrolling, a long press's selection, pointer.ts); pinching still zooms. */
@@ -250,6 +261,7 @@
     display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 10px; border: 0; border-radius: 8px;
     background: none; color: var(--text); font: inherit; white-space: nowrap; cursor: pointer;
   }
+  .select-menu-item[hidden] { display: none; }
   .select-menu-item:hover:not(:disabled) { background: var(--hover); }
   .select-menu-item:disabled { color: var(--muted); cursor: default; }
   .select-menu-item .pane-icon { width: 14px; height: 14px; }
