@@ -407,6 +407,10 @@
   .welcome-form-title { margin: 0; font-size: 16px; font-weight: 700; }
   .welcome-form .host-form > .host-title { display: none; }
   #status { padding: 4px 8px 6px; color: var(--muted); font-size: 12px; }
+  /* With nothing to say, the status line takes no room. */
+  #status:empty { display: none; }
+  /* Then the window keeps its gap at the bottom too. */
+  body:has(#status:empty) #stage { margin-bottom: 8px; }
   /* A new version is ready (app.ts): a small glass panel in the corner, as the host list's, which takes no keys. */
   .update {
     position: fixed; right: 16px; bottom: 32px; z-index: 20; display: flex; align-items: center; gap: 10px;

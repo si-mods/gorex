@@ -218,16 +218,6 @@
       }
     }
   },
-  "statusConnected": "Connected to {host}",
-  "@statusConnected": {
-    "description": "Status line once the page is connected to the host and has read its sessions.",
-    "placeholders": {
-      "host": {
-        "type": "String",
-        "example": "studio"
-      }
-    }
-  },
   "statusSessionsFailed": "Connected, but the sessions could not be read: {error}",
   "@statusSessionsFailed": {
     "description": "Status line when the host connected but its session list failed.",

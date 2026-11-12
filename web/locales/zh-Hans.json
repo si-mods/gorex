@@ -32,7 +32,6 @@
   "statusConnecting": "正在连接 {host}…",
   "statusRetrying": "{host}：{problem}。正在重试…",
   "statusDisconnected": "{host}：连接已断开（{reason}）。正在重新连接…",
-  "statusConnected": "已连接到 {host}",
   "statusSessionsFailed": "已连接，但无法读取会话：{error}",
   "statusNewWindowFailed": "无法打开窗口：{error}",
   "statusCloseWindowFailed": "无法关闭窗口：{error}",
