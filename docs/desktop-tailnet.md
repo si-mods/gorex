@@ -29,13 +29,15 @@ That leaves two gaps:
 
 ## Goal
 
-On a machine with no system Tailscale client GoRex can use, the mode
-runs over the gateway's built-in Tailscale node: the same switch, the
-same Remote Hosts entries, the same identity rule, no Tailscale app.
-The user signs the node in once, in a browser.
+On Windows and macOS the mode runs over the gateway's built-in Tailscale
+node: the same switch, the same Remote Hosts entries, the same identity
+rule, no Tailscale app. The user signs the node in once, in a browser.
 
-Phase 1 covers Windows, where there is no other way. macOS and Linux
-keep the system client as they are (Open questions).
+Windows has no other way. macOS leaves the system client by choice: the
+mode there starts the Tailscale app's CLI as a process for every status
+read and every `WhoIs` (`system_tailnet_darwin.go`), and needs the app
+installed and its VPN on. Linux keeps the system client for now
+(Open questions).
 
 ## Non-goals
 
@@ -107,14 +109,16 @@ process: the mode is unavailable beside it.
 
 One at a time, chosen when the mode starts:
 
-1. the system client, where `systemTailscaleClient()` gives one
-   (macOS, Linux): today's behavior, unchanged;
-2. otherwise the built-in node (Windows).
+1. Windows and macOS: the built-in node, always. A system Tailscale
+   client on the machine is not used, installed or not.
+2. Linux: the system client, today's behavior, unchanged.
+
+`system_tailnet_darwin.go` and its CLI calls go away.
 
 ### Turning it on
 
 The switch keeps its place and its setting (`remote.json`'s `tailnet`).
-On Windows:
+On Windows and macOS:
 
 - Turning it on with built-in Tailscale off turns that on too
   (`tailscale.json`'s `enabled`, as `gorex rexapi tailscale on`), which
@@ -127,12 +131,27 @@ On Windows:
     device.
   - **running**: "Signed in as NAME", and the device's name.
   - **tagged** or another reason: the broker's error, as today.
-- The hint "System Tailscale is unavailable…" is no longer shown on
-  Windows.
+- The hint "System Tailscale is unavailable…" is no longer shown
+  there.
 
 Turning built-in Tailscale on also serves Rex's API on port 443 to the
-same user's devices, as it does today. The switch's note says so on
-Windows (Open questions).
+same user's devices, as it does today. The switch's note says so
+(Open questions).
+
+### Migration on macOS
+
+A Mac with the mode on moves from the system client to the built-in
+node with the update:
+
+- The mode waits for a sign-in of the node, unless built-in Tailscale
+  was signed in already. Settings shows **Sign in**; nothing is served
+  on 7464 until then.
+- The Mac is another device now (`<machine>-gorex`), so its target
+  changes: the scope holds the node's ID. Peers list it as a new host,
+  and the entry for the old device stops answering. `TailnetStatus.Owns`
+  already tells a target of another scope apart.
+- The Tailscale app stays as the user has it; GoRex no longer starts
+  its CLI.
 
 `gorex remote status` adds the transport (`system` or `built-in`) and,
 for the built-in one, the node's state.
@@ -144,14 +163,15 @@ without the suffix, as Rex Go does (`Host.name`).
 
 ### Mixed tailnets
 
-By design, a Windows desktop on the built-in node and a macOS or Linux
-desktop on the system client find each other: each is an untagged device
-of the same user to the other, port 7464 answers on both, and `WhoIs`
-confirms both ends. This is not verified until two machines run it
-(Test plan).
+By design, a desktop on the built-in node and one on the system client
+(Linux, or a Mac of a version before this) find each other: each is an
+untagged device of the same user to the other, port 7464 answers on
+both, and `WhoIs` confirms both ends. This is not verified until two
+machines run it (Test plan).
 
-A Mac with both the system mode and the gateway's node has two devices.
-Only the system one answers on 7464, so a peer lists the Mac once.
+A Mac with the Tailscale app has two devices on the tailnet, the app's
+and the node's. Only the node answers on 7464, so a peer lists the Mac
+once.
 
 ## Security
 
@@ -185,10 +205,12 @@ Only the system one answers on 7464, so a peer lists the Mac once.
   discovery, admission, relay, revocation, a node replaced.
 - `tailnode`: a listener on the node takes no connection from the
   machine's own interfaces.
-- Existing `system_tailnet` tests pass unchanged on macOS and Linux.
-- Two Windows machines, no Tailscale app: sign in, each lists the other,
-  open and reattach a terminal.
-- Windows (built-in) with macOS (system), both ways.
+- Existing `system_tailnet` tests pass unchanged on Linux.
+- Windows with macOS, neither with the Tailscale app: sign in, each
+  lists the other, open and reattach a terminal.
+- A built-in node with Linux (system), both ways.
+- A Mac with the mode on before the update: asks for a sign-in after
+  it, and its peers list the new device.
 - Refusals: another user's device, a tagged device, a LAN address on
   port 7464.
 - No Windows Firewall prompt when the mode starts.
@@ -208,9 +230,10 @@ hint that never comes true is gone at once.
 
 ## Open questions
 
-- **macOS and Linux without the Tailscale app.** The built-in transport
-  would work there too. Offer it when no system client is installed, or
-  as a choice? Not in phase 1.
+- **Linux.** The built-in transport would work there too. Keep the
+  system client, offer the node when no client is installed, or move
+  Linux as well? Moving it removes the system transport, and with it
+  the transport interface and the interface binding.
 - **Port 443 with the switch.** Should the desktop mode be able to run
   the node without serving Rex's API on it? That splits "the node is on"
   from "the gateway serves on it" in `tailscale.json`.
