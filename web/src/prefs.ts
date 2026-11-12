@@ -38,8 +38,13 @@ export interface Prefs {
   language: string;
 }
 
-/** The desktop's text size (settings.go, defaultFontSize), and the stepper's range (settingsview.go). */
-export const defaultFontSize = 11.6;
+/**
+ * The terminals' text size until set, in whole CSS pixels. The desktop's
+ * default is 11.6 points (settings.go, defaultFontSize); 11.6 CSS pixels
+ * read small in a browser.
+ * The stepper's range is the desktop's (settingsview.go).
+ */
+export const defaultFontSize = 15;
 export const minFontSize = 8;
 export const maxFontSize = 32;
 
@@ -71,7 +76,7 @@ function load(): Prefs {
       const j = JSON.parse(raw) ?? {};
       if (["", "light", "dark"].includes(j.appearance)) p.appearance = j.appearance;
       p.hidePaneHeaders = j.hidePaneHeaders === true;
-      if (typeof j.fontSize === "number" && j.fontSize >= minFontSize && j.fontSize <= maxFontSize) p.fontSize = j.fontSize;
+      if (typeof j.fontSize === "number" && j.fontSize >= minFontSize && j.fontSize <= maxFontSize) p.fontSize = Math.round(j.fontSize);
       if (typeof j.font === "string") p.font = j.font;
       if (["block", "bar", "underline"].includes(j.cursor)) p.cursor = j.cursor;
       if (typeof j.cursorBlink === "boolean") p.cursorBlink = j.cursorBlink;

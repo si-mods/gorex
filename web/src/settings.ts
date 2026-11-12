@@ -9,7 +9,7 @@ import { install, installKind } from "./app";
 import { allowCommand, commandBox, Host, HostList, icon, Problem } from "./hosts";
 import { mac, shortcutGroups } from "./keys";
 import {
-  Appearance, CursorStyle, defaultFontSize, maxFontSize, minFontSize, prefs, Prefs, setPrefs, textSize, clearAll,
+  Appearance, CursorStyle, maxFontSize, minFontSize, prefs, Prefs, setPrefs, textSize, clearAll,
 } from "./prefs";
 import { formatDate, formatList, Language, languages, onLanguageChange, PlainKey, setLanguage, t, tIn } from "./i18n";
 import { blockedCJK, ensure, ensureLatin, mapleFamily, noMaple } from "./maple";
@@ -486,13 +486,13 @@ export class Settings {
     plus.append(icon("plus"));
     const show = () => {
       const size = textSize();
-      value.textContent = t("settingsTextSizeValue", { size: +size.toFixed(1) });
+      value.textContent = t("settingsTextSizeValue", { size });
       minus.disabled = size <= minFontSize;
       plus.disabled = size >= maxFontSize;
       reset.disabled = prefs.fontSize === 0;
     };
     const set = (size: number) => {
-      setPrefs({ fontSize: size && Math.min(maxFontSize, Math.max(minFontSize, Math.round(size * 10) / 10)) });
+      setPrefs({ fontSize: size && Math.min(maxFontSize, Math.max(minFontSize, Math.round(size))) });
       show();
       this.app.apply("font");
     };
@@ -502,7 +502,7 @@ export class Settings {
     show();
     const stepper = el("span", "settings-stepper");
     stepper.append(minus, plus);
-    row(text, t("settingsTextSize"), t("settingsTextSizeHint", { size: defaultFontSize }), value, stepper, reset);
+    row(text, t("settingsTextSize"), t("settingsTextSizeHint"), value, stepper, reset);
 
     // The language, as the desktop's: System, then each language by its own name.
     const choices: [string, string][] = [["", t("settingsLanguageSystem")], ...languages.map((l): [string, string] => [l, tIn(l, "languageName")])];

@@ -169,7 +169,7 @@
   "settingsPaneHeaders": "显示窗格标题",
   "settingsPaneHeadersHint": "在终端上方显示每个窗格的标题、程序和按钮。",
   "settingsTextSize": "文字大小",
-  "settingsTextSizeHint": "终端文字的大小，单位为 CSS 像素。未设置时为 {size}，与桌面版默认值相同。",
+  "settingsTextSizeHint": "终端文字的大小。",
   "settingsTextSizeValue": "{size} px",
   "settingsSmaller": "缩小文字",
   "settingsLarger": "放大文字",

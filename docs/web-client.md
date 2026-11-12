@@ -922,7 +922,7 @@ The terminal draws as the desktop's (MyGo's `plugins/terminal/paint.go`)
 with GoRex's defaults and no Ghostty configuration:
 
 - Font: JetBrains Mono, served with the client (`defaultFontFamily`), then
-  Maple Mono NF CN for CJK (see Fonts), then `monospace`, at 11.6 CSS
+  Maple Mono NF CN for CJK (see Fonts), then `monospace`, at 15 CSS
   pixels (`defaultFontSize`). Settings can choose another family and size
   (see Settings).
   A cell is the widest ASCII advance wide and the font's ascent and descent
@@ -1158,7 +1158,7 @@ page and every open pane.
 | Section | Settings |
 |---|---|
 | Host (the card) | The chosen host, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
-| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 CSS pixels, 11.6 (the desktop's) until set, with Reset. Language: System, English or 简体中文 (see Languages). |
+| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 whole CSS pixels, 15 until set, with Reset. Language: System, English or 简体中文 (see Languages). |
 | Terminal | Font: JetBrains Mono or Maple Mono NF CN, which the page brings, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours; CJK is Maple's in every font (see Fonts). Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
 | Theme | The theme picker (see Themes). |
 | Keyboard | The shortcuts (see Shortcuts), with this system's keys. |
