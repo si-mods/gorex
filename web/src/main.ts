@@ -188,16 +188,22 @@ const host: WindowHost = {
 };
 
 /**
- * What the host's gateway does past Rex's API, which turns on the
- * desktop's moves that it takes; none does yet (docs/web-client.md, Not
- * in the web client). A check of control.features, or of a method, goes
- * here.
+ * What the host's gateway takes past what every GoRex gateway did, which
+ * turns on the desktop's moves: its welcome lists gorex.move_window.
  */
 const gateway = {
-  /** session.move_block within a window and before its anchor: a pane dropped on another's edge (panedrop.go). */
-  edgeMoves: (): boolean => false,
+  /**
+   * session.move_block within a window and before its anchor: a pane
+   * dropped on another's edge (panedrop.go). Rex's document has it; GoRex's
+   * gateway took it in the same release as gorex.move_window, the feature
+   * that tells it (an older one answers conflict).
+   */
+  edgeMoves: (): boolean => !!control?.features.has("gorex.move_window"),
   /** The call that moves a window to another session (moveTabToSpace), undefined while the gateway has none. */
-  moveWindowToSpace: undefined as undefined | ((c: Control, session: string, window: string, to: string) => Promise<unknown>),
+  get moveWindowToSpace(): undefined | ((c: Control, session: string, window: string, to: string) => Promise<unknown>) {
+    if (!control?.features.has("gorex.move_window")) return undefined;
+    return (c, session, window, to) => c.call("gorex.move_window", { session_id: session, window_id: window, to_session_id: to });
+  },
 };
 
 /** How long the page loads before its progress shows: a load from the cache shows none. */
