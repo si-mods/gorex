@@ -1,256 +1,302 @@
 # Host links: one identity, any path, one switch
 
-Status: the model is accepted. Not implemented. It sets the frame for
-[desktop-tailnet.md](desktop-tailnet.md), its phase 3.
+Status: the model is accepted; revised after review. Not implemented.
+It covers the three clients, the desktop, Rex Go (iOS) and the web
+client, and sets the frame for
+[desktop-tailnet.md](desktop-tailnet.md).
 
 ## Problem
 
-Two GoRex machines can reach each other in two ways today, and each way
-is a whole stack of its own:
+A client reaches a GoRex machine in five ways today, and each way has
+its own idea of who the client is:
 
-| | Tailcat | Tailscale discovery |
+| Way in | Who gets in | Used by |
 | --- | --- | --- |
-| Who gets in | the keys of an allowlist, added by pairing | devices of the same Tailscale user |
-| Identity of a client | its client key | `tailscale:<scope>:<node>` |
-| Encryption and path | WireGuard, direct or a DERP relay | the tailnet's WireGuard, direct or DERP |
-| Finding a host | an address, typed or scanned | found on the tailnet |
-| Code | `remote.go` | `system_tailnet.go`, a second listener, links and relay |
+| Tailcat, port 7464 | a device key on the allowlist, added by pairing | desktop |
+| Tailcat, port 7297 (gateway) | the same allowlist | Rex Go |
+| Tailscale discovery, port 7464 | devices of the same Tailscale user; identity `tailscale:<scope>:<node>` | desktop (macOS, Linux) |
+| Gateway HTTPS on the tailnet, port 443 | the Tailscale user who signed the gateway in | Rex Go, web, Rex's own app |
+| Gateway HTTP on the local network, port 7297 | the networks allowed; no credential, no encryption | Rex Go, web, Rex's own app |
 
 The user pays for it:
 
-- Settings names transports (Tailcat, Tailscale, relay) before it says
-  what they are for, and each has its own switch and state.
-- One machine reached both ways is two hosts with two identities, and
-  the sessions it opened belong to one or the other.
+- Settings names transports (Tailcat, Tailscale, relay, local network)
+  before it says what they are for, and each has its own switch.
+- One machine reached two ways is two hosts with two identities.
+- Machines that can already dial each other, as over a WireGuard tunnel
+  between two routers, still need a relay to meet at, or the
+  unencrypted listener.
 - A new way to connect, such as a relay on a public server, would be a
-  third stack.
+  sixth row.
 
 ## First principles
 
 [ios-tailcat.md](ios-tailcat.md) lists what reaching a terminal needs,
 each exactly once: **trust** (each side knows the other's key and can
-forget it), **encryption** between the two keys, **a path** (direct or
-relayed), and **rendezvous** (where the two meet).
+forget it), **encryption** between the two keys, **a path**, and
+**rendezvous** (where the two meet).
 
-Tailcat gives all four with no server that knows anything: keys in an
-allowlist, WireGuard, `magicsock`, and a DERP relay named in the
-address.
+Tailcat gives all four with no server that knows anything. What
+Tailscale adds is none of the four: it adds an **introduction**. It
+tells two machines that never met that they belong to one user, so
+nobody carries a key between them. A QR code is another introduction;
+so is the pairing window.
 
-What Tailscale adds is none of the four. It adds an **introduction**:
-it tells two machines that never met that they belong to one user, so
-no one has to carry a key between them. A QR code is another
-introduction; so is the pairing window.
-
-So the stacks differ in one step only, how the keys get exchanged. The
-rest can be one.
+So the ways in differ in two steps only: how the keys get exchanged,
+and where the two meet. The rest can be one.
 
 ## The three layers
 
 ### 1. Identity: the device key
 
-A device is a key. That is the whole identity, for every client, by
-every way in.
+A device is a key: its client key (`remote-client.json` on a desktop,
+the Keychain in Rex Go). A machine that serves also has its server key
+(`remote.json`'s `nodeKey`), which its address carries. The server
+admits a connection by the client's key and nothing else, on every port.
 
-- Each machine has its client key (`remote-client.json`) and its
-  allowlist (`remote.json`), as today.
-- The server admits a connection by its key and nothing else. The
-  principal of a session is that key.
-- Removing a device from the list closes its connections, as today.
-
-**Introductions** put a key on the list. They differ in who approves:
+**Introductions** put a client key on the allowlist:
 
 | Introduction | Approval | Today |
 | --- | --- | --- |
-| Pairing window | the user compares a fingerprint | exists |
-| QR code | the scan | exists, for Rex Go |
-| Tailscale | none: the device is the same Tailscale user's, checked with `WhoIs` | new, replaces the tailnet's own data path |
+| Pairing window | the user compares the fingerprint of the client's key | exists (desktop, Rex Go) |
+| QR code | the scan, then the pairing window | exists (Rex Go) |
+| Tailscale | none: the device is the same Tailscale user's | new, replaces the tailnet's own session path |
 
-An introduction is a short exchange, then it is over: the client hands
-its key and name, the server adds it to the list and hands back its
-address. Each entry keeps how it came (`paired`, `tailscale`), for the
-list to show.
+Every introduction gives the client the server's address, which holds
+the server's key. A client never talks to a server whose key it did not
+get this way: there is no first contact with an unknown key.
 
-An entry that came by Tailscale also keeps the device's node ID, and
-lasts as long as the rule holds for it: when a fresh snapshot of the
-tailnet no longer has that device as a same-user peer (removed, expired,
-tagged, another user's), the entry is removed and its connections close,
-as the tailnet mode drops such a peer today. Turning the rule off
-removes these entries too. A snapshot that cannot be read removes
-nothing: a failed read says nothing of the peers. A paired entry is
-never removed this way.
+**The Tailscale rule.** On the tailnet, port 7464, a client sends its
+key and name; the server checks the connection with `WhoIs`, checks the
+peer in its current snapshot again under the allowlist's lock (as
+`admit` does today), then writes the entry and answers with its
+address. What the rule means, plainly:
 
-### 2. Path: whatever carries bytes
+- **Any device of the user's Tailscale account gets a shell here.** It
+  may enrol any key, its own or another's, and an allowed key runs
+  commands as this user from anywhere (README). The account and its
+  control server, Tailscale's or the user's Headscale, are the root of
+  trust. Untagged devices made with an auth key, as a CI runner, count.
+- **One key per node.** An entry keeps the node ID it came from; a new
+  introduction from that node replaces the key.
+- **The entry lives while the tailnet vouches for it.** It is admitted
+  only while the broker holds a fresh snapshot that has the node as a
+  same-user peer: untagged, not expired, not shared in. Three failed
+  reads in a row, as today, a signed-out node, another tailnet, or the
+  rule turned off, close its connections and refuse its key until a
+  snapshot has it again. A device removed from the tailnet loses its
+  entry.
+- **Remove** refuses the node, not only the key, until the user allows
+  it again in the list. While the rule is on, keeping a device out for
+  good means removing it from the Tailscale account.
 
-A path gets bytes from one machine to the other. It decides nothing
-about trust: every path ends in the same thing, a connection whose two
-device keys are proven and whose bytes are encrypted between them. The
-server then serves it as it does today (`Server.handle`, with the
-client's key).
+A paired entry is none of this: it stays until Removed.
 
-So a path may be anything, and a network nobody trusts is as good as
-one's own. There are two kinds, by whether the machine can be dialed:
+### 2. Path: tailcat, and where it meets
 
-| | Direct address | Tailcat |
+Every session of a GoRex client runs over tailcat: WireGuard between
+the two keys, one listener, the two ports it has today (7464 for
+desktops, 7297 for the gateway). Trust never depends on the path.
+
+What varies is the relay the address names, where the two meet before
+`magicsock` finds the direct route:
+
+| Relay | For | Today |
 | --- | --- | --- |
-| For | a machine one can dial: `192.168.8.20`, a name, a public address | a machine one cannot dial |
-| Reaches it over | the local network, a VPN of one's own (a WireGuard tunnel between routers), a port forward, any TCP relay | `magicsock`: direct through NAT, or the DERP relay the address names |
-| Needs a third party | no | a relay to meet at |
-| Keys proven by | a handshake of the device keys on the connection | WireGuard, in the tunnel |
-| Today | missing for desktops | exists |
+| tailcat's own | machines with nothing between them | default |
+| a `derper` of one's own | the same, self-hosted | `gorex remote relay HOST` |
+| **the machine itself** | a machine one can dial: a local network, a VPN of one's own (WireGuard between routers), a port forward | new |
+| a public server | later | one more `derper` to name |
 
-**Direct address** is new. The server listens on TCP `RemotePort` of an
-address the user picks, for the networks the user allows, as the local
-network listener for Rex's API does today (`gorex rexapi lan`). A client
-dials `host:port`; a Noise handshake of the two device keys follows,
-and what comes after is the protocol of today, inside it. A key not on
-the list gets what it gets over tailcat: nothing, or the pairing window
-while it is open.
+**The machine as its own relay** is the direct address. The server runs
+a DERP server in its process (`tailscale.com/derp/derpserver`, already
+a dependency) on an address the user picks, with a certificate of its
+own, and shows a second tailcat address whose region is that address,
+the certificate pinned (`tailcfg.DERPNode.CertName`, `sha256-raw:`). A
+client that can dial it meets the server there and goes direct; it
+needs no third party and no way out to the internet. The keys, the
+allowlist, pairing, Remove and both clients' tailcat code are the ones
+of today. Nothing new is designed: no handshake, no first contact, no
+second listener for sessions.
 
-With it, a user whose machines already reach each other needs nothing
-else: no relay, no account, no way out to the internet.
+This rests on a spike (Phases): that tailcat's address carries such a
+region, pin included, and that a client meets and goes direct through
+it. If it fails, the fallback is a TCP listener with a Noise handshake
+of the device keys, the address carrying the server's key
+(Alternatives).
 
-**Tailcat** stays as it is, for machines behind NAT with nothing between
-them. Its relay is tailcat's own by default, or the user's `derper`
-(`gorex remote relay HOST`).
+A machine may show several addresses, one per relay, with the same
+keys. A host is one entry by its server key, with the addresses the
+client knows; the client tries them in order. An introduction and a
+hello give the client the others, all for the key it already holds.
 
-**A public relay**, later, is then a choice of two existing shapes, and
-no third transport:
-
-- a `derper`, named as tailcat's relay; or
-- any server that forwards a TCP port to the machine, dialed as a
-  direct address. It sees ciphertext, and the handshake refuses whoever
-  is not on the list.
-
-One host has one identity and may have several paths: its direct
-addresses and its tailcat address. A client tries the direct ones
-first, then tailcat, and stays one host in the list. Once connected by
-any path, the server tells the client its other addresses, so the next
-connection finds the best one without the user typing it.
-
-The tailnet no longer carries sessions. The node (the system client's,
-or the built-in one of desktop-tailnet.md) is used to see the user's
-other devices and to carry the introduction, on port 7464 as now.
-
-In code the two kinds sit behind one small contract: a listener and a
-dialer that hand back a connection with its peer's key. That is the
-whole interface.
+**The tailnet carries no desktop sessions.** The node, the system
+client's or the built-in one, sees the user's devices and carries the
+introduction.
 
 ### 3. Surface: devices
 
-Settings › Server, in the user's words:
+Settings › Server, in the user's words. The first three are all a new
+user needs:
 
 - **Let other devices connect**: one switch. It turns the listener on.
-- **Devices**: the list of who may connect, each with its name, how it
-  came and when it was last seen, and Remove.
+- **Devices**: who may connect, each with its name, how it came
+  (paired, Tailscale), when it was last seen, and Remove. Refused
+  devices show at the end, with Allow.
 - **Add a device**: the pairing window, and the QR code for a phone.
-- **Devices on my Tailscale account connect without pairing**: the one
-  rule. It needs the node signed in (**Sign in**, desktop-tailnet.md).
-- **Addresses**: where this machine listens for direct connections,
-  and for which networks. Off by default.
+
+Under Show Details:
+
+- **Devices on my Tailscale account connect without pairing**, with
+  **Sign in** (desktop-tailnet.md). Its note says what it means: every
+  device of the account gets in.
+- **Reachable at**: off, or an address of this machine. On, the
+  machine is its own relay there, and Devices shows a second address
+  and QR code for clients that can dial it.
 - **Relay**: default, or a host.
 
-Remote Hosts lists machines. A machine found on the tailnet and not yet
-connected shows as available; **Connect** makes the introduction and
-saves it as a host like any other. **Add Remote Host** takes either
-kind of address: `192.168.8.20`, or the long one a machine shows. A
-host's details say how it is reached now: at which address, or through
-the relay.
+Remote Hosts lists machines. **Add Remote Host** takes an address a
+machine shows. A machine found on the tailnet shows as available;
+**Connect** makes the introduction and saves it as a host like any
+other. A host's details say how it is reached now.
 
-The words Tailcat and DERP stay in the documentation.
+The first connection, in order: on the serving machine, turn **Let
+other devices connect** on and open **Add a device**; on the other,
+paste or scan the address; compare the fingerprint; Approve.
+
+The words Tailcat and DERP stay in the documentation. The CLI keeps its
+commands (`gorex remote tailscale on|off`, `gorex remote relay`).
+
+## The three clients
+
+| | Desktop | Rex Go (iOS) | Web |
+| --- | --- | --- | --- |
+| Speaks | the session protocol, 7464 | Rex's API, 7297 | Rex's API |
+| Device key | `remote-client.json` | Keychain | none today |
+| Paired by | pairing window | QR code, then the window | — |
+| Tailcat | yes | yes (ios-tailcat.md) | not yet |
+| The machine as relay | new, no client change | new, no client change | no: a browser cannot pin a certificate |
+| Tailscale introduction | new | later: its node asks, as a desktop's | — |
+| Other ways it keeps | none | the gateway on the tailnet (443), the local network | the gateway on the tailnet (443) through the page's node, the local network |
+
+**Desktop.** Everything above. What goes away is below.
+
+**Rex Go.** It already has the device key, pairing and tailcat, on the
+gateway's port. A machine that is its own relay is one more address in
+a `rexgo://tailcat` code; the engine dials it as any tailcat address.
+Its built-in Tailscale stays for Rex servers, which have no tailcat,
+and for a GoRex machine reached on 443. Later, its node can ask for an
+introduction as a desktop's does, so a phone on the account needs no
+QR code.
+
+**Web.** A browser has no sockets of its own and holds no device key
+today, so the page stays outside the identity layer for now, and says
+so: it reaches a gateway on the tailnet through its own node (who gets
+in: the Tailscale user) or on the local network (who gets in: the
+networks), and a host must trust the page's origin either way
+(web-client.md). The way in for it is tailcat compiled to WebAssembly,
+which upstream has as an experiment, relayed only, with a key kept by
+the browser and the same pairing. It needs a relay with a certificate a
+browser accepts, so not the machine as its own relay. Not in these
+phases.
+
+**Rex's own app** knows neither tailcat nor device keys. The gateway's
+HTTPS on the tailnet and its local network listener stay for it, as
+they are, as compatibility listeners outside this frame. Their
+settings move under Show Details.
 
 ## What goes away
 
-- The tailnet's listener for sessions, its links, slots and relay
-  (`relayTailnet`, `connectTailnet`, `remote.tailnetDial`).
-- `tailscale:` targets as a host's address and as a session's owner, and
-  the cases for them in the app (`hosts.go`, `attention.go`, `state.go`,
-  `internal/rexapi/model.go`).
+On the desktop, once sessions leave the tailnet:
+
+- In `internal/rex`: the `remote.tailnetDial` op (`server.go`),
+  `relayTailnet`, `connectTailnet`, the tailnet's links and slots, the
+  `IsTailnetTarget` cases of `remoteClientFor` and of the dial
+  (`remote.go`), `Request.TailnetTarget` (`proto.go`).
+- In the app: the `tailscale:` cases of `hosts.go` (`TailnetOpened`,
+  `tailnetOnline`, `reconcileTailnet`), `hostsview.go`, `attention.go`,
+  `state.go`, and of the CLI (`internal/cli/commands.go`).
+- `tailscale:` targets as a session's owner.
 - The second switch with its own state.
 
 What stays of `system_tailnet.go`: the snapshot of same-user peers, the
 probe, and the `WhoIs` checks, now in front of a key exchange.
 
-## Outside this frame
-
-- **Rex's API for Rex's own apps**: the gateway's HTTPS on the tailnet
-  and its local network listener. Rex's app knows no tailcat, so these
-  stay as they are, as compatibility listeners. Rex Go already pairs
-  over tailcat and fits the frame.
-- **Accounts of GoRex's own**, and any server that keeps who belongs to
-  whom. The coordinator was removed for its complexity; a public server
-  here is a relay and nothing more.
-
 ## Security
 
-- **Admission** is the allowlist alone. The Tailscale rule adds to it
-  only after `WhoIs` says: same user, untagged on both ends, not
-  expired, not shared in, as `tailnetSnapshot.verifies` checks today.
+- **Admission** is the allowlist alone, on every address. The direct
+  address's relay admits nobody: it only passes packets between keys,
+  as any DERP server does.
 - **The address is a secret** (the server's key and the pre-shared
-  key). The introduction sends it over the tailnet, to a device that
+  key). The introduction sends it over the tailnet to a device that
   passed the check.
-- **A relay sees keys and ciphertext.** That holds for a public one
-  too; it is why it needs no trust.
-- **A direct address is a port open to its networks.** Anyone there can
-  start a handshake; only a key on the list finishes it. The allowed
-  networks are a second fence, not the lock. The handshake is limited
-  in time and number, as pairing requests are.
-- **The first connection to a direct address** has no key to check the
-  server against. Pairing shows a fingerprint of both keys on both
-  screens, as today; the client keeps the server's key from then on,
-  and refuses another at that address.
-- **Leaving the tailnet removes a device** that the rule added
-  (Identity), within a refresh of the snapshot, as today.
-- **Remove and the rule.** A removed device that is still on the
-  tailnet would come back with the next introduction. Remove keeps its
-  key as refused until the user allows it again.
+- **A relay sees keys, ciphertext, and the timing and size of the
+  traffic.** That holds for a public one too.
+- **The Tailscale rule widens trust** from devices the user approved
+  one by one to every device of an account (Identity). It is off by
+  default and never turned on by an update.
+- **A machine that is its own relay opens a port** to whoever can dial
+  the address. It serves the relay's protocol only; reaching the
+  session server still needs an allowed key and the address's secret.
+  The listener is limited in connections, per source and in all.
+- **Revocation** closes a key's connections on every address at once,
+  as today for tailcat's two ports.
 
 ## Alternatives
 
 | Option | Why not |
 | --- | --- |
-| Sessions over the tailnet as a third path | a second identity, or a second handshake, for a network tailcat and a direct address already cover |
-| Tailcat as the only path | a machine one can already dial would still need a relay to meet at, and a way out to it |
-| Sessions over the tailnet only | needs a Tailscale account for everyone; no pairing by hand |
+| A TCP listener with a Noise handshake of the device keys | the fallback if the spike fails. It needs a handshake of GoRex's own (`controlbase` fixes its prologue to Tailscale's), an address that carries the server's key, a second listener and limits before authentication |
+| Typing a bare `192.168.8.20` | the client would meet a server whose key it does not know; today's fingerprint covers the client's key only, so a man in the middle passes it |
+| Sessions over the tailnet as a second path | a second identity for a network tailcat already covers |
 | A GoRex account server that introduces devices | the coordinator again |
 
 ## Migration
 
+- Nothing is turned on by an update. A machine with Tailscale discovery
+  on and remote access off is asked once, in Settings, before the
+  listener starts: the rule needs it, and the keys it adds then work
+  from outside the tailnet too.
 - A host saved by its `tailscale:` target introduces itself the next
-  time it connects, and is saved by its address.
-- A session a tailnet peer opened is owned by its target. After the
-  update that owner is gone; the session stays and is shared as the
-  server shares sessions.
-- A machine with Tailscale discovery on and remote access off gets the
-  listener on with the update, as the rule needs it. Settings says so.
+  time the user connects it, and is saved by the address.
+- A session a tailnet peer opened is owned by its target. The owner is
+  a label, not a permission; after the update the label is gone and the
+  session stays.
+- A machine of a version before the introduction speaks the tailnet's
+  relay only. Until both sides are updated, two machines connect over
+  the tailnet only when both still have the relay.
 
 ## Phases
 
-1. **Introduction over the tailnet**: the key exchange on 7464, entries
-   with their source, refused keys. Both ways in still work.
-2. **Direct address**: the listener, the handshake, pairing over it,
-   a host with several addresses.
-3. **The built-in node** carries the introduction on Windows and macOS
+Each ships something a user can use.
+
+1. **Spike**: the machine as its own relay, with tailcat as it is: a
+   region with a pinned certificate in the address, a meeting and a
+   direct route with no way out to the internet, from a desktop and
+   from Rex Go's engine. It decides between this design and the
+   fallback.
+2. **Reachable at**: the setting, the second address and its QR code.
+   Desktops and Rex Go connect over a local network or a VPN of one's
+   own with no relay. Docs.
+3. **Settings in the new words**: one switch, Devices, Add a device,
+   Show Details. No change in behavior.
+4. **Tailscale introduction** on the system client (Linux): the
+   exchange, entries with their node, the snapshot rule, refused
+   nodes. The tailnet's relay still works beside it.
+5. **The built-in node** carries it on Windows and macOS
    (desktop-tailnet.md).
-4. **Sessions leave the tailnet**: remove the relay, the links and the
-   targets; migrate saved hosts.
-5. **Settings and Remote Hosts** in the words above.
-6. **A public relay**: its own document, when there is a server to name.
+6. **Sessions leave the tailnet**: What goes away, and Migration.
+7. Later, each with its own document: Rex Go's introduction, the web
+   client's key, a public relay.
 
 ## Open questions
 
-- **The handshake.** Noise IK with the device keys is the candidate:
-  `tailscale.com/control/controlbase` has it, for keys of the same
-  curve, and it is already a dependency. Whether it takes the device
-  keys as they are, and how the client learns the server's key before
-  pairing, is not checked.
-- **Rex Go and Rex's API on a direct address.** The local network
-  listener for Rex's API is plain HTTP with no credential. The gateway's
-  port could ride the direct address as it rides tailcat's (7297), with
-  the device key. Not in these phases.
-- **Changing the relay changes the address**, and paired clients need
-  the new one. With more relays to choose from, the server should tell
-  its connected clients the new address before it moves.
-- **Direct or relayed.** Whether tailcat tells which route a connection
-  takes is not checked.
+- **Changing the relay changes the address.** With several addresses a
+  server can tell a connected client the new one before the old one
+  goes.
+- **Which route a connection takes** (direct, or through which relay):
+  whether tailcat tells is not checked.
+- **The embedded relay's protocol on a port forward**: DERP rides
+  HTTPS, so a forward of one TCP port should do, and the direct route
+  needs UDP as well. Not checked.
 - **Linux**: system client or built-in node, as in desktop-tailnet.md.
-  Here the node only introduces, so the choice costs less either way.

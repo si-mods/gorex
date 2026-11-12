@@ -1,9 +1,10 @@
 # Desktop: Tailscale introductions over built-in Tailscale
 
-Status: proposal. Not implemented. Phase 3 of
+Status: proposal, revised after review. Not implemented. Phase 5 of
 [host-links.md](host-links.md), whose frame it follows: a device is its
-key, sessions run over a direct address or tailcat, and Tailscale only
-introduces.
+key, sessions run over tailcat, and Tailscale only introduces. It
+builds on that document's phase 4, the introduction itself, and ships
+after it.
 
 ## Problem
 
@@ -65,9 +66,14 @@ discovery passes and its checks. On port 7464 it speaks two exchanges:
 
 - **probe**, as today: is this peer a GoRex machine;
 - **introduce**, new, in place of **relay**: the client sends its device
-  key and name; the server, after `WhoIs` of the connection, puts the
-  key on its list with the peer's node ID, and answers with its
-  addresses, direct and tailcat. The connection closes.
+  key and name; the server, after `WhoIs` of the connection and a check
+  of its current snapshot, puts the key on its list with the peer's
+  node ID, and answers with its addresses. The connection closes. The
+  exchange and its rules are host-links.md's (Identity).
+
+The rule needs the listener: with remote access off there is no address
+to answer with, and the introduction says so. Settings asks before it
+turns the listener on (host-links.md, Migration).
 
 The four things the broker needs from Tailscale move behind one
 interface in `internal/rex`:
@@ -88,10 +94,13 @@ Why the built-in node needs no interface isolation: `tsnet`'s `Listen`
 node's userspace network stack, and nothing on the machine's own
 interfaces reaches it. A test checks this (Test plan).
 
-`Node.Dial` dials an address that is not a known peer's through the
-system's network (`tailnode.go`). The broker dials only an address its
-snapshot holds, after a `WhoIs` of it; the built-in side refuses any
-other address itself.
+`Node.Dial` dials an address with no route on the tailnet through the
+system's network (`tailnode.go`, `tsdial`), and a `WhoIs` of the address
+says nothing of the way the bytes took. So `tailnode` gets a dial of
+its own for this, which fails unless the address is a peer's in the
+node's network map; nothing of that exists yet. What the client gets
+back is an address for a server key, and the session that follows
+proves that key over tailcat, so a wrong answer connects nothing.
 
 ### Reaching the node
 
@@ -129,7 +138,9 @@ without pairing**, keeps the setting of today's switch (`remote.json`'s
 
 - Turning it on with built-in Tailscale off turns that on too
   (`tailscale.json`'s `enabled`, as `gorex rexapi tailscale on`), which
-  starts the gateway (`Wanted`).
+  starts the gateway (`Wanted`). It never sets
+  `allow_tailnet_members`: a node the rule turned on lets in the user
+  who signed it in, and nobody else, on port 443.
 - Under the rule, a status line follows the node:
   - **needs sign-in**: a **Sign in** button opens the node's auth URL in
     the browser. The app reads it over the gateway's local socket, the
@@ -142,8 +153,10 @@ without pairing**, keeps the setting of today's switch (`remote.json`'s
   there.
 
 Turning built-in Tailscale on also serves Rex's API on port 443 to the
-same user's devices, as it does today. The rule's note says so
-(Open questions).
+same user's devices, as it does today. Settings says so when the rule
+is turned on, not only in a note (Open questions).
+
+The CLI keeps its command, `gorex remote tailscale on|off`.
 
 `gorex remote status` tells which side carries the introductions
 (`system` or `built-in`) and, for the built-in one, the node's state.
@@ -162,9 +175,9 @@ own name.
   both, and `WhoIs` confirms both ends. Not verified until two machines
   run it (Test plan).
 - A machine of a version before the introduction knows probe and relay
-  only. Until sessions leave the tailnet (host-links.md, phase 4), a
-  newer machine falls back to the relay for it, where its own side
-  still has one (the system client).
+  only, and a built-in node has no relay. So a Windows or macOS machine
+  and one of an older version do not connect over the tailnet until the
+  older one is updated; tailcat pairing works between them meanwhile.
 - A Mac with the Tailscale app has two devices on the tailnet, the
   app's and the node's. Only the node answers on 7464, so a peer finds
   the Mac once.
@@ -185,14 +198,18 @@ node with the update:
 
 ## Security
 
-- **Introduction** only after `WhoIs` says same user, untagged on both
-  ends, not expired, not shared in; checked at accept and at dial. What
-  it adds to the list, and when that entry goes, is host-links.md's.
+- **Introduction** only for a peer the snapshot has (same user,
+  untagged, not expired, not shared in) and `WhoIs` confirms (same
+  user, untagged, not shared in, that node), at accept and at dial.
+  What it adds to the list, and when that entry goes, is
+  host-links.md's.
 - **Reach**: the listener exists only in the node's network stack. The
   tailnet's access rules must allow TCP 7464 between the user's devices,
   as today.
-- **The sign-in link** binds the device to whoever opens it first. It
-  stays on the local socket; the button opens it only from the app.
+- **The sign-in link** binds the device to whoever opens it first. The
+  gateway shows it on the local socket only, and the button opens it
+  only from the app. `tsnet` also writes it to its user log, which ends
+  in the server's log, a file of this user's only: the same boundary.
 - **The node's state** (`rexapi/tsnet`) holds its key. On Windows the
   directory's mode bits do nothing: the profile's ACL is the boundary,
   as for the gateway's socket today.
@@ -231,8 +248,8 @@ node with the update:
    translations, names without `-gorex`.
 4. **Docs**: README's Remote access, `docs/rex-api.md`.
 
-Until phase 3, a one-line fix can hide the switch on Windows, so the
-hint that never comes true is gone at once.
+Until then, a one-line fix can hide the switch on Windows, so the hint
+that never comes true is gone at once.
 
 ## Open questions
 
