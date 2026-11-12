@@ -267,10 +267,12 @@ type LayoutCommand struct {
 	Vertical bool   `json:"vertical,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Mode     string `json:"mode,omitempty"`
-	// Direction is the edge pane.resize moves or the split pane.move makes,
-	// "left", "right", "up" or "down"; Amount is resize's share of the
-	// split and Ratio the moved pane's split's share of its target. Target
-	// is the other pane of a swap or a move.
+	// Direction is the edge pane.resize moves or the side of Target
+	// pane.move puts the pane on, "left", "right", "up" or "down"; Amount
+	// is resize's share of the split and Ratio the share of the moved
+	// pane's split that its first side, left or above, takes. Target is
+	// the other pane of a swap or a move, in the pane's tab or, for a
+	// move, another.
 	Direction string  `json:"direction,omitempty"`
 	Amount    float32 `json:"amount,omitempty"`
 	Target    string  `json:"target,omitempty"`

@@ -795,6 +795,102 @@ func TestPaneCloseNamesTab(t *testing.T) {
 	}
 }
 
+// treeShape names a tree's panes and splits: "(h a b)" side by side, "(v
+// a b)" one above the other.
+func treeShape(n *layout.Node) string {
+	switch {
+	case n == nil:
+		return ""
+	case n.A == nil || n.B == nil:
+		return n.SID
+	case n.Vertical:
+		return "(v " + treeShape(n.A) + " " + treeShape(n.B) + ")"
+	}
+	return "(h " + treeShape(n.A) + " " + treeShape(n.B) + ")"
+}
+
+// TestPaneMoveSides moves a pane to each side of another, in its own tab
+// and from another, as the window's movePaneBeside drops it: the moved
+// pane has the focus, and its tab goes once empty. Tab a is (1 | (2 / 3))
+// with a float f, tab b is 4.
+func TestPaneMoveSides(t *testing.T) {
+	_, c := applyFixture(t)
+	for _, tc := range []struct {
+		name, sid, target, direction string
+		ratio                        float32
+		zoom                         bool
+		// want is tab a's shape after, and reason the answer's when the
+		// move changes nothing.
+		want, reason string
+		ratioOf      string
+	}{
+		{name: "right in its tab", sid: "1", target: "3", direction: "right", want: "(v 2 (h 3 1))"},
+		{name: "left in its tab", sid: "1", target: "3", direction: "left", want: "(v 2 (h 1 3))"},
+		{name: "up in its tab", sid: "1", target: "3", direction: "up", want: "(v 2 (v 1 3))"},
+		{name: "down in its tab", sid: "1", target: "3", direction: "down", want: "(v 2 (v 3 1))"},
+		{name: "no direction is right", sid: "1", target: "3", want: "(v 2 (h 3 1))"},
+		{name: "beside its sibling", sid: "2", target: "3", direction: "left", want: "(h 1 (h 2 3))"},
+		{name: "above its sibling", sid: "3", target: "2", direction: "up", want: "(h 1 (v 3 2))"},
+		{name: "the same place", sid: "3", target: "2", direction: "down", want: "(h 1 (v 2 3))"},
+		{name: "from another tab, after", sid: "4", target: "1", direction: "right", ratio: 0.3, want: "(h (h 1 4) (v 2 3))", ratioOf: "1"},
+		{name: "from another tab, before", sid: "4", target: "1", direction: "left", ratio: 0.3, want: "(h (h 4 1) (v 2 3))", ratioOf: "4"},
+		{name: "from another tab, above", sid: "4", target: "2", direction: "up", want: "(h 1 (v (v 4 2) 3))"},
+		{name: "a float beside a tiled pane", sid: "f", target: "2", direction: "left", want: "(h 1 (v (h f 2) 3))"},
+		{name: "beside itself", sid: "2", target: "2", direction: "left", reason: "same_pane"},
+		{name: "beside a float", sid: "2", target: "f", direction: "left", reason: "not_found"},
+		{name: "beside no pane", sid: "2", target: "9", direction: "left", reason: "not_found"},
+		{name: "in a zoomed tab", sid: "1", target: "3", direction: "left", zoom: true, reason: "zoomed_tab"},
+		{name: "into a zoomed tab", sid: "4", target: "3", direction: "left", zoom: true, reason: "zoomed_tab"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a := layout.Tab{
+				ID:     "a",
+				Root:   &layout.Node{Ratio: 0.5, A: &layout.Node{SID: "1"}, B: &layout.Node{Vertical: true, Ratio: 0.5, A: &layout.Node{SID: "2"}, B: &layout.Node{SID: "3"}}},
+				Floats: []layout.Float{{Pane: &layout.Node{SID: "f"}, X: 0.1, Y: 0.1, W: 0.5, H: 0.5}},
+				Zoom:   tc.zoom,
+			}
+			seed(t, c, a, layout.Tab{ID: "b", Root: &layout.Node{SID: "4"}})
+			before := must(c.Layout())
+			res, err := c.Command(LayoutCommand{Op: "pane.move", Space: "w", SID: tc.sid, Target: tc.target, Direction: tc.direction, Ratio: tc.ratio})
+			if err != nil || res.Code != "" {
+				t.Fatalf("pane.move: %+v %v", res, err)
+			}
+			w := storeOf(t, c).Sessions[0]
+			if tc.reason != "" {
+				if res.Changed || res.Reason != tc.reason {
+					t.Errorf("answer %+v, want reason %s", res, tc.reason)
+				}
+				if !bytes.Equal(before, must(c.Layout())) {
+					t.Error("a refused move changed the layout")
+				}
+				return
+			}
+			if !res.Changed {
+				t.Fatalf("answer %+v", res)
+			}
+			ta := w.Tabs[0]
+			if got := treeShape(ta.Root); ta.ID != "a" || got != tc.want {
+				t.Errorf("tab %s is %s, want %s", ta.ID, got, tc.want)
+			}
+			if ta.Zoom || ta.FocusFloat != 0 || layout.Leaves(ta.Root)[ta.Focus].SID != tc.sid {
+				t.Errorf("focus %d (float %d, zoom %v), want %s's", ta.Focus, ta.FocusFloat, ta.Zoom, tc.sid)
+			}
+			if tc.sid == "f" && len(ta.Floats) != 0 {
+				t.Errorf("floats left %d", len(ta.Floats))
+			}
+			if wantTabs := map[bool]int{true: 1, false: 2}[tc.sid == "4"]; len(w.Tabs) != wantTabs {
+				t.Errorf("%d tabs, want %d", len(w.Tabs), wantTabs)
+			}
+			if tc.ratioOf != "" {
+				sp := layout.Parent(ta.Root, layout.Find(ta.Root, tc.sid))
+				if sp == nil || layout.FirstLeaf(sp.A).SID != tc.ratioOf || sp.Ratio < 0.29 || sp.Ratio > 0.31 {
+					t.Errorf("the new split %+v, want %s first at %v", sp, tc.ratioOf, tc.ratio)
+				}
+			}
+		})
+	}
+}
+
 // TestTabSetAfterMissing sets tabs after a tab the space does not have: a
 // tab of the space keeps its place, and a new one goes after this
 // machine's tabs, before another host's.
