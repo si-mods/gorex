@@ -228,7 +228,7 @@ export class Terminal {
     this.rows = g.make("row iterator", (s) => x.ghostty_render_state_row_iterator_new(0, s));
     this.cells = g.make("row cells", (s) => x.ghostty_render_state_row_cells_new(0, s));
     this.encoder = g.make("key encoder", (s) => x.ghostty_key_encoder_new(0, s));
-    this.style = g.sized("GhosttyStyle");
+    this.style = g.zeroed("GhosttyStyle");
     this.colors = g.sized("GhosttyRenderStateColors");
     this.cursor = g.sized("GhosttyRenderStateCursor");
     this.scroll = g.alloc(g.size("GhosttyTerminalScrollViewport"));
@@ -237,9 +237,9 @@ export class Terminal {
     const event = (type: string) =>
       g.make("selection event", (s) => x.ghostty_selection_gesture_event_new(0, s, g.e("GhosttySelectionGestureEventType", type)));
     this.ev = { press: event("PRESS"), release: event("RELEASE"), drag: event("DRAG"), tick: event("AUTOSCROLL_TICK") };
-    this.ref = g.sized("GhosttyGridRef");
-    this.sel = g.sized("GhosttySelection");
-    this.sel2 = g.sized("GhosttySelection");
+    this.ref = g.zeroed("GhosttyGridRef");
+    this.sel = g.zeroed("GhosttySelection");
+    this.sel2 = g.zeroed("GhosttySelection");
     this.rowSel = g.sized("GhosttyRenderStateRowSelection");
     this.sx = g.alloc(sx.size);
     g.view.setBigUint64(this.sx + sx.interval, BigInt(clickInterval * 1e6), true);
@@ -250,7 +250,7 @@ export class Terminal {
     this.mouseOut = g.alloc(mouseCap);
     // Motion is reported once a cell, not once a pixel.
     g.bytes[this.sx + sx.flag] = 1;
-    x.ghostty_mouse_encoder_setopt(this.mouseEnc, g.e("GhosttyMouseEncoderOption", "TRACK_LAST_CELL"), this.sx + sx.flag);
+    x.ghostty_mouse_encoder_set(this.mouseEnc, g.e("GhosttyMouseEncoderOption", "TRACK_LAST_CELL"), this.sx + sx.flag);
   }
 
   /** Decodes a complete GHOSTSNP snapshot into a terminal. */
@@ -428,8 +428,8 @@ export class Terminal {
     const { g } = this;
     const x = g.x;
     const enc = this.mouseEnc;
-    const opt = (n: string, p: number) => x.ghostty_mouse_encoder_setopt(enc, g.e("GhosttyMouseEncoderOption", n), p);
-    x.ghostty_mouse_encoder_setopt_from_terminal(enc, this.t);
+    const opt = (n: string, p: number) => x.ghostty_mouse_encoder_set(enc, g.e("GhosttyMouseEncoderOption", n), p);
+    x.ghostty_mouse_encoder_set_from_terminal(enc, this.t);
     const t = "GhosttyMouseEncoderSize";
     const s = this.mouseSize;
     const field = (k: string, n: number) => g.view.setUint32(s + g.off(t, k), Math.max(0, Math.round(n)), true);
@@ -485,7 +485,6 @@ export class Terminal {
     const c = pt + g.off("GhosttyPoint", "value");
     g.view.setUint16(c + g.off("GhosttyPointCoordinate", "x"), col, true);
     g.view.setUint32(c + g.off("GhosttyPointCoordinate", "y"), row, true);
-    g.view.setUint32(this.ref + g.off("GhosttyGridRef", "size"), g.size("GhosttyGridRef"), true);
     return g.x.ghostty_terminal_grid_ref(this.t, pt, this.ref) === 0;
   }
 
@@ -509,7 +508,6 @@ export class Terminal {
   /** Runs a gesture event; on success this.sel holds the selection it makes. */
   private run(ev: number, out = true): number {
     const { g } = this;
-    if (out) g.view.setUint32(this.sel + g.off("GhosttySelection", "size"), g.size("GhosttySelection"), true);
     return g.x.ghostty_selection_gesture_event(this.gesture, this.t, ev, out ? this.sel : 0);
   }
 
@@ -607,7 +605,6 @@ export class Terminal {
   /** Reads the terminal's selection into p; false when there is none. */
   private current(p: number): boolean {
     const { g } = this;
-    g.view.setUint32(p + g.off("GhosttySelection", "size"), g.size("GhosttySelection"), true);
     return g.x.ghostty_terminal_get(this.t, g.e("GhosttyTerminalData", "SELECTION"), p) === 0;
   }
 
@@ -623,28 +620,30 @@ export class Terminal {
   selectionText(): string | undefined {
     const { g } = this;
     const x = g.x;
-    const t = "GhosttyTerminalSelectionFormatOptions";
-    const opts = g.sized(t);
+    if (!this.current(this.sel2)) return undefined;
+    const f = g.make("formatter", (s) => x.ghostty_formatter_terminal_new(0, s, this.t));
     const out = this.sx + sx.out;
     try {
-      g.view.setInt32(opts + g.off(t, "emit"), g.e("GhosttyFormatterFormat", "PLAIN"), true);
-      g.bytes[opts + g.off(t, "unwrap")] = 1;
-      g.bytes[opts + g.off(t, "trim")] = 1;
-      // No selection given: the terminal's own.
+      // The terminal's selection, as plain text with wrapped lines joined and trailing spaces trimmed.
+      const set = (opt: string, p: number) => x.ghostty_formatter_set(f, g.e("GhosttyFormatterOption", opt), p) === 0;
+      g.view.setInt32(out, g.e("GhosttyFormatterFormat", "PLAIN"), true);
+      if (!set("EMIT", out)) return undefined;
+      g.bytes[out] = 1;
+      if (!set("UNWRAP", out) || !set("TRIM", out) || !set("SELECTION", this.sel2)) return undefined;
       g.view.setUint32(out, 0, true);
-      const r = x.ghostty_terminal_selection_format_buf(this.t, opts, 0, 0, out);
+      const r = x.ghostty_formatter_format_buf(f, 0, 0, out);
       if (r === 0) return "";
       if (r !== g.e("GhosttyResult", "OUT_OF_SPACE")) return undefined;
       const n = g.view.getUint32(out, true);
       const buf = g.alloc(n);
       try {
-        if (x.ghostty_terminal_selection_format_buf(this.t, opts, buf, n, out) !== 0) return undefined;
+        if (x.ghostty_formatter_format_buf(f, buf, n, out) !== 0) return undefined;
         return new TextDecoder().decode(g.bytes.slice(buf, buf + g.view.getUint32(out, true)));
       } finally {
         g.free(buf, n);
       }
     } finally {
-      g.free(opts, g.size(t));
+      x.ghostty_formatter_free(f);
     }
   }
 
@@ -664,7 +663,6 @@ export class Terminal {
   selectionEnds(): { start: { x: number; y: number }; end: { x: number; y: number } } | undefined {
     const { g } = this;
     if (!this.current(this.sel2)) return undefined;
-    g.view.setUint32(this.sel + g.off("GhosttySelection", "size"), g.size("GhosttySelection"), true);
     if (g.x.ghostty_terminal_selection_ordered(this.t, this.sel2, g.e("GhosttySelectionOrder", "FORWARD"), this.sel) !== 0) return undefined;
     const start = this.screenPoint(this.sel + g.off("GhosttySelection", "start"));
     const end = this.screenPoint(this.sel + g.off("GhosttySelection", "end"));
@@ -681,7 +679,6 @@ export class Terminal {
   beginMoveEnd(first: boolean): boolean {
     const { g } = this;
     if (!this.current(this.sel2)) return false;
-    g.view.setUint32(this.sel + g.off("GhosttySelection", "size"), g.size("GhosttySelection"), true);
     const order = g.e("GhosttySelectionOrder", first ? "REVERSE" : "FORWARD");
     if (g.x.ghostty_terminal_selection_ordered(this.t, this.sel2, order, this.sel) !== 0) return false;
     this.select(this.sel);
@@ -785,7 +782,7 @@ export class Terminal {
   /** A style colour (underline_color) as RGB, or undefined for none. */
   private styleColor(p: number, palette: number): RGB | undefined {
     const { g } = this;
-    const tag = g.view.getInt32(p + g.off("GhosttyStyleColor", "tag"), true);
+    const tag = g.bytes[p + g.off("GhosttyStyleColor", "tag")];
     const v = p + g.off("GhosttyStyleColor", "value");
     if (tag === g.e("GhosttyStyleColorTag", "PALETTE")) return g.rgb(palette + g.bytes[v] * 3);
     if (tag === g.e("GhosttyStyleColorTag", "RGB")) return g.rgb(v);
@@ -822,7 +819,7 @@ export class Terminal {
     let cx = g.view.getUint16(cu("viewport_x"), true);
     const cy = cursorIn ? g.view.getUint16(cu("viewport_y"), true) : -1;
     if (g.bytes[cu("wide_tail")] && cx > 0) cx--;
-    const st = (s: string) => g.e("GhosttyRenderStateCursorVisualStyle", s);
+    const st = (s: string) => g.e("GhosttyCursorStyle", s);
     let cursorStyle = g.view.getInt32(cu("visual_style"), true);
     if (!f.focused && cursorStyle === st("BLOCK")) cursorStyle = st("BLOCK_HOLLOW");
     const block = showCursor && cursorStyle === st("BLOCK");
@@ -835,6 +832,10 @@ export class Terminal {
     const rowData = (d: string) => g.e("GhosttyRenderStateRowData", d);
     const cellData = (d: string) => g.e("GhosttyRenderStateRowCellsData", d);
     const styleOff = (k: string) => this.style + g.off("GhosttyStyle", k);
+    const flag = (k: string) => {
+      const b = g.styleBits(k);
+      return (g.view.getUint16(styleOff("flags"), true) >> b.lsb) & ((1 << b.width) - 1);
+    };
     const wide = g.cellBits("wide");
     const wideOf = (raw: bigint) => Number((raw >> BigInt(wide.lsb)) & BigInt((1 << wide.width) - 1));
     const WIDE = g.e("GhosttyCellWide", "WIDE");
@@ -885,18 +886,16 @@ export class Terminal {
         let ul: RGB | undefined;
         x.ghostty_render_state_row_cells_get(cells, cellData("HAS_STYLING"), this.scratch);
         if (g.bytes[this.scratch]) {
-          g.view.setUint32(styleOff("size"), g.size("GhosttyStyle"), true);
           x.ghostty_render_state_row_cells_get(cells, cellData("STYLE"), this.style);
-          const b = g.bytes;
-          if (b[styleOff("bold")]) variant |= 1;
-          if (b[styleOff("italic")]) variant |= 2;
-          faint = b[styleOff("faint")] !== 0;
-          strike = b[styleOff("strikethrough")] !== 0;
-          overline = b[styleOff("overline")] !== 0;
-          invisible = b[styleOff("invisible")] !== 0;
-          underline = g.view.getInt32(styleOff("underline"), true);
+          if (flag("bold")) variant |= 1;
+          if (flag("italic")) variant |= 2;
+          faint = flag("faint") !== 0;
+          strike = flag("strikethrough") !== 0;
+          overline = flag("overline") !== 0;
+          invisible = flag("invisible") !== 0;
+          underline = flag("underline");
           ul = this.styleColor(styleOff("underline_color"), palette);
-          if (b[styleOff("inverse")]) {
+          if (flag("inverse")) {
             const was = cfg;
             cfg = cbg ?? bg;
             cbg = was;
@@ -928,7 +927,12 @@ export class Terminal {
             this.graphemesCap = Math.max(n, 8);
             this.graphemes = g.alloc(this.graphemesCap * 4);
           }
-          x.ghostty_render_state_row_cells_get(cells, cellData("GRAPHEMES_BUF"), this.graphemes);
+          // GRAPHEMES_BUF fills a GhosttyCodepointBuffer, here in the scratch.
+          const cb = (k: string) => this.scratch + g.off("GhosttyCodepointBuffer", k);
+          g.view.setUint32(cb("ptr"), this.graphemes, true);
+          g.view.setUint32(cb("cap"), this.graphemesCap, true);
+          g.view.setUint32(cb("len"), 0, true);
+          x.ghostty_render_state_row_cells_get(cells, cellData("GRAPHEMES_BUF"), this.scratch);
           cp = g.view.getUint32(this.graphemes, true);
           for (let i = 0; i < n; i++) text += String.fromCodePoint(g.view.getUint32(this.graphemes + i * 4, true));
         }
@@ -985,7 +989,7 @@ export class Terminal {
       ctx.restore();
       // Drawn: the row is clean until it changes again.
       g.bytes[this.scratch] = 0;
-      x.ghostty_render_state_row_set(this.rows, 0, this.scratch);
+      x.ghostty_render_state_row_set(this.rows, g.e("GhosttyRenderStateRowOption", "DIRTY"), this.scratch);
     }
     g.bytes[this.scratch] = 0;
     x.ghostty_render_state_clean(this.rs);
@@ -1065,7 +1069,7 @@ export class Terminal {
   encodeKey(e: KeyboardEvent): Uint8Array | undefined {
     const { g } = this;
     const x = g.x;
-    x.ghostty_key_encoder_setopt_from_terminal(this.encoder, this.t);
+    x.ghostty_key_encoder_set_from_terminal(this.encoder, this.t);
     const ev = g.make("key event", (s) => x.ghostty_key_event_new(0, s));
     let text = 0, textLen = 0;
     try {
@@ -1082,7 +1086,11 @@ export class Terminal {
         const b = new TextEncoder().encode(e.key);
         textLen = b.length;
         text = g.put(b);
-        x.ghostty_key_event_set_utf8(ev, text, textLen);
+        // A GhosttyString, which wasm32 passes by its address.
+        const s = this.sx + sx.out;
+        g.view.setUint32(s + g.off("GhosttyString", "ptr"), text, true);
+        g.view.setUint32(s + g.off("GhosttyString", "len"), textLen, true);
+        x.ghostty_key_event_set_utf8(ev, s);
         if (e.shiftKey && e.key.toLowerCase() !== e.key) x.ghostty_key_event_set_consumed_mods(ev, Mods.shift);
       }
       const unshifted = unshiftedOf(e);

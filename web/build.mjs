@@ -47,7 +47,7 @@ import { generateOrFail } from "./i18n.mjs";
 
 // The commit of si-mods/mygo's plugins/terminal/internal/libbuild, as
 // ios/scripts/build-ghostty-vt.sh pins it.
-const COMMIT = "dc8f59943ce94b75ffadc45cc4f36eca6a7ed2ae";
+const COMMIT = "108cacb17ed8990840cd14abfce43d8ed8503ca1";
 const ZIG_VERSION = "0.17.0";
 
 const web = dirname(fileURLToPath(import.meta.url));

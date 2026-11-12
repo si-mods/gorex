@@ -461,7 +461,7 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
    `--ghostty-source <path>` to use a checkout you already have.
 3. It runs
    `zig build -Demit-lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall`.
-   It keeps `ghostty-vt.wasm` (about 850 KB) in the cache, so the next
+   It keeps `ghostty-vt.wasm` (about 910 KB) in the cache, so the next
    build skips this step. `--rebuild-wasm` builds it again.
 4. It runs `npm ci` in `web/` if `web/node_modules` is missing, checks
    the catalogs and writes `src/locales.gen.ts` (`web/i18n.mjs`; see
@@ -490,7 +490,7 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
    into `dist/icons` and `dist/brands`, the glyphs of the program tiles
    and of the hosts.
 
-As the page starts, it loads the terminal's wasm (about 870 KB) with a
+As the page starts, it loads the terminal's wasm (about 910 KB) with a
 progress bar over the window's room: the bytes received of the size the
 build wrote in, then "Starting…" while it compiles. The bar shows only
 when the load takes more than 150 ms, so a load from the cache shows
@@ -574,12 +574,12 @@ Sizes are a build's (raw, then brotli, as Cloudflare serves them).
 | Boot | `index.html` (its styles inline) | 49 KB, 9 KB |
 | Boot | The script, `app-<hash>.js`, and the 5 chunks it imports (code it shares with the chunks below) | 198 KB, 59 KB |
 | Boot | The asset manifest | 53 KB, 7 KB |
-| Boot | The terminal's wasm, `ghostty-vt` | 867 KB, 228 KB |
+| Boot | The terminal's wasm, `ghostty-vt` | 914 KB, 235 KB |
 | Boot | Maple's index, `maple/index` | 81 KB, 17 KB |
 | Boot | JetBrains Mono, four faces (`dist/fonts`, as the CSS asks for them) | 1.1 MB |
 | First visit, no host | The welcome screen, `js/welcome` | 2.5 KB |
 | First open | Settings, `js/settings` | 18 KB, 6 KB |
-| First open of Settings › Theme | The theme list, `ghostty-themes` (lazy) | 189 KB, 56 KB |
+| First open of Settings › Theme | The theme list, `ghostty-themes` (lazy) | 195 KB, 58 KB |
 | First open | The Tailscale guide, `js/guide` | 10 KB |
 | Tailscale turned on | `js/tailengine`, then Go's `wasm_exec.js` (`tailnet/exec`, lazy) and the engine (`tailnet/engine`, lazy) | 3 KB, 17 KB, 6.06 MB |
 | First link opened in a pane | `js/files` | 5.6 KB |
@@ -588,7 +588,7 @@ Sizes are a build's (raw, then brotli, as Cloudflare serves them).
 
 Before this, a boot took the script whole (236 KB), the theme list and
 the manifest: 1,425 KB of script, wasm and JSON (373 KB brotli), now
-1,199 KB (311 KB brotli), in 9 requests rather than 5.
+1,246 KB (318 KB brotli), in 9 requests rather than 5.
 
 ### The manifest
 
@@ -1018,9 +1018,10 @@ does the work: its selection gesture (`ghostty_selection_gesture_*` in
 line, the terminal keeps it (`GHOSTTY_TERMINAL_OPT_SELECTION`) as tracked
 references, so that it follows the text as output comes and the scrollback
 moves, the render state gives each row's selected columns
-(`GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION`), and
-`ghostty_terminal_selection_format_buf` gives the text as Ghostty copies
-it (plain, wrapped lines joined, trailing spaces trimmed). Its mouse
+(`GHOSTTY_RENDER_STATE_ROW_DATA_SELECTION`), and a formatter
+(`formatter.h`) given the selection (`GHOSTTY_FORMATTER_OPT_SELECTION`)
+gives the text as Ghostty copies it (plain, wrapped lines joined,
+trailing spaces trimmed). Its mouse
 encoder (`ghostty_mouse_encoder_*` in `mouse/encoder.h`) encodes what a
 program gets.
 
