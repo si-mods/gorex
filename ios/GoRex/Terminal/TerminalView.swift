@@ -815,7 +815,7 @@ final class KeyBar: UIView {
 
     init(target: TerminalView) {
         self.target = target
-        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 52))
+        super.init(frame: CGRect(x: 0, y: 0, width: 0, height: Self.height))
         overrideUserInterfaceStyle = .dark
         func key(_ face: String, _ label: String?, _ name: String) -> UIButton {
             let b = Self.button(face, label, size: Self.small)
@@ -970,7 +970,10 @@ final class KeyBar: UIView {
 
     required init?(coder: NSCoder) { fatalError() }
 
-    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 52) }
+    /// How tall a phone's bar is, over the keyboard or the home indicator.
+    static let height: CGFloat = 52
+
+    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.height) }
 
     /// Points the stick: past a dead zone, the arrow of the drag's main
     /// axis goes at once, then repeats while held, as a held key does. Each
