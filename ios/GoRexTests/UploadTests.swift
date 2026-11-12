@@ -91,6 +91,57 @@ nonisolated final class UploadTests: XCTestCase {
         }
     }
 
+    /// To a server that takes it, a file of text is posted compressed: raw
+    /// DEFLATE, as Content-Encoding deflate-raw, its size in the query, the
+    /// body inflating to the file.
+    @MainActor func testUploadCompressesText() async throws {
+        let http = try FakeHTTP()
+        defer { http.stop() }
+        http.respond = { _ in (200, ["path": "/tmp/gorex/app.log", "word": "/tmp/gorex/app.log"]) }
+        let bytes = Data(String(repeating: "2026-11-12 12:00:00 INFO a line of a log\n", count: 20_000).utf8)
+        let f = try file("app.log", bytes)
+        _ = try await Upload.send(f, name: "app.log", block: "block:1", to: try await http.url(), compress: true)
+        let r = try XCTUnwrap(http.requests.first)
+        let q = URLComponents(string: String(r.head.split(separator: " ")[1]))?.queryItems ?? []
+        XCTAssertEqual(q.first { $0.name == "size" }?.value, String(bytes.count))
+        XCTAssertEqual(r.header("Content-Encoding"), "deflate-raw")
+        XCTAssertLessThan(r.body.count, bytes.count / 10)
+        XCTAssertEqual(try (r.body as NSData).decompressed(using: .zlib) as Data, bytes)
+    }
+
+    /// A file compressed already, as a photo, or one that gets no smaller,
+    /// is posted as it is, as it is to a server that takes no compressed
+    /// file.
+    @MainActor func testUploadSendsCompressedFilesAsTheyAre() async throws {
+        let http = try FakeHTTP()
+        defer { http.stop() }
+        http.respond = { _ in (200, ["path": "/tmp/gorex/x", "word": "/tmp/gorex/x"]) }
+        let text = Data(String(repeating: "hello ", count: 10_000).utf8)
+        var noise = Data(count: 100_000)
+        noise.withUnsafeMutableBytes { for i in $0.indices { $0[i] = UInt8.random(in: 0...255) } }
+        for (name, bytes, compress) in [("IMG_0001.HEIC", text, true), ("noise.bin", noise, true), ("notes.txt", text, false)] {
+            let f = try file(name, bytes)
+            XCTAssertNil(compress ? try Upload.deflated(f) : nil, name)
+            _ = try await Upload.send(f, name: name, block: "block:1", to: try await http.url(), compress: compress)
+            let r = try XCTUnwrap(http.requests.last)
+            XCTAssertNil(r.header("Content-Encoding"), name)
+            XCTAssertFalse(r.head.contains("size="), name)
+            XCTAssertEqual(r.body, bytes, name)
+        }
+    }
+
+    /// The compressed file is a temporary one of its own, beside the size of
+    /// the file it is of.
+    func testDeflated() throws {
+        let bytes = Data(String(repeating: "func f() {}\n", count: 50_000).utf8)
+        let f = try file("main.swift", bytes)
+        let packed = try XCTUnwrap(Upload.deflated(f))
+        defer { try? FileManager.default.removeItem(at: packed.file) }
+        XCTAssertEqual(packed.size, bytes.count)
+        XCTAssertNotEqual(packed.file, f)
+        XCTAssertEqual(try (Data(contentsOf: packed.file) as NSData).decompressed(using: .zlib) as Data, bytes)
+    }
+
     /// A photo is named as the library suggests, with its file's extension
     /// upper case, as the camera names it.
     func testPhotoName() {
