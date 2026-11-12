@@ -62,3 +62,33 @@ jobs:
             GOOS=${t%/*} GOARCH=${t#*/} go build ./...
             echo "::endgroup::"
           done
+
+  # Trial: the same tests on Linux, on instabox machines. The root package's
+  # tests run one after another, so four machines take a quarter each; a
+  # fifth runs the other packages.
+  test-linux:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: instabox-medium
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [root-0, root-1, root-2, root-3, others]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: test
+        run: |
+          case "${{ matrix.part }}" in
+            others)
+              go test $(go list ./... | grep -v '^gorex$') -count=1 -timeout 15m
+              ;;
+            root-*)
+              n=${{ strategy.job-total }}; n=$((n - 1))
+              i="${{ matrix.part }}"; i=${i#root-}
+              tests=$(go test -list '^Test' . | grep '^Test' | awk -v n="$n" -v i="$i" 'NR % n == i' | paste -sd'|' -)
+              go test . -count=1 -timeout 15m -run "^($tests)\$"
+              ;;
+          esac
