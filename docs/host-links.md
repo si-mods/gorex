@@ -59,7 +59,7 @@ admits a connection by the client's key and nothing else, on every port.
 | Introduction | Approval | Today |
 | --- | --- | --- |
 | Pairing window | the user compares the fingerprint of the client's key | exists (desktop, Rex Go) |
-| Pairing by address | the user compares a code of both keys | new: type `192.168.8.20` |
+| Pairing by address | the user compares a code of both keys | exists (desktop, Rex Go): type `192.168.8.20` |
 | QR code | the scan, then the pairing window | exists (Rex Go) |
 | Tailscale | none: the device is the same Tailscale user's | new, replaces the tailnet's own session path |
 
@@ -110,7 +110,8 @@ This replaces today's fingerprint for this introduction only: that one
 covers the client's key alone, which is enough where the address
 already carried the server's key, and not here.
 
-As built (`internal/rex/pairaddr.go`, `remotectl pair IP NAME`):
+As built (`internal/pairaddr`, served by `internal/rex/pairaddr.go`;
+`remotectl pair IP NAME`; Rex Go's engine, `ios/tailnet/pairaddr.go`):
 
 - The path is `/gorex/pair` on the relay's listener, an HTTP/1.1
   upgrade to `gorex-pair-v1`; then the messages are bytes: the
@@ -139,6 +140,12 @@ As built (`internal/rex/pairaddr.go`, `remotectl pair IP NAME`):
 - The client's confirmation is its own and may come before or after the
   approval: `PairByAddress` returns the code at once, and `Confirm`
   waits for the addresses; `Mismatch` ends it with the warning.
+- The client half is `internal/pairaddr`, apart from the server's
+  packages, so that Rex Go's engine asks with it too: with the phone's
+  tailcat key, one pairing at a time (`PairByAddress`,
+  `ConfirmAddressPairing`, `MismatchAddressPairing`,
+  `CancelAddressPairing`). The phone keeps the first address, Reachable
+  at's, as a host of a `rexgo://tailcat` code.
 
 What it costs, said plainly: while the window is open, whoever can
 dial the address can ask to pair, where over tailcat they would need
@@ -304,7 +311,7 @@ commands (`gorex remote tailscale on|off`, `gorex remote relay`).
 | --- | --- | --- | --- |
 | Speaks | the session protocol, 7464 | Rex's API, 7297 | Rex's API |
 | Device key | `remote-client.json` | Keychain | none today |
-| Paired by | pairing window; by address, new | QR code, then the window; by address, new | — |
+| Paired by | pairing window; by address | QR code, then the window; by address | — |
 | Tailcat | yes | yes (ios-tailcat.md) | not yet |
 | The machine as relay | new, no client change | new, no client change | no: a browser cannot pin a certificate |
 | Tailscale introduction | new | later: its node asks, as a desktop's | — |
@@ -315,8 +322,10 @@ commands (`gorex remote tailscale on|off`, `gorex remote relay`).
 **Rex Go.** It already has the device key, pairing and tailcat, on the
 gateway's port. A machine that is its own relay is one more address in
 a `rexgo://tailcat` code; the engine dials it as any tailcat address.
-Add Host by hand takes an IP address too: the engine makes the request
-and the app shows the code.
+Add Host by hand takes an IP address too: Pair with GoRex has the engine
+make the request, the app shows the code, and once the user says the
+codes match and the machine approves, it adds the host at the address
+it got, as a scanned one.
 Its built-in Tailscale stays for Rex servers, which have no tailcat,
 and for a GoRex machine reached on 443. Later, its node can ask for an
 introduction as a desktop's does, so a phone on the account needs no
@@ -418,7 +427,7 @@ Each ships something a user can use.
 1. **Spike** (done): the machine as its own relay, with tailcat as it
    is. It holds; see Path for what it found.
 2. **Reachable at** (the server, its CLI, pairing by address and the
-   desktop's Settings and Add Remote Host are done; Rex Go is not): the setting, the second address
+   desktop's Settings and Add Remote Host, and Rex Go's Add Host, are done): the setting, the second address
    and its QR code, and pairing by address. Desktops and Rex Go connect over a local
    network or a VPN of one's own with no relay, from an IP address
    typed in. Docs.

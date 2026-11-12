@@ -1,3 +1,4 @@
+import Network
 import SwiftUI
 
 /// The hosts, as Rex's Remote Hosts page lists them: edit to remove or
@@ -7,7 +8,7 @@ struct RemoteHostsView: View {
     @State private var sheet: Sheet?
 
     private enum Sheet: Identifiable {
-        case connect, manual, scan, details(HostConfig), pair(HostConfig)
+        case connect, manual, scan, details(HostConfig), pair(HostConfig), pairAddress(String, HostConfig)
         var id: String {
             switch self {
             case .connect: "connect"
@@ -15,6 +16,7 @@ struct RemoteHostsView: View {
             case .scan: "scan"
             case .details(let c): c.id.uuidString
             case .pair(let c): "pair " + c.id.uuidString
+            case .pairAddress(_, let c): "pair address " + c.id.uuidString
             }
         }
     }
@@ -60,13 +62,15 @@ struct RemoteHostsView: View {
             case .connect:
                 ConnectSheet(manual: { sheet = .manual }, scan: { sheet = .scan })
             case .manual:
-                HostForm(config: nil)
+                HostForm(config: nil) { sheet = .pairAddress($0, $1) }
             case .scan:
                 QRScanner(onScan: pair)
             case .details(let c):
                 HostForm(config: c)
             case .pair(let c):
                 TailcatPairSheet(code: c)
+            case .pairAddress(let address, let c):
+                AddressPairSheet(address: address, host: c)
             }
         }
     }
@@ -159,6 +163,8 @@ private struct HostForm: View {
     @Environment(HostStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     let config: HostConfig?
+    /// Pairs by the IP address typed, with the host as entered.
+    var pairByAddress: ((String, HostConfig) -> Void)?
     @State private var address: String
     @State private var symbol: String
     @State private var name: String
@@ -170,8 +176,9 @@ private struct HostForm: View {
     @State private var deleting = false
     @AppStorage(TailnetSettings.onKey) private var tailnetOn = false
 
-    init(config: HostConfig?) {
+    init(config: HostConfig?, pairByAddress: ((String, HostConfig) -> Void)? = nil) {
         self.config = config
+        self.pairByAddress = pairByAddress
         _address = State(initialValue: config?.url.absoluteString ?? "")
         _symbol = State(initialValue: config?.symbol ?? "laptopcomputer")
         _name = State(initialValue: config?.name ?? "")
@@ -200,6 +207,15 @@ private struct HostForm: View {
         return c
     }
 
+    /// The address typed, when a GoRex machine could pair by it: an IP
+    /// address, or IP:PORT.
+    private var pairAddress: String? {
+        let s = address.trimmingCharacters(in: .whitespaces)
+        guard config == nil, !s.contains("://"), let h = entered?.url.host()?.trimmingCharacters(in: ["[", "]"]),
+              IPv4Address(h) != nil || IPv6Address(h) != nil else { return nil }
+        return s
+    }
+
     var body: some View {
         let c = entered
         NavigationStack {
@@ -225,6 +241,14 @@ private struct HostForm: View {
                                 .frame(maxWidth: .infinity).multilineTextAlignment(.center)
                             Text("Server address").frame(maxWidth: .infinity, alignment: .leading)
                         }
+                    }
+                    .listRowBackground(Color.card)
+                }
+                if let p = pairAddress, let c, let pairByAddress {
+                    Section {
+                        Button("Pair with GoRex") { pairByAddress(p, c) }
+                    } footer: {
+                        Text("For a GoRex machine with Reachable at on: first choose Pair New Device… in its Settings › Server › Devices.")
                     }
                     .listRowBackground(Color.card)
                 }
@@ -382,4 +406,101 @@ struct TailcatPairSheet: View {
     }
 
     private func finish() { dismiss() }
+}
+
+/// Pairs with a GoRex machine by its IP address, through its own relay
+/// (docs/host-links.md, Pairing by address): shows the code to compare
+/// with the one the machine shows, and once the user says they match and
+/// the machine approves, adds the host at the tailcat address it got, as
+/// a Rex Go code's. "They differ", an error or leaving saves nothing.
+private struct AddressPairSheet: View {
+    let address: String
+    /// The host as entered: its name, icon and command.
+    let host: HostConfig
+    @Environment(HostStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var code: String?
+    @State private var matched = false
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Pair with \(host.name)").font(.title2.bold())
+            if let problem {
+                Text(problem).foregroundStyle(.secondary)
+            } else if let code {
+                if matched {
+                    Text("On \(host.name), open Settings › Server › Devices and approve the request showing this code.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("Compare this code with the one \(host.name) shows. Both must be the same.")
+                        .foregroundStyle(.secondary)
+                }
+                Text(code).font(.largeTitle.monospaced().bold())
+                if matched {
+                    ProgressView()
+                } else {
+                    VStack(spacing: 12) {
+                        Button { confirm() } label: { Text("The codes match").frame(maxWidth: .infinity) }
+                            .buttonStyle(.glassProminent)
+                            .foregroundStyle(Color.page)
+                        Button { differ() } label: { Text("They differ").frame(maxWidth: .infinity) }
+                            .buttonStyle(.glass)
+                    }
+                    .font(.headline)
+                    .controlSize(.extraLarge)
+                }
+            } else {
+                Text("Asking \(host.name) to pair…").foregroundStyle(.secondary)
+                ProgressView()
+            }
+            Spacer(minLength: 12)
+            Button(problem == nil ? "Cancel" : "Done") { dismiss() }
+                .buttonStyle(.glass)
+                .font(.headline)
+                .controlSize(.extraLarge)
+        }
+        .multilineTextAlignment(.center)
+        .padding(24)
+        .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(code != nil && problem == nil)
+        .task {
+            do {
+                let c = try await TailnetEngine.shared.pairByAddress(address)
+                // Left while it asked: the request goes.
+                if Task.isCancelled {
+                    TailnetEngine.shared.cancelAddressPairing()
+                    return
+                }
+                code = c
+            } catch {
+                problem = String(localized: "Couldn't pair: \(error.localizedDescription)")
+            }
+        }
+        .onDisappear { TailnetEngine.shared.cancelAddressPairing() }
+    }
+
+    private func confirm() {
+        matched = true
+        Task {
+            do {
+                let a = try await TailnetEngine.shared.confirmAddressPairing()
+                var h = host
+                h.url = HostConfig.tailcatURL(h.id)
+                h.transport = nil
+                h.tailcat = HostConfig.Tailcat(address: a, machine: h.name)
+                store.add(h)
+                dismiss()
+            } catch {
+                problem = String(localized: "Couldn't pair: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func differ() {
+        Task {
+            let warning = await TailnetEngine.shared.mismatchAddressPairing()
+            problem = String(localized: "Couldn't pair: \(warning)")
+        }
+    }
 }

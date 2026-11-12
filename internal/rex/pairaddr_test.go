@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"gorex/internal/pairaddr"
+
 	"github.com/tailscale/tailcat"
 	"tailscale.com/types/key"
 )
@@ -343,7 +345,7 @@ func TestPairByAddress(t *testing.T) {
 			t.Fatal(err)
 		}
 		// The user says the codes differ: nothing kept, and the warning.
-		if err := p.Mismatch(); err != errUnknownDevice {
+		if err := p.Mismatch(); err != pairaddr.ErrUnknownDevice {
 			t.Errorf("mismatch: %v", err)
 		}
 		if _, err := p.Confirm(ctx); err == nil {
@@ -368,17 +370,17 @@ func TestPairByAddress(t *testing.T) {
 	t.Run("answer not the machine's", func(t *testing.T) {
 		ks := second.ServerPublic.NodePublic
 		pin := second.Region[0].Nodes[0].CertName
-		if err := checkPairAddrs([]string{st.ReachableAddress, st.Address}, ks, pin); err != nil {
+		if err := pairaddr.CheckAddrs([]string{st.ReachableAddress, st.Address}, ks, pin); err != nil {
 			t.Fatal(err)
 		}
 		for what, err := range map[string]error{
-			"another key":    checkPairAddrs([]string{st.ReachableAddress, st.Address}, key.NewNode().Public(), pin),
-			"another pin":    checkPairAddrs([]string{st.ReachableAddress}, ks, "sha256-raw:"+strings.Repeat("00", 32)),
-			"default first":  checkPairAddrs([]string{st.Address, st.ReachableAddress}, ks, pin),
-			"not an address": checkPairAddrs([]string{st.ReachableAddress, "192.0.2.10"}, ks, pin),
-			"none":           checkPairAddrs(nil, ks, pin),
+			"another key":    pairaddr.CheckAddrs([]string{st.ReachableAddress, st.Address}, key.NewNode().Public(), pin),
+			"another pin":    pairaddr.CheckAddrs([]string{st.ReachableAddress}, ks, "sha256-raw:"+strings.Repeat("00", 32)),
+			"default first":  pairaddr.CheckAddrs([]string{st.Address, st.ReachableAddress}, ks, pin),
+			"not an address": pairaddr.CheckAddrs([]string{st.ReachableAddress, "192.0.2.10"}, ks, pin),
+			"none":           pairaddr.CheckAddrs(nil, ks, pin),
 		} {
-			if err != errUnknownDevice {
+			if err != pairaddr.ErrUnknownDevice {
 				t.Errorf("%s: %v", what, err)
 			}
 		}

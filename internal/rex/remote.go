@@ -23,7 +23,8 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
+
+	"gorex/internal/pairaddr"
 
 	"github.com/tailscale/tailcat"
 	"tailscale.com/envknob"
@@ -76,12 +77,11 @@ type RemoteConfig struct {
 	ReachableAt string `json:"reachableAt,omitempty"`
 }
 
-// The pairing window: how long it stays open, how many requests it
-// keeps, and the longest name of one.
+// The pairing window: how long it stays open, and how many requests it
+// keeps.
 const (
-	pairWindow  = 5 * time.Minute
-	maxPending  = 8
-	maxPairName = 40
+	pairWindow = 5 * time.Minute
+	maxPending = 8
 )
 
 func remotePath() string { return filepath.Join(Dir(), "remote.json") }
@@ -216,21 +216,9 @@ func Fingerprint(publicKey string) string {
 	return h[:8] + "-" + h[len(h)-4:]
 }
 
-// pairName cleans the name a client asks to pair with: printable
-// characters only, at most maxPairName of them.
-func pairName(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsPrint(r) {
-			return r
-		}
-		return -1
-	}, s)
-	s = strings.TrimSpace(s)
-	if r := []rune(s); len(r) > maxPairName {
-		s = strings.TrimSpace(string(r[:maxPairName]))
-	}
-	return s
-}
+// pairName cleans the name a client asks to pair with, as pairing by
+// address does.
+func pairName(s string) string { return pairaddr.Name(s) }
 
 func parsePublicKey(s string) (key.NodePublic, error) {
 	var k key.NodePublic

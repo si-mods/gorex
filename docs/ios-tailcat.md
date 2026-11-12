@@ -186,6 +186,12 @@ the `rexgo` scheme it registers already):
    one; the user approves there, as for a desktop;
 4. adds the host, which connects as soon as the key is allowed.
 
+A machine with Reachable at on pairs by its IP address too
+(host-links.md, Pairing by address): Add Host › Set Up Manually, an IP
+address or IP:PORT, Pair with GoRex. Both sides show a code; once the
+user says they match and the machine approves, the phone adds the host
+at the tailcat address it got, as from a code.
+
 Revoking is the allowlist's Remove: the phone's connections close, its
 key is refused, nothing else changes. Removing the host on the phone
 doesn't revoke it.
