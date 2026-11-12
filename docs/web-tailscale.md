@@ -112,27 +112,115 @@ none of it.
 ### Build and size
 
 `web/build.mjs` gets a step that runs
-`go build -trimpath -ldflags "-s -w" -tags <tags>` with `GOOS=js
-GOARCH=wasm` on `web/tailnet`, copies Go's `lib/wasm/wasm_exec.js` of the
-same toolchain, and gzips the result. It does not run `wasm-opt`, as
-tsconnect does: in the spike it saved 9% raw, 1% gzipped and nothing
-with brotli (table), and Binaryen's npm build took over four minutes.
+`GOEXPERIMENT=nojsonv2 go build -trimpath -ldflags "-s -w" -tags <tags>`
+with `GOOS=js GOARCH=wasm` on `web/tailnet`, copies Go's
+`lib/wasm/wasm_exec.js` of the same toolchain, and gzips the result. It
+does not run `wasm-opt`, as tsconnect does: it saves 9% raw, 1.5% gzipped
+and nothing with brotli (table), and Binaryen's npm build took over four
+minutes. The size work is in three places.
+
 The tags are tsconnect's own list,
 `tailscale.com/cmd/tsconnect/wasmbuild.Tags()`, read by a small
-`go run`, so a `tailscale.com` bump keeps them current.
+`go run` so a `tailscale.com` bump keeps them current, plus five more
+`ts_omit_` tags that the web node does not need: `c2n`, `dns`,
+`health`, `ipnbus` and `logtail`. `go run tailscale.com/cmd/featuretags
+--list` shows all features of the pinned version; `--min --add
+netstack,bakedroots` gives exactly tsconnect's list plus these five. The
+web node needs no SSH, Taildrop, exit node, subnet routing, serve,
+funnel, portmapper, captive portal, drive, appconnectors, relay server,
+peerapi, usermetrics, clientmetrics, syspolicy or debug endpoint, and
+tsconnect's list already omits all of them. It keeps `netstack`
+(userspace TCP to a peer) and `bakedroots` (TLS without OS roots).
+`tailnetlock` stays omitted, as in tsconnect: dropping it may break
+tailnets that use Tailnet Lock (see Open questions).
+
+The engine's `main` does not import `ipnserver` (it pulls in
+`localapi` and `os/exec`), `logpolicy` or `logtail`. It calls
+`NewLocalBackend` directly with a zero log ID and `log.Printf`, and
+starts no LocalAPI listener. The node then keeps no `log-policy` key and
+uploads no logs.
+
+The build sets `GOEXPERIMENT=nojsonv2`. Go 1.27 builds `encoding/json`
+on `encoding/json/v2` by default; with the experiment off, std keeps its
+older implementation and `encoding/json/v2` and `jsontext` (640 KB of
+code) drop out, because `tailscale.com` uses its own copy
+(`go-json-experiment`). It is a toolchain experiment that a later Go may
+remove; if it goes, the build grows by 0.9 MB and exceeds the limit
+below again, so the step still gzips.
 
 Measured with the pinned `tailscale.com` and Go 1.27.3:
 
 | Build | Raw | gzip -9 | brotli 11 |
 | --- | --- | --- | --- |
 | tsconnect's `wasm` package, unchanged | 29.81 MB | 6.88 MB | 4.86 MB |
-| the spike's engine (no SSH, with `x/net/websocket` and the roots) | 29.06 MB | 6.72 MB | 4.75 MB |
-| the same, after `wasm-opt -Oz` (Binaryen 123) | 26.53 MB | 6.65 MB | 4.76 MB |
+| the spike's engine (no SSH, with `x/net/websocket` and the roots), tsconnect's tags | 29.06 MB | 6.72 MB | 4.75 MB |
+| the same, with the five more tags | 27.60 MB | 6.39 MB | 4.51 MB |
+| the lean engine (no `ipnserver`, `logpolicy`, `logtail`), same tags | 27.05 MB | 6.28 MB | 4.41 MB |
+| the same, with `GOEXPERIMENT=nojsonv2` (the choice) | 26.12 MB (26,121,454 bytes) | 6.08 MB | 4.28 MB |
+| the choice, after `wasm-opt -Oz` (Binaryen 123) | 23.61 MB | 5.99 MB | 4.33 MB |
 
-Cloudflare Workers serves a static asset of at most 25 MiB (26.21 MB).
-Every raw build is over that limit, `wasm-opt`'s too. So the build
-ships the wasm compressed, as `tailnet-<hash>.wasm.gz` (about
-6.7 MB), and the frame unpacks it with `DecompressionStream("gzip")` into
+Each step, by raw size. The five tags added to tsconnect's list one at a
+time (spike engine): `logtail` -0.69 MB (the spike's `main` imports
+`logtail`, so only part of it goes without the `main` change), `dns`
+-0.58 MB, `health` -0.20 MB, `c2n` -11 KB, `ipnbus` -7 KB. Put back one
+at a time into the set of all five, each adds only `health` 190 KB,
+`c2n` 9 KB, `ipnbus` 8 KB, `dns` 5 KB, because the tags overlap: they
+are worth their sum, not each alone. The `main` change takes 0.55 MB,
+`nojsonv2` 0.93 MB. The whole trim is 2.9 MB raw, 0.64 MB gzipped and
+0.47 MB brotlied.
+
+Rejected:
+
+- `nethttpomithttp2` (a Go tag) saves another 1.2 MB, but the control
+  client speaks HTTP/2 inside the Noise connection
+  (`ts2021/client.go`: `SetUnencryptedHTTP2`). Tried in the browser:
+  `NeedsLogin`, then the `ts2021` WebSocket reconnects in a loop and no
+  login URL comes.
+- The trimmed build was run only to the login URL. Its peers path
+  (netmap, DERP, dial) is not run yet (Spike, questions 5 to 7), so
+  `dns`, `health` and `ipnbus` stay on trial until then.
+
+Largest packages by code size (function bytes from the name section of an
+unstripped build: 16.9 MB of code before, 15.0 MB after; the 11 MB data
+section, mostly type and function tables, is not in it):
+
+| Package | Before | After | Why it stays |
+| --- | --- | --- | --- |
+| `runtime` | 1197 KB | 1192 KB | Go |
+| `net/http` | 725 KB | 712 KB | control and DERP clients |
+| `crypto/tls` | 649 KB | 649 KB | TLS to a peer's port 443 |
+| `ipn/ipnlocal` | 604 KB | 519 KB | the backend |
+| `net/http/internal/http2` | 526 KB | 526 KB | control speaks h2 over Noise (above) |
+| `gvisor tcpip/stack` | 500 KB | 500 KB | netstack |
+| `wgengine/magicsock` | 456 KB | 452 KB | DERP and WireGuard paths |
+| `encoding/json/v2` | 445 KB | gone | `nojsonv2` |
+| `net` | 426 KB | 401 KB | |
+| `klauspost/compress/zstd` | 426 KB | 149 KB | map responses (below) |
+| `gvisor tcpip/transport/tcp` | 395 KB | 395 KB | netstack |
+| `gvisor tcpip/network/ipv6` | 300 KB | 300 KB | below |
+| `crypto/x509` | 275 KB | 273 KB | |
+| `control/controlclient` | 249 KB | 247 KB | |
+| `encoding/json` (older std) | | 239 KB | replaces v2 |
+
+Still large and not needed, but they need a change in `tailscale.com`
+itself, which the build does not patch:
+
+- `gvisor` `ipv6`, `udp`, `icmp`, `raw` (about 430 KB): `netstack.Create`
+  registers every protocol (`main` <- `wgengine/netstack`).
+- `regexp` and `regexp/syntax` (about 150 KB): `main` <-
+  `wgengine/netstack` <- `gvisor/pkg/refs` <- `gvisor/pkg/log`.
+- `klauspost/compress/zstd`, `huff0` (about 215 KB): `main` <-
+  `control/controlclient` <- `util/zstdframe`, for map responses that
+  control compresses with zstd.
+- `net/dns`, `net/dns/resolver`, `net/netcheck`, `net/routemanager`
+  (about 150 KB): `ipnlocal` imports them, and no tag cuts them.
+
+Cloudflare Workers serves a static asset of at most 25 MiB (26,214,400
+bytes). The choice (26,121,454 bytes) is under that limit by 92,946
+bytes, 0.35%: a `tailscale.com` bump may put it over, and the `wasm-opt`
+output (23.61 MB) is the way back under. The build still ships the wasm
+compressed, as `tailnet-<hash>.wasm.gz` (about 6.1 MB), and the frame
+unpacks it with `DecompressionStream("gzip")` into
 `WebAssembly.instantiateStreaming`. Cloudflare already serves
 `application/wasm` with brotli (`ghostty-vt.wasm` arrives
 `Content-Encoding: br`), but that does not lift the limit on the stored
@@ -141,6 +229,11 @@ file. The budget: at most 25 MiB stored, at most 7 MB over the network.
 The name carries the content's hash and `_headers` keeps it a year
 (`immutable`), unlike the page's other files, which revalidate on every
 load: a returning user downloads it once per version.
+
+The choice, and its `wasm-opt` output, each reached `NeedsLogin` and a
+`https://login.tailscale.com/a/…` URL in ego lite from
+`http://127.0.0.1:<port>` (about 1 s after `login()`), with `bakedroots`
+verifying the `login.tailscale.com` chain.
 
 ### State
 
@@ -446,7 +539,7 @@ through ego lite. Nothing was signed in.
 
 | # | Question | Result |
 | --- | --- | --- |
-| 1 | Builds with the pinned `tailscale.com`? | Verified. `GOOS=js GOARCH=wasm go build -tags <wasmbuild.Tags()> -trimpath -ldflags "-s -w" tailscale.com/cmd/tsconnect/wasm`: 29.81 MB raw, 6.88 MB gzip, 4.86 MB brotli. The spike's own engine: 29.06 / 6.72 / 4.75 MB. |
+| 1 | Builds with the pinned `tailscale.com`? | Verified. `GOOS=js GOARCH=wasm go build -tags <wasmbuild.Tags()> -trimpath -ldflags "-s -w" tailscale.com/cmd/tsconnect/wasm`: 29.81 MB raw, 6.88 MB gzip, 4.86 MB brotli. The spike's own engine: 29.06 / 6.72 / 4.75 MB; trimmed (Build and size): 26.12 / 6.08 / 4.28 MB. |
 | 2 | Reaches a login URL from a page? | Verified, from `http://127.0.0.1:<port>` under the hosted page's CSP: `NoState`, `NeedsLogin` 60 ms after start; after `login()`: `GET https://controlplane.tailscale.com/key?v=147` (200, `Access-Control-Allow-Origin: *`), WebSocket `wss://controlplane.tailscale.com/ts2021?X-Tailscale-Handshake=…` with protocol `tailscale-control-protocol` (open), and a `https://login.tailscale.com/a/…` URL 1.3–2.3 s after `NeedsLogin`. Also `POST https://log.tailscale.com/c/tailnode.log.tailscale.io/…` (no-cors, logs). No DERP before login. |
 | 2b | Under a tight CSP? | Verified: with `connect-src 'self' https://controlplane.tailscale.com wss://controlplane.tailscale.com wss://*.tailscale.com`, the same login URL; the log upload was blocked by CSP without effect on login. |
 | 3 | Does control or DERP check `Origin`? | Verified: neither does. For no `Origin`, `https://gorex-web.molty.workers.dev`, `http://127.0.0.1:…` and `https://evil.example`: control answered 101 and completed the Noise handshake (protocol 147); `derp20b` and `derp4f.tailscale.com` answered 101 with protocol `derp` and sent their server key frame. `/key` answers `Access-Control-Allow-Origin: *`. |
@@ -456,7 +549,7 @@ through ego lite. Nothing was signed in.
 | 5c | Gateway checks for a wasm caller? | Not verified at run time; read in code (Gateway). |
 | 6 | Peers from the network map? | Not verified (needs a signed-in node). The spike's `peers()` reads `NetMapWithPeers()`: name, `Hostinfo.Hostname`, `Hostinfo.App`, OS, user, tags, online, capabilities. tsconnect's callback reports it only on `SelfChange`. |
 | 7 | Recognizing a gateway? | Not verified. Read in code: the default name is `<machine>-gorex` but any name can be set; `tsnet` sets only `Hostinfo.Package = "tsnet"`; the gateway could set `App`. |
-| 8 | Fits Cloudflare? | Read in Cloudflare's limits: 25 MiB (26,214,400 bytes) per asset. No raw build fits, not even after `wasm-opt -Oz` (26,525,079 bytes); gzip (6.7 MB) does. |
+| 8 | Fits Cloudflare? | Read in Cloudflare's limits: 25 MiB (26,214,400 bytes) per asset. The spike's builds do not, not even after `wasm-opt -Oz` (26,525,079 bytes); the trimmed build (Build and size) does, by 93 KB (26,121,454 bytes), and gzip (6.1 MB) does with room. |
 
 ## Open questions
 
