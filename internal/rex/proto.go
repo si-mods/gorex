@@ -479,6 +479,10 @@ type RemoteStatus struct {
 	ReachableAt      string `json:"reachableAt,omitempty"`
 	ReachableAddress string `json:"reachableAddress,omitempty"`
 	ReachableError   string `json:"reachableError,omitempty"`
+	// ReachableFirewall is "blocked" while the relay runs and Windows
+	// Firewall drops connections to it (firewall.go), "blockRule" when a
+	// rule that blocks GoRex does, else "".
+	ReachableFirewall string `json:"reachableFirewall,omitempty"`
 	// Pairing is the pairing window, Pending the requests made in it.
 	Pairing RemotePairing   `json:"pairing"`
 	Pending []RemotePending `json:"pending,omitempty"`

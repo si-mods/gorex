@@ -124,6 +124,7 @@ func (s *Server) ownStartLocked() {
 				// The relay took clients before a revoke could find it.
 				o.relay.dropClients()
 				log.Printf("rex: reachable at %s", cfg.ReachableAt)
+				go s.firewallCheck(true)
 				errs := make(chan error, 2)
 				go func() { errs <- s.remoteAccept(o.ts, o.api) }()
 				go func() { errs <- s.remoteAccept(o.ts, o.ln) }()
