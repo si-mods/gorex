@@ -227,13 +227,14 @@ struct TerminalScreen: View {
 /// The mic: a tap turns it on, and a tap turns it off and types what it
 /// heard into the terminal, recognised on the phone (Dictation), unsent.
 /// It spins while it recognises. Its first tap asks to download the models,
-/// and while they download it shows how far, and a tap stops it. It goes
+/// and while they download it shows how far, and a tap asks to stop it. It goes
 /// off, typing nothing, as it goes away with the screen.
 private struct Mic: View {
     let terminal: () -> TerminalView?
     @State private var on = false
     @State private var busy = false
     @State private var asking = false
+    @State private var stopping = false
     private let dictation = Dictation.shared
 
     var body: some View {
@@ -260,7 +261,7 @@ private struct Mic: View {
         .onTapGesture {
             guard !busy else { return }
             if dictation.progress != nil {
-                dictation.cancel()
+                stopping = true
             } else if on {
                 busy = true
                 Task {
@@ -281,6 +282,7 @@ private struct Mic: View {
         } message: {
             Text("Speech is recognised on this device, by SenseVoice. Its model, \(Dictation.size.formatted(.byteCount(style: .file))), downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.")
         }
+        .stopsDownload($stopping)
         .alert("Can't Download the Speech Model", isPresented: Binding { dictation.error != nil } set: { if !$0 { dictation.error = nil } }) {
         } message: {
             Text(dictation.error ?? "")
@@ -350,4 +352,14 @@ private struct TerminalRepresentable: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ v: TerminalHost, coordinator: ()) { v.terminal.close() }
+}
+
+extension View {
+    /// Asks before a tap stops the speech model's download.
+    func stopsDownload(_ asking: Binding<Bool>) -> some View {
+        alert("Stop Downloading the Speech Model?", isPresented: asking) {
+            Button("Stop Downloading", role: .destructive) { Dictation.shared.cancel() }
+            Button("Keep Downloading", role: .cancel) {}
+        }
+    }
 }

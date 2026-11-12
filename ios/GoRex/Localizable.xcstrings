@@ -632,6 +632,16 @@
         }
       }
     },
+    "Keep Downloading": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续下载"
+          }
+        }
+      }
+    },
     "Label": {
       "localizations": {
         "zh-Hans": {
@@ -1078,6 +1088,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "启动命令"
+          }
+        }
+      }
+    },
+    "Stop Downloading": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止下载"
+          }
+        }
+      }
+    },
+    "Stop Downloading the Speech Model?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止下载语音模型？"
           }
         }
       }

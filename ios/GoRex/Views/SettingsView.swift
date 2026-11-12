@@ -306,6 +306,7 @@ private struct TerminalSettings: View {
     }
     private let maple = Maple.shared
     private let dictation = Dictation.shared
+    @State private var stopping = false
 
     var body: some View {
         List {
@@ -389,10 +390,10 @@ private struct TerminalSettings: View {
     }
 
     /// The speech model: downloaded, to delete; else its size and a
-    /// download, or the download's progress and a stop.
+    /// download, or the download's progress and a stop, which asks.
     private var speech: some View {
         Button {
-            if !dictation.installed { dictation.progress == nil ? dictation.download() : dictation.cancel() }
+            if !dictation.installed { if dictation.progress == nil { dictation.download() } else { stopping = true } }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -410,6 +411,7 @@ private struct TerminalSettings: View {
             }
         }
         .swipeActions { Button("Delete", role: .destructive) { dictation.delete() } }
+        .stopsDownload($stopping)
         .listRowBackground(Color.card)
     }
 }
