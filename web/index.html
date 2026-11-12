@@ -430,6 +430,9 @@
   }
   .settings-item:hover { background: var(--hover); }
   .settings-item[aria-selected="true"] { background: var(--pill); color: var(--accent); }
+  /* Tailscale's mark (hosts.ts tailscaleMark), and a tile of it as the media kit's squircle: #1f1e1e, white dots. */
+  .pane-icon.ts-mark { background: none; -webkit-mask: none; mask: none; }
+  .ts-mark svg { display: block; width: 100%; height: 100%; }
   .settings-tile { display: grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 6px; color: #fff; }
   .settings-tile .pane-icon { width: 14px; height: 14px; }
   .settings-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -578,6 +581,8 @@
   .ts-hero.busy .ts-hero-icon .pane-icon, .ts-searching .pane-icon { animation: ts-spin 1s linear infinite; }
   @keyframes ts-spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .ts-hero.busy .ts-hero-icon .pane-icon, .ts-searching .pane-icon, .load-bar.busy .load-fill { animation: none; } }
+  /* After every tile's own colours, so the squircle wins over them. */
+  .settings-hero-icon.ts-tile, .ts-hero .ts-hero-icon.ts-tile, .welcome-choice .welcome-choice-icon.ts-tile, .welcome-choice.primary .welcome-choice-icon.ts-tile { background: #1f1e1e; color: #fff; }
   .ts-hero-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding-top: 2px; }
   .ts-hero-text h2 { margin: 0; font-size: 16px; font-weight: 700; overflow-wrap: anywhere; }
   .ts-hero-text p, .ts-point p, .ts-empty p, .ts-howto p, .ts-host-why p { margin: 0; color: var(--muted); line-height: 1.45; overflow-wrap: anywhere; }

@@ -190,7 +190,7 @@ export class Guide {
 
   private hero(glyph: string, title: string, text?: string, kind = "") {
     const h = el("div", `ts-hero ${kind}`);
-    const g = el("span", "ts-hero-icon");
+    const g = el("span", glyph === "tailscale" ? "ts-hero-icon ts-tile" : "ts-hero-icon");
     g.append(icon(glyph));
     const words = el("div", "ts-hero-text");
     words.append(el("h2", "", title));
@@ -209,7 +209,7 @@ export class Guide {
 
   private explain() {
     const ts = this.tailnet;
-    this.hero("brand:tailscale", t("guideExplainTitle"), t("guideExplainText"));
+    this.hero("tailscale", t("guideExplainTitle"), t("guideExplainText"));
     const list = el("div", "ts-points");
     this.point("shield-check", t("guideExplainDevice", { name: ts.name }), list);
     this.point("log-in", t("guideExplainSignIn"), list);

@@ -54,7 +54,7 @@ const sections: [id: Section, glyph: string, tile: string, label: () => string][
   ["keyboard", "keyboard", "rgb(142, 142, 147)", () => t("settingsKeyboard")], // gray
   ["hosts", "monitor", "rgb(52, 199, 89)", () => t("settingsHosts")], // green
   // A product's name, not translated.
-  ["tailscale", "brand:tailscale", "rgb(36, 36, 36)", () => "Tailscale"], // Tailscale's own near-black
+  ["tailscale", "tailscale", "#1f1e1e", () => "Tailscale"], // the media kit's squircle
   ["about", "info", "rgb(142, 142, 147)", () => t("settingsAbout")], // gray
 ];
 
@@ -725,8 +725,8 @@ export class Settings {
     const status = ts.status();
     const card = group(this.page);
     const top = el("div", "settings-row settings-hero");
-    const glyph = el("span", "settings-hero-icon");
-    glyph.append(icon("brand:tailscale"));
+    const glyph = el("span", "settings-hero-icon ts-tile");
+    glyph.append(icon("tailscale"));
     const text = el("span", "settings-hero-text");
     const sub =
       status === "off" ? t("tsOffNote")

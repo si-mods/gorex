@@ -203,12 +203,37 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-/** A lucide icon of the repo, drawn in the text's colour. */
+/** A lucide icon of the repo, drawn in the text's colour; "tailscale" is Tailscale's own mark. */
 export function icon(name: string): HTMLElement {
+  if (name === "tailscale") return tailscaleMark();
   const i = el("i", "pane-icon");
-  // "brand:x" is a brand's own mark (assets/brands, Simple Icons, CC0).
-  const url = name.startsWith("brand:") ? `brands/${name.slice(6)}.svg` : `icons/${name}.svg`;
-  i.style.setProperty("--icon", `url(${url})`);
+  i.style.setProperty("--icon", `url(icons/${name}.svg)`);
+  return i;
+}
+
+/**
+ * Tailscale's mark, from its media kit (tailscale.com/press,
+ * Tailscale_icon_*_rgb.svg): nine dots, the T solid and the rest at 40%,
+ * in the text's colour. Inline, as one colour at two opacities is not a mask.
+ */
+function tailscaleMark(): HTMLElement {
+  const i = el("i", "pane-icon ts-mark");
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 169 169");
+  svg.setAttribute("aria-hidden", "true");
+  const solid = new Set(["0,1", "1,1", "2,1", "1,2"]);
+  for (let col = 0; col < 3; col++)
+    for (let row = 0; row < 3; row++) {
+      const c = document.createElementNS(ns, "circle");
+      c.setAttribute("cx", String(30.5 + 54 * col));
+      c.setAttribute("cy", String(30.5 + 54 * row));
+      c.setAttribute("r", "18");
+      c.setAttribute("fill", "currentColor");
+      if (!solid.has(`${col},${row}`)) c.setAttribute("fill-opacity", "0.4");
+      svg.append(c);
+    }
+  i.append(svg);
   return i;
 }
 
@@ -416,7 +441,7 @@ export class HostList {
     const status = ts.status();
     const head = el("div", "host-group");
     // Tailscale is a product's name, not translated.
-    head.append(icon("brand:tailscale"), el("span", "host-group-name", "Tailscale"));
+    head.append(icon("tailscale"), el("span", "host-group-name", "Tailscale"));
     if (status !== "off") head.append(el("span", "host-group-state", ts.statusText()));
     const out: HTMLElement[] = [head];
     const guide = (label: string, glyph: string, key: string) => {
