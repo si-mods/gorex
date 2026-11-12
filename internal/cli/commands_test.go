@@ -492,13 +492,17 @@ func TestSessionCommandReachesItsServer(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses sh, and this test binary as the server")
 	}
-	home := t.TempDir()
+	// The default directory is under home; servers keep the real one,
+	// whose cache has libghostty-vt.
+	realHome, home := os.Getenv("HOME"), t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("GOREX_SERVER", "")
 	t.Setenv("GOREX_SESSION", "")
 	spawn := func(dir string) {
 		t.Setenv("GOREX_DIR", dir)
+		os.Setenv("HOME", realHome)
+		defer os.Setenv("HOME", home)
 		c, err := rex.Connect()
 		if err != nil {
 			t.Fatal(err)
