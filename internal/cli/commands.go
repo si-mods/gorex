@@ -57,6 +57,9 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		serverTarget, args = args[1], args[2:]
 	}
 	name, args := args[0], args[1:]
+	if !strings.HasPrefix(name, "-") {
+		attachConsole()
+	}
 	switch name {
 	case "help", "-h", "--help":
 		usage(out)
@@ -1268,7 +1271,7 @@ func runCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	defer c.Kill(info.ID)
 	// Go exits on a signal without running defers: end the session here.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(onInterrupt(context.Background()), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	in, err := waitExit(ctx, c, info.ID, 0)
 	if ctx.Err() != nil {
