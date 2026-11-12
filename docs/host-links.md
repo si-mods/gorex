@@ -1,8 +1,7 @@
 # Host links: one identity, any path, one switch
 
-Status: proposal. Not implemented. It sets the frame for
-[desktop-tailnet.md](desktop-tailnet.md), which becomes one of its
-phases.
+Status: the model is accepted. Not implemented. It sets the frame for
+[desktop-tailnet.md](desktop-tailnet.md), its phase 3.
 
 ## Problem
 
@@ -231,7 +230,7 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
 2. **Direct address**: the listener, the handshake, pairing over it,
    a host with several addresses.
 3. **The built-in node** carries the introduction on Windows and macOS
-   (desktop-tailnet.md, without its session transport).
+   (desktop-tailnet.md).
 4. **Sessions leave the tailnet**: remove the relay, the links and the
    targets; migrate saved hosts.
 5. **Settings and Remote Hosts** in the words above.
