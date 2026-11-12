@@ -285,10 +285,11 @@ private enum Fonts {
     static let sfMono = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular).familyName
     static let all: [(family: String, name: String)] = [("", "JetBrains Mono"), (sfMono, "SF Mono"), ("Menlo", "Menlo"), ("Courier New", "Courier New")]
 
-    /// A family's face, for a preview. Ghostty's own is not iOS's: the
-    /// system's monospaced face stands in for it, and is SF Mono's.
+    /// A family's face, for a preview. Ghostty's own, JetBrains Mono, is
+    /// inside GhosttyKit; the app bundles its own copy of the regular face
+    /// (UIAppFonts) for this.
     static func face(_ family: String, size: CGFloat) -> Font {
-        family.isEmpty || family == sfMono ? .system(size: size, design: .monospaced) : .custom(family, size: size)
+        family == sfMono ? .system(size: size, design: .monospaced) : .custom(family.isEmpty ? "JetBrains Mono" : family, size: size)
     }
 }
 

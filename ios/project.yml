@@ -41,6 +41,9 @@ targets:
       - GoRex
       - path: THIRD_PARTY_NOTICES.md
         buildPhase: resources
+      # The desktop app's JetBrains Mono, for the font previews.
+      - path: ../assets/fonts/JetBrainsMono-Regular.ttf
+        buildPhase: resources
     dependencies:
       # libghostty-vt reads the snapshot a stream starts with.
       - framework: Frameworks/GhosttyVt.xcframework
@@ -71,6 +74,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         GoRexCommit: $(GOREX_COMMIT)
         ITSAppUsesNonExemptEncryption: false
+        UIAppFonts: [JetBrainsMono-Regular.ttf]
         CFBundleLocalizations: [en, zh-Hans]
         UILaunchScreen:
           UIColorName: ""
