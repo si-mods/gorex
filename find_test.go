@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -81,10 +82,16 @@ func TestIsLink(t *testing.T) {
 	found := make(chan func(), 16)
 	update := func(fn func()) { found <- fn }
 	p := &Pane{info: rex.SessionInfo{Dir: dir}}
-	for link, want := range map[string]bool{
+	links := map[string]bool{
 		"docs/": true, "docs/:12": true, "./": true, "../": true, "~/": true, "notes.txt:3": true, "docs": true,
 		"w/": false, "w/:3": false, "I/": false, "and/or": false, "notes.txt/": false,
-	} {
+		filepath.Join(dir, "notes.txt"): true, filepath.Join(dir, "docs") + string(filepath.Separator): true,
+		filepath.Join(dir, "notes.txt") + string(filepath.Separator): false,
+	}
+	if runtime.GOOS == "windows" { // a drive path keeps the separators as printed
+		links[`docs\`], links[`notes.txt\`] = true, false
+	}
+	for link, want := range links {
 		a := &App{}
 		if a.isLink(p, link, update) {
 			t.Errorf("%q is a link before a stat found it", link)
@@ -103,7 +110,7 @@ func TestIsLink(t *testing.T) {
 		}
 	}
 	a, host := &App{}, &Pane{info: p.info, host: &hostConn{}}
-	for link, want := range map[string]bool{"docs/": false, "docs/:12": false, "w/": false, "and/or": true, "notes.txt": true, "support.github.com/tickets": true, "src.old/main.go": true} {
+	for link, want := range map[string]bool{`docs\`: false, "docs/": false, "docs/:12": false, "w/": false, "and/or": true, "notes.txt": true, "support.github.com/tickets": true, "src.old/main.go": true} {
 		if got := a.isLink(host, link, update); got != want {
 			t.Errorf("isLink(%q) in a pane of a host = %v, want %v", link, got, want)
 		}
