@@ -178,3 +178,18 @@ func TestClosePaneInBackgroundTab(t *testing.T) {
 		t.Errorf("%d tabs, active %v", len(a.tabs), a.tab())
 	}
 }
+
+// TestMoveCanvasTiledPane checks that a canvas whose tiled pane moves to a
+// tab of its own gives the focus to its box, as it does when the pane
+// closes.
+func TestMoveCanvasTiledPane(t *testing.T) {
+	canvasPrefs(t, true)
+	a, _ := newTestApp(t)
+	cv, box, tiled := canvasWithTiled(t, a)
+	if !a.movePaneToNewTab(tiled, "") {
+		t.Fatal("the pane did not move")
+	}
+	if len(a.tabs) != 2 || cv.Root != nil || len(cv.Floats) != 1 || cv.Focus != box {
+		t.Errorf("%d tabs, root %+v, focus %v", len(a.tabs), cv.Root, cv.Focus)
+	}
+}

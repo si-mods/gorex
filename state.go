@@ -1787,62 +1787,10 @@ func (a *App) dropPane(p *Pane, kill bool) {
 	}
 	a.disposePane(p, kill)
 	t := p.Tab
-	if f := p.float; f != nil {
-		t.removeFloat(f)
-		if t.Root == nil && len(t.Floats) == 0 {
-			// The last pane of a canvas.
-			a.removeTab(t)
-			return
-		}
-		if t.Focus == p {
-			t.Focus = nil
-			t.setFocus(t.nextFocus(p))
-		}
-		if a.tab() == t {
-			a.focusReq = t.Focus
-		}
-		a.changed()
-		return
-	}
-	n := p.Node
-	if n.Parent == nil {
-		t.Root = nil
-		if t.canvas != nil && len(t.Floats) > 0 {
-			if t.Focus == p {
-				t.Focus = nil
-				t.setFocus(t.nextFocus(p))
-			}
-			if a.tab() == t {
-				a.focusReq = t.Focus
-			}
-			a.changed()
-			return
-		}
-		if a.promoteFloat(t) {
-			if a.tab() == t {
-				a.focusReq = t.Focus
-			}
-			a.changed()
-			return
-		}
+	a.detachPane(p)
+	if len(t.allPanes()) == 0 {
 		a.removeTab(t)
 		return
-	}
-	parent := n.Parent
-	other := parent.A
-	if other == n {
-		other = parent.B
-	}
-	// The other side takes the parent's place.
-	parent.Pane, parent.A, parent.B, parent.Vertical, parent.Ratio = other.Pane, other.A, other.B, other.Vertical, other.Ratio
-	if parent.Pane != nil {
-		parent.Pane.Node = parent
-	} else {
-		parent.A.Parent, parent.B.Parent = parent, parent
-	}
-	if t.Focus == p {
-		t.Focus = nil
-		t.setFocus(t.nextFocus(p))
 	}
 	if a.tab() == t {
 		a.focusReq = t.Focus
@@ -3953,26 +3901,19 @@ func (a *App) detachPane(p *Pane) {
 	if t == nil || n == nil {
 		return
 	}
-	if f := p.float; f != nil {
-		t.removeFloat(f)
-		if t.Focus == p {
-			t.Focus = nil
-			t.setFocus(t.nextFocus(p))
-		}
-		p.Tab, p.Node = nil, nil
-		return
-	}
 	if t.Zoom == p {
 		t.Zoom = nil
 	}
 	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
-	if n.Parent == nil {
-		t.Root, t.Focus = nil, nil
-		p.Tab, p.Node = nil, nil
+	switch {
+	case p.float != nil:
+		t.removeFloat(p.float)
+	case n.Parent == nil:
+		t.Root = nil
 		a.promoteFloat(t)
-		return
+	default:
+		a.unlinkTiled(p)
 	}
-	a.unlinkTiled(p)
 	if t.Focus == p {
 		t.Focus = nil
 		t.setFocus(t.nextFocus(p))
