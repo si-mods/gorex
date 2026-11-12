@@ -116,7 +116,9 @@ struct HostListView: View {
             .padding(.top, 12)
             .padding(.bottom, 20)
         }
-        .background(Color.page)
+        // Under the keyboard too: the list keeps clear of a terminal's key
+        // bar as it comes and goes, which left the window's black there.
+        .background { Color.page.ignoresSafeArea() }
         .scrollEdgeEffectStyle(.soft, for: .all)
         // Beside the terminal the bar stays, for the sidebar's toggle.
         .toolbar(width == .regular ? .automatic : .hidden, for: .navigationBar)
