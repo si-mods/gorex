@@ -25,6 +25,11 @@ export interface Prefs {
   minimumContrast: number;
   /** A Ghostty theme's name, "" for the host's colours. */
   theme: string;
+  /**
+   * The chosen theme's colours, as its entry in the list (themes.ts), so
+   * that the page starts with them without loading the list.
+   */
+  themeColors?: number[];
   /** Copies a selection to the clipboard as it is made, as the desktop's Copy on selection. */
   copyOnSelect: boolean;
   /** Built-in Tailscale's device name, "" for a new gorex-web-xxxx per tab (tailnet.ts). */
@@ -74,6 +79,9 @@ function load(): Prefs {
         p.minimumContrast = j.minimumContrast === 0 ? 0 : Math.max(1, j.minimumContrast);
       }
       if (typeof j.theme === "string") p.theme = j.theme;
+      if (Array.isArray(j.themeColors) && j.themeColors.length === 22 && j.themeColors.every((c: unknown) => Number.isInteger(c))) {
+        p.themeColors = j.themeColors;
+      }
       p.copyOnSelect = j.copyOnSelect === true;
       if (typeof j.tailscaleName === "string") p.tailscaleName = j.tailscaleName;
       if (typeof j.language === "string") p.language = j.language;

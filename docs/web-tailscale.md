@@ -611,7 +611,9 @@ Phases 1 to 3, with these differences from the design above:
   (`tailscaleName`), random per tab until set.
 - **Build.** Everything the page loads by name is in `dist/assets`
   under a content hash and kept a year (docs/web-client.md, Cloudflare
-  Workers); `tailnet.json` names the engine and is revalidated. The
+  Workers); the asset manifest lists the engine (`tailnet/engine`,
+  `tailnet/exec`, lazy: docs/web-client.md, Loading on demand), and the
+  loader keeps it in its cache once loaded. The
   engine compiles from bytes (`WebAssembly.instantiate`), after
   `DecompressionStream("gzip")`: a `.gz` is not served as
   `application/wasm`, so `instantiateStreaming` does not apply. The page

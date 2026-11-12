@@ -377,6 +377,17 @@
     -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
   }
   .update[hidden] { display: none; }
+  /* A part of the page's code loading on first use (chunks.ts): after 150 ms, a small glass panel in the corner
+     as the update's, above it, with a busy bar; its failure with Retry and ×. */
+  .chunk-loads { position: fixed; right: 16px; bottom: 32px; z-index: 21; display: flex; flex-direction: column; gap: 8px; width: min(320px, calc(100vw - 32px)); }
+  .chunk-loads:empty { display: none; }
+  .chunk-load {
+    display: flex; align-items: flex-start; gap: 8px; padding: 12px 8px 12px 14px; border-radius: 14px;
+    background: var(--panel); border: 1px solid var(--panel-edge); color: var(--text);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  }
+  .chunk-load > .load { flex: 1; min-width: 0; }
+  .chunk-close[hidden] { display: none; }
   .update-text { flex: 1; min-width: 0; }
   .update .host-add { padding: 4px 12px; }
   /* The Settings dialog (settings.ts), as the desktop's settings window (settingsview.go): the sections at the
@@ -435,6 +446,9 @@
     background: var(--card); border: 1px solid var(--card-edge); box-shadow: 0 1px 2px var(--shadow);
   }
   .settings-foot, .settings-note { padding: 0 14px; }
+  /* The theme list's load (settings.ts), in the Theme section's card. */
+  .settings-load { padding: 14px; }
+  .settings-load[hidden] { display: none; }
   /* A row, as groupRow: 44px at least, a hairline above but the first, inset 14px at the left. */
   .settings-row { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 4px; min-height: 44px; padding: 11px 14px; }
   .settings-row.compact { min-height: 40px; padding: 7px 14px; }
@@ -650,6 +664,7 @@
     #notice { inset: 0 -8px; padding: 16px; }
     .welcome-title { font-size: 20px; }
     .update { left: 8px; right: 8px; bottom: calc(28px + env(safe-area-inset-bottom)); max-width: none; }
+    .chunk-loads { left: 8px; right: 8px; bottom: calc(28px + env(safe-area-inset-bottom)); width: auto; }
   }
 </style>
 </head>

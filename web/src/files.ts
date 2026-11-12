@@ -13,7 +13,8 @@
 import { streamSave } from "./app";
 import { failure as fail, formatSize, Msg, PlainKey, t } from "./i18n";
 import { apiURL, Control, describe, hostTransport, RexError } from "./rex";
-import { Viewer } from "./viewer";
+import { Chunk } from "./chunks";
+import type { Viewer } from "./viewer";
 
 /** The images the viewer shows, by the MIME type their blob takes. */
 export const imageTypes = {
@@ -156,6 +157,8 @@ export interface FileHost {
 /** The files being opened, by block and path: a second click on one does nothing. */
 const opening = new Set<string>();
 let viewer: Viewer | undefined;
+/** The image viewer's code, a chunk of its own (chunks.ts), loaded with the first image shown. */
+const viewerCode = new Chunk("viewer", () => t("chunkViewer"), () => import("./viewer"));
 
 async function begin(c: Control | undefined, session: string, block: string, path: string): Promise<Begun> {
   if (!c) throw new RexError("offline", () => t("errorOffline"));
@@ -324,10 +327,12 @@ export async function openFile(session: string, block: string, path: string, hos
     if (kind && f.size <= maxViewBytes) {
       const blob = await fetchImage(f.ticket, kind);
       if (blob) {
-        viewer ??= new Viewer();
-        viewer.show(blob, f.name || path, {
-          download: () => downloadFile(session, block, path, host),
-          closed: () => host.back(),
+        viewerCode.use((m) => {
+          viewer ??= new m.Viewer();
+          viewer.show(blob, f.name || path, {
+            download: () => downloadFile(session, block, path, host),
+            closed: () => host.back(),
+          });
         });
         return;
       }

@@ -1,10 +1,12 @@
-// Loading a large file of the page's own with its progress: the terminal's
-// wasm as the page starts, and built-in Tailscale's engine (tailnet.ts).
-// The bytes come through a stream reader, counted as they arrive; the
+// Loading a large file of the page's own with its progress, as the loader
+// (loader.ts) reads one: the terminal's wasm as the page starts, built-in
+// Tailscale's engine (tailengine.ts), the theme list in Settings, a code
+// chunk's busy bar (chunks.ts). The bytes come through a stream reader,
+// counted as they arrive; the
 // total is the size build.mjs knew, else Content-Length when the server
 // sent the file unencoded (with Content-Encoding, as Cloudflare's brotli,
 // Content-Length is the compressed size or none), else unknown and the bar
-// is indeterminate. ProgressView shows it, the same in both places.
+// is indeterminate. ProgressView shows it, the same in every place.
 
 import { formatNumber, localize, Msg, msg, t } from "./i18n";
 
@@ -52,13 +54,6 @@ export const readBody = (res: Response, size: number, progress: Progress) => dra
 
 /** Counts a response's bytes (a clone's, while another reader takes the original), keeping none. */
 export const countBody = (res: Response, size: number, progress: Progress) => drain(res, size, progress, false).then(() => {});
-
-/** Fetches url with the browser's usual caching, and reads it with its progress. */
-export async function fetchBytes(url: string, size: number, progress: Progress): Promise<Uint8Array> {
-  const res = await fetch(url);
-  if (!res.ok || !res.body) throw new Error(t("loadServerAnswered", { url, status: String(res.status) }));
-  return readBody(res, size, progress);
-}
 
 /** A load's state, as ProgressView shows it. */
 export type LoadState =

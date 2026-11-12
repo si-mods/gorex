@@ -8,7 +8,9 @@
 // gorex rexapi web allow http://127.0.0.1:5173
 //
 // It builds the tailnet engine again when a Go file of web/tailnet changes
-// (a few seconds with Go's build cache); reload the page to load it. A
+// (a few seconds with Go's build cache) and lists it in the asset manifest,
+// which it writes again under the name the script knows; reload the page
+// to load it. A
 // change of a catalog in web/locales writes src/locales.gen.ts again
 // (i18n.mjs), which the watch then bundles; a catalog with errors leaves
 // the last good one and prints them.
@@ -19,14 +21,16 @@
 // rather than serving that build's page in place of the dev server's.
 //
 // The script keeps its plain name here, app.js, which index.html names as
-// it is; the wasm and the themes keep the hashed names the build gave them.
+// it is; its code chunks go in dist/assets with esbuild's hash, beside the
+// build's (the manifest's js/ entries are the build's, the first one's
+// sizes); the other files keep the hashed names the build gave them.
 //
 // Usage: npm run dev [-- --port N] [-- --host ADDR]
 import { execFileSync } from "node:child_process";
 import { copyFileSync, watch, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { appOptions, assetDefines, buildTailnet, dist, esbuild } from "./build.mjs";
+import { addTailnet, appOptions, assetDefines, buildTailnet, dist, esbuild, Manifest } from "./build.mjs";
 import { generateOrFail } from "./i18n.mjs";
 
 const web = dirname(fileURLToPath(import.meta.url));
@@ -53,7 +57,11 @@ self.addEventListener("activate", (e) => e.waitUntil((async () => {
 );
 
 const { context } = await esbuild();
-const ctx = await context({ ...appOptions, define: { ...appOptions.define, ...assetDefines(dist) }, minify: false, sourcemap: "linked" });
+const defines = assetDefines(dist);
+const manifestURL = JSON.parse(defines.__ASSET_MANIFEST__);
+const ctx = await context({
+  ...appOptions, entryNames: "[name]", define: { ...appOptions.define, ...defines }, minify: false, sourcemap: "linked",
+});
 await ctx.watch();
 copyFileSync(join(web, "index.html"), join(dist, "index.html"));
 watch(join(web, "index.html"), () => {
@@ -68,7 +76,12 @@ async function rebuildTailnet() {
   if (building) return void (again = true);
   building = true;
   try {
-    await buildTailnet(dist);
+    const tn = await buildTailnet();
+    if (tn) {
+      const m = Manifest.read(dist, manifestURL);
+      addTailnet(dist, m, tn);
+      m.rewrite(dist, manifestURL);
+    }
   } catch (e) {
     console.error(e.message);
   }

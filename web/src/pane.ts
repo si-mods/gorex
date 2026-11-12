@@ -1,8 +1,8 @@
 // One pane of a window: a block's terminal, its stream fed to
 // libghostty-vt, drawn on its own canvas, the keys typed written back.
-import { openFile } from "./files";
 import { Ghostty } from "./ghostty";
 import { shortcut } from "./keys";
+import { loader } from "./loader";
 import { PointerInput } from "./pointer";
 import { contrastRatio, cursorSeq, fontFamily, textSize } from "./prefs";
 import { Program, smallTile } from "./programs";
@@ -142,14 +142,19 @@ export class TerminalView {
       send: (b) => this.type(b),
       status: (s) => this.app.status(s),
       files: () => !!this.app.control()?.features.has("gorex.download"),
+      // Opening files (files.ts) is a chunk of its own, loaded with the first link opened.
       openFile: (path) =>
-        openFile(this.session, this.block, path, {
-          control: () => this.app.control(),
-          status: (s) => this.app.status(s),
-          back: () => {
-            if (!this.closed) this.el.focus({ preventScroll: true });
-          },
-        }),
+        void loader.module("js/files", () => import("./files")).then(
+          (m) =>
+            m.openFile(this.session, this.block, path, {
+              control: () => this.app.control(),
+              status: (s) => this.app.status(s),
+              back: () => {
+                if (!this.closed) this.el.focus({ preventScroll: true });
+              },
+            }),
+          (e) => this.app.status(() => t("fileOpenFailed", { path, error: describe(e) })),
+        ),
     });
     this.el.addEventListener("keydown", (e) => this.key(e));
     this.body.addEventListener("wheel", (e) => this.pointer.wheel(e), { passive: false });

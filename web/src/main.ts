@@ -3,23 +3,45 @@
 // its own; the host is one the user added (hosts.ts), or one built-in
 // Tailscale found on the tailnet (tailnet.ts).
 import { onAppChange, startApp } from "./app";
+import { Chunk } from "./chunks";
 import { Ghostty } from "./ghostty";
-import { Guide } from "./guide";
+import type { Guide } from "./guide";
 import { commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
+import { Asset, loader } from "./loader";
 import { describe } from "./pane";
 import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
 import { mostUrgent, programName, programOf, rank, seenKey, Status, statusOf, tiles, tilesWidth } from "./programs";
 import { Control, directTransport, setHost } from "./rex";
-import { LinkState, Settings } from "./settings";
+import type { LinkState, Settings } from "./settings";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
-import { chosenName, isLight, loadThemes, ThemeEntry, themeColours } from "./themes";
-import { Welcome } from "./welcome";
+import { isLight, startTheme, ThemeEntry, themeColours } from "./themes";
+import type { Welcome } from "./welcome";
 import { borderLeaf, layoutOf, leavesOf, WindowHost, WindowView } from "./window";
+
+/**
+ * The asset manifest (loader.ts) and the files the page loads as it
+ * starts, which build.mjs writes into this script: the loader takes those
+ * at once, the rest once it has read the manifest.
+ */
+declare const __ASSET_MANIFEST__: string;
+declare const __BOOT_ASSETS__: Record<string, Asset>;
+loader.configure(
+  typeof __ASSET_MANIFEST__ === "string" ? __ASSET_MANIFEST__ : "",
+  typeof __BOOT_ASSETS__ === "object" ? __BOOT_ASSETS__ : {},
+);
+
+/**
+ * The parts of the page's code loaded when first used (chunks.ts): the
+ * Settings dialog, the Tailscale guide and the first visit's welcome.
+ */
+const settingsCode = new Chunk("settings", () => t("chunkSettings"), () => import("./settings"));
+const guideCode = new Chunk("guide", () => t("chunkGuide"), () => import("./guide"));
+const welcomeCode = new Chunk("welcome", () => t("chunkWelcome"), () => import("./welcome"));
 
 const $ = (id: string) => document.getElementById(id)!;
 const stage = $("stage");
@@ -47,6 +69,8 @@ let link: LinkState = "none";
 let problem: Problem | undefined;
 /** The theme chosen in this browser, over the desktop's colours; none keeps the host's. */
 let chosen: Theme | undefined;
+/** Its entry, for the Settings dialog's previews. */
+let chosenEntry: ThemeEntry | undefined;
 
 /** A session the gateway serves, and its last view. */
 interface Session {
@@ -158,9 +182,6 @@ const host: WindowHost = {
   },
 };
 
-/** The terminal's wasm in dist/assets, by its hash, and its size (build.mjs). */
-declare const __GHOSTTY_WASM__: { url: string; size: number };
-
 /** How long the page loads before its progress shows: a load from the cache shows none. */
 const progressAfter = 150;
 
@@ -213,39 +234,25 @@ async function main() {
       ...["400", "700", "italic 400", "italic 700"].map((v) => document.fonts.load(`${v} 12px "JetBrains Mono"`)),
       initMaple().then(() => (prefs.font === mapleFamily ? ensureLatin() : undefined)),
     ];
-    // The themes load with it, so that the first frame has the chosen colours.
-    let themes: ThemeEntry[];
-    [g, themes] = await Promise.all([Ghostty.load(__GHOSTTY_WASM__.url, __GHOSTTY_WASM__.size, boot.update), loadThemes(), Promise.allSettled(faces)]).then((r) => [r[0], r[1]]);
+    // The chosen theme with it, so that the first frame has its colours (themes.ts: without the list).
+    let theme: ThemeEntry | undefined;
+    [g, theme] = await Promise.all([Ghostty.load(boot.update), startTheme(), Promise.allSettled(faces)]).then((r) => [r[0], r[1]]);
     boot.done();
     const pick = (t?: ThemeEntry) => {
+      chosenEntry = t;
       chosen = t && themeColours(t);
       scheme(chosen?.background ?? desktopTheme().background!);
       for (const p of shown?.panes.values() ?? []) p.setChosen(chosen);
     };
-    pick(themes.find((t) => t.name === chosenName()));
+    pick(theme);
+    chooseTheme = pick;
     for (const what of ["headers", "font"] as const) applyPrefs(what);
-    const openGuide = () => {
-      settings?.close();
-      guide!.open();
-    };
     hostList = new HostList($("hosts"), {
       choose, close: () => shown?.focusKeys(), changed: () => settings?.update(), tailnet, guide: openGuide,
     });
-    settings = new Settings({
-      hosts: hostList,
-      link: () => ({ host: current, state: link, problem }),
-      themes,
-      chooseTheme: pick,
-      apply: applyPrefs,
-      closed: () => shown?.focusKeys(),
-      tailnet,
-      guide: openGuide,
-    });
-    guide = new Guide(tailnet, { connect: (h) => hostList.choose(h), closed: () => shown?.focusKeys() });
-    welcome = new Welcome({ hosts: hostList, tailnet, guide: openGuide });
     onAppChange(() => settings?.appChanged());
     tailnet.onChange(tailnetChanged);
-    $("open-settings").onclick = () => settings!.toggle();
+    $("open-settings").onclick = () => withSettings((s) => s.toggle());
     // A change of language says the page's words again in it: the dialogs say theirs themselves.
     onLanguageChange(() => {
       status(statusText);
@@ -267,6 +274,35 @@ async function main() {
     history.replaceState(null, "", location.pathname);
   }
   choose(hostList.chosen);
+}
+
+/** Applies a theme chosen in Settings; set once the page has started. */
+let chooseTheme: (t?: ThemeEntry) => void = () => {};
+
+/** Runs f with the Settings dialog, which is made the first time, once its code is in. */
+function withSettings(f: (s: Settings) => void) {
+  settingsCode.use((m) => {
+    settings ??= new m.Settings({
+      hosts: hostList,
+      link: () => ({ host: current, state: link, problem }),
+      theme: () => chosenEntry,
+      chooseTheme: (t) => chooseTheme(t),
+      apply: applyPrefs,
+      closed: () => shown?.focusKeys(),
+      tailnet,
+      guide: openGuide,
+    });
+    f(settings);
+  });
+}
+
+/** Opens the Tailscale guide, in place of the Settings dialog. */
+function openGuide() {
+  settings?.close();
+  guideCode.use((m) => {
+    guide ??= new m.Guide(tailnet, { connect: (h) => hostList.choose(h), closed: () => shown?.focusKeys() });
+    guide.open();
+  });
 }
 
 /**
@@ -291,13 +327,19 @@ type NoticeAction = { label: PlainKey | (() => string); run: () => void; primary
 /** The notice shown, drawn again after a change of language. */
 let shownNotice: [Problem | undefined, ...NoticeAction[]] | undefined;
 
-/** Shows the welcome over the empty stage: no host is chosen. */
+/** Shows the welcome over the empty stage: no host is chosen. Its code loads only then, as on the first visit. */
 function showWelcome() {
   shownNotice = undefined;
-  const box = $("notice");
-  welcome!.update();
-  if (box.firstElementChild !== welcome!.el) box.replaceChildren(welcome!.el);
-  box.hidden = false;
+  const gen = generation;
+  welcomeCode.use((m) => {
+    // A host chosen meanwhile has the stage.
+    if (gen !== generation || current) return;
+    welcome ??= new m.Welcome({ hosts: hostList, tailnet, guide: openGuide });
+    const box = $("notice");
+    welcome.update();
+    if (box.firstElementChild !== welcome.el) box.replaceChildren(welcome.el);
+    box.hidden = false;
+  });
 }
 
 /** Shows what is wrong with the host, or nothing. */
@@ -400,7 +442,7 @@ async function connect(gen: number) {
     if (gen !== generation) return;
     const p = h.kind === "tailnet" ? await tailnet.diagnose(h as TailnetHost) : await diagnose(h.url);
     if (gen !== generation) return;
-    if (h.kind === "tailnet") notice(p, { label: "noticeTailscaleSettings", run: () => settings?.open("tailscale") });
+    if (h.kind === "tailnet") notice(p, { label: "noticeTailscaleSettings", run: () => withSettings((s) => s.open("tailscale")) });
     else notice(p, { label: "hostEdit", run: () => hostList.open(h) });
     setLink("unreachable", p);
     status(() => t("statusRetrying", { host: h.name, problem: p.title }));
@@ -892,10 +934,10 @@ window.addEventListener(
     // Copy is the focused pane's own: it copies its selection (pane.ts).
     if (!name || name === "copy") return;
     // Settings opens and closes from anywhere; the rest only from the window.
-    if (name === "settings" && settings) {
+    if (name === "settings" && hostList) {
       e.preventDefault();
       e.stopPropagation();
-      settings.toggle();
+      withSettings((s) => s.toggle());
       return;
     }
     if (t.closest?.("input, textarea, select, .theme-panel, dialog")) return;

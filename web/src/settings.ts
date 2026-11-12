@@ -13,10 +13,10 @@ import {
 } from "./prefs";
 import { formatDate, formatList, Language, languages, onLanguageChange, PlainKey, setLanguage, t, tIn } from "./i18n";
 import { blockedCJK, ensure, ensureLatin, mapleFamily, noMaple } from "./maple";
-import { formatBytes } from "./progress";
+import { formatBytes, ProgressView } from "./progress";
 import { Status, Tailnet, validDeviceName } from "./tailnet";
 import { desktopTheme, minimumContrast, Theme } from "./terminal";
-import { ThemeEntry, themeColours, themePicker } from "./themes";
+import { loadThemes, ThemeEntry, themeColours, themePicker } from "./themes";
 
 /** What build.mjs writes in: the client's commit and build date, and the Ghostty commit of the wasm. */
 declare const __GOREX_COMMIT__: string;
@@ -31,7 +31,8 @@ export interface SettingsApp {
   hosts: HostList;
   /** The chosen host, its connection, and what is wrong with it. */
   link(): { host?: Host; state: LinkState; problem?: Problem };
-  themes: ThemeEntry[];
+  /** The theme the page applies, none for the host's colours. */
+  theme(): ThemeEntry | undefined;
   /** A theme chosen, or the host's colours (none). */
   chooseTheme(t?: ThemeEntry): void;
   /** Applies a changed setting to the page and its panes. */
@@ -243,6 +244,9 @@ export class Settings {
   /** The host the Hosts section edits, "new" for one to add, or none for the list. */
   private editing?: Host | "new";
   private picker?: ReturnType<typeof themePicker>;
+  /** The theme list, once loaded (themes.ts); loading while the promise is unsettled. */
+  private themes?: ThemeEntry[];
+  private themesLoad?: Promise<ThemeEntry[]>;
 
   constructor(private app: SettingsApp) {
     this.dialog.setAttribute("aria-label", t("settingsTitle"));
@@ -596,16 +600,50 @@ export class Settings {
 
   /** The chosen theme's colours, else GoRex's, for the font's preview. */
   private previewTheme(): Theme {
-    const t = this.app.themes.find((x) => x.name === prefs.theme);
+    const t = this.app.theme();
     return t ? themeColours(t) : desktopTheme();
   }
 
+  /**
+   * The Theme section: the picker, once the list has loaded (on demand,
+   * the first time the section opens). Meanwhile a progress bar, after
+   * 150 ms as the page's others, and a failure with Retry.
+   */
   private themePage() {
-    if (!this.app.themes.length) {
-      row(group(this.page), t("settingsThemesFailed"), t("settingsThemesFailedHint"));
+    if (!this.themes) {
+      const card = group(this.page);
+      const view = new ProgressView(() => t("settingsThemesLoading"), {
+        download: () => t("settingsThemesLoading"),
+        start: () => t("settingsThemesLoading"),
+        failed: () => t("settingsThemesFailed"),
+      }, () => {
+        this.themesLoad = undefined;
+        this.drawPage();
+      });
+      view.el.classList.add("settings-load");
+      view.el.hidden = true;
+      card.append(view.el);
+      const timer = setTimeout(() => (view.el.hidden = false), 150);
+      const load = (this.themesLoad ??= loadThemes({
+        progress: (received, total) => view.update({ phase: "download", received, total }),
+      }));
+      load.then(
+        (list) => {
+          clearTimeout(timer);
+          this.themes = list;
+          if (this.dialog.open && this.section === "theme" && card.isConnected) this.drawPage();
+        },
+        (e) => {
+          clearTimeout(timer);
+          console.warn("could not load the themes", e);
+          const error = e instanceof Error ? e.message : String(e);
+          view.update({ phase: "failed", message: () => t("chunkFailedText", { error }) });
+          view.el.hidden = false;
+        },
+      );
       return;
     }
-    this.picker ??= themePicker(this.app.themes, (t) => this.app.chooseTheme(t));
+    this.picker ??= themePicker(this.themes, (t) => this.app.chooseTheme(t));
     const card = group(this.page, "", "", t("settingsThemeFoot"));
     card.classList.add("settings-themes");
     card.append(this.picker.el);

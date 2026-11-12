@@ -1080,9 +1080,9 @@
   "@settingsThemesFailed": {
     "description": "Settings › Theme when the theme list failed to load."
   },
-  "settingsThemesFailedHint": "The terminals keep GoRex's colors.",
-  "@settingsThemesFailedHint": {
-    "description": "Under settingsThemesFailed."
+  "settingsThemesLoading": "Loading the themes…",
+  "@settingsThemesLoading": {
+    "description": "Settings › Theme while the theme list loads, the first time it opens."
   },
   "settingsThemeFoot": "A theme goes over the host's colors; Host Colors keeps what the host sends.",
   "@settingsThemeFoot": {
@@ -2023,6 +2023,52 @@
         "example": "assets/tailnet.js"
       }
     }
+  },
+  "chunkLoading": "Loading {name}…",
+  "@chunkLoading": {
+    "description": "The small panel in the corner while a part of the page's code loads on first use, after 150 ms (Settings, the Tailscale guide, the image viewer); name is chunkSettings, chunkGuide, chunkViewer or chunkWelcome.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Settings"
+      }
+    }
+  },
+  "chunkFailed": "Couldn't load {name}",
+  "@chunkFailed": {
+    "description": "The same panel when that code failed to load; a Retry button follows.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "Settings"
+      }
+    }
+  },
+  "chunkFailedText": "{error}. Check the connection, then try again.",
+  "@chunkFailedText": {
+    "description": "Under chunkFailed; error is the browser's reason.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "Failed to fetch dynamically imported module"
+      }
+    }
+  },
+  "chunkSettings": "Settings",
+  "@chunkSettings": {
+    "description": "The name in chunkLoading and chunkFailed for the Settings dialog."
+  },
+  "chunkGuide": "the Tailscale guide",
+  "@chunkGuide": {
+    "description": "The name in chunkLoading and chunkFailed for the Tailscale sign-in guide; mid-sentence."
+  },
+  "chunkViewer": "the image viewer",
+  "@chunkViewer": {
+    "description": "The name in chunkLoading and chunkFailed for the image viewer; mid-sentence."
+  },
+  "chunkWelcome": "the welcome screen",
+  "@chunkWelcome": {
+    "description": "The name in chunkLoading and chunkFailed for the first visit's welcome screen; mid-sentence."
   },
   "tsNotEngine": "The download is not Tailscale's engine",
   "@tsNotEngine": {

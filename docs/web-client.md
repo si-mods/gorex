@@ -264,7 +264,8 @@ trust the page's origin on each host:
 headers on Cloudflare:
 
 - `Content-Security-Policy`: `default-src 'none'`; the page's own
-  scripts (`script-src 'self'`, with `'wasm-unsafe-eval'` for
+  scripts (`script-src 'self'`, which covers the script's ES module
+  chunks that `import()` loads, with `'wasm-unsafe-eval'` for
   libghostty-vt), fonts and images (and `data:` for the empty favicon,
   `blob:` for the image viewer's checked images, for images only);
   its inline `<style>` (`style-src 'self' 'unsafe-inline'`; the styles
@@ -276,16 +277,17 @@ headers on Cloudflare:
   the hosts at build time. `frame-src http: https:` lets the hidden frame
   that takes a host's download (docs/web-open-files.md) load it.
 - `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
-- The script, the terminal's wasm, the themes and the Tailscale engine
-  are in `/assets` under names that carry a hash of their content
-  (`app-<hash>.js`, `ghostty-vt-<hash>.wasm`,
-  `ghostty-themes-<hash>.json`, `manifest-<hash>.json`,
-  `maple-index-<hash>.json`, `lazy/maple-<face><n>-<hash>.woff2`,
-  `tailnet-<hash>.wasm.gz`, `tailnet-<hash>.js`), kept a year (`public, max-age=31536000,
-  immutable`): after the first visit, a reload takes them from the
-  browser's cache without asking the server. `/` and `index.html`, which
-  names the script, and `tailnet.json`, which names the engine, are
-  `no-cache` (revalidated, with Cloudflare's ETag, on every load). The
+- The script and its code chunks, the terminal's wasm, the themes and
+  the Tailscale engine are in `/assets` under names that carry a hash of
+  their content (`app-<hash>.js`, `<module>-<hash>.js` and
+  `chunk-<hash>.js` with esbuild's hash, `ghostty-vt-<hash>.wasm`,
+  `manifest-<hash>.json`, `maple-index-<hash>.json`, and in `lazy/`
+  `ghostty-themes-<hash>.json`, `maple-<face><n>-<hash>.woff2`,
+  `tailnet-<hash>.wasm.gz`, `tailnet-<hash>.js`), kept a year
+  (`public, max-age=31536000, immutable`): after the first visit, a
+  reload takes them from the browser's cache without asking the server.
+  `/` and `index.html`, which names the script, are `no-cache`
+  (revalidated, with Cloudflare's ETag, on every load). The
   fonts, icons and brand marks are kept for a day. Cloudflare gives a path
   that two rules match both rules' headers, so no two rules set the same
   header on one path.
@@ -309,12 +311,16 @@ npm run dev -- --port 7478   # another port; --host ADDR to listen elsewhere
 
 `web/dev.mjs` builds `web/dist` once (`build.mjs`, with its type check),
 then serves it with esbuild. It bundles `src/` again on every change (not
-minified, with a source map), without the type check, and copies
-`index.html` again when it changes. The script keeps its plain name,
-`app.js`, in the dev server; the wasm and the themes keep their hashed
-names. It builds the Tailscale engine again when a Go file of
-`web/tailnet` changes (a few seconds with Go's build cache); reload the
-page to load it. It prints the command that makes a
+minified, with a source map, split into chunks as the build is), without
+the type check, and copies `index.html` again when it changes. The
+script keeps its plain name, `app.js`, in the dev server; its chunks go
+in `dist/assets` with esbuild's hash, and the other files keep the
+hashed names the build gave them (the manifest's `js/` entries are the
+build's). It builds the Tailscale engine again when a Go file of
+`web/tailnet` changes (a few seconds with Go's build cache) and lists it
+in the asset manifest, written again under the name the script knows;
+reload the page to load it. A change of `build.mjs` or `dev.mjs` needs
+a restart of the dev server. It prints the command that makes a
 host trust it. It is plain http on loopback, so it reaches both kinds of
 gateway: `http://` on the local network and `https://` on the tailnet. It
 sends none of `_headers`' headers. The page registers no Service Worker
@@ -362,9 +368,11 @@ window of its own, with its own icon.
 `web/sw.js` is the page's Service Worker, at the root of its scope. The
 build (`writeWorker` in `build.mjs`) writes into `dist/sw.js` this
 build's version, a hash of `web/sw.js`, the page and its files, and the
-files it keeps: all of `dist` but `index.html`, `_headers`, `sw.js`,
-`tailnet.json`, the Tailscale engine and `assets/lazy/` (the CJK font's
-chunks; see Loading on demand), about 2.7 MB in all. A build that
+files it keeps: all of `dist` but `index.html`, `_headers`, `sw.js` and
+`assets/lazy/` (the themes, the Tailscale engine and the CJK font's
+chunks; see Loading on demand), about 2.5 MB in all, the page's code
+chunks among them: all of them, about 46 KB that load on demand, so
+that Settings, the guide and the viewer open offline too. A build that
 changes none of them is the same worker.
 
 - **Install**: it fetches the page (the scope's root, checked to name
@@ -375,10 +383,10 @@ changes none of them is the same worker.
   open pages.
 - **Answers**: the page (a navigation to the root or `index.html`) and
   `/assets` (hashed names) from the cache first; an `/assets` file
-  not kept, as the Tailscale engine, joins the cache when fetched.
+  not kept joins the cache when fetched.
   `/assets/lazy/` it leaves to the page's loader, which keeps those
   files in its own cache (Loading on demand). The
-  rest of the page's origin (fonts, icons, `tailnet.json`) comes from
+  rest of the page's origin (fonts, icons) comes from
   the network, and from the cache when the network fails. So the page
   opens offline, at the version the worker holds.
 - **Leaves alone**: every request to another origin (the GoRex hosts,
@@ -455,39 +463,41 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
    build skips this step. `--rebuild-wasm` builds it again.
 4. It runs `npm ci` in `web/` if `web/node_modules` is missing, checks
    the catalogs and writes `src/locales.gen.ts` (`web/i18n.mjs`; see
-   Languages), then type-checks the client (`tsc --noEmit`) and bundles
-   it with esbuild.
-5. It empties `web/dist` and writes `index.html`, `_headers`, and in
-   `dist/assets` the script, `ghostty-vt.wasm` and
-   `ios/GoRex/ghostty-themes.json` (the repo keeps one copy of the
-   themes) under hashed names (see Cloudflare Workers). `index.html`
-   names the script; the script names the wasm, with its size, and the
-   themes. It cuts Maple Mono NF CN into chunks (see Fonts) and writes
-   them to `dist/assets/lazy`, its index beside the script and its
-   licence to `dist/fonts/MapleMono-OFL.txt`, and lists the wasm, the
-   themes, the index and the chunks in the asset manifest,
-   `dist/assets/manifest-<hash>.json`, which the script names (see
-   Loading on demand). It copies the JetBrains Mono fonts from
-   `assets/fonts` (with their licence) into `dist/fonts`, and
-   `assets/icons` and
-   `assets/brands` into `dist/icons` and `dist/brands`, the glyphs of the
-   program tiles and of the hosts.
+   Languages), then type-checks the client (`tsc --noEmit`).
+5. It empties `web/dist` and writes in `dist/assets`, under hashed
+   names (see Cloudflare Workers), `ghostty-vt.wasm` and, in
+   `dist/assets/lazy`, `ios/GoRex/ghostty-themes.json` (the repo keeps
+   one copy of the themes). It cuts Maple Mono NF CN into chunks (see
+   Fonts) and writes them to `dist/assets/lazy`, its index to
+   `dist/assets` and its licence to `dist/fonts/MapleMono-OFL.txt`.
 6. With Go, it builds the Tailscale engine (`web/tailnet`,
    docs/web-tailscale.md): `GOOS=js GOARCH=wasm`, tsconnect's build tags
    and five more, `GOEXPERIMENT=nojsonv2`, `-trimpath -ldflags "-s -w"`.
-   It writes only the gzipped module, `dist/assets/tailnet-<hash>.wasm.gz`
-   (about 6.1 MB; the raw module, about 26 MB, is not shipped), Go's
-   `wasm_exec.js` as `dist/assets/tailnet-<hash>.js`, and
-   `dist/tailnet.json`, which names them.
+   It writes only the gzipped module, `dist/assets/lazy/tailnet-<hash>.wasm.gz`
+   (about 6.1 MB; the raw module, about 26 MB, is not shipped), and Go's
+   `wasm_exec.js` as `dist/assets/lazy/tailnet-<hash>.js`.
+7. It bundles the client with esbuild into ES modules, split at each
+   `import()` (see Loading on demand), and lists all of these files in
+   the asset manifest, `dist/assets/manifest-<hash>.json`, which the
+   script names. esbuild runs twice: once to learn the chunks, which the
+   manifest lists, then with the manifest's name, which only the script
+   (`src/main.ts`) reads; the build fails if a chunk changed between the
+   two. `index.html`, which it writes with `_headers`, names the script.
+   It copies the JetBrains Mono fonts from `assets/fonts` (with their
+   licence) into `dist/fonts`, and `assets/icons` and `assets/brands`
+   into `dist/icons` and `dist/brands`, the glyphs of the program tiles
+   and of the hosts.
 
 As the page starts, it loads the terminal's wasm (about 870 KB) with a
 progress bar over the window's room: the bytes received of the size the
 build wrote in, then "Starting…" while it compiles. The bar shows only
 when the load takes more than 150 ms, so a load from the cache shows
-none. A failure shows the reason and **Retry**. Served as
-`application/wasm`, the module compiles as it arrives
-(`WebAssembly.instantiateStreaming` on the fetch's own response) while a
-clone of the response counts the bytes. The Tailscale engine's download
+none. A failure shows the reason and **Retry**. The loader fetches it
+(`response`, Loading on demand), so a network error or a 5xx answer is
+tried again first. Served as `application/wasm`, the module compiles as
+it arrives (`WebAssembly.instantiateStreaming` on the fetch's own
+response, which lets Chrome keep the compiled code with the cached file)
+while the loader counts a clone's bytes. The Tailscale engine's download
 in the sign-in guide uses the same bar (`web/src/progress.ts`).
 
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
@@ -549,8 +559,38 @@ chunks of its text are in.
 
 ## Loading on demand
 
-`web/src/loader.ts` loads the files the page needs only now and then, by
-name. `build.mjs` lists them in one asset manifest,
+The page loads at start only what its first frame needs, and the rest
+when it is first used. `web/src/loader.ts` loads both: the files of the
+asset manifest by name, and the page's code chunks.
+
+### What loads when
+
+Sizes are a build's (raw, then brotli, as Cloudflare serves them).
+
+| When | What | Size |
+| --- | --- | --- |
+| Boot | `index.html` (its styles inline) | 49 KB, 9 KB |
+| Boot | The script, `app-<hash>.js`, and the 5 chunks it imports (code it shares with the chunks below) | 198 KB, 59 KB |
+| Boot | The asset manifest | 53 KB, 7 KB |
+| Boot | The terminal's wasm, `ghostty-vt` | 867 KB, 228 KB |
+| Boot | Maple's index, `maple/index` | 81 KB, 17 KB |
+| Boot | JetBrains Mono, four faces (`dist/fonts`, as the CSS asks for them) | 1.1 MB |
+| First visit, no host | The welcome screen, `js/welcome` | 2.5 KB |
+| First open | Settings, `js/settings` | 18 KB, 6 KB |
+| First open of Settings › Theme | The theme list, `ghostty-themes` (lazy) | 189 KB, 56 KB |
+| First open | The Tailscale guide, `js/guide` | 10 KB |
+| Tailscale turned on | `js/tailengine`, then Go's `wasm_exec.js` (`tailnet/exec`, lazy) and the engine (`tailnet/engine`, lazy) | 3 KB, 17 KB, 6.06 MB |
+| First link opened in a pane | `js/files` | 5.6 KB |
+| First image shown | The image viewer, `js/viewer` | 6 KB |
+| Never, unless used | Maple's chunks (lazy), each as the terminal draws its characters | 5 to 170 KB each, 32 MB in all |
+
+Before this, a boot took the script whole (236 KB), the theme list and
+the manifest: 1,425 KB of script, wasm and JSON (373 KB brotli), now
+1,199 KB (311 KB brotli), in 9 requests rather than 5.
+
+### The manifest
+
+`build.mjs` lists the files in one asset manifest,
 `assets/manifest-<hash>.json`, which the script names
 (`__ASSET_MANIFEST__`):
 
@@ -559,14 +599,44 @@ name. `build.mjs` lists them in one asset manifest,
 ```
 
 `hash` is the first 16 hex digits of the file's SHA-256, which its name
-carries. `kind` is `wasm`, `json`, `font`, `script` or `data`. A `lazy`
-file is under `assets/lazy/`. Today it lists `ghostty-vt`,
-`ghostty-themes`, `maple/index` and `maple/<face>/<n>` (`r`, `b`, `i`,
-`bi`); the wasm and the themes still load as before.
+carries (a code chunk's name carries esbuild's hash instead). `kind` is
+`wasm`, `json`, `font`, `script` or `data`. A `lazy` file is under
+`assets/lazy/`. It lists `ghostty-vt`, `maple/index`, the lazy
+`ghostty-themes`, `tailnet/engine`, `tailnet/exec` and
+`maple/<face>/<n>` (`r`, `b`, `i`, `bi`), and the code chunks as
+`js/<module>` (`js/settings`) and `js/chunk-<hash>` (shared code). The
+script also carries the entries it needs at boot (`__BOOT_ASSETS__`:
+`ghostty-vt`, `maple/index`), so the wasm starts to load before the
+manifest is read.
+
+### Code chunks
+
+esbuild bundles the client as ES modules (`<script type="module">`),
+split (`splitting`): each dynamic `import()` is a chunk, in
+`dist/assets` as `<module>-<hash>.js`, and the code that chunks share
+with the script, or with each other, goes in `chunk-<hash>.js`, which the
+script imports at once. `index.html` names only the script; nothing is
+preloaded. The chunks are the Settings dialog, the Tailscale guide, the
+welcome screen, the code that runs only with the Tailscale engine
+(`tailengine.ts`), opening a file (`files.ts`) and the image viewer.
+What every frame uses (the terminal, panes, links and the pointer, the
+host list, the catalogs) stays in the script. `script-src 'self'`
+covers the chunks.
+
+`chunks.ts`'s `Chunk` loads one the first time it is used
+(`loader.module`); later uses run at once, from memory. A load that
+takes more than 150 ms shows a small panel in the corner, "Loading
+Settings…" with a busy bar (`progress.ts`); a failure shows "Couldn't
+load Settings", the reason, **Retry** (which runs what waited, as
+opening the dialog) and ×. Opening a file reports a failure of its chunk
+on the status line, as its other errors.
+
+### The loader
 
 The page's loader is `loader` (devtools and tests: `gorexLoader`):
 
-- `init(url?)`: reads the manifest once; every other call waits on it.
+- `configure(url, boot)`: the manifest's name and the boot entries
+  (`main.ts`); `init()` reads the manifest once.
 - `asset(name)`, `names(prefix)`: the manifest's entries.
 - `load(name, { signal, progress })`: the file's bytes. One request for
   all its callers at once; a network error or a 5xx answer is tried
@@ -575,20 +645,38 @@ The page's loader is `loader` (devtools and tests: `gorexLoader`):
   hears the bytes (`progress.ts`, as the progress bars do). The bytes
   stay in memory until `release(name)`.
 - `json(name)`: the same, parsed.
+- `response(name, { progress })`: a boot file's response, for
+  `WebAssembly.instantiateStreaming`, tried again as `load` is; a
+  clone's bytes give the progress.
+- `module(name, importer)`: a code chunk, by its `import()`, once; a
+  failed one is tried again as a file is, and again at the next call.
+  `script(name)`: a classic script of the manifest (`wasm_exec.js`),
+  once.
 - `stats()`: each load (name, bytes, `memory`, `cache` or `network`,
-  milliseconds, tries), the bytes from the network and from the cache,
-  the bytes in memory and the loads under way.
+  milliseconds, tries; a file the page fetched counts as `cache` when
+  its resource timing shows no bytes transferred), the bytes from the
+  network and from the cache, the bytes in memory, the loads under way
+  and the modules in.
 
-**Cache.** A file's name changes with its content, so the loader keeps
-the files in Cache Storage, `gorex-assets-v1`, and reads them there first;
-a file read there or fetched is checked against its hash (with
-`crypto.subtle`, in a secure context). `init` deletes the entries the
-manifest no longer lists and the caches of older numbers. The Service
-Worker does not keep `assets/lazy/`: it would fetch all of them (32 MB)
-at install and drop them with each version; the loader's cache keeps
-what was used, across versions. Without Cache Storage (plain `http` on a
-host other than loopback, as a dev server on a LAN address) the
-browser's HTTP cache keeps them (`immutable`, a year).
+### Who caches what
+
+- **The Service Worker** (see App) keeps the page and everything in
+  `dist` but `assets/lazy/`: the script and all its chunks (about 46 KB
+  of them load on demand; all are kept so that every part of the page
+  opens offline), the wasm, the manifest, Maple's index, the fonts and
+  icons. Its cache is per version, `gorex-<version>`.
+- **The loader** keeps the lazy files in Cache Storage,
+  `gorex-assets-v1`, across versions, and reads them there first: the
+  themes, the Tailscale engine and Maple's chunks. A file read there or
+  fetched is checked against its hash (with `crypto.subtle`, in a secure
+  context). `init` deletes the entries the manifest no longer lists and
+  the caches of older numbers. The worker leaves `assets/lazy/` and this
+  cache alone: it would fetch all of them (38 MB) at install and drop
+  them with each version.
+- **The browser's HTTP cache** keeps every `/assets` file a year
+  (`immutable`), and is what keeps the lazy files without Cache Storage
+  (plain `http` on a host other than loopback, as a dev server on a LAN
+  address).
 
 ## Languages
 
@@ -969,9 +1057,14 @@ the list.
 - A chosen theme acts as a stream `theme` message: it goes over GoRex's
   colours, and a later `theme` message from the host replaces it. Choosing
   Host Colors goes back to the host's last message.
-- The page loads the list while it loads the wasm, and the first frame has
-  the chosen colours. If the list does not load, the client keeps GoRex's
-  colours, and the Theme section says so.
+- The list (190 KB) loads on demand, when the Theme section first opens
+  (Loading on demand), with a progress bar after 150 ms and Retry when
+  it fails. The first frame has the chosen colours without it: the
+  standard theme's are in the script (`__STANDARD_THEME__`, from the
+  same file), and a chosen theme's are kept with its name
+  (`themeColors` in `gorex.settings`). Only a choice kept without its
+  colours, by an older version, loads the list as the page starts; if it
+  does not load, the client keeps GoRex's colours.
 - The minimum contrast (3 by default) applies to every theme.
 - The pane and its padding take the terminal's background. When that is
   light (by the same luma), the page's own colours (sidebar, status, frame
