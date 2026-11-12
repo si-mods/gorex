@@ -225,6 +225,8 @@ private struct HostForm: View {
                                 .frame(maxWidth: .infinity).multilineTextAlignment(.center)
                             Text("Server address").frame(maxWidth: .infinity, alignment: .leading)
                         }
+                    } footer: {
+                        if let why = HostConfig.refusal(of: address) { Text(why) }
                     }
                     .listRowBackground(Color.card)
                 }
