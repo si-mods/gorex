@@ -12,7 +12,7 @@ import (
 // at the front of each session's PATH.
 func CLIDir() string { return filepath.Join(Dir(), "bin") }
 
-// EnsureCLI makes the gorex shim in CLIDir point at this executable. A
+// EnsureCLI makes the shims in CLIDir point at this executable. A
 // failure is not fatal: sessions still get GOREX_SESSION.
 func EnsureCLI() error {
 	exe, err := os.Executable()
@@ -42,7 +42,33 @@ func linkCLI(exe string) error {
 		}
 		return replaceFile(path, []byte(body))
 	}
-	path := filepath.Join(dir, "gorex")
+	if err := linkTo(filepath.Join(dir, "gorex"), exe); err != nil {
+		return err
+	}
+	// GoRex 0.22 linked rec and sox here too, as SoX's stand-in for
+	// Claude Code's /voice; a link of those to exe, which now runs the
+	// app, goes. This can go once no install has them.
+	for _, name := range []string{"rec", "sox"} {
+		path := filepath.Join(dir, name)
+		if sameFile(path, exe) {
+			os.Remove(path)
+		}
+	}
+	return nil
+}
+
+// sameFile tells whether a and b, their links followed, are one file.
+func sameFile(a, b string) bool {
+	fa, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	fb, err := os.Stat(b)
+	return err == nil && os.SameFile(fa, fb)
+}
+
+// linkTo makes path a link to exe, through a temporary name.
+func linkTo(path, exe string) error {
 	if exe == path {
 		return fmt.Errorf("rex: %s leads nowhere", path)
 	}

@@ -49,7 +49,7 @@ type keptTabs struct {
 func (w *Workspace) unkeep() {
 	if k := w.kept; k != nil {
 		w.kept = nil
-		closePanes(k.tabs)
+		k.app.closePanes(k.tabs)
 	}
 }
 
@@ -214,6 +214,9 @@ type store struct {
 	clickedAt time.Time
 	// apps are the open windows, the most recently focused first.
 	apps []*App
+	// polling stops the poll of this machine's server, which runs while
+	// a window is open; nil while none runs.
+	polling chan struct{}
 	// lastClosed is the workspace of the last window, once it closed: it
 	// opens again with the app, or as the app is activated (macOS).
 	lastClosed *Workspace
@@ -533,7 +536,7 @@ func (st *store) reconcile(s savedStore) {
 	st.workspaces = next
 	for _, w := range gone {
 		if a := w.app; a != nil {
-			closePanes(a.leave())
+			a.closePanes(a.leave())
 			homeless = append(homeless, a)
 		}
 		st.remove(w)
@@ -664,24 +667,9 @@ func (st *store) byID(id string) *Workspace {
 // window shows name.
 func (st *store) hostSIDs(h *hostConn) map[string]bool {
 	out := map[string]bool{}
-	var walk func(n *savedNode)
-	walk = func(n *savedNode) {
-		if n == nil {
-			return
-		}
-		if n.Host == h.ID && n.SID != "" {
-			out[n.SID] = true
-		}
-		walk(n.A)
-		walk(n.B)
-	}
 	for _, w := range st.workspaces {
 		if w.app == nil {
-			for _, t := range w.layout.Tabs {
-				for _, n := range t.Roots() {
-					walk(n)
-				}
-			}
+			st.visitSIDs(w, h.ID, func(sid string) { out[sid] = true })
 		}
 	}
 	return out
@@ -694,19 +682,22 @@ func (st *store) addWorkspace() *Workspace {
 	return w
 }
 
-// workspaceByID returns the workspace with the ID, nil for none.
-func (st *store) workspaceByID(id string) *Workspace {
-	for _, w := range st.workspaces {
-		if w.ID == id {
-			return w
-		}
-	}
-	return nil
-}
-
 // taken tells whether a workspace has the name.
 func (st *store) taken(name string) bool {
 	return slices.ContainsFunc(st.workspaces, func(w *Workspace) bool { return strings.EqualFold(w.Name, name) })
+}
+
+// workspaceNamed returns the workspace with the name, as taken compares
+// them; nil for none or "".
+func (st *store) workspaceNamed(name string) *Workspace {
+	if name == "" {
+		return nil
+	}
+	i := slices.IndexFunc(st.workspaces, func(w *Workspace) bool { return strings.EqualFold(w.Name, name) })
+	if i < 0 {
+		return nil
+	}
+	return st.workspaces[i]
 }
 
 // remove forgets a workspace, and the window that shows it shows none.
@@ -778,9 +769,7 @@ func stateKey(slot int) string {
 // redraw draws every window again.
 func (st *store) redraw() {
 	for _, a := range st.apps {
-		if a.win != nil {
-			a.win.Update(func() {})
-		}
+		a.updater()(func() {})
 	}
 	if w := settingsUI.win; w != nil {
 		w.Update(func() {})
@@ -877,10 +866,8 @@ func (st *store) adopt(client *rex.Client) bool {
 			shown[a] = w
 			a.detach()
 		}
-		if a.win != nil {
-			go a.poll(a.win, st.client)
-		}
 	}
+	st.repoll()
 	// A server with no layout, as one that stopped for good, lost it:
 	// the windows keep theirs.
 	// takeShow acts on the layout read here, never the last connection's.
@@ -1101,7 +1088,7 @@ var newWindow = func(a *App) *mygo.Window {
 
 // openWindow opens a window that shows w.
 func (st *store) openWindow(w *Workspace) *App {
-	a := &App{st: st, client: st.client, hello: st.hello, errMsg: st.errMsg, slot: st.freeSlot(), stop: make(chan struct{}), keys: newKeyDispatcher()}
+	a := &App{st: st, client: st.client, hello: st.hello, errMsg: st.errMsg, slot: st.freeSlot(), keys: newKeyDispatcher()}
 	a.win = newWindow(a)
 	if err := a.loadLuaConfig(); err != nil {
 		a.err = err.Error()
@@ -1114,7 +1101,9 @@ func (st *store) openWindow(w *Workspace) *App {
 	}
 	a.show(w)
 	if win := a.win; win != nil {
-		go a.poll(win, st.client)
+		if st.polling == nil {
+			st.repoll()
+		}
 		win.OnFocus(func() { st.raise(a) })
 		win.OnClosed(func() { st.closed(a) })
 		if !st.debugging {
@@ -1125,17 +1114,32 @@ func (st *store) openWindow(w *Workspace) *App {
 	return a
 }
 
+// repoll has one poll of this machine's server, st.client's, run for the
+// windows, in place of the one that ran: none without a window.
+func (st *store) repoll() {
+	if st.polling != nil {
+		close(st.polling)
+		st.polling = nil
+	}
+	if slices.ContainsFunc(st.apps, func(a *App) bool { return a.win != nil }) {
+		st.polling = make(chan struct{})
+		go st.poll(st.client, st.polling, mygo.RunOnMain)
+	}
+}
+
 // closed forgets a window that closed; its workspace goes on, its
 // terminals detached. The hosts stay connected for the next window, as
 // the app stays without windows on macOS.
 func (st *store) closed(a *App) {
-	close(a.stop)
 	a.quitting = true
 	w := a.ws
 	a.detach()
 	st.unkeepAll(a)
 	a.win = nil
 	st.apps = slices.DeleteFunc(st.apps, func(o *App) bool { return o == a })
+	if len(st.apps) == 0 {
+		st.repoll()
+	}
 	if len(st.apps) == 0 && w != nil {
 		st.lastClosed = w
 	}
@@ -1150,6 +1154,7 @@ func (st *store) closed(a *App) {
 // tabs again, as they were; another window's kept tabs close, and the
 // space shows from its layout.
 func (a *App) show(w *Workspace) {
+	a.keepSpacesOpen(w)
 	if old := a.ws; old != nil && old != w {
 		a.park()
 	}
@@ -1187,7 +1192,7 @@ func (a *App) show(w *Workspace) {
 
 // detach closes the window's terminals, keeping their sessions, and its
 // tabs in its workspace's layout.
-func (a *App) detach() { closePanes(a.leave()) }
+func (a *App) detach() { a.closePanes(a.leave()) }
 
 // park takes the window off its workspace as detach does, but keeps its
 // tabs live in the workspace, terminals attached and pages loaded, for the
@@ -1196,7 +1201,7 @@ func (a *App) park() {
 	w, active := a.ws, a.active
 	tabs := a.leave()
 	if w == nil || len(tabs) == 0 {
-		closePanes(tabs)
+		a.closePanes(tabs)
 		return
 	}
 	for _, t := range tabs {
@@ -1226,11 +1231,10 @@ func (a *App) leave() []*Tab {
 
 // closePanes closes the tabs' terminals and web views, keeping their
 // sessions.
-func closePanes(tabs []*Tab) {
+func (a *App) closePanes(tabs []*Tab) {
 	for _, t := range tabs {
 		for _, p := range t.allPanes() {
-			p.end()
-			p.browser.destroy()
+			a.disposePane(p, false)
 		}
 	}
 }
@@ -1342,10 +1346,7 @@ func (a *App) closeWorkspace() {
 	}
 	for _, t := range a.tabs {
 		for _, p := range t.allPanes() {
-			p.close()
-			p.browser.destroy()
-			p.note.destroy()
-			a.killOn(p.host, p.SID)
+			a.disposePane(p, true)
 		}
 	}
 	a.tabs = nil
@@ -1387,11 +1388,8 @@ func (a *App) moveTabToSpace(t *Tab, w *Workspace) {
 	if st == nil || t == nil || w == nil || w == a.ws || !slices.Contains(a.tabs, t) || !slices.Contains(st.workspaces, w) {
 		return
 	}
-	if f := a.findPane; f != nil && f.Tab == t {
-		a.closeFind()
-	}
 	s := a.savedTab(t)
-	closePanes([]*Tab{t})
+	a.closePanes([]*Tab{t})
 	if o := w.app; o != nil {
 		l := o.snapshot()
 		l.Tabs = append(l.Tabs, s)
@@ -1416,14 +1414,8 @@ func (a *App) moveTabToNewWindow(t *Tab) {
 	if st == nil || t == nil || len(a.tabs) < 2 {
 		return
 	}
-	if f := a.findPane; f != nil && f.Tab == t {
-		a.closeFind()
-	}
 	l := savedLayout{Tabs: []savedTab{a.savedTab(t)}}
-	for _, p := range t.allPanes() {
-		p.end()
-		p.browser.destroy()
-	}
+	a.closePanes([]*Tab{t})
 	a.removeTab(t)
 	w := st.addWorkspace()
 	w.layout = l

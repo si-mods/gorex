@@ -90,7 +90,7 @@ func TestCloseLastTabKeepsSpace(t *testing.T) {
 	if res := clientCommand(a, rex.LayoutCommand{Op: "tab.close", Tab: only.UID}); res.Code != "" {
 		t.Fatalf("close: %+v", res)
 	}
-	if len(a.tabs) != 0 || a.st.workspaceByID(ws.ID) == nil {
+	if len(a.tabs) != 0 || a.st.byID(ws.ID) == nil {
 		t.Fatalf("after: %d tabs, spaces %v", len(a.tabs), a.st.workspaces)
 	}
 	saved := savedWorkspaces(t, a.client)

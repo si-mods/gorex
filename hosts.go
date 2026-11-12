@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -43,6 +44,12 @@ type savedHost struct {
 	// when it last connected: the Rex API names the host's panes by it,
 	// for a phone that connects to that machine too.
 	Machine string `json:"machine,omitempty"`
+	// Glyph is the icon of the machine, as its last hello described it,
+	// "" before (hostConn.remoteGlyph).
+	Glyph string `json:"glyph,omitempty"`
+	// Icon is the icon the user chose for the host (hostIcons), "" to
+	// follow its machine's, Glyph.
+	Icon string `json:"icon,omitempty"`
 	// Kills are the sessions closed here while the host was away, to end
 	// there once connected again, though GoRex quit meanwhile.
 	Kills []string `json:"kills,omitempty"`
@@ -103,16 +110,7 @@ func saveHosts(hosts []savedHost) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	os.Remove(tmp)
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return nil
+	return writeFileAtomic(path, b, 0o600)
 }
 
 func newHostID() string {
@@ -157,6 +155,9 @@ type hostConn struct {
 	openOnConnect *App
 	// transfers are those of the host's sessions, by session.
 	transfers map[string]*sessionTransfers
+	// creating closes once the pane of the session asked of the host last
+	// is placed, or would have been (newPaneRun).
+	creating chan struct{}
 
 	// mu guards client, changed, Kills of savedHost, and expect, the
 	// sessions a teleport starts here, which adopt leaves for their pane.
@@ -270,16 +271,24 @@ func (h *hostConn) next(ctx context.Context, c *rex.Client, d time.Duration) *re
 	}
 }
 
-// learnMachine keeps the machine the host's hello named, none from a
-// server before machines, and tells whether it changed. A host whose
-// address changes is a new savedHost, with no machine until it connects.
-func (h *hostConn) learnMachine(machine string) bool {
+// learn keeps the machine the host's hello named, none from a server
+// before machines, and the icon of the machine it described, if it did,
+// and tells whether either changed. A host whose address changes is a new
+// savedHost, with neither until it connects.
+func (h *hostConn) learn(hello rex.Hello) bool {
+	glyph := ""
+	if m := hello.Host; m.Model != "" || m.OS != "" {
+		glyph = hostGlyph(m, strings.HasPrefix(m.OS, "Windows"))
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.Machine == machine {
+	// A server that had not read its machine yet describes none: the icon
+	// learned before stays.
+	glyph = cmp.Or(glyph, h.Glyph)
+	if h.Machine == hello.Machine && h.Glyph == glyph {
 		return false
 	}
-	h.Machine = machine
+	h.Machine, h.Glyph = hello.Machine, glyph
 	return true
 }
 
@@ -507,7 +516,7 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 			logged.log(name, nil)
 			update(func() {
 				h.state, h.reason, h.hello, h.closed = hostConnected, nil, hello, nil
-				if h.learnMachine(hello.Machine) && h.persist != nil {
+				if h.learn(hello) && h.persist != nil {
 					h.persist()
 				}
 			})
@@ -557,45 +566,50 @@ func (a *App) runHost(h *hostConn, update func(func())) {
 const hostLayoutGrace = 2
 
 // watchHost asks a host what runs in its sessions every second, until its
-// connection closes, an ask fails, or the host is closed.
+// connection closes, an ask fails, or the host is closed. The windows take
+// the list, and draw again, as it changes (its ETag), and while a session
+// waits for the host's layout.
 func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	round := 0
-	first := map[string]int{}    // the poll each session first appeared in
-	prev := map[string]bool{}    // the sessions of the poll before
-	var l hostLayout             // the host's layout, as last read
-	shared, read := false, false // the host shares its layout, and it was read
+	first := map[string]int{}            // the poll each session first appeared in
+	prev := map[string]rex.SessionInfo{} // the sessions of the poll before
+	var l hostLayout                     // the host's layout, as last read
+	shared, read := false, false         // the host shares its layout, and it was read
+	etag, held := "", false              // of the last list, and whether it held a session
 	for {
 		select {
 		case <-c.Closed():
 			return
 		case <-h.stop:
 			return
-		case <-h.retry: // connected: nothing to retry
+		case <-h.retry: // connected: the next list is taken all the same (openTailnetHost)
+			etag = ""
 			continue
 		case <-tick.C:
 		}
 		round++
-		infos, err := c.List()
+		infos, next, changed, err := c.ListSince(etag)
 		if err != nil {
 			// A connection that stopped answering is as good as dropped.
 			return
 		}
+		if etag = next; !changed {
+			infos = slices.Collect(maps.Values(prev))
+		}
 		byID := make(map[string]rex.SessionInfo, len(infos))
-		next := make(map[string]bool, len(infos))
 		fresh := false
 		for _, in := range infos {
 			byID[in.ID] = in
-			next[in.ID] = true
-			if !prev[in.ID] {
+			if _, ok := prev[in.ID]; !ok {
 				fresh = true
 			}
 			if _, ok := first[in.ID]; !ok {
 				first[in.ID] = round
 			}
 		}
-		prev = next
+		prev = byID
 		// A session may be adopted in the tab the host's shared layout
 		// shows it in, with its splits. The layout is read when it was not
 		// yet, when a session appears, and while one the layout does not
@@ -617,10 +631,17 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 				l = hostLayout{named: map[string]bool{}}
 				for _, w := range layout.Parse(raw).Sessions {
 					l.tabs = append(l.tabs, w.Tabs...)
+					for range w.Tabs {
+						l.spaces = append(l.spaces, layout.Workspace{Name: w.Name, Color: w.Color})
+					}
 				}
 				for _, t := range l.tabs {
-					for _, n := range t.Roots() {
-						namedSIDs(n, l.named)
+					for _, r := range t.Roots() {
+						for _, n := range layout.Leaves(r) {
+							if n.SID != "" {
+								l.named[n.SID] = true
+							}
+						}
 					}
 				}
 			} else {
@@ -641,6 +662,11 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 				l.hold[id] = true
 			}
 		}
+		// A session the layout stops holding opens in the round after.
+		if !changed && l.hold == nil && !held {
+			continue
+		}
+		held = l.hold != nil
 		layout := l
 		update(func() {
 			h.infos = byID
@@ -668,21 +694,12 @@ func (a *App) watchHost(h *hostConn, c *rex.Client, update func(func())) {
 // adopt: the sessions in its tabs, and those seen too lately for the host
 // to have saved them there yet.
 type hostLayout struct {
-	tabs  []savedTab
-	named map[string]bool
-	hold  map[string]bool
-}
-
-// namedSIDs adds the sessions n's panes are to out.
-func namedSIDs(n *savedNode, out map[string]bool) {
-	if n == nil {
-		return
-	}
-	if n.SID != "" {
-		out[n.SID] = true
-	}
-	namedSIDs(n.A, out)
-	namedSIDs(n.B, out)
+	tabs []savedTab
+	// spaces are the name and color of the host's space each of tabs is
+	// in, by index.
+	spaces []layout.Workspace
+	named  map[string]bool
+	hold   map[string]bool
 }
 
 // adopt opens a tab for each live session of host h that no pane here
@@ -698,7 +715,8 @@ func namedSIDs(n *savedNode, out map[string]bool) {
 //
 // With windows of workspaces, the window focused last opens them, and a
 // session shows already when a tab of any workspace has it, shown in a
-// window or not.
+// window or not. A tab of the host's layout opens in the space of the
+// name of the host's space it is in.
 func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) {
 	// A list on its way as the host was removed, or the window closed.
 	if a.quitting || !slices.Contains(a.hosts, h) {
@@ -756,16 +774,50 @@ func (a *App) adopt(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 		return
 	}
 	added := false
-	for _, t := range l.tabs {
+	for i, t := range l.tabs {
 		// A tab here that shows panes of t already takes its new ones,
 		// as when the host splits a pane of it.
 		if a.adoptInto(h, t, free, where) {
 			added = true
 		}
-		if at := a.adoptTab(h, t, free); at != nil {
-			a.tabs = append(a.tabs, at)
-			added = true
+		// A new tab goes to the space here of the name of the host's
+		// space it is in, so that the two group it alike: into the window
+		// that shows that space, or into its layout, made last when no
+		// space has the name.
+		var sp layout.Workspace
+		var w *Workspace
+		if a.st != nil && i < len(l.spaces) {
+			sp = l.spaces[i]
+			w = a.st.workspaceNamed(sp.Name)
 		}
+		o := a
+		if w != nil && w.app != nil {
+			o = w.app
+		}
+		at := o.adoptTab(h, t, free)
+		if at == nil {
+			continue
+		}
+		added = true
+		if sp.Name == "" || w != nil && w.app != nil {
+			o.tabs = append(o.tabs, at)
+			if o != a {
+				o.groupTabs()
+				o.changed()
+			}
+			continue
+		}
+		if w == nil {
+			w = a.st.addWorkspace()
+			w.Name = sp.Name
+			if _, ok := spaceColorHex(sp.Color); ok {
+				w.Color = sp.Color
+			}
+		}
+		w.unkeep()
+		w.layout.Tabs = append(w.layout.Tabs, a.savedTab(at))
+		a.closePanes([]*Tab{at})
+		a.st.save()
 	}
 	// A session the layout does not name, as of a host that shares no
 	// layout, gets a tab of its own.
@@ -914,16 +966,6 @@ func (a *App) adoptPane(h *hostConn, t *Tab, in rex.SessionInfo, name string) *P
 	a.attach(p, in.Cols, in.Rows)
 	p.Tab = t
 	return p
-}
-
-// floatOver makes pane p float over tab t, at the box of the saved float sf.
-func (a *App) floatOver(t *Tab, p *Pane, sf savedFloat) *Float {
-	f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
-	f.clamp()
-	p.Node = &Node{ID: a.id(), Pane: p}
-	p.float = f
-	t.Floats = append(t.Floats, f)
-	return f
 }
 
 // splitNode puts pane p beside node n of tab t, after it (right or below)

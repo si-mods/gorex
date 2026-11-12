@@ -8,9 +8,9 @@ import (
 )
 
 // Handler returns the gateway's HTTP endpoints: the control and data
-// connections, uploads, the help document and this API's own pages. A
-// request from a web page whose origin the gateway does not trust is
-// refused on every path, before the access rule (checkOrigin).
+// connections, uploads, downloads, voices, the help document and this
+// API's own pages. A request from a web page whose origin the gateway does
+// not trust is refused on every path, before the access rule (checkOrigin).
 func (g *Gateway) Handler() http.Handler {
 	if relay := relayHandler(); relay != nil {
 		return relay
@@ -20,6 +20,7 @@ func (g *Gateway) Handler() http.Handler {
 	mux.HandleFunc("/api/data", g.handleData)
 	mux.HandleFunc("/api/upload", g.handleUpload)
 	mux.HandleFunc("/api/download", g.handleDownload)
+	mux.HandleFunc("/api/voice", g.handleVoice)
 	mux.HandleFunc("/api/spaces", g.handleSpaces)
 	mux.HandleFunc("/api/help", serveHelp)
 	mux.HandleFunc("/llms.txt", serveLLMs)

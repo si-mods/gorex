@@ -15,14 +15,14 @@ func TestKeyDispatcher(t *testing.T) {
 	if got, _, ok := d.handle(ui.Ctrl, ui.KeyB); got != nil || !ok {
 		t.Fatalf("prefix: command %v, taken %v", got, ok)
 	}
-	if n := len(d.pendingKeys()); n != 1 {
+	if n := len(d.pending); n != 1 {
 		t.Fatalf("%d keys pending, want 1", n)
 	}
 	got, args, ok := d.handle(0, ui.KeyC)
 	if got != cmd || !ok || args != nil {
 		t.Fatalf("sequence: command %v, args %v, taken %v", got, args, ok)
 	}
-	if n := len(d.pendingKeys()); n != 0 {
+	if n := len(d.pending); n != 0 {
 		t.Fatalf("%d keys pending after the sequence, want 0", n)
 	}
 
@@ -32,7 +32,7 @@ func TestKeyDispatcher(t *testing.T) {
 	if got, _, ok := d.handle(0, ui.KeyX); got != nil || ok {
 		t.Fatalf("other key: command %v, taken %v", got, ok)
 	}
-	if n := len(d.pendingKeys()); n != 0 {
+	if n := len(d.pending); n != 0 {
 		t.Fatalf("%d keys pending after another key, want 0", n)
 	}
 
@@ -41,7 +41,7 @@ func TestKeyDispatcher(t *testing.T) {
 	if got, _, ok := d.handle(0, ui.KeyEscape); got != nil || ok {
 		t.Fatalf("escape: command %v, taken %v", got, ok)
 	}
-	if n := len(d.pendingKeys()); n != 0 {
+	if n := len(d.pending); n != 0 {
 		t.Fatalf("%d keys pending after escape, want 0", n)
 	}
 }
@@ -56,7 +56,7 @@ func TestKeyDispatcherTimeout(t *testing.T) {
 	if got, _, ok := d.handle(0, ui.KeyC); got != nil || ok {
 		t.Fatalf("after the timeout: command %v, taken %v", got, ok)
 	}
-	if n := len(d.pendingKeys()); n != 0 {
+	if n := len(d.pending); n != 0 {
 		t.Fatalf("%d keys pending after the timeout, want 0", n)
 	}
 }
@@ -80,9 +80,6 @@ func TestKeyDispatcherNil(t *testing.T) {
 	}
 	d.bind(nil, &command{ID: "test.action"}, nil, "") // no panic
 	d.reset()
-	if d.pendingKeys() != nil {
-		t.Error("nil dispatcher has pending keys")
-	}
 }
 
 // TestKeyDispatcherInTerminal checks that the dispatcher is wired to a

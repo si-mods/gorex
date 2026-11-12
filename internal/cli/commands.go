@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -27,6 +29,8 @@ const (
 	ExitUsage  = 2
 	ExitTarget = 3
 	ExitServer = 4
+	// ExitInterrupted is the code of an interrupt or a terminate signal.
+	ExitInterrupted = 130
 )
 
 // serverTarget is -S, a host label or address; Main sets it for a call.
@@ -126,9 +130,9 @@ Usage:
   gorex [-S HOST] ls [--json]
   gorex clients [--json]
   gorex [-S HOST] layout [--json]
-  gorex split [-s SESSION] [--down] [--dir DIR] [-- COMMAND...]
-  gorex close [-s SESSION] [--tab]
-  gorex rename [-s SESSION] NAME
+  gorex split [-s SESSION] [--down] [--dir DIR] [--json] [-- COMMAND...]
+  gorex close [-s SESSION] [--tab] [--json]
+  gorex rename [-s SESSION] [--json] NAME
   gorex new [--dir DIR] [--json] [-- COMMAND...]
   gorex send [-s SESSION] [-w TAB] [-b PANE] [--enter] [--json] TEXT...
   gorex paste [-s SESSION] [-w TAB] [-b PANE] [--json] TEXT...
@@ -145,10 +149,11 @@ Usage:
   gorex action run [-s SESSION] [--json] ACTION [KEY=VALUE...]
   gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION] [--json] [KEY=VALUE...]
   gorex teleport [--json] PANE HOST
-  gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--json]
-  gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH]
+  gorex rex-import [--rex SOCKET] [--session LABEL|ID] [--shell] [--resize] [--json]
+  gorex rex-mirror --session ID --block ID [--label LABEL] [--socket PATH] [--resize]
   gorex version [--json]
 
+-S HOST before a command uses a saved remote host's server, not this machine's.
 Targets: -s SESSION, -w TAB or -b PANE; -b wins, then -w, then -s.
 The session defaults to GOREX_SESSION, set in every terminal GoRex opens.
 Codes: 0 ok, 1 failed, 2 usage, 3 no such session or target, 4 server
@@ -1262,7 +1267,13 @@ func runCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitFailed, true
 	}
 	defer c.Kill(info.ID)
-	in, err := waitExit(c, info.ID, 0)
+	// Go exits on a signal without running defers: end the session here.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	in, err := waitExit(ctx, c, info.ID, 0)
+	if ctx.Err() != nil {
+		return ExitInterrupted, true
+	}
 	if err != nil {
 		if *asJSON {
 			WriteJSON(out, map[string]any{"session": info.ID, "error": err.Error()})
@@ -1438,7 +1449,7 @@ func hasStatus(in rex.SessionInfo, want string) bool {
 	return false
 }
 
-func waitExit(c *rex.Client, sid string, d time.Duration) (rex.SessionInfo, error) {
+func waitExit(ctx context.Context, c *rex.Client, sid string, d time.Duration) (rex.SessionInfo, error) {
 	var deadline time.Time
 	if d > 0 {
 		deadline = time.Now().Add(d)
@@ -1458,7 +1469,11 @@ func waitExit(c *rex.Client, sid string, d time.Duration) (rex.SessionInfo, erro
 		if !deadline.IsZero() && time.Now().After(deadline) {
 			return rex.SessionInfo{}, errors.New("timed out waiting for the session to end")
 		}
-		time.Sleep(50 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			return rex.SessionInfo{}, ctx.Err()
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 }
 

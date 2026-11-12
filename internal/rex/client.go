@@ -46,12 +46,8 @@ type Client struct {
 	lost      bool // the attached were closed
 	pinging   sync.Once
 
-	// changes are the kinds of change the server told of (Subscribe) and
-	// Changes did not take yet; changed is signaled as one comes.
-	changes map[string]bool
-	changed chan struct{}
-	// events are the changes themselves, for a client that prints them;
-	// eventsOnce closes the channel when the connection ends.
+	// events are the changes the server told of (Subscribe); eventsOnce
+	// closes the channel when the connection ends.
 	events     chan Event
 	eventsOnce sync.Once
 	// revision is the last layout revision the server told of.
@@ -79,7 +75,7 @@ func Connect() (*Client, error) {
 func dialSocket() (net.Conn, error) { return net.Dial("unix", SocketPath()) }
 
 // ConnectExisting connects to the server that runs, starting none: one a
-// bridge started from an SSH session would end with the session, as
+// client started from an SSH session would end with the session, as
 // Windows ends what the session's job runs. The connection is kept alive
 // (Hello), so that the sizes it locks unlock as it goes.
 func ConnectExisting() (*Client, error) {
@@ -129,7 +125,7 @@ func dialUntil(deadline time.Time) (net.Conn, error) {
 
 func newClient(conn net.Conn, dial func() (net.Conn, error)) *Client {
 	c := &Client{conn: conn, dial: dial, pending: map[int64]chan Response{}, closed: make(chan struct{}),
-		changes: map[string]bool{}, changed: make(chan struct{}, 1), events: make(chan Event, 256)}
+		events: make(chan Event, 256)}
 	go c.read()
 	return c
 }
@@ -287,19 +283,14 @@ func (c *Client) read() {
 			continue
 		}
 		c.mu.Lock()
-		if res.ID == 0 && res.Event != "" {
-			c.changes[res.Event] = true
+		if res.ID == 0 && res.Kind != "" {
 			if res.Revision > 0 {
 				c.revision = res.Revision
 			}
 			c.mu.Unlock()
 			select {
-			case c.events <- Event{Kind: res.Event, Revision: res.Revision, Sessions: res.Sessions, Transfer: res.Transfer}:
+			case c.events <- res.Event:
 			default: // a reader that stopped reading does not hold the client
-			}
-			select {
-			case c.changed <- struct{}{}:
-			default:
 			}
 			continue
 		}
@@ -447,7 +438,7 @@ func (c *Client) Hello() (h Hello, err error) {
 }
 
 // Subscribe asks the server to tell this connection of the changes of
-// the layout and the sessions as they come (Changed). A server before it
+// the layout and the sessions as they come (Events). A server before it
 // answers an error: poll it then.
 func (c *Client) Subscribe() error { return c.call(Request{Op: "subscribe"}, nil) }
 
@@ -461,20 +452,6 @@ func (c *Client) SubscribeTransfers() error {
 // Events returns the changes the server tells of, in order, while the
 // connection lasts; the channel closes with it.
 func (c *Client) Events() <-chan Event { return c.events }
-
-// Changed is signaled once the server told of a change, which Changes
-// takes: a burst of them signals it once.
-func (c *Client) Changed() <-chan struct{} { return c.changed }
-
-// Changes returns whether the layout and the sessions changed since it
-// was called last, as the server told.
-func (c *Client) Changes() (layout, sessions bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	layout, sessions = c.changes["layout"], c.changes["sessions"]
-	clear(c.changes)
-	return
-}
 
 func (c *Client) List() (s []SessionInfo, err error) {
 	err = c.call(Request{Op: "list"}, &s)
@@ -539,6 +516,53 @@ func (c *Client) RenewSize(sid, owner string) error {
 func (c *Client) Command(cmd LayoutCommand) (res LayoutCommand, err error) {
 	err = c.call(Request{Op: "command", Command: &cmd}, &res)
 	return
+}
+
+// SplitTree makes the panes of a tree of splits in its shape, from first,
+// the pane that stands for the whole tree. A split splits its pane, which
+// goes on standing for its first side and the new one for its second,
+// moves the divider to its ratio, and then makes each side. split reads a
+// tree: a split's direction, ratio and sides, ok false for a pane. do runs
+// c, a pane.split that makes the pane of leaf or a pane.resize, and returns
+// the new pane. SplitTree returns the panes in leaf order.
+func SplitTree[T any](tree T, first string, split func(T) (vertical bool, ratio float64, a, b T, ok bool), do func(c LayoutCommand, leaf T) (string, error)) ([]string, error) {
+	vertical, ratio, a, b, ok := split(tree)
+	if !ok {
+		return []string{first}, nil
+	}
+	leaf := b
+	for {
+		_, _, la, _, ok := split(leaf)
+		if !ok {
+			break
+		}
+		leaf = la
+	}
+	second, err := do(LayoutCommand{Op: "pane.split", SID: first, Vertical: vertical}, leaf)
+	if err != nil {
+		return nil, err
+	}
+	// The new split is at a half. Its divider moves by an edge no split
+	// above it has: the first pane's growing, the second's shrinking.
+	if d := float32(ratio - 0.5); ratio > 0 && ratio < 1 && (d > 0.01 || d < -0.01) {
+		grow, shrink := "right", "left"
+		if vertical {
+			grow, shrink = "down", "up"
+		}
+		c := LayoutCommand{Op: "pane.resize", SID: first, Direction: grow, Amount: d}
+		if d < 0 {
+			c.SID, c.Direction, c.Amount = second, shrink, -d
+		}
+		if _, err := do(c, leaf); err != nil {
+			return nil, err
+		}
+	}
+	panes, err := SplitTree(a, first, split, do)
+	if err != nil {
+		return nil, err
+	}
+	more, err := SplitTree(b, second, split, do)
+	return append(panes, more...), err
 }
 
 // TakeCommand returns the next layout command for the app to make, after

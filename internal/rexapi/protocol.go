@@ -187,13 +187,6 @@ type response struct {
 	Error        *apiError `json:"error,omitempty"`
 }
 
-// eventMessage is an event sent without a request.
-type eventMessage struct {
-	Type    string `json:"type"`
-	Seq     uint64 `json:"seq"`
-	Payload any    `json:"payload"`
-}
-
 // innerEvent is an event's own name and fields.
 type innerEvent struct {
 	Type    string `json:"type"`

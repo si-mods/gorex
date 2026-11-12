@@ -85,14 +85,25 @@ func TestProtocolV3(t *testing.T) {
 		t.Fatal(err)
 	}
 	select {
-	case <-sub.Changed():
+	case ev := <-sub.Events():
+		if ev.Kind != "layout" {
+			t.Fatalf("the event was not a layout change: %s", ev.Kind)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("no layout event")
 	}
-	if layout, _ := sub.Changes(); !layout {
-		t.Fatal("the event was not a layout change")
-	}
 	if got := sub.Revision(); got != 4 {
 		t.Fatalf("event revision %d, want 4", got)
+	}
+}
+
+// TestHelloBeforeHost answers a hello with no machine while hostInfo, as a
+// slow system_profiler, has not finished: never what it is writing.
+func TestHelloBeforeHost(t *testing.T) {
+	s := &Server{hostDone: make(chan struct{})}
+	go func() { s.host = HostInfo{Name: "slow"} }()
+	h, err := s.do(Request{Op: "hello"}, "", nil)
+	if err != nil || h.(Hello).Host != (HostInfo{}) {
+		t.Fatalf("hello = %+v, %v; want no host", h, err)
 	}
 }

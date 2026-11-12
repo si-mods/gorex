@@ -1,3 +1,4 @@
+import Observation
 import XCTest
 
 /// What a host's window menu does with no control connection.
@@ -112,7 +113,7 @@ nonisolated final class HostTests: XCTestCase {
         func records(_ rs: [String: Any]...) { send("program_status_changed", ["records": rs]) }
 
         records(["id": "omp", "state": "working", "progress": 40])
-        await until("working") { h.statuses["b"]?.first?.state == "working" }
+        await until("working") { h.blocks["b"]?.statuses?.first?.state == "working" }
         XCTAssertEqual(h.status(["b"])?.progress, 40)
         XCTAssertTrue(told.isEmpty)
 
@@ -129,7 +130,7 @@ nonisolated final class HostTests: XCTestCase {
         // Still blocked, as another record changes: told once.
         records(["id": "omp", "state": "working", "progress": 60],
                 ["id": "claude", "state": "blocked", "kind": "question", "app": "claude", "msg": "Allow?"])
-        await until("progress") { h.statuses["b"]?.first?.progress == 60 }
+        await until("progress") { h.blocks["b"]?.statuses?.first?.progress == 60 }
         // Answered, then blocked again: told again.
         records(["id": "claude", "state": "working", "app": "claude"])
         await until("working again") { h.status(["b"])?.state == "working" }
@@ -138,7 +139,7 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(told[1].2.title, "Edit?")
 
         send("program_status_removed", ["ids": ["claude"], "reason": "removed"])
-        await until("removed") { h.statuses["b"]?.isEmpty == true }
+        await until("removed") { h.blocks["b"]?.statuses?.isEmpty == true }
         XCTAssertNil(h.status(["b"]))
         XCTAssertEqual(told.count, 2)
 
@@ -176,6 +177,45 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(told, 0)
     }
 
+    /// A block's title change tells only what read that block's title:
+    /// not what read another block's, nor the host's lists; a title told
+    /// again unchanged tells no one.
+    @MainActor func testTitleChangeTellsItsBlockOnly() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        rex.respond = { m, _ in m == "session.bootstrap" ? ["attach_all": ["sessions": []]] : [:] }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("online") { h.status == .online }
+        func title(_ block: String, _ t: String) {
+            rex.event(["type": "session_event", "payload": ["session_id": "s", "event": [
+                "type": "block_event", "payload": ["block_id": block, "name": "title_changed", "payload": ["title": t]],
+            ]]])
+        }
+        title("a", "A1")
+        title("b", "B1")
+        await until("titles") { h.blocks["a"]?.title == "A1" && h.blocks["b"]?.title == "B1" }
+
+        let fired = Fired()
+        func watch(_ name: String, _ read: () -> Void) {
+            withObservationTracking(read) { fired.names.insert(name) }
+        }
+        watch("a") { _ = h.blocks["a"]?.title }
+        watch("b") { _ = h.blocks["b"]?.title }
+        watch("host") { _ = (h.status, h.sessions, h.blocks) }
+        title("a", "A2")
+        await until("changed") { h.blocks["a"]?.title == "A2" }
+        XCTAssertEqual(fired.names, ["a"])
+
+        // The same title again, then b's, which comes after it.
+        watch("a again") { _ = h.blocks["a"]?.title }
+        title("a", "A2")
+        title("b", "B2")
+        await until("b changed") { h.blocks["b"]?.title == "B2" }
+        XCTAssertEqual(fired.names, ["a", "b"])
+    }
+
     /// A reconnect, as after the background, keeps the titles and programs
     /// it had, and reads them again in place: nothing blanks while the
     /// reads run, and what changed while away arrives.
@@ -208,7 +248,7 @@ nonisolated final class HostTests: XCTestCase {
         let h = Host(HostConfig(name: "test", url: try await rex.url()))
         h.connect()
         defer { h.stop() }
-        await until("read") { h.titles["b"] == "First" && h.titles["c"] == "First" && h.programs["b"] == "zsh" }
+        await until("read") { h.blocks["b"]?.title == "First" && h.blocks["c"]?.title == "First" && h.blocks["b"]?.program == "zsh" }
         let asked = rex.count("com.superlogical.terminal.title")
 
         // The app goes to the background and back: the connection dies,
@@ -219,12 +259,79 @@ nonisolated final class HostTests: XCTestCase {
         serveC = false
         h.reconnectIfNeeded()
         await until("online again") { h.status == .online }
-        await until("read again") { h.titles["b"] == "Second" }
+        await until("read again") { h.blocks["b"]?.title == "Second" }
         await until("asked again") { rex.count("com.superlogical.terminal.title") > asked }
         // What the first read brought still shows for the block whose
         // second read hasn't answered.
-        XCTAssertEqual(h.titles["c"], "First")
-        XCTAssertEqual(h.programs["b"], "zsh")
+        XCTAssertEqual(h.blocks["c"]?.title, "First")
+        XCTAssertEqual(h.blocks["b"]?.program, "zsh")
+    }
+
+    /// Blocks no window holds are forgotten: when a window closes, and when
+    /// a session is destroyed. Nothing is forgotten while a session has no
+    /// view, as after a reconnect, and a block's own changes still tell
+    /// only its readers.
+    @MainActor func testBlocksForgottenWhenGone() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        func view(_ session: String, _ revision: Int, _ windows: [[String]]) -> [String: Any] {
+            ["revision": revision, "session_id": session, "label": session, "windows": windows.enumerated().map { i, bs in
+                ["window_id": "\(session)w\(i)", "layers": [["blocks": bs.map { ["block_id": $0] }]]]
+            }]
+        }
+        var s = view("s", 1, [["a", "b"], ["c"]])
+        var attachT = false
+        rex.respond = { m, p in
+            switch m {
+            case "session.bootstrap":
+                ["attach_all": ["sessions": [["session_id": "s", "label": "s"], ["session_id": "t", "label": "t"]]], "selected_session": ["view": s]]
+            case "session.attach":
+                attachT ? ["view": view("t", 1, [["d"]])] : nil
+            case "session.view":
+                s
+            case "com.superlogical.terminal.title":
+                ["title": p["block_id"] as? String ?? ""]
+            default: [:]
+            }
+        }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("s read") { ["a", "b", "c"].allSatisfy { h.blocks[$0]?.title == $0 } }
+
+        // Session t has no view yet: its block, known by an event, stays
+        // through s's view and through a reconnect.
+        rex.event(["type": "session_event", "payload": ["session_id": "t", "event": [
+            "type": "block_event", "payload": ["block_id": "d", "name": "title_changed", "payload": ["title": "D"]],
+        ]]])
+        await until("d") { h.blocks["d"]?.title == "D" }
+        FakeRex.close(rex.controls[0], .protocolCode(.goingAway))
+        await until("offline") { h.control == nil }
+        h.reconnectIfNeeded()
+        await until("online again") { h.status == .online }
+        await until("asked") { rex.count("session.attach") > 0 }
+        XCTAssertEqual(Set(h.blocks.keys), ["a", "b", "c", "d"])
+        XCTAssertEqual(h.blocks["d"]?.title, "D")
+
+        // Both views in: the window that closed takes its blocks.
+        attachT = true
+        h.reconnect()
+        await until("both views") { h.sessions.allSatisfy { $0.view != nil } }
+        let fired = Fired()
+        let a = try XCTUnwrap(h.blocks["a"])
+        withObservationTracking { _ = a.title } onChange: { fired.names.insert("a") }
+        s = view("s", 2, [["a", "b"]])
+        rex.event(["type": "session_event", "payload": ["session_id": "s", "event": [
+            "type": "session_view_changed", "payload": ["revision": 2],
+        ]]])
+        await until("c gone") { h.blocks["c"] == nil }
+        XCTAssertEqual(Set(h.blocks.keys), ["a", "b", "d"])
+        XCTAssertTrue(fired.names.isEmpty)
+
+        // A destroyed session takes its blocks.
+        rex.event(["type": "session_event", "payload": ["session_id": "t", "event": ["type": "session_destroyed", "payload": ["session_id": "t"]]]])
+        await until("d gone") { h.blocks["d"] == nil }
+        XCTAssertEqual(Set(h.blocks.keys), ["a", "b"])
     }
 
     /// A row moved onto another lands where it is: before a row above,
@@ -367,6 +474,93 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual(rex.tokens, [nil, "t1", nil])
     }
 
+    /// A terminal opened as its host connects, as from a notification on a
+    /// cold start, asks for its stream once the host is bootstrapped, even
+    /// when that takes a reconnect.
+    @MainActor func testTerminalWaitsForOnline() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        var answer = false
+        rex.respond = { m, _ in m == "session.bootstrap" ? (answer ? ["attach_all": ["sessions": []]] : nil) : [:] }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        defer { h.stop() }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        await until("bootstrapping") { rex.count("session.bootstrap") == 1 }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(rex.count("data.connect"), 0)
+        answer = true
+        FakeRex.close(rex.controls[0], .protocolCode(.goingAway))
+        await until("asked for the stream") { rex.count("data.connect") == 1 }
+        XCTAssertEqual(h.status, .online)
+        XCTAssertLessThan(try XCTUnwrap(rex.calls.lastIndex(of: "session.bootstrap")), try XCTUnwrap(rex.calls.firstIndex(of: "data.connect")))
+        s.close()
+    }
+
+    /// What waits for the host to be online fails when the host is removed.
+    @MainActor func testOnlineFailsWhenStopped() async {
+        let h = Host(HostConfig(name: "test", url: URL(string: "http://127.0.0.1:1")!))
+        h.connect()
+        let waiting = Task { try await h.online() }
+        try? await Task.sleep(for: .milliseconds(100))
+        h.stop()
+        do {
+            _ = try await waiting.value
+            XCTFail("online")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        do {
+            _ = try await h.online()
+            XCTFail("online after stop")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
+
+    /// What waits for the host to be online fails when the server refuses
+    /// the device, as the host then waits for a change.
+    @MainActor func testOnlineFailsWhenRefused() async throws {
+        let http = try FakeHTTP()
+        defer { http.stop() }
+        http.respond = { _ in (403, ["error": "refused"]) }
+        let h = Host(HostConfig(name: "test", url: try await http.url()))
+        defer { h.stop() }
+        let waiting = Task { try await h.online() }
+        h.connect()
+        do {
+            _ = try await waiting.value
+            XCTFail("online")
+        } catch {
+            XCTAssertEqual((error as? RexError)?.code, "refused")
+        }
+    }
+
+    /// A host that can't be reached tries again sooner first, then every
+    /// ten seconds, as long as it takes, and shows offline meanwhile.
+    @MainActor func testRetryBacksOff() async throws {
+        XCTAssertEqual(Host.backoff(after: 1), .milliseconds(500))
+        XCTAssertEqual(Host.backoff(after: 2), .seconds(1))
+        XCTAssertEqual(Host.backoff(after: 6), .seconds(10))
+        XCTAssertEqual(Host.backoff(after: 100), .seconds(10))
+        let http = try FakeHTTP()
+        defer { http.stop() }
+        http.respond = { _ in (500, [:]) }
+        let h = Host(HostConfig(name: "test", url: try await http.url()))
+        h.connect()
+        defer { h.stop() }
+        await until("offline") { if case .offline = h.status { true } else { false } }
+        let end = ContinuousClock.now + .seconds(2.2)
+        while .now < end {
+            XCTAssertNotEqual(h.status, .connecting)
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        // At once, then after 0.5 s and 1 s; the next waits 2 s.
+        XCTAssertGreaterThanOrEqual(http.requests.count, 3)
+        XCTAssertLessThanOrEqual(http.requests.count, 4)
+    }
+
     /// The engine hears of the hosts as their list changes, as it loads
     /// and as one is added or removed; of one added, before it connects.
     @MainActor func testTailcatHostsTold() throws {
@@ -465,4 +659,10 @@ nonisolated final class HostTests: XCTestCase {
         XCTAssertEqual("✳\u{FE0F} ok".asText, "✳\u{FE0F} ok", "an emoji chosen stays")
         XCTAssertEqual("#1 * 😀 中文".asText, "#1 * 😀 中文", "ASCII and emoji stay")
     }
+}
+
+/// The names of the observations that fired, as they fire on the thread
+/// that changes what they read.
+nonisolated private final class Fired: @unchecked Sendable {
+    var names: Set<String> = []
 }

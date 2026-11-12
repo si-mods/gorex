@@ -201,6 +201,7 @@ func TestUploadBegin(t *testing.T) {
 		{"a batch without a count", map[string]any{"ref": newUploadRef(t), "name": "a.txt", "size": 1, "batch": "b1"}, "bad_request"},
 		{"an index outside the batch", map[string]any{"ref": newUploadRef(t), "name": "a.txt", "size": 1, "batch": "b2", "index": 2, "count": 2}, "bad_request"},
 		{"too many files", map[string]any{"ref": newUploadRef(t), "name": "a.txt", "size": 1, "batch": "b3", "index": 0, "count": maxUploadBatchFiles + 1}, "bad_request"},
+		{"a name of more than 255 bytes", map[string]any{"ref": newUploadRef(t), "name": strings.Repeat("a", 252) + ".txt", "size": 1}, "bad_request"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -212,6 +213,22 @@ func TestUploadBegin(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a colon is refused on Windows only", func(t *testing.T) {
+		// A ":" names a stream of a file on Windows, where the server
+		// refuses it; elsewhere it is a file name's character.
+		args := map[string]any{"ref": newUploadRef(t), "name": "a:b.txt", "size": 1}
+		if runtime.GOOS != "windows" {
+			uploadBegin(t, c, session, block, args)
+			return
+		}
+		e := failure(t, c.request("colon", "com.superlogical.terminal.upload_begin", map[string]any{
+			"session_id": session, "block_id": block, "args": args,
+		}))
+		if e["code"] != "bad_request" {
+			t.Errorf("code %v (%v)", e["code"], e)
+		}
+	})
 
 	t.Run("an index twice is conflict", func(t *testing.T) {
 		// The first file of the batch takes its place; a second file of

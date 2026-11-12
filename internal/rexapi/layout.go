@@ -22,19 +22,6 @@ type specTree struct {
 	a, b     *specTree
 }
 
-// specLeaf is one block of a specTree, and the splits above it.
-type specLeaf struct {
-	tree *specTree
-	path []specStep
-}
-
-// specStep is a split on the way to a block.
-type specStep struct {
-	vertical bool
-	ratio    float64
-	after    bool
-}
-
 // parseTree reads a layout node of session.create, session.new_window or
 // session.new_split. It fails with bad_request when the node is
 // malformed, and with not_found when a flavor is not one GoRex makes.
@@ -153,40 +140,21 @@ func decodeNode(raw json.RawMessage) (args, *apiError) {
 	return node, nil
 }
 
-// leaves returns the tree's blocks in layout order, with the splits above
-// them.
-func (t *specTree) leaves() []specLeaf {
-	var out []specLeaf
-	var walk func(*specTree, []specStep)
-	walk = func(n *specTree, path []specStep) {
-		if n == nil {
-			return
-		}
-		if n.leaf {
-			out = append(out, specLeaf{tree: n, path: path})
-			return
-		}
-		walk(n.a, append(append([]specStep(nil), path...), specStep{vertical: n.vertical, ratio: n.ratio}))
-		walk(n.b, append(append([]specStep(nil), path...), specStep{vertical: n.vertical, ratio: n.ratio, after: true}))
+// leaves returns the tree's blocks in layout order.
+func (t *specTree) leaves() []*specTree {
+	if t.leaf {
+		return []*specTree{t}
 	}
-	walk(t, nil)
-	return out
+	return append(t.a.leaves(), t.b.leaves()...)
+}
+
+// split reads a tree for rex.SplitTree.
+func (t *specTree) split() (bool, float64, *specTree, *specTree, bool) {
+	return t.vertical, t.ratio, t.a, t.b, !t.leaf
 }
 
 // isSingle tells whether the tree holds one block and no split.
 func (t *specTree) isSingle() bool { return t != nil && t.leaf }
-
-// siblings returns the split's place where two leaves part.
-func siblings(a, b specLeaf) (vertical bool, ratio float64) {
-	i := 0
-	for i < len(a.path) && i < len(b.path) && a.path[i].after == b.path[i].after && a.path[i].vertical == b.path[i].vertical {
-		i++
-	}
-	if i >= len(a.path) {
-		return false, 0.5
-	}
-	return a.path[i].vertical, a.path[i].ratio
-}
 
 // ratioCommand returns the direction and amount that move a split's
 // ratio from current to want, as pane.resize takes them.
@@ -265,51 +233,41 @@ func revisionOf(m *model, sid string) uint64 {
 // new panes' GoRex session IDs in layout order, and the app's answers.
 func (g *Gateway) buildWindow(space, label string, tree *specTree, focus bool, after string) ([]string, *apiError) {
 	leaves := tree.leaves()
-	if len(leaves) == 0 {
-		return nil, errBadRequest("the layout holds no block")
-	}
-	first := leaves[0].tree
+	first := leaves[0]
 	res, aerr := g.command(rex.LayoutCommand{
 		Op: "tab.create", Space: space, Name: label, Dir: first.shell.cwd, Command: first.shell.command, After: after, Focus: focus,
 	})
 	if aerr != nil {
 		return nil, aerr
 	}
-	sids := []string{res.New}
 	if res.New != "" && first.label != "" {
 		if _, aerr := g.command(rex.LayoutCommand{Op: "pane.rename", Space: space, SID: res.New, Name: first.label}); aerr != nil {
 			return nil, aerr
 		}
 	}
-	for i := 1; i < len(leaves); i++ {
-		vertical, ratio := siblings(leaves[i-1], leaves[i])
-		res, aerr := g.command(rex.LayoutCommand{
-			Op: "pane.split", Space: space, SID: sids[i-1],
-			Vertical: vertical, Dir: leaves[i].tree.shell.cwd, Command: leaves[i].tree.shell.command,
-		})
-		if aerr != nil {
-			g.command(rex.LayoutCommand{Op: "tab.close", Space: space, SID: sids[0]})
-			return nil, aerr
-		}
-		sids = append(sids, res.New)
-		if math.Abs(ratio-0.5) > 0.01 {
-			direction, amount := ratioCommand(vertical, 0.5, ratio)
-			if _, aerr := g.command(rex.LayoutCommand{
-				Op: "pane.resize", Space: space, SID: sids[i-1], Direction: direction, Amount: amount,
-			}); aerr != nil {
-				g.command(rex.LayoutCommand{Op: "tab.close", Space: space, SID: sids[0]})
-				return nil, aerr
-			}
-		}
-		if leaves[i].tree.label != "" {
-			if _, aerr := g.command(rex.LayoutCommand{Op: "pane.rename", Space: space, SID: sids[i], Name: leaves[i].tree.label}); aerr != nil {
-				g.command(rex.LayoutCommand{Op: "tab.close", Space: space, SID: sids[0]})
-				return nil, aerr
-			}
-		}
+	sids, err := rex.SplitTree(tree, res.New, (*specTree).split, g.splitIn(space))
+	if err != nil {
+		g.command(rex.LayoutCommand{Op: "tab.close", Space: space, SID: res.New})
+		return nil, err.(*apiError)
 	}
 	g.applyShellOptions(sids, leaves)
 	return sids, nil
+}
+
+// splitIn runs rex.SplitTree's commands in a space: a split's new pane
+// runs its block's shell, with its label.
+func (g *Gateway) splitIn(space string) func(rex.LayoutCommand, *specTree) (string, error) {
+	return func(c rex.LayoutCommand, leaf *specTree) (string, error) {
+		c.Space = space
+		if c.Op == "pane.split" {
+			c.Dir, c.Command, c.Name = leaf.shell.cwd, leaf.shell.command, leaf.label
+		}
+		res, aerr := g.command(c)
+		if aerr != nil {
+			return "", aerr
+		}
+		return res.New, nil
+	}
 }
 
 // paneIDs returns the block IDs of the panes a build made.
@@ -755,45 +713,13 @@ func methodSessionNewSplit(c *control, a args) (any, *apiError) {
 // buildBeside asks the app for blocks beside anchor: a split of the
 // anchor's space, and the trees' blocks under it.
 func (g *Gateway) buildBeside(s *mSession, anchor *mBlock, tree *specTree, vertical bool, ratio float64, focus bool) ([]string, *apiError) {
-	leaves := tree.leaves()
-	if len(leaves) == 0 {
-		return nil, errBadRequest("the layout holds no block")
+	beside := &specTree{vertical: vertical, ratio: ratio, a: &specTree{leaf: true}, b: tree}
+	sids, err := rex.SplitTree(beside, anchor.sid, (*specTree).split, g.splitIn(s.space))
+	if err != nil {
+		return nil, err.(*apiError)
 	}
-	res, aerr := g.command(rex.LayoutCommand{
-		Op: "pane.split", Space: s.space, SID: anchor.sid,
-		Vertical: vertical, Dir: leaves[0].tree.shell.cwd, Command: leaves[0].tree.shell.command,
-	})
-	if aerr != nil {
-		return nil, aerr
-	}
-	sids := []string{res.New}
-	first := leaves[0].tree
-	if first.label != "" {
-		g.command(rex.LayoutCommand{Op: "pane.rename", Space: s.space, SID: sids[0], Name: first.label})
-	}
-	for i := 1; i < len(leaves); i++ {
-		v, r := siblings(leaves[i-1], leaves[i])
-		res, aerr := g.command(rex.LayoutCommand{
-			Op: "pane.split", Space: s.space, SID: sids[i-1], Vertical: v, Dir: leaves[i].tree.shell.cwd, Command: leaves[i].tree.shell.command,
-		})
-		if aerr != nil {
-			return nil, aerr
-		}
-		sids = append(sids, res.New)
-		if math.Abs(r-0.5) > 0.01 {
-			direction, amount := ratioCommand(v, 0.5, r)
-			g.command(rex.LayoutCommand{Op: "pane.resize", Space: s.space, SID: sids[i-1], Direction: direction, Amount: amount})
-		}
-		if leaves[i].tree.label != "" {
-			g.command(rex.LayoutCommand{Op: "pane.rename", Space: s.space, SID: sids[i], Name: leaves[i].tree.label})
-		}
-	}
-	if math.Abs(ratio-0.5) > 0.01 && len(sids) == 1 {
-		direction, amount := ratioCommand(vertical, 0.5, ratio)
-		g.command(rex.LayoutCommand{Op: "pane.resize", Space: s.space, SID: anchor.sid, Direction: direction, Amount: amount})
-	}
-	g.applyShellOptions(sids, leaves)
-	return sids, nil
+	g.applyShellOptions(sids[1:], tree.leaves())
+	return sids[1:], nil
 }
 
 // splitsOf returns every split ID of a session's active view.
@@ -1628,9 +1554,18 @@ func methodSessionResizePane(c *control, a args) (any, *apiError) {
 		return revisionResult{Revision: s.revision}, nil
 	}
 	// The app moves the split beside the edge of a block it is given,
-	// which is the one Rex means when that split is the border's. Either
-	// block of the pair is tried, in the direction that moves the border
-	// towards ratio.
+	// which is the one Rex means when that split is the border's: the
+	// blocks on either side of the border, not the pair's, which may lie
+	// further from it. Either is tried, in the direction that moves the
+	// border towards ratio.
+	last, first := sp.Before, sp.After
+	for last.Split != nil {
+		last = last.Split.After
+	}
+	for first.Split != nil {
+		first = first.Split.Before
+	}
+	before, after = s.findBlock(last.BlockID), s.findBlock(first.BlockID)
 	beforeLeaf, afterLeaf := findFnode(w.tree, before.sid), findFnode(w.tree, after.sid)
 	grows := ratio > current
 	sid, moved := before.sid, appResizeSplit(w.tree, beforeLeaf, vertical, grows)
@@ -1953,7 +1888,7 @@ func methodSessionListClients(c *control, a args) (any, *apiError) {
 		}
 		v := clientViewResult{
 			ClientID: r.id, Principal: r.principal,
-			Info: r.info.json(), ConnectedAt: connectedAtString(r.connectedAt),
+			Info: r.clientInfo().json(), ConnectedAt: connectedAtString(r.connectedAt),
 		}
 		if lost, at := r.state(); lost {
 			v.ConnectionState = "lost"

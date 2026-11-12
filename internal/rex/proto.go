@@ -52,6 +52,10 @@ import (
 // makes every change of the layout itself, and takes the app's
 // arrangement of a tab ("tab.set") and of its windows ("windows.set"),
 // with the LayoutCommand fields TabLayout, Spaces, Color and Float.
+// Still within 3, the capability "voice": "voice.put" and "voice.get",
+// each on a connection of its own, which carry a phone's microphone to
+// the rec a session runs (Voice); deprecated, as nothing on the host
+// reads a voice any more, and to go.
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -140,10 +144,12 @@ type Request struct {
 
 	// Owner is the size lock's owner, of lockSize, lockedResize,
 	// unlockSize and renewSize: unlockSize without one unlocks whoever
-	// holds it. lockSize takes the lock through this connection, which
-	// must be kept alive: the lock ends as it closes, or 30 seconds after
-	// it was taken or renewed last, and the sessions attached through it
-	// answer the programs' queries meanwhile.
+	// holds it. A lock that ends without a size gives the session the
+	// size of its authority (SessionInfo.SizedBy). lockSize takes the
+	// lock through this connection, which must be kept alive: the lock
+	// ends as it closes, or 30 seconds after it was taken or renewed
+	// last, and the sessions attached through it answer the programs'
+	// queries meanwhile.
 	Owner string `json:"owner,omitempty"`
 	// Bytes is what "input" types into the session.
 	Bytes []byte `json:"bytes,omitempty"`
@@ -195,8 +201,8 @@ const (
 	AppCommandTimeout = CommandTimeout / 2
 )
 
-// LayoutCommand is a change of the layout that a client, as rootshell's
-// bridge or the app itself, asks for ("command"): the server makes it, on
+// LayoutCommand is a change of the layout that a client, as the CLI, the
+// Rex API gateway or the app itself, asks for ("command"): the server makes it, on
 // the layout it keeps, starting and ending the sessions of its panes. An
 // action, but float.set_state, and config.reload are the window's: the app takes those in order ("command.take"), makes them and
 // answers each ("command.done"). Panes are named by their session, and
@@ -501,24 +507,18 @@ type Response struct {
 	// ETag names the answer to "list": when it is the request's, Data is
 	// left out, the list unchanged.
 	ETag string `json:"etag,omitempty"`
-	// Event, on a line of no ID, tells a connection that subscribed of a
-	// change: "layout", as setLayout changes it, "sessions", as one
-	// starts, ends, or changes its size, size lock, title or foreground
-	// program, or "transfer", as a file transfer goes on.
-	Event string `json:"event,omitempty"`
-	// Revision, on a layout event, is the layout's revision after the
-	// change (LayoutState); Sessions, on a sessions event, the sessions
-	// and their status records; Transfer, on a transfer event, the
-	// transfer.
-	Revision uint64         `json:"revision,omitempty"`
-	Sessions []EventSession `json:"sessions,omitempty"`
-	Transfer *Transfer      `json:"transfer,omitempty"`
+	// Event, on a line of no ID, is one a subscribed connection gets.
+	Event
 }
 
-// Event is a line a subscribed connection gets, with no ID: the change
-// it tells of, and the layout's revision for a layout change.
+// Event is a line a subscribed connection gets, with no ID. Kind is the
+// change: "layout", as setLayout changes it, "sessions", as one starts,
+// ends, rings its bell, or changes its size, size lock, title or
+// foreground program, or "transfer", as a file transfer goes on.
 type Event struct {
-	Kind     string `json:"event"`
+	Kind string `json:"event,omitempty"`
+	// Revision, on a layout event, is the layout's revision after the
+	// change (LayoutState).
 	Revision uint64 `json:"revision,omitempty"`
 	// Sessions carries what the session list changed to, with the status
 	// records of each session that reported some.
@@ -607,7 +607,8 @@ type SessionInfo struct {
 	SizeLock string `json:"sizeLock,omitempty"`
 	// SizedBy is the id (Attach.Client) of the client whose terminal the
 	// session's size follows (the authority): the one holding the size
-	// lock, that typed or claimed the focus last, or that attached last.
+	// lock, that typed or claimed the focus last, or that attached last,
+	// one that gave a size before one that gave none.
 	// "" while no client attached with one, as a version 2 client does
 	// not.
 	SizedBy string `json:"sizedBy,omitempty"`

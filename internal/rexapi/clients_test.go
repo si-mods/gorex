@@ -1,6 +1,8 @@
 package rexapi
 
 import (
+	"encoding/json"
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
@@ -71,6 +73,28 @@ func TestClientLabel(t *testing.T) {
 	if ev := serverEvent(t, obs, "client_changed"); ev["client"].(map[string]any)["info"] == nil {
 		t.Errorf("label not removed: %v", ev)
 	}
+}
+
+// TestClientLabelWhileListed: a client's label changes while the clients
+// are listed, which -race checks.
+func TestClientLabelWhileListed(t *testing.T) {
+	f := startFixture(t)
+	c := f.dialControl()
+	id := welcomeID(t, c.hello(apiRevision))
+	f.g.mu.Lock()
+	rec := f.g.clients[id]
+	f.g.mu.Unlock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 1000 {
+			methodClientSetLabel(rec.conn, args{"label": json.RawMessage(fmt.Sprintf("%q", fmt.Sprint("studio ", i)))})
+		}
+	}()
+	for range 1000 {
+		rec.view()
+	}
+	<-done
 }
 
 // TestClientKeymapAndScripts: GoRex has no configuration file nor Lua,

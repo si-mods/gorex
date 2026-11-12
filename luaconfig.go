@@ -209,32 +209,5 @@ func writeShortcuts(b []shortcutBinding) error {
 	if err := os.MkdirAll(filepath.Dir(rexShortcutsPath()), 0o700); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(rexShortcutsPath()), ".shortcuts-*")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	if _, err := tmp.Write(j); err != nil {
-		tmp.Close()
-		os.Remove(name)
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		os.Remove(name)
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(name)
-		return err
-	}
-	if err := os.Chmod(name, 0o600); err != nil {
-		os.Remove(name)
-		return err
-	}
-	if err := os.Rename(name, rexShortcutsPath()); err != nil {
-		os.Remove(name)
-		return err
-	}
-	return nil
+	return writeFileAtomic(rexShortcutsPath(), j, 0o600)
 }

@@ -362,13 +362,6 @@ func (p *Pane) end() {
 	}
 }
 
-// close ends the pane for good, as its session ends or another pane takes
-// its place. Its session's transfers stop as the session is ended
-// (hostConn.kill), not with the pane: another may show it.
-func (p *Pane) close() {
-	p.end()
-}
-
 // browserPane is a pane that shows a web page in a web view of its
 // window, with an address field in its header.
 type browserPane struct {
@@ -456,12 +449,10 @@ type App struct {
 	// machine, which isLink answers from; the main thread's.
 	pathStats map[string]pathStat
 	// st is the app's store of workspaces, ws the one the window shows,
-	// and slot the window's place among the windows. stop closes with the
-	// window.
+	// and slot the window's place among the windows.
 	st     *store
 	ws     *Workspace
 	slot   int
-	stop   chan struct{}
 	client *rex.Client
 	hello  rex.Hello
 	// keys matches key presses to actions; it runs before the terminal
@@ -555,12 +546,12 @@ type App struct {
 	paletteFresh bool
 
 	// The sidebar: the tab last scrolled into view, the tab last chosen
-	// on each host by hostKey, the hosts by hostKey under which the host
-	// view closes the window's session, and a drag of its edge, from the
-	// width it began at.
+	// on each host by hostKey, the sessions under each host the host view
+	// opened or closed, by spaceKey (spaceIsOpen), and a drag of its edge,
+	// from the width it began at.
 	revealed  *Tab
 	chosenOn  map[string]*Tab
-	ownClosed map[string]bool
+	spaceOpen map[string]bool
 	edgeDrag  bool
 	edgeFrom  float32
 	edgeMoved float32
@@ -763,7 +754,7 @@ func (a *App) clientOf(h *hostConn) *rex.Client {
 
 // killOn ends a session of a host; one of this machine, for nil, the
 // server ends as the layout no longer has it (diffLayout).
-func (a *App) killOn(h *hostConn, sid string) {
+func killOn(h *hostConn, sid string) {
 	if h != nil && sid != "" {
 		h.kill(sid)
 	}
@@ -780,40 +771,64 @@ func (a *App) offline(h *hostConn) bool {
 	return true
 }
 
-// newPane makes a pane with a new session in dir, on host h.
-func (a *App) newPane(h *hostConn, dir string, cols, rows int) *Pane {
-	return a.newPaneRun(h, dir, cols, rows, nil)
-}
-
-// newPaneRun is newPane for a pane that runs command instead of the login
-// shell, as a Rex client asks for.
-func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []string) *Pane {
+// newPaneRun makes a pane with a new session in dir on host h, that runs
+// command instead of the login shell when given, as a Rex client asks for.
+// The host answers in its time, up to the client's timeout, and the window
+// goes on meanwhile: place puts the pane on the main thread once the host
+// made its session, after the panes asked of the host before it, and
+// reports whether the pane has a place still; the session of one that has
+// not ends. One the host does not make shows its error, and no pane.
+func (a *App) newPaneRun(h *hostConn, dir string, cols, rows int, command []string, place func(*Pane) bool) {
 	if cols <= 0 {
 		cols, rows = 80, 24
 	}
-	var info rex.SessionInfo
 	id := a.id()
-	env := []string{"GOREX_PANE=" + strconv.Itoa(id)}
-	if h != nil {
-		env = append(env, "GOREX_HOST="+h.Name)
-	} else if a.hello.Host.Name != "" {
-		env = append(env, "GOREX_CLIENT="+a.hello.Host.Name)
+	env := []string{"GOREX_PANE=" + strconv.Itoa(id), "GOREX_HOST=" + h.Name}
+	c := a.clientOf(h)
+	update := h.update
+	if update == nil {
+		update = a.updater()
 	}
-	err := errors.New("rex: connection to the server lost")
-	if c := a.clientOf(h); c != nil {
-		info, err = c.Create(rex.CreateOptions{Command: command, Dir: dir, Cols: cols, Rows: rows, Env: env})
-	}
-	if err != nil {
-		log.Printf("creating a session: %v", err)
-		a.err, a.errMsg = err.Error(), nil
-		info = rex.SessionInfo{ID: "", Exited: true}
-	}
-	p := &Pane{ID: id, SID: info.ID, info: info, startDir: dir, host: h}
-	if p.info.Dir == "" {
-		p.info.Dir = dir
-	}
-	a.attach(p, cols, rows)
-	return p
+	prev, done := h.creating, make(chan struct{})
+	h.creating = done
+	go func() {
+		defer close(done)
+		var info rex.SessionInfo
+		err := errors.New("rex: connection to the server lost")
+		if c != nil {
+			info, err = c.Create(rex.CreateOptions{Command: command, Dir: dir, Cols: cols, Rows: rows, Env: env})
+		}
+		if err == nil {
+			// The host's next list may have it before its pane: adopt
+			// leaves it for the pane.
+			h.expecting(info.ID, true)
+		}
+		if prev != nil {
+			<-prev
+		}
+		update(func() {
+			if err != nil {
+				log.Printf("creating a session: %v", err)
+				a.err, a.errMsg = err.Error(), nil
+				return
+			}
+			h.expecting(info.ID, false)
+			// A window closed, or a host removed, meanwhile: the session
+			// goes on there, as their others do.
+			if a.quitting || !slices.Contains(a.hosts, h) {
+				return
+			}
+			p := &Pane{ID: id, SID: info.ID, info: info, startDir: dir, host: h}
+			if p.info.Dir == "" {
+				p.info.Dir = dir
+			}
+			a.attach(p, cols, rows)
+			if !place(p) {
+				p.end()
+				killOn(h, p.SID)
+			}
+		})
+	}()
 }
 
 // newBrowserPane makes a pane that shows url in a web view of the
@@ -1069,13 +1084,14 @@ func (a *App) pasteText(p *Pane, text string) {
 	if text == "" {
 		return
 	}
+	client, sid, host, remote := a.client, p.SID, p.host, p.remote
 	go func() {
 		var err error
 		switch {
-		case p.host == nil:
-			err = a.client.Paste(p.SID, text)
-		case p.remote != nil:
-			err = p.remote.Paste(text)
+		case host == nil:
+			err = client.Paste(sid, text)
+		case remote != nil:
+			err = remote.Paste(text)
 		}
 		if err != nil {
 			log.Printf("paste: %v", err)
@@ -1233,7 +1249,7 @@ func (a *App) resyncPane(p *Pane, cols, rows int) {
 	if p.SID == "" || p.closed || p.term == nil {
 		return
 	}
-	sid, win, term := p.SID, a.win, p.term
+	sid, update, term := p.SID, a.updater(), p.term
 	var client *rex.Client
 	if p.host != nil {
 		client = p.host.current()
@@ -1269,11 +1285,7 @@ func (a *App) resyncPane(p *Pane, cols, rows int) {
 			// screen takes its place.
 			term.Feed(append([]byte(screenReset), res.Screen...))
 		}
-		if win != nil {
-			win.Update(fn)
-		} else {
-			a.post(fn)
-		}
+		update(fn)
 	}()
 }
 
@@ -1381,7 +1393,7 @@ func (a *App) newTabOn(h *hostConn, dir string) *Tab {
 
 // newTabAfter opens a tab with a shell in dir on host h: after tab after,
 // or last of the host's tabs when after is another host's. It opens none
-// while the host is not connected. The active tab stays.
+// while the host is not connected.
 func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
 	return a.newTabAfterRun(h, dir, after, nil)
 }
@@ -1389,7 +1401,8 @@ func (a *App) newTabAfter(h *hostConn, dir string, after *Tab) *Tab {
 // newTabAfterRun is newTabAfter for a tab whose first pane runs command
 // instead of the login shell. One of this machine the server makes, the
 // active tab, and returns once the window shows it, as tests have it, else
-// nil.
+// nil. One of a host shows as the host made its session, after the tab
+// active then, as a tab of the host asked for before it is.
 func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []string) *Tab {
 	if a.offline(h) {
 		return nil
@@ -1406,23 +1419,23 @@ func (a *App) newTabAfterRun(h *hostConn, dir string, after *Tab, command []stri
 		a.ask(c, func(res rex.LayoutCommand) { t = a.tabByUID(res.Tab) })
 		return t
 	}
-	t := a.makeTab("")
-	p := a.newPaneRun(h, dir, 0, 0, command)
-	t.Root = &Node{ID: a.id(), Pane: p}
-	p.Tab, p.Node = t, t.Root
-	t.setFocus(p)
-	at := len(a.tabs)
-	if i := slices.Index(a.tabs, after); i >= 0 && after.host() == h {
-		at = i + 1
-	}
-	cur := a.tab()
-	a.tabs = slices.Insert(a.tabs, at, t)
-	if cur != nil {
-		a.active = slices.Index(a.tabs, cur)
-	}
-	a.groupTabs()
-	a.changed()
-	return t
+	a.newPaneRun(h, dir, 0, 0, command, func(p *Pane) bool {
+		t := a.makeTab("")
+		t.Root = &Node{ID: a.id(), Pane: p}
+		p.Tab, p.Node = t, t.Root
+		t.setFocus(p)
+		at := len(a.tabs)
+		if after := a.tab(); after != nil && after.host() == h {
+			at = a.active + 1
+		}
+		a.tabs = slices.Insert(a.tabs, at, t)
+		a.groupTabs()
+		a.active = slices.Index(a.tabs, t)
+		a.focusReq = p
+		a.changed()
+		return true
+	})
+	return nil
 }
 
 // newBrowserTab opens a tab of a browser pane after the active tab, and
@@ -1499,7 +1512,8 @@ func (a *App) splitPane(old *Pane, vertical bool, dir string) *Pane {
 
 // splitPaneRun is splitPane for a pane that runs command instead of the
 // login shell. One of this machine the server makes; it returns once the
-// window shows it, as tests have it, else nil.
+// window shows it, as tests have it, else nil. One of a host shows as the
+// host made its session, unless old closed meanwhile.
 func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []string) *Pane {
 	if a.offline(old.host) {
 		return nil
@@ -1526,9 +1540,17 @@ func (a *App) splitPaneRun(old *Pane, vertical bool, dir string, command []strin
 	default:
 		cols = max(cols/2, 10)
 	}
-	p := a.newPaneRun(old.host, dir, cols, rows, command)
-	a.splitWith(old, p, vertical)
-	return p
+	a.newPaneRun(old.host, dir, cols, rows, command, func(p *Pane) bool {
+		if old.closed {
+			return false
+		}
+		a.splitWith(old, p, vertical)
+		if a.tab() == old.Tab {
+			a.focusReq = p
+		}
+		return true
+	})
+	return nil
 }
 
 // splitBrowser splits the focused pane with a browser pane, right of it or
@@ -1733,82 +1755,42 @@ func (a *App) endKept(w *Workspace, p *Pane) {
 	a.changed()
 }
 
-// dropPane closes a pane, and ends its session when kill is set.
-func (a *App) dropPane(p *Pane, kill bool) {
-	if p.closed {
-		return
-	}
+// disposePane lets a pane go from the window: its terminal and web view
+// close, and its find bar, label field, zoom and place in its tab's order
+// of use go with it. kill ends its session and deletes its note, for a
+// pane closed rather than moved or gone from the layout.
+func (a *App) disposePane(p *Pane, kill bool) {
 	p.closed = true
 	if a.findPane == p {
 		a.closeFind()
 	}
-	p.close()
+	if a.paneRenaming == p {
+		a.paneRenaming, a.paneNameFocus = nil, false
+	}
+	p.end()
 	p.browser.destroy()
-	p.note.destroy()
 	if kill {
-		a.killOn(p.host, p.SID)
+		p.note.destroy()
+		killOn(p.host, p.SID)
 	}
 	t := p.Tab
 	if t.Zoom == p {
 		t.Zoom = nil
 	}
 	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
-	if f := p.float; f != nil {
-		t.removeFloat(f)
-		if t.Root == nil && len(t.Floats) == 0 {
-			// The last pane of a canvas.
-			a.removeTab(t)
-			return
-		}
-		if t.Focus == p {
-			t.Focus = nil
-			t.setFocus(t.nextFocus(p))
-		}
-		if a.tab() == t {
-			a.focusReq = t.Focus
-		}
-		a.changed()
+}
+
+// dropPane closes a pane, and ends its session when kill is set.
+func (a *App) dropPane(p *Pane, kill bool) {
+	if p.closed {
 		return
 	}
-	n := p.Node
-	if n.Parent == nil {
-		t.Root = nil
-		if t.canvas != nil && len(t.Floats) > 0 {
-			if t.Focus == p {
-				t.Focus = nil
-				t.setFocus(t.nextFocus(p))
-			}
-			if a.tab() == t {
-				a.focusReq = t.Focus
-			}
-			a.changed()
-			return
-		}
-		if a.promoteFloat(t) {
-			if a.tab() == t {
-				a.focusReq = t.Focus
-			}
-			a.changed()
-			return
-		}
+	a.disposePane(p, kill)
+	t := p.Tab
+	a.detachPane(p)
+	if len(t.allPanes()) == 0 {
 		a.removeTab(t)
 		return
-	}
-	parent := n.Parent
-	other := parent.A
-	if other == n {
-		other = parent.B
-	}
-	// The other side takes the parent's place.
-	parent.Pane, parent.A, parent.B, parent.Vertical, parent.Ratio = other.Pane, other.A, other.B, other.Vertical, other.Ratio
-	if parent.Pane != nil {
-		parent.Pane.Node = parent
-	} else {
-		parent.A.Parent, parent.B.Parent = parent, parent
-	}
-	if t.Focus == p {
-		t.Focus = nil
-		t.setFocus(t.nextFocus(p))
 	}
 	if a.tab() == t {
 		a.focusReq = t.Focus
@@ -1902,10 +1884,7 @@ func (a *App) tabByUID(id string) *Tab {
 // closeTab closes a tab and ends the sessions of its panes.
 func (a *App) closeTab(t *Tab) {
 	for _, p := range t.allPanes() {
-		p.close()
-		p.browser.destroy()
-		p.note.destroy()
-		a.killOn(p.host, p.SID)
+		a.disposePane(p, true)
 	}
 	a.removeTab(t)
 }
@@ -2030,83 +2009,8 @@ func (a *App) setSplitRatio(ratio float32) {
 	a.changed()
 }
 
-// resizePane moves the divider on p's direction edge by amount, a share
-// of the split as herdr's pane.resize has it. It reports whether the
-// split moved.
-func (a *App) resizePane(p *Pane, direction string, amount float32) (bool, string) {
-	if p == nil {
-		return false, "unchanged"
-	}
-	vertical := direction == "up" || direction == "down"
-	if direction != "left" && direction != "right" && !vertical {
-		return false, "unchanged"
-	}
-	amount = abs(amount)
-	if amount == 0 || float32IsBad(amount) {
-		amount = 0.05
-	}
-	amount = min(amount, 0.5)
-	if f := p.float; f != nil {
-		// A float resizes as the focused one does: left and up shrink its
-		// sides, right and down grow them.
-		var dx, dy float32
-		switch direction {
-		case "left":
-			dx = -1
-		case "right":
-			dx = 1
-		case "up":
-			dy = -1
-		case "down":
-			dy = 1
-		}
-		a.resizeFloat(f, dx*amount, dy*amount)
-		return true, ""
-	}
-	if p.Node == nil {
-		return false, "unchanged"
-	}
-	if direction == "left" || direction == "up" {
-		amount = -amount
-	}
-	// The split a pane's direction edge belongs to is the one that has
-	// the pane on that side: A's right edge, or B's left edge. Walk out
-	// to it, keeping the nearest same-axis split for an outer edge, which
-	// moves that one as herdr does.
-	var nearest *Node
-	grows := direction == "right" || direction == "down"
-	for n := p.Node; n.Parent != nil; n = n.Parent {
-		split := n.Parent
-		if split.Vertical != vertical {
-			continue
-		}
-		if nearest == nil {
-			nearest = split
-		}
-		if (split.A == n) == grows {
-			return a.shiftSplit(split, amount)
-		}
-	}
-	if nearest != nil {
-		return a.shiftSplit(nearest, amount)
-	}
-	return false, "unchanged"
-}
-
-// shiftSplit moves split's ratio by amount, within the bounds the
-// desktop's own divider drags use.
-func (a *App) shiftSplit(split *Node, amount float32) (bool, string) {
-	old := split.Ratio
-	split.Ratio = min(max(old+amount, 0.1), 0.9)
-	if split.Ratio == old {
-		return false, "unchanged"
-	}
-	a.changed()
-	return true, ""
-}
-
 // swapPanes puts p and q in each other's places, in their tab, and gives
-// the focus to p as herdr's pane.swap does.
+// the focus to p as pane.swap does.
 func (a *App) swapPanes(p, q *Pane) {
 	if p == nil || q == nil || p == q || p.Tab == nil || p.Tab != q.Tab || p.Node == nil || q.Node == nil ||
 		p.float != nil || q.float != nil {
@@ -2204,6 +2108,16 @@ func floatBox(n int) (x, y, w, h float32) {
 	return 0.15 + d, 0.12 + d, 0.7, 0.72
 }
 
+// floatOver makes pane p float over tab t, at the box of the saved float sf.
+func (a *App) floatOver(t *Tab, p *Pane, sf savedFloat) *Float {
+	f := &Float{Pane: p, X: sf.X, Y: sf.Y, W: sf.W, H: sf.H, Hidden: sf.Hidden, Zoom: sf.Zoom}
+	f.clamp()
+	p.Node = &Node{ID: a.id(), Pane: p}
+	p.float = f
+	t.Floats = append(t.Floats, f)
+	return f
+}
+
 // floatPane makes a tiled pane of the tab float over its others. It does
 // nothing for a pane that floats, or for the tab's only tiled pane.
 func (a *App) floatPane(p *Pane) bool {
@@ -2218,12 +2132,8 @@ func (a *App) floatPane(p *Pane) bool {
 	if t.Zoom == p {
 		t.Zoom = nil
 	}
-	p.Node = &Node{ID: a.id(), Pane: p}
 	x, y, w, h := floatBox(len(t.Floats))
-	f := &Float{Pane: p, X: x, Y: y, W: w, H: h}
-	f.clamp()
-	t.Floats = append(t.Floats, f)
-	p.float = f
+	a.floatOver(t, p, savedFloat{X: x, Y: y, W: w, H: h})
 	t.setFocus(p)
 	if a.tab() == t {
 		a.focusReq = p
@@ -2257,7 +2167,8 @@ func (a *App) newFloat(command []string) *Pane { return a.newFloatThen(command, 
 
 // newFloatThen is newFloat, then runs then with the float once the window
 // shows it: of this machine, the server makes it, and it returns it only
-// as tests have it, at once.
+// as tests have it, at once; of a host, it shows as the host made its
+// session, unless the tab closed meanwhile.
 func (a *App) newFloatThen(command []string, then func(*Pane)) *Pane {
 	t := a.tab()
 	if t == nil {
@@ -2279,24 +2190,24 @@ func (a *App) newFloatThen(command []string, then func(*Pane)) *Pane {
 	if cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	p := a.newPaneRun(h, a.currentDir(), cols, rows, command)
-	p.Tab = t
-	p.Node = &Node{ID: a.id(), Pane: p}
-	x, y, w, hh := floatBox(len(t.Floats))
-	f := &Float{Pane: p, X: x, Y: y, W: w, H: hh}
-	f.clamp()
-	t.Floats = append(t.Floats, f)
-	p.float = f
-	a.revealFloat(t, f)
-	t.setFocus(p)
-	if a.tab() == t {
-		a.focusReq = p
-	}
-	a.changed()
-	if then != nil {
-		then(p)
-	}
-	return p
+	a.newPaneRun(h, a.currentDir(), cols, rows, command, func(p *Pane) bool {
+		if !slices.Contains(a.tabs, t) {
+			return false
+		}
+		p.Tab = t
+		x, y, w, hh := floatBox(len(t.Floats))
+		a.revealFloat(t, a.floatOver(t, p, savedFloat{X: x, Y: y, W: w, H: hh}))
+		t.setFocus(p)
+		if a.tab() == t {
+			a.focusReq = p
+		}
+		a.changed()
+		if then != nil {
+			then(p)
+		}
+		return true
+	})
+	return nil
 }
 
 // raiseFloat puts f above the tab's other floats, and lowerFloat below
@@ -2406,8 +2317,7 @@ func (f *Float) resizeEdges(e int, dx, dy float32) {
 	}
 }
 
-// moveFloatPx moves f by pixels over room, and resizeFloatPx resizes it by
-// pixels there.
+// moveFloatPx moves f by pixels over room.
 func (a *App) moveFloatPx(f *Float, dx, dy float32, room ui.Rect) {
 	if room.W <= 0 || room.H <= 0 {
 		return
@@ -2421,13 +2331,6 @@ func (a *App) moveFloatPx(f *Float, dx, dy float32, room ui.Rect) {
 	x, y := f.X+f.overX+dx/room.W, f.Y+f.overY+dy/room.H
 	a.moveFloat(f, x-f.X, y-f.Y)
 	f.overX, f.overY = x-f.X, y-f.Y
-}
-
-func (a *App) resizeFloatPx(f *Float, dx, dy float32, room ui.Rect) {
-	if room.W <= 0 || room.H <= 0 {
-		return
-	}
-	a.resizeFloat(f, dx/room.W, dy/room.H)
 }
 
 // hideFloat hides f without closing its session, and gives the focus to a
@@ -3166,20 +3069,12 @@ func (a *App) reconcile(l savedLayout) bool {
 	}
 	// What l no longer has closes; the sessions go on.
 	for _, p := range before {
-		if kept[p] {
-			continue
+		if !kept[p] {
+			a.disposePane(p, false)
 		}
-		if a.findPane == p {
-			a.closeFind()
-		}
-		p.end()
-		p.browser.destroy()
 	}
 	if a.renaming != nil && !slices.Contains(a.tabs, a.renaming) {
 		a.renaming = nil
-	}
-	if a.paneRenaming != nil && a.paneRenaming.closed {
-		a.paneRenaming, a.paneNameFocus = nil, false
 	}
 	if a.focusReq != nil && a.focusReq.closed {
 		a.focusReq = nil
@@ -3250,53 +3145,66 @@ func sortedInfos(m map[string]rex.SessionInfo) []rex.SessionInfo {
 	return out
 }
 
-// poll asks the server what runs in each session, every half second,
-// until the window closes. Less often it refreshes the remote host lists.
-func (a *App) poll(win *mygo.Window, client *rex.Client) {
+// poll asks this machine's server what runs in each session, every half
+// second, for every window, until stop closes or the connection does;
+// update runs a change on the main thread. The windows draw again as the
+// list changes (its ETag). Less often it refreshes the remote host lists.
+func (st *store) poll(client *rex.Client, stop chan struct{}, update func(func())) {
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
-	rounds := 0
+	rounds, etag := 0, ""
 	for {
 		select {
-		case <-a.stop:
+		case <-stop:
 			return
 		case <-client.Closed():
-			win.Update(func() {
-				// Not once the window took a new connection.
-				if !a.quitting && a.client == client {
-					a.errMsg = locales.Messages.ErrorConnectionLost
+			update(func() {
+				for _, a := range st.apps {
+					// Not once the window took a new connection.
+					if !a.quitting && a.client == client {
+						a.errMsg = locales.Messages.ErrorConnectionLost
+					}
 				}
+				st.redraw()
 			})
 			return
 		case <-tick.C:
 		}
 		rounds++
+		var tailnet *rex.TailnetStatus
 		if rounds%30 == 1 {
-			if st, err := client.RemoteStatus(); err == nil {
-				win.Update(func() {
-					if a.win != win {
-						return
-					}
-					if st.Tailnet != nil {
-						a.reconcileTailnet(st.Tailnet)
-					}
-				})
+			if s, err := client.RemoteStatus(); err == nil {
+				tailnet = s.Tailnet
 			}
 		}
-		infos, err := client.List()
+		infos, next, changed, err := client.ListSince(etag)
 		if err != nil {
 			continue
 		}
+		etag = next
 		byID := make(map[string]rex.SessionInfo, len(infos))
 		for _, in := range infos {
 			byID[in.ID] = in
 		}
-		win.Update(func() {
-			if a.win == win {
-				if a.st != nil {
-					a.st.infos = byID
-				}
-				a.apply(nil, byID, hostLayout{})
+		update(func() {
+			// A list on its way as the last window closed, or the
+			// connection was replaced.
+			if st.polling != stop {
+				return
+			}
+			if tailnet != nil {
+				st.apps[0].reconcileTailnet(tailnet)
+			}
+			if changed {
+				st.infos = byID
+			}
+			// The same list too: apply also saves a layout changed a
+			// while ago, and retries a notification's click.
+			for _, a := range st.apps {
+				a.apply(nil, st.infos, hostLayout{})
+			}
+			if changed || tailnet != nil {
+				st.redraw()
 			}
 		})
 	}
@@ -3326,7 +3234,10 @@ func (a *App) apply(h *hostConn, byID map[string]rex.SessionInfo, l hostLayout) 
 			events = append(events, statusEvents(p, was.Statuses, in.Statuses)...)
 			// While another device holds the session's size, the pane's
 			// resizes are ignored, and the session keeps that size; once
-			// it lets go, the pane gives the session its own.
+			// it lets go, the pane gives the session its own. A server
+			// of now takes its authority's size itself as the lock
+			// ends; one before does not, and outlives the app: a
+			// Windows server never upgrades in place.
 			if was.SizeLock != "" && in.SizeLock == "" && p.stream != nil {
 				go func(st *rex.Stream) {
 					if err := st.ResendSize(); err != nil {
@@ -3781,7 +3692,7 @@ func (a *App) mergeTab(src, dst *Tab) {
 func (a *App) movePaneToPane(p, target *Pane) { a.movePaneBeside(p, target, false, false, 0.5) }
 
 // movePaneBeside moves pane p beside target in target's tab, in a split
-// of the given orientation and ratio, herdr's pane.move; the session
+// of the given orientation and ratio, pane.move; the session
 // keeps running. With before, p goes left of or above target, and ratio is
 // p's share.
 func (a *App) movePaneBeside(p, target *Pane, vertical, before bool, ratio float32) {
@@ -3868,16 +3779,12 @@ func (a *App) movePaneToWindow(p *Pane, target *App) {
 		pageURL = p.browser.url
 	}
 	src := p.Tab
-	if a.findPane == p {
-		a.closeFind()
-	}
+	a.disposePane(p, false)
 	a.detachPane(p)
-	p.end()
-	p.browser.destroy()
 	if a.tab() == src && src.Focus != nil {
 		a.focusReq = src.Focus
 	}
-	if len(src.panes()) == 0 {
+	if len(src.allPanes()) == 0 {
 		a.removeTab(src)
 	}
 	var np *Pane
@@ -3922,7 +3829,7 @@ func (a *App) movePaneToNewTab(p *Pane, label string) bool {
 	if i := slices.Index(a.tabs, cur); cur != nil && i >= 0 {
 		a.active = i
 	}
-	if len(src.panes()) == 0 {
+	if len(src.allPanes()) == 0 {
 		a.removeTab(src)
 		if wasActive {
 			a.active = max(slices.Index(a.tabs, t), 0)
@@ -3994,26 +3901,19 @@ func (a *App) detachPane(p *Pane) {
 	if t == nil || n == nil {
 		return
 	}
-	if f := p.float; f != nil {
-		t.removeFloat(f)
-		if t.Focus == p {
-			t.Focus = nil
-			t.setFocus(t.nextFocus(p))
-		}
-		p.Tab, p.Node = nil, nil
-		return
-	}
 	if t.Zoom == p {
 		t.Zoom = nil
 	}
 	t.recent = slices.DeleteFunc(t.recent, func(q *Pane) bool { return q == p })
-	if n.Parent == nil {
-		t.Root, t.Focus = nil, nil
-		p.Tab, p.Node = nil, nil
+	switch {
+	case p.float != nil:
+		t.removeFloat(p.float)
+	case n.Parent == nil:
+		t.Root = nil
 		a.promoteFloat(t)
-		return
+	default:
+		a.unlinkTiled(p)
 	}
-	a.unlinkTiled(p)
 	if t.Focus == p {
 		t.Focus = nil
 		t.setFocus(t.nextFocus(p))

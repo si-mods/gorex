@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"net/http"
+	"net/http/httptest"
 	"runtime"
 	"strconv"
 	"testing"
@@ -416,5 +418,96 @@ func TestBootstrapDataTickets(t *testing.T) {
 		if e["code"] != "conflict" {
 			t.Errorf("%s: the connection attached anyway: %v", bad.problem, e)
 		}
+	}
+}
+
+// TestStreamResumeWindow feeds a stream far more than it keeps, and
+// checks that it keeps between resumeBytes and twice that, that a resume
+// from the oldest byte it promises gets every byte from there, and that
+// one from before it is refused.
+func TestStreamResumeWindow(t *testing.T) {
+	old := resumeBytes
+	resumeBytes = 4 << 10
+	defer func() { resumeBytes = old }()
+
+	s := &stream{g: &Gateway{stokens: map[string]*stream{}}, done: make(chan struct{})}
+	var sent []byte
+	for i := 0; len(sent) < 10*resumeBytes; i++ {
+		p := make([]byte, 1+i*37%1000)
+		for j := range p {
+			p[j] = byte(len(sent) + j)
+		}
+		sent = append(sent, p...)
+		s.appendBytes(p)
+		if n := len(s.buf); n < min(len(sent), resumeBytes) || n > 2*resumeBytes {
+			t.Fatalf("after %d bytes the stream keeps %d", len(sent), n)
+		}
+	}
+	oldest := len(sent) - resumeBytes
+	if s.base != int64(oldest) {
+		t.Fatalf("base %d, want %d", s.base, oldest)
+	}
+
+	conns := make(chan *websocket.Conn, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		conns <- ws
+	}))
+	defer srv.Close()
+	client, _, err := websocket.Dial(context.Background(), srv.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.CloseNow()
+
+	ws := <-conns
+	defer ws.CloseNow()
+	call := &resumeCall{ws: ws, count: uint64(oldest), reply: make(chan error, 1)}
+	go s.resumeStream(call)
+	if err := <-call.reply; err != nil {
+		t.Fatalf("resume from the oldest byte: %v", err)
+	}
+	if _, w, err := wsRead(t, client); err != nil || len(w) != 32 {
+		t.Fatalf("welcome: %v %v", w, err)
+	}
+	var got []byte
+	for len(got) < resumeBytes {
+		_, p, err := wsRead(t, client)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, p...)
+	}
+	if !bytes.Equal(got, sent[oldest:]) {
+		t.Error("the resume sent other bytes than the stream's newest")
+	}
+
+	// The refusal ends the stream; the client leaves first so that its
+	// close does not wait for an answer.
+	client.CloseNow()
+	call = &resumeCall{count: uint64(oldest - 1), reply: make(chan error, 1)}
+	s.resumeStream(call)
+	if r := rejectReason(<-call.reply); r != rejectUnavailable {
+		t.Errorf("resume from before the oldest byte: reason 0x%02x, want 0x%02x", r, rejectUnavailable)
+	}
+}
+
+// BenchmarkStreamAppend appends small chunks to a stream that keeps all
+// it may.
+func BenchmarkStreamAppend(b *testing.B) {
+	s := &stream{}
+	chunk := make([]byte, 4<<10)
+	for s.total < 2*int64(resumeBytes) {
+		s.appendBytes(chunk)
+	}
+	b.SetBytes(int64(len(chunk)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.appendBytes(chunk)
 	}
 }

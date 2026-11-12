@@ -224,7 +224,7 @@ func TestFollowNoWindow(t *testing.T) {
 		a.runPosted()
 		return len(w.layout.Tabs) == 2
 	})
-	b := &App{st: st, client: a.client, stop: make(chan struct{})}
+	b := &App{st: st, client: a.client}
 	st.apps = []*App{b}
 	b.show(w)
 	if len(b.tabs) != 2 || b.tabs[1].Name != "away" || b.tabs[1].Focus.SID != res.New || b.tabs[1].Focus.stream == nil {
@@ -550,6 +550,35 @@ func TestRestartFocusedOnServer(t *testing.T) {
 	}
 }
 
+// TestRestartFocusedOnHost restarts the shell of a host's pane, then closes
+// the new pane: the focus goes to the other pane, not to the one the
+// restart ended.
+func TestRestartFocusedOnHost(t *testing.T) {
+	a, tt := newTestApp(t)
+	fakeHosts(t)
+	sock, _ := startHostServer(t)
+	t.Cleanup(a.stopHosts)
+	h := a.addHost(savedHost{ID: "h1", Name: "studio", Address: sock})
+	waitFor(t, tt, "the host to connect", func() bool { return h.state == hostConnected })
+	tab := hostTab(t, a, tt, h, "")
+	a.split(true)
+	waitFor(t, tt, "the split", func() bool { return len(tab.panes()) == 2 })
+	p1, old := tab.panes()[0], tab.Focus
+	a.restartFocused()
+	waitFor(t, tt, "the restarted pane", func() bool { return tab.Focus != old })
+	p := tab.Focus
+	if p == old || tab.panes()[1] != p || !old.closed {
+		t.Fatal("the restarted pane did not take the old one's place, focused")
+	}
+	if slices.Contains(tab.recent, old) {
+		t.Error("the ended pane is in the tab's order of use")
+	}
+	a.closePane(p)
+	if tab.Focus != p1 {
+		t.Errorf("the focus went to the ended pane %v, not the other pane", tab.Focus == old)
+	}
+}
+
 // TestRefusedTabSetRestored changes a tab the server changed meanwhile: the
 // window's tab.set, which leaves out the pane another client split off, is
 // refused, and the window shows the server's tab, the pane in it.
@@ -715,14 +744,14 @@ func TestRemoveHostKeepsWindow(t *testing.T) {
 	rt.setFocus(rp)
 	a.tabs = []*Tab{rt}
 	a.active = 0
-	closePanes([]*Tab{local})
+	a.closePanes([]*Tab{local})
 	followApp(t, a)
 	caughtUp(t, a, tt)
 	a.removeHost(h)
 	waitFor(t, tt, "a tab of this machine", func() bool {
 		return len(a.tabs) == 1 && a.tabs[0].Focus != nil && a.tabs[0].Focus.host == nil && a.tabs[0].Focus.SID != ""
 	})
-	if a.ws != ws || a.st.workspaceByID(ws.ID) == nil {
+	if a.ws != ws || a.st.byID(ws.ID) == nil {
 		t.Errorf("the window left its space: %v", a.ws)
 	}
 	caughtUp(t, a, tt)
@@ -761,7 +790,7 @@ func TestEndPaneWhenTabFails(t *testing.T) {
 	a.hosts = []*hostConn{h}
 	rp := &Pane{ID: a.id(), SID: "far", host: h, info: rex.SessionInfo{ID: "far"}}
 	t1 := a.tab()
-	closePanes([]*Tab{t1})
+	a.closePanes([]*Tab{t1})
 	rt := a.makeTab("")
 	rt.Root = &Node{ID: a.id(), Pane: rp}
 	rp.Tab, rp.Node = rt, rt.Root
@@ -1034,7 +1063,7 @@ func TestRemoveHostNoSpace(t *testing.T) {
 	rt.Root = &Node{ID: a.id(), Pane: rp}
 	rp.Tab, rp.Node = rt, rt.Root
 	rt.setFocus(rp)
-	closePanes(a.tabs)
+	a.closePanes(a.tabs)
 	a.ws.app, a.ws = nil, nil
 	a.tabs, a.active = []*Tab{rt}, 0
 	a.removeHost(h)

@@ -98,6 +98,13 @@ type Server struct {
 	// closing once it tried.
 	refreshDue atomic.Bool
 	restoring  map[string]chan struct{}
+	// voices are the sessions' voices (Voice), by session; voiceWake
+	// closes as one begins, and voiceGets counts the gets of a session
+	// that wait for one or send it.
+	voiceMu   sync.Mutex
+	voices    map[string]*voice
+	voiceWake chan struct{}
+	voiceGets map[string]int
 }
 
 // layoutCmd is a command waiting for the app's answer, done.
@@ -501,7 +508,6 @@ func (s *Server) handle(conn net.Conn, peer string) {
 		if a.Cols > 0 && a.Rows > 0 {
 			ss.resizeForAttach(a.Cols, a.Rows)
 		}
-		conn.Write([]byte(`{"ok":true}` + "\n"))
 		// What the reader buffered past the first line is input.
 		var typed []byte
 		if n := r.Buffered(); n > 0 {
@@ -518,6 +524,10 @@ func (s *Server) handle(conn net.Conn, peer string) {
 	// Only this machine packs one.
 	if a.Op == "teleport" || a.Op == "teleport.pack" && peer == "" {
 		s.teleport(conn, r, first, a.Op, peer)
+		return
+	}
+	if (a.Op == "voice.put" || a.Op == "voice.get") && peer == "" {
+		s.voiceConn(conn, r, first, a.Op)
 		return
 	}
 	s.control(conn, r, first, peer)
@@ -724,6 +734,17 @@ func (s *Server) info(ss *session) SessionInfo {
 	return in
 }
 
+// all returns the sessions, in the order they were created.
+func (s *Server) all() []*session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	all := make([]*session, 0, len(s.order))
+	for _, id := range s.order {
+		all = append(all, s.sessions[id])
+	}
+	return all
+}
+
 func (s *Server) session(id string) (*session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -743,11 +764,13 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 	}
 	switch req.Op {
 	case "hello":
+		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Machine: s.machine, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
+		// A machine not read yet is none: hostInfo may still be writing it.
 		select {
 		case <-s.hostDone:
+			h.Host = s.host
 		case <-time.After(3 * time.Second):
 		}
-		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Host: s.host, Machine: s.machine, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
 		// The pairing address is for a remote peer's QR code. A local
 		// client never shows it, and asking the gateway for it would wait
 		// on the gateway's own requests when the gateway says hello.
@@ -764,12 +787,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 	case "ping", "subscribe":
 		return nil, nil
 	case "list":
-		s.mu.Lock()
-		all := make([]*session, 0, len(s.order))
-		for _, id := range s.order {
-			all = append(all, s.sessions[id])
-		}
-		s.mu.Unlock()
+		all := s.all()
 		infos := make([]SessionInfo, 0, len(all))
 		for _, ss := range all {
 			infos = append(infos, s.info(ss))
@@ -807,14 +825,8 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		}
 		return nil, nil // or already gone
 	case "clients":
-		s.mu.Lock()
-		all := make([]*session, 0, len(s.order))
-		for _, id := range s.order {
-			all = append(all, s.sessions[id])
-		}
-		s.mu.Unlock()
 		out := []ClientInfo{}
-		for _, ss := range all {
+		for _, ss := range s.all() {
 			ss.mu.Lock()
 			var attached []*attached
 			for a := range ss.clients {

@@ -40,6 +40,7 @@ struct FeaturesView: View {
             ("Keys that tap back", "Every key on the bar gives a light tap as you press it."),
             ("Chinese and other input methods", "Pinyin and other input methods compose at the cursor, with their candidates beside it, and send the text once it is done."),
             ("Dictation", "Dictate into the terminal. A correction erases what was dictated and types it again."),
+            ("Dictate with the mic", "Tap the mic at the top right of the terminal and speak; tap it again, and what you said is typed at the cursor, not sent. Speech is recognised on this device by SenseVoice, in Chinese, English, Cantonese, Japanese or Korean, with punctuation. Its model, about 240 MB, downloads on the first tap; delete it in Settings › Terminal."),
             ("Move the cursor with the spacebar", "Hold the spacebar and slide to move the cursor, one arrow for each cell."),
             ("Hardware keyboards", "Option is Alt, chords with Control, Shift or Option reach the program, and held keys repeat."),
             ("⌘ shortcuts", "⌘T opens a tab, ⌘W closes it, ⌘O adds a file, ⇧⌘O a photo, ⌘K clears the screen and scrollback, and ⌘+, ⌘- and ⌘0 size the text. Hold ⌘ to see them."),

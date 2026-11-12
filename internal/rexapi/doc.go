@@ -18,9 +18,9 @@
 //
 // The server reads the layout from the GoRex server the app keeps
 // (internal/rex), maps it, and tells its clients of the changes it sees.
-// A method that changes the layout asks the server for it, as
-// internal/control does (rex.LayoutCommand through the server's "command"
-// op), which makes it, and answers once the layout shows the change.
+// A method that changes the layout asks the server for it
+// (rex.LayoutCommand through the server's "command" op), which makes it,
+// and answers once the layout shows the change.
 //
 // Input reaches a block through the server's new input ops: "key" encodes
 // a W3C key event with the session's modes (terminal.Terminal.EncodeKey),
@@ -83,6 +83,7 @@
 // | block_owner_changed | two reasons of GoRex's own: taken (a desktop pane took the session's size, or the lock's lease ran out, so the block has no owner) and input (a client that took the block typed into it, and took it again) |
 // | session.own_block, session.disown_block, session.create | need the GoRex server to keep the gateway's connection alive, which the size locks take; otherwise not_supported |
 // | welcome (features), /api/upload | GoRex's own, which Rex has not: a POST of a file (application/octet-stream, with a Content-Length) to /api/upload?block_id=…&name=… puts it into the GoRex server user's temporary folder, as the app puts a file dropped on a pane of a host, and answers its path and the path as a word of the block's shell; the welcome lists the feature gorex.upload when the server takes such files. Revision 11's com.superlogical.terminal.upload_begin and its rex.data.bytes.v1 stream are implemented (see upload.go) and take the same limits; the upload's file limits, and the conversions of a page (10 lines) and a pixel (a 40th of a line), are GoRex's own, which Rex's document does not name |
+// | welcome (features), /api/voice | GoRex's own, which Rex has not: a WebSocket to /api/voice?block_id=… carries the phone's microphone as binary messages of raw PCM (signed 16-bit little-endian, 16 kHz, mono) to the rec the block's program runs, as Claude Code's /voice does on a host with no microphone, until the client closes it (rex.Voice, voice.go). Deprecated: nothing on the host reads a voice any more, since GoRex's rec is gone, so the welcome no longer lists the feature gorex.voice, and the endpoint will go |
 // | welcome (features), /api/spaces | GoRex's own, which Rex has not: the welcome lists gorex.spaces, and a GET of /api/spaces answers machine_id, this machine's lasting ID (rex.MachineID), and for each session whose space holds panes of other hosts its session_id, revision and remote_blocks, each a machine and the block_id that machine's own gateway gives the pane (spaces.go); no address, key nor name of a host. The views stay Rex's, without those panes, and a change of them is a new revision of the session |
 //
 // block_event events are sent for what the gateway sees change while it

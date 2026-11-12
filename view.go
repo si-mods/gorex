@@ -713,9 +713,9 @@ func (a *App) divider(c *ui.Context, k *colors, n *Node, s share, bounds ui.Rect
 func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.Element {
 	focused := t.Focus == p
 	card := ui.Column(c.Key(p.ID)).Radius(cardR).Clip().MinWidth(0).MinHeight(0)
-	bg, border, shadow := k.card, k.cardBorder, k.shadow
+	border, shadow := k.cardBorder, k.shadow
 	if focused {
-		bg, border, shadow = k.cardFocused, k.cardBorderFocused, k.shadowFocused
+		border, shadow = k.cardBorderFocused, k.shadowFocused
 	}
 	// With the configuration's colors, the card takes the theme's
 	// background, under its header too.
@@ -725,7 +725,7 @@ func (a *App) paneCard(c *ui.Context, k *colors, t *Tab, p *Pane, held bool) ui.
 	}
 	// The card and its float's cell take one face: the cell's, of another
 	// color, would show at the card's rounded corners.
-	bg = cardFace(c, k, focused, p.float != nil)
+	bg := cardFace(c, k, focused, p.float != nil)
 	// Under the glass setting a tiled terminal is a pane of the system's
 	// Liquid Glass, its face a tint, and its face where the system draws
 	// none; a float takes its face from its cell's glass. A browser pane
@@ -1201,7 +1201,7 @@ func (a *App) paneActions(c *ui.Context, k *colors, t *Tab, p *Pane, show bool) 
 		if t.Zoom == p || p.float != nil && p.float.Zoom {
 			zoom, label = "minimize-2", locales.PaneUnzoom()
 		}
-		if iconButton(c, k, zoom, locales.PaneZoom(), 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
+		if iconButton(c, k, zoom, label, 26, 16).Tooltip(tip(label, &cmdZoom)).Clicked() {
 			t.setFocus(p)
 			a.toggleZoom()
 		}

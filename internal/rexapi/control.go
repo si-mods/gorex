@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -20,7 +21,6 @@ import (
 type outMsg struct {
 	data  []byte
 	event bool
-	size  int
 }
 
 // control is one control connection.
@@ -190,10 +190,10 @@ func readHello(ws *websocket.Conn, wait time.Duration) (*hello, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
 	typ, data, err := ws.Read(ctx)
-	if err == nil {
-		tracef("control <- %s", clip(data))
-	} else {
+	if err != nil {
 		tracef("control hello read: %v", err)
+	} else if tracing {
+		tracef("control <- %s", clip(data))
 	}
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
@@ -321,7 +321,9 @@ func (c *control) writeSync(v any) error {
 	if err != nil {
 		return err
 	}
-	tracef("control -> %s", clip(data))
+	if tracing {
+		tracef("control -> %s", clip(data))
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return c.ws.Write(ctx, websocket.MessageText, data)
@@ -332,13 +334,15 @@ func (c *control) writeLoop() {
 	for {
 		select {
 		case m := <-c.out:
-			tracef("control -> %s", clip(m.data))
+			if tracing {
+				tracef("control -> %s", clip(m.data))
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			err := c.ws.Write(ctx, websocket.MessageText, m.data)
 			cancel()
 			if m.event {
 				c.mu.Lock()
-				c.queued -= m.size
+				c.queued -= len(m.data)
 				c.mu.Unlock()
 			}
 			if err != nil {
@@ -367,7 +371,9 @@ func (c *control) readLoop() {
 			c.closeWith(websocket.StatusNormalClosure, "")
 			return
 		}
-		tracef("control <- %s", clip(data))
+		if tracing {
+			tracef("control <- %s", clip(data))
+		}
 		if typ == websocket.MessageBinary {
 			c.closeWith(1003, "protocol error")
 			return
@@ -487,70 +493,68 @@ func (c *control) respond(req *request, payload any, err *apiError) {
 	if c.rec != nil {
 		requester = c.rec.id
 	}
-	if err != nil {
-		c.enqueue(response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester, Error: err})
-		return
+	res := response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester, Error: err}
+	if err == nil {
+		if payload == nil {
+			payload = struct{}{}
+		}
+		res.Payload = transformResult(c.rev, req.Method, payload)
 	}
-	if payload == nil {
-		payload = struct{}{}
-	}
-	payload = transformResult(c.rev, req.Method, payload)
-	res := response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester, Payload: payload}
 	data, merr := json.Marshal(res)
-	if merr == nil && len(data) > maxMessage {
-		res = response{Type: "response", ID: req.ID, Seq: req.seq, Requester: requester,
-			Error: errTooLarge("the result is larger than %d bytes", maxMessage)}
-	}
-	c.enqueue(res)
-}
-
-// enqueue queues a message, and closes the connection when the writer
-// cannot keep up.
-func (c *control) enqueue(v any) {
-	data, err := json.Marshal(v)
-	if err != nil {
+	if merr != nil {
 		return
 	}
 	if len(data) > maxMessage {
-		data, _ = json.Marshal(response{Type: "response",
-			Error: errTooLarge("the result is larger than %d bytes", maxMessage)})
+		res.Payload, res.Error = nil, errTooLarge("the result is larger than %d bytes", maxMessage)
+		data, _ = json.Marshal(res)
 	}
 	select {
-	case c.out <- outMsg{data: data, size: len(data)}:
+	case c.out <- outMsg{data: data}:
 	case <-c.done:
 	}
 }
 
 // sendChanges sends the events this connection wants, with the next seq.
+// It keeps each event's encoding in chs for the next connection.
 func (c *control) sendChanges(chs []change) {
-	for _, ch := range chs {
-		if !c.wants(ch) {
+	for i := range chs {
+		ch := &chs[i]
+		if !c.wants(*ch) {
 			continue
 		}
-		var payload any
-		if ch.server {
-			payload = ch.payload
-			if ch.typ == "tailscale_status_changed" {
-				payload = transformResult(c.rev, ch.typ, payload)
+		body := ch.body
+		if body == nil {
+			var payload any
+			if ch.server {
+				payload = ch.payload
+				if ch.typ == "tailscale_status_changed" {
+					payload = transformResult(c.rev, ch.typ, payload)
+				}
+				payload = innerEvent{Type: ch.typ, Payload: payload}
+			} else {
+				payload = sessionEvent{
+					Type: "session_event",
+					Payload: eventBody{
+						SessionID: ch.session,
+						Event:     innerEvent{Type: ch.typ, Payload: ch.payload},
+					},
+				}
 			}
-			payload = innerEvent{Type: ch.typ, Payload: payload}
-		} else {
-			payload = sessionEvent{
-				Type: "session_event",
-				Payload: eventBody{
-					SessionID: ch.session,
-					Event:     innerEvent{Type: ch.typ, Payload: ch.payload},
-				},
+			var err error
+			if body, err = json.Marshal(payload); err != nil {
+				continue
+			}
+			// The Tailscale status reads differently at older revisions.
+			if ch.typ != "tailscale_status_changed" {
+				ch.body = body
 			}
 		}
 		c.mu.Lock()
 		c.seq++
-		msg := eventMessage{Type: "event", Seq: c.seq, Payload: payload}
-		data, err := json.Marshal(msg)
-		if err != nil {
-			c.mu.Unlock()
-			continue
-		}
+		// Only the seq differs between connections: the envelope is
+		// written by hand, as json.Marshal would write it.
+		data := strconv.AppendUint(append(make([]byte, 0, len(body)+48), `{"type":"event","seq":`...), c.seq, 10)
+		data = append(append(append(data, `,"payload":`...), body...), '}')
 		if len(data) > maxMessage {
 			c.mu.Unlock()
 			c.closeWith(1009, "event exceeds message limit")
@@ -564,7 +568,7 @@ func (c *control) sendChanges(chs []change) {
 		c.queued += len(data)
 		c.mu.Unlock()
 		select {
-		case c.out <- outMsg{data: data, event: true, size: len(data)}:
+		case c.out <- outMsg{data: data, event: true}:
 		case <-c.done:
 			c.mu.Lock()
 			c.queued -= len(data)
@@ -641,12 +645,15 @@ func (c *control) keepalive() {
 	}
 }
 
-// closeWith closes the connection with a status and a reason, once.
+// closeWith closes the connection with a status and a reason, once. The
+// close handshake waits up to 10 s for a client that stopped reading, so
+// it runs on its own: a caller may hold refreshMu, which every request
+// of every connection takes.
 func (c *control) closeWith(status websocket.StatusCode, reason string) {
 	c.closeOnce.Do(func() {
 		tracef("control close %d %q", status, reason)
 		c.ours.Store(true)
 		close(c.done)
-		c.ws.Close(status, reason)
+		go c.ws.Close(status, reason)
 	})
 }

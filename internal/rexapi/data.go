@@ -216,6 +216,7 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		chunks: make(chan []byte, 32), resumes: make(chan *resumeCall),
 		goners: make(chan gone, 8), msgs: make(chan any, 8), done: make(chan struct{}),
 		finished: make(chan struct{}),
+		lists:    make(chan []rex.SessionInfo, 1),
 		cols:     head.Cols, rows: head.Rows, block: t.block,
 	}
 	token := g.rotateStreamToken(s)
@@ -321,6 +322,8 @@ type stream struct {
 	done     chan struct{}
 	once     sync.Once
 	finished chan struct{}
+	// lists carries the gateway's newest session list (listSessions).
+	lists chan []rex.SessionInfo
 
 	// The run goroutine owns these.
 	buf          []byte
@@ -403,8 +406,7 @@ func (s *stream) run() {
 	defer s.g.removeStream(s)
 	defer s.conn.Close()
 	go s.readOutput()
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
+	s.poll(s.g.sessionsNow())
 	for {
 		select {
 		case p := <-s.chunks:
@@ -426,8 +428,8 @@ func (s *stream) run() {
 				return
 			}
 			s.startResumeTimer()
-		case <-ticker.C:
-			s.poll()
+		case list := <-s.lists:
+			s.poll(list)
 		case <-s.resumeWait():
 			s.closeWith(1000, "")
 			return
@@ -481,10 +483,14 @@ func (s *stream) appendBytes(p []byte) {
 		}
 	}
 	// A stream that waited too long keeps only its newest bytes, which a
-	// resume counted too far back cannot use.
-	if drop := len(s.buf) - resumeBytes; drop > 0 {
-		s.buf = append([]byte(nil), s.buf[drop:]...)
-		s.base += int64(drop)
+	// resume counted too far back cannot use. The buffer holds up to twice
+	// that before it moves them to its front, so that bytes are copied
+	// once per resumeBytes rather than once per chunk.
+	if len(s.buf) > resumeBytes {
+		s.base = s.total - int64(resumeBytes)
+		if len(s.buf) > 2*resumeBytes {
+			s.buf = s.buf[:copy(s.buf, s.buf[len(s.buf)-resumeBytes:])]
+		}
 	}
 }
 
@@ -609,7 +615,7 @@ func (s *stream) resumeStream(call *resumeCall) {
 		return
 	}
 	call.reply <- nil
-	from := int64(call.count) - s.base
+	from := int64(call.count) - (s.total - int64(len(s.buf)))
 	if err := writeStream(call.ws, s.buf[from:]); err != nil {
 		if s.clearWS(call.ws) {
 			call.ws.Close(1013, "data reconnect required")
@@ -642,12 +648,9 @@ func (s *stream) resumeWait() <-chan time.Time {
 	return s.resume.C
 }
 
-// poll sends the block's new size, its exit, and whether it closed.
-func (s *stream) poll() {
-	list, err := s.g.opt.Client.List()
-	if err != nil {
-		return
-	}
+// poll sends the block's new size, its exit, and whether it closed, as
+// list tells.
+func (s *stream) poll(list []rex.SessionInfo) {
 	var info *rex.SessionInfo
 	for i := range list {
 		if list[i].ID == s.sid {
@@ -686,14 +689,11 @@ func (s *stream) inject(payload any) {
 
 // outputEnded handles the end of the GoRex session's output.
 func (s *stream) outputEnded() {
-	list, err := s.g.opt.Client.List()
 	exited, found, code := false, false, 0
-	if err == nil {
-		for _, info := range list {
-			if info.ID == s.sid {
-				found, exited, code = true, info.Exited, info.ExitCode
-				break
-			}
+	for _, info := range s.g.sessionsNow() {
+		if info.ID == s.sid {
+			found, exited, code = true, info.Exited, info.ExitCode
+			break
 		}
 	}
 	switch {

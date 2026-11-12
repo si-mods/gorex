@@ -24,7 +24,9 @@ authority in this order:
    *A Rex API client: the iPhone*).
 2. The client that **typed last**, or that claimed **focus** last (see
    below).
-3. Otherwise, the client that **attached last**.
+3. Otherwise, the client that **attached last** with a size; a client
+   that gave none, as the Rex API gateway's stream, only when no client
+   gave one: it has no size for the program to draw for.
 
 The authority also answers the program's terminal queries (cursor
 position, colors). Only one terminal's answers reach the program. An
@@ -139,10 +141,10 @@ windows: it is above them.
 - **A window takes the size back by typing.** A key or a paste in a
   local pane whose session is locked unlocks it at the pane's size
   (`App.takeSize`, `UnlockSize(sid, "", cols, rows)`), whoever holds the
-  lock. Panes that see a lock end resend their size (`ResendSize`). Only
-  a pane of the server's own machine does this: a pane of a remote host
-  (`p.host != nil`) does not unlock, so a desktop that views the session
-  as a remote host gets the size back only when the lock ends.
+  lock. Only a pane of the server's own machine does this: a pane of a
+  remote host (`p.host != nil`) does not unlock, so a desktop that views
+  the session as a remote host gets the size back only when the lock
+  ends.
 - **The gateway lets go.** The gateway does not learn of that unlock
   at once. Its next renewal (within 5 seconds, `renewOwned`) fails, and
   it lets the lock go: the block has no owner, and a
@@ -164,8 +166,12 @@ windows: it is above them.
   When another API client is in line, the newest `take` gets the block,
   else the newest `request`, with the size it asked for (`electLocked`).
   A lock that ends without a next owner unlocks with no size
-  (`UnlockSize(sid, "", 0, 0)`); the windows' panes then resend their
-  sizes, and the authority's size applies.
+  (`UnlockSize(sid, "", 0, 0)`), and the session takes its authority's
+  recorded size at once (`endSizeLockLocked`), as when the lock's
+  connection closes or its lease runs out: every window, of this
+  machine or another, gets its size back. Local panes that see a lock
+  end also resend their size (`ResendSize`), for a server before this,
+  which outlives the app.
 
 So with the phone and a desktop window on the same pane, whoever types
 last holds the size: it goes to the phone each time it opens the

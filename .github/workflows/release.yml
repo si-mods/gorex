@@ -1,10 +1,11 @@
 name: Release
 
 # Builds and signs every platform's app of mygo.json's version and uploads
-# them to that version's draft GitHub release. macOS builds the Unix apps,
-# whose archives keep the executable bit that a Windows file system loses;
-# Windows builds its own, with the NSIS installer. The jobs run one after
-# the other, as each merges its checksums into the release's SHA256SUMS.
+# them to that version's draft GitHub release, on si-mods' own runners: no
+# job runs on GitHub's. The Mac mini builds the Unix apps, whose archives
+# keep the executable bit that a Windows file system loses; YIBO-PC builds
+# the Windows apps, with the NSIS installer. The jobs run one after the
+# other, as each merges its checksums into the release's SHA256SUMS.
 on:
   workflow_dispatch:
     inputs:
@@ -24,13 +25,17 @@ concurrency:
 jobs:
   unix:
     if: github.ref == 'refs/heads/main' && inputs.target != 'windows'
-    runs-on: macos-latest
+    runs-on: [self-hosted, macmini]
+    timeout-minutes: 60
     steps:
+      # -upload uploads with gh.
+      - run: gh --version
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          # The runner keeps Go's caches between runs.
+          cache: false
       # A keychain of the run's own holds the Developer ID that mygo.json's
       # signingIdentity names, and the notary credentials: the App Store
       # Connect API key that TestFlight uploads use. mygo then notarizes the
@@ -68,21 +73,23 @@ jobs:
 
   windows:
     needs: unix
-    if: always() && inputs.target != 'unix' && (needs.unix.result == 'success' || needs.unix.result == 'skipped')
-    runs-on: windows-latest
+    if: always() && github.ref == 'refs/heads/main' && inputs.target != 'unix' && (needs.unix.result == 'success' || needs.unix.result == 'skipped')
+    runs-on: [self-hosted, yibo-pc]
+    timeout-minutes: 60
     steps:
+      - run: gh --version
       # Keep LF in the files the app embeds, as the other platforms do.
       - run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: true
+          # The runner keeps Go's caches between runs.
+          cache: false
+      # PowerShell: a bare bash on Windows can be WSL's.
       - name: build and upload
-        shell: bash
+        shell: powershell
         env:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
-          MSYS2_ENV_CONV_EXCL: MYGO_UPDATER_PRIVATE_KEY
-          MSYS_NO_PATHCONV: "1"
           GH_TOKEN: ${{ github.token }}
         run: go tool mygo build -platform windows/amd64,windows/arm64 -upload

@@ -14,7 +14,7 @@
 # and they get the TestFlight email. A user who cannot see this app is given it.
 set -euo pipefail
 
-APP=${REXGO_APP_ID:-6831210589}
+. "$(dirname "$0")/asc-env"
 GROUP=${REXGO_GROUP:-Internal}
 export ASC_TIMEOUT=${ASC_TIMEOUT:-90s}
 

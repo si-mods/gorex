@@ -327,7 +327,7 @@ func (s *Server) fileGet(conn net.Conn, first []byte, touch func(), answer func(
 
 // checkPut checks a put's name, id and conflict rule.
 func checkPut(name, id, conflict string) error {
-	if err := checkName(name); err != nil {
+	if err := CheckName(name); err != nil {
 		return err
 	}
 	if err := checkID(id); err != nil {
@@ -339,10 +339,10 @@ func checkPut(name, id, conflict string) error {
 	return nil
 }
 
-// checkName checks that name is a file's name, without a directory: not
+// CheckName checks that name is a file's name, without a directory: not
 // "." nor "..", no separator, no control character, at most 255 bytes;
 // on Windows no ":", which names a stream of a file.
-func checkName(name string) error {
+func CheckName(name string) error {
 	if name == "" || name == "." || name == ".." || len(name) > 255 ||
 		strings.ContainsAny(name, `/\`) || strings.ContainsFunc(name, unicode.IsControl) ||
 		runtime.GOOS == "windows" && strings.Contains(name, ":") {

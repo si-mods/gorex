@@ -87,8 +87,7 @@ a build whose modification time is not newer than the server's. See
   marks a pane whose program finished or rang the bell out of sight. When
   the window is in the background, a long command finishing posts a
   notification. A session's most urgent program status shows in the
-  session picker and the sidebar, and rootshell sees it as the pane's and
-  tab's `agent_status`.
+  session picker and the sidebar.
 - **Agent skill and hooks.** `gorex skill setup` finds Claude Code, Codex,
   OpenCode and Pi, installs a `gorex` skill into each, and adds a
   session-start hook to Claude Code and Codex that tells the agent its
@@ -334,8 +333,7 @@ The address names the DERP relay where clients meet the server when
 they cannot connect directly: by default one of tailcat's free relays,
 picked once. A relay of one's own takes its place: **Relay** in Settings
 › Remote, or `gorex remote relay derp.example.com` (`gorex remote relay
-default` goes back; `remotectl relay HOST|default` does the same
-without the app). Give a host name, with `:PORT` when not 443, and not
+default` goes back). Give a host name, with `:PORT` when not 443, and not
 an IP address: `derper` serves a certificate for its host name. The
 relay is Tailscale's `derper`, on any machine clients can reach:
 
@@ -469,16 +467,6 @@ the blocks are made in layout order, each split beside the one before, so a
 nested split's panes can sit in different halves than Rex put them, and
 ratios are not kept.
 
-## rootshell
-
-[rootshell](https://github.com/kitknox/rootshell), on iOS and the Mac,
-shows this machine's tabs over SSH as it shows herdr's in its full control
-mode: GoRex plays herdr. `tools/rootshell/herdr`, installed on the host,
-runs `GoRex control` in herdr's place, a bridge to the server of the GoRex
-already open. The layout stays the desktop's: rootshell shows it, and
-changes it through the GoRex window. Setup on macOS and Windows hosts, the steps in
-rootshell, limits and troubleshooting: [docs/rootshell.md](docs/rootshell.md).
-
 ## Rex's iPhone app
 
 Rex's own apps, the iPhone one among them, connect to GoRex as to a Rex
@@ -592,17 +580,12 @@ image reaches a program as a file it opens, not as clipboard data.
 | `style.go`, `settings.go` | colors, fonts, terminal themes; appearance, text size and the user's choices over Ghostty's |
 | `settingsview.go`, `remoteview.go` | the Settings window, and its Server page's remote access |
 | `locales` | the messages of the interface, `en.json` and `zh-Hans.json`, and `catalog_gen.go` (written by `go tool mygo generate`; commit it with the catalogs) |
-| `tools/remotectl` | runs and probes the session server without the app: allow, enable, pair, probe over tailcat |
+| `tools/remotectl` | acts as a remote client without the app: pubkey, regenerate, pair, probe over tailcat |
 | `CHANGELOG.md` | release notes: a `## <version>` section per release |
 | `internal/rex` | the session server and its client: PTYs, foreground processes, headless screens, the socket protocol |
-| `internal/control`, `tools/rootshell` | `GoRex control`, the bridge rootshell drives as herdr, and the `herdr` shim that runs it |
 | `internal/rexapi` | `GoRex rexapi`, the gateway that serves Rex's API to Rex clients from the server the app runs |
 | `internal/rexpeer`, `internal/reximp` | Rex's API as a client, and importing a Rex session into GoRex as spaces, tabs and panes that mirror its blocks |
 | `internal/testrex` | a Rex server for tests, over GoRex's own session server, so the client and the importer have one to talk to |
-
-Rex's connections to servers on other machines are only half there: the
-server side exists (remote access, above), but the window cannot open
-remote hosts yet.
 
 Icons: [Lucide](https://lucide.dev) (ISC) and [Simple Icons](https://simpleicons.org)
 (CC0). Font: [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (OFL).

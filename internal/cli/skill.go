@@ -99,10 +99,8 @@ gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION
   ` + "`--`" + ` in its first pane, or a shell. Use ` + "`--dir`" + ` to set the directory.
 - ` + "`split`" + ` splits the selected pane right, or below with ` + "`--down`" + `, and prints
   the new session's ID. The command after ` + "`--`" + ` runs in the new pane, or a
-  shell does; wrap shell syntax such as a pipe in ` + "`sh -c '...'`" + `. It needs
-  the GoRex window open on that machine.
-- ` + "`close`" + ` closes the selected pane, or its tab with ` + "`--tab`" + `. It needs the
-  window open too.
+  shell does; wrap shell syntax such as a pipe in ` + "`sh -c '...'`" + `.
+- ` + "`close`" + ` closes the selected pane, or its tab with ` + "`--tab`" + `.
 - ` + "`send`" + ` types without attaching; ` + "`--enter`" + ` presses Return. ` + "`paste`" + ` uses
   the terminal's paste path, which programs can handle differently.
 - ` + "`capture`" + ` prints the screen as text. ` + "`--raw`" + ` keeps escape sequences,
@@ -116,7 +114,7 @@ gorex float [new|toggle|hide-all|raise|lower|cycle|move|resize|dock] [-s SESSION
   are strings; the CLI does not guess types.
 - ` + "`layout`" + ` prints the window layout as JSON; ` + "`clients`" + ` lists attachments.
 - ` + "`-S HOST`" + ` before a command uses a saved remote host, by its name or
-  alias, instead of this machine's server. Local-only and window-only commands do not apply remotely.
+  alias, instead of this machine's server. Local-only commands do not apply remotely.
 
 ## Common requests
 
@@ -162,8 +160,6 @@ gorex capture -s "$GOREX_SESSION" --raw
 
 - Save the IDs each command prints. A later command can use the full ID, a
   label, or the end of an ID.
-- ` + "`split`" + ` and ` + "`close`" + ` change the window's layout, so they need the GoRex
-  window open on the machine that runs the session.
 - Do not restart the server or kill sessions unless the user asks.
 - Check the result before retrying a command that timed out; it may have
   succeeded. Avoid creating duplicate sessions or panes.

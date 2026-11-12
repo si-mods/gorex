@@ -102,6 +102,16 @@
         }
       }
     },
+    "Allow Rex Go to use the microphone in Settings.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在“设置”中允许 Rex Go 使用麦克风。"
+          }
+        }
+      }
+    },
     "Arrow Keys": {
       "localizations": {
         "zh-Hans": {
@@ -622,6 +632,16 @@
         }
       }
     },
+    "Keep Downloading": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续下载"
+          }
+        }
+      }
+    },
     "Label": {
       "localizations": {
         "zh-Hans": {
@@ -728,6 +748,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "新建窗口"
+          }
+        }
+      }
+    },
+    "No Access to the Microphone": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法使用麦克风"
           }
         }
       }
@@ -1062,6 +1092,26 @@
         }
       }
     },
+    "Stop Downloading": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止下载"
+          }
+        }
+      }
+    },
+    "Stop Downloading the Speech Model?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止下载语音模型？"
+          }
+        }
+      }
+    },
     "System": {
       "localizations": {
         "zh-Hans": {
@@ -1158,6 +1208,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "第三方声明"
+          }
+        }
+      }
+    },
+    "This device has no microphone.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此设备没有麦克风。"
           }
         }
       }
@@ -3244,6 +3304,146 @@
           "stringUnit": {
             "state": "translated",
             "value": "连不上的终端提供“诊断”：卡在哪一步、到主机的路径、三种大小的 ping 和最近的日志，可复制到问题报告里。在“设置 › Tailscale”中轻点一台 GoRex 电脑也能打开。"
+          }
+        }
+      }
+    },
+    "Can't Record": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法录音"
+          }
+        }
+      }
+    },
+    "Can't Recognise Speech": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法识别语音"
+          }
+        }
+      }
+    },
+    "Downloading the Speech Model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在下载语音模型"
+          }
+        }
+      }
+    },
+    "Tap to stop.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点停止。"
+          }
+        }
+      }
+    },
+    "Recognising": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在识别"
+          }
+        }
+      }
+    },
+    "Dictate": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "听写"
+          }
+        }
+      }
+    },
+    "Tap to speak, and again to type what you said.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点开始说话，再点一下把你说的话打进终端。"
+          }
+        }
+      }
+    },
+    "Download the Speech Model?": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载语音模型？"
+          }
+        }
+      }
+    },
+    "Speech is recognised on this device, by SenseVoice. Its model, %@, downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语音由 SenseVoice 在本机上识别。它的模型（%@）只需下载一次，来自 Hugging Face；连不上 Hugging Face 时改从 hf-mirror.com 下载，那是第三方运营的镜像。可在“设置 › 终端”中删除。"
+          }
+        }
+      }
+    },
+    "Can't Download the Speech Model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法下载语音模型"
+          }
+        }
+      }
+    },
+    "Speech Model": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "语音模型"
+          }
+        }
+      }
+    },
+    "The mic at the top right of the terminal types what you say, recognised on this device by SenseVoice, without sending it. Swipe the model to delete it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "终端右上角的麦克风把你说的话打进终端，但不发送；语音由 SenseVoice 在本机上识别。左滑模型可删除它。"
+          }
+        }
+      }
+    },
+    "Dictate with the mic": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用麦克风听写"
+          }
+        }
+      }
+    },
+    "Tap the mic at the top right of the terminal and speak; tap it again, and what you said is typed at the cursor, not sent. Speech is recognised on this device by SenseVoice, in Chinese, English, Cantonese, Japanese or Korean, with punctuation. Its model, about 240 MB, downloads on the first tap; delete it in Settings › Terminal.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "轻点终端右上角的麦克风并说话；再点一下，你说的话就打在光标处，但不发送。语音由 SenseVoice 在本机上识别，支持中文、英语、粤语、日语和韩语，带标点。它的模型约 240 MB，首次轻点时下载；可在“设置 › 终端”中删除。"
           }
         }
       }

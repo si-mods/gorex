@@ -252,14 +252,22 @@ final class Host: Identifiable {
     var id: UUID { config.id }
     private(set) var status = Status.connecting
     private(set) var sessions: [Session] = []
-    /// Terminal titles and foreground programs, by block.
-    private(set) var titles: [String: String] = [:]
-    private(set) var programs: [String: String] = [:]
-    /// What the programs in each block reported, by block.
-    private(set) var statuses: [String: [ProgramStatus]] = [:]
-    /// The done and error records the user saw, by block, as their keys
-    /// (Inbox.swift).
-    private(set) var seen: [String: Set<String>] = [:]
+    /// What each block shows, by block. The dictionary changes only as
+    /// blocks come; a block's own changes redraw only the views that read
+    /// that block, as titles spin many times a second.
+    private(set) var blocks: [String: Block] = [:]
+
+    @Observable
+    final class Block {
+        /// Its terminal's title and foreground program.
+        var title: String?
+        var program: String?
+        /// What its programs reported.
+        var statuses: [ProgramStatus]?
+        /// The done and error records the user saw, as their keys
+        /// (Inbox.swift).
+        var seen: Set<String> = []
+    }
     /// The machine the host is, and the panes of other hosts in each of
     /// its sessions' spaces, by session, as /api/spaces tells (Spaces);
     /// nil and none from a server that doesn't.
@@ -270,6 +278,10 @@ final class Host: Identifiable {
     @ObservationIgnored private var gate = EventGate()
     @ObservationIgnored private var token: String?
     @ObservationIgnored private var retry: Task<Void, Never>?
+    /// Connections that failed in a row, for the wait before the next.
+    @ObservationIgnored private var attempts = 0
+    /// Those waiting for the host to be online.
+    @ObservationIgnored private var waiters: [CheckedContinuation<ControlConnection, Error>] = []
     @ObservationIgnored private var refreshing: Set<String> = []
     /// Sessions whose read titles, programs and records are being read
     /// again, as after a reconnect.
@@ -324,11 +336,15 @@ final class Host: Identifiable {
         return s
     }
 
-    /// Connects, unless connected or connecting.
-    func connect() {
+    /// Connects, unless connected or connecting. Tried again after a
+    /// failure, the host stays offline until it is online.
+    func connect(again: Bool = false) {
         guard control == nil, !stopped else { return }
         retry?.cancel()
-        status = .connecting
+        if !again {
+            attempts = 0
+            status = .connecting
+        }
         let name = "control \(config.url.host() ?? "")"
         let session: URLSession
         do {
@@ -352,10 +368,15 @@ final class Host: Identifiable {
             self.control = nil
             // What the connection said of the spaces goes with it.
             self.take(nil)
-            self.status = .offline(error?.localizedDescription ?? "")
+            let offline = Status.offline(error?.localizedDescription ?? "")
+            if self.status != offline { self.status = offline }
             // Refused, it waits for a change: the engine running again, as
             // after a sign-in, or the app back in the foreground.
-            if (error as? RexError)?.code != "refused" { self.scheduleRetry() }
+            if let error, (error as? RexError)?.code == "refused" {
+                self.settle(.failure(error))
+            } else {
+                self.scheduleRetry()
+            }
         }
         let began = ContinuousClock.now
         ConnectionLog.note("\(name): opening via \(config.reach(tailnetOn: TailnetSettings.isOn).rawValue)")
@@ -365,6 +386,8 @@ final class Host: Identifiable {
                 token = c.reconnectToken
                 try await bootstrap(c)
                 status = .online
+                attempts = 0
+                settle(.success(c))
                 ConnectionLog.note("\(name): online, \(began.duration(to: .now).ms)")
             } catch let e as RexError where e.code == "refused" && viaTailnet {
                 // The gateway lets in only whom it says (docs/ios-tailnet.md, Server).
@@ -380,6 +403,9 @@ final class Host: Identifiable {
         stopped = true
         retry?.cancel()
         control?.close()
+        proxySession?.session.invalidateAndCancel()
+        proxySession = nil
+        settle(.failure(CancellationError()))
     }
 
     /// Connects anew, as to a new address: the old connection and its
@@ -401,18 +427,44 @@ final class Host: Identifiable {
         if control == nil { connect() }
     }
 
+    /// Connects again after a failure, waiting longer each time in a row,
+    /// up to ten seconds, as long as it takes.
     private func scheduleRetry() {
         retry?.cancel()
+        attempts += 1
+        let wait = Self.backoff(after: attempts)
         retry = Task {
-            try? await Task.sleep(for: .seconds(3))
-            if !Task.isCancelled { connect() }
+            try? await Task.sleep(for: wait)
+            if !Task.isCancelled { connect(again: true) }
         }
+    }
+
+    /// The wait before connecting again after failures in a row: a
+    /// terminal's, which never gives up here.
+    static func backoff(after failures: Int) -> Duration {
+        TerminalSession.backoff(after: failures) ?? .seconds(10)
+    }
+
+    /// The control connection, once the host is online: bootstrapped, so
+    /// that its blocks can be opened. It waits while the host connects or
+    /// is offline, and fails when the host is removed or refused.
+    func online() async throws -> ControlConnection {
+        if status == .online, let control { return control }
+        if stopped { throw CancellationError() }
+        return try await withCheckedThrowingContinuation { waiters.append($0) }
+    }
+
+    /// Resumes those waiting for the host to be online.
+    private func settle(_ r: Result<ControlConnection, Error>) {
+        let w = waiters
+        waiters = []
+        w.forEach { $0.resume(with: r) }
     }
 
     /// session.bootstrap for every session, then session.attach for those
     /// it didn't attach, so that every window can be opened.
     private func bootstrap(_ c: ControlConnection) async throws {
-        let (seq, r) = try await c.call("session.bootstrap", ["event_scope": "all"])
+        let (seq, r, raw) = try await c.call("session.bootstrap", ["event_scope": "all"])
         let all = (r["attach_all"] as? [String: Any])?["sessions"] as? [[String: Any]] ?? []
         sessions = all.compactMap { s in
             (s["session_id"] as? String).map { Session(id: $0, label: s["label"] as? String ?? "") }
@@ -420,8 +472,8 @@ final class Host: Identifiable {
         // What was read before keeps showing, as after a reconnect from
         // the background; each session's view reads it again in place.
         reread = Set(sessions.map(\.id))
-        if let selected = r["selected_session"] as? [String: Any], let v = selected["view"] {
-            setView(try SessionView(json: v))
+        if let view = try SessionView.selected(response: raw) {
+            setView(view)
         }
         for e in gate.open(at: seq) { apply(e) }
         for s in sessions where s.view == nil { attach(s.id) }
@@ -472,8 +524,8 @@ final class Host: Identifiable {
 
     private func attach(_ id: String) {
         Task {
-            guard let r = try? await control?.call("session.attach", ["session_id": id]).payload,
-                  let v = r["view"], let view = try? SessionView(json: v) else { return }
+            guard let raw = try? await control?.call("session.attach", ["session_id": id]).raw,
+                  let view = try? SessionView.attached(response: raw) else { return }
             setView(view)
         }
     }
@@ -491,6 +543,7 @@ final class Host: Identifiable {
             let id = e.payload["session_id"] as? String ?? e.sessionID
             sessions.removeAll { $0.id == id }
             id.map { reread.remove($0) }
+            prune()
         case "session_label_changed":
             if let i = sessions.firstIndex(where: { $0.id == e.sessionID }) {
                 sessions[i].label = e.payload["label"] as? String ?? sessions[i].label
@@ -503,20 +556,22 @@ final class Host: Identifiable {
             }
         case "block_event":
             guard let block = e.payload["block_id"] as? String, let p = e.payload["payload"] as? [String: Any] else { return }
+            // Observation skips a value set again unchanged.
             switch e.payload["name"] as? String {
-            case "title_changed": titles[block] = p["title"] as? String
-            case "process_changed": programs[block] = Self.program(p["foreground"])
+            case "title_changed": self.block(block).title = p["title"] as? String
+            case "process_changed": self.block(block).program = Self.program(p["foreground"])
             case "program_status_changed":
-                let was = statuses[block] ?? []
+                let b = self.block(block)
+                let was = b.statuses ?? []
                 let now = (p["records"] as? [Any] ?? []).compactMap(ProgramStatus.init)
-                statuses[block] = now
+                b.statuses = now
                 if Self.shown?(self, block) == true { see(block) }
                 for r in now where r.state == "blocked" && !was.contains(where: { $0.id == r.id && $0.state == "blocked" }) {
                     if let s = e.sessionID { Self.blocked?(self, s, block, r) }
                 }
             case "program_status_removed":
                 let ids = p["ids"] as? [String] ?? []
-                statuses[block]?.removeAll { ids.contains($0.id) }
+                if let b = blocks[block] { b.statuses = b.statuses?.filter { !ids.contains($0.id) } }
             default: break
             }
         default:
@@ -527,20 +582,29 @@ final class Host: Identifiable {
     /// A window's title, as the desktop names a tab: its name when it has
     /// one, else its terminal's title.
     func title(_ w: SessionView.Window) -> String {
-        w.name ?? w.block.flatMap { titles[$0] }.flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
+        w.name ?? w.block.flatMap { blocks[$0]?.title }.flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
     }
 
     /// The record of blocks that most needs the user, as the desktop's dot
     /// shows it: one blocked first; done and error records seen do not count.
     func status(_ blocks: [String]) -> ProgramStatus? {
-        blocks.compactMap { ProgramStatus.mostUrgent(statuses[$0] ?? [], seen: seen[$0] ?? []) }.max { $0.rank < $1.rank }
+        blocks.compactMap { self.blocks[$0].flatMap { ProgramStatus.mostUrgent($0.statuses ?? [], seen: $0.seen) } }.max { $0.rank < $1.rank }
     }
 
     /// Marks a block's done and error records seen, as the desktop's pane
     /// does when it shows.
     func see(_ block: String) {
-        let keys = (statuses[block] ?? []).filter { $0.state == "done" || $0.state == "error" }.map(\.seenKey)
-        if !keys.isEmpty { seen[block, default: []].formUnion(keys) }
+        guard let b = blocks[block] else { return }
+        let keys = (b.statuses ?? []).filter { $0.state == "done" || $0.state == "error" }.map(\.seenKey)
+        if !b.seen.isSuperset(of: keys) { b.seen.formUnion(keys) }
+    }
+
+    /// A block's values, made as the block first comes.
+    private func block(_ id: String) -> Block {
+        if let b = blocks[id] { return b }
+        let b = Block()
+        blocks[id] = b
+        return b
     }
 
     private func revision(_ id: String) -> Int {
@@ -555,8 +619,8 @@ final class Host: Identifiable {
         Task {
             defer { refreshing.remove(id) }
             while let want = wanted[id], want > revision(id),
-                  let r = try? await control?.call("session.view", ["session_id": id]).payload,
-                  let view = try? SessionView(json: r) {
+                  let raw = try? await control?.call("session.view", ["session_id": id]).raw,
+                  let view = try? SessionView(response: raw) {
                 let had = revision(id)
                 setView(view)
                 if revision(id) == had { break }
@@ -571,8 +635,18 @@ final class Host: Identifiable {
         if let label = v.label { sessions[i].label = label }
         let again = reread.remove(v.session_id) != nil
         for w in v.windows ?? [] {
-            for b in [w.block].compactMap(\.self) + w.tiled where titles[b] == nil || again { describe(session: v.session_id, block: b) }
+            for b in [w.block].compactMap(\.self) + w.tiled where blocks[b]?.title == nil || again { describe(session: v.session_id, block: b) }
         }
+        prune()
+    }
+
+    /// Forgets the blocks no window holds, as after a tab closes or a
+    /// session ends. Not while a session has no view, as after a
+    /// reconnect: its blocks would look gone.
+    private func prune() {
+        guard sessions.allSatisfy({ $0.view != nil }) else { return }
+        let held = Set(sessions.flatMap { $0.view?.windows ?? [] }.flatMap { [$0.block].compactMap(\.self) + $0.tiled })
+        for id in blocks.keys where !held.contains(id) { blocks[id] = nil }
     }
 
     /// Reads a block's title, program and status, which its events keep up
@@ -581,25 +655,26 @@ final class Host: Identifiable {
     /// an answer applies when nothing has changed what it read since, so
     /// an event that arrived while it was in flight wins.
     private func describe(session: String, block: String) {
-        let hadTitle = titles[block]
-        let hadProgram = programs[block]
-        let hadRecords = statuses[block]
-        if hadTitle == nil { titles[block] = "" }
+        let b = self.block(block)
+        let hadTitle = b.title
+        let hadProgram = b.program
+        let hadRecords = b.statuses
+        if hadTitle == nil { b.title = "" }
         Task {
             guard let c = control else { return }
             if let t = try? await c.callBlock("title", session: session, block: block)["title"] as? String,
-               titles[block] == "" || titles[block] == hadTitle {
-                titles[block] = t
+               b.title == "" || b.title == hadTitle {
+                b.title = t
             }
             if let p = try? await c.callBlock("process", session: session, block: block) {
                 let program = Self.program(p["foreground"])
-                if let program, programs[block] == nil || programs[block] == hadProgram {
-                    programs[block] = program
+                if let program, b.program == nil || b.program == hadProgram {
+                    b.program = program
                 }
             }
             if let r = try? await c.callBlock("program_status", session: session, block: block)["records"] as? [Any] {
-                if statuses[block] == nil || statuses[block] == hadRecords {
-                    statuses[block] = r.compactMap(ProgramStatus.init)
+                if b.statuses == nil || b.statuses == hadRecords {
+                    b.statuses = r.compactMap(ProgramStatus.init)
                     if Self.shown?(self, block) == true { see(block) }
                 }
             }

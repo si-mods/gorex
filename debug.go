@@ -179,9 +179,7 @@ func (st *store) debug(dir, line string) {
 		var b []byte
 		debugMain(func() { b, _ = json.MarshalIndent(st.state(), "", "  ") })
 		path := filepath.Join(dir, arg)
-		if os.WriteFile(path+".tmp", b, 0o644) == nil {
-			os.Rename(path+".tmp", path)
-		}
+		writeFileAtomic(path, b, 0o644)
 		return
 	}
 	if a == nil {
@@ -309,9 +307,7 @@ func (a *App) debug(dir, line string) {
 		}
 		b, _ := json.MarshalIndent(a.panesDump(), "", "  ")
 		path := filepath.Join(dir, name)
-		if os.WriteFile(path+".tmp", b, 0o644) == nil {
-			os.Rename(path+".tmp", path)
-		}
+		writeFileAtomic(path, b, 0o644)
 		return
 	}
 	win := a.win

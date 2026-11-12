@@ -1,3 +1,4 @@
+import AVFoundation
 import GameController
 import GhosttyKit
 import UIKit
@@ -106,6 +107,9 @@ final class TerminalView: UIView, TerminalOutput {
     private let reading = DispatchGroup()
     /// The hardware key held, and its repeat.
     private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
+    /// The microphone while the mic is on, and what to tell as it goes off
+    /// (dictate).
+    private var dictating: (recording: Recording, off: () -> Void)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -198,6 +202,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// Frees the surface, once its last output is written.
     func close() {
         held?.task.cancel()
+        stopDictating()
         guard let s = surface else { return }
         surface = nil
         output = -1
@@ -324,12 +329,16 @@ final class TerminalView: UIView, TerminalOutput {
 
     /// Slides the terminal up over the keyboard, no farther than it is tall,
     /// as far as the cursor's row and the lines drawn under it, as an
-    /// agent's box and status, need, but not the cursor under the bar.
+    /// agent's box and status, need, but not the cursor under the bar. With
+    /// no keyboard over it, it rests at 0 and reads nothing.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         guard surface != nil, drawn else { return }
-        let c = cursor(width: nil)
-        let room = bounds.height - covered - drawnBottom(under: c)
-        let y = min(0, max(room, inset - c.minY, -covered))
+        var y: CGFloat = 0
+        if covered > 0 {
+            let c = cursor(width: nil)
+            let room = bounds.height - covered - drawnBottom(under: c)
+            y = min(0, max(room, inset - c.minY, -covered))
+        }
         scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: covered + y, right: 0)
         guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
@@ -495,6 +504,56 @@ final class TerminalView: UIView, TerminalOutput {
         alt = false
         shift = false
     }
+
+    /// Turns the mic on, and tells whether it is: the microphone records
+    /// until typeDictation or stopDictating. off is called as the mic goes
+    /// off. A first tap asks for the microphone, and does no more. The tick
+    /// comes first: iOS mutes it while it records.
+    func dictate(off: @escaping () -> Void) -> Bool {
+        guard dictating == nil else { return false }
+        Self.tick.impactOccurred()
+        switch AVAudioApplication.shared.recordPermission {
+        case .undetermined:
+            AVAudioApplication.requestRecordPermission { @Sendable _ in }
+            return false
+        case .denied:
+            alert(String(localized: "No Access to the Microphone"),
+                  String(localized: "Allow Rex Go to use the microphone in Settings."))
+            return false
+        default:
+            break
+        }
+        do {
+            dictating = (try Recording(), off)
+        } catch {
+            alert(String(localized: "Can't Record"), error.localizedDescription)
+            return false
+        }
+        return true
+    }
+
+    /// Turns the mic off, and types what it heard once recognised, as a
+    /// paste, not sent.
+    func typeDictation() async {
+        guard let heard = stopDictating() else { return }
+        do {
+            let text = try await Dictation.shared.transcribe(heard)
+            if !text.isEmpty { insert(text) }
+        } catch {
+            alert(String(localized: "Can't Recognise Speech"), error.localizedDescription)
+        }
+    }
+
+    /// Turns the mic off, and gives what it heard.
+    @discardableResult func stopDictating() -> [Float]? {
+        guard let d = dictating else { return nil }
+        dictating = nil
+        d.off()
+        return d.recording.stop()
+    }
+
+    /// The mic's tap, as the key bar's keys give.
+    private static let tick = UIImpactFeedbackGenerator(style: .light)
 
     /// Has Ghostty encode keys, each pressed and let go, for the program's
     /// keyboard modes.

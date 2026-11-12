@@ -1,12 +1,15 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"gorex/internal/rex"
@@ -85,16 +88,99 @@ func (a *App) hostIdentity() (name, model, glyph string) {
 		name, _ = os.Hostname()
 		name = strings.TrimSuffix(name, ".local")
 	}
-	glyph = "mac-studio"
+	return name, model, hostGlyph(h, runtime.GOOS == "windows")
+}
+
+// hostGlyph is the icon that stands for a machine the server described,
+// windows telling that it runs Windows.
+func hostGlyph(h rex.HostInfo, windows bool) string {
 	switch {
-	case strings.Contains(model, "MacBook"), h.Portable:
-		glyph = "laptop"
-	case strings.Contains(model, "iMac"), runtime.GOOS == "windows":
-		glyph = "monitor"
-	case model == "Linux":
-		glyph = "server"
+	case strings.Contains(h.Model, "MacBook"), h.Portable:
+		return "laptop"
+	case strings.Contains(h.Model, "iMac"), windows:
+		return "monitor"
+	case strings.Contains(h.Model, "Mac mini"):
+		return "mac-mini"
+	case h.Model == "Linux":
+		return "server"
 	}
-	return
+	return "mac-studio"
+}
+
+// remoteGlyph is the icon of a remote host: the one the user chose, else
+// as its last hello described it, kept while it is away; a server, before
+// it ever connected or when it said nothing of its machine.
+func (h *hostConn) remoteGlyph() string {
+	return cmp.Or(knownGlyph(h.Icon), knownGlyph(h.Glyph), "server")
+}
+
+// knownGlyph is g if it is one of hostIcons, else "": hosts.json may name
+// an icon this build lacks, from a newer one or a hand's edit.
+func knownGlyph(g string) string {
+	if slices.ContainsFunc(hostIcons, func(i hostIcon) bool { return i.glyph == g }) {
+		return g
+	}
+	return ""
+}
+
+type hostIcon struct {
+	glyph string
+	name  func() string
+}
+
+// hostIcons are the icons the user can give a remote host, as the iOS app
+// offers them, with their names.
+var hostIcons = []hostIcon{
+	{"globe", locales.HostIconGlobe},
+	{"server", locales.HostIconServer},
+	{"cloud", locales.HostIconCloud},
+	{"laptop", func() string { return "MacBook" }},
+	{"mac-mini", func() string { return "Mac mini" }},
+	{"mac-studio", func() string { return "Mac Studio" }},
+	{"monitor", locales.HostIconDesktop},
+}
+
+// hostIconMenu fills a menu with the icons h can take, the one it has
+// checked: Automatic, which follows its machine, and those of hostIcons.
+func (a *App) hostIconMenu(m *ui.Menu, h *hostConn) {
+	if m.Item(locales.HostIconAutomatic()).Icon(menuIcon(cmp.Or(knownGlyph(h.Glyph), "server"))).Checked(knownGlyph(h.Icon) == "").Chosen() {
+		a.setHostIcon(h, "")
+	}
+	m.Separator()
+	for _, it := range hostIcons {
+		if m.Item(it.name()).Icon(menuIcon(it.glyph)).Checked(h.Icon == it.glyph).Chosen() {
+			a.setHostIcon(h, it.glyph)
+		}
+	}
+}
+
+// setHostIcon gives h the icon it shows by in every window, "" for its
+// machine's.
+func (a *App) setHostIcon(h *hostConn, glyph string) {
+	h.mu.Lock()
+	h.Icon = glyph
+	h.mu.Unlock()
+	a.saveHosts()
+	if a.st != nil {
+		a.st.redraw()
+	}
+}
+
+// menuIcons are the icons of menu items, by glyph, each made once.
+var menuIcons = map[string]*mygo.MenuIcon{}
+
+// menuIcon is the menu items' icon of the SVG named name, in the color of
+// their text.
+func menuIcon(name string) *mygo.MenuIcon {
+	if m, ok := menuIcons[name]; ok {
+		return m
+	}
+	m, err := mygo.NewMenuIconSVG(icon(name), true)
+	if err != nil {
+		panic(err)
+	}
+	menuIcons[name] = m
+	return m
 }
 
 // hostPopover opens the host's panel from its anchor, a margin below it,
@@ -146,7 +232,7 @@ func (a *App) hostPanel(c *ui.Context, k *colors, name, glyph string) {
 	ui.Divider(c)
 	sessions, running := a.sessionCounts()
 	ui.Column(c).Gap(7).Children(func() {
-		row(locales.HostServer(), locales.HostServerUp(a.hello.PID, roundDur(time.Since(a.hello.Started))))
+		row(locales.HostServer(), a.serverUp(c))
 		row(locales.HostSessions(), locales.HostSessionCount(sessions, running))
 	})
 	ui.Divider(c)
@@ -208,6 +294,13 @@ func (a *App) sessionCounts() (sessions, running int) {
 		}
 	}
 	return
+}
+
+// serverUp says how long this machine's server has run, as of the frame,
+// which comes again in a second.
+func (a *App) serverUp(c *ui.Context) string {
+	c.After(time.Second)
+	return locales.HostServerUp(a.hello.PID, roundDur(c.Now().Sub(a.hello.Started)))
 }
 
 func roundDur(d time.Duration) string {

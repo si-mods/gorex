@@ -87,6 +87,7 @@ final class ControlConnection {
     private struct Reply: @unchecked Sendable {
         let seq: Int
         let payload: [String: Any]
+        let raw: Data
     }
     private var closed = false
 
@@ -110,7 +111,7 @@ final class ControlConnection {
         task.resume()
         var hello: [String: Any] = [
             "type": "hello", "api_revision": Self.revision,
-            "client": ["kind": "app", "platform": "ios", "name": "GoRex", "version": Bundle.main.version,
+            "client": ["kind": "app", "platform": "ios", "name": "Rex Go", "version": Bundle.main.version,
                        "label": Self.label],
         ]
         hello["reconnect_token"] = token
@@ -137,7 +138,7 @@ final class ControlConnection {
     /// Calls a method and returns its result with the response's seq.
     /// An "offline" error tells that the request was never sent.
     @discardableResult
-    func call(_ method: String, _ payload: [String: Any]? = nil) async throws -> (seq: Int, payload: [String: Any]) {
+    func call(_ method: String, _ payload: [String: Any]? = nil) async throws -> (seq: Int, payload: [String: Any], raw: Data) {
         if closed { throw RexError(code: "offline", message: "disconnected") }
         nextID += 1
         let id = String(nextID)
@@ -156,7 +157,7 @@ final class ControlConnection {
                 Task { @MainActor in self?.pending.removeValue(forKey: id)?.resume(throwing: error) }
             }
         }
-        return (r.seq, r.payload)
+        return (r.seq, r.payload, r.raw)
     }
 
     /// Calls a block method, such as com.superlogical.terminal.title.
@@ -176,13 +177,14 @@ final class ControlConnection {
         do {
             while true {
                 guard case .string(let s) = try await task.receive(),
-                      let m = try? JSONSerialization.jsonObject(with: Data(s.utf8)) as? [String: Any]
+                      case let raw = Data(s.utf8),
+                      let m = try? JSONSerialization.jsonObject(with: raw) as? [String: Any]
                 else { continue }
                 if m["type"] as? String == "response", let id = m["id"] as? String, let c = pending.removeValue(forKey: id) {
                     if let e = m["error"] as? [String: Any] {
                         c.resume(throwing: RexError(code: e["code"] as? String ?? "", message: e["message"] as? String ?? ""))
                     } else {
-                        c.resume(returning: Reply(seq: m["seq"] as? Int ?? 0, payload: m["payload"] as? [String: Any] ?? [:]))
+                        c.resume(returning: Reply(seq: m["seq"] as? Int ?? 0, payload: m["payload"] as? [String: Any] ?? [:], raw: raw))
                     }
                 } else if let e = RexEvent(message: m) {
                     onEvent(e)

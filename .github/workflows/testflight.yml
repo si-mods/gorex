@@ -48,7 +48,7 @@ jobs:
           x=$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)
           [[ -z $x ]] || echo "DEVELOPER_DIR=$x/Contents/Developer" >> "$GITHUB_ENV"
       - run: xcodebuild -version
-      - run: command -v asc xcodegen || brew install asc xcodegen
+      - run: for t in asc xcodegen; do command -v "$t" >/dev/null || brew install "$t"; done
       # The script pins Ghostty's commit and Zig's version.
       - uses: actions/cache/restore@v4
         id: ghostty-vt

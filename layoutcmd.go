@@ -85,8 +85,8 @@ func (st *store) takeCommands(client *rex.Client, update func(func())) {
 }
 
 // commandApp is the window of the first workspace of the server's layout,
-// whose tabs it keeps for clients of one window, as rootshell's bridge:
-// that of the first place; nil without windows.
+// whose tabs it keeps for clients of one window: that of the first place;
+// nil without windows.
 func (st *store) commandApp() *App {
 	var first *App
 	for _, a := range st.apps {
@@ -102,7 +102,7 @@ func (st *store) commandApp() *App {
 // client of before spaces had it.
 func (st *store) commandAppFor(space, sid string) *App {
 	if space != "" {
-		if w := st.workspaceByID(space); w != nil && w.app != nil {
+		if w := st.byID(space); w != nil && w.app != nil {
 			return w.app
 		}
 	}
@@ -230,18 +230,6 @@ func coerceArgs(cmd *command, args map[string]any) map[string]any {
 		}
 	}
 	return args
-}
-
-// localTabs returns the tabs with a pane of this machine, in order: those
-// the server's other clients see.
-func (a *App) localTabs() []*Tab {
-	var tabs []*Tab
-	for _, t := range a.tabs {
-		if slices.ContainsFunc(t.allPanes(), func(p *Pane) bool { return p.host == nil && p.SID != "" && !p.closed }) {
-			tabs = append(tabs, t)
-		}
-	}
-	return tabs
 }
 
 // localPane returns the pane of this machine's session sid, nil for none.

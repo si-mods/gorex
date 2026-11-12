@@ -68,7 +68,7 @@ struct TerminalScreen: View {
                     Button { sheet = true } label: {
                         HStack(spacing: 10) {
                             let k = ProgramTiles.scale, small = 0.85
-                            ProgramTile(program: .of(host.programs[target.block]))
+                            ProgramTile(program: .of(host.blocks[target.block]?.program))
                                 .frame(width: 21 * k, height: 16 * k)
                                 .scaleEffect(small)
                                 .frame(width: 21 * k * small, height: 16 * k * small)
@@ -83,8 +83,10 @@ struct TerminalScreen: View {
                     .buttonStyle(.plain)
                 }
                 .sharedBackgroundVisibility(.hidden)
-                // The window's menu; the bar's glass draws it.
-                ToolbarItem(placement: .topBarTrailing) {
+                // The mic, and the window's menu, New Tab being in the
+                // session's sheet and on ⌘T; the bar's glass draws them.
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Mic { terminal }
                     Menu {
                         Button("New Tab", systemImage: "plus") { newTab() }
                     } label: {
@@ -129,6 +131,7 @@ struct TerminalScreen: View {
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
+                    terminal?.stopDictating()
                     session?.suspend()
                     suspended = true
                 }
@@ -143,6 +146,9 @@ struct TerminalScreen: View {
     private static var statusBar: CGFloat {
         UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
     }
+
+    /// The terminal showing the session.
+    private var terminal: TerminalView? { session?.output as? TerminalView }
 
     /// The session of the window open, as the host has it.
     private var hostSession: Host.Session? {
@@ -218,6 +224,72 @@ struct TerminalScreen: View {
     }
 }
 
+/// The mic: a tap turns it on, and a tap turns it off and types what it
+/// heard into the terminal, recognised on the phone (Dictation), unsent.
+/// It spins while it recognises. Its first tap asks to download the models,
+/// and while they download it shows how far, and a tap asks to stop it. It goes
+/// off, typing nothing, as it goes away with the screen.
+private struct Mic: View {
+    let terminal: () -> TerminalView?
+    @State private var on = false
+    @State private var busy = false
+    @State private var asking = false
+    @State private var stopping = false
+    private let dictation = Dictation.shared
+
+    var body: some View {
+        Group {
+            if let p = dictation.progress {
+                Circle().stroke(.secondary.opacity(0.3), lineWidth: 2.5)
+                    .overlay { Circle().trim(from: 0, to: p).stroke(.primary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round)).rotationEffect(.degrees(-90)) }
+                    .frame(width: 18, height: 18)
+                    .accessibilityLabel("Downloading the Speech Model")
+                    .accessibilityValue(p.formatted(.percent.precision(.fractionLength(0))))
+                    .accessibilityHint("Tap to stop.")
+            } else if busy {
+                ProgressView().accessibilityLabel("Recognising")
+            } else {
+                // On, it is the red dot of a recording.
+                Image(systemName: on ? "circle.fill" : "mic")
+                    .foregroundStyle(on ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
+                    .accessibilityLabel("Dictate")
+                    .accessibilityHint("Tap to speak, and again to type what you said.")
+            }
+        }
+        .frame(width: 36, height: 36)
+        .contentShape(.circle)
+        .onTapGesture {
+            guard !busy else { return }
+            if dictation.progress != nil {
+                stopping = true
+            } else if on {
+                busy = true
+                Task {
+                    await terminal()?.typeDictation()
+                    busy = false
+                }
+            } else if !dictation.installed {
+                asking = true
+            } else {
+                on = terminal()?.dictate { on = false } == true
+            }
+        }
+        .onDisappear { terminal()?.stopDictating() }
+        .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
+        .alert("Download the Speech Model?", isPresented: $asking) {
+            Button("Download") { dictation.download() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Speech is recognised on this device, by SenseVoice. Its model, \(Dictation.size.formatted(.byteCount(style: .file))), downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.")
+        }
+        .stopsDownload($stopping)
+        .alert("Can't Download the Speech Model", isPresented: Binding { dictation.error != nil } set: { if !$0 { dictation.error = nil } }) {
+        } message: {
+            Text(dictation.error ?? "")
+        }
+    }
+}
+
 /// A soft edge at the top of the page: blurred and in the background's
 /// color at the top, clear below.
 private struct TopEdge: View {
@@ -280,4 +352,14 @@ private struct TerminalRepresentable: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ v: TerminalHost, coordinator: ()) { v.terminal.close() }
+}
+
+extension View {
+    /// Asks before a tap stops the speech model's download.
+    func stopsDownload(_ asking: Binding<Bool>) -> some View {
+        alert("Stop Downloading the Speech Model?", isPresented: asking) {
+            Button("Stop Downloading", role: .destructive) { Dictation.shared.cancel() }
+            Button("Keep Downloading", role: .cancel) {}
+        }
+    }
 }

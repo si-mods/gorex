@@ -1,23 +1,15 @@
-// Command remotectl drives GoRex's remote access without the app: it runs a
-// session server and manages or probes it, for headless machines and for
-// testing across a real network.
+// Command remotectl is what `gorex remote` does not do: act as a remote
+// client without the app, for headless machines and for testing across a
+// real network. The server's side is `gorex remote`.
 //
-//	remotectl serve                   run the session server (GOREX_DIR names its directory)
 //	remotectl pubkey                  print this machine's key as a remote client
-//	remotectl allow NAME PUBLICKEY    allow a client of the running server
-//	remotectl enable | disable | status | regenerate
-//	remotectl relay HOST|default      a DERP relay of one's own in the address,
-//	                                  as derp.example.com; default for tailcat's
-//	remotectl pairstart | pairstop    open or close the pairing window
-//	remotectl pending                 list the pairing requests, with fingerprints
-//	remotectl approve | reject PUBLICKEY
+//	remotectl regenerate              make new server keys; the address changes
 //	remotectl pair ADDRESS NAME       ask a remote server to allow this machine
 //	remotectl probe ADDRESS           connect remotely, run a command, check what is denied
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -28,17 +20,18 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: remotectl serve|pubkey|allow|enable|disable|status|regenerate|relay|pairstart|pairstop|pending|approve|reject|pair|probe")
+		fmt.Fprintln(os.Stderr, "usage: remotectl pubkey|regenerate|pair ADDRESS NAME|probe ADDRESS")
 		os.Exit(2)
 	}
 	cmd, args := os.Args[1], os.Args[2:]
 	switch cmd {
-	case "serve":
-		fail(rex.Serve())
-	case "-server": // rex.Spawn starts the executable with this
-		fail(rex.Serve())
 	case "pubkey":
 		fmt.Println(rex.ClientPublicKey())
+	case "regenerate":
+		c, err := rex.Connect()
+		fail(err)
+		defer c.Close()
+		fail(c.RegenerateRemote())
 	case "probe":
 		if len(args) != 1 {
 			fail(fmt.Errorf("probe ADDRESS"))
@@ -57,60 +50,7 @@ func main() {
 		fail(err)
 		fmt.Println("requested; approve it on the server if it shows this fingerprint:", fp)
 	default:
-		c, err := rex.Connect()
-		fail(err)
-		defer c.Close()
-		switch cmd {
-		case "allow":
-			if len(args) != 2 {
-				fail(fmt.Errorf("allow NAME PUBLICKEY"))
-			}
-			fail(c.AllowRemote(args[0], args[1]))
-		case "enable":
-			fail(c.EnableRemote())
-		case "disable":
-			fail(c.DisableRemote())
-		case "regenerate":
-			fail(c.RegenerateRemote())
-		case "relay":
-			if len(args) != 1 {
-				fail(fmt.Errorf("relay HOST|default"))
-			}
-			relay := args[0]
-			if relay == "default" {
-				relay = ""
-			}
-			fail(c.SetRelay(relay))
-		case "pairstart":
-			fail(c.StartPairing())
-		case "pairstop":
-			fail(c.StopPairing())
-		case "pending":
-			st, err := c.RemoteStatus()
-			fail(err)
-			if !st.Pairing.Open {
-				fmt.Println("not pairing")
-			}
-			for _, p := range st.Pending {
-				fmt.Printf("%s\t%s\t%s\n", rex.Fingerprint(p.PublicKey), p.Name, p.PublicKey)
-			}
-		case "approve", "reject":
-			if len(args) != 1 {
-				fail(fmt.Errorf("%s PUBLICKEY", cmd))
-			}
-			if cmd == "approve" {
-				fail(c.ApprovePairing(args[0]))
-			} else {
-				fail(c.RejectPairing(args[0]))
-			}
-		case "status":
-			st, err := c.RemoteStatus()
-			fail(err)
-			b, _ := json.MarshalIndent(st, "", "  ")
-			fmt.Println(string(b))
-		default:
-			fail(fmt.Errorf("unknown command %q", cmd))
-		}
+		fail(fmt.Errorf("unknown command %q", cmd))
 	}
 }
 

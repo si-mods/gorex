@@ -381,7 +381,13 @@ func (a *App) canvasNew(t *Tab, kind string, x, y float32) {
 		if cols <= 0 || rows <= 0 {
 			cols, rows = 80, 24
 		}
-		a.dropOnCanvas(t, a.newPaneRun(h, a.currentDir(), cols, rows, nil), x, y)
+		a.newPaneRun(h, a.currentDir(), cols, rows, nil, func(p *Pane) bool {
+			if !slices.Contains(a.tabs, t) || t.canvas == nil {
+				return false
+			}
+			a.dropOnCanvas(t, p, x, y)
+			return true
+		})
 	case h != nil:
 	case kind == "browser":
 		a.dropOnCanvas(t, a.newBrowserPane(browserStart), x, y)
@@ -401,11 +407,9 @@ func (a *App) dropOnCanvas(t *Tab, p *Pane, x, y float32) {
 	if t.Focus != nil && t.Focus.float != nil {
 		w, h = t.Focus.float.W, t.Focus.float.H
 	}
-	f := &Float{Pane: p, X: (cv.X + x/cv.Scale) / cv.W, Y: (cv.Y + y/cv.Scale) / cv.H, W: w, H: h}
 	// A float of a canvas's tab is free: its box stays where it is put.
-	p.Tab, p.Node, p.float = t, &Node{ID: a.id(), Pane: p}, f
-	f.clamp()
-	t.Floats = append(t.Floats, f)
+	p.Tab = t
+	a.floatOver(t, p, savedFloat{X: (cv.X + x/cv.Scale) / cv.W, Y: (cv.Y + y/cv.Scale) / cv.H, W: w, H: h})
 	t.setFocus(p)
 	if a.tab() == t {
 		a.focusReq = p

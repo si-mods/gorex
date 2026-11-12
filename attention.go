@@ -50,20 +50,13 @@ type needy struct {
 // visitSIDs calls fn with the sessions of the host of id host, "" for this
 // machine, in the layout of a space no window shows.
 func (st *store) visitSIDs(w *Workspace, host string, fn func(sid string)) {
-	var walk func(n *layout.Node)
-	walk = func(n *layout.Node) {
-		if n == nil {
-			return
-		}
-		if n.SID != "" && n.Host == host {
-			fn(n.SID)
-		}
-		walk(n.A)
-		walk(n.B)
-	}
 	for _, t := range w.layout.Tabs {
-		for _, n := range t.Roots() {
-			walk(n)
+		for _, r := range t.Roots() {
+			for _, n := range layout.Leaves(r) {
+				if n.SID != "" && n.Host == host {
+					fn(n.SID)
+				}
+			}
 		}
 	}
 }
@@ -308,7 +301,7 @@ func (a *App) needItem(n needy) (it paletteItem, dir string) {
 	if s != nil && s.State != "idle" {
 		detail = cmp.Or(s.Message(), s.Title, detail)
 	}
-	it = paletteItem{title: name, detail: detail, glyph: paneProgram(p).Glyph, status: s, id: id}
+	it = paletteItem{title: name, detail: detail, glyph: p.program().Glyph, status: s, id: id}
 	switch {
 	case p.host != nil && n.ws != nil:
 		it.aside = p.host.label() + " · " + n.ws.Name

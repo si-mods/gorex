@@ -581,3 +581,19 @@ func TestCanvasBrowserAddress(t *testing.T) {
 		})
 	}
 }
+
+// Moving one box of a canvas tab to another window leaves the tab and its
+// other boxes where they are.
+func TestCanvasMoveBoxToWindow(t *testing.T) {
+	a, _, tab := canvasApp(t, 0, 0, 1)
+	b := a.st.openWindow(a.st.addWorkspace())
+	a.split(false)
+	if len(tab.Floats) != 2 {
+		t.Fatalf("%d boxes", len(tab.Floats))
+	}
+	p := tab.Focus
+	a.movePaneToWindow(p, b)
+	if !slices.Contains(a.tabs, tab) || len(tab.allPanes()) != 1 {
+		t.Fatalf("source kept %d tabs, %d boxes", len(a.tabs), len(tab.allPanes()))
+	}
+}

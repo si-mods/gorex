@@ -58,6 +58,9 @@ type Imported struct {
 	Space   string `json:"space"`
 	Windows int    `json:"windows"`
 	Blocks  int    `json:"blocks"`
+	// Missing are the blocks a window's layout names that its layer does
+	// not have: they are left out.
+	Missing []string `json:"missing,omitempty"`
 }
 
 // Skipped is one session left as it was.
@@ -154,58 +157,56 @@ func importSession(ctx context.Context, g *rex.Client, peer *rexpeer.Client, s r
 		for _, b := range layer.Blocks {
 			blocks[b.BlockID] = b
 		}
-		leaves := leaves(layer.Layout)
-		if len(leaves) == 0 {
+		tree := prune(layer.Layout, blocks, &out.Missing)
+		if tree == nil {
 			continue
 		}
-		focus := w.WindowID == view.ActiveWindowID
-		var prev string
-		for i, leaf := range leaves {
-			b := blocks[leaf.block]
-			if b.BlockID == "" {
-				continue
+		// pane makes c, the tab or a split, of a leaf's block.
+		pane := func(c rex.LayoutCommand, leaf *rexpeer.Layout) (string, error) {
+			c.Space = spaceID
+			if c.Op != "pane.resize" {
+				b := blocks[leaf.BlockID]
+				var err error
+				if c.Command, c.Dir, err = paneCommand(ctx, peer, s.SessionID, b, opt); err != nil {
+					return "", err
+				}
+				if c.Op == "pane.split" && namedBlock(b.Label) {
+					c.Name = b.Label
+				}
+				out.Blocks++
 			}
-			cmd, dir, err := paneCommand(ctx, peer, s.SessionID, b, opt)
+			res, err := command(g, c)
 			if err != nil {
+				return "", err
+			}
+			if c.Op != "pane.resize" && res.New == "" {
+				return "", fmt.Errorf("GoRex made no pane")
+			}
+			return res.New, nil
+		}
+		first := tree
+		for first.Split != nil {
+			first = first.Split.Before
+		}
+		sid, err := pane(rex.LayoutCommand{Op: "tab.create", Name: tabName(w)}, first)
+		if err != nil {
+			return fail(err)
+		}
+		// Rex's active window becomes the space's active tab by pane.focus:
+		// tab.create's Focus would have a GoRex window show the space as it
+		// is built.
+		if w.WindowID == view.ActiveWindowID {
+			if _, err := command(g, rex.LayoutCommand{Op: "pane.focus", Space: spaceID, SID: sid}); err != nil {
 				return fail(err)
 			}
-			if i == 0 {
-				res, err := command(g, rex.LayoutCommand{
-					Op: "tab.create", Space: spaceID, Name: tabName(w),
-					Dir: dir, Command: cmd,
-				})
-				if err != nil {
-					return fail(err)
-				}
-				prev = res.New
-				// Rex's active window becomes the space's active tab by
-				// pane.focus: tab.create's Focus would have a GoRex window
-				// show the space as it is built.
-				if focus && prev != "" {
-					if _, err := command(g, rex.LayoutCommand{Op: "pane.focus", Space: spaceID, SID: prev}); err != nil {
-						return fail(err)
-					}
-				}
-			} else {
-				vertical := splitOf(leaves[i-1], leaf)
-				res, err := command(g, rex.LayoutCommand{
-					Op: "pane.split", Space: spaceID, SID: prev,
-					Vertical: vertical, Dir: dir, Command: cmd,
-				})
-				if err != nil {
-					return fail(err)
-				}
-				prev = res.New
+		}
+		if b := blocks[first.BlockID]; namedBlock(b.Label) {
+			if _, err := command(g, rex.LayoutCommand{Op: "pane.rename", Space: spaceID, SID: sid, Name: b.Label}); err != nil {
+				return fail(err)
 			}
-			if prev == "" {
-				return fail(fmt.Errorf("GoRex made no pane"))
-			}
-			if namedBlock(b.Label) {
-				if _, err := command(g, rex.LayoutCommand{Op: "pane.rename", Space: spaceID, SID: prev, Name: b.Label}); err != nil {
-					return fail(err)
-				}
-			}
-			out.Blocks++
+		}
+		if _, err := rex.SplitTree(tree, sid, split, pane); err != nil {
+			return fail(err)
 		}
 		if out.Blocks > before {
 			out.Windows++
@@ -282,49 +283,42 @@ func tiledLayer(w rexpeer.Window) *rexpeer.Layer {
 	return nil
 }
 
-// leaf is one block of a layout, and where it sits.
-type leaf struct {
-	block string
-	path  []string
+// prune returns a layout without the blocks it names that are not in
+// blocks, nil when none is left; a split left with one side is that side.
+// It appends the missing blocks' IDs to missing.
+func prune(l *rexpeer.Layout, blocks map[string]rexpeer.Block, missing *[]string) *rexpeer.Layout {
+	if l == nil {
+		return nil
+	}
+	if l.Split == nil {
+		if _, ok := blocks[l.BlockID]; ok {
+			return l
+		}
+		if l.BlockID != "" {
+			*missing = append(*missing, l.BlockID)
+		}
+		return nil
+	}
+	before, after := prune(l.Split.Before, blocks, missing), prune(l.Split.After, blocks, missing)
+	if before == nil || after == nil {
+		if before == nil {
+			return after
+		}
+		return before
+	}
+	s := *l.Split
+	s.Before, s.After = before, after
+	pruned := *l
+	pruned.Split = &s
+	return &pruned
 }
 
-// leaves returns a layout's blocks in layout order.
-func leaves(l *rexpeer.Layout) []leaf {
-	var out []leaf
-	var walk func(*rexpeer.Layout, []string)
-	walk = func(n *rexpeer.Layout, path []string) {
-		if n == nil {
-			return
-		}
-		if n.BlockID != "" {
-			out = append(out, leaf{n.BlockID, path})
-			return
-		}
-		if n.Split == nil {
-			return
-		}
-		d := "h"
-		if n.Split.Direction == "vertical" {
-			d = "v"
-		}
-		walk(n.Split.Before, append(append([]string(nil), path...), d, "a"))
-		walk(n.Split.After, append(append([]string(nil), path...), d, "b"))
+// split reads a Rex layout for rex.SplitTree.
+func split(l *rexpeer.Layout) (bool, float64, *rexpeer.Layout, *rexpeer.Layout, bool) {
+	if l == nil || l.Split == nil {
+		return false, 0, nil, nil, false
 	}
-	walk(l, nil)
-	return out
-}
-
-// splitOf tells whether the split between two leaves, their lowest common
-// ancestor's, is vertical.
-func splitOf(a, b leaf) bool {
-	i := 0
-	for i < len(a.path) && i < len(b.path) && a.path[i] == b.path[i] {
-		i++
-	}
-	if i >= len(a.path) || i >= len(b.path) {
-		return false
-	}
-	return a.path[i] == "v"
+	return l.Split.Direction == "vertical", l.Split.Ratio, l.Split.Before, l.Split.After, true
 }
 
 // selectSessions returns the sessions wanted, by ID or label, ignoring

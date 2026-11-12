@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.22.0
+
+### Features
+
+* **hosts:** a tab a remote host shares opens in the space of the same name as its space there, made when there is none, and no longer in the window focused last ([#427](https://github.com/si-mods/gorex/pull/427))
+
+### Bug Fixes
+
+* **cli:** a tab's or a space's name selects its focused pane, whatever panes come before it, and never a note, a web page or a remote host's pane; `gorex run` ends its session when it gets Ctrl-C or a terminate signal ([#422](https://github.com/si-mods/gorex/pull/422))
+* **remote:** servers of different protocol versions reach each other over the system's Tailscale ([#424](https://github.com/si-mods/gorex/pull/424))
+* **canvas:** a canvas tab stays when one of its boxes moves to another window; the zoom button says Unzoom to a screen reader while the pane is zoomed ([#423](https://github.com/si-mods/gorex/pull/423))
+* **panes:** a find bar or a name field closes with its pane however the pane goes, as with its tab; a remote host's pane restarted and then closed leaves the focus on a pane that is there ([#435](https://github.com/si-mods/gorex/pull/435))
+* **settings:** `settings.json` is written whole or not at all ([#437](https://github.com/si-mods/gorex/pull/437))
+* **rex:** a session takes the size of the client that is left when the one that sized it is dropped for falling behind, and a resize sent right after an attach counts as that client's ([#449](https://github.com/si-mods/gorex/pull/449))
+* **rexapi:** a client that stopped reading no longer holds up the others' requests while it is dropped ([#448](https://github.com/si-mods/gorex/pull/448))
+* **rexapi:** a nested layout is made in its own shape, with each split's ratio; `rex-import` keeps a split's direction and ratio, and leaves out a block its window lacks, saying which ([#450](https://github.com/si-mods/gorex/pull/450), [#454](https://github.com/si-mods/gorex/pull/454))
+* **rexapi:** an upload is refused before it starts for a file name the server would refuse ([#436](https://github.com/si-mods/gorex/pull/436))
+
+### Performance Improvements
+
+* **window:** the windows ask the server for the sessions once between them, and draw again only when something changed ([#441](https://github.com/si-mods/gorex/pull/441))
+* **hosts:** a new tab, split, float or restarted shell on a remote host no longer holds the window while the host answers; one the host does not make shows its error and no dead pane ([#455](https://github.com/si-mods/gorex/pull/455))
+* **rex:** a sessions event no longer inspects every session's program, and an omp session's environment is read once ([#451](https://github.com/si-mods/gorex/pull/451), [#438](https://github.com/si-mods/gorex/pull/438))
+* **rexapi:** the gateway reads the session list once for its model, block events and streams, as the server tells of a change, not on a timer; an event is encoded once for all its connections; a long stream no longer copies its replay window for every chunk ([#453](https://github.com/si-mods/gorex/pull/453), [#448](https://github.com/si-mods/gorex/pull/448), [#439](https://github.com/si-mods/gorex/pull/439))
+
+## 0.21.0
+
+### ⚠ BREAKING CHANGES
+
+* **control:** GoRex no longer plays herdr for rootshell: the `control` subcommand, the `herdr` shim and their guide are gone; Rex Go reaches a machine through Rex's API ([#419](https://github.com/si-mods/gorex/pull/419))
+
+### Bug Fixes
+
+* **rex:** a session gets its window's size back when a device that held its size lets go, as Rex Go leaving a terminal or going to the background: a pane of a remote host no longer stays at the phone's size ([#418](https://github.com/si-mods/gorex/pull/418))
+* **sidebar:** tab rows stay in place when the window changes space ([#417](https://github.com/si-mods/gorex/pull/417))
+* **sidebar:** a closed space stays closed, and a host icon this version does not know is ignored ([#414](https://github.com/si-mods/gorex/pull/414))
+* **rex:** a program whose update renamed its running image, as omp on Windows, keeps its name, and can teleport ([#416](https://github.com/si-mods/gorex/pull/416))
+
+## 0.20.4
+
+### Features
+
+* **sidebar:** each host shows its machine's icon, learned from the host or chosen in Settings › Hosts or from a remote host's context menu, with a dot for a host that is not connected; in the host view each space opens and closes on its own, and an open space of no window lists its tabs ([#411](https://github.com/si-mods/gorex/pull/411))
+
 ## 0.20.3
 
 ### Features

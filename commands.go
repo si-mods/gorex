@@ -1030,7 +1030,7 @@ func (a *App) clearFocused() {
 
 // restartFocused ends the focused pane's session and starts a shell in
 // its place, in the same directory: the server's (pane.restart), or the
-// host's for a pane of a host.
+// host's for a pane of a host, once the host made it.
 func (a *App) restartFocused() {
 	t := a.tab()
 	if t == nil || t.Focus == nil {
@@ -1063,22 +1063,33 @@ func (a *App) restartFocused() {
 	if cols <= 0 || rows <= 0 {
 		cols, rows = 80, 24
 	}
-	p := a.newPane(old.host, a.currentDir(), cols, rows)
-	p.Tab, p.Node = t, old.Node
-	old.Node.Pane = p
-	if f := old.float; f != nil {
-		f.Pane = p
-		p.float = f
-	}
-	old.close()
-	a.killOn(old.host, old.SID)
-	if t.Zoom == old {
-		t.Zoom = p
-	}
-	t.Focus = nil
-	t.setFocus(p)
-	a.focusReq = p
-	a.changed()
+	a.newPaneRun(old.host, a.currentDir(), cols, rows, nil, func(p *Pane) bool {
+		// The pane's tab once the host answers: it may have moved.
+		if old.closed {
+			return false
+		}
+		t := old.Tab
+		p.Tab, p.Node = t, old.Node
+		old.Node.Pane = p
+		if f := old.float; f != nil {
+			f.Pane = p
+			p.float = f
+		}
+		if t.Zoom == old {
+			t.Zoom = p
+		}
+		a.disposePane(old, true)
+		// The focus moved meanwhile stays.
+		if t.Focus == old {
+			t.Focus = nil
+			t.setFocus(p)
+			if a.tab() == t {
+				a.focusReq = p
+			}
+		}
+		a.changed()
+		return true
+	})
 }
 
 func (a *App) quitAndEnd() {
@@ -1125,7 +1136,7 @@ func (a *App) shortcuts(c *ui.Context) {
 	}
 	for i := 1; i <= 9; i++ {
 		k := showSpaceKey(i)
-		if a.st != nil && a.st.noAccel[keyChord{Mods: k.Mods, Key: k.Key}.String()] {
+		if a.st != nil && a.st.noAccel[keyChord(k).String()] {
 			continue
 		}
 		if c.Shortcut(k.Mods, k.Key) {
@@ -1148,7 +1159,7 @@ func (a *App) shortcuts(c *ui.Context) {
 	}
 	for i := 1; i <= 9; i++ {
 		k := showTabKey(i)
-		if a.st != nil && a.st.noAccel[keyChord{Mods: k.Mods, Key: k.Key}.String()] {
+		if a.st != nil && a.st.noAccel[keyChord(k).String()] {
 			continue
 		}
 		if c.Shortcut(k.Mods, k.Key) {
@@ -1227,7 +1238,7 @@ func (a *App) paletteItems() []paletteItem {
 				detail = cmp.Or(s.Message(), s.Title, detail)
 			}
 			items = append(items, paletteItem{
-				title: name, detail: detail, glyph: paneProgram(p).Glyph,
+				title: name, detail: detail, glyph: p.program().Glyph,
 				keys: locales.PaletteTabKeys(ti + 1), status: s,
 				run: func() {
 					a.selectTab(ti)

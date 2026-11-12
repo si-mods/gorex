@@ -148,14 +148,8 @@ func matchRemote(common string, urls []string) string {
 // as GoRex knows: its sessions', live and those the journal recorded, and
 // the cwd of each of Claude Code's projects.
 func (s *Server) workDirs() []string {
-	s.mu.Lock()
-	all := make([]*session, 0, len(s.sessions))
-	for _, ss := range s.sessions {
-		all = append(all, ss)
-	}
-	s.mu.Unlock()
 	var dirs []string
-	for _, ss := range all {
+	for _, ss := range s.all() {
 		dirs = append(dirs, ss.dir)
 		if in := s.info(ss); in.Dir != "" {
 			dirs = append(dirs, in.Dir)

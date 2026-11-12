@@ -26,7 +26,7 @@ import (
 
 // APIRevision is the revision of Rex's control API this package speaks.
 // It stays at 8, the revision the peers and importer this server tests
-// use; the gateway serves 10, and a client that needs an older revision
+// use; the gateway serves newer ones, and a client that needs an older revision
 // negotiates down.
 const APIRevision = 8
 

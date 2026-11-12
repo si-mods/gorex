@@ -20,8 +20,8 @@
 
 ## iOS TestFlight
 
-- GitHub Actions uploads the iOS app (`.github/workflows/testflight.yml`) on every push to main that touches `ios/**`. The job runs on the Mac mini's self-hosted runner (`~/actions-runner-gorex`, label `gorex-testflight`); with the Mac mini off, it waits. Do not upload by hand after a merge; read the build from the run's summary ("Uploaded Rex Go 1.1 (n)").
+- GitHub Actions uploads the iOS app (`.github/workflows/testflight.yml`) on every push to main that touches `ios/**`, `internal/tailnode/**`, `go.mod` or `go.sum`. The job runs on the Mac mini's self-hosted runner (`~/actions-runner-gorex`, label `gorex-testflight`); with the Mac mini off, it waits. Do not upload by hand after a merge; read the build from the run's summary ("Uploaded Rex Go 1.1 (n)").
 - To upload without a merge: `gh workflow run testflight.yml -R si-mods/gorex` (main only).
 - Versions read `X.Y (n)`. `MARKETING_VERSION` in `ios/project.yml` is X.Y; `ios/scripts/upload` takes the version's highest build on App Store Connect plus one. A new X.Y starts again at 1. Local builds are `(0)`.
 - A squash merge whose message contains `[skip ci]` does not start the run; start it by hand.
-- The run sets the build's What to Test to the `ios/` commits since the last run that uploaded (`ios/scripts/test-notes`). To set an older build's: `ios/scripts/test-notes 1.1 <n> <from> <to>`.
+- The run sets the build's What to Test to the iOS-only commits (`feat`, `fix` or `perf` of scope `ios` or `ios-*`) since the last run that uploaded (`ios/scripts/test-notes`). To set an older build's: `ios/scripts/test-notes 1.1 <n> <from> <to>`.
