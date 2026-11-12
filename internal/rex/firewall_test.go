@@ -11,7 +11,8 @@ func TestFirewallDecide(t *testing.T) {
 	ip := netip.MustParseAddr("192.0.2.10")
 	pub := []firewallProfile{{Type: 4, Enabled: true}}
 	allowPort := firewallRule{Proto: 6, Ports: "7464", Profiles: 4, Action: 1, Local: "*", Remote: "*"}
-	allowApp := firewallRule{App: exe, Proto: 256, Ports: "*", Profiles: 4, Action: 1, Local: "*", Remote: "*"}
+	// As Windows returns a rule of any protocol: no ports.
+	allowApp := firewallRule{App: exe, Proto: 256, Ports: "", Profiles: 4, Action: 1, Local: "*", Remote: "*"}
 	blockApp := allowApp
 	blockApp.Action = 0
 	with := func(r firewallRule, f func(*firewallRule)) firewallRule { f(&r); return r }

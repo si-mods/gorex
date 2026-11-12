@@ -100,8 +100,12 @@ func firewallDecide(st firewallState, exe string, ip netip.Addr, port int) firew
 }
 
 // portsMatch tells whether a rule's LocalPorts, as "*" or "80,7000-7999",
-// covers port; a keyword, as RPC, does not.
+// covers port; a keyword, as RPC, does not. A rule of any protocol, as
+// the one Windows makes for a program, has "": every port.
 func portsMatch(ports string, port int) bool {
+	if ports == "" {
+		return true
+	}
 	for _, p := range strings.Split(ports, ",") {
 		p = strings.TrimSpace(p)
 		lo, hi, isRange := strings.Cut(p, "-")
@@ -194,7 +198,7 @@ func firewallElevated(sys string) (file, params string) {
 
 // firewallRecheck is how old a firewall answer may be before
 // remote.status asks again, in the background.
-const firewallRecheck = 30 * time.Second
+const firewallRecheck = 5 * time.Minute // each asks a PowerShell that reads every rule
 
 // firewallCheck asks the firewall whether devices can reach the relay of
 // Reachable at, off the remote lock, and keeps the answer for
