@@ -1,7 +1,7 @@
 package main
 
 import (
-	"strings"
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -117,14 +117,10 @@ func TestDrawnMenus(t *testing.T) {
 	t.Cleanup(func() { drawMenus = old })
 	a, tt := newTestApp(t)
 	tt.Frame()
-	// The tab reads "<shell> …/dir"; the pane header's name is the shell.
-	var tabLabel, shell string
-	for _, s := range tt.Texts() {
-		if name, rest, ok := strings.Cut(s, " …/"); ok && !strings.Contains(name, " ") && rest != "" {
-			tabLabel, shell = s, name
-		}
-	}
-	if tabLabel == "" {
+	// The tab reads "<shell> <dir>"; the pane header's name is the shell.
+	shell, dir := a.tab().label()
+	tabLabel := shell + " " + dir
+	if !slices.Contains(tt.Texts(), tabLabel) {
 		t.Fatalf("no tab; texts %q", tt.Texts())
 	}
 	open := func(label string) {
