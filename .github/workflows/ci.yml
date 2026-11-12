@@ -4,24 +4,28 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The Mac mini's tests for a branch: gh workflow run ci.yml --ref <branch>
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Not on main: a merge's run is the only one with its tests on macOS.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # The Mac mini's runner, for the tests on macOS: on main only, as it takes
-  # one job at a time and pull requests waited for it. A pull request's
-  # tests run on Linux (test-linux), so what fails on macOS alone shows
-  # after the merge. si-mods runs no job on GitHub's runners. A fork's pull
-  # request runs its own copy of this file and could name this runner:
-  # what bars its code from the Mac mini is the approval each outside
-  # contributor's run needs. Read a fork's .github changes before approving.
+  # The Mac mini's runner, for the tests on macOS: on main, or when asked
+  # for a branch, as it takes one job at a time and pull requests waited
+  # for it. A pull request's tests run on Linux (test-linux), so what fails
+  # on macOS alone shows after the merge. si-mods runs no job on GitHub's
+  # runners. A fork's pull request runs its own copy of this file and could
+  # name this runner: what bars its code from the Mac mini is the approval
+  # each outside contributor's run needs. Read a fork's .github changes
+  # before approving.
   test:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, macmini]
     timeout-minutes: 25
     steps:
@@ -31,21 +35,11 @@ jobs:
           go-version-file: go.mod
           # The runner keeps Go's caches between runs.
           cache: false
-      - name: gofmt
-        run: |
-          unformatted=$(gofmt -l $(git ls-files '*.go'))
-          if [ -n "$unformatted" ]; then
-            echo "gofmt needed:"
-            echo "$unformatted"
-            exit 1
-          fi
-      - name: vet
-        run: go vet ./...
       - name: test
         run: go test ./... -count=1 -timeout 15m
 
   # One job, on an instabox machine (Ubuntu 24.04) that lives for the job:
-  # it cross-compiles, so it needs no Mac.
+  # it checks and cross-compiles each system's code, so it needs no Mac.
   build:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: instabox-medium
@@ -55,7 +49,6 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      # Here too, as a pull request does not run the Mac mini's.
       - name: gofmt
         run: |
           unformatted=$(gofmt -l $(git ls-files '*.go'))
@@ -64,8 +57,17 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+      # Each system's files and tests: build skips the tests, and a pull
+      # request runs them on Linux only.
       - name: vet
-        run: go vet ./...
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          for os in linux windows darwin; do
+            echo "::group::$os"
+            GOOS=$os go vet ./...
+            echo "::endgroup::"
+          done
       - name: build
         env:
           CGO_ENABLED: "0"
