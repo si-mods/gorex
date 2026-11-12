@@ -249,7 +249,7 @@ private struct Mic: View {
                 ProgressView().accessibilityLabel("Recognising")
             } else {
                 // On, it is the red dot of a recording.
-                Image(systemName: on ? "record.circle.fill" : "mic")
+                Image(systemName: on ? "circle.fill" : "mic")
                     .foregroundStyle(on ? AnyShapeStyle(.red) : AnyShapeStyle(.primary))
                     .accessibilityLabel("Dictate")
                     .accessibilityHint("Tap to speak, and again to type what you said.")
