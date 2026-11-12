@@ -257,9 +257,12 @@ journal.
 
 ### Windows
 
-A ConPTY console belongs to the process that made it, so a Windows server
-does not upgrade in place (`upgrade_windows.go`, `canUpgrade = false`).
-A newer app asks the user, then restarts the server (`adopt` in
+Windows has no `exec`: the server starts the new executable as a process
+that inherits each console's handles, its signal pipe among them, and
+exits once that one serves (`upgrade_windows.go`). A console ends only
+when its signal pipe breaks, so the programs keep running. When the
+server could not read a console's signal pipe, or the upgrade fails, a
+newer app asks the user, then restarts the server (`adopt` in
 `workspace.go`); the sessions come back as new shells, as after a
 restart.
 

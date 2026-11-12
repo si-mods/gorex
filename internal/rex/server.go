@@ -330,13 +330,17 @@ func Serve() error {
 		return errors.New("rex: a server already runs")
 	}
 	defer lock.Close()
-	sock := SocketPath()
-	os.Remove(sock)
-	ln, err := net.Listen("unix", sock)
+	// The lock of a server that upgrades on Windows is free for a moment
+	// once the server that handed over exits; the next one already
+	// listens.
+	if c, err := net.Dial("unix", SocketPath()); err == nil {
+		c.Close()
+		return errors.New("rex: a server already runs")
+	}
+	ln, err := listenSocket()
 	if err != nil {
 		return err
 	}
-	os.Chmod(sock, 0o600)
 	s := newServer(ln, lock)
 	// The journal is read before this run records its start: what it kept
 	// of the run before this one tells whether that one stopped, and which
@@ -355,6 +359,18 @@ func Serve() error {
 	// attach to one waits for its own.
 	go s.restoreLost(journalOwners(entries), s.lostPanes())
 	return s.serve()
+}
+
+// listenSocket listens on SocketPath, in place of what is there.
+func listenSocket() (net.Listener, error) {
+	sock := SocketPath()
+	os.Remove(sock)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		return nil, err
+	}
+	os.Chmod(sock, 0o600)
+	return ln, nil
 }
 
 func newServer(ln net.Listener, lock *os.File) *Server {
@@ -380,7 +396,9 @@ func (s *Server) serve() error {
 	s.remoteLoad()
 	go func() {
 		<-s.quit
-		ln.Close()
+		s.acceptMu.Lock()
+		s.ln.Close()
+		s.acceptMu.Unlock()
 	}()
 	if OnServe != nil {
 		go OnServe(s.quit)
@@ -413,8 +431,10 @@ func (s *Server) serve() error {
 			default:
 			}
 			if ne, ok := err.(net.Error); ok && ne.Timeout() {
-				// An upgrade stopped it: wait for it to fail.
+				// An upgrade stopped it: wait for it to fail, which may
+				// leave another listener (Windows).
 				s.acceptMu.Lock()
+				ln = s.ln
 				s.acceptMu.Unlock()
 				continue
 			}
@@ -764,7 +784,7 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 	}
 	switch req.Op {
 	case "hello":
-		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Machine: s.machine, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade, Capabilities: append([]string(nil), capabilities...)}
+		h := Hello{Version: ProtocolVersion, PID: os.Getpid(), Started: s.started, Machine: s.machine, Exe: s.exe, ExeTime: s.exeTime, Upgrade: canUpgrade(), Capabilities: append([]string(nil), capabilities...)}
 		// A machine not read yet is none: hostInfo may still be writing it.
 		select {
 		case <-s.hostDone:

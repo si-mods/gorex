@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"image"
 	"image/png"
-	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,46 +17,6 @@ import (
 	"testing"
 	"time"
 )
-
-// TestMain runs the test binary as a server when Spawn or an upgrade
-// starts it so, as main does the app's.
-func TestMain(m *testing.M) {
-	if server, err := ServerMain(os.Args[1:]); server {
-		if err != nil {
-			log.Fatal(err)
-		}
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
-}
-
-// readUntil reads s until what it read matches re, for a few seconds.
-func readUntil(t *testing.T, s *Stream, re string) string {
-	t.Helper()
-	var out bytes.Buffer
-	buf := make([]byte, 4096)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for !regexp.MustCompile(re).Match(out.Bytes()) {
-			n, err := s.Read(buf)
-			out.Write(buf[:n])
-			if err != nil {
-				return
-			}
-		}
-	}()
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		s.Close()
-		<-done
-	}
-	if !regexp.MustCompile(re).Match(out.Bytes()) {
-		t.Fatalf("no %q in %q", re, out.String())
-	}
-	return out.String()
-}
 
 // TestUpgrade upgrades a server, of a process of its own, to another
 // executable: the session, its shell and what it printed stay.
@@ -438,23 +396,6 @@ func TestResumeAnOlderHandoff(t *testing.T) {
 	if s, err := resumeSession(st, func() {}); err != nil || s.dir != "/work" {
 		t.Errorf("dir after a handoff with one: %v", err)
 	}
-}
-
-func copyFile(from, to string) error {
-	r, err := os.Open(from)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-	w, err := os.OpenFile(to, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o700)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(w, r); err != nil {
-		w.Close()
-		return err
-	}
-	return w.Close()
 }
 
 // TestSpeaksProtocol probes this build, which prints ProtocolVersion, and
