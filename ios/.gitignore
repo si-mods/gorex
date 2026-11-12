@@ -2,3 +2,4 @@
 /GoRex.xcodeproj/
 /GoRex/Info.plist
 /build/
+.build/

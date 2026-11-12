@@ -391,10 +391,80 @@ under the MIT or Apache License 2.0, among them rustfst and flate2.
    limitations under the License.
 ```
 
-## SenseVoiceSmall and Silero VAD (downloaded)
+## sherpa-onnx and ONNX Runtime
 
-The app does not ship them: the mic's first tap downloads, on request, the
-Core ML conversions FluidInference publishes on Hugging Face.
+Dictation recognises speech with Fun-ASR-Nano and Qwen3-ASR through
+sherpa-onnx (https://github.com/k2-fsa/sherpa-onnx, 2.0.1, Copyright (c)
+Xiaomi Corporation), under the Apache License 2.0 above, from its prebuilt
+iOS framework (`SherpaOnnx/Package.swift`). The framework links ONNX
+Runtime 1.28.2 (https://github.com/microsoft/onnxruntime), under the MIT
+License below, with the components its notices list:
+https://github.com/microsoft/onnxruntime/blob/v1.28.2/ThirdPartyNotices.txt.
+It also links what sherpa-onnx builds with: kaldi-native-fbank,
+kaldi-decoder, OpenFst and simple-sentencepiece (Apache License 2.0),
+utf8proc and JSON for Modern C++ (MIT), and hclust-cpp (below).
+
+```
+MIT License
+
+Copyright (c) Microsoft Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+hclust-cpp (https://github.com/cdalitz/hclust-cpp):
+
+```
+Copyright:
+  * fastcluster_dm.cpp & fastcluster_R_dm.cpp:
+     © 2011 Daniel Müllner <http://danifold.net>
+  * fastcluster.(h|cpp) & demo.cpp & plotresult.r:
+     © 2018 Christoph Dalitz <http://www.hsnr.de/ipattern/>
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright notice,
+    this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright notice,
+    this list of conditions and the following disclaimer in the documentation
+    and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## Speech models (downloaded)
+
+The app does not ship them: the mic's first tap, or Settings › Terminal,
+downloads the model chosen, on request, from Hugging Face. SenseVoiceSmall
+and Silero VAD are the Core ML conversions FluidInference publishes there;
+Fun-ASR-Nano and Qwen3-ASR, sherpa-onnx's int8 ONNX conversions.
 
 - SenseVoiceSmall, by Alibaba Group's FunAudioLLM
   (https://huggingface.co/FunAudioLLM/SenseVoiceSmall), converted at
@@ -405,6 +475,20 @@ Core ML conversions FluidInference publishes on Hugging Face.
 - Silero VAD (https://github.com/snakers4/silero-vad), converted at
   https://huggingface.co/FluidInference/silero-vad-coreml, under the MIT
   License. Copyright (c) 2020-present Silero Team.
+- Fun-ASR-Nano, by Alibaba Group's FunAudioLLM
+  (https://huggingface.co/FunAudioLLM/Fun-ASR-Nano-2512), with Qwen3-0.6B
+  (https://huggingface.co/Qwen/Qwen3-0.6B), under the Apache License 2.0;
+  converted to ONNX by Wasser1462 (https://github.com/Wasser1462/FunASR-nano-onnx,
+  https://modelscope.cn/models/zengshuishui/FunASR-nano-onnx, Apache License
+  2.0), at
+  https://huggingface.co/csukuangfj/sherpa-onnx-funasr-nano-int8-2025-12-30.
+- Qwen3-ASR-0.6B, by Alibaba Group's Qwen team
+  (https://huggingface.co/Qwen/Qwen3-ASR-0.6B), under the Apache License
+  2.0; converted to ONNX by Wasser1462
+  (https://github.com/Wasser1462/Qwen3-ASR-onnx,
+  https://modelscope.cn/models/zengshuishui/Qwen3-ASR-onnx, Apache License
+  2.0), at
+  https://huggingface.co/csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.
 
 ## iTerm2-Color-Schemes (terminal themes)
 

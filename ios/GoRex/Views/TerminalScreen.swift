@@ -142,10 +142,10 @@ struct TerminalScreen: View {
             }
             // The mic's, here, as the one in the key bar can't show them.
             .alert("Download the Speech Model?", isPresented: $asking) {
-                Button("Download") { Dictation.shared.download() }
+                Button("Download") { Dictation.shared.download(Dictation.shared.model) }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Speech is recognised on this device, by SenseVoice. Its model, \(Dictation.size.formatted(.byteCount(style: .file))), downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.")
+                Text("Speech is recognised on this device, by \(Dictation.shared.model.name). Its model, \(Dictation.shared.model.size.formatted(.byteCount(style: .file))), downloads once from Hugging Face, or from hf-mirror.com, a mirror run by others, where Hugging Face can't be reached. Delete it in Settings › Terminal.")
             }
             .stopsDownload($stopping)
             .alert("Can't Download the Speech Model", isPresented: Binding { Dictation.shared.error != nil } set: { if !$0 { Dictation.shared.error = nil } }) {
@@ -299,7 +299,7 @@ private struct Mic: View {
                     await terminal()?.typeDictation()
                     busy = false
                 }
-            } else if !dictation.installed {
+            } else if !dictation.installed.contains(dictation.model) {
                 asking = true
             } else {
                 _ = terminal()?.dictate { said = $0 }

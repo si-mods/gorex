@@ -330,7 +330,7 @@ private struct TerminalSettings: View {
                 }
             }
             Section {
-                speech
+                ForEach(Dictation.Model.allCases, id: \.self, content: speech)
                 Group {
                     LabeledContent("API Key") {
                         SecureField("Off", text: $key).onChange(of: key) { Polish.savedKey = key }
@@ -349,7 +349,7 @@ private struct TerminalSettings: View {
             } header: {
                 Text("Dictation")
             } footer: {
-                Text("The mic types what you say into the terminal, without pressing Return; SenseVoice recognises it on this device. Swipe the model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device.")
+                Text("The mic types what you say into the terminal, without pressing Return; the model you choose recognises it on this device. Fun-ASR-Nano and Qwen3-ASR are larger and slower: on a Mac they take 2 to 2.6 GB of memory, and phones with less may not run them. Swipe a model to delete it. With an API key, the text you dictate and words from the terminal screen go to the service you set here, which corrects misheard terms and punctuation. Without a key, nothing leaves the device.")
             }
             Section {
                 ForEach(contrasts, id: \.0) { value, name in
@@ -373,6 +373,7 @@ private struct TerminalSettings: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color.page)
+        .stopsDownload($stopping)
         .navigationTitle("Terminal")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -410,29 +411,33 @@ private struct TerminalSettings: View {
         .listRowBackground(Color.card)
     }
 
-    /// The speech model: downloaded, to delete; else its size and a
-    /// download, or the download's progress and a stop, which asks.
-    private var speech: some View {
-        Button {
-            if !dictation.installed { if dictation.progress == nil { dictation.download() } else { stopping = true } }
+    /// A speech model: a tap chooses it, and downloads it unless it is or
+    /// another downloads; its size, or its download's progress and a stop,
+    /// which asks; swiped, deleted.
+    private func speech(_ m: Dictation.Model) -> some View {
+        let downloading = dictation.downloading == m
+        return Button {
+            if downloading, dictation.progress != nil { stopping = true; return }
+            dictation.model = m
+            if !dictation.installed.contains(m), dictation.progress == nil { dictation.download(m) }
         } label: {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("Speech Model").foregroundStyle(.primary)
+                    Text(verbatim: m.name).foregroundStyle(.primary)
                     Spacer()
-                    if let p = dictation.progress {
+                    if downloading, let p = dictation.progress {
                         ProgressView(value: p).frame(width: 64)
                         Image(systemName: "stop.circle").accessibilityLabel("Cancel")
                     } else {
-                        Text(Dictation.size.formatted(.byteCount(style: .file))).foregroundStyle(.secondary)
-                        if !dictation.installed { Image(systemName: "arrow.down.circle").accessibilityLabel("Download") }
+                        Text(m.size.formatted(.byteCount(style: .file))).foregroundStyle(.secondary)
+                        if !dictation.installed.contains(m) { Image(systemName: "arrow.down.circle").accessibilityLabel("Download") }
                     }
+                    if m == dictation.model { Image(systemName: "checkmark").fontWeight(.semibold) }
                 }
-                if let e = dictation.error { Text(e).font(.footnote).foregroundStyle(.red) }
+                if downloading, let e = dictation.error { Text(e).font(.footnote).foregroundStyle(.red) }
             }
         }
-        .swipeActions { Button("Delete", role: .destructive) { dictation.delete() } }
-        .stopsDownload($stopping)
+        .swipeActions { Button("Delete", role: .destructive) { dictation.delete(m) } }
         .listRowBackground(Color.card)
     }
 }
