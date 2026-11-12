@@ -1,6 +1,9 @@
 # Desktop: Tailscale discovery over built-in Tailscale
 
-Status: proposal. Not implemented.
+Status: proposal. Not implemented. [host-links.md](host-links.md) sets
+the frame: if it is accepted, the node of this document carries only
+the introduction, and Transport's listen and dial for sessions, Names
+and Mixed tailnets are revised to match.
 
 ## Problem
 
