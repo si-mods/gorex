@@ -16,6 +16,10 @@
   "@commonCopy": {
     "description": "Button beside a command box that copies the command; the terminal's selection menu item that copies the selected text."
   },
+  "commonPaste": "Paste",
+  "@commonPaste": {
+    "description": "The terminal's menu item that types the clipboard's text into the program; the shortcut's name in Settings, Keyboard."
+  },
   "commonCopied": "Copied",
   "@commonCopied": {
     "description": "A command box's Copy button, for a moment after it copied."
@@ -593,6 +597,10 @@
   "copyFailed": "Could not copy: this browser did not let the page write to the clipboard.",
   "@copyFailed": {
     "description": "Status line when copying a terminal selection failed."
+  },
+  "pasteFailed": "Could not paste: this browser did not let the page read the clipboard.",
+  "@pasteFailed": {
+    "description": "Status line when the terminal's Paste menu item could not read the clipboard."
   },
   "hostIconLaptop": "Laptop",
   "@hostIconLaptop": {

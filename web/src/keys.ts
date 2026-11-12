@@ -7,6 +7,7 @@
 import { PlainKey, t } from "./i18n";
 
 export const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+const windows = /Win/.test(navigator.platform);
 
 /** A chord: the modifiers held, exactly, and the key's code. */
 type Chord = { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean; code: string };
@@ -42,6 +43,18 @@ function table(): [Chord, string][] {
   t.push([{ alt: true, shift: true, code: "BracketLeft" }, "previous-window"]);
   // Copy, as Ghostty's: Cmd+C on the Mac, Ctrl+Shift+C elsewhere. The pane runs it (pane.ts).
   t.push([mac ? { meta: true, code: "KeyC" } : { ctrl: true, shift: true, code: "KeyC" }, "copy"]);
+  // Paste, as the desktop's (GoRex's terminal binds them): Cmd+V on the Mac, Ctrl+Shift+V and
+  // Shift+Insert elsewhere. These keys are not encoded: the browser pastes into the pane's
+  // text field, and its paste event reaches the program (pane.ts).
+  if (mac) {
+    t.push([{ meta: true, code: "KeyV" }, "paste"]);
+  } else {
+    t.push([{ ctrl: true, shift: true, code: "KeyV" }, "paste"]);
+    t.push([{ shift: true, code: "Insert" }, "paste"]);
+    // On Windows Ctrl+V pastes too, as Windows Terminal's, when the clipboard holds text
+    // (the desktop's performable bind): with none, Ctrl+V goes to the program as ^V.
+    if (windows) t.push([{ ctrl: true, code: "KeyV" }, "paste-or-key"]);
+  }
   // Settings, as the desktop's Accel+, (cmdSettings).
   t.push([mac ? { meta: true, code: "Comma" } : { ctrl: true, code: "Comma" }, "settings"]);
   return t;
@@ -51,11 +64,14 @@ const chords = table();
 
 /** The command a key press is the shortcut of, if any. */
 export function shortcut(e: KeyboardEvent): string | undefined {
-  if (e.isComposing || e.repeat && !e.code.startsWith("Arrow")) return undefined;
+  if (e.isComposing) return undefined;
   for (const [c, name] of chords) {
     if (
       e.code === c.code && e.ctrlKey === !!c.ctrl && e.shiftKey === !!c.shift && e.altKey === !!c.alt && e.metaKey === !!c.meta
-    ) return name;
+    ) {
+      // A held key repeats only an arrow's focus move and a paste (the browser's, key after key).
+      return e.repeat && !c.code.startsWith("Arrow") && !name.startsWith("paste") ? undefined : name;
+    }
   }
   return undefined;
 }
@@ -103,7 +119,7 @@ export function shortcutGroups(): { label: string; rows: [title: string, keys: s
         ["cmdMoveDivider", "resize"],
       ]),
     },
-    { label: t("keysTerminal"), rows: rows([["commonCopy", "copy"]]) },
+    { label: t("keysTerminal"), rows: rows([["commonCopy", "copy"], ["commonPaste", "paste"]]) },
     {
       label: t("keysWindows"),
       rows: rows([

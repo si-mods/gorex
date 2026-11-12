@@ -397,6 +397,15 @@ export class Terminal {
     g.x.ghostty_terminal_scroll_viewport(this.t, p);
   }
 
+  /** The cursor's cell in the viewport as of the last draw, whether it shows or not; none while it is scrolled out. */
+  cursorCell(): { x: number; y: number } | undefined {
+    const { g } = this;
+    const cu = (k: string) => this.cursor + g.off("GhosttyRenderStateCursor", k);
+    if (!g.bytes[cu("viewport_has_value")]) return undefined;
+    const x = g.view.getUint16(cu("viewport_x"), true);
+    return { x: g.bytes[cu("wide_tail")] && x > 0 ? x - 1 : x, y: g.view.getUint16(cu("viewport_y"), true) };
+  }
+
   /** A terminal mode (DEC private unless ansi), as the program set it. */
   mode(value: number, ansi = false): boolean {
     const { g } = this;
