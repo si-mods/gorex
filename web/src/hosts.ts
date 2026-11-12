@@ -206,7 +206,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 /** A lucide icon of the repo, drawn in the text's colour. */
 export function icon(name: string): HTMLElement {
   const i = el("i", "pane-icon");
-  i.style.setProperty("--icon", `url(icons/${name}.svg)`);
+  // "brand:x" is a brand's own mark (assets/brands, Simple Icons, CC0).
+  const url = name.startsWith("brand:") ? `brands/${name.slice(6)}.svg` : `icons/${name}.svg`;
+  i.style.setProperty("--icon", `url(${url})`);
   return i;
 }
 
@@ -414,7 +416,7 @@ export class HostList {
     const status = ts.status();
     const head = el("div", "host-group");
     // Tailscale is a product's name, not translated.
-    head.append(icon("network"), el("span", "host-group-name", "Tailscale"));
+    head.append(icon("brand:tailscale"), el("span", "host-group-name", "Tailscale"));
     if (status !== "off") head.append(el("span", "host-group-state", ts.statusText()));
     const out: HTMLElement[] = [head];
     const guide = (label: string, glyph: string, key: string) => {

@@ -209,7 +209,7 @@ export class Guide {
 
   private explain() {
     const ts = this.tailnet;
-    this.hero("network", t("guideExplainTitle"), t("guideExplainText"));
+    this.hero("brand:tailscale", t("guideExplainTitle"), t("guideExplainText"));
     const list = el("div", "ts-points");
     this.point("shield-check", t("guideExplainDevice", { name: ts.name }), list);
     this.point("log-in", t("guideExplainSignIn"), list);

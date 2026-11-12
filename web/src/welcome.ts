@@ -45,7 +45,7 @@ export class Welcome {
     const title = said("h1", "welcome-title", "welcomeTitle");
     title.id = "welcome-title";
     this.el.setAttribute("aria-labelledby", title.id);
-    const ts = this.choice("network", this.tsTitle, this.tsLine, () => app.guide(), true);
+    const ts = this.choice("brand:tailscale", this.tsTitle, this.tsLine, () => app.guide(), true);
     const address = this.choice(
       "monitor",
       said("span", "welcome-choice-title", "welcomeAddressTitle"),
