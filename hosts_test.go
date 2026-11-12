@@ -899,7 +899,10 @@ func TestAdoptHostSessions(t *testing.T) {
 		t.Error("an exited session got a tab")
 	}
 
-	// One the host ends closes here, and is not kept to end.
+	// One the host ends closes here, and is not kept to end: one its
+	// stream saw exited, before the host dropped it, ends here as a
+	// session whose program exited does, kept to end until the host
+	// answers.
 	other, err := remote.Create(rex.CreateOptions{Cols: 80, Rows: 24})
 	if err != nil {
 		t.Fatal(err)
@@ -907,9 +910,10 @@ func TestAdoptHostSessions(t *testing.T) {
 	waitFor(t, tb, "the other session's tab", func() bool { return len(tabsOf(b, other.ID)) == 1 })
 	remote.Kill(other.ID)
 	waitFor(t, tb, "its tab to close", func() bool { return len(tabsOf(b, other.ID)) == 0 })
-	if hs, _ := loadHosts(); len(hs) != 1 || slices.Contains(hs[0].Kills, other.ID) {
-		t.Errorf("hosts.json keeps %+v", hs)
-	}
+	waitFor(t, tb, "hosts.json to keep no kill of it", func() bool {
+		hs, _ := loadHosts()
+		return len(hs) == 1 && !slices.Contains(hs[0].Kills, other.ID)
+	})
 }
 
 // TestAdoptHostTabSplits checks that the sessions of one tab of the host's
