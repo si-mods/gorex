@@ -73,36 +73,77 @@ for it yet, so this one introduction is a first contact, and the code
 is what makes it safe:
 
 1. On the machine, **Reachable at** is on and the pairing window is
-   open. Only then does its listener answer a pairing request.
-2. The client connects to the address over TLS and has seen the
-   listener's certificate. Three messages follow, the way Bluetooth
-   pairs by comparing numbers:
-   - the client sends a commitment: a hash of its key and a random
-     number of its own;
-   - the server answers with its key and a random number;
-   - the client opens the commitment: its key, its name and its number.
+   open. Only then does its listener answer a pairing request; closed,
+   the path is unknown (404).
+2. The client connects to the address over TLS 1.3 and has seen the
+   listener's certificate. It checks no chain, as this is a first
+   contact, and takes no HTTP proxy. Three messages follow, the way
+   Bluetooth pairs by comparing numbers:
+   - the client sends a commitment: a hash of its key, a random number of
+     its own and its name;
+   - the server answers with its key and a random number, and not its
+     name;
+   - the client opens the commitment: its key, its number and its name.
+     One that does not match closes the connection.
 3. Both screens show a **pairing code** of six digits, from a hash of
-   the certificate, both keys and both numbers. Each side computes it
-   from what it holds and what it saw.
-4. The user compares the codes and approves on the machine, as today.
-5. The machine answers on the same connection with its addresses. The
-   client keeps the server's key from then on.
+   the TLS connection, the certificate, both keys and both numbers. Each
+   side computes it from what it holds and what it saw.
+4. The user compares the codes and approves on the machine. On the
+   client, the user says the codes match too; nothing is kept before.
+5. The machine adds the key to the allowlist and answers on the same
+   connection with its addresses, the one of Reachable at first. The
+   client keeps them only when each is of the server's key it got in
+   step 2, and the first pins the certificate it saw; else it says the
+   machine may have let in an unknown device, whose entry to remove.
 
 Somebody in the middle shows the client another certificate and has to
 choose every value of its own before it sees the other side's number,
 so it cannot pick them to match: its codes agree by chance once in a
-million, and a mismatch is on both screens. That is why six digits are
-enough, and why the commitment is there: without it a key could be
-ground until a short code matched.
+million. It does learn the machine's code before it opens its own
+commitment, and could leave and ask again until one matched, so it gets
+one try: a request that got the machine's number and ends without the
+approval, by leaving, by a rejection or in time, closes the pairing
+window. That is why six digits are enough, and why the commitment is
+there: without it a key could be ground until a short code matched.
 
 This replaces today's fingerprint for this introduction only: that one
 covers the client's key alone, which is enough where the address
 already carried the server's key, and not here.
 
+As built (`internal/rex/pairaddr.go`, `remotectl pair IP NAME`):
+
+- The path is `/gorex/pair` on the relay's listener, an HTTP/1.1
+  upgrade to `gorex-pair-v1`; then the messages are bytes: the
+  commitment (32), the server's key and number (64), the opening (the
+  key, the number, the name's length in two bytes, the name), and at the
+  end a JSON answer after its length in two bytes.
+- `commit = SHA-256("gorex-pair-v1/commit\0" || K_C || N_C ||
+  u16be(len(name)) || name)`.
+- `X` is the TLS exporter `EXPORTER-gorex-pair-v1`, 32 bytes, no
+  context; `h = SHA-256("gorex-pair-v1/code\0" || X || SHA-256(cert) ||
+  K_C || K_S || N_C || N_S)`; the code is the first 8 bytes of `h`, as a
+  number, modulo 1 000 000, of six digits. The numbers are 32 random
+  bytes, new for every attempt.
+- A request lives with its connection: it ends when the connection
+  closes, after 2 minutes, or with the window. Each message before it
+  has 10 s.
+- One connection may wait per source (an IPv6 one by its /64), and eight
+  in all; more are refused. A key on the allowlist or already waiting,
+  either way, is refused.
+- The requests by address are a list of their own beside today's, by
+  connection, and shown with their code, name and source
+  (`gorex remote pending`). Approve takes the code
+  (`gorex remote approve CODE`), never the fingerprint, and only while
+  exactly one waits: each other one could be a guess. With two or more,
+  reject them all and ask again.
+- The client's confirmation is its own and may come before or after the
+  approval: `PairByAddress` returns the code at once, and `Confirm`
+  waits for the addresses; `Mismatch` ends it with the warning.
+
 What it costs, said plainly: while the window is open, whoever can
 dial the address can ask to pair, where over tailcat they would need
 the secret address first. A request shows the address it came from,
-one may wait per source, and eight in all, as today.
+one may wait per source, and eight in all.
 
 **The Tailscale rule.** On the tailnet, port 7464, a client sends its
 key and name; the server checks the connection with `WhoIs`, checks the
@@ -337,7 +378,11 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
 - **Pairing by address rests on the comparison.** A user who approves
   without comparing the code lets in whoever asked. The dialog shows
   the code large, with the name and the address the request came from,
-  and Approve is not the default button.
+  and Approve is not the default button. Approve takes one request by
+  address at a time, alone, and the client keeps nothing before its own
+  user says the codes match. A client that finds the codes or the
+  answer wrong says to remove the machine's newest device: the machine
+  may have let in somebody in the middle.
 - **Revocation** closes a key's connections on every address at once,
   as today for tailcat's two ports.
 
@@ -372,8 +417,8 @@ Each ships something a user can use.
 
 1. **Spike** (done): the machine as its own relay, with tailcat as it
    is. It holds; see Path for what it found.
-2. **Reachable at** (the server and its CLI are done; Settings, Rex
-   Go and pairing by address are not): the setting, the second address
+2. **Reachable at** (the server and its CLI, and pairing by address's
+   server and desktop library, are done; Settings and Rex Go are not): the setting, the second address
    and its QR code, and pairing by address. Desktops and Rex Go connect over a local
    network or a VPN of one's own with no relay, from an IP address
    typed in. Docs.

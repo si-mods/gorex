@@ -42,7 +42,7 @@ gorex run [--json] [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
-gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
+gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
 gorex server restart | upgrade
 gorex update
 gorex config path | config check [FILE] | config reload
@@ -82,6 +82,12 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   address; `remote control on|off` lets paired clients run app actions
   through the window. It applies to every paired client, and persists even while remote access is off.
   Destructive actions stay refused.
+- `remote pending` prints the pairing requests as JSON: those by address
+  first, each with its code, name and source, then those over tailcat,
+  with their key. `remote approve CODE` approves the request by address
+  of that code, only while it is the one waiting; with two or more, reject
+  them all with `remote reject CODE` and ask again. A key approves or
+  rejects a request over tailcat.
 - `server restart` stops the local server, and the next one starts the
   sessions of the layout again, as one after a crash does: new shells at
   the directories their panes were in, with the same ids, so the windows

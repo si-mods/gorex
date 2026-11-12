@@ -5,12 +5,16 @@
 //	remotectl pubkey                  print this machine's key as a remote client
 //	remotectl regenerate              make new server keys; the address changes
 //	remotectl pair ADDRESS NAME       ask a remote server to allow this machine
+//	remotectl pair IP[:PORT] NAME     the same by its Reachable at address: compare
+//	                                  the code, then it prints the addresses
 //	remotectl probe ADDRESS           connect remotely, run a command, check what is denied
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
@@ -41,6 +45,11 @@ func main() {
 		if len(args) != 2 {
 			fail(fmt.Errorf("pair ADDRESS NAME"))
 		}
+		_, ipErr := netip.ParseAddr(args[0])
+		if _, err := netip.ParseAddrPort(args[0]); ipErr == nil || err == nil {
+			fail(pairByAddress(args[0], args[1]))
+			return
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		c, err := rex.ConnectRemote(ctx, args[0])
@@ -52,6 +61,31 @@ func main() {
 	default:
 		fail(fmt.Errorf("unknown command %q", cmd))
 	}
+}
+
+// pairByAddress pairs with the machine at an IP address: the user
+// compares the code, approves there, and gets its addresses, secrets, to
+// add as a host.
+func pairByAddress(addr, name string) error {
+	p, err := rex.PairByAddress(context.Background(), addr, name)
+	if err != nil {
+		return err
+	}
+	defer p.Close()
+	fmt.Printf("pairing code: %s\nthe machine shows a code too; codes match? [y/N] ", p.Code)
+	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	if a := strings.TrimSpace(strings.ToLower(answer)); a != "y" && a != "yes" {
+		return p.Mismatch()
+	}
+	fmt.Println("approve it on the machine; waiting...")
+	addrs, err := p.Confirm(context.Background())
+	if err != nil {
+		return err
+	}
+	for _, a := range addrs {
+		fmt.Println(a)
+	}
+	return nil
 }
 
 func probe(addr string) error {

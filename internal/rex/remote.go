@@ -257,6 +257,8 @@ type remote struct {
 	// pending holds the requests made in it, never saved.
 	pairUntil time.Time
 	pending   []RemotePending
+	// byAddr are the pairings by address on their live connections.
+	byAddr []*addrPending
 	// own is the relay of Reachable at and its tailcat server while
 	// running; ownGen and ownCancel are as gen and cancel, for it alone.
 	own       *ownLink
@@ -764,6 +766,9 @@ func (s *Server) remotePair(k, name string) (string, error) {
 	if !r.pairOpenLocked() {
 		return "", errors.New("rex: the server is not pairing")
 	}
+	if slices.ContainsFunc(r.byAddr, func(p *addrPending) bool { return p.key == k }) {
+		return "", errors.New("rex: this machine's request waits there already")
+	}
 	if !slices.ContainsFunc(r.pending, func(p RemotePending) bool { return p.PublicKey == k }) {
 		if len(r.pending) >= maxPending {
 			return "", errors.New("rex: too many pairing requests; try again later")
@@ -788,6 +793,9 @@ func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 	if r.pairOpenLocked() {
 		st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
 		st.Pending = slices.Clone(r.pending)
+		for _, p := range r.waitingLocked() {
+			st.PendingByAddress = append(st.PendingByAddress, p.RemoteAddrPending)
+		}
 	}
 	st.Tailnet = tailnet
 	return st
@@ -816,6 +824,13 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			return -1
 		}
 		return slices.IndexFunc(r.pending, func(p RemotePending) bool { return p.PublicKey == k })
+	}
+	if req.Code != "" && (req.Op == "remote.approve" || req.Op == "remote.reject") {
+		if err := s.addrDecideLocked(req.Op == "remote.approve", req.Code); err != nil {
+			return nil, err
+		}
+		log.Printf("rex: %s by address", req.Op)
+		return nil, nil
 	}
 	switch req.Op {
 	case "remote.status":
