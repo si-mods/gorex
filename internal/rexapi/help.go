@@ -267,8 +267,9 @@ func methodBlockCreatorList(c *control, a args) (any, *apiError) {
 }
 
 // helpDocument returns the help document as this server serves it, limited
-// to what it implements and to the methods a client at rev knows; withHTTP
-// adds the http field session.help has.
+// to what it implements and to the methods a client at rev knows, with
+// GoRex's own methods after Rex's (ownMethods); withHTTP adds the http
+// field session.help has.
 func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 	src := helpDoc()
 	doc := map[string]json.RawMessage{}
@@ -289,6 +290,7 @@ func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 		}
 		kept = append(kept, laterSchema(rev, m.Name, raw))
 	}
+	kept = append(kept, ownMethods()...)
 	doc["methods"], _ = json.Marshal(kept)
 	var blocks []json.RawMessage
 	if raw, ok := src["block_types"]; ok {
@@ -314,7 +316,7 @@ func helpDocument(rev int, withHTTP bool) map[string]json.RawMessage {
 
 // helpAllDocument is help.all's answer: every method Rex's document lists,
 // not only the implemented ones, limited to the methods a client at rev
-// knows.
+// knows, and GoRex's own (ownMethods).
 func helpAllDocument(rev int) map[string]json.RawMessage {
 	src := helpDoc()
 	doc := map[string]json.RawMessage{}
@@ -332,6 +334,7 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 		}
 		kept = append(kept, laterSchema(rev, m.Name, raw))
 	}
+	kept = append(kept, ownMethods()...)
 	doc["methods"], _ = json.Marshal(kept)
 	var blocks []json.RawMessage
 	if raw, ok := src["block_types"]; ok {
@@ -352,6 +355,16 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 	}
 	doc["block_types"], _ = json.Marshal(keptBlocks)
 	return doc
+}
+
+// ownMethods are the help document's entries of GoRex's own methods,
+// which Rex's document does not have: gorex.move_window.
+func ownMethods() []json.RawMessage {
+	raw, err := json.Marshal(moveWindowEntry)
+	if err != nil {
+		return nil
+	}
+	return []json.RawMessage{raw}
 }
 
 // implementedMethods are the methods of the methods table, for the help

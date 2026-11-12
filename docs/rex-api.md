@@ -33,8 +33,8 @@ it to Rex clients in Rex's terms:
   has no owner (`block_owner_changed`, reason `taken`) until the client
   that took it types again (reason `input`).
 - **Layout changes** (new window, split, close, rename, focus, zoom, swap,
-  move, resize) the GoRex server makes itself; an open window shows them
-  at once.
+  move, resize, and GoRex's own move of a window to another session) the
+  GoRex server makes itself; an open window shows them at once.
 
 The GoRex server runs the gateway itself while remote access, the local
 network listener or built-in Tailscale is on, and again after it
@@ -302,6 +302,46 @@ Rex Go groups windows by these spaces by default (Settings › Grouping):
 a desktop's space lists its windows on other hosts too, which leave
 their own host's list. Those of a host it has not added, or that is
 offline, are left out.
+
+## Moving a window to another session
+
+Rex's API moves a window only within its session (`session.move_window`);
+`session.move` orders sessions. GoRex's own method `gorex.move_window`
+moves a window to another session, as the desktop's Move to Space moves a
+tab to another space. The welcome lists the feature `gorex.move_window`
+when the GoRex server can make the move (`CapabilityTabToSpace`, its
+`tab.to_space` command); call it only then.
+
+```
+→ {"method": "gorex.move_window",
+   "payload": {"session_id": "<session>", "window_id": "<window>",
+               "to_session_id": "<other session>",
+               "before_window_id": "<window of the other session>"}}
+← {"revision": 42, "to_revision": 7}
+```
+
+- `before_window_id` is optional: without it the window goes to the end.
+- The window keeps its ID, label, layout, floating layers, focus and
+  zoom. Its blocks keep their IDs, and their programs go on.
+- The other session's active window stays. The session the window left
+  makes the next window active, else the one before it.
+- The window that was a session's last destroys the session, as the
+  desktop's space goes with its last tab: the result has
+  `"session_destroyed": true` and no `revision`, and the connections that
+  hear of every session get `session_destroyed`.
+- The session left sends `window_closed`, `block_closed` for each block
+  and `session_view_changed`; the session reached sends `window_created`,
+  `block_created` for each block and `session_view_changed`.
+- An owner of a block that is not attached to the session the block went
+  to loses it: the next attached client in line gets it
+  (`block_owner_changed`, reason `disconnect`).
+- Errors: `conflict` (the connection is not attached to `session_id`),
+  `session_not_found`, `not_found` (a window not in its session),
+  `bad_request` (`to_session_id` is `session_id`, a missing or unknown
+  argument), `not_supported` (the GoRex server is older).
+
+`session.help`, `help.all` and `/llms.txt` describe it after Rex's
+methods; `/api/help` is Rex's document as it is.
 
 ## Files of a host
 

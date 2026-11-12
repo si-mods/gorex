@@ -260,13 +260,15 @@ func (g *Gateway) releaseIn(rec *clientRecord, s *mSession, reason string) []own
 }
 
 // restoreBlocks gives a client back the blocks it owned before its
-// connection dropped, if no one took them since.
+// connection dropped, if no one took them since and the client is still
+// attached to the block's session: a block moved to another session
+// (gorex.move_window) is only for the clients attached to that one.
 func (g *Gateway) restoreBlocks(rec *clientRecord) []ownerChange {
 	g.ownMu.Lock()
 	var changes []ownerChange
 	for _, id := range rec.ownedList() {
 		o := g.ownerState(id)
-		if o.owner != "" {
+		if o.owner != "" || !rec.attachedTo(g.sessionOfBlock(id)) {
 			continue
 		}
 		var size *desiredSize
@@ -325,6 +327,19 @@ func (g *Gateway) sidOfBlock(block string) string {
 	if g.model != nil {
 		if b := g.model.blockByID(block); b != nil {
 			return b.sid
+		}
+	}
+	return ""
+}
+
+// sessionOfBlock returns the Rex session of a block, from the last model,
+// "" when the block is gone.
+func (g *Gateway) sessionOfBlock(block string) string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.model != nil {
+		if b := g.model.blockByID(block); b != nil {
+			return b.session
 		}
 	}
 	return ""

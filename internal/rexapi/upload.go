@@ -102,6 +102,9 @@ func (g *Gateway) features() []string {
 	if g.hello.Can(rex.CapabilityFileTransfer) {
 		features = append(features, featureDownload)
 	}
+	if g.hello.Can(rex.CapabilityTabToSpace) {
+		features = append(features, featureMoveWindow)
+	}
 	return features
 }
 

@@ -1854,6 +1854,8 @@ func (a *App) makeTab(id string) *Tab {
 }
 
 // tabUIDTaken reports whether a tab of any window has the lasting ID id.
+// One of another window whose space the layout being taken moved it from
+// is not (store.placed): that window lets it go as it takes the layout.
 func (a *App) tabUIDTaken(id string) bool {
 	if slices.ContainsFunc(a.tabs, func(t *Tab) bool { return t.UID == id }) {
 		return true
@@ -1862,6 +1864,9 @@ func (a *App) tabUIDTaken(id string) bool {
 		return false
 	}
 	for _, w := range a.st.workspaces {
+		if to, ok := a.st.placed[id]; ok && to != w.ID {
+			continue
+		}
 		if w.app != nil && w.app != a {
 			if slices.ContainsFunc(w.app.tabs, func(t *Tab) bool { return t.UID == id }) {
 				return true

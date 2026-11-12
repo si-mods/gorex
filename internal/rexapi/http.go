@@ -65,12 +65,13 @@ func serveHelp(w http.ResponseWriter, r *http.Request) {
 
 // serveLLMs serves the API documentation as Markdown, with the revision
 // 11 and 12 supplements appended, since the embedded document is
-// revision 10's.
+// revision 10's, and then GoRex's own methods.
 func serveLLMs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write(llmsText)
 	w.Write(llmsRev11)
 	w.Write(llmsRev12)
+	w.Write(llmsGoRex)
 }
 
 // llmsRev11 documents what revision 11 adds, which the revision 10
@@ -153,5 +154,6 @@ func serveLLMsHTML(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, html.EscapeString(string(llmsText)))
 	io.WriteString(w, html.EscapeString(string(llmsRev11)))
 	io.WriteString(w, html.EscapeString(string(llmsRev12)))
+	io.WriteString(w, html.EscapeString(string(llmsGoRex)))
 	io.WriteString(w, "</pre>\n")
 }
