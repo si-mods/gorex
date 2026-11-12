@@ -2124,6 +2124,10 @@
   "@welcomeRecommended": {
     "description": "Badge next to the Sign in with Tailscale card's title on the first screen."
   },
+  "cornerLanguage": "Language",
+  "@cornerLanguage": {
+    "description": "Tooltip and accessible name of the language button in the first screen's top-right corner; it opens a menu of languages."
+  },
   "welcomeTsChoose": "Choose a Computer on Tailscale",
   "@welcomeTsChoose": {
     "description": "First screen, the Tailscale card's title when Tailscale is signed in: opens the list of hosts found."

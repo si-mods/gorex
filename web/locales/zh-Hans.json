@@ -379,6 +379,7 @@
   "welcomeTitle": "在浏览器中使用 GoRex 终端",
   "welcomeText": "连接一台运行 GoRex 的主机，即可在这里查看和使用它的终端。",
   "welcomeRecommended": "推荐",
+  "cornerLanguage": "语言",
   "welcomeTsChoose": "选择 Tailscale 上的主机",
   "welcomeTsLine": "自动找到你的 GoRex 主机，无需安装任何应用。",
   "welcomeTsLineContinue": "完成登录，即可找到你的 GoRex 主机。",

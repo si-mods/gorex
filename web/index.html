@@ -313,6 +313,35 @@
   #notice { position: absolute; inset: 0; z-index: 2; display: flex; overflow: auto; padding: 24px; }
   #notice > * { margin: auto; flex: none; }
   #notice[hidden] { display: none; }
+  /* The first screen, while no host exists: no sidebar and no status line, the welcome centred in the whole
+     window; the language and Settings sit in the top-right corner (corner.ts). */
+  #corner { display: none; position: fixed; top: 12px; right: 12px; z-index: 5; align-items: center; gap: 4px; }
+  body.onboarding { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  body.onboarding #sessions, body.onboarding #status { display: none; }
+  body.onboarding #stage { margin: 0; }
+  body.onboarding #notice { inset: 0; padding: 56px 24px; }
+  body.onboarding #corner { display: flex; }
+  .corner-lang-box { position: relative; }
+  .corner-button {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border: 0;
+    border-radius: 999px; background: none; color: var(--muted); font: inherit; cursor: pointer;
+  }
+  .corner-button.corner-icon { width: 32px; padding: 0; }
+  .corner-button:hover { background: var(--hover); color: var(--text); }
+  .corner-button:focus-visible, .corner-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .corner-button .pane-icon { width: 16px; height: 16px; flex: none; }
+  .corner-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 1; display: flex; flex-direction: column; min-width: 160px; padding: 4px;
+    border-radius: 12px; background: var(--panel); border: 1px solid var(--panel-edge); color: var(--text);
+    -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  }
+  .corner-menu[hidden] { display: none; }
+  .corner-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 10px; border: 0; border-radius: 8px;
+    background: none; color: var(--text); font: inherit; text-align: left; white-space: nowrap; cursor: pointer;
+  }
+  .corner-item:hover { background: var(--hover); }
+  .corner-item .pane-icon { width: 14px; height: 14px; }
   .notice-card {
     display: flex; flex-direction: column; gap: 12px; width: min(520px, 100%); padding: 20px; border-radius: 16px;
     background: var(--panel); border: 1px solid var(--panel-edge); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
@@ -676,6 +705,7 @@
     /* The welcome and the cards take the screen's width less 16px each side: the overlay reaches past the
        stage's 8px margins to the screen's edges, so that it clips a card's shadow only there. */
     #notice { inset: 0 -8px; padding: 16px; }
+    body.onboarding #notice { inset: 0; padding: 56px 16px; }
     .welcome-title { font-size: 20px; }
     .update { left: 8px; right: 8px; bottom: calc(28px + env(safe-area-inset-bottom)); max-width: none; }
     .chunk-loads { left: 8px; right: 8px; bottom: calc(28px + env(safe-area-inset-bottom)); width: auto; }
@@ -686,6 +716,7 @@
 <aside id="sessions"><div id="hosts"></div><div id="list"></div><div id="foot"><button type="button" class="theme-button" id="open-settings"></button></div></aside>
 <main id="stage"><div id="notice" hidden></div><div id="boot" hidden></div></main>
 <footer id="status"></footer>
+<div id="corner"></div>
 <script type="module" src="app.js"></script>
 </body>
 </html>
