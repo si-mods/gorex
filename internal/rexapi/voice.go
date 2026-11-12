@@ -17,8 +17,9 @@ import (
 // (rex.Voice). It is GoRex's own, outside Rex's API: GET
 // /api/voice?block_id=… upgrades to a WebSocket whose binary messages
 // carry raw PCM, signed 16-bit little-endian, 16 kHz, mono, and the client
-// closes it as the user lets go, which ends the voice. The server sends
-// nothing but the close. The welcome lists featureVoice when the gateway
+// closes it as the user stops, which ends the voice. The server sends
+// nothing but the close: a normal one as the voice ended on the host, as
+// when the program stopped its rec. The welcome lists featureVoice when the gateway
 // takes voices.
 
 // featureVoice is the welcome's feature of a gateway that takes voices.
@@ -77,7 +78,7 @@ func (g *Gateway) handleVoice(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if _, err := feed.Write(msg); err != nil {
-			ws.Close(websocket.StatusInternalError, "the voice ended")
+			ws.Close(websocket.StatusNormalClosure, "the voice ended")
 			return
 		}
 	}

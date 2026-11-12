@@ -34,11 +34,12 @@ func init() {
 // ("voice.put") or reads it ("voice.get"), from this machine only. The
 // server answers a FileAnswer: OK, or Error, after which it closes the
 // connection. A put then sends the voice's bytes, and closes the
-// connection as the voice ends; a new put of the session ends the one
-// before. A get waits voiceWait for a voice no other get took to begin,
-// then the server sends what the voice carried since it began, and what
-// it carries after, and closes the connection once it ended. A voice no
-// get took or waits for as it ends is dropped.
+// connection as the voice ends; the server closes it as the voice ends
+// first, as a new put of the session or the going of the get that took
+// it ends it. A get waits voiceWait for a voice no other get took to
+// begin, then the server sends what the voice carried since it began, and
+// what it carries after, and closes the connection once it ended. A voice
+// no get took or waits for as it ends is dropped.
 type Voice struct {
 	Op  string `json:"op"` // "voice.put" or "voice.get"
 	SID string `json:"sid"`
@@ -56,13 +57,14 @@ const (
 )
 
 // voice is a session's voice as the server has it: the bytes no get sent
-// yet, and whether it ended. wake closes as bytes come or it ends. taken,
-// held by Server.voiceMu, tells that a get took it.
+// yet, and whether it ended. wake closes as bytes come or it ends; done,
+// as it ends. taken, held by Server.voiceMu, tells that a get took it.
 type voice struct {
 	mu    sync.Mutex
 	buf   []byte
 	ended bool
 	wake  chan struct{}
+	done  chan struct{}
 	taken bool
 }
 
@@ -88,6 +90,7 @@ func (v *voice) end() {
 	if !v.ended {
 		v.ended = true
 		close(v.wake)
+		close(v.done)
 	}
 }
 
@@ -125,15 +128,20 @@ func (s *Server) voiceConn(conn net.Conn, r *bufio.Reader, first []byte, op stri
 		return
 	}
 	if op == "voice.put" {
-		s.voicePut(req.SID, r, answer)
+		s.voicePut(conn, req.SID, r, answer)
 		return
 	}
 	s.voiceGet(conn, req.SID, answer)
 }
 
-// voicePut keeps what r carries as the session's voice, until it ends.
-func (s *Server) voicePut(sid string, r io.Reader, answer func(FileAnswer)) {
-	v := &voice{wake: make(chan struct{})}
+// voicePut keeps what r carries as the session's voice, until it ends,
+// and closes conn as it does.
+func (s *Server) voicePut(conn net.Conn, sid string, r io.Reader, answer func(FileAnswer)) {
+	v := &voice{wake: make(chan struct{}), done: make(chan struct{})}
+	go func() {
+		<-v.done
+		conn.Close()
+	}()
 	s.voiceMu.Lock()
 	if s.voices == nil {
 		s.voices = map[string]*voice{}
@@ -178,9 +186,12 @@ func (s *Server) voiceGet(conn net.Conn, sid string, answer func(FileAnswer)) {
 	}
 	s.voiceGets[sid]++
 	s.voiceMu.Unlock()
-	// As the get goes, so does the voice it took, and one that ended
-	// which no get waits for.
+	// As the get goes, so does the voice it took, which ends, and one
+	// that ended which no get waits for.
 	defer func() {
+		if v != nil {
+			v.end()
+		}
 		s.voiceMu.Lock()
 		if s.voiceGets[sid]--; s.voiceGets[sid] == 0 {
 			delete(s.voiceGets, sid)

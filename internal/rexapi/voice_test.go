@@ -52,6 +52,38 @@ func TestVoice(t *testing.T) {
 	}
 }
 
+// TestVoiceEndedOnTheHost: as the rec goes, the gateway closes the
+// WebSocket normally.
+func TestVoiceEndedOnTheHost(t *testing.T) {
+	f := startFixture(t)
+	_, _, block := f.sessionWith(t, rex.CreateOptions{Command: []string{"/bin/sh", "-i"}})
+	m, err := f.g.current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := m.blockByID(block).sid
+	ws := f.dial("/api/voice?block_id=" + block)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := ws.Write(ctx, websocket.MessageBinary, []byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	voice, err := f.desk.ReadVoice(ctx, sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	voice.Close()
+	// The phone sends on, as it does every tenth of a second.
+	go func() {
+		for ws.Write(ctx, websocket.MessageBinary, []byte("more")) == nil {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+	if _, _, err := ws.Read(ctx); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+		t.Errorf("the voice ended on the host: %v", err)
+	}
+}
+
 // A voice for no block is refused before the upgrade, and a text message
 // ends one.
 func TestVoiceRefused(t *testing.T) {

@@ -154,6 +154,35 @@ func TestVoiceReplaced(t *testing.T) {
 	}
 }
 
+// A rec that goes, as the program stopped recording, ends the voice: its
+// feed is closed.
+func TestVoiceEndsWithItsRec(t *testing.T) {
+	s, _ := testServer(t)
+	c := pipe(s, "")
+	defer c.Close()
+	sid := voiceSession(t, c)
+	feed := feedVoice(t, c, sid, []byte("hello"))
+	voice, err := c.ReadVoice(context.Background(), sid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 5)
+	if _, err := io.ReadFull(voice, buf); err != nil {
+		t.Fatal(err)
+	}
+	voice.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := feed.Write([]byte("more")); err != nil {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the feed went on after its rec went")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 // The server keeps the last ten seconds of a voice no rec read yet.
 func TestVoiceKeepsTheLast(t *testing.T) {
 	s, _ := testServer(t)

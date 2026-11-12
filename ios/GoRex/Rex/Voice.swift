@@ -2,7 +2,7 @@ import AVFoundation
 import os
 
 /// GoRex's voice, outside Rex's API: the phone is the microphone of a host
-/// that has none. While the mic key is held, what the microphone hears goes
+/// that has none. While the mic is on, what the microphone hears goes
 /// to /api/voice for a block, as raw PCM, which the host's rec gives Claude
 /// Code's /voice. A server that takes it lists Voice.feature in its welcome.
 enum Voice {
@@ -60,14 +60,16 @@ enum Voice {
     }
 }
 
-/// One hold of the mic key: the microphone streamed to a block's
-/// /api/voice, a message each 100 ms, until stop sends what is left and
-/// closes. The audio session is for recording while it runs; others'
-/// sound comes back after.
+/// One turn of the mic: the microphone streamed to a block's /api/voice, a
+/// message each 100 ms, until stop sends what is left and closes, or the
+/// host closes it. The audio session is for recording while it runs;
+/// others' sound comes back after.
 final class VoiceStream {
-    /// Called once when the stream fails, as when the host can't be
-    /// reached; the microphone has stopped.
-    var onFail: (Error) -> Void = { _ in }
+    /// Called once when the stream ends but by stop, the microphone
+    /// stopped: with nil as the host ended the voice, as when the program
+    /// stopped recording, else with why it failed, as when the host can't
+    /// be reached.
+    var onEnd: (Error?) -> Void = { _ in }
     private let engine = AVAudioEngine()
     private let task: URLSessionWebSocketTask
     /// The messages, in order, from the microphone's thread to the socket.
@@ -129,10 +131,12 @@ final class VoiceStream {
                 for await c in chunks { try await task.send(.data(c)) }
                 task.cancel(with: .normalClosure, reason: nil)
             } catch {
-                task.cancel()
-                self?.stop()
-                self?.onFail(error)
+                self?.ended(error)
             }
+        }
+        // The host sends nothing but the close.
+        Task { [weak self, task] in
+            do { _ = try await task.receive() } catch { self?.ended(error) }
         }
     }
 
@@ -140,7 +144,17 @@ final class VoiceStream {
     private func interrupted() {
         guard running else { return }
         stop()
-        onFail(RexError(code: "voice", message: String(localized: "The microphone was interrupted.")))
+        onEnd(RexError(code: "voice", message: String(localized: "The microphone was interrupted.")))
+    }
+
+    /// The stream ended while it ran: the host closed it, normally as the
+    /// voice ended there, or it failed.
+    private func ended(_ error: Error) {
+        guard running else { return }
+        let normal = task.closeCode == .normalClosure
+        task.cancel()
+        stop()
+        onEnd(normal ? nil : error)
     }
 
     /// Stops the microphone, sends what is left, and closes once it has gone.
