@@ -10,8 +10,8 @@ import UIKit
 /// and the wheel comes back out of it, for the session to write to the
 /// program. A phone's terminal has a bar of the keys the soft keyboard
 /// lacks (Esc, Tab, Ctrl, Alt, Shift, arrows), after rootshell's
-/// KeyboardAccessoryView, which stays as the keyboard hides; the modifiers
-/// hold for the next key. An iPad's keyboard has its own bar
+/// KeyboardAccessoryView, at the foot of the screen or on the keyboard; the
+/// modifiers hold for the next key. An iPad's keyboard has its own bar
 /// of shortcuts, which takes the keys instead. Input methods compose at the
 /// cursor (TerminalView+TextInput). A vertical drag scrolls back, or turns a
 /// full-screen program's wheel, with UIKit's physics (TerminalView+Scroll);
@@ -42,18 +42,6 @@ final class TerminalView: UIView, TerminalOutput {
     var alt = false { didSet { bar.alt.isSelected = alt } }
     var shift = false { didSet { bar.shift.isSelected = shift } }
     lazy var bar = KeyBar(target: self)
-    /// Whether the soft keyboard is hidden under the bar, as it is when
-    /// the terminal opens.
-    var keyboardHidden = true {
-        didSet {
-            guard keyboardHidden != oldValue else { return }
-            bar.invalidateIntrinsicContentSize()
-            reloadInputViews()
-            bar.keyboard.setNeedsUpdateConfiguration()
-        }
-    }
-    /// What shows in place of the soft keyboard while it is hidden: nothing.
-    private let noKeyboard = UIView()
 
     /// What the keyboard believes it edits.
     var document = InputDocument()
@@ -88,7 +76,13 @@ final class TerminalView: UIView, TerminalOutput {
     var syncing = false
 
     /// The keyboard's height over the terminal.
-    private var covered: CGFloat = 0
+    private var keys: CGFloat = 0
+    /// How far the keyboard, and a phone's bar, reach over the terminal:
+    /// the bar rides the keyboard, else rests above the home indicator.
+    private var covered: CGFloat {
+        guard let host = superview, bar.superview === host, !bar.isHidden else { return keys }
+        return max(keys, host.safeAreaInsets.bottom) + bar.intrinsicContentSize.height
+    }
     /// Whether the mouse is over a link, as Ghostty last told.
     var overLink = false
 
@@ -146,7 +140,7 @@ final class TerminalView: UIView, TerminalOutput {
         NotificationCenter.default.addObserver(self, selector: #selector(keyboard), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(contrastChanged), name: .minimumContrast, object: nil)
         for name in [Notification.Name.GCKeyboardDidConnect, .GCKeyboardDidDisconnect] {
-            NotificationCenter.default.addObserver(self, selector: #selector(keepBar), name: name, object: nil)
+            NotificationCenter.default.addObserver(self, selector: #selector(showBar), name: name, object: nil)
         }
         // An iPad's bar of shortcuts has the keys from the start.
         if UIDevice.current.userInterfaceIdiom == .pad { _ = bar }
@@ -159,7 +153,7 @@ final class TerminalView: UIView, TerminalOutput {
     override func didMoveToWindow() {
         super.didMoveToWindow()
         if window != nil, surface == nil { open() }
-        if window != nil { keepBar() }
+        if window != nil { showBar() }
     }
 
     /// Makes the surface, its terminal fed from outside, and shows the
@@ -341,17 +335,18 @@ final class TerminalView: UIView, TerminalOutput {
         let duration = n.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
         let curve = n.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         // Measured on the host, which does not slide.
-        covered = max(0, superview.bounds.maxY - window.screen.coordinateSpace.convert(end, to: superview).minY)
+        keys = max(0, superview.bounds.maxY - window.screen.coordinateSpace.convert(end, to: superview).minY)
+        bar.keyboard.setNeedsUpdateConfiguration()
         slide(duration: duration, options: UIView.AnimationOptions(rawValue: curve << 16))
     }
 
     /// Slides the terminal up over the keyboard, no farther than it is tall,
     /// as far as the cursor's row and the lines drawn under it, as an
     /// agent's box and status, need, but not the cursor under the bar. With
-    /// no keyboard over it, it rests at 0 and reads nothing.
+    /// nothing over it, it rests at 0 and reads nothing.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         guard surface != nil, drawn else { return }
-        let covered = barAlone ?? self.covered
+        let covered = self.covered
         var y: CGFloat = 0
         if covered > 0 {
             let c = cursor(width: nil)
@@ -363,16 +358,6 @@ final class TerminalView: UIView, TerminalOutput {
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
             self.transform = CGAffineTransform(translationX: 0, y: y)
         }
-    }
-
-    /// How far the bar reaches over the terminal while it shows without the
-    /// keyboard, at its height at the bottom of the screen: iOS tells it as
-    /// the keyboard hides, but not as the bar comes back alone, as the
-    /// screen opens or after a sheet or an alert.
-    private var barAlone: CGFloat? {
-        guard isFirstResponder, inputView != nil, let window, let superview else { return nil }
-        let top = window.screen.coordinateSpace.convert(CGPoint(x: 0, y: window.screen.bounds.maxY - bar.intrinsicContentSize.height), to: superview).y
-        return max(0, superview.bounds.maxY - top)
     }
 
     /// The bottom of the last line of the screen with text under the
@@ -431,7 +416,6 @@ final class TerminalView: UIView, TerminalOutput {
         let p = g.location(in: self)
         if deselect(at: p) { return }
         if let s = surface, ghostty_surface_mouse_captured(s) { click(at: p) } else { openLink(at: p) }
-        keyboardHidden = false
         if !isFirstResponder { becomeFirstResponder() }
     }
 
@@ -468,23 +452,11 @@ final class TerminalView: UIView, TerminalOutput {
         GCKeyboard.coalesced == nil && UIDevice.current.userInterfaceIdiom != .pad
     }
 
-    override var inputAccessoryView: UIView? { Self.hasBar ? bar : nil }
-    override var inputView: UIView? { Self.hasBar && keyboardHidden ? noKeyboard : nil }
-
-    /// Takes the keys while on screen where the terminal has the bar, so
-    /// that the bar stays, with the keyboard or without it; not under a
-    /// sheet, which gives them back as it goes.
-    @objc private func keepBar() {
-        guard shown?.presentedViewController == nil else { return }
-        reloadInputViews()
-        if window != nil, Self.hasBar { becomeFirstResponder() }
-    }
-
-    /// The bar comes back alone with no word from iOS, as after an alert:
-    /// the terminal slides over it.
-    override func becomeFirstResponder() -> Bool {
-        defer { slide(duration: 0) }
-        return super.becomeFirstResponder()
+    /// Shows the bar where the terminal has it, as a hardware keyboard
+    /// comes and goes.
+    @objc private func showBar() {
+        bar.isHidden = !Self.hasBar
+        slide(duration: 0)
     }
 
     var autocorrectionType: UITextAutocorrectionType = .no
@@ -772,7 +744,9 @@ final class TerminalView: UIView, TerminalOutput {
 /// inset: its grid starts below them and the scrollback fills the band. The
 /// grid never changes as a program takes the alternate screen, which would
 /// resize the main screen at the phone only, behind the session's back, as
-/// omp does for a moment each time it redraws for a new size.
+/// omp does for a moment each time it redraws for a new size. A phone's
+/// key bar is over it, not on the terminal, which slides under it: on the
+/// keyboard, else above the home indicator.
 final class TerminalHost: UIView {
     let terminal: TerminalView
 
@@ -780,6 +754,15 @@ final class TerminalHost: UIView {
         self.terminal = terminal
         super.init(frame: .zero)
         addSubview(terminal)
+        guard UIDevice.current.userInterfaceIdiom != .pad else { return }
+        let bar = terminal.bar
+        bar.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(bar)
+        NSLayoutConstraint.activate([
+            bar.leadingAnchor.constraint(equalTo: leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: trailingAnchor),
+            bar.bottomAnchor.constraint(equalTo: keyboardLayoutGuide.topAnchor),
+        ])
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -833,7 +816,6 @@ final class KeyBar: UIView {
     init(target: TerminalView) {
         self.target = target
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: 52))
-        autoresizingMask = .flexibleHeight
         overrideUserInterfaceStyle = .dark
         func key(_ face: String, _ label: String?, _ name: String) -> UIButton {
             let b = Self.button(face, label, size: Self.small)
@@ -949,9 +931,12 @@ final class KeyBar: UIView {
         drag.minimumPressDuration = 0
         drag.allowableMovement = .greatestFiniteMagnitude
         stick.addGestureRecognizer(drag)
-        keyboard.addAction(UIAction { [weak target] _ in target?.keyboardHidden.toggle() }, for: .touchUpInside)
+        keyboard.addAction(UIAction { [weak target] _ in
+            guard let target else { return }
+            _ = target.isFirstResponder ? target.resignFirstResponder() : target.becomeFirstResponder()
+        }, for: .touchUpInside)
         keyboard.configurationUpdateHandler = { [weak target] b in
-            let hidden = target?.keyboardHidden ?? false
+            let hidden = target?.isFirstResponder != true
             b.configuration = Self.config(hidden ? "keyboard" : "keyboard.chevron.compact.down", text: false, size: 17, held: false)
             b.accessibilityLabel = hidden ? String(localized: "Show Keyboard") : String(localized: "Hide Keyboard")
         }
@@ -979,18 +964,13 @@ final class KeyBar: UIView {
             row.widthAnchor.constraint(lessThanOrEqualToConstant: 440),
             row.centerXAnchor.constraint(equalTo: centerXAnchor),
             row.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            row.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -4),
+            row.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4),
         ])
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    /// As tall again as the home indicator while the keyboard is hidden,
-    /// which the keys stay above.
-    override var intrinsicContentSize: CGSize {
-        let below = target?.keyboardHidden == true ? target?.window?.safeAreaInsets.bottom ?? 0 : 0
-        return CGSize(width: UIView.noIntrinsicMetric, height: 52 + below)
-    }
+    override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: 52) }
 
     /// Points the stick: past a dead zone, the arrow of the drag's main
     /// axis goes at once, then repeats while held, as a held key does. Each
