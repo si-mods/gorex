@@ -6,7 +6,8 @@ import { onAppChange, startApp } from "./app";
 import { Chunk } from "./chunks";
 import { Ghostty } from "./ghostty";
 import type { Guide } from "./guide";
-import { commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
+import { mountCorner } from "./corner";
+import { chosenHost, commandBox, diagnose, Host, HostList, hostURL, icon, loadHosts, mixedContent, Problem } from "./hosts";
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
 import { Asset, loader } from "./loader";
@@ -253,6 +254,7 @@ async function main() {
     onAppChange(() => settings?.appChanged());
     tailnet.onChange(tailnetChanged);
     $("open-settings").onclick = () => withSettings((s) => s.toggle());
+    mountCorner($("corner"), () => withSettings((s) => s.toggle()));
     // A change of language says the page's words again in it: the dialogs say theirs themselves.
     onLanguageChange(() => {
       status(statusText);
@@ -311,6 +313,7 @@ function openGuide() {
  * to the first host added.
  */
 function tailnetChanged() {
+  onboarding();
   hostList.refresh();
   settings?.update();
   if (current?.kind === "tailnet" && tailnet.status() !== "running" && !tailnet.hosts.some((h) => h.id === current!.id)) {
@@ -326,6 +329,14 @@ type NoticeAction = { label: PlainKey | (() => string); run: () => void; primary
 
 /** The notice shown, drawn again after a change of language. */
 let shownNotice: [Problem | undefined, ...NoticeAction[]] | undefined;
+
+/**
+ * The first screen has the whole window: no sidebar, no status line. That is while no host is chosen and none
+ * exists to choose. Hosts that Tailscale found keep the sidebar, as its host list is where they are chosen.
+ */
+function onboarding() {
+  document.body.classList.toggle("onboarding", !current && !hostList.hosts.length && !tailnet.hosts.length);
+}
 
 /** Shows the welcome over the empty stage: no host is chosen. Its code loads only then, as on the first visit. */
 function showWelcome() {
@@ -402,6 +413,7 @@ function choose(h: Host | undefined) {
   for (const m of [sessions, titles, programs, statuses, seen]) m.clear();
   described.clear();
   current = h;
+  onboarding();
   sidebar();
   if (!h) {
     status("");
@@ -979,5 +991,7 @@ document.fonts.addEventListener("loadingdone", () => {
   });
 }
 
+// No saved host: the first screen has the whole window from the first frame, as before main() has run.
+document.body.classList.toggle("onboarding", !loadHosts().length && !chosenHost());
 startApp();
 main();
