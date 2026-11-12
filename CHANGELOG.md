@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.0
+
+### Features
+
+* **rex:** on Windows, an update no longer ends the programs in the panes: the session server hands its sessions to the new version, as on macOS and Linux, and restarts, once the user agrees, only when it cannot ([#483](https://github.com/si-mods/gorex/pull/483))
+
 ## 0.23.0
 
 ### ⚠ BREAKING CHANGES
