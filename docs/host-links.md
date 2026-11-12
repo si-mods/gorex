@@ -71,6 +71,15 @@ its key and name, the server adds it to the list and hands back its
 address. Each entry keeps how it came (`paired`, `tailscale`), for the
 list to show.
 
+An entry that came by Tailscale also keeps the device's node ID, and
+lasts as long as the rule holds for it: when a fresh snapshot of the
+tailnet no longer has that device as a same-user peer (removed, expired,
+tagged, another user's), the entry is removed and its connections close,
+as the tailnet mode drops such a peer today. Turning the rule off
+removes these entries too. A snapshot that cannot be read removes
+nothing: a failed read says nothing of the peers. A paired entry is
+never removed this way.
+
 ### 2. Path: tailcat
 
 Every session between two GoRex machines runs over tailcat. There is
@@ -88,6 +97,12 @@ address names:
 
 That is the place where a public relay plugs in, and it exists. No new
 transport interface is needed for it, and none is added.
+
+**On a local network** two machines take the direct route: each tells
+the other its local interface addresses, and the traffic stays on the
+network. But they tell each other through the relay, so both must reach
+it first. A network with no way out to a relay connects nothing over
+tailcat, as today (Open questions).
 
 The tailnet no longer carries sessions. The node (the system client's,
 or the built-in one of desktop-tailnet.md) is used to see the user's
@@ -144,9 +159,8 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
   passed the check.
 - **A relay sees keys and ciphertext.** That holds for a public one
   too; it is why it needs no trust.
-- **Leaving the tailnet does not remove a device** that the rule
-  already added: it is on the list until Removed. Today the tailnet mode
-  drops such a peer by itself. See Open questions.
+- **Leaving the tailnet removes a device** that the rule added
+  (Identity), within a refresh of the snapshot, as today.
 - **Remove and the rule.** A removed device that is still on the
   tailnet would come back with the next introduction. Remove keeps its
   key as refused until the user allows it again.
@@ -182,9 +196,11 @@ probe, and the `WhoIs` checks, now in front of a key exchange.
 
 ## Open questions
 
-- **Leaving the tailnet.** Should entries that came by the rule be
-  dropped when their device is no longer a same-user peer? It keeps
-  today's behavior, at the cost of a check on every refresh.
+- **A local network with no way out.** Tailcat needs the relay to
+  meet. If machines must connect there, the choices are a `derper` on
+  that network, named as the relay, or a second path: a listener on the
+  local network that proves the device keys itself. The second is the
+  transport interface this document leaves out, and a new handshake.
 - **Changing the relay changes the address**, and paired clients need
   the new one. With more relays to choose from, the server should tell
   its connected clients the new address before it moves.
