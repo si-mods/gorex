@@ -88,16 +88,21 @@ jobs:
             ~/.cache/go-build
             ~/go/pkg/mod
           key: go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-
       - name: test
+        shell: bash
+        env:
+          PART: ${{ matrix.part }}
+          # The number of root-N parts in the matrix.
+          ROOT_PARTS: 3
         run: |
-          case "${{ matrix.part }}" in
-            others)
-              go test $(go list ./... | grep -v '^gorex$') -count=1 -timeout 15m
-              ;;
-            root-*)
-              n=${{ strategy.job-total }}; n=$((n - 1))
-              i="${{ matrix.part }}"; i=${i#root-}
-              tests=$(go test -list '^Test' . | grep '^Test' | awk -v n="$n" -v i="$i" 'NR % n == i' | paste -sd'|' -)
-              go test . -count=1 -timeout 15m -run "^($tests)\$"
-              ;;
-          esac
+          if [ "$PART" = others ]; then
+            pkgs=$(go list ./... | grep -v '^gorex$')
+            go test $pkgs -count=1 -timeout 15m
+            exit
+          fi
+          go test -c -o "$RUNNER_TEMP/gorex.test" .
+          tests=$("$RUNNER_TEMP/gorex.test" -test.list '^(Test|Example|Fuzz)' |
+            awk -v n="$ROOT_PARTS" -v i="${PART#root-}" 'NR % n == i' | paste -sd'|' -)
+          [ -n "$tests" ]
+          "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"
