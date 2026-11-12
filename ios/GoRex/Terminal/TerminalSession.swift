@@ -54,7 +54,9 @@ final class TerminalSession {
     }
     @ObservationIgnored private var pending = Data()
     /// The default colors: the theme chosen in Settings, else the
-    /// snapshot's; a theme message from the server replaces them.
+    /// snapshot's; a theme message from the server replaces them. Until
+    /// the stream gives them, the chosen theme, else the background, so
+    /// that Ghostty does not draw its own.
     @ObservationIgnored private var theme: [String: Any]?
     @ObservationIgnored private var stream = TerminalStream(nonce: 0)
     @ObservationIgnored private var data: DataConnection
@@ -79,6 +81,7 @@ final class TerminalSession {
         data = DataConnection(base: host.config.url)
         background = (UserDefaults.standard.dictionary(forKey: "backgrounds")?[backgroundKey] as? Int).map(VTerminal.RGB.init)
             ?? TerminalTheme.chosen.map { VTerminal.RGB($0.colors[16]) }
+        theme = TerminalTheme.chosen?.message ?? background.map { ["background": String(format: "%06x", $0.packed)] }
     }
 
     private var backgroundKey: String { "\(host.id) \(TerminalTheme.name)" }
