@@ -15,7 +15,7 @@ enum Ghostty {
             action_cb: { _, target, action in Ghostty.action(target, action) },
             read_clipboard_cb: { _, _, _, _, _, _ in GHOSTTY_CLIPBOARD_READ_UNAVAILABLE },
             confirm_read_clipboard_cb: { _, _, _, _ in },
-            write_clipboard_cb: { _, _, _, _, _ in },
+            write_clipboard_cb: { view, clipboard, content, count, _ in Ghostty.copy(view, clipboard, content, count) },
             close_surface_cb: { _, _ in })
         // The app keeps the config it starts with.
         return ghostty_app_new(&runtime, config)
@@ -149,6 +149,25 @@ enum Ghostty {
             return true
         default:
             return false
+        }
+    }
+
+    /// What a program copies (OSC 52) goes to the clipboard, only from the
+    /// terminal on screen in the app in front. Its text lives only for the
+    /// call.
+    nonisolated private static func copy(_ view: UnsafeMutableRawPointer?, _ clipboard: ghostty_clipboard_e, _ content: UnsafePointer<ghostty_clipboard_content_s>?, _ count: Int) {
+        guard clipboard == GHOSTTY_CLIPBOARD_STANDARD, let view, let content else { return }
+        let items = UnsafeBufferPointer(start: content, count: count)
+        guard let c = items.first(where: { $0.mime.map { String(cString: $0) } == "text/plain" }) ?? items.first, let d = c.data else { return }
+        let text = String(decoding: UnsafeRawBufferPointer(start: d, count: c.len), as: UTF8.self)
+        let key = Int(bitPattern: view)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                guard UIApplication.shared.applicationState == .active,
+                      let v = views.values.lazy.compactMap(\.view).first(where: { Int(bitPattern: Unmanaged.passUnretained($0).toOpaque()) == key }),
+                      v.window?.isKeyWindow == true else { return }
+                UIPasteboard.general.string = text
+            }
         }
     }
 

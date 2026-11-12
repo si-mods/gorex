@@ -2278,12 +2278,32 @@
         }
       }
     },
+    "Programs copy to the clipboard": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "程序可复制到剪贴板"
+          }
+        }
+      }
+    },
     "Programs' notifications": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
             "value": "程序发出的通知"
+          }
+        }
+      }
+    },
+    "Programs such as Neovim and tmux copy to the clipboard with OSC 52, from the terminal on screen only. They cannot read it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neovim、tmux 等程序可用 OSC 52 复制到剪贴板，仅限屏幕上的终端。程序无法读取剪贴板。"
           }
         }
       }
