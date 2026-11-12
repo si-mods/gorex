@@ -89,6 +89,10 @@ func TestPairByAddress(t *testing.T) {
 		if d == nil {
 			d = &net.Dialer{}
 		}
+		// Every request that ends without approval closes the window.
+		if err := c.StartPairing(); err != nil {
+			t.Fatal(err)
+		}
 		return pairByAddressAs(ctx, d, addr, name, k)
 	}
 	waiting := func(n int) []RemoteAddrPending {
@@ -117,7 +121,7 @@ func TestPairByAddress(t *testing.T) {
 		if code != http.StatusNotFound || code != ucode || body != ubody {
 			t.Errorf("closed: %d %q, an unknown path: %d %q", code, body, ucode, ubody)
 		}
-		if _, err := ask(nil, key.NewNode().Public(), "laptop"); err == nil || !strings.Contains(err.Error(), "not pairing") {
+		if _, err := pairByAddressAs(ctx, &net.Dialer{}, addr, "laptop", key.NewNode().Public()); err == nil || !strings.Contains(err.Error(), "not pairing") {
 			t.Errorf("asked with the window closed: %v", err)
 		}
 	})
@@ -176,6 +180,9 @@ func TestPairByAddress(t *testing.T) {
 			t.Errorf("allowed key: %v", err)
 		}
 		k := key.NewNode().Public()
+		if err := c.StartPairing(); err != nil {
+			t.Fatal(err)
+		}
 		s.remotePair(k.String(), "tailcat")
 		if p, err = ask(nil, k, "laptop"); err == nil {
 			_, err = p.Confirm(ctx)
@@ -201,6 +208,9 @@ func TestPairByAddress(t *testing.T) {
 	})
 
 	t.Run("wrong opening", func(t *testing.T) {
+		if err := c.StartPairing(); err != nil {
+			t.Fatal(err)
+		}
 		nc, err := tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: true})
 		if err != nil {
 			t.Fatal(err)
@@ -243,17 +253,61 @@ func TestPairByAddress(t *testing.T) {
 		if err := c.ApprovePairingCode(a.Code); err == nil || !strings.Contains(err.Error(), "reject them all") {
 			t.Errorf("approved one of two: %v", err)
 		}
+		// A rejection ends the window, and the other request with it.
+		if err := c.RejectPairingCode(a.Code); err != nil {
+			t.Fatal(err)
+		}
 		for _, p := range []*AddressPairing{a, b} {
-			if err := c.RejectPairingCode(p.Code); err != nil {
-				t.Fatal(err)
-			}
 			if _, err := p.Confirm(ctx); err == nil || !strings.Contains(err.Error(), "rejected") {
 				t.Errorf("rejected: %v", err)
 			}
 		}
 		waiting(0)
+		if st, _ := c.RemoteStatus(); st.Pairing.Open {
+			t.Error("the window is open after a rejection")
+		}
 		if len(readConfig(t).Allowed) != 1 {
 			t.Error("a rejected key is allowed")
+		}
+	})
+
+	t.Run("one code per window", func(t *testing.T) {
+		// A client that takes the server's nonce, and so knows its code,
+		// and leaves without opening: the window closes, or it would ask
+		// until a code matched.
+		if err := c.StartPairing(); err != nil {
+			t.Fatal(err)
+		}
+		nc, err := tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer nc.Close()
+		br := bufio.NewReader(nc)
+		fmt.Fprintf(nc, "GET %s HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: %s\r\n\r\n", pairPath, pairUpgrade)
+		if res, err := http.ReadResponse(br, nil); err != nil || res.StatusCode != http.StatusSwitchingProtocols {
+			t.Fatalf("upgrade: %v", err)
+		}
+		nc.Write(make([]byte, 32))
+		if _, err := io.ReadFull(br, make([]byte, 64)); err != nil {
+			t.Fatal(err)
+		}
+		nc.Close()
+		status(func(st RemoteStatus) bool { return !st.Pairing.Open })
+	})
+
+	t.Run("TLS 1.2", func(t *testing.T) {
+		if err := c.StartPairing(); err != nil {
+			t.Fatal(err)
+		}
+		nc, err := tls.Dial("tcp", addr, &tls.Config{InsecureSkipVerify: true, MaxVersion: tls.VersionTLS12})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer nc.Close()
+		fmt.Fprintf(nc, "GET %s HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: %s\r\n\r\n", pairPath, pairUpgrade)
+		if res, err := http.ReadResponse(bufio.NewReader(nc), nil); err != nil || res.StatusCode != http.StatusNotFound {
+			t.Errorf("pairing over TLS 1.2: %v %v", res, err)
 		}
 	})
 

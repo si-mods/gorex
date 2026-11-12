@@ -99,9 +99,12 @@ is what makes it safe:
 Somebody in the middle shows the client another certificate and has to
 choose every value of its own before it sees the other side's number,
 so it cannot pick them to match: its codes agree by chance once in a
-million, and a mismatch is on both screens. That is why six digits are
-enough, and why the commitment is there: without it a key could be
-ground until a short code matched.
+million. It does learn the machine's code before it opens its own
+commitment, and could leave and ask again until one matched, so it gets
+one try: a request that got the machine's number and ends without the
+approval, by leaving, by a rejection or in time, closes the pairing
+window. That is why six digits are enough, and why the commitment is
+there: without it a key could be ground until a short code matched.
 
 This replaces today's fingerprint for this introduction only: that one
 covers the client's key alone, which is enough where the address

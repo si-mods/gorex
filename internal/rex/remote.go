@@ -766,6 +766,9 @@ func (s *Server) remotePair(k, name string) (string, error) {
 	if !r.pairOpenLocked() {
 		return "", errors.New("rex: the server is not pairing")
 	}
+	if slices.ContainsFunc(r.byAddr, func(p *addrPending) bool { return p.key == k }) {
+		return "", errors.New("rex: this machine's request waits there already")
+	}
 	if !slices.ContainsFunc(r.pending, func(p RemotePending) bool { return p.PublicKey == k }) {
 		if len(r.pending) >= maxPending {
 			return "", errors.New("rex: too many pairing requests; try again later")

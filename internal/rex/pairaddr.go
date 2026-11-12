@@ -39,7 +39,9 @@ import (
 //	server -> client  u16be len, JSON pairAnswer  once approved, or refused
 //
 // The server closes the connection on a rejection, a timeout, the end of
-// the window, or an opening that does not match its commitment.
+// the window, or an opening that does not match its commitment. An
+// exchange that got the server's nonce and ends without the approval
+// closes the pairing window: one code per window.
 
 // The domain separation strings of pairing by address, never to change:
 // a new protocol takes new ones.
@@ -158,10 +160,40 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	p := &addrPending{RemoteAddrPending: RemoteAddrPending{Source: src.String()}, slot: slot, result: make(chan []string, 1)}
 	r.byAddr = append(r.byAddr, p)
 	r.mu.Unlock()
+	// shown: the client has the server's nonce, and so the code. granted:
+	// the user approved. delivered: the client has the addresses.
+	var shown, granted, delivered bool
 	defer func() {
 		r.mu.Lock()
 		r.byAddr = slices.DeleteFunc(r.byAddr, func(q *addrPending) bool { return q == p })
+		if !granted {
+			select {
+			case addrs := <-p.result: // approved as the connection ended
+				granted = addrs != nil
+			default:
+			}
+		}
+		if granted && !delivered {
+			// The client never got an address: without this its key would
+			// be allowed, of no use, and refused the next time it asks.
+			cfg := r.cfg
+			cfg.Allowed = slices.DeleteFunc(slices.Clone(cfg.Allowed), func(c RemoteClient) bool { return c.PublicKey == p.key })
+			if writeJSON(remotePath(), cfg) == nil {
+				r.cfg = cfg
+			}
+		}
+		// One code per window: a client that saw its code and left without
+		// the user's approval could ask again until a code matched the one
+		// on another screen.
+		closed := shown && !delivered && r.pairOpenLocked()
+		if closed {
+			r.pairUntil, r.pending = time.Time{}, nil
+			log.Print("rex: a pairing by address ended without approval: the pairing window is closed")
+		}
 		r.mu.Unlock()
+		if closed {
+			s.ownDropStrangers()
+		}
 	}()
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -186,6 +218,7 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	var ns [32]byte
 	rand.Read(ns[:])
 	ks := self.Raw32()
+	shown = true
 	if _, err := c.Write(append(ks[:], ns[:]...)); err != nil {
 		return
 	}
@@ -245,9 +278,9 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	}()
 	select {
 	case addrs := <-p.result:
-		if addrs != nil {
+		if granted = addrs != nil; granted {
 			c.SetWriteDeadline(time.Now().Add(pairMsgWait))
-			writePairAnswer(c, pairAnswer{Addresses: addrs})
+			delivered = writePairAnswer(c, pairAnswer{Addresses: addrs}) == nil
 		}
 	case <-gone:
 	}
