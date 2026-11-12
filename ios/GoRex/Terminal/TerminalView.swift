@@ -107,9 +107,9 @@ final class TerminalView: UIView, TerminalOutput {
     private let reading = DispatchGroup()
     /// The hardware key held, and its repeat.
     private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
-    /// The microphone streaming while the mic is on, and what to tell as it
-    /// goes off (talk).
-    private var talking: (voice: VoiceStream, off: () -> Void)?
+    /// The microphone while the mic is on, and what to tell as it goes off
+    /// (dictate).
+    private var dictating: (recording: Recording, off: () -> Void)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -202,7 +202,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// Frees the surface, once its last output is written.
     func close() {
         held?.task.cancel()
-        stopTalking()
+        stopDictating()
         guard let s = surface else { return }
         surface = nil
         output = -1
@@ -505,15 +505,12 @@ final class TerminalView: UIView, TerminalOutput {
         shift = false
     }
 
-    /// Turns the mic on, and tells whether it is: the microphone streams to
-    /// the host for the block, and a Space starts Claude Code's /voice
-    /// recording, in its tap mode. The Space goes to Ghostty as a key, which
-    /// the keyboard did not type. off is called as the mic goes off, by
-    /// stopTalking or as the host ends the recording. A first tap asks for
-    /// the microphone, and does no more. The tick comes first: iOS mutes it
-    /// while it records.
-    func talk(off: @escaping () -> Void) -> Bool {
-        guard talking == nil else { return false }
+    /// Turns the mic on, and tells whether it is: the microphone records
+    /// until typeDictation or stopDictating. off is called as the mic goes
+    /// off. A first tap asks for the microphone, and does no more. The tick
+    /// comes first: iOS mutes it while it records.
+    func dictate(off: @escaping () -> Void) -> Bool {
+        guard dictating == nil else { return false }
         Self.tick.impactOccurred()
         switch AVAudioApplication.shared.recordPermission {
         case .undetermined:
@@ -526,36 +523,33 @@ final class TerminalView: UIView, TerminalOutput {
         default:
             break
         }
-        let voice: VoiceStream
         do {
-            voice = try session.host.voice(block: session.block)
-            voice.onEnd = { [weak self] e in self?.talkEnded(e) }
-            try voice.start()
+            dictating = (try Recording(), off)
         } catch {
-            talkEnded(error)
+            alert(String(localized: "Can't Record"), error.localizedDescription)
             return false
         }
-        talking = (voice, off)
-        forget()
-        press(KeyEvent.typing(" "))
         return true
     }
 
-    /// Turns the mic off: the stream sends what is left and ends, and the
-    /// host's rec with it, on which Claude Code ends the recording and
-    /// sends it.
-    func stopTalking() {
-        guard let t = talking else { return }
-        talking = nil
-        t.voice.stop()
-        t.off()
+    /// Turns the mic off, and types what it heard once recognised, as a
+    /// paste, not sent.
+    func typeDictation() async {
+        guard let heard = stopDictating() else { return }
+        do {
+            let text = try await Dictation.shared.transcribe(heard)
+            if !text.isEmpty { insert(text) }
+        } catch {
+            alert(String(localized: "Can't Recognise Speech"), error.localizedDescription)
+        }
     }
 
-    /// The stream ended on the host, or failed, or could not open: the mic
-    /// goes off, and an alert tells why it failed.
-    private func talkEnded(_ error: Error?) {
-        stopTalking()
-        if let error { alert(String(localized: "Can't Send Voice"), error.localizedDescription) }
+    /// Turns the mic off, and gives what it heard.
+    @discardableResult func stopDictating() -> [Float]? {
+        guard let d = dictating else { return nil }
+        dictating = nil
+        d.off()
+        return d.recording.stop()
     }
 
     /// The mic's tap, as the key bar's keys give.

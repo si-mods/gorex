@@ -305,6 +305,7 @@ private struct TerminalSettings: View {
         return all
     }
     private let maple = Maple.shared
+    private let dictation = Dictation.shared
 
     var body: some View {
         List {
@@ -320,6 +321,13 @@ private struct TerminalSettings: View {
                 } else {
                     download.swipeActions { if !maple.saved.isEmpty { Button("Delete", role: .destructive) { maple.delete() } } }
                 }
+            }
+            Section {
+                speech
+            } header: {
+                Text("Dictation")
+            } footer: {
+                Text("The mic at the top right of the terminal types what you say, recognised on this device by SenseVoice, without sending it. Swipe the model to delete it.")
             }
             Section {
                 ForEach(contrasts, id: \.0) { value, name in
@@ -377,6 +385,31 @@ private struct TerminalSettings: View {
                 if let e = maple.error { Text(e).font(.footnote).foregroundStyle(.red) }
             }
         }
+        .listRowBackground(Color.card)
+    }
+
+    /// The speech model: downloaded, to delete; else its size and a
+    /// download, or the download's progress and a stop.
+    private var speech: some View {
+        Button {
+            if !dictation.installed { dictation.progress == nil ? dictation.download() : dictation.cancel() }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Speech Model").foregroundStyle(.primary)
+                    Spacer()
+                    if let p = dictation.progress {
+                        ProgressView(value: p).frame(width: 64)
+                        Image(systemName: "stop.circle").accessibilityLabel("Cancel")
+                    } else {
+                        Text(Dictation.size.formatted(.byteCount(style: .file))).foregroundStyle(.secondary)
+                        if !dictation.installed { Image(systemName: "arrow.down.circle").accessibilityLabel("Download") }
+                    }
+                }
+                if let e = dictation.error { Text(e).font(.footnote).foregroundStyle(.red) }
+            }
+        }
+        .swipeActions { Button("Delete", role: .destructive) { dictation.delete() } }
         .listRowBackground(Color.card)
     }
 }
