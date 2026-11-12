@@ -42,7 +42,7 @@ gorex run [--json] [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
-gorex remote status [--json] | tailscale on|off | address | relay HOST|default | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
+gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
 gorex server restart | upgrade
 gorex update
 gorex config path | config check [FILE] | config reload

@@ -143,7 +143,7 @@ Usage:
   gorex events
   gorex hosts [ls] [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
-  gorex remote status [--json] | tailscale on|off | address | relay HOST|default | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
+  gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY
   gorex server restart | upgrade
   gorex update (Linux)
   gorex config path | config check [FILE] | config reload
@@ -965,7 +965,7 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		return ExitUsage, true
 	}
 	usage := func() (int, bool) {
-		fmt.Fprintln(errOut, "gorex remote: status | tailscale on|off | address | relay HOST|default | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY")
+		fmt.Fprintln(errOut, "gorex remote: status | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY | reject KEY | allow NAME KEY | revoke KEY")
 		return ExitUsage, true
 	}
 	if len(args) == 0 {
@@ -1020,6 +1020,19 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitUsage, true
 		}
 		run = func(c *rex.Client) error { return c.SetRelay(relay) }
+	case "reachable":
+		if !need(2) {
+			return ExitUsage, true
+		}
+		ip := args[1]
+		if ip == "off" {
+			ip = ""
+		}
+		if _, err := rex.NormalizeReachable(ip); err != nil {
+			fmt.Fprintln(errOut, err)
+			return ExitUsage, true
+		}
+		run = func(c *rex.Client) error { return c.SetReachable(ip) }
 	case "tailscale":
 		on, ok := onOff("tailscale")
 		if !ok {
@@ -1091,8 +1104,12 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			RemoteControl bool               `json:"remoteControl"`
 			Allowed       int                `json:"allowed"`
 			Relay         string             `json:"relay"`
+			ReachableAt   string             `json:"reachableAt"`
+			Reachable     bool               `json:"reachable"`
+			ReachableErr  string             `json:"reachableError,omitempty"`
 			Tailnet       *rex.TailnetStatus `json:"tailnet,omitempty"`
-		}{st.Enabled, st.Running, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Relay, st.Tailnet}
+		}{st.Enabled, st.Running, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Relay,
+			st.ReachableAt, st.ReachableAddress != "", st.ReachableError, st.Tailnet}
 		if asJSON {
 			WriteJSON(out, shown)
 			return ExitOK, true
@@ -1103,6 +1120,12 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 		}
 		fmt.Fprintf(out, "enabled=%v running=%v layout=%v control=%v allowed=%d relay=%s\n",
 			shown.Enabled, shown.Running, shown.ShareLayout, shown.RemoteControl, shown.Allowed, relay)
+		if shown.ReachableAt != "" {
+			fmt.Fprintf(out, "reachable=%s running=%v\n", shown.ReachableAt, shown.Reachable)
+			if shown.ReachableErr != "" {
+				fmt.Fprintf(out, "reachableError=%s\n", shown.ReachableErr)
+			}
+		}
 		if st.Tailnet != nil {
 			fmt.Fprintf(out, "tailscale=%v running=%v hosts=%d\n", st.Tailnet.Enabled, st.Tailnet.Running, len(st.Tailnet.Hosts))
 			if st.Tailnet.Error != "" {
@@ -1118,6 +1141,10 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			return ExitServer, true
 		}
 		fmt.Fprintln(out, st.Address)
+		// The second, of Reachable at, while its relay runs.
+		if st.ReachableAddress != "" {
+			fmt.Fprintln(out, st.ReachableAddress)
+		}
 		return ExitOK, true
 	}
 	if args[0] == "pending" {

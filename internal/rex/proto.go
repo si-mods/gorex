@@ -121,6 +121,9 @@ type Request struct {
 	// Relay is the relay of remote.relaySet: a DERP server's host, "" for
 	// tailcat's own.
 	Relay string `json:"relay,omitempty"`
+	// ReachableAt is the address of remote.reachableSet: an IP address of
+	// this machine, "" for off.
+	ReachableAt string `json:"reachableAt,omitempty"`
 	// Exe is the executable the server runs in its place on "upgrade".
 	Exe string `json:"exe,omitempty"`
 	// Keepalive, on "hello", asks the server to drop the connection once
@@ -467,6 +470,12 @@ type RemoteStatus struct {
 	// Relay is the DERP relay of one's own the address names, "" for
 	// tailcat's.
 	Relay string `json:"relay,omitempty"`
+	// ReachableAt is the address where this machine is its own relay, ""
+	// while off; ReachableAddress, a secret as Address, the second tailcat
+	// address while its relay runs, and ReachableError why it does not.
+	ReachableAt      string `json:"reachableAt,omitempty"`
+	ReachableAddress string `json:"reachableAddress,omitempty"`
+	ReachableError   string `json:"reachableError,omitempty"`
 	// Pairing is the pairing window, Pending the requests made in it.
 	Pairing RemotePairing   `json:"pairing"`
 	Pending []RemotePending `json:"pending,omitempty"`
