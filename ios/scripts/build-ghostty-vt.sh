@@ -15,7 +15,7 @@
 set -euo pipefail
 
 # The commit of si-mods/mygo's plugins/terminal/internal/libbuild.
-COMMIT=dc8f59943ce94b75ffadc45cc4f36eca6a7ed2ae
+COMMIT=108cacb17ed8990840cd14abfce43d8ed8503ca1
 ZIG_VERSION=0.17.0
 
 IOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
