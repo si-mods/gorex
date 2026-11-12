@@ -1,3 +1,4 @@
+import AVFAudio
 import SwiftUI
 
 /// What a window's row opens: the window's block on a host.
@@ -29,6 +30,8 @@ struct TerminalScreen: View {
     @State private var diagnostics = false
     /// The height of the status bar.
     @State private var statusBar: CGFloat = 0
+    /// What is said while the mic is on.
+    @State private var said: Dictation.Said?
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
@@ -56,6 +59,7 @@ struct TerminalScreen: View {
             // What goes up under the status bar blurs and fades into the
             // background, for the clock over it.
             .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: statusBar + 10) }
+            .overlay(alignment: .top) { if let said { Heard(said: said) } }
             .overlay { status }
             .navigationTitle(title.asText)
             .navigationBarTitleDisplayMode(.inline)
@@ -86,7 +90,7 @@ struct TerminalScreen: View {
                 // The mic, and the window's menu, New Tab being in the
                 // session's sheet and on ⌘T; the bar's glass draws them.
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Mic { terminal }
+                    Mic(terminal: { terminal }, said: $said)
                     Menu {
                         Button("New Tab", systemImage: "plus") { newTab() }
                     } label: {
@@ -224,13 +228,15 @@ struct TerminalScreen: View {
     }
 }
 
-/// The mic: a tap turns it on, and a tap turns it off and types what it
-/// heard into the terminal, recognised on the phone (Dictation), unsent.
-/// It spins while it recognises. Its first tap asks to download the models,
-/// and while they download it shows how far, and a tap asks to stop it. It goes
-/// off, typing nothing, as it goes away with the screen.
+/// The mic: a tap turns it on, and what is said shows as it is spoken,
+/// recognised on the phone (Dictation); a tap turns it off and types it
+/// into the terminal, unsent, once it spins as its last phrase is. Its
+/// first tap asks to download the models, and while they download it shows
+/// how far, and a tap asks to stop it. It goes off, typing nothing, as it
+/// goes away with the screen or a call comes.
 private struct Mic: View {
     let terminal: () -> TerminalView?
+    @Binding var said: Dictation.Said?
     @State private var on = false
     @State private var busy = false
     @State private var asking = false
@@ -263,6 +269,7 @@ private struct Mic: View {
             if dictation.progress != nil {
                 stopping = true
             } else if on {
+                on = false
                 busy = true
                 Task {
                     await terminal()?.typeDictation()
@@ -271,10 +278,14 @@ private struct Mic: View {
             } else if !dictation.installed {
                 asking = true
             } else {
-                on = terminal()?.dictate { on = false } == true
+                on = terminal()?.dictate {
+                    said = $0
+                    if $0 == nil { on = false }
+                } == true
             }
         }
         .onDisappear { terminal()?.stopDictating() }
+        .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in terminal()?.stopDictating() }
         .accessibilityAddTraits(on ? [.isButton, .isSelected] : .isButton)
         .alert("Download the Speech Model?", isPresented: $asking) {
             Button("Download") { dictation.download() }
@@ -287,6 +298,55 @@ private struct Mic: View {
         } message: {
             Text(dictation.error ?? "")
         }
+    }
+}
+
+/// What is said while the mic is on, under the bar, in glass as the
+/// screen's notes are: the microphone's level, then what is for good, and
+/// in grey the phrase still open; three lines at most, the newest.
+private struct Heard: View {
+    let said: Dictation.Said
+
+    var body: some View {
+        let settled = said.settled
+        var open = AttributedString(said.text.dropFirst(settled.count))
+        open.foregroundColor = .secondary
+        let text = Text(AttributedString(settled) + open).font(.callout)
+        return HStack(spacing: 10) {
+            Level()
+            ViewThatFits(in: .vertical) {
+                text
+                ScrollView { text }.defaultScrollAnchor(.bottom).scrollIndicators(.hidden)
+            }
+            .frame(maxWidth: .infinity, maxHeight: 64, alignment: .leading)
+        }
+        .padding(12)
+        .glassEffect(.regular, in: .rect(cornerRadius: 14))
+        .padding(.horizontal, 12)
+    }
+}
+
+/// The microphone's level, as a call's: its last levels in bars, the
+/// newest at the right; under Reduce Motion, a waveform that stays still.
+private struct Level: View {
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    var body: some View {
+        let levels = Dictation.shared.levels
+        Group {
+            if still {
+                Image(systemName: "waveform")
+            } else {
+                HStack(spacing: 2) {
+                    ForEach(levels.indices, id: \.self) { i in
+                        Capsule().frame(width: 3, height: 4 + 14 * CGFloat(levels[i]))
+                    }
+                }
+                .animation(.easeOut(duration: 0.1), value: levels)
+            }
+        }
+        .frame(height: 18)
+        .accessibilityHidden(true)
     }
 }
 
