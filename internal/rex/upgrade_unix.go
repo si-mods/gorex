@@ -3,158 +3,43 @@
 package rex
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
 
-// A server upgrades in place: it runs the new executable in its own
-// process, which keeps its children, the sessions' shells, and the
-// descriptors it leaves open, the listener's, the lock's and the
-// terminals'. The rest of a session, its screen and counters, goes in a
-// file the new executable reads (Resume).
+// A server upgrades by running the new executable in its own process,
+// which keeps its children, the sessions' shells, and the descriptors it
+// leaves open, the listener's, the lock's and the terminals'.
 
-const canUpgrade = true
+func canUpgrade() bool { return true }
 
-// handoffVersion is the version of the handoff's format: a build reads
-// the handoffs of the builds before it.
-const handoffVersion = 1
-
-// handoff is what an upgrading server hands the executable it runs.
-type handoff struct {
-	Version int `json:"version"`
-	// Listener and Lock are the descriptors of the listener and of the
-	// lock file, which stays locked.
-	Listener       int             `json:"listener"`
-	Lock           int             `json:"lock"`
-	Started        time.Time       `json:"started"`
-	Layout         json.RawMessage `json:"layout,omitempty"`
-	LayoutRevision uint64          `json:"layoutRevision,omitempty"`
-	Sessions       []sessionState  `json:"sessions"`
-}
-
-// sessionState is a session in a handoff.
-type sessionState struct {
-	ID    string `json:"id"`
-	Shell string `json:"shell"`
-	// Command tells a session started with a command; a handoff of a build
-	// before it has none.
-	Command bool      `json:"command,omitempty"`
-	Created time.Time `json:"created"`
-	PID     int       `json:"pid"`
-	// Dir is the directory the session started in; a handoff of a build
-	// before it has none.
-	Dir string `json:"dir,omitempty"`
-	// Owner is the key of the remote client that created the session. A
-	// handoff of a build before it has none: its sessions count as created
-	// locally.
-	Owner string `json:"owner,omitempty"`
-	// Master is the descriptor of the terminal, -1 once the session
-	// exited.
-	Master int `json:"master"`
-	Cols   int `json:"cols"`
-	Rows   int `json:"rows"`
-	// Screen is the emulator's snapshot, from which the modes are read
-	// again, Images the graphics sequences the session replays on attach,
-	// and Title its title. A handoff of a build before Images has the
-	// replay at the end of Screen.
-	Screen     []byte    `json:"screen,omitempty"`
-	Images     [][]byte  `json:"images,omitempty"`
-	Title      string    `json:"title,omitempty"`
-	Output     uint64    `json:"output"`
-	Bells      int64     `json:"bells"`
-	LastOutput time.Time `json:"lastOutput"`
-	LastInput  time.Time `json:"lastInput"`
-	// Reaped tells that the process ended, with Code; Exited, that what
-	// it printed was read too.
-	Reaped bool `json:"reaped,omitempty"`
-	Exited bool `json:"exited,omitempty"`
-	Code   int  `json:"code,omitempty"`
-	// Statuses are the program's status records (OSC 7501).
-	Statuses []ProgramStatus `json:"statuses,omitempty"`
-}
-
-func handoffPath() string { return filepath.Join(Dir(), "handoff.json") }
-
-// upgrade runs exe, an absolute path, in this process in the server's
-// place, handing it the sessions. It returns only when that fails, and
-// the server goes on.
-func (s *Server) upgrade(exe string) error {
-	if !filepath.IsAbs(exe) {
-		return fmt.Errorf("rex: %q is not an absolute path", exe)
-	}
-	ul, ok := s.ln.(*net.UnixListener)
-	if !ok || s.lock == nil {
-		return errors.New("rex: this server cannot upgrade")
-	}
-	if err := probe(exe); err != nil {
-		return err
-	}
-	s.ops.Lock()
-	defer s.ops.Unlock()
-	// A connection accepted now would close as exe runs: leave them to
-	// it, in the listener's queue.
-	s.acceptMu.Lock()
-	defer s.acceptMu.Unlock()
-	ul.SetDeadline(time.Unix(1, 0))
-	defer ul.SetDeadline(time.Time{})
-	s.remoteClose()
-	defer s.remoteLoad()
-	s.mu.Lock()
-	all := make([]*session, 0, len(s.order))
-	for _, id := range s.order {
-		all = append(all, s.sessions[id])
-	}
-	h := handoff{Version: handoffVersion, Started: s.started, Layout: s.layout, LayoutRevision: s.layoutRev}
-	s.mu.Unlock()
-	for _, ss := range all {
-		if err := ss.pause(); err != nil {
-			return err
-		}
-		defer ss.resume()
-	}
-	lf, err := ul.File()
+// handOver runs exe in this process with the handoff h. It returns only
+// when that fails.
+func (s *Server) handOver(exe string, h *handoff) error {
+	lf, err := s.ln.(*net.UnixListener).File()
 	if err != nil {
 		return err
 	}
 	defer lf.Close()
 	h.Listener, h.Lock = descriptor(lf), descriptor(s.lock)
 	fds := []int{h.Listener, h.Lock}
-	for _, ss := range all {
-		st := ss.state()
+	for _, st := range h.Sessions {
 		if st.Master >= 0 {
 			fds = append(fds, st.Master)
 		}
-		h.Sessions = append(h.Sessions, st)
 	}
 	path := handoffPath()
 	if err := writeJSON(path, h); err != nil {
 		return err
 	}
 	defer os.Remove(path)
-	// The sessions go on in the process this run hands them to: this run
-	// stops with a record, not as one that crashed, and no layout comes
-	// after it.
-	s.mu.Lock()
-	s.stopping = true
-	s.mu.Unlock()
-	s.layoutFile.Lock()
-	s.journal.stopped("upgrade", s.inventory())
-	s.layoutFile.Unlock()
-	log.Printf("rex: upgrading to %s", exe)
+	s.stopForUpgrade(exe)
 	// No process starts meanwhile, which would get the descriptors.
 	syscall.ForkLock.Lock()
 	closeOnExecAll()
@@ -166,29 +51,33 @@ func (s *Server) upgrade(exe string) error {
 		unix.CloseOnExec(fd)
 	}
 	syscall.ForkLock.Unlock()
-	// The exec failed: this run goes on with its sessions, keeping its
-	// layouts, and is one that did not stop.
-	s.mu.Lock()
-	s.stopping = false
-	s.mu.Unlock()
-	s.journal.started()
+	s.goOn()
 	return fmt.Errorf("rex: running %s: %w", exe, err)
 }
 
-// probe checks that exe reads this server's handoffs before it runs in
-// its place: one that failed to, an older build's or another program,
-// would end the sessions.
-func probe(exe string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	out, err := exec.CommandContext(ctx, exe, "-server", "-handoff-version").Output()
+// resumeListener takes over the listener and the lock of a handoff.
+func resumeListener(h handoff) (net.Listener, *os.File, error) {
+	unix.CloseOnExec(h.Lock)
+	lock := os.NewFile(uintptr(h.Lock), "server.lock")
+	lf := os.NewFile(uintptr(h.Listener), "server.sock")
+	ln, err := net.FileListener(lf)
+	lf.Close()
 	if err != nil {
-		return fmt.Errorf("rex: %s does not take over a server: %w", exe, err)
+		lock.Close()
+		return nil, nil, fmt.Errorf("rex: resuming the listener: %w", err)
 	}
-	if v, err := strconv.Atoi(strings.TrimSpace(string(out))); err != nil || v < handoffVersion {
-		return fmt.Errorf("rex: %s does not read this server's sessions", exe)
+	return ln, lock, nil
+}
+
+// tookOver tells the server that handed over that this one serves: an
+// exec needs no telling.
+func tookOver(handoff) {}
+
+// closeHandedOver closes what a session lost in a handoff kept open.
+func closeHandedOver(st sessionState) {
+	if st.Master >= 0 {
+		unix.Close(st.Master)
 	}
-	return nil
 }
 
 // descriptor returns the descriptor of f, leaving it non-blocking, or -1.
@@ -201,175 +90,23 @@ func descriptor(f *os.File) int {
 	return n
 }
 
-// pause stops reading the terminal, leaving what it has not read in the
-// kernel, and detaches the windows, for an upgrade; resume reads again.
-func (s *session) pause() error {
-	s.hold.Lock()
-	if s.p.master != nil {
-		if err := s.p.master.SetReadDeadline(time.Unix(1, 0)); err != nil && !errors.Is(err, os.ErrClosed) {
-			s.hold.Unlock()
-			return fmt.Errorf("rex: pausing session %s: %w", s.id, err)
+// stopRead stops read, leaving what the terminal has in the kernel, and
+// returns once reading, of the read goroutine, closes.
+func (p *pty) stopRead(reading <-chan struct{}) error {
+	if p.master != nil {
+		if err := p.master.SetReadDeadline(time.Unix(1, 0)); err != nil && !errors.Is(err, os.ErrClosed) {
+			return err
 		}
 	}
-	s.mu.Lock()
-	reading := s.reading
-	for a := range s.clients {
-		a.finish()
-	}
-	clear(s.clients)
-	s.mu.Unlock()
 	<-reading
 	return nil
 }
 
-func (s *session) resume() {
-	select {
-	case <-s.readEnd:
-	default:
-		s.p.master.SetReadDeadline(time.Time{})
-		s.startRead()
-	}
-	s.hold.Unlock()
-}
+// readAgain undoes stopRead.
+func (p *pty) readAgain() { p.master.SetReadDeadline(time.Time{}) }
 
-// state describes a paused session for a handoff.
-func (s *session) state() sessionState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	st := sessionState{
-		ID: s.id, Shell: s.shell, Command: s.command, Created: s.created, PID: s.p.pid(), Dir: s.dir, Master: -1, Owner: s.owner,
-		Cols: s.cols, Rows: s.rows,
-		Output: s.output, Bells: s.bells.Load(), LastOutput: s.lastOutput, LastInput: s.lastInput,
-		Reaped: s.reaped, Exited: s.exited, Code: s.code,
-		Statuses: s.status.list(), Images: s.graphics.sequences(),
-	}
-	st.Screen, st.Title = s.view()
-	st.Screen = bytes.TrimSuffix(st.Screen, s.graphics.replay())
-	select {
-	case <-s.readEnd:
-		// Its output ended: once its process did too, it exited.
-		st.Exited = st.Exited || st.Reaped
-	default:
-	}
-	if !st.Exited {
-		if st.Master = descriptor(s.p.master); st.Master < 0 {
-			st.Exited, st.Code = true, -1
-		}
-	}
-	return st
-}
-
-// Resume serves the sessions a server upgrading to this executable
-// handed it in the file path, as Serve does.
-func Resume(path string) error {
-	// The executable may have moved: an upgrade is one.
-	if err := EnsureCLI(); err != nil {
-		log.Printf("rex: the gorex command: %v", err)
-	}
-	b, err := os.ReadFile(path)
-	os.Remove(path)
-	if err != nil {
-		return err
-	}
-	var h handoff
-	if err := json.Unmarshal(b, &h); err != nil {
-		return fmt.Errorf("rex: reading the handoff: %w", err)
-	}
-	if h.Version < 1 || h.Version > handoffVersion {
-		return fmt.Errorf("rex: a handoff of version %d", h.Version)
-	}
-	unix.CloseOnExec(h.Lock)
-	lock := os.NewFile(uintptr(h.Lock), "server.lock")
-	defer lock.Close()
-	lf := os.NewFile(uintptr(h.Listener), "server.sock")
-	ln, err := net.FileListener(lf)
-	lf.Close()
-	if err != nil {
-		return fmt.Errorf("rex: resuming the listener: %w", err)
-	}
-	s := newServer(ln, lock)
-	s.journal = openJournal()
-	defer s.journal.close()
-	s.journal.started()
-	s.started, s.layout, s.layoutRev = h.Started, h.Layout, h.LayoutRevision
-	if s.layoutRev == 0 {
-		s.layoutRev = 1
-	}
-	for _, st := range h.Sessions {
-		ss, err := resumeSession(st, s.sessionsChanged)
-		if err != nil {
-			log.Printf("rex: session %s is lost: %v", st.ID, err)
-			if st.Master >= 0 {
-				unix.Close(st.Master)
-			}
-			continue
-		}
-		s.sessions[ss.id] = ss
-		s.order = append(s.order, ss.id)
-		s.watchExit(ss)
-	}
-	log.Printf("rex: resumed %d of %d sessions", len(s.order), len(h.Sessions))
-	// Those the handoff lost start again, once it listens.
-	go s.restoreLost(journalOwners(readJournal()), s.lostPanes())
-	return s.serve()
-}
-
-// resumeSession makes a session of a handoff's again.
-func resumeSession(st sessionState, changed func()) (*session, error) {
-	s := &session{
-		id: st.ID, shell: st.Shell, command: st.Command, created: st.Created, dir: st.Dir, owner: st.Owner, changed: changed,
-		clients: map[*attached]struct{}{},
-		output:  st.Output, lastOutput: st.LastOutput, lastInput: st.LastInput,
-		cols: clampSize(st.Cols), rows: clampSize(st.Rows), done: make(chan struct{}),
-	}
-	if err := s.newVT(); err != nil {
-		return nil, err
-	}
-	for _, r := range st.Statuses {
-		if s.status.records == nil {
-			s.status.records = map[string]*statusRecord{}
-		}
-		s.status.updates++
-		s.status.records[r.ID] = &statusRecord{r, s.status.updates}
-	}
-	// The images go to the history the attaches replay, not to the
-	// emulator, which the snapshot left as it was: a placement moves the
-	// cursor.
-	s.graphics.restore(st.Images)
-	if st.Title != "" {
-		s.vt.Feed([]byte("\x1b]2;" + st.Title + "\x07"))
-	}
-	s.vt.Feed(st.Screen)
-	s.modes.feed(st.Screen)
-	if st.Exited || st.Master < 0 {
-		s.p = &pty{proc: st.PID}
-		s.reaped, s.exited, s.code = true, true, st.Code
-		s.screen, s.title = append(st.Screen, s.graphics.replay()...), st.Title
-		s.ghostty, _ = s.vt.GhosttySnapshot()
-		s.text = s.vt.Text()
-		s.reading, s.readEnd = make(chan struct{}), make(chan struct{})
-		close(s.reading)
-		close(s.readEnd)
-		close(s.done)
-		s.vtIn.Close()
-		s.vt.Close()
-		s.bells.Store(st.Bells)
-		return s, nil
-	}
-	p, err := resumePTY(st.Master, st.PID)
-	if err != nil {
-		s.vtIn.Close()
-		s.vt.Close()
-		return nil, err
-	}
-	s.p = p
-	s.graphics.cut = true
-	s.bells.Store(st.Bells)
-	wait := p.wait
-	if st.Reaped {
-		// The executable before this one waited for it.
-		wait = func() int { return st.Code }
-	}
-	s.run(wait)
-	return s, nil
+// handoff puts the terminal's descriptor in st, false when it has none.
+func (p *pty) handoff(st *sessionState) bool {
+	st.Master = descriptor(p.master)
+	return st.Master >= 0
 }

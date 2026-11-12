@@ -195,6 +195,10 @@ type store struct {
 	// killsTaken are the kills of the server's layout the app took, until
 	// the layout no longer has them (takeKills).
 	killsTaken map[layout.Kill]bool
+	// upgradeFailed is the PID of the server whose upgrade from the running
+	// app failed (upgradeServer): adopt does not try it again, and offers
+	// the restart.
+	upgradeFailed int
 
 	workspaces []*Workspace
 	// badge is the count the app icon shows.
@@ -809,17 +813,22 @@ func (st *store) adopt(client *rex.Client) bool {
 		// code: it runs this build's in its place, keeping its sessions.
 		// Only for a newer build: two copies of the app would take the
 		// server from each other at every launch. One that cannot upgrade
-		// is under mygo dev restarted, and on Windows by a newer build
-		// once the user agrees (serverBehind): the next server starts its
-		// sessions again.
+		// is under mygo dev restarted, and on Windows, as one that failed
+		// to, by a newer build once the user agrees (serverBehind): the
+		// next server starts its sessions again.
 		// Otherwise it is kept.
 		var next *rex.Client
-		if st.hello.Upgrade {
+		if st.hello.Upgrade && st.hello.PID != st.upgradeFailed {
 			if exe, at := rex.Executable(); at.After(st.hello.ExeTime) {
 				if next, err = client.Upgrade(exe); err != nil {
 					log.Print(err)
 					client.Close()
-					next, err = rex.Connect()
+					if next, err = rex.Connect(); err == nil && st.serverBehind() {
+						st.client = next
+						if r, rerr := st.askRestart(); r != nil || rerr != nil {
+							next, err = r, rerr
+						}
+					}
 				}
 			}
 		} else if mygo.IsDev() {
@@ -901,10 +910,10 @@ func (st *store) adopt(client *rex.Client) bool {
 }
 
 // serverBehind reports whether the server runs an older build than the
-// app's executable and can restart on it, on Windows, where servers cannot
-// upgrade in place: one that brings its sessions back, as a newer build
-// starts it, which speaks this app's protocol. An update replaces the
-// executable while the app runs.
+// app's executable and can restart on it, on Windows, for one that cannot
+// or failed to upgrade in place: one that brings its sessions back, as a
+// newer build starts it, which speaks this app's protocol. An update
+// replaces the executable while the app runs.
 func (st *store) serverBehind() bool {
 	if runtime.GOOS != "windows" || st.client == nil || !st.hello.Can(rex.CapabilityShutdownRestart) {
 		return false
@@ -929,6 +938,27 @@ func (st *store) askRestart() (*rex.Client, error) {
 		return nil, nil
 	}
 	return st.client.Restart(st.hello.PID)
+}
+
+// upgradeServer has a server behind the app's executable, on Windows, as
+// after an update, run it in its place, keeping its sessions, and takes
+// the next one; false when it cannot upgrade. One that failed to detached
+// the panes: the connection closes, and watch connects again, adopt
+// attaching them and offering the restart.
+func (st *store) upgradeServer() bool {
+	exe, at := rex.Executable()
+	if runtime.GOOS != "windows" || st.client == nil || !st.hello.Upgrade || st.hello.PID == st.upgradeFailed || !at.After(st.hello.ExeTime) {
+		return false
+	}
+	next, err := st.client.Upgrade(exe)
+	if err != nil {
+		log.Print(err)
+		st.upgradeFailed = st.hello.PID
+		st.client.Close()
+		return true
+	}
+	st.adopt(next)
+	return true
 }
 
 func init() { cmdRestartServer.Run = func(a *App) { a.st.restartServer() } }

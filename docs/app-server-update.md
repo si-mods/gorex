@@ -66,9 +66,8 @@ From the Rex Beta bundle (build 1887):
 Not goals:
 
 - Keeping the programs in the panes running through a server update on
-  Windows in the first phase. Its server cannot upgrade in place; see
-  [Windows](#windows) for what it gets, and for the later phase that keeps
-  them.
+  Windows in the first phase. Phase W2 does, by an upgrade in place of its
+  own; see [Windows](#windows).
 - Shipping the server as a separate product or on its own release
   schedule.
 
@@ -177,11 +176,10 @@ current server and does not upgrade it again.
 
 ### What differs
 
-- **The server cannot upgrade in place.** A ConPTY console belongs to the
-  process that made it (`CreatePseudoConsole`). When the server exits, its
-  consoles close and the programs in the panes end. There is no `exec`
-  that keeps the process. So a server update on Windows is a restart:
-  the next server starts the layout's sessions again as new shells
+- **There is no `exec`.** The server upgrades by starting the new build
+  as another process that inherits the consoles' handles (Phase W2). When
+  it cannot, a server update on Windows is a restart: the next server
+  starts the layout's sessions again as new shells
   (`CapabilityShutdownRestart`), and what they printed is lost.
 - **The new build is in place at once.** `Install` swaps the files in the
   executable's directory (`swapFiles` in MyGo): the running `GoRex.exe`
@@ -251,32 +249,35 @@ updater installed the new build 10 s after launch.
   `Stop-Process -Name GoRex` would end both processes, which share the
   name. No WMI start is needed for now.
 
-### Phase W2: keep the programs (later)
+### Phase W2: keep the programs
 
-Keeping the programs needs a process that holds the consoles and never
-updates with the server:
+Built (`upgrade_windows.go`). A console does not belong to the process
+that made it: conhost ends it only when its signal pipe breaks. An
+`HPCON` points to `{hSignal, hPtyReference, hConPtyProcess}`
+(microsoft/terminal, `src/winconpty/winconpty.h`).
 
-- A small **PTY host** (`GoRex.exe -ptyhost`) owns the ConPTYs, the
-  programs' processes and the pipes. It reads the output and writes the
-  input, and nothing else.
-- The server talks to it over a local named pipe, with a small, rarely
-  changing protocol: create, resize, write, read, close, list.
-- A server update replaces only the server. The new server reads
-  `handoff.json` for the screens, as the Unix upgrade does, and attaches
-  to the host's sessions. The programs keep running.
-- The host updates only when its own protocol changes, by a restart that
-  asks the user, as W1 does.
-- The host runs from a copy of its own (as design step 1), so an update
-  can rename the files under it.
+1. The server reads the signal pipe from the `HPCON` when it makes a
+   console (`consoleSignal`), and checks that it is a pipe and the third
+   field a process. When not, `Hello.Upgrade` is false and W1 applies.
+2. An upgrade pauses the sessions: `CancelIoEx` stops the blocked read of
+   each output pipe, which takes nothing from the pipe. It writes
+   `handoff.json` with copies of each console's input, output, signal
+   pipe and process handles, closes the socket, and starts
+   `GoRex.exe -server -resume` inheriting exactly those handles and a
+   pipe of its own (`AdditionalInheritedHandles`).
+3. The new server listens again, resumes the sessions and writes to that
+   pipe; the old one exits then, without `ClosePseudoConsole`. Clients
+   that dial meanwhile try again. When the new one exits first or takes
+   more than 10 s, the old one kills it, listens again and resumes.
+4. The old server holds the lock until it exits; the new one takes it
+   then. A server spawned meanwhile that gets the lock finds the socket
+   answering and exits (`Serve`).
+5. A resumed console has no `HPCON`: a resize writes
+   `PTY_SIGNAL_RESIZE_WINDOW` (8, cols, rows, little-endian `uint16`) to
+   the signal pipe, and a hangup closes it.
 
-Not chosen: passing the ConPTY to the new server with `DuplicateHandle`.
-The pipes can be duplicated, but `HPCON` is an opaque value tied to the
-process that made it, and `ResizePseudoConsole` needs it. Moving it
-depends on undocumented internals of `conhost`.
-
-W2 costs much more than the macOS work: a second process, a second
-protocol, one more hop for every byte of output, and its own tests. Do it
-only if restarts on Windows turn out to hurt in practice.
+`updater.OnInstalled` and `adopt` upgrade first; the restart dialog is
+left for a server that cannot upgrade or failed to.
 
 ## Order of work
 
@@ -287,7 +288,7 @@ only if restarts on Windows turn out to hurt in practice.
 4. Automatic relaunch when hidden, in MyGo's updater plugin.
 5. Windows W1: the early restart from the running app, and a check that
    the server outlives the app. Built.
-6. Windows W2, only if needed.
+6. Windows W2: upgrade in place. Built.
 
 Steps 1 to 3 already give "the server updates, the app stays". Step 4
 only finishes the app's own update.

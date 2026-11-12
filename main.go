@@ -99,9 +99,10 @@ func main() {
 		mygo.App.SetMenu(st.menu())
 		st.start()
 		// On Windows an update replaces GoRex.exe while the app runs: the
-		// server can restart on it at once, keeping the windows open.
+		// server can upgrade to it at once, or else restart on it, keeping
+		// the windows open.
 		updater.OnInstalled(func() {
-			if st.serverBehind() {
+			if !st.upgradeServer() && st.serverBehind() {
 				st.restartServer()
 			}
 		})

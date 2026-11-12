@@ -65,9 +65,10 @@ func startPTY(path string, argv []string, dir string, env []string, cols, rows i
 	return &pty{master: master, cmd: cmd, proc: cmd.Process.Pid}, nil
 }
 
-// resumePTY takes over the terminal of master, a descriptor the
-// executable before this one left open, and its process pid.
-func resumePTY(master, pid int) (*pty, error) {
+// resumePTY takes over the terminal of st.Master, a descriptor the
+// executable before this one left open, and its process st.PID.
+func resumePTY(st sessionState) (*pty, error) {
+	master, pid := st.Master, st.PID
 	// Non-blocking, the descriptor goes to the poller, where reads take a
 	// deadline (pause).
 	if err := unix.SetNonblock(master, true); err != nil {
@@ -76,6 +77,9 @@ func resumePTY(master, pid int) (*pty, error) {
 	unix.CloseOnExec(master)
 	return &pty{master: os.NewFile(uintptr(master), "/dev/ptmx"), proc: pid}, nil
 }
+
+// exitedPTY is the terminal of a session that exited before a handoff.
+func exitedPTY(pid int) *pty { return &pty{proc: pid} }
 
 func (p *pty) read(b []byte) (int, error)  { return p.master.Read(b) }
 func (p *pty) write(b []byte) (int, error) { return p.master.Write(b) }

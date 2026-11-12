@@ -3,11 +3,14 @@ package rex
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 
@@ -19,14 +22,23 @@ var (
 	procSetConsoleCtrlHandler     = kernel32.NewProc("SetConsoleCtrlHandler")
 )
 
+// ptySignalResizeWindow resizes a console through its signal pipe
+// (PTY_SIGNAL_RESIZE_WINDOW, microsoft/terminal, src/winconpty/winconpty.h).
+const ptySignalResizeWindow = 8
+
 // pty is a pseudo console (ConPTY) and the process it runs.
 type pty struct {
-	mu      sync.Mutex
-	console windows.Handle // 0 once closed
-	process windows.Handle // 0 once waited for
+	mu sync.Mutex
+	// console is 0 once closed, and for a console the executable before
+	// this one made (resumePTY); signal is its signal pipe
+	// (consoleSignal), 0 once closed or when it could not be read.
+	console, signal windows.Handle
+	process         windows.Handle // 0 once waited for
 	// in takes what is typed, and out has what the console shows.
 	in, out   *os.File
 	processID int
+	// paused stops read, for an upgrade (stopRead).
+	paused atomic.Bool
 }
 
 // tty is the name of a terminal's slave: a console has none.
@@ -56,7 +68,7 @@ func startPTY(path string, argv []string, dir string, env []string, cols, rows i
 		windows.CloseHandle(outR)
 		return nil, fmt.Errorf("pty: CreatePseudoConsole: %w", err)
 	}
-	p := &pty{console: console, in: os.NewFile(uintptr(inW), "conpty-in"), out: os.NewFile(uintptr(outR), "conpty-out")}
+	p := &pty{console: console, signal: consoleSignal(console), in: os.NewFile(uintptr(inW), "conpty-in"), out: os.NewFile(uintptr(outR), "conpty-out")}
 	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
 		dir, _ = os.UserHomeDir()
 	}
@@ -108,36 +120,144 @@ func (p *pty) spawn(path string, argv []string, dir string, env []string) error 
 	return nil
 }
 
-func (p *pty) read(b []byte) (int, error)  { return p.out.Read(b) }
+// consoleSignal returns the signal pipe of console, which no API gives:
+// an HPCON points to {hSignal, hPtyReference, hConPtyProcess}
+// (microsoft/terminal, src/winconpty/winconpty.h). When what it points to
+// is not a pipe and a process, the layout changed: 0, and the server does
+// not upgrade.
+func consoleSignal(console windows.Handle) windows.Handle {
+	var hp [3]windows.Handle
+	err := windows.ReadProcessMemory(windows.CurrentProcess(), uintptr(console), (*byte)(unsafe.Pointer(&hp)), unsafe.Sizeof(hp), nil)
+	if err == nil {
+		t, _ := windows.GetFileType(hp[0])
+		id, _ := windows.GetProcessId(hp[2])
+		if t == windows.FILE_TYPE_PIPE && id != 0 {
+			return hp[0]
+		}
+	}
+	badConsole.Store(true)
+	return 0
+}
+
+// resumePTY takes over the console of st, whose handles the executable
+// before this one handed this process.
+func resumePTY(st sessionState) (*pty, error) {
+	c := st.Console
+	if c == nil {
+		return nil, errors.New("pty: no console in the handoff")
+	}
+	return &pty{signal: windows.Handle(c.Signal), process: windows.Handle(c.Process), processID: st.PID,
+		in: os.NewFile(uintptr(st.Master), "conpty-in"), out: os.NewFile(c.Out, "conpty-out")}, nil
+}
+
+// exitedPTY is the console of a session that exited before a handoff.
+func exitedPTY(pid int) *pty { return &pty{processID: pid} }
+
+func (p *pty) read(b []byte) (int, error) {
+	if p.paused.Load() {
+		return 0, os.ErrDeadlineExceeded
+	}
+	n, err := p.out.Read(b)
+	switch {
+	case err != nil && p.paused.Load() && errors.Is(err, windows.ERROR_OPERATION_ABORTED):
+		return n, os.ErrDeadlineExceeded
+	case err == io.EOF:
+		// The console is gone: nothing else closes the output of one
+		// resumed (close).
+		p.out.Close()
+	}
+	return n, err
+}
+
 func (p *pty) write(b []byte) (int, error) { return p.in.Write(b) }
+
+// stopRead stops read, leaving what the console has in its pipe, and
+// returns once reading, of the read goroutine, closes. A read that waits
+// is cancelled, which takes nothing from the pipe.
+func (p *pty) stopRead(reading <-chan struct{}) error {
+	p.paused.Store(true)
+	for {
+		select {
+		case <-reading:
+			return nil
+		case <-time.After(10 * time.Millisecond):
+			// Again: the read may have started after the last.
+			windows.CancelIoEx(windows.Handle(p.out.Fd()), nil)
+		}
+	}
+}
+
+// readAgain undoes stopRead.
+func (p *pty) readAgain() { p.paused.Store(false) }
+
+// handoff puts copies of the console's handles, which a process this one
+// starts inherits, in st; false once it is closed, or when its signal
+// pipe could not be read.
+func (p *pty) handoff(st *sessionState) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.signal == 0 {
+		return false
+	}
+	me := windows.CurrentProcess()
+	ok := true
+	dup := func(h windows.Handle) uintptr {
+		var d windows.Handle
+		if h != 0 && windows.DuplicateHandle(me, h, me, &d, 0, true, windows.DUPLICATE_SAME_ACCESS) != nil {
+			ok = false
+		}
+		return uintptr(d)
+	}
+	in := dup(windows.Handle(p.in.Fd()))
+	c := &consoleHandles{Out: dup(windows.Handle(p.out.Fd())), Signal: dup(p.signal), Process: dup(p.process)}
+	st.Master, st.Console = int(in), c
+	if !ok {
+		closeHandedOver(*st)
+		st.Master, st.Console = -1, nil
+	}
+	return ok
+}
 
 // close closes the console, which ends the processes attached to it: read
 // ends once it read what the console still had to show.
 func (p *pty) close() error {
 	p.mu.Lock()
-	console := p.console
-	p.console = 0
+	console, signal := p.console, p.signal
+	p.console, p.signal = 0, 0
 	p.mu.Unlock()
-	if console == 0 {
-		return nil
+	switch {
+	case console != 0:
+		p.in.Close()
+		// Before Windows 11 24H2, ClosePseudoConsole waits for its output
+		// to be read, which read goes on doing.
+		go func() {
+			windows.ClosePseudoConsole(console)
+			p.out.Close()
+		}()
+	case signal != 0:
+		// One the executable before this one made ends as its signal pipe
+		// closes, without waiting.
+		p.in.Close()
+		windows.CloseHandle(signal)
 	}
-	p.in.Close()
-	// Before Windows 11 24H2, ClosePseudoConsole waits for its output to be
-	// read, which read goes on doing.
-	go func() {
-		windows.ClosePseudoConsole(console)
-		p.out.Close()
-	}()
 	return nil
 }
 
 func (p *pty) resize(cols, rows int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.console == 0 {
-		return os.ErrClosed
+	c := coord(cols, rows)
+	switch {
+	case p.console != 0:
+		return windows.ResizePseudoConsole(p.console, c)
+	case p.signal != 0:
+		// What ResizePseudoConsole writes: the signal, then the size,
+		// little-endian.
+		b := []byte{ptySignalResizeWindow, 0, byte(c.X), byte(c.X >> 8), byte(c.Y), byte(c.Y >> 8)}
+		var n uint32
+		return windows.WriteFile(p.signal, b, &n, nil)
 	}
-	return windows.ResizePseudoConsole(p.console, coord(cols, rows))
+	return os.ErrClosed
 }
 
 func (p *pty) pid() int { return p.processID }
