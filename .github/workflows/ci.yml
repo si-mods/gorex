@@ -42,17 +42,17 @@ jobs:
       - name: test
         run: go test ./... -count=1 -timeout 15m
 
-  # One job, as the runner takes one at a time.
+  # One job, on an instabox machine (Ubuntu 24.04) that lives for the job:
+  # it cross-compiles, so it needs no Mac.
   build:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, macmini]
+    runs-on: instabox-medium
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache: false
       - name: build
         env:
           CGO_ENABLED: "0"
