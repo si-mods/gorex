@@ -1,10 +1,12 @@
 // Mkicon draws GoRex's icon, resources/icon.png: the window's gradient in
 // the squircle of macOS icons, with panes on it as the app splits them.
 // With -dev it draws the development app's, resources/icon-dev.png, in the
-// dark of its window, so that the two read apart in the Dock.
+// dark of its window, so that the two read apart in the Dock. With -web it
+// draws the web client's app icons into web/pwa (webIcons).
 //
 //	go run ./tools/mkicon
 //	go run ./tools/mkicon -dev
+//	go run ./tools/mkicon -web
 package main
 
 import (
@@ -16,44 +18,68 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 
+	xdraw "golang.org/x/image/draw"
 	"golang.org/x/image/vector"
 )
 
 const size = 1024
 
+// colors are the icon's: its gradient, its panes and what is on them.
+type colors struct {
+	bg             []stop
+	pane, paneBack uint8
+	ink, green     color.NRGBA
+	text, accent   color.NRGBA
+	snake, red     color.NRGBA
+	shade          color.RGBA
+}
+
 func main() {
 	dev := flag.Bool("dev", false, "draw the development app's icon, resources/icon-dev.png, in dark colors")
+	web := flag.Bool("web", false, "draw the web client's app icons into web/pwa")
 	flag.Parse()
 
 	// Resources of the icon, in the light of the window or, for the
 	// development app, in its dark.
 	out := "resources/icon.png"
-	bg := []stop{{0, rgb(0xf7e4f6)}, {0.45, rgb(0xeedbe3)}, {0.7, rgb(0xeeddd0)}, {1, rgb(0xebdcb2)}}
-	pane, paneBack := uint8(250), uint8(175)
-	ink := color.NRGBA{42, 45, 49, 255}
-	green := color.NRGBA{78, 142, 95, 255}
-	text, accent := color.NRGBA{120, 120, 128, 150}, color.NRGBA{194, 70, 90, 170}
-	snake, red := color.NRGBA{86, 141, 102, 255}, color.NRGBA{188, 83, 98, 255}
-	shade := color.RGBA{60, 30, 50, 46}
+	c := colors{
+		bg:   []stop{{0, rgb(0xf7e4f6)}, {0.45, rgb(0xeedbe3)}, {0.7, rgb(0xeeddd0)}, {1, rgb(0xebdcb2)}},
+		pane: 250, paneBack: 175,
+		ink: color.NRGBA{42, 45, 49, 255}, green: color.NRGBA{78, 142, 95, 255},
+		text: color.NRGBA{120, 120, 128, 150}, accent: color.NRGBA{194, 70, 90, 170},
+		snake: color.NRGBA{86, 141, 102, 255}, red: color.NRGBA{188, 83, 98, 255},
+		shade: color.RGBA{60, 30, 50, 46},
+	}
 	if *dev {
 		out = "resources/icon-dev.png"
-		bg = []stop{{0, rgb(0x2c2131)}, {0.45, rgb(0x231e27)}, {0.7, rgb(0x221f22)}, {1, rgb(0x2a2619)}}
-		pane, paneBack = 46, 26
-		ink = color.NRGBA{208, 208, 214, 255}
-		green = color.NRGBA{95, 211, 141, 255}
-		text, accent = color.NRGBA{174, 174, 178, 200}, color.NRGBA{255, 140, 156, 210}
-		snake, red = color.NRGBA{123, 216, 143, 255}, color.NRGBA{255, 107, 127, 255}
-		shade = color.RGBA{0, 0, 0, 110}
+		c.bg = []stop{{0, rgb(0x2c2131)}, {0.45, rgb(0x231e27)}, {0.7, rgb(0x221f22)}, {1, rgb(0x2a2619)}}
+		c.pane, c.paneBack = 46, 26
+		c.ink = color.NRGBA{208, 208, 214, 255}
+		c.green = color.NRGBA{95, 211, 141, 255}
+		c.text, c.accent = color.NRGBA{174, 174, 178, 200}, color.NRGBA{255, 140, 156, 210}
+		c.snake, c.red = color.NRGBA{123, 216, 143, 255}, color.NRGBA{255, 107, 127, 255}
+		c.shade = color.RGBA{0, 0, 0, 110}
 	}
 
 	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	// The squircle of macOS's icon grid: 824 wide, inset by 100.
 	x0, y0, w := float32(100), float32(100), float32(824)
-	shadow(img, x0+6, y0+12, w-12, w-12, 186, 20, shade)
-	grad := gradient(size, bg)
+	shadow(img, x0+6, y0+12, w-12, w-12, 186, 20, c.shade)
+	grad := gradient(size, c.bg)
 	fill(img, squircle(x0, y0, w, w, 186), grad)
-	// The panes: one left above another, one right, as the app shows them.
+	panes(img, x0, y0, w, c)
+	if *web {
+		webIcons(img, grad, x0, y0, w, c)
+		return
+	}
+	save(out, img)
+}
+
+// panes draws the panes on the squircle at x0, y0, w wide: one left above
+// another, one right, as the app shows them.
+func panes(img *image.RGBA, x0, y0, w float32, k colors) {
 	pad, gap := float32(70), float32(36)
 	inner := w - 2*pad
 	lw := inner*0.54 - gap/2
@@ -67,17 +93,17 @@ func main() {
 		{x0 + pad + lw + gap, y0 + pad + 40, inner - lw - gap, inner - 40, 175},
 	}
 	for _, c := range cards {
-		alpha := paneBack
+		alpha := k.paneBack
 		if c.a == 250 {
-			alpha = pane
+			alpha = k.pane
 		}
-		shadow(img, c.x, c.y+8, c.w, c.h, 44, 22, shade)
+		shadow(img, c.x, c.y+8, c.w, c.h, 44, 22, k.shade)
 		fill(img, rounded(c.x, c.y, c.w, c.h, 44), image.NewUniform(color.NRGBA{255, 255, 255, alpha}))
 	}
 	// A prompt on the first pane: a chevron and a cursor.
 	c := cards[0]
-	inkSrc := image.NewUniform(ink)
-	greenSrc := image.NewUniform(green)
+	inkSrc := image.NewUniform(k.ink)
+	greenSrc := image.NewUniform(k.green)
 	cx, cy := c.x+68, c.y+c.h/2-6
 	for _, r := range stroke([][2]float32{{cx, cy - 58}, {cx + 62, cy}, {cx, cy + 58}}, 26) {
 		fill(img, r, greenSrc)
@@ -86,23 +112,64 @@ func main() {
 	// Snake dots on the right pane.
 	r := cards[2]
 	for i := 0; i < 4; i++ {
-		fill(img, rounded(r.x+52+float32(i)*44, r.y+r.h*0.42, 30, 30, 7), image.NewUniform(snake))
+		fill(img, rounded(r.x+52+float32(i)*44, r.y+r.h*0.42, 30, 30, 7), image.NewUniform(k.snake))
 	}
-	fill(img, rounded(r.x+52+3*44, r.y+r.h*0.42+44, 30, 30, 7), image.NewUniform(snake))
-	fill(img, rounded(r.x+r.w-100, r.y+r.h*0.7, 34, 34, 17), image.NewUniform(red))
+	fill(img, rounded(r.x+52+3*44, r.y+r.h*0.42+44, 30, 30, 7), image.NewUniform(k.snake))
+	fill(img, rounded(r.x+r.w-100, r.y+r.h*0.7, 34, 34, 17), image.NewUniform(k.red))
 	// Lines of text on the lower left pane.
 	l := cards[1]
 	for i, lw := range []float32{0.62, 0.44, 0.7} {
-		col := text
+		col := k.text
 		if i == 1 {
-			col = accent
+			col = k.accent
 		}
 		fill(img, rounded(l.x+52, l.y+56+float32(i)*48, (l.w-104)*lw, 22, 11), image.NewUniform(col))
 	}
-	if err := os.MkdirAll("resources", 0o755); err != nil {
+}
+
+// webIcons writes the web client's app icons (docs/web-client.md, App):
+// the icon as it is at 192 and 512 pixels, and a maskable one, whose
+// gradient fills the square and whose panes keep within the middle 80%
+// circle that a launcher's mask leaves, at 192 and 512 pixels and as
+// iOS's 180-pixel home screen icon, which iOS rounds itself.
+func webIcons(icon *image.RGBA, grad image.Image, x0, y0, w float32, c colors) {
+	dir := filepath.Join("web", "pwa")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Fatal(err)
 	}
-	f, err := os.Create(out)
+	layer := image.NewRGBA(image.Rect(0, 0, size, size))
+	panes(layer, x0, y0, w, c)
+	full := image.NewRGBA(image.Rect(0, 0, size, size))
+	// Row by row: the gradient is one pixel wide, which draw.Draw would read as such.
+	for y := 0; y < size; y++ {
+		draw.Draw(full, image.Rect(0, y, size, y+1), image.NewUniform(grad.At(0, y)), image.Point{}, draw.Src)
+	}
+	// The panes span 170 to 854 of 1024; at 0.84 their corners fall inside the safe circle.
+	k := 0.84
+	in := int(float64(size) * (1 - k) / 2)
+	xdraw.CatmullRom.Scale(full, image.Rect(in, in, size-in, size-in), layer, layer.Bounds(), draw.Over, nil)
+	for _, o := range []struct {
+		name string
+		src  image.Image
+		px   int
+	}{
+		{"icon-192.png", icon, 192},
+		{"icon-512.png", icon, 512},
+		{"maskable-192.png", full, 192},
+		{"maskable-512.png", full, 512},
+		{"apple-touch-icon.png", full, 180},
+	} {
+		dst := image.NewRGBA(image.Rect(0, 0, o.px, o.px))
+		xdraw.CatmullRom.Scale(dst, dst.Bounds(), o.src, o.src.Bounds(), draw.Src, nil)
+		save(filepath.Join(dir, o.name), dst)
+	}
+}
+
+func save(path string, img image.Image) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		log.Fatal(err)
+	}
+	f, err := os.Create(path)
 	if err != nil {
 		log.Fatal(err)
 	}

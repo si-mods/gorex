@@ -84,6 +84,9 @@ func (g *Gateway) features() []string {
 	if g.hello.Can(rex.CapabilityFileTemp) {
 		features = append(features, featureUpload)
 	}
+	if g.hello.Can(rex.CapabilityFileTransfer) {
+		features = append(features, featureDownload)
+	}
 	return features
 }
 
@@ -103,8 +106,9 @@ func (g *Gateway) handleUpload(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "an upload is a POST")
 		return
 	}
-	// A browser asks before it posts a type no form sends, and this
-	// server allows no other origin: a web page cannot post files here.
+	// A browser asks before it posts a type no form sends (preflight),
+	// and Handler answers only pages of the origins the gateway trusts:
+	// no other web page can post files here.
 	if r.Header.Get("Content-Type") != "application/octet-stream" {
 		writeError(w, http.StatusUnsupportedMediaType, "an upload is application/octet-stream")
 		return

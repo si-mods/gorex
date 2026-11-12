@@ -55,6 +55,23 @@ The gateway listens on five places:
 - with `GoRex rexapi --listen http://127.0.0.1:PORT`, a TCP port that lets
   everyone in unauthenticated: for tests on this machine only.
 
+None serves a web page. A browser's request carries its page's origin,
+and the gateway refuses it on every path, with 403 before the access
+rule, unless the origin is one the host trusts (`gorex rexapi web allow
+ORIGIN`, empty by default). This is how the standalone web client
+(docs/web-client.md), hosted elsewhere, reaches a host. Native clients
+send no origin and are not affected.
+
+Before that, on the local network, the tailnet and `--listen`, the
+gateway answers only a request whose `Host` is one of its own names, as
+a defence against DNS rebinding (a page that points a name of its own at
+the gateway's address sends no origin): `localhost`, an IP address (the
+listener's own among them), built-in Tailscale's MagicDNS name and its
+first label, or a name added with `gorex rexapi web host add NAME`, such
+as one a reverse proxy in front of the gateway serves. Any other `Host`
+gets `421 Misdirected Request` with a JSON error, on every path. The
+local socket and tailcat are not checked: no browser reaches either.
+
 ## Local network
 
 When the phone reaches this machine by its address on the local network,
@@ -191,6 +208,9 @@ device out; `tailscale rename NAME` renames it.
 | `GoRex rexapi lan on \| off \| status` | the listener on the local network |
 | `GoRex rexapi lan listen HOST:PORT` | the address it listens on |
 | `GoRex rexapi lan allow NETWORK` / `deny NETWORK` | the networks let in: a CIDR, or an address alone |
+| `GoRex rexapi web allow ORIGIN` / `deny ORIGIN` | the web pages trusted, by origin, such as `https://gorex-web.example.workers.dev`: `http(s)://host[:port]`, no path or wildcard; in `rexapi/web.json`, followed within a second (docs/web-client.md) |
+| `GoRex rexapi web host add NAME` / `host remove NAME` | the host names the gateway answers besides `localhost`, IP addresses and built-in Tailscale's names: a DNS name, no port or wildcard; in `rexapi/web.json` |
+| `GoRex rexapi web status` | the web pages trusted, and the host names added |
 | `GoRex rexapi tailscale on [--hostname NAME] [--control-url URL] [--allow-tailnet-members] [--auth-key-file FILE]` | turn built-in Tailscale on |
 | `GoRex rexapi tailscale off \| login \| logout \| rename NAME \| status` | the rest of `server.tailscale.*`, and its status |
 | `GoRex rexapi pair [--json]` | the tailnet address as a QR code |
@@ -283,6 +303,49 @@ a desktop's space lists its windows on other hosts too, which leave
 their own host's list. Those of a host it has not added, or that is
 offline, are left out.
 
+## Files of a host
+
+The web client opens a file path printed in a pane as the desktop does
+(docs/web-open-files.md). The welcome lists the feature
+`gorex.download` when the GoRex server sends files
+(`CapabilityFileTransfer`). It takes two steps.
+
+`com.superlogical.terminal.download_begin`, a block method like
+`upload_begin`, opens the file with `file.get` for the block's session
+and answers a ticket:
+
+```
+→ {"method": "com.superlogical.terminal.download_begin",
+   "payload": {"session_id": "<session>", "block_id": "<block>",
+               "args": {"path": "<path>"}}}
+← {"ticket": "<base64url>", "name": "report.png", "size": 48213,
+   "mtime": "2026-11-12T09:30:00Z", "type": "image/png"}
+```
+
+- `path` is absolute, from `~/`, or relative to the directory of the
+  block's program in the foreground, else the session's.
+- `type` is a guess from the name's extension; `mtime` is left out when
+  the server sends none.
+- A ticket is good for one download, and lapses after 60 s unused or
+  when its control connection closes, which closes its `file.get`. A
+  control connection holds at most 4.
+- Errors: `not_found` (no block, or its session ended), `is_folder`,
+  `not_regular` (a FIFO, a device, a socket), `no_file`, `denied`,
+  `too_large` (over 1 GiB), `not_supported` (the server sends no files),
+  `conflict` (4 tickets open already), `bad_request`, else `internal`
+  with the server's text. Each refusal is logged with its code.
+
+`GET /api/download?ticket=…` streams the ticket's file, once: `200` with
+`Content-Type: application/octet-stream`, `Content-Length`,
+`Last-Modified`, `Cache-Control: no-store`, `X-Content-Type-Options:
+nosniff`, and `Content-Disposition: attachment` with an ASCII
+`filename=` and, for any other name, `filename*=utf-8''…`. A trusted page
+also gets `Access-Control-Expose-Headers: Content-Disposition,
+Content-Length`. An unknown, used or lapsed ticket gets `404`. A file
+that ends short of its size aborts the response. `Range` is not taken.
+Each download is logged as `rexapi: download <client address> <block>
+<path> <bytes>`.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -291,4 +354,5 @@ offline, are left out.
 | `tailscale: needs_login` | Open the `sign in` link of `GoRex rexapi tailscale status`, or run `GoRex rexapi tailscale login` for a new one. |
 | `https: pending` stays, or Tailscale turns off with an error | Turn on MagicDNS and HTTPS in the tailnet's admin console, then `GoRex rexapi tailscale on` again. |
 | The phone gets 403 | It is signed in to Tailscale as another user, or is a tagged device: sign it in as you, or turn on `--allow-tailnet-members`. |
+| A page or client gets 421 | It reached the gateway by a name the gateway doesn't know: use its IP address, `localhost` or the tailnet name, or add the name with `GoRex rexapi web host add NAME`. |
 | `no Rex API gateway on …` | The gateway is not running, or listens on another socket (`--socket`, `GOREX_REXAPI_SOCKET`). |

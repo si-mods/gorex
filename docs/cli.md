@@ -14,7 +14,8 @@ Every local terminal GoRex opens gets:
   use when `-s` is not given.
 - `GOREX_BIN_DIR`, and that directory at the front of `PATH`, where a
   `gorex` shim points at the app binary.
-- `GOREX_SERVER`, the server's socket.
+- `GOREX_SERVER`, the server's socket. `gorex` in the terminal connects
+  to it, and starts no other server, unless `GOREX_DIR` names another.
 - A pane made by the app also gets `GOREX_PANE`, and `GOREX_HOST` for a
   remote host's pane or `GOREX_CLIENT` for a local one. A pane the server
   made for a client with no window open gets `GOREX_CLIENT` only.

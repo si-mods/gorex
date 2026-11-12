@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import GameController
 import GhosttyKit
@@ -107,9 +108,9 @@ final class TerminalView: UIView, TerminalOutput {
     private let reading = DispatchGroup()
     /// The hardware key held, and its repeat.
     private var held: (code: UIKeyboardHIDUsage, task: Task<Void, Never>)?
-    /// The microphone while the mic is on, and what to tell as it goes off
-    /// (dictate).
-    private var dictating: (recording: Recording, off: () -> Void)?
+    /// The microphone while the mic is on, what listens to it, and what
+    /// tells what is said (dictate).
+    private var dictating: (recording: Recording, listening: Listening, told: Task<Void, Never>)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -505,11 +506,12 @@ final class TerminalView: UIView, TerminalOutput {
         shift = false
     }
 
-    /// Turns the mic on, and tells whether it is: the microphone records
-    /// until typeDictation or stopDictating. off is called as the mic goes
-    /// off. A first tap asks for the microphone, and does no more. The tick
-    /// comes first: iOS mutes it while it records.
-    func dictate(off: @escaping () -> Void) -> Bool {
+    /// Turns the mic on, and tells whether it is: what the microphone hears
+    /// is recognised as it comes, and said told what is said so far, and
+    /// nil as the mic goes off, by typeDictation or stopDictating. A first
+    /// tap asks for the microphone, and does no more. The tick comes first:
+    /// iOS mutes it while it records.
+    func dictate(said: @escaping (Dictation.Said?) -> Void) -> Bool {
         guard dictating == nil else { return false }
         Self.tick.impactOccurred()
         switch AVAudioApplication.shared.recordPermission {
@@ -523,33 +525,54 @@ final class TerminalView: UIView, TerminalOutput {
         default:
             break
         }
+        let listening = Dictation.shared.listen()
         do {
-            dictating = (try Recording(), off)
+            let recording = try Recording { s in
+                listening.add(s)
+                let rms = vDSP.rootMeanSquare(s)
+                Task { @MainActor in Dictation.shared.hear(rms) }
+            }
+            dictating = (recording, listening, Task {
+                for await s in listening.said { said(s) }
+                // Ended with the mic on, it failed.
+                if dictating?.listening === listening, mute() != nil, case .failure(let e) = await listening.heard.result {
+                    alert(String(localized: "Can't Recognise Speech"), e.localizedDescription)
+                }
+                said(nil)
+            })
         } catch {
+            listening.cancel()
             alert(String(localized: "Can't Record"), error.localizedDescription)
             return false
         }
+        said(Dictation.Said())
         return true
     }
 
-    /// Turns the mic off, and types what it heard once recognised, as a
-    /// paste, not sent.
+    /// Turns the mic off, and types what was said once its last phrase is
+    /// recognised, as a paste, not sent.
     func typeDictation() async {
-        guard let heard = stopDictating() else { return }
+        guard let d = mute() else { return }
         do {
-            let text = try await Dictation.shared.transcribe(heard)
+            let text = try await d.listening.finish()
             if !text.isEmpty { insert(text) }
         } catch {
             alert(String(localized: "Can't Recognise Speech"), error.localizedDescription)
         }
+        await d.told.value
     }
 
-    /// Turns the mic off, and gives what it heard.
-    @discardableResult func stopDictating() -> [Float]? {
+    /// Turns the mic off, typing nothing.
+    func stopDictating() {
+        mute()?.listening.cancel()
+    }
+
+    private func mute() -> (recording: Recording, listening: Listening, told: Task<Void, Never>)? {
         guard let d = dictating else { return nil }
         dictating = nil
-        d.off()
-        return d.recording.stop()
+        d.recording.stop()
+        Dictation.shared.levels = Dictation.shared.levels.map { _ in 0 }
+        return d
     }
 
     /// The mic's tap, as the key bar's keys give.

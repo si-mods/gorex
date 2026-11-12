@@ -99,6 +99,9 @@ type Gateway struct {
 	// lan is the listener on the local network, nil without a state
 	// directory.
 	lan *lanListener
+	// web are the web pages' origins the gateway trusts (web.json), nil
+	// without a state directory: then it trusts none.
+	web *webOrigins
 	// listeners are the listeners that serve until the gateway stops,
 	// primary first, which server.status lists; under mu.
 	listeners []Listener
@@ -144,6 +147,10 @@ type Gateway struct {
 	uploads        map[string]*uploadReservation
 	uploadBatches  map[string]*uploadBatch
 	abortedBatches map[string]time.Time
+
+	// downloads are the files download_begin opened, by their ticket,
+	// until GET /api/download takes one or it lapses.
+	downloads map[string]*download
 
 	// generation counts the loads the configuration file had, which
 	// server.config_reload makes; keymapHash names the file's contents.
@@ -200,12 +207,14 @@ func New(opt Options) (*Gateway, error) {
 		uploads:        map[string]*uploadReservation{},
 		uploadBatches:  map[string]*uploadBatch{},
 		abortedBatches: map[string]time.Time{},
+		downloads:      map[string]*download{},
 		generation:     1,
 		canLock:        hello.Keepalive > 0 && hello.Conn != "",
 		done:           make(chan struct{}),
 	}
 	if opt.TailnetDir != "" {
 		g.lan = newLANListener(g, opt.TailnetDir)
+		g.web = newWebOrigins(opt.TailnetDir)
 		g.tailnet = newTailnet(g, opt.TailnetDir, newTsnetNode)
 		g.tailnet.serve = g.serveOn
 	}
@@ -260,6 +269,7 @@ func (g *Gateway) Close() error {
 		for _, s := range streams {
 			s.closeWith(1001, "data provider canceled")
 		}
+		g.dropDownloads(nil)
 		g.opt.Client.Close()
 		g.wg.Wait()
 	})
@@ -603,6 +613,7 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 	g.mu.Lock()
 	delete(g.conns, c)
 	g.mu.Unlock()
+	g.dropDownloads(c)
 	rec := c.rec
 	if rec == nil {
 		return

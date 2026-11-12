@@ -35,6 +35,7 @@ var blockMethods = map[string]func(*control, *mSession, *mBlock, args) (any, *ap
 	"size":           blockSize,
 	"write":          blockWrite,
 	"upload_begin":   blockUploadBegin,
+	"download_begin": blockDownloadBegin,
 }
 
 // callBlockMethod runs a block method by its full name, such as

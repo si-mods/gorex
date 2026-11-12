@@ -75,6 +75,11 @@ func TestSessionEnvDropsStarterMarkers(t *testing.T) {
 	if !strings.HasPrefix(got["PATH"], CLIDir()+string(os.PathListSeparator)) {
 		t.Errorf("PATH %q does not start with the gorex directory", got["PATH"])
 	}
+	for k := range got {
+		if k != "PATH" && foldName(k) == "PATH" {
+			t.Errorf("%s is kept beside PATH, and a shell may take it instead", k)
+		}
+	}
 	remote := envMap(sessionEnv("abc", nil, false))
 	if _, ok := remote["GOREX_BIN_DIR"]; ok {
 		t.Error("a remote session got the gorex shim directory")

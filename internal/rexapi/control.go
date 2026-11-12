@@ -30,7 +30,9 @@ type control struct {
 	// transport is how the client reached the gateway: the methods that
 	// administer it are for its local socket only.
 	transport string
-	rec       *clientRecord
+	// remote is the client's address, which the gateway logs.
+	remote string
+	rec    *clientRecord
 	// rev is the API revision this connection speaks, the newest both
 	// sides know. Requests and results are translated to and from it.
 	rev  int
@@ -53,9 +55,9 @@ type control struct {
 // handleControl upgrades a request to a control connection and serves it
 // until it closes.
 func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
-	// Native clients send no Origin, and the access rule is the boundary
-	// that decides who may connect, so the WebSocket origin check is
-	// left to it.
+	// Native clients send no Origin, which the library's own check would
+	// refuse: Handler has checked it already (checkOrigin), and the access
+	// rule decides who may connect.
 	ws, err := websocket.Accept(w, r, &websocket.AcceptOptions{
 		Subprotocols:       []string{controlProtocol},
 		InsecureSkipVerify: true,
@@ -76,7 +78,7 @@ func (g *Gateway) handleControl(w http.ResponseWriter, r *http.Request) {
 	}
 	ws.SetReadLimit(maxMessage)
 	c := &control{
-		g: g, ws: ws, transport: transportOf(r),
+		g: g, ws: ws, transport: transportOf(r), remote: r.RemoteAddr,
 		out:     make(chan outMsg, 1<<16),
 		done:    make(chan struct{}),
 		pending: map[string]bool{},

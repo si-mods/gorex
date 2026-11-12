@@ -1,0 +1,12 @@
+// GoRex's web client on Cloudflare Workers: static assets only, no Worker
+// code. npm run deploy builds web/dist and runs wrangler deploy; see
+// docs/web-client.md. The name is the Worker's, and its workers.dev
+// address (https://gorex-web.<account>.workers.dev) is the origin a host
+// must trust: gorex rexapi web allow <that origin>.
+{
+  "name": "gorex-web",
+  "compatibility_date": "2025-10-01",
+  "assets": {
+    "directory": "./dist"
+  }
+}
