@@ -128,10 +128,12 @@ export interface Problem {
   readonly text: string;
   /** A command to run on the host, shown to copy. */
   readonly command?: string;
+  /** The technical why, behind a Learn more disclosure. */
+  readonly details?: string;
 }
 
-/** A problem whose title and text are said in the page's language each time they are read. */
-export function problem(title: () => string, text: () => string, command?: string): Problem {
+/** A problem whose title, text and details are said in the page's language each time they are read. */
+export function problem(title: () => string, text: () => string, command?: string, details?: () => string): Problem {
   return {
     get title() {
       return title();
@@ -140,7 +142,15 @@ export function problem(title: () => string, text: () => string, command?: strin
       return text();
     },
     command,
+    get details() {
+      return details?.();
+    },
   };
+}
+
+/** A host that answers but does not trust this page: the command that makes it, and why, in plain words. */
+export function untrusted(text: () => string): Problem {
+  return problem(() => t("problemUntrustedTitle"), text, allowCommand(), () => t("problemUntrustedDetails", { origin: location.origin }));
 }
 
 /** Whether a host can never be reached from this page: plain http from an https page. */
@@ -183,11 +193,7 @@ export async function diagnose(url: string): Promise<Problem> {
     if (location.protocol === "https:" && u.protocol === "http:") return mixedProblem;
     return problem(() => t("problemUnreachableTitle"), () => t("problemUnreachableText", { url }));
   }
-  return problem(
-    () => t("problemUntrustedTitle"),
-    () => t("problemUntrustedText", { url, origin: location.origin }),
-    allowCommand(),
-  );
+  return untrusted(() => t("problemUntrustedText", { url }));
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -262,6 +268,8 @@ export class HostList {
   hosts = loadHosts();
   chosen?: Host;
   private button = el("button", "host-button");
+  /** The app's name, in the button's place while there is no host. */
+  private brand = el("div", "host-brand");
   private panel = el("div", "theme-panel host-panel");
   /** Whether the panel shows the list, which redraws as Tailscale's hosts change. */
   private listing = false;
@@ -282,7 +290,13 @@ export class HostList {
     document.addEventListener("pointerdown", (e) => {
       if (!this.panel.hidden && !this.panel.contains(e.target as Node) && !this.button.contains(e.target as Node)) this.hide(false);
     });
-    mount.append(this.button, this.panel);
+    const logo = el("img");
+    logo.src = "pwa/icon-192.png";
+    logo.alt = "";
+    logo.width = logo.height = 20;
+    // GoRex is the app's name, not translated.
+    this.brand.append(logo, el("span", "host-name", "GoRex"));
+    mount.append(this.brand, this.button, this.panel);
     this.chosen = this.hosts.find((h) => h.id === chosenHost()) ?? this.hosts[0];
     this.drawButton();
   }
@@ -308,12 +322,22 @@ export class HostList {
     this.drawButton();
   }
 
+  /**
+   * The chosen host, as a button that opens the list. With no host at all
+   * (none added, none found on Tailscale) the sidebar shows the app's name
+   * in its place: the welcome over the stage offers the ways to add one.
+   */
   private drawButton() {
     const h = this.chosen;
+    const ts = this.app.tailnet;
+    const none = !h && !this.hosts.length && !(ts.status() === "running" && ts.hosts.length);
+    this.button.hidden = none;
+    this.brand.hidden = !none;
+    if (none) return;
     const chevron = el("span", "host-chevron");
     chevron.append(icon("chevron-down"));
-    this.button.replaceChildren(icon(h?.icon ?? "plus"), el("span", "host-name", h?.name ?? t("hostAddAHost")), chevron);
-    this.button.title = h ? h.url : t("noticeAddTitle");
+    this.button.replaceChildren(icon(h?.icon ?? "laptop"), el("span", "host-name", h?.name ?? t("hostChoose")), chevron);
+    this.button.title = h ? h.url : t("hostChoose");
   }
 
   open(form?: Host | "new") {
@@ -323,8 +347,9 @@ export class HostList {
     else this.list();
   }
 
-  /** Draws the list again, if it shows, keeping the focus on the same row. */
+  /** Draws the button and the list again, if it shows, keeping the focus on the same row. */
   refresh() {
+    this.drawButton();
     if (this.panel.hidden || !this.listing) return;
     const key = (document.activeElement as HTMLElement | null)?.dataset?.key;
     this.list(false);
@@ -457,7 +482,8 @@ export class HostList {
       return l;
     };
     const url = el("input", "theme-search");
-    url.placeholder = "https://studio-gorex.tail1234.ts.net";
+    // An example address, as GoRex shows its local network one; not translated.
+    url.placeholder = "192.168.1.20:7297";
     url.value = h?.url ?? "";
     url.required = true;
     url.autocomplete = "off";
@@ -539,7 +565,6 @@ export class HostList {
       field("formIcon", pick, "div"),
       error,
       note,
-      commandBox(allowCommand()),
       buttons,
     );
     return form;

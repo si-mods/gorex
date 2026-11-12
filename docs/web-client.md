@@ -60,9 +60,15 @@ to the other. The first host's sessions keep running. One connection at
 a time keeps one sidebar and one set of shortcuts, as before; several
 hosts at once, as iOS shows them, is for later.
 
-With no host, the page says how to add one, with the command that makes
-a host trust this page: `gorex rexapi web allow <origin>`, with the page's
-own `location.origin`, and offers to sign in with Tailscale instead.
+With no host, the page shows a welcome (`web/src/welcome.ts`), centred in
+the stage: the app's icon, what the page is, and two ways in. **Sign in
+with Tailscale**, the recommended one, opens the sign-in guide; **Connect
+by Address** shows the host form in the welcome's place. A **What do I
+need?** disclosure lists what a computer needs, in plain words. The
+sidebar shows the app's name in place of the host button until there is
+a host to choose. The welcome does not say how a host trusts the page:
+the page says it when a host refuses it (below), with the command,
+`gorex rexapi web allow <origin>` with the page's own `location.origin`.
 
 The list also has a **Tailscale** group: the GoRex hosts that built-in
 Tailscale found on your tailnet (see Built-in Tailscale), each with a
@@ -74,7 +80,7 @@ and tries again every few seconds, so it connects once the cause is gone:
 
 - **The host doesn't trust this page.** The gateway refused the page's
   origin (see Trusting a page). The page shows the command to run on the
-  host.
+  host, in plain words, and the technical why under **Learn more**.
 - **The host refused this browser.** The page is trusted, but the
   gateway's access rule is not met: the local network listener lets in
   only the networks it allows, built-in Tailscale only your user. The page

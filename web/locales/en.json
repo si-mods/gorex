@@ -436,25 +436,13 @@
   "@errorNoFiles": {
     "description": "Opening a file failed: error not_supported, an older host."
   },
-  "noticeAddTitle": "Add a GoRex host",
-  "@noticeAddTitle": {
-    "description": "Title of the card over the page when no host is added; tooltip of the host button then."
-  },
-  "noticeAddText": "This page connects to GoRex's Rex API gateway on your machines: the tailnet address of built-in Tailscale (https://<machine>-gorex.<tailnet>.ts.net), or the local network listener (http://192.168.1.2:7297). Or sign in to Tailscale here, and the page finds your hosts on your tailnet. Each host must trust this page's origin first. On the host, run:",
-  "@noticeAddText": {
-    "description": "Text of the card over the page when no host is added, above the command to run."
-  },
-  "noticeShowTailscaleHosts": "Show Tailscale Hosts",
-  "@noticeShowTailscaleHosts": {
-    "description": "Button of the no-host card when built-in Tailscale is connected."
-  },
   "noticeSignInTailscale": "Sign in with Tailscale",
   "@noticeSignInTailscale": {
-    "description": "Button that starts the Tailscale sign-in: the no-host card, the Tailscale guide."
+    "description": "Sign in with Tailscale: the first screen's Tailscale card, the Tailscale guide's button."
   },
   "noticeContinueTailscale": "Continue with Tailscale",
   "@noticeContinueTailscale": {
-    "description": "Button of the no-host card when built-in Tailscale is on but not signed in yet."
+    "description": "The first screen's Tailscale card when built-in Tailscale is on but not signed in yet."
   },
   "noticeTailscaleSettings": "Tailscale Settings",
   "@noticeTailscaleSettings": {
@@ -622,7 +610,7 @@
   "@hostIconGlobe": {
     "description": "A host icon choice in the host form."
   },
-  "hostUrlEmpty": "Enter the gateway's address, such as https://studio-gorex.tail1234.ts.net.",
+  "hostUrlEmpty": "Enter the computer's address, such as 192.168.1.20:7297.",
   "@hostUrlEmpty": {
     "description": "Host form error: the address is empty."
   },
@@ -644,7 +632,7 @@
   "@hostUrlUser": {
     "description": "Host form error: the URL has a user name or password."
   },
-  "hostUrlPath": "The address is the gateway's only, with no path.",
+  "hostUrlPath": "Enter the address only, with no path.",
   "@hostUrlPath": {
     "description": "Host form error: the URL has a path, query or fragment."
   },
@@ -691,10 +679,6 @@
   "hostList": "Hosts",
   "@hostList": {
     "description": "Title of the host list panel under the host button, and its screen reader label."
-  },
-  "hostAddAHost": "Add a Host",
-  "@hostAddAHost": {
-    "description": "The host button at the top of the sidebar when no host is added."
   },
   "hostAdd": "Add Host",
   "@hostAdd": {
@@ -746,9 +730,9 @@
   "@formIcon": {
     "description": "Host form field: the host's icon."
   },
-  "formNote": "The host must trust this page. On the host, run:",
+  "formNote": "Use the address GoRex shows on that computer under “Serve Rex apps on the local network”, such as 192.168.1.20:7297.",
   "@formNote": {
-    "description": "Host form note above the command that makes the host trust this page."
+    "description": "Host form note under the fields: where to find the address. Quotes the desktop's setting remoteLanSwitch."
   },
   "formSave": "Save",
   "@formSave": {
@@ -816,21 +800,17 @@
       }
     }
   },
-  "problemUntrustedTitle": "The host doesn't trust this page",
+  "problemUntrustedTitle": "This computer hasn't allowed this page yet",
   "@problemUntrustedTitle": {
-    "description": "Card title: the gateway answered but refuses this page's origin."
+    "description": "Card title: the host's GoRex answered but refuses this page's origin. Plain words, no technical terms."
   },
-  "problemUntrustedText": "The gateway at {url} answered, but refuses web pages from {origin}. Run this on the host, then wait a moment:",
+  "problemUntrustedText": "GoRex answers at {url}, but it only lets in web pages you allow. On that computer, run this command once in a terminal. This page connects by itself a few seconds later.",
   "@problemUntrustedText": {
-    "description": "Card text under problemUntrustedTitle, above the command that trusts the page.",
+    "description": "Card text under problemUntrustedTitle, above the command that makes the host trust the page (not translated).",
     "placeholders": {
       "url": {
         "type": "String",
         "example": "http://192.168.1.2:7297"
-      },
-      "origin": {
-        "type": "String",
-        "example": "https://gorex.example.com"
       }
     }
   },
@@ -1406,15 +1386,9 @@
   "@tsOfflineConnect": {
     "description": "Why the sign-in did not start: no network."
   },
-  "tsUntrustedText": "Its gateway refuses web pages from {origin}. On the host, run this, then wait a moment:",
+  "tsUntrustedText": "GoRex on that computer only lets in web pages you allow. On that computer, run this command once in a terminal. This page connects by itself a few seconds later.",
   "@tsUntrustedText": {
-    "description": "A Tailscale host that does not trust this page, under problemUntrustedTitle.",
-    "placeholders": {
-      "origin": {
-        "type": "String",
-        "example": "https://gorex.example.com"
-      }
-    }
+    "description": "A Tailscale host that does not trust this page, under problemUntrustedTitle, above the command."
   },
   "tsOwnerTitle": "The host lets in only the account that signed it in",
   "@tsOwnerTitle": {
@@ -2057,5 +2031,75 @@
   "tsIsOff": "Tailscale is off",
   "@tsIsOff": {
     "description": "Why a connection to a Tailscale host failed: Tailscale was turned off."
+  },
+  "problemLearnMore": "Learn more",
+  "@problemLearnMore": {
+    "description": "Disclosure under a problem's card that shows the technical details."
+  },
+  "problemUntrustedDetails": "For safety, GoRex answers only the web pages on its list of allowed pages. This page's address is {origin}. To see the list later, run gorex rexapi web list; to take this page off it, run gorex rexapi web remove {origin}.",
+  "@problemUntrustedDetails": {
+    "description": "Details under the untrusted card's Learn more. The commands are not translated.",
+    "placeholders": {
+      "origin": {
+        "type": "String",
+        "example": "https://gorex-web.molty.workers.dev"
+      }
+    }
+  },
+  "hostChoose": "Choose a Host",
+  "@hostChoose": {
+    "description": "The host button atop the sidebar when hosts exist but none is chosen (only hosts found on Tailscale)."
+  },
+  "welcomeTitle": "Your GoRex terminals, in the browser",
+  "@welcomeTitle": {
+    "description": "Headline of the first screen, when no host is chosen."
+  },
+  "welcomeText": "Connect to a computer running GoRex to see and use its terminals here.",
+  "@welcomeText": {
+    "description": "Subtitle of the first screen, under welcomeTitle."
+  },
+  "welcomeRecommended": "Recommended",
+  "@welcomeRecommended": {
+    "description": "Badge next to the Sign in with Tailscale card's title on the first screen."
+  },
+  "welcomeTsChoose": "Choose a Computer on Tailscale",
+  "@welcomeTsChoose": {
+    "description": "First screen, the Tailscale card's title when Tailscale is signed in: opens the list of hosts found."
+  },
+  "welcomeTsLine": "Finds your GoRex computers by itself. Nothing to install.",
+  "@welcomeTsLine": {
+    "description": "First screen, the line under Sign in with Tailscale."
+  },
+  "welcomeTsLineContinue": "Finish signing in to find your GoRex computers.",
+  "@welcomeTsLineContinue": {
+    "description": "First screen, the line under Continue with Tailscale: sign-in started but not finished."
+  },
+  "welcomeTsLineRunning": "You're signed in. Pick one of your GoRex computers.",
+  "@welcomeTsLineRunning": {
+    "description": "First screen, the line under welcomeTsChoose."
+  },
+  "welcomeAddressTitle": "Connect by Address",
+  "@welcomeAddressTitle": {
+    "description": "First screen, the second card's title: opens the form to add a host by its address; the form's heading then."
+  },
+  "welcomeAddressLine": "For a GoRex computer on the same network as this device.",
+  "@welcomeAddressLine": {
+    "description": "First screen, the line under Connect by Address."
+  },
+  "welcomeNeedsTitle": "What do I need?",
+  "@welcomeNeedsTitle": {
+    "description": "First screen, the disclosure under the cards that lists what a computer needs."
+  },
+  "welcomeNeeds1": "GoRex running on your computer.",
+  "@welcomeNeeds1": {
+    "description": "First screen, What do I need?, item 1."
+  },
+  "welcomeNeeds2": "For Tailscale: built-in Tailscale turned on in GoRex on that computer.",
+  "@welcomeNeeds2": {
+    "description": "First screen, What do I need?, item 2."
+  },
+  "welcomeNeeds3": "For an address: GoRex serving Rex apps on the local network, and this device on the same network.",
+  "@welcomeNeeds3": {
+    "description": "First screen, What do I need?, item 3."
   }
 }

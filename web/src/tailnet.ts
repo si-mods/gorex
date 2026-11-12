@@ -7,7 +7,7 @@
 // memory ("This tab only"): reloading or closing the tab ends it, and
 // Tailscale removes the device once it is offline. The node frame of a
 // separate origin, which may keep a node longer, is phase 4.
-import { allowCommand, Host, Problem, problem } from "./hosts";
+import { Host, Problem, problem, untrusted } from "./hosts";
 import { failure, Msg, msg, t } from "./i18n";
 import { prefs, setPrefs } from "./prefs";
 import { fetchBytes } from "./progress";
@@ -167,7 +167,7 @@ async function loadEngine(progress: (received: number, total: number) => void, s
 /** What a gateway's refusal (writeRefusal's message) means, and what to do. */
 export function refusal(message: string, login: string): Problem {
   if (/does not trust web pages from/.test(message)) {
-    return problem(() => t("problemUntrustedTitle"), () => t("tsUntrustedText", { origin: location.origin }), allowCommand());
+    return untrusted(() => t("tsUntrustedText"));
   }
   if (/lets in only the Tailscale user who signed it in/.test(message)) {
     return problem(

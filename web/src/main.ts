@@ -5,7 +5,7 @@
 import { onAppChange, startApp } from "./app";
 import { Ghostty } from "./ghostty";
 import { Guide } from "./guide";
-import { allowCommand, commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
+import { commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
 import { describe } from "./pane";
@@ -17,6 +17,7 @@ import { LinkState, Settings } from "./settings";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
 import { chosenName, isLight, loadThemes, ThemeEntry, themeColours } from "./themes";
+import { Welcome } from "./welcome";
 import { borderLeaf, layoutOf, leavesOf, WindowHost, WindowView } from "./window";
 
 const $ = (id: string) => document.getElementById(id)!;
@@ -38,6 +39,8 @@ let settings: Settings | undefined;
 /** Built-in Tailscale, off until the user turns it on; its engine loads only then. */
 const tailnet = new Tailnet();
 let guide: Guide | undefined;
+/** The first screen, while no host is chosen. */
+let welcome: Welcome | undefined;
 /** The chosen host's connection, and what is wrong with it, for the Settings dialog's host card. */
 let link: LinkState = "none";
 let problem: Problem | undefined;
@@ -232,6 +235,7 @@ async function main() {
       guide: openGuide,
     });
     guide = new Guide(tailnet, { connect: (h) => hostList.choose(h), closed: () => shown?.focusKeys() });
+    welcome = new Welcome({ hosts: hostList, tailnet, guide: openGuide });
     onAppChange(() => settings?.appChanged());
     tailnet.onChange(tailnetChanged);
     $("open-settings").onclick = () => settings!.toggle();
@@ -268,14 +272,11 @@ function tailnetChanged() {
   settings?.update();
   if (current?.kind === "tailnet" && tailnet.status() !== "running" && !tailnet.hosts.some((h) => h.id === current!.id)) {
     hostList.choose(hostList.hosts[0]);
-  } else if (!current && tailnet.status() !== noticeFor) {
-    // The notice's Tailscale button follows its state.
-    choose(undefined);
+  } else if (!current) {
+    // The welcome's Tailscale card follows its state.
+    welcome?.update();
   }
 }
-
-/** The Tailscale state the notice of no host was drawn for. */
-let noticeFor = "";
 
 /** A button of the notice: its words, as a key or said when drawn. */
 type NoticeAction = { label: PlainKey | (() => string); run: () => void; primary?: boolean };
@@ -283,12 +284,25 @@ type NoticeAction = { label: PlainKey | (() => string); run: () => void; primary
 /** The notice shown, drawn again after a change of language. */
 let shownNotice: [Problem | undefined, ...NoticeAction[]] | undefined;
 
+/** Shows the welcome over the empty stage: no host is chosen. */
+function showWelcome() {
+  shownNotice = undefined;
+  const box = $("notice");
+  welcome!.update();
+  if (box.firstElementChild !== welcome!.el) box.replaceChildren(welcome!.el);
+  box.hidden = false;
+}
+
 /** Shows what is wrong with the host, or nothing. */
 function notice(p?: Problem, ...actions: NoticeAction[]) {
   const box = $("notice");
   box.hidden = !p;
   shownNotice = p && [p, ...actions];
   if (!p) return;
+  // A retry finds the same problem every few seconds: the card stays, with its focus and its open details.
+  const said = JSON.stringify([generation, document.documentElement.lang, p.title, p.text, p.command, p.details, actions.map((a) => (typeof a.label === "function" ? a.label() : a.label))]);
+  if (box.firstElementChild?.classList.contains("notice-card") && box.dataset.said === said) return;
+  box.dataset.said = said;
   const card = document.createElement("div");
   card.className = "notice-card";
   const h = document.createElement("h1");
@@ -297,6 +311,18 @@ function notice(p?: Problem, ...actions: NoticeAction[]) {
   text.textContent = p.text;
   card.append(h, text);
   if (p.command) card.append(commandBox(p.command));
+  if (p.details) {
+    const more = document.createElement("details");
+    more.className = "notice-more";
+    const s = document.createElement("summary");
+    const label = document.createElement("span");
+    label.textContent = t("problemLearnMore");
+    s.append(icon("info"), label);
+    const why = document.createElement("p");
+    why.textContent = p.details;
+    more.append(s, why);
+    card.append(more);
+  }
   if (actions.length) {
     const row = document.createElement("div");
     row.className = "notice-actions";
@@ -331,23 +357,7 @@ function choose(h: Host | undefined) {
   if (!h) {
     status("");
     setLink("none");
-    const ts = (noticeFor = tailnet.status());
-    notice(
-      {
-        get title() {
-          return t("noticeAddTitle");
-        },
-        get text() {
-          return t("noticeAddText");
-        },
-        command: allowCommand(),
-      },
-      { label: "hostAdd", run: () => hostList.open("new") },
-      {
-        label: ts === "running" ? "noticeShowTailscaleHosts" : ts === "off" ? "noticeSignInTailscale" : "noticeContinueTailscale",
-        run: () => guide!.open(),
-      },
-    );
+    showWelcome();
     return;
   }
   if (h.kind === "tailnet") {
