@@ -483,3 +483,71 @@ func TestRunKillsItsSessionOnInterrupt(t *testing.T) {
 		t.Fatalf("sessions left after the signal: %v", infos)
 	}
 }
+
+// TestSessionCommandReachesItsServer runs gorex as a session's shell runs
+// it: with the environment its server gave it, and no GOREX_DIR. It must
+// reach that server, not the one of the default directory, and start none
+// there.
+func TestSessionCommandReachesItsServer(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh, and this test binary as the server")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("GOREX_SERVER", "")
+	t.Setenv("GOREX_SESSION", "")
+	spawn := func(dir string) {
+		t.Setenv("GOREX_DIR", dir)
+		c, err := rex.Connect()
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { c.Shutdown(); c.Close() })
+	}
+	spawn(t.TempDir())
+	envFile := filepath.Join(t.TempDir(), "env")
+	if code, _, _, errOut := runMain(t, "new", "--", "sh", "-c", "env > "+envFile+".tmp && mv "+envFile+".tmp "+envFile+"; exec sleep 600"); code != ExitOK {
+		t.Fatalf("new: %d %s", code, errOut)
+	}
+	var env []byte
+	for i := 0; len(env) == 0; i++ {
+		if i > 250 {
+			t.Fatal("the session wrote no environment")
+		}
+		time.Sleep(20 * time.Millisecond)
+		env, _ = os.ReadFile(envFile)
+	}
+	t.Setenv("GOREX_DIR", "")
+	for _, kv := range strings.Split(string(env), "\n") {
+		if k, v, ok := strings.Cut(kv, "="); ok && strings.HasPrefix(k, "GOREX_") {
+			t.Setenv(k, v)
+		}
+	}
+	id := os.Getenv("GOREX_SESSION")
+	if id == "" || os.Getenv("GOREX_SERVER") == "" || os.Getenv("GOREX_DIR") != "" {
+		t.Fatalf("session environment: %q", env)
+	}
+	def := rex.Dir()
+	t.Cleanup(func() {
+		os.Setenv("GOREX_DIR", def)
+		if c, err := rex.ConnectExisting(); err == nil {
+			c.Shutdown()
+			c.Close()
+		}
+	})
+	ls := func(when string) {
+		t.Helper()
+		code, _, out, errOut := runMain(t, "ls", "--json")
+		if code != ExitOK || !strings.Contains(out, id) {
+			t.Fatalf("ls %s: %d %s %s; want session %s", when, code, out, errOut, id)
+		}
+	}
+	ls("with no server in the default directory")
+	if _, err := os.Stat(def); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a server was started in the default directory %s", def)
+	}
+	spawn(def)
+	t.Setenv("GOREX_DIR", "")
+	ls("with a server in the default directory")
+}

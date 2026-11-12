@@ -53,6 +53,20 @@ func main() {
 		}
 		return
 	}
+	// rexapi serves Rex's API to Rex clients, from the server the app runs
+	// (internal/rexapi).
+	if len(os.Args) > 1 && os.Args[1] == "rexapi" {
+		os.Exit(rexapi.Main(os.Args[2:]))
+	}
+	// The command line shares the binary: it runs before the app, and
+	// leaves the app's own arguments, as AppKit's, alone.
+	cli.GhosttyWarnings = ghosttyWarnings
+	if code, handled := cli.Main(os.Args[1:], os.Stdout, os.Stderr, mygo.App.Version()); handled {
+		os.Exit(code)
+	}
+	// The app's data directory is set only now: a command takes the same
+	// one as rex.Dir(), and in a session the server that runs it
+	// (GOREX_SERVER), unless GOREX_DIR names another.
 	if !ownDir && !dev {
 		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
 			os.Setenv("GOREX_DIR", dir)
@@ -65,17 +79,6 @@ func main() {
 	// stay as they were.
 	if devBuild() {
 		mygo.App.SetName("GoRex SF")
-	}
-	// rexapi serves Rex's API to Rex clients, from the server the app runs
-	// (internal/rexapi).
-	if len(os.Args) > 1 && os.Args[1] == "rexapi" {
-		os.Exit(rexapi.Main(os.Args[2:]))
-	}
-	// The command line shares the binary: it runs before the app, and
-	// leaves the app's own arguments, as AppKit's, alone.
-	cli.GhosttyWarnings = ghosttyWarnings
-	if code, handled := cli.Main(os.Args[1:], os.Stdout, os.Stderr, mygo.App.Version()); handled {
-		os.Exit(code)
 	}
 	// The app runs once: launched again, it shows the window focused last.
 	// MyGo keys the lock by the app's identifier and name, which mygo dev's
