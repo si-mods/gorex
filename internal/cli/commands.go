@@ -57,8 +57,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		serverTarget, args = args[1], args[2:]
 	}
 	name, args := args[0], args[1:]
-	if !strings.HasPrefix(name, "-") {
-		attachConsole()
+	if !strings.HasPrefix(name, "-") || name == "-h" || name == "--help" {
+		out, errOut = attachConsole(out, errOut)
 	}
 	switch name {
 	case "help", "-h", "--help":
