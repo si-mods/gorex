@@ -279,8 +279,9 @@ headers on Cloudflare:
 - The script, the terminal's wasm, the themes and the Tailscale engine
   are in `/assets` under names that carry a hash of their content
   (`app-<hash>.js`, `ghostty-vt-<hash>.wasm`,
-  `ghostty-themes-<hash>.json`, `tailnet-<hash>.wasm.gz`,
-  `tailnet-<hash>.js`), kept a year (`public, max-age=31536000,
+  `ghostty-themes-<hash>.json`, `manifest-<hash>.json`,
+  `maple-index-<hash>.json`, `lazy/maple-<face><n>-<hash>.woff2`,
+  `tailnet-<hash>.wasm.gz`, `tailnet-<hash>.js`), kept a year (`public, max-age=31536000,
   immutable`): after the first visit, a reload takes them from the
   browser's cache without asking the server. `/` and `index.html`, which
   names the script, and `tailnet.json`, which names the engine, are
@@ -362,17 +363,21 @@ window of its own, with its own icon.
 build (`writeWorker` in `build.mjs`) writes into `dist/sw.js` this
 build's version, a hash of `web/sw.js`, the page and its files, and the
 files it keeps: all of `dist` but `index.html`, `_headers`, `sw.js`,
-`tailnet.json` and the Tailscale engine (about 2.5 MB in all). A build
-that changes none of them is the same worker.
+`tailnet.json`, the Tailscale engine and `assets/lazy/` (the CJK font's
+chunks; see Loading on demand), about 2.7 MB in all. A build that
+changes none of them is the same worker.
 
 - **Install**: it fetches the page (the scope's root, checked to name
   this build's script, so that a deploy between the two fetches fails
   the install rather than mixing versions) and the files into a cache of
   its version, `gorex-<version>`. **Activate** deletes the other
-  `gorex-` caches and takes the open pages.
+  `gorex-` caches, but the loader's `gorex-assets-v<n>`, and takes the
+  open pages.
 - **Answers**: the page (a navigation to the root or `index.html`) and
   `/assets` (hashed names) from the cache first; an `/assets` file
-  not kept, as the Tailscale engine, joins the cache when fetched. The
+  not kept, as the Tailscale engine, joins the cache when fetched.
+  `/assets/lazy/` it leaves to the page's loader, which keeps those
+  files in its own cache (Loading on demand). The
   rest of the page's origin (fonts, icons, `tailnet.json`) comes from
   the network, and from the cache when the network fails. So the page
   opens offline, at the version the worker holds.
@@ -457,8 +462,14 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
    `ios/GoRex/ghostty-themes.json` (the repo keeps one copy of the
    themes) under hashed names (see Cloudflare Workers). `index.html`
    names the script; the script names the wasm, with its size, and the
-   themes. It copies the JetBrains Mono fonts from `assets/fonts` (with
-   their licence) into `dist/fonts`, and `assets/icons` and
+   themes. It cuts Maple Mono NF CN into chunks (see Fonts) and writes
+   them to `dist/assets/lazy`, its index beside the script and its
+   licence to `dist/fonts/MapleMono-OFL.txt`, and lists the wasm, the
+   themes, the index and the chunks in the asset manifest,
+   `dist/assets/manifest-<hash>.json`, which the script names (see
+   Loading on demand). It copies the JetBrains Mono fonts from
+   `assets/fonts` (with their licence) into `dist/fonts`, and
+   `assets/icons` and
    `assets/brands` into `dist/icons` and `dist/brands`, the glyphs of the
    program tiles and of the hosts.
 6. With Go, it builds the Tailscale engine (`web/tailnet`,
@@ -481,6 +492,103 @@ in the sign-in guide uses the same bar (`web/src/progress.ts`).
 
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
 `~/.cache/gorex-web`. `go build ./...` and the Go tests need no web build.
+
+## Fonts
+
+The terminal's font is JetBrains Mono, which the page serves from
+`dist/fonts` as the desktop embeds it, or a family Settings chooses. Its
+CJK font is always Maple Mono NF CN
+([subframe7536/maple-font](https://github.com/subframe7536/maple-font),
+SIL Open Font License 1.1, as the iOS app's `Maple.swift` downloads it):
+the font stack is `"<chosen>", "Maple Mono NF CN", monospace`, and the
+system's CJK font never draws. Maple is also a choice of its own in
+Settings, its Latin with its CJK. What neither font has (Hangul, which
+Maple CN lacks; emoji) the system draws.
+
+**Build.** `web/fonts/maple.mjs` (which `build.mjs` runs; `node
+web/fonts/maple.mjs` alone lists the chunks) takes the four faces
+(Regular, Bold, Italic, Bold Italic) of the pinned v7.9 release, by HTTP
+ranges of `MapleMono-NF-CN.zip` (the zip's central directory, then each
+face, inflated and checked against its CRC), checks each face's SHA-256
+against the one pinned in the script, and keeps them, with the release's
+`LICENSE.txt`, in `<cache>/maple-v7.9/`. It cuts them with harfbuzz's
+subsetter (harfbuzzjs) and compresses them to woff2 (wawoff2), both
+pinned in `package.json`, a worker a face (about a minute), into
+`<cache>/maple-v7.9/chunks-<key>/`, `key` a hash of the script, the order
+file, the faces and the tools. A build after the first takes the chunks
+from there, with no network. A build that can neither find the faces nor
+fetch them goes on without Maple, with a warning; that page draws no CJK
+text at all, and Settings says so. Nothing of it is committed but the
+script and `web/fonts/cjk-order.txt`.
+
+**Chunks.** By unicode-range, as Google Fonts cuts its CJK families. The
+same 95 ranges for every face: chunk 0 is U+0000 to U+1FFF (Latin, Greek,
+Cyrillic), the next two the symbols up to U+2E7F, then CJK punctuation,
+kana, Bopomofo and fullwidth forms; then the most frequent CJK
+characters, 200 a chunk, in the order of `cjk-order.txt` (the frequency
+slices of Google Fonts' simplified and traditional Chinese slicing,
+Apache 2.0); then the rest of CJK by code point, 400 a chunk, then the
+Nerd Font icons and what remains. The chunks are not hinted. In all, 32.1
+MB: Regular 7.68 MB, Bold 7.85 MB, Italic 8.22 MB, Bold Italic 8.36 MB;
+a chunk is 5 to 170 KB. A screen of everyday Chinese takes some 6 to 10
+chunks of its face, 300 to 600 KB.
+
+**Loading.** The page reads the chunks' index (`maple/index`, 81 KB) as
+it starts. The browser does not load a font's chunk for canvas text, and
+draws a system font meanwhile, so `web/src/maple.ts` adds each chunk to
+`document.fonts` as a `FontFace` with its range only once it has loaded
+(through the loader), and the terminal draws a character only when the
+chunk of its face (bold text takes the Bold face's) is in: until then its
+cells show nothing, and the chunk is asked for. The chunks a frame asks
+for load together; as they arrive, the panes draw again, once a frame.
+Wide characters keep two cells: Maple's CJK is twice its Latin advance,
+centred in the cells and smaller when the chosen font's cells are
+narrower. When Maple is the chosen font its Latin chunk of every face
+loads before the cells are measured. The Settings preview shows once the
+chunks of its text are in.
+
+## Loading on demand
+
+`web/src/loader.ts` loads the files the page needs only now and then, by
+name. `build.mjs` lists them in one asset manifest,
+`assets/manifest-<hash>.json`, which the script names
+(`__ASSET_MANIFEST__`):
+
+```json
+{ "version": 1, "assets": { "maple/r/12": { "url": "assets/lazy/maple-r12-<hash>.woff2", "bytes": 64496, "hash": "<hash>", "kind": "font", "lazy": true } } }
+```
+
+`hash` is the first 16 hex digits of the file's SHA-256, which its name
+carries. `kind` is `wasm`, `json`, `font`, `script` or `data`. A `lazy`
+file is under `assets/lazy/`. Today it lists `ghostty-vt`,
+`ghostty-themes`, `maple/index` and `maple/<face>/<n>` (`r`, `b`, `i`,
+`bi`); the wasm and the themes still load as before.
+
+The page's loader is `loader` (devtools and tests: `gorexLoader`):
+
+- `init(url?)`: reads the manifest once; every other call waits on it.
+- `asset(name)`, `names(prefix)`: the manifest's entries.
+- `load(name, { signal, progress })`: the file's bytes. One request for
+  all its callers at once; a network error or a 5xx answer is tried
+  again after 0.5, 1 and 2 s; each caller's `signal` ends its own wait,
+  and the request stops when no caller waits; `progress(received, total)`
+  hears the bytes (`progress.ts`, as the progress bars do). The bytes
+  stay in memory until `release(name)`.
+- `json(name)`: the same, parsed.
+- `stats()`: each load (name, bytes, `memory`, `cache` or `network`,
+  milliseconds, tries), the bytes from the network and from the cache,
+  the bytes in memory and the loads under way.
+
+**Cache.** A file's name changes with its content, so the loader keeps
+the files in Cache Storage, `gorex-assets-v1`, and reads them there first;
+a file read there or fetched is checked against its hash (with
+`crypto.subtle`, in a secure context). `init` deletes the entries the
+manifest no longer lists and the caches of older numbers. The Service
+Worker does not keep `assets/lazy/`: it would fetch all of them (32 MB)
+at install and drop them with each version; the loader's cache keeps
+what was used, across versions. Without Cache Storage (plain `http` on a
+host other than loopback, as a dev server on a LAN address) the
+browser's HTTP cache keeps them (`immutable`, a year).
 
 ## Languages
 
@@ -667,9 +775,10 @@ terminal's.
 The terminal draws as the desktop's (MyGo's `plugins/terminal/paint.go`)
 with GoRex's defaults and no Ghostty configuration:
 
-- Font: JetBrains Mono, served with the client, then `SF Mono`, `Menlo`,
-  `monospace` (`defaultFontFamily`), at 11.6 CSS pixels (`defaultFontSize`).
-  Settings can choose another family and size (see Settings).
+- Font: JetBrains Mono, served with the client (`defaultFontFamily`), then
+  Maple Mono NF CN for CJK (see Fonts), then `monospace`, at 11.6 CSS
+  pixels (`defaultFontSize`). Settings can choose another family and size
+  (see Settings).
   A cell is the widest ASCII advance wide and the font's ascent and descent
   high, each rounded up to whole device pixels, with 6 by 4 CSS pixels of
   padding. The canvas follows `devicePixelRatio` and lays out again when it
@@ -898,7 +1007,7 @@ page and every open pane.
 |---|---|
 | Host (the card) | The chosen host, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
 | Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 CSS pixels, 11.6 (the desktop's) until set, with Reset. Language: System, English or 简体中文 (see Languages). |
-| Terminal | Font: JetBrains Mono, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours. Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
+| Terminal | Font: JetBrains Mono or Maple Mono NF CN, which the page brings, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours; CJK is Maple's in every font (see Fonts). Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
 | Theme | The theme picker (see Themes). |
 | Keyboard | The shortcuts (see Shortcuts), with this system's keys. |
 | Hosts | The hosts: choose one, add one, edit its address, name and icon, or remove it, with the same form as the host list's. |

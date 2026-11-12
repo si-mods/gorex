@@ -13,7 +13,10 @@
 // their content (app-<hash>.js, ghostty-vt-<hash>.wasm,
 // ghostty-themes-<hash>.json, tailnet-<hash>.*), which _headers keeps a
 // year: a reload takes them from the browser's cache. index.html names the
-// script, and the script names the rest (assetDefines).
+// script, and the script names the rest (assetDefines), among them the
+// asset manifest, which lists what the page loads on demand by name
+// (src/loader.ts): the terminal's CJK font, Maple Mono NF CN, cut into
+// chunks by web/fonts/maple.mjs, in dist/assets/lazy.
 //
 // Before tsc it checks the catalogs of web/locales and writes
 // src/locales.gen.ts from them (i18n.mjs; docs/web-client.md, Languages):
@@ -37,6 +40,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
+import { faces as mapleFaces, family as mapleFamily, mapleChunks } from "./fonts/maple.mjs";
 import { generateOrFail } from "./i18n.mjs";
 
 // The commit of si-mods/mygo's plugins/terminal/internal/libbuild, as
@@ -210,17 +214,76 @@ function hashedName(content, base, ext) {
 /**
  * The names of the hashed files in dist/assets that the script loads, as
  * esbuild defines: the terminal's wasm (with its size, the progress bar's
- * total) and the themes.
+ * total), the themes, and the asset manifest (writeManifest), which names
+ * what the page loads on demand ("" for a dist built before it).
  */
 export function assetDefines(dir) {
   const files = existsSync(join(dir, "assets")) ? readdirSync(join(dir, "assets")) : [];
   const find = (re) => files.find((f) => re.test(f));
   const wasmName = find(/^ghostty-vt-[0-9a-f]+\.wasm$/), themes = find(/^ghostty-themes-[0-9a-f]+\.json$/);
   if (!wasmName || !themes) throw new Error(`${dir} has no hashed ghostty-vt.wasm or themes: run node build.mjs`);
+  const manifest = find(/^manifest-[0-9a-f]+\.json$/);
   return {
     __GHOSTTY_WASM__: JSON.stringify({ url: `assets/${wasmName}`, size: statSync(join(dir, "assets", wasmName)).size }),
     __GHOSTTY_THEMES__: JSON.stringify(`assets/${themes}`),
+    __ASSET_MANIFEST__: JSON.stringify(manifest ? `assets/${manifest}` : ""),
   };
+}
+
+/**
+ * The asset manifest: the files of dist/assets the page loads by name
+ * through its loader (src/loader.ts; docs/web-client.md, Loading on
+ * demand), each with its URL, size, the hash its name carries and its
+ * kind. A lazy one, in assets/lazy/, is loaded only when the page needs
+ * it: the Service Worker does not keep it, the loader's cache does once it
+ * is loaded.
+ */
+class Manifest {
+  assets = {};
+  /** Writes content to dist/assets under a hashed name, and lists it as name. */
+  add(dir, name, content, base, ext, kind, lazy = false) {
+    // The lazy ones in assets/lazy/, which the Service Worker leaves to the loader.
+    const file = hashedName(content, base, ext).replace(/^assets\//, lazy ? "assets/lazy/" : "assets/");
+    mkdirSync(join(dir, dirname(file)), { recursive: true });
+    writeFileSync(join(dir, file), content);
+    this.assets[name] = { url: file, bytes: content.length, hash: file.slice(file.lastIndexOf("-") + 1, -ext.length), kind, ...(lazy ? { lazy } : {}) };
+    return file;
+  }
+  /** Writes the manifest itself, by its hash, which the script names (assetDefines). */
+  write(dir) {
+    const json = Buffer.from(JSON.stringify({ version: 1, assets: this.assets }));
+    writeFileSync(join(dir, hashedName(json, "manifest", ".json")), json);
+  }
+}
+
+/**
+ * Maple Mono NF CN, the terminal's CJK font (web/fonts/maple.mjs), as
+ * lazy chunks in the manifest: maple/<face>/<n> for each face and chunk,
+ * and maple/index, which lists the faces and each chunk's unicode-range.
+ * Its licence goes to fonts/. Without the faces, as offline with nothing
+ * cached, it warns, and the page draws no CJK text (docs/web-client.md,
+ * Fonts).
+ */
+async function addMaple(dir, manifest) {
+  let m;
+  try {
+    m = await mapleChunks(cache);
+  } catch (e) {
+    console.warn(`\nWARNING: built WITHOUT Maple Mono NF CN (${e.message}).\nThe page draws no Chinese, Japanese or other CJK text. Build again with network access.\n`);
+    return;
+  }
+  let bytes = 0;
+  for (const f of mapleFaces) {
+    for (let n = 0; n < m.ranges.length; n++) {
+      const chunk = m.chunk(f.key, n);
+      bytes += chunk.length;
+      manifest.add(dir, `maple/${f.key}/${n}`, chunk, `maple-${f.key}${n}`, ".woff2", "font", true);
+    }
+  }
+  const index = { family: mapleFamily, version: m.version, faces: mapleFaces.map(({ key, weight, style }) => ({ key, weight, style })), ranges: m.ranges };
+  manifest.add(dir, "maple/index", Buffer.from(JSON.stringify(index)), "maple-index", ".json", "json");
+  writeFileSync(join(dir, "fonts", "MapleMono-OFL.txt"), m.license);
+  console.log(`maple: ${mapleFaces.length} faces, ${m.ranges.length} chunks each, ${(bytes / 1e6).toFixed(2)} MB in all`);
 }
 
 /** esbuild, from web/node_modules. */
@@ -240,13 +303,14 @@ function filesOf(dir, at = dir) {
  * worker keeps for the page offline: all of dir but the page (which it
  * keeps as the scope's root), _headers, sw.js itself, and built-in
  * Tailscale's engine and tailnet.json, which only a page that turns
- * Tailscale on fetches. Its version is a hash of web/sw.js, the page and
+ * Tailscale on fetches, and assets/lazy/, which the page loads on demand
+ * (Manifest). Its version is a hash of web/sw.js, the page and
  * those files, so that a build that changes any of them is a new worker,
  * and one that changes none is the same.
  */
 export function writeWorker(dir) {
   const files = filesOf(dir)
-    .filter((f) => !["index.html", "_headers", "sw.js", "tailnet.json"].includes(f) && !f.startsWith("assets/tailnet-"))
+    .filter((f) => !["index.html", "_headers", "sw.js", "tailnet.json"].includes(f) && !f.startsWith("assets/tailnet-") && !f.startsWith("assets/lazy/"))
     .sort();
   let sw = readFileSync(join(web, "sw.js"), "utf8");
   const h = createHash("sha256").update(sw);
@@ -272,10 +336,12 @@ async function main() {
   mkdirSync(join(dist, "assets"), { recursive: true });
   // The wasm and the Ghostty themes the iOS app ships (not copied into the
   // repo twice), by their content's hash, which the script names.
-  const ghosttyWasm = readFileSync(wasmFile);
-  writeFileSync(join(dist, hashedName(ghosttyWasm, "ghostty-vt", ".wasm")), ghosttyWasm);
-  const themes = readFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"));
-  writeFileSync(join(dist, hashedName(themes, "ghostty-themes", ".json")), themes);
+  const manifest = new Manifest();
+  manifest.add(dist, "ghostty-vt", readFileSync(wasmFile), "ghostty-vt", ".wasm", "wasm");
+  manifest.add(dist, "ghostty-themes", readFileSync(join(root, "ios", "GoRex", "ghostty-themes.json")), "ghostty-themes", ".json", "json");
+  mkdirSync(join(dist, "fonts"));
+  await addMaple(dist, manifest);
+  manifest.write(dist);
   const { build } = await esbuild();
   await build({ ...appOptions, define: { ...appOptions.define, ...assetDefines(dist), __GOREX_SW__: "true" } });
   // The script by its hash too, which index.html names.
@@ -289,7 +355,6 @@ async function main() {
   // Cloudflare's headers for the files (cache, CSP); see docs/web-client.md.
   copyFileSync(join(web, "_headers"), join(dist, "_headers"));
   // The desktop's terminal font, which GoRex embeds too, with its licence.
-  mkdirSync(join(dist, "fonts"));
   for (const f of readdirSync(join(root, "assets", "fonts"))) copyFileSync(join(root, "assets", "fonts", f), join(dist, "fonts", f));
   // The glyphs of the program tiles: the repo's lucide icons and brand marks, which the desktop embeds too.
   for (const d of ["icons", "brands"]) {

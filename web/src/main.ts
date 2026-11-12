@@ -9,6 +9,7 @@ import { commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Prob
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
 import { describe } from "./pane";
+import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
 import { mostUrgent, programName, programOf, rank, seenKey, Status, statusOf, tiles, tilesWidth } from "./programs";
@@ -107,6 +108,8 @@ function applyPrefs(what: "appearance" | "headers" | "font" | "cursor" | "contra
       // The previews and command boxes take the family too.
       document.documentElement.style.setProperty("--mono", fontFamily());
       panes.forEach((p) => p.restyle());
+      // Maple chosen: its Latin chunks, which the cells are measured with, then measured again.
+      if (prefs.font === mapleFamily) void ensureLatin().then(() => shown?.panes.forEach((p) => p.restyle()));
       break;
     case "contrast":
       panes.forEach((p) => p.redraw());
@@ -205,7 +208,11 @@ async function main() {
   const boot = bootProgress();
   try {
     // The font too: the cells are measured from it.
-    const faces = ["400", "700", "italic 400", "italic 700"].map((v) => document.fonts.load(`${v} 12px "JetBrains Mono"`));
+    // Maple Mono NF CN's index (maple.ts), and its Latin chunks when it is the chosen font.
+    const faces = [
+      ...["400", "700", "italic 400", "italic 700"].map((v) => document.fonts.load(`${v} 12px "JetBrains Mono"`)),
+      initMaple().then(() => (prefs.font === mapleFamily ? ensureLatin() : undefined)),
+    ];
     // The themes load with it, so that the first frame has the chosen colours.
     let themes: ThemeEntry[];
     [g, themes] = await Promise.all([Ghostty.load(__GHOSTTY_WASM__.url, __GHOSTTY_WASM__.size, boot.update), loadThemes(), Promise.allSettled(faces)]).then((r) => [r[0], r[1]]);
@@ -909,6 +916,8 @@ window.addEventListener("blur", () => shown?.panes.forEach((p) => p.redraw()));
     watchScale();
   }, { once: true });
 })();
+// A CJK font chunk arrived: the panes draw the characters that waited for it (maple.ts).
+onChunk(() => shown?.panes.forEach((p) => p.repaint()));
 // A font that loads late changes the cells.
 document.fonts.addEventListener("loadingdone", () => {
   shown?.panes.forEach((p) => {

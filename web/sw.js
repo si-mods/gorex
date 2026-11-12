@@ -10,6 +10,11 @@
 //   whose names carry their content's hash, come from that cache first.
 //   Other files of the page's own origin (fonts, icons, tailnet.json) come
 //   from the network, and from the cache when the network fails.
+// - The files of /assets/lazy, which the page loads on demand (the CJK
+//   font's chunks: the manifest's lazy files, build.mjs), it leaves to the
+//   page's loader (src/loader.ts), which keeps them in a cache of its own,
+//   gorex-assets-v<n>, across versions; this worker leaves that cache
+//   alone too.
 // - It leaves alone everything else: every request to another origin (the
 //   GoRex hosts, Tailscale's control server and relays), every request
 //   that is not a GET, and /api/. WebSockets never pass through a worker.
@@ -49,7 +54,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     (async () => {
-      for (const k of await caches.keys()) if (k.startsWith("gorex-") && k !== CACHE) await caches.delete(k);
+      for (const k of await caches.keys()) if (k.startsWith("gorex-") && !k.startsWith("gorex-assets-") && k !== CACHE) await caches.delete(k);
       await self.clients.claim();
     })(),
   );
@@ -78,6 +83,7 @@ self.addEventListener("fetch", (e) => {
     if (path === "" || path === "index.html") e.respondWith(fromCache(scope.href, req));
     return;
   }
+  if (path.startsWith("assets/lazy/")) return;
   if (path.startsWith("assets/")) e.respondWith(fromCache(url.href, req));
   else e.respondWith(fromNetwork(req));
 });

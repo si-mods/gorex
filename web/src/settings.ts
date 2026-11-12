@@ -12,6 +12,7 @@ import {
   Appearance, CursorStyle, defaultFontSize, maxFontSize, minFontSize, prefs, Prefs, setPrefs, textSize, clearAll,
 } from "./prefs";
 import { formatDate, formatList, Language, languages, onLanguageChange, PlainKey, setLanguage, t, tIn } from "./i18n";
+import { blockedCJK, ensure, ensureLatin, mapleFamily, noMaple } from "./maple";
 import { formatBytes } from "./progress";
 import { Status, Tailnet, validDeviceName } from "./tailnet";
 import { desktopTheme, minimumContrast, Theme } from "./terminal";
@@ -510,8 +511,9 @@ export class Settings {
 
   private terminalPage() {
     fontsFound ??= knownFonts.filter(installed);
-    const fonts: [string, string][] = [["", t("settingsFontDefault")], ...fontsFound.map((f): [string, string] => [f, f])];
-    if (prefs.font && !fontsFound.includes(prefs.font)) fonts.push([prefs.font, prefs.font]);
+    // The two the page brings, then the installed ones.
+    const fonts: [string, string][] = [["", t("settingsFontDefault")], ...[mapleFamily, ...fontsFound].map((f): [string, string] => [f, f])];
+    if (prefs.font && !fonts.some(([f]) => f === prefs.font)) fonts.push([prefs.font, prefs.font]);
     const font = group(this.page);
     const preview = el("div", "settings-preview");
     const drawPreview = () => {
@@ -520,12 +522,21 @@ export class Settings {
       preview.style.background = rgb(t.background);
       preview.style.color = rgb(t.foreground);
       preview.style.fontSize = `${textSize()}px`;
+      // Shown once the CJK font's chunks of its text are in, so that it never shows the system's CJK font (maple.ts).
+      preview.style.visibility = "hidden";
+      const shown = prefs.font;
+      void Promise.all([ensure(preview.textContent ?? "", [0]), prefs.font === mapleFamily ? ensureLatin() : undefined]).then(() => {
+        if (prefs.font === shown) preview.style.visibility = "";
+      });
     };
     // The second line is code, the same in every language.
-    preview.append(el("div", "", t("settingsFontSample")), el("div", "", "0123456789 {}[]() => != <= ~/gorex $"));
+    // Without Maple, a sample in CJK would show in the system's font: it does not show (maple.ts).
+    const sample = el("div", "", t("settingsFontSample"));
+    sample.hidden = blockedCJK(sample.textContent ?? "");
+    preview.append(sample, el("div", "", "0123456789 {}[]() => != <= ~/gorex $"));
     drawPreview();
     row(
-      font, t("settingsFont"), t("settingsFontHint"),
+      font, t("settingsFont"), noMaple() ? `${t("settingsFontHint")} ${t("settingsFontNoMaple")}` : t("settingsFontHint"),
       select(t("settingsFont"), fonts, prefs.font, (v) => {
         setPrefs({ font: v });
         this.app.apply("font");

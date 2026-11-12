@@ -998,13 +998,17 @@
   "@settingsFont": {
     "description": "Settings › Terminal: the terminals' font family."
   },
-  "settingsFontHint": "Monospaced families installed on this device. JetBrains Mono comes with the page.",
+  "settingsFontHint": "Monospaced families installed on this device. JetBrains Mono and Maple Mono NF CN come with the page; every font draws Chinese and Japanese text in Maple Mono NF CN.",
   "@settingsFontHint": {
     "description": "Hint under Settings › Terminal › Font."
   },
   "settingsFontDefault": "JetBrains Mono (default)",
   "@settingsFontDefault": {
     "description": "Settings › Terminal › Font option: the font the page brings."
+  },
+  "settingsFontNoMaple": "This page was built without Maple Mono NF CN: Chinese and Japanese text does not show.",
+  "@settingsFontNoMaple": {
+    "description": "Hint under Settings › Terminal › Font when the build has no CJK font."
   },
   "settingsFontSample": "The quick brown fox jumps over the lazy dog",
   "@settingsFontSample": {

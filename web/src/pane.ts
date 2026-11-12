@@ -298,6 +298,12 @@ export class TerminalView {
     this.layout();
   }
 
+  /** Draws it all again on the next frame, as when a font chunk arrived. */
+  repaint() {
+    this.full = true;
+    this.redraw();
+  }
+
   /** A theme chosen now, or the host's colours (none), as a theme message from the stream would be. */
   setChosen(t?: Theme) {
     this.theme = t ?? this.host;
