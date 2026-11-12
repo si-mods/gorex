@@ -4176,14 +4176,14 @@ func (msgs Messages) HostsAddTitle() string {
 	return Catalog.Format(msgs.locale, "hostsAddTitle", nil)
 }
 
-// HostsAddNote says "Paste the address that Settings › Server shows on the other machine, with remote access on there. The address is a …"
+// HostsAddNote says "Paste the address that Settings › Server shows on the other machine, with remote access on there, or type its IP ad…"
 // in the language the app shows.
 //
 // Note of the add sheet. Settings › Server names the other machine's
 // settings page.
 func HostsAddNote() string { return In(i18n.Locale()).HostsAddNote() }
 
-// HostsAddNote says "Paste the address that Settings › Server shows on the other machine, with remote access on there. The address is a …"
+// HostsAddNote says "Paste the address that Settings › Server shows on the other machine, with remote access on there, or type its IP ad…"
 // in the language of msgs.
 //
 // Note of the add sheet. Settings › Server names the other machine's
@@ -4206,13 +4206,13 @@ func (msgs Messages) HostsAddress() string {
 	return Catalog.Format(msgs.locale, "hostsAddress", nil)
 }
 
-// HostsAddressPlaceholder says "The host's address"
+// HostsAddressPlaceholder says "The host's address or IP address"
 // in the language the app shows.
 //
 // Placeholder of the address field, which hides what it holds.
 func HostsAddressPlaceholder() string { return In(i18n.Locale()).HostsAddressPlaceholder() }
 
-// HostsAddressPlaceholder says "The host's address"
+// HostsAddressPlaceholder says "The host's address or IP address"
 // in the language of msgs.
 //
 // Placeholder of the address field, which hides what it holds.
@@ -4304,13 +4304,13 @@ func (msgs Messages) HostsEnterAddress() string {
 	return Catalog.Format(msgs.locale, "hostsEnterAddress", nil)
 }
 
-// HostsBadAddress says "That is not a GoRex remote address. Copy it from Settings › Server on the host."
+// HostsBadAddress says "That is not a GoRex remote address or an IP address. Copy it from Settings › Server on the host."
 // in the language the app shows.
 //
 // Error: the address does not parse.
 func HostsBadAddress() string { return In(i18n.Locale()).HostsBadAddress() }
 
-// HostsBadAddress says "That is not a GoRex remote address. Copy it from Settings › Server on the host."
+// HostsBadAddress says "That is not a GoRex remote address or an IP address. Copy it from Settings › Server on the host."
 // in the language of msgs.
 //
 // Error: the address does not parse.
@@ -5916,6 +5916,238 @@ func RemoteRelayInvalid() string { return In(i18n.Locale()).RemoteRelayInvalid()
 // address with an optional port.
 func (msgs Messages) RemoteRelayInvalid() string {
 	return Catalog.Format(msgs.locale, "remoteRelayInvalid", nil)
+}
+
+// RemoteReachableTitle says "Reachable at"
+// in the language the app shows.
+//
+// Row title: the IP address of this machine at which devices dial it
+// directly.
+func RemoteReachableTitle() string { return In(i18n.Locale()).RemoteReachableTitle() }
+
+// RemoteReachableTitle says "Reachable at"
+// in the language of msgs.
+//
+// Row title: the IP address of this machine at which devices dial it
+// directly.
+func (msgs Messages) RemoteReachableTitle() string {
+	return Catalog.Format(msgs.locale, "remoteReachableTitle", nil)
+}
+
+// RemoteReachableNote says "Devices that can reach this address connect straight to this machine, with no relay. It opens port {port} on that add…"
+// in the language the app shows.
+//
+// Hint under the Reachable at field. {port} is a port number.
+func RemoteReachableNote(port string) string { return In(i18n.Locale()).RemoteReachableNote(port) }
+
+// RemoteReachableNote says "Devices that can reach this address connect straight to this machine, with no relay. It opens port {port} on that add…"
+// in the language of msgs.
+//
+// Hint under the Reachable at field. {port} is a port number.
+func (msgs Messages) RemoteReachableNote(port string) string {
+	return Catalog.Format(msgs.locale, "remoteReachableNote", map[string]any{"port": port})
+}
+
+// RemoteReachableOff says "Turn Off"
+// in the language the app shows.
+//
+// Button: turn Reachable at off.
+func RemoteReachableOff() string { return In(i18n.Locale()).RemoteReachableOff() }
+
+// RemoteReachableOff says "Turn Off"
+// in the language of msgs.
+//
+// Button: turn Reachable at off.
+func (msgs Messages) RemoteReachableOff() string {
+	return Catalog.Format(msgs.locale, "remoteReachableOff", nil)
+}
+
+// RemoteReachableInvalid says "Enter one IP address of this machine, such as 192.0.2.10."
+// in the language the app shows.
+//
+// Error under the Reachable at field when what was typed is not an IP
+// address.
+func RemoteReachableInvalid() string { return In(i18n.Locale()).RemoteReachableInvalid() }
+
+// RemoteReachableInvalid says "Enter one IP address of this machine, such as 192.0.2.10."
+// in the language of msgs.
+//
+// Error under the Reachable at field when what was typed is not an IP
+// address.
+func (msgs Messages) RemoteReachableInvalid() string {
+	return Catalog.Format(msgs.locale, "remoteReachableInvalid", nil)
+}
+
+// RemoteDirectAddress says "Direct address"
+// in the language the app shows.
+//
+// Row title: the second tailcat address, for devices that dial this machine
+// directly.
+func RemoteDirectAddress() string { return In(i18n.Locale()).RemoteDirectAddress() }
+
+// RemoteDirectAddress says "Direct address"
+// in the language of msgs.
+//
+// Row title: the second tailcat address, for devices that dial this machine
+// directly.
+func (msgs Messages) RemoteDirectAddress() string {
+	return Catalog.Format(msgs.locale, "remoteDirectAddress", nil)
+}
+
+// RemoteDirectAddressNote says "For devices that can dial this machine directly, with no relay. It is a secret, like the address above."
+// in the language the app shows.
+//
+// Hint under the direct address.
+func RemoteDirectAddressNote() string { return In(i18n.Locale()).RemoteDirectAddressNote() }
+
+// RemoteDirectAddressNote says "For devices that can dial this machine directly, with no relay. It is a secret, like the address above."
+// in the language of msgs.
+//
+// Hint under the direct address.
+func (msgs Messages) RemoteDirectAddressNote() string {
+	return Catalog.Format(msgs.locale, "remoteDirectAddressNote", nil)
+}
+
+// RemoteDirectQR says "Direct QR…"
+// in the language the app shows.
+//
+// Button: shows the QR code of the direct address.
+func RemoteDirectQR() string { return In(i18n.Locale()).RemoteDirectQR() }
+
+// RemoteDirectQR says "Direct QR…"
+// in the language of msgs.
+//
+// Button: shows the QR code of the direct address.
+func (msgs Messages) RemoteDirectQR() string {
+	return Catalog.Format(msgs.locale, "remoteDirectQR", nil)
+}
+
+// RemoteDirectQRHint says "Scan this code on a device that can dial this machine directly, then approve its request under Devices if the fingerp…"
+// in the language the app shows.
+//
+// Text over the QR code of the direct address.
+func RemoteDirectQRHint() string { return In(i18n.Locale()).RemoteDirectQRHint() }
+
+// RemoteDirectQRHint says "Scan this code on a device that can dial this machine directly, then approve its request under Devices if the fingerp…"
+// in the language of msgs.
+//
+// Text over the QR code of the direct address.
+func (msgs Messages) RemoteDirectQRHint() string {
+	return Catalog.Format(msgs.locale, "remoteDirectQRHint", nil)
+}
+
+// RemotePairAddrFrom says "From {source}"
+// in the language the app shows.
+//
+// Pairing request by address: the address it came from.
+func RemotePairAddrFrom(source string) string { return In(i18n.Locale()).RemotePairAddrFrom(source) }
+
+// RemotePairAddrFrom says "From {source}"
+// in the language of msgs.
+//
+// Pairing request by address: the address it came from.
+func (msgs Messages) RemotePairAddrFrom(source string) string {
+	return Catalog.Format(msgs.locale, "remotePairAddrFrom", map[string]any{"source": source})
+}
+
+// RemotePairAddrCompare says "Compare this code with the one the device shows. Approve only if they match."
+// in the language the app shows.
+//
+// Pairing request by address: what to do with the code.
+func RemotePairAddrCompare() string { return In(i18n.Locale()).RemotePairAddrCompare() }
+
+// RemotePairAddrCompare says "Compare this code with the one the device shows. Approve only if they match."
+// in the language of msgs.
+//
+// Pairing request by address: what to do with the code.
+func (msgs Messages) RemotePairAddrCompare() string {
+	return Catalog.Format(msgs.locale, "remotePairAddrCompare", nil)
+}
+
+// RemotePairAddrMany says "More than one device is asking. Reject them all, then ask again from the device."
+// in the language the app shows.
+//
+// Pairing requests by address: shown when several wait, so that none can be
+// approved.
+func RemotePairAddrMany() string { return In(i18n.Locale()).RemotePairAddrMany() }
+
+// RemotePairAddrMany says "More than one device is asking. Reject them all, then ask again from the device."
+// in the language of msgs.
+//
+// Pairing requests by address: shown when several wait, so that none can be
+// approved.
+func (msgs Messages) RemotePairAddrMany() string {
+	return Catalog.Format(msgs.locale, "remotePairAddrMany", nil)
+}
+
+// HostsCodeIntro says "Compare this code with the one {host} shows. Both must be the same."
+// in the language the app shows.
+//
+// Add sheet: the pairing code, by IP address.
+func HostsCodeIntro(host string) string { return In(i18n.Locale()).HostsCodeIntro(host) }
+
+// HostsCodeIntro says "Compare this code with the one {host} shows. Both must be the same."
+// in the language of msgs.
+//
+// Add sheet: the pairing code, by IP address.
+func (msgs Messages) HostsCodeIntro(host string) string {
+	return Catalog.Format(msgs.locale, "hostsCodeIntro", map[string]any{"host": host})
+}
+
+// HostsCodeMatch says "The codes match"
+// in the language the app shows.
+//
+// Add sheet button: the user says the pairing codes are the same.
+func HostsCodeMatch() string { return In(i18n.Locale()).HostsCodeMatch() }
+
+// HostsCodeMatch says "The codes match"
+// in the language of msgs.
+//
+// Add sheet button: the user says the pairing codes are the same.
+func (msgs Messages) HostsCodeMatch() string {
+	return Catalog.Format(msgs.locale, "hostsCodeMatch", nil)
+}
+
+// HostsCodeDiffer says "They differ"
+// in the language the app shows.
+//
+// Add sheet button: the user says the pairing codes differ.
+func HostsCodeDiffer() string { return In(i18n.Locale()).HostsCodeDiffer() }
+
+// HostsCodeDiffer says "They differ"
+// in the language of msgs.
+//
+// Add sheet button: the user says the pairing codes differ.
+func (msgs Messages) HostsCodeDiffer() string {
+	return Catalog.Format(msgs.locale, "hostsCodeDiffer", nil)
+}
+
+// HostsCodeApprove says "On {host}, open Settings › Server › Devices and approve the request showing this code."
+// in the language the app shows.
+//
+// Add sheet: what to do on the host once the codes match.
+func HostsCodeApprove(host string) string { return In(i18n.Locale()).HostsCodeApprove(host) }
+
+// HostsCodeApprove says "On {host}, open Settings › Server › Devices and approve the request showing this code."
+// in the language of msgs.
+//
+// Add sheet: what to do on the host once the codes match.
+func (msgs Messages) HostsCodeApprove(host string) string {
+	return Catalog.Format(msgs.locale, "hostsCodeApprove", map[string]any{"host": host})
+}
+
+// HostsCode says "Pairing code"
+// in the language the app shows.
+//
+// Add sheet: label over the pairing code.
+func HostsCode() string { return In(i18n.Locale()).HostsCode() }
+
+// HostsCode says "Pairing code"
+// in the language of msgs.
+//
+// Add sheet: label over the pairing code.
+func (msgs Messages) HostsCode() string {
+	return Catalog.Format(msgs.locale, "hostsCode", nil)
 }
 
 // RemoteApiTitle says "Local API"
