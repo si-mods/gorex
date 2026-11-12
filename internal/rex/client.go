@@ -831,6 +831,12 @@ func (c *Client) SetRelay(relay string) error {
 	return c.call(Request{Op: "remote.relaySet", Relay: relay}, nil)
 }
 
+// SetReachable sets Reachable at: an IP address of this machine where it
+// is its own relay and shows a second address, or "" for off.
+func (c *Client) SetReachable(ip string) error {
+	return c.call(Request{Op: "remote.reachableSet", ReachableAt: ip}, nil)
+}
+
 // DisableRemote turns remote access off.
 func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }
 

@@ -166,6 +166,28 @@ func TestCLI(t *testing.T) {
 	}
 }
 
+// gorex remote reachable sets Reachable at, which remote status shows;
+// remote access stays off here, so no relay starts.
+func TestRemoteReachable(t *testing.T) {
+	startServer(t)
+	if code, _, _, _ := runMain(t, "remote", "reachable", "0.0.0.0"); code != ExitUsage {
+		t.Errorf("remote reachable on every address: %d", code)
+	}
+	if code, _, _, errOut := runMain(t, "remote", "reachable", "192.0.2.10"); code != ExitOK {
+		t.Fatalf("remote reachable: %d %s", code, errOut)
+	}
+	if _, _, out, _ := runMain(t, "remote", "status"); !strings.Contains(out, "reachable=192.0.2.10 running=false") {
+		t.Errorf("remote status with reachable: %q", out)
+	}
+	if _, _, out, _ := runMain(t, "remote", "status", "--json"); !strings.Contains(out, `"reachableAt": "192.0.2.10"`) {
+		t.Errorf("remote status --json with reachable: %q", out)
+	}
+	runMain(t, "remote", "reachable", "off")
+	if _, _, out, _ := runMain(t, "remote", "status"); strings.Contains(out, "reachable=") {
+		t.Errorf("remote status after reachable off: %q", out)
+	}
+}
+
 func TestMainLeavesAppArguments(t *testing.T) {
 	if _, handled := Main([]string{"-NSWindowResizeTime", "0.1"}, &bytes.Buffer{}, &bytes.Buffer{}, "x"); handled {
 		t.Error("an AppKit argument was handled as a command")

@@ -70,6 +70,10 @@ type RemoteConfig struct {
 	// RemoteControl lets remote clients run app actions through this
 	// window; off by default.
 	RemoteControl bool `json:"remoteControl,omitempty"`
+	// ReachableAt is an IP address of this machine where it is its own
+	// relay, and shows a second address (ownrelay.go); "" while off, as
+	// by default.
+	ReachableAt string `json:"reachableAt,omitempty"`
 }
 
 // The pairing window: how long it stays open, how many requests it
@@ -253,6 +257,24 @@ type remote struct {
 	// pending holds the requests made in it, never saved.
 	pairUntil time.Time
 	pending   []RemotePending
+	// own is the relay of Reachable at and its tailcat server while
+	// running; ownGen and ownCancel are as gen and cancel, for it alone.
+	own       *ownLink
+	ownGen    int
+	ownCancel context.CancelFunc
+	ownErr    string
+}
+
+// liveLocked tells whether ln is one of the running listeners, and its
+// connections' map.
+func (r *remote) liveLocked(ln net.Listener) (map[net.Conn]string, bool) {
+	if r.ln != nil && (r.ln == ln || r.api == ln) {
+		return r.conns, true
+	}
+	if r.own != nil && (r.own.ln == ln || r.own.api == ln) {
+		return r.own.conns, true
+	}
+	return nil, false
 }
 
 // remotePeerKey returns the key of the peer of a connection accepted by
@@ -435,7 +457,9 @@ func (s *Server) remoteStopLocked() func() {
 	ts, ln, api, conns := r.ts, r.ln, r.api, r.conns
 	r.ts, r.ln, r.api, r.addr, r.conns = nil, nil, nil, "", nil
 	r.pairUntil, r.pending = time.Time{}, nil
+	ownDone := s.ownStopLocked()
 	return func() {
+		ownDone()
 		if ln != nil {
 			ln.Close()
 			api.Close()
@@ -458,6 +482,7 @@ func (s *Server) remoteStartLocked() {
 	r.gen++
 	gen, cfg := r.gen, r.cfg
 	r.cancel, r.lastErr = cancel, ""
+	s.ownStartLocked()
 	go func() {
 		for {
 			// No AllowedClients: every peer that knows the address may
@@ -600,9 +625,9 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			return err
 		}
 		r.mu.Lock()
-		stopped := r.ln != ln && r.api != ln
+		_, live := r.liveLocked(ln)
 		r.mu.Unlock()
-		if stopped {
+		if !live {
 			c.Close()
 			return errRemoteStopped
 		}
@@ -611,9 +636,10 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			// Checked and kept under the lock, so that a revoke drops it.
 			r.mu.Lock()
 			allowed := r.allowedLocked(k)
-			api := r.api == ln
+			conns, live := r.liveLocked(ln)
+			api := live && (ln == r.api || r.own != nil && ln == r.own.api)
 			// Stopped, or for the gateway and not allowed: no answer.
-			if r.ln != ln && !api || api && !allowed {
+			if !live || api && !allowed {
 				r.mu.Unlock()
 				c.Close()
 				return
@@ -623,7 +649,7 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 				refuseRemote(c)
 				return
 			}
-			r.conns[c] = k
+			conns[c] = k
 			r.mu.Unlock()
 			switch {
 			case api:
@@ -637,7 +663,10 @@ func (s *Server) remoteAccept(ts *tailcat.Server, ln net.Listener) error {
 			}
 			c.Close()
 			r.mu.Lock()
-			delete(r.conns, c)
+			// Not the map of a stopped listener: its closer reads it unlocked.
+			if conns, live := r.liveLocked(ln); live {
+				delete(conns, c)
+			}
 			r.mu.Unlock()
 		}()
 	}
@@ -751,6 +780,10 @@ func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 		Enabled: r.cfg.Enabled, Running: r.ts != nil, Address: string(r.addr), Relay: r.cfg.Relay,
 		Allowed: slices.Clone(r.cfg.Allowed), LastError: r.lastErr,
 		ShareLayout: r.cfg.ShareLayout, RemoteControl: r.cfg.RemoteControl,
+		ReachableAt: r.cfg.ReachableAt, ReachableError: r.ownErr,
+	}
+	if r.own != nil {
+		st.ReachableAddress = string(r.own.addr)
 	}
 	if r.pairOpenLocked() {
 		st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
@@ -889,6 +922,12 @@ func (s *Server) remoteDo(req Request) (any, error) {
 			return nil, err
 		}
 		cfg.Relay = relay
+	case "remote.reachableSet":
+		ip, err := NormalizeReachable(req.ReachableAt)
+		if err != nil {
+			return nil, err
+		}
+		cfg.ReachableAt = ip
 	case "remote.shareLayoutSet":
 		cfg.ShareLayout = req.On
 	case "remote.controlSet":
@@ -899,7 +938,7 @@ func (s *Server) remoteDo(req Request) (any, error) {
 	if err := writeJSON(remotePath(), cfg); err != nil {
 		return nil, err
 	}
-	relayWas := r.cfg.Relay
+	relayWas, reachableWas := r.cfg.Relay, r.cfg.ReachableAt
 	r.cfg = cfg
 	if approved >= 0 {
 		r.pending = slices.Delete(r.pending, approved, approved+1)
@@ -915,6 +954,22 @@ func (s *Server) remoteDo(req Request) (any, error) {
 				delete(r.conns, c)
 				done = append(done, func() { c.Close() })
 			}
+		}
+		if o := r.own; o != nil {
+			for c, k := range o.conns {
+				if k == revoked {
+					delete(o.conns, c)
+					done = append(done, func() { c.Close() })
+				}
+			}
+			// The relay knows no key of a connection: all connect again,
+			// and are asked again.
+			done = append(done, o.relay.dropClients)
+		}
+	case req.Op == "remote.reachableSet":
+		if reachableWas != cfg.ReachableAt {
+			done = append(done, s.ownStopLocked())
+			s.ownStartLocked()
 		}
 	case req.Op == "remote.regenerate", req.Op == "remote.relaySet" && relayWas != cfg.Relay,
 		req.Op == "remote.enable" && r.cancel == nil:
