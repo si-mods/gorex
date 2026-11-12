@@ -260,8 +260,9 @@ import os
     }
 
     /// A sherpa-onnx model's files not yet whole, as Maple gets its faces:
-    /// by ranges, each added to the file's .partial, which goes on from
-    /// what it has and takes its name once whole.
+    /// by ranges, four at a time on four connections as one is slow, each
+    /// added in turn to the file's .partial, which goes on from what it
+    /// has and takes its name once whole.
     @concurrent nonisolated private static func get(_ m: Model, from source: String, _ progress: @Sendable (Double) -> Void) async throws {
         guard let repo = m.repo else { return }
         let total = repo.files.reduce(0) { $0 + $1.size }
@@ -287,25 +288,49 @@ import os
             // redirects to, signed again as it expires.
             let resolve = URL(string: "\(source)/\(repo.name)/resolve/\(repo.commit)/\(f.path)")!
             var url = resolve
-            while have < f.size {
-                let n = min(16 << 20, f.size - have)
-                var req = URLRequest(url: url)
-                req.setValue("bytes=\(have)-\(have + n - 1)", forHTTPHeaderField: "Range")
-                let (data, res) = try await URLSession.shared.data(for: req)
-                guard (res as? HTTPURLResponse)?.statusCode == 206, data.count == n else {
-                    guard url != resolve else { throw URLError(.badServerResponse) }
-                    url = resolve
-                    continue
+            // Ranges ahead of the .partial, those coming and those come
+            // out of turn, are four at most.
+            try await withThrowingTaskGroup(of: (Int, Data, URL).self) { g in
+                var next = have
+                var got: [Int: Data] = [:]
+                while have < f.size {
+                    while next < f.size, next - have < 4 * chunk {
+                        let at = next, n = min(chunk, f.size - at), u = url
+                        g.addTask { try await range(at, n, of: u, else: resolve) }
+                        next += n
+                    }
+                    let (at, data, signed) = try await g.next()!
+                    got[at] = data
+                    url = signed
+                    while let data = got.removeValue(forKey: have) {
+                        try out.write(contentsOf: data)
+                        have += data.count
+                        done += data.count
+                        progress(Double(done) / Double(total))
+                    }
                 }
-                url = res.url ?? url
-                try out.write(contentsOf: data)
-                have += n
-                done += n
-                progress(Double(done) / Double(total))
             }
             try? FileManager.default.removeItem(at: file)
             try FileManager.default.moveItem(at: part, to: file)
         }
+    }
+
+    /// What get asks for at once: 8 MB.
+    nonisolated private static let chunk = 8 << 20
+    /// A connection for each of get's four ranges: one session would carry
+    /// them all on one HTTP/2 connection, no faster than one range.
+    nonisolated private static let sessions = (0..<4).map { _ in URLSession(configuration: .ephemeral) }
+
+    /// n bytes of a file from at, by its signed URL, or by resolve when
+    /// that fails as signed URLs expire; with the signed URL it gave.
+    @concurrent nonisolated private static func range(_ at: Int, _ n: Int, of url: URL, else resolve: URL) async throws -> (Int, Data, URL) {
+        for u in url == resolve ? [url] : [url, resolve] {
+            var req = URLRequest(url: u)
+            req.setValue("bytes=\(at)-\(at + n - 1)", forHTTPHeaderField: "Range")
+            let (data, res) = try await sessions[at / chunk % 4].data(for: req)
+            if (res as? HTTPURLResponse)?.statusCode == 206, data.count == n { return (at, data, res.url ?? u) }
+        }
+        throw URLError(.badServerResponse)
     }
 
     /// Whether a host answers within seconds; one a network blocks does not.
