@@ -6,17 +6,18 @@ import UniformTypeIdentifiers
 /// files, or files picked, go into the temporary folder of the server's
 /// machine (Upload), and their paths are pasted, as the app pastes those of
 /// files dropped on a pane of a host. The keyboard comes back as the picker
-/// closes; ⌘ spins while the files go up, and an alert tells of one that
-/// failed.
+/// closes, if it was up; ⌘ spins while the files go up, and an alert tells
+/// of one that failed.
 extension TerminalView: UIDocumentPickerDelegate {
     func addPhoto() {
         // Once: the picker may be up, or going.
         guard shown?.presentedViewController == nil else { return }
         // The keyboard goes, or it covers the sheet's lower half.
+        let typing = isFirstResponder
         resignFirstResponder()
         present(PhotoPicker { [weak self] providers in
             guard let self else { return }
-            becomeFirstResponder()
+            if typing { becomeFirstResponder() }
             if providers.isEmpty { return }
             upload { dir in
                 var files: [URL] = []
@@ -36,7 +37,6 @@ extension TerminalView: UIDocumentPickerDelegate {
     }
 
     func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        becomeFirstResponder()
         upload { dir in
             // The copies move in with the photos', to go when they are sent.
             try urls.enumerated().map { i, u in
@@ -46,10 +46,6 @@ extension TerminalView: UIDocumentPickerDelegate {
                 return to.appending(path: u.lastPathComponent)
             }
         }
-    }
-
-    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
-        becomeFirstResponder()
     }
 
     /// Sends the files that files puts into a folder of its own, one after
@@ -104,10 +100,12 @@ extension TerminalView: UIDocumentPickerDelegate {
         alert(title, error.localizedDescription)
     }
 
-    /// Tells of a problem; the keyboard comes back once it is read.
+    /// Tells of a problem; the keyboard comes back once it is read, if it
+    /// was up.
     func alert(_ title: String, _ message: String) {
+        let typing = isFirstResponder
         let a = UIAlertController(title: title, message: message, preferredStyle: .alert)
-        a.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { [weak self] _ in self?.becomeFirstResponder() })
+        a.addAction(UIAlertAction(title: String(localized: "OK"), style: .default) { [weak self] _ in if typing { self?.becomeFirstResponder() } })
         present(a)
     }
 

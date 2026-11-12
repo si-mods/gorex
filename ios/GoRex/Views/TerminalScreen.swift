@@ -65,7 +65,8 @@ struct TerminalScreen: View {
             // What goes up under the status bar blurs and fades into the
             // background, for the clock over it.
             .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: statusBar + 10) }
-            .overlay(alignment: .bottom) { if let said { Heard(said: said) } }
+            // Above the key bar, which is not the keyboard's.
+            .overlay(alignment: .bottom) { if let said { Heard(said: said).padding(.bottom, hasBar ? KeyBar.height : 0) } }
             .overlay { status }
             .navigationTitle(title.asText)
             .navigationBarTitleDisplayMode(.inline)
