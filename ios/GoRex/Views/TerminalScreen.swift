@@ -65,7 +65,7 @@ struct TerminalScreen: View {
             // What goes up under the status bar blurs and fades into the
             // background, for the clock over it.
             .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: statusBar + 10) }
-            .overlay(alignment: .top) { if let said { Heard(said: said) } }
+            .overlay(alignment: .bottom) { if let said { Heard(said: said) } }
             .overlay { status }
             .navigationTitle(title.asText)
             .navigationBarTitleDisplayMode(.inline)
@@ -312,10 +312,11 @@ private struct Mic: View {
     }
 }
 
-/// What is said while the mic is on, under the bar, in glass as the
-/// screen's notes are: the microphone's level, then what is for good, and
-/// in grey the phrase still open; three lines at most, the newest. Being
-/// polished, all of it is grey, after a sparkle.
+/// What is said while the mic is on, at the bottom, over the key bar and
+/// the keyboard, in glass as the screen's notes are: the microphone's
+/// level, then what is for good, and in grey the phrase still open; three
+/// lines at most, the newest. Being polished, all of it is grey, after a
+/// sparkle.
 private struct Heard: View {
     let said: Dictation.Said
 
@@ -338,7 +339,7 @@ private struct Heard: View {
         }
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 14))
-        .padding(.horizontal, 12)
+        .padding([.horizontal, .bottom], 12)
     }
 }
 
