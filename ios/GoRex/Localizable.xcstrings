@@ -2018,12 +2018,12 @@
         }
       }
     },
-    "JetBrains Mono, Menlo or Courier New, from 8 to 24 points.": {
+    "JetBrains Mono, SF Mono, Menlo or Courier New, from 8 to 24 points.": {
       "localizations": {
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "JetBrains Mono、Menlo 或 Courier New，字号 8 至 24 pt。"
+            "value": "JetBrains Mono、SF Mono、Menlo 或 Courier New，字号 8 至 24 pt。"
           }
         }
       }

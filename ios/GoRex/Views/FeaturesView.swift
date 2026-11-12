@@ -75,7 +75,7 @@ struct FeaturesView: View {
             ("System, Dark or Light", "The interface follows the system, or stays dark or light."),
             ("Themes with a preview", "861 Ghostty themes, each with a swatch, a filter of All, Dark and Light, and a search. A preview shows the chosen one in the terminal's font."),
             ("Host Colors", "Keep the colors of the host's terminal in place of a theme."),
-            ("Fonts and sizes", "JetBrains Mono, Menlo or Courier New, from 8 to 24 points."),
+            ("Fonts and sizes", "JetBrains Mono, SF Mono, Menlo or Courier New, from 8 to 24 points."),
             ("Maple Mono NF CN", "A font with Chinese and Nerd Font glyphs, to download. Only its four faces download, about 40 MB; stop it or delete it at any time."),
         ]),
         ("Hosts & Pairing", [
