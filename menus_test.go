@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -119,7 +120,7 @@ func TestDrawnMenus(t *testing.T) {
 	// The tab reads "<shell> <dir>"; the pane header's name is the shell.
 	shell, dir := a.tab().label()
 	tabLabel := shell + " " + dir
-	if !tt.HasText(tabLabel) {
+	if !slices.Contains(tt.Texts(), tabLabel) {
 		t.Fatalf("no tab; texts %q", tt.Texts())
 	}
 	open := func(label string) {
