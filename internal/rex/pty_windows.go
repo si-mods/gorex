@@ -22,6 +22,10 @@ var (
 	procSetConsoleCtrlHandler     = kernel32.NewProc("SetConsoleCtrlHandler")
 )
 
+// ptySignalResizeWindow resizes a console through its signal pipe
+// (PTY_SIGNAL_RESIZE_WINDOW, microsoft/terminal, src/winconpty/winconpty.h).
+const ptySignalResizeWindow = 8
+
 // pty is a pseudo console (ConPTY) and the process it runs.
 type pty struct {
 	mu sync.Mutex
@@ -247,9 +251,9 @@ func (p *pty) resize(cols, rows int) error {
 	case p.console != 0:
 		return windows.ResizePseudoConsole(p.console, c)
 	case p.signal != 0:
-		// What ResizePseudoConsole writes: PTY_SIGNAL_RESIZE_WINDOW, then
-		// the size, little-endian.
-		b := []byte{8, 0, byte(c.X), byte(c.X >> 8), byte(c.Y), byte(c.Y >> 8)}
+		// What ResizePseudoConsole writes: the signal, then the size,
+		// little-endian.
+		b := []byte{ptySignalResizeWindow, 0, byte(c.X), byte(c.X >> 8), byte(c.Y), byte(c.Y >> 8)}
 		var n uint32
 		return windows.WriteFile(p.signal, b, &n, nil)
 	}

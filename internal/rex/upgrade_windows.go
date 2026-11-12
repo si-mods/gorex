@@ -45,8 +45,8 @@ func (s *Server) handOver(exe string, h *handoff) error {
 	// Copies of the sessions' handles (pty.handoff), which this process
 	// closes as it exits.
 	defer func() {
-		for _, h := range inherit {
-			syscall.CloseHandle(h)
+		for _, d := range inherit {
+			syscall.CloseHandle(d)
 		}
 	}()
 	r, w, err := os.Pipe()

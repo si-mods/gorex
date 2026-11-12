@@ -195,6 +195,10 @@ type store struct {
 	// killsTaken are the kills of the server's layout the app took, until
 	// the layout no longer has them (takeKills).
 	killsTaken map[layout.Kill]bool
+	// upgradeFailed is the PID of the server whose upgrade from the running
+	// app failed (upgradeServer): adopt does not try it again, and offers
+	// the restart.
+	upgradeFailed int
 
 	workspaces []*Workspace
 	// badge is the count the app icon shows.
@@ -814,7 +818,7 @@ func (st *store) adopt(client *rex.Client) bool {
 		// next server starts its sessions again.
 		// Otherwise it is kept.
 		var next *rex.Client
-		if st.hello.Upgrade {
+		if st.hello.Upgrade && st.hello.PID != st.upgradeFailed {
 			if exe, at := rex.Executable(); at.After(st.hello.ExeTime) {
 				if next, err = client.Upgrade(exe); err != nil {
 					log.Print(err)
@@ -938,16 +942,20 @@ func (st *store) askRestart() (*rex.Client, error) {
 
 // upgradeServer has a server behind the app's executable, on Windows, as
 // after an update, run it in its place, keeping its sessions, and takes
-// the next one; false when it cannot or failed to.
+// the next one; false when it cannot upgrade. One that failed to detached
+// the panes: the connection closes, and watch connects again, adopt
+// attaching them and offering the restart.
 func (st *store) upgradeServer() bool {
 	exe, at := rex.Executable()
-	if runtime.GOOS != "windows" || st.client == nil || !st.hello.Upgrade || !at.After(st.hello.ExeTime) {
+	if runtime.GOOS != "windows" || st.client == nil || !st.hello.Upgrade || st.hello.PID == st.upgradeFailed || !at.After(st.hello.ExeTime) {
 		return false
 	}
 	next, err := st.client.Upgrade(exe)
 	if err != nil {
 		log.Print(err)
-		return false
+		st.upgradeFailed = st.hello.PID
+		st.client.Close()
+		return true
 	}
 	st.adopt(next)
 	return true
