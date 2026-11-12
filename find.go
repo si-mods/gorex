@@ -168,7 +168,7 @@ func (a *App) isLink(p *Pane, link string, update func(func())) bool {
 	if !ok || p == nil {
 		return false
 	}
-	dir, web := strings.HasSuffix(path, "/"), webPath(path)
+	dir, web := strings.HasSuffix(path, "/") || strings.HasSuffix(path, `\`), webPath(path)
 	if p.host != nil {
 		return !dir
 	}
