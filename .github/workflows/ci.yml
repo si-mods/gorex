@@ -62,3 +62,47 @@ jobs:
             GOOS=${t%/*} GOARCH=${t#*/} go build ./...
             echo "::endgroup::"
           done
+
+  # The same tests on Linux, on instabox machines, beside the Mac mini's.
+  # The root package's tests run one after another, so three machines take
+  # a third each; a fourth runs the other packages. With build, that is
+  # five at a time.
+  test-linux:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: instabox-medium
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [root-0, root-1, root-2, others]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      # Its own cache, as build's holds no compiled tests.
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-${{ hashFiles('go.sum') }}
+          restore-keys: go-test-linux-${{ startsWith(matrix.part, 'root') && 'root' || 'others' }}-
+      - name: test
+        shell: bash
+        env:
+          PART: ${{ matrix.part }}
+          # The number of root-N parts in the matrix.
+          ROOT_PARTS: 3
+        run: |
+          if [ "$PART" = others ]; then
+            pkgs=$(go list ./... | grep -v '^gorex$')
+            go test $pkgs -count=1 -timeout 15m
+            exit
+          fi
+          go test -c -o "$RUNNER_TEMP/gorex.test" .
+          tests=$("$RUNNER_TEMP/gorex.test" -test.list '^(Test|Example|Fuzz)' |
+            awk -v n="$ROOT_PARTS" -v i="${PART#root-}" 'NR % n == i' | paste -sd'|' -)
+          [ -n "$tests" ]
+          "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"
