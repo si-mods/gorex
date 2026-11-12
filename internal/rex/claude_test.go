@@ -1,6 +1,7 @@
 package rex
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -63,12 +64,17 @@ func TestIsUUID(t *testing.T) {
 // the test binary is, and the conversation its file there names.
 func TestClaudeSession(t *testing.T) {
 	if os.Getenv("GOREX_TEST_SLEEP") != "" {
+		fmt.Println("running")
 		time.Sleep(30 * time.Second)
 		return
 	}
 	config := t.TempDir()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestClaudeSession$")
 	cmd.Env = append(os.Environ(), "GOREX_TEST_SLEEP=1", "CLAUDE_CONFIG_DIR="+config)
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -76,6 +82,12 @@ func TestClaudeSession(t *testing.T) {
 		cmd.Process.Kill()
 		cmd.Wait()
 	}()
+	// Start returns while Linux may still be setting up the new program,
+	// whose environment reads empty or the parent's until then: wait for
+	// the child's first line.
+	if _, err := bufio.NewReader(out).ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
 	pid := cmd.Process.Pid
 	if got := procEnv(pid, "CLAUDE_CONFIG_DIR"); got != config {
 		t.Fatalf("procEnv = %q, want %q", got, config)
