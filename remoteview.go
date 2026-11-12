@@ -68,6 +68,8 @@ var remoteUI struct {
 	reach       string
 	reachEdited bool
 	reachErr    string
+	// fwFailed tells that Allow did not change Windows Firewall.
+	fwFailed bool
 	// addingKey shows the form that adds a client by its key, in place
 	// of the button that opens it.
 	addingKey bool
@@ -107,8 +109,12 @@ func stopRemotePoll() {
 	page.focusLAN = false
 	page.ts, page.tsURL, page.tsEdited, page.tsErr = rexapi.TailscaleConfig{}, "", false, ""
 	page.relay, page.relayEdited, page.relayErr = "", false, ""
-	page.reach, page.reachEdited, page.reachErr = "", false, ""
+	page.reach, page.reachEdited, page.reachErr, page.fwFailed = "", false, "", false
 }
+
+// firewallAllow adds Windows Firewall's rules for Reachable at, as
+// administrator; tests fake it.
+var firewallAllow = rex.AllowFirewall
 
 // remoteAsk runs work off the UI thread, with the app's client of the
 // moment, which a restarted server replaces; the function work returns
@@ -807,7 +813,39 @@ func (a *App) remoteReachable(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		if st.ReachableError != "" {
 			rowError(c, k, st.ReachableError)
 		}
+		a.remoteFirewall(c, k, st)
 	})
+}
+
+// remoteFirewall is the line under Reachable at while Windows Firewall
+// blocks its port, with Allow, which adds a rule as administrator and asks
+// the server to check again; or, when a rule blocks GoRex, where to
+// remove it.
+func (a *App) remoteFirewall(c *ui.Context, k *colors, st rex.RemoteStatus) {
+	page := &remoteUI
+	switch st.ReachableFirewall {
+	case "blockRule":
+		rowError(c, k, locales.RemoteFirewallBlockRule())
+	case "blocked":
+		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, locales.RemoteFirewallBlocked(strconv.Itoa(rex.RemotePort))).FontSize(11.5).TextColor(k.danger).
+				LineHeight(1.4).Grow(1).MinWidth(0)
+			if ui.Button(c.Key("firewall-allow"), locales.RemoteFirewallAllow()).
+				Label(locales.RemoteReachableTitle() + ": " + locales.RemoteFirewallAllow()).Disabled(page.busy).Clicked() {
+				failed := false
+				a.remoteDo(func(srv *rex.Client) error {
+					if err := firewallAllow(); err != nil {
+						failed = true
+						return nil
+					}
+					return srv.CheckFirewall()
+				}, func() { page.fwFailed = failed })
+			}
+		})
+		if page.fwFailed {
+			rowHint(c, k, locales.RemoteFirewallNotChanged())
+		}
+	}
 }
 
 // pairingLeft is the time left in the pairing window, as m:ss.

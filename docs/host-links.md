@@ -281,6 +281,25 @@ Under Show Details:
 - **Reachable at**: off, or an address of this machine. On, the
   machine is its own relay there, and Devices shows a second address
   and QR code for clients that can dial it.
+- **Windows Firewall** (`internal/rex/firewall.go`). While the relay
+  runs, the server reads the firewall through its COM API
+  (`HNetCfg.FwPolicy2`, in a hidden PowerShell, no administrator), on
+  start, when the status is asked and the last answer is 30 s old, and
+  on `remote.firewallCheck`: an inbound TCP connection to GoRex on port
+  7464 passes when the firewall is off, the default allows, or an
+  enabled allow rule of the active profile covers the program or the
+  port, with no block rule. With several profiles active it is blocked
+  only when each blocks, and a failed query says nothing. Blocked,
+  Settings says so under the row with **Allow**, which asks Windows
+  for administrator and adds two inbound rules, "GoRex Reachable at",
+  TCP and UDP, port 7464, every profile, any local address and
+  program: they hold after GoRex updates itself to another path and
+  after the address changes. `gorex remote status` prints
+  `reachableFirewall=blocked` and the `netsh` commands. A rule that
+  blocks GoRex (Windows makes one when its prompt is cancelled) wins
+  over them: Settings and the CLI say to remove it in Windows Defender
+  Firewall's inbound rules. Turning Reachable at off leaves the rules:
+  removing them needs administrator.
 - **Relay**: default, or a host.
 
 Remote Hosts lists machines. **Add Remote Host** takes what the user
@@ -443,9 +462,9 @@ Each ships something a user can use.
 - **The embedded relay's protocol on a port forward**: DERP rides
   HTTPS, so a forward of one TCP port should do, and the direct route
   needs UDP as well. Not checked.
-- **The firewall.** Unlike the built-in Tailscale node, this is a
-  listening port on the machine's own stack: Windows asks the user the
-  first time, and other firewalls may block it silently.
+- **Other firewalls** than Windows Firewall (macOS's, a third party's,
+  the network's) may block the port silently; only Windows Firewall is
+  checked (as built, below **Reachable at**).
 - **The fixed port.** `RemotePort` (7464) on the machine's own stack is
   the candidate. The system Tailscale mode on Linux listens on that
   port of the Tailscale address, so the two meet only if **Reachable

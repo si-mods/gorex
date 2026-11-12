@@ -1994,6 +1994,28 @@
   "@remoteReachableInvalid": {
     "description": "Error under the Reachable at field when what was typed is not an IP address."
   },
+  "remoteFirewallBlocked": "Windows Firewall blocks port {port}: other devices cannot connect.",
+  "@remoteFirewallBlocked": {
+    "description": "Line under Reachable at when Windows Firewall drops connections to its port. {port} is a port number.",
+    "placeholders": {
+      "port": {
+        "type": "String",
+        "example": "7464"
+      }
+    }
+  },
+  "remoteFirewallAllow": "Allow",
+  "@remoteFirewallAllow": {
+    "description": "Button beside the Windows Firewall line: add a firewall rule for the port, as administrator."
+  },
+  "remoteFirewallNotChanged": "Windows Firewall was not changed.",
+  "@remoteFirewallNotChanged": {
+    "description": "Under the Windows Firewall line when Allow was declined at the administrator prompt or failed."
+  },
+  "remoteFirewallBlockRule": "A Windows Firewall rule blocks GoRex: other devices cannot connect. Remove it in Windows Defender Firewall, Inbound Rules.",
+  "@remoteFirewallBlockRule": {
+    "description": "Line under Reachable at when a Windows Firewall rule blocks the GoRex program, so a rule that allows the port does not help."
+  },
   "remoteDirectAddress": "Direct address",
   "@remoteDirectAddress": {
     "description": "Row title: the second tailcat address, for devices that dial this machine directly."

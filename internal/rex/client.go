@@ -837,6 +837,10 @@ func (c *Client) SetReachable(ip string) error {
 	return c.call(Request{Op: "remote.reachableSet", ReachableAt: ip}, nil)
 }
 
+// CheckFirewall asks the server to read Windows Firewall again for
+// Reachable at, and returns once it has: RemoteStatus then tells.
+func (c *Client) CheckFirewall() error { return c.call(Request{Op: "remote.firewallCheck"}, nil) }
+
 // DisableRemote turns remote access off.
 func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }
 
