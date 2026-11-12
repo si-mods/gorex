@@ -1259,14 +1259,17 @@ func (a *App) resyncPane(p *Pane, cols, rows int) {
 	if client == nil {
 		return
 	}
-	go func() {
+	var resync func(try int)
+	resync = func(try int) {
 		var res rex.CaptureResult
 		var err error
-		for try := 0; ; try++ {
+		var asked int64
+		for ; ; try++ {
+			asked = time.Now().UnixNano()
 			if res, err = client.Capture(sid, resyncHistory); err == nil && res.Cols == cols && res.Rows == rows {
 				break
 			}
-			if try == 20 {
+			if try >= 20 {
 				return
 			}
 			time.Sleep(50 * time.Millisecond)
@@ -1284,9 +1287,18 @@ func (a *App) resyncPane(p *Pane, cols, rows int) {
 			// the scrollback and the modes among it, and the session's
 			// screen takes its place.
 			term.Feed(append([]byte(screenReset), res.Screen...))
+			// What the stream gave the terminal since the capture was
+			// asked for, as the echo of the key that took the size, the
+			// reset cleared though the capture may not hold it, or it
+			// follows the capture that does: the screen is captured
+			// again.
+			if p.lastData.Load() > asked && try < 20 {
+				go resync(try + 1)
+			}
 		}
 		update(fn)
-	}()
+	}
+	go resync(0)
 }
 
 // claimFocus tells every pane whether the user looks at it: the one shown
