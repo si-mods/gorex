@@ -950,15 +950,9 @@
   "@settingsTextSize": {
     "description": "Settings › Appearance: the terminals' text size."
   },
-  "settingsTextSizeHint": "The terminals' text, in CSS pixels: {size}, the desktop's default, until set.",
+  "settingsTextSizeHint": "The size of the terminals' text.",
   "@settingsTextSizeHint": {
-    "description": "Hint under Text size; size is the default size.",
-    "placeholders": {
-      "size": {
-        "type": "num",
-        "example": "11.6"
-      }
-    }
+    "description": "Hint under Text size."
   },
   "settingsTextSizeValue": "{size} px",
   "@settingsTextSizeValue": {
@@ -966,7 +960,7 @@
     "placeholders": {
       "size": {
         "type": "num",
-        "example": "12.6"
+        "example": "15"
       }
     }
   },
