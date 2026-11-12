@@ -23,27 +23,69 @@ const revision = 10;
 const callWait = 30_000;
 
 /**
- * The host the connections go to, as http(s)://host[:port]. The page is
- * hosted on its own, so no URL is the page's: every one is built from it.
+ * The part of a WebSocket that Control and DataStream use. The browser's
+ * is one; the tailnet engine's (tailnet.ts) is another.
  */
-let base = "";
-
-/** Points every new connection at a host's gateway. */
-export function setHost(url: string) {
-  base = url;
+export interface SocketLike {
+  binaryType: BinaryType;
+  readonly protocol: string;
+  send(data: string | ArrayBufferLike | ArrayBufferView): void;
+  close(code?: number, reason?: string): void;
+  onopen: ((e: Event) => any) | null;
+  onmessage: ((m: MessageEvent) => any) | null;
+  onclose: ((e: CloseEvent) => any) | null;
 }
 
-/** The URL of path on the host's gateway. */
+/**
+ * How the page reaches a host's gateway (docs/web-tailscale.md, Hosts and
+ * transport): directly, with the browser's WebSocket and fetch, or
+ * through the tailnet engine. Paths are the gateway's, such as
+ * /api/control.
+ */
+export interface Transport {
+  kind: "direct" | "tailnet";
+  socket(path: string, protocol: string): SocketLike;
+  fetch(path: string, init?: RequestInit): Promise<Response>;
+}
+
+/**
+ * The transport new connections take. The page is hosted on its own, so
+ * no URL is the page's: every one is the chosen host's.
+ */
+let transport: Transport | undefined;
+/** A direct host's address, as http(s)://host[:port]. */
+let base = "";
+
+/** The browser's own connections to a gateway at url: today's, unchanged. */
+export function directTransport(url: string): Transport & { base: string } {
+  return {
+    kind: "direct",
+    base: url,
+    socket(path, protocol) {
+      const u = new URL(path, url);
+      u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+      return new WebSocket(u.href, protocol) as SocketLike;
+    },
+    fetch: (path, init) => fetch(new URL(path, url).href, init),
+  };
+}
+
+/** Points every new connection at a host's gateway, through t. */
+export function setHost(t: Transport | undefined) {
+  transport = t;
+  base = t && "base" in t ? String(t.base) : "";
+}
+
+/** The chosen host's transport. */
+export function hostTransport(): Transport {
+  if (!transport) throw new RexError("offline", "no host is chosen");
+  return transport;
+}
+
+/** The URL of path on a direct host's gateway; a tailnet host has none the browser can open. */
 export function apiURL(path: string): string {
   if (!base) throw new RexError("offline", "no host is chosen");
   return new URL(path, base).href;
-}
-
-/** The WebSocket URL of path on the host's gateway. */
-function wsURL(path: string): string {
-  const u = new URL(apiURL(path));
-  u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
-  return u.href;
 }
 
 /** The control connection: one WebSocket at /api/control. */
@@ -59,13 +101,13 @@ export class Control {
   private pending = new Map<string, { resolve: (v: { seq: number; payload: any }) => void; reject: (e: Error) => void }>();
   private closed = false;
 
-  private constructor(private ws: WebSocket) {}
+  private constructor(private ws: SocketLike) {}
 
   /** Opens the connection and says hello. */
   static open(token?: string): Promise<Control> {
     return new Promise((resolve, reject) => {
       // The constructor throws for a URL the page may not open (mixed content).
-      const ws = new WebSocket(wsURL("/api/control"), "rex.control.v1");
+      const ws = hostTransport().socket("/api/control", "rex.control.v1");
       const c = new Control(ws);
       let welcomed = false;
       ws.onopen = () => {
@@ -179,13 +221,13 @@ export class DataStream {
   /** The connection ended, with its close code. */
   onDrop: (code: number) => void = () => {};
   nonce = 0n;
-  private ws?: WebSocket;
+  private ws?: SocketLike;
 
   /** Opens the stream with a ticket: HELLO, then the server's WELCOME. */
   open(ticket: string): Promise<void> {
     const hello = helloFrame(ticket);
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(wsURL("/api/data"), "rex.data.terminal.v1");
+      const ws = hostTransport().socket("/api/data", "rex.data.terminal.v1");
       ws.binaryType = "arraybuffer";
       this.ws = ws;
       let welcomed = false;

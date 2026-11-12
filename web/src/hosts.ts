@@ -1,9 +1,12 @@
 // The hosts this page connects to, as the iOS app keeps them (ios/GoRex/Rex/Host.swift):
 // a name, the gateway's URL and an icon, kept in this browser. The page is
 // hosted on its own (docs/web-client.md), so it has no host of its own: the
-// user adds each one, and each one must trust this page's origin.
+// user adds each one, and each one must trust this page's origin. Hosts
+// found on the tailnet by built-in Tailscale (tailnet.ts) are listed in a
+// group of their own, and not kept.
+import type { Tailnet, TailnetHost } from "./tailnet";
 
-/** A host as the user added it. */
+/** A host as the user added it, or as built-in Tailscale found it (kind "tailnet"). */
 export interface Host {
   id: string;
   name: string;
@@ -11,6 +14,7 @@ export interface Host {
   url: string;
   /** One of icons' names. */
   icon: string;
+  kind?: "direct" | "tailnet";
 }
 
 /** The icons a host can take, as the iOS app offers them, from the repo's lucide set. */
@@ -227,7 +231,18 @@ export interface HostsApp {
   close(): void;
   /** The list changed: a host added, edited or removed. */
   changed(): void;
+  /** Built-in Tailscale, whose hosts the list shows in their group. */
+  tailnet: Tailnet;
+  /** Opens the Tailscale sign-in guide. */
+  guide(): void;
 }
+
+/** A tailnet host's state, as its dot and words. */
+export const tailnetStates: Record<TailnetHost["state"], [dot: string, text: string]> = {
+  online: ["connected", "Online"],
+  offline: ["none", "Offline"],
+  refused: ["unreachable", "Refuses this browser"],
+};
 
 /**
  * The host list: a button at the top of the sidebar with the chosen host,
@@ -239,6 +254,8 @@ export class HostList {
   chosen?: Host;
   private button = el("button", "host-button");
   private panel = el("div", "theme-panel host-panel");
+  /** Whether the panel shows the list, which redraws as Tailscale's hosts change. */
+  private listing = false;
 
   constructor(mount: HTMLElement, private app: HostsApp) {
     this.button.type = "button";
@@ -291,6 +308,14 @@ export class HostList {
     else this.list();
   }
 
+  /** Draws the list again, if it shows, keeping the focus on the same row. */
+  refresh() {
+    if (this.panel.hidden || !this.listing) return;
+    const key = (document.activeElement as HTMLElement | null)?.dataset?.key;
+    this.list(false);
+    if (key) this.panel.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)?.focus();
+  }
+
   hide(keys = true) {
     if (this.panel.hidden) return;
     this.panel.hidden = true;
@@ -306,12 +331,14 @@ export class HostList {
     this.app.choose(h);
   }
 
-  private list() {
+  private list(focus = true) {
+    this.listing = true;
     const rows = el("div", "theme-list host-list");
     for (const h of this.hosts) {
       const row = el("div", "host-row");
       const pick = el("button", "theme-row");
       pick.type = "button";
+      pick.dataset.key = h.id;
       const text = el("span", "host-text");
       text.append(el("span", "theme-name", h.name), el("span", "host-url", h.url));
       pick.append(icon(h.icon), text, check(h.id === this.chosen?.id));
@@ -328,16 +355,70 @@ export class HostList {
       row.append(pick, edit);
       rows.append(row);
     }
-    if (!this.hosts.length) rows.append(el("div", "theme-empty", "No hosts yet."));
+    if (!this.hosts.length) rows.append(el("div", "theme-empty", "No hosts added."));
+    rows.append(...this.tailnetGroup());
     const add = el("button", "host-add", "Add Host");
     add.type = "button";
     add.onclick = () => this.formIn(undefined);
     this.panel.replaceChildren(el("div", "host-title", "Hosts"), rows, add);
-    (rows.querySelector("button") ?? add).focus();
+    if (focus) (rows.querySelector("button") ?? add).focus();
+  }
+
+  /**
+   * The Tailscale group: the hosts built-in Tailscale found, each with its
+   * state's dot, or the row that starts its sign-in guide, or what it is
+   * doing while it finds none.
+   */
+  private tailnetGroup(): HTMLElement[] {
+    const t = this.app.tailnet;
+    const status = t.status();
+    const head = el("div", "host-group");
+    head.append(icon("network"), el("span", "host-group-name", "Tailscale"));
+    if (status !== "off") head.append(el("span", "host-group-state", t.statusText()));
+    const out: HTMLElement[] = [head];
+    const guide = (label: string, glyph: string, key: string) => {
+      const b = el("button", "theme-row host-guide");
+      b.type = "button";
+      b.dataset.key = key;
+      b.append(icon(glyph), el("span", "theme-name", label));
+      b.onclick = () => {
+        this.hide(false);
+        this.app.guide();
+      };
+      return b;
+    };
+    if (status !== "running") {
+      out.push(guide(status === "off" ? "Add Hosts from Tailscale" : "Sign in to Tailscale", "log-in", "ts-guide"));
+      return out;
+    }
+    for (const h of t.hosts) {
+      const pick = el("button", "theme-row");
+      pick.type = "button";
+      pick.dataset.key = h.id;
+      const text = el("span", "host-text");
+      const [dot, words] = tailnetStates[h.state];
+      const line = el("span", "host-url host-state");
+      line.append(el("i", `state-dot ${dot}`), el("span", "", h.state === "online" ? h.dns : `${words} · ${h.dns}`));
+      text.append(el("span", "theme-name", h.name), line);
+      pick.append(icon(h.icon), text, check(h.id === this.chosen?.id));
+      pick.title = h.problem ? `${h.problem.title}. ${h.problem.text}${h.problem.command ? " " + h.problem.command : ""}` : h.url;
+      pick.onclick = () => {
+        this.hide();
+        if (h.id !== this.chosen?.id) this.choose(h);
+      };
+      const row = el("div", "host-row");
+      row.append(pick);
+      out.push(row);
+    }
+    if (!t.hosts.length) {
+      out.push(t.searching ? el("div", "theme-empty host-searching", "Looking for GoRex hosts…") : guide("No GoRex hosts found. How to set one up", "circle-alert", "ts-empty"));
+    }
+    return out;
   }
 
   /** The form in the panel: a saved host closes it, else the list shows again. */
   private formIn(h: Host | undefined) {
+    this.listing = false;
     const form = this.form(h, (how) => (how === "save" ? this.hide() : this.list()));
     this.panel.replaceChildren(form);
     form.querySelector("input")?.focus();

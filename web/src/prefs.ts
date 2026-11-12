@@ -26,6 +26,8 @@ export interface Prefs {
   theme: string;
   /** Copies a selection to the clipboard as it is made, as the desktop's Copy on selection. */
   copyOnSelect: boolean;
+  /** Built-in Tailscale's device name, "" for a new gorex-web-xxxx per tab (tailnet.ts). */
+  tailscaleName: string;
 }
 
 /** The desktop's text size (settings.go, defaultFontSize), and the stepper's range (settingsview.go). */
@@ -48,6 +50,7 @@ const defaults = (): Prefs => ({
   minimumContrast: 0,
   theme: standardTheme,
   copyOnSelect: false,
+  tailscaleName: "",
 });
 
 /** Reads the choices, taking the theme kept under gorex.theme once; out of range values count as none, as loadSettings does. */
@@ -68,6 +71,7 @@ function load(): Prefs {
       }
       if (typeof j.theme === "string") p.theme = j.theme;
       p.copyOnSelect = j.copyOnSelect === true;
+      if (typeof j.tailscaleName === "string") p.tailscaleName = j.tailscaleName;
     } else {
       const old = localStorage.getItem(oldThemeKey);
       if (old !== null) {

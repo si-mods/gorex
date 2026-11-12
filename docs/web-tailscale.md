@@ -1,7 +1,8 @@
 # Web client: built-in Tailscale
 
-Status: proposed. A spike settled what it could without a signed-in
-tailnet (Spike, below); nothing of this design is built.
+Status: phases 1 to 3 built, in the app's own origin and "This tab only"
+mode (As built, below). Everything after the login URL is not run yet:
+it needs a signed-in tailnet.
 
 ## Problem
 
@@ -568,6 +569,55 @@ through ego lite. Nothing was signed in.
   the cost of the engine on a phone's battery.
 - Whether the Go engine runs in a Worker as it runs on the page
   (tsconnect runs it on the page).
+
+## As built
+
+Phases 1 to 3, with these differences from the design above:
+
+- **Origin and mode.** The node runs in the app's own origin, as the
+  first version Security allows, so it is only **This tab only**: an
+  ephemeral node (`LoginEphemeral`) with its state in memory
+  (`mem.Store`). Reloading or closing the tab ends it. There is no
+  **Stay signed in**, no IndexedDB, no tab lock and no node frame
+  (phase 4).
+- **Thread.** The engine runs on the page's thread, as tsconnect does,
+  not in a Worker; its events reach the page through `queueMicrotask`, so
+  no page code runs inside a call from Go.
+- **Engine.** `web/tailnet` is `package main` with `//go:build js &&
+  wasm` in GoRex's module; `go.mod` did not change (`go mod tidy -diff`
+  shows only line endings). It sets one global, `gorexTailnet(config,
+  emit)`, whose calls are `start`, `login`, `logout`, `stop`, `rename`,
+  `netmap`, `request` and `socket`. `hosts()` is the page's
+  (`web/src/tailnet.ts`), from `netmap()`.
+- **WebSocket.** Not `golang.org/x/net/websocket`, which drops the close
+  code (the page needs 4000, a closed block) and does not join fragments:
+  `web/tailnet/wsclient`, a small RFC 6455 client, tested against
+  `coder/websocket` with the desktop's tests.
+- **Hosts.** Only peers that answered `/api/help` are listed, and stay
+  listed as offline when they go offline. Peers named `*-gorex` that did
+  not answer are named in the guide's empty state. A refusing host is
+  asked again every 15 seconds, one that did not answer every minute. No
+  **Look for GoRex on all my devices** yet. Besides the network map's
+  events, the page reads the map every 15 seconds while running. The
+  gateway's `hostinfo.SetApp("gorex")` (phase 5) is not done.
+- **Refusals.** The guide maps the gateway's 403 messages: "does not
+  trust web pages from" (run `gorex rexapi web allow <origin>`), "lets in
+  only the Tailscale user who signed it in" (sign in with that account,
+  or `gorex rexapi tailscale on --allow-tailnet-members`), and "built-in
+  Tailscale is off".
+- **Settings.** No control server field: the page's CSP allows only
+  Tailscale's. Device name is kept in `gorex.settings`
+  (`tailscaleName`), random per tab until set.
+- **Build.** Everything the page loads by name is in `dist/assets`
+  under a content hash and kept a year (docs/web-client.md, Cloudflare
+  Workers); `tailnet.json` names the engine and is revalidated. The
+  engine compiles from bytes (`WebAssembly.instantiate`), after
+  `DecompressionStream("gzip")`: a `.gz` is not served as
+  `application/wasm`, so `instantiateStreaming` does not apply. The page
+  also takes a module that arrives already unpacked.
+- **Sign-in tab.** Opened blank within the click, its `opener` set to
+  null, then sent to the login URL when it arrives. The guide's Cancel
+  closes it.
 
 ## Phases
 

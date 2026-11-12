@@ -6,6 +6,8 @@
 // comes from the manifest itself, so the check is that each one exists,
 // with the size this code reads it at.
 
+import { countBody, LoadState, readBody } from "./progress";
+
 type Field = { offset: number; size: number; type: string };
 type TypeInfo = {
   kind: string;
@@ -112,11 +114,29 @@ export type RGB = [number, number, number];
 export class Ghostty {
   private constructor(readonly x: Exports, readonly m: Manifest, private slot: number) {}
 
-  /** Loads the module at url and checks it against what this binding uses. */
-  static async load(url: string): Promise<Ghostty> {
+  /**
+   * Loads the module at url, size bytes long, and checks it against what
+   * this binding uses. Served as application/wasm, it compiles as it
+   * arrives (instantiateStreaming on the fetch's own response, so Chrome
+   * can keep the compiled code with the cached file), while a clone of the
+   * response counts the bytes for progress; else the bytes are read, with
+   * their progress, and instantiated. progress hears the download, then
+   * the start.
+   */
+  static async load(url: string, size: number, progress: (s: LoadState) => void): Promise<Ghostty> {
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`${url}: ${res.status}`);
-    const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
+    if (!res.ok || !res.body) throw new Error(`${url}: the server answered ${res.status}`);
+    const report = (received: number, total?: number) => progress({ phase: "download", received, total });
+    let instance: WebAssembly.Instance;
+    if ((res.headers.get("content-type") ?? "").split(";")[0].trim() === "application/wasm") {
+      const counted = countBody(res.clone(), size, report).then(() => progress({ phase: "start" }), () => {});
+      instance = (await WebAssembly.instantiateStreaming(res, {})).instance;
+      await counted;
+    } else {
+      const bytes = await readBody(res, size, report);
+      progress({ phase: "start" });
+      instance = (await WebAssembly.instantiate(bytes.buffer as ArrayBuffer, {})).instance;
+    }
     const x = instance.exports as unknown as Exports;
     for (const f of functions) if (typeof x[f] !== "function") throw new Error(`ghostty-vt.wasm has no ${f}`);
     const p = x.ghostty_type_json();

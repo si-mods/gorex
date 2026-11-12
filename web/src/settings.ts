@@ -9,6 +9,8 @@ import { mac, shortcutGroups } from "./keys";
 import {
   Appearance, CursorStyle, defaultFontSize, maxFontSize, minFontSize, prefs, Prefs, setPrefs, textSize, clearAll,
 } from "./prefs";
+import { formatBytes } from "./progress";
+import { Status, Tailnet, validDeviceName } from "./tailnet";
 import { desktopTheme, minimumContrast, Theme } from "./terminal";
 import { ThemeEntry, themeColours, themePicker } from "./themes";
 
@@ -32,9 +34,12 @@ export interface SettingsApp {
   apply(what: "appearance" | "headers" | "font" | "cursor" | "contrast", reset?: boolean): void;
   /** The dialog closed: the keyboard goes back to the terminal. */
   closed(): void;
+  /** Built-in Tailscale, and its sign-in guide. */
+  tailnet: Tailnet;
+  guide(): void;
 }
 
-type Section = "host" | "appearance" | "terminal" | "theme" | "keyboard" | "hosts" | "about";
+type Section = "host" | "appearance" | "terminal" | "theme" | "keyboard" | "hosts" | "tailscale" | "about";
 
 /** The sections, each with the colour of its tile, as the desktop's: macOS's system colours, a hue per kind of setting. */
 const sections: [id: Section, glyph: string, tile: string, label: string][] = [
@@ -43,6 +48,7 @@ const sections: [id: Section, glyph: string, tile: string, label: string][] = [
   ["theme", "sparkles", "rgb(175, 82, 222)", "Theme"], // purple
   ["keyboard", "keyboard", "rgb(142, 142, 147)", "Keyboard"], // gray
   ["hosts", "monitor", "rgb(52, 199, 89)", "Hosts"], // green
+  ["tailscale", "network", "rgb(88, 86, 214)", "Tailscale"], // indigo
   ["about", "info", "rgb(142, 142, 147)", "About"], // gray
 ];
 
@@ -183,6 +189,40 @@ function tile(glyph: string, colour: string): HTMLElement {
   return t;
 }
 
+/** Tailscale's state, as a chip's words and dot. */
+const tsLabels: Record<Status, string> = {
+  off: "Off", loading: "Loading", "load-failed": "Didn't load", starting: "Starting", "needs-login": "Not signed in",
+  "signing-in": "Signing in", "needs-approval": "Waiting for approval", running: "Connected", expired: "Expired",
+  locked: "Tailnet Lock", error: "Error",
+};
+const chipState: Record<Status, LinkState> = {
+  off: "none", loading: "connecting", "load-failed": "unreachable", starting: "connecting", "needs-login": "none",
+  "signing-in": "connecting", "needs-approval": "connecting", running: "connected", expired: "unreachable",
+  locked: "unreachable", error: "unreachable",
+};
+
+/** The words under Tailscale's status. */
+function statusHint(t: Tailnet): string {
+  switch (t.status()) {
+    case "running":
+      return t.statusText() + ".";
+    case "load-failed":
+      return t.load.state === "failed" ? t.load.message : "";
+    case "needs-approval":
+      return `An admin of your tailnet must approve ${t.name} in the admin console.`;
+    case "expired":
+      return "Sign in again to reach your tailnet's hosts.";
+    case "locked":
+      return "Your tailnet uses Tailnet Lock, which this version of the page can't join.";
+    case "error":
+      return t.error;
+    case "needs-login":
+      return "Sign in to list your GoRex hosts.";
+    default:
+      return "";
+  }
+}
+
 const stateLabels: Record<LinkState, string> = {
   none: "No host", connecting: "Connecting…", connected: "Connected", unreachable: "Unreachable",
 };
@@ -250,6 +290,13 @@ export class Settings {
     if (!this.dialog.open) return;
     this.drawNav();
     if (this.section === "host" || (this.section === "hosts" && !this.editing)) this.drawPage();
+    // The Tailscale page follows the node, but not under a name being typed.
+    const typing = document.activeElement instanceof HTMLInputElement && this.page.contains(document.activeElement);
+    if (this.section === "tailscale" && !typing) {
+      const key = (document.activeElement as HTMLElement | null)?.dataset?.key;
+      this.drawPage();
+      if (key) this.page.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)?.focus();
+    }
   }
 
   private show(s: Section, editing?: Host | "new") {
@@ -318,6 +365,8 @@ export class Settings {
         return this.keyboardPage();
       case "hosts":
         return this.hostsPage();
+      case "tailscale":
+        return this.tailscalePage();
       case "about":
         return this.aboutPage();
     }
@@ -563,6 +612,98 @@ export class Settings {
     const actions = el("div", "settings-row");
     actions.append(add);
     card.append(actions);
+  }
+
+  /**
+   * Built-in Tailscale (docs/web-tailscale.md, Signing in): on or off, its
+   * state and account, this device's name, the hosts it found, and how
+   * long the sign-in lasts in this version.
+   */
+  private tailscalePage() {
+    const t = this.app.tailnet;
+    const status = t.status();
+    const card = group(this.page);
+    const top = el("div", "settings-row settings-hero");
+    const glyph = el("span", "settings-hero-icon");
+    glyph.append(icon("network"));
+    const text = el("span", "settings-hero-text");
+    const sub =
+      status === "off" ? "Reach your GoRex hosts through Tailscale, with no app on this device."
+      : status === "running" ? `This device: ${t.name}${t.map?.self.address ? ` · ${t.map.self.address}` : ""}`
+      : t.statusText();
+    text.append(el("span", "settings-hero-name", "Built-in Tailscale"), el("span", "settings-hint", sub));
+    const sw = toggle("Built-in Tailscale", status !== "off", (on) => {
+      if (on) {
+        t.turnOn();
+        this.app.guide();
+      } else {
+        t.turnOff();
+      }
+    });
+    sw.dataset.key = "switch";
+    top.append(glyph, text, sw);
+    card.append(top);
+    if (status !== "off") {
+      const chip = el("span", `settings-chip ${chipState[status]}`);
+      chip.append(el("i", `state-dot ${chipState[status]}`), el("span", "", tsLabels[status]));
+      row(card, "Status", statusHint(t), chip);
+      if (status === "running") {
+        row(card, "Account", "", el("span", "settings-value", t.account || "Unknown"));
+        if (t.map?.tailnet) row(card, "Tailnet", "", el("span", "settings-value", t.map.tailnet));
+        const n = t.hosts.length;
+        row(card, "GoRex hosts", "", el("span", "settings-value", n ? `${n} found` : t.searching ? "Looking…" : "None found"));
+      }
+      if (t.load.state === "loading" && t.load.total) {
+        row(card, "Download", "", el("span", "settings-value", `${formatBytes(t.load.received)} of ${formatBytes(t.load.total)}`));
+      }
+      const actions = el("div", "host-buttons");
+      if (status === "running" || status === "locked" || status === "needs-approval") {
+        const out = button("Sign Out", "host-add danger");
+        out.dataset.key = "signout";
+        out.prepend(icon("log-out"));
+        out.onclick = () => t.signOut();
+        actions.append(out);
+      }
+      const label = status === "running" ? "Show Hosts" : status === "load-failed" ? "Try Again" : "Sign In";
+      const guide = button(label, status === "running" ? "host-add" : "host-add primary");
+      guide.dataset.key = "guide";
+      if (status !== "running") guide.prepend(icon(status === "load-failed" ? "rotate-ccw" : "log-in"));
+      guide.onclick = () => {
+        if (status === "load-failed") t.turnOn();
+        this.app.guide();
+      };
+      actions.append(guide);
+      const r = el("div", "settings-row");
+      r.append(actions);
+      card.append(r);
+    }
+
+    const dev = group(this.page, "", "", "The name your tailnet's admin console and other devices show. Letters, digits and hyphens, up to 63.");
+    const input = el("input", "theme-search settings-name");
+    input.value = t.name;
+    input.spellcheck = false;
+    input.autocomplete = "off";
+    input.setAttribute("aria-label", "Device name");
+    const error = el("div", "host-error");
+    input.onchange = () => {
+      const v = input.value.trim();
+      if (!validDeviceName(v)) {
+        error.textContent = "Use letters, digits and hyphens, not at the start or end, up to 63.";
+        return;
+      }
+      error.textContent = "";
+      t.rename(v).catch((e) => (error.textContent = `Could not rename: ${e instanceof Error ? e.message : e}`));
+    };
+    row(dev, "Device name", "", input).append(error);
+
+    this.page.append(el("div", "settings-hint settings-note",
+      "Turning it on downloads Tailscale's engine (about 6 MB), and this tab joins your tailnet as a device of its own. " +
+        "It finds your GoRex hosts there (your own devices named <machine>-gorex that answer as GoRex) and reaches them through Tailscale's encrypted relays. " +
+        "In this version the sign-in lasts for this tab only: reloading or closing the tab signs this browser out, and Tailscale removes the device soon after."));
+    const trust = group(this.page, "Trust this page", "Each GoRex host must trust this page's origin. On the host, run once:");
+    const tr = el("div", "settings-row");
+    tr.append(commandBox(allowCommand()));
+    trust.append(tr);
   }
 
   private aboutPage() {

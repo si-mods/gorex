@@ -1,14 +1,18 @@
 // GoRex's web client: the sessions a host's gateway serves, and a window's
 // panes, live, over the same API the iOS app speaks. The page is hosted on
-// its own; the host is one the user added (hosts.ts).
+// its own; the host is one the user added (hosts.ts), or one built-in
+// Tailscale found on the tailnet (tailnet.ts).
 import { Ghostty } from "./ghostty";
+import { Guide } from "./guide";
 import { allowCommand, commandBox, diagnose, Host, HostList, hostURL, icon, mixedContent, Problem } from "./hosts";
 import { shortcut } from "./keys";
 import { describe } from "./pane";
 import { fontFamily, prefs } from "./prefs";
+import { LoadState, ProgressView } from "./progress";
 import { mostUrgent, programName, programOf, rank, seenKey, Status, statusOf, tiles, tilesWidth } from "./programs";
-import { Control, setHost } from "./rex";
+import { Control, directTransport, setHost } from "./rex";
 import { LinkState, Settings } from "./settings";
+import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
 import { chosenName, isLight, loadThemes, ThemeEntry, themeColours } from "./themes";
 import { borderLeaf, layoutOf, leavesOf, WindowHost, WindowView } from "./window";
@@ -29,6 +33,9 @@ let generation = 0;
 let retry: ReturnType<typeof setTimeout> | undefined;
 let hostList: HostList;
 let settings: Settings | undefined;
+/** Built-in Tailscale, off until the user turns it on; its engine loads only then. */
+const tailnet = new Tailnet();
+let guide: Guide | undefined;
 /** The chosen host's connection, and what is wrong with it, for the Settings dialog's host card. */
 let link: LinkState = "none";
 let problem: Problem | undefined;
@@ -136,14 +143,57 @@ const host: WindowHost = {
   },
 };
 
+/** The terminal's wasm in dist/assets, by its hash, and its size (build.mjs). */
+declare const __GHOSTTY_WASM__: { url: string; size: number };
+
+/** How long the page loads before its progress shows: a load from the cache shows none. */
+const progressAfter = 150;
+
+/**
+ * The startup load's progress over the stage: shown only once the load
+ * takes progressAfter, gone when it is done, and its failure with Retry.
+ */
+function bootProgress() {
+  const box = $("boot");
+  const view = new ProgressView("the terminal", { download: "Loading the terminal…", start: "Starting…", failed: "The terminal didn't load" }, () => {
+    box.hidden = true;
+    main();
+  });
+  const card = document.createElement("div");
+  card.className = "boot-card";
+  card.append(view.el);
+  box.replaceChildren(card);
+  let over = false;
+  const timer = setTimeout(() => (box.hidden = over), progressAfter);
+  const end = () => {
+    over = true;
+    clearTimeout(timer);
+  };
+  return {
+    update: (s: LoadState) => view.update(s),
+    fail(message: string) {
+      end();
+      view.update({ phase: "failed", message });
+      box.hidden = false;
+      view.focusRetry();
+    },
+    done() {
+      end();
+      box.hidden = true;
+    },
+  };
+}
+
 async function main() {
   status("Loading libghostty-vt…");
+  const boot = bootProgress();
   try {
     // The font too: the cells are measured from it.
     const faces = ["400", "700", "italic 400", "italic 700"].map((v) => document.fonts.load(`${v} 12px "JetBrains Mono"`));
     // The themes load with it, so that the first frame has the chosen colours.
     let themes: ThemeEntry[];
-    [g, themes] = await Promise.all([Ghostty.load("ghostty-vt.wasm"), loadThemes(), Promise.allSettled(faces)]).then((r) => [r[0], r[1]]);
+    [g, themes] = await Promise.all([Ghostty.load(__GHOSTTY_WASM__.url, __GHOSTTY_WASM__.size, boot.update), loadThemes(), Promise.allSettled(faces)]).then((r) => [r[0], r[1]]);
+    boot.done();
     const pick = (t?: ThemeEntry) => {
       chosen = t && themeColours(t);
       scheme(chosen?.background ?? desktopTheme().background!);
@@ -151,7 +201,13 @@ async function main() {
     };
     pick(themes.find((t) => t.name === chosenName()));
     for (const what of ["headers", "font"] as const) applyPrefs(what);
-    hostList = new HostList($("hosts"), { choose, close: () => shown?.focusKeys(), changed: () => settings?.update() });
+    const openGuide = () => {
+      settings?.close();
+      guide!.open();
+    };
+    hostList = new HostList($("hosts"), {
+      choose, close: () => shown?.focusKeys(), changed: () => settings?.update(), tailnet, guide: openGuide,
+    });
     settings = new Settings({
       hosts: hostList,
       link: () => ({ host: current, state: link, problem }),
@@ -159,12 +215,17 @@ async function main() {
       chooseTheme: pick,
       apply: applyPrefs,
       closed: () => shown?.focusKeys(),
+      tailnet,
+      guide: openGuide,
     });
+    guide = new Guide(tailnet, { connect: (h) => hostList.choose(h), closed: () => shown?.focusKeys() });
+    tailnet.onChange(tailnetChanged);
     const open = $("open-settings");
     open.prepend(icon("settings-2"));
     open.onclick = () => settings!.toggle();
   } catch (e) {
     status(`Could not load libghostty-vt: ${describe(e)}`);
+    boot.fail(`${describe(e)}. Check the connection, then try again.`);
     return;
   }
   // A quick link: ?host=URL adds the host, or chooses it, and leaves the address bar.
@@ -177,8 +238,27 @@ async function main() {
   choose(hostList.chosen);
 }
 
+/**
+ * Built-in Tailscale changed: the host list and Settings show it, and a
+ * tailnet host chosen that is gone (signed out, Tailscale off) gives way
+ * to the first host added.
+ */
+function tailnetChanged() {
+  hostList.refresh();
+  settings?.update();
+  if (current?.kind === "tailnet" && tailnet.status() !== "running" && !tailnet.hosts.some((h) => h.id === current!.id)) {
+    hostList.choose(hostList.hosts[0]);
+  } else if (!current && tailnet.status() !== noticeFor) {
+    // The notice's Tailscale button follows its state.
+    choose(undefined);
+  }
+}
+
+/** The Tailscale state the notice of no host was drawn for. */
+let noticeFor = "";
+
 /** Shows what is wrong with the host, or nothing. */
-function notice(p?: Problem, action?: { label: string; run: () => void }) {
+function notice(p?: Problem, ...actions: { label: string; run: () => void; primary?: boolean }[]) {
   const box = $("notice");
   box.hidden = !p;
   if (!p) return;
@@ -190,13 +270,18 @@ function notice(p?: Problem, action?: { label: string; run: () => void }) {
   t.textContent = p.text;
   card.append(h, t);
   if (p.command) card.append(commandBox(p.command));
-  if (action) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "host-add primary";
-    b.textContent = action.label;
-    b.onclick = action.run;
-    card.append(b);
+  if (actions.length) {
+    const row = document.createElement("div");
+    row.className = "notice-actions";
+    actions.forEach((a, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = a.primary ?? i === 0 ? "host-add primary" : "host-add";
+      b.textContent = a.label;
+      b.onclick = a.run;
+      row.append(b);
+    });
+    card.append(row);
   }
   box.replaceChildren(card);
 }
@@ -219,20 +304,34 @@ function choose(h: Host | undefined) {
   if (!h) {
     status("");
     setLink("none");
+    const ts = (noticeFor = tailnet.status());
     notice(
       {
         title: "Add a GoRex host",
         text:
           "This page connects to GoRex's Rex API gateway on your machines: the tailnet address of built-in Tailscale " +
           "(https://<machine>-gorex.<tailnet>.ts.net), or the local network listener (http://192.168.1.2:7297). " +
+          "Or sign in to Tailscale here, and the page finds your hosts on your tailnet. " +
           "Each host must trust this page's origin first. On the host, run:",
         command: allowCommand(),
       },
       { label: "Add Host", run: () => hostList.open("new") },
+      {
+        label: ts === "running" ? "Show Tailscale Hosts" : ts === "off" ? "Sign in with Tailscale" : "Continue with Tailscale",
+        run: () => guide!.open(),
+      },
     );
     return;
   }
-  setHost(h.url);
+  if (h.kind === "tailnet") {
+    // A tailnet host: no URL the browser opens, so no mixed content.
+    setHost(tailnet.transport(h as TailnetHost));
+    notice();
+    setLink("connecting");
+    connect(generation);
+    return;
+  }
+  setHost(directTransport(h.url));
   const blocked = mixedContent(h.url);
   if (blocked) {
     status(`${h.name}: blocked`);
@@ -255,9 +354,10 @@ async function connect(gen: number) {
     c = await Control.open(token);
   } catch (e) {
     if (gen !== generation) return;
-    const p = await diagnose(h.url);
+    const p = h.kind === "tailnet" ? await tailnet.diagnose(h as TailnetHost) : await diagnose(h.url);
     if (gen !== generation) return;
-    notice(p, { label: "Edit Host", run: () => hostList.open(h) });
+    if (h.kind === "tailnet") notice(p, { label: "Tailscale Settings", run: () => settings?.open("tailscale") });
+    else notice(p, { label: "Edit Host", run: () => hostList.open(h) });
     setLink("unreachable", p);
     status(`${h.name}: ${p.title}. Trying again…`);
     retry = setTimeout(() => connect(gen), 4000);

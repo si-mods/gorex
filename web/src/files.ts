@@ -5,8 +5,10 @@
 // whose first bytes are that image's, opens in the viewer (viewer.ts) from
 // a blob of that image type only; anything else is the browser's own
 // download, a hidden link navigated to the file, so no blob of the host's
-// data other than a checked image exists on the page.
-import { apiURL, Control, RexError } from "./rex";
+// data other than a checked image exists on the page. Over the tailnet the
+// browser cannot navigate to the host, so a file downloads into a blob
+// that is saved and let go (docs/web-tailscale.md, Downloads).
+import { apiURL, Control, hostTransport, RexError } from "./rex";
 import { Viewer } from "./viewer";
 
 /** The images the viewer shows, by the MIME type their blob takes. */
@@ -44,6 +46,8 @@ const extKinds: Record<string, ImageKind> = {
 
 /** The largest image the page fetches to show; a larger one downloads. */
 export const maxViewBytes = 50 << 20;
+/** The largest file a tailnet host's download holds in memory, as a blob. */
+export const maxBlobBytes = 256 << 20;
 /** How many of the first bytes the signature check reads. */
 const sniffBytes = 4096;
 
@@ -159,20 +163,65 @@ async function begin(c: Control | undefined, session: string, block: string, pat
   return { ticket: String(r.ticket ?? ""), name: String(r.name ?? ""), size: Number(r.size ?? 0), type: String(r.type ?? "") };
 }
 
-const downloadURL = (ticket: string) => apiURL(`/api/download?ticket=${encodeURIComponent(ticket)}`);
+const downloadPath = (ticket: string) => `/api/download?ticket=${encodeURIComponent(ticket)}`;
 
 /**
  * Hands a ticket's file to the browser's own download: a hidden frame
  * navigated to it. The answer is an attachment, which the browser saves;
  * an error (a lapsed ticket's 404) lands in the frame, never in the page.
+ * A tailnet host's file goes through a blob instead (saveBlob).
  */
-function navigate(ticket: string, _name: string) {
-  const f = document.createElement("iframe");
-  f.hidden = true;
-  f.src = downloadURL(ticket);
-  document.body.append(f);
+async function navigate(f: Begun, host: FileHost) {
+  if (hostTransport().kind !== "direct") return saveBlob(f, host);
+  const frame = document.createElement("iframe");
+  frame.hidden = true;
+  frame.src = apiURL(downloadPath(f.ticket));
+  document.body.append(frame);
   // The download goes on without the frame once it has started.
-  setTimeout(() => f.remove(), 60_000);
+  setTimeout(() => frame.remove(), 60_000);
+}
+
+/**
+ * Downloads a ticket's file through the transport into a blob, at most
+ * maxBlobBytes, and saves it with a link's download: the blob is never
+ * shown or navigated to, and its URL goes once the save has started.
+ */
+async function saveBlob(f: Begun, host: FileHost) {
+  const cap = `over Tailscale the page downloads files up to ${maxBlobBytes >> 20} MB`;
+  if (f.size > maxBlobBytes) throw new Error(`Too large: ${cap}`);
+  const name = f.name || "download";
+  const r = await hostTransport().fetch(downloadPath(f.ticket), { cache: "no-store" });
+  if (!r.ok || !r.body) throw new Error(`the host answered ${r.status}`);
+  const reader = r.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let n = 0, shown = -1;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      n += value.length;
+      if (n > maxBlobBytes) throw new Error(`the file grew too large: ${cap}`);
+      const pct = f.size ? Math.floor((100 * n) / f.size) : -1;
+      if (pct !== shown && pct >= 0) {
+        shown = pct;
+        host.status(`Downloading ${name}… ${Math.min(pct, 100)}%`);
+      }
+    }
+  } catch (e) {
+    reader.cancel().catch(() => {});
+    throw e;
+  }
+  const url = URL.createObjectURL(new Blob(chunks as BlobPart[], { type: "application/octet-stream" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.hidden = true;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  host.status(`Downloaded ${name}`);
 }
 
 /**
@@ -181,7 +230,7 @@ function navigate(ticket: string, _name: string) {
  * image's, the rest then left unread.
  */
 async function fetchImage(ticket: string, kind: ImageKind): Promise<Blob | undefined> {
-  const r = await fetch(downloadURL(ticket), { mode: "cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
+  const r = await hostTransport().fetch(downloadPath(ticket), { mode: "cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
   if (!r.ok || !r.body) throw new Error(`the host answered ${r.status}`);
   const reader = r.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -224,7 +273,7 @@ export async function downloadFile(session: string, block: string, path: string,
   opening.add(key);
   try {
     const f = await begin(host.control(), session, block, path);
-    navigate(f.ticket, f.name);
+    await navigate(f, host);
   } catch (e) {
     host.status(`Could not download ${path}: ${errorMessage(e)}`);
   } finally {
@@ -255,10 +304,10 @@ export async function openFile(session: string, block: string, path: string, hos
       }
       // Not the image it was named: the browser downloads it, with a new ticket.
       const again = await begin(host.control(), session, block, path);
-      navigate(again.ticket, again.name);
+      await navigate(again, host);
       return;
     }
-    navigate(f.ticket, f.name);
+    await navigate(f, host);
   } catch (e) {
     host.status(`Could not open ${path}: ${errorMessage(e)}`);
   } finally {

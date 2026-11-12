@@ -5,16 +5,28 @@
 // asks for (fetched into a cache when ZIG is not set), and the
 // TypeScript client, bundled by esbuild. web/dist is what Cloudflare
 // serves (wrangler.jsonc) and what the dev server serves (dev.mjs).
+// It also builds the tailnet engine (web/tailnet, docs/web-tailscale.md)
+// with Go, when Go is installed: a page built without Go works, with no
+// built-in Tailscale.
+//
+// The large files go in dist/assets under names that carry a hash of
+// their content (app-<hash>.js, ghostty-vt-<hash>.wasm,
+// ghostty-themes-<hash>.json, tailnet-<hash>.*), which _headers keeps a
+// year: a reload takes them from the browser's cache. index.html names the
+// script, and the script names the rest (assetDefines).
 //
 // Usage: node web/build.mjs [--ghostty-source <path>] [--rebuild-wasm]
 //
 // The cache is $GOREX_WEB_CACHE, else $XDG_CACHE_HOME/gorex-web, else
 // ~/.cache/gorex-web. See docs/web-client.md.
-import { execFileSync, execSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { execFile, execFileSync, execSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+import { gzipSync } from "node:zlib";
 
 // The commit of si-mods/mygo's plugins/terminal/internal/libbuild, as
 // ios/scripts/build-ghostty-vt.sh pins it.
@@ -89,6 +101,68 @@ async function wasm() {
   return out;
 }
 
+/**
+ * The tailnet engine's build tags: tsconnect's own list, read from the
+ * pinned tailscale.com so a bump keeps it current, and five features the
+ * web node does not need (docs/web-tailscale.md, Build and size).
+ */
+const extraTags = ["ts_omit_c2n", "ts_omit_dns", "ts_omit_health", "ts_omit_ipnbus", "ts_omit_logtail"];
+
+/** The largest file Cloudflare Workers serves as a static asset. */
+const assetLimit = 25 * 1024 * 1024;
+
+/**
+ * Builds the tailnet engine into dir: assets/tailnet-<hash>.wasm.gz (the
+ * module, gzipped; only the compressed file is shipped, under Cloudflare's
+ * 25 MiB a file, and the page unpacks it with DecompressionStream),
+ * assets/tailnet-<hash>.js (Go's wasm_exec.js of the same toolchain) and
+ * tailnet.json, which names them for the page and is fetched only when the
+ * user turns Tailscale on. Old engine files go. Without Go it writes none
+ * of them and returns false; a build that fails throws.
+ */
+export async function buildTailnet(dir) {
+  const run = promisify(execFile);
+  const go = process.env.GO || "go";
+  let goroot, version;
+  try {
+    goroot = (await run(go, ["env", "GOROOT"], { cwd: root })).stdout.trim();
+    version = (await run(go, ["env", "GOVERSION"], { cwd: root })).stdout.trim();
+  } catch {
+    console.warn("tailnet engine: skipped, Go is not installed (the page builds without built-in Tailscale; see docs/web-tailscale.md)");
+    return false;
+  }
+  const started = Date.now();
+  const tags = (await run(go, ["run", "./web/tailnet/tags/tags.go"], { cwd: root })).stdout.trim();
+  const tmp = mkdtempSync(join(tmpdir(), "gorex-tailnet-"));
+  try {
+    const out = join(tmp, "tailnet.wasm");
+    const env = { ...process.env, GOOS: "js", GOARCH: "wasm", CGO_ENABLED: "0", GOEXPERIMENT: "nojsonv2" };
+    console.log(`> GOOS=js GOARCH=wasm GOEXPERIMENT=nojsonv2 go build -trimpath -ldflags "-s -w" -tags <tsconnect's,${extraTags.join(",")}> ./web/tailnet`);
+    await run(go, ["build", "-trimpath", "-ldflags", "-s -w", "-tags", [tags, ...extraTags].join(","), "-o", out, "./web/tailnet"], {
+      cwd: root, env, maxBuffer: 16 << 20,
+    });
+    const raw = readFileSync(out);
+    const gz = gzipSync(raw, { level: 9 });
+    if (gz.length > assetLimit) throw new Error(`the gzipped tailnet engine is ${gz.length} bytes, over Cloudflare's ${assetLimit}`);
+    const hash = createHash("sha256").update(gz).digest("hex").slice(0, 16);
+    const exec = readFileSync(join(goroot, "lib", "wasm", "wasm_exec.js"));
+    const execHash = createHash("sha256").update(exec).digest("hex").slice(0, 16);
+    mkdirSync(join(dir, "assets"), { recursive: true });
+    for (const f of readdirSync(join(dir, "assets"))) if (/^tailnet-[0-9a-f]+\.(wasm\.gz|js)$/.test(f)) rmSync(join(dir, "assets", f));
+    const manifest = { engine: `assets/tailnet-${hash}.wasm.gz`, exec: `assets/tailnet-${execHash}.js`, bytes: gz.length, raw: raw.length, go: version };
+    writeFileSync(join(dir, manifest.engine), gz);
+    writeFileSync(join(dir, manifest.exec), exec);
+    writeFileSync(join(dir, "tailnet.json"), JSON.stringify(manifest) + "\n");
+    const mb = (n) => (n / 1e6).toFixed(2) + " MB";
+    console.log(`tailnet engine: ${manifest.engine}, ${mb(gz.length)} gzipped (${mb(raw.length)} raw), ${((Date.now() - started) / 1000).toFixed(1)} s`);
+    return true;
+  } catch (e) {
+    throw new Error(`tailnet engine: ${e.stderr || e.message}`);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 /** The client's commit, short, with "-dirty" for uncommitted changes; "" outside a checkout. */
 function commit() {
   try {
@@ -115,6 +189,27 @@ export const appOptions = {
   },
 };
 
+/** A name in dist/assets for content: base-<hash>.ext. */
+function hashedName(content, base, ext) {
+  return `assets/${base}-${createHash("sha256").update(content).digest("hex").slice(0, 16)}${ext}`;
+}
+
+/**
+ * The names of the hashed files in dist/assets that the script loads, as
+ * esbuild defines: the terminal's wasm (with its size, the progress bar's
+ * total) and the themes.
+ */
+export function assetDefines(dir) {
+  const files = existsSync(join(dir, "assets")) ? readdirSync(join(dir, "assets")) : [];
+  const find = (re) => files.find((f) => re.test(f));
+  const wasmName = find(/^ghostty-vt-[0-9a-f]+\.wasm$/), themes = find(/^ghostty-themes-[0-9a-f]+\.json$/);
+  if (!wasmName || !themes) throw new Error(`${dir} has no hashed ghostty-vt.wasm or themes: run node build.mjs`);
+  return {
+    __GHOSTTY_WASM__: JSON.stringify({ url: `assets/${wasmName}`, size: statSync(join(dir, "assets", wasmName)).size }),
+    __GHOSTTY_THEMES__: JSON.stringify(`assets/${themes}`),
+  };
+}
+
 /** esbuild, from web/node_modules. */
 export async function esbuild() {
   return import(pathToFileURL(join(web, "node_modules", "esbuild", "lib", "main.js")).href);
@@ -129,15 +224,25 @@ async function main() {
   run(process.execPath, [join(web, "node_modules", "typescript", "bin", "tsc"), "--noEmit", "-p", web]);
 
   rmSync(dist, { recursive: true, force: true });
-  mkdirSync(dist);
+  mkdirSync(join(dist, "assets"), { recursive: true });
+  // The wasm and the Ghostty themes the iOS app ships (not copied into the
+  // repo twice), by their content's hash, which the script names.
+  const ghosttyWasm = readFileSync(wasmFile);
+  writeFileSync(join(dist, hashedName(ghosttyWasm, "ghostty-vt", ".wasm")), ghosttyWasm);
+  const themes = readFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"));
+  writeFileSync(join(dist, hashedName(themes, "ghostty-themes", ".json")), themes);
   const { build } = await esbuild();
-  await build(appOptions);
-  copyFileSync(join(web, "index.html"), join(dist, "index.html"));
+  await build({ ...appOptions, define: { ...appOptions.define, ...assetDefines(dist) } });
+  // The script by its hash too, which index.html names.
+  const app = readFileSync(join(dist, "app.js"));
+  const appName = hashedName(app, "app", ".js");
+  writeFileSync(join(dist, appName), app);
+  rmSync(join(dist, "app.js"));
+  const page = readFileSync(join(web, "index.html"), "utf8");
+  if (!page.includes('src="app.js"')) throw new Error('index.html has no <script src="app.js">');
+  writeFileSync(join(dist, "index.html"), page.replace('src="app.js"', `src="${appName}"`));
   // Cloudflare's headers for the files (cache, CSP); see docs/web-client.md.
   copyFileSync(join(web, "_headers"), join(dist, "_headers"));
-  copyFileSync(wasmFile, join(dist, "ghostty-vt.wasm"));
-  // The Ghostty themes the iOS app ships, not copied into the repo twice.
-  copyFileSync(join(root, "ios", "GoRex", "ghostty-themes.json"), join(dist, "ghostty-themes.json"));
   // The desktop's terminal font, which GoRex embeds too, with its licence.
   mkdirSync(join(dist, "fonts"));
   for (const f of readdirSync(join(root, "assets", "fonts"))) copyFileSync(join(root, "assets", "fonts", f), join(dist, "fonts", f));
@@ -146,6 +251,8 @@ async function main() {
     mkdirSync(join(dist, d));
     for (const f of readdirSync(join(root, "assets", d))) copyFileSync(join(root, "assets", d, f), join(dist, d, f));
   }
+  // Built-in Tailscale's engine, which the page loads only when the user turns it on.
+  await buildTailnet(dist);
   console.log(`built ${dist}`);
 }
 

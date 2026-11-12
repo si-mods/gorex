@@ -26,8 +26,11 @@ local session server. It is a remote client, like Rex's iPhone app:
 - Every terminal it shows lives on a GoRex host, in that host's session
   server. The client reaches it through the host's gateway over
   WebSocket (`/api/control` and `/api/data`), at the address the user
-  added. No URL is the page's own: every API URL is built from the
-  host's address (`setHost` and `apiURL` in `web/src/rex.ts`).
+  added. No URL is the page's own: every connection goes through the
+  chosen host's transport (`setHost` and `Transport` in
+  `web/src/rex.ts`): the browser's own WebSocket and fetch to its
+  address, or, for a host found by built-in Tailscale, the page's
+  Tailscale node.
 - It keeps no state that a host needs. Closing the tab detaches; the
   sessions and their programs keep running on the host.
 - The terminal emulator in the page (libghostty-vt in wasm) only mirrors
@@ -59,7 +62,14 @@ hosts at once, as iOS shows them, is for later.
 
 With no host, the page says how to add one, with the command that makes
 a host trust this page: `gorex rexapi web allow <origin>`, with the page's
-own `location.origin`. When a host does not connect, the page tells why,
+own `location.origin`, and offers to sign in with Tailscale instead.
+
+The list also has a **Tailscale** group: the GoRex hosts that built-in
+Tailscale found on your tailnet (see Built-in Tailscale), each with a
+dot for its state (online, offline, refuses this browser). They are not
+saved. Before Tailscale is signed in, the group has one row, **Add Hosts
+from Tailscale** (or **Sign in to Tailscale**), which opens the sign-in
+guide. When a host does not connect, the page tells why,
 and tries again every few seconds, so it connects once the cause is gone:
 
 - **The host doesn't trust this page.** The gateway refused the page's
@@ -130,6 +140,54 @@ preflight of any other page.
 
 Trust only pages you control. A trusted page can do anything the API can,
 as anyone who opens it in a browser that the access rule lets in.
+
+## Built-in Tailscale
+
+The page can join your tailnet itself, with no Tailscale app and no VPN
+on the device (docs/web-tailscale.md). It then lists the GoRex hosts on
+the tailnet and connects to them through Tailscale.
+
+1. Open the host list and choose **Add Hosts from Tailscale**, or
+   Settings, Tailscale, and turn **Built-in Tailscale** on. A guide opens.
+2. **About**: what happens. The tab joins the tailnet as a device of its
+   own, `gorex-web-` and four letters (Settings, Tailscale, Device name
+   changes it). **Continue**.
+3. **Download**: the page downloads Tailscale's engine, about 6 MB
+   gzipped, with a progress bar. A failure shows the reason and **Try
+   Again**.
+4. **Sign in**: **Sign in with Tailscale** opens a new tab, and the page
+   sends it to `https://login.tailscale.com/a/…` when control answers.
+   Sign in there with the account of your GoRex hosts. The page notices
+   by itself when you are done. When the browser blocked the tab, the
+   guide shows the link to open, and a box to copy it. **Cancel** closes
+   the tab and stops waiting. A tailnet that approves devices by hand
+   waits for an admin.
+5. **Hosts**: the account and tailnet, then "Looking for GoRex hosts…"
+   and each host found, with **Connect**. A host that refuses this
+   browser says why and what to run on it.
+
+A host is found when it is your own untagged device, its name ends in
+`-gorex` (built-in Tailscale's default) or it reports itself as GoRex,
+and it answers `GET /api/help` on port 443 within 3 seconds. For a host
+to be found, on the host:
+
+```sh
+gorex rexapi tailscale on                  # sign it in with the same account
+gorex rexapi tailscale status              # wait for https: available
+gorex rexapi web allow <this page's origin>
+```
+
+MagicDNS and HTTPS must be on in the tailnet's admin console. When the
+host lets in only the account that signed it in and this browser signed
+in with another, run `gorex rexapi tailscale on --allow-tailnet-members`
+on the host (the tailnet's access rules then decide).
+
+In this version the sign-in lasts for this tab only: the node is
+ephemeral and kept in memory, so reloading or closing the tab signs this
+browser out, and Tailscale removes the device soon after. Sign Out in
+Settings does the same at once and removes the tailnet hosts from the
+list. A tailnet with Tailnet Lock is not supported, nor a control server
+other than Tailscale's.
 
 ## Mixed content
 
@@ -212,11 +270,22 @@ headers on Cloudflare:
   the hosts at build time. `frame-src http: https:` lets the hidden frame
   that takes a host's download (docs/web-open-files.md) load it.
 - `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`.
-- The file names carry no hash. So `/`, `index.html`, `app.js` and the
-  wasm are `no-cache` (revalidated, with Cloudflare's ETag, on every
-  load), and the fonts, icons, brand marks and themes are kept for a day.
-  Cloudflare gives a path that two rules match both rules' headers, so no
-  two rules set the same header on one path.
+- The script, the terminal's wasm, the themes and the Tailscale engine
+  are in `/assets` under names that carry a hash of their content
+  (`app-<hash>.js`, `ghostty-vt-<hash>.wasm`,
+  `ghostty-themes-<hash>.json`, `tailnet-<hash>.wasm.gz`,
+  `tailnet-<hash>.js`), kept a year (`public, max-age=31536000,
+  immutable`): after the first visit, a reload takes them from the
+  browser's cache without asking the server. `/` and `index.html`, which
+  names the script, and `tailnet.json`, which names the engine, are
+  `no-cache` (revalidated, with Cloudflare's ETag, on every load). The
+  fonts, icons and brand marks are kept for a day. Cloudflare gives a path
+  that two rules match both rules' headers, so no two rules set the same
+  header on one path.
+- `connect-src` names `https://controlplane.tailscale.com`,
+  `wss://controlplane.tailscale.com` and `wss://*.tailscale.com` (DERP)
+  for built-in Tailscale; `http: https: ws: wss:` already allow them.
+  The engine uploads no logs.
 
 ### Local dev server
 
@@ -229,7 +298,11 @@ npm run dev -- --port 7478   # another port; --host ADDR to listen elsewhere
 `web/dev.mjs` builds `web/dist` once (`build.mjs`, with its type check),
 then serves it with esbuild. It bundles `src/` again on every change (not
 minified, with a source map), without the type check, and copies
-`index.html` again when it changes. It prints the command that makes a
+`index.html` again when it changes. The script keeps its plain name,
+`app.js`, in the dev server; the wasm and the themes keep their hashed
+names. It builds the Tailscale engine again when a Go file of
+`web/tailnet` changes (a few seconds with Go's build cache); reload the
+page to load it. It prints the command that makes a
 host trust it. It is plain http on loopback, so it reaches both kinds of
 gateway: `http://` on the local network and `https://` on the tailnet. It
 sends none of `_headers`' headers.
@@ -251,8 +324,10 @@ symbols by 0.85, the desktop its SVGs by 1); a row has no status inbox.
 
 ## Build
 
-You need Node 22 or later and Git. The script gets Zig itself. Go is not
-needed.
+You need Node 22 or later and Git. The script gets Zig itself. Go (the
+version `go.mod` names) builds the Tailscale engine; without it the build
+skips the engine with a message, and the page works without built-in
+Tailscale.
 
 ```sh
 cd web
@@ -271,12 +346,32 @@ npm run build     # node build.mjs; Windows: the same, from PowerShell or Git Ba
    build skips this step. `--rebuild-wasm` builds it again.
 4. It runs `npm ci` in `web/` if `web/node_modules` is missing, then
    type-checks the client (`tsc --noEmit`) and bundles it with esbuild.
-5. It empties `web/dist` and writes `index.html`, `app.js`, `_headers` and
-   `ghostty-vt.wasm` there, copies `ios/GoRex/ghostty-themes.json` (the
-   repo keeps one copy of the themes), and the JetBrains Mono fonts from
-   `assets/fonts` (with their licence) into `dist/fonts`. It also copies
-   `assets/icons` and `assets/brands` into `dist/icons` and
-   `dist/brands`, the glyphs of the program tiles and of the hosts.
+5. It empties `web/dist` and writes `index.html`, `_headers`, and in
+   `dist/assets` the script, `ghostty-vt.wasm` and
+   `ios/GoRex/ghostty-themes.json` (the repo keeps one copy of the
+   themes) under hashed names (see Cloudflare Workers). `index.html`
+   names the script; the script names the wasm, with its size, and the
+   themes. It copies the JetBrains Mono fonts from `assets/fonts` (with
+   their licence) into `dist/fonts`, and `assets/icons` and
+   `assets/brands` into `dist/icons` and `dist/brands`, the glyphs of the
+   program tiles and of the hosts.
+6. With Go, it builds the Tailscale engine (`web/tailnet`,
+   docs/web-tailscale.md): `GOOS=js GOARCH=wasm`, tsconnect's build tags
+   and five more, `GOEXPERIMENT=nojsonv2`, `-trimpath -ldflags "-s -w"`.
+   It writes only the gzipped module, `dist/assets/tailnet-<hash>.wasm.gz`
+   (about 6.1 MB; the raw module, about 26 MB, is not shipped), Go's
+   `wasm_exec.js` as `dist/assets/tailnet-<hash>.js`, and
+   `dist/tailnet.json`, which names them.
+
+As the page starts, it loads the terminal's wasm (about 870 KB) with a
+progress bar over the window's room: the bytes received of the size the
+build wrote in, then "Starting…" while it compiles. The bar shows only
+when the load takes more than 150 ms, so a load from the cache shows
+none. A failure shows the reason and **Retry**. Served as
+`application/wasm`, the module compiles as it arrives
+(`WebAssembly.instantiateStreaming` on the fetch's own response) while a
+clone of the response counts the bytes. The Tailscale engine's download
+in the sign-in guide uses the same bar (`web/src/progress.ts`).
 
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
 `~/.cache/gorex-web`. `go build ./...` and the Go tests need no web build.
@@ -303,6 +398,12 @@ The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
   browser, and the picker.
 - `web/src/hosts.ts`: the hosts, kept in the browser; their list and
   form; why a host does not connect (see Hosts).
+- `web/src/tailnet.ts`: built-in Tailscale: loading the engine, the
+  node's state and sign-in, finding hosts in the network map, and the
+  tailnet transport (`SocketLike` and a streamed `Response` over the
+  engine). `web/src/guide.ts`: the sign-in guide. `web/src/progress.ts`:
+  a load's progress bar.
+- `web/tailnet`: the engine, in Go (docs/web-tailscale.md).
 - `web/src/main.ts`: the chosen host's connection, the sessions and their
   views, the sidebar, and the window's commands.
 - `web/src/window.ts`: a window's layout tree, its panes and dividers,
@@ -635,6 +736,7 @@ page and every open pane.
 | Theme | The theme picker (see Themes). |
 | Keyboard | The shortcuts (see Shortcuts), with this system's keys. |
 | Hosts | The hosts: choose one, add one, edit its address, name and icon, or remove it, with the same form as the host list's. |
+| Tailscale | Built-in Tailscale on or off, its status (Not signed in, Signing in, Connected as the account on the tailnet, Expired, Tailnet Lock, Error), the account, tailnet and hosts found, Sign In (the guide) and Sign Out, the device name, and how long the sign-in lasts. |
 | About | The client's commit and build date and the Ghostty commit of the wasm (`web/build.mjs` writes them in), and Reset All Settings, which forgets every `gorex.*` key of the page in this browser and reloads it. |
 
 The cursor is set as the desktop sets it (`setCursor`): with the

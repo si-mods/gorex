@@ -1,11 +1,17 @@
 # Cloudflare Workers static assets: headers for web/dist (build.mjs copies
-# this file there); see docs/web-client.md. The file names carry no hash,
-# so the page, its script and the wasm are revalidated (ETag) on every
-# load, and only the fonts, icons and themes are kept for a day. A path
-# that two rules match gets both rules' headers, so the rules below set
-# different headers or match different paths.
+# this file there); see docs/web-client.md. The script, the wasm, the
+# themes and the tailnet engine are in /assets under names that carry a hash
+# of their content, so they are kept a year (immutable): a reload takes them
+# from the browser's cache without asking. The page itself (/ and
+# index.html), which names the script, and tailnet.json, which names the
+# engine, are revalidated (ETag) on every load; the fonts, icons and brand
+# marks are kept a day. A path that two rules match gets both rules'
+# headers, so the rules below set different headers or match different
+# paths. The Tailscale hosts in connect-src are what built-in Tailscale
+# needs (docs/web-tailscale.md, CSP); http: and https: already cover them,
+# for the hosts the user adds, but they stay named for when that narrows.
 /*
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; frame-src http: https:; connect-src 'self' http: https: ws: wss:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; frame-src http: https:; connect-src 'self' http: https: ws: wss: https://controlplane.tailscale.com wss://controlplane.tailscale.com wss://*.tailscale.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
 
@@ -13,15 +19,13 @@
   Cache-Control: no-cache
 /index.html
   Cache-Control: no-cache
-/app.js
-  Cache-Control: no-cache
-/ghostty-vt.wasm
-  Cache-Control: no-cache
-/ghostty-themes.json
-  Cache-Control: public, max-age=86400
 /fonts/*
   Cache-Control: public, max-age=86400
 /icons/*
   Cache-Control: public, max-age=86400
 /brands/*
   Cache-Control: public, max-age=86400
+/tailnet.json
+  Cache-Control: no-cache
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

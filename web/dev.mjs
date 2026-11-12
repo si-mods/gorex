@@ -7,12 +7,18 @@
 // one (docs/web-client.md). The host must trust its origin:
 // gorex rexapi web allow http://127.0.0.1:5173
 //
+// It builds the tailnet engine again when a Go file of web/tailnet changes
+// (a few seconds with Go's build cache); reload the page to load it.
+//
+// The script keeps its plain name here, app.js, which index.html names as
+// it is; the wasm and the themes keep the hashed names the build gave them.
+//
 // Usage: npm run dev [-- --port N] [-- --host ADDR]
 import { execFileSync } from "node:child_process";
 import { copyFileSync, watch } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { appOptions, dist, esbuild } from "./build.mjs";
+import { appOptions, assetDefines, buildTailnet, dist, esbuild } from "./build.mjs";
 
 const web = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -28,12 +34,35 @@ const rest = args.filter((a, i) => !["--host", "--port"].includes(a) && !["--hos
 execFileSync(process.execPath, [join(web, "build.mjs"), ...rest], { stdio: "inherit" });
 
 const { context } = await esbuild();
-const ctx = await context({ ...appOptions, minify: false, sourcemap: "linked" });
+const ctx = await context({ ...appOptions, define: { ...appOptions.define, ...assetDefines(dist) }, minify: false, sourcemap: "linked" });
 await ctx.watch();
+copyFileSync(join(web, "index.html"), join(dist, "index.html"));
 watch(join(web, "index.html"), () => {
   try {
     copyFileSync(join(web, "index.html"), join(dist, "index.html"));
   } catch {}
+});
+// The engine, again after its Go changes: one build at a time, and one
+// more if a change came during it.
+let building = false, again = false, timer;
+async function rebuildTailnet() {
+  if (building) return void (again = true);
+  building = true;
+  try {
+    await buildTailnet(dist);
+  } catch (e) {
+    console.error(e.message);
+  }
+  building = false;
+  if (again) {
+    again = false;
+    rebuildTailnet();
+  }
+}
+watch(join(web, "tailnet"), { recursive: true }, (_, file) => {
+  if (!file?.endsWith(".go")) return;
+  clearTimeout(timer);
+  timer = setTimeout(rebuildTailnet, 300);
 });
 const served = await ctx.serve({ servedir: dist, host, port });
 const origin = `http://${served.hosts?.[0] ?? host}:${served.port}`;

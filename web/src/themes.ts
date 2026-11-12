@@ -14,10 +14,13 @@ export interface ThemeEntry {
 
 const rgb = (v: number): RGB => [v >> 16, (v >> 8) & 0xff, v & 0xff];
 
+/** The themes' file in dist/assets, by its hash (build.mjs). */
+declare const __GHOSTTY_THEMES__: string;
+
 /** The list, empty when it cannot be loaded: the client then keeps the desktop's colours. */
 export async function loadThemes(): Promise<ThemeEntry[]> {
   try {
-    const r = await fetch("ghostty-themes.json");
+    const r = await fetch(__GHOSTTY_THEMES__);
     if (!r.ok) throw new Error(String(r.status));
     return await r.json();
   } catch (e) {
