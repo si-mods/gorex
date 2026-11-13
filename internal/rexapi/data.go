@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -213,11 +212,13 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		g: g, key: key, record: t.record, sid: t.sid,
 		subprotocol: terminalProtocol, nonce: nonce,
 		conn: conn, rd: br,
-		chunks: make(chan []byte, 32), resumes: make(chan *resumeCall),
+		chunks: make(chan chunk, 32), resumes: make(chan *resumeCall),
 		goners: make(chan gone, 8), msgs: make(chan any, 8), done: make(chan struct{}),
-		finished: make(chan struct{}),
-		lists:    make(chan []rex.SessionInfo, 1),
-		cols:     head.Cols, rows: head.Rows, block: t.block,
+		finished: make(chan struct{}), resyncs: make(chan resyncResult, 1),
+		drained: make(chan struct{}, 1),
+		lists:   make(chan []rex.SessionInfo, 1),
+		cols:    head.Cols, rows: head.Rows, block: t.block,
+		fed: true,
 	}
 	token := g.rotateStreamToken(s)
 	s.setWS(ws)
@@ -237,11 +238,14 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		s.buf = append(s.buf, apcMessage(nonce, th.message())...)
 	}
 	s.total = int64(len(s.buf))
-	welcome := welcomeBytes(token, nonce)
-	if !writeData(ws, welcome) || writeStream(ws, s.buf) != nil {
+	s.mark = s.total
+	if !writeData(ws, welcomeBytes(token, nonce)) {
 		s.discard()
 		return
 	}
+	// The writer sends the snapshot while the stream reads the session's
+	// output on, so that a slow connection does not hold up the attach.
+	s.startWriter(ws, 0)
 	go s.run()
 	go s.watch(ws)
 	s.startPing(ws, s.wsDone())
@@ -314,7 +318,7 @@ type stream struct {
 	ws     *websocket.Conn
 	wsdone chan struct{}
 
-	chunks  chan []byte
+	chunks  chan chunk
 	resumes chan *resumeCall
 	goners  chan gone
 	// msgs carries Rex's own messages to send where the output allows.
@@ -324,17 +328,63 @@ type stream struct {
 	finished chan struct{}
 	// lists carries the gateway's newest session list (listSessions).
 	lists chan []rex.SessionInfo
+	// resyncs carries the attach a resync made (startResync).
+	resyncs chan resyncResult
+	// drained tells that the writer sent all there is (write).
+	drained chan struct{}
+
+	// out guards what the run goroutine and the writer share: the
+	// stream's bytes, buf, which are those from total-len(buf) to total;
+	// sent, how far the writer took them; and writer, which a new
+	// connection's writer counts up, to stop the one before. Only the
+	// run goroutine changes buf and total.
+	out    sync.Mutex
+	wake   *sync.Cond
+	buf    []byte
+	total  int64
+	sent   int64
+	writer int
 
 	// The run goroutine owns these.
-	buf          []byte
-	total        int64
 	base         int64
 	cols, rows   int
 	exited       bool
+	exitCode     int
 	resume       *time.Timer
 	vt           vtParser
 	pending      [][]byte
 	pendingBytes int
+	// gen counts the attaches to the session, whose output carries it
+	// (chunk); fed tells that the attach of the moment gave output after
+	// its snapshot.
+	gen int
+	fed bool
+	// mark is where the newest snapshot in the stream ends: what comes
+	// before it is never dropped, so that a snapshot goes whole. behind
+	// tells that the stream dropped the output it could not send, and
+	// waits for a resync; resyncing, that an attach for it is under way.
+	mark      int64
+	behind    bool
+	resyncing bool
+	// resynced is when the stream sent its last resync; later waits for
+	// resyncEvery to pass since.
+	resynced time.Time
+	later    *time.Timer
+}
+
+// chunk is output of the session's attach gen; nil p for its end.
+type chunk struct {
+	gen int
+	p   []byte
+}
+
+// resyncResult is a new attach to the session, or why there is none.
+type resyncResult struct {
+	conn net.Conn
+	rd   *bufio.Reader
+	head rex.SnapshotHeader
+	snap []byte
+	err  error
 }
 
 // resumeCall asks the run goroutine to continue a stream on a new
@@ -399,22 +449,34 @@ func (s *stream) clearWS(ws *websocket.Conn) bool {
 	return true
 }
 
-// run sends the stream's bytes to its connection as they come, and
-// handles resumes, drops and the block's state.
+// run adds the session's output to the stream as it comes, for the
+// connection's writer (write), and handles resyncs, resumes, drops and
+// the block's state.
 func (s *stream) run() {
 	defer close(s.finished)
 	defer s.g.removeStream(s)
-	defer s.conn.Close()
-	go s.readOutput()
+	defer func() { s.conn.Close() }() // the attach of the moment (resync)
+	defer s.stopWriter()
+	go s.readOutput(s.gen, s.rd)
 	s.poll(s.g.sessionsNow())
 	for {
 		select {
-		case p := <-s.chunks:
-			if p == nil {
+		case c := <-s.chunks:
+			switch {
+			case c.gen != s.gen:
+				// An attach a resync replaced.
+			case c.p == nil:
 				s.outputEnded()
-			} else {
-				s.feedOutput(p)
+			default:
+				s.feedOutput(c.p)
 			}
+		case r := <-s.resyncs:
+			s.applyResync(r)
+		case <-s.drained:
+			s.resyncIfIdle()
+		case <-s.laterWait():
+			s.later = nil
+			s.resyncIfIdle()
 		case call := <-s.resumes:
 			s.resumeStream(call)
 		case msg := <-s.msgs:
@@ -423,6 +485,7 @@ func (s *stream) run() {
 			if !s.clearWS(info.ws) {
 				continue
 			}
+			s.stopWriter()
 			if info.status == 1000 {
 				s.closeWith(1000, "")
 				return
@@ -439,22 +502,25 @@ func (s *stream) run() {
 	}
 }
 
-// readOutput reads the GoRex session's output into the stream's queue.
-func (s *stream) readOutput() {
+// readOutput reads the output of the session's attach gen from rd into
+// the stream's queue, as fast as it comes: the GoRex server drops a
+// client that falls too far behind (attached.send), and a stream whose
+// connection is slow drops what it cannot send itself (feedOutput).
+func (s *stream) readOutput(gen int, rd io.Reader) {
 	buf := make([]byte, maxChunk)
 	for {
-		n, err := s.rd.Read(buf)
+		n, err := rd.Read(buf)
 		if n > 0 {
 			p := append([]byte(nil), buf[:n]...)
 			select {
-			case s.chunks <- p:
+			case s.chunks <- chunk{gen, p}:
 			case <-s.done:
 				return
 			}
 		}
 		if err != nil {
 			select {
-			case s.chunks <- nil:
+			case s.chunks <- chunk{gen, nil}:
 			case <-s.done:
 			}
 			return
@@ -462,26 +528,105 @@ func (s *stream) readOutput() {
 	}
 }
 
+// collapseBytes is the most output a stream holds that its connection did
+// not take yet. Past it, the stream drops that output and goes on from a
+// new snapshot (resync), which a client far behind needs sooner than old
+// output. It is a quarter of what the stream keeps for a resume
+// (resumeBytes), so that the bytes not sent yet stay among those, and of
+// what the GoRex server lets a remote client fall behind (8 MiB,
+// maxQueuedBytes): about a second of a connection of 2 MiB/s.
+const collapseBytes = 2 << 20
+
+// resyncHistory is the most scrollback, in bytes, of a resync's snapshot:
+// some 3000 lines of 80 columns, an eighth of collapseBytes, so that a
+// resync sends far less than the output it drops.
+const resyncHistory = 256 << 10
+
 // feedOutput adds the session's output, and Rex's messages queued for a
-// safe place once the output leaves an escape sequence.
+// safe place once the output leaves an escape sequence. Output of a
+// stream behind is dropped: the resync's snapshot shows it.
 func (s *stream) feedOutput(p []byte) {
+	s.fed = true
+	if s.behind {
+		return
+	}
 	s.vt.feed(p)
 	s.appendBytes(p)
 	s.flushPending(false)
+	s.out.Lock()
+	// What follows the newest snapshot, and the connection did not take.
+	late := s.total - max(s.sent, s.mark)
+	s.out.Unlock()
+	if late > int64(s.g.collapseBytes) {
+		s.collapse()
+	}
 }
 
-// appendBytes adds bytes to the stream and sends them to the connection.
+// collapse drops the bytes the connection did not take, back to the end
+// of the newest snapshot at most, and resyncs the stream once the
+// connection took the rest (resyncIfIdle).
+func (s *stream) collapse() {
+	s.dropUnsent()
+	s.behind = true
+	s.pending, s.pendingBytes = nil, 0
+	s.resyncIfIdle()
+}
+
+// dropUnsent drops the bytes the connection did not take, back to the end
+// of the newest snapshot at most, and to the oldest byte kept.
+func (s *stream) dropUnsent() {
+	s.out.Lock()
+	defer s.out.Unlock()
+	keep := max(s.sent, s.mark, s.total-int64(len(s.buf)))
+	if keep < s.total {
+		s.buf = s.buf[:len(s.buf)-int(s.total-keep)]
+		s.total = keep
+	}
+}
+
+// resyncEvery is the least time between a stream's resyncs: a program
+// that prints far faster than the connection takes gets the newest screen
+// once a second, rather than snapshots that fill the connection.
+const resyncEvery = time.Second
+
+// laterWait returns the wait for resyncEvery, if one is running.
+func (s *stream) laterWait() <-chan time.Time {
+	if s.later == nil {
+		return nil
+	}
+	return s.later.C
+}
+
+// resyncIfIdle resyncs a stream behind once a connection took all its
+// bytes, and resyncEvery passed since the last resync: the snapshot then
+// goes out as soon as it is taken, and a connection gets one at a time,
+// however fast the program prints. A stream nobody reads waits for a
+// resume (resumeStream), so that it attaches again once at most
+// meanwhile.
+func (s *stream) resyncIfIdle() {
+	if !s.behind || s.resyncing || !s.active() {
+		return
+	}
+	if wait := resyncEvery - time.Since(s.resynced); wait > 0 {
+		if s.later == nil {
+			s.later = time.NewTimer(wait)
+		}
+		return
+	}
+	s.out.Lock()
+	idle := s.sent >= s.total
+	s.out.Unlock()
+	if idle {
+		s.startResync()
+	}
+}
+
+// appendBytes adds bytes to the stream, for the writer to send.
 func (s *stream) appendBytes(p []byte) {
+	s.out.Lock()
+	defer s.out.Unlock()
 	s.buf = append(s.buf, p...)
 	s.total += int64(len(p))
-	if ws := s.currentWS(); ws != nil {
-		if err := writeStream(ws, p); err != nil {
-			if s.clearWS(ws) {
-				ws.Close(1013, "data reconnect required")
-				s.startResumeTimer()
-			}
-		}
-	}
 	// A stream that waited too long keeps only its newest bytes, which a
 	// resume counted too far back cannot use. The buffer holds up to twice
 	// that before it moves them to its front, so that bytes are copied
@@ -492,12 +637,91 @@ func (s *stream) appendBytes(p []byte) {
 			s.buf = s.buf[:copy(s.buf, s.buf[len(s.buf)-resumeBytes:])]
 		}
 	}
+	s.cond().Broadcast()
+}
+
+// cond is the writer's wait for bytes, made at first use; s.out is held.
+func (s *stream) cond() *sync.Cond {
+	if s.wake == nil {
+		s.wake = sync.NewCond(&s.out)
+	}
+	return s.wake
+}
+
+// startWriter starts sending the stream to ws from byte from, and stops
+// the writer of the connection before.
+func (s *stream) startWriter(ws *websocket.Conn, from int64) {
+	s.out.Lock()
+	s.writer++
+	s.sent = from
+	n := s.writer
+	s.cond().Broadcast()
+	s.out.Unlock()
+	go s.write(ws, n)
+}
+
+// stopWriter stops the writer of the moment.
+func (s *stream) stopWriter() {
+	s.out.Lock()
+	s.writer++
+	s.cond().Broadcast()
+	s.out.Unlock()
+}
+
+// write is writer n: it sends the stream's bytes to ws as they come, in
+// the 64 KiB messages a data connection carries, until a newer writer or
+// the stream's end stops it, or ws fails, which the run goroutine hears
+// as the connection's end.
+func (s *stream) write(ws *websocket.Conn, n int) {
+	for {
+		s.out.Lock()
+		for s.writer == n && s.sent >= s.total {
+			select {
+			case s.drained <- struct{}{}:
+			default:
+			}
+			s.cond().Wait()
+		}
+		if s.writer != n {
+			s.out.Unlock()
+			return
+		}
+		start := s.total - int64(len(s.buf))
+		if s.sent < start {
+			// The bytes it was to send are gone: the client starts over.
+			s.out.Unlock()
+			s.writeFailed(ws)
+			return
+		}
+		i := int(s.sent - start)
+		p := append([]byte(nil), s.buf[i:i+int(min(s.total-s.sent, maxChunk))]...)
+		s.sent += int64(len(p))
+		s.out.Unlock()
+		if !writeData(ws, p) {
+			s.writeFailed(ws)
+			return
+		}
+	}
+}
+
+// writeFailed closes a connection the stream could not write, for the
+// client to resume, and tells the run goroutine.
+func (s *stream) writeFailed(ws *websocket.Conn) {
+	ws.Close(1013, "data reconnect required")
+	select {
+	case s.goners <- gone{ws: ws, status: 1013}:
+	case <-s.done:
+	}
 }
 
 // appendApc adds one of Rex's own messages where the output is not in
 // the middle of an escape sequence, so that it cannot be mistaken for
 // part of one.
 func (s *stream) appendApc(payload any) {
+	if s.behind {
+		// The resync sends the state the message would (applyResync).
+		return
+	}
 	msg := apcMessage(s.nonce, payload)
 	if s.vt.ground() {
 		s.appendBytes(msg)
@@ -615,13 +839,8 @@ func (s *stream) resumeStream(call *resumeCall) {
 		return
 	}
 	call.reply <- nil
-	from := int64(call.count) - (s.total - int64(len(s.buf)))
-	if err := writeStream(call.ws, s.buf[from:]); err != nil {
-		if s.clearWS(call.ws) {
-			call.ws.Close(1013, "data reconnect required")
-			s.startResumeTimer()
-		}
-	}
+	s.startWriter(call.ws, int64(call.count))
+	s.resyncIfIdle()
 }
 
 // startResumeTimer starts the wait for a resume after a connection
@@ -663,7 +882,7 @@ func (s *stream) poll(list []rex.SessionInfo) {
 		return
 	}
 	if info.Exited && !s.exited {
-		s.exited = true
+		s.exited, s.exitCode = true, info.ExitCode
 		s.appendApc(map[string]any{"type": "child_exited", "exit_code": info.ExitCode})
 	}
 	if info.Cols != s.cols || info.Rows != s.rows {
@@ -687,31 +906,154 @@ func (s *stream) inject(payload any) {
 	}
 }
 
-// outputEnded handles the end of the GoRex session's output.
-func (s *stream) outputEnded() {
-	exited, found, code := false, false, 0
+// session tells whether the server still has the stream's session, and
+// whether and how it exited.
+func (s *stream) session() (found, exited bool, code int) {
 	for _, info := range s.g.sessionsNow() {
 		if info.ID == s.sid {
-			found, exited, code = true, info.Exited, info.ExitCode
-			break
+			return true, info.Exited, info.ExitCode
 		}
 	}
+	return false, false, 0
+}
+
+// outputEnded handles the end of the GoRex session's output.
+func (s *stream) outputEnded() {
+	found, exited, code := s.session()
 	switch {
 	case !found:
 		s.closeWith(4000, "block closed")
+	case s.resyncing:
+		// The resync's attach replaces this one.
+	case s.behind, !exited && s.fed:
+		// The stream dropped output, and needs the newest screen; or the
+		// server dropped the attach, as it drops a client far behind
+		// (attached.send), though the stream reads all the time.
+		s.startResync()
 	case exited:
-		// child_exited says no more output follows, but the stream stays
-		// open, as the doc says. No output follows the message, so a
-		// sequence left open ends here.
-		s.vt = vtParser{}
-		s.flushPending(true)
-		if !s.exited {
-			s.exited = true
-			s.appendApc(map[string]any{"type": "child_exited", "exit_code": code})
-		}
+		s.ended(code)
 	default:
+		// The attach gave nothing past its snapshot.
 		s.closeWith(1011, "data provider failed")
 	}
+}
+
+// ended sends child_exited, once: no more output follows, but the stream
+// stays open, as the doc says. No output follows the message, so a
+// sequence left open ends here.
+func (s *stream) ended(code int) {
+	s.vt = vtParser{}
+	s.flushPending(true)
+	if !s.exited {
+		s.exited, s.exitCode = true, code
+		s.appendApc(map[string]any{"type": "child_exited", "exit_code": code})
+	}
+}
+
+// resyncReset starts a resync: ST ends a string the output left open,
+// the client's own read of Rex's messages too, and an escape sequence;
+// then a reset clears the screen and scrollback for the snapshot that
+// follows.
+const resyncReset = "\x1b\\\x1bc\x1b[H\x1b[2J\x1b[3J"
+
+// startResync attaches to the session again, in the background, for
+// applyResync, unless an attach is under way.
+func (s *stream) startResync() {
+	if s.resyncing {
+		return
+	}
+	s.resyncing = true
+	go func() {
+		r := s.attachAgain()
+		select {
+		case s.resyncs <- r:
+		case <-s.done:
+			if r.conn != nil {
+				r.conn.Close()
+			}
+		}
+	}()
+}
+
+// attachAgain attaches to the session for a snapshot of its screen in
+// escape sequences, with resyncHistory of its scrollback, and reads it.
+func (s *stream) attachAgain() resyncResult {
+	conn, err := s.g.opt.Client.AttachConn(rex.Attach{SID: s.sid, Framed: true, History: resyncHistory, Mute: true})
+	if err != nil {
+		return resyncResult{err: err}
+	}
+	br := bufio.NewReaderSize(conn, 64<<10)
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	line, err := br.ReadBytes('\n')
+	var head rex.SnapshotHeader
+	if err == nil {
+		err = json.Unmarshal(line, &head)
+	}
+	var snap []byte
+	if err == nil {
+		snap = make([]byte, max(head.Snapshot, 0))
+		_, err = io.ReadFull(br, snap)
+	}
+	conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		conn.Close()
+		return resyncResult{err: err}
+	}
+	return resyncResult{conn: conn, rd: br, head: head, snap: snap}
+}
+
+// applyResync goes on with the attach a resync made: the stream drops
+// the bytes the connection did not take, which the snapshot shows newer,
+// and sends a reset; the size, before the screen of that size; the
+// terminal_reset message, for the client to set again what it set on the
+// terminal itself; the snapshot; and the state Rex's messages gave that
+// the dropped bytes may have held. The stream then reads the new
+// attach's output. Without an attach, the stream ends as the session
+// says: 4000 once it is gone, child_exited once it exited, else 1011.
+func (s *stream) applyResync(r resyncResult) {
+	s.resyncing = false
+	if r.err != nil {
+		found, exited, code := s.session()
+		switch {
+		case !found:
+			s.closeWith(4000, "block closed")
+		case exited:
+			s.behind = false
+			s.ended(code)
+		default:
+			s.closeWith(1011, "data provider failed")
+		}
+		return
+	}
+	s.dropUnsent()
+	s.conn.Close()
+	s.gen++
+	s.conn, s.rd = r.conn, r.rd
+	s.behind, s.fed = false, false
+	s.resynced = time.Now()
+	s.vt = vtParser{}
+	s.pending, s.pendingBytes = nil, 0
+	s.cols, s.rows = r.head.Cols, r.head.Rows
+	var owner any
+	if o := s.g.ownerOf(s.block); o != "" {
+		owner = o
+	}
+	s.appendBytes([]byte(resyncReset))
+	s.appendBytes(apcMessage(s.nonce, resizeMessage(s.cols, s.rows, owner)))
+	s.appendBytes(apcMessage(s.nonce, map[string]any{"type": "terminal_reset"}))
+	s.vt.feed(r.snap)
+	s.appendBytes(r.snap)
+	if th, ok := s.g.themeOf(s.block); ok {
+		s.appendApc(th.message())
+	}
+	if s.exited {
+		s.vt = vtParser{}
+		s.appendApc(map[string]any{"type": "child_exited", "exit_code": s.exitCode})
+	}
+	s.out.Lock()
+	s.mark = s.total
+	s.out.Unlock()
+	go s.readOutput(s.gen, r.rd)
 }
 
 // apcMessage wraps JSON in the APC escape sequence Rex uses.
@@ -747,6 +1089,7 @@ func (s *stream) closeWith(status websocket.StatusCode, reason string) {
 			s.wsdone = nil
 		}
 		s.mu.Unlock()
+		s.stopWriter()
 		if ws != nil {
 			ws.Close(status, reason)
 		}
@@ -811,19 +1154,6 @@ func writeData(ws *websocket.Conn, p []byte) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return ws.Write(ctx, websocket.MessageBinary, p) == nil
-}
-
-// writeStream writes bytes in the 64 KiB messages a data connection
-// carries.
-func writeStream(ws *websocket.Conn, p []byte) error {
-	for len(p) > 0 {
-		n := min(len(p), maxChunk)
-		if !writeData(ws, p[:n]) {
-			return fmt.Errorf("data connection closed")
-		}
-		p = p[n:]
-	}
-	return nil
 }
 
 // offeredProtocols lists the subprotocols a request offers.
