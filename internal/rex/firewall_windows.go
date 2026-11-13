@@ -22,12 +22,14 @@ import (
 
 // firewallScript reads the firewall's state through its COM API, which
 // needs no administrator: the active profiles, and the enabled inbound
-// TCP rules of any of them, as JSON (firewallState).
+// TCP rules of any of them, as JSON (firewallState). A rule with an owner
+// and no program is a Store app's: it names a package, which this API
+// does not show, and would read as a rule for every program.
 const firewallScript = `[Console]::OutputEncoding = [Text.Encoding]::UTF8
 $p = New-Object -ComObject HNetCfg.FwPolicy2
 $cur = $p.CurrentProfileTypes
 $prof = foreach ($t in 1,2,4) { if ($cur -band $t) { [pscustomobject]@{Type=$t;Enabled=[bool]$p.FirewallEnabled($t);BlockAll=[bool]$p.BlockAllInboundTraffic($t);DefaultIn=[int]$p.DefaultInboundAction($t)} } }
-$rules = foreach ($r in $p.Rules) { if ($r.Direction -eq 1 -and $r.Enabled -and ($r.Profiles -band $cur) -and ($r.Protocol -eq 6 -or $r.Protocol -eq 256)) { [pscustomobject]@{App=[Environment]::ExpandEnvironmentVariables([string]$r.ApplicationName);Proto=[int]$r.Protocol;Ports=[string]$r.LocalPorts;Profiles=[int]$r.Profiles;Action=[int]$r.Action;Local=[string]$r.LocalAddresses;Remote=[string]$r.RemoteAddresses;Service=[string]$r.ServiceName} } }
+$rules = foreach ($r in $p.Rules) { if ($r.Direction -eq 1 -and $r.Enabled -and ($r.Profiles -band $cur) -and ($r.Protocol -eq 6 -or $r.Protocol -eq 256) -and ($r.ApplicationName -or -not $r.LocalUserOwner)) { [pscustomobject]@{App=[Environment]::ExpandEnvironmentVariables([string]$r.ApplicationName);Proto=[int]$r.Protocol;Ports=[string]$r.LocalPorts;Profiles=[int]$r.Profiles;Action=[int]$r.Action;Local=[string]$r.LocalAddresses;Remote=[string]$r.RemoteAddresses;Service=[string]$r.ServiceName} } }
 [pscustomobject]@{Profiles=@($prof);Rules=@($rules)} | ConvertTo-Json -Compress -Depth 3`
 
 // firewallQuery tells whether an inbound TCP connection to this program on
