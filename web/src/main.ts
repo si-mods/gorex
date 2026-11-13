@@ -23,6 +23,7 @@ import { closeTailnet, isTailnetID, loadHostsOff, openTailnet, Place, saveHostsO
 import { programOf } from "./programs";
 import { Control, directTransport } from "./rex";
 import type { Settings } from "./settings";
+import { fetchSharedHosts, SharedGroup } from "./share";
 import { hold, initSidebar, paneName, redraw, sidebar as drawSidebar, sidebarBlock, spaceName, windowName, windowTitle } from "./sidebar";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
@@ -68,6 +69,8 @@ let pending: Place | undefined;
 /** Counts the hosts chosen, so that what waits for one chosen before ends. */
 let generation = 0;
 let hostList: HostList;
+/** Hosts shared by Rex Go over Personal Hotspot, when served by the phone. */
+let shared: SharedGroup | undefined;
 let settings: Settings | undefined;
 /** Built-in Tailscale, off until the user turns it on; its engine loads only then. */
 const tailnet = new Tailnet();
@@ -316,7 +319,7 @@ async function main() {
     chooseTheme = pick;
     hostList = new HostList($("hosts"), {
       choose, close: () => shown?.focusKeys(), changed: hostsChanged, tailnet, guide: openGuide,
-      link: linkOf, connect, disconnect, removed, connections: () => conns.size,
+      link: linkOf, connect, disconnect, removed, connections: () => conns.size, share: () => shared,
     });
     for (const what of ["tabs", "font"] as const) applyPrefs(what);
     onAppChange(() => settings?.appChanged());
@@ -354,6 +357,8 @@ async function main() {
     }
     history.replaceState(null, "", location.pathname);
   }
+  shared = await fetchSharedHosts();
+  if (shared) hostList.refresh();
   // Every host the page keeps connects now (Decisions, 1), at most opensAtOnce at a time (hostconn.ts).
   syncConns();
   startAtPlace(place);
@@ -365,15 +370,16 @@ async function main() {
  * place waits for built-in Tailscale to find it.
  */
 function startAtPlace(p: Place | undefined) {
+  const direct = [...hostList.hosts, ...(shared?.hosts ?? [])];
   // A host the user disconnected is no place: it stays disconnected.
-  const h = p && hostList.hosts.find((x) => x.id === p.host && !off.has(x.id));
+  const h = p && direct.find((x) => x.id === p.host && !off.has(x.id));
   if (p && (h || (isTailnetID(p.host) && tailnetOpened().has(p.host)))) {
     pending = p;
     select(h);
     if (h) showPending(conns.get(h.id)!);
     return;
   }
-  const first = hostList.hosts.find((x) => !off.has(x.id));
+  const first = direct.find((x) => !off.has(x.id));
   pending = first && { host: first.id };
   select(first);
 }
@@ -443,7 +449,7 @@ let shownNotice: [Problem | undefined, ...NoticeAction[]] | undefined;
  * exists to choose. Hosts that Tailscale found keep the sidebar, as its host list is where they are chosen.
  */
 function onboarding() {
-  document.body.classList.toggle("onboarding", !current && !hostList.hosts.length && !tailnet.hosts.length);
+  document.body.classList.toggle("onboarding", !current && !hostList.hosts.length && !(shared?.hosts.length) && !tailnet.hosts.length);
 }
 
 /** Shows the welcome over the empty stage: no host is chosen. Its code loads only then, as on the first visit. */
@@ -664,12 +670,14 @@ function retry(c: HostConn) {
 function syncConns() {
   if (!hostList) return;
   for (const h of hostList.hosts) if (!off.has(h.id)) ensure(h);
+  for (const h of shared?.hosts ?? []) if (!off.has(h.id)) ensure(h);
   if (tailnet.status() === "running") {
     const opened = tailnetOpened();
     for (const h of tailnet.hosts) if (opened.has(h.id) || conns.has(h.id) || pending?.host === h.id) ensure(h);
   }
+  const sharedIDs = new Set((shared?.hosts ?? []).map((h) => h.id));
   for (const c of [...conns.values()]) {
-    if (c.host.kind !== "tailnet" && (off.has(c.host.id) || !hostList.hosts.some((h) => h.id === c.host.id))) drop(c);
+    if (c.host.kind !== "tailnet" && (off.has(c.host.id) || (!hostList.hosts.some((h) => h.id === c.host.id) && !sharedIDs.has(c.host.id)))) drop(c);
   }
 }
 
@@ -741,7 +749,7 @@ function sidebarHosts(): Host[] {
   const ts = new Map<string, Host>();
   for (const c of conns.values()) if (c.host.kind === "tailnet") ts.set(c.host.id, c.host);
   if (tailnet.status() === "running") for (const h of tailnet.hosts) if (!ts.has(h.id)) ts.set(h.id, h);
-  return [...(hostList?.hosts ?? []), ...[...ts.values()].sort((a, b) => a.name.localeCompare(b.name))];
+  return [...(hostList?.hosts ?? []), ...(shared?.hosts ?? []), ...[...ts.values()].sort((a, b) => a.name.localeCompare(b.name))];
 }
 
 /** The hosts' connections in the sidebar's order. */

@@ -33,11 +33,18 @@ struct GoRexApp: App {
                 .environment(store)
                 .preferredColorScheme(Self.colorScheme(scheme))
                 .onChange(of: phase) { _, p in
-                    if p == .background { away = .now }
+                    if p == .background {
+                        away = .now
+                        HotspotShare.shared.handleBackground()
+                    }
                     guard p == .active else { return }
                     let suspended = HostStore.suspended(since: away)
                     away = nil
+                    HotspotShare.shared.handleForeground()
                     Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }
+                }
+                .onChange(of: store.configs) { _, configs in
+                    HotspotShare.shared.updateHosts(configs)
                 }
                 // Hosts the gateway refused try again as the engine runs anew.
                 .onChange(of: TailnetEngine.shared.status.state) { _, s in

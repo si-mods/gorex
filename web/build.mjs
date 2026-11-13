@@ -457,7 +457,39 @@ async function main() {
   mkdirSync(join(dist, "pwa"));
   for (const f of readdirSync(join(web, "pwa"))) copyFileSync(join(web, "pwa", f), join(dist, "pwa", f));
   writeWorker(dist);
+  writeFileIndex(dist);
   console.log(`built ${dist}`);
+}
+
+/**
+ * Writes files.json at the root of dist so clients (such as Rex Go's
+ * hotspot share) can download and verify the static web client without
+ * embedding it in their own bundle. Built-in Tailscale assets are marked
+ * optional because the phone forwards to hosts directly.
+ */
+function writeFileIndex(dir) {
+  const files = [];
+  const walk = (cur) => {
+    for (const ent of readdirSync(cur, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = join(cur, ent.name);
+      if (ent.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      const rel = relative(dir, full).split("\\").join("/");
+      if (rel === "_headers" || rel === "files.json" || rel === "sw.js") continue;
+      const data = readFileSync(full);
+      const entry = {
+        path: rel,
+        bytes: data.length,
+        sha256: createHash("sha256").update(data).digest("hex"),
+      };
+      if (rel.startsWith("assets/lazy/tailnet-")) entry.optional = true;
+      files.push(entry);
+    }
+  };
+  walk(dir);
+  writeFileSync(join(dir, "files.json"), JSON.stringify({ version: 1, files }));
 }
 
 // Run as a script, not when dev.mjs imports the options.

@@ -365,7 +365,7 @@ function problemLine(nav: HTMLElement, c: HostConn) {
     return b;
   };
   line.append(text, button("rotate-ccw", t("commonRetry"), () => app.retry(c)));
-  if (c.host.kind !== "tailnet") line.append(button("pencil", t("commonEdit"), () => app.edit(c)));
+  if (!c.host.kind || c.host.kind === "direct") line.append(button("pencil", t("commonEdit"), () => app.edit(c)));
   nav.append(line);
 }
 
