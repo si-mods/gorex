@@ -119,6 +119,9 @@ final class TerminalView: UIView, TerminalOutput {
     /// told what is said, and what tells it (dictate).
     private var dictating: Dictating?
     private typealias Dictating = (recording: Recording, listening: Listening, said: (Dictation.Said?) -> Void, told: Task<Void, Never>)
+    /// The dictation being finished (recognising its last phrase or polishing),
+    /// so stopDictating can cancel it too.
+    private var finishing: (task: Task<Void, Never>, listening: Listening, said: (Dictation.Said?) -> Void)?
 
     init(session: TerminalSession) {
         self.session = session
@@ -587,23 +590,39 @@ final class TerminalView: UIView, TerminalOutput {
     /// not sent.
     func typeDictation() async {
         guard let d = mute() else { return }
-        do {
-            var text = try await d.listening.finish()
-            await d.told.value
-            if !text.isEmpty, let polish = Polish.saved {
-                d.said(Dictation.Said(phrases: [text], polishing: true))
-                text = await polish.run(text, vocabulary: Polish.words(in: screen, program: session.host.blocks[session.block]?.program))
+        let task = Task { @MainActor in
+            do {
+                var text = try await d.listening.finish()
+                try Task.checkCancellation()
+                await d.told.value
+                if !text.isEmpty, let polish = Polish.saved {
+                    d.said(Dictation.Said(phrases: [text], polishing: true))
+                    text = await polish.run(text, vocabulary: Polish.words(in: screen, program: session.host.blocks[session.block]?.program))
+                }
+                try Task.checkCancellation()
+                if !text.isEmpty { insert(text) }
+            } catch is CancellationError {
+            } catch {
+                alert(String(localized: "Can't Recognise Speech"), error.localizedDescription)
             }
-            if !text.isEmpty { insert(text) }
-        } catch {
-            alert(String(localized: "Can't Recognise Speech"), error.localizedDescription)
+            await d.told.value
+            d.said(nil)
         }
-        await d.told.value
-        d.said(nil)
+        finishing = (task, d.listening, d.said)
+        await task.value
+        finishing = nil
     }
 
-    /// Turns the mic off, typing nothing.
+    /// Turns the mic off, typing nothing; cancels an in-flight finish or
+    /// polish too.
     func stopDictating() {
+        if let f = finishing {
+            finishing = nil
+            f.task.cancel()
+            f.listening.cancel()
+            f.said(nil)
+            return
+        }
         guard let d = mute() else { return }
         d.listening.cancel()
         Task {
