@@ -2646,5 +2646,9 @@
   "shortcutReset": "Reset",
   "@shortcutReset": { "description": "Button to reset a single customized shortcut." },
   "shortcutResetAll": "Reset All",
-  "@shortcutResetAll": { "description": "Button to reset all customized shortcuts." }
+  "@shortcutResetAll": { "description": "Button to reset all customized shortcuts." },
+  "paneFloatMinimize": "Minimize Floating Pane",
+  "@paneFloatMinimize": { "description": "Pane menu and palette item: minimize a floating pane." },
+  "paneFloatRestore": "Restore Floating Pane",
+  "@paneFloatRestore": { "description": "Dock button and palette item: restore a minimized floating pane." }
 }

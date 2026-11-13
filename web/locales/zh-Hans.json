@@ -490,5 +490,7 @@
   "shortcutBrowserReserved": "该快捷键由浏览器保留",
   "shortcutConflict": "已被「{command}」占用",
   "shortcutReset": "恢复默认",
-  "shortcutResetAll": "全部恢复默认"
+  "shortcutResetAll": "全部恢复默认",
+  "paneFloatMinimize": "最小化浮动窗格",
+  "paneFloatRestore": "恢复浮动窗格"
 }
