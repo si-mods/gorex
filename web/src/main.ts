@@ -226,7 +226,7 @@ function windowHost(conn: HostConn): WindowHost {
     edgeDrops: () => gateway.edgeMoves(conn),
     setLayerState: (w, layerId, state) => {
       const args = state === "normal"
-        ? { session_id: w.session, layer_id: layerId, state, raise: true, focus: true }
+        ? { session_id: w.session, layer_id: layerId, state, focus: true }
         : { session_id: w.session, layer_id: layerId, state };
       w.conn.control?.call("session.set_layer_state", args).catch((e) =>
         status(() => t("statusZoomFailed", { error: describe(e) })),
