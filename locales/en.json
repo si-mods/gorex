@@ -1070,7 +1070,9 @@
   "@remoteAsking": {
     "description": "Shown while the page waits for the server's first answer."
   },
-  "tailcatMode": "Tailcat remote access",
+  "remoteConnect": "Let other devices connect",
+  "remoteAddDevice": "Add a device",
+  "remoteLastSeen": "Last seen {when}",
   "hostsRexQR": "Rex QR…",
   "hostsRexQRTitle": "Connect Rex to {host}",
   "hostsRexQRLoading": "Checking the phone endpoint…",
@@ -1960,15 +1962,15 @@
   "@remoteRelay": {
     "description": "Label of the field that holds the DERP relay of one's own that remote access meets clients at."
   },
-  "remoteRelayPlaceholder": "tailcat's relays",
+  "remoteRelayPlaceholder": "Default",
   "@remoteRelayPlaceholder": {
     "description": "Placeholder of the empty relay field: left empty, tailcat's own free relays are used."
   },
-  "remoteRelayNote": "A DERP server of your own, by its host name, such as derp.example.com, in place of tailcat's relays. The address names it, so changing it makes a new address; the keys stay.",
+  "remoteRelayNote": "A relay server of your own, by its host name, such as relay.example.com, in place of the default relays. The address names it, so changing it makes a new address; the keys stay.",
   "@remoteRelayNote": {
     "description": "Hint under the relay field."
   },
-  "remoteRelayInvalid": "Enter a host name, such as derp.example.com, with :port when not 443: not an IP address, and no https://. Leave it empty for tailcat's relays.",
+  "remoteRelayInvalid": "Enter a host name, such as relay.example.com, with :port when not 443: not an IP address, and no https://. Leave it empty for the default relays.",
   "@remoteRelayInvalid": {
     "description": "Error under the relay field when what was typed is not a host name or address with an optional port."
   },

@@ -291,11 +291,12 @@ Under Show Details:
 - **Windows Firewall** (`internal/rex/firewall.go`). While the relay
   runs, the server reads the firewall through its COM API
   (`HNetCfg.FwPolicy2`, in a hidden PowerShell, no administrator), on
-  start, when the status is asked and the last answer is 30 s old, and
+  start, when the status is asked and the last answer is 5 minutes old, and
   on `remote.firewallCheck`: an inbound TCP connection to GoRex on port
   7464 passes when the firewall is off, the default allows, or an
   enabled allow rule of the active profile covers the program or the
-  port, with no block rule. With several profiles active it is blocked
+  port, with no block rule. A rule with an owner and no program (a Store
+  app's package rule) is left out of the query. With several profiles active it is blocked
   only when each blocks, and a failed query says nothing. Blocked,
   Settings says so under the row with **Allow**, which asks Windows
   for administrator and adds two inbound rules, "GoRex Reachable at",
@@ -450,7 +451,7 @@ Each ships something a user can use.
    and its QR code, and pairing by address. Desktops and Rex Go connect over a local
    network or a VPN of one's own with no relay, from an IP address
    typed in. Docs.
-3. **Settings in the new words**: one switch, Devices, Add a device,
+3. **Settings in the new words** (done, in the desktop's Settings): one switch, Devices, Add a device,
    Show Details. No change in behavior.
 4. **Tailscale introduction** on the system client (Linux): the
    exchange, entries with their node, the snapshot rule, refused

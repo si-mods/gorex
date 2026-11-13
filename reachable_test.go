@@ -124,6 +124,10 @@ func waitAsked(t *testing.T, tt *ui.Tester, rs *recordingServer, op string) []re
 // clears it, and says why the relay does not run.
 func TestReachableRow(t *testing.T) {
 	a, tt, rs := serverPage(t, rex.RemoteStatus{Enabled: true, Running: true})
+	if err := tt.Click(locales.RemoteShowDetails()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	for _, s := range []string{locales.RemoteReachableTitle(), locales.RemoteReachableNote("7464")} {
 		if !tt.HasText(s) {
 			t.Fatalf("no %q in %q", s, tt.Texts())
@@ -188,6 +192,10 @@ func TestReachableFirewall(t *testing.T) {
 	}
 	t.Cleanup(func() { firewallAllow = was })
 	_, tt, rs := serverPage(t, rex.RemoteStatus{Enabled: true, Running: true, ReachableAt: "192.0.2.10"})
+	if err := tt.Click(locales.RemoteShowDetails()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
 	line, allow := locales.RemoteFirewallBlocked("7464"), locales.RemoteReachableTitle()+": "+locales.RemoteFirewallAllow()
 	if tt.HasText(line) || tt.HasText(allow) || tt.HasText(locales.RemoteFirewallBlockRule()) {
 		t.Fatalf("a firewall line shows while not blocked; texts %q", tt.Texts())

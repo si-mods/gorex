@@ -118,21 +118,25 @@ func TestDevicesButtons(t *testing.T) {
 	remoteUI.loaded, remoteUI.st, remoteUI.err = true, rex.RemoteStatus{Enabled: true}, nil
 	tt := ui.NewTester(a.settingsView, 780, 1400)
 	tt.Frame()
-	if tt.HasText(locales.RemoteAddByKey()) {
+	if err := tt.Click(locales.RemoteShowDetails()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if remoteUI.addingKey || tt.HasText(locales.RemoteCancel()) {
 		t.Fatal("the add-by-key form shows before Add by Key… is clicked")
 	}
 	if err := tt.Click(locales.RemoteAddByKeyAsk()); err != nil {
 		t.Fatalf("%v; texts %q", err, tt.Texts())
 	}
 	tt.Frame()
-	if !tt.HasText(locales.RemoteAddByKey()) || !remoteUI.addingKey {
+	if !tt.HasText(locales.RemoteCancel()) || !remoteUI.addingKey {
 		t.Fatalf("no add-by-key form after the click; texts %q", tt.Texts())
 	}
 	if err := tt.Click(locales.RemoteCancel()); err != nil {
 		t.Fatalf("%v; texts %q", err, tt.Texts())
 	}
 	tt.Frame()
-	if tt.HasText(locales.RemoteAddByKey()) {
+	if remoteUI.addingKey || tt.HasText(locales.RemoteCancel()) {
 		t.Fatal("Cancel did not hide the add-by-key form")
 	}
 
@@ -235,13 +239,13 @@ func TestRemoteOff(t *testing.T) {
 	tt := ui.NewTester(a.settingsView, 780, 1400)
 	tt.Frame()
 	// Off, Show Details stays, for this machine's key: the other way in.
-	for _, s := range []string{locales.TailcatMode(), locales.RemoteOff(), locales.RemoteOffNote(), locales.TailnetMode(),
+	for _, s := range []string{locales.RemoteConnect(), locales.RemoteOff(), locales.RemoteOffNote(),
 		locales.RemoteShowDetails()} {
 		if !tt.HasText(s) {
 			t.Errorf("off: no %q in %q", s, tt.Texts())
 		}
 	}
-	for _, s := range []string{locales.RemoteShareLayout(), locales.RemoteDevices(), "bob-desktop",
+	for _, s := range []string{locales.RemoteShareLayout(), locales.TailnetMode(), locales.RemoteDevices(), "bob-desktop",
 		locales.RemoteMyKey(), locales.HostsNone()} {
 		if tt.HasText(s) {
 			t.Errorf("off: %q shows; texts %q", s, tt.Texts())
@@ -259,24 +263,24 @@ func TestRemoteOff(t *testing.T) {
 	// Tailscale's discovery running serves too.
 	remoteUI.st.Tailnet.Running = true
 	tt.Frame()
-	if !tt.HasText(locales.RemoteShareLayout()) || !tt.HasText("bob-desktop") {
+	if !tt.HasText(locales.RemoteDevices()) || !tt.HasText("bob-desktop") || !tt.HasText(locales.RemoteAddDevice()) {
 		t.Errorf("discovery running: texts %q", tt.Texts())
 	}
 
 	// On, the details open and close.
 	remoteUI.st = rex.RemoteStatus{Enabled: true}
 	tt.Frame()
-	if !tt.HasText(locales.RemoteDevices()) || !tt.HasText(locales.RemoteShareLayout()) || tt.HasText(locales.RemoteOffNote()) {
+	if !tt.HasText(locales.RemoteDevices()) || !tt.HasText(locales.RemoteAddDevice()) || tt.HasText(locales.RemoteOffNote()) {
 		t.Fatalf("on: texts %q", tt.Texts())
 	}
-	if tt.HasText(locales.RemoteMyKey()) {
+	if tt.HasText(locales.RemoteMyKey()) || tt.HasText(locales.RemoteShareLayout()) {
 		t.Fatal("the details show before Show Details is clicked")
 	}
 	if err := tt.Click(locales.RemoteShowDetails()); err != nil {
 		t.Fatalf("%v; texts %q", err, tt.Texts())
 	}
 	tt.Frame()
-	if !tt.HasText(locales.RemoteMyKey()) || !tt.HasText(locales.RemoteMyKeyNote()) || !tt.HasText(locales.RemoteHideDetails()) {
+	if !tt.HasText(locales.RemoteMyKey()) || !tt.HasText(locales.RemoteMyKeyNote()) || !tt.HasText(locales.RemoteShareLayout()) || !tt.HasText(locales.RemoteHideDetails()) {
 		t.Fatalf("details: texts %q", tt.Texts())
 	}
 	if err := tt.Click(locales.RemoteHideDetails()); err != nil {
@@ -304,7 +308,7 @@ func TestRemoteHostsPage(t *testing.T) {
 			t.Errorf("hosts: no %q in %q", s, tt.Texts())
 		}
 	}
-	if tt.HasText(locales.TailcatMode()) {
+	if tt.HasText(locales.RemoteConnect()) {
 		t.Errorf("hosts: the Remote page shows; texts %q", tt.Texts())
 	}
 	settingsUI.section = "server"
@@ -428,7 +432,7 @@ func TestControlServerUnderTailscale(t *testing.T) {
 	t.Cleanup(stopRemotePoll)
 	a := &App{}
 	settingsUI.section = "server"
-	remoteUI.loaded, remoteUI.err = true, nil
+	remoteUI.loaded, remoteUI.err, remoteUI.details = true, nil, true // under Show Details
 	remoteUI.st = rex.RemoteStatus{Tailnet: &rex.TailnetStatus{}}
 	tt := ui.NewTester(a.settingsView, 780, 1600)
 	tt.Frame()
@@ -452,5 +456,40 @@ func TestControlServerUnderTailscale(t *testing.T) {
 	tt.Frame()
 	if !tt.HasText(locales.RemoteTailscaleControl()) {
 		t.Errorf("unreachable: no control server in %q", tt.Texts())
+	}
+}
+
+// TestServerPageWords checks the default Server page: the switch, Devices
+// and Add a device, with the advanced rows behind Show Details.
+func TestServerPageWords(t *testing.T) {
+	isolateSettings(t, "")
+	registerFonts()
+	t.Cleanup(stopRemotePoll)
+	a := &App{}
+	settingsUI.section = "server"
+	remoteUI.loaded, remoteUI.err, remoteUI.details = true, nil, false
+	remoteUI.st = rex.RemoteStatus{Enabled: true, Running: true, Allowed: []rex.RemoteClient{
+		{Name: "bob-desktop", PublicKey: testKey, LastSeen: time.Now().Add(-5 * time.Minute)}}}
+	tt := ui.NewTester(a.settingsView, 780, 1600)
+	tt.Frame()
+	for _, s := range []string{locales.RemoteConnect(), locales.RemoteDevices(), locales.RemoteAddDevice(), "bob-desktop",
+		locales.RemoteLastSeen("5m ago")} {
+		if !tt.HasText(s) {
+			t.Errorf("no %q in %q", s, tt.Texts())
+		}
+	}
+	for _, s := range []string{locales.RemoteReachableTitle(), locales.RemoteRelay()} {
+		if tt.HasText(s) {
+			t.Errorf("%q shows before Show Details; texts %q", s, tt.Texts())
+		}
+	}
+	if err := tt.Click(locales.RemoteShowDetails()); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	for _, s := range []string{locales.RemoteReachableTitle(), locales.RemoteRelay(), locales.RemoteShareLayout(), locales.RemoteAddByKey()} {
+		if !tt.HasText(s) {
+			t.Errorf("no %q under Show Details; texts %q", s, tt.Texts())
+		}
 	}
 }
