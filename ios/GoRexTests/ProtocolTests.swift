@@ -188,11 +188,17 @@ nonisolated final class EventTests: XCTestCase {
         let v = try SessionView(json: [
             "revision": 1, "session_id": "session:1",
             "windows": [
-                ["window_id": "window:0123abcd4567ef89", "label": "Window 4567ef89"],
-                ["window_id": "window:89", "label": "build"],
+                ["window_id": "window:0123abcd4567ef89", "label": "Window 4567ef89",
+                 "focused_block_id": "b1",
+                 "layers": [["blocks": [["block_id": "b1", "label": "support-antigravity-cli"]]]]],
+                ["window_id": "window:89", "label": "build",
+                 "focused_block_id": "b2",
+                 "layers": [["blocks": [["block_id": "b2", "label": "shell"]]]]],
             ],
         ])
         XCTAssertEqual(v.windows?.map(\.name), [nil, "build"])
+        XCTAssertEqual(v.windows?[0].blockName("b1"), "support-antigravity-cli")
+        XCTAssertNil(v.windows?[1].blockName("b2"))
     }
 }
 

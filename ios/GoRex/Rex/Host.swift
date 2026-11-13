@@ -611,9 +611,14 @@ final class Host: Identifiable {
     }
 
     /// A window's title, as the desktop names a tab: its name when it has
-    /// one, else its terminal's title.
+    /// one, else its focused pane's name, else its terminal's title, else
+    /// its label.
     func title(_ w: SessionView.Window) -> String {
-        w.name ?? w.block.flatMap { blocks[$0]?.title }.flatMap { $0.isEmpty ? nil : $0 } ?? w.label ?? ""
+        w.name
+            ?? w.block.flatMap { w.blockName($0) }
+            ?? w.block.flatMap { blocks[$0]?.title }.flatMap { $0.isEmpty ? nil : $0 }
+            ?? w.label
+            ?? ""
     }
 
     /// The record of blocks that most needs the user, as the desktop's dot

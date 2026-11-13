@@ -16,6 +16,7 @@ struct SessionView: Decodable {
 
     struct Block: Decodable {
         let block_id: String
+        let label: String?
     }
 
     let revision: Int
@@ -55,6 +56,18 @@ extension SessionView.Window {
     var name: String? {
         guard let label, !label.isEmpty, label != "Window " + window_id.suffix(8) else { return nil }
         return label
+    }
+
+    /// The name the user gave a block (session.set_block_label), nil while
+    /// it has the gateway's default ("shell") or none.
+    func blockName(_ blockID: String) -> String? {
+        for layer in layers ?? [] {
+            for b in layer.blocks ?? [] where b.block_id == blockID {
+                guard let l = b.label, !l.isEmpty, l != "shell" else { return nil }
+                return l
+            }
+        }
+        return nil
     }
 
     /// The blocks of its tiled layer, the first.
