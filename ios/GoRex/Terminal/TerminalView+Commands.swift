@@ -31,6 +31,11 @@ extension TerminalView {
     /// Clears the screen and the scrollback on the server, which sends the
     /// screen again, as the desktop's ⌘K.
     @objc private func clear() {
+        // The demo's terminal runs here: Ctrl-L clears it, as the shell's does.
+        if session.host.isDemo {
+            session.type(Data([0x0C]))
+            return
+        }
         Task { [session] in
             _ = try? await session.host.live().callBlock("clear", session: session.session, block: session.block)
         }

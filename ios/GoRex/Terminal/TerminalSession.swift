@@ -73,15 +73,28 @@ final class TerminalSession {
     /// Bytes to write, and whether a write is on its way.
     @ObservationIgnored private var typed = Data()
     @ObservationIgnored private var typing = false
+    /// The terminal of Demo Mode, which runs on the phone; nil for a
+    /// host's, whose stream comes over a data connection.
+    @ObservationIgnored private var demo: DemoTerminal?
 
     init(host: Host, session: String, block: String) {
         self.host = host
         self.session = session
         self.block = block
         data = DataConnection(base: host.config.url)
+        // The demo has no host colors: it takes the chosen theme, else the
+        // one the app starts with.
+        let theme = host.isDemo
+            ? (TerminalTheme.chosen ?? TerminalTheme.all.first { $0.name == TerminalTheme.standard })
+            : TerminalTheme.chosen
         background = (UserDefaults.standard.dictionary(forKey: "backgrounds")?[backgroundKey] as? Int).map(VTerminal.RGB.init)
-            ?? TerminalTheme.chosen.map { VTerminal.RGB($0.colors[16]) }
-        theme = TerminalTheme.chosen?.message ?? background.map { ["background": String(format: "%06x", $0.packed)] }
+            ?? theme.map { VTerminal.RGB($0.colors[16]) }
+        self.theme = theme?.message ?? background.map { ["background": String(format: "%06x", $0.packed)] }
+        if host.isDemo {
+            let d = DemoTerminal(Demo.scene(block))
+            d.onCommand = { [weak self] text in self?.host.demoCommand(text, block: block) }
+            demo = d
+        }
     }
 
     private var backgroundKey: String { "\(host.id) \(TerminalTheme.name)" }
@@ -90,6 +103,8 @@ final class TerminalSession {
     func drew(background b: VTerminal.RGB) {
         guard b != background else { return }
         background = b
+        // A demo host is the same each time: nothing to remember of it.
+        guard !host.isDemo else { return }
         var all = UserDefaults.standard.dictionary(forKey: "backgrounds") ?? [:]
         all[backgroundKey] = b.packed
         UserDefaults.standard.set(all, forKey: "backgrounds")
@@ -100,6 +115,12 @@ final class TerminalSession {
     func start() {
         closed = false
         drops = 0
+        if let demo {
+            state = .live
+            demo.onOutput = { [weak self] bytes in self?.write(bytes) }
+            demo.start()
+            return
+        }
         open()
         write()
     }
@@ -144,7 +165,7 @@ final class TerminalSession {
     /// the server no longer has it. A stream that ended, as its window
     /// closed, stays so: Retry starts it.
     func resume() {
-        guard !closed, going else { return }
+        guard demo == nil, !closed, going else { return }
         drops = 0
         rejoin()
     }
@@ -181,12 +202,16 @@ final class TerminalSession {
     }
 
     /// Leaves the stream for a resume, as when the app goes to the background.
-    func suspend() { data.suspend() }
+    func suspend() {
+        guard demo == nil else { return }
+        data.suspend()
+    }
 
     /// Ends the stream and gives the block back.
     func close() {
         closed = true
         generation += 1
+        guard demo == nil else { return }
         data.close()
         let (session, block) = (session, block)
         Task { _ = try? await host.control?.call("session.disown_block", ["session_id": session, "block_ids": [block]]) }
@@ -281,6 +306,7 @@ final class TerminalSession {
     func fit(cols: Int, rows: Int, cellWidth: Int, cellHeight: Int) {
         guard cols > 0, rows > 0, size.map({ ($0.cols, $0.rows) != (cols, rows) }) ?? true else { return }
         size = (cols, rows, cellWidth, cellHeight)
+        guard demo == nil else { return }
         sizing?.cancel()
         sizing = Task {
             try? await Task.sleep(for: .milliseconds(100))
@@ -308,6 +334,10 @@ final class TerminalSession {
     /// The server drops what has the shape of Ghostty's own answers to the
     /// program's queries: its terminal answers them.
     func type(_ bytes: Data) {
+        if let demo {
+            demo.type(bytes)
+            return
+        }
         guard typed.count + bytes.count <= 4 << 20 else {
             return log.error("dropped \(bytes.count) typed bytes: \(self.typed.count) wait to be written")
         }

@@ -22,12 +22,24 @@ struct RemoteHostsView: View {
     }
 
     var body: some View {
+        // Demo Mode's host runs on the phone, so it is no host to edit here.
+        let hosts = store.hosts.filter { !$0.isDemo }
         List {
+            if store.demo != nil {
+                Section {
+                    Button("Leave Demo Mode", systemImage: "sparkles", role: .destructive) {
+                        store.exitDemo()
+                    }
+                    .listRowBackground(Color.card)
+                } footer: {
+                    Text("You're in demo mode. Add a host to run your own windows.")
+                }
+            }
             Section("Hosts") {
-                ForEach(store.hosts) { h in
+                ForEach(hosts) { h in
                     HostRow(host: h) { sheet = .details(h.config) }
                 }
-                .onDelete { $0.map { store.hosts[$0].id }.forEach(store.remove) }
+                .onDelete { $0.map { hosts[$0].id }.forEach(store.remove) }
                 .onMove(perform: store.move)
                 .listRowBackground(Color.card)
             }

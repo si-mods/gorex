@@ -3657,6 +3657,106 @@
           }
         }
       }
+    },
+    "Add a Host": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加主机"
+          }
+        }
+      }
+    },
+    "Demo Mode": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示模式"
+          }
+        }
+      }
+    },
+    "Demo Mode has no server.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "演示模式没有服务器。"
+          }
+        }
+      }
+    },
+    "Exit Demo": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出演示"
+          }
+        }
+      }
+    },
+    "Leave Demo Mode": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "退出演示模式"
+          }
+        }
+      }
+    },
+    "No Hosts Yet": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "还没有主机"
+          }
+        }
+      }
+    },
+    "Rex Go connects to the computers where GoRex runs. Try the demo to explore the app before you add one.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rex Go 连接运行 GoRex 的电脑。添加主机前，可以先进入演示模式体验 App。"
+          }
+        }
+      }
+    },
+    "Try Demo Mode": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进入演示模式"
+          }
+        }
+      }
+    },
+    "You're exploring a demo Mac. Nothing is connected.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你正在体验一台演示 Mac，未连接任何服务器。"
+          }
+        }
+      }
+    },
+    "You're in demo mode. Add a host to run your own windows.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你正在演示模式中。添加主机后即可运行你自己的窗口。"
+          }
+        }
+      }
     }
   }
 }
