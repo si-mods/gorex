@@ -29,8 +29,9 @@ local session server. It is a remote client, like Rex's iPhone app:
   server. The client reaches it through the host's gateway over
   WebSocket (`/api/control` and `/api/data`), at the address the user
   added. No URL is the page's own: every connection goes through the
-  chosen host's transport (`setHost` and `Transport` in
-  `web/src/rex.ts`): the browser's own WebSocket and fetch to its
+  chosen host's transport (`Transport` in `web/src/rex.ts`), which the
+  control connection keeps and its data streams and downloads take
+  (`Control.transport`): the browser's own WebSocket and fetch to its
   address, or, for a host found by built-in Tailscale, the page's
   Tailscale node.
 - It keeps no state that a host needs. Closing the tab detaches; the

@@ -237,7 +237,7 @@ export class TerminalView {
         })
       ).payload.ticket;
       if (gen !== this.generation) return;
-      const d = new DataStream();
+      const d = new DataStream(c.transport);
       this.data = d;
       d.onBytes = (b) => d === this.data && this.receive(b);
       d.onDrop = (code) => {
