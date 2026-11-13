@@ -441,7 +441,10 @@ When a host comes back:
 
 - **Number of hosts.** The page sets no hard cap. Above 8 connected
   hosts, the host list shows a note that many connections cost battery
-  and startup time (Decisions, 5).
+  and startup time (Decisions, 5). "Connected" here counts every host
+  the page keeps a `HostConn` for, connected or retrying: a host that
+  retries costs its attempts and diagnoses too. Only the hosts the user
+  disconnected do not count.
 - **Browser WebSocket limits.** Browsers cap open WebSockets per
   profile (Firefox's `network.websocket.max-connections` is 200 by
   default; Chrome's cap is near 255). Browsers also open only one
@@ -502,6 +505,15 @@ windows (Kept windows) and `wantWindow`.
   `--attention` while it reconnects (`connecting` with `attempt > 0`),
   `--danger` when the last attempt failed. The dot's state is its
   `title` and part of the host's `aria-label`.
+- The host panel and Settings › Hosts follow another rule, because there
+  the dot stands in the check mark's place and every row has one: green
+  (`--ok`) while connected, `--attention` while connecting, the first
+  attempt too, `--danger` when the last attempt failed (its title adds
+  the problem's), grey while the user disconnected it. A tailnet host the
+  page keeps no connection to shows Tailscale's dot for the peer
+  (online, offline, refused) in its address line instead, and none in
+  the check's place: one dot a row. The lists redraw only when a host's
+  state or problem changes, not at each retry, and keep the focus.
 - `live`: whether the host's sessions were read since its control
   opened. New window and split buttons of a host that is not live are
   disabled.

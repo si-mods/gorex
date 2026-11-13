@@ -56,7 +56,9 @@ choose a host (its last shown window shows, else its first), add one, or
 edit or remove one (the pencil). Each host in the list has a dot for its
 connection, in the place of a check mark: green while connected, amber
 while it connects or reconnects, red when its last attempt failed (its
-title says why), grey while disconnected. Each has **Disconnect** (Lucide `unplug`)
+title says why), grey while disconnected. A tailnet host the page keeps
+no connection to shows Tailscale's dot for the peer in its line instead,
+so that a row has one dot. Each has **Disconnect** (Lucide `unplug`)
 or **Connect** (`plug`) beside the pencil. Settings › Hosts lists the
 same hosts with the same dots and buttons, and the host card atop
 Settings shows the shown window's host (`SettingsApp.link(host)`).
@@ -79,8 +81,9 @@ not welcomed in 10 s fails and waits like any failure, so hosts that do
 not answer do not hold the others back. A host that waits to try again tries at once when the
 network comes back (`online`) or the page shows again
 (`visibilitychange`). There is no cap on the number of hosts; above 8
-connected, the host list and Settings › Hosts say that each connection
-costs battery and startup time. Two addresses of one computer (its LAN
+kept connected (connected or retrying: every host not disconnected), the
+host list and Settings › Hosts say that each one costs battery and
+startup time. Two addresses of one computer (its LAN
 address and its tailnet name, say) are two hosts, each with all its
 windows.
 

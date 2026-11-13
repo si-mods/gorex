@@ -528,7 +528,7 @@ const tailscaleSettings: NoticeAction = { label: "noticeTailscaleSettings", run:
  * last shown window, else its first once it has read its sessions. A host
  * the page keeps no connection to connects; the others stay connected.
  */
-function choose(h: Host | undefined) {
+function choose(h: Host | undefined, keys = true) {
   generation++;
   closeMenu();
   if (!h) {
@@ -542,7 +542,7 @@ function choose(h: Host | undefined) {
   else setOff(h.id, false);
   const c = ensure(h);
   const last = c.lastWindow;
-  if (last && windowOf(c, last.session, last.window)) return pick(c, last.session, last.window, true);
+  if (last && windowOf(c, last.session, last.window)) return pick(c, last.session, last.window, keys);
   hide();
   // A host chosen is the user's choice, as a window is (pick).
   picked++;
@@ -552,6 +552,9 @@ function choose(h: Host | undefined) {
   if (c.waiting) c.poke();
   showPending(c);
 }
+
+/** What each host's dot in the lists said last (state and problem), so that they redraw only when it changes. */
+const dotSaid = new WeakMap<HostConn, string>();
 
 /** What the status line said last of each host, to say again when it is selected. */
 const said = new WeakMap<HostConn, Msg>();
@@ -564,6 +567,8 @@ function select(h: Host | undefined) {
   const c = currentConn();
   status(c ? (said.get(c) ?? "") : "");
   drawNotice();
+  // The Settings dialog's host card follows the selected host.
+  settings?.update();
   sidebar();
 }
 
@@ -573,8 +578,6 @@ function select(h: Host | undefined) {
  */
 function drawNotice() {
   const c = currentConn();
-  // The Settings dialog's host card follows the selected host.
-  settings?.update();
   if (!current) {
     if (pending && isTailnetID(pending.host)) notice(...tailnetPlace(pending.host));
     else if (!conns.size) showWelcome();
@@ -671,8 +674,13 @@ function hostsChanged() {
   sidebar();
 }
 
-/** Connects a host the user disconnected, or a tailnet host found and never connected. The stage stays. */
+/** Connects a host the user disconnected, or a tailnet host found and never connected. The stage stays, unless it shows nothing (the welcome). */
 function connect(h: Host) {
+  if (!current) {
+    choose(h, !busyFocus());
+    hostsChanged();
+    return;
+  }
   if (h.kind === "tailnet") openTailnet(h.id);
   else setOff(h.id, false);
   ensure(h);
@@ -714,7 +722,8 @@ function elsewhere() {
   if (k) return pick(k.conn, k.session, k.window, !busyFocus());
   const all = orderedConns();
   const c = all.find((c) => c.state === "connected" && c.lastWindow) ?? all.find((c) => c.state === "connected") ?? all[0];
-  choose(c?.host);
+  // The keyboard stays where the user is: the host panel or Settings, from which the host went.
+  choose(c?.host, !busyFocus());
 }
 
 /** The hosts in the sidebar's order: the host list's, then the tailnet's by name, connected or found. */
@@ -765,8 +774,13 @@ const hostEvents: HostEvents = {
     if (c.state !== "connected") evict((w) => w.conn === c);
     // The notice is the selected host's, or a waiting place's.
     if (c === currentConn() || (!current && pending?.host === c.host.id)) drawNotice();
-    // The host's heading, its dot and its rows follow its state, as do its dots in the host list and Settings › Hosts.
+    // The host's heading, its dot and its rows follow its state.
     sidebar();
+    // Its dot in the host list and Settings › Hosts, and the Settings card, only when what they show changed:
+    // a retry every few seconds does not redraw them under the keyboard.
+    const shows = `${c.state}\n${c.problem?.title ?? ""}`;
+    if (dotSaid.get(c) === shows) return;
+    dotSaid.set(c, shows);
     hostList?.refresh();
     settings?.update();
   },

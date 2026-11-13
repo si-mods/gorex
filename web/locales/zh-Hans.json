@@ -145,7 +145,7 @@
   "hostShowName": "显示 {name}",
   "hostStateOff": "已断开",
   "hostStateProblem": "{state}：{problem}",
-  "hostsManyNote": "已连接 {n} 台主机。每个连接都会耗电并延长启动时间：请断开不用的主机。",
+  "hostsManyNote": "正保持连接 {n} 台主机。每台都会耗电并延长启动时间，重试时也一样：请断开不用的主机。",
   "hostEditName": "编辑 {name}",
   "hostNone": "尚未添加主机。",
   "hostTsAdd": "从 Tailscale 添加主机",

@@ -892,9 +892,9 @@
       }
     }
   },
-  "hostsManyNote": "{n} hosts are connected. Each connection costs battery and startup time: disconnect the hosts you don't use.",
+  "hostsManyNote": "{n} hosts are kept connected. Each one costs battery and startup time, also while it retries: disconnect the hosts you don't use.",
   "@hostsManyNote": {
-    "description": "Host list and Settings › Hosts: a note shown when more than 8 hosts are connected. There is no limit; this only says what each connection costs.",
+    "description": "Host list and Settings › Hosts: a note shown when the page keeps more than 8 hosts connected (connected, or retrying), that is all hosts not disconnected by the user. There is no limit; this only says what each connection costs.",
     "placeholders": {
       "n": {
         "type": "int",

@@ -276,7 +276,7 @@ export interface HostsApp {
   connect(h: Host): void;
   /** Disconnects a host until the user connects it again, across reloads (gorex.hostsOff). */
   disconnect(h: Host): void;
-  /** How many hosts the page keeps connected. */
+  /** How many hosts the page keeps connected: connected or trying to, all but those disconnected. */
   connections(): number;
   /** A host was removed from the list: its connection and its windows end. */
   removed(h: Host): void;
@@ -441,9 +441,13 @@ export class HostList {
     rows.append(...this.tailnetGroup());
     const add = el("button", "host-add", t("hostAdd"));
     add.type = "button";
+    // Its key keeps the focus on it as the list redraws (refresh).
+    add.dataset.key = "add";
     add.onclick = () => this.formIn(undefined);
     const many = this.manyNote();
-    this.panel.replaceChildren(el("div", "host-title", t("hostList")), rows, ...(many ? [el("div", "host-note host-many", many)] : []), add);
+    const note = many ? el("div", "host-note host-many", many) : undefined;
+    if (note) note.dataset.key = "many";
+    this.panel.replaceChildren(el("div", "host-title", t("hostList")), rows, ...(note ? [note] : []), add);
     if (focus) (rows.querySelector("button") ?? add).focus();
   }
 
@@ -531,9 +535,12 @@ export class HostList {
       const text = el("span", "host-text");
       const [dot, words] = tailnetStates[h.state];
       const line = el("span", "host-url host-state");
-      line.append(el("i", `state-dot ${dot}`), el("span", "", h.state === "online" ? h.dns : t("hostTailnetLine", { state: t(words), address: h.dns })));
+      // One dot a row: the connection's while the page keeps one, else Tailscale's word of the peer, in its line.
+      const kept = this.app.link(h).state !== "none";
+      if (!kept) line.append(el("i", `state-dot ${dot}`));
+      line.append(el("span", "", h.state === "online" ? h.dns : t("hostTailnetLine", { state: t(words), address: h.dns })));
       text.append(el("span", "theme-name", h.name), line);
-      pick.append(icon(h.icon), text, this.dot(h));
+      pick.append(icon(h.icon), text, kept ? this.dot(h) : el("span", "theme-check"));
       this.pickHost(pick, h);
       pick.title = h.problem
         ? t("hostProblemTip", { title: h.problem.title, text: h.problem.text }) + (h.problem.command ? " " + h.problem.command : "")

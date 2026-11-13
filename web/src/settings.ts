@@ -241,6 +241,8 @@ export class Settings {
   private nav = el("nav", "settings-nav");
   private title = el("h1", "settings-title");
   private page = el("div", "settings-page");
+  /** The page's scroller: a redraw of the same page keeps its place. */
+  private scroll = el("div", "settings-scroll");
   private section: Section = "appearance";
   /** The host the Hosts section edits, "new" for one to add, or none for the list. */
   private editing?: Host | "new";
@@ -260,7 +262,7 @@ export class Settings {
     const head = el("header", "settings-head");
     head.append(this.title, close);
     const main = el("div", "settings-main");
-    const scroll = el("div", "settings-scroll");
+    const scroll = this.scroll;
     scroll.append(this.page);
     main.append(head, scroll);
     this.dialog.append(this.nav, main);
@@ -334,8 +336,10 @@ export class Settings {
     const typing = document.activeElement instanceof HTMLInputElement && this.page.contains(document.activeElement);
     if (this.section === "host" || (this.section === "hosts" && !this.editing) || (this.section === "tailscale" && !typing)) {
       const key = (document.activeElement as HTMLElement | null)?.dataset?.key;
+      const top = this.scroll.scrollTop;
       this.drawPage();
-      if (key) this.page.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)?.focus();
+      this.scroll.scrollTop = top;
+      if (key) this.page.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
     }
   }
 
@@ -755,10 +759,12 @@ export class Settings {
     const many = hosts.manyNote();
     if (many) {
       const r = el("div", "settings-row");
+      r.dataset.key = "many";
       r.append(el("div", "settings-hint host-many", many));
       card.append(r);
     }
     const add = button(t("hostAdd"), "host-add primary");
+    add.dataset.key = "add";
     const plus = icon("plus");
     add.prepend(plus);
     add.onclick = () => this.show("hosts", "new");
