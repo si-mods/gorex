@@ -53,9 +53,16 @@ The page has a list of hosts, as the iOS app has
 works, and the list lasts until the page closes. The button at the top
 of the sidebar shows the host of the shown window and opens the list:
 choose a host (its last shown window shows, else its first), add one, or
-edit or remove one (the pencil). `?host=URL` in the page's address is a
-quick link: it adds that host, or chooses it when the list has it, shows
-its first window, and is then taken out of the address bar.
+edit or remove one (the pencil). Each host in the list has a dot for its
+connection, in the place of a check mark: green while connected, amber
+while it connects or reconnects, red when its last attempt failed (its
+title says why), grey while disconnected. Each has **Disconnect** (Lucide `unplug`)
+or **Connect** (`plug`) beside the pencil. Settings › Hosts lists the
+same hosts with the same dots and buttons, and the host card atop
+Settings shows the shown window's host (`SettingsApp.link(host)`).
+`?host=URL` in the page's address is a quick link: it adds that host, or
+chooses it when the list has it, connects it, shows its first window,
+and is then taken out of the address bar.
 
 Every host is connected at once, as on the desktop and in Rex Go
 (docs/web-multihost.md): each host of the list, and each host built-in
@@ -71,9 +78,26 @@ it starts; an open that takes over 3 s no longer counts, and one that is
 not welcomed in 10 s fails and waits like any failure, so hosts that do
 not answer do not hold the others back. A host that waits to try again tries at once when the
 network comes back (`online`) or the page shows again
-(`visibilitychange`). There is no cap on the number of hosts. Two
-addresses of one computer (its LAN address and its tailnet name, say)
-are two hosts, each with all its windows.
+(`visibilitychange`). There is no cap on the number of hosts; above 8
+connected, the host list and Settings › Hosts say that each connection
+costs battery and startup time. Two addresses of one computer (its LAN
+address and its tailnet name, say) are two hosts, each with all its
+windows.
+
+**Disconnect** stops a host's connection: its control socket and its
+panes' data sockets close (its shown and kept windows end), its windows
+leave the sidebar, and its cached sessions are cleared. It stays in the
+list, and in the sidebar as a heading that connects it. The other hosts
+go on. It stays disconnected across reloads (`gorex.hostsOff`, its ID)
+until the user connects it: **Connect**, a click on it in the list or on
+its heading, or its quick link. A tailnet host disconnected is no longer
+in `gorex.tailnetOpened`: it waits, as one never connected, for
+**Connect**. An edit of a host's address makes a new connection for that
+host only; an edit of its name or icon only redraws. **Remove** (in the
+host's form) ends its connection as Disconnect does and takes it out of
+the list. When the stage shows a window of a host disconnected or
+removed, it moves to the window shown last of another host, else to
+another host, else to the welcome.
 
 The last four windows shown stay live, across hosts: the shown one and
 the three shown before it (`kept` and `keptWindows` in `main.ts`), as the
@@ -95,7 +119,8 @@ waiting to be written (its host was offline), the status line says how
 many were lost.
 
 The page keeps where it was, `gorex.place`: the host, session and window
-shown last. A reload connects every host and shows that window as soon
+shown last. A reload connects every host but those disconnected, and
+shows that window (not one of a host disconnected) as soon
 as its host has read its sessions (its first window when the window is
 gone); while that host does not connect, the stage shows its notice. A
 tailnet host's place waits for built-in Tailscale to find it. The chosen

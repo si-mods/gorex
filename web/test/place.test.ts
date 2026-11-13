@@ -1,7 +1,7 @@
 // gorex.host moves into gorex.place (src/place.ts).
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { migrate, openedKey, oldHostKey, placeKey, startPlace, Store } from "../src/place";
+import { closeTailnet, loadHostsOff, migrate, offKey, openedKey, oldHostKey, placeKey, saveHostsOff, startPlace, Store, tailnetOpened } from "../src/place";
 
 /** A store in memory, as localStorage. */
 function memory(init: Record<string, string> = {}): Store & { data: Map<string, string> } {
@@ -90,4 +90,39 @@ test("storage that throws on write: the place is still read", () => {
 
 test("no storage at all", () => {
   assert.equal(startPlace(hosts, undefined), undefined);
+});
+
+test("disconnected hosts are kept, read back, and the key goes with the last", () => {
+  const s = memory();
+  assert.deepEqual([...loadHostsOff(s)], []);
+  saveHostsOff(new Set(["a1", "b2"]), s);
+  assert.deepEqual([...loadHostsOff(s)], ["a1", "b2"]);
+  saveHostsOff([], s);
+  assert.equal(s.data.has(offKey), false);
+});
+
+test("disconnected hosts: a bad value reads as none, and storage that throws is no error", () => {
+  assert.deepEqual([...loadHostsOff(memory({ [offKey]: "{" }))], []);
+  assert.deepEqual([...loadHostsOff(memory({ [offKey]: JSON.stringify(["a1", 3, ""]) }))], ["a1"]);
+  const broken: Store = {
+    getItem: () => {
+      throw new Error("denied");
+    },
+    setItem: () => {
+      throw new Error("denied");
+    },
+    removeItem: () => {
+      throw new Error("denied");
+    },
+  };
+  assert.deepEqual([...loadHostsOff(broken)], []);
+  assert.doesNotThrow(() => saveHostsOff(["a1"], broken));
+});
+
+test("a tailnet host disconnected is no longer connected once", () => {
+  const s = memory({ [openedKey]: JSON.stringify(["ts:a", "ts:b"]) });
+  closeTailnet("ts:a", s);
+  assert.deepEqual([...tailnetOpened(s)], ["ts:b"]);
+  closeTailnet("ts:x", s);
+  assert.deepEqual([...tailnetOpened(s)], ["ts:b"]);
 });

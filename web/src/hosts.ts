@@ -5,6 +5,7 @@
 // found on the tailnet by built-in Tailscale (tailnet.ts) are listed in a
 // group of their own, and not kept.
 import { localize, PlainKey, t } from "./i18n";
+import type { LinkState } from "./settings";
 import type { Tailnet, TailnetHost } from "./tailnet";
 
 /** A host as the user added it, or as built-in Tailscale found it (kind "tailnet"). */
@@ -247,10 +248,38 @@ export function commandBox(command: string): HTMLElement {
   return box;
 }
 
+/** A host's connection, as the lists show it: "none" while the page keeps none (the user disconnected it). */
+export interface HostLink {
+  host?: Host;
+  state: LinkState;
+  problem?: Problem;
+}
+
+/**
+ * Above how many connected hosts the lists say that each one costs
+ * (docs/web-multihost.md, Decisions, 5). Not a cap.
+ */
+export const manyHosts = 8;
+
+/** A host's state, as its dot's words in the lists: "none" is a host the user disconnected. */
+const linkWords: Record<LinkState, PlainKey> = {
+  none: "hostStateOff", connecting: "linkConnecting", connected: "linkConnected", unreachable: "linkUnreachable",
+};
+
 /** What the host list needs of the page. */
 export interface HostsApp {
   /** A host was chosen, to show: it connects if it is not; or the chosen one's address changed. */
   choose(h: Host | undefined): void;
+  /** A host's connection now. */
+  link(h: Host): HostLink;
+  /** Connects a host the user disconnected, or a tailnet host never connected; the stage stays. */
+  connect(h: Host): void;
+  /** Disconnects a host until the user connects it again, across reloads (gorex.hostsOff). */
+  disconnect(h: Host): void;
+  /** How many hosts the page keeps connected. */
+  connections(): number;
+  /** A host was removed from the list: its connection and its windows end. */
+  removed(h: Host): void;
   /** The keyboard goes back to the terminal. */
   close(): void;
   /** The list changed: a host added, edited or removed. */
@@ -272,8 +301,8 @@ export const tailnetStates: Record<TailnetHost["state"], [dot: string, text: Pla
  * The host list: a button at the top of the sidebar with the chosen host,
  * the host of the shown window, and a glass panel to choose, add, edit
  * and remove hosts. The Settings dialog's Hosts section lists the same
- * hosts, with the same form. Every host stays connected: choosing one
- * shows it (main.ts).
+ * hosts, with the same form. Every host stays connected until the user
+ * disconnects it (its row's plug): choosing one shows it (main.ts).
  */
 export class HostList {
   hosts = loadHosts();
@@ -396,18 +425,16 @@ export class HostList {
       pick.dataset.key = h.id;
       const text = el("span", "host-text");
       text.append(el("span", "theme-name", h.name), el("span", "host-url", h.url));
-      pick.append(icon(h.icon), text, check(h.id === this.chosen?.id));
-      pick.onclick = () => {
-        this.hide();
-        if (h.id !== this.chosen?.id) this.choose(h);
-      };
+      pick.append(icon(h.icon), text, this.dot(h));
+      this.pickHost(pick, h);
       const edit = el("button", "pane-action");
       edit.type = "button";
+      edit.dataset.key = h.id + ":edit";
       edit.title = t("commonEdit");
       edit.setAttribute("aria-label", t("hostEditName", { name: h.name }));
       edit.append(icon("pencil"));
       edit.onclick = () => this.formIn(h);
-      row.append(pick, edit);
+      row.append(pick, this.plug(h), edit);
       rows.append(row);
     }
     if (!this.hosts.length) rows.append(el("div", "theme-empty", t("hostNone")));
@@ -415,8 +442,58 @@ export class HostList {
     const add = el("button", "host-add", t("hostAdd"));
     add.type = "button";
     add.onclick = () => this.formIn(undefined);
-    this.panel.replaceChildren(el("div", "host-title", t("hostList")), rows, add);
+    const many = this.manyNote();
+    this.panel.replaceChildren(el("div", "host-title", t("hostList")), rows, ...(many ? [el("div", "host-note host-many", many)] : []), add);
     if (focus) (rows.querySelector("button") ?? add).focus();
+  }
+
+  /**
+   * A host row's click: a connected host shows its last window, one the
+   * user disconnected connects and shows.
+   */
+  private pickHost(pick: HTMLButtonElement, h: Host) {
+    const off = this.app.link(h).state === "none";
+    pick.setAttribute("aria-current", String(h.id === this.chosen?.id));
+    pick.onclick = () => {
+      this.hide();
+      if (off || h.id !== this.chosen?.id) this.choose(h);
+    };
+  }
+
+  /**
+   * A host's state as a dot, in the check's column: connected, connecting,
+   * failed, or grey while the user disconnected it. Its words are its title
+   * and its accessible name; it is never dimmed (DESIGN.md).
+   */
+  dot(h: Host): HTMLElement {
+    const { state, problem } = this.app.link(h);
+    const box = el("span", "theme-check");
+    const d = el("i", `state-dot ${state}`);
+    const words = t(linkWords[state]);
+    d.title = state === "unreachable" && problem ? t("hostStateProblem", { state: words, problem: problem.title }) : words;
+    d.setAttribute("role", "img");
+    d.setAttribute("aria-label", d.title);
+    box.append(d);
+    return box;
+  }
+
+  /** A host's Connect or Disconnect button (Lucide plug, unplug). */
+  plug(h: Host): HTMLButtonElement {
+    const on = this.app.link(h).state !== "none";
+    const b = el("button", "pane-action");
+    b.type = "button";
+    b.dataset.key = h.id + ":plug";
+    b.title = t(on ? "hostDisconnect" : "hostConnect");
+    b.setAttribute("aria-label", on ? t("hostDisconnectName", { name: h.name }) : t("settingsHostConnect", { name: h.name }));
+    b.append(icon(on ? "unplug" : "plug"));
+    b.onclick = () => (on ? this.app.disconnect(h) : this.app.connect(h));
+    return b;
+  }
+
+  /** The note above manyHosts connected hosts: each connection costs. None below. */
+  manyNote(): string | undefined {
+    const n = this.app.connections();
+    return n > manyHosts ? t("hostsManyNote", { n }) : undefined;
   }
 
   /**
@@ -456,16 +533,13 @@ export class HostList {
       const line = el("span", "host-url host-state");
       line.append(el("i", `state-dot ${dot}`), el("span", "", h.state === "online" ? h.dns : t("hostTailnetLine", { state: t(words), address: h.dns })));
       text.append(el("span", "theme-name", h.name), line);
-      pick.append(icon(h.icon), text, check(h.id === this.chosen?.id));
+      pick.append(icon(h.icon), text, this.dot(h));
+      this.pickHost(pick, h);
       pick.title = h.problem
         ? t("hostProblemTip", { title: h.problem.title, text: h.problem.text }) + (h.problem.command ? " " + h.problem.command : "")
         : h.url;
-      pick.onclick = () => {
-        this.hide();
-        if (h.id !== this.chosen?.id) this.choose(h);
-      };
       const row = el("div", "host-row");
-      row.append(pick);
+      row.append(pick, this.plug(h));
       out.push(row);
     }
     if (!ts.hosts.length) {
@@ -542,8 +616,8 @@ export class HostList {
         if (!confirm(t("formRemoveAsk", { name: h.name }))) return;
         this.hosts = this.hosts.filter((x) => x.id !== h.id);
         saveHosts(this.hosts);
-        if (this.chosen?.id === h.id) this.choose(this.hosts[0]);
-        this.app.changed();
+        // The page ends its connection, and moves the stage off it when it shows it.
+        this.app.removed(h);
         done("remove");
       };
       buttons.append(remove);

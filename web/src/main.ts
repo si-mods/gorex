@@ -8,7 +8,7 @@ import { Chunk } from "./chunks";
 import { Ghostty } from "./ghostty";
 import type { Guide } from "./guide";
 import { mountCorner } from "./corner";
-import { commandBox, Host, HostList, hostURL, icon, loadHosts, mixedContent, Problem, problem as newProblem } from "./hosts";
+import { commandBox, Host, HostLink, HostList, hostURL, icon, loadHosts, mixedContent, Problem, problem as newProblem } from "./hosts";
 import { HostConn, HostEvents, Session } from "./hostconn";
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
@@ -18,10 +18,10 @@ import { describe, TerminalView } from "./pane";
 import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, paneHeaders, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
-import { isTailnetID, openTailnet, Place, savePlace, startPlace, tailnetOpened } from "./place";
+import { closeTailnet, isTailnetID, loadHostsOff, openTailnet, Place, saveHostsOff, savePlace, startPlace, tailnetOpened } from "./place";
 import { programOf } from "./programs";
 import { Control, directTransport } from "./rex";
-import type { LinkState, Settings } from "./settings";
+import type { Settings } from "./settings";
 import { hold, initSidebar, paneName, redraw, sidebar as drawSidebar, sidebarBlock, spaceName, windowName, windowTitle } from "./sidebar";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
@@ -73,9 +73,19 @@ const tailnet = new Tailnet();
 let guide: Guide | undefined;
 /** The first screen, while no host is chosen. */
 let welcome: Welcome | undefined;
-/** The selected host's connection, and what is wrong with it, for the Settings dialog's host card. */
-let link: LinkState = "none";
-let problem: Problem | undefined;
+/**
+ * The direct hosts the user disconnected (gorex.hostsOff): the page keeps
+ * no connection to them until the user connects them again, across reloads.
+ */
+const off = loadHostsOff();
+
+/** Marks a direct host disconnected, or not, and keeps the list. */
+function setOff(id: string, on: boolean) {
+  if (off.has(id) === on) return;
+  if (on) off.add(id);
+  else off.delete(id);
+  saveHostsOff(off);
+}
 /** The theme chosen in this browser, over the desktop's colours; none keeps the host's. */
 let chosen: Theme | undefined;
 /** Its entry, for the Settings dialog's previews. */
@@ -132,11 +142,10 @@ function scheme(bg: [number, number, number]) {
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", s === "light" ? "#ececf0" : "#1c1c1e");
 }
 
-/** Sets the connection's state, and shows it in the Settings dialog. */
-function setLink(s: LinkState, p?: Problem) {
-  link = s;
-  problem = p;
-  settings?.update();
+/** A host's connection, for the host list and the Settings dialog: "none" while the page keeps none. */
+function linkOf(h: Host | undefined): HostLink {
+  const c = h && conns.get(h.id);
+  return { host: c?.host ?? h, state: c?.state ?? "none", problem: c?.problem };
 }
 
 /** Applies a changed setting to the page and to every open pane, as the desktop's applyPrefs. */
@@ -305,14 +314,8 @@ async function main() {
     pick(theme);
     chooseTheme = pick;
     hostList = new HostList($("hosts"), {
-      choose, close: () => shown?.focusKeys(), changed: () => {
-        // A host added connects, one removed stops, one whose address changed connects again.
-        syncConns();
-        if (!current) drawNotice();
-        settings?.update();
-        // The host view lists the hosts.
-        sidebar();
-      }, tailnet, guide: openGuide,
+      choose, close: () => shown?.focusKeys(), changed: hostsChanged, tailnet, guide: openGuide,
+      link: linkOf, connect, disconnect, removed, connections: () => conns.size,
     });
     for (const what of ["tabs", "font"] as const) applyPrefs(what);
     onAppChange(() => settings?.appChanged());
@@ -340,7 +343,11 @@ async function main() {
     const r = hostURL(linked);
     if ("url" in r) {
       hostList.addLink(r.url);
-      if (hostList.chosen) place = { host: hostList.chosen.id };
+      if (hostList.chosen) {
+        // A host linked is asked for: it connects, though the user disconnected it before.
+        setOff(hostList.chosen.id, false);
+        place = { host: hostList.chosen.id };
+      }
     }
     history.replaceState(null, "", location.pathname);
   }
@@ -355,14 +362,15 @@ async function main() {
  * place waits for built-in Tailscale to find it.
  */
 function startAtPlace(p: Place | undefined) {
-  const h = p && hostList.hosts.find((x) => x.id === p.host);
-  if (p && (h || isTailnetID(p.host))) {
+  // A host the user disconnected is no place: it stays disconnected.
+  const h = p && hostList.hosts.find((x) => x.id === p.host && !off.has(x.id));
+  if (p && (h || (isTailnetID(p.host) && tailnetOpened().has(p.host)))) {
     pending = p;
     select(h);
     if (h) showPending(conns.get(h.id)!);
     return;
   }
-  const first = hostList.hosts[0];
+  const first = hostList.hosts.find((x) => !off.has(x.id));
   pending = first && { host: first.id };
   select(first);
 }
@@ -375,7 +383,7 @@ function withSettings(f: (s: Settings) => void) {
   settingsCode.use((m) => {
     settings ??= new m.Settings({
       hosts: hostList,
-      link: () => ({ host: currentConn()?.host ?? current, state: link, problem }),
+      link: linkOf,
       theme: () => chosenEntry,
       chooseTheme: (t) => chooseTheme(t),
       apply: applyPrefs,
@@ -529,7 +537,9 @@ function choose(h: Host | undefined) {
     select(undefined);
     return;
   }
+  // A host chosen connects, though the user disconnected it before.
   if (h.kind === "tailnet") openTailnet(h.id);
+  else setOff(h.id, false);
   const c = ensure(h);
   const last = c.lastWindow;
   if (last && windowOf(c, last.session, last.window)) return pick(c, last.session, last.window, true);
@@ -563,8 +573,9 @@ function select(h: Host | undefined) {
  */
 function drawNotice() {
   const c = currentConn();
+  // The Settings dialog's host card follows the selected host.
+  settings?.update();
   if (!current) {
-    setLink("none");
     if (pending && isTailnetID(pending.host)) notice(...tailnetPlace(pending.host));
     else if (!conns.size) showWelcome();
     else notice();
@@ -574,7 +585,6 @@ function drawNotice() {
     if (c.host.kind === "tailnet") notice(c.problem, tailscaleSettings);
     else notice(c.problem, { label: "hostEdit", run: () => hostList.open(c.host) });
   } else notice();
-  setLink(c?.state ?? "none", c?.problem);
 }
 
 /** A host's transport: the browser's to its address, or the tailnet node's. */
@@ -634,17 +644,77 @@ function retry(c: HostConn) {
  * Keeps a connection to every host the page keeps (Decisions, 1): each
  * host of the list, and each tailnet host connected once, when built-in
  * Tailscale finds it. A tailnet host stays connected while Tailscale is
- * off: its connection fails, waits and tries again.
- * PR 5 leaves out the hosts the user disconnected (gorex.hostsOff) here.
+ * off: its connection fails, waits and tries again. A host the user
+ * disconnected has none (gorex.hostsOff; a tailnet one is no longer
+ * connected once).
  */
 function syncConns() {
   if (!hostList) return;
-  for (const h of hostList.hosts) ensure(h);
+  for (const h of hostList.hosts) if (!off.has(h.id)) ensure(h);
   if (tailnet.status() === "running") {
     const opened = tailnetOpened();
     for (const h of tailnet.hosts) if (opened.has(h.id) || conns.has(h.id) || pending?.host === h.id) ensure(h);
   }
-  for (const c of [...conns.values()]) if (c.host.kind !== "tailnet" && !hostList.hosts.some((h) => h.id === c.host.id)) drop(c);
+  for (const c of [...conns.values()]) {
+    if (c.host.kind !== "tailnet" && (off.has(c.host.id) || !hostList.hosts.some((h) => h.id === c.host.id))) drop(c);
+  }
+}
+
+/** The host list changed (a host added, edited, removed, connected or disconnected): connections, lists and notice follow. */
+function hostsChanged() {
+  // A host added connects, one removed stops, one whose address changed connects again; the others go on.
+  syncConns();
+  if (!current) drawNotice();
+  settings?.update();
+  hostList.refresh();
+  // The host view lists the hosts.
+  sidebar();
+}
+
+/** Connects a host the user disconnected, or a tailnet host found and never connected. The stage stays. */
+function connect(h: Host) {
+  if (h.kind === "tailnet") openTailnet(h.id);
+  else setOff(h.id, false);
+  ensure(h);
+  hostsChanged();
+}
+
+/**
+ * Disconnects a host until the user connects it again: its connection
+ * stops, its control and data sockets close (its shown and kept windows
+ * end), its rows and cached sessions go. The other hosts go on. The stage
+ * moves off it when it shows it.
+ */
+function disconnect(h: Host) {
+  if (h.kind === "tailnet") closeTailnet(h.id);
+  else setOff(h.id, true);
+  if (pending?.host === h.id) pending = undefined;
+  const c = conns.get(h.id);
+  if (c) drop(c);
+  if (current?.id === h.id) elsewhere();
+  hostsChanged();
+}
+
+/** A host removed from the list: its connection ends as it is disconnected, and it is no longer kept as disconnected. */
+function removed(h: Host) {
+  setOff(h.id, false);
+  if (pending?.host === h.id) pending = undefined;
+  syncConns();
+  if (current?.id === h.id) elsewhere();
+  hostsChanged();
+}
+
+/**
+ * Moves the stage off a host disconnected or removed: to the window shown
+ * last of another host (a kept one), else to the window shown last of
+ * another connected host, else its first, else the welcome.
+ */
+function elsewhere() {
+  const k = kept[0];
+  if (k) return pick(k.conn, k.session, k.window, !busyFocus());
+  const all = orderedConns();
+  const c = all.find((c) => c.state === "connected" && c.lastWindow) ?? all.find((c) => c.state === "connected") ?? all[0];
+  choose(c?.host);
 }
 
 /** The hosts in the sidebar's order: the host list's, then the tailnet's by name, connected or found. */
@@ -695,8 +765,10 @@ const hostEvents: HostEvents = {
     if (c.state !== "connected") evict((w) => w.conn === c);
     // The notice is the selected host's, or a waiting place's.
     if (c === currentConn() || (!current && pending?.host === c.host.id)) drawNotice();
-    // The host's heading, its dot and its rows follow its state.
+    // The host's heading, its dot and its rows follow its state, as do its dots in the host list and Settings › Hosts.
     sidebar();
+    hostList?.refresh();
+    settings?.update();
   },
   status(c, s) {
     said.set(c, s);
