@@ -16,29 +16,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # The Mac mini's runner, for the tests on macOS: the tests a pull request
-  # must pass. It takes one job at a time, so it runs nothing else. si-mods
-  # runs no job on GitHub's runners. A fork's pull request runs its own copy
-  # of this file and could name this runner: what bars its code from the Mac
-  # mini is the approval each outside contributor's run needs. Read a fork's
-  # .github changes before approving.
-  test:
-    runs-on: [self-hosted, macmini]
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          # The runner keeps Go's caches between runs.
-          cache: false
-      - name: test
-        run: go test ./... -count=1 -timeout 15m
+  # Every job runs on an instabox machine (Ubuntu 24.04) that lives for
+  # the job, a fork's pull request too. The Mac mini's runner takes one job
+  # at a time and is kept for the release, so no job here waits for it, and
+  # the tests run on Linux only: what fails on macOS or Windows alone shows
+  # on a developer's machine. si-mods runs no job on GitHub's runners.
 
-  # One job, on an instabox machine (Ubuntu 24.04) that lives for the job:
-  # it checks and cross-compiles each system's code, so it needs no Mac.
+  # gofmt and vet, and each system's code cross-compiled.
   build:
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: instabox-medium
     timeout-minutes: 20
     steps:
@@ -54,8 +39,8 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
-      # Each system's files and tests: build skips the tests, and a pull
-      # request runs them on macOS only.
+      # Each system's files and tests: build skips the tests, and they run
+      # on Linux only.
       - name: vet
         env:
           CGO_ENABLED: "0"
@@ -75,17 +60,13 @@ jobs:
             echo "::endgroup::"
           done
 
-  # The tests on Linux, on instabox machines: on main only, and a failure
-  # does not fail the run, as too many of them fail there by chance (about
-  # one run in five, none of them a real fault). The root
-  # package's tests run one after another, so three machines take a third
-  # each; a fourth runs the other packages. With build, that is five at a
-  # time.
+  # The tests. The root package's tests run one after another, so three
+  # machines take a third each; a fourth runs the other packages. With
+  # build, that is five at a time.
   test-linux:
-    if: github.event_name == 'push'
-    continue-on-error: true
     runs-on: instabox-medium
-    timeout-minutes: 20
+    # Two runs of a part that hangs, at 15 minutes each.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -110,14 +91,17 @@ jobs:
           PART: ${{ matrix.part }}
           # The number of root-N parts in the matrix.
           ROOT_PARTS: 3
+        # Some tests fail by chance on these machines, about one run in
+        # five, so a part that fails runs once more.
         run: |
           if [ "$PART" = others ]; then
             pkgs=$(go list ./... | grep -v '^gorex$')
-            go test $pkgs -count=1 -timeout 15m
-            exit
+            run() { go test $pkgs -count=1 -timeout 15m; }
+          else
+            go test -c -o "$RUNNER_TEMP/gorex.test" .
+            tests=$("$RUNNER_TEMP/gorex.test" -test.list '^(Test|Example|Fuzz)' |
+              awk -v n="$ROOT_PARTS" -v i="${PART#root-}" 'NR % n == i' | paste -sd'|' -)
+            [ -n "$tests" ]
+            run() { "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"; }
           fi
-          go test -c -o "$RUNNER_TEMP/gorex.test" .
-          tests=$("$RUNNER_TEMP/gorex.test" -test.list '^(Test|Example|Fuzz)' |
-            awk -v n="$ROOT_PARTS" -v i="${PART#root-}" 'NR % n == i' | paste -sd'|' -)
-          [ -n "$tests" ]
-          "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"
+          run || { echo "::warning::$PART failed, running it once more"; run; }
