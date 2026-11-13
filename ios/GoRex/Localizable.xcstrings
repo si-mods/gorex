@@ -3527,6 +3527,66 @@
           }
         }
       }
+    },
+    "Keyboard Input": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "键盘输入"
+          }
+        }
+      }
+    },
+    "Record Keyboard Input": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记录键盘输入"
+          }
+        }
+      }
+    },
+    "Keyboard Input Log": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "键盘输入日志"
+          }
+        }
+      }
+    },
+    "No Keyboard Input": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有键盘输入"
+          }
+        }
+      }
+    },
+    "Clear": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "清除"
+          }
+        }
+      }
+    },
+    "Records what the keyboard sends the terminal, typed text included, to copy into a report of a keyboard bug. The log stays in memory until the app quits; turning recording off clears it.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "记录键盘发给终端的内容（包括输入的文字），可复制到键盘问题的报告里。日志只保存在内存中，直到 App 退出；关闭记录即清空。"
+          }
+        }
+      }
     }
   }
 }

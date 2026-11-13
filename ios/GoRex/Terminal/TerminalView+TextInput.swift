@@ -9,38 +9,53 @@ import UIKit
 extension TerminalView: UITextInput {
     var hasText: Bool { true }
 
-    func insertText(_ text: String) { apply(document.insert(text, chord: ctrl || alt)) }
+    func insertText(_ text: String) {
+        let chord = ctrl || alt, e = document.insert(text, chord: chord)
+        trace("insertText \(InputTrace.quote(text)) chord=\(chord)", e)
+        apply(e)
+    }
 
     /// The keyboard predicts its own edits, and a Backspace past the typed
     /// text breaks the prediction: the anchor it believes erased stays. It
     /// is told, or it takes the line for empty and stops a held Backspace.
     func deleteBackward() {
-        let chord = ctrl || alt
-        if document.erasesUnseen(chord: chord) {
-            changing { apply(document.deleteBackward(chord: chord)) }
-        } else {
-            apply(document.deleteBackward(chord: chord))
+        let chord = ctrl || alt, unseen = document.erasesUnseen(chord: chord)
+        let delete = {
+            let e = self.document.deleteBackward(chord: chord)
+            self.trace("deleteBackward chord=\(chord) unseen=\(unseen)", e)
+            self.apply(e)
         }
+        if unseen { changing(delete) } else { delete() }
     }
 
     func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
-        apply(document.mark(markedText, selected: selectedRange))
+        let e = document.mark(markedText, selected: selectedRange)
+        trace("setMarkedText \(InputTrace.quote(markedText)) selected=\(InputTrace.range(selectedRange))", e)
+        apply(e)
     }
 
-    func unmarkText() { apply(document.unmark()) }
+    func unmarkText() {
+        let e = document.unmark()
+        trace("unmarkText", e)
+        apply(e)
+    }
 
     func replace(_ range: UITextRange, withText text: String) {
-        guard let r = range as? TextRange else { return }
-        apply(document.replace(r.range, with: text))
+        guard let r = range as? TextRange else { return trace("replace \(traced(range)) with \(InputTrace.quote(text)) ignored") }
+        let e = document.replace(r.range, with: text)
+        trace("replace \(InputTrace.range(r.range)) with \(InputTrace.quote(text))", e)
+        apply(e)
     }
 
     func insertDictationResult(_ dictationResult: [UIDictationPhrase]) {
+        trace("insertDictationResult \(dictationResult.map { InputTrace.quote($0.text) }.joined(separator: " "))")
         insertText(dictationResult.map(\.text).joined())
     }
 
     func text(in range: UITextRange) -> String? {
-        guard let r = range as? TextRange, let i = Range(r.range, in: document.text) else { return nil }
-        return String(document.text[i])
+        let t = (range as? TextRange).flatMap { Range($0.range, in: document.text) }.map { String(document.text[$0]) }
+        trace("text(in: \(traced(range))) -> \(InputTrace.quote(t))")
+        return t
     }
 
     var markedTextRange: UITextRange? { document.markedRange.map(TextRange.init) }
@@ -48,7 +63,22 @@ extension TerminalView: UITextInput {
     /// The terminal's cursor is the program's: the keyboard cannot move it.
     var selectedTextRange: UITextRange? {
         get { TextRange(document.selection) }
-        set {}
+        set { trace("set selectedTextRange \(traced(newValue)) ignored") }
+    }
+
+    /// Notes a keyboard call for InputTrace, after the keyboard in use, and
+    /// with its edits, the document after them.
+    func trace(_ call: @autoclosure () -> String, _ edits: [InputDocument.Edit]? = nil) {
+        guard InputTrace.isOn else { return }
+        InputTrace.keyboard(textInputMode.map { "\($0.primaryLanguage ?? "nil") \(NSStringFromClass(Swift.type(of: $0)))" } ?? "nil")
+        InputTrace.note(call() + (edits.map { " -> \(InputTrace.edits($0)) \(document.traced)" } ?? ""))
+    }
+
+    /// A range as a trace line shows it: {location,length}, or the class of
+    /// one not the view's.
+    private func traced(_ range: UITextRange?) -> String {
+        guard let range else { return "nil" }
+        return (range as? TextRange).map { InputTrace.range($0.range) } ?? "\(Swift.type(of: range))"
     }
 
     // MARK: Positions
@@ -130,7 +160,10 @@ extension TerminalView: UITextInput {
 
     /// Holding the spacebar moves the cursor with arrows, which Ghostty
     /// encodes as the program's cursor keys ask.
-    func beginFloatingCursor(at point: CGPoint) { trackpad.begin(at: point) }
+    func beginFloatingCursor(at point: CGPoint) {
+        trace("beginFloatingCursor")
+        trackpad.begin(at: point)
+    }
 
     func updateFloatingCursor(at point: CGPoint) {
         let arrows = trackpad.update(to: point, cell: cell)
@@ -139,7 +172,10 @@ extension TerminalView: UITextInput {
         press(arrows.map { .named($0) })
     }
 
-    func endFloatingCursor() { trackpad.end() }
+    func endFloatingCursor() {
+        trace("endFloatingCursor")
+        trackpad.end()
+    }
 }
 
 /// A place in the InputDocument, in UTF-16 units.

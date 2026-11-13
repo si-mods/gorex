@@ -304,6 +304,7 @@ private struct TerminalSettings: View {
     @AppStorage(Polish.modelKey) private var model = ""
     /// Polish's key, as the Keychain keeps it; empty, polish is off.
     @State private var key = Polish.savedKey ?? ""
+    @AppStorage(InputTrace.key) private var trace = false
 
     /// The minimum contrasts offered, 0 the default, off; a stored one not
     /// among them, by its number.
@@ -374,6 +375,16 @@ private struct TerminalSettings: View {
             } footer: {
                 Text("Turns text too close to its background black or white, colors programs set too, so it reads; its color is lost, so errors and warnings may look alike. Box drawing keeps its colors. Off shows programs' colors as they are.")
             }
+            Section {
+                Toggle("Record Keyboard Input", isOn: $trace)
+                    .onChange(of: trace) { if !trace { InputTrace.clear() } }
+                NavigationLink("Keyboard Input Log") { InputTraceView() }
+            } header: {
+                Text("Keyboard Input")
+            } footer: {
+                Text("Records what the keyboard sends the terminal, typed text included, to copy into a report of a keyboard bug. The log stays in memory until the app quits; turning recording off clears it.")
+            }
+            .listRowBackground(Color.card)
         }
         .scrollContentBackground(.hidden)
         .background(Color.page)
@@ -443,6 +454,46 @@ private struct TerminalSettings: View {
         }
         .swipeActions { Button("Delete", role: .destructive) { dictation.delete(m) } }
         .listRowBackground(Color.card)
+    }
+}
+
+/// The keyboard input InputTrace recorded, a line for each call: Copy takes
+/// it all as text, for a report.
+private struct InputTraceView: View {
+    @State private var lines = InputTrace.lines
+    @State private var copied = false
+
+    var body: some View {
+        List(lines.indices, id: \.self) { i in
+            Text(verbatim: lines[i]).font(.caption.monospaced()).textSelection(.enabled)
+                .listRowBackground(Color.card)
+        }
+        .overlay { if lines.isEmpty { ContentUnavailableView("No Keyboard Input", systemImage: "keyboard") } }
+        .scrollContentBackground(.hidden)
+        .background(Color.page)
+        .navigationTitle("Keyboard Input Log")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") {
+                    UIPasteboard.general.string = lines.joined(separator: "\n")
+                    copied = true
+                }
+                .disabled(lines.isEmpty)
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button("Clear", systemImage: "trash") {
+                    InputTrace.clear()
+                    lines = []
+                }
+                .disabled(lines.isEmpty)
+            }
+        }
+        .task(id: copied) {
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+        .sensoryFeedback(.success, trigger: copied) { _, new in new }
     }
 }
 
