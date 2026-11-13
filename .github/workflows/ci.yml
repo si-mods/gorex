@@ -4,13 +4,15 @@ on:
   pull_request:
   push:
     branches: [main]
+  # For a commit that started no run: gh workflow run ci.yml --ref <branch>
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  # Not on main: each merge keeps its own result.
+  # Not on main: a merge's run goes to its end once it starts.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -75,7 +77,7 @@ jobs:
 
   # The tests on Linux, on instabox machines: on main only, and a failure
   # does not fail the run, as too many of them fail there by chance (about
-  # one pull request in five, none of them a real fault). The root
+  # one run in five, none of them a real fault). The root
   # package's tests run one after another, so three machines take a third
   # each; a fourth runs the other packages. With build, that is five at a
   # time.
