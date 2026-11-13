@@ -42,6 +42,8 @@ export interface HostEvents {
   attached(c: HostConn): void;
   /** The host is live: what was typed while offline goes now. */
   live(c: HostConn): void;
+  /** machine or remote changed (/api/spaces read, or forgotten with the connection). */
+  spaces?(c: HostConn): void;
 }
 
 /**
@@ -146,6 +148,12 @@ export class HostConn {
   machine?: string;
   /** The panes of other machines each session holds, by session, from /api/spaces. */
   readonly remote = new Map<string, spaces.Member[]>();
+  /** Reads /api/spaces: one read at a time, of the connection of the moment. */
+  private readonly spaceReader = new spaces.Reader(
+    () => this.transport,
+    () => this.control,
+    (a) => this.takeSpaces(a),
+  );
 
   constructor(
     /** Its host; an edit of the name or the icon replaces it, one of the address makes a new HostConn. */
@@ -282,7 +290,7 @@ export class HostConn {
     try {
       await c.call("session.bootstrap", { event_scope: "all" });
       await this.list();
-      void this.readSpaces(c);
+      this.spaceReader.ask();
       // Connected is the usual state: the status line says nothing, and an earlier problem goes.
       this.status("");
       this.events.attached(this);
@@ -329,7 +337,7 @@ export class HostConn {
         const s = sid && sessions.get(sid);
         if (s && (p.revision ?? Infinity) > (s.view?.revision ?? -1)) {
           this.refresh(s.id);
-          void this.readSpaces(this.control);
+          this.spaceReader.ask();
         }
         break;
       }
@@ -353,27 +361,20 @@ export class HostConn {
     }
   }
 
-  /** Forgets what /api/spaces said: a closed connection takes it with it. */
-  private forgetSpaces() {
-    this.machine = undefined;
+  /** Keeps what /api/spaces answered; none, for a connection that closed or a server without it. */
+  private takeSpaces(a?: spaces.Answer) {
+    const m = a?.machine_id || undefined;
+    const r = new Map((a?.sessions ?? []).map((s) => [s.session_id, s.remote_blocks] as const));
+    const same = this.machine === m && r.size === this.remote.size && [...r].every(([k, v]) => JSON.stringify(this.remote.get(k)) === JSON.stringify(v));
+    this.machine = m;
     this.remote.clear();
+    for (const [k, v] of r) this.remote.set(k, v);
+    if (!same) this.events.spaces?.(this);
   }
 
-  /**
-   * Reads /api/spaces, when the welcome lists gorex.spaces. An answer for
-   * a connection that was replaced meanwhile is dropped: the new one reads.
-   */
-  private async readSpaces(c?: Control) {
-    if (!c || !c.features.has(spaces.feature)) return;
-    try {
-      const a = await spaces.read(this.transport);
-      if (this.control !== c) return;
-      this.machine = a.machine_id;
-      this.remote.clear();
-      for (const s of a.sessions) this.remote.set(s.session_id, s.remote_blocks);
-    } catch (e) {
-      console.warn("spaces", this.host.name, e);
-    }
+  /** Forgets what /api/spaces said: a closed connection takes it with it. */
+  private forgetSpaces() {
+    this.takeSpaces();
   }
 
   /** Lists the sessions and reads each one's view. */

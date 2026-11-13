@@ -33,11 +33,76 @@ export function parse(j: any): Answer {
 }
 
 /** Reads the spaces of the host behind transport, as Spaces.read: 10 s at most, 200 only. */
-export async function read(transport: Transport, signal?: AbortSignal): Promise<Answer> {
-  const timeout = AbortSignal.timeout(10000);
-  const r = await transport.fetch("/api/spaces", { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
-  if (r.status !== 200) throw new Error(`spaces: ${r.status} ${r.statusText}`.trim());
-  return parse(await r.json());
+export async function read(transport: Transport, signal?: AbortSignal, wait = 10000): Promise<Answer> {
+  const timeout = AbortSignal.timeout(wait);
+  // The tailnet transport ignores the signal until the body: the timer bounds the whole read.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, no) => (timer = setTimeout(() => no(new Error("spaces: timed out")), wait)));
+  const get = (async () => {
+    const r = await transport.fetch("/api/spaces", { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+    if (r.status !== 200) throw new Error(`spaces: ${r.status} ${r.statusText}`.trim());
+    return parse(await r.json());
+  })();
+  get.catch(() => {});
+  try {
+    return await Promise.race([get, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Reads a host's spaces as Host.readSpaces does: one read at a time, a
+ * request meanwhile makes one more after it. Each read is of the
+ * connection of the moment, and its answer applies only while that
+ * connection lasts. A read that fails keeps what was read before.
+ */
+export class Reader {
+  private reading = false;
+  private again = false;
+
+  constructor(
+    private readonly transport: () => Transport,
+    /** The connection of the moment, with the features of its welcome. */
+    private readonly current: () => { features: Set<string> } | undefined,
+    /** Takes an answer; none for a server without gorex.spaces. */
+    private readonly take: (a?: Answer) => void,
+    private readonly fetch: (t: Transport) => Promise<Answer> = read,
+  ) {}
+
+  /** Asks for a read: now, or after the one under way. */
+  ask() {
+    if (this.reading) {
+      this.again = true;
+      return;
+    }
+    this.reading = true;
+    void this.run();
+  }
+
+  private async run() {
+    try {
+      do {
+        this.again = false;
+        const c = this.current();
+        if (!c) break;
+        if (!c.features.has(feature)) {
+          this.take();
+          continue;
+        }
+        let a: Answer;
+        try {
+          a = await this.fetch(this.transport());
+        } catch (e) {
+          console.warn("spaces", e);
+          continue;
+        }
+        if (c === this.current()) this.take(a);
+      } while (this.again);
+    } finally {
+      this.reading = false;
+    }
+  }
 }
 
 /** A host's session. */
@@ -62,7 +127,7 @@ export interface Source {
 
 /** Every block of every layer of a window (Spaces.swift: SessionView.Window.blocks). */
 export function blocksOf(w: any): string[] {
-  return (w?.layers ?? []).flatMap((l: any) => (l?.blocks ?? []).map((b: any) => b.block_id));
+  return (w?.layers ?? []).flatMap((l: any) => (l?.blocks ?? []).map((b: any) => b?.block_id)).filter((b: unknown): b is string => typeof b === "string");
 }
 
 const placeKey = (host: string, session: string) => JSON.stringify([host, session]);

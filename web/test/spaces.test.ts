@@ -1,7 +1,7 @@
 // CrossHost (src/spaces.ts), with the cases of ios/GoRexTests/SpacesTests.swift.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CrossHost, Member, parse, Source } from "../src/spaces";
+import { blocksOf, CrossHost, feature, Member, parse, read, Reader, Source } from "../src/spaces";
 
 /** A session's view of windows, each with its tiled blocks and, optionally, a floating one. */
 function view(session: string, windows: [string, string[], string?][]) {
@@ -102,4 +102,105 @@ test("a machine added twice: matched by the first host, the second is not hidden
   assert.deepEqual(c.rows(mac, "work"), [{ host: other, session: "lan", window: "l1" }]);
   assert.ok(!c.isMoved(studio, "desk", "d1"));
   assert.ok(!c.isGone(studio, "desk", ["d1", "d2", "d3"]));
+});
+
+// Reader: one read at a time, and an answer for a replaced connection dropped.
+/** A transport whose answers the test gives one by one. */
+function fake() {
+  const waiting: ((j: any) => void)[] = [];
+  let calls = 0;
+  return {
+    get calls() {
+      return calls;
+    },
+    answer: (machine: string) => waiting.shift()!({ machine_id: machine, sessions: [] }),
+    transport: {
+      kind: "direct" as const,
+      socket: () => {
+        throw new Error("no socket");
+      },
+      fetch: () => {
+        calls++;
+        return new Promise<Response>((ok) => waiting.push((j) => ok(new Response(JSON.stringify(j), { status: 200 }))));
+      },
+    },
+  };
+}
+const tick = () => new Promise((r) => setTimeout(r, 5));
+const welcome = () => ({ features: new Set([feature]) });
+
+test("reader: requests during a read make one more read after it", async () => {
+  const f = fake();
+  const taken: (string | undefined)[] = [];
+  const c = welcome();
+  const r = new Reader(() => f.transport, () => c, (a) => taken.push(a?.machine_id));
+  r.ask();
+  r.ask();
+  r.ask();
+  await tick();
+  assert.equal(f.calls, 1);
+  f.answer("A");
+  await tick();
+  assert.equal(f.calls, 2);
+  f.answer("B");
+  await tick();
+  assert.equal(f.calls, 2);
+  assert.deepEqual(taken, ["A", "B"]);
+  r.ask();
+  await tick();
+  assert.equal(f.calls, 3);
+  f.answer("C");
+  await tick();
+  assert.deepEqual(taken, ["A", "B", "C"]);
+});
+
+test("reader: an answer for a replaced connection is dropped, and the new one is read", async () => {
+  const f = fake();
+  const taken: (string | undefined)[] = [];
+  let c: { features: Set<string> } | undefined = welcome();
+  const r = new Reader(() => f.transport, () => c, (a) => taken.push(a?.machine_id));
+  r.ask();
+  await tick();
+  c = welcome();
+  r.ask();
+  f.answer("OLD");
+  await tick();
+  assert.equal(f.calls, 2);
+  f.answer("NEW");
+  await tick();
+  assert.deepEqual(taken, ["NEW"]);
+});
+
+test("reader: no connection reads nothing, a server without the feature forgets, a failed read keeps", async () => {
+  const f = fake();
+  const taken: (string | undefined)[] = [];
+  let c: { features: Set<string> } | undefined;
+  const r = new Reader(() => f.transport, () => c, (a) => taken.push(a?.machine_id));
+  r.ask();
+  await tick();
+  assert.equal(f.calls, 0);
+  c = { features: new Set() };
+  r.ask();
+  await tick();
+  assert.equal(f.calls, 0);
+  assert.deepEqual(taken, [undefined]);
+  c = welcome();
+  let n = 0;
+  const failing = new Reader(() => f.transport, () => c, (a) => taken.push(a?.machine_id), async () => {
+    n++;
+    throw new Error("down");
+  });
+  failing.ask();
+  await tick();
+  assert.equal(n, 1);
+  assert.deepEqual(taken, [undefined]);
+});
+
+test("read: a transport that never answers times out", async () => {
+  const t = { ...fake().transport, fetch: () => new Promise<Response>(() => {}) };
+  await assert.rejects(read(t, undefined, 20), /timed out/);
+});
+
+test("a block entry that is null is skipped", () => {
+  assert.deepEqual(blocksOf({ layers: [{ blocks: [null, { block_id: "a" }, {}] }, null] }), ["a"]);
 });
