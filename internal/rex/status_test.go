@@ -191,3 +191,33 @@ func TestStatusRISClears(t *testing.T) {
 		t.Fatalf("updates %d -> %d, records %d", before, st.updates, len(st.records))
 	}
 }
+
+// TestStatusSeen checks that seen moves only forward, to no later than
+// the latest record, and that MostUrgent with it leaves out what was seen.
+func TestStatusSeen(t *testing.T) {
+	var st programStatus
+	if st.see(time.Now()) || !st.seen.IsZero() {
+		t.Fatalf("seen %v with no records", st.seen)
+	}
+	st.feed([]byte(osc("state=done:id=a")))
+	a := st.records["a"].Updated
+	if !st.see(a.Add(time.Hour)) || !st.seen.Equal(a) {
+		t.Fatalf("seen %v, want the record's %v", st.seen, a)
+	}
+	if got := MostUrgent(st.list(), st.seen); got != nil {
+		t.Fatalf("a seen record counts: %+v", got)
+	}
+	if st.see(a) || st.see(a.Add(-time.Second)) || !st.seen.Equal(a) {
+		t.Fatalf("seen moved back or again: %v", st.seen)
+	}
+	time.Sleep(time.Millisecond)
+	st.feed([]byte(osc("state=working:id=w")))
+	if st.see(st.records["w"].Updated) || !st.seen.Equal(a) {
+		t.Fatalf("a working record raised seen to %v", st.seen)
+	}
+	time.Sleep(time.Millisecond)
+	st.feed([]byte(osc("state=error:id=b")))
+	if got := MostUrgent(st.list(), st.seen); got == nil || got.ID != "b" {
+		t.Fatalf("a record after seen: %+v", got)
+	}
+}

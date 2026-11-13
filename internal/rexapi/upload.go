@@ -105,6 +105,9 @@ func (g *Gateway) features() []string {
 	if g.hello.Can(rex.CapabilityTabToSpace) {
 		features = append(features, featureMoveWindow)
 	}
+	if g.hello.Can(rex.CapabilityStatusSeen) {
+		features = append(features, featureSeeBlock)
+	}
 	return features
 }
 

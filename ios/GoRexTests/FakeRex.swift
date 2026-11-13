@@ -6,7 +6,8 @@ import XCTest
 /// connection: it welcomes control connections and answers their requests
 /// as the test says, and hands data connections to the test.
 @MainActor final class FakeRex {
-    /// A request's answer: its payload, or nil to leave it unanswered.
+    /// A request's answer: its payload, an error when it has the key
+    /// "error", or nil to leave it unanswered.
     var respond: (_ method: String, _ payload: [String: Any]) -> [String: Any]? = { _, _ in [:] }
     /// A data connection, with its handshake message.
     var data: (_ conn: NWConnection, _ first: Data) -> Void = { c, _ in c.cancel() }
@@ -118,7 +119,11 @@ import XCTest
             payloads.append(payload)
             guard let r = respond(method, payload) else { return }
             seq += 1
-            Self.send(c, json: ["type": "response", "id": m["id"] ?? "", "seq": seq, "payload": r])
+            if let e = r["error"] {
+                Self.send(c, json: ["type": "response", "id": m["id"] ?? "", "seq": seq, "error": e])
+            } else {
+                Self.send(c, json: ["type": "response", "id": m["id"] ?? "", "seq": seq, "payload": r])
+            }
         default:
             break
         }

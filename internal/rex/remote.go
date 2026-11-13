@@ -393,7 +393,7 @@ func (s *Server) remoteShareLayout() bool {
 func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "paste", "capture", "clients",
-		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command":
+		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command", "seeStatus":
 		return true
 	}
 	return false

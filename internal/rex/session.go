@@ -1405,7 +1405,7 @@ func (s *session) info() SessionInfo {
 		s.see(SessionInfo{Title: in.Title, PID: in.PID, Foreground: in.Foreground, Idle: in.Idle, Program: in.Program, Args: in.Args,
 			Dir: in.Dir, AgentSession: in.AgentSession, AgentConfigDir: in.AgentConfigDir, agentFile: in.agentFile})
 	}
-	in.Statuses = s.status.list()
+	in.Statuses, in.StatusSeen = s.status.list(), s.status.seen
 	s.mu.Unlock()
 	in.Status = MostUrgent(in.Statuses, time.Time{})
 	return in
@@ -1486,6 +1486,17 @@ func (s *session) facts() (in SessionInfo, sampled bool) {
 	in = s.seen
 	in.Cols, in.Rows, in.Exited, in.ran = s.cols, s.rows, s.exited, s.ran
 	return in, s.seen.PID != 0
+}
+
+// seeStatus tells that a client showed the user the session's status
+// records updated till at, and tells the subscribers when that is news.
+func (s *session) seeStatus(at time.Time) {
+	s.mu.Lock()
+	changed := s.status.see(at)
+	s.mu.Unlock()
+	if changed {
+		s.notify()
+	}
 }
 
 // notify tells the server's subscribers that the session changed.

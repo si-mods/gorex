@@ -72,6 +72,7 @@ func serveLLMs(w http.ResponseWriter, r *http.Request) {
 	w.Write(llmsRev11)
 	w.Write(llmsRev12)
 	w.Write(llmsGoRex)
+	w.Write(llmsSeeBlock)
 }
 
 // llmsRev11 documents what revision 11 adds, which the revision 10
@@ -155,5 +156,6 @@ func serveLLMsHTML(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, html.EscapeString(string(llmsRev11)))
 	io.WriteString(w, html.EscapeString(string(llmsRev12)))
 	io.WriteString(w, html.EscapeString(string(llmsGoRex)))
+	io.WriteString(w, html.EscapeString(string(llmsSeeBlock)))
 	io.WriteString(w, "</pre>\n")
 }

@@ -57,7 +57,10 @@ import (
 // Still within 3, the capability "voice": "voice.put" and "voice.get",
 // each on a connection of its own, which carry a phone's microphone to
 // the rec a session runs (Voice); deprecated, as nothing on the host
-// reads a voice any more, and to go.
+// reads a voice any more, and to go. Still within 3, the capability
+// "status.seen": "seeStatus", which tells that the user saw a session's
+// status records, and SessionInfo.StatusSeen, which every client reads
+// back.
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -102,9 +105,14 @@ const CapabilityLayoutServer = "layout.server"
 // says it does: the "tab.to_space" command (LayoutCommand.ToSpace).
 const CapabilityTabToSpace = "tab.to_space"
 
+// CapabilityStatusSeen is what a server that keeps when its sessions'
+// status records were seen says it does: the "seeStatus" op, and
+// SessionInfo.StatusSeen.
+const CapabilityStatusSeen = "status.seen"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -170,6 +178,9 @@ type Request struct {
 	// console that drops the terminal's paste event, a ConPTY on Windows,
 	// gets a paste this way (SessionInfo.ConPTY).
 	Paste string `json:"paste,omitempty"`
+	// Seen is the time of the latest status record "seeStatus" tells the
+	// user saw (ProgramStatus.Updated).
+	Seen time.Time `json:"seen,omitzero"`
 	// Capture is what "capture" shows of the session.
 	Capture *CaptureOptions `json:"capture,omitempty"`
 	// Action is the app action "action" runs.
@@ -575,9 +586,10 @@ type Event struct {
 
 // EventSession is one session in an Event.
 type EventSession struct {
-	ID       string          `json:"id"`
-	Status   *ProgramStatus  `json:"status,omitempty"`
-	Statuses []ProgramStatus `json:"statuses,omitempty"`
+	ID         string          `json:"id"`
+	Status     *ProgramStatus  `json:"status,omitempty"`
+	Statuses   []ProgramStatus `json:"statuses,omitempty"`
+	StatusSeen time.Time       `json:"statusSeen,omitzero"`
 }
 
 // LayoutState is the layout the server keeps, with its revision: a
@@ -665,9 +677,13 @@ type SessionInfo struct {
 	OwnerName string `json:"ownerName,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
-	// said nothing.
-	Statuses []ProgramStatus `json:"statuses,omitempty"`
-	Status   *ProgramStatus  `json:"status,omitempty"`
+	// said nothing. StatusSeen is when the latest done or error record a client showed
+	// the user was updated ("seeStatus"): MostUrgent(Statuses,
+	// StatusSeen) is what still needs the user. Zero from a server before
+	// CapabilityStatusSeen.
+	Statuses   []ProgramStatus `json:"statuses,omitempty"`
+	Status     *ProgramStatus  `json:"status,omitempty"`
+	StatusSeen time.Time       `json:"statusSeen,omitzero"`
 }
 
 // ProgramName is the program's name for showing: what it reported through

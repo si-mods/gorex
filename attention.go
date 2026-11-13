@@ -75,7 +75,7 @@ func (st *store) hiddenNeeds(fn func(w *Workspace, h *hostConn, sid string, rank
 				return
 			}
 			st.visitSIDs(w, id, func(sid string) {
-				if s := rex.MostUrgent(infos[sid].Statuses, st.seen[sid]); needsUser(s) {
+				if s := rex.MostUrgent(infos[sid].Statuses, st.seenOf(sid, infos[sid])); needsUser(s) {
 					fn(w, h, sid, rex.StatusRank(s.State))
 				}
 			})
