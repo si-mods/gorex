@@ -147,6 +147,40 @@ function offerUpdate(reg: ServiceWorkerRegistration) {
 /** Whether the user clicked Reload: only then does a change of worker reload the page, once. */
 let reloading = false;
 
+/** The Service Worker's registration, once startApp has one. */
+let registration: ServiceWorkerRegistration | undefined;
+
+/**
+ * Asks for a new version now (Settings › About): "ready" when one waits
+ * (the corner panel offers it), "current" when none, "unsupported" with no
+ * Service Worker, "failed" when the check could not run.
+ */
+export async function checkForUpdate(): Promise<"unsupported" | "current" | "ready" | "failed"> {
+  const reg = registration;
+  if (!reg) return "unsupported";
+  try {
+    await reg.update();
+    // A worker found by the check may still install: wait for it, at most 10 s.
+    const w = reg.installing;
+    if (w && w.state === "installing") {
+      await new Promise<void>((done) => {
+        const stop = setTimeout(done, 10_000);
+        w.addEventListener("statechange", () => {
+          if (w.state !== "installing") {
+            clearTimeout(stop);
+            done();
+          }
+        });
+      });
+    }
+    if (!reg.waiting || !reg.active) return "current";
+    offerUpdate(reg);
+    return "ready";
+  } catch {
+    return "failed";
+  }
+}
+
 /**
  * Starts the page's app parts: Keyboard Lock in the app's window, and the
  * Service Worker (not on the dev server), which is checked for a new
@@ -162,6 +196,7 @@ export async function startApp() {
     console.warn("GoRex: no Service Worker:", e);
     return;
   }
+  registration = reg;
   // A worker waiting while one runs is a new version; the first one installed is not.
   const offer = () => {
     if (reg.waiting && reg.active) offerUpdate(reg);
