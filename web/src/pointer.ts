@@ -87,41 +87,8 @@ window.addEventListener("blur", () => holdLinkKey(false));
 /** A DOM button (0 left, 1 middle, 2 right) as Ghostty's (1 left, 3 middle, 2 right); 0 for others. */
 const buttonOf = (b: number) => ({ 0: 1, 1: 3, 2: 2 } as Record<number, number>)[b] ?? 0;
 
-/**
- * Writes text to the clipboard: the Clipboard API where the page has it,
- * else, as on a LAN page over http (no secure context, no
- * navigator.clipboard), a hidden text area copied with execCommand, which
- * works only within the click or key that asked. The keyboard goes back
- * where it was.
- */
-export async function writeClipboard(text: string): Promise<boolean> {
-  if (window.isSecureContext && navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // Refused: try the old way, while the gesture may still count.
-    }
-  }
-  const was = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.readOnly = true;
-  ta.setAttribute("aria-hidden", "true");
-  ta.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none";
-  document.body.append(ta);
-  ta.focus({ preventScroll: true });
-  ta.setSelectionRange(0, text.length);
-  let ok = false;
-  try {
-    ok = document.execCommand("copy");
-  } catch {
-    ok = false;
-  }
-  ta.remove();
-  was?.focus({ preventScroll: true });
-  return ok;
-}
+import { writeClipboard } from "./clipboard";
+export { writeClipboard };
 
 type Touch = {
   id: number;
