@@ -60,6 +60,14 @@ export interface RexEvent {
 
 /** The API revision this client speaks. */
 const revision = 10;
+
+/**
+ * How long a control connection may take to open and be welcomed: an
+ * address that drops packets, a host asleep or a proxy that never answers
+ * would otherwise hold its attempt, and its place among the opens
+ * (hostconn.ts), for good.
+ */
+export const openWait = 10000;
 const callWait = 30_000;
 
 /**
@@ -123,13 +131,29 @@ export class Control {
     private ws: SocketLike,
   ) {}
 
-  /** Opens the connection on transport and says hello. */
-  static open(transport: Transport, token?: string): Promise<Control> {
+  /**
+   * Opens the connection on transport and says hello. It fails after
+   * openWait without a welcome, and at once when signal aborts: the
+   * socket closes either way.
+   */
+  static open(transport: Transport, token?: string, signal?: AbortSignal): Promise<Control> {
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) return reject(new RexError("closed", () => t("errorOffline")));
       // The constructor throws for a URL the page may not open (mixed content).
       const ws = transport.socket("/api/control", "rex.control.v1");
       const c = new Control(transport, ws);
       let welcomed = false;
+      const give = (e: RexError) => {
+        if (welcomed) return;
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", aborted);
+        ws.onclose = () => c.finish(() => t("errorOffline"));
+        ws.close();
+        reject(e);
+      };
+      const timer = setTimeout(() => give(new RexError("timeout", () => t("errorTimeout"))), openWait);
+      const aborted = () => give(new RexError("closed", () => t("errorOffline")));
+      signal?.addEventListener("abort", aborted, { once: true });
       ws.onopen = () => {
         const hello: any = {
           type: "hello",
@@ -149,6 +173,8 @@ export class Control {
             return;
           }
           welcomed = true;
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", aborted);
           c.clientID = msg.client?.id ?? "";
           c.reconnectToken = msg.client?.reconnect_token;
           c.features = new Set(msg.features ?? []);
@@ -158,7 +184,11 @@ export class Control {
         c.receive(msg);
       };
       ws.onclose = (e) => {
-        if (!welcomed) reject(new RexError("closed", () => t("errorServerClosed", { code: String(e.code) })));
+        if (!welcomed) {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", aborted);
+          reject(new RexError("closed", () => t("errorServerClosed", { code: String(e.code) })));
+        }
         c.finish(() => (e.reason ? t("statusClosedReason", { code: String(e.code), reason: e.reason }) : t("statusClosed", { code: String(e.code) })));
       };
     });

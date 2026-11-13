@@ -2458,6 +2458,18 @@
       }
     }
   },
+  "placeTailnetSearchingText": "The window shown last is on a host of your tailnet. Tailscale is still looking for it.",
+  "@placeTailnetSearchingText": {
+    "description": "Under placeTailnetTitle, after a reload, while built-in Tailscale runs and still probes the tailnet for GoRex hosts."
+  },
+  "placeTailnetGoneTitle": "Host not found on your tailnet",
+  "@placeTailnetGoneTitle": {
+    "description": "Notice over the stage after a reload, when the window shown last is on a tailnet host that built-in Tailscale, running, does not find."
+  },
+  "placeTailnetGoneText": "The window shown last is on a host Tailscale does not find on your tailnet now. It may be off, or no longer trust this page. Choose another window, or check its Tailscale settings.",
+  "@placeTailnetGoneText": {
+    "description": "Under placeTailnetGoneTitle; a Tailscale Settings button follows."
+  },
   "placeTailnetTitle": "Waiting for Tailscale",
   "@placeTailnetTitle": {
     "description": "Notice over the stage after a reload, when the window shown last is on a tailnet host that built-in Tailscale has not found yet."

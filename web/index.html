@@ -181,8 +181,8 @@
   }
   button.icon .pane-icon { width: 14px; height: 14px; }
   button.icon:hover { background: var(--hover); color: var(--text); }
-  /* New Window of a host that is not live: nothing waits to be made when it comes back. */
-  button.icon:disabled { opacity: 0.4; cursor: default; background: none; }
+  /* New Window of a host that is not live: nothing waits to be made when it comes back. Inactive, as DESIGN.md's dimmed(e, 0.4). */
+  button.icon:disabled { filter: grayscale(1); opacity: 0.4; cursor: default; background: none; }
   /* A window's row: a capsule, as the desktop's sidebar rows, its close button on hover. */
   .window { display: flex; align-items: center; border-radius: 999px; }
   .window:hover { background: var(--hover); }

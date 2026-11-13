@@ -339,7 +339,7 @@ function withSettings(f: (s: Settings) => void) {
   settingsCode.use((m) => {
     settings ??= new m.Settings({
       hosts: hostList,
-      link: () => ({ host: current, state: link, problem }),
+      link: () => ({ host: currentConn()?.host ?? current, state: link, problem }),
       theme: () => chosenEntry,
       chooseTheme: (t) => chooseTheme(t),
       apply: applyPrefs,
@@ -378,8 +378,11 @@ function tailnetChanged() {
   hostList.refresh();
   sidebar();
   settings?.update();
-  // The welcome's Tailscale card follows its state.
-  if (!current) welcome?.update();
+  // The welcome's Tailscale card follows its state, and so does a waiting tailnet place's notice.
+  if (!current) {
+    welcome?.update();
+    if (pending && isTailnetID(pending.host)) drawNotice();
+  }
 }
 
 /** A button of the notice: its words, as a key or said when drawn. */
@@ -457,8 +460,21 @@ function notice(p?: Problem, ...actions: NoticeAction[]) {
   box.replaceChildren(card);
 }
 
-/** A waiting tailnet place's notice: Tailscale has not found its host yet. */
+/** A waiting tailnet place's notices: Tailscale is not running, it is still looking, or it does not find the host. */
 const tailnetWait: Problem = newProblem(() => t("placeTailnetTitle"), () => t("placeTailnetText"));
+const tailnetLooking: Problem = newProblem(() => t("placeTailnetTitle"), () => t("placeTailnetSearchingText"));
+const tailnetGone: Problem = newProblem(() => t("placeTailnetGoneTitle"), () => t("placeTailnetGoneText"));
+
+/**
+ * The notice of a place on tailnet host id, while it is not shown: its
+ * connection's problem once it has one, else what Tailscale is doing.
+ */
+function tailnetPlace(id: string): [Problem | undefined, ...NoticeAction[]] {
+  const c = conns.get(id);
+  if (c) return c.state === "unreachable" && c.problem ? [c.problem, tailscaleSettings] : [undefined];
+  if (tailnet.status() !== "running") return [tailnetWait, tailscaleSettings];
+  return tailnet.searching ? [tailnetLooking] : [tailnetGone, tailscaleSettings];
+}
 
 /** Opens Settings at Tailscale, from a notice. */
 const tailscaleSettings: NoticeAction = { label: "noticeTailscaleSettings", run: () => withSettings((s) => s.open("tailscale")) };
@@ -480,8 +496,11 @@ function choose(h: Host | undefined) {
   if (h.kind === "tailnet") openTailnet(h.id);
   const c = ensure(h);
   const last = c.lastWindow;
-  if (last && windowOf(c, last.session, last.window)) return show(c, last.session, last.window, true);
+  if (last && windowOf(c, last.session, last.window)) return pick(c, last.session, last.window, true);
   hide();
+  // A host chosen is the user's choice, as a window is (pick).
+  picked++;
+  wantWindow = undefined;
   pending = { host: h.id };
   select(h);
   if (c.waiting) c.poke();
@@ -510,7 +529,7 @@ function drawNotice() {
   const c = currentConn();
   if (!current) {
     setLink("none");
-    if (pending && isTailnetID(pending.host)) notice(tailnetWait, tailscaleSettings);
+    if (pending && isTailnetID(pending.host)) notice(...tailnetPlace(pending.host));
     else if (!conns.size) showWelcome();
     else notice();
     return;
@@ -540,6 +559,7 @@ function ensure(h: Host): HostConn {
   }
   if (c) {
     c.host = h;
+    if (current?.id === h.id) current = h;
     return c;
   }
   c = new HostConn(h, transportOf(h), hostEvents, tailnet);
@@ -567,10 +587,10 @@ function drop(c: HostConn) {
   sidebar();
 }
 
-/** Tries a host again now: Retry in its problem's line. */
+/** Tries a host again now: Retry in its problem's line. An attempt on its way goes on: no second one stacks on it. */
 function retry(c: HostConn) {
   if (c.waiting) c.poke();
-  else begin(c);
+  else if (!c.trying) begin(c);
 }
 
 /**
@@ -634,7 +654,8 @@ const hostEvents: HostEvents = {
   state(c) {
     // A window asked for before a drop is not shown after it: the user asks again.
     if (c.state !== "connected" && wantWindow?.host === c.host.id) wantWindow = undefined;
-    if (c === currentConn()) drawNotice();
+    // The notice is the selected host's, or a waiting place's.
+    if (c === currentConn() || (!current && pending?.host === c.host.id)) drawNotice();
     // The host's heading, its dot and its rows follow its state.
     sidebar();
   },
@@ -692,7 +713,7 @@ function sidebar(force = false) {
 initSidebar({
   shown: () => shown,
   see,
-  show,
+  show: pick,
   newWindow,
   closeWindow,
   startRename,
@@ -751,7 +772,7 @@ function spacesMenu(conn: HostConn, current: string): MenuItem[] {
 function showSpace(conn: HostConn, session: string) {
   const v = conn.sessions.get(session)?.view;
   const next = v?.active_window_id ?? v?.windows?.[0]?.window_id;
-  if (next) show(conn, session, next, true);
+  if (next) pick(conn, session, next, true);
 }
 
 /** A window of a session's view. */
@@ -868,9 +889,10 @@ function moveToNewWindow(conn: HostConn, session: string, block: string) {
 
 /** Merges a window into another, side by side, and shows that one, as the desktop's mergeTab. The programs go on. */
 function mergeWindows(conn: HostConn, session: string, window: string, into: string) {
+  const since = picked;
   conn.control?.call("gorex.merge_windows", { session_id: session, window_id: window, into_window_id: into }).then(
     () => {
-      wantWindow = { host: conn.host.id, session, window: into };
+      want(since, { host: conn.host.id, session, window: into });
       showWanted();
     },
     (e) => status(() => t("statusMergeWindowsFailed", { error: describe(e) })),
@@ -983,11 +1005,12 @@ function dropPane(w: WindowView, dragged: string, target: string, zone: DropZone
 async function newSpace(conn: HostConn | undefined) {
   const c = conn?.control;
   if (!conn || !c) return;
+  const since = picked;
   try {
     const r = (await c.call("session.create", { initial_windows: [{ layout: { block: shell } }] })).payload;
     const window = r.initial_windows?.[0]?.window_id;
     if (!r.session_id || !window) return;
-    wantWindow = { host: conn.host.id, session: r.session_id, window };
+    want(since, { host: conn.host.id, session: r.session_id, window });
     if (!conn.sessions.has(r.session_id)) conn.sessions.set(r.session_id, { id: r.session_id, label: "" });
     await conn.refresh(r.session_id, true);
     showWanted();
@@ -1023,6 +1046,25 @@ function showAny(conn: HostConn, keys: boolean) {
     const next = s.view?.active_window_id ?? s.view?.windows?.[0]?.window_id;
     if (next && windowOf(conn, s.id, next)) return show(conn, s.id, next, keys);
   }
+}
+
+/**
+ * Shows a window the user chose (a row, a key, a host, a menu): a window
+ * made here and not shown yet (wantWindow) no longer takes the stage when
+ * its view comes, as the page does not jump after the user chose.
+ */
+function pick(conn: HostConn, session: string, window: string, keys: boolean) {
+  picked++;
+  wantWindow = undefined;
+  show(conn, session, window, keys);
+}
+
+/** Counts the windows the user chose (pick): a window made before a choice and answered after it does not show. */
+let picked = 0;
+
+/** Asks for a window made here, to show when its view has it; since: picked when it was asked for. */
+function want(since: number, w: typeof wantWindow) {
+  if (picked === since) wantWindow = w;
 }
 
 /** Shows a session's window, its panes live. */
@@ -1065,10 +1107,11 @@ function showWanted() {
 }
 
 async function newWindow(conn: HostConn, session: string) {
+  const since = picked;
   try {
     const id = await conn.newWindow(session);
     // Shown once a view has it: this read's, or one already on its way.
-    wantWindow = id ? { host: conn.host.id, session, window: id } : undefined;
+    want(since, id ? { host: conn.host.id, session, window: id } : undefined);
     await conn.refresh(session);
     showWanted();
   } catch (e) {
@@ -1106,7 +1149,7 @@ function run(name: string) {
     if (!all.length) return;
     const at = w ? all.findIndex(([c, s, id]) => c === w.conn && s === w.session && id === w.window) : -1;
     const [c, s, id] = step(all, at, name === "next-window" ? 1 : -1);
-    show(c, s, id, true);
+    pick(c, s, id, true);
     return;
   }
   if (name === "next-space" || name === "previous-space") {
@@ -1117,7 +1160,7 @@ function run(name: string) {
     const [c, s] = step(all, at, name === "next-space" ? 1 : -1);
     const ids = windowIDs(c, s.id);
     const id = s.lastWindow && ids.includes(s.lastWindow) ? s.lastWindow : ids.includes(s.view.active_window_id) ? s.view.active_window_id : ids[0];
-    if (id) show(c, s.id, id, true);
+    if (id) pick(c, s.id, id, true);
     return;
   }
   if (name === "new-space") {

@@ -175,12 +175,20 @@ function schedule() {
   frame ||= requestAnimationFrame(flush);
 }
 
-/** The frame's updates: the whole sidebar, or else the rows of the blocks changed. */
+/**
+ * The frame's updates: the whole sidebar, or else the rows of the blocks
+ * changed. While the sidebar holds still (a rename, a row's drag), the
+ * whole waits for the hold to end, and the rows still update.
+ */
 function flush() {
   frame = 0;
   const blocks = [...changed];
   changed.clear();
-  if (whole) return sidebar();
+  if (whole) {
+    if (!hold.renaming && !hold.rowDragging) return sidebar();
+    whole = false;
+    hold.stale = true;
+  }
   for (const [c, bs] of blocks) for (const b of bs) blockRows(c, b);
 }
 

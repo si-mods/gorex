@@ -67,7 +67,9 @@ its titles, program tiles and attention dots keep updating in the
 sidebar. A host that goes offline touches only its own rows; when it
 comes back, the page attaches again to the same sessions and windows and
 makes none. The page opens at most four control connections at a time as
-it starts, and a host that waits to try again tries at once when the
+it starts; an open that takes over 3 s no longer counts, and one that is
+not welcomed in 10 s fails and waits like any failure, so hosts that do
+not answer do not hold the others back. A host that waits to try again tries at once when the
 network comes back (`online`) or the page shows again
 (`visibilitychange`). There is no cap on the number of hosts. Two
 addresses of one computer (its LAN address and its tailnet name, say)
@@ -801,7 +803,9 @@ once.
   control connection and reconnect token, the retries and their
   backoff, the sessions and their views, and the titles, programs and
   records of its blocks. It tells the page what changed (`HostEvents`).
-  At most four connections open at a time, page-wide (`opensAtOnce`).
+  At most four connections open at a time, page-wide (`opensAtOnce`),
+  each holding its turn 3 s at most (`slotWait`); `Control.open` gives up
+  after 10 s (`openWait` in `rex.ts`).
 - `web/src/sidebar.ts`: the tabs as Tab placement puts them (the bar
   above the panes, or the sidebar by space or by host), drawn from every
   `HostConn`: each host's state dot and problem line, and its rows, dimmed
