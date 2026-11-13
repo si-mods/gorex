@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.26.0
+
+### Features
+
+* **settings:** Server page in the user's words: one switch (`Let other devices connect`), `Devices`, `Add a device`, and `Show Details` for advanced options, without Tailcat or DERP in UI strings ([#541](https://github.com/si-mods/gorex/pull/541))
+* **cli:** support Antigravity CLI (`agy`) across all platforms ([#542](https://github.com/si-mods/gorex/pull/542))
+* **web:** keep several hosts connected at once, read spaces across hosts, keep the last four windows live, manage hosts while connected, and check for updates from Settings > About ([#530](https://github.com/si-mods/gorex/pull/530), [#532](https://github.com/si-mods/gorex/pull/532), [#536](https://github.com/si-mods/gorex/pull/536), [#537](https://github.com/si-mods/gorex/pull/537), [#538](https://github.com/si-mods/gorex/pull/538), [#539](https://github.com/si-mods/gorex/pull/539))
+
+### Bug Fixes
+
+* **web:** draw a pane only once it has a font ([#535](https://github.com/si-mods/gorex/pull/535))
+
 ## 0.25.0
 
 ### Features
