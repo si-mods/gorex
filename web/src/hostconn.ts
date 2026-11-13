@@ -8,6 +8,7 @@ import { describe } from "./pane";
 import { programName, Status, statusOf } from "./programs";
 import { Control, Transport } from "./rex";
 import type { LinkState } from "./settings";
+import * as spaces from "./spaces";
 import type { Tailnet, TailnetHost } from "./tailnet";
 import { layoutOf, leavesOf } from "./window";
 
@@ -41,6 +42,8 @@ export interface HostEvents {
   attached(c: HostConn): void;
   /** The host is live: what was typed while offline goes now. */
   live(c: HostConn): void;
+  /** machine or remote changed (/api/spaces read, or forgotten with the connection). */
+  spaces?(c: HostConn): void;
 }
 
 /**
@@ -141,6 +144,16 @@ export class HostConn {
   readonly seeing = new Set<string>();
   /** The blocks whose program and records were read; read again after a reconnect. */
   readonly described = new Set<string>();
+  /** This machine's ID, from /api/spaces (spaces.ts); none until read, or for a server without gorex.spaces. */
+  machine?: string;
+  /** The panes of other machines each session holds, by session, from /api/spaces. */
+  readonly remote = new Map<string, spaces.Member[]>();
+  /** Reads /api/spaces: one read at a time, of the connection of the moment. */
+  private readonly spaceReader = new spaces.Reader(
+    () => this.transport,
+    () => this.control,
+    (a) => this.takeSpaces(a),
+  );
 
   constructor(
     /** Its host; an edit of the name or the icon replaces it, one of the address makes a new HostConn. */
@@ -169,6 +182,7 @@ export class HostConn {
     this.control = undefined;
     this.live = false;
     c?.close();
+    this.forgetSpaces();
   }
 
   /** Stays unreachable with p, which no attempt can mend (mixed content): no retry. */
@@ -266,6 +280,7 @@ export class HostConn {
       if (this.control !== c) return;
       this.control = undefined;
       this.live = false;
+      this.forgetSpaces();
       clearTimeout(this.healthy);
       this.attempt++;
       this.setState("connecting");
@@ -275,6 +290,7 @@ export class HostConn {
     try {
       await c.call("session.bootstrap", { event_scope: "all" });
       await this.list();
+      this.spaceReader.ask();
       // Connected is the usual state: the status line says nothing, and an earlier problem goes.
       this.status("");
       this.events.attached(this);
@@ -319,7 +335,10 @@ export class HostConn {
       }
       case "session_view_changed": {
         const s = sid && sessions.get(sid);
-        if (s && (p.revision ?? Infinity) > (s.view?.revision ?? -1)) this.refresh(s.id);
+        if (s && (p.revision ?? Infinity) > (s.view?.revision ?? -1)) {
+          this.refresh(s.id);
+          this.spaceReader.ask();
+        }
         break;
       }
       case "block_event":
@@ -340,6 +359,22 @@ export class HostConn {
         }
         break;
     }
+  }
+
+  /** Keeps what /api/spaces answered; none, for a connection that closed or a server without it. */
+  private takeSpaces(a?: spaces.Answer) {
+    const m = a?.machine_id || undefined;
+    const r = new Map((a?.sessions ?? []).map((s) => [s.session_id, s.remote_blocks] as const));
+    const same = this.machine === m && r.size === this.remote.size && [...r].every(([k, v]) => JSON.stringify(this.remote.get(k)) === JSON.stringify(v));
+    this.machine = m;
+    this.remote.clear();
+    for (const [k, v] of r) this.remote.set(k, v);
+    if (!same) this.events.spaces?.(this);
+  }
+
+  /** Forgets what /api/spaces said: a closed connection takes it with it. */
+  private forgetSpaces() {
+    this.takeSpaces();
   }
 
   /** Lists the sessions and reads each one's view. */
