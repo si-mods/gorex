@@ -216,7 +216,11 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 	if err != nil {
 		return err
 	}
-	defer p.close()
+	defer func() {
+		if p != nil {
+			p.close()
+		}
+	}()
 	s.puts.Store(p.path, peer)
 	have := p.size
 	if have > req.Size {
@@ -272,6 +276,10 @@ func (s *Server) filePut(conn net.Conn, r *bufio.Reader, first []byte, peer stri
 		t.State = "skipped"
 	}
 	s.transferred(t)
+	// The partial goes before the answer, which a put of the same file
+	// may follow at once.
+	p.close()
+	p = nil
 	answer(FileAnswer{OK: true, Path: t.Path, Skipped: skipped})
 	return nil
 }

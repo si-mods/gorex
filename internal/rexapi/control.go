@@ -440,11 +440,6 @@ func parseRequest(data []byte) (*request, bool) {
 // handle answers one request. A handler that panics answers an internal
 // error, because the server must outlive it.
 func (c *control) handle(req *request) {
-	defer func() {
-		c.mu.Lock()
-		delete(c.pending, req.ID)
-		c.mu.Unlock()
-	}()
 	if c.hold != nil {
 		c.hold(req.ID)
 	}
@@ -487,8 +482,12 @@ func (c *control) handle(req *request) {
 	c.respond(req, payload, err)
 }
 
-// respond queues a request's answer.
+// respond queues a request's answer. It lets the request's id go first:
+// a client may use the id again as soon as it reads the answer.
 func (c *control) respond(req *request, payload any, err *apiError) {
+	c.mu.Lock()
+	delete(c.pending, req.ID)
+	c.mu.Unlock()
 	requester := ""
 	if c.rec != nil {
 		requester = c.rec.id
