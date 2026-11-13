@@ -845,6 +845,13 @@ once.
   its own room on the stage (`.window-room`), the focus (see Split
   panes), and `park` and `unpark`, which take a kept window's room off the
   stage and put it back.
+- `web/src/spaces.ts`: the desktop's spaces across hosts. It reads
+  `/api/spaces` through a host's transport (`HostConn` keeps `machine` and
+  `remote`), and `CrossHost` is the port of Rex Go's: which windows of
+  other hosts a session shows (`rows`), which window shows in another
+  host's space (`isMoved`), and which session is no space (`isGone`). It
+  has no DOM and no view yet: `web/test/spaces.test.ts` has the cases of
+  `ios/GoRexTests/SpacesTests.swift`.
 - `web/src/manage.ts`: the menus of a right click or a long press, the
   field that renames in place, Close Space's question, and the drags of
   a window's row and a pane's header (see Spaces, windows and moves).
