@@ -226,6 +226,7 @@ func TestResumeHintSession(t *testing.T) {
 		// A config dir cmd cannot take leaves the last conversation.
 		{"cmd", savedNode{Prog: "claude", AgentSession: id, AgentConfigDir: "%x%"}, "claude --continue"},
 		{"bash", savedNode{Prog: "codex", AgentSession: id}, "codex resume --last"},
+		{"bash", savedNode{Prog: "agy"}, "agy --continue"},
 		// The layout is a file anyone may write: what is no UUID is not typed.
 		{"bash", savedNode{Prog: "claude", AgentSession: "x; touch pwned"}, "claude --continue"},
 		{"pwsh", savedNode{Prog: "claude", AgentSession: "--add"}, "claude --continue"},

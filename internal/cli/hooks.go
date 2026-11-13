@@ -136,6 +136,64 @@ func hooksObject(root map[string]any) (map[string]any, []any, error) {
 	return hooks, entries, nil
 }
 
+// agyHooksObject returns the gorex hook map and its SessionStart array for
+// Antigravity CLI's hooks.json, refusing shapes we would have to guess at.
+func agyHooksObject(root map[string]any) (map[string]any, []any, error) {
+	gorex, _ := root["gorex"].(map[string]any)
+	if gorex == nil {
+		if _, exists := root["gorex"]; exists {
+			return nil, nil, errors.New("gorex hook is not a JSON object")
+		}
+		gorex = map[string]any{}
+	}
+	entries, _ := gorex["SessionStart"].([]any)
+	if _, exists := gorex["SessionStart"]; exists && entries == nil {
+		return nil, nil, errors.New("SessionStart is not a JSON array")
+	}
+	return gorex, entries, nil
+}
+
+// hookCommands returns every command string in SessionStart for agent.
+func hookCommands(root map[string]any, agent string) ([]string, error) {
+	if agent == "agy" {
+		_, entries, err := agyHooksObject(root)
+		if err != nil {
+			return nil, err
+		}
+		var cmds []string
+		for _, h := range entries {
+			hook, ok := h.(map[string]any)
+			if !ok {
+				return nil, errors.New("a hook is not a JSON object")
+			}
+			cmd, _ := hook["command"].(string)
+			cmds = append(cmds, cmd)
+		}
+		return cmds, nil
+	}
+	_, entries, err := hooksObject(root)
+	if err != nil {
+		return nil, err
+	}
+	var cmds []string
+	for _, e := range entries {
+		entry, ok := e.(map[string]any)
+		if !ok {
+			return nil, errors.New("a hook entry is not a JSON object")
+		}
+		items, _ := entry["hooks"].([]any)
+		for _, h := range items {
+			hook, ok := h.(map[string]any)
+			if !ok {
+				return nil, errors.New("a hook is not a JSON object")
+			}
+			cmd, _ := hook["command"].(string)
+			cmds = append(cmds, cmd)
+		}
+	}
+	return cmds, nil
+}
+
 // hookState tells whether the agent's session-start hook is installed and
 // current, or why not.
 func hookState(path, agent string) (string, error) {
@@ -146,32 +204,22 @@ func hookState(path, agent string) (string, error) {
 	if !created {
 		return "missing", nil
 	}
-	_, entries, err := hooksObject(root)
+	cmds, err := hookCommands(root, agent)
 	if err != nil {
 		return "conflict", err
 	}
 	state := "missing"
-	for _, e := range entries {
-		entry, ok := e.(map[string]any)
-		if !ok {
-			return "conflict", errors.New("a hook entry is not a JSON object")
+	for _, cmd := range cmds {
+		if !isOurHook(cmd, agent) {
+			continue
 		}
-		items, _ := entry["hooks"].([]any)
-		for _, h := range items {
-			hook, ok := h.(map[string]any)
-			if !ok {
-				return "conflict", errors.New("a hook is not a JSON object")
-			}
-			cmd, _ := hook["command"].(string)
-			if !isOurHook(cmd, agent) {
-				continue
-			}
-			if strings.Contains(cmd, "__internal session-start --agent "+agent) &&
-				!strings.Contains(cmd, "agent-hook --agent "+agent) {
+		if strings.Contains(cmd, "__internal session-start --agent "+agent) &&
+			!strings.Contains(cmd, "agent-hook --agent "+agent) {
+			if state == "missing" {
 				state = "installed"
-			} else {
-				state = "outdated"
 			}
+		} else {
+			state = "outdated"
 		}
 	}
 	return state, nil
@@ -184,16 +232,13 @@ func hookPaneNaming(path, agent string) bool {
 	if err != nil {
 		return false
 	}
-	_, entries, _ := hooksObject(root)
-	for _, e := range entries {
-		entry, _ := e.(map[string]any)
-		items, _ := entry["hooks"].([]any)
-		for _, h := range items {
-			hook, _ := h.(map[string]any)
-			cmd, _ := hook["command"].(string)
-			if isOurHook(cmd, agent) && strings.Contains(cmd, "--feature-pane-naming=true") {
-				return true
-			}
+	cmds, err := hookCommands(root, agent)
+	if err != nil {
+		return false
+	}
+	for _, cmd := range cmds {
+		if isOurHook(cmd, agent) && strings.Contains(cmd, "--feature-pane-naming=true") {
+			return true
 		}
 	}
 	return false
@@ -202,6 +247,9 @@ func hookPaneNaming(path, agent string) bool {
 // setHook adds, replaces or removes our session-start hook, leaving every
 // other hook and setting as it was.
 func setHook(path, agent string, install, paneNaming, dry bool) (string, error) {
+	if agent == "agy" {
+		return setAgyHook(path, install, paneNaming, dry)
+	}
 	root, created, err := readObject(path)
 	if err != nil {
 		return "conflict", err
@@ -251,6 +299,50 @@ func setHook(path, agent string, install, paneNaming, dry bool) (string, error) 
 			kept = append(kept, entry)
 		}
 	}
+	newEntry := map[string]any{"hooks": []any{map[string]any{
+		"type": "command", "command": command, "timeout": 5,
+	}}}
+	return commitHookSessionStart(path, root, hooks, "hooks", kept, newEntry, created, install, found, current, stale, dry)
+}
+
+// setAgyHook adds, replaces or removes our session-start hook in
+// Antigravity CLI's hooks.json, leaving every other named hook as it was.
+func setAgyHook(path string, install, paneNaming, dry bool) (string, error) {
+	root, created, err := readObject(path)
+	if err != nil {
+		return "conflict", err
+	}
+	gorex, entries, err := agyHooksObject(root)
+	if err != nil {
+		return "conflict", err
+	}
+	command := hookCommand("agy", paneNaming)
+	found, current, keptCurrent, stale := false, false, false, false
+	kept := make([]any, 0, len(entries))
+	for _, h := range entries {
+		hook, ok := h.(map[string]any)
+		if !ok {
+			return "conflict", errors.New("a hook is not a JSON object")
+		}
+		cmd, _ := hook["command"].(string)
+		if isOurHook(cmd, "agy") {
+			found = true
+			if install && cmd == command && !keptCurrent {
+				keptCurrent = true
+				current = true
+				kept = append(kept, h)
+			} else {
+				stale = true
+			}
+			continue
+		}
+		kept = append(kept, h)
+	}
+	newEntry := map[string]any{"type": "command", "command": command, "timeout": 5}
+	return commitHookSessionStart(path, root, gorex, "gorex", kept, newEntry, created, install, found, current, stale, dry)
+}
+
+func commitHookSessionStart(path string, root, container map[string]any, containerKey string, kept []any, newEntry any, created, install, found, current, stale, dry bool) (string, error) {
 	if install {
 		switch {
 		case current && !stale:
@@ -259,34 +351,30 @@ func setHook(path, agent string, install, paneNaming, dry bool) (string, error) 
 			if dry {
 				return "would replace", nil
 			}
-			hooks["SessionStart"] = kept
-			root["hooks"] = hooks
+			container["SessionStart"] = kept
+			root[containerKey] = container
 			if err := writeObject(path, root); err != nil {
 				return "failed", err
 			}
 			return "replaced", nil
 		case found:
-			kept = append(kept, map[string]any{"hooks": []any{map[string]any{
-				"type": "command", "command": command, "timeout": 5,
-			}}})
+			kept = append(kept, newEntry)
 			if dry {
 				return "would replace", nil
 			}
-			hooks["SessionStart"] = kept
-			root["hooks"] = hooks
+			container["SessionStart"] = kept
+			root[containerKey] = container
 			if err := writeObject(path, root); err != nil {
 				return "failed", err
 			}
 			return "replaced", nil
 		default:
-			kept = append(kept, map[string]any{"hooks": []any{map[string]any{
-				"type": "command", "command": command, "timeout": 5,
-			}}})
+			kept = append(kept, newEntry)
 			if dry {
 				return "would create", nil
 			}
-			hooks["SessionStart"] = kept
-			root["hooks"] = hooks
+			container["SessionStart"] = kept
+			root[containerKey] = container
 			if err := writeObject(path, root); err != nil {
 				return "failed", err
 			}
@@ -300,14 +388,14 @@ func setHook(path, agent string, install, paneNaming, dry bool) (string, error) 
 		return "would remove", nil
 	}
 	if len(kept) == 0 {
-		delete(hooks, "SessionStart")
+		delete(container, "SessionStart")
 	} else {
-		hooks["SessionStart"] = kept
+		container["SessionStart"] = kept
 	}
-	if len(hooks) == 0 {
-		delete(root, "hooks")
+	if len(container) == 0 {
+		delete(root, containerKey)
 	} else {
-		root["hooks"] = hooks
+		root[containerKey] = container
 	}
 	if !created {
 		return "removed", nil
@@ -323,24 +411,8 @@ func setHook(path, agent string, install, paneNaming, dry bool) (string, error) 
 // choice.
 func existingPaneNaming(selected []agentInfo) bool {
 	for _, a := range selected {
-		if a.HookPath == "" {
-			continue
-		}
-		root, _, err := readObject(a.HookPath)
-		if err != nil {
-			continue
-		}
-		_, entries, _ := hooksObject(root)
-		for _, e := range entries {
-			entry, _ := e.(map[string]any)
-			items, _ := entry["hooks"].([]any)
-			for _, h := range items {
-				hook, _ := h.(map[string]any)
-				cmd, _ := hook["command"].(string)
-				if isOurHook(cmd, a.ID) && strings.Contains(cmd, "--feature-pane-naming=true") {
-					return true
-				}
-			}
+		if a.HookPath != "" && hookPaneNaming(a.HookPath, a.ID) {
+			return true
 		}
 	}
 	return false

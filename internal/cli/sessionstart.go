@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 // internalCmd runs the commands the files `gorex skill setup` installs.
@@ -42,7 +43,7 @@ func internalSkillCmd(args []string, out io.Writer) (int, bool) {
 // whatever happens, so an agent's start never fails for it.
 func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 	fs := flagSet("__internal session-start", io.Discard)
-	_ = fs.String("agent", "", "")
+	agent := fs.String("agent", "", "")
 	naming := fs.Bool("feature-pane-naming", true, "")
 	if fs.Parse(args) != nil {
 		return ExitOK, true
@@ -56,43 +57,57 @@ func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 	host := contextValue(os.Getenv("GOREX_HOST"))
 	client := contextValue(os.Getenv("GOREX_CLIENT"))
 
-	fmt.Fprintln(out, "You're running in a GoRex terminal.")
-	fmt.Fprintln(out, "```text")
+	var msg strings.Builder
+	fmt.Fprintln(&msg, "You're running in a GoRex terminal.")
+	fmt.Fprintln(&msg, "```text")
 	if server != "" {
-		fmt.Fprintf(out, "GOREX_SERVER=%s\n", server)
+		fmt.Fprintf(&msg, "GOREX_SERVER=%s\n", server)
 	}
-	fmt.Fprintf(out, "GOREX_SESSION=%s\n", sid)
+	fmt.Fprintf(&msg, "GOREX_SESSION=%s\n", sid)
 	if pane != "" {
-		fmt.Fprintf(out, "GOREX_PANE=%s\n", pane)
+		fmt.Fprintf(&msg, "GOREX_PANE=%s\n", pane)
 	}
 	if host != "" {
-		fmt.Fprintf(out, "GOREX_HOST=%s\n", host)
+		fmt.Fprintf(&msg, "GOREX_HOST=%s\n", host)
 	} else if client != "" {
-		fmt.Fprintf(out, "GOREX_CLIENT=%s\n", client)
+		fmt.Fprintf(&msg, "GOREX_CLIENT=%s\n", client)
 	}
-	fmt.Fprintln(out, "```")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "`GOREX_SESSION` identifies your session, and `GOREX_PANE` numbers")
-	fmt.Fprintln(out, "your terminal pane; both are set in your shell. Commands select the")
-	fmt.Fprintln(out, "pane with `-s \"$GOREX_SESSION\"`. The user may be viewing a different")
-	fmt.Fprintln(out, "session or pane.")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "These inherited IDs haven't been checked against the server. If a")
-	fmt.Fprintln(out, "target can't be found, run `gorex ls --json` to see the sessions on")
-	fmt.Fprintln(out, "the connected server.")
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "Use the `gorex` command to create sessions, split panes, run commands,")
-	fmt.Fprintln(out, "and read terminal output. The gorex skill provides instructions and")
-	fmt.Fprintln(out, "examples. If the skill isn't installed, run `gorex skill show` to read")
-	fmt.Fprintln(out, "the same guide.")
+	fmt.Fprintln(&msg, "```")
+	fmt.Fprintln(&msg)
+	fmt.Fprintln(&msg, "`GOREX_SESSION` identifies your session, and `GOREX_PANE` numbers")
+	fmt.Fprintln(&msg, "your terminal pane; both are set in your shell. Commands select the")
+	fmt.Fprintln(&msg, "pane with `-s \"$GOREX_SESSION\"`. The user may be viewing a different")
+	fmt.Fprintln(&msg, "session or pane.")
+	fmt.Fprintln(&msg)
+	fmt.Fprintln(&msg, "These inherited IDs haven't been checked against the server. If a")
+	fmt.Fprintln(&msg, "target can't be found, run `gorex ls --json` to see the sessions on")
+	fmt.Fprintln(&msg, "the connected server.")
+	fmt.Fprintln(&msg)
+	fmt.Fprintln(&msg, "Use the `gorex` command to create sessions, split panes, run commands,")
+	fmt.Fprintln(&msg, "and read terminal output. The gorex skill provides instructions and")
+	fmt.Fprintln(&msg, "examples. If the skill isn't installed, run `gorex skill show` to read")
+	fmt.Fprintln(&msg, "the same guide.")
 	if *naming {
-		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Label the pane as part of handling the first request that identifies")
-		fmt.Fprintln(out, "the work. Run `gorex rename -s \"$GOREX_SESSION\" <label>`")
-		fmt.Fprintln(out, "without waiting for the user to ask, before loading the skill. Use two to")
-		fmt.Fprintln(out, "four lowercase words joined by hyphens, such as `fix-login-redirect`.")
-		fmt.Fprintln(out, "Name the task or project. Keep the existing label if it already")
-		fmt.Fprintln(out, "describes the same work.")
+		fmt.Fprintln(&msg)
+		fmt.Fprintln(&msg, "Label the pane as part of handling the first request that identifies")
+		fmt.Fprintln(&msg, "the work. Run `gorex rename -s \"$GOREX_SESSION\" <label>`")
+		fmt.Fprintln(&msg, "without waiting for the user to ask, before loading the skill. Use two to")
+		fmt.Fprintln(&msg, "four lowercase words joined by hyphens, such as `fix-login-redirect`.")
+		fmt.Fprintln(&msg, "Name the task or project. Keep the existing label if it already")
+		fmt.Fprintln(&msg, "describes the same work.")
 	}
+	if *agent == "agy" {
+		WriteJSON(out, map[string]any{
+			"injectSteps": []any{
+				map[string]any{
+					"systemMessage": map[string]any{
+						"systemMessage": strings.TrimRight(msg.String(), "\n"),
+					},
+				},
+			},
+		})
+		return ExitOK, true
+	}
+	fmt.Fprint(out, msg.String())
 	return ExitOK, true
 }

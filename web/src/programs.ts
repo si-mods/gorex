@@ -35,11 +35,13 @@ const ruby = p("Ruby", "brand:ruby", 0xcc342d, 0xffffff);
 const rust = (n: string) => p(n, "brand:rust", 0x2b2b2b, 0xf4a261);
 const globe = (n: string) => p(n, "globe", 0x5b4bd6, 0xffffff);
 const claude = p("Claude Code", "brand:claude", 0xd97757, 0xffffff);
+const agy = p("Antigravity", "brand:antigravity", 0x1a73e8, 0xffffff);
 const pager = p("Pager", "file-code", 0x475569, 0xffffff);
 
 const programs = new Map<string, Program>(Object.entries({
   codex: p("Codex", "brand:openai", 0xf7f7f7, 0x1a1a1a, { tileBorder: true }),
   claude,
+  agy,
   node: p("Node", "node-hex", 0x5fa04e, 0xffffff, { tileGlyph: "brand:nodedotjs" }),
   bun: p("Bun", "brand:bun", 0xfbf0df, 0x3b2a20, { tileBorder: true }),
   deno: p("Deno", "brand:deno", 0x1b1b1b, 0xffffff),
@@ -87,6 +89,8 @@ const programs = new Map<string, Program>(Object.entries({
   man: pager,
   // Claude Code reports itself as claude-code in the status protocol.
   "claude-code": claude,
+  antigravity: agy,
+  "antigravity-cli": agy,
 }));
 
 const shells = new Set(["zsh", "bash", "fish", "sh", "dash", "nu", "pwsh", "elvish", "xonsh", "tcsh", "csh", "ksh", "cmd", "powershell"]);

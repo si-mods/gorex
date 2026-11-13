@@ -362,7 +362,141 @@ func TestSkillStatusJSONShape(t *testing.T) {
 		t.Fatalf("scope %v", raw["scope"])
 	}
 	hs, _ := raw["harnesses"].([]any)
-	if len(hs) != 4 {
+	if len(hs) != 5 {
 		t.Fatalf("harnesses %v", hs)
+	}
+}
+
+func TestSkillAgy(t *testing.T) {
+	home := tempHome(t)
+	mkdirs(t, filepath.Join(home, ".gemini", "antigravity-cli"))
+	hooksPath := filepath.Join(home, ".gemini", "config", "hooks.json")
+	writeFile(t, hooksPath, `{
+  "other-hook": {
+    "Stop": [{"type": "command", "command": "stop-me"}]
+  }
+}`)
+
+	code, _, out, errOut := runMain(t, "skill", "setup", "--agent", "agy", "--pane-naming", "--json")
+	if code != ExitOK {
+		t.Fatalf("setup: %d %q %s", code, out, errOut)
+	}
+	skill := readFile(t, filepath.Join(home, ".gemini", "config", "skills", "gorex", "SKILL.md"))
+	if !strings.Contains(skill, skillMarker) || !strings.Contains(skill, "__internal skill") {
+		t.Fatalf("skill %q", skill)
+	}
+	after := readFile(t, hooksPath)
+	if !strings.Contains(after, "other-hook") || !strings.Contains(after, "stop-me") {
+		t.Fatalf("hooks.json lost another hook: %s", after)
+	}
+	if strings.Count(after, "# gorex") != 1 || !strings.Contains(after, "__internal session-start --agent agy --feature-pane-naming=true") {
+		t.Fatalf("hooks.json hook: %s", after)
+	}
+
+	code, _, out, errOut = runMain(t, "skill", "status", "--agent", "agy", "--json")
+	if code != ExitOK || !strings.Contains(out, `"state": "current"`) || !strings.Contains(out, `"state": "installed"`) || !strings.Contains(out, `"pane_naming": true`) {
+		t.Fatalf("status: %d %q %s", code, out, errOut)
+	}
+
+	// Changing --pane-naming replaces the existing hook.
+	code, _, out, errOut = runMain(t, "skill", "setup", "--agent", "agy", "--pane-naming=false", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "replaced"`) {
+		t.Fatalf("replace pane-naming: %d %q %s", code, out, errOut)
+	}
+	if got := readFile(t, hooksPath); !strings.Contains(got, "--feature-pane-naming=false") || strings.Count(got, "# gorex") != 1 {
+		t.Fatalf("replaced hook: %s", got)
+	}
+
+	// --dry-run does not modify hooks.json.
+	code, _, out, errOut = runMain(t, "skill", "remove", "--agent", "agy", "--dry-run", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "would remove"`) {
+		t.Fatalf("dry-run remove: %d %q %s", code, out, errOut)
+	}
+	if got := readFile(t, hooksPath); !strings.Contains(got, "# gorex") {
+		t.Fatalf("dry-run modified hooks.json: %s", got)
+	}
+
+	code, _, out, errOut = runMain(t, "skill", "remove", "--agent", "agy", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "removed"`) {
+		t.Fatalf("remove: %d %q %s", code, out, errOut)
+	}
+	after = readFile(t, hooksPath)
+	if strings.Contains(after, "# gorex") || !strings.Contains(after, "other-hook") || !strings.Contains(after, "stop-me") {
+		t.Fatalf("hooks.json after remove: %s", after)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".gemini", "config", "skills", "gorex")); !os.IsNotExist(err) {
+		t.Fatalf("skill remains: %v", err)
+	}
+
+	// Conflict shapes in hooks.json are reported without rewriting.
+	for _, bad := range []string{`{"gorex":"not-obj"}`, `{"gorex":{"SessionStart":"not-arr"}}`, `{"gorex":{"SessionStart":["not-obj"]}}`} {
+		writeFile(t, hooksPath, bad)
+		code, _, out, _ = runMain(t, "skill", "setup", "--agent", "agy", "--json")
+		if code != ExitFailed || !strings.Contains(out, `"change": "conflict"`) {
+			t.Fatalf("conflict %s: %d %q", bad, code, out)
+		}
+		if got := readFile(t, hooksPath); got != bad {
+			t.Fatalf("conflict modified hooks.json: %q", got)
+		}
+	}
+}
+
+func TestSkillAgyProject(t *testing.T) {
+	tempHome(t)
+	project := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(old) })
+
+	code, _, out, errOut := runMain(t, "skill", "setup", "--project", "--agent", "agy", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "created"`) {
+		t.Fatalf("project setup: %d %q %s", code, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "gorex", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	if b := readFile(t, filepath.Join(project, ".agents", "hooks.json")); !strings.Contains(b, "__internal session-start --agent agy") {
+		t.Fatalf("project hook %q", b)
+	}
+	code, _, _, errOut = runMain(t, "skill", "remove", "--project", "--agent", "agy")
+	if code != ExitOK {
+		t.Fatalf("project remove: %d %s", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "gorex")); !os.IsNotExist(err) {
+		t.Fatalf("project skill remains: %v", err)
+	}
+	if b := readFile(t, filepath.Join(project, ".agents", "hooks.json")); strings.Contains(b, "# gorex") {
+		t.Fatalf("project hook remains: %s", b)
+	}
+}
+
+func TestSessionStartAgy(t *testing.T) {
+	t.Setenv("GOREX_SESSION", "abc123")
+	t.Setenv("GOREX_PANE", "4")
+	code, _, out, _ := runMain(t, "__internal", "session-start", "--agent", "agy", "--feature-pane-naming=true")
+	if code != ExitOK {
+		t.Fatalf("code %d", code)
+	}
+	var payload struct {
+		InjectSteps []struct {
+			SystemMessage struct {
+				SystemMessage string `json:"systemMessage"`
+			} `json:"systemMessage"`
+		} `json:"injectSteps"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("invalid json %q: %v", out, err)
+	}
+	if len(payload.InjectSteps) != 1 {
+		t.Fatalf("injectSteps %+v", payload.InjectSteps)
+	}
+	msg := payload.InjectSteps[0].SystemMessage.SystemMessage
+	if !strings.Contains(msg, "GOREX_SESSION=abc123") || !strings.Contains(msg, "Label the pane") {
+		t.Fatalf("unexpected message %q", msg)
 	}
 }
