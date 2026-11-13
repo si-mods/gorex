@@ -397,7 +397,8 @@ changes none of them is the same worker.
   as it would without a worker. WebSockets never pass through a worker.
 - **Updates**: the browser checks `sw.js` (`no-cache`, registered with
   `updateViaCache: "none"`) at each load, and the page asks again when
-  its tab comes back and hourly. A new version installs beside the
+  its tab comes back and hourly; Settings, About, Check for Updates
+  asks at once and says what it found. A new version installs beside the
   running one and waits; the page then shows "A new version of GoRex is
   ready." with Reload, a glass panel in the corner, as the host list's,
   that takes no keys. Nothing reloads by itself: a reload ends the
@@ -1230,5 +1231,6 @@ own. Until a cursor is chosen, the pane keeps the host's.
 Not in the web client: the desktop's Glass and Terminal opacity (a page
 cannot show the desktop through it), the Dock badge, Tab placement and
 Sidebar view (the page has one sidebar and one window), Animation style
-(the page does not animate the panes), updates and the settings file (the page is what its host serves, and
+(the page does not animate the panes), the desktop's update settings (the
+page updates through its Service Worker), the settings file (the page
 keeps `localStorage`), and recording shortcuts.

@@ -2,10 +2,11 @@
 // the host's card and the sections at the left, each with its coloured
 // tile, and the chosen section at the right, its settings in grouped cards
 // (settingsGroup, settingRow). It keeps what a browser has: no glass, no
-// Dock badge, no tab placement and no updates. Each change is kept
+// Dock badge and no tab placement; updates are the Service Worker's
+// (About checks for one). Each change is kept
 // (prefs.ts) and applied to the open panes at once by the page; a change
 // of language draws the dialog again in the new one.
-import { install, installKind } from "./app";
+import { checkForUpdate, install, installKind } from "./app";
 import { allowCommand, commandBox, Host, HostList, icon, Problem } from "./hosts";
 import { mac, shortcutGroups } from "./keys";
 import {
@@ -833,6 +834,20 @@ export class Settings {
     } else if (kind === "ios") {
       row(group(this.page), t("aboutHomeScreen"), t("aboutHomeScreenHint"));
     }
+
+    const check = button(t("aboutCheckUpdate"));
+    const state = el("span", "settings-value");
+    state.setAttribute("role", "status");
+    check.onclick = async () => {
+      check.disabled = true;
+      state.textContent = t("aboutChecking");
+      const result = await checkForUpdate();
+      state.textContent = t(
+        { current: "aboutUpToDate", ready: "aboutUpdateReady", failed: "aboutUpdateFailed", unsupported: "aboutUpdateUnsupported" }[result] as PlainKey,
+      );
+      check.disabled = false;
+    };
+    row(group(this.page), t("aboutUpdates"), "", state, check);
 
     const reset = button(t("aboutResetAll"), "host-add danger");
     reset.onclick = () => {

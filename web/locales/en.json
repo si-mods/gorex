@@ -1688,6 +1688,34 @@
   "@aboutResetAllAsk": {
     "description": "Confirmation before Reset All Settings."
   },
+  "aboutUpdates": "Updates",
+  "@aboutUpdates": {
+    "description": "The row of Check for Updates."
+  },
+  "aboutCheckUpdate": "Check for Updates",
+  "@aboutCheckUpdate": {
+    "description": "Settings › About: button that looks for a new version now."
+  },
+  "aboutChecking": "Checking…",
+  "@aboutChecking": {
+    "description": "Beside the button while the check runs."
+  },
+  "aboutUpToDate": "GoRex is up to date.",
+  "@aboutUpToDate": {
+    "description": "Result: no new version."
+  },
+  "aboutUpdateReady": "A new version is ready.",
+  "@aboutUpdateReady": {
+    "description": "Result: a new version is installed and waits."
+  },
+  "aboutUpdateFailed": "Couldn't check for updates.",
+  "@aboutUpdateFailed": {
+    "description": "Result: the check failed."
+  },
+  "aboutUpdateUnsupported": "Updates aren't available here.",
+  "@aboutUpdateUnsupported": {
+    "description": "Result: no Service Worker, as on the dev server."
+  },
   "updateReady": "A new version of GoRex is ready.",
   "@updateReady": {
     "description": "The panel in the corner when a new version is installed and waits."
