@@ -21,6 +21,8 @@ export interface Session {
   /** A read asked for while one was on its way, and whether it asked to attach. */
   again?: boolean;
   attach?: boolean;
+  /** The window of it the stage showed last, for the space keys. */
+  lastWindow?: string;
 }
 
 /** What a host's connection tells the page. */
@@ -52,6 +54,53 @@ export function backoff(n: number): number {
 /** How long a connection stays up for the failures before to be forgotten (hosts.go's hostHealthy). */
 export const healthyAfter = 10000;
 
+/**
+ * How many control connections open at once, page-wide, as tailnet.ts's
+ * probesAtOnce: over the tailnet each one is a TLS handshake in the
+ * engine, on the page's thread. The others wait their turn.
+ */
+export const opensAtOnce = 4;
+let opening = 0;
+const waiting: (() => void)[] = [];
+
+/**
+ * How long one open holds its slot at most. An open that takes longer (an
+ * address that never answers, until openWait) goes on outside the count,
+ * so that four of them do not keep a healthy host waiting.
+ */
+export const slotWait = 3000;
+
+/** Gives a slot to the next open waiting, else frees it. */
+function release() {
+  const next = waiting.shift();
+  if (next) next();
+  else opening--;
+}
+
+/**
+ * Runs f once fewer than opensAtOnce others run, for at most slotWait of
+ * the slot. Work whose signal aborted while it waited does not run: its
+ * slot goes on at once.
+ */
+async function staggered<T>(signal: AbortSignal, f: () => Promise<T>): Promise<T> {
+  if (opening < opensAtOnce) opening++;
+  else await new Promise<void>((r) => waiting.push(r));
+  let held = true;
+  const free = () => {
+    if (!held) return;
+    held = false;
+    clearTimeout(timer);
+    release();
+  };
+  const timer = setTimeout(free, slotWait);
+  try {
+    if (signal.aborted) throw new Error("stopped");
+    return await f();
+  } finally {
+    free();
+  }
+}
+
 function recordsOf(j: any): Status[] {
   return (Array.isArray(j) ? j : []).map(statusOf).filter((r): r is Status => !!r);
 }
@@ -64,10 +113,14 @@ export class HostConn {
   problem?: Problem;
   /** The failed attempts since the last connection, for the backoff. */
   attempt = 0;
+  /** The window the stage showed last on this host. */
+  lastWindow?: { session: string; window: string };
   private token?: string;
   /** Counts start() and stop(), so that an attempt of one before ends. */
   private generation = 0;
   private retry?: ReturnType<typeof setTimeout>;
+  /** The control connection being opened, waiting for its turn or its welcome; stop() aborts it. */
+  private opening?: AbortController;
   /** Forgets the failed attempts once the connection has stayed up healthyAfter. */
   private healthy?: ReturnType<typeof setTimeout>;
   /** The sessions, in the order the host lists them. */
@@ -90,7 +143,8 @@ export class HostConn {
   readonly described = new Set<string>();
 
   constructor(
-    readonly host: Host,
+    /** Its host; an edit of the name or the icon replaces it, one of the address makes a new HostConn. */
+    public host: Host,
     readonly transport: Transport,
     private readonly events: HostEvents,
     private readonly tailnet: Tailnet,
@@ -109,10 +163,28 @@ export class HostConn {
     clearTimeout(this.retry);
     this.retry = undefined;
     clearTimeout(this.healthy);
+    this.opening?.abort();
+    this.opening = undefined;
     const c = this.control;
     this.control = undefined;
     this.live = false;
     c?.close();
+  }
+
+  /** Stays unreachable with p, which no attempt can mend (mixed content): no retry. */
+  block(p: Problem) {
+    this.stop();
+    this.setState("unreachable", p);
+  }
+
+  /** Whether the next attempt waits for its backoff. */
+  get waiting(): boolean {
+    return this.retry !== undefined;
+  }
+
+  /** Whether a control connection is being opened now: another attempt would only stack on it. */
+  get trying(): boolean {
+    return this.opening !== undefined;
   }
 
   /** Makes the next attempt now, when one waits. */
@@ -164,9 +236,11 @@ export class HostConn {
     this.status(() => t("statusConnecting", { host: h.name }));
     if (this.state !== "unreachable") this.setState("connecting");
     let c: Control;
+    const opening = (this.opening = new AbortController());
     try {
-      c = await Control.open(this.transport, this.token);
+      c = await staggered(opening.signal, () => Control.open(this.transport, this.token, opening.signal));
     } catch (e) {
+      if (this.opening === opening) this.opening = undefined;
       if (gen !== this.generation) return;
       const p = h.kind === "tailnet" ? await this.tailnet.diagnose(h as TailnetHost) : await diagnose(h.url);
       if (gen !== this.generation) return;
@@ -176,6 +250,7 @@ export class HostConn {
       this.again(gen);
       return;
     }
+    if (this.opening === opening) this.opening = undefined;
     if (gen !== this.generation) {
       c.close();
       return;

@@ -3,14 +3,14 @@
 GoRex's web client is a standalone web page (`web/`) that connects to
 GoRex hosts through their Rex API gateway. GoRex does not ship it: the
 desktop app and its gateway serve no page. The client is hosted on its
-own, on Cloudflare or from a local dev server (see Hosting). It lists the
-sessions of the chosen host and their windows, shows a window's panes
-live, as the desktop lays them out, and sends what you type. The terminal
+own, on Cloudflare or from a local dev server (see Hosting). It keeps
+every host connected at once, lists their sessions and windows, shows a
+window's panes live, as the desktop lays them out, and sends what you type. The terminal
 emulator is libghostty-vt, compiled to WebAssembly from the Ghostty
 commit that GoRex's terminal binding uses. The client draws the
 emulator's render state on a canvas.
 
-This is phase 1, a prototype: one window at a time, with its split panes
+This is phase 1, a prototype: one window shown at a time, with its split panes
 (see Split panes). Its settings are in one Settings dialog (see
 Settings): the hosts, the theme, the page's appearance and the terminal's
 font, cursor and contrast. It selects and copies text, and reports the
@@ -28,8 +28,8 @@ local session server. It is a remote client, like Rex's iPhone app:
 - Every terminal it shows lives on a GoRex host, in that host's session
   server. The client reaches it through the host's gateway over
   WebSocket (`/api/control` and `/api/data`), at the address the user
-  added. No URL is the page's own: every connection goes through the
-  chosen host's transport (`Transport` in `web/src/rex.ts`), which the
+  added. No URL is the page's own: every connection goes through its
+  host's transport (`Transport` in `web/src/rex.ts`), which the
   control connection keeps and its data streams and downloads take
   (`Control.transport`): the browser's own WebSocket and fetch to its
   address, or, for a host found by built-in Tailscale, the page's
@@ -48,20 +48,40 @@ local session server. It is a remote client, like Rex's iPhone app:
 
 The page has a list of hosts, as the iOS app has
 (`ios/GoRex/Rex/Host.swift`): a name, the gateway's address
-(`http(s)://host[:port]`, nothing else) and an icon. The list and the
-chosen host are in `localStorage` (`gorex.hosts`, `gorex.host`), per
-browser. Without storage the page works, and the list lasts until the
-page closes. The button at the top of the sidebar shows the chosen host
-and opens the list: choose a host, add one, or edit or remove one (the
-pencil). `?host=URL` in the page's address is a quick link: it adds that
-host, or chooses it when the list has it, and is then taken out of the
-address bar.
+(`http(s)://host[:port]`, nothing else) and an icon. The list is in
+`localStorage` (`gorex.hosts`), per browser. Without storage the page
+works, and the list lasts until the page closes. The button at the top
+of the sidebar shows the host of the shown window and opens the list:
+choose a host (its last shown window shows, else its first), add one, or
+edit or remove one (the pencil). `?host=URL` in the page's address is a
+quick link: it adds that host, or chooses it when the list has it, shows
+its first window, and is then taken out of the address bar.
 
-Only the chosen host is connected. Choosing another one closes the
-connection and the panes, forgets the first host's sessions, and connects
-to the other. The first host's sessions keep running. One connection at
-a time keeps one sidebar and one set of shortcuts, as before; several
-hosts at once, as iOS shows them, is for later.
+Every host is connected at once, as on the desktop and in Rex Go
+(docs/web-multihost.md): each host of the list, and each host built-in
+Tailscale found that the user connected once (`gorex.tailnetOpened`,
+when Tailscale finds it again). Each host has its own connection
+(`HostConn`, `web/src/hostconn.ts`), its own reconnects and its own
+sessions. Showing a window of another host leaves the first connected:
+its titles, program tiles and attention dots keep updating in the
+sidebar. A host that goes offline touches only its own rows; when it
+comes back, the page attaches again to the same sessions and windows and
+makes none. The page opens at most four control connections at a time as
+it starts; an open that takes over 3 s no longer counts, and one that is
+not welcomed in 10 s fails and waits like any failure, so hosts that do
+not answer do not hold the others back. A host that waits to try again tries at once when the
+network comes back (`online`) or the page shows again
+(`visibilitychange`). There is no cap on the number of hosts. Two
+addresses of one computer (its LAN address and its tailnet name, say)
+are two hosts, each with all its windows.
+
+The page keeps where it was, `gorex.place`: the host, session and window
+shown last. A reload connects every host and shows that window as soon
+as its host has read its sessions (its first window when the window is
+gone); while that host does not connect, the stage shows its notice. A
+tailnet host's place waits for built-in Tailscale to find it. The chosen
+host of a page from before (`gorex.host`) moves into `gorex.place` once
+(`web/src/place.ts`), and is removed.
 
 With no host, the page shows a welcome (`web/src/welcome.ts`), centred in
 the stage: the app's icon, what the page is, and two ways in. **Sign in
@@ -78,8 +98,10 @@ Tailscale found on your tailnet (see Built-in Tailscale), each with a
 dot for its state (online, offline, refuses this browser). They are not
 saved. Before Tailscale is signed in, the group has one row, **Add Hosts
 from Tailscale** (or **Sign in to Tailscale**), which opens the sign-in
-guide. When a host does not connect, the page tells why,
-and tries again, so it connects once the cause is gone. It waits 3 s
+guide. When a host does not connect, the page tells why (the notice
+over the stage, for the shown window's host only, and a line under the
+host in the sidebar, with Retry and Edit), and tries again, so it
+connects once the cause is gone. It waits 3 s
 before the first retry and twice as long before each next one, up to
 30 s: the desktop's doubling, from 3 s where the desktop starts at 1 s.
 A connection that stays up 10 s forgets the failures before it:
@@ -510,6 +532,10 @@ in the sign-in guide uses the same bar (`web/src/progress.ts`).
 The cache is `$GOREX_WEB_CACHE`, else `$XDG_CACHE_HOME/gorex-web`, else
 `~/.cache/gorex-web`. `go build ./...` and the Go tests need no web build.
 
+`npm test` runs the unit tests of the modules with no DOM
+(`web/test/*.test.ts`, by `web/test.mjs`); it needs `npm ci`, not the
+build. CI's `web` job runs it on every pull request.
+
 ## Fonts
 
 The terminal's font is JetBrains Mono, which the page serves from
@@ -777,14 +803,24 @@ once.
   control connection and reconnect token, the retries and their
   backoff, the sessions and their views, and the titles, programs and
   records of its blocks. It tells the page what changed (`HostEvents`).
+  At most four connections open at a time, page-wide (`opensAtOnce`),
+  each holding its turn 3 s at most (`slotWait`); `Control.open` gives up
+  after 10 s (`openWait` in `rex.ts`).
 - `web/src/sidebar.ts`: the tabs as Tab placement puts them (the bar
-  above the panes, or the sidebar by space or by host), drawn from a
-  `HostConn`. Each row's `data-host` and `data-window` name it.
-- `web/src/main.ts`: the hosts' connections (one at a time: choosing a
-  host stops the others), the shown window, the notice and the status
-  line, what the sidebar's rows and menus do, and the window's commands.
-  A window (`WindowView.conn`) and its panes use their own host's
-  connection.
+  above the panes, or the sidebar by space or by host), drawn from every
+  `HostConn`: each host's state dot and problem line, and its rows, dimmed
+  while it is not connected. Each row's `data-host` and `data-window`
+  name it, and a dragged row or pane names its host. It updates once per
+  animation frame, for every host.
+- `web/src/main.ts`: the hosts' connections, all at once; the selection
+  (the host of the shown window), the shown window, the notice and the
+  status line of the selected host, what the sidebar's rows and menus do,
+  and the window's commands. A window (`WindowView.conn`) and its panes
+  use their own host's connection.
+- `web/src/place.ts`: `gorex.place` and `gorex.tailnetOpened`, and the
+  move of `gorex.host` into `gorex.place`. It has no DOM: `npm test`
+  (`web/test.mjs`) bundles each `web/test/*.test.ts` with esbuild and runs
+  it with `node --test`, as CI's `web` job does.
 - `web/src/window.ts`: a window's layout tree, its panes and dividers,
   and the focus (see Split panes).
 - `web/src/manage.ts`: the menus of a right click or a long press, the
@@ -809,12 +845,17 @@ once.
 
 ## Split panes
 
-The sidebar has a heading for each session (with a + button for a new
-window) and a row for each window: the name the user gave it, else its
+The sidebar has a heading for each host (its state dot while it
+reconnects or fails, and a line with its problem, **Retry** and **Edit**),
+a heading for each of its sessions (with a + button for a new window,
+off while the host is not connected) and a row for each window: the name the user gave it, else its
 focused pane's name or terminal's title, else its label, and its count of panes when it has
 more than one. A label is the user's when it is not the host's default,
 `Window ` and the last 8 characters of the window's ID, as the iOS app
-tells. Its close button shows on hover. A click shows the window. Where
+tells. Its close button shows on hover. A click shows the window. While
+its host is not connected, the host's rows stay as last seen, grey and
+faded (DESIGN.md's `dimmed`, the `.dimmed` class), and a click shows the
+window's last layout with the host's notice. Where
 the sidebar is, and whether there is one, is the Tab placement setting's
 (see Tab placement and the sidebar view).
 
@@ -844,8 +885,8 @@ the sidebar is, and whether there is one, is the Tab placement setting's
   this page does not either. The page tells the host
   (`session.focus_block`), and follows the host when the host's focused
   block of the window changes.
-- **Live.** The page follows `session_view_changed` and reads only the
-  changed session's view again (`session.view`). Panes whose blocks stay
+- **Live.** The page follows every host's `session_view_changed` and
+  reads only the changed session's view again (`session.view`). Panes whose blocks stay
   keep their streams; new blocks get panes and streams; panes of closed
   blocks end. A closed window shows the session's active one. Sessions
   made or destroyed elsewhere come and go in the sidebar. Titles follow
@@ -918,12 +959,18 @@ to the terminal.
 | Close the pane (desktop: ⌘W, Ctrl+Shift+W) | ⌥⇧W | Alt+Shift+W |
 | New window (desktop: ⌘T, Ctrl+Shift+T) | ⌥⇧T | Alt+Shift+T |
 | Close the window (desktop: ⇧⌘W) | ⌥⇧Q | Alt+Shift+Q |
-| Next, previous window (desktop: Ctrl+Tab, Ctrl+Shift+Tab) | ⌥⇧] and ⌥⇧[ | Alt+Shift+] and Alt+Shift+[ |
+| Next, previous window, across hosts (desktop: Ctrl+Tab, Ctrl+Shift+Tab) | ⌥⇧] and ⌥⇧[ | Alt+Shift+] and Alt+Shift+[ |
+| Next, previous space, across hosts (desktop: Ctrl+Shift+PageDown and PageUp, the browser's tab moves) | ⌃⌘] and ⌃⌘[ | Alt+Shift+PageDown and Alt+Shift+PageUp |
 | Rename the window (desktop: ⇧⌘R, Ctrl+Shift+R, which reload the page) | ⌥⇧R | Alt+Shift+R |
 | New Space (desktop: ⇧⌘N, Ctrl+Shift+N, the browser's new window) | ⌥⇧N | Alt+Shift+N |
 | Settings | ⌘, | Ctrl+, |
 | Copy the selection | ⌘C | Ctrl+Shift+C |
 | Paste | ⌘V | Ctrl+Shift+V, Shift+Insert; on Windows also Ctrl+V (see Typing and paste) |
+
+Next and previous window go through the windows in the sidebar's order,
+every connected host's; a host that is not connected is skipped. Next
+and previous space show the next space's window shown last (else its
+active one), in the same order.
 
 A key moves the divider of the nearest split of that direction around the
 focused pane by 5%. As on the desktop on Windows and Linux, Alt and an
@@ -979,21 +1026,21 @@ in `web/index.html` by `body[data-tabs]`:
   right. On a phone's width the sidebar stays over the panes.
 
 While the tabs are in a sidebar, the Sidebar view setting chooses what it
-lists, as the desktop's (`sidebarViews`): **Spaces** lists every space of
-the host and their windows; **Hosts** lists each host of the host list
-and those built-in Tailscale found, under its name, the connected one
-with its spaces and windows (the desktop's `hostSessions`). The page
-connects to one host at a time (see Hosts), so another host's heading is
-a button that connects to it, and the first host's sessions keep running;
-the desktop lists every host's spaces at once, which waits for the page
-to hold several connections.
+lists, as the desktop's (`sidebarViews`): **Hosts** lists each host of the
+host list and those built-in Tailscale found, under its name, each with
+its spaces and windows (the desktop's `hostSessions`); a tailnet host
+never connected is a button that connects to it. **Spaces** lists every
+connected host's spaces and their windows, under the host's name once
+there is more than one host. The desktop groups the spaces of all hosts
+into its own spaces; the page does that once it reads `/api/spaces`
+(docs/web-multihost.md, PR 6). The bar above lists the shown host's
+space.
 
 ### Not in the web client
 
 - Floating layers (floats): only the tiled layer shows. A block that is
   only in a float has no pane here.
-- A space's color, and the desktop's space strip and next and previous
-  space.
+- A space's color, and the desktop's space strip.
 - The pane's program icon and its activity badge; the animations of the
   tabs and of the sidebar showing and hiding (the page's sidebar does not
   hide).
@@ -1291,7 +1338,7 @@ page and every open pane.
 
 | Section | Settings |
 |---|---|
-| Host (the card) | The chosen host, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
+| Host (the card) | The host of the shown window, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
 | Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Tab placement: Above (until set), Left Side or Right Side; Sidebar view: Spaces or Hosts, shown while the tabs are in a sidebar (see Tab placement and the sidebar view). Show pane headers: off hides the headers only while the tabs are at the left, as the desktop's. Animation style: Snappy (until set), Natural or Off (see Split panes). Text size, 8 to 32 whole CSS pixels, 15 until set, with Reset. Language: System, English or 简体中文 (see Languages). |
 | Terminal | Font: JetBrains Mono or Maple Mono NF CN, which the page brings, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours; CJK is Maple's in every font (see Fonts). Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
 | Theme | The theme picker (see Themes). |

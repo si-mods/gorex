@@ -92,6 +92,8 @@
   "cmdCloseWindow": "关闭窗口",
   "cmdNextWindow": "下一个窗口",
   "cmdPreviousWindow": "上一个窗口",
+  "cmdNextSpace": "下一个空间",
+  "cmdPreviousSpace": "上一个空间",
   "cmdRenameWindow": "重命名窗口…",
   "windowResetName": "重置名称",
   "windowMoveUp": "向上移动",
@@ -441,5 +443,11 @@
   "statusRenamePaneFailed": "无法重命名窗格：{error}",
   "statusMergeWindowsFailed": "无法合并窗口：{error}",
   "spaceMenuLabel": "空间",
-  "sidebarConnectHost": "连接到 {host}"
+  "sidebarConnectHost": "连接到 {host}",
+  "sidebarHostState": "{host}：{state}",
+  "placeTailnetSearchingText": "上次显示的窗口位于你的 tailnet 中的主机上。Tailscale 仍在查找它。",
+  "placeTailnetGoneTitle": "在 tailnet 中找不到该主机",
+  "placeTailnetGoneText": "上次显示的窗口所在的主机目前不在你的 tailnet 中。它可能已关闭，或不再信任此页面。请选择其他窗口，或检查 Tailscale 设置。",
+  "placeTailnetTitle": "正在等待 Tailscale",
+  "placeTailnetText": "上次显示的窗口位于你的 tailnet 中的主机上。请打开 Tailscale 并登录以连接它，或选择其他窗口。"
 }

@@ -580,6 +580,14 @@
   "@cmdPreviousWindow": {
     "description": "Settings › Keyboard: show the previous window of the sidebar."
   },
+  "cmdNextSpace": "Next Space",
+  "@cmdNextSpace": {
+    "description": "Settings › Keyboard: show the next space's last shown window, in the sidebar's order across hosts."
+  },
+  "cmdPreviousSpace": "Previous Space",
+  "@cmdPreviousSpace": {
+    "description": "Settings › Keyboard: show the previous space's last shown window, in the sidebar's order across hosts."
+  },
   "cmdRenameWindow": "Rename Window…",
   "@cmdRenameWindow": {
     "description": "Command: rename a window in place in its sidebar row; an empty name gives back its terminal's title. Window row menu, Settings › Keyboard."
@@ -2435,5 +2443,39 @@
         "example": "Mac mini"
       }
     }
+  },
+  "sidebarHostState": "{host}: {state}",
+  "@sidebarHostState": {
+    "description": "Sidebar: accessible name of a host heading whose state dot shows; state is linkConnecting or linkUnreachable.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "Mac mini"
+      },
+      "state": {
+        "type": "String",
+        "example": "Unreachable"
+      }
+    }
+  },
+  "placeTailnetSearchingText": "The window shown last is on a host of your tailnet. Tailscale is still looking for it.",
+  "@placeTailnetSearchingText": {
+    "description": "Under placeTailnetTitle, after a reload, while built-in Tailscale runs and still probes the tailnet for GoRex hosts."
+  },
+  "placeTailnetGoneTitle": "Host not found on your tailnet",
+  "@placeTailnetGoneTitle": {
+    "description": "Notice over the stage after a reload, when the window shown last is on a tailnet host that built-in Tailscale, running, does not find."
+  },
+  "placeTailnetGoneText": "The window shown last is on a host Tailscale does not find on your tailnet now. It may be off, or no longer trust this page. Choose another window, or check its Tailscale settings.",
+  "@placeTailnetGoneText": {
+    "description": "Under placeTailnetGoneTitle; a Tailscale Settings button follows."
+  },
+  "placeTailnetTitle": "Waiting for Tailscale",
+  "@placeTailnetTitle": {
+    "description": "Notice over the stage after a reload, when the window shown last is on a tailnet host that built-in Tailscale has not found yet."
+  },
+  "placeTailnetText": "The window shown last is on a host of your tailnet. Turn on Tailscale and sign in to reach it, or choose another window.",
+  "@placeTailnetText": {
+    "description": "Under placeTailnetTitle; a Tailscale Settings button follows."
   }
 }

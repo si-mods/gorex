@@ -30,7 +30,6 @@ const listKey = "gorex.hosts";
 
 /** A host's ID: random enough for one browser's list (crypto.randomUUID needs a secure context, which a dev server on a LAN address is not). */
 const newID = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-const chosenKey = "gorex.host";
 
 /** The hosts kept in this browser; none without storage. */
 export function loadHosts(): Host[] {
@@ -49,23 +48,6 @@ export function saveHosts(hosts: Host[]) {
     localStorage.setItem(listKey, JSON.stringify(hosts));
   } catch {
     // Without storage the list lasts until the page closes.
-  }
-}
-
-/** The host chosen last in this browser, by ID. */
-export function chosenHost(): string {
-  try {
-    return localStorage.getItem(chosenKey) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export function rememberHost(id: string) {
-  try {
-    localStorage.setItem(chosenKey, id);
-  } catch {
-    // As saveHosts.
   }
 }
 
@@ -267,7 +249,7 @@ export function commandBox(command: string): HTMLElement {
 
 /** What the host list needs of the page. */
 export interface HostsApp {
-  /** The chosen host changed, or the chosen one's address did. */
+  /** A host was chosen, to show: it connects if it is not; or the chosen one's address changed. */
   choose(h: Host | undefined): void;
   /** The keyboard goes back to the terminal. */
   close(): void;
@@ -288,8 +270,10 @@ export const tailnetStates: Record<TailnetHost["state"], [dot: string, text: Pla
 
 /**
  * The host list: a button at the top of the sidebar with the chosen host,
- * and a glass panel to choose, add, edit and remove hosts. The Settings
- * dialog's Hosts section lists the same hosts, with the same form.
+ * the host of the shown window, and a glass panel to choose, add, edit
+ * and remove hosts. The Settings dialog's Hosts section lists the same
+ * hosts, with the same form. Every host stays connected: choosing one
+ * shows it (main.ts).
  */
 export class HostList {
   hosts = loadHosts();
@@ -324,7 +308,6 @@ export class HostList {
     // GoRex is the app's name, not translated.
     this.brand.append(logo, el("span", "host-name", "GoRex"));
     mount.append(this.brand, this.button, this.panel);
-    this.chosen = this.hosts.find((h) => h.id === chosenHost()) ?? this.hosts[0];
     this.drawButton();
   }
 
@@ -345,8 +328,14 @@ export class HostList {
       saveHosts(this.hosts);
       this.chosen = h;
     }
-    rememberHost(this.chosen.id);
     this.drawButton();
+  }
+
+  /** The host the page shows now, as the button and the list's check name it; the page keeps its place. */
+  select(h: Host | undefined) {
+    if (this.chosen === h) return;
+    this.chosen = h;
+    this.refresh();
   }
 
   /**
@@ -393,7 +382,6 @@ export class HostList {
   /** Chooses a host, which the page connects to. */
   choose(h: Host | undefined) {
     this.chosen = h;
-    rememberHost(h?.id ?? "");
     this.drawButton();
     this.app.choose(h);
   }

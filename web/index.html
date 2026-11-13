@@ -122,6 +122,13 @@
   .host-head .pane-icon { flex: none; width: 14px; height: 14px; color: var(--muted); }
   button.host-head { color: var(--muted); cursor: pointer; }
   button.host-head:hover { background: var(--hover); color: var(--text); }
+  .host-head .state-dot { margin-right: 2px; }
+  /* A host's problem under its heading, muted, with Retry and Edit (sidebar.ts, problemLine). */
+  .host-problem { display: flex; align-items: center; gap: 2px; padding: 0 4px 2px 34px; color: var(--muted); font-size: 12px; }
+  .host-problem span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .host-problem .pane-icon { width: 12px; height: 12px; }
+  /* Inactive, DESIGN.md's dimmed in CSS (grey, then faded): an offline host's rows, as last seen; still clickable. */
+  .dimmed { filter: grayscale(1); opacity: 0.65; }
   /* The sidebar's Settings button, as the desktop's sidebarSettings. */
   .theme-button {
     display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 0; border-radius: 999px;
@@ -174,6 +181,8 @@
   }
   button.icon .pane-icon { width: 14px; height: 14px; }
   button.icon:hover { background: var(--hover); color: var(--text); }
+  /* New Window of a host that is not live: nothing waits to be made when it comes back. Inactive, as DESIGN.md's dimmed(e, 0.4). */
+  button.icon:disabled { filter: grayscale(1); opacity: 0.4; cursor: default; background: none; }
   /* A window's row: a capsule, as the desktop's sidebar rows, its close button on hover. */
   .window { display: flex; align-items: center; border-radius: 999px; }
   .window:hover { background: var(--hover); }
