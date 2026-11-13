@@ -5,6 +5,7 @@
 import { localize, t } from "./i18n";
 import { draggable, DropZone, onMenu, ownDrag, paneDropZone } from "./manage";
 import { PaneHost, TerminalView } from "./pane";
+import { motionMs, prefs } from "./prefs";
 
 /** A node of a layer's layout, as session.view gives it. */
 export interface LayoutNode {
@@ -84,6 +85,10 @@ export class WindowView {
   /** Where a pane dragged over another would go, and what shows it (panedrop.go, drawPaneDrop). */
   private drop?: { block: string; zone: DropZone };
   private readonly dropMark = Object.assign(document.createElement("div"), { className: "pane-drop" });
+  /** Whether the panes were placed once: the first placing, as the window shows, does not animate. */
+  private rendered = false;
+  /** Ends the panes' move: their terminals take their new sizes then. */
+  private settleTimer?: number;
 
   constructor(readonly session: string, readonly window: string, private readonly stage: HTMLElement, private readonly app: WindowHost) {}
 
@@ -102,8 +107,8 @@ export class WindowView {
     return leavesOf(this.tree);
   }
 
-  /** Takes the host's view of the window. */
-  update(w: any) {
+  /** Takes the host's view of the window; its changes move the panes with the Animation style, unless not animate. */
+  update(w: any, animate = true) {
     if (this.dragging) {
       this.pending = w;
       return;
@@ -124,13 +129,21 @@ export class WindowView {
     if (!focus || !blocks.includes(focus)) focus = host && blocks.includes(host) ? host : blocks[0];
     // A pane that had the keys may go (moved to another window): its successor takes them.
     const keys = this.stage.contains(document.activeElement);
-    this.render();
+    this.render(animate);
     this.setFocus(focus, false);
     if (keys && !this.stage.contains(document.activeElement)) this.focusKeys();
   }
 
-  /** Places the panes and dividers; opens the panes of new blocks and closes those of gone ones. */
-  private render() {
+  /**
+   * Places the panes and dividers; opens the panes of new blocks and
+   * closes those of gone ones. With animate, as the desktop's
+   * paneTransition, the panes move to their new places, and new and gone
+   * ones pop (scale 0.92, faded), with the Animation style; not as the
+   * window shows, nor while a divider is dragged.
+   */
+  private render(animate = false) {
+    const ms = animate && this.rendered && !this.dragging ? motionMs() : 0;
+    if (ms) this.moving(ms);
     const leaves: [string, Rect][] = [];
     const splits: [Split, Rect][] = [];
     const walk = (n: LayoutNode | undefined, r: Rect) => {
@@ -154,6 +167,12 @@ export class WindowView {
       if (!all.has(block)) {
         this.panes.delete(block);
         p.close(false);
+        // The pane's last frame pops out, and goes.
+        if (ms) {
+          this.stage.append(p.el);
+          p.el.classList.add("leaving");
+          setTimeout(() => p.el.remove(), ms);
+        }
       }
     }
     for (const [block, rect] of leaves) {
@@ -167,6 +186,10 @@ export class WindowView {
         this.panes.set(block, p);
         this.wire(p);
         this.stage.append(p.el);
+        if (ms) {
+          p.el.classList.add("entering");
+          p.el.addEventListener("animationend", () => p!.el.classList.remove("entering"), { once: true });
+        }
         place(p.el, this.zoomed ? [0, 0, 1, 1] : rect);
         p.setTitle(this.app.titleOf(block));
         p.setProgram(this.app.programOf(block));
@@ -178,6 +201,7 @@ export class WindowView {
       p.el.classList.toggle("zoomed", this.zoomed === block);
       if (shown) place(p.el, this.zoomed ? [0, 0, 1, 1] : rect);
     }
+    this.rendered = true;
     // The dividers, one for each split, when no pane is zoomed.
     const ids = new Set(this.zoomed ? [] : splits.map(([s]) => s.split_id));
     for (const [id, d] of this.dividers) {
@@ -308,6 +332,8 @@ export class WindowView {
       const s = this.split(id);
       if (!s || e.button !== 0) return;
       e.preventDefault();
+      // A move still going ends: the divider follows the pointer at once.
+      this.settle();
       d.setPointerCapture(e.pointerId);
       d.classList.add("held");
       const from = s.ratio;
@@ -333,10 +359,10 @@ export class WindowView {
         if (this.pending) {
           const w = this.pending;
           this.pending = undefined;
-          this.update(w);
+          this.update(w, false);
           // The host's view had the old ratio: keep the dragged one until the host takes it.
           const now = this.split(id);
-          if (now && ratio !== undefined) this.setRatio(now, ratio);
+          if (now && ratio !== undefined) this.setRatio(now, ratio, false);
         }
         const s = this.split(id);
         if (s && ratio !== undefined && Math.abs(ratio - from) > 0.001) this.app.resizeSplit(this, s, ratio);
@@ -349,7 +375,7 @@ export class WindowView {
       const s = this.split(id);
       if (!s) return;
       s.ratio = 0.5;
-      this.render();
+      this.render(true);
       this.app.resizeSplit(this, s, 0.5);
     });
   }
@@ -370,6 +396,33 @@ export class WindowView {
     };
     const r = find(this.tree, [0, 0, 1, 1]);
     return r && new DOMRect(st.left + r[0] * st.width, st.top + r[1] * st.height, r[2] * st.width, r[3] * st.height);
+  }
+
+  /**
+   * The panes move for ms: their places follow on a transition, and their
+   * terminals keep their sizes until they rest, as the desktop's do.
+   */
+  private moving(ms: number) {
+    this.stage.style.setProperty("--motion", `${ms}ms`);
+    // Snappy's spring has a little bounce (animation.go); Natural's settles without one.
+    this.stage.style.setProperty("--ease", prefs.animation === "natural" ? "cubic-bezier(0.22, 1, 0.36, 1)" : "cubic-bezier(0.3, 1.25, 0.5, 1)");
+    this.stage.classList.add("moving");
+    for (const p of this.panes.values()) p.held = true;
+    clearTimeout(this.settleTimer);
+    this.settleTimer = window.setTimeout(() => this.settle(), ms + 40);
+  }
+
+  /** Ends the panes' move: they rest, and their terminals take their sizes. */
+  private settle() {
+    clearTimeout(this.settleTimer);
+    this.settleTimer = undefined;
+    if (!this.stage.classList.contains("moving")) return;
+    this.stage.classList.remove("moving");
+    if (this.dragging) return;
+    for (const p of this.panes.values()) {
+      p.held = false;
+      p.layout();
+    }
   }
 
   /** Holds the terminals' sizes while a divider moves, and lays them out when it rests. */
@@ -398,9 +451,10 @@ export class WindowView {
       p.el.classList.toggle("focused", b === block);
       if (b === block || b === was) p.redraw();
     }
-    // The keyboard follows the focus while it is in the window.
+    // The keyboard follows the focus while it is in the window, but for a pane's rename field (main.ts),
+    // whose blur would commit a name half typed.
     const p = this.panes.get(block)!;
-    if (this.stage.contains(document.activeElement)) p.focusKeys();
+    if (this.stage.contains(document.activeElement) && !document.activeElement?.classList.contains("rename-field")) p.focusKeys();
     if (tell && block !== this.hostFocus) {
       this.hostFocus = block;
       this.app.focusBlock(this, block);
@@ -457,9 +511,9 @@ export class WindowView {
   }
 
   /** Sets a split's ratio here before the host's view comes, as a key's move does. */
-  setRatio(s: Split, ratio: number) {
+  setRatio(s: Split, ratio: number, animate = true) {
     s.ratio = Math.min(maxRatio, Math.max(minRatio, ratio));
-    this.render();
+    this.render(animate);
   }
 
   /** The title of each pane again, after a title changed. */
@@ -471,6 +525,8 @@ export class WindowView {
   }
 
   close() {
+    clearTimeout(this.settleTimer);
+    this.stage.classList.remove("moving");
     this.showDrop(undefined);
     for (const p of this.panes.values()) p.close(true);
     this.panes.clear();

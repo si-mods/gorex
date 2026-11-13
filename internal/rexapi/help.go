@@ -359,11 +359,11 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 }
 
 // ownMethods are the help document's entries of GoRex's own methods,
-// which Rex's document does not have: gorex.move_window and
-// gorex.see_block.
+// which Rex's document does not have: gorex.move_window,
+// gorex.see_block, gorex.merge_windows and gorex.move_block_to_new_window.
 func ownMethods() []json.RawMessage {
 	var out []json.RawMessage
-	for _, e := range []map[string]any{moveWindowEntry, seeBlockEntry} {
+	for _, e := range []map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry} {
 		if raw, err := json.Marshal(e); err == nil {
 			out = append(out, raw)
 		}

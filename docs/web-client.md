@@ -797,10 +797,12 @@ once.
 
 The sidebar has a heading for each session (with a + button for a new
 window) and a row for each window: the name the user gave it, else its
-terminal's title, else its label, and its count of panes when it has
+focused pane's name or terminal's title, else its label, and its count of panes when it has
 more than one. A label is the user's when it is not the host's default,
 `Window ` and the last 8 characters of the window's ID, as the iOS app
-tells. Its close button shows on hover. A click shows the window.
+tells. Its close button shows on hover. A click shows the window. Where
+the sidebar is, and whether there is one, is the Tab placement setting's
+(see Tab placement and the sidebar view).
 
 - **Layout.** The page draws the tiled layer's layout tree from
   `session.view`: each `split` divides its room by its `ratio`,
@@ -811,8 +813,17 @@ tells. Its close button shows on hover. A click shows the window.
   again when they show.
 - **Panes.** Each pane has its own data stream, its own libghostty-vt
   terminal and canvas, and owns and sizes its own block. It has a header,
-  as the desktop's: the terminal's title, and on the focused or hovered
+  as the desktop's: the pane's name, else the terminal's title, and on the focused or hovered
   pane the buttons Split Right, Split Down, Zoom and Close.
+- **Animations.** As the desktop's `paneTransition` (`animation.go`), a
+  change of the window's layout from the host (a split, a closed pane, a
+  zoom, a move) or a key that moves a divider moves the panes to their new
+  places, and a new pane and a gone one pop (scale 0.92, faded), with the
+  Animation style setting: Snappy (320 ms, a little overshoot), Natural
+  (500 ms, none) or Off. A dragged divider, the window shown first, and a
+  system that asks for less motion (`prefers-reduced-motion`) move at
+  once. While the panes move their terminals keep their sizes, and send
+  the new ones once they rest, as on the desktop (`window.ts`, `moving`).
 - **Focus.** A click or a shortcut focuses a pane: the keys go to it, its
   border and shadow are the focused ones, and its cursor is solid (hollow
   in the others). The desktop does not dim panes that are not focused, so
@@ -859,6 +870,14 @@ change made elsewhere.
 | New Window, Close Window, Close Other Windows | The row's menu | `session.new_window`, `session.close_window` |
 | Swap two panes of the window | Drag a pane by its header onto the middle of another (0.2 of its width and height each way of its centre, as `paneDropZone`), which shows the zone | `session.swap_blocks`; the dragged pane has the focus |
 | Move a pane into another window of its session, beside that window's focused pane | The header's menu (Move to Window), or drop the header on that window's row, which shows a ring | `session.move_block`, `horizontal`, `after` |
+| Rename Pane: a field in the pane's header; Enter or leaving it keeps the name, Escape goes back, an empty name gives the pane its terminal's title again | The header's menu (Rename Pane…) | `session.set_block_label` |
+| Reset Pane Name | The header's menu, when the pane has a name | `session.set_block_label` with `""` |
+| Move a pane to a window of its own, just after its window; the shown window stays (the desktop's Move Pane to New Tab, `movePaneToNewTab`) | The header's menu (Move Pane to New Window), in a window of two panes or more, not zoomed | `gorex.move_block_to_new_window` |
+| Merge a window into another: its layout goes at the right of the other's, half each, and that window shows (the desktop's `mergeTab`) | Drag the row onto the middle half of another row of its session, which shows a ring; the outer quarters order the windows as above | `gorex.merge_windows` |
+
+A pane's name is the block's label in the view; the gateway gives an
+unnamed pane the label `shell`, so the page reads `shell` as no name (a
+pane its user named `shell` shows its title).
 
 A move keeps the blocks: their programs go on and their terminals keep
 what they show. A pane that stays in the window keeps its data stream; a
@@ -911,15 +930,59 @@ gateway's welcome lists `gorex.move_window` (`gateway` in
   `side` (before or after). Without the feature the edge zones are off and
   only the middle (swap) takes a drop.
 
+Merging windows and moving a pane to a window of its own are GoRex's own
+methods too (`internal/rexapi/mergewindows.go`), as Rex's
+`session.move_block` can neither put a window's tree beside another's
+nor give a block a window of its own. The page offers each only when
+the welcome lists its feature: `gorex.merge_windows` (a GoRex server
+that takes a window's layout, `tab.set`), and
+`gorex.move_block_to_new_window` (every gateway that has the method).
+Without `gorex.merge_windows` a row dropped anywhere on another orders
+them, by its halves, as before. The gateway refuses a merge (`conflict`,
+in the status line) of windows with panes of different hosts, of a
+window that holds a note or a browser pane (`tab.set` moves only a
+terminal's pane), and of windows changed since it read them (one
+`layout.apply` checks both windows' revisions). The view shows neither
+other hosts' panes nor those of no terminal, so the page cannot tell
+first, and its drop shows the ring.
+
+### Tab placement and the sidebar view
+
+The Tab placement setting (see Settings) places the windows of the
+sessions as the desktop places its tabs (`placements` in `sidebar.go`),
+in `web/index.html` by `body[data-tabs]`:
+
+- **Above**, the default, as the desktop's: a bar over the panes with the
+  host button, a chip with the shown space's name, the space's windows as
+  rows side by side, a + for a new window, and Settings and New Space at
+  its end. The chip opens the spaces' menu, as the desktop's workspace
+  chip: every space (a click shows its active window), New Space, Rename
+  Space and Close Space; its right click has the space's own menu. Rows
+  order and merge as in the sidebar, by their left and right quarters
+  and middle half.
+- **Left Side**: the sidebar at the left of the panes, as before.
+- **Right Side**: the sidebar at the right; the host list opens at the
+  right. On a phone's width the sidebar stays over the panes.
+
+While the tabs are in a sidebar, the Sidebar view setting chooses what it
+lists, as the desktop's (`sidebarViews`): **Spaces** lists every space of
+the host and their windows; **Hosts** lists each host of the host list
+and those built-in Tailscale found, under its name, the connected one
+with its spaces and windows (the desktop's `hostSessions`). The page
+connects to one host at a time (see Hosts), so another host's heading is
+a button that connects to it, and the first host's sessions keep running;
+the desktop lists every host's spaces at once, which waits for the page
+to hold several connections.
+
 ### Not in the web client
 
 - Floating layers (floats): only the tiled layer shows. A block that is
   only in a float has no pane here.
-- Merging two windows (a row dropped on another's middle), moving a pane
-  to a window of its own, renaming a pane, a space's color, and the
-  desktop's space strip and next and previous space.
-- The desktop's pane animations, the pane's program icon and its
-  activity badge.
+- A space's color, and the desktop's space strip and next and previous
+  space.
+- The pane's program icon and its activity badge; the animations of the
+  tabs and of the sidebar showing and hiding (the page's sidebar does not
+  hide).
 
 ## Typing and paste
 
@@ -1215,7 +1278,7 @@ page and every open pane.
 | Section | Settings |
 |---|---|
 | Host (the card) | The chosen host, its address and its connection (connected, connecting, unreachable, with the reason), this page's origin, and the command that makes a host trust it. |
-| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Show pane headers. Text size, 8 to 32 whole CSS pixels, 15 until set, with Reset. Language: System, English or 简体中文 (see Languages). |
+| Appearance | Window: System, Light or Dark for the page's colours; System follows the terminal's background, as the desktop's System follows the theme's colours. Tab placement: Above (until set), Left Side or Right Side; Sidebar view: Spaces or Hosts, shown while the tabs are in a sidebar (see Tab placement and the sidebar view). Show pane headers: off hides the headers only while the tabs are at the left, as the desktop's. Animation style: Snappy (until set), Natural or Off (see Split panes). Text size, 8 to 32 whole CSS pixels, 15 until set, with Reset. Language: System, English or 简体中文 (see Languages). |
 | Terminal | Font: JetBrains Mono or Maple Mono NF CN, which the page brings, or a common monospaced family installed on the device (told by measuring text in it), with a preview in the theme's colours; CJK is Maple's in every font (see Fonts). Cursor style (Block, Bar, Underline) and Cursor blink. Copy on selection (off until set). Minimum contrast: the default (3), Off, 2, 3, 4.5 (WCAG AA) or 7 (WCAG AAA). Reset to Defaults forgets the font, cursor, copy on selection and contrast. |
 | Theme | The theme picker (see Themes). |
 | Keyboard | The shortcuts (see Shortcuts), with this system's keys. |
@@ -1229,8 +1292,7 @@ it changes and after each snapshot, so that a program can still set its
 own. Until a cursor is chosen, the pane keeps the host's.
 
 Not in the web client: the desktop's Glass and Terminal opacity (a page
-cannot show the desktop through it), the Dock badge, Tab placement and
-Sidebar view (the page has one sidebar and one window), Animation style
-(the page does not animate the panes), the desktop's update settings (the
+cannot show the desktop through it), the Dock badge, hiding the sidebar
+and its width, the desktop's update settings (the
 page updates through its Service Worker), the settings file (the page
 keeps `localStorage`), and recording shortcuts.

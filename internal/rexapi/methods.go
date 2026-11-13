@@ -206,8 +206,10 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	"data.connect":                  methodDataConnect,
 	// GoRex's own, which Rex's document does not have (movewindow.go,
 	// seen.go).
-	"gorex.move_window": methodGorexMoveWindow,
-	"gorex.see_block":   methodGorexSeeBlock,
+	"gorex.move_window":              methodGorexMoveWindow,
+	"gorex.merge_windows":            methodGorexMergeWindows,
+	"gorex.move_block_to_new_window": methodGorexMoveBlockToNewWindow,
+	"gorex.see_block":                methodGorexSeeBlock,
 }
 
 // blockMethodPrefix is the namespace of the methods every GoRex block
