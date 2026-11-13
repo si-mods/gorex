@@ -108,6 +108,9 @@ type Gateway struct {
 	// reconnectWait is how long a dropped client, or a data stream, waits
 	// to be resumed; tests shorten it before making a gateway of their own.
 	reconnectWait time.Duration
+	// collapseBytes is the most a data stream holds that its connection
+	// did not take (collapseBytes); tests lower it.
+	collapseBytes int
 
 	// refreshMu serializes reading the layout and installing the model,
 	// so that changes reach connections in the order they were read.
@@ -192,6 +195,7 @@ func New(opt Options) (*Gateway, error) {
 		instanceID:     randomUUID(),
 		helloWait:      helloWait,
 		reconnectWait:  reconnectWait,
+		collapseBytes:  collapseBytes,
 		mapper:         newMapper(),
 		conns:          map[*control]struct{}{},
 		clients:        map[string]*clientRecord{},

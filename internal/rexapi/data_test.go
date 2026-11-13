@@ -439,6 +439,7 @@ func TestStreamResumeWindow(t *testing.T) {
 		}
 		sent = append(sent, p...)
 		s.appendBytes(p)
+		s.sent = s.total // a writer took it all
 		if n := len(s.buf); n < min(len(sent), resumeBytes) || n > 2*resumeBytes {
 			t.Fatalf("after %d bytes the stream keeps %d", len(sent), n)
 		}
@@ -503,11 +504,13 @@ func BenchmarkStreamAppend(b *testing.B) {
 	chunk := make([]byte, 4<<10)
 	for s.total < 2*int64(resumeBytes) {
 		s.appendBytes(chunk)
+		s.sent = s.total
 	}
 	b.SetBytes(int64(len(chunk)))
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s.appendBytes(chunk)
+		s.sent = s.total
 	}
 }

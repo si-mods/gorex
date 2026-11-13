@@ -82,7 +82,11 @@ writes its queue (`attached.writer`), so a slow client does not hold up
 the others. A client too far behind (2048 queued chunks; for a remote
 one also 8 MiB) is dropped. A remote host's stream attaches again to a new
 snapshot (`hostStream` in `hosts.go`); a local window's stream ends, and
-its pane closes (`attached.send`).
+its pane closes (`attached.send`). The rexapi gateway reads its attaches
+at once, whatever its clients' connections take, and drops on its own
+what a slow connection falls behind by. It then sends a reset and a new
+snapshot on the same stream (`stream.collapse` in
+`internal/rexapi/data.go`; [rex-api.md](rex-api.md)).
 
 ## Attaching
 

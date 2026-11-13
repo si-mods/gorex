@@ -340,6 +340,11 @@ export class TerminalView {
       case "child_exited":
         this.say(() => t("paneExited", { code: String(m.exit_code ?? 0) }));
         break;
+      case "terminal_reset":
+        // The stream reset the terminal (RIS) for a new snapshot: the
+        // colours stay, the settings' cursor does not.
+        this.applyCursor();
+        break;
     }
   }
 

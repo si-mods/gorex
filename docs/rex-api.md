@@ -271,6 +271,34 @@ meets:
   while it listens (`anonymous`), each with the address it is bound to.
   Built-in Tailscale is not in the list, as on a Rex server: `tailscale`
   describes it.
+- A terminal's data stream can start over in the middle. The gateway
+  reads the session's output all the time, so the GoRex server never
+  drops it as a client too far behind. A connection slower than the
+  program prints falls behind the gateway instead. Once the gateway holds
+  2 MiB of output that came after the newest snapshot and that the
+  connection did not take, it drops those bytes, and the output that
+  follows. Once a connection has taken all the bytes kept, and at least a
+  second has passed since the last resync, the gateway attaches to the
+  session again. A stream with no connection first waits for a client to
+  resume it. The gateway then sends on the same stream, in order:
+  1. `ESC \` (which ends any string or sequence left open), RIS, and the
+     sequences that clear the screen and scrollback;
+  2. a `resize` message with the session's size;
+  3. a `terminal_reset` message (`{"type":"terminal_reset"}`), GoRex's
+     own;
+  4. the screen, with up to 256 KiB of scrollback, as escape sequences;
+  5. the `theme` message, if a client set one, and `child_exited`, if
+     the program ended.
+
+  Then the output follows. The byte counts of a resume stay those of the
+  stream. RIS keeps the colours a client gave its terminal, but resets
+  the cursor style: on `terminal_reset`, a client sets again what it set
+  on the terminal itself (the web client sets its cursor again). The
+  gateway does the same when the GoRex server ends its attach while the
+  session runs. When it cannot attach again, the stream closes with
+  `4000` if the session is gone, sends `child_exited` if the program
+  ended, and else closes with `1011`. It also closes with `1011` when an
+  attach ends with no output after its snapshot.
 
 ## Spaces across hosts
 
