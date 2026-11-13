@@ -3200,14 +3200,34 @@ func (msgs Messages) RemoteAsking() string {
 	return Catalog.Format(msgs.locale, "remoteAsking", nil)
 }
 
-// TailcatMode says "Tailcat remote access"
+// RemoteConnect says "Let other devices connect"
 // in the language the app shows.
-func TailcatMode() string { return In(i18n.Locale()).TailcatMode() }
+func RemoteConnect() string { return In(i18n.Locale()).RemoteConnect() }
 
-// TailcatMode says "Tailcat remote access"
+// RemoteConnect says "Let other devices connect"
 // in the language of msgs.
-func (msgs Messages) TailcatMode() string {
-	return Catalog.Format(msgs.locale, "tailcatMode", nil)
+func (msgs Messages) RemoteConnect() string {
+	return Catalog.Format(msgs.locale, "remoteConnect", nil)
+}
+
+// RemoteAddDevice says "Add a device"
+// in the language the app shows.
+func RemoteAddDevice() string { return In(i18n.Locale()).RemoteAddDevice() }
+
+// RemoteAddDevice says "Add a device"
+// in the language of msgs.
+func (msgs Messages) RemoteAddDevice() string {
+	return Catalog.Format(msgs.locale, "remoteAddDevice", nil)
+}
+
+// RemoteLastSeen says "Last seen {when}"
+// in the language the app shows.
+func RemoteLastSeen(when string) string { return In(i18n.Locale()).RemoteLastSeen(when) }
+
+// RemoteLastSeen says "Last seen {when}"
+// in the language of msgs.
+func (msgs Messages) RemoteLastSeen(when string) string {
+	return Catalog.Format(msgs.locale, "remoteLastSeen", map[string]any{"when": when})
 }
 
 // HostsRexQR says "Rex QR…"
@@ -5872,14 +5892,14 @@ func (msgs Messages) RemoteRelay() string {
 	return Catalog.Format(msgs.locale, "remoteRelay", nil)
 }
 
-// RemoteRelayPlaceholder says "tailcat's relays"
+// RemoteRelayPlaceholder says "Default"
 // in the language the app shows.
 //
 // Placeholder of the empty relay field: left empty, tailcat's own free
 // relays are used.
 func RemoteRelayPlaceholder() string { return In(i18n.Locale()).RemoteRelayPlaceholder() }
 
-// RemoteRelayPlaceholder says "tailcat's relays"
+// RemoteRelayPlaceholder says "Default"
 // in the language of msgs.
 //
 // Placeholder of the empty relay field: left empty, tailcat's own free
@@ -5888,13 +5908,13 @@ func (msgs Messages) RemoteRelayPlaceholder() string {
 	return Catalog.Format(msgs.locale, "remoteRelayPlaceholder", nil)
 }
 
-// RemoteRelayNote says "A DERP server of your own, by its host name, such as derp.example.com, in place of tailcat's relays. The address name…"
+// RemoteRelayNote says "A relay server of your own, by its host name, such as relay.example.com, in place of the default relays. The address …"
 // in the language the app shows.
 //
 // Hint under the relay field.
 func RemoteRelayNote() string { return In(i18n.Locale()).RemoteRelayNote() }
 
-// RemoteRelayNote says "A DERP server of your own, by its host name, such as derp.example.com, in place of tailcat's relays. The address name…"
+// RemoteRelayNote says "A relay server of your own, by its host name, such as relay.example.com, in place of the default relays. The address …"
 // in the language of msgs.
 //
 // Hint under the relay field.
@@ -5902,14 +5922,14 @@ func (msgs Messages) RemoteRelayNote() string {
 	return Catalog.Format(msgs.locale, "remoteRelayNote", nil)
 }
 
-// RemoteRelayInvalid says "Enter a host name, such as derp.example.com, with :port when not 443: not an IP address, and no https://. Leave it em…"
+// RemoteRelayInvalid says "Enter a host name, such as relay.example.com, with :port when not 443: not an IP address, and no https://. Leave it e…"
 // in the language the app shows.
 //
 // Error under the relay field when what was typed is not a host name or
 // address with an optional port.
 func RemoteRelayInvalid() string { return In(i18n.Locale()).RemoteRelayInvalid() }
 
-// RemoteRelayInvalid says "Enter a host name, such as derp.example.com, with :port when not 443: not an IP address, and no https://. Leave it em…"
+// RemoteRelayInvalid says "Enter a host name, such as relay.example.com, with :port when not 443: not an IP address, and no https://. Leave it e…"
 // in the language of msgs.
 //
 // Error under the relay field when what was typed is not a host name or

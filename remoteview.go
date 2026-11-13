@@ -668,6 +668,7 @@ func (a *App) remoteSettings(c *ui.Context, k *colors) {
 	}
 	a.remoteHeader(c, k, page.st)
 	a.remoteDevices(c, k, page.st)
+	settingsGroup(c, k, "", "", "", func() { a.remoteDetails(c, k, page.st) })
 }
 
 // remoteServes is that remote clients can reach this machine: Tailcat's
@@ -715,9 +716,8 @@ func (a *App) remoteControlServer(c *ui.Context, k *colors) {
 	})
 }
 
-// remoteHeader is the Remote page's first group: remote access, its
-// state and its switch, Tailscale's discovery, and, while either serves,
-// what the clients share.
+// remoteHeader is the Server page's first group: the switch that lets
+// other devices connect, and its state.
 func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	label, detail, kind := remoteState(st, page.unreachable)
@@ -736,10 +736,10 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 					glyphIcon(c, "globe", 22, ui.RGB(255, 255, 255))
 				})
 				ui.Column(c).Grow(1).MinWidth(0).Gap(3).Children(func() {
-					ui.Text(c, locales.TailcatMode()).FontSize(15).FontWeight(600).TextColor(k.text)
+					ui.Text(c, locales.RemoteConnect()).FontSize(15).FontWeight(600).TextColor(k.text)
 					statusLine(c, k, dot, label)
 				})
-				sw := ui.Switch(c.Key("allow"), &on).Label(locales.TailcatMode()).Disabled(page.unreachable || page.busy)
+				sw := ui.Switch(c.Key("allow"), &on).Label(locales.RemoteConnect()).Disabled(page.unreachable || page.busy)
 				if sw.Changed() {
 					if on {
 						a.remoteDo((*rex.Client).EnableRemote, nil)
@@ -753,31 +753,6 @@ func (a *App) remoteHeader(c *ui.Context, k *colors, st rex.RemoteStatus) {
 				rowError(c, k, page.err())
 			}
 		})
-		if st.Tailnet != nil {
-			tailnet := st.Tailnet.Enabled
-			if remoteSwitch(c, k, "system-tailscale", locales.TailnetMode(), locales.TailnetModeNote(), &tailnet, page.unreachable || page.busy) {
-				a.remoteDo(func(srv *rex.Client) error { return srv.SetTailnet(tailnet) }, nil)
-			}
-			if st.Tailnet.Enabled && !st.Tailnet.Running {
-				hint := locales.TailnetUnavailable()
-				if st.Tailnet.Error != "" {
-					hint = st.Tailnet.Error
-				}
-				groupRow(c, k, nil).Children(func() { rowHint(c, k, hint) })
-			}
-		}
-		a.remoteControlServer(c, k)
-		if !remoteServes(st) {
-			return
-		}
-		if st.Enabled {
-			a.remoteReachable(c, k, st)
-		}
-		// Whether remote clients read the layout and follow it.
-		layoutShare := st.ShareLayout
-		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy) {
-			a.remoteDo(func(srv *rex.Client) error { return srv.ShareLayout(layoutShare) }, nil)
-		}
 	})
 }
 
@@ -854,21 +829,20 @@ func pairingLeft(until, now time.Time) string {
 	return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
 }
 
-// remoteDevices is the group of the devices: the pairing window and the
-// requests made in it to approve or reject, the clients allowed, the
-// buttons that pair a new device or add one by its key, and this
-// machine's details. While remote access serves no one, only requests
-// still waiting show.
+// remoteDevices is the Devices group, the clients allowed, then the Add a
+// device group: the pairing window and the requests made in it to approve
+// or reject, and the buttons that pair a new device or show its QR code.
+// While remote access serves no one, only requests still waiting show.
 func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	on := remoteServes(st)
 	if !on && len(st.Pending) == 0 && len(st.PendingByAddress) == 0 {
-		// Off, this machine's key, relay and Rex's code stay at hand, for
-		// the other way: this machine connecting to hosts.
-		settingsGroup(c, k, "", "", "", func() { a.remoteDetails(c, k, st) })
 		return
 	}
-	settingsGroup(c, k, locales.RemoteDevices(), locales.RemoteClientsNote(), locales.RemotePairNote(), func() {
+	if on {
+		settingsGroup(c, k, locales.RemoteDevices(), locales.RemoteClientsNote(), "", func() { a.remoteClients(c, k, st) })
+	}
+	settingsGroup(c, k, locales.RemoteAddDevice(), "", locales.RemotePairNote(), func() {
 		if st.Enabled && st.Pairing.Open {
 			groupRow(c, k, nil).Children(func() {
 				tileLine(c, k, "plus", locales.RemotePairTitle(), func() {
@@ -905,62 +879,64 @@ func (a *App) remoteDevices(c *ui.Context, k *colors, st rex.RemoteStatus) {
 		if !on {
 			return
 		}
-		if len(st.Allowed) == 0 {
-			groupRow(c, k, nil).Children(func() {
-				ui.Text(c, locales.RemoteNoClients()).FontSize(13).TextColor(k.textFaint)
+		groupRow(c, k, nil).Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				if !st.Enabled {
+					ui.Text(c, locales.RemotePairTurnOn()).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0)
+				} else {
+					ui.Spacer(c)
+				}
+				// Rex Go pairs by a code of the address, which opens the
+				// window too.
+				if st.Running && ui.Button(c.Key("rexgo-qr"), locales.RemoteRexGoQR()).Disabled(page.busy).Clicked() {
+					a.openRexGoQR(false)
+				}
+				if st.Running && st.ReachableAt != "" && st.ReachableError == "" &&
+					ui.Button(c.Key("direct-qr"), locales.RemoteDirectQR()).Disabled(page.busy).Clicked() {
+					a.openRexGoQR(true)
+				}
+				if st.Enabled && !st.Pairing.Open {
+					if ui.PrimaryButton(c.Key("pair-start"), locales.RemotePairNew()).Disabled(page.busy).Clicked() {
+						a.remoteDo((*rex.Client).StartPairing, nil)
+					}
+				}
 			})
-		}
-		for _, client := range st.Allowed {
-			row := groupRow(c, k, "client:"+client.PublicKey)
-			if !st.Enabled {
-				dimmed(row, 0.5)
-			}
-			row.Children(func() {
-				tileLine(c, k, "laptop", client.Name, func() {
-					ui.Text(c, shortKey(client.PublicKey)).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().
-						Tooltip(client.PublicKey)
-				}, func() {
-					if iconButton(c.Key("c"), k, "copy", locales.RemoteCopyKey(), 26, 15).Tooltip(locales.RemoteCopyKeyTip()).Clicked() {
-						copyText(client.PublicKey, client.PublicKey)
-					}
-					if ui.Button(c.Key("r"), locales.RemoteRevoke()).Disabled(page.busy).Clicked() {
-						a.remoteDo(func(srv *rex.Client) error { return srv.RevokeRemote(client.PublicKey) }, nil)
-					}
-				})
-			})
-		}
-		if page.addingKey {
-			a.addByKey(c, k, st)
-		} else {
-			groupRow(c, k, nil).Children(func() {
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					if !st.Enabled {
-						ui.Text(c, locales.RemotePairTurnOn()).FontSize(13).TextColor(k.textFaint).Grow(1).MinWidth(0)
-					} else {
-						ui.Spacer(c)
-					}
-					if ui.Button(c.Key("add-key"), locales.RemoteAddByKeyAsk()).Clicked() {
-						page.addingKey = true
-					}
-					// Rex Go pairs by a code of the address, which opens the
-					// window too.
-					if st.Running && ui.Button(c.Key("rexgo-qr"), locales.RemoteRexGoQR()).Disabled(page.busy).Clicked() {
-						a.openRexGoQR(false)
-					}
-					if st.Running && st.ReachableAt != "" && st.ReachableError == "" &&
-						ui.Button(c.Key("direct-qr"), locales.RemoteDirectQR()).Disabled(page.busy).Clicked() {
-						a.openRexGoQR(true)
-					}
-					if st.Enabled && !st.Pairing.Open {
-						if ui.PrimaryButton(c.Key("pair-start"), locales.RemotePairNew()).Disabled(page.busy).Clicked() {
-							a.remoteDo((*rex.Client).StartPairing, nil)
-						}
-					}
-				})
-			})
-		}
-		a.remoteDetails(c, k, st)
+		})
 	})
+}
+
+// remoteClients is the rows of the clients allowed, each with its name and
+// key, when it was last seen, Copy and Remove.
+func (a *App) remoteClients(c *ui.Context, k *colors, st rex.RemoteStatus) {
+	page := &remoteUI
+	if len(st.Allowed) == 0 {
+		groupRow(c, k, nil).Children(func() {
+			ui.Text(c, locales.RemoteNoClients()).FontSize(13).TextColor(k.textFaint)
+		})
+	}
+	for _, client := range st.Allowed {
+		row := groupRow(c, k, "client:"+client.PublicKey)
+		if !st.Enabled {
+			dimmed(row, 0.5)
+		}
+		row.Children(func() {
+			tileLine(c, k, "laptop", client.Name, func() {
+				ui.Text(c, shortKey(client.PublicKey)).Font(monoFamily()).FontSize(11.5).TextColor(k.textFaint).SingleLine().
+					Tooltip(client.PublicKey)
+				if !client.LastSeen.IsZero() {
+					when, _ := ago(client.LastSeen, c.Now())
+					ui.Text(c, locales.RemoteLastSeen(when)).FontSize(11.5).TextColor(k.textFaint).SingleLine()
+				}
+			}, func() {
+				if iconButton(c.Key("c"), k, "copy", locales.RemoteCopyKey(), 26, 15).Tooltip(locales.RemoteCopyKeyTip()).Clicked() {
+					copyText(client.PublicKey, client.PublicKey)
+				}
+				if ui.Button(c.Key("r"), locales.RemoteRevoke()).Disabled(page.busy).Clicked() {
+					a.remoteDo(func(srv *rex.Client) error { return srv.RevokeRemote(client.PublicKey) }, nil)
+				}
+			})
+		})
+	}
 }
 
 // pendingByAddress is a request made by address: its code, large, to
@@ -1019,9 +995,12 @@ func (a *App) addByKey(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	})
 }
 
-// remoteDetails is the Devices group's last row, as Rex's Show Details:
-// opened, this machine's address, while the server listens, and its key,
-// which a device to pair with asks for. Closing it hides the address.
+// remoteDetails is the last group, as Rex's Show Details: opened, Tailscale,
+// Reachable at, the relay, what the clients share, adding a device by its
+// key, this machine's address, while the server listens, and its key, which
+// a device to pair with asks for. Closing it hides the address. Off, it
+// stays: the key and the relay serve the other way, this machine
+// connecting to hosts.
 func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	page := &remoteUI
 	label := locales.RemoteShowDetails()
@@ -1054,7 +1033,42 @@ func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 			a.remoteAddress(c, k, true)
 		}
 	}
+	if st.Tailnet != nil {
+		tailnet := st.Tailnet.Enabled
+		if remoteSwitch(c, k, "system-tailscale", locales.TailnetMode(), locales.TailnetModeNote(), &tailnet, page.unreachable || page.busy) {
+			a.remoteDo(func(srv *rex.Client) error { return srv.SetTailnet(tailnet) }, nil)
+		}
+		if st.Tailnet.Enabled && !st.Tailnet.Running {
+			hint := locales.TailnetUnavailable()
+			if st.Tailnet.Error != "" {
+				hint = st.Tailnet.Error
+			}
+			groupRow(c, k, nil).Children(func() { rowHint(c, k, hint) })
+		}
+	}
+	a.remoteControlServer(c, k)
+	if st.Enabled {
+		a.remoteReachable(c, k, st)
+	}
 	a.remoteRelay(c, k)
+	if remoteServes(st) {
+		// Whether remote clients read the layout and follow it.
+		layoutShare := st.ShareLayout
+		if remoteSwitch(c, k, "share-layout", locales.RemoteShareLayout(), locales.RemoteShareLayoutNote(), &layoutShare, page.unreachable || page.busy) {
+			a.remoteDo(func(srv *rex.Client) error { return srv.ShareLayout(layoutShare) }, nil)
+		}
+		if page.addingKey {
+			a.addByKey(c, k, st)
+		} else {
+			groupRow(c, k, nil).Children(func() {
+				rowLine(c, k, locales.RemoteAddByKey(), func() {
+					if ui.Button(c.Key("add-key"), locales.RemoteAddByKeyAsk()).Clicked() {
+						page.addingKey = true
+					}
+				})
+			})
+		}
+	}
 	groupRow(c, k, nil).Children(func() {
 		ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 			ui.Column(c).Grow(1).MinWidth(0).Gap(2).Children(func() {
