@@ -456,7 +456,8 @@ export class TerminalView {
     if (this.frame !== undefined || this.closed) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = undefined;
-      if (!this.term || this.closed) return;
+      // The first layout makes the font and draws again; until then there is nothing to draw with.
+      if (!this.term || !this.font || this.closed) return;
       // The cursor is solid in the window's focused pane while the page has the focus.
       const focused = this.app.isFocused(this) && document.hasFocus() && this.el.contains(document.activeElement);
       const ctx = this.ctx;
