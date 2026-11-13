@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.25.0
+
+### Features
+
+* **remote:** Reachable at: a machine with remote access on can be its own relay at one of its IP addresses, set in Settings > Server or from the CLI, and another machine pairs with it by that address, without Tailscale between them ([#495](https://github.com/si-mods/gorex/pull/495), [#498](https://github.com/si-mods/gorex/pull/498), [#501](https://github.com/si-mods/gorex/pull/501))
+* **remote:** on Windows, Settings says when Windows Firewall blocks the Reachable at port, and offers to allow it ([#511](https://github.com/si-mods/gorex/pull/511))
+* **status:** the session server keeps which done and error records were seen, so one seen on a client is seen on the others and after a restart ([#523](https://github.com/si-mods/gorex/pull/523))
+* **rexapi:** a block moves beside another in its own window or before it, and a window moves to another session ([#512](https://github.com/si-mods/gorex/pull/512), [#514](https://github.com/si-mods/gorex/pull/514))
+* **rexapi:** the gateway takes an upload compressed as raw DEFLATE, which Rex Go sends for files that shrink ([#508](https://github.com/si-mods/gorex/pull/508))
+* **terminal:** the terminal is libghostty-vt 1.0.1 ([#515](https://github.com/si-mods/gorex/pull/515))
+
+### Bug Fixes
+
+* **remote:** a pairing request by address closes its own pairing window only ([#510](https://github.com/si-mods/gorex/pull/510))
+* **rexapi:** a request that uses an id again as soon as its answer came no longer ends the connection, and a file put again right after its answer is no longer refused as being transferred ([#527](https://github.com/si-mods/gorex/pull/527))
+
 ## 0.24.0
 
 ### Features
