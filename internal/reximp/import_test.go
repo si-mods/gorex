@@ -15,8 +15,8 @@ import (
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
+	"gorex/internal/rexapi"
 	"gorex/internal/rexpeer"
-	"gorex/internal/testrex"
 )
 
 // TestNames checks what a tab and a pane keep of Rex's names: a window's
@@ -138,11 +138,15 @@ func startGoRex(t *testing.T) (*rex.Client, string) {
 
 // dialPeer connects a Rex client to a test Rex server in dir.
 func dialPeer(t *testing.T, ctx context.Context, dir string) *rexpeer.Client {
-	api, err := testrex.New(testrex.Options{Socket: rex.SocketPath(), Version: "test"})
+	apiClient, err := rex.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(api.Close)
+	api, err := rexapi.New(rexapi.Options{Client: apiClient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { api.Close() })
 	sock := filepath.Join(dir, "api.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
