@@ -165,17 +165,20 @@ gorex capture -s <id>
 
 `gorex skill setup` installs a `gorex` skill that points at the guide the
 installed binary prints, so upgrading GoRex updates what agents are told.
-It finds Claude Code (`~/.claude`), Codex (`~/.codex`), OpenCode
+It finds Claude Code (`~/.claude`), Codex (`~/.codex`), Antigravity CLI
+(`~/.gemini/antigravity-cli` or `~/.gemini/config`), OpenCode
 (`~/.config/opencode`, or `$XDG_CONFIG_HOME/opencode`), and Pi
 (`~/.pi/agent`, or `$PI_CODING_AGENT_DIR`). A named `--agent` is set up
 even when its directory is absent; an unknown one is an error.
 
-The skill goes into Claude Code's own `skills/gorex` directory and into
-the shared `~/.agents/skills/gorex` directory that Codex, OpenCode and Pi
-read. With no agent found, only the shared skill is written.
+The skill goes into Claude Code's own `skills/gorex` directory, into
+`~/.gemini/config/skills/gorex` for Antigravity CLI, and into the shared
+`~/.agents/skills/gorex` directory that Codex, OpenCode and Pi read. With
+no agent found, only the shared skill is written.
 
-Claude Code and Codex also get a session-start hook, added to
-`~/.claude/settings.json` and `~/.codex/hooks.json`. The hook runs
+Claude Code, Codex and Antigravity CLI also get a session-start hook,
+added to `~/.claude/settings.json`, `~/.codex/hooks.json` and
+`~/.gemini/config/hooks.json`. The hook runs
 `gorex __internal session-start --agent NAME`, which prints the session,
 pane and connection for the agent's context, and labels the pane when
 `--pane-naming` is on. Only GoRex's own hook is added or removed:
@@ -192,8 +195,9 @@ is not valid JSON is reported as a conflict instead of rewritten.
 - `gorex skill setup --dry-run` reports without changing anything;
   `--force` replaces a `gorex` skill the user wrote.
 - `--project` writes into the current repository instead: the shared
-  `.agents/skills/gorex`, or with `--agent claude`, `.claude/skills/gorex`
-  and a hook in `.claude/settings.local.json`. Codex project hooks are
+  `.agents/skills/gorex`, with `--agent claude` `.claude/skills/gorex`
+  and a hook in `.claude/settings.local.json`, and with `--agent agy` a
+  hook in `.agents/hooks.json`. Codex project hooks are
   skipped because Codex asks the user to trust the project and each hook;
   set those up for the account instead.
 - `gorex skill show` prints the same guide the skill tells agents to read.

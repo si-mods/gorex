@@ -215,7 +215,9 @@ func hookState(path, agent string) (string, error) {
 		}
 		if strings.Contains(cmd, "__internal session-start --agent "+agent) &&
 			!strings.Contains(cmd, "agent-hook --agent "+agent) {
-			state = "installed"
+			if state == "missing" {
+				state = "installed"
+			}
 		} else {
 			state = "outdated"
 		}
@@ -297,71 +299,10 @@ func setHook(path, agent string, install, paneNaming, dry bool) (string, error) 
 			kept = append(kept, entry)
 		}
 	}
-	if install {
-		switch {
-		case current && !stale:
-			return "unchanged", nil
-		case current:
-			if dry {
-				return "would replace", nil
-			}
-			hooks["SessionStart"] = kept
-			root["hooks"] = hooks
-			if err := writeObject(path, root); err != nil {
-				return "failed", err
-			}
-			return "replaced", nil
-		case found:
-			kept = append(kept, map[string]any{"hooks": []any{map[string]any{
-				"type": "command", "command": command, "timeout": 5,
-			}}})
-			if dry {
-				return "would replace", nil
-			}
-			hooks["SessionStart"] = kept
-			root["hooks"] = hooks
-			if err := writeObject(path, root); err != nil {
-				return "failed", err
-			}
-			return "replaced", nil
-		default:
-			kept = append(kept, map[string]any{"hooks": []any{map[string]any{
-				"type": "command", "command": command, "timeout": 5,
-			}}})
-			if dry {
-				return "would create", nil
-			}
-			hooks["SessionStart"] = kept
-			root["hooks"] = hooks
-			if err := writeObject(path, root); err != nil {
-				return "failed", err
-			}
-			return "created", nil
-		}
-	}
-	if !found {
-		return "absent", nil
-	}
-	if dry {
-		return "would remove", nil
-	}
-	if len(kept) == 0 {
-		delete(hooks, "SessionStart")
-	} else {
-		hooks["SessionStart"] = kept
-	}
-	if len(hooks) == 0 {
-		delete(root, "hooks")
-	} else {
-		root["hooks"] = hooks
-	}
-	if !created {
-		return "removed", nil
-	}
-	if err := writeObject(path, root); err != nil {
-		return "failed", err
-	}
-	return "removed", nil
+	newEntry := map[string]any{"hooks": []any{map[string]any{
+		"type": "command", "command": command, "timeout": 5,
+	}}}
+	return commitHookSessionStart(path, root, hooks, "hooks", kept, newEntry, created, install, found, current, stale, dry)
 }
 
 // setAgyHook adds, replaces or removes our session-start hook in
@@ -397,6 +338,11 @@ func setAgyHook(path string, install, paneNaming, dry bool) (string, error) {
 		}
 		kept = append(kept, h)
 	}
+	newEntry := map[string]any{"type": "command", "command": command, "timeout": 5}
+	return commitHookSessionStart(path, root, gorex, "gorex", kept, newEntry, created, install, found, current, stale, dry)
+}
+
+func commitHookSessionStart(path string, root, container map[string]any, containerKey string, kept []any, newEntry any, created, install, found, current, stale, dry bool) (string, error) {
 	if install {
 		switch {
 		case current && !stale:
@@ -405,30 +351,30 @@ func setAgyHook(path string, install, paneNaming, dry bool) (string, error) {
 			if dry {
 				return "would replace", nil
 			}
-			gorex["SessionStart"] = kept
-			root["gorex"] = gorex
+			container["SessionStart"] = kept
+			root[containerKey] = container
 			if err := writeObject(path, root); err != nil {
 				return "failed", err
 			}
 			return "replaced", nil
 		case found:
-			kept = append(kept, map[string]any{"type": "command", "command": command, "timeout": 5})
+			kept = append(kept, newEntry)
 			if dry {
 				return "would replace", nil
 			}
-			gorex["SessionStart"] = kept
-			root["gorex"] = gorex
+			container["SessionStart"] = kept
+			root[containerKey] = container
 			if err := writeObject(path, root); err != nil {
 				return "failed", err
 			}
 			return "replaced", nil
 		default:
-			kept = append(kept, map[string]any{"type": "command", "command": command, "timeout": 5})
+			kept = append(kept, newEntry)
 			if dry {
 				return "would create", nil
 			}
-			gorex["SessionStart"] = kept
-			root["gorex"] = gorex
+			container["SessionStart"] = kept
+			root[containerKey] = container
 			if err := writeObject(path, root); err != nil {
 				return "failed", err
 			}
@@ -442,14 +388,14 @@ func setAgyHook(path string, install, paneNaming, dry bool) (string, error) {
 		return "would remove", nil
 	}
 	if len(kept) == 0 {
-		delete(gorex, "SessionStart")
+		delete(container, "SessionStart")
 	} else {
-		gorex["SessionStart"] = kept
+		container["SessionStart"] = kept
 	}
-	if len(gorex) == 0 {
-		delete(root, "gorex")
+	if len(container) == 0 {
+		delete(root, containerKey)
 	} else {
-		root["gorex"] = gorex
+		root[containerKey] = container
 	}
 	if !created {
 		return "removed", nil

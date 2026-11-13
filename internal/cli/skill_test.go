@@ -398,6 +398,24 @@ func TestSkillAgy(t *testing.T) {
 		t.Fatalf("status: %d %q %s", code, out, errOut)
 	}
 
+	// Changing --pane-naming replaces the existing hook.
+	code, _, out, errOut = runMain(t, "skill", "setup", "--agent", "agy", "--pane-naming=false", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "replaced"`) {
+		t.Fatalf("replace pane-naming: %d %q %s", code, out, errOut)
+	}
+	if got := readFile(t, hooksPath); !strings.Contains(got, "--feature-pane-naming=false") || strings.Count(got, "# gorex") != 1 {
+		t.Fatalf("replaced hook: %s", got)
+	}
+
+	// --dry-run does not modify hooks.json.
+	code, _, out, errOut = runMain(t, "skill", "remove", "--agent", "agy", "--dry-run", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "would remove"`) {
+		t.Fatalf("dry-run remove: %d %q %s", code, out, errOut)
+	}
+	if got := readFile(t, hooksPath); !strings.Contains(got, "# gorex") {
+		t.Fatalf("dry-run modified hooks.json: %s", got)
+	}
+
 	code, _, out, errOut = runMain(t, "skill", "remove", "--agent", "agy", "--json")
 	if code != ExitOK || !strings.Contains(out, `"change": "removed"`) {
 		t.Fatalf("remove: %d %q %s", code, out, errOut)
@@ -408,6 +426,52 @@ func TestSkillAgy(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".gemini", "config", "skills", "gorex")); !os.IsNotExist(err) {
 		t.Fatalf("skill remains: %v", err)
+	}
+
+	// Conflict shapes in hooks.json are reported without rewriting.
+	for _, bad := range []string{`{"gorex":"not-obj"}`, `{"gorex":{"SessionStart":"not-arr"}}`, `{"gorex":{"SessionStart":["not-obj"]}}`} {
+		writeFile(t, hooksPath, bad)
+		code, _, out, _ = runMain(t, "skill", "setup", "--agent", "agy", "--json")
+		if code != ExitFailed || !strings.Contains(out, `"change": "conflict"`) {
+			t.Fatalf("conflict %s: %d %q", bad, code, out)
+		}
+		if got := readFile(t, hooksPath); got != bad {
+			t.Fatalf("conflict modified hooks.json: %q", got)
+		}
+	}
+}
+
+func TestSkillAgyProject(t *testing.T) {
+	tempHome(t)
+	project := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(old) })
+
+	code, _, out, errOut := runMain(t, "skill", "setup", "--project", "--agent", "agy", "--json")
+	if code != ExitOK || !strings.Contains(out, `"change": "created"`) {
+		t.Fatalf("project setup: %d %q %s", code, out, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "gorex", "SKILL.md")); err != nil {
+		t.Fatal(err)
+	}
+	if b := readFile(t, filepath.Join(project, ".agents", "hooks.json")); !strings.Contains(b, "__internal session-start --agent agy") {
+		t.Fatalf("project hook %q", b)
+	}
+	code, _, _, errOut = runMain(t, "skill", "remove", "--project", "--agent", "agy")
+	if code != ExitOK {
+		t.Fatalf("project remove: %d %s", code, errOut)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".agents", "skills", "gorex")); !os.IsNotExist(err) {
+		t.Fatalf("project skill remains: %v", err)
+	}
+	if b := readFile(t, filepath.Join(project, ".agents", "hooks.json")); strings.Contains(b, "# gorex") {
+		t.Fatalf("project hook remains: %s", b)
 	}
 }
 
