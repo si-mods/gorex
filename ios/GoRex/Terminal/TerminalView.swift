@@ -520,6 +520,7 @@ final class TerminalView: UIView, TerminalOutput {
     func forget() {
         guard !document.typed.isEmpty else { return }
         changing { document.reset() }
+        trace("forget", [])
     }
 
     /// Tells the keyboard of a change it did not make, or not as it
