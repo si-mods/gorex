@@ -17,14 +17,13 @@ concurrency:
 
 jobs:
   # Every job runs on an instabox machine (Ubuntu 24.04) that lives for
-  # the job. The Mac mini's runner takes one job at a time and is kept for
-  # the release, so no job here waits for it, and the tests run on Linux
-  # only: what fails on macOS or Windows alone shows on a developer's
-  # machine. si-mods runs no job on GitHub's runners.
+  # the job, a fork's pull request too. The Mac mini's runner takes one job
+  # at a time and is kept for the release, so no job here waits for it, and
+  # the tests run on Linux only: what fails on macOS or Windows alone shows
+  # on a developer's machine. si-mods runs no job on GitHub's runners.
 
-  # It checks and cross-compiles each system's code.
+  # gofmt and vet, and each system's code cross-compiled.
   build:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: instabox-medium
     timeout-minutes: 20
     steps:
@@ -65,9 +64,9 @@ jobs:
   # machines take a third each; a fourth runs the other packages. With
   # build, that is five at a time.
   test-linux:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: instabox-medium
-    timeout-minutes: 20
+    # Two runs of a part that hangs, at 15 minutes each.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
