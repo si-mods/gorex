@@ -211,6 +211,11 @@ func TestStatusSeen(t *testing.T) {
 		t.Fatalf("seen moved back or again: %v", st.seen)
 	}
 	time.Sleep(time.Millisecond)
+	st.feed([]byte(osc("state=working:id=w")))
+	if st.see(st.records["w"].Updated) || !st.seen.Equal(a) {
+		t.Fatalf("a working record raised seen to %v", st.seen)
+	}
+	time.Sleep(time.Millisecond)
 	st.feed([]byte(osc("state=error:id=b")))
 	if got := MostUrgent(st.list(), st.seen); got == nil || got.ID != "b" {
 		t.Fatalf("a record after seen: %+v", got)

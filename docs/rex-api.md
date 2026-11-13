@@ -359,10 +359,12 @@ The welcome lists the feature `gorex.see_block` when the server keeps it
 ← {}
 ```
 
-- `seen_at` is the `updated_at` of the latest record the user saw. A time
+- `seen_at` is the `updated_at` of the latest done or error record the user saw. A time
   of a whole second, as `updated_at` has, covers that second.
 - The seen time only moves forward, and never past the block's latest
-  record.
+  `done` or `error` record. Within one second, a second `done` or `error`
+  record after the one seen reads as seen too, as `updated_at` has whole
+  seconds.
 - `com.superlogical.terminal.program_status` and the
   `program_status_changed` event carry `seen_at` beside `records` once a
   client saw some; a change of it sends `program_status_changed`. A

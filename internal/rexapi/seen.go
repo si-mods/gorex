@@ -32,7 +32,7 @@ func statusPayload(info *rex.SessionInfo) map[string]any {
 // seenAtSchema is seen_at's schema, beside program_status's records.
 var seenAtSchema = map[string]any{
 	"type": "string", "format": "date-time",
-	"description": "GoRex's own: when the latest record a client saw was updated (gorex.see_block). A done or error record whose updated_at is not after it was seen. Left out until a client saw some.",
+	"description": "GoRex's own: when the latest done or error record a client saw was updated (gorex.see_block). A done or error record whose updated_at is not after it was seen. Left out until a client saw some.",
 }
 
 // withSeenAt adds seen_at to program_status's result in a help document,
@@ -110,7 +110,7 @@ var seeBlockEntry = map[string]any{
 			"block_id":   map[string]any{"type": "string", "description": "The block the user saw."},
 			"seen_at": map[string]any{
 				"type": "string", "format": "date-time",
-				"description": "The updated_at of the latest record the user saw. A time of a whole second covers that second.",
+				"description": "The updated_at of the latest done or error record the user saw. A time of a whole second covers that second.",
 			},
 		},
 		"required":             []any{"session_id", "block_id", "seen_at"},
@@ -123,7 +123,7 @@ var seeBlockEntry = map[string]any{
 	"request_example":  "{\n  \"session_id\": \"session:<uuid>\",\n  \"block_id\": \"block:<uuid>\",\n  \"seen_at\": \"2026-11-13T09:30:00Z\"\n}",
 	"response_example": "{}",
 	"validation_notes": []any{
-		"The block's seen_at only moves forward, and never past its latest record: a call with an earlier time changes nothing.",
+		"The block's seen_at only moves forward, and never past its latest done or error record: a call with an earlier time changes nothing.",
 		"com.superlogical.terminal.program_status and program_status_changed carry seen_at beside the records once a client saw some. A done or error record whose updated_at is not after seen_at was seen.",
 		"A change of seen_at sends program_status_changed.",
 		"The connection must be attached to session_id, or hear of every session's events, or the call fails with conflict. An unknown block fails with not_found.",
@@ -142,14 +142,14 @@ Arguments:
 
 - ` + "`session_id`" + ` (string, required): The session the block is in.
 - ` + "`block_id`" + ` (string, required): The block the user saw.
-- ` + "`seen_at`" + ` (string, required): The ` + "`updated_at`" + ` of the latest record the user saw. A time of a whole
+- ` + "`seen_at`" + ` (string, required): The ` + "`updated_at`" + ` of the latest done or error record the user saw. A time of a whole
   second covers that second.
 
 The result is an empty object.
 
 Notes:
 
-- The block's seen time only moves forward, and never past its latest record: a call with an earlier
+- The block's seen time only moves forward, and never past its latest done or error record: a call with an earlier
   time changes nothing.
 - ` + "`com.superlogical.terminal.program_status`" + `'s result and ` + "`program_status_changed`" + `'s payload carry ` + "`seen_at`" + `
   beside ` + "`records`" + ` once a client saw some. A done or error record whose ` + "`updated_at`" + ` is not after

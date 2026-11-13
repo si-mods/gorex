@@ -677,7 +677,7 @@ type SessionInfo struct {
 	OwnerName string `json:"ownerName,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
-	// said nothing. StatusSeen is when the latest record a client showed
+	// said nothing. StatusSeen is when the latest done or error record a client showed
 	// the user was updated ("seeStatus"): MostUrgent(Statuses,
 	// StatusSeen) is what still needs the user. Zero from a server before
 	// CapabilityStatusSeen.

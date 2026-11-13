@@ -34,8 +34,8 @@ type programStatus struct {
 	carry   []byte
 	records map[string]*statusRecord
 	updates uint64
-	// seen is when the latest record a client showed the user was
-	// updated: done and error records till then were seen (MostUrgent).
+	// seen is when the latest done or error record a client showed the
+	// user was updated: those till then were seen (MostUrgent).
 	// It only moves forward.
 	seen time.Time
 }
@@ -133,12 +133,13 @@ func (st *programStatus) drop() {
 	}
 }
 
-// see raises seen to at, a record's time a client showed, but past no
-// record's: a later record was not seen. It tells whether seen moved.
+// see raises seen to at, the time of a done or error record a client
+// showed, but past no such record's: a later one was not seen, and
+// others do not need to be. It tells whether seen moved.
 func (st *programStatus) see(at time.Time) bool {
 	var latest time.Time
 	for _, r := range st.records {
-		if r.Updated.After(latest) {
+		if (r.State == "done" || r.State == "error") && r.Updated.After(latest) {
 			latest = r.Updated
 		}
 	}

@@ -187,14 +187,20 @@ nonisolated final class InboxTests: XCTestCase {
         ]]
         let status: [String: [String: Any]] = [
             "a": ["records": [["id": "x", "state": "done", "updated_at": "2026-11-07T10:00:00Z"]], "seen_at": "2026-11-07T10:00:00Z"],
-            "b": ["records": [["id": "y", "state": "error", "updated_at": "2026-11-07T10:05:00Z"]], "seen_at": "2026-11-07T10:00:00Z"],
+            // A working record later than the error raises no seen.
+            "b": ["records": [["id": "y", "state": "error", "updated_at": "2026-11-07T10:05:00Z"],
+                              ["id": "z", "state": "working", "updated_at": "2026-11-07T10:06:00Z"]],
+                  "seen_at": "2026-11-07T10:00:00Z"],
         ]
+        var fail = true
         rex.respond = { m, p in
             switch m {
             case "session.bootstrap":
                 ["attach_all": ["sessions": [["session_id": "s", "label": "s"]]], "selected_session": ["view": view]]
             case "com.superlogical.terminal.program_status":
                 status[(p["block_id"] as? String) ?? ""] ?? ["records": []]
+            case "gorex.see_block" where fail:
+                ["error": ["code": "internal", "message": "no"]]
             default: [:]
             }
         }
@@ -206,9 +212,16 @@ nonisolated final class InboxTests: XCTestCase {
         XCTAssertEqual(h.inbox.map(\.block), ["b"])
         XCTAssertEqual(rex.count("gorex.see_block"), 0)
 
+        // A call that fails leaves the record unseen, and the next see
+        // calls again.
         h.see(session: "s", block: "b")
-        XCTAssertNil(h.status(["b"]))
         await until("told") { rex.count("gorex.see_block") == 1 }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(h.status(["b"])?.state, "error")
+        fail = false
+        h.see(session: "s", block: "b")
+        await until("seen") { h.status(["b"])?.state == "working" }
+        XCTAssertEqual(rex.count("gorex.see_block"), 2)
         let told = rex.payloads[rex.calls.lastIndex(of: "gorex.see_block")!]
         XCTAssertEqual(told["session_id"] as? String, "s")
         XCTAssertEqual(told["block_id"] as? String, "b")
@@ -217,7 +230,7 @@ nonisolated final class InboxTests: XCTestCase {
         h.see(session: "s", block: "b")
         h.see(session: "s", block: "a")
         try await Task.sleep(for: .milliseconds(200))
-        XCTAssertEqual(rex.count("gorex.see_block"), 1)
+        XCTAssertEqual(rex.count("gorex.see_block"), 2)
 
         // Another device saw a new record: the event's seen_at clears it.
         func changed(_ seen: String?) {

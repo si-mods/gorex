@@ -313,10 +313,10 @@ type Pane struct {
 	attention     bool
 	asked, popped uint64
 	popAt         time.Time
-	// seen is when the program's last record the user saw in this pane
-	// was updated: done and error records till then, or till the
-	// server's info.StatusSeen, which every client's panes raise, no
-	// longer ask for attention. notified is when the pane's last status
+	// seen is when the program's last done or error record the user saw
+	// in this pane was updated: those till then, or till the server's
+	// info.StatusSeen, which every client's panes raise, no longer ask
+	// for attention. notified is when the pane's last status
 	// notification was shown, and told when its program's own last one
 	// was.
 	seen, notified, told time.Time
@@ -335,8 +335,12 @@ type Pane struct {
 	teleport    *teleportRun
 	teleportErr string
 	// seenFunc tells the server and the window's store that the pane was
-	// seen; moved, that seen moved.
-	seenFunc func(moved bool)
+	// seen. seeing tells that a request telling the server is under way,
+	// and seenTold is the seen time, in Unix nanoseconds, the server last
+	// took (tellSeen).
+	seenFunc func()
+	seeing   atomic.Bool
+	seenTold atomic.Int64
 	// focusClaimed tells whether the session was last told that the user
 	// looks at this pane, through focusConn: the session's size follows
 	// the pane shown with the window's focus. A pane attached again tells
@@ -954,13 +958,10 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// the window that made the pane, as long as it is open.
 	update := a.updater()
 	onData := func(int) { p.lastData.Store(time.Now().UnixNano()) }
-	p.seenFunc = func(moved bool) {
-		// A server before rex.CapabilityStatusSeen answers an error: the
-		// pane's own seen stands in.
-		if c := a.clientOf(p.host); moved && c != nil && p.seen.After(p.info.StatusSeen) {
-			go c.SeeStatus(p.SID, p.seen)
-		}
+	p.seenFunc = func() {
+		a.tellSeen(p)
 		if a.st != nil {
+			a.st.recordSeen(p.SID, p.seen)
 			a.st.closeNotifications(notifyKey(p))
 		}
 	}
@@ -3334,15 +3335,52 @@ func statusEvents(p *Pane, was, now []rex.ProgramStatus) []map[string]string {
 // error records of its program.
 func (p *Pane) see() {
 	p.attention = false
-	was := p.seen
 	for _, r := range p.info.Statuses {
-		if r.Updated.After(p.seen) {
+		if (r.State == "done" || r.State == "error") && r.Updated.After(p.seen) {
 			p.seen = r.Updated
 		}
 	}
 	if p.seenFunc != nil {
-		p.seenFunc(p.seen.After(was))
+		p.seenFunc()
 	}
+}
+
+// tellSeen tells the pane's server, when it keeps what was seen
+// (rex.CapabilityStatusSeen), what the pane saw that it does not know
+// yet: one request at a time, as see runs each frame, and a failed one
+// again a second later at the earliest. A server before it, which knows
+// nothing of it, leaves the pane's and the store's own seen to stand in.
+func (a *App) tellSeen(p *Pane) {
+	told := p.info.StatusSeen
+	if t := time.Unix(0, p.seenTold.Load()); t.After(told) {
+		told = t
+	}
+	h := p.host
+	if !p.seen.After(told) || !a.keepsSeen(h) {
+		return
+	}
+	c := a.clientOf(h)
+	if c == nil || !p.seeing.CompareAndSwap(false, true) {
+		return
+	}
+	sid, at := p.SID, p.seen
+	go func() {
+		if err := c.SeeStatus(sid, at); err != nil {
+			time.Sleep(time.Second)
+		} else {
+			p.seenTold.Store(at.UnixNano())
+		}
+		p.seeing.Store(false)
+	}()
+}
+
+// keepsSeen tells whether the server of host h, nil for this machine's,
+// keeps when its sessions' status was seen.
+func (a *App) keepsSeen(h *hostConn) bool {
+	if h != nil {
+		return h.hello.Can(rex.CapabilityStatusSeen)
+	}
+	return a.st != nil && a.st.hello.Can(rex.CapabilityStatusSeen)
 }
 
 // status is the record of the pane's program that most needs the user,

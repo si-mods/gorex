@@ -208,11 +208,11 @@ the most urgent. A prompt (133;A), the foreground going back to the shell
 are in [osc-7501.md](osc-7501.md).
 
 The server also keeps when the user saw the records (`programStatus.seen`,
-`SessionInfo.StatusSeen`): the `updated` time of the latest record a
-client showed. A client that shows a session sends `seeStatus` with that
-time (the desktop's pane as it is seen, Rex Go through the gateway's
-`gorex.see_block`); the time only moves forward, never past the latest
-record, and a change sends a `sessions` event. `done` and `error`
+`SessionInfo.StatusSeen`): the `updated` time of the latest `done` or
+`error` record a client showed. A client that shows a session sends
+`seeStatus` with that time (the desktop's pane as it is seen, Rex Go
+through the gateway's `gorex.see_block`); the time only moves forward,
+never past the latest such record, and a change sends a `sessions` event. `done` and `error`
 records updated by then were seen (`MostUrgent(Statuses, StatusSeen)`),
 on every client, after a client restarts and across an in-place upgrade.
 

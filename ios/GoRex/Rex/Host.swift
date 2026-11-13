@@ -282,8 +282,8 @@ final class Host: Identifiable {
         var program: String?
         /// What its programs reported.
         var statuses: [ProgramStatus]?
-        /// When the latest record a client showed the user was updated:
-        /// done and error records till then were seen. The server keeps
+        /// When the latest done or error record a client showed the user
+        /// was updated: those till then were seen. The server keeps
         /// it for every client (seen_at, gorex.see_block); against one
         /// without it, only this app knows, till it quits.
         var seen: Date?
@@ -622,16 +622,26 @@ final class Host: Identifiable {
         blocks.compactMap { self.blocks[$0].flatMap { ProgramStatus.mostUrgent($0.statuses ?? [], seen: $0.seen) } }.max { $0.rank < $1.rank }
     }
 
-    /// Marks a block's records seen, as the desktop's pane does when it
-    /// shows, and tells the server, which tells every client.
+    /// Marks a block's done and error records seen, as the desktop's pane
+    /// does when it shows, and tells the server, which tells every client.
+    /// A server that keeps it is told first, and its answer marks them, so
+    /// that a call that failed is made again as the block is seen next;
+    /// against one that doesn't, this app marks them itself.
     func see(session: String, block: String) {
-        guard let b = blocks[block], let rs = b.statuses, !rs.isEmpty else { return }
+        guard let b = blocks[block] else { return }
+        let finished = (b.statuses ?? []).filter { $0.state == "done" || $0.state == "error" }
+        guard !finished.isEmpty else { return }
         // A record without a time is seen as any time is.
-        let latest = rs.compactMap(\.updated).max() ?? .distantPast
+        let latest = finished.compactMap(\.updated).max() ?? .distantPast
         if let seen = b.seen, latest <= seen { return }
-        b.seen = latest
-        guard latest != .distantPast, let c = control, c.features.contains(Self.seeFeature) else { return }
-        Task { _ = try? await c.call("gorex.see_block", ["session_id": session, "block_id": block, "seen_at": latest.formatted(.iso8601)]) }
+        guard latest != .distantPast, let c = control, c.features.contains(Self.seeFeature) else {
+            b.seen = latest
+            return
+        }
+        Task {
+            guard (try? await c.call("gorex.see_block", ["session_id": session, "block_id": block, "seen_at": latest.formatted(.iso8601)])) != nil else { return }
+            b.raiseSeen(latest)
+        }
     }
 
     /// A block's values, made as the block first comes.
