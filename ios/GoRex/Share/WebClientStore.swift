@@ -10,8 +10,9 @@ import Observation
 final class WebClientStore {
     static let shared = WebClientStore()
     static let baseURLKey = "webClientBaseURL"
-    /// Optional build-time default (Info.plist `GoRexWebClientURL` or empty).
-    static let defaultBaseURL = (Bundle.main.object(forInfoDictionaryKey: "GoRexWebClientURL") as? String ?? "")
+    /// Default R2 public bucket URL (overridable via Info.plist `GoRexWebClientURL` or Settings).
+    static let defaultBaseURL = ((Bundle.main.object(forInfoDictionaryKey: "GoRexWebClientURL") as? String)
+        ?? "https://pub-6fdb3aa21b0246a2bfa088f5b9d9f83d.r2.dev")
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
     var baseURLString: String {
