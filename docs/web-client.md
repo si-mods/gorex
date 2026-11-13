@@ -1231,5 +1231,6 @@ own. Until a cursor is chosen, the pane keeps the host's.
 Not in the web client: the desktop's Glass and Terminal opacity (a page
 cannot show the desktop through it), the Dock badge, Tab placement and
 Sidebar view (the page has one sidebar and one window), Animation style
-(the page does not animate the panes), updates and the settings file (the page is what its host serves, and
+(the page does not animate the panes), the desktop's update settings (the
+page updates through its Service Worker), the settings file (the page
 keeps `localStorage`), and recording shortcuts.

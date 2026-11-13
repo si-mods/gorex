@@ -173,6 +173,8 @@ export async function checkForUpdate(): Promise<"unsupported" | "current" | "rea
         });
       });
     }
+    // A found worker that failed to install, or still installs after 10 s: the check did not finish.
+    if (w && (w.state === "redundant" || w.state === "installing")) return "failed";
     if (!reg.waiting || !reg.active) return "current";
     offerUpdate(reg);
     return "ready";
