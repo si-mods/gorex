@@ -15,14 +15,15 @@ permissions:
 jobs:
   delete:
     if: github.event.pull_request.merged
-    runs-on: [self-hosted, macmini]
+    runs-on: instabox-medium
     timeout-minutes: 10
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
           REF: heads/shots/pr-${{ github.event.pull_request.number }}
         run: |
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/$REF" --silent 2>/dev/null; then
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/$REF"
+          api() { curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $GH_TOKEN" "$@"; }
+          if [ "$(api "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/ref/$REF")" = 200 ]; then
+            [ "$(api -X DELETE "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/refs/$REF")" = 204 ]
             echo "Deleted $REF" >> "$GITHUB_STEP_SUMMARY"
           fi
