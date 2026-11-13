@@ -50,6 +50,8 @@ export interface Prefs {
   tailscalePersist: boolean;
   /** Whether built-in Tailscale was left on while staying signed in, so reloads turn it back on. */
   tailscaleOn: boolean;
+  /** Whether a persistent Tailscale node has ever completed sign-in (so a later NeedsLogin means expired/revoked). */
+  tailscaleSignedIn: boolean;
   /** The page's language, as "zh-Hans", or "" for System: the browser's languages (i18n.ts). */
   language: string;
 }
@@ -85,6 +87,7 @@ const defaults = (): Prefs => ({
   tailscaleName: "",
   tailscalePersist: true,
   tailscaleOn: false,
+  tailscaleSignedIn: false,
   language: "",
 });
 
@@ -115,6 +118,7 @@ function load(): Prefs {
       if (typeof j.tailscaleName === "string") p.tailscaleName = j.tailscaleName;
       if (typeof j.tailscalePersist === "boolean") p.tailscalePersist = j.tailscalePersist;
       p.tailscaleOn = j.tailscaleOn === true;
+      p.tailscaleSignedIn = j.tailscaleSignedIn === true;
       if (typeof j.language === "string") p.language = j.language;
     } else {
       const old = localStorage.getItem(oldThemeKey);

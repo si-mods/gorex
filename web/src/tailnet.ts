@@ -164,8 +164,6 @@ export class Tailnet {
   private tabs = new TabCoordinator();
   /** Another tab holds the persistent node lock. */
   inUseOtherTab = false;
-  /** Stored state existed when this node started: a NeedsLogin means expired/revoked. */
-  private hadStoredState = false;
   /** The node ran once since it was signed in: a later NeedsLogin is an expiry, not a first sign-in. */
   private wasRunning = false;
   private listeners = new Set<() => void>();
@@ -210,7 +208,7 @@ export class Tailnet {
       case "NeedsLogin":
         if (this.signingIn) return "signing-in";
         if (this.error) return "error";
-        return this.wasRunning || this.hadStoredState ? "expired" : "needs-login";
+        return this.wasRunning || (prefs.tailscalePersist && prefs.tailscaleSignedIn) ? "expired" : "needs-login";
       default:
         return this.error ? "error" : "starting";
     }
@@ -310,8 +308,8 @@ export class Tailnet {
         if (this.on && this.inUseOtherTab && prefs.tailscalePersist && !this.node) void this.startNode();
       },
       onSignedOut: () => {
-        this.hadStoredState = false;
         this.wasRunning = false;
+        setPrefs({ tailscaleSignedIn: false });
         this.forgetHosts();
         this.changed();
       },
@@ -335,9 +333,6 @@ export class Tailnet {
       if (!prefs.tailscaleName) setPrefs({ tailscaleName: this.name });
       state = await loadTailnetState();
       if (!this.on || this.inUseOtherTab) return;
-      this.hadStoredState = Object.keys(state).length > 0;
-    } else {
-      this.hadStoredState = false;
     }
     this.inUseOtherTab = false;
     try {
@@ -388,6 +383,7 @@ export class Tailnet {
         this.backend = data;
         if (data === "Running") {
           this.wasRunning = true;
+          if (prefs.tailscalePersist && !prefs.tailscaleSignedIn) setPrefs({ tailscaleSignedIn: true });
           this.signingIn = false;
           this.loginURL = "";
           this.error = "";
@@ -448,7 +444,7 @@ export class Tailnet {
   async signOut() {
     this.cancelLogin();
     this.wasRunning = false;
-    this.hadStoredState = false;
+    setPrefs({ tailscaleSignedIn: false });
     this.forgetHosts();
     this.changed();
     try {
@@ -478,7 +474,7 @@ export class Tailnet {
   async turnOff() {
     this.on = false;
     this.inUseOtherTab = false;
-    setPrefs({ tailscaleOn: false });
+    setPrefs({ tailscaleOn: false, tailscaleSignedIn: false });
     if (this.node && this.backend === "Running") await this.signOut();
     this.stopNodeOnly();
     this.tabs.release();
@@ -490,7 +486,7 @@ export class Tailnet {
   /** Switches between "Stay signed in" (persistent) and "This tab only" (ephemeral). */
   async setPersist(persist: boolean) {
     if (prefs.tailscalePersist === persist) return;
-    setPrefs({ tailscalePersist: persist, tailscaleOn: persist ? this.on : false });
+    setPrefs({ tailscalePersist: persist, tailscaleOn: persist ? this.on : false, tailscaleSignedIn: false });
     if (this.node && this.backend === "Running") await this.signOut();
     else if (!persist) await clearTailnetState();
     this.stopNodeOnly();
