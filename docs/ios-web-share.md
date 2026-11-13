@@ -31,10 +31,6 @@ to on the laptop, and no Cloudflare.
   and forwards.
 - **Changes to the gateway.** The gateway sees the phone as it sees it
   today. The web client changes only where it must (The web client).
-- **Several hosts at once in the page.** The page connects one host at
-  a time and switches between them (web-client.md, Hosts). Showing
-  several at once is the web client's own later work; this design
-  neither needs nor blocks it.
 - **Sharing on Wi-Fi or other networks.** Only Personal Hotspot
   clients, USB or Bluetooth tethering included, are served.
 - **A long-lived server in the background as a supported feature.** iOS
@@ -57,7 +53,7 @@ It listens on one port, 7300, of the hotspot's address, and serves:
 
 | Path | Serves |
 | --- | --- |
-| `/` and the page's files | the web client (`web/dist`, in the app bundle) |
+| `/` and the page's files | the web client (`WebClient/` cached on the phone) |
 | `/share/hosts` | the phone's hosts, as JSON: id, name, icon |
 | `/share/state` | the admission page's poll (Admission) |
 | `/h/<id>/…` | forwarded to host `<id>`'s gateway, without the prefix |
@@ -87,21 +83,26 @@ exactly what the phone can, no more.
 
 ### The web client
 
-The page needs two changes, both small:
+The page already connects several hosts at once (`docs/web-multihost.md`),
+so every host the phone shares can connect together and sit in the
+sidebar side by side. It needs two small changes:
 
 - **A host's address may carry a path.** A phone's host is
-  `http://172.20.10.1:7300/h/<id>`. `directTransport`, `apiURL` and
-  `diagnose` join the API's path to the host's address
-  (`base + "/api/control"`) where they now resolve it
-  (`new URL("/api/control", base)`), which drops the path. Everything
-  else, downloads by frame included, stays the direct transport's. A
-  typed address still may not have a path (`hostURL`).
-- **An iPhone group in the host list.** When `/share/hosts` on the
-  page's own origin answers, the list shows a group named after the
-  phone, beside the Tailscale group and like it: the hosts are not
-  saved, choosing one connects it, and the first one is chosen when no
-  other host is. A page not served by a phone gets 404 there and shows
-  no group.
+  `http://172.20.10.1:7300/h/<id>`. `directTransport` (`socket`, `fetch`,
+  and `url` in `web/src/rex.ts`) and `diagnose` (`web/src/hosts.ts`) join
+  the API's path to the host's address (`base + "/api/control"`) where
+  they now resolve it (`new URL("/api/control", base)`), which drops the
+  path. Downloads by hidden frame (`transport.url` in `web/src/files.ts`)
+  and every other call then work as-is. A typed address still may not
+  have a path (`hostURL`).
+- **An iPhone group in the host list and sidebar.** When `/share/hosts`
+  on the page's own origin answers, the page adds those hosts (not saved
+  to `localStorage`, and not editable in the sidebar or host list),
+  connects them alongside any saved hosts (`HostConn`, staggered four at
+  a time), and groups them under the phone's name in the host list. If
+  no window is saved in `gorex.place`, the first host's first window is
+  shown. A page not served by a phone gets 404 from `/share/hosts` and
+  shows no group.
 
 ### Admission
 
@@ -151,12 +152,18 @@ a LAN dev server:
   pastes;
 - built-in Tailscale in the page is not used.
 
-### The app bundle
+### The web client files
 
-`ios/scripts` builds `web/dist` (`npm run build` in `web/`) and copies
-it into the bundle as a folder reference, `WebClient`. The page then
-matches the app's version. Its size is measured in phase 1 (most of it
-is the libghostty-vt wasm and the fonts).
+The web client (`web/dist`) is **not** embedded in the iOS app bundle.
+Instead, `web/build.mjs` writes a `files.json` index alongside
+`web/dist` (listing each static file's path, size, and SHA-256; excluding
+the built-in Tailscale engine, which the phone does not use). When the
+user turns on **Share on Hotspot** (or taps **Update Web Client**), Rex
+Go fetches `files.json` from `https://web.gorex.dev`, downloads any
+missing or changed files into `Application Support/WebClient/`, verifies
+their SHA-256, and swaps them in atomically. Once cached, sharing works
+offline too. This keeps the iOS `.ipa` small and avoids building
+`web/dist` inside Xcode.
 
 ### Foreground (phase 1)
 
@@ -247,9 +254,10 @@ progress, and reports say it fails after minutes locked. It is not used.
 
 ## Phases
 
-1. **Foreground**: `ios/share`, the page's two changes, the page in the
-   bundle, the share screen, admission, dimming, listening again after a suspension. Measures the
-   bundle size and the local network permission.
+1. **Foreground**: `ios/share`, the page's two changes, `files.json` in
+   `web/build.mjs` and on-demand download/cache of `WebClient/` in the
+   app, the share screen, admission, dimming, listening again after a
+   suspension. Checks the local network permission.
 2. **Background**: the experimental setting, audio session handling with
    dictation and interruptions.
 3. **Live Activity**: the widget extension, status and Stop.
