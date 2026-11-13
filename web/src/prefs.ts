@@ -54,6 +54,8 @@ export interface Prefs {
   tailscaleSignedIn: boolean;
   /** The page's language, as "zh-Hans", or "" for System: the browser's languages (i18n.ts). */
   language: string;
+  /** User-edited keyboard shortcut overrides by command id (keys.ts). */
+  shortcuts?: Record<string, string>;
 }
 
 /**
@@ -120,6 +122,13 @@ function load(): Prefs {
       p.tailscaleOn = j.tailscaleOn === true;
       p.tailscaleSignedIn = j.tailscaleSignedIn === true;
       if (typeof j.language === "string") p.language = j.language;
+      if (j.shortcuts && typeof j.shortcuts === "object" && !Array.isArray(j.shortcuts)) {
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(j.shortcuts)) {
+          if (typeof v === "string" && v) out[k] = v;
+        }
+        if (Object.keys(out).length > 0) p.shortcuts = out;
+      }
     } else {
       const old = localStorage.getItem(oldThemeKey);
       if (old !== null) {

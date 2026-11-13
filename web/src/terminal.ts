@@ -126,6 +126,8 @@ export interface Frame {
   selectionText?: RGB;
   /** The link the modifier is held over (pointer.ts), underlined. */
   link?: { row: number; x0: number; x1: number };
+  /** Search matches visible in the viewport (find.ts). */
+  highlights?: { row: number; col: number; len: number; current: boolean }[];
 }
 
 /** A pointer over the grid: the viewport cell under it, clamped to the grid, and where it is on the canvas, in device pixels. */
@@ -618,18 +620,44 @@ export class Terminal {
 
   /** The selected text as Ghostty copies it (Screen.selectionString): plain, wrapped lines joined, trailing spaces trimmed. */
   selectionText(): string | undefined {
+    if (!this.current(this.sel2)) return undefined;
+    return this.formatPlain(true, true);
+  }
+
+  /** Every physical row of scrollback + active screen as plain text lines for search. */
+  screenLines(): string[] {
+    const raw = this.formatPlain(false, false);
+    return raw ? raw.split("\n") : [];
+  }
+
+  /** The screen row (scrollback and all) currently at viewport row 0. */
+  viewportTop(): number {
+    return (this.refAt(0, 0) && this.screenPoint(this.ref)?.y) || 0;
+  }
+
+  /** Scrolls the viewport so screenRow is visible (preferring the upper third). */
+  scrollToRow(screenRow: number) {
+    const top = this.viewportTop();
+    const { rows } = this.size();
+    if (screenRow >= top && screenRow < top + rows) return;
+    const target = Math.max(0, screenRow - Math.floor(rows / 3));
+    this.scrollBy(target - top);
+  }
+
+  private formatPlain(selectionOnly: boolean, unwrap: boolean): string | undefined {
     const { g } = this;
     const x = g.x;
-    if (!this.current(this.sel2)) return undefined;
     const f = g.make("formatter", (s) => x.ghostty_formatter_terminal_new(0, s, this.t));
     const out = this.sx + sx.out;
     try {
-      // The terminal's selection, as plain text with wrapped lines joined and trailing spaces trimmed.
       const set = (opt: string, p: number) => x.ghostty_formatter_set(f, g.e("GhosttyFormatterOption", opt), p) === 0;
       g.view.setInt32(out, g.e("GhosttyFormatterFormat", "PLAIN"), true);
       if (!set("EMIT", out)) return undefined;
+      g.bytes[out] = unwrap ? 1 : 0;
+      if (!set("UNWRAP", out)) return undefined;
       g.bytes[out] = 1;
-      if (!set("UNWRAP", out) || !set("TRIM", out) || !set("SELECTION", this.sel2)) return undefined;
+      if (!set("TRIM", out)) return undefined;
+      if (selectionOnly && !set("SELECTION", this.sel2)) return undefined;
       g.view.setUint32(out, 0, true);
       const r = x.ghostty_formatter_format_buf(f, 0, 0, out);
       if (r === 0) return "";
@@ -952,6 +980,13 @@ export class Terminal {
       for (const b of bgs) {
         ctx.fillStyle = css(b.c);
         ctx.fillRect(ox + b.x0 * w, ry, (b.x1 - b.x0) * w, h);
+      }
+      if (f.highlights) {
+        for (const m of f.highlights) {
+          if (m.row !== y) continue;
+          ctx.fillStyle = m.current ? "rgba(255, 145, 0, 0.55)" : "rgba(255, 210, 60, 0.28)";
+          ctx.fillRect(ox + m.col * w, ry, m.len * w, h);
+        }
       }
       // The cursor's cell: twice as wide on a wide character.
       const under = y === cy ? row.find((c) => c.col === cx) : undefined;
