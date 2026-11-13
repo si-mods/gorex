@@ -36,6 +36,10 @@ export interface PointerHost {
   files(): boolean;
   /** Opens a file of the host, a link's path. */
   openFile(path: string): void;
+  /** Whether the host accepts uploaded files (gorex.upload). */
+  canUpload?(): boolean;
+  /** Opens a file picker to upload files to this pane. */
+  pickUpload?(): void;
 }
 
 /** A long press is a finger held this long without moving more than slop, as UIKit's. */
@@ -135,6 +139,7 @@ export class PointerInput {
   private readonly menu = el("div", "select-menu");
   private readonly copyButton = el("button", "select-menu-item");
   private readonly pasteButton = el("button", "select-menu-item");
+  private readonly uploadButton = el("button", "select-menu-item");
   private readonly handles = { start: el("div", "select-handle start"), end: el("div", "select-handle end") };
   /**
    * The mouse button down, and what it does: selects, or goes to the
@@ -181,10 +186,19 @@ export class PointerInput {
       );
     });
     pb.hidden = !navigator.clipboard?.readText;
+    const ub = this.uploadButton;
+    ub.type = "button";
+    ub.append(icon("file-code"), localize(el("span", ""), (e) => (e.textContent = t("uploadFile"))));
+    ub.addEventListener("pointerdown", (e) => e.preventDefault());
+    ub.addEventListener("click", () => {
+      this.hideMenu();
+      this.host.pickUpload?.();
+    });
     this.menu.setAttribute("role", "menu");
     b.setAttribute("role", "menuitem");
     pb.setAttribute("role", "menuitem");
-    this.menu.append(b, pb);
+    ub.setAttribute("role", "menuitem");
+    this.menu.append(b, pb, ub);
     this.menu.hidden = true;
     for (const [first, h] of [[true, this.handles.start], [false, this.handles.end]] as const) {
       h.hidden = true;
@@ -643,6 +657,7 @@ export class PointerInput {
   private showMenu(x: number, y: number, above: boolean, below = y) {
     const t = this.host.term();
     this.copyButton.disabled = !t?.hasSelection();
+    this.uploadButton.hidden = !this.host.canUpload?.();
     const m = this.menu;
     m.hidden = false;
     const lw = this.layer.clientWidth, lh = this.layer.clientHeight;

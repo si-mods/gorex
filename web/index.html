@@ -321,6 +321,22 @@
   .pane-drop[data-zone="right"] { left: 50%; }
   .pane-drop[data-zone="top"] { bottom: 50%; }
   .pane-drop[data-zone="bottom"] { top: 50%; }
+  .pane-upload {
+    position: absolute; right: 12px; bottom: 12px; z-index: 6; min-width: 220px; max-width: min(320px, calc(100% - 24px));
+    padding: 8px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--panel-edge);
+    color: var(--text); font-size: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  }
+  .pane-upload-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .pane-upload-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+  .pane-upload-count { color: var(--muted); white-space: nowrap; }
+  .pane-upload-cancel {
+    border: 0; border-radius: 6px; padding: 2px 7px; background: var(--hover); color: var(--text);
+    font: inherit; cursor: pointer;
+  }
+  .pane-upload-cancel:hover { filter: brightness(1.1); }
+  .pane-upload-bar { height: 4px; border-radius: 99px; background: var(--panel-edge); overflow: hidden; }
+  .pane-upload-fill { height: 100%; width: 0; background: var(--busy); transition: width 0.1s linear; }
   /* A right click's menu (manage.ts), as the corner's: a small glass panel, its rows concentric. */
   .context-menu {
     position: fixed; z-index: 30; display: flex; flex-direction: column; min-width: 180px; max-width: 320px; padding: 4px;

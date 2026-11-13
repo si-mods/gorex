@@ -9,6 +9,7 @@ import { Program, smallTile } from "./programs";
 import { localize, Msg, PlainKey, t } from "./i18n";
 import { Control, DataStream, describe, RexError, TerminalStream } from "./rex";
 import { desktopTheme, Font, Terminal, Theme, themeOf } from "./terminal";
+import { extractPastedImages, uploadFiles as sendUploads } from "./upload";
 
 /** What a pane needs of the page: the connection, the module, the chosen theme and the status line. */
 export interface PaneHost {
@@ -181,6 +182,8 @@ export class TerminalView {
       paste: (text) => this.paste(text),
       status: (s) => this.app.status(s),
       files: () => !!this.app.control()?.features.has("gorex.download"),
+      canUpload: () => !!(this.app.live() ?? this.app.control())?.features.has("gorex.upload"),
+      pickUpload: () => this.pickUpload(),
       // Opening files (files.ts) is a chunk of its own, loaded with the first link opened.
       openFile: (path) =>
         void loader.module("js/files", () => import("./files")).then(
@@ -630,8 +633,52 @@ export class TerminalView {
     const ctrl = this.ctrlV !== undefined && performance.now() - this.ctrlV < 1000;
     this.ctrlV = undefined;
     const text = e.clipboardData?.getData("text/plain") ?? "";
-    if (text) this.paste(text);
-    else if (ctrl) this.submit(new Uint8Array([0x16]));
+    if (text) {
+      this.paste(text);
+      return;
+    }
+    const images = extractPastedImages(e.clipboardData);
+    if (images.length > 0) {
+      this.uploadFiles(images);
+      return;
+    }
+    if (ctrl) this.submit(new Uint8Array([0x16]));
+  }
+
+  /** Uploads dropped, picked, or pasted files to this pane's captured host and block. */
+  uploadFiles(files: File[]) {
+    if (!files.length) return;
+    const control = this.app.live() ?? this.app.control();
+    if (!control) {
+      this.app.status(() => t("errorOffline"));
+      return;
+    }
+    void sendUploads(
+      {
+        control,
+        blockID: this.block,
+        container: this.body,
+        paste: (text) => this.paste(text),
+        isAlive: () => !this.closed,
+        status: (s) => this.app.status(s),
+      },
+      files,
+    );
+  }
+
+  warnFolder() {
+    this.app.status(() => t("uploadFolderSkipped"));
+  }
+
+  pickUpload() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.onchange = () => {
+      const files = [...(input.files ?? [])];
+      if (files.length) this.uploadFiles(files);
+    };
+    input.click();
   }
 
   /**

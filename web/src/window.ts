@@ -7,6 +7,7 @@ import { localize, t } from "./i18n";
 import { draggable, DropZone, onMenu, ownDrag, paneDropZone } from "./manage";
 import { PaneHost, TerminalView } from "./pane";
 import { motionMs, prefs } from "./prefs";
+import { extractDroppedFiles } from "./upload";
 
 /** A node of a layer's layout, as session.view gives it. */
 export interface LayoutNode {
@@ -312,6 +313,12 @@ export class WindowView {
       return paneDropZone(p.el.getBoundingClientRect(), e.clientX, e.clientY, d.window === this.window, this.app.edgeDrops());
     };
     p.el.addEventListener("dragover", (e) => {
+      if (!ownDrag(e) && e.dataTransfer?.types.includes("Files")) {
+        this.showDrop({ block, zone: "center" });
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        return;
+      }
       const z = zone(e);
       this.showDrop(z && { block, zone: z });
       if (!z) return;
@@ -323,6 +330,14 @@ export class WindowView {
     });
     p.el.addEventListener("drop", (e) => {
       const d = ownDrag(e);
+      if (!d && e.dataTransfer?.types.includes("Files")) {
+        this.showDrop(undefined);
+        e.preventDefault();
+        const { files, skippedDir } = extractDroppedFiles(e.dataTransfer);
+        if (files.length) p.uploadFiles(files);
+        else if (skippedDir) p.warnFolder();
+        return;
+      }
       // The zone shown last, where the user let go.
       const z = this.drop?.block === block ? this.drop.zone : zone(e);
       this.showDrop(undefined);
