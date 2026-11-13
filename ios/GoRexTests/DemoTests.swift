@@ -102,7 +102,7 @@ nonisolated final class DemoTests: XCTestCase {
         XCTAssertTrue(sink.text.contains("Apply the patch?"))
         s.type(Data("y\r".utf8))
         XCTAssertNil(h.status([Demo.claude]))
-        XCTAssertTrue(sink.text.contains("Applied the patch"))
+        XCTAssertTrue(sink.text.contains("Applied: TabsTests.swift"))
         s.close()
     }
 
