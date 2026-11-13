@@ -86,46 +86,22 @@ export interface Transport {
   kind: "direct" | "tailnet";
   socket(path: string, protocol: string): SocketLike;
   fetch(path: string, init?: RequestInit): Promise<Response>;
+  /** The URL of path the browser can open; only a direct host has one. */
+  url?(path: string): string;
 }
 
-/**
- * The transport new connections take. The page is hosted on its own, so
- * no URL is the page's: every one is the chosen host's.
- */
-let transport: Transport | undefined;
-/** A direct host's address, as http(s)://host[:port]. */
-let base = "";
-
 /** The browser's own connections to a gateway at url: today's, unchanged. */
-export function directTransport(url: string): Transport & { base: string } {
+export function directTransport(url: string): Transport {
   return {
     kind: "direct",
-    base: url,
     socket(path, protocol) {
       const u = new URL(path, url);
       u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
       return new WebSocket(u.href, protocol) as SocketLike;
     },
     fetch: (path, init) => fetch(new URL(path, url).href, init),
+    url: (path) => new URL(path, url).href,
   };
-}
-
-/** Points every new connection at a host's gateway, through t. */
-export function setHost(t: Transport | undefined) {
-  transport = t;
-  base = t && "base" in t ? String(t.base) : "";
-}
-
-/** The chosen host's transport. */
-export function hostTransport(): Transport {
-  if (!transport) throw new RexError("offline", () => t("errorNoHost"));
-  return transport;
-}
-
-/** The URL of path on a direct host's gateway; a tailnet host has none the browser can open. */
-export function apiURL(path: string): string {
-  if (!base) throw new RexError("offline", () => t("errorNoHost"));
-  return new URL(path, base).href;
 }
 
 /** The control connection: one WebSocket at /api/control. */
@@ -141,14 +117,18 @@ export class Control {
   private pending = new Map<string, { resolve: (v: { seq: number; payload: any }) => void; reject: (e: Error) => void }>();
   private closed = false;
 
-  private constructor(private ws: SocketLike) {}
+  private constructor(
+    /** The transport this connection was opened on: its tickets work only there. */
+    readonly transport: Transport,
+    private ws: SocketLike,
+  ) {}
 
-  /** Opens the connection and says hello. */
-  static open(token?: string): Promise<Control> {
+  /** Opens the connection on transport and says hello. */
+  static open(transport: Transport, token?: string): Promise<Control> {
     return new Promise((resolve, reject) => {
       // The constructor throws for a URL the page may not open (mixed content).
-      const ws = hostTransport().socket("/api/control", "rex.control.v1");
-      const c = new Control(ws);
+      const ws = transport.socket("/api/control", "rex.control.v1");
+      const c = new Control(transport, ws);
       let welcomed = false;
       ws.onopen = () => {
         const hello: any = {
@@ -265,11 +245,14 @@ export class DataStream {
   nonce = 0n;
   private ws?: SocketLike;
 
+  /** A stream on transport: the one of the Control that gives its ticket. */
+  constructor(private transport: Transport) {}
+
   /** Opens the stream with a ticket: HELLO, then the server's WELCOME. */
   open(ticket: string): Promise<void> {
     const hello = helloFrame(ticket);
     return new Promise((resolve, reject) => {
-      const ws = hostTransport().socket("/api/data", "rex.data.terminal.v1");
+      const ws = this.transport.socket("/api/data", "rex.data.terminal.v1");
       ws.binaryType = "arraybuffer";
       this.ws = ws;
       let welcomed = false;

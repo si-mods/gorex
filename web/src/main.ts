@@ -17,7 +17,7 @@ import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, paneHeaders, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
 import { mostUrgent, programName, programOf, rank, Status, statusOf, tiles, tilesWidth } from "./programs";
-import { Control, directTransport, setHost } from "./rex";
+import { Control, directTransport, Transport } from "./rex";
 import type { LinkState, Settings } from "./settings";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
@@ -54,6 +54,8 @@ let control: Control | undefined;
 /** Whether control's sessions were read (attached) since it opened: panes write only then. */
 let live = false;
 let token: string | undefined;
+/** How the page reaches current: made by choose(), taken by Control.open. */
+let transport: Transport | undefined;
 /** The host connected to, or connecting; one at a time. */
 let current: Host | undefined;
 /** Counts the hosts chosen, so that a connection to one chosen before ends. */
@@ -475,13 +477,13 @@ function choose(h: Host | undefined) {
   }
   if (h.kind === "tailnet") {
     // A tailnet host: no URL the browser opens, so no mixed content.
-    setHost(tailnet.transport(h as TailnetHost));
+    transport = tailnet.transport(h as TailnetHost);
     notice();
     setLink("connecting");
     connect(generation);
     return;
   }
-  setHost(directTransport(h.url));
+  transport = directTransport(h.url);
   const blocked = mixedContent(h.url);
   if (blocked) {
     status(() => t("statusBlocked", { host: h.name }));
@@ -501,7 +503,7 @@ async function connect(gen: number) {
   if (link !== "unreachable") setLink("connecting");
   let c: Control;
   try {
-    c = await Control.open(token);
+    c = await Control.open(transport!, token);
   } catch (e) {
     if (gen !== generation) return;
     const p = h.kind === "tailnet" ? await tailnet.diagnose(h as TailnetHost) : await diagnose(h.url);

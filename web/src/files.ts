@@ -12,7 +12,7 @@
 // blob that is saved and let go (docs/web-tailscale.md, Downloads).
 import { streamSave } from "./app";
 import { failure as fail, formatSize, Msg, PlainKey, t } from "./i18n";
-import { apiURL, Control, describe, hostTransport, RexError } from "./rex";
+import { Control, describe, RexError, Transport } from "./rex";
 import { Chunk } from "./chunks";
 import type { Viewer } from "./viewer";
 
@@ -125,8 +125,9 @@ function svgText(s: string): boolean {
   }
 }
 
-/** What download_begin answers. */
+/** What download_begin answers, and the transport its ticket works on. */
 interface Begun {
+  transport: Transport;
   ticket: string;
   name: string;
   size: number;
@@ -163,7 +164,7 @@ const viewerCode = new Chunk("viewer", () => t("chunkViewer"), () => import("./v
 async function begin(c: Control | undefined, session: string, block: string, path: string): Promise<Begun> {
   if (!c) throw new RexError("offline", () => t("errorOffline"));
   const r = await c.callBlock("download_begin", session, block, { path });
-  return { ticket: String(r.ticket ?? ""), name: String(r.name ?? ""), size: Number(r.size ?? 0), type: String(r.type ?? "") };
+  return { transport: c.transport, ticket: String(r.ticket ?? ""), name: String(r.name ?? ""), size: Number(r.size ?? 0), type: String(r.type ?? "") };
 }
 
 const downloadPath = (ticket: string) => `/api/download?ticket=${encodeURIComponent(ticket)}`;
@@ -175,10 +176,10 @@ const downloadPath = (ticket: string) => `/api/download?ticket=${encodeURICompon
  * A tailnet host's file goes through the worker, or a blob (saveTailnet).
  */
 async function navigate(f: Begun, host: FileHost) {
-  if (hostTransport().kind !== "direct") return saveTailnet(f, host);
+  if (!f.transport.url) return saveTailnet(f, host);
   const frame = document.createElement("iframe");
   frame.hidden = true;
-  frame.src = apiURL(downloadPath(f.ticket));
+  frame.src = f.transport.url(downloadPath(f.ticket));
   document.body.append(frame);
   // The download goes on without the frame once it has started.
   setTimeout(() => frame.remove(), 60_000);
@@ -195,7 +196,7 @@ async function saveTailnet(f: Begun, host: FileHost) {
   if (!save) return saveBlob(f, host);
   let r: Response;
   try {
-    r = await hostTransport().fetch(downloadPath(f.ticket), { cache: "no-store" });
+    r = await f.transport.fetch(downloadPath(f.ticket), { cache: "no-store" });
     if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
   } catch (e) {
     save.abort(e instanceof Error ? e.message : String(e));
@@ -222,7 +223,7 @@ async function saveBlob(f: Begun, host: FileHost) {
   const cap = () => formatSize(maxBlobBytes);
   if (f.size > maxBlobBytes) throw fail(() => t("fileTooLargeTailnet", { size: cap() }));
   const name = f.name || "download";
-  const r = await hostTransport().fetch(downloadPath(f.ticket), { cache: "no-store" });
+  const r = await f.transport.fetch(downloadPath(f.ticket), { cache: "no-store" });
   if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
   const reader = r.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -261,8 +262,8 @@ async function saveBlob(f: Begun, host: FileHost) {
  * a blob of that image's type; undefined when its first bytes are not that
  * image's, the rest then left unread.
  */
-async function fetchImage(ticket: string, kind: ImageKind): Promise<Blob | undefined> {
-  const r = await hostTransport().fetch(downloadPath(ticket), { mode: "cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
+async function fetchImage(f: Begun, kind: ImageKind): Promise<Blob | undefined> {
+  const r = await f.transport.fetch(downloadPath(f.ticket), { mode: "cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
   if (!r.ok || !r.body) throw fail(() => t("fileHostAnswered", { status: String(r.status) }));
   const reader = r.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -325,7 +326,7 @@ export async function openFile(session: string, block: string, path: string, hos
     const f = await begin(host.control(), session, block, path);
     const kind = imageKind(f.type, f.name);
     if (kind && f.size <= maxViewBytes) {
-      const blob = await fetchImage(f.ticket, kind);
+      const blob = await fetchImage(f, kind);
       if (blob) {
         viewerCode.use((m) => {
           viewer ??= new m.Viewer();
