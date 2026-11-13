@@ -83,6 +83,10 @@ struct HostListView: View {
             }
         }
         .sheet(item: $pairing) { TailcatPairSheet(code: $0) }
+        // A host gone, as Demo Mode's, closes the terminals open on it.
+        .onChange(of: store.hosts.map(\.id)) { _, ids in
+            path.removeAll { !ids.contains($0.host) }
+        }
     }
 
     /// Opens a terminal, in place of the one open; nil goes back to the list.
@@ -91,36 +95,51 @@ struct HostListView: View {
     }
 
     private var list: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 30) {
-                if store.hosts.isEmpty {
-                    Text("No hosts yet. Add one in Settings.").foregroundStyle(.secondary).padding(.top, 40)
-                }
-                if inbox {
-                    StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
-                } else if grouping == .spaces {
-                    let cross = CrossHost(store.hosts.compactMap(\.crossHost))
-                    let all = spaces(cross)
-                    let space = (all.first { key($0.place) == chosen } ?? all.first)?.place
-                    if !all.isEmpty { strip(all, space) }
-                    ForEach(sections(cross, all, space)) { host in
-                        HostSection(host: host, cross: cross, space: space, collapsed: $collapsed, filter: filter, open: { go($0) })
+        Group {
+            if store.hosts.isEmpty {
+                // As tall as the page, so that the welcome sits in its
+                // middle, above the keyboard or the bottom bar.
+                NoHostsView(tryDemo: { store.enterDemo() }, addHost: { settings = true })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background { Color.page.ignoresSafeArea() }
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 30) {
+                        if inbox {
+                            StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
+                        } else if grouping == .spaces {
+                            let cross = CrossHost(store.hosts.compactMap(\.crossHost))
+                            let all = spaces(cross)
+                            let space = (all.first { key($0.place) == chosen } ?? all.first)?.place
+                            if !all.isEmpty { strip(all, space) }
+                            ForEach(sections(cross, all, space)) { host in
+                                HostSection(host: host, cross: cross, space: space, collapsed: $collapsed, filter: filter, open: { go($0) })
+                            }
+                        } else {
+                            ForEach(store.hosts) { host in
+                                HostSection(host: host, cross: CrossHost(), space: nil, collapsed: $collapsed, filter: filter, open: { go($0) })
+                            }
+                        }
                     }
-                } else {
-                    ForEach(store.hosts) { host in
-                        HostSection(host: host, cross: CrossHost(), space: nil, collapsed: $collapsed, filter: filter, open: { go($0) })
-                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
                 }
+                // Under the keyboard too: the list keeps clear of it as it
+                // comes and goes, as a terminal's does going back, which
+                // left the window's black there.
+                .background { Color.page.ignoresSafeArea() }
+                .scrollEdgeEffectStyle(.soft, for: .all)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, 20)
         }
-        // Under the keyboard too: the list keeps clear of it as it comes
-        // and goes, as a terminal's does going back, which left the
-        // window's black there.
-        .background { Color.page.ignoresSafeArea() }
-        .scrollEdgeEffectStyle(.soft, for: .all)
+        // Demo Mode's banner stays in place as the list scrolls, so that
+        // leaving it is always a tap away.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if store.demo != nil {
+                DemoBanner { go(nil); store.exitDemo() }
+                    .background(Color.page)
+            }
+        }
         // Beside the terminal the bar stays, for the sidebar's toggle.
         .toolbar(width == .regular ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
@@ -216,6 +235,83 @@ struct HostListView: View {
     /// while searching: read, its change would redraw the host's rows.
     private func filter(_ host: Host, _ w: SessionView.Window) -> Bool {
         query.isEmpty || host.title(w).localizedCaseInsensitiveContains(query)
+    }
+}
+
+/// What the list shows before any host is added: how Rex Go reaches a
+/// computer, and Demo Mode's way in.
+private struct NoHostsView: View {
+    let tryDemo: () -> Void
+    let addHost: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "terminal")
+                .font(.system(size: 46, weight: .light))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 2)
+            Text("No Hosts Yet")
+                .font(.title2.bold())
+            Text("Rex Go connects to the computers where GoRex runs. Try the demo to explore the app before you add one.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 420)
+            VStack(spacing: 12) {
+                Button { tryDemo() } label: {
+                    Label("Try Demo Mode", systemImage: "play.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glassProminent)
+                // The prominent glass is the accent, which is white in the
+                // dark scheme: its label takes the page's color, as the
+                // app's other prominent buttons do.
+                .foregroundStyle(Color.page)
+                .controlSize(.large)
+                Button { addHost() } label: {
+                    Text("Add a Host")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .controlSize(.large)
+            }
+            .frame(maxWidth: 360)
+            .padding(.top, 6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20)
+    }
+}
+
+/// The list's notice that the windows are Demo Mode's, and its way out.
+private struct DemoBanner: View {
+    let exit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Demo Mode")
+                    .font(.subheadline.weight(.semibold))
+                Text("You're exploring a demo Mac. Nothing is connected.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("Exit Demo") { exit() }
+                .font(.subheadline.weight(.semibold))
+                .buttonStyle(.glass)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.fill.quaternary, in: .rect(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 }
 

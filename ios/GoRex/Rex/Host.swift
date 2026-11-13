@@ -22,6 +22,10 @@ struct HostConfig: Codable, Identifiable, Hashable {
     /// The GoRex machine's tailcat address, for a host paired by its Rex
     /// Go code; optional as transport is.
     var tailcat: Tailcat?
+    /// Whether the host is Demo Mode's: a Mac that answers on the phone,
+    /// which the hosts saved never hold. Optional, as a list saved before
+    /// Demo Mode must still decode.
+    var demo: Bool?
 
     enum Transport: String, Codable {
         /// The phone's own network, or the Tailscale app's VPN.
@@ -249,6 +253,20 @@ final class Host: Identifiable {
             updated = Self.time(j["updated_at"])
         }
 
+        /// A record Demo Mode shows; the server's arrive as JSON.
+        init(id: String, state: String, kind: String? = nil, progress: Int? = nil, app: String? = nil,
+             title: String? = nil, msg: String? = nil, lastMsg: String? = nil, updated: Date? = nil) {
+            self.id = id
+            self.state = state
+            self.kind = kind
+            self.progress = progress
+            self.app = app
+            self.title = title
+            self.msg = msg
+            self.lastMsg = lastMsg
+            self.updated = updated
+        }
+
         /// A time as the server writes updated_at and seen_at, in whole
         /// seconds; nil for none, and for Go's zero time.
         static func time(_ v: Any?) -> Date? {
@@ -268,6 +286,8 @@ final class Host: Identifiable {
 
     var config: HostConfig
     var id: UUID { config.id }
+    /// Whether the host is Demo Mode's, which runs on the phone.
+    var isDemo: Bool { config.demo == true }
     private(set) var status = Status.connecting
     private(set) var sessions: [Session] = []
     /// What each block shows, by block. The dictionary changes only as
@@ -370,6 +390,15 @@ final class Host: Identifiable {
     /// failure, the host stays offline until it is online.
     func connect(again: Bool = false) {
         guard control == nil, !stopped else { return }
+        if isDemo {
+            // Nothing to reach: the demo host's windows and statuses live
+            // on the phone. Connecting again, as the app comes back to the
+            // foreground, keeps what the user has done since.
+            retry?.cancel()
+            if sessions.isEmpty { becomeDemo() }
+            status = .online
+            return
+        }
         retry?.cancel()
         if !again {
             attempts = 0
@@ -479,6 +508,9 @@ final class Host: Identifiable {
     /// that its blocks can be opened. It waits while the host connects or
     /// is offline, and fails when the host is removed or refused.
     func online() async throws -> ControlConnection {
+        // Demo Mode has no server: a caller that wants one fails rather
+        // than waiting here for an answer that never comes.
+        if isDemo { throw RexError(code: "offline", message: String(localized: "Demo Mode has no server.")) }
         if status == .online, let control { return control }
         if stopped { throw CancellationError() }
         return try await withCheckedThrowingContinuation { waiters.append($0) }
@@ -762,8 +794,85 @@ final class Host: Identifiable {
         return control
     }
 
+    // MARK: Demo Mode
+
+    /// Fills the host as Demo Mode's: the session it shows, its windows
+    /// and what runs in them, all on the phone.
+    private func becomeDemo() {
+        sessions = Demo.sessions()
+        blocks = Demo.blocks()
+        machine = nil
+        remote = [:]
+    }
+
+    /// A command typed in a demo terminal changes what the list shows, as
+    /// the server's events would: the program's tile, and whether it works
+    /// or waits for the user.
+    func demoCommand(_ text: String, block: String) {
+        guard isDemo else { return }
+        let b = self.block(block)
+        let first = text.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+            .first.map { $0.lowercased() } ?? ""
+        switch first {
+        case "claude":
+            b.title = "Claude Code"
+            b.program = "claude"
+            b.statuses = [.init(id: "claude", state: "working", app: "claude", title: "Claude Code",
+                                msg: "Reading Tabs.swift", updated: .now)]
+        case "swift":
+            b.title = "Tests"
+            b.program = "swift"
+            b.statuses = [.init(id: "swift-test", state: "done", app: "swift", title: "Tests",
+                                msg: "312 tests passed in 4.2s", updated: .now)]
+        case "npm":
+            b.title = "Dashboard"
+            b.program = "node"
+            b.statuses = [.init(id: "vite", state: "working", progress: 10, app: "node", title: "Dashboard",
+                                msg: "Starting Vite", updated: .now)]
+        case "y", "yes":
+            // The demo's question answered: nothing waits for the user now.
+            let rest = (b.statuses ?? []).filter { $0.state != "blocked" }
+            b.statuses = rest.isEmpty ? nil : rest
+        default:
+            break
+        }
+    }
+
+    private static func demoID(_ prefix: String) -> String {
+        prefix + "-" + UUID().uuidString.prefix(8).lowercased()
+    }
+
+    /// The blocks a session's windows hold.
+    private static func demoBlocks(_ s: Session) -> [String] {
+        (s.view?.windows ?? []).flatMap { w in
+            [w.focused_block_id].compactMap { $0 } + (w.layers ?? []).flatMap { ($0.blocks ?? []).map(\.block_id) }
+        }
+    }
+
+    /// Adds a window to a demo session, as the server would.
+    @discardableResult
+    private func demoAddWindow(_ id: String, block: String, to i: Int) -> String {
+        var view = sessions[i].view ?? SessionView(revision: 0, session_id: sessions[i].id)
+        view.windows = (view.windows ?? []) + [
+            SessionView.Window(window_id: id, focused_block_id: block,
+                               layers: [.init(blocks: [.init(block_id: block)])]),
+        ]
+        view.revision += 1
+        sessions[i].view = view
+        let b = Block()
+        b.title = "Shell"
+        b.program = "zsh"
+        blocks[block] = b
+        return block
+    }
+
     /// Opens a new window running the shell, and returns its block.
     func newWindow(in session: String) async throws -> String? {
+        if isDemo {
+            guard let i = sessions.firstIndex(where: { $0.id == session }) else { return nil }
+            let window = Self.demoID("w"), block = Self.demoID("b")
+            return demoAddWindow(window, block: block, to: i)
+        }
         let r = try await live().call("session.new_window", [
             "session_id": session, "focus": false, "layout": ["block": shell],
         ]).payload
@@ -773,6 +882,19 @@ final class Host: Identifiable {
     /// Makes a session, named by the server, with a window running the
     /// shell, and returns the session and the window's block.
     func newSession() async throws -> (String, String)? {
+        if isDemo {
+            let id = Self.demoID("s"), window = Self.demoID("w"), block = Self.demoID("b")
+            let label = String(localized: "New Session")
+            let view = SessionView(revision: 1, session_id: id, label: label, windows: [
+                .init(window_id: window, focused_block_id: block, layers: [.init(blocks: [.init(block_id: block)])]),
+            ])
+            sessions.append(Session(id: id, label: label, view: view))
+            let b = Block()
+            b.title = "Shell"
+            b.program = "zsh"
+            blocks[block] = b
+            return (id, block)
+        }
         let r = try await live().call("session.create", ["initial_windows": [["layout": ["block": shell]]]]).payload
         guard let s = r["session_id"] as? String,
               let w = (r["initial_windows"] as? [[String: Any]])?.first,
@@ -790,11 +912,36 @@ final class Host: Identifiable {
 
     /// Names a window; an empty name gives back its default.
     func renameWindow(_ window: String, in session: String, to label: String) async throws {
+        if isDemo {
+            guard let i = sessions.firstIndex(where: { $0.id == session }), var view = sessions[i].view,
+                  var windows = view.windows, let j = windows.firstIndex(where: { $0.window_id == window })
+            else { return }
+            windows[j].label = label.isEmpty ? nil : label
+            view.windows = windows
+            view.revision += 1
+            sessions[i].view = view
+            return
+        }
         try await live().call("session.set_window_label", ["session_id": session, "window_id": window, "label": label])
     }
 
     /// Moves a window before another, or to the end when before is nil.
     func moveWindow(_ window: String, in session: String, before: String?) async throws {
+        if isDemo {
+            guard let i = sessions.firstIndex(where: { $0.id == session }), var view = sessions[i].view,
+                  var windows = view.windows, let from = windows.firstIndex(where: { $0.window_id == window })
+            else { return }
+            let moved = windows.remove(at: from)
+            if let before, let to = windows.firstIndex(where: { $0.window_id == before }) {
+                windows.insert(moved, at: to)
+            } else {
+                windows.append(moved)
+            }
+            view.windows = windows
+            view.revision += 1
+            sessions[i].view = view
+            return
+        }
         var p: [String: Any] = ["session_id": session, "window_id": window]
         if let before { p["before_window_id"] = before }
         try await live().call("session.move_window", p)
@@ -812,16 +959,46 @@ final class Host: Identifiable {
 
     /// Names a session; an empty name gives back its default.
     func renameSession(_ session: String, to label: String) async throws {
+        if isDemo {
+            guard let i = sessions.firstIndex(where: { $0.id == session }) else { return }
+            sessions[i].label = label
+            if var view = sessions[i].view {
+                view.label = label.isEmpty ? nil : label
+                view.revision += 1
+                sessions[i].view = view
+            }
+            return
+        }
         try await live().call("session.set_label", ["session_id": session, "label": label])
     }
 
     /// Closes a session, its windows and their panes.
     func closeSession(_ session: String) async throws {
+        if isDemo {
+            guard let i = sessions.firstIndex(where: { $0.id == session }) else { return }
+            let held = Self.demoBlocks(sessions[i])
+            sessions.remove(at: i)
+            for b in held { blocks[b] = nil }
+            return
+        }
         try await live().call("session.destroy", ["session_id": session])
     }
 
     /// Closes a window and its panes.
     func closeWindow(_ window: String, in session: String) async throws {
+        if isDemo {
+            guard let i = sessions.firstIndex(where: { $0.id == session }), var view = sessions[i].view,
+                  var windows = view.windows, let j = windows.firstIndex(where: { $0.window_id == window })
+            else { return }
+            let closed = windows.remove(at: j)
+            view.windows = windows
+            view.revision += 1
+            sessions[i].view = view
+            for b in [closed.focused_block_id].compactMap({ $0 }) + (closed.layers ?? []).flatMap({ ($0.blocks ?? []).map(\.block_id) }) {
+                blocks[b] = nil
+            }
+            return
+        }
         try await live().call("session.close_window", ["session_id": session, "window_id": window])
     }
 }
@@ -832,11 +1009,32 @@ final class HostStore {
     private(set) var hosts: [Host]
 
     init() {
-        let saved = UserDefaults.standard.data(forKey: "hosts")
-            .flatMap { try? JSONDecoder().decode([HostConfig].self, from: $0) } ?? []
+        // A saved list never holds the demo host; one from an older build
+        // that did is dropped, as it answers nothing.
+        let saved = (UserDefaults.standard.data(forKey: "hosts")
+            .flatMap { try? JSONDecoder().decode([HostConfig].self, from: $0) } ?? []).filter { $0.demo != true }
         hosts = saved.map(Host.init)
         Host.tailcatHosts(saved)
         hosts.forEach { $0.connect() }
+    }
+
+    /// The Demo Mode host, while the user explores one.
+    var demo: Host? { hosts.first(where: \.isDemo) }
+
+    /// Adds the demo host, once: the list shows its windows as a real
+    /// host's, and nothing is saved.
+    func enterDemo() {
+        guard demo == nil else { return }
+        let h = Host(Demo.config())
+        hosts.append(h)
+        h.connect()
+    }
+
+    /// Leaves Demo Mode, closing its windows and their terminals.
+    func exitDemo() {
+        guard let h = demo else { return }
+        h.stop()
+        hosts.removeAll { $0 === h }
     }
 
     /// Adds a host; the engine hears of it before it connects.
@@ -887,8 +1085,13 @@ final class HostStore {
         away.map { now.timeIntervalSince($0) > 5 } ?? false
     }
 
+    /// Reorders the real hosts, as Settings shows them: the demo host, not
+    /// listed there, keeps its place.
     func move(from source: IndexSet, to destination: Int) {
-        hosts.move(fromOffsets: source, toOffset: destination)
+        var real = hosts.filter { !$0.isDemo }
+        real.move(fromOffsets: source, toOffset: destination)
+        var next = real.makeIterator()
+        hosts = hosts.map { $0.isDemo ? $0 : (next.next() ?? $0) }
         save()
     }
 
@@ -900,8 +1103,9 @@ final class HostStore {
     func host(tailcat address: String) -> Host? { hosts.first { $0.config.tailcat?.address == address } }
 
     private func save() {
-        Host.tailcatHosts(hosts.map(\.config))
-        UserDefaults.standard.set(try? JSONEncoder().encode(hosts.map(\.config)), forKey: "hosts")
+        let saved = hosts.filter { !$0.isDemo }.map(\.config)
+        Host.tailcatHosts(saved)
+        UserDefaults.standard.set(try? JSONEncoder().encode(saved), forKey: "hosts")
     }
 }
 

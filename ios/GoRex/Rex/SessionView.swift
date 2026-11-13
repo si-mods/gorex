@@ -4,25 +4,49 @@ import Foundation
 /// of its layers. Only what the app shows is read.
 struct SessionView: Decodable {
     struct Window: Decodable {
-        let window_id: String
-        let label: String?
-        let focused_block_id: String?
-        let layers: [Layer]?
+        var window_id: String
+        var label: String?
+        var focused_block_id: String?
+        var layers: [Layer]?
+
+        init(window_id: String, label: String? = nil, focused_block_id: String? = nil, layers: [Layer]? = nil) {
+            self.window_id = window_id
+            self.label = label
+            self.focused_block_id = focused_block_id
+            self.layers = layers
+        }
     }
 
     struct Layer: Decodable {
-        let blocks: [Block]?
+        var blocks: [Block]?
+
+        init(blocks: [Block]? = nil) {
+            self.blocks = blocks
+        }
     }
 
     struct Block: Decodable {
-        let block_id: String
-        let label: String?
+        var block_id: String
+        var label: String?
+
+        init(block_id: String, label: String? = nil) {
+            self.block_id = block_id
+            self.label = label
+        }
     }
 
-    let revision: Int
-    let session_id: String
-    let label: String?
-    let windows: [Window]?
+    var revision: Int
+    var session_id: String
+    var label: String?
+    var windows: [Window]?
+
+    /// A view to show, as Demo Mode makes one; the server's arrive as JSON.
+    init(revision: Int, session_id: String, label: String? = nil, windows: [Window]? = nil) {
+        self.revision = revision
+        self.session_id = session_id
+        self.label = label
+        self.windows = windows
+    }
 
     private struct Payload<T: Decodable>: Decodable { let payload: T }
 
