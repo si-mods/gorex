@@ -66,7 +66,7 @@ struct TerminalScreen: View {
             // background, for the clock over it.
             .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: statusBar + 10) }
             // Above the key bar, which is not the keyboard's.
-            .overlay(alignment: .bottom) { if let said { Heard(said: said).padding(.bottom, hasBar ? KeyBar.height : 0) } }
+            .overlay(alignment: .bottom) { if let said { Heard(said: said) { terminal?.stopDictating() }.padding(.bottom, hasBar ? KeyBar.height : 0) } }
             .overlay { status }
             .navigationTitle(title.asText)
             .navigationBarTitleDisplayMode(.inline)
@@ -320,6 +320,7 @@ private struct Mic: View {
 /// sparkle.
 private struct Heard: View {
     let said: Dictation.Said
+    let cancel: () -> Void
 
     var body: some View {
         let settled = said.polishing ? "" : said.settled
@@ -337,6 +338,15 @@ private struct Heard: View {
                 ScrollView { text }.defaultScrollAnchor(.bottom).scrollIndicators(.hidden)
             }
             .frame(maxWidth: .infinity, maxHeight: 64, alignment: .leading)
+            Button(action: cancel) {
+                Image(systemName: "xmark")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cancel")
         }
         .padding(12)
         .glassEffect(.regular, in: .rect(cornerRadius: 14))
