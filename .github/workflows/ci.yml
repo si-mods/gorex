@@ -52,8 +52,8 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
-      # Each system's files and tests: build skips the tests, and they run
-      # on macOS only.
+      # Each system's files and tests: build skips the tests, and a pull
+      # request runs them on macOS only.
       - name: vet
         env:
           CGO_ENABLED: "0"
