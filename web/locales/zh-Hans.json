@@ -462,5 +462,10 @@
   "placeTailnetGoneTitle": "在 tailnet 中找不到该主机",
   "placeTailnetGoneText": "上次显示的窗口所在的主机目前不在你的 tailnet 中。它可能已关闭，或不再信任此页面。请选择其他窗口，或检查 Tailscale 设置。",
   "placeTailnetTitle": "正在等待 Tailscale",
-  "placeTailnetText": "上次显示的窗口位于你的 tailnet 中的主机上。请打开 Tailscale 并登录以连接它，或选择其他窗口。"
+  "placeTailnetText": "上次显示的窗口位于你的 tailnet 中的主机上。请打开 Tailscale 并登录以连接它，或选择其他窗口。",
+  "uploadFile": "上传文件…",
+  "uploadUnsupported": "此主机不支持上传文件。",
+  "uploadCancelled": "已取消上传",
+  "uploadFailed": "上传失败：{error}",
+  "uploadFolderSkipped": "浏览器无法上传文件夹。"
 }

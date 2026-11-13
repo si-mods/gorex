@@ -2563,5 +2563,31 @@
   "placeTailnetText": "The window shown last is on a host of your tailnet. Turn on Tailscale and sign in to reach it, or choose another window.",
   "@placeTailnetText": {
     "description": "Under placeTailnetTitle; a Tailscale Settings button follows."
+  },
+  "uploadFile": "Upload File…",
+  "@uploadFile": {
+    "description": "Pane context menu item to pick and upload files to the remote host."
+  },
+  "uploadUnsupported": "This host does not accept uploaded files.",
+  "@uploadUnsupported": {
+    "description": "Status message when the gateway does not advertise gorex.upload."
+  },
+  "uploadCancelled": "Upload cancelled",
+  "@uploadCancelled": {
+    "description": "Status message when the user cancels a file upload."
+  },
+  "uploadFailed": "Upload failed: {error}",
+  "@uploadFailed": {
+    "description": "Status message when a file upload fails.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "file too large"
+      }
+    }
+  },
+  "uploadFolderSkipped": "Folders cannot be uploaded from the browser.",
+  "@uploadFolderSkipped": {
+    "description": "Status message when the user drops only a folder onto a pane."
   }
 }
