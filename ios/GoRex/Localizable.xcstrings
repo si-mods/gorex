@@ -3318,6 +3318,76 @@
         }
       }
     },
+    "Pair with GoRex": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与 GoRex 配对"
+          }
+        }
+      }
+    },
+    "For a GoRex machine with Reachable at on: first choose Pair New Device… in its Settings › Server › Devices.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "适用于开启了“可达地址”的 GoRex 电脑：请先在它的 设置 › 服务器 › 设备 中选择“配对新设备…”。"
+          }
+        }
+      }
+    },
+    "Compare this code with the one %@ shows. Both must be the same.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请将此代码与 %@ 上显示的代码对比，两者必须一致。"
+          }
+        }
+      }
+    },
+    "On %@, open Settings › Server › Devices and approve the request showing this code.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在 %@ 上打开 设置 › 服务器 › 设备，批准显示此代码的请求。"
+          }
+        }
+      }
+    },
+    "The codes match": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代码一致"
+          }
+        }
+      }
+    },
+    "They differ": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代码不同"
+          }
+        }
+      }
+    },
+    "The pairing didn't match. The machine may have let in an unknown device: remove its newest device in its Settings › Server › Devices.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对不一致。那台电脑可能放进了一台未知设备：请在它的 设置 › 服务器 › 设备 中移除最新的设备。"
+          }
+        }
+      }
+    },
     "Diagnostics": {
       "localizations": {
         "zh-Hans": {

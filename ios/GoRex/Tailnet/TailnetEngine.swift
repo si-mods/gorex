@@ -170,6 +170,50 @@ final class TailnetEngine {
         }.value
     }
 
+    /// Asks the GoRex machine at an IP address, IP or IP:PORT, to pair with
+    /// this phone through its own relay (docs/host-links.md, Pairing by
+    /// address), making the phone's key first if it has none, and returns
+    /// the code to compare with the one the machine shows.
+    func pairByAddress(_ address: String) async throws -> String {
+        TailnetSettings.makeName()
+        let name = TailnetSettings.name
+        _ = try useTailcatKey(create: true)
+        return try await Task.detached {
+            var error: NSError?
+            let code = TailnetPairByAddress(address, name, &error)
+            if let error { throw error }
+            return code
+        }.value
+    }
+
+    /// The user's word that the codes match, for the pairing of code:
+    /// waits for the machine's approval and returns the tailcat address to
+    /// keep.
+    func confirmAddressPairing(code: String) async throws -> String {
+        try await Task.detached {
+            var error: NSError?
+            let address = TailnetConfirmAddressPairing(code, &error)
+            if let error { throw error }
+            return address
+        }.value
+    }
+
+    /// The user's word that the codes differ: ends the pairing of code.
+    func mismatchAddressPairing(code: String) {
+        Task.detached { _ = TailnetMismatchAddressPairing(code) }
+    }
+
+    /// Gives the pairing by address of code up; another one stays.
+    func cancelAddressPairing(code: String) {
+        Task.detached { TailnetCancelAddressPairing(code) }
+    }
+
+    /// Whether a pairing by address failed as not matching: the machine
+    /// may have let in another device.
+    func isAddressPairingWarning(_ error: Error) -> Bool {
+        error.localizedDescription == TailnetAddressPairingWarning()
+    }
+
     /// The proxy for the tailcat hosts; nil while the phone has no key,
     /// as before it paired, or its Keychain is locked.
     private func tailcatProxyNow() -> LoopbackProxy? {

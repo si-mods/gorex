@@ -3,15 +3,12 @@
 package rex
 
 import (
-	"bufio"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,93 +20,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tailscale/tailcat"
+	"gorex/internal/pairaddr"
+
 	"tailscale.com/types/key"
 )
 
-// Pairing by address (docs/host-links.md, "1. Identity"): on the relay of
-// Reachable at, while the pairing window is open, a client that has no
-// address yet asks to pair over TLS, and both sides show a code of the
-// TLS connection and both keys. One exchange per connection, after an
-// HTTP/1.1 upgrade to pairUpgrade:
-//
-//	client -> server  commit                      32 bytes, pairCommit
-//	server -> client  K_S, N_S                    64 bytes
-//	client -> server  K_C, N_C, u16be len, name   66 bytes and the name
-//	server -> client  u16be len, JSON pairAnswer  once approved, or refused
-//
-// The server closes the connection on a rejection, a timeout, the end of
-// the window, or an opening that does not match its commitment. An
-// exchange that got the server's nonce and ends without the approval
-// closes the pairing window: one code per window.
-
-// The domain separation strings of pairing by address, never to change:
-// a new protocol takes new ones.
+// Pairing by address (docs/host-links.md, "1. Identity"): its wire and
+// client half are internal/pairaddr's, which Rex Go's engine shares; the
+// server half is here.
 const (
-	pairPath          = "/gorex/pair"
-	pairUpgrade       = "gorex-pair-v1"
-	pairCommitLabel   = "gorex-pair-v1/commit\x00"
-	pairCodeLabel     = "gorex-pair-v1/code\x00"
-	pairExporterLabel = "EXPORTER-gorex-pair-v1"
+	pairPath    = pairaddr.Path
+	pairUpgrade = pairaddr.Upgrade
 )
 
-const (
-	pairMsgWait  = 10 * time.Second // for each message before approval
-	pairAddrWait = 2 * time.Minute  // for the user's approval
-	pairNameMax  = 256              // bytes of a name on the wire
+var (
+	pairCommit = pairaddr.Commit
+	pairCode   = pairaddr.Code
 )
-
-// pairCommit is the client's commitment to its key, its nonce and its name.
-func pairCommit(kc, nc [32]byte, name []byte) [32]byte {
-	h := sha256.New()
-	h.Write([]byte(pairCommitLabel))
-	h.Write(kc[:])
-	h.Write(nc[:])
-	h.Write(binary.BigEndian.AppendUint16(nil, uint16(len(name))))
-	h.Write(name)
-	return [32]byte(h.Sum(nil))
-}
-
-// pairCode is the six digits both sides show: of the TLS exporter x, the
-// certificate the connection showed, both keys and both nonces.
-func pairCode(x, leaf []byte, kc, ks, nc, ns [32]byte) string {
-	cert := sha256.Sum256(leaf)
-	h := sha256.New()
-	h.Write([]byte(pairCodeLabel))
-	h.Write(x)
-	h.Write(cert[:])
-	h.Write(kc[:])
-	h.Write(ks[:])
-	h.Write(nc[:])
-	h.Write(ns[:])
-	return fmt.Sprintf("%06d", binary.BigEndian.Uint64(h.Sum(nil)[:8])%1_000_000)
-}
-
-// pairAnswer is the server's last message: its addresses, the one of
-// Reachable at first, or why it refused.
-type pairAnswer struct {
-	Addresses []string `json:"addresses,omitempty"`
-	Error     string   `json:"error,omitempty"`
-}
-
-func writePairAnswer(w io.Writer, a pairAnswer) error {
-	b, _ := json.Marshal(a)
-	_, err := w.Write(append(binary.BigEndian.AppendUint16(nil, uint16(len(b))), b...))
-	return err
-}
-
-func readPairAnswer(r io.Reader) (pairAnswer, error) {
-	var n [2]byte
-	var a pairAnswer
-	if _, err := io.ReadFull(r, n[:]); err != nil {
-		return a, err
-	}
-	b := make([]byte, binary.BigEndian.Uint16(n[:]))
-	if _, err := io.ReadFull(r, b); err != nil {
-		return a, err
-	}
-	return a, json.Unmarshal(b, &a)
-}
 
 // addrPending is a pairing by address on its live connection: Code is ""
 // until the client opened its commitment. result takes the addresses on
@@ -207,7 +134,7 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	}
 	defer c.Close()
 	// The connection is this exchange's: the relay's idle timeouts no more.
-	c.SetDeadline(time.Now().Add(pairMsgWait))
+	c.SetDeadline(time.Now().Add(pairaddr.MsgWait))
 	if _, err := io.WriteString(c, "HTTP/1.1 101 Switching Protocols\r\nUpgrade: "+pairUpgrade+"\r\nConnection: Upgrade\r\n\r\n"); err != nil {
 		return
 	}
@@ -223,13 +150,13 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	if _, err := c.Write(append(ks[:], ns[:]...)); err != nil {
 		return
 	}
-	c.SetDeadline(time.Now().Add(pairMsgWait))
+	c.SetDeadline(time.Now().Add(pairaddr.MsgWait))
 	var head [66]byte
 	if _, err := io.ReadFull(br, head[:]); err != nil {
 		return
 	}
 	n := binary.BigEndian.Uint16(head[64:])
-	if n > pairNameMax {
+	if n > pairaddr.NameMax {
 		return
 	}
 	name := make([]byte, n)
@@ -244,7 +171,7 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	if err != nil {
 		return
 	}
-	x, err := req.TLS.ExportKeyingMaterial(pairExporterLabel, nil, 32)
+	x, err := req.TLS.ExportKeyingMaterial(pairaddr.ExporterLabel, nil, 32)
 	if err != nil {
 		return
 	}
@@ -266,12 +193,12 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	}
 	r.mu.Unlock()
 	if refused != "" {
-		writePairAnswer(c, pairAnswer{Error: refused})
+		pairaddr.WriteAnswer(c, pairaddr.Answer{Error: refused})
 		return
 	}
 	log.Print("rex: a pairing request by address")
 	c.SetDeadline(time.Time{})
-	c.SetReadDeadline(time.Now().Add(pairAddrWait))
+	c.SetReadDeadline(time.Now().Add(pairaddr.AddrWait))
 	gone := make(chan struct{})
 	go func() {
 		br.ReadByte() // the client sends nothing more: this ends with the connection, or the deadline
@@ -280,8 +207,8 @@ func (s *Server) pairByAddress(w http.ResponseWriter, req *http.Request, leaf []
 	select {
 	case addrs := <-p.result:
 		if granted = addrs != nil; granted {
-			c.SetWriteDeadline(time.Now().Add(pairMsgWait))
-			delivered = writePairAnswer(c, pairAnswer{Addresses: addrs}) == nil
+			c.SetWriteDeadline(time.Now().Add(pairaddr.MsgWait))
+			delivered = pairaddr.WriteAnswer(c, pairaddr.Answer{Addresses: addrs}) == nil
 		}
 	case <-gone:
 	}
@@ -323,20 +250,10 @@ func (s *Server) addrDecideLocked(approve bool, code string) error {
 	return nil
 }
 
-// errUnknownDevice is what a client says when the codes or the answer do
-// not match: somebody in the middle may be on the allowlist now.
-var errUnknownDevice = errors.New("rex: the pairing did not match: the machine may have let in an unknown device; remove its newest device there")
-
 // AddressPairing is a pairing by address that waits for this machine's
 // user: Code is to compare with the one the machine shows. Nothing is
 // kept before Confirm.
-type AddressPairing struct {
-	Code string
-	conn *tls.Conn
-	br   *bufio.Reader
-	ks   key.NodePublic
-	pin  string // "sha256-raw:" and the hex SHA-256 of the certificate seen
-}
+type AddressPairing = pairaddr.Pairing
 
 // PairByAddress asks the machine at addr, an IP address with the port
 // RemotePort or IP:PORT, to allow this machine as name, through its relay
@@ -352,131 +269,5 @@ func PairByAddress(ctx context.Context, addr, name string) (*AddressPairing, err
 
 // pairByAddressAs is PairByAddress for the key kc, dialing with d.
 func pairByAddressAs(ctx context.Context, d *net.Dialer, addr, name string, kc key.NodePublic) (*AddressPairing, error) {
-	ap, err := netip.ParseAddrPort(addr)
-	if ip, ierr := netip.ParseAddr(addr); ierr == nil {
-		ap, err = netip.AddrPortFrom(ip, RemotePort), nil
-	}
-	if err != nil {
-		return nil, errors.New("rex: pair by an IP address, as 192.0.2.10")
-	}
-	if name = pairName(name); name == "" || len(name) > pairNameMax {
-		return nil, errors.New("rex: name this machine to pair it")
-	}
-	ctx, cancel := context.WithTimeout(ctx, 3*pairMsgWait)
-	defer cancel()
-	// A plain dial, no proxy; no chain to verify on a first contact: the
-	// code is what tells it is the machine.
-	td := &tls.Dialer{NetDialer: d, Config: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS13}}
-	nc0, err := td.DialContext(ctx, "tcp", ap.String())
-	if err != nil {
-		return nil, fmt.Errorf("rex: connecting to %s: %w", ap, err)
-	}
-	c := nc0.(*tls.Conn)
-	ok := false
-	defer func() {
-		if !ok {
-			c.Close()
-		}
-	}()
-	stop := context.AfterFunc(ctx, func() { c.Close() })
-	defer stop()
-	br := bufio.NewReader(c)
-	fmt.Fprintf(c, "GET %s HTTP/1.1\r\nHost: %s\r\nConnection: Upgrade\r\nUpgrade: %s\r\n\r\n", pairPath, ap.Addr(), pairUpgrade)
-	res, err := http.ReadResponse(br, nil)
-	if err != nil {
-		return nil, fmt.Errorf("rex: asking %s to pair: %w", ap, err)
-	}
-	res.Body.Close()
-	switch res.StatusCode {
-	case http.StatusSwitchingProtocols:
-	case http.StatusNotFound:
-		return nil, errors.New("rex: the machine is not pairing now: start pairing there first, with Reachable at on")
-	default:
-		return nil, fmt.Errorf("rex: the machine refused to pair: %s", res.Status)
-	}
-	kcRaw := kc.Raw32()
-	var ncRaw [32]byte
-	rand.Read(ncRaw[:])
-	commit := pairCommit(kcRaw, ncRaw, []byte(name))
-	if _, err := c.Write(commit[:]); err != nil {
-		return nil, err
-	}
-	var kn [64]byte
-	if _, err := io.ReadFull(br, kn[:]); err != nil {
-		return nil, fmt.Errorf("rex: the machine closed the pairing: %w", err)
-	}
-	ksRaw, ns := [32]byte(kn[:32]), [32]byte(kn[32:])
-	opening := append(append(kcRaw[:], ncRaw[:]...), binary.BigEndian.AppendUint16(nil, uint16(len(name)))...)
-	if _, err := c.Write(append(opening, name...)); err != nil {
-		return nil, err
-	}
-	st := c.ConnectionState()
-	x, err := st.ExportKeyingMaterial(pairExporterLabel, nil, 32)
-	if err != nil || len(st.PeerCertificates) == 0 {
-		return nil, errors.New("rex: the pairing's TLS connection has no exporter or certificate")
-	}
-	ks, err := parsePublicKey("nodekey:" + hex.EncodeToString(ksRaw[:]))
-	if err != nil {
-		return nil, errors.New("rex: the machine sent no key")
-	}
-	leaf := st.PeerCertificates[0].Raw
-	sum := sha256.Sum256(leaf)
-	ok = true
-	return &AddressPairing{
-		Code: pairCode(x, leaf, kcRaw, ksRaw, ncRaw, ns),
-		conn: c, br: br, ks: ks,
-		pin: "sha256-raw:" + hex.EncodeToString(sum[:]),
-	}, nil
-}
-
-// Confirm is the user's word that the codes match: it waits for the
-// machine's approval and returns its addresses, Reachable at's first,
-// once each is the machine's key with the certificate this connection
-// showed. Before or after the approval arrives, as the user answers.
-func (p *AddressPairing) Confirm(ctx context.Context) ([]string, error) {
-	defer p.conn.Close()
-	stop := context.AfterFunc(ctx, func() { p.conn.Close() })
-	defer stop()
-	p.conn.SetReadDeadline(time.Now().Add(pairAddrWait + pairMsgWait))
-	a, err := readPairAnswer(p.br)
-	switch {
-	case ctx.Err() != nil:
-		return nil, ctx.Err()
-	case err != nil:
-		return nil, errors.New("rex: the machine rejected the request, or nobody approved it in time")
-	case a.Error != "":
-		return nil, errors.New(a.Error)
-	}
-	if err := checkPairAddrs(a.Addresses, p.ks, p.pin); err != nil {
-		return nil, err
-	}
-	return a.Addresses, nil
-}
-
-// Mismatch is the user's word that the codes differ: it ends the request
-// and returns the warning to show.
-func (p *AddressPairing) Mismatch() error {
-	p.conn.Close()
-	return errUnknownDevice
-}
-
-// Close gives the request up.
-func (p *AddressPairing) Close() error { return p.conn.Close() }
-
-// checkPairAddrs tells whether addrs are the machine's: each a tailcat
-// address of the key ks, the first through the relay of the pin seen.
-func checkPairAddrs(addrs []string, ks key.NodePublic, pin string) error {
-	if len(addrs) == 0 {
-		return errUnknownDevice
-	}
-	for i, a := range addrs {
-		ci, err := tailcat.ParseAddr(tailcat.Addr(a))
-		if err != nil || ci.ServerPublic.NodePublic != ks {
-			return errUnknownDevice
-		}
-		if i == 0 && (len(ci.Region) != 1 || len(ci.Region[0].Nodes) != 1 || ci.Region[0].Nodes[0].CertName != pin) {
-			return errUnknownDevice
-		}
-	}
-	return nil
+	return pairaddr.Ask(ctx, d, addr, RemotePort, name, kc)
 }
