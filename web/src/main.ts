@@ -16,7 +16,7 @@ import { describe } from "./pane";
 import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
-import { mostUrgent, programName, programOf, rank, seenKey, Status, statusOf, tiles, tilesWidth } from "./programs";
+import { mostUrgent, programName, programOf, rank, Status, statusOf, tiles, tilesWidth } from "./programs";
 import { Control, directTransport, setHost } from "./rex";
 import type { LinkState, Settings } from "./settings";
 import { Tailnet, TailnetHost } from "./tailnet";
@@ -94,8 +94,14 @@ const titles = new Map<string, string>();
 const programs = new Map<string, string | undefined>();
 /** What the programs in each block reported (OSC 7501), by block. */
 const statuses = new Map<string, Status[]>();
-/** The done and error records the user saw, by block, as their keys. */
-const seen = new Map<string, Set<string>>();
+/**
+ * When the latest done or error record the user saw was updated, by block:
+ * those till then were seen. The server keeps it for every client
+ * (seen_at, gorex.see_block).
+ */
+const seen = new Map<string, number>();
+/** The blocks whose gorex.see_block call is in flight. */
+const seeing = new Set<string>();
 /** The blocks whose program and records were read; read again after a reconnect. */
 const described = new Set<string>();
 /** The window this page shows. */
@@ -438,7 +444,7 @@ function choose(h: Host | undefined) {
   closeMenu();
   renaming = undefined;
   rowDragging = false;
-  for (const m of [sessions, titles, programs, statuses, seen]) m.clear();
+  for (const m of [sessions, titles, programs, statuses, seen, seeing]) m.clear();
   described.clear();
   current = h;
   onboarding();
@@ -575,6 +581,7 @@ function event(type: string, sid: string | undefined, p: any) {
         shown?.retitle();
       } else if (p.name === "program_status_changed" && p.block_id) {
         statuses.set(p.block_id, recordsOf(p.payload?.records));
+        raiseSeen(p.block_id, Date.parse(p.payload?.seen_at));
         see(p.block_id);
         sidebarBlock(p.block_id);
       } else if (p.name === "program_status_removed" && p.block_id) {
@@ -694,13 +701,35 @@ function recordsOf(j: any): Status[] {
   return (Array.isArray(j) ? j : []).map(statusOf).filter((r): r is Status => !!r);
 }
 
-/** Marks a shown block's done and error records seen, as the desktop's pane does when it shows. */
+/** Takes a block's seen time, which only moves forward; NaN, no seen_at, leaves it. */
+function raiseSeen(block: string, at: number) {
+  if (at > (seen.get(block) ?? -1)) seen.set(block, at);
+}
+
+/**
+ * Marks a shown block's done and error records seen, as the desktop's pane
+ * does when it shows, and tells the server, which tells every client. A
+ * server that keeps it is told first, and its answer marks them, so that a
+ * call that failed is made again as the block is seen next; against one
+ * that doesn't, this page marks them itself.
+ */
 function see(block: string) {
-  if (!shown?.panes.has(block) || document.visibilityState !== "visible") return;
-  const keys = (statuses.get(block) ?? []).filter((r) => r.state === "done" || r.state === "error").map(seenKey);
-  if (!keys.length) return;
-  const had = seen.get(block) ?? new Set<string>();
-  seen.set(block, new Set([...had, ...keys]));
+  const w = shown, c = control;
+  if (!w?.panes.has(block) || document.visibilityState !== "visible") return;
+  const finished = (statuses.get(block) ?? []).filter((r) => r.state === "done" || r.state === "error");
+  if (!finished.length) return;
+  // A record without a time is seen as any time is.
+  const latest = Math.max(0, ...finished.map((r) => r.updated ?? 0));
+  if (latest <= (seen.get(block) ?? -1)) return;
+  if (!latest || !c?.features.has("gorex.see_block")) return raiseSeen(block, latest);
+  if (seeing.has(block)) return;
+  seeing.add(block);
+  c.call("gorex.see_block", { session_id: w.session, block_id: block, seen_at: new Date(latest).toISOString() })
+    .then(() => {
+      raiseSeen(block, latest);
+      sidebarBlock(block);
+    }, () => {})
+    .finally(() => seeing.delete(block));
 }
 
 /**
@@ -724,6 +753,7 @@ function readProgram(session: string, block: string) {
   );
   c.callBlock("program_status", session, block).then(
     (r) => {
+      raiseSeen(block, Date.parse(r.seen_at));
       if (!statuses.has(block) || statuses.get(block) === hadRecords) {
         statuses.set(block, recordsOf(r.records));
         see(block);
@@ -763,7 +793,7 @@ function fillWindow(b: HTMLElement, w: any, room: number) {
   const blocks = leavesOf(layoutOf(w));
   const front = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
   const urgent = blocks
-    .map((x) => mostUrgent(statuses.get(x) ?? [], seen.get(x) ?? new Set()))
+    .map((x) => mostUrgent(statuses.get(x) ?? [], seen.get(x)))
     .reduce<Status | undefined>((a, r) => (r && (!a || rank(r) > rank(a)) ? r : a), undefined);
   b.replaceChildren(
     tiles(front ? programs.get(front) : undefined, blocks.filter((x) => x !== front).map((x) => programs.get(x)), urgent?.state === "done", room),
