@@ -199,14 +199,15 @@ function tile(glyph: string, colour: string): HTMLElement {
 
 /** Tailscale's state, as a chip's words and dot. */
 const tsLabels: Record<Status, PlainKey> = {
-  off: "tsStateOff", loading: "tsStateLoading", "load-failed": "tsStateLoadFailed", starting: "tsStateStarting",
-  "needs-login": "tsStateNeedsLogin", "signing-in": "tsStateSigningIn", "needs-approval": "tsStateApproval",
-  running: "linkConnected", expired: "tsStateExpired", locked: "tsStateLocked", error: "tsStateError",
+  off: "tsStateOff", loading: "tsStateLoading", "load-failed": "tsStateLoadFailed", "in-use-other-tab": "tsStateOtherTab",
+  starting: "tsStateStarting", "needs-login": "tsStateNeedsLogin", "signing-in": "tsStateSigningIn",
+  "needs-approval": "tsStateApproval", running: "linkConnected", expired: "tsStateExpired", locked: "tsStateLocked",
+  error: "tsStateError",
 };
 const chipState: Record<Status, LinkState> = {
-  off: "none", loading: "connecting", "load-failed": "unreachable", starting: "connecting", "needs-login": "none",
-  "signing-in": "connecting", "needs-approval": "connecting", running: "connected", expired: "unreachable",
-  locked: "unreachable", error: "unreachable",
+  off: "none", loading: "connecting", "load-failed": "unreachable", "in-use-other-tab": "none",
+  starting: "connecting", "needs-login": "none", "signing-in": "connecting", "needs-approval": "connecting",
+  running: "connected", expired: "unreachable", locked: "unreachable", error: "unreachable",
 };
 
 /** The words under Tailscale's status. */
@@ -216,6 +217,8 @@ function statusHint(ts: Tailnet): string {
       return ts.statusText();
     case "load-failed":
       return ts.load.state === "failed" ? ts.load.message : "";
+    case "in-use-other-tab":
+      return t("tsHintOtherTab");
     case "needs-approval":
       return t("tsHintApproval", { name: ts.name });
     case "expired":
@@ -824,19 +827,31 @@ export class Settings {
         out.onclick = () => ts.signOut();
         actions.append(out);
       }
-      const label = status === "running" ? t("tsShowHosts") : status === "load-failed" ? t("commonTryAgain") : t("tsSignIn");
-      const guide = button(label, status === "running" ? "host-add" : "host-add primary");
-      guide.dataset.key = "guide";
-      if (status !== "running") guide.prepend(icon(status === "load-failed" ? "rotate-ccw" : "log-in"));
-      guide.onclick = () => {
-        if (status === "load-failed") ts.turnOn();
-        this.app.guide();
-      };
-      actions.append(guide);
+      if (status === "in-use-other-tab") {
+        const take = button(t("tsTakeOver"), "host-add primary");
+        take.dataset.key = "takeover";
+        take.onclick = () => void ts.takeOver();
+        actions.append(take);
+      } else {
+        const label = status === "running" ? t("tsShowHosts") : status === "load-failed" ? t("commonTryAgain") : t("tsSignIn");
+        const guide = button(label, status === "running" ? "host-add" : "host-add primary");
+        guide.dataset.key = "guide";
+        if (status !== "running") guide.prepend(icon(status === "load-failed" ? "rotate-ccw" : "log-in"));
+        guide.onclick = () => {
+          if (status === "load-failed") ts.turnOn();
+          this.app.guide();
+        };
+        actions.append(guide);
+      }
       const r = el("div", "settings-row");
       r.append(actions);
       card.append(r);
     }
+
+    const persistCard = group(this.page);
+    const persistToggle = toggle(t("tsStaySignedIn"), ts.persist, (on) => void ts.setPersist(on));
+    persistToggle.dataset.key = "persist";
+    row(persistCard, t("tsStaySignedIn"), t("tsStaySignedInHint"), persistToggle);
 
     const dev = group(this.page, "", "", t("tsDeviceFoot"));
     const input = el("input", "theme-search settings-name");

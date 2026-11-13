@@ -46,6 +46,10 @@ export interface Prefs {
   copyOnSelect: boolean;
   /** Built-in Tailscale's device name, "" for a new gorex-web-xxxx per tab (tailnet.ts). */
   tailscaleName: string;
+  /** Whether built-in Tailscale stays signed in across reloads ("Stay signed in") or is ephemeral ("This tab only"). */
+  tailscalePersist: boolean;
+  /** Whether built-in Tailscale was left on while staying signed in, so reloads turn it back on. */
+  tailscaleOn: boolean;
   /** The page's language, as "zh-Hans", or "" for System: the browser's languages (i18n.ts). */
   language: string;
 }
@@ -79,6 +83,8 @@ const defaults = (): Prefs => ({
   theme: standardTheme,
   copyOnSelect: false,
   tailscaleName: "",
+  tailscalePersist: true,
+  tailscaleOn: false,
   language: "",
 });
 
@@ -107,6 +113,8 @@ function load(): Prefs {
       }
       p.copyOnSelect = j.copyOnSelect === true;
       if (typeof j.tailscaleName === "string") p.tailscaleName = j.tailscaleName;
+      if (typeof j.tailscalePersist === "boolean") p.tailscalePersist = j.tailscalePersist;
+      p.tailscaleOn = j.tailscaleOn === true;
       if (typeof j.language === "string") p.language = j.language;
     } else {
       const old = localStorage.getItem(oldThemeKey);
