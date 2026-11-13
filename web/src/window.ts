@@ -2,6 +2,7 @@
 // splits, each leaf a pane with its own terminal, and the dividers between
 // them. It follows the host's view: a new view keeps the panes whose
 // blocks stay, opens the new ones and closes the gone ones.
+import { FloatingLayer, floatingLayersOf, layoutOf, LayoutNode, leavesOf, Rect } from "./layerhelpers";
 import type { HostConn } from "./hostconn";
 import { localize, t } from "./i18n";
 import { draggable, DropZone, onMenu, ownDrag, paneDropZone } from "./manage";
@@ -9,37 +10,16 @@ import { PaneHost, TerminalView } from "./pane";
 import { motionMs, prefs } from "./prefs";
 import { extractDroppedFiles } from "./upload";
 
-/** A node of a layer's layout, as session.view gives it. */
-export interface LayoutNode {
-  block_id?: string;
-  split?: { split_id: string; direction: "horizontal" | "vertical"; ratio: number; before: LayoutNode; after: LayoutNode };
-}
+export type { FloatingLayer, LayoutNode };
+export { layoutOf, leavesOf };
 
 type Split = NonNullable<LayoutNode["split"]>;
-/** A place in the window, as fractions of its room: x, y, width, height. */
-type Rect = [number, number, number, number];
 
 /** The gap between the panes, in CSS pixels (view.go, gap). */
 const gap = 8;
 const eps = 1e-4;
 /** How far a divider moves: by the pointer, between these ratios, as on the desktop. */
 const minRatio = 0.08, maxRatio = 0.92;
-
-/** The tiled layout of a window from session.view: its tree, or its one block. */
-export function layoutOf(w: any): LayoutNode | undefined {
-  const layers: any[] = w?.layers ?? [];
-  const tiled = layers.find((l) => l.kind === "tiled") ?? layers[0];
-  if (tiled?.layout && (tiled.layout.block_id || tiled.layout.split)) return tiled.layout;
-  const first = tiled?.blocks?.[0]?.block_id;
-  return first ? { block_id: first } : undefined;
-}
-
-/** The blocks of a tree, in layout order. */
-export function leavesOf(n?: LayoutNode): string[] {
-  if (!n) return [];
-  if (n.block_id) return [n.block_id];
-  return n.split ? [...leavesOf(n.split.before), ...leavesOf(n.split.after)] : [];
-}
 
 /**
  * The block of a split's side that lies on its border: down the splits of
@@ -68,12 +48,17 @@ export interface WindowHost extends Omit<PaneHost, "focused" | "isFocused"> {
   dropPane(w: WindowView, dragged: string, target: string, zone: DropZone): void;
   /** Whether a pane dropped on another's edge moves beside it: the host's API must take it. */
   edgeDrops(): boolean;
+  /** Minimizes or restores a floating layer via session.set_layer_state. */
+  setLayerState?(w: WindowView, layerId: string, state: "normal" | "minimized"): void;
 }
 
 export class WindowView {
   readonly panes = new Map<string, TerminalView>();
   private dividers = new Map<string, HTMLElement>();
   private tree?: LayoutNode;
+  private floatLayers: FloatingLayer[] = [];
+  private floats = new Map<string, FloatingLayer>();
+  private floatDock?: HTMLElement;
   private zoomed?: string;
   /** The pane that has the keys here. */
   focus?: string;
@@ -119,7 +104,19 @@ export class WindowView {
   }
 
   get blocks(): string[] {
-    return leavesOf(this.tree);
+    return [...new Set([...leavesOf(this.tree), ...this.floatLayers.flatMap((l) => l.blocks)])];
+  }
+
+  floatingLayer(block: string): FloatingLayer | undefined {
+    return this.floats.get(block);
+  }
+
+  minimizedFloats(): { layer: FloatingLayer; block: string }[] {
+    const out: { layer: FloatingLayer; block: string }[] = [];
+    for (const l of this.floatLayers) {
+      if (l.minimized && l.blocks[0]) out.push({ layer: l, block: l.blocks[0] });
+    }
+    return out;
   }
 
   /** Takes the host's view of the window; its changes move the panes with the Animation style, unless not animate. */
@@ -129,7 +126,12 @@ export class WindowView {
       return;
     }
     this.tree = layoutOf(w);
-    const blocks = leavesOf(this.tree);
+    this.floatLayers = floatingLayersOf(w);
+    this.floats.clear();
+    for (const l of this.floatLayers) {
+      for (const b of l.blocks) this.floats.set(b, l);
+    }
+    const blocks = this.blocks;
     this.zoomed = blocks.includes(w.zoomed_block_id) ? w.zoomed_block_id : undefined;
     const host: string | undefined = w.focused_block_id;
     let focus = this.focus;
@@ -177,7 +179,13 @@ export class WindowView {
       }
     };
     walk(this.tree, [0, 0, 1, 1]);
-    const all = new Set(leaves.map(([b]) => b));
+    const floatEntries: [string, FloatingLayer][] = [];
+    for (const l of this.floatLayers) {
+      for (const b of l.blocks) {
+        if (!leaves.some(([id]) => id === b)) floatEntries.push([b, l]);
+      }
+    }
+    const all = new Set([...leaves.map(([b]) => b), ...floatEntries.map(([b]) => b)]);
     for (const [block, p] of this.panes) {
       if (!all.has(block)) {
         this.panes.delete(block);
@@ -191,7 +199,7 @@ export class WindowView {
         }
       }
     }
-    for (const [block, rect] of leaves) {
+    const ensurePane = (block: string, rect: Rect, fl?: FloatingLayer) => {
       let p = this.panes.get(block);
       if (!p) {
         p = new TerminalView(this.session, block, {
@@ -202,25 +210,30 @@ export class WindowView {
         this.panes.set(block, p);
         this.wire(p);
         this.el.append(p.el);
-        // A pane new in a kept window is kept too: it reads its stream, and gives its block back. A block
-        // that moved here from the shown window is still the page's; a disown of one the page does not own
-        // changes nothing (owners.go, giveUp).
         if (this.parked) p.park();
         if (ms) {
           p.el.classList.add("entering");
           p.el.addEventListener("animationend", () => p!.el.classList.remove("entering"), { once: true });
         }
-        place(p.el, this.zoomed ? [0, 0, 1, 1] : rect);
+        if (fl) placeFloat(p.el, this.zoomed === block ? [0, 0, 1, 1] : rect);
+        else place(p.el, this.zoomed ? [0, 0, 1, 1] : rect);
         p.setTitle(this.app.titleOf(block));
         p.setProgram(this.app.programOf(block));
         p.start();
       }
-      const shown = !this.zoomed || this.zoomed === block;
+      const shown = fl ? (!this.zoomed && !fl.minimized) || this.zoomed === block : !this.zoomed || this.zoomed === block;
       p.el.hidden = !shown;
-      // A zoomed pane's zoom button shows minimize-2, as the desktop's.
+      p.el.classList.toggle("floating", !!fl && this.zoomed !== block);
+      p.el.style.zIndex = fl ? String(this.zoomed === block ? 40 : fl.zIndex) : "";
       p.el.classList.toggle("zoomed", this.zoomed === block);
-      if (shown) place(p.el, this.zoomed ? [0, 0, 1, 1] : rect);
-    }
+      if (shown) {
+        if (fl) placeFloat(p.el, this.zoomed === block ? [0, 0, 1, 1] : rect);
+        else place(p.el, this.zoomed ? [0, 0, 1, 1] : rect);
+      }
+    };
+    for (const [block, rect] of leaves) ensurePane(block, rect);
+    for (const [block, fl] of floatEntries) ensurePane(block, fl.bounds, fl);
+    this.renderFloatDock();
     this.rendered = true;
     // The dividers, one for each split, when no pane is zoomed.
     const ids = new Set(this.zoomed ? [] : splits.map(([s]) => s.split_id));
@@ -271,7 +284,7 @@ export class WindowView {
     onMenu(p.head, (x, y) => this.app.paneMenu(this, block, x, y));
     draggable(
       p.head,
-      () => (this.zoomed ? undefined : { kind: "pane", host: this.conn.host.id, session: this.session, window: this.window, block }),
+      () => (this.zoomed || this.floats.has(block) ? undefined : { kind: "pane", host: this.conn.host.id, session: this.session, window: this.window, block }),
       () => this.showDrop(undefined),
     );
     // A press on a focusable pane focuses it, and its text field takes
@@ -308,6 +321,7 @@ export class WindowView {
       p.focusKeys();
     });
     const zone = (e: DragEvent): DropZone | undefined => {
+      if (this.floats.has(block)) return undefined;
       const d = ownDrag(e);
       if (d?.kind !== "pane" || d.block === block || d.host !== this.conn.host.id || d.session !== this.session || this.zoomed) return undefined;
       return paneDropZone(p.el.getBoundingClientRect(), e.clientX, e.clientY, d.window === this.window, this.app.edgeDrops());
@@ -600,6 +614,30 @@ export class WindowView {
     for (const p of this.panes.values()) p.held = false;
   }
 
+  private renderFloatDock() {
+    const mins = this.zoomed ? [] : this.minimizedFloats();
+    if (mins.length === 0) {
+      this.floatDock?.remove();
+      this.floatDock = undefined;
+      return;
+    }
+    if (!this.floatDock) {
+      this.floatDock = document.createElement("div");
+      this.floatDock.className = "float-dock";
+      this.el.append(this.floatDock);
+    }
+    this.floatDock.replaceChildren();
+    for (const { layer, block } of mins) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "float-dock-btn";
+      btn.textContent = this.app.titleOf(block);
+      btn.title = t("paneFloatRestore");
+      btn.onclick = () => this.app.setLayerState?.(this, layer.layerId, "normal");
+      this.floatDock.append(btn);
+    }
+  }
+
   /**
    * Ends the window and its panes; they give their blocks back unless
    * disown is false (a kept window's gave them as it was kept). Returns
@@ -608,6 +646,8 @@ export class WindowView {
   close(disown = true): number {
     this.stopMoving();
     this.showDrop(undefined);
+    this.floatDock?.remove();
+    this.floatDock = undefined;
     let unsent = 0;
     for (const p of this.panes.values()) unsent += p.close(disown);
     this.panes.clear();
@@ -616,6 +656,13 @@ export class WindowView {
     this.el.remove();
     return unsent;
   }
+}
+
+function placeFloat(e: HTMLElement, [x, y, w, h]: Rect) {
+  e.style.left = `${x * 100}%`;
+  e.style.top = `${y * 100}%`;
+  e.style.width = `${w * 100}%`;
+  e.style.height = `${h * 100}%`;
 }
 
 /** Places a pane at its share of the stage, half the gap in from each side another pane is beside. */

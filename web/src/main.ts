@@ -224,6 +224,14 @@ function windowHost(conn: HostConn): WindowHost {
     paneMenu: (w, block, x, y) => openMenu(x, y, paneMenu(w, block), () => shown?.focusKeys()),
     dropPane,
     edgeDrops: () => gateway.edgeMoves(conn),
+    setLayerState: (w, layerId, state) => {
+      const args = state === "normal"
+        ? { session_id: w.session, layer_id: layerId, state, raise: true, focus: true }
+        : { session_id: w.session, layer_id: layerId, state };
+      w.conn.control?.call("session.set_layer_state", args).catch((e) =>
+        status(() => t("statusZoomFailed", { error: describe(e) })),
+      );
+    },
   };
 }
 
@@ -989,8 +997,16 @@ function paneMenu(w: WindowView, block: string): MenuItem[] {
       submenu: others.map((o: any) => ({ label: windowTitle(w.conn, o), run: () => movePaneToWindow(w.conn, w.session, block, o.window_id) })),
     });
   }
-  if (gateway.blockToNewWindow(w.conn) && w.blocks.length > 1) {
+  if (gateway.blockToNewWindow(w.conn) && !w.floatingLayer(block) && w.blocks.length > 1) {
     items.push({ label: t("paneMoveNewWindow"), disabled: !!w.zoomedBlock, run: () => moveToNewWindow(w.conn, w.session, block) });
+  }
+  const fl = w.floatingLayer(block);
+  if (fl && !fl.minimized) {
+    items.push("separator");
+    items.push({
+      label: t("paneFloatMinimize"),
+      run: () => w.conn.control?.call("session.set_layer_state", { session_id: w.session, layer_id: fl.layerId, state: "minimized" }),
+    });
   }
   return items;
 }
@@ -1313,15 +1329,32 @@ function paletteItems(): PaletteItem[] {
     out.push({ id: `cmd:${id}`, title: commandTitle(id), keys: keysOf(id) || undefined, run: action });
   };
   if (shown) {
-    const p = shown.focus ? shown.panes.get(shown.focus) : undefined;
+    const w = shown;
+    const p = w.focus ? w.panes.get(w.focus) : undefined;
     if (p) {
       cmd("find", () => p.openFind());
       cmd("find-next", () => p.findNext());
       cmd("find-previous", () => p.findPrevious());
+      const fl = w.floatingLayer(p.block);
+      if (fl && !fl.minimized) {
+        out.push({
+          id: `float:min:${fl.layerId}`,
+          title: t("paneFloatMinimize"),
+          detail: windowHost(w.conn).titleOf(p.block),
+          run: () => windowHost(w.conn).setLayerState?.(w, fl.layerId, "minimized"),
+        });
+      }
       cmd("split-right", () => run("split-right"));
       cmd("split-down", () => run("split-down"));
       cmd("zoom", () => run("zoom"));
       cmd("close", () => run("close"));
+    }
+    for (const { layer, block } of w.minimizedFloats()) {
+      out.push({
+        id: `float:restore:${layer.layerId}`,
+        title: `${t("paneFloatRestore")}: ${windowHost(w.conn).titleOf(block)}`,
+        run: () => windowHost(w.conn).setLayerState?.(w, layer.layerId, "normal"),
+      });
     }
     cmd("new-window", () => run("new-window"));
     cmd("rename-window", () => run("rename-window"));
