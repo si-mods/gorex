@@ -79,7 +79,10 @@ dot for its state (online, offline, refuses this browser). They are not
 saved. Before Tailscale is signed in, the group has one row, **Add Hosts
 from Tailscale** (or **Sign in to Tailscale**), which opens the sign-in
 guide. When a host does not connect, the page tells why,
-and tries again every few seconds, so it connects once the cause is gone:
+and tries again, so it connects once the cause is gone. It waits 3 s
+before the first retry and twice as long before each next one, up to
+30 s: the desktop's doubling, from 3 s where the desktop starts at 1 s.
+A connection that stays up 10 s forgets the failures before it:
 
 - **The host doesn't trust this page.** The gateway refused the page's
   origin (see Trusting a page). The page shows the command to run on the
@@ -770,8 +773,18 @@ once.
   engine). `web/src/guide.ts`: the sign-in guide. `web/src/progress.ts`:
   a load's progress bar.
 - `web/tailnet`: the engine, in Go (docs/web-tailscale.md).
-- `web/src/main.ts`: the chosen host's connection, the sessions and their
-  views, the sidebar, and the window's commands.
+- `web/src/hostconn.ts`: one host's connection (`HostConn`): its
+  control connection and reconnect token, the retries and their
+  backoff, the sessions and their views, and the titles, programs and
+  records of its blocks. It tells the page what changed (`HostEvents`).
+- `web/src/sidebar.ts`: the tabs as Tab placement puts them (the bar
+  above the panes, or the sidebar by space or by host), drawn from a
+  `HostConn`. Each row's `data-host` and `data-window` name it.
+- `web/src/main.ts`: the hosts' connections (one at a time: choosing a
+  host stops the others), the shown window, the notice and the status
+  line, what the sidebar's rows and menus do, and the window's commands.
+  A window (`WindowView.conn`) and its panes use their own host's
+  connection.
 - `web/src/window.ts`: a window's layout tree, its panes and dividers,
   and the focus (see Split panes).
 - `web/src/manage.ts`: the menus of a right click or a long press, the

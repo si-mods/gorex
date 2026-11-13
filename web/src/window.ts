@@ -2,6 +2,7 @@
 // splits, each leaf a pane with its own terminal, and the dividers between
 // them. It follows the host's view: a new view keeps the panes whose
 // blocks stay, opens the new ones and closes the gone ones.
+import type { HostConn } from "./hostconn";
 import { localize, t } from "./i18n";
 import { draggable, DropZone, onMenu, ownDrag, paneDropZone } from "./manage";
 import { PaneHost, TerminalView } from "./pane";
@@ -90,7 +91,8 @@ export class WindowView {
   /** Ends the panes' move: their terminals take their new sizes then. */
   private settleTimer?: number;
 
-  constructor(readonly session: string, readonly window: string, private readonly stage: HTMLElement, private readonly app: WindowHost) {}
+  /** The host connection the window is of: its panes' control and data streams are this host's. */
+  constructor(readonly conn: HostConn, readonly session: string, readonly window: string, private readonly stage: HTMLElement, private readonly app: WindowHost) {}
 
   /** The splits of the tree, by ID. */
   split(id: string): Split | undefined {

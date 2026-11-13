@@ -7,18 +7,20 @@ import { Chunk } from "./chunks";
 import { Ghostty } from "./ghostty";
 import type { Guide } from "./guide";
 import { mountCorner } from "./corner";
-import { chosenHost, commandBox, diagnose, Host, HostList, hostURL, icon, loadHosts, mixedContent, Problem } from "./hosts";
+import { chosenHost, commandBox, Host, HostList, hostURL, icon, loadHosts, mixedContent, Problem } from "./hosts";
+import { HostConn, HostEvents } from "./hostconn";
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
 import { Asset, loader } from "./loader";
-import { closeMenu, confirmDanger, draggable, DropZone, focusRename, MenuItem, onMenu, openMenu, ownDrag, renameField, zoneSplit } from "./manage";
+import { closeMenu, confirmDanger, DropZone, focusRename, MenuItem, openMenu, renameField, zoneSplit } from "./manage";
 import { describe } from "./pane";
 import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, paneHeaders, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
-import { mostUrgent, programName, programOf, rank, Status, statusOf, tiles, tilesWidth } from "./programs";
-import { Control, directTransport, Transport } from "./rex";
+import { programOf } from "./programs";
+import { Control, directTransport } from "./rex";
 import type { LinkState, Settings } from "./settings";
+import { hold, initSidebar, paneName, sidebar as drawSidebar, sidebarBlock, spaceName, windowName, windowTitle } from "./sidebar";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
 import { isLight, startTheme, ThemeEntry, themeColours } from "./themes";
@@ -50,17 +52,12 @@ const stage = $("stage");
 const shell = { flavor: "com.superlogical.terminal.shell" };
 
 let g: Ghostty;
-let control: Control | undefined;
-/** Whether control's sessions were read (attached) since it opened: panes write only then. */
-let live = false;
-let token: string | undefined;
-/** How the page reaches current: made by choose(), taken by Control.open. */
-let transport: Transport | undefined;
+/** The hosts' connections, by host ID (hostconn.ts). One at a time for now: choose() stops the others. */
+const conns = new Map<string, HostConn>();
 /** The host connected to, or connecting; one at a time. */
 let current: Host | undefined;
-/** Counts the hosts chosen, so that a connection to one chosen before ends. */
+/** Counts the hosts chosen, so that what waits for one chosen before ends. */
 let generation = 0;
-let retry: ReturnType<typeof setTimeout> | undefined;
 let hostList: HostList;
 let settings: Settings | undefined;
 /** Built-in Tailscale, off until the user turns it on; its engine loads only then. */
@@ -76,36 +73,6 @@ let chosen: Theme | undefined;
 /** Its entry, for the Settings dialog's previews. */
 let chosenEntry: ThemeEntry | undefined;
 
-/** A session the gateway serves, and its last view. */
-interface Session {
-  id: string;
-  label: string;
-  view?: any;
-  /** The connection a read of the view is on its way over. */
-  reading?: Control;
-  /** A read asked for while one was on its way, and whether it asked to attach. */
-  again?: boolean;
-  attach?: boolean;
-}
-
-/** The sessions, in the order the host lists them. */
-const sessions = new Map<string, Session>();
-/** The terminals' titles, by block, kept up by title_changed. */
-const titles = new Map<string, string>();
-/** The foreground programs' names, by block, kept up by process_changed. */
-const programs = new Map<string, string | undefined>();
-/** What the programs in each block reported (OSC 7501), by block. */
-const statuses = new Map<string, Status[]>();
-/**
- * When the latest done or error record the user saw was updated, by block:
- * those till then were seen. The server keeps it for every client
- * (seen_at, gorex.see_block).
- */
-const seen = new Map<string, number>();
-/** The blocks whose gorex.see_block call is in flight. */
-const seeing = new Set<string>();
-/** The blocks whose program and records were read; read again after a reconnect. */
-const described = new Set<string>();
 /** The window this page shows. */
 let shown: WindowView | undefined;
 
@@ -171,38 +138,40 @@ function status(s: Msg) {
   $("status").textContent = msg(s);
 }
 
-/** What a window and its panes need of the page. */
-const host: WindowHost = {
-  control: () => control,
-  live: () => (live ? control : undefined),
-  get g() {
-    return g;
-  },
-  chosen: () => chosen,
-  status,
-  scheme,
-  titleOf: (b) => paneName(b) || titles.get(b) || t("sidebarTerminal"),
-  programOf: (b) => programOf(programs.get(b)),
-  action: (p, name) => {
-    shown?.setFocus(p.block, true);
-    run(name);
-  },
-  focusBlock: (w, block) => {
-    control?.call("session.focus_block", { session_id: w.session, block_id: block }).catch((e) => console.warn("focus", e));
-  },
-  resizeSplit: (w, s, ratio) => {
-    const before = borderLeaf(s.before, s.direction, true), after = borderLeaf(s.after, s.direction, false);
-    control
-      ?.call("session.resize_pane", { session_id: w.session, direction: s.direction, before_block_id: before, after_block_id: after, ratio })
-      .catch((e) => {
-        status(() => t("statusMoveDividerFailed", { error: describe(e) }));
-        refresh(w.session, true);
-      });
-  },
-  paneMenu: (w, block, x, y) => openMenu(x, y, paneMenu(w, block), () => shown?.focusKeys()),
-  dropPane,
-  edgeDrops: () => gateway.edgeMoves(),
-};
+/** What a window of conn's and its panes need of the page. */
+function windowHost(conn: HostConn): WindowHost {
+  return {
+    control: () => conn.control,
+    live: () => (conn.live ? conn.control : undefined),
+    get g() {
+      return g;
+    },
+    chosen: () => chosen,
+    status,
+    scheme,
+    titleOf: (b) => paneName(conn, b) || conn.titles.get(b) || t("sidebarTerminal"),
+    programOf: (b) => programOf(conn.programs.get(b)),
+    action: (p, name) => {
+      shown?.setFocus(p.block, true);
+      run(name);
+    },
+    focusBlock: (w, block) => {
+      conn.control?.call("session.focus_block", { session_id: w.session, block_id: block }).catch((e) => console.warn("focus", e));
+    },
+    resizeSplit: (w, s, ratio) => {
+      const before = borderLeaf(s.before, s.direction, true), after = borderLeaf(s.after, s.direction, false);
+      conn.control
+        ?.call("session.resize_pane", { session_id: w.session, direction: s.direction, before_block_id: before, after_block_id: after, ratio })
+        .catch((e) => {
+          status(() => t("statusMoveDividerFailed", { error: describe(e) }));
+          conn.refresh(w.session, true);
+        });
+    },
+    paneMenu: (w, block, x, y) => openMenu(x, y, paneMenu(w, block), () => shown?.focusKeys()),
+    dropPane,
+    edgeDrops: () => gateway.edgeMoves(conn),
+  };
+}
 
 /**
  * What the host's gateway takes past what every GoRex gateway did, which
@@ -215,14 +184,14 @@ const gateway = {
    * gateway took it in the same release as gorex.move_window, the feature
    * that tells it (an older one answers conflict).
    */
-  edgeMoves: (): boolean => !!control?.features.has("gorex.move_window"),
+  edgeMoves: (conn: HostConn): boolean => !!conn.control?.features.has("gorex.move_window"),
   /** The call that moves a window to another session (moveTabToSpace), undefined while the gateway has none. */
   /** gorex.merge_windows: a window's row dropped on another's middle merges the two (the desktop's mergeTab). */
-  mergeWindows: (): boolean => !!control?.features.has("gorex.merge_windows"),
+  mergeWindows: (conn: HostConn): boolean => !!conn.control?.features.has("gorex.merge_windows"),
   /** gorex.move_block_to_new_window: the pane menu's Move Pane to New Window (movePaneToNewTab). */
-  blockToNewWindow: (): boolean => !!control?.features.has("gorex.move_block_to_new_window"),
-  get moveWindowToSpace(): undefined | ((c: Control, session: string, window: string, to: string) => Promise<unknown>) {
-    if (!control?.features.has("gorex.move_window")) return undefined;
+  blockToNewWindow: (conn: HostConn): boolean => !!conn.control?.features.has("gorex.move_block_to_new_window"),
+  moveWindowToSpace(conn: HostConn): undefined | ((c: Control, session: string, window: string, to: string) => Promise<unknown>) {
+    if (!conn.control?.features.has("gorex.move_window")) return undefined;
     return (c, session, window, to) => c.call("gorex.move_window", { session_id: session, window_id: window, to_session_id: to });
   },
 };
@@ -452,20 +421,14 @@ function notice(p?: Problem, ...actions: NoticeAction[]) {
 /** Leaves the host connected to, and connects to h. Only the chosen host is connected. */
 function choose(h: Host | undefined) {
   generation++;
-  clearTimeout(retry);
-  const c = control;
-  control = undefined;
-  live = false;
-  c?.close();
+  for (const c of conns.values()) c.stop();
+  conns.clear();
   hide();
-  token = undefined;
   wantWindow = undefined;
   // What the sidebar held still for goes with the host.
   closeMenu();
-  renaming = undefined;
-  rowDragging = false;
-  for (const m of [sessions, titles, programs, statuses, seen, seeing]) m.clear();
-  described.clear();
+  hold.renaming = undefined;
+  hold.rowDragging = false;
   current = h;
   onboarding();
   sidebar();
@@ -475,16 +438,10 @@ function choose(h: Host | undefined) {
     showWelcome();
     return;
   }
-  if (h.kind === "tailnet") {
-    // A tailnet host: no URL the browser opens, so no mixed content.
-    transport = tailnet.transport(h as TailnetHost);
-    notice();
-    setLink("connecting");
-    connect(generation);
-    return;
-  }
-  transport = directTransport(h.url);
-  const blocked = mixedContent(h.url);
+  // A tailnet host: no URL the browser opens, so no mixed content.
+  const c = new HostConn(h, h.kind === "tailnet" ? tailnet.transport(h as TailnetHost) : directTransport(h.url), hostEvents, tailnet);
+  conns.set(h.id, c);
+  const blocked = h.kind !== "tailnet" && mixedContent(h.url);
   if (blocked) {
     status(() => t("statusBlocked", { host: h.name }));
     setLink("unreachable", blocked);
@@ -493,241 +450,98 @@ function choose(h: Host | undefined) {
   }
   notice();
   setLink("connecting");
-  connect(generation);
+  c.start();
 }
 
-/** Opens the control connection to the chosen host, again after it drops. */
-async function connect(gen: number) {
-  const h = current!;
-  status(() => t("statusConnecting", { host: h.name }));
-  if (link !== "unreachable") setLink("connecting");
-  let c: Control;
-  try {
-    c = await Control.open(transport!, token);
-  } catch (e) {
-    if (gen !== generation) return;
-    const p = h.kind === "tailnet" ? await tailnet.diagnose(h as TailnetHost) : await diagnose(h.url);
-    if (gen !== generation) return;
-    if (h.kind === "tailnet") notice(p, { label: "noticeTailscaleSettings", run: () => withSettings((s) => s.open("tailscale")) });
-    else notice(p, { label: "hostEdit", run: () => hostList.open(h) });
-    setLink("unreachable", p);
-    status(() => t("statusRetrying", { host: h.name, problem: p.title }));
-    retry = setTimeout(() => connect(gen), 4000);
-    return;
-  }
-  if (gen !== generation) {
-    c.close();
-    return;
-  }
-  notice();
-  setLink("connected");
-  control = c;
-  live = false;
-  described.clear();
-  token = c.reconnectToken;
-  c.onEvent = (e) => event(e.type, e.sessionID, e.payload);
-  c.onClose = (reason) => {
-    if (control !== c) return;
-    control = undefined;
-    live = false;
-    setLink("connecting");
-    status(() => t("statusDisconnected", { host: h.name, reason: msg(reason) }));
-    retry = setTimeout(() => connect(gen), 3000);
-  };
-  try {
-    await c.call("session.bootstrap", { event_scope: "all" });
-    await list();
-    // Connected is the usual state: the status line says nothing, and an earlier problem goes.
-    status("");
-    for (const p of shown?.panes.values() ?? []) p.start();
-  } catch (e) {
-    status(() => t("statusSessionsFailed", { error: describe(e) }));
-  }
-  if (control !== c) return;
-  // What was typed while offline goes now.
-  live = true;
-  for (const p of shown?.panes.values() ?? []) p.resume();
+/** The chosen host's connection. */
+function currentConn(): HostConn | undefined {
+  return current && conns.get(current.id);
 }
 
 /**
- * Follows the host: a session made or gone, a view changed (a split, a
- * closed pane, a ratio, a window), a title. Only what changed is read again.
+ * What the hosts' connections tell the page: the chosen host's shows. A
+ * stopped host's answers still on their way change nothing.
  */
-function event(type: string, sid: string | undefined, p: any) {
-  switch (type) {
-    case "session_created": {
-      const id = p.session?.session_id;
-      if (id && !sessions.has(id)) {
-        sessions.set(id, { id, label: p.session.label ?? "" });
-        refresh(id, true);
-      }
-      break;
-    }
-    case "session_destroyed": {
-      const id = p.session_id ?? sid;
-      if (!id) break;
-      sessions.delete(id);
-      if (renaming?.session === id) renaming = undefined;
-      if (shown?.session === id) {
-        // The space closed: show another, as the desktop's window does (closeWorkspace).
-        hide();
-        // Not the keyboard from a field (a rename elsewhere) or a menu: it commits on blur.
-        showAny(!busyFocus());
-      }
-      sidebar();
-      break;
-    }
-    case "session_label_changed": {
-      const s = sid && sessions.get(sid);
-      if (s) {
-        s.label = p.label ?? s.label;
-        sidebar();
-      }
-      break;
-    }
-    case "session_view_changed": {
-      const s = sid && sessions.get(sid);
-      if (s && (p.revision ?? Infinity) > (s.view?.revision ?? -1)) refresh(s.id);
-      break;
-    }
-    case "block_event":
-      if (p.name === "title_changed" && p.block_id) {
-        titles.set(p.block_id, p.payload?.title ?? "");
-        sidebarBlock(p.block_id);
-        shown?.retitle();
-      } else if (p.name === "process_changed" && p.block_id) {
-        programs.set(p.block_id, programName(p.payload?.foreground));
-        sidebarBlock(p.block_id);
-        shown?.retitle();
-      } else if (p.name === "program_status_changed" && p.block_id) {
-        statuses.set(p.block_id, recordsOf(p.payload?.records));
-        raiseSeen(p.block_id, Date.parse(p.payload?.seen_at));
-        see(p.block_id);
-        sidebarBlock(p.block_id);
-      } else if (p.name === "program_status_removed" && p.block_id) {
-        const ids: string[] = p.payload?.ids ?? [];
-        statuses.set(p.block_id, (statuses.get(p.block_id) ?? []).filter((r) => !ids.includes(r.id)));
-        sidebarBlock(p.block_id);
-      }
-      break;
-  }
-}
-
-/** Lists the sessions and reads each one's view. */
-async function list() {
-  const c = control;
-  if (!c) return;
-  const listed: any[] = (await c.call("session.list")).payload.sessions ?? [];
-  const ids = new Set(listed.map((s) => s.session_id));
-  for (const id of sessions.keys()) if (!ids.has(id)) sessions.delete(id);
-  for (const s of listed) {
-    const had = sessions.get(s.session_id);
-    if (had) had.label = s.label ?? had.label;
-    else sessions.set(s.session_id, { id: s.session_id, label: s.label ?? "" });
-  }
-  if (shown && !sessions.has(shown.session)) hide();
-  await Promise.all(listed.map((s) => refresh(s.session_id, true)));
-  sidebar();
-}
-
-/**
- * Reads a session's view: attached first, as data connections and the
- * layout methods need. One read at a time on a connection; a change
- * meanwhile reads again, attaching if any of the reads asked for it. A
- * read on a connection that was replaced stops, and the new one reads.
- */
-async function refresh(id: string, attach = false) {
-  const s = sessions.get(id);
-  const c = control;
-  if (!s || !c) return;
-  s.again = true;
-  if (attach) s.attach = true;
-  if (s.reading === c) return;
-  s.reading = c;
-  try {
-    while (s.again && s.reading === c) {
-      s.again = false;
-      const fresh = !!s.attach;
-      s.attach = false;
-      let v: any;
-      try {
-        v = fresh
-          ? (await c.call("session.attach", { session_id: id })).payload.view
-          : (await c.call("session.view", { session_id: id })).payload;
-      } catch (e) {
-        // The next read attaches in its place.
-        if (fresh && s.reading === c) s.attach = true;
-        throw e;
-      }
-      if (sessions.get(id) !== s || s.reading !== c) return;
-      if (fresh || !s.view || v.revision > s.view.revision) apply(s, v);
-    }
-  } catch (e) {
-    console.warn("session view", id, e);
-  } finally {
-    if (s.reading === c) s.reading = undefined;
-  }
-}
-
-/** Takes a session's new view: the sidebar, titles of new blocks, and the shown window. */
-function apply(s: Session, v: any) {
-  s.view = v;
-  if (v.label) s.label = v.label;
-  for (const w of v.windows ?? []) {
-    for (const b of leavesOf(layoutOf(w))) {
-      if (!described.has(b)) {
-        described.add(b);
-        readProgram(s.id, b);
-      }
-      if (titles.has(b)) continue;
-      titles.set(b, "");
-      readTitle(s.id, b, 3);
-    }
-  }
-  if (shown?.session === s.id) {
-    const w = (v.windows ?? []).find((w: any) => w.window_id === shown!.window);
-    if (w) {
-      shown.update(w);
-      // A pane's name may have changed.
-      shown.retitle();
-    } else {
-      // The window closed: show the session's active one, as the desktop does.
-      const next = v.active_window_id ?? v.windows?.[0]?.window_id;
+const hostEvents: HostEvents = {
+  state(c) {
+    if (c !== currentConn()) return;
+    const h = c.host;
+    if (c.state === "unreachable" && c.problem) {
+      if (h.kind === "tailnet") notice(c.problem, { label: "noticeTailscaleSettings", run: () => withSettings((s) => s.open("tailscale")) });
+      else notice(c.problem, { label: "hostEdit", run: () => hostList.open(h) });
+    } else if (c.state === "connected") notice();
+    setLink(c.state, c.problem);
+  },
+  status(c, s) {
+    if (c === currentConn()) status(s);
+  },
+  sessions(c, destroyed) {
+    if (c !== currentConn()) return;
+    if (hold.renaming && !c.sessions.has(hold.renaming.session)) hold.renaming = undefined;
+    if (shown?.conn === c && !c.sessions.has(shown.session)) {
       hide();
-      if (next) show(s.id, next, false);
+      // The space closed: show another, as the desktop's window does (closeWorkspace).
+      // Not the keyboard from a field (a rename elsewhere) or a menu: it commits on blur.
+      if (destroyed) showAny(c, !busyFocus());
     }
-  }
-  sidebar();
-  showWanted();
+    sidebar();
+  },
+  view(c, s) {
+    if (c !== currentConn()) return;
+    const v = s.view;
+    if (shown?.conn === c && shown.session === s.id) {
+      const w = (v.windows ?? []).find((w: any) => w.window_id === shown!.window);
+      if (w) {
+        shown.update(w);
+        // A pane's name may have changed.
+        shown.retitle();
+      } else {
+        // The window closed: show the session's active one, as the desktop does.
+        const next = v.active_window_id ?? v.windows?.[0]?.window_id;
+        hide();
+        if (next) show(c, s.id, next, false);
+      }
+    }
+    sidebar();
+    showWanted();
+  },
+  block(c, block) {
+    if (c !== currentConn()) return;
+    sidebarBlock(c, block);
+    if (shown?.conn === c) shown.retitle();
+  },
+  attached(c) {
+    if (shown?.conn === c) for (const p of shown.panes.values()) p.start();
+  },
+  live(c) {
+    if (shown?.conn === c) for (const p of shown.panes.values()) p.resume();
+  },
+};
+
+/** The sidebar, of the chosen host; force makes it while it holds still. */
+function sidebar(force = false) {
+  drawSidebar(currentConn(), force);
 }
 
-/**
- * Reads a block's title. A new block's shell may set it only after this
- * read and before the gateway first looks, which then tells no
- * title_changed: an empty title is read again a few times.
- */
-function readTitle(session: string, b: string, tries: number) {
-  control?.callBlock("title", session, b).then(
-    (r) => {
-      if (titles.get(b)) return;
-      if (r.title) {
-        titles.set(b, r.title);
-        sidebarBlock(b);
-        shown?.retitle();
-      } else if (tries > 1) setTimeout(() => readTitle(session, b, tries - 1), 1000);
-    },
-    () => {},
-  );
-}
-
-function recordsOf(j: any): Status[] {
-  return (Array.isArray(j) ? j : []).map(statusOf).filter((r): r is Status => !!r);
-}
-
-/** Takes a block's seen time, which only moves forward; NaN, no seen_at, leaves it. */
-function raiseSeen(block: string, at: number) {
-  if (at > (seen.get(block) ?? -1)) seen.set(block, at);
-}
+initSidebar({
+  shown: () => shown,
+  see,
+  show,
+  newWindow,
+  closeWindow,
+  startRename,
+  renamedSpace,
+  renamedWindow,
+  spaceMenu,
+  windowMenu,
+  movePaneToWindow,
+  moveWindowTo,
+  mergesWindows: (c) => gateway.mergeWindows(c),
+  mergeWindows,
+  spacesMenu,
+  hosts: () => [...(hostList?.hosts ?? []), ...(tailnet.status() === "running" ? tailnet.hosts : [])],
+  connect: (h) => hostList.choose(h),
+});
 
 /**
  * Marks a shown block's done and error records seen, as the desktop's pane
@@ -736,390 +550,55 @@ function raiseSeen(block: string, at: number) {
  * call that failed is made again as the block is seen next; against one
  * that doesn't, this page marks them itself.
  */
-function see(block: string) {
-  const w = shown, c = control;
-  if (!w?.panes.has(block) || document.visibilityState !== "visible") return;
-  const finished = (statuses.get(block) ?? []).filter((r) => r.state === "done" || r.state === "error");
+function see(conn: HostConn, block: string) {
+  const w = shown, c = conn.control;
+  if (w?.conn !== conn || !w.panes.has(block) || document.visibilityState !== "visible") return;
+  const finished = (conn.statuses.get(block) ?? []).filter((r) => r.state === "done" || r.state === "error");
   if (!finished.length) return;
   // A record without a time is seen as any time is.
   const latest = Math.max(0, ...finished.map((r) => r.updated ?? 0));
-  if (latest <= (seen.get(block) ?? -1)) return;
-  if (!latest || !c?.features.has("gorex.see_block")) return raiseSeen(block, latest);
-  if (seeing.has(block)) return;
-  seeing.add(block);
+  if (latest <= (conn.seen.get(block) ?? -1)) return;
+  if (!latest || !c?.features.has("gorex.see_block")) return conn.raiseSeen(block, latest);
+  if (conn.seeing.has(block)) return;
+  conn.seeing.add(block);
   c.call("gorex.see_block", { session_id: w.session, block_id: block, seen_at: new Date(latest).toISOString() })
     .then(() => {
-      raiseSeen(block, latest);
-      sidebarBlock(block);
+      conn.raiseSeen(block, latest);
+      sidebarBlock(conn, block);
     }, () => {})
-    .finally(() => seeing.delete(block));
-}
-
-/**
- * Reads a block's foreground program and records, which process_changed
- * and program_status_changed keep up to date. An answer applies when no
- * event changed what it read while it was in flight.
- */
-function readProgram(session: string, block: string) {
-  const c = control;
-  if (!c) return;
-  const hadProgram = programs.get(block), hadRecords = statuses.get(block);
-  c.callBlock("process", session, block).then(
-    (r) => {
-      if (!programs.has(block) || programs.get(block) === hadProgram) {
-        programs.set(block, programName(r.foreground));
-        sidebarBlock(block);
-        shown?.retitle();
-      }
-    },
-    () => described.delete(block),
-  );
-  c.callBlock("program_status", session, block).then(
-    (r) => {
-      raiseSeen(block, Date.parse(r.seen_at));
-      if (!statuses.has(block) || statuses.get(block) === hadRecords) {
-        statuses.set(block, recordsOf(r.records));
-        see(block);
-        sidebarBlock(block);
-      }
-    },
-    () => {},
-  );
-}
-
-/**
- * The name the user gave a window; undefined when its label is the
- * host's default, "Window " and the end of its ID, as the iOS app tells.
- */
-function windowName(w: any): string | undefined {
-  const label: string = w.label ?? "";
-  return label && label !== "Window " + String(w.window_id).slice(-8) ? label : undefined;
-}
-
-/** A window's title, as the desktop names a tab (Tab.label): its name, else its terminal's title, else its label. */
-function windowTitle(w: any): string {
-  const blocks = leavesOf(layoutOf(w));
-  const focused = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
-  return windowName(w) || (focused && (paneName(focused) || titles.get(focused))) || w.label || t("sidebarWindow");
-}
-
-/**
- * The name the user gave a pane (session.set_block_label), as the
- * desktop's Pane.Name; undefined while it has the gateway's default.
- * shortcut: a pane its user named "shell" reads as unnamed, as the view
- * gives no other sign; upgrade if the gateway tells a default label apart.
- */
-function paneName(block: string): string | undefined {
-  for (const s of sessions.values())
-    for (const w of s.view?.windows ?? [])
-      for (const l of w.layers ?? [])
-        for (const b of l.blocks ?? []) if (b.block_id === block) return b.label && b.label !== "shell" ? b.label : undefined;
-  return undefined;
-}
-
-/** The room of the tiles of a session's window with the most, so that the titles line up. */
-function tilesRoom(v: any): number {
-  return tilesWidth(Math.max(0, ...(v.windows ?? []).map((w: any) => leavesOf(layoutOf(w)).length - 1)));
-}
-
-/** A window row's button: its programs' tiles, its title, its most urgent record and its count of panes. */
-function fillWindow(b: HTMLElement, w: any, room: number) {
-  const title = document.createElement("span");
-  title.className = "title";
-  title.textContent = windowTitle(w);
-  const blocks = leavesOf(layoutOf(w));
-  const front = blocks.includes(w.focused_block_id) ? w.focused_block_id : blocks[0];
-  const urgent = blocks
-    .map((x) => mostUrgent(statuses.get(x) ?? [], seen.get(x)))
-    .reduce<Status | undefined>((a, r) => (r && (!a || rank(r) > rank(a)) ? r : a), undefined);
-  b.replaceChildren(
-    tiles(front ? programs.get(front) : undefined, blocks.filter((x) => x !== front).map((x) => programs.get(x)), urgent?.state === "done", room),
-    title,
-  );
-  if (urgent?.state === "blocked") {
-    const dot = document.createElement("i");
-    dot.className = "attention-dot";
-    dot.title = t("sidebarNeedsInput");
-    b.append(dot);
-  } else if (urgent?.progress !== undefined) {
-    const ring = document.createElement("i");
-    ring.className = "progress-ring";
-    ring.style.setProperty("--p", String(urgent.progress));
-    ring.title = t("percent", { value: urgent.progress });
-    b.append(ring);
-  }
-  const n = blocks.length;
-  if (n > 1) {
-    const count = document.createElement("span");
-    count.className = "count";
-    count.textContent = String(n);
-    b.append(count);
-  }
-}
-
-/**
- * Updates the sidebar's rows of the windows that show a block, after its
- * title, program or records changed: only their buttons' contents, so
- * that the rows keep the pointer's hover and the focus. Without a row,
- * the whole sidebar is made again.
- */
-function sidebarBlock(block: string) {
-  for (const b of shown?.panes.keys() ?? []) see(b);
-  const list = $("list");
-  for (const s of sessions.values()) {
-    const v = s.view;
-    if (!v) continue;
-    for (const w of v.windows ?? []) {
-      if (!leavesOf(layoutOf(w)).includes(block)) continue;
-      const b = list.querySelector<HTMLElement>(`.window[data-window="${CSS.escape(w.window_id)}"] > .block`);
-      if (!b) return sidebar();
-      fillWindow(b, w, tilesRoom(v));
-    }
-  }
-}
-
-/** A space or a window being renamed in the sidebar; the sidebar is not made again meanwhile. */
-let renaming: { session: string; window?: string } | undefined;
-/** Whether one of the sidebar's rows drags: the drag would end with its row. */
-let rowDragging = false;
-/** Whether the sidebar waits to be made again, once it no longer holds still. */
-let sidebarStale = false;
-/** A window's row clicked last, and when: a second click soon after renames it, as the desktop's double click. */
-let lastClick: { window: string; at: number } | undefined;
-
-/**
- * The tabs, as the Tab placement setting puts them: the bar above the
- * panes, or the sidebar of each session and a row for each of its
- * windows, under their host in the host view. It holds still while a
- * field renames or a row drags, which would go with their elements, and
- * is made once they are done; force makes it now.
- */
-function sidebar(force = false) {
-  for (const b of shown?.panes.keys() ?? []) see(b);
-  if (!force && (renaming || rowDragging)) {
-    sidebarStale = true;
-    return;
-  }
-  sidebarStale = false;
-  const nav = document.createElement("nav");
-  if (!prefs.tabPlacement) tabBar(nav);
-  else if (prefs.sidebarView === "host") hostSections(nav);
-  else for (const s of sessions.values()) spaceSection(nav, s);
-  if (!nav.children.length) nav.textContent = !current || !control ? "" : sessions.size ? "" : t("sidebarNoSessions");
-  $("list").replaceChildren(nav);
-}
-
-/** A session in the sidebar: its heading, with its menu and New Window, and a row for each of its windows. */
-function spaceSection(nav: HTMLElement, s: Session) {
-  const v = s.view;
-  if (!v) return;
-  const h = document.createElement("h2");
-  h.dataset.session = s.id;
-  const add = newWindowButton(s.id);
-  if (renaming?.session === s.id && !renaming.window) {
-    h.append(renameField(s.label, spaceName(s), t("renameSpaceLabel"), (name) => renamedSpace(s.id, name)), add);
-  } else {
-    const name = document.createElement("span");
-    name.textContent = spaceName(s);
-    h.append(name, add);
-  }
-  onMenu(h, (x, y) => openMenu(x, y, spaceMenu(s.id), () => shown?.focusKeys()));
-  nav.append(h);
-  const room = tilesRoom(v);
-  for (const w of v.windows ?? []) nav.append(windowRow(s.id, w, room));
-}
-
-function newWindowButton(session: string): HTMLButtonElement {
-  const add = document.createElement("button");
-  add.className = "icon";
-  add.type = "button";
-  add.append(icon("plus"));
-  add.title = t("cmdNewWindow");
-  add.onclick = () => newWindow(session);
-  return add;
-}
-
-/**
- * The bar above the panes, as the desktop's title bar with the tabs above
- * (workspaceChip, tabStrip): the shown space's name, which opens the
- * spaces' menu, a row for each of its windows, and New Window.
- */
-function tabBar(nav: HTMLElement) {
-  const s = (shown && sessions.get(shown.session)) || [...sessions.values()].find((o) => o.view);
-  if (!s?.view) return;
-  if (renaming?.session === s.id && !renaming.window) {
-    nav.append(renameField(s.label, spaceName(s), t("renameSpaceLabel"), (name) => renamedSpace(s.id, name)));
-  } else {
-    const chip = document.createElement("button");
-    chip.type = "button";
-    chip.className = "space-chip";
-    chip.title = t("spaceMenuLabel");
-    chip.setAttribute("aria-haspopup", "menu");
-    const name = document.createElement("span");
-    name.textContent = spaceName(s);
-    chip.append(name, icon("chevron-down"));
-    chip.onclick = () => {
-      const r = chip.getBoundingClientRect();
-      openMenu(r.left, r.bottom + 4, spacesMenu(s.id), () => shown?.focusKeys());
-    };
-    onMenu(chip, (x, y) => openMenu(x, y, spaceMenu(s.id), () => shown?.focusKeys()));
-    nav.append(chip);
-  }
-  const room = tilesRoom(s.view);
-  for (const w of s.view.windows ?? []) nav.append(windowRow(s.id, w, room));
-  nav.append(newWindowButton(s.id));
+    .finally(() => conn.seeing.delete(block));
 }
 
 /** The space chip's menu, as the desktop's workspace popover: every space to show, then New Space and the space's own items. */
-function spacesMenu(current: string): MenuItem[] {
-  const spaces: MenuItem[] = [...sessions.values()]
+function spacesMenu(conn: HostConn, current: string): MenuItem[] {
+  const spaces: MenuItem[] = [...conn.sessions.values()]
     .filter((o) => o.view)
-    .map((o) => ({ label: spaceName(o), disabled: o.id === current, run: () => showSpace(o.id) }));
-  return [...spaces, "separator", { label: t("cmdNewSpace"), run: () => newSpace() }, ...spaceMenu(current)];
+    .map((o) => ({ label: spaceName(o), disabled: o.id === current, run: () => showSpace(conn, o.id) }));
+  return [...spaces, "separator", { label: t("cmdNewSpace"), run: () => newSpace(conn) }, ...spaceMenu(conn, current)];
 }
 
 /** Shows a space's active window. */
-function showSpace(session: string) {
-  const v = sessions.get(session)?.view;
+function showSpace(conn: HostConn, session: string) {
+  const v = conn.sessions.get(session)?.view;
   const next = v?.active_window_id ?? v?.windows?.[0]?.window_id;
-  if (next) show(session, next, true);
-}
-
-/**
- * The sidebar's host view, as the desktop's hostSessions: each host the
- * page can connect to (its host list, and Tailscale's), under its name,
- * the connected one with its sessions. The page connects to one host at a
- * time: another host's heading connects to it.
- */
-function hostSections(nav: HTMLElement) {
-  const all: Host[] = [...(hostList?.hosts ?? []), ...(tailnet.status() === "running" ? tailnet.hosts : [])];
-  if (current && !all.some((h) => h.id === current!.id)) all.unshift(current);
-  for (const h of all) {
-    const on = h.id === current?.id;
-    const head = document.createElement(on ? "h3" : "button");
-    head.className = "host-head";
-    const name = document.createElement("span");
-    name.textContent = h.name;
-    head.append(icon(h.icon), name);
-    nav.append(head);
-    if (on) {
-      for (const s of sessions.values()) spaceSection(nav, s);
-      continue;
-    }
-    (head as HTMLButtonElement).type = "button";
-    head.title = t("sidebarConnectHost", { host: h.name });
-    head.onclick = () => hostList.choose(h);
-  }
-}
-
-/** A space's name: its label, else its view's, else a word. */
-function spaceName(s: Session): string {
-  return s.label || s.view?.label || t("sidebarSession");
-}
-
-/**
- * A window's row: a click shows it, a second click renames it, its menu,
- * and its drag to another row's place (tabEvents in tabs.go). A pane
- * dropped on it goes into its window (tabRest's drop, movePaneToTab).
- */
-function windowRow(session: string, w: any, room: number): HTMLElement {
-  const id: string = w.window_id;
-  const row = document.createElement("div");
-  row.className = "window";
-  row.dataset.window = id;
-  if (shown?.window === id) row.classList.add("open");
-  if (renaming?.session === session && renaming.window === id) {
-    row.classList.add("renaming");
-    row.append(renameField(windowName(w) ?? "", windowTitle(w), t("renameWindowLabel"), (name) => renamedWindow(session, id, name)));
-    return row;
-  }
-  const b = document.createElement("button");
-  b.className = "block";
-  b.type = "button";
-  fillWindow(b, w, room);
-  b.onclick = () => {
-    const now = performance.now();
-    const again = lastClick?.window === id && now - lastClick.at < 500;
-    lastClick = again ? undefined : { window: id, at: now };
-    show(session, id, !again);
-    if (again) startRename(session, id);
-  };
-  const x = document.createElement("button");
-  x.className = "icon close";
-  x.type = "button";
-  x.append(icon("x"));
-  x.title = t("cmdCloseWindow");
-  x.onclick = () => closeWindow(session, id);
-  row.append(b, x);
-  onMenu(row, (x, y) => openMenu(x, y, windowMenu(session, id), () => shown?.focusKeys()));
-  draggable(
-    row,
-    () => {
-      rowDragging = true;
-      return { kind: "window", session, window: id };
-    },
-    () => {
-      rowDragging = false;
-      markDrop(undefined);
-      if (sidebarStale) sidebar();
-    },
-  );
-  // Where a row or a pane dropped here goes: before or after the row, or into its window. A row's middle half
-  // merges its window into this one, as the desktop's tabDropZone, where the host takes it.
-  const zone = (e: DragEvent): "before" | "after" | "into" | undefined => {
-    const d = ownDrag(e);
-    if (!d || d.session !== session || d.window === id) return undefined;
-    if (d.kind === "pane") return "into";
-    const r = row.getBoundingClientRect();
-    const across = !prefs.tabPlacement;
-    const at = across ? e.clientX - r.left : e.clientY - r.top, size = across ? r.width : r.height;
-    if (gateway.mergeWindows() && at >= size / 4 && at < (size * 3) / 4) return "into";
-    return at < size / 2 ? "before" : "after";
-  };
-  row.addEventListener("dragover", (e) => {
-    const z = zone(e);
-    markDrop(z && { row, zone: z });
-    if (!z) return;
-    e.preventDefault();
-    e.dataTransfer!.dropEffect = "move";
-  });
-  row.addEventListener("dragleave", (e) => {
-    if (row.dataset.drop && !(e.relatedTarget instanceof Node && row.contains(e.relatedTarget))) markDrop(undefined);
-  });
-  row.addEventListener("drop", (e) => {
-    const d = ownDrag(e);
-    const z = zone(e);
-    markDrop(undefined);
-    if (!d || !z) return;
-    e.preventDefault();
-    if (d.kind === "pane") movePaneToWindow(session, d.block, id);
-    else if (z === "into") mergeWindows(session, d.window, id);
-    else moveWindowTo(session, d.window, id, z === "before");
-  });
-  return row;
-}
-
-/** The row a drag shows its drop on, and how: a line before or after it, or a ring for a pane going in. */
-function markDrop(at: { row: HTMLElement; zone: "before" | "after" | "into" } | undefined) {
-  for (const r of $("list").querySelectorAll<HTMLElement>(".window[data-drop]")) if (r !== at?.row) delete r.dataset.drop;
-  if (at) at.row.dataset.drop = at.zone;
+  if (next) show(conn, session, next, true);
 }
 
 /** A window of a session's view. */
-function windowOf(session: string, window: string): any {
-  return sessions.get(session)?.view?.windows?.find((w: any) => w.window_id === window);
+function windowOf(conn: HostConn, session: string, window: string): any {
+  return conn.sessions.get(session)?.view?.windows?.find((w: any) => w.window_id === window);
 }
 
 /** The windows of a session, in the host's order. */
-function windowIDs(session: string): string[] {
-  return (sessions.get(session)?.view?.windows ?? []).map((w: any) => w.window_id);
+function windowIDs(conn: HostConn, session: string): string[] {
+  return (conn.sessions.get(session)?.view?.windows ?? []).map((w: any) => w.window_id);
 }
 
 /** A space heading's menu, as the desktop's spaceMenu (workspaceview.go): rename it, or close it. */
-function spaceMenu(session: string): MenuItem[] {
+function spaceMenu(conn: HostConn, session: string): MenuItem[] {
   return [
-    { label: t("cmdRenameSpace"), run: () => startRename(session) },
-    { label: t("cmdCloseSpace"), run: () => closeSpace(session) },
+    { label: t("cmdRenameSpace"), run: () => startRename(conn, session) },
+    { label: t("cmdCloseSpace"), run: () => closeSpace(conn, session) },
   ];
 }
 
@@ -1128,36 +607,36 @@ function spaceMenu(session: string): MenuItem[] {
  * sidebar: rename it or give its name back, move it up or down or to
  * another space, open a window, close it or the others.
  */
-function windowMenu(session: string, window: string): MenuItem[] {
-  const w = windowOf(session, window);
+function windowMenu(conn: HostConn, session: string, window: string): MenuItem[] {
+  const w = windowOf(conn, session, window);
   if (!w) return [];
-  const ids = windowIDs(session);
+  const ids = windowIDs(conn, session);
   const i = ids.indexOf(window);
-  const items: MenuItem[] = [{ label: t("cmdRenameWindow"), run: () => startRename(session, window) }];
-  if (windowName(w)) items.push({ label: t("windowResetName"), run: () => renamedWindow(session, window, "") });
+  const items: MenuItem[] = [{ label: t("cmdRenameWindow"), run: () => startRename(conn, session, window) }];
+  if (windowName(w)) items.push({ label: t("windowResetName"), run: () => renamedWindow(conn, session, window, "") });
   items.push(
     "separator",
-    { label: t("windowMoveUp"), disabled: i <= 0, run: () => moveWindowTo(session, window, ids[i - 1], true) },
-    { label: t("windowMoveDown"), disabled: i >= ids.length - 1, run: () => moveWindowTo(session, window, ids[i + 1], false) },
+    { label: t("windowMoveUp"), disabled: i <= 0, run: () => moveWindowTo(conn, session, window, ids[i - 1], true) },
+    { label: t("windowMoveDown"), disabled: i >= ids.length - 1, run: () => moveWindowTo(conn, session, window, ids[i + 1], false) },
   );
-  const move = gateway.moveWindowToSpace;
-  const others = [...sessions.values()].filter((o) => o.id !== session && o.view);
+  const move = gateway.moveWindowToSpace(conn);
+  const others = [...conn.sessions.values()].filter((o) => o.id !== session && o.view);
   if (move && others.length) {
     items.push({
       label: t("windowMoveSpace"),
       submenu: others.map((o) => ({
         label: spaceName(o),
         run: () => {
-          if (control) move(control, session, window, o.id).catch((e) => status(() => t("statusMoveWindowFailed", { error: describe(e) })));
+          if (conn.control) move(conn.control, session, window, o.id).catch((e) => status(() => t("statusMoveWindowFailed", { error: describe(e) })));
         },
       })),
     });
   }
   items.push(
     "separator",
-    { label: t("cmdNewWindow"), run: () => newWindow(session) },
-    { label: t("cmdCloseWindow"), run: () => closeWindow(session, window) },
-    { label: t("cmdCloseOtherWindows"), disabled: ids.length < 2, run: () => ids.filter((o) => o !== window).forEach((o) => closeWindow(session, o)) },
+    { label: t("cmdNewWindow"), run: () => newWindow(conn, session) },
+    { label: t("cmdCloseWindow"), run: () => closeWindow(conn, session, window) },
+    { label: t("cmdCloseOtherWindows"), disabled: ids.length < 2, run: () => ids.filter((o) => o !== window).forEach((o) => closeWindow(conn, session, o)) },
   );
   return items;
 }
@@ -1169,17 +648,17 @@ function windowMenu(session: string, window: string): MenuItem[] {
  */
 function paneMenu(w: WindowView, block: string): MenuItem[] {
   const items: MenuItem[] = [{ label: t("paneRename"), run: () => startPaneRename(w, block) }];
-  if (paneName(block)) items.push({ label: t("paneResetName"), run: () => renamePane(w.session, block, "") });
+  if (paneName(w.conn, block)) items.push({ label: t("paneResetName"), run: () => renamePane(w.conn, w.session, block, "") });
   items.push("separator");
-  const others = (sessions.get(w.session)?.view?.windows ?? []).filter((o: any) => o.window_id !== w.window);
+  const others = (w.conn.sessions.get(w.session)?.view?.windows ?? []).filter((o: any) => o.window_id !== w.window);
   if (others.length) {
     items.push({
       label: t("paneMoveWindow"),
-      submenu: others.map((o: any) => ({ label: windowTitle(o), run: () => movePaneToWindow(w.session, block, o.window_id) })),
+      submenu: others.map((o: any) => ({ label: windowTitle(w.conn, o), run: () => movePaneToWindow(w.conn, w.session, block, o.window_id) })),
     });
   }
-  if (gateway.blockToNewWindow() && w.blocks.length > 1) {
-    items.push({ label: t("paneMoveNewWindow"), disabled: !!w.zoomedBlock, run: () => moveToNewWindow(w.session, block) });
+  if (gateway.blockToNewWindow(w.conn) && w.blocks.length > 1) {
+    items.push({ label: t("paneMoveNewWindow"), disabled: !!w.zoomedBlock, run: () => moveToNewWindow(w.conn, w.session, block) });
   }
   return items;
 }
@@ -1191,10 +670,10 @@ function startPaneRename(w: WindowView, block: string) {
   closeMenu();
   // The pane renamed is the focused one, as the desktop's.
   w.setFocus(block, true);
-  const name = paneName(block) ?? "";
-  const f = renameField(name, titles.get(block) || t("sidebarTerminal"), t("renamePaneLabel"), (v) => {
+  const name = paneName(w.conn, block) ?? "";
+  const f = renameField(name, w.conn.titles.get(block) || t("sidebarTerminal"), t("renamePaneLabel"), (v) => {
     p.editTitle(undefined);
-    if (v !== undefined && v !== name) renamePane(w.session, block, v);
+    if (v !== undefined && v !== name) renamePane(w.conn, w.session, block, v);
     // The keyboard goes back to the pane, unless another field took it.
     if (shown === w && !busyFocus()) w.focusKeys();
   });
@@ -1204,24 +683,24 @@ function startPaneRename(w: WindowView, block: string) {
 }
 
 /** Names a pane; an empty name gives it its terminal's title again (session.set_block_label). */
-function renamePane(session: string, block: string, label: string) {
-  control
+function renamePane(conn: HostConn, session: string, block: string, label: string) {
+  conn.control
     ?.call("session.set_block_label", { session_id: session, block_id: block, label })
     .catch((e) => status(() => t("statusRenamePaneFailed", { error: describe(e) })));
 }
 
 /** Moves a pane into a window of its own, after its window, as the desktop's movePaneToNewTab. Its program goes on. */
-function moveToNewWindow(session: string, block: string) {
-  control
+function moveToNewWindow(conn: HostConn, session: string, block: string) {
+  conn.control
     ?.call("gorex.move_block_to_new_window", { session_id: session, block_id: block })
     .catch((e) => status(() => t("statusMovePaneFailed", { error: describe(e) })));
 }
 
 /** Merges a window into another, side by side, and shows that one, as the desktop's mergeTab. The programs go on. */
-function mergeWindows(session: string, window: string, into: string) {
-  control?.call("gorex.merge_windows", { session_id: session, window_id: window, into_window_id: into }).then(
+function mergeWindows(conn: HostConn, session: string, window: string, into: string) {
+  conn.control?.call("gorex.merge_windows", { session_id: session, window_id: window, into_window_id: into }).then(
     () => {
-      wantWindow = { session, window: into };
+      wantWindow = { host: conn.host.id, session, window: into };
       showWanted();
     },
     (e) => status(() => t("statusMergeWindowsFailed", { error: describe(e) })),
@@ -1229,10 +708,10 @@ function mergeWindows(session: string, window: string, into: string) {
 }
 
 /** Opens the field that renames a space in its heading, or a window in its row. */
-function startRename(session: string, window?: string) {
-  if (!sessions.has(session) || (window && !windowOf(session, window))) return;
+function startRename(conn: HostConn, session: string, window?: string) {
+  if (!conn.sessions.has(session) || (window && !windowOf(conn, session, window))) return;
   closeMenu();
-  renaming = { session, window };
+  hold.renaming = { session, window };
   sidebar(true);
   focusRename($("list"));
 }
@@ -1241,13 +720,13 @@ function startRename(session: string, window?: string) {
  * A space's new name, from its field: an empty one keeps the name it
  * has, as the desktop's renameWorkspace (session.set_label).
  */
-function renamedSpace(session: string, name: string | undefined) {
-  if (renaming?.session === session && !renaming.window) renaming = undefined;
-  const s = sessions.get(session);
+function renamedSpace(conn: HostConn, session: string, name: string | undefined) {
+  if (hold.renaming?.session === session && !hold.renaming.window) hold.renaming = undefined;
+  const s = conn.sessions.get(session);
   if (s && name && name !== s.label) {
     const was = s.label;
     s.label = name;
-    control?.call("session.set_label", { session_id: session, label: name }).catch((e) => {
+    conn.control?.call("session.set_label", { session_id: session, label: name }).catch((e) => {
       if (s.label === name) s.label = was;
       status(() => t("statusRenameSpaceFailed", { error: describe(e) }));
       sidebar();
@@ -1255,7 +734,7 @@ function renamedSpace(session: string, name: string | undefined) {
   }
   sidebar();
   // The keyboard goes back to the pane, unless another field took it.
-  if (!renaming) shown?.focusKeys();
+  if (!hold.renaming) shown?.focusKeys();
 }
 
 /**
@@ -1263,17 +742,17 @@ function renamedSpace(session: string, name: string | undefined) {
  * the window its terminal's title again, as the desktop's renameField
  * (session.set_window_label).
  */
-function renamedWindow(session: string, window: string, name: string | undefined) {
-  if (renaming?.window === window) renaming = undefined;
-  const w = windowOf(session, window);
+function renamedWindow(conn: HostConn, session: string, window: string, name: string | undefined) {
+  if (hold.renaming?.window === window) hold.renaming = undefined;
+  const w = windowOf(conn, session, window);
   if (w && name !== undefined && name !== (windowName(w) ?? "")) {
-    control?.call("session.set_window_label", { session_id: session, window_id: window, label: name }).catch((e) =>
+    conn.control?.call("session.set_window_label", { session_id: session, window_id: window, label: name }).catch((e) =>
       status(() => t("statusRenameWindowFailed", { error: describe(e) })),
     );
   }
   sidebar();
   // The keyboard goes back to the pane, unless another field took it.
-  if (!renaming) shown?.focusKeys();
+  if (!hold.renaming) shown?.focusKeys();
 }
 
 /**
@@ -1281,14 +760,14 @@ function renamedWindow(session: string, window: string, name: string | undefined
  * after it (session.move_window takes the window it goes before, none
  * for the end).
  */
-function moveWindowTo(session: string, window: string, target: string, before: boolean) {
-  const ids = windowIDs(session).filter((id) => id !== window);
+function moveWindowTo(conn: HostConn, session: string, window: string, target: string, before: boolean) {
+  const ids = windowIDs(conn, session).filter((id) => id !== window);
   const at = ids.indexOf(target);
   if (at < 0) return;
   const next = before ? target : ids[at + 1];
   const args: Record<string, string> = { session_id: session, window_id: window };
   if (next) args.before_window_id = next;
-  control?.call("session.move_window", args).catch((e) => status(() => t("statusMoveWindowFailed", { error: describe(e) })));
+  conn.control?.call("session.move_window", args).catch((e) => status(() => t("statusMoveWindowFailed", { error: describe(e) })));
 }
 
 /**
@@ -1296,12 +775,12 @@ function moveWindowTo(session: string, window: string, target: string, before: b
  * has its focus, as the desktop's movePaneToTab (session.move_block, side
  * by side, after it). Its program goes on.
  */
-function movePaneToWindow(session: string, block: string, window: string) {
-  const w = windowOf(session, window);
+function movePaneToWindow(conn: HostConn, session: string, block: string, window: string) {
+  const w = windowOf(conn, session, window);
   const blocks = leavesOf(layoutOf(w));
   const anchor = blocks.includes(w?.focused_block_id) ? w.focused_block_id : blocks[0];
   if (!anchor) return;
-  control
+  conn.control
     ?.call("session.move_block", { session_id: session, block_id: block, anchor_block_id: anchor, direction: "horizontal", side: "after" })
     .catch((e) => status(() => t("statusMovePaneFailed", { error: describe(e) })));
 }
@@ -1313,7 +792,7 @@ function movePaneToWindow(session: string, block: string, window: string) {
  * host takes that.
  */
 function dropPane(w: WindowView, dragged: string, target: string, zone: DropZone) {
-  const c = control;
+  const c = w.conn.control;
   if (!c) return;
   const split = zoneSplit(zone);
   const call = split
@@ -1331,16 +810,16 @@ function dropPane(w: WindowView, dragged: string, target: string, zone: DropZone
  * Makes a space with a window, and shows it, as the iOS app's New
  * Session and the desktop's New Space (session.create; the host names it).
  */
-async function newSpace() {
-  const c = control;
-  if (!c) return;
+async function newSpace(conn: HostConn | undefined) {
+  const c = conn?.control;
+  if (!conn || !c) return;
   try {
     const r = (await c.call("session.create", { initial_windows: [{ layout: { block: shell } }] })).payload;
     const window = r.initial_windows?.[0]?.window_id;
     if (!r.session_id || !window) return;
-    wantWindow = { session: r.session_id, window };
-    if (!sessions.has(r.session_id)) sessions.set(r.session_id, { id: r.session_id, label: "" });
-    await refresh(r.session_id, true);
+    wantWindow = { host: conn.host.id, session: r.session_id, window };
+    if (!conn.sessions.has(r.session_id)) conn.sessions.set(r.session_id, { id: r.session_id, label: "" });
+    await conn.refresh(r.session_id, true);
     showWanted();
   } catch (e) {
     status(() => t("statusNewSpaceFailed", { error: describe(e) }));
@@ -1351,14 +830,14 @@ async function newSpace() {
  * Closes a space once the user says so, as the desktop's Close Space
  * (workspaceConfirm): its terminals end (session.destroy).
  */
-async function closeSpace(session: string) {
-  const s = sessions.get(session);
+async function closeSpace(conn: HostConn, session: string) {
+  const s = conn.sessions.get(session);
   if (!s) return;
   let n = 0;
   for (const w of s.view?.windows ?? []) for (const l of w.layers ?? []) n += l.blocks?.length ?? 0;
   const yes = await confirmDanger(t("spaceCloseTitle", { name: spaceName(s) }), t("spaceCloseBody", { n }), t("cmdCloseSpace"));
   shown?.focusKeys();
-  if (yes) control?.call("session.destroy", { session_id: session }).catch((e) => status(() => t("statusCloseSpaceFailed", { error: describe(e) })));
+  if (yes) conn.control?.call("session.destroy", { session_id: session }).catch((e) => status(() => t("statusCloseSpaceFailed", { error: describe(e) })));
 }
 
 /** Whether the keyboard is in a field or a menu that is not a pane's own. */
@@ -1368,24 +847,24 @@ function busyFocus(): boolean {
 }
 
 /** Shows a window when none shows: the active one of the first session that has one. */
-function showAny(keys: boolean) {
+function showAny(conn: HostConn, keys: boolean) {
   if (shown) return;
-  for (const s of sessions.values()) {
+  for (const s of conn.sessions.values()) {
     const next = s.view?.active_window_id ?? s.view?.windows?.[0]?.window_id;
-    if (next && windowOf(s.id, next)) return show(s.id, next, keys);
+    if (next && windowOf(conn, s.id, next)) return show(conn, s.id, next, keys);
   }
 }
 
 /** Shows a session's window, its panes live. */
-function show(session: string, window: string, keys: boolean) {
-  if (shown?.session === session && shown.window === window) {
+function show(conn: HostConn, session: string, window: string, keys: boolean) {
+  if (shown?.conn === conn && shown.session === session && shown.window === window) {
     if (keys) shown.focusKeys();
     return;
   }
-  const w = sessions.get(session)?.view?.windows?.find((w: any) => w.window_id === window);
+  const w = conn.sessions.get(session)?.view?.windows?.find((w: any) => w.window_id === window);
   if (!w) return;
   hide();
-  shown = new WindowView(session, window, stage, host);
+  shown = new WindowView(conn, session, window, stage, windowHost(conn));
   shown.update(w);
   if (keys) shown.focusKeys();
   sidebar();
@@ -1397,56 +876,58 @@ function hide() {
 }
 
 /** A window made here, to show when the session's view has it. */
-let wantWindow: { session: string; window: string } | undefined;
+let wantWindow: { host: string; session: string; window: string } | undefined;
 
 function showWanted() {
   const w = wantWindow;
-  if (w && sessions.get(w.session)?.view?.windows?.some((x: any) => x.window_id === w.window)) {
+  const conn = w && conns.get(w.host);
+  if (w && conn?.sessions.get(w.session)?.view?.windows?.some((x: any) => x.window_id === w.window)) {
     wantWindow = undefined;
-    show(w.session, w.window, true);
+    show(conn, w.session, w.window, true);
   }
 }
 
-async function newWindow(session: string) {
+async function newWindow(conn: HostConn, session: string) {
   try {
-    const r = (await control!.call("session.new_window", { session_id: session, focus: false, layout: { block: shell } })).payload;
+    const id = await conn.newWindow(session);
     // Shown once a view has it: this read's, or one already on its way.
-    wantWindow = r.window_id && { session, window: r.window_id };
-    await refresh(session);
+    wantWindow = id ? { host: conn.host.id, session, window: id } : undefined;
+    await conn.refresh(session);
     showWanted();
   } catch (e) {
     status(() => t("statusNewWindowFailed", { error: describe(e) }));
   }
 }
 
-function closeWindow(session: string, window: string) {
-  control?.call("session.close_window", { session_id: session, window_id: window }).catch((e) => status(() => t("statusCloseWindowFailed", { error: describe(e) })));
+function closeWindow(conn: HostConn, session: string, window: string) {
+  conn.closeWindow(session, window)?.catch((e) => status(() => t("statusCloseWindowFailed", { error: describe(e) })));
 }
 
 /** The windows in the sidebar's order. */
-function windows(): [string, string][] {
-  return [...sessions.values()].flatMap((s) => (s.view?.windows ?? []).map((w: any) => [s.id, w.window_id] as [string, string]));
+function windows(conn: HostConn): [string, string][] {
+  return [...conn.sessions.values()].flatMap((s) => (s.view?.windows ?? []).map((w: any) => [s.id, w.window_id] as [string, string]));
 }
 
 /** Runs one of the window's commands, from a shortcut or a pane's button. */
 function run(name: string) {
   const w = shown;
   if (name === "next-window" || name === "previous-window") {
-    const all = windows();
-    if (!all.length) return;
+    const conn = currentConn();
+    const all = conn ? windows(conn) : [];
+    if (!conn || !all.length) return;
     const at = w ? all.findIndex(([, id]) => id === w.window) : -1;
     const n = all.length;
     const [s, id] = all[name === "next-window" ? (at + 1) % n : at < 0 ? n - 1 : (at - 1 + n) % n];
-    show(s, id, true);
+    show(conn, s, id, true);
     return;
   }
   if (name === "new-space") {
-    newSpace();
+    newSpace(currentConn());
     return;
   }
   if (!w) return;
   const block = w.focus;
-  const c = control;
+  const c = w.conn.control;
   if (!c) return;
   const fail = (what: "statusSplitFailed" | "statusClosePaneFailed" | "statusZoomFailed") => (e: unknown) =>
     status(() => t(what, { error: describe(e) }));
@@ -1473,13 +954,13 @@ function run(name: string) {
       if (block) c.call("session.zoom_block", { session_id: w.session, block_id: block, zoom: w.zoomedBlock !== block }).catch(fail("statusZoomFailed"));
       break;
     case "new-window":
-      newWindow(w.session);
+      newWindow(w.conn, w.session);
       break;
     case "close-window":
-      closeWindow(w.session, w.window);
+      closeWindow(w.conn, w.session, w.window);
       break;
     case "rename-window":
-      startRename(w.session, w.window);
+      startRename(w.conn, w.session, w.window);
       break;
     case "focus-left":
     case "focus-right":
@@ -1503,7 +984,7 @@ function run(name: string) {
       if (!s) return;
       const step = name === "resize-left" || name === "resize-up" ? -0.05 : 0.05;
       w.setRatio(s, s.ratio + step);
-      host.resizeSplit(w, s, s.ratio);
+      windowHost(w.conn).resizeSplit(w, s, s.ratio);
       break;
     }
   }
@@ -1574,7 +1055,7 @@ document.fonts.addEventListener("loadingdone", () => {
     add.title = t("cmdNewSpace");
     add.setAttribute("aria-label", add.title);
   });
-  add.onclick = () => newSpace();
+  add.onclick = () => newSpace(currentConn());
   $("foot").append(add);
 }
 
