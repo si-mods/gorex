@@ -90,9 +90,19 @@ export class WindowView {
   private rendered = false;
   /** Ends the panes' move: their terminals take their new sizes then. */
   private settleTimer?: number;
+  /** The window's room on the stage: its panes and dividers. A kept window takes it off the stage (park). */
+  private readonly el = Object.assign(document.createElement("div"), { className: "window-room" });
+  /** Whether the window is kept off the stage, its panes live (park). */
+  private parked = false;
 
   /** The host connection the window is of: its panes' control and data streams are this host's. */
-  constructor(readonly conn: HostConn, readonly session: string, readonly window: string, private readonly stage: HTMLElement, private readonly app: WindowHost) {}
+  constructor(readonly conn: HostConn, readonly session: string, readonly window: string, private readonly stage: HTMLElement, private readonly app: WindowHost) {
+    stage.append(this.el);
+  }
+
+  get kept(): boolean {
+    return this.parked;
+  }
 
   /** The splits of the tree, by ID. */
   split(id: string): Split | undefined {
@@ -130,10 +140,10 @@ export class WindowView {
     this.hostFocus = host;
     if (!focus || !blocks.includes(focus)) focus = host && blocks.includes(host) ? host : blocks[0];
     // A pane that had the keys may go (moved to another window): its successor takes them.
-    const keys = this.stage.contains(document.activeElement);
-    this.render(animate);
+    const keys = this.el.contains(document.activeElement);
+    this.render(animate && !this.parked);
     this.setFocus(focus, false);
-    if (keys && !this.stage.contains(document.activeElement)) this.focusKeys();
+    if (keys && !this.el.contains(document.activeElement)) this.focusKeys();
   }
 
   /**
@@ -144,7 +154,7 @@ export class WindowView {
    * window shows, nor while a divider is dragged.
    */
   private render(animate = false) {
-    const ms = animate && this.rendered && !this.dragging ? motionMs() : 0;
+    const ms = animate && this.rendered && !this.dragging && !this.parked ? motionMs() : 0;
     if (ms) this.moving(ms);
     const leaves: [string, Rect][] = [];
     const splits: [Split, Rect][] = [];
@@ -168,10 +178,11 @@ export class WindowView {
     for (const [block, p] of this.panes) {
       if (!all.has(block)) {
         this.panes.delete(block);
-        p.close(false);
+        const unsent = p.close(false);
+        if (unsent) this.app.status(() => t("paneUnsentDropped", { n: unsent }));
         // The pane's last frame pops out, and goes.
         if (ms) {
-          this.stage.append(p.el);
+          this.el.append(p.el);
           p.el.classList.add("leaving");
           setTimeout(() => p.el.remove(), ms);
         }
@@ -187,7 +198,9 @@ export class WindowView {
         });
         this.panes.set(block, p);
         this.wire(p);
-        this.stage.append(p.el);
+        this.el.append(p.el);
+        // A pane new in a kept window is kept too: it reads its stream, and leaves its block to its owner.
+        if (this.parked) p.park(false);
         if (ms) {
           p.el.classList.add("entering");
           p.el.addEventListener("animationend", () => p!.el.classList.remove("entering"), { once: true });
@@ -221,7 +234,7 @@ export class WindowView {
         localize(d, (d) => d.setAttribute("aria-label", t("paneDivider")));
         this.drag(d, s.split_id);
         this.dividers.set(s.split_id, d);
-        this.stage.append(d);
+        this.el.append(d);
       }
       const vertical = s.direction === "vertical";
       d.className = "divider " + (vertical ? "row" : "column");
@@ -456,7 +469,7 @@ export class WindowView {
     // The keyboard follows the focus while it is in the window, but for a pane's rename field (main.ts),
     // whose blur would commit a name half typed.
     const p = this.panes.get(block)!;
-    if (this.stage.contains(document.activeElement) && !document.activeElement?.classList.contains("rename-field")) p.focusKeys();
+    if (this.el.contains(document.activeElement) && !document.activeElement?.classList.contains("rename-field")) p.focusKeys();
     if (tell && block !== this.hostFocus) {
       this.hostFocus = block;
       this.app.focusBlock(this, block);
@@ -526,14 +539,53 @@ export class WindowView {
     }
   }
 
-  close() {
-    clearTimeout(this.settleTimer);
-    this.stage.classList.remove("moving");
+  /**
+   * Keeps the window live off the stage, as the desktop's park
+   * (workspace.go): its room leaves the stage, its panes stop painting and
+   * give their blocks back, and their streams stay open. Its view goes on
+   * coming (update).
+   */
+  park() {
+    if (this.parked) return;
+    this.stopMoving();
+    this.parked = true;
     this.showDrop(undefined);
-    for (const p of this.panes.values()) p.close(true);
+    this.el.remove();
+    for (const p of this.panes.values()) p.park();
+  }
+
+  /** Puts a kept window back on the stage: its panes take their blocks again, size them and paint. */
+  unpark() {
+    if (!this.parked) return;
+    this.parked = false;
+    this.stage.append(this.el);
+    for (const p of this.panes.values()) p.unpark();
+  }
+
+  /** Ends a move of the panes at once, its terminals at their sizes. */
+  private stopMoving() {
+    clearTimeout(this.settleTimer);
+    this.settleTimer = undefined;
+    // The stage's move is the shown window's: a kept one has none.
+    if (!this.parked) this.stage.classList.remove("moving");
+    for (const p of this.panes.values()) p.held = false;
+  }
+
+  /**
+   * Ends the window and its panes; they give their blocks back unless
+   * disown is false (a kept window's gave them as it was kept). Returns
+   * how many typed bytes its panes had still to write, which are lost.
+   */
+  close(disown = true): number {
+    this.stopMoving();
+    this.showDrop(undefined);
+    let unsent = 0;
+    for (const p of this.panes.values()) unsent += p.close(disown);
     this.panes.clear();
     for (const d of this.dividers.values()) d.remove();
     this.dividers.clear();
+    this.el.remove();
+    return unsent;
   }
 }
 

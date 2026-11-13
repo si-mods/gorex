@@ -75,6 +75,25 @@ network comes back (`online`) or the page shows again
 addresses of one computer (its LAN address and its tailnet name, say)
 are two hosts, each with all its windows.
 
+The last four windows shown stay live, across hosts: the shown one and
+the three shown before it (`kept` and `keptWindows` in `main.ts`), as the
+desktop keeps a space's panes when its window shows another. A window
+the stage leaves is kept (`WindowView.park`): it goes off the stage and
+paints nothing, and its panes give their blocks back
+(`session.disown_block`), so that the desktop sizes them again. Their
+streams stay open, their terminals go on taking the programs' output,
+and the window follows its session's view. Showing it again puts it
+back as it was: each pane takes its block again (`session.own_block`,
+`take`), sends its size and paints, with no new ticket and no snapshot,
+and its scrollback where the user left it. A kept window ends when a
+fifth window shows (the one shown least recently), when it or its
+session is gone, and when its host drops, is removed or its address
+changes; shown after that, it opens from a snapshot. The shown window
+never ends this way. A window of a host that is not connected is not
+kept as it leaves the stage. When a pane ends with typed bytes still
+waiting to be written (its host was offline), the status line says how
+many were lost.
+
 The page keeps where it was, `gorex.place`: the host, session and window
 shown last. A reload connects every host and shows that window as soon
 as its host has read its sessions (its first window when the window is
@@ -816,13 +835,16 @@ once.
   (the host of the shown window), the shown window, the notice and the
   status line of the selected host, what the sidebar's rows and menus do,
   and the window's commands. A window (`WindowView.conn`) and its panes
-  use their own host's connection.
+  use their own host's connection. The windows shown before the shown one
+  stay live in `kept` (see Hosts).
 - `web/src/place.ts`: `gorex.place` and `gorex.tailnetOpened`, and the
   move of `gorex.host` into `gorex.place`. It has no DOM: `npm test`
   (`web/test.mjs`) bundles each `web/test/*.test.ts` with esbuild and runs
   it with `node --test`, as CI's `web` job does.
-- `web/src/window.ts`: a window's layout tree, its panes and dividers,
-  and the focus (see Split panes).
+- `web/src/window.ts`: a window's layout tree, its panes and dividers in
+  its own room on the stage (`.window-room`), the focus (see Split
+  panes), and `park` and `unpark`, which take a kept window's room off the
+  stage and put it back.
 - `web/src/manage.ts`: the menus of a right click or a long press, the
   field that renames in place, Close Space's question, and the drags of
   a window's row and a pane's header (see Spaces, windows and moves).
@@ -836,8 +858,12 @@ once.
   it is back; a paste that would pass that bound is dropped whole, with a
   status message. The pane takes
   its block (`session.own_block`) and sizes it to its canvas
-  (`com.superlogical.terminal.resize`); a pane that closes while its
-  block stays gives it back (`session.disown_block`).
+  (`com.superlogical.terminal.resize`); a pane that closes, or is kept off
+  the stage (`park`), while its block stays gives it back
+  (`session.disown_block`). A kept pane reads its stream but does not
+  paint, own or size its block until it shows again (`unpark`). A pane
+  that closes with typed bytes not yet written says how many in the
+  status line.
 - `web/src/keys.ts`: the shortcuts (see Shortcuts).
 - `web/src/pointer.ts`: the pointer over a pane's grid: selecting, the
   handles and the Copy and Paste menu, the wheel and a finger's swipe, and the mouse
@@ -888,7 +914,7 @@ the sidebar is, and whether there is one, is the Tab placement setting's
 - **Live.** The page follows every host's `session_view_changed` and
   reads only the changed session's view again (`session.view`). Panes whose blocks stay
   keep their streams; new blocks get panes and streams; panes of closed
-  blocks end. A closed window shows the session's active one. Sessions
+  blocks end. Kept windows follow their views too. A closed window shows the session's active one. Sessions
   made or destroyed elsewhere come and go in the sidebar. Titles follow
   `title_changed`.
 - **Dividers.** Drag the gap between two panes to move it. The panes move

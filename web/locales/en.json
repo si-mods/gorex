@@ -720,6 +720,16 @@
       }
     }
   },
+  "paneUnsentDropped": "Dropped {n, plural, one {# typed byte} other {# typed bytes}} not yet sent: the terminal closed.",
+  "@paneUnsentDropped": {
+    "description": "Status line when a pane closed (its window was closed or no longer kept, or its host went away) with typed bytes still waiting to be written.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "12"
+      }
+    }
+  },
   "paneDroppedTyped": "Dropped {n, plural, one {# typed byte} other {# typed bytes}}: {waiting} wait to be written.",
   "@paneDroppedTyped": {
     "description": "Status line when typing offline went past the limit of what waits.",

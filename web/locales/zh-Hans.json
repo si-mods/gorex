@@ -118,6 +118,7 @@
   "paneOpenFailed": "无法打开终端：{error}",
   "paneSnapshotFailed": "无法读取终端快照：{error}",
   "paneExited": "程序已退出（{code}）。",
+  "paneUnsentDropped": "终端已关闭：已丢弃 {n} 个尚未发送的输入字节。",
   "paneDroppedTyped": "已丢弃 {n} 个输入字节：仍有 {waiting} 个字节等待写入。",
   "copyFailed": "无法拷贝：此浏览器不允许页面写入剪贴板。",
   "pasteFailed": "无法粘贴：此浏览器不允许页面读取剪贴板。",

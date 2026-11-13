@@ -14,7 +14,7 @@ import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
 import { Asset, loader } from "./loader";
 import { closeMenu, confirmDanger, DropZone, focusRename, MenuItem, openMenu, renameField, zoneSplit } from "./manage";
-import { describe } from "./pane";
+import { describe, TerminalView } from "./pane";
 import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, paneHeaders, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
@@ -84,6 +84,42 @@ let chosenEntry: ThemeEntry | undefined;
 /** The window this page shows. */
 let shown: WindowView | undefined;
 
+/**
+ * How many windows stay live: the shown one and the ones shown before it,
+ * across hosts (docs/web-multihost.md, Kept windows). A constant, not a
+ * setting: each kept pane holds a stream, a terminal and a canvas.
+ */
+const keptWindows = 4;
+/**
+ * The windows shown before the shown one, live off the stage, most
+ * recently shown first: keptWindows - 1 at most. Showing one again takes
+ * it back as it was: no new ticket, no snapshot.
+ */
+let kept: WindowView[] = [];
+
+/** Every pane live on the page: the shown window's and the kept windows'. */
+function livePanes(): TerminalView[] {
+  return [shown, ...kept].flatMap((w) => (w ? [...w.panes.values()] : []));
+}
+
+/** Ends a window, shown or kept; bytes its panes had typed and not yet written are lost, and the status line says so. */
+function closeView(w: WindowView, disown: boolean) {
+  const n = w.close(disown);
+  if (!n) return;
+  const s: Msg = () => t("paneUnsentDropped", { n });
+  status(s);
+  // Said again once the stage has changed: selecting another host says that host's line.
+  queueMicrotask(() => status(s));
+}
+
+/** Ends the kept windows that f picks: their blocks were given back as they were kept. */
+function evict(f: (w: WindowView) => boolean) {
+  const out = kept.filter(f);
+  if (!out.length) return;
+  kept = kept.filter((w) => !f(w));
+  for (const w of out) closeView(w, false);
+}
+
 /** The terminal background the page's chrome follows. */
 let lastBg: [number, number, number] = desktopTheme().background!;
 
@@ -105,7 +141,7 @@ function setLink(s: LinkState, p?: Problem) {
 
 /** Applies a changed setting to the page and to every open pane, as the desktop's applyPrefs. */
 function applyPrefs(what: "appearance" | "tabs" | "headers" | "animation" | "font" | "cursor" | "contrast", reset = false) {
-  const panes = [...(shown?.panes.values() ?? [])];
+  const panes = livePanes();
   switch (what) {
     case "appearance":
       scheme(lastBg);
@@ -127,7 +163,7 @@ function applyPrefs(what: "appearance" | "tabs" | "headers" | "animation" | "fon
       document.documentElement.style.setProperty("--mono", fontFamily());
       panes.forEach((p) => p.restyle());
       // Maple chosen: its Latin chunks, which the cells are measured with, then measured again.
-      if (prefs.font === mapleFamily) void ensureLatin().then(() => shown?.panes.forEach((p) => p.restyle()));
+      if (prefs.font === mapleFamily) void ensureLatin().then(() => livePanes().forEach((p) => p.restyle()));
       break;
     case "contrast":
       panes.forEach((p) => p.redraw());
@@ -264,7 +300,7 @@ async function main() {
       chosenEntry = t;
       chosen = t && themeColours(t);
       scheme(chosen?.background ?? desktopTheme().background!);
-      for (const p of shown?.panes.values() ?? []) p.setChosen(chosen);
+      for (const p of livePanes()) p.setChosen(chosen);
     };
     pick(theme);
     chooseTheme = pick;
@@ -580,7 +616,8 @@ function begin(c: HostConn) {
 function drop(c: HostConn) {
   c.stop();
   conns.delete(c.host.id);
-  if (shown?.conn === c) hide();
+  if (shown?.conn === c) hide(false);
+  evict((w) => w.conn === c);
   if (wantWindow?.host === c.host.id) wantWindow = undefined;
   if (pending?.host === c.host.id && !hostList.hosts.some((h) => h.id === c.host.id)) pending = undefined;
   if (hold.renaming?.host === c.host.id) hold.renaming = undefined;
@@ -654,6 +691,8 @@ const hostEvents: HostEvents = {
   state(c) {
     // A window asked for before a drop is not shown after it: the user asks again.
     if (c.state !== "connected" && wantWindow?.host === c.host.id) wantWindow = undefined;
+    // The host's kept windows end as it drops: their tickets were that connection's (the desktop's unkeepAll).
+    if (c.state !== "connected") evict((w) => w.conn === c);
     // The notice is the selected host's, or a waiting place's.
     if (c === currentConn() || (!current && pending?.host === c.host.id)) drawNotice();
     // The host's heading, its dot and its rows follow its state.
@@ -665,8 +704,9 @@ const hostEvents: HostEvents = {
   },
   sessions(c, destroyed) {
     if (hold.renaming?.host === c.host.id && !c.sessions.has(hold.renaming.session)) hold.renaming = undefined;
+    evict((w) => w.conn === c && !c.sessions.has(w.session));
     if (shown?.conn === c && !c.sessions.has(shown.session)) {
-      hide();
+      hide(false);
       // The space closed: show another, as the desktop's window does (closeWorkspace).
       // Not the keyboard from a field (a rename elsewhere) or a menu: it commits on blur.
       if (destroyed) showAny(c, !busyFocus());
@@ -675,6 +715,10 @@ const hostEvents: HostEvents = {
   },
   view(c, s) {
     const v = s.view;
+    // A kept window follows its view as the shown one does; one gone from it ends.
+    const of = (w: WindowView) => (v.windows ?? []).find((x: any) => x.window_id === w.window);
+    evict((w) => w.conn === c && w.session === s.id && !of(w));
+    for (const w of kept) if (w.conn === c && w.session === s.id) w.update(of(w), false);
     if (shown?.conn === c && shown.session === s.id) {
       const w = (v.windows ?? []).find((w: any) => w.window_id === shown!.window);
       if (w) {
@@ -684,7 +728,7 @@ const hostEvents: HostEvents = {
       } else {
         // The window closed: show the session's active one, as the desktop does.
         const next = v.active_window_id ?? v.windows?.[0]?.window_id;
-        hide();
+        hide(false);
         if (next) show(c, s.id, next, false);
       }
     }
@@ -696,10 +740,11 @@ const hostEvents: HostEvents = {
     if (shown?.conn === c) shown.retitle();
   },
   attached(c) {
-    if (shown?.conn === c) for (const p of shown.panes.values()) p.start();
+    // A window kept after the connection came back and before this read has the old connection's streams too.
+    for (const w of [shown, ...kept]) if (w?.conn === c) for (const p of w.panes.values()) p.start();
   },
   live(c) {
-    if (shown?.conn === c) for (const p of shown.panes.values()) p.resume();
+    for (const w of [shown, ...kept]) if (w?.conn === c) for (const p of w.panes.values()) p.resume();
     showPending(c);
   },
 };
@@ -1067,7 +1112,10 @@ function want(since: number, w: typeof wantWindow) {
   if (picked === since) wantWindow = w;
 }
 
-/** Shows a session's window, its panes live. */
+/**
+ * Shows a session's window, its panes live: a kept one as it was left, else
+ * a new one, whose panes open their streams from a snapshot.
+ */
 function show(conn: HostConn, session: string, window: string, keys: boolean) {
   if (shown?.conn === conn && shown.session === session && shown.window === window) {
     if (keys) shown.focusKeys();
@@ -1075,10 +1123,19 @@ function show(conn: HostConn, session: string, window: string, keys: boolean) {
   }
   const w = conn.sessions.get(session)?.view?.windows?.find((w: any) => w.window_id === window);
   if (!w) return;
+  const at = kept.findIndex((k) => k.conn === conn && k.session === session && k.window === window);
+  const back = at >= 0 ? kept.splice(at, 1)[0] : undefined;
   hide();
   pending = undefined;
-  shown = new WindowView(conn, session, window, stage, windowHost(conn));
-  shown.update(w);
+  if (back) {
+    shown = back;
+    back.unpark();
+    back.update(w, false);
+    back.retitle();
+  } else {
+    shown = new WindowView(conn, session, window, stage, windowHost(conn));
+    shown.update(w);
+  }
   if (keys) shown.focusKeys();
   conn.lastWindow = { session, window };
   const s = conn.sessions.get(session);
@@ -1089,9 +1146,21 @@ function show(conn: HostConn, session: string, window: string, keys: boolean) {
   else sidebar();
 }
 
-function hide() {
-  shown?.close();
+/**
+ * Takes the shown window off the stage. With keep, it is kept live
+ * (park), first in kept; the one shown least recently past keptWindows
+ * ends. A window of a host that is not connected is not kept: its streams
+ * were the connection's that dropped. Without keep (the window or its
+ * session is gone, its host is removed), it ends.
+ */
+function hide(keep = true) {
+  const w = shown;
+  if (!w) return;
   shown = undefined;
+  if (!keep || w.conn.state !== "connected") return closeView(w, true);
+  w.park();
+  kept.unshift(w);
+  for (const old of kept.splice(keptWindows - 1)) closeView(old, false);
 }
 
 /** A window made here, to show when the session's view has it. */
@@ -1271,7 +1340,7 @@ window.addEventListener("blur", () => shown?.panes.forEach((p) => p.redraw()));
 onChunk(() => shown?.panes.forEach((p) => p.repaint()));
 // A font that loads late changes the cells.
 document.fonts.addEventListener("loadingdone", () => {
-  shown?.panes.forEach((p) => {
+  livePanes().forEach((p) => {
     p.fontStale = true;
     p.layout();
   });

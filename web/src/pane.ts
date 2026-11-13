@@ -123,6 +123,12 @@ export class TerminalView {
   private claiming = false;
   private stale?: { cols: number; rows: number };
   private observer: ResizeObserver;
+  /**
+   * Whether the pane is kept off the stage (park): its stream stays open and
+   * its terminal takes the bytes, but it does not paint, does not own its
+   * block and does not size it (docs/web-multihost.md, Kept windows).
+   */
+  private parked = false;
 
   constructor(readonly session: string, readonly block: string, private readonly app: PaneHost) {
     this.theme = app.chosen() ?? {};
@@ -285,7 +291,8 @@ export class TerminalView {
           this.applyCursor();
           if (this.fitted) this.term.resize(this.fitted.cols, this.fitted.rows, this.font.w, this.font.h);
           this.full = true;
-          this.claim();
+          // A kept pane leaves the block to its owner: it claims it as it shows again (unpark).
+          if (!this.parked) this.claim();
           break;
         case "output":
           this.term?.write(item.data);
@@ -365,6 +372,7 @@ export class TerminalView {
   }
 
   private resizeTo(m: { cols: number; rows: number }) {
+    if (!this.font) return;
     this.term?.resize(m.cols, m.rows, this.font.w, this.font.h);
     this.full = true;
   }
@@ -442,7 +450,7 @@ export class TerminalView {
 
   private sendSize() {
     const s = this.fitted;
-    if (!s || !this.term || this.closed) return;
+    if (!s || !this.term || this.closed || this.parked) return;
     this.app
       .control()
       ?.callBlock("resize", this.session, this.block, {
@@ -453,7 +461,7 @@ export class TerminalView {
 
   /** Draws on the next frame what changed since the last. */
   redraw() {
-    if (this.frame !== undefined || this.closed) return;
+    if (this.frame !== undefined || this.closed || this.parked) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = undefined;
       // The first layout makes the font and draws again; until then there is nothing to draw with.
@@ -704,10 +712,56 @@ export class TerminalView {
   }
 
   /**
+   * Keeps the pane off the stage, live: its stream stays open and its
+   * terminal goes on taking the program's output, but it paints nothing.
+   * It gives its block back (session.disown_block), so that the desktop
+   * sizes it again; what was typed and waits to be written stays.
+   */
+  park(disown = true) {
+    if (this.parked || this.closed) return;
+    this.parked = true;
+    if (this.frame !== undefined) cancelAnimationFrame(this.frame);
+    this.frame = undefined;
+    clearTimeout(this.blinkTimer);
+    clearTimeout(this.sizing);
+    this.claiming = false;
+    this.stale = undefined;
+    this.pointer.hideMenu();
+    // Off the stage, the pane has no size: the font is made, and the next layout sends the size.
+    this.layout();
+    if (disown) this.app.control()?.call("session.disown_block", { session_id: this.session, block_ids: [this.block] }).catch(() => {});
+  }
+
+  /**
+   * Shows a kept pane again, back on the stage: it lays out at its size,
+   * takes its block again (session.own_block, take) and sends that size,
+   * and paints it all. No new ticket and no snapshot: the terminal, its
+   * scrollback and its scroll position are as they were.
+   */
+  unpark() {
+    if (!this.parked || this.closed) return;
+    this.parked = false;
+    this.unsized = true;
+    this.full = true;
+    this.layout();
+    // A pane whose snapshot has not come yet claims the block when it comes (receive).
+    if (this.term) this.claim();
+    this.redraw();
+  }
+
+  /** The bytes typed that wait to be written: lost if the pane closes now. */
+  get unsent(): number {
+    return this.typed.reduce((n, b) => n + b.length, 0);
+  }
+
+  /**
    * Ends the pane: its stream, its terminal and its element. A block that
    * still exists is given back (disowned), so that the desktop sizes it again.
+   * Returns how many typed bytes were still to be written, which are lost.
    */
-  close(disown: boolean) {
+  close(disown: boolean): number {
+    const unsent = this.closed ? 0 : this.unsent;
+    this.typed = [];
     this.closed = true;
     this.generation++;
     this.data?.close();
@@ -720,6 +774,7 @@ export class TerminalView {
     this.term?.free();
     this.term = undefined;
     this.el.remove();
-    if (disown) this.app.control()?.call("session.disown_block", { session_id: this.session, block_ids: [this.block] }).catch(() => {});
+    if (disown && !this.parked) this.app.control()?.call("session.disown_block", { session_id: this.session, block_ids: [this.block] }).catch(() => {});
+    return unsent;
   }
 }
