@@ -430,17 +430,18 @@ function choose(h: Host | undefined) {
   hold.renaming = undefined;
   hold.rowDragging = false;
   current = h;
+  // Made before the sidebar is drawn: the sidebar draws the chosen host from it.
+  const c = h && new HostConn(h, h.kind === "tailnet" ? tailnet.transport(h as TailnetHost) : directTransport(h.url), hostEvents, tailnet);
+  if (c) conns.set(c.host.id, c);
   onboarding();
   sidebar();
-  if (!h) {
+  if (!h || !c) {
     status("");
     setLink("none");
     showWelcome();
     return;
   }
   // A tailnet host: no URL the browser opens, so no mixed content.
-  const c = new HostConn(h, h.kind === "tailnet" ? tailnet.transport(h as TailnetHost) : directTransport(h.url), hostEvents, tailnet);
-  conns.set(h.id, c);
   const blocked = h.kind !== "tailnet" && mixedContent(h.url);
   if (blocked) {
     status(() => t("statusBlocked", { host: h.name }));
@@ -471,6 +472,8 @@ const hostEvents: HostEvents = {
       else notice(c.problem, { label: "hostEdit", run: () => hostList.open(h) });
     } else if (c.state === "connected") notice();
     setLink(c.state, c.problem);
+    // The host's heading follows its state.
+    sidebar();
   },
   status(c, s) {
     if (c === currentConn()) status(s);
@@ -541,6 +544,7 @@ initSidebar({
   spacesMenu,
   hosts: () => [...(hostList?.hosts ?? []), ...(tailnet.status() === "running" ? tailnet.hosts : [])],
   connect: (h) => hostList.choose(h),
+  redraw: () => sidebar(),
 });
 
 /**
@@ -564,7 +568,7 @@ function see(conn: HostConn, block: string) {
   c.call("gorex.see_block", { session_id: w.session, block_id: block, seen_at: new Date(latest).toISOString() })
     .then(() => {
       conn.raiseSeen(block, latest);
-      sidebarBlock(conn, block);
+      if (conn === currentConn()) sidebarBlock(conn, block);
     }, () => {})
     .finally(() => conn.seeing.delete(block));
 }

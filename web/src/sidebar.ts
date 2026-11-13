@@ -34,6 +34,8 @@ export interface SidebarApp {
   hosts(): Host[];
   /** Connects to a host, from its heading in the host view. */
   connect(h: Host): void;
+  /** Draws the whole sidebar again, of the host the page shows. */
+  redraw(): void;
 }
 
 let app: SidebarApp;
@@ -149,7 +151,7 @@ export function sidebarBlock(c: HostConn, block: string) {
     for (const w of v.windows ?? []) {
       if (!leavesOf(layoutOf(w)).includes(block)) continue;
       const b = nav.querySelector<HTMLElement>(`.window[data-host="${CSS.escape(c.host.id)}"][data-window="${CSS.escape(w.window_id)}"] > .block`);
-      if (!b) return sidebar(c);
+      if (!b) return app.redraw();
       fillWindow(c, b, w, tilesRoom(v));
     }
   }
@@ -321,7 +323,7 @@ function windowRow(c: HostConn, session: string, w: any, room: number): HTMLElem
     () => {
       hold.rowDragging = false;
       markDrop(undefined);
-      if (hold.stale) sidebar(c);
+      if (hold.stale) app.redraw();
     },
   );
   // Where a row or a pane dropped here goes: before or after the row, or into its window. A row's middle half
