@@ -83,6 +83,8 @@ export class WindowView {
   private dragging = false;
   /** A view of the host's that came while a divider moved. */
   private pending?: any;
+  /** Ends the divider's drag going on, as its pointer's release does. */
+  private endDrag?: () => void;
   /** Where a pane dragged over another would go, and what shows it (panedrop.go, drawPaneDrop). */
   private drop?: { block: string; zone: DropZone };
   private readonly dropMark = Object.assign(document.createElement("div"), { className: "pane-drop" });
@@ -199,8 +201,10 @@ export class WindowView {
         this.panes.set(block, p);
         this.wire(p);
         this.el.append(p.el);
-        // A pane new in a kept window is kept too: it reads its stream, and leaves its block to its owner.
-        if (this.parked) p.park(false);
+        // A pane new in a kept window is kept too: it reads its stream, and gives its block back. A block
+        // that moved here from the shown window is still the page's; a disown of one the page does not own
+        // changes nothing (owners.go, giveUp).
+        if (this.parked) p.park();
         if (ms) {
           p.el.classList.add("entering");
           p.el.addEventListener("animationend", () => p!.el.classList.remove("entering"), { once: true });
@@ -364,9 +368,12 @@ export class WindowView {
         this.render();
       };
       const up = () => {
+        if (this.endDrag !== up) return;
+        this.endDrag = undefined;
         d.removeEventListener("pointermove", move);
         d.removeEventListener("pointerup", up);
         d.removeEventListener("pointercancel", up);
+        d.removeEventListener("lostpointercapture", up);
         d.classList.remove("held");
         this.hold(false);
         const cur = this.split(id);
@@ -382,9 +389,12 @@ export class WindowView {
         const s = this.split(id);
         if (s && ratio !== undefined && Math.abs(ratio - from) > 0.001) this.app.resizeSplit(this, s, ratio);
       };
+      this.endDrag = up;
       d.addEventListener("pointermove", move);
       d.addEventListener("pointerup", up);
       d.addEventListener("pointercancel", up);
+      // The capture can go without a release (the divider left the page): the drag ends then too.
+      d.addEventListener("lostpointercapture", up);
     });
     d.addEventListener("dblclick", () => {
       const s = this.split(id);
@@ -547,9 +557,13 @@ export class WindowView {
    */
   park() {
     if (this.parked) return;
+    // A divider's drag ends where it is, and a view that came meanwhile applies: a kept window follows its views.
+    this.endDrag?.();
     this.stopMoving();
     this.parked = true;
     this.showDrop(undefined);
+    // The keyboard leaves the window first, so that an input method's composition ends (pane.ts, blur).
+    if (this.el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     this.el.remove();
     for (const p of this.panes.values()) p.park();
   }

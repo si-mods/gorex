@@ -706,6 +706,19 @@ export class PointerInput {
     this.canvas.style.cursor = "";
   }
 
+  /**
+   * The pane left the stage (kept): a press, a drag's scroll and the menu
+   * end there; the selection stays.
+   */
+  pause() {
+    this.stopAutoscroll();
+    this.hideMenu();
+    if (this.touch) clearTimeout(this.touch.timer);
+    this.touch = undefined;
+    this.down = undefined;
+    this.steering = undefined;
+  }
+
   /** The pane closed: it no longer follows the link key. */
   dispose() {
     this.reset();

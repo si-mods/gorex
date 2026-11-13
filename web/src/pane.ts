@@ -117,6 +117,8 @@ export class TerminalView {
   private full = true;
   private typed: Uint8Array[] = [];
   private typing = false;
+  /** The bytes of the write on its way, while typing. */
+  private sending?: Uint8Array;
   /** While offline, the wait before the typed bytes go again. */
   private writeRetry?: number;
   /** Whether this view's claim of the block waits for its resize message, and a message it held meanwhile. */
@@ -258,7 +260,7 @@ export class TerminalView {
         if (d !== this.data || this.closed) return;
         // 4000: the block closed; the view's next read takes the pane away.
         if (code !== 4000) {
-          this.app.status(() => t("paneDropped", { code: String(code) }));
+          this.say(() => t("paneDropped", { code: String(code) }));
           setTimeout(() => gen === this.generation && this.start(), 1000);
         }
       };
@@ -266,8 +268,13 @@ export class TerminalView {
       if (gen !== this.generation) return d.close();
       this.stream = new TerminalStream(d.nonce);
     } catch (e) {
-      if (gen === this.generation && !this.closed) this.app.status(() => t("paneOpenFailed", { error: describe(e) }));
+      if (gen === this.generation && !this.closed) this.say(() => t("paneOpenFailed", { error: describe(e) }));
     }
+  }
+
+  /** Says what the stream did in the page's status line: only a shown pane's, not a kept one's of another window. */
+  private say(s: Msg) {
+    if (!this.parked) this.app.status(s);
   }
 
   private receive(bytes: Uint8Array) {
@@ -280,7 +287,7 @@ export class TerminalView {
             this.term = Terminal.fromSnapshot(this.app.g, item.data);
           } catch (e) {
             this.term = undefined;
-            this.app.status(() => t("paneSnapshotFailed", { error: describe(e) }));
+            this.say(() => t("paneSnapshotFailed", { error: describe(e) }));
             return;
           }
           // Drawn at this view's size, which the block takes next, as the
@@ -328,7 +335,7 @@ export class TerminalView {
         }
         break;
       case "child_exited":
-        this.app.status(() => t("paneExited", { code: String(m.exit_code ?? 0) }));
+        this.say(() => t("paneExited", { code: String(m.exit_code ?? 0) }));
         break;
     }
   }
@@ -690,6 +697,7 @@ export class TerminalView {
     let offline = !c;
     if (c) {
       this.typing = true;
+      this.sending = all;
       try {
         await c.callBlock("write", this.session, this.block, { data: new TextDecoder().decode(all) });
       } catch (e) {
@@ -697,6 +705,7 @@ export class TerminalView {
         else console.warn("dropped a write", e);
       }
       this.typing = false;
+      this.sending = undefined;
     }
     if (this.closed) return;
     if (offline) {
@@ -726,7 +735,10 @@ export class TerminalView {
     clearTimeout(this.sizing);
     this.claiming = false;
     this.stale = undefined;
-    this.pointer.hideMenu();
+    // A composition, a selection's drag and its scroll end: the pane has no keys or pointer off the stage.
+    if (this.composing) this.compose(false);
+    this.input.blur();
+    this.pointer.pause();
     // Off the stage, the pane has no size: the font is made, and the next layout sends the size.
     this.layout();
     if (disown) this.app.control()?.call("session.disown_block", { session_id: this.session, block_ids: [this.block] }).catch(() => {});
@@ -749,9 +761,9 @@ export class TerminalView {
     this.redraw();
   }
 
-  /** The bytes typed that wait to be written: lost if the pane closes now. */
+  /** The bytes typed that wait to be written, and those of a write not answered yet: lost if the pane closes now. */
   get unsent(): number {
-    return this.typed.reduce((n, b) => n + b.length, 0);
+    return this.typed.reduce((n, b) => n + b.length, this.sending?.length ?? 0);
   }
 
   /**
