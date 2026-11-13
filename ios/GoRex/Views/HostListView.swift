@@ -255,6 +255,10 @@ private struct NoHostsView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.glassProminent)
+                // The prominent glass is the accent, which is white in the
+                // dark scheme: its label takes the page's color, as the
+                // app's other prominent buttons do.
+                .foregroundStyle(Color.page)
                 .controlSize(.large)
                 Button { addHost() } label: {
                     Text("Add a Host")
@@ -287,7 +291,8 @@ private struct DemoBanner: View {
                 Text("You're exploring a demo Mac. Nothing is connected.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 8)
             Button("Exit Demo") { exit() }

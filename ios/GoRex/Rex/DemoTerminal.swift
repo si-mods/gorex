@@ -326,7 +326,8 @@ final class DemoTerminal {
         let arg = parts.count > 1 ? String(parts[1]).trimmingCharacters(in: .whitespaces) : ""
         switch command {
         case "help", "?":
-            lineOut(DemoText.bold("Rex Go Demo Mode") + " — this terminal runs on the phone.")
+            lineOut(DemoText.bold("Rex Go Demo Mode"))
+            lineOut(DemoText.dim("This terminal runs on the phone."))
             lineOut()
             lineOut("  \(DemoText.cyan("ls")) [ -l ]      list the folder")
             lineOut("  \(DemoText.cyan("cd")) <dir>       change folder")
@@ -338,7 +339,8 @@ final class DemoTerminal {
             lineOut("  \(DemoText.cyan("claude"))         open Claude Code")
             lineOut("  \(DemoText.cyan("clear"))          clear the screen")
             lineOut()
-            lineOut(DemoText.dim("Nothing is connected: add a host in Settings › Remote Hosts for the real thing."))
+            lineOut(DemoText.dim("Nothing is connected: add a host in"))
+            lineOut(DemoText.dim("Settings › Remote Hosts."))
         case "ls": ls(arg)
         case "cd": cd(arg)
         case "pwd": lineOut(abs)
@@ -356,7 +358,8 @@ final class DemoTerminal {
         case "claude":
             mode = .claude
             lineOut(DemoText.orange("   ✻ Welcome to Claude Code!"))
-            lineOut(DemoText.dim("     /help for help, /exit to leave"))
+            lineOut(DemoText.dim("     /help for help"))
+            lineOut(DemoText.dim("     /exit to leave"))
             lineOut()
             showPrompt()
             return
@@ -372,7 +375,7 @@ final class DemoTerminal {
                 lineOut(DemoText.dim("[1/42] Compiling GoRex"))
                 lineOut(DemoText.dim("[42/42] Linking GoRexTests"))
                 lineOut()
-                lineOut(DemoText.green("✔ Test run with 312 tests passed after 4.201 seconds."))
+                lineOut(DemoText.green("✔ 312 tests passed in 4.201 seconds."))
             } else {
                 lineOut("swift: unknown command '\(arg)'")
             }
@@ -407,14 +410,15 @@ final class DemoTerminal {
 
     private func ls(_ arg: String) {
         if arg == "-l" || arg == "-la" || arg == "-al" {
-            lineOut("drwxr-xr-x   8 demo  staff    256 Nov 13 09:02 \(DemoText.blue("docs"))")
-            lineOut("drwxr-xr-x  21 demo  staff    672 Nov 13 09:11 \(DemoText.blue("ios"))")
-            lineOut("drwxr-xr-x  14 demo  staff    448 Nov 12 18:40 \(DemoText.blue("web"))")
-            lineOut("-rw-r--r--   1 demo  staff   4219 Nov 13 08:52 README.md")
-            lineOut("-rw-r--r--   1 demo  staff    815 Nov 11 21:07 go.mod")
-            lineOut("-rw-r--r--   1 demo  staff  18240 Nov 13 09:04 main.go")
+            // A phone is narrow: the long form gives the mode and the name.
+            lineOut("drwxr-xr-x  \(DemoText.blue("docs/"))")
+            lineOut("drwxr-xr-x  \(DemoText.blue("ios/"))")
+            lineOut("drwxr-xr-x  \(DemoText.blue("web/"))")
+            lineOut("-rw-r--r--  README.md")
+            lineOut("-rw-r--r--  go.mod")
+            lineOut("-rw-r--r--  main.go")
         } else {
-            lineOut("\(DemoText.blue("docs/"))  \(DemoText.blue("ios/"))  \(DemoText.blue("web/"))  README.md  go.mod  main.go")
+            lineOut("\(DemoText.blue("docs/"))  \(DemoText.blue("ios/"))  \(DemoText.blue("web/"))  README.md  go.mod")
         }
     }
 
@@ -425,10 +429,12 @@ final class DemoTerminal {
         }
         lineOut(DemoText.bold("# GoRex"))
         lineOut()
-        lineOut("Run your terminals in one window. Every session, every window")
-        lineOut("and every pane of your Mac, on your phone.")
+        lineOut("Run your terminals in one window.")
+        lineOut("Every session, every window and every pane")
+        lineOut("of your Mac, on your phone.")
         lineOut()
-        lineOut("From the app: add the machine where GoRex runs, in Settings.")
+        lineOut("From the app: add the machine where GoRex")
+        lineOut("runs, in Settings.")
     }
 
     private func git(_ arg: String) {
@@ -500,11 +506,14 @@ final class DemoTerminal {
         let answer = text.lowercased()
         if !answered, answer == "y" || answer == "yes" {
             answered = true
-            lineOut(DemoText.green("  ✓ Applied the patch to ios/GoRexTests/TabsTests.swift."))
-            lineOut(DemoText.dim("  Run swift test to check it; /exit leaves Claude Code."))
+            lineOut(DemoText.green("  ✓ Applied: TabsTests.swift now waits."))
+            lineOut(DemoText.dim("  Run swift test to check it."))
+            lineOut(DemoText.dim("  /exit leaves Claude Code."))
         } else {
-            lineOut(DemoText.orange("✻") + " This is a demo: Claude Code runs on your Mac, which isn't connected.")
-            lineOut(DemoText.dim("  Add a host in Settings › Remote Hosts to use it for real."))
+            lineOut(DemoText.orange("✻") + " This is a demo: Claude Code runs on")
+            lineOut("  your Mac, which isn't connected.")
+            lineOut(DemoText.dim("  Add a host in Settings › Remote Hosts"))
+            lineOut(DemoText.dim("  to use it for real."))
         }
         showPrompt()
     }

@@ -80,17 +80,19 @@ enum Demo {
         switch block {
         case claude:
             return DemoScene(program: .claude, dir: "~/code/gorex", history: ["Fix the flaky tab tests"], intro: """
-                \(DemoText.dim("Last login: Thu Nov 13 09:12:04 on ttys002"))\r
+                \(DemoText.dim("Last login: Thu Nov 13 09:12 on ttys002"))\r
                 \(DemoText.prompt("~/code/gorex", command: "claude"))\r
                 \(DemoText.orange("   ✻ Welcome to Claude Code!"))\r
                 \r
-                \(DemoText.dim("     /help for help, /status for your status"))\r
+                \(DemoText.dim("     /help for help, /status for status"))\r
                 \(DemoText.dim("     cwd: /Users/demo/code/gorex"))\r
                 \r
                 \(DemoText.dim("> Fix the flaky tab tests"))\r
                 \r
-                  ✻ I found a race in TabsTests: the test reads the tabs before the\r
-                    main actor's update lands. I'll make it wait for the expectation.\r
+                  ✻ I found a race in TabsTests: the test\r
+                    reads the tabs before the main\r
+                    actor's update lands. I'll make it\r
+                    wait for the expectation.\r
                 \r
                 \(DemoText.green("  ✓ Read ios/GoRexTests/HostTests.swift"))\r
                 \(DemoText.green("  ✓ Edited ios/GoRexTests/TabsTests.swift"))\r
@@ -98,8 +100,8 @@ enum Demo {
                   Apply the patch? (y/n)\r
                 """)
         case dashboard:
-            return DemoScene(program: .dev, dir: "~/code/dashboard", history: ["npm run dev"], intro: """
-                \(DemoText.prompt("~/code/dashboard", command: "npm run dev"))\r
+            return DemoScene(program: .dev, dir: "~/dashboard", history: ["npm run dev"], intro: """
+                \(DemoText.prompt("~/dashboard", command: "npm run dev"))\r
                 \r
                 \(DemoText.dim("> dashboard@0.1.0 dev"))\r
                 \(DemoText.dim("> vite"))\r
@@ -120,20 +122,20 @@ enum Demo {
                 \r
                 Test Suite 'All tests' started at 10:41:07.\r
                 Test Suite 'All tests' passed at 10:41:11.\r
-                \(DemoText.green("✔ Test run with 312 tests passed after 4.201 seconds."))\r
+                \(DemoText.green("✔ 312 tests passed in 4.201 seconds."))\r
                 """)
         case git:
-            return DemoScene(program: .shell, dir: "~/dotfiles", history: ["git log --oneline -5"], intro: """
-                \(DemoText.prompt("~/dotfiles", command: "git log --oneline -5"))\r
-                \(DemoText.yellow("e4f2a91")) zsh: bind ⌘K to the command palette\r
+            return DemoScene(program: .shell, dir: "~/dotfiles", history: ["git log -5"], intro: """
+                \(DemoText.prompt("~/dotfiles", command: "git log -5"))\r
+                \(DemoText.yellow("e4f2a91")) zsh: bind ⌘K to the palette\r
                 \(DemoText.yellow("7c1d0b4")) nvim: two spaces, no tabs\r
                 \(DemoText.yellow("2b9a6e0")) git: rebase by default\r
                 \(DemoText.yellow("a03c5f1")) tmux: keep the status bar quiet\r
-                \(DemoText.yellow("6d84e2a")) zsh: a prompt that tells the branch\r
+                \(DemoText.yellow("6d84e2a")) zsh: a prompt with the branch\r
                 """)
         default:
             return DemoScene(program: .shell, dir: "~", history: [], intro:
-                DemoText.dim("Last login: Thu Nov 13 09:12:04 on ttys002") + "\r")
+                DemoText.dim("Last login: Thu Nov 13 09:12 on ttys002") + "\r")
         }
     }
 }
