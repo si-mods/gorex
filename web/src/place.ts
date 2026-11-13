@@ -1,7 +1,8 @@
 // Where the page was, kept in this browser (docs/web-multihost.md,
 // Persistence): the shown window, by its host (gorex.place), and the
 // tailnet hosts the user connected once (gorex.tailnetOpened), which
-// connect again when built-in Tailscale finds them. A page from before
+// connect again when built-in Tailscale finds them, and the direct hosts
+// the user disconnected (gorex.hostsOff), which stay so. A page from before
 // kept only the chosen host (gorex.host); it moves into gorex.place once.
 // Every read and write goes on without storage: the page then forgets
 // when it closes. No DOM here: web/test/place.test.ts runs it in Node.
@@ -22,6 +23,7 @@ export interface Store {
 
 export const placeKey = "gorex.place";
 export const openedKey = "gorex.tailnetOpened";
+export const offKey = "gorex.hostsOff";
 /** The chosen host's ID, as a page from before kept it. */
 export const oldHostKey = "gorex.host";
 
@@ -131,5 +133,37 @@ export function openTailnet(id: string, store = storage()) {
     store?.setItem(openedKey, JSON.stringify([...all]));
   } catch {
     // As savePlace.
+  }
+}
+
+/** Forgets a tailnet host connected once: it waits for Connect again, as one never connected (Disconnect). */
+export function closeTailnet(id: string, store = storage()) {
+  const all = tailnetOpened(store);
+  if (!all.delete(id)) return;
+  try {
+    store?.setItem(openedKey, JSON.stringify([...all]));
+  } catch {
+    // As savePlace.
+  }
+}
+
+/** The direct hosts the user disconnected, by ID: they do not connect as the page starts. */
+export function loadHostsOff(store = storage()): Set<string> {
+  try {
+    const l = JSON.parse(store?.getItem(offKey) ?? "[]");
+    return new Set(Array.isArray(l) ? l.filter((x): x is string => typeof x === "string" && !!x) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Keeps the disconnected hosts; none removes the key. */
+export function saveHostsOff(ids: Iterable<string>, store = storage()) {
+  const all = [...ids];
+  try {
+    if (all.length) store?.setItem(offKey, JSON.stringify(all));
+    else store?.removeItem(offKey);
+  } catch {
+    // Without storage they stay disconnected until the page closes.
   }
 }

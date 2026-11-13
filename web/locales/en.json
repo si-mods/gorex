@@ -846,6 +846,62 @@
   "@hostEdit": {
     "description": "Button that edits the chosen host (Settings › Host, the card of an unreachable host); the form's title."
   },
+  "hostConnect": "Connect",
+  "@hostConnect": {
+    "description": "Host list and Settings › Hosts: tooltip of a disconnected host's Connect button (a plug icon)."
+  },
+  "hostDisconnect": "Disconnect",
+  "@hostDisconnect": {
+    "description": "Host list and Settings › Hosts: tooltip of a connected host's Disconnect button (an unplug icon). The host stays disconnected, across reloads, until the user connects it."
+  },
+  "hostDisconnectName": "Disconnect {name}",
+  "@hostDisconnectName": {
+    "description": "Accessible name of a host's Disconnect button in the host list and Settings › Hosts.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "studio"
+      }
+    }
+  },
+  "hostShowName": "Show {name}",
+  "@hostShowName": {
+    "description": "Settings › Hosts: tooltip of a connected host's row, which shows its last window.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "studio"
+      }
+    }
+  },
+  "hostStateOff": "Disconnected",
+  "@hostStateOff": {
+    "description": "Host list and Settings › Hosts: the state dot's words for a host the user disconnected."
+  },
+  "hostStateProblem": "{state}: {problem}",
+  "@hostStateProblem": {
+    "description": "Host list and Settings › Hosts: the state dot's words for a host that failed to connect; state is linkUnreachable, problem the problem's title.",
+    "placeholders": {
+      "state": {
+        "type": "String",
+        "example": "Unreachable"
+      },
+      "problem": {
+        "type": "String",
+        "example": "Can't reach the host"
+      }
+    }
+  },
+  "hostsManyNote": "{n} hosts are kept connected. Each one costs battery and startup time, also while it retries: disconnect the hosts you don't use.",
+  "@hostsManyNote": {
+    "description": "Host list and Settings › Hosts: a note shown when the page keeps more than 8 hosts connected (connected, or retrying), that is all hosts not disconnected by the user. There is no limit; this only says what each connection costs.",
+    "placeholders": {
+      "n": {
+        "type": "int",
+        "example": "9"
+      }
+    }
+  },
   "hostEditName": "Edit {name}",
   "@hostEditName": {
     "description": "Screen reader label of the pencil button beside a host.",
@@ -1270,17 +1326,13 @@
       }
     }
   },
-  "settingsHostsNote": "The GoRex hosts this browser connects to. Only the chosen one is connected.",
+  "settingsHostsNote": "The GoRex hosts this browser connects to. Each one stays connected until you disconnect it.",
   "@settingsHostsNote": {
     "description": "Settings › Hosts: above the list."
   },
-  "settingsHostConnected": "Connected to this host",
-  "@settingsHostConnected": {
-    "description": "Settings › Hosts: tooltip of the chosen host's row."
-  },
   "settingsHostConnect": "Connect to {name}",
   "@settingsHostConnect": {
-    "description": "Tooltip of a host's row in Settings › Hosts; label of a host's Connect button in the Tailscale guide.",
+    "description": "Tooltip of a disconnected host's row in Settings › Hosts; accessible name of a host's Connect button in the host list and Settings › Hosts; label of a host's Connect button in the Tailscale guide.",
     "placeholders": {
       "name": {
         "type": "String",

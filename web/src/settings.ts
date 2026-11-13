@@ -7,7 +7,7 @@
 // (prefs.ts) and applied to the open panes at once by the page; a change
 // of language draws the dialog again in the new one.
 import { checkForUpdate, install, installKind } from "./app";
-import { allowCommand, commandBox, Host, HostList, icon, Problem } from "./hosts";
+import { allowCommand, commandBox, Host, HostLink, HostList, icon } from "./hosts";
 import { mac, shortcutGroups } from "./keys";
 import {
   Animation, Appearance, CursorStyle, maxFontSize, minFontSize, prefs, Prefs, setPrefs, SidebarView, TabPlacement, textSize, clearAll,
@@ -24,14 +24,14 @@ declare const __GOREX_COMMIT__: string;
 declare const __GOREX_BUILT__: string;
 declare const __GHOSTTY_COMMIT__: string;
 
-/** The chosen host's connection, as the desktop's serverState tells the server's. */
+/** A host's connection, as the desktop's serverState tells the server's; "none" while the page keeps none. */
 export type LinkState = "none" | "connecting" | "connected" | "unreachable";
 
 /** What the dialog needs of the page. */
 export interface SettingsApp {
   hosts: HostList;
-  /** The chosen host, its connection, and what is wrong with it. */
-  link(): { host?: Host; state: LinkState; problem?: Problem };
+  /** A host's connection, and what is wrong with it: the card's host is the shown window's (hosts.chosen). */
+  link(host: Host | undefined): HostLink;
   /** The theme the page applies, none for the host's colours. */
   theme(): ThemeEntry | undefined;
   /** A theme chosen, or the host's colours (none). */
@@ -241,6 +241,8 @@ export class Settings {
   private nav = el("nav", "settings-nav");
   private title = el("h1", "settings-title");
   private page = el("div", "settings-page");
+  /** The page's scroller: a redraw of the same page keeps its place. */
+  private scroll = el("div", "settings-scroll");
   private section: Section = "appearance";
   /** The host the Hosts section edits, "new" for one to add, or none for the list. */
   private editing?: Host | "new";
@@ -260,7 +262,7 @@ export class Settings {
     const head = el("header", "settings-head");
     head.append(this.title, close);
     const main = el("div", "settings-main");
-    const scroll = el("div", "settings-scroll");
+    const scroll = this.scroll;
     scroll.append(this.page);
     main.append(head, scroll);
     this.dialog.append(this.nav, main);
@@ -326,18 +328,24 @@ export class Settings {
     if (this.dialog.open && this.section === "about") this.drawPage();
   }
 
-  /** The host or its connection changed: the card, and the pages that show it, again. A form being filled stays. */
+  /** A host or a connection changed: the card, and the pages that show it, again, keeping the focus. A form being filled stays. */
   update() {
     if (!this.dialog.open) return;
     this.drawNav();
-    if (this.section === "host" || (this.section === "hosts" && !this.editing)) this.drawPage();
     // The Tailscale page follows the node, but not under a name being typed.
     const typing = document.activeElement instanceof HTMLInputElement && this.page.contains(document.activeElement);
-    if (this.section === "tailscale" && !typing) {
+    if (this.section === "host" || (this.section === "hosts" && !this.editing) || (this.section === "tailscale" && !typing)) {
       const key = (document.activeElement as HTMLElement | null)?.dataset?.key;
+      const top = this.scroll.scrollTop;
       this.drawPage();
-      if (key) this.page.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)?.focus();
+      this.scroll.scrollTop = top;
+      if (key) this.page.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
     }
+  }
+
+  /** The shown window's host, and its connection. */
+  private link(): HostLink {
+    return this.app.link(this.app.hosts.chosen);
   }
 
   private show(s: Section, editing?: Host | "new") {
@@ -370,7 +378,7 @@ export class Settings {
 
   /** The host's card atop the sections, as the desktop's serverCard: its icon, its name and its state's dot. */
   private hostCard(): HTMLElement {
-    const { host, state } = this.app.link();
+    const { host, state } = this.link();
     const b = el("button", "settings-host");
     b.type = "button";
     b.dataset.section = "host";
@@ -420,7 +428,7 @@ export class Settings {
 
   /** The host's page: the chosen host and its connection, as the desktop's server page, and how it trusts this page. */
   private hostPage() {
-    const { host, state, problem } = this.app.link();
+    const { host, state, problem } = this.link();
     const card = group(this.page);
     const top = el("div", "settings-row settings-hero");
     const glyph = el("span", "settings-hero-icon");
@@ -717,38 +725,46 @@ export class Settings {
       return;
     }
     const card = group(this.page, "", t("settingsHostsNote"));
+    // The host list's rows: each host with its state's dot, Connect or Disconnect, and Edit (whose form removes it).
     for (const h of hosts.hosts) {
       const r = el("div", "settings-row settings-host-row");
       const pick = el("button", "settings-host-pick");
       pick.type = "button";
+      pick.dataset.key = h.id;
       const glyph = el("span", "settings-host-icon small");
       glyph.append(icon(h.icon));
       const text = el("span", "settings-host-text");
       text.append(el("span", "settings-host-name", h.name), el("span", "host-url", h.url));
       const chosen = h.id === hosts.chosen?.id;
-      pick.append(glyph, text);
-      if (chosen) {
-        const c = el("span", "theme-check");
-        c.append(icon("check"));
-        pick.append(c);
-      }
+      const off = this.app.link(h).state === "none";
+      pick.append(glyph, text, hosts.dot(h));
       pick.setAttribute("aria-current", String(chosen));
-      pick.title = chosen ? t("settingsHostConnected") : t("settingsHostConnect", { name: h.name });
+      pick.title = off ? t("settingsHostConnect", { name: h.name }) : t("hostShowName", { name: h.name });
       pick.onclick = () => {
-        if (!chosen) hosts.choose(h);
+        // A connected host shows its last window; one the user disconnected connects.
+        if (off || !chosen) hosts.choose(h);
         this.update();
       };
       const edit = el("button", "pane-action");
       edit.type = "button";
+      edit.dataset.key = h.id + ":edit";
       edit.title = t("commonEdit");
       edit.setAttribute("aria-label", t("hostEditName", { name: h.name }));
       edit.append(icon("pencil"));
       edit.onclick = () => this.show("hosts", h);
-      r.append(pick, edit);
+      r.append(pick, hosts.plug(h), edit);
       card.append(r);
     }
     if (!hosts.hosts.length) row(card, t("settingsNoHosts"), t("settingsNoHostsHint"));
+    const many = hosts.manyNote();
+    if (many) {
+      const r = el("div", "settings-row");
+      r.dataset.key = "many";
+      r.append(el("div", "settings-hint host-many", many));
+      card.append(r);
+    }
     const add = button(t("hostAdd"), "host-add primary");
+    add.dataset.key = "add";
     const plus = icon("plus");
     add.prepend(plus);
     add.onclick = () => this.show("hosts", "new");
