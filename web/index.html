@@ -260,6 +260,8 @@
   button.block .count { margin-left: auto; color: var(--muted); font-size: 11px; }
   /* The window's room: 8px from the window's edges (gap), its panes placed in it by window.ts. */
   #stage { position: relative; margin: 8px 8px 0 0; min-width: 0; min-height: 0; }
+  /* A window's panes and dividers (window.ts); a kept window's room is off the stage. */
+  .window-room { position: absolute; inset: 0; }
   /* A pane as the desktop's: corners concentric with the window's (cardR), a 1px
      border and a shadow, both stronger focused; a header over its terminal. */
   .pane {
