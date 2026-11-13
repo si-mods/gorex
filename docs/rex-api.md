@@ -276,10 +276,11 @@ meets:
   drops it as a client too far behind. A connection slower than the
   program prints falls behind the gateway instead. Once the gateway holds
   2 MiB of output that came after the newest snapshot and that the
-  connection did not take, it drops those bytes. When the connection has
-  taken all the rest (or as soon as a client resumes the stream), the
-  gateway attaches to the session again, and sends on the same stream,
-  in order:
+  connection did not take, it drops those bytes, and the output that
+  follows. Once a connection has taken all the bytes kept, and at least a
+  second has passed since the last resync, the gateway attaches to the
+  session again. A stream with no connection first waits for a client to
+  resume it. The gateway then sends on the same stream, in order:
   1. `ESC \` (which ends any string or sequence left open), RIS, and the
      sequences that clear the screen and scrollback;
   2. a `resize` message with the session's size;

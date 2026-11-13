@@ -214,7 +214,7 @@ func (g *Gateway) startStream(ws *websocket.Conn, t *ticket) {
 		conn: conn, rd: br,
 		chunks: make(chan chunk, 32), resumes: make(chan *resumeCall),
 		goners: make(chan gone, 8), msgs: make(chan any, 8), done: make(chan struct{}),
-		finished: make(chan struct{}), resyncs: make(chan resyncResult, 1),
+		finished: make(chan struct{}), resyncs: make(chan resyncResult),
 		drained: make(chan struct{}, 1),
 		lists:   make(chan []rex.SessionInfo, 1),
 		cols:    head.Cols, rows: head.Rows, block: t.block,
@@ -628,13 +628,15 @@ func (s *stream) appendBytes(p []byte) {
 	s.buf = append(s.buf, p...)
 	s.total += int64(len(p))
 	// A stream that waited too long keeps only its newest bytes, which a
-	// resume counted too far back cannot use. The buffer holds up to twice
-	// that before it moves them to its front, so that bytes are copied
-	// once per resumeBytes rather than once per chunk.
+	// resume counted too far back cannot use, and those the writer did not
+	// take yet, as the start of a large snapshot. The buffer holds up to
+	// twice what it keeps before it moves them to its front, so that bytes
+	// are copied once per resumeBytes rather than once per chunk.
 	if len(s.buf) > resumeBytes {
 		s.base = s.total - int64(resumeBytes)
-		if len(s.buf) > 2*resumeBytes {
-			s.buf = s.buf[:copy(s.buf, s.buf[len(s.buf)-resumeBytes:])]
+		keep := s.total - min(s.base, s.sent)
+		if int64(len(s.buf)) > keep+int64(resumeBytes) {
+			s.buf = s.buf[:copy(s.buf, s.buf[int64(len(s.buf))-keep:])]
 		}
 	}
 	s.cond().Broadcast()
@@ -828,7 +830,9 @@ func (s *stream) resumeStream(call *resumeCall) {
 	}
 	if old := s.currentWS(); old != nil && old != call.ws {
 		s.clearWS(old)
-		old.Close(1000, "stream moved")
+		// Its writer may wait on a dead connection for a while: the close
+		// must not hold up the session's output.
+		go old.Close(1000, "stream moved")
 	}
 	s.setWS(call.ws)
 	token := s.g.rotateStreamToken(s)
@@ -965,6 +969,8 @@ func (s *stream) startResync() {
 	s.resyncing = true
 	go func() {
 		r := s.attachAgain()
+		// resyncs has no buffer: the run goroutine takes the attach, or the
+		// stream ended and the attach is closed here.
 		select {
 		case s.resyncs <- r:
 		case <-s.done:
