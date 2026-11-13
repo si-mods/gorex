@@ -519,6 +519,13 @@ func (c *Client) LockedResize(sid, owner string, cols, rows int) error {
 	return c.call(Request{Op: "lockedResize", SID: sid, Owner: owner, Cols: cols, Rows: rows}, nil)
 }
 
+// SeeStatus tells the server that the user saw the session's status
+// records updated till at (CapabilityStatusSeen): its info's StatusSeen
+// moves forward to it.
+func (c *Client) SeeStatus(sid string, at time.Time) error {
+	return c.call(Request{Op: "seeStatus", SID: sid, Seen: at}, nil)
+}
+
 func (c *Client) RenewSize(sid, owner string) error {
 	return c.call(Request{Op: "renewSize", SID: sid, Owner: owner}, nil)
 }
@@ -836,6 +843,10 @@ func (c *Client) SetRelay(relay string) error {
 func (c *Client) SetReachable(ip string) error {
 	return c.call(Request{Op: "remote.reachableSet", ReachableAt: ip}, nil)
 }
+
+// CheckFirewall asks the server to read Windows Firewall again for
+// Reachable at, and returns once it has: RemoteStatus then tells.
+func (c *Client) CheckFirewall() error { return c.call(Request{Op: "remote.firewallCheck"}, nil) }
 
 // DisableRemote turns remote access off.
 func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }

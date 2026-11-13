@@ -3,6 +3,7 @@
 // them. It follows the host's view: a new view keeps the panes whose
 // blocks stay, opens the new ones and closes the gone ones.
 import { localize, t } from "./i18n";
+import { draggable, DropZone, onMenu, ownDrag, paneDropZone } from "./manage";
 import { PaneHost, TerminalView } from "./pane";
 
 /** A node of a layer's layout, as session.view gives it. */
@@ -58,6 +59,12 @@ export interface WindowHost extends Omit<PaneHost, "focused" | "isFocused"> {
   resizeSplit(w: WindowView, split: Split, ratio: number): void;
   /** A pane's title. */
   titleOf(block: string): string;
+  /** A pane's header asked for its menu, at a point of the window. */
+  paneMenu(w: WindowView, block: string, x: number, y: number): void;
+  /** A pane dragged by its header was dropped on a zone of another (panedrop.go, dropPaneOn). */
+  dropPane(w: WindowView, dragged: string, target: string, zone: DropZone): void;
+  /** Whether a pane dropped on another's edge moves beside it: the host's API must take it. */
+  edgeDrops(): boolean;
 }
 
 export class WindowView {
@@ -74,6 +81,9 @@ export class WindowView {
   private dragging = false;
   /** A view of the host's that came while a divider moved. */
   private pending?: any;
+  /** Where a pane dragged over another would go, and what shows it (panedrop.go, drawPaneDrop). */
+  private drop?: { block: string; zone: DropZone };
+  private readonly dropMark = Object.assign(document.createElement("div"), { className: "pane-drop" });
 
   constructor(readonly session: string, readonly window: string, private readonly stage: HTMLElement, private readonly app: WindowHost) {}
 
@@ -112,8 +122,11 @@ export class WindowView {
     }
     this.hostFocus = host;
     if (!focus || !blocks.includes(focus)) focus = host && blocks.includes(host) ? host : blocks[0];
+    // A pane that had the keys may go (moved to another window): its successor takes them.
+    const keys = this.stage.contains(document.activeElement);
     this.render();
     this.setFocus(focus, false);
+    if (keys && !this.stage.contains(document.activeElement)) this.focusKeys();
   }
 
   /** Places the panes and dividers; opens the panes of new blocks and closes those of gone ones. */
@@ -152,6 +165,7 @@ export class WindowView {
           isFocused: (v) => this.focus === v.block,
         });
         this.panes.set(block, p);
+        this.wire(p);
         this.stage.append(p.el);
         place(p.el, this.zoomed ? [0, 0, 1, 1] : rect);
         p.setTitle(this.app.titleOf(block));
@@ -199,6 +213,89 @@ export class WindowView {
         d.style.width = `${gap}px`;
       }
     }
+  }
+
+  /**
+   * A pane's header has its menu and drags the pane, and the pane takes
+   * another's drop, as the desktop's card: in its middle a pane of the
+   * same window swaps with it; on an edge, where the host takes it, it
+   * goes beside it. Not in a zoomed window, as the desktop's
+   * canDropPane.
+   */
+  private wire(p: TerminalView) {
+    const block = p.block;
+    onMenu(p.head, (x, y) => this.app.paneMenu(this, block, x, y));
+    draggable(
+      p.head,
+      () => (this.zoomed ? undefined : { kind: "pane", session: this.session, window: this.window, block }),
+      () => this.showDrop(undefined),
+    );
+    // A press on a focusable pane focuses it, and its text field takes
+    // the focus on, which keeps Chrome from starting the header's drag:
+    // the pane is not focusable while the header is pressed, and a click
+    // focuses it after. The press ends anywhere (a drag takes the pointer
+    // events, a zoomed window cancels the drag, the pointer may leave the
+    // header), so it is undone on the first end of any kind in the page.
+    const focusable = () => {
+      p.el.tabIndex = -1;
+    };
+    // (blur is the window's own: the press itself blurs the text field, and an element's blur does not bubble.)
+    const ends = ["pointerup", "pointercancel", "dragend", "blur"];
+    const capture = (ev: string) => ev !== "blur";
+    p.head.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.pointerType !== "mouse" || (e.target as Element).closest?.("button")) return;
+      p.el.removeAttribute("tabindex");
+      const end = () => {
+        for (const ev of ends) window.removeEventListener(ev, end, capture(ev));
+        focusable();
+      };
+      for (const ev of ends) window.addEventListener(ev, end, capture(ev));
+    });
+    // The drag took the focus to the page: the keys go back to the window's focused pane (a drop that
+    // moves the focus moves it on, see setFocus).
+    p.head.addEventListener("dragend", () => {
+      focusable();
+      this.focusKeys();
+    });
+    p.head.addEventListener("click", (e) => {
+      if ((e.target as Element).closest?.("button")) return;
+      focusable();
+      this.setFocus(block, true);
+      p.focusKeys();
+    });
+    const zone = (e: DragEvent): DropZone | undefined => {
+      const d = ownDrag(e);
+      if (d?.kind !== "pane" || d.block === block || d.session !== this.session || this.zoomed) return undefined;
+      return paneDropZone(p.el.getBoundingClientRect(), e.clientX, e.clientY, d.window === this.window, this.app.edgeDrops());
+    };
+    p.el.addEventListener("dragover", (e) => {
+      const z = zone(e);
+      this.showDrop(z && { block, zone: z });
+      if (!z) return;
+      e.preventDefault();
+      e.dataTransfer!.dropEffect = "move";
+    });
+    p.el.addEventListener("dragleave", (e) => {
+      if (this.drop?.block === block && !(e.relatedTarget instanceof Node && p.el.contains(e.relatedTarget))) this.showDrop(undefined);
+    });
+    p.el.addEventListener("drop", (e) => {
+      const d = ownDrag(e);
+      // The zone shown last, where the user let go.
+      const z = this.drop?.block === block ? this.drop.zone : zone(e);
+      this.showDrop(undefined);
+      if (d?.kind !== "pane" || !z) return;
+      e.preventDefault();
+      this.app.dropPane(this, d.block, block, z);
+    });
+  }
+
+  /** Shows where a dragged pane would go, or nothing. */
+  private showDrop(at: { block: string; zone: DropZone } | undefined) {
+    this.drop = at;
+    const p = at && this.panes.get(at.block);
+    if (!p || !at) return void this.dropMark.remove();
+    this.dropMark.dataset.zone = at.zone;
+    if (this.dropMark.parentElement !== p.el) p.el.append(this.dropMark);
   }
 
   /**
@@ -374,6 +471,7 @@ export class WindowView {
   }
 
   close() {
+    this.showDrop(undefined);
     for (const p of this.panes.values()) p.close(true);
     this.panes.clear();
     for (const d of this.dividers.values()) d.remove();

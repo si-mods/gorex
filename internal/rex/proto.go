@@ -52,10 +52,15 @@ import (
 // makes every change of the layout itself, and takes the app's
 // arrangement of a tab ("tab.set") and of its windows ("windows.set"),
 // with the LayoutCommand fields TabLayout, Spaces, Color and Float.
+// Still within 3, the capability "tab.to_space": "tab.to_space", which
+// moves a tab to another space (LayoutCommand.ToSpace).
 // Still within 3, the capability "voice": "voice.put" and "voice.get",
 // each on a connection of its own, which carry a phone's microphone to
 // the rec a session runs (Voice); deprecated, as nothing on the host
-// reads a voice any more, and to go.
+// reads a voice any more, and to go. Still within 3, the capability
+// "status.seen": "seeStatus", which tells that the user saw a session's
+// status records, and SessionInfo.StatusSeen, which every client reads
+// back.
 const ProtocolVersion = 3
 
 // CapabilityShutdownRestart is what a server that stops to be replaced — one
@@ -96,9 +101,18 @@ const CapabilityFileTemp = "file.temp"
 // machine's clients.
 const CapabilityLayoutServer = "layout.server"
 
+// CapabilityTabToSpace is what a server that moves a tab to another space
+// says it does: the "tab.to_space" command (LayoutCommand.ToSpace).
+const CapabilityTabToSpace = "tab.to_space"
+
+// CapabilityStatusSeen is what a server that keeps when its sessions'
+// status records were seen says it does: the "seeStatus" op, and
+// SessionInfo.StatusSeen.
+const CapabilityStatusSeen = "status.seen"
+
 // capabilities are what a version 3 server does beyond version 2. A
 // client reads them from Hello and falls back when one is absent.
-var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer}
+var capabilities = []string{"layout.revision", "events.revision", CapabilityShutdownRestart, CapabilitySnapshotGhostty, CapabilityInputEvents, CapabilityTerminalQuery, CapabilityFileTransfer, CapabilityFileTemp, CapabilityTeleport, CapabilityLayoutServer, CapabilityTabToSpace, CapabilityStatusSeen}
 
 // Request is a line of the control connection, from the client.
 type Request struct {
@@ -164,6 +178,9 @@ type Request struct {
 	// console that drops the terminal's paste event, a ConPTY on Windows,
 	// gets a paste this way (SessionInfo.ConPTY).
 	Paste string `json:"paste,omitempty"`
+	// Seen is the time of the latest status record "seeStatus" tells the
+	// user saw (ProgramStatus.Updated).
+	Seen time.Time `json:"seen,omitzero"`
 	// Capture is what "capture" shows of the session.
 	Capture *CaptureOptions `json:"capture,omitempty"`
 	// Action is the app action "action" runs.
@@ -225,8 +242,13 @@ type LayoutCommand struct {
 	// "pane.split", "pane.close", "tab.close", "tab.rename",
 	// "pane.rename", "pane.focus", "pane.zoom", "tab.move", "pane.resize",
 	// "pane.swap", "pane.move", "pane.restart", "tab.set", "windows.set",
-	// "layout.apply", "pane.teleporting", "pane.teleported", "kills.taken"
-	// or "show.taken".
+	// "layout.apply", "pane.teleporting", "pane.teleported", "kills.taken",
+	// "show.taken" or "tab.to_space".
+	// tab.to_space moves the tab, with its panes, their sessions, its
+	// floats, focus and zoom as they are, to the space ToSpace, as the
+	// app's Move to Space does: before the tab of Target there, else at
+	// its end. The active tab of ToSpace stays, and a space the move
+	// leaves with no tab goes, as the app's does.
 	// pane.restart starts a new shell in the place of the pane of SID.
 	// pane.teleported, a local client's only, tells of the teleport of the
 	// pane of SID to the host of address Host (hosts.json), the session
@@ -267,14 +289,20 @@ type LayoutCommand struct {
 	Vertical bool   `json:"vertical,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Mode     string `json:"mode,omitempty"`
-	// Direction is the edge pane.resize moves or the split pane.move makes,
-	// "left", "right", "up" or "down"; Amount is resize's share of the
-	// split and Ratio the moved pane's split's share of its target. Target
-	// is the other pane of a swap or a move.
+	// Direction is the edge pane.resize moves or the side of Target
+	// pane.move puts the pane on, "left", "right", "up" or "down"; Amount
+	// is resize's share of the split and Ratio the share of the moved
+	// pane's split that its first side, left or above, takes. Target is
+	// the other pane of a swap or a move, in the pane's tab or, for a
+	// move, another.
 	Direction string  `json:"direction,omitempty"`
 	Amount    float32 `json:"amount,omitempty"`
-	Target    string  `json:"target,omitempty"`
-	Ratio     float32 `json:"ratio,omitempty"`
+	// Of tab.to_space, Target is the tab of ToSpace the tab goes before,
+	// by its ID, else by a session of this machine it has; "" for the end.
+	Target string  `json:"target,omitempty"`
+	Ratio  float32 `json:"ratio,omitempty"`
+	// ToSpace is the space tab.to_space moves the tab to, by ID.
+	ToSpace string `json:"to_space,omitempty"`
 	// Host is a host of the window's, by its address as hosts.json has
 	// it, of the teleport commands, whose Target is the session there.
 	Host string `json:"host,omitempty"`
@@ -479,6 +507,10 @@ type RemoteStatus struct {
 	ReachableAt      string `json:"reachableAt,omitempty"`
 	ReachableAddress string `json:"reachableAddress,omitempty"`
 	ReachableError   string `json:"reachableError,omitempty"`
+	// ReachableFirewall is "blocked" while the relay runs and Windows
+	// Firewall drops connections to it (firewall.go), "blockRule" when a
+	// rule that blocks GoRex does, else "".
+	ReachableFirewall string `json:"reachableFirewall,omitempty"`
 	// Pairing is the pairing window, Pending the requests made in it.
 	Pairing RemotePairing   `json:"pairing"`
 	Pending []RemotePending `json:"pending,omitempty"`
@@ -554,9 +586,10 @@ type Event struct {
 
 // EventSession is one session in an Event.
 type EventSession struct {
-	ID       string          `json:"id"`
-	Status   *ProgramStatus  `json:"status,omitempty"`
-	Statuses []ProgramStatus `json:"statuses,omitempty"`
+	ID         string          `json:"id"`
+	Status     *ProgramStatus  `json:"status,omitempty"`
+	Statuses   []ProgramStatus `json:"statuses,omitempty"`
+	StatusSeen time.Time       `json:"statusSeen,omitzero"`
 }
 
 // LayoutState is the layout the server keeps, with its revision: a
@@ -644,9 +677,13 @@ type SessionInfo struct {
 	OwnerName string `json:"ownerName,omitempty"`
 	// Statuses are what the programs said they do (OSC 7501), by id, and
 	// Status the one that most needs the user (MostUrgent); nil when they
-	// said nothing.
-	Statuses []ProgramStatus `json:"statuses,omitempty"`
-	Status   *ProgramStatus  `json:"status,omitempty"`
+	// said nothing. StatusSeen is when the latest done or error record a client showed
+	// the user was updated ("seeStatus"): MostUrgent(Statuses,
+	// StatusSeen) is what still needs the user. Zero from a server before
+	// CapabilityStatusSeen.
+	Statuses   []ProgramStatus `json:"statuses,omitempty"`
+	Status     *ProgramStatus  `json:"status,omitempty"`
+	StatusSeen time.Time       `json:"statusSeen,omitzero"`
 }
 
 // ProgramName is the program's name for showing: what it reported through

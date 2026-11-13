@@ -204,16 +204,17 @@ export function statusOf(j: any): Status | undefined {
 }
 
 export const rank = (s: Status) => ({ idle: 1, working: 2, done: 3, error: 4, blocked: 5 } as Record<string, number>)[s.state] ?? 0;
-/** What identifies a done or error record the user saw: its id, state and time. */
-export const seenKey = (s: Status) => `${s.id}|${s.state}|${s.updated ?? -1}`;
 /** Whether it needs the user more than another, or as much and later. */
 const outranks = (a: Status, b: Status) => rank(a) > rank(b) || (rank(a) === rank(b) && (a.updated ?? 0) > (b.updated ?? 0));
 
-/** The record that most needs the user, the latest of those alike; done and error records seen do not count. */
-export function mostUrgent(rs: Status[], seen: Set<string>): Status | undefined {
+/**
+ * The record that most needs the user, the latest of those alike; done and
+ * error records updated by seen were seen, and do not count.
+ */
+export function mostUrgent(rs: Status[], seen: number | undefined): Status | undefined {
   let best: Status | undefined;
   for (const r of rs) {
-    if ((r.state === "done" || r.state === "error") && seen.has(seenKey(r))) continue;
+    if ((r.state === "done" || r.state === "error") && seen !== undefined && (r.updated ?? 0) <= seen) continue;
     if (!best || outranks(r, best)) best = r;
   }
   return best;

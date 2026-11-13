@@ -2,9 +2,9 @@
 // few calls the client makes. Like the Go binding (si-mods/mygo's
 // plugins/terminal/internal/vt), it reads the library's type manifest
 // (ghostty_type_json) as it loads, and refuses a module whose types lack
-// what it uses: here every struct offset, enum value and packed-cell bit
-// comes from the manifest itself, so the check is that each one exists,
-// with the size this code reads it at.
+// what it uses: here every struct offset, enum value and packed bit (of a
+// cell, of a style's flags) comes from the manifest itself, so the check is
+// that each one exists, with the size this code reads it at.
 
 import { loader } from "./loader";
 import type { LoadState } from "./progress";
@@ -30,16 +30,17 @@ const functions = [
   "ghostty_render_state_row_set", "ghostty_render_state_row_cells_new", "ghostty_render_state_row_cells_next",
   "ghostty_render_state_row_cells_get", "ghostty_terminal_resize",
   "ghostty_render_state_free", "ghostty_render_state_row_iterator_free", "ghostty_render_state_row_cells_free",
-  "ghostty_key_encoder_new", "ghostty_key_encoder_free", "ghostty_key_encoder_setopt_from_terminal", "ghostty_key_encoder_encode",
+  "ghostty_key_encoder_new", "ghostty_key_encoder_free", "ghostty_key_encoder_set_from_terminal", "ghostty_key_encoder_encode",
   "ghostty_key_event_new", "ghostty_key_event_free", "ghostty_key_event_set_action", "ghostty_key_event_set_key",
   "ghostty_key_event_set_mods", "ghostty_key_event_set_consumed_mods", "ghostty_key_event_set_utf8",
   "ghostty_key_event_set_unshifted_codepoint", "ghostty_terminal_get", "ghostty_terminal_scroll_viewport",
-  "ghostty_terminal_grid_ref", "ghostty_terminal_point_from_grid_ref", "ghostty_terminal_selection_format_buf",
-  "ghostty_terminal_selection_ordered", "ghostty_selection_gesture_new", "ghostty_selection_gesture_free",
+  "ghostty_terminal_grid_ref", "ghostty_terminal_point_from_grid_ref", "ghostty_terminal_selection_ordered",
+  "ghostty_formatter_terminal_new", "ghostty_formatter_set", "ghostty_formatter_format_buf", "ghostty_formatter_free",
+  "ghostty_selection_gesture_new", "ghostty_selection_gesture_free",
   "ghostty_selection_gesture_reset", "ghostty_selection_gesture_get", "ghostty_selection_gesture_event",
   "ghostty_selection_gesture_event_new", "ghostty_selection_gesture_event_free", "ghostty_selection_gesture_event_set",
-  "ghostty_mouse_encoder_new", "ghostty_mouse_encoder_free", "ghostty_mouse_encoder_setopt",
-  "ghostty_mouse_encoder_setopt_from_terminal", "ghostty_mouse_encoder_reset", "ghostty_mouse_encoder_encode",
+  "ghostty_mouse_encoder_new", "ghostty_mouse_encoder_free", "ghostty_mouse_encoder_set",
+  "ghostty_mouse_encoder_set_from_terminal", "ghostty_mouse_encoder_reset", "ghostty_mouse_encoder_encode",
   "ghostty_mouse_event_new", "ghostty_mouse_event_free", "ghostty_mouse_event_set_action", "ghostty_mouse_event_set_button",
   "ghostty_mouse_event_clear_button", "ghostty_mouse_event_set_mods", "ghostty_mouse_event_set_position",
   "ghostty_grid_ref_cell", "ghostty_grid_ref_graphemes", "ghostty_grid_ref_hyperlink_uri",
@@ -53,29 +54,27 @@ const layouts: Record<string, Record<string, number>> = {
   GhosttyRenderStateCursor: {
     size: 4, viewport_has_value: 1, viewport_x: 2, viewport_y: 2, wide_tail: 1, visible: 1, blinking: 1, visual_style: 4,
   },
-  GhosttyStyle: {
-    size: 4, bold: 1, italic: 1, faint: 1, inverse: 1, invisible: 1, strikethrough: 1, overline: 1, underline: 4,
-    underline_color: 16,
-  },
-  GhosttyStyleColor: { tag: 4, value: 8 },
+  GhosttyStyle: { underline_color: 4, flags: 2 },
+  GhosttyStyleColor: { tag: 1, value: 3 },
   GhosttyStyleColorValue: { palette: 1, rgb: 3 },
   GhosttyTerminalScrollViewport: { tag: 4, value: 16 },
   GhosttyTerminalScrollViewportValue: { delta: 4 },
   GhosttyColorRgb: { r: 1, g: 1, b: 1 },
   GhosttyRenderStateRowSelection: { size: 4, start_x: 2, end_x: 2 },
-  GhosttyGridRef: { size: 4 },
-  GhosttySelection: { size: 4, start: 12, end: 12 },
+  GhosttyGridRef: {},
+  GhosttySelection: { start: 8, end: 8 },
   GhosttyPoint: { tag: 4, value: 16 },
   GhosttyPointCoordinate: { x: 2, y: 4 },
   GhosttySurfacePosition: { x: 8, y: 8 },
   GhosttySelectionGestureGeometry: { columns: 4, cell_width: 4, padding_left: 4, screen_height: 4 },
-  GhosttyTerminalSelectionFormatOptions: { size: 4, emit: 4, unwrap: 1, trim: 1, selection: 4 },
   GhosttyMouseEncoderSize: {
     size: 4, screen_width: 4, screen_height: 4, cell_width: 4, cell_height: 4,
     padding_top: 4, padding_bottom: 4, padding_right: 4, padding_left: 4,
   },
   GhosttyMousePosition: { x: 4, y: 4 },
   GhosttyTerminalModeConfig: { mode: 2, value: 1 },
+  GhosttyCodepointBuffer: { ptr: 4, cap: 4, len: 4 },
+  GhosttyString: { ptr: 4, len: 4 },
 };
 
 /** The enum values this binding uses. */
@@ -85,7 +84,8 @@ const enums: Record<string, string[]> = {
   GhosttyRenderStateRowData: ["DIRTY", "CELLS", "SELECTION"],
   GhosttyRenderStateRowCellsData: ["RAW", "STYLE", "GRAPHEMES_LEN", "GRAPHEMES_BUF", "BG_COLOR", "FG_COLOR", "HAS_STYLING"],
   GhosttyRenderStateDirty: ["FALSE", "FULL"],
-  GhosttyRenderStateCursorVisualStyle: ["BAR", "BLOCK", "UNDERLINE", "BLOCK_HOLLOW"],
+  GhosttyRenderStateRowOption: ["DIRTY"],
+  GhosttyCursorStyle: ["BAR", "BLOCK", "UNDERLINE", "BLOCK_HOLLOW"],
   GhosttyCellWide: ["WIDE", "SPACER_TAIL", "SPACER_HEAD"],
   GhosttyKeyAction: ["PRESS", "REPEAT"],
   GhosttyKey: ["UNIDENTIFIED", "A", "ENTER", "ARROW_UP", "ARROW_DOWN"],
@@ -98,6 +98,7 @@ const enums: Record<string, string[]> = {
   GhosttyPointTag: ["VIEWPORT", "SCREEN"],
   GhosttySelectionOrder: ["FORWARD", "REVERSE"],
   GhosttyFormatterFormat: ["PLAIN"],
+  GhosttyFormatterOption: ["EMIT", "UNWRAP", "TRIM", "SELECTION"],
   GhosttySelectionGestureEventType: ["PRESS", "RELEASE", "DRAG", "AUTOSCROLL_TICK"],
   GhosttySelectionGestureEventOption: ["REF", "POSITION", "REPEAT_DISTANCE", "TIME_NS", "REPEAT_INTERVAL_NS", "GEOMETRY", "VIEWPORT"],
   GhosttySelectionGestureData: ["CLICK_COUNT", "AUTOSCROLL"],
@@ -106,6 +107,9 @@ const enums: Record<string, string[]> = {
   GhosttyMouseButton: ["LEFT", "RIGHT", "MIDDLE", "FOUR", "FIVE"],
   GhosttyMouseEncoderOption: ["SIZE", "ANY_BUTTON_PRESSED", "TRACK_LAST_CELL"],
 };
+
+/** The style flags this binding reads (GhosttyStyleFlags). */
+const styleFlags = ["bold", "italic", "faint", "inverse", "invisible", "strikethrough", "overline", "underline"];
 
 /** Ghostty's modifier bits (key/event.h, GHOSTTY_MODS_*): defines, not in the manifest. */
 export const Mods = { shift: 1 << 0, ctrl: 1 << 1, alt: 1 << 2, super: 1 << 3 };
@@ -210,12 +214,18 @@ export class Ghostty {
     return this.x.ghostty_wasm_take_opaque(this.slot);
   }
 
-  /** A sized struct, zeroed, with its size field set. */
-  sized(type: string): number {
+  /** A struct, zeroed. */
+  zeroed(type: string): number {
     const n = this.size(type);
     const p = this.alloc(n);
     this.bytes.fill(0, p, p + n);
-    this.view.setUint32(p + this.off(type, "size"), n, true);
+    return p;
+  }
+
+  /** A sized struct, zeroed, with its size field set. */
+  sized(type: string): number {
+    const p = this.zeroed(type);
+    this.view.setUint32(p + this.off(type, "size"), this.size(type), true);
     return p;
   }
 
@@ -231,6 +241,11 @@ export class Ghostty {
     const content = bits.content;
     const b = content.arms[arm].bits[name];
     return { lsb: content.lsb + b.lsb, width: b.width };
+  }
+
+  /** A style flag's bits (GhosttyStyleFlags): one each for bold to overline, three for the underline. */
+  styleBits(name: string): { lsb: number; width: number } {
+    return this.m.types.GhosttyStyleFlags.bits![name];
   }
 }
 
@@ -255,5 +270,9 @@ function check(m: Manifest) {
   const cell = m.types.GhosttyCell;
   if (cell?.kind !== "packed" || cell.size !== 8 || !cell.bits?.wide || !cell.bits?.content?.arms?.CODEPOINT) {
     throw new Error("GhosttyCell is not the packed 64-bit value this client reads");
+  }
+  const flags = m.types.GhosttyStyleFlags;
+  if (flags?.kind !== "packed" || flags.size !== 2 || styleFlags.some((f) => !flags.bits?.[f])) {
+    throw new Error("GhosttyStyleFlags is not the packed 16-bit value this client reads");
   }
 }

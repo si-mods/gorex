@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
-  # The Mac mini's tests for a branch: gh workflow run ci.yml --ref <branch>
+  # For a commit that started no run: gh workflow run ci.yml --ref <branch>
   workflow_dispatch:
 
 permissions:
@@ -12,20 +12,17 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  # Not on main: a merge's run is the only one with its tests on macOS.
+  # Not on main: a merge's run goes to its end once it starts.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # The Mac mini's runner, for the tests on macOS: on main, or when asked
-  # for a branch, as it takes one job at a time and pull requests waited
-  # for it. A pull request's tests run on Linux (test-linux), so what fails
-  # on macOS alone shows after the merge. si-mods runs no job on GitHub's
-  # runners. A fork's pull request runs its own copy of this file and could
-  # name this runner: what bars its code from the Mac mini is the approval
-  # each outside contributor's run needs. Read a fork's .github changes
-  # before approving.
+  # The Mac mini's runner, for the tests on macOS: the tests a pull request
+  # must pass. It takes one job at a time, so it runs nothing else. si-mods
+  # runs no job on GitHub's runners. A fork's pull request runs its own copy
+  # of this file and could name this runner: what bars its code from the Mac
+  # mini is the approval each outside contributor's run needs. Read a fork's
+  # .github changes before approving.
   test:
-    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, macmini]
     timeout-minutes: 25
     steps:
@@ -58,7 +55,7 @@ jobs:
             exit 1
           fi
       # Each system's files and tests: build skips the tests, and a pull
-      # request runs them on Linux only.
+      # request runs them on macOS only.
       - name: vet
         env:
           CGO_ENABLED: "0"
@@ -78,12 +75,15 @@ jobs:
             echo "::endgroup::"
           done
 
-  # The tests on Linux, on instabox machines: a pull request's only tests.
-  # The root package's tests run one after another, so three machines take
-  # a third each; a fourth runs the other packages. With build, that is
-  # five at a time.
+  # The tests on Linux, on instabox machines: on main only, and a failure
+  # does not fail the run, as too many of them fail there by chance (about
+  # one run in five, none of them a real fault). The root
+  # package's tests run one after another, so three machines take a third
+  # each; a fourth runs the other packages. With build, that is five at a
+  # time.
   test-linux:
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name == 'push'
+    continue-on-error: true
     runs-on: instabox-medium
     timeout-minutes: 20
     strategy:

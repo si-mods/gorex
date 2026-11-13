@@ -396,6 +396,55 @@ func TestFollowEmptiedAndGone(t *testing.T) {
 	}
 }
 
+// TestFollowTabToSpace takes a server's tab.to_space, as a Rex client's
+// gorex.move_window asks it, between the spaces of two windows: the tab
+// keeps its ID in the window it moves to, though that window takes the
+// layout before the one it leaves, and its session goes on. The move of
+// a space's last tab takes the space away, and its window shows another.
+func TestFollowTabToSpace(t *testing.T) {
+	a, _ := newTestApp(t)
+	st := a.st
+	x := a.ws
+	b := st.openWindow(st.addWorkspace())
+	y := b.ws
+	b.newTab(testShell.dir)
+	if len(b.tabs) != 2 {
+		t.Fatalf("the second window has %d tabs", len(b.tabs))
+	}
+	moved := b.tabs[1]
+	uid, sid := moved.UID, moved.Focus.SID
+	other := followApp(t, a)
+	if res, err := other.Command(rex.LayoutCommand{Op: "tab.to_space", Tab: uid, ToSpace: x.ID}); err != nil || res.Code != "" {
+		t.Fatalf("tab.to_space: %+v %v", res, err)
+	}
+	takeOther(t, a, other)
+	if len(a.tabs) != 2 || a.tabs[1].UID != uid || a.tabs[1].Focus == nil || a.tabs[1].Focus.SID != sid {
+		t.Fatalf("the first window has %q, want the moved tab %s last", sidsOf(a), uid)
+	}
+	if len(b.tabs) != 1 || slices.Contains(sidsOf(b), sid) {
+		t.Errorf("the second window has %q", sidsOf(b))
+	}
+	if !slices.Contains(liveSIDs(t, other), sid) {
+		t.Error("the moved tab's session ended")
+	}
+	last := b.tabs[0]
+	luid, lsid := last.UID, last.Focus.SID
+	if res, err := other.Command(rex.LayoutCommand{Op: "tab.to_space", Tab: luid, ToSpace: x.ID, Target: a.tabs[0].UID}); err != nil || res.Code != "" {
+		t.Fatalf("tab.to_space of the last tab: %+v %v", res, err)
+	}
+	takeOther(t, a, other)
+	if len(a.tabs) != 3 || a.tabs[0].UID != luid || a.tabs[0].Focus.SID != lsid {
+		t.Fatalf("the first window has %q, want the last tab %s first", sidsOf(a), luid)
+	}
+	if slices.Contains(st.workspaces, y) || b.ws == y {
+		t.Errorf("the emptied space stays: %v", st.workspaces)
+	}
+	if !slices.Contains(liveSIDs(t, other), lsid) {
+		t.Error("the last tab's session ended")
+	}
+	quit(st)
+}
+
 // TestFollowBrowser follows another client's page in a browser pane, keeps
 // the pane's own navigation, and keeps the pane of a layout whose writer
 // drops browser IDs.

@@ -146,7 +146,7 @@ nonisolated final class HostTests: XCTestCase {
         // Done shows until the user sees it.
         records(["id": "claude", "state": "done", "app": "claude"])
         await until("done") { h.status(["b"])?.state == "done" }
-        h.see("b")
+        h.see(session: "s", block: "b")
         XCTAssertNil(h.status(["b"]))
     }
 

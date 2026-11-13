@@ -112,6 +112,7 @@ var orderedMethods = map[string]bool{
 	"session.move_block": true, "session.move_window": true, "session.new_layer": true,
 	"session.new_split": true, "session.new_window": true, "session.own_block": true,
 	"session.set_layer_state": true, "session.swap_blocks": true, "session.zoom_block": true,
+	"gorex.move_window": true,
 }
 
 // The API's own documents, served at /api/help, /llms.txt and
@@ -128,6 +129,7 @@ var (
 var helpDoc = sync.OnceValue(func() map[string]json.RawMessage {
 	var doc map[string]json.RawMessage
 	json.Unmarshal(helpJSON, &doc)
+	withSeenAt(doc)
 	return doc
 })
 

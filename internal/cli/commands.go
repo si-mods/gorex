@@ -1113,9 +1113,10 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			ReachableAt   string             `json:"reachableAt"`
 			Reachable     bool               `json:"reachable"`
 			ReachableErr  string             `json:"reachableError,omitempty"`
+			Firewall      string             `json:"reachableFirewall,omitempty"`
 			Tailnet       *rex.TailnetStatus `json:"tailnet,omitempty"`
 		}{st.Enabled, st.Running, st.ShareLayout, st.RemoteControl, len(st.Allowed), st.Relay,
-			st.ReachableAt, st.ReachableAddress != "", st.ReachableError, st.Tailnet}
+			st.ReachableAt, st.ReachableAddress != "", st.ReachableError, st.ReachableFirewall, st.Tailnet}
 		if asJSON {
 			WriteJSON(out, shown)
 			return ExitOK, true
@@ -1130,6 +1131,15 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			fmt.Fprintf(out, "reachable=%s running=%v\n", shown.ReachableAt, shown.Reachable)
 			if shown.ReachableErr != "" {
 				fmt.Fprintf(out, "reachableError=%s\n", shown.ReachableErr)
+			}
+			switch shown.Firewall {
+			case "blocked":
+				fmt.Fprintf(out, "reachableFirewall=blocked: Windows Firewall blocks port %d; to allow it, run as administrator:\n", rex.RemotePort)
+				for _, c := range rex.FirewallRules("netsh") {
+					fmt.Fprintf(out, "  %s\n", c)
+				}
+			case "blockRule":
+				fmt.Fprintln(out, "reachableFirewall=blockRule: a Windows Firewall rule blocks GoRex; remove it in Windows Defender Firewall, Inbound Rules")
 			}
 		}
 		if st.Tailnet != nil {

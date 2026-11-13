@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gorex/internal/pairaddr"
@@ -256,6 +257,11 @@ type remote struct {
 	ownGen    int
 	ownCancel context.CancelFunc
 	ownErr    string
+	// fw is the last firewallResult of firewallCheck, made at fwAt (Unix
+	// ns); fwMu lets one check run at a time.
+	fwMu sync.Mutex
+	fw   atomic.Int32
+	fwAt atomic.Int64
 }
 
 // liveLocked tells whether ln is one of the running listeners, and its
@@ -375,7 +381,7 @@ func (s *Server) remoteShareLayout() bool {
 func remoteAllowed(op string) bool {
 	switch op {
 	case "hello", "ping", "list", "create", "kill", "resize", "focus", "input", "paste", "capture", "clients",
-		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command":
+		"key", "mouse", "focusReport", "modes", "format", "inputMode", "clear", "reset", "command", "seeStatus":
 		return true
 	}
 	return false
@@ -780,6 +786,15 @@ func (s *Server) remoteStatusLocked(tailnet *TailnetStatus) RemoteStatus {
 	}
 	if r.own != nil {
 		st.ReachableAddress = string(r.own.addr)
+		switch firewallResult(r.fw.Load()) {
+		case firewallBlocked:
+			st.ReachableFirewall = "blocked"
+		case firewallBlockRule:
+			st.ReachableFirewall = "blockRule"
+		}
+		if time.Since(time.Unix(0, r.fwAt.Load())) > firewallRecheck {
+			go s.firewallCheck(false)
+		}
 	}
 	if r.pairOpenLocked() {
 		st.Pairing = RemotePairing{Open: true, ExpiresAt: r.pairUntil}
@@ -801,6 +816,10 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		}
 	}()
 	r := &s.rem
+	if req.Op == "remote.firewallCheck" {
+		s.firewallCheck(true)
+		return nil, nil
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	reqKey := func() (string, error) {

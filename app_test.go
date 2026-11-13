@@ -971,6 +971,82 @@ func TestHiddenSidebarHostChip(t *testing.T) {
 	}
 }
 
+// TestStatusSeenOnServer checks that a pane that shows a done record
+// tells the server, whose list then tells every client it was seen: a
+// pane of another, which saw nothing itself, shows no status.
+func TestStatusSeenOnServer(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("printf")
+	}
+	a, tt := newTestApp(t)
+	a.st.hello, _ = a.client.Hello() // as the store's connect reads it
+	p := a.tab().Focus
+	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+	if err := a.client.Input(p.SID, []byte(`printf '\033]7501;state=done\007'`+"\r")); err != nil {
+		t.Fatal(err)
+	}
+	listed := func() rex.SessionInfo {
+		l, _ := a.client.List()
+		for _, in := range l {
+			if in.ID == p.SID {
+				return in
+			}
+		}
+		return rex.SessionInfo{}
+	}
+	var in rex.SessionInfo
+	waitFor(t, tt, "the done record", func() bool { in = listed(); return len(in.Statuses) == 1 })
+	p.info, p.seen = in, time.Time{}
+	p.see()
+	waitFor(t, tt, "the server's seen", func() bool { in = listed(); return in.StatusSeen.Equal(in.Statuses[0].Updated) })
+	if s := (&Pane{info: in}).status(); s != nil {
+		t.Errorf("another client's pane shows %+v", s)
+	}
+}
+
+// TestTellSeenRetries checks that a pane tells its server what it saw one
+// request at a time, again a second after one failed, and not at all a
+// server that does not keep it; and that a working record raises no
+// seen.
+func TestTellSeenRetries(t *testing.T) {
+	a, _ := newTestApp(t)
+	a.st.hello, _ = a.client.Hello() // as the store's connect reads it
+	if !a.keepsSeen(nil) {
+		t.Fatal("this machine's server does not keep what was seen")
+	}
+	now := time.Now()
+	done := rex.ProgramStatus{ID: "a", State: "done", Updated: now}
+	work := rex.ProgramStatus{ID: "b", State: "working", Updated: now.Add(time.Second)}
+	// The server has no session nope: each request fails.
+	p := &Pane{SID: "nope", info: rex.SessionInfo{Statuses: []rex.ProgramStatus{done, work}}}
+	p.seenFunc = func() { a.tellSeen(p) }
+	p.see()
+	if !p.seen.Equal(done.Updated) {
+		t.Fatalf("seen %v, want the done record's %v, not the working one's", p.seen, done.Updated)
+	}
+	if !p.seeing.Load() {
+		t.Fatal("no request told the server")
+	}
+	time.Sleep(300 * time.Millisecond)
+	if !p.seeing.Load() || p.seenTold.Load() != 0 {
+		t.Fatal("a failed request was tried again at once, or taken as told")
+	}
+	waitForThat(t, func() bool { return !p.seeing.Load() }, "the retry's wait")
+	p.see()
+	if !p.seeing.Load() {
+		t.Error("a failed request was not tried again")
+	}
+
+	// A host whose server does not keep it is not asked.
+	h := newHostConn(savedHost{ID: "h1", Name: "mini", Address: "10.0.0.9:7297"})
+	q := &Pane{SID: "r1", host: h, info: p.info}
+	q.seenFunc = func() { a.tellSeen(q) }
+	q.see()
+	if q.seeing.Load() || !q.seen.Equal(done.Updated) {
+		t.Errorf("a server without status.seen was asked; seen %v", q.seen)
+	}
+}
+
 // TestStatusSeen checks that a pane's done record asks for attention
 // until seen, and that only records going blocked, done or error are news.
 func TestStatusSeen(t *testing.T) {

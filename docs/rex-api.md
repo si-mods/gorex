@@ -33,8 +33,8 @@ it to Rex clients in Rex's terms:
   has no owner (`block_owner_changed`, reason `taken`) until the client
   that took it types again (reason `input`).
 - **Layout changes** (new window, split, close, rename, focus, zoom, swap,
-  move, resize) the GoRex server makes itself; an open window shows them
-  at once.
+  move, resize, and GoRex's own move of a window to another session) the
+  GoRex server makes itself; an open window shows them at once.
 
 The GoRex server runs the gateway itself while remote access, the local
 network listener or built-in Tailscale is on, and again after it
@@ -302,6 +302,78 @@ Rex Go groups windows by these spaces by default (Settings › Grouping):
 a desktop's space lists its windows on other hosts too, which leave
 their own host's list. Those of a host it has not added, or that is
 offline, are left out.
+
+## Moving a window to another session
+
+Rex's API moves a window only within its session (`session.move_window`);
+`session.move` orders sessions. GoRex's own method `gorex.move_window`
+moves a window to another session, as the desktop's Move to Space moves a
+tab to another space. The welcome lists the feature `gorex.move_window`
+when the GoRex server can make the move (`CapabilityTabToSpace`, its
+`tab.to_space` command); call it only then.
+
+```
+→ {"method": "gorex.move_window",
+   "payload": {"session_id": "<session>", "window_id": "<window>",
+               "to_session_id": "<other session>",
+               "before_window_id": "<window of the other session>"}}
+← {"revision": 42, "to_revision": 7}
+```
+
+- `before_window_id` is optional: without it the window goes to the end.
+- The window keeps its ID, label, layout, floating layers, focus and
+  zoom. Its blocks keep their IDs, and their programs go on.
+- The other session's active window stays. The session the window left
+  makes the next window active, else the one before it.
+- The window that was a session's last destroys the session, as the
+  desktop's space goes with its last tab: the result has
+  `"session_destroyed": true` and no `revision`, and the connections that
+  hear of every session get `session_destroyed`.
+- The session left sends `window_closed`, `block_closed` for each block
+  and `session_view_changed`; the session reached sends `window_created`,
+  `block_created` for each block and `session_view_changed`.
+- An owner of a block that is not attached to the session the block went
+  to loses it: the next attached client in line gets it
+  (`block_owner_changed`, reason `disconnect`).
+- Errors: `conflict` (the connection is not attached to `session_id`),
+  `session_not_found`, `not_found` (a window not in its session),
+  `bad_request` (`to_session_id` is `session_id`, a missing or unknown
+  argument), `not_supported` (the GoRex server is older).
+
+`session.help`, `help.all` and `/llms.txt` describe it after Rex's
+methods; `/api/help` is Rex's document as it is.
+
+## Seen program status
+
+A program's `done` and `error` records (OSC 7501) stay until the user
+sees them. The GoRex server keeps when they were seen, per session, so
+every client agrees: the desktop's panes and Rex Go read the same time,
+and a record seen on one device is seen on all, after a restart too.
+The welcome lists the feature `gorex.see_block` when the server keeps it
+(`CapabilityStatusSeen`); call it only then.
+
+```
+→ {"method": "gorex.see_block",
+   "payload": {"session_id": "<session>", "block_id": "<block>",
+               "seen_at": "2026-11-13T09:30:00Z"}}
+← {}
+```
+
+- `seen_at` is the `updated_at` of the latest done or error record the user saw. A time
+  of a whole second, as `updated_at` has, covers that second.
+- The seen time only moves forward, and never past the block's latest
+  `done` or `error` record. Within one second, a second `done` or `error`
+  record after the one seen reads as seen too, as `updated_at` has whole
+  seconds.
+- `com.superlogical.terminal.program_status` and the
+  `program_status_changed` event carry `seen_at` beside `records` once a
+  client saw some; a change of it sends `program_status_changed`. A
+  `done` or `error` record whose `updated_at` is not after `seen_at` was
+  seen, as the desktop's `MostUrgent` reads it.
+- Errors: `conflict` (the connection is not attached to `session_id`),
+  `not_found` (a block not in its session), `bad_request` (a missing,
+  unknown or malformed argument), `not_supported` (the GoRex server is
+  older).
 
 ## Files of a host
 

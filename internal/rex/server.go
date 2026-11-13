@@ -1012,6 +1012,13 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 			}
 		}
 		return nil, nil
+	case "seeStatus":
+		ss, err := s.session(req.SID)
+		if err != nil {
+			return nil, err
+		}
+		ss.seeStatus(req.Seen)
+		return nil, nil
 	case "getLayout":
 		s.settled()
 		s.mu.Lock()

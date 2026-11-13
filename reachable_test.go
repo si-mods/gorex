@@ -171,6 +171,59 @@ func TestReachableRow(t *testing.T) {
 	_ = a
 }
 
+// TestReachableFirewall: while Windows Firewall blocks the relay's port,
+// a line and Allow show under Reachable at; Allow adds the rule, faked
+// here, and asks the server to check again; declined, the line says so.
+// Allowed or unknown, nothing shows.
+func TestReachableFirewall(t *testing.T) {
+	var allows atomic.Int32
+	var fail atomic.Bool
+	was := firewallAllow
+	firewallAllow = func() error {
+		allows.Add(1)
+		if fail.Load() {
+			return errors.New("declined")
+		}
+		return nil
+	}
+	t.Cleanup(func() { firewallAllow = was })
+	_, tt, rs := serverPage(t, rex.RemoteStatus{Enabled: true, Running: true, ReachableAt: "192.0.2.10"})
+	line, allow := locales.RemoteFirewallBlocked("7464"), locales.RemoteReachableTitle()+": "+locales.RemoteFirewallAllow()
+	if tt.HasText(line) || tt.HasText(allow) || tt.HasText(locales.RemoteFirewallBlockRule()) {
+		t.Fatalf("a firewall line shows while not blocked; texts %q", tt.Texts())
+	}
+	rs.show(tt, func(st *rex.RemoteStatus) { st.ReachableFirewall = "blocked" })
+	if !tt.HasText(line) || !tt.HasText(allow) {
+		t.Fatalf("no firewall line; texts %q", tt.Texts())
+	}
+	if err := tt.Click(allow); err != nil {
+		t.Fatal(err)
+	}
+	waitAsked(t, tt, rs, "remote.firewallCheck")
+	waitFor(t, tt, "Allow to end", func() bool { return !remoteUI.busy })
+	if allows.Load() != 1 || tt.HasText(locales.RemoteFirewallNotChanged()) {
+		t.Errorf("allowed %d times; texts %q", allows.Load(), tt.Texts())
+	}
+	// Declined: no check, and the line says so.
+	fail.Store(true)
+	if err := tt.Click(allow); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, tt, "the decline to show", func() bool { tt.Frame(); return tt.HasText(locales.RemoteFirewallNotChanged()) })
+	if n := len(rs.asked("remote.firewallCheck")); n != 1 || allows.Load() != 2 {
+		t.Errorf("checked %d times, allowed %d", n, allows.Load())
+	}
+	// A rule that blocks GoRex: where to remove it, and no Allow.
+	rs.show(tt, func(st *rex.RemoteStatus) { st.ReachableFirewall = "blockRule" })
+	if !tt.HasText(locales.RemoteFirewallBlockRule()) || tt.HasText(allow) {
+		t.Errorf("block rule; texts %q", tt.Texts())
+	}
+	rs.show(tt, func(st *rex.RemoteStatus) { st.ReachableFirewall = "" })
+	if tt.HasText(line) || tt.HasText(locales.RemoteFirewallBlockRule()) {
+		t.Errorf("a firewall line shows once allowed; texts %q", tt.Texts())
+	}
+}
+
 // TestDirectAddress: while Reachable at runs, the second address and its
 // QR code are offered, hidden as the first is; off, they are not.
 func TestDirectAddress(t *testing.T) {

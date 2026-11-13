@@ -107,7 +107,7 @@ func (st *store) hiddenStatus(w *Workspace, h *hostConn) *rex.ProgramStatus {
 	}
 	var all []rex.ProgramStatus
 	st.visitSIDs(w, id, func(sid string) {
-		if s := rex.MostUrgent(infos[sid].Statuses, st.seen[sid]); s != nil {
+		if s := rex.MostUrgent(infos[sid].Statuses, st.seenOf(sid, infos[sid])); s != nil {
 			all = append(all, *s)
 		}
 	})
@@ -160,7 +160,8 @@ func (st *store) needsOn(w *Workspace, h *hostConn) bool {
 	return false
 }
 
-// recordSeen notes that a session's status was seen.
+// recordSeen notes that a session's status was seen, for a server that
+// does not keep it (seenOf).
 func (st *store) recordSeen(sid string, at time.Time) {
 	if sid == "" || at.IsZero() {
 		return
@@ -171,6 +172,16 @@ func (st *store) recordSeen(sid string, at time.Time) {
 	if at.After(st.seen[sid]) {
 		st.seen[sid] = at
 	}
+}
+
+// seenOf is when session sid's done and error records were seen till: the
+// later of what its server keeps, in its info in, and what this app's
+// panes saw, for a server that keeps none.
+func (st *store) seenOf(sid string, in rex.SessionInfo) time.Time {
+	if t := st.seen[sid]; t.After(in.StatusSeen) {
+		return t
+	}
+	return in.StatusSeen
 }
 
 // tabCount is how many tabs the workspace has.
@@ -201,13 +212,19 @@ type store struct {
 	upgradeFailed int
 
 	workspaces []*Workspace
+	// placed is, while reconcile takes a layout, the space of each tab ID
+	// the layout has once: a tab another client moved to another space
+	// keeps its ID there, though the window it leaves still has it
+	// (tabUIDTaken).
+	placed map[string]string
 	// badge is the count the app icon shows.
 	badge int
 	// jumped is the pane the jump to the pane that needs you went to last.
 	jumped jumpMark
 	// infos are this machine's sessions, as the windows last polled them,
 	// for the status of workspaces no window shows; seen is when each
-	// session's done or error record was seen.
+	// session's done or error record was seen by a pane of this app
+	// (seenOf).
 	infos map[string]rex.SessionInfo
 	seen  map[string]time.Time
 	// shown close the notifications shown of each session, by notifyKey,
@@ -509,6 +526,21 @@ const showFor = 30 * time.Second
 // space s no longer has goes; a window that showed it, or whose space s
 // left with no tabs, shows another no window does, or closes.
 func (st *store) reconcile(s savedStore) {
+	st.placed = map[string]string{}
+	seen := map[string]bool{}
+	for _, sw := range s.Sessions {
+		for _, t := range sw.Tabs {
+			switch {
+			case t.ID == "":
+			case seen[t.ID]:
+				delete(st.placed, t.ID)
+			default:
+				seen[t.ID] = true
+				st.placed[t.ID] = sw.ID
+			}
+		}
+	}
+	defer func() { st.placed = nil }()
 	var next, gone []*Workspace
 	var homeless []*App
 	for _, sw := range s.Sessions {

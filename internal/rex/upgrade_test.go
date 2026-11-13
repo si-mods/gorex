@@ -437,3 +437,18 @@ func TestSpeaksProtocolOnce(t *testing.T) {
 		t.Errorf("%d probes after an update, want 2", probes)
 	}
 }
+
+// TestResumeKeepsStatusSeen hands over a session whose done record was
+// seen: the resumed one has it seen too.
+func TestResumeKeepsStatusSeen(t *testing.T) {
+	s := &session{cols: 80, rows: 24, p: &pty{}, exited: true}
+	s.status.feed([]byte("\x1b]7501;state=done\x07"))
+	s.status.see(time.Now())
+	r, err := resumeSession(s.state(), func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.status.seen.Equal(s.status.seen) || r.status.seen.IsZero() || MostUrgent(r.status.list(), r.status.seen) != nil {
+		t.Errorf("seen %v after the handoff, want %v", r.status.seen, s.status.seen)
+	}
+}

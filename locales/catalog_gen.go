@@ -5978,6 +5978,70 @@ func (msgs Messages) RemoteReachableInvalid() string {
 	return Catalog.Format(msgs.locale, "remoteReachableInvalid", nil)
 }
 
+// RemoteFirewallBlocked says "Windows Firewall blocks port {port}: other devices cannot connect."
+// in the language the app shows.
+//
+// Line under Reachable at when Windows Firewall drops connections to its
+// port. {port} is a port number.
+func RemoteFirewallBlocked(port string) string { return In(i18n.Locale()).RemoteFirewallBlocked(port) }
+
+// RemoteFirewallBlocked says "Windows Firewall blocks port {port}: other devices cannot connect."
+// in the language of msgs.
+//
+// Line under Reachable at when Windows Firewall drops connections to its
+// port. {port} is a port number.
+func (msgs Messages) RemoteFirewallBlocked(port string) string {
+	return Catalog.Format(msgs.locale, "remoteFirewallBlocked", map[string]any{"port": port})
+}
+
+// RemoteFirewallAllow says "Allow"
+// in the language the app shows.
+//
+// Button beside the Windows Firewall line: add a firewall rule for the
+// port, as administrator.
+func RemoteFirewallAllow() string { return In(i18n.Locale()).RemoteFirewallAllow() }
+
+// RemoteFirewallAllow says "Allow"
+// in the language of msgs.
+//
+// Button beside the Windows Firewall line: add a firewall rule for the
+// port, as administrator.
+func (msgs Messages) RemoteFirewallAllow() string {
+	return Catalog.Format(msgs.locale, "remoteFirewallAllow", nil)
+}
+
+// RemoteFirewallNotChanged says "Windows Firewall was not changed."
+// in the language the app shows.
+//
+// Under the Windows Firewall line when Allow was declined at the
+// administrator prompt or failed.
+func RemoteFirewallNotChanged() string { return In(i18n.Locale()).RemoteFirewallNotChanged() }
+
+// RemoteFirewallNotChanged says "Windows Firewall was not changed."
+// in the language of msgs.
+//
+// Under the Windows Firewall line when Allow was declined at the
+// administrator prompt or failed.
+func (msgs Messages) RemoteFirewallNotChanged() string {
+	return Catalog.Format(msgs.locale, "remoteFirewallNotChanged", nil)
+}
+
+// RemoteFirewallBlockRule says "A Windows Firewall rule blocks GoRex: other devices cannot connect. Remove it in Windows Defender Firewall, Inbound R…"
+// in the language the app shows.
+//
+// Line under Reachable at when a Windows Firewall rule blocks the GoRex
+// program, so a rule that allows the port does not help.
+func RemoteFirewallBlockRule() string { return In(i18n.Locale()).RemoteFirewallBlockRule() }
+
+// RemoteFirewallBlockRule says "A Windows Firewall rule blocks GoRex: other devices cannot connect. Remove it in Windows Defender Firewall, Inbound R…"
+// in the language of msgs.
+//
+// Line under Reachable at when a Windows Firewall rule blocks the GoRex
+// program, so a rule that allows the port does not help.
+func (msgs Messages) RemoteFirewallBlockRule() string {
+	return Catalog.Format(msgs.locale, "remoteFirewallBlockRule", nil)
+}
+
 // RemoteDirectAddress says "Direct address"
 // in the language the app shows.
 //

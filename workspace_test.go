@@ -1265,10 +1265,21 @@ func TestWorkspaceStatus(t *testing.T) {
 		t.Fatalf("seen status %+v", s)
 	}
 	// A hidden workspace's sessions come from the last list, with the
-	// seen times its window recorded.
+	// seen times the window recorded, for a server that keeps none, and
+	// those the server keeps.
 	w := a.st.addWorkspace()
 	w.layout = savedLayout{Tabs: []savedTab{{Root: &savedNode{SID: p.SID}}}}
 	a.st.infos = map[string]rex.SessionInfo{p.SID: p.info}
+	if s := a.st.status(w); s != nil && s.State == "done" {
+		t.Fatalf("hidden status seen by the window %+v", s)
+	}
+	a.st.seen = nil
+	if s := a.st.status(w); s == nil || s.State != "done" {
+		t.Fatalf("hidden status unseen %+v", s)
+	}
+	seenInfo := p.info
+	seenInfo.StatusSeen = p.info.Statuses[0].Updated
+	a.st.infos = map[string]rex.SessionInfo{p.SID: seenInfo}
 	if s := a.st.status(w); s != nil && s.State == "done" {
 		t.Fatalf("hidden seen status %+v", s)
 	}

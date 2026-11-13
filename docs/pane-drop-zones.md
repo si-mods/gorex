@@ -183,9 +183,11 @@ The new code goes in a new file, `panedrop.go`, with its tests in
 
 ### Rex API
 
-Not part of this change. `pane.move` takes `direction` `right` or `down`
-only; with `before`, it could take `left` and `up` too. That is a separate
-PR, with the API contract tests.
+Done separately (#475). `pane.move` takes `direction` `left`, `right`,
+`up` or `down`, the side of the target the pane goes on, and the target
+may be in the pane's own tab; `ratio` is the first side's share, as
+`movePaneBeside` takes it. So `session.move_block` takes `side` `before`,
+and an anchor in the block's own window, as Rex's document has them.
 
 ## Tests
 
