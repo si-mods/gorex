@@ -242,6 +242,22 @@ func piDir() (string, error) {
 	return filepath.Join(h, ".pi", "agent"), nil
 }
 
+func agyConfigDir() (string, error) {
+	h, err := homeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(h, ".gemini", "config"), nil
+}
+
+func agyCLIDir() (string, error) {
+	h, err := homeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(h, ".gemini", "antigravity-cli"), nil
+}
+
 func sharedSkillDir(project bool) (string, error) {
 	if project {
 		wd, err := os.Getwd()
@@ -276,6 +292,14 @@ func agents(project bool) ([]agentInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	agyConfig, err := agyConfigDir()
+	if err != nil {
+		return nil, err
+	}
+	agyCLI, err := agyCLIDir()
+	if err != nil {
+		return nil, err
+	}
 	shared, err := sharedSkillDir(project)
 	if err != nil {
 		return nil, err
@@ -283,6 +307,8 @@ func agents(project bool) ([]agentInfo, error) {
 	claudeSkill := filepath.Join(claude, "skills", skillName)
 	claudeHook := filepath.Join(claude, "settings.json")
 	codexNative := filepath.Join(codex, "skills", skillName)
+	agySkill := filepath.Join(agyConfig, "skills", skillName)
+	agyHook := filepath.Join(agyConfig, "hooks.json")
 	opencodeNative := filepath.Join(opencode, "skills", skillName)
 	piNative := filepath.Join(pi, "skills", skillName)
 	if project {
@@ -293,6 +319,8 @@ func agents(project bool) ([]agentInfo, error) {
 		claudeSkill = filepath.Join(wd, ".claude", "skills", skillName)
 		claudeHook = filepath.Join(wd, ".claude", "settings.local.json")
 		codexNative = filepath.Join(wd, ".codex", "skills", skillName)
+		agySkill = shared
+		agyHook = filepath.Join(wd, ".agents", "hooks.json")
 		opencodeNative = filepath.Join(wd, ".opencode", "skills", skillName)
 		piNative = filepath.Join(wd, ".pi", "skills", skillName)
 	}
@@ -311,6 +339,13 @@ func agents(project bool) ([]agentInfo, error) {
 			NativeSkillDir: codexNative,
 			HookPath:       codexHook(codex, project),
 			HookSkip:       codexHookSkip(project),
+		},
+		{
+			ID:             "agy",
+			Detected:       isDir(agyCLI) || isDir(agyConfig),
+			SkillDir:       agySkill,
+			NativeSkillDir: filepath.Join(agyConfig, "skills", skillName),
+			HookPath:       agyHook,
 		},
 		{
 			ID:             "opencode",
@@ -366,7 +401,7 @@ func selectAgents(all []agentInfo, names []string, project bool) ([]agentInfo, e
 		for _, n := range names {
 			a, ok := byID[n]
 			if !ok {
-				return nil, fmt.Errorf("unknown agent %q (known agents: claude, codex, opencode, pi)", n)
+				return nil, fmt.Errorf("unknown agent %q (known agents: claude, codex, agy, opencode, pi)", n)
 			}
 			out = append(out, a)
 		}
@@ -385,7 +420,7 @@ func selectAgents(all []agentInfo, names []string, project bool) ([]agentInfo, e
 	// account with no agent found does too.
 	var out []agentInfo
 	for _, a := range all {
-		if a.ID != "claude" {
+		if a.ID != "claude" && a.ID != "agy" {
 			out = append(out, a)
 		}
 	}
@@ -633,7 +668,7 @@ func skillCmd(args []string, out, errOut io.Writer) (int, bool) {
 func skillRun(action string, args []string, out, errOut io.Writer) (int, bool) {
 	fs := flagSet("skill "+action, errOut)
 	var names agentList
-	fs.Var(&names, "agent", "agent to set up (claude, codex, opencode, pi); repeatable")
+	fs.Var(&names, "agent", "agent to set up (claude, codex, agy, opencode, pi); repeatable")
 	project := fs.Bool("project", false, "use the current repository")
 	dry := fs.Bool("dry-run", false, "report without changing")
 	force := fs.Bool("force", false, "replace a skill GoRex did not install")

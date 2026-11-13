@@ -30,3 +30,4 @@ For these and/or other purposes and motivations, and without any expectation of 
 For more information, please see <https://creativecommons.org/publicdomain/zero/1.0/>.
 
 `omp.svg` is the logo of the omp project (omp.sh), kept here to identify that program. It is not covered by CC0 above.
+`antigravity.svg` is the logo of Google Antigravity, kept here to identify that program. It is not covered by CC0 above.

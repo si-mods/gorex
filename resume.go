@@ -52,6 +52,7 @@ var agentContinue = map[string]string{
 	"codex":  "codex resume --last",
 	"omp":    "omp --continue",
 	"pi":     "pi --continue",
+	"agy":    "agy --continue",
 }
 
 // continueCommand is the continue command of the agent named name, "" for a

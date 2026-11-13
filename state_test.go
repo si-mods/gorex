@@ -204,6 +204,13 @@ func TestTileImageKey(t *testing.T) {
 	if b := tileImage(other, false); b == nil || bytes.Equal(b, light) {
 		t.Error("a tile of another color is the cached one")
 	}
+	agy := programOf("agy")
+	if agy.Name != "Antigravity" || agy != programOf("antigravity") || agy != programOf("antigravity-cli") {
+		t.Errorf("agy program = %+v", agy)
+	}
+	if tileImage(agy, false) == nil {
+		t.Error("no tile for agy")
+	}
 	if b := tileImage(py, true); b == nil || bytes.Equal(b, light) {
 		t.Error("the dark appearance's tile is the light one")
 	}
