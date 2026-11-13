@@ -224,6 +224,14 @@ export class TerminalView {
     if (this.title.textContent !== s) this.title.textContent = s;
   }
 
+  /** Shows a field that renames the pane in its title's place, or, with none, the title again; the header drags only then. */
+  editTitle(field?: HTMLElement) {
+    const now = this.head.querySelector(".rename-field");
+    if (field) (now ?? this.title).replaceWith(field);
+    else now?.replaceWith(this.title);
+    this.head.draggable = !field;
+  }
+
   /** Opens the stream from the start: a ticket, a HELLO, a new snapshot. */
   async start() {
     const c = this.app.control();

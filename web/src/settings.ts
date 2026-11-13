@@ -1,8 +1,8 @@
 // The Settings dialog, as the desktop's settings window (settingsview.go):
 // the host's card and the sections at the left, each with its coloured
 // tile, and the chosen section at the right, its settings in grouped cards
-// (settingsGroup, settingRow). It keeps what a browser has: no glass, no
-// Dock badge and no tab placement; updates are the Service Worker's
+// (settingsGroup, settingRow). It keeps what a browser has: no glass and no
+// Dock badge; updates are the Service Worker's
 // (About checks for one). Each change is kept
 // (prefs.ts) and applied to the open panes at once by the page; a change
 // of language draws the dialog again in the new one.
@@ -10,7 +10,7 @@ import { checkForUpdate, install, installKind } from "./app";
 import { allowCommand, commandBox, Host, HostList, icon, Problem } from "./hosts";
 import { mac, shortcutGroups } from "./keys";
 import {
-  Appearance, CursorStyle, maxFontSize, minFontSize, prefs, Prefs, setPrefs, textSize, clearAll,
+  Animation, Appearance, CursorStyle, maxFontSize, minFontSize, prefs, Prefs, setPrefs, SidebarView, TabPlacement, textSize, clearAll,
 } from "./prefs";
 import { formatDate, formatList, Language, languages, onLanguageChange, PlainKey, setLanguage, t, tIn } from "./i18n";
 import { blockedCJK, ensure, ensureLatin, mapleFamily, noMaple } from "./maple";
@@ -37,7 +37,7 @@ export interface SettingsApp {
   /** A theme chosen, or the host's colours (none). */
   chooseTheme(t?: ThemeEntry): void;
   /** Applies a changed setting to the page and its panes. */
-  apply(what: "appearance" | "headers" | "font" | "cursor" | "contrast", reset?: boolean): void;
+  apply(what: "appearance" | "tabs" | "headers" | "animation" | "font" | "cursor" | "contrast", reset?: boolean): void;
   /** The dialog closed: the keyboard goes back to the terminal. */
   closed(): void;
   /** Built-in Tailscale, and its sign-in guide. */
@@ -467,12 +467,53 @@ export class Settings {
         },
       ),
     );
+    // As the desktop's appearanceWindow: the tabs' place, what the sidebar lists (only while there is one), the
+    // pane headers and the animations.
+    let view: HTMLElement | undefined;
+    row(
+      win, t("settingsTabPlacement"), t("settingsTabPlacementHint"),
+      segmented<TabPlacement>(
+        t("settingsTabPlacement"),
+        [["", t("settingsPlacementAbove")], ["left", t("settingsPlacementLeft")], ["right", t("settingsPlacementRight")]],
+        prefs.tabPlacement,
+        (v) => {
+          setPrefs({ tabPlacement: v });
+          view!.hidden = !v;
+          this.app.apply("tabs");
+        },
+      ),
+    );
+    view = row(
+      win, t("settingsSidebarView"), t("settingsSidebarViewHint"),
+      segmented<SidebarView>(
+        t("settingsSidebarView"),
+        [["", t("settingsSidebarSpaces")], ["host", t("settingsSidebarHosts")]],
+        prefs.sidebarView,
+        (v) => {
+          setPrefs({ sidebarView: v });
+          this.app.apply("tabs");
+        },
+      ),
+    );
+    view.hidden = !prefs.tabPlacement;
     row(
       win, t("settingsPaneHeaders"), t("settingsPaneHeadersHint"),
       toggle(t("settingsPaneHeaders"), !prefs.hidePaneHeaders, (on) => {
         setPrefs({ hidePaneHeaders: !on });
         this.app.apply("headers");
       }),
+    );
+    row(
+      win, t("settingsAnimation"), t("settingsAnimationHint"),
+      segmented<Animation>(
+        t("settingsAnimation"),
+        [["", t("animationSnappy")], ["natural", t("animationNatural")], ["off", t("animationOff")]],
+        prefs.animation,
+        (v) => {
+          setPrefs({ animation: v });
+          this.app.apply("animation");
+        },
+      ),
     );
 
     const text = group(this.page);

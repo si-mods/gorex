@@ -8,12 +8,24 @@ import { minimumContrast } from "./terminal";
 
 export type Appearance = "" | "light" | "dark";
 export type CursorStyle = "block" | "bar" | "underline";
+/** Where the tabs (windows) go, as the desktop's TabPlacement: "" above the panes, or a sidebar at the left or the right. */
+export type TabPlacement = "" | "left" | "right";
+/** What a sidebar lists, as the desktop's SidebarView: "" the spaces, "host" the spaces under their hosts. */
+export type SidebarView = "" | "host";
+/** How the panes move, as the desktop's Animation: "" snappy springs, "natural" softer ones, "off" none. */
+export type Animation = "" | "natural" | "off";
 
 export interface Prefs {
   /** The page's colours: "light", "dark", or "" to follow the terminal's background, as the desktop's System follows the theme's colours. */
   appearance: Appearance;
-  /** Hides the panes' headers. */
+  /** Where the tabs go. */
+  tabPlacement: TabPlacement;
+  /** What the sidebar lists, while there is one. */
+  sidebarView: SidebarView;
+  /** Hides the panes' headers, while the tabs are in a sidebar at the left (paneHeaders). */
   hidePaneHeaders: boolean;
+  /** How the panes move. */
+  animation: Animation;
   /** The terminals' text size in CSS pixels, 0 for defaultFontSize. */
   fontSize: number;
   /** A font family, "" for the bundled JetBrains Mono; Maple Mono NF CN is bundled too. */
@@ -57,7 +69,10 @@ const oldThemeKey = "gorex.theme";
 
 const defaults = (): Prefs => ({
   appearance: "",
+  tabPlacement: "",
+  sidebarView: "",
   hidePaneHeaders: false,
+  animation: "",
   fontSize: 0,
   font: "",
   minimumContrast: 0,
@@ -75,7 +90,10 @@ function load(): Prefs {
     if (raw) {
       const j = JSON.parse(raw) ?? {};
       if (["", "light", "dark"].includes(j.appearance)) p.appearance = j.appearance;
+      if (["", "left", "right"].includes(j.tabPlacement)) p.tabPlacement = j.tabPlacement;
+      if (["", "host"].includes(j.sidebarView)) p.sidebarView = j.sidebarView;
       p.hidePaneHeaders = j.hidePaneHeaders === true;
+      if (["", "natural", "off"].includes(j.animation)) p.animation = j.animation;
       if (typeof j.fontSize === "number" && j.fontSize >= minFontSize && j.fontSize <= maxFontSize) p.fontSize = Math.round(j.fontSize);
       if (typeof j.font === "string") p.font = j.font;
       if (["block", "bar", "underline"].includes(j.cursor)) p.cursor = j.cursor;
@@ -150,4 +168,17 @@ export function cursorSeq(): string | undefined {
   let n = { block: 1, underline: 3, bar: 5 }[prefs.cursor ?? "block"];
   if (prefs.cursorBlink === false) n++;
   return `\x1b[${n} q`;
+}
+
+/** Whether the panes show their headers, as the desktop's paneHeaders: always, but when hidden with the tabs at the left. */
+export const paneHeaders = () => !prefs.hidePaneHeaders || prefs.tabPlacement !== "left";
+
+/**
+ * How long the panes take to move, in ms, as the desktop's springs take
+ * (animation.go: Snappy 320 ms, Natural 500 ms); 0 with Off, or while the
+ * system asks for less motion, as the desktop's motion.
+ */
+export function motionMs(): number {
+  if (prefs.animation === "off" || matchMedia("(prefers-reduced-motion: reduce)").matches) return 0;
+  return prefs.animation === "natural" ? 500 : 320;
 }

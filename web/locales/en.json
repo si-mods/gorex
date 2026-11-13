@@ -1082,7 +1082,7 @@
   "@settingsPaneHeaders": {
     "description": "Settings › Appearance switch: show each pane's header."
   },
-  "settingsPaneHeadersHint": "Each pane's title, program and buttons above its terminal.",
+  "settingsPaneHeadersHint": "Each pane's title, program and buttons above its terminal. They are always shown unless the tabs are on the left side.",
   "@settingsPaneHeadersHint": {
     "description": "Hint under Show pane headers."
   },
@@ -2329,5 +2329,111 @@
   "welcomeNeeds3": "For an address: GoRex serving Rex apps on the local network, and this device on the same network.",
   "@welcomeNeeds3": {
     "description": "First screen, What do I need?, item 3."
+  },
+  "settingsTabPlacement": "Tab placement",
+  "@settingsTabPlacement": {
+    "description": "Settings › Appearance: where the tabs (the windows of the shown space) go, as the desktop's setting."
+  },
+  "settingsTabPlacementHint": "Place tabs Above, on the Left Side, or on the Right Side of the window.",
+  "@settingsTabPlacementHint": {
+    "description": "Hint under Tab placement. Its options are the next three messages."
+  },
+  "settingsPlacementAbove": "Above",
+  "@settingsPlacementAbove": {
+    "description": "Tab placement option: a bar above the panes with the host, the space and its windows."
+  },
+  "settingsPlacementLeft": "Left Side",
+  "@settingsPlacementLeft": {
+    "description": "Tab placement option: the sidebar at the left of the panes."
+  },
+  "settingsPlacementRight": "Right Side",
+  "@settingsPlacementRight": {
+    "description": "Tab placement option: the sidebar at the right of the panes."
+  },
+  "settingsSidebarView": "Sidebar view",
+  "@settingsSidebarView": {
+    "description": "Settings › Appearance: what the sidebar lists, shown only while the tabs are in a sidebar."
+  },
+  "settingsSidebarViewHint": "Spaces lists the host's spaces and their windows. Hosts lists the hosts you added and found, with the connected host's spaces under it; choose another host to connect to it.",
+  "@settingsSidebarViewHint": {
+    "description": "Hint under Sidebar view. The page connects to one host at a time."
+  },
+  "settingsSidebarSpaces": "Spaces",
+  "@settingsSidebarSpaces": {
+    "description": "Sidebar view option: the spaces and their windows."
+  },
+  "settingsSidebarHosts": "Hosts",
+  "@settingsSidebarHosts": {
+    "description": "Sidebar view option: the spaces under their host."
+  },
+  "settingsAnimation": "Animation style",
+  "@settingsAnimation": {
+    "description": "Settings › Appearance: how the panes move, as the desktop's setting."
+  },
+  "settingsAnimationHint": "How panes move, split, zoom, open and close. Animations are off while the system's Reduce Motion is on.",
+  "@settingsAnimationHint": {
+    "description": "Hint under Animation style. Its options are the next three messages."
+  },
+  "animationSnappy": "Snappy",
+  "@animationSnappy": {
+    "description": "Animation style option: quick moves with a little bounce."
+  },
+  "animationNatural": "Natural",
+  "@animationNatural": {
+    "description": "Animation style option: softer, slower moves without bounce."
+  },
+  "animationOff": "Off",
+  "@animationOff": {
+    "description": "Animation style option: no animations."
+  },
+  "paneRename": "Rename Pane…",
+  "@paneRename": {
+    "description": "Pane header menu: rename the pane in place in its header."
+  },
+  "paneResetName": "Reset Pane Name",
+  "@paneResetName": {
+    "description": "Pane header menu, when the pane has a name: give it its terminal's title again."
+  },
+  "renamePaneLabel": "Pane name",
+  "@renamePaneLabel": {
+    "description": "Accessible name of the field that renames a pane in its header."
+  },
+  "paneMoveNewWindow": "Move Pane to New Window",
+  "@paneMoveNewWindow": {
+    "description": "Pane header menu, with two panes or more: move the pane into a window of its own, after its window; its program goes on."
+  },
+  "statusRenamePaneFailed": "Could not rename the pane: {error}",
+  "@statusRenamePaneFailed": {
+    "description": "Status line when renaming a pane failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "statusMergeWindowsFailed": "Could not merge the windows: {error}",
+  "@statusMergeWindowsFailed": {
+    "description": "Status line when merging a window into another (a row dropped on another row's middle) failed.",
+    "placeholders": {
+      "error": {
+        "type": "String",
+        "example": "No response"
+      }
+    }
+  },
+  "spaceMenuLabel": "Spaces",
+  "@spaceMenuLabel": {
+    "description": "Tooltip and accessible name of the button with the shown space's name in the bar above the panes, which opens the spaces' menu."
+  },
+  "sidebarConnectHost": "Connect to {host}",
+  "@sidebarConnectHost": {
+    "description": "Sidebar host view: tooltip of a host heading that is not connected; a click connects to it.",
+    "placeholders": {
+      "host": {
+        "type": "String",
+        "example": "Mac mini"
+      }
+    }
   }
 }
