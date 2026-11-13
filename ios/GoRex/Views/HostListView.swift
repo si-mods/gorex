@@ -95,34 +95,43 @@ struct HostListView: View {
     }
 
     private var list: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 30) {
-                if store.hosts.isEmpty {
-                    NoHostsView(tryDemo: { store.enterDemo() }, addHost: { settings = true })
-                } else if inbox {
-                    StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
-                } else if grouping == .spaces {
-                    let cross = CrossHost(store.hosts.compactMap(\.crossHost))
-                    let all = spaces(cross)
-                    let space = (all.first { key($0.place) == chosen } ?? all.first)?.place
-                    if !all.isEmpty { strip(all, space) }
-                    ForEach(sections(cross, all, space)) { host in
-                        HostSection(host: host, cross: cross, space: space, collapsed: $collapsed, filter: filter, open: { go($0) })
+        Group {
+            if store.hosts.isEmpty {
+                // As tall as the page, so that the welcome sits in its
+                // middle, above the keyboard or the bottom bar.
+                NoHostsView(tryDemo: { store.enterDemo() }, addHost: { settings = true })
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background { Color.page.ignoresSafeArea() }
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 30) {
+                        if inbox {
+                            StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
+                        } else if grouping == .spaces {
+                            let cross = CrossHost(store.hosts.compactMap(\.crossHost))
+                            let all = spaces(cross)
+                            let space = (all.first { key($0.place) == chosen } ?? all.first)?.place
+                            if !all.isEmpty { strip(all, space) }
+                            ForEach(sections(cross, all, space)) { host in
+                                HostSection(host: host, cross: cross, space: space, collapsed: $collapsed, filter: filter, open: { go($0) })
+                            }
+                        } else {
+                            ForEach(store.hosts) { host in
+                                HostSection(host: host, cross: CrossHost(), space: nil, collapsed: $collapsed, filter: filter, open: { go($0) })
+                            }
+                        }
                     }
-                } else {
-                    ForEach(store.hosts) { host in
-                        HostSection(host: host, cross: CrossHost(), space: nil, collapsed: $collapsed, filter: filter, open: { go($0) })
-                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
                 }
+                // Under the keyboard too: the list keeps clear of it as it
+                // comes and goes, as a terminal's does going back, which
+                // left the window's black there.
+                .background { Color.page.ignoresSafeArea() }
+                .scrollEdgeEffectStyle(.soft, for: .all)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 12)
-            .padding(.bottom, 20)
         }
-        // Under the keyboard too: the list keeps clear of it as it comes
-        // and goes, as a terminal's does going back, which left the
-        // window's black there.
-        .background { Color.page.ignoresSafeArea() }
         // Demo Mode's banner stays in place as the list scrolls, so that
         // leaving it is always a tap away.
         .safeAreaInset(edge: .top, spacing: 0) {
@@ -131,7 +140,6 @@ struct HostListView: View {
                     .background(Color.page)
             }
         }
-        .scrollEdgeEffectStyle(.soft, for: .all)
         // Beside the terminal the bar stays, for the sidebar's toggle.
         .toolbar(width == .regular ? .automatic : .hidden, for: .navigationBar)
         .toolbar {
@@ -271,7 +279,6 @@ private struct NoHostsView: View {
             .padding(.top, 6)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 40)
         .padding(.horizontal, 20)
     }
 }
