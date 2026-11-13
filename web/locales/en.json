@@ -2589,5 +2589,62 @@
   "uploadFolderSkipped": "Folders cannot be uploaded from the browser.",
   "@uploadFolderSkipped": {
     "description": "Status message when the user drops only a folder onto a pane."
-  }
+  },
+  "cmdFind": "Find…",
+  "@cmdFind": { "description": "Command: open terminal scrollback find bar." },
+  "findNext": "Find Next",
+  "@findNext": { "description": "Command and button: jump to next search match." },
+  "findPrevious": "Find Previous",
+  "@findPrevious": { "description": "Command and button: jump to previous search match." },
+  "findClose": "Close Find",
+  "@findClose": { "description": "Button: close terminal find bar." },
+  "findPlaceholder": "Search scrollback",
+  "@findPlaceholder": { "description": "Placeholder for terminal find input." },
+  "findCount": "{selected} of {total}",
+  "@findCount": {
+    "description": "Match counter in terminal find bar.",
+    "placeholders": {
+      "selected": { "type": "int", "example": "1" },
+      "total": { "type": "int", "example": "5" }
+    }
+  },
+  "cmdCommandPalette": "Command Palette…",
+  "@cmdCommandPalette": { "description": "Command: open the command palette." },
+  "palettePlaceholder": "Type a command, or the name of a tab…",
+  "@palettePlaceholder": { "description": "Placeholder for command palette input." },
+  "paletteNoMatches": "No matches",
+  "@paletteNoMatches": { "description": "Empty state for search and command palette." },
+  "cmdFocusLeft": "Focus Left Pane",
+  "@cmdFocusLeft": { "description": "Command: focus left pane." },
+  "cmdFocusRight": "Focus Right Pane",
+  "@cmdFocusRight": { "description": "Command: focus right pane." },
+  "cmdFocusUp": "Focus Upper Pane",
+  "@cmdFocusUp": { "description": "Command: focus upper pane." },
+  "cmdFocusDown": "Focus Lower Pane",
+  "@cmdFocusDown": { "description": "Command: focus lower pane." },
+  "cmdResizeLeft": "Move Divider Left",
+  "@cmdResizeLeft": { "description": "Command: move split divider left." },
+  "cmdResizeRight": "Move Divider Right",
+  "@cmdResizeRight": { "description": "Command: move split divider right." },
+  "cmdResizeUp": "Move Divider Up",
+  "@cmdResizeUp": { "description": "Command: move split divider up." },
+  "cmdResizeDown": "Move Divider Down",
+  "@cmdResizeDown": { "description": "Command: move split divider down." },
+  "shortcutRecording": "Press keys…",
+  "@shortcutRecording": { "description": "Button label while recording a keyboard shortcut." },
+  "shortcutNeedModifier": "Use a modifier, or an F-key",
+  "@shortcutNeedModifier": { "description": "Error when recording a shortcut without modifier or F-key." },
+  "shortcutBrowserReserved": "Browser reserves this shortcut",
+  "@shortcutBrowserReserved": { "description": "Error when recording a shortcut reserved by the browser." },
+  "shortcutConflict": "Already bound to {command}",
+  "@shortcutConflict": {
+    "description": "Error when recording a shortcut already bound to another command.",
+    "placeholders": {
+      "command": { "type": "String", "example": "Find…" }
+    }
+  },
+  "shortcutReset": "Reset",
+  "@shortcutReset": { "description": "Button to reset a single customized shortcut." },
+  "shortcutResetAll": "Reset All",
+  "@shortcutResetAll": { "description": "Button to reset all customized shortcuts." }
 }

@@ -1,5 +1,6 @@
 // One pane of a window: a block's terminal, its stream fed to
 // libghostty-vt, drawn on its own canvas, the keys typed written back.
+import { FindBar } from "./find";
 import { Ghostty } from "./ghostty";
 import { shortcut } from "./keys";
 import { loader } from "./loader";
@@ -106,6 +107,7 @@ export class TerminalView {
   private theme: Theme;
   /** The pointer over the grid: selecting, the wheel, and the mouse a program tracks. */
   private readonly pointer: PointerInput;
+  readonly findBar: FindBar;
   private blinkStart = performance.now();
   private blinkTimer?: number;
   /** The background the canvas was filled with last. */
@@ -221,6 +223,15 @@ export class TerminalView {
       if (!this.held) this.layout(d && { width: d.inlineSize, height: d.blockSize });
     });
     this.observer.observe(this.body, { box: "device-pixel-content-box" });
+    this.findBar = new FindBar({
+      term: () => this.term,
+      redraw: (force) => {
+        if (force) this.full = true;
+        this.redraw();
+      },
+      focus: () => this.focusKeys(),
+    });
+    this.body.append(this.findBar.el);
   }
 
   /** The tile of the pane's program, as the title of iOS's terminal screen has it. */
@@ -499,6 +510,7 @@ export class TerminalView {
         font: this.font, ox: this.ox, oy: this.oy, full: this.full, focused,
         blinkOff: since % (2 * blinkPeriod) >= blinkPeriod, minContrast: contrastRatio(),
         selection: this.theme.selection, selectionText: this.theme.selectionText, link: this.pointer.linkShown(),
+        highlights: this.findBar.highlights(),
       });
       this.full = false;
       this.pointer.drawn();
@@ -696,6 +708,18 @@ export class TerminalView {
    * Past the bound of what waits to be written, all of it is dropped,
    * with a status message (type).
    */
+  openFind() {
+    this.findBar.open();
+  }
+
+  findNext() {
+    this.findBar.next();
+  }
+
+  findPrevious() {
+    this.findBar.prev();
+  }
+
   paste(text: string) {
     if (!this.term || !text) return;
     let s = text.replace(/\r\n?|\n/g, "\r");

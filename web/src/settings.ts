@@ -8,7 +8,10 @@
 // of language draws the dialog again in the new one.
 import { checkForUpdate, install, installKind } from "./app";
 import { allowCommand, commandBox, Host, HostLink, HostList, icon } from "./hosts";
-import { mac, shortcutGroups } from "./keys";
+import {
+  chordFromEvent, commandTitle, hasModifiedShortcuts, mac, resetAllShortcuts,
+  resetShortcut, setRecordingShortcuts, shortcutGroups, trySetShortcut,
+} from "./keys";
 import {
   Animation, Appearance, CursorStyle, maxFontSize, minFontSize, prefs, Prefs, setPrefs, SidebarView, TabPlacement, textSize, clearAll,
 } from "./prefs";
@@ -277,7 +280,10 @@ export class Settings {
       }
     });
     // Escape closes it (the dialog's cancel), and the keyboard goes back to the terminal.
-    this.dialog.addEventListener("close", () => this.app.closed());
+    this.dialog.addEventListener("close", () => {
+      this.stopRecording();
+      this.app.closed();
+    });
     document.body.append(this.dialog);
     onLanguageChange(() => this.relocalize());
   }
@@ -703,14 +709,97 @@ export class Settings {
     this.picker.show();
   }
 
+  private recordingId?: string;
+  private recordingError = "";
+
+  private stopRecording() {
+    this.recordingId = undefined;
+    this.recordingError = "";
+    setRecordingShortcuts(false);
+  }
+
   private keyboardPage() {
     // The keys' names are the keyboard's, the same in every language.
     const keys = formatList(mac ? ["⌘W", "⌘T", "⌘N", "⇧⌘N", "⇧⌘R", "⌃Tab"] : ["Ctrl+W", "Ctrl+T", "Ctrl+N", "Ctrl+Shift+N", "Ctrl+Shift+R", "Ctrl+Tab"]);
+    const top = el("div", "settings-key-top");
     const note = el("div", "settings-hint settings-note", t("settingsKeyboardNote", { keys, chord: mac ? "⌥⇧" : "Alt+Shift" }));
-    this.page.append(note);
+    top.append(note);
+    if (hasModifiedShortcuts()) {
+      const resetAll = el("button", "settings-button settings-key-reset", t("shortcutResetAll"));
+      resetAll.type = "button";
+      resetAll.onclick = () => {
+        this.stopRecording();
+        resetAllShortcuts();
+        this.render();
+      };
+      top.append(resetAll);
+    }
+    this.page.append(top);
+    if (this.recordingError) {
+      this.page.append(el("div", "settings-key-error", this.recordingError));
+    }
+
     for (const g of shortcutGroups()) {
       const card = group(this.page, g.label);
-      for (const [title, keys] of g.rows) row(card, title, "", el("kbd", "settings-keys", keys)).classList.add("compact");
+      for (const r of g.rows) {
+        if (!r.editable) {
+          row(card, r.title, "", el("kbd", "settings-keys", r.keys)).classList.add("compact");
+          continue;
+        }
+        const controls = el("span", "settings-key-controls");
+        const isRec = this.recordingId === r.id;
+        const btn = el("button", `settings-key-btn${isRec ? " recording" : ""}`, isRec ? t("shortcutRecording") : r.keys);
+        btn.type = "button";
+        btn.setAttribute("aria-label", `${r.title}: ${r.keys}`);
+        btn.onclick = () => {
+          if (this.recordingId === r.id) {
+            this.stopRecording();
+            this.render();
+            return;
+          }
+          this.recordingId = r.id;
+          this.recordingError = "";
+          setRecordingShortcuts(true);
+          this.render();
+          this.page.querySelector<HTMLButtonElement>(".settings-key-btn.recording")?.focus();
+        };
+        if (isRec) {
+          btn.onkeydown = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.code === "Escape") {
+              this.stopRecording();
+              this.render();
+              return;
+            }
+            const chord = chordFromEvent(e);
+            if (!chord) return;
+            const res = trySetShortcut(r.id, chord);
+            if (!res.ok) {
+              if (res.reason === "need-modifier") this.recordingError = t("shortcutNeedModifier");
+              else if (res.reason === "browser-reserved") this.recordingError = t("shortcutBrowserReserved");
+              else if (res.reason === "conflict") this.recordingError = t("shortcutConflict", { command: commandTitle(res.owner) });
+              this.render();
+              this.page.querySelector<HTMLButtonElement>(".settings-key-btn.recording")?.focus();
+              return;
+            }
+            this.stopRecording();
+            this.render();
+          };
+        }
+        controls.append(btn);
+        if (r.modified) {
+          const rst = el("button", "settings-button settings-key-reset", t("shortcutReset"));
+          rst.type = "button";
+          rst.onclick = () => {
+            this.stopRecording();
+            resetShortcut(r.id);
+            this.render();
+          };
+          controls.append(rst);
+        }
+        row(card, r.title, "", controls).classList.add("compact");
+      }
     }
   }
 

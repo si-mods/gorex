@@ -11,7 +11,8 @@ import { mountCorner } from "./corner";
 import { commandBox, Host, HostLink, HostList, hostURL, icon, loadHosts, mixedContent, Problem, problem as newProblem } from "./hosts";
 import { HostConn, HostEvents, Session } from "./hostconn";
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
-import { shortcut } from "./keys";
+import { commandTitle, keysOf, shortcut } from "./keys";
+import { CommandPalette, PaletteItem } from "./palette";
 import { Asset, loader } from "./loader";
 import { closeMenu, confirmDanger, DropZone, focusRename, MenuItem, openMenu, renameField, zoneSplit } from "./manage";
 import { describe, TerminalView } from "./pane";
@@ -1306,7 +1307,57 @@ function step<T>(all: T[], at: number, by: 1 | -1): T {
 }
 
 /** Runs one of the window's commands, from a shortcut or a pane's button. */
+function paletteItems(): PaletteItem[] {
+  const out: PaletteItem[] = [];
+  const cmd = (id: string, action: () => void) => {
+    out.push({ id: `cmd:${id}`, title: commandTitle(id), keys: keysOf(id) || undefined, run: action });
+  };
+  if (shown) {
+    const p = shown.focus ? shown.panes.get(shown.focus) : undefined;
+    if (p) {
+      cmd("find", () => p.openFind());
+      cmd("find-next", () => p.findNext());
+      cmd("find-previous", () => p.findPrevious());
+      cmd("split-right", () => run("split-right"));
+      cmd("split-down", () => run("split-down"));
+      cmd("zoom", () => run("zoom"));
+      cmd("close", () => run("close"));
+    }
+    cmd("new-window", () => run("new-window"));
+    cmd("rename-window", () => run("rename-window"));
+    cmd("close-window", () => run("close-window"));
+  }
+  if (windows().length > 1) {
+    cmd("next-window", () => run("next-window"));
+    cmd("previous-window", () => run("previous-window"));
+  }
+  if (currentConn()) cmd("new-space", () => run("new-space"));
+  if (spaces().length > 1) {
+    cmd("next-space", () => run("next-space"));
+    cmd("previous-space", () => run("previous-space"));
+  }
+  if (hostList) cmd("settings", () => withSettings((s) => s.toggle()));
+  for (const [c, sId, wId] of windows()) {
+    const s = c.sessions.get(sId);
+    const w = s?.view?.windows?.find((x: any) => x.window_id === wId);
+    if (!w) continue;
+    out.push({
+      id: `win:${c.host.id}:${sId}:${wId}`,
+      title: windowTitle(c, w),
+      detail: `${c.host.name} · ${spaceName(s!)}`,
+      run: () => pick(c, sId, wId, true),
+    });
+  }
+  return out;
+}
+
+const palette = new CommandPalette(paletteItems, () => shown?.focusKeys());
+
 function run(name: string) {
+  if (name === "command-palette") {
+    palette.toggle();
+    return;
+  }
   const w = shown;
   if (name === "next-window" || name === "previous-window") {
     const all = windows();
@@ -1380,6 +1431,15 @@ function run(name: string) {
       }
       break;
     }
+    case "find":
+      if (block) w.panes.get(block)?.openFind();
+      break;
+    case "find-next":
+      if (block) w.panes.get(block)?.findNext();
+      break;
+    case "find-previous":
+      if (block) w.panes.get(block)?.findPrevious();
+      break;
     case "resize-left":
     case "resize-right":
     case "resize-up":
@@ -1405,15 +1465,28 @@ window.addEventListener(
     const name = shortcut(e);
     // Copy and paste are the focused pane's own (pane.ts): it copies its selection, and the browser's paste event reaches it.
     if (!name || name === "copy" || name.startsWith("paste")) return;
-    // Settings opens and closes from anywhere; the rest only from the window.
+    // Settings and Command Palette open/close from anywhere; the rest only from the window.
     if (name === "settings" && hostList) {
       e.preventDefault();
       e.stopPropagation();
       withSettings((s) => s.toggle());
       return;
     }
+    if (name === "command-palette") {
+      e.preventDefault();
+      e.stopPropagation();
+      palette.toggle();
+      return;
+    }
+    // Inside the find bar, allow find / find-next / find-previous chords to work.
+    if (t.closest?.(".find-bar") && (name === "find" || name === "find-next" || name === "find-previous")) {
+      e.preventDefault();
+      e.stopPropagation();
+      run(name);
+      return;
+    }
     // The pane's own text field (pane.ts) holds its keys: they are the window's, not a form's.
-    if (t.closest?.("input, textarea:not(.pane-input), select, .theme-panel, dialog, .context-menu")) return;
+    if (t.closest?.("input, textarea:not(.pane-input), select, .theme-panel, dialog, .context-menu, .palette")) return;
     e.preventDefault();
     e.stopPropagation();
     run(name);

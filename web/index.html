@@ -873,6 +873,80 @@
     .update { left: 8px; right: 8px; bottom: calc(28px + env(safe-area-inset-bottom)); max-width: none; }
     .chunk-loads { left: 8px; right: 8px; bottom: calc(28px + env(safe-area-inset-bottom)); width: auto; }
   }
+
+  /* Terminal Find bar */
+  .find-bar {
+    position: absolute; top: 8px; right: 10px; z-index: 15;
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 6px; border-radius: 8px;
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    font: 12px/1.3 var(--ui); color: var(--fg);
+  }
+  .find-bar[hidden] { display: none; }
+  .find-input {
+    width: 170px; padding: 3px 6px; border: 1px solid var(--panel-edge);
+    border-radius: 5px; background: var(--bg); color: var(--fg);
+    font: inherit; outline: none;
+  }
+  .find-input:focus { border-color: var(--accent, #58a6ff); }
+  .find-count { min-width: 54px; text-align: center; color: var(--muted); font-size: 11px; padding: 0 4px; }
+  .find-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border: 0; border-radius: 5px;
+    background: transparent; color: var(--fg); cursor: pointer;
+  }
+  .find-btn:hover:not(:disabled) { background: var(--panel-edge); }
+  .find-btn:disabled { opacity: 0.4; cursor: default; }
+  .find-btn svg { width: 14px; height: 14px; }
+
+  /* Command Palette */
+  .palette-backdrop {
+    position: fixed; inset: 0; z-index: 60;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding-top: min(14vh, 110px);
+    background: rgba(0, 0, 0, 0.42);
+  }
+  .palette {
+    width: min(560px, calc(100vw - 24px));
+    max-height: min(440px, 70vh);
+    display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--panel-edge);
+    border-radius: 12px; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.48);
+    overflow: hidden; font-family: var(--ui); color: var(--fg);
+  }
+  .palette-input {
+    width: 100%; box-sizing: border-box; padding: 12px 14px;
+    border: 0; border-bottom: 1px solid var(--panel-edge);
+    background: transparent; color: var(--fg); font: 14px/1.4 var(--ui); outline: none;
+  }
+  .palette-list { overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 2px; }
+  .palette-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    width: 100%; padding: 8px 10px; border: 0; border-radius: 7px;
+    background: transparent; color: var(--fg); font: 13px/1.35 var(--ui);
+    text-align: left; cursor: pointer;
+  }
+  .palette-row.selected, .palette-row:hover { background: var(--panel-edge); }
+  .palette-row-main { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex: 1; }
+  .palette-row-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .palette-row-detail { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .palette-empty { padding: 18px; text-align: center; color: var(--muted); font-size: 13px; }
+
+  /* Editable Shortcuts */
+  .settings-key-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  .settings-key-controls { display: inline-flex; align-items: center; gap: 6px; }
+  .settings-key-btn {
+    padding: 3px 9px; border-radius: 6px; border: 1px solid var(--panel-edge);
+    background: var(--bg); color: var(--fg); font: 12px/1.4 var(--mono, monospace); cursor: pointer;
+  }
+  .settings-key-btn:hover { border-color: var(--muted); }
+  .settings-key-btn.recording { border-color: var(--accent, #58a6ff); color: var(--accent, #58a6ff); }
+  .settings-key-reset { padding: 3px 8px; font-size: 11px; }
+  .settings-key-error {
+    margin: 0 0 10px; padding: 8px 10px; border-radius: 7px;
+    background: rgba(220, 60, 60, 0.14); color: #ff7b72; font-size: 12px;
+  }
 </style>
 </head>
 <body>
