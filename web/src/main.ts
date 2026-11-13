@@ -1,14 +1,15 @@
-// GoRex's web client: the sessions a host's gateway serves, and a window's
-// panes, live, over the same API the iOS app speaks. The page is hosted on
-// its own; the host is one the user added (hosts.ts), or one built-in
-// Tailscale found on the tailnet (tailnet.ts).
+// GoRex's web client: the sessions every host's gateway serves, and a
+// window's panes, live, over the same API the iOS app speaks. The page is
+// hosted on its own; each host is one the user added (hosts.ts), or one
+// built-in Tailscale found on the tailnet (tailnet.ts). Every host stays
+// connected at once (docs/web-multihost.md), each in its HostConn.
 import { onAppChange, startApp } from "./app";
 import { Chunk } from "./chunks";
 import { Ghostty } from "./ghostty";
 import type { Guide } from "./guide";
 import { mountCorner } from "./corner";
-import { chosenHost, commandBox, Host, HostList, hostURL, icon, loadHosts, mixedContent, Problem } from "./hosts";
-import { HostConn, HostEvents } from "./hostconn";
+import { commandBox, Host, HostList, hostURL, icon, loadHosts, mixedContent, Problem, problem as newProblem } from "./hosts";
+import { HostConn, HostEvents, Session } from "./hostconn";
 import { localize, Msg, msg, onLanguageChange, PlainKey, t } from "./i18n";
 import { shortcut } from "./keys";
 import { Asset, loader } from "./loader";
@@ -17,10 +18,11 @@ import { describe } from "./pane";
 import { ensureLatin, initMaple, mapleFamily, onChunk } from "./maple";
 import { fontFamily, paneHeaders, prefs } from "./prefs";
 import { LoadState, ProgressView } from "./progress";
+import { isTailnetID, openTailnet, Place, savePlace, startPlace, tailnetOpened } from "./place";
 import { programOf } from "./programs";
 import { Control, directTransport } from "./rex";
 import type { LinkState, Settings } from "./settings";
-import { hold, initSidebar, paneName, sidebar as drawSidebar, sidebarBlock, spaceName, windowName, windowTitle } from "./sidebar";
+import { hold, initSidebar, paneName, redraw, sidebar as drawSidebar, sidebarBlock, spaceName, windowName, windowTitle } from "./sidebar";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
 import { isLight, startTheme, ThemeEntry, themeColours } from "./themes";
@@ -52,10 +54,16 @@ const stage = $("stage");
 const shell = { flavor: "com.superlogical.terminal.shell" };
 
 let g: Ghostty;
-/** The hosts' connections, by host ID (hostconn.ts). One at a time for now: choose() stops the others. */
+/** The hosts' connections, by host ID (hostconn.ts): every host the page keeps, connected at once. */
 const conns = new Map<string, HostConn>();
-/** The host connected to, or connecting; one at a time. */
+/** The selection: the host whose window the stage shows, or whose notice it shows while it has none. */
 let current: Host | undefined;
+/**
+ * Where the stage goes once its host has read its sessions: the place
+ * kept (gorex.place) as the page starts, or a host chosen. The user's own
+ * choice of a window meanwhile ends it: the page does not jump after it.
+ */
+let pending: Place | undefined;
 /** Counts the hosts chosen, so that what waits for one chosen before ends. */
 let generation = 0;
 let hostList: HostList;
@@ -65,7 +73,7 @@ const tailnet = new Tailnet();
 let guide: Guide | undefined;
 /** The first screen, while no host is chosen. */
 let welcome: Welcome | undefined;
-/** The chosen host's connection, and what is wrong with it, for the Settings dialog's host card. */
+/** The selected host's connection, and what is wrong with it, for the Settings dialog's host card. */
 let link: LinkState = "none";
 let problem: Problem | undefined;
 /** The theme chosen in this browser, over the desktop's colours; none keeps the host's. */
@@ -262,6 +270,9 @@ async function main() {
     chooseTheme = pick;
     hostList = new HostList($("hosts"), {
       choose, close: () => shown?.focusKeys(), changed: () => {
+        // A host added connects, one removed stops, one whose address changed connects again.
+        syncConns();
+        if (!current) drawNotice();
         settings?.update();
         // The host view lists the hosts.
         sidebar();
@@ -287,13 +298,37 @@ async function main() {
     return;
   }
   // A quick link: ?host=URL adds the host, or chooses it, and leaves the address bar.
+  let place = startAt;
   const linked = new URLSearchParams(location.search).get("host");
   if (linked) {
     const r = hostURL(linked);
-    if ("url" in r) hostList.addLink(r.url);
+    if ("url" in r) {
+      hostList.addLink(r.url);
+      if (hostList.chosen) place = { host: hostList.chosen.id };
+    }
     history.replaceState(null, "", location.pathname);
   }
-  choose(hostList.chosen);
+  // Every host the page keeps connects now (Decisions, 1), at most opensAtOnce at a time (hostconn.ts).
+  syncConns();
+  startAtPlace(place);
+}
+
+/**
+ * The stage as the page starts: the place kept, once its host has read
+ * its sessions, else the first host's first window. A tailnet host's
+ * place waits for built-in Tailscale to find it.
+ */
+function startAtPlace(p: Place | undefined) {
+  const h = p && hostList.hosts.find((x) => x.id === p.host);
+  if (p && (h || isTailnetID(p.host))) {
+    pending = p;
+    select(h);
+    if (h) showPending(conns.get(h.id)!);
+    return;
+  }
+  const first = hostList.hosts[0];
+  pending = first && { host: first.id };
+  select(first);
 }
 
 /** Applies a theme chosen in Settings; set once the page has started. */
@@ -325,22 +360,26 @@ function openGuide() {
   });
 }
 
+/** Whether built-in Tailscale ran at its last change. */
+let tailnetRan = false;
+
 /**
- * Built-in Tailscale changed: the host list and Settings show it, and a
- * tailnet host chosen that is gone (signed out, Tailscale off) gives way
- * to the first host added.
+ * Built-in Tailscale changed: the host list and Settings show it. A
+ * tailnet host connected once connects when it is found. A tailnet host
+ * whose connection fails while Tailscale is off waits with its problem,
+ * and tries again at once when Tailscale runs again.
  */
 function tailnetChanged() {
+  syncConns();
+  const running = tailnet.status() === "running";
+  if (running && !tailnetRan) for (const c of conns.values()) if (c.host.kind === "tailnet" && c.waiting) c.poke();
+  tailnetRan = running;
   onboarding();
   hostList.refresh();
   sidebar();
   settings?.update();
-  if (current?.kind === "tailnet" && tailnet.status() !== "running" && !tailnet.hosts.some((h) => h.id === current!.id)) {
-    hostList.choose(hostList.hosts[0]);
-  } else if (!current) {
-    // The welcome's Tailscale card follows its state.
-    welcome?.update();
-  }
+  // The welcome's Tailscale card follows its state.
+  if (!current) welcome?.update();
 }
 
 /** A button of the notice: its words, as a key or said when drawn. */
@@ -418,69 +457,193 @@ function notice(p?: Problem, ...actions: NoticeAction[]) {
   box.replaceChildren(card);
 }
 
-/** Leaves the host connected to, and connects to h. Only the chosen host is connected. */
+/** A waiting tailnet place's notice: Tailscale has not found its host yet. */
+const tailnetWait: Problem = newProblem(() => t("placeTailnetTitle"), () => t("placeTailnetText"));
+
+/** Opens Settings at Tailscale, from a notice. */
+const tailscaleSettings: NoticeAction = { label: "noticeTailscaleSettings", run: () => withSettings((s) => s.open("tailscale")) };
+
+/**
+ * Shows host h, chosen in the host list, the sidebar or the guide: its
+ * last shown window, else its first once it has read its sessions. A host
+ * the page keeps no connection to connects; the others stay connected.
+ */
 function choose(h: Host | undefined) {
   generation++;
-  for (const c of conns.values()) c.stop();
-  conns.clear();
-  hide();
-  wantWindow = undefined;
-  // What the sidebar held still for goes with the host.
   closeMenu();
-  hold.renaming = undefined;
-  hold.rowDragging = false;
-  current = h;
-  // Made before the sidebar is drawn: the sidebar draws the chosen host from it.
-  const c = h && new HostConn(h, h.kind === "tailnet" ? tailnet.transport(h as TailnetHost) : directTransport(h.url), hostEvents, tailnet);
-  if (c) conns.set(c.host.id, c);
-  onboarding();
-  sidebar();
-  if (!h || !c) {
-    status("");
-    setLink("none");
-    showWelcome();
+  if (!h) {
+    hide();
+    pending = undefined;
+    select(undefined);
     return;
   }
-  // A tailnet host: no URL the browser opens, so no mixed content.
-  const blocked = h.kind !== "tailnet" && mixedContent(h.url);
-  if (blocked) {
-    status(() => t("statusBlocked", { host: h.name }));
-    setLink("unreachable", blocked);
-    notice(blocked, { label: "hostEdit", run: () => hostList.open(h) });
-    return;
-  }
-  notice();
-  setLink("connecting");
-  c.start();
+  if (h.kind === "tailnet") openTailnet(h.id);
+  const c = ensure(h);
+  const last = c.lastWindow;
+  if (last && windowOf(c, last.session, last.window)) return show(c, last.session, last.window, true);
+  hide();
+  pending = { host: h.id };
+  select(h);
+  if (c.waiting) c.poke();
+  showPending(c);
 }
 
-/** The chosen host's connection. */
+/** What the status line said last of each host, to say again when it is selected. */
+const said = new WeakMap<HostConn, Msg>();
+
+/** Selects a host: the host button, the status line, the notice and the bar above follow it. */
+function select(h: Host | undefined) {
+  current = h;
+  hostList?.select(h);
+  onboarding();
+  const c = currentConn();
+  status(c ? (said.get(c) ?? "") : "");
+  drawNotice();
+  sidebar();
+}
+
+/**
+ * The notice of the selected host only: its problem, else nothing; with
+ * no host, the welcome, or a tailnet place that waits for Tailscale.
+ */
+function drawNotice() {
+  const c = currentConn();
+  if (!current) {
+    setLink("none");
+    if (pending && isTailnetID(pending.host)) notice(tailnetWait, tailscaleSettings);
+    else if (!conns.size) showWelcome();
+    else notice();
+    return;
+  }
+  if (c?.state === "unreachable" && c.problem) {
+    if (c.host.kind === "tailnet") notice(c.problem, tailscaleSettings);
+    else notice(c.problem, { label: "hostEdit", run: () => hostList.open(c.host) });
+  } else notice();
+  setLink(c?.state ?? "none", c?.problem);
+}
+
+/** A host's transport: the browser's to its address, or the tailnet node's. */
+function transportOf(h: Host) {
+  return h.kind === "tailnet" ? tailnet.transport(h as TailnetHost) : directTransport(h.url);
+}
+
+/**
+ * The connection to h, made and started if the page keeps none. An edit
+ * of h's address makes a new one (its transport); of its name or icon,
+ * only the sidebar changes.
+ */
+function ensure(h: Host): HostConn {
+  let c = conns.get(h.id);
+  if (c && c.host.url !== h.url) {
+    drop(c);
+    c = undefined;
+  }
+  if (c) {
+    c.host = h;
+    return c;
+  }
+  c = new HostConn(h, transportOf(h), hostEvents, tailnet);
+  conns.set(h.id, c);
+  begin(c);
+  return c;
+}
+
+/** Starts a host's connection; a host this page can never reach (mixed content) stays with its problem. */
+function begin(c: HostConn) {
+  // A tailnet host: no URL the browser opens, so no mixed content.
+  const blocked = c.host.kind !== "tailnet" && mixedContent(c.host.url);
+  if (blocked) c.block(blocked);
+  else c.start();
+}
+
+/** Stops a host's connection and forgets it: its window, its rows, what waited for it. */
+function drop(c: HostConn) {
+  c.stop();
+  conns.delete(c.host.id);
+  if (shown?.conn === c) hide();
+  if (wantWindow?.host === c.host.id) wantWindow = undefined;
+  if (pending?.host === c.host.id && !hostList.hosts.some((h) => h.id === c.host.id)) pending = undefined;
+  if (hold.renaming?.host === c.host.id) hold.renaming = undefined;
+  sidebar();
+}
+
+/** Tries a host again now: Retry in its problem's line. */
+function retry(c: HostConn) {
+  if (c.waiting) c.poke();
+  else begin(c);
+}
+
+/**
+ * Keeps a connection to every host the page keeps (Decisions, 1): each
+ * host of the list, and each tailnet host connected once, when built-in
+ * Tailscale finds it. A tailnet host stays connected while Tailscale is
+ * off: its connection fails, waits and tries again.
+ * PR 5 leaves out the hosts the user disconnected (gorex.hostsOff) here.
+ */
+function syncConns() {
+  if (!hostList) return;
+  for (const h of hostList.hosts) ensure(h);
+  if (tailnet.status() === "running") {
+    const opened = tailnetOpened();
+    for (const h of tailnet.hosts) if (opened.has(h.id) || conns.has(h.id) || pending?.host === h.id) ensure(h);
+  }
+  for (const c of [...conns.values()]) if (c.host.kind !== "tailnet" && !hostList.hosts.some((h) => h.id === c.host.id)) drop(c);
+}
+
+/** The hosts in the sidebar's order: the host list's, then the tailnet's by name, connected or found. */
+function sidebarHosts(): Host[] {
+  const ts = new Map<string, Host>();
+  for (const c of conns.values()) if (c.host.kind === "tailnet") ts.set(c.host.id, c.host);
+  if (tailnet.status() === "running") for (const h of tailnet.hosts) if (!ts.has(h.id)) ts.set(h.id, h);
+  return [...(hostList?.hosts ?? []), ...[...ts.values()].sort((a, b) => a.name.localeCompare(b.name))];
+}
+
+/** The hosts' connections in the sidebar's order. */
+function orderedConns(): HostConn[] {
+  return sidebarHosts().map((h) => conns.get(h.id)).filter((c): c is HostConn => !!c);
+}
+
+/** The selected host's connection. */
 function currentConn(): HostConn | undefined {
   return current && conns.get(current.id);
 }
 
+/** Shows what waits for c, once it has read its sessions: the place's window, else its first. */
+function showPending(c: HostConn) {
+  const p = pending;
+  if (!p || p.host !== c.host.id || !c.live) return;
+  pending = undefined;
+  if (p.session && p.window && windowOf(c, p.session, p.window)) show(c, p.session, p.window, !busyFocus());
+  else showAny(c, !busyFocus());
+}
+
+// A host that waits to try again tries now when the network or the page comes back.
+function pokeAll() {
+  for (const c of conns.values()) if (c.waiting) c.poke();
+}
+window.addEventListener("online", pokeAll);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") pokeAll();
+});
+
 /**
- * What the hosts' connections tell the page: the chosen host's shows. A
- * stopped host's answers still on their way change nothing.
+ * What the hosts' connections tell the page: every host's rows follow
+ * it; the notice and the status line only the selected host's.
  */
 const hostEvents: HostEvents = {
   state(c) {
-    if (c !== currentConn()) return;
-    const h = c.host;
-    if (c.state === "unreachable" && c.problem) {
-      if (h.kind === "tailnet") notice(c.problem, { label: "noticeTailscaleSettings", run: () => withSettings((s) => s.open("tailscale")) });
-      else notice(c.problem, { label: "hostEdit", run: () => hostList.open(h) });
-    } else if (c.state === "connected") notice();
-    setLink(c.state, c.problem);
-    // The host's heading follows its state.
+    // A window asked for before a drop is not shown after it: the user asks again.
+    if (c.state !== "connected" && wantWindow?.host === c.host.id) wantWindow = undefined;
+    if (c === currentConn()) drawNotice();
+    // The host's heading, its dot and its rows follow its state.
     sidebar();
   },
   status(c, s) {
+    said.set(c, s);
     if (c === currentConn()) status(s);
   },
   sessions(c, destroyed) {
-    if (c !== currentConn()) return;
-    if (hold.renaming && !c.sessions.has(hold.renaming.session)) hold.renaming = undefined;
+    if (hold.renaming?.host === c.host.id && !c.sessions.has(hold.renaming.session)) hold.renaming = undefined;
     if (shown?.conn === c && !c.sessions.has(shown.session)) {
       hide();
       // The space closed: show another, as the desktop's window does (closeWorkspace).
@@ -490,7 +653,6 @@ const hostEvents: HostEvents = {
     sidebar();
   },
   view(c, s) {
-    if (c !== currentConn()) return;
     const v = s.view;
     if (shown?.conn === c && shown.session === s.id) {
       const w = (v.windows ?? []).find((w: any) => w.window_id === shown!.window);
@@ -509,7 +671,6 @@ const hostEvents: HostEvents = {
     showWanted();
   },
   block(c, block) {
-    if (c !== currentConn()) return;
     sidebarBlock(c, block);
     if (shown?.conn === c) shown.retitle();
   },
@@ -518,12 +679,14 @@ const hostEvents: HostEvents = {
   },
   live(c) {
     if (shown?.conn === c) for (const p of shown.panes.values()) p.resume();
+    showPending(c);
   },
 };
 
-/** The sidebar, of the chosen host; force makes it while it holds still. */
+/** The sidebar of every host, at the next animation frame; force makes it now, while it holds still too. */
 function sidebar(force = false) {
-  drawSidebar(currentConn(), force);
+  if (force) drawSidebar(true);
+  else redraw();
 }
 
 initSidebar({
@@ -542,9 +705,12 @@ initSidebar({
   mergesWindows: (c) => gateway.mergeWindows(c),
   mergeWindows,
   spacesMenu,
-  hosts: () => [...(hostList?.hosts ?? []), ...(tailnet.status() === "running" ? tailnet.hosts : [])],
+  hosts: sidebarHosts,
+  conn: (id) => conns.get(id),
+  selected: currentConn,
   connect: (h) => hostList.choose(h),
-  redraw: () => sidebar(),
+  retry,
+  edit: (c) => hostList.open(c.host),
 });
 
 /**
@@ -568,7 +734,7 @@ function see(conn: HostConn, block: string) {
   c.call("gorex.see_block", { session_id: w.session, block_id: block, seen_at: new Date(latest).toISOString() })
     .then(() => {
       conn.raiseSeen(block, latest);
-      if (conn === currentConn()) sidebarBlock(conn, block);
+      sidebarBlock(conn, block);
     }, () => {})
     .finally(() => conn.seeing.delete(block));
 }
@@ -715,7 +881,7 @@ function mergeWindows(conn: HostConn, session: string, window: string, into: str
 function startRename(conn: HostConn, session: string, window?: string) {
   if (!conn.sessions.has(session) || (window && !windowOf(conn, session, window))) return;
   closeMenu();
-  hold.renaming = { session, window };
+  hold.renaming = { host: conn.host.id, session, window };
   sidebar(true);
   focusRename($("list"));
 }
@@ -725,7 +891,7 @@ function startRename(conn: HostConn, session: string, window?: string) {
  * has, as the desktop's renameWorkspace (session.set_label).
  */
 function renamedSpace(conn: HostConn, session: string, name: string | undefined) {
-  if (hold.renaming?.session === session && !hold.renaming.window) hold.renaming = undefined;
+  if (hold.renaming?.host === conn.host.id && hold.renaming.session === session && !hold.renaming.window) hold.renaming = undefined;
   const s = conn.sessions.get(session);
   if (s && name && name !== s.label) {
     const was = s.label;
@@ -747,7 +913,7 @@ function renamedSpace(conn: HostConn, session: string, name: string | undefined)
  * (session.set_window_label).
  */
 function renamedWindow(conn: HostConn, session: string, window: string, name: string | undefined) {
-  if (hold.renaming?.window === window) hold.renaming = undefined;
+  if (hold.renaming?.host === conn.host.id && hold.renaming.window === window) hold.renaming = undefined;
   const w = windowOf(conn, session, window);
   if (w && name !== undefined && name !== (windowName(w) ?? "")) {
     conn.control?.call("session.set_window_label", { session_id: session, window_id: window, label: name }).catch((e) =>
@@ -868,10 +1034,17 @@ function show(conn: HostConn, session: string, window: string, keys: boolean) {
   const w = conn.sessions.get(session)?.view?.windows?.find((w: any) => w.window_id === window);
   if (!w) return;
   hide();
+  pending = undefined;
   shown = new WindowView(conn, session, window, stage, windowHost(conn));
   shown.update(w);
   if (keys) shown.focusKeys();
-  sidebar();
+  conn.lastWindow = { session, window };
+  const s = conn.sessions.get(session);
+  if (s) s.lastWindow = window;
+  savePlace({ host: conn.host.id, session, window });
+  // A window of another host selects it: the host button, the notice and the status line follow.
+  if (current?.id !== conn.host.id) select(conn.host);
+  else sidebar();
 }
 
 function hide() {
@@ -907,22 +1080,44 @@ function closeWindow(conn: HostConn, session: string, window: string) {
   conn.closeWindow(session, window)?.catch((e) => status(() => t("statusCloseWindowFailed", { error: describe(e) })));
 }
 
-/** The windows in the sidebar's order. */
-function windows(conn: HostConn): [string, string][] {
-  return [...conn.sessions.values()].flatMap((s) => (s.view?.windows ?? []).map((w: any) => [s.id, w.window_id] as [string, string]));
+/** The spaces with a window, in the sidebar's order across the connected hosts. */
+function spaces(): [HostConn, Session][] {
+  return orderedConns()
+    .filter((c) => c.state === "connected")
+    .flatMap((c) => [...c.sessions.values()].filter((s) => s.view?.windows?.length).map((s) => [c, s] as [HostConn, Session]));
+}
+
+/** The windows in the sidebar's order across the connected hosts. */
+function windows(): [HostConn, string, string][] {
+  return spaces().flatMap(([c, s]) => s.view.windows.map((w: any) => [c, s.id, w.window_id] as [HostConn, string, string]));
+}
+
+/** The item after (step 1) or before (-1) the one at index at, round; the first or the last when none is. */
+function step<T>(all: T[], at: number, by: 1 | -1): T {
+  const n = all.length;
+  return all[by === 1 ? (at + 1) % n : at < 0 ? n - 1 : (at - 1 + n) % n];
 }
 
 /** Runs one of the window's commands, from a shortcut or a pane's button. */
 function run(name: string) {
   const w = shown;
   if (name === "next-window" || name === "previous-window") {
-    const conn = currentConn();
-    const all = conn ? windows(conn) : [];
-    if (!conn || !all.length) return;
-    const at = w ? all.findIndex(([, id]) => id === w.window) : -1;
-    const n = all.length;
-    const [s, id] = all[name === "next-window" ? (at + 1) % n : at < 0 ? n - 1 : (at - 1 + n) % n];
-    show(conn, s, id, true);
+    const all = windows();
+    if (!all.length) return;
+    const at = w ? all.findIndex(([c, s, id]) => c === w.conn && s === w.session && id === w.window) : -1;
+    const [c, s, id] = step(all, at, name === "next-window" ? 1 : -1);
+    show(c, s, id, true);
+    return;
+  }
+  if (name === "next-space" || name === "previous-space") {
+    // The space's window shown last, as the desktop's space keys show a space as it was left.
+    const all = spaces();
+    if (!all.length) return;
+    const at = w ? all.findIndex(([c, s]) => c === w.conn && s.id === w.session) : -1;
+    const [c, s] = step(all, at, name === "next-space" ? 1 : -1);
+    const ids = windowIDs(c, s.id);
+    const id = s.lastWindow && ids.includes(s.lastWindow) ? s.lastWindow : ids.includes(s.view.active_window_id) ? s.view.active_window_id : ids[0];
+    if (id) show(c, s.id, id, true);
     return;
   }
   if (name === "new-space") {
@@ -1063,8 +1258,10 @@ document.fonts.addEventListener("loadingdone", () => {
   $("foot").append(add);
 }
 
+/** The place kept, after gorex.host of a page from before moved into it (place.ts). */
+const startAt = startPlace(loadHosts().map((h) => h.id));
 // No saved host: the first screen has the whole window from the first frame, as before main() has run.
-document.body.classList.toggle("onboarding", !loadHosts().length && !chosenHost());
+document.body.classList.toggle("onboarding", !loadHosts().length && !startAt);
 // The tabs' place from the first frame too.
 document.body.dataset.tabs = prefs.tabPlacement || "above";
 startApp();

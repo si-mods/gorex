@@ -674,9 +674,12 @@ cd web && npm run dev                                # http://127.0.0.1:5173
 cd web && npm test
 ```
 
-More gateways on one data directory (`--listen` on other ports, with
-`--socket $GOREX_DIR/rexapi-N.sock`) are more hosts of the same machine:
-use them for the limits and to see one machine as two hosts. Count a
+A data directory takes one gateway: a second `gorex rexapi` on it
+stops ("another Rex API gateway runs on this data directory"). More
+hosts of the same machine are more addresses of its one gateway: a port
+that forwards to it (a small TCP proxy), or `localhost` beside
+`127.0.0.1`. Use them for the limits and to see one machine as two
+hosts. Count a
 host's sessions with `$T/gorex.exe rexapi call session.list` (same
 `GOREX_DIR`) before and after a reconnect, to check that no session or
 window was made. Report what was checked in the PR, with screenshots of
@@ -759,8 +762,8 @@ Verify, with hosts A and B:
 4. Stop B's app and gateway; reload the page: A connects and shows its
    place; B shows its problem line with no rows.
 5. Reload with the place on B while B is up: the page shows B's window.
-6. Two gateways on A's data directory: both hosts show A's windows.
-7. Five gateways on A's data directory: the page stays responsive at
+6. A second address of A's gateway: both hosts show A's windows.
+7. Five addresses of A's gateway: the page stays responsive at
    startup; note the heap in DevTools › Memory against two hosts.
 8. `npm test` passes locally, and the PR's `web` job passes.
 

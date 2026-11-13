@@ -284,8 +284,13 @@ export function confirmDanger(title: string, body: string, action: string): Prom
   });
 }
 
-/** What is being dragged, as the page drags it: a window's row, or a pane's header. */
-export type Dragged = { kind: "window"; session: string; window: string } | { kind: "pane"; session: string; window: string; block: string };
+/**
+ * What is being dragged, as the page drags it: a window's row, or a pane's
+ * header. Each names its host: two hosts can give the same IDs.
+ */
+export type Dragged =
+  | { kind: "window"; host: string; session: string; window: string }
+  | { kind: "pane"; host: string; session: string; window: string; block: string };
 
 /** The drag going on. DataTransfer's data cannot be read while it goes, only at the drop. */
 export let dragging: Dragged | undefined;

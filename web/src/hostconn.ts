@@ -21,6 +21,8 @@ export interface Session {
   /** A read asked for while one was on its way, and whether it asked to attach. */
   again?: boolean;
   attach?: boolean;
+  /** The window of it the stage showed last, for the space keys. */
+  lastWindow?: string;
 }
 
 /** What a host's connection tells the page. */
@@ -52,6 +54,28 @@ export function backoff(n: number): number {
 /** How long a connection stays up for the failures before to be forgotten (hosts.go's hostHealthy). */
 export const healthyAfter = 10000;
 
+/**
+ * How many control connections open at once, page-wide, as tailnet.ts's
+ * probesAtOnce: over the tailnet each one is a TLS handshake in the
+ * engine, on the page's thread. The others wait their turn.
+ */
+export const opensAtOnce = 4;
+let opening = 0;
+const waiting: (() => void)[] = [];
+
+/** Runs f once fewer than opensAtOnce others run; a slot that ends goes to the next one waiting. */
+async function staggered<T>(f: () => Promise<T>): Promise<T> {
+  if (opening < opensAtOnce) opening++;
+  else await new Promise<void>((r) => waiting.push(r));
+  try {
+    return await f();
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else opening--;
+  }
+}
+
 function recordsOf(j: any): Status[] {
   return (Array.isArray(j) ? j : []).map(statusOf).filter((r): r is Status => !!r);
 }
@@ -64,6 +88,8 @@ export class HostConn {
   problem?: Problem;
   /** The failed attempts since the last connection, for the backoff. */
   attempt = 0;
+  /** The window the stage showed last on this host. */
+  lastWindow?: { session: string; window: string };
   private token?: string;
   /** Counts start() and stop(), so that an attempt of one before ends. */
   private generation = 0;
@@ -90,7 +116,8 @@ export class HostConn {
   readonly described = new Set<string>();
 
   constructor(
-    readonly host: Host,
+    /** Its host; an edit of the name or the icon replaces it, one of the address makes a new HostConn. */
+    public host: Host,
     readonly transport: Transport,
     private readonly events: HostEvents,
     private readonly tailnet: Tailnet,
@@ -113,6 +140,17 @@ export class HostConn {
     this.control = undefined;
     this.live = false;
     c?.close();
+  }
+
+  /** Stays unreachable with p, which no attempt can mend (mixed content): no retry. */
+  block(p: Problem) {
+    this.stop();
+    this.setState("unreachable", p);
+  }
+
+  /** Whether the next attempt waits for its backoff. */
+  get waiting(): boolean {
+    return this.retry !== undefined;
   }
 
   /** Makes the next attempt now, when one waits. */
@@ -165,7 +203,7 @@ export class HostConn {
     if (this.state !== "unreachable") this.setState("connecting");
     let c: Control;
     try {
-      c = await Control.open(this.transport, this.token);
+      c = await staggered(() => Control.open(this.transport, this.token));
     } catch (e) {
       if (gen !== this.generation) return;
       const p = h.kind === "tailnet" ? await this.tailnet.diagnose(h as TailnetHost) : await diagnose(h.url);

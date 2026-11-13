@@ -5,7 +5,8 @@
   "scripts": {
     "build": "node build.mjs",
     "dev": "node dev.mjs",
-    "deploy": "node build.mjs && npx --yes wrangler@4.152.0 deploy"
+    "deploy": "node build.mjs && npx --yes wrangler@4.152.0 deploy",
+    "test": "node test.mjs"
   },
   "devDependencies": {
     "esbuild": "0.25.12",

@@ -1,9 +1,14 @@
 // The tabs, as the Tab placement setting puts them: the bar above the
-// panes, or the sidebar of a host's sessions, each with a row for each of
-// its windows, their programs' tiles, titles and records, under their
-// host in the host view. It draws what a HostConn (hostconn.ts) holds;
-// what its rows and menus do is the page's (main.ts, SidebarApp).
+// panes, or the sidebar of every host's sessions, each with a row for each
+// of its windows, their programs' tiles, titles and records, under their
+// host. It draws what each HostConn (hostconn.ts) holds, with its state:
+// a dot while it reconnects or fails, its problem's line, and its rows,
+// dimmed, as last seen while it is not connected (docs/web-multihost.md,
+// The sidebar). What its rows and menus do is the page's (main.ts,
+// SidebarApp). Its updates wait for the next animation frame, one per
+// frame for every host.
 import type { HostConn, Session } from "./hostconn";
+import type { LinkState } from "./settings";
 import { Host, icon } from "./hosts";
 import { t } from "./i18n";
 import { draggable, MenuItem, onMenu, openMenu, ownDrag, renameField } from "./manage";
@@ -30,12 +35,18 @@ export interface SidebarApp {
   mergeWindows(c: HostConn, session: string, window: string, into: string): void;
   /** The space chip's menu. */
   spacesMenu(c: HostConn, session: string): MenuItem[];
-  /** The hosts the page can connect to, for the host view. */
+  /** The hosts the page can connect to, in the sidebar's order: the host list's, then the tailnet's. */
   hosts(): Host[];
+  /** A host's connection, while the page keeps one. */
+  conn(id: string): HostConn | undefined;
+  /** The connection of the host the page shows: the bar above lists its space. */
+  selected(): HostConn | undefined;
   /** Connects to a host, from its heading in the host view. */
   connect(h: Host): void;
-  /** Draws the whole sidebar again, of the host the page shows. */
-  redraw(): void;
+  /** Tries a host that failed again now, from its problem's line. */
+  retry(c: HostConn): void;
+  /** Opens a host's form, from its problem's line. */
+  edit(c: HostConn): void;
 }
 
 let app: SidebarApp;
@@ -49,13 +60,19 @@ const list = () => document.getElementById("list")!;
 
 /** What the sidebar holds still for. */
 export const hold: {
-  /** A space or a window being renamed in the sidebar; the sidebar is not made again meanwhile. */
-  renaming?: { session: string; window?: string };
+  /** A space or a window being renamed in the sidebar, of its host; the sidebar is not made again meanwhile. */
+  renaming?: { host: string; session: string; window?: string };
   /** Whether one of the sidebar's rows drags: the drag would end with its row. */
   rowDragging: boolean;
   /** Whether the sidebar waits to be made again, once it no longer holds still. */
   stale: boolean;
 } = { rowDragging: false, stale: false };
+
+/** Whether hold.renaming is this space's own field (no window), or this window's. */
+function renaming(c: HostConn, session: string, window?: string): boolean {
+  const r = hold.renaming;
+  return !!r && r.host === c.host.id && r.session === session && r.window === window;
+}
 
 /** A window's row clicked last, and when: a second click soon after renames it, as the desktop's double click. */
 let lastClick: { host: string; window: string; at: number } | undefined;
@@ -143,6 +160,37 @@ export function fillWindow(c: HostConn, b: HTMLElement, w: any, room: number) {
  * the whole sidebar is made again.
  */
 export function sidebarBlock(c: HostConn, block: string) {
+  let blocks = changed.get(c);
+  if (!blocks) changed.set(c, (blocks = new Set()));
+  blocks.add(block);
+  schedule();
+}
+
+/** The blocks changed since the last frame, by host, and whether the whole sidebar waits to be made. */
+const changed = new Map<HostConn, Set<string>>();
+let whole = false;
+let frame = 0;
+
+function schedule() {
+  frame ||= requestAnimationFrame(flush);
+}
+
+/** The frame's updates: the whole sidebar, or else the rows of the blocks changed. */
+function flush() {
+  frame = 0;
+  const blocks = [...changed];
+  changed.clear();
+  if (whole) return sidebar();
+  for (const [c, bs] of blocks) for (const b of bs) blockRows(c, b);
+}
+
+/** Makes the sidebar again at the next animation frame, once for every change before it. */
+export function redraw() {
+  whole = true;
+  schedule();
+}
+
+function blockRows(c: HostConn, block: string) {
   for (const b of shownBlocks(c)) app.see(c, b);
   const nav = list();
   for (const s of c.sessions.values()) {
@@ -151,30 +199,34 @@ export function sidebarBlock(c: HostConn, block: string) {
     for (const w of v.windows ?? []) {
       if (!leavesOf(layoutOf(w)).includes(block)) continue;
       const b = nav.querySelector<HTMLElement>(`.window[data-host="${CSS.escape(c.host.id)}"][data-window="${CSS.escape(w.window_id)}"] > .block`);
-      if (!b) return app.redraw();
+      if (!b) return redraw();
       fillWindow(c, b, w, tilesRoom(v));
     }
   }
 }
 
 /**
- * The tabs of c, as the Tab placement setting puts them: the bar above
- * the panes, or the sidebar of each session and a row for each of its
- * windows, under their host in the host view. It holds still while a
+ * The tabs, as the Tab placement setting puts them: the bar above the
+ * panes, of the shown host's space, or the sidebar of every host, each
+ * session and a row for each of its windows. It holds still while a
  * field renames or a row drags, which would go with their elements, and
- * is made once they are done; force makes it now.
+ * is made once they are done; force makes it now. It is made at once:
+ * redraw() waits for the next frame.
  */
-export function sidebar(c: HostConn | undefined, force = false) {
+export function sidebar(force = false) {
+  const c = app.selected();
   if (c) for (const b of shownBlocks(c)) app.see(c, b);
   if (!force && (hold.renaming || hold.rowDragging)) {
     hold.stale = true;
     return;
   }
   hold.stale = false;
+  whole = false;
+  changed.clear();
   const nav = document.createElement("nav");
   if (!prefs.tabPlacement) tabBar(nav, c);
-  else if (prefs.sidebarView === "host") hostSections(nav, c);
-  else for (const s of c?.sessions.values() ?? []) spaceSection(nav, c!, s);
+  else if (prefs.sidebarView === "host") hostSections(nav);
+  else spaceSections(nav);
   if (!nav.children.length) nav.textContent = !c || !c.control ? "" : c.sessions.size ? "" : t("sidebarNoSessions");
   list().replaceChildren(nav);
 }
@@ -186,8 +238,9 @@ function spaceSection(nav: HTMLElement, c: HostConn, s: Session) {
   const h = document.createElement("h2");
   h.dataset.host = c.host.id;
   h.dataset.session = s.id;
+  if (offline(c)) h.classList.add("dimmed");
   const add = newWindowButton(c, s.id);
-  if (hold.renaming?.session === s.id && !hold.renaming.window) {
+  if (renaming(c, s.id)) {
     h.append(renameField(s.label, spaceName(s), t("renameSpaceLabel"), (name) => app.renamedSpace(c, s.id, name)), add);
   } else {
     const name = document.createElement("span");
@@ -206,6 +259,8 @@ function newWindowButton(c: HostConn, session: string): HTMLButtonElement {
   add.type = "button";
   add.append(icon("plus"));
   add.title = t("cmdNewWindow");
+  // A host that is not live makes nothing: no creation waits for it to come back.
+  add.disabled = !c.live;
   add.onclick = () => app.newWindow(c, session);
   return add;
 }
@@ -220,7 +275,7 @@ function tabBar(nav: HTMLElement, c: HostConn | undefined) {
   const shown = app.shown();
   const s = (shown?.conn === c && c.sessions.get(shown.session)) || [...c.sessions.values()].find((o) => o.view);
   if (!s?.view) return;
-  if (hold.renaming?.session === s.id && !hold.renaming.window) {
+  if (renaming(c, s.id)) {
     nav.append(renameField(s.label, spaceName(s), t("renameSpaceLabel"), (name) => app.renamedSpace(c, s.id, name)));
   } else {
     const chip = document.createElement("button");
@@ -244,31 +299,104 @@ function tabBar(nav: HTMLElement, c: HostConn | undefined) {
 }
 
 /**
+ * Whether a host's rows are its last known ones: it is not connected.
+ * They stay, dimmed, and a click still shows their window (Decisions, 7).
+ */
+function offline(c: HostConn): boolean {
+  return c.state !== "connected";
+}
+
+/**
+ * A host's state, as the desktop's hostSectionIcon: none while it is
+ * connected or tries the first time, connecting while it reconnects,
+ * unreachable when its last attempt failed.
+ */
+export function hostDot(c: HostConn): LinkState | undefined {
+  if (c.state === "unreachable") return "unreachable";
+  if (c.state === "connecting" && c.attempt > 0) return "connecting";
+  return undefined;
+}
+
+/** A host's heading: its icon, its name and its state's dot, which is never dimmed. */
+function hostHead(nav: HTMLElement, h: Host, c: HostConn | undefined): HTMLElement {
+  const head = document.createElement(c ? "h3" : "button");
+  head.className = "host-head";
+  head.dataset.host = h.id;
+  const name = document.createElement("span");
+  name.textContent = h.name;
+  head.append(icon(h.icon), name);
+  const dot = c && hostDot(c);
+  if (dot) {
+    const d = document.createElement("i");
+    d.className = `state-dot ${dot}`;
+    d.title = t(dot === "unreachable" ? "linkUnreachable" : "linkConnecting");
+    head.append(d);
+    head.setAttribute("aria-label", t("sidebarHostState", { host: h.name, state: d.title }));
+  }
+  nav.append(head);
+  return head;
+}
+
+/** A host's problem, in one muted line, with Retry and, for a host of the list, Edit. */
+function problemLine(nav: HTMLElement, c: HostConn) {
+  if (c.state !== "unreachable" || !c.problem) return;
+  const line = document.createElement("div");
+  line.className = "host-problem";
+  line.dataset.host = c.host.id;
+  const text = document.createElement("span");
+  text.textContent = c.problem.title;
+  line.title = c.problem.text;
+  const button = (glyph: string, label: string, run: () => void) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "icon";
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    b.append(icon(glyph));
+    b.onclick = run;
+    return b;
+  };
+  line.append(text, button("rotate-ccw", t("commonRetry"), () => app.retry(c)));
+  if (c.host.kind !== "tailnet") line.append(button("pencil", t("commonEdit"), () => app.edit(c)));
+  nav.append(line);
+}
+
+/** A host's sessions: its problem's line, then each session, dimmed while it is not connected. */
+function hostRows(nav: HTMLElement, c: HostConn) {
+  problemLine(nav, c);
+  for (const s of c.sessions.values()) spaceSection(nav, c, s);
+}
+
+/**
  * The sidebar's host view, as the desktop's hostSessions: each host the
  * page can connect to (its host list, and Tailscale's), under its name,
- * the connected one (c's) with its sessions. The page connects to one
- * host at a time: another host's heading connects to it.
+ * with its sessions. A host the page has no connection to (a tailnet host
+ * never connected) is a button that connects to it.
  */
-function hostSections(nav: HTMLElement, c: HostConn | undefined) {
-  const current = c?.host;
-  const all = app.hosts();
-  if (current && !all.some((h) => h.id === current.id)) all.unshift(current);
-  for (const h of all) {
-    const on = h.id === current?.id;
-    const head = document.createElement(on ? "h3" : "button");
-    head.className = "host-head";
-    head.dataset.host = h.id;
-    const name = document.createElement("span");
-    name.textContent = h.name;
-    head.append(icon(h.icon), name);
-    nav.append(head);
-    if (on) {
-      for (const s of c!.sessions.values()) spaceSection(nav, c!, s);
+function hostSections(nav: HTMLElement) {
+  for (const h of app.hosts()) {
+    const c = app.conn(h.id);
+    const head = hostHead(nav, h, c);
+    if (c) {
+      hostRows(nav, c);
       continue;
     }
     (head as HTMLButtonElement).type = "button";
     head.title = t("sidebarConnectHost", { host: h.name });
     head.onclick = () => app.connect(h);
+  }
+}
+
+/**
+ * The sidebar's space view. Until spaces are grouped across hosts
+ * (docs/web-multihost.md, PR 6), each connected host lists its own
+ * spaces, under its name once there is more than one host.
+ */
+function spaceSections(nav: HTMLElement) {
+  const conns = app.hosts().map((h) => app.conn(h.id)).filter((c): c is HostConn => !!c);
+  for (const c of conns) {
+    if (conns.length > 1) hostHead(nav, c.host, c);
+    hostRows(nav, c);
   }
 }
 
@@ -290,7 +418,8 @@ function windowRow(c: HostConn, session: string, w: any, room: number): HTMLElem
   row.dataset.window = id;
   const shown = app.shown();
   if (shown?.conn === c && shown.window === id) row.classList.add("open");
-  if (hold.renaming?.session === session && hold.renaming.window === id) {
+  if (offline(c)) row.classList.add("dimmed");
+  if (renaming(c, session, id)) {
     row.classList.add("renaming");
     row.append(renameField(windowName(w) ?? "", windowTitle(c, w), t("renameWindowLabel"), (name) => app.renamedWindow(c, session, id, name)));
     return row;
@@ -318,19 +447,20 @@ function windowRow(c: HostConn, session: string, w: any, room: number): HTMLElem
     row,
     () => {
       hold.rowDragging = true;
-      return { kind: "window", session, window: id };
+      return { kind: "window", host: c.host.id, session, window: id };
     },
     () => {
       hold.rowDragging = false;
       markDrop(undefined);
-      if (hold.stale) app.redraw();
+      if (hold.stale) redraw();
     },
   );
   // Where a row or a pane dropped here goes: before or after the row, or into its window. A row's middle half
   // merges its window into this one, as the desktop's tabDropZone, where the host takes it.
   const zone = (e: DragEvent): "before" | "after" | "into" | undefined => {
     const d = ownDrag(e);
-    if (!d || d.session !== session || d.window === id) return undefined;
+    // IDs are the host's own: another host's session may have the same.
+    if (!d || d.host !== c.host.id || d.session !== session || d.window === id) return undefined;
     if (d.kind === "pane") return "into";
     const r = row.getBoundingClientRect();
     const across = !prefs.tabPlacement;

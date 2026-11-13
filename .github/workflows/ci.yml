@@ -60,9 +60,28 @@ jobs:
             echo "::endgroup::"
           done
 
+  # The web client's unit tests: its modules with no DOM, in Node
+  # (web/test.mjs bundles web/test/*.test.ts and runs node --test). The
+  # web build itself needs Zig and Ghostty, and is not run here.
+  web:
+    runs-on: instabox-medium
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: test
+        working-directory: web
+        run: |
+          npm ci
+          npm test
+
   # The tests. The root package's tests run one after another, so three
   # machines take a third each; a fourth runs the other packages. With
-  # build, that is five at a time.
+  # build and web, that is six at a time.
   test-linux:
     runs-on: instabox-medium
     # Two runs of a part that hangs, at 15 minutes each.

@@ -25,6 +25,9 @@ function table(): [Chord, string][] {
       t.push([{ meta: true, alt: true, code }, `focus-${d.toLowerCase()}`]);
       t.push([{ meta: true, ctrl: true, code }, `resize-${d.toLowerCase()}`]);
     }
+    // Next and previous space, the desktop's own keys.
+    t.push([{ ctrl: true, meta: true, code: "BracketRight" }, "next-space"]);
+    t.push([{ ctrl: true, meta: true, code: "BracketLeft" }, "previous-space"]);
   } else {
     // The desktop's other keys (Other in commands.go), on Windows and Linux.
     t.push([{ ctrl: true, shift: true, code: "KeyD" }, "split-right"]);
@@ -34,6 +37,9 @@ function table(): [Chord, string][] {
       t.push([{ alt: true, code }, `focus-${d.toLowerCase()}`]);
       t.push([{ alt: true, shift: true, code }, `resize-${d.toLowerCase()}`]);
     }
+    // Next and previous space: the desktop's Ctrl+Shift+PageDown and PageUp move the browser's tabs.
+    t.push([{ alt: true, shift: true, code: "PageDown" }, "next-space"]);
+    t.push([{ alt: true, shift: true, code: "PageUp" }, "previous-space"]);
   }
   // What the browser keeps for itself, on every platform.
   t.push([{ alt: true, shift: true, code: "KeyW" }, "close"]);
@@ -133,7 +139,14 @@ export function shortcutGroups(): { label: string; rows: [title: string, keys: s
         ["cmdRenameWindow", "rename-window"],
       ]),
     },
-    { label: t("keysSpaces"), rows: rows([["cmdNewSpace", "new-space"]]) },
+    {
+      label: t("keysSpaces"),
+      rows: rows([
+        ["cmdNewSpace", "new-space"],
+        ["cmdNextSpace", "next-space"],
+        ["cmdPreviousSpace", "previous-space"],
+      ]),
+    },
     // The product's name, not translated.
     { label: "GoRex", rows: rows([["cmdSettings", "settings"]]) },
   ];

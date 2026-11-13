@@ -253,7 +253,7 @@ export class WindowView {
     onMenu(p.head, (x, y) => this.app.paneMenu(this, block, x, y));
     draggable(
       p.head,
-      () => (this.zoomed ? undefined : { kind: "pane", session: this.session, window: this.window, block }),
+      () => (this.zoomed ? undefined : { kind: "pane", host: this.conn.host.id, session: this.session, window: this.window, block }),
       () => this.showDrop(undefined),
     );
     // A press on a focusable pane focuses it, and its text field takes
@@ -291,7 +291,7 @@ export class WindowView {
     });
     const zone = (e: DragEvent): DropZone | undefined => {
       const d = ownDrag(e);
-      if (d?.kind !== "pane" || d.block === block || d.session !== this.session || this.zoomed) return undefined;
+      if (d?.kind !== "pane" || d.block === block || d.host !== this.conn.host.id || d.session !== this.session || this.zoomed) return undefined;
       return paneDropZone(p.el.getBoundingClientRect(), e.clientX, e.clientY, d.window === this.window, this.app.edgeDrops());
     };
     p.el.addEventListener("dragover", (e) => {
