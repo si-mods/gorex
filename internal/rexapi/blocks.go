@@ -391,7 +391,7 @@ func blockProgramStatus(c *control, s *mSession, b *mBlock, a args) (any, *apiEr
 	if aerr != nil {
 		return nil, aerr
 	}
-	return map[string]any{"records": statusRecords(info)}, nil
+	return statusPayload(info), nil
 }
 
 // statusRecords returns the status programs in the terminal reported, by

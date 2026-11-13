@@ -424,8 +424,10 @@ func TestNeedsHiddenRemote(t *testing.T) {
 	if n := badge(); n != 1 {
 		t.Fatalf("the badge counts %d for an unseen done record", n)
 	}
-	a.st.recordSeen("r1", done.Updated.Add(time.Second))
-	a.syncBadge() // as a pane's seen does
+	// The host's server tells that a client saw it.
+	h.update(func() {
+		h.infos = map[string]rex.SessionInfo{"r1": {ID: "r1", Statuses: []rex.ProgramStatus{done}, StatusSeen: done.Updated}}
+	})
 	if n := badge(); n != 0 {
 		t.Errorf("the badge counts %d for a seen done record", n)
 	}

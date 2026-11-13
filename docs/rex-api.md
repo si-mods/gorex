@@ -343,6 +343,36 @@ when the GoRex server can make the move (`CapabilityTabToSpace`, its
 `session.help`, `help.all` and `/llms.txt` describe it after Rex's
 methods; `/api/help` is Rex's document as it is.
 
+## Seen program status
+
+A program's `done` and `error` records (OSC 7501) stay until the user
+sees them. The GoRex server keeps when they were seen, per session, so
+every client agrees: the desktop's panes and Rex Go read the same time,
+and a record seen on one device is seen on all, after a restart too.
+The welcome lists the feature `gorex.see_block` when the server keeps it
+(`CapabilityStatusSeen`); call it only then.
+
+```
+→ {"method": "gorex.see_block",
+   "payload": {"session_id": "<session>", "block_id": "<block>",
+               "seen_at": "2026-11-13T09:30:00Z"}}
+← {}
+```
+
+- `seen_at` is the `updated_at` of the latest record the user saw. A time
+  of a whole second, as `updated_at` has, covers that second.
+- The seen time only moves forward, and never past the block's latest
+  record.
+- `com.superlogical.terminal.program_status` and the
+  `program_status_changed` event carry `seen_at` beside `records` once a
+  client saw some; a change of it sends `program_status_changed`. A
+  `done` or `error` record whose `updated_at` is not after `seen_at` was
+  seen, as the desktop's `MostUrgent` reads it.
+- Errors: `conflict` (the connection is not attached to `session_id`),
+  `not_found` (a block not in its session), `bad_request` (a missing,
+  unknown or malformed argument), `not_supported` (the GoRex server is
+  older).
+
 ## Files of a host
 
 The web client opens a file path printed in a pane as the desktop does

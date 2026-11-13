@@ -45,7 +45,7 @@ func (g *Gateway) watchBlocks(m *model) {
 			g.watches[b.id] = w
 		}
 		if !w.seen {
-			*w = blockWatch{seen: true, title: info.Title, bells: info.Bells, status: statusSignature(info.Statuses),
+			*w = blockWatch{seen: true, title: info.Title, bells: info.Bells, status: statusSignature(&info),
 				statusIDs: statusIDs(info.Statuses), dir: info.Dir, foreground: info.Foreground, program: info.Program,
 				exited: info.Exited, code: info.ExitCode}
 			continue
@@ -71,8 +71,8 @@ func (g *Gateway) watchBlocks(m *model) {
 			})
 			w.foreground, w.program = info.Foreground, info.Program
 		}
-		if sig := statusSignature(info.Statuses); sig != w.status {
-			g.emitBlockEvent(b, "program_status_changed", map[string]any{"records": statusRecords(&info)})
+		if sig := statusSignature(&info); sig != w.status {
+			g.emitBlockEvent(b, "program_status_changed", statusPayload(&info))
 			if removed := removedStatusIDs(w.statusIDs, info.Statuses); len(removed) > 0 {
 				g.emitBlockEvent(b, "program_status_removed", map[string]any{"ids": removed, "reason": "removed"})
 			}
@@ -101,11 +101,13 @@ func (m *model) blockBySID(sid string) *mBlock {
 	return nil
 }
 
-// statusSignature names the records a program reported, so that a later
-// read can tell whether they changed.
-func statusSignature(records []rex.ProgramStatus) string {
+// statusSignature names the records a program reported, and when they
+// were seen till, so that a later read can tell whether they changed.
+func statusSignature(info *rex.SessionInfo) string {
 	var b strings.Builder
-	for _, r := range records {
+	b.WriteString(info.StatusSeen.Format(time.RFC3339Nano))
+	b.WriteByte(1)
+	for _, r := range info.Statuses {
 		b.WriteString(r.ID)
 		b.WriteByte(0)
 		b.WriteString(r.State)

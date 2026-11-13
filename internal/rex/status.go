@@ -34,6 +34,10 @@ type programStatus struct {
 	carry   []byte
 	records map[string]*statusRecord
 	updates uint64
+	// seen is when the latest record a client showed the user was
+	// updated: done and error records till then were seen (MostUrgent).
+	// It only moves forward.
+	seen time.Time
 }
 
 // feed reads output for reports, prompts and resets, and returns how many
@@ -127,6 +131,25 @@ func (st *programStatus) drop() {
 	if changed {
 		st.updates++
 	}
+}
+
+// see raises seen to at, a record's time a client showed, but past no
+// record's: a later record was not seen. It tells whether seen moved.
+func (st *programStatus) see(at time.Time) bool {
+	var latest time.Time
+	for _, r := range st.records {
+		if r.Updated.After(latest) {
+			latest = r.Updated
+		}
+	}
+	if at.After(latest) {
+		at = latest
+	}
+	if !at.After(st.seen) {
+		return false
+	}
+	st.seen = at
+	return true
 }
 
 // report applies a report's body, unless it breaks a rule.

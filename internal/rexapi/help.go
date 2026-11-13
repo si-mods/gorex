@@ -23,6 +23,7 @@ var blockEventSchemas = map[string]any{
 		"description": "The status the programs reported, as com.superlogical.terminal.program_status reports it.",
 		"properties": map[string]any{
 			"records": map[string]any{"type": "array"},
+			"seen_at": map[string]any{"type": "string", "description": "When the latest record a client saw was updated (gorex.see_block); left out before any was."},
 		},
 		"required": []string{"records"},
 	},
@@ -358,13 +359,16 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 }
 
 // ownMethods are the help document's entries of GoRex's own methods,
-// which Rex's document does not have: gorex.move_window.
+// which Rex's document does not have: gorex.move_window and
+// gorex.see_block.
 func ownMethods() []json.RawMessage {
-	raw, err := json.Marshal(moveWindowEntry)
-	if err != nil {
-		return nil
+	var out []json.RawMessage
+	for _, e := range []map[string]any{moveWindowEntry, seeBlockEntry} {
+		if raw, err := json.Marshal(e); err == nil {
+			out = append(out, raw)
+		}
 	}
-	return []json.RawMessage{raw}
+	return out
 }
 
 // implementedMethods are the methods of the methods table, for the help

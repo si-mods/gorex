@@ -107,7 +107,7 @@ func (st *store) hiddenStatus(w *Workspace, h *hostConn) *rex.ProgramStatus {
 	}
 	var all []rex.ProgramStatus
 	st.visitSIDs(w, id, func(sid string) {
-		if s := rex.MostUrgent(infos[sid].Statuses, st.seen[sid]); s != nil {
+		if s := rex.MostUrgent(infos[sid].Statuses, infos[sid].StatusSeen); s != nil {
 			all = append(all, *s)
 		}
 	})
@@ -160,19 +160,6 @@ func (st *store) needsOn(w *Workspace, h *hostConn) bool {
 	return false
 }
 
-// recordSeen notes that a session's status was seen.
-func (st *store) recordSeen(sid string, at time.Time) {
-	if sid == "" || at.IsZero() {
-		return
-	}
-	if st.seen == nil {
-		st.seen = map[string]time.Time{}
-	}
-	if at.After(st.seen[sid]) {
-		st.seen[sid] = at
-	}
-}
-
 // tabCount is how many tabs the workspace has.
 func (w *Workspace) tabCount() int {
 	if w.app != nil {
@@ -211,10 +198,8 @@ type store struct {
 	// jumped is the pane the jump to the pane that needs you went to last.
 	jumped jumpMark
 	// infos are this machine's sessions, as the windows last polled them,
-	// for the status of workspaces no window shows; seen is when each
-	// session's done or error record was seen.
+	// for the status of workspaces no window shows.
 	infos map[string]rex.SessionInfo
-	seen  map[string]time.Time
 	// shown close the notifications shown of each session, by notifyKey,
 	// till its pane is seen; clicked is the ID of the notification the
 	// user clicked last that found no pane yet, as of clickedAt.

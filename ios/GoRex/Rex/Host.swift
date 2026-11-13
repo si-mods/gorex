@@ -246,8 +246,13 @@ final class Host: Identifiable {
             title = text("title")
             msg = text("msg")
             lastMsg = text("last_msg")
-            // The server writes Go's zero time for none.
-            updated = text("updated_at").flatMap { try? Date($0, strategy: .iso8601) }.flatMap { $0.timeIntervalSince1970 > 0 ? $0 : nil }
+            updated = Self.time(j["updated_at"])
+        }
+
+        /// A time as the server writes updated_at and seen_at, in whole
+        /// seconds; nil for none, and for Go's zero time.
+        static func time(_ v: Any?) -> Date? {
+            (v as? String).flatMap { try? Date($0, strategy: .iso8601) }.flatMap { $0.timeIntervalSince1970 > 0 ? $0 : nil }
         }
 
         /// How much the record needs the user, as the desktop orders them.
@@ -277,10 +282,22 @@ final class Host: Identifiable {
         var program: String?
         /// What its programs reported.
         var statuses: [ProgramStatus]?
-        /// The done and error records the user saw, as their keys
-        /// (Inbox.swift).
-        var seen: Set<String> = []
+        /// When the latest record a client showed the user was updated:
+        /// done and error records till then were seen. The server keeps
+        /// it for every client (seen_at, gorex.see_block); against one
+        /// without it, only this app knows, till it quits.
+        var seen: Date?
+
+        /// Takes the server's seen_at, which only moves forward.
+        func raiseSeen(_ t: Date?) {
+            if let t, t > seen ?? .distantPast { seen = t }
+        }
     }
+
+    /// The welcome's feature of a server that keeps when a block's status
+    /// was seen (gorex.see_block, docs/rex-api.md).
+    static let seeFeature = "gorex.see_block"
+
     /// The machine the host is, and the panes of other hosts in each of
     /// its sessions' spaces, by session, as /api/spaces tells (Spaces);
     /// nil and none from a server that doesn't.
@@ -578,7 +595,8 @@ final class Host: Identifiable {
                 let was = b.statuses ?? []
                 let now = (p["records"] as? [Any] ?? []).compactMap(ProgramStatus.init)
                 b.statuses = now
-                if Self.shown?(self, block) == true { see(block) }
+                b.raiseSeen(ProgramStatus.time(p["seen_at"]))
+                if let s = e.sessionID, Self.shown?(self, block) == true { see(session: s, block: block) }
                 for r in now where r.state == "blocked" && !was.contains(where: { $0.id == r.id && $0.state == "blocked" }) {
                     if let s = e.sessionID { Self.blocked?(self, s, block, r) }
                 }
@@ -604,12 +622,16 @@ final class Host: Identifiable {
         blocks.compactMap { self.blocks[$0].flatMap { ProgramStatus.mostUrgent($0.statuses ?? [], seen: $0.seen) } }.max { $0.rank < $1.rank }
     }
 
-    /// Marks a block's done and error records seen, as the desktop's pane
-    /// does when it shows.
-    func see(_ block: String) {
-        guard let b = blocks[block] else { return }
-        let keys = (b.statuses ?? []).filter { $0.state == "done" || $0.state == "error" }.map(\.seenKey)
-        if !b.seen.isSuperset(of: keys) { b.seen.formUnion(keys) }
+    /// Marks a block's records seen, as the desktop's pane does when it
+    /// shows, and tells the server, which tells every client.
+    func see(session: String, block: String) {
+        guard let b = blocks[block], let rs = b.statuses, !rs.isEmpty else { return }
+        // A record without a time is seen as any time is.
+        let latest = rs.compactMap(\.updated).max() ?? .distantPast
+        if let seen = b.seen, latest <= seen { return }
+        b.seen = latest
+        guard latest != .distantPast, let c = control, c.features.contains(Self.seeFeature) else { return }
+        Task { _ = try? await c.call("gorex.see_block", ["session_id": session, "block_id": block, "seen_at": latest.formatted(.iso8601)]) }
     }
 
     /// A block's values, made as the block first comes.
@@ -685,10 +707,11 @@ final class Host: Identifiable {
                     b.program = program
                 }
             }
-            if let r = try? await c.callBlock("program_status", session: session, block: block)["records"] as? [Any] {
+            if let p = try? await c.callBlock("program_status", session: session, block: block), let r = p["records"] as? [Any] {
+                b.raiseSeen(ProgramStatus.time(p["seen_at"]))
                 if b.statuses == nil || b.statuses == hadRecords {
                     b.statuses = r.compactMap(ProgramStatus.init)
-                    if Self.shown?(self, block) == true { see(block) }
+                    if Self.shown?(self, block) == true { see(session: session, block: block) }
                 }
             }
         }

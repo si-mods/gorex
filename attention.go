@@ -75,7 +75,7 @@ func (st *store) hiddenNeeds(fn func(w *Workspace, h *hostConn, sid string, rank
 				return
 			}
 			st.visitSIDs(w, id, func(sid string) {
-				if s := rex.MostUrgent(infos[sid].Statuses, st.seen[sid]); needsUser(s) {
+				if s := rex.MostUrgent(infos[sid].Statuses, infos[sid].StatusSeen); needsUser(s) {
 					fn(w, h, sid, rex.StatusRank(s.State))
 				}
 			})
@@ -290,7 +290,6 @@ func (a *App) needItem(n needy) (it paletteItem, dir string) {
 		// as its pane would be, from what its machine's list says of it.
 		infos, _, _ := a.st.listOf(n.host)
 		p, id = &Pane{info: infos[n.sid], host: n.host}, n.sid
-		p.seen = a.st.seen[n.sid]
 		if n.host != nil {
 			id = hostKey(n.host) + "/" + n.sid
 		}

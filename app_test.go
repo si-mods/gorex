@@ -971,6 +971,38 @@ func TestHiddenSidebarHostChip(t *testing.T) {
 	}
 }
 
+// TestStatusSeenOnServer checks that a pane that shows a done record
+// tells the server, whose list then tells every client it was seen: a
+// pane of another, which saw nothing itself, shows no status.
+func TestStatusSeenOnServer(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("printf")
+	}
+	a, tt := newTestApp(t)
+	p := a.tab().Focus
+	waitFor(t, tt, "the shell", func() bool { return p.term != nil && strings.Contains(p.term.Text(), testShell.prompt) })
+	if err := a.client.Input(p.SID, []byte(`printf '\033]7501;state=done\007'`+"\r")); err != nil {
+		t.Fatal(err)
+	}
+	listed := func() rex.SessionInfo {
+		l, _ := a.client.List()
+		for _, in := range l {
+			if in.ID == p.SID {
+				return in
+			}
+		}
+		return rex.SessionInfo{}
+	}
+	var in rex.SessionInfo
+	waitFor(t, tt, "the done record", func() bool { in = listed(); return len(in.Statuses) == 1 })
+	p.info, p.seen = in, time.Time{}
+	p.see()
+	waitFor(t, tt, "the server's seen", func() bool { in = listed(); return in.StatusSeen.Equal(in.Statuses[0].Updated) })
+	if s := (&Pane{info: in}).status(); s != nil {
+		t.Errorf("another client's pane shows %+v", s)
+	}
+}
+
 // TestStatusSeen checks that a pane's done record asks for attention
 // until seen, and that only records going blocked, done or error are news.
 func TestStatusSeen(t *testing.T) {

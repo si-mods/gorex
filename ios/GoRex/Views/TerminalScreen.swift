@@ -129,11 +129,11 @@ struct TerminalScreen: View {
                 session = s
                 s.start()
                 Notifier.shared.onScreen = target
-                host.see(target.block)
+                host.see(session: target.session, block: target.block)
             }
             .onDisappear {
                 terminal?.stopDictating()
-                host.see(target.block)
+                host.see(session: target.session, block: target.block)
                 session?.close()
                 if Notifier.shared.onScreen == target { Notifier.shared.onScreen = nil }
             }

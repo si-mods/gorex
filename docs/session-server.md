@@ -207,6 +207,15 @@ the most urgent. A prompt (133;A), the foreground going back to the shell
 (`ESC c`) clears them. The rules and the plan to move to libghostty-vt
 are in [osc-7501.md](osc-7501.md).
 
+The server also keeps when the user saw the records (`programStatus.seen`,
+`SessionInfo.StatusSeen`): the `updated` time of the latest record a
+client showed. A client that shows a session sends `seeStatus` with that
+time (the desktop's pane as it is seen, Rex Go through the gateway's
+`gorex.see_block`); the time only moves forward, never past the latest
+record, and a change sends a `sessions` event. `done` and `error`
+records updated by then were seen (`MostUrgent(Statuses, StatusSeen)`),
+on every client, after a client restarts and across an in-place upgrade.
+
 ## Lifetimes
 
 ### A session that ends
@@ -236,7 +245,7 @@ A session's handoff (`sessionState`) carries: the PID and PTY
 descriptor, the directory it started in, the size, the screen as the
 emulator's snapshot, the graphics history and the title, the output and
 bell counters, the last input and output times, the exit state, and the
-status records. The new server makes a new emulator, feeds it the title
+status records with the time they were seen till. The new server makes a new emulator, feeds it the title
 and the screen (`resumeSession`), reads the program's modes from the
 screen again (`decModes`), and reads the PTY again. The programs keep
 running, and their screens, modes and images come back.

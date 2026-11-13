@@ -1,11 +1,6 @@
 import Foundation
 
 extension Host.ProgramStatus {
-    /// What the user saw of a done or error record: the record as it was
-    /// then. Its time alone would not do: updated_at has whole seconds, and
-    /// a record may have none.
-    var seenKey: String { "\(id)|\(state)|\(updated?.timeIntervalSince1970 ?? -1)" }
-
     /// Whether it needs the user more than another, or as much and later.
     func outranks(_ o: Self) -> Bool {
         rank > o.rank || rank == o.rank && (updated ?? .distantPast) > (o.updated ?? .distantPast)
@@ -13,11 +8,11 @@ extension Host.ProgramStatus {
 
     /// The record that most needs the user, the latest of those alike, nil
     /// without one, as the desktop's MostUrgent picks it. Done and error
-    /// records the user saw do not count.
-    static func mostUrgent(_ rs: [Self], seen: Set<String>) -> Self? {
+    /// records updated by seen were seen, and do not count.
+    static func mostUrgent(_ rs: [Self], seen: Date?) -> Self? {
         var best: Self?
         for r in rs {
-            if r.state == "done" || r.state == "error", seen.contains(r.seenKey) { continue }
+            if r.state == "done" || r.state == "error", let seen, r.updated ?? .distantPast <= seen { continue }
             if best.map(r.outranks) ?? true { best = r }
         }
         return best

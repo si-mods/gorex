@@ -313,10 +313,12 @@ type Pane struct {
 	attention     bool
 	asked, popped uint64
 	popAt         time.Time
-	// seen is when the program's last record the user saw was updated:
-	// done and error records till then no longer ask for attention.
-	// notified is when the pane's last status notification was shown,
-	// and told when its program's own last one was.
+	// seen is when the program's last record the user saw in this pane
+	// was updated: done and error records till then, or till the
+	// server's info.StatusSeen, which every client's panes raise, no
+	// longer ask for attention. notified is when the pane's last status
+	// notification was shown, and told when its program's own last one
+	// was.
 	seen, notified, told time.Time
 	// bounds is where the pane's card rests in the layout, and termSize
 	// the size of its terminal when the pane was last at rest.
@@ -332,8 +334,9 @@ type Pane struct {
 	// teleportErr the banner its last failure showed.
 	teleport    *teleportRun
 	teleportErr string
-	// seenFunc tells the window's store which session status was seen.
-	seenFunc func(sid string, at time.Time)
+	// seenFunc tells the server and the window's store that the pane was
+	// seen; moved, that seen moved.
+	seenFunc func(moved bool)
 	// focusClaimed tells whether the session was last told that the user
 	// looks at this pane, through focusConn: the session's size follows
 	// the pane shown with the window's focus. A pane attached again tells
@@ -951,9 +954,13 @@ func (a *App) attach(p *Pane, cols, rows int) {
 	// the window that made the pane, as long as it is open.
 	update := a.updater()
 	onData := func(int) { p.lastData.Store(time.Now().UnixNano()) }
-	if a.st != nil {
-		p.seenFunc = func(sid string, at time.Time) {
-			a.st.recordSeen(sid, at)
+	p.seenFunc = func(moved bool) {
+		// A server before rex.CapabilityStatusSeen answers an error: the
+		// pane's own seen stands in.
+		if c := a.clientOf(p.host); moved && c != nil && p.seen.After(p.info.StatusSeen) {
+			go c.SeeStatus(p.SID, p.seen)
+		}
+		if a.st != nil {
 			a.st.closeNotifications(notifyKey(p))
 		}
 	}
@@ -3327,19 +3334,26 @@ func statusEvents(p *Pane, was, now []rex.ProgramStatus) []map[string]string {
 // error records of its program.
 func (p *Pane) see() {
 	p.attention = false
+	was := p.seen
 	for _, r := range p.info.Statuses {
 		if r.Updated.After(p.seen) {
 			p.seen = r.Updated
 		}
 	}
 	if p.seenFunc != nil {
-		p.seenFunc(p.SID, p.seen)
+		p.seenFunc(p.seen.After(was))
 	}
 }
 
 // status is the record of the pane's program that most needs the user,
 // nil for none.
-func (p *Pane) status() *rex.ProgramStatus { return rex.MostUrgent(p.info.Statuses, p.seen) }
+func (p *Pane) status() *rex.ProgramStatus {
+	seen := p.seen
+	if p.info.StatusSeen.After(seen) {
+		seen = p.info.StatusSeen
+	}
+	return rex.MostUrgent(p.info.Statuses, seen)
+}
 
 // entered returns the most urgent record that went blocked, done or error
 // between two infos of a session, nil for none. An info of a pane not

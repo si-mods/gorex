@@ -129,6 +129,7 @@ var (
 var helpDoc = sync.OnceValue(func() map[string]json.RawMessage {
 	var doc map[string]json.RawMessage
 	json.Unmarshal(helpJSON, &doc)
+	withSeenAt(doc)
 	return doc
 })
 

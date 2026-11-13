@@ -133,13 +133,13 @@ func (s *Server) eventSessions() []EventSession {
 	out := make([]EventSession, 0, len(all))
 	for _, ss := range all {
 		ss.mu.Lock()
-		statuses := ss.status.list()
+		statuses, seen := ss.status.list(), ss.status.seen
 		ss.mu.Unlock()
 		if len(statuses) == 0 {
 			out = append(out, EventSession{ID: ss.id})
 			continue
 		}
-		out = append(out, EventSession{ID: ss.id, Status: MostUrgent(statuses, time.Time{}), Statuses: statuses})
+		out = append(out, EventSession{ID: ss.id, Status: MostUrgent(statuses, time.Time{}), Statuses: statuses, StatusSeen: seen})
 	}
 	return out
 }
