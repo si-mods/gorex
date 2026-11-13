@@ -320,6 +320,8 @@ async function main() {
     for (const what of ["tabs", "font"] as const) applyPrefs(what);
     onAppChange(() => settings?.appChanged());
     tailnet.onChange(tailnetChanged);
+    window.addEventListener("pagehide", () => tailnet.dispose());
+    if (prefs.tailscalePersist && prefs.tailscaleOn) void tailnet.turnOn();
     $("open-settings").onclick = () => withSettings((s) => s.toggle());
     mountCorner($("corner"), () => withSettings((s) => s.toggle()));
     // A change of language says the page's words again in it: the dialogs say theirs themselves.
@@ -516,6 +518,13 @@ const tailnetGone: Problem = newProblem(() => t("placeTailnetGoneTitle"), () => 
 function tailnetPlace(id: string): [Problem | undefined, ...NoticeAction[]] {
   const c = conns.get(id);
   if (c) return c.state === "unreachable" && c.problem ? [c.problem, tailscaleSettings] : [undefined];
+  if (tailnet.status() === "in-use-other-tab") {
+    return [
+      newProblem(() => t("tsStatusOtherTab"), () => t("tsHintOtherTab")),
+      { label: "tsTakeOver", run: () => void tailnet.takeOver(), primary: true },
+      tailscaleSettings,
+    ];
+  }
   if (tailnet.status() !== "running") return [tailnetWait, tailscaleSettings];
   return tailnet.searching ? [tailnetLooking] : [tailnetGone, tailscaleSettings];
 }

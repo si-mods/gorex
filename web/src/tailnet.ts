@@ -3,15 +3,15 @@
 // user turns Tailscale on, its node's state and sign-in, the GoRex hosts
 // found in its network map, and the transport that reaches them.
 //
-// This version runs the node in the page's own origin, ephemeral and in
-// memory ("This tab only"): reloading or closing the tab ends it, and
-// Tailscale removes the device once it is offline. The node frame of a
-// separate origin, which may keep a node longer, is phase 4.
+// In "Stay signed in" mode (default), node state is kept in IndexedDB and
+// a Web Lock + BroadcastChannel coordinates one active node across tabs.
+// In "This tab only" mode, the node is ephemeral and in memory.
 import { Host, Problem, problem, untrusted } from "./hosts";
 import { failure, Msg, msg, t } from "./i18n";
 import { prefs, setPrefs } from "./prefs";
 import { loader } from "./loader";
 import type { Transport } from "./rex";
+import { clearTailnetState, loadTailnetState, TabCoordinator, TabHandlers, writeTailnetState } from "./tailstore";
 
 export interface BodyReader {
   read(): Promise<Uint8Array | null>;
@@ -72,7 +72,7 @@ export type Load =
   | { state: "ready" };
 
 export type Status =
-  | "off" | "loading" | "load-failed" | "starting" | "needs-login" | "signing-in" | "needs-approval"
+  | "off" | "loading" | "load-failed" | "in-use-other-tab" | "starting" | "needs-login" | "signing-in" | "needs-approval"
   | "running" | "expired" | "locked" | "error";
 
 /** How long the login URL may take before the page says control is not reached. */
@@ -161,6 +161,11 @@ export class Tailnet {
   name = validDeviceName(prefs.tailscaleName) ? prefs.tailscaleName : randomName();
 
   private node?: EngineNode;
+  private tabs = new TabCoordinator();
+  /** Another tab holds the persistent node lock. */
+  inUseOtherTab = false;
+  /** Stored state existed when this node started: a NeedsLogin means expired/revoked. */
+  private hadStoredState = false;
   /** The node ran once since it was signed in: a later NeedsLogin is an expiry, not a first sign-in. */
   private wasRunning = false;
   private listeners = new Set<() => void>();
@@ -188,8 +193,13 @@ export class Tailnet {
     });
   }
 
+  get persist(): boolean {
+    return prefs.tailscalePersist;
+  }
+
   status(): Status {
     if (!this.on) return "off";
+    if (this.inUseOtherTab) return "in-use-other-tab";
     if (this.load.state === "failed") return "load-failed";
     if (this.load.state !== "ready") return "loading";
     switch (this.backend) {
@@ -200,7 +210,7 @@ export class Tailnet {
       case "NeedsLogin":
         if (this.signingIn) return "signing-in";
         if (this.error) return "error";
-        return this.wasRunning ? "expired" : "needs-login";
+        return this.wasRunning || this.hadStoredState ? "expired" : "needs-login";
       default:
         return this.error ? "error" : "starting";
     }
@@ -219,6 +229,8 @@ export class Tailnet {
         return t("tsStatusLoading");
       case "load-failed":
         return t("tsStatusLoadFailed");
+      case "in-use-other-tab":
+        return t("tsStatusOtherTab");
       case "starting":
         return t("bootStarting");
       case "needs-login":
@@ -244,9 +256,11 @@ export class Tailnet {
   async turnOn() {
     this.on = true;
     this.error = "";
+    this.inUseOtherTab = false;
+    if (prefs.tailscalePersist) setPrefs({ tailscaleOn: true });
     this.changed();
     if (!(await this.ensureEngine())) return;
-    if (!this.node && this.on) this.startNode();
+    if (!this.node && this.on) await this.startNode();
   }
 
   /** Loads the engine, again after a failure; whether it is ready. */
@@ -285,14 +299,61 @@ export class Tailnet {
     }
   }
 
-  private startNode() {
+  private tabHandlers(): TabHandlers {
+    return {
+      onTakeover: () => {
+        this.stopNodeOnly();
+        this.inUseOtherTab = true;
+        this.changed();
+      },
+      onAvailable: () => {
+        if (this.on && this.inUseOtherTab && prefs.tailscalePersist && !this.node) void this.startNode();
+      },
+      onSignedOut: () => {
+        this.hadStoredState = false;
+        this.wasRunning = false;
+        this.forgetHosts();
+        this.changed();
+      },
+    };
+  }
+
+  private async startNode() {
+    const persist = prefs.tailscalePersist;
+    let state: Record<string, Uint8Array> | undefined;
+    if (persist) {
+      const got = await this.tabs.acquire(this.tabHandlers());
+      if (!this.on) {
+        this.tabs.release();
+        return;
+      }
+      if (!got) {
+        this.inUseOtherTab = true;
+        this.changed();
+        return;
+      }
+      if (!prefs.tailscaleName) setPrefs({ tailscaleName: this.name });
+      state = await loadTailnetState();
+      if (!this.on || this.inUseOtherTab) return;
+      this.hadStoredState = Object.keys(state).length > 0;
+    } else {
+      this.hadStoredState = false;
+    }
+    this.inUseOtherTab = false;
     try {
-      this.node = (globalThis as any).gorexTailnet({ hostname: this.name }, (kind: string, data: string) =>
-        queueMicrotask(() => this.event(kind, data)),
+      this.node = (globalThis as any).gorexTailnet(
+        {
+          hostname: this.name,
+          persist,
+          state,
+          writeState: persist ? (k: string, v: Uint8Array) => void writeTailnetState(k, v) : undefined,
+        },
+        (kind: string, data: string) => queueMicrotask(() => this.event(kind, data)),
       ) as EngineNode;
       this.node.start();
     } catch (e) {
       this.node = undefined;
+      if (persist) this.tabs.release();
       const error = e instanceof Error ? e.message : String(e);
       const why = () => t("tsStopped", { error });
       this.load = {
@@ -305,6 +366,20 @@ export class Tailnet {
       engine.catch(() => {});
       this.changed();
     }
+  }
+
+  /** Takes the persistent node over from the other tab that is holding it. */
+  async takeOver() {
+    if (!this.on || !prefs.tailscalePersist) return;
+    await this.tabs.takeOver(this.tabHandlers());
+    if (!this.on) {
+      this.tabs.release();
+      return;
+    }
+    this.inUseOtherTab = false;
+    this.changed();
+    if (!(await this.ensureEngine())) return;
+    if (!this.node && this.on) await this.startNode();
   }
 
   private event(kind: string, data: string) {
@@ -369,10 +444,11 @@ export class Tailnet {
     this.changed();
   }
 
-  /** Signs this browser out: the node's key expires at control, which removes the ephemeral device. */
+  /** Signs this browser out: the node's key expires at control and stored state is cleared. */
   async signOut() {
     this.cancelLogin();
     this.wasRunning = false;
+    this.hadStoredState = false;
     this.forgetHosts();
     this.changed();
     try {
@@ -380,24 +456,54 @@ export class Tailnet {
     } catch (e) {
       console.warn("tailnet: logout", e);
     }
+    await clearTailnetState();
+    this.tabs.notifySignedOut();
+  }
+
+  private stopNodeOnly() {
+    this.cancelLogin();
+    const n = this.node;
+    this.node = undefined;
+    n?.stop();
+    this.backend = "";
+    this.wasRunning = false;
+    clearInterval(this.poll);
+    this.poll = undefined;
+    clearTimeout(this.refreshTimer);
+    this.refreshTimer = undefined;
+    this.forgetHosts();
   }
 
   /** Turns it off: signs out, then stops the node. The engine stays loaded. */
   async turnOff() {
     this.on = false;
-    const n = this.node;
-    if (n && this.backend === "Running") await this.signOut();
-    this.cancelLogin();
-    this.node = undefined;
-    n?.stop();
-    this.backend = "";
+    this.inUseOtherTab = false;
+    setPrefs({ tailscaleOn: false });
+    if (this.node && this.backend === "Running") await this.signOut();
+    this.stopNodeOnly();
+    this.tabs.release();
     this.error = "";
-    this.wasRunning = false;
-    clearInterval(this.poll);
-    this.poll = undefined;
-    this.forgetHosts();
     if (this.load.state === "failed") this.load = { state: "idle" };
     this.changed();
+  }
+
+  /** Switches between "Stay signed in" (persistent) and "This tab only" (ephemeral). */
+  async setPersist(persist: boolean) {
+    if (prefs.tailscalePersist === persist) return;
+    setPrefs({ tailscalePersist: persist, tailscaleOn: persist ? this.on : false });
+    if (this.node && this.backend === "Running") await this.signOut();
+    else if (!persist) await clearTailnetState();
+    this.stopNodeOnly();
+    this.tabs.release();
+    this.inUseOtherTab = false;
+    this.error = "";
+    this.changed();
+    if (this.on && (await this.ensureEngine())) await this.startNode();
+  }
+
+  /** Releases the tab lock when the page unloads so another waiting tab can take over. */
+  dispose() {
+    this.tabs.release();
   }
 
   /** Sets the device name, kept in this browser; the node takes it at once. */

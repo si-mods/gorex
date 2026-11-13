@@ -309,6 +309,14 @@ export class Guide {
     };
     const close = button(t("commonClose"));
     close.onclick = () => this.close();
+    if (s === "in-use-other-tab") {
+      const take = button(t("tsTakeOver"), "host-add primary");
+      take.dataset.key = "takeover";
+      take.onclick = () => void ts.takeOver();
+      this.hero("circle-alert", t("tsStatusOtherTab"), t("tsHintOtherTab"), "warn");
+      this.foot.append(close, take);
+      return;
+    }
     if (s === "starting") {
       this.hero("loader-circle", t("guideStarting"), undefined, "busy");
       this.foot.append(close);

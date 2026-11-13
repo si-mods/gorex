@@ -59,8 +59,31 @@ func main() {
 	select {}
 }
 
-// node is one Tailscale device of the page, ephemeral and kept in memory:
-// "This tab only" (docs/web-tailscale.md, State).
+// persistStore backs ipn.StateStore with mem.Store for synchronous reads
+// and forwards each write to JS (IndexedDB) when write is a function.
+type persistStore struct {
+	mem   *mem.Store
+	write js.Value
+}
+
+func (s *persistStore) ReadState(id ipn.StateKey) ([]byte, error) {
+	return s.mem.ReadState(id)
+}
+
+func (s *persistStore) WriteState(id ipn.StateKey, bs []byte) error {
+	if err := s.mem.WriteState(id, bs); err != nil {
+		return err
+	}
+	if s.write.Type() == js.TypeFunction {
+		arr := js.Global().Get("Uint8Array").New(len(bs))
+		js.CopyBytesToJS(arr, bs)
+		s.write.Invoke(string(id), arr)
+	}
+	return nil
+}
+
+// node is one Tailscale device of the page, persistent ("Stay signed in")
+// or ephemeral ("This tab only") (docs/web-tailscale.md, State).
 type node struct {
 	lb       *ipnlocal.LocalBackend
 	dialer   *tsdial.Dialer
@@ -91,7 +114,20 @@ func newNode(config, emit js.Value) (*node, error) {
 	}
 	logf := logger.Logf(log.Printf)
 	sys := tsd.NewSystem()
-	sys.Set(new(mem.Store))
+	memStore := new(mem.Store)
+	if state := config.Get("state"); state.Type() == js.TypeObject && !state.IsNull() {
+		keys := js.Global().Get("Object").Call("keys", state)
+		for i, n := 0, keys.Length(); i < n; i++ {
+			k := keys.Index(i).String()
+			v := state.Get(k)
+			if v.Type() == js.TypeObject && !v.IsNull() {
+				bs := make([]byte, v.Get("byteLength").Int())
+				js.CopyBytesToGo(bs, v)
+				_ = memStore.WriteState(ipn.StateKey(k), bs)
+			}
+		}
+	}
+	sys.Set(ipn.StateStore(&persistStore{mem: memStore, write: config.Get("writeState")}))
 	dialer := &tsdial.Dialer{Logf: logf}
 	dialer.SetBus(sys.Bus.Get())
 	eng, err := wgengine.NewUserspaceEngine(logf, wgengine.Config{
@@ -134,7 +170,11 @@ func newNode(config, emit js.Value) (*node, error) {
 	sys.Tun.Get().Start()
 	// A zero log ID and no log policy: the node uploads no logs.
 	var logID logid.PublicID
-	lb, err := ipnlocal.NewLocalBackend(logf, logID, sys, controlclient.LoginEphemeral)
+	loginFlags := controlclient.LoginEphemeral
+	if p := config.Get("persist"); p.Type() == js.TypeBoolean && p.Bool() {
+		loginFlags = controlclient.LoginDefault
+	}
+	lb, err := ipnlocal.NewLocalBackend(logf, logID, sys, loginFlags)
 	if err != nil {
 		return nil, err
 	}

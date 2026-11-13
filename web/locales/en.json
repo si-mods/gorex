@@ -1442,15 +1442,39 @@
       }
     }
   },
-  "tsNote": "Turn it on and sign in to Tailscale, and this browser finds your GoRex computers by itself. You stay signed in only until you close or reload this tab.",
+  "tsNote": "Turn it on and sign in to Tailscale, and this browser finds your GoRex computers by itself.",
   "@tsNote": {
     "description": "Settings › Tailscale: the short note on how built-in Tailscale works."
+  },
+  "tsStaySignedIn": "Stay signed in",
+  "@tsStaySignedIn": {
+    "description": "Settings › Tailscale: toggle to keep the Tailscale sign-in across reloads."
+  },
+  "tsStaySignedInHint": "Keep your Tailscale sign-in across reloads and closing the tab. Turn off on shared or temporary devices.",
+  "@tsStaySignedInHint": {
+    "description": "Settings › Tailscale: hint under Stay signed in."
+  },
+  "tsStateOtherTab": "In another tab",
+  "@tsStateOtherTab": {
+    "description": "Tailscale's state chip when another tab holds the node lock."
+  },
+  "tsStatusOtherTab": "Tailscale is in use in another tab",
+  "@tsStatusOtherTab": {
+    "description": "Tailscale's status text when another tab holds the node lock."
+  },
+  "tsHintOtherTab": "Only one tab can run your Tailscale device at a time. Use it here to disconnect the other tab.",
+  "@tsHintOtherTab": {
+    "description": "Settings › Tailscale: hint when another tab holds the node lock."
+  },
+  "tsTakeOver": "Use in this tab",
+  "@tsTakeOver": {
+    "description": "Button to take over Tailscale from another tab."
   },
   "tsMoreFind": "Turning it on downloads about 6 MB of Tailscale's code. This tab then joins your Tailscale network as a device of its own. It looks for your own devices that are named like <machine>-gorex and answer as GoRex, and connects to them over Tailscale's encrypted connections.",
   "@tsMoreFind": {
     "description": "Settings › Tailscale, in Learn more: what turning it on does and how hosts are found. <machine>-gorex is a literal name pattern."
   },
-  "tsMoreTab": "For now, signing in lasts only as long as this tab. If you reload or close the tab, this browser signs out, and Tailscale soon removes its device.",
+  "tsMoreTab": "With Stay signed in on, this browser keeps its device key in this browser so reloads reconnect without signing in again. Turn Stay signed in off for a temporary session that ends when this tab closes.",
   "@tsMoreTab": {
     "description": "Settings › Tailscale, in Learn more: how long the sign-in lasts."
   },
