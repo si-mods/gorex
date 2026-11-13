@@ -20,7 +20,7 @@ Hotspot anyway.
 The user turns on **Share on Hotspot** in Rex Go. The laptop joins the
 phone's Personal Hotspot and opens `http://172.20.10.1:7300` in any
 browser. The user taps **Allow** on the phone, and the laptop gets the
-web client (docs/web-client.md), unchanged, with the phone's hosts:
+web client (docs/web-client.md) with the phone's hosts in its host list:
 sessions, windows, panes, typing, files. Nothing to install or sign in
 to on the laptop, and no Cloudflare.
 
@@ -29,8 +29,12 @@ to on the laptop, and no Cloudflare.
 - **Terminals on the phone.** iOS starts no processes and opens no PTYs.
   Every terminal stays on a GoRex host; the phone only serves the page
   and forwards.
-- **Changes to the web client or the gateway.** The page is the
-  hosted page's build; the gateway sees the phone as it sees it today.
+- **Changes to the gateway.** The gateway sees the phone as it sees it
+  today. The web client changes only where it must (The web client).
+- **Several hosts at once in the page.** The page connects one host at
+  a time and switches between them (web-client.md, Hosts). Showing
+  several at once is the web client's own later work; this design
+  neither needs nor blocks it.
 - **Sharing on Wi-Fi or other networks.** Only Personal Hotspot
   clients, USB or Bluetooth tethering included, are served.
 - **A long-lived server in the background as a supported feature.** iOS
@@ -49,63 +53,72 @@ A Go package of its own, `ios/share`, in the Tailnet framework beside
 does (`dial` in `ios/tailnet/proxy.go`): tailcat names over tailcat,
 tailnet names over the tailnet node, local network addresses directly.
 
-It listens on several ports of the hotspot's address:
+It listens on one port, 7300, of the hotspot's address, and serves:
 
-| Port | Serves |
+| Path | Serves |
 | --- | --- |
-| 7300 | the web client's files (`web/dist`, in the app bundle), the admission page, `/share/state` |
-| 7301 and up | one host each: everything is forwarded to that host's gateway |
+| `/` and the page's files | the web client (`web/dist`, in the app bundle) |
+| `/share/hosts` | the phone's hosts, as JSON: id, name, icon |
+| `/share/state` | the admission page's poll (Admission) |
+| `/h/<id>/…` | forwarded to host `<id>`'s gateway, without the prefix |
 
-A host's port is kept with the host (`HostConfig.sharePort`), assigned
-once from the first free port, so the page's saved host list
-(`gorex.hosts` in the laptop's `localStorage`, per origin) stays valid
-across shares.
-
-One port per host, rather than one port with a prefix per host, is what
-lets the page stay as it is: the page takes a host as an origin only
-(`hostURL` in `web/src/hosts.ts` refuses a path) and asks it for absolute
-paths (`/api/control`, `/api/data`, `/api/help`, downloads).
+The id is the host's id in the app (`HostConfig.id`), so a host keeps
+its path across shares. The host list comes from Swift as JSON, as
+`SetTailcatHosts` does today, and changes with it.
 
 ### Forwarding
 
-Each host port is a `httputil.ReverseProxy` to the host's URL, WebSocket
+`/h/<id>/…` is a `httputil.ReverseProxy` to the host's URL, WebSocket
 upgrades included, with a transport whose `DialContext` is the app's
 `dial`, and TLS for `https` hosts (the tailnet's `*.ts.net`). It:
 
 - **drops `Origin`**, so the gateway serves the request as a native
   client's: the phone's. The gateway's own check (`checkOrigin` in
   `internal/rexapi/web.go`) stays as it is, and no host needs
-  `gorex rexapi web allow`. The phone does that check itself: it serves
-  only the origin `http://<hotspot address>:7300`, and answers its CORS,
-  preflights included, as the gateway does for a trusted page.
+  `gorex rexapi web allow`. The phone does that check itself: it
+  forwards a request with an `Origin` only when that is its own,
+  `http://<hotspot address>:7300`. Page and API share one origin, so
+  there is no CORS.
 - serves only admitted devices (Admission).
 
 The gateway's access rule then judges the phone: its tailnet user, its
 tailcat key, or its local network address. A laptop can do on a host
 exactly what the phone can, no more.
 
-The host list comes from Swift as JSON (id, name, URL, port), as
-`SetTailcatHosts` does today, and changes with it.
+### The web client
+
+The page needs two changes, both small:
+
+- **A host's address may carry a path.** A phone's host is
+  `http://172.20.10.1:7300/h/<id>`. `directTransport`, `apiURL` and
+  `diagnose` join the API's path to the host's address
+  (`base + "/api/control"`) where they now resolve it
+  (`new URL("/api/control", base)`), which drops the path. Everything
+  else, downloads by frame included, stays the direct transport's. A
+  typed address still may not have a path (`hostURL`).
+- **An iPhone group in the host list.** When `/share/hosts` on the
+  page's own origin answers, the list shows a group named after the
+  phone, beside the Tailscale group and like it: the hosts are not
+  saved, choosing one connects it, and the first one is chosen when no
+  other host is. A page not served by a phone gets 404 there and shows
+  no group.
 
 ### Admission
 
 Anyone on the hotspot could otherwise open a shell on every host, so
 each device is admitted on the phone:
 
-1. A browser from an address the phone has not admitted gets, on 7300, a
-   page of its own: "Allow this computer on your iPhone", and polls
-   `/share/state`. On the host ports it gets 403.
+1. A browser from an address the phone has not admitted gets a page of
+   its own at `/`: "Allow this computer on your iPhone", and polls
+   `/share/state`. On `/share/hosts` and `/h/…` it gets 403.
 2. The phone shows an alert: **Allow 172.20.10.3?** with the browser's
    user agent, in plain words ("Chrome on macOS"). Allow or Deny.
-3. Allowed, the address is admitted on every port until sharing stops.
-   The waiting page lists the hosts, one link each,
-   `/?host=http://172.20.10.1:7301`, which the page's quick link adds
-   (`addLink` in `web/src/hosts.ts`).
+3. Allowed, the address is admitted until sharing stops, and the
+   waiting page loads the web client.
 
 Admission is by the client's address, not a cookie: the page fetches
-downloads with `credentials: "omit"` (`web/src/files.ts`), and a
-cross-port `fetch` sends no cookie by default, so a cookie would need
-changes to the page. An address is good enough here: only a device that
+some downloads with `credentials: "omit"` (`web/src/files.ts`), which
+sends no cookie even to its own origin. An address is good enough here: only a device that
 knows the hotspot password is on that network, and the phone admits it
 by hand. Turning sharing off forgets every address.
 
@@ -158,7 +171,7 @@ Sharing runs while Rex Go is in the foreground:
   laptop losing anything;
 - after a suspension the listeners may be gone. In the foreground the
   server checks them, as `Proxy()` checks the SOCKS proxy, and listens
-  again on the same ports. The page reconnects by itself every few
+  again on the same port. The page reconnects by itself every few
   seconds (web-client.md, Hosts), and the sessions keep running on the
   hosts.
 
@@ -207,20 +220,24 @@ progress, and reports say it fails after minutes locked. It is not used.
 - **The hosted page with built-in Tailscale in the page.** Works on any
   network, but signs the laptop in to Tailscale and needs Cloudflare.
   This design keeps the laptop out of the tailnet.
-- **One port with a path prefix per host.** Needs the page to take a
-  base path for every request. Possible later if ports become a
-  problem.
-- **A cookie or token for admission.** Needs changes to the page's
-  requests (above).
+- **One port per host.** Keeps the page as it is, but needs a port, a
+  listener and an origin per host, and the page's saved list goes stale
+  when a port changes. One port with a path per host keeps one origin,
+  so no CORS either.
+- **A cookie or token for admission.** Downloads omit credentials
+  (above).
 - **A Live Activity to keep the app alive.** It doesn't (above).
 
 ## Test plan
 
-- `ios/share`: the static files and their types; forwarding, WebSocket
-  upgrades included, to a test gateway (`internal/testrex`), with
-  `Origin` dropped; CORS for the page's origin only, others refused;
+- `ios/share`: the static files and their types; forwarding under
+  `/h/<id>`, WebSocket upgrades included, to a test gateway
+  (`internal/testrex`), with `Origin` dropped; another origin refused;
   admission: 403 before, served after, forgotten on stop; listening
   again after the listener closes.
+- `web/`: a host address with a path, for sockets, fetches, downloads
+  and the diagnosis; the iPhone group shown only when `/share/hosts`
+  answers.
 - In the simulator on the Mac mini: the share screen, the admission
   alert, the dimming.
 - On a phone: a MacBook on the hotspot opens the page, is admitted, opens
@@ -230,8 +247,8 @@ progress, and reports say it fails after minutes locked. It is not used.
 
 ## Phases
 
-1. **Foreground**: `ios/share`, the page in the bundle, the share screen,
-   admission, dimming, listening again after a suspension. Measures the
+1. **Foreground**: `ios/share`, the page's two changes, the page in the
+   bundle, the share screen, admission, dimming, listening again after a suspension. Measures the
    bundle size and the local network permission.
 2. **Background**: the experimental setting, audio session handling with
    dictation and interruptions.
