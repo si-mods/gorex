@@ -2,11 +2,10 @@ import XCTest
 
 /// Demo Mode: the host that runs on the phone, its windows, and the
 /// terminal in them.
-@MainActor
-final class DemoTests: XCTestCase {
+nonisolated final class DemoTests: XCTestCase {
     /// The demo host is online at once, with the sessions, windows and
     /// records the list and the inbox show.
-    func testDemoHostRunsOnThePhone() {
+    @MainActor func testDemoHostRunsOnThePhone() {
         let h = Host(Demo.config())
         h.connect()
         defer { h.stop() }
@@ -27,7 +26,7 @@ final class DemoTests: XCTestCase {
 
     /// The window menu's calls change the demo host on the phone, as the
     /// server's would, without a control connection.
-    func testDemoWindowsChangeWithoutAServer() async throws {
+    @MainActor func testDemoWindowsChangeWithoutAServer() async throws {
         let h = Host(Demo.config())
         h.connect()
         defer { h.stop() }
@@ -49,9 +48,10 @@ final class DemoTests: XCTestCase {
         let opened = try XCTUnwrap(added)
         XCTAssertNotNil(h.blocks[opened])
         XCTAssertEqual(h.sessions.first?.view?.windows?.count, 4)
-        try await h.moveWindow(opened, in: first.id, before: nil)
+        let openedWindow = try XCTUnwrap(h.sessions.first?.view?.windows?.last?.window_id)
+        try await h.moveWindow(openedWindow, in: first.id, before: nil)
         XCTAssertEqual(h.sessions.first?.view?.windows?.last?.focused_block_id, opened)
-        try await h.closeWindow(opened, in: first.id)
+        try await h.closeWindow(openedWindow, in: first.id)
         XCTAssertNil(h.blocks[opened])
         XCTAssertEqual(h.sessions.first?.view?.windows?.count, 3)
 
@@ -62,7 +62,7 @@ final class DemoTests: XCTestCase {
 
     /// A demo terminal shows its window's screen, and the commands typed
     /// run on the phone.
-    func testDemoTerminalRunsCommands() {
+    @MainActor func testDemoTerminalRunsCommands() {
         let h = Host(Demo.config())
         h.connect()
         defer { h.stop() }
@@ -90,7 +90,7 @@ final class DemoTests: XCTestCase {
 
     /// Answering the demo's question settles the record that waits: the
     /// orange dot and the inbox's row go.
-    func testDemoAnswerSettlesTheRecord() {
+    @MainActor func testDemoAnswerSettlesTheRecord() {
         let h = Host(Demo.config())
         h.connect()
         defer { h.stop() }
@@ -108,7 +108,7 @@ final class DemoTests: XCTestCase {
 
     /// The demo host is never saved: it answers nothing on the next
     /// launch, and the real hosts around it are.
-    func testDemoStaysOutOfSavedHosts() {
+    @MainActor func testDemoStaysOutOfSavedHosts() {
         let saved = UserDefaults.standard.data(forKey: "hosts")
         defer {
             if let saved { UserDefaults.standard.set(saved, forKey: "hosts") }
