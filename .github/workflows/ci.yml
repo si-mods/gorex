@@ -50,6 +50,10 @@ jobs:
             GOOS=$os go vet ./...
             echo "::endgroup::"
           done
+      - name: lint
+        env:
+          CGO_ENABLED: "0"
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
       - name: build
         env:
           CGO_ENABLED: "0"
@@ -77,6 +81,7 @@ jobs:
         working-directory: web
         run: |
           npm ci
+          npm run typecheck
           npm test
 
   # The tests. The root package's tests run one after another, so three
@@ -140,6 +145,10 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
+      - name: lint
+        env:
+          CGO_ENABLED: "0"
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 run ./...
       - name: build and upload to R2
         working-directory: web
         env:
