@@ -10,8 +10,11 @@ not see it. Rex works this way; GoRex follows its model.
 ## How GoRex updates today
 
 The app and the server are one executable. The app starts the server as
-`<app exe> -server` (`internal/rex/server.go`, `exec.Command(exe,
-"-server")`), so the server runs from the app's bundle.
+`<app exe> -server` (`internal/rex/server.go`, `Spawn`): on macOS a job of
+`launchd`'s, so that the app's end leaves the sessions alone
+([session-server.md](session-server.md#how-the-server-starts-macos)), and
+a detached process on Linux and Windows. Either way the server runs from
+the app's bundle.
 
 1. The updater plugin (`mygo/plugins/updater`) downloads the new version.
    With `AutomaticDownloads` on it does this in the background.

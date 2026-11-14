@@ -222,6 +222,32 @@ on every client, after a client restarts and across an in-place upgrade.
 
 ## Lifetimes
 
+### How the server starts (macOS)
+
+The app starts the server when no socket answers (`rex.Connect` →
+`Spawn`). On macOS that server is a job of `launchd`'s
+(`internal/rex/job_darwin.go`): the app writes `server.plist` in the data
+directory, loads the job in the user's session
+(`launchctl bootstrap gui/<uid>`) and starts it (`launchctl kickstart`).
+The server runs with the app's environment, and the job has
+`RunAtLoad` off, so it starts when an app needs it and stays down when the
+idle timeout leaves it.
+
+It must not be the app's child. macOS ends a dying app's subordinate
+processes: when an app exits while it still has children and Background
+Task Management has no answer on whether the app may run in the
+background, loginwindow schedules their termination and force quits them
+(`askBTM: Error -98 … not allowed to run in the background`,
+`applicationDeath: … scheduling its subordinates' termination`). An
+update's relaunch — the app quits, the updater swaps the bundle, the new
+app opens — takes the app down while the server runs, so a server that
+were the app's child would end every session with it, and the
+conversations in its panes. Under launchd the server is nobody's child,
+and the app's end, crash or replacement leaves the sessions alone.
+
+A binary that is not in an app bundle (a test, `go run . -server`) and a
+platform without a job start the server as a detached process, as before.
+
 ### A session that ends
 
 When the process ends, the server reads the rest of its output, then
