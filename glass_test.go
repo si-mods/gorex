@@ -109,3 +109,14 @@ func TestGlassWindow(t *testing.T) {
 		t.Errorf("with the glass off the pane reads %v, want %v", got, plainPane)
 	}
 }
+
+// TestWindowCorner checks that only Linux asks MyGo for the corners.
+func TestWindowCorner(t *testing.T) {
+	want := 0
+	if runtime.GOOS == "linux" {
+		want = windowR
+	}
+	if windowCorner != want {
+		t.Fatalf("windowCorner = %d on %s, want %d", windowCorner, runtime.GOOS, want)
+	}
+}

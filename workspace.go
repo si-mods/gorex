@@ -1134,6 +1134,7 @@ var newWindow = func(a *App) *mygo.Window {
 		MinHeight:            340,
 		StateKey:             stateKey(a.slot),
 		TitleBarStyle:        mygo.TitleBarHidden,
+		CornerRadius:         windowCorner,
 		TrafficLightPosition: &mygo.Point{X: 16, Y: 15},
 		BackgroundColor:      "light-dark(#efe1e6, #231e27)",
 		Vibrancy:             glassVibrancy(),
