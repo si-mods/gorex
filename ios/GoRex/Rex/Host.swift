@@ -900,12 +900,14 @@ final class Host: Identifiable {
         return (r["block_ids"] as? [Any])?.first as? String
     }
 
-    /// Makes a session, named by the server, with a window running the
-    /// shell, and returns the session and the window's block.
-    func newSession() async throws -> (String, String)? {
+    /// Makes a session, named by `label` or by the server, with a window
+    /// running the shell, and returns the session and the window's block.
+    func newSession(label: String? = nil) async throws -> (String, String)? {
+        let trimmed = label?.trimmingCharacters(in: .whitespaces)
+        let customLabel = (trimmed?.isEmpty == false) ? trimmed : nil
         if isDemo {
             let id = Self.demoID("s"), window = Self.demoID("w"), block = Self.demoID("b")
-            let label = String(localized: "New Session")
+            let label = customLabel ?? String(localized: "New Session")
             let view = SessionView(revision: 1, session_id: id, label: label, windows: [
                 .init(window_id: window, focused_block_id: block, layers: [.init(blocks: [.init(block_id: block)])]),
             ])
@@ -916,7 +918,9 @@ final class Host: Identifiable {
             blocks[block] = b
             return (id, block)
         }
-        let r = try await live().call("session.create", ["initial_windows": [["layout": ["block": shell]]]]).payload
+        var args: [String: Any] = ["initial_windows": [["layout": ["block": shell]]]]
+        if let customLabel { args["label"] = customLabel }
+        let r = try await live().call("session.create", args).payload
         guard let s = r["session_id"] as? String,
               let w = (r["initial_windows"] as? [[String: Any]])?.first,
               let b = (w["block_ids"] as? [Any])?.first as? String else { return nil }
@@ -951,9 +955,11 @@ final class Host: Identifiable {
     }
 
     /// Pushes centralized space assignments for blocks on this machine to
-    /// the desktop host (`gorex.spaces_apply`).
-    func applySpaces(_ spaces: [CentralSpace]) async {
-        guard supportsSpacesSync else { return }
+    /// the desktop host (`gorex.spaces_apply`). Returns true when the server
+    /// moved at least one window into its assigned space.
+    @discardableResult
+    func applySpaces(_ spaces: [CentralSpace]) async -> Bool {
+        guard supportsSpacesSync else { return false }
         let m = spaceMachineKey
         let entries: [[String: Any]] = spaces.compactMap { s in
             let ids = s.members.filter { $0.machine_id == m }.map(\.block_id)
@@ -962,8 +968,27 @@ final class Host: Identifiable {
             if let color = s.color, !color.isEmpty { entry["color"] = color }
             return entry
         }
-        guard !entries.isEmpty else { return }
-        _ = try? await live().call("gorex.spaces_apply", ["spaces": entries])
+        guard !entries.isEmpty else { return false }
+        let payload = (try? await live().call("gorex.spaces_apply", ["spaces": entries]))?.payload
+        return (payload?["applied"] as? Int ?? 0) > 0
+    }
+
+    /// Returns the current session ID holding `block`, checking the local
+    /// model first and falling back to `target.resolve` when a recent move
+    /// (such as `gorex.spaces_apply`) hasn't refreshed `sessions` yet.
+    func resolveSession(forBlock block: String, fallback: String) async -> String {
+        if let hit = sessions.first(where: { $0.view?.windows?.contains(where: { $0.blocks.contains(block) }) == true }) {
+            return hit.id
+        }
+        guard !isDemo,
+              let r = try? await live().call("target.resolve", ["kinds": ["block"], "queries": [block]]).payload,
+              let results = r["results"] as? [[String: Any]],
+              let first = results.first,
+              let target = first["target"] as? [String: Any],
+              let sid = target["session_id"] as? String,
+              !sid.isEmpty
+        else { return fallback }
+        return sid
     }
 
     /// Moves a window before another, or to the end when before is nil.

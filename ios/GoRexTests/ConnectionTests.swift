@@ -289,4 +289,41 @@ nonisolated final class ConnectionTests: XCTestCase {
         await until("connect again") { rex.count("data.connect") == 2 }
         h.stop()
     }
+
+    /// Creating a session with a space label forwards `label`, and
+    /// `resolveSession(forBlock:fallback:)` resolves the new session ID
+    /// when `gorex.spaces_apply` moved the block to another session.
+    @MainActor func testNewSessionWithLabelAndResolveMovedBlock() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        rex.respond = { method, payload in
+            switch method {
+            case "session.bootstrap":
+                return ["attach_all": ["sessions": []]]
+            case "session.create":
+                XCTAssertEqual(payload["label"] as? String, "Work")
+                return [
+                    "session_id": "session:temp",
+                    "initial_windows": [["window_id": "window:1", "block_ids": ["block:1"]]],
+                ]
+            case "gorex.spaces_apply":
+                return ["applied": 1]
+            case "target.resolve":
+                return ["results": [["query": "block:1", "status": "ok", "target": ["session_id": "session:work"]]]]
+            default:
+                return [:]
+            }
+        }
+        let h = Host(HostConfig(name: "test", url: try await rex.url()))
+        h.connect()
+        await until("online") { h.status == .online }
+        defer { h.stop() }
+
+        let made = try await h.newSession(label: "Work")
+        XCTAssertEqual(made?.0, "session:temp")
+        XCTAssertEqual(made?.1, "block:1")
+
+        let resolved = await h.resolveSession(forBlock: "block:1", fallback: "session:temp")
+        XCTAssertEqual(resolved, "session:work")
+    }
 }
