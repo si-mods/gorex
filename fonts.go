@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/egoist/mygo/ui"
 	"golang.org/x/image/font/sfnt"
@@ -56,13 +57,17 @@ var fontFaces = []string{"regular", "medium", "bold", "italic", "medium italic",
 // list of families holds until the app registers a font, so a family is
 // looked for once, and a font file installed while the app runs shows
 // after a restart.
-var fontTried = map[string]bool{}
+var (
+	fontTriedMu sync.Mutex
+	fontTried   = map[string]bool{}
+)
 
 // registerFamilies registers the files of families in dirs that the
 // system does not list: one the system lists has its files activated
 // already.
 func registerFamilies(dirs, families []string) {
 	var lookup []string
+	fontTriedMu.Lock()
 	for _, family := range families {
 		key := strings.ToLower(strings.TrimSpace(family))
 		if key == "" || fontTried[key] {
@@ -71,6 +76,7 @@ func registerFamilies(dirs, families []string) {
 		fontTried[key] = true
 		lookup = append(lookup, family)
 	}
+	fontTriedMu.Unlock()
 	if len(lookup) == 0 {
 		return
 	}

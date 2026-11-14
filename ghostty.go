@@ -355,21 +355,33 @@ var keybindMods = map[string]ui.Modifiers{
 }
 
 // keybindKeys maps Ghostty's key names, besides a to z and 0 to 9, to keys.
-var keybindKeys = map[string]ui.Key{
-	"equal": ui.KeyEqual, "minus": ui.KeyMinus,
-	"page_up": ui.KeyPageUp, "page_down": ui.KeyPageDown,
-	"home": ui.KeyHome, "end": ui.KeyEnd,
-	"insert": ui.KeyInsert, "delete": ui.KeyDelete,
-	"enter": ui.KeyEnter, "tab": ui.KeyTab, "escape": ui.KeyEscape,
-	"space": ui.KeySpace, "backspace": ui.KeyBackspace,
-	"arrow_up": ui.KeyUp, "arrow_down": ui.KeyDown,
-	"arrow_left": ui.KeyLeft, "arrow_right": ui.KeyRight,
-	"grave_accent": ui.KeyBackquote, "bracket_left": ui.KeyBracketLeft,
-	"bracket_right": ui.KeyBracketRight, "comma": ui.KeyComma,
-	"period": ui.KeyPeriod, "slash": ui.KeySlash,
-	"semicolon": ui.KeySemicolon, "quote": ui.KeyQuote,
-	"backslash": ui.KeyBackslash,
-}
+var keybindKeys = func() map[string]ui.Key {
+	m := map[string]ui.Key{
+		"equal": ui.KeyEqual, "minus": ui.KeyMinus,
+		"page_up": ui.KeyPageUp, "page_down": ui.KeyPageDown,
+		"home": ui.KeyHome, "end": ui.KeyEnd,
+		"insert": ui.KeyInsert, "delete": ui.KeyDelete,
+		"enter": ui.KeyEnter, "tab": ui.KeyTab, "escape": ui.KeyEscape,
+		"space": ui.KeySpace, "backspace": ui.KeyBackspace,
+		"arrow_up": ui.KeyUp, "arrow_down": ui.KeyDown,
+		"arrow_left": ui.KeyLeft, "arrow_right": ui.KeyRight,
+		"grave_accent": ui.KeyBackquote, "bracket_left": ui.KeyBracketLeft,
+		"bracket_right": ui.KeyBracketRight, "comma": ui.KeyComma,
+		"period": ui.KeyPeriod, "slash": ui.KeySlash,
+		"semicolon": ui.KeySemicolon, "quote": ui.KeyQuote,
+		"backslash": ui.KeyBackslash,
+	}
+	for i := range 26 {
+		m[string(rune('a'+i))] = ui.KeyA + ui.Key(i)
+	}
+	for i := range 10 {
+		m[string(rune('0'+i))] = ui.Key0 + ui.Key(i)
+	}
+	for i := range 12 {
+		m["f"+strconv.Itoa(i+1)] = ui.KeyF1 + ui.Key(i)
+	}
+	return m
+}()
 
 var keybindActions = map[string]terminal.Action{
 	"unbind":               terminal.ActionNone,
@@ -385,18 +397,6 @@ var keybindActions = map[string]terminal.Action{
 	"scroll_page_down":     terminal.ActionScrollPageDown,
 	"scroll_to_top":        terminal.ActionScrollToTop,
 	"scroll_to_bottom":     terminal.ActionScrollToBottom,
-}
-
-func init() {
-	for i := range 26 {
-		keybindKeys[string(rune('a'+i))] = ui.KeyA + ui.Key(i)
-	}
-	for i := range 10 {
-		keybindKeys[string(rune('0'+i))] = ui.Key0 + ui.Key(i)
-	}
-	for i := range 12 {
-		keybindKeys["f"+strconv.Itoa(i+1)] = ui.KeyF1 + ui.Key(i)
-	}
 }
 
 // setKeybind applies a keybind line. "clear" drops the bindings so far and

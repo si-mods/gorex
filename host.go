@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -167,11 +168,16 @@ func (a *App) setHostIcon(h *hostConn, glyph string) {
 }
 
 // menuIcons are the icons of menu items, by glyph, each made once.
-var menuIcons = map[string]*mygo.MenuIcon{}
+var (
+	menuIconsMu sync.Mutex
+	menuIcons   = map[string]*mygo.MenuIcon{}
+)
 
 // menuIcon is the menu items' icon of the SVG named name, in the color of
 // their text.
 func menuIcon(name string) *mygo.MenuIcon {
+	menuIconsMu.Lock()
+	defer menuIconsMu.Unlock()
 	if m, ok := menuIcons[name]; ok {
 		return m
 	}

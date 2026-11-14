@@ -56,9 +56,12 @@ var recordMods = func() []ui.Modifiers {
 }()
 
 // rebuildMenu is set by init: the menu must be rebuilt without
-// accelerators while the keyboard records.
-var rebuildMenu func(*store)
-var reloadConfig func(*App)
+// accelerators while the keyboard records, and init avoids an
+// initialization cycle with newWindow.
+var (
+	rebuildMenu  func(*store)
+	reloadConfig func(*App)
+)
 
 func init() {
 	rebuildMenu = func(st *store) {

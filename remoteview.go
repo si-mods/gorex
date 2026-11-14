@@ -63,6 +63,7 @@ var remoteUI struct {
 	relay       string
 	relayEdited bool
 	relayErr    string
+	pairQR      *hostPairQR
 	// reach is what is typed in the Reachable at field, reachErr what was
 	// wrong with it.
 	reach       string
@@ -87,7 +88,7 @@ func (a *App) showSection(id string) {
 		return
 	}
 	stopRemotePoll()
-	hostsPairQR = nil
+	remoteUI.pairQR = nil
 	settingsUI.section = id
 	stopServerInfoPoll()
 	if id == "server" {

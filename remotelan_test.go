@@ -142,8 +142,8 @@ func TestLocalPairQRCloses(t *testing.T) {
 	isolateSettings(t, "")
 	registerFonts()
 	t.Setenv("GOREX_DIR", t.TempDir())
-	section, remote, qr := settingsUI.section, remoteUI, hostsPairQR
-	t.Cleanup(func() { settingsUI.section, remoteUI, hostsPairQR = section, remote, qr })
+	section, remote, qr := settingsUI.section, remoteUI, remoteUI.pairQR
+	t.Cleanup(func() { settingsUI.section, remoteUI, remoteUI.pairQR = section, remote, qr })
 	gw := testrex.NewStalled(t)
 	t.Setenv("GOREX_REXAPI_SOCKET", gw.Path)
 	t.Cleanup(func() {
@@ -163,12 +163,12 @@ func TestLocalPairQRCloses(t *testing.T) {
 	a.openLocalPairQR()
 	tt.Frame()
 	tt.Frame()
-	if hostsPairQR == nil || hostsPairQR.address != "http://192.168.1.20:7297" {
-		t.Fatalf("the code: %+v", hostsPairQR)
+	if remoteUI.pairQR == nil || remoteUI.pairQR.address != "http://192.168.1.20:7297" {
+		t.Fatalf("the code: %+v", remoteUI.pairQR)
 	}
 	remoteUI.lanStatus = rexapi.LANStatus{Running: true}
 	tt.Frame()
-	if hostsPairQR != nil {
+	if remoteUI.pairQR != nil {
 		t.Errorf("the code stayed for a listener that went away")
 	}
 }
