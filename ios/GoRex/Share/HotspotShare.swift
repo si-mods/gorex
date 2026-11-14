@@ -97,8 +97,8 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
             ShareHostPayload(
                 id: c.id.uuidString,
                 name: c.name,
-                icon: c.icon,
-                url: c.url,
+                icon: c.icon ?? "laptop",
+                url: c.url.absoluteString,
                 transport: (c.transport ?? .system).rawValue
             )
         }

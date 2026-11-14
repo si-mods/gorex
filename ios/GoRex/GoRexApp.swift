@@ -43,7 +43,7 @@ struct GoRexApp: App {
                     HotspotShare.shared.handleForeground()
                     Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }
                 }
-                .onChange(of: store.configs) { _, configs in
+                .onChange(of: store.hosts.map(\.config)) { _, configs in
                     HotspotShare.shared.updateHosts(configs)
                 }
                 // Hosts the gateway refused try again as the engine runs anew.
