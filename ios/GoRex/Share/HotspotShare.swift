@@ -178,12 +178,12 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
         let addr = "\(hotspotIP):\(Self.port)"
         let webDir = WebClientStore.shared.directory.path
         let phone = UIDevice.current.name
-        do {
-            try TailnetShareStart(addr, webDir, phone, self)
+        var err: NSError?
+        if TailnetShareStart(addr, webDir, phone, self, &err) {
             error = nil
             updateHosts(lastHosts)
-        } catch {
-            self.error = error.localizedDescription
+        } else {
+            error = err?.localizedDescription
         }
     }
 
