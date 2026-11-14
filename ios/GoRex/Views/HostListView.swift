@@ -517,18 +517,38 @@ private struct HostSection: View {
         }
     }
 
+    /// Assigns a newly created block to the active centralized space, syncs
+    /// it to the host, and returns the session ID that now holds the block.
+    private func assignAndResolveSession(block: String, fallbackSession: String) async -> String {
+        guard case .space(let spaceID) = space else { return fallbackSession }
+        spaceStore.assign(machine: host.spaceMachineKey, block: block, window: nil, to: spaceID)
+        let moved = await host.applySpaces(spaceStore.orderedSpaces)
+        guard moved else { return fallbackSession }
+        return await host.resolveSession(forBlock: block, fallback: fallbackSession)
+    }
+
     /// Makes a session with a window, and goes to it.
     private func newSession() {
         creating = true
         Task {
             defer { creating = false }
             do {
-                if let (s, b) = try await host.newSession() {
-                    if case .space(let spaceID) = space {
-                        spaceStore.assign(machine: host.spaceMachineKey, block: b, window: nil, to: spaceID)
-                        await host.applySpaces(spaceStore.orderedSpaces)
-                    }
-                    open(TerminalTarget(host: host.id, session: s, block: b, title: ""))
+                let spaceName: String? = if case .space(let spaceID) = space {
+                    spaceStore.space(id: spaceID)?.name
+                } else {
+                    nil
+                }
+                if let spaceName,
+                   let existing = host.sessions.first(where: {
+                       $0.id != SpaceStore.desktopTerminalsSessionID &&
+                       $0.label.trimmingCharacters(in: .whitespaces).caseInsensitiveCompare(spaceName) == .orderedSame
+                   }),
+                   let b = try await host.newWindow(in: existing.id) {
+                    let sid = await assignAndResolveSession(block: b, fallbackSession: existing.id)
+                    open(TerminalTarget(host: host.id, session: sid, block: b, title: existing.label))
+                } else if let (s, b) = try await host.newSession(label: spaceName) {
+                    let sid = await assignAndResolveSession(block: b, fallbackSession: s)
+                    open(TerminalTarget(host: host.id, session: sid, block: b, title: ""))
                 }
             } catch {
                 failure = ("Can't Make a New Session", error.localizedDescription)
@@ -550,11 +570,8 @@ private struct HostSection: View {
             defer { opening.remove(s.id) }
             do {
                 if let b = try await host.newWindow(in: s.id) {
-                    if case .space(let spaceID) = space {
-                        spaceStore.assign(machine: host.spaceMachineKey, block: b, window: nil, to: spaceID)
-                        await host.applySpaces(spaceStore.orderedSpaces)
-                    }
-                    open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
+                    let sid = await assignAndResolveSession(block: b, fallbackSession: s.id)
+                    open(TerminalTarget(host: host.id, session: sid, block: b, title: s.label))
                 }
             } catch {
                 failure = ("Can't Open a New Window", error.localizedDescription)
