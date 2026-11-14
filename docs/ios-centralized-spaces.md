@@ -1,6 +1,6 @@
 # Rex Go: 以 iOS（+ iCloud）为中心化控制端的跨主机 Space 同步设计
 
-Status: proposed (待评审).
+Status: approved (设计决策已确认).
 
 ## 1. 背景与问题诊断
 
@@ -194,11 +194,8 @@ iOS 端（Rex Go）作为纯控制端，自身不运行本地 shell 或 PTY，�
 
 ---
 
-## 7. 待评审确认问题（Open Questions）
+## 7. 已确认决策（Confirmed Decisions）
 
-1. **iCloud 同步载体选型**：
-   - 倾向 `NSUbiquitousKeyValueStore`（零配置、毫秒级同步，上限 1 MB）还是 `iCloud Drive / CloudKit`（无 1 MB 上限，但配置与冲突文件处理略重）？
-2. **同名 Space 的首次合并策略**：
-   - 当首次接入多台桌面端（如 MacBook 有 `Work`，Mac Studio 也有 `Work`）时，是**默认按名称自动合并**为同一个 Space，还是**默认保留独立、由用户在 iOS 手动合并**？
-3. **桌面端与 iOS 的冲突优先级**：
-   - 当桌面端在线且本地修改了 Space 结构，同时 iOS 在离线期间也修改了同一窗口的归属，重连后采用**时间戳最新者胜（LWW）**，还是**桌面端/iOS 某一方优先**？
+1. **iCloud 同步载体选型**：选用 **`NSUbiquitousKeyValueStore`**（零配置、毫秒级同步，1 MB 上限足够纯元数据索引；通过 `tombstones` 定期清理控制体积）。
+2. **同名 Space 的首次合并策略**：**默认按名称自动合并**为同一个跨主机 Space（首次接入多台桌面端时，同名 Space 归并至同一全局 `space.id`，后续也支持在 iOS 端手动重命名或拆分）。
+3. **桌面端与 iOS 的冲突优先级**：采用 **时间戳最新者胜（LWW）**，基于实体级 `updated_at` / `added_at` / `deleted_at` 自动合并。
