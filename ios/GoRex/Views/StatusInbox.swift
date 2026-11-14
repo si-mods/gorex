@@ -89,18 +89,29 @@ private struct StatusRow: View {
                 .frame(width: 21 * ProgramTiles.scale, height: 16 * ProgramTiles.scale)
                 .scaleEffect(1.4)
                 .frame(width: 44, height: 44)
-            VStack(alignment: .leading, spacing: 2) {
+            if item.detail.isEmpty {
                 HStack(spacing: 8) {
-                    Text(item.heading.isEmpty ? " " : item.heading.asText).font(.body.weight(.medium)).lineLimit(1)
+                    headingText
                     Spacer(minLength: 4)
-                    mark
+                    VStack(alignment: .trailing, spacing: 4) {
+                        mark
+                        agoText
+                    }
                 }
-                HStack(spacing: 8) {
-                    Text(item.detail.isEmpty ? " " : item.detail.asText).foregroundStyle(.secondary).lineLimit(1)
-                    Spacer(minLength: 4)
-                    if let t = item.status.updated { Text(Inbox.ago(t, now: now)).foregroundStyle(.tertiary) }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        headingText
+                        Spacer(minLength: 4)
+                        mark
+                    }
+                    HStack(spacing: 8) {
+                        Text(item.detail.asText).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: 4)
+                        agoText
+                    }
+                    .font(.subheadline)
                 }
-                .font(.subheadline)
             }
             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.gray)
         }
@@ -110,6 +121,20 @@ private struct StatusRow: View {
         .frame(minHeight: 70)
         .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+
+    private var headingText: some View {
+        Text(item.heading.isEmpty ? " " : item.heading.asText)
+            .font(.body.weight(.medium))
+            .lineLimit(1)
+    }
+
+    @ViewBuilder private var agoText: some View {
+        if let t = item.status.updated {
+            Text(Inbox.ago(t, now: now))
+                .font(.subheadline)
+                .foregroundStyle(.tertiary)
+        }
     }
 
     /// The program the record names when it is one known, else the block's.
