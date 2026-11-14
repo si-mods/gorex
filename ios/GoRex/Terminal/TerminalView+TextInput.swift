@@ -60,10 +60,17 @@ extension TerminalView: UITextInput {
 
     var markedTextRange: UITextRange? { document.markedRange.map(TextRange.init) }
 
-    /// The terminal's cursor is the program's: the keyboard cannot move it.
+    /// Selection inside the typed text or composition is tracked for
+    /// keyboards that revise text via selectedTextRange + deleteBackward/insertText.
     var selectedTextRange: UITextRange? {
         get { TextRange(document.selection) }
-        set { trace("set selectedTextRange \(traced(newValue)) ignored") }
+        set {
+            guard let r = newValue as? TextRange else {
+                return trace("set selectedTextRange \(traced(newValue)) ignored")
+            }
+            let ok = document.select(r.range)
+            trace("set selectedTextRange \(InputTrace.range(r.range))\(ok ? "" : " ignored") \(document.traced)")
+        }
     }
 
     /// Notes a keyboard call for InputTrace, after the keyboard in use, and

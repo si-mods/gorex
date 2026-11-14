@@ -175,6 +175,78 @@ nonisolated final class InputDocumentTests: XCTestCase {
         ])
     }
 
+    /// Keyboards that revise via selectedTextRange + deleteBackward + insertText
+    /// (e.g. Doubao voice input) erase the selected range and shrink the document.
+    @MainActor func testSelectionRevision() {
+        var d = InputDocument()
+        for ch in ["测", "试", "输", "入"] {
+            _ = d.insert(ch)
+        }
+        XCTAssertEqual(d.typed, "测试输入")
+        XCTAssertEqual(d.selection, at(5))
+
+        // Select last two characters {"输入"} -> delete -> re-insert "输": net -1 char.
+        XCTAssertTrue(d.select(NSRange(location: 3, length: 2)))
+        XCTAssertEqual(d.selection, NSRange(location: 3, length: 2))
+        XCTAssertEqual(d.deleteBackward(), [.erase(2)])
+        XCTAssertEqual(d.typed, "测试")
+        XCTAssertEqual(d.selection, at(3))
+        XCTAssertEqual(d.insert("输"), [.type("输")])
+        XCTAssertEqual(d.typed, "测试输")
+        XCTAssertEqual(d.selection, at(4))
+
+        // Continue shrinking down to empty, then insert the final phrase.
+        XCTAssertTrue(d.select(NSRange(location: 2, length: 2)))
+        XCTAssertEqual(d.deleteBackward(), [.erase(2)])
+        XCTAssertEqual(d.insert("试"), [.type("试")])
+        XCTAssertEqual(d.typed, "测试")
+        XCTAssertEqual(d.selection, at(3))
+
+        XCTAssertTrue(d.select(NSRange(location: 1, length: 2)))
+        XCTAssertEqual(d.deleteBackward(), [.erase(2)])
+        XCTAssertEqual(d.insert("测"), [.type("测")])
+        XCTAssertEqual(d.typed, "测")
+        XCTAssertEqual(d.selection, at(2))
+
+        // Selection overlapping the anchor clamps past it; delete leaves anchor intact.
+        XCTAssertTrue(d.select(NSRange(location: 0, length: 2)))
+        XCTAssertEqual(d.selection, NSRange(location: 1, length: 1))
+        XCTAssertEqual(d.deleteBackward(), [.erase(1)])
+        XCTAssertEqual(d.typed, "")
+        XCTAssertEqual(d.selection, at(1))
+
+        XCTAssertEqual(d.insert("测试输入"), [.text("测试输入")])
+        XCTAssertEqual(d.typed, "测试输入")
+        XCTAssertEqual(d.selection, at(5))
+    }
+
+    /// Caret or selection in the middle of typed text edits via erase + retype.
+    @MainActor func testSelectionInMiddle() {
+        var d = InputDocument()
+        _ = d.insert("abcd")
+        // Caret between 'b' and 'c' (offset 3 with anchor).
+        XCTAssertTrue(d.select(at(3)))
+        XCTAssertEqual(d.selection, at(3))
+        XCTAssertFalse(d.erasesUnseen(chord: false))
+        XCTAssertEqual(d.deleteBackward(), [.erase(3), .text("cd")])
+        XCTAssertEqual(d.typed, "acd")
+        XCTAssertEqual(d.selection, at(2))
+
+        XCTAssertEqual(d.insert("XY"), [.erase(2), .text("XYcd")])
+        XCTAssertEqual(d.typed, "aXYcd")
+        XCTAssertEqual(d.selection, at(4))
+
+        // Caret right after anchor: deleteBackward erases unseen program text.
+        XCTAssertTrue(d.select(at(1)))
+        XCTAssertTrue(d.erasesUnseen(chord: false))
+        XCTAssertEqual(d.deleteBackward(), [.backspace])
+        XCTAssertEqual(d.typed, "aXYcd")
+
+        // Out-of-bounds selection is ignored.
+        XCTAssertFalse(d.select(NSRange(location: 7, length: 1)))
+        XCTAssertEqual(d.selection, at(1))
+    }
+
     /// One arrow per cell the finger crosses, either way, both axes.
     @MainActor func testTrackpad() {
         var t = Trackpad()
