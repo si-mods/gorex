@@ -298,7 +298,7 @@ func TestSessionStart(t *testing.T) {
 		t.Fatalf("hook output: %d %q", code, out)
 	}
 	_, _, out, _ = runMain(t, "__internal", "session-start", "--agent", "claude", "--feature-pane-naming=true")
-	if !strings.Contains(out, "Label the pane") {
+	if !strings.Contains(out, "Label the pane") || !strings.Contains(out, "natural-language phrase") || strings.Contains(out, "joined by hyphens") {
 		t.Fatalf("naming hook output: %q", out)
 	}
 }
@@ -496,7 +496,8 @@ func TestSessionStartAgy(t *testing.T) {
 		t.Fatalf("injectSteps %+v", payload.InjectSteps)
 	}
 	msg := payload.InjectSteps[0].SystemMessage.SystemMessage
-	if !strings.Contains(msg, "GOREX_SESSION=abc123") || !strings.Contains(msg, "Label the pane") {
+	if !strings.Contains(msg, "GOREX_SESSION=abc123") || !strings.Contains(msg, "Label the pane") ||
+		!strings.Contains(msg, "natural-language phrase") || strings.Contains(msg, "joined by hyphens") {
 		t.Fatalf("unexpected message %q", msg)
 	}
 }

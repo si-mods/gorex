@@ -90,11 +90,11 @@ func sessionStartCmd(args []string, out io.Writer) (int, bool) {
 	if *naming {
 		fmt.Fprintln(&msg)
 		fmt.Fprintln(&msg, "Label the pane as part of handling the first request that identifies")
-		fmt.Fprintln(&msg, "the work. Run `gorex rename -s \"$GOREX_SESSION\" <label>`")
-		fmt.Fprintln(&msg, "without waiting for the user to ask, before loading the skill. Use two to")
-		fmt.Fprintln(&msg, "four lowercase words joined by hyphens, such as `fix-login-redirect`.")
-		fmt.Fprintln(&msg, "Name the task or project. Keep the existing label if it already")
-		fmt.Fprintln(&msg, "describes the same work.")
+		fmt.Fprintln(&msg, "the work. Run `gorex rename -s \"$GOREX_SESSION\" \"<label>\"`")
+		fmt.Fprintln(&msg, "without waiting for the user to ask, before loading the skill. Use a short")
+		fmt.Fprintln(&msg, "natural-language phrase in the user's language (for example, `Fix login")
+		fmt.Fprintln(&msg, "redirect` or `修复登录重定向`), not a hyphenated slug. Name the task or")
+		fmt.Fprintln(&msg, "project. Keep the existing label if it already describes the same work.")
 	}
 	if *agent == "agy" {
 		WriteJSON(out, map[string]any{
