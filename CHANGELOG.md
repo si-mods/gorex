@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.28.0
+
+### Features
+
+* **cli:** draw a server's pairing QR with `gorex pair` ([#567](https://github.com/si-mods/gorex/pull/567))
+
 ## 0.27.0
 
 ### Features
