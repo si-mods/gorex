@@ -222,6 +222,58 @@ on every client, after a client restarts and across an in-place upgrade.
 
 ## Lifetimes
 
+### How the server starts (macOS)
+
+The app starts the server when no socket answers (`rex.Connect` →
+`Spawn`). On macOS that server runs from a copy of the app, and is a job
+of `launchd`'s, as Rex's server is (`internal/rex/job_darwin.go`,
+`servercopy_darwin.go`).
+
+The copy: the app copies its bundle, as it is signed, to
+`Dir()/server/Versions/<build>/GoRex.app`, with a `Current` beside it
+that names the build the app is (`cp -Rpc`: a clone on APFS, the times
+of the build kept, so that a newer build is told from an older one). The
+builds before it are removed; the build a running server uses keeps its
+files open, as a replaced bundle does. Rex keeps its server the same way
+— `…/RexServer/Versions/<build>/Rex Server.app` with `Current` — so
+that its job runs `…/Versions/Current/Rex Server.app/Contents/MacOS/rex`
+and never changes its arguments, while an update replaces the app's
+bundle, not the server's files.
+
+The job: the app writes `server.plist` in the data directory, loads the
+job in the user's session (`launchctl bootstrap gui/<uid>`) and starts it
+(`launchctl kickstart`). One job per data directory — the label carries
+its SHA-256, as Rex's `com.superlogical.rex.server.<sha256>` does. It
+runs `…/Versions/Current/GoRex.app/Contents/MacOS/GoRex -server` with a
+few of the app's variables (its directory, `PATH`, `HOME`, `USER`,
+`LOGNAME`, `SHELL`, `TMPDIR`, `SSH_AUTH_SOCK`, `LANG` and `LC_*`, and
+`GOREX_APP_EXE`, which keeps the `gorex` shim pointing at the app rather
+than at a copy) rather than all of them, which the plist would keep on
+disk; Rex passes its server the same few. It writes `server.log` beside
+the data, and `RunAtLoad` is off: it starts when an app needs it, and
+stays down when the idle timeout leaves it.
+
+It must not be the app's child. macOS ends a dying app's subordinate
+processes: when an app exits while it still has children and Background
+Task Management has no answer on whether the app may run in the
+background, loginwindow schedules their termination and force quits them
+(`askBTM: Error -98 … not allowed to run in the background`,
+`applicationDeath: … scheduling its subordinates' termination`). An
+update's relaunch — the app quits, the updater swaps the bundle, the new
+app opens — takes the app down while the server runs, so a server that
+were the app's child would end every session with it, and the
+conversations in its panes. Under launchd the server is nobody's child,
+and the app's end, crash or replacement leaves the sessions alone.
+
+The app's own executable, and a copy's, are told apart: the app's
+`adopt` (`workspace.go`) upgrades a server of another build to
+`rex.ServerExecutable()`, the copy of the build the app is
+(`servercopy_darwin.go`), so an upgraded server runs from the copy too
+(`upgrade_unix.go`).
+
+A binary that is not in an app bundle (a test, `go run . -server`) and a
+platform without a job start the server as a detached process, as before.
+
 ### A session that ends
 
 When the process ends, the server reads the rest of its output, then

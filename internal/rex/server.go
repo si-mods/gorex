@@ -886,7 +886,8 @@ func newID() string {
 }
 
 // Spawn starts a server in the background, as a process of its own that
-// outlives the app: the executable run with -server.
+// outlives the app: the executable run with -server, as a job of launchd's
+// on macOS (job_darwin.go), detached on Linux and Windows.
 func Spawn() error {
 	exe, err := os.Executable()
 	if err != nil {
@@ -894,6 +895,11 @@ func Spawn() error {
 	}
 	if err := os.MkdirAll(Dir(), 0o700); err != nil {
 		return err
+	}
+	if err := spawnJob(exe); err == nil {
+		return nil
+	} else if !errors.Is(err, errNoJob) {
+		log.Printf("%v; starting the server as this process's child instead", err)
 	}
 	logf, err := os.OpenFile(filepath.Join(Dir(), "server.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {

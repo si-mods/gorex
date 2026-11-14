@@ -12,12 +12,20 @@ import (
 // at the front of each session's PATH.
 func CLIDir() string { return filepath.Join(Dir(), "bin") }
 
+// EnvAppExe names the app's executable to a server that runs from a copy
+// of it (macOS, servercopy_darwin.go): the shim in CLIDir points there, so
+// that it outlives the copy, which a build replaces.
+const EnvAppExe = "GOREX_APP_EXE"
+
 // EnsureCLI makes the shims in CLIDir point at this executable. A
 // failure is not fatal: sessions still get GOREX_SESSION.
 func EnsureCLI() error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
+	}
+	if app := os.Getenv(EnvAppExe); app != "" {
+		exe = app
 	}
 	return linkCLI(exe)
 }

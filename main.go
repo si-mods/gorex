@@ -167,6 +167,6 @@ func (a *App) saveNow() {
 // staleServer reports whether the server runs another build of the app
 // than this one, as after an update or after mygo dev rebuilt it.
 func staleServer(h rex.Hello) bool {
-	exe, at := rex.Executable()
+	exe, at := rex.ServerExecutable()
 	return h.Exe != exe || !h.ExeTime.Equal(at)
 }

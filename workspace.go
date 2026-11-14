@@ -851,7 +851,7 @@ func (st *store) adopt(client *rex.Client) bool {
 		// Otherwise it is kept.
 		var next *rex.Client
 		if st.hello.Upgrade && st.hello.PID != st.upgradeFailed {
-			if exe, at := rex.Executable(); at.After(st.hello.ExeTime) {
+			if exe, at := rex.ServerExecutable(); at.After(st.hello.ExeTime) {
 				if next, err = client.Upgrade(exe); err != nil {
 					log.Print(err)
 					client.Close()
@@ -950,7 +950,7 @@ func (st *store) serverBehind() bool {
 	if runtime.GOOS != "windows" || st.client == nil || !st.hello.Can(rex.CapabilityShutdownRestart) {
 		return false
 	}
-	exe, at := rex.Executable()
+	exe, at := rex.ServerExecutable()
 	return at.After(st.hello.ExeTime) && rex.SpeaksProtocol(exe)
 }
 
@@ -978,7 +978,7 @@ func (st *store) askRestart() (*rex.Client, error) {
 // the panes: the connection closes, and watch connects again, adopt
 // attaching them and offering the restart.
 func (st *store) upgradeServer() bool {
-	exe, at := rex.Executable()
+	exe, at := rex.ServerExecutable()
 	if runtime.GOOS != "windows" || st.client == nil || !st.hello.Upgrade || st.hello.PID == st.upgradeFailed || !at.After(st.hello.ExeTime) {
 		return false
 	}
