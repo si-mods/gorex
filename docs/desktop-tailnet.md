@@ -1,6 +1,10 @@
 # Desktop: Tailscale introductions over built-in Tailscale
 
-Status: proposal, revised after review. Not implemented. Phase 5 of
+Status: phases 1 to 3 are implemented (the interface, the built-in
+node, and Settings), and phase 4 is the docs. One deviation: the probe
+and relay exchanges stay. Sessions still run over relay through the
+node, and host-links.md's introduction will replace relay later.
+Phase 5 of
 [host-links.md](host-links.md), whose frame it follows: a device is its
 key, sessions run over tailcat, and Tailscale only introduces. It
 builds on that document's phase 4, the introduction itself, and ships

@@ -8,6 +8,10 @@ import (
 	"tailscale.com/client/local"
 )
 
+// tailnetBuiltin tells whether discovery runs on the built-in node. Linux
+// keeps the system client. Tests set it to take the built-in side.
+var tailnetBuiltin = false
+
 func systemTailscaleClient() systemTailscale { return &local.Client{} }
 
 func tailnetSocketControl(dev net.Interface) func(string, string, syscall.RawConn) error {

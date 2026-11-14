@@ -26,6 +26,14 @@ func (s *Server) remoteDo(req Request) (any, error) {
 		s.firewallCheck(true)
 		return nil, nil
 	}
+	// Where the built-in node carries discovery, turning the mode on
+	// turns that node on too, before the lock: the gateway answers in
+	// its own time. Turning the mode off leaves it on.
+	if req.Op == "remote.tailnetSet" && req.On && tailnetBuiltin && EnableBuiltinTailscale != nil {
+		if err := EnableBuiltinTailscale(); err != nil {
+			return nil, fmt.Errorf("rex: turning built-in Tailscale on: %w", err)
+		}
+	}
 	r := &s.rem
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -66,7 +74,7 @@ func (s *Server) remoteNonConfigOpLocked(req Request, done *[]func()) (any, bool
 			status := r.tailnet.status()
 			return s.remoteStatusLocked(&status), true, nil
 		}
-		return s.remoteStatusLocked(&TailnetStatus{Enabled: r.cfg.Tailnet}), true, nil
+		return s.remoteStatusLocked(&TailnetStatus{Enabled: r.cfg.Tailnet, Side: TailnetSide()}), true, nil
 	case "remote.tailnetSet":
 		cfg := r.cfg
 		cfg.Tailnet = req.On
