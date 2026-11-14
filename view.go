@@ -97,6 +97,16 @@ func (a *App) view(c *ui.Context) {
 // Windows, whose own would look like none of the rest of it.
 var ownControls = runtime.GOOS == "windows"
 
+// windowCorner is the radius MyGo cuts a window's corners to: Linux X11
+// draws these windows as plain rectangles without a frame, while macOS
+// and Windows give them the system's corners.
+var windowCorner = func() int {
+	if runtime.GOOS == "linux" {
+		return windowR
+	}
+	return 0
+}()
+
 // titleBar draws the title bar under the window's controls: the host,
 // the tabs, and the buttons of the command palette and a new tab.
 func (a *App) titleBar(c *ui.Context, k *colors) {

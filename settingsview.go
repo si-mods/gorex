@@ -116,6 +116,7 @@ func (a *App) openSettings() {
 		MaxWidth:             settingsSidebarW + 2*settingsPad + settingsMaxW + 4,
 		StateKey:             "settings",
 		TitleBarStyle:        mygo.TitleBarHidden,
+		CornerRadius:         windowCorner,
 		TrafficLightPosition: &mygo.Point{X: 18, Y: 19},
 		BackgroundColor:      "light-dark(#efe1e6, #231e27)",
 		Vibrancy:             glassVibrancy(),
