@@ -961,15 +961,23 @@ func (s *session) sized(f func() bool) {
 // the console may write as it resizes, which the reader takes s.mu to
 // read.
 func (s *session) resizeTerminal(cols, rows int) {
-	if resized != nil {
-		resized(cols, rows)
+	if fn := resized.Load(); fn != nil {
+		(*fn)(cols, rows)
 	}
 	s.p.resize(cols, rows)
 }
 
 // resized, set by tests, is told each size the terminal takes, to count
 // the resizes SIGWINCH follows.
-var resized func(cols, rows int)
+var resized atomic.Pointer[func(cols, rows int)]
+
+func setResized(fn func(cols, rows int)) {
+	if fn == nil {
+		resized.Store(nil)
+		return
+	}
+	resized.Store(&fn)
+}
 
 // applyResize takes the size the windows asked for last, once it settled.
 func (s *session) applyResize() {

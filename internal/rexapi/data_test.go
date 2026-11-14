@@ -290,14 +290,13 @@ func TestDataResume(t *testing.T) {
 		t.Error("the resume kept the old token")
 	}
 	token = append([]byte(nil), w[1:17]...)
-	next := readData(t, ws)
-	if bytes.HasPrefix(next, []byte("GHOSTSNP")) {
-		t.Error("the resume sent the snapshot again")
-	}
 	if err := f.desk.Input(sid, typedText("echo resumed-again")); err != nil {
 		t.Fatal(err)
 	}
-	readUntil(t, ws, "resumed-again")
+	resumed := readUntil(t, ws, "resumed-again")
+	if bytes.HasPrefix(resumed, []byte("GHOSTSNP")) {
+		t.Error("the resume sent the snapshot again")
+	}
 	ws.CloseNow()
 
 	// A count past what the server sent is refused, and ends the stream.
