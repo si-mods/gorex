@@ -822,6 +822,32 @@ func (g *Gateway) themeOf(block string) (theme, bool) {
 	return t, ok
 }
 
+// setHostTheme pushes the host's active terminal colors to every stream
+// that has no block-level theme override.
+func (g *Gateway) setHostTheme(t *rex.Theme) {
+	if t == nil {
+		return
+	}
+	th := theme{
+		Foreground: t.Foreground,
+		Background: t.Background,
+		Cursor:     t.Cursor,
+		Palette:    t.Palette,
+	}
+	msg := th.message()
+	g.mu.Lock()
+	streams := make([]*stream, 0, len(g.streams))
+	for _, s := range g.streams {
+		if _, overridden := g.themes[s.block]; !overridden {
+			streams = append(streams, s)
+		}
+	}
+	g.mu.Unlock()
+	for _, s := range streams {
+		s.inject(msg)
+	}
+}
+
 // blockResize requests a terminal size.
 func blockResize(c *control, s *mSession, b *mBlock, a args) (any, *apiError) {
 	cols, ok, aerr := a.int("columns")

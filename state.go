@@ -460,8 +460,9 @@ type App struct {
 	st     *store
 	ws     *Workspace
 	slot   int
-	client *rex.Client
-	hello  rex.Hello
+	client    *rex.Client
+	hello     rex.Hello
+	hostTheme string
 	// keys matches key presses to actions; it runs before the terminal
 	// sees a key a binding takes. luaConfig owns the custom actions the
 	// keymap and palette use.

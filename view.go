@@ -37,12 +37,45 @@ const cardR = windowR - gap
 // two curves keep one center.
 func concentric(outer, inset float32) float32 { return max(outer-inset, 0) }
 
+func (a *App) syncHostTheme(dark bool) {
+	if a.client == nil {
+		return
+	}
+	src := termLight
+	if dark {
+		src = termDark
+	}
+	if src == nil {
+		return
+	}
+	hex := func(c ui.Color) string {
+		return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B)
+	}
+	th := &rex.Theme{
+		Foreground: hex(src.Foreground),
+		Background: hex(src.Background),
+		Cursor:     hex(src.Cursor),
+		Palette:    make([]string, 0, len(src.Palette)),
+	}
+	for i, c := range src.Palette {
+		th.Palette = append(th.Palette, fmt.Sprintf("%d=%s", i, hex(c)))
+	}
+	key := th.Foreground + "|" + th.Background + "|" + th.Cursor + "|" + strings.Join(th.Palette, ",")
+	if key == a.hostTheme {
+		return
+	}
+	a.hostTheme = key
+	cl := a.client
+	go func() { _ = cl.SetTheme(th) }()
+}
+
 func (a *App) view(c *ui.Context) {
 	a.services = c.Services()
 	a.runPosted()
 	a.sidebarMoving = false
 	a.dividerHeld, a.dividerNow = a.dividerNow, false
 	k := a.colors(c)
+	a.syncHostTheme(c.Theme().Dark)
 	a.focusedWin = a.win == nil || a.win.IsFocused()
 	breathing = a.focusedWin
 	a.claimFocus()

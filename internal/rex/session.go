@@ -117,6 +117,16 @@ type session struct {
 	// which may hold the start of the mode.
 	batchEnd chan struct{}
 	tail     []byte
+	hasTheme atomic.Bool
+}
+
+// setTheme applies the host's active terminal colors to s.vt.
+func (s *session) setTheme(th *terminal.Theme) {
+	if s.vt == nil || th == nil {
+		return
+	}
+	s.vt.SetTheme(th, th)
+	s.hasTheme.Store(true)
 }
 
 // attached is a connection attached to a session, whose output a
@@ -1550,7 +1560,7 @@ func (c *vtConn) Write(p []byte) (int, error) {
 		if n == 0 {
 			break
 		}
-		if c.on && !colorReply(c.rest[:n]) {
+		if c.on && (!colorReply(c.rest[:n]) || (c.s != nil && c.s.hasTheme.Load())) {
 			out = append(out, c.rest[:n]...)
 		}
 		c.rest = c.rest[n:]

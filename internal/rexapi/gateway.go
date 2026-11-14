@@ -302,6 +302,10 @@ func (g *Gateway) pump() {
 			if !ok {
 				return
 			}
+			if ev.Kind == "theme" && ev.Theme != nil {
+				g.setHostTheme(ev.Theme)
+				continue
+			}
 			layout = layout || ev.Kind == "layout"
 			if subscribed && burst == nil {
 				burst = time.NewTimer(settle)
