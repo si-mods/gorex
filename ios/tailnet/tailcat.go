@@ -312,6 +312,22 @@ func (c *tailcatConn) Close() error {
 	return err
 }
 
+// Forward half-close to the underlying conn so callers checking
+// nettype.HalfCloser (such as tailscale.com/net/socks5) propagate EOF.
+func (c *tailcatConn) CloseRead() error {
+	if hr, ok := c.Conn.(interface{ CloseRead() error }); ok {
+		return hr.CloseRead()
+	}
+	return errors.ErrUnsupported
+}
+
+func (c *tailcatConn) CloseWrite() error {
+	if hw, ok := c.Conn.(interface{ CloseWrite() error }); ok {
+		return hw.CloseWrite()
+	}
+	return errors.ErrUnsupported
+}
+
 // The session server's wire (internal/rex, proto.go), as far as pairing
 // needs it; internal/rex is the server, too big for the app.
 type pairRequest struct {
