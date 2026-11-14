@@ -110,19 +110,21 @@ func (a *App) syncSidebarItem() {
 
 // sidebarLayout lays out the window with its tabs in a sidebar: the
 // sidebar, the edge that resizes it, and the panes, under a title bar
-// when the sidebar does not hold the window's controls.
+// when the sidebar does not hold the window's controls: not when they are
+// on its side, as the traffic lights on macOS are.
 func (a *App) sidebarLayout(c *ui.Context, k *colors, right bool) {
 	shown := !prefs.SidebarHidden
 	row := ui.Row(c.Key("sidebar-layout")).Grow(1).MinHeight(0).AlignItems(ui.Stretch)
 	// How open the sidebar is, from 0 to 1, as it shows and hides; and how
 	// tall the bar over the panes, which the sidebar hides when it has the
-	// window's controls.
+	// window's controls; the controls on the right, as on Linux with a left
+	// sidebar, keep it, as the panes' buttons would lie under them.
 	var open float32
 	if shown {
 		open = 1
 	}
 	open = max(animated(c, row, "sidebar", open), 0)
-	bar := !shown || right || ownControls
+	bar := !shown || right || ownControls || c.TitleBar().Right > 0
 	barH := float32(gap)
 	if bar {
 		barH = titleH
@@ -196,8 +198,8 @@ func (a *App) sidebarParts(c *ui.Context, k *colors, right bool) {
 }
 
 // paneBar is the title bar over the panes beside a sidebar: the sidebar's
-// buttons while it is hidden, and the window's controls when the sidebar
-// does not have them.
+// buttons while it is hidden, and the room for the window's controls when
+// the sidebar does not have them.
 func (a *App) paneBar(c *ui.Context, k *colors, right, shown bool) {
 	bar := c.TitleBar()
 	left := float32(gap)
