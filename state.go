@@ -457,9 +457,9 @@ type App struct {
 	pathStats map[string]pathStat
 	// st is the app's store of workspaces, ws the one the window shows,
 	// and slot the window's place among the windows.
-	st     *store
-	ws     *Workspace
-	slot   int
+	st        *store
+	ws        *Workspace
+	slot      int
 	client    *rex.Client
 	hello     rex.Hello
 	hostTheme string
