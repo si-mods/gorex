@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.28.1
+
+### Bug Fixes
+
+* **rex:** on macOS, run the server from a copy of the app, as a job of `launchd`'s, so that an update, a crash or a quit of the app no longer ends the sessions and the conversations in their panes ([#572](https://github.com/si-mods/gorex/pull/572))
+
 ## 0.28.0
 
 ### Features
