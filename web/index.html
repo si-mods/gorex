@@ -90,7 +90,7 @@
   body[data-tabs="above"] #sessions { grid-row: auto; flex-direction: row; align-items: center; gap: 6px; padding: 8px 8px 0; max-height: none; }
   body[data-tabs="above"] #hosts { flex: none; padding: 0; }
   body[data-tabs="above"] .host-button { width: auto; max-width: 200px; }
-  body[data-tabs="above"] #list { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  body[data-tabs="above"] #list { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
   body[data-tabs="above"] #sessions nav { display: flex; align-items: center; gap: 2px; }
   body[data-tabs="above"] .window { flex: 0 1 200px; min-width: 96px; }
   body[data-tabs="above"] nav > .rename-field { flex: 0 0 160px; margin: 0; }
@@ -838,6 +838,12 @@
   @media (max-width: 640px) {
     body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; }
     #sessions { grid-row: auto; max-height: 36vh; }
+    body[data-tabs="above"] #sessions { flex-wrap: wrap; row-gap: 4px; }
+    body[data-tabs="above"] #hosts { flex: 1 1 0; min-width: 0; order: 1; }
+    body[data-tabs="above"] .host-button { max-width: 100%; }
+    body[data-tabs="above"] #foot { order: 2; }
+    body[data-tabs="above"] #list { flex: 0 0 100%; min-width: 0; order: 3; }
+    body[data-tabs="above"] .space-chip { max-width: 140px; }
     #stage { margin: 0 8px; }
     /* Settings fills the screen; the sections go in a row above the page. */
     dialog.settings { width: 100vw; height: 100dvh; border: 0; border-radius: 0; }
