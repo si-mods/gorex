@@ -22,12 +22,12 @@ func watchResizes(t *testing.T) func() [][2]int {
 	t.Helper()
 	var mu sync.Mutex
 	var calls [][2]int
-	resized = func(cols, rows int) {
+	setResized(func(cols, rows int) {
 		mu.Lock()
 		calls = append(calls, [2]int{cols, rows})
 		mu.Unlock()
-	}
-	t.Cleanup(func() { resized = nil })
+	})
+	t.Cleanup(func() { setResized(nil) })
 	return func() [][2]int {
 		mu.Lock()
 		defer mu.Unlock()
