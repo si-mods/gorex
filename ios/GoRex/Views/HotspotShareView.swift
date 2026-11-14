@@ -20,7 +20,7 @@ struct HotspotShareView: View {
                         get: { share.isSharing },
                         set: { on in
                             if on {
-                                Task { await share.start(configs: store.configs) }
+                                Task { await share.start(configs: store.hosts.map(\.config)) }
                             } else {
                                 share.stop()
                                 restoreBrightness()
@@ -165,7 +165,7 @@ struct HotspotShareView: View {
             updateIdleTimer()
             scheduleDim()
         }
-        .onChange(of: store.configs) { _, configs in
+        .onChange(of: store.hosts.map(\.config)) { _, configs in
             share.updateHosts(configs)
         }
         .simultaneousGesture(

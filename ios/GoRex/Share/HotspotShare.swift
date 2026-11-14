@@ -97,8 +97,8 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
             ShareHostPayload(
                 id: c.id.uuidString,
                 name: c.name,
-                icon: c.icon,
-                url: c.url,
+                icon: c.icon ?? "laptop",
+                url: c.url.absoluteString,
                 transport: (c.transport ?? .system).rawValue
             )
         }
@@ -178,12 +178,12 @@ final class HotspotShare: NSObject, TailnetShareDelegateProtocol {
         let addr = "\(hotspotIP):\(Self.port)"
         let webDir = WebClientStore.shared.directory.path
         let phone = UIDevice.current.name
-        do {
-            try TailnetShareStart(addr, webDir, phone, self)
+        var err: NSError?
+        if TailnetShareStart(addr, webDir, phone, self, &err) {
             error = nil
             updateHosts(lastHosts)
-        } catch {
-            self.error = error.localizedDescription
+        } else {
+            error = err?.localizedDescription
         }
     }
 
