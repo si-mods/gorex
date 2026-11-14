@@ -5,89 +5,10 @@ import { drawBox, drawn, noMinContrast } from "./box";
 import { Ghostty, Mods, RGB } from "./ghostty";
 import { Link, linkAt, RowText } from "./links";
 import { ready, textReady } from "./maple";
+import { Deco, decoOverline, decoStrike, drawDeco, Font, keyCode, unshiftedOf } from "./termfont";
+import { contrasted, css, desktopTheme, hex, minimumContrast, same, Theme, themeOf } from "./termtheme";
 
-export interface Theme {
-  background?: RGB;
-  foreground?: RGB;
-  cursor?: RGB;
-  palette?: Map<number, RGB>;
-  /** A Ghostty theme's selection-background and selection-foreground; without them the selection inverts its cells, as Ghostty's does. */
-  selection?: RGB;
-  selectionText?: RGB;
-}
-
-/** A theme message's colour: RRGGBB or #RRGGBB. */
-export function hex(s: unknown): RGB | undefined {
-  if (typeof s !== "string") return undefined;
-  const h = s.startsWith("#") ? s.slice(1) : s;
-  if (!/^[0-9a-fA-F]{6}$/.test(h)) return undefined;
-  const v = parseInt(h, 16);
-  return [v >> 16, (v >> 8) & 0xff, v & 0xff];
-}
-
-/** The theme a stream's theme message gives. */
-export function themeOf(m: any): Theme {
-  const t: Theme = { background: hex(m.background), foreground: hex(m.foreground), cursor: hex(m.cursor) };
-  if (Array.isArray(m.palette)) {
-    t.palette = new Map();
-    for (const e of m.palette) {
-      const [i, c] = String(e).split("=");
-      const rgb = hex(c);
-      if (rgb && Number(i) >= 0 && Number(i) < 256) t.palette.set(Number(i), rgb);
-    }
-  }
-  return t;
-}
-
-/**
- * The desktop's colours when no Ghostty theme is set: GoRex's dark
- * terminal theme (style.go, darkTerm), over xterm's 256-colour cube and
- * grays, as MyGo's Theme.palette fills them.
- */
-export function desktopTheme(): Theme {
-  const base = [
-    0x3a3a40, 0xff6b7f, 0x7bd88f, 0xe5c07b, 0x6cb2ff, 0xc792ea, 0x56d4dd, 0xd0d0d6,
-    0x6e6e78, 0xff8c9c, 0x9be8a8, 0xf2d28a, 0x8ec5ff, 0xd7a8f2, 0x7fe3ea, 0xffffff,
-  ];
-  const palette = new Map<number, RGB>();
-  base.forEach((v, i) => palette.set(i, [v >> 16, (v >> 8) & 0xff, v & 0xff]));
-  const levels = [0, 95, 135, 175, 215, 255];
-  for (let i = 0; i < 216; i++) palette.set(16 + i, [levels[(i / 36) | 0], levels[((i / 6) | 0) % 6], levels[i % 6]]);
-  for (let i = 0; i < 24; i++) palette.set(232 + i, [8 + 10 * i, 8 + 10 * i, 8 + 10 * i]);
-  return { background: [0x1e, 0x1e, 0x22], foreground: [0xe6, 0xe6, 0xea], cursor: [0xe6, 0xe6, 0xea], palette };
-}
-
-/** The desktop's minimum contrast of text with its background when none is set (settings.go). */
-export const minimumContrast = 3;
-
-const css = (c: RGB) => `rgb(${c[0]},${c[1]},${c[2]})`;
-const same = (a: RGB, b: RGB) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
-
-const linear = Array.from({ length: 256 }, (_, v) => {
-  const f = v / 255;
-  return f <= 0.04045 ? f / 12.92 : ((f + 0.055) / 1.055) ** 2.4;
-});
-const luminance = (c: RGB) => 0.2126 * linear[c[0]] + 0.7152 * linear[c[1]] + 0.0722 * linear[c[2]];
-const contrast = (a: number, b: number) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-const mix = (a: RGB, b: RGB, t: number): RGB => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t)) as RGB;
-
-/**
- * fg with at least the contrast ratio with bg, as WCAG reckons it, as the
- * desktop corrects it (MyGo's contrasted): fg mixed toward black or white,
- * whichever contrasts more with bg, as little as reaches it.
- */
-export function contrasted(fg: RGB, bg: RGB, ratio: number): RGB {
-  const lb = luminance(bg);
-  if (contrast(luminance(fg), lb) >= ratio) return fg;
-  const to: RGB = contrast(1, lb) > contrast(0, lb) ? [255, 255, 255] : [0, 0, 0];
-  let lo = 0, hi = 1;
-  for (let i = 0; i < 8; i++) {
-    const mid = (lo + hi) / 2;
-    if (contrast(luminance(mix(fg, to, mid)), lb) >= ratio) hi = mid;
-    else lo = mid;
-  }
-  return mix(fg, to, hi);
-}
+export { contrasted, desktopTheme, Font, hex, minimumContrast, Theme, themeOf };
 
 /** A cell of a row, as it draws. */
 interface Cell {
@@ -99,15 +20,6 @@ interface Cell {
   variant: number; // 1 bold, 2 italic
   faint: boolean;
 }
-
-/** An underline (1 to 5, as GhosttySgrUnderline), a strikethrough or an overline, over cells x0 to x1. */
-interface Deco {
-  x0: number;
-  x1: number;
-  kind: number;
-  c: RGB;
-}
-const decoStrike = 10, decoOverline = 11;
 
 /** What draw needs besides the terminal: where the grid starts, and the cursor's state. */
 export interface Frame {
@@ -1143,127 +1055,5 @@ export class Terminal {
       if (text) g.free(text, textLen);
       x.ghostty_key_event_free(ev);
     }
-  }
-}
-
-/** Ghostty's key for a KeyboardEvent.code, as the manifest names it: KeyA is A, ArrowUp ARROW_UP, Numpad1 NUMPAD_1. */
-function keyCode(g: Ghostty, code: string): number {
-  const name = /^Key[A-Z]$/.test(code)
-    ? code.slice(3)
-    : /^F\d+$/.test(code)
-      ? code
-      : code.replace(/([a-z])([A-Z0-9])/g, "$1_$2").toUpperCase();
-  return g.m.types.GhosttyKey.values![name] ?? g.e("GhosttyKey", "UNIDENTIFIED");
-}
-
-const unshiftedSymbols: Record<string, string> = {
-  Minus: "-", Equal: "=", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Semicolon: ";",
-  Quote: "'", Backquote: "`", Comma: ",", Period: ".", Slash: "/", Space: " ",
-};
-
-/** The character the physical key types without Shift, on a US layout. */
-function unshiftedOf(e: KeyboardEvent): number {
-  if (/^Key[A-Z]$/.test(e.code)) return e.code.charCodeAt(3) + 32;
-  if (/^Digit\d$/.test(e.code)) return e.code.charCodeAt(5);
-  const s = unshiftedSymbols[e.code];
-  if (s) return s.charCodeAt(0);
-  return [...e.key].length === 1 ? e.key.codePointAt(0)! : 0;
-}
-
-/**
- * Draws an underline, a strikethrough or an overline over a row's cells,
- * as the desktop's drawDeco does.
- */
-function drawDeco(ctx: CanvasRenderingContext2D, font: Font, d: Deco, ox: number, ry: number) {
-  const { w, size } = font;
-  const thick = Math.max(Math.round(size / 14), 1);
-  const x0 = ox + d.x0 * w, x1 = ox + d.x1 * w;
-  const ul = ry + font.baseline + Math.max(Math.round(size / 10), 1);
-  ctx.fillStyle = css(d.c);
-  switch (d.kind) {
-    case decoStrike:
-      ctx.fillRect(x0, Math.round(ry + font.baseline - size * 0.3), x1 - x0, thick);
-      break;
-    case decoOverline:
-      ctx.fillRect(x0, ry, x1 - x0, thick);
-      break;
-    case 2: // double
-      ctx.fillRect(x0, ul - thick, x1 - x0, thick);
-      ctx.fillRect(x0, ul + thick, x1 - x0, thick);
-      break;
-    case 3: { // curly: a sine, a cell's width a period
-      const amp = 1.5 * thick;
-      const n = Math.max(1, Math.round(((x1 - x0) / w) * 8));
-      ctx.beginPath();
-      ctx.moveTo(x0, ul);
-      for (let i = 1; i <= n; i++) {
-        const x = x0 + ((x1 - x0) * i) / n;
-        ctx.lineTo(x, ul + amp * Math.sin(((x - x0) / w) * 2 * Math.PI));
-      }
-      ctx.strokeStyle = ctx.fillStyle;
-      ctx.lineWidth = thick;
-      ctx.stroke();
-      break;
-    }
-    case 4: // dotted
-    case 5: { // dashed
-      const [step, dash] = d.kind === 5 ? [w / 2, w / 4] : [2 * thick, thick];
-      for (let x = x0; x < x1; x += step) ctx.fillRect(Math.round(x), ul, Math.round(Math.min(dash, x1 - x)), thick);
-      break;
-    }
-    default:
-      ctx.fillRect(x0, ul, x1 - x0, thick);
-  }
-}
-
-/**
- * The terminal's font at the device's pixel ratio, with the desktop's
- * cell metrics (MyGo's view.layout): a cell is the widest ASCII advance
- * wide and the font's line (ascent and descent) high, each rounded up to
- * whole device pixels, with the text centred in it.
- */
-export class Font {
-  /** The cell's width and height, the baseline from its top, and the font's own advance, in device pixels. */
-  w = 0;
-  h = 0;
-  baseline = 0;
-  adv = 0;
-  /** The size in device pixels. */
-  readonly size: number;
-  private widths = new Map<string, number>();
-  private readonly ctx = document.createElement("canvas").getContext("2d")!;
-
-  constructor(readonly family: string, px: number, readonly scale: number, lineHeight = 1) {
-    this.size = px * scale;
-    const c = this.ctx;
-    c.font = this.css(0);
-    let asc = 0, desc = 0;
-    for (let i = 0x20; i < 0x7f; i++) {
-      const m = c.measureText(String.fromCharCode(i));
-      this.adv = Math.max(this.adv, m.width);
-      asc = m.fontBoundingBoxAscent;
-      desc = m.fontBoundingBoxDescent;
-    }
-    this.w = Math.max(Math.ceil(this.adv - 0.05), 1);
-    this.h = Math.max(Math.ceil((asc + desc) * lineHeight - 0.05), 1);
-    this.baseline = Math.round((this.h - (asc + desc)) / 2 + asc);
-  }
-
-  /** The CSS font of a variant (1 bold, 2 italic), at a fraction of the size. */
-  css(variant: number, k = 1): string {
-    return `${variant & 2 ? "italic " : ""}${variant & 1 ? 700 : 400} ${this.size * k}px ${this.family}`;
-  }
-
-  /** The width text draws at in a variant, cached. */
-  measure(text: string, variant: number): number {
-    const key = variant + text;
-    let w = this.widths.get(key);
-    if (w === undefined) {
-      if (this.widths.size > 2048) this.widths.clear();
-      this.ctx.font = this.css(variant);
-      w = this.ctx.measureText(text).width;
-      this.widths.set(key, w);
-    }
-    return w;
   }
 }
