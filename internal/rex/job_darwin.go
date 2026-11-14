@@ -54,10 +54,16 @@ func inBundle(exe string) bool {
 }
 
 // spawnJob starts the session server as a launchd job of the user's
-// session, replacing whatever runs in dir at once.
-func spawnJob(exe string) error {
-	if !inBundle(exe) {
+// session, replacing whatever runs in dir at once. It runs the copy of
+// this build (serverCopy), not the app: an update replaces the app's
+// bundle, not the copy.
+func spawnJob(appExe string) error {
+	if !inBundle(appExe) {
 		return errNoJob
+	}
+	program, _, err := serverCopy(appExe)
+	if err != nil {
+		return err
 	}
 	uid := strconv.Itoa(os.Getuid())
 	domain := "gui/" + uid
@@ -69,7 +75,7 @@ func spawnJob(exe string) error {
 	dir := Dir()
 	label := jobLabel(dir)
 	path := filepath.Join(dir, "server.plist")
-	if err := writePlist(path, jobPlist(label, exe)); err != nil {
+	if err := writePlist(path, jobPlist(label, program, appExe)); err != nil {
 		return fmt.Errorf("rex: writing the server's job: %w", err)
 	}
 	if exec.Command("launchctl", "print", domain+"/"+label).Run() != nil {
@@ -93,19 +99,21 @@ func spawnJob(exe string) error {
 	return nil
 }
 
-// jobPlist is the definition of the job label that runs exe as the server
-// of this machine: the environment the app has, so that a pane's shell
-// starts as it does now, the log the app has always written beside the
-// data directory, and no start of its own (RunAtLoad): Spawn starts it,
-// and it stays down while no app uses it, as the idle timeout leaves it.
-func jobPlist(label, exe string) []byte {
+// jobPlist is the definition of the job label that runs program, the
+// copy of this build, as the server of this machine: a few of the app's
+// variables, so that a pane's shell starts as it does now (and the app's
+// own path, which the server's shim keeps pointing at), the log beside
+// the data directory, and no start of its own (RunAtLoad): Spawn starts
+// it, and it stays down while no app uses it, as the idle timeout leaves
+// it.
+func jobPlist(label, program, appExe string) []byte {
 	var b bytes.Buffer
 	b.WriteString("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
 	b.WriteString("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n")
 	b.WriteString("<plist version=\"1.0\">\n<dict>\n")
 	keyString(&b, "Label", label)
 	b.WriteString("\t<key>ProgramArguments</key>\n\t<array>\n")
-	text(&b, "\t\t<string>", exe)
+	text(&b, "\t\t<string>", program)
 	b.WriteString("</string>\n")
 	text(&b, "\t\t<string>", "-server")
 	b.WriteString("</string>\n\t</array>\n")
@@ -114,6 +122,7 @@ func jobPlist(label, exe string) []byte {
 		k, v, _ := strings.Cut(kv, "=")
 		keyString(&b, k, v)
 	}
+	keyString(&b, EnvAppExe, appExe)
 	b.WriteString("\t</dict>\n")
 	keyString(&b, "StandardOutPath", filepath.Join(Dir(), "server.log"))
 	keyString(&b, "StandardErrorPath", filepath.Join(Dir(), "server.log"))

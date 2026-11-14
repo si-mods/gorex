@@ -76,39 +76,45 @@ Not goals:
 
 ## Design
 
-### 1. Run the server from a versioned copy (macOS)
+### 1. Run the server from a versioned copy (macOS) — built
 
 On macOS the new executable does not exist at a stable path until the app
 exits: the staged bundle sits in the updater's work directory and moves
 when the helper swaps it in. A server that `exec`s the staged file would
 report a path that soon goes away. So the server needs its own copy, as
-Rex has.
+Rex has. `servercopy_darwin.go` keeps it:
 
 - The app copies its whole bundle to
-  `~/Library/Application Support/GoRex/Server/<version>/GoRex.app` and
-  starts the server from that copy, not from its own bundle.
-  - Copy the whole bundle, not only `Contents/MacOS/GoRex`. A signed
-    executable alone fails its code signature without the bundle's sealed
-    resources, and macOS privacy permissions (Full Disk Access, screen
-    recording) follow the signed bundle. A copy with the same bundle id
-    and Team ID keeps the user's grants.
-  - Use `clonefile` (APFS copy-on-write) so the copy takes no space and no
-    time. Fall back to a plain copy.
-  - Copy into a temporary name, then rename, so a half copy never runs.
-  - Remove versions that no server runs, on server start, keeping the
-    current one.
-- After the updater stages an update, the app copies the **staged**
-  bundle to `Server/<new version>/` and upgrades the server to it with
-  `Client.Upgrade`. Today's handoff does the rest.
+  `~/Library/Application Support/GoRex/server/Versions/<build>/GoRex.app`,
+  with a `Current` beside it, and the launchd job runs
+  `…/Versions/Current/GoRex.app/Contents/MacOS/GoRex` (see
+  [session-server.md](session-server.md#how-the-server-starts-macos)).
+  - The whole bundle, not only `Contents/MacOS/GoRex`: a signed executable
+    alone fails its code signature without the bundle's sealed resources,
+    and macOS privacy permissions follow the signed bundle. The copy keeps
+    the bundle id, the Team ID and the seal, so the user's grants stay.
+  - `cp -Rpc`: a clone (APFS copy-on-write) where the volume has them, so
+    the copy takes no space and no time; a plain copy otherwise. The times
+    of the build are kept, so a newer build is told from an older one.
+  - `Current` is copied into a temporary name and renamed, so a half copy
+    never runs.
+  - The copies of the builds before the current one are removed when a
+    copy is made: a server that still runs from one keeps its files open.
+- `rex.ServerExecutable()` is the target of an in-place upgrade: `adopt`
+  upgrades a server of another build to this build's copy.
+- Still to do: after the updater stages an update, the app copies the
+  **staged** bundle to `Versions/<new build>/` and upgrades the server to
+  it before the app restarts (step 2 below); today the copy is made at
+  the next launch, from the installed app.
 - On Linux, `Install` replaces the file in place and the path stays the
   same. No copy is needed; the server upgrades to the same path.
 
-Open question: whether the server should keep the `GoRex` bundle or get
-a small helper bundle of its own, as Rex has (`LSUIElement`, its own
-bundle id). A helper bundle stops the server from showing a Dock icon in
-edge cases and makes Activity Monitor clearer, but it needs build and
-notarization changes, and a new bundle id loses the privacy grants once.
-Start with a copy of `GoRex.app`.
+The open question the step opened — a copy of `GoRex.app`, or a small
+helper bundle of its own as Rex has (`LSUIElement`, its own bundle id) —
+is answered with the copy: it keeps the app's bundle id and Team ID, and
+so the privacy grants the user gave the app, where a new bundle id would
+ask for them once more. A Dock icon is not a risk: the server is a
+`launchd` job, not an app LaunchServices opens.
 
 ### 2. Upgrade the server from the running app
 

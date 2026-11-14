@@ -225,18 +225,33 @@ on every client, after a client restarts and across an in-place upgrade.
 ### How the server starts (macOS)
 
 The app starts the server when no socket answers (`rex.Connect` →
-`Spawn`). On macOS that server is a job of `launchd`'s, as Rex's server
-is (`internal/rex/job_darwin.go`): the app writes `server.plist` in the
-data directory, loads the job in the user's session
-(`launchctl bootstrap gui/<uid>`) and starts it (`launchctl kickstart`).
-One job per data directory — the label carries its SHA-256, as Rex's
-`com.superlogical.rex.server.<sha256>` does. The job runs `<app exe>
--server` with a few of the app's variables (its directory, `PATH`,
-`HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `SSH_AUTH_SOCK`, `LANG`
-and `LC_*`) rather than all of them, which the plist would keep on disk;
-Rex passes its server the same few. It writes `server.log` beside the
-data, and `RunAtLoad` is off: it starts when an app needs it, and stays
-down when the idle timeout leaves it.
+`Spawn`). On macOS that server runs from a copy of the app, and is a job
+of `launchd`'s, as Rex's server is (`internal/rex/job_darwin.go`,
+`servercopy_darwin.go`).
+
+The copy: the app copies its bundle, as it is signed, to
+`Dir()/server/Versions/<build>/GoRex.app`, with a `Current` beside it
+that names the build the app is (`cp -Rpc`: a clone on APFS, the times
+of the build kept, so that a newer build is told from an older one). The
+builds before it are removed; the build a running server uses keeps its
+files open, as a replaced bundle does. Rex keeps its server the same way
+— `…/RexServer/Versions/<build>/Rex Server.app` with `Current` — so
+that its job runs `…/Versions/Current/Rex Server.app/Contents/MacOS/rex`
+and never changes its arguments, while an update replaces the app's
+bundle, not the server's files.
+
+The job: the app writes `server.plist` in the data directory, loads the
+job in the user's session (`launchctl bootstrap gui/<uid>`) and starts it
+(`launchctl kickstart`). One job per data directory — the label carries
+its SHA-256, as Rex's `com.superlogical.rex.server.<sha256>` does. It
+runs `…/Versions/Current/GoRex.app/Contents/MacOS/GoRex -server` with a
+few of the app's variables (its directory, `PATH`, `HOME`, `USER`,
+`LOGNAME`, `SHELL`, `TMPDIR`, `SSH_AUTH_SOCK`, `LANG` and `LC_*`, and
+`GOREX_APP_EXE`, which keeps the `gorex` shim pointing at the app rather
+than at a copy) rather than all of them, which the plist would keep on
+disk; Rex passes its server the same few. It writes `server.log` beside
+the data, and `RunAtLoad` is off: it starts when an app needs it, and
+stays down when the idle timeout leaves it.
 
 It must not be the app's child. macOS ends a dying app's subordinate
 processes: when an app exits while it still has children and Background
@@ -250,17 +265,11 @@ were the app's child would end every session with it, and the
 conversations in its panes. Under launchd the server is nobody's child,
 and the app's end, crash or replacement leaves the sessions alone.
 
-Rex goes one step further: its server is a helper app of its own
-(`Rex Server.app`, `LSUIElement`, `com.superlogical.rex.server`), copied
-to `~/Library/Application Support/com.superlogical.rex/RexServer/Versions/<build>/`
-with a `Current` beside it, and its job runs the copy
-(`…/Versions/Current/Rex Server.app/Contents/MacOS/rex server run …`).
-The copy is a build's own, so it outlives the app being replaced, and the
-server can take the new build's place before the app restarts — what
-[app-server-update.md](app-server-update.md) designs for GoRex. Until
-that lands, GoRex's job runs the server from the app bundle: a running
-server keeps its files open when an update replaces the bundle, and an
-in-place upgrade `exec`s the new build's binary (`upgrade_unix.go`).
+The app's own executable, and a copy's, are told apart: the app's
+`adopt` (`workspace.go`) upgrades a server of another build to
+`rex.ServerExecutable()`, the copy of the build the app is
+(`servercopy_darwin.go`), so an upgraded server runs from the copy too
+(`upgrade_unix.go`).
 
 A binary that is not in an app bundle (a test, `go run . -server`) and a
 platform without a job start the server as a detached process, as before.

@@ -976,7 +976,7 @@ func serverCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	if args[0] == "upgrade" {
 		defer c.Close()
-		exe, _ := rex.Executable()
+		exe, _ := rex.ServerExecutable()
 		if err := upgradeServer(c, h, exe, out); err != nil {
 			fmt.Fprintln(errOut, "gorex server:", err)
 			return ExitFailed, true
