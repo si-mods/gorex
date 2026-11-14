@@ -180,7 +180,7 @@ func (a *App) command(c rex.LayoutCommand) rex.LayoutCommand {
 			p.Tab.setFocus(p)
 			a.focusReq = p
 		}
-		cmd := lookupCommand(c.Action)
+		cmd := a.lookupCommand(c.Action)
 		if cmd == nil {
 			return fail("unknown_action", "GoRex does not know "+c.Action)
 		}

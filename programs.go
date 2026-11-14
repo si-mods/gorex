@@ -57,68 +57,68 @@ var (
 	// noteProgram is the tile of a note pane, which runs no program.
 	noteProgram = program{Name: "Note", Glyph: "sticky-note", TileGlyph: "sticky-note", TileBg: ui.Hex("#f5c542"), TileFg: ui.Hex("#3a2f08")}
 
-	programs = map[string]program{
-		"codex":     {Name: "Codex", Glyph: "brand:openai", TileBg: ui.Hex("#f7f7f7"), TileFg: ui.Hex("#1a1a1a"), TileBorder: true},
-		"claude":    {Name: "Claude Code", Glyph: "brand:claude", TileBg: ui.Hex("#d97757"), TileFg: ui.Hex("#ffffff")},
-		"agy":       {Name: "Antigravity", Glyph: "brand:antigravity", TileBg: ui.Hex("#1a73e8"), TileFg: ui.Hex("#ffffff")},
-		"node":      {Name: "Node", Glyph: "node-hex", TileBg: ui.Hex("#5fa04e"), TileFg: ui.Hex("#ffffff"), TileGlyph: "brand:nodedotjs"},
-		"bun":       {Name: "Bun", Glyph: "brand:bun", TileBg: ui.Hex("#fbf0df"), TileFg: ui.Hex("#3b2a20"), TileBorder: true},
-		"deno":      {Name: "Deno", Glyph: "brand:deno", TileBg: ui.Hex("#1b1b1b"), TileFg: ui.Hex("#ffffff")},
-		"python":    {Name: "Python", Glyph: "brand:python", TileBg: ui.Hex("#3776ab"), TileFg: ui.Hex("#ffd43b")},
-		"lazygit":   {Name: "Git Changes", Glyph: "plus-minus-circle", TileBg: ui.Hex("#3f8f4f"), TileFg: ui.Hex("#ffffff"), TileGlyph: "diff"},
-		"tig":       {Name: "Git Log", Glyph: "git-branch", TileBg: ui.Hex("#f05032"), TileFg: ui.Hex("#ffffff")},
-		"git":       {Name: "Git", Glyph: "brand:git", TileBg: ui.Hex("#f05032"), TileFg: ui.Hex("#ffffff")},
-		"vim":       {Name: "Vim", Glyph: "brand:vim", TileBg: ui.Hex("#019733"), TileFg: ui.Hex("#ffffff")},
-		"nvim":      {Name: "Neovim", Glyph: "brand:neovim", TileBg: ui.Hex("#2b7a3d"), TileFg: ui.Hex("#ffffff")},
-		"hx":        {Name: "Helix", Glyph: "brand:helix", TileBg: ui.Hex("#281733"), TileFg: ui.Hex("#c7a3f5")},
-		"emacs":     {Name: "Emacs", Glyph: "brand:gnuemacs", TileBg: ui.Hex("#7f5ab6"), TileFg: ui.Hex("#ffffff")},
-		"htop":      {Name: "Activity", Glyph: "activity", TileBg: ui.Hex("#1f6f43"), TileFg: ui.Hex("#a7f3c4")},
-		"btop":      {Name: "Activity", Glyph: "activity", TileBg: ui.Hex("#1f6f43"), TileFg: ui.Hex("#a7f3c4")},
-		"top":       {Name: "Activity", Glyph: "activity", TileBg: ui.Hex("#1f6f43"), TileFg: ui.Hex("#a7f3c4")},
-		"ssh":       {Name: "SSH", Glyph: "globe", TileBg: ui.Hex("#5b4bd6"), TileFg: ui.Hex("#ffffff")},
-		"mosh":      {Name: "Mosh", Glyph: "globe", TileBg: ui.Hex("#5b4bd6"), TileFg: ui.Hex("#ffffff")},
-		"docker":    {Name: "Docker", Glyph: "brand:docker", TileBg: ui.Hex("#2496ed"), TileFg: ui.Hex("#ffffff")},
-		"go":        {Name: "Go", Glyph: "brand:go", TileBg: ui.Hex("#00add8"), TileFg: ui.Hex("#ffffff")},
-		"cargo":     {Name: "Cargo", Glyph: "brand:rust", TileBg: ui.Hex("#2b2b2b"), TileFg: ui.Hex("#f4a261")},
-		"rustc":     {Name: "Rust", Glyph: "brand:rust", TileBg: ui.Hex("#2b2b2b"), TileFg: ui.Hex("#f4a261")},
-		"npm":       {Name: "npm", Glyph: "brand:npm", TileBg: ui.Hex("#cb3837"), TileFg: ui.Hex("#ffffff")},
-		"pnpm":      {Name: "pnpm", Glyph: "brand:pnpm", TileBg: ui.Hex("#f69220"), TileFg: ui.Hex("#ffffff")},
-		"yarn":      {Name: "Yarn", Glyph: "brand:yarn", TileBg: ui.Hex("#2c8ebb"), TileFg: ui.Hex("#ffffff")},
-		"ruby":      {Name: "Ruby", Glyph: "brand:ruby", TileBg: ui.Hex("#cc342d"), TileFg: ui.Hex("#ffffff")},
-		"irb":       {Name: "Ruby", Glyph: "brand:ruby", TileBg: ui.Hex("#cc342d"), TileFg: ui.Hex("#ffffff")},
-		"lua":       {Name: "Lua", Glyph: "brand:lua", TileBg: ui.Hex("#2c2d72"), TileFg: ui.Hex("#ffffff")},
-		"php":       {Name: "PHP", Glyph: "brand:php", TileBg: ui.Hex("#777bb4"), TileFg: ui.Hex("#ffffff")},
-		"psql":      {Name: "PostgreSQL", Glyph: "brand:postgresql", TileBg: ui.Hex("#336791"), TileFg: ui.Hex("#ffffff")},
-		"mysql":     {Name: "MySQL", Glyph: "brand:mysql", TileBg: ui.Hex("#00758f"), TileFg: ui.Hex("#ffffff")},
-		"redis-cli": {Name: "Redis", Glyph: "brand:redis", TileBg: ui.Hex("#d82c20"), TileFg: ui.Hex("#ffffff")},
-		"tmux":      {Name: "tmux", Glyph: "brand:tmux", TileBg: ui.Hex("#1bb91f"), TileFg: ui.Hex("#ffffff")},
-		"make":      {Name: "Make", Glyph: "cpu", TileBg: ui.Hex("#6b7280"), TileFg: ui.Hex("#ffffff")},
-		"swift":     {Name: "Swift", Glyph: "brand:swift", TileBg: ui.Hex("#f05138"), TileFg: ui.Hex("#ffffff")},
-		"kotlin":    {Name: "Kotlin", Glyph: "brand:kotlin", TileBg: ui.Hex("#7f52ff"), TileFg: ui.Hex("#ffffff")},
-		// omp's glyph is that of its site's favicon (omp.sh/favicon.svg), as one path.
-		"omp": {Name: "omp", Glyph: "brand:omp", TileBg: ui.Hex("#0f0a14"), TileFg: ui.Hex("#b66cff")},
-		// Windows shells: at their prompt they show as shells (Shell), with their own tile.
-		"pwsh":       {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
-		"powershell": {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
-		"cmd":        {Name: "Command Prompt", Glyph: "square-terminal", TileGlyph: "terminal", TileBg: ui.Hex("#0c0c0c"), TileFg: ui.Hex("#cccccc"), Shell: true},
-	}
+	programs = func() map[string]program {
+		m := map[string]program{
+			"codex":     {Name: "Codex", Glyph: "brand:openai", TileBg: ui.Hex("#f7f7f7"), TileFg: ui.Hex("#1a1a1a"), TileBorder: true},
+			"claude":    {Name: "Claude Code", Glyph: "brand:claude", TileBg: ui.Hex("#d97757"), TileFg: ui.Hex("#ffffff")},
+			"agy":       {Name: "Antigravity", Glyph: "brand:antigravity", TileBg: ui.Hex("#1a73e8"), TileFg: ui.Hex("#ffffff")},
+			"node":      {Name: "Node", Glyph: "node-hex", TileBg: ui.Hex("#5fa04e"), TileFg: ui.Hex("#ffffff"), TileGlyph: "brand:nodedotjs"},
+			"bun":       {Name: "Bun", Glyph: "brand:bun", TileBg: ui.Hex("#fbf0df"), TileFg: ui.Hex("#3b2a20"), TileBorder: true},
+			"deno":      {Name: "Deno", Glyph: "brand:deno", TileBg: ui.Hex("#1b1b1b"), TileFg: ui.Hex("#ffffff")},
+			"python":    {Name: "Python", Glyph: "brand:python", TileBg: ui.Hex("#3776ab"), TileFg: ui.Hex("#ffd43b")},
+			"lazygit":   {Name: "Git Changes", Glyph: "plus-minus-circle", TileBg: ui.Hex("#3f8f4f"), TileFg: ui.Hex("#ffffff"), TileGlyph: "diff"},
+			"tig":       {Name: "Git Log", Glyph: "git-branch", TileBg: ui.Hex("#f05032"), TileFg: ui.Hex("#ffffff")},
+			"git":       {Name: "Git", Glyph: "brand:git", TileBg: ui.Hex("#f05032"), TileFg: ui.Hex("#ffffff")},
+			"vim":       {Name: "Vim", Glyph: "brand:vim", TileBg: ui.Hex("#019733"), TileFg: ui.Hex("#ffffff")},
+			"nvim":      {Name: "Neovim", Glyph: "brand:neovim", TileBg: ui.Hex("#2b7a3d"), TileFg: ui.Hex("#ffffff")},
+			"hx":        {Name: "Helix", Glyph: "brand:helix", TileBg: ui.Hex("#281733"), TileFg: ui.Hex("#c7a3f5")},
+			"emacs":     {Name: "Emacs", Glyph: "brand:gnuemacs", TileBg: ui.Hex("#7f5ab6"), TileFg: ui.Hex("#ffffff")},
+			"htop":      {Name: "Activity", Glyph: "activity", TileBg: ui.Hex("#1f6f43"), TileFg: ui.Hex("#a7f3c4")},
+			"btop":      {Name: "Activity", Glyph: "activity", TileBg: ui.Hex("#1f6f43"), TileFg: ui.Hex("#a7f3c4")},
+			"top":       {Name: "Activity", Glyph: "activity", TileBg: ui.Hex("#1f6f43"), TileFg: ui.Hex("#a7f3c4")},
+			"ssh":       {Name: "SSH", Glyph: "globe", TileBg: ui.Hex("#5b4bd6"), TileFg: ui.Hex("#ffffff")},
+			"mosh":      {Name: "Mosh", Glyph: "globe", TileBg: ui.Hex("#5b4bd6"), TileFg: ui.Hex("#ffffff")},
+			"docker":    {Name: "Docker", Glyph: "brand:docker", TileBg: ui.Hex("#2496ed"), TileFg: ui.Hex("#ffffff")},
+			"go":        {Name: "Go", Glyph: "brand:go", TileBg: ui.Hex("#00add8"), TileFg: ui.Hex("#ffffff")},
+			"cargo":     {Name: "Cargo", Glyph: "brand:rust", TileBg: ui.Hex("#2b2b2b"), TileFg: ui.Hex("#f4a261")},
+			"rustc":     {Name: "Rust", Glyph: "brand:rust", TileBg: ui.Hex("#2b2b2b"), TileFg: ui.Hex("#f4a261")},
+			"npm":       {Name: "npm", Glyph: "brand:npm", TileBg: ui.Hex("#cb3837"), TileFg: ui.Hex("#ffffff")},
+			"pnpm":      {Name: "pnpm", Glyph: "brand:pnpm", TileBg: ui.Hex("#f69220"), TileFg: ui.Hex("#ffffff")},
+			"yarn":      {Name: "Yarn", Glyph: "brand:yarn", TileBg: ui.Hex("#2c8ebb"), TileFg: ui.Hex("#ffffff")},
+			"ruby":      {Name: "Ruby", Glyph: "brand:ruby", TileBg: ui.Hex("#cc342d"), TileFg: ui.Hex("#ffffff")},
+			"irb":       {Name: "Ruby", Glyph: "brand:ruby", TileBg: ui.Hex("#cc342d"), TileFg: ui.Hex("#ffffff")},
+			"lua":       {Name: "Lua", Glyph: "brand:lua", TileBg: ui.Hex("#2c2d72"), TileFg: ui.Hex("#ffffff")},
+			"php":       {Name: "PHP", Glyph: "brand:php", TileBg: ui.Hex("#777bb4"), TileFg: ui.Hex("#ffffff")},
+			"psql":      {Name: "PostgreSQL", Glyph: "brand:postgresql", TileBg: ui.Hex("#336791"), TileFg: ui.Hex("#ffffff")},
+			"mysql":     {Name: "MySQL", Glyph: "brand:mysql", TileBg: ui.Hex("#00758f"), TileFg: ui.Hex("#ffffff")},
+			"redis-cli": {Name: "Redis", Glyph: "brand:redis", TileBg: ui.Hex("#d82c20"), TileFg: ui.Hex("#ffffff")},
+			"tmux":      {Name: "tmux", Glyph: "brand:tmux", TileBg: ui.Hex("#1bb91f"), TileFg: ui.Hex("#ffffff")},
+			"make":      {Name: "Make", Glyph: "cpu", TileBg: ui.Hex("#6b7280"), TileFg: ui.Hex("#ffffff")},
+			"swift":     {Name: "Swift", Glyph: "brand:swift", TileBg: ui.Hex("#f05138"), TileFg: ui.Hex("#ffffff")},
+			"kotlin":    {Name: "Kotlin", Glyph: "brand:kotlin", TileBg: ui.Hex("#7f52ff"), TileFg: ui.Hex("#ffffff")},
+			// omp's glyph is that of its site's favicon (omp.sh/favicon.svg), as one path.
+			"omp": {Name: "omp", Glyph: "brand:omp", TileBg: ui.Hex("#0f0a14"), TileFg: ui.Hex("#b66cff")},
+			// Windows shells: at their prompt they show as shells (Shell), with their own tile.
+			"pwsh":       {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
+			"powershell": {Name: "PowerShell", Glyph: "brand:powershell", TileBg: ui.Hex("#5391fe"), TileFg: ui.Hex("#ffffff"), Shell: true},
+			"cmd":        {Name: "Command Prompt", Glyph: "square-terminal", TileGlyph: "terminal", TileBg: ui.Hex("#0c0c0c"), TileFg: ui.Hex("#cccccc"), Shell: true},
+		}
+		m["python3"] = m["python"]
+		m["ipython"] = m["python"]
+		m["view"] = m["vim"]
+		m["vi"] = m["vim"]
+		m["less"] = program{Name: "Pager", Glyph: "file-code", TileBg: ui.Hex("#475569"), TileFg: ui.Hex("#ffffff")}
+		m["man"] = m["less"]
+		// Claude Code reports itself as claude-code in the status protocol.
+		m["claude-code"] = m["claude"]
+		m["antigravity"] = m["agy"]
+		m["antigravity-cli"] = m["agy"]
+		return m
+	}()
 
 	shells = map[string]bool{"zsh": true, "bash": true, "fish": true, "sh": true, "dash": true, "nu": true, "pwsh": true, "elvish": true, "xonsh": true, "tcsh": true, "csh": true, "ksh": true,
 		"cmd": true, "powershell": true}
 )
-
-func init() {
-	programs["python3"] = programs["python"]
-	programs["ipython"] = programs["python"]
-	programs["view"] = programs["vim"]
-	programs["vi"] = programs["vim"]
-	programs["less"] = program{Name: "Pager", Glyph: "file-code", TileBg: ui.Hex("#475569"), TileFg: ui.Hex("#ffffff")}
-	programs["man"] = programs["less"]
-	// Claude Code reports itself as claude-code in the status protocol.
-	programs["claude-code"] = programs["claude"]
-	programs["antigravity"] = programs["agy"]
-	programs["antigravity-cli"] = programs["agy"]
-}
 
 // programOf returns how a program shows, by the name of its process.
 func programOf(name string) program {

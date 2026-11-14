@@ -134,7 +134,7 @@ func (a *App) openSettings() {
 		closeAddHost()
 		closeHostLayout()
 		closeHostRename()
-		hostsPairQR = nil
+		remoteUI.pairQR = nil
 		shortcutsUI = shortcutsState{}
 		if a.st != nil && a.st.recording {
 			a.st.recording = false
@@ -225,11 +225,11 @@ func (a *App) settingsView(c *ui.Context) {
 			})
 		})
 	})
-	if page := hostsPairQR; page != nil {
+	if page := remoteUI.pairQR; page != nil {
 		// A code of this machine closes once its address no longer works.
 		if tailnet, lan := localRexPairs(); page.local && page.address != tailnet && page.address != lan ||
 			page.rexGo && !remoteUI.st.Running {
-			hostsPairQR = nil
+			remoteUI.pairQR = nil
 		} else {
 			hostPairQRSheet(c, k, page)
 		}

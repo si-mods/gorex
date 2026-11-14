@@ -35,8 +35,6 @@ type hostPairQR struct {
 	direct bool
 }
 
-var hostsPairQR *hostPairQR
-
 // localRexPairs are this computer's Rex pairing addresses: the gateway's
 // tailnet HTTPS address, as "gorex rexapi pair" shows it, and the local
 // network listener's, for a phone on the same network. The code holds the
@@ -63,7 +61,7 @@ func (a *App) openLocalPairQR() {
 	_, image := mobilePairQR(address)
 	if image != nil {
 		name, _, _ := a.hostIdentity()
-		hostsPairQR = &hostPairQR{host: name, address: address, image: image, open: true, local: true, tailnet: tailnet}
+		remoteUI.pairQR = &hostPairQR{host: name, address: address, image: image, open: true, local: true, tailnet: tailnet}
 	}
 }
 
@@ -73,7 +71,7 @@ func openHostPairQR(h *hostConn) {
 		return
 	}
 	page := &hostPairQR{host: h.label(), open: true, loading: true}
-	hostsPairQR = page
+	remoteUI.pairQR = page
 	target := h.Address
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -88,7 +86,7 @@ func openHostPairQR(h *hostConn) {
 			}
 		}
 		win.Update(func() {
-			if hostsPairQR == page {
+			if remoteUI.pairQR == page {
 				page.address, page.image, page.loading = address, image, false
 			}
 		})
@@ -117,7 +115,7 @@ func (a *App) openRexGoQR(direct bool) {
 		}
 		return err
 	}, func() {
-		hostsPairQR = &hostPairQR{host: name, image: image, open: true, rexGo: true, direct: direct}
+		remoteUI.pairQR = &hostPairQR{host: name, image: image, open: true, rexGo: true, direct: direct}
 	})
 }
 
@@ -219,6 +217,6 @@ func hostPairQRSheet(c *ui.Context, k *colors, page *hostPairQR) {
 		})
 	})
 	if !page.open {
-		hostsPairQR = nil
+		remoteUI.pairQR = nil
 	}
 }

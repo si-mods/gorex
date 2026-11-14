@@ -178,8 +178,8 @@ func TestRexGoQR(t *testing.T) {
 	isolateSettings(t, "")
 	registerFonts()
 	t.Cleanup(stopRemotePoll)
-	qr := hostsPairQR
-	t.Cleanup(func() { hostsPairQR = qr })
+	qr := remoteUI.pairQR
+	t.Cleanup(func() { remoteUI.pairQR = qr })
 	a := &App{}
 	settingsUI.section = "server"
 	remoteUI.loaded, remoteUI.st, remoteUI.err = true, rex.RemoteStatus{Enabled: true}, nil
@@ -195,7 +195,7 @@ func TestRexGoQR(t *testing.T) {
 		t.Fatalf("%v; texts %q", err, tt.Texts())
 	}
 	tt.Frame()
-	if remoteUI.err == nil || remoteUI.err() != locales.RemoteNotConnected() || hostsPairQR != nil {
+	if remoteUI.err == nil || remoteUI.err() != locales.RemoteNotConnected() || remoteUI.pairQR != nil {
 		t.Error("Rex Go QR… did not ask the server")
 	}
 	// While a change is on its way, it waits, as every change does.
@@ -207,7 +207,7 @@ func TestRexGoQR(t *testing.T) {
 	remoteUI.busy = false
 
 	const secret = "tcSECRETADDRESS"
-	hostsPairQR = &hostPairQR{host: "mac", image: qrImage(rexGoPairURL(secret, "mac")), open: true, rexGo: true}
+	remoteUI.pairQR = &hostPairQR{host: "mac", image: qrImage(rexGoPairURL(secret, "mac")), open: true, rexGo: true}
 	tt.Frame()
 	if !tt.HasText(locales.RemoteRexGoQRHint()) {
 		t.Fatalf("no hint in %q", tt.Texts())
@@ -219,7 +219,7 @@ func TestRexGoQR(t *testing.T) {
 	}
 	remoteUI.st.Running = false
 	tt.Frame()
-	if hostsPairQR != nil {
+	if remoteUI.pairQR != nil {
 		t.Error("the code stayed once remote access stopped")
 	}
 }

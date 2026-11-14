@@ -164,19 +164,14 @@ func (cmd *command) invoke(a *App, args map[string]any) error {
 	return nil
 }
 
-// commandsByID is every action by its ID, made from commands at start,
-// plus the custom actions of the Lua configuration.
+// commandsByID is every built-in action by its ID, made from commands at start.
 var commandsByID = map[string]*command{}
-
-// customCommands are the Lua configuration's actions, which the palette
-// and the CLI list beside the built-ins.
-var customCommands []*command
 
 // newCustomCommands builds the actions of cfg without registering them.
 func newCustomCommands(cfg *config.Config) ([]*command, error) {
 	out := make([]*command, 0, len(cfg.Actions))
 	for _, ca := range cfg.Actions {
-		if lookupCommand(ca.Name) != nil && !slices.ContainsFunc(customCommands, func(c *command) bool { return c.ID == ca.Name }) {
+		if commandsByID[ca.Name] != nil {
 			return nil, fmt.Errorf("custom action %q collides with a built-in", ca.Name)
 		}
 		ca := ca
@@ -197,7 +192,7 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 					if blockedFromClient(id) {
 						return fmt.Errorf("%s is not allowed from an action", id)
 					}
-					cmd := lookupCommand(id)
+					cmd := app.lookupCommand(id)
 					if cmd == nil {
 						return fmt.Errorf("no action %q", id)
 					}
@@ -210,19 +205,21 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 	return out, nil
 }
 
-// setCustomCommands replaces the registered custom actions.
-func setCustomCommands(list []*command) {
-	for _, c := range customCommands {
-		delete(commandsByID, c.ID)
-	}
-	customCommands = list
-	for _, c := range list {
-		commandsByID[c.ID] = c
-	}
-}
-
-// lookupCommand returns the action ID, nil when there is none.
+// lookupCommand returns the built-in action ID, nil when there is none.
 func lookupCommand(id string) *command { return commandsByID[id] }
+
+// lookupCommand returns the action by ID, checking custom actions on a
+// before built-in actions.
+func (a *App) lookupCommand(id string) *command {
+	if a != nil {
+		for _, c := range a.custom {
+			if c.ID == id {
+				return c
+			}
+		}
+	}
+	return commandsByID[id]
+}
 
 var (
 	cmdNewTab = command{

@@ -32,7 +32,6 @@ gorex.bind("ctrl+shift+l", "scratch")
 	t.Setenv("GOREX_CONFIG", path)
 	a, _ := newTestApp(t)
 	t.Cleanup(func() {
-		setCustomCommands(nil)
 		if a.luaConfig != nil {
 			a.luaConfig.Close()
 		}
@@ -98,7 +97,6 @@ func TestCoerceArgs(t *testing.T) {
 func TestShortcutOverrides(t *testing.T) {
 	a, _ := newTestApp(t)
 	t.Cleanup(func() {
-		setCustomCommands(nil)
 		if a.luaConfig != nil {
 			a.luaConfig.Close()
 		}

@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"slices"
 
 	"github.com/egoist/mygo"
 
@@ -62,19 +61,7 @@ func (a *App) loadLuaConfig() error {
 			cfg.Close()
 			return fmt.Errorf("gorex config: %s: %w", b.Key, err)
 		}
-		var cmd *command
-		for _, c := range cmds {
-			if c.ID == b.Action {
-				cmd = c
-				break
-			}
-		}
-		if cmd == nil {
-			cmd = lookupCommand(b.Action)
-			if cmd != nil && slices.ContainsFunc(customCommands, func(c *command) bool { return c.ID == b.Action }) {
-				cmd = nil // removed from the new configuration
-			}
-		}
+		cmd := resolveAction(cmds, b.Action)
 		if cmd == nil {
 			cfg.Close()
 			return fmt.Errorf("gorex config: no action %q", b.Action)
@@ -95,19 +82,7 @@ func (a *App) loadLuaConfig() error {
 			log.Printf("gorex shortcuts: %s: %v", o.Key, err)
 			continue
 		}
-		var cmd *command
-		for _, c := range cmds {
-			if c.ID == o.Action {
-				cmd = c
-				break
-			}
-		}
-		if cmd == nil {
-			cmd = lookupCommand(o.Action)
-			if cmd != nil && slices.ContainsFunc(customCommands, func(c *command) bool { return c.ID == o.Action }) {
-				cmd = nil // removed from the new configuration
-			}
-		}
+		cmd := resolveAction(cmds, o.Action)
 		if cmd == nil {
 			log.Printf("gorex shortcuts: no action %q", o.Action)
 			continue
@@ -118,7 +93,6 @@ func (a *App) loadLuaConfig() error {
 		}
 	}
 	old := a.luaConfig
-	setCustomCommands(cmds)
 	a.keys = d
 	a.custom = cmds
 	a.luaConfig = cfg
@@ -130,6 +104,16 @@ func (a *App) loadLuaConfig() error {
 		old.Close()
 	}
 	return nil
+}
+
+// resolveAction finds id in custom actions first, then built-in commands.
+func resolveAction(cmds []*command, id string) *command {
+	for _, c := range cmds {
+		if c.ID == id {
+			return c
+		}
+	}
+	return commandsByID[id]
 }
 
 type shortcutBinding struct {
