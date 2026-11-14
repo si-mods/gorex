@@ -73,6 +73,7 @@ func serveLLMs(w http.ResponseWriter, r *http.Request) {
 	w.Write(llmsRev12)
 	w.Write(llmsGoRex)
 	w.Write(llmsSeeBlock)
+	w.Write(llmsSpacesApply)
 	w.Write(llmsMergeWindows)
 }
 
@@ -158,6 +159,7 @@ func serveLLMsHTML(w http.ResponseWriter, r *http.Request) {
 	io.WriteString(w, html.EscapeString(string(llmsRev12)))
 	io.WriteString(w, html.EscapeString(string(llmsGoRex)))
 	io.WriteString(w, html.EscapeString(string(llmsSeeBlock)))
+	io.WriteString(w, html.EscapeString(string(llmsSpacesApply)))
 	io.WriteString(w, html.EscapeString(string(llmsMergeWindows)))
 	io.WriteString(w, "</pre>\n")
 }

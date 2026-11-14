@@ -66,6 +66,7 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         # The short git hash About shows; scripts/upload sets it.
         GOREX_COMMIT: ""
+        CODE_SIGN_ENTITLEMENTS: GoRex/GoRex.entitlements
     info:
       path: GoRex/Info.plist
       properties:

@@ -103,7 +103,7 @@ func (g *Gateway) features() []string {
 		features = append(features, featureDownload)
 	}
 	if g.hello.Can(rex.CapabilityTabToSpace) {
-		features = append(features, featureMoveWindow)
+		features = append(features, featureMoveWindow, featureSpacesSync)
 	}
 	if g.hello.Can(rex.CapabilityLayoutServer) {
 		features = append(features, featureMergeWindows)

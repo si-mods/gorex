@@ -47,8 +47,17 @@ struct SpaceTombstone: Codable, Equatable, Hashable {
     var deleted_at: TimeInterval
 }
 
-/// Owns the centralized `SpaceManifest`, persists it locally, and merges
-/// discovered sessions/windows from connected remote hosts.
+/// Abstraction over `NSUbiquitousKeyValueStore` for iCloud sync and testing.
+protocol SpaceKeyValueStore: AnyObject {
+    func data(forKey aKey: String) -> Data?
+    func set(_ aData: Data?, forKey aKey: String)
+    @discardableResult func synchronize() -> Bool
+}
+
+extension NSUbiquitousKeyValueStore: SpaceKeyValueStore {}
+
+/// Owns the centralized `SpaceManifest`, persists it locally, syncs via
+/// iCloud KVS, and merges discovered sessions/windows from connected hosts.
 @MainActor
 @Observable
 final class SpaceStore {
@@ -56,6 +65,10 @@ final class SpaceStore {
     static let desktopTerminalsSessionID = "gorex-desktop-terminals"
     /// Retention window for tombstones before pruning (7 days).
     static let tombstoneRetention: TimeInterval = 7 * 24 * 60 * 60
+    /// Key used in `NSUbiquitousKeyValueStore`.
+    static let kvsKey = "gorex.spaces.manifest.v1"
+    /// Stay safely under `NSUbiquitousKeyValueStore`'s 1 MB per-key limit.
+    static let kvsMaxBytes = 900_000
 
     struct HostSnapshot {
         struct Session {
@@ -72,15 +85,40 @@ final class SpaceStore {
 
     private(set) var manifest: SpaceManifest
     @ObservationIgnored private let fileURL: URL
+    @ObservationIgnored private let kvs: SpaceKeyValueStore?
+    @ObservationIgnored nonisolated(unsafe) private var cloudObserver: NSObjectProtocol?
 
-    init(fileURL: URL? = nil) {
+    init(fileURL: URL? = nil, kvs: SpaceKeyValueStore? = nil, observeCloud: Bool = false) {
         let url = fileURL ?? Self.defaultFileURL()
         self.fileURL = url
+        self.kvs = kvs
         if let data = try? Data(contentsOf: url),
            let decoded = try? JSONDecoder().decode(SpaceManifest.self, from: data) {
             self.manifest = decoded
         } else {
             self.manifest = SpaceManifest()
+        }
+        if let kvs {
+            kvs.synchronize()
+            pullFromKVS(kvs)
+            if observeCloud {
+                cloudObserver = NotificationCenter.default.addObserver(
+                    forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                    object: kvs,
+                    queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self, let kvs = self.kvs else { return }
+                        self.pullFromKVS(kvs)
+                    }
+                }
+            }
+        }
+    }
+
+    deinit {
+        if let cloudObserver {
+            NotificationCenter.default.removeObserver(cloudObserver)
         }
     }
 
@@ -315,13 +353,22 @@ final class SpaceStore {
     }
 
     /// LWW merge with another `SpaceManifest` (e.g. from iCloud).
-    func merge(_ incoming: SpaceManifest) {
+    func merge(_ incoming: SpaceManifest, pushIfChanged: Bool = true) {
         var result = Self.merged(local: manifest, remote: incoming)
-        if result != manifest {
-            result.revision = max(manifest.revision, incoming.revision) + 1
-            manifest = result
-            save()
-        }
+        guard result != manifest else { return }
+        result.revision = max(manifest.revision, incoming.revision) + 1
+        manifest = result
+        // Avoid pushing back to KVS if the merged state matches what cloud already has.
+        let needsKVSPush = pushIfChanged && (result.spaces != incoming.spaces || result.tombstones != incoming.tombstones)
+        save(pushKVS: needsKVSPush)
+    }
+
+    /// Reads the manifest stored in `kvs` and merges it into local state.
+    func pullFromKVS(_ store: SpaceKeyValueStore? = nil) {
+        guard let target = store ?? kvs,
+              let data = target.data(forKey: Self.kvsKey),
+              let incoming = try? JSONDecoder().decode(SpaceManifest.self, from: data) else { return }
+        merge(incoming, pushIfChanged: true)
     }
 
     static func merged(local: SpaceManifest, remote: SpaceManifest) -> SpaceManifest {
@@ -429,10 +476,23 @@ final class SpaceStore {
         if manifest.tombstones.count != before { changed = true }
     }
 
-    private func save() {
+    private func save(pushKVS: Bool = true) {
         let dir = fileURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        guard let data = try? JSONEncoder().encode(manifest) else { return }
+        guard var data = try? JSONEncoder().encode(manifest) else { return }
         try? data.write(to: fileURL, options: .atomic)
+
+        guard pushKVS, let kvs else { return }
+        if data.count > Self.kvsMaxBytes, !manifest.tombstones.isEmpty {
+            var trimmed = manifest
+            trimmed.tombstones.sort { $0.deleted_at > $1.deleted_at }
+            while data.count > Self.kvsMaxBytes && !trimmed.tombstones.isEmpty {
+                trimmed.tombstones.removeLast()
+                if let encoded = try? JSONEncoder().encode(trimmed) { data = encoded } else { break }
+            }
+        }
+        guard data.count <= Self.kvsMaxBytes else { return }
+        kvs.set(data, forKey: Self.kvsKey)
+        kvs.synchronize()
     }
 }

@@ -363,7 +363,7 @@ func helpAllDocument(rev int) map[string]json.RawMessage {
 // gorex.see_block, gorex.merge_windows and gorex.move_block_to_new_window.
 func ownMethods() []json.RawMessage {
 	var out []json.RawMessage
-	for _, e := range []map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry} {
+	for _, e := range []map[string]any{moveWindowEntry, seeBlockEntry, mergeWindowsEntry, newWindowFromBlockEntry, spacesApplyEntry} {
 		if raw, err := json.Marshal(e); err == nil {
 			out = append(out, raw)
 		}
