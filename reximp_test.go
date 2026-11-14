@@ -14,9 +14,9 @@ import (
 
 	"gorex/internal/layout"
 	"gorex/internal/rex"
+	"gorex/internal/rexapi"
 	"gorex/internal/reximp"
 	"gorex/internal/rexpeer"
-	"gorex/internal/testrex"
 )
 
 // TestRexImportCreatesSpaces imports a Rex session into the app: a space,
@@ -48,15 +48,19 @@ func TestRexImportCreatesSpaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	seeded := fmt.Sprintf(`{"version":2,"sessions":[{"id":"REXSPACE","name":"rexspace","active":0,"tabs":[{"id":"REXTAB","name":"rexwin","root":{"ratio":0.5,"a":{"sid":%q,"name":"left"},"b":{"sid":%q,"name":"right"}},"focus":0}]}],"windows":["REXSPACE"]}`, one.ID, two.ID)
+	seeded := fmt.Sprintf(`{"version":2,"sessions":[{"id":"REXSPACE","name":"rexspace","active":0,"tabs":[{"id":"REXTAB","name":"rexwin","root":{"ratio":0.5,"a":{"sid":%q,"name":"left"},"b":{"sid":%q,"name":"right"}},"focus":0}]},{"id":"EMPTY","name":"empty","tabs":[]}],"windows":["REXSPACE"]}`, one.ID, two.ID)
 	if err := a.client.SetLayout(json.RawMessage(seeded)); err != nil {
 		t.Fatal(err)
 	}
-	api, err := testrex.New(testrex.Options{Socket: rex.SocketPath(), Version: "test"})
+	apiClient, err := rex.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(api.Close)
+	api, err := rexapi.New(rexapi.Options{Client: apiClient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { api.Close() })
 	sock := filepath.Join(filepath.Dir(rex.SocketPath()), "api.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
@@ -82,7 +86,7 @@ func TestRexImportCreatesSpaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The Detached session is skipped: it holds no window.
+	// The empty session is skipped: it holds no window.
 	if len(res.Imported) != 1 || len(res.Skipped) != 1 {
 		t.Fatalf("imported %+v, skipped %+v", res.Imported, res.Skipped)
 	}

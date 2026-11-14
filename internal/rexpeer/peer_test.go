@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"gorex/internal/rex"
-	"gorex/internal/testrex"
+	"gorex/internal/rexapi"
 )
 
 // startGorex starts a session server in a short temporary directory and
@@ -44,11 +44,15 @@ func startGorex(t *testing.T) (*rex.Client, string) {
 		c.Shutdown()
 		time.Sleep(50 * time.Millisecond)
 	})
-	api, err := testrex.New(testrex.Options{Socket: rex.SocketPath(), Version: "test"})
+	apiClient, err := rex.Connect()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(api.Close)
+	api, err := rexapi.New(rexapi.Options{Client: apiClient})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { api.Close() })
 	sock := filepath.Join(filepath.Dir(rex.SocketPath()), "api.sock")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
@@ -161,6 +165,9 @@ func TestPeerListsAndMirrors(t *testing.T) {
 	if stream.Nonce() == 0 {
 		t.Error("the stream has no nonce")
 	}
+	if err := peer.Write(ctx, sid, leftID, "echo stream-ok\n"); err != nil {
+		t.Fatal(err)
+	}
 	got := make(chan string, 1)
 	go func() {
 		var out []byte
@@ -169,7 +176,7 @@ func TestPeerListsAndMirrors(t *testing.T) {
 			n, err := stream.Read(buf)
 			if n > 0 {
 				out = append(out, buf[:n]...)
-				if strings.Contains(string(out), "peer-ok") {
+				if strings.Contains(string(out), "stream-ok") {
 					got <- string(out)
 					return
 				}
@@ -183,7 +190,7 @@ func TestPeerListsAndMirrors(t *testing.T) {
 	}()
 	select {
 	case out := <-got:
-		if !strings.Contains(out, "peer-ok") {
+		if !strings.Contains(out, "stream-ok") {
 			t.Fatalf("the stream: %q", out)
 		}
 	case <-time.After(10 * time.Second):
