@@ -55,9 +55,15 @@ var recordMods = func() []ui.Modifiers {
 	return out
 }()
 
-// rebuildMenu and reloadConfig are package vars so tests can stub them
-// without touching global menus or Lua reloads.
+// rebuildMenu is set by init: the menu must be rebuilt without
+// accelerators while the keyboard records, and init avoids an
+// initialization cycle with newWindow.
 var (
+	rebuildMenu  func(*store)
+	reloadConfig func(*App)
+)
+
+func init() {
 	rebuildMenu = func(st *store) {
 		if st.recording {
 			mygo.App.SetMenu(mygo.NewMenu(nil))
@@ -68,7 +74,7 @@ var (
 	reloadConfig = func(a *App) {
 		a.reloadLuaConfig()
 	}
-)
+}
 
 func (a *App) startRecording(cmd *command) {
 	shortcutsUI.recording, shortcutsUI.err = cmd, ""
