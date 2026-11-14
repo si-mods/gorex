@@ -222,7 +222,12 @@ export class TerminalView {
       const d = entries[0].devicePixelContentBoxSize?.[0];
       if (!this.held) this.layout(d && { width: d.inlineSize, height: d.blockSize });
     });
-    this.observer.observe(this.body, { box: "device-pixel-content-box" });
+    // Safari/WebKit throws TypeError on { box: "device-pixel-content-box" }; fall back to content-box.
+    try {
+      this.observer.observe(this.body, { box: "device-pixel-content-box" });
+    } catch {
+      this.observer.observe(this.body);
+    }
     this.findBar = new FindBar({
       term: () => this.term,
       redraw: (force) => {
