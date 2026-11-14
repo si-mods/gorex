@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.27.0
+
+### Features
+
+* **ios:** Demo Mode for a user with no host ([#552](https://github.com/si-mods/gorex/pull/552))
+* **ios,web:** share the web client over Personal Hotspot ([#556](https://github.com/si-mods/gorex/pull/556))
+* **web:** add terminal find, command palette, and editable shortcuts ([#551](https://github.com/si-mods/gorex/pull/551))
+* **web:** render floating terminal layers and minimize or restore them ([#554](https://github.com/si-mods/gorex/pull/554))
+* **web:** upload dropped files and pasted images to a remote terminal ([#548](https://github.com/si-mods/gorex/pull/548))
+* **web:** persist the Tailscale sign-in and coordinate tabs ([#546](https://github.com/si-mods/gorex/pull/546))
+
+### Bug Fixes
+
+* **ios:** allow cancelling an active or finishing dictation ([#555](https://github.com/si-mods/gorex/pull/555))
+* **macos:** declare local network usage, so programs in tabs reach the LAN again while the app's privacy answers hold ([#559](https://github.com/si-mods/gorex/pull/559))
+* **rexapi:** read pane output at once and resync slow data streams ([#543](https://github.com/si-mods/gorex/pull/543))
+* **web:** distinguish an unsigned reload from an expired Tailscale login ([#547](https://github.com/si-mods/gorex/pull/547))
+* **web:** restore floating layers from `session.set_layer_state` with its own arguments ([#557](https://github.com/si-mods/gorex/pull/557))
+* **web:** run the `execCommand` copy fallback synchronously, before awaiting the Clipboard API ([#549](https://github.com/si-mods/gorex/pull/549))
+
 ## 0.26.0
 
 ### Features
