@@ -58,6 +58,8 @@ final class TerminalSession {
     /// the stream gives them, the chosen theme, else the background, so
     /// that Ghostty does not draw its own.
     @ObservationIgnored private var theme: [String: Any]?
+    @ObservationIgnored private var hostTheme: [String: Any]?
+    @ObservationIgnored private var themeObserver: NSObjectProtocol?
     @ObservationIgnored private var stream = TerminalStream(nonce: 0)
     @ObservationIgnored private var data: DataConnection
     @ObservationIgnored private var size: (cols: Int, rows: Int, cw: Int, ch: Int)?
@@ -95,6 +97,13 @@ final class TerminalSession {
             d.onCommand = { [weak self] text in self?.host.demoCommand(text, block: block) }
             demo = d
         }
+        themeObserver = NotificationCenter.default.addObserver(forName: .terminalTheme, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.themeChanged() }
+        }
+    }
+
+    deinit {
+        if let themeObserver { NotificationCenter.default.removeObserver(themeObserver) }
     }
 
     private var backgroundKey: String { "\(host.id) \(TerminalTheme.name)" }
@@ -269,6 +278,7 @@ final class TerminalSession {
                 }
                 // Drawn at the view's size, which the block takes next.
                 if let size { t.resize(cols: size.cols, rows: size.rows, cellWidth: size.cw, cellHeight: size.ch) }
+                hostTheme = t.theme
                 apply(theme: TerminalTheme.chosen?.message ?? t.theme)
                 // A reset first: the snapshot of a new stream replaces the screen.
                 write(Data("\u{1b}c".utf8) + t.replay())
@@ -279,6 +289,7 @@ final class TerminalSession {
                 switch m["type"] as? String {
                 case "theme":
                     // A chosen theme stays over the host's colors.
+                    hostTheme = m
                     apply(theme: TerminalTheme.chosen?.message ?? m)
                 case "child_exited":
                     state = .exited(m["exit_code"] as? Int ?? 0)
@@ -297,6 +308,13 @@ final class TerminalSession {
     private func apply(theme t: [String: Any]) {
         theme = t
         output?.setTheme(t)
+    }
+
+    private func themeChanged() {
+        let fallback = host.isDemo ? TerminalTheme.all.first { $0.name == TerminalTheme.standard }?.message : nil
+        if let next = TerminalTheme.chosen?.message ?? hostTheme ?? fallback {
+            apply(theme: next)
+        }
     }
 
     // MARK: Input

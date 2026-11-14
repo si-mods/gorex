@@ -501,6 +501,10 @@ func (c *Client) Resize(sid string, cols, rows int) error {
 // now: its size follows the machine the user's focus is on.
 func (c *Client) Focus(sid string) error { return c.call(Request{Op: "focus", SID: sid}, nil) }
 
+// SetTheme tells the server the host terminal's active colors, so
+// headless snapshots and remote Host Colors clients follow them.
+func (c *Client) SetTheme(t *Theme) error { return c.call(Request{Op: "theme.set", Theme: t}, nil) }
+
 // UnlockSize takes the session's size back, at cols×rows when given, from
 // owner, or from whoever holds it when "".
 func (c *Client) UnlockSize(sid, owner string, cols, rows int) error {

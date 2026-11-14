@@ -217,7 +217,10 @@ private struct Themes: View {
 
     private func row(_ t: TerminalTheme?) -> some View {
         let id = t?.name ?? ""
-        return Button { selection = id } label: {
+        return Button {
+            selection = id
+            NotificationCenter.default.post(name: .terminalTheme, object: nil)
+        } label: {
             HStack(spacing: 12) {
                 Swatch(theme: t)
                 Text(t?.name ?? String(localized: "Host Colors")).foregroundStyle(.primary)

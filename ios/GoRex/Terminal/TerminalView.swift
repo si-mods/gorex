@@ -1167,4 +1167,6 @@ final class StickPad: UIView {
 extension Notification.Name {
     /// Settings changed the minimum contrast, posted on the main thread.
     static let minimumContrast = Notification.Name("minimumContrast")
+    /// Settings changed the terminal theme, posted on the main thread.
+    static let terminalTheme = Notification.Name("terminalTheme")
 }

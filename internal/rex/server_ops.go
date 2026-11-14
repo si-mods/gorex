@@ -7,8 +7,12 @@ import (
 	"net"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/egoist/mygo/plugins/terminal"
+	"github.com/egoist/mygo/ui"
 )
 
 type serverOpFunc func(s *Server, req Request, peer string, kept *keptConn) (any, error)
@@ -52,6 +56,8 @@ func serverOp(op string) serverOpFunc {
 		return (*Server).doUpgrade
 	case "shutdown":
 		return (*Server).doShutdown
+	case "theme.set":
+		return (*Server).doSetTheme
 	case "input":
 		return withSession(doInput)
 	case "key":
@@ -381,4 +387,84 @@ func (s *Server) do(req Request, peer string, kept *keptConn) (any, error) {
 		return fn(s, req, peer, kept)
 	}
 	return nil, fmt.Errorf("unknown op %q", req.Op)
+}
+
+func (s *Server) doSetTheme(req Request, _ string, _ *keptConn) (any, error) {
+	th := toTerminalTheme(req.Theme)
+	if th == nil {
+		return nil, nil
+	}
+	s.mu.Lock()
+	s.hostTheme = cloneTheme(req.Theme)
+	s.mu.Unlock()
+	for _, ss := range s.all() {
+		ss.setTheme(th)
+	}
+	s.notify("theme")
+	return nil, nil
+}
+
+func (s *Server) currentTheme() *Theme {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return cloneTheme(s.hostTheme)
+}
+
+func cloneTheme(t *Theme) *Theme {
+	if t == nil {
+		return nil
+	}
+	cp := *t
+	cp.Palette = slices.Clone(t.Palette)
+	return &cp
+}
+
+func toTerminalTheme(t *Theme) *terminal.Theme {
+	if t == nil {
+		return nil
+	}
+	th := &terminal.Theme{}
+	set := false
+	if c, ok := parseHexColor(t.Foreground); ok {
+		th.Foreground = c
+		set = true
+	}
+	if c, ok := parseHexColor(t.Background); ok {
+		th.Background = c
+		set = true
+	}
+	if c, ok := parseHexColor(t.Cursor); ok {
+		th.Cursor = c
+		set = true
+	}
+	for _, entry := range t.Palette {
+		k, v, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		i, err := strconv.Atoi(k)
+		if err != nil || i < 0 || i >= len(th.Palette) {
+			continue
+		}
+		if c, ok := parseHexColor(v); ok {
+			th.Palette[i] = c
+			set = true
+		}
+	}
+	if !set {
+		return nil
+	}
+	return th
+}
+
+func parseHexColor(s string) (ui.Color, bool) {
+	s = strings.TrimPrefix(s, "#")
+	if len(s) != 6 {
+		return ui.Color{}, false
+	}
+	v, err := strconv.ParseUint(s, 16, 24)
+	if err != nil {
+		return ui.Color{}, false
+	}
+	return ui.Color{R: uint8(v >> 16), G: uint8(v >> 8), B: uint8(v), A: 255}, true
 }

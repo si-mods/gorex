@@ -457,11 +457,12 @@ type App struct {
 	pathStats map[string]pathStat
 	// st is the app's store of workspaces, ws the one the window shows,
 	// and slot the window's place among the windows.
-	st     *store
-	ws     *Workspace
-	slot   int
-	client *rex.Client
-	hello  rex.Hello
+	st        *store
+	ws        *Workspace
+	slot      int
+	client    *rex.Client
+	hello     rex.Hello
+	hostTheme string
 	// keys matches key presses to actions; it runs before the terminal
 	// sees a key a binding takes. luaConfig owns the custom actions the
 	// keymap and palette use.

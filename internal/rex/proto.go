@@ -178,6 +178,8 @@ type Request struct {
 	// console that drops the terminal's paste event, a ConPTY on Windows,
 	// gets a paste this way (SessionInfo.ConPTY).
 	Paste string `json:"paste,omitempty"`
+	// Theme is the host terminal's default colors, of "theme.set".
+	Theme *Theme `json:"theme,omitempty"`
 	// Seen is the time of the latest status record "seeStatus" tells the
 	// user saw (ProgramStatus.Updated).
 	Seen time.Time `json:"seen,omitzero"`
@@ -582,6 +584,16 @@ type Event struct {
 	Sessions []EventSession `json:"sessions,omitempty"`
 	// Transfer is the file transfer a transfer event tells of.
 	Transfer *Transfer `json:"transfer,omitempty"`
+	// Theme is the host terminal's default colors on a "theme" event.
+	Theme *Theme `json:"theme,omitempty"`
+}
+
+// Theme is the host terminal's default colors, as hex "#rrggbb" strings.
+type Theme struct {
+	Foreground string   `json:"foreground,omitempty"`
+	Background string   `json:"background,omitempty"`
+	Cursor     string   `json:"cursor,omitempty"`
+	Palette    []string `json:"palette,omitempty"`
 }
 
 // EventSession is one session in an Event.

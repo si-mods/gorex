@@ -32,6 +32,7 @@ type Server struct {
 	layout     json.RawMessage
 	layoutRev  uint64
 	layoutFile sync.Mutex
+	hostTheme  *Theme
 	started    time.Time
 	host       HostInfo
 	// machine is MachineID, set before the server serves.
@@ -857,7 +858,9 @@ func (s *Server) createHeld(o CreateOptions, peer string) (*session, error) {
 	s.mu.Lock()
 	s.sessions[id] = ss
 	s.order = append(s.order, id)
+	th := toTerminalTheme(s.hostTheme)
 	s.mu.Unlock()
+	ss.setTheme(th)
 	s.watchExit(ss)
 	// The journal names the session's client, so that one started again
 	// after a crash stays that client's.
