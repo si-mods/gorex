@@ -93,6 +93,7 @@ struct HostListView: View {
         }
         .onChange(of: syncFingerprint, initial: true) { _, _ in
             spaceStore.sync(from: store.hosts.map(\.spaceSnapshot))
+            pushSpacesToDesktop()
         }
         .alert("New Space", isPresented: $creatingSpace) {
             TextField("Name", text: $spaceName)
@@ -105,7 +106,17 @@ struct HostListView: View {
         .alert("Rename Space", isPresented: Binding { renamingSpace != nil } set: { if !$0 { renamingSpace = nil } }, presenting: renamingSpace) { s in
             TextField(s.name, text: $spaceName)
             Button("Cancel", role: .cancel) {}
-            Button("Save") { spaceStore.renameSpace(s.id, to: spaceName) }
+            Button("Save") {
+                spaceStore.renameSpace(s.id, to: spaceName)
+                pushSpacesToDesktop()
+            }
+        }
+    }
+
+    private func pushSpacesToDesktop() {
+        let all = spaceStore.orderedSpaces
+        for h in store.hosts where h.supportsSpacesSync {
+            Task { await h.applySpaces(all) }
         }
     }
 
@@ -515,6 +526,7 @@ private struct HostSection: View {
                 if let (s, b) = try await host.newSession() {
                     if case .space(let spaceID) = space {
                         spaceStore.assign(machine: host.spaceMachineKey, block: b, window: nil, to: spaceID)
+                        await host.applySpaces(spaceStore.orderedSpaces)
                     }
                     open(TerminalTarget(host: host.id, session: s, block: b, title: ""))
                 }
@@ -540,6 +552,7 @@ private struct HostSection: View {
                 if let b = try await host.newWindow(in: s.id) {
                     if case .space(let spaceID) = space {
                         spaceStore.assign(machine: host.spaceMachineKey, block: b, window: nil, to: spaceID)
+                        await host.applySpaces(spaceStore.orderedSpaces)
                     }
                     open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
                 }
@@ -577,6 +590,8 @@ private struct HostSection: View {
             ForEach(spaceStore.orderedSpaces) { target in
                 Button {
                     spaceStore.assign(window: w, on: m, to: target.id)
+                    let all = spaceStore.orderedSpaces
+                    Task { await host.applySpaces(all) }
                 } label: {
                     if current?.id == target.id {
                         Label(target.name, systemImage: "checkmark")

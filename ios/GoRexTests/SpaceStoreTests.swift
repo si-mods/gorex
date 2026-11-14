@@ -177,4 +177,46 @@ nonisolated final class SpaceStoreTests: XCTestCase {
         XCTAssertEqual(merged.spaces.first(where: { $0.id == "sp1" })?.members.count, 0)
         XCTAssertEqual(merged.spaces.first(where: { $0.id == "sp2" })?.members.map(\.block_id), ["b1"])
     }
+
+    /// Mutations push to iCloud KVS and a second device pulls them on init
+    /// and on external-change notifications without ping-ponging.
+    @MainActor func testICloudKVSSyncAcrossDevices() {
+        final class MockKVS: SpaceKeyValueStore {
+            var storage: [String: Data] = [:]
+            var setCount = 0
+            func data(forKey aKey: String) -> Data? { storage[aKey] }
+            func set(_ aData: Data?, forKey aKey: String) {
+                storage[aKey] = aData
+                setCount += 1
+            }
+            func synchronize() -> Bool { true }
+        }
+
+        let urlA = tempURL(), urlB = tempURL()
+        defer {
+            try? FileManager.default.removeItem(at: urlA)
+            try? FileManager.default.removeItem(at: urlB)
+        }
+
+        let kvs = MockKVS()
+        let deviceA = SpaceStore(fileURL: urlA, kvs: kvs, observeCloud: true)
+        let work = deviceA.createSpace(name: "Work")
+        deviceA.assign(machine: "M1", block: "b1", to: work.id)
+        let setsAfterA = kvs.setCount
+        XCTAssertGreaterThan(setsAfterA, 0)
+
+        // Device B initializes with the same KVS and pulls Work + M1/b1 without pushing back.
+        let deviceB = SpaceStore(fileURL: urlB, kvs: kvs, observeCloud: true)
+        XCTAssertEqual(deviceB.orderedSpaces.map(\.name), ["Work"])
+        XCTAssertEqual(deviceB.space(for: "M1", block: "b1")?.id, work.id)
+        XCTAssertEqual(kvs.setCount, setsAfterA)
+
+        // Device B creates a second space; Device A receives external change notification.
+        let personal = deviceB.createSpace(name: "Personal")
+        deviceB.assign(machine: "M2", block: "b2", to: personal.id)
+        NotificationCenter.default.post(name: NSUbiquitousKeyValueStore.didChangeExternallyNotification, object: kvs)
+
+        XCTAssertEqual(deviceA.orderedSpaces.map(\.name), ["Work", "Personal"])
+        XCTAssertEqual(deviceA.space(for: "M2", block: "b2")?.id, personal.id)
+    }
 }

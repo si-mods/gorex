@@ -20,7 +20,7 @@ struct GoRexApp: App {
         Notifier.shared.start()
         let engine = TailnetEngine.shared
         _store = State(initialValue: HostStore())
-        _spaces = State(initialValue: SpaceStore())
+        _spaces = State(initialValue: SpaceStore(kvs: NSUbiquitousKeyValueStore.default, observeCloud: true))
         Task { await engine.apply() }
     }
 
@@ -44,6 +44,7 @@ struct GoRexApp: App {
                     let suspended = HostStore.suspended(since: away)
                     away = nil
                     HotspotShare.shared.handleForeground()
+                    spaces.pullFromKVS()
                     Task { await store.foreground(suspended: suspended) { await TailnetEngine.shared.resume() } }
                 }
                 .onChange(of: store.hosts.map(\.config)) { _, configs in

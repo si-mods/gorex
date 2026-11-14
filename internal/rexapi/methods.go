@@ -207,6 +207,7 @@ var methods = map[string]func(*control, args) (any, *apiError){
 	// GoRex's own, which Rex's document does not have (movewindow.go,
 	// seen.go).
 	"gorex.move_window":              methodGorexMoveWindow,
+	"gorex.spaces_apply":             methodGorexSpacesApply,
 	"gorex.merge_windows":            methodGorexMergeWindows,
 	"gorex.move_block_to_new_window": methodGorexMoveBlockToNewWindow,
 	"gorex.see_block":                methodGorexSeeBlock,

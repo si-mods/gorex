@@ -318,6 +318,10 @@ final class Host: Identifiable {
     /// was seen (gorex.see_block, docs/rex-api.md).
     static let seeFeature = "gorex.see_block"
 
+    /// The welcome's feature of a server that accepts passive space
+    /// synchronization from the control plane (`gorex.spaces_apply`).
+    static let spacesSyncFeature = "gorex.spaces_sync"
+
     /// The machine the host is, and the panes of other hosts in each of
     /// its sessions' spaces, by session, as /api/spaces tells (Spaces);
     /// nil and none from a server that doesn't.
@@ -940,6 +944,26 @@ final class Host: Identifiable {
             return
         }
         try await live().call("session.set_window_label", ["session_id": session, "window_id": window, "label": label])
+    }
+
+    var supportsSpacesSync: Bool {
+        !isDemo && status == .online && (control?.features.contains(Self.spacesSyncFeature) ?? false)
+    }
+
+    /// Pushes centralized space assignments for blocks on this machine to
+    /// the desktop host (`gorex.spaces_apply`).
+    func applySpaces(_ spaces: [CentralSpace]) async {
+        guard supportsSpacesSync else { return }
+        let m = spaceMachineKey
+        let entries: [[String: Any]] = spaces.compactMap { s in
+            let ids = s.members.filter { $0.machine_id == m }.map(\.block_id)
+            guard !ids.isEmpty else { return nil }
+            var entry: [String: Any] = ["name": s.name, "block_ids": ids]
+            if let color = s.color, !color.isEmpty { entry["color"] = color }
+            return entry
+        }
+        guard !entries.isEmpty else { return }
+        _ = try? await live().call("gorex.spaces_apply", ["spaces": entries])
     }
 
     /// Moves a window before another, or to the end when before is nil.
