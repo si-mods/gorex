@@ -6,6 +6,7 @@
     "build": "node build.mjs",
     "dev": "node dev.mjs",
     "deploy": "node build.mjs && npx --yes wrangler@4.152.0 deploy",
+    "typecheck": "node i18n.mjs && tsc --noEmit -p .",
     "test": "node test.mjs"
   },
   "devDependencies": {

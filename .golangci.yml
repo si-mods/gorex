@@ -1,0 +1,43 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - durationcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unconvert
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - "-QF*"
+        - "-ST1*"
+        - "-SA1019"
+  exclusions:
+    rules:
+      # Pre-existing test assertions / test helpers that intentionally repeat calls or lock probes.
+      - path: _test\.go$
+        linters:
+          - ineffassign
+          - unconvert
+      - path: _test\.go$
+        text: "SA4006:"
+      - path: menus_test\.go$
+        text: "SA4000:"
+      - path: glass_test\.go$
+        text: "SA4003:"
+      - path: internal/rex/(server|remote_test)\.go$
+        text: "SA2001:"
+      - path: internal/cli/apc_test\.go$
+        text: "S1009:"
+      # Pre-existing baseline items tracked for gradual cleanup.
+      - path: internal/cli/(hooks|skill)\.go$
+        linters:
+          - ineffassign
+      - path: internal/rexapi/help\.go$
+        linters:
+          - unconvert
+      - path: internal/rex/graphics\.go$
+        text: "S1017:"
