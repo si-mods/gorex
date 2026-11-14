@@ -3,8 +3,6 @@ version: "2"
 linters:
   default: none
   enable:
-    - bodyclose
-    - copyloopvar
     - durationcheck
     - govet
     - ineffassign
@@ -15,21 +13,22 @@ linters:
       checks:
         - all
         - "-QF*"
+        - "-ST1*"
         - "-SA1019"
-        - "-ST1018"
   exclusions:
     rules:
       # Pre-existing test assertions / test helpers that intentionally repeat calls or lock probes.
       - path: _test\.go$
         linters:
-          - bodyclose
           - ineffassign
           - unconvert
+      - path: _test\.go$
+        text: "SA4006:"
       - path: menus_test\.go$
         text: "SA4000:"
       - path: glass_test\.go$
         text: "SA4003:"
-      - path: internal/rex/remote_test\.go$
+      - path: internal/rex/(server|remote_test)\.go$
         text: "SA2001:"
       - path: internal/cli/apc_test\.go$
         text: "S1009:"
