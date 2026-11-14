@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.27.1
+
+### Features
+
+* **cli:** draw a server's pairing QR with `gorex pair` ([#567](https://github.com/si-mods/gorex/pull/567))
+
+### Bug Fixes & Maintenance
+
+* **ios/tailnet:** forward `CloseRead`/`CloseWrite` on `tailcatConn` so `socks5` half-closes propagate EOF, and upgrade `tailscale.com` to `v1.104.7` ([#564](https://github.com/si-mods/gorex/pull/564))
+* **main:** tighten mutable globals and remove redundant `init()` hooks ([#565](https://github.com/si-mods/gorex/pull/565))
+* **web:** split terminal theme/font and `windowops` modules, ignore root temporary PNGs ([#566](https://github.com/si-mods/gorex/pull/566))
+* **ci:** add `golangci-lint` v2 and web typecheck gates, and enable `-race` for `internal/*` tests ([#562](https://github.com/si-mods/gorex/pull/562), [#563](https://github.com/si-mods/gorex/pull/563))
+
 ## 0.27.0
 
 ### Features
