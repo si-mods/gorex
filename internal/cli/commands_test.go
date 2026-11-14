@@ -577,3 +577,43 @@ func TestSessionCommandReachesItsServer(t *testing.T) {
 	t.Setenv("GOREX_DIR", "")
 	ls("with a server in the default directory")
 }
+
+// TestPairOutput checks what "gorex pair" prints: the address as JSON, or
+// as a QR code that starts on its light quiet zone and names the address.
+func TestPairOutput(t *testing.T) {
+	var out bytes.Buffer
+	if err := writePair(&out, "https://pair.example", true); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil || got["url"] != "https://pair.example" {
+		t.Fatalf("pair JSON %q: %v", out.String(), err)
+	}
+	out.Reset()
+	if err := writePair(&out, "https://pair.example", false); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(out.String(), "\n")
+	if lines[0] == "" || strings.Trim(lines[0], "█") != "" {
+		t.Fatalf("the code starts on %q, not on the light quiet zone", lines[0])
+	}
+	if !strings.Contains(out.String(), "\nScan with Rex on a device on the same tailnet: https://pair.example\n") {
+		t.Errorf("pair output names no address: %q", out.String())
+	}
+}
+
+// TestPairWithoutGateway: with no gateway to ask, "gorex pair" says which
+// command serves one, and prints no code.
+func TestPairWithoutGateway(t *testing.T) {
+	t.Setenv("GOREX_DIR", t.TempDir())
+	code, handled, out, errOut := runMain(t, "pair")
+	if !handled || code != ExitFailed {
+		t.Fatalf("pair: %d %v %q", code, handled, out)
+	}
+	if !strings.Contains(errOut, "gorex rexapi") || strings.Contains(out, "█") {
+		t.Errorf("pair without a gateway: %q %q", out, errOut)
+	}
+	if code, _, _, _ := runMain(t, "pair", "extra"); code != ExitUsage {
+		t.Errorf("pair with an argument: %d", code)
+	}
+}

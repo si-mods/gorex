@@ -41,6 +41,7 @@ gorex wait [-s SESSION] [--json] (--exit | --idle | --status STATE | --contains 
 gorex run [--json] [--dir DIR] -- COMMAND...
 gorex events
 gorex hosts [ls] [--json]
+gorex [-S HOST] pair [--json]
 gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
 gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
 gorex server restart | upgrade
@@ -78,6 +79,11 @@ wins over `-s`. An ambiguous target exits 3. `rename` gives a pane a label.
   kept connection, and how many seconds it has been attached.
 - `hosts` lists saved remote hosts, each by its name and the alias it was
   given in GoRex, if any; addresses stay hidden.
+- `pair` prints the QR code another device scans to reach a server in Rex:
+  this machine's built-in Tailscale address, which holds no credential, or
+  with `-S` a host's, which its hello carries. `--json` prints the address
+  alone. A server with built-in Tailscale off, or not signed in, sends
+  none, and the command exits 1 saying so.
 - `remote status` shows the local server's remote access without its
   address; `remote control on|off` lets paired clients run app actions
   through the window. It applies to every paired client, and persists even while remote access is off.
@@ -141,8 +147,8 @@ on; `gorex rexapi` alone runs one of its own, for development.
 `gorex rexapi lan on|off|status`, `gorex rexapi lan listen HOST:PORT` and
 `gorex rexapi lan allow|deny NETWORK` set the listener on the local
 network; `gorex rexapi tailscale on|off|login|logout|rename|status`,
-`gorex rexapi pair` and `gorex rexapi call METHOD [JSON]` talk to the
-gateway. See [rex-api.md](rex-api.md).
+`gorex rexapi pair`, the gateway's own view of the first, and `gorex
+rexapi call METHOD [JSON]` talk to the gateway. See [rex-api.md](rex-api.md).
 
 Exit codes: 0 ok, 1 failed, 2 usage, 3 no such session or target, 4
 server unreachable. A signal exits 130. `run` and `wait --exit` return the
