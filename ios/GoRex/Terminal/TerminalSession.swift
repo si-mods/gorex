@@ -59,7 +59,7 @@ final class TerminalSession {
     /// that Ghostty does not draw its own.
     @ObservationIgnored private var theme: [String: Any]?
     @ObservationIgnored private var hostTheme: [String: Any]?
-    @ObservationIgnored private var themeObserver: NSObjectProtocol?
+    @ObservationIgnored nonisolated(unsafe) private var themeObserver: NSObjectProtocol?
     @ObservationIgnored private var stream = TerminalStream(nonce: 0)
     @ObservationIgnored private var data: DataConnection
     @ObservationIgnored private var size: (cols: Int, rows: Int, cw: Int, ch: Int)?
