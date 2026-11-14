@@ -4,6 +4,7 @@
 // carrying a terminal's bytes.
 
 import { Msg, PlainKey, t } from "./i18n";
+import { joinHostURL } from "./share";
 
 /**
  * A failed call, as the response's error names it: the host's code and its
@@ -103,12 +104,12 @@ export function directTransport(url: string): Transport {
   return {
     kind: "direct",
     socket(path, protocol) {
-      const u = new URL(path, url);
+      const u = new URL(joinHostURL(url, path));
       u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
       return new WebSocket(u.href, protocol) as SocketLike;
     },
-    fetch: (path, init) => fetch(new URL(path, url).href, init),
-    url: (path) => new URL(path, url).href,
+    fetch: (path, init) => fetch(joinHostURL(url, path), init),
+    url: (path) => joinHostURL(url, path),
   };
 }
 

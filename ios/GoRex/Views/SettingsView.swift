@@ -38,6 +38,8 @@ struct SettingsView: View {
              Item(title: "Remote Hosts", icon: tile("globe", .orange), page: AnyView(RemoteHostsView())),
              Item(title: "Tailscale", icon: AnyView(TailscaleGlyph.tile()),
                   value: String(localized: tailnet ? "On · Rex Go Only" : "Off"), page: AnyView(TailscaleView())),
+             Item(title: "Share on Hotspot", icon: tile("personalhotspot", .green),
+                  value: String(localized: HotspotShare.shared.isSharing ? "On" : "Off"), page: AnyView(HotspotShareView())),
              Item(title: "Grouping", icon: tile("rectangle.3.group.fill", .teal),
                   value: String(localized: Self.groupings.first { $0.0 == Grouping(stored: grouping).rawValue }?.1 ?? "Desktop Spaces"),
                   page: AnyView(Choices(title: "Grouping", options: Self.groupings.map { ($0.0, String(localized: $0.1)) }, selection: $grouping,

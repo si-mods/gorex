@@ -12,7 +12,7 @@ on:
       target:
         description: What to build
         type: choice
-        options: [all, unix, windows]
+        options: [all, unix, windows, web]
         default: all
 
 permissions:
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   unix:
-    if: github.ref == 'refs/heads/main' && inputs.target != 'windows'
+    if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'unix')
     runs-on: [self-hosted, macmini]
     timeout-minutes: 60
     steps:
@@ -73,7 +73,7 @@ jobs:
 
   windows:
     needs: unix
-    if: always() && github.ref == 'refs/heads/main' && inputs.target != 'unix' && (needs.unix.result == 'success' || needs.unix.result == 'skipped')
+    if: always() && github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'windows') && (needs.unix.result == 'success' || needs.unix.result == 'skipped')
     runs-on: [self-hosted, yibo-pc]
     timeout-minutes: 60
     steps:
@@ -93,3 +93,34 @@ jobs:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
         run: go tool mygo build -platform windows/amd64,windows/arm64 -upload
+
+  web-r2:
+    if: github.ref == 'refs/heads/main' && (inputs.target == 'all' || inputs.target == 'web')
+    runs-on: instabox-medium
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: build and upload to R2
+        working-directory: web
+        env:
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_PREFIX: ${{ secrets.R2_PREFIX }}
+        run: |
+          if [ -z "$R2_ENDPOINT" ] || [ -z "$R2_BUCKET" ] || [ -z "$R2_ACCESS_KEY_ID" ] || [ -z "$R2_SECRET_ACCESS_KEY" ]; then
+            echo "::error::Set R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY"
+            exit 1
+          fi
+          npm ci
+          node build.mjs --ci
+          node r2-upload.mjs

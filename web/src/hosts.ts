@@ -6,17 +6,18 @@
 // group of their own, and not kept.
 import { localize, PlainKey, t } from "./i18n";
 import type { LinkState } from "./settings";
+import { joinHostURL, SharedGroup } from "./share";
 import type { Tailnet, TailnetHost } from "./tailnet";
 
-/** A host as the user added it, or as built-in Tailscale found it (kind "tailnet"). */
+/** A host as the user added it, as built-in Tailscale found it (kind "tailnet"), or shared by Rex Go (kind "share"). */
 export interface Host {
   id: string;
   name: string;
-  /** The gateway, as http(s)://host[:port]. */
+  /** The gateway, as http(s)://host[:port] or http://host[:port]/h/<id> when shared. */
   url: string;
   /** One of icons' names. */
   icon: string;
-  kind?: "direct" | "tailnet";
+  kind?: "direct" | "tailnet" | "share";
 }
 
 /** The icons a host can take, as the iOS app offers them, from the repo's lucide set. */
@@ -152,7 +153,7 @@ const mixedProblem: Problem = problem(() => t("problemMixedTitle"), () => t("pro
  * without reading it (no-cors), which any server that is there answers.
  */
 export async function diagnose(url: string): Promise<Problem> {
-  const help = new URL("/api/help", url).href;
+  const help = joinHostURL(url, "/api/help");
   const wait = () => AbortSignal.timeout(8000);
   try {
     const r = await fetch(help, { cache: "no-store", signal: wait() });
@@ -288,6 +289,8 @@ export interface HostsApp {
   tailnet: Tailnet;
   /** Opens the Tailscale sign-in guide. */
   guide(): void;
+  /** Hosts shared by Rex Go over Personal Hotspot, when served by the phone. */
+  share?(): SharedGroup | undefined;
 }
 
 /** A tailnet host's state, as its dot and words. */
@@ -437,7 +440,8 @@ export class HostList {
       row.append(pick, this.plug(h), edit);
       rows.append(row);
     }
-    if (!this.hosts.length) rows.append(el("div", "theme-empty", t("hostNone")));
+    if (!this.hosts.length && !this.app.share?.()?.hosts.length) rows.append(el("div", "theme-empty", t("hostNone")));
+    rows.append(...this.shareGroup());
     rows.append(...this.tailnetGroup());
     const add = el("button", "host-add", t("hostAdd"));
     add.type = "button";
@@ -498,6 +502,33 @@ export class HostList {
   manyNote(): string | undefined {
     const n = this.app.connections();
     return n > manyHosts ? t("hostsManyNote", { n }) : undefined;
+  }
+
+  /**
+   * The iPhone group: hosts shared by Rex Go over Personal Hotspot, when
+   * the page is served by the phone. Not saved and not editable here.
+   */
+  private shareGroup(): HTMLElement[] {
+    const g = this.app.share?.();
+    if (!g || !g.hosts.length) return [];
+    const head = el("div", "host-group");
+    head.append(icon("laptop"), el("span", "host-group-name", g.phone));
+    const out: HTMLElement[] = [head];
+    for (const h of g.hosts) {
+      const pick = el("button", "theme-row");
+      pick.type = "button";
+      pick.dataset.key = h.id;
+      const text = el("span", "host-text");
+      const url = el("span", "host-url", h.url);
+      text.append(el("span", "theme-name", h.name), url);
+      pick.append(icon(h.icon), text, this.dot(h));
+      this.pickHost(pick, h);
+      pick.title = h.url;
+      const row = el("div", "host-row");
+      row.append(pick, this.plug(h));
+      out.push(row);
+    }
+    return out;
   }
 
   /**

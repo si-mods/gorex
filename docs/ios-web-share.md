@@ -157,9 +157,10 @@ a LAN dev server:
 The web client (`web/dist`) is **not** embedded in the iOS app bundle.
 Instead, `web/build.mjs` writes a `files.json` index alongside
 `web/dist` (listing each static file's path, size, and SHA-256; excluding
-the built-in Tailscale engine, which the phone does not use). When the
-user turns on **Share on Hotspot** (or taps **Update Web Client**), Rex
-Go fetches `files.json` from `https://web.gorex.dev`, downloads any
+the built-in Tailscale engine, which the phone does not use), and the
+built files are hosted on Cloudflare R2. When the user turns on
+**Share on Hotspot** (or taps **Update Web Client**), Rex Go fetches
+`files.json` from the configured Cloudflare R2 URL, downloads any
 missing or changed files into `Application Support/WebClient/`, verifies
 their SHA-256, and swaps them in atomically. Once cached, sharing works
 offline too. This keeps the iOS `.ipa` small and avoids building
