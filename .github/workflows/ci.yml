@@ -115,20 +115,21 @@ jobs:
           PART: ${{ matrix.part }}
           # The number of root-N parts in the matrix.
           ROOT_PARTS: 3
-        # Some tests fail by chance on these machines, about one run in
-        # five, so a part that fails runs once more.
+        # All internal/* packages run with -race and no retry. Some root UI
+        # tests still fail occasionally on shared runners, so root-* parts
+        # retry once.
         run: |
           if [ "$PART" = others ]; then
             pkgs=$(go list ./... | grep -v '^gorex$')
-            run() { go test $pkgs -count=1 -timeout 15m; }
+            go test -race $pkgs -count=1 -timeout 15m
           else
             go test -c -o "$RUNNER_TEMP/gorex.test" .
             tests=$("$RUNNER_TEMP/gorex.test" -test.list '^(Test|Example|Fuzz)' |
               awk -v n="$ROOT_PARTS" -v i="${PART#root-}" 'NR % n == i' | paste -sd'|' -)
             [ -n "$tests" ]
             run() { "$RUNNER_TEMP/gorex.test" -test.timeout 15m -test.run "^($tests)\$"; }
+            run || { echo "::warning::$PART failed, running it once more"; run; }
           fi
-          run || { echo "::warning::$PART failed, running it once more"; run; }
 
   # Builds web/dist (with files.json) and uploads it to Cloudflare R2 on pushes to main.
   web-r2:
