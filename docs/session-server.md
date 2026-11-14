@@ -225,13 +225,18 @@ on every client, after a client restarts and across an in-place upgrade.
 ### How the server starts (macOS)
 
 The app starts the server when no socket answers (`rex.Connect` →
-`Spawn`). On macOS that server is a job of `launchd`'s
-(`internal/rex/job_darwin.go`): the app writes `server.plist` in the data
-directory, loads the job in the user's session
+`Spawn`). On macOS that server is a job of `launchd`'s, as Rex's server
+is (`internal/rex/job_darwin.go`): the app writes `server.plist` in the
+data directory, loads the job in the user's session
 (`launchctl bootstrap gui/<uid>`) and starts it (`launchctl kickstart`).
-The server runs with the app's environment, and the job has
-`RunAtLoad` off, so it starts when an app needs it and stays down when the
-idle timeout leaves it.
+One job per data directory — the label carries its SHA-256, as Rex's
+`com.superlogical.rex.server.<sha256>` does. The job runs `<app exe>
+-server` with a few of the app's variables (its directory, `PATH`,
+`HOME`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `SSH_AUTH_SOCK`, `LANG`
+and `LC_*`) rather than all of them, which the plist would keep on disk;
+Rex passes its server the same few. It writes `server.log` beside the
+data, and `RunAtLoad` is off: it starts when an app needs it, and stays
+down when the idle timeout leaves it.
 
 It must not be the app's child. macOS ends a dying app's subordinate
 processes: when an app exits while it still has children and Background
@@ -244,6 +249,18 @@ app opens — takes the app down while the server runs, so a server that
 were the app's child would end every session with it, and the
 conversations in its panes. Under launchd the server is nobody's child,
 and the app's end, crash or replacement leaves the sessions alone.
+
+Rex goes one step further: its server is a helper app of its own
+(`Rex Server.app`, `LSUIElement`, `com.superlogical.rex.server`), copied
+to `~/Library/Application Support/com.superlogical.rex/RexServer/Versions/<build>/`
+with a `Current` beside it, and its job runs the copy
+(`…/Versions/Current/Rex Server.app/Contents/MacOS/rex server run …`).
+The copy is a build's own, so it outlives the app being replaced, and the
+server can take the new build's place before the app restarts — what
+[app-server-update.md](app-server-update.md) designs for GoRex. Until
+that lands, GoRex's job runs the server from the app bundle: a running
+server keeps its files open when an update replaces the bundle, and an
+in-place upgrade `exec`s the new build's binary (`upgrade_unix.go`).
 
 A binary that is not in an app bundle (a test, `go run . -server`) and a
 platform without a job start the server as a detached process, as before.

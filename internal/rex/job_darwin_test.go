@@ -19,7 +19,8 @@ func TestJobPlistIsValid(t *testing.T) {
 	}
 	dir := t.TempDir()
 	t.Setenv("GOREX_DIR", dir)
-	t.Setenv("GOREX_ESCAPE", `a&b<c>"d'`)
+	t.Setenv("LANG", `a&b<c>"d'`)
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "not-the-job's")
 	exe := "/Applications/GoRex.app/Contents/MacOS/GoRex"
 	path := filepath.Join(dir, "server.plist")
 	if err := writePlist(path, jobPlist(jobLabel(dir), exe)); err != nil {
@@ -32,6 +33,20 @@ func TestJobPlistIsValid(t *testing.T) {
 	st, err := os.Stat(path)
 	if err != nil || st.Mode().Perm() != 0o600 {
 		t.Fatalf("the job is not the user's alone: %v %v", st, err)
+	}
+	// The app's directory and language, and not its secrets: the plist
+	// keeps a few variables on disk, as Rex's does.
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{dir, `a&amp;b&lt;c&gt;&#34;d&#39;`} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("the job does not carry %q:\n%s", want, b)
+		}
+	}
+	if strings.Contains(string(b), "not-the-job's") {
+		t.Error("the job carries the app's whole environment")
 	}
 }
 

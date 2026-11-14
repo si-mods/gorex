@@ -38,10 +38,11 @@ var errNoJob = errors.New("rex: no job to start the server as")
 
 // jobLabel is the label of the server's job in dir: one per data
 // directory, so that a dev build's server and the installed app's are
-// jobs of their own.
+// jobs of their own. Rex names its server's job the same way, with the
+// SHA-256 of the server's directory ("com.superlogical.rex.server.ebba…").
 func jobLabel(dir string) string {
 	sum := sha256.Sum256([]byte(dir))
-	return "dev.gorex.app.server." + hex.EncodeToString(sum[:4])
+	return "dev.gorex.app.server." + hex.EncodeToString(sum[:])
 }
 
 // inBundle reports whether exe runs from an app bundle. The app's own
@@ -109,7 +110,7 @@ func jobPlist(label, exe string) []byte {
 	text(&b, "\t\t<string>", "-server")
 	b.WriteString("</string>\n\t</array>\n")
 	b.WriteString("\t<key>EnvironmentVariables</key>\n\t<dict>\n")
-	for _, kv := range serverEnv() {
+	for _, kv := range jobEnv() {
 		k, v, _ := strings.Cut(kv, "=")
 		keyString(&b, k, v)
 	}
@@ -121,6 +122,36 @@ func jobPlist(label, exe string) []byte {
 	b.WriteString("\t<key>KeepAlive</key>\n\t<false/>\n")
 	b.WriteString("</dict>\n</plist>\n")
 	return b.Bytes()
+}
+
+// jobEnv is the environment of the server's job: what a pane's shell and
+// the server need of the app's, and not the app's whole environment,
+// which the plist would keep on disk. Rex passes its server the same few
+// (its job's environment is PATH, HOME, USER, LOGNAME, SHELL, TMPDIR,
+// SSH_AUTH_SOCK and its own REX_* variables).
+func jobEnv() []string {
+	keep := map[string]bool{
+		"GOREX_DIR": true, // the server's directory: the socket and the layout
+		"PATH":      true, // a pane's programs keep the app's, not the launchd default's
+		"HOME":      true, "USER": true, "LOGNAME": true,
+		"SHELL":         true,
+		"TMPDIR":        true,
+		"SSH_AUTH_SOCK": true,
+		"LANG":          true, "LC_ALL": true, "LC_CTYPE": true,
+	}
+	var env []string
+	has := map[string]bool{}
+	for _, kv := range serverEnv() {
+		k, _, _ := strings.Cut(kv, "=")
+		if keep[k] && !has[k] {
+			has[k] = true
+			env = append(env, kv)
+		}
+	}
+	if !has["PATH"] {
+		env = append(env, "PATH=/usr/bin:/bin:/usr/sbin:/sbin")
+	}
+	return env
 }
 
 // keyString writes a key of the plist and its string value.
