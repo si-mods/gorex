@@ -584,6 +584,23 @@ final class Host: Identifiable {
         })
     }
 
+    /// Durable machine key for `SpaceStore`, falling back to the host UUID
+    /// when a server does not report `machine_id` (e.g. Demo Mode).
+    var spaceMachineKey: String {
+        machine ?? "host:\(id.uuidString)"
+    }
+
+    /// Snapshot of this host's current sessions and views for `SpaceStore`.
+    var spaceSnapshot: SpaceStore.HostSnapshot {
+        SpaceStore.HostSnapshot(
+            machine: spaceMachineKey,
+            online: status == .online,
+            sessions: sessions.map {
+                .init(id: $0.id, label: $0.label, view: $0.view, remote: remote[$0.id] ?? [])
+            }
+        )
+    }
+
     private func attach(_ id: String) {
         Task {
             guard let raw = try? await control?.call("session.attach", ["session_id": id]).raw,

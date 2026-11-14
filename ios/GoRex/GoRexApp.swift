@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct GoRexApp: App {
     @State private var store: HostStore
+    @State private var spaces: SpaceStore
     @Environment(\.scenePhase) private var phase
     @AppStorage("scheme") private var scheme = "dark"
     /// When the app went to the background.
@@ -19,6 +20,7 @@ struct GoRexApp: App {
         Notifier.shared.start()
         let engine = TailnetEngine.shared
         _store = State(initialValue: HostStore())
+        _spaces = State(initialValue: SpaceStore())
         Task { await engine.apply() }
     }
 
@@ -31,6 +33,7 @@ struct GoRexApp: App {
         WindowGroup {
             HostListView()
                 .environment(store)
+                .environment(spaces)
                 .preferredColorScheme(Self.colorScheme(scheme))
                 .onChange(of: phase) { _, p in
                     if p == .background {
