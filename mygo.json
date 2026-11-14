@@ -7,7 +7,10 @@
   "updates": { "github": "si-mods/gorex", "publicKey": "IB19S2Q9eOxUndE8mWbXvrcCYxYow8Ay6SrWw+6uoS8=" },
   "macos": {
     "minimumSystemVersion": "13.0",
-    "signingIdentity": "Developer ID Application: YIBO WANG (57QL6YCAH5)"
+    "signingIdentity": "Developer ID Application: YIBO WANG (57QL6YCAH5)",
+    "infoPlist": {
+      "NSLocalNetworkUsageDescription": "This allows shells and programs run in GoRex tabs, such as ssh, git and curl, to reach devices and services on your local network."
+    }
   },
   "linux": { "command": "gorex" },
   "i18n": { "dir": "locales", "source": "en" }
