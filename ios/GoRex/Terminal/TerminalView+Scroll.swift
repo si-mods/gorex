@@ -48,6 +48,14 @@ extension TerminalView: UIScrollViewDelegate {
     /// the cursor, a tick later: at most once a tick while output streams,
     /// and once more a tick after the last of it, which Ghostty may not have
     /// drawn yet when the tick before came.
+    ///
+    /// The output slides the terminal up as far as it needs, at once, and
+    /// down only where the need stays: a program draws the lines after the
+    /// cursor in an order of its own, so they pass, between two writes,
+    /// through rows no frame ends on, and a slide that followed them down
+    /// again would shake the terminal by a line for as long as an agent's
+    /// spinner works. A need to come down that four ticks in a row ask for is
+    /// where the program means to draw, and comes down then.
     func laterSlide() {
         guard !slideWaits else { return slideAgain = true }
         slideWaits = true
@@ -58,9 +66,35 @@ extension TerminalView: UIScrollViewDelegate {
             slideAgain = false
             guard surface != nil else { return }
             drawn = true
-            slide(duration: 0.15)
-            if again { laterSlide() }
+            let y = needed()
+            if y < transform.ty {
+                slide(to: y, duration: 0.15)
+            } else if y > transform.ty {
+                wantsDown += 1
+                if wantsDown >= Self.downTicks {
+                    wantsDown = 0
+                    slide(to: y, duration: 0.15)
+                }
+            } else {
+                wantsDown = 0
+            }
+            if again { laterSlide() } else { settle() }
         }
+    }
+
+    /// Slides once the output stops, where the last frame left the cursor and
+    /// the lines under it, so the terminal comes down again as far as they
+    /// let. Output that came meanwhile arms a settle of its own.
+    private func settle() {
+        settling?.cancel()
+        let wrote = self.wrote
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, wrote == self.wrote, surface != nil else { return }
+            settling = nil
+            slide(duration: 0.2)
+        }
+        settling = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: work)
     }
 
     /// A program on the full screen, or with the mouse, takes the drag as
