@@ -463,24 +463,15 @@ func printTailscale(w io.Writer, st tailscaleStatus) {
 }
 
 // pairMain is "gorex rexapi pair": it shows the gateway's tailnet
-// address as a QR code to scan with Rex on another device, as "rex
-// server tailscale pair" does. The code holds only the address.
+// address as a QR code to scan with Rex on another device, as "gorex
+// pair" does. The code holds only the address.
 func pairMain(args []string) int {
 	fs := flag.NewFlagSet("pair", flag.ContinueOnError)
 	asJSON := fs.Bool("json", false, "print the address as JSON")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	out, err := callGateway(SocketPath(), "server.status", nil)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "gorex rexapi pair: %v\n", err)
-		return 1
-	}
-	var res struct {
-		Tailscale *tailscaleStatus `json:"tailscale"`
-	}
-	json.Unmarshal(out, &res)
-	url, err := pairURL(res.Tailscale)
+	url, err := PairAddress()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gorex rexapi pair: %v\n", err)
 		return 1
@@ -490,14 +481,42 @@ func pairMain(args []string) int {
 		fmt.Println(string(b))
 		return 0
 	}
-	code, err := qr.Encode(url, qr.M)
+	art, err := RenderQR(url)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gorex rexapi pair: %v\n", err)
 		return 1
 	}
-	fmt.Print(renderQR(code))
+	fmt.Print(art)
 	fmt.Printf("\nScan with Rex on a device on the same tailnet: %s\n", url)
 	return 0
+}
+
+// PairAddress is the address another device scans to pair with this
+// machine's gateway, or why there is none: the tailnet's HTTPS address,
+// which holds no credential. "gorex pair" draws it, and a remote peer's
+// hello carries it as Hello.RexPairURL.
+func PairAddress() (string, error) {
+	out, err := callGateway(SocketPath(), "server.status", nil)
+	if err != nil {
+		return "", err
+	}
+	var res struct {
+		Tailscale *tailscaleStatus `json:"tailscale"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		return "", err
+	}
+	return pairURL(res.Tailscale)
+}
+
+// RenderQR draws url as a QR code for a terminal, two rows a line with
+// half blocks, dark on light, with the quiet zone scanners need.
+func RenderQR(url string) (string, error) {
+	code, err := qr.Encode(url, qr.M)
+	if err != nil {
+		return "", err
+	}
+	return renderQR(code), nil
 }
 
 // pairURL is the address a status lets another device pair with, or why

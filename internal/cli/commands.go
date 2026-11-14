@@ -20,6 +20,7 @@ import (
 
 	"gorex/internal/config"
 	"gorex/internal/rex"
+	"gorex/internal/rexapi"
 )
 
 // Exit codes scripts can rely on, as rex's.
@@ -92,6 +93,8 @@ func Main(args []string, out, errOut io.Writer, version string) (code int, handl
 		return eventsCmd(args, out, errOut)
 	case "hosts":
 		return hostsCmd(args, out, errOut)
+	case "pair":
+		return pairCmd(args, out, errOut)
 	case "skill":
 		return skillCmd(args, out, errOut)
 	case "__internal":
@@ -142,6 +145,7 @@ Usage:
   gorex capture [-s SESSION] [--history BYTES] [--raw] [--json]
   gorex events
   gorex hosts [ls] [--json]
+  gorex [-S HOST] pair [--json]
   gorex skill show|setup|status|remove [--agent NAME] [--project] [--dry-run] [--json]
   gorex remote status [--json] | tailscale on|off | address | relay HOST|default | reachable IP|off | enable | disable | control on|off | layout on|off | pair start|stop | pending | approve KEY|CODE | reject KEY|CODE | allow NAME KEY | revoke KEY
   gorex server restart | upgrade
@@ -787,6 +791,70 @@ func hostsCmd(args []string, out, errOut io.Writer) (int, bool) {
 	}
 	tw.Flush()
 	return ExitOK, true
+}
+
+// pairCmd is "gorex pair": it prints the QR code another device scans to
+// reach a server in Rex, the tailnet address that holds no credential:
+// this machine's, or with -S a host's, which its hello carries.
+func pairCmd(args []string, out, errOut io.Writer) (int, bool) {
+	fs := flagSet("pair", errOut)
+	asJSON := fs.Bool("json", false, "print the address as JSON")
+	if code, stop := parse(fs, args); stop {
+		return code, true
+	}
+	if len(fs.Args()) > 0 {
+		fmt.Fprintln(errOut, "gorex pair: use `gorex [-S HOST] pair [--json]`")
+		return ExitUsage, true
+	}
+	url := ""
+	if serverTarget == "" {
+		// The gateway knows this machine's address; the server's own
+		// hello leaves it out, so that it never waits on the gateway.
+		found, err := rexapi.PairAddress()
+		if err != nil {
+			fmt.Fprintln(errOut, "gorex pair:", err)
+			return ExitFailed, true
+		}
+		url = found
+	} else {
+		c, code := connect(errOut)
+		if c == nil {
+			return code, true
+		}
+		defer c.Close()
+		h, err := c.Hello()
+		if err != nil {
+			fmt.Fprintln(errOut, "gorex pair:", err)
+			return ExitServer, true
+		}
+		if h.RexPairURL == "" {
+			fmt.Fprintf(errOut, "gorex pair: %s sends no pairing address: its built-in Tailscale is off or not signed in, or its tailnet HTTPS address is not ready\n", serverTarget)
+			return ExitFailed, true
+		}
+		url = h.RexPairURL
+	}
+	if err := writePair(out, url, *asJSON); err != nil {
+		fmt.Fprintln(errOut, "gorex pair:", err)
+		return ExitFailed, true
+	}
+	return ExitOK, true
+}
+
+// writePair prints the address as JSON, or as the QR code that holds it
+// with the line that says what to scan it with.
+func writePair(out io.Writer, url string, asJSON bool) error {
+	if asJSON {
+		return WriteJSON(out, map[string]string{"url": url})
+	}
+	art, err := rexapi.RenderQR(url)
+	if err != nil {
+		return err
+	}
+	if _, err := io.WriteString(out, art); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(out, "\nScan with Rex on a device on the same tailnet: %s\n", url)
+	return err
 }
 
 func loadHosts() (hostsFile, error) {
