@@ -4,6 +4,8 @@ package tailnode
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"net/url"
@@ -117,9 +119,75 @@ func (n *Node) SetHostname(ctx context.Context, name string) error {
 
 // Dial connects to addr on the tailnet, once the device runs. An
 // address that is not a known peer's is dialed through the system's
-// network instead, so callers check it first.
+// network instead, so callers check it first, or use DialPeer.
 func (n *Node) Dial(ctx context.Context, network, addr string) (net.Conn, error) {
 	return n.srv.Dial(ctx, network, addr)
+}
+
+// Listen listens on the tailnet only, as tsnet's Server.Listen: the
+// listener is in the device's own network stack, and nothing on the
+// machine's interfaces reaches it.
+func (n *Node) Listen(network, addr string) (net.Listener, error) {
+	return n.srv.Listen(network, addr)
+}
+
+// ErrNotPeer is DialPeer's error for an address that is not a peer's.
+var ErrNotPeer = errors.New("tailnode: not a peer's address")
+
+// DialPeer connects over TCP to addr, an IP and port, only when the IP is
+// one of a peer's own addresses in the device's network map. Unlike Dial,
+// it never takes the system's network: it dials in the device's network
+// stack, or fails.
+func (n *Node) DialPeer(ctx context.Context, network, addr string) (net.Conn, error) {
+	return dialPeer(ctx, network, addr, n.isPeer, n.dialNetstack)
+}
+
+// dialPeer is DialPeer with its checks and dial given.
+func dialPeer(ctx context.Context, network, addr string, isPeer func(context.Context, netip.Addr) bool,
+	dial func(context.Context, netip.AddrPort) (net.Conn, error)) (net.Conn, error) {
+	switch network {
+	case "tcp", "tcp4", "tcp6":
+	default:
+		return nil, fmt.Errorf("tailnode: DialPeer takes TCP, not %q", network)
+	}
+	ap, err := netip.ParseAddrPort(addr)
+	if err != nil {
+		return nil, fmt.Errorf("tailnode: DialPeer takes an IP and port: %w", err)
+	}
+	ap = netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port())
+	ip := ap.Addr()
+	if network == "tcp4" && !ip.Is4() || network == "tcp6" && !ip.Is6() || !isPeer(ctx, ip) {
+		return nil, ErrNotPeer
+	}
+	return dial(ctx, ap)
+}
+
+// isPeer tells whether ip is one of a peer's own addresses in the
+// network map. A WhoIs with no port looks at those alone, not at the
+// routes a peer advertises.
+func (n *Node) isPeer(ctx context.Context, ip netip.Addr) bool {
+	if n.lc == nil || !ip.IsValid() {
+		return false
+	}
+	if ip4, ip6 := n.srv.TailscaleIPs(); ip == ip4 || ip == ip6 {
+		return false
+	}
+	who, err := n.lc.WhoIs(ctx, ip.String())
+	return err == nil && who != nil && who.Node != nil
+}
+
+// dialNetstack dials in the device's network stack, where an address
+// with no peer goes nowhere.
+func (n *Node) dialNetstack(ctx context.Context, dst netip.AddrPort) (net.Conn, error) {
+	sys := n.srv.Sys()
+	if sys == nil {
+		return nil, ErrNotPeer
+	}
+	d, ok := sys.Dialer.GetOK()
+	if !ok || d == nil || d.NetstackDialTCP == nil {
+		return nil, ErrNotPeer
+	}
+	return d.NetstackDialTCP(ctx, dst)
 }
 
 // Ping sends a disco ping of size bytes to the peer at ip, as tailscale

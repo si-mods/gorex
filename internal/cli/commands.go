@@ -1143,7 +1143,21 @@ func remoteCmd(args []string, out, errOut io.Writer) (int, bool) {
 			}
 		}
 		if st.Tailnet != nil {
-			fmt.Fprintf(out, "tailscale=%v running=%v hosts=%d\n", st.Tailnet.Enabled, st.Tailnet.Running, len(st.Tailnet.Hosts))
+			side := st.Tailnet.Side
+			if side == "" {
+				side = "none"
+			}
+			fmt.Fprintf(out, "tailscale=%v running=%v hosts=%d side=%s\n", st.Tailnet.Enabled, st.Tailnet.Running, len(st.Tailnet.Hosts), side)
+			if st.Tailnet.Node != "" {
+				fmt.Fprintf(out, "tailscaleNode=%s", st.Tailnet.Node)
+				if st.Tailnet.Account != "" {
+					fmt.Fprintf(out, " account=%s", st.Tailnet.Account)
+				}
+				if st.Tailnet.Device != "" {
+					fmt.Fprintf(out, " device=%s", st.Tailnet.Device)
+				}
+				fmt.Fprintln(out)
+			}
 			if st.Tailnet.Error != "" {
 				fmt.Fprintf(out, "tailscaleError=%s\n", st.Tailnet.Error)
 			}

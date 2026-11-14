@@ -22,10 +22,12 @@ import (
 const (
 	tailnetPrefix = "tailscale:"
 	tailnetPort   = RemotePort
-	// tailnetRefresh is how often the broker reads the Tailscale status.
-	// It is slow on purpose: each read runs the Tailscale client, which
-	// on macOS is a process of its own.
+	// tailnetRefresh is how often the broker reads the system Tailscale
+	// client's status. It is slow on purpose: each read asks the client.
 	tailnetRefresh = 60 * time.Second
+	// builtinRefresh is how often it reads the built-in node's, which is
+	// in the process: the status line follows its sign-in quickly.
+	builtinRefresh = 5 * time.Second
 	// tailnetFresh is how long a snapshot stays usable between reads.
 	tailnetFresh = 2*tailnetRefresh + time.Second
 	// tailnetDiscover is the least time between two discovery passes. A
@@ -48,16 +50,56 @@ const (
 
 var errTailnetUnavailable = errors.New("rex: Tailscale connection unavailable")
 
-// TailnetStatus is the local server's view of the system tailnet. Its host
+// TailnetStatus is the local server's view of the tailnet. Its host
 // targets contain opaque node identities, not addresses or credentials.
 type TailnetStatus struct {
-	Enabled bool          `json:"enabled"`
-	Running bool          `json:"running"`
-	Scope   string        `json:"scope,omitempty"`
-	Hosts   []TailnetHost `json:"hosts,omitempty"`
+	Enabled bool `json:"enabled"`
+	Running bool `json:"running"`
+	// Side is what carries discovery on this OS: TailnetSystem,
+	// TailnetBuiltin, or empty where neither does.
+	Side  string        `json:"side"`
+	Scope string        `json:"scope,omitempty"`
+	Hosts []TailnetHost `json:"hosts,omitempty"`
 	// Error is why the broker cannot serve, such as a kernel that does
-	// not let it bind to the Tailscale interface.
+	// not let it bind to the Tailscale interface, or a built-in node
+	// that is off or not signed in.
 	Error string `json:"error,omitempty"`
+	// Node is the built-in node's state, while the broker runs on that
+	// side: NodeOff, NodeStarting, NodeNeedsLogin, NodeNeedsApproval or
+	// NodeRunning. The sign-in link is not here: the gateway's local
+	// socket gives it.
+	Node string `json:"node,omitempty"`
+	// Account is the login name that signed the running node in, and
+	// Device its name on the tailnet.
+	Account string `json:"account,omitempty"`
+	Device  string `json:"device,omitempty"`
+}
+
+// TailnetStatus.Side's values.
+const (
+	TailnetSystem  = "system"
+	TailnetBuiltin = "built-in"
+)
+
+// TailnetStatus.Node's values.
+const (
+	NodeOff           = "off"
+	NodeStarting      = "starting"
+	NodeNeedsLogin    = "needs-login"
+	NodeNeedsApproval = "needs-approval"
+	NodeRunning       = "running"
+)
+
+// TailnetSide is the side that carries discovery on this OS, as
+// TailnetStatus.Side tells it.
+func TailnetSide() string {
+	switch {
+	case tailnetBuiltin:
+		return TailnetBuiltin
+	case systemTailscaleClient() != nil:
+		return TailnetSystem
+	}
+	return ""
 }
 
 // Owns tells whether a previously known target belongs to this profile.
@@ -86,28 +128,52 @@ type tailnetPeer struct {
 }
 
 type tailnetSnapshot struct {
-	scope    string
-	user     tailcfg.UserID
-	ip       netip.Addr
+	scope string
+	user  tailcfg.UserID
+	ip    netip.Addr
+	// device is the system client's interface; node the built-in node,
+	// nil on the system side.
 	device   net.Interface
+	node     TailnetDevice
 	byIP     map[netip.Addr]tailnetPeer
 	byTarget map[string]tailnetPeer
 	expires  time.Time
 }
 
+// tailnetSnapshotFrom is the system client's snapshot: its device must be
+// a TUN, and the interface that holds its address is the one its sockets
+// bind to.
 func tailnetSnapshotFrom(st *ipnstate.Status) (*tailnetSnapshot, error) {
-	if st == nil || !st.TUN || st.BackendState != "Running" || st.CurrentTailnet == nil || st.Self == nil ||
-		st.Self.UserID == 0 || st.Self.ID == "" || st.Self.IsTagged() || st.Self.Expired || st.CurrentTailnet.MagicDNSSuffix == "" {
+	if st == nil || !st.TUN {
 		return nil, errTailnetUnavailable
+	}
+	if err := tailnetUsable(st); err != nil {
+		return nil, err
 	}
 	ip := tailnetIPv4(st.TailscaleIPs)
 	dev, err := tailnetInterface(ip)
 	if err != nil {
 		return nil, err
 	}
+	return tailnetSnapshotOf(st, ip, dev, nil), nil
+}
+
+// tailnetUsable tells whether a device of either side may discover: it
+// runs, and a user, not a tag, signed it in.
+func tailnetUsable(st *ipnstate.Status) error {
+	if st == nil || st.BackendState != "Running" || st.CurrentTailnet == nil || st.Self == nil ||
+		st.Self.UserID == 0 || st.Self.ID == "" || st.Self.IsTagged() || st.Self.Expired || st.CurrentTailnet.MagicDNSSuffix == "" {
+		return errTailnetUnavailable
+	}
+	return nil
+}
+
+// tailnetSnapshotOf makes the snapshot of a usable status: the device's
+// same-user, untagged, unexpired, unshared peers.
+func tailnetSnapshotOf(st *ipnstate.Status, ip netip.Addr, dev net.Interface, node TailnetDevice) *tailnetSnapshot {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%d\x00%s", st.CurrentTailnet.MagicDNSSuffix, st.Self.UserID, st.Self.ID)))
 	s := &tailnetSnapshot{
-		scope: fmt.Sprintf("%x", sum[:16]), user: st.Self.UserID, ip: ip, device: dev,
+		scope: fmt.Sprintf("%x", sum[:16]), user: st.Self.UserID, ip: ip, device: dev, node: node,
 		byIP: map[netip.Addr]tailnetPeer{}, byTarget: map[string]tailnetPeer{}, expires: time.Now().Add(tailnetFresh),
 	}
 	suffix := "." + strings.ToLower(st.CurrentTailnet.MagicDNSSuffix)
@@ -120,14 +186,24 @@ func tailnetSnapshotFrom(st *ipnstate.Status) (*tailnetSnapshot, error) {
 		if !addr.IsValid() || addr == ip {
 			continue
 		}
-		name := pairName(p.HostName)
+		name := tailnetName(p.HostName)
 		if name == "" {
 			name = string(p.ID)
 		}
 		peer := tailnetPeer{id: p.ID, name: name, ip: addr}
 		s.byIP[addr], s.byTarget[s.target(peer)] = peer, peer
 	}
-	return s, nil
+	return s
+}
+
+// tailnetName is a peer's name as hosts show it: a built-in node's,
+// MACHINE-gorex, without its suffix.
+func tailnetName(host string) string {
+	name := pairName(host)
+	if base, ok := strings.CutSuffix(name, "-gorex"); ok && base != "" {
+		return base
+	}
+	return name
 }
 
 func tailnetIPv4(addrs []netip.Addr) netip.Addr {
@@ -176,9 +252,13 @@ func (s *tailnetSnapshot) target(p tailnetPeer) string {
 }
 func (s *tailnetSnapshot) valid() bool { return s != nil && time.Now().Before(s.expires) }
 
+// sameBinding tells whether two snapshots reach the tailnet the same way:
+// the same identity and address, over the same interface or the same
+// built-in node. A node turned off and on, or signed out and in, is
+// another one.
 func (s *tailnetSnapshot) sameBinding(other *tailnetSnapshot) bool {
 	return s != nil && other != nil && s.scope == other.scope && s.ip == other.ip &&
-		s.device.Index == other.device.Index && s.device.Name == other.device.Name
+		s.device.Index == other.device.Index && s.device.Name == other.device.Name && s.node == other.node
 }
 
 func (s *tailnetSnapshot) verifies(peer tailnetPeer, w *apitype.WhoIsResponse) bool {
@@ -194,8 +274,13 @@ type tailnetLink struct {
 	local net.Conn
 }
 
+// systemTailnet is the broker: discovery, and the links of both
+// directions, on the system Tailscale client or the built-in node.
 type systemTailnet struct {
+	// api is the system client; node, when set, returns the built-in
+	// node instead, nil while it is off.
 	api       systemTailscale
+	node      func() TailnetDevice
 	ctx       context.Context
 	cancel    context.CancelFunc
 	slots     chan struct{}
@@ -214,17 +299,51 @@ type systemTailnet struct {
 	lastDiscover time.Time
 	errText      string
 	failures     int
+	// enableErr is why turning the built-in node on at start failed.
+	enableErr string
+	// nodeState, account and device are the built-in node's, as
+	// TailnetStatus tells them.
+	nodeState, account, device string
 }
 
 func (s *Server) tailnetStartLocked() {
-	api := systemTailscaleClient()
-	if api == nil || s.rem.tailnet != nil {
+	if s.rem.tailnet != nil {
 		return
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	t := &systemTailnet{api: api, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 16), links: map[net.Conn]tailnetLink{}, wake: make(chan struct{}, 1)}
+	var t *systemTailnet
+	switch {
+	case tailnetBuiltin:
+		t = newTailnetBroker(nil, currentTailnetNode)
+	default:
+		api := systemTailscaleClient()
+		if api == nil {
+			return
+		}
+		t = newTailnetBroker(api, nil)
+	}
 	s.rem.tailnet = t
 	go t.run(s)
+}
+
+func newTailnetBroker(api systemTailscale, node func() TailnetDevice) *systemTailnet {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &systemTailnet{api: api, node: node, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 16),
+		links: map[net.Conn]tailnetLink{}, wake: make(chan struct{}, 1)}
+}
+
+func (t *systemTailnet) side() string {
+	if t.node != nil {
+		return TailnetBuiltin
+	}
+	return TailnetSystem
+}
+
+// via is how a snapshot reaches the tailnet.
+func (t *systemTailnet) via(snap *tailnetSnapshot) tailnetVia {
+	if snap.node != nil {
+		return builtinVia{snap.node}
+	}
+	return systemVia{api: t.api, device: snap.device}
 }
 
 func (s *Server) tailnetStopLocked() {
@@ -258,14 +377,25 @@ func (t *systemTailnet) status() TailnetStatus {
 	t.mu.Lock()
 	t.wanted = time.Now()
 	// A page that asked for the hosts sees them now, not at the next
-	// read, which is a minute away. A read is a process on macOS, so
+	// read, which is a minute away. A read asks the system client, so
 	// asking does not start one more than every few seconds.
 	wake := time.Since(t.lastRead) > 10*time.Second
-	st := TailnetStatus{Enabled: true, Error: t.errText}
+	if t.node != nil {
+		wake = time.Since(t.lastRead) > time.Second
+	}
+	st := TailnetStatus{Enabled: true, Side: t.side(), Error: t.errText}
+	if t.node != nil {
+		st.Node, st.Account, st.Device = t.nodeState, t.account, t.device
+		if st.Node == "" {
+			st.Node = NodeOff
+		}
+	}
 	if t.snap.valid() && t.ln != nil {
 		st.Running = true
 		st.Scope = t.snap.scope
 		st.Hosts = slices.Clone(t.hosts)
+	} else if t.enableErr != "" && st.Node == NodeOff {
+		st.Error = t.enableErr
 	}
 	t.mu.Unlock()
 	if wake {
@@ -325,7 +455,11 @@ func (t *systemTailnet) noteFailure() {
 }
 
 func (t *systemTailnet) run(s *Server) {
-	ticker := time.NewTicker(tailnetRefresh)
+	every := tailnetRefresh
+	if t.node != nil {
+		every = builtinRefresh
+	}
+	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 	for t.ctx.Err() == nil {
 		t.refresh(s)
@@ -338,15 +472,34 @@ func (t *systemTailnet) run(s *Server) {
 	}
 }
 
-func (t *systemTailnet) refresh(s *Server) {
+// read reads the status and makes its snapshot. A definite answer that
+// there is none, from the built-in node, is a *tailnetOff.
+func (t *systemTailnet) read() (*tailnetSnapshot, error) {
 	ctx, cancel := context.WithTimeout(t.ctx, tailnetIO)
+	defer cancel()
+	if t.node != nil {
+		return t.readBuiltin(ctx)
+	}
 	st, err := t.api.Status(ctx)
-	cancel()
 	if err != nil {
-		t.noteFailure()
+		return nil, err
+	}
+	return tailnetSnapshotFrom(st)
+}
+
+func (t *systemTailnet) refresh(s *Server) {
+	snap, err := t.read()
+	if off := (*tailnetOff)(nil); errors.As(err, &off) {
+		if off.passing {
+			t.mu.Lock()
+			t.errText = off.reason
+			t.mu.Unlock()
+			t.noteFailure()
+		} else {
+			t.unavailable(off.reason)
+		}
 		return
 	}
-	snap, err := tailnetSnapshotFrom(st)
 	if err != nil {
 		t.noteFailure()
 		return
@@ -362,8 +515,7 @@ func (t *systemTailnet) refresh(s *Server) {
 	start := ln == nil || !t.snap.sameBinding(snap)
 	if start {
 		t.replaceLocked(nil, nil)
-		lc := net.ListenConfig{Control: tailnetSocketControl(snap.device)}
-		ln, err = lc.Listen(t.ctx, "tcp4", netip.AddrPortFrom(snap.ip, tailnetPort).String())
+		ln, err = t.via(snap).listen(t.ctx, snap.ip)
 		if err != nil {
 			// An older Linux kernel refuses to bind to an interface:
 			// the user has to hear why the mode finds nothing.
@@ -505,13 +657,13 @@ func tailnetGreeted(c net.Conn) bool {
 }
 
 func (t *systemTailnet) dial(ctx context.Context, snap *tailnetSnapshot, p tailnetPeer, hello string) (net.Conn, error) {
+	via := t.via(snap)
 	addr := netip.AddrPortFrom(p.ip, tailnetPort).String()
-	who, err := t.api.WhoIs(ctx, addr)
+	who, err := via.WhoIs(ctx, addr)
 	if err != nil || !snap.verifies(p, who) {
 		return nil, errTailnetUnavailable
 	}
-	d := net.Dialer{Control: tailnetSocketControl(snap.device), LocalAddr: &net.TCPAddr{IP: snap.ip.AsSlice()}}
-	c, err := d.DialContext(ctx, "tcp4", addr)
+	c, err := via.dial(ctx, snap.ip, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -521,7 +673,7 @@ func (t *systemTailnet) dial(ctx context.Context, snap *tailnetSnapshot, p tailn
 		if hello != tailnetConnect {
 			return c, nil
 		}
-		actual, err := t.api.WhoIs(ctx, c.RemoteAddr().String())
+		actual, err := via.WhoIs(ctx, c.RemoteAddr().String())
 		if err == nil && snap.verifies(p, actual) {
 			c.SetDeadline(time.Time{})
 			return c, nil
@@ -544,9 +696,9 @@ func (t *systemTailnet) accept(s *Server, ln net.Listener) {
 		}
 		t.mu.Lock()
 		snap := t.snap
-		addr := c.RemoteAddr().(*net.TCPAddr).AddrPort()
+		addr, _ := netip.ParseAddrPort(c.RemoteAddr().String())
 		var p tailnetPeer
-		if t.ln == ln && snap.valid() {
+		if t.ln == ln && snap.valid() && addr.IsValid() {
 			p = snap.byIP[addr.Addr().Unmap()]
 		}
 		if p.id == "" {
@@ -575,7 +727,7 @@ func (t *systemTailnet) admit(s *Server, snap *tailnetSnapshot, ln net.Listener,
 	_, err := io.ReadFull(c, b)
 	var verified bool
 	if hello := string(b); err == nil && (hello == tailnetProbe || hello == tailnetConnect) {
-		who, err := t.api.WhoIs(ctx, addr)
+		who, err := t.via(snap).WhoIs(ctx, addr)
 		if err == nil && snap.verifies(p, who) {
 			t.mu.Lock()
 			verified = t.ln == ln && t.snap.valid() && t.snap.sameBinding(snap) && t.snap.byIP[p.ip].id == p.id

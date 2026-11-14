@@ -851,8 +851,9 @@ func (c *Client) CheckFirewall() error { return c.call(Request{Op: "remote.firew
 // DisableRemote turns remote access off.
 func (c *Client) DisableRemote() error { return c.call(Request{Op: "remote.disable"}, nil) }
 
-// SetTailnet turns the system Tailscale mode on or off: discovery and
-// connections with the GoRex desktops on this account's tailnet.
+// SetTailnet turns the Tailscale mode on or off: discovery and
+// connections with the GoRex desktops on this account's tailnet. On
+// Windows and macOS, turning it on also turns built-in Tailscale on.
 func (c *Client) SetTailnet(on bool) error {
 	return c.call(Request{Op: "remote.tailnetSet", On: on}, nil)
 }
