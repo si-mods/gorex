@@ -64,10 +64,15 @@ final class TerminalView: UIView, TerminalOutput {
     var slideAgain = false
     var drawn = false
     /// How many writes came, and the slide owed once they stop: the output
-    /// slides the terminal up as far as it needs, and down only once it is
-    /// done, where no frame in it can set it shaking.
+    /// slides the terminal up as far as it needs, and down only where the
+    /// need stays, so no frame in it can set it shaking.
     var wrote = 0
     var settling: DispatchWorkItem?
+    /// How many ticks in a row the output asked to come down.
+    var wantsDown = 0
+    /// The ticks an ask to come down takes to count as what the program means
+    /// to draw, rather than a frame passing through.
+    static let downTicks = 4
     /// Opens a new window in the session, and closes this one, for ⌘T and ⌘W.
     var newTab: (() -> Void)?
     var closeTab: (() -> Void)?
@@ -220,6 +225,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// Frees the surface, once its last output is written.
     func close() {
         held?.task.cancel()
+        settling?.cancel()
         stopDictating()
         guard let s = surface else { return }
         surface = nil
@@ -355,7 +361,7 @@ final class TerminalView: UIView, TerminalOutput {
     /// nothing over it, it rests at 0 and reads nothing.
     func slide(duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
         guard surface != nil, drawn else { return }
-        move(to: needed(), duration: duration, options: options)
+        slide(to: needed(), duration: duration, options: options)
     }
 
     /// Where the terminal goes: up as far as the cursor's row and the lines
@@ -370,9 +376,10 @@ final class TerminalView: UIView, TerminalOutput {
         return min(0, max(room, inset - c.minY, -covered))
     }
 
-    /// Moves the terminal there, and the scroll indicator's insets with it,
-    /// unless it is there already.
-    func move(to y: CGFloat, duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
+    /// Slides the terminal there, the scroll indicator's insets with it, and
+    /// leaves it alone if it is there already.
+    func slide(to y: CGFloat, duration: Double, options: UIView.AnimationOptions = .curveEaseOut) {
+        wantsDown = 0
         scroller.verticalScrollIndicatorInsets = UIEdgeInsets(top: inset - y, left: 0, bottom: covered + y, right: 0)
         guard transform.ty != y else { return }
         UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState]) {
