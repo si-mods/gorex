@@ -21,6 +21,7 @@ extension Color {
 /// pushes the terminal over the list.
 struct HostListView: View {
     @Environment(HostStore.self) private var store
+    @Environment(SpaceStore.self) private var spaceStore
     @Environment(\.horizontalSizeClass) private var width
     /// The terminal open, pushed or beside the list: one at most.
     @State private var path: [TerminalTarget] = []
@@ -32,8 +33,11 @@ struct HostListView: View {
     /// waiting is one that waits for Settings to close first.
     @State private var pairing: HostConfig?
     @State private var waiting: HostConfig?
+    @State private var creatingSpace = false
+    @State private var renamingSpace: CentralSpace?
+    @State private var spaceName = ""
     @AppStorage(Grouping.key) private var grouping = Grouping.standard
-    /// The space chosen, by its host and session.
+    /// The space chosen, by its centralized `CentralSpace.id` or `"__unassigned__"`.
     @AppStorage("space") private var chosen = ""
     /// The chosen space's glass, which slides to the next one chosen.
     @Namespace private var glass
@@ -87,6 +91,29 @@ struct HostListView: View {
         .onChange(of: store.hosts.map(\.id)) { _, ids in
             path.removeAll { !ids.contains($0.host) }
         }
+        .onChange(of: syncFingerprint, initial: true) { _, _ in
+            spaceStore.sync(from: store.hosts.map(\.spaceSnapshot))
+        }
+        .alert("New Space", isPresented: $creatingSpace) {
+            TextField("Name", text: $spaceName)
+            Button("Cancel", role: .cancel) {}
+            Button("Create") {
+                let created = spaceStore.createSpace(name: spaceName)
+                chosen = created.id
+            }
+        }
+        .alert("Rename Space", isPresented: Binding { renamingSpace != nil } set: { if !$0 { renamingSpace = nil } }, presenting: renamingSpace) { s in
+            TextField(s.name, text: $spaceName)
+            Button("Cancel", role: .cancel) {}
+            Button("Save") { spaceStore.renameSpace(s.id, to: spaceName) }
+        }
+    }
+
+    private var syncFingerprint: [String] {
+        store.hosts.map { h in
+            let s = h.sessions.map { "\($0.id):\($0.label):\($0.view?.revision ?? -1):\((h.remote[$0.id] ?? []).count)" }.joined(separator: ",")
+            return "\(h.id.uuidString):\(h.status == .online):\(h.spaceMachineKey):\(s)"
+        }
     }
 
     /// Opens a terminal, in place of the one open; nil goes back to the list.
@@ -108,16 +135,16 @@ struct HostListView: View {
                         if inbox {
                             StatusInbox(query: query, collapsed: $collapsed, open: { go($0) })
                         } else if grouping == .spaces {
-                            let cross = CrossHost(store.hosts.compactMap(\.crossHost))
-                            let all = spaces(cross)
-                            let space = (all.first { key($0.place) == chosen } ?? all.first)?.place
-                            if !all.isEmpty { strip(all, space) }
-                            ForEach(sections(cross, all, space)) { host in
-                                HostSection(host: host, cross: cross, space: space, collapsed: $collapsed, filter: filter, open: { go($0) })
+                            let all = spaceStore.orderedSpaces
+                            let hasUnassigned = hasUnassignedWindows
+                            let selection = resolvedSelection(all: all, hasUnassigned: hasUnassigned)
+                            strip(all, hasUnassigned: hasUnassigned, selection: selection)
+                            ForEach(sections(selection)) { host in
+                                HostSection(host: host, space: selection, collapsed: $collapsed, filter: filter, open: { go($0) })
                             }
                         } else {
                             ForEach(store.hosts) { host in
-                                HostSection(host: host, cross: CrossHost(), space: nil, collapsed: $collapsed, filter: filter, open: { go($0) })
+                                HostSection(host: host, space: nil, collapsed: $collapsed, filter: filter, open: { go($0) })
                             }
                         }
                     }
@@ -162,70 +189,112 @@ struct HostListView: View {
         }) { SettingsView() }
     }
 
-    /// A space to switch to: a session of a host online that is a space
-    /// of its own.
-    private struct Space {
-        let host: Host
-        let session: Host.Session
-        var place: CrossHost.Place { .init(host: host.id, session: session.id) }
-    }
+    private static let unassignedKey = "__unassigned__"
 
-    /// Every space, in the hosts' order, then their sessions'.
-    private func spaces(_ cross: CrossHost) -> [Space] {
-        store.hosts.filter { if case .offline = $0.status { false } else { true } }.flatMap { h in
-            h.sessions.filter { !cross.isGone(h.id, $0.id, windows: ($0.view?.windows ?? []).map(\.window_id)) }
-                .map { Space(host: h, session: $0) }
+    private var hasUnassignedWindows: Bool {
+        store.hosts.contains { h in
+            h.status == .online && h.sessions.contains { s in
+                (s.view?.windows ?? []).contains { spaceStore.isUnassigned(machine: h.spaceMachineKey, window: $0) }
+            }
         }
     }
 
-    /// The hosts a space lists, in the hosts' order, so that they stay in
-    /// place as the space changes: its host, the hosts it holds windows
-    /// of, and those that tell why they show none or have no space, for
-    /// their menu. A function of its own, as Xcode 26 cannot type-check it
-    /// inside the view in time.
-    private func sections(_ cross: CrossHost, _ all: [Space], _ space: CrossHost.Place?) -> [Host] {
-        store.hosts.filter { host in
-            if host.status != .online || !all.contains(where: { $0.host === host }) { return true }
-            guard let s = space else { return false }
-            return s.host == host.id || cross.rows(s.host, s.session).contains { $0.host == host.id }
+    private func resolvedSelection(all: [CentralSpace], hasUnassigned: Bool) -> SpaceSelection? {
+        if chosen == Self.unassignedKey, hasUnassigned { return .unassigned }
+        if let found = all.first(where: { $0.id == chosen }) { return .space(found.id) }
+        if let first = all.first { return .space(first.id) }
+        if hasUnassigned { return .unassigned }
+        return nil
+    }
+
+    private func hostHasWindows(_ host: Host, in selection: SpaceSelection) -> Bool {
+        let m = host.spaceMachineKey
+        return host.sessions.contains { s in
+            (s.view?.windows ?? []).contains { w in
+                switch selection {
+                case .space(let id): spaceStore.contains(spaceID: id, machine: m, window: w)
+                case .unassigned: spaceStore.isUnassigned(machine: m, window: w)
+                }
+            }
         }
     }
 
-    private func key(_ p: CrossHost.Place) -> String { p.host.uuidString + "/" + p.session }
+    /// The hosts a space lists, in the hosts' order: offline/connecting hosts
+    /// always appear so their status is visible; online hosts appear if they
+    /// hold windows in the selected space, or if the space is currently empty
+    /// across all online hosts (so the user can open a new terminal in it).
+    private func sections(_ selection: SpaceSelection?) -> [Host] {
+        guard let selection else { return store.hosts }
+        let anyOnlineMatch = store.hosts.contains { $0.status == .online && hostHasWindows($0, in: selection) }
+        return store.hosts.filter { host in
+            if host.status != .online || !anyOnlineMatch { return true }
+            return hostHasWindows(host, in: selection)
+        }
+    }
 
-    /// The strip of spaces, as the desktop's: the chosen one's glass has
-    /// the accent's tint, and slides to the next one chosen. Each has its
-    /// session's menu. A label two spaces share also names the host.
-    private func strip(_ all: [Space], _ space: CrossHost.Place?) -> some View {
+    private func strip(_ all: [CentralSpace], hasUnassigned: Bool, selection: SpaceSelection?) -> some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 GlassEffectContainer(spacing: 8) {
                     HStack(spacing: 8) {
-                        ForEach(all, id: \.place) { s in
-                            let label = s.session.label
-                            let title = all.count { $0.session.label == label } > 1 ? "\(label) · \(s.host.config.name)" : label
-                            let isChosen = s.place == space
-                            Button { withAnimation(.snappy) { chosen = key(s.place) } } label: {
-                                Text(verbatim: title).lineLimit(1)
+                        ForEach(all) { s in
+                            let sel = SpaceSelection.space(s.id)
+                            let isChosen = sel == selection
+                            Button { withAnimation(.snappy) { chosen = s.id } } label: {
+                                Text(verbatim: s.name).lineLimit(1)
                                     .foregroundStyle(isChosen ? Color(.systemBackground) : .primary)
                                     .padding(.horizontal, 16)
                                     .frame(height: 42)
                                     .glassEffect(isChosen ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
-                                    .glassEffectID(isChosen ? "chosen" : key(s.place), in: glass)
+                                    .glassEffectID(isChosen ? "chosen" : s.id, in: glass)
                             }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(isChosen ? .isSelected : [])
-                            .modifier(SessionMenu(host: s.host, session: s.session, open: { go($0) }))
+                            .contextMenu {
+                                Button("Rename Space…", systemImage: "pencil") {
+                                    spaceName = s.name
+                                    renamingSpace = s
+                                }
+                                Button("Delete Space", systemImage: "trash", role: .destructive) {
+                                    spaceStore.deleteSpace(s.id)
+                                    if chosen == s.id { chosen = "" }
+                                }
+                            }
+                            .id(sel)
                         }
+                        if hasUnassigned {
+                            let sel = SpaceSelection.unassigned
+                            let isChosen = sel == selection
+                            Button { withAnimation(.snappy) { chosen = Self.unassignedKey } } label: {
+                                Text("Unassigned").lineLimit(1)
+                                    .foregroundStyle(isChosen ? Color(.systemBackground) : .secondary)
+                                    .padding(.horizontal, 16)
+                                    .frame(height: 42)
+                                    .glassEffect(isChosen ? .regular.tint(.accentColor).interactive() : .regular.interactive(), in: .capsule)
+                                    .glassEffectID(isChosen ? "chosen" : Self.unassignedKey, in: glass)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(isChosen ? .isSelected : [])
+                            .id(sel)
+                        }
+                        Button {
+                            spaceName = ""
+                            creatingSpace = true
+                        } label: {
+                            Image(systemName: "plus")
+                                .frame(width: 42, height: 42)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("New Space")
                     }
                     .font(.subheadline.weight(.semibold))
                 }
             }
             .scrollIndicators(.hidden)
-            // The glass's edges show past the page's margins.
             .scrollClipDisabled()
-            // At once when the list shows, animated as the space changes.
-            .onChange(of: space, initial: true) { old, p in
+            .onChange(of: selection, initial: true) { old, p in
+                guard let p else { return }
                 if old == p { proxy.scrollTo(p) } else { withAnimation { proxy.scrollTo(p) } }
             }
         }
@@ -315,17 +384,21 @@ private struct DemoBanner: View {
     }
 }
 
+enum SpaceSelection: Hashable {
+    case space(String)
+    case unassigned
+}
+
 private struct HostSection: View {
     let host: Host
-    /// Where each window shows, grouped by the desktop's spaces.
-    let cross: CrossHost
-    /// The space shown, if any: the host shows one card of the windows of
-    /// it the space holds.
-    let space: CrossHost.Place?
+    /// The centralized space shown, if any: the host shows one card of the
+    /// windows of it that belong to this space.
+    let space: SpaceSelection?
     @Binding var collapsed: Set<String>
     let filter: (Host, SessionView.Window) -> Bool
     let open: (TerminalTarget) -> Void
     @Environment(HostStore.self) private var store
+    @Environment(SpaceStore.self) private var spaceStore
     /// The sessions whose new window is on its way.
     @State private var opening: Set<String> = []
     /// The row being dragged, and its session's rows in the order it moves
@@ -423,11 +496,8 @@ private struct HostSection: View {
                     card { self.rows(rows) }
                 } else if host.status != .online {
                     Text("Connecting…").foregroundStyle(.secondary)
-                } else if space.host == host.id {
-                    Text("No Window Open").foregroundStyle(.secondary)
                 } else {
-                    // A host with no space of its own.
-                    Text("No sessions").foregroundStyle(.secondary)
+                    Text("No Window Open").foregroundStyle(.secondary)
                 }
             } else {
                 if host.sessions.isEmpty { Text("No sessions").foregroundStyle(.secondary) }
@@ -443,6 +513,9 @@ private struct HostSection: View {
             defer { creating = false }
             do {
                 if let (s, b) = try await host.newSession() {
+                    if case .space(let spaceID) = space {
+                        spaceStore.assign(machine: host.spaceMachineKey, block: b, window: nil, to: spaceID)
+                    }
                     open(TerminalTarget(host: host.id, session: s, block: b, title: ""))
                 }
             } catch {
@@ -465,6 +538,9 @@ private struct HostSection: View {
             defer { opening.remove(s.id) }
             do {
                 if let b = try await host.newWindow(in: s.id) {
+                    if case .space(let spaceID) = space {
+                        spaceStore.assign(machine: host.spaceMachineKey, block: b, window: nil, to: spaceID)
+                    }
                     open(TerminalTarget(host: host.id, session: s.id, block: b, title: s.label))
                 }
             } catch {
@@ -494,6 +570,29 @@ private struct HostSection: View {
             .disabled(i <= 0)
         Button("Move Down", systemImage: "arrow.down") { move(id, in: s, onto: shown[i + 1], shown: shown) }
             .disabled(i >= shown.count - 1)
+        Divider()
+        Menu("Move to Space", systemImage: "rectangle.stack") {
+            let m = host.spaceMachineKey
+            let current = w.block.flatMap { spaceStore.space(for: m, block: $0) }
+            ForEach(spaceStore.orderedSpaces) { target in
+                Button {
+                    spaceStore.assign(window: w, on: m, to: target.id)
+                } label: {
+                    if current?.id == target.id {
+                        Label(target.name, systemImage: "checkmark")
+                    } else {
+                        Text(target.name)
+                    }
+                }
+                .disabled(current?.id == target.id)
+            }
+            if current != nil {
+                Divider()
+                Button("Unassign from Space", systemImage: "minus.circle") {
+                    for b in w.blocks { spaceStore.unassign(machine: m, block: b) }
+                }
+            }
+        }
         Divider()
         Button("New Tab", systemImage: "plus") { newWindow(s) }
         Button("Close Tab", systemImage: "xmark", role: .destructive) {
@@ -577,15 +676,17 @@ private struct HostSection: View {
         return windows.sorted { (order.firstIndex(of: $0.window.window_id) ?? .max) < (order.firstIndex(of: $1.window.window_id) ?? .max) }
     }
 
-    /// The windows of this host a space holds, in its order, with their
-    /// sessions: of its own host, those in no other host's space.
-    private func windows(in space: CrossHost.Place) -> [(Host.Session, SessionView.Window)] {
-        if space.host == host.id {
-            guard let s = host.sessions.first(where: { $0.id == space.session }) else { return [] }
-            return (s.view?.windows ?? []).filter { !cross.isMoved(host.id, s.id, $0.window_id) }.map { (s, $0) }
-        }
-        return cross.rows(space.host, space.session).filter { $0.host == host.id }.compactMap { r in
-            host.sessions.first { $0.id == r.session }.flatMap { s in s.view?.windows?.first { $0.window_id == r.window }.map { (s, $0) } }
+    /// The windows of this host belonging to the selected centralized space.
+    private func windows(in space: SpaceSelection) -> [(Host.Session, SessionView.Window)] {
+        let m = host.spaceMachineKey
+        return host.sessions.flatMap { s in
+            (s.view?.windows ?? []).compactMap { w in
+                let matches: Bool = switch space {
+                case .space(let id): spaceStore.contains(spaceID: id, machine: m, window: w)
+                case .unassigned: spaceStore.isUnassigned(machine: m, window: w)
+                }
+                return matches ? (s, w) : nil
+            }
         }
     }
 
@@ -627,19 +728,13 @@ private struct HostSection: View {
             }
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
-            // The menu and the drag change the windows of the space's own
-            // host only.
-            if space.map({ $0.host == host.id }) ?? true {
-                // The order the rows show, a drag's while it lasts.
-                let shown = windows.filter { $0.session.id == w.session.id }.map(\.window.window_id)
-                let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false
-                row.onDrag { lift(w, shown: shown) }
-                    .contextMenu { menu(w.session, w.window, shown: shown) }
-                    .onDrop(of: [.text], delegate: RowDrop(pass: { pass(over: w) }, drop: drop))
-                    .opacity(lifted ? 0.4 : 1)
-            } else {
-                row
-            }
+            // Every host in a centralized space supports window menu and drag.
+            let shown = windows.filter { $0.session.id == w.session.id }.map(\.window.window_id)
+            let lifted = drag.map { !$0.dropped && $0.session.id == w.session.id && $0.window == w.window.window_id } ?? false
+            row.onDrag { lift(w, shown: shown) }
+                .contextMenu { menu(w.session, w.window, shown: shown) }
+                .onDrop(of: [.text], delegate: RowDrop(pass: { pass(over: w) }, drop: drop))
+                .opacity(lifted ? 0.4 : 1)
         }
     }
 
