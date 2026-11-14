@@ -74,6 +74,10 @@ var remoteUI struct {
 	// addingKey shows the form that adds a client by its key, in place
 	// of the button that opens it.
 	addingKey bool
+	// signing is that Sign in waits for the built-in node's link; signErr
+	// is what was wrong with the last.
+	signing bool
+	signErr string
 	// details shows this machine's key and address under the devices.
 	details bool
 }
@@ -1036,16 +1040,14 @@ func (a *App) remoteDetails(c *ui.Context, k *colors, st rex.RemoteStatus) {
 	}
 	if st.Tailnet != nil {
 		tailnet := st.Tailnet.Enabled
-		if remoteSwitch(c, k, "system-tailscale", locales.TailnetMode(), locales.TailnetModeNote(), &tailnet, page.unreachable || page.busy) {
+		note := locales.TailnetModeNote()
+		if st.Tailnet.Side == rex.TailnetBuiltin {
+			note = locales.TailnetModeNoteBuiltin()
+		}
+		if remoteSwitch(c, k, "system-tailscale", locales.TailnetMode(), note, &tailnet, page.unreachable || page.busy) {
 			a.remoteDo(func(srv *rex.Client) error { return srv.SetTailnet(tailnet) }, nil)
 		}
-		if st.Tailnet.Enabled && !st.Tailnet.Running {
-			hint := locales.TailnetUnavailable()
-			if st.Tailnet.Error != "" {
-				hint = st.Tailnet.Error
-			}
-			groupRow(c, k, nil).Children(func() { rowHint(c, k, hint) })
-		}
+		a.remoteTailnet(c, k, st.Tailnet)
 	}
 	a.remoteControlServer(c, k)
 	if st.Enabled {

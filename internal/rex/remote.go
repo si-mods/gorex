@@ -416,6 +416,11 @@ func (s *Server) remoteLoad() {
 	}
 	if r.cfg.Tailnet {
 		s.tailnetStartLocked()
+		// A mode that was on before an upgrade has a built-in node that
+		// nothing turned on yet.
+		if t := r.tailnet; t != nil && t.node != nil && EnableBuiltinTailscale != nil {
+			go t.enableBuiltin(EnableBuiltinTailscale)
+		}
 	}
 }
 

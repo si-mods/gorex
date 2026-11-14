@@ -136,6 +136,10 @@ user who signed the device in; every other caller gets 403.
 `--allow-tailnet-members` lets in everyone the tailnet's access rules
 allow.
 
+On Windows and macOS, the desktop's Tailscale discovery uses this same
+device: turning **Tailscale discovery and connections** on in Settings
+also turns built-in Tailscale on. Sign in with the button there.
+
 ## Tailcat
 
 Rex Go reaches the machine over tailcat, at the address of GoRex's
