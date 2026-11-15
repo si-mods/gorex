@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	tunnelCreatorName = "com.superlogical.tunnel"
-	tunnelFlavorDial  = "com.superlogical.tunnel.dial"
+	tunnelCreatorName  = "com.superlogical.tunnel"
+	tunnelFlavorDial   = "com.superlogical.tunnel.dial"
 	tunnelFlavorListen = "com.superlogical.tunnel.listen"
-	tunnelAcceptWait  = 30 * time.Second
-	tunnelDialTimeout = 10 * time.Second
+	tunnelAcceptWait   = 30 * time.Second
+	tunnelDialTimeout  = 10 * time.Second
 )
 
 var tunnelConnRefPattern = regexp.MustCompile(`^conn:.+$`)
