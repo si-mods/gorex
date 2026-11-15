@@ -88,6 +88,7 @@ private struct StatusRow: View {
             ProgramTile(program: tile)
                 .frame(width: 21 * ProgramTiles.scale, height: 16 * ProgramTiles.scale)
                 .scaleEffect(1.4)
+                .tileBounce(state: item.status.state)
                 .frame(width: 44, height: 44)
             if item.detail.isEmpty {
                 HStack(spacing: 8) {
