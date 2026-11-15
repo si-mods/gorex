@@ -7,6 +7,7 @@ import (
 	"os/user"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gorex/internal/rex"
@@ -118,7 +119,7 @@ type Gateway struct {
 	mapper    *mapper
 
 	mu      sync.Mutex
-	model   *model
+	model   atomic.Pointer[model]
 	conns   map[*control]struct{}
 	clients map[string]*clientRecord
 	tokens  map[string]*clientRecord
@@ -259,30 +260,7 @@ func (g *Gateway) Close() error {
 		g.closing = true
 		g.mu.Unlock()
 		close(g.done)
-		g.mu.Lock()
-		conns := make([]*control, 0, len(g.conns))
-		for c := range g.conns {
-			conns = append(conns, c)
-		}
-		streams := make([]*stream, 0, len(g.streams))
-		for _, s := range g.streams {
-			streams = append(streams, s)
-		}
-		g.mu.Unlock()
-		if g.tailnet != nil {
-			g.tailnet.close()
-		}
-		if g.lan != nil {
-			g.lan.close()
-		}
-		for _, c := range conns {
-			c.closeWith(1001, "data provider canceled")
-		}
-		for _, s := range streams {
-			s.closeWith(1001, "data provider canceled")
-		}
-		g.dropDownloads(nil)
-		g.closeAllTunnels()
+		g.closeAllResources()
 		g.opt.Client.Close()
 		g.wg.Wait()
 	})
@@ -362,9 +340,8 @@ func (g *Gateway) reread(layout bool) (*model, error) {
 	}
 	g.pruneOwners(m)
 	g.pruneAttachments(m)
+	old := g.model.Swap(m)
 	g.mu.Lock()
-	old := g.model
-	g.model = m
 	conns := make([]*control, 0, len(g.conns))
 	for c := range g.conns {
 		conns = append(conns, c)
@@ -447,12 +424,10 @@ func (g *Gateway) renewLocks() {
 	}
 }
 
-// modelNow returns the last model, or an empty one.
+// modelNow returns the last published immutable model, or an empty one.
 func (g *Gateway) modelNow() *model {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.model != nil {
-		return g.model
+	if m := g.model.Load(); m != nil {
+		return m
 	}
 	return &model{byID: map[string]*mSession{}, blocks: map[string]*mBlock{}}
 }
@@ -631,9 +606,6 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 	delete(g.conns, c)
 	g.mu.Unlock()
 	g.dropDownloads(c)
-	if c.rec != nil {
-		g.disownClientTunnels(c.rec.id)
-	}
 	rec := c.rec
 	if rec == nil {
 		return
@@ -668,15 +640,7 @@ func (g *Gateway) dropControl(c *control, clean bool) {
 		delete(g.tokens, rec.token)
 	}
 	g.mu.Unlock()
-	g.emitOwnerChanges(g.releaseBlocks(rec, "disconnect"))
-	for _, sid := range attached {
-		g.emitClientEvent(rec, sid, "client_disconnected")
-	}
-	g.emitClientEvent(rec, "", "client_left")
-	g.cancelStreams(rec.id)
-	g.dropTickets(rec.id, "")
-	g.dropUploads(rec.id, "")
-	g.refresh()
+	g.cleanupClient(rec, attached, "disconnect")
 }
 
 // expireClient drops a client that no connection came back for.
@@ -695,15 +659,7 @@ func (g *Gateway) expireClient(rec *clientRecord) {
 		delete(g.tokens, rec.token)
 	}
 	g.mu.Unlock()
-	g.emitOwnerChanges(g.releaseBlocks(rec, "disconnect"))
-	for _, sid := range attached {
-		g.emitClientEvent(rec, sid, "client_disconnected")
-	}
-	g.emitClientEvent(rec, "", "client_left")
-	g.cancelStreams(rec.id)
-	g.dropTickets(rec.id, "")
-	g.dropUploads(rec.id, "")
-	g.refresh()
+	g.cleanupClient(rec, attached, "disconnect")
 }
 
 // attachedListLocked returns the sessions a client is attached to. Its

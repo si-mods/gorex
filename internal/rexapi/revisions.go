@@ -98,6 +98,21 @@ var methodSince = map[string]int{
 	"com.superlogical.tunnel.info": 14,
 }
 
+var (
+	changesByMethod    map[string][]revisionChange
+	maxChangedRevision int
+)
+
+func init() {
+	changesByMethod = make(map[string][]revisionChange, len(revisionChanges))
+	for _, ch := range revisionChanges {
+		changesByMethod[ch.method] = append(changesByMethod[ch.method], ch)
+		if ch.at > maxChangedRevision {
+			maxChangedRevision = ch.at
+		}
+	}
+}
+
 // methodAvailable tells whether a client at revision rev may call method.
 func methodAvailable(rev int, method string) bool {
 	since, ok := methodSince[method]
@@ -106,9 +121,16 @@ func methodAvailable(rev int, method string) bool {
 
 // changesFor returns the changes that a client at rev predates.
 func changesFor(rev int, method string) []revisionChange {
+	if rev >= maxChangedRevision {
+		return nil
+	}
+	all := changesByMethod[method]
+	if len(all) == 0 {
+		return nil
+	}
 	var out []revisionChange
-	for _, ch := range revisionChanges {
-		if ch.method == method && rev < ch.at {
+	for _, ch := range all {
+		if rev < ch.at {
 			out = append(out, ch)
 		}
 	}
