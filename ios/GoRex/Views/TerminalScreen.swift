@@ -638,7 +638,7 @@ private struct VoiceCapsule: View {
         var open = AttributedString(full.dropFirst(min(settled.count, full.count)))
         open.foregroundColor = .secondary
         let text = Text(AttributedString(settled) + open).font(.callout)
-        HStack(spacing: 8) {
+        return HStack(spacing: 8) {
             if said?.polishing == true {
                 Image(systemName: "sparkles").foregroundStyle(.secondary).symbolEffect(.pulse).frame(height: 18).accessibilityLabel("Polishing")
             } else {
