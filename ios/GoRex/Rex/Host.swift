@@ -823,8 +823,8 @@ final class Host: Identifiable {
 
     private func sessionID(forBlock block: String) -> String? {
         for s in sessions {
-            for w in s.windows {
-                if w.tiled.contains(block) || w.layers.contains(where: { $0.blocks.contains(block) }) {
+            for w in s.view?.windows ?? [] {
+                if (w.layers ?? []).contains(where: { ($0.blocks ?? []).contains(where: { $0.block_id == block }) }) {
                     return s.id
                 }
             }
