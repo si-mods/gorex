@@ -91,8 +91,10 @@ nonisolated final class ConnectionTests: XCTestCase {
         let s = TerminalSession(host: h, session: "s", block: "b")
         s.type(Data("ls".utf8))
         s.type(Data("\r".utf8))
+        await until("waiting") { s.waitingToSend }
         h.connect()
         await until("written") { self.written(rex).joined() == "ls\r" }
+        await until("sent") { !s.waitingToSend }
         s.close()
         h.stop()
     }
@@ -263,6 +265,68 @@ nonisolated final class ConnectionTests: XCTestCase {
         // At once, then after 0.5 s and 1 s; the next waits 2 s.
         XCTAssertLessThanOrEqual(handshakes, 4)
         XCTAssertGreaterThanOrEqual(handshakes, 2)
+        s.close()
+        h.stop()
+    }
+
+    /// A data connection the server drops shows the terminal reconnecting,
+    /// until the stream is back.
+    @MainActor func testDropShowsReconnecting() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in method == "data.connect" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:] }
+        var handshakes = 0
+        var conns: [NWConnection] = []
+        rex.data = { c, _ in
+            handshakes += 1
+            conns.append(c)
+            FakeRex.send(c, FakeRex.welcome)
+            if handshakes == 1 { FakeRex.close(c, .protocolCode(.normalClosure)) }
+        }
+        let s = TerminalSession(host: h, session: "s", block: "b")
+        s.start()
+        XCTAssertFalse(s.reconnecting)
+        await until("reconnecting") { s.reconnecting }
+        await until("back") { handshakes == 2 && !s.reconnecting }
+        s.close()
+        conns.forEach { $0.cancel() }
+        h.stop()
+    }
+
+    /// A terminal that failed for want of a connection starts again as
+    /// its host is back; one whose window closed does not.
+    @MainActor func testHostCameBackStartsOnlyALostTerminal() async throws {
+        let rex = try FakeRex()
+        defer { rex.stop() }
+        let h = try await online(rex)
+        rex.respond = { method, _ in
+            method == "data.connect" ? ["error": ["code": "unavailable", "message": "no"]] : [:]
+        }
+        let lost = TerminalSession(host: h, session: "s", block: "b")
+        lost.start()
+        await until("failed") { if case .failed = lost.state { true } else { false } }
+        XCTAssertTrue(lost.startsWhenHostIsBack)
+        lost.hostCameBack()
+        await until("connect again") { rex.count("data.connect") == 2 }
+        lost.close()
+
+        rex.respond = { method, _ in method == "data.connect" ? ["ticket": "uH4mJKwzMarlTNT-UiyMog"] : [:] }
+        var handshakes = 0
+        rex.data = { c, _ in
+            handshakes += 1
+            FakeRex.send(c, FakeRex.welcome)
+            FakeRex.close(c, .privateCode(4000))
+        }
+        let closed = TerminalSession.State.failed(String(localized: "The window closed."))
+        let s = TerminalSession(host: h, session: "s", block: "c")
+        s.start()
+        await until("window closed") { s.state == closed }
+        XCTAssertFalse(s.startsWhenHostIsBack)
+        s.hostCameBack()
+        try await Task.sleep(for: .seconds(1))
+        XCTAssertEqual(s.state, closed)
+        XCTAssertEqual(handshakes, 1)
         s.close()
         h.stop()
     }
