@@ -93,7 +93,7 @@ func TestClaudeSession(t *testing.T) {
 		t.Fatalf("procEnv = %q, want %q", got, config)
 	}
 	dir := inspect(pid).dir
-	if id, cfg := claudeSession(pid, dir); id != "" || cfg != "" {
+	if id, cfg := claudeSession(pid, dir, ""); id != "" || cfg != "" {
 		t.Errorf("without a file: claudeSession = %q, %q", id, cfg)
 	}
 	const id = "5d454f1b-0c2e-4b8a-9f00-0123456789ab"
@@ -102,10 +102,10 @@ func TestClaudeSession(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(config, "sessions", fmt.Sprint(pid)+".json"), []byte(file), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if gotID, gotCfg := claudeSession(pid, dir); gotID != id || gotCfg != config {
+	if gotID, gotCfg := claudeSession(pid, dir, ""); gotID != id || gotCfg != config {
 		t.Errorf("claudeSession = %q, %q; want %q, %q", gotID, gotCfg, id, config)
 	}
-	if gotID, _ := claudeSession(pid, t.TempDir()); gotID != "" {
+	if gotID, _ := claudeSession(pid, t.TempDir(), ""); gotID != "" {
 		t.Errorf("in another dir: claudeSession = %q", gotID)
 	}
 }
@@ -133,7 +133,7 @@ func TestEnvReader(t *testing.T) {
 		reads++
 		return []string{"HOME=" + t.TempDir(), "PI_PROFILE=work", "XDG_DATA_HOME=/x"}
 	})
-	ompSession(get, t.TempDir(), nil, "/dev/ttys042")
+	ompSession(get, t.TempDir(), nil, "/dev/ttys042", "")
 	if reads != 1 {
 		t.Errorf("reads for ompSession = %d, want 1", reads)
 	}

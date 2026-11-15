@@ -104,18 +104,18 @@ func TestOmpSession(t *testing.T) {
 	writeFile(t, older, "{}\n")
 	writeFile(t, newer, "{}\n")
 	os.Chtimes(older, time.Now().Add(-time.Hour), time.Now().Add(-time.Hour))
-	if id, data, file := ompSession(env, dir, nil, "/dev/ttys042"); id != ompConv || data != agent || file != newer {
+	if id, data, file := ompSession(env, dir, nil, "/dev/ttys042", ""); id != ompConv || data != agent || file != newer {
 		t.Errorf("the newest: %q %q %q", id, data, file)
 	}
 	writeFile(t, filepath.Join(agent, "terminal-sessions", "ttys042"), dir+"\n"+older+"\ncwdstat 1 2\n")
-	if id, _, file := ompSession(env, dir, nil, "/dev/ttys042"); file != older || id != "01a1aab0-0000-70a7-8f7b-bb9d63df27de" {
+	if id, _, file := ompSession(env, dir, nil, "/dev/ttys042", ""); file != older || id != "01a1aab0-0000-70a7-8f7b-bb9d63df27de" {
 		t.Errorf("the terminal's: %q %q", id, file)
 	}
 	// Another directory's record is not this one's.
-	if _, _, file := ompSession(env, dir, nil, "/dev/ttys043"); file != newer {
+	if _, _, file := ompSession(env, dir, nil, "/dev/ttys043", ""); file != newer {
 		t.Errorf("without a record: %q", file)
 	}
-	if id, _, _ := ompSession(env, resolved(t), nil, ""); id != "" {
+	if id, _, _ := ompSession(env, resolved(t), nil, "", ""); id != "" {
 		t.Errorf("a directory with none: %q", id)
 	}
 }

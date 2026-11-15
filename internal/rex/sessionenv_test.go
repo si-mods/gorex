@@ -46,7 +46,7 @@ func TestSessionEnvDropsStarterMarkers(t *testing.T) {
 	t.Setenv("TMUX", "x")
 	t.Setenv("ITERM_PROFILE", "x")
 	t.Setenv("GOREX_SESSION", "stale")
-	got := envMap(sessionEnv("abc", nil, true))
+	got := envMap(sessionEnv("abc", nil, true, nil))
 	for _, k := range append(testMarkers, "TMUX", "ITERM_PROFILE") {
 		if _, ok := got[k]; ok {
 			t.Errorf("%s leaked into the session environment", k)
@@ -80,7 +80,7 @@ func TestSessionEnvDropsStarterMarkers(t *testing.T) {
 			t.Errorf("%s is kept beside PATH, and a shell may take it instead", k)
 		}
 	}
-	remote := envMap(sessionEnv("abc", nil, false))
+	remote := envMap(sessionEnv("abc", nil, false, nil))
 	if _, ok := remote["GOREX_BIN_DIR"]; ok {
 		t.Error("a remote session got the gorex shim directory")
 	}
@@ -98,7 +98,7 @@ func TestSessionEnvNamesGhostty(t *testing.T) {
 	// started from.
 	t.Setenv("TERM_PROGRAM", "iTerm.app")
 	t.Setenv("TERM_PROGRAM_VERSION", "3.5.0")
-	got := envMap(sessionEnv("abc", nil, true))
+	got := envMap(sessionEnv("abc", nil, true, nil))
 	if got["TERM_PROGRAM"] != "ghostty" {
 		t.Errorf("TERM_PROGRAM = %q, want ghostty", got["TERM_PROGRAM"])
 	}
@@ -240,7 +240,7 @@ func TestSessionEnvAfterServerEnv(t *testing.T) {
 		k, v, _ := strings.Cut(kv, "=")
 		t.Setenv(k, v)
 	}
-	got := envMap(sessionEnv("abc", nil, true))
+	got := envMap(sessionEnv("abc", nil, true, nil))
 	for _, k := range []string{"CLAUDECODE", "AGENT", "NO_COLOR", "CI", "GIT_PAGER"} {
 		if _, ok := got[k]; ok {
 			t.Errorf("%s leaked into the session environment", k)

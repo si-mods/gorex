@@ -94,6 +94,9 @@ type Server struct {
 	// keep one each. dir is the directory the server keeps its layout in,
 	// Dir as it was when it started; Dir when "".
 	linksFile, home, dir string
+	// sessUser is the user the sessions run as, when they are not the
+	// server's own (EnvSessionUser): nil runs them as the server does.
+	sessUser *sessionUser
 	// refreshDue tells that a refresh of the layout's facts is to come
 	// (refresh); restoring are the sessions restoreLost is to start, each
 	// closing once it tried.
@@ -320,6 +323,10 @@ func Serve() error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	sessUser, err := sessionUserFromEnv()
+	if err != nil {
+		return err
+	}
 	if err := EnsureCLI(); err != nil {
 		log.Printf("rex: the gorex command: %v", err)
 	}
@@ -343,6 +350,12 @@ func Serve() error {
 		return err
 	}
 	s := newServer(ln, lock)
+	s.sessUser = sessUser
+	if sessUser != nil {
+		s.home = sessUser.home
+	} else if os.Geteuid() == 0 {
+		log.Printf("rex: the server runs as root: set %s to run sessions as a user", EnvSessionUser)
+	}
 	// The journal is read before this run records its start: what it kept
 	// of the run before this one tells whether that one stopped, and which
 	// layout it had last.
@@ -391,6 +404,11 @@ func (s *Server) serve() error {
 	ln, sock := s.ln, SocketPath()
 	go func() {
 		s.host = hostInfo()
+		// The sessions, and what the app opens on this machine, are the
+		// session user's, not the server's, which may run as root.
+		if u := s.sessUser; u != nil {
+			s.host.User, s.host.Home = u.name, u.home
+		}
 		close(s.hostDone)
 	}()
 	go s.watchIdle()
@@ -841,6 +859,11 @@ func (s *Server) create(o CreateOptions, peer string) (*session, error) {
 	return s.createHeld(o, peer)
 }
 
+// spawner starts the server's sessions: as its own user, or as the one
+// EnvSessionUser names, which the helper at the server's executable drops
+// them to.
+func (s *Server) spawner() spawner { return spawner{user: s.sessUser, exe: s.exe} }
+
 // createHeld is create for a caller that holds ops already: a read lock
 // taken again deadlocks while an upgrade waits for it.
 func (s *Server) createHeld(o CreateOptions, peer string) (*session, error) {
@@ -850,7 +873,7 @@ func (s *Server) createHeld(o CreateOptions, peer string) (*session, error) {
 	} else if _, err := s.session(id); err == nil {
 		return nil, fmt.Errorf("rex: a session %s runs already", id)
 	}
-	ss, err := newSession(id, o, peer, s.sessionsChanged)
+	ss, err := newSession(id, o, peer, s.sessionsChanged, s.spawner())
 	if err != nil {
 		return nil, err
 	}

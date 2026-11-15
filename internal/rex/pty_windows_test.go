@@ -40,7 +40,7 @@ func TestCtrlC(t *testing.T) {
 
 func ctrlCServer(t *testing.T) {
 	os.Setenv("GOREX_TEST_CTRLC", "program")
-	p, err := startPTY(os.Args[0], []string{os.Args[0], "-test.run=^TestCtrlC$"}, os.TempDir(), os.Environ(), 80, 24)
+	p, err := startPTY(sessionSpawn{path: os.Args[0], argv: []string{os.Args[0], "-test.run=^TestCtrlC$"}, dir: os.TempDir(), env: os.Environ(), cols: 80, rows: 24})
 	if err != nil {
 		t.Fatal(err)
 	}

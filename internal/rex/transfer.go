@@ -114,7 +114,7 @@ func (s *Server) filePath(sid, dir string) (string, error) {
 		return "", err
 	}
 	if rest, ok := strings.CutPrefix(dir, "~"); ok && (rest == "" || rest[0] == '/') {
-		home, err := os.UserHomeDir()
+		home, err := s.homeDir()
 		if err != nil {
 			return "", err
 		}

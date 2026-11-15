@@ -425,7 +425,7 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 		}
 		// A shell GoRex cannot type the resume into would show a shell
 		// alone: refused before anything is made.
-		if _, _, shell, err := shellCommand(nil); err != nil {
+		if _, _, shell, err := shellCommand(nil, s.spawner().shell()); err != nil {
 			fail(err)
 			return
 		} else if _, ok := agent.resume(shell, m.Session); !ok {
@@ -513,7 +513,8 @@ func (s *Server) teleportIn(conn net.Conn, r *bufio.Reader, m *TeleportManifest,
 	}
 	keep := func() {}
 	if agent != nil {
-		placed, done, err := placeConversation(filepath.Join(tmp, m.Program), config, m, tree, dir)
+		home, _ := s.homeDir()
+		placed, done, err := placeConversation(filepath.Join(tmp, m.Program), config, m, tree, dir, home)
 		undo, keep = append(undo, placed...), done
 		if err != nil {
 			fail(step("placing the conversation", err))
@@ -705,10 +706,11 @@ var blobRef = regexp.MustCompile(`blob:sha256:([0-9a-f]{64})`)
 type teleportAgent struct {
 	// dataDir is where the agent keeps them on this machine; files the
 	// glob under it of conversation id's files, and project the directory
-	// under it of those started in dir.
+	// under it of those started in dir, in the home the server's sessions
+	// run as.
 	dataDir func(s *Server) (string, error)
 	files   func(id string) string
-	project func(dir string) string
+	project func(dir, home string) string
 	// idField names a message of a conversation's lines, and turns are
 	// the types of the lines that are the conversation: what the model
 	// reads, not what the agent notes of itself, as omp's session_exit.
@@ -727,7 +729,7 @@ var teleportAgents = map[string]*teleportAgent{
 	"claude": {
 		dataDir: (*Server).claudeConfigDir,
 		files:   func(id string) string { return filepath.Join("projects", "*", id+".jsonl") },
-		project: func(dir string) string { return filepath.Join("projects", claudeSlug(dir)) },
+		project: func(dir, _ string) string { return filepath.Join("projects", claudeSlug(dir)) },
 		idField: "uuid",
 		turns:   []string{"user", "assistant"},
 		shared:  func(id string) [2]string { return [2]string{"file-history/" + id, "file-history/" + id} },
@@ -736,8 +738,10 @@ var teleportAgents = map[string]*teleportAgent{
 	"omp": {
 		dataDir: (*Server).ompDataDir,
 		files:   func(id string) string { return filepath.Join("sessions", "*", "*_"+id+".jsonl") },
-		project: func(dir string) string {
-			home, _ := os.UserHomeDir()
+		project: func(dir, home string) string {
+			if home == "" {
+				home, _ = os.UserHomeDir()
+			}
 			return filepath.Join("sessions", ompSlug(dir, home))
 		},
 		idField: "id",
@@ -1012,7 +1016,7 @@ func noLinkUnder(root, dir string) error {
 // undo puts back and done removes; one with messages the incoming lacks
 // is refused (errDiverged), nothing changed. It returns how to undo what
 // it did, and how to keep it.
-func placeConversation(from, config string, m *TeleportManifest, tree, dir string) (undo []func(), done func(), err error) {
+func placeConversation(from, config string, m *TeleportManifest, tree, dir, home string) (undo []func(), done func(), err error) {
 	done = func() {}
 	agent := teleportAgents[m.Program]
 	if agent == nil {
@@ -1073,7 +1077,7 @@ func placeConversation(from, config string, m *TeleportManifest, tree, dir strin
 	if err != nil {
 		return undo, done, err
 	}
-	project := filepath.Join(config, agent.project(dir))
+	project := filepath.Join(config, agent.project(dir, home))
 	if err := os.MkdirAll(project, 0o700); err != nil {
 		return undo, done, err
 	}

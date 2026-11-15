@@ -44,9 +44,9 @@ type pty struct {
 // tty is the name of a terminal's slave: a console has none.
 func (p *pty) tty() string { return "" }
 
-// startPTY runs argv (argv[0] as the program sees it, path the file) in a
-// new pseudo console of cols×rows.
-func startPTY(path string, argv []string, dir string, env []string, cols, rows int) (*pty, error) {
+// startPTY runs sp.argv (argv[0] as the program sees it, sp.path the file)
+// in a new pseudo console of sp.cols×sp.rows.
+func startPTY(sp sessionSpawn) (*pty, error) {
 	// The console reads what is typed from inR and writes what it shows to
 	// outW; the session writes to inW and reads outR.
 	var inR, inW, outR, outW windows.Handle
@@ -59,7 +59,7 @@ func startPTY(path string, argv []string, dir string, env []string, cols, rows i
 		return nil, fmt.Errorf("pty: %w", err)
 	}
 	var console windows.Handle
-	err := windows.CreatePseudoConsole(coord(cols, rows), inR, outW, 0, &console)
+	err := windows.CreatePseudoConsole(coord(sp.cols, sp.rows), inR, outW, 0, &console)
 	// The console has its own copies of its ends.
 	windows.CloseHandle(inR)
 	windows.CloseHandle(outW)
@@ -69,10 +69,7 @@ func startPTY(path string, argv []string, dir string, env []string, cols, rows i
 		return nil, fmt.Errorf("pty: CreatePseudoConsole: %w", err)
 	}
 	p := &pty{console: console, signal: consoleSignal(console), in: os.NewFile(uintptr(inW), "conpty-in"), out: os.NewFile(uintptr(outR), "conpty-out")}
-	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		dir, _ = os.UserHomeDir()
-	}
-	if err := p.spawn(path, argv, dir, env); err != nil {
+	if err := p.spawn(sp.path, sp.argv, sp.dir, sp.env); err != nil {
 		p.close()
 		return nil, err
 	}
@@ -346,10 +343,10 @@ func environmentBlock(env []string) []uint16 {
 }
 
 // shellCommand returns the program, its arguments and the shell's name
-// for a session: when cmd is empty, $SHELL when it names a program of
-// Windows (not one of MSYS's paths), else PowerShell, else the command
-// interpreter.
-func shellCommand(cmd []string) (path string, argv []string, name string, err error) {
+// for a session: when cmd is empty, shell when the session runs as another
+// user, else $SHELL when it names a program of Windows (not one of MSYS's
+// paths), else PowerShell, else the command interpreter.
+func shellCommand(cmd []string, shell string) (path string, argv []string, name string, err error) {
 	if len(cmd) > 0 {
 		path, err = exec.LookPath(cmd[0])
 		if err != nil {
@@ -357,7 +354,7 @@ func shellCommand(cmd []string) (path string, argv []string, name string, err er
 		}
 		return path, cmd, exeName(cmd[0]), nil
 	}
-	for _, sh := range []string{os.Getenv("SHELL"), "pwsh.exe", "powershell.exe", os.Getenv("COMSPEC"), "cmd.exe"} {
+	for _, sh := range []string{shell, os.Getenv("SHELL"), "pwsh.exe", "powershell.exe", os.Getenv("COMSPEC"), "cmd.exe"} {
 		if sh == "" {
 			continue
 		}

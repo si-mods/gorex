@@ -743,7 +743,7 @@ func TestPlaceConversationOverOld(t *testing.T) {
 	before := tree(t, config)
 
 	// Behind: it gives way, and comes back as it was on undo.
-	undo, done, err := placeConversation(from, config, m, tree0, dir)
+	undo, done, err := placeConversation(from, config, m, tree0, dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -769,7 +769,7 @@ func TestPlaceConversationOverOld(t *testing.T) {
 	}
 
 	// Kept: the old copy and the backup are gone.
-	_, done, err = placeConversation(from, config, m, tree0, dir)
+	_, done, err = placeConversation(from, config, m, tree0, dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -787,7 +787,7 @@ func TestPlaceConversationOverOld(t *testing.T) {
 	before = tree(t, config)
 	from2 := t.TempDir()
 	writeFile(t, filepath.Join(from2, convID+".jsonl"), conversation("/src/proj/sub", "m1", "m2", "m3", "there"))
-	if _, _, err := placeConversation(from2, config, m, tree0, filepath.Join(tree0, "other")); err != errDiverged {
+	if _, _, err := placeConversation(from2, config, m, tree0, filepath.Join(tree0, "other"), ""); err != errDiverged {
 		t.Errorf("a conversation gone on both sides: %v", err)
 	}
 	if got := tree(t, config); !maps.Equal(got, before) {

@@ -130,7 +130,7 @@ func TestSessionRewritesFileImage(t *testing.T) {
 	s, err := newSession("gfx", CreateOptions{
 		Command: []string{"/bin/sh", "-c", "printf '\\033_Gi=9,a=T,t=f;image.png\\033\\\\'; sleep 0.1"},
 		Dir:     dir, Cols: 40, Rows: 6,
-	}, "", func() {})
+	}, "", func() {}, spawner{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +358,7 @@ func TestSessionReplaysImageOnce(t *testing.T) {
 	s, err := newSession("gfx", CreateOptions{
 		Command: []string{"/bin/sh", "-c", "for n in $(seq 20); do printf '\\033_Gi=7,a=T,t=f;image.png\\033\\\\'; done; sleep 0.1"},
 		Dir:     dir, Cols: 40, Rows: 6,
-	}, "", func() {})
+	}, "", func() {}, spawner{})
 	if err != nil {
 		t.Fatal(err)
 	}

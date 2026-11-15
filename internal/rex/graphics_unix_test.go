@@ -17,7 +17,7 @@ func TestReadImageFileRejectsFIFO(t *testing.T) {
 	}
 	done := make(chan bool, 1)
 	go func() {
-		_, ok := readImageFile(path, "")
+		_, ok := readImageFile(path, "", "")
 		done <- ok
 	}()
 	select {

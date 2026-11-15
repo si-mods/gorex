@@ -53,6 +53,14 @@ func main() {
 		}
 		return
 	}
+	// -session-exec is the helper a server starts a session of another
+	// user with (internal/rex): it has no app.
+	if exec, err := rex.SessionExecMain(os.Args[1:]); exec {
+		if err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	// rexapi serves Rex's API to Rex clients, from the server the app runs
 	// (internal/rexapi).
 	if len(os.Args) > 1 && os.Args[1] == "rexapi" {

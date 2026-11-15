@@ -50,6 +50,9 @@ type graphics struct {
 	// cut tells that a transfer may have started before the session read
 	// its output, as across an upgrade, until the next sequence.
 	cut bool
+	// home is the home directory of the user the session runs as, which
+	// ~ in a file image names; "" is this process's.
+	home string
 }
 
 // graphicsSeq is a graphics sequence to replay, with the image it names by
@@ -236,7 +239,7 @@ func (g *graphics) sequence(seq []byte, cwd string) ([]byte, []graphicsSeq) {
 		}
 		return seq, []graphicsSeq{head}
 	}
-	data, ok := readImageFile(payload, cwd)
+	data, ok := readImageFile(payload, cwd, g.home)
 	if !ok {
 		return seq, nil
 	}
@@ -244,17 +247,18 @@ func (g *graphics) sequence(seq []byte, cwd string) ([]byte, []graphicsSeq) {
 	return head.seq, []graphicsSeq{head}
 }
 
-// readImageFile reads the file payload, resolved against cwd, at most
-// maxGraphicsImage bytes.
-func readImageFile(payload, cwd string) ([]byte, bool) {
+// readImageFile reads the file payload, resolved against cwd, and ~ in
+// home, at most maxGraphicsImage bytes.
+func readImageFile(payload, cwd, home string) ([]byte, bool) {
 	path := strings.TrimSpace(payload)
 	if strings.HasPrefix(path, "file://") {
 		path = strings.TrimPrefix(path, "file://")
 	}
 	if strings.HasPrefix(path, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			path = filepath.Join(home, path[2:])
+		if home == "" {
+			home, _ = os.UserHomeDir()
 		}
+		path = filepath.Join(home, path[2:])
 	}
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(cwd, path)

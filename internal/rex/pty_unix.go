@@ -33,9 +33,19 @@ func (p *pty) tty() string {
 	return name
 }
 
-// startPTY runs argv (argv[0] as the program sees it, path the file) in a
-// new pseudo-terminal of cols×rows.
-func startPTY(path string, argv []string, dir string, env []string, cols, rows int) (*pty, error) {
+// sessionArgs is the program and arguments startPTY starts a session of sp
+// with: the helper that drops to sp.user, which runs sp.path once it has
+// cleared the capabilities, or the program itself.
+func sessionArgs(sp sessionSpawn) (path string, args []string) {
+	if sp.user == nil {
+		return sp.path, sp.argv
+	}
+	return sp.exe, append([]string{sp.exe, sessionExecFlag, sp.path}, sp.argv...)
+}
+
+// startPTY runs sp.argv (argv[0] as the program sees it, sp.path the file)
+// in a new pseudo-terminal of sp.cols×sp.rows.
+func startPTY(sp sessionSpawn) (*pty, error) {
 	master, slaveName, err := openMaster()
 	if err != nil {
 		return nil, err
@@ -46,17 +56,28 @@ func startPTY(path string, argv []string, dir string, env []string, cols, rows i
 		return nil, fmt.Errorf("pty: opening %s: %w", slaveName, err)
 	}
 	defer slave.Close()
-	if err := setSize(master, cols, rows); err != nil {
+	if err := setSize(master, sp.cols, sp.rows); err != nil {
 		master.Close()
 		return nil, err
 	}
-	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
-		dir, _ = os.UserHomeDir()
-	}
-	cmd := &exec.Cmd{Path: path, Args: argv, Dir: dir, Env: env, Stdin: slave, Stdout: slave, Stderr: slave}
+	cmd := &exec.Cmd{Path: sp.path, Args: sp.argv, Dir: sp.dir, Env: sp.env, Stdin: slave, Stdout: slave, Stderr: slave}
 	// A session of its own whose controlling terminal is the slave, so that
 	// the terminal's signals reach the process group in the foreground.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
+	attr := &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
+	if sp.user != nil {
+		// The terminal is the session user's: a program that opens it by
+		// name, as a pager or tmux does, finds it theirs.
+		if err := unix.Fchown(int(slave.Fd()), int(sp.user.uid), int(sp.user.gid)); err != nil {
+			master.Close()
+			return nil, fmt.Errorf("pty: %s: %w", slaveName, err)
+		}
+		// The program runs as sp.user: the helper starts as that user,
+		// clears the capabilities the server's ambient set leaves on it,
+		// then runs the program, which keeps the pid.
+		cmd.Path, cmd.Args = sessionArgs(sp)
+		attr.Credential = &syscall.Credential{Uid: sp.user.uid, Gid: sp.user.gid, Groups: sp.user.groups}
+	}
+	cmd.SysProcAttr = attr
 	closeOnExecAll()
 	if err := cmd.Start(); err != nil {
 		master.Close()
@@ -189,10 +210,14 @@ func (p *pty) hangup() {
 }
 
 // shellCommand returns the program, its arguments and the shell's name
-// for a session: the user's login shell when cmd is empty.
-func shellCommand(cmd []string) (path string, argv []string, name string, err error) {
+// for a session: the user's login shell when cmd is empty, shell when the
+// session runs as another user, else $SHELL.
+func shellCommand(cmd []string, shell string) (path string, argv []string, name string, err error) {
 	if len(cmd) == 0 {
-		sh := os.Getenv("SHELL")
+		sh := shell
+		if sh == "" {
+			sh = os.Getenv("SHELL")
+		}
 		if sh == "" {
 			sh = defaultShell
 		}
