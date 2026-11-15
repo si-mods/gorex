@@ -32,10 +32,12 @@ extension TerminalView: UIScrollViewDelegate {
     /// keeps the part of a row it was scrolled past.
     func syncScroll() {
         guard let s = surface, !scroller.isTracking, !scroller.isDecelerating else { return }
+        guard !ghostty_surface_is_alternate_active(s), !ghostty_surface_mouse_captured(s) else { return }
         var b = ghostty_action_scrollbar_s()
         let h = cell.height
         guard h > 0, ghostty_surface_display_scrollbar(s, &b) else { return }
         wheel = false
+        wheelOffset = 0
         let end = CGFloat(b.total > b.len ? b.total - b.len : 0) * h
         let y = scroller.contentOffset.y, row = Int(y / h)
         syncing = true
@@ -107,7 +109,7 @@ extension TerminalView: UIScrollViewDelegate {
         wheel = ghostty_surface_is_alternate_active(s) || ghostty_surface_mouse_captured(s)
         v.showsVerticalScrollIndicator = !wheel
         v.alwaysBounceVertical = !wheel
-        if wheel { updateScrollState(at: 0, end: 0) }
+        if !wheel { wheelOffset = 0 }
         guard wheel else { return }
         syncing = true
         v.contentSize = CGSize(width: bounds.width, height: 1e6)
@@ -122,9 +124,12 @@ extension TerminalView: UIScrollViewDelegate {
         if wheel {
             // The lines follow the finger: down scrolls back. The scroll
             // mods: precise, in pixels, and the coast's momentum phase.
+            let delta = last - y
             let momentum = v.isDecelerating ? GHOSTTY_MOUSE_MOMENTUM_CHANGED : GHOSTTY_MOUSE_MOMENTUM_NONE
-            ghostty_surface_mouse_scroll(s, 0, (last - y) * scale, 1 | Int32(momentum.rawValue) << 1)
+            ghostty_surface_mouse_scroll(s, 0, delta * scale, 1 | Int32(momentum.rawValue) << 1)
             last = y
+            wheelOffset = max(0, wheelOffset + delta)
+            updateScrollState(at: 0, end: 0)
             return
         }
         let h = cell.height, end = max(0, v.contentSize.height - v.bounds.height)
@@ -163,7 +168,8 @@ extension TerminalView: UIScrollViewDelegate {
 
     /// Tracks whether the viewport is scrolled above the bottom by more than 3 lines.
     func updateScrollState(at: CGFloat, end: CGFloat) {
-        let up = !wheel && (end - at) > max(cell.height * 3, 24)
+        let threshold = max(cell.height * 3, 24)
+        let up = wheel ? (wheelOffset > threshold) : ((end - at) > threshold)
         if !up { hasUnreadOutput = false }
         if scrolledUp != up { scrolledUp = up }
     }
@@ -173,11 +179,24 @@ extension TerminalView: UIScrollViewDelegate {
         guard let s = surface else { return }
         stopScrolling()
         hasUnreadOutput = false
-        let end = max(0, scroller.contentSize.height - scroller.bounds.height)
-        if scroller.contentOffset.y < end {
-            scroller.setContentOffset(CGPoint(x: 0, y: end), animated: true)
+        if wheel {
+            // Full-screen / mouse-captured TUIs manage their own scrollback; send
+            // downward mouse wheel bursts to return to the bottom without typing keys.
+            let scale = traitCollection.displayScale
+            let total = max(wheelOffset * 1.5, 2400)
+            let step: CGFloat = 240
+            let count = Int(ceil(total / step))
+            for _ in 0..<count {
+                ghostty_surface_mouse_scroll(s, 0, -step * scale, 1)
+            }
+            wheelOffset = 0
+        } else {
+            let end = max(0, scroller.contentSize.height - scroller.bounds.height)
+            if scroller.contentOffset.y < end {
+                scroller.setContentOffset(CGPoint(x: 0, y: end), animated: true)
+            }
+            _ = ghostty_surface_binding_action(s, "scroll_to_bottom", UInt("scroll_to_bottom".utf8.count))
         }
-        _ = ghostty_surface_binding_action(s, "scroll_to_bottom", UInt("scroll_to_bottom".utf8.count))
         scrolledUp = false
         UIImpactFeedbackGenerator(style: .light, view: self).impactOccurred()
     }

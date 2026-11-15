@@ -82,6 +82,8 @@ final class TerminalView: UIView, TerminalOutput {
     let scroller = UIScrollView()
     var wheel = false
     var last: CGFloat = 0
+    /// Accumulated upward wheel scroll distance (points) in alternate/mouse mode.
+    var wheelOffset: CGFloat = 0
     /// Set while the content is moved to match Ghostty, not by the finger.
     var syncing = false
     /// Whether the viewport is scrolled up from the bottom, and whether new
