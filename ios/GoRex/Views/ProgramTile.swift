@@ -1,5 +1,14 @@
 import SwiftUI
 
+extension Color {
+    /// The desktop's dot of a program that waits for the user.
+    static let attention = Color(UIColor { $0.userInterfaceStyle == .dark
+        ? UIColor(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255, alpha: 1)
+        : UIColor(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255, alpha: 1) })
+    /// Rex's dot of a program done that the user has not seen.
+    static let done = Color(red: 0x7A / 255, green: 0xA0 / 255, blue: 0xC2 / 255)
+}
+
 /// How a program shows: its name and the tile of its windows, as GoRex's
 /// programs.go has them.
 struct Program {

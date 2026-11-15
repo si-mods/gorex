@@ -6,12 +6,6 @@ extension Color {
         ? UIColor(red: 0x22 / 255, green: 0x25 / 255, blue: 0x2F / 255, alpha: 1) : .systemGroupedBackground })
     static let card = Color(UIColor { $0.userInterfaceStyle == .dark
         ? UIColor(red: 0x36 / 255, green: 0x3A / 255, blue: 0x47 / 255, alpha: 1) : .secondarySystemGroupedBackground })
-    /// The desktop's dot of a program that waits for the user.
-    static let attention = Color(UIColor { $0.userInterfaceStyle == .dark
-        ? UIColor(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255, alpha: 1)
-        : UIColor(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255, alpha: 1) })
-    /// Rex's dot of a program done that the user has not seen.
-    static let done = Color(red: 0x7A / 255, green: 0xA0 / 255, blue: 0xC2 / 255)
 }
 
 /// Every host, its sessions, and their windows, as Rex's iPhone app lists

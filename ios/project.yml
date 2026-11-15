@@ -116,6 +116,7 @@ targets:
       - GoRex/Terminal/Dictation.swift
       - GoRex/Terminal/Polish.swift
       - GoRex/Tailnet/TailnetSettings.swift
+      - GoRex/Views/ProgramTile.swift
       - path: ../internal/rexapi/testdata/rex-terminal-stream.bin
         buildPhase: resources
     dependencies:
