@@ -6,12 +6,6 @@ extension Color {
         ? UIColor(red: 0x22 / 255, green: 0x25 / 255, blue: 0x2F / 255, alpha: 1) : .systemGroupedBackground })
     static let card = Color(UIColor { $0.userInterfaceStyle == .dark
         ? UIColor(red: 0x36 / 255, green: 0x3A / 255, blue: 0x47 / 255, alpha: 1) : .secondarySystemGroupedBackground })
-    /// The desktop's dot of a program that waits for the user.
-    static let attention = Color(UIColor { $0.userInterfaceStyle == .dark
-        ? UIColor(red: 0xFB / 255, green: 0xBF / 255, blue: 0x24 / 255, alpha: 1)
-        : UIColor(red: 0xF5 / 255, green: 0x9E / 255, blue: 0x0B / 255, alpha: 1) })
-    /// Rex's dot of a program done that the user has not seen.
-    static let done = Color(red: 0x7A / 255, green: 0xA0 / 255, blue: 0xC2 / 255)
 }
 
 /// Every host, its sessions, and their windows, as Rex's iPhone app lists
@@ -933,17 +927,8 @@ struct WindowRow<Mark: View>: View {
                 .truncationMode(.tail)
             Spacer(minLength: 8)
             // As the desktop's tab: a dot while the program waits for the
-            // user, else its progress when it tells one.
-            if status?.state == "blocked" {
-                Circle().fill(Color.attention).frame(width: 7, height: 7).accessibilityLabel("Needs Input")
-            } else if let p = status?.progress {
-                Circle().trim(from: 0, to: CGFloat(p) / 100)
-                    .stroke(.secondary, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .background(Circle().stroke(.quaternary, lineWidth: 2))
-                    .frame(width: 12, height: 12)
-                    .accessibilityLabel(Text(verbatim: "\(p)%"))
-            }
+            // user or failed, else its progress or animated dots while working.
+            ProgramStatusMark(state: status?.state, progress: status?.progress)
             mark
         }
         .padding(.horizontal, 16)
