@@ -17,4 +17,19 @@ nonisolated final class ProgramTests: XCTestCase {
         XCTAssertEqual(Host.program(["name": "claude"]), "claude")
         XCTAssertEqual(Host.program(["argv0": "", "name": "claude"]), "claude")
     }
+
+    @MainActor func testTileMotionMapping() {
+        XCTAssertEqual(TileMotion(state: "blocked"), .attention)
+        XCTAssertEqual(TileMotion(state: "error"), .attention)
+        XCTAssertEqual(TileMotion(state: "working"), .working)
+        XCTAssertEqual(TileMotion(state: "done"), .done)
+        XCTAssertEqual(TileMotion(state: "idle"), .none)
+        XCTAssertEqual(TileMotion(state: nil), .none)
+        XCTAssertEqual(TileMotion(state: "unknown"), .none)
+
+        XCTAssertNotNil(TileMotion.attention.repeatInterval)
+        XCTAssertNotNil(TileMotion.working.repeatInterval)
+        XCTAssertNil(TileMotion.done.repeatInterval)
+        XCTAssertNil(TileMotion.none.repeatInterval)
+    }
 }

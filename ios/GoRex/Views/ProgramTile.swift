@@ -127,9 +127,9 @@ extension Color {
 struct ProgramTiles: View {
     let front: String?
     let back: [String?]
-    /// Whether the front program is done and the user has not seen it, as
-    /// Rex's dot on the tile's corner tells.
-    var done = false
+    /// The window's most urgent program state (idle, working, blocked, done,
+    /// error), driving both the done dot and the front tile's bounce motion.
+    var state: String? = nil
 
     /// Points to a DIP of the desktop's tiles, which are 21×16.
     static let scale: CGFloat = 1.5
@@ -139,6 +139,7 @@ struct ProgramTiles: View {
 
     var body: some View {
         let k = Self.scale
+        let done = state == "done"
         ZStack(alignment: .leading) {
             ForEach(Array(back.prefix(2).enumerated()).reversed(), id: \.offset) { i, p in
                 let inset = CGFloat(i + 1) * 0.8 * k
@@ -150,6 +151,7 @@ struct ProgramTiles: View {
                 .overlay(alignment: .topTrailing) {
                     if done { DoneDot().offset(x: 2.5, y: -2.5) }
                 }
+                .tileBounce(state: state)
         }
         .padding(.leading, k)
         .accessibilityHidden(true)
@@ -218,5 +220,146 @@ private struct DoneDot: View {
             .padding(0.75)
             .background(Circle().fill(scheme == .dark ? .black.opacity(0.85) : .white.opacity(0.95)))
             .accessibilityLabel("Done")
+    }
+}
+
+/// How a program tile moves for its session's state, modeled on macOS Dock
+/// icon bounces:
+/// - `attention` (`blocked`, `error`): energetic double-hop repeating on a
+///   calm cadence until the user attends to it.
+/// - `working`: gentle low-amplitude float while a program is busy.
+/// - `done`: one-shot celebratory hop when a task finishes.
+/// - `none` (`idle` or `nil`): still.
+enum TileMotion: Equatable, Sendable {
+    case none
+    case working
+    case done
+    case attention
+
+    init(state: String?) {
+        switch state {
+        case "blocked", "error": self = .attention
+        case "working": self = .working
+        case "done": self = .done
+        default: self = .none
+        }
+    }
+
+    /// Seconds between repeating cycles, or nil for non-repeating motions.
+    var repeatInterval: TimeInterval? {
+        switch self {
+        case .attention: 1.75
+        case .working: 1.65
+        case .done, .none: nil
+        }
+    }
+}
+
+extension View {
+    /// Animates a program tile according to its session state, like a macOS
+    /// Dock icon bounce.
+    func tileBounce(state: String?) -> some View {
+        modifier(TileBounceModifier(motion: TileMotion(state: state)))
+    }
+}
+
+private nonisolated struct TileBounceValues: Sendable {
+    var offsetY: CGFloat = 0
+    var scaleX: CGFloat = 1
+    var scaleY: CGFloat = 1
+}
+
+private struct TileBounceModifier: ViewModifier {
+    let motion: TileMotion
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var cycle = 0
+    @State private var lastMotion: TileMotion?
+
+    func body(content: Content) -> some View {
+        content
+            .keyframeAnimator(initialValue: TileBounceValues(), trigger: cycle) { view, v in
+                view
+                    .scaleEffect(x: v.scaleX, y: v.scaleY, anchor: .bottom)
+                    .offset(y: v.offsetY)
+            } keyframes: { _ in
+                KeyframeTrack(\.offsetY) {
+                    switch motion {
+                    case .attention:
+                        CubicKeyframe(-6.5, duration: 0.16)
+                        CubicKeyframe(0, duration: 0.14)
+                        CubicKeyframe(-2.6, duration: 0.12)
+                        CubicKeyframe(0, duration: 0.12)
+                    case .done:
+                        CubicKeyframe(-5.0, duration: 0.16)
+                        CubicKeyframe(0, duration: 0.14)
+                        CubicKeyframe(-2.0, duration: 0.11)
+                        CubicKeyframe(0, duration: 0.11)
+                    case .working:
+                        CubicKeyframe(-2.0, duration: 0.65)
+                        CubicKeyframe(0, duration: 0.65)
+                    case .none:
+                        LinearKeyframe(0, duration: 0.01)
+                    }
+                }
+                KeyframeTrack(\.scaleX) {
+                    switch motion {
+                    case .attention:
+                        CubicKeyframe(0.96, duration: 0.06)
+                        CubicKeyframe(1.0, duration: 0.10)
+                        CubicKeyframe(1.05, duration: 0.14)
+                        CubicKeyframe(1.0, duration: 0.12)
+                        CubicKeyframe(1.02, duration: 0.12)
+                        CubicKeyframe(1.0, duration: 0.08)
+                    case .done:
+                        CubicKeyframe(0.97, duration: 0.06)
+                        CubicKeyframe(1.0, duration: 0.10)
+                        CubicKeyframe(1.04, duration: 0.14)
+                        CubicKeyframe(1.0, duration: 0.11)
+                        CubicKeyframe(1.0, duration: 0.11)
+                    case .working, .none:
+                        LinearKeyframe(1.0, duration: 0.01)
+                    }
+                }
+                KeyframeTrack(\.scaleY) {
+                    switch motion {
+                    case .attention:
+                        CubicKeyframe(1.05, duration: 0.06)
+                        CubicKeyframe(1.0, duration: 0.10)
+                        CubicKeyframe(0.94, duration: 0.14)
+                        CubicKeyframe(1.0, duration: 0.12)
+                        CubicKeyframe(0.97, duration: 0.12)
+                        CubicKeyframe(1.0, duration: 0.08)
+                    case .done:
+                        CubicKeyframe(1.04, duration: 0.06)
+                        CubicKeyframe(1.0, duration: 0.10)
+                        CubicKeyframe(0.95, duration: 0.14)
+                        CubicKeyframe(1.0, duration: 0.11)
+                        CubicKeyframe(1.0, duration: 0.11)
+                    case .working, .none:
+                        LinearKeyframe(1.0, duration: 0.01)
+                    }
+                }
+            }
+            .task(id: TaskKey(motion: motion, reduceMotion: reduceMotion)) {
+                let prev = lastMotion
+                lastMotion = motion
+                guard !reduceMotion else { return }
+                if let interval = motion.repeatInterval {
+                    cycle &+= 1
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(interval))
+                        guard !Task.isCancelled else { break }
+                        cycle &+= 1
+                    }
+                } else if motion == .done, prev != nil, prev != .done {
+                    // Bounce once when transitioning into `done` from another state.
+                    cycle &+= 1
+                }
+            }
+    }
+
+    private struct TaskKey: Equatable {
+        let motion: TileMotion
+        let reduceMotion: Bool
     }
 }
