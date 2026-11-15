@@ -39,6 +39,9 @@ type session struct {
 	// home is the home directory of the user the session runs as, where
 	// it starts when no directory is named, and what ~ means to it.
 	home string
+	// runAs is the user the session runs as, when it is not the server's:
+	// what the server writes for it is that user's.
+	runAs *sessionUser
 	// owner is the key of the remote client that created the session, ""
 	// for one created locally; set before the session is listed.
 	owner string
@@ -271,6 +274,7 @@ func newSession(id string, o CreateOptions, owner string, changed func(), sp spa
 	}
 	s := &session{
 		id: id, shell: name, command: len(o.Command) > 0, created: time.Now(), p: p, dir: dir, home: home,
+		runAs:   sp.user,
 		clients: map[*attached]struct{}{}, changed: changed,
 		cols: cols, rows: rows, done: make(chan struct{}),
 	}

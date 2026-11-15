@@ -25,10 +25,19 @@ func lockFile(f *os.File) error { return unix.Flock(int(f.Fd()), unix.LOCK_EX|un
 
 // ownDir reports whether st, of a directory, is this user's: no other
 // user may change who may read or write in it.
-func ownDir(st os.FileInfo) bool {
+func ownDir(st os.FileInfo) bool { return ownedBy(st, os.Getuid()) }
+
+// ownedBy reports whether st is uid's, in the way ownDir asks of this
+// user's.
+func ownedBy(st os.FileInfo, uid int) bool {
 	sys, ok := st.Sys().(*syscall.Stat_t)
-	return ok && int(sys.Uid) == os.Getuid()
+	return ok && int(sys.Uid) == uid
 }
+
+// chownPath gives path to uid and gid: what the server writes for a
+// session of another user is that user's, as its program reads and writes
+// it.
+func chownPath(path string, uid, gid int) error { return os.Chown(path, uid, gid) }
 
 // detached starts the server in a session of its own, which outlives the
 // app's.
