@@ -322,12 +322,8 @@ func (g *Gateway) clientConnected(id string) bool {
 
 // sidOfBlock returns the GoRex session of a block, from the last model.
 func (g *Gateway) sidOfBlock(block string) string {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.model != nil {
-		if b := g.model.blockByID(block); b != nil {
-			return b.sid
-		}
+	if b := g.modelNow().blockByID(block); b != nil {
+		return b.sid
 	}
 	return ""
 }
@@ -335,12 +331,8 @@ func (g *Gateway) sidOfBlock(block string) string {
 // sessionOfBlock returns the Rex session of a block, from the last model,
 // "" when the block is gone.
 func (g *Gateway) sessionOfBlock(block string) string {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if g.model != nil {
-		if b := g.model.blockByID(block); b != nil {
-			return b.session
-		}
+	if b := g.modelNow().blockByID(block); b != nil {
+		return b.session
 	}
 	return ""
 }
