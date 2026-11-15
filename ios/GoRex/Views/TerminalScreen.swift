@@ -64,8 +64,7 @@ struct TerminalScreen: View {
                 Color(cgColor: bg.cgColor)
                     .ignoresSafeArea()
                     .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { _ in
-                        let top = Self.statusBar
-                        if top > 0 { statusBar = top }
+                        if !transitioning || statusBar == 0 { statusBar = Self.statusBar }
                     }
                 TransitionObserver { isTransitioning in
                     if isTransitioning {
