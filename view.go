@@ -156,10 +156,12 @@ func (a *App) titleBar(c *ui.Context, k *colors) {
 // then more's.
 func (a *App) titleButtons(c *ui.Context, k *colors, more func()) {
 	ui.Row(c).Gap(2).AlignItems(ui.Center).Shrink(0).Children(func() {
-		if iconButton(c, k, "command", locales.PaletteTitle(), 30, 16).Tooltip(tip(locales.PaletteTitle(), &cmdPalette)).Clicked() {
+		naturalGlyphs = true
+		defer func() { naturalGlyphs = false }()
+		if iconButton(c, k, "command", locales.PaletteTitle(), 30, 18).Tooltip(tip(locales.PaletteTitle(), &cmdPalette)).Clicked() {
 			a.openPalette()
 		}
-		if iconButton(c, k, "plus", locales.CmdNewTab(), 30, 16).Tooltip(tip(locales.CmdNewTab(), &cmdNewTab)).Clicked() {
+		if iconButton(c, k, "plus", locales.CmdNewTab(), 30, 18).Tooltip(tip(locales.CmdNewTab(), &cmdNewTab)).Clicked() {
 			a.newTab(a.currentDir())
 		}
 		if more != nil {
