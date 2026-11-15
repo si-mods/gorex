@@ -244,7 +244,7 @@ func (a *App) sidebarButton(c *ui.Context, k *colors, right bool) {
 	if prefs.SidebarHidden {
 		label = locales.SidebarShow()
 	}
-	if iconButton(c, k, glyph, label, 30, 17).Tooltip(tip(label, &cmdSidebar)).Clicked() {
+	if iconButton(c, k, glyph, label, 30, 16).Tooltip(tip(label, &cmdSidebar)).Clicked() {
 		a.toggleSidebar()
 	}
 }
