@@ -1550,12 +1550,11 @@ func needsUser(s *rex.ProgramStatus) bool {
 	return s != nil && rex.StatusRank(s.State) >= rex.StatusRank("done")
 }
 
-// statusDot shows a record a program reported: the dot of the activity
-// while working, after its progress when known, else the dot of
-// attention, red for an error.
+// statusDot shows a record a program reported: three animated dots while
+// working, else the dot of attention, red for an error.
 func statusDot(c *ui.Context, k *colors, s *rex.ProgramStatus, size float32) ui.Element {
 	if s.State == "working" {
-		return activityDot(c, k.busy, size).Tooltip(statusTip(s))
+		return workingDots(c, k.textMuted).Tooltip(statusTip(s))
 	}
 	col := k.attention
 	if s.State == "error" {
@@ -1633,6 +1632,51 @@ func breath(now time.Time) float32 {
 		f = 2 - f
 	}
 	return ui.EaseInOut(f)
+}
+
+// workingDots draws three dots that pulse and hop left-to-right while a
+// program is working, or stand still when unfocused or animation is off.
+func workingDots(c *ui.Context, col ui.Color) ui.Element {
+	const dotBase = float32(3.0)
+	const gap = float32(2.5)
+	e := ui.Box(c).Size(16, 10).Shrink(0)
+	animates := breathing && motion(c) != nil
+	e.Draw(func(p *ui.Painter, r ui.Rect) {
+		if animates {
+			p.AnimationFrameRate(30)
+		}
+		startX := r.X + (r.W-(3*dotBase+2*gap))/2 + dotBase/2
+		cy := r.Y + r.H/2
+		for i := range 3 {
+			alpha := float32(0.75)
+			d := dotBase
+			dy := float32(0)
+			if animates {
+				phase := dotPhase(p.Now(), i)
+				alpha = 0.35 + 0.65*phase
+				d = dotBase * (0.85 + 0.2*phase)
+				dy = -1.5 * phase
+			}
+			cx := startX + float32(i)*(dotBase+gap)
+			p.Fill(ui.Rect{X: cx - d/2, Y: cy + dy - d/2, W: d, H: d}, col.Alpha(alpha), d/2)
+		}
+	})
+	return e
+}
+
+// dotPhase returns the 0..1 wave value for dot index at now across a
+// 1.2s cycle, staggered left-to-right.
+func dotPhase(now time.Time, index int) float32 {
+	const period = 1200 * time.Millisecond
+	t := float64(now.UnixNano()) / float64(period)
+	shifted := math.Mod(t-float64(index)*0.16, 1)
+	if shifted < 0 {
+		shifted += 1
+	}
+	if shifted >= 0.5 {
+		return 0
+	}
+	return float32(0.5 - 0.5*math.Cos(2*math.Pi*(shifted/0.5)))
 }
 
 // errText is what the error banner says.

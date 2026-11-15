@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"strings"
@@ -549,6 +550,43 @@ func TestActivityDotBreathes(t *testing.T) {
 	}
 	if b := breath(time.Unix(0, int64(breathPeriod))); b != 1 {
 		t.Errorf("breath a period on %v, want 1", b)
+	}
+}
+
+// TestWorkingDotsAnimate: workingDots pulses across frames with a style of
+// animation, and stands still with Off or when unfocused.
+func TestWorkingDotsAnimate(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			prefs = settings{Animation: tc.style}
+			tt := ui.NewTester(func(c *ui.Context) { workingDots(c, ui.RGBA(120, 120, 128, 1)) }, 40, 40)
+			tt.Frame()
+			before := slices.Clone(tt.Image().Pix)
+			tt.Advance(300 * time.Millisecond)
+			if pending := tt.FramePending(); pending != tc.moves {
+				t.Errorf("frame pending %v, want %v", pending, tc.moves)
+			}
+			if changed := !bytes.Equal(before, tt.Image().Pix); changed != tc.moves {
+				t.Errorf("workingDots changed %v, want %v", changed, tc.moves)
+			}
+		})
+	}
+	t.Run("unfocused", func(t *testing.T) {
+		prefs = settings{}
+		breathing = false
+		t.Cleanup(func() { breathing = true })
+		tt := ui.NewTester(func(c *ui.Context) { workingDots(c, ui.RGBA(120, 120, 128, 1)) }, 40, 40)
+		tt.Frame()
+		before := slices.Clone(tt.Image().Pix)
+		tt.Advance(300 * time.Millisecond)
+		if tt.FramePending() || !bytes.Equal(before, tt.Image().Pix) {
+			t.Error("workingDots animates out of the focus")
+		}
+	})
+	if p := dotPhase(time.Unix(0, int64(300*time.Millisecond)), 0); math.Abs(float64(p-1)) > 0.001 {
+		t.Errorf("dotPhase(300ms, 0) = %v, want 1", p)
 	}
 }
 
