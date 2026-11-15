@@ -76,7 +76,7 @@ struct TerminalScreen: View {
                 // The status bar is the window's inset, read as the page's changes.
                 Color(cgColor: bg.cgColor)
                     .ignoresSafeArea()
-                    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { _ in statusBar = Self.statusBar }
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { _ in statusBar = Self.statusBar }
             }
             // What goes up under the status bar blurs and fades into the
             // background, for the clock over it.
@@ -538,8 +538,11 @@ private struct TopEdge: UIViewControllerRepresentable {
         override func viewDidLayoutSubviews() {
             super.viewDidLayoutSubviews()
             blurView.frame = view.bounds
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
             maskLayer.frame = blurView.bounds
             colorLayer.frame = view.bounds
+            CATransaction.commit()
         }
 
         override func viewWillAppear(_ animated: Bool) {
