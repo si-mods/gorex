@@ -913,8 +913,12 @@ final class KeyBar: UIView {
     let ctrl = KeyBar.button("control", String(localized: "Control"), size: KeyBar.small)
     let alt = KeyBar.button("option", String(localized: "Option"), size: KeyBar.small)
     let shift = KeyBar.button("shift", String(localized: "Shift"), size: KeyBar.small)
-    /// Where the screen puts its mic.
+    /// Where the screen puts its mic, and its voice capsule while dictating.
     let mic = UIView()
+    let voice = UIView()
+    private var keysRow: UIView?
+    private var voiceCapsule: UIView?
+    private var voiceActive = false
     /// Hides the keyboard, or shows it while it is hidden.
     let keyboard = UIButton()
     private weak var target: TerminalView?
@@ -1070,7 +1074,27 @@ final class KeyBar: UIView {
         // of the last.
         left.widthAnchor.constraint(equalToConstant: 56).isActive = true
         last.widthAnchor.constraint(equalToConstant: 150).isActive = true
-        let row = UIStackView(arrangedSubviews: [left, middle, last])
+        let keysRow = UIStackView(arrangedSubviews: [middle, last])
+        keysRow.spacing = 8
+        let voiceCapsule = Self.capsule(voice)
+        voiceCapsule.alpha = 0
+        voiceCapsule.isHidden = true
+        let rightArea = UIView()
+        rightArea.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        for sub in [keysRow, voiceCapsule] {
+            sub.translatesAutoresizingMaskIntoConstraints = false
+            rightArea.addSubview(sub)
+            NSLayoutConstraint.activate([
+                sub.leadingAnchor.constraint(equalTo: rightArea.leadingAnchor),
+                sub.trailingAnchor.constraint(equalTo: rightArea.trailingAnchor),
+                sub.topAnchor.constraint(equalTo: rightArea.topAnchor),
+                sub.bottomAnchor.constraint(equalTo: rightArea.bottomAnchor),
+            ])
+        }
+        self.keysRow = keysRow
+        self.voiceCapsule = voiceCapsule
+
+        let row = UIStackView(arrangedSubviews: [left, rightArea])
         row.spacing = 8
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
@@ -1093,6 +1117,34 @@ final class KeyBar: UIView {
     static let height: CGFloat = 52
 
     override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.height) }
+
+    /// Transitions the middle and right capsules into a single horizontal
+    /// voice capsule while dictating, or back to the key capsules when done.
+    func setVoice(active: Bool) {
+        guard active != voiceActive, let keysRow, let voiceCapsule else { return }
+        voiceActive = active
+        if active {
+            voiceCapsule.isHidden = false
+            voiceCapsule.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+            keysRow.isUserInteractionEnabled = false
+            UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0) {
+                keysRow.alpha = 0
+                keysRow.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+                voiceCapsule.alpha = 1
+                voiceCapsule.transform = .identity
+            }
+        } else {
+            keysRow.isUserInteractionEnabled = true
+            UIView.animate(withDuration: 0.24, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0) {
+                keysRow.alpha = 1
+                keysRow.transform = .identity
+                voiceCapsule.alpha = 0
+                voiceCapsule.transform = CGAffineTransform(scaleX: 0.94, y: 0.94)
+            } completion: { _ in
+                if !self.voiceActive { voiceCapsule.isHidden = true }
+            }
+        }
+    }
 
     /// Points the stick: past a dead zone, the arrow of the drag's main
     /// axis goes at once, then repeats while held, as a held key does. Each
