@@ -259,7 +259,7 @@ func iconButton(c *ui.Context, k *colors, name, label string, size, iconSize flo
 // iconButtonWith is iconButton drawn as pressed in while active, with more
 // drawn over its icon.
 func iconButtonWith(c *ui.Context, k *colors, name, label string, size, iconSize float32, active bool, more func()) ui.Element {
-	b := ui.Box(c).Size(size, size).Center().Radius(size / 2.6).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
+	b := ui.Box(c).Size(size, size).Center().Radius(size / 2).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label)
 	if b.Pressed() {
 		b.Background(k.pressed)
 	} else if b.Hovered() || active {
