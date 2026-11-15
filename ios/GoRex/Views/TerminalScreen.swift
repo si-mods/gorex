@@ -92,6 +92,32 @@ struct TerminalScreen: View {
                         .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
                     }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 24).onEnded { v in
+                            guard abs(v.translation.width) > 24, abs(v.translation.width) > abs(v.translation.height) else { return }
+                            stepTab(by: v.translation.width < 0 ? 1 : -1)
+                        }
+                    )
+                    .contextMenu {
+                        ForEach(sessionWindows, id: \.window.window_id) { w in
+                            let open = w.window.holds(target.block)
+                            let label = host.title(w.window)
+                            Button {
+                                if !open {
+                                    go(TerminalTarget(host: host.id, session: target.session, block: w.block, title: label))
+                                }
+                            } label: {
+                                if open {
+                                    Label(label.isEmpty ? sessionLabel : label, systemImage: "checkmark")
+                                } else {
+                                    Text(label.isEmpty ? sessionLabel : label)
+                                }
+                            }
+                        }
+                        Divider()
+                        Button("New Tab", systemImage: "plus") { newTab() }
+                    }
+                    .sensoryFeedback(.selection, trigger: target.block)
                 }
                 .sharedBackgroundVisibility(.hidden)
                 // The mic where the terminal has no key bar, and the
@@ -200,6 +226,18 @@ struct TerminalScreen: View {
     /// The name of the window's session.
     private var sessionLabel: String {
         hostSession?.label ?? ""
+    }
+
+    private var sessionWindows: [(block: String, window: SessionView.Window)] {
+        (hostSession?.view?.windows ?? []).compactMap { w in w.block.map { (block: $0, window: w) } }
+    }
+
+    private func stepTab(by delta: Int) {
+        let all = sessionWindows
+        guard all.count > 1, let i = all.firstIndex(where: { $0.window.holds(target.block) }) else { return }
+        let next = all[(i + delta + all.count) % all.count]
+        guard !next.window.holds(target.block) else { return }
+        go(TerminalTarget(host: host.id, session: target.session, block: next.block, title: host.title(next.window)))
     }
 
     /// Opens a new window in the session, and goes to it.

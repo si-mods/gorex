@@ -40,11 +40,11 @@ extension TerminalView {
         showSize()
     }
 
-    /// Shows the grid's columns and rows over the middle of the screen.
+    /// Shows the font size and the grid's columns and rows over the middle of the screen.
     func showSize() {
         guard let s = surface else { return }
         let z = ghostty_surface_size(s)
-        sizeLabel.text = "\(z.columns) × \(z.rows)"
+        sizeLabel.text = "\(Int(Self.fontSize)) pt · \(z.columns) × \(z.rows)"
         sizeLabel.sizeToFit()
         sizeLabel.bounds.size.width += 32
         sizeLabel.bounds.size.height += 16
