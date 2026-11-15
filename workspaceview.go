@@ -285,7 +285,7 @@ func (a *App) spaceDotButton(c *ui.Context, k *colors, i int, w *Workspace) {
 	if i < 9 {
 		label += "  " + showSpaceKeys(i+1)
 	}
-	b := ui.Box(c).Size(24, 24).Center().Radius(6).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
+	b := ui.Box(c).Size(24, 24).Center().Radius(12).Cursor(ui.CursorPointer).Role(ui.RoleButton).Label(label).Tooltip(label)
 	if b.Hovered() {
 		b.Background(k.hover)
 	}
