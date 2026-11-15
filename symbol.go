@@ -59,15 +59,16 @@ var sfSymbols = map[string]string{
 	"float":                     "rectangle.on.rectangle",
 }
 
-// naturalGlyphs, while set, draws the SF Symbols at the sizes they have
-// beside each other rather than each filling its box: for a row of
-// buttons that should look as Rex's.
-var naturalGlyphs = false
-
 // glyphIcon draws the icon named name, size DIPs square, in col: an SF
 // Symbol on macOS where one is known and present, else the embedded SVG.
 func glyphIcon(c *ui.Context, name string, size float32, col ui.Color) ui.Element {
-	if src, ok := symbolFor(name, size, col); ok {
+	return glyphIconWith(c, name, size, col, false)
+}
+
+// glyphIconWith is glyphIcon; with natural, SF Symbols keep the relative
+// sizes they have beside each other rather than each filling its box.
+func glyphIconWith(c *ui.Context, name string, size float32, col ui.Color, natural bool) ui.Element {
+	if src, ok := symbolFor(name, size, col, natural); ok {
 		return ui.Image(c, src).Size(size, size)
 	}
 	return ui.Icon(c, icon(name)).Size(size, size).TextColor(col)
@@ -75,7 +76,7 @@ func glyphIcon(c *ui.Context, name string, size float32, col ui.Color) ui.Elemen
 
 // glyphIn draws the icon named name in r, in col, as glyphIcon draws it.
 func glyphIn(p *ui.Painter, name string, r ui.Rect, col ui.Color) {
-	if src, ok := symbolFor(name, max(r.W, r.H), col); ok {
+	if src, ok := symbolFor(name, max(r.W, r.H), col, false); ok {
 		p.Image(src, r, ui.Contain)
 		return
 	}
@@ -85,11 +86,11 @@ func glyphIn(p *ui.Painter, name string, r ui.Rect, col ui.Color) {
 // symbolFor returns the bitmap of name's SF Symbol at size DIPs, in col,
 // or false when name has no symbol or the system does not have it. It is
 // drawn at three times that size, so that it stays sharp on any display.
-func symbolFor(name string, size float32, col ui.Color) (ui.ImageSource, bool) {
+func symbolFor(name string, size float32, col ui.Color, natural bool) (ui.ImageSource, bool) {
 	sf, ok := sfSymbols[name]
 	if !ok {
 		return nil, false
 	}
 	px := int(math.Round(float64(size) * 3))
-	return sfGlyphAt(sf, px, col, naturalGlyphs)
+	return sfGlyphAt(sf, px, col, natural)
 }
