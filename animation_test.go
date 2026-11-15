@@ -707,3 +707,52 @@ func TestTabTrackFollows(t *testing.T) {
 		})
 	}
 }
+
+// TestTabSwitchSlideAnimates checks that switching tabs animates both the
+// active tab pill and the tab content in the direction of the switch, and
+// snaps at once when Animation is Off.
+func TestTabSwitchSlideAnimates(t *testing.T) {
+	old := prefs
+	t.Cleanup(func() { prefs = old })
+	for _, tc := range styles {
+		t.Run(tc.name, func(t *testing.T) {
+			a, tt := newTestApp(t)
+			prefs = settings{Animation: tc.style}
+			a.tab().Name = "one"
+			a.newTab(os.TempDir()).Name = "two"
+			tt.Frame()
+			settle(tt)
+
+			a.selectTab(0)
+			tt.Frame()
+			if a.tabSlideDir != -1 {
+				t.Fatalf("tabSlideDir after 1->0 = %v, want -1", a.tabSlideDir)
+			}
+			tt.Advance(16 * time.Millisecond)
+			tt.Frame()
+			mid10 := a.tabPill.X
+			settle(tt)
+			rest0 := a.tabPill.X
+			if moving := abs(mid10-rest0) > 1; moving != tc.moves {
+				t.Errorf("1->0 pill X mid=%v rest=%v: moving=%v, want %v", mid10, rest0, moving, tc.moves)
+			}
+
+			a.selectTab(1)
+			tt.Frame()
+			if a.tabSlideDir != 1 {
+				t.Fatalf("tabSlideDir after 0->1 = %v, want 1", a.tabSlideDir)
+			}
+			tt.Advance(16 * time.Millisecond)
+			tt.Frame()
+			mid01 := a.tabPill.X
+			settle(tt)
+			rest1 := a.tabPill.X
+			if moving := abs(mid01-rest1) > 1; moving != tc.moves {
+				t.Errorf("0->1 pill X mid=%v rest=%v: moving=%v, want %v", mid01, rest1, moving, tc.moves)
+			}
+			if rest1 <= rest0 {
+				t.Errorf("rest1=%v <= rest0=%v, want pill on tab 1 to the right of tab 0", rest1, rest0)
+			}
+		})
+	}
+}

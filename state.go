@@ -495,6 +495,12 @@ type App struct {
 	// passes counts the builds of the tab's room: a float gliding that
 	// one of them did not build went out of sight, and is at rest.
 	passes uint64
+	// lastTabID, lastTabIdx, and tabSlideDir track tab switches so the
+	// tab content slides left or right in the direction of the switch.
+	lastTabID   int
+	lastTabIdx  int
+	tabSlideDir float32
+	tabPill     ui.Rect
 
 	// The command palette, the host's popover and the tab being renamed.
 	paletteOpen   bool
