@@ -50,6 +50,8 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 	track.Basis(shown)
 	tabs := slices.Clone(a.tabs)
 	track.Children(func() {
+		var activeEl ui.Element
+		var hasActive bool
 		for i, t := range tabs {
 			if i > 0 {
 				// The separator before a tab goes with it.
@@ -61,7 +63,31 @@ func (a *App) tabStrip(c *ui.Context, k *colors) {
 					sep.Transition(ui.ElementTransition{Animation: anim, Position: true, Colors: true, Enter: tabMotion, Exit: tabMotion})
 				}
 			}
-			a.tabItem(c, k, i, t, widths[i], squeeze)
+			el := a.tabItem(c, k, i, t, widths[i], squeeze)
+			if i == a.active {
+				activeEl = el
+				hasActive = true
+			}
+		}
+		if hasActive {
+			trackB := track.LayoutBounds()
+			activeB := activeEl.LayoutBounds()
+			if activeB.W > 0 && trackB.W > 0 {
+				targetX := activeB.X - trackB.X
+				targetW := activeB.W
+				pill := ui.Box(c.Key("tab-active-pill")).Absolute().Top(2).Height(tabH).ZIndex(-1)
+				glassPill(pill, k, tabH)
+				if anim != nil {
+					pill.Left(pill.AnimateTo("x", targetX, *anim))
+					pill.Width(pill.AnimateTo("w", targetW, *anim))
+				} else {
+					pill.Left(pill.Jump("x", targetX))
+					pill.Width(pill.Jump("w", targetW))
+				}
+				a.tabPill = pill.Bounds()
+			} else {
+				c.Invalidate()
+			}
 		}
 	})
 }
@@ -158,7 +184,7 @@ const titleFree = 56
 
 // tabItem draws a tab: the tiles of its panes' programs and its label. It
 // shrinks to fit the title bar while squeeze.
-func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, squeeze bool) {
+func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, squeeze bool) ui.Element {
 	active := i == a.active
 	shrink := float32(0)
 	if squeeze {
@@ -168,9 +194,7 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 		Padding(0, 10, 0, 9).Gap(6).AlignItems(ui.Center).Radius(tabH / 2).Role(ui.RoleTab).Selected(active)
 	name, detail := t.label()
 	e.Label(name + " " + detail)
-	if active {
-		glassPill(e, k, tabH)
-	} else if e.Hovered() {
+	if !active && e.Hovered() {
 		e.Background(hoverFace(k))
 	}
 	a.tabEvents(c, e, k, i, t)
@@ -184,6 +208,7 @@ func (a *App) tabItem(c *ui.Context, k *colors, i int, t *Tab, width float32, sq
 		}
 		a.tabRest(c, k, t, active, hovered)
 	})
+	return e
 }
 
 // tabRest draws a tab after its tiles: its label and its end, or the field
