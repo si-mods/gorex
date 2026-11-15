@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.29.0
+
+### Features
+
+* **ios:** add a centralized SpaceStore for cross-host spaces ([#580](https://github.com/si-mods/gorex/pull/580))
+* **ios:** sync spaces over iCloud KVS, and on the desktop passively ([#581](https://github.com/si-mods/gorex/pull/581))
+* **ios:** add a scroll-to-bottom button for full-screen and mouse-captured TUIs ([#601](https://github.com/si-mods/gorex/pull/601))
+* **ios:** transition the KeyBar into a horizontal voice capsule while dictating ([#591](https://github.com/si-mods/gorex/pull/591))
+* **ios:** improve terminal touch gestures, scroll-to-bottom, tab switching, and live font updates ([#589](https://github.com/si-mods/gorex/pull/589))
+* **ios:** animate program tiles by session state, like the macOS Dock's bounce ([#594](https://github.com/si-mods/gorex/pull/594))
+* **ios:** animate the header pill's drag and the tab switch's slide ([#593](https://github.com/si-mods/gorex/pull/593))
+* **rex:** run sessions as another user, with the server's data kept to itself ([#609](https://github.com/si-mods/gorex/pull/609))
+* **rexapi,web,ios:** align with official Rex API revision 14 ([#596](https://github.com/si-mods/gorex/pull/596))
+* **ui:** show an animated three-dot working indicator on desktop ([#604](https://github.com/si-mods/gorex/pull/604))
+* **ui:** animate the active tab pill and the tab content's slide on switch ([#592](https://github.com/si-mods/gorex/pull/592))
+
+### Bug Fixes
+
+* **ios:** show when a terminal reconnects, and restart a lost one when its host is back ([#610](https://github.com/si-mods/gorex/pull/610))
+* **ios:** remove the tile bounce animation for the working state ([#603](https://github.com/si-mods/gorex/pull/603))
+* **ios:** show animated working dots and an error dot in window rows ([#602](https://github.com/si-mods/gorex/pull/602))
+* **ios:** use a repeating KeyframeAnimator so active and done program tiles keep bouncing ([#598](https://github.com/si-mods/gorex/pull/598))
+* **ios:** prevent the header pill's swipe from opening the session sheet ([#597](https://github.com/si-mods/gorex/pull/597))
+* **ios:** fade the TopEdge blur smoothly through UIKit's transition coordinator ([#595](https://github.com/si-mods/gorex/pull/595))
+* **ios:** drop the TopEdge material blur during navigation transitions ([#590](https://github.com/si-mods/gorex/pull/590))
+* **ios:** sync host colors and apply theme changes live ([#584](https://github.com/si-mods/gorex/pull/584))
+* **ios:** vertically center the title in StatusRow when its detail is empty ([#586](https://github.com/si-mods/gorex/pull/586))
+* **ios:** support selectedTextRange edits in InputDocument for the Doubao IME ([#585](https://github.com/si-mods/gorex/pull/585))
+* **ios:** resolve the session ID after spaces_apply on a new session or window ([#583](https://github.com/si-mods/gorex/pull/583))
+* **ios:** add zh-Hans localizations for the centralized Space UI ([#582](https://github.com/si-mods/gorex/pull/582))
+* **ui:** render header icons at natural SF Symbol proportions, like Rex ([#611](https://github.com/si-mods/gorex/pull/611))
+* **ui:** unify header icon button sizes to 16 ([#608](https://github.com/si-mods/gorex/pull/608))
+* **ui:** unify sidebar icon button sizes ([#607](https://github.com/si-mods/gorex/pull/607))
+* **ui:** use a circular hover radius for icon buttons and space dot buttons ([#605](https://github.com/si-mods/gorex/pull/605))
+* **web:** fall back when ResizeObserver's device-pixel-content-box is unsupported ([#578](https://github.com/si-mods/gorex/pull/578))
+* **web:** adapt the above-tabs bar for narrow mobile viewports ([#577](https://github.com/si-mods/gorex/pull/577))
+
 ## 0.28.1
 
 ### Bug Fixes
