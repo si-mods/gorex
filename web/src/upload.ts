@@ -5,7 +5,7 @@
 
 import { Msg, t } from "./i18n";
 import { formatBytes } from "./progress";
-import { Control, describe, RexError } from "./rex";
+import { BytesStream, Control, describe, RexError } from "./rex";
 import { extractDroppedFiles, extractPastedImages, parseUploadResponse, pastedImageName, UploadError, uploadPath, UploadResult } from "./uploadhelpers";
 
 export { extractDroppedFiles, extractPastedImages, parseUploadResponse, pastedImageName, uploadPath };
@@ -13,6 +13,7 @@ export type { UploadResult };
 
 export interface UploadTarget {
   control: Control;
+  sessionID?: string;
   blockID: string;
   container: HTMLElement;
   paste(text: string): void;
@@ -95,10 +96,68 @@ async function sendOne(
  * cancellable progress bar in target.container, and pastes the escaped
  * remote path(s) into target only after all files succeed.
  */
+async function sendOneBytes(
+  control: Control,
+  sessionID: string,
+  blockID: string,
+  file: File,
+  batch: string | undefined,
+  index: number,
+  count: number,
+  signal: AbortSignal,
+  onProgress: (loaded: number) => void,
+): Promise<void> {
+  const args: Record<string, unknown> = {
+    ref: `upload:${crypto.randomUUID().toLowerCase()}`,
+    name: file.name || "file",
+    size: file.size,
+  };
+  if (batch !== undefined) {
+    args.batch = batch;
+    args.index = index;
+    args.count = count;
+  }
+  const res = await control.callBlock("upload_begin", sessionID, blockID, args);
+  const ticket = String(res?.ticket ?? "");
+  if (!ticket) throw new RexError("protocol", () => t("errorProtocol"));
+  const stream = new BytesStream(control.transport);
+  const closed = new Promise<void>((resolve, reject) => {
+    stream.onClose = (code, reason) => {
+      if (code === 1000) resolve();
+      else reject(new RexError("closed", () => reason || t("errorDataClosed", { code: String(code) })));
+    };
+  });
+  const onAbort = () => stream.close();
+  signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    await stream.open(ticket);
+    const reader = file.stream().getReader();
+    let sent = 0;
+    const chunkSize = 64 << 10;
+    while (true) {
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (let off = 0; off < value.byteLength; off += chunkSize) {
+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+        stream.send(value.subarray(off, Math.min(value.byteLength, off + chunkSize)));
+      }
+      sent += value.byteLength;
+      onProgress(sent);
+    }
+    stream.halfClose();
+    await closed;
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
 export async function uploadFiles(target: UploadTarget, files: File[]): Promise<void> {
   if (!files.length) return;
-  const { control, blockID } = target;
-  if (!control.features.has("gorex.upload")) {
+  const { control, sessionID, blockID } = target;
+  const useGorexHTTP = control.features.has("gorex.upload");
+  const useBytesStream = !useGorexHTTP && control.apiRevision >= 11 && !!sessionID;
+  if (!useGorexHTTP && !useBytesStream) {
     target.status(() => t("uploadUnsupported"));
     return;
   }
@@ -140,6 +199,7 @@ export async function uploadFiles(target: UploadTarget, files: File[]): Promise<
   try {
     const words: string[] = [];
     let doneBytes = 0;
+    const batch = useBytesStream && files.length > 1 ? crypto.randomUUID().toLowerCase() : undefined;
     for (let i = 0; i < files.length; i++) {
       if (ac.signal.aborted || !target.isAlive()) {
         ac.abort();
@@ -147,12 +207,18 @@ export async function uploadFiles(target: UploadTarget, files: File[]): Promise<
       }
       const f = files[i];
       update(i, f, doneBytes, 0);
-      const res = await sendOne(control, blockID, f, ac.signal, (loaded) => update(i, f, doneBytes, loaded));
+      if (useBytesStream) {
+        await sendOneBytes(control, sessionID!, blockID, f, batch, i, files.length, ac.signal, (loaded) =>
+          update(i, f, doneBytes, loaded),
+        );
+      } else {
+        const res = await sendOne(control, blockID, f, ac.signal, (loaded) => update(i, f, doneBytes, loaded));
+        words.push(res.word);
+      }
       doneBytes += f.size;
       update(i, f, doneBytes, 0);
-      words.push(res.word);
     }
-    if (target.isAlive() && words.length > 0) {
+    if (!useBytesStream && target.isAlive() && words.length > 0) {
       target.paste(words.join(" "));
     }
   } catch (e) {

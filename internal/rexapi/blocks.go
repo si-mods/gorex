@@ -47,6 +47,9 @@ func callBlockMethod(c *control, method string, a args) (any, *apiError) {
 		return nil, errMethodNotFound("%s is not a block method", method)
 	}
 	creator, short := method[:i], method[i+1:]
+	if creator == tunnelCreatorName {
+		return runTunnelMethod(c, short, a)
+	}
 	if creator != creatorName {
 		return nil, errConflict("GoRex makes no blocks of %s", creator)
 	}
@@ -91,6 +94,16 @@ func runBlockMethod(c *control, short string, a args, requireBlock bool) (any, *
 	}
 	b := s.findBlock(id)
 	if b == nil {
+		if tb := c.g.tunnel(id); tb != nil && tb.session == s.id {
+			argMap, _, aerr := a.obj("args")
+			if aerr != nil {
+				return nil, aerr
+			}
+			if argMap == nil {
+				argMap = args{}
+			}
+			return callTunnelMethod(tb, short, argMap)
+		}
 		return nil, errNotFound("no block %s in %s", id, s.id)
 	}
 	argMap, _, aerr := a.obj("args")
@@ -105,6 +118,46 @@ func runBlockMethod(c *control, short string, a args, requireBlock bool) (any, *
 		return nil, errMethodNotFound("%s.%s is not a method this block has", creatorName, short)
 	}
 	return fn(c, s, b, argMap)
+}
+
+func runTunnelMethod(c *control, short string, a args) (any, *apiError) {
+	for name := range a {
+		switch name {
+		case "session_id", "block_id", "args":
+		default:
+			return nil, errBadRequest("the method takes no %s", name)
+		}
+	}
+	s, aerr := c.attachedArg(a)
+	if aerr != nil {
+		return nil, aerr
+	}
+	id, aerr := a.reqStr("block_id")
+	if aerr != nil {
+		return nil, aerr
+	}
+	tb := c.g.tunnel(id)
+	if tb == nil || tb.session != s.id {
+		return nil, errNotFound("no block %s in %s", id, s.id)
+	}
+	argMap, _, aerr := a.obj("args")
+	if aerr != nil {
+		return nil, aerr
+	}
+	if argMap == nil {
+		argMap = args{}
+	}
+	return callTunnelMethod(tb, short, argMap)
+}
+
+func callTunnelMethod(tb *tunnelBlock, short string, a args) (any, *apiError) {
+	if short != "info" {
+		return nil, errMethodNotFound("%s.%s is not a method this block has", tunnelCreatorName, short)
+	}
+	if aerr := a.only(); aerr != nil {
+		return nil, aerr
+	}
+	return tb.info(), nil
 }
 
 // sessionInfo returns the GoRex server's record of a block's session.

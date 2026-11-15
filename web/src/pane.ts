@@ -183,8 +183,14 @@ export class TerminalView {
       send: (b) => this.type(b),
       paste: (text) => this.paste(text),
       status: (s) => this.app.status(s),
-      files: () => !!this.app.control()?.features.has("gorex.download"),
-      canUpload: () => !!(this.app.live() ?? this.app.control())?.features.has("gorex.upload"),
+      files: () => {
+        const c = this.app.control();
+        return !!c && (c.features.has("gorex.download") || c.apiRevision >= 13);
+      },
+      canUpload: () => {
+        const c = this.app.live() ?? this.app.control();
+        return !!c && (c.features.has("gorex.upload") || c.apiRevision >= 11);
+      },
       pickUpload: () => this.pickUpload(),
       // Opening files (files.ts) is a chunk of its own, loaded with the first link opened.
       openFile: (path) =>
@@ -678,6 +684,7 @@ export class TerminalView {
     void sendUploads(
       {
         control,
+        sessionID: this.session,
         blockID: this.block,
         container: this.body,
         paste: (text) => this.paste(text),

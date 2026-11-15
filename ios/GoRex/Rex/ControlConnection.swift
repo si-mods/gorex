@@ -63,8 +63,9 @@ struct EventGate {
 /// The control connection to a Rex server: one WebSocket at /api/control
 /// with JSON requests, responses and events.
 final class ControlConnection {
-    /// The API revision this client speaks.
-    static let revision = 10
+    /// The API revision this client speaks, and the oldest it accepts.
+    static let revision = 14
+    static let minRevision = 0
 
     var onEvent: (RexEvent) -> Void = { _ in }
     /// Called once when the connection ends, by either side.
@@ -76,6 +77,7 @@ final class ControlConnection {
     var callWait = Duration.seconds(30)
     private(set) var clientID = ""
     private(set) var reconnectToken: String?
+    private(set) var apiRevision = revision
     /// The optional behaviors the server lists in its welcome.
     private(set) var features: Set<String> = []
 
@@ -110,7 +112,7 @@ final class ControlConnection {
     func open(token: String?) async throws {
         task.resume()
         var hello: [String: Any] = [
-            "type": "hello", "api_revision": Self.revision,
+            "type": "hello", "api_revision": Self.revision, "api_min_revision": Self.minRevision,
             "client": ["kind": "app", "platform": "ios", "name": "Rex Go", "version": Bundle.main.version,
                        "label": Self.label],
         ]
@@ -130,6 +132,7 @@ final class ControlConnection {
         let client = welcome["client"] as? [String: Any]
         clientID = client?["id"] as? String ?? ""
         reconnectToken = client?["reconnect_token"] as? String
+        if let rev = welcome["api_revision"] as? Int { apiRevision = rev }
         features = Set(welcome["features"] as? [String] ?? [])
         Task { await receiveLoop() }
         Task { await pingLoop() }

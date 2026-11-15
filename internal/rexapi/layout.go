@@ -440,6 +440,7 @@ func methodSessionDestroy(c *control, a args) (any, *apiError) {
 	if _, aerr := c.g.afterCommand(func(m *model) bool { return m.byID[s.id] == nil }); aerr != nil {
 		return nil, aerr
 	}
+	c.g.removeSessionTunnels(s.id)
 	return struct{}{}, nil
 }
 
@@ -1982,6 +1983,10 @@ func methodBlockClose(c *control, a args) (any, *apiError) {
 	if blockID != "" {
 		b = s.findBlock(blockID)
 		if b == nil {
+			if tb := c.g.tunnel(blockID); tb != nil && tb.session == s.id {
+				c.g.removeTunnel(blockID)
+				return map[string]any{"block_id": blockID, "revision": s.revision}, nil
+			}
 			return nil, errNotFound("no block %s in %s", blockID, s.id)
 		}
 	} else {
