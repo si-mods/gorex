@@ -82,7 +82,10 @@ func TestWindowIDsSurviveGateway(t *testing.T) {
 	defer func() { srv.Close(); g2.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	ws, _, err := websocket.Dial(ctx, srv.URL+"/api/control", &websocket.DialOptions{Subprotocols: []string{controlProtocol}})
+	ws, resp, err := websocket.Dial(ctx, srv.URL+"/api/control", &websocket.DialOptions{Subprotocols: []string{controlProtocol}})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

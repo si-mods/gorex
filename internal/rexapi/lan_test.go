@@ -251,7 +251,10 @@ func TestLANRefusesAdministering(t *testing.T) {
 	s := waitLAN(t, dir, func(s LANStatus) bool { return s.Listening != "" })
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	ws, _, err := websocket.Dial(ctx, "ws://"+s.Listening+"/api/control", &websocket.DialOptions{Subprotocols: []string{controlProtocol}})
+	ws, resp, err := websocket.Dial(ctx, "ws://"+s.Listening+"/api/control", &websocket.DialOptions{Subprotocols: []string{controlProtocol}})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,7 +415,10 @@ func TestStatusListsListeners(t *testing.T) {
 				return d.DialContext(ctx, "unix", sock)
 			},
 		}}
-		ws, _, err := websocket.Dial(ctx, "ws://localhost/api/control", &websocket.DialOptions{HTTPClient: httpc, Subprotocols: []string{controlProtocol}})
+		ws, resp, err := websocket.Dial(ctx, "ws://localhost/api/control", &websocket.DialOptions{HTTPClient: httpc, Subprotocols: []string{controlProtocol}})
+		if resp != nil && resp.Body != nil {
+			resp.Body.Close()
+		}
 		if err != nil {
 			t.Fatal(err)
 		}

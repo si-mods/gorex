@@ -174,7 +174,6 @@ func newCustomCommands(cfg *config.Config) ([]*command, error) {
 		if commandsByID[ca.Name] != nil {
 			return nil, fmt.Errorf("custom action %q collides with a built-in", ca.Name)
 		}
-		ca := ca
 		title := ca.Title
 		if title == "" {
 			title = ca.Name
@@ -806,7 +805,6 @@ func (st *store) menu() *mygo.Menu {
 	}
 	tabItems := []*mygo.MenuItem{item(&cmdNextTab), item(&cmdPrevTab), mygo.Separator()}
 	for i := 1; i <= 9; i++ {
-		i := i
 		accel := fmt.Sprintf("CmdOrCtrl+%d", i)
 		if runtime.GOOS != "darwin" {
 			accel = showTabKey(i).String()
@@ -828,7 +826,6 @@ func (st *store) menu() *mygo.Menu {
 	spaceItems := make([]*mygo.MenuItem, 0, 10)
 	spaceItems = append(spaceItems, mygo.Separator())
 	for i := 1; i <= 9; i++ {
-		i := i
 		accel := fmt.Sprintf("Ctrl+%d", i)
 		if runtime.GOOS != "darwin" {
 			accel = showSpaceKey(i).String()
@@ -1229,7 +1226,6 @@ func (a *App) paletteItems() []paletteItem {
 			if !match(fmt.Sprintf("%s %s tab %d", name, detail, ti+1)) && !match(fmt.Sprintf("%s %s %s", name, detail, locales.PaletteTabKeys(ti+1))) {
 				continue
 			}
-			ti, t, p := ti, t, p
 			s := p.status()
 			if s != nil && s.State != "idle" {
 				detail = cmp.Or(s.Message(), s.Title, detail)
@@ -1261,7 +1257,6 @@ func (a *App) paletteItems() []paletteItem {
 			a.st == nil && slices.Contains(sessionCommands, cmd) || !match(cmd.Title()) && !match(cmd.English()) {
 			continue
 		}
-		cmd := cmd
 		items = append(items, paletteItem{title: cmd.Title(), keys: cmd.Keys, glyph: "command", run: func() { a.invokeCommand(cmd, nil) }})
 		if cmd == &cmdNewTab {
 			items = append(items, a.newTabOnItems(match)...)
@@ -1275,7 +1270,6 @@ func (a *App) paletteItems() []paletteItem {
 		if slices.ContainsFunc(cmd.Args, func(a actionArg) bool { return !a.Optional }) {
 			continue // the palette supplies no arguments
 		}
-		cmd := cmd
 		items = append(items, paletteItem{title: cmd.Title(), glyph: "command", run: func() { a.invokeCommand(cmd, nil) }})
 	}
 	return items

@@ -1179,7 +1179,6 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 				if o == p.Tab || o.Root != nil && o.host() != p.host {
 					continue
 				}
-				o := o
 				name, _ := o.label()
 				if sm.Item(name).Chosen() {
 					a.movePaneToTab(p, o)
@@ -1196,7 +1195,6 @@ func (a *App) paneMenu(m *ui.Menu, p *Pane) {
 				if t := o.tab(); t != nil && t.Root != nil && t.host() != p.host {
 					continue
 				}
-				o := o
 				if sm.Item(o.ws.Name).Chosen() {
 					a.movePaneToWindow(p, o)
 				}

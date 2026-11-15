@@ -135,7 +135,10 @@ func TestDownloadPaths(t *testing.T) {
 		if res["size"] != float64(len(want)) || res["type"] != "text/plain" || res["name"] == "" {
 			t.Errorf("%s: %v", path, res)
 		}
-		_, body, err := getDownload(t, f, res["ticket"].(string), "")
+		dlRes, body, err := getDownload(t, f, res["ticket"].(string), "")
+		if dlRes != nil && dlRes.Body != nil {
+			dlRes.Body.Close()
+		}
 		if err != nil || string(body) != want {
 			t.Errorf("%s: %q %v, want %q", path, body, err, want)
 		}
@@ -196,6 +199,9 @@ func TestDownloadStream(t *testing.T) {
 	}
 	ticket := res["ticket"].(string)
 	resp, body, err := getDownload(t, f, ticket, "https://web.gorex.dev")
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil || resp.StatusCode != http.StatusOK || !bytes.Equal(body, data) {
 		t.Fatalf("download: %d, %d bytes, %v", resp.StatusCode, len(body), err)
 	}
@@ -230,15 +236,24 @@ func TestDownloadStream(t *testing.T) {
 		}
 	}
 	// A ticket is good once.
-	if resp, _, _ := getDownload(t, f, ticket, ""); resp.StatusCode != http.StatusNotFound {
-		t.Errorf("second use: %d", resp.StatusCode)
+	if resp, _, _ := getDownload(t, f, ticket, ""); resp != nil {
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("second use: %d", resp.StatusCode)
+		}
 	}
-	if resp, _, _ := getDownload(t, f, "nope", ""); resp.StatusCode != http.StatusNotFound {
-		t.Errorf("unknown ticket: %d", resp.StatusCode)
+	if resp, _, _ := getDownload(t, f, "nope", ""); resp != nil {
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("unknown ticket: %d", resp.StatusCode)
+		}
 	}
 	// Without an Origin, a navigation, it is served with no CORS header.
 	res = result(t, downloadBegin(c, sid, block, p))
 	resp, body, err = getDownload(t, f, res["ticket"].(string), "")
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil || resp.StatusCode != http.StatusOK || !bytes.Equal(body, data) || resp.Header.Get("Access-Control-Expose-Headers") != "" {
 		t.Errorf("download without Origin: %d %d bytes %v %v", resp.StatusCode, len(body), err, resp.Header)
 	}
@@ -264,8 +279,11 @@ func TestDownloadLapse(t *testing.T) {
 	lapsed := result(t, downloadBegin(c, sid, block, "a.txt"))["ticket"].(string)
 	downloadWait = old
 	waitFor(t, "the ticket to lapse", func() bool { return openDownloadCount(f.g) == 0 })
-	if resp, _, _ := getDownload(t, f, lapsed, ""); resp.StatusCode != http.StatusNotFound {
-		t.Errorf("lapsed ticket: %d", resp.StatusCode)
+	if resp, _, _ := getDownload(t, f, lapsed, ""); resp != nil {
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("lapsed ticket: %d", resp.StatusCode)
+		}
 	}
 
 	kept := result(t, downloadBegin(c, sid, block, "a.txt"))["ticket"].(string)
@@ -274,8 +292,11 @@ func TestDownloadLapse(t *testing.T) {
 	}
 	c.ws.Close(1000, "")
 	waitFor(t, "the connection's tickets to go", func() bool { return openDownloadCount(f.g) == 0 })
-	if resp, _, _ := getDownload(t, f, kept, ""); resp.StatusCode != http.StatusNotFound {
-		t.Errorf("ticket of a closed connection: %d", resp.StatusCode)
+	if resp, _, _ := getDownload(t, f, kept, ""); resp != nil {
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("ticket of a closed connection: %d", resp.StatusCode)
+		}
 	}
 }
 
@@ -294,7 +315,11 @@ func TestDownloadLimit(t *testing.T) {
 		t.Errorf("a fifth ticket: %v", e)
 	}
 	// Using one makes room for another.
-	if resp, body, err := getDownload(t, f, tickets[0], ""); err != nil || resp.StatusCode != 200 || string(body) != "abc" {
+	resp, body, err := getDownload(t, f, tickets[0], "")
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
+	if err != nil || resp.StatusCode != 200 || string(body) != "abc" {
 		t.Fatalf("download: %d %q %v", resp.StatusCode, body, err)
 	}
 	result(t, downloadBegin(c, sid, block, "a.txt"))
@@ -314,6 +339,9 @@ func TestDownloadShort(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, body, err := getDownload(t, f, ticket, "")
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if resp.StatusCode != http.StatusOK || err == nil || !errors.Is(err, io.ErrUnexpectedEOF) || len(body) >= 16<<20 {
 		t.Errorf("short download: %d, %d bytes, %v", resp.StatusCode, len(body), err)
 	}

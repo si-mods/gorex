@@ -24,7 +24,7 @@ import { programOf } from "./programs";
 import { Control, directTransport } from "./rex";
 import type { Settings } from "./settings";
 import { fetchSharedHosts, SharedGroup } from "./share";
-import { hold, initSidebar, paneName, redraw, sidebar as drawSidebar, sidebarBlock, spaceName, windowName, windowTitle } from "./sidebar";
+import { hold, initSidebar, paneName, redraw, sidebar as drawSidebar, sidebarBlock, spaceName, windowTitle } from "./sidebar";
 import { Tailnet, TailnetHost } from "./tailnet";
 import { desktopTheme, Theme } from "./terminal";
 import { isLight, startTheme, ThemeEntry, themeColours } from "./themes";

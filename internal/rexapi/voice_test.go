@@ -92,6 +92,9 @@ func TestVoiceRefused(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, resp, err := websocket.Dial(ctx, f.srv.URL+"/api/voice?block_id=nope", nil)
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err == nil || resp == nil || resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("a voice for no block: %v %v", resp, err)
 	}

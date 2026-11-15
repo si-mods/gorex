@@ -54,9 +54,12 @@ func TestTailcatGateway(t *testing.T) {
 	}}}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	ws, _, err := websocket.Dial(ctx, "ws://tailcat/api/control", &websocket.DialOptions{
+	ws, resp, err := websocket.Dial(ctx, "ws://tailcat/api/control", &websocket.DialOptions{
 		HTTPClient: client, Subprotocols: []string{controlProtocol},
 	})
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

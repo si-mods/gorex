@@ -108,7 +108,7 @@ func TestOriginRefused(t *testing.T) {
 	}
 	srv := httptest.NewServer(g.Handler())
 	defer srv.Close()
-	do := func(method, path, origin string) *http.Response {
+	do := func(method, path, origin string) (int, http.Header) {
 		req, _ := http.NewRequest(method, srv.URL+path, nil)
 		if origin != "" {
 			req.Header.Set("Origin", origin)
@@ -118,39 +118,39 @@ func TestOriginRefused(t *testing.T) {
 			t.Fatal(err)
 		}
 		res.Body.Close()
-		return res
+		return res.StatusCode, res.Header
 	}
 	for _, origin := range []string{"http://evil.example", "null", srv.URL, "http://web.gorex.dev"} {
 		for _, path := range []string{"/api/control", "/api/data", "/api/upload", "/api/spaces", "/api/help", "/llms.txt", "/"} {
-			res := do("GET", path, origin)
-			if res.StatusCode != http.StatusForbidden {
-				t.Errorf("%s from %s: %d, want 403", path, origin, res.StatusCode)
+			code, hdr := do("GET", path, origin)
+			if code != http.StatusForbidden {
+				t.Errorf("%s from %s: %d, want 403", path, origin, code)
 			}
-			if res.Header.Get("Access-Control-Allow-Origin") != "" {
+			if hdr.Get("Access-Control-Allow-Origin") != "" {
 				t.Errorf("%s from %s: CORS headers on a refusal", path, origin)
 			}
 		}
-		if res := do("OPTIONS", "/api/upload", origin); res.StatusCode != http.StatusForbidden {
-			t.Errorf("preflight from %s: %d, want 403", origin, res.StatusCode)
+		if code, _ := do("OPTIONS", "/api/upload", origin); code != http.StatusForbidden {
+			t.Errorf("preflight from %s: %d, want 403", origin, code)
 		}
 	}
 	if allowed != 0 {
 		t.Errorf("the access rule was asked %d times for refused requests", allowed)
 	}
-	if res := do("GET", "/llms.txt", ""); res.StatusCode != http.StatusOK || res.Header.Get("Access-Control-Allow-Origin") != "" {
-		t.Errorf("/llms.txt without an Origin: %d %v", res.StatusCode, res.Header)
+	if code, hdr := do("GET", "/llms.txt", ""); code != http.StatusOK || hdr.Get("Access-Control-Allow-Origin") != "" {
+		t.Errorf("/llms.txt without an Origin: %d %v", code, hdr)
 	}
-	res := do("GET", "/llms.txt", "https://web.gorex.dev")
-	if res.StatusCode != http.StatusOK || res.Header.Get("Access-Control-Allow-Origin") != "https://web.gorex.dev" ||
-		!slices.Contains(res.Header.Values("Vary"), "Origin") {
-		t.Errorf("/llms.txt from a trusted page: %d %v", res.StatusCode, res.Header)
+	code, hdr := do("GET", "/llms.txt", "https://web.gorex.dev")
+	if code != http.StatusOK || hdr.Get("Access-Control-Allow-Origin") != "https://web.gorex.dev" ||
+		!slices.Contains(hdr.Values("Vary"), "Origin") {
+		t.Errorf("/llms.txt from a trusted page: %d %v", code, hdr)
 	}
 	if allowed != 2 {
 		t.Errorf("the access rule was asked %d times, want 2", allowed)
 	}
 	// The web client is not served: the page is hosted on its own.
-	if res := do("GET", "/", ""); res.StatusCode != http.StatusNotFound {
-		t.Errorf("/: %d, want 404", res.StatusCode)
+	if code, _ := do("GET", "/", ""); code != http.StatusNotFound {
+		t.Errorf("/: %d, want 404", code)
 	}
 }
 
@@ -158,7 +158,7 @@ func TestOriginRefused(t *testing.T) {
 // rule, and can read its refusal.
 func TestOriginAccessRule(t *testing.T) {
 	g := &Gateway{
-		opt: Options{Access: AccessFunc(func(*http.Request) error { return errString("not in the networks allowed") })},
+		opt: Options{Access: AccessFunc(func(*http.Request) error { return stringError("not in the networks allowed") })},
 		web: trustOrigins(t, "https://web.gorex.dev"),
 	}
 	srv := httptest.NewServer(g.Handler())
@@ -175,9 +175,9 @@ func TestOriginAccessRule(t *testing.T) {
 	}
 }
 
-type errString string
+type stringError string
 
-func (e errString) Error() string { return string(e) }
+func (e stringError) Error() string { return string(e) }
 
 // TestUploadCORS checks what a browser does before and for an upload
 // from a trusted page: the preflight is answered with the methods and
@@ -223,14 +223,22 @@ func TestUploadCORS(t *testing.T) {
 func TestControlOrigin(t *testing.T) {
 	f := startFixture(t)
 	f.g.web = trustOrigins(t, "https://web.gorex.dev")
-	dial := func(path, proto, origin string) (*websocket.Conn, *http.Response, error) {
+	dial := func(path, proto, origin string) (*websocket.Conn, int, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		h := http.Header{}
 		if origin != "" {
 			h.Set("Origin", origin)
 		}
-		return websocket.Dial(ctx, f.srv.URL+path, &websocket.DialOptions{Subprotocols: []string{proto}, HTTPHeader: h})
+		ws, res, err := websocket.Dial(ctx, f.srv.URL+path, &websocket.DialOptions{Subprotocols: []string{proto}, HTTPHeader: h})
+		var code int
+		if res != nil {
+			code = res.StatusCode
+			if res.Body != nil {
+				res.Body.Close()
+			}
+		}
+		return ws, code, err
 	}
 	for _, origin := range []string{"", "https://web.gorex.dev", "https://WEB.gorex.dev:443"} {
 		ws, _, err := dial("/api/control", controlProtocol, origin)
@@ -252,13 +260,13 @@ func TestControlOrigin(t *testing.T) {
 	}
 	for _, path := range []string{"/api/control", "/api/data"} {
 		for _, origin := range []string{f.srv.URL, "https://evil.example", "null"} {
-			ws, res, err := dial(path, controlProtocol, origin)
+			ws, code, err := dial(path, controlProtocol, origin)
 			if err == nil {
 				ws.CloseNow()
 				t.Fatalf("%s: a page of %s connected", path, origin)
 			}
-			if res == nil || res.StatusCode != http.StatusForbidden {
-				t.Fatalf("%s from %s: %v, %v", path, origin, res, err)
+			if code != http.StatusForbidden {
+				t.Fatalf("%s from %s: %d, %v", path, origin, code, err)
 			}
 		}
 	}
