@@ -93,12 +93,11 @@ struct TerminalScreen: View {
             // On iPad or with a hardware keyboard (no KeyBar), show the floating preview.
             .overlay(alignment: .bottom) { if !hasBar, let said { Heard(said: said) { terminal?.stopDictating() } } }
             .overlay { status }
-            // Under the navigation bar, 44 points tall below the status bar.
+            // Inside the safe area: under the navigation bar, whatever its height.
             .overlay(alignment: .top) {
                 if stalled, let session {
                     Reconnecting(waitingToSend: session.waitingToSend)
-                        .padding(.top, statusBar + 44 + 8)
-                        .ignoresSafeArea(.container, edges: .top)
+                        .padding(.top, 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
@@ -241,11 +240,6 @@ struct TerminalScreen: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)) { _ in terminal?.stopDictating() }
             .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect).merge(with: NotificationCenter.default.publisher(for: .GCKeyboardDidDisconnect))) { _ in hasBar = TerminalView.hasBar }
-            // A terminal that failed for want of a connection starts again
-            // as its host is back.
-            .onChange(of: host.status) { _, s in
-                if s == .online { session?.hostCameBack() }
-            }
             .onChange(of: phase) { _, p in
                 // Inactive, as under Control Center or an alert, keeps it.
                 if p == .background {
@@ -372,9 +366,10 @@ struct TerminalScreen: View {
         }
     }
 
-    /// Whether the terminal reconnects, or holds what was typed.
+    /// Whether the terminal reconnects, or holds what was typed, while
+    /// its stream is open or opening.
     private var troubled: Bool {
-        guard let session else { return false }
+        guard let session, session.state == .connecting || session.state == .live else { return false }
         return session.reconnecting || session.waitingToSend
     }
 

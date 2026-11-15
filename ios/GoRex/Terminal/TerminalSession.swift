@@ -45,6 +45,9 @@ final class TerminalSession {
     /// Whether the session failed only for want of a connection, and so
     /// starts again when its host is back online.
     @ObservationIgnored private(set) var startsWhenHostIsBack = false
+    /// The starts made on its own since the user's last, or since the
+    /// stream was last live: three at most.
+    @ObservationIgnored private var autoStarts = 0
 
     struct Progress: Equatable {
         /// Done of the whole, nil while the program can't tell.
@@ -130,6 +133,12 @@ final class TerminalSession {
     /// Opens the stream from the start: a ticket, a HELLO, a new snapshot.
     /// The stream before it ends. A closed session opens again.
     func start() {
+        autoStarts = 0
+        begin()
+    }
+
+    /// Starts, as the user does or on its own after a lost connection.
+    private func begin() {
         closed = false
         drops = 0
         startsWhenHostIsBack = false
@@ -166,7 +175,6 @@ final class TerminalSession {
                 wire(c)
                 try await c.open(ticket: t)
                 guard g == generation else { return }
-                setReconnecting(false)
                 log.info("opened \(self.block, privacy: .public)")
                 opened = .now
                 stream = TerminalStream(nonce: c.nonce)
@@ -176,8 +184,11 @@ final class TerminalSession {
                 diagnosis = "Waiting for \(d?.stage ?? "the ticket (data.connect)"), \(began.duration(to: .now).ms): \(error.diagnosis)"
                 if d == nil { ConnectionLog.note("terminal \(block): no ticket: \(error.diagnosis)") }
                 // Opened by hand, it tells at once; after a drop, it tries again.
-                // Without a connection, it starts when the host is back.
-                if drops == 0 { end(.failed(error.localizedDescription), startsWhenHostIsBack: true) } else { retry(fresh: true) }
+                // Without a connection, not refused by the server, it
+                // starts again when the host is online.
+                let code = (error as? RexError)?.code
+                let lost = d != nil || code == "offline" || code == "timeout"
+                if drops == 0 { end(.failed(error.localizedDescription), startsWhenHostIsBack: lost) } else { retry(fresh: true) }
             }
         }
     }
@@ -278,18 +289,25 @@ final class TerminalSession {
         }
     }
 
-    /// Starts the session again as its host comes back online, when it
-    /// failed only for want of a connection.
-    func hostCameBack() {
-        guard case .failed = state, startsWhenHostIsBack, !closed, demo == nil else { return }
-        start()
-    }
-
-    /// Fails the stream, or ends it as its program exited.
+    /// Fails the stream, or ends it as its program exited. Failed for
+    /// want of a connection, it starts again once the host is online, a
+    /// few times at most.
     private func end(_ s: State, startsWhenHostIsBack again: Bool = false) {
         state = s
         startsWhenHostIsBack = again
         setReconnecting(false)
+        guard again, demo == nil else { return }
+        let g = generation
+        let h = self.host
+        Task { [weak self] in
+            // It waits while the host is offline, and fails as it is removed.
+            guard (try? await h.online()) != nil else { return }
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, g == self.generation, !self.closed, case .failed = self.state,
+                  self.startsWhenHostIsBack, self.autoStarts < 3 else { return }
+            self.autoStarts += 1
+            self.begin()
+        }
     }
 
     /// Sets the flags only as they change, for no needless updates.
@@ -322,6 +340,8 @@ final class TerminalSession {
                 // A reset first: the snapshot of a new stream replaces the screen.
                 write(Data("\u{1b}c".utf8) + t.replay())
                 state = .live
+                setReconnecting(false)
+                autoStarts = 0
             case .output(let o):
                 write(o)
             case .message(let m):
