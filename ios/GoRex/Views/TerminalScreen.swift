@@ -41,11 +41,15 @@ struct TerminalScreen: View {
     @State private var stopping = false
     /// Whether the terminal has the key bar, which holds the mic.
     @State private var hasBar = TerminalView.hasBar
+    @State private var currentTarget: TerminalTarget
+    @State private var pillDrag: CGFloat = 0
+    @State private var slideDir: CGFloat = 1
 
     init(target: TerminalTarget, host: Host, go: @escaping (TerminalTarget?) -> Void) {
         self.target = target
         self.host = host
         self.go = go
+        _currentTarget = State(initialValue: target)
     }
 
     var body: some View {
@@ -55,7 +59,19 @@ struct TerminalScreen: View {
         let scheme: ColorScheme = bg.light ? .light : .dark
         // The terminal goes up under the clear bar and the status bar: its
         // grid starts below them, and its scrollback fills the band.
-        Group { if let session { TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab, mic: mic) } else { Color.clear } }
+        Group {
+            if let session {
+                TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab, mic: mic)
+                    .id(currentTarget.block)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: slideDir > 0 ? .trailing : .leading),
+                        removal: .move(edge: slideDir > 0 ? .leading : .trailing)
+                    ))
+            } else {
+                Color.clear
+            }
+        }
+            .clipped()
             .ignoresSafeArea(.container, edges: .top)
             .ignoresSafeArea(.keyboard)
             .overlay(alignment: .top) { if let p = session?.progress { ProgressLine(progress: p).padding(.top, statusBar).ignoresSafeArea(.container, edges: .top) } }
@@ -92,32 +108,47 @@ struct TerminalScreen: View {
                     Button { sheet = true } label: {
                         HStack(spacing: 10) {
                             let k = ProgramTiles.scale, small = 0.85
-                            ProgramTile(program: .of(host.blocks[target.block]?.program))
+                            ProgramTile(program: .of(host.blocks[currentTarget.block]?.program))
                                 .frame(width: 21 * k, height: 16 * k)
                                 .scaleEffect(small)
                                 .frame(width: 21 * k * small, height: 16 * k * small)
                             Text(title.asText).font(.body.weight(.semibold)).lineLimit(1)
                         }
+                        .id(currentTarget.block)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: slideDir > 0 ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: slideDir > 0 ? .leading : .trailing).combined(with: .opacity)
+                        ))
                         .padding(.leading, 12)
                         .padding(.trailing, 18)
                         .frame(height: 44)
+                        .clipped()
                         // Glass behind, not over: on the content it would fade the tile.
                         .background { Capsule().fill(.clear).glassEffect(.regular, in: .capsule) }
                     }
                     .buttonStyle(.plain)
+                    .offset(x: pillDrag)
                     .simultaneousGesture(
-                        DragGesture(minimumDistance: 24).onEnded { v in
-                            guard abs(v.translation.width) > 24, abs(v.translation.width) > abs(v.translation.height) else { return }
-                            stepTab(by: v.translation.width < 0 ? 1 : -1)
-                        }
+                        DragGesture(minimumDistance: 12)
+                            .onChanged { v in
+                                guard sessionWindows.count > 1, abs(v.translation.width) > abs(v.translation.height) else { return }
+                                pillDrag = max(-28, min(28, v.translation.width * 0.35))
+                            }
+                            .onEnded { v in
+                                withAnimation(.spring(duration: 0.28, bounce: 0.2)) {
+                                    pillDrag = 0
+                                }
+                                guard abs(v.translation.width) > 24, abs(v.translation.width) > abs(v.translation.height) else { return }
+                                stepTab(by: v.translation.width < 0 ? 1 : -1)
+                            }
                     )
                     .contextMenu {
                         ForEach(sessionWindows, id: \.window.window_id) { w in
-                            let open = w.window.holds(target.block)
+                            let open = w.window.holds(currentTarget.block)
                             let label = host.title(w.window)
                             Button {
                                 if !open {
-                                    go(TerminalTarget(host: host.id, session: target.session, block: w.block, title: label))
+                                    switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: w.block, title: label))
                                 }
                             } label: {
                                 if open {
@@ -130,7 +161,7 @@ struct TerminalScreen: View {
                         Divider()
                         Button("New Tab", systemImage: "plus") { newTab() }
                     }
-                    .sensoryFeedback(.selection, trigger: target.block)
+                    .sensoryFeedback(.selection, trigger: currentTarget.block)
                 }
                 .sharedBackgroundVisibility(.hidden)
                 // The mic where the terminal has no key bar, and the
@@ -148,7 +179,9 @@ struct TerminalScreen: View {
             }
             // The sheet takes the terminal's scheme as the bar does; the
             // one below does not reach it under a dark system.
-            .sheet(isPresented: $sheet) { SessionSheet(target: target, host: host, go: go, newTab: newTab).environment(\.colorScheme, scheme) }
+            .sheet(isPresented: $sheet) { SessionSheet(target: currentTarget, host: host, go: { next in
+                if let next { switchTo(next) } else { go(nil) }
+            }, newTab: newTab).environment(\.colorScheme, scheme) }
             .sheet(isPresented: $diagnostics) {
                 NavigationStack {
                     DiagnosticsView(address: host.config.url.host() ?? "", host: host.config, failure: session?.diagnosis)
@@ -164,17 +197,17 @@ struct TerminalScreen: View {
             .toolbarColorScheme(scheme, for: .navigationBar)
             .environment(\.colorScheme, scheme)
             .onAppear {
-                let s = session ?? TerminalSession(host: host, session: target.session, block: target.block)
+                let s = session ?? TerminalSession(host: host, session: currentTarget.session, block: currentTarget.block)
                 session = s
                 s.start()
-                Notifier.shared.onScreen = target
-                host.see(session: target.session, block: target.block)
+                Notifier.shared.onScreen = currentTarget
+                host.see(session: currentTarget.session, block: currentTarget.block)
             }
             .onDisappear {
                 terminal?.stopDictating()
-                host.see(session: target.session, block: target.block)
+                host.see(session: currentTarget.session, block: currentTarget.block)
                 session?.close()
-                if Notifier.shared.onScreen == target { Notifier.shared.onScreen = nil }
+                if Notifier.shared.onScreen == currentTarget { Notifier.shared.onScreen = nil }
             }
             .alert(failure?.title ?? "", isPresented: Binding { failure != nil } set: { if !$0 { failure = nil } }) {
             } message: {
@@ -220,20 +253,20 @@ struct TerminalScreen: View {
 
     /// The session of the window open, as the host has it.
     private var hostSession: Host.Session? {
-        host.sessions.first { $0.id == target.session }
+        host.sessions.first { $0.id == currentTarget.session }
     }
 
     /// The window open, as its session's view has it.
     private var window: SessionView.Window? {
-        hostSession?.view?.windows?.first { $0.holds(target.block) }
+        hostSession?.view?.windows?.first { $0.holds(currentTarget.block) }
     }
 
     /// The window's title as its row shows it, when the block open is the
     /// one in front, else as the row gave it, else its session's name, as
     /// for a new session.
     private var title: String {
-        let live = window.flatMap { $0.block == target.block ? host.title($0) : nil } ?? ""
-        return [live, target.title].first { !$0.isEmpty } ?? sessionLabel
+        let live = window.flatMap { $0.block == currentTarget.block ? host.title($0) : nil } ?? ""
+        return [live, currentTarget.title].first { !$0.isEmpty } ?? sessionLabel
     }
 
     /// The name of the window's session.
@@ -245,20 +278,49 @@ struct TerminalScreen: View {
         (hostSession?.view?.windows ?? []).compactMap { w in w.block.map { (block: $0, window: w) } }
     }
 
+    private func switchTo(_ next: TerminalTarget, dir: CGFloat? = nil) {
+        guard next.host == currentTarget.host && next.session == currentTarget.session else {
+            go(next)
+            return
+        }
+        guard next.block != currentTarget.block else { return }
+        let resolvedDir: CGFloat
+        if let dir {
+            resolvedDir = dir
+        } else {
+            let all = sessionWindows
+            let fromIdx = all.firstIndex { $0.window.holds(currentTarget.block) } ?? 0
+            let toIdx = all.firstIndex { $0.window.holds(next.block) } ?? fromIdx
+            resolvedDir = toIdx >= fromIdx ? 1 : -1
+        }
+        terminal?.stopDictating()
+        host.see(session: currentTarget.session, block: currentTarget.block)
+        session?.close()
+        let nextSession = TerminalSession(host: host, session: next.session, block: next.block)
+        nextSession.start()
+        Notifier.shared.onScreen = next
+        host.see(session: next.session, block: next.block)
+        withAnimation(.spring(duration: 0.32, bounce: 0.12)) {
+            slideDir = resolvedDir
+            session = nextSession
+            currentTarget = next
+        }
+    }
+
     private func stepTab(by delta: Int) {
         let all = sessionWindows
-        guard all.count > 1, let i = all.firstIndex(where: { $0.window.holds(target.block) }) else { return }
+        guard all.count > 1, let i = all.firstIndex(where: { $0.window.holds(currentTarget.block) }) else { return }
         let next = all[(i + delta + all.count) % all.count]
-        guard !next.window.holds(target.block) else { return }
-        go(TerminalTarget(host: host.id, session: target.session, block: next.block, title: host.title(next.window)))
+        guard !next.window.holds(currentTarget.block) else { return }
+        switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: next.block, title: host.title(next.window)), dir: delta > 0 ? 1 : -1)
     }
 
     /// Opens a new window in the session, and goes to it.
     private func newTab() {
         Task {
             do {
-                if let b = try await host.newWindow(in: target.session) {
-                    go(TerminalTarget(host: host.id, session: target.session, block: b, title: ""))
+                if let b = try await host.newWindow(in: currentTarget.session) {
+                    switchTo(TerminalTarget(host: host.id, session: currentTarget.session, block: b, title: ""), dir: 1)
                 }
             } catch {
                 failure = ("Can't Open a New Window", error.localizedDescription)
@@ -272,7 +334,7 @@ struct TerminalScreen: View {
         guard let w = window else { return }
         Task {
             do {
-                try await host.closeWindow(w.window_id, in: target.session)
+                try await host.closeWindow(w.window_id, in: currentTarget.session)
                 go(nil)
             } catch {
                 failure = ("Can't Close the Tab", error.localizedDescription)
