@@ -27,9 +27,9 @@ nonisolated final class ProgramTests: XCTestCase {
         XCTAssertEqual(TileMotion(state: nil), .none)
         XCTAssertEqual(TileMotion(state: "unknown"), .none)
 
-        XCTAssertNotNil(TileMotion.attention.repeatInterval)
-        XCTAssertNotNil(TileMotion.working.repeatInterval)
-        XCTAssertNil(TileMotion.done.repeatInterval)
-        XCTAssertNil(TileMotion.none.repeatInterval)
+        XCTAssertTrue(TileMotion.attention.isRepeating)
+        XCTAssertTrue(TileMotion.working.isRepeating)
+        XCTAssertTrue(TileMotion.done.isRepeating)
+        XCTAssertFalse(TileMotion.none.isRepeating)
     }
 }
