@@ -31,9 +31,6 @@ struct TerminalScreen: View {
     @State private var diagnostics = false
     /// The height of the status bar.
     @State private var statusBar: CGFloat = 0
-    /// Whether the navigation stack is mid-transition; `TopEdge` drops its
-    /// masked material blur during transitions so it doesn't snap off mid-pop.
-    @State private var transitioning = true
     /// What is said while the mic is on.
     @State private var said: Dictation.Said?
     /// Whether the mic asks to download the speech model, or to stop it.
@@ -79,21 +76,16 @@ struct TerminalScreen: View {
                 // The status bar is the window's inset, read as the page's changes.
                 Color(cgColor: bg.cgColor)
                     .ignoresSafeArea()
-                    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { _ in
-                        if !transitioning || statusBar == 0 { statusBar = Self.statusBar }
-                    }
-                TransitionObserver { isTransitioning in
-                    if isTransitioning {
-                        transitioning = true
-                    } else {
-                        withAnimation(.easeIn(duration: 0.15)) { transitioning = false }
-                    }
-                }
-                .allowsHitTesting(false)
+                    .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { _ in statusBar = Self.statusBar }
             }
             // What goes up under the status bar blurs and fades into the
             // background, for the clock over it.
-            .overlay(alignment: .top) { TopEdge(color: Color(cgColor: bg.cgColor), height: statusBar + 10, blurred: !transitioning) }
+            .overlay(alignment: .top) {
+                TopEdge(color: UIColor(cgColor: bg.cgColor))
+                    .frame(height: statusBar + 10)
+                    .ignoresSafeArea(.container, edges: .top)
+                    .allowsHitTesting(false)
+            }
             // Above the key bar, which is not the keyboard's.
             .overlay(alignment: .bottom) { if let said { Heard(said: said) { terminal?.stopDictating() }.padding(.bottom, hasBar ? KeyBar.height : 0) } }
             .overlay { status }
@@ -492,51 +484,28 @@ private struct Level: View {
 }
 
 /// A soft edge at the top of the page: blurred and in the background's
-/// color at the top, clear below.
-private struct TopEdge: View {
-    let color: Color
-    /// How far down from the top of the screen it reaches.
-    let height: CGFloat
-    let blurred: Bool
-
-    var body: some View {
-        let fade = LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.35), .init(color: .clear, location: 1)],
-                                  startPoint: .top, endPoint: .bottom)
-        // From the top of the screen, height down.
-        VStack(spacing: 0) {
-            ZStack {
-                if blurred {
-                    Rectangle().fill(.ultraThinMaterial)
-                }
-                color.opacity(blurred ? 0.75 : 0.9)
-            }
-            .mask(fade)
-            .frame(height: height)
-            Spacer(minLength: 0)
-        }
-        .ignoresSafeArea(.container, edges: .top)
-        .allowsHitTesting(false)
-    }
-}
-
-/// Tracks whether the enclosing navigation controller is mid-transition, so
-/// `TopEdge` only renders its masked material blur in steady state.
-private struct TransitionObserver: UIViewControllerRepresentable {
-    let onChange: (Bool) -> Void
+/// color at the top, clear below. Drives the blur alpha alongside UIKit's
+/// navigation `transitionCoordinator` so interactive swipe-back and pop
+/// transitions fade the blur smoothly instead of snapping off.
+private struct TopEdge: UIViewControllerRepresentable {
+    let color: UIColor
 
     func makeUIViewController(context: Context) -> Controller {
-        Controller(onChange: onChange)
+        Controller(color: color)
     }
 
     func updateUIViewController(_ vc: Controller, context: Context) {
-        vc.onChange = onChange
+        vc.setColor(color)
     }
 
     final class Controller: UIViewController {
-        var onChange: (Bool) -> Void
+        private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterial))
+        private let maskLayer = CAGradientLayer()
+        private let colorLayer = CAGradientLayer()
+        private var color: UIColor
 
-        init(onChange: @escaping (Bool) -> Void) {
-            self.onChange = onChange
+        init(color: UIColor) {
+            self.color = color
             super.init(nibName: nil, bundle: nil)
         }
 
@@ -544,24 +513,79 @@ private struct TransitionObserver: UIViewControllerRepresentable {
         required init?(coder: NSCoder) { fatalError() }
 
         override func loadView() {
-            view = UIView()
-            view.isHidden = true
-            view.isUserInteractionEnabled = false
+            let v = UIView()
+            v.isUserInteractionEnabled = false
+            v.backgroundColor = .clear
+
+            maskLayer.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+            maskLayer.locations = [0, 0.35, 1]
+            maskLayer.startPoint = CGPoint(x: 0.5, y: 0)
+            maskLayer.endPoint = CGPoint(x: 0.5, y: 1)
+
+            blurView.isUserInteractionEnabled = false
+            blurView.layer.mask = maskLayer
+            v.addSubview(blurView)
+
+            colorLayer.locations = [0, 0.35, 1]
+            colorLayer.startPoint = CGPoint(x: 0.5, y: 0)
+            colorLayer.endPoint = CGPoint(x: 0.5, y: 1)
+            v.layer.addSublayer(colorLayer)
+
+            view = v
+            applyColor()
+        }
+
+        override func viewDidLayoutSubviews() {
+            super.viewDidLayoutSubviews()
+            blurView.frame = view.bounds
+            maskLayer.frame = blurView.bounds
+            colorLayer.frame = view.bounds
         }
 
         override func viewWillAppear(_ animated: Bool) {
             super.viewWillAppear(animated)
-            if animated { onChange(true) }
+            if let tc = transitionCoordinator {
+                blurView.alpha = 0
+                tc.animate(alongsideTransition: { _ in
+                    self.blurView.alpha = 1
+                }, completion: { ctx in
+                    if ctx.isCancelled { self.blurView.alpha = 0 }
+                })
+            } else {
+                blurView.alpha = 1
+            }
         }
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
-            onChange(false)
+            blurView.alpha = 1
         }
 
         override func viewWillDisappear(_ animated: Bool) {
             super.viewWillDisappear(animated)
-            onChange(true)
+            if let tc = transitionCoordinator {
+                tc.animate(alongsideTransition: { _ in
+                    self.blurView.alpha = 0
+                }, completion: { ctx in
+                    if ctx.isCancelled { self.blurView.alpha = 1 }
+                })
+            } else {
+                blurView.alpha = 0
+            }
+        }
+
+        func setColor(_ c: UIColor) {
+            guard c != color else { return }
+            color = c
+            applyColor()
+        }
+
+        private func applyColor() {
+            colorLayer.colors = [
+                color.cgColor,
+                color.withAlphaComponent(0.75).cgColor,
+                color.withAlphaComponent(0).cgColor,
+            ]
         }
     }
 }
