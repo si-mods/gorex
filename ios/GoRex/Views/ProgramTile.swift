@@ -228,9 +228,10 @@ private struct DoneDot: View {
 /// - `attention` (`blocked`, `error`): energetic double-hop repeating on a
 ///   calm cadence until the user attends to it.
 /// - `working`: gentle low-amplitude float while a program is busy.
-/// - `done`: one-shot celebratory hop when a task finishes.
+/// - `done`: celebratory double-hop repeating on a relaxed cadence while
+///   unseen.
 /// - `none` (`idle` or `nil`): still.
-enum TileMotion: Equatable, Sendable {
+enum TileMotion: Equatable, Hashable, Sendable {
     case none
     case working
     case done
@@ -245,14 +246,8 @@ enum TileMotion: Equatable, Sendable {
         }
     }
 
-    /// Seconds between repeating cycles, or nil for non-repeating motions.
-    var repeatInterval: TimeInterval? {
-        switch self {
-        case .attention: 1.75
-        case .working: 1.65
-        case .done, .none: nil
-        }
-    }
+    /// Whether this state should animate continuously.
+    var isRepeating: Bool { self != .none }
 }
 
 extension View {
@@ -272,12 +267,10 @@ private nonisolated struct TileBounceValues: Sendable {
 private struct TileBounceModifier: ViewModifier {
     let motion: TileMotion
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var cycle = 0
-    @State private var lastMotion: TileMotion?
 
     func body(content: Content) -> some View {
         content
-            .keyframeAnimator(initialValue: TileBounceValues(), trigger: cycle) { view, v in
+            .keyframeAnimator(initialValue: TileBounceValues(), repeating: !reduceMotion && motion.isRepeating) { view, v in
                 view
                     .scaleEffect(x: v.scaleX, y: v.scaleY, anchor: .bottom)
                     .offset(y: v.offsetY)
@@ -289,14 +282,17 @@ private struct TileBounceModifier: ViewModifier {
                         CubicKeyframe(0, duration: 0.14)
                         CubicKeyframe(-2.6, duration: 0.12)
                         CubicKeyframe(0, duration: 0.12)
+                        LinearKeyframe(0, duration: 1.06)
                     case .done:
                         CubicKeyframe(-5.0, duration: 0.16)
                         CubicKeyframe(0, duration: 0.14)
                         CubicKeyframe(-2.0, duration: 0.11)
                         CubicKeyframe(0, duration: 0.11)
+                        LinearKeyframe(0, duration: 1.88)
                     case .working:
-                        CubicKeyframe(-2.0, duration: 0.65)
-                        CubicKeyframe(0, duration: 0.65)
+                        CubicKeyframe(-2.0, duration: 0.70)
+                        CubicKeyframe(0, duration: 0.70)
+                        LinearKeyframe(0, duration: 0.25)
                     case .none:
                         LinearKeyframe(0, duration: 0.01)
                     }
@@ -310,12 +306,14 @@ private struct TileBounceModifier: ViewModifier {
                         CubicKeyframe(1.0, duration: 0.12)
                         CubicKeyframe(1.02, duration: 0.12)
                         CubicKeyframe(1.0, duration: 0.08)
+                        LinearKeyframe(1.0, duration: 0.98)
                     case .done:
                         CubicKeyframe(0.97, duration: 0.06)
                         CubicKeyframe(1.0, duration: 0.10)
                         CubicKeyframe(1.04, duration: 0.14)
                         CubicKeyframe(1.0, duration: 0.11)
                         CubicKeyframe(1.0, duration: 0.11)
+                        LinearKeyframe(1.0, duration: 1.88)
                     case .working, .none:
                         LinearKeyframe(1.0, duration: 0.01)
                     }
@@ -329,37 +327,19 @@ private struct TileBounceModifier: ViewModifier {
                         CubicKeyframe(1.0, duration: 0.12)
                         CubicKeyframe(0.97, duration: 0.12)
                         CubicKeyframe(1.0, duration: 0.08)
+                        LinearKeyframe(1.0, duration: 0.98)
                     case .done:
                         CubicKeyframe(1.04, duration: 0.06)
                         CubicKeyframe(1.0, duration: 0.10)
                         CubicKeyframe(0.95, duration: 0.14)
                         CubicKeyframe(1.0, duration: 0.11)
                         CubicKeyframe(1.0, duration: 0.11)
+                        LinearKeyframe(1.0, duration: 1.88)
                     case .working, .none:
                         LinearKeyframe(1.0, duration: 0.01)
                     }
                 }
             }
-            .task(id: TaskKey(motion: motion, reduceMotion: reduceMotion)) {
-                let prev = lastMotion
-                lastMotion = motion
-                guard !reduceMotion else { return }
-                if let interval = motion.repeatInterval {
-                    cycle &+= 1
-                    while !Task.isCancelled {
-                        try? await Task.sleep(for: .seconds(interval))
-                        guard !Task.isCancelled else { break }
-                        cycle &+= 1
-                    }
-                } else if motion == .done, prev != nil, prev != .done {
-                    // Bounce once when transitioning into `done` from another state.
-                    cycle &+= 1
-                }
-            }
-    }
-
-    private struct TaskKey: Equatable {
-        let motion: TileMotion
-        let reduceMotion: Bool
+            .id(motion)
     }
 }
