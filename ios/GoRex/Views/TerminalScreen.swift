@@ -31,8 +31,9 @@ struct TerminalScreen: View {
     @State private var diagnostics = false
     /// The height of the status bar.
     @State private var statusBar: CGFloat = 0
-    /// What is said while the mic is on.
+    /// What is said while the mic is on, and whether it is finishing.
     @State private var said: Dictation.Said?
+    @State private var busy = false
     /// Whether the mic asks to download the speech model, or to stop it.
     @State private var asking = false
     @State private var stopping = false
@@ -58,7 +59,7 @@ struct TerminalScreen: View {
         // grid starts below them, and its scrollback fills the band.
         Group {
             if let session {
-                TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab, mic: mic)
+                TerminalRepresentable(session: session, newTab: newTab, closeTab: closeTab, mic: mic, voice: voiceCapsule, dictating: said != nil)
                     .id(currentTarget.block)
                     .transition(.asymmetric(
                         insertion: .move(edge: slideDir > 0 ? .trailing : .leading),
@@ -86,8 +87,8 @@ struct TerminalScreen: View {
                     .ignoresSafeArea(.container, edges: .top)
                     .allowsHitTesting(false)
             }
-            // Above the key bar, which is not the keyboard's.
-            .overlay(alignment: .bottom) { if let said { Heard(said: said) { terminal?.stopDictating() }.padding(.bottom, hasBar ? KeyBar.height : 0) } }
+            // On iPad or with a hardware keyboard (no KeyBar), show the floating preview.
+            .overlay(alignment: .bottom) { if !hasBar, let said { Heard(said: said) { terminal?.stopDictating() } } }
             .overlay { status }
             .navigationTitle(title.asText)
             .navigationBarTitleDisplayMode(.inline)
@@ -238,7 +239,18 @@ struct TerminalScreen: View {
         UIApplication.shared.connectedScenes.lazy.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.safeAreaInsets.top ?? 0
     }
 
-    private var mic: Mic { Mic(terminal: { terminal }, said: $said, asking: $asking, stopping: $stopping) }
+    private var mic: Mic { Mic(terminal: { terminal }, said: $said, busy: $busy, asking: $asking, stopping: $stopping) }
+
+    private var voiceCapsule: VoiceCapsule {
+        VoiceCapsule(said: said, busy: $busy, cancel: { terminal?.stopDictating() }, finish: {
+            guard !busy else { return }
+            busy = true
+            Task {
+                await terminal?.typeDictation()
+                busy = false
+            }
+        })
+    }
 
     /// The terminal showing the session.
     private var terminal: TerminalView? { session?.output as? TerminalView }
@@ -367,9 +379,9 @@ struct TerminalScreen: View {
 private struct Mic: View {
     let terminal: () -> TerminalView?
     @Binding var said: Dictation.Said?
+    @Binding var busy: Bool
     @Binding var asking: Bool
     @Binding var stopping: Bool
-    @State private var busy = false
     @GestureState private var pressed = false
     private let dictation = Dictation.shared
     private var on: Bool { said != nil && !busy }
@@ -611,28 +623,112 @@ private struct ProgressLine: View {
     }
 }
 
+/// What is said while the mic is on inside the key bar's horizontal voice
+/// capsule: waveform/sparkles, single-line trailing-scrolled text, cancel, and
+/// the red recording dot to finish and type into the terminal.
+private struct VoiceCapsule: View {
+    let said: Dictation.Said?
+    @Binding var busy: Bool
+    let cancel: () -> Void
+    let finish: () -> Void
+
+    var body: some View {
+        let settled = (said?.polishing == true ? "" : said?.settled) ?? ""
+        let full = said?.text ?? ""
+        var open = AttributedString(full.dropFirst(min(settled.count, full.count)))
+        open.foregroundColor = .secondary
+        let text = Text(AttributedString(settled) + open).font(.callout)
+        HStack(spacing: 8) {
+            if said?.polishing == true {
+                Image(systemName: "sparkles").foregroundStyle(.secondary).symbolEffect(.pulse).frame(height: 18).accessibilityLabel("Polishing")
+            } else {
+                Level()
+            }
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal) {
+                    HStack(spacing: 0) {
+                        text.lineLimit(1)
+                        Color.clear.frame(width: 1, height: 1).id("end")
+                    }
+                }
+                .scrollIndicators(.hidden)
+                .defaultScrollAnchor(.trailing)
+                .onChange(of: full) { _, _ in
+                    proxy.scrollTo("end", anchor: .trailing)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .mask {
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.06),
+                    .init(color: .black, location: 1),
+                ], startPoint: .leading, endPoint: .trailing)
+            }
+            Button(action: cancel) {
+                Image(systemName: "xmark")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cancel")
+            Button(action: finish) {
+                Group {
+                    if busy {
+                        ProgressView().accessibilityLabel("Recognising")
+                    } else {
+                        Image(systemName: "circle.fill")
+                            .foregroundStyle(.red)
+                            .accessibilityLabel("Finish Dictation")
+                    }
+                }
+                .frame(width: 34, height: 34)
+                .contentShape(.circle)
+            }
+            .buttonStyle(.plain)
+            .disabled(busy)
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+    }
+}
+
 private struct TerminalRepresentable: UIViewRepresentable {
     let session: TerminalSession
     let newTab: () -> Void
     let closeTab: () -> Void
     let mic: Mic
+    let voice: VoiceCapsule
+    let dictating: Bool
 
-    /// The mic in the key bar.
-    func makeCoordinator() -> UIHostingController<Mic> {
-        let c = UIHostingController(rootView: mic)
-        c.safeAreaRegions = []
-        c.view.backgroundColor = .clear
-        return c
+    struct Coordinator {
+        let mic: UIHostingController<Mic>
+        let voice: UIHostingController<VoiceCapsule>
+    }
+
+    /// The mic and the voice capsule in the key bar.
+    func makeCoordinator() -> Coordinator {
+        let m = UIHostingController(rootView: mic)
+        m.safeAreaRegions = []
+        m.view.backgroundColor = .clear
+        let v = UIHostingController(rootView: voice)
+        v.safeAreaRegions = []
+        v.view.backgroundColor = .clear
+        return Coordinator(mic: m, voice: v)
     }
 
     /// The view lands without the keyboard, and on a phone with its key
     /// bar: a tap gives it the keyboard, as one does in the terminal.
     func makeUIView(context: Context) -> TerminalHost {
         let host = TerminalHost(TerminalView(session: session))
-        let mic = context.coordinator.view!
-        mic.frame = host.terminal.bar.mic.bounds
-        mic.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        host.terminal.bar.mic.addSubview(mic)
+        for (sub, container) in [(context.coordinator.mic.view!, host.terminal.bar.mic),
+                                 (context.coordinator.voice.view!, host.terminal.bar.voice)] {
+            sub.frame = container.bounds
+            sub.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            container.addSubview(sub)
+        }
         updateUIView(host, context: context)
         return host
     }
@@ -640,10 +736,12 @@ private struct TerminalRepresentable: UIViewRepresentable {
     func updateUIView(_ v: TerminalHost, context: Context) {
         v.terminal.newTab = newTab
         v.terminal.closeTab = closeTab
-        context.coordinator.rootView = mic
+        context.coordinator.mic.rootView = mic
+        context.coordinator.voice.rootView = voice
+        v.terminal.bar.setVoice(active: dictating)
     }
 
-    static func dismantleUIView(_ v: TerminalHost, coordinator: UIHostingController<Mic>) { v.terminal.close() }
+    static func dismantleUIView(_ v: TerminalHost, coordinator: Coordinator) { v.terminal.close() }
 }
 
 extension View {
